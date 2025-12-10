@@ -39,9 +39,8 @@ Lowerer::Module Lowerer::lower(Program &prog, SemanticAnalyzer &sema)
     localTypes_.clear();
     constants_.clear();
     stringTable_.clear();
-    stringTable_.setEmitter([this](const std::string &label, const std::string &content) {
-        builder_->addGlobalStr(label, content);
-    });
+    stringTable_.setEmitter([this](const std::string &label, const std::string &content)
+                            { builder_->addGlobalStr(label, content); });
     loopStack_.clear();
     usedExterns_.clear();
     blockCounter_ = 0;
@@ -130,8 +129,8 @@ Lowerer::Module Lowerer::lower(Program &prog, SemanticAnalyzer &sema)
         const auto *desc = il::runtime::findRuntimeDescriptor(externName);
         if (desc)
         {
-            builder_->addExtern(std::string(desc->name), desc->signature.retType,
-                                desc->signature.paramTypes);
+            builder_->addExtern(
+                std::string(desc->name), desc->signature.retType, desc->signature.paramTypes);
         }
     }
 
@@ -148,9 +147,8 @@ Lowerer::Module Lowerer::lower(Unit &unit, SemanticAnalyzer &sema)
     localTypes_.clear();
     constants_.clear();
     stringTable_.clear();
-    stringTable_.setEmitter([this](const std::string &label, const std::string &content) {
-        builder_->addGlobalStr(label, content);
-    });
+    stringTable_.setEmitter([this](const std::string &label, const std::string &content)
+                            { builder_->addGlobalStr(label, content); });
     loopStack_.clear();
     usedExterns_.clear();
     blockCounter_ = 0;
@@ -210,8 +208,8 @@ Lowerer::Module Lowerer::lower(Unit &unit, SemanticAnalyzer &sema)
         const auto *desc = il::runtime::findRuntimeDescriptor(externName);
         if (desc)
         {
-            builder_->addExtern(std::string(desc->name), desc->signature.retType,
-                                desc->signature.paramTypes);
+            builder_->addExtern(
+                std::string(desc->name), desc->signature.retType, desc->signature.paramTypes);
         }
     }
 

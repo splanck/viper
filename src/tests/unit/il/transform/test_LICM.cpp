@@ -166,7 +166,8 @@ int main()
         "liveness",
         [](Module &mod, Function &fnRef) { return il::transform::computeLiveness(mod, fnRef); });
     registry.registerFunctionAnalysis<viper::analysis::BasicAA>(
-        "basic-aa", [](Module &mod, Function &fnRef) { return viper::analysis::BasicAA(mod, fnRef); });
+        "basic-aa",
+        [](Module &mod, Function &fnRef) { return viper::analysis::BasicAA(mod, fnRef); });
 
     il::transform::AnalysisManager analysisManager(module, registry);
 

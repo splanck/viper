@@ -59,19 +59,18 @@ bool analyzeProgram(const std::string &source, DiagnosticEngine &diag)
 TEST(PascalDestructorTest, BasicDestructor)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type\n"
-        "  TMyClass = class\n"
-        "  public\n"
-        "    destructor Destroy;\n"
-        "  end;\n"
-        "destructor TMyClass.Destroy;\n"
-        "begin\n"
-        "end;\n"
-        "begin\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  TMyClass = class\n"
+                                 "  public\n"
+                                 "    destructor Destroy;\n"
+                                 "  end;\n"
+                                 "destructor TMyClass.Destroy;\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "begin\n"
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -79,19 +78,18 @@ TEST(PascalDestructorTest, BasicDestructor)
 TEST(PascalDestructorTest, VirtualDestructor)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type\n"
-        "  TBase = class\n"
-        "  public\n"
-        "    destructor Destroy; virtual;\n"
-        "  end;\n"
-        "destructor TBase.Destroy;\n"
-        "begin\n"
-        "end;\n"
-        "begin\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  TBase = class\n"
+                                 "  public\n"
+                                 "    destructor Destroy; virtual;\n"
+                                 "  end;\n"
+                                 "destructor TBase.Destroy;\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "begin\n"
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -99,26 +97,25 @@ TEST(PascalDestructorTest, VirtualDestructor)
 TEST(PascalDestructorTest, OverrideDestructor)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type\n"
-        "  TBase = class\n"
-        "  public\n"
-        "    destructor Destroy; virtual;\n"
-        "  end;\n"
-        "  TChild = class(TBase)\n"
-        "  public\n"
-        "    destructor Destroy; override;\n"
-        "  end;\n"
-        "destructor TBase.Destroy;\n"
-        "begin\n"
-        "end;\n"
-        "destructor TChild.Destroy;\n"
-        "begin\n"
-        "end;\n"
-        "begin\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  TBase = class\n"
+                                 "  public\n"
+                                 "    destructor Destroy; virtual;\n"
+                                 "  end;\n"
+                                 "  TChild = class(TBase)\n"
+                                 "  public\n"
+                                 "    destructor Destroy; override;\n"
+                                 "  end;\n"
+                                 "destructor TBase.Destroy;\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "destructor TChild.Destroy;\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "begin\n"
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -126,29 +123,28 @@ TEST(PascalDestructorTest, OverrideDestructor)
 TEST(PascalDestructorTest, InheritedDestroyCall)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type\n"
-        "  TBase = class\n"
-        "  public\n"
-        "    destructor Destroy; virtual;\n"
-        "  end;\n"
-        "  TChild = class(TBase)\n"
-        "  public\n"
-        "    destructor Destroy; override;\n"
-        "  end;\n"
-        "destructor TBase.Destroy;\n"
-        "begin\n"
-        "  WriteLn('Base destroyed');\n"
-        "end;\n"
-        "destructor TChild.Destroy;\n"
-        "begin\n"
-        "  WriteLn('Child destroyed');\n"
-        "  inherited Destroy;\n"
-        "end;\n"
-        "begin\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  TBase = class\n"
+                                 "  public\n"
+                                 "    destructor Destroy; virtual;\n"
+                                 "  end;\n"
+                                 "  TChild = class(TBase)\n"
+                                 "  public\n"
+                                 "    destructor Destroy; override;\n"
+                                 "  end;\n"
+                                 "destructor TBase.Destroy;\n"
+                                 "begin\n"
+                                 "  WriteLn('Base destroyed');\n"
+                                 "end;\n"
+                                 "destructor TChild.Destroy;\n"
+                                 "begin\n"
+                                 "  WriteLn('Child destroyed');\n"
+                                 "  inherited Destroy;\n"
+                                 "end;\n"
+                                 "begin\n"
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -156,23 +152,22 @@ TEST(PascalDestructorTest, InheritedDestroyCall)
 TEST(PascalDestructorTest, DestructorWithLocalVars)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type\n"
-        "  TMyClass = class\n"
-        "  public\n"
-        "    destructor Destroy;\n"
-        "  end;\n"
-        "destructor TMyClass.Destroy;\n"
-        "var\n"
-        "  i: Integer;\n"
-        "begin\n"
-        "  i := 42;\n"
-        "  WriteLn(i);\n"
-        "end;\n"
-        "begin\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  TMyClass = class\n"
+                                 "  public\n"
+                                 "    destructor Destroy;\n"
+                                 "  end;\n"
+                                 "destructor TMyClass.Destroy;\n"
+                                 "var\n"
+                                 "  i: Integer;\n"
+                                 "begin\n"
+                                 "  i := 42;\n"
+                                 "  WriteLn(i);\n"
+                                 "end;\n"
+                                 "begin\n"
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -180,27 +175,26 @@ TEST(PascalDestructorTest, DestructorWithLocalVars)
 TEST(PascalDestructorTest, DestructorAccessesField)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type\n"
-        "  TMyClass = class\n"
-        "  private\n"
-        "    FValue: Integer;\n"
-        "  public\n"
-        "    constructor Create;\n"
-        "    destructor Destroy;\n"
-        "  end;\n"
-        "constructor TMyClass.Create;\n"
-        "begin\n"
-        "  FValue := 100;\n"
-        "end;\n"
-        "destructor TMyClass.Destroy;\n"
-        "begin\n"
-        "  WriteLn(FValue);\n"
-        "end;\n"
-        "begin\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  TMyClass = class\n"
+                                 "  private\n"
+                                 "    FValue: Integer;\n"
+                                 "  public\n"
+                                 "    constructor Create;\n"
+                                 "    destructor Destroy;\n"
+                                 "  end;\n"
+                                 "constructor TMyClass.Create;\n"
+                                 "begin\n"
+                                 "  FValue := 100;\n"
+                                 "end;\n"
+                                 "destructor TMyClass.Destroy;\n"
+                                 "begin\n"
+                                 "  WriteLn(FValue);\n"
+                                 "end;\n"
+                                 "begin\n"
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -212,19 +206,18 @@ TEST(PascalDestructorTest, DestructorAccessesField)
 TEST(PascalDestructorTest, DestructorMustBeNamedDestroy)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type\n"
-        "  TMyClass = class\n"
-        "  public\n"
-        "    destructor Finalize;\n"  // Wrong name
-        "  end;\n"
-        "destructor TMyClass.Finalize;\n"
-        "begin\n"
-        "end;\n"
-        "begin\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  TMyClass = class\n"
+                                 "  public\n"
+                                 "    destructor Finalize;\n" // Wrong name
+                                 "  end;\n"
+                                 "destructor TMyClass.Finalize;\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "begin\n"
+                                 "end.",
+                                 diag);
     EXPECT_FALSE(result);
     EXPECT_NE(diag.errorCount(), 0u);
 }
@@ -236,35 +229,34 @@ TEST(PascalDestructorTest, DestructorMustBeNamedDestroy)
 TEST(PascalDestructorTest, ThreeLevelInheritanceChain)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type\n"
-        "  TGrandParent = class\n"
-        "  public\n"
-        "    destructor Destroy; virtual;\n"
-        "  end;\n"
-        "  TParent = class(TGrandParent)\n"
-        "  public\n"
-        "    destructor Destroy; override;\n"
-        "  end;\n"
-        "  TChild = class(TParent)\n"
-        "  public\n"
-        "    destructor Destroy; override;\n"
-        "  end;\n"
-        "destructor TGrandParent.Destroy;\n"
-        "begin\n"
-        "end;\n"
-        "destructor TParent.Destroy;\n"
-        "begin\n"
-        "  inherited Destroy;\n"
-        "end;\n"
-        "destructor TChild.Destroy;\n"
-        "begin\n"
-        "  inherited Destroy;\n"
-        "end;\n"
-        "begin\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  TGrandParent = class\n"
+                                 "  public\n"
+                                 "    destructor Destroy; virtual;\n"
+                                 "  end;\n"
+                                 "  TParent = class(TGrandParent)\n"
+                                 "  public\n"
+                                 "    destructor Destroy; override;\n"
+                                 "  end;\n"
+                                 "  TChild = class(TParent)\n"
+                                 "  public\n"
+                                 "    destructor Destroy; override;\n"
+                                 "  end;\n"
+                                 "destructor TGrandParent.Destroy;\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "destructor TParent.Destroy;\n"
+                                 "begin\n"
+                                 "  inherited Destroy;\n"
+                                 "end;\n"
+                                 "destructor TChild.Destroy;\n"
+                                 "begin\n"
+                                 "  inherited Destroy;\n"
+                                 "end;\n"
+                                 "begin\n"
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }

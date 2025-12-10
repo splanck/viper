@@ -14,15 +14,15 @@
 add_library(fe_common INTERFACE)
 
 target_include_directories(fe_common INTERFACE
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../..>
-    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../..>
+        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
 )
 
 # Link to core IL libraries needed by the headers
 target_link_libraries(fe_common INTERFACE
-    viper_il_core
-    il_build
+        viper_il_core
+        il_build
 )
 
 # Alias for consistent naming

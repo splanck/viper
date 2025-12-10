@@ -100,3 +100,10 @@ rt_string rt_cmdline(void)
     rt_sb_free(&sb);
     return out;
 }
+
+int64_t rt_env_is_native(void)
+{
+    // Native runtime library is only linked into AOT binaries, so this path
+    // always reports "native". The VM overrides this via its runtime bridge.
+    return 1;
+}

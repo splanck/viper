@@ -44,10 +44,16 @@ class ScopeTracker
       public:
         /// @brief Push a new scope.
         /// @param st The scope tracker to manage.
-        explicit ScopedScope(ScopeTracker &st) : st_(st) { st_.pushScope(); }
+        explicit ScopedScope(ScopeTracker &st) : st_(st)
+        {
+            st_.pushScope();
+        }
 
         /// @brief Pop the scope when the guard is destroyed.
-        ~ScopedScope() { st_.popScope(); }
+        ~ScopedScope()
+        {
+            st_.popScope();
+        }
 
         // Non-copyable, non-movable
         ScopedScope(const ScopedScope &) = delete;
@@ -68,7 +74,10 @@ class ScopeTracker
     }
 
     /// @brief Push a new empty scope onto the stack.
-    void pushScope() { stack_.emplace_back(); }
+    void pushScope()
+    {
+        stack_.emplace_back();
+    }
 
     /// @brief Pop the innermost scope if one exists.
     void popScope()
@@ -130,19 +139,31 @@ class ScopeTracker
 
     /// @brief Check if any scope is currently active.
     /// @return True if the scope stack is non-empty.
-    [[nodiscard]] bool hasScope() const { return !stack_.empty(); }
+    [[nodiscard]] bool hasScope() const
+    {
+        return !stack_.empty();
+    }
 
     /// @brief Get the current scope depth.
     /// @return Number of scopes on the stack.
-    [[nodiscard]] std::size_t depth() const { return stack_.size(); }
+    [[nodiscard]] std::size_t depth() const
+    {
+        return stack_.size();
+    }
 
     /// @brief Get the next unique ID without consuming it.
     /// @return Current value of the ID counter.
-    [[nodiscard]] unsigned peekNextId() const { return nextId_; }
+    [[nodiscard]] unsigned peekNextId() const
+    {
+        return nextId_;
+    }
 
     /// @brief Consume and return the next unique ID.
     /// @return A unique ID that can be used for mangling.
-    unsigned nextId() { return nextId_++; }
+    unsigned nextId()
+    {
+        return nextId_++;
+    }
 
   private:
     std::vector<std::unordered_map<std::string, std::string>> stack_;

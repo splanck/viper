@@ -13,9 +13,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "frontends/pascal/SemanticAnalyzer.hpp"
-#include "frontends/pascal/BuiltinRegistry.hpp"
 #include "frontends/common/CharUtils.hpp"
+#include "frontends/pascal/BuiltinRegistry.hpp"
+#include "frontends/pascal/SemanticAnalyzer.hpp"
 #include <algorithm>
 #include <cctype>
 #include <set>
@@ -31,7 +31,6 @@ inline std::string toLower(const std::string &s)
 {
     return toLowercase(s);
 }
-
 
 //===----------------------------------------------------------------------===//
 // Class/Interface Semantic Checks
@@ -82,8 +81,9 @@ void SemanticAnalyzer::checkClassInfo(const ClassInfo &classInfo)
         // Check if it's a class (error) or interface (ok)
         if (classes_.find(key) != classes_.end())
         {
-            error(classInfo.loc, "at most one base class permitted; '" + ifaceName +
-                                     "' is a class, not an interface");
+            error(classInfo.loc,
+                  "at most one base class permitted; '" + ifaceName +
+                      "' is a class, not an interface");
         }
         else if (interfaces_.find(key) == interfaces_.end())
         {
@@ -107,7 +107,7 @@ void SemanticAnalyzer::checkOverrides(const ClassInfo &classInfo)
 }
 
 void SemanticAnalyzer::checkOverridesWithBase(const ClassInfo &classInfo,
-                                               const std::string &effectiveBaseClass)
+                                              const std::string &effectiveBaseClass)
 {
     for (const auto &[methodKey, method] : classInfo.methods)
     {
@@ -117,20 +117,22 @@ void SemanticAnalyzer::checkOverridesWithBase(const ClassInfo &classInfo,
             auto baseMethod = findVirtualInBase(effectiveBaseClass, method.name);
             if (!baseMethod)
             {
-                error(method.loc, "method '" + method.name +
-                                      "' marked override but no virtual method found in base class");
+                error(method.loc,
+                      "method '" + method.name +
+                          "' marked override but no virtual method found in base class");
             }
             else if (!signaturesMatch(method, *baseMethod))
             {
-                error(method.loc, "override method '" + method.name +
-                                      "' signature does not match base virtual method");
+                error(method.loc,
+                      "override method '" + method.name +
+                          "' signature does not match base virtual method");
             }
         }
     }
 }
 
 std::optional<MethodInfo> SemanticAnalyzer::findVirtualInBase(const std::string &className,
-                                                               const std::string &methodName) const
+                                                              const std::string &methodName) const
 {
     if (className.empty())
         return std::nullopt;
@@ -204,8 +206,8 @@ void SemanticAnalyzer::checkInterfaceImplementationWith(
             // Check signature
             if (!signaturesMatch(classMethodIt->second, ifaceMethod))
             {
-                error(classInfo.loc, "method '" + ifaceMethod.name +
-                                         "' signature does not match interface");
+                error(classInfo.loc,
+                      "method '" + ifaceMethod.name + "' signature does not match interface");
             }
             continue;
         }
@@ -234,14 +236,15 @@ void SemanticAnalyzer::checkInterfaceImplementationWith(
 
         if (!found)
         {
-            error(classInfo.loc, "class '" + classInfo.name + "' does not implement interface method '" +
-                                     ifaceMethod.name + "'");
+            error(classInfo.loc,
+                  "class '" + classInfo.name + "' does not implement interface method '" +
+                      ifaceMethod.name + "'");
         }
     }
 }
 
 void SemanticAnalyzer::collectInterfaceMethods(const std::string &ifaceName,
-                                                std::map<std::string, MethodInfo> &methods) const
+                                               std::map<std::string, MethodInfo> &methods) const
 {
     std::string key = toLower(ifaceName);
     auto it = interfaces_.find(key);
@@ -278,15 +281,16 @@ void SemanticAnalyzer::checkWeakFields(const ClassInfo &classInfo)
 
             if (fieldType.kind != PasTypeKind::Class && fieldType.kind != PasTypeKind::Interface)
             {
-                error(field.loc, "weak may only be applied to class/interface fields, not " +
-                                     field.type.toString());
+                error(field.loc,
+                      "weak may only be applied to class/interface fields, not " +
+                          field.type.toString());
             }
         }
     }
 }
 
 bool SemanticAnalyzer::classImplementsInterface(const std::string &className,
-                                                 const std::string &interfaceName) const
+                                                const std::string &interfaceName) const
 {
     if (className.empty() || interfaceName.empty())
         return false;
@@ -317,7 +321,8 @@ bool SemanticAnalyzer::classImplementsInterface(const std::string &className,
         std::string baseKey = toLower(classInfo.baseClass);
         if (interfaces_.find(baseKey) != interfaces_.end())
         {
-            if (baseKey == ifaceKey || interfaceExtendsInterface(classInfo.baseClass, interfaceName))
+            if (baseKey == ifaceKey ||
+                interfaceExtendsInterface(classInfo.baseClass, interfaceName))
                 return true;
         }
     }
@@ -336,7 +341,7 @@ bool SemanticAnalyzer::classImplementsInterface(const std::string &className,
 }
 
 bool SemanticAnalyzer::classInheritsFrom(const std::string &derivedName,
-                                          const std::string &baseName) const
+                                         const std::string &baseName) const
 {
     if (derivedName.empty() || baseName.empty())
         return false;
@@ -415,7 +420,7 @@ bool SemanticAnalyzer::isAbstractClass(const std::string &className) const
 }
 
 bool SemanticAnalyzer::interfaceExtendsInterface(const std::string &derivedName,
-                                                  const std::string &baseName) const
+                                                 const std::string &baseName) const
 {
     if (derivedName.empty() || baseName.empty())
         return false;
@@ -461,4 +466,3 @@ const InterfaceInfo *SemanticAnalyzer::lookupInterface(const std::string &name) 
 
 
 } // namespace il::frontends::pascal
-

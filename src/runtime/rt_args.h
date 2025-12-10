@@ -48,6 +48,10 @@ extern "C"
     /// @return New string containing the command tail.
     rt_string rt_cmdline(void);
 
+    /// @brief Report whether the program is running as native code (not in the VM).
+    /// @return 1 when executing a native binary, 0 when running under the VM.
+    int64_t rt_env_is_native(void);
+
 #ifdef __cplusplus
 }
 #endif

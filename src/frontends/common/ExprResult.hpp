@@ -50,10 +50,8 @@ struct ExprResult
     /// @brief Check if this is an integer type.
     [[nodiscard]] bool isInteger() const noexcept
     {
-        return type.kind == il::core::Type::Kind::I64 ||
-               type.kind == il::core::Type::Kind::I32 ||
-               type.kind == il::core::Type::Kind::I16 ||
-               type.kind == il::core::Type::Kind::I1;
+        return type.kind == il::core::Type::Kind::I64 || type.kind == il::core::Type::Kind::I32 ||
+               type.kind == il::core::Type::Kind::I16 || type.kind == il::core::Type::Kind::I1;
     }
 
     /// @brief Check if this is a floating-point type.

@@ -73,15 +73,18 @@ end.
     bool hasGetAgeCall = false;
     for (const auto &fn : result.module.functions)
     {
-        if (fn.name != "main") continue;
+        if (fn.name != "main")
+            continue;
         for (const auto &bb : fn.blocks)
         {
             for (const auto &ins : bb.instructions)
             {
                 if (ins.op == il::core::Opcode::Call)
                 {
-                    if (ins.callee == "TPerson.SetAge") hasSetAgeCall = true;
-                    if (ins.callee == "TPerson.GetAge") hasGetAgeCall = true;
+                    if (ins.callee == "TPerson.SetAge")
+                        hasSetAgeCall = true;
+                    if (ins.callee == "TPerson.GetAge")
+                        hasGetAgeCall = true;
                 }
             }
         }
@@ -99,4 +102,3 @@ int main()
     return RUN_ALL_TESTS();
 }
 #endif
-

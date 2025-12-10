@@ -25,8 +25,8 @@
 
 #include <cassert>
 #include <chrono>
-#include <optional>
 #include <iostream>
+#include <optional>
 
 using namespace il::core;
 
@@ -331,8 +331,7 @@ void testCmpReflexive()
     emitBinOp(entry, Opcode::IMulOvf, Value::constInt(5), Value::constInt(5), x);
 
     unsigned cmpId = builder.reserveTempId();
-    emitBinOp(
-        entry, Opcode::ICmpEq, Value::temp(x), Value::temp(x), cmpId, Type(Type::Kind::I1));
+    emitBinOp(entry, Opcode::ICmpEq, Value::temp(x), Value::temp(x), cmpId, Type(Type::Kind::I1));
     builder.emitRet(Value::temp(cmpId), {});
 
     verifyOrDie(module);

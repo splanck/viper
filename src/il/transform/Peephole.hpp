@@ -86,9 +86,9 @@ struct Replace
 /// \brief A peephole rule mapping a match to its replacement.
 struct Rule
 {
-    Match match;        ///< Match pattern.
-    Replace repl;       ///< Replacement action.
-    const char *name;   ///< Debug identifier for tracing.
+    Match match;      ///< Match pattern.
+    Replace repl;     ///< Replacement action.
+    const char *name; ///< Debug identifier for tracing.
 };
 
 /// \brief Registry of peephole rules.

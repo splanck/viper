@@ -13,9 +13,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "frontends/pascal/SemanticAnalyzer.hpp"
-#include "frontends/pascal/BuiltinRegistry.hpp"
 #include "frontends/common/CharUtils.hpp"
+#include "frontends/pascal/BuiltinRegistry.hpp"
+#include "frontends/pascal/SemanticAnalyzer.hpp"
 #include <algorithm>
 #include <cctype>
 #include <set>
@@ -31,7 +31,6 @@ inline std::string toLower(const std::string &s)
 {
     return toLowercase(s);
 }
-
 
 //===----------------------------------------------------------------------===//
 // Body Analysis (Pass 2)
@@ -143,8 +142,9 @@ void SemanticAnalyzer::analyzeProcedureBody(ProcedureDecl &decl)
         {
             if (localDecl->kind == DeclKind::Procedure || localDecl->kind == DeclKind::Function)
             {
-                error(localDecl->loc, "nested procedures/functions are not supported in Viper Pascal v0.1; "
-                                      "move declarations to the enclosing scope");
+                error(localDecl->loc,
+                      "nested procedures/functions are not supported in Viper Pascal v0.1; "
+                      "move declarations to the enclosing scope");
             }
             else
             {
@@ -156,7 +156,8 @@ void SemanticAnalyzer::analyzeProcedureBody(ProcedureDecl &decl)
     // For methods, bind visible fields of current class (and base classes) into scope
     if (decl.isMethod())
     {
-        auto bindFields = [&](const std::string &className) {
+        auto bindFields = [&](const std::string &className)
+        {
             std::string cur = toLower(className);
             while (!cur.empty())
             {
@@ -243,8 +244,9 @@ void SemanticAnalyzer::analyzeFunctionBody(FunctionDecl &decl)
         {
             if (localDecl->kind == DeclKind::Procedure || localDecl->kind == DeclKind::Function)
             {
-                error(localDecl->loc, "nested procedures/functions are not supported in Viper Pascal v0.1; "
-                                      "move declarations to the enclosing scope");
+                error(localDecl->loc,
+                      "nested procedures/functions are not supported in Viper Pascal v0.1; "
+                      "move declarations to the enclosing scope");
             }
             else
             {
@@ -256,7 +258,8 @@ void SemanticAnalyzer::analyzeFunctionBody(FunctionDecl &decl)
     // For methods, bind visible fields of current class (and base classes) into scope
     if (decl.isMethod())
     {
-        auto bindFields = [&](const std::string &className) {
+        auto bindFields = [&](const std::string &className)
+        {
             std::string cur = toLower(className);
             while (!cur.empty())
             {
@@ -325,7 +328,8 @@ void SemanticAnalyzer::analyzeConstructorBody(ConstructorDecl &decl)
 
     // Bind fields of the current class (and bases) into scope
     {
-        auto bindFields = [&](const std::string &className) {
+        auto bindFields = [&](const std::string &className)
+        {
             std::string cur = toLower(className);
             while (!cur.empty())
             {
@@ -379,7 +383,8 @@ void SemanticAnalyzer::analyzeDestructorBody(DestructorDecl &decl)
 
     // Bind fields into scope for destructor as well
     {
-        auto bindFields = [&](const std::string &className) {
+        auto bindFields = [&](const std::string &className)
+        {
             std::string cur = toLower(className);
             while (!cur.empty())
             {
@@ -410,4 +415,3 @@ void SemanticAnalyzer::analyzeDestructorBody(DestructorDecl &decl)
 }
 
 } // namespace il::frontends::pascal
-

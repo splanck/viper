@@ -28,8 +28,8 @@ namespace
 TEST(PascalAbstractTest, CannotInstantiateAbstractBase)
 {
     SourceManager sm;
-    const std::string src =
-        "program Test; type TAnimal = class public procedure Speak; virtual; abstract; end; var a: TAnimal; begin a := TAnimal.Create end.";
+    const std::string src = "program Test; type TAnimal = class public procedure Speak; virtual; "
+                            "abstract; end; var a: TAnimal; begin a := TAnimal.Create end.";
     PascalCompilerInput input{.source = src, .path = "abs1.pas"};
     PascalCompilerOptions opts{};
     auto result = compilePascal(input, opts, sm);
@@ -41,7 +41,8 @@ TEST(PascalAbstractTest, SubclassMustImplementOrRemainAbstract)
 {
     SourceManager sm;
     const std::string src =
-        "program Test; type TAnimal = class public procedure Speak; virtual; abstract; end; TBad = class(TAnimal) end; var b: TBad; begin b := TBad.Create end.";
+        "program Test; type TAnimal = class public procedure Speak; virtual; abstract; end; TBad = "
+        "class(TAnimal) end; var b: TBad; begin b := TBad.Create end.";
     PascalCompilerInput input{.source = src, .path = "abs2.pas"};
     PascalCompilerOptions opts{};
     auto result = compilePascal(input, opts, sm);
@@ -53,7 +54,9 @@ TEST(PascalAbstractTest, ConcreteOverrideInstantiableAndCall)
 {
     SourceManager sm;
     const std::string src =
-        "program Test; type TAnimal = class public procedure Speak; virtual; abstract; end; TDog = class(TAnimal) public procedure Speak; override; end; procedure TDog.Speak; begin end; var d: TDog; begin d := TDog.Create; d.Speak end.";
+        "program Test; type TAnimal = class public procedure Speak; virtual; abstract; end; TDog = "
+        "class(TAnimal) public procedure Speak; override; end; procedure TDog.Speak; begin end; "
+        "var d: TDog; begin d := TDog.Create; d.Speak end.";
     PascalCompilerInput input{.source = src, .path = "abs3.pas"};
     PascalCompilerOptions opts{};
     auto result = compilePascal(input, opts, sm);
@@ -64,8 +67,8 @@ TEST(PascalAbstractTest, ConcreteOverrideInstantiableAndCall)
 TEST(PascalAbstractTest, CannotCallAbstractMethodDirectly)
 {
     SourceManager sm;
-    const std::string src =
-        "program Test; type TAnimal = class public procedure Speak; virtual; abstract; end; var a: TAnimal; begin a.Speak end.";
+    const std::string src = "program Test; type TAnimal = class public procedure Speak; virtual; "
+                            "abstract; end; var a: TAnimal; begin a.Speak end.";
     PascalCompilerInput input{.source = src, .path = "abs4.pas"};
     PascalCompilerOptions opts{};
     auto result = compilePascal(input, opts, sm);
@@ -81,4 +84,3 @@ int main()
     return RUN_ALL_TESTS();
 }
 #endif
-

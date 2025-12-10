@@ -28,11 +28,11 @@ namespace il::frontends::common::number_parsing
 /// @brief Result of parsing a numeric literal.
 struct ParsedNumber
 {
-    bool isFloat = false;       ///< True if number has decimal point or exponent
-    int64_t intValue = 0;       ///< Integer value (valid when !isFloat)
-    double floatValue = 0.0;    ///< Float value (valid when isFloat)
-    bool overflow = false;      ///< True if value overflowed during parsing
-    bool valid = true;          ///< True if parsing succeeded
+    bool isFloat = false;    ///< True if number has decimal point or exponent
+    int64_t intValue = 0;    ///< Integer value (valid when !isFloat)
+    double floatValue = 0.0; ///< Float value (valid when isFloat)
+    bool overflow = false;   ///< True if value overflowed during parsing
+    bool valid = true;       ///< True if parsing succeeded
 };
 
 /// @brief Parse a decimal numeric literal from text.
@@ -51,8 +51,8 @@ struct ParsedNumber
 
     // Check if it's a float (has decimal point or exponent)
     bool hasDecimal = text.find('.') != std::string_view::npos;
-    bool hasExponent = text.find('e') != std::string_view::npos ||
-                       text.find('E') != std::string_view::npos;
+    bool hasExponent =
+        text.find('e') != std::string_view::npos || text.find('E') != std::string_view::npos;
 
     result.isFloat = hasDecimal || hasExponent;
 

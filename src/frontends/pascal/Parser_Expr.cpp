@@ -13,8 +13,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "frontends/pascal/Parser.hpp"
 #include "frontends/pascal/AST.hpp"
+#include "frontends/pascal/Parser.hpp"
 
 namespace il::frontends::pascal
 {
@@ -469,4 +469,3 @@ std::vector<std::unique_ptr<Expr>> Parser::parseExprList()
 
 
 } // namespace il::frontends::pascal
-

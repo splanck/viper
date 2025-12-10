@@ -289,7 +289,8 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis)
     std::unordered_map<CheckKey, unsigned, CheckKeyHash> depthCount;
     std::vector<std::pair<BasicBlock *, size_t>> toErase;
 
-    std::function<void(BasicBlock *)> visit = [&](BasicBlock *block) {
+    std::function<void(BasicBlock *)> visit = [&](BasicBlock *block)
+    {
         if (!block)
             return;
         std::vector<CheckKey> added;

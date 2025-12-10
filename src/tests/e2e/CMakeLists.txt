@@ -566,6 +566,16 @@ if (CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64" AND APPLE)
             -P ${_VIPER_E2E_DIR}/test_arm64_native_link.cmake)
     set_tests_properties(arm64_native_frogger PROPERTIES LABELS "ARM64;NativeLink")
 
+    # Centipede demo - compile, assemble, link
+    viper_add_ctest(arm64_native_centipede
+            ${CMAKE_COMMAND}
+            -DILC=$<TARGET_FILE:ilc>
+            -DRUNTIME_LIB=${CMAKE_BINARY_DIR}/src/runtime/libviper_runtime.a
+            -DBAS_FILE=${CMAKE_SOURCE_DIR}/demos/centipede/centipede.bas
+            -DDEMO_NAME=centipede
+            -P ${_VIPER_E2E_DIR}/test_arm64_native_link.cmake)
+    set_tests_properties(arm64_native_centipede PROPERTIES LABELS "ARM64;NativeLink")
+
     # Comprehensive tests - ARM64 native execution
     viper_add_ctest(arm64_comprehensive_data_structures
             ${CMAKE_COMMAND}

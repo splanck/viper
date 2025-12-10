@@ -52,19 +52,19 @@ using LoopContext = ::il::frontends::common::LoopContext;
 /// @brief Layout information for a single field in a class.
 struct ClassFieldLayout
 {
-    std::string name;       ///< Field name
-    PasType type;           ///< Field type
-    std::size_t offset;     ///< Byte offset from object base
-    std::size_t size;       ///< Size in bytes
+    std::string name;   ///< Field name
+    PasType type;       ///< Field type
+    std::size_t offset; ///< Byte offset from object base
+    std::size_t size;   ///< Size in bytes
 };
 
 /// @brief Complete layout for a class including inherited fields.
 struct ClassLayout
 {
-    std::string name;                       ///< Class name
-    std::vector<ClassFieldLayout> fields;   ///< All fields in layout order
-    std::size_t size;                       ///< Total object size (8-byte aligned)
-    std::int64_t classId;                   ///< Unique runtime type ID
+    std::string name;                     ///< Class name
+    std::vector<ClassFieldLayout> fields; ///< All fields in layout order
+    std::size_t size;                     ///< Total object size (8-byte aligned)
+    std::int64_t classId;                 ///< Unique runtime type ID
 
     /// @brief Find a field by name.
     const ClassFieldLayout *findField(const std::string &name) const;
@@ -73,41 +73,41 @@ struct ClassLayout
 /// @brief Vtable slot information.
 struct VtableSlot
 {
-    std::string methodName;     ///< Method name
-    std::string implClass;      ///< Class that provides implementation
-    int slot;                   ///< Slot index in vtable
+    std::string methodName; ///< Method name
+    std::string implClass;  ///< Class that provides implementation
+    int slot;               ///< Slot index in vtable
 };
 
 /// @brief Vtable layout for a class.
 struct VtableLayout
 {
-    std::string className;              ///< Class this vtable belongs to
-    std::vector<VtableSlot> slots;      ///< Slots in order
-    std::size_t slotCount;              ///< Number of slots
+    std::string className;         ///< Class this vtable belongs to
+    std::vector<VtableSlot> slots; ///< Slots in order
+    std::size_t slotCount;         ///< Number of slots
 };
 
 /// @brief Interface method slot.
 struct InterfaceSlot
 {
-    std::string methodName;     ///< Method name in the interface
-    int slot;                   ///< Slot index in interface table
+    std::string methodName; ///< Method name in the interface
+    int slot;               ///< Slot index in interface table
 };
 
 /// @brief Interface layout (method table).
 struct InterfaceLayout
 {
-    std::string name;                   ///< Interface name
-    std::int64_t interfaceId;           ///< Unique interface ID
-    std::vector<InterfaceSlot> slots;   ///< Method slots in order
-    std::size_t slotCount;              ///< Number of slots
+    std::string name;                 ///< Interface name
+    std::int64_t interfaceId;         ///< Unique interface ID
+    std::vector<InterfaceSlot> slots; ///< Method slots in order
+    std::size_t slotCount;            ///< Number of slots
 };
 
 /// @brief Interface implementation table for a class.
 /// Maps interface method slots to actual class method implementations.
 struct InterfaceImplTable
 {
-    std::string className;              ///< Class implementing the interface
-    std::string interfaceName;          ///< Interface being implemented
+    std::string className;                ///< Class implementing the interface
+    std::string interfaceName;            ///< Interface being implemented
     std::vector<std::string> implMethods; ///< Mangled names of implementing methods, in slot order
 };
 
@@ -149,46 +149,52 @@ class Lowerer
     // State
     //=========================================================================
 
-    std::unique_ptr<Module> module_;                                ///< Module being built
-    std::unique_ptr<il::build::IRBuilder> builder_;                 ///< IR builder
-    SemanticAnalyzer *sema_{nullptr};                               ///< Semantic analyzer
-    Function *currentFunc_{nullptr};                                ///< Current function
-    std::string currentFuncName_;                                   ///< Current function name (lowercase, for Result mapping)
-    std::string currentClassName_;                                  ///< Current class name (for Self/field access in methods)
-    size_t currentBlockIdx_{0};                                     ///< Current block index
-    std::map<std::string, Value> locals_;                           ///< Variable -> alloca slot
-    std::map<std::string, PasType> localTypes_;                     ///< Variable -> type (for procedure locals)
-    std::map<std::string, Value> constants_;                        ///< Constant -> value
-    ::il::frontends::common::StringTable stringTable_;              ///< String interning table
-    ::il::frontends::common::LoopContextStack loopStack_;           ///< Loop context stack
-    std::set<std::string> usedExterns_;                             ///< Tracked runtime externs
-    unsigned blockCounter_{0};                                      ///< Block name counter
-    Value currentResumeTok_;                                        ///< Resume token in current handler
-    bool inExceptHandler_{false};                                   ///< True when inside except handler
+    std::unique_ptr<Module> module_;                ///< Module being built
+    std::unique_ptr<il::build::IRBuilder> builder_; ///< IR builder
+    SemanticAnalyzer *sema_{nullptr};               ///< Semantic analyzer
+    Function *currentFunc_{nullptr};                ///< Current function
+    std::string currentFuncName_;         ///< Current function name (lowercase, for Result mapping)
+    std::string currentClassName_;        ///< Current class name (for Self/field access in methods)
+    size_t currentBlockIdx_{0};           ///< Current block index
+    std::map<std::string, Value> locals_; ///< Variable -> alloca slot
+    std::map<std::string, PasType> localTypes_;        ///< Variable -> type (for procedure locals)
+    std::map<std::string, Value> constants_;           ///< Constant -> value
+    ::il::frontends::common::StringTable stringTable_; ///< String interning table
+    ::il::frontends::common::LoopContextStack loopStack_; ///< Loop context stack
+    std::set<std::string> usedExterns_;                   ///< Tracked runtime externs
+    unsigned blockCounter_{0};                            ///< Block name counter
+    Value currentResumeTok_;                              ///< Resume token in current handler
+    bool inExceptHandler_{false};                         ///< True when inside except handler
 
     // OOP State
-    std::unordered_map<std::string, ClassLayout> classLayouts_;     ///< Class name -> layout
-    std::unordered_map<std::string, VtableLayout> vtableLayouts_;   ///< Class name -> vtable layout
-    std::int64_t nextClassId_{1};                                   ///< Next class ID to assign
-    std::vector<std::string> classRegistrationOrder_;               ///< Order to register classes (base before derived)
+    std::unordered_map<std::string, ClassLayout> classLayouts_;   ///< Class name -> layout
+    std::unordered_map<std::string, VtableLayout> vtableLayouts_; ///< Class name -> vtable layout
+    std::int64_t nextClassId_{1};                                 ///< Next class ID to assign
+    std::vector<std::string>
+        classRegistrationOrder_; ///< Order to register classes (base before derived)
 
     // Interface State
-    std::unordered_map<std::string, InterfaceLayout> interfaceLayouts_;  ///< Interface name -> layout
+    std::unordered_map<std::string, InterfaceLayout>
+        interfaceLayouts_; ///< Interface name -> layout
     /// @brief Class+Interface -> implementation table (key = "classname.ifacename")
     std::unordered_map<std::string, InterfaceImplTable> interfaceImplTables_;
-    std::int64_t nextInterfaceId_{1};                               ///< Next interface ID to assign
-    std::vector<std::string> interfaceRegistrationOrder_;           ///< Order to register interfaces
+    std::int64_t nextInterfaceId_{1};                     ///< Next interface ID to assign
+    std::vector<std::string> interfaceRegistrationOrder_; ///< Order to register interfaces
 
     // With statement state
     struct WithContext
     {
-        PasType type;       ///< Type of the with expression (class or record)
-        Value slot;         ///< Alloca slot holding the value
+        PasType type; ///< Type of the with expression (class or record)
+        Value slot;   ///< Alloca slot holding the value
     };
-    std::vector<WithContext> withContexts_;                         ///< Stack of with contexts
+
+    std::vector<WithContext> withContexts_; ///< Stack of with contexts
 
     /// @brief Get the current block by index.
-    BasicBlock *currentBlock() { return &currentFunc_->blocks[currentBlockIdx_]; }
+    BasicBlock *currentBlock()
+    {
+        return &currentFunc_->blocks[currentBlockIdx_];
+    }
 
     //=========================================================================
     // Block and Name Management
@@ -202,7 +208,10 @@ class Lowerer
     void setBlock(size_t blockIdx);
 
     /// @brief Get a block by index.
-    BasicBlock &getBlock(size_t idx) { return currentFunc_->blocks[idx]; }
+    BasicBlock &getBlock(size_t idx)
+    {
+        return currentFunc_->blocks[idx];
+    }
 
     /// @brief Get or create a global string constant.
     std::string getStringGlobal(const std::string &value);
@@ -291,8 +300,9 @@ class Lowerer
     /// @param baseType The PasType of the record/class.
     /// @param fieldName The name of the field.
     /// @return Pair of (field address, field IL type).
-    std::pair<Value, Type> getFieldAddress(Value baseAddr, const PasType &baseType,
-                                            const std::string &fieldName);
+    std::pair<Value, Type> getFieldAddress(Value baseAddr,
+                                           const PasType &baseType,
+                                           const std::string &fieldName);
 
     /// @brief Lower short-circuit logical and.
     LowerResult lowerLogicalAnd(const BinaryExpr &expr);
@@ -381,8 +391,7 @@ class Lowerer
     Value emitUnary(Opcode op, Type ty, Value operand);
 
     /// @brief Emit a call instruction with return value.
-    Value emitCallRet(Type retTy, const std::string &callee,
-                      const std::vector<Value> &args);
+    Value emitCallRet(Type retTy, const std::string &callee, const std::vector<Value> &args);
 
     /// @brief Emit a call instruction without return value.
     void emitCall(const std::string &callee, const std::vector<Value> &args);

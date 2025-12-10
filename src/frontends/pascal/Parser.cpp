@@ -22,8 +22,7 @@ namespace il::frontends::pascal
 // Constructor
 //=============================================================================
 
-Parser::Parser(Lexer &lexer, il::support::DiagnosticEngine &diag)
-    : lexer_(lexer), diag_(diag)
+Parser::Parser(Lexer &lexer, il::support::DiagnosticEngine &diag) : lexer_(lexer), diag_(diag)
 {
     // Prime the parser with the first token
     current_ = lexer_.next();
@@ -77,9 +76,7 @@ void Parser::resyncAfterError()
     while (!check(TokenKind::Eof))
     {
         // Synchronize on statement terminators and block keywords
-        if (check(TokenKind::Semicolon) ||
-            check(TokenKind::KwEnd) ||
-            check(TokenKind::KwElse) ||
+        if (check(TokenKind::Semicolon) || check(TokenKind::KwEnd) || check(TokenKind::KwElse) ||
             check(TokenKind::KwUntil))
         {
             return;

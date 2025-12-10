@@ -59,16 +59,15 @@ bool analyzeProgram(const std::string &source, DiagnosticEngine &diag)
 TEST(PascalDefaultParamTest, ProcedureWithDefaultParam)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "procedure Log(msg: String; level: Integer = 0);\n"
-        "begin\n"
-        "end;\n"
-        "begin\n"
-        "  Log('Hello');\n"  // Omit level, uses default
-        "  Log('Hello', 1);\n"  // Provide level explicitly
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "procedure Log(msg: String; level: Integer = 0);\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "begin\n"
+                                 "  Log('Hello');\n"    // Omit level, uses default
+                                 "  Log('Hello', 1);\n" // Provide level explicitly
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -76,18 +75,17 @@ TEST(PascalDefaultParamTest, ProcedureWithDefaultParam)
 TEST(PascalDefaultParamTest, FunctionWithDefaultParam)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "function RepeatStr(s: String; times: Integer = 1): String;\n"
-        "begin\n"
-        "  Result := s;\n"
-        "end;\n"
-        "var x: String;\n"
-        "begin\n"
-        "  x := RepeatStr('Hi');\n"  // Omit times
-        "  x := RepeatStr('Hi', 3);\n"  // Provide times
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "function RepeatStr(s: String; times: Integer = 1): String;\n"
+                                 "begin\n"
+                                 "  Result := s;\n"
+                                 "end;\n"
+                                 "var x: String;\n"
+                                 "begin\n"
+                                 "  x := RepeatStr('Hi');\n"    // Omit times
+                                 "  x := RepeatStr('Hi', 3);\n" // Provide times
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -101,9 +99,9 @@ TEST(PascalDefaultParamTest, MultipleDefaultParams)
         "begin\n"
         "end;\n"
         "begin\n"
-        "  Config('localhost');\n"  // Only required param
-        "  Config('localhost', 8080);\n"  // Required + one optional
-        "  Config('localhost', 8080, 60);\n"  // All params
+        "  Config('localhost');\n"           // Only required param
+        "  Config('localhost', 8080);\n"     // Required + one optional
+        "  Config('localhost', 8080, 60);\n" // All params
         "end.",
         diag);
     EXPECT_TRUE(result);
@@ -113,17 +111,16 @@ TEST(PascalDefaultParamTest, MultipleDefaultParams)
 TEST(PascalDefaultParamTest, AllParamsHaveDefaults)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "procedure DoWork(x: Integer = 1; y: Integer = 2);\n"
-        "begin\n"
-        "end;\n"
-        "begin\n"
-        "  DoWork;\n"  // Call with no args
-        "  DoWork(10);\n"  // Provide first
-        "  DoWork(10, 20);\n"  // Provide both
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "procedure DoWork(x: Integer = 1; y: Integer = 2);\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "begin\n"
+                                 "  DoWork;\n"         // Call with no args
+                                 "  DoWork(10);\n"     // Provide first
+                                 "  DoWork(10, 20);\n" // Provide both
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -135,23 +132,22 @@ TEST(PascalDefaultParamTest, AllParamsHaveDefaults)
 TEST(PascalDefaultParamTest, LiteralDefaultValues)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "procedure TestInts(a: Integer = 42);\n"
-        "begin\n"
-        "end;\n"
-        "procedure TestReals(a: Real = 3.14);\n"
-        "begin\n"
-        "end;\n"
-        "procedure TestStrings(a: String = 'hello');\n"
-        "begin\n"
-        "end;\n"
-        "procedure TestBools(a: Boolean = True);\n"
-        "begin\n"
-        "end;\n"
-        "begin\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "procedure TestInts(a: Integer = 42);\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "procedure TestReals(a: Real = 3.14);\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "procedure TestStrings(a: String = 'hello');\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "procedure TestBools(a: Boolean = True);\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "begin\n"
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -159,16 +155,15 @@ TEST(PascalDefaultParamTest, LiteralDefaultValues)
 TEST(PascalDefaultParamTest, ConstantExpressionDefault)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "const DefaultPort = 80;\n"
-        "procedure Connect(port: Integer = DefaultPort);\n"
-        "begin\n"
-        "end;\n"
-        "begin\n"
-        "  Connect;\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "const DefaultPort = 80;\n"
+                                 "procedure Connect(port: Integer = DefaultPort);\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "begin\n"
+                                 "  Connect;\n"
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -176,15 +171,14 @@ TEST(PascalDefaultParamTest, ConstantExpressionDefault)
 TEST(PascalDefaultParamTest, NegativeNumberDefault)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "procedure Adjust(offset: Integer = -1);\n"
-        "begin\n"
-        "end;\n"
-        "begin\n"
-        "  Adjust;\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "procedure Adjust(offset: Integer = -1);\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "begin\n"
+                                 "  Adjust;\n"
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -198,7 +192,7 @@ TEST(PascalDefaultParamTest, NonTrailingDefaultRejected)
     DiagnosticEngine diag;
     bool result = analyzeProgram(
         "program Test;\n"
-        "procedure Bad(x: Integer = 0; y: Integer);\n"  // y has no default after x does
+        "procedure Bad(x: Integer = 0; y: Integer);\n" // y has no default after x does
         "begin\n"
         "end;\n"
         "begin\n"
@@ -211,15 +205,14 @@ TEST(PascalDefaultParamTest, NonTrailingDefaultRejected)
 TEST(PascalDefaultParamTest, TooFewArgumentsRejected)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "procedure NeedsArgs(a: Integer; b: Integer = 0);\n"
-        "begin\n"
-        "end;\n"
-        "begin\n"
-        "  NeedsArgs;\n"  // Missing required 'a'
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "procedure NeedsArgs(a: Integer; b: Integer = 0);\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "begin\n"
+                                 "  NeedsArgs;\n" // Missing required 'a'
+                                 "end.",
+                                 diag);
     EXPECT_FALSE(result);
     EXPECT_NE(diag.errorCount(), 0u);
 }
@@ -227,15 +220,14 @@ TEST(PascalDefaultParamTest, TooFewArgumentsRejected)
 TEST(PascalDefaultParamTest, TooManyArgumentsRejected)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "procedure TakesTwo(a: Integer; b: Integer = 0);\n"
-        "begin\n"
-        "end;\n"
-        "begin\n"
-        "  TakesTwo(1, 2, 3);\n"  // Too many args
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "procedure TakesTwo(a: Integer; b: Integer = 0);\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "begin\n"
+                                 "  TakesTwo(1, 2, 3);\n" // Too many args
+                                 "end.",
+                                 diag);
     EXPECT_FALSE(result);
     EXPECT_NE(diag.errorCount(), 0u);
 }
@@ -243,14 +235,14 @@ TEST(PascalDefaultParamTest, TooManyArgumentsRejected)
 TEST(PascalDefaultParamTest, TypeMismatchInDefaultRejected)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "procedure Bad(x: Integer = 'hello');\n"  // String for Integer param
-        "begin\n"
-        "end;\n"
-        "begin\n"
-        "end.",
-        diag);
+    bool result =
+        analyzeProgram("program Test;\n"
+                       "procedure Bad(x: Integer = 'hello');\n" // String for Integer param
+                       "begin\n"
+                       "end;\n"
+                       "begin\n"
+                       "end.",
+                       diag);
     EXPECT_FALSE(result);
     EXPECT_NE(diag.errorCount(), 0u);
 }
@@ -262,14 +254,13 @@ TEST(PascalDefaultParamTest, TypeMismatchInDefaultRejected)
 TEST(PascalCallOnlyTest, BareVariableAsStatementRejected)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "var x: Integer;\n"
-        "begin\n"
-        "  x := 5;\n"
-        "  x;\n"  // Bare variable - should be rejected
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "var x: Integer;\n"
+                                 "begin\n"
+                                 "  x := 5;\n"
+                                 "  x;\n" // Bare variable - should be rejected
+                                 "end.",
+                                 diag);
     EXPECT_FALSE(result);
     EXPECT_NE(diag.errorCount(), 0u);
 }
@@ -277,15 +268,14 @@ TEST(PascalCallOnlyTest, BareVariableAsStatementRejected)
 TEST(PascalCallOnlyTest, ProcedureCallAllowed)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "procedure DoWork;\n"
-        "begin\n"
-        "end;\n"
-        "begin\n"
-        "  DoWork;\n"  // This is a valid procedure call
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "procedure DoWork;\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "begin\n"
+                                 "  DoWork;\n" // This is a valid procedure call
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -293,16 +283,16 @@ TEST(PascalCallOnlyTest, ProcedureCallAllowed)
 TEST(PascalCallOnlyTest, FunctionCallAsStatementAllowed)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "function GetValue: Integer;\n"
-        "begin\n"
-        "  Result := 42;\n"
-        "end;\n"
-        "begin\n"
-        "  GetValue;\n"  // Function call as statement (ignoring return value)
-        "end.",
-        diag);
+    bool result =
+        analyzeProgram("program Test;\n"
+                       "function GetValue: Integer;\n"
+                       "begin\n"
+                       "  Result := 42;\n"
+                       "end;\n"
+                       "begin\n"
+                       "  GetValue;\n" // Function call as statement (ignoring return value)
+                       "end.",
+                       diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -310,13 +300,12 @@ TEST(PascalCallOnlyTest, FunctionCallAsStatementAllowed)
 TEST(PascalCallOnlyTest, WriteLnCallAllowed)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "begin\n"
-        "  WriteLn('Hello');\n"  // Builtin procedure call
-        "  WriteLn;\n"  // WriteLn with no args
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "begin\n"
+                                 "  WriteLn('Hello');\n" // Builtin procedure call
+                                 "  WriteLn;\n"          // WriteLn with no args
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -324,21 +313,20 @@ TEST(PascalCallOnlyTest, WriteLnCallAllowed)
 TEST(PascalCallOnlyTest, MethodCallAllowed)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type TObj = class\n"
-        "public\n"
-        "  procedure DoWork;\n"
-        "end;\n"
-        "procedure TObj.DoWork;\n"
-        "begin\n"
-        "end;\n"
-        "var obj: TObj;\n"
-        "begin\n"
-        "  obj := TObj.Create;\n"
-        "  obj.DoWork;\n"  // Method call
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type TObj = class\n"
+                                 "public\n"
+                                 "  procedure DoWork;\n"
+                                 "end;\n"
+                                 "procedure TObj.DoWork;\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "var obj: TObj;\n"
+                                 "begin\n"
+                                 "  obj := TObj.Create;\n"
+                                 "  obj.DoWork;\n" // Method call
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -350,22 +338,21 @@ TEST(PascalCallOnlyTest, MethodCallAllowed)
 TEST(PascalDefaultParamTest, DefaultParamWithMethodCall)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type TLogger = class\n"
-        "public\n"
-        "  procedure Log(msg: String; level: Integer = 0);\n"
-        "end;\n"
-        "procedure TLogger.Log(msg: String; level: Integer = 0);\n"
-        "begin\n"
-        "end;\n"
-        "var logger: TLogger;\n"
-        "begin\n"
-        "  logger := TLogger.Create;\n"
-        "  logger.Log('test');\n"  // Use default
-        "  logger.Log('test', 1);\n"  // Provide level
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type TLogger = class\n"
+                                 "public\n"
+                                 "  procedure Log(msg: String; level: Integer = 0);\n"
+                                 "end;\n"
+                                 "procedure TLogger.Log(msg: String; level: Integer = 0);\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "var logger: TLogger;\n"
+                                 "begin\n"
+                                 "  logger := TLogger.Create;\n"
+                                 "  logger.Log('test');\n"    // Use default
+                                 "  logger.Log('test', 1);\n" // Provide level
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }

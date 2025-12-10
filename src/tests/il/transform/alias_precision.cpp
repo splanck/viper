@@ -20,14 +20,14 @@
 #include "il/transform/LICM.hpp"
 #include "il/transform/LoopSimplify.hpp"
 #include "il/transform/PassRegistry.hpp"
-#include "il/transform/analysis/LoopInfo.hpp"
 #include "il/transform/analysis/Liveness.hpp"
+#include "il/transform/analysis/LoopInfo.hpp"
 
-#include "il/io/Serializer.hpp"
-#include "il/core/OpcodeInfo.hpp"
 #include "il/analysis/BasicAA.hpp"
 #include "il/analysis/CFG.hpp"
 #include "il/analysis/Dominators.hpp"
+#include "il/core/OpcodeInfo.hpp"
+#include "il/io/Serializer.hpp"
 #include "il/verify/Verifier.hpp"
 #include "support/diag_expected.hpp"
 
@@ -56,9 +56,11 @@ struct AnalysisSetup
                 return viper::analysis::computeDominatorTree(ctx, fn);
             });
         registry.registerFunctionAnalysis<il::transform::LoopInfo>(
-            "loop-info", [](Module &mod, Function &fn) { return il::transform::computeLoopInfo(mod, fn); });
+            "loop-info",
+            [](Module &mod, Function &fn) { return il::transform::computeLoopInfo(mod, fn); });
         registry.registerFunctionAnalysis<viper::analysis::BasicAA>(
-            "basic-aa", [](Module &mod, Function &fn) { return viper::analysis::BasicAA(mod, fn); });
+            "basic-aa",
+            [](Module &mod, Function &fn) { return viper::analysis::BasicAA(mod, fn); });
     }
 };
 
@@ -240,9 +242,9 @@ void testLICMLoadHoistWithDisjointStore()
     {
         for (const auto &label : loopInfo.loops().front().blockLabels)
         {
-            auto it =
-                std::find_if(fn.blocks.begin(), fn.blocks.end(),
-                             [&](const BasicBlock &blk) { return blk.label == label; });
+            auto it = std::find_if(fn.blocks.begin(),
+                                   fn.blocks.end(),
+                                   [&](const BasicBlock &blk) { return blk.label == label; });
             if (it == fn.blocks.end())
                 continue;
             for (const auto &ins : it->instructions)
@@ -254,7 +256,8 @@ void testLICMLoadHoistWithDisjointStore()
             }
         }
     }
-    std::cerr << "loopHasModFlag=" << loopHasMod << " stores=" << header.instructions.size() << std::endl;
+    std::cerr << "loopHasModFlag=" << loopHasMod << " stores=" << header.instructions.size()
+              << std::endl;
 
     il::transform::LICM licm;
     licm.run(fn, am);

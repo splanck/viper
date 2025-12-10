@@ -13,9 +13,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "frontends/pascal/SemanticAnalyzer.hpp"
-#include "frontends/pascal/BuiltinRegistry.hpp"
 #include "frontends/common/CharUtils.hpp"
+#include "frontends/pascal/BuiltinRegistry.hpp"
+#include "frontends/pascal/SemanticAnalyzer.hpp"
 #include <algorithm>
 #include <cctype>
 #include <set>
@@ -31,7 +31,6 @@ inline std::string toLower(const std::string &s)
 {
     return toLowercase(s);
 }
-
 
 //===----------------------------------------------------------------------===//
 // Scope Management
@@ -231,14 +230,14 @@ bool SemanticAnalyzer::isNilCheck(const Expr &expr, std::string &varName, bool &
     const Expr *nameExpr = nullptr;
     const Expr *nilExpr = nullptr;
 
-    if (binExpr.left && binExpr.left->kind == ExprKind::Name &&
-        binExpr.right && binExpr.right->kind == ExprKind::NilLiteral)
+    if (binExpr.left && binExpr.left->kind == ExprKind::Name && binExpr.right &&
+        binExpr.right->kind == ExprKind::NilLiteral)
     {
         nameExpr = binExpr.left.get();
         nilExpr = binExpr.right.get();
     }
-    else if (binExpr.left && binExpr.left->kind == ExprKind::NilLiteral &&
-             binExpr.right && binExpr.right->kind == ExprKind::Name)
+    else if (binExpr.left && binExpr.left->kind == ExprKind::NilLiteral && binExpr.right &&
+             binExpr.right->kind == ExprKind::Name)
     {
         nilExpr = binExpr.left.get();
         nameExpr = binExpr.right.get();
@@ -293,22 +292,23 @@ std::optional<PasType> SemanticAnalyzer::lookupEffectiveType(const std::string &
 void SemanticAnalyzer::registerBuiltins()
 {
     // Helper to map ResultKind to PasType
-    auto resultTypeToPassType = [](ResultKind kind) -> PasType {
+    auto resultTypeToPassType = [](ResultKind kind) -> PasType
+    {
         switch (kind)
         {
-        case ResultKind::Void:
-            return PasType::voidType();
-        case ResultKind::Integer:
-            return PasType::integer();
-        case ResultKind::Real:
-            return PasType::real();
-        case ResultKind::String:
-            return PasType::string();
-        case ResultKind::Boolean:
-            return PasType::boolean();
-        case ResultKind::FromArg:
-            // Default to Integer for FromArg builtins
-            return PasType::integer();
+            case ResultKind::Void:
+                return PasType::voidType();
+            case ResultKind::Integer:
+                return PasType::integer();
+            case ResultKind::Real:
+                return PasType::real();
+            case ResultKind::String:
+                return PasType::string();
+            case ResultKind::Boolean:
+                return PasType::boolean();
+            case ResultKind::FromArg:
+                // Default to Integer for FromArg builtins
+                return PasType::integer();
         }
         return PasType::unknown();
     };
@@ -316,7 +316,8 @@ void SemanticAnalyzer::registerBuiltins()
     // Helper to map ArgTypeMask to PasType (for signature purposes)
     // For Numeric, prefer Real since integers auto-promote to real
     // For multi-type args (String|Array), return an Any type marker
-    auto maskToType = [](ArgTypeMask mask) -> PasType {
+    auto maskToType = [](ArgTypeMask mask) -> PasType
+    {
         // For Numeric (both Int + Real allowed), use Real to allow promotion
         if ((mask & ArgTypeMask::Integer) && (mask & ArgTypeMask::Real))
             return PasType::real();
@@ -381,27 +382,29 @@ void SemanticAnalyzer::registerBuiltins()
 void SemanticAnalyzer::registerBuiltinUnits()
 {
     // Helper to map ResultKind to PasType
-    auto resultTypeToPassType = [](ResultKind kind) -> PasType {
+    auto resultTypeToPassType = [](ResultKind kind) -> PasType
+    {
         switch (kind)
         {
-        case ResultKind::Void:
-            return PasType::voidType();
-        case ResultKind::Integer:
-            return PasType::integer();
-        case ResultKind::Real:
-            return PasType::real();
-        case ResultKind::String:
-            return PasType::string();
-        case ResultKind::Boolean:
-            return PasType::boolean();
-        case ResultKind::FromArg:
-            return PasType::integer();
+            case ResultKind::Void:
+                return PasType::voidType();
+            case ResultKind::Integer:
+                return PasType::integer();
+            case ResultKind::Real:
+                return PasType::real();
+            case ResultKind::String:
+                return PasType::string();
+            case ResultKind::Boolean:
+                return PasType::boolean();
+            case ResultKind::FromArg:
+                return PasType::integer();
         }
         return PasType::unknown();
     };
 
     // Helper to map ArgTypeMask to PasType
-    auto maskToType = [](ArgTypeMask mask) -> PasType {
+    auto maskToType = [](ArgTypeMask mask) -> PasType
+    {
         if ((mask & ArgTypeMask::Integer) && (mask & ArgTypeMask::Real))
             return PasType::real();
         if ((mask & ArgTypeMask::Integer) && (mask & ArgTypeMask::Boolean))
@@ -511,7 +514,8 @@ void SemanticAnalyzer::registerBuiltinUnits()
         // Also register core math functions that should be in the unit per spec:
         // Sqrt, Abs, Floor, Ceil, Sin, Cos, Tan, Exp, Ln (already in core)
         // These are available in core, but the unit re-exports them for consistency
-        auto addCoreFunc = [&](const char *name, ResultKind res, ArgTypeMask argMask) {
+        auto addCoreFunc = [&](const char *name, ResultKind res, ArgTypeMask argMask)
+        {
             FuncSignature sig;
             sig.name = name;
             sig.returnType = resultTypeToPassType(res);
@@ -698,78 +702,83 @@ UnitInfo SemanticAnalyzer::extractUnitExports(const Unit &unit)
 
         switch (decl->kind)
         {
-        case DeclKind::Type: {
-            auto &td = static_cast<const TypeDecl &>(*decl);
-            std::string key = toLower(td.name);
-            // Type must be resolved - look it up from current types_
-            auto it = types_.find(key);
-            if (it != types_.end())
-                info.types[key] = it->second;
-            break;
-        }
-        case DeclKind::Const: {
-            auto &cd = static_cast<const ConstDecl &>(*decl);
-            std::string key = toLower(cd.name);
-            auto it = constants_.find(key);
-            if (it != constants_.end())
+            case DeclKind::Type:
             {
-                ConstantValue cv;
-                cv.type = it->second;
-                cv.hasValue = true;
-                // Get actual value based on type
-                if (it->second.kind == PasTypeKind::Integer)
-                {
-                    auto valIt = constantValues_.find(key);
-                    if (valIt != constantValues_.end())
-                        cv.intVal = valIt->second;
-                }
-                else if (it->second.kind == PasTypeKind::Real)
-                {
-                    auto valIt = constantRealValues_.find(key);
-                    if (valIt != constantRealValues_.end())
-                        cv.realVal = valIt->second;
-                }
-                else if (it->second.kind == PasTypeKind::String)
-                {
-                    auto valIt = constantStrValues_.find(key);
-                    if (valIt != constantStrValues_.end())
-                        cv.strVal = valIt->second;
-                }
-                info.constants[key] = cv;
+                auto &td = static_cast<const TypeDecl &>(*decl);
+                std::string key = toLower(td.name);
+                // Type must be resolved - look it up from current types_
+                auto it = types_.find(key);
+                if (it != types_.end())
+                    info.types[key] = it->second;
+                break;
             }
-            break;
-        }
-        case DeclKind::Procedure:
-        case DeclKind::Function: {
-            std::string name;
-            if (decl->kind == DeclKind::Procedure)
-                name = static_cast<const ProcedureDecl &>(*decl).name;
-            else
-                name = static_cast<const FunctionDecl &>(*decl).name;
-            std::string key = toLower(name);
-            auto it = functions_.find(key);
-            if (it != functions_.end())
-                info.functions[key] = it->second;
-            break;
-        }
-        case DeclKind::Class: {
-            auto &cd = static_cast<const ClassDecl &>(*decl);
-            std::string key = toLower(cd.name);
-            auto it = classes_.find(key);
-            if (it != classes_.end())
-                info.classes[key] = it->second;
-            break;
-        }
-        case DeclKind::Interface: {
-            auto &id = static_cast<const InterfaceDecl &>(*decl);
-            std::string key = toLower(id.name);
-            auto it = interfaces_.find(key);
-            if (it != interfaces_.end())
-                info.interfaces[key] = it->second;
-            break;
-        }
-        default:
-            break;
+            case DeclKind::Const:
+            {
+                auto &cd = static_cast<const ConstDecl &>(*decl);
+                std::string key = toLower(cd.name);
+                auto it = constants_.find(key);
+                if (it != constants_.end())
+                {
+                    ConstantValue cv;
+                    cv.type = it->second;
+                    cv.hasValue = true;
+                    // Get actual value based on type
+                    if (it->second.kind == PasTypeKind::Integer)
+                    {
+                        auto valIt = constantValues_.find(key);
+                        if (valIt != constantValues_.end())
+                            cv.intVal = valIt->second;
+                    }
+                    else if (it->second.kind == PasTypeKind::Real)
+                    {
+                        auto valIt = constantRealValues_.find(key);
+                        if (valIt != constantRealValues_.end())
+                            cv.realVal = valIt->second;
+                    }
+                    else if (it->second.kind == PasTypeKind::String)
+                    {
+                        auto valIt = constantStrValues_.find(key);
+                        if (valIt != constantStrValues_.end())
+                            cv.strVal = valIt->second;
+                    }
+                    info.constants[key] = cv;
+                }
+                break;
+            }
+            case DeclKind::Procedure:
+            case DeclKind::Function:
+            {
+                std::string name;
+                if (decl->kind == DeclKind::Procedure)
+                    name = static_cast<const ProcedureDecl &>(*decl).name;
+                else
+                    name = static_cast<const FunctionDecl &>(*decl).name;
+                std::string key = toLower(name);
+                auto it = functions_.find(key);
+                if (it != functions_.end())
+                    info.functions[key] = it->second;
+                break;
+            }
+            case DeclKind::Class:
+            {
+                auto &cd = static_cast<const ClassDecl &>(*decl);
+                std::string key = toLower(cd.name);
+                auto it = classes_.find(key);
+                if (it != classes_.end())
+                    info.classes[key] = it->second;
+                break;
+            }
+            case DeclKind::Interface:
+            {
+                auto &id = static_cast<const InterfaceDecl &>(*decl);
+                std::string key = toLower(id.name);
+                auto it = interfaces_.find(key);
+                if (it != interfaces_.end())
+                    info.interfaces[key] = it->second;
+                break;
+            }
+            default:
+                break;
         }
     }
 

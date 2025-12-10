@@ -31,7 +31,8 @@ namespace il::frontends::common::const_fold
 /// @return Result if no overflow, empty otherwise.
 [[nodiscard]] inline std::optional<int64_t> foldIntAdd(int64_t lhs, int64_t rhs) noexcept
 {
-    // Check for overflow using the fact that if signs are same and result differs, overflow occurred
+    // Check for overflow using the fact that if signs are same and result differs, overflow
+    // occurred
     int64_t result = static_cast<int64_t>(static_cast<uint64_t>(lhs) + static_cast<uint64_t>(rhs));
 
     // Overflow if signs of operands are same but result sign differs
@@ -47,7 +48,8 @@ namespace il::frontends::common::const_fold
 {
     int64_t result = static_cast<int64_t>(static_cast<uint64_t>(lhs) - static_cast<uint64_t>(rhs));
 
-    // Overflow if subtracting negative makes result smaller, or subtracting positive makes it larger
+    // Overflow if subtracting negative makes result smaller, or subtracting positive makes it
+    // larger
     if ((rhs < 0 && result < lhs) || (rhs > 0 && result > lhs))
         return std::nullopt;
 

@@ -108,8 +108,11 @@ TEST(Arm64CLI, ArrayAccess_ConstOffset)
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
-    // Expect: add with immediate for constant offset
-    EXPECT_NE(asmText.find("add x"), std::string::npos);
+    // Expect: either add+ldr or fused ldr with offset addressing
+    // The fast-path may emit "ldr x0, [x0, #16]" directly
+    const bool hasAddLdr = (asmText.find("add x") != std::string::npos);
+    const bool hasFusedLdr = (asmText.find("ldr x0, [x0, #16]") != std::string::npos);
+    EXPECT_TRUE(hasAddLdr || hasFusedLdr);
     EXPECT_NE(asmText.find("#16"), std::string::npos);
     EXPECT_NE(asmText.find("ldr x"), std::string::npos);
 }

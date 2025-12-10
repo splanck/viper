@@ -66,19 +66,18 @@ struct BenchResult
 /// @brief Print usage information for the bench subcommand.
 void benchUsage()
 {
-    std::cerr
-        << "Usage: ilc bench <file.il> [file2.il ...] [options]\n"
-        << "Options:\n"
-        << "  -n <N>            Number of iterations (default: 3)\n"
-        << "  --max-steps <N>   Maximum interpreter steps (0 = unlimited)\n"
-        << "  --table           Run only FnTable dispatch\n"
-        << "  --switch          Run only Switch dispatch\n"
-        << "  --threaded        Run only Threaded dispatch\n"
-        << "  --json            Output results as JSON\n"
-        << "  -v, --verbose     Verbose output\n"
-        << "\n"
-        << "Output format (one line per file/strategy):\n"
-        << "  BENCH <file> <strategy> instr=<N> time_ms=<T> insns_per_sec=<R>\n";
+    std::cerr << "Usage: ilc bench <file.il> [file2.il ...] [options]\n"
+              << "Options:\n"
+              << "  -n <N>            Number of iterations (default: 3)\n"
+              << "  --max-steps <N>   Maximum interpreter steps (0 = unlimited)\n"
+              << "  --table           Run only FnTable dispatch\n"
+              << "  --switch          Run only Switch dispatch\n"
+              << "  --threaded        Run only Threaded dispatch\n"
+              << "  --json            Output results as JSON\n"
+              << "  -v, --verbose     Verbose output\n"
+              << "\n"
+              << "Output format (one line per file/strategy):\n"
+              << "  BENCH <file> <strategy> instr=<N> time_ms=<T> insns_per_sec=<R>\n";
 }
 
 /// @brief Parse benchmark command-line arguments.
@@ -242,7 +241,9 @@ double computeMedian(std::vector<double> values)
 /// @param config Benchmark configuration.
 /// @param results Output vector of results.
 /// @return True if benchmarking succeeded.
-bool benchmarkFile(const std::string &file, const BenchConfig &config, std::vector<BenchResult> &results)
+bool benchmarkFile(const std::string &file,
+                   const BenchConfig &config,
+                   std::vector<BenchResult> &results)
 {
     il::support::SourceManager sm;
     core::Module mod;

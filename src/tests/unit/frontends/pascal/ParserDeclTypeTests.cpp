@@ -74,15 +74,13 @@ bool hasParseError(const std::string &source)
 }
 
 /// @brief Cast type node to specific type.
-template <typename T>
-T *asType(TypeNode *t)
+template <typename T> T *asType(TypeNode *t)
 {
     return dynamic_cast<T *>(t);
 }
 
 /// @brief Cast decl node to specific type.
-template <typename T>
-T *asDecl(Decl *d)
+template <typename T> T *asDecl(Decl *d)
 {
     return dynamic_cast<T *>(d);
 }
@@ -406,12 +404,11 @@ TEST(PascalParserType, FunctionTypeWithParams)
 
 TEST(PascalParserDecl, ConstSection)
 {
-    auto prog = parseProg(
-        "program Test;\n"
-        "const\n"
-        "  PI = 3.14159;\n"
-        "  MaxSize = 100;\n"
-        "begin end.");
+    auto prog = parseProg("program Test;\n"
+                          "const\n"
+                          "  PI = 3.14159;\n"
+                          "  MaxSize = 100;\n"
+                          "begin end.");
     EXPECT_TRUE(prog != nullptr);
     EXPECT_EQ(prog->decls.size(), 2u);
 
@@ -426,11 +423,10 @@ TEST(PascalParserDecl, ConstSection)
 
 TEST(PascalParserDecl, TypedConst)
 {
-    auto prog = parseProg(
-        "program Test;\n"
-        "const\n"
-        "  Name: String = 'Test';\n"
-        "begin end.");
+    auto prog = parseProg("program Test;\n"
+                          "const\n"
+                          "  Name: String = 'Test';\n"
+                          "begin end.");
     EXPECT_TRUE(prog != nullptr);
     EXPECT_EQ(prog->decls.size(), 1u);
 
@@ -446,11 +442,10 @@ TEST(PascalParserDecl, TypedConst)
 
 TEST(PascalParserDecl, TypeSectionEnum)
 {
-    auto prog = parseProg(
-        "program Test;\n"
-        "type\n"
-        "  Color = (Red, Green, Blue);\n"
-        "begin end.");
+    auto prog = parseProg("program Test;\n"
+                          "type\n"
+                          "  Color = (Red, Green, Blue);\n"
+                          "begin end.");
     EXPECT_TRUE(prog != nullptr);
     EXPECT_EQ(prog->decls.size(), 1u);
 
@@ -465,13 +460,12 @@ TEST(PascalParserDecl, TypeSectionEnum)
 
 TEST(PascalParserDecl, TypeSectionArray)
 {
-    auto prog = parseProg(
-        "program Test;\n"
-        "type\n"
-        "  IntArray = array[10] of Integer;\n"
-        "  Matrix = array[3, 4] of Real;\n"
-        "  DynStrings = array of String;\n"
-        "begin end.");
+    auto prog = parseProg("program Test;\n"
+                          "type\n"
+                          "  IntArray = array[10] of Integer;\n"
+                          "  Matrix = array[3, 4] of Real;\n"
+                          "  DynStrings = array of String;\n"
+                          "begin end.");
     EXPECT_TRUE(prog != nullptr);
     EXPECT_EQ(prog->decls.size(), 3u);
 
@@ -496,11 +490,10 @@ TEST(PascalParserDecl, TypeSectionArray)
 
 TEST(PascalParserDecl, TypeSectionOptional)
 {
-    auto prog = parseProg(
-        "program Test;\n"
-        "type\n"
-        "  MaybeInt = Integer?;\n"
-        "begin end.");
+    auto prog = parseProg("program Test;\n"
+                          "type\n"
+                          "  MaybeInt = Integer?;\n"
+                          "begin end.");
     EXPECT_TRUE(prog != nullptr);
     EXPECT_EQ(prog->decls.size(), 1u);
 
@@ -511,11 +504,10 @@ TEST(PascalParserDecl, TypeSectionOptional)
 
 TEST(PascalParserDecl, TypeSectionRecord)
 {
-    auto prog = parseProg(
-        "program Test;\n"
-        "type\n"
-        "  Point = record x, y: Real; end;\n"
-        "begin end.");
+    auto prog = parseProg("program Test;\n"
+                          "type\n"
+                          "  Point = record x, y: Real; end;\n"
+                          "begin end.");
     EXPECT_TRUE(prog != nullptr);
     EXPECT_EQ(prog->decls.size(), 1u);
 
@@ -533,12 +525,11 @@ TEST(PascalParserDecl, TypeSectionRecord)
 
 TEST(PascalParserDecl, VarSection)
 {
-    auto prog = parseProg(
-        "program Test;\n"
-        "var\n"
-        "  x, y: Integer;\n"
-        "  name: String;\n"
-        "begin end.");
+    auto prog = parseProg("program Test;\n"
+                          "var\n"
+                          "  x, y: Integer;\n"
+                          "  name: String;\n"
+                          "begin end.");
     EXPECT_TRUE(prog != nullptr);
     EXPECT_EQ(prog->decls.size(), 2u);
 
@@ -558,11 +549,10 @@ TEST(PascalParserDecl, VarSection)
 
 TEST(PascalParserDecl, VarWithInitializer)
 {
-    auto prog = parseProg(
-        "program Test;\n"
-        "var\n"
-        "  count: Integer = 0;\n"
-        "begin end.");
+    auto prog = parseProg("program Test;\n"
+                          "var\n"
+                          "  count: Integer = 0;\n"
+                          "begin end.");
     EXPECT_TRUE(prog != nullptr);
     EXPECT_EQ(prog->decls.size(), 1u);
 
@@ -579,11 +569,10 @@ TEST(PascalParserDecl, VarWithInitializer)
 
 TEST(PascalParserDecl, ProcedureSimple)
 {
-    auto prog = parseProg(
-        "program Test;\n"
-        "procedure DoNothing;\n"
-        "begin end;\n"
-        "begin end.");
+    auto prog = parseProg("program Test;\n"
+                          "procedure DoNothing;\n"
+                          "begin end;\n"
+                          "begin end.");
     EXPECT_TRUE(prog != nullptr);
     EXPECT_EQ(prog->decls.size(), 1u);
 
@@ -595,11 +584,10 @@ TEST(PascalParserDecl, ProcedureSimple)
 
 TEST(PascalParserDecl, ProcedureWithParams)
 {
-    auto prog = parseProg(
-        "program Test;\n"
-        "procedure PrintValue(x: Integer);\n"
-        "begin end;\n"
-        "begin end.");
+    auto prog = parseProg("program Test;\n"
+                          "procedure PrintValue(x: Integer);\n"
+                          "begin end;\n"
+                          "begin end.");
     EXPECT_TRUE(prog != nullptr);
     EXPECT_EQ(prog->decls.size(), 1u);
 
@@ -612,11 +600,10 @@ TEST(PascalParserDecl, ProcedureWithParams)
 
 TEST(PascalParserDecl, ProcedureWithVarParam)
 {
-    auto prog = parseProg(
-        "program Test;\n"
-        "procedure Swap(var a, b: Integer);\n"
-        "begin end;\n"
-        "begin end.");
+    auto prog = parseProg("program Test;\n"
+                          "procedure Swap(var a, b: Integer);\n"
+                          "begin end;\n"
+                          "begin end.");
     EXPECT_TRUE(prog != nullptr);
 
     auto *proc = asDecl<ProcedureDecl>(prog->decls[0].get());
@@ -628,11 +615,10 @@ TEST(PascalParserDecl, ProcedureWithVarParam)
 
 TEST(PascalParserDecl, ProcedureWithConstParam)
 {
-    auto prog = parseProg(
-        "program Test;\n"
-        "procedure Process(const s: String);\n"
-        "begin end;\n"
-        "begin end.");
+    auto prog = parseProg("program Test;\n"
+                          "procedure Process(const s: String);\n"
+                          "begin end;\n"
+                          "begin end.");
     EXPECT_TRUE(prog != nullptr);
 
     auto *proc = asDecl<ProcedureDecl>(prog->decls[0].get());
@@ -643,11 +629,10 @@ TEST(PascalParserDecl, ProcedureWithConstParam)
 
 TEST(PascalParserDecl, FunctionSimple)
 {
-    auto prog = parseProg(
-        "program Test;\n"
-        "function GetValue: Integer;\n"
-        "begin end;\n"
-        "begin end.");
+    auto prog = parseProg("program Test;\n"
+                          "function GetValue: Integer;\n"
+                          "begin end;\n"
+                          "begin end.");
     EXPECT_TRUE(prog != nullptr);
     EXPECT_EQ(prog->decls.size(), 1u);
 
@@ -659,11 +644,10 @@ TEST(PascalParserDecl, FunctionSimple)
 
 TEST(PascalParserDecl, FunctionWithParams)
 {
-    auto prog = parseProg(
-        "program Test;\n"
-        "function Add(a, b: Integer): Integer;\n"
-        "begin end;\n"
-        "begin end.");
+    auto prog = parseProg("program Test;\n"
+                          "function Add(a, b: Integer): Integer;\n"
+                          "begin end;\n"
+                          "begin end.");
     EXPECT_TRUE(prog != nullptr);
 
     auto *func = asDecl<FunctionDecl>(prog->decls[0].get());
@@ -674,11 +658,10 @@ TEST(PascalParserDecl, FunctionWithParams)
 
 TEST(PascalParserDecl, FunctionWithDefaultParam)
 {
-    auto prog = parseProg(
-        "program Test;\n"
-        "function Greet(name: String = 'World'): String;\n"
-        "begin end;\n"
-        "begin end.");
+    auto prog = parseProg("program Test;\n"
+                          "function Greet(name: String = 'World'): String;\n"
+                          "begin end;\n"
+                          "begin end.");
     EXPECT_TRUE(prog != nullptr);
 
     auto *func = asDecl<FunctionDecl>(prog->decls[0].get());
@@ -689,12 +672,11 @@ TEST(PascalParserDecl, FunctionWithDefaultParam)
 
 TEST(PascalParserDecl, FunctionWithLocalVars)
 {
-    auto prog = parseProg(
-        "program Test;\n"
-        "function Square(x: Integer): Integer;\n"
-        "var temp: Integer;\n"
-        "begin end;\n"
-        "begin end.");
+    auto prog = parseProg("program Test;\n"
+                          "function Square(x: Integer): Integer;\n"
+                          "var temp: Integer;\n"
+                          "begin end;\n"
+                          "begin end.");
     EXPECT_TRUE(prog != nullptr);
 
     auto *func = asDecl<FunctionDecl>(prog->decls[0].get());
@@ -708,12 +690,11 @@ TEST(PascalParserDecl, FunctionWithLocalVars)
 
 TEST(PascalParserDecl, ClassSimple)
 {
-    auto prog = parseProg(
-        "program Test;\n"
-        "type\n"
-        "  TShape = class\n"
-        "  end;\n"
-        "begin end.");
+    auto prog = parseProg("program Test;\n"
+                          "type\n"
+                          "  TShape = class\n"
+                          "  end;\n"
+                          "begin end.");
     EXPECT_TRUE(prog != nullptr);
     EXPECT_EQ(prog->decls.size(), 1u);
 
@@ -727,12 +708,11 @@ TEST(PascalParserDecl, ClassSimple)
 
 TEST(PascalParserDecl, ClassWithBaseClass)
 {
-    auto prog = parseProg(
-        "program Test;\n"
-        "type\n"
-        "  TCircle = class(TShape)\n"
-        "  end;\n"
-        "begin end.");
+    auto prog = parseProg("program Test;\n"
+                          "type\n"
+                          "  TCircle = class(TShape)\n"
+                          "  end;\n"
+                          "begin end.");
     EXPECT_TRUE(prog != nullptr);
     EXPECT_EQ(prog->decls.size(), 1u);
 
@@ -744,12 +724,11 @@ TEST(PascalParserDecl, ClassWithBaseClass)
 
 TEST(PascalParserDecl, ClassWithInterfaces)
 {
-    auto prog = parseProg(
-        "program Test;\n"
-        "type\n"
-        "  TButton = class(TObject, IDrawable, IClickable)\n"
-        "  end;\n"
-        "begin end.");
+    auto prog = parseProg("program Test;\n"
+                          "type\n"
+                          "  TButton = class(TObject, IDrawable, IClickable)\n"
+                          "  end;\n"
+                          "begin end.");
     EXPECT_TRUE(prog != nullptr);
 
     auto *cls = asDecl<ClassDecl>(prog->decls[0].get());
@@ -762,14 +741,13 @@ TEST(PascalParserDecl, ClassWithInterfaces)
 
 TEST(PascalParserDecl, ClassWithFields)
 {
-    auto prog = parseProg(
-        "program Test;\n"
-        "type\n"
-        "  TPoint = class\n"
-        "    x: Real;\n"
-        "    y: Real;\n"
-        "  end;\n"
-        "begin end.");
+    auto prog = parseProg("program Test;\n"
+                          "type\n"
+                          "  TPoint = class\n"
+                          "    x: Real;\n"
+                          "    y: Real;\n"
+                          "  end;\n"
+                          "begin end.");
     EXPECT_TRUE(prog != nullptr);
 
     auto *cls = asDecl<ClassDecl>(prog->decls[0].get());
@@ -782,17 +760,16 @@ TEST(PascalParserDecl, ClassWithFields)
 
 TEST(PascalParserDecl, ClassWithVisibility)
 {
-    auto prog = parseProg(
-        "program Test;\n"
-        "type\n"
-        "  TCounter = class\n"
-        "  private\n"
-        "    count: Integer;\n"
-        "  public\n"
-        "    procedure Inc;\n"
-        "    function GetCount: Integer;\n"
-        "  end;\n"
-        "begin end.");
+    auto prog = parseProg("program Test;\n"
+                          "type\n"
+                          "  TCounter = class\n"
+                          "  private\n"
+                          "    count: Integer;\n"
+                          "  public\n"
+                          "    procedure Inc;\n"
+                          "    function GetCount: Integer;\n"
+                          "  end;\n"
+                          "begin end.");
     EXPECT_TRUE(prog != nullptr);
 
     auto *cls = asDecl<ClassDecl>(prog->decls[0].get());
@@ -813,14 +790,13 @@ TEST(PascalParserDecl, ClassWithVisibility)
 
 TEST(PascalParserDecl, ClassWithConstructor)
 {
-    auto prog = parseProg(
-        "program Test;\n"
-        "type\n"
-        "  TMyClass = class\n"
-        "    constructor Create;\n"
-        "    destructor Destroy;\n"
-        "  end;\n"
-        "begin end.");
+    auto prog = parseProg("program Test;\n"
+                          "type\n"
+                          "  TMyClass = class\n"
+                          "    constructor Create;\n"
+                          "    destructor Destroy;\n"
+                          "  end;\n"
+                          "begin end.");
     EXPECT_TRUE(prog != nullptr);
 
     auto *cls = asDecl<ClassDecl>(prog->decls[0].get());
@@ -832,14 +808,13 @@ TEST(PascalParserDecl, ClassWithConstructor)
 
 TEST(PascalParserDecl, ClassWithWeakField)
 {
-    auto prog = parseProg(
-        "program Test;\n"
-        "type\n"
-        "  TNode = class\n"
-        "    weak parent: TNode;\n"
-        "    data: Integer;\n"
-        "  end;\n"
-        "begin end.");
+    auto prog = parseProg("program Test;\n"
+                          "type\n"
+                          "  TNode = class\n"
+                          "    weak parent: TNode;\n"
+                          "    data: Integer;\n"
+                          "  end;\n"
+                          "begin end.");
     EXPECT_TRUE(prog != nullptr);
 
     auto *cls = asDecl<ClassDecl>(prog->decls[0].get());
@@ -855,13 +830,12 @@ TEST(PascalParserDecl, ClassWithWeakField)
 
 TEST(PascalParserDecl, InterfaceSimple)
 {
-    auto prog = parseProg(
-        "program Test;\n"
-        "type\n"
-        "  IDrawable = interface\n"
-        "    procedure Draw;\n"
-        "  end;\n"
-        "begin end.");
+    auto prog = parseProg("program Test;\n"
+                          "type\n"
+                          "  IDrawable = interface\n"
+                          "    procedure Draw;\n"
+                          "  end;\n"
+                          "begin end.");
     EXPECT_TRUE(prog != nullptr);
 
     auto *iface = asDecl<InterfaceDecl>(prog->decls[0].get());
@@ -873,14 +847,13 @@ TEST(PascalParserDecl, InterfaceSimple)
 
 TEST(PascalParserDecl, InterfaceWithInheritance)
 {
-    auto prog = parseProg(
-        "program Test;\n"
-        "type\n"
-        "  ISerializable = interface(IBase)\n"
-        "    procedure Save;\n"
-        "    procedure Load;\n"
-        "  end;\n"
-        "begin end.");
+    auto prog = parseProg("program Test;\n"
+                          "type\n"
+                          "  ISerializable = interface(IBase)\n"
+                          "    procedure Save;\n"
+                          "    procedure Load;\n"
+                          "  end;\n"
+                          "begin end.");
     EXPECT_TRUE(prog != nullptr);
 
     auto *iface = asDecl<InterfaceDecl>(prog->decls[0].get());
@@ -892,13 +865,12 @@ TEST(PascalParserDecl, InterfaceWithInheritance)
 
 TEST(PascalParserDecl, InterfaceWithFunction)
 {
-    auto prog = parseProg(
-        "program Test;\n"
-        "type\n"
-        "  IComparable = interface\n"
-        "    function Compare(other: IComparable): Integer;\n"
-        "  end;\n"
-        "begin end.");
+    auto prog = parseProg("program Test;\n"
+                          "type\n"
+                          "  IComparable = interface\n"
+                          "    function Compare(other: IComparable): Integer;\n"
+                          "  end;\n"
+                          "begin end.");
     EXPECT_TRUE(prog != nullptr);
 
     auto *iface = asDecl<InterfaceDecl>(prog->decls[0].get());
@@ -915,11 +887,10 @@ TEST(PascalParserDecl, InterfaceWithFunction)
 
 TEST(PascalParserUnit, MinimalUnit)
 {
-    auto unit = parseUnitHelper(
-        "unit MyUnit;\n"
-        "interface\n"
-        "implementation\n"
-        "end.");
+    auto unit = parseUnitHelper("unit MyUnit;\n"
+                                "interface\n"
+                                "implementation\n"
+                                "end.");
     EXPECT_TRUE(unit != nullptr);
     EXPECT_EQ(unit->name, "MyUnit");
     EXPECT_TRUE(unit->interfaceDecls.empty());
@@ -928,12 +899,11 @@ TEST(PascalParserUnit, MinimalUnit)
 
 TEST(PascalParserUnit, UnitWithUses)
 {
-    auto unit = parseUnitHelper(
-        "unit MyUnit;\n"
-        "interface\n"
-        "uses SysUtils, Classes;\n"
-        "implementation\n"
-        "end.");
+    auto unit = parseUnitHelper("unit MyUnit;\n"
+                                "interface\n"
+                                "uses SysUtils, Classes;\n"
+                                "implementation\n"
+                                "end.");
     EXPECT_TRUE(unit != nullptr);
     EXPECT_EQ(unit->usedUnits.size(), 2u);
     EXPECT_EQ(unit->usedUnits[0], "SysUtils");
@@ -942,13 +912,12 @@ TEST(PascalParserUnit, UnitWithUses)
 
 TEST(PascalParserUnit, UnitWithInterfaceConst)
 {
-    auto unit = parseUnitHelper(
-        "unit MyMath;\n"
-        "interface\n"
-        "const\n"
-        "  PI = 3.14159;\n"
-        "implementation\n"
-        "end.");
+    auto unit = parseUnitHelper("unit MyMath;\n"
+                                "interface\n"
+                                "const\n"
+                                "  PI = 3.14159;\n"
+                                "implementation\n"
+                                "end.");
     EXPECT_TRUE(unit != nullptr);
     EXPECT_EQ(unit->interfaceDecls.size(), 1u);
 
@@ -959,14 +928,13 @@ TEST(PascalParserUnit, UnitWithInterfaceConst)
 
 TEST(PascalParserUnit, UnitWithFunctionSignature)
 {
-    auto unit = parseUnitHelper(
-        "unit MyMath;\n"
-        "interface\n"
-        "function Add(a, b: Integer): Integer;\n"
-        "implementation\n"
-        "function Add(a, b: Integer): Integer;\n"
-        "begin end;\n"
-        "end.");
+    auto unit = parseUnitHelper("unit MyMath;\n"
+                                "interface\n"
+                                "function Add(a, b: Integer): Integer;\n"
+                                "implementation\n"
+                                "function Add(a, b: Integer): Integer;\n"
+                                "begin end;\n"
+                                "end.");
     EXPECT_TRUE(unit != nullptr);
     EXPECT_EQ(unit->interfaceDecls.size(), 1u);
     EXPECT_EQ(unit->implDecls.size(), 1u);
@@ -983,13 +951,12 @@ TEST(PascalParserUnit, UnitWithFunctionSignature)
 
 TEST(PascalParserUnit, UnitWithInitialization)
 {
-    auto unit = parseUnitHelper(
-        "unit MyUnit;\n"
-        "interface\n"
-        "implementation\n"
-        "initialization\n"
-        "  WriteLn('Init')\n"
-        "end.");
+    auto unit = parseUnitHelper("unit MyUnit;\n"
+                                "interface\n"
+                                "implementation\n"
+                                "initialization\n"
+                                "  WriteLn('Init')\n"
+                                "end.");
     EXPECT_TRUE(unit != nullptr);
     EXPECT_TRUE(unit->initSection != nullptr);
     EXPECT_TRUE(unit->finalSection == nullptr);
@@ -997,15 +964,14 @@ TEST(PascalParserUnit, UnitWithInitialization)
 
 TEST(PascalParserUnit, UnitWithFinalization)
 {
-    auto unit = parseUnitHelper(
-        "unit MyUnit;\n"
-        "interface\n"
-        "implementation\n"
-        "initialization\n"
-        "  WriteLn('Init')\n"
-        "finalization\n"
-        "  WriteLn('Cleanup')\n"
-        "end.");
+    auto unit = parseUnitHelper("unit MyUnit;\n"
+                                "interface\n"
+                                "implementation\n"
+                                "initialization\n"
+                                "  WriteLn('Init')\n"
+                                "finalization\n"
+                                "  WriteLn('Cleanup')\n"
+                                "end.");
     EXPECT_TRUE(unit != nullptr);
     EXPECT_TRUE(unit->initSection != nullptr);
     EXPECT_TRUE(unit->finalSection != nullptr);
@@ -1013,19 +979,18 @@ TEST(PascalParserUnit, UnitWithFinalization)
 
 TEST(PascalParserUnit, CompleteUnit)
 {
-    auto unit = parseUnitHelper(
-        "unit MyMath;\n"
-        "interface\n"
-        "uses SysUtils;\n"
-        "const\n"
-        "  PI = 3.14159;\n"
-        "type\n"
-        "  TOperation = (Add, Sub, Mul, Div);\n"
-        "function Calculate(a, b: Real; op: TOperation): Real;\n"
-        "implementation\n"
-        "function Calculate(a, b: Real; op: TOperation): Real;\n"
-        "begin end;\n"
-        "end.");
+    auto unit = parseUnitHelper("unit MyMath;\n"
+                                "interface\n"
+                                "uses SysUtils;\n"
+                                "const\n"
+                                "  PI = 3.14159;\n"
+                                "type\n"
+                                "  TOperation = (Add, Sub, Mul, Div);\n"
+                                "function Calculate(a, b: Real; op: TOperation): Real;\n"
+                                "implementation\n"
+                                "function Calculate(a, b: Real; op: TOperation): Real;\n"
+                                "begin end;\n"
+                                "end.");
     EXPECT_TRUE(unit != nullptr);
     EXPECT_EQ(unit->name, "MyMath");
     EXPECT_EQ(unit->usedUnits.size(), 1u);
@@ -1063,27 +1028,26 @@ TEST(PascalParserDispatch, ParseUnit)
 
 TEST(PascalParserIntegration, TShapeTCircleExample)
 {
-    auto prog = parseProg(
-        "program ShapeTest;\n"
-        "type\n"
-        "  TShape = class\n"
-        "  private\n"
-        "    x, y: Real;\n"
-        "  public\n"
-        "    constructor Create(ax, ay: Real);\n"
-        "    procedure Draw; virtual;\n"
-        "    function GetArea: Real; virtual;\n"
-        "  end;\n"
-        "\n"
-        "  TCircle = class(TShape)\n"
-        "  private\n"
-        "    radius: Real;\n"
-        "  public\n"
-        "    constructor Create(ax, ay, r: Real);\n"
-        "    procedure Draw; override;\n"
-        "    function GetArea: Real; override;\n"
-        "  end;\n"
-        "begin end.");
+    auto prog = parseProg("program ShapeTest;\n"
+                          "type\n"
+                          "  TShape = class\n"
+                          "  private\n"
+                          "    x, y: Real;\n"
+                          "  public\n"
+                          "    constructor Create(ax, ay: Real);\n"
+                          "    procedure Draw; virtual;\n"
+                          "    function GetArea: Real; virtual;\n"
+                          "  end;\n"
+                          "\n"
+                          "  TCircle = class(TShape)\n"
+                          "  private\n"
+                          "    radius: Real;\n"
+                          "  public\n"
+                          "    constructor Create(ax, ay, r: Real);\n"
+                          "    procedure Draw; override;\n"
+                          "    function GetArea: Real; override;\n"
+                          "  end;\n"
+                          "begin end.");
     EXPECT_TRUE(prog != nullptr);
     EXPECT_EQ(prog->decls.size(), 2u);
 
@@ -1102,22 +1066,21 @@ TEST(PascalParserIntegration, TShapeTCircleExample)
 
 TEST(PascalParserIntegration, IDrawableImplementation)
 {
-    auto prog = parseProg(
-        "program DrawTest;\n"
-        "type\n"
-        "  IDrawable = interface\n"
-        "    procedure Draw;\n"
-        "    function GetBounds: TRect;\n"
-        "  end;\n"
-        "\n"
-        "  TButton = class(TControl, IDrawable)\n"
-        "  private\n"
-        "    caption: String;\n"
-        "  public\n"
-        "    procedure Draw;\n"
-        "    function GetBounds: TRect;\n"
-        "  end;\n"
-        "begin end.");
+    auto prog = parseProg("program DrawTest;\n"
+                          "type\n"
+                          "  IDrawable = interface\n"
+                          "    procedure Draw;\n"
+                          "    function GetBounds: TRect;\n"
+                          "  end;\n"
+                          "\n"
+                          "  TButton = class(TControl, IDrawable)\n"
+                          "  private\n"
+                          "    caption: String;\n"
+                          "  public\n"
+                          "    procedure Draw;\n"
+                          "    function GetBounds: TRect;\n"
+                          "  end;\n"
+                          "begin end.");
     EXPECT_TRUE(prog != nullptr);
     EXPECT_EQ(prog->decls.size(), 2u);
 

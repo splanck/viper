@@ -22,8 +22,8 @@
 #include "il/core/Type.hpp"
 #include "il/core/Value.hpp"
 #include "il/io/Serializer.hpp"
-#include "support/diag_expected.hpp"
 #include "il/verify/Verifier.hpp"
+#include "support/diag_expected.hpp"
 
 #include "tests/unit/GTestStub.hpp"
 

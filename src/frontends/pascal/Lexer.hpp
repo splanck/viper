@@ -29,8 +29,8 @@ namespace il::frontends::pascal
 enum class TokenKind
 {
     // Markers
-    Eof,     ///< End of file
-    Error,   ///< Lexical error (invalid character, unterminated string, etc.)
+    Eof,   ///< End of file
+    Error, ///< Lexical error (invalid character, unterminated string, etc.)
 
     // Literals
     IntegerLiteral, ///< Integer literal (decimal or hex)
@@ -101,32 +101,32 @@ enum class TokenKind
     KwProperty,
 
     // Operators
-    Plus,          ///< +
-    Minus,         ///< -
-    Star,          ///< *
-    Slash,         ///< /
-    Equal,         ///< =
-    NotEqual,      ///< <>
-    Less,          ///< <
-    Greater,       ///< >
-    LessEqual,     ///< <=
-    GreaterEqual,  ///< >=
-    Assign,        ///< :=
-    NilCoalesce,   ///< ??
-    Question,      ///< ? (optional type suffix)
+    Plus,         ///< +
+    Minus,        ///< -
+    Star,         ///< *
+    Slash,        ///< /
+    Equal,        ///< =
+    NotEqual,     ///< <>
+    Less,         ///< <
+    Greater,      ///< >
+    LessEqual,    ///< <=
+    GreaterEqual, ///< >=
+    Assign,       ///< :=
+    NilCoalesce,  ///< ??
+    Question,     ///< ? (optional type suffix)
 
     // Punctuation
-    Dot,           ///< .
-    Comma,         ///< ,
-    Semicolon,     ///< ;
-    Colon,         ///< :
-    LParen,        ///< (
-    RParen,        ///< )
-    LBracket,      ///< [
-    RBracket,      ///< ]
-    Caret,         ///< ^ (pointer dereference)
-    At,            ///< @ (address-of)
-    DotDot,        ///< .. (range)
+    Dot,       ///< .
+    Comma,     ///< ,
+    Semicolon, ///< ;
+    Colon,     ///< :
+    LParen,    ///< (
+    RParen,    ///< )
+    LBracket,  ///< [
+    RBracket,  ///< ]
+    Caret,     ///< ^ (pointer dereference)
+    At,        ///< @ (address-of)
+    DotDot,    ///< .. (range)
 };
 
 /// @brief Convert TokenKind to human-readable string.
@@ -247,13 +247,13 @@ class Lexer
     /// @return True if predefined (Self, Result, True, False, etc.)
     static bool isPredefinedIdentifier(const std::string &canonical);
 
-    std::string source_;                    ///< Source code being tokenized.
-    size_t pos_{0};                         ///< Current index into source.
-    uint32_t fileId_;                       ///< File identifier for locations.
-    uint32_t line_{1};                      ///< 1-based line number.
-    uint32_t column_{1};                    ///< 1-based column number.
-    il::support::DiagnosticEngine &diag_;   ///< Diagnostic engine for errors.
-    std::optional<Token> peeked_;           ///< Cached lookahead token.
+    std::string source_;                  ///< Source code being tokenized.
+    size_t pos_{0};                       ///< Current index into source.
+    uint32_t fileId_;                     ///< File identifier for locations.
+    uint32_t line_{1};                    ///< 1-based line number.
+    uint32_t column_{1};                  ///< 1-based column number.
+    il::support::DiagnosticEngine &diag_; ///< Diagnostic engine for errors.
+    std::optional<Token> peeked_;         ///< Cached lookahead token.
 };
 
 } // namespace il::frontends::pascal

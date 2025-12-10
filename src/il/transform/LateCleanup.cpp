@@ -91,8 +91,7 @@ PreservedAnalyses LateCleanup::run(Module &module, AnalysisManager &analysis)
         currentInstr = countInstructions(module);
         currentBlocks = countBlocks(module);
 
-        const bool sizeChanged =
-            currentInstr != iterStartInstr || currentBlocks != iterStartBlocks;
+        const bool sizeChanged = currentInstr != iterStartInstr || currentBlocks != iterStartBlocks;
         const bool iterChanged = simplifyChanged || sizeChanged;
 
         if (stats_)

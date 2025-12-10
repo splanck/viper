@@ -48,7 +48,10 @@ class LoopContextStack
   public:
     /// @brief Push a new loop context onto the stack.
     /// @param ctx The loop context to push.
-    void push(LoopContext ctx) { stack_.push_back(ctx); }
+    void push(LoopContext ctx)
+    {
+        stack_.push_back(ctx);
+    }
 
     /// @brief Push a simple loop context with just break and continue targets.
     /// @param breakIdx Target block index for break.
@@ -68,22 +71,37 @@ class LoopContextStack
     /// @brief Get the current (innermost) loop context.
     /// @return Reference to the current context.
     /// @pre !empty()
-    [[nodiscard]] LoopContext &current() { return stack_.back(); }
+    [[nodiscard]] LoopContext &current()
+    {
+        return stack_.back();
+    }
 
     /// @brief Get the current (innermost) loop context (const).
     /// @return Const reference to the current context.
     /// @pre !empty()
-    [[nodiscard]] const LoopContext &current() const { return stack_.back(); }
+    [[nodiscard]] const LoopContext &current() const
+    {
+        return stack_.back();
+    }
 
     /// @brief Check if there is an active loop context.
-    [[nodiscard]] bool empty() const noexcept { return stack_.empty(); }
+    [[nodiscard]] bool empty() const noexcept
+    {
+        return stack_.empty();
+    }
 
     /// @brief Get the number of nested loops.
-    [[nodiscard]] std::size_t depth() const noexcept { return stack_.size(); }
+    [[nodiscard]] std::size_t depth() const noexcept
+    {
+        return stack_.size();
+    }
 
     /// @brief Get the break target for the current loop.
     /// @pre !empty()
-    [[nodiscard]] std::size_t breakTarget() const { return stack_.back().breakBlockIdx; }
+    [[nodiscard]] std::size_t breakTarget() const
+    {
+        return stack_.back().breakBlockIdx;
+    }
 
     /// @brief Get the continue target for the current loop.
     /// @details Returns the update block if set, otherwise the continue block.
@@ -95,7 +113,10 @@ class LoopContextStack
     }
 
     /// @brief Clear all loop contexts.
-    void clear() { stack_.clear(); }
+    void clear()
+    {
+        stack_.clear();
+    }
 
   private:
     std::vector<LoopContext> stack_;

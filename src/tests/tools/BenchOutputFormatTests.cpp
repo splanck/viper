@@ -7,9 +7,9 @@
 //
 // File: tests/tools/BenchOutputFormatTests.cpp
 // Purpose: Validate that cmdBench produces correctly formatted output.
-// Key invariants: Output must match "BENCH <file> <strategy> instr=... time_ms=... insns_per_sec=..."
-// Ownership/Lifetime: Test owns temporary IL file it writes.
-// Links: src/tools/ilc/cmd_bench.cpp
+// Key invariants: Output must match "BENCH <file> <strategy> instr=... time_ms=...
+// insns_per_sec=..." Ownership/Lifetime: Test owns temporary IL file it writes. Links:
+// src/tools/ilc/cmd_bench.cpp
 //
 //===----------------------------------------------------------------------===//
 

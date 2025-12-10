@@ -32,8 +32,7 @@ namespace il::frontends::common::keyword_table
 
 /// @brief A keyword entry mapping a lexeme to a token kind.
 /// @tparam TokenKind The token kind enum type.
-template <typename TokenKind>
-struct KeywordEntry
+template <typename TokenKind> struct KeywordEntry
 {
     std::string_view lexeme; ///< The keyword text (usually uppercase).
     TokenKind kind;          ///< The token kind for this keyword.
@@ -46,7 +45,8 @@ struct KeywordEntry
 /// @param table The keyword table to check.
 /// @return True if the table is lexicographically sorted.
 template <typename TokenKind, std::size_t N>
-[[nodiscard]] constexpr bool isKeywordTableSorted(const std::array<KeywordEntry<TokenKind>, N> &table)
+[[nodiscard]] constexpr bool isKeywordTableSorted(
+    const std::array<KeywordEntry<TokenKind>, N> &table)
 {
     for (std::size_t i = 1; i < N; ++i)
     {
@@ -64,8 +64,7 @@ template <typename TokenKind, std::size_t N>
 /// @return The token kind if found, std::nullopt otherwise.
 template <typename TokenKind, std::size_t N>
 [[nodiscard]] std::optional<TokenKind> lookupKeywordBinary(
-    const std::array<KeywordEntry<TokenKind>, N> &table,
-    std::string_view lexeme)
+    const std::array<KeywordEntry<TokenKind>, N> &table, std::string_view lexeme)
 {
     auto first = table.begin();
     auto last = table.end();
@@ -86,8 +85,7 @@ template <typename TokenKind, std::size_t N>
 
 /// @brief Hash-based keyword table for runtime keyword lookup.
 /// @tparam TokenKind The token kind enum type.
-template <typename TokenKind>
-class KeywordMap
+template <typename TokenKind> class KeywordMap
 {
   public:
     /// @brief Construct an empty keyword map.
@@ -141,10 +139,16 @@ class KeywordMap
     }
 
     /// @brief Get the number of keywords in the map.
-    [[nodiscard]] std::size_t size() const noexcept { return map_.size(); }
+    [[nodiscard]] std::size_t size() const noexcept
+    {
+        return map_.size();
+    }
 
     /// @brief Check if the map is empty.
-    [[nodiscard]] bool empty() const noexcept { return map_.empty(); }
+    [[nodiscard]] bool empty() const noexcept
+    {
+        return map_.empty();
+    }
 
   private:
     std::unordered_map<std::string, TokenKind> map_;

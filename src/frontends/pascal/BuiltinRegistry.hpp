@@ -30,12 +30,12 @@ namespace il::frontends::pascal
 /// @brief Categories of Pascal builtins for organization and lowering.
 enum class BuiltinCategory
 {
-    Builtin,        ///< Core Pascal builtins (Write, ReadLn, Length, etc.)
-    ViperStrings,   ///< Viper.Strings unit functions
-    ViperMath,      ///< Viper.Math unit functions
-    ViperTerminal,  ///< Viper.Terminal unit functions (console control)
-    ViperIO,        ///< Viper.IO unit functions (file I/O)
-    ViperDateTime,  ///< Viper.DateTime unit functions
+    Builtin,          ///< Core Pascal builtins (Write, ReadLn, Length, etc.)
+    ViperStrings,     ///< Viper.Strings unit functions
+    ViperMath,        ///< Viper.Math unit functions
+    ViperTerminal,    ///< Viper.Terminal unit functions (console control)
+    ViperIO,          ///< Viper.IO unit functions (file I/O)
+    ViperDateTime,    ///< Viper.DateTime unit functions
     ViperEnvironment, ///< Viper.Environment unit functions
 };
 
@@ -58,11 +58,11 @@ enum class PascalBuiltin
     Length,
     SetLength,
     IntToStr,
-    RealToStr,   ///< Spec name (alias for FloatToStr)
-    FloatToStr,  ///< Extension (same as RealToStr)
+    RealToStr,  ///< Spec name (alias for FloatToStr)
+    FloatToStr, ///< Extension (same as RealToStr)
     StrToInt,
-    StrToReal,   ///< Spec name (alias for StrToFloat)
-    StrToFloat,  ///< Extension (same as StrToReal)
+    StrToReal,  ///< Spec name (alias for StrToFloat)
+    StrToFloat, ///< Extension (same as StrToReal)
     Copy,
     Pos,
     Concat,
@@ -120,46 +120,46 @@ enum class PascalBuiltin
     Max,
 
     // Viper.Terminal unit (console/terminal control)
-    ClrScr,       ///< Clear screen
-    GotoXY,       ///< Position cursor (col, row)
-    TextColor,    ///< Set foreground color
+    ClrScr,         ///< Clear screen
+    GotoXY,         ///< Position cursor (col, row)
+    TextColor,      ///< Set foreground color
     TextBackground, ///< Set background color
-    KeyPressed,   ///< Check if key available (non-blocking)
-    ReadKey,      ///< Read single key (blocking)
-    InKey,        ///< Read single key (non-blocking, returns empty if none)
-    Delay,        ///< Pause execution (milliseconds)
-    Sleep,        ///< Alias for Delay
-    HideCursor,   ///< Hide terminal cursor
-    ShowCursor,   ///< Show terminal cursor
+    KeyPressed,     ///< Check if key available (non-blocking)
+    ReadKey,        ///< Read single key (blocking)
+    InKey,          ///< Read single key (non-blocking, returns empty if none)
+    Delay,          ///< Pause execution (milliseconds)
+    Sleep,          ///< Alias for Delay
+    HideCursor,     ///< Hide terminal cursor
+    ShowCursor,     ///< Show terminal cursor
 
     // Viper.IO unit (file I/O)
-    FileExists,    ///< Check if file exists
-    ReadAllText,   ///< Read entire file as string
-    WriteAllText,  ///< Write string to file
-    DeleteFile,    ///< Delete a file
+    FileExists,   ///< Check if file exists
+    ReadAllText,  ///< Read entire file as string
+    WriteAllText, ///< Write string to file
+    DeleteFile,   ///< Delete a file
 
     // Viper.Strings unit (additional string functions)
-    TrimStart,     ///< Remove leading whitespace
-    TrimEnd,       ///< Remove trailing whitespace
-    IndexOf,       ///< Find substring position
-    Substring,     ///< Extract substring
+    TrimStart, ///< Remove leading whitespace
+    TrimEnd,   ///< Remove trailing whitespace
+    IndexOf,   ///< Find substring position
+    Substring, ///< Extract substring
 
     // Viper.DateTime unit
-    Now,           ///< Current timestamp (seconds since epoch)
-    NowMs,         ///< Current timestamp (milliseconds since epoch)
-    Year,          ///< Extract year from timestamp
-    Month,         ///< Extract month from timestamp
-    Day,           ///< Extract day from timestamp
-    Hour,          ///< Extract hour from timestamp
-    Minute,        ///< Extract minute from timestamp
-    Second,        ///< Extract second from timestamp
-    DayOfWeek,     ///< Extract day of week from timestamp
+    Now,            ///< Current timestamp (seconds since epoch)
+    NowMs,          ///< Current timestamp (milliseconds since epoch)
+    Year,           ///< Extract year from timestamp
+    Month,          ///< Extract month from timestamp
+    Day,            ///< Extract day from timestamp
+    Hour,           ///< Extract hour from timestamp
+    Minute,         ///< Extract minute from timestamp
+    Second,         ///< Extract second from timestamp
+    DayOfWeek,      ///< Extract day of week from timestamp
     FormatDateTime, ///< Format timestamp as string
     CreateDateTime, ///< Create timestamp from components
 
     // Viper.Environment unit
-    ParamCount,    ///< Number of command-line arguments
-    ParamStr,      ///< Get command-line argument by index
+    ParamCount,     ///< Number of command-line arguments
+    ParamStr,       ///< Get command-line argument by index
     GetCommandLine, ///< Get full command line
 
     // Count (must be last)
@@ -230,14 +230,14 @@ struct RuntimeVariant
 /// @brief Complete descriptor for a Pascal builtin.
 struct BuiltinDescriptor
 {
-    const char *name{nullptr};                   ///< Pascal source name
-    PascalBuiltin id{PascalBuiltin::Count};      ///< Builtin identifier
+    const char *name{nullptr};                          ///< Pascal source name
+    PascalBuiltin id{PascalBuiltin::Count};             ///< Builtin identifier
     BuiltinCategory category{BuiltinCategory::Builtin}; ///< Category
-    uint8_t minArgs{0};                          ///< Minimum arguments
-    uint8_t maxArgs{0};                          ///< Maximum arguments
-    bool variadic{false};                        ///< True for variadic (Write, WriteLn)
-    ResultKind result{ResultKind::Void};         ///< Result type kind
-    uint8_t resultArgIndex{0};                   ///< Argument index for FromArg result
+    uint8_t minArgs{0};                                 ///< Minimum arguments
+    uint8_t maxArgs{0};                                 ///< Maximum arguments
+    bool variadic{false};                               ///< True for variadic (Write, WriteLn)
+    ResultKind result{ResultKind::Void};                ///< Result type kind
+    uint8_t resultArgIndex{0};                          ///< Argument index for FromArg result
 
     /// @brief Runtime symbol(s) for lowering.
     /// For type-dispatched builtins (Abs, etc.), multiple variants may exist.

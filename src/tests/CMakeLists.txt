@@ -166,6 +166,10 @@ add_executable(test_codegen_arm64_const_str_addr ${CMAKE_CURRENT_SOURCE_DIR}/uni
 target_link_libraries(test_codegen_arm64_const_str_addr PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
 viper_add_ctest(test_codegen_arm64_const_str_addr $<TARGET_FILE:test_codegen_arm64_const_str_addr>)
 
+add_executable(test_codegen_arm64_mir_dump ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_mir_dump.cpp)
+target_link_libraries(test_codegen_arm64_mir_dump PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
+viper_add_ctest(test_codegen_arm64_mir_dump $<TARGET_FILE:test_codegen_arm64_mir_dump>)
+
 add_executable(test_codegen_arm64_ra_many_temps ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_ra_many_temps.cpp)
 target_link_libraries(test_codegen_arm64_ra_many_temps PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
 viper_add_ctest(test_codegen_arm64_ra_many_temps $<TARGET_FILE:test_codegen_arm64_ra_many_temps>)
@@ -196,6 +200,11 @@ viper_add_ctest(test_codegen_arm64_trap_eh $<TARGET_FILE:test_codegen_arm64_trap
 add_executable(test_codegen_arm64_run_native ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_run_native.cpp)
 target_link_libraries(test_codegen_arm64_run_native PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
 viper_add_ctest(test_codegen_arm64_run_native $<TARGET_FILE:test_codegen_arm64_run_native>)
+
+# Environment.IsNative should distinguish VM vs native paths
+add_executable(test_codegen_env_is_native ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_env_is_native.cpp)
+target_link_libraries(test_codegen_env_is_native PRIVATE viper_test_common il_codegen_aarch64 ilc_cmd_arm64)
+viper_add_ctest(test_codegen_env_is_native $<TARGET_FILE:test_codegen_env_is_native>)
 
 # Property-based differential testing: VM vs ARM64 native
 add_executable(test_diff_vm_native_property ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_diff_vm_native_property.cpp)

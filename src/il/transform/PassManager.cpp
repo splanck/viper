@@ -273,23 +273,23 @@ void PassManager::run(core::Module &module, const Pipeline &pipeline) const
     {
         instrumentation.passMetrics =
             [this](std::string_view passId, const PipelineExecutor::PassMetrics &metrics)
-            {
-                if (!instrumentationStream_)
-                    return;
-                const auto micros =
-                    std::chrono::duration_cast<std::chrono::microseconds>(metrics.duration).count();
-                *instrumentationStream_
-                    << "[pass " << passId << "] bb " << metrics.before.blocks << " -> "
-                    << metrics.after.blocks << ", inst " << metrics.before.instructions << " -> "
-                    << metrics.after.instructions << ", analyses M:"
-                    << metrics.analysesComputed.moduleComputations
-                    << " F:" << metrics.analysesComputed.functionComputations << ", time " << micros
-                    << "us\n";
-            };
+        {
+            if (!instrumentationStream_)
+                return;
+            const auto micros =
+                std::chrono::duration_cast<std::chrono::microseconds>(metrics.duration).count();
+            *instrumentationStream_
+                << "[pass " << passId << "] bb " << metrics.before.blocks << " -> "
+                << metrics.after.blocks << ", inst " << metrics.before.instructions << " -> "
+                << metrics.after.instructions
+                << ", analyses M:" << metrics.analysesComputed.moduleComputations
+                << " F:" << metrics.analysesComputed.functionComputations << ", time " << micros
+                << "us\n";
+        };
     }
 
-    PipelineExecutor executor(passRegistry_, analysisRegistry_, std::move(instrumentation),
-                              parallelFunctionPasses_);
+    PipelineExecutor executor(
+        passRegistry_, analysisRegistry_, std::move(instrumentation), parallelFunctionPasses_);
     executor.run(module, pipeline);
 }
 

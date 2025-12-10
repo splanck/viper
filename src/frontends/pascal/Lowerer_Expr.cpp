@@ -12,9 +12,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "frontends/pascal/Lowerer.hpp"
-#include "frontends/pascal/BuiltinRegistry.hpp"
 #include "frontends/common/CharUtils.hpp"
+#include "frontends/pascal/BuiltinRegistry.hpp"
+#include "frontends/pascal/Lowerer.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 
 namespace il::frontends::pascal
@@ -35,59 +35,61 @@ LowerResult Lowerer::lowerExpr(const Expr &expr)
 {
     switch (expr.kind)
     {
-    case ExprKind::IntLiteral:
-        return lowerIntLiteral(static_cast<const IntLiteralExpr &>(expr));
-    case ExprKind::RealLiteral:
-        return lowerRealLiteral(static_cast<const RealLiteralExpr &>(expr));
-    case ExprKind::StringLiteral:
-        return lowerStringLiteral(static_cast<const StringLiteralExpr &>(expr));
-    case ExprKind::BoolLiteral:
-        return lowerBoolLiteral(static_cast<const BoolLiteralExpr &>(expr));
-    case ExprKind::NilLiteral:
-        return lowerNilLiteral(static_cast<const NilLiteralExpr &>(expr));
-    case ExprKind::Name:
-        return lowerName(static_cast<const NameExpr &>(expr));
-    case ExprKind::Unary:
-        return lowerUnary(static_cast<const UnaryExpr &>(expr));
-    case ExprKind::Binary:
-        return lowerBinary(static_cast<const BinaryExpr &>(expr));
-    case ExprKind::Call:
-        return lowerCall(static_cast<const CallExpr &>(expr));
-    case ExprKind::Index:
-        return lowerIndex(static_cast<const IndexExpr &>(expr));
-    case ExprKind::Field:
-        return lowerField(static_cast<const FieldExpr &>(expr));
-    case ExprKind::Is: {
-        const auto &isExpr = static_cast<const IsExpr &>(expr);
-        // Lower operand
-        LowerResult obj = lowerExpr(*isExpr.operand);
-        // Resolve target type via semantic analyzer
-        il::frontends::pascal::PasType target = sema_->resolveType(*isExpr.targetType);
-        // Default: false
-        Value result = Value::constBool(false);
-        if (target.kind == PasTypeKind::Class)
+        case ExprKind::IntLiteral:
+            return lowerIntLiteral(static_cast<const IntLiteralExpr &>(expr));
+        case ExprKind::RealLiteral:
+            return lowerRealLiteral(static_cast<const RealLiteralExpr &>(expr));
+        case ExprKind::StringLiteral:
+            return lowerStringLiteral(static_cast<const StringLiteralExpr &>(expr));
+        case ExprKind::BoolLiteral:
+            return lowerBoolLiteral(static_cast<const BoolLiteralExpr &>(expr));
+        case ExprKind::NilLiteral:
+            return lowerNilLiteral(static_cast<const NilLiteralExpr &>(expr));
+        case ExprKind::Name:
+            return lowerName(static_cast<const NameExpr &>(expr));
+        case ExprKind::Unary:
+            return lowerUnary(static_cast<const UnaryExpr &>(expr));
+        case ExprKind::Binary:
+            return lowerBinary(static_cast<const BinaryExpr &>(expr));
+        case ExprKind::Call:
+            return lowerCall(static_cast<const CallExpr &>(expr));
+        case ExprKind::Index:
+            return lowerIndex(static_cast<const IndexExpr &>(expr));
+        case ExprKind::Field:
+            return lowerField(static_cast<const FieldExpr &>(expr));
+        case ExprKind::Is:
         {
-            // Lookup class id
-            int64_t classId = 0;
-            auto it = classLayouts_.find(toLower(target.name));
-            if (it != classLayouts_.end())
-                classId = it->second.classId;
-            usedExterns_.insert("rt_cast_as");
-            Value casted = emitCallRet(Type(Type::Kind::Ptr), "rt_cast_as", {obj.value, Value::constInt(classId)});
-            // Compare ptr != null -> i1
-            result = emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1), casted, Value::null());
+            const auto &isExpr = static_cast<const IsExpr &>(expr);
+            // Lower operand
+            LowerResult obj = lowerExpr(*isExpr.operand);
+            // Resolve target type via semantic analyzer
+            il::frontends::pascal::PasType target = sema_->resolveType(*isExpr.targetType);
+            // Default: false
+            Value result = Value::constBool(false);
+            if (target.kind == PasTypeKind::Class)
+            {
+                // Lookup class id
+                int64_t classId = 0;
+                auto it = classLayouts_.find(toLower(target.name));
+                if (it != classLayouts_.end())
+                    classId = it->second.classId;
+                usedExterns_.insert("rt_cast_as");
+                Value casted = emitCallRet(
+                    Type(Type::Kind::Ptr), "rt_cast_as", {obj.value, Value::constInt(classId)});
+                // Compare ptr != null -> i1
+                result = emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1), casted, Value::null());
+            }
+            else if (target.kind == PasTypeKind::Interface)
+            {
+                // If/when interfaces have ids, use rt_cast_as_iface; for now fall back to false
+                usedExterns_.insert("rt_cast_as_iface");
+                // Without interface ids wired here, result remains false
+            }
+            return {result, Type(Type::Kind::I1)};
         }
-        else if (target.kind == PasTypeKind::Interface)
-        {
-            // If/when interfaces have ids, use rt_cast_as_iface; for now fall back to false
-            usedExterns_.insert("rt_cast_as_iface");
-            // Without interface ids wired here, result remains false
-        }
-        return {result, Type(Type::Kind::I1)};
-    }
-    default:
-        // Unsupported expression type - return zero
-        return {Value::constInt(0), Type(Type::Kind::I64)};
+        default:
+            // Unsupported expression type - return zero
+            return {Value::constInt(0), Type(Type::Kind::I64)};
     }
 }
 
@@ -164,7 +166,8 @@ LowerResult Lowerer::lowerName(const NameExpr &expr)
                     {
                         classTypeWithFields.fields[fname] = std::make_shared<PasType>(finfo.type);
                     }
-                    auto [fieldAddr, fieldType] = getFieldAddress(objPtr, classTypeWithFields, expr.name);
+                    auto [fieldAddr, fieldType] =
+                        getFieldAddress(objPtr, classTypeWithFields, expr.name);
                     Value fieldVal = emitLoad(fieldType, fieldAddr);
                     return {fieldVal, fieldType};
                 }
@@ -186,9 +189,11 @@ LowerResult Lowerer::lowerName(const NameExpr &expr)
                         PasType classTypeWithFields = ctx.type;
                         for (const auto &[fname, finfo] : classInfo->fields)
                         {
-                            classTypeWithFields.fields[fname] = std::make_shared<PasType>(finfo.type);
+                            classTypeWithFields.fields[fname] =
+                                std::make_shared<PasType>(finfo.type);
                         }
-                        auto [fieldAddr, fieldType] = getFieldAddress(objPtr, classTypeWithFields, p.getter.name);
+                        auto [fieldAddr, fieldType] =
+                            getFieldAddress(objPtr, classTypeWithFields, p.getter.name);
                         Value fieldVal = emitLoad(fieldType, fieldAddr);
                         return {fieldVal, fieldType};
                     }
@@ -258,7 +263,8 @@ LowerResult Lowerer::lowerName(const NameExpr &expr)
                         {
                             selfType.fields[fname] = std::make_shared<PasType>(finfo.type);
                         }
-                        auto [fieldAddr, fieldType] = getFieldAddress(selfPtr, selfType, p.getter.name);
+                        auto [fieldAddr, fieldType] =
+                            getFieldAddress(selfPtr, selfType, p.getter.name);
                         Value result = emitLoad(fieldType, fieldAddr);
                         return {result, fieldType};
                     }
@@ -398,42 +404,43 @@ LowerResult Lowerer::lowerUnary(const UnaryExpr &expr)
 
     switch (expr.op)
     {
-    case UnaryExpr::Op::Neg:
-        if (operand.type.kind == Type::Kind::F64)
-        {
-            // Negate float: 0.0 - x
-            Value zero = Value::constFloat(0.0);
-            Value result = emitBinary(Opcode::FSub, operand.type, zero, operand.value);
-            return {result, operand.type};
-        }
-        else
-        {
-            // Negate integer: 0 - x (use overflow-checking subtraction)
-            Value zero = Value::constInt(0);
-            Value result = emitBinary(Opcode::ISubOvf, Type(Type::Kind::I64), zero, operand.value);
-            return {result, Type(Type::Kind::I64)};
-        }
-
-    case UnaryExpr::Op::Not:
-        // Boolean not
-        {
-            // If operand is i1, first zext to i64
-            Value opVal = operand.value;
-            if (operand.type.kind == Type::Kind::I1)
+        case UnaryExpr::Op::Neg:
+            if (operand.type.kind == Type::Kind::F64)
             {
-                opVal = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), opVal);
+                // Negate float: 0.0 - x
+                Value zero = Value::constFloat(0.0);
+                Value result = emitBinary(Opcode::FSub, operand.type, zero, operand.value);
+                return {result, operand.type};
             }
-            // xor with 1
-            Value one = Value::constInt(1);
-            Value result = emitBinary(Opcode::Xor, Type(Type::Kind::I64), opVal, one);
-            // Truncate back to i1
-            result = emitUnary(Opcode::Trunc1, Type(Type::Kind::I1), result);
-            return {result, Type(Type::Kind::I1)};
-        }
+            else
+            {
+                // Negate integer: 0 - x (use overflow-checking subtraction)
+                Value zero = Value::constInt(0);
+                Value result =
+                    emitBinary(Opcode::ISubOvf, Type(Type::Kind::I64), zero, operand.value);
+                return {result, Type(Type::Kind::I64)};
+            }
 
-    case UnaryExpr::Op::Plus:
-        // Identity
-        return operand;
+        case UnaryExpr::Op::Not:
+            // Boolean not
+            {
+                // If operand is i1, first zext to i64
+                Value opVal = operand.value;
+                if (operand.type.kind == Type::Kind::I1)
+                {
+                    opVal = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), opVal);
+                }
+                // xor with 1
+                Value one = Value::constInt(1);
+                Value result = emitBinary(Opcode::Xor, Type(Type::Kind::I64), opVal, one);
+                // Truncate back to i1
+                result = emitUnary(Opcode::Trunc1, Type(Type::Kind::I1), result);
+                return {result, Type(Type::Kind::I1)};
+            }
+
+        case UnaryExpr::Op::Plus:
+            // Identity
+            return operand;
     }
 
     return operand;
@@ -444,14 +451,14 @@ LowerResult Lowerer::lowerBinary(const BinaryExpr &expr)
     // Handle short-circuit operators specially
     switch (expr.op)
     {
-    case BinaryExpr::Op::And:
-        return lowerLogicalAnd(expr);
-    case BinaryExpr::Op::Or:
-        return lowerLogicalOr(expr);
-    case BinaryExpr::Op::Coalesce:
-        return lowerCoalesce(expr);
-    default:
-        break;
+        case BinaryExpr::Op::And:
+            return lowerLogicalAnd(expr);
+        case BinaryExpr::Op::Or:
+            return lowerLogicalOr(expr);
+        case BinaryExpr::Op::Coalesce:
+            return lowerCoalesce(expr);
+        default:
+            break;
     }
 
     // Lower operands
@@ -492,74 +499,89 @@ LowerResult Lowerer::lowerBinary(const BinaryExpr &expr)
 
     switch (expr.op)
     {
-    // Arithmetic
-    // For signed integers (Pascal Integer type is always signed), use the .ovf
-    // variants which trap on overflow as required by the IL spec
-    case BinaryExpr::Op::Add:
-        return {emitBinary(isFloat ? Opcode::FAdd : Opcode::IAddOvf, resultType, lhsVal, rhsVal),
+        // Arithmetic
+        // For signed integers (Pascal Integer type is always signed), use the .ovf
+        // variants which trap on overflow as required by the IL spec
+        case BinaryExpr::Op::Add:
+            return {
+                emitBinary(isFloat ? Opcode::FAdd : Opcode::IAddOvf, resultType, lhsVal, rhsVal),
                 resultType};
 
-    case BinaryExpr::Op::Sub:
-        return {emitBinary(isFloat ? Opcode::FSub : Opcode::ISubOvf, resultType, lhsVal, rhsVal),
+        case BinaryExpr::Op::Sub:
+            return {
+                emitBinary(isFloat ? Opcode::FSub : Opcode::ISubOvf, resultType, lhsVal, rhsVal),
                 resultType};
 
-    case BinaryExpr::Op::Mul:
-        return {emitBinary(isFloat ? Opcode::FMul : Opcode::IMulOvf, resultType, lhsVal, rhsVal),
+        case BinaryExpr::Op::Mul:
+            return {
+                emitBinary(isFloat ? Opcode::FMul : Opcode::IMulOvf, resultType, lhsVal, rhsVal),
                 resultType};
 
-    case BinaryExpr::Op::Div:
-        // Real division always returns Real
-        if (!isFloat)
-        {
-            lhsVal = emitSitofp(lhs.value);
-            rhsVal = emitSitofp(rhs.value);
-        }
-        return {emitBinary(Opcode::FDiv, Type(Type::Kind::F64), lhsVal, rhsVal),
-                Type(Type::Kind::F64)};
+        case BinaryExpr::Op::Div:
+            // Real division always returns Real
+            if (!isFloat)
+            {
+                lhsVal = emitSitofp(lhs.value);
+                rhsVal = emitSitofp(rhs.value);
+            }
+            return {emitBinary(Opcode::FDiv, Type(Type::Kind::F64), lhsVal, rhsVal),
+                    Type(Type::Kind::F64)};
 
-    case BinaryExpr::Op::IntDiv:
-        // Integer division (with trap on divide-by-zero)
-        return {emitBinary(Opcode::SDivChk0, Type(Type::Kind::I64), lhs.value, rhs.value),
-                Type(Type::Kind::I64)};
+        case BinaryExpr::Op::IntDiv:
+            // Integer division (with trap on divide-by-zero)
+            return {emitBinary(Opcode::SDivChk0, Type(Type::Kind::I64), lhs.value, rhs.value),
+                    Type(Type::Kind::I64)};
 
-    case BinaryExpr::Op::Mod:
-        // Integer remainder (with trap on divide-by-zero)
-        return {emitBinary(Opcode::SRemChk0, Type(Type::Kind::I64), lhs.value, rhs.value),
-                Type(Type::Kind::I64)};
+        case BinaryExpr::Op::Mod:
+            // Integer remainder (with trap on divide-by-zero)
+            return {emitBinary(Opcode::SRemChk0, Type(Type::Kind::I64), lhs.value, rhs.value),
+                    Type(Type::Kind::I64)};
 
-    // Comparisons
-    case BinaryExpr::Op::Eq:
-        return {emitBinary(isFloat ? Opcode::FCmpEQ : Opcode::ICmpEq, Type(Type::Kind::I1),
-                           lhsVal, rhsVal),
-                Type(Type::Kind::I1)};
+        // Comparisons
+        case BinaryExpr::Op::Eq:
+            return {emitBinary(isFloat ? Opcode::FCmpEQ : Opcode::ICmpEq,
+                               Type(Type::Kind::I1),
+                               lhsVal,
+                               rhsVal),
+                    Type(Type::Kind::I1)};
 
-    case BinaryExpr::Op::Ne:
-        return {emitBinary(isFloat ? Opcode::FCmpNE : Opcode::ICmpNe, Type(Type::Kind::I1),
-                           lhsVal, rhsVal),
-                Type(Type::Kind::I1)};
+        case BinaryExpr::Op::Ne:
+            return {emitBinary(isFloat ? Opcode::FCmpNE : Opcode::ICmpNe,
+                               Type(Type::Kind::I1),
+                               lhsVal,
+                               rhsVal),
+                    Type(Type::Kind::I1)};
 
-    case BinaryExpr::Op::Lt:
-        return {emitBinary(isFloat ? Opcode::FCmpLT : Opcode::SCmpLT, Type(Type::Kind::I1),
-                           lhsVal, rhsVal),
-                Type(Type::Kind::I1)};
+        case BinaryExpr::Op::Lt:
+            return {emitBinary(isFloat ? Opcode::FCmpLT : Opcode::SCmpLT,
+                               Type(Type::Kind::I1),
+                               lhsVal,
+                               rhsVal),
+                    Type(Type::Kind::I1)};
 
-    case BinaryExpr::Op::Le:
-        return {emitBinary(isFloat ? Opcode::FCmpLE : Opcode::SCmpLE, Type(Type::Kind::I1),
-                           lhsVal, rhsVal),
-                Type(Type::Kind::I1)};
+        case BinaryExpr::Op::Le:
+            return {emitBinary(isFloat ? Opcode::FCmpLE : Opcode::SCmpLE,
+                               Type(Type::Kind::I1),
+                               lhsVal,
+                               rhsVal),
+                    Type(Type::Kind::I1)};
 
-    case BinaryExpr::Op::Gt:
-        return {emitBinary(isFloat ? Opcode::FCmpGT : Opcode::SCmpGT, Type(Type::Kind::I1),
-                           lhsVal, rhsVal),
-                Type(Type::Kind::I1)};
+        case BinaryExpr::Op::Gt:
+            return {emitBinary(isFloat ? Opcode::FCmpGT : Opcode::SCmpGT,
+                               Type(Type::Kind::I1),
+                               lhsVal,
+                               rhsVal),
+                    Type(Type::Kind::I1)};
 
-    case BinaryExpr::Op::Ge:
-        return {emitBinary(isFloat ? Opcode::FCmpGE : Opcode::SCmpGE, Type(Type::Kind::I1),
-                           lhsVal, rhsVal),
-                Type(Type::Kind::I1)};
+        case BinaryExpr::Op::Ge:
+            return {emitBinary(isFloat ? Opcode::FCmpGE : Opcode::SCmpGE,
+                               Type(Type::Kind::I1),
+                               lhsVal,
+                               rhsVal),
+                    Type(Type::Kind::I1)};
 
-    default:
-        return {Value::constInt(0), Type(Type::Kind::I64)};
+        default:
+            return {Value::constInt(0), Type(Type::Kind::I64)};
     }
 }
 
@@ -651,8 +673,7 @@ LowerResult Lowerer::lowerCoalesce(const BinaryExpr &expr)
     // For reference-type optionals, null pointer means nil
     // For value-type optionals, we'd check the hasValue flag at offset 0
     // Currently, both are represented as Ptr (null = nil)
-    Value isNotNil = emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1),
-                                left.value, Value::null());
+    Value isNotNil = emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1), left.value, Value::null());
 
     emitCBr(isNotNil, useLeftBlock, evalRhsBlock);
 
@@ -808,7 +829,8 @@ LowerResult Lowerer::lowerCall(const CallExpr &expr)
     {
         std::string key = toLower(callee);
         auto typeOpt = sema_->lookupType(key);
-        if (typeOpt && (typeOpt->kind == PasTypeKind::Class || typeOpt->kind == PasTypeKind::Interface))
+        if (typeOpt &&
+            (typeOpt->kind == PasTypeKind::Class || typeOpt->kind == PasTypeKind::Interface))
         {
             // Expect exactly one argument; if missing, return null pointer
             if (expr.args.empty())
@@ -832,14 +854,14 @@ LowerResult Lowerer::lowerCall(const CallExpr &expr)
             }
             else
             {
-                // For interfaces, we could support rt_cast_as_iface; for now use class path if available
-                // Fallback: return original pointer
+                // For interfaces, we could support rt_cast_as_iface; for now use class path if
+                // available Fallback: return original pointer
                 return obj;
             }
 
             usedExterns_.insert("rt_cast_as");
-            Value casted = emitCallRet(Type(Type::Kind::Ptr), "rt_cast_as",
-                                       {obj.value, Value::constInt(classId)});
+            Value casted = emitCallRet(
+                Type(Type::Kind::Ptr), "rt_cast_as", {obj.value, Value::constInt(classId)});
             return {casted, Type(Type::Kind::Ptr)};
         }
     }
@@ -855,21 +877,21 @@ LowerResult Lowerer::lowerCall(const CallExpr &expr)
         PasType pasType;
         switch (argResult.type.kind)
         {
-        case Type::Kind::I64:
-        case Type::Kind::I32:
-        case Type::Kind::I1:
-            pasType.kind = PasTypeKind::Integer;
-            break;
-        case Type::Kind::F64:
-            pasType.kind = PasTypeKind::Real;
-            break;
-        case Type::Kind::Ptr:
-        case Type::Kind::Str:
-            pasType.kind = PasTypeKind::String;
-            break;
-        default:
-            pasType.kind = PasTypeKind::Unknown;
-            break;
+            case Type::Kind::I64:
+            case Type::Kind::I32:
+            case Type::Kind::I1:
+                pasType.kind = PasTypeKind::Integer;
+                break;
+            case Type::Kind::F64:
+                pasType.kind = PasTypeKind::Real;
+                break;
+            case Type::Kind::Ptr:
+            case Type::Kind::Str:
+                pasType.kind = PasTypeKind::String;
+                break;
+            default:
+                pasType.kind = PasTypeKind::Unknown;
+                break;
         }
         argTypes.push_back(pasType);
     }
@@ -884,8 +906,7 @@ LowerResult Lowerer::lowerCall(const CallExpr &expr)
         const BuiltinDescriptor &desc = getBuiltinDescriptor(builtin);
 
         // Determine first arg type for dispatch
-        PasTypeKind firstArgType =
-            argTypes.empty() ? PasTypeKind::Unknown : argTypes[0].kind;
+        PasTypeKind firstArgType = argTypes.empty() ? PasTypeKind::Unknown : argTypes[0].kind;
 
         // Handle Write/WriteLn specially (variadic with type dispatch)
         if (builtin == PascalBuiltin::Write || builtin == PascalBuiltin::WriteLn)
@@ -1067,7 +1088,8 @@ LowerResult Lowerer::lowerCall(const CallExpr &expr)
                 {
                     // Get itable pointer via runtime lookup
                     usedExterns_.insert("rt_get_interface_impl");
-                    Value itablePtr = emitCallRet(Type(Type::Kind::Ptr), "rt_get_interface_impl",
+                    Value itablePtr = emitCallRet(Type(Type::Kind::Ptr),
+                                                  "rt_get_interface_impl",
                                                   {Value::constInt(classLayoutIt->second.classId),
                                                    Value::constInt(layoutIt->second.interfaceId)});
 
@@ -1174,8 +1196,8 @@ LowerResult Lowerer::lowerIndex(const IndexExpr &expr)
 
                 // Calculate offset: index * elemSize
                 LowerResult index = lowerExpr(*expr.indices[0]);
-                Value offset = emitBinary(Opcode::IMulOvf, Type(Type::Kind::I64),
-                                          index.value, Value::constInt(elemSize));
+                Value offset = emitBinary(
+                    Opcode::IMulOvf, Type(Type::Kind::I64), index.value, Value::constInt(elemSize));
 
                 // GEP to get element address
                 Value elemAddr = emitGep(baseAddr, offset);
@@ -1193,8 +1215,9 @@ LowerResult Lowerer::lowerIndex(const IndexExpr &expr)
     return {Value::constInt(0), Type(Type::Kind::I64)};
 }
 
-std::pair<Lowerer::Value, Lowerer::Type> Lowerer::getFieldAddress(
-    Value baseAddr, const PasType &baseType, const std::string &fieldName)
+std::pair<Lowerer::Value, Lowerer::Type> Lowerer::getFieldAddress(Value baseAddr,
+                                                                  const PasType &baseType,
+                                                                  const std::string &fieldName)
 {
     std::string fieldKey = toLower(fieldName);
 
@@ -1211,7 +1234,8 @@ std::pair<Lowerer::Value, Lowerer::Type> Lowerer::getFieldAddress(
                 if (toLower(field.name) == fieldKey)
                 {
                     Type fieldType = mapType(field.type);
-                    Value fieldAddr = emitGep(baseAddr, Value::constInt(static_cast<long long>(field.offset)));
+                    Value fieldAddr =
+                        emitGep(baseAddr, Value::constInt(static_cast<long long>(field.offset)));
                     return {fieldAddr, fieldType};
                 }
             }
@@ -1287,7 +1311,8 @@ LowerResult Lowerer::lowerField(const FieldExpr &expr)
                         // Copy callee from the field expression to get the method name
                         syntheticCall.callee = std::make_unique<FieldExpr>(
                             std::make_unique<NameExpr>(nameExpr.name, nameExpr.loc),
-                            expr.field, expr.loc);
+                            expr.field,
+                            expr.loc);
 
                         return lowerConstructorCall(syntheticCall);
                     }
@@ -1388,7 +1413,8 @@ LowerResult Lowerer::lowerField(const FieldExpr &expr)
                             {
                                 selfType.fields[fname] = std::make_shared<PasType>(finfo.type);
                             }
-                            auto [fieldAddr, fieldType] = getFieldAddress(selfPtr, selfType, nameExpr.name);
+                            auto [fieldAddr, fieldType] =
+                                getFieldAddress(selfPtr, selfType, nameExpr.name);
 
                             // Load the field value (which is a pointer to another object)
                             objPtr = emitLoad(Type(Type::Kind::Ptr), fieldAddr);
@@ -1416,7 +1442,8 @@ LowerResult Lowerer::lowerField(const FieldExpr &expr)
             return {Value::constInt(0), Type(Type::Kind::I64)};
         }
 
-        // Check if this is a property access or a zero-argument method call (Pascal allows calling without parens)
+        // Check if this is a property access or a zero-argument method call (Pascal allows calling
+        // without parens)
         auto *classInfo = sema_->lookupClass(toLower(baseType.name));
         if (classInfo)
         {
@@ -1464,10 +1491,12 @@ LowerResult Lowerer::lowerField(const FieldExpr &expr)
                     {
                         for (const auto &[fname, finfo] : defClassInfo->fields)
                         {
-                            classTypeWithFields.fields[fname] = std::make_shared<PasType>(finfo.type);
+                            classTypeWithFields.fields[fname] =
+                                std::make_shared<PasType>(finfo.type);
                         }
                     }
-                    auto [fieldAddr, fieldType] = getFieldAddress(objPtr, classTypeWithFields, p.getter.name);
+                    auto [fieldAddr, fieldType] =
+                        getFieldAddress(objPtr, classTypeWithFields, p.getter.name);
                     Value result = emitLoad(fieldType, fieldAddr);
                     return {result, fieldType};
                 }
@@ -1479,7 +1508,8 @@ LowerResult Lowerer::lowerField(const FieldExpr &expr)
             {
                 // This is a method - check if it can be called with zero arguments
                 const auto &methodInfo = methodIt->second;
-                if (methodInfo.requiredParams == 0 && methodInfo.returnType.kind != PasTypeKind::Void)
+                if (methodInfo.requiredParams == 0 &&
+                    methodInfo.returnType.kind != PasTypeKind::Void)
                 {
                     // Call the method with just the Self pointer
                     std::string methodName = baseType.name + "." + expr.field;

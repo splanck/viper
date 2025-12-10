@@ -220,7 +220,10 @@ struct PasType
     }
 
     /// @brief Check if this is an optional type (T?).
-    bool isOptional() const { return kind == PasTypeKind::Optional; }
+    bool isOptional() const
+    {
+        return kind == PasTypeKind::Optional;
+    }
 
     /// @brief Unwrap an optional type to get the inner type.
     /// @return The inner type if this is optional, or *this if not optional.
@@ -245,8 +248,7 @@ struct PasType
     /// @details Non-optional reference types cannot be assigned nil.
     bool isNonOptionalReference() const
     {
-        return (kind == PasTypeKind::Class || kind == PasTypeKind::Interface) &&
-               !isOptional();
+        return (kind == PasTypeKind::Class || kind == PasTypeKind::Interface) && !isOptional();
     }
 
     /// @brief Check if this type requires definite assignment before use.
@@ -257,7 +259,10 @@ struct PasType
     }
 
     /// @brief Check if this is a numeric type (Integer or Real).
-    bool isNumeric() const { return kind == PasTypeKind::Integer || kind == PasTypeKind::Real; }
+    bool isNumeric() const
+    {
+        return kind == PasTypeKind::Integer || kind == PasTypeKind::Real;
+    }
 
     /// @brief Check if this is an ordinal type (Integer, Boolean, Enum, Range).
     bool isOrdinal() const
@@ -270,8 +275,7 @@ struct PasType
     bool isReference() const
     {
         return kind == PasTypeKind::Class || kind == PasTypeKind::Interface ||
-               kind == PasTypeKind::String ||
-               (kind == PasTypeKind::Array && dimensions == 0);
+               kind == PasTypeKind::String || (kind == PasTypeKind::Array && dimensions == 0);
     }
 
     /// @brief Check if this is a value type (Integer, Real, Boolean, Enum, Record, fixed Array).
@@ -280,8 +284,7 @@ struct PasType
     {
         return kind == PasTypeKind::Integer || kind == PasTypeKind::Real ||
                kind == PasTypeKind::Boolean || kind == PasTypeKind::Enum ||
-               kind == PasTypeKind::Record ||
-               (kind == PasTypeKind::Array && dimensions > 0);
+               kind == PasTypeKind::Record || (kind == PasTypeKind::Array && dimensions > 0);
     }
 
     /// @brief For optional types, check if inner type is a value type.
@@ -315,7 +318,10 @@ struct PasType
     }
 
     /// @brief Check if this is an error/unknown type.
-    bool isError() const { return kind == PasTypeKind::Unknown; }
+    bool isError() const
+    {
+        return kind == PasTypeKind::Unknown;
+    }
 
     /// @brief Get a string representation of this type for diagnostics.
     std::string toString() const;
@@ -328,13 +334,13 @@ struct PasType
 /// @brief Signature for a procedure or function.
 struct FuncSignature
 {
-    std::string name;                               ///< Procedure/function name
+    std::string name;                                    ///< Procedure/function name
     std::vector<std::pair<std::string, PasType>> params; ///< Parameter name-type pairs
-    std::vector<bool> isVarParam;                   ///< Whether each param is var/out
-    std::vector<bool> hasDefault;                   ///< Whether each param has a default value
-    PasType returnType;                             ///< Return type (Void for procedures)
-    bool isForward{false};                          ///< Forward declaration?
-    size_t requiredParams{0};                       ///< Number of required (non-default) params
+    std::vector<bool> isVarParam;                        ///< Whether each param is var/out
+    std::vector<bool> hasDefault;                        ///< Whether each param has a default value
+    PasType returnType;                                  ///< Return type (Void for procedures)
+    bool isForward{false};                               ///< Forward declaration?
+    size_t requiredParams{0}; ///< Number of required (non-default) params
 };
 
 //===----------------------------------------------------------------------===//
@@ -354,7 +360,7 @@ struct MethodInfo
     bool isAbstract{false};                              ///< Marked abstract
     Visibility visibility{Visibility::Public};           ///< Visibility
     il::support::SourceLoc loc;                          ///< Source location
-    size_t requiredParams{0};                            ///< Number of required (non-default) params
+    size_t requiredParams{0}; ///< Number of required (non-default) params
 };
 
 /// @brief Information about a class field.
@@ -377,7 +383,7 @@ struct PropertyAccessor
         Method,
     };
     Kind kind{Kind::None};
-    std::string name;               ///< Field or method name
+    std::string name; ///< Field or method name
 };
 
 /// @brief Information about a class property.
@@ -394,25 +400,25 @@ struct PropertyInfo
 /// @brief Information about a class.
 struct ClassInfo
 {
-    std::string name;                              ///< Class name
-    std::string baseClass;                         ///< Base class name (empty if none)
-    std::vector<std::string> interfaces;           ///< Implemented interface names
-    std::map<std::string, MethodInfo> methods;     ///< Method name -> info (lowercase key)
-    std::map<std::string, FieldInfo> fields;       ///< Field name -> info (lowercase key)
-    std::map<std::string, PropertyInfo> properties;///< Property name -> info (lowercase key)
-    bool hasConstructor{false};                    ///< Has at least one constructor
-    bool hasDestructor{false};                     ///< Has a destructor
-    bool isAbstract{false};                        ///< True if class declares or inherits abstract methods not implemented
-    il::support::SourceLoc loc;                    ///< Source location
+    std::string name;                               ///< Class name
+    std::string baseClass;                          ///< Base class name (empty if none)
+    std::vector<std::string> interfaces;            ///< Implemented interface names
+    std::map<std::string, MethodInfo> methods;      ///< Method name -> info (lowercase key)
+    std::map<std::string, FieldInfo> fields;        ///< Field name -> info (lowercase key)
+    std::map<std::string, PropertyInfo> properties; ///< Property name -> info (lowercase key)
+    bool hasConstructor{false};                     ///< Has at least one constructor
+    bool hasDestructor{false};                      ///< Has a destructor
+    bool isAbstract{false}; ///< True if class declares or inherits abstract methods not implemented
+    il::support::SourceLoc loc; ///< Source location
 };
 
 /// @brief Information about an interface.
 struct InterfaceInfo
 {
-    std::string name;                              ///< Interface name
-    std::vector<std::string> baseInterfaces;       ///< Extended interface names
-    std::map<std::string, MethodInfo> methods;     ///< Method name -> info (lowercase key)
-    il::support::SourceLoc loc;                    ///< Source location
+    std::string name;                          ///< Interface name
+    std::vector<std::string> baseInterfaces;   ///< Extended interface names
+    std::map<std::string, MethodInfo> methods; ///< Method name -> info (lowercase key)
+    il::support::SourceLoc loc;                ///< Source location
 };
 
 //===----------------------------------------------------------------------===//
@@ -428,7 +434,7 @@ struct ConstantValue
     double realVal{0.0};
     std::string strVal;
     bool boolVal{false};
-    bool hasValue{false};  ///< True if we have the actual value
+    bool hasValue{false}; ///< True if we have the actual value
 
     /// @brief Create an integer constant.
     static ConstantValue makeInt(int64_t val)
@@ -474,11 +480,11 @@ struct ConstantValue
 /// @brief Information about a compiled unit's exports.
 struct UnitInfo
 {
-    std::string name;                              ///< Unit name
-    std::map<std::string, PasType> types;          ///< Exported types (lowercase key)
-    std::map<std::string, ConstantValue> constants; ///< Exported constants with values
-    std::map<std::string, FuncSignature> functions; ///< Exported functions/procedures
-    std::map<std::string, ClassInfo> classes;      ///< Exported classes
+    std::string name;                                ///< Unit name
+    std::map<std::string, PasType> types;            ///< Exported types (lowercase key)
+    std::map<std::string, ConstantValue> constants;  ///< Exported constants with values
+    std::map<std::string, FuncSignature> functions;  ///< Exported functions/procedures
+    std::map<std::string, ClassInfo> classes;        ///< Exported classes
     std::map<std::string, InterfaceInfo> interfaces; ///< Exported interfaces
 };
 
@@ -510,7 +516,10 @@ class SemanticAnalyzer
     bool analyze(Unit &unit);
 
     /// @brief Check if any errors occurred during analysis.
-    bool hasError() const { return hasError_; }
+    bool hasError() const
+    {
+        return hasError_;
+    }
 
     /// @brief Get the resolved type of an expression.
     /// @param expr Expression to type-check.
@@ -641,15 +650,14 @@ class SemanticAnalyzer
     void checkOverrides(const ClassInfo &classInfo);
 
     /// @brief Check method overrides with an effective base class.
-    void checkOverridesWithBase(const ClassInfo &classInfo,
-                                 const std::string &effectiveBaseClass);
+    void checkOverridesWithBase(const ClassInfo &classInfo, const std::string &effectiveBaseClass);
 
     /// @brief Check interface implementations for a class.
     void checkInterfaceImplementation(const ClassInfo &classInfo);
 
     /// @brief Check interface implementations with effective interface list.
     void checkInterfaceImplementationWith(const ClassInfo &classInfo,
-                                           const std::vector<std::string> &effectiveInterfaces);
+                                          const std::vector<std::string> &effectiveInterfaces);
 
     /// @brief Check weak field validity.
     void checkWeakFields(const ClassInfo &classInfo);
@@ -662,7 +670,7 @@ class SemanticAnalyzer
     /// @param methodName Method name to find.
     /// @return The method info if found virtual in a base class, nullopt otherwise.
     std::optional<MethodInfo> findVirtualInBase(const std::string &className,
-                                                 const std::string &methodName) const;
+                                                const std::string &methodName) const;
 
     /// @brief Check if a method signature matches another.
     bool signaturesMatch(const MethodInfo &m1, const MethodInfo &m2) const;
@@ -672,16 +680,16 @@ class SemanticAnalyzer
     /// @param interfaceName Name of the interface.
     /// @return True if the class implements the interface.
     bool classImplementsInterface(const std::string &className,
-                                   const std::string &interfaceName) const;
+                                  const std::string &interfaceName) const;
 
     /// @brief Check if a class inherits from another class.
     /// @param derivedName Name of the derived class.
     /// @param baseName Name of the potential base class.
     /// @return True if derived inherits from base (or they are the same).
-    bool classInheritsFrom(const std::string &derivedName,
-                           const std::string &baseName) const;
+    bool classInheritsFrom(const std::string &derivedName, const std::string &baseName) const;
 
-    /// @brief Determine if a class is abstract (declares or inherits abstract methods not implemented).
+    /// @brief Determine if a class is abstract (declares or inherits abstract methods not
+    /// implemented).
     /// @param className Name of the class.
     /// @return True if abstract, false otherwise.
     bool isAbstractClass(const std::string &className) const;
@@ -691,7 +699,7 @@ class SemanticAnalyzer
     /// @param baseName Name of the potential base interface.
     /// @return True if derived extends base (or they are the same).
     bool interfaceExtendsInterface(const std::string &derivedName,
-                                    const std::string &baseName) const;
+                                   const std::string &baseName) const;
 
     //=========================================================================
     // Pass 2: Body Analysis
@@ -871,8 +879,7 @@ class SemanticAnalyzer
     /// @param params The parameters to validate.
     /// @param loc Location for error reporting.
     /// @return Number of required parameters (before first default).
-    size_t validateDefaultParams(const std::vector<ParamDecl> &params,
-                                  il::support::SourceLoc loc);
+    size_t validateDefaultParams(const std::vector<ParamDecl> &params, il::support::SourceLoc loc);
 
     //=========================================================================
     // Scope Management
@@ -955,7 +962,7 @@ class SemanticAnalyzer
     //=========================================================================
 
     il::support::DiagnosticEngine &diag_; ///< Diagnostic engine
-    bool hasError_{false};                 ///< Error flag
+    bool hasError_{false};                ///< Error flag
 
     /// @brief Registered type names -> types
     std::unordered_map<std::string, PasType> types_;
@@ -1029,8 +1036,8 @@ class SemanticAnalyzer
     /// @brief Info about a 'with' context for name resolution.
     struct WithContext
     {
-        PasType type;                ///< Type of the with expression (class or record)
-        std::string tempVarName;     ///< Generated temp variable name for lowering
+        PasType type;            ///< Type of the with expression (class or record)
+        std::string tempVarName; ///< Generated temp variable name for lowering
     };
 
     /// @brief Stack of 'with' contexts (innermost first for lookup priority).

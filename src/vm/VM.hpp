@@ -373,7 +373,7 @@ class VM
             uint32_t interruptEveryN = 0;
             std::function<bool(VM &)> pollCallback;
             bool enableOpcodeCounts = true; ///< Runtime toggle for opcode counting
-        } config; ///< Per-run polling configuration
+        } config;                           ///< Per-run polling configuration
 
         uint64_t pollTick = 0; ///< Instruction counter for polling cadence
 

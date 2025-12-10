@@ -48,7 +48,8 @@ using il::core::Opcode;
 // (Pattern-lowering moved to LowerILToMIR)
 
 constexpr std::string_view kUsage =
-    "usage: ilc codegen arm64 <file.il> [-S <file.s>] [-o <a.out>] [-run-native]\n";
+    "usage: ilc codegen arm64 <file.il> [-S <file.s>] [-o <a.out>] [-run-native]\n"
+    "       [--dump-mir-before-ra] [--dump-mir-after-ra] [--dump-mir-full]\n";
 
 struct ArgvView
 {
@@ -87,6 +88,8 @@ struct Options
     std::optional<std::string> output_o; // when set without -run-native, emit object/exe here
     bool emit_asm = false;               // true when -S provided
     bool run_native = false;             // execute after linking
+    bool dump_mir_before_ra = false;     // dump MIR before register allocation
+    bool dump_mir_after_ra = false;      // dump MIR after register allocation
 };
 
 std::optional<Options> parseArgs(const ArgvView &args)
@@ -125,6 +128,22 @@ std::optional<Options> parseArgs(const ArgvView &args)
         if (tok == "-run-native")
         {
             opts.run_native = true;
+            continue;
+        }
+        if (tok == "--dump-mir-before-ra")
+        {
+            opts.dump_mir_before_ra = true;
+            continue;
+        }
+        if (tok == "--dump-mir-after-ra")
+        {
+            opts.dump_mir_after_ra = true;
+            continue;
+        }
+        if (tok == "--dump-mir-full")
+        {
+            opts.dump_mir_before_ra = true;
+            opts.dump_mir_after_ra = true;
             continue;
         }
         std::cerr << "error: unknown flag '" << tok << "'\n" << kUsage;
@@ -339,7 +358,19 @@ int emitAndMaybeLink(const Options &opts)
                 }
             }
         }
+        // Dump MIR before register allocation if requested
+        if (opts.dump_mir_before_ra)
+        {
+            std::cerr << "=== MIR before RA: " << fn.name << " ===\n";
+            std::cerr << toString(mir) << "\n";
+        }
         [[maybe_unused]] auto ra = allocate(mir, ti);
+        // Dump MIR after register allocation if requested
+        if (opts.dump_mir_after_ra)
+        {
+            std::cerr << "=== MIR after RA: " << fn.name << " ===\n";
+            std::cerr << toString(mir) << "\n";
+        }
         emitter.emitFunction(asmStream, mir);
         asmStream << "\n";
     }

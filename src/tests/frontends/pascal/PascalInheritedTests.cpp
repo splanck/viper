@@ -11,8 +11,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/pascal/Compiler.hpp"
-#include "support/source_manager.hpp"
 #include "il/core/Opcode.hpp"
+#include "support/source_manager.hpp"
 
 #ifdef VIPER_HAS_GTEST
 #include <gtest/gtest.h>
@@ -29,7 +29,11 @@ namespace
 TEST(PascalInheritedTest, CallsBaseImplementation)
 {
     SourceManager sm;
-    const std::string source = "program Test; type TAnimal = class public procedure Speak; virtual; end; TDog = class(TAnimal) public procedure Speak; override; end; procedure TAnimal.Speak; begin WriteLn('Animal') end; procedure TDog.Speak; begin inherited; WriteLn('Dog') end; var a: TAnimal; begin a := TDog.Create; a.Speak end.";
+    const std::string source =
+        "program Test; type TAnimal = class public procedure Speak; virtual; end; TDog = "
+        "class(TAnimal) public procedure Speak; override; end; procedure TAnimal.Speak; begin "
+        "WriteLn('Animal') end; procedure TDog.Speak; begin inherited; WriteLn('Dog') end; var a: "
+        "TAnimal; begin a := TDog.Create; a.Speak end.";
     PascalCompilerInput input{.source = source, .path = "test_inherited.pas"};
     PascalCompilerOptions opts{};
 
@@ -67,4 +71,3 @@ int main()
     return RUN_ALL_TESTS();
 }
 #endif
-

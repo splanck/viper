@@ -58,18 +58,17 @@ bool analyzeProgram(const std::string &source, DiagnosticEngine &diag)
 TEST(PascalWithTest, BasicRecordWith)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type TPoint = record X, Y: Integer; end;\n"
-        "var p: TPoint;\n"
-        "begin\n"
-        "  with p do\n"
-        "  begin\n"
-        "    X := 1;\n"
-        "    Y := 2;\n"
-        "  end;\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type TPoint = record X, Y: Integer; end;\n"
+                                 "var p: TPoint;\n"
+                                 "begin\n"
+                                 "  with p do\n"
+                                 "  begin\n"
+                                 "    X := 1;\n"
+                                 "    Y := 2;\n"
+                                 "  end;\n"
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -77,15 +76,14 @@ TEST(PascalWithTest, BasicRecordWith)
 TEST(PascalWithTest, RecordWithExpression)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type TPoint = record X, Y: Integer; end;\n"
-        "var p: TPoint;\n"
-        "begin\n"
-        "  with p do\n"
-        "    X := X + Y;\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type TPoint = record X, Y: Integer; end;\n"
+                                 "var p: TPoint;\n"
+                                 "begin\n"
+                                 "  with p do\n"
+                                 "    X := X + Y;\n"
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -97,21 +95,20 @@ TEST(PascalWithTest, RecordWithExpression)
 TEST(PascalWithTest, BasicClassWith)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type TPoint = class\n"
-        "public\n"
-        "  X, Y: Integer;\n"
-        "end;\n"
-        "var p: TPoint;\n"
-        "begin\n"
-        "  with p do\n"
-        "  begin\n"
-        "    X := 10;\n"
-        "    Y := 20;\n"
-        "  end;\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type TPoint = class\n"
+                                 "public\n"
+                                 "  X, Y: Integer;\n"
+                                 "end;\n"
+                                 "var p: TPoint;\n"
+                                 "begin\n"
+                                 "  with p do\n"
+                                 "  begin\n"
+                                 "    X := 10;\n"
+                                 "    Y := 20;\n"
+                                 "  end;\n"
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -119,24 +116,23 @@ TEST(PascalWithTest, BasicClassWith)
 TEST(PascalWithTest, ClassWithMethodCall)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type TPoint = class\n"
-        "public\n"
-        "  X, Y: Integer;\n"
-        "  procedure SetXY(AX, AY: Integer);\n"
-        "end;\n"
-        "procedure TPoint.SetXY(AX, AY: Integer);\n"
-        "begin\n"
-        "  X := AX;\n"
-        "  Y := AY;\n"
-        "end;\n"
-        "var p: TPoint;\n"
-        "begin\n"
-        "  with p do\n"
-        "    SetXY(1, 2);\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type TPoint = class\n"
+                                 "public\n"
+                                 "  X, Y: Integer;\n"
+                                 "  procedure SetXY(AX, AY: Integer);\n"
+                                 "end;\n"
+                                 "procedure TPoint.SetXY(AX, AY: Integer);\n"
+                                 "begin\n"
+                                 "  X := AX;\n"
+                                 "  Y := AY;\n"
+                                 "end;\n"
+                                 "var p: TPoint;\n"
+                                 "begin\n"
+                                 "  with p do\n"
+                                 "    SetXY(1, 2);\n"
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -148,20 +144,19 @@ TEST(PascalWithTest, ClassWithMethodCall)
 TEST(PascalWithTest, MultipleObjects)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type\n"
-        "  TPoint = record X, Y: Integer; end;\n"
-        "  TRect = record Left, Top, Right, Bottom: Integer; end;\n"
-        "var p: TPoint; r: TRect;\n"
-        "begin\n"
-        "  with p, r do\n"
-        "  begin\n"
-        "    X := 1;\n"
-        "    Left := 10;\n"
-        "  end;\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  TPoint = record X, Y: Integer; end;\n"
+                                 "  TRect = record Left, Top, Right, Bottom: Integer; end;\n"
+                                 "var p: TPoint; r: TRect;\n"
+                                 "begin\n"
+                                 "  with p, r do\n"
+                                 "  begin\n"
+                                 "    X := 1;\n"
+                                 "    Left := 10;\n"
+                                 "  end;\n"
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -173,23 +168,22 @@ TEST(PascalWithTest, MultipleObjects)
 TEST(PascalWithTest, NestedWith)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type\n"
-        "  TPoint = record X, Y: Integer; end;\n"
-        "  TRect = record Left, Top: Integer; end;\n"
-        "var p: TPoint; r: TRect;\n"
-        "begin\n"
-        "  with p do\n"
-        "  begin\n"
-        "    X := 1;\n"
-        "    with r do\n"
-        "    begin\n"
-        "      Left := X;\n"
-        "    end;\n"
-        "  end;\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  TPoint = record X, Y: Integer; end;\n"
+                                 "  TRect = record Left, Top: Integer; end;\n"
+                                 "var p: TPoint; r: TRect;\n"
+                                 "begin\n"
+                                 "  with p do\n"
+                                 "  begin\n"
+                                 "    X := 1;\n"
+                                 "    with r do\n"
+                                 "    begin\n"
+                                 "      Left := X;\n"
+                                 "    end;\n"
+                                 "  end;\n"
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -201,18 +195,17 @@ TEST(PascalWithTest, NestedWith)
 TEST(PascalWithTest, LocalShadowsWithField)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type TPoint = record X, Y: Integer; end;\n"
-        "var p: TPoint; X: Integer;\n"
-        "begin\n"
-        "  X := 100;\n"
-        "  with p do\n"
-        "  begin\n"
-        "    X := 1;\n"   // This should refer to local X, not p.X
-        "  end;\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type TPoint = record X, Y: Integer; end;\n"
+                                 "var p: TPoint; X: Integer;\n"
+                                 "begin\n"
+                                 "  X := 100;\n"
+                                 "  with p do\n"
+                                 "  begin\n"
+                                 "    X := 1;\n" // This should refer to local X, not p.X
+                                 "  end;\n"
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -224,14 +217,13 @@ TEST(PascalWithTest, LocalShadowsWithField)
 TEST(PascalWithTest, WithNonClassOrRecord)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "var x: Integer;\n"
-        "begin\n"
-        "  with x do\n"
-        "    x := 1;\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "var x: Integer;\n"
+                                 "begin\n"
+                                 "  with x do\n"
+                                 "    x := 1;\n"
+                                 "end.",
+                                 diag);
     EXPECT_FALSE(result);
     EXPECT_NE(diag.errorCount(), 0u);
 }
@@ -239,15 +231,14 @@ TEST(PascalWithTest, WithNonClassOrRecord)
 TEST(PascalWithTest, WithUndefinedField)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type TPoint = record X, Y: Integer; end;\n"
-        "var p: TPoint;\n"
-        "begin\n"
-        "  with p do\n"
-        "    Z := 1;\n"  // Z is not a field of TPoint
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type TPoint = record X, Y: Integer; end;\n"
+                                 "var p: TPoint;\n"
+                                 "begin\n"
+                                 "  with p do\n"
+                                 "    Z := 1;\n" // Z is not a field of TPoint
+                                 "end.",
+                                 diag);
     EXPECT_FALSE(result);
     EXPECT_NE(diag.errorCount(), 0u);
 }

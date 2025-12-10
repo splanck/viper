@@ -581,7 +581,8 @@ TEST(PascalASTTest, Unit)
     // Interface declaration
     std::vector<ParamDecl> params;
     auto retType = std::make_unique<NamedTypeNode>("Integer");
-    unit.interfaceDecls.push_back(std::make_unique<FunctionDecl>("MyFunc", std::move(params), std::move(retType)));
+    unit.interfaceDecls.push_back(
+        std::make_unique<FunctionDecl>("MyFunc", std::move(params), std::move(retType)));
 
     // Implementation uses
     unit.implUsedUnits = {"StrUtils"};

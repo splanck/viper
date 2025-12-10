@@ -19,8 +19,8 @@
 #include "il/core/Instr.hpp"
 #include "il/core/Opcode.hpp"
 
-#include <unordered_set>
 #include <optional>
+#include <unordered_set>
 
 using namespace il::core;
 
@@ -123,7 +123,8 @@ bool runDSE(Function &F, AnalysisManager &AM)
                 Addr a{I.operands[0], accessSize(I)};
                 for (auto it = killed.begin(); it != killed.end();)
                 {
-                    if (AA.alias(a.v, it->v, a.size, it->size) != viper::analysis::AliasResult::NoAlias)
+                    if (AA.alias(a.v, it->v, a.size, it->size) !=
+                        viper::analysis::AliasResult::NoAlias)
                         it = killed.erase(it);
                     else
                         ++it;
@@ -157,7 +158,8 @@ bool runDSE(Function &F, AnalysisManager &AM)
                     // Check aliasing against the killed set using BasicAA
                     for (const auto &k : killed)
                     {
-                        if (AA.alias(a.v, k.v, a.size, k.size) != viper::analysis::AliasResult::NoAlias)
+                        if (AA.alias(a.v, k.v, a.size, k.size) !=
+                            viper::analysis::AliasResult::NoAlias)
                         {
                             // An aliasing later store exists; current is dead
                             dead = true;

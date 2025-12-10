@@ -131,12 +131,11 @@ class ILGenerator
 
     /// @brief Generate a random value (constant or existing temp).
     [[nodiscard]] il::core::Value randomValue(const std::vector<unsigned> &availableTemps,
-                                               std::int64_t minConst,
-                                               std::int64_t maxConst);
+                                              std::int64_t minConst,
+                                              std::int64_t maxConst);
 
     /// @brief Pick a random element from an array.
-    template <typename T, std::size_t N>
-    [[nodiscard]] const T &randomChoice(const T (&arr)[N])
+    template <typename T, std::size_t N> [[nodiscard]] const T &randomChoice(const T (&arr)[N])
     {
         std::uniform_int_distribution<std::size_t> dist(0, N - 1);
         return arr[dist(rng_)];

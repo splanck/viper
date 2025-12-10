@@ -5,11 +5,11 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "il/transform/AnalysisManager.hpp"
 #include "il/transform/LICM.hpp"
 #include "il/transform/LoopSimplify.hpp"
-#include "il/transform/AnalysisManager.hpp"
-#include "il/transform/analysis/LoopInfo.hpp"
 #include "il/transform/analysis/Liveness.hpp"
+#include "il/transform/analysis/LoopInfo.hpp"
 
 #include "il/analysis/BasicAA.hpp"
 #include "il/analysis/CFG.hpp"
@@ -44,7 +44,8 @@ il::transform::AnalysisRegistry makeRegistry()
             return viper::analysis::computeDominatorTree(ctx, fn);
         });
     registry.registerFunctionAnalysis<il::transform::LoopInfo>(
-        "loop-info", [](Module &mod, Function &fn) { return il::transform::computeLoopInfo(mod, fn); });
+        "loop-info",
+        [](Module &mod, Function &fn) { return il::transform::computeLoopInfo(mod, fn); });
     registry.registerFunctionAnalysis<viper::analysis::BasicAA>(
         "basic-aa", [](Module &mod, Function &fn) { return viper::analysis::BasicAA(mod, fn); });
     return registry;

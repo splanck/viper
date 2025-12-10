@@ -29,7 +29,8 @@ namespace
 TEST(PascalCastsTest, ClassTypeCastsLowerToRuntime)
 {
     SourceManager sm;
-    const std::string source = "program Test; type TAnimal = class end; TDog = class(TAnimal) end; var a: TAnimal; d: TDog; begin a := TDog.Create; d := TDog(a) end.";
+    const std::string source = "program Test; type TAnimal = class end; TDog = class(TAnimal) end; "
+                               "var a: TAnimal; d: TDog; begin a := TDog.Create; d := TDog(a) end.";
     PascalCompilerInput input{.source = source, .path = "test_cast1.pas"};
     PascalCompilerOptions opts{};
 
@@ -53,7 +54,8 @@ TEST(PascalCastsTest, ClassTypeCastsLowerToRuntime)
 TEST(PascalCastsTest, UpcastAssignmentCompiles)
 {
     SourceManager sm;
-    const std::string source = "program Test; type TAnimal = class end; TDog = class(TAnimal) end; var a: TAnimal; d: TDog; begin d := TDog.Create; a := d end.";
+    const std::string source = "program Test; type TAnimal = class end; TDog = class(TAnimal) end; "
+                               "var a: TAnimal; d: TDog; begin d := TDog.Create; a := d end.";
     PascalCompilerInput input{.source = source, .path = "test_cast2.pas"};
     PascalCompilerOptions opts{};
 
@@ -70,4 +72,3 @@ int main()
     return RUN_ALL_TESTS();
 }
 #endif
-

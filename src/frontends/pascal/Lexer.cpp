@@ -17,10 +17,10 @@
 #include "frontends/common/CharUtils.hpp"
 #include "frontends/common/NumberParsing.hpp"
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <charconv>
 #include <cstdlib>
-#include <array>
 #include <string_view>
 
 namespace il::frontends::pascal
@@ -34,94 +34,182 @@ const char *tokenKindToString(TokenKind kind)
 {
     switch (kind)
     {
-        case TokenKind::Eof:            return "eof";
-        case TokenKind::Error:          return "error";
-        case TokenKind::IntegerLiteral: return "integer";
-        case TokenKind::RealLiteral:    return "real";
-        case TokenKind::StringLiteral:  return "string";
-        case TokenKind::Identifier:     return "identifier";
-        case TokenKind::KwAnd:          return "and";
-        case TokenKind::KwArray:        return "array";
-        case TokenKind::KwBegin:        return "begin";
-        case TokenKind::KwBreak:        return "break";
-        case TokenKind::KwCase:         return "case";
-        case TokenKind::KwClass:        return "class";
-        case TokenKind::KwConst:        return "const";
-        case TokenKind::KwConstructor:  return "constructor";
-        case TokenKind::KwContinue:     return "continue";
-        case TokenKind::KwDestructor:   return "destructor";
-        case TokenKind::KwDiv:          return "div";
-        case TokenKind::KwDo:           return "do";
-        case TokenKind::KwDownto:       return "downto";
-        case TokenKind::KwElse:         return "else";
-        case TokenKind::KwEnd:          return "end";
-        case TokenKind::KwExit:         return "exit";
-        case TokenKind::KwExcept:       return "except";
-        case TokenKind::KwFinally:      return "finally";
-        case TokenKind::KwFor:          return "for";
-        case TokenKind::KwFunction:     return "function";
-        case TokenKind::KwIf:           return "if";
-        case TokenKind::KwImplementation: return "implementation";
-        case TokenKind::KwIn:           return "in";
-        case TokenKind::KwIs:           return "is";
-        case TokenKind::KwInherited:    return "inherited";
-        case TokenKind::KwAbstract:     return "abstract";
-        case TokenKind::KwInterface:    return "interface";
-        case TokenKind::KwMod:          return "mod";
-        case TokenKind::KwNil:          return "nil";
-        case TokenKind::KwNot:          return "not";
-        case TokenKind::KwOf:           return "of";
-        case TokenKind::KwOn:           return "on";
-        case TokenKind::KwOr:           return "or";
-        case TokenKind::KwOverride:     return "override";
-        case TokenKind::KwPrivate:      return "private";
-        case TokenKind::KwProcedure:    return "procedure";
-        case TokenKind::KwProgram:      return "program";
-        case TokenKind::KwPublic:       return "public";
-        case TokenKind::KwRaise:        return "raise";
-        case TokenKind::KwRecord:       return "record";
-        case TokenKind::KwRepeat:       return "repeat";
-        case TokenKind::KwThen:         return "then";
-        case TokenKind::KwTo:           return "to";
-        case TokenKind::KwTry:          return "try";
-        case TokenKind::KwType:         return "type";
-        case TokenKind::KwUnit:         return "unit";
-        case TokenKind::KwUntil:        return "until";
-        case TokenKind::KwUses:         return "uses";
-        case TokenKind::KwVar:          return "var";
-        case TokenKind::KwVirtual:      return "virtual";
-        case TokenKind::KwWeak:         return "weak";
-        case TokenKind::KwWhile:        return "while";
-        case TokenKind::KwWith:         return "with";
-        case TokenKind::KwSet:          return "set";
-        case TokenKind::KwForward:      return "forward";
-        case TokenKind::KwInitialization: return "initialization";
-        case TokenKind::KwFinalization: return "finalization";
-        case TokenKind::KwProperty:     return "property";
-        case TokenKind::Plus:           return "+";
-        case TokenKind::Minus:          return "-";
-        case TokenKind::Star:           return "*";
-        case TokenKind::Slash:          return "/";
-        case TokenKind::Equal:          return "=";
-        case TokenKind::NotEqual:       return "<>";
-        case TokenKind::Less:           return "<";
-        case TokenKind::Greater:        return ">";
-        case TokenKind::LessEqual:      return "<=";
-        case TokenKind::GreaterEqual:   return ">=";
-        case TokenKind::Assign:         return ":=";
-        case TokenKind::NilCoalesce:    return "??";
-        case TokenKind::Question:       return "?";
-        case TokenKind::Dot:            return ".";
-        case TokenKind::Comma:          return ",";
-        case TokenKind::Semicolon:      return ";";
-        case TokenKind::Colon:          return ":";
-        case TokenKind::LParen:         return "(";
-        case TokenKind::RParen:         return ")";
-        case TokenKind::LBracket:       return "[";
-        case TokenKind::RBracket:       return "]";
-        case TokenKind::Caret:          return "^";
-        case TokenKind::At:             return "@";
-        case TokenKind::DotDot:         return "..";
+        case TokenKind::Eof:
+            return "eof";
+        case TokenKind::Error:
+            return "error";
+        case TokenKind::IntegerLiteral:
+            return "integer";
+        case TokenKind::RealLiteral:
+            return "real";
+        case TokenKind::StringLiteral:
+            return "string";
+        case TokenKind::Identifier:
+            return "identifier";
+        case TokenKind::KwAnd:
+            return "and";
+        case TokenKind::KwArray:
+            return "array";
+        case TokenKind::KwBegin:
+            return "begin";
+        case TokenKind::KwBreak:
+            return "break";
+        case TokenKind::KwCase:
+            return "case";
+        case TokenKind::KwClass:
+            return "class";
+        case TokenKind::KwConst:
+            return "const";
+        case TokenKind::KwConstructor:
+            return "constructor";
+        case TokenKind::KwContinue:
+            return "continue";
+        case TokenKind::KwDestructor:
+            return "destructor";
+        case TokenKind::KwDiv:
+            return "div";
+        case TokenKind::KwDo:
+            return "do";
+        case TokenKind::KwDownto:
+            return "downto";
+        case TokenKind::KwElse:
+            return "else";
+        case TokenKind::KwEnd:
+            return "end";
+        case TokenKind::KwExit:
+            return "exit";
+        case TokenKind::KwExcept:
+            return "except";
+        case TokenKind::KwFinally:
+            return "finally";
+        case TokenKind::KwFor:
+            return "for";
+        case TokenKind::KwFunction:
+            return "function";
+        case TokenKind::KwIf:
+            return "if";
+        case TokenKind::KwImplementation:
+            return "implementation";
+        case TokenKind::KwIn:
+            return "in";
+        case TokenKind::KwIs:
+            return "is";
+        case TokenKind::KwInherited:
+            return "inherited";
+        case TokenKind::KwAbstract:
+            return "abstract";
+        case TokenKind::KwInterface:
+            return "interface";
+        case TokenKind::KwMod:
+            return "mod";
+        case TokenKind::KwNil:
+            return "nil";
+        case TokenKind::KwNot:
+            return "not";
+        case TokenKind::KwOf:
+            return "of";
+        case TokenKind::KwOn:
+            return "on";
+        case TokenKind::KwOr:
+            return "or";
+        case TokenKind::KwOverride:
+            return "override";
+        case TokenKind::KwPrivate:
+            return "private";
+        case TokenKind::KwProcedure:
+            return "procedure";
+        case TokenKind::KwProgram:
+            return "program";
+        case TokenKind::KwPublic:
+            return "public";
+        case TokenKind::KwRaise:
+            return "raise";
+        case TokenKind::KwRecord:
+            return "record";
+        case TokenKind::KwRepeat:
+            return "repeat";
+        case TokenKind::KwThen:
+            return "then";
+        case TokenKind::KwTo:
+            return "to";
+        case TokenKind::KwTry:
+            return "try";
+        case TokenKind::KwType:
+            return "type";
+        case TokenKind::KwUnit:
+            return "unit";
+        case TokenKind::KwUntil:
+            return "until";
+        case TokenKind::KwUses:
+            return "uses";
+        case TokenKind::KwVar:
+            return "var";
+        case TokenKind::KwVirtual:
+            return "virtual";
+        case TokenKind::KwWeak:
+            return "weak";
+        case TokenKind::KwWhile:
+            return "while";
+        case TokenKind::KwWith:
+            return "with";
+        case TokenKind::KwSet:
+            return "set";
+        case TokenKind::KwForward:
+            return "forward";
+        case TokenKind::KwInitialization:
+            return "initialization";
+        case TokenKind::KwFinalization:
+            return "finalization";
+        case TokenKind::KwProperty:
+            return "property";
+        case TokenKind::Plus:
+            return "+";
+        case TokenKind::Minus:
+            return "-";
+        case TokenKind::Star:
+            return "*";
+        case TokenKind::Slash:
+            return "/";
+        case TokenKind::Equal:
+            return "=";
+        case TokenKind::NotEqual:
+            return "<>";
+        case TokenKind::Less:
+            return "<";
+        case TokenKind::Greater:
+            return ">";
+        case TokenKind::LessEqual:
+            return "<=";
+        case TokenKind::GreaterEqual:
+            return ">=";
+        case TokenKind::Assign:
+            return ":=";
+        case TokenKind::NilCoalesce:
+            return "??";
+        case TokenKind::Question:
+            return "?";
+        case TokenKind::Dot:
+            return ".";
+        case TokenKind::Comma:
+            return ",";
+        case TokenKind::Semicolon:
+            return ";";
+        case TokenKind::Colon:
+            return ":";
+        case TokenKind::LParen:
+            return "(";
+        case TokenKind::RParen:
+            return ")";
+        case TokenKind::LBracket:
+            return "[";
+        case TokenKind::RBracket:
+            return "]";
+        case TokenKind::Caret:
+            return "^";
+        case TokenKind::At:
+            return "@";
+        case TokenKind::DotDot:
+            return "..";
     }
     return "?";
 }
@@ -206,9 +294,11 @@ constexpr std::array<std::string_view, 9> kPredefinedTable = {
 /// @brief Keyword lookup table (lowercase keys).
 std::optional<TokenKind> lookupKeyword(std::string_view canonical)
 {
-    auto it = std::lower_bound(
-        kKeywordTable.begin(), kKeywordTable.end(), canonical,
-        [](const KeywordEntry &entry, std::string_view key) { return entry.key < key; });
+    auto it = std::lower_bound(kKeywordTable.begin(),
+                               kKeywordTable.end(),
+                               canonical,
+                               [](const KeywordEntry &entry, std::string_view key)
+                               { return entry.key < key; });
     if (it != kKeywordTable.end() && it->key == canonical)
         return it->kind;
     return std::nullopt;
@@ -221,12 +311,12 @@ bool isPredefinedIdentifier(std::string_view canonical)
 }
 
 // Use common character utilities
-using ::il::frontends::common::char_utils::isLetter;
 using ::il::frontends::common::char_utils::isDigit;
+using ::il::frontends::common::char_utils::isHexDigit;
+using ::il::frontends::common::char_utils::isLetter;
+using ::il::frontends::common::char_utils::isWhitespace;
 using ::il::frontends::common::char_utils::toLower;
 using ::il::frontends::common::char_utils::toLowercase;
-using ::il::frontends::common::char_utils::isHexDigit;
-using ::il::frontends::common::char_utils::isWhitespace;
 
 /// @brief Check if character can start an identifier.
 /// @note Pascal identifiers start with a letter only (no underscore).

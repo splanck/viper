@@ -13,8 +13,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "frontends/pascal/Parser.hpp"
 #include "frontends/pascal/AST.hpp"
+#include "frontends/pascal/Parser.hpp"
 
 namespace il::frontends::pascal
 {
@@ -503,7 +503,8 @@ std::unique_ptr<Decl> Parser::parseMethodSignature(bool isFunction)
     bool isVirtual = false;
     bool isOverride = false;
     bool isAbstract = false;
-    while (check(TokenKind::KwVirtual) || check(TokenKind::KwOverride) || check(TokenKind::KwAbstract))
+    while (check(TokenKind::KwVirtual) || check(TokenKind::KwOverride) ||
+           check(TokenKind::KwAbstract))
     {
         if (match(TokenKind::KwVirtual))
             isVirtual = true;
@@ -519,8 +520,8 @@ std::unique_ptr<Decl> Parser::parseMethodSignature(bool isFunction)
     // Create the appropriate decl (signature only, no body)
     if (isFunction)
     {
-        auto decl = std::make_unique<FunctionDecl>(std::move(name), std::move(params),
-                                                   std::move(returnType), loc);
+        auto decl = std::make_unique<FunctionDecl>(
+            std::move(name), std::move(params), std::move(returnType), loc);
         decl->isForward = true; // Treat as forward declaration (no body)
         decl->isVirtual = isVirtual;
         decl->isOverride = isOverride;
@@ -685,7 +686,7 @@ std::unique_ptr<Decl> Parser::parseConstructorSignature()
         return nullptr;
 
     auto decl = std::make_unique<ConstructorDecl>(std::move(name), std::move(params), loc);
-    decl->isForward = true;  // Mark as signature only
+    decl->isForward = true; // Mark as signature only
     return decl;
 }
 
@@ -724,7 +725,7 @@ std::unique_ptr<Decl> Parser::parseDestructorSignature()
     }
 
     auto decl = std::make_unique<DestructorDecl>(std::move(name), loc);
-    decl->isForward = true;  // Mark as signature only
+    decl->isForward = true; // Mark as signature only
     decl->isVirtual = isVirtual;
     decl->isOverride = isOverride;
     return decl;
@@ -762,4 +763,3 @@ std::vector<std::string> Parser::parseIdentList()
 //=============================================================================
 
 } // namespace il::frontends::pascal
-

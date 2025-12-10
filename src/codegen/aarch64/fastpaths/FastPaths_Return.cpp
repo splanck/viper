@@ -10,6 +10,7 @@
 //   Handles fast-path lowering for simple return patterns:
 //   - ret %paramN: Return a parameter directly
 //   - ret const i64: Return an integer constant
+//   - ret const f64: Return a float constant
 //   - ret (const_str/addr_of): Return a symbol address
 //
 // Invariants:
@@ -136,6 +137,35 @@ std::optional<MFunction> tryReturnFastPaths(FastPathContext &ctx)
                     ctx.bbOut(0).instrs.push_back(MInstr{
                         MOpcode::MovRI, {MOperand::regOp(PhysReg::X0), MOperand::immOp(imm)}});
                     ctx.bbOut(0).instrs.push_back(MInstr{MOpcode::Ret, {}});
+                    return ctx.mf;
+                }
+            }
+        }
+    }
+
+    // =========================================================================
+    // ret const f64 fast-path
+    // =========================================================================
+    // Pattern: Single-block with exactly one ret-const-float instruction.
+    // Emits: ldr d0, =imm (via literal pool); ret
+    if (ctx.fn.blocks.size() == 1)
+    {
+        const auto &only = ctx.fn.blocks.front();
+        if (only.instructions.size() == 1)
+        {
+            const auto &term = only.instructions.back();
+            if (term.op == Opcode::Ret && !term.operands.empty())
+            {
+                const auto &v = term.operands[0];
+                if (v.kind == il::core::Value::Kind::ConstFloat)
+                {
+                    // Materialize float constant via FMovRI (encode as bitcast to i64)
+                    long long bits;
+                    std::memcpy(&bits, &v.f64, sizeof(double));
+                    ctx.bbOut(0).instrs.push_back(MInstr{
+                        MOpcode::FMovRI, {MOperand::regOp(PhysReg::V0), MOperand::immOp(bits)}});
+                    ctx.bbOut(0).instrs.push_back(MInstr{MOpcode::Ret, {}});
+                    ctx.fb.finalize();
                     return ctx.mf;
                 }
             }

@@ -289,26 +289,22 @@ template <typename NarrowT> [[nodiscard]] constexpr bool fitsUnsignedRange(uint6
 /// @brief Function pointer type for overflow-checking binary operations.
 /// @tparam T Integer type to operate on.
 /// @details Returns true on overflow, result is written to *out.
-template <typename T>
-using OverflowCheckFn = bool (*)(T lhs, T rhs, T *out);
+template <typename T> using OverflowCheckFn = bool (*)(T lhs, T rhs, T *out);
 
 /// @brief Stateless overflow-checking add function for use as function pointer.
-template <typename T>
-inline bool overflowAdd(T lhs, T rhs, T *out)
+template <typename T> inline bool overflowAdd(T lhs, T rhs, T *out)
 {
     return __builtin_add_overflow(lhs, rhs, out);
 }
 
 /// @brief Stateless overflow-checking sub function for use as function pointer.
-template <typename T>
-inline bool overflowSub(T lhs, T rhs, T *out)
+template <typename T> inline bool overflowSub(T lhs, T rhs, T *out)
 {
     return __builtin_sub_overflow(lhs, rhs, out);
 }
 
 /// @brief Stateless overflow-checking mul function for use as function pointer.
-template <typename T>
-inline bool overflowMul(T lhs, T rhs, T *out)
+template <typename T> inline bool overflowMul(T lhs, T rhs, T *out)
 {
     return __builtin_mul_overflow(lhs, rhs, out);
 }

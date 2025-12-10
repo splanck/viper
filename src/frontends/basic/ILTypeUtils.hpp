@@ -25,16 +25,16 @@ namespace il::frontends::basic::il_utils
 {
 
 // Re-export common type utilities for backwards compatibility
-using ::il::frontends::common::type_utils::isIntegerType;
+using ::il::frontends::common::type_utils::areTypesCompatible;
+using ::il::frontends::common::type_utils::getFloatBitWidth;
+using ::il::frontends::common::type_utils::getIntegerBitWidth;
+using ::il::frontends::common::type_utils::isBoolType;
 using ::il::frontends::common::type_utils::isFloatType;
+using ::il::frontends::common::type_utils::isIntegerType;
 using ::il::frontends::common::type_utils::isNumericType;
 using ::il::frontends::common::type_utils::isPointerType;
-using ::il::frontends::common::type_utils::isVoidType;
-using ::il::frontends::common::type_utils::isBoolType;
 using ::il::frontends::common::type_utils::isSignedIntegerType;
-using ::il::frontends::common::type_utils::getIntegerBitWidth;
-using ::il::frontends::common::type_utils::getFloatBitWidth;
-using ::il::frontends::common::type_utils::areTypesCompatible;
+using ::il::frontends::common::type_utils::isVoidType;
 
 } // namespace il::frontends::basic::il_utils
 

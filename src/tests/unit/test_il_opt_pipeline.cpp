@@ -74,8 +74,8 @@ int main()
     // O0: should not run mem2reg, so stack ops remain.
     TempFile o0{".o0.il"};
     {
-        std::vector<std::string> args{input.path.string(), "-o", o0.path.string(), "--pipeline",
-                                      "O0"};
+        std::vector<std::string> args{
+            input.path.string(), "-o", o0.path.string(), "--pipeline", "O0"};
         std::vector<char *> argv;
         for (auto &a : args)
             argv.push_back(a.data());
@@ -109,4 +109,3 @@ int main()
 
     return 0;
 }
-

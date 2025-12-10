@@ -35,8 +35,8 @@ using common::char_utils::isLetter;
 using common::char_utils::toUpper;
 
 // Use common keyword table utilities
-using common::keyword_table::KeywordEntry;
 using common::keyword_table::isKeywordTableSorted;
+using common::keyword_table::KeywordEntry;
 using common::keyword_table::lookupKeywordBinary;
 
 namespace
@@ -150,7 +150,8 @@ constexpr std::array<KeywordEntry<TokenKind>, 103> kKeywordTable{{
 }};
 
 // Verify keyword table is sorted at compile time using common utility
-static_assert(isKeywordTableSorted(kKeywordTable), "Keyword table must be sorted lexicographically");
+static_assert(isKeywordTableSorted(kKeywordTable),
+              "Keyword table must be sorted lexicographically");
 
 /// @brief Lookup a candidate identifier in the keyword table.
 ///
@@ -277,13 +278,12 @@ void Lexer::skipWhitespaceAndComments()
             continue;
         }
 
-        if (toUpper(peek()) == 'R' && pos_ + 2 < src_.size() &&
-            toUpper(src_[pos_ + 1]) == 'E' &&
+        if (toUpper(peek()) == 'R' && pos_ + 2 < src_.size() && toUpper(src_[pos_ + 1]) == 'E' &&
             toUpper(src_[pos_ + 2]) == 'M')
         {
             char after = (pos_ + 3 < src_.size()) ? src_[pos_ + 3] : '\0';
-            if (!isAlphanumeric(after) && after != '$' && after != '#' &&
-                after != '!' && after != '%' && after != '&')
+            if (!isAlphanumeric(after) && after != '$' && after != '#' && after != '!' &&
+                after != '%' && after != '&')
             {
                 /// @brief Retrieves  value.
                 get();
@@ -426,8 +426,7 @@ Token Lexer::next()
         return {TokenKind::EndOfLine, "\n", loc};
     }
 
-    if (isDigit(c) ||
-        (c == '.' && pos_ + 1 < src_.size() && isDigit(src_[pos_ + 1])))
+    if (isDigit(c) || (c == '.' && pos_ + 1 < src_.size() && isDigit(src_[pos_ + 1])))
         return lexNumber();
     if (isLetter(c))
         return lexIdentifierOrKeyword();

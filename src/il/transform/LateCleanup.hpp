@@ -50,7 +50,10 @@ class LateCleanup : public ModulePass
   public:
     /// @brief Optionally attach a stats sink to observe size deltas.
     /// @param stats Struct that will be populated during @ref run.
-    void setStats(LateCleanupStats *stats) { stats_ = stats; }
+    void setStats(LateCleanupStats *stats)
+    {
+        stats_ = stats;
+    }
 
     /// @brief Get the unique identifier for this pass.
     /// @return String view "late-cleanup".

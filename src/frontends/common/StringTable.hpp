@@ -57,7 +57,10 @@ class StringTable
     explicit StringTable(GlobalEmitter emitter) : emitter_(std::move(emitter)) {}
 
     /// @brief Set the global emitter callback.
-    void setEmitter(GlobalEmitter emitter) { emitter_ = std::move(emitter); }
+    void setEmitter(GlobalEmitter emitter)
+    {
+        emitter_ = std::move(emitter);
+    }
 
     // =========================================================================
     // Core Operations
@@ -111,13 +114,22 @@ class StringTable
     // =========================================================================
 
     /// @brief Get the number of unique strings interned.
-    [[nodiscard]] std::size_t size() const noexcept { return stringToLabel_.size(); }
+    [[nodiscard]] std::size_t size() const noexcept
+    {
+        return stringToLabel_.size();
+    }
 
     /// @brief Check if the table is empty.
-    [[nodiscard]] bool empty() const noexcept { return stringToLabel_.empty(); }
+    [[nodiscard]] bool empty() const noexcept
+    {
+        return stringToLabel_.empty();
+    }
 
     /// @brief Get the next label ID that would be assigned.
-    [[nodiscard]] std::size_t nextId() const noexcept { return nextId_; }
+    [[nodiscard]] std::size_t nextId() const noexcept
+    {
+        return nextId_;
+    }
 
     // =========================================================================
     // Lifecycle Management
@@ -133,7 +145,10 @@ class StringTable
 
     /// @brief Reset the label counter without clearing cached strings.
     /// @note Typically not needed; use clear() for full reset.
-    void resetCounter() { nextId_ = 0; }
+    void resetCounter()
+    {
+        nextId_ = 0;
+    }
 
     // =========================================================================
     // Iteration
@@ -149,7 +164,10 @@ class StringTable
 
   private:
     /// @brief Generate the next label.
-    [[nodiscard]] std::string generateLabel() { return ".L" + std::to_string(nextId_++); }
+    [[nodiscard]] std::string generateLabel()
+    {
+        return ".L" + std::to_string(nextId_++);
+    }
 
     /// @brief Map from string content to assigned label.
     std::unordered_map<std::string, std::string> stringToLabel_;

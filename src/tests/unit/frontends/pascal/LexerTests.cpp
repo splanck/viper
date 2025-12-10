@@ -186,9 +186,7 @@ TEST(PascalLexerTest, IdentifierWithDigits)
 TEST(PascalLexerTest, PredefinedIdentifiers)
 {
     const std::vector<std::string> predefined = {
-        "Self", "Result", "True", "False",
-        "Integer", "Real", "Boolean", "String", "Exception"
-    };
+        "Self", "Result", "True", "False", "Integer", "Real", "Boolean", "String", "Exception"};
 
     for (const auto &name : predefined)
     {
@@ -628,13 +626,13 @@ TEST(PascalLexerTest, MixedKeywordsAndIdentifiers)
 
     // Predefined identifiers
     EXPECT_EQ(tokens[6].kind, TokenKind::Identifier);
-    EXPECT_TRUE(tokens[6].isPredefined);  // Self
+    EXPECT_TRUE(tokens[6].isPredefined); // Self
     EXPECT_EQ(tokens[7].kind, TokenKind::Identifier);
-    EXPECT_TRUE(tokens[7].isPredefined);  // Result
+    EXPECT_TRUE(tokens[7].isPredefined); // Result
     EXPECT_EQ(tokens[8].kind, TokenKind::Identifier);
-    EXPECT_TRUE(tokens[8].isPredefined);  // Integer
+    EXPECT_TRUE(tokens[8].isPredefined); // Integer
     EXPECT_EQ(tokens[9].kind, TokenKind::Identifier);
-    EXPECT_TRUE(tokens[9].isPredefined);  // String
+    EXPECT_TRUE(tokens[9].isPredefined); // String
 }
 
 //===----------------------------------------------------------------------===//
@@ -695,7 +693,7 @@ TEST(PascalLexerTest, V01_CharIsNotPredefined)
     // 'Char' should be a regular identifier, not predefined
     auto tok = singleToken("Char");
     EXPECT_EQ(tok.kind, TokenKind::Identifier);
-    EXPECT_FALSE(tok.isPredefined);  // NOT a predefined identifier
+    EXPECT_FALSE(tok.isPredefined); // NOT a predefined identifier
     EXPECT_EQ(tok.canonical, "char");
 }
 

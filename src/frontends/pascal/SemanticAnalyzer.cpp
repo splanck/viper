@@ -14,8 +14,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/pascal/SemanticAnalyzer.hpp"
-#include "frontends/pascal/BuiltinRegistry.hpp"
 #include "frontends/common/CharUtils.hpp"
+#include "frontends/pascal/BuiltinRegistry.hpp"
 
 namespace il::frontends::pascal
 {
@@ -37,52 +37,52 @@ std::string PasType::toString() const
 {
     switch (kind)
     {
-    case PasTypeKind::Integer:
-        return "Integer";
-    case PasTypeKind::Real:
-        return "Real";
-    case PasTypeKind::Boolean:
-        return "Boolean";
-    case PasTypeKind::String:
-        return "String";
-    case PasTypeKind::Enum:
-        return "enum";
-    case PasTypeKind::Array:
-        if (elementType)
-        {
-            if (dimensions == 0)
-                return "array of " + elementType->toString();
-            return "array[" + std::to_string(dimensions) + "] of " + elementType->toString();
-        }
-        return "array";
-    case PasTypeKind::Record:
-        return "record";
-    case PasTypeKind::Class:
-        return name.empty() ? "class" : name;
-    case PasTypeKind::Interface:
-        return name.empty() ? "interface" : name;
-    case PasTypeKind::Optional:
-        if (innerType)
-            return innerType->toString() + "?";
-        return "optional";
-    case PasTypeKind::Pointer:
-        if (pointeeType)
-            return "^" + pointeeType->toString();
-        return "pointer";
-    case PasTypeKind::Procedure:
-        return "procedure";
-    case PasTypeKind::Function:
-        return "function";
-    case PasTypeKind::Set:
-        return "set";
-    case PasTypeKind::Range:
-        return "range";
-    case PasTypeKind::Nil:
-        return "nil";
-    case PasTypeKind::Unknown:
-        return "<unknown>";
-    case PasTypeKind::Void:
-        return "void";
+        case PasTypeKind::Integer:
+            return "Integer";
+        case PasTypeKind::Real:
+            return "Real";
+        case PasTypeKind::Boolean:
+            return "Boolean";
+        case PasTypeKind::String:
+            return "String";
+        case PasTypeKind::Enum:
+            return "enum";
+        case PasTypeKind::Array:
+            if (elementType)
+            {
+                if (dimensions == 0)
+                    return "array of " + elementType->toString();
+                return "array[" + std::to_string(dimensions) + "] of " + elementType->toString();
+            }
+            return "array";
+        case PasTypeKind::Record:
+            return "record";
+        case PasTypeKind::Class:
+            return name.empty() ? "class" : name;
+        case PasTypeKind::Interface:
+            return name.empty() ? "interface" : name;
+        case PasTypeKind::Optional:
+            if (innerType)
+                return innerType->toString() + "?";
+            return "optional";
+        case PasTypeKind::Pointer:
+            if (pointeeType)
+                return "^" + pointeeType->toString();
+            return "pointer";
+        case PasTypeKind::Procedure:
+            return "procedure";
+        case PasTypeKind::Function:
+            return "function";
+        case PasTypeKind::Set:
+            return "set";
+        case PasTypeKind::Range:
+            return "range";
+        case PasTypeKind::Nil:
+            return "nil";
+        case PasTypeKind::Unknown:
+            return "<unknown>";
+        case PasTypeKind::Void:
+            return "void";
     }
     return "<invalid>";
 }

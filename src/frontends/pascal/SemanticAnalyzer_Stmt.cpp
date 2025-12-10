@@ -13,9 +13,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "frontends/pascal/SemanticAnalyzer.hpp"
-#include "frontends/pascal/BuiltinRegistry.hpp"
 #include "frontends/common/CharUtils.hpp"
+#include "frontends/pascal/BuiltinRegistry.hpp"
+#include "frontends/pascal/SemanticAnalyzer.hpp"
 #include <algorithm>
 #include <cctype>
 #include <set>
@@ -32,7 +32,6 @@ inline std::string toLower(const std::string &s)
     return toLowercase(s);
 }
 
-
 //===----------------------------------------------------------------------===//
 // Statement Analysis
 //===----------------------------------------------------------------------===//
@@ -41,66 +40,66 @@ void SemanticAnalyzer::analyzeStmt(Stmt &stmt)
 {
     switch (stmt.kind)
     {
-    case StmtKind::Block:
-        analyzeBlock(static_cast<BlockStmt &>(stmt));
-        break;
-    case StmtKind::Assign:
-        analyzeAssign(static_cast<AssignStmt &>(stmt));
-        break;
-    case StmtKind::Call:
-        analyzeCall(static_cast<CallStmt &>(stmt));
-        break;
-    case StmtKind::If:
-        analyzeIf(static_cast<IfStmt &>(stmt));
-        break;
-    case StmtKind::While:
-        analyzeWhile(static_cast<WhileStmt &>(stmt));
-        break;
-    case StmtKind::Repeat:
-        analyzeRepeat(static_cast<RepeatStmt &>(stmt));
-        break;
-    case StmtKind::For:
-        analyzeFor(static_cast<ForStmt &>(stmt));
-        break;
-    case StmtKind::ForIn:
-        analyzeForIn(static_cast<ForInStmt &>(stmt));
-        break;
-    case StmtKind::Case:
-        analyzeCase(static_cast<CaseStmt &>(stmt));
-        break;
-    case StmtKind::Break:
-        if (loopDepth_ == 0)
-        {
-            error(stmt, "break statement outside of loop");
-        }
-        break;
-    case StmtKind::Continue:
-        if (loopDepth_ == 0)
-        {
-            error(stmt, "continue statement outside of loop");
-        }
-        break;
-    case StmtKind::Exit:
-        analyzeExit(static_cast<ExitStmt &>(stmt));
-        break;
-    case StmtKind::Raise:
-        analyzeRaise(static_cast<RaiseStmt &>(stmt));
-        break;
-    case StmtKind::TryExcept:
-        analyzeTryExcept(static_cast<TryExceptStmt &>(stmt));
-        break;
-    case StmtKind::TryFinally:
-        analyzeTryFinally(static_cast<TryFinallyStmt &>(stmt));
-        break;
-    case StmtKind::With:
-        analyzeWith(static_cast<WithStmt &>(stmt));
-        break;
-    case StmtKind::Inherited:
-        analyzeInherited(static_cast<InheritedStmt &>(stmt));
-        break;
-    case StmtKind::Empty:
-        // Nothing to analyze
-        break;
+        case StmtKind::Block:
+            analyzeBlock(static_cast<BlockStmt &>(stmt));
+            break;
+        case StmtKind::Assign:
+            analyzeAssign(static_cast<AssignStmt &>(stmt));
+            break;
+        case StmtKind::Call:
+            analyzeCall(static_cast<CallStmt &>(stmt));
+            break;
+        case StmtKind::If:
+            analyzeIf(static_cast<IfStmt &>(stmt));
+            break;
+        case StmtKind::While:
+            analyzeWhile(static_cast<WhileStmt &>(stmt));
+            break;
+        case StmtKind::Repeat:
+            analyzeRepeat(static_cast<RepeatStmt &>(stmt));
+            break;
+        case StmtKind::For:
+            analyzeFor(static_cast<ForStmt &>(stmt));
+            break;
+        case StmtKind::ForIn:
+            analyzeForIn(static_cast<ForInStmt &>(stmt));
+            break;
+        case StmtKind::Case:
+            analyzeCase(static_cast<CaseStmt &>(stmt));
+            break;
+        case StmtKind::Break:
+            if (loopDepth_ == 0)
+            {
+                error(stmt, "break statement outside of loop");
+            }
+            break;
+        case StmtKind::Continue:
+            if (loopDepth_ == 0)
+            {
+                error(stmt, "continue statement outside of loop");
+            }
+            break;
+        case StmtKind::Exit:
+            analyzeExit(static_cast<ExitStmt &>(stmt));
+            break;
+        case StmtKind::Raise:
+            analyzeRaise(static_cast<RaiseStmt &>(stmt));
+            break;
+        case StmtKind::TryExcept:
+            analyzeTryExcept(static_cast<TryExceptStmt &>(stmt));
+            break;
+        case StmtKind::TryFinally:
+            analyzeTryFinally(static_cast<TryFinallyStmt &>(stmt));
+            break;
+        case StmtKind::With:
+            analyzeWith(static_cast<WithStmt &>(stmt));
+            break;
+        case StmtKind::Inherited:
+            analyzeInherited(static_cast<InheritedStmt &>(stmt));
+            break;
+        case StmtKind::Empty:
+            // Nothing to analyze
+            break;
     }
 }
 
@@ -147,8 +146,9 @@ void SemanticAnalyzer::analyzeAssign(AssignStmt &stmt)
         // Only error if it's a function name AND not a local var AND not a class field
         if (!isLocalVar && !isClassField && functions_.count(key))
         {
-            error(stmt, "cannot assign to function name '" + nameExpr.name +
-                            "'; use 'Result' to return a value");
+            error(stmt,
+                  "cannot assign to function name '" + nameExpr.name +
+                      "'; use 'Result' to return a value");
             return;
         }
     }
@@ -231,8 +231,7 @@ void SemanticAnalyzer::analyzeIf(IfStmt &stmt)
         PasType condType = typeOf(*stmt.condition);
         if (condType.kind != PasTypeKind::Boolean && !condType.isError())
         {
-            error(*stmt.condition,
-                  "condition must be Boolean, got " + condType.toString());
+            error(*stmt.condition, "condition must be Boolean, got " + condType.toString());
         }
 
         // Check for nil check pattern for flow narrowing
@@ -335,8 +334,7 @@ void SemanticAnalyzer::analyzeWhile(WhileStmt &stmt)
         PasType condType = typeOf(*stmt.condition);
         if (condType.kind != PasTypeKind::Boolean && !condType.isError())
         {
-            error(*stmt.condition,
-                  "condition must be Boolean, got " + condType.toString());
+            error(*stmt.condition, "condition must be Boolean, got " + condType.toString());
         }
 
         // Check for nil check pattern for flow narrowing
@@ -385,8 +383,7 @@ void SemanticAnalyzer::analyzeRepeat(RepeatStmt &stmt)
         PasType condType = typeOf(*stmt.condition);
         if (condType.kind != PasTypeKind::Boolean && !condType.isError())
         {
-            error(*stmt.condition,
-                  "condition must be Boolean, got " + condType.toString());
+            error(*stmt.condition, "condition must be Boolean, got " + condType.toString());
         }
     }
 }
@@ -621,8 +618,9 @@ void SemanticAnalyzer::analyzeRaise(RaiseStmt &stmt)
                 }
                 if (!derivesFromException)
                 {
-                    error(stmt, "raise expression must be of type Exception or a subclass, not '" +
-                                    excType.name + "'");
+                    error(stmt,
+                          "raise expression must be of type Exception or a subclass, not '" +
+                              excType.name + "'");
                 }
             }
         }
@@ -664,9 +662,10 @@ void SemanticAnalyzer::analyzeExit(ExitStmt &stmt)
         PasType valType = typeOf(*stmt.value);
         if (!valType.isError() && !isAssignableFrom(currentFunction_->returnType, valType))
         {
-            error(stmt, "Exit value type '" + valType.toString() +
-                            "' is not compatible with function return type '" +
-                            currentFunction_->returnType.toString() + "'");
+            error(stmt,
+                  "Exit value type '" + valType.toString() +
+                      "' is not compatible with function return type '" +
+                      currentFunction_->returnType.toString() + "'");
         }
     }
     // Exit; without value is valid in both procedures and functions
@@ -720,8 +719,9 @@ void SemanticAnalyzer::analyzeTryExcept(TryExceptStmt &stmt)
             }
             if (!derivesFromException)
             {
-                error(handler.loc, "exception handler type '" + handler.typeName +
-                                       "' must derive from Exception");
+                error(handler.loc,
+                      "exception handler type '" + handler.typeName +
+                          "' must derive from Exception");
             }
         }
 
@@ -838,7 +838,8 @@ void SemanticAnalyzer::analyzeInherited(InheritedStmt &stmt)
     if (baseName.empty())
         return;
 
-    auto hasMethodInHierarchy = [&](const std::string &method) -> bool {
+    auto hasMethodInHierarchy = [&](const std::string &method) -> bool
+    {
         std::string cur = toLower(baseName);
         while (!cur.empty())
         {

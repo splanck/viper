@@ -515,14 +515,14 @@ function(viper_add_il_utils_test)
     viper_add_test(
             test_il_peephole_use_count
             ${_VIPER_IL_DIR}/transform/peephole_use_count.cpp)
-        target_link_libraries(
+    target_link_libraries(
             test_il_peephole_use_count PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
     viper_add_ctest(test_il_peephole_use_count test_il_peephole_use_count)
 
     add_executable(
             test_il_alias_precision
             ${_VIPER_IL_DIR}/transform/alias_precision.cpp)
-        target_link_libraries(
+    target_link_libraries(
             test_il_alias_precision PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
     viper_add_ctest(test_il_alias_precision test_il_alias_precision)
 

@@ -49,8 +49,8 @@ namespace
 /// @brief Configuration for the stress test.
 struct StressConfig
 {
-    int numThreads = 8;            ///< Number of concurrent threads.
-    int iterationsPerThread = 100; ///< Number of VM runs per thread.
+    int numThreads = 8;              ///< Number of concurrent threads.
+    int iterationsPerThread = 100;   ///< Number of VM runs per thread.
     bool enableDebugLogging = false; ///< Enable verbose debug output.
 };
 
@@ -136,19 +136,19 @@ Module buildRuntimeCallModule(int threadId, int iteration)
     build::IRBuilder builder(module);
 
     // Add extern for runtime abs function
-    builder.addExtern("Viper.Math.AbsInt",
-                      Type(Type::Kind::I64),
-                      {Type(Type::Kind::I64)});
+    builder.addExtern("Viper.Math.AbsInt", Type(Type::Kind::I64), {Type(Type::Kind::I64)});
 
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
-    std::string blockLabel = "block_t" + std::to_string(threadId) + "_i" + std::to_string(iteration);
+    std::string blockLabel =
+        "block_t" + std::to_string(threadId) + "_i" + std::to_string(iteration);
     auto &bb = builder.addBlock(fn, blockLabel);
     builder.setInsertPoint(bb);
 
     support::SourceLoc loc{static_cast<uint32_t>(threadId), static_cast<uint32_t>(iteration), 1};
 
     // Call abs(-42) -> should return 42
-    builder.emitCall("Viper.Math.AbsInt", {Value::constInt(-42)}, Value::temp(builder.reserveTempId()), loc);
+    builder.emitCall(
+        "Viper.Math.AbsInt", {Value::constInt(-42)}, Value::temp(builder.reserveTempId()), loc);
     unsigned absResult = builder.reserveTempId() - 1; // The last reserved temp
 
     // Add threadId * 10000 + iteration to the result
@@ -157,7 +157,8 @@ Module buildRuntimeCallModule(int threadId, int iteration)
     addThread.op = Opcode::IAddOvf;
     addThread.type = Type(Type::Kind::I64);
     addThread.operands.push_back(Value::temp(absResult));
-    addThread.operands.push_back(Value::constInt(static_cast<int64_t>(threadId) * 10000 + iteration));
+    addThread.operands.push_back(
+        Value::constInt(static_cast<int64_t>(threadId) * 10000 + iteration));
     addThread.loc = loc;
     bb.instructions.push_back(addThread);
 
@@ -249,7 +250,8 @@ void runStressThread(int threadId, const StressConfig &config, StressStats &stat
     for (int iter = 0; iter < config.iterationsPerThread; ++iter)
     {
         int testType = testDist(rng);
-        gDebugLog.log(threadId, "Iteration " + std::to_string(iter) + " type " + std::to_string(testType));
+        gDebugLog.log(threadId,
+                      "Iteration " + std::to_string(iter) + " type " + std::to_string(testType));
 
         try
         {
@@ -264,8 +266,9 @@ void runStressThread(int threadId, const StressConfig &config, StressStats &stat
                     int64_t expected = static_cast<int64_t>(threadId) * 10000 + iter;
                     if (result != expected)
                     {
-                        gDebugLog.log(threadId, "MISMATCH: got " + std::to_string(result) +
-                                                    " expected " + std::to_string(expected));
+                        gDebugLog.log(threadId,
+                                      "MISMATCH: got " + std::to_string(result) + " expected " +
+                                          std::to_string(expected));
                         stats.failedRuns++;
                     }
                     else
@@ -284,8 +287,9 @@ void runStressThread(int threadId, const StressConfig &config, StressStats &stat
                     int64_t expected = 42 + static_cast<int64_t>(threadId) * 10000 + iter;
                     if (result != expected)
                     {
-                        gDebugLog.log(threadId, "RUNTIME MISMATCH: got " + std::to_string(result) +
-                                                    " expected " + std::to_string(expected));
+                        gDebugLog.log(threadId,
+                                      "RUNTIME MISMATCH: got " + std::to_string(result) +
+                                          " expected " + std::to_string(expected));
                         stats.failedRuns++;
                     }
                     else
@@ -303,8 +307,9 @@ void runStressThread(int threadId, const StressConfig &config, StressStats &stat
                     int64_t expected = static_cast<int64_t>(threadId) * 10000 + iter;
                     if (result != expected)
                     {
-                        gDebugLog.log(threadId, "COMPLEX MISMATCH: got " + std::to_string(result) +
-                                                    " expected " + std::to_string(expected));
+                        gDebugLog.log(threadId,
+                                      "COMPLEX MISMATCH: got " + std::to_string(result) +
+                                          " expected " + std::to_string(expected));
                         stats.failedRuns++;
                     }
                     else
@@ -483,7 +488,8 @@ int main(int argc, char **argv)
     }
 
     std::cout << "VM Concurrency Stress Test\n";
-    std::cout << "Threads: " << config.numThreads << ", Iterations: " << config.iterationsPerThread << "\n";
+    std::cout << "Threads: " << config.numThreads << ", Iterations: " << config.iterationsPerThread
+              << "\n";
 
     // Run prerequisite tests
     std::cout << "Running prerequisite tests...\n";
@@ -516,7 +522,8 @@ int main(int argc, char **argv)
         th.join();
 
     auto endTime = std::chrono::steady_clock::now();
-    auto durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count();
+    auto durationMs =
+        std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count();
 
     // Report results
     std::cout << "\nResults:\n";

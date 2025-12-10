@@ -69,10 +69,16 @@ class InstructionEmitter
     }
 
     /// @brief Set the current source location for emitted instructions.
-    void setLocation(il::support::SourceLoc loc) { currentLoc_ = loc; }
+    void setLocation(il::support::SourceLoc loc)
+    {
+        currentLoc_ = loc;
+    }
 
     /// @brief Get the current source location.
-    [[nodiscard]] il::support::SourceLoc location() const noexcept { return currentLoc_; }
+    [[nodiscard]] il::support::SourceLoc location() const noexcept
+    {
+        return currentLoc_;
+    }
 
     // =========================================================================
     // Memory Operations
@@ -205,7 +211,8 @@ class InstructionEmitter
     /// @param callee Name of the function to call.
     /// @param args Arguments to pass.
     /// @return Return value.
-    [[nodiscard]] Value emitCallRet(Type retTy, const std::string &callee,
+    [[nodiscard]] Value emitCallRet(Type retTy,
+                                    const std::string &callee,
                                     const std::vector<Value> &args)
     {
         unsigned id = nextTempId();
@@ -235,7 +242,8 @@ class InstructionEmitter
     }
 
     /// @brief Emit an indirect call with return value.
-    [[nodiscard]] Value emitCallIndirectRet(Type retTy, Value callee,
+    [[nodiscard]] Value emitCallIndirectRet(Type retTy,
+                                            Value callee,
                                             const std::vector<Value> &args)
     {
         unsigned id = nextTempId();
@@ -497,11 +505,17 @@ class InstructionEmitter
     }
 
     /// @brief Reserve the next temp ID from the builder.
-    [[nodiscard]] unsigned nextTempId() { return builder_->reserveTempId(); }
+    [[nodiscard]] unsigned nextTempId()
+    {
+        return builder_->reserveTempId();
+    }
 
   private:
     /// @brief Get the current block.
-    [[nodiscard]] BasicBlock *block() const { return *currentBlock_; }
+    [[nodiscard]] BasicBlock *block() const
+    {
+        return *currentBlock_;
+    }
 
     il::build::IRBuilder *builder_{nullptr};
     BasicBlock **currentBlock_{nullptr};

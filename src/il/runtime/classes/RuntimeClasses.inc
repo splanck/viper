@@ -15,27 +15,28 @@
 //          replaced by a YAML-driven generator later without changing users.
 // Links:   docs/il-guide.md#reference, docs/codemap.md
 
-RUNTIME_CLASS("Viper.String",
-              RTCLS_String,
-              "opaque*",
-              "Viper.Strings.FromStr", /* ctor helper; keep NULL if gating NEW later */
-              RUNTIME_PROPS(RUNTIME_PROP("Length", "i64", "Viper.String.get_Length", nullptr),
-                            RUNTIME_PROP("IsEmpty", "i1", "Viper.String.get_IsEmpty", nullptr)),
-              RUNTIME_METHODS(RUNTIME_METHOD("Substring", "str(i64,i64)", "Viper.String.Substring"),
-                              RUNTIME_METHOD("Concat", "str(str)", "Viper.String.Concat"),
-                              RUNTIME_METHOD("Left", "str(i64)", "Viper.String.Left"),
-                              RUNTIME_METHOD("Right", "str(i64)", "Viper.String.Right"),
-                              RUNTIME_METHOD("Mid", "str(i64)", "Viper.String.Mid"),
-                              RUNTIME_METHOD("MidLen", "str(i64,i64)", "Viper.String.MidLen"),
-                              RUNTIME_METHOD("Trim", "str()", "Viper.String.Trim"),
-                              RUNTIME_METHOD("TrimStart", "str()", "Viper.String.TrimStart"),
-                              RUNTIME_METHOD("TrimEnd", "str()", "Viper.String.TrimEnd"),
-                              RUNTIME_METHOD("ToUpper", "str()", "Viper.String.ToUpper"),
-                              RUNTIME_METHOD("ToLower", "str()", "Viper.String.ToLower"),
-                              RUNTIME_METHOD("IndexOf", "i64(str)", "Viper.String.IndexOf"),
-                              RUNTIME_METHOD("IndexOfFrom", "i64(i64,str)", "Viper.String.IndexOfFrom"),
-                              RUNTIME_METHOD("Chr", "str(i64)", "Viper.String.Chr"),
-                              RUNTIME_METHOD("Asc", "i64()", "Viper.String.Asc")))
+RUNTIME_CLASS(
+    "Viper.String",
+    RTCLS_String,
+    "opaque*",
+    "Viper.Strings.FromStr", /* ctor helper; keep NULL if gating NEW later */
+    RUNTIME_PROPS(RUNTIME_PROP("Length", "i64", "Viper.String.get_Length", nullptr),
+                  RUNTIME_PROP("IsEmpty", "i1", "Viper.String.get_IsEmpty", nullptr)),
+    RUNTIME_METHODS(RUNTIME_METHOD("Substring", "str(i64,i64)", "Viper.String.Substring"),
+                    RUNTIME_METHOD("Concat", "str(str)", "Viper.String.Concat"),
+                    RUNTIME_METHOD("Left", "str(i64)", "Viper.String.Left"),
+                    RUNTIME_METHOD("Right", "str(i64)", "Viper.String.Right"),
+                    RUNTIME_METHOD("Mid", "str(i64)", "Viper.String.Mid"),
+                    RUNTIME_METHOD("MidLen", "str(i64,i64)", "Viper.String.MidLen"),
+                    RUNTIME_METHOD("Trim", "str()", "Viper.String.Trim"),
+                    RUNTIME_METHOD("TrimStart", "str()", "Viper.String.TrimStart"),
+                    RUNTIME_METHOD("TrimEnd", "str()", "Viper.String.TrimEnd"),
+                    RUNTIME_METHOD("ToUpper", "str()", "Viper.String.ToUpper"),
+                    RUNTIME_METHOD("ToLower", "str()", "Viper.String.ToLower"),
+                    RUNTIME_METHOD("IndexOf", "i64(str)", "Viper.String.IndexOf"),
+                    RUNTIME_METHOD("IndexOfFrom", "i64(i64,str)", "Viper.String.IndexOfFrom"),
+                    RUNTIME_METHOD("Chr", "str(i64)", "Viper.String.Chr"),
+                    RUNTIME_METHOD("Asc", "i64()", "Viper.String.Asc")))
 
 // Viper.Text.StringBuilder — catalog + runtime shims
 // Notes:
@@ -61,17 +62,16 @@ RUNTIME_CLASS(
 // Viper.System.Text.StringBuilder removed - use Viper.Text.StringBuilder instead
 
 // Canonical base object class for all Viper types
-RUNTIME_CLASS(
-    "Viper.Object",
-    RTCLS_Object,
-    "obj",
-    "", /* no ctor; base class only */
-    RUNTIME_PROPS(),
-    RUNTIME_METHODS(
-        RUNTIME_METHOD("Equals", "i1(obj)", "Viper.Object.Equals"),
-        RUNTIME_METHOD("GetHashCode", "i64()", "Viper.Object.GetHashCode"),
-        RUNTIME_METHOD("ToString", "str()", "Viper.Object.ToString"),
-        RUNTIME_METHOD("ReferenceEquals", "i1(obj,obj)", "Viper.Object.ReferenceEquals")))
+RUNTIME_CLASS("Viper.Object",
+              RTCLS_Object,
+              "obj",
+              "", /* no ctor; base class only */
+              RUNTIME_PROPS(),
+              RUNTIME_METHODS(
+                  RUNTIME_METHOD("Equals", "i1(obj)", "Viper.Object.Equals"),
+                  RUNTIME_METHOD("GetHashCode", "i64()", "Viper.Object.GetHashCode"),
+                  RUNTIME_METHOD("ToString", "str()", "Viper.Object.ToString"),
+                  RUNTIME_METHOD("ReferenceEquals", "i1(obj,obj)", "Viper.Object.ReferenceEquals")))
 
 // Viper.System.Object removed - use Viper.Object instead
 
@@ -82,11 +82,10 @@ RUNTIME_CLASS(
     "obj",
     "", /* static utility class; no instance ctor */
     RUNTIME_PROPS(),
-    RUNTIME_METHODS(
-        RUNTIME_METHOD("Exists", "i1(str)", "Viper.IO.File.Exists"),
-        RUNTIME_METHOD("ReadAllText", "str(str)", "Viper.IO.File.ReadAllText"),
-        RUNTIME_METHOD("WriteAllText", "void(str,str)", "Viper.IO.File.WriteAllText"),
-        RUNTIME_METHOD("Delete", "void(str)", "Viper.IO.File.Delete")))
+    RUNTIME_METHODS(RUNTIME_METHOD("Exists", "i1(str)", "Viper.IO.File.Exists"),
+                    RUNTIME_METHOD("ReadAllText", "str(str)", "Viper.IO.File.ReadAllText"),
+                    RUNTIME_METHOD("WriteAllText", "void(str,str)", "Viper.IO.File.WriteAllText"),
+                    RUNTIME_METHOD("Delete", "void(str)", "Viper.IO.File.Delete")))
 
 // Viper.System.IO.File removed - use Viper.IO.File instead
 
@@ -106,42 +105,38 @@ RUNTIME_CLASS(
 // Viper.System.Collections.List removed - use Viper.Collections.List instead
 
 // Canonical math utility class with common mathematical functions
-RUNTIME_CLASS(
-    "Viper.Math",
-    RTCLS_Math,
-    "obj",
-    "", /* static utility class; no instance ctor */
-    RUNTIME_PROPS(),
-    RUNTIME_METHODS(
-        RUNTIME_METHOD("Abs", "f64(f64)", "Viper.Math.Abs"),
-        RUNTIME_METHOD("AbsInt", "i64(i64)", "Viper.Math.AbsInt"),
-        RUNTIME_METHOD("Sqrt", "f64(f64)", "Viper.Math.Sqrt"),
-        RUNTIME_METHOD("Sin", "f64(f64)", "Viper.Math.Sin"),
-        RUNTIME_METHOD("Cos", "f64(f64)", "Viper.Math.Cos"),
-        RUNTIME_METHOD("Tan", "f64(f64)", "Viper.Math.Tan"),
-        RUNTIME_METHOD("Atan", "f64(f64)", "Viper.Math.Atan"),
-        RUNTIME_METHOD("Floor", "f64(f64)", "Viper.Math.Floor"),
-        RUNTIME_METHOD("Ceil", "f64(f64)", "Viper.Math.Ceil"),
-        RUNTIME_METHOD("Pow", "f64(f64,f64)", "Viper.Math.Pow"),
-        RUNTIME_METHOD("Log", "f64(f64)", "Viper.Math.Log"),
-        RUNTIME_METHOD("Exp", "f64(f64)", "Viper.Math.Exp"),
-        RUNTIME_METHOD("Sgn", "f64(f64)", "Viper.Math.Sgn"),
-        RUNTIME_METHOD("SgnInt", "i64(i64)", "Viper.Math.SgnInt"),
-        RUNTIME_METHOD("Min", "f64(f64,f64)", "Viper.Math.Min"),
-        RUNTIME_METHOD("Max", "f64(f64,f64)", "Viper.Math.Max"),
-        RUNTIME_METHOD("MinInt", "i64(i64,i64)", "Viper.Math.MinInt"),
-        RUNTIME_METHOD("MaxInt", "i64(i64,i64)", "Viper.Math.MaxInt")))
+RUNTIME_CLASS("Viper.Math",
+              RTCLS_Math,
+              "obj",
+              "", /* static utility class; no instance ctor */
+              RUNTIME_PROPS(),
+              RUNTIME_METHODS(RUNTIME_METHOD("Abs", "f64(f64)", "Viper.Math.Abs"),
+                              RUNTIME_METHOD("AbsInt", "i64(i64)", "Viper.Math.AbsInt"),
+                              RUNTIME_METHOD("Sqrt", "f64(f64)", "Viper.Math.Sqrt"),
+                              RUNTIME_METHOD("Sin", "f64(f64)", "Viper.Math.Sin"),
+                              RUNTIME_METHOD("Cos", "f64(f64)", "Viper.Math.Cos"),
+                              RUNTIME_METHOD("Tan", "f64(f64)", "Viper.Math.Tan"),
+                              RUNTIME_METHOD("Atan", "f64(f64)", "Viper.Math.Atan"),
+                              RUNTIME_METHOD("Floor", "f64(f64)", "Viper.Math.Floor"),
+                              RUNTIME_METHOD("Ceil", "f64(f64)", "Viper.Math.Ceil"),
+                              RUNTIME_METHOD("Pow", "f64(f64,f64)", "Viper.Math.Pow"),
+                              RUNTIME_METHOD("Log", "f64(f64)", "Viper.Math.Log"),
+                              RUNTIME_METHOD("Exp", "f64(f64)", "Viper.Math.Exp"),
+                              RUNTIME_METHOD("Sgn", "f64(f64)", "Viper.Math.Sgn"),
+                              RUNTIME_METHOD("SgnInt", "i64(i64)", "Viper.Math.SgnInt"),
+                              RUNTIME_METHOD("Min", "f64(f64,f64)", "Viper.Math.Min"),
+                              RUNTIME_METHOD("Max", "f64(f64,f64)", "Viper.Math.Max"),
+                              RUNTIME_METHOD("MinInt", "i64(i64,i64)", "Viper.Math.MinInt"),
+                              RUNTIME_METHOD("MaxInt", "i64(i64,i64)", "Viper.Math.MaxInt")))
 
 // Canonical console I/O utility class
-RUNTIME_CLASS(
-    "Viper.Console",
-    RTCLS_Console,
-    "obj",
-    "", /* static utility class; no instance ctor */
-    RUNTIME_PROPS(),
-    RUNTIME_METHODS(
-        RUNTIME_METHOD("WriteLine", "void(str)", "Viper.Console.PrintStr"),
-        RUNTIME_METHOD("ReadLine", "str()", "Viper.Console.ReadLine")))
+RUNTIME_CLASS("Viper.Console",
+              RTCLS_Console,
+              "obj",
+              "", /* static utility class; no instance ctor */
+              RUNTIME_PROPS(),
+              RUNTIME_METHODS(RUNTIME_METHOD("WriteLine", "void(str)", "Viper.Console.PrintStr"),
+                              RUNTIME_METHOD("ReadLine", "str()", "Viper.Console.ReadLine")))
 
 // Canonical type conversion utility class
 RUNTIME_CLASS(
@@ -150,35 +145,32 @@ RUNTIME_CLASS(
     "obj",
     "", /* static utility class; no instance ctor */
     RUNTIME_PROPS(),
-    RUNTIME_METHODS(
-        RUNTIME_METHOD("ToInt64", "i64(str)", "Viper.Convert.ToInt"),
-        RUNTIME_METHOD("ToDouble", "f64(str)", "Viper.Convert.ToDouble"),
-        RUNTIME_METHOD("ToString_Int", "str(i64)", "Viper.Strings.FromInt"),
-        RUNTIME_METHOD("ToString_Double", "str(f64)", "Viper.Strings.FromDouble")))
+    RUNTIME_METHODS(RUNTIME_METHOD("ToInt64", "i64(str)", "Viper.Convert.ToInt"),
+                    RUNTIME_METHOD("ToDouble", "f64(str)", "Viper.Convert.ToDouble"),
+                    RUNTIME_METHOD("ToString_Int", "str(i64)", "Viper.Strings.FromInt"),
+                    RUNTIME_METHOD("ToString_Double", "str(f64)", "Viper.Strings.FromDouble")))
 
 // Random number generation
-RUNTIME_CLASS(
-    "Viper.Random",
-    RTCLS_Random,
-    "obj",
-    "", /* static utility class; no instance ctor */
-    RUNTIME_PROPS(),
-    RUNTIME_METHODS(
-        RUNTIME_METHOD("Seed", "void(i64)", "Viper.Random.Seed"),
-        RUNTIME_METHOD("Next", "f64()", "Viper.Random.Next"),
-        RUNTIME_METHOD("NextInt", "i64(i64)", "Viper.Random.NextInt")))
+RUNTIME_CLASS("Viper.Random",
+              RTCLS_Random,
+              "obj",
+              "", /* static utility class; no instance ctor */
+              RUNTIME_PROPS(),
+              RUNTIME_METHODS(RUNTIME_METHOD("Seed", "void(i64)", "Viper.Random.Seed"),
+                              RUNTIME_METHOD("Next", "f64()", "Viper.Random.Next"),
+                              RUNTIME_METHOD("NextInt", "i64(i64)", "Viper.Random.NextInt")))
 
 // Environment and command-line arguments
-RUNTIME_CLASS(
-    "Viper.Environment",
-    RTCLS_Environment,
-    "obj",
-    "", /* static utility class; no instance ctor */
-    RUNTIME_PROPS(),
-    RUNTIME_METHODS(
-        RUNTIME_METHOD("GetArgumentCount", "i64()", "Viper.Environment.GetArgumentCount"),
-        RUNTIME_METHOD("GetArgument", "str(i64)", "Viper.Environment.GetArgument"),
-        RUNTIME_METHOD("GetCommandLine", "str()", "Viper.Environment.GetCommandLine")))
+RUNTIME_CLASS("Viper.Environment",
+              RTCLS_Environment,
+              "obj",
+              "", /* static utility class; no instance ctor */
+              RUNTIME_PROPS(),
+              RUNTIME_METHODS(
+                  RUNTIME_METHOD("GetArgumentCount", "i64()", "Viper.Environment.GetArgumentCount"),
+                  RUNTIME_METHOD("GetArgument", "str(i64)", "Viper.Environment.GetArgument"),
+                  RUNTIME_METHOD("GetCommandLine", "str()", "Viper.Environment.GetCommandLine"),
+                  RUNTIME_METHOD("IsNative", "i1()", "Viper.Environment.IsNative")))
 
 // Graphics window for 2D rendering
 // Notes:
@@ -190,10 +182,9 @@ RUNTIME_CLASS(
     RTCLS_GfxWindow,
     "obj",
     "rt_gfx_window_new",
-    RUNTIME_PROPS(
-        RUNTIME_PROP("Width", "i64", "rt_gfx_window_width", nullptr),
-        RUNTIME_PROP("Height", "i64", "rt_gfx_window_height", nullptr),
-        RUNTIME_PROP("ShouldClose", "i64", "rt_gfx_window_should_close", nullptr)),
+    RUNTIME_PROPS(RUNTIME_PROP("Width", "i64", "rt_gfx_window_width", nullptr),
+                  RUNTIME_PROP("Height", "i64", "rt_gfx_window_height", nullptr),
+                  RUNTIME_PROP("ShouldClose", "i64", "rt_gfx_window_should_close", nullptr)),
     RUNTIME_METHODS(
         RUNTIME_METHOD("Update", "void()", "rt_gfx_window_update"),
         RUNTIME_METHOD("Clear", "void(i64)", "rt_gfx_window_clear"),
@@ -207,14 +198,12 @@ RUNTIME_CLASS(
         RUNTIME_METHOD("KeyDown", "i64(i64)", "rt_gfx_key_down")))
 
 // Static color utility class for graphics
-RUNTIME_CLASS(
-    "Viper.Graphics.Color",
-    RTCLS_GfxColor,
-    "obj",
-    "", /* static utility class; no instance ctor */
-    RUNTIME_PROPS(),
-    RUNTIME_METHODS(
-        RUNTIME_METHOD("RGB", "i64(i64,i64,i64)", "rt_gfx_rgb")))
+RUNTIME_CLASS("Viper.Graphics.Color",
+              RTCLS_GfxColor,
+              "obj",
+              "", /* static utility class; no instance ctor */
+              RUNTIME_PROPS(),
+              RUNTIME_METHODS(RUNTIME_METHOD("RGB", "i64(i64,i64,i64)", "rt_gfx_rgb")))
 
 // Date/time utilities
 // Notes:
@@ -222,28 +211,27 @@ RUNTIME_CLASS(
 // - Now() and NowMs() return current time.
 // - Component extraction (Year, Month, etc.) uses local time.
 // - Create() builds a timestamp from local time components.
-RUNTIME_CLASS(
-    "Viper.DateTime",
-    RTCLS_DateTime,
-    "obj",
-    "", /* static utility class; no instance ctor */
-    RUNTIME_PROPS(),
-    RUNTIME_METHODS(
-        RUNTIME_METHOD("Now", "i64()", "Viper.DateTime.Now"),
-        RUNTIME_METHOD("NowMs", "i64()", "Viper.DateTime.NowMs"),
-        RUNTIME_METHOD("Year", "i64(i64)", "Viper.DateTime.Year"),
-        RUNTIME_METHOD("Month", "i64(i64)", "Viper.DateTime.Month"),
-        RUNTIME_METHOD("Day", "i64(i64)", "Viper.DateTime.Day"),
-        RUNTIME_METHOD("Hour", "i64(i64)", "Viper.DateTime.Hour"),
-        RUNTIME_METHOD("Minute", "i64(i64)", "Viper.DateTime.Minute"),
-        RUNTIME_METHOD("Second", "i64(i64)", "Viper.DateTime.Second"),
-        RUNTIME_METHOD("DayOfWeek", "i64(i64)", "Viper.DateTime.DayOfWeek"),
-        RUNTIME_METHOD("Format", "str(i64,str)", "Viper.DateTime.Format"),
-        RUNTIME_METHOD("ToISO", "str(i64)", "Viper.DateTime.ToISO"),
-        RUNTIME_METHOD("Create", "i64(i64,i64,i64,i64,i64,i64)", "Viper.DateTime.Create"),
-        RUNTIME_METHOD("AddSeconds", "i64(i64,i64)", "Viper.DateTime.AddSeconds"),
-        RUNTIME_METHOD("AddDays", "i64(i64,i64)", "Viper.DateTime.AddDays"),
-        RUNTIME_METHOD("Diff", "i64(i64,i64)", "Viper.DateTime.Diff")))
+RUNTIME_CLASS("Viper.DateTime",
+              RTCLS_DateTime,
+              "obj",
+              "", /* static utility class; no instance ctor */
+              RUNTIME_PROPS(),
+              RUNTIME_METHODS(
+                  RUNTIME_METHOD("Now", "i64()", "Viper.DateTime.Now"),
+                  RUNTIME_METHOD("NowMs", "i64()", "Viper.DateTime.NowMs"),
+                  RUNTIME_METHOD("Year", "i64(i64)", "Viper.DateTime.Year"),
+                  RUNTIME_METHOD("Month", "i64(i64)", "Viper.DateTime.Month"),
+                  RUNTIME_METHOD("Day", "i64(i64)", "Viper.DateTime.Day"),
+                  RUNTIME_METHOD("Hour", "i64(i64)", "Viper.DateTime.Hour"),
+                  RUNTIME_METHOD("Minute", "i64(i64)", "Viper.DateTime.Minute"),
+                  RUNTIME_METHOD("Second", "i64(i64)", "Viper.DateTime.Second"),
+                  RUNTIME_METHOD("DayOfWeek", "i64(i64)", "Viper.DateTime.DayOfWeek"),
+                  RUNTIME_METHOD("Format", "str(i64,str)", "Viper.DateTime.Format"),
+                  RUNTIME_METHOD("ToISO", "str(i64)", "Viper.DateTime.ToISO"),
+                  RUNTIME_METHOD("Create", "i64(i64,i64,i64,i64,i64,i64)", "Viper.DateTime.Create"),
+                  RUNTIME_METHOD("AddSeconds", "i64(i64,i64)", "Viper.DateTime.AddSeconds"),
+                  RUNTIME_METHOD("AddDays", "i64(i64,i64)", "Viper.DateTime.AddDays"),
+                  RUNTIME_METHOD("Diff", "i64(i64,i64)", "Viper.DateTime.Diff")))
 
 // String-keyed dictionary (hash map)
 // Notes:

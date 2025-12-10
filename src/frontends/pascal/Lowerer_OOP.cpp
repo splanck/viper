@@ -12,8 +12,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "frontends/pascal/Lowerer.hpp"
 #include "frontends/common/CharUtils.hpp"
+#include "frontends/pascal/Lowerer.hpp"
 #include "il/core/Instr.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 #include <algorithm>
@@ -49,9 +49,9 @@ const ClassFieldLayout *ClassLayout::findField(const std::string &name) const
 //===----------------------------------------------------------------------===//
 
 // Import common name mangling functions for use in this file
-using common::mangleMethod;
 using common::mangleConstructor;
 using common::mangleDestructor;
+using common::mangleMethod;
 
 //===----------------------------------------------------------------------===//
 // Class Scanning and Layout Computation
@@ -75,7 +75,8 @@ void Lowerer::scanClasses(const std::vector<std::unique_ptr<Decl>> &decls)
     std::vector<std::string> sorted;
     std::set<std::string> visited;
 
-    std::function<void(const std::string &)> visit = [&](const std::string &name) {
+    std::function<void(const std::string &)> visit = [&](const std::string &name)
+    {
         std::string key = toLower(name);
         if (visited.count(key))
             return;
@@ -231,7 +232,8 @@ int Lowerer::getVirtualSlot(const std::string &className, const std::string &met
     return -1;
 }
 
-std::size_t Lowerer::getFieldOffset(const std::string &className, const std::string &fieldName) const
+std::size_t Lowerer::getFieldOffset(const std::string &className,
+                                    const std::string &fieldName) const
 {
     auto it = classLayouts_.find(toLower(className));
     if (it == classLayouts_.end())
@@ -326,7 +328,8 @@ void Lowerer::emitVtableRegistration(const std::string &className)
     long long vtableBytes = slotCount > 0 ? static_cast<long long>(slotCount * 8) : 8;
 
     usedExterns_.insert("rt_alloc");
-    Value vtablePtr = emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {Value::constInt(vtableBytes)});
+    Value vtablePtr =
+        emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {Value::constInt(vtableBytes)});
 
     // Populate vtable slots
     if (vtableIt != vtableLayouts_.end())
@@ -361,7 +364,9 @@ void Lowerer::emitVtableRegistration(const std::string &className)
     // Register class with runtime
     usedExterns_.insert("rt_register_class_with_base_rs");
     emitCall("rt_register_class_with_base_rs",
-             {Value::constInt(layout.classId), vtablePtr, nameStr,
+             {Value::constInt(layout.classId),
+              vtablePtr,
+              nameStr,
               Value::constInt(static_cast<long long>(slotCount)),
               Value::constInt(baseClassId)});
 }
@@ -370,7 +375,9 @@ void Lowerer::emitVtableRegistration(const std::string &className)
 // Indirect Calls
 //===----------------------------------------------------------------------===//
 
-Lowerer::Value Lowerer::emitCallIndirectRet(Type retTy, Value callee, const std::vector<Value> &args)
+Lowerer::Value Lowerer::emitCallIndirectRet(Type retTy,
+                                            Value callee,
+                                            const std::vector<Value> &args)
 {
     unsigned id = nextTempId();
     il::core::Instr instr;
@@ -420,14 +427,15 @@ LowerResult Lowerer::lowerConstructorCall(const CallExpr &expr)
 
     // Step 1: Allocate object
     usedExterns_.insert("rt_obj_new_i64");
-    Value objPtr = emitCallRet(Type(Type::Kind::Ptr), "rt_obj_new_i64",
-                               {Value::constInt(layout.classId),
-                                Value::constInt(static_cast<long long>(layout.size))});
+    Value objPtr = emitCallRet(
+        Type(Type::Kind::Ptr),
+        "rt_obj_new_i64",
+        {Value::constInt(layout.classId), Value::constInt(static_cast<long long>(layout.size))});
 
     // Step 2: Initialize vtable pointer (offset 0)
     usedExterns_.insert("rt_get_class_vtable");
-    Value vtablePtr = emitCallRet(Type(Type::Kind::Ptr), "rt_get_class_vtable",
-                                  {Value::constInt(layout.classId)});
+    Value vtablePtr = emitCallRet(
+        Type(Type::Kind::Ptr), "rt_get_class_vtable", {Value::constInt(layout.classId)});
     emitStore(Type(Type::Kind::Ptr), objPtr, vtablePtr);
 
     // Step 3: Get constructor name from the call expression
@@ -630,7 +638,8 @@ void Lowerer::scanInterfaces(const std::vector<std::unique_ptr<Decl>> &decls)
     std::vector<std::string> sorted;
     std::set<std::string> visited;
 
-    std::function<void(const std::string &)> visit = [&](const std::string &name) {
+    std::function<void(const std::string &)> visit = [&](const std::string &name)
+    {
         std::string key = toLower(name);
         if (visited.count(key))
             return;
@@ -805,7 +814,8 @@ void Lowerer::computeInterfaceImplTables(const std::string &className)
     }
 }
 
-void Lowerer::emitInterfaceTableRegistration(const std::string &className, const std::string &ifaceName)
+void Lowerer::emitInterfaceTableRegistration(const std::string &className,
+                                             const std::string &ifaceName)
 {
     std::string classKey = toLower(className);
     std::string ifaceKey = toLower(ifaceName);
@@ -833,8 +843,8 @@ void Lowerer::emitInterfaceTableRegistration(const std::string &className, const
         tableSize = 8; // Minimum allocation
 
     usedExterns_.insert("rt_alloc");
-    Value itablePtr = emitCallRet(Type(Type::Kind::Ptr), "rt_alloc",
-                                   {Value::constInt(static_cast<long long>(tableSize))});
+    Value itablePtr = emitCallRet(
+        Type(Type::Kind::Ptr), "rt_alloc", {Value::constInt(static_cast<long long>(tableSize))});
 
     // Populate interface method table slots
     for (std::size_t i = 0; i < implTable.implMethods.size(); ++i)

@@ -13,8 +13,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "frontends/pascal/Parser.hpp"
 #include "frontends/pascal/AST.hpp"
+#include "frontends/pascal/Parser.hpp"
 
 namespace il::frontends::pascal
 {
@@ -206,7 +206,8 @@ std::vector<std::string> Parser::parseUses()
         return units;
 
     // Helper to parse a potentially dotted unit name (e.g., "Viper.Strings")
-    auto parseUnitName = [&]() -> std::string {
+    auto parseUnitName = [&]() -> std::string
+    {
         if (!check(TokenKind::Identifier))
         {
             error("expected unit name");
@@ -251,4 +252,3 @@ std::vector<std::string> Parser::parseUses()
 
 
 } // namespace il::frontends::pascal
-

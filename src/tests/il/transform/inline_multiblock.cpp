@@ -147,7 +147,8 @@ Function makeLargeHelper()
     Param x{"x", Type(Type::Kind::I64), nextId++};
     f.params.push_back(x);
 
-    auto makeForwardBlock = [&](const std::string &from, const std::string &to, std::optional<unsigned> argId)
+    auto makeForwardBlock =
+        [&](const std::string &from, const std::string &to, std::optional<unsigned> argId)
     {
         BasicBlock block;
         block.label = from;

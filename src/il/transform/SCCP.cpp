@@ -64,8 +64,8 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
-#include <cstdlib>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <iostream>
 #include <limits>
@@ -104,13 +104,35 @@ struct ValueLattice
         Overdefined
     };
 
-    static ValueLattice unknown() { return ValueLattice{Kind::Unknown, {}}; }
-    static ValueLattice fromConstant(Value v) { return ValueLattice{Kind::Constant, v}; }
-    static ValueLattice overdefined() { return ValueLattice{Kind::Overdefined, {}}; }
+    static ValueLattice unknown()
+    {
+        return ValueLattice{Kind::Unknown, {}};
+    }
 
-    bool isUnknown() const { return kind == Kind::Unknown; }
-    bool isConstant() const { return kind == Kind::Constant; }
-    bool isOverdefined() const { return kind == Kind::Overdefined; }
+    static ValueLattice fromConstant(Value v)
+    {
+        return ValueLattice{Kind::Constant, v};
+    }
+
+    static ValueLattice overdefined()
+    {
+        return ValueLattice{Kind::Overdefined, {}};
+    }
+
+    bool isUnknown() const
+    {
+        return kind == Kind::Unknown;
+    }
+
+    bool isConstant() const
+    {
+        return kind == Kind::Constant;
+    }
+
+    bool isOverdefined() const
+    {
+        return kind == Kind::Overdefined;
+    }
 
     /// @brief Merge a constant into the lattice state.
     /// @return True if the state changed.
@@ -156,12 +178,30 @@ struct FoldResult
         Trap
     };
 
-    static FoldResult unknown() { return FoldResult{Kind::Unknown, {}}; }
-    static FoldResult trap() { return FoldResult{Kind::Trap, {}}; }
-    static FoldResult constant(Value v) { return FoldResult{Kind::Constant, v}; }
+    static FoldResult unknown()
+    {
+        return FoldResult{Kind::Unknown, {}};
+    }
 
-    bool isTrap() const { return kind == Kind::Trap; }
-    bool isConstant() const { return kind == Kind::Constant; }
+    static FoldResult trap()
+    {
+        return FoldResult{Kind::Trap, {}};
+    }
+
+    static FoldResult constant(Value v)
+    {
+        return FoldResult{Kind::Constant, v};
+    }
+
+    bool isTrap() const
+    {
+        return kind == Kind::Trap;
+    }
+
+    bool isConstant() const
+    {
+        return kind == Kind::Constant;
+    }
 
     Kind kind;
     Value value;
@@ -484,7 +524,7 @@ static FoldResult foldFloatArithmetic(Opcode op, const FoldContext &ctx)
             return FoldResult::constant(Value::constFloat(lhs * rhs));
         case Opcode::FDiv:
             return rhs == 0.0 ? FoldResult::unknown()
-                               : FoldResult::constant(Value::constFloat(lhs / rhs));
+                              : FoldResult::constant(Value::constFloat(lhs / rhs));
         default:
             return FoldResult::unknown();
     }
@@ -713,8 +753,7 @@ class SCCPSolver
 {
   public:
     explicit SCCPSolver(Function &function)
-        : function_(function)
-        , debug_(std::getenv("VIPER_SCCP_DEBUG") != nullptr)
+        : function_(function), debug_(std::getenv("VIPER_SCCP_DEBUG") != nullptr)
     {
         initialiseStates();
     }

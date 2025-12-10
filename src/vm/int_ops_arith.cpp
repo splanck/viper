@@ -74,8 +74,7 @@ VM::ExecResult handleIAddOvf(VM &vm,
 {
     (void)blocks;
     (void)ip;
-    return ops::applyBinary(
-        vm, fr, in, OverflowAddOp{in, fr, bb, "integer overflow in iadd.ovf"});
+    return ops::applyBinary(vm, fr, in, OverflowAddOp{in, fr, bb, "integer overflow in iadd.ovf"});
 }
 
 /// @brief Execute the @c isub.ovf opcode and trap on overflow.
@@ -99,8 +98,7 @@ VM::ExecResult handleISubOvf(VM &vm,
 {
     (void)blocks;
     (void)ip;
-    return ops::applyBinary(
-        vm, fr, in, OverflowSubOp{in, fr, bb, "integer overflow in isub.ovf"});
+    return ops::applyBinary(vm, fr, in, OverflowSubOp{in, fr, bb, "integer overflow in isub.ovf"});
 }
 
 /// @brief Execute the @c imul.ovf opcode and trap on overflow.
@@ -125,8 +123,7 @@ VM::ExecResult handleIMulOvf(VM &vm,
 {
     (void)blocks;
     (void)ip;
-    return ops::applyBinary(
-        vm, fr, in, OverflowMulOp{in, fr, bb, "integer overflow in imul.ovf"});
+    return ops::applyBinary(vm, fr, in, OverflowMulOp{in, fr, bb, "integer overflow in imul.ovf"});
 }
 
 /// @brief Execute the @c sdiv opcode with signed semantics.
@@ -175,8 +172,7 @@ VM::ExecResult handleUDiv(VM &vm,
 {
     (void)blocks;
     (void)ip;
-    return ops::applyBinary(
-        vm, fr, in, UnsignedDivWithCheck{in, fr, bb, "divide by zero in udiv"});
+    return ops::applyBinary(vm, fr, in, UnsignedDivWithCheck{in, fr, bb, "divide by zero in udiv"});
 }
 
 /// @brief Execute the @c srem opcode that computes signed remainders.
@@ -224,8 +220,7 @@ VM::ExecResult handleURem(VM &vm,
 {
     (void)blocks;
     (void)ip;
-    return ops::applyBinary(
-        vm, fr, in, UnsignedRemWithCheck{in, fr, bb, "divide by zero in urem"});
+    return ops::applyBinary(vm, fr, in, UnsignedRemWithCheck{in, fr, bb, "divide by zero in urem"});
 }
 
 /// @brief Execute the @c sdiv.chk0 opcode, trapping on divide-by-zero.

@@ -13,8 +13,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "frontends/pascal/Parser.hpp"
 #include "frontends/pascal/AST.hpp"
+#include "frontends/pascal/Parser.hpp"
 
 namespace il::frontends::pascal
 {
@@ -25,9 +25,7 @@ std::unique_ptr<Stmt> Parser::parseStatement()
     auto loc = current_.loc;
 
     // Empty statement (just semicolon or end of block)
-    if (check(TokenKind::Semicolon) ||
-        check(TokenKind::KwEnd) ||
-        check(TokenKind::KwElse) ||
+    if (check(TokenKind::Semicolon) || check(TokenKind::KwEnd) || check(TokenKind::KwElse) ||
         check(TokenKind::KwUntil))
     {
         return std::make_unique<EmptyStmt>(loc);
@@ -341,8 +339,12 @@ std::unique_ptr<Stmt> Parser::parseFor()
         if (!body)
             return nullptr;
 
-        return std::make_unique<ForStmt>(
-            std::move(loopVar), std::move(start), std::move(bound), direction, std::move(body), loc);
+        return std::make_unique<ForStmt>(std::move(loopVar),
+                                         std::move(start),
+                                         std::move(bound),
+                                         direction,
+                                         std::move(body),
+                                         loc);
     }
     else if (match(TokenKind::KwIn))
     {
@@ -470,9 +472,7 @@ std::vector<std::unique_ptr<Stmt>> Parser::parseStatementList()
     while (match(TokenKind::Semicolon))
     {
         // Don't parse another statement if we're at end/until/else
-        if (check(TokenKind::KwEnd) ||
-            check(TokenKind::KwUntil) ||
-            check(TokenKind::KwElse))
+        if (check(TokenKind::KwEnd) || check(TokenKind::KwUntil) || check(TokenKind::KwElse))
         {
             break;
         }
@@ -494,9 +494,7 @@ std::unique_ptr<Stmt> Parser::parseRaise()
 
     // Check if there's an exception expression (not just re-raise)
     std::unique_ptr<Expr> exception;
-    if (!check(TokenKind::Semicolon) &&
-        !check(TokenKind::KwEnd) &&
-        !check(TokenKind::KwElse))
+    if (!check(TokenKind::Semicolon) && !check(TokenKind::KwEnd) && !check(TokenKind::KwElse))
     {
         exception = parseExpression();
         // It's okay if expression fails - could be just "raise;"
@@ -514,10 +512,8 @@ std::unique_ptr<Stmt> Parser::parseTry()
 
     // Parse try body statements
     std::vector<std::unique_ptr<Stmt>> tryStmts;
-    while (!check(TokenKind::KwExcept) &&
-           !check(TokenKind::KwFinally) &&
-           !check(TokenKind::KwEnd) &&
-           !check(TokenKind::Eof))
+    while (!check(TokenKind::KwExcept) && !check(TokenKind::KwFinally) &&
+           !check(TokenKind::KwEnd) && !check(TokenKind::Eof))
     {
         auto stmt = parseStatement();
         if (stmt)
@@ -643,4 +639,3 @@ std::unique_ptr<Stmt> Parser::parseTry()
 
 
 } // namespace il::frontends::pascal
-

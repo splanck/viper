@@ -240,6 +240,38 @@ clang++ /tmp/test.o -o /tmp/test_native
 echo "Exit code: $?"  # Should print 15
 ```
 
+### Debug MIR Dump Flags
+
+The AArch64 backend supports CLI flags to dump Machine IR (MIR) for debugging and inspection:
+
+| Flag | Description |
+|------|-------------|
+| `--dump-mir-before-ra` | Print MIR to stderr before register allocation |
+| `--dump-mir-after-ra` | Print MIR to stderr after register allocation |
+| `--dump-mir-full` | Print MIR both before and after register allocation |
+
+**Example usage:**
+```bash
+./build/src/tools/ilc/ilc codegen arm64 /tmp/test.il -S /tmp/test.s --dump-mir-after-ra
+```
+
+**Example output:**
+```
+=== MIR after RA: test_func ===
+MFunction: test_func
+  Block: entry
+    AddRRR @x0:gpr <- @x0:gpr, @x1:gpr
+    MulRRR @x0:gpr <- @x0:gpr, @x2:gpr
+    Ret
+```
+
+The MIR dump shows:
+- **Virtual registers** (`%v0:gpr`) before RA — temporaries awaiting allocation
+- **Physical registers** (`@x0:gpr`) after RA — hardware registers assigned
+- **MIR opcodes** (`AddRRR`, `MulRRR`, `Ret`) — target-specific operations
+
+Note: Fast-path lowering may produce physical registers directly even before RA for simple patterns.
+
 ### Test Frogger Compilation
 ```bash
 ./build/src/tools/ilc/ilc front basic -emit-il demos/frogger/frogger.bas > /tmp/frogger.il

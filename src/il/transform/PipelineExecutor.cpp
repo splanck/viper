@@ -59,8 +59,7 @@ PipelineExecutor::PipelineExecutor(const PassRegistry &registry,
                                    Instrumentation instrumentation,
                                    bool parallelFunctionPasses)
     : registry_(registry), analysisRegistry_(analysisRegistry),
-      instrumentation_(std::move(instrumentation)),
-      parallelFunctionPasses_(parallelFunctionPasses)
+      instrumentation_(std::move(instrumentation)), parallelFunctionPasses_(parallelFunctionPasses)
 {
 }
 
@@ -87,95 +86,96 @@ void PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
 
     for (const auto &passId : pipeline)
     {
-        driver.registerPass(passId,
-                            [this, &module, &analysis, passId, collectMetrics]() -> bool
+        driver.registerPass(
+            passId,
+            [this, &module, &analysis, passId, collectMetrics]() -> bool
+            {
+                PassMetrics metrics{};
+                AnalysisCounts countsBefore{};
+                std::chrono::steady_clock::time_point startTime{};
+                if (collectMetrics)
+                {
+                    metrics.before = computeIRSize(module);
+                    countsBefore = analysis.counts();
+                    startTime = std::chrono::steady_clock::now();
+                }
+
+                const detail::PassFactory *factory = registry_.lookup(passId);
+                if (!factory)
+                    return false;
+
+                bool executed = false;
+                switch (factory->kind)
+                {
+                    case detail::PassKind::Module:
+                    {
+                        if (!factory->makeModule)
+                            return false;
+                        auto pass = factory->makeModule();
+                        if (!pass)
+                            return false;
+                        PreservedAnalyses preserved = pass->run(module, analysis);
+                        analysis.invalidateAfterModulePass(preserved);
+                        executed = true;
+                        break;
+                    }
+                    case detail::PassKind::Function:
+                    {
+                        if (!factory->makeFunction)
+                            return false;
+
+                        auto runFunctionPass = [&](core::Function &fn) -> bool
+                        {
+                            auto pass = factory->makeFunction();
+                            if (!pass)
+                                return false;
+                            PreservedAnalyses preserved = pass->run(fn, analysis);
+                            analysis.invalidateAfterFunctionPass(preserved, fn);
+                            return true;
+                        };
+
+                        bool allOk = true;
+                        if (parallelFunctionPasses_ && module.functions.size() > 1)
+                        {
+                            std::vector<std::future<bool>> tasks;
+                            tasks.reserve(module.functions.size());
+                            for (auto &fn : module.functions)
                             {
-                                PassMetrics metrics{};
-                                AnalysisCounts countsBefore{};
-                                std::chrono::steady_clock::time_point startTime{};
-                                if (collectMetrics)
-                                {
-                                    metrics.before = computeIRSize(module);
-                                    countsBefore = analysis.counts();
-                                    startTime = std::chrono::steady_clock::now();
-                                }
+                                tasks.push_back(std::async(std::launch::async,
+                                                           [&runFunctionPass, &fn]()
+                                                           { return runFunctionPass(fn); }));
+                            }
+                            for (auto &task : tasks)
+                                allOk &= task.get();
+                        }
+                        else
+                        {
+                            for (auto &fn : module.functions)
+                                allOk &= runFunctionPass(fn);
+                        }
 
-                                const detail::PassFactory *factory = registry_.lookup(passId);
-                                if (!factory)
-                                    return false;
+                        executed = allOk;
+                        break;
+                    }
+                }
 
-                                bool executed = false;
-                                switch (factory->kind)
-                                {
-                                    case detail::PassKind::Module:
-                                    {
-                                        if (!factory->makeModule)
-                                            return false;
-                                        auto pass = factory->makeModule();
-                                        if (!pass)
-                                            return false;
-                                        PreservedAnalyses preserved = pass->run(module, analysis);
-                                        analysis.invalidateAfterModulePass(preserved);
-                                        executed = true;
-                                        break;
-                                    }
-                                    case detail::PassKind::Function:
-                                    {
-                                        if (!factory->makeFunction)
-                                            return false;
+                if (!executed)
+                    return false;
 
-                                        auto runFunctionPass = [&](core::Function &fn) -> bool
-                                        {
-                                            auto pass = factory->makeFunction();
-                                            if (!pass)
-                                                return false;
-                                            PreservedAnalyses preserved = pass->run(fn, analysis);
-                                            analysis.invalidateAfterFunctionPass(preserved, fn);
-                                            return true;
-                                        };
+                if (collectMetrics && instrumentation_.passMetrics)
+                {
+                    metrics.after = computeIRSize(module);
+                    AnalysisCounts countsAfter = analysis.counts();
+                    metrics.analysesComputed.moduleComputations =
+                        countsAfter.moduleComputations - countsBefore.moduleComputations;
+                    metrics.analysesComputed.functionComputations =
+                        countsAfter.functionComputations - countsBefore.functionComputations;
+                    metrics.duration = std::chrono::steady_clock::now() - startTime;
+                    instrumentation_.passMetrics(passId, metrics);
+                }
 
-                                        bool allOk = true;
-                                        if (parallelFunctionPasses_ && module.functions.size() > 1)
-                                        {
-                                            std::vector<std::future<bool>> tasks;
-                                            tasks.reserve(module.functions.size());
-                                            for (auto &fn : module.functions)
-                                            {
-                                                tasks.push_back(std::async(
-                                                    std::launch::async,
-                                                    [&runFunctionPass, &fn]() { return runFunctionPass(fn); }));
-                                            }
-                                            for (auto &task : tasks)
-                                                allOk &= task.get();
-                                        }
-                                        else
-                                        {
-                                            for (auto &fn : module.functions)
-                                                allOk &= runFunctionPass(fn);
-                                        }
-
-                                        executed = allOk;
-                                        break;
-                                    }
-                                }
-
-                                if (!executed)
-                                    return false;
-
-                                if (collectMetrics && instrumentation_.passMetrics)
-                                {
-                                    metrics.after = computeIRSize(module);
-                                    AnalysisCounts countsAfter = analysis.counts();
-                                    metrics.analysesComputed.moduleComputations =
-                                        countsAfter.moduleComputations - countsBefore.moduleComputations;
-                                    metrics.analysesComputed.functionComputations =
-                                        countsAfter.functionComputations - countsBefore.functionComputations;
-                                    metrics.duration = std::chrono::steady_clock::now() - startTime;
-                                    instrumentation_.passMetrics(passId, metrics);
-                                }
-
-                                return true;
-                            });
+                return true;
+            });
     }
 
     bool ok = driver.runPipeline(pipeline);

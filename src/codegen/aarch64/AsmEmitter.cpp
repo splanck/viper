@@ -102,6 +102,8 @@ static std::string mapRuntimeSymbol(const std::string &name)
         return "rt_args_get";
     if (name == "Viper.Environment.GetCommandLine")
         return "rt_cmdline";
+    if (name == "Viper.Environment.IsNative")
+        return "rt_env_is_native";
     if (name == "Viper.String.Left")
         return "rt_left";
     if (name == "Viper.String.Right")

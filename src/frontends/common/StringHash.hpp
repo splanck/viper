@@ -28,8 +28,7 @@ struct StringHash
 {
     using is_transparent = void;
 
-    template <typename T>
-    [[nodiscard]] std::size_t operator()(const T &key) const noexcept
+    template <typename T> [[nodiscard]] std::size_t operator()(const T &key) const noexcept
     {
         return std::hash<std::string_view>{}(std::string_view(key));
     }
@@ -74,7 +73,8 @@ struct CaseInsensitiveHash
         std::size_t hash = 0;
         for (char c : key)
         {
-            hash = hash * 31 + static_cast<std::size_t>(std::tolower(static_cast<unsigned char>(c)));
+            hash =
+                hash * 31 + static_cast<std::size_t>(std::tolower(static_cast<unsigned char>(c)));
         }
         return hash;
     }

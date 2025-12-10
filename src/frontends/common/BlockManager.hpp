@@ -158,13 +158,22 @@ class BlockManager
     }
 
     /// @brief Get the current function.
-    [[nodiscard]] Function *function() { return currentFunc_; }
+    [[nodiscard]] Function *function()
+    {
+        return currentFunc_;
+    }
 
     /// @brief Get the current function (const).
-    [[nodiscard]] const Function *function() const { return currentFunc_; }
+    [[nodiscard]] const Function *function() const
+    {
+        return currentFunc_;
+    }
 
     /// @brief Get the next block counter value (for external naming).
-    [[nodiscard]] unsigned nextBlockId() const noexcept { return blockCounter_; }
+    [[nodiscard]] unsigned nextBlockId() const noexcept
+    {
+        return blockCounter_;
+    }
 
   private:
     il::build::IRBuilder *builder_{nullptr};

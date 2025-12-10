@@ -175,8 +175,7 @@ end.
             {
                 for (const auto &instr : blk.instructions)
                 {
-                    if (instr.op == il::core::Opcode::Sub ||
-                        instr.op == il::core::Opcode::Add ||
+                    if (instr.op == il::core::Opcode::Sub || instr.op == il::core::Opcode::Add ||
                         instr.op == il::core::Opcode::ISubOvf ||
                         instr.op == il::core::Opcode::IAddOvf)
                     {

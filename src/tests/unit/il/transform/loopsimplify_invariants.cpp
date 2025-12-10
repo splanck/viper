@@ -109,8 +109,12 @@ TEST(LoopSimplify, LoopInfoCapturesLatchesAndExits)
     outerExit.instructions.push_back(std::move(ret));
     outerExit.terminated = true;
 
-    F.blocks = {std::move(entry),      std::move(outer),      std::move(inner),
-                std::move(innerLatch), std::move(afterInner), std::move(outerLatch),
+    F.blocks = {std::move(entry),
+                std::move(outer),
+                std::move(inner),
+                std::move(innerLatch),
+                std::move(afterInner),
+                std::move(outerLatch),
                 std::move(outerExit)};
     M.functions.push_back(std::move(F));
 

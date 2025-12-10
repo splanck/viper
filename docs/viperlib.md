@@ -498,6 +498,7 @@ Command-line arguments and environment access.
 | `GetArgumentCount()` | `Integer()` | Returns the number of command-line arguments |
 | `GetArgument(index)` | `String(Integer)` | Returns the argument at the specified index (0-based) |
 | `GetCommandLine()` | `String()` | Returns the full command line as a single string |
+| `IsNative()` | `Boolean()` | Returns `TRUE` when running native code, `FALSE` when running in the VM |
 
 ### Example
 

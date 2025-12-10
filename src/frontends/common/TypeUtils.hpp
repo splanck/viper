@@ -99,16 +99,16 @@ namespace il::frontends::common::type_utils
     using Kind = il::core::Type::Kind;
     switch (k)
     {
-    case Kind::I1:
-        return 1;
-    case Kind::I16:
-        return 16;
-    case Kind::I32:
-        return 32;
-    case Kind::I64:
-        return 64;
-    default:
-        return 0;
+        case Kind::I1:
+            return 1;
+        case Kind::I16:
+            return 16;
+        case Kind::I32:
+            return 32;
+        case Kind::I64:
+            return 64;
+        default:
+            return 0;
     }
 }
 
@@ -120,10 +120,10 @@ namespace il::frontends::common::type_utils
     using Kind = il::core::Type::Kind;
     switch (k)
     {
-    case Kind::F64:
-        return 64;
-    default:
-        return 0;
+        case Kind::F64:
+            return 64;
+        default:
+            return 0;
     }
 }
 
@@ -135,21 +135,21 @@ namespace il::frontends::common::type_utils
     using Kind = il::core::Type::Kind;
     switch (k)
     {
-    case Kind::I1:
-        return 1;
-    case Kind::I16:
-        return 2;
-    case Kind::I32:
-        return 4;
-    case Kind::I64:
-    case Kind::F64:
-    case Kind::Ptr:
-    case Kind::Str:
-        return 8;
-    case Kind::Void:
-        return 0;
-    default:
-        return 8; // Default to 64-bit for safety
+        case Kind::I1:
+            return 1;
+        case Kind::I16:
+            return 2;
+        case Kind::I32:
+            return 4;
+        case Kind::I64:
+        case Kind::F64:
+        case Kind::Ptr:
+        case Kind::Str:
+            return 8;
+        case Kind::Void:
+            return 0;
+        default:
+            return 8; // Default to 64-bit for safety
     }
 }
 

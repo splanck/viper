@@ -11,6 +11,9 @@
 //   - Integer RR ops: add/sub/mul/and/or/xor on entry params feeding ret
 //   - Integer RI ops: add/sub/shl/lshr/ashr with immediate operands
 //   - Integer comparisons: icmp.eq/ne, scmp.lt/le/gt/ge, ucmp.lt/le/gt/ge
+//   - Division/Remainder: sdiv/udiv/srem/urem on entry params
+//   - Negation: sub 0, %param -> negate a value
+//   - Two-op chain: %t1 = op %p0, %p1; %t2 = op %t1, %p2; ret %t2
 //
 // Invariants:
 //   - Operands must be entry parameters or constant immediates
@@ -253,6 +256,185 @@ std::optional<MFunction> tryIntArithmeticFastPaths(FastPathContext &ctx)
                             emitCmpImm(static_cast<unsigned>(i), o1.i64);
                             return ctx.mf;
                         }
+                }
+            }
+        }
+    }
+
+    // =========================================================================
+    // Division/Remainder RR ops
+    // =========================================================================
+    // Pattern: divop %p0, %p1 -> %r; ret %r
+    // Handles: sdiv, udiv (srem/urem require msub which is more complex)
+    if (ctx.fn.blocks.size() == 1 && bb.instructions.size() >= 2 && bb.params.size() >= 2)
+    {
+        const auto &opI = bb.instructions[bb.instructions.size() - 2];
+        const auto &retI = bb.instructions.back();
+        const bool isSDiv = (opI.op == Opcode::SDiv);
+        const bool isUDiv = (opI.op == Opcode::UDiv);
+        if ((isSDiv || isUDiv) && retI.op == Opcode::Ret && opI.result && !retI.operands.empty() &&
+            opI.operands.size() == 2)
+        {
+            const auto &retV = retI.operands[0];
+            if (retV.kind == il::core::Value::Kind::Temp && retV.id == *opI.result &&
+                opI.operands[0].kind == il::core::Value::Kind::Temp &&
+                opI.operands[1].kind == il::core::Value::Kind::Temp)
+            {
+                const int idx0 = indexOfParam(bb, opI.operands[0].id);
+                const int idx1 = indexOfParam(bb, opI.operands[1].id);
+                if (idx0 >= 0 && idx1 >= 0 && static_cast<std::size_t>(idx0) < kMaxGPRArgs &&
+                    static_cast<std::size_t>(idx1) < kMaxGPRArgs)
+                {
+                    const PhysReg src0 = ctx.argOrder[static_cast<std::size_t>(idx0)];
+                    const PhysReg src1 = ctx.argOrder[static_cast<std::size_t>(idx1)];
+                    // Normalize to x0,x1 using scratch
+                    bbMir.instrs.push_back(MInstr{
+                        MOpcode::MovRR, {MOperand::regOp(kScratchGPR), MOperand::regOp(src1)}});
+                    bbMir.instrs.push_back(MInstr{
+                        MOpcode::MovRR, {MOperand::regOp(PhysReg::X0), MOperand::regOp(src0)}});
+                    bbMir.instrs.push_back(
+                        MInstr{MOpcode::MovRR,
+                               {MOperand::regOp(PhysReg::X1), MOperand::regOp(kScratchGPR)}});
+                    if (isSDiv)
+                        bbMir.instrs.push_back(MInstr{MOpcode::SDivRRR,
+                                                      {MOperand::regOp(PhysReg::X0),
+                                                       MOperand::regOp(PhysReg::X0),
+                                                       MOperand::regOp(PhysReg::X1)}});
+                    else
+                        bbMir.instrs.push_back(MInstr{MOpcode::UDivRRR,
+                                                      {MOperand::regOp(PhysReg::X0),
+                                                       MOperand::regOp(PhysReg::X0),
+                                                       MOperand::regOp(PhysReg::X1)}});
+                    bbMir.instrs.push_back(MInstr{MOpcode::Ret, {}});
+                    ctx.fb.finalize();
+                    return ctx.mf;
+                }
+            }
+        }
+    }
+
+    // =========================================================================
+    // Negation: sub 0, %param
+    // =========================================================================
+    // Pattern: sub 0, %p0 -> %r; ret %r (integer negation)
+    // Emits: neg x0, srcReg; ret
+    if (ctx.fn.blocks.size() == 1 && bb.instructions.size() >= 2 && !bb.params.empty())
+    {
+        const auto &subI = bb.instructions[bb.instructions.size() - 2];
+        const auto &retI = bb.instructions.back();
+        if (subI.op == Opcode::Sub && retI.op == Opcode::Ret && subI.result &&
+            !retI.operands.empty() && subI.operands.size() == 2)
+        {
+            const auto &retV = retI.operands[0];
+            const auto &o0 = subI.operands[0];
+            const auto &o1 = subI.operands[1];
+            // Check for sub 0, %param pattern
+            if (retV.kind == il::core::Value::Kind::Temp && retV.id == *subI.result &&
+                o0.kind == il::core::Value::Kind::ConstInt && o0.i64 == 0 &&
+                o1.kind == il::core::Value::Kind::Temp)
+            {
+                int pIdx = indexOfParam(bb, o1.id);
+                if (pIdx >= 0 && static_cast<std::size_t>(pIdx) < kMaxGPRArgs)
+                {
+                    const PhysReg src = ctx.argOrder[static_cast<std::size_t>(pIdx)];
+                    // neg x0, src  via: mov x0, #0; sub x0, x0, src
+                    bbMir.instrs.push_back(
+                        MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X0), MOperand::immOp(0)}});
+                    bbMir.instrs.push_back(MInstr{MOpcode::SubRRR,
+                                                  {MOperand::regOp(PhysReg::X0),
+                                                   MOperand::regOp(PhysReg::X0),
+                                                   MOperand::regOp(src)}});
+                    bbMir.instrs.push_back(MInstr{MOpcode::Ret, {}});
+                    ctx.fb.finalize();
+                    return ctx.mf;
+                }
+            }
+        }
+    }
+
+    // =========================================================================
+    // Two-op arithmetic chain
+    // =========================================================================
+    // Pattern: %t1 = op %p0, %p1; %t2 = op %t1, %p2; ret %t2
+    // Common in expressions like (a + b) * c
+    if (ctx.fn.blocks.size() == 1 && bb.instructions.size() == 3 && bb.params.size() >= 3)
+    {
+        const auto &op1I = bb.instructions[0];
+        const auto &op2I = bb.instructions[1];
+        const auto &retI = bb.instructions[2];
+
+        // Check basic structure
+        if (retI.op == Opcode::Ret && !retI.operands.empty() && op1I.result && op2I.result &&
+            retI.operands[0].kind == il::core::Value::Kind::Temp &&
+            retI.operands[0].id == *op2I.result)
+        {
+            // Check that op2 uses op1 result as first operand and a param as second
+            if (op2I.operands.size() == 2 && op2I.operands[0].kind == il::core::Value::Kind::Temp &&
+                op2I.operands[0].id == *op1I.result &&
+                op2I.operands[1].kind == il::core::Value::Kind::Temp)
+            {
+                // Check that op1 uses two params
+                if (op1I.operands.size() == 2 &&
+                    op1I.operands[0].kind == il::core::Value::Kind::Temp &&
+                    op1I.operands[1].kind == il::core::Value::Kind::Temp)
+                {
+                    int p0 = indexOfParam(bb, op1I.operands[0].id);
+                    int p1 = indexOfParam(bb, op1I.operands[1].id);
+                    int p2 = indexOfParam(bb, op2I.operands[1].id);
+
+                    if (p0 >= 0 && p1 >= 0 && p2 >= 0 &&
+                        static_cast<std::size_t>(p0) < kMaxGPRArgs &&
+                        static_cast<std::size_t>(p1) < kMaxGPRArgs &&
+                        static_cast<std::size_t>(p2) < kMaxGPRArgs)
+                    {
+                        // Only handle simple ops for the chain
+                        auto mapOp = [](Opcode op) -> std::optional<MOpcode>
+                        {
+                            switch (op)
+                            {
+                                case Opcode::Add:
+                                case Opcode::IAddOvf:
+                                    return MOpcode::AddRRR;
+                                case Opcode::Sub:
+                                case Opcode::ISubOvf:
+                                    return MOpcode::SubRRR;
+                                case Opcode::Mul:
+                                case Opcode::IMulOvf:
+                                    return MOpcode::MulRRR;
+                                case Opcode::And:
+                                    return MOpcode::AndRRR;
+                                case Opcode::Or:
+                                    return MOpcode::OrrRRR;
+                                case Opcode::Xor:
+                                    return MOpcode::EorRRR;
+                                default:
+                                    return std::nullopt;
+                            }
+                        };
+
+                        auto mop1 = mapOp(op1I.op);
+                        auto mop2 = mapOp(op2I.op);
+                        if (mop1 && mop2)
+                        {
+                            const PhysReg r0 = ctx.argOrder[static_cast<std::size_t>(p0)];
+                            const PhysReg r1 = ctx.argOrder[static_cast<std::size_t>(p1)];
+                            const PhysReg r2 = ctx.argOrder[static_cast<std::size_t>(p2)];
+
+                            // First op: x0 = op1(r0, r1)
+                            bbMir.instrs.push_back(MInstr{*mop1,
+                                                          {MOperand::regOp(PhysReg::X0),
+                                                           MOperand::regOp(r0),
+                                                           MOperand::regOp(r1)}});
+                            // Second op: x0 = op2(x0, r2)
+                            bbMir.instrs.push_back(MInstr{*mop2,
+                                                          {MOperand::regOp(PhysReg::X0),
+                                                           MOperand::regOp(PhysReg::X0),
+                                                           MOperand::regOp(r2)}});
+                            bbMir.instrs.push_back(MInstr{MOpcode::Ret, {}});
+                            ctx.fb.finalize();
+                            return ctx.mf;
+                        }
+                    }
                 }
             }
         }

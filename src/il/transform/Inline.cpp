@@ -78,7 +78,10 @@ unsigned getBlockDepth(const BlockDepthMap &depths, const std::string &fn, const
     return it->second;
 }
 
-void setBlockDepth(BlockDepthMap &depths, const std::string &fn, const std::string &label, unsigned depth)
+void setBlockDepth(BlockDepthMap &depths,
+                   const std::string &fn,
+                   const std::string &label,
+                   unsigned depth)
 {
     depths[depthKey(fn, label)] = depth;
 }
@@ -92,21 +95,22 @@ bool isEHSensitive(const Instr &I)
 {
     switch (I.op)
     {
-    case Opcode::EhPush:
-    case Opcode::EhPop:
-    case Opcode::EhEntry:
-    case Opcode::ResumeSame:
-    case Opcode::ResumeNext:
-    case Opcode::ResumeLabel:
-        return true;
-    default:
-        return false;
+        case Opcode::EhPush:
+        case Opcode::EhPop:
+        case Opcode::EhEntry:
+        case Opcode::ResumeSame:
+        case Opcode::ResumeNext:
+        case Opcode::ResumeLabel:
+            return true;
+        default:
+            return false;
     }
 }
 
 bool hasUnsupportedTerminator(const Instr &I)
 {
-    return !(I.op == Opcode::Ret || I.op == Opcode::Br || I.op == Opcode::CBr || I.op == Opcode::SwitchI32);
+    return !(I.op == Opcode::Ret || I.op == Opcode::Br || I.op == Opcode::CBr ||
+             I.op == Opcode::SwitchI32);
 }
 
 unsigned countInstructions(const Function &F)
@@ -299,7 +303,8 @@ bool inlineCallSite(Function &caller,
     // Build continuation block from instructions after the call.
     BasicBlock continuation;
     continuation.label = makeUniqueLabel(caller, callBlock.label + ".inline.cont");
-    continuation.instructions.assign(callBlock.instructions.begin() + static_cast<long>(callIndex + 1),
+    continuation.instructions.assign(callBlock.instructions.begin() +
+                                         static_cast<long>(callIndex + 1),
                                      callBlock.instructions.end());
     continuation.terminated = callBlock.terminated;
 
@@ -489,7 +494,8 @@ PreservedAnalyses Inliner::run(Module &module, AnalysisManager &)
 
                 auto edgeIt = cg.edges.find(callee->name);
                 if (edgeIt != cg.edges.end() &&
-                    std::find(edgeIt->second.begin(), edgeIt->second.end(), caller.name) != edgeIt->second.end())
+                    std::find(edgeIt->second.begin(), edgeIt->second.end(), caller.name) !=
+                        edgeIt->second.end())
                 {
                     ++instIdx;
                     continue;
@@ -503,7 +509,8 @@ PreservedAnalyses Inliner::run(Module &module, AnalysisManager &)
                 }
 
                 unsigned depth = getBlockDepth(depths, caller.name, block.label);
-                if (!inlineCallSite(caller, blockIdx, instIdx, *callee, depth, maxInlineDepth_, depths))
+                if (!inlineCallSite(
+                        caller, blockIdx, instIdx, *callee, depth, maxInlineDepth_, depths))
                 {
                     ++instIdx;
                     continue;

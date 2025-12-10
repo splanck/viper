@@ -13,9 +13,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "frontends/pascal/SemanticAnalyzer.hpp"
-#include "frontends/pascal/BuiltinRegistry.hpp"
 #include "frontends/common/CharUtils.hpp"
+#include "frontends/pascal/BuiltinRegistry.hpp"
+#include "frontends/pascal/SemanticAnalyzer.hpp"
 #include <algorithm>
 #include <cctype>
 #include <set>
@@ -31,7 +31,6 @@ inline std::string toLower(const std::string &s)
 {
     return toLowercase(s);
 }
-
 
 //===----------------------------------------------------------------------===//
 // Declaration Collection (Pass 1)
@@ -115,47 +114,54 @@ void SemanticAnalyzer::collectDecl(Decl &decl)
 {
     switch (decl.kind)
     {
-    case DeclKind::Type: {
-        auto &td = static_cast<TypeDecl &>(decl);
-        registerType(td.name, *td.type);
-        break;
-    }
-    case DeclKind::Var: {
-        auto &vd = static_cast<VarDecl &>(decl);
-        for (const auto &name : vd.names)
+        case DeclKind::Type:
         {
-            registerVariable(name, *vd.type);
+            auto &td = static_cast<TypeDecl &>(decl);
+            registerType(td.name, *td.type);
+            break;
         }
-        break;
-    }
-    case DeclKind::Const: {
-        auto &cd = static_cast<ConstDecl &>(decl);
-        registerConstant(cd.name, *cd.value, cd.type.get());
-        break;
-    }
-    case DeclKind::Procedure: {
-        auto &pd = static_cast<ProcedureDecl &>(decl);
-        registerProcedure(pd);
-        break;
-    }
-    case DeclKind::Function: {
-        auto &fd = static_cast<FunctionDecl &>(decl);
-        registerFunction(fd);
-        break;
-    }
-    case DeclKind::Class: {
-        auto &cd = static_cast<ClassDecl &>(decl);
-        registerClass(cd);
-        break;
-    }
-    case DeclKind::Interface: {
-        auto &id = static_cast<InterfaceDecl &>(decl);
-        registerInterface(id);
-        break;
-    }
-    default:
-        // Other declarations (constructor, destructor, etc.) to be handled later
-        break;
+        case DeclKind::Var:
+        {
+            auto &vd = static_cast<VarDecl &>(decl);
+            for (const auto &name : vd.names)
+            {
+                registerVariable(name, *vd.type);
+            }
+            break;
+        }
+        case DeclKind::Const:
+        {
+            auto &cd = static_cast<ConstDecl &>(decl);
+            registerConstant(cd.name, *cd.value, cd.type.get());
+            break;
+        }
+        case DeclKind::Procedure:
+        {
+            auto &pd = static_cast<ProcedureDecl &>(decl);
+            registerProcedure(pd);
+            break;
+        }
+        case DeclKind::Function:
+        {
+            auto &fd = static_cast<FunctionDecl &>(decl);
+            registerFunction(fd);
+            break;
+        }
+        case DeclKind::Class:
+        {
+            auto &cd = static_cast<ClassDecl &>(decl);
+            registerClass(cd);
+            break;
+        }
+        case DeclKind::Interface:
+        {
+            auto &id = static_cast<InterfaceDecl &>(decl);
+            registerInterface(id);
+            break;
+        }
+        default:
+            // Other declarations (constructor, destructor, etc.) to be handled later
+            break;
     }
 }
 
@@ -175,7 +181,8 @@ void SemanticAnalyzer::registerType(const std::string &name, TypeNode &typeNode)
             // Check for duplicate constant name
             if (constants_.find(constKey) != constants_.end())
             {
-                error(typeNode.loc, "enum constant '" + resolved.enumValues[i] + "' is already defined");
+                error(typeNode.loc,
+                      "enum constant '" + resolved.enumValues[i] + "' is already defined");
                 continue;
             }
             constants_[constKey] =
@@ -235,30 +242,34 @@ void SemanticAnalyzer::registerConstant(const std::string &name, Expr &value, Ty
     // Fold constant expression and store value
     switch (type.kind)
     {
-    case PasTypeKind::Integer: {
-        int64_t val = evaluateConstantInt(value);
-        constantValues_[key] = val;
-        break;
-    }
-    case PasTypeKind::Real: {
-        double val = evaluateConstantReal(value);
-        constantRealValues_[key] = val;
-        break;
-    }
-    case PasTypeKind::String: {
-        std::string val = evaluateConstantString(value);
-        constantStrValues_[key] = val;
-        break;
-    }
-    case PasTypeKind::Boolean: {
-        bool val = evaluateConstantBool(value);
-        // Store as integer (0/1) for consistency with other constant lookups
-        constantValues_[key] = val ? 1 : 0;
-        break;
-    }
-    default:
-        // For other types (enum, etc.), don't store a computed value
-        break;
+        case PasTypeKind::Integer:
+        {
+            int64_t val = evaluateConstantInt(value);
+            constantValues_[key] = val;
+            break;
+        }
+        case PasTypeKind::Real:
+        {
+            double val = evaluateConstantReal(value);
+            constantRealValues_[key] = val;
+            break;
+        }
+        case PasTypeKind::String:
+        {
+            std::string val = evaluateConstantString(value);
+            constantStrValues_[key] = val;
+            break;
+        }
+        case PasTypeKind::Boolean:
+        {
+            bool val = evaluateConstantBool(value);
+            // Store as integer (0/1) for consistency with other constant lookups
+            constantValues_[key] = val ? 1 : 0;
+            break;
+        }
+        default:
+            // For other types (enum, etc.), don't store a computed value
+            break;
     }
 }
 
@@ -266,9 +277,8 @@ void SemanticAnalyzer::registerProcedure(ProcedureDecl &decl)
 {
     // Method implementations (e.g., TClass.Method) use qualified names
     // and don't participate in free function overloading
-    std::string key = decl.isMethod()
-                          ? toLower(decl.className + "." + decl.name)
-                          : toLower(decl.name);
+    std::string key =
+        decl.isMethod() ? toLower(decl.className + "." + decl.name) : toLower(decl.name);
 
     // v0.1: Check for user-defined overloading (not allowed for free procedures)
     if (!decl.isMethod())
@@ -276,8 +286,10 @@ void SemanticAnalyzer::registerProcedure(ProcedureDecl &decl)
         auto existingIt = functions_.find(key);
         if (existingIt != functions_.end() && !existingIt->second.isForward && !decl.isForward)
         {
-            error(decl.loc, "procedure '" + decl.name + "' is already defined; "
-                            "function/procedure overloading is not supported in Viper Pascal v0.1");
+            error(decl.loc,
+                  "procedure '" + decl.name +
+                      "' is already defined; "
+                      "function/procedure overloading is not supported in Viper Pascal v0.1");
             return;
         }
     }
@@ -306,9 +318,8 @@ void SemanticAnalyzer::registerFunction(FunctionDecl &decl)
 {
     // Method implementations (e.g., TClass.Method) use qualified names
     // and don't participate in free function overloading
-    std::string key = decl.isMethod()
-                          ? toLower(decl.className + "." + decl.name)
-                          : toLower(decl.name);
+    std::string key =
+        decl.isMethod() ? toLower(decl.className + "." + decl.name) : toLower(decl.name);
 
     // v0.1: Check for user-defined overloading (not allowed for free functions)
     if (!decl.isMethod())
@@ -316,8 +327,10 @@ void SemanticAnalyzer::registerFunction(FunctionDecl &decl)
         auto existingIt = functions_.find(key);
         if (existingIt != functions_.end() && !existingIt->second.isForward && !decl.isForward)
         {
-            error(decl.loc, "function '" + decl.name + "' is already defined; "
-                            "function/procedure overloading is not supported in Viper Pascal v0.1");
+            error(decl.loc,
+                  "function '" + decl.name +
+                      "' is already defined; "
+                      "function/procedure overloading is not supported in Viper Pascal v0.1");
             return;
         }
     }
@@ -369,58 +382,91 @@ void SemanticAnalyzer::registerClass(ClassDecl &decl)
     {
         switch (member.memberKind)
         {
-        case ClassMember::Kind::Field: {
-            FieldInfo field;
-            field.name = member.fieldName;
-            field.type = member.fieldType ? resolveType(*member.fieldType) : PasType::unknown();
-            field.isWeak = member.isWeak;
-            field.visibility = member.visibility;
-            field.loc = member.loc;
-            info.fields[toLower(member.fieldName)] = field;
-            break;
-        }
-        case ClassMember::Kind::Method: {
-            if (member.methodDecl)
+            case ClassMember::Kind::Field:
             {
-                if (member.methodDecl->kind == DeclKind::Function)
+                FieldInfo field;
+                field.name = member.fieldName;
+                field.type = member.fieldType ? resolveType(*member.fieldType) : PasType::unknown();
+                field.isWeak = member.isWeak;
+                field.visibility = member.visibility;
+                field.loc = member.loc;
+                info.fields[toLower(member.fieldName)] = field;
+                break;
+            }
+            case ClassMember::Kind::Method:
+            {
+                if (member.methodDecl)
                 {
-                    auto &fd = static_cast<FunctionDecl &>(*member.methodDecl);
-                    MethodInfo method;
-                    method.name = fd.name;
-                    method.returnType = fd.returnType ? resolveType(*fd.returnType) : PasType::unknown();
-                    method.isVirtual = fd.isVirtual;
-                    method.isOverride = fd.isOverride;
-                    method.isAbstract = fd.isAbstract;
-                    method.visibility = member.visibility;
-                    method.loc = fd.loc;
-                    size_t required = 0;
-                    for (const auto &param : fd.params)
+                    if (member.methodDecl->kind == DeclKind::Function)
                     {
-                        PasType paramType = param.type ? resolveType(*param.type) : PasType::unknown();
-                        method.params.emplace_back(param.name, paramType);
-                        method.isVarParam.push_back(param.isVar);
-                        method.hasDefault.push_back(param.defaultValue != nullptr);
-                        if (!param.defaultValue)
-                            ++required;
+                        auto &fd = static_cast<FunctionDecl &>(*member.methodDecl);
+                        MethodInfo method;
+                        method.name = fd.name;
+                        method.returnType =
+                            fd.returnType ? resolveType(*fd.returnType) : PasType::unknown();
+                        method.isVirtual = fd.isVirtual;
+                        method.isOverride = fd.isOverride;
+                        method.isAbstract = fd.isAbstract;
+                        method.visibility = member.visibility;
+                        method.loc = fd.loc;
+                        size_t required = 0;
+                        for (const auto &param : fd.params)
+                        {
+                            PasType paramType =
+                                param.type ? resolveType(*param.type) : PasType::unknown();
+                            method.params.emplace_back(param.name, paramType);
+                            method.isVarParam.push_back(param.isVar);
+                            method.hasDefault.push_back(param.defaultValue != nullptr);
+                            if (!param.defaultValue)
+                                ++required;
+                        }
+                        method.requiredParams = required;
+                        info.methods[toLower(fd.name)] = method;
                     }
-                    method.requiredParams = required;
-                    info.methods[toLower(fd.name)] = method;
+                    else if (member.methodDecl->kind == DeclKind::Procedure)
+                    {
+                        auto &pd = static_cast<ProcedureDecl &>(*member.methodDecl);
+                        MethodInfo method;
+                        method.name = pd.name;
+                        method.returnType = PasType::voidType();
+                        method.isVirtual = pd.isVirtual;
+                        method.isOverride = pd.isOverride;
+                        method.isAbstract = pd.isAbstract;
+                        method.visibility = member.visibility;
+                        method.loc = pd.loc;
+                        size_t required = 0;
+                        for (const auto &param : pd.params)
+                        {
+                            PasType paramType =
+                                param.type ? resolveType(*param.type) : PasType::unknown();
+                            method.params.emplace_back(param.name, paramType);
+                            method.isVarParam.push_back(param.isVar);
+                            method.hasDefault.push_back(param.defaultValue != nullptr);
+                            if (!param.defaultValue)
+                                ++required;
+                        }
+                        method.requiredParams = required;
+                        info.methods[toLower(pd.name)] = method;
+                    }
                 }
-                else if (member.methodDecl->kind == DeclKind::Procedure)
+                break;
+            }
+            case ClassMember::Kind::Constructor:
+            {
+                info.hasConstructor = true;
+                if (member.methodDecl && member.methodDecl->kind == DeclKind::Constructor)
                 {
-                    auto &pd = static_cast<ProcedureDecl &>(*member.methodDecl);
+                    auto &cd = static_cast<ConstructorDecl &>(*member.methodDecl);
                     MethodInfo method;
-                    method.name = pd.name;
+                    method.name = cd.name;
                     method.returnType = PasType::voidType();
-                    method.isVirtual = pd.isVirtual;
-                    method.isOverride = pd.isOverride;
-                    method.isAbstract = pd.isAbstract;
                     method.visibility = member.visibility;
-                    method.loc = pd.loc;
+                    method.loc = cd.loc;
                     size_t required = 0;
-                    for (const auto &param : pd.params)
+                    for (const auto &param : cd.params)
                     {
-                        PasType paramType = param.type ? resolveType(*param.type) : PasType::unknown();
+                        PasType paramType =
+                            param.type ? resolveType(*param.type) : PasType::unknown();
                         method.params.emplace_back(param.name, paramType);
                         method.isVarParam.push_back(param.isVar);
                         method.hasDefault.push_back(param.defaultValue != nullptr);
@@ -428,54 +474,29 @@ void SemanticAnalyzer::registerClass(ClassDecl &decl)
                             ++required;
                     }
                     method.requiredParams = required;
-                    info.methods[toLower(pd.name)] = method;
+                    info.methods[toLower(cd.name)] = method;
                 }
+                break;
             }
-            break;
-        }
-        case ClassMember::Kind::Constructor: {
-            info.hasConstructor = true;
-            if (member.methodDecl && member.methodDecl->kind == DeclKind::Constructor)
+            case ClassMember::Kind::Destructor:
             {
-                auto &cd = static_cast<ConstructorDecl &>(*member.methodDecl);
-                MethodInfo method;
-                method.name = cd.name;
-                method.returnType = PasType::voidType();
-                method.visibility = member.visibility;
-                method.loc = cd.loc;
-                size_t required = 0;
-                for (const auto &param : cd.params)
+                info.hasDestructor = true;
+                if (member.methodDecl && member.methodDecl->kind == DeclKind::Destructor)
                 {
-                    PasType paramType = param.type ? resolveType(*param.type) : PasType::unknown();
-                    method.params.emplace_back(param.name, paramType);
-                    method.isVarParam.push_back(param.isVar);
-                    method.hasDefault.push_back(param.defaultValue != nullptr);
-                    if (!param.defaultValue)
-                        ++required;
+                    auto &dd = static_cast<DestructorDecl &>(*member.methodDecl);
+                    MethodInfo method;
+                    method.name = dd.name;
+                    method.returnType = PasType::voidType();
+                    method.isVirtual = dd.isVirtual;
+                    method.isOverride = dd.isOverride;
+                    method.visibility = member.visibility;
+                    method.loc = dd.loc;
+                    info.methods[toLower(dd.name)] = method;
                 }
-                method.requiredParams = required;
-                info.methods[toLower(cd.name)] = method;
+                break;
             }
-            break;
-        }
-        case ClassMember::Kind::Destructor: {
-            info.hasDestructor = true;
-            if (member.methodDecl && member.methodDecl->kind == DeclKind::Destructor)
-            {
-                auto &dd = static_cast<DestructorDecl &>(*member.methodDecl);
-                MethodInfo method;
-                method.name = dd.name;
-                method.returnType = PasType::voidType();
-                method.isVirtual = dd.isVirtual;
-                method.isOverride = dd.isOverride;
-                method.visibility = member.visibility;
-                method.loc = dd.loc;
-                info.methods[toLower(dd.name)] = method;
-            }
-            break;
-        }
-        default:
-            break;
+            default:
+                break;
         }
     }
 
@@ -492,7 +513,7 @@ void SemanticAnalyzer::registerClass(ClassDecl &decl)
         pinfo.visibility = member.visibility;
         pinfo.loc = pd.loc;
 
-        auto lower = [&](const std::string &n){ return toLower(n); };
+        auto lower = [&](const std::string &n) { return toLower(n); };
 
         // Validate getter target
         if (pd.getter.empty())
@@ -508,7 +529,9 @@ void SemanticAnalyzer::registerClass(ClassDecl &decl)
                 // Field-backed getter
                 if (!fit->second.type.isError() && !isAssignableFrom(pinfo.type, fit->second.type))
                 {
-                    error(pd.loc, "getter field '" + pd.getter + "' type mismatch for property '" + pd.name + "'");
+                    error(pd.loc,
+                          "getter field '" + pd.getter + "' type mismatch for property '" +
+                              pd.name + "'");
                 }
                 pinfo.getter.kind = PropertyAccessor::Kind::Field;
                 pinfo.getter.name = pd.getter;
@@ -518,7 +541,8 @@ void SemanticAnalyzer::registerClass(ClassDecl &decl)
                 auto mit = info.methods.find(key);
                 if (mit == info.methods.end())
                 {
-                    error(pd.loc, "undefined getter '" + pd.getter + "' for property '" + pd.name + "'");
+                    error(pd.loc,
+                          "undefined getter '" + pd.getter + "' for property '" + pd.name + "'");
                 }
                 else
                 {
@@ -529,7 +553,9 @@ void SemanticAnalyzer::registerClass(ClassDecl &decl)
                     }
                     if (!m.returnType.isError() && !isAssignableFrom(pinfo.type, m.returnType))
                     {
-                        error(pd.loc, "getter '" + pd.getter + "' return type mismatch for property '" + pd.name + "'");
+                        error(pd.loc,
+                              "getter '" + pd.getter + "' return type mismatch for property '" +
+                                  pd.name + "'");
                     }
                     pinfo.getter.kind = PropertyAccessor::Kind::Method;
                     pinfo.getter.name = pd.getter;
@@ -546,7 +572,9 @@ void SemanticAnalyzer::registerClass(ClassDecl &decl)
             {
                 if (!fit->second.type.isError() && !isAssignableFrom(fit->second.type, pinfo.type))
                 {
-                    error(pd.loc, "setter field '" + pd.setter + "' type mismatch for property '" + pd.name + "'");
+                    error(pd.loc,
+                          "setter field '" + pd.setter + "' type mismatch for property '" +
+                              pd.name + "'");
                 }
                 pinfo.setter.kind = PropertyAccessor::Kind::Field;
                 pinfo.setter.name = pd.setter;
@@ -556,7 +584,8 @@ void SemanticAnalyzer::registerClass(ClassDecl &decl)
                 auto mit = info.methods.find(key);
                 if (mit == info.methods.end())
                 {
-                    error(pd.loc, "undefined setter '" + pd.setter + "' for property '" + pd.name + "'");
+                    error(pd.loc,
+                          "undefined setter '" + pd.setter + "' for property '" + pd.name + "'");
                 }
                 else
                 {
@@ -574,7 +603,9 @@ void SemanticAnalyzer::registerClass(ClassDecl &decl)
                         const PasType &pt = m.params[0].second;
                         if (!pt.isError() && !isAssignableFrom(pt, pinfo.type))
                         {
-                            error(pd.loc, "setter '" + pd.setter + "' parameter type mismatch for property '" + pd.name + "'");
+                            error(pd.loc,
+                                  "setter '" + pd.setter +
+                                      "' parameter type mismatch for property '" + pd.name + "'");
                         }
                     }
                     pinfo.setter.kind = PropertyAccessor::Kind::Method;
@@ -649,8 +680,9 @@ void SemanticAnalyzer::checkConstructorDestructor(ClassDecl &decl)
             if (member.methodDecl && member.methodDecl->kind == DeclKind::Constructor)
             {
                 auto &ctor = static_cast<ConstructorDecl &>(*member.methodDecl);
-                // Note: Return type on constructor is handled by parser (constructors don't have return type)
-                // If we want to check, the AST would need to capture any erroneous return type
+                // Note: Return type on constructor is handled by parser (constructors don't have
+                // return type) If we want to check, the AST would need to capture any erroneous
+                // return type
                 (void)ctor;
             }
         }
@@ -659,4 +691,3 @@ void SemanticAnalyzer::checkConstructorDestructor(ClassDecl &decl)
 
 
 } // namespace il::frontends::pascal
-

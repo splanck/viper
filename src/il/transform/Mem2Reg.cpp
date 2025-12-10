@@ -55,14 +55,14 @@ static bool isPromotableScalarType(const Type &type)
 {
     switch (type.kind)
     {
-    case Type::Kind::I1:
-    case Type::Kind::I16:
-    case Type::Kind::I32:
-    case Type::Kind::I64:
-    case Type::Kind::F64:
-        return true;
-    default:
-        return false;
+        case Type::Kind::I1:
+        case Type::Kind::I16:
+        case Type::Kind::I32:
+        case Type::Kind::I64:
+        case Type::Kind::F64:
+            return true;
+        default:
+            return false;
     }
 }
 
@@ -70,17 +70,17 @@ static std::optional<unsigned> scalarSize(const Type &type)
 {
     switch (type.kind)
     {
-    case Type::Kind::I1:
-        return 1;
-    case Type::Kind::I16:
-        return 2;
-    case Type::Kind::I32:
-        return 4;
-    case Type::Kind::I64:
-    case Type::Kind::F64:
-        return 8;
-    default:
-        return std::nullopt;
+        case Type::Kind::I1:
+            return 1;
+        case Type::Kind::I16:
+            return 2;
+        case Type::Kind::I32:
+            return 4;
+        case Type::Kind::I64:
+        case Type::Kind::F64:
+            return 8;
+        default:
+            return std::nullopt;
     }
 }
 
@@ -652,7 +652,8 @@ static bool runSROA(Function &F)
         ordered.reserve(cand.fields.size());
         for (auto &[off, field] : cand.fields)
             ordered.emplace_back(off, &field);
-        std::sort(ordered.begin(), ordered.end(),
+        std::sort(ordered.begin(),
+                  ordered.end(),
                   [](const auto &a, const auto &b) { return a.first < b.first; });
 
         unsigned end = 0;

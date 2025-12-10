@@ -12,8 +12,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "frontends/pascal/Lowerer.hpp"
 #include "frontends/common/CharUtils.hpp"
+#include "frontends/pascal/Lowerer.hpp"
 #include "il/core/Instr.hpp"
 #include <sstream>
 
@@ -58,30 +58,30 @@ Lowerer::Type Lowerer::mapType(const PasType &pasType)
 {
     switch (pasType.kind)
     {
-    case PasTypeKind::Void:
-        return Type(Type::Kind::Void);
-    case PasTypeKind::Integer:
-    case PasTypeKind::Enum:
-        return Type(Type::Kind::I64);
-    case PasTypeKind::Real:
-        return Type(Type::Kind::F64);
-    case PasTypeKind::Boolean:
-        return Type(Type::Kind::I1);
-    case PasTypeKind::String:
-        return Type(Type::Kind::Str);
-    case PasTypeKind::Pointer:
-    case PasTypeKind::Class:
-    case PasTypeKind::Interface:
-    case PasTypeKind::Array:
-        return Type(Type::Kind::Ptr);
-    case PasTypeKind::Optional:
-        if (pasType.innerType && pasType.innerType->isReference())
+        case PasTypeKind::Void:
+            return Type(Type::Kind::Void);
+        case PasTypeKind::Integer:
+        case PasTypeKind::Enum:
+            return Type(Type::Kind::I64);
+        case PasTypeKind::Real:
+            return Type(Type::Kind::F64);
+        case PasTypeKind::Boolean:
+            return Type(Type::Kind::I1);
+        case PasTypeKind::String:
+            return Type(Type::Kind::Str);
+        case PasTypeKind::Pointer:
+        case PasTypeKind::Class:
+        case PasTypeKind::Interface:
+        case PasTypeKind::Array:
             return Type(Type::Kind::Ptr);
-        return Type(Type::Kind::Ptr);
-    case PasTypeKind::Nil:
-        return Type(Type::Kind::Ptr);
-    default:
-        return Type(Type::Kind::I64);
+        case PasTypeKind::Optional:
+            if (pasType.innerType && pasType.innerType->isReference())
+                return Type(Type::Kind::Ptr);
+            return Type(Type::Kind::Ptr);
+        case PasTypeKind::Nil:
+            return Type(Type::Kind::Ptr);
+        default:
+            return Type(Type::Kind::I64);
     }
 }
 
@@ -89,27 +89,27 @@ int64_t Lowerer::sizeOf(const PasType &pasType)
 {
     switch (pasType.kind)
     {
-    case PasTypeKind::Integer:
-    case PasTypeKind::Enum:
-        return 8;
-    case PasTypeKind::Real:
-        return 8;
-    case PasTypeKind::Boolean:
-        return 1;
-    case PasTypeKind::String:
-    case PasTypeKind::Pointer:
-    case PasTypeKind::Class:
-    case PasTypeKind::Array:
-        return 8;
-    case PasTypeKind::Interface:
-        // Interface is a fat pointer: { objPtr, itablePtr }
-        return 16;
-    case PasTypeKind::Optional:
-        if (pasType.innerType)
-            return 8 + sizeOf(*pasType.innerType);
-        return 16;
-    default:
-        return 8;
+        case PasTypeKind::Integer:
+        case PasTypeKind::Enum:
+            return 8;
+        case PasTypeKind::Real:
+            return 8;
+        case PasTypeKind::Boolean:
+            return 1;
+        case PasTypeKind::String:
+        case PasTypeKind::Pointer:
+        case PasTypeKind::Class:
+        case PasTypeKind::Array:
+            return 8;
+        case PasTypeKind::Interface:
+            // Interface is a fat pointer: { objPtr, itablePtr }
+            return 16;
+        case PasTypeKind::Optional:
+            if (pasType.innerType)
+                return 8 + sizeOf(*pasType.innerType);
+            return 16;
+        default:
+            return 8;
     }
 }
 
@@ -257,8 +257,9 @@ Lowerer::Value Lowerer::emitUnary(Opcode op, Type ty, Value operand)
     return Value::temp(id);
 }
 
-Lowerer::Value Lowerer::emitCallRet(Type retTy, const std::string &callee,
-                                     const std::vector<Value> &args)
+Lowerer::Value Lowerer::emitCallRet(Type retTy,
+                                    const std::string &callee,
+                                    const std::vector<Value> &args)
 {
     // Track runtime externs for later declaration
     if (callee.substr(0, 3) == "rt_")

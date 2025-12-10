@@ -116,11 +116,13 @@ class BasicAA
     std::unordered_set<unsigned> allocas_;
     std::unordered_set<unsigned> noaliasParams_;
     std::unordered_set<unsigned> params_;
+
     struct DefInfo
     {
         il::core::Opcode op;
         std::vector<il::core::Value> operands;
     };
+
     std::unordered_map<unsigned, DefInfo> defs_;
 
     struct CallEffect
@@ -344,8 +346,7 @@ inline BasicAA::Location BasicAA::describe(const il::core::Value &value, unsigne
             }
 
             if ((def.op == il::core::Opcode::AddrOf || def.op == il::core::Opcode::GAddr) &&
-                !def.operands.empty() &&
-                def.operands[0].kind == Kind::GlobalAddr)
+                !def.operands.empty() && def.operands[0].kind == Kind::GlobalAddr)
             {
                 loc.kind = BaseKind::Global;
                 loc.global = def.operands[0].str;
@@ -423,8 +424,7 @@ inline AliasResult BasicAA::alias(const il::core::Value &lhs,
     if (r.kind == BaseKind::NoAliasParam && !basesEqual(l, r))
         return AliasResult::NoAlias;
 
-    auto isGlobalLike = [](BaseKind k)
-    { return k == BaseKind::Global || k == BaseKind::ConstStr; };
+    auto isGlobalLike = [](BaseKind k) { return k == BaseKind::Global || k == BaseKind::ConstStr; };
 
     if ((l.kind == BaseKind::Alloca && isGlobalLike(r.kind)) ||
         (r.kind == BaseKind::Alloca && isGlobalLike(l.kind)))

@@ -178,7 +178,9 @@ int cmdILOpt(int argc, char **argv)
     if (!pipelineName.empty())
     {
         std::string upper = pipelineName;
-        std::transform(upper.begin(), upper.end(), upper.begin(),
+        std::transform(upper.begin(),
+                       upper.end(),
+                       upper.begin(),
                        [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
         if (!resolvePipeline(upper))
             return 1;

@@ -30,7 +30,7 @@ constexpr size_t kMaxSuggestions = 5;
 /// @param maxShow Maximum number to show (default: kMaxSuggestions)
 /// @return Formatted string like "tried: foo, bar, baz" or empty if no candidates
 [[nodiscard]] inline std::string formatTriedList(const std::vector<std::string> &tried,
-                                                  size_t maxShow = kMaxSuggestions)
+                                                 size_t maxShow = kMaxSuggestions)
 {
     if (tried.empty())
         return "";
@@ -60,7 +60,7 @@ constexpr size_t kMaxSuggestions = 5;
 /// @param maxShow Maximum number to show
 /// @return Formatted string like "matches: foo, bar"
 [[nodiscard]] inline std::string formatMatchList(const std::vector<std::string> &matches,
-                                                  size_t maxShow = kMaxSuggestions)
+                                                 size_t maxShow = kMaxSuggestions)
 {
     if (matches.empty())
         return "";
@@ -109,7 +109,8 @@ constexpr size_t kMaxSuggestions = 5;
 /// @param expected The expected type name
 /// @param actual The actual type name
 /// @return Formatted message like "expected Integer, got Real"
-[[nodiscard]] inline std::string formatTypeMismatch(std::string_view expected, std::string_view actual)
+[[nodiscard]] inline std::string formatTypeMismatch(std::string_view expected,
+                                                    std::string_view actual)
 {
     std::string result = "expected ";
     result += formatTypeName(expected);
@@ -152,7 +153,8 @@ constexpr size_t kMaxSuggestions = 5;
 /// @param actual Actual argument count
 /// @return Formatted message
 [[nodiscard]] inline std::string formatArgCountError(std::string_view funcName,
-                                                      size_t expected, size_t actual)
+                                                     size_t expected,
+                                                     size_t actual)
 {
     std::string result = "'";
     result += funcName;
@@ -173,8 +175,9 @@ constexpr size_t kMaxSuggestions = 5;
 /// @param actual Actual argument count
 /// @return Formatted message
 [[nodiscard]] inline std::string formatArgCountRangeError(std::string_view funcName,
-                                                           size_t minArgs, size_t maxArgs,
-                                                           size_t actual)
+                                                          size_t minArgs,
+                                                          size_t maxArgs,
+                                                          size_t actual)
 {
     std::string result = "'";
     result += funcName;

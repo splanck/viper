@@ -29,9 +29,11 @@ TEST(PascalCtorChainTest, SameClassCtorDelegationNoAllocation)
 {
     SourceManager sm;
     const std::string src =
-        "program Test; type TDog = class public Name: String; Age: Integer; constructor CreateDefault; constructor CreateNamed(AName: String); end; "
+        "program Test; type TDog = class public Name: String; Age: Integer; constructor "
+        "CreateDefault; constructor CreateNamed(AName: String); end; "
         "constructor TDog.CreateDefault; begin CreateNamed('Dog'); Age := 1 end; "
-        "constructor TDog.CreateNamed(AName: String); begin Name := AName end; var d: TDog; begin d := TDog.CreateDefault end.";
+        "constructor TDog.CreateNamed(AName: String); begin Name := AName end; var d: TDog; begin "
+        "d := TDog.CreateDefault end.";
     PascalCompilerInput input{.source = src, .path = "ctor1.pas"};
     PascalCompilerOptions opts{};
     auto result = compilePascal(input, opts, sm);
@@ -64,10 +66,12 @@ TEST(PascalCtorChainTest, InheritedCtorCall)
 {
     SourceManager sm;
     const std::string src =
-        "program Test; type TBase = class public X: Integer; constructor CreateBase(V: Integer); end; "
+        "program Test; type TBase = class public X: Integer; constructor CreateBase(V: Integer); "
+        "end; "
         "TDer = class(TBase) public Y: Integer; constructor Create(V: Integer); end; "
         "constructor TBase.CreateBase(V: Integer); begin X := V end; "
-        "constructor TDer.Create(V: Integer); begin inherited CreateBase(V); Y := V end; var d: TDer; begin d := TDer.Create(3) end.";
+        "constructor TDer.Create(V: Integer); begin inherited CreateBase(V); Y := V end; var d: "
+        "TDer; begin d := TDer.Create(3) end.";
     PascalCompilerInput input{.source = src, .path = "ctor2.pas"};
     PascalCompilerOptions opts{};
     auto result = compilePascal(input, opts, sm);
@@ -100,4 +104,3 @@ int main()
     return RUN_ALL_TESTS();
 }
 #endif
-

@@ -26,17 +26,13 @@ namespace viper::tests
 {
 
 ILGenerator::ILGenerator()
-    : seed_(static_cast<std::uint64_t>(
-          std::chrono::steady_clock::now().time_since_epoch().count()))
-    , rng_(seed_)
+    : seed_(
+          static_cast<std::uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count())),
+      rng_(seed_)
 {
 }
 
-ILGenerator::ILGenerator(std::uint64_t seed)
-    : seed_(seed)
-    , rng_(seed)
-{
-}
+ILGenerator::ILGenerator(std::uint64_t seed) : seed_(seed), rng_(seed) {}
 
 std::int64_t ILGenerator::randomConstant(std::int64_t min, std::int64_t max)
 {
@@ -45,8 +41,8 @@ std::int64_t ILGenerator::randomConstant(std::int64_t min, std::int64_t max)
 }
 
 il::core::Value ILGenerator::randomValue(const std::vector<unsigned> &availableTemps,
-                                          std::int64_t minConst,
-                                          std::int64_t maxConst)
+                                         std::int64_t minConst,
+                                         std::int64_t maxConst)
 {
     // 50% chance to use existing temp if available
     if (!availableTemps.empty())
@@ -100,7 +96,8 @@ ILGeneratorResult ILGenerator::generate(const ILGeneratorConfig &config)
     unsigned nextTemp = 0;
 
     // Determine number of instructions
-    std::uniform_int_distribution<std::size_t> instrDist(config.minInstructions, config.maxInstructions);
+    std::uniform_int_distribution<std::size_t> instrDist(config.minInstructions,
+                                                         config.maxInstructions);
     const std::size_t numInstructions = instrDist(rng_);
     result.instructionCount = numInstructions;
 

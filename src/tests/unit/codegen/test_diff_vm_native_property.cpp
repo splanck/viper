@@ -103,8 +103,10 @@ struct DiffTestResult
 };
 
 /// @brief Run a single differential test iteration.
-DiffTestResult runDifferentialTest(ILGenerator &generator, const ILGeneratorConfig &config,
-                                   const std::filesystem::path &outputDir, std::size_t iteration)
+DiffTestResult runDifferentialTest(ILGenerator &generator,
+                                   const ILGeneratorConfig &config,
+                                   const std::filesystem::path &outputDir,
+                                   std::size_t iteration)
 {
     DiffTestResult result;
     result.seed = generator.seed();
@@ -166,8 +168,8 @@ DiffTestResult runDifferentialTest(ILGenerator &generator, const ILGeneratorConf
             oss << "Result mismatch!\n"
                 << "  Seed: " << genResult.seed << "\n"
                 << "  VM result: " << result.vmResult << " (exit code: " << vmExitCode << ")\n"
-                << "  Native result: " << result.nativeResult
-                << " (exit code: " << nativeExitCode << ")\n"
+                << "  Native result: " << result.nativeResult << " (exit code: " << nativeExitCode
+                << ")\n"
                 << "  IL source:\n"
                 << genResult.ilSource;
             result.errorMessage = oss.str();
@@ -295,8 +297,7 @@ TEST_F(DiffVmNativePropertyTest, ReproducibilityWithSeed)
     ILGeneratorResult result1 = gen1.generate(config);
     ILGeneratorResult result2 = gen2.generate(config);
 
-    ASSERT_EQ(result1.ilSource, result2.ilSource)
-        << "Same seed should produce identical IL source";
+    ASSERT_EQ(result1.ilSource, result2.ilSource) << "Same seed should produce identical IL source";
 }
 
 int main(int argc, char **argv)

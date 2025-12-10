@@ -103,7 +103,8 @@ inline std::string mangleIfaceRegThunk(std::string_view qualifiedIface)
 
 /// @brief Produce a stable name for a class->interface bind thunk.
 /// @details Example: __iface_bind$A$C$A$B$I for class A.C binding A.B.I
-inline std::string mangleIfaceBindThunk(std::string_view qualifiedClass, std::string_view qualifiedIface)
+inline std::string mangleIfaceBindThunk(std::string_view qualifiedClass,
+                                        std::string_view qualifiedIface)
 {
     std::string cs = sanitizeDots(qualifiedClass);
     std::string is = sanitizeDots(qualifiedIface);
@@ -165,7 +166,10 @@ class NameMangler
     }
 
     /// @brief Get the current temp counter value (for debugging/testing).
-    unsigned tempCount() const { return tempCounter_; }
+    unsigned tempCount() const
+    {
+        return tempCounter_;
+    }
 
   private:
     /// @brief Prefix for temporary names (default: "%t").

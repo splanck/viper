@@ -12,8 +12,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "frontends/pascal/Lowerer.hpp"
 #include "frontends/common/CharUtils.hpp"
+#include "frontends/pascal/Lowerer.hpp"
 
 namespace il::frontends::pascal
 {
@@ -33,63 +33,63 @@ void Lowerer::lowerStmt(const Stmt &stmt)
 {
     switch (stmt.kind)
     {
-    case StmtKind::Assign:
-        lowerAssign(static_cast<const AssignStmt &>(stmt));
-        break;
-    case StmtKind::Call:
-        lowerCallStmt(static_cast<const CallStmt &>(stmt));
-        break;
-    case StmtKind::Block:
-        lowerBlock(static_cast<const BlockStmt &>(stmt));
-        break;
-    case StmtKind::If:
-        lowerIf(static_cast<const IfStmt &>(stmt));
-        break;
-    case StmtKind::Case:
-        lowerCase(static_cast<const CaseStmt &>(stmt));
-        break;
-    case StmtKind::For:
-        lowerFor(static_cast<const ForStmt &>(stmt));
-        break;
-    case StmtKind::ForIn:
-        lowerForIn(static_cast<const ForInStmt &>(stmt));
-        break;
-    case StmtKind::While:
-        lowerWhile(static_cast<const WhileStmt &>(stmt));
-        break;
-    case StmtKind::Repeat:
-        lowerRepeat(static_cast<const RepeatStmt &>(stmt));
-        break;
-    case StmtKind::Break:
-        lowerBreak(static_cast<const BreakStmt &>(stmt));
-        break;
-    case StmtKind::Continue:
-        lowerContinue(static_cast<const ContinueStmt &>(stmt));
-        break;
-    case StmtKind::Empty:
-        // No-op
-        break;
-    case StmtKind::Raise:
-        lowerRaise(static_cast<const RaiseStmt &>(stmt));
-        break;
-    case StmtKind::Exit:
-        lowerExit(static_cast<const ExitStmt &>(stmt));
-        break;
-    case StmtKind::TryExcept:
-        lowerTryExcept(static_cast<const TryExceptStmt &>(stmt));
-        break;
-    case StmtKind::TryFinally:
-        lowerTryFinally(static_cast<const TryFinallyStmt &>(stmt));
-        break;
-    case StmtKind::Inherited:
-        lowerInherited(static_cast<const InheritedStmt &>(stmt));
-        break;
-    case StmtKind::With:
-        lowerWith(static_cast<const WithStmt &>(stmt));
-        break;
-    default:
-        // Other statements not yet implemented
-        break;
+        case StmtKind::Assign:
+            lowerAssign(static_cast<const AssignStmt &>(stmt));
+            break;
+        case StmtKind::Call:
+            lowerCallStmt(static_cast<const CallStmt &>(stmt));
+            break;
+        case StmtKind::Block:
+            lowerBlock(static_cast<const BlockStmt &>(stmt));
+            break;
+        case StmtKind::If:
+            lowerIf(static_cast<const IfStmt &>(stmt));
+            break;
+        case StmtKind::Case:
+            lowerCase(static_cast<const CaseStmt &>(stmt));
+            break;
+        case StmtKind::For:
+            lowerFor(static_cast<const ForStmt &>(stmt));
+            break;
+        case StmtKind::ForIn:
+            lowerForIn(static_cast<const ForInStmt &>(stmt));
+            break;
+        case StmtKind::While:
+            lowerWhile(static_cast<const WhileStmt &>(stmt));
+            break;
+        case StmtKind::Repeat:
+            lowerRepeat(static_cast<const RepeatStmt &>(stmt));
+            break;
+        case StmtKind::Break:
+            lowerBreak(static_cast<const BreakStmt &>(stmt));
+            break;
+        case StmtKind::Continue:
+            lowerContinue(static_cast<const ContinueStmt &>(stmt));
+            break;
+        case StmtKind::Empty:
+            // No-op
+            break;
+        case StmtKind::Raise:
+            lowerRaise(static_cast<const RaiseStmt &>(stmt));
+            break;
+        case StmtKind::Exit:
+            lowerExit(static_cast<const ExitStmt &>(stmt));
+            break;
+        case StmtKind::TryExcept:
+            lowerTryExcept(static_cast<const TryExceptStmt &>(stmt));
+            break;
+        case StmtKind::TryFinally:
+            lowerTryFinally(static_cast<const TryFinallyStmt &>(stmt));
+            break;
+        case StmtKind::Inherited:
+            lowerInherited(static_cast<const InheritedStmt &>(stmt));
+            break;
+        case StmtKind::With:
+            lowerWith(static_cast<const WithStmt &>(stmt));
+            break;
+        default:
+            // Other statements not yet implemented
+            break;
     }
 }
 
@@ -195,9 +195,11 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
                         if (classLayoutIt != classLayouts_.end())
                         {
                             usedExterns_.insert("rt_get_interface_impl");
-                            Value itablePtr = emitCallRet(Type(Type::Kind::Ptr), "rt_get_interface_impl",
-                                                          {Value::constInt(classLayoutIt->second.classId),
-                                                           Value::constInt(layoutIt->second.interfaceId)});
+                            Value itablePtr =
+                                emitCallRet(Type(Type::Kind::Ptr),
+                                            "rt_get_interface_impl",
+                                            {Value::constInt(classLayoutIt->second.classId),
+                                             Value::constInt(layoutIt->second.interfaceId)});
 
                             // Store itable pointer at offset 8
                             Value itablePtrAddr = emitGep(slot, Value::constInt(8));
@@ -261,9 +263,11 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
                             PasType classTypeWithFields = ctx.type;
                             for (const auto &[fname, finfo] : classInfo->fields)
                             {
-                                classTypeWithFields.fields[fname] = std::make_shared<PasType>(finfo.type);
+                                classTypeWithFields.fields[fname] =
+                                    std::make_shared<PasType>(finfo.type);
                             }
-                            auto [fieldAddr, fieldType] = getFieldAddress(objPtr, classTypeWithFields, p.setter.name);
+                            auto [fieldAddr, fieldType] =
+                                getFieldAddress(objPtr, classTypeWithFields, p.setter.name);
                             emitStore(fieldType, fieldAddr, value.value);
                             return;
                         }
@@ -276,9 +280,11 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
                         PasType classTypeWithFields = ctx.type;
                         for (const auto &[fname, finfo] : classInfo->fields)
                         {
-                            classTypeWithFields.fields[fname] = std::make_shared<PasType>(finfo.type);
+                            classTypeWithFields.fields[fname] =
+                                std::make_shared<PasType>(finfo.type);
                         }
-                        auto [fieldAddr, fieldType] = getFieldAddress(objPtr, classTypeWithFields, nameExpr.name);
+                        auto [fieldAddr, fieldType] =
+                            getFieldAddress(objPtr, classTypeWithFields, nameExpr.name);
                         LowerResult value = lowerExpr(*stmt.value);
                         emitStore(fieldType, fieldAddr, value.value);
                         return;
@@ -290,7 +296,8 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
                 auto fieldIt = ctx.type.fields.find(key);
                 if (fieldIt != ctx.type.fields.end() && fieldIt->second)
                 {
-                    auto [fieldAddr, fieldType] = getFieldAddress(ctx.slot, ctx.type, nameExpr.name);
+                    auto [fieldAddr, fieldType] =
+                        getFieldAddress(ctx.slot, ctx.type, nameExpr.name);
                     LowerResult value = lowerExpr(*stmt.value);
                     emitStore(fieldType, fieldAddr, value.value);
                     return;
@@ -328,7 +335,8 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
                             {
                                 selfType.fields[fname] = std::make_shared<PasType>(finfo.type);
                             }
-                            auto [fieldAddr, fieldType] = getFieldAddress(selfPtr, selfType, p.setter.name);
+                            auto [fieldAddr, fieldType] =
+                                getFieldAddress(selfPtr, selfType, p.setter.name);
                             emitStore(fieldType, fieldAddr, value.value);
                             return;
                         }
@@ -351,7 +359,8 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
                         {
                             selfType.fields[fname] = std::make_shared<PasType>(finfo.type);
                         }
-                        auto [fieldAddr, fieldType] = getFieldAddress(selfPtr, selfType, nameExpr.name);
+                        auto [fieldAddr, fieldType] =
+                            getFieldAddress(selfPtr, selfType, nameExpr.name);
 
                         // Lower value
                         LowerResult value = lowerExpr(*stmt.value);
@@ -431,12 +440,14 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
                             {
                                 for (const auto &[fname, finfo] : defClassInfo->fields)
                                 {
-                                    classTypeWithFields.fields[fname] = std::make_shared<PasType>(finfo.type);
+                                    classTypeWithFields.fields[fname] =
+                                        std::make_shared<PasType>(finfo.type);
                                 }
                             }
                             // Load object pointer for class field store
                             Value objPtr = emitLoad(Type(Type::Kind::Ptr), baseAddr);
-                            auto [faddr, ftype] = getFieldAddress(objPtr, classTypeWithFields, p.setter.name);
+                            auto [faddr, ftype] =
+                                getFieldAddress(objPtr, classTypeWithFields, p.setter.name);
                             emitStore(ftype, faddr, value.value);
                             return;
                         }
@@ -451,17 +462,20 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
                     {
                         for (const auto &[fname, finfo] : classInfo->fields)
                         {
-                            classTypeWithFields.fields[fname] = std::make_shared<PasType>(finfo.type);
+                            classTypeWithFields.fields[fname] =
+                                std::make_shared<PasType>(finfo.type);
                         }
                     }
                     Value objPtr = emitLoad(Type(Type::Kind::Ptr), baseAddr);
-                    auto [fieldAddr, fieldType] = getFieldAddress(objPtr, classTypeWithFields, fieldExpr.field);
+                    auto [fieldAddr, fieldType] =
+                        getFieldAddress(objPtr, classTypeWithFields, fieldExpr.field);
                     LowerResult value = lowerExpr(*stmt.value);
                     emitStore(fieldType, fieldAddr, value.value);
                 }
                 else
                 {
-                    auto [fieldAddr, fieldType] = getFieldAddress(baseAddr, baseType, fieldExpr.field);
+                    auto [fieldAddr, fieldType] =
+                        getFieldAddress(baseAddr, baseType, fieldExpr.field);
                     LowerResult value = lowerExpr(*stmt.value);
                     emitStore(fieldType, fieldAddr, value.value);
                 }
@@ -483,7 +497,8 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
                             selfType.fields[fname] = std::make_shared<PasType>(finfo.type);
                         }
                         // For class-typed base, load object pointer from Self.baseField
-                        auto [baseFieldAddr, baseFieldType] = getFieldAddress(selfPtr, selfType, nameExpr.name);
+                        auto [baseFieldAddr, baseFieldType] =
+                            getFieldAddress(selfPtr, selfType, nameExpr.name);
                         if (baseType.kind == PasTypeKind::Class)
                         {
                             // Now address of nested field on that object
@@ -497,7 +512,8 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
                                 }
                             }
                             Value objPtr = emitLoad(Type(Type::Kind::Ptr), baseFieldAddr);
-                            auto [fieldAddr, fieldType] = getFieldAddress(objPtr, innerType, fieldExpr.field);
+                            auto [fieldAddr, fieldType] =
+                                getFieldAddress(objPtr, innerType, fieldExpr.field);
                             LowerResult value = lowerExpr(*stmt.value);
                             emitStore(fieldType, fieldAddr, value.value);
                             return;
@@ -505,7 +521,8 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
                         else
                         {
                             // Base is a record stored inline under Self
-                            auto [fieldAddr, fieldType] = getFieldAddress(baseFieldAddr, baseType, fieldExpr.field);
+                            auto [fieldAddr, fieldType] =
+                                getFieldAddress(baseFieldAddr, baseType, fieldExpr.field);
                             LowerResult value = lowerExpr(*stmt.value);
                             emitStore(fieldType, fieldAddr, value.value);
                             return;
@@ -544,8 +561,8 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
 
                 // Calculate offset: index * elemSize
                 LowerResult index = lowerExpr(*indexExpr.indices[0]);
-                Value offset = emitBinary(Opcode::IMulOvf, Type(Type::Kind::I64),
-                                          index.value, Value::constInt(elemSize));
+                Value offset = emitBinary(
+                    Opcode::IMulOvf, Type(Type::Kind::I64), index.value, Value::constInt(elemSize));
 
                 // GEP to get element address
                 Value elemAddr = emitGep(baseAddr, offset);
@@ -633,8 +650,8 @@ void Lowerer::lowerCase(const CaseStmt &stmt)
         for (size_t j = 0; j < arm.labels.size(); ++j)
         {
             LowerResult labelVal = lowerExpr(*arm.labels[j]);
-            Value match = emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1),
-                                     scrutinee.value, labelVal.value);
+            Value match =
+                emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), scrutinee.value, labelVal.value);
 
             // If this is not the last label, create another test block
             size_t falseBlock = (j + 1 < arm.labels.size()) ? createBlock("case_test") : nextBlock;
@@ -811,15 +828,15 @@ void Lowerer::lowerForIn(const ForInStmt &stmt)
     if (isString)
     {
         // Get single character as a string: rt_substr(s, i, 1)
-        Value elem = emitCallRet(Type(Type::Kind::Str), "rt_substr",
-                                 {collection.value, currentIdx, Value::constInt(1)});
+        Value elem = emitCallRet(
+            Type(Type::Kind::Str), "rt_substr", {collection.value, currentIdx, Value::constInt(1)});
         emitStore(Type(Type::Kind::Str), varSlot, elem);
     }
     else if (isArray)
     {
         // Get array element: rt_arr_i64_get(arr, i)
-        Value elem = emitCallRet(Type(Type::Kind::I64), "rt_arr_i64_get",
-                                 {collection.value, currentIdx});
+        Value elem =
+            emitCallRet(Type(Type::Kind::I64), "rt_arr_i64_get", {collection.value, currentIdx});
         emitStore(Type(Type::Kind::I64), varSlot, elem);
     }
 

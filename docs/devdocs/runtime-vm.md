@@ -118,6 +118,15 @@ This document describes the C ABI provided by the runtime library (documented; e
 |--------|-----------|-----------|
 | `@rt_timer_ms` | `void -> i64` | Get current time in milliseconds since an arbitrary epoch; monotonic |
 
+### Environment
+
+| Symbol | Signature | Semantics |
+|--------|-----------|-----------|
+| `@rt_args_count` | `void -> i64` | Return the number of command-line arguments pushed by the host |
+| `@rt_args_get` | `i64 -> str` | Return the argument at the given zero-based index (retained) |
+| `@rt_cmdline` | `void -> str` | Join the full command line into a single string |
+| `@rt_env_is_native` | `void -> i1` | Return `1` when running a native binary, `0` when executing inside the VM |
+
 ### Random
 
 The runtime exposes a simple deterministic 64-bit linear congruential generator:

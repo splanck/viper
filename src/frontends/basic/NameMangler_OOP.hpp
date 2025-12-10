@@ -30,9 +30,9 @@ namespace il::frontends::basic
 // Re-export common OOP name mangling functions for BASIC frontend compatibility
 using ::il::frontends::common::mangleClassCtor;
 using ::il::frontends::common::mangleClassDtor;
-using ::il::frontends::common::mangleMethod;
-using ::il::frontends::common::mangleIfaceRegThunk;
 using ::il::frontends::common::mangleIfaceBindThunk;
+using ::il::frontends::common::mangleIfaceRegThunk;
+using ::il::frontends::common::mangleMethod;
 using ::il::frontends::common::mangleOopModuleInit;
 
 } // namespace il::frontends::basic

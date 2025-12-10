@@ -13,9 +13,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "frontends/pascal/SemanticAnalyzer.hpp"
-#include "frontends/pascal/BuiltinRegistry.hpp"
 #include "frontends/common/CharUtils.hpp"
+#include "frontends/pascal/BuiltinRegistry.hpp"
+#include "frontends/pascal/SemanticAnalyzer.hpp"
 #include <algorithm>
 #include <cctype>
 #include <set>
@@ -32,7 +32,6 @@ inline std::string toLower(const std::string &s)
     return toLowercase(s);
 }
 
-
 //===----------------------------------------------------------------------===//
 // Expression Type Checking
 //===----------------------------------------------------------------------===//
@@ -41,38 +40,38 @@ PasType SemanticAnalyzer::typeOf(Expr &expr)
 {
     switch (expr.kind)
     {
-    case ExprKind::IntLiteral:
-        return typeOfIntLiteral(static_cast<IntLiteralExpr &>(expr));
-    case ExprKind::RealLiteral:
-        return typeOfRealLiteral(static_cast<RealLiteralExpr &>(expr));
-    case ExprKind::StringLiteral:
-        return typeOfStringLiteral(static_cast<StringLiteralExpr &>(expr));
-    case ExprKind::BoolLiteral:
-        return typeOfBoolLiteral(static_cast<BoolLiteralExpr &>(expr));
-    case ExprKind::NilLiteral:
-        return typeOfNil(static_cast<NilLiteralExpr &>(expr));
-    case ExprKind::Name:
-        return typeOfName(static_cast<NameExpr &>(expr));
-    case ExprKind::Unary:
-        return typeOfUnary(static_cast<UnaryExpr &>(expr));
-    case ExprKind::Binary:
-        return typeOfBinary(static_cast<BinaryExpr &>(expr));
-    case ExprKind::Call:
-        return typeOfCall(static_cast<CallExpr &>(expr));
-    case ExprKind::Index:
-        return typeOfIndex(static_cast<IndexExpr &>(expr));
-    case ExprKind::Field:
-        return typeOfField(static_cast<FieldExpr &>(expr));
-    case ExprKind::TypeCast:
-        return typeOfTypeCast(static_cast<TypeCastExpr &>(expr));
-    case ExprKind::Is:
-        return typeOfIs(static_cast<IsExpr &>(expr));
-    case ExprKind::SetConstructor:
-        return typeOfSetConstructor(static_cast<SetConstructorExpr &>(expr));
-    case ExprKind::AddressOf:
-        return typeOfAddressOf(static_cast<AddressOfExpr &>(expr));
-    case ExprKind::Dereference:
-        return typeOfDereference(static_cast<DereferenceExpr &>(expr));
+        case ExprKind::IntLiteral:
+            return typeOfIntLiteral(static_cast<IntLiteralExpr &>(expr));
+        case ExprKind::RealLiteral:
+            return typeOfRealLiteral(static_cast<RealLiteralExpr &>(expr));
+        case ExprKind::StringLiteral:
+            return typeOfStringLiteral(static_cast<StringLiteralExpr &>(expr));
+        case ExprKind::BoolLiteral:
+            return typeOfBoolLiteral(static_cast<BoolLiteralExpr &>(expr));
+        case ExprKind::NilLiteral:
+            return typeOfNil(static_cast<NilLiteralExpr &>(expr));
+        case ExprKind::Name:
+            return typeOfName(static_cast<NameExpr &>(expr));
+        case ExprKind::Unary:
+            return typeOfUnary(static_cast<UnaryExpr &>(expr));
+        case ExprKind::Binary:
+            return typeOfBinary(static_cast<BinaryExpr &>(expr));
+        case ExprKind::Call:
+            return typeOfCall(static_cast<CallExpr &>(expr));
+        case ExprKind::Index:
+            return typeOfIndex(static_cast<IndexExpr &>(expr));
+        case ExprKind::Field:
+            return typeOfField(static_cast<FieldExpr &>(expr));
+        case ExprKind::TypeCast:
+            return typeOfTypeCast(static_cast<TypeCastExpr &>(expr));
+        case ExprKind::Is:
+            return typeOfIs(static_cast<IsExpr &>(expr));
+        case ExprKind::SetConstructor:
+            return typeOfSetConstructor(static_cast<SetConstructorExpr &>(expr));
+        case ExprKind::AddressOf:
+            return typeOfAddressOf(static_cast<AddressOfExpr &>(expr));
+        case ExprKind::Dereference:
+            return typeOfDereference(static_cast<DereferenceExpr &>(expr));
     }
     return PasType::unknown();
 }
@@ -217,7 +216,8 @@ PasType SemanticAnalyzer::typeOfName(NameExpr &expr)
     }
     else
     {
-        // Fallback: if a 'self' variable exists, use its class type to resolve fields and properties
+        // Fallback: if a 'self' variable exists, use its class type to resolve fields and
+        // properties
         if (auto selfTy = lookupVariable("self"))
         {
             if (selfTy->kind == PasTypeKind::Class && !selfTy->name.empty())
@@ -305,13 +305,13 @@ PasType SemanticAnalyzer::typeOfUnary(UnaryExpr &expr)
     {
         switch (expr.op)
         {
-        case UnaryExpr::Op::Not:
-            error(expr, "operand must be Boolean for 'not'");
-            break;
-        case UnaryExpr::Op::Neg:
-        case UnaryExpr::Op::Plus:
-            error(expr, "operand must be numeric for unary +/-");
-            break;
+            case UnaryExpr::Op::Not:
+                error(expr, "operand must be Boolean for 'not'");
+                break;
+            case UnaryExpr::Op::Neg:
+            case UnaryExpr::Op::Plus:
+                error(expr, "operand must be numeric for unary +/-");
+                break;
         }
     }
     return result;
@@ -331,35 +331,37 @@ PasType SemanticAnalyzer::typeOfBinary(BinaryExpr &expr)
         // Report the specific error based on operator
         switch (expr.op)
         {
-        case BinaryExpr::Op::And:
-        case BinaryExpr::Op::Or:
-            error(expr, "operands must be Boolean for 'and'/'or'");
-            break;
-        case BinaryExpr::Op::IntDiv:
-        case BinaryExpr::Op::Mod:
-            error(expr, "operands must be Integer for 'div'/'mod'");
-            break;
-        case BinaryExpr::Op::Eq:
-        case BinaryExpr::Op::Ne:
-            // Check if this was a nil comparison with non-optional reference type
-            if ((leftType.kind == PasTypeKind::Nil &&
-                 (rightType.kind == PasTypeKind::Class || rightType.kind == PasTypeKind::Interface)) ||
-                (rightType.kind == PasTypeKind::Nil &&
-                 (leftType.kind == PasTypeKind::Class || leftType.kind == PasTypeKind::Interface)))
-            {
-                error(expr, "non-optional class cannot be compared to nil");
-            }
-            else
-            {
-                error(expr, "type mismatch in comparison");
-            }
-            break;
-        case BinaryExpr::Op::Coalesce:
-            error(expr, "type mismatch in nil coalescing expression");
-            break;
-        default:
-            error(expr, "type mismatch in binary expression");
-            break;
+            case BinaryExpr::Op::And:
+            case BinaryExpr::Op::Or:
+                error(expr, "operands must be Boolean for 'and'/'or'");
+                break;
+            case BinaryExpr::Op::IntDiv:
+            case BinaryExpr::Op::Mod:
+                error(expr, "operands must be Integer for 'div'/'mod'");
+                break;
+            case BinaryExpr::Op::Eq:
+            case BinaryExpr::Op::Ne:
+                // Check if this was a nil comparison with non-optional reference type
+                if ((leftType.kind == PasTypeKind::Nil &&
+                     (rightType.kind == PasTypeKind::Class ||
+                      rightType.kind == PasTypeKind::Interface)) ||
+                    (rightType.kind == PasTypeKind::Nil &&
+                     (leftType.kind == PasTypeKind::Class ||
+                      leftType.kind == PasTypeKind::Interface)))
+                {
+                    error(expr, "non-optional class cannot be compared to nil");
+                }
+                else
+                {
+                    error(expr, "type mismatch in comparison");
+                }
+                break;
+            case BinaryExpr::Op::Coalesce:
+                error(expr, "type mismatch in nil coalescing expression");
+                break;
+            default:
+                error(expr, "type mismatch in binary expression");
+                break;
         }
     }
     return result;
@@ -398,8 +400,9 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
                 // Type-check the operand (allow nil)
                 PasType argType = typeOf(*expr.args[0]);
                 // For class/interface casts, operand should be a class or interface or nil
-                if (!(argType.kind == PasTypeKind::Class || argType.kind == PasTypeKind::Interface ||
-                      argType.kind == PasTypeKind::Nil || argType.kind == PasTypeKind::Unknown))
+                if (!(argType.kind == PasTypeKind::Class ||
+                      argType.kind == PasTypeKind::Interface || argType.kind == PasTypeKind::Nil ||
+                      argType.kind == PasTypeKind::Unknown))
                 {
                     error(*expr.args[0], "invalid cast: expected class or interface instance");
                 }
@@ -433,13 +436,16 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
                     size_t actual = expr.args.size();
                     if (actual < requiredParams)
                     {
-                        error(expr, "too few arguments: expected at least " +
-                                        std::to_string(requiredParams) + ", got " + std::to_string(actual));
+                        error(expr,
+                              "too few arguments: expected at least " +
+                                  std::to_string(requiredParams) + ", got " +
+                                  std::to_string(actual));
                     }
                     else if (actual > totalParams)
                     {
-                        error(expr, "too many arguments: expected at most " +
-                                        std::to_string(totalParams) + ", got " + std::to_string(actual));
+                        error(expr,
+                              "too many arguments: expected at most " +
+                                  std::to_string(totalParams) + ", got " + std::to_string(actual));
                     }
 
                     // Type-check arguments
@@ -449,11 +455,13 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
                         {
                             PasType argType = typeOf(*expr.args[i]);
                             const PasType &paramType = minfo.params[i].second;
-                            if (!paramType.isError() && !isAssignableFrom(paramType, argType) && !argType.isError())
+                            if (!paramType.isError() && !isAssignableFrom(paramType, argType) &&
+                                !argType.isError())
                             {
-                                error(*expr.args[i], "argument " + std::to_string(i + 1) +
-                                                         " type mismatch: expected " + paramType.toString() +
-                                                         ", got " + argType.toString());
+                                error(*expr.args[i],
+                                      "argument " + std::to_string(i + 1) +
+                                          " type mismatch: expected " + paramType.toString() +
+                                          ", got " + argType.toString());
                             }
                         }
                     }
@@ -493,13 +501,17 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
                         size_t actual = expr.args.size();
                         if (actual < requiredParams)
                         {
-                            error(expr, "too few arguments: expected at least " +
-                                            std::to_string(requiredParams) + ", got " + std::to_string(actual));
+                            error(expr,
+                                  "too few arguments: expected at least " +
+                                      std::to_string(requiredParams) + ", got " +
+                                      std::to_string(actual));
                         }
                         else if (actual > totalParams)
                         {
-                            error(expr, "too many arguments: expected at most " +
-                                            std::to_string(totalParams) + ", got " + std::to_string(actual));
+                            error(expr,
+                                  "too many arguments: expected at most " +
+                                      std::to_string(totalParams) + ", got " +
+                                      std::to_string(actual));
                         }
 
                         // Type-check arguments
@@ -509,11 +521,13 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
                             {
                                 PasType argType = typeOf(*expr.args[i]);
                                 const PasType &paramType = minfo.params[i].second;
-                                if (!paramType.isError() && !isAssignableFrom(paramType, argType) && !argType.isError())
+                                if (!paramType.isError() && !isAssignableFrom(paramType, argType) &&
+                                    !argType.isError())
                                 {
-                                    error(*expr.args[i], "argument " + std::to_string(i + 1) +
-                                                             " type mismatch: expected " + paramType.toString() +
-                                                             ", got " + argType.toString());
+                                    error(*expr.args[i],
+                                          "argument " + std::to_string(i + 1) +
+                                              " type mismatch: expected " + paramType.toString() +
+                                              ", got " + argType.toString());
                                 }
                             }
                         }
@@ -583,7 +597,9 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
                             }
                             else
                             {
-                                error(expr, "class '" + className + "' has no constructor named '" + calleeName + "'");
+                                error(expr,
+                                      "class '" + className + "' has no constructor named '" +
+                                          calleeName + "'");
                                 return PasType::unknown();
                             }
                         }
@@ -651,27 +667,34 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
 
                         if (actual < requiredParams)
                         {
-                            error(expr, "too few arguments: expected at least " +
-                                            std::to_string(requiredParams) + ", got " + std::to_string(actual));
+                            error(expr,
+                                  "too few arguments: expected at least " +
+                                      std::to_string(requiredParams) + ", got " +
+                                      std::to_string(actual));
                         }
                         else if (actual > totalParams)
                         {
-                            error(expr, "too many arguments: expected at most " +
-                                            std::to_string(totalParams) + ", got " + std::to_string(actual));
+                            error(expr,
+                                  "too many arguments: expected at most " +
+                                      std::to_string(totalParams) + ", got " +
+                                      std::to_string(actual));
                         }
 
                         // Type-check arguments
-                        for (size_t i = 0; i < expr.args.size() && i < methodInfo.params.size(); ++i)
+                        for (size_t i = 0; i < expr.args.size() && i < methodInfo.params.size();
+                             ++i)
                         {
                             if (expr.args[i])
                             {
                                 PasType argType = typeOf(*expr.args[i]);
                                 const PasType &paramType = methodInfo.params[i].second;
-                                if (!paramType.isError() && !isAssignableFrom(paramType, argType) && !argType.isError())
+                                if (!paramType.isError() && !isAssignableFrom(paramType, argType) &&
+                                    !argType.isError())
                                 {
-                                    error(*expr.args[i], "argument " + std::to_string(i + 1) +
-                                                             " type mismatch: expected " + paramType.toString() +
-                                                             ", got " + argType.toString());
+                                    error(*expr.args[i],
+                                          "argument " + std::to_string(i + 1) +
+                                              " type mismatch: expected " + paramType.toString() +
+                                              ", got " + argType.toString());
                                 }
                             }
                         }
@@ -684,7 +707,9 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
                     }
                     else
                     {
-                        error(expr, "undefined method '" + calleeName + "' in interface '" + ifaceName + "'");
+                        error(expr,
+                              "undefined method '" + calleeName + "' in interface '" + ifaceName +
+                                  "'");
                         return PasType::unknown();
                     }
                 }
@@ -709,8 +734,10 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
             // Check if it's a variable/constant - give a better error message
             if (lookupVariable(key) || lookupConstant(key))
             {
-                error(expr, "'" + calleeName + "' is not a procedure or function; "
-                            "only calls are allowed as statements");
+                error(expr,
+                      "'" + calleeName +
+                          "' is not a procedure or function; "
+                          "only calls are allowed as statements");
             }
             else
             {
@@ -752,13 +779,16 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
 
                     if (actual < requiredParams)
                     {
-                        error(expr, "too few arguments: expected at least " +
-                                        std::to_string(requiredParams) + ", got " + std::to_string(actual));
+                        error(expr,
+                              "too few arguments: expected at least " +
+                                  std::to_string(requiredParams) + ", got " +
+                                  std::to_string(actual));
                     }
                     else if (actual > totalParams)
                     {
-                        error(expr, "too many arguments: expected at most " +
-                                        std::to_string(totalParams) + ", got " + std::to_string(actual));
+                        error(expr,
+                              "too many arguments: expected at most " +
+                                  std::to_string(totalParams) + ", got " + std::to_string(actual));
                     }
 
                     // Type-check arguments
@@ -768,11 +798,13 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
                         {
                             PasType argType = typeOf(*expr.args[i]);
                             const PasType &paramType = methodInfo.params[i].second;
-                            if (!paramType.isError() && !isAssignableFrom(paramType, argType) && !argType.isError())
+                            if (!paramType.isError() && !isAssignableFrom(paramType, argType) &&
+                                !argType.isError())
                             {
-                                error(*expr.args[i], "argument " + std::to_string(i + 1) +
-                                                         " type mismatch: expected " + paramType.toString() +
-                                                         ", got " + argType.toString());
+                                error(*expr.args[i],
+                                      "argument " + std::to_string(i + 1) +
+                                          " type mismatch: expected " + paramType.toString() +
+                                          ", got " + argType.toString());
                             }
                         }
                     }
@@ -790,19 +822,22 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
     size_t totalParams = sig->params.size();
     size_t requiredParams = sig->requiredParams;
     size_t actual = expr.args.size();
-    bool isVariadic = (totalParams == 0); // Treat 0-param functions as variadic (WriteLn, ReadLn, etc.)
+    bool isVariadic =
+        (totalParams == 0); // Treat 0-param functions as variadic (WriteLn, ReadLn, etc.)
 
     if (!isVariadic)
     {
         if (actual < requiredParams)
         {
-            error(expr, "too few arguments: expected at least " + std::to_string(requiredParams) +
-                            ", got " + std::to_string(actual));
+            error(expr,
+                  "too few arguments: expected at least " + std::to_string(requiredParams) +
+                      ", got " + std::to_string(actual));
         }
         else if (actual > totalParams)
         {
-            error(expr, "too many arguments: expected at most " + std::to_string(totalParams) +
-                            ", got " + std::to_string(actual));
+            error(expr,
+                  "too many arguments: expected at most " + std::to_string(totalParams) + ", got " +
+                      std::to_string(actual));
         }
     }
 
@@ -824,10 +859,12 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
                 PasType argType = typeOf(*expr.args[i]);
                 const PasType &paramType = sig->params[i].second;
                 // Skip type check if param is Unknown (used for multi-type builtins like Length)
-                if (!paramType.isError() && !isAssignableFrom(paramType, argType) && !argType.isError())
+                if (!paramType.isError() && !isAssignableFrom(paramType, argType) &&
+                    !argType.isError())
                 {
-                    error(*expr.args[i], "argument " + std::to_string(i + 1) + " type mismatch: expected " +
-                                             paramType.toString() + ", got " + argType.toString());
+                    error(*expr.args[i],
+                          "argument " + std::to_string(i + 1) + " type mismatch: expected " +
+                              paramType.toString() + ", got " + argType.toString());
                 }
             }
         }
@@ -1057,16 +1094,17 @@ PasType SemanticAnalyzer::typeOfSetConstructor(SetConstructorExpr &expr)
 PasType SemanticAnalyzer::typeOfAddressOf(AddressOfExpr &expr)
 {
     // v0.1: Address-of operator is not supported
-    error(expr, "address-of operator (@) is not supported in Viper Pascal v0.1; use classes instead");
+    error(expr,
+          "address-of operator (@) is not supported in Viper Pascal v0.1; use classes instead");
     return PasType::unknown();
 }
 
 PasType SemanticAnalyzer::typeOfDereference(DereferenceExpr &expr)
 {
     // v0.1: Pointer dereference is not supported
-    error(expr, "pointer dereference (^) is not supported in Viper Pascal v0.1; use classes instead");
+    error(expr,
+          "pointer dereference (^) is not supported in Viper Pascal v0.1; use classes instead");
     return PasType::unknown();
 }
 
 } // namespace il::frontends::pascal
-

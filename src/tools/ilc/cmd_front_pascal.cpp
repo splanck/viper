@@ -36,7 +36,7 @@ struct FrontPascalConfig
 {
     bool emitIl{false};
     bool run{false};
-    std::vector<std::string> sourcePaths;  // Multiple source files
+    std::vector<std::string> sourcePaths; // Multiple source files
     ilc::SharedCliOptions shared;
     std::vector<std::string> programArgs;
 };
@@ -109,7 +109,9 @@ il::support::Expected<FrontPascalConfig> parseFrontPascalArgs(int argc, char **a
     {
         return il::support::Expected<FrontPascalConfig>(il::support::Diagnostic{
             il::support::Severity::Error,
-            "specify exactly one of -emit-il or -run, followed by source file(s)", {}, {}});
+            "specify exactly one of -emit-il or -run, followed by source file(s)",
+            {},
+            {}});
     }
 
     return il::support::Expected<FrontPascalConfig>(std::move(config));
@@ -205,9 +207,9 @@ bool isUnitSource(const std::string &source)
                 }
             }
         }
-        return false;  // First keyword is not 'unit'
+        return false; // First keyword is not 'unit'
     }
-    return false;  // Empty/comment-only source
+    return false; // Empty/comment-only source
 }
 
 /// @brief Compile (and optionally execute) Pascal source according to config.

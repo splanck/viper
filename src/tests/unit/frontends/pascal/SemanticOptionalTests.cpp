@@ -119,13 +119,12 @@ TEST(PasTypeOptionalTest, ToString)
 TEST(PascalOptionalTest, OptionalVariableAssignNil)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "var username: String?;\n"
-        "begin\n"
-        "  username := nil\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "var username: String?;\n"
+                                 "begin\n"
+                                 "  username := nil\n"
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -133,13 +132,12 @@ TEST(PascalOptionalTest, OptionalVariableAssignNil)
 TEST(PascalOptionalTest, OptionalVariableAssignValue)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "var username: String?;\n"
-        "begin\n"
-        "  username := 'Alice'\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "var username: String?;\n"
+                                 "begin\n"
+                                 "  username := 'Alice'\n"
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -147,14 +145,13 @@ TEST(PascalOptionalTest, OptionalVariableAssignValue)
 TEST(PascalOptionalTest, OptionalVariableAssignBoth)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "var username: String?;\n"
-        "begin\n"
-        "  username := nil;\n"
-        "  username := 'Alice'\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "var username: String?;\n"
+                                 "begin\n"
+                                 "  username := nil;\n"
+                                 "  username := 'Alice'\n"
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -162,14 +159,13 @@ TEST(PascalOptionalTest, OptionalVariableAssignBoth)
 TEST(PascalOptionalTest, OptionalIntegerAssignment)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "var count: Integer?;\n"
-        "begin\n"
-        "  count := nil;\n"
-        "  count := 42\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "var count: Integer?;\n"
+                                 "begin\n"
+                                 "  count := nil;\n"
+                                 "  count := 42\n"
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -181,15 +177,14 @@ TEST(PascalOptionalTest, OptionalIntegerAssignment)
 TEST(PascalOptionalTest, CoalesceWithDefault)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "var username: String?;\n"
-        "var display: String;\n"
-        "begin\n"
-        "  username := nil;\n"
-        "  display := username ?? 'Guest'\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "var username: String?;\n"
+                                 "var display: String;\n"
+                                 "begin\n"
+                                 "  username := nil;\n"
+                                 "  display := username ?? 'Guest'\n"
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -197,16 +192,15 @@ TEST(PascalOptionalTest, CoalesceWithDefault)
 TEST(PascalOptionalTest, CoalesceChaining)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "var first, second: String?;\n"
-        "var result: String;\n"
-        "begin\n"
-        "  first := nil;\n"
-        "  second := nil;\n"
-        "  result := first ?? second ?? 'default'\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "var first, second: String?;\n"
+                                 "var result: String;\n"
+                                 "begin\n"
+                                 "  first := nil;\n"
+                                 "  second := nil;\n"
+                                 "  result := first ?? second ?? 'default'\n"
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -214,16 +208,15 @@ TEST(PascalOptionalTest, CoalesceChaining)
 TEST(PascalOptionalTest, CoalesceWithNonOptional)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "var a, b: String;\n"
-        "var c: String;\n"
-        "begin\n"
-        "  a := 'hello';\n"
-        "  b := 'world';\n"
-        "  c := a ?? b\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "var a, b: String;\n"
+                                 "var c: String;\n"
+                                 "begin\n"
+                                 "  a := 'hello';\n"
+                                 "  b := 'world';\n"
+                                 "  c := a ?? b\n"
+                                 "end.",
+                                 diag);
     // This should work - coalesce on non-optionals is valid (no-op)
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
@@ -232,15 +225,14 @@ TEST(PascalOptionalTest, CoalesceWithNonOptional)
 TEST(PascalOptionalTest, CoalesceIntegerTypes)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "var count: Integer?;\n"
-        "var result: Integer;\n"
-        "begin\n"
-        "  count := nil;\n"
-        "  result := count ?? 0\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "var count: Integer?;\n"
+                                 "var result: Integer;\n"
+                                 "begin\n"
+                                 "  count := nil;\n"
+                                 "  result := count ?? 0\n"
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -252,15 +244,14 @@ TEST(PascalOptionalTest, CoalesceIntegerTypes)
 TEST(PascalOptionalTest, NarrowInIfNotNil)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "var name: String?;\n"
-        "begin\n"
-        "  name := 'test';\n"
-        "  if name <> nil then\n"
-        "    WriteLn(name)\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "var name: String?;\n"
+                                 "begin\n"
+                                 "  name := 'test';\n"
+                                 "  if name <> nil then\n"
+                                 "    WriteLn(name)\n"
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -268,17 +259,16 @@ TEST(PascalOptionalTest, NarrowInIfNotNil)
 TEST(PascalOptionalTest, NarrowInElseBranch)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "var name: String?;\n"
-        "begin\n"
-        "  name := nil;\n"
-        "  if name = nil then\n"
-        "    name := 'default'\n"
-        "  else\n"
-        "    WriteLn(name)\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "var name: String?;\n"
+                                 "begin\n"
+                                 "  name := nil;\n"
+                                 "  if name = nil then\n"
+                                 "    name := 'default'\n"
+                                 "  else\n"
+                                 "    WriteLn(name)\n"
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -286,17 +276,16 @@ TEST(PascalOptionalTest, NarrowInElseBranch)
 TEST(PascalOptionalTest, NarrowInWhileLoop)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "var name: String?;\n"
-        "begin\n"
-        "  name := 'test';\n"
-        "  while name <> nil do begin\n"
-        "    WriteLn(name);\n"
-        "    name := nil\n"
-        "  end\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "var name: String?;\n"
+                                 "begin\n"
+                                 "  name := 'test';\n"
+                                 "  while name <> nil do begin\n"
+                                 "    WriteLn(name);\n"
+                                 "    name := nil\n"
+                                 "  end\n"
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -304,19 +293,18 @@ TEST(PascalOptionalTest, NarrowInWhileLoop)
 TEST(PascalOptionalTest, NarrowInvalidatedByAssignment)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "var name: String?;\n"
-        "var other: String?;\n"
-        "begin\n"
-        "  name := 'test';\n"
-        "  other := nil;\n"
-        "  if name <> nil then begin\n"
-        "    WriteLn(name);\n"
-        "    name := other\n"
-        "  end\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "var name: String?;\n"
+                                 "var other: String?;\n"
+                                 "begin\n"
+                                 "  name := 'test';\n"
+                                 "  other := nil;\n"
+                                 "  if name <> nil then begin\n"
+                                 "    WriteLn(name);\n"
+                                 "    name := other\n"
+                                 "  end\n"
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -328,15 +316,14 @@ TEST(PascalOptionalTest, NarrowInvalidatedByAssignment)
 TEST(PascalOptionalTest, OptionalDoesNotConvertToNonOptional)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "var opt: String?;\n"
-        "var nonOpt: String;\n"
-        "begin\n"
-        "  opt := 'test';\n"
-        "  nonOpt := opt\n" // Error: cannot assign String? to String
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "var opt: String?;\n"
+                                 "var nonOpt: String;\n"
+                                 "begin\n"
+                                 "  opt := 'test';\n"
+                                 "  nonOpt := opt\n" // Error: cannot assign String? to String
+                                 "end.",
+                                 diag);
     EXPECT_FALSE(result);
     EXPECT_NE(diag.errorCount(), 0u);
 }
@@ -344,15 +331,14 @@ TEST(PascalOptionalTest, OptionalDoesNotConvertToNonOptional)
 TEST(PascalOptionalTest, NonOptionalConvertsToOptional)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "var opt: String?;\n"
-        "var nonOpt: String;\n"
-        "begin\n"
-        "  nonOpt := 'test';\n"
-        "  opt := nonOpt\n" // OK: String converts to String?
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "var opt: String?;\n"
+                                 "var nonOpt: String;\n"
+                                 "begin\n"
+                                 "  nonOpt := 'test';\n"
+                                 "  opt := nonOpt\n" // OK: String converts to String?
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -364,12 +350,11 @@ TEST(PascalOptionalTest, NonOptionalConvertsToOptional)
 TEST(PascalOptionalTest, DoubleOptionalTypeError)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type Bad = Integer??;\n"
-        "begin\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type Bad = Integer??;\n"
+                                 "begin\n"
+                                 "end.",
+                                 diag);
     EXPECT_FALSE(result);
     EXPECT_NE(diag.errorCount(), 0u);
 }
@@ -377,12 +362,11 @@ TEST(PascalOptionalTest, DoubleOptionalTypeError)
 TEST(PascalOptionalTest, NestedOptionalVarError)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "var x: String??;\n"
-        "begin\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "var x: String??;\n"
+                                 "begin\n"
+                                 "end.",
+                                 diag);
     EXPECT_FALSE(result);
     EXPECT_NE(diag.errorCount(), 0u);
 }
@@ -394,17 +378,16 @@ TEST(PascalOptionalTest, NestedOptionalVarError)
 TEST(PascalOptionalTest, ClassTypeNilAssignmentError)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type TCircle = class\n"
-        "  public\n"
-        "    radius: Real;\n"
-        "end;\n"
-        "var c: TCircle;\n"
-        "begin\n"
-        "  c := nil\n" // Error: cannot assign nil to non-optional class
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type TCircle = class\n"
+                                 "  public\n"
+                                 "    radius: Real;\n"
+                                 "end;\n"
+                                 "var c: TCircle;\n"
+                                 "begin\n"
+                                 "  c := nil\n" // Error: cannot assign nil to non-optional class
+                                 "end.",
+                                 diag);
     EXPECT_FALSE(result);
     EXPECT_NE(diag.errorCount(), 0u);
 }
@@ -412,18 +395,18 @@ TEST(PascalOptionalTest, ClassTypeNilAssignmentError)
 TEST(PascalOptionalTest, ClassTypeNilComparisonError)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type TCircle = class\n"
-        "  public\n"
-        "    radius: Real;\n"
-        "end;\n"
-        "var c: TCircle;\n"
-        "begin\n"
-        "  if c = nil then\n" // Error: non-optional class cannot be compared to nil
-        "    WriteLn('nil')\n"
-        "end.",
-        diag);
+    bool result =
+        analyzeProgram("program Test;\n"
+                       "type TCircle = class\n"
+                       "  public\n"
+                       "    radius: Real;\n"
+                       "end;\n"
+                       "var c: TCircle;\n"
+                       "begin\n"
+                       "  if c = nil then\n" // Error: non-optional class cannot be compared to nil
+                       "    WriteLn('nil')\n"
+                       "end.",
+                       diag);
     EXPECT_FALSE(result);
     EXPECT_NE(diag.errorCount(), 0u);
 }
@@ -431,17 +414,16 @@ TEST(PascalOptionalTest, ClassTypeNilComparisonError)
 TEST(PascalOptionalTest, OptionalClassNilAssignment)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type TCircle = class\n"
-        "  public\n"
-        "    radius: Real;\n"
-        "end;\n"
-        "var c: TCircle?;\n"
-        "begin\n"
-        "  c := nil\n" // OK: TCircle? accepts nil
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type TCircle = class\n"
+                                 "  public\n"
+                                 "    radius: Real;\n"
+                                 "end;\n"
+                                 "var c: TCircle?;\n"
+                                 "begin\n"
+                                 "  c := nil\n" // OK: TCircle? accepts nil
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -449,19 +431,18 @@ TEST(PascalOptionalTest, OptionalClassNilAssignment)
 TEST(PascalOptionalTest, OptionalClassNilComparison)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type TCircle = class\n"
-        "  public\n"
-        "    radius: Real;\n"
-        "end;\n"
-        "var c: TCircle?;\n"
-        "begin\n"
-        "  c := nil;\n"
-        "  if c = nil then\n" // OK: TCircle? can be compared to nil
-        "    WriteLn('nil')\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type TCircle = class\n"
+                                 "  public\n"
+                                 "    radius: Real;\n"
+                                 "end;\n"
+                                 "var c: TCircle?;\n"
+                                 "begin\n"
+                                 "  c := nil;\n"
+                                 "  if c = nil then\n" // OK: TCircle? can be compared to nil
+                                 "    WriteLn('nil')\n"
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -473,13 +454,12 @@ TEST(PascalOptionalTest, OptionalClassNilComparison)
 TEST(PascalOptionalTest, IntegerPromotesToOptionalReal)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "var x: Real?;\n"
-        "begin\n"
-        "  x := 42\n" // OK: Integer promotes to Real?
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "var x: Real?;\n"
+                                 "begin\n"
+                                 "  x := 42\n" // OK: Integer promotes to Real?
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }

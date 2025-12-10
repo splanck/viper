@@ -18,8 +18,8 @@
 #include "il/io/Serializer.hpp"
 #include "il/transform/PassManager.hpp"
 #include "il/transform/analysis/Liveness.hpp"
-#include <cassert>
 #include <atomic>
+#include <cassert>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -53,7 +53,7 @@ entry:
   ret %a
 }
 )";
-}
+} // namespace
 
 core::Module parseModule()
 {
@@ -97,32 +97,30 @@ int main()
         });
 
     bool seedRan = false;
-    pm.registerFunctionPass(
-        "seed-analyses",
-        [&seedRan](core::Function &fn, transform::AnalysisManager &analysis)
-        {
-            int &count = analysis.getFunctionResult<int>("count", fn);
-            analysis.getFunctionResult<il::transform::CFGInfo>("cfg", fn);
-            (void)count;
-            seedRan = true;
-            transform::PreservedAnalyses preserved;
-            preserved.preserveFunction("count");
-            preserved.preserveCFG();
-            return preserved;
-        });
+    pm.registerFunctionPass("seed-analyses",
+                            [&seedRan](core::Function &fn, transform::AnalysisManager &analysis)
+                            {
+                                int &count = analysis.getFunctionResult<int>("count", fn);
+                                analysis.getFunctionResult<il::transform::CFGInfo>("cfg", fn);
+                                (void)count;
+                                seedRan = true;
+                                transform::PreservedAnalyses preserved;
+                                preserved.preserveFunction("count");
+                                preserved.preserveCFG();
+                                return preserved;
+                            });
 
-    pm.registerFunctionPass(
-        "reuse-cached",
-        [](core::Function &fn, transform::AnalysisManager &analysis)
-        {
-            int &count = analysis.getFunctionResult<int>("count", fn);
-            analysis.getFunctionResult<il::transform::CFGInfo>("cfg", fn);
-            assert(count == 1);
-            transform::PreservedAnalyses preserved;
-            preserved.preserveFunction("count");
-            preserved.preserveCFG();
-            return preserved;
-        });
+    pm.registerFunctionPass("reuse-cached",
+                            [](core::Function &fn, transform::AnalysisManager &analysis)
+                            {
+                                int &count = analysis.getFunctionResult<int>("count", fn);
+                                analysis.getFunctionResult<il::transform::CFGInfo>("cfg", fn);
+                                assert(count == 1);
+                                transform::PreservedAnalyses preserved;
+                                preserved.preserveFunction("count");
+                                preserved.preserveCFG();
+                                return preserved;
+                            });
 
     bool moduleInvalidated = false;
     pm.registerModulePass("module-invalidate",
@@ -132,15 +130,14 @@ int main()
                               return transform::PreservedAnalyses::none();
                           });
 
-    pm.registerFunctionPass(
-        "recompute",
-        [](core::Function &fn, transform::AnalysisManager &analysis)
-        {
-            int &valueFirst = analysis.getFunctionResult<int>("count", fn);
-            analysis.getFunctionResult<il::transform::CFGInfo>("cfg", fn);
-            assert(valueFirst == 2);
-            return transform::PreservedAnalyses::none();
-        });
+    pm.registerFunctionPass("recompute",
+                            [](core::Function &fn, transform::AnalysisManager &analysis)
+                            {
+                                int &valueFirst = analysis.getFunctionResult<int>("count", fn);
+                                analysis.getFunctionResult<il::transform::CFGInfo>("cfg", fn);
+                                assert(valueFirst == 2);
+                                return transform::PreservedAnalyses::none();
+                            });
 
     transform::PassManager::Pipeline pipeline = {
         "seed-analyses", "reuse-cached", "module-invalidate", "recompute"};
@@ -197,16 +194,16 @@ int main()
     std::string statsAfter = instrumentation.str();
     assert(statsAfter.find("simplify-cfg") != std::string::npos);
     assert(statsAfter.find("dce") != std::string::npos);
-    assert(statsAfter.find("licm") != std::string::npos || statsAfter.find("inline") != std::string::npos);
+    assert(statsAfter.find("licm") != std::string::npos ||
+           statsAfter.find("inline") != std::string::npos);
 
     std::atomic<int> parallelRuns{0};
-    pm.registerFunctionPass(
-        "count-fns",
-        [&parallelRuns](core::Function &, transform::AnalysisManager &)
-        {
-            ++parallelRuns;
-            return transform::PreservedAnalyses::all();
-        });
+    pm.registerFunctionPass("count-fns",
+                            [&parallelRuns](core::Function &, transform::AnalysisManager &)
+                            {
+                                ++parallelRuns;
+                                return transform::PreservedAnalyses::all();
+                            });
     pm.registerPipeline("parallel-count", {"count-fns"});
 
     std::string seqIL;

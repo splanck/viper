@@ -66,7 +66,8 @@ std::string formatBranchArgMismatch(std::string_view targetLabel,
                                     std::size_t expected,
                                     std::size_t provided)
 {
-    // Format: "branch argument count mismatch targeting '<target>' [from '<source>']: expected N, got M"
+    // Format: "branch argument count mismatch targeting '<target>' [from '<source>']: expected N,
+    // got M"
     std::string result;
     result.reserve(80 + targetLabel.size() + sourceLabel.size());
     result.append("branch argument count mismatch targeting '");

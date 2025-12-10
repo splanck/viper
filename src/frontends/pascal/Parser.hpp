@@ -68,7 +68,10 @@ class Parser
 
     /// @brief Check if any errors occurred during parsing.
     /// @return True if errors were reported.
-    bool hasError() const { return hasError_; }
+    bool hasError() const
+    {
+        return hasError_;
+    }
 
   private:
     //=========================================================================
@@ -333,10 +336,10 @@ class Parser
     // Member Variables
     //=========================================================================
 
-    Lexer &lexer_;                          ///< Token source.
-    il::support::DiagnosticEngine &diag_;   ///< Diagnostic engine.
-    Token current_;                         ///< Current token.
-    bool hasError_{false};                  ///< Error flag.
+    Lexer &lexer_;                        ///< Token source.
+    il::support::DiagnosticEngine &diag_; ///< Diagnostic engine.
+    Token current_;                       ///< Current token.
+    bool hasError_{false};                ///< Error flag.
 };
 
 } // namespace il::frontends::pascal

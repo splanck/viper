@@ -60,19 +60,18 @@ bool analyzeProgram(const std::string &source, DiagnosticEngine &diag)
 TEST(PascalUpcastTest, DerivedToBaseAssignment)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type\n"
-        "  TBase = class end;\n"
-        "  TDerived = class(TBase) end;\n"
-        "var\n"
-        "  d: TDerived;\n"
-        "  b: TBase;\n"
-        "begin\n"
-        "  d := TDerived.Create;\n"
-        "  b := d;\n"  // implicit upcast
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  TBase = class end;\n"
+                                 "  TDerived = class(TBase) end;\n"
+                                 "var\n"
+                                 "  d: TDerived;\n"
+                                 "  b: TBase;\n"
+                                 "begin\n"
+                                 "  d := TDerived.Create;\n"
+                                 "  b := d;\n" // implicit upcast
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -80,20 +79,19 @@ TEST(PascalUpcastTest, DerivedToBaseAssignment)
 TEST(PascalUpcastTest, GrandchildToGrandparentAssignment)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type\n"
-        "  TGrandparent = class end;\n"
-        "  TParent = class(TGrandparent) end;\n"
-        "  TChild = class(TParent) end;\n"
-        "var\n"
-        "  c: TChild;\n"
-        "  gp: TGrandparent;\n"
-        "begin\n"
-        "  c := TChild.Create;\n"
-        "  gp := c;\n"  // implicit upcast through two levels
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  TGrandparent = class end;\n"
+                                 "  TParent = class(TGrandparent) end;\n"
+                                 "  TChild = class(TParent) end;\n"
+                                 "var\n"
+                                 "  c: TChild;\n"
+                                 "  gp: TGrandparent;\n"
+                                 "begin\n"
+                                 "  c := TChild.Create;\n"
+                                 "  gp := c;\n" // implicit upcast through two levels
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -105,30 +103,29 @@ TEST(PascalUpcastTest, GrandchildToGrandparentAssignment)
 TEST(PascalUpcastTest, DerivedAsBaseParameter)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type\n"
-        "  TAnimal = class\n"
-        "  public\n"
-        "    procedure Speak; virtual;\n"
-        "  end;\n"
-        "  TDog = class(TAnimal)\n"
-        "  public\n"
-        "    procedure Speak; override;\n"
-        "  end;\n"
-        "procedure TAnimal.Speak; begin WriteLn('Animal'); end;\n"
-        "procedure TDog.Speak; begin WriteLn('Dog'); end;\n"
-        "procedure MakeSpeak(a: TAnimal);\n"
-        "begin\n"
-        "  a.Speak;\n"
-        "end;\n"
-        "var\n"
-        "  d: TDog;\n"
-        "begin\n"
-        "  d := TDog.Create;\n"
-        "  MakeSpeak(d);\n"  // implicit upcast on parameter
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  TAnimal = class\n"
+                                 "  public\n"
+                                 "    procedure Speak; virtual;\n"
+                                 "  end;\n"
+                                 "  TDog = class(TAnimal)\n"
+                                 "  public\n"
+                                 "    procedure Speak; override;\n"
+                                 "  end;\n"
+                                 "procedure TAnimal.Speak; begin WriteLn('Animal'); end;\n"
+                                 "procedure TDog.Speak; begin WriteLn('Dog'); end;\n"
+                                 "procedure MakeSpeak(a: TAnimal);\n"
+                                 "begin\n"
+                                 "  a.Speak;\n"
+                                 "end;\n"
+                                 "var\n"
+                                 "  d: TDog;\n"
+                                 "begin\n"
+                                 "  d := TDog.Create;\n"
+                                 "  MakeSpeak(d);\n" // implicit upcast on parameter
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -136,24 +133,23 @@ TEST(PascalUpcastTest, DerivedAsBaseParameter)
 TEST(PascalUpcastTest, MultipleUpcastParameters)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type\n"
-        "  TBase = class end;\n"
-        "  TDerived1 = class(TBase) end;\n"
-        "  TDerived2 = class(TBase) end;\n"
-        "procedure Process(a, b: TBase);\n"
-        "begin\n"
-        "end;\n"
-        "var\n"
-        "  d1: TDerived1;\n"
-        "  d2: TDerived2;\n"
-        "begin\n"
-        "  d1 := TDerived1.Create;\n"
-        "  d2 := TDerived2.Create;\n"
-        "  Process(d1, d2);\n"  // both parameters are implicit upcasts
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  TBase = class end;\n"
+                                 "  TDerived1 = class(TBase) end;\n"
+                                 "  TDerived2 = class(TBase) end;\n"
+                                 "procedure Process(a, b: TBase);\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "var\n"
+                                 "  d1: TDerived1;\n"
+                                 "  d2: TDerived2;\n"
+                                 "begin\n"
+                                 "  d1 := TDerived1.Create;\n"
+                                 "  d2 := TDerived2.Create;\n"
+                                 "  Process(d1, d2);\n" // both parameters are implicit upcasts
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -165,24 +161,23 @@ TEST(PascalUpcastTest, MultipleUpcastParameters)
 TEST(PascalUpcastTest, DerivedToFieldUpcast)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type\n"
-        "  TAnimal = class end;\n"
-        "  TDog = class(TAnimal) end;\n"
-        "  TZoo = class\n"
-        "  public\n"
-        "    animal: TAnimal;\n"
-        "  end;\n"
-        "var\n"
-        "  z: TZoo;\n"
-        "  d: TDog;\n"
-        "begin\n"
-        "  z := TZoo.Create;\n"
-        "  d := TDog.Create;\n"
-        "  z.animal := d;\n"  // implicit upcast to field
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  TAnimal = class end;\n"
+                                 "  TDog = class(TAnimal) end;\n"
+                                 "  TZoo = class\n"
+                                 "  public\n"
+                                 "    animal: TAnimal;\n"
+                                 "  end;\n"
+                                 "var\n"
+                                 "  z: TZoo;\n"
+                                 "  d: TDog;\n"
+                                 "begin\n"
+                                 "  z := TZoo.Create;\n"
+                                 "  d := TDog.Create;\n"
+                                 "  z.animal := d;\n" // implicit upcast to field
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -194,24 +189,23 @@ TEST(PascalUpcastTest, DerivedToFieldUpcast)
 TEST(PascalUpcastTest, DerivedAsBaseReturn)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type\n"
-        "  TAnimal = class end;\n"
-        "  TDog = class(TAnimal) end;\n"
-        "function CreateAnimal: TAnimal;\n"
-        "var\n"
-        "  d: TDog;\n"
-        "begin\n"
-        "  d := TDog.Create;\n"
-        "  Result := d;\n"  // implicit upcast on return
-        "end;\n"
-        "var\n"
-        "  a: TAnimal;\n"
-        "begin\n"
-        "  a := CreateAnimal;\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  TAnimal = class end;\n"
+                                 "  TDog = class(TAnimal) end;\n"
+                                 "function CreateAnimal: TAnimal;\n"
+                                 "var\n"
+                                 "  d: TDog;\n"
+                                 "begin\n"
+                                 "  d := TDog.Create;\n"
+                                 "  Result := d;\n" // implicit upcast on return
+                                 "end;\n"
+                                 "var\n"
+                                 "  a: TAnimal;\n"
+                                 "begin\n"
+                                 "  a := CreateAnimal;\n"
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -223,19 +217,18 @@ TEST(PascalUpcastTest, DerivedAsBaseReturn)
 TEST(PascalUpcastTest, DowncastAssignmentRejected)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type\n"
-        "  TBase = class end;\n"
-        "  TDerived = class(TBase) end;\n"
-        "var\n"
-        "  b: TBase;\n"
-        "  d: TDerived;\n"
-        "begin\n"
-        "  b := TBase.Create;\n"
-        "  d := b;\n"  // implicit downcast - should fail
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  TBase = class end;\n"
+                                 "  TDerived = class(TBase) end;\n"
+                                 "var\n"
+                                 "  b: TBase;\n"
+                                 "  d: TDerived;\n"
+                                 "begin\n"
+                                 "  b := TBase.Create;\n"
+                                 "  d := b;\n" // implicit downcast - should fail
+                                 "end.",
+                                 diag);
     EXPECT_FALSE(result);
     EXPECT_NE(diag.errorCount(), 0u);
 }
@@ -243,21 +236,20 @@ TEST(PascalUpcastTest, DowncastAssignmentRejected)
 TEST(PascalUpcastTest, DowncastParameterRejected)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type\n"
-        "  TBase = class end;\n"
-        "  TDerived = class(TBase) end;\n"
-        "procedure NeedsDerived(d: TDerived);\n"
-        "begin\n"
-        "end;\n"
-        "var\n"
-        "  b: TBase;\n"
-        "begin\n"
-        "  b := TBase.Create;\n"
-        "  NeedsDerived(b);\n"  // implicit downcast - should fail
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  TBase = class end;\n"
+                                 "  TDerived = class(TBase) end;\n"
+                                 "procedure NeedsDerived(d: TDerived);\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "var\n"
+                                 "  b: TBase;\n"
+                                 "begin\n"
+                                 "  b := TBase.Create;\n"
+                                 "  NeedsDerived(b);\n" // implicit downcast - should fail
+                                 "end.",
+                                 diag);
     EXPECT_FALSE(result);
     EXPECT_NE(diag.errorCount(), 0u);
 }
@@ -265,24 +257,23 @@ TEST(PascalUpcastTest, DowncastParameterRejected)
 TEST(PascalUpcastTest, DowncastFieldRejected)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type\n"
-        "  TBase = class end;\n"
-        "  TDerived = class(TBase) end;\n"
-        "  THolder = class\n"
-        "  public\n"
-        "    derived: TDerived;\n"
-        "  end;\n"
-        "var\n"
-        "  h: THolder;\n"
-        "  b: TBase;\n"
-        "begin\n"
-        "  h := THolder.Create;\n"
-        "  b := TBase.Create;\n"
-        "  h.derived := b;\n"  // implicit downcast - should fail
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  TBase = class end;\n"
+                                 "  TDerived = class(TBase) end;\n"
+                                 "  THolder = class\n"
+                                 "  public\n"
+                                 "    derived: TDerived;\n"
+                                 "  end;\n"
+                                 "var\n"
+                                 "  h: THolder;\n"
+                                 "  b: TBase;\n"
+                                 "begin\n"
+                                 "  h := THolder.Create;\n"
+                                 "  b := TBase.Create;\n"
+                                 "  h.derived := b;\n" // implicit downcast - should fail
+                                 "end.",
+                                 diag);
     EXPECT_FALSE(result);
     EXPECT_NE(diag.errorCount(), 0u);
 }
@@ -290,21 +281,20 @@ TEST(PascalUpcastTest, DowncastFieldRejected)
 TEST(PascalUpcastTest, DowncastReturnRejected)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type\n"
-        "  TBase = class end;\n"
-        "  TDerived = class(TBase) end;\n"
-        "function CreateDerived: TDerived;\n"
-        "var\n"
-        "  b: TBase;\n"
-        "begin\n"
-        "  b := TBase.Create;\n"
-        "  Result := b;\n"  // implicit downcast - should fail
-        "end;\n"
-        "begin\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  TBase = class end;\n"
+                                 "  TDerived = class(TBase) end;\n"
+                                 "function CreateDerived: TDerived;\n"
+                                 "var\n"
+                                 "  b: TBase;\n"
+                                 "begin\n"
+                                 "  b := TBase.Create;\n"
+                                 "  Result := b;\n" // implicit downcast - should fail
+                                 "end;\n"
+                                 "begin\n"
+                                 "end.",
+                                 diag);
     EXPECT_FALSE(result);
     EXPECT_NE(diag.errorCount(), 0u);
 }
@@ -316,17 +306,16 @@ TEST(PascalUpcastTest, DowncastReturnRejected)
 TEST(PascalUpcastTest, SameTypeAssignment)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type\n"
-        "  TAnimal = class end;\n"
-        "var\n"
-        "  a1, a2: TAnimal;\n"
-        "begin\n"
-        "  a1 := TAnimal.Create;\n"
-        "  a2 := a1;\n"  // same type assignment
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  TAnimal = class end;\n"
+                                 "var\n"
+                                 "  a1, a2: TAnimal;\n"
+                                 "begin\n"
+                                 "  a1 := TAnimal.Create;\n"
+                                 "  a2 := a1;\n" // same type assignment
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -338,20 +327,19 @@ TEST(PascalUpcastTest, SameTypeAssignment)
 TEST(PascalUpcastTest, SiblingClassAssignmentRejected)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type\n"
-        "  TBase = class end;\n"
-        "  TDerived1 = class(TBase) end;\n"
-        "  TDerived2 = class(TBase) end;\n"
-        "var\n"
-        "  d1: TDerived1;\n"
-        "  d2: TDerived2;\n"
-        "begin\n"
-        "  d1 := TDerived1.Create;\n"
-        "  d2 := d1;\n"  // sibling assignment - should fail
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  TBase = class end;\n"
+                                 "  TDerived1 = class(TBase) end;\n"
+                                 "  TDerived2 = class(TBase) end;\n"
+                                 "var\n"
+                                 "  d1: TDerived1;\n"
+                                 "  d2: TDerived2;\n"
+                                 "begin\n"
+                                 "  d1 := TDerived1.Create;\n"
+                                 "  d2 := d1;\n" // sibling assignment - should fail
+                                 "end.",
+                                 diag);
     EXPECT_FALSE(result);
     EXPECT_NE(diag.errorCount(), 0u);
 }

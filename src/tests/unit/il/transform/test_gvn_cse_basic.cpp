@@ -11,9 +11,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "il/transform/AnalysisManager.hpp"
 #include "il/transform/EarlyCSE.hpp"
 #include "il/transform/GVN.hpp"
-#include "il/transform/AnalysisManager.hpp"
 #include "il/transform/analysis/Liveness.hpp" // CFGInfo + buildCFG
 
 #include "il/analysis/BasicAA.hpp"

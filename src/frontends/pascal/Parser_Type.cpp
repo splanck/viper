@@ -13,8 +13,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "frontends/pascal/Parser.hpp"
 #include "frontends/pascal/AST.hpp"
+#include "frontends/pascal/Parser.hpp"
 
 namespace il::frontends::pascal
 {
@@ -375,4 +375,3 @@ std::unique_ptr<TypeNode> Parser::parseFunctionType()
 
 
 } // namespace il::frontends::pascal
-

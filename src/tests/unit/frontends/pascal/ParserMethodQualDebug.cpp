@@ -1,7 +1,7 @@
 // Debug test to inspect qualified method parsing
-#include "frontends/pascal/Parser.hpp"
-#include "frontends/pascal/Lexer.hpp"
 #include "frontends/pascal/AST.hpp"
+#include "frontends/pascal/Lexer.hpp"
+#include "frontends/pascal/Parser.hpp"
 #include "support/diagnostics.hpp"
 #include <iostream>
 
@@ -49,7 +49,7 @@ begin end.
     Parser parser(lex, diag);
     auto prog = parser.parseProgram();
     ASSERT_TRUE(prog != nullptr);
-    bool seenCtor=false, seenProc=false;
+    bool seenCtor = false, seenProc = false;
     for (auto &d : prog->decls)
     {
         if (d->kind == DeclKind::Constructor)
@@ -57,7 +57,7 @@ begin end.
             auto &cd = static_cast<ConstructorDecl &>(*d);
             if (cd.name == "Create")
             {
-                seenCtor=true;
+                seenCtor = true;
                 std::cerr << "ctor className=" << cd.className << "\n";
                 EXPECT_EQ(cd.className, std::string("TOuter"));
             }
@@ -67,7 +67,7 @@ begin end.
             auto &pd = static_cast<ProcedureDecl &>(*d);
             if (pd.name == "Bump")
             {
-                seenProc=true;
+                seenProc = true;
                 std::cerr << "proc className=" << pd.className << "\n";
                 EXPECT_EQ(pd.className, std::string("TOuter"));
             }
@@ -78,6 +78,8 @@ begin end.
 }
 
 #ifndef VIPER_HAS_GTEST
-int main(){ return RUN_ALL_TESTS(); }
+int main()
+{
+    return RUN_ALL_TESTS();
+}
 #endif
-

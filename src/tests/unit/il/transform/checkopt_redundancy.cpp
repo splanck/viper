@@ -5,8 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "il/transform/CheckOpt.hpp"
 #include "il/transform/AnalysisManager.hpp"
+#include "il/transform/CheckOpt.hpp"
 #include "il/transform/analysis/Liveness.hpp"
 #include "il/transform/analysis/LoopInfo.hpp"
 
@@ -40,7 +40,8 @@ il::transform::AnalysisRegistry makeRegistry()
             return viper::analysis::computeDominatorTree(ctx, fn);
         });
     registry.registerFunctionAnalysis<il::transform::LoopInfo>(
-        "loop-info", [](Module &mod, Function &fn) { return il::transform::computeLoopInfo(mod, fn); });
+        "loop-info",
+        [](Module &mod, Function &fn) { return il::transform::computeLoopInfo(mod, fn); });
     return registry;
 }
 } // namespace

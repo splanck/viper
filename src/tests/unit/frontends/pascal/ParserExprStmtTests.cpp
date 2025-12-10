@@ -64,15 +64,13 @@ std::unique_ptr<Program> parseProg(const std::string &source)
 }
 
 /// @brief Cast expression to specific type.
-template <typename T>
-T *asExpr(Expr *e)
+template <typename T> T *asExpr(Expr *e)
 {
     return dynamic_cast<T *>(e);
 }
 
 /// @brief Cast statement to specific type.
-template <typename T>
-T *asStmt(Stmt *s)
+template <typename T> T *asStmt(Stmt *s)
 {
     return dynamic_cast<T *>(s);
 }
@@ -771,13 +769,12 @@ TEST(PascalParserProg, ProgramWithBody)
 
 TEST(PascalParserProg, ProgramWithMultipleStatements)
 {
-    auto prog = parseProg(
-        "program Test;\n"
-        "begin\n"
-        "  x := 1;\n"
-        "  y := 2;\n"
-        "  WriteLn(x + y)\n"
-        "end.");
+    auto prog = parseProg("program Test;\n"
+                          "begin\n"
+                          "  x := 1;\n"
+                          "  y := 2;\n"
+                          "  WriteLn(x + y)\n"
+                          "end.");
     EXPECT_TRUE(prog != nullptr);
     EXPECT_EQ(prog->name, "Test");
     EXPECT_EQ(prog->body->stmts.size(), 3u);
@@ -785,12 +782,11 @@ TEST(PascalParserProg, ProgramWithMultipleStatements)
 
 TEST(PascalParserProg, ProgramWithCompleteStructure)
 {
-    auto prog = parseProg(
-        "program Hello;\n"
-        "uses Foo, Bar;\n"
-        "begin\n"
-        "  WriteLn('Hi')\n"
-        "end.");
+    auto prog = parseProg("program Hello;\n"
+                          "uses Foo, Bar;\n"
+                          "begin\n"
+                          "  WriteLn('Hi')\n"
+                          "end.");
     EXPECT_TRUE(prog != nullptr);
     EXPECT_EQ(prog->name, "Hello");
     EXPECT_EQ(prog->usedUnits.size(), 2u);

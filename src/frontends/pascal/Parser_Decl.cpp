@@ -13,8 +13,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "frontends/pascal/Parser.hpp"
 #include "frontends/pascal/AST.hpp"
+#include "frontends/pascal/Parser.hpp"
 
 namespace il::frontends::pascal
 {
@@ -119,8 +119,8 @@ std::vector<std::unique_ptr<Decl>> Parser::parseConstSection()
             resyncAfterError();
         }
 
-        decls.push_back(std::make_unique<ConstDecl>(
-            std::move(name), std::move(value), std::move(type), loc));
+        decls.push_back(
+            std::make_unique<ConstDecl>(std::move(name), std::move(value), std::move(type), loc));
     }
 
     return decls;
@@ -239,8 +239,8 @@ std::vector<std::unique_ptr<Decl>> Parser::parseVarSection()
             resyncAfterError();
         }
 
-        decls.push_back(std::make_unique<VarDecl>(
-            std::move(names), std::move(type), std::move(init), loc));
+        decls.push_back(
+            std::make_unique<VarDecl>(std::move(names), std::move(type), std::move(init), loc));
     }
 
     return decls;
@@ -497,4 +497,3 @@ std::vector<ParamDecl> Parser::parseParamGroup()
 
 
 } // namespace il::frontends::pascal
-

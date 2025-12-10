@@ -57,7 +57,7 @@ enum class ExprKind
     SetConstructor,
     AddressOf,
     Dereference,
-    Is,          ///< Runtime type-check (expr is T)
+    Is, ///< Runtime type-check (expr is T)
 };
 
 /// @brief Base class for all Pascal expressions.
@@ -67,6 +67,7 @@ struct Expr
     il::support::SourceLoc loc;
 
     explicit Expr(ExprKind k, il::support::SourceLoc l = {}) : kind(k), loc(l) {}
+
     virtual ~Expr() = default;
 };
 
@@ -76,7 +77,9 @@ struct IntLiteralExpr : Expr
     int64_t value;
 
     explicit IntLiteralExpr(int64_t v, il::support::SourceLoc l = {})
-        : Expr(ExprKind::IntLiteral, l), value(v) {}
+        : Expr(ExprKind::IntLiteral, l), value(v)
+    {
+    }
 };
 
 /// @brief Real (floating-point) literal expression.
@@ -85,7 +88,9 @@ struct RealLiteralExpr : Expr
     double value;
 
     explicit RealLiteralExpr(double v, il::support::SourceLoc l = {})
-        : Expr(ExprKind::RealLiteral, l), value(v) {}
+        : Expr(ExprKind::RealLiteral, l), value(v)
+    {
+    }
 };
 
 /// @brief String literal expression.
@@ -94,7 +99,9 @@ struct StringLiteralExpr : Expr
     std::string value;
 
     explicit StringLiteralExpr(std::string v, il::support::SourceLoc l = {})
-        : Expr(ExprKind::StringLiteral, l), value(std::move(v)) {}
+        : Expr(ExprKind::StringLiteral, l), value(std::move(v))
+    {
+    }
 };
 
 /// @brief Boolean literal expression (True/False).
@@ -103,14 +110,15 @@ struct BoolLiteralExpr : Expr
     bool value;
 
     explicit BoolLiteralExpr(bool v, il::support::SourceLoc l = {})
-        : Expr(ExprKind::BoolLiteral, l), value(v) {}
+        : Expr(ExprKind::BoolLiteral, l), value(v)
+    {
+    }
 };
 
 /// @brief Nil literal expression.
 struct NilLiteralExpr : Expr
 {
-    explicit NilLiteralExpr(il::support::SourceLoc l = {})
-        : Expr(ExprKind::NilLiteral, l) {}
+    explicit NilLiteralExpr(il::support::SourceLoc l = {}) : Expr(ExprKind::NilLiteral, l) {}
 };
 
 /// @brief Name/identifier expression (variable, constant, type reference).
@@ -119,7 +127,9 @@ struct NameExpr : Expr
     std::string name;
 
     explicit NameExpr(std::string n, il::support::SourceLoc l = {})
-        : Expr(ExprKind::Name, l), name(std::move(n)) {}
+        : Expr(ExprKind::Name, l), name(std::move(n))
+    {
+    }
 };
 
 /// @brief Unary operator expression.
@@ -136,7 +146,9 @@ struct UnaryExpr : Expr
     std::unique_ptr<Expr> operand;
 
     UnaryExpr(Op o, std::unique_ptr<Expr> operand, il::support::SourceLoc l = {})
-        : Expr(ExprKind::Unary, l), op(o), operand(std::move(operand)) {}
+        : Expr(ExprKind::Unary, l), op(o), operand(std::move(operand))
+    {
+    }
 };
 
 /// @brief Binary operator expression.
@@ -173,9 +185,13 @@ struct BinaryExpr : Expr
     std::unique_ptr<Expr> left;
     std::unique_ptr<Expr> right;
 
-    BinaryExpr(Op o, std::unique_ptr<Expr> l, std::unique_ptr<Expr> r,
+    BinaryExpr(Op o,
+               std::unique_ptr<Expr> l,
+               std::unique_ptr<Expr> r,
                il::support::SourceLoc loc = {})
-        : Expr(ExprKind::Binary, loc), op(o), left(std::move(l)), right(std::move(r)) {}
+        : Expr(ExprKind::Binary, loc), op(o), left(std::move(l)), right(std::move(r))
+    {
+    }
 };
 
 /// @brief Function/procedure call expression.
@@ -199,9 +215,12 @@ struct CallExpr : Expr
     /// @brief For interface method calls, the interface name
     mutable std::string interfaceName;
 
-    CallExpr(std::unique_ptr<Expr> callee, std::vector<std::unique_ptr<Expr>> args,
+    CallExpr(std::unique_ptr<Expr> callee,
+             std::vector<std::unique_ptr<Expr>> args,
              il::support::SourceLoc l = {})
-        : Expr(ExprKind::Call, l), callee(std::move(callee)), args(std::move(args)) {}
+        : Expr(ExprKind::Call, l), callee(std::move(callee)), args(std::move(args))
+    {
+    }
 };
 
 /// @brief Array indexing expression.
@@ -210,9 +229,12 @@ struct IndexExpr : Expr
     std::unique_ptr<Expr> base;
     std::vector<std::unique_ptr<Expr>> indices;
 
-    IndexExpr(std::unique_ptr<Expr> base, std::vector<std::unique_ptr<Expr>> indices,
+    IndexExpr(std::unique_ptr<Expr> base,
+              std::vector<std::unique_ptr<Expr>> indices,
               il::support::SourceLoc l = {})
-        : Expr(ExprKind::Index, l), base(std::move(base)), indices(std::move(indices)) {}
+        : Expr(ExprKind::Index, l), base(std::move(base)), indices(std::move(indices))
+    {
+    }
 };
 
 /// @brief Field/member access expression (record.field or object.member).
@@ -222,7 +244,9 @@ struct FieldExpr : Expr
     std::string field;
 
     FieldExpr(std::unique_ptr<Expr> base, std::string field, il::support::SourceLoc l = {})
-        : Expr(ExprKind::Field, l), base(std::move(base)), field(std::move(field)) {}
+        : Expr(ExprKind::Field, l), base(std::move(base)), field(std::move(field))
+    {
+    }
 };
 
 /// @brief Type cast expression.
@@ -231,9 +255,12 @@ struct TypeCastExpr : Expr
     std::unique_ptr<TypeNode> targetType;
     std::unique_ptr<Expr> operand;
 
-    TypeCastExpr(std::unique_ptr<TypeNode> type, std::unique_ptr<Expr> operand,
+    TypeCastExpr(std::unique_ptr<TypeNode> type,
+                 std::unique_ptr<Expr> operand,
                  il::support::SourceLoc l = {})
-        : Expr(ExprKind::TypeCast, l), targetType(std::move(type)), operand(std::move(operand)) {}
+        : Expr(ExprKind::TypeCast, l), targetType(std::move(type)), operand(std::move(operand))
+    {
+    }
 };
 
 /// @brief Runtime type-check expression: (expr is T)
@@ -243,7 +270,9 @@ struct IsExpr : Expr
     std::unique_ptr<TypeNode> targetType;
 
     IsExpr(std::unique_ptr<Expr> op, std::unique_ptr<TypeNode> type, il::support::SourceLoc l = {})
-        : Expr(ExprKind::Is, l), operand(std::move(op)), targetType(std::move(type)) {}
+        : Expr(ExprKind::Is, l), operand(std::move(op)), targetType(std::move(type))
+    {
+    }
 };
 
 /// @brief Set constructor expression [1, 2, 3] or [1..10].
@@ -259,7 +288,9 @@ struct SetConstructorExpr : Expr
     std::vector<Element> elements;
 
     explicit SetConstructorExpr(std::vector<Element> elems, il::support::SourceLoc l = {})
-        : Expr(ExprKind::SetConstructor, l), elements(std::move(elems)) {}
+        : Expr(ExprKind::SetConstructor, l), elements(std::move(elems))
+    {
+    }
 };
 
 /// @brief Address-of expression (@variable).
@@ -268,7 +299,9 @@ struct AddressOfExpr : Expr
     std::unique_ptr<Expr> operand;
 
     explicit AddressOfExpr(std::unique_ptr<Expr> operand, il::support::SourceLoc l = {})
-        : Expr(ExprKind::AddressOf, l), operand(std::move(operand)) {}
+        : Expr(ExprKind::AddressOf, l), operand(std::move(operand))
+    {
+    }
 };
 
 /// @brief Pointer dereference expression (ptr^).
@@ -277,7 +310,9 @@ struct DereferenceExpr : Expr
     std::unique_ptr<Expr> operand;
 
     explicit DereferenceExpr(std::unique_ptr<Expr> operand, il::support::SourceLoc l = {})
-        : Expr(ExprKind::Dereference, l), operand(std::move(operand)) {}
+        : Expr(ExprKind::Dereference, l), operand(std::move(operand))
+    {
+    }
 };
 
 //===----------------------------------------------------------------------===//
@@ -306,6 +341,7 @@ struct TypeNode
     il::support::SourceLoc loc;
 
     explicit TypeNode(TypeKind k, il::support::SourceLoc l = {}) : kind(k), loc(l) {}
+
     virtual ~TypeNode() = default;
 
     /// @brief Create a deep copy of this type node.
@@ -318,7 +354,9 @@ struct NamedTypeNode : TypeNode
     std::string name;
 
     explicit NamedTypeNode(std::string n, il::support::SourceLoc l = {})
-        : TypeNode(TypeKind::Named, l), name(std::move(n)) {}
+        : TypeNode(TypeKind::Named, l), name(std::move(n))
+    {
+    }
 
     std::unique_ptr<TypeNode> clone() const override
     {
@@ -332,7 +370,9 @@ struct OptionalTypeNode : TypeNode
     std::unique_ptr<TypeNode> inner;
 
     explicit OptionalTypeNode(std::unique_ptr<TypeNode> inner, il::support::SourceLoc l = {})
-        : TypeNode(TypeKind::Optional, l), inner(std::move(inner)) {}
+        : TypeNode(TypeKind::Optional, l), inner(std::move(inner))
+    {
+    }
 
     std::unique_ptr<TypeNode> clone() const override
     {
@@ -352,10 +392,13 @@ struct ArrayTypeNode : TypeNode
     std::vector<DimSize> dimensions; ///< Empty for dynamic arrays
     std::unique_ptr<TypeNode> elementType;
 
-    ArrayTypeNode(std::vector<DimSize> dims, std::unique_ptr<TypeNode> elemType,
+    ArrayTypeNode(std::vector<DimSize> dims,
+                  std::unique_ptr<TypeNode> elemType,
                   il::support::SourceLoc l = {})
         : TypeNode(TypeKind::Array, l), dimensions(std::move(dims)),
-          elementType(std::move(elemType)) {}
+          elementType(std::move(elemType))
+    {
+    }
 
     std::unique_ptr<TypeNode> clone() const override
     {
@@ -363,9 +406,7 @@ struct ArrayTypeNode : TypeNode
         // (no dimensions) for cloning. Static array cloning would require Expr cloning.
         std::vector<DimSize> dims;
         return std::make_unique<ArrayTypeNode>(
-            std::move(dims),
-            elementType ? elementType->clone() : nullptr,
-            loc);
+            std::move(dims), elementType ? elementType->clone() : nullptr, loc);
     }
 };
 
@@ -383,7 +424,9 @@ struct RecordTypeNode : TypeNode
     std::vector<RecordField> fields;
 
     explicit RecordTypeNode(std::vector<RecordField> fields, il::support::SourceLoc l = {})
-        : TypeNode(TypeKind::Record, l), fields(std::move(fields)) {}
+        : TypeNode(TypeKind::Record, l), fields(std::move(fields))
+    {
+    }
 
     std::unique_ptr<TypeNode> clone() const override
     {
@@ -399,12 +442,13 @@ struct PointerTypeNode : TypeNode
     std::unique_ptr<TypeNode> pointeeType;
 
     explicit PointerTypeNode(std::unique_ptr<TypeNode> pointee, il::support::SourceLoc l = {})
-        : TypeNode(TypeKind::Pointer, l), pointeeType(std::move(pointee)) {}
+        : TypeNode(TypeKind::Pointer, l), pointeeType(std::move(pointee))
+    {
+    }
 
     std::unique_ptr<TypeNode> clone() const override
     {
-        return std::make_unique<PointerTypeNode>(
-            pointeeType ? pointeeType->clone() : nullptr, loc);
+        return std::make_unique<PointerTypeNode>(pointeeType ? pointeeType->clone() : nullptr, loc);
     }
 };
 
@@ -424,7 +468,9 @@ struct ProcedureTypeNode : TypeNode
     std::vector<ParamSpec> params;
 
     explicit ProcedureTypeNode(std::vector<ParamSpec> params, il::support::SourceLoc l = {})
-        : TypeNode(TypeKind::Procedure, l), params(std::move(params)) {}
+        : TypeNode(TypeKind::Procedure, l), params(std::move(params))
+    {
+    }
 
     std::unique_ptr<TypeNode> clone() const override
     {
@@ -439,18 +485,18 @@ struct FunctionTypeNode : TypeNode
     std::vector<ParamSpec> params;
     std::unique_ptr<TypeNode> returnType;
 
-    FunctionTypeNode(std::vector<ParamSpec> params, std::unique_ptr<TypeNode> retType,
+    FunctionTypeNode(std::vector<ParamSpec> params,
+                     std::unique_ptr<TypeNode> retType,
                      il::support::SourceLoc l = {})
-        : TypeNode(TypeKind::Function, l), params(std::move(params)),
-          returnType(std::move(retType)) {}
+        : TypeNode(TypeKind::Function, l), params(std::move(params)), returnType(std::move(retType))
+    {
+    }
 
     std::unique_ptr<TypeNode> clone() const override
     {
         // Function types are rarely used as field types; return empty params
         return std::make_unique<FunctionTypeNode>(
-            std::vector<ParamSpec>{},
-            returnType ? returnType->clone() : nullptr,
-            loc);
+            std::vector<ParamSpec>{}, returnType ? returnType->clone() : nullptr, loc);
     }
 };
 
@@ -460,12 +506,13 @@ struct SetTypeNode : TypeNode
     std::unique_ptr<TypeNode> elementType;
 
     explicit SetTypeNode(std::unique_ptr<TypeNode> elemType, il::support::SourceLoc l = {})
-        : TypeNode(TypeKind::Set, l), elementType(std::move(elemType)) {}
+        : TypeNode(TypeKind::Set, l), elementType(std::move(elemType))
+    {
+    }
 
     std::unique_ptr<TypeNode> clone() const override
     {
-        return std::make_unique<SetTypeNode>(
-            elementType ? elementType->clone() : nullptr, loc);
+        return std::make_unique<SetTypeNode>(elementType ? elementType->clone() : nullptr, loc);
     }
 };
 
@@ -475,9 +522,12 @@ struct RangeTypeNode : TypeNode
     std::unique_ptr<Expr> low;
     std::unique_ptr<Expr> high;
 
-    RangeTypeNode(std::unique_ptr<Expr> low, std::unique_ptr<Expr> high,
+    RangeTypeNode(std::unique_ptr<Expr> low,
+                  std::unique_ptr<Expr> high,
                   il::support::SourceLoc l = {})
-        : TypeNode(TypeKind::Range, l), low(std::move(low)), high(std::move(high)) {}
+        : TypeNode(TypeKind::Range, l), low(std::move(low)), high(std::move(high))
+    {
+    }
 
     std::unique_ptr<TypeNode> clone() const override
     {
@@ -492,7 +542,9 @@ struct EnumTypeNode : TypeNode
     std::vector<std::string> values;
 
     explicit EnumTypeNode(std::vector<std::string> values, il::support::SourceLoc l = {})
-        : TypeNode(TypeKind::Enum, l), values(std::move(values)) {}
+        : TypeNode(TypeKind::Enum, l), values(std::move(values))
+    {
+    }
 
     std::unique_ptr<TypeNode> clone() const override
     {
@@ -534,6 +586,7 @@ struct Stmt
     il::support::SourceLoc loc;
 
     explicit Stmt(StmtKind k, il::support::SourceLoc l = {}) : kind(k), loc(l) {}
+
     virtual ~Stmt() = default;
 };
 
@@ -543,9 +596,12 @@ struct AssignStmt : Stmt
     std::unique_ptr<Expr> target;
     std::unique_ptr<Expr> value;
 
-    AssignStmt(std::unique_ptr<Expr> target, std::unique_ptr<Expr> value,
+    AssignStmt(std::unique_ptr<Expr> target,
+               std::unique_ptr<Expr> value,
                il::support::SourceLoc l = {})
-        : Stmt(StmtKind::Assign, l), target(std::move(target)), value(std::move(value)) {}
+        : Stmt(StmtKind::Assign, l), target(std::move(target)), value(std::move(value))
+    {
+    }
 };
 
 /// @brief Procedure/function call statement.
@@ -554,7 +610,9 @@ struct CallStmt : Stmt
     std::unique_ptr<Expr> call; ///< Must be a CallExpr
 
     explicit CallStmt(std::unique_ptr<Expr> call, il::support::SourceLoc l = {})
-        : Stmt(StmtKind::Call, l), call(std::move(call)) {}
+        : Stmt(StmtKind::Call, l), call(std::move(call))
+    {
+    }
 };
 
 /// @brief Block statement (begin...end).
@@ -562,9 +620,10 @@ struct BlockStmt : Stmt
 {
     std::vector<std::unique_ptr<Stmt>> stmts;
 
-    explicit BlockStmt(std::vector<std::unique_ptr<Stmt>> stmts = {},
-                       il::support::SourceLoc l = {})
-        : Stmt(StmtKind::Block, l), stmts(std::move(stmts)) {}
+    explicit BlockStmt(std::vector<std::unique_ptr<Stmt>> stmts = {}, il::support::SourceLoc l = {})
+        : Stmt(StmtKind::Block, l), stmts(std::move(stmts))
+    {
+    }
 };
 
 /// @brief If statement.
@@ -574,10 +633,14 @@ struct IfStmt : Stmt
     std::unique_ptr<Stmt> thenBranch;
     std::unique_ptr<Stmt> elseBranch; ///< May be nullptr
 
-    IfStmt(std::unique_ptr<Expr> cond, std::unique_ptr<Stmt> thenBr,
-           std::unique_ptr<Stmt> elseBr = nullptr, il::support::SourceLoc l = {})
+    IfStmt(std::unique_ptr<Expr> cond,
+           std::unique_ptr<Stmt> thenBr,
+           std::unique_ptr<Stmt> elseBr = nullptr,
+           il::support::SourceLoc l = {})
         : Stmt(StmtKind::If, l), condition(std::move(cond)), thenBranch(std::move(thenBr)),
-          elseBranch(std::move(elseBr)) {}
+          elseBranch(std::move(elseBr))
+    {
+    }
 };
 
 /// @brief Case statement arm.
@@ -595,10 +658,14 @@ struct CaseStmt : Stmt
     std::vector<CaseArm> arms;
     std::unique_ptr<Stmt> elseBody; ///< May be nullptr
 
-    CaseStmt(std::unique_ptr<Expr> expr, std::vector<CaseArm> arms,
-             std::unique_ptr<Stmt> elseBody = nullptr, il::support::SourceLoc l = {})
+    CaseStmt(std::unique_ptr<Expr> expr,
+             std::vector<CaseArm> arms,
+             std::unique_ptr<Stmt> elseBody = nullptr,
+             il::support::SourceLoc l = {})
         : Stmt(StmtKind::Case, l), expr(std::move(expr)), arms(std::move(arms)),
-          elseBody(std::move(elseBody)) {}
+          elseBody(std::move(elseBody))
+    {
+    }
 };
 
 /// @brief For loop direction.
@@ -617,10 +684,16 @@ struct ForStmt : Stmt
     ForDirection direction;
     std::unique_ptr<Stmt> body;
 
-    ForStmt(std::string var, std::unique_ptr<Expr> start, std::unique_ptr<Expr> bound,
-            ForDirection dir, std::unique_ptr<Stmt> body, il::support::SourceLoc l = {})
+    ForStmt(std::string var,
+            std::unique_ptr<Expr> start,
+            std::unique_ptr<Expr> bound,
+            ForDirection dir,
+            std::unique_ptr<Stmt> body,
+            il::support::SourceLoc l = {})
         : Stmt(StmtKind::For, l), loopVar(std::move(var)), start(std::move(start)),
-          bound(std::move(bound)), direction(dir), body(std::move(body)) {}
+          bound(std::move(bound)), direction(dir), body(std::move(body))
+    {
+    }
 };
 
 /// @brief For-in loop statement (iteration over collection).
@@ -630,10 +703,14 @@ struct ForInStmt : Stmt
     std::unique_ptr<Expr> collection;
     std::unique_ptr<Stmt> body;
 
-    ForInStmt(std::string var, std::unique_ptr<Expr> collection, std::unique_ptr<Stmt> body,
+    ForInStmt(std::string var,
+              std::unique_ptr<Expr> collection,
+              std::unique_ptr<Stmt> body,
               il::support::SourceLoc l = {})
         : Stmt(StmtKind::ForIn, l), loopVar(std::move(var)), collection(std::move(collection)),
-          body(std::move(body)) {}
+          body(std::move(body))
+    {
+    }
 };
 
 /// @brief While loop statement.
@@ -642,9 +719,10 @@ struct WhileStmt : Stmt
     std::unique_ptr<Expr> condition;
     std::unique_ptr<Stmt> body;
 
-    WhileStmt(std::unique_ptr<Expr> cond, std::unique_ptr<Stmt> body,
-              il::support::SourceLoc l = {})
-        : Stmt(StmtKind::While, l), condition(std::move(cond)), body(std::move(body)) {}
+    WhileStmt(std::unique_ptr<Expr> cond, std::unique_ptr<Stmt> body, il::support::SourceLoc l = {})
+        : Stmt(StmtKind::While, l), condition(std::move(cond)), body(std::move(body))
+    {
+    }
 };
 
 /// @brief Repeat-until loop statement.
@@ -653,9 +731,12 @@ struct RepeatStmt : Stmt
     std::unique_ptr<Stmt> body;
     std::unique_ptr<Expr> condition;
 
-    RepeatStmt(std::unique_ptr<Stmt> body, std::unique_ptr<Expr> cond,
+    RepeatStmt(std::unique_ptr<Stmt> body,
+               std::unique_ptr<Expr> cond,
                il::support::SourceLoc l = {})
-        : Stmt(StmtKind::Repeat, l), body(std::move(body)), condition(std::move(cond)) {}
+        : Stmt(StmtKind::Repeat, l), body(std::move(body)), condition(std::move(cond))
+    {
+    }
 };
 
 /// @brief Break statement.
@@ -677,8 +758,11 @@ struct ExitStmt : Stmt
     std::unique_ptr<Expr> value; ///< Optional return value (for functions)
 
     explicit ExitStmt(il::support::SourceLoc l = {}) : Stmt(StmtKind::Exit, l) {}
+
     ExitStmt(std::unique_ptr<Expr> val, il::support::SourceLoc l = {})
-        : Stmt(StmtKind::Exit, l), value(std::move(val)) {}
+        : Stmt(StmtKind::Exit, l), value(std::move(val))
+    {
+    }
 };
 
 /// @brief Inherited statement (call to base class method).
@@ -686,14 +770,17 @@ struct ExitStmt : Stmt
 ///          `inherited MethodName(args);` calls a specific base method.
 struct InheritedStmt : Stmt
 {
-    std::string methodName;                    ///< Empty for implicit (same method name)
-    std::vector<std::unique_ptr<Expr>> args;   ///< Arguments for the call
+    std::string methodName;                  ///< Empty for implicit (same method name)
+    std::vector<std::unique_ptr<Expr>> args; ///< Arguments for the call
 
     explicit InheritedStmt(il::support::SourceLoc l = {}) : Stmt(StmtKind::Inherited, l) {}
 
-    InheritedStmt(std::string name, std::vector<std::unique_ptr<Expr>> arguments,
+    InheritedStmt(std::string name,
+                  std::vector<std::unique_ptr<Expr>> arguments,
                   il::support::SourceLoc l = {})
-        : Stmt(StmtKind::Inherited, l), methodName(std::move(name)), args(std::move(arguments)) {}
+        : Stmt(StmtKind::Inherited, l), methodName(std::move(name)), args(std::move(arguments))
+    {
+    }
 };
 
 /// @brief Raise statement (exception throwing).
@@ -702,7 +789,9 @@ struct RaiseStmt : Stmt
     std::unique_ptr<Expr> exception; ///< May be nullptr for re-raise
 
     explicit RaiseStmt(std::unique_ptr<Expr> exc = nullptr, il::support::SourceLoc l = {})
-        : Stmt(StmtKind::Raise, l), exception(std::move(exc)) {}
+        : Stmt(StmtKind::Raise, l), exception(std::move(exc))
+    {
+    }
 };
 
 /// @brief Exception handler in try-except.
@@ -721,10 +810,14 @@ struct TryExceptStmt : Stmt
     std::vector<ExceptHandler> handlers;
     std::unique_ptr<Stmt> elseBody; ///< May be nullptr
 
-    TryExceptStmt(std::unique_ptr<BlockStmt> tryBody, std::vector<ExceptHandler> handlers,
-                  std::unique_ptr<Stmt> elseBody = nullptr, il::support::SourceLoc l = {})
-        : Stmt(StmtKind::TryExcept, l), tryBody(std::move(tryBody)),
-          handlers(std::move(handlers)), elseBody(std::move(elseBody)) {}
+    TryExceptStmt(std::unique_ptr<BlockStmt> tryBody,
+                  std::vector<ExceptHandler> handlers,
+                  std::unique_ptr<Stmt> elseBody = nullptr,
+                  il::support::SourceLoc l = {})
+        : Stmt(StmtKind::TryExcept, l), tryBody(std::move(tryBody)), handlers(std::move(handlers)),
+          elseBody(std::move(elseBody))
+    {
+    }
 };
 
 /// @brief Try-finally statement.
@@ -733,10 +826,13 @@ struct TryFinallyStmt : Stmt
     std::unique_ptr<BlockStmt> tryBody;
     std::unique_ptr<BlockStmt> finallyBody;
 
-    TryFinallyStmt(std::unique_ptr<BlockStmt> tryBody, std::unique_ptr<BlockStmt> finallyBody,
+    TryFinallyStmt(std::unique_ptr<BlockStmt> tryBody,
+                   std::unique_ptr<BlockStmt> finallyBody,
                    il::support::SourceLoc l = {})
         : Stmt(StmtKind::TryFinally, l), tryBody(std::move(tryBody)),
-          finallyBody(std::move(finallyBody)) {}
+          finallyBody(std::move(finallyBody))
+    {
+    }
 };
 
 /// @brief With statement.
@@ -745,9 +841,12 @@ struct WithStmt : Stmt
     std::vector<std::unique_ptr<Expr>> objects;
     std::unique_ptr<Stmt> body;
 
-    WithStmt(std::vector<std::unique_ptr<Expr>> objs, std::unique_ptr<Stmt> body,
+    WithStmt(std::vector<std::unique_ptr<Expr>> objs,
+             std::unique_ptr<Stmt> body,
              il::support::SourceLoc l = {})
-        : Stmt(StmtKind::With, l), objects(std::move(objs)), body(std::move(body)) {}
+        : Stmt(StmtKind::With, l), objects(std::move(objs)), body(std::move(body))
+    {
+    }
 };
 
 /// @brief Empty statement (just a semicolon).
@@ -785,6 +884,7 @@ struct Decl
     il::support::SourceLoc loc;
 
     explicit Decl(DeclKind k, il::support::SourceLoc l = {}) : kind(k), loc(l) {}
+
     virtual ~Decl() = default;
 };
 
@@ -795,10 +895,14 @@ struct ConstDecl : Decl
     std::unique_ptr<TypeNode> type; ///< May be nullptr (inferred)
     std::unique_ptr<Expr> value;
 
-    ConstDecl(std::string name, std::unique_ptr<Expr> value,
-              std::unique_ptr<TypeNode> type = nullptr, il::support::SourceLoc l = {})
+    ConstDecl(std::string name,
+              std::unique_ptr<Expr> value,
+              std::unique_ptr<TypeNode> type = nullptr,
+              il::support::SourceLoc l = {})
         : Decl(DeclKind::Const, l), name(std::move(name)), type(std::move(type)),
-          value(std::move(value)) {}
+          value(std::move(value))
+    {
+    }
 };
 
 /// @brief Variable declaration.
@@ -808,10 +912,14 @@ struct VarDecl : Decl
     std::unique_ptr<TypeNode> type;
     std::unique_ptr<Expr> init; ///< May be nullptr
 
-    VarDecl(std::vector<std::string> names, std::unique_ptr<TypeNode> type,
-            std::unique_ptr<Expr> init = nullptr, il::support::SourceLoc l = {})
+    VarDecl(std::vector<std::string> names,
+            std::unique_ptr<TypeNode> type,
+            std::unique_ptr<Expr> init = nullptr,
+            il::support::SourceLoc l = {})
         : Decl(DeclKind::Var, l), names(std::move(names)), type(std::move(type)),
-          init(std::move(init)) {}
+          init(std::move(init))
+    {
+    }
 };
 
 /// @brief Type declaration (type alias or definition).
@@ -821,7 +929,9 @@ struct TypeDecl : Decl
     std::unique_ptr<TypeNode> type;
 
     TypeDecl(std::string name, std::unique_ptr<TypeNode> type, il::support::SourceLoc l = {})
-        : Decl(DeclKind::Type, l), name(std::move(name)), type(std::move(type)) {}
+        : Decl(DeclKind::Type, l), name(std::move(name)), type(std::move(type))
+    {
+    }
 };
 
 /// @brief Parameter declaration for procedures/functions.
@@ -839,43 +949,55 @@ struct ParamDecl
 struct ProcedureDecl : Decl
 {
     std::string name;
-    std::string className;  ///< Empty for free procedures; class name for methods
+    std::string className; ///< Empty for free procedures; class name for methods
     std::vector<ParamDecl> params;
     std::vector<std::unique_ptr<Decl>> localDecls;
     std::unique_ptr<BlockStmt> body; ///< May be nullptr (forward declaration)
     bool isForward{false};
-    bool isVirtual{false};   ///< Marked virtual (overridable)
-    bool isOverride{false};  ///< Marked override (must match base virtual)
-    bool isAbstract{false};  ///< Marked abstract (no implementation)
+    bool isVirtual{false};  ///< Marked virtual (overridable)
+    bool isOverride{false}; ///< Marked override (must match base virtual)
+    bool isAbstract{false}; ///< Marked abstract (no implementation)
 
     ProcedureDecl(std::string name, std::vector<ParamDecl> params, il::support::SourceLoc l = {})
-        : Decl(DeclKind::Procedure, l), name(std::move(name)), params(std::move(params)) {}
+        : Decl(DeclKind::Procedure, l), name(std::move(name)), params(std::move(params))
+    {
+    }
 
     /// @brief Check if this is a method (belongs to a class).
-    bool isMethod() const { return !className.empty(); }
+    bool isMethod() const
+    {
+        return !className.empty();
+    }
 };
 
 /// @brief Function declaration.
 struct FunctionDecl : Decl
 {
     std::string name;
-    std::string className;  ///< Empty for free functions; class name for methods
+    std::string className; ///< Empty for free functions; class name for methods
     std::vector<ParamDecl> params;
     std::unique_ptr<TypeNode> returnType;
     std::vector<std::unique_ptr<Decl>> localDecls;
     std::unique_ptr<BlockStmt> body; ///< May be nullptr (forward declaration)
     bool isForward{false};
-    bool isVirtual{false};   ///< Marked virtual (overridable)
-    bool isOverride{false};  ///< Marked override (must match base virtual)
-    bool isAbstract{false};  ///< Marked abstract (no implementation)
+    bool isVirtual{false};  ///< Marked virtual (overridable)
+    bool isOverride{false}; ///< Marked override (must match base virtual)
+    bool isAbstract{false}; ///< Marked abstract (no implementation)
 
-    FunctionDecl(std::string name, std::vector<ParamDecl> params,
-                 std::unique_ptr<TypeNode> returnType, il::support::SourceLoc l = {})
+    FunctionDecl(std::string name,
+                 std::vector<ParamDecl> params,
+                 std::unique_ptr<TypeNode> returnType,
+                 il::support::SourceLoc l = {})
         : Decl(DeclKind::Function, l), name(std::move(name)), params(std::move(params)),
-          returnType(std::move(returnType)) {}
+          returnType(std::move(returnType))
+    {
+    }
 
     /// @brief Check if this is a method (belongs to a class).
-    bool isMethod() const { return !className.empty(); }
+    bool isMethod() const
+    {
+        return !className.empty();
+    }
 };
 
 /// @brief Visibility section in a class.
@@ -907,7 +1029,9 @@ struct PropertyDecl : Decl
     Visibility visibility{Visibility::Public};
 
     PropertyDecl(std::string name, std::unique_ptr<TypeNode> type, il::support::SourceLoc l = {})
-        : Decl(DeclKind::Property, l), name(std::move(name)), type(std::move(type)) {}
+        : Decl(DeclKind::Property, l), name(std::move(name)), type(std::move(type))
+    {
+    }
 };
 
 /// @brief Class member (field or method).
@@ -950,9 +1074,10 @@ struct ConstructorDecl : Decl
     std::unique_ptr<BlockStmt> body; ///< May be nullptr (forward declaration)
     bool isForward{false};
 
-    ConstructorDecl(std::string name, std::vector<ParamDecl> params,
-                    il::support::SourceLoc l = {})
-        : Decl(DeclKind::Constructor, l), name(std::move(name)), params(std::move(params)) {}
+    ConstructorDecl(std::string name, std::vector<ParamDecl> params, il::support::SourceLoc l = {})
+        : Decl(DeclKind::Constructor, l), name(std::move(name)), params(std::move(params))
+    {
+    }
 };
 
 /// @brief Destructor declaration.
@@ -963,23 +1088,27 @@ struct DestructorDecl : Decl
     std::vector<std::unique_ptr<Decl>> localDecls;
     std::unique_ptr<BlockStmt> body; ///< May be nullptr (forward declaration)
     bool isForward{false};
-    bool isVirtual{false};   ///< Marked virtual
-    bool isOverride{false};  ///< Marked override
+    bool isVirtual{false};  ///< Marked virtual
+    bool isOverride{false}; ///< Marked override
 
     explicit DestructorDecl(std::string name = "Destroy", il::support::SourceLoc l = {})
-        : Decl(DeclKind::Destructor, l), name(std::move(name)) {}
+        : Decl(DeclKind::Destructor, l), name(std::move(name))
+    {
+    }
 };
 
 /// @brief Class declaration.
 struct ClassDecl : Decl
 {
     std::string name;
-    std::string baseClass;                ///< Empty if none
-    std::vector<std::string> interfaces;  ///< Implemented interfaces
+    std::string baseClass;               ///< Empty if none
+    std::vector<std::string> interfaces; ///< Implemented interfaces
     std::vector<ClassMember> members;
 
     ClassDecl(std::string name, il::support::SourceLoc l = {})
-        : Decl(DeclKind::Class, l), name(std::move(name)) {}
+        : Decl(DeclKind::Class, l), name(std::move(name))
+    {
+    }
 };
 
 /// @brief Interface declaration.
@@ -990,7 +1119,9 @@ struct InterfaceDecl : Decl
     std::vector<MethodSig> methods;
 
     InterfaceDecl(std::string name, il::support::SourceLoc l = {})
-        : Decl(DeclKind::Interface, l), name(std::move(name)) {}
+        : Decl(DeclKind::Interface, l), name(std::move(name))
+    {
+    }
 };
 
 /// @brief Label declaration.
@@ -999,7 +1130,9 @@ struct LabelDecl : Decl
     std::vector<std::string> labels;
 
     explicit LabelDecl(std::vector<std::string> labels, il::support::SourceLoc l = {})
-        : Decl(DeclKind::Label, l), labels(std::move(labels)) {}
+        : Decl(DeclKind::Label, l), labels(std::move(labels))
+    {
+    }
 };
 
 /// @brief Uses declaration (unit imports).
@@ -1008,7 +1141,9 @@ struct UsesDecl : Decl
     std::vector<std::string> units;
 
     explicit UsesDecl(std::vector<std::string> units, il::support::SourceLoc l = {})
-        : Decl(DeclKind::Uses, l), units(std::move(units)) {}
+        : Decl(DeclKind::Uses, l), units(std::move(units))
+    {
+    }
 };
 
 //===----------------------------------------------------------------------===//
@@ -1029,12 +1164,12 @@ struct Program
 struct Unit
 {
     std::string name;
-    std::vector<std::string> usedUnits;              ///< Units used in interface
+    std::vector<std::string> usedUnits; ///< Units used in interface
     std::vector<std::unique_ptr<Decl>> interfaceDecls;
-    std::vector<std::string> implUsedUnits;          ///< Units used in implementation
+    std::vector<std::string> implUsedUnits; ///< Units used in implementation
     std::vector<std::unique_ptr<Decl>> implDecls;
-    std::unique_ptr<BlockStmt> initSection;          ///< May be nullptr
-    std::unique_ptr<BlockStmt> finalSection;         ///< May be nullptr
+    std::unique_ptr<BlockStmt> initSection;  ///< May be nullptr
+    std::unique_ptr<BlockStmt> finalSection; ///< May be nullptr
     il::support::SourceLoc loc;
 };
 

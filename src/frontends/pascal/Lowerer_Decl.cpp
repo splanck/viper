@@ -12,8 +12,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "frontends/pascal/Lowerer.hpp"
 #include "frontends/common/CharUtils.hpp"
+#include "frontends/pascal/Lowerer.hpp"
 
 namespace il::frontends::pascal
 {
@@ -82,34 +82,35 @@ void Lowerer::initializeLocal(const std::string &name, const PasType &type)
 
     switch (type.kind)
     {
-    case PasTypeKind::Integer:
-        emitStore(ilType, slot, Value::constInt(0));
-        break;
-    case PasTypeKind::Real:
-        emitStore(ilType, slot, Value::constFloat(0.0));
-        break;
-    case PasTypeKind::Boolean:
-        emitStore(ilType, slot, Value::constBool(false));
-        break;
-    case PasTypeKind::String: {
-        // Initialize to empty string
-        std::string globalName = getStringGlobal("");
-        Value strVal = emitConstStr(globalName);
-        emitStore(ilType, slot, strVal);
-        break;
-    }
-    case PasTypeKind::Pointer:
-    case PasTypeKind::Class:
-    case PasTypeKind::Interface:
-    case PasTypeKind::Array:
-    case PasTypeKind::Optional:
-        // Initialize to nil
-        emitStore(Type(Type::Kind::Ptr), slot, Value::null());
-        break;
-    default:
-        // Default: zero initialize
-        emitStore(ilType, slot, Value::constInt(0));
-        break;
+        case PasTypeKind::Integer:
+            emitStore(ilType, slot, Value::constInt(0));
+            break;
+        case PasTypeKind::Real:
+            emitStore(ilType, slot, Value::constFloat(0.0));
+            break;
+        case PasTypeKind::Boolean:
+            emitStore(ilType, slot, Value::constBool(false));
+            break;
+        case PasTypeKind::String:
+        {
+            // Initialize to empty string
+            std::string globalName = getStringGlobal("");
+            Value strVal = emitConstStr(globalName);
+            emitStore(ilType, slot, strVal);
+            break;
+        }
+        case PasTypeKind::Pointer:
+        case PasTypeKind::Class:
+        case PasTypeKind::Interface:
+        case PasTypeKind::Array:
+        case PasTypeKind::Optional:
+            // Initialize to nil
+            emitStore(Type(Type::Kind::Ptr), slot, Value::null());
+            break;
+        default:
+            // Default: zero initialize
+            emitStore(ilType, slot, Value::constInt(0));
+            break;
     }
 }
 
@@ -119,9 +120,8 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
         return; // Forward declaration only
 
     // Look up the function signature to get parameter and return types
-    std::string funcKey = decl.isMethod()
-                              ? toLower(decl.className + "." + decl.name)
-                              : toLower(decl.name);
+    std::string funcKey =
+        decl.isMethod() ? toLower(decl.className + "." + decl.name) : toLower(decl.name);
     auto sig = sema_->lookupFunction(funcKey);
 
     // Build parameter list
@@ -132,7 +132,7 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
     {
         il::core::Param selfParam;
         selfParam.name = "Self";
-        selfParam.type = Type(Type::Kind::Ptr);  // Classes are always pointers
+        selfParam.type = Type(Type::Kind::Ptr); // Classes are always pointers
         params.push_back(std::move(selfParam));
     }
 
@@ -199,7 +199,8 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
     }
 
     // Map parameters to locals (startFunction copies params to function.params)
-    for (size_t i = 0; i < decl.params.size() && (i + paramOffset) < currentFunc_->params.size(); ++i)
+    for (size_t i = 0; i < decl.params.size() && (i + paramOffset) < currentFunc_->params.size();
+         ++i)
     {
         const auto &param = decl.params[i];
         std::string key = toLower(param.name);
@@ -257,9 +258,8 @@ void Lowerer::lowerProcedureDecl(ProcedureDecl &decl)
         return; // Forward declaration only
 
     // Look up the procedure signature to get parameter types
-    std::string funcKey = decl.isMethod()
-                              ? toLower(decl.className + "." + decl.name)
-                              : toLower(decl.name);
+    std::string funcKey =
+        decl.isMethod() ? toLower(decl.className + "." + decl.name) : toLower(decl.name);
     auto sig = sema_->lookupFunction(funcKey);
 
     // Build parameter list
@@ -270,7 +270,7 @@ void Lowerer::lowerProcedureDecl(ProcedureDecl &decl)
     {
         il::core::Param selfParam;
         selfParam.name = "Self";
-        selfParam.type = Type(Type::Kind::Ptr);  // Classes are always pointers
+        selfParam.type = Type(Type::Kind::Ptr); // Classes are always pointers
         params.push_back(std::move(selfParam));
     }
 
@@ -310,7 +310,7 @@ void Lowerer::lowerProcedureDecl(ProcedureDecl &decl)
     // Clear locals for this procedure
     locals_.clear();
     localTypes_.clear();
-    currentFuncName_.clear();  // Procedures don't have Result
+    currentFuncName_.clear(); // Procedures don't have Result
     currentClassName_ = decl.isMethod() ? decl.className : "";
 
     // For methods, map Self parameter to locals
@@ -326,7 +326,8 @@ void Lowerer::lowerProcedureDecl(ProcedureDecl &decl)
     }
 
     // Map parameters to locals
-    for (size_t i = 0; i < decl.params.size() && (i + paramOffset) < currentFunc_->params.size(); ++i)
+    for (size_t i = 0; i < decl.params.size() && (i + paramOffset) < currentFunc_->params.size();
+         ++i)
     {
         const auto &param = decl.params[i];
         std::string key = toLower(param.name);
@@ -396,7 +397,7 @@ void Lowerer::lowerConstructorDecl(ConstructorDecl &decl)
     // Add implicit Self parameter as first parameter
     il::core::Param selfParam;
     selfParam.name = "Self";
-    selfParam.type = Type(Type::Kind::Ptr);  // Classes are always pointers
+    selfParam.type = Type(Type::Kind::Ptr); // Classes are always pointers
     params.push_back(std::move(selfParam));
 
     for (const auto &param : decl.params)
@@ -430,7 +431,7 @@ void Lowerer::lowerConstructorDecl(ConstructorDecl &decl)
     // Clear locals for this constructor
     locals_.clear();
     localTypes_.clear();
-    currentFuncName_.clear();  // Constructors don't have Result
+    currentFuncName_.clear(); // Constructors don't have Result
     currentClassName_ = decl.className;
 
     // Map Self parameter to locals

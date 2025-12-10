@@ -158,6 +158,15 @@ constexpr RuntimeLowering featureLowering(RuntimeFeature feature, bool ordered =
     return makeLowering(RuntimeLoweringKind::Feature, feature, ordered);
 }
 
+/// @brief VM-only handler that reports non-native execution.
+/// @details Used for Viper.Environment.IsNative so VM runs return false while
+///          native binaries link against the real rt_env_is_native helper.
+void vm_env_is_native(void ** /*args*/, void *result)
+{
+    if (result)
+        *reinterpret_cast<int64_t *>(result) = 0;
+}
+
 constexpr std::array<RuntimeHiddenParam, 1> kPowHidden{
     RuntimeHiddenParam{RuntimeHiddenParamKind::PowStatusPointer}};
 
@@ -509,6 +518,14 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
                   "string()",
                   &DirectHandler<&rt_cmdline, rt_string>::invoke,
                   featureLowering(RuntimeFeature::Cmdline),
+                  nullptr,
+                  0,
+                  RuntimeTrapClass::None},
+    DescriptorRow{"rt_env_is_native",
+                  std::nullopt,
+                  "i1()",
+                  &vm_env_is_native,
+                  kManualLowering,
                   nullptr,
                   0,
                   RuntimeTrapClass::None},

@@ -28,13 +28,13 @@
 
 #include <algorithm>
 #include <array>
-#include <cstdlib>
 #include <cstdint>
+#include <cstdlib>
+#include <iostream>
 #include <random>
 #include <sstream>
 #include <string>
 #include <string_view>
-#include <iostream>
 #include <sys/wait.h>
 #include <unistd.h>
 #include <vector>
@@ -82,11 +82,8 @@ class RandomProgramGenerator
 {
   public:
     RandomProgramGenerator(std::uint64_t seed, ProgramConfig cfg)
-        : seed_(seed)
-        , cfg_(cfg)
-        , rng_(seed)
-        , intDist_(cfg.minIntConst, cfg.maxIntConst)
-        , floatDist_(cfg.minFloatConst, cfg.maxFloatConst)
+        : seed_(seed), cfg_(cfg), rng_(seed), intDist_(cfg.minIntConst, cfg.maxIntConst),
+          floatDist_(cfg.minFloatConst, cfg.maxFloatConst)
     {
     }
 
@@ -133,12 +130,14 @@ class RandomProgramGenerator
 
         // Entry block: build a handful of int/float ops and a branch condition.
         builder.setInsertPoint(entry);
-        auto entryInts = std::vector<Value>{
-            Value::constInt(randomInt()), Value::constInt(randomInt()), Value::constInt(randomInt())};
+        auto entryInts = std::vector<Value>{Value::constInt(randomInt()),
+                                            Value::constInt(randomInt()),
+                                            Value::constInt(randomInt())};
         auto entryFloats =
             std::vector<Value>{Value::constFloat(randomFloat()), Value::constFloat(randomFloat())};
 
-        auto appendIntOp = [&](Opcode op, Value lhs, Value rhs) {
+        auto appendIntOp = [&](Opcode op, Value lhs, Value rhs)
+        {
             Instr instr;
             instr.result = builder.reserveTempId();
             instr.op = op;
@@ -157,7 +156,8 @@ class RandomProgramGenerator
             appendIntOp(Opcode::IMulOvf, entryInts.back(), Value::constInt(2));
         }
 
-        auto appendFloatOp = [&](Opcode op, Value lhs, Value rhs) {
+        auto appendFloatOp = [&](Opcode op, Value lhs, Value rhs)
+        {
             Instr instr;
             instr.result = builder.reserveTempId();
             instr.op = op;
@@ -179,12 +179,15 @@ class RandomProgramGenerator
         Value cond{};
         if (coinFlip())
         {
-            cond = appendCmp(entry, builder, Opcode::SCmpGT, entryInts.back(),
-                             Value::constInt(randomInt()));
+            cond = appendCmp(
+                entry, builder, Opcode::SCmpGT, entryInts.back(), Value::constInt(randomInt()));
         }
         else
         {
-            cond = appendFloatCmp(entry, builder, Opcode::FCmpLT, entryFloats.back(),
+            cond = appendFloatCmp(entry,
+                                  builder,
+                                  Opcode::FCmpLT,
+                                  entryFloats.back(),
                                   Value::constFloat(randomFloat()));
         }
 
@@ -205,8 +208,7 @@ class RandomProgramGenerator
         Value incoming = builder.blockParam(mergeBB, 0);
         Value adjusted =
             appendInt(mergeBB, builder, Opcode::IAddOvf, incoming, Value::constInt(randomInt()));
-        Value lifted =
-            appendInt(mergeBB, builder, Opcode::IMulOvf, adjusted, Value::constInt(3));
+        Value lifted = appendInt(mergeBB, builder, Opcode::IMulOvf, adjusted, Value::constInt(3));
 
         const std::size_t caseCount = randomCaseCount();
         const int32_t lo = 0;
@@ -290,11 +292,7 @@ class RandomProgramGenerator
         return dist(rng_) == 1;
     }
 
-    Value appendCmp(BasicBlock &bb,
-                    il::build::IRBuilder &builder,
-                    Opcode op,
-                    Value lhs,
-                    Value rhs)
+    Value appendCmp(BasicBlock &bb, il::build::IRBuilder &builder, Opcode op, Value lhs, Value rhs)
     {
         Instr instr;
         instr.result = builder.reserveTempId();
@@ -306,20 +304,13 @@ class RandomProgramGenerator
         return Value::temp(*bb.instructions.back().result);
     }
 
-    Value appendFloatCmp(BasicBlock &bb,
-                         il::build::IRBuilder &builder,
-                         Opcode op,
-                         Value lhs,
-                         Value rhs)
+    Value appendFloatCmp(
+        BasicBlock &bb, il::build::IRBuilder &builder, Opcode op, Value lhs, Value rhs)
     {
         return appendCmp(bb, builder, op, lhs, rhs);
     }
 
-    Value appendInt(BasicBlock &bb,
-                    il::build::IRBuilder &builder,
-                    Opcode op,
-                    Value lhs,
-                    Value rhs)
+    Value appendInt(BasicBlock &bb, il::build::IRBuilder &builder, Opcode op, Value lhs, Value rhs)
     {
         Instr instr;
         instr.result = builder.reserveTempId();
@@ -350,8 +341,8 @@ class RandomProgramGenerator
 
     Opcode pickIntOpcode()
     {
-        constexpr Opcode kOps[] = {Opcode::IAddOvf, Opcode::ISubOvf, Opcode::IMulOvf, Opcode::And,
-                                   Opcode::Or};
+        constexpr Opcode kOps[] = {
+            Opcode::IAddOvf, Opcode::ISubOvf, Opcode::IMulOvf, Opcode::And, Opcode::Or};
         std::uniform_int_distribution<std::size_t> dist(0, std::size(kOps) - 1);
         return kOps[dist(rng_)];
     }
