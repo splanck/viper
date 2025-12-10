@@ -253,7 +253,7 @@ bool SemanticAnalyzer::isNilCheck(const Expr &expr, std::string &varName, bool &
     return true;
 }
 
-void SemanticAnalyzer::pushNarrowing(const std::map<std::string, PasType> &narrowed)
+void SemanticAnalyzer::pushNarrowing(const std::unordered_map<std::string, PasType> &narrowed)
 {
     narrowingScopes_.push_back(narrowed);
 }
@@ -778,4 +778,3 @@ UnitInfo SemanticAnalyzer::extractUnitExports(const Unit &unit)
 
 
 } // namespace il::frontends::pascal
-

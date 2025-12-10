@@ -39,6 +39,14 @@ inline std::string toLower(const std::string &s)
 
 PasType SemanticAnalyzer::resolveType(TypeNode &typeNode)
 {
+    if (auto it = typeCache_.find(&typeNode); it != typeCache_.end())
+        return it->second;
+
+    auto remember = [this, &typeNode](PasType t) {
+        typeCache_[&typeNode] = t;
+        return t;
+    };
+
     switch (typeNode.kind)
     {
     case TypeKind::Named: {
@@ -47,27 +55,27 @@ PasType SemanticAnalyzer::resolveType(TypeNode &typeNode)
 
         // Check built-in types first
         if (key == "integer")
-            return PasType::integer();
+            return remember(PasType::integer());
         if (key == "real" || key == "double")
-            return PasType::real();
+            return remember(PasType::real());
         if (key == "boolean")
-            return PasType::boolean();
+            return remember(PasType::boolean());
         if (key == "string")
-            return PasType::string();
+            return remember(PasType::string());
 
         // Look up user-defined type
         if (auto type = lookupType(key))
         {
-            return *type;
+            return remember(*type);
         }
 
         error(typeNode.loc, "undefined type '" + named.name + "'");
-        return PasType::unknown();
+        return remember(PasType::unknown());
     }
     case TypeKind::Optional: {
         auto &opt = static_cast<OptionalTypeNode &>(typeNode);
         if (!opt.inner)
-            return PasType::unknown();
+            return remember(PasType::unknown());
         PasType inner = resolveType(*opt.inner);
 
         // Check for double optional (T??) - this is a compile error
@@ -75,15 +83,15 @@ PasType SemanticAnalyzer::resolveType(TypeNode &typeNode)
         {
             error(typeNode.loc, "double optional type (T?" "?) is not allowed");
             // Return single optional for error recovery
-            return inner;
+            return remember(inner);
         }
 
-        return PasType::optional(inner);
+        return remember(PasType::optional(inner));
     }
     case TypeKind::Array: {
         auto &arr = static_cast<ArrayTypeNode &>(typeNode);
         if (!arr.elementType)
-            return PasType::unknown();
+            return remember(PasType::unknown());
 
         // Validate dimension sizes for fixed arrays
         for (auto &dim : arr.dimensions)
@@ -115,7 +123,7 @@ PasType SemanticAnalyzer::resolveType(TypeNode &typeNode)
         }
 
         PasType elem = resolveType(*arr.elementType);
-        return PasType::array(elem, arr.dimensions.size());
+        return remember(PasType::array(elem, arr.dimensions.size()));
     }
     case TypeKind::Record: {
         auto &rec = static_cast<RecordTypeNode &>(typeNode);
@@ -129,26 +137,26 @@ PasType SemanticAnalyzer::resolveType(TypeNode &typeNode)
                     std::make_shared<PasType>(resolveType(*field.type));
             }
         }
-        return result;
+        return remember(result);
     }
     case TypeKind::Pointer: {
         // v0.1: Pointer types are not supported
         error(typeNode.loc, "pointer types (^T) are not supported in Viper Pascal v0.1; use classes instead");
-        return PasType::unknown();
+        return remember(PasType::unknown());
     }
     case TypeKind::Enum: {
         auto &en = static_cast<EnumTypeNode &>(typeNode);
-        return PasType::enumType(en.values);
+        return remember(PasType::enumType(en.values));
     }
     case TypeKind::Set: {
         // v0.1: Set types are not supported
         error(typeNode.loc, "set types are not supported in Viper Pascal v0.1");
-        return PasType::unknown();
+        return remember(PasType::unknown());
     }
     case TypeKind::Procedure: {
         PasType result;
         result.kind = PasTypeKind::Procedure;
-        return result;
+        return remember(result);
     }
     case TypeKind::Function: {
         auto &func = static_cast<FunctionTypeNode &>(typeNode);
@@ -158,16 +166,16 @@ PasType SemanticAnalyzer::resolveType(TypeNode &typeNode)
         {
             result.returnType = std::make_shared<PasType>(resolveType(*func.returnType));
         }
-        return result;
+        return remember(result);
     }
     case TypeKind::Range: {
         // Subrange - treat as the base type for now
         PasType result;
         result.kind = PasTypeKind::Range;
-        return result;
+        return remember(result);
     }
     }
-    return PasType::unknown();
+    return remember(PasType::unknown());
 }
 
 bool SemanticAnalyzer::isAssignableFrom(const PasType &target, const PasType &source)
@@ -876,4 +884,3 @@ size_t SemanticAnalyzer::validateDefaultParams(const std::vector<ParamDecl> &par
 }
 
 } // namespace il::frontends::pascal
-

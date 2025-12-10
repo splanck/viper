@@ -23,6 +23,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace il::frontends::pascal
@@ -935,7 +936,7 @@ class SemanticAnalyzer
 
     /// @brief Push a narrowing scope with narrowed variable types.
     /// @param narrowed Map of variable names to their narrowed types.
-    void pushNarrowing(const std::map<std::string, PasType> &narrowed);
+    void pushNarrowing(const std::unordered_map<std::string, PasType> &narrowed);
 
     /// @brief Pop the current narrowing scope.
     void popNarrowing();
@@ -957,34 +958,34 @@ class SemanticAnalyzer
     bool hasError_{false};                 ///< Error flag
 
     /// @brief Registered type names -> types
-    std::map<std::string, PasType> types_;
+    std::unordered_map<std::string, PasType> types_;
 
     /// @brief Registered constant names -> types
-    std::map<std::string, PasType> constants_;
+    std::unordered_map<std::string, PasType> constants_;
 
     /// @brief Registered integer constant values (for compile-time evaluation)
-    std::map<std::string, int64_t> constantValues_;
+    std::unordered_map<std::string, int64_t> constantValues_;
 
     /// @brief Registered real constant values (for compile-time evaluation)
-    std::map<std::string, double> constantRealValues_;
+    std::unordered_map<std::string, double> constantRealValues_;
 
     /// @brief Registered string constant values (for compile-time evaluation)
-    std::map<std::string, std::string> constantStrValues_;
+    std::unordered_map<std::string, std::string> constantStrValues_;
 
     /// @brief Stack of variable scopes (each is name -> type)
-    std::vector<std::map<std::string, PasType>> varScopes_;
+    std::vector<std::unordered_map<std::string, PasType>> varScopes_;
 
     /// @brief Registered function/procedure signatures
-    std::map<std::string, FuncSignature> functions_;
+    std::unordered_map<std::string, FuncSignature> functions_;
 
     /// @brief Registered class information
-    std::map<std::string, ClassInfo> classes_;
+    std::unordered_map<std::string, ClassInfo> classes_;
 
     /// @brief Registered interface information
-    std::map<std::string, InterfaceInfo> interfaces_;
+    std::unordered_map<std::string, InterfaceInfo> interfaces_;
 
     /// @brief Registry of compiled units (lowercase name -> info)
-    std::map<std::string, UnitInfo> units_;
+    std::unordered_map<std::string, UnitInfo> units_;
 
     /// @brief Current loop depth (for break/continue validation)
     int loopDepth_{0};
@@ -1003,7 +1004,7 @@ class SemanticAnalyzer
 
     /// @brief Stack of narrowing scopes (for flow-sensitive type narrowing)
     /// Each scope maps variable names to their narrowed types.
-    std::vector<std::map<std::string, PasType>> narrowingScopes_;
+    std::vector<std::unordered_map<std::string, PasType>> narrowingScopes_;
 
     /// @brief Set of read-only loop variables (lowercase names).
     /// @details Variables added here cannot be assigned during loop body analysis.
@@ -1034,6 +1035,9 @@ class SemanticAnalyzer
 
     /// @brief Stack of 'with' contexts (innermost first for lookup priority).
     std::vector<WithContext> withContexts_;
+
+    /// @brief Cache for resolved types keyed by TypeNode address to avoid recomputation.
+    std::unordered_map<const TypeNode *, PasType> typeCache_;
 };
 
 } // namespace il::frontends::pascal

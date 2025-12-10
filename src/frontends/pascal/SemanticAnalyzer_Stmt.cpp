@@ -259,7 +259,7 @@ void SemanticAnalyzer::analyzeIf(IfStmt &stmt)
         if (hasNilCheck && isNotNil)
         {
             // "x <> nil" - narrow x to T in then-branch
-            std::map<std::string, PasType> narrowed;
+            std::unordered_map<std::string, PasType> narrowed;
             narrowed[narrowedVar] = unwrappedType;
             pushNarrowing(narrowed);
             analyzeStmt(*stmt.thenBranch);
@@ -283,7 +283,7 @@ void SemanticAnalyzer::analyzeIf(IfStmt &stmt)
         if (hasNilCheck && !isNotNil)
         {
             // "x = nil" - narrow x to T in else-branch
-            std::map<std::string, PasType> narrowed;
+            std::unordered_map<std::string, PasType> narrowed;
             narrowed[narrowedVar] = unwrappedType;
             pushNarrowing(narrowed);
             analyzeStmt(*stmt.elseBranch);
@@ -359,7 +359,7 @@ void SemanticAnalyzer::analyzeWhile(WhileStmt &stmt)
         if (hasNilCheck && isNotNil)
         {
             // "while x <> nil" - narrow x to T in body
-            std::map<std::string, PasType> narrowed;
+            std::unordered_map<std::string, PasType> narrowed;
             narrowed[narrowedVar] = unwrappedType;
             pushNarrowing(narrowed);
             analyzeStmt(*stmt.body);
@@ -883,4 +883,3 @@ void SemanticAnalyzer::analyzeInherited(InheritedStmt &stmt)
 
 
 } // namespace il::frontends::pascal
-

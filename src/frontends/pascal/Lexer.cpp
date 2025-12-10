@@ -20,7 +20,8 @@
 #include <cctype>
 #include <charconv>
 #include <cstdlib>
-#include <unordered_map>
+#include <array>
+#include <string_view>
 
 namespace il::frontends::pascal
 {
@@ -132,87 +133,91 @@ const char *tokenKindToString(TokenKind kind)
 namespace
 {
 
-/// @brief Keyword lookup table (lowercase keys).
-const std::unordered_map<std::string, TokenKind> &keywordTable()
+struct KeywordEntry
 {
-    static const std::unordered_map<std::string, TokenKind> table = {
-        {"and",            TokenKind::KwAnd},
-        {"array",          TokenKind::KwArray},
-        {"begin",          TokenKind::KwBegin},
-        {"break",          TokenKind::KwBreak},
-        {"case",           TokenKind::KwCase},
-        {"class",          TokenKind::KwClass},
-        {"const",          TokenKind::KwConst},
-        {"constructor",    TokenKind::KwConstructor},
-        {"continue",       TokenKind::KwContinue},
-        {"destructor",     TokenKind::KwDestructor},
-        {"div",            TokenKind::KwDiv},
-        {"do",             TokenKind::KwDo},
-        {"downto",         TokenKind::KwDownto},
-        {"else",           TokenKind::KwElse},
-        {"end",            TokenKind::KwEnd},
-        {"exit",           TokenKind::KwExit},
-        {"except",         TokenKind::KwExcept},
-        {"finally",        TokenKind::KwFinally},
-        {"for",            TokenKind::KwFor},
-        {"function",       TokenKind::KwFunction},
-        {"if",             TokenKind::KwIf},
-        {"implementation", TokenKind::KwImplementation},
-        {"in",             TokenKind::KwIn},
-        {"is",             TokenKind::KwIs},
-        {"inherited",      TokenKind::KwInherited},
-        {"abstract",       TokenKind::KwAbstract},
-        {"interface",      TokenKind::KwInterface},
-        {"mod",            TokenKind::KwMod},
-        {"nil",            TokenKind::KwNil},
-        {"not",            TokenKind::KwNot},
-        {"of",             TokenKind::KwOf},
-        {"on",             TokenKind::KwOn},
-        {"or",             TokenKind::KwOr},
-        {"override",       TokenKind::KwOverride},
-        {"private",        TokenKind::KwPrivate},
-        {"procedure",      TokenKind::KwProcedure},
-        {"program",        TokenKind::KwProgram},
-        {"public",         TokenKind::KwPublic},
-        {"raise",          TokenKind::KwRaise},
-        {"record",         TokenKind::KwRecord},
-        {"repeat",         TokenKind::KwRepeat},
-        {"then",           TokenKind::KwThen},
-        {"to",             TokenKind::KwTo},
-        {"try",            TokenKind::KwTry},
-        {"type",           TokenKind::KwType},
-        {"unit",           TokenKind::KwUnit},
-        {"until",          TokenKind::KwUntil},
-        {"uses",           TokenKind::KwUses},
-        {"var",            TokenKind::KwVar},
-        {"virtual",        TokenKind::KwVirtual},
-        {"weak",           TokenKind::KwWeak},
-        {"while",          TokenKind::KwWhile},
-        {"with",           TokenKind::KwWith},
-        {"set",            TokenKind::KwSet},
-        {"forward",        TokenKind::KwForward},
-        {"initialization", TokenKind::KwInitialization},
-        {"finalization",   TokenKind::KwFinalization},
-        {"property",       TokenKind::KwProperty},
-    };
-    return table;
+    std::string_view key;
+    TokenKind kind;
+};
+
+constexpr std::array<KeywordEntry, 58> kKeywordTable = {{
+    {"abstract", TokenKind::KwAbstract},
+    {"and", TokenKind::KwAnd},
+    {"array", TokenKind::KwArray},
+    {"begin", TokenKind::KwBegin},
+    {"break", TokenKind::KwBreak},
+    {"case", TokenKind::KwCase},
+    {"class", TokenKind::KwClass},
+    {"const", TokenKind::KwConst},
+    {"constructor", TokenKind::KwConstructor},
+    {"continue", TokenKind::KwContinue},
+    {"destructor", TokenKind::KwDestructor},
+    {"div", TokenKind::KwDiv},
+    {"do", TokenKind::KwDo},
+    {"downto", TokenKind::KwDownto},
+    {"else", TokenKind::KwElse},
+    {"end", TokenKind::KwEnd},
+    {"except", TokenKind::KwExcept},
+    {"exit", TokenKind::KwExit},
+    {"finalization", TokenKind::KwFinalization},
+    {"finally", TokenKind::KwFinally},
+    {"for", TokenKind::KwFor},
+    {"forward", TokenKind::KwForward},
+    {"function", TokenKind::KwFunction},
+    {"if", TokenKind::KwIf},
+    {"implementation", TokenKind::KwImplementation},
+    {"in", TokenKind::KwIn},
+    {"inherited", TokenKind::KwInherited},
+    {"initialization", TokenKind::KwInitialization},
+    {"interface", TokenKind::KwInterface},
+    {"is", TokenKind::KwIs},
+    {"mod", TokenKind::KwMod},
+    {"nil", TokenKind::KwNil},
+    {"not", TokenKind::KwNot},
+    {"of", TokenKind::KwOf},
+    {"on", TokenKind::KwOn},
+    {"or", TokenKind::KwOr},
+    {"override", TokenKind::KwOverride},
+    {"private", TokenKind::KwPrivate},
+    {"procedure", TokenKind::KwProcedure},
+    {"program", TokenKind::KwProgram},
+    {"property", TokenKind::KwProperty},
+    {"public", TokenKind::KwPublic},
+    {"raise", TokenKind::KwRaise},
+    {"record", TokenKind::KwRecord},
+    {"repeat", TokenKind::KwRepeat},
+    {"set", TokenKind::KwSet},
+    {"then", TokenKind::KwThen},
+    {"to", TokenKind::KwTo},
+    {"try", TokenKind::KwTry},
+    {"type", TokenKind::KwType},
+    {"unit", TokenKind::KwUnit},
+    {"until", TokenKind::KwUntil},
+    {"uses", TokenKind::KwUses},
+    {"var", TokenKind::KwVar},
+    {"virtual", TokenKind::KwVirtual},
+    {"weak", TokenKind::KwWeak},
+    {"while", TokenKind::KwWhile},
+    {"with", TokenKind::KwWith},
+}};
+
+constexpr std::array<std::string_view, 9> kPredefinedTable = {
+    "boolean", "exception", "false", "integer", "real", "result", "self", "string", "true"};
+
+/// @brief Keyword lookup table (lowercase keys).
+std::optional<TokenKind> lookupKeyword(std::string_view canonical)
+{
+    auto it = std::lower_bound(
+        kKeywordTable.begin(), kKeywordTable.end(), canonical,
+        [](const KeywordEntry &entry, std::string_view key) { return entry.key < key; });
+    if (it != kKeywordTable.end() && it->key == canonical)
+        return it->kind;
+    return std::nullopt;
 }
 
 /// @brief Predefined identifiers (lowercase keys).
-const std::unordered_map<std::string, bool> &predefinedTable()
+bool isPredefinedIdentifier(std::string_view canonical)
 {
-    static const std::unordered_map<std::string, bool> table = {
-        {"self",      true},
-        {"result",    true},
-        {"true",      true},
-        {"false",     true},
-        {"integer",   true},
-        {"real",      true},
-        {"boolean",   true},
-        {"string",    true},
-        {"exception", true},
-    };
-    return table;
+    return std::binary_search(kPredefinedTable.begin(), kPredefinedTable.end(), canonical);
 }
 
 // Use common character utilities
@@ -403,34 +408,28 @@ void Lexer::skipWhitespaceAndComments()
 
 std::optional<TokenKind> Lexer::lookupKeyword(const std::string &canonical)
 {
-    auto &table = keywordTable();
-    auto it = table.find(canonical);
-    if (it != table.end())
-    {
-        return it->second;
-    }
-    return std::nullopt;
+    return ::il::frontends::pascal::lookupKeyword(canonical);
 }
 
 bool Lexer::isPredefinedIdentifier(const std::string &canonical)
 {
-    auto &table = predefinedTable();
-    return table.find(canonical) != table.end();
+    return ::il::frontends::pascal::isPredefinedIdentifier(canonical);
 }
 
 Token Lexer::lexIdentifierOrKeyword()
 {
     Token tok;
     tok.loc = currentLoc();
+    tok.text.reserve(16);
+    tok.canonical.reserve(16);
 
     // Consume identifier characters
     while (!eof() && isIdentifierContinue(peekChar()))
     {
-        tok.text.push_back(getChar());
+        char c = getChar();
+        tok.text.push_back(c);
+        tok.canonical.push_back(toLower(c));
     }
-
-    // Create canonical (lowercase) form
-    tok.canonical = toLowercase(tok.text);
 
     // Check if it's a keyword
     if (auto kw = lookupKeyword(tok.canonical))
