@@ -8,7 +8,20 @@ target_sources(fe_pascal PRIVATE
     BuiltinRegistry.cpp
     Lexer.cpp
     Parser.cpp
+    Parser_Decl.cpp
+    Parser_Expr.cpp
+    Parser_OOP.cpp
+    Parser_Stmt.cpp
+    Parser_Type.cpp
+    Parser_Unit.cpp
     SemanticAnalyzer.cpp
+    SemanticAnalyzer_Body.cpp
+    SemanticAnalyzer_Class.cpp
+    SemanticAnalyzer_Decl.cpp
+    SemanticAnalyzer_Expr.cpp
+    SemanticAnalyzer_Stmt.cpp
+    SemanticAnalyzer_Type.cpp
+    SemanticAnalyzer_Util.cpp
     Lowerer.cpp
     Lowerer_Decl.cpp
     Lowerer_Emit.cpp
