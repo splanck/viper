@@ -223,6 +223,50 @@ TEST(PascalParserType, MatrixArray)
     EXPECT_EQ(arr->dimensions.size(), 2u);
 }
 
+//===----------------------------------------------------------------------===//
+// Property Parsing in Class Tests
+//===----------------------------------------------------------------------===//
+
+TEST(PascalParserDecl, ClassPropertySimple)
+{
+    const std::string src = R"(
+type
+  TPerson = class
+  private
+    FAge: Integer;
+  public
+    function GetAge: Integer;
+    procedure SetAge(Value: Integer);
+    property Age: Integer read GetAge write SetAge;
+    property RawAge: Integer read FAge write FAge;
+  end;
+)";
+    auto prog = parseProg("program P;\n" + src + "begin end.");
+    ASSERT_TRUE(prog != nullptr);
+    ASSERT_FALSE(prog->decls.empty());
+
+    // Find the class decl
+    ClassDecl *cls = nullptr;
+    for (auto &d : prog->decls)
+    {
+        if (auto *cd = asDecl<ClassDecl>(d.get()))
+        {
+            cls = cd;
+            break;
+        }
+    }
+    ASSERT_TRUE(cls != nullptr);
+
+    // Expect two properties among members
+    size_t propCount = 0;
+    for (const auto &m : cls->members)
+    {
+        if (m.memberKind == ClassMember::Kind::Property && m.property)
+            ++propCount;
+    }
+    EXPECT_EQ(propCount, 2u);
+}
+
 TEST(PascalParserType, RangeSyntaxRejected)
 {
     // array[0..2] of Real - range syntax is not supported in v0.1

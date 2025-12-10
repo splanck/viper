@@ -13,11 +13,19 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/pascal/Lowerer.hpp"
+#include "frontends/common/CharUtils.hpp"
 #include "il/core/Instr.hpp"
 #include <sstream>
 
 namespace il::frontends::pascal
 {
+
+using common::char_utils::toLowercase;
+
+inline std::string toLower(const std::string &s)
+{
+    return toLowercase(s);
+}
 
 //===----------------------------------------------------------------------===//
 // Block Management
@@ -91,9 +99,11 @@ int64_t Lowerer::sizeOf(const PasType &pasType)
     case PasTypeKind::String:
     case PasTypeKind::Pointer:
     case PasTypeKind::Class:
-    case PasTypeKind::Interface:
     case PasTypeKind::Array:
         return 8;
+    case PasTypeKind::Interface:
+        // Interface is a fat pointer: { objPtr, itablePtr }
+        return 16;
     case PasTypeKind::Optional:
         if (pasType.innerType)
             return 8 + sizeOf(*pasType.innerType);
@@ -101,6 +111,82 @@ int64_t Lowerer::sizeOf(const PasType &pasType)
     default:
         return 8;
     }
+}
+
+PasType Lowerer::typeOfExpr(const Expr &expr)
+{
+    // For NameExpr, check our localTypes_ first (which persists after semantic analysis)
+    if (expr.kind == ExprKind::Name)
+    {
+        const auto &nameExpr = static_cast<const NameExpr &>(expr);
+        std::string key = nameExpr.name;
+        // Convert to lowercase for case-insensitive lookup
+        for (auto &c : key)
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+
+        // Check local variables first
+        auto it = localTypes_.find(key);
+        if (it != localTypes_.end())
+        {
+            return it->second;
+        }
+
+        // Handle 'self' when inside a class method
+        if (key == "self" && !currentClassName_.empty())
+        {
+            return PasType::classType(currentClassName_);
+        }
+
+        // Check class fields when inside a class method
+        if (!currentClassName_.empty())
+        {
+            auto *classInfo = sema_->lookupClass(toLower(currentClassName_));
+            if (classInfo)
+            {
+                auto fieldIt = classInfo->fields.find(key);
+                if (fieldIt != classInfo->fields.end())
+                {
+                    return fieldIt->second.type;
+                }
+            }
+        }
+    }
+    // For FieldExpr, get the base type and look up the field
+    else if (expr.kind == ExprKind::Field)
+    {
+        const auto &fieldExpr = static_cast<const FieldExpr &>(expr);
+        if (fieldExpr.base)
+        {
+            PasType baseType = typeOfExpr(*fieldExpr.base);
+            std::string fieldKey = fieldExpr.field;
+            for (auto &c : fieldKey)
+                c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+
+            if (baseType.kind == PasTypeKind::Class)
+            {
+                auto *classInfo = sema_->lookupClass(toLower(baseType.name));
+                if (classInfo)
+                {
+                    auto fieldIt = classInfo->fields.find(fieldKey);
+                    if (fieldIt != classInfo->fields.end())
+                    {
+                        return fieldIt->second.type;
+                    }
+                }
+            }
+            else if (baseType.kind == PasTypeKind::Record)
+            {
+                auto fieldIt = baseType.fields.find(fieldKey);
+                if (fieldIt != baseType.fields.end() && fieldIt->second)
+                {
+                    return *fieldIt->second;
+                }
+            }
+        }
+    }
+    // Fall back to semantic analyzer for everything else
+    // Note: const_cast is safe here as typeOf doesn't actually modify the expression
+    return sema_->typeOf(const_cast<Expr &>(expr));
 }
 
 //===----------------------------------------------------------------------===//

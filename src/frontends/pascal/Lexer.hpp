@@ -93,10 +93,12 @@ enum class TokenKind
     KwVirtual,
     KwWeak,
     KwWhile,
+    KwWith,
     KwSet,
     KwForward,
     KwInitialization,
     KwFinalization,
+    KwProperty,
 
     // Operators
     Plus,          ///< +

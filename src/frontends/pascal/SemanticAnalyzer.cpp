@@ -487,7 +487,7 @@ void SemanticAnalyzer::registerClass(ClassDecl &decl)
     info.interfaces = decl.interfaces;
     info.loc = decl.loc;
 
-    // Process members
+    // First pass: fields/methods/ctors/dtors
     for (const auto &member : decl.members)
     {
         switch (member.memberKind)
@@ -516,12 +516,17 @@ void SemanticAnalyzer::registerClass(ClassDecl &decl)
                     method.isAbstract = fd.isAbstract;
                     method.visibility = member.visibility;
                     method.loc = fd.loc;
+                    size_t required = 0;
                     for (const auto &param : fd.params)
                     {
                         PasType paramType = param.type ? resolveType(*param.type) : PasType::unknown();
                         method.params.emplace_back(param.name, paramType);
                         method.isVarParam.push_back(param.isVar);
+                        method.hasDefault.push_back(param.defaultValue != nullptr);
+                        if (!param.defaultValue)
+                            ++required;
                     }
+                    method.requiredParams = required;
                     info.methods[toLower(fd.name)] = method;
                 }
                 else if (member.methodDecl->kind == DeclKind::Procedure)
@@ -535,12 +540,17 @@ void SemanticAnalyzer::registerClass(ClassDecl &decl)
                     method.isAbstract = pd.isAbstract;
                     method.visibility = member.visibility;
                     method.loc = pd.loc;
+                    size_t required = 0;
                     for (const auto &param : pd.params)
                     {
                         PasType paramType = param.type ? resolveType(*param.type) : PasType::unknown();
                         method.params.emplace_back(param.name, paramType);
                         method.isVarParam.push_back(param.isVar);
+                        method.hasDefault.push_back(param.defaultValue != nullptr);
+                        if (!param.defaultValue)
+                            ++required;
                     }
+                    method.requiredParams = required;
                     info.methods[toLower(pd.name)] = method;
                 }
             }
@@ -548,35 +558,39 @@ void SemanticAnalyzer::registerClass(ClassDecl &decl)
         }
         case ClassMember::Kind::Constructor: {
             info.hasConstructor = true;
-            // Also add constructor to methods for lookup
             if (member.methodDecl && member.methodDecl->kind == DeclKind::Constructor)
             {
                 auto &cd = static_cast<ConstructorDecl &>(*member.methodDecl);
                 MethodInfo method;
                 method.name = cd.name;
-                method.returnType = PasType::voidType();  // Constructors don't return a value
+                method.returnType = PasType::voidType();
                 method.visibility = member.visibility;
                 method.loc = cd.loc;
+                size_t required = 0;
                 for (const auto &param : cd.params)
                 {
                     PasType paramType = param.type ? resolveType(*param.type) : PasType::unknown();
                     method.params.emplace_back(param.name, paramType);
                     method.isVarParam.push_back(param.isVar);
                     method.hasDefault.push_back(param.defaultValue != nullptr);
+                    if (!param.defaultValue)
+                        ++required;
                 }
+                method.requiredParams = required;
                 info.methods[toLower(cd.name)] = method;
             }
             break;
         }
         case ClassMember::Kind::Destructor: {
             info.hasDestructor = true;
-            // Also add destructor to methods for lookup
             if (member.methodDecl && member.methodDecl->kind == DeclKind::Destructor)
             {
                 auto &dd = static_cast<DestructorDecl &>(*member.methodDecl);
                 MethodInfo method;
                 method.name = dd.name;
                 method.returnType = PasType::voidType();
+                method.isVirtual = dd.isVirtual;
+                method.isOverride = dd.isOverride;
                 method.visibility = member.visibility;
                 method.loc = dd.loc;
                 info.methods[toLower(dd.name)] = method;
@@ -586,6 +600,113 @@ void SemanticAnalyzer::registerClass(ClassDecl &decl)
         default:
             break;
         }
+    }
+
+    // Second pass: properties (validate and record)
+    for (const auto &member : decl.members)
+    {
+        if (member.memberKind != ClassMember::Kind::Property || !member.property)
+            continue;
+
+        const PropertyDecl &pd = *member.property;
+        PropertyInfo pinfo;
+        pinfo.name = pd.name;
+        pinfo.type = pd.type ? resolveType(*pd.type) : PasType::unknown();
+        pinfo.visibility = member.visibility;
+        pinfo.loc = pd.loc;
+
+        auto lower = [&](const std::string &n){ return toLower(n); };
+
+        // Validate getter target
+        if (pd.getter.empty())
+        {
+            error(pd.loc, "property '" + pd.name + "' is missing required read accessor");
+        }
+        else
+        {
+            std::string key = lower(pd.getter);
+            auto fit = info.fields.find(key);
+            if (fit != info.fields.end())
+            {
+                // Field-backed getter
+                if (!fit->second.type.isError() && !isAssignableFrom(pinfo.type, fit->second.type))
+                {
+                    error(pd.loc, "getter field '" + pd.getter + "' type mismatch for property '" + pd.name + "'");
+                }
+                pinfo.getter.kind = PropertyAccessor::Kind::Field;
+                pinfo.getter.name = pd.getter;
+            }
+            else
+            {
+                auto mit = info.methods.find(key);
+                if (mit == info.methods.end())
+                {
+                    error(pd.loc, "undefined getter '" + pd.getter + "' for property '" + pd.name + "'");
+                }
+                else
+                {
+                    const MethodInfo &m = mit->second;
+                    if (m.requiredParams != 0)
+                    {
+                        error(pd.loc, "getter '" + pd.getter + "' must have no parameters");
+                    }
+                    if (!m.returnType.isError() && !isAssignableFrom(pinfo.type, m.returnType))
+                    {
+                        error(pd.loc, "getter '" + pd.getter + "' return type mismatch for property '" + pd.name + "'");
+                    }
+                    pinfo.getter.kind = PropertyAccessor::Kind::Method;
+                    pinfo.getter.name = pd.getter;
+                }
+            }
+        }
+
+        // Validate setter target (optional)
+        if (!pd.setter.empty())
+        {
+            std::string key = lower(pd.setter);
+            auto fit = info.fields.find(key);
+            if (fit != info.fields.end())
+            {
+                if (!fit->second.type.isError() && !isAssignableFrom(fit->second.type, pinfo.type))
+                {
+                    error(pd.loc, "setter field '" + pd.setter + "' type mismatch for property '" + pd.name + "'");
+                }
+                pinfo.setter.kind = PropertyAccessor::Kind::Field;
+                pinfo.setter.name = pd.setter;
+            }
+            else
+            {
+                auto mit = info.methods.find(key);
+                if (mit == info.methods.end())
+                {
+                    error(pd.loc, "undefined setter '" + pd.setter + "' for property '" + pd.name + "'");
+                }
+                else
+                {
+                    const MethodInfo &m = mit->second;
+                    if (m.returnType.kind != PasTypeKind::Void)
+                    {
+                        error(pd.loc, "setter '" + pd.setter + "' must be a procedure");
+                    }
+                    if (m.params.size() != 1)
+                    {
+                        error(pd.loc, "setter '" + pd.setter + "' must have exactly one parameter");
+                    }
+                    else
+                    {
+                        const PasType &pt = m.params[0].second;
+                        if (!pt.isError() && !isAssignableFrom(pt, pinfo.type))
+                        {
+                            error(pd.loc, "setter '" + pd.setter + "' parameter type mismatch for property '" + pd.name + "'");
+                        }
+                    }
+                    pinfo.setter.kind = PropertyAccessor::Kind::Method;
+                    pinfo.setter.name = pd.setter;
+                }
+            }
+        }
+
+        info.properties[toLower(pinfo.name)] = pinfo;
     }
 
     classes_[key] = info;
@@ -1558,7 +1679,10 @@ void SemanticAnalyzer::analyzeAssign(AssignStmt &stmt)
         }
 
         // Check for assignment to function name (not allowed - use Result instead)
-        // But first, check if we're in a class method and this is a field name
+        // But first, check if there's a local variable with this name (shadows function)
+        bool isLocalVar = lookupVariable(key).has_value();
+
+        // Also check if we're in a class method and this is a field name
         bool isClassField = false;
         if (!currentClassName_.empty())
         {
@@ -1569,8 +1693,8 @@ void SemanticAnalyzer::analyzeAssign(AssignStmt &stmt)
             }
         }
 
-        // Only error if it's a function name AND not a class field
-        if (!isClassField && functions_.count(key))
+        // Only error if it's a function name AND not a local var AND not a class field
+        if (!isLocalVar && !isClassField && functions_.count(key))
         {
             error(stmt, "cannot assign to function name '" + nameExpr.name +
                             "'; use 'Result' to return a value");
@@ -2183,8 +2307,47 @@ void SemanticAnalyzer::analyzeTryFinally(TryFinallyStmt &stmt)
 
 void SemanticAnalyzer::analyzeWith(WithStmt &stmt)
 {
-    // v0.1: with statement is not supported
-    error(stmt, "'with' statement is not supported in Viper Pascal v0.1");
+    // Process each with expression, push context, and generate temp var names
+    static int withCounter = 0;
+
+    std::vector<WithContext> pushedContexts;
+    for (size_t i = 0; i < stmt.objects.size(); ++i)
+    {
+        auto &obj = stmt.objects[i];
+        PasType objType = typeOf(*obj);
+
+        // The with expression must be a class or record type
+        if (objType.kind != PasTypeKind::Class && objType.kind != PasTypeKind::Record)
+        {
+            error(*obj, "'with' expression must be of class or record type");
+            continue;
+        }
+
+        // Generate a temp variable name for this with context
+        std::string tempName = "__with_" + std::to_string(withCounter++);
+
+        // Add temp variable to current scope for lowering
+        addVariable(tempName, objType);
+
+        // Push context (innermost-last, so later expressions take priority)
+        WithContext ctx;
+        ctx.type = objType;
+        ctx.tempVarName = tempName;
+        withContexts_.push_back(ctx);
+        pushedContexts.push_back(ctx);
+    }
+
+    // Analyze the body with the with contexts active
+    if (stmt.body)
+    {
+        analyzeStmt(*stmt.body);
+    }
+
+    // Pop the contexts (in reverse order)
+    for (size_t i = 0; i < pushedContexts.size(); ++i)
+    {
+        withContexts_.pop_back();
+    }
 }
 
 void SemanticAnalyzer::analyzeInherited(InheritedStmt &stmt)
@@ -2370,11 +2533,47 @@ PasType SemanticAnalyzer::typeOfName(NameExpr &expr)
             return *selfTy;
     }
 
-    // Inside a method, check fields of the current class (and base classes) next
+    // Check 'with' contexts (innermost first, so search from back)
+    // Name lookup order: locals > with contexts > class members > globals
+    for (auto it = withContexts_.rbegin(); it != withContexts_.rend(); ++it)
+    {
+        const WithContext &ctx = *it;
+        if (ctx.type.kind == PasTypeKind::Class)
+        {
+            auto *classInfo = lookupClass(toLower(ctx.type.name));
+            if (classInfo)
+            {
+                // Check fields
+                auto fieldIt = classInfo->fields.find(key);
+                if (fieldIt != classInfo->fields.end())
+                {
+                    return fieldIt->second.type;
+                }
+                // Check properties
+                auto propIt = classInfo->properties.find(key);
+                if (propIt != classInfo->properties.end())
+                {
+                    return propIt->second.type;
+                }
+            }
+        }
+        else if (ctx.type.kind == PasTypeKind::Record)
+        {
+            auto fieldIt = ctx.type.fields.find(key);
+            if (fieldIt != ctx.type.fields.end() && fieldIt->second)
+            {
+                return *fieldIt->second;
+            }
+        }
+    }
+
+    // Inside a method, check fields and properties of the current class (and base classes) next
     // Name lookup order inside methods:
     // 1) Locals/params (handled above)
-    // 2) Fields of current class and its base classes
-    // 3) Outer scopes/globals/builtins
+    // 2) 'with' contexts (handled above)
+    // 3) Fields of current class and its base classes
+    // 4) Properties of current class and its base classes
+    // 5) Outer scopes/globals/builtins
     if (!currentClassName_.empty())
     {
         // Walk up the inheritance chain to find a matching field
@@ -2394,10 +2593,28 @@ PasType SemanticAnalyzer::typeOfName(NameExpr &expr)
                 break;
             cur = toLower(classInfo->baseClass);
         }
+
+        // Walk up the inheritance chain to find a matching property
+        cur = toLower(currentClassName_);
+        while (!cur.empty())
+        {
+            auto *classInfo = lookupClass(cur);
+            if (!classInfo)
+                break;
+            auto propIt = classInfo->properties.find(key);
+            if (propIt != classInfo->properties.end())
+            {
+                return propIt->second.type;
+            }
+            // Move to base class (if any)
+            if (classInfo->baseClass.empty())
+                break;
+            cur = toLower(classInfo->baseClass);
+        }
     }
     else
     {
-        // Fallback: if a 'self' variable exists, use its class type to resolve fields
+        // Fallback: if a 'self' variable exists, use its class type to resolve fields and properties
         if (auto selfTy = lookupVariable("self"))
         {
             if (selfTy->kind == PasTypeKind::Class && !selfTy->name.empty())
@@ -2412,6 +2629,22 @@ PasType SemanticAnalyzer::typeOfName(NameExpr &expr)
                     if (fieldIt != classInfo->fields.end())
                     {
                         return fieldIt->second.type;
+                    }
+                    if (classInfo->baseClass.empty())
+                        break;
+                    cur = toLower(classInfo->baseClass);
+                }
+                // Try properties
+                cur = toLower(selfTy->name);
+                while (!cur.empty())
+                {
+                    auto *classInfo = lookupClass(cur);
+                    if (!classInfo)
+                        break;
+                    auto propIt = classInfo->properties.find(key);
+                    if (propIt != classInfo->properties.end())
+                    {
+                        return propIt->second.type;
                     }
                     if (classInfo->baseClass.empty())
                         break;
@@ -2625,6 +2858,67 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
                 }
             }
         }
+
+        // Check 'with' contexts for method calls (innermost first)
+        for (auto it = withContexts_.rbegin(); it != withContexts_.rend(); ++it)
+        {
+            const WithContext &ctx = *it;
+            if (ctx.type.kind == PasTypeKind::Class)
+            {
+                auto *classInfo = lookupClass(toLower(ctx.type.name));
+                if (classInfo)
+                {
+                    std::string mkey = toLower(calleeName);
+                    auto mit = classInfo->methods.find(mkey);
+                    if (mit != classInfo->methods.end())
+                    {
+                        const MethodInfo &minfo = mit->second;
+                        // Reject abstract methods
+                        if (minfo.isAbstract)
+                        {
+                            error(expr, "cannot call abstract method '" + calleeName + "'");
+                            return PasType::unknown();
+                        }
+
+                        // Mark the expression for the lowerer - it's a method call through with
+                        expr.isWithMethodCall = true;
+                        expr.withClassName = ctx.type.name;
+
+                        // Check argument counts
+                        size_t totalParams = minfo.params.size();
+                        size_t requiredParams = minfo.requiredParams;
+                        size_t actual = expr.args.size();
+                        if (actual < requiredParams)
+                        {
+                            error(expr, "too few arguments: expected at least " +
+                                            std::to_string(requiredParams) + ", got " + std::to_string(actual));
+                        }
+                        else if (actual > totalParams)
+                        {
+                            error(expr, "too many arguments: expected at most " +
+                                            std::to_string(totalParams) + ", got " + std::to_string(actual));
+                        }
+
+                        // Type-check arguments
+                        for (size_t i = 0; i < expr.args.size() && i < minfo.params.size(); ++i)
+                        {
+                            if (expr.args[i])
+                            {
+                                PasType argType = typeOf(*expr.args[i]);
+                                const PasType &paramType = minfo.params[i].second;
+                                if (!paramType.isError() && !isAssignableFrom(paramType, argType) && !argType.isError())
+                                {
+                                    error(*expr.args[i], "argument " + std::to_string(i + 1) +
+                                                             " type mismatch: expected " + paramType.toString() +
+                                                             ", got " + argType.toString());
+                                }
+                            }
+                        }
+                        return minfo.returnType;
+                    }
+                }
+            }
+        }
     }
     else if (expr.callee->kind == ExprKind::Field)
     {
@@ -2730,6 +3024,65 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
                             // For now, just allow the call if the method exists
                             // Type checking for args happens below with the signature
                         }
+                    }
+                }
+            }
+            else if (receiverType.kind == PasTypeKind::Interface)
+            {
+                // Interface method call
+                std::string ifaceName = receiverType.name;
+                auto *ifaceInfo = lookupInterface(toLower(ifaceName));
+                if (ifaceInfo)
+                {
+                    std::string methodKey = toLower(calleeName);
+                    auto methodIt = ifaceInfo->methods.find(methodKey);
+                    if (methodIt != ifaceInfo->methods.end())
+                    {
+                        // Found the interface method - type-check arguments
+                        const MethodInfo &methodInfo = methodIt->second;
+
+                        // Check argument count
+                        size_t totalParams = methodInfo.params.size();
+                        size_t requiredParams = methodInfo.requiredParams;
+                        size_t actual = expr.args.size();
+
+                        if (actual < requiredParams)
+                        {
+                            error(expr, "too few arguments: expected at least " +
+                                            std::to_string(requiredParams) + ", got " + std::to_string(actual));
+                        }
+                        else if (actual > totalParams)
+                        {
+                            error(expr, "too many arguments: expected at most " +
+                                            std::to_string(totalParams) + ", got " + std::to_string(actual));
+                        }
+
+                        // Type-check arguments
+                        for (size_t i = 0; i < expr.args.size() && i < methodInfo.params.size(); ++i)
+                        {
+                            if (expr.args[i])
+                            {
+                                PasType argType = typeOf(*expr.args[i]);
+                                const PasType &paramType = methodInfo.params[i].second;
+                                if (!paramType.isError() && !isAssignableFrom(paramType, argType) && !argType.isError())
+                                {
+                                    error(*expr.args[i], "argument " + std::to_string(i + 1) +
+                                                             " type mismatch: expected " + paramType.toString() +
+                                                             ", got " + argType.toString());
+                                }
+                            }
+                        }
+
+                        // Mark this as an interface method call for lowering
+                        expr.isInterfaceCall = true;
+                        expr.interfaceName = ifaceName;
+
+                        return methodInfo.returnType;
+                    }
+                    else
+                    {
+                        error(expr, "undefined method '" + calleeName + "' in interface '" + ifaceName + "'");
+                        return PasType::unknown();
                     }
                 }
             }
@@ -2937,7 +3290,7 @@ PasType SemanticAnalyzer::typeOfField(FieldExpr &expr)
 
     PasType baseType = typeOf(*expr.base);
 
-    // For records/classes, look up field
+    // For records/classes, look up field or property
     if (baseType.kind == PasTypeKind::Record || baseType.kind == PasTypeKind::Class)
     {
         std::string fieldKey = toLower(expr.field);
@@ -2999,6 +3352,24 @@ PasType SemanticAnalyzer::typeOfField(FieldExpr &expr)
             return *it->second;
         }
         // Field not found - might be a method, allow for now
+        return PasType::unknown();
+    }
+
+    // For interface types, look up method (interfaces have no fields)
+    if (baseType.kind == PasTypeKind::Interface)
+    {
+        std::string methodKey = toLower(expr.field);
+        auto *ifaceInfo = lookupInterface(toLower(baseType.name));
+        if (ifaceInfo)
+        {
+            auto methodIt = ifaceInfo->methods.find(methodKey);
+            if (methodIt != ifaceInfo->methods.end())
+            {
+                // Return the method's return type (for parameterless function calls)
+                return methodIt->second.returnType;
+            }
+        }
+        // Unknown method
         return PasType::unknown();
     }
 

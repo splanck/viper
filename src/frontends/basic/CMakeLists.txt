@@ -30,7 +30,6 @@ target_sources(fe_basic PRIVATE
         Parser_Expr.cpp
         Parser_Token.cpp
         StatementSequencer.cpp
-        NameMangler_OOP.cpp
         TypeSuffix.cpp
         TypeRules.cpp
         ILTypeUtils.cpp

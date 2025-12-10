@@ -206,6 +206,10 @@ class Parser
     /// @return Parsed CaseStmt or nullptr on error.
     std::unique_ptr<Stmt> parseCase();
 
+    /// @brief Parse with statement.
+    /// @return Parsed WithStmt or nullptr on error.
+    std::unique_ptr<Stmt> parseWith();
+
     //=========================================================================
     // Type Parsing
     //=========================================================================

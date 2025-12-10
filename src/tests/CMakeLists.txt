@@ -537,6 +537,11 @@ target_link_libraries(test_pascal_parser_decl PRIVATE viper_testing fe_pascal)
 add_test(NAME test_pascal_parser_decl COMMAND test_pascal_parser_decl)
 set_tests_properties(test_pascal_parser_decl PROPERTIES LABELS pascal)
 
+add_executable(test_pascal_parser_method_qual ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/ParserMethodQualDebug.cpp)
+target_link_libraries(test_pascal_parser_method_qual PRIVATE viper_testing fe_pascal)
+add_test(NAME test_pascal_parser_method_qual COMMAND test_pascal_parser_method_qual)
+set_tests_properties(test_pascal_parser_method_qual PROPERTIES LABELS pascal)
+
 # Pascal semantic analyzer unit tests
 add_executable(test_pascal_semantic ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticBasicTests.cpp)
 target_link_libraries(test_pascal_semantic PRIVATE viper_testing fe_pascal)
@@ -595,6 +600,30 @@ target_link_libraries(test_pascal_semantic_default_param PRIVATE viper_testing f
 add_test(NAME test_pascal_semantic_default_param COMMAND test_pascal_semantic_default_param)
 set_tests_properties(test_pascal_semantic_default_param PROPERTIES LABELS pascal)
 
+# Pascal 'with' statement tests
+add_executable(test_pascal_semantic_with ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticWithTests.cpp)
+target_link_libraries(test_pascal_semantic_with PRIVATE viper_testing fe_pascal)
+add_test(NAME test_pascal_semantic_with COMMAND test_pascal_semantic_with)
+set_tests_properties(test_pascal_semantic_with PROPERTIES LABELS pascal)
+
+# Pascal implicit upcast tests
+add_executable(test_pascal_semantic_upcast ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticUpcastTests.cpp)
+target_link_libraries(test_pascal_semantic_upcast PRIVATE viper_testing fe_pascal)
+add_test(NAME test_pascal_semantic_upcast COMMAND test_pascal_semantic_upcast)
+set_tests_properties(test_pascal_semantic_upcast PROPERTIES LABELS pascal)
+
+# Pascal builtin shadowing tests
+add_executable(test_pascal_semantic_shadow ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticShadowTests.cpp)
+target_link_libraries(test_pascal_semantic_shadow PRIVATE viper_testing fe_pascal)
+add_test(NAME test_pascal_semantic_shadow COMMAND test_pascal_semantic_shadow)
+set_tests_properties(test_pascal_semantic_shadow PROPERTIES LABELS pascal)
+
+# Pascal destructor tests
+add_executable(test_pascal_semantic_destructor ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticDestructorTests.cpp)
+target_link_libraries(test_pascal_semantic_destructor PRIVATE viper_testing fe_pascal)
+add_test(NAME test_pascal_semantic_destructor COMMAND test_pascal_semantic_destructor)
+set_tests_properties(test_pascal_semantic_destructor PROPERTIES LABELS pascal)
+
 # Pascal frontend smoke test (emit IL)
 add_test(NAME pascal_skeleton_emit_il
         COMMAND $<TARGET_FILE:ilc> front pascal -emit-il ${CMAKE_CURRENT_SOURCE_DIR}/data/pascal/hello.pas)
@@ -609,6 +638,17 @@ set_tests_properties(pascal_skeleton_run PROPERTIES LABELS pascal)
 add_test(NAME pascal_eh_emit_il
         COMMAND $<TARGET_FILE:ilc> front pascal -emit-il ${CMAKE_CURRENT_SOURCE_DIR}/data/pascal/exception_handling.pas)
 set_tests_properties(pascal_eh_emit_il PROPERTIES LABELS pascal)
+
+# Pascal properties tests
+add_executable(test_pascal_properties ${CMAKE_CURRENT_SOURCE_DIR}/frontends/pascal/PascalPropertyTests.cpp)
+target_link_libraries(test_pascal_properties PRIVATE viper_testing fe_pascal)
+add_test(NAME test_pascal_properties COMMAND test_pascal_properties)
+set_tests_properties(test_pascal_properties PROPERTIES LABELS pascal)
+
+add_executable(test_pascal_field_debug ${CMAKE_CURRENT_SOURCE_DIR}/frontends/pascal/PascalFieldAccessDebug.cpp)
+target_link_libraries(test_pascal_field_debug PRIVATE viper_testing fe_pascal)
+add_test(NAME test_pascal_field_debug COMMAND test_pascal_field_debug)
+set_tests_properties(test_pascal_field_debug PROPERTIES LABELS pascal)
 
 # =============================================================================
 # Test Labels Configuration

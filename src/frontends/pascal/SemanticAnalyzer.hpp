@@ -366,6 +366,30 @@ struct FieldInfo
     il::support::SourceLoc loc;                ///< Source location
 };
 
+/// @brief Information about a property accessor target.
+struct PropertyAccessor
+{
+    enum class Kind
+    {
+        None,
+        Field,
+        Method,
+    };
+    Kind kind{Kind::None};
+    std::string name;               ///< Field or method name
+};
+
+/// @brief Information about a class property.
+struct PropertyInfo
+{
+    std::string name;                          ///< Property name
+    PasType type;                              ///< Property type
+    PropertyAccessor getter;                   ///< Getter target
+    PropertyAccessor setter;                   ///< Setter target (may be None)
+    Visibility visibility{Visibility::Public}; ///< Visibility
+    il::support::SourceLoc loc;                ///< Source location
+};
+
 /// @brief Information about a class.
 struct ClassInfo
 {
@@ -374,6 +398,7 @@ struct ClassInfo
     std::vector<std::string> interfaces;           ///< Implemented interface names
     std::map<std::string, MethodInfo> methods;     ///< Method name -> info (lowercase key)
     std::map<std::string, FieldInfo> fields;       ///< Field name -> info (lowercase key)
+    std::map<std::string, PropertyInfo> properties;///< Property name -> info (lowercase key)
     bool hasConstructor{false};                    ///< Has at least one constructor
     bool hasDestructor{false};                     ///< Has a destructor
     bool isAbstract{false};                        ///< True if class declares or inherits abstract methods not implemented
@@ -560,6 +585,12 @@ class SemanticAnalyzer
     /// @return The resolved type, or Unknown on error.
     PasType resolveType(TypeNode &typeNode);
 
+    /// @brief Collect all methods from interface and its bases (public for Lowerer).
+    /// @param ifaceName The interface name (lowercase).
+    /// @param methods Output map to collect methods into.
+    void collectInterfaceMethods(const std::string &ifaceName,
+                                 std::map<std::string, MethodInfo> &methods) const;
+
   private:
     //=========================================================================
     // Pass 1: Declaration Collection
@@ -660,10 +691,6 @@ class SemanticAnalyzer
     /// @return True if derived extends base (or they are the same).
     bool interfaceExtendsInterface(const std::string &derivedName,
                                     const std::string &baseName) const;
-
-    /// @brief Collect all methods from interface and its bases.
-    void collectInterfaceMethods(const std::string &ifaceName,
-                                 std::map<std::string, MethodInfo> &methods) const;
 
     //=========================================================================
     // Pass 2: Body Analysis
@@ -997,6 +1024,16 @@ class SemanticAnalyzer
     /// @brief Set of definitely-assigned non-nullable variables in current scope (lowercase).
     /// @details Variables are added here when assigned; removed from uninitializedNonNullableVars_.
     std::set<std::string> definitelyAssignedVars_;
+
+    /// @brief Info about a 'with' context for name resolution.
+    struct WithContext
+    {
+        PasType type;                ///< Type of the with expression (class or record)
+        std::string tempVarName;     ///< Generated temp variable name for lowering
+    };
+
+    /// @brief Stack of 'with' contexts (innermost first for lookup priority).
+    std::vector<WithContext> withContexts_;
 };
 
 } // namespace il::frontends::pascal

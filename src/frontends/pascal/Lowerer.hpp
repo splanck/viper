@@ -17,6 +17,7 @@
 
 #include "frontends/common/ExprResult.hpp"
 #include "frontends/common/LoopContext.hpp"
+#include "frontends/common/NameMangler.hpp"
 #include "frontends/common/StringTable.hpp"
 #include "frontends/pascal/AST.hpp"
 #include "frontends/pascal/SemanticAnalyzer.hpp"
@@ -85,6 +86,31 @@ struct VtableLayout
     std::size_t slotCount;              ///< Number of slots
 };
 
+/// @brief Interface method slot.
+struct InterfaceSlot
+{
+    std::string methodName;     ///< Method name in the interface
+    int slot;                   ///< Slot index in interface table
+};
+
+/// @brief Interface layout (method table).
+struct InterfaceLayout
+{
+    std::string name;                   ///< Interface name
+    std::int64_t interfaceId;           ///< Unique interface ID
+    std::vector<InterfaceSlot> slots;   ///< Method slots in order
+    std::size_t slotCount;              ///< Number of slots
+};
+
+/// @brief Interface implementation table for a class.
+/// Maps interface method slots to actual class method implementations.
+struct InterfaceImplTable
+{
+    std::string className;              ///< Class implementing the interface
+    std::string interfaceName;          ///< Interface being implemented
+    std::vector<std::string> implMethods; ///< Mangled names of implementing methods, in slot order
+};
+
 /// @brief Transforms validated Pascal AST into Viper IL.
 /// @invariant Generates deterministic block names via BlockNamer.
 /// @ownership Owns produced Module; uses IRBuilder for emission.
@@ -146,6 +172,21 @@ class Lowerer
     std::int64_t nextClassId_{1};                                   ///< Next class ID to assign
     std::vector<std::string> classRegistrationOrder_;               ///< Order to register classes (base before derived)
 
+    // Interface State
+    std::unordered_map<std::string, InterfaceLayout> interfaceLayouts_;  ///< Interface name -> layout
+    /// @brief Class+Interface -> implementation table (key = "classname.ifacename")
+    std::unordered_map<std::string, InterfaceImplTable> interfaceImplTables_;
+    std::int64_t nextInterfaceId_{1};                               ///< Next interface ID to assign
+    std::vector<std::string> interfaceRegistrationOrder_;           ///< Order to register interfaces
+
+    // With statement state
+    struct WithContext
+    {
+        PasType type;       ///< Type of the with expression (class or record)
+        Value slot;         ///< Alloca slot holding the value
+    };
+    std::vector<WithContext> withContexts_;                         ///< Stack of with contexts
+
     /// @brief Get the current block by index.
     BasicBlock *currentBlock() { return &currentFunc_->blocks[currentBlockIdx_]; }
 
@@ -175,6 +216,10 @@ class Lowerer
 
     /// @brief Get the size in bytes for a type.
     int64_t sizeOf(const PasType &pasType);
+
+    /// @brief Get the Pascal type of an expression.
+    /// Uses localTypes_ for local variables, then falls back to sema_->typeOf().
+    PasType typeOfExpr(const Expr &expr);
 
     //=========================================================================
     // Declaration Lowering
@@ -313,6 +358,9 @@ class Lowerer
     /// @brief Lower an inherited method call statement.
     void lowerInherited(const InheritedStmt &stmt);
 
+    /// @brief Lower a with statement.
+    void lowerWith(const WithStmt &stmt);
+
     //=========================================================================
     // Instruction Emission Helpers
     //=========================================================================
@@ -430,14 +478,30 @@ class Lowerer
     /// @brief Get field offset in a class layout.
     std::size_t getFieldOffset(const std::string &className, const std::string &fieldName) const;
 
-    /// @brief Mangle a method name: ClassName.MethodName
-    static std::string mangleMethod(const std::string &className, const std::string &methodName);
+    //=========================================================================
+    // Interface Lowering
+    //=========================================================================
 
-    /// @brief Mangle a constructor name: ClassName.Create
-    static std::string mangleConstructor(const std::string &className, const std::string &ctorName);
+    /// @brief Scan all interface declarations and compute layouts.
+    void scanInterfaces(const std::vector<std::unique_ptr<Decl>> &decls);
 
-    /// @brief Mangle a destructor name: ClassName.Destroy
-    static std::string mangleDestructor(const std::string &className, const std::string &dtorName);
+    /// @brief Compute the layout for a single interface.
+    void computeInterfaceLayout(const std::string &ifaceName);
+
+    /// @brief Compute interface implementation tables for a class.
+    void computeInterfaceImplTables(const std::string &className);
+
+    /// @brief Emit interface table registration in __pas_oop_init.
+    void emitInterfaceTableRegistration(const std::string &className, const std::string &ifaceName);
+
+    /// @brief Lower an interface method call expression.
+    LowerResult lowerInterfaceMethodCall(const FieldExpr &fieldExpr, const CallExpr &callExpr);
+
+    /// @brief Get interface method slot for a method in an interface.
+    int getInterfaceSlot(const std::string &ifaceName, const std::string &methodName) const;
+
+    /// @brief Get the interface layout for an interface name.
+    const InterfaceLayout *getInterfaceLayout(const std::string &ifaceName) const;
 };
 
 } // namespace il::frontends::pascal

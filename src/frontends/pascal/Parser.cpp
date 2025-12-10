@@ -688,6 +688,12 @@ std::unique_ptr<Stmt> Parser::parseStatement()
         return parseTry();
     }
 
+    // With statement
+    if (check(TokenKind::KwWith))
+    {
+        return parseWith();
+    }
+
     // Assignment or call statement (starts with designator)
     if (check(TokenKind::Identifier))
     {
@@ -776,6 +782,34 @@ std::unique_ptr<Stmt> Parser::parseWhile()
         return nullptr;
 
     return std::make_unique<WhileStmt>(std::move(condition), std::move(body), loc);
+}
+
+std::unique_ptr<Stmt> Parser::parseWith()
+{
+    auto loc = current_.loc;
+
+    if (!expect(TokenKind::KwWith, "'with'"))
+        return nullptr;
+
+    // Parse one or more expressions separated by commas
+    // with expr1, expr2, ... do statement
+    std::vector<std::unique_ptr<Expr>> objects;
+    do
+    {
+        auto expr = parseExpression();
+        if (!expr)
+            return nullptr;
+        objects.push_back(std::move(expr));
+    } while (match(TokenKind::Comma));
+
+    if (!expect(TokenKind::KwDo, "'do'"))
+        return nullptr;
+
+    auto body = parseStatement();
+    if (!body)
+        return nullptr;
+
+    return std::make_unique<WithStmt>(std::move(objects), std::move(body), loc);
 }
 
 std::unique_ptr<Stmt> Parser::parseRepeat()
@@ -1984,24 +2018,67 @@ std::unique_ptr<Decl> Parser::parseClass(const std::string &name, il::support::S
     auto decl = std::make_unique<ClassDecl>(name, loc);
 
     // Optional heritage clause: (BaseClass, Interface1, Interface2)
+    // The first identifier could be a base class or an interface.
+    // We collect all identifiers and then determine which is the base class
+    // based on whether the identifier refers to a class or interface type.
     if (match(TokenKind::LParen))
     {
-        // First identifier is base class
+        std::vector<std::string> heritageNames;
         if (check(TokenKind::Identifier))
         {
-            decl->baseClass = current_.text;
+            heritageNames.push_back(current_.text);
             advance();
 
-            // Additional identifiers are interfaces
+            // Additional identifiers
             while (match(TokenKind::Comma))
             {
                 if (!check(TokenKind::Identifier))
                 {
-                    error("expected interface name");
+                    error("expected type name");
                     break;
                 }
-                decl->interfaces.push_back(current_.text);
+                heritageNames.push_back(current_.text);
                 advance();
+            }
+        }
+
+        // Determine which is the base class (if any) and which are interfaces.
+        // For now, the first non-interface type is the base class.
+        // Since we don't have semantic info in the parser, we rely on convention:
+        // - Types starting with 'I' followed by uppercase are likely interfaces
+        // - Or we can look ahead at type declarations in the type block
+        // For simplicity, we'll check if it's a known interface type by looking
+        // at previously parsed interface declarations in this type block.
+        for (const auto &name : heritageNames)
+        {
+            // Check if this is a forward-declared or previously parsed interface
+            // by looking for IName pattern (convention) or checking pendingInterfaces_
+            bool isInterface = false;
+
+            // Check if we've already seen this as an interface in the current parse
+            std::string lowerName = name;
+            for (auto &c : lowerName)
+                c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+
+            // Simple heuristic: starts with 'I' followed by uppercase letter
+            if (name.length() >= 2 && name[0] == 'I' &&
+                std::isupper(static_cast<unsigned char>(name[1])))
+            {
+                isInterface = true;
+            }
+
+            if (isInterface)
+            {
+                decl->interfaces.push_back(name);
+            }
+            else if (decl->baseClass.empty())
+            {
+                decl->baseClass = name;
+            }
+            else
+            {
+                // Multiple base classes not allowed, treat as interface
+                decl->interfaces.push_back(name);
             }
         }
 
@@ -2182,6 +2259,80 @@ std::vector<ClassMember> Parser::parseClassMembers(Visibility currentVisibility)
     ClassMember member;
     member.visibility = currentVisibility;
     member.loc = current_.loc;
+
+    // Property: property Name: Type read Getter [write Setter];
+    if (check(TokenKind::KwProperty))
+    {
+        advance();
+
+        // Name
+        if (!check(TokenKind::Identifier))
+        {
+            error("expected property name");
+            resyncAfterError();
+            return result;
+        }
+        std::string propName = current_.text;
+        advance();
+
+        if (!expect(TokenKind::Colon, "':'"))
+        {
+            resyncAfterError();
+            return result;
+        }
+
+        // Type
+        auto typeNode = parseType();
+        if (!typeNode)
+        {
+            resyncAfterError();
+            return result;
+        }
+
+        // read
+        if (!(check(TokenKind::Identifier) && current_.canonical == "read"))
+        {
+            error("expected 'read' in property");
+            resyncAfterError();
+            return result;
+        }
+        advance();
+        if (!check(TokenKind::Identifier))
+        {
+            error("expected getter/field name after 'read'");
+            resyncAfterError();
+            return result;
+        }
+        std::string getter = current_.text;
+        advance();
+
+        // Optional write
+        std::string setter;
+        if (check(TokenKind::Identifier) && current_.canonical == "write")
+        {
+            advance();
+            if (!check(TokenKind::Identifier))
+            {
+                error("expected setter/field name after 'write'");
+                resyncAfterError();
+                return result;
+            }
+            setter = current_.text;
+            advance();
+        }
+
+        // Optional semicolon
+        match(TokenKind::Semicolon);
+
+        member.memberKind = ClassMember::Kind::Property;
+        auto prop = std::make_unique<PropertyDecl>(propName, std::move(typeNode), member.loc);
+        prop->getter = std::move(getter);
+        prop->setter = std::move(setter);
+        prop->visibility = currentVisibility;
+        member.property = std::move(prop);
+        result.push_back(std::move(member));
+        return result;
+    }
 
     // Constructor (signature only in class declaration)
     if (check(TokenKind::KwConstructor))
@@ -2551,8 +2702,24 @@ std::unique_ptr<Decl> Parser::parseDestructorSignature()
     if (!expect(TokenKind::Semicolon, "';'"))
         return nullptr;
 
+    // Handle optional method modifiers (virtual, override)
+    bool isVirtual = false;
+    bool isOverride = false;
+    while (check(TokenKind::KwVirtual) || check(TokenKind::KwOverride))
+    {
+        if (match(TokenKind::KwVirtual))
+            isVirtual = true;
+        if (match(TokenKind::KwOverride))
+            isOverride = true;
+        // Expect ";" after modifier
+        if (!expect(TokenKind::Semicolon, "';'"))
+            return nullptr;
+    }
+
     auto decl = std::make_unique<DestructorDecl>(std::move(name), loc);
     decl->isForward = true;  // Mark as signature only
+    decl->isVirtual = isVirtual;
+    decl->isOverride = isOverride;
     return decl;
 }
 

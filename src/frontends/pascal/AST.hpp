@@ -189,6 +189,16 @@ struct CallExpr : Expr
     /// @brief For constructor calls, the class name being constructed
     mutable std::string constructorClassName;
 
+    /// @brief True if this is a method call through a 'with' context
+    mutable bool isWithMethodCall{false};
+    /// @brief For with method calls, the class name of the with target
+    mutable std::string withClassName;
+
+    /// @brief True if this is an interface method call
+    mutable bool isInterfaceCall{false};
+    /// @brief For interface method calls, the interface name
+    mutable std::string interfaceName;
+
     CallExpr(std::unique_ptr<Expr> callee, std::vector<std::unique_ptr<Expr>> args,
              il::support::SourceLoc l = {})
         : Expr(ExprKind::Call, l), callee(std::move(callee)), args(std::move(args)) {}
@@ -953,6 +963,8 @@ struct DestructorDecl : Decl
     std::vector<std::unique_ptr<Decl>> localDecls;
     std::unique_ptr<BlockStmt> body; ///< May be nullptr (forward declaration)
     bool isForward{false};
+    bool isVirtual{false};   ///< Marked virtual
+    bool isOverride{false};  ///< Marked override
 
     explicit DestructorDecl(std::string name = "Destroy", il::support::SourceLoc l = {})
         : Decl(DeclKind::Destructor, l), name(std::move(name)) {}

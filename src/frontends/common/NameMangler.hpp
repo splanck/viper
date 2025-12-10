@@ -22,10 +22,105 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 #include <unordered_map>
 
 namespace il::frontends::common
 {
+
+//===----------------------------------------------------------------------===//
+// OOP Name Mangling Functions
+//===----------------------------------------------------------------------===//
+
+/// @brief Join two identifiers with a dot separator: "Class.Member"
+/// @param lhs Class portion of the identifier
+/// @param rhs Member portion (method, constructor, destructor name)
+/// @return Joined identifier string
+inline std::string mangleMethod(std::string_view className, std::string_view methodName)
+{
+    std::string result;
+    result.reserve(className.size() + methodName.size() + 1);
+    result.append(className);
+    result.push_back('.');
+    result.append(methodName);
+    return result;
+}
+
+/// @brief Mangle a constructor name: "ClassName.CtorName"
+/// @details Pascal uses explicit constructor names (e.g., Create),
+///          while BASIC uses a fixed ".__ctor" suffix.
+inline std::string mangleConstructor(std::string_view className, std::string_view ctorName)
+{
+    return mangleMethod(className, ctorName);
+}
+
+/// @brief Mangle a destructor name: "ClassName.DtorName"
+/// @details Pascal uses explicit destructor names (e.g., Destroy),
+///          while BASIC uses a fixed ".__dtor" suffix.
+inline std::string mangleDestructor(std::string_view className, std::string_view dtorName)
+{
+    return mangleMethod(className, dtorName);
+}
+
+/// @brief Mangle a BASIC-style constructor: "ClassName.__ctor"
+inline std::string mangleClassCtor(std::string_view className)
+{
+    std::string result;
+    result.reserve(className.size() + 7);
+    result.append(className);
+    result.append(".__ctor");
+    return result;
+}
+
+/// @brief Mangle a BASIC-style destructor: "ClassName.__dtor"
+inline std::string mangleClassDtor(std::string_view className)
+{
+    std::string result;
+    result.reserve(className.size() + 7);
+    result.append(className);
+    result.append(".__dtor");
+    return result;
+}
+
+/// @brief Sanitize dots in a qualified name by replacing with '$'
+/// @details Used for interface thunk naming where dots aren't allowed
+inline std::string sanitizeDots(std::string_view qualifiedName)
+{
+    std::string out;
+    out.reserve(qualifiedName.size());
+    for (char c : qualifiedName)
+        out.push_back(c == '.' ? '$' : c);
+    return out;
+}
+
+/// @brief Produce a stable name for an interface registration thunk.
+/// @details Example: __iface_reg$A$B$I for interface A.B.I
+inline std::string mangleIfaceRegThunk(std::string_view qualifiedIface)
+{
+    std::string s = sanitizeDots(qualifiedIface);
+    return std::string("__iface_reg$") + s;
+}
+
+/// @brief Produce a stable name for a class->interface bind thunk.
+/// @details Example: __iface_bind$A$C$A$B$I for class A.C binding A.B.I
+inline std::string mangleIfaceBindThunk(std::string_view qualifiedClass, std::string_view qualifiedIface)
+{
+    std::string cs = sanitizeDots(qualifiedClass);
+    std::string is = sanitizeDots(qualifiedIface);
+    return std::string("__iface_bind$") + cs + "$" + is;
+}
+
+/// @brief Name for a BASIC-style OOP module initializer: "__mod_init$oop"
+inline std::string mangleOopModuleInit()
+{
+    return "__mod_init$oop";
+}
+
+/// @brief Name for a Pascal-style OOP module initializer: "__pas_oop_init"
+inline std::string manglePascalOopInit()
+{
+    return "__pas_oop_init";
+}
 
 /// @brief Generates deterministic names for temporaries and blocks.
 /// @details Used during AST-to-IL lowering to create unique names.

@@ -335,18 +335,41 @@ void Lowerer::lowerProcedureDecl(ProcedureDecl &decl)
         Value paramVal = Value::temp(paramId);
 
         // Record parameter type
+        PasType paramType;
         if (sig && i < sig->params.size())
         {
-            localTypes_[key] = sig->params[i].second;
+            paramType = sig->params[i].second;
+            localTypes_[key] = paramType;
         }
         else if (param.type)
         {
-            localTypes_[key] = sema_->resolveType(*param.type);
+            paramType = sema_->resolveType(*param.type);
+            localTypes_[key] = paramType;
         }
 
-        Value slot = emitAlloca(8);
+        // Interface parameters are 16 bytes (fat pointer: objPtr + itablePtr)
+        // The parameter is passed as a pointer to the fat pointer
+        int64_t slotSize = (paramType.kind == PasTypeKind::Interface) ? 16 : 8;
+        Value slot = emitAlloca(slotSize);
         locals_[key] = slot;
-        emitStore(currentFunc_->params[i + paramOffset].type, slot, paramVal);
+
+        if (paramType.kind == PasTypeKind::Interface)
+        {
+            // Parameter is a pointer to a 16-byte fat pointer - copy the contents
+            // Load objPtr from param (offset 0)
+            Value srcObjPtr = emitLoad(Type(Type::Kind::Ptr), paramVal);
+            emitStore(Type(Type::Kind::Ptr), slot, srcObjPtr);
+
+            // Load itablePtr from param (offset 8)
+            Value srcItablePtrAddr = emitGep(paramVal, Value::constInt(8));
+            Value srcItablePtr = emitLoad(Type(Type::Kind::Ptr), srcItablePtrAddr);
+            Value dstItablePtrAddr = emitGep(slot, Value::constInt(8));
+            emitStore(Type(Type::Kind::Ptr), dstItablePtrAddr, srcItablePtr);
+        }
+        else
+        {
+            emitStore(currentFunc_->params[i + paramOffset].type, slot, paramVal);
+        }
     }
 
     // Allocate local variables

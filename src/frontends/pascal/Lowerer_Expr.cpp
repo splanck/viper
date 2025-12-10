@@ -122,24 +122,160 @@ LowerResult Lowerer::lowerName(const NameExpr &expr)
 {
     std::string key = toLower(expr.name);
 
-    // Check for built-in math constants (Pi and E from Viper.Math)
-    if (key == "pi")
+    // Check locals FIRST - user-defined symbols shadow builtins
+    auto localIt = locals_.find(key);
+    if (localIt != locals_.end())
     {
-        return {Value::constFloat(3.14159265358979323846), Type(Type::Kind::F64)};
-    }
-    if (key == "e")
-    {
-        return {Value::constFloat(2.71828182845904523536), Type(Type::Kind::F64)};
+        // First check our own localTypes_ map (for procedure locals)
+        // then fall back to semantic analyzer (for global variables)
+        Type ilType = Type(Type::Kind::I64);
+        auto localTypeIt = localTypes_.find(key);
+        if (localTypeIt != localTypes_.end())
+        {
+            ilType = mapType(localTypeIt->second);
+        }
+        else
+        {
+            if (auto varType = sema_->lookupVariable(key))
+                ilType = mapType(*varType);
+        }
+        Value slot = localIt->second;
+        Value loaded = emitLoad(ilType, slot);
+        return {loaded, ilType};
     }
 
-    // Check constants first (including enum constants from semantic analyzer)
+    // Check 'with' contexts for field/property access (innermost first)
+    for (auto it = withContexts_.rbegin(); it != withContexts_.rend(); ++it)
+    {
+        const WithContext &ctx = *it;
+        if (ctx.type.kind == PasTypeKind::Class)
+        {
+            auto *classInfo = sema_->lookupClass(toLower(ctx.type.name));
+            if (classInfo)
+            {
+                // Check fields
+                auto fieldIt = classInfo->fields.find(key);
+                if (fieldIt != classInfo->fields.end())
+                {
+                    Value objPtr = emitLoad(Type(Type::Kind::Ptr), ctx.slot);
+                    // Build type with fields for getFieldAddress
+                    PasType classTypeWithFields = ctx.type;
+                    for (const auto &[fname, finfo] : classInfo->fields)
+                    {
+                        classTypeWithFields.fields[fname] = std::make_shared<PasType>(finfo.type);
+                    }
+                    auto [fieldAddr, fieldType] = getFieldAddress(objPtr, classTypeWithFields, expr.name);
+                    Value fieldVal = emitLoad(fieldType, fieldAddr);
+                    return {fieldVal, fieldType};
+                }
+                // Check properties
+                auto propIt = classInfo->properties.find(key);
+                if (propIt != classInfo->properties.end())
+                {
+                    Value objPtr = emitLoad(Type(Type::Kind::Ptr), ctx.slot);
+                    const auto &p = propIt->second;
+                    if (p.getter.kind == PropertyAccessor::Kind::Method)
+                    {
+                        std::string funcName = classInfo->name + "." + p.getter.name;
+                        Type retType = mapType(p.type);
+                        Value result = emitCallRet(retType, funcName, {objPtr});
+                        return {result, retType};
+                    }
+                    if (p.getter.kind == PropertyAccessor::Kind::Field)
+                    {
+                        PasType classTypeWithFields = ctx.type;
+                        for (const auto &[fname, finfo] : classInfo->fields)
+                        {
+                            classTypeWithFields.fields[fname] = std::make_shared<PasType>(finfo.type);
+                        }
+                        auto [fieldAddr, fieldType] = getFieldAddress(objPtr, classTypeWithFields, p.getter.name);
+                        Value fieldVal = emitLoad(fieldType, fieldAddr);
+                        return {fieldVal, fieldType};
+                    }
+                }
+            }
+        }
+        else if (ctx.type.kind == PasTypeKind::Record)
+        {
+            auto fieldIt = ctx.type.fields.find(key);
+            if (fieldIt != ctx.type.fields.end() && fieldIt->second)
+            {
+                // For records, slot holds the record directly
+                auto [fieldAddr, fieldType] = getFieldAddress(ctx.slot, ctx.type, expr.name);
+                Value fieldVal = emitLoad(fieldType, fieldAddr);
+                return {fieldVal, fieldType};
+            }
+        }
+    }
+
+    // Check class fields/properties if inside a method
+    if (!currentClassName_.empty())
+    {
+        auto *classInfo = sema_->lookupClass(toLower(currentClassName_));
+        if (classInfo)
+        {
+            // Check for field first
+            auto fieldIt = classInfo->fields.find(key);
+            if (fieldIt != classInfo->fields.end())
+            {
+                auto selfIt = locals_.find("self");
+                if (selfIt != locals_.end())
+                {
+                    Value selfPtr = emitLoad(Type(Type::Kind::Ptr), selfIt->second);
+                    // Build type with fields for getFieldAddress
+                    PasType selfType = PasType::classType(currentClassName_);
+                    for (const auto &[fname, finfo] : classInfo->fields)
+                    {
+                        selfType.fields[fname] = std::make_shared<PasType>(finfo.type);
+                    }
+                    auto [fieldAddr, fieldType] = getFieldAddress(selfPtr, selfType, expr.name);
+                    Value fieldVal = emitLoad(fieldType, fieldAddr);
+                    return {fieldVal, fieldType};
+                }
+            }
+            // Check for property
+            auto propIt = classInfo->properties.find(key);
+            if (propIt != classInfo->properties.end())
+            {
+                auto selfIt = locals_.find("self");
+                if (selfIt != locals_.end())
+                {
+                    Value selfPtr = emitLoad(Type(Type::Kind::Ptr), selfIt->second);
+                    const auto &p = propIt->second;
+                    // Getter via method
+                    if (p.getter.kind == PropertyAccessor::Kind::Method)
+                    {
+                        std::string funcName = currentClassName_ + "." + p.getter.name;
+                        Type retType = mapType(p.type);
+                        Value result = emitCallRet(retType, funcName, {selfPtr});
+                        return {result, retType};
+                    }
+                    // Getter via field
+                    if (p.getter.kind == PropertyAccessor::Kind::Field)
+                    {
+                        PasType selfType = PasType::classType(currentClassName_);
+                        for (const auto &[fname, finfo] : classInfo->fields)
+                        {
+                            selfType.fields[fname] = std::make_shared<PasType>(finfo.type);
+                        }
+                        auto [fieldAddr, fieldType] = getFieldAddress(selfPtr, selfType, p.getter.name);
+                        Value result = emitLoad(fieldType, fieldAddr);
+                        return {result, fieldType};
+                    }
+                }
+            }
+        }
+    }
+
+    // Check user-defined constants (from user's const declarations)
     auto constIt = constants_.find(key);
     if (constIt != constants_.end())
     {
         return {constIt->second, Type(Type::Kind::I64)}; // Type approximation
     }
 
-    // Check semantic analyzer for enum constants and typed constants
+    // Check semantic analyzer for user-defined enum constants and typed constants
+    // (These have higher priority than builtin constants like Pi and E)
     if (auto constType = sema_->lookupConstant(key))
     {
         if (constType->kind == PasTypeKind::Enum && constType->enumOrdinal >= 0)
@@ -184,59 +320,15 @@ LowerResult Lowerer::lowerName(const NameExpr &expr)
         }
     }
 
-    // Check locals
-    auto localIt = locals_.find(key);
-    if (localIt != locals_.end())
+    // Check for built-in math constants (Pi and E from Viper.Math)
+    // These are checked LAST so user-defined symbols can shadow them
+    if (key == "pi")
     {
-        // First check our own localTypes_ map (for procedure locals)
-        // then fall back to semantic analyzer (for global variables)
-        Type ilType = Type(Type::Kind::I64);
-        auto localTypeIt = localTypes_.find(key);
-        if (localTypeIt != localTypes_.end())
-        {
-            ilType = mapType(localTypeIt->second);
-        }
-        else
-        {
-            auto varType = sema_->lookupVariable(key);
-            if (varType)
-                ilType = mapType(*varType);
-        }
-        Value loaded = emitLoad(ilType, localIt->second);
-        return {loaded, ilType};
+        return {Value::constFloat(3.14159265358979323846), Type(Type::Kind::F64)};
     }
-
-    // Check if we're inside a class method and the name is a field of the current class
-    // This must be checked BEFORE builtins/functions so field names can shadow them
-    if (!currentClassName_.empty())
+    if (key == "e")
     {
-        auto *classInfo = sema_->lookupClass(toLower(currentClassName_));
-        if (classInfo)
-        {
-            auto fieldIt = classInfo->fields.find(key);
-            if (fieldIt != classInfo->fields.end())
-            {
-                // Access Self.fieldName
-                // First, load Self pointer from locals
-                auto selfIt = locals_.find("self");
-                if (selfIt != locals_.end())
-                {
-                    Value selfPtr = emitLoad(Type(Type::Kind::Ptr), selfIt->second);
-
-                    // Build a PasType with the class fields for getFieldAddress
-                    PasType selfType = PasType::classType(currentClassName_);
-                    for (const auto &[fname, finfo] : classInfo->fields)
-                    {
-                        selfType.fields[fname] = std::make_shared<PasType>(finfo.type);
-                    }
-                    auto [fieldAddr, fieldType] = getFieldAddress(selfPtr, selfType, expr.name);
-
-                    // Load the field value
-                    Value fieldVal = emitLoad(fieldType, fieldAddr);
-                    return {fieldVal, fieldType};
-                }
-            }
-        }
+        return {Value::constFloat(2.71828182845904523536), Type(Type::Kind::F64)};
     }
 
     // Check for zero-argument builtin functions (Pascal allows calling without parens)
@@ -595,6 +687,13 @@ LowerResult Lowerer::lowerCall(const CallExpr &expr)
     if (expr.callee->kind == ExprKind::Field)
     {
         const auto &fieldExpr = static_cast<const FieldExpr &>(*expr.callee);
+
+        // Check if this is an interface method call
+        if (expr.isInterfaceCall && !expr.interfaceName.empty())
+        {
+            return lowerInterfaceMethodCall(fieldExpr, expr);
+        }
+
         return lowerMethodCall(fieldExpr, expr);
     }
 
@@ -649,6 +748,57 @@ LowerResult Lowerer::lowerCall(const CallExpr &expr)
                         return {res, retType};
                     }
                 }
+            }
+        }
+    }
+
+    // Method call through 'with' context (marked by semantic analyzer)
+    if (expr.isWithMethodCall && !expr.withClassName.empty())
+    {
+        // Find the matching with context for this class
+        for (auto it = withContexts_.rbegin(); it != withContexts_.rend(); ++it)
+        {
+            const WithContext &ctx = *it;
+            if (ctx.type.kind == PasTypeKind::Class &&
+                toLower(ctx.type.name) == toLower(expr.withClassName))
+            {
+                // Load the object pointer from the with context's slot
+                Value objPtr = emitLoad(Type(Type::Kind::Ptr), ctx.slot);
+
+                // Build arg list: Self + user args
+                std::vector<Value> args;
+                args.push_back(objPtr);
+                for (const auto &arg : expr.args)
+                {
+                    LowerResult lr = lowerExpr(*arg);
+                    args.push_back(lr.value);
+                }
+
+                // Get method info
+                std::string classKey = toLower(expr.withClassName);
+                auto *ci = sema_->lookupClass(classKey);
+                if (ci)
+                {
+                    std::string mkey = toLower(callee);
+                    auto mit = ci->methods.find(mkey);
+                    if (mit != ci->methods.end())
+                    {
+                        // Direct call to Class.Method
+                        std::string funcName = expr.withClassName + "." + callee;
+                        Type retType = mapType(mit->second.returnType);
+                        if (retType.kind == Type::Kind::Void)
+                        {
+                            emitCall(funcName, args);
+                            return {Value::constInt(0), Type(Type::Kind::Void)};
+                        }
+                        else
+                        {
+                            Value res = emitCallRet(retType, funcName, args);
+                            return {res, retType};
+                        }
+                    }
+                }
+                break;
             }
         }
     }
@@ -877,14 +1027,121 @@ LowerResult Lowerer::lowerCall(const CallExpr &expr)
     const FuncSignature *sig = sema_->lookupFunction(callee);
     Type retType = sig ? mapType(sig->returnType) : Type(Type::Kind::I64);
 
+    // Process arguments - handle interface parameters specially
+    std::vector<Value> processedArgs;
+    for (size_t i = 0; i < expr.args.size(); ++i)
+    {
+        // Check if the target parameter is an interface type
+        PasType paramType;
+        if (sig && i < sig->params.size())
+        {
+            paramType = sig->params[i].second;
+        }
+
+        if (paramType.kind == PasTypeKind::Interface)
+        {
+            // Get the source expression's type
+            PasType srcType = typeOfExpr(*expr.args[i]);
+
+            if (srcType.kind == PasTypeKind::Class)
+            {
+                // Passing a class to an interface parameter - create a fat pointer
+                LowerResult argResult = lowerExpr(*expr.args[i]);
+                Value objPtr = argResult.value;
+
+                // Allocate temporary fat pointer on stack (16 bytes)
+                Value fatPtr = emitAlloca(16);
+
+                // Store object pointer at offset 0
+                emitStore(Type(Type::Kind::Ptr), fatPtr, objPtr);
+
+                // Look up interface table for this class+interface
+                std::string ifaceName = paramType.name;
+                std::string className = srcType.name;
+                std::string ifaceKey = toLower(ifaceName);
+                std::string classKey = toLower(className);
+
+                auto layoutIt = interfaceLayouts_.find(ifaceKey);
+                auto classLayoutIt = classLayouts_.find(classKey);
+                if (layoutIt != interfaceLayouts_.end() && classLayoutIt != classLayouts_.end())
+                {
+                    // Get itable pointer via runtime lookup
+                    usedExterns_.insert("rt_get_interface_impl");
+                    Value itablePtr = emitCallRet(Type(Type::Kind::Ptr), "rt_get_interface_impl",
+                                                  {Value::constInt(classLayoutIt->second.classId),
+                                                   Value::constInt(layoutIt->second.interfaceId)});
+
+                    // Store itable pointer at offset 8
+                    Value itablePtrAddr = emitGep(fatPtr, Value::constInt(8));
+                    emitStore(Type(Type::Kind::Ptr), itablePtrAddr, itablePtr);
+                }
+
+                // Pass the address of the fat pointer
+                processedArgs.push_back(fatPtr);
+            }
+            else if (srcType.kind == PasTypeKind::Interface)
+            {
+                // Passing an interface to an interface parameter
+                // We need to copy the fat pointer to a new temporary because
+                // tail call optimization might reuse the caller's stack frame
+                Value srcSlot;
+                bool foundSrc = false;
+
+                if (expr.args[i]->kind == ExprKind::Name)
+                {
+                    const auto &nameExpr = static_cast<const NameExpr &>(*expr.args[i]);
+                    std::string key = toLower(nameExpr.name);
+                    auto localIt = locals_.find(key);
+                    if (localIt != locals_.end())
+                    {
+                        srcSlot = localIt->second;
+                        foundSrc = true;
+                    }
+                }
+
+                if (!foundSrc)
+                {
+                    // Complex expression - lower it
+                    LowerResult argResult = lowerExpr(*expr.args[i]);
+                    srcSlot = argResult.value;
+                }
+
+                // Allocate a fresh temporary fat pointer and copy contents
+                Value fatPtr = emitAlloca(16);
+
+                // Copy object pointer
+                Value srcObjPtr = emitLoad(Type(Type::Kind::Ptr), srcSlot);
+                emitStore(Type(Type::Kind::Ptr), fatPtr, srcObjPtr);
+
+                // Copy itable pointer
+                Value srcItablePtrAddr = emitGep(srcSlot, Value::constInt(8));
+                Value srcItablePtr = emitLoad(Type(Type::Kind::Ptr), srcItablePtrAddr);
+                Value dstItablePtrAddr = emitGep(fatPtr, Value::constInt(8));
+                emitStore(Type(Type::Kind::Ptr), dstItablePtrAddr, srcItablePtr);
+
+                processedArgs.push_back(fatPtr);
+            }
+            else
+            {
+                // Unexpected type - just pass as-is
+                processedArgs.push_back(args[i]);
+            }
+        }
+        else
+        {
+            // Non-interface parameter - use already lowered value
+            processedArgs.push_back(args[i]);
+        }
+    }
+
     if (retType.kind == Type::Kind::Void)
     {
-        emitCall(callee, args);
+        emitCall(callee, processedArgs);
         return {Value::constInt(0), retType};
     }
     else
     {
-        Value result = emitCallRet(retType, callee, args);
+        Value result = emitCallRet(retType, callee, processedArgs);
         return {result, retType};
     }
 }
@@ -892,7 +1149,7 @@ LowerResult Lowerer::lowerCall(const CallExpr &expr)
 LowerResult Lowerer::lowerIndex(const IndexExpr &expr)
 {
     // Get base type
-    PasType baseType = sema_->typeOf(*expr.base);
+    PasType baseType = typeOfExpr(*expr.base);
 
     if (baseType.kind == PasTypeKind::Array && !expr.indices.empty())
     {
@@ -941,9 +1198,28 @@ std::pair<Lowerer::Value, Lowerer::Type> Lowerer::getFieldAddress(
 {
     std::string fieldKey = toLower(fieldName);
 
-    // Calculate field offset by iterating through fields in order
-    // Fields are stored in a map, but we need consistent ordering
-    // For simplicity, use alphabetical order (same as iteration order in std::map)
+    // For class types, use the computed class layout which accounts for vptr
+    if (baseType.kind == PasTypeKind::Class)
+    {
+        std::string classKey = toLower(baseType.name);
+        auto layoutIt = classLayouts_.find(classKey);
+        if (layoutIt != classLayouts_.end())
+        {
+            const ClassLayout &layout = layoutIt->second;
+            for (const auto &field : layout.fields)
+            {
+                if (toLower(field.name) == fieldKey)
+                {
+                    Type fieldType = mapType(field.type);
+                    Value fieldAddr = emitGep(baseAddr, Value::constInt(static_cast<long long>(field.offset)));
+                    return {fieldAddr, fieldType};
+                }
+            }
+        }
+    }
+
+    // Fallback for records and other types: calculate field offset by iterating
+    // Fields are stored in a map, using alphabetical order
     int64_t offset = 0;
     Type fieldType = Type(Type::Kind::I64);
 
@@ -1021,7 +1297,33 @@ LowerResult Lowerer::lowerField(const FieldExpr &expr)
     }
 
     // Get base type
-    PasType baseType = sema_->typeOf(*expr.base);
+    PasType baseType = typeOfExpr(*expr.base);
+
+    // Handle interface method call (parameterless function)
+    if (baseType.kind == PasTypeKind::Interface)
+    {
+        // This is an interface method call like "animal.GetName" (for a function)
+        // We treat it as a zero-argument call through the interface
+        std::string ifaceName = baseType.name;
+        std::string methodName = expr.field;
+
+        // Get interface info
+        const InterfaceInfo *ifaceInfo = sema_->lookupInterface(toLower(ifaceName));
+        if (ifaceInfo)
+        {
+            auto methodIt = ifaceInfo->methods.find(toLower(methodName));
+            if (methodIt != ifaceInfo->methods.end())
+            {
+                // Create a synthetic CallExpr for the interface method call
+                // We don't need to set callee since we already have the FieldExpr
+                CallExpr syntheticCall(nullptr, {}, expr.loc);
+                syntheticCall.isInterfaceCall = true;
+                syntheticCall.interfaceName = ifaceName;
+
+                return lowerInterfaceMethodCall(expr, syntheticCall);
+            }
+        }
+    }
 
     if (baseType.kind == PasTypeKind::Record)
     {
@@ -1114,11 +1416,64 @@ LowerResult Lowerer::lowerField(const FieldExpr &expr)
             return {Value::constInt(0), Type(Type::Kind::I64)};
         }
 
-        // Check if this is a zero-argument method call (Pascal allows calling without parens)
+        // Check if this is a property access or a zero-argument method call (Pascal allows calling without parens)
         auto *classInfo = sema_->lookupClass(toLower(baseType.name));
         if (classInfo)
         {
             std::string methodKey = toLower(expr.field);
+            // 1) Property read lowering - check current class and base classes
+            const PropertyInfo *foundProperty = nullptr;
+            std::string definingClassName;
+            {
+                std::string cur = toLower(baseType.name);
+                while (!cur.empty())
+                {
+                    auto *ci = sema_->lookupClass(cur);
+                    if (!ci)
+                        break;
+                    auto pit = ci->properties.find(methodKey);
+                    if (pit != ci->properties.end())
+                    {
+                        foundProperty = &pit->second;
+                        definingClassName = ci->name;
+                        break;
+                    }
+                    if (ci->baseClass.empty())
+                        break;
+                    cur = toLower(ci->baseClass);
+                }
+            }
+            if (foundProperty)
+            {
+                const auto &p = *foundProperty;
+                // Getter via method
+                if (p.getter.kind == PropertyAccessor::Kind::Method)
+                {
+                    std::string funcName = definingClassName + "." + p.getter.name;
+                    Type retType = mapType(p.type);
+                    Value result = emitCallRet(retType, funcName, {objPtr});
+                    return {result, retType};
+                }
+                // Getter via field
+                if (p.getter.kind == PropertyAccessor::Kind::Field)
+                {
+                    // Build class type with fields from the defining class
+                    auto *defClassInfo = sema_->lookupClass(toLower(definingClassName));
+                    PasType classTypeWithFields = PasType::classType(definingClassName);
+                    if (defClassInfo)
+                    {
+                        for (const auto &[fname, finfo] : defClassInfo->fields)
+                        {
+                            classTypeWithFields.fields[fname] = std::make_shared<PasType>(finfo.type);
+                        }
+                    }
+                    auto [fieldAddr, fieldType] = getFieldAddress(objPtr, classTypeWithFields, p.getter.name);
+                    Value result = emitLoad(fieldType, fieldAddr);
+                    return {result, fieldType};
+                }
+            }
+
+            // 2) Zero-arg method sugar
             auto methodIt = classInfo->methods.find(methodKey);
             if (methodIt != classInfo->methods.end())
             {

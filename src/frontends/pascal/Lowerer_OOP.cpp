@@ -45,23 +45,13 @@ const ClassFieldLayout *ClassLayout::findField(const std::string &name) const
 }
 
 //===----------------------------------------------------------------------===//
-// Name Mangling
+// Name Mangling - Use common library functions
 //===----------------------------------------------------------------------===//
 
-std::string Lowerer::mangleMethod(const std::string &className, const std::string &methodName)
-{
-    return className + "." + methodName;
-}
-
-std::string Lowerer::mangleConstructor(const std::string &className, const std::string &ctorName)
-{
-    return className + "." + ctorName;
-}
-
-std::string Lowerer::mangleDestructor(const std::string &className, const std::string &dtorName)
-{
-    return className + "." + dtorName;
-}
+// Import common name mangling functions for use in this file
+using common::mangleMethod;
+using common::mangleConstructor;
+using common::mangleDestructor;
 
 //===----------------------------------------------------------------------===//
 // Class Scanning and Layout Computation
@@ -257,7 +247,7 @@ std::size_t Lowerer::getFieldOffset(const std::string &className, const std::str
 
 void Lowerer::emitOopModuleInit()
 {
-    if (classRegistrationOrder_.empty())
+    if (classRegistrationOrder_.empty() && interfaceRegistrationOrder_.empty())
         return;
 
     // Create __pas_oop_init function
@@ -271,6 +261,46 @@ void Lowerer::emitOopModuleInit()
     for (const auto &className : classRegistrationOrder_)
     {
         emitVtableRegistration(className);
+    }
+
+    // Register interface implementation tables for each class
+    for (const auto &className : classRegistrationOrder_)
+    {
+        const ClassInfo *classInfo = sema_->lookupClass(toLower(className));
+        if (!classInfo)
+            continue;
+
+        // Direct interfaces
+        for (const auto &ifaceName : classInfo->interfaces)
+        {
+            emitInterfaceTableRegistration(className, ifaceName);
+        }
+
+        // Also inherited interfaces from base class
+        if (!classInfo->baseClass.empty())
+        {
+            const ClassInfo *baseInfo = sema_->lookupClass(toLower(classInfo->baseClass));
+            if (baseInfo)
+            {
+                for (const auto &ifaceName : baseInfo->interfaces)
+                {
+                    // Only if not already registered as direct
+                    bool isDirect = false;
+                    for (const auto &directIface : classInfo->interfaces)
+                    {
+                        if (toLower(directIface) == toLower(ifaceName))
+                        {
+                            isDirect = true;
+                            break;
+                        }
+                    }
+                    if (!isDirect)
+                    {
+                        emitInterfaceTableRegistration(className, ifaceName);
+                    }
+                }
+            }
+        }
     }
 
     emitRetVoid();
@@ -436,8 +466,8 @@ LowerResult Lowerer::lowerMethodCall(const FieldExpr &fieldExpr, const CallExpr 
     LowerResult base = lowerExpr(*fieldExpr.base);
     Value selfPtr = base.value;
 
-    // Get the class name from the base type using semantic analyzer
-    PasType baseType = sema_->typeOf(*fieldExpr.base);
+    // Get the class name from the base type
+    PasType baseType = typeOfExpr(*fieldExpr.base);
     std::string className;
 
     if (baseType.kind == PasTypeKind::Class)
@@ -577,6 +607,384 @@ LowerResult Lowerer::lowerObjectFieldAccess(const FieldExpr &expr)
     Value fieldVal = emitLoad(fieldTy, fieldPtr);
 
     return {fieldVal, fieldTy};
+}
+
+//===----------------------------------------------------------------------===//
+// Interface Scanning and Layout Computation
+//===----------------------------------------------------------------------===//
+
+void Lowerer::scanInterfaces(const std::vector<std::unique_ptr<Decl>> &decls)
+{
+    // Collect all interface names first
+    std::vector<std::string> ifaceNames;
+    for (const auto &decl : decls)
+    {
+        if (decl && decl->kind == DeclKind::Interface)
+        {
+            auto &ifaceDecl = static_cast<const InterfaceDecl &>(*decl);
+            ifaceNames.push_back(ifaceDecl.name);
+        }
+    }
+
+    // Sort interfaces so base interfaces come before derived (topological sort)
+    std::vector<std::string> sorted;
+    std::set<std::string> visited;
+
+    std::function<void(const std::string &)> visit = [&](const std::string &name) {
+        std::string key = toLower(name);
+        if (visited.count(key))
+            return;
+        visited.insert(key);
+
+        const InterfaceInfo *info = sema_->lookupInterface(key);
+        if (info)
+        {
+            for (const auto &baseName : info->baseInterfaces)
+            {
+                visit(baseName);
+            }
+        }
+        sorted.push_back(name);
+    };
+
+    for (const auto &name : ifaceNames)
+    {
+        visit(name);
+    }
+
+    interfaceRegistrationOrder_ = sorted;
+
+    // Compute layouts in topological order
+    for (const auto &name : sorted)
+    {
+        computeInterfaceLayout(name);
+    }
+}
+
+void Lowerer::computeInterfaceLayout(const std::string &ifaceName)
+{
+    std::string key = toLower(ifaceName);
+    const InterfaceInfo *info = sema_->lookupInterface(key);
+    if (!info)
+        return;
+
+    InterfaceLayout layout;
+    layout.name = ifaceName;
+    layout.interfaceId = nextInterfaceId_++;
+
+    // Collect all methods including from base interfaces
+    std::map<std::string, MethodInfo> allMethods;
+    sema_->collectInterfaceMethods(key, allMethods);
+
+    // Assign slots in deterministic order (alphabetical by method name)
+    std::vector<std::string> methodNames;
+    for (const auto &[methodName, methodInfo] : allMethods)
+    {
+        methodNames.push_back(methodName);
+    }
+    std::sort(methodNames.begin(), methodNames.end());
+
+    int slotIndex = 0;
+    for (const auto &methodName : methodNames)
+    {
+        InterfaceSlot slot;
+        slot.methodName = allMethods[methodName].name; // Use original case
+        slot.slot = slotIndex++;
+        layout.slots.push_back(slot);
+    }
+
+    layout.slotCount = layout.slots.size();
+    interfaceLayouts_[key] = std::move(layout);
+}
+
+void Lowerer::computeInterfaceImplTables(const std::string &className)
+{
+    std::string classKey = toLower(className);
+    const ClassInfo *classInfo = sema_->lookupClass(classKey);
+    if (!classInfo)
+        return;
+
+    // Process each interface this class implements
+    for (const auto &ifaceName : classInfo->interfaces)
+    {
+        std::string ifaceKey = toLower(ifaceName);
+        auto layoutIt = interfaceLayouts_.find(ifaceKey);
+        if (layoutIt == interfaceLayouts_.end())
+            continue;
+
+        const InterfaceLayout &ifaceLayout = layoutIt->second;
+
+        InterfaceImplTable implTable;
+        implTable.className = className;
+        implTable.interfaceName = ifaceName;
+
+        // For each slot in the interface, find the implementing method in the class
+        for (const auto &slot : ifaceLayout.slots)
+        {
+            std::string methodKey = toLower(slot.methodName);
+
+            // Search for the method in this class or its base classes
+            std::string implClassName = className;
+            const ClassInfo *searchClass = classInfo;
+            while (searchClass)
+            {
+                auto methodIt = searchClass->methods.find(methodKey);
+                if (methodIt != searchClass->methods.end())
+                {
+                    implClassName = searchClass->name;
+                    break;
+                }
+                if (searchClass->baseClass.empty())
+                    break;
+                searchClass = sema_->lookupClass(toLower(searchClass->baseClass));
+            }
+
+            // Add mangled method name
+            std::string mangledName = mangleMethod(implClassName, slot.methodName);
+            implTable.implMethods.push_back(mangledName);
+        }
+
+        // Store with composite key
+        std::string tableKey = classKey + "." + ifaceKey;
+        interfaceImplTables_[tableKey] = std::move(implTable);
+    }
+
+    // Also handle interfaces inherited from base class
+    if (!classInfo->baseClass.empty())
+    {
+        std::string baseKey = toLower(classInfo->baseClass);
+        const ClassInfo *baseInfo = sema_->lookupClass(baseKey);
+        if (baseInfo)
+        {
+            for (const auto &ifaceName : baseInfo->interfaces)
+            {
+                std::string ifaceKey = toLower(ifaceName);
+                std::string tableKey = classKey + "." + ifaceKey;
+
+                // Only add if not already handled (direct implementation takes precedence)
+                if (interfaceImplTables_.find(tableKey) != interfaceImplTables_.end())
+                    continue;
+
+                auto layoutIt = interfaceLayouts_.find(ifaceKey);
+                if (layoutIt == interfaceLayouts_.end())
+                    continue;
+
+                const InterfaceLayout &ifaceLayout = layoutIt->second;
+
+                InterfaceImplTable implTable;
+                implTable.className = className;
+                implTable.interfaceName = ifaceName;
+
+                // For inherited interfaces, methods may come from this class or base
+                for (const auto &slot : ifaceLayout.slots)
+                {
+                    std::string methodKey = toLower(slot.methodName);
+
+                    std::string implClassName = className;
+                    const ClassInfo *searchClass = classInfo;
+                    while (searchClass)
+                    {
+                        auto methodIt = searchClass->methods.find(methodKey);
+                        if (methodIt != searchClass->methods.end())
+                        {
+                            implClassName = searchClass->name;
+                            break;
+                        }
+                        if (searchClass->baseClass.empty())
+                            break;
+                        searchClass = sema_->lookupClass(toLower(searchClass->baseClass));
+                    }
+
+                    std::string mangledName = mangleMethod(implClassName, slot.methodName);
+                    implTable.implMethods.push_back(mangledName);
+                }
+
+                interfaceImplTables_[tableKey] = std::move(implTable);
+            }
+        }
+    }
+}
+
+void Lowerer::emitInterfaceTableRegistration(const std::string &className, const std::string &ifaceName)
+{
+    std::string classKey = toLower(className);
+    std::string ifaceKey = toLower(ifaceName);
+    std::string tableKey = classKey + "." + ifaceKey;
+
+    auto implIt = interfaceImplTables_.find(tableKey);
+    if (implIt == interfaceImplTables_.end())
+        return;
+
+    const InterfaceImplTable &implTable = implIt->second;
+
+    auto layoutIt = interfaceLayouts_.find(ifaceKey);
+    if (layoutIt == interfaceLayouts_.end())
+        return;
+
+    const InterfaceLayout &ifaceLayout = layoutIt->second;
+
+    auto classLayoutIt = classLayouts_.find(classKey);
+    if (classLayoutIt == classLayouts_.end())
+        return;
+
+    // Allocate interface method table
+    std::size_t tableSize = ifaceLayout.slotCount * 8;
+    if (tableSize == 0)
+        tableSize = 8; // Minimum allocation
+
+    usedExterns_.insert("rt_alloc");
+    Value itablePtr = emitCallRet(Type(Type::Kind::Ptr), "rt_alloc",
+                                   {Value::constInt(static_cast<long long>(tableSize))});
+
+    // Populate interface method table slots
+    for (std::size_t i = 0; i < implTable.implMethods.size(); ++i)
+    {
+        Value slotPtr = emitGep(itablePtr, Value::constInt(static_cast<long long>(i * 8)));
+        Value funcPtr = Value::global(implTable.implMethods[i]);
+        emitStore(Type(Type::Kind::Ptr), slotPtr, funcPtr);
+    }
+
+    // Register with runtime: rt_register_interface_impl(classId, interfaceId, itable)
+    usedExterns_.insert("rt_register_interface_impl");
+    emitCall("rt_register_interface_impl",
+             {Value::constInt(classLayoutIt->second.classId),
+              Value::constInt(ifaceLayout.interfaceId),
+              itablePtr});
+}
+
+//===----------------------------------------------------------------------===//
+// Interface Method Call Lowering
+//===----------------------------------------------------------------------===//
+
+LowerResult Lowerer::lowerInterfaceMethodCall(const FieldExpr &fieldExpr, const CallExpr &callExpr)
+{
+    // Get interface name from callExpr (set by semantic analyzer)
+    std::string ifaceName = callExpr.interfaceName;
+    std::string methodName = fieldExpr.field;
+
+    // Get interface layout
+    const InterfaceLayout *ifaceLayout = getInterfaceLayout(ifaceName);
+    if (!ifaceLayout)
+    {
+        // Fallback: try to get from expression type
+        PasType ifaceType = typeOfExpr(*fieldExpr.base);
+        if (ifaceType.kind == PasTypeKind::Interface)
+        {
+            ifaceLayout = getInterfaceLayout(ifaceType.name);
+            ifaceName = ifaceType.name;
+        }
+    }
+
+    if (!ifaceLayout)
+    {
+        return {Value::constInt(0), Type(Type::Kind::I64)};
+    }
+
+    // Get method slot
+    int slot = getInterfaceSlot(ifaceName, methodName);
+    if (slot < 0)
+    {
+        return {Value::constInt(0), Type(Type::Kind::I64)};
+    }
+
+    // Get method return type from interface info
+    const InterfaceInfo *ifaceInfo = sema_->lookupInterface(toLower(ifaceName));
+    if (!ifaceInfo)
+    {
+        return {Value::constInt(0), Type(Type::Kind::I64)};
+    }
+
+    auto methodIt = ifaceInfo->methods.find(toLower(methodName));
+    Type retTy = Type(Type::Kind::Void);
+    if (methodIt != ifaceInfo->methods.end())
+    {
+        retTy = mapType(methodIt->second.returnType);
+    }
+
+    // Get the interface variable slot address (not the loaded value)
+    // We need the address of the fat pointer { objPtr, itablePtr }
+    Value ifaceSlot;
+    if (fieldExpr.base->kind == ExprKind::Name)
+    {
+        const auto &nameExpr = static_cast<const NameExpr &>(*fieldExpr.base);
+        std::string key = toLower(nameExpr.name);
+        auto localIt = locals_.find(key);
+        if (localIt != locals_.end())
+        {
+            ifaceSlot = localIt->second;
+        }
+        else
+        {
+            // Fallback: try lowering and hope it's a pointer
+            LowerResult base = lowerExpr(*fieldExpr.base);
+            ifaceSlot = base.value;
+        }
+    }
+    else
+    {
+        // For more complex expressions, we'd need to handle differently
+        LowerResult base = lowerExpr(*fieldExpr.base);
+        ifaceSlot = base.value;
+    }
+
+    // Interface call dispatch:
+    // Interface variable is a fat pointer: { objPtr (offset 0), itablePtr (offset 8) }
+
+    // Step 1: Load the object pointer from the interface variable (offset 0)
+    Value objPtr = emitLoad(Type(Type::Kind::Ptr), ifaceSlot);
+
+    // Step 2: Load the interface table pointer (offset 8)
+    Value itablePtrAddr = emitGep(ifaceSlot, Value::constInt(8));
+    Value itablePtr = emitLoad(Type(Type::Kind::Ptr), itablePtrAddr);
+
+    // Step 3: Load method pointer from itable
+    Value methodSlotPtr = emitGep(itablePtr, Value::constInt(static_cast<long long>(slot * 8)));
+    Value methodPtr = emitLoad(Type(Type::Kind::Ptr), methodSlotPtr);
+
+    // Step 4: Build argument list (object pointer as Self, then user args)
+    std::vector<Value> args;
+    args.push_back(objPtr); // Self parameter
+
+    for (const auto &arg : callExpr.args)
+    {
+        LowerResult argResult = lowerExpr(*arg);
+        args.push_back(argResult.value);
+    }
+
+    // Step 5: Call through function pointer
+    if (retTy.kind == Type::Kind::Void)
+    {
+        emitCallIndirect(methodPtr, args);
+        return {Value::constInt(0), Type(Type::Kind::Void)};
+    }
+    else
+    {
+        Value result = emitCallIndirectRet(retTy, methodPtr, args);
+        return {result, retTy};
+    }
+}
+
+int Lowerer::getInterfaceSlot(const std::string &ifaceName, const std::string &methodName) const
+{
+    auto it = interfaceLayouts_.find(toLower(ifaceName));
+    if (it == interfaceLayouts_.end())
+        return -1;
+
+    std::string methodKey = toLower(methodName);
+    for (const auto &slot : it->second.slots)
+    {
+        if (toLower(slot.methodName) == methodKey)
+            return slot.slot;
+    }
+    return -1;
+}
+
+const InterfaceLayout *Lowerer::getInterfaceLayout(const std::string &ifaceName) const
+{
+    auto it = interfaceLayouts_.find(toLower(ifaceName));
+    if (it == interfaceLayouts_.end())
+        return nullptr;
+    return &it->second;
 }
 
 } // namespace il::frontends::pascal

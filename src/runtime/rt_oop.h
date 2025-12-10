@@ -218,6 +218,24 @@ extern "C"
     /// @return Canonical vtable pointer or NULL.
     void **rt_get_class_vtable(int type_id);
 
+    /// What: Register an interface implementation table for a class.
+    /// Why:  Enable interface dispatch for classes implementing interfaces.
+    /// How:  Wraps rt_bind_interface with i64 parameters for IL compatibility.
+    ///
+    /// @param type_id   Class type id.
+    /// @param iface_id  Interface id.
+    /// @param itable    Interface method table (array of function pointers).
+    void rt_register_interface_impl(int64_t type_id, int64_t iface_id, void **itable);
+
+    /// What: Lookup the interface implementation table for a class type.
+    /// Why:  Enable interface assignment to resolve itable at compile-known types.
+    /// How:  Looks up the binding by (type_id, iface_id), walking base classes.
+    ///
+    /// @param type_id  Class type id.
+    /// @param iface_id Interface id.
+    /// @return Interface method table or NULL.
+    void **rt_get_interface_impl(int64_t type_id, int64_t iface_id);
+
 #ifdef __cplusplus
 }
 #endif

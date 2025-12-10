@@ -133,10 +133,10 @@ TEST(PascalV01RejectionTest, DereferenceRejected)
 }
 
 //===----------------------------------------------------------------------===//
-// With Statement Rejection Tests
+// With Statement Acceptance Tests (implemented in v0.1)
 //===----------------------------------------------------------------------===//
 
-TEST(PascalV01RejectionTest, WithStatementRejected)
+TEST(PascalV01RejectionTest, WithStatementAccepted)
 {
     DiagnosticEngine diag;
     bool result = analyzeProgram(
@@ -148,8 +148,8 @@ TEST(PascalV01RejectionTest, WithStatementRejected)
         "    x := 1;\n"
         "end.",
         diag);
-    EXPECT_FALSE(result);
-    EXPECT_NE(diag.errorCount(), 0u);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
 }
 
 //===----------------------------------------------------------------------===//

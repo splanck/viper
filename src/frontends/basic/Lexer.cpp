@@ -20,6 +20,7 @@
 
 #include "frontends/basic/Lexer.hpp"
 #include "frontends/common/CharUtils.hpp"
+#include "frontends/common/KeywordTable.hpp"
 #include <array>
 #include <cstddef>
 #include <string>
@@ -33,15 +34,15 @@ using common::char_utils::isDigit;
 using common::char_utils::isLetter;
 using common::char_utils::toUpper;
 
+// Use common keyword table utilities
+using common::keyword_table::KeywordEntry;
+using common::keyword_table::isKeywordTableSorted;
+using common::keyword_table::lookupKeywordBinary;
+
 namespace
 {
-struct KeywordEntry
-{
-    std::string_view lexeme;
-    TokenKind kind;
-};
 
-constexpr std::array<KeywordEntry, 103> kKeywordTable{{
+constexpr std::array<KeywordEntry<TokenKind>, 103> kKeywordTable{{
     {"ABS", TokenKind::KeywordAbs},
     {"ABSTRACT", TokenKind::KeywordAbstract},
     {"ADDFILE", TokenKind::KeywordAddfile},
@@ -148,57 +149,27 @@ constexpr std::array<KeywordEntry, 103> kKeywordTable{{
     {"WRITE", TokenKind::KeywordWrite},
 }};
 
-/// @brief Confirm the keyword table maintains the ordering required for binary search.
-///
-/// @details The lexer performs binary searches over @ref kKeywordTable.  Keeping
-///          the table sorted enables the compile-time static assert below to
-///          catch accidental edits that disturb the invariant.
-/// @return @c true when each lexeme is lexicographically ordered before its
-///         successor.
-constexpr bool isKeywordTableSorted()
-{
-    for (std::size_t i = 1; i < kKeywordTable.size(); ++i)
-    {
-        if (!(kKeywordTable[i - 1].lexeme < kKeywordTable[i].lexeme))
-            return false;
-    }
-    return true;
-}
-
-static_assert(isKeywordTableSorted(), "Keyword table must be sorted lexicographically");
+// Verify keyword table is sorted at compile time using common utility
+static_assert(isKeywordTableSorted(kKeywordTable), "Keyword table must be sorted lexicographically");
 
 /// @brief Lookup a candidate identifier in the keyword table.
 ///
-/// @details Performs a manual binary search across @ref kKeywordTable to avoid
-///          introducing dynamic allocations.  The search compares the provided
-///          lexeme against the pre-sorted static table and yields the
-///          corresponding token kind when a match is found.
+/// @details Uses the common binary search utility from KeywordTable.hpp.
+///          Special-cases "ME" keyword for case-insensitive matching.
 /// @param lexeme Uppercased identifier text to classify.
 /// @return Keyword kind when recognised; @ref TokenKind::Identifier otherwise.
 TokenKind lookupKeyword(std::string_view lexeme)
 {
+    // Special case: "ME" keyword (case-insensitive)
     if (lexeme.size() == 2)
     {
         if (toUpper(lexeme[0]) == 'M' && toUpper(lexeme[1]) == 'E')
             lexeme = "ME";
     }
-    auto first = kKeywordTable.begin();
-    auto last = kKeywordTable.end();
-    while (first < last)
-    {
-        auto mid = first + (last - first) / 2;
-        if (mid->lexeme == lexeme)
-            return mid->kind;
-        if (mid->lexeme < lexeme)
-        {
-            first = mid + 1;
-        }
-        else
-        {
-            last = mid;
-        }
-    }
-    return TokenKind::Identifier;
+
+    // Use common binary search utility
+    auto result = lookupKeywordBinary(kKeywordTable, lexeme);
+    return result.value_or(TokenKind::Identifier);
 }
 
 } // namespace

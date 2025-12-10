@@ -50,8 +50,23 @@ Lowerer::Module Lowerer::lower(Program &prog, SemanticAnalyzer &sema)
     nextClassId_ = 1;
     classRegistrationOrder_.clear();
 
+    // Clear interface state
+    interfaceLayouts_.clear();
+    interfaceImplTables_.clear();
+    nextInterfaceId_ = 1;
+    interfaceRegistrationOrder_.clear();
+
+    // Scan interfaces and compute layouts
+    scanInterfaces(prog.decls);
+
     // Scan classes and compute layouts/vtables
     scanClasses(prog.decls);
+
+    // Compute interface implementation tables for each class
+    for (const auto &className : classRegistrationOrder_)
+    {
+        computeInterfaceImplTables(className);
+    }
 
     // Emit OOP module initialization if there are classes
     emitOopModuleInit();
@@ -93,6 +108,12 @@ Lowerer::Module Lowerer::lower(Program &prog, SemanticAnalyzer &sema)
 
     size_t entryIdx = createBlock("entry");
     setBlock(entryIdx);
+
+    // Call OOP module init at start of main if there are classes
+    if (!classRegistrationOrder_.empty())
+    {
+        emitCall("__pas_oop_init", {});
+    }
 
     allocateLocals(prog.decls);
 

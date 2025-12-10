@@ -91,10 +91,12 @@ const char *tokenKindToString(TokenKind kind)
         case TokenKind::KwVirtual:      return "virtual";
         case TokenKind::KwWeak:         return "weak";
         case TokenKind::KwWhile:        return "while";
+        case TokenKind::KwWith:         return "with";
         case TokenKind::KwSet:          return "set";
         case TokenKind::KwForward:      return "forward";
         case TokenKind::KwInitialization: return "initialization";
         case TokenKind::KwFinalization: return "finalization";
+        case TokenKind::KwProperty:     return "property";
         case TokenKind::Plus:           return "+";
         case TokenKind::Minus:          return "-";
         case TokenKind::Star:           return "*";
@@ -186,10 +188,12 @@ const std::unordered_map<std::string, TokenKind> &keywordTable()
         {"virtual",        TokenKind::KwVirtual},
         {"weak",           TokenKind::KwWeak},
         {"while",          TokenKind::KwWhile},
+        {"with",           TokenKind::KwWith},
         {"set",            TokenKind::KwSet},
         {"forward",        TokenKind::KwForward},
         {"initialization", TokenKind::KwInitialization},
         {"finalization",   TokenKind::KwFinalization},
+        {"property",       TokenKind::KwProperty},
     };
     return table;
 }

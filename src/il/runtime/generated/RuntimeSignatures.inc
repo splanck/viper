@@ -981,6 +981,26 @@ DescriptorRow{"Viper.Console.PrintStr",
                   0,
                   RuntimeTrapClass::None},
 
+    // OOP interface implementation registration (Pascal interfaces)
+    DescriptorRow{"rt_register_interface_impl",
+                  std::nullopt,
+                  "void(i64,i64,ptr)",
+                  &DirectHandler<&rt_register_interface_impl, void, int64_t, int64_t, void **>::invoke,
+                  kManualLowering,
+                  nullptr,
+                  0,
+                  RuntimeTrapClass::None},
+
+    // OOP interface implementation lookup by type id (Pascal interfaces)
+    DescriptorRow{"rt_get_interface_impl",
+                  std::nullopt,
+                  "ptr(i64,i64)",
+                  &DirectHandler<&rt_get_interface_impl, void **, int64_t, int64_t>::invoke,
+                  kManualLowering,
+                  nullptr,
+                  0,
+                  RuntimeTrapClass::None},
+
     //===----------------------------------------------------------------------===//
     // System.IO.File helpers (static methods)
     DescriptorRow{"Viper.IO.File.Exists",

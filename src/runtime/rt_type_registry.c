@@ -454,3 +454,38 @@ void rt_register_class_with_base_rs(
     const char *name = qname ? rt_string_cstr(qname) : NULL;
     rt_register_class_with_base(type_id, vtable, name, (int)vslot_count, (int)base_type_id);
 }
+
+/// @brief Register an interface implementation for a class (IL-friendly wrapper).
+/// @param type_id   Class type id.
+/// @param iface_id  Interface id.
+/// @param itable    Interface method table.
+void rt_register_interface_impl(int64_t type_id, int64_t iface_id, void **itable)
+{
+    rt_bind_interface((int)type_id, (int)iface_id, itable);
+}
+
+/// @brief Lookup interface implementation table by type id and interface id.
+/// @param type_id  Class type id.
+/// @param iface_id Interface id.
+/// @return Interface method table or NULL.
+void **rt_get_interface_impl(int64_t type_id, int64_t iface_id)
+{
+    int tid = (int)type_id;
+    int iid = (int)iface_id;
+
+    // Check the exact type first.
+    void **itable = find_binding(tid, iid);
+    if (itable)
+        return itable;
+
+    // Walk the base class chain to find the interface binding.
+    const class_entry *ce = find_class_by_type(tid);
+    while (ce && ce->base_type_id >= 0)
+    {
+        itable = find_binding(ce->base_type_id, iid);
+        if (itable)
+            return itable;
+        ce = find_class_by_type(ce->base_type_id);
+    }
+    return NULL;
+}
