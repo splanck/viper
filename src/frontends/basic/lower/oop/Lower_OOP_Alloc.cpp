@@ -22,6 +22,7 @@
 #include "frontends/basic/Options.hpp"
 #include "frontends/basic/StringUtils.hpp"
 #include "frontends/basic/lower/oop/Lower_OOP_Internal.hpp"
+#include "il/runtime/RuntimeClassNames.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 #include "il/runtime/classes/RuntimeClasses.hpp"
 
@@ -63,7 +64,7 @@ Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr)
                     args.push_back(v.value);
                 }
                 // Heuristic return type: strings return Str; others Ptr
-                Type ret = (qname == std::string("Viper.String")) ? Type(Type::Kind::Str)
+                Type ret = (qname == il::runtime::RTCLASS_STRING) ? Type(Type::Kind::Str)
                                                                   : Type(Type::Kind::Ptr);
                 Value obj = emitCallRet(ret, c.ctor, args);
                 return {obj, ret};
@@ -71,7 +72,7 @@ Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr)
         }
     }
 
-    // Minimal runtime type bridging: NEW Viper.Text.StringBuilder() (System.* alias supported)
+    // Minimal runtime type bridging: NEW Viper.Text.StringBuilder()
     if (FrontendOptions::enableRuntimeTypeBridging())
     {
         if (expr.args.empty())
@@ -87,19 +88,11 @@ Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr)
                 {
                     isQualified = true;
                 }
-                // Also accept legacy alias: Viper.System.Text.StringBuilder
-                if (!isQualified && q.size() == 4 && string_utils::iequals(q[0], "Viper") &&
-                    string_utils::iequals(q[1], "System") && string_utils::iequals(q[2], "Text") &&
-                    string_utils::iequals(q[3], "StringBuilder"))
-                {
-                    isQualified = true;
-                }
             }
             // Fallback: check dot-joined className
             if (!isQualified)
             {
-                if (string_utils::iequals(expr.className, "Viper.Text.StringBuilder") ||
-                    string_utils::iequals(expr.className, "Viper.System.Text.StringBuilder"))
+                if (string_utils::iequals(expr.className, std::string(il::runtime::RTCLASS_STRINGBUILDER)))
                     isQualified = true;
             }
             if (isQualified)

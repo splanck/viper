@@ -31,10 +31,60 @@ inline std::string toLower(const std::string &s)
 
 void Lowerer::lowerDeclarations(Program &prog)
 {
-    allocateLocals(prog.decls);
+    allocateLocals(prog.decls, /*isMain=*/true);
 }
 
-void Lowerer::allocateLocals(const std::vector<std::unique_ptr<Decl>> &decls)
+void Lowerer::registerGlobals(const std::vector<std::unique_ptr<Decl>> &decls)
+{
+    for (const auto &decl : decls)
+    {
+        if (!decl || decl->kind != DeclKind::Var)
+            continue;
+
+        auto &varDecl = static_cast<const VarDecl &>(*decl);
+        if (!varDecl.type)
+            continue;
+
+        PasType type = sema_->resolveType(*varDecl.type);
+        for (const auto &name : varDecl.names)
+        {
+            std::string key = toLower(name);
+            globalTypes_[key] = type;
+        }
+    }
+}
+
+std::string Lowerer::getModvarAddrHelper(Type::Kind kind)
+{
+    switch (kind)
+    {
+        case Type::Kind::I64:
+            return "rt_modvar_addr_i64";
+        case Type::Kind::F64:
+            return "rt_modvar_addr_f64";
+        case Type::Kind::I1:
+            return "rt_modvar_addr_i1";
+        case Type::Kind::Str:
+            return "rt_modvar_addr_str";
+        case Type::Kind::Ptr:
+        default:
+            return "rt_modvar_addr_ptr";
+    }
+}
+
+Lowerer::Value Lowerer::getGlobalVarAddr(const std::string &name, const PasType &type)
+{
+    Type ilType = mapType(type);
+    std::string helper = getModvarAddrHelper(ilType.kind);
+    usedExterns_.insert(helper);
+
+    std::string globalName = getStringGlobal(name);
+    Value nameStr = emitConstStr(globalName);
+    Value addr = emitCallRet(Type(Type::Kind::Ptr), helper, {nameStr});
+    return addr;
+}
+
+void Lowerer::allocateLocals(const std::vector<std::unique_ptr<Decl>> &decls, bool isMain)
 {
     for (const auto &decl : decls)
     {
@@ -54,6 +104,11 @@ void Lowerer::allocateLocals(const std::vector<std::unique_ptr<Decl>> &decls)
             for (const auto &name : varDecl.names)
             {
                 std::string key = toLower(name);
+
+                // Skip globals only when processing main - locals in procedures can shadow globals
+                if (isMain && globalTypes_.find(key) != globalTypes_.end())
+                    continue;
+
                 // Store type for lowerName to retrieve
                 localTypes_[key] = type;
                 int64_t size = sizeOf(type);
@@ -102,10 +157,13 @@ void Lowerer::initializeLocal(const std::string &name, const PasType &type)
         case PasTypeKind::Pointer:
         case PasTypeKind::Class:
         case PasTypeKind::Interface:
-        case PasTypeKind::Array:
         case PasTypeKind::Optional:
             // Initialize to nil
             emitStore(Type(Type::Kind::Ptr), slot, Value::null());
+            break;
+        case PasTypeKind::Array:
+            // Static arrays are inline storage; no initialization needed
+            // (elements will be initialized when assigned)
             break;
         default:
             // Default: zero initialize

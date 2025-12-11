@@ -77,10 +77,15 @@ int FrameBuilder::assignAlignedSlot(int sizeBytes, int alignBytes)
     const int mod = (-aligned) % align; // since aligned is negative
     if (mod != 0)
         aligned -= (align - mod);
-    const int offset = aligned;
-    nextOffset_ = offset - std::max(8, sizeBytes); // allocate at least 8 bytes per slot
-    minOffset_ = std::min(minOffset_, offset);
-    return offset;
+    const int topOffset = aligned;
+    const int allocSize = std::max(8, sizeBytes);
+    nextOffset_ = topOffset - allocSize; // allocate at least 8 bytes per slot
+    minOffset_ = std::min(minOffset_, topOffset);
+    // Return the BASE address (lowest address) of the allocated region.
+    // For scalars this equals topOffset - 8 + 8 = topOffset.
+    // For arrays this is the start of element 0.
+    // Formula: topOffset - sizeBytes + 8 (assuming 8-byte element alignment)
+    return topOffset - sizeBytes + 8;
 }
 
 } // namespace viper::codegen::aarch64

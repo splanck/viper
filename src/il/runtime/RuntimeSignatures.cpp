@@ -1456,7 +1456,15 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
                   0,
                   RuntimeTrapClass::None},
     // --- Graphics runtime helpers ---
-    DescriptorRow{"rt_gfx_window_new",
+    DescriptorRow{"Viper.Graphics.Window.New",
+                  std::nullopt,
+                  "ptr(i64,i64,string)",
+                  &DirectHandler<&rt_gfx_window_new, void *, int64_t, int64_t, rt_string>::invoke,
+                  kManualLowering,
+                  nullptr,
+                  0,
+                  RuntimeTrapClass::None},
+    DescriptorRow{"rt_gfx_window_new", // Legacy alias
                   std::nullopt,
                   "ptr(i64,i64,string)",
                   &DirectHandler<&rt_gfx_window_new, void *, int64_t, int64_t, rt_string>::invoke,

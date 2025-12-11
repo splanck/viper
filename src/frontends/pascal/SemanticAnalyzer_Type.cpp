@@ -98,6 +98,9 @@ PasType SemanticAnalyzer::resolveType(TypeNode &typeNode)
             if (!arr.elementType)
                 return remember(PasType::unknown());
 
+            // Collect dimension sizes for fixed arrays
+            std::vector<int64_t> dimSizes;
+
             // Validate dimension sizes for fixed arrays
             for (auto &dim : arr.dimensions)
             {
@@ -107,6 +110,7 @@ PasType SemanticAnalyzer::resolveType(TypeNode &typeNode)
                     if (!isConstantExpr(*dim.size))
                     {
                         error(*dim.size, "array dimension must be a compile-time constant");
+                        dimSizes.push_back(0); // Use 0 as error placeholder
                         continue;
                     }
 
@@ -116,6 +120,7 @@ PasType SemanticAnalyzer::resolveType(TypeNode &typeNode)
                         dimType.kind != PasTypeKind::Unknown)
                     {
                         error(*dim.size, "array dimension must be an integer");
+                        dimSizes.push_back(0);
                         continue;
                     }
 
@@ -124,12 +129,22 @@ PasType SemanticAnalyzer::resolveType(TypeNode &typeNode)
                     if (dimValue <= 0)
                     {
                         error(*dim.size, "array dimension must be positive");
+                        dimSizes.push_back(0);
                     }
+                    else
+                    {
+                        dimSizes.push_back(dimValue);
+                    }
+                }
+                else
+                {
+                    // Dynamic dimension - size is 0
+                    dimSizes.push_back(0);
                 }
             }
 
             PasType elem = resolveType(*arr.elementType);
-            return remember(PasType::array(elem, arr.dimensions.size()));
+            return remember(PasType::array(elem, arr.dimensions.size(), std::move(dimSizes)));
         }
         case TypeKind::Record:
         {

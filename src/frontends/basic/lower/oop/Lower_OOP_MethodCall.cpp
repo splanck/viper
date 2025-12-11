@@ -23,6 +23,7 @@
 #include "frontends/basic/lower/oop/Lower_OOP_Internal.hpp"
 #include "frontends/basic/sem/OverloadResolution.hpp"
 #include "frontends/basic/sem/RuntimeMethodIndex.hpp"
+#include "il/runtime/RuntimeClassNames.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 #include "il/runtime/classes/RuntimeClasses.hpp"
 
@@ -226,7 +227,7 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
         {
             RVal baseProbe = lowerExpr(*expr.base);
             if (baseProbe.type.kind == Type::Kind::Str)
-                qClass = "Viper.String";
+                qClass = std::string(il::runtime::RTCLASS_STRING);
         }
         // Only consult the runtime method catalog for true runtime classes
         auto isRuntimeClass = [&](const std::string &qn)
@@ -308,8 +309,8 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
             std::vector<Type> paramTypes;
             paramTypes.reserve(1 + info->args.size());
             // Receiver: strings use str; others default to ptr
-            paramTypes.push_back(qClass == "Viper.String" ? Type(Type::Kind::Str)
-                                                          : Type(Type::Kind::Ptr));
+            paramTypes.push_back(qClass == il::runtime::RTCLASS_STRING ? Type(Type::Kind::Str)
+                                                                        : Type(Type::Kind::Ptr));
             for (BasicType bt : info->args)
                 paramTypes.push_back(Type(mapBasicToIl(bt)));
 
@@ -340,9 +341,7 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
             }
 
             auto &midx = runtimeMethodIndex();
-            auto info = midx.find("Viper.Object", expr.method, expr.args.size());
-            if (!info)
-                info = midx.find("Viper.System.Object", expr.method, expr.args.size());
+            auto info = midx.find(std::string(il::runtime::RTCLASS_OBJECT), expr.method, expr.args.size());
             if (info && !userClassHasMethod)
             {
                 // Lower base and build (receiver, args...)

@@ -34,6 +34,7 @@
 #include "frontends/basic/StringUtils.hpp"
 #include "frontends/basic/sem/OverloadResolution.hpp"
 #include "frontends/basic/sem/RuntimePropertyIndex.hpp"
+#include "il/runtime/RuntimeClassNames.hpp"
 
 #include <cassert>
 
@@ -474,13 +475,11 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
                         qClass = lowerer_.qualify(cls);
                 }
                 if (qClass.empty() && baseVal.type.kind == Lowerer::Type::Kind::Str)
-                    qClass = "Viper.String";
+                    qClass = std::string(il::runtime::RTCLASS_STRING);
                 if (!qClass.empty())
                 {
                     auto &pidx = runtimePropertyIndex();
                     auto prop = pidx.find(qClass, member->member);
-                    if (!prop && string_utils::iequals(qClass, "Viper.String"))
-                        prop = pidx.find("Viper.System.String", member->member);
                     if (prop)
                     {
                         if (prop->readonly || prop->setter.empty())

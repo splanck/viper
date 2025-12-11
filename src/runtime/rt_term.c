@@ -282,11 +282,40 @@ static int readkey_blocking(void)
 /// @brief Poll the POSIX terminal for a key without blocking.
 /// @details Places the terminal in non-canonical, non-blocking mode and attempts
 ///          to read a byte.  When successful the byte is stored in @p out and the
-///          function returns 1.
+///          function returns 1.  When stdin is a pipe or redirected file, uses
+///          select() to poll for available data without modifying terminal settings.
 static int readkey_nonblocking(int *out)
 {
-    struct termios orig, raw;
     int fd = fileno(stdin);
+
+    // Check if stdin is a TTY or a pipe/file
+    if (!isatty(fd))
+    {
+        // For pipes/files: use select() to check for data without blocking
+        fd_set readfds;
+        FD_ZERO(&readfds);
+        FD_SET(fd, &readfds);
+
+        struct timeval timeout;
+        timeout.tv_sec = 0;
+        timeout.tv_usec = 0;
+
+        int ret = select(fd + 1, &readfds, NULL, NULL, &timeout);
+        if (ret > 0 && FD_ISSET(fd, &readfds))
+        {
+            unsigned char ch = 0;
+            ssize_t n = read(fd, &ch, 1);
+            if (n == 1)
+            {
+                *out = (int)ch;
+                return 1;
+            }
+        }
+        return 0;
+    }
+
+    // For TTY: use termios to disable canonical mode
+    struct termios orig, raw;
     if (tcgetattr(fd, &orig) != 0)
         return 0;
     raw = orig;
@@ -442,11 +471,29 @@ int32_t rt_keypressed(void)
 #else
 /// @brief Check if a key is available in the input buffer without reading it.
 /// @details Uses select() with zero timeout to poll the terminal. Returns non-zero
-///          if a key is pending, zero otherwise.
+///          if a key is pending, zero otherwise. When stdin is a pipe or file,
+///          directly uses select() without modifying terminal settings.
 int32_t rt_keypressed(void)
 {
-    struct termios orig, raw;
     int fd = fileno(stdin);
+
+    // For pipes/files: just use select directly
+    if (!isatty(fd))
+    {
+        fd_set readfds;
+        FD_ZERO(&readfds);
+        FD_SET(fd, &readfds);
+
+        struct timeval timeout;
+        timeout.tv_sec = 0;
+        timeout.tv_usec = 0;
+
+        int ret = select(fd + 1, &readfds, NULL, NULL, &timeout);
+        return (ret > 0 && FD_ISSET(fd, &readfds)) ? 1 : 0;
+    }
+
+    // For TTY: need to put terminal in raw mode first
+    struct termios orig, raw;
     if (tcgetattr(fd, &orig) != 0)
         return 0;
     raw = orig;

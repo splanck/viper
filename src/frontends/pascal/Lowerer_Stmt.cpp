@@ -236,6 +236,17 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
             return;
         }
 
+        // Check for global variable assignment
+        auto globalIt = globalTypes_.find(key);
+        if (globalIt != globalTypes_.end())
+        {
+            Type ilType = mapType(globalIt->second);
+            Value addr = getGlobalVarAddr(key, globalIt->second);
+            LowerResult value = lowerExpr(*stmt.value);
+            emitStore(ilType, addr, value.value);
+            return;
+        }
+
         // Check 'with' contexts for field/property assignment
         for (auto it = withContexts_.rbegin(); it != withContexts_.rend(); ++it)
         {
@@ -471,6 +482,7 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
                         getFieldAddress(objPtr, classTypeWithFields, fieldExpr.field);
                     LowerResult value = lowerExpr(*stmt.value);
                     emitStore(fieldType, fieldAddr, value.value);
+                    return;
                 }
                 else
                 {
@@ -478,7 +490,87 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
                         getFieldAddress(baseAddr, baseType, fieldExpr.field);
                     LowerResult value = lowerExpr(*stmt.value);
                     emitStore(fieldType, fieldAddr, value.value);
+                    return;
                 }
+            }
+            // Check for global class/record variable
+            auto globalIt = globalTypes_.find(key);
+            if (globalIt != globalTypes_.end() && baseType.kind == PasTypeKind::Class)
+            {
+                // Get global address and load object pointer
+                Value globalAddr = getGlobalVarAddr(key, globalIt->second);
+                Value objPtr = emitLoad(Type(Type::Kind::Ptr), globalAddr);
+
+                // Search for property in class hierarchy (same as local handling)
+                std::string propKey = toLower(fieldExpr.field);
+                const PropertyInfo *foundProperty = nullptr;
+                std::string definingClassName;
+                {
+                    std::string cur = toLower(baseType.name);
+                    while (!cur.empty())
+                    {
+                        auto *ci = sema_->lookupClass(cur);
+                        if (!ci)
+                            break;
+                        auto pit = ci->properties.find(propKey);
+                        if (pit != ci->properties.end())
+                        {
+                            foundProperty = &pit->second;
+                            definingClassName = ci->name;
+                            break;
+                        }
+                        if (ci->baseClass.empty())
+                            break;
+                        cur = toLower(ci->baseClass);
+                    }
+                }
+                if (foundProperty)
+                {
+                    LowerResult value = lowerExpr(*stmt.value);
+                    const auto &p = *foundProperty;
+                    if (p.setter.kind == PropertyAccessor::Kind::Method)
+                    {
+                        std::string funcName = definingClassName + "." + p.setter.name;
+                        emitCall(funcName, {objPtr, value.value});
+                        return;
+                    }
+                    if (p.setter.kind == PropertyAccessor::Kind::Field)
+                    {
+                        auto *defClassInfo = sema_->lookupClass(toLower(definingClassName));
+                        PasType classTypeWithFields = PasType::classType(definingClassName);
+                        if (defClassInfo)
+                        {
+                            for (const auto &[fname, finfo] : defClassInfo->fields)
+                            {
+                                classTypeWithFields.fields[fname] =
+                                    std::make_shared<PasType>(finfo.type);
+                            }
+                        }
+                        auto [faddr, ftype] =
+                            getFieldAddress(objPtr, classTypeWithFields, p.setter.name);
+                        emitStore(ftype, faddr, value.value);
+                        return;
+                    }
+                }
+
+                // Default: direct field store
+                auto *classInfo = sema_->lookupClass(toLower(baseType.name));
+                PasType classTypeWithFields = baseType;
+                if (classInfo)
+                {
+                    for (const auto &[fname, finfo] : classInfo->fields)
+                    {
+                        classTypeWithFields.fields[fname] =
+                            std::make_shared<PasType>(finfo.type);
+                    }
+                }
+
+                // Get field address and store value
+                auto [fieldAddr, fieldType] =
+                    getFieldAddress(objPtr, classTypeWithFields, fieldExpr.field);
+                LowerResult value = lowerExpr(*stmt.value);
+                emitStore(fieldType, fieldAddr, value.value);
+                return;
             }
             else if (!currentClassName_.empty())
             {

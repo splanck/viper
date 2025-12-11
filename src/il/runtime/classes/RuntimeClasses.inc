@@ -181,7 +181,7 @@ RUNTIME_CLASS(
     "Viper.Graphics.Window",
     RTCLS_GfxWindow,
     "obj",
-    "rt_gfx_window_new",
+    "Viper.Graphics.Window.New",
     RUNTIME_PROPS(RUNTIME_PROP("Width", "i64", "rt_gfx_window_width", nullptr),
                   RUNTIME_PROP("Height", "i64", "rt_gfx_window_height", nullptr),
                   RUNTIME_PROP("ShouldClose", "i64", "rt_gfx_window_should_close", nullptr)),
@@ -250,3 +250,44 @@ RUNTIME_CLASS(
         RUNTIME_METHOD("ContainsKey", "i64(str)", "Viper.Collections.Dictionary.ContainsKey"),
         RUNTIME_METHOD("Remove", "i64(str)", "Viper.Collections.Dictionary.Remove"),
         RUNTIME_METHOD("Clear", "void()", "Viper.Collections.Dictionary.Clear")))
+
+// Terminal/console control utilities
+// Notes:
+// - Static utility class for terminal I/O operations.
+// - SetColor takes foreground and background color indices.
+// - SetPosition uses 1-based column, row coordinates.
+// - BeginBatch/EndBatch group drawing operations for efficiency.
+RUNTIME_CLASS(
+    "Viper.Terminal",
+    RTCLS_Terminal,
+    "obj",
+    "", /* static utility class; no instance ctor */
+    RUNTIME_PROPS(),
+    RUNTIME_METHODS(
+        RUNTIME_METHOD("Clear", "void()", "Viper.Terminal.Clear"),
+        RUNTIME_METHOD("SetColor", "void(i64,i64)", "Viper.Terminal.SetColor"),
+        RUNTIME_METHOD("SetPosition", "void(i64,i64)", "Viper.Terminal.SetPosition"),
+        RUNTIME_METHOD("SetCursorVisible", "void(i64)", "Viper.Terminal.SetCursorVisible"),
+        RUNTIME_METHOD("SetAltScreen", "void(i64)", "Viper.Terminal.SetAltScreen"),
+        RUNTIME_METHOD("Bell", "void()", "Viper.Terminal.Bell"),
+        RUNTIME_METHOD("InKey", "str()", "Viper.Terminal.InKey"),
+        RUNTIME_METHOD("GetKey", "str()", "Viper.Terminal.GetKey"),
+        RUNTIME_METHOD("GetKeyTimeout", "str(i64)", "Viper.Terminal.GetKeyTimeout"),
+        RUNTIME_METHOD("BeginBatch", "void()", "Viper.Terminal.BeginBatch"),
+        RUNTIME_METHOD("EndBatch", "void()", "Viper.Terminal.EndBatch"),
+        RUNTIME_METHOD("Flush", "void()", "Viper.Terminal.Flush")))
+
+// Time and delay utilities
+// Notes:
+// - Static utility class for time-related operations.
+// - SleepMs pauses execution for the specified milliseconds.
+// - GetTickCount returns milliseconds since an arbitrary epoch.
+RUNTIME_CLASS(
+    "Viper.Time",
+    RTCLS_Time,
+    "obj",
+    "", /* static utility class; no instance ctor */
+    RUNTIME_PROPS(),
+    RUNTIME_METHODS(
+        RUNTIME_METHOD("SleepMs", "void(i64)", "Viper.Time.SleepMs"),
+        RUNTIME_METHOD("GetTickCount", "i64()", "Viper.Time.GetTickCount")))

@@ -99,8 +99,25 @@ int64_t Lowerer::sizeOf(const PasType &pasType)
         case PasTypeKind::String:
         case PasTypeKind::Pointer:
         case PasTypeKind::Class:
-        case PasTypeKind::Array:
             return 8;
+        case PasTypeKind::Array:
+        {
+            // Fixed-size arrays are stored inline
+            // Calculate total size = product of dimensions * element size
+            if (pasType.elementType && !pasType.arraySizes.empty())
+            {
+                int64_t totalElements = 1;
+                for (int64_t dimSize : pasType.arraySizes)
+                {
+                    if (dimSize > 0)
+                        totalElements *= dimSize;
+                }
+                int64_t elemSize = sizeOf(*pasType.elementType);
+                return totalElements * elemSize;
+            }
+            // Dynamic arrays are pointers
+            return 8;
+        }
         case PasTypeKind::Interface:
             // Interface is a fat pointer: { objPtr, itablePtr }
             return 16;

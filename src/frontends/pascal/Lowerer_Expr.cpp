@@ -146,6 +146,16 @@ LowerResult Lowerer::lowerName(const NameExpr &expr)
         return {loaded, ilType};
     }
 
+    // Check for global variables (module-level, accessible from all functions)
+    auto globalIt = globalTypes_.find(key);
+    if (globalIt != globalTypes_.end())
+    {
+        Type ilType = mapType(globalIt->second);
+        Value addr = getGlobalVarAddr(key, globalIt->second);
+        Value loaded = emitLoad(ilType, addr);
+        return {loaded, ilType};
+    }
+
     // Check 'with' contexts for field/property access (innermost first)
     for (auto it = withContexts_.rbegin(); it != withContexts_.rend(); ++it)
     {
@@ -1392,7 +1402,19 @@ LowerResult Lowerer::lowerField(const FieldExpr &expr)
                 objPtr = emitLoad(Type(Type::Kind::Ptr), it->second);
                 foundObjPtr = true;
             }
-            else if (!currentClassName_.empty())
+            // Check for global class variable
+            if (!foundObjPtr)
+            {
+                auto globalIt = globalTypes_.find(key);
+                if (globalIt != globalTypes_.end())
+                {
+                    // Load the object pointer from the global variable
+                    Value globalAddr = getGlobalVarAddr(key, globalIt->second);
+                    objPtr = emitLoad(Type(Type::Kind::Ptr), globalAddr);
+                    foundObjPtr = true;
+                }
+            }
+            if (!foundObjPtr && !currentClassName_.empty())
             {
                 // Check if it's a class field accessed inside a method
                 auto *classInfo = sema_->lookupClass(toLower(currentClassName_));

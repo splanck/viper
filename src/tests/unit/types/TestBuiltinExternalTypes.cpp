@@ -32,20 +32,10 @@ int main()
     assert(ns.typeExists("Viper.IO.File"));
     assert(ns.typeExists("Viper.Collections.List"));
 
-    // Compat aliases (Viper.System.*) should also exist for backward compatibility
-    assert(ns.typeExists("Viper.System.Object"));
-    assert(ns.typeExists("Viper.System.String"));
-    assert(ns.typeExists("Viper.System.Text.StringBuilder"));
-    assert(ns.typeExists("Viper.System.IO.File"));
-    assert(ns.typeExists("Viper.System.Collections.List"));
-
     // Namespaces should exist for imports
     assert(ns.namespaceExists("Viper"));
     assert(ns.namespaceExists("Viper.Text"));
     assert(ns.namespaceExists("Viper.IO"));
     assert(ns.namespaceExists("Viper.Collections"));
-    // Compat namespaces
-    assert(ns.namespaceExists("Viper.System"));
-    assert(ns.namespaceExists("Viper.System.Text"));
     return 0;
 }

@@ -675,6 +675,12 @@ target_link_libraries(test_pascal_field_debug PRIVATE viper_testing fe_pascal)
 add_test(NAME test_pascal_field_debug COMMAND test_pascal_field_debug)
 set_tests_properties(test_pascal_field_debug PROPERTIES LABELS pascal)
 
+# Pascal bugfix tests (BUG-001, BUG-002, BUG-004)
+add_executable(test_pascal_bugfixes ${CMAKE_CURRENT_SOURCE_DIR}/frontends/pascal/PascalBugfixTests.cpp)
+target_link_libraries(test_pascal_bugfixes PRIVATE viper_testing fe_pascal)
+add_test(NAME test_pascal_bugfixes COMMAND test_pascal_bugfixes)
+set_tests_properties(test_pascal_bugfixes PROPERTIES LABELS pascal)
+
 # =============================================================================
 # Test Labels Configuration
 # =============================================================================

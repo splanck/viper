@@ -70,6 +70,9 @@ Lowerer::Module Lowerer::lower(Program &prog, SemanticAnalyzer &sema)
     // Emit OOP module initialization if there are classes
     emitOopModuleInit();
 
+    // Register global variables (before lowering procedures so they can access them)
+    registerGlobals(prog.decls);
+
     // Lower all function/procedure declarations
     for (const auto &decl : prog.decls)
     {
@@ -114,7 +117,7 @@ Lowerer::Module Lowerer::lower(Program &prog, SemanticAnalyzer &sema)
         emitCall("__pas_oop_init", {});
     }
 
-    allocateLocals(prog.decls);
+    allocateLocals(prog.decls, /*isMain=*/true);
 
     if (prog.body)
     {

@@ -23,6 +23,7 @@
 #include "frontends/basic/lower/oop/Lower_OOP_Internal.hpp"
 #include "frontends/basic/sem/OverloadResolution.hpp"
 #include "frontends/basic/sem/RuntimePropertyIndex.hpp"
+#include "il/runtime/RuntimeClassNames.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 #include "il/runtime/classes/RuntimeClasses.hpp"
 
@@ -192,7 +193,7 @@ Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr)
                     qClass = qualify(cls);
             }
             if (qClass.empty() && base.type.kind == Type::Kind::Str)
-                qClass = "Viper.String";
+                qClass = std::string(il::runtime::RTCLASS_STRING);
 
             // Only use runtime property catalog for known runtime classes
             auto isRuntimeClass = [&](const std::string &qn)
@@ -206,8 +207,6 @@ Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr)
             if (!qClass.empty() && isRuntimeClass(qClass))
             {
                 auto prop = runtimePropertyIndex().find(qClass, expr.member);
-                if (!prop && string_utils::iequals(qClass, "Viper.String"))
-                    prop = runtimePropertyIndex().find("Viper.System.String", expr.member);
                 if (prop)
                 {
                     // Map scalar token to IL type

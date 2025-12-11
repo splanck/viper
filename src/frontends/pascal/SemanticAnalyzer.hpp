@@ -73,6 +73,9 @@ struct PasType
     /// For Array: dimension count (0 = dynamic array)
     size_t dimensions{0};
 
+    /// For Array: actual sizes of each dimension (e.g., [10] for array[10])
+    std::vector<int64_t> arraySizes;
+
     /// For Optional: wrapped inner type
     std::shared_ptr<PasType> innerType;
 
@@ -160,12 +163,13 @@ struct PasType
     }
 
     /// @brief Create an array type with @p elem element type.
-    static PasType array(PasType elem, size_t dims = 0)
+    static PasType array(PasType elem, size_t dims = 0, std::vector<int64_t> sizes = {})
     {
         PasType t;
         t.kind = PasTypeKind::Array;
         t.elementType = std::make_shared<PasType>(std::move(elem));
         t.dimensions = dims;
+        t.arraySizes = std::move(sizes);
         return t;
     }
 

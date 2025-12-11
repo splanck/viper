@@ -158,6 +158,7 @@ class Lowerer
     size_t currentBlockIdx_{0};           ///< Current block index
     std::map<std::string, Value> locals_; ///< Variable -> alloca slot
     std::map<std::string, PasType> localTypes_;        ///< Variable -> type (for procedure locals)
+    std::map<std::string, PasType> globalTypes_;       ///< Global variable -> type (persists across funcs)
     std::map<std::string, Value> constants_;           ///< Constant -> value
     ::il::frontends::common::StringTable stringTable_; ///< String interning table
     ::il::frontends::common::LoopContextStack loopStack_; ///< Loop context stack
@@ -238,10 +239,21 @@ class Lowerer
     void lowerDeclarations(Program &prog);
 
     /// @brief Allocate local variables for a scope.
-    void allocateLocals(const std::vector<std::unique_ptr<Decl>> &decls);
+    /// @param decls The declarations to process
+    /// @param isMain If true, skip variables that are registered as globals
+    void allocateLocals(const std::vector<std::unique_ptr<Decl>> &decls, bool isMain = false);
 
     /// @brief Initialize a local variable with default value.
     void initializeLocal(const std::string &name, const PasType &type);
+
+    /// @brief Register global variables from program declarations.
+    void registerGlobals(const std::vector<std::unique_ptr<Decl>> &decls);
+
+    /// @brief Get the runtime helper for a type (e.g., "rt_modvar_addr_i64").
+    std::string getModvarAddrHelper(Type::Kind kind);
+
+    /// @brief Get the address of a global variable using runtime storage.
+    Value getGlobalVarAddr(const std::string &name, const PasType &type);
 
     /// @brief Lower a function declaration (create IL function).
     void lowerFunctionDecl(FunctionDecl &decl);

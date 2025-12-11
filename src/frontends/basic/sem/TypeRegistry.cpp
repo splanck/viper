@@ -12,6 +12,7 @@
 
 #include "frontends/basic/sem/TypeRegistry.hpp"
 #include "frontends/basic/sem/NamespaceRegistry.hpp"
+#include "il/runtime/RuntimeClassNames.hpp"
 #include "il/runtime/classes/RuntimeClasses.hpp"
 
 #include <string>
@@ -115,21 +116,14 @@ void seedRuntimeTypeCatalog(NamespaceRegistry &registry)
 {
     // Seed a minimal catalog of built-in runtime types. Canonical names live
     // under Viper.* and are defined by the runtime class catalog
-    // (src/il/runtime/classes/RuntimeClasses.inc). Compat aliases (Viper.System.*)
-    // may also be registered to ease migration.
+    // (src/il/runtime/classes/RuntimeClasses.inc).
     static const BuiltinExternalType kTypes[] = {
-        // Canonical forms
-        {"Viper.Object", ExternalTypeCategory::Class, "viper:Object"},
-        {"Viper.String", ExternalTypeCategory::Class, "viper:String"},
-        {"Viper.Text.StringBuilder", ExternalTypeCategory::Class, "viper.text:StringBuilder"},
-        {"Viper.IO.File", ExternalTypeCategory::Class, "viper.io:File"},
-        {"Viper.Collections.List", ExternalTypeCategory::Class, "viper.coll:List"},
-        // Compat aliases (System.*)
-        {"Viper.System.Object", ExternalTypeCategory::Class, "sys:Object"},
-        {"Viper.System.String", ExternalTypeCategory::Class, "sys:String"},
-        {"Viper.System.Text.StringBuilder", ExternalTypeCategory::Class, "sys.text:StringBuilder"},
-        {"Viper.System.IO.File", ExternalTypeCategory::Class, "sys.io:File"},
-        {"Viper.System.Collections.List", ExternalTypeCategory::Class, "sys.coll:List"},
+        // Canonical forms (from RuntimeClassNames.hpp constants)
+        {il::runtime::RTCLASS_OBJECT.data(), ExternalTypeCategory::Class, "viper:Object"},
+        {il::runtime::RTCLASS_STRING.data(), ExternalTypeCategory::Class, "viper:String"},
+        {il::runtime::RTCLASS_STRINGBUILDER.data(), ExternalTypeCategory::Class, "viper.text:StringBuilder"},
+        {il::runtime::RTCLASS_FILE.data(), ExternalTypeCategory::Class, "viper.io:File"},
+        {il::runtime::RTCLASS_LIST.data(), ExternalTypeCategory::Class, "viper.coll:List"},
     };
 
     for (const auto &entry : kTypes)
