@@ -109,23 +109,26 @@ void SemanticAnalyzer::checkOverrides(const ClassInfo &classInfo)
 void SemanticAnalyzer::checkOverridesWithBase(const ClassInfo &classInfo,
                                               const std::string &effectiveBaseClass)
 {
-    for (const auto &[methodKey, method] : classInfo.methods)
+    for (const auto &[methodKey, overloads] : classInfo.methods)
     {
-        if (method.isOverride)
+        for (const MethodInfo &method : overloads)
         {
-            // Must find a virtual method in base class hierarchy
-            auto baseMethod = findVirtualInBase(effectiveBaseClass, method.name);
-            if (!baseMethod)
+            if (method.isOverride)
             {
-                error(method.loc,
-                      "method '" + method.name +
-                          "' marked override but no virtual method found in base class");
-            }
-            else if (!signaturesMatch(method, *baseMethod))
-            {
-                error(method.loc,
-                      "override method '" + method.name +
-                          "' signature does not match base virtual method");
+                // Must find a virtual method in base class hierarchy with matching signature
+                auto baseMethod = findVirtualInBaseWithSignature(effectiveBaseClass, method);
+                if (!baseMethod)
+                {
+                    error(method.loc,
+                          "method '" + method.name +
+                              "' marked override but no virtual method found in base class");
+                }
+                else if (!signaturesMatch(method, *baseMethod))
+                {
+                    error(method.loc,
+                          "override method '" + method.name +
+                              "' signature does not match base virtual method");
+                }
             }
         }
     }
@@ -144,19 +147,72 @@ std::optional<MethodInfo> SemanticAnalyzer::findVirtualInBase(const std::string 
 
     const ClassInfo &baseClass = it->second;
 
-    // Look for method in this class
+    // Look for method in this class (returns first virtual overload)
     std::string methodKey = toLower(methodName);
     auto methodIt = baseClass.methods.find(methodKey);
     if (methodIt != baseClass.methods.end())
     {
-        if (methodIt->second.isVirtual || methodIt->second.isAbstract)
+        for (const auto &method : methodIt->second)
         {
-            return methodIt->second;
+            if (method.isVirtual || method.isAbstract)
+            {
+                return method;
+            }
         }
     }
 
     // Recurse to parent
     return findVirtualInBase(baseClass.baseClass, methodName);
+}
+
+std::optional<MethodInfo> SemanticAnalyzer::findVirtualInBaseWithSignature(
+    const std::string &className, const MethodInfo &targetMethod) const
+{
+    if (className.empty())
+        return std::nullopt;
+
+    std::string classKey = toLower(className);
+    auto it = classes_.find(classKey);
+    if (it == classes_.end())
+        return std::nullopt;
+
+    const ClassInfo &baseClass = it->second;
+
+    // Look for method with matching signature in this class
+    std::string methodKey = toLower(targetMethod.name);
+    auto methodIt = baseClass.methods.find(methodKey);
+    if (methodIt != baseClass.methods.end())
+    {
+        for (const auto &method : methodIt->second)
+        {
+            if ((method.isVirtual || method.isAbstract) &&
+                parameterTypesMatch(targetMethod, method))
+            {
+                return method;
+            }
+        }
+    }
+
+    // Recurse to parent
+    return findVirtualInBaseWithSignature(baseClass.baseClass, targetMethod);
+}
+
+bool SemanticAnalyzer::parameterTypesMatch(const MethodInfo &m1, const MethodInfo &m2) const
+{
+    // Parameter count must match
+    if (m1.params.size() != m2.params.size())
+        return false;
+
+    // Each parameter type and var/out must match
+    for (size_t i = 0; i < m1.params.size(); ++i)
+    {
+        if (m1.params[i].second.kind != m2.params[i].second.kind)
+            return false;
+        if (m1.isVarParam[i] != m2.isVarParam[i])
+            return false;
+    }
+
+    return true;
 }
 
 bool SemanticAnalyzer::signaturesMatch(const MethodInfo &m1, const MethodInfo &m2) const
@@ -189,28 +245,38 @@ void SemanticAnalyzer::checkInterfaceImplementation(const ClassInfo &classInfo)
 void SemanticAnalyzer::checkInterfaceImplementationWith(
     const ClassInfo &classInfo, const std::vector<std::string> &effectiveInterfaces)
 {
-    // Collect all methods required by interfaces
-    std::map<std::string, MethodInfo> requiredMethods;
+    // Collect all methods required by interfaces (as a flat list of all overloads)
+    std::vector<MethodInfo> requiredMethods;
     for (const auto &ifaceName : effectiveInterfaces)
     {
         collectInterfaceMethods(ifaceName, requiredMethods);
     }
 
-    // Check each required method is implemented
-    for (const auto &[methodKey, ifaceMethod] : requiredMethods)
+    // Check each required method is implemented with matching signature
+    for (const MethodInfo &ifaceMethod : requiredMethods)
     {
-        // Look in this class
-        auto classMethodIt = classInfo.methods.find(methodKey);
-        if (classMethodIt != classInfo.methods.end())
+        std::string methodKey = toLower(ifaceMethod.name);
+
+        // Helper to find a method with matching signature in a method map
+        auto findMatchingMethod =
+            [this](const std::map<std::string, std::vector<MethodInfo>> &methods,
+                   const std::string &key,
+                   const MethodInfo &target) -> bool
         {
-            // Check signature
-            if (!signaturesMatch(classMethodIt->second, ifaceMethod))
+            auto it = methods.find(key);
+            if (it == methods.end())
+                return false;
+            for (const auto &m : it->second)
             {
-                error(classInfo.loc,
-                      "method '" + ifaceMethod.name + "' signature does not match interface");
+                if (signaturesMatch(m, target))
+                    return true;
             }
+            return false;
+        };
+
+        // Look in this class
+        if (findMatchingMethod(classInfo.methods, methodKey, ifaceMethod))
             continue;
-        }
 
         // Look in base class hierarchy
         bool found = false;
@@ -222,13 +288,9 @@ void SemanticAnalyzer::checkInterfaceImplementationWith(
             if (baseIt == classes_.end())
                 break;
 
-            auto baseMethodIt = baseIt->second.methods.find(methodKey);
-            if (baseMethodIt != baseIt->second.methods.end())
+            if (findMatchingMethod(baseIt->second.methods, methodKey, ifaceMethod))
             {
-                if (signaturesMatch(baseMethodIt->second, ifaceMethod))
-                {
-                    found = true;
-                }
+                found = true;
                 break;
             }
             baseClass = baseIt->second.baseClass;
@@ -244,6 +306,32 @@ void SemanticAnalyzer::checkInterfaceImplementationWith(
 }
 
 void SemanticAnalyzer::collectInterfaceMethods(const std::string &ifaceName,
+                                               std::vector<MethodInfo> &methods) const
+{
+    std::string key = toLower(ifaceName);
+    auto it = interfaces_.find(key);
+    if (it == interfaces_.end())
+        return;
+
+    const InterfaceInfo &iface = it->second;
+
+    // Add this interface's methods (all overloads)
+    for (const auto &[methodKey, overloads] : iface.methods)
+    {
+        for (const auto &method : overloads)
+        {
+            methods.push_back(method);
+        }
+    }
+
+    // Recurse to base interfaces
+    for (const auto &baseIface : iface.baseInterfaces)
+    {
+        collectInterfaceMethods(baseIface, methods);
+    }
+}
+
+void SemanticAnalyzer::collectInterfaceMethods(const std::string &ifaceName,
                                                std::map<std::string, MethodInfo> &methods) const
 {
     std::string key = toLower(ifaceName);
@@ -253,10 +341,13 @@ void SemanticAnalyzer::collectInterfaceMethods(const std::string &ifaceName,
 
     const InterfaceInfo &iface = it->second;
 
-    // Add this interface's methods
-    for (const auto &[methodKey, method] : iface.methods)
+    // Add this interface's methods (first overload per name for backwards compatibility)
+    for (const auto &[methodKey, overloads] : iface.methods)
     {
-        methods[methodKey] = method;
+        if (!overloads.empty() && methods.find(methodKey) == methods.end())
+        {
+            methods[methodKey] = overloads.front();
+        }
     }
 
     // Recurse to base interfaces
@@ -378,14 +469,17 @@ bool SemanticAnalyzer::isAbstractClass(const std::string &className) const
     const ClassInfo &cls = it->second;
 
     // If this class declares any abstract method, it's abstract
-    for (const auto &kv : cls.methods)
+    for (const auto &[methodKey, overloads] : cls.methods)
     {
-        if (kv.second.isAbstract)
-            return true;
+        for (const auto &method : overloads)
+        {
+            if (method.isAbstract)
+                return true;
+        }
     }
 
-    // Collect inherited abstract methods
-    std::map<std::string, MethodInfo> inheritedAbstract;
+    // Collect inherited abstract methods (all overloads)
+    std::vector<MethodInfo> inheritedAbstract;
     std::string base = cls.baseClass;
     while (!base.empty())
     {
@@ -394,24 +488,37 @@ bool SemanticAnalyzer::isAbstractClass(const std::string &className) const
         if (bit == classes_.end())
             break;
         const ClassInfo &baseInfo = bit->second;
-        for (const auto &mk : baseInfo.methods)
+        for (const auto &[methodKey, overloads] : baseInfo.methods)
         {
-            const MethodInfo &m = mk.second;
-            if (m.isAbstract)
+            for (const auto &m : overloads)
             {
-                inheritedAbstract[mk.first] = m;
+                if (m.isAbstract)
+                {
+                    inheritedAbstract.push_back(m);
+                }
             }
         }
         base = baseInfo.baseClass;
     }
 
-    // Remove any methods overridden concretely by this class
-    for (const auto &mk : cls.methods)
+    // Remove any methods overridden concretely by this class (matching signature)
+    for (const auto &[methodKey, overloads] : cls.methods)
     {
-        const MethodInfo &m = mk.second;
-        if (!m.isAbstract)
+        for (const auto &m : overloads)
         {
-            inheritedAbstract.erase(mk.first);
+            if (!m.isAbstract)
+            {
+                // Remove any inherited abstract with same signature
+                inheritedAbstract.erase(std::remove_if(inheritedAbstract.begin(),
+                                                       inheritedAbstract.end(),
+                                                       [this, &m](const MethodInfo &abs)
+                                                       {
+                                                           return toLower(abs.name) ==
+                                                                      toLower(m.name) &&
+                                                                  parameterTypesMatch(abs, m);
+                                                       }),
+                                        inheritedAbstract.end());
+            }
         }
     }
 
@@ -419,7 +526,8 @@ bool SemanticAnalyzer::isAbstractClass(const std::string &className) const
     return !inheritedAbstract.empty();
 }
 
-bool SemanticAnalyzer::isMemberVisible(Visibility visibility, const std::string &declaringClass,
+bool SemanticAnalyzer::isMemberVisible(Visibility visibility,
+                                       const std::string &declaringClass,
                                        const std::string &accessingClass) const
 {
     // Public members are always visible
@@ -477,6 +585,135 @@ const InterfaceInfo *SemanticAnalyzer::lookupInterface(const std::string &name) 
     if (it != interfaces_.end())
         return &it->second;
     return nullptr;
+}
+
+//===----------------------------------------------------------------------===//
+// Overload Resolution
+//===----------------------------------------------------------------------===//
+
+bool SemanticAnalyzer::argumentsCompatible(const MethodInfo &method,
+                                           const std::vector<PasType> &argTypes)
+{
+    // Check argument count (considering required params and defaults)
+    size_t minParams = method.requiredParams;
+    size_t maxParams = method.params.size();
+
+    if (argTypes.size() < minParams || argTypes.size() > maxParams)
+        return false;
+
+    // Check each argument type is compatible with the corresponding parameter
+    for (size_t i = 0; i < argTypes.size(); ++i)
+    {
+        const PasType &argType = argTypes[i];
+        const PasType &paramType = method.params[i].second;
+
+        // Check type compatibility (arg must be assignable to param)
+        if (!isAssignableFrom(paramType, argType))
+            return false;
+    }
+
+    return true;
+}
+
+int SemanticAnalyzer::overloadMatchScore(const MethodInfo &method,
+                                         const std::vector<PasType> &argTypes)
+{
+    if (!argumentsCompatible(method, argTypes))
+        return -1; // Not compatible
+
+    int score = 0;
+
+    // Score based on exact type matches vs compatible matches
+    for (size_t i = 0; i < argTypes.size(); ++i)
+    {
+        const PasType &argType = argTypes[i];
+        const PasType &paramType = method.params[i].second;
+
+        if (argType.kind == paramType.kind)
+        {
+            // Exact type match
+            if (argType.kind == PasTypeKind::Class || argType.kind == PasTypeKind::Interface ||
+                argType.kind == PasTypeKind::Record || argType.kind == PasTypeKind::Enum ||
+                argType.kind == PasTypeKind::Array)
+            {
+                // Named types - check if names match exactly
+                if (toLower(argType.name) == toLower(paramType.name))
+                    score += 10; // Exact match
+                else
+                    score += 5; // Compatible but not exact (e.g., derived class)
+            }
+            else
+            {
+                score += 10; // Exact primitive type match
+            }
+        }
+        else
+        {
+            // Compatible but different kind (e.g., Integer to Real)
+            score += 1;
+        }
+    }
+
+    // Penalize if using default parameters
+    size_t defaultsUsed = method.params.size() - argTypes.size();
+    score -= static_cast<int>(defaultsUsed);
+
+    return score;
+}
+
+const MethodInfo *SemanticAnalyzer::resolveOverload(const std::vector<MethodInfo> &overloads,
+                                                    const std::vector<PasType> &argTypes,
+                                                    il::support::SourceLoc loc)
+{
+    if (overloads.empty())
+        return nullptr;
+
+    // If only one overload, use simple compatibility check
+    if (overloads.size() == 1)
+    {
+        if (argumentsCompatible(overloads[0], argTypes))
+            return &overloads[0];
+        return nullptr;
+    }
+
+    // Find all compatible overloads with their scores
+    std::vector<std::pair<const MethodInfo *, int>> candidates;
+    for (const auto &overload : overloads)
+    {
+        int score = overloadMatchScore(overload, argTypes);
+        if (score >= 0)
+            candidates.emplace_back(&overload, score);
+    }
+
+    if (candidates.empty())
+        return nullptr; // No compatible overload
+
+    if (candidates.size() == 1)
+        return candidates[0].first;
+
+    // Find the best score
+    int bestScore = candidates[0].second;
+    for (const auto &[method, score] : candidates)
+    {
+        if (score > bestScore)
+            bestScore = score;
+    }
+
+    // Count how many have the best score
+    std::vector<const MethodInfo *> bestMatches;
+    for (const auto &[method, score] : candidates)
+    {
+        if (score == bestScore)
+            bestMatches.push_back(method);
+    }
+
+    if (bestMatches.size() == 1)
+        return bestMatches[0];
+
+    // Ambiguous - multiple overloads with same score
+    std::string methodName = overloads[0].name;
+    error(loc, "ambiguous call to overloaded method '" + methodName + "'");
+    return bestMatches[0]; // Return first to continue analysis
 }
 
 

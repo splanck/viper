@@ -404,25 +404,71 @@ struct PropertyInfo
 /// @brief Information about a class.
 struct ClassInfo
 {
-    std::string name;                               ///< Class name
-    std::string baseClass;                          ///< Base class name (empty if none)
-    std::vector<std::string> interfaces;            ///< Implemented interface names
-    std::map<std::string, MethodInfo> methods;      ///< Method name -> info (lowercase key)
+    std::string name;                    ///< Class name
+    std::string baseClass;               ///< Base class name (empty if none)
+    std::vector<std::string> interfaces; ///< Implemented interface names
+    std::map<std::string, std::vector<MethodInfo>>
+        methods;                                    ///< Method name -> overloads (lowercase key)
     std::map<std::string, FieldInfo> fields;        ///< Field name -> info (lowercase key)
     std::map<std::string, PropertyInfo> properties; ///< Property name -> info (lowercase key)
     bool hasConstructor{false};                     ///< Has at least one constructor
     bool hasDestructor{false};                      ///< Has a destructor
     bool isAbstract{false}; ///< True if class declares or inherits abstract methods not implemented
     il::support::SourceLoc loc; ///< Source location
+
+    /// @brief Find a method by name (returns first overload for backwards compatibility).
+    /// @param name Method name (lowercase).
+    /// @return Pointer to first matching method, or nullptr if not found.
+    const MethodInfo *findMethod(const std::string &name) const
+    {
+        auto it = methods.find(name);
+        if (it != methods.end() && !it->second.empty())
+            return &it->second.front();
+        return nullptr;
+    }
+
+    /// @brief Find all overloads of a method by name.
+    /// @param name Method name (lowercase).
+    /// @return Pointer to vector of overloads, or nullptr if not found.
+    const std::vector<MethodInfo> *findOverloads(const std::string &name) const
+    {
+        auto it = methods.find(name);
+        if (it != methods.end())
+            return &it->second;
+        return nullptr;
+    }
 };
 
 /// @brief Information about an interface.
 struct InterfaceInfo
 {
-    std::string name;                          ///< Interface name
-    std::vector<std::string> baseInterfaces;   ///< Extended interface names
-    std::map<std::string, MethodInfo> methods; ///< Method name -> info (lowercase key)
-    il::support::SourceLoc loc;                ///< Source location
+    std::string name;                        ///< Interface name
+    std::vector<std::string> baseInterfaces; ///< Extended interface names
+    std::map<std::string, std::vector<MethodInfo>>
+        methods;                ///< Method name -> overloads (lowercase key)
+    il::support::SourceLoc loc; ///< Source location
+
+    /// @brief Find a method by name (returns first overload).
+    /// @param name Method name (lowercase).
+    /// @return Pointer to first matching method, or nullptr if not found.
+    const MethodInfo *findMethod(const std::string &name) const
+    {
+        auto it = methods.find(name);
+        if (it != methods.end() && !it->second.empty())
+            return &it->second.front();
+        return nullptr;
+    }
+
+    /// @brief Find all overloads of a method by name.
+    /// @param name Method name (lowercase).
+    /// @return Pointer to vector of overloads, or nullptr if not found.
+    const std::vector<MethodInfo> *findOverloads(const std::string &name) const
+    {
+        auto it = methods.find(name);
+        if (it != methods.end())
+            return &it->second;
+        return nullptr;
+    }
 };
 
 //===----------------------------------------------------------------------===//
@@ -601,9 +647,15 @@ class SemanticAnalyzer
 
     /// @brief Collect all methods from interface and its bases (public for Lowerer).
     /// @param ifaceName The interface name (lowercase).
-    /// @param methods Output map to collect methods into.
+    /// @param methods Output map to collect methods into (first overload per name).
     void collectInterfaceMethods(const std::string &ifaceName,
                                  std::map<std::string, MethodInfo> &methods) const;
+
+    /// @brief Collect all method overloads from interface and its bases.
+    /// @param ifaceName The interface name (lowercase).
+    /// @param methods Output vector to collect all method overloads into.
+    void collectInterfaceMethods(const std::string &ifaceName,
+                                 std::vector<MethodInfo> &methods) const;
 
   private:
     //=========================================================================
@@ -679,6 +731,38 @@ class SemanticAnalyzer
     /// @brief Check if a method signature matches another.
     bool signaturesMatch(const MethodInfo &m1, const MethodInfo &m2) const;
 
+    /// @brief Check if two method parameter type lists are identical (for duplicate detection).
+    bool parameterTypesMatch(const MethodInfo &m1, const MethodInfo &m2) const;
+
+    /// @brief Find a virtual method in base with matching signature (for override with overloads).
+    /// @param className Starting class name.
+    /// @param method The override method with signature to match.
+    /// @return The method info if found virtual in a base class with matching signature, nullopt
+    /// otherwise.
+    std::optional<MethodInfo> findVirtualInBaseWithSignature(const std::string &className,
+                                                             const MethodInfo &method) const;
+
+    /// @brief Resolve overloaded method call.
+    /// @param overloads Vector of candidate method overloads.
+    /// @param argTypes Argument types from the call site.
+    /// @param loc Source location for error reporting.
+    /// @return Pointer to best matching method, or nullptr if no match/ambiguous.
+    const MethodInfo *resolveOverload(const std::vector<MethodInfo> &overloads,
+                                      const std::vector<PasType> &argTypes,
+                                      il::support::SourceLoc loc);
+
+    /// @brief Check if arguments are compatible with a method's parameters.
+    /// @param method The method to check against.
+    /// @param argTypes Argument types from the call site.
+    /// @return True if arguments can be passed to this method.
+    bool argumentsCompatible(const MethodInfo &method, const std::vector<PasType> &argTypes);
+
+    /// @brief Score how well arguments match a method's parameters (higher is better).
+    /// @param method The method to score against.
+    /// @param argTypes Argument types from the call site.
+    /// @return Match score (higher = better match, -1 = incompatible).
+    int overloadMatchScore(const MethodInfo &method, const std::vector<PasType> &argTypes);
+
     /// @brief Check if a class implements an interface (directly or via base class).
     /// @param className Name of the class.
     /// @param interfaceName Name of the interface.
@@ -705,7 +789,8 @@ class SemanticAnalyzer
     /// @param accessingClass Name of the class trying to access the member (empty if outside any
     /// class).
     /// @return True if the member is visible.
-    bool isMemberVisible(Visibility visibility, const std::string &declaringClass,
+    bool isMemberVisible(Visibility visibility,
+                         const std::string &declaringClass,
                          const std::string &accessingClass) const;
 
     /// @brief Check if an interface extends another interface.

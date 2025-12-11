@@ -347,8 +347,16 @@ void lowerTerminators(const il::core::Function &fn,
                         // Use the block's tempVReg snapshot to get correct vreg mappings
                         uint16_t cv = 0;
                         RegClass cc = RegClass::GPR;
-                        materializeValueToVReg(
-                            cond, inBB, ti, fb, outBB, blockTempVReg, tempRegClass, nextVRegId, cv, cc);
+                        materializeValueToVReg(cond,
+                                               inBB,
+                                               ti,
+                                               fb,
+                                               outBB,
+                                               blockTempVReg,
+                                               tempRegClass,
+                                               nextVRegId,
+                                               cv,
+                                               cc);
                         outBB.instrs.push_back(
                             MInstr{MOpcode::CmpRI,
                                    {MOperand::vregOp(RegClass::GPR, cv), MOperand::immOp(0)}});

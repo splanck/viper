@@ -150,11 +150,12 @@ PasType SemanticAnalyzer::typeOfName(NameExpr &expr)
                 if (fieldIt != classInfo->fields.end())
                 {
                     // Check visibility: private fields only visible within declaring class
-                    if (!isMemberVisible(fieldIt->second.visibility, classInfo->name,
-                                         currentClassName_))
+                    if (!isMemberVisible(
+                            fieldIt->second.visibility, classInfo->name, currentClassName_))
                     {
-                        error(expr, "field '" + expr.name + "' is private in class '" +
-                                        classInfo->name + "'");
+                        error(expr,
+                              "field '" + expr.name + "' is private in class '" + classInfo->name +
+                                  "'");
                         return PasType::unknown();
                     }
                     return fieldIt->second.type;
@@ -164,14 +165,30 @@ PasType SemanticAnalyzer::typeOfName(NameExpr &expr)
                 if (propIt != classInfo->properties.end())
                 {
                     // Check visibility: private properties only visible within declaring class
-                    if (!isMemberVisible(propIt->second.visibility, classInfo->name,
-                                         currentClassName_))
+                    if (!isMemberVisible(
+                            propIt->second.visibility, classInfo->name, currentClassName_))
                     {
-                        error(expr, "property '" + expr.name + "' is private in class '" +
-                                        classInfo->name + "'");
+                        error(expr,
+                              "property '" + expr.name + "' is private in class '" +
+                                  classInfo->name + "'");
                         return PasType::unknown();
                     }
                     return propIt->second.type;
+                }
+                // Check methods (for zero-arg method calls)
+                const MethodInfo *methodInfo = classInfo->findMethod(key);
+                if (methodInfo)
+                {
+                    // Check visibility: private methods only visible within declaring class
+                    if (!isMemberVisible(
+                            methodInfo->visibility, classInfo->name, currentClassName_))
+                    {
+                        error(expr,
+                              "method '" + expr.name + "' is private in class '" + classInfo->name +
+                                  "'");
+                        return PasType::unknown();
+                    }
+                    return methodInfo->returnType;
                 }
             }
         }
@@ -223,6 +240,25 @@ PasType SemanticAnalyzer::typeOfName(NameExpr &expr)
             if (propIt != classInfo->properties.end())
             {
                 return propIt->second.type;
+            }
+            // Move to base class (if any)
+            if (classInfo->baseClass.empty())
+                break;
+            cur = toLower(classInfo->baseClass);
+        }
+
+        // Walk up the inheritance chain to find a matching method (for implicit Self calls)
+        cur = toLower(currentClassName_);
+        while (!cur.empty())
+        {
+            auto *classInfo = lookupClass(cur);
+            if (!classInfo)
+                break;
+            const MethodInfo *methodInfo = classInfo->findMethod(key);
+            if (methodInfo)
+            {
+                // For zero-arg method calls without parentheses, return the method's return type
+                return methodInfo->returnType;
             }
             // Move to base class (if any)
             if (classInfo->baseClass.empty())
@@ -435,53 +471,61 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
             if (classInfo)
             {
                 std::string mkey = toLower(calleeName);
-                auto mit = classInfo->methods.find(mkey);
-                if (mit != classInfo->methods.end())
+                const std::vector<MethodInfo> *overloads = classInfo->findOverloads(mkey);
+                if (overloads && !overloads->empty())
                 {
-                    const MethodInfo &minfo = mit->second;
+                    // Collect argument types for overload resolution
+                    std::vector<PasType> argTypes;
+                    for (const auto &arg : expr.args)
+                    {
+                        if (arg)
+                            argTypes.push_back(typeOf(*arg));
+                        else
+                            argTypes.push_back(PasType::unknown());
+                    }
+
+                    // Resolve overload
+                    const MethodInfo *minfo = resolveOverload(*overloads, argTypes, expr.loc);
+                    if (!minfo)
+                    {
+                        // No compatible overload found
+                        if (overloads->size() == 1)
+                        {
+                            // Single overload - give specific error
+                            const MethodInfo &single = (*overloads)[0];
+                            size_t actual = expr.args.size();
+                            if (actual < single.requiredParams)
+                                error(expr,
+                                      "too few arguments: expected at least " +
+                                          std::to_string(single.requiredParams) + ", got " +
+                                          std::to_string(actual));
+                            else if (actual > single.params.size())
+                                error(expr,
+                                      "too many arguments: expected at most " +
+                                          std::to_string(single.params.size()) + ", got " +
+                                          std::to_string(actual));
+                            else
+                                error(expr,
+                                      "no matching overload for '" + calleeName +
+                                          "' with given argument types");
+                        }
+                        else
+                        {
+                            error(expr,
+                                  "no matching overload for '" + calleeName +
+                                      "' with given argument types");
+                        }
+                        return PasType::unknown();
+                    }
+
                     // Reject abstract methods
-                    if (minfo.isAbstract)
+                    if (minfo->isAbstract)
                     {
                         error(expr, "cannot call abstract method '" + calleeName + "'");
                         return PasType::unknown();
                     }
 
-                    // Check argument counts
-                    size_t totalParams = minfo.params.size();
-                    size_t requiredParams = minfo.requiredParams;
-                    size_t actual = expr.args.size();
-                    if (actual < requiredParams)
-                    {
-                        error(expr,
-                              "too few arguments: expected at least " +
-                                  std::to_string(requiredParams) + ", got " +
-                                  std::to_string(actual));
-                    }
-                    else if (actual > totalParams)
-                    {
-                        error(expr,
-                              "too many arguments: expected at most " +
-                                  std::to_string(totalParams) + ", got " + std::to_string(actual));
-                    }
-
-                    // Type-check arguments
-                    for (size_t i = 0; i < expr.args.size() && i < minfo.params.size(); ++i)
-                    {
-                        if (expr.args[i])
-                        {
-                            PasType argType = typeOf(*expr.args[i]);
-                            const PasType &paramType = minfo.params[i].second;
-                            if (!paramType.isError() && !isAssignableFrom(paramType, argType) &&
-                                !argType.isError())
-                            {
-                                error(*expr.args[i],
-                                      "argument " + std::to_string(i + 1) +
-                                          " type mismatch: expected " + paramType.toString() +
-                                          ", got " + argType.toString());
-                            }
-                        }
-                    }
-                    return minfo.returnType;
+                    return minfo->returnType;
                 }
             }
         }
@@ -496,21 +540,41 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
                 if (classInfo)
                 {
                     std::string mkey = toLower(calleeName);
-                    auto mit = classInfo->methods.find(mkey);
-                    if (mit != classInfo->methods.end())
+                    const std::vector<MethodInfo> *overloads = classInfo->findOverloads(mkey);
+                    if (overloads && !overloads->empty())
                     {
-                        const MethodInfo &minfo = mit->second;
+                        // Collect argument types for overload resolution
+                        std::vector<PasType> argTypes;
+                        for (const auto &arg : expr.args)
+                        {
+                            if (arg)
+                                argTypes.push_back(typeOf(*arg));
+                            else
+                                argTypes.push_back(PasType::unknown());
+                        }
+
+                        // Resolve overload
+                        const MethodInfo *minfo = resolveOverload(*overloads, argTypes, expr.loc);
+                        if (!minfo)
+                        {
+                            error(expr,
+                                  "no matching overload for '" + calleeName +
+                                      "' with given argument types");
+                            return PasType::unknown();
+                        }
+
                         // Reject abstract methods
-                        if (minfo.isAbstract)
+                        if (minfo->isAbstract)
                         {
                             error(expr, "cannot call abstract method '" + calleeName + "'");
                             return PasType::unknown();
                         }
                         // Check visibility: private methods only visible within declaring class
-                        if (!isMemberVisible(minfo.visibility, classInfo->name, currentClassName_))
+                        if (!isMemberVisible(minfo->visibility, classInfo->name, currentClassName_))
                         {
-                            error(expr, "method '" + calleeName + "' is private in class '" +
-                                            classInfo->name + "'");
+                            error(expr,
+                                  "method '" + calleeName + "' is private in class '" +
+                                      classInfo->name + "'");
                             return PasType::unknown();
                         }
 
@@ -518,43 +582,7 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
                         expr.isWithMethodCall = true;
                         expr.withClassName = ctx.type.name;
 
-                        // Check argument counts
-                        size_t totalParams = minfo.params.size();
-                        size_t requiredParams = minfo.requiredParams;
-                        size_t actual = expr.args.size();
-                        if (actual < requiredParams)
-                        {
-                            error(expr,
-                                  "too few arguments: expected at least " +
-                                      std::to_string(requiredParams) + ", got " +
-                                      std::to_string(actual));
-                        }
-                        else if (actual > totalParams)
-                        {
-                            error(expr,
-                                  "too many arguments: expected at most " +
-                                      std::to_string(totalParams) + ", got " +
-                                      std::to_string(actual));
-                        }
-
-                        // Type-check arguments
-                        for (size_t i = 0; i < expr.args.size() && i < minfo.params.size(); ++i)
-                        {
-                            if (expr.args[i])
-                            {
-                                PasType argType = typeOf(*expr.args[i]);
-                                const PasType &paramType = minfo.params[i].second;
-                                if (!paramType.isError() && !isAssignableFrom(paramType, argType) &&
-                                    !argType.isError())
-                                {
-                                    error(*expr.args[i],
-                                          "argument " + std::to_string(i + 1) +
-                                              " type mismatch: expected " + paramType.toString() +
-                                              ", got " + argType.toString());
-                                }
-                            }
-                        }
-                        return minfo.returnType;
+                        return minfo->returnType;
                     }
                 }
             }
@@ -601,20 +629,21 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
                         if (classInfo)
                         {
                             std::string methodKey = toLower(calleeName);
-                            auto methodIt = classInfo->methods.find(methodKey);
-                            if (methodIt != classInfo->methods.end())
+                            const MethodInfo *methodInfo = classInfo->findMethod(methodKey);
+                            if (methodInfo)
                             {
-                                if (methodIt->second.isAbstract)
+                                if (methodInfo->isAbstract)
                                 {
                                     error(expr, "cannot call abstract method '" + calleeName + "'");
                                     return PasType::unknown();
                                 }
                                 // Check visibility for constructor
-                                if (!isMemberVisible(methodIt->second.visibility, classInfo->name,
-                                                     currentClassName_))
+                                if (!isMemberVisible(
+                                        methodInfo->visibility, classInfo->name, currentClassName_))
                                 {
-                                    error(expr, "constructor '" + calleeName + "' is private in class '" +
-                                                    classInfo->name + "'");
+                                    error(expr,
+                                          "constructor '" + calleeName + "' is private in class '" +
+                                              classInfo->name + "'");
                                     return PasType::unknown();
                                 }
                                 // Constructor found - return the class type (new instance)
@@ -658,20 +687,21 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
                 if (classInfo)
                 {
                     std::string methodKey = toLower(calleeName);
-                    auto methodIt = classInfo->methods.find(methodKey);
-                    if (methodIt != classInfo->methods.end())
+                    const MethodInfo *methodInfo = classInfo->findMethod(methodKey);
+                    if (methodInfo)
                     {
-                        if (methodIt->second.isAbstract)
+                        if (methodInfo->isAbstract)
                         {
                             error(expr, "cannot call abstract method '" + calleeName + "'");
                             return PasType::unknown();
                         }
                         // Check visibility: private methods only visible within declaring class
-                        if (!isMemberVisible(methodIt->second.visibility, classInfo->name,
-                                             currentClassName_))
+                        if (!isMemberVisible(
+                                methodInfo->visibility, classInfo->name, currentClassName_))
                         {
-                            error(expr, "method '" + calleeName + "' is private in class '" +
-                                            classInfo->name + "'");
+                            error(expr,
+                                  "method '" + calleeName + "' is private in class '" +
+                                      classInfo->name + "'");
                             return PasType::unknown();
                         }
                     }
@@ -685,15 +715,13 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
                 if (ifaceInfo)
                 {
                     std::string methodKey = toLower(calleeName);
-                    auto methodIt = ifaceInfo->methods.find(methodKey);
-                    if (methodIt != ifaceInfo->methods.end())
+                    const MethodInfo *methodInfo = ifaceInfo->findMethod(methodKey);
+                    if (methodInfo)
                     {
                         // Found the interface method - type-check arguments
-                        const MethodInfo &methodInfo = methodIt->second;
-
                         // Check argument count
-                        size_t totalParams = methodInfo.params.size();
-                        size_t requiredParams = methodInfo.requiredParams;
+                        size_t totalParams = methodInfo->params.size();
+                        size_t requiredParams = methodInfo->requiredParams;
                         size_t actual = expr.args.size();
 
                         if (actual < requiredParams)
@@ -712,13 +740,13 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
                         }
 
                         // Type-check arguments
-                        for (size_t i = 0; i < expr.args.size() && i < methodInfo.params.size();
+                        for (size_t i = 0; i < expr.args.size() && i < methodInfo->params.size();
                              ++i)
                         {
                             if (expr.args[i])
                             {
                                 PasType argType = typeOf(*expr.args[i]);
-                                const PasType &paramType = methodInfo.params[i].second;
+                                const PasType &paramType = methodInfo->params[i].second;
                                 if (!paramType.isError() && !isAssignableFrom(paramType, argType) &&
                                     !argType.isError())
                                 {
@@ -734,7 +762,7 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
                         expr.isInterfaceCall = true;
                         expr.interfaceName = ifaceName;
 
-                        return methodInfo.returnType;
+                        return methodInfo->returnType;
                     }
                     else
                     {
@@ -790,30 +818,29 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
             if (classInfo)
             {
                 std::string methodKey = toLower(calleeName);
-                auto methodIt = classInfo->methods.find(methodKey);
-                if (methodIt != classInfo->methods.end())
+                const MethodInfo *methodInfo = classInfo->findMethod(methodKey);
+                if (methodInfo)
                 {
                     // Reject direct calls to abstract methods
-                    if (methodIt->second.isAbstract)
+                    if (methodInfo->isAbstract)
                     {
                         error(expr, "cannot call abstract method '" + calleeName + "'");
                         return PasType::unknown();
                     }
                     // Check visibility: private methods only visible within declaring class
-                    if (!isMemberVisible(methodIt->second.visibility, classInfo->name,
-                                         currentClassName_))
+                    if (!isMemberVisible(
+                            methodInfo->visibility, classInfo->name, currentClassName_))
                     {
-                        error(expr, "method '" + calleeName + "' is private in class '" +
-                                        classInfo->name + "'");
+                        error(expr,
+                              "method '" + calleeName + "' is private in class '" +
+                                  classInfo->name + "'");
                         return PasType::unknown();
                     }
                     // For methods declared in class, use the method info
                     // Type-check args against the method's parameters
-                    const MethodInfo &methodInfo = methodIt->second;
-
                     // Check argument count
-                    size_t totalParams = methodInfo.params.size();
-                    size_t requiredParams = methodInfo.requiredParams;
+                    size_t totalParams = methodInfo->params.size();
+                    size_t requiredParams = methodInfo->requiredParams;
                     size_t actual = expr.args.size();
 
                     if (actual < requiredParams)
@@ -831,12 +858,12 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
                     }
 
                     // Type-check arguments
-                    for (size_t i = 0; i < expr.args.size() && i < methodInfo.params.size(); ++i)
+                    for (size_t i = 0; i < expr.args.size() && i < methodInfo->params.size(); ++i)
                     {
                         if (expr.args[i])
                         {
                             PasType argType = typeOf(*expr.args[i]);
-                            const PasType &paramType = methodInfo.params[i].second;
+                            const PasType &paramType = methodInfo->params[i].second;
                             if (!paramType.isError() && !isAssignableFrom(paramType, argType) &&
                                 !argType.isError())
                             {
@@ -848,7 +875,7 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
                         }
                     }
 
-                    return methodInfo.returnType;
+                    return methodInfo->returnType;
                 }
             }
 
@@ -988,11 +1015,12 @@ PasType SemanticAnalyzer::typeOfField(FieldExpr &expr)
                 if (fieldIt != classInfo->fields.end())
                 {
                     // Check visibility: private fields only visible within declaring class
-                    if (!isMemberVisible(fieldIt->second.visibility, classInfo->name,
-                                         currentClassName_))
+                    if (!isMemberVisible(
+                            fieldIt->second.visibility, classInfo->name, currentClassName_))
                     {
-                        error(expr, "field '" + expr.field + "' is private in class '" +
-                                        classInfo->name + "'");
+                        error(expr,
+                              "field '" + expr.field + "' is private in class '" + classInfo->name +
+                                  "'");
                         return PasType::unknown();
                     }
                     return fieldIt->second.type;
@@ -1001,20 +1029,50 @@ PasType SemanticAnalyzer::typeOfField(FieldExpr &expr)
                     break;
                 cur = toLower(classInfo->baseClass);
             }
-            // Not a field; could be a constructor call without parentheses (e.g., TClass.Create)
+
+            // Walk up the inheritance chain to find a matching property
+            cur = toLower(baseType.name);
+            while (!cur.empty())
+            {
+                auto *classInfo = lookupClass(cur);
+                if (!classInfo)
+                    break;
+                auto propIt = classInfo->properties.find(fieldKey);
+                if (propIt != classInfo->properties.end())
+                {
+                    // Check visibility: private properties only visible within declaring class
+                    if (!isMemberVisible(
+                            propIt->second.visibility, classInfo->name, currentClassName_))
+                    {
+                        error(expr,
+                              "property '" + expr.field + "' is private in class '" +
+                                  classInfo->name + "'");
+                        return PasType::unknown();
+                    }
+                    return propIt->second.type;
+                }
+                if (classInfo->baseClass.empty())
+                    break;
+                cur = toLower(classInfo->baseClass);
+            }
+
+            // Not a field or property; could be a constructor call without parentheses (e.g.,
+            // TClass.Create)
             auto *ci = lookupClass(toLower(baseType.name));
             if (ci)
             {
-                // If the member is 'Create', treat as constructor call; enforce abstract and visibility rules
+                // If the member is 'Create', treat as constructor call; enforce abstract and
+                // visibility rules
                 if (fieldKey == toLower(std::string("Create")))
                 {
                     // Check constructor visibility
-                    auto ctorIt = ci->methods.find(fieldKey);
-                    if (ctorIt != ci->methods.end())
+                    const MethodInfo *ctorMethod = ci->findMethod(fieldKey);
+                    if (ctorMethod)
                     {
-                        if (!isMemberVisible(ctorIt->second.visibility, ci->name, currentClassName_))
+                        if (!isMemberVisible(ctorMethod->visibility, ci->name, currentClassName_))
                         {
-                            error(expr, "constructor 'Create' is private in class '" + ci->name + "'");
+                            error(expr,
+                                  "constructor 'Create' is private in class '" + ci->name + "'");
                             return PasType::unknown();
                         }
                     }
@@ -1025,27 +1083,35 @@ PasType SemanticAnalyzer::typeOfField(FieldExpr &expr)
                     }
                     return PasType::classType(baseType.name);
                 }
-                auto mit = ci->methods.find(fieldKey);
-                if (mit != ci->methods.end())
+                const MethodInfo *methodInfo = ci->findMethod(fieldKey);
+                if (methodInfo)
                 {
                     // Check visibility for method access
-                    if (!isMemberVisible(mit->second.visibility, ci->name, currentClassName_))
+                    if (!isMemberVisible(methodInfo->visibility, ci->name, currentClassName_))
                     {
-                        error(expr, "method '" + expr.field + "' is private in class '" + ci->name +
-                                        "'");
+                        error(expr,
+                              "method '" + expr.field + "' is private in class '" + ci->name + "'");
                         return PasType::unknown();
                     }
-                    // Disallow abstract class instantiation
-                    if (isAbstractClass(baseType.name))
+                    // Check if the base is a type reference (for constructor calls like
+                    // TClass.CtorName) If so, return the class type, not the method's return type
+                    if (expr.base && expr.base->kind == ExprKind::Name)
                     {
-                        error(expr, "cannot instantiate abstract class '" + baseType.name + "'");
-                        return PasType::unknown();
+                        const auto &baseName = static_cast<const NameExpr &>(*expr.base);
+                        std::string baseKey = toLower(baseName.name);
+                        // If it's a type name (not a variable), treat as constructor call
+                        if (!lookupVariable(baseKey) && !lookupConstant(baseKey) &&
+                            lookupType(baseKey))
+                        {
+                            return PasType::classType(baseType.name);
+                        }
                     }
-                    // Treat as zero-arg constructor call; return class type
-                    return PasType::classType(baseType.name);
+                    // For instance method calls, return the method's return type
+                    return methodInfo->returnType;
                 }
             }
-            // Unknown member
+            // Unknown member - report error
+            error(expr, "class '" + baseType.name + "' has no member '" + expr.field + "'");
             return PasType::unknown();
         }
 
@@ -1066,11 +1132,11 @@ PasType SemanticAnalyzer::typeOfField(FieldExpr &expr)
         auto *ifaceInfo = lookupInterface(toLower(baseType.name));
         if (ifaceInfo)
         {
-            auto methodIt = ifaceInfo->methods.find(methodKey);
-            if (methodIt != ifaceInfo->methods.end())
+            const MethodInfo *methodInfo = ifaceInfo->findMethod(methodKey);
+            if (methodInfo)
             {
                 // Return the method's return type (for parameterless function calls)
-                return methodIt->second.returnType;
+                return methodInfo->returnType;
             }
         }
         // Unknown method

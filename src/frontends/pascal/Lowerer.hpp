@@ -157,10 +157,11 @@ class Lowerer
     std::string currentClassName_;        ///< Current class name (for Self/field access in methods)
     size_t currentBlockIdx_{0};           ///< Current block index
     std::map<std::string, Value> locals_; ///< Variable -> alloca slot
-    std::map<std::string, PasType> localTypes_;        ///< Variable -> type (for procedure locals)
-    std::map<std::string, PasType> globalTypes_;       ///< Global variable -> type (persists across funcs)
-    std::map<std::string, Value> constants_;           ///< Constant -> value
-    ::il::frontends::common::StringTable stringTable_; ///< String interning table
+    std::map<std::string, PasType> localTypes_; ///< Variable -> type (for procedure locals)
+    std::map<std::string, PasType>
+        globalTypes_;                        ///< Global variable -> type (persists across funcs)
+    std::map<std::string, Value> constants_; ///< Constant -> value
+    ::il::frontends::common::StringTable stringTable_;    ///< String interning table
     ::il::frontends::common::LoopContextStack loopStack_; ///< Loop context stack
     std::set<std::string> usedExterns_;                   ///< Tracked runtime externs
     unsigned blockCounter_{0};                            ///< Block name counter

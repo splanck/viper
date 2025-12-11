@@ -97,14 +97,14 @@ Several demos run on the VM today:
 
 | Demo | Description |
 |------|-------------|
-| `demos/frogger` | Frogger clone (console). Also runs natively on Apple Silicon. |
-| `demos/chess` | Console chess with basic AI |
+| `demos/basic/frogger` | Frogger clone (console). Also runs natively on Apple Silicon. |
+| `demos/basic/chess` | Console chess with basic AI |
 | `demos/vTris` | Tetris-like game |
 
 Run a demo:
 
 ```bash
-./build/src/tools/vbasic/vbasic demos/frogger/frogger.bas
+./build/src/tools/vbasic/vbasic demos/basic/frogger/frogger.bas
 ```
 
 ---

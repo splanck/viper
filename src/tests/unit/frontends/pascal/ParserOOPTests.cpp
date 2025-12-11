@@ -69,9 +69,20 @@ bool hasParseError(const std::string &source)
     return parser.hasError();
 }
 
-template <typename T> T *asDecl(Decl *d) { return dynamic_cast<T *>(d); }
-template <typename T> T *asExpr(Expr *e) { return dynamic_cast<T *>(e); }
-template <typename T> T *asStmt(Stmt *s) { return dynamic_cast<T *>(s); }
+template <typename T> T *asDecl(Decl *d)
+{
+    return dynamic_cast<T *>(d);
+}
+
+template <typename T> T *asExpr(Expr *e)
+{
+    return dynamic_cast<T *>(e);
+}
+
+template <typename T> T *asStmt(Stmt *s)
+{
+    return dynamic_cast<T *>(s);
+}
 
 //===----------------------------------------------------------------------===//
 // Class Declaration Tests - Basic Structure

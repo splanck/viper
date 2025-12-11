@@ -58,20 +58,19 @@ bool analyzeProgram(const std::string &source, DiagnosticEngine &diag)
 TEST(PascalInheritance, SimpleInheritance)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type\n"
-        "  TBase = class\n"
-        "  public\n"
-        "    X: Integer;\n"
-        "  end;\n"
-        "  TChild = class(TBase)\n"
-        "  public\n"
-        "    Y: Integer;\n"
-        "  end;\n"
-        "begin\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  TBase = class\n"
+                                 "  public\n"
+                                 "    X: Integer;\n"
+                                 "  end;\n"
+                                 "  TChild = class(TBase)\n"
+                                 "  public\n"
+                                 "    Y: Integer;\n"
+                                 "  end;\n"
+                                 "begin\n"
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -79,24 +78,23 @@ TEST(PascalInheritance, SimpleInheritance)
 TEST(PascalInheritance, ChainedInheritance)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type\n"
-        "  TGrandparent = class\n"
-        "  public\n"
-        "    A: Integer;\n"
-        "  end;\n"
-        "  TParent = class(TGrandparent)\n"
-        "  public\n"
-        "    B: Integer;\n"
-        "  end;\n"
-        "  TChild = class(TParent)\n"
-        "  public\n"
-        "    C: Integer;\n"
-        "  end;\n"
-        "begin\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  TGrandparent = class\n"
+                                 "  public\n"
+                                 "    A: Integer;\n"
+                                 "  end;\n"
+                                 "  TParent = class(TGrandparent)\n"
+                                 "  public\n"
+                                 "    B: Integer;\n"
+                                 "  end;\n"
+                                 "  TChild = class(TParent)\n"
+                                 "  public\n"
+                                 "    C: Integer;\n"
+                                 "  end;\n"
+                                 "begin\n"
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -104,24 +102,23 @@ TEST(PascalInheritance, ChainedInheritance)
 TEST(PascalInheritance, InheritedFieldAccess)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type\n"
-        "  TBase = class\n"
-        "  public\n"
-        "    Value: Integer;\n"
-        "  end;\n"
-        "  TChild = class(TBase)\n"
-        "  public\n"
-        "    procedure SetValue(v: Integer);\n"
-        "  end;\n"
-        "procedure TChild.SetValue(v: Integer);\n"
-        "begin\n"
-        "  Self.Value := v\n" // Access inherited field
-        "end;\n"
-        "begin\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  TBase = class\n"
+                                 "  public\n"
+                                 "    Value: Integer;\n"
+                                 "  end;\n"
+                                 "  TChild = class(TBase)\n"
+                                 "  public\n"
+                                 "    procedure SetValue(v: Integer);\n"
+                                 "  end;\n"
+                                 "procedure TChild.SetValue(v: Integer);\n"
+                                 "begin\n"
+                                 "  Self.Value := v\n" // Access inherited field
+                                 "end;\n"
+                                 "begin\n"
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -129,16 +126,15 @@ TEST(PascalInheritance, InheritedFieldAccess)
 TEST(PascalInheritance, UnknownBaseClassFails)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type\n"
-        "  TChild = class(TUnknown)\n"
-        "  public\n"
-        "    X: Integer;\n"
-        "  end;\n"
-        "begin\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  TChild = class(TUnknown)\n"
+                                 "  public\n"
+                                 "    X: Integer;\n"
+                                 "  end;\n"
+                                 "begin\n"
+                                 "end.",
+                                 diag);
     EXPECT_FALSE(result);
     EXPECT_NE(diag.errorCount(), 0u);
 }
@@ -150,19 +146,18 @@ TEST(PascalInheritance, UnknownBaseClassFails)
 TEST(PascalInheritance, VirtualMethodDeclaration)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type\n"
-        "  TBase = class\n"
-        "  public\n"
-        "    procedure DoWork; virtual;\n"
-        "  end;\n"
-        "procedure TBase.DoWork;\n"
-        "begin\n"
-        "end;\n"
-        "begin\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  TBase = class\n"
+                                 "  public\n"
+                                 "    procedure DoWork; virtual;\n"
+                                 "  end;\n"
+                                 "procedure TBase.DoWork;\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "begin\n"
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -170,26 +165,25 @@ TEST(PascalInheritance, VirtualMethodDeclaration)
 TEST(PascalInheritance, OverrideVirtualMethod)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type\n"
-        "  TBase = class\n"
-        "  public\n"
-        "    procedure DoWork; virtual;\n"
-        "  end;\n"
-        "  TChild = class(TBase)\n"
-        "  public\n"
-        "    procedure DoWork; override;\n"
-        "  end;\n"
-        "procedure TBase.DoWork;\n"
-        "begin\n"
-        "end;\n"
-        "procedure TChild.DoWork;\n"
-        "begin\n"
-        "end;\n"
-        "begin\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  TBase = class\n"
+                                 "  public\n"
+                                 "    procedure DoWork; virtual;\n"
+                                 "  end;\n"
+                                 "  TChild = class(TBase)\n"
+                                 "  public\n"
+                                 "    procedure DoWork; override;\n"
+                                 "  end;\n"
+                                 "procedure TBase.DoWork;\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "procedure TChild.DoWork;\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "begin\n"
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -197,26 +191,25 @@ TEST(PascalInheritance, OverrideVirtualMethod)
 TEST(PascalInheritance, OverrideWithoutVirtualFails)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type\n"
-        "  TBase = class\n"
-        "  public\n"
-        "    procedure DoWork;\n" // Not virtual
-        "  end;\n"
-        "  TChild = class(TBase)\n"
-        "  public\n"
-        "    procedure DoWork; override;\n" // Cannot override non-virtual
-        "  end;\n"
-        "procedure TBase.DoWork;\n"
-        "begin\n"
-        "end;\n"
-        "procedure TChild.DoWork;\n"
-        "begin\n"
-        "end;\n"
-        "begin\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  TBase = class\n"
+                                 "  public\n"
+                                 "    procedure DoWork;\n" // Not virtual
+                                 "  end;\n"
+                                 "  TChild = class(TBase)\n"
+                                 "  public\n"
+                                 "    procedure DoWork; override;\n" // Cannot override non-virtual
+                                 "  end;\n"
+                                 "procedure TBase.DoWork;\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "procedure TChild.DoWork;\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "begin\n"
+                                 "end.",
+                                 diag);
     EXPECT_FALSE(result);
     EXPECT_NE(diag.errorCount(), 0u);
 }
@@ -224,19 +217,18 @@ TEST(PascalInheritance, OverrideWithoutVirtualFails)
 TEST(PascalInheritance, OverrideNoBaseFails)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type\n"
-        "  TChild = class\n" // No base class
-        "  public\n"
-        "    procedure DoWork; override;\n" // Cannot override without base
-        "  end;\n"
-        "procedure TChild.DoWork;\n"
-        "begin\n"
-        "end;\n"
-        "begin\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  TChild = class\n" // No base class
+                                 "  public\n"
+                                 "    procedure DoWork; override;\n" // Cannot override without base
+                                 "  end;\n"
+                                 "procedure TChild.DoWork;\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "begin\n"
+                                 "end.",
+                                 diag);
     EXPECT_FALSE(result);
     EXPECT_NE(diag.errorCount(), 0u);
 }
@@ -248,16 +240,15 @@ TEST(PascalInheritance, OverrideNoBaseFails)
 TEST(PascalInheritance, AbstractMethodDeclaration)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type\n"
-        "  TAbstract = class\n"
-        "  public\n"
-        "    procedure DoWork; virtual; abstract;\n"
-        "  end;\n"
-        "begin\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  TAbstract = class\n"
+                                 "  public\n"
+                                 "    procedure DoWork; virtual; abstract;\n"
+                                 "  end;\n"
+                                 "begin\n"
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -265,23 +256,22 @@ TEST(PascalInheritance, AbstractMethodDeclaration)
 TEST(PascalInheritance, AbstractClassInstantiationFails)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type\n"
-        "  TAbstract = class\n"
-        "  public\n"
-        "    constructor Create;\n"
-        "    procedure DoWork; virtual; abstract;\n"
-        "  end;\n"
-        "constructor TAbstract.Create;\n"
-        "begin\n"
-        "end;\n"
-        "var\n"
-        "  a: TAbstract;\n"
-        "begin\n"
-        "  a := TAbstract.Create\n" // Cannot instantiate abstract class
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  TAbstract = class\n"
+                                 "  public\n"
+                                 "    constructor Create;\n"
+                                 "    procedure DoWork; virtual; abstract;\n"
+                                 "  end;\n"
+                                 "constructor TAbstract.Create;\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "var\n"
+                                 "  a: TAbstract;\n"
+                                 "begin\n"
+                                 "  a := TAbstract.Create\n" // Cannot instantiate abstract class
+                                 "end.",
+                                 diag);
     EXPECT_FALSE(result);
     EXPECT_NE(diag.errorCount(), 0u);
 }
@@ -289,30 +279,29 @@ TEST(PascalInheritance, AbstractClassInstantiationFails)
 TEST(PascalInheritance, ConcreteSubclassOfAbstract)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type\n"
-        "  TAbstract = class\n"
-        "  public\n"
-        "    procedure DoWork; virtual; abstract;\n"
-        "  end;\n"
-        "  TConcrete = class(TAbstract)\n"
-        "  public\n"
-        "    constructor Create;\n"
-        "    procedure DoWork; override;\n"
-        "  end;\n"
-        "constructor TConcrete.Create;\n"
-        "begin\n"
-        "end;\n"
-        "procedure TConcrete.DoWork;\n"
-        "begin\n"
-        "end;\n"
-        "var\n"
-        "  c: TConcrete;\n"
-        "begin\n"
-        "  c := TConcrete.Create\n" // Can instantiate concrete subclass
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  TAbstract = class\n"
+                                 "  public\n"
+                                 "    procedure DoWork; virtual; abstract;\n"
+                                 "  end;\n"
+                                 "  TConcrete = class(TAbstract)\n"
+                                 "  public\n"
+                                 "    constructor Create;\n"
+                                 "    procedure DoWork; override;\n"
+                                 "  end;\n"
+                                 "constructor TConcrete.Create;\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "procedure TConcrete.DoWork;\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "var\n"
+                                 "  c: TConcrete;\n"
+                                 "begin\n"
+                                 "  c := TConcrete.Create\n" // Can instantiate concrete subclass
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -324,15 +313,14 @@ TEST(PascalInheritance, ConcreteSubclassOfAbstract)
 TEST(PascalInheritance, InterfaceDeclaration)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type\n"
-        "  IDrawable = interface\n"
-        "    procedure Draw;\n"
-        "  end;\n"
-        "begin\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  IDrawable = interface\n"
+                                 "    procedure Draw;\n"
+                                 "  end;\n"
+                                 "begin\n"
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -340,22 +328,21 @@ TEST(PascalInheritance, InterfaceDeclaration)
 TEST(PascalInheritance, ClassImplementsInterface)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type\n"
-        "  IDrawable = interface\n"
-        "    procedure Draw;\n"
-        "  end;\n"
-        "  TShape = class(IDrawable)\n"
-        "  public\n"
-        "    procedure Draw;\n"
-        "  end;\n"
-        "procedure TShape.Draw;\n"
-        "begin\n"
-        "end;\n"
-        "begin\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  IDrawable = interface\n"
+                                 "    procedure Draw;\n"
+                                 "  end;\n"
+                                 "  TShape = class(IDrawable)\n"
+                                 "  public\n"
+                                 "    procedure Draw;\n"
+                                 "  end;\n"
+                                 "procedure TShape.Draw;\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "begin\n"
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -363,23 +350,22 @@ TEST(PascalInheritance, ClassImplementsInterface)
 TEST(PascalInheritance, MissingInterfaceMethodFails)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type\n"
-        "  IDrawable = interface\n"
-        "    procedure Draw;\n"
-        "    procedure Render;\n"
-        "  end;\n"
-        "  TShape = class(IDrawable)\n"
-        "  public\n"
-        "    procedure Draw;\n" // Missing Render
-        "  end;\n"
-        "procedure TShape.Draw;\n"
-        "begin\n"
-        "end;\n"
-        "begin\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  IDrawable = interface\n"
+                                 "    procedure Draw;\n"
+                                 "    procedure Render;\n"
+                                 "  end;\n"
+                                 "  TShape = class(IDrawable)\n"
+                                 "  public\n"
+                                 "    procedure Draw;\n" // Missing Render
+                                 "  end;\n"
+                                 "procedure TShape.Draw;\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "begin\n"
+                                 "end.",
+                                 diag);
     EXPECT_FALSE(result);
     EXPECT_NE(diag.errorCount(), 0u);
 }
@@ -387,18 +373,17 @@ TEST(PascalInheritance, MissingInterfaceMethodFails)
 TEST(PascalInheritance, InterfaceExtension)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type\n"
-        "  IBase = interface\n"
-        "    procedure DoBase;\n"
-        "  end;\n"
-        "  IExtended = interface(IBase)\n"
-        "    procedure DoExtended;\n"
-        "  end;\n"
-        "begin\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  IBase = interface\n"
+                                 "    procedure DoBase;\n"
+                                 "  end;\n"
+                                 "  IExtended = interface(IBase)\n"
+                                 "    procedure DoExtended;\n"
+                                 "  end;\n"
+                                 "begin\n"
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -410,29 +395,28 @@ TEST(PascalInheritance, InterfaceExtension)
 TEST(PascalInheritance, ClassImplementsMultipleInterfaces)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type\n"
-        "  IDrawable = interface\n"
-        "    procedure Draw;\n"
-        "  end;\n"
-        "  IResizable = interface\n"
-        "    procedure Resize(w: Integer; h: Integer);\n"
-        "  end;\n"
-        "  TWidget = class(IDrawable, IResizable)\n"
-        "  public\n"
-        "    procedure Draw;\n"
-        "    procedure Resize(w: Integer; h: Integer);\n"
-        "  end;\n"
-        "procedure TWidget.Draw;\n"
-        "begin\n"
-        "end;\n"
-        "procedure TWidget.Resize(w: Integer; h: Integer);\n"
-        "begin\n"
-        "end;\n"
-        "begin\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  IDrawable = interface\n"
+                                 "    procedure Draw;\n"
+                                 "  end;\n"
+                                 "  IResizable = interface\n"
+                                 "    procedure Resize(w: Integer; h: Integer);\n"
+                                 "  end;\n"
+                                 "  TWidget = class(IDrawable, IResizable)\n"
+                                 "  public\n"
+                                 "    procedure Draw;\n"
+                                 "    procedure Resize(w: Integer; h: Integer);\n"
+                                 "  end;\n"
+                                 "procedure TWidget.Draw;\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "procedure TWidget.Resize(w: Integer; h: Integer);\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "begin\n"
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -444,29 +428,28 @@ TEST(PascalInheritance, ClassImplementsMultipleInterfaces)
 TEST(PascalInheritance, ClassWithBaseAndInterface)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type\n"
-        "  IDrawable = interface\n"
-        "    procedure Draw;\n"
-        "  end;\n"
-        "  TBase = class\n"
-        "  public\n"
-        "    procedure DoBase;\n"
-        "  end;\n"
-        "  TChild = class(TBase, IDrawable)\n"
-        "  public\n"
-        "    procedure Draw;\n"
-        "  end;\n"
-        "procedure TBase.DoBase;\n"
-        "begin\n"
-        "end;\n"
-        "procedure TChild.Draw;\n"
-        "begin\n"
-        "end;\n"
-        "begin\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  IDrawable = interface\n"
+                                 "    procedure Draw;\n"
+                                 "  end;\n"
+                                 "  TBase = class\n"
+                                 "  public\n"
+                                 "    procedure DoBase;\n"
+                                 "  end;\n"
+                                 "  TChild = class(TBase, IDrawable)\n"
+                                 "  public\n"
+                                 "    procedure Draw;\n"
+                                 "  end;\n"
+                                 "procedure TBase.DoBase;\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "procedure TChild.Draw;\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "begin\n"
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -478,24 +461,23 @@ TEST(PascalInheritance, ClassWithBaseAndInterface)
 TEST(PascalInheritance, IsExpressionWithInheritance)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type\n"
-        "  TBase = class\n"
-        "  public\n"
-        "    X: Integer;\n"
-        "  end;\n"
-        "  TChild = class(TBase)\n"
-        "  public\n"
-        "    Y: Integer;\n"
-        "  end;\n"
-        "var\n"
-        "  obj: TBase;\n"
-        "begin\n"
-        "  if obj is TChild then\n"
-        "    WriteLn('Is child')\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  TBase = class\n"
+                                 "  public\n"
+                                 "    X: Integer;\n"
+                                 "  end;\n"
+                                 "  TChild = class(TBase)\n"
+                                 "  public\n"
+                                 "    Y: Integer;\n"
+                                 "  end;\n"
+                                 "var\n"
+                                 "  obj: TBase;\n"
+                                 "begin\n"
+                                 "  if obj is TChild then\n"
+                                 "    WriteLn('Is child')\n"
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -503,26 +485,25 @@ TEST(PascalInheritance, IsExpressionWithInheritance)
 TEST(PascalInheritance, IsExpressionWithInterface)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type\n"
-        "  IDrawable = interface\n"
-        "    procedure Draw;\n"
-        "  end;\n"
-        "  TShape = class(IDrawable)\n"
-        "  public\n"
-        "    procedure Draw;\n"
-        "  end;\n"
-        "procedure TShape.Draw;\n"
-        "begin\n"
-        "end;\n"
-        "var\n"
-        "  obj: TShape;\n"
-        "begin\n"
-        "  if obj is IDrawable then\n"
-        "    WriteLn('Implements IDrawable')\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  IDrawable = interface\n"
+                                 "    procedure Draw;\n"
+                                 "  end;\n"
+                                 "  TShape = class(IDrawable)\n"
+                                 "  public\n"
+                                 "    procedure Draw;\n"
+                                 "  end;\n"
+                                 "procedure TShape.Draw;\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "var\n"
+                                 "  obj: TShape;\n"
+                                 "begin\n"
+                                 "  if obj is IDrawable then\n"
+                                 "    WriteLn('Implements IDrawable')\n"
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -534,27 +515,26 @@ TEST(PascalInheritance, IsExpressionWithInterface)
 TEST(PascalInheritance, InheritedStatement)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type\n"
-        "  TBase = class\n"
-        "  public\n"
-        "    procedure DoWork; virtual;\n"
-        "  end;\n"
-        "  TChild = class(TBase)\n"
-        "  public\n"
-        "    procedure DoWork; override;\n"
-        "  end;\n"
-        "procedure TBase.DoWork;\n"
-        "begin\n"
-        "end;\n"
-        "procedure TChild.DoWork;\n"
-        "begin\n"
-        "  inherited\n" // Call base class DoWork
-        "end;\n"
-        "begin\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  TBase = class\n"
+                                 "  public\n"
+                                 "    procedure DoWork; virtual;\n"
+                                 "  end;\n"
+                                 "  TChild = class(TBase)\n"
+                                 "  public\n"
+                                 "    procedure DoWork; override;\n"
+                                 "  end;\n"
+                                 "procedure TBase.DoWork;\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "procedure TChild.DoWork;\n"
+                                 "begin\n"
+                                 "  inherited\n" // Call base class DoWork
+                                 "end;\n"
+                                 "begin\n"
+                                 "end.",
+                                 diag);
     EXPECT_TRUE(result);
     EXPECT_EQ(diag.errorCount(), 0u);
 }
@@ -562,20 +542,19 @@ TEST(PascalInheritance, InheritedStatement)
 TEST(PascalInheritance, InheritedWithoutBaseFails)
 {
     DiagnosticEngine diag;
-    bool result = analyzeProgram(
-        "program Test;\n"
-        "type\n"
-        "  TRoot = class\n" // No base class
-        "  public\n"
-        "    procedure DoWork;\n"
-        "  end;\n"
-        "procedure TRoot.DoWork;\n"
-        "begin\n"
-        "  inherited\n" // No base class to inherit from
-        "end;\n"
-        "begin\n"
-        "end.",
-        diag);
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  TRoot = class\n" // No base class
+                                 "  public\n"
+                                 "    procedure DoWork;\n"
+                                 "  end;\n"
+                                 "procedure TRoot.DoWork;\n"
+                                 "begin\n"
+                                 "  inherited\n" // No base class to inherit from
+                                 "end;\n"
+                                 "begin\n"
+                                 "end.",
+                                 diag);
     EXPECT_FALSE(result);
     EXPECT_NE(diag.errorCount(), 0u);
 }

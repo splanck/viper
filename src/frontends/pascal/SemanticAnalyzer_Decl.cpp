@@ -421,7 +421,23 @@ void SemanticAnalyzer::registerClass(ClassDecl &decl)
                                 ++required;
                         }
                         method.requiredParams = required;
-                        info.methods[toLower(fd.name)] = method;
+                        // Check for duplicate signature in existing overloads
+                        std::string key = toLower(fd.name);
+                        auto &overloads = info.methods[key];
+                        bool hasDuplicate = false;
+                        for (const auto &existing : overloads)
+                        {
+                            if (parameterTypesMatch(existing, method))
+                            {
+                                error(fd.loc,
+                                      "duplicate method '" + fd.name +
+                                          "' with same parameter signature");
+                                hasDuplicate = true;
+                                break;
+                            }
+                        }
+                        if (!hasDuplicate)
+                            overloads.push_back(method);
                     }
                     else if (member.methodDecl->kind == DeclKind::Procedure)
                     {
@@ -446,7 +462,23 @@ void SemanticAnalyzer::registerClass(ClassDecl &decl)
                                 ++required;
                         }
                         method.requiredParams = required;
-                        info.methods[toLower(pd.name)] = method;
+                        // Check for duplicate signature in existing overloads
+                        std::string key = toLower(pd.name);
+                        auto &overloads = info.methods[key];
+                        bool hasDuplicate = false;
+                        for (const auto &existing : overloads)
+                        {
+                            if (parameterTypesMatch(existing, method))
+                            {
+                                error(pd.loc,
+                                      "duplicate method '" + pd.name +
+                                          "' with same parameter signature");
+                                hasDuplicate = true;
+                                break;
+                            }
+                        }
+                        if (!hasDuplicate)
+                            overloads.push_back(method);
                     }
                 }
                 break;
@@ -474,7 +506,21 @@ void SemanticAnalyzer::registerClass(ClassDecl &decl)
                             ++required;
                     }
                     method.requiredParams = required;
-                    info.methods[toLower(cd.name)] = method;
+                    // Check for duplicate signature in existing overloads
+                    std::string key = toLower(cd.name);
+                    auto &overloads = info.methods[key];
+                    bool hasDuplicate = false;
+                    for (const auto &existing : overloads)
+                    {
+                        if (parameterTypesMatch(existing, method))
+                        {
+                            error(cd.loc, "duplicate constructor with same parameter signature");
+                            hasDuplicate = true;
+                            break;
+                        }
+                    }
+                    if (!hasDuplicate)
+                        overloads.push_back(method);
                 }
                 break;
             }
@@ -491,7 +537,8 @@ void SemanticAnalyzer::registerClass(ClassDecl &decl)
                     method.isOverride = dd.isOverride;
                     method.visibility = member.visibility;
                     method.loc = dd.loc;
-                    info.methods[toLower(dd.name)] = method;
+                    // Destructors cannot be overloaded
+                    info.methods[toLower(dd.name)].push_back(method);
                 }
                 break;
             }
@@ -538,20 +585,19 @@ void SemanticAnalyzer::registerClass(ClassDecl &decl)
             }
             else
             {
-                auto mit = info.methods.find(key);
-                if (mit == info.methods.end())
+                const MethodInfo *m = info.findMethod(key);
+                if (!m)
                 {
                     error(pd.loc,
                           "undefined getter '" + pd.getter + "' for property '" + pd.name + "'");
                 }
                 else
                 {
-                    const MethodInfo &m = mit->second;
-                    if (m.requiredParams != 0)
+                    if (m->requiredParams != 0)
                     {
                         error(pd.loc, "getter '" + pd.getter + "' must have no parameters");
                     }
-                    if (!m.returnType.isError() && !isAssignableFrom(pinfo.type, m.returnType))
+                    if (!m->returnType.isError() && !isAssignableFrom(pinfo.type, m->returnType))
                     {
                         error(pd.loc,
                               "getter '" + pd.getter + "' return type mismatch for property '" +
@@ -581,26 +627,25 @@ void SemanticAnalyzer::registerClass(ClassDecl &decl)
             }
             else
             {
-                auto mit = info.methods.find(key);
-                if (mit == info.methods.end())
+                const MethodInfo *m = info.findMethod(key);
+                if (!m)
                 {
                     error(pd.loc,
                           "undefined setter '" + pd.setter + "' for property '" + pd.name + "'");
                 }
                 else
                 {
-                    const MethodInfo &m = mit->second;
-                    if (m.returnType.kind != PasTypeKind::Void)
+                    if (m->returnType.kind != PasTypeKind::Void)
                     {
                         error(pd.loc, "setter '" + pd.setter + "' must be a procedure");
                     }
-                    if (m.params.size() != 1)
+                    if (m->params.size() != 1)
                     {
                         error(pd.loc, "setter '" + pd.setter + "' must have exactly one parameter");
                     }
                     else
                     {
-                        const PasType &pt = m.params[0].second;
+                        const PasType &pt = m->params[0].second;
                         if (!pt.isError() && !isAssignableFrom(pt, pinfo.type))
                         {
                             error(pd.loc,
@@ -652,7 +697,23 @@ void SemanticAnalyzer::registerInterface(InterfaceDecl &decl)
             method.params.emplace_back(param.name, paramType);
             method.isVarParam.push_back(param.isVar);
         }
-        info.methods[toLower(sig.name)] = method;
+        // Check for duplicate signature in existing overloads
+        std::string methodKey = toLower(sig.name);
+        auto &overloads = info.methods[methodKey];
+        bool hasDuplicate = false;
+        for (const auto &existing : overloads)
+        {
+            if (parameterTypesMatch(existing, method))
+            {
+                error(sig.loc,
+                      "duplicate interface method '" + sig.name +
+                          "' with same parameter signature");
+                hasDuplicate = true;
+                break;
+            }
+        }
+        if (!hasDuplicate)
+            overloads.push_back(method);
     }
 
     interfaces_[key] = info;

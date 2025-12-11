@@ -282,12 +282,10 @@ RUNTIME_CLASS(
 // - Static utility class for time-related operations.
 // - SleepMs pauses execution for the specified milliseconds.
 // - GetTickCount returns milliseconds since an arbitrary epoch.
-RUNTIME_CLASS(
-    "Viper.Time",
-    RTCLS_Time,
-    "obj",
-    "", /* static utility class; no instance ctor */
-    RUNTIME_PROPS(),
-    RUNTIME_METHODS(
-        RUNTIME_METHOD("SleepMs", "void(i64)", "Viper.Time.SleepMs"),
-        RUNTIME_METHOD("GetTickCount", "i64()", "Viper.Time.GetTickCount")))
+RUNTIME_CLASS("Viper.Time",
+              RTCLS_Time,
+              "obj",
+              "", /* static utility class; no instance ctor */
+              RUNTIME_PROPS(),
+              RUNTIME_METHODS(RUNTIME_METHOD("SleepMs", "void(i64)", "Viper.Time.SleepMs"),
+                              RUNTIME_METHOD("GetTickCount", "i64()", "Viper.Time.GetTickCount")))

@@ -57,7 +57,7 @@ The ARM64 backend has matured from early development to functional:
 Example:
 ```bash
 # Compile Frogger to native ARM64
-./build/src/tools/ilc/ilc front basic -emit-il demos/frogger/frogger.bas > frogger.il
+./build/src/tools/ilc/ilc front basic -emit-il demos/basic/frogger/frogger.bas > frogger.il
 ./build/src/tools/ilc/ilc codegen arm64 frogger.il -S frogger.s
 as frogger.s -o frogger.o
 clang++ frogger.o build/src/runtime/libviper_runtime.a -o frogger_native
@@ -534,7 +534,7 @@ Compile to native:
 ./tetris
 
 # Frogger game
-./vbasic demos/frogger/frogger.bas
+./vbasic demos/basic/frogger/frogger.bas
 ```
 
 ---

@@ -605,6 +605,12 @@ target_link_libraries(test_pascal_semantic_builtin PRIVATE viper_testing fe_pasc
 add_test(NAME test_pascal_semantic_builtin COMMAND test_pascal_semantic_builtin)
 set_tests_properties(test_pascal_semantic_builtin PROPERTIES LABELS pascal)
 
+# Pascal Self and With statement tests
+add_executable(test_pascal_self_and_with ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SelfAndWithTests.cpp)
+target_link_libraries(test_pascal_self_and_with PRIVATE viper_testing fe_pascal)
+add_test(NAME test_pascal_self_and_with COMMAND test_pascal_self_and_with)
+set_tests_properties(test_pascal_self_and_with PROPERTIES LABELS pascal)
+
 # Pascal v0.1 feature rejection tests
 add_executable(test_pascal_semantic_v01_rejection ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticV01RejectionTests.cpp)
 target_link_libraries(test_pascal_semantic_v01_rejection PRIVATE viper_testing fe_pascal)

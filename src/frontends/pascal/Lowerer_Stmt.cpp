@@ -317,11 +317,16 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
         }
 
         // Check if this is a class field/property assignment (inside a method)
+        // Walk inheritance chain to find the field/property
         if (!currentClassName_.empty())
         {
-            auto *classInfo = sema_->lookupClass(toLower(currentClassName_));
-            if (classInfo)
+            std::string curClass = toLower(currentClassName_);
+            while (!curClass.empty())
             {
+                auto *classInfo = sema_->lookupClass(curClass);
+                if (!classInfo)
+                    break;
+
                 // Property setter first
                 auto pit = classInfo->properties.find(key);
                 if (pit != classInfo->properties.end())
@@ -334,18 +339,15 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
                         const auto &p = pit->second;
                         if (p.setter.kind == PropertyAccessor::Kind::Method)
                         {
-                            std::string funcName = currentClassName_ + "." + p.setter.name;
+                            // Use defining class for method call
+                            std::string funcName = classInfo->name + "." + p.setter.name;
                             emitCall(funcName, {selfPtr, value.value});
                             return;
                         }
                         if (p.setter.kind == PropertyAccessor::Kind::Field)
                         {
-                            // Store to Self.<field>
+                            // Store to Self.<field> - use currentClassName_ for offsets
                             PasType selfType = PasType::classType(currentClassName_);
-                            for (const auto &[fname, finfo] : classInfo->fields)
-                            {
-                                selfType.fields[fname] = std::make_shared<PasType>(finfo.type);
-                            }
                             auto [fieldAddr, fieldType] =
                                 getFieldAddress(selfPtr, selfType, p.setter.name);
                             emitStore(fieldType, fieldAddr, value.value);
@@ -364,12 +366,9 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
                     {
                         Value selfPtr = emitLoad(Type(Type::Kind::Ptr), selfIt->second);
 
-                        // Build a PasType with the class fields for getFieldAddress
+                        // Use currentClassName_ for getFieldAddress - classLayouts_
+                        // includes inherited fields at correct offsets
                         PasType selfType = PasType::classType(currentClassName_);
-                        for (const auto &[fname, finfo] : classInfo->fields)
-                        {
-                            selfType.fields[fname] = std::make_shared<PasType>(finfo.type);
-                        }
                         auto [fieldAddr, fieldType] =
                             getFieldAddress(selfPtr, selfType, nameExpr.name);
 
@@ -381,6 +380,9 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
                         return;
                     }
                 }
+
+                // Move to base class
+                curClass = toLower(classInfo->baseClass);
             }
         }
         // Unknown target - just return
@@ -499,7 +501,8 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
             {
                 // BUG-PAS-OOP-003 fix: Handle global record field assignment
                 Value globalAddr = getGlobalVarAddr(key, globalIt->second);
-                auto [fieldAddr, fieldType] = getFieldAddress(globalAddr, baseType, fieldExpr.field);
+                auto [fieldAddr, fieldType] =
+                    getFieldAddress(globalAddr, baseType, fieldExpr.field);
                 LowerResult value = lowerExpr(*stmt.value);
                 emitStore(fieldType, fieldAddr, value.value);
                 return;
@@ -569,8 +572,7 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
                 {
                     for (const auto &[fname, finfo] : classInfo->fields)
                     {
-                        classTypeWithFields.fields[fname] =
-                            std::make_shared<PasType>(finfo.type);
+                        classTypeWithFields.fields[fname] = std::make_shared<PasType>(finfo.type);
                     }
                 }
 

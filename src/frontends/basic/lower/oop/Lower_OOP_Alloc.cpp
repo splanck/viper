@@ -92,7 +92,8 @@ Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr)
             // Fallback: check dot-joined className
             if (!isQualified)
             {
-                if (string_utils::iequals(expr.className, std::string(il::runtime::RTCLASS_STRINGBUILDER)))
+                if (string_utils::iequals(expr.className,
+                                          std::string(il::runtime::RTCLASS_STRINGBUILDER)))
                     isQualified = true;
             }
             if (isQualified)

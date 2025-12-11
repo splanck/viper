@@ -18,7 +18,7 @@ if (NOT VBASIC OR NOT ILC)
 endif ()
 
 # Set up test paths
-set(FROGGER_BAS "${CMAKE_SOURCE_DIR}/demos/frogger/frogger.bas")
+set(FROGGER_BAS "${CMAKE_SOURCE_DIR}/demos/basic/frogger/frogger.bas")
 set(FROGGER_IL "${CMAKE_BINARY_DIR}/test_frogger.il")
 set(FROGGER_ASM "${CMAKE_BINARY_DIR}/test_frogger.s")
 set(FROGGER_EXE "${CMAKE_BINARY_DIR}/test_frogger_arm64")

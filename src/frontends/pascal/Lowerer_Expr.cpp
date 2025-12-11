@@ -223,13 +223,18 @@ LowerResult Lowerer::lowerName(const NameExpr &expr)
         }
     }
 
-    // Check class fields/properties if inside a method
+    // Check class fields/properties if inside a method (walk inheritance chain)
     if (!currentClassName_.empty())
     {
-        auto *classInfo = sema_->lookupClass(toLower(currentClassName_));
-        if (classInfo)
+        // Walk inheritance chain looking for field or property
+        std::string curClass = toLower(currentClassName_);
+        while (!curClass.empty())
         {
-            // Check for field first
+            auto *classInfo = sema_->lookupClass(curClass);
+            if (!classInfo)
+                break;
+
+            // Check for field in this class
             auto fieldIt = classInfo->fields.find(key);
             if (fieldIt != classInfo->fields.end())
             {
@@ -237,18 +242,16 @@ LowerResult Lowerer::lowerName(const NameExpr &expr)
                 if (selfIt != locals_.end())
                 {
                     Value selfPtr = emitLoad(Type(Type::Kind::Ptr), selfIt->second);
-                    // Build type with fields for getFieldAddress
+                    // Use currentClassName_ for getFieldAddress - it uses classLayouts_
+                    // which includes inherited fields at correct offsets
                     PasType selfType = PasType::classType(currentClassName_);
-                    for (const auto &[fname, finfo] : classInfo->fields)
-                    {
-                        selfType.fields[fname] = std::make_shared<PasType>(finfo.type);
-                    }
                     auto [fieldAddr, fieldType] = getFieldAddress(selfPtr, selfType, expr.name);
                     Value fieldVal = emitLoad(fieldType, fieldAddr);
                     return {fieldVal, fieldType};
                 }
             }
-            // Check for property
+
+            // Check for property in this class
             auto propIt = classInfo->properties.find(key);
             if (propIt != classInfo->properties.end())
             {
@@ -257,22 +260,18 @@ LowerResult Lowerer::lowerName(const NameExpr &expr)
                 {
                     Value selfPtr = emitLoad(Type(Type::Kind::Ptr), selfIt->second);
                     const auto &p = propIt->second;
-                    // Getter via method
+                    // Getter via method - use defining class name
                     if (p.getter.kind == PropertyAccessor::Kind::Method)
                     {
-                        std::string funcName = currentClassName_ + "." + p.getter.name;
+                        std::string funcName = classInfo->name + "." + p.getter.name;
                         Type retType = mapType(p.type);
                         Value result = emitCallRet(retType, funcName, {selfPtr});
                         return {result, retType};
                     }
-                    // Getter via field
+                    // Getter via field - use currentClassName_ for correct offsets
                     if (p.getter.kind == PropertyAccessor::Kind::Field)
                     {
                         PasType selfType = PasType::classType(currentClassName_);
-                        for (const auto &[fname, finfo] : classInfo->fields)
-                        {
-                            selfType.fields[fname] = std::make_shared<PasType>(finfo.type);
-                        }
                         auto [fieldAddr, fieldType] =
                             getFieldAddress(selfPtr, selfType, p.getter.name);
                         Value result = emitLoad(fieldType, fieldAddr);
@@ -280,6 +279,9 @@ LowerResult Lowerer::lowerName(const NameExpr &expr)
                     }
                 }
             }
+
+            // Move to base class
+            curClass = toLower(classInfo->baseClass);
         }
     }
 
@@ -746,8 +748,8 @@ LowerResult Lowerer::lowerCall(const CallExpr &expr)
         if (ci)
         {
             std::string mkey = toLower(callee);
-            auto mit = ci->methods.find(mkey);
-            if (mit != ci->methods.end())
+            const MethodInfo *methodInfo = ci->findMethod(mkey);
+            if (methodInfo)
             {
                 // Resolve Self from locals
                 auto itSelf = locals_.find("self");
@@ -767,7 +769,7 @@ LowerResult Lowerer::lowerCall(const CallExpr &expr)
 
                     // Direct call to Class.Method
                     std::string funcName = currentClassName_ + "." + callee;
-                    Type retType = mapType(mit->second.returnType);
+                    Type retType = mapType(methodInfo->returnType);
                     if (retType.kind == Type::Kind::Void)
                     {
                         emitCall(funcName, args);
@@ -811,12 +813,12 @@ LowerResult Lowerer::lowerCall(const CallExpr &expr)
                 if (ci)
                 {
                     std::string mkey = toLower(callee);
-                    auto mit = ci->methods.find(mkey);
-                    if (mit != ci->methods.end())
+                    const MethodInfo *methodInfo = ci->findMethod(mkey);
+                    if (methodInfo)
                     {
                         // Direct call to Class.Method
                         std::string funcName = expr.withClassName + "." + callee;
-                        Type retType = mapType(mit->second.returnType);
+                        Type retType = mapType(methodInfo->returnType);
                         if (retType.kind == Type::Kind::Void)
                         {
                             emitCall(funcName, args);
@@ -1535,17 +1537,16 @@ LowerResult Lowerer::lowerField(const FieldExpr &expr)
             }
 
             // 2) Zero-arg method sugar
-            auto methodIt = classInfo->methods.find(methodKey);
-            if (methodIt != classInfo->methods.end())
+            const MethodInfo *methodInfo = classInfo->findMethod(methodKey);
+            if (methodInfo)
             {
                 // This is a method - check if it can be called with zero arguments
-                const auto &methodInfo = methodIt->second;
-                if (methodInfo.requiredParams == 0 &&
-                    methodInfo.returnType.kind != PasTypeKind::Void)
+                if (methodInfo->requiredParams == 0 &&
+                    methodInfo->returnType.kind != PasTypeKind::Void)
                 {
                     // Call the method with just the Self pointer
                     std::string methodName = baseType.name + "." + expr.field;
-                    Type retType = mapType(methodInfo.returnType);
+                    Type retType = mapType(methodInfo->returnType);
                     Value result = emitCallRet(retType, methodName, {objPtr});
                     return {result, retType};
                 }

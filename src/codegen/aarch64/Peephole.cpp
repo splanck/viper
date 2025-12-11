@@ -363,8 +363,7 @@ namespace
 ///
 /// @param instrs Vector of instructions to filter.
 /// @param toRemove Set of indices to remove.
-void removeMarkedInstructions(std::vector<MInstr> &instrs,
-                              const std::vector<bool> &toRemove)
+void removeMarkedInstructions(std::vector<MInstr> &instrs, const std::vector<bool> &toRemove)
 {
     std::size_t writeIdx = 0;
     for (std::size_t readIdx = 0; readIdx < instrs.size(); ++readIdx)

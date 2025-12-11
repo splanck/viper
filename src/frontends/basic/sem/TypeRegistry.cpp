@@ -121,7 +121,9 @@ void seedRuntimeTypeCatalog(NamespaceRegistry &registry)
         // Canonical forms (from RuntimeClassNames.hpp constants)
         {il::runtime::RTCLASS_OBJECT.data(), ExternalTypeCategory::Class, "viper:Object"},
         {il::runtime::RTCLASS_STRING.data(), ExternalTypeCategory::Class, "viper:String"},
-        {il::runtime::RTCLASS_STRINGBUILDER.data(), ExternalTypeCategory::Class, "viper.text:StringBuilder"},
+        {il::runtime::RTCLASS_STRINGBUILDER.data(),
+         ExternalTypeCategory::Class,
+         "viper.text:StringBuilder"},
         {il::runtime::RTCLASS_FILE.data(), ExternalTypeCategory::Class, "viper.io:File"},
         {il::runtime::RTCLASS_LIST.data(), ExternalTypeCategory::Class, "viper.coll:List"},
     };

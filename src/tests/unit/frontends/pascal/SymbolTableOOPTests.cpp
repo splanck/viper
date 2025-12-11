@@ -40,8 +40,8 @@ namespace
 
 /// @brief Parse and analyze a program, returning the analyzer for inspection.
 std::unique_ptr<SemanticAnalyzer> analyzeAndReturn(const std::string &source,
-                                                    DiagnosticEngine &diag,
-                                                    bool &success)
+                                                   DiagnosticEngine &diag,
+                                                   bool &success)
 {
     Lexer lexer(source, 0, diag);
     Parser parser(lexer, diag);
@@ -78,7 +78,8 @@ TEST(PascalSymbolTableOOP, ClassRegisteredAsType)
                                      "    x: Integer;\n"
                                      "  end;\n"
                                      "begin end.",
-                                     diag, success);
+                                     diag,
+                                     success);
     EXPECT_TRUE(success);
     ASSERT_NE(analyzer, nullptr);
 
@@ -101,7 +102,8 @@ TEST(PascalSymbolTableOOP, ClassCaseInsensitiveLookup)
     auto analyzer = analyzeAndReturn("program Test;\n"
                                      "type TMyClass = class x: Integer; end;\n"
                                      "begin end.",
-                                     diag, success);
+                                     diag,
+                                     success);
     EXPECT_TRUE(success);
     ASSERT_NE(analyzer, nullptr);
 
@@ -126,7 +128,8 @@ TEST(PascalSymbolTableOOP, ClassFieldsRegistered)
                                      "    Name: String;\n"
                                      "  end;\n"
                                      "begin end.",
-                                     diag, success);
+                                     diag,
+                                     success);
     EXPECT_TRUE(success);
     ASSERT_NE(analyzer, nullptr);
 
@@ -158,7 +161,8 @@ TEST(PascalSymbolTableOOP, ClassMethodsRegistered)
                                      "    procedure Reset;\n"
                                      "  end;\n"
                                      "begin end.",
-                                     diag, success);
+                                     diag,
+                                     success);
     EXPECT_TRUE(success);
     ASSERT_NE(analyzer, nullptr);
 
@@ -166,15 +170,15 @@ TEST(PascalSymbolTableOOP, ClassMethodsRegistered)
     ASSERT_NE(info, nullptr);
     EXPECT_EQ(info->methods.size(), 2u);
 
-    auto addIt = info->methods.find("add");
-    ASSERT_NE(addIt, info->methods.end());
-    EXPECT_EQ(addIt->second.name, "Add");
-    EXPECT_EQ(addIt->second.returnType.kind, PasTypeKind::Integer);
-    EXPECT_EQ(addIt->second.params.size(), 2u);
+    const MethodInfo *addMethod = info->findMethod("add");
+    ASSERT_NE(addMethod, nullptr);
+    EXPECT_EQ(addMethod->name, "Add");
+    EXPECT_EQ(addMethod->returnType.kind, PasTypeKind::Integer);
+    EXPECT_EQ(addMethod->params.size(), 2u);
 
-    auto resetIt = info->methods.find("reset");
-    ASSERT_NE(resetIt, info->methods.end());
-    EXPECT_EQ(resetIt->second.returnType.kind, PasTypeKind::Void);
+    const MethodInfo *resetMethod = info->findMethod("reset");
+    ASSERT_NE(resetMethod, nullptr);
+    EXPECT_EQ(resetMethod->returnType.kind, PasTypeKind::Void);
 }
 
 TEST(PascalSymbolTableOOP, ClassMethodModifiersRegistered)
@@ -192,27 +196,28 @@ TEST(PascalSymbolTableOOP, ClassMethodModifiersRegistered)
                                      "    procedure AbstractMethod; override;\n"
                                      "  end;\n"
                                      "begin end.",
-                                     diag, success);
+                                     diag,
+                                     success);
     EXPECT_TRUE(success);
     ASSERT_NE(analyzer, nullptr);
 
     const ClassInfo *base = analyzer->lookupClass("TBase");
     ASSERT_NE(base, nullptr);
-    auto vmIt = base->methods.find("virtualmethod");
-    ASSERT_NE(vmIt, base->methods.end());
-    EXPECT_TRUE(vmIt->second.isVirtual);
-    EXPECT_FALSE(vmIt->second.isAbstract);
+    const MethodInfo *vmMethod = base->findMethod("virtualmethod");
+    ASSERT_NE(vmMethod, nullptr);
+    EXPECT_TRUE(vmMethod->isVirtual);
+    EXPECT_FALSE(vmMethod->isAbstract);
 
-    auto amIt = base->methods.find("abstractmethod");
-    ASSERT_NE(amIt, base->methods.end());
-    EXPECT_TRUE(amIt->second.isVirtual);
-    EXPECT_TRUE(amIt->second.isAbstract);
+    const MethodInfo *amMethod = base->findMethod("abstractmethod");
+    ASSERT_NE(amMethod, nullptr);
+    EXPECT_TRUE(amMethod->isVirtual);
+    EXPECT_TRUE(amMethod->isAbstract);
 
     const ClassInfo *derived = analyzer->lookupClass("TDerived");
     ASSERT_NE(derived, nullptr);
-    auto dvmIt = derived->methods.find("virtualmethod");
-    ASSERT_NE(dvmIt, derived->methods.end());
-    EXPECT_TRUE(dvmIt->second.isOverride);
+    const MethodInfo *dvmMethod = derived->findMethod("virtualmethod");
+    ASSERT_NE(dvmMethod, nullptr);
+    EXPECT_TRUE(dvmMethod->isOverride);
 }
 
 TEST(PascalSymbolTableOOP, ClassConstructorDestructorRegistered)
@@ -226,7 +231,8 @@ TEST(PascalSymbolTableOOP, ClassConstructorDestructorRegistered)
                                      "    destructor Destroy;\n"
                                      "  end;\n"
                                      "begin end.",
-                                     diag, success);
+                                     diag,
+                                     success);
     EXPECT_TRUE(success);
     ASSERT_NE(analyzer, nullptr);
 
@@ -236,13 +242,13 @@ TEST(PascalSymbolTableOOP, ClassConstructorDestructorRegistered)
     EXPECT_TRUE(info->hasDestructor);
 
     // Constructor is registered as a method named "Create"
-    auto ctorIt = info->methods.find("create");
-    ASSERT_NE(ctorIt, info->methods.end());
-    EXPECT_EQ(ctorIt->second.params.size(), 1u);
+    const MethodInfo *ctorMethod = info->findMethod("create");
+    ASSERT_NE(ctorMethod, nullptr);
+    EXPECT_EQ(ctorMethod->params.size(), 1u);
 
     // Destructor is registered as a method named "Destroy"
-    auto dtorIt = info->methods.find("destroy");
-    ASSERT_NE(dtorIt, info->methods.end());
+    const MethodInfo *dtorMethod = info->findMethod("destroy");
+    ASSERT_NE(dtorMethod, nullptr);
 }
 
 TEST(PascalSymbolTableOOP, ClassInheritanceTracked)
@@ -255,7 +261,8 @@ TEST(PascalSymbolTableOOP, ClassInheritanceTracked)
                                      "  TChild = class(TBase) y: Integer; end;\n"
                                      "  TGrandchild = class(TChild) z: Integer; end;\n"
                                      "begin end.",
-                                     diag, success);
+                                     diag,
+                                     success);
     EXPECT_TRUE(success);
     ASSERT_NE(analyzer, nullptr);
 
@@ -281,7 +288,8 @@ TEST(PascalSymbolTableOOP, ClassAbstractnessDetected)
                                      "    procedure DoWork; override;\n"
                                      "  end;\n"
                                      "begin end.",
-                                     diag, success);
+                                     diag,
+                                     success);
     EXPECT_TRUE(success);
     ASSERT_NE(analyzer, nullptr);
 
@@ -308,7 +316,8 @@ TEST(PascalSymbolTableOOP, InterfaceRegisteredAsType)
                                      "    procedure Draw;\n"
                                      "  end;\n"
                                      "begin end.",
-                                     diag, success);
+                                     diag,
+                                     success);
     EXPECT_TRUE(success);
     ASSERT_NE(analyzer, nullptr);
 
@@ -335,7 +344,8 @@ TEST(PascalSymbolTableOOP, InterfaceMethodsRegistered)
                                      "    function Contains(x, y: Integer): Boolean;\n"
                                      "  end;\n"
                                      "begin end.",
-                                     diag, success);
+                                     diag,
+                                     success);
     EXPECT_TRUE(success);
     ASSERT_NE(analyzer, nullptr);
 
@@ -343,13 +353,13 @@ TEST(PascalSymbolTableOOP, InterfaceMethodsRegistered)
     ASSERT_NE(info, nullptr);
     EXPECT_EQ(info->methods.size(), 3u);
 
-    auto areaIt = info->methods.find("getarea");
-    ASSERT_NE(areaIt, info->methods.end());
-    EXPECT_EQ(areaIt->second.returnType.kind, PasTypeKind::Real);
+    const MethodInfo *areaMethod = info->findMethod("getarea");
+    ASSERT_NE(areaMethod, nullptr);
+    EXPECT_EQ(areaMethod->returnType.kind, PasTypeKind::Real);
 
-    auto containsIt = info->methods.find("contains");
-    ASSERT_NE(containsIt, info->methods.end());
-    EXPECT_EQ(containsIt->second.params.size(), 2u);
+    const MethodInfo *containsMethod = info->findMethod("contains");
+    ASSERT_NE(containsMethod, nullptr);
+    EXPECT_EQ(containsMethod->params.size(), 2u);
 }
 
 TEST(PascalSymbolTableOOP, InterfaceInheritanceTracked)
@@ -361,7 +371,8 @@ TEST(PascalSymbolTableOOP, InterfaceInheritanceTracked)
                                      "  IBase = interface procedure Base; end;\n"
                                      "  IDerived = interface(IBase) procedure Derived; end;\n"
                                      "begin end.",
-                                     diag, success);
+                                     diag,
+                                     success);
     EXPECT_TRUE(success);
     ASSERT_NE(analyzer, nullptr);
 
@@ -384,7 +395,8 @@ TEST(PascalSymbolTableOOP, ClassInterfaceImplementationTracked)
                                      "    procedure Bar;\n"
                                      "  end;\n"
                                      "begin end.",
-                                     diag, success);
+                                     diag,
+                                     success);
     EXPECT_TRUE(success);
     ASSERT_NE(analyzer, nullptr);
 
@@ -412,7 +424,8 @@ TEST(PascalSymbolTableOOP, PropertyRegistered)
                                      "    property Value: Integer read FValue write FValue;\n"
                                      "  end;\n"
                                      "begin end.",
-                                     diag, success);
+                                     diag,
+                                     success);
     EXPECT_TRUE(success);
     ASSERT_NE(analyzer, nullptr);
 
@@ -444,7 +457,8 @@ TEST(PascalSymbolTableOOP, PropertyMethodAccessors)
                                      "    property Value: Integer read GetValue write SetValue;\n"
                                      "  end;\n"
                                      "begin end.",
-                                     diag, success);
+                                     diag,
+                                     success);
     EXPECT_TRUE(success);
     ASSERT_NE(analyzer, nullptr);
 
@@ -474,7 +488,8 @@ TEST(PascalSymbolTableOOP, WeakFieldMarked)
                                      "    weak Prev: TNode;\n"
                                      "  end;\n"
                                      "begin end.",
-                                     diag, success);
+                                     diag,
+                                     success);
     EXPECT_TRUE(success);
     ASSERT_NE(analyzer, nullptr);
 
@@ -504,7 +519,8 @@ TEST(PascalSymbolTableOOP, MultipleClassesInSameScope)
                                      "  TSecond = class b: String; end;\n"
                                      "  TThird = class c: Real; end;\n"
                                      "begin end.",
-                                     diag, success);
+                                     diag,
+                                     success);
     EXPECT_TRUE(success);
     ASSERT_NE(analyzer, nullptr);
 
@@ -524,7 +540,8 @@ TEST(PascalSymbolTableOOP, ClassesAndInterfacesCoexist)
                                      "    procedure Run;\n"
                                      "  end;\n"
                                      "begin end.",
-                                     diag, success);
+                                     diag,
+                                     success);
     EXPECT_TRUE(success);
     ASSERT_NE(analyzer, nullptr);
 
@@ -612,7 +629,8 @@ TEST(PascalSymbolTableOOP, ClassFieldWithRecordType)
                                      "    Position: TPoint;\n"
                                      "  end;\n"
                                      "begin end.",
-                                     diag, success);
+                                     diag,
+                                     success);
     EXPECT_TRUE(success);
     ASSERT_NE(analyzer, nullptr);
 
@@ -635,7 +653,8 @@ TEST(PascalSymbolTableOOP, ClassFieldWithEnumType)
                                      "    State: TState;\n"
                                      "  end;\n"
                                      "begin end.",
-                                     diag, success);
+                                     diag,
+                                     success);
     EXPECT_TRUE(success);
     ASSERT_NE(analyzer, nullptr);
 
@@ -657,7 +676,8 @@ TEST(PascalSymbolTableOOP, ClassFieldWithArrayType)
                                      "    Items: array of Integer;\n"
                                      "  end;\n"
                                      "begin end.",
-                                     diag, success);
+                                     diag,
+                                     success);
     EXPECT_TRUE(success);
     ASSERT_NE(analyzer, nullptr);
 
@@ -667,6 +687,161 @@ TEST(PascalSymbolTableOOP, ClassFieldWithArrayType)
     auto itemsIt = info->fields.find("items");
     ASSERT_NE(itemsIt, info->fields.end());
     EXPECT_EQ(itemsIt->second.type.kind, PasTypeKind::Array);
+}
+
+//===----------------------------------------------------------------------===//
+// Method Overloading Tests
+//===----------------------------------------------------------------------===//
+
+TEST(PascalSymbolTableOOP, MethodOverloadDifferentParamTypes)
+{
+    DiagnosticEngine diag;
+    bool success;
+    auto analyzer = analyzeAndReturn("program Test;\n"
+                                     "type\n"
+                                     "  TConverter = class\n"
+                                     "  public\n"
+                                     "    function Convert(x: Integer): String;\n"
+                                     "    function Convert(x: Real): String;\n"
+                                     "    function Convert(x: String): Integer;\n"
+                                     "  end;\n"
+                                     "begin end.",
+                                     diag,
+                                     success);
+    EXPECT_TRUE(success);
+    ASSERT_NE(analyzer, nullptr);
+
+    const ClassInfo *info = analyzer->lookupClass("TConverter");
+    ASSERT_NE(info, nullptr);
+
+    // Should have one method entry (name) with 3 overloads
+    EXPECT_EQ(info->methods.size(), 1u);
+
+    const std::vector<MethodInfo> *overloads = info->findOverloads("convert");
+    ASSERT_NE(overloads, nullptr);
+    EXPECT_EQ(overloads->size(), 3u);
+}
+
+TEST(PascalSymbolTableOOP, MethodOverloadDifferentParamCounts)
+{
+    DiagnosticEngine diag;
+    bool success;
+    auto analyzer = analyzeAndReturn("program Test;\n"
+                                     "type\n"
+                                     "  TPrinter = class\n"
+                                     "  public\n"
+                                     "    procedure Print;\n"
+                                     "    procedure Print(msg: String);\n"
+                                     "    procedure Print(msg: String; times: Integer);\n"
+                                     "  end;\n"
+                                     "begin end.",
+                                     diag,
+                                     success);
+    EXPECT_TRUE(success);
+    ASSERT_NE(analyzer, nullptr);
+
+    const ClassInfo *info = analyzer->lookupClass("TPrinter");
+    ASSERT_NE(info, nullptr);
+
+    const std::vector<MethodInfo> *overloads = info->findOverloads("print");
+    ASSERT_NE(overloads, nullptr);
+    EXPECT_EQ(overloads->size(), 3u);
+
+    // Verify param counts
+    bool found0 = false, found1 = false, found2 = false;
+    for (const auto &m : *overloads)
+    {
+        if (m.params.size() == 0)
+            found0 = true;
+        if (m.params.size() == 1)
+            found1 = true;
+        if (m.params.size() == 2)
+            found2 = true;
+    }
+    EXPECT_TRUE(found0);
+    EXPECT_TRUE(found1);
+    EXPECT_TRUE(found2);
+}
+
+TEST(PascalSymbolTableOOP, DuplicateMethodSignatureError)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  TBad = class\n"
+                                 "    function DoIt(x: Integer): Integer;\n"
+                                 "    function DoIt(y: Integer): String;\n" // Same signature!
+                                 "  end;\n"
+                                 "begin end.",
+                                 diag);
+    EXPECT_FALSE(result);
+    EXPECT_NE(diag.errorCount(), 0u);
+}
+
+TEST(PascalSymbolTableOOP, ConstructorOverloading)
+{
+    DiagnosticEngine diag;
+    bool success;
+    auto analyzer = analyzeAndReturn("program Test;\n"
+                                     "type\n"
+                                     "  TPoint = class\n"
+                                     "    X, Y: Integer;\n"
+                                     "    constructor Create;\n"
+                                     "    constructor Create(x: Integer);\n"
+                                     "    constructor Create(x, y: Integer);\n"
+                                     "  end;\n"
+                                     "begin end.",
+                                     diag,
+                                     success);
+    EXPECT_TRUE(success);
+    ASSERT_NE(analyzer, nullptr);
+
+    const ClassInfo *info = analyzer->lookupClass("TPoint");
+    ASSERT_NE(info, nullptr);
+    EXPECT_TRUE(info->hasConstructor);
+
+    const std::vector<MethodInfo> *ctorOverloads = info->findOverloads("create");
+    ASSERT_NE(ctorOverloads, nullptr);
+    EXPECT_EQ(ctorOverloads->size(), 3u);
+}
+
+TEST(PascalSymbolTableOOP, InterfaceMethodOverloading)
+{
+    DiagnosticEngine diag;
+    bool success;
+    auto analyzer = analyzeAndReturn("program Test;\n"
+                                     "type\n"
+                                     "  IComparable = interface\n"
+                                     "    function Compare(other: Integer): Integer;\n"
+                                     "    function Compare(other: String): Integer;\n"
+                                     "  end;\n"
+                                     "begin end.",
+                                     diag,
+                                     success);
+    EXPECT_TRUE(success);
+    ASSERT_NE(analyzer, nullptr);
+
+    const InterfaceInfo *info = analyzer->lookupInterface("IComparable");
+    ASSERT_NE(info, nullptr);
+
+    const std::vector<MethodInfo> *overloads = info->findOverloads("compare");
+    ASSERT_NE(overloads, nullptr);
+    EXPECT_EQ(overloads->size(), 2u);
+}
+
+TEST(PascalSymbolTableOOP, DuplicateInterfaceMethodError)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  IBad = interface\n"
+                                 "    procedure DoIt(x: Integer);\n"
+                                 "    procedure DoIt(y: Integer);\n" // Same signature!
+                                 "  end;\n"
+                                 "begin end.",
+                                 diag);
+    EXPECT_FALSE(result);
+    EXPECT_NE(diag.errorCount(), 0u);
 }
 
 } // namespace

@@ -35,14 +35,14 @@ TEST(AArch64Peephole, RemoveIdentityMovRR)
     auto &bb = fn.blocks.back();
 
     // mov x0, x1 (not identity)
-    bb.instrs.push_back(MInstr{MOpcode::MovRR,
-                               {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X1)}});
+    bb.instrs.push_back(
+        MInstr{MOpcode::MovRR, {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X1)}});
     // mov x0, x0 (identity - should be removed)
-    bb.instrs.push_back(MInstr{MOpcode::MovRR,
-                               {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X0)}});
+    bb.instrs.push_back(
+        MInstr{MOpcode::MovRR, {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X0)}});
     // mov x2, x2 (identity - should be removed)
-    bb.instrs.push_back(MInstr{MOpcode::MovRR,
-                               {MOperand::regOp(PhysReg::X2), MOperand::regOp(PhysReg::X2)}});
+    bb.instrs.push_back(
+        MInstr{MOpcode::MovRR, {MOperand::regOp(PhysReg::X2), MOperand::regOp(PhysReg::X2)}});
     // ret
     bb.instrs.push_back(MInstr{MOpcode::Ret, {}});
 
@@ -67,11 +67,11 @@ TEST(AArch64Peephole, RemoveIdentityFMovRR)
     auto &bb = fn.blocks.back();
 
     // fmov d0, d1 (not identity)
-    bb.instrs.push_back(MInstr{MOpcode::FMovRR,
-                               {MOperand::regOp(PhysReg::V0), MOperand::regOp(PhysReg::V1)}});
+    bb.instrs.push_back(
+        MInstr{MOpcode::FMovRR, {MOperand::regOp(PhysReg::V0), MOperand::regOp(PhysReg::V1)}});
     // fmov d0, d0 (identity - should be removed)
-    bb.instrs.push_back(MInstr{MOpcode::FMovRR,
-                               {MOperand::regOp(PhysReg::V0), MOperand::regOp(PhysReg::V0)}});
+    bb.instrs.push_back(
+        MInstr{MOpcode::FMovRR, {MOperand::regOp(PhysReg::V0), MOperand::regOp(PhysReg::V0)}});
     // ret
     bb.instrs.push_back(MInstr{MOpcode::Ret, {}});
 
@@ -97,11 +97,11 @@ TEST(AArch64Peephole, FoldConsecutiveMoves)
     auto &bb = fn.blocks.back();
 
     // mov x1, x2
-    bb.instrs.push_back(MInstr{MOpcode::MovRR,
-                               {MOperand::regOp(PhysReg::X1), MOperand::regOp(PhysReg::X2)}});
+    bb.instrs.push_back(
+        MInstr{MOpcode::MovRR, {MOperand::regOp(PhysReg::X1), MOperand::regOp(PhysReg::X2)}});
     // mov x3, x1 (can be folded to mov x3, x2 since x1 is not used after)
-    bb.instrs.push_back(MInstr{MOpcode::MovRR,
-                               {MOperand::regOp(PhysReg::X3), MOperand::regOp(PhysReg::X1)}});
+    bb.instrs.push_back(
+        MInstr{MOpcode::MovRR, {MOperand::regOp(PhysReg::X3), MOperand::regOp(PhysReg::X1)}});
     // ret
     bb.instrs.push_back(MInstr{MOpcode::Ret, {}});
 
@@ -132,11 +132,11 @@ TEST(AArch64Peephole, NoFoldWhenIntermediateLive)
     auto &bb = fn.blocks.back();
 
     // mov x1, x2
-    bb.instrs.push_back(MInstr{MOpcode::MovRR,
-                               {MOperand::regOp(PhysReg::X1), MOperand::regOp(PhysReg::X2)}});
+    bb.instrs.push_back(
+        MInstr{MOpcode::MovRR, {MOperand::regOp(PhysReg::X1), MOperand::regOp(PhysReg::X2)}});
     // mov x3, x1
-    bb.instrs.push_back(MInstr{MOpcode::MovRR,
-                               {MOperand::regOp(PhysReg::X3), MOperand::regOp(PhysReg::X1)}});
+    bb.instrs.push_back(
+        MInstr{MOpcode::MovRR, {MOperand::regOp(PhysReg::X3), MOperand::regOp(PhysReg::X1)}});
     // add x4, x1, x5 (x1 is still used, so we can't fold the moves above)
     bb.instrs.push_back(MInstr{MOpcode::AddRRR,
                                {MOperand::regOp(PhysReg::X4),
@@ -163,16 +163,16 @@ TEST(AArch64Peephole, MixedOperations)
     auto &bb = fn.blocks.back();
 
     // mov x0, x0 (identity)
-    bb.instrs.push_back(MInstr{MOpcode::MovRR,
-                               {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X0)}});
+    bb.instrs.push_back(
+        MInstr{MOpcode::MovRR, {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X0)}});
     // add x1, x2, x3
     bb.instrs.push_back(MInstr{MOpcode::AddRRR,
                                {MOperand::regOp(PhysReg::X1),
                                 MOperand::regOp(PhysReg::X2),
                                 MOperand::regOp(PhysReg::X3)}});
     // mov x4, x4 (identity)
-    bb.instrs.push_back(MInstr{MOpcode::MovRR,
-                               {MOperand::regOp(PhysReg::X4), MOperand::regOp(PhysReg::X4)}});
+    bb.instrs.push_back(
+        MInstr{MOpcode::MovRR, {MOperand::regOp(PhysReg::X4), MOperand::regOp(PhysReg::X4)}});
     // sub x5, x6, x7
     bb.instrs.push_back(MInstr{MOpcode::SubRRR,
                                {MOperand::regOp(PhysReg::X5),
@@ -206,11 +206,11 @@ TEST(AArch64Peephole, EmittedAssemblyNoIdentityMoves)
     auto &bb = fn.blocks.back();
 
     // mov x0, x1 (real move)
-    bb.instrs.push_back(MInstr{MOpcode::MovRR,
-                               {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X1)}});
+    bb.instrs.push_back(
+        MInstr{MOpcode::MovRR, {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X1)}});
     // mov x0, x0 (identity - should be removed)
-    bb.instrs.push_back(MInstr{MOpcode::MovRR,
-                               {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X0)}});
+    bb.instrs.push_back(
+        MInstr{MOpcode::MovRR, {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X0)}});
     // add x2, x0, x3
     bb.instrs.push_back(MInstr{MOpcode::AddRRR,
                                {MOperand::regOp(PhysReg::X2),
@@ -251,17 +251,17 @@ TEST(AArch64Peephole, StatsAccuracy)
     auto &bb = fn.blocks.back();
 
     // 3 identity GPR moves
-    bb.instrs.push_back(MInstr{MOpcode::MovRR,
-                               {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X0)}});
-    bb.instrs.push_back(MInstr{MOpcode::MovRR,
-                               {MOperand::regOp(PhysReg::X1), MOperand::regOp(PhysReg::X1)}});
-    bb.instrs.push_back(MInstr{MOpcode::MovRR,
-                               {MOperand::regOp(PhysReg::X2), MOperand::regOp(PhysReg::X2)}});
+    bb.instrs.push_back(
+        MInstr{MOpcode::MovRR, {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X0)}});
+    bb.instrs.push_back(
+        MInstr{MOpcode::MovRR, {MOperand::regOp(PhysReg::X1), MOperand::regOp(PhysReg::X1)}});
+    bb.instrs.push_back(
+        MInstr{MOpcode::MovRR, {MOperand::regOp(PhysReg::X2), MOperand::regOp(PhysReg::X2)}});
     // 2 identity FPR moves
-    bb.instrs.push_back(MInstr{MOpcode::FMovRR,
-                               {MOperand::regOp(PhysReg::V0), MOperand::regOp(PhysReg::V0)}});
-    bb.instrs.push_back(MInstr{MOpcode::FMovRR,
-                               {MOperand::regOp(PhysReg::V1), MOperand::regOp(PhysReg::V1)}});
+    bb.instrs.push_back(
+        MInstr{MOpcode::FMovRR, {MOperand::regOp(PhysReg::V0), MOperand::regOp(PhysReg::V0)}});
+    bb.instrs.push_back(
+        MInstr{MOpcode::FMovRR, {MOperand::regOp(PhysReg::V1), MOperand::regOp(PhysReg::V1)}});
     // ret
     bb.instrs.push_back(MInstr{MOpcode::Ret, {}});
 

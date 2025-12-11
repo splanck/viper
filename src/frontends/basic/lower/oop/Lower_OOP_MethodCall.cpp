@@ -310,7 +310,7 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
             paramTypes.reserve(1 + info->args.size());
             // Receiver: strings use str; others default to ptr
             paramTypes.push_back(qClass == il::runtime::RTCLASS_STRING ? Type(Type::Kind::Str)
-                                                                        : Type(Type::Kind::Ptr));
+                                                                       : Type(Type::Kind::Ptr));
             for (BasicType bt : info->args)
                 paramTypes.push_back(Type(mapBasicToIl(bt)));
 
@@ -341,7 +341,8 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
             }
 
             auto &midx = runtimeMethodIndex();
-            auto info = midx.find(std::string(il::runtime::RTCLASS_OBJECT), expr.method, expr.args.size());
+            auto info =
+                midx.find(std::string(il::runtime::RTCLASS_OBJECT), expr.method, expr.args.size());
             if (info && !userClassHasMethod)
             {
                 // Lower base and build (receiver, args...)

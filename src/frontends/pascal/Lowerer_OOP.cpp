@@ -182,34 +182,37 @@ void Lowerer::computeVtableLayout(const std::string &className)
         }
     }
 
-    // Process this class's methods
-    for (const auto &[methodName, methodInfo] : info->methods)
+    // Process this class's methods (all overloads)
+    for (const auto &[methodName, overloads] : info->methods)
     {
-        if (!methodInfo.isVirtual && !methodInfo.isOverride)
-            continue; // Skip non-virtual methods
-
-        std::string methodKey = toLower(methodInfo.name);
-
-        if (methodInfo.isOverride)
+        for (const auto &methodInfo : overloads)
         {
-            // Find existing slot and update implementation class
-            for (auto &slot : vtable.slots)
+            if (!methodInfo.isVirtual && !methodInfo.isOverride)
+                continue; // Skip non-virtual methods
+
+            std::string methodKey = toLower(methodInfo.name);
+
+            if (methodInfo.isOverride)
             {
-                if (toLower(slot.methodName) == methodKey)
+                // Find existing slot and update implementation class
+                for (auto &slot : vtable.slots)
                 {
-                    slot.implClass = className;
-                    break;
+                    if (toLower(slot.methodName) == methodKey)
+                    {
+                        slot.implClass = className;
+                        break;
+                    }
                 }
             }
-        }
-        else if (methodInfo.isVirtual)
-        {
-            // New virtual method - add a new slot
-            VtableSlot slot;
-            slot.methodName = methodInfo.name;
-            slot.implClass = className;
-            slot.slot = static_cast<int>(vtable.slots.size());
-            vtable.slots.push_back(slot);
+            else if (methodInfo.isVirtual)
+            {
+                // New virtual method - add a new slot
+                VtableSlot slot;
+                slot.methodName = methodInfo.name;
+                slot.implClass = className;
+                slot.slot = static_cast<int>(vtable.slots.size());
+                vtable.slots.push_back(slot);
+            }
         }
     }
 
@@ -498,13 +501,11 @@ LowerResult Lowerer::lowerMethodCall(const FieldExpr &fieldExpr, const CallExpr 
         return {Value::constInt(0), Type(Type::Kind::I64)};
     }
 
-    auto methodIt = classInfo->methods.find(toLower(methodName));
-    if (methodIt == classInfo->methods.end())
+    const MethodInfo *methodInfo = classInfo->findMethod(toLower(methodName));
+    if (!methodInfo)
     {
         return {Value::constInt(0), Type(Type::Kind::I64)};
     }
-
-    const MethodInfo &methodInfo = methodIt->second;
 
     // Build argument list (Self first)
     std::vector<Value> args;
@@ -517,12 +518,12 @@ LowerResult Lowerer::lowerMethodCall(const FieldExpr &fieldExpr, const CallExpr 
     }
 
     // Determine return type
-    Type retTy = mapType(methodInfo.returnType);
+    Type retTy = mapType(methodInfo->returnType);
 
     // Check if this is a virtual method call
     int slot = getVirtualSlot(className, methodName);
 
-    if (slot >= 0 && (methodInfo.isVirtual || methodInfo.isOverride))
+    if (slot >= 0 && (methodInfo->isVirtual || methodInfo->isOverride))
     {
         // Virtual dispatch: load vtable, load function pointer, call indirect
         Value vtablePtr = emitLoad(Type(Type::Kind::Ptr), selfPtr);
@@ -904,11 +905,11 @@ LowerResult Lowerer::lowerInterfaceMethodCall(const FieldExpr &fieldExpr, const 
         return {Value::constInt(0), Type(Type::Kind::I64)};
     }
 
-    auto methodIt = ifaceInfo->methods.find(toLower(methodName));
+    const MethodInfo *methodInfo = ifaceInfo->findMethod(toLower(methodName));
     Type retTy = Type(Type::Kind::Void);
-    if (methodIt != ifaceInfo->methods.end())
+    if (methodInfo)
     {
-        retTy = mapType(methodIt->second.returnType);
+        retTy = mapType(methodInfo->returnType);
     }
 
     // Get the interface variable slot address (not the loaded value)

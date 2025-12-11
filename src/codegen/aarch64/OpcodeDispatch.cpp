@@ -530,8 +530,15 @@ bool lowerInstruction(const il::core::Instr &ins,
         case Opcode::Call:
         {
             LoweredCall seq{};
-            if (lowerCallWithArgs(
-                    ins, bbIn, ctx.ti, ctx.fb, bbOut(), seq, ctx.tempVReg, ctx.tempRegClass, ctx.nextVRegId))
+            if (lowerCallWithArgs(ins,
+                                  bbIn,
+                                  ctx.ti,
+                                  ctx.fb,
+                                  bbOut(),
+                                  seq,
+                                  ctx.tempVReg,
+                                  ctx.tempRegClass,
+                                  ctx.nextVRegId))
             {
                 for (auto &mi : seq.prefix)
                     bbOut().instrs.push_back(std::move(mi));

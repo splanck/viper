@@ -8,6 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 BUILD_DIR="$ROOT_DIR/build"
 BIN_DIR="$ROOT_DIR/demos/bin"
+BASIC_DIR="$ROOT_DIR/demos/basic"
 TMP_DIR="/tmp/viper_demo_build_$$"
 
 ILC="$BUILD_DIR/src/tools/ilc/ilc"
@@ -78,16 +79,17 @@ fi
 
 # Demo configurations: name:source_path
 DEMOS=(
-    "chess:demos/chess/chess.bas"
-    "vtris:demos/vtris/vtris.bas"
-    "frogger:demos/frogger/frogger.bas"
-    "centipede:demos/centipede/centipede.bas"
+    "chess:${BASIC_DIR}/chess/chess.bas"
+    "vtris:${BASIC_DIR}/vtris/vtris.bas"
+    "frogger:${BASIC_DIR}/frogger/frogger.bas"
+    "centipede:${BASIC_DIR}/centipede/centipede.bas"
+    "pacman:${BASIC_DIR}/pacman/pacman.bas"
 )
 
 build_demo() {
     local name="$1"
     local source="$2"
-    local source_path="$ROOT_DIR/$source"
+    local source_path="$source"
 
     if [[ ! -f "$source_path" ]]; then
         echo -e "${RED}  Error: Source file not found: $source_path${NC}"

@@ -13,7 +13,7 @@ This document captures the current state of the AArch64 backend, recent bug fixe
 - 🚧 **Remaining work**: Broader opcode coverage, float/FPR ops, more address modes, EH, performance
 
 ### Test Case: Frogger Demo
-The frogger demo (`demos/frogger/frogger.bas`) serves as our benchmark for backend completeness:
+The frogger demo (`demos/basic/frogger/frogger.bas`) serves as our benchmark for backend completeness:
 - **Compiles and links successfully**: 12,771 lines of IL → 56KB assembly → 121KB native binary
 - **Runs successfully**: Verified end‑to‑end on Apple Silicon
 
@@ -274,7 +274,7 @@ Note: Fast-path lowering may produce physical registers directly even before RA 
 
 ### Test Frogger Compilation
 ```bash
-./build/src/tools/ilc/ilc front basic -emit-il demos/frogger/frogger.bas > /tmp/frogger.il
+./build/src/tools/ilc/ilc front basic -emit-il demos/basic/frogger/frogger.bas > /tmp/frogger.il
 ./build/src/tools/ilc/ilc codegen arm64 /tmp/frogger.il -S /tmp/frogger.s
 as /tmp/frogger.s -o /tmp/frogger.o
 clang++ /tmp/frogger.o build/src/runtime/libviper_runtime.a -o /tmp/frogger_native
@@ -283,7 +283,7 @@ clang++ /tmp/frogger.o build/src/runtime/libviper_runtime.a -o /tmp/frogger_nati
 
 ## Critical Bugs Fixed (November 2025)
 
-During earlier native compilation attempts of the frogger demo (`demos/frogger/frogger.bas`), three critical bugs were identified in the ARM64 backend that prevented successful assembly on macOS. These have since been resolved:
+During earlier native compilation attempts of the frogger demo (`demos/basic/frogger/frogger.bas`), three critical bugs were identified in the ARM64 backend that prevented successful assembly on macOS. These have since been resolved:
 
 ### BUG 1: Incorrect Section Directive for macOS
 - **Location**: `src/codegen/aarch64/cmd_codegen_arm64.cpp:136`
@@ -328,7 +328,7 @@ Before the fixes, these bugs prevented native ARM64 assembly on macOS for non‑
 To reproduce these bugs:
 ```bash
 cd /Users/stephen/git/viper
-./build/src/tools/ilc/ilc front basic -emit-il demos/frogger/frogger.bas > /tmp/frogger.il
+./build/src/tools/ilc/ilc front basic -emit-il demos/basic/frogger/frogger.bas > /tmp/frogger.il
 ./build/src/tools/ilc/ilc codegen arm64 /tmp/frogger.il -S /tmp/frogger.s
 as /tmp/frogger.s  # Fails with multiple errors
 ```

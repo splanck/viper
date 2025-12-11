@@ -201,4 +201,4 @@ All test files remain in `/tmp/bug_testing/` for future reference:
 
 ## Final Game Location
 
-Complete, playable game in: `/Users/stephen/git/viper/demos/frogger/`
+Complete, playable game in: `/Users/stephen/git/viper/demos/basic/frogger/`

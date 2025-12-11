@@ -847,10 +847,10 @@ void SemanticAnalyzer::analyzeInherited(InheritedStmt &stmt)
             if (!ci)
                 break;
             std::string mkey = toLower(method);
-            auto mit = ci->methods.find(mkey);
-            if (mit != ci->methods.end())
+            const MethodInfo *methodInfo = ci->findMethod(mkey);
+            if (methodInfo)
             {
-                if (mit->second.isAbstract)
+                if (methodInfo->isAbstract)
                 {
                     error(stmt, "cannot call abstract base method '" + method + "'");
                 }

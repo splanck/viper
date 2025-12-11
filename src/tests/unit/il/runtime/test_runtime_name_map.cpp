@@ -19,10 +19,10 @@
 #include "il/runtime/RuntimeSignatures.hpp"
 #include "tests/unit/GTestStub.hpp"
 
-#include <string_view>
-#include <vector>
 #include <iostream>
+#include <string_view>
 #include <unordered_set>
+#include <vector>
 
 using namespace il::runtime;
 

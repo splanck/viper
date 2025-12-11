@@ -295,8 +295,8 @@ TEST_F(DiffVmNativePropertyTest, ArithmeticOnly)
 {
     if (!isNativeAvailable())
     {
-        GTEST_SKIP() << "Native execution not available (backend: " << backendName(g_selectedBackend)
-                     << ")";
+        GTEST_SKIP() << "Native execution not available (backend: "
+                     << backendName(g_selectedBackend) << ")";
     }
 
     ILGeneratorConfig config;
@@ -325,8 +325,8 @@ TEST_F(DiffVmNativePropertyTest, ArithmeticWithComparisons)
 {
     if (!isNativeAvailable())
     {
-        GTEST_SKIP() << "Native execution not available (backend: " << backendName(g_selectedBackend)
-                     << ")";
+        GTEST_SKIP() << "Native execution not available (backend: "
+                     << backendName(g_selectedBackend) << ")";
     }
 
     ILGeneratorConfig config;
@@ -355,8 +355,8 @@ TEST_F(DiffVmNativePropertyTest, BitwiseAndShifts)
 {
     if (!isNativeAvailable())
     {
-        GTEST_SKIP() << "Native execution not available (backend: " << backendName(g_selectedBackend)
-                     << ")";
+        GTEST_SKIP() << "Native execution not available (backend: "
+                     << backendName(g_selectedBackend) << ")";
     }
 
     ILGeneratorConfig config;
@@ -385,8 +385,8 @@ TEST_F(DiffVmNativePropertyTest, MixedOperations)
 {
     if (!isNativeAvailable())
     {
-        GTEST_SKIP() << "Native execution not available (backend: " << backendName(g_selectedBackend)
-                     << ")";
+        GTEST_SKIP() << "Native execution not available (backend: "
+                     << backendName(g_selectedBackend) << ")";
     }
 
     // Enable all operation types for comprehensive coverage
@@ -416,8 +416,8 @@ TEST_F(DiffVmNativePropertyTest, ControlFlow)
 {
     if (!isNativeAvailable())
     {
-        GTEST_SKIP() << "Native execution not available (backend: " << backendName(g_selectedBackend)
-                     << ")";
+        GTEST_SKIP() << "Native execution not available (backend: "
+                     << backendName(g_selectedBackend) << ")";
     }
 
     ILGeneratorConfig config;

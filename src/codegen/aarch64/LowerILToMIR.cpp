@@ -644,12 +644,11 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                                 if (binOp)
                                 {
                                     // For shift operations with immediate, use immOp for RHS
-                                    const bool isShift =
-                                        (ins.op == il::core::Opcode::Shl ||
-                                         ins.op == il::core::Opcode::LShr ||
-                                         ins.op == il::core::Opcode::AShr);
-                                    if (isShift && ins.operands[1].kind ==
-                                                       il::core::Value::Kind::ConstInt)
+                                    const bool isShift = (ins.op == il::core::Opcode::Shl ||
+                                                          ins.op == il::core::Opcode::LShr ||
+                                                          ins.op == il::core::Opcode::AShr);
+                                    if (isShift &&
+                                        ins.operands[1].kind == il::core::Value::Kind::ConstInt)
                                     {
                                         bbOut().instrs.push_back(
                                             MInstr{binOp->immOp,
