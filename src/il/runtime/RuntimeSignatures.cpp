@@ -1337,6 +1337,14 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
+    DescriptorRow{"rt_modvar_addr_block",
+                  std::nullopt,
+                  "ptr(string,i64)",
+                  &DirectHandler<&rt_modvar_addr_block, void *, rt_string, int64_t>::invoke,
+                  kManualLowering,
+                  nullptr,
+                  0,
+                  RuntimeTrapClass::None},
 // Canonical dotted names for string retain/release, with legacy aliases gated by
 // VIPER_RUNTIME_NS_DUAL
 #if VIPER_RUNTIME_NS_DUAL

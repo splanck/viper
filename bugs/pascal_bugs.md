@@ -87,7 +87,7 @@ end.
 ## Parser Bugs
 
 ### 5. Array Dimensions Cannot Use Constants
-**Status**: Discovered during Frogger development
+**Status**: ✅ FIXED (December 2025)
 **Description**: Array dimension declarations only accept literal integers, not const values.
 ```pascal
 const
@@ -126,7 +126,7 @@ var
 - Would also need a `evaluateConstantInt()` helper to fold constant expressions
 
 ### 6. Exit Statement Not Implemented
-**Status**: Discovered during Frogger development
+**Status**: ✅ FIXED (December 2025)
 **Description**: The `Exit` procedure/function is not implemented to exit from procedures/functions early.
 ```pascal
 function CheckSomething: Boolean;
@@ -283,28 +283,241 @@ y := a mod b;  // ERROR: must use srem.chk0
 
 ---
 
-## Runtime Bugs
+## Runtime/Lowering Bugs
 
-(None found yet)
+### 17. Global Arrays Do Not Store/Retrieve Values Correctly (CRITICAL)
+**Status**: ✅ FIXED (December 2025)
+**Severity**: CRITICAL - Blocks any program using global arrays
+**Description**: Global array assignments silently fail. Values assigned to global array elements are not stored - reading them back returns 0 (or the default value).
+
+**Minimal Reproduction**:
+```pascal
+program TestGlobalArray;
+var
+  Arr: array[5] of Integer;
+begin
+  Arr[0] := 100;
+  Arr[1] := 200;
+  Arr[2] := 300;
+
+  WriteLn('Reading:');
+  WriteLn(Arr[0]);  // Expected: 100, Actual: 0
+  WriteLn(Arr[1]);  // Expected: 200, Actual: 0
+  WriteLn(Arr[2]);  // Expected: 300, Actual: 0
+end.
+```
+
+**Observations**:
+- Local arrays inside procedures work correctly
+- Global arrays fail silently (no error, just wrong values)
+- Object arrays (`array[N] of TClass`) exhibit the same bug
+- The bug affects both reading and writing
+
+**Working Example (Local Array)**:
+```pascal
+program TestLocalArray;
+
+procedure TestProc;
+var
+  Arr: array[5] of Integer;
+begin
+  Arr[0] := 100;
+  Arr[1] := 200;
+  WriteLn('Local array:');
+  WriteLn(Arr[0]);  // Outputs: 100 (correct!)
+  WriteLn(Arr[1]);  // Outputs: 200 (correct!)
+end;
+
+begin
+  TestProc;
+end.
+```
+
+**Root Cause Analysis**:
+- Location: Likely in `Lowerer.cpp` or `Lowerer_Stmt.cpp` where global array storage is emitted
+- The IL generated for global array access may be incorrect
+- Local arrays use stack allocation which works; global arrays use module-level storage which may have different addressing
+- Need to compare the IL generated for local vs global array access
+
+**Workaround Used in Frogger**:
+- Replaced all arrays with individual named variables (e.g., `V0Row, V0Col, V1Row, V1Col, ...` instead of `Vehicles: array[10] of TVehicle`)
+- This dramatically increased code verbosity but allowed the game to function
+
+**Impact**: Cannot use any arrays at global scope. This blocks:
+- Game state arrays (enemies, bullets, platforms, etc.)
+- Lookup tables
+- Any program with global data structures
+
+### 18. For Loop Variables Cannot Be Used As Array Indices Inside Loop Body
+**Status**: ✅ FIXED (December 2025) - Fixed as part of Bug #17
+**Description**: When using a `for` loop, the loop variable cannot be used as an array index inside the loop body.
+
+**Reproduction**:
+```pascal
+program TestForLoop;
+var
+  Arr: array[5] of Integer;
+  I: Integer;
+begin
+  for I := 0 to 4 do
+  begin
+    Arr[I] := I * 10;  // ERROR: loop variable 'I' is undefined after loop terminates
+  end;
+
+  for I := 0 to 4 do
+  begin
+    WriteLn(Arr[I]);  // ERROR: loop variable 'I' is undefined after loop terminates
+  end;
+end.
+```
+
+**Observations**:
+- The error message says "undefined after loop terminates" but occurs inside the loop body
+- Using `while` loops with manual index management works as a workaround
+- The loop variable appears to have incorrect scoping
+
+**Root Cause Analysis**:
+- Location: Likely in `SemanticAnalyzer.cpp` for loop scope handling, or in `Lowerer.cpp` for variable visibility
+- The loop variable may be scoped only to the loop control expression, not the loop body
+- Or the error message is misleading and the actual issue is elsewhere
+
+**Workaround**:
+```pascal
+var I: Integer;
+begin
+  I := 0;
+  while I < 5 do
+  begin
+    Arr[I] := I * 10;  // Works with while loop
+    I := I + 1;
+  end;
+end.
+```
+
+**Impact**: Cannot use idiomatic `for` loops for array iteration - must use verbose `while` loops instead
+
+### 19. Copy Function Broken - Argument Count Mismatch
+**Status**: ✅ FIXED (December 2025)
+**Description**: The `Copy` function (substring extraction) has inconsistent argument handling between the semantic analyzer and runtime.
+
+**Reproduction**:
+```pascal
+var s, sub: String;
+begin
+  s := 'Hello World';
+  sub := Copy(s, 1, 5);  // ERROR: too many arguments: expected at most 2, got 3
+end.
+```
+
+When using only 2 arguments:
+```pascal
+  sub := Copy(s, 1);  // RUNTIME ERROR: rt_substr expects 3 arguments but got 2
+```
+
+**Observations**:
+- BuiltinRegistry.cpp claims `Copy` accepts 2-3 arguments
+- Semantic analyzer rejects 3 arguments as "too many"
+- Runtime function `rt_substr` requires exactly 3 arguments
+- This makes `Copy` completely unusable in either form
+
+**Root Cause Analysis**:
+- Location: `BuiltinRegistry.cpp` and `SemanticAnalyzer_Expr.cpp`
+- The builtin registration says 2-3 args, but the semantic analyzer's argument validation doesn't honor the max count properly
+- Additionally, the 2-arg variant is not properly handled in the lowerer to provide a default length
+
+**Workaround Used in VTris**:
+- Avoided string manipulation entirely
+- Used integer-based storage instead of string grids
+
+**Impact**: Cannot extract substrings. Any code requiring string manipulation cannot be ported from BASIC.
+
+### 20. Trunc/Round/Floor/Ceil Return Type Mismatch
+**Status**: ✅ FIXED (December 2025)
+**Description**: The Trunc, Round, Floor, and Ceil builtins returned f64 from the runtime but Pascal expected i64, causing a type mismatch error.
+
+```pascal
+var x: Integer;
+begin
+  x := Trunc(Random * 7);  // ERROR: operand type mismatch: operand 1 must be i64
+end.
+```
+
+**Root Cause Analysis**:
+- Location: `Lowerer_Expr_Call.cpp`
+- The runtime functions (`rt_fix_trunc`, `rt_round_even`, etc.) return `f64`
+- Pascal's BuiltinRegistry declared these as returning `Integer`
+- The lowerer used the runtime's return type (f64) without converting to the Pascal-expected type (i64)
+- The fix adds a `CastFpToSiRteChk` conversion after the call when Pascal expects i64 but runtime returns f64
+
+**Resolution**: Fixed by adding f64→i64 conversion in Lowerer_Expr_Call.cpp (lines 374-380)
+
+### 21. Global Array Memory Allocation Only Allocates 8 Bytes (CRITICAL)
+**Status**: ✅ FIXED (December 2025)
+**Severity**: CRITICAL - Caused memory corruption in any program with multiple global arrays
+**Description**: The runtime function `rt_modvar_addr_*` used for global variable storage only allocated 8 bytes per variable, regardless of the actual type size. Arrays and records need `element_count * element_size` bytes.
+
+**Minimal Reproduction**:
+```pascal
+program TestOverlap;
+var
+  A: array[5] of Integer;
+  B: array[5] of Integer;
+begin
+  A[0] := 100;
+  A[1] := 200;
+  A[2] := 300;
+  A[3] := 400;
+  A[4] := 500;
+
+  B[0] := 1000;  // This would corrupt A[4]!
+
+  WriteLn(A[4]);  // Expected: 500, Actual: 1000 (corrupted!)
+end.
+```
+
+**Root Cause Analysis**:
+- Location: `rt_modvar.c` and `Lowerer_Decl.cpp`
+- The `rt_modvar_addr_i64`, `rt_modvar_addr_f64`, etc. functions all called `mv_addr(name, type, 8)` - always allocating exactly 8 bytes
+- Arrays need `count * sizeof(element)` bytes (e.g., `array[5] of Integer` needs 40 bytes)
+- With only 8 bytes allocated, consecutive global arrays would overlap in memory, causing corruption
+- This explains why Bug #17 appeared to be fixed by lowerer changes but still had issues in complex programs
+
+**Fix Applied**:
+1. Added new runtime function `rt_modvar_addr_block(rt_string name, int64_t size)` to `rt_modvar.h` and `rt_modvar.c`
+2. Modified `getGlobalVarAddr()` in `Lowerer_Decl.cpp` to detect arrays and records
+3. Arrays/records now call `rt_modvar_addr_block(name, totalSize)` instead of `rt_modvar_addr_ptr(name)`
+4. Registered `rt_modvar_addr_block` in `RuntimeSignatures.cpp`
+
+**Files Changed**:
+- `src/runtime/rt_modvar.h` - Added function declaration
+- `src/runtime/rt_modvar.c` - Added function implementation
+- `src/frontends/pascal/Lowerer_Decl.cpp` - Modified `getGlobalVarAddr()` to use sized allocation
+- `src/il/runtime/RuntimeSignatures.cpp` - Registered new runtime function
+
+**Impact**: This bug affected ALL Pascal programs using global arrays. The memory corruption was silent and unpredictable, making debugging extremely difficult.
 
 ---
 
-## Summary of Unresolved Bugs
+## Summary
 
-| Bug # | Issue | Root Cause Location | Complexity |
-|-------|-------|---------------------|------------|
-| 5 | Array dimensions cannot use constants | `SemanticAnalyzer::resolveType()` | Low |
-| 6 | Exit statement not implemented | Missing from Lexer/Parser/AST/Lowerer | Medium |
+All Pascal frontend bugs have been resolved! 🎉
 
-### Fixed OOP Bugs (December 2025)
+### Fixed Bugs (December 2025)
 - ✅ Bug #2 (Class field access in methods) - FIXED
 - ✅ Bug #3 (Constructor calls) - FIXED
+- ✅ Bug #5 (Array dimensions with constants) - FIXED
+- ✅ Bug #6 (Exit statement) - FIXED
 - ✅ Bug #9 (Record field access) - FIXED
+- ✅ Bug #17 (Global arrays lowering) - FIXED (Lowerer_Expr_Access.cpp, Lowerer_Stmt.cpp)
+- ✅ Bug #18 (For loop variables as array indices) - FIXED (same as #17)
+- ✅ Bug #19 (Copy function) - FIXED (SemanticAnalyzer_Util.cpp, Lowerer_Expr_Call.cpp)
+- ✅ Bug #20 (Trunc/Round/Floor/Ceil return type) - FIXED
+- ✅ Bug #21 (Global array memory allocation) - FIXED (rt_modvar.c, Lowerer_Decl.cpp, RuntimeSignatures.cpp)
 
-### Priority Recommendations
-
-1. **Bug #5 (Constant array dimensions)** - Easy fix, improves code maintainability
-2. **Bug #6 (Exit statement)** - Common Pascal idiom, medium complexity
+### Key Fixes Made Today
+1. **Bug #17/18**: Added global array support in lowerIndex() and lowerAssign() - previously only local arrays were handled
+2. **Bug #19**: Fixed builtin registration to include optional parameters in FuncSignature, added 1-based to 0-based index conversion for Copy
+3. **Bug #21**: Added `rt_modvar_addr_block()` runtime function for properly-sized global array/record allocation
 
 ---
 

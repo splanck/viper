@@ -74,12 +74,24 @@ std::string Lowerer::getModvarAddrHelper(Type::Kind kind)
 
 Lowerer::Value Lowerer::getGlobalVarAddr(const std::string &name, const PasType &type)
 {
+    std::string globalName = getStringGlobal(name);
+    Value nameStr = emitConstStr(globalName);
+
+    // Arrays and records need sized allocation
+    if (type.kind == PasTypeKind::Array || type.kind == PasTypeKind::Record)
+    {
+        int64_t totalSize = sizeOf(type);
+        usedExterns_.insert("rt_modvar_addr_block");
+        Value sizeVal = Value::constInt(totalSize);
+        Value addr = emitCallRet(Type(Type::Kind::Ptr), "rt_modvar_addr_block", {nameStr, sizeVal});
+        return addr;
+    }
+
+    // Scalars use type-specific helpers
     Type ilType = mapType(type);
     std::string helper = getModvarAddrHelper(ilType.kind);
     usedExterns_.insert(helper);
 
-    std::string globalName = getStringGlobal(name);
-    Value nameStr = emitConstStr(globalName);
     Value addr = emitCallRet(Type(Type::Kind::Ptr), helper, {nameStr});
     return addr;
 }

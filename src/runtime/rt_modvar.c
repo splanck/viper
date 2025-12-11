@@ -146,3 +146,11 @@ void *rt_modvar_addr_str(rt_string name)
 {
     return mv_addr(name, MV_STR, sizeof(void *));
 }
+
+/// @brief Address of a module variable block with arbitrary size.
+/// @details Used for arrays and records that need more than 8 bytes.
+void *rt_modvar_addr_block(rt_string name, int64_t size)
+{
+    // Use MV_PTR kind for block storage - the size is what matters
+    return mv_addr(name, MV_PTR, (size_t)size);
+}

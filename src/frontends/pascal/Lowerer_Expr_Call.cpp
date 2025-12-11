@@ -330,6 +330,21 @@ LowerResult Lowerer::lowerCall(const CallExpr &expr)
             return {Value::constInt(0), Type(Type::Kind::Void)};
         }
 
+        if (builtin == PascalBuiltin::Copy)
+        {
+            // Copy(s, startIdx, [count]) - Pascal uses 1-based indexing, runtime uses 0-based
+            // Convert: Copy(s, 1, 5) => rt_substr(s, 0, 5)
+            usedExterns_.insert("rt_substr");
+            Value str = args[0];
+            // Subtract 1 from start index to convert from 1-based to 0-based
+            Value startIdx =
+                emitBinary(Opcode::ISubOvf, Type(Type::Kind::I64), args[1], Value::constInt(1));
+            // If count not provided, use string length (handled by rt_substr with large count)
+            Value count = args.size() > 2 ? args[2] : Value::constInt(INT64_MAX);
+            Value result = emitCallRet(Type(Type::Kind::Str), "rt_substr", {str, startIdx, count});
+            return {result, Type(Type::Kind::Str)};
+        }
+
         // Handle builtins with runtime symbols
         const char *rtSym = getBuiltinRuntimeSymbol(builtin, firstArgType);
         if (rtSym)
@@ -369,6 +384,14 @@ LowerResult Lowerer::lowerCall(const CallExpr &expr)
                     Value zero = Value::constInt(0);
                     result = emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1), result, zero);
                     return {result, Type(Type::Kind::I1)};
+                }
+
+                // Convert f64 to i64 if Pascal expects Integer but runtime returns f64
+                // (e.g., Trunc, Round, Floor, Ceil return f64 from runtime but Pascal expects Integer)
+                if (pascalRetType.kind == Type::Kind::I64 && rtRetType.kind == Type::Kind::F64)
+                {
+                    result = emitUnary(Opcode::CastFpToSiRteChk, Type(Type::Kind::I64), result);
+                    return {result, Type(Type::Kind::I64)};
                 }
 
                 return {result, rtRetType};

@@ -32,16 +32,38 @@ LowerResult Lowerer::lowerIndex(const IndexExpr &expr)
 
     if (baseType.kind == PasTypeKind::Array && !expr.indices.empty())
     {
-        // Get base address (the array variable's alloca slot)
+        // Get base address (the array variable's alloca slot or global address)
         if (expr.base->kind == ExprKind::Name)
         {
             const auto &nameExpr = static_cast<const NameExpr &>(*expr.base);
             std::string key = toLower(nameExpr.name);
+
+            Value baseAddr;
+            bool found = false;
+
+            // Check local variables first
             auto it = locals_.find(key);
             if (it != locals_.end())
             {
-                Value baseAddr = it->second;
+                baseAddr = it->second;
+                found = true;
+            }
 
+            // Check global variables (Bug #17 fix)
+            if (!found)
+            {
+                auto globalIt = globalTypes_.find(key);
+                if (globalIt != globalTypes_.end())
+                {
+                    // For arrays, the global address IS the array base (inline storage)
+                    // We use rt_modvar_addr_ptr to get the address but DON'T load from it
+                    baseAddr = getGlobalVarAddr(key, globalIt->second);
+                    found = true;
+                }
+            }
+
+            if (found)
+            {
                 // Get element type and size
                 Type elemType = Type(Type::Kind::I64); // Default
                 int64_t elemSize = 8;

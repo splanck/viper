@@ -47,6 +47,11 @@ extern "C"
     /// How:  Looks up/creates a slot keyed by name and returns its address.
     void *rt_modvar_addr_str(rt_string name);
 
+    /// What: Address of a module variable block with arbitrary size.
+    /// Why:  Support arrays and records as module-level variables.
+    /// How:  Looks up/creates a slot keyed by name and returns its address.
+    void *rt_modvar_addr_block(rt_string name, int64_t size);
+
 #ifdef __cplusplus
 }
 #endif

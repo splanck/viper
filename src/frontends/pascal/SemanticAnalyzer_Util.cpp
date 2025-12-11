@@ -362,12 +362,16 @@ void SemanticAnalyzer::registerBuiltins()
         // For variadic builtins, leave params empty (checked specially in typeOfCall)
         if (!desc.variadic)
         {
+            // Add ALL parameters (both required and optional) to sig.params
+            // Bug #19 fix: previously only non-optional params were added
             for (const auto &arg : desc.args)
             {
+                sig.params.emplace_back("arg", maskToType(arg.allowed));
+                sig.isVarParam.push_back(arg.isVar);
+                // Count required params (non-optional ones)
                 if (!arg.optional)
                 {
-                    sig.params.emplace_back("arg", maskToType(arg.allowed));
-                    sig.isVarParam.push_back(arg.isVar);
+                    sig.requiredParams++;
                 }
             }
         }
