@@ -583,6 +583,12 @@ target_link_libraries(test_pascal_semantic_class PRIVATE viper_testing fe_pascal
 add_test(NAME test_pascal_semantic_class COMMAND test_pascal_semantic_class)
 set_tests_properties(test_pascal_semantic_class PROPERTIES LABELS pascal)
 
+# Pascal OOP diagnostics tests
+add_executable(test_pascal_oop_diagnostics ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/PascalOOPDiagnosticsTests.cpp)
+target_link_libraries(test_pascal_oop_diagnostics PRIVATE viper_testing fe_pascal)
+add_test(NAME test_pascal_oop_diagnostics COMMAND test_pascal_oop_diagnostics)
+set_tests_properties(test_pascal_oop_diagnostics PROPERTIES LABELS pascal)
+
 # Pascal semantic analyzer unit tests
 add_executable(test_pascal_semantic_unit ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticUnitTests.cpp)
 target_link_libraries(test_pascal_semantic_unit PRIVATE viper_testing fe_pascal)
@@ -690,6 +696,24 @@ add_executable(test_pascal_oop_status ${CMAKE_CURRENT_SOURCE_DIR}/frontends/pasc
 target_link_libraries(test_pascal_oop_status PRIVATE viper_testing fe_pascal)
 add_test(NAME test_pascal_oop_status COMMAND test_pascal_oop_status)
 set_tests_properties(test_pascal_oop_status PROPERTIES LABELS pascal)
+
+# Pascal OOP IL lowering tests (vtables, allocation, dispatch)
+add_executable(test_pascal_oop_lowering ${CMAKE_CURRENT_SOURCE_DIR}/frontends/pascal/PascalOOPLoweringTests.cpp)
+target_link_libraries(test_pascal_oop_lowering PRIVATE viper_testing fe_pascal)
+add_test(NAME test_pascal_oop_lowering COMMAND test_pascal_oop_lowering)
+set_tests_properties(test_pascal_oop_lowering PROPERTIES LABELS pascal)
+
+# Pascal-BASIC interoperability tests (common OOP ABI)
+add_executable(test_pascal_basic_interop ${CMAKE_CURRENT_SOURCE_DIR}/frontends/pascal/PascalBasicInteropTests.cpp)
+target_link_libraries(test_pascal_basic_interop PRIVATE viper_testing fe_pascal fe_basic)
+add_test(NAME test_pascal_basic_interop COMMAND test_pascal_basic_interop)
+set_tests_properties(test_pascal_basic_interop PROPERTIES LABELS "pascal;interop")
+
+# Pascal-BASIC OOP ABI compatibility tests
+add_executable(test_oop_interop_abi ${CMAKE_CURRENT_SOURCE_DIR}/oop_interop/PascalBasicABITests.cpp)
+target_link_libraries(test_oop_interop_abi PRIVATE viper_testing fe_pascal fe_basic)
+add_test(NAME test_oop_interop_abi COMMAND test_oop_interop_abi)
+set_tests_properties(test_oop_interop_abi PROPERTIES LABELS "interop;oop")
 
 # Pascal OOP visibility semantic tests
 add_executable(test_pascal_semantic_visibility ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticVisibilityTests.cpp)

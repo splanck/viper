@@ -58,6 +58,7 @@ enum class ExprKind
     AddressOf,
     Dereference,
     Is, ///< Runtime type-check (expr is T)
+    As, ///< Safe downcast (expr as T), returns nil on failure
 };
 
 /// @brief Base class for all Pascal expressions.
@@ -271,6 +272,18 @@ struct IsExpr : Expr
 
     IsExpr(std::unique_ptr<Expr> op, std::unique_ptr<TypeNode> type, il::support::SourceLoc l = {})
         : Expr(ExprKind::Is, l), operand(std::move(op)), targetType(std::move(type))
+    {
+    }
+};
+
+/// @brief Safe downcast expression: (expr as T), returns nil on failure.
+struct AsExpr : Expr
+{
+    std::unique_ptr<Expr> operand;
+    std::unique_ptr<TypeNode> targetType;
+
+    AsExpr(std::unique_ptr<Expr> op, std::unique_ptr<TypeNode> type, il::support::SourceLoc l = {})
+        : Expr(ExprKind::As, l), operand(std::move(op)), targetType(std::move(type))
     {
     }
 };

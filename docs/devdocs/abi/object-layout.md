@@ -6,7 +6,7 @@ last-updated: 2025-10-24
 
 # Object Layout and Call ABI (Milestone B)
 
-This page documents the runtime object layout and how the BASIC front end lowers method calls to IL.
+This page documents the runtime object layout and how both BASIC and Pascal front ends lower method calls to IL. Both languages use the same ABI for runtime compatibility.
 
 ## Object header and vtable
 

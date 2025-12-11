@@ -64,6 +64,13 @@ class DiagnosticEngine
     /// @brief Number of warnings reported.
     size_t warningCount() const;
 
+    /// @brief Access collected diagnostics for inspection.
+    /// @return Const reference to the internal diagnostics vector.
+    [[nodiscard]] const std::vector<Diagnostic> &diagnostics() const
+    {
+        return diags_;
+    }
+
   private:
     std::vector<Diagnostic> diags_;
     size_t errors_ = 0;

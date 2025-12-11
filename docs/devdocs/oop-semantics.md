@@ -51,3 +51,50 @@ The implementation surfaces the following error conditions:
 - Cannot override final: `cannot override final '<Name>'`.
 - Cannot instantiate abstract class: `cannot instantiate abstract class '<Name>'`.
 
+## Pascal–BASIC OOP Interoperability
+
+Both Pascal and BASIC frontends lower OOP constructs to IL using the same underlying ABI, enabling runtime-level compatibility.
+
+### ABI Compatibility (Guaranteed)
+
+The following are guaranteed compatible at the runtime ABI level:
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Object layout | Compatible | Vptr at offset 0, fields follow |
+| Class registration | Compatible | Both use `rt_register_class_with_base_rs` |
+| Object allocation | Compatible | Both use `rt_obj_new_i64` |
+| Vtable access | Compatible | Both use `rt_get_class_vtable` |
+| Vtable slot assignment | Compatible | Base-first, append-only, deterministic |
+| Virtual dispatch | Compatible | Both use `CallIndirect` with vtable lookup |
+| RTTI (type checks) | Compatible | Both support `is`/`as` with runtime helpers |
+| Interface support | Compatible | Both register interface implementations |
+
+### Naming Conventions (Different)
+
+The two languages use different method naming conventions in the generated IL:
+
+| Aspect | Pascal | BASIC |
+|--------|--------|-------|
+| Method names | `TFoo.DoWork` (case-preserved) | `TFOO.DOWORK` (uppercase) |
+| Constructor names | `TFoo.Create` (named) | `TFOO.__ctor` |
+| Interface syntax | `TShape = class(IDrawable)` | `CLASS TShape IMPLEMENTS IDrawable` |
+
+### Supported Cross-Language Patterns
+
+**Supported at runtime:**
+- Objects created by one language can be passed to code compiled from the other
+- Virtual dispatch works correctly for objects regardless of which language created them
+- RTTI type checks work across language boundaries
+
+**Not supported (due to naming differences):**
+- Direct method calls between languages require symbol name normalization at link time
+- A Pascal class cannot directly subclass a BASIC class (or vice versa) without explicit interop stubs
+- Constructor invocation across languages requires matching the target language's naming convention
+
+### Test Coverage
+
+Interoperability guarantees are verified by:
+- `src/tests/frontends/pascal/PascalBasicInteropTests.cpp` - Runtime call compatibility
+- `src/tests/oop_interop/PascalBasicABITests.cpp` - Comprehensive ABI compatibility
+

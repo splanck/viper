@@ -65,6 +65,7 @@ enum class TokenKind
     KwImplementation,
     KwIn,
     KwIs,
+    KwAs,
     KwInherited,
     KwAbstract,
     KwInterface,

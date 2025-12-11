@@ -69,7 +69,9 @@ void SemanticAnalyzer::checkClassInfo(const ClassInfo &classInfo)
         }
         else
         {
-            error(classInfo.loc, "unknown type '" + classInfo.baseClass + "' in heritage clause");
+            error(classInfo.loc,
+                  "class '" + classInfo.name + "' has unknown base type '" + classInfo.baseClass +
+                      "'; ensure the base class or interface is declared before this class");
         }
     }
 
@@ -82,12 +84,15 @@ void SemanticAnalyzer::checkClassInfo(const ClassInfo &classInfo)
         if (classes_.find(key) != classes_.end())
         {
             error(classInfo.loc,
-                  "at most one base class permitted; '" + ifaceName +
-                      "' is a class, not an interface");
+                  "class '" + classInfo.name + "' cannot inherit from multiple classes; '" +
+                      ifaceName + "' is a class, not an interface; "
+                                  "Pascal supports single class inheritance only");
         }
         else if (interfaces_.find(key) == interfaces_.end())
         {
-            error(classInfo.loc, "unknown interface '" + ifaceName + "'");
+            error(classInfo.loc,
+                  "class '" + classInfo.name + "' references unknown interface '" + ifaceName +
+                      "'; ensure the interface is declared before this class");
         }
     }
 
@@ -120,14 +125,16 @@ void SemanticAnalyzer::checkOverridesWithBase(const ClassInfo &classInfo,
                 if (!baseMethod)
                 {
                     error(method.loc,
-                          "method '" + method.name +
-                              "' marked override but no virtual method found in base class");
+                          "method '" + classInfo.name + "." + method.name +
+                              "' is marked 'override' but no matching virtual method exists in "
+                              "base class hierarchy; declare base method as 'virtual' first");
                 }
                 else if (!signaturesMatch(method, *baseMethod))
                 {
                     error(method.loc,
-                          "override method '" + method.name +
-                              "' signature does not match base virtual method");
+                          "override method '" + classInfo.name + "." + method.name +
+                              "' has incompatible signature with base virtual method; "
+                              "parameter types and return type must match exactly");
                 }
             }
         }
@@ -299,8 +306,10 @@ void SemanticAnalyzer::checkInterfaceImplementationWith(
         if (!found)
         {
             error(classInfo.loc,
-                  "class '" + classInfo.name + "' does not implement interface method '" +
-                      ifaceMethod.name + "'");
+                  "class '" + classInfo.name + "' must implement interface method '" +
+                      ifaceMethod.name + "' with matching signature; "
+                                         "add 'procedure " +
+                      ifaceMethod.name + "' or 'function " + ifaceMethod.name + "' to the class");
         }
     }
 }
@@ -373,8 +382,10 @@ void SemanticAnalyzer::checkWeakFields(const ClassInfo &classInfo)
             if (fieldType.kind != PasTypeKind::Class && fieldType.kind != PasTypeKind::Interface)
             {
                 error(field.loc,
-                      "weak may only be applied to class/interface fields, not " +
-                          field.type.toString());
+                      "'weak' attribute on field '" + field.name +
+                          "' is invalid; 'weak' can only be applied to class or interface "
+                          "references, not '" +
+                          field.type.toString() + "'");
             }
         }
     }
@@ -712,7 +723,10 @@ const MethodInfo *SemanticAnalyzer::resolveOverload(const std::vector<MethodInfo
 
     // Ambiguous - multiple overloads with same score
     std::string methodName = overloads[0].name;
-    error(loc, "ambiguous call to overloaded method '" + methodName + "'");
+    error(loc,
+          "ambiguous call to overloaded method '" + methodName + "'; " +
+              std::to_string(bestMatches.size()) +
+              " overloads match equally well; use explicit type conversions to disambiguate");
     return bestMatches[0]; // Return first to continue analysis
 }
 

@@ -25,6 +25,7 @@ Complete language reference for Viper Pascal. This document describes **program 
 - [Program Structure](#program-structure)
 - [Lexical Elements](#lexical-elements)
 - [Types](#types)
+- [Object-Oriented Programming](#object-oriented-programming)
 - [Declarations](#declarations)
 - [Statements A-Z](#statements-a-z)
 - [Expressions & Operators](#expressions--operators)
@@ -169,6 +170,319 @@ begin
   p := @n;
   WriteLn(IntToStr(p^))  { 42 }
 end.
+```
+
+---
+
+## Object-Oriented Programming
+
+Viper Pascal supports object-oriented programming with classes, interfaces, inheritance, and polymorphism.
+
+### Class Declaration
+
+```pascal
+type
+  TPoint = class
+  private
+    FX: Integer;
+    FY: Integer;
+  public
+    constructor Create(x: Integer; y: Integer);
+    function GetX: Integer;
+    procedure SetX(value: Integer);
+  end;
+
+constructor TPoint.Create(x: Integer; y: Integer);
+begin
+  FX := x;
+  FY := y
+end;
+
+function TPoint.GetX: Integer;
+begin
+  Result := FX
+end;
+
+procedure TPoint.SetX(value: Integer);
+begin
+  FX := value
+end;
+```
+
+### Visibility Sections
+
+| Section | Access |
+|---------|--------|
+| `public` | Accessible from anywhere |
+| `private` | Only accessible within the class |
+
+```pascal
+type
+  TCounter = class
+  private
+    FValue: Integer;    { Only accessible within TCounter }
+  public
+    constructor Create;
+    procedure Increment; { Accessible from anywhere }
+    function GetValue: Integer;
+  end;
+```
+
+### Constructors and Destructors
+
+```pascal
+type
+  TResource = class
+  public
+    constructor Create;
+    destructor Destroy; virtual;
+  end;
+
+constructor TResource.Create;
+begin
+  { Initialize resources }
+end;
+
+destructor TResource.Destroy;
+begin
+  { Clean up resources }
+  inherited Destroy  { Call base destructor }
+end;
+```
+
+**Notes:**
+- Constructors are named `Create` by convention but can have any name
+- Destructors must be named `Destroy`
+- Use `inherited` to call base class destructor
+
+### Inheritance
+
+Single inheritance is supported via the `class(BaseClass)` syntax:
+
+```pascal
+type
+  TShape = class
+  public
+    X, Y: Integer;
+    constructor Create(x: Integer; y: Integer);
+  end;
+
+  TRectangle = class(TShape)
+  public
+    Width, Height: Integer;
+    constructor Create(x: Integer; y: Integer; w: Integer; h: Integer);
+  end;
+
+constructor TRectangle.Create(x: Integer; y: Integer; w: Integer; h: Integer);
+begin
+  inherited Create(x, y);  { Call base constructor }
+  Width := w;
+  Height := h
+end;
+```
+
+### Virtual Methods and Override
+
+```pascal
+type
+  TAnimal = class
+  public
+    procedure Speak; virtual;  { Can be overridden }
+  end;
+
+  TDog = class(TAnimal)
+  public
+    procedure Speak; override;  { Overrides base implementation }
+  end;
+
+procedure TAnimal.Speak;
+begin
+  WriteLn('...')
+end;
+
+procedure TDog.Speak;
+begin
+  WriteLn('Woof!')
+end;
+```
+
+### Abstract Methods
+
+Abstract methods have no implementation and must be overridden:
+
+```pascal
+type
+  TShape = class
+  public
+    procedure Draw; virtual; abstract;  { Must be implemented by subclasses }
+  end;
+
+  TCircle = class(TShape)
+  public
+    procedure Draw; override;
+  end;
+
+procedure TCircle.Draw;
+begin
+  WriteLn('Drawing circle')
+end;
+```
+
+**Note:** Classes with abstract methods cannot be instantiated directly.
+
+### Interfaces
+
+Interfaces define contracts that classes can implement:
+
+```pascal
+type
+  IDrawable = interface
+    procedure Draw;
+  end;
+
+  IResizable = interface
+    procedure Resize(w: Integer; h: Integer);
+  end;
+
+  TWidget = class(IDrawable, IResizable)
+  public
+    procedure Draw;
+    procedure Resize(w: Integer; h: Integer);
+  end;
+```
+
+### Class with Base Class and Interfaces
+
+```pascal
+type
+  TButton = class(TControl, IClickable, IDrawable)
+  public
+    procedure Draw;
+    procedure OnClick;
+  end;
+```
+
+### Properties
+
+Properties provide controlled access to fields:
+
+```pascal
+type
+  TCounter = class
+  private
+    FValue: Integer;
+    function GetValue: Integer;
+    procedure SetValue(v: Integer);
+  public
+    property Value: Integer read FValue write FValue;        { Direct field access }
+    property Count: Integer read GetValue write SetValue;    { Via methods }
+    property ReadOnly: Integer read FValue;                  { Read-only property }
+  end;
+```
+
+### Self Identifier
+
+Inside methods, `Self` refers to the current instance:
+
+```pascal
+procedure TPoint.MoveBy(dx: Integer; dy: Integer);
+begin
+  Self.X := Self.X + dx;
+  Self.Y := Self.Y + dy
+end;
+```
+
+### Result Variable
+
+In functions, assign to `Result` to set the return value:
+
+```pascal
+function TCalc.Add(a: Integer; b: Integer): Integer;
+begin
+  Result := a + b
+end;
+```
+
+### Inherited Statement
+
+Call base class implementation:
+
+```pascal
+procedure TChild.DoWork;
+begin
+  inherited;           { Call base DoWork with same arguments }
+  inherited DoWork;    { Explicit form }
+  { Additional work }
+end;
+```
+
+### RTTI: IS and AS Operators
+
+**IS operator** — Runtime type check:
+
+```pascal
+var
+  shape: TShape;
+begin
+  shape := TCircle.Create;
+  if shape is TCircle then
+    WriteLn('It is a circle');
+  if shape is IDrawable then
+    WriteLn('It is drawable')
+end.
+```
+
+**AS operator** — Safe downcast:
+
+```pascal
+var
+  shape: TShape;
+  circle: TCircle;
+begin
+  shape := TCircle.Create;
+  circle := shape as TCircle;  { Safe cast }
+  circle.Radius := 10
+end.
+```
+
+### Weak References
+
+Prevent circular reference memory leaks:
+
+```pascal
+type
+  TNode = class
+  public
+    Next: TNode;           { Strong reference }
+    weak Prev: TNode;      { Weak reference - doesn't prevent deallocation }
+  end;
+```
+
+**Note:** `weak` can only be applied to class or interface types, not value types.
+
+### Object Creation
+
+Create objects with the `Create` constructor:
+
+```pascal
+var
+  p: TPoint;
+begin
+  p := TPoint.Create(10, 20);
+  { Use p }
+end.
+```
+
+### With Statement and Objects
+
+The `with` statement works with objects:
+
+```pascal
+with myPoint do
+begin
+  X := 10;
+  Y := 20
+end;
 ```
 
 ---
@@ -700,8 +1014,10 @@ end;
 
 ### A
 
+- `abstract` — Abstract method modifier (no implementation, must be overridden)
 - `and` — Boolean AND operator
 - `array` — Array type declaration
+- `as` — Safe type cast operator (RTTI)
 
 ### B
 
@@ -712,10 +1028,13 @@ end;
 
 - `case` — Multi-way branch statement
 - `char` — Character type
+- `class` — Class type declaration
 - `const` — Constant declaration section
+- `constructor` — Constructor method declaration
 
 ### D
 
+- `destructor` — Destructor method declaration
 - `div` — Integer division
 - `do` — Loop body introducer
 - `downto` — Decreasing for loop
@@ -737,8 +1056,10 @@ end;
 
 - `if` — Conditional statement
 - `implementation` — Unit implementation section
+- `inherited` — Call base class method
 - `integer` — Integer type
-- `interface` — Unit interface section
+- `interface` — Unit interface section / Interface type declaration
+- `is` — Runtime type check operator (RTTI)
 
 ### M
 
@@ -752,21 +1073,28 @@ end;
 
 - `of` — Type specifier (array of, case of)
 - `or` — Boolean OR operator
+- `override` — Override virtual method from base class
 
 ### P
 
+- `private` — Private visibility section in class
 - `procedure` — Procedure declaration
 - `program` — Program declaration
+- `property` — Property declaration in class
+- `public` — Public visibility section in class
 
 ### R
 
 - `raise` — Raise exception
+- `read` — Property read accessor specifier
 - `real` — Real number type
 - `record` — Record type declaration
 - `repeat` — Post-test loop
+- `Result` — Function return value variable
 
 ### S
 
+- `Self` — Reference to current object instance
 - `string` — String type
 
 ### T
@@ -786,11 +1114,14 @@ end;
 ### V
 
 - `var` — Variable declaration section
+- `virtual` — Virtual method modifier (can be overridden)
 
 ### W
 
+- `weak` — Weak reference field modifier (prevents retain cycles)
 - `while` — Pre-test loop
-- `with` — Record field shortcut
+- `with` — Record/object field shortcut
+- `write` — Property write accessor specifier
 
 ### X
 
@@ -802,10 +1133,10 @@ end;
 
 ### Current Limitations
 
-- Classes and objects are partially implemented
 - Some standard library functions may not be available
 - File I/O is limited
 - Generic types are not yet supported
+- Multiple inheritance is not supported (single class inheritance + multiple interfaces)
 
 ### VM vs Native Execution
 

@@ -26,6 +26,10 @@ target_sources(fe_pascal PRIVATE
         Lowerer_Decl.cpp
         Lowerer_Emit.cpp
         Lowerer_Expr.cpp
+        Lowerer_Expr_Name.cpp
+        Lowerer_Expr_Ops.cpp
+        Lowerer_Expr_Call.cpp
+        Lowerer_Expr_Access.cpp
         Lowerer_OOP.cpp
         Lowerer_Stmt.cpp
         Compiler.cpp

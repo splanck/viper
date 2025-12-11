@@ -64,6 +64,18 @@ std::unique_ptr<Expr> Parser::parseRelation()
         return std::make_unique<IsExpr>(std::move(left), std::move(type), loc);
     }
 
+    // Safe downcast operator: expr as T
+    if (check(TokenKind::KwAs))
+    {
+        auto loc = current_.loc;
+        advance(); // consume 'as'
+        // Parse a type name after 'as'
+        auto type = parseType();
+        if (!type)
+            return nullptr;
+        return std::make_unique<AsExpr>(std::move(left), std::move(type), loc);
+    }
+
     // Check for relational operators
     BinaryExpr::Op op;
     bool hasOp = false;

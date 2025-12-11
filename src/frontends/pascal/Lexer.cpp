@@ -94,6 +94,8 @@ const char *tokenKindToString(TokenKind kind)
             return "in";
         case TokenKind::KwIs:
             return "is";
+        case TokenKind::KwAs:
+            return "as";
         case TokenKind::KwInherited:
             return "inherited";
         case TokenKind::KwAbstract:
@@ -227,10 +229,11 @@ struct KeywordEntry
     TokenKind kind;
 };
 
-constexpr std::array<KeywordEntry, 58> kKeywordTable = {{
+constexpr std::array<KeywordEntry, 59> kKeywordTable = {{
     {"abstract", TokenKind::KwAbstract},
     {"and", TokenKind::KwAnd},
     {"array", TokenKind::KwArray},
+    {"as", TokenKind::KwAs},
     {"begin", TokenKind::KwBegin},
     {"break", TokenKind::KwBreak},
     {"case", TokenKind::KwCase},
