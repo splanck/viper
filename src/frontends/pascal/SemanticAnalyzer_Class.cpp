@@ -419,6 +419,21 @@ bool SemanticAnalyzer::isAbstractClass(const std::string &className) const
     return !inheritedAbstract.empty();
 }
 
+bool SemanticAnalyzer::isMemberVisible(Visibility visibility, const std::string &declaringClass,
+                                       const std::string &accessingClass) const
+{
+    // Public members are always visible
+    if (visibility == Visibility::Public)
+        return true;
+
+    // Private members are only visible within the declaring class
+    if (accessingClass.empty())
+        return false;
+
+    // Case-insensitive comparison
+    return toLower(declaringClass) == toLower(accessingClass);
+}
+
 bool SemanticAnalyzer::interfaceExtendsInterface(const std::string &derivedName,
                                                  const std::string &baseName) const
 {

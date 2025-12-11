@@ -567,6 +567,18 @@ target_link_libraries(test_pascal_parser_method_qual PRIVATE viper_testing fe_pa
 add_test(NAME test_pascal_parser_method_qual COMMAND test_pascal_parser_method_qual)
 set_tests_properties(test_pascal_parser_method_qual PROPERTIES LABELS pascal)
 
+# Pascal OOP grammar coverage tests
+add_executable(test_pascal_parser_oop ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/ParserOOPTests.cpp)
+target_link_libraries(test_pascal_parser_oop PRIVATE viper_testing fe_pascal)
+add_test(NAME test_pascal_parser_oop COMMAND test_pascal_parser_oop)
+set_tests_properties(test_pascal_parser_oop PROPERTIES LABELS pascal)
+
+# Pascal OOP symbol table tests
+add_executable(test_pascal_symbol_table_oop ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SymbolTableOOPTests.cpp)
+target_link_libraries(test_pascal_symbol_table_oop PRIVATE viper_testing fe_pascal)
+add_test(NAME test_pascal_symbol_table_oop COMMAND test_pascal_symbol_table_oop)
+set_tests_properties(test_pascal_symbol_table_oop PROPERTIES LABELS pascal)
+
 # Pascal semantic analyzer unit tests
 add_executable(test_pascal_semantic ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticBasicTests.cpp)
 target_link_libraries(test_pascal_semantic PRIVATE viper_testing fe_pascal)
@@ -680,6 +692,24 @@ add_executable(test_pascal_bugfixes ${CMAKE_CURRENT_SOURCE_DIR}/frontends/pascal
 target_link_libraries(test_pascal_bugfixes PRIVATE viper_testing fe_pascal)
 add_test(NAME test_pascal_bugfixes COMMAND test_pascal_bugfixes)
 set_tests_properties(test_pascal_bugfixes PROPERTIES LABELS pascal)
+
+# Pascal OOP status tests (tracks working vs blocked features per roadmap)
+add_executable(test_pascal_oop_status ${CMAKE_CURRENT_SOURCE_DIR}/frontends/pascal/PascalOOPStatusTests.cpp)
+target_link_libraries(test_pascal_oop_status PRIVATE viper_testing fe_pascal)
+add_test(NAME test_pascal_oop_status COMMAND test_pascal_oop_status)
+set_tests_properties(test_pascal_oop_status PROPERTIES LABELS pascal)
+
+# Pascal OOP visibility semantic tests
+add_executable(test_pascal_semantic_visibility ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticVisibilityTests.cpp)
+target_link_libraries(test_pascal_semantic_visibility PRIVATE viper_testing fe_pascal)
+add_test(NAME test_pascal_semantic_visibility COMMAND test_pascal_semantic_visibility)
+set_tests_properties(test_pascal_semantic_visibility PROPERTIES LABELS pascal)
+
+# Pascal OOP inheritance semantic tests
+add_executable(test_pascal_semantic_inheritance ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticInheritanceTests.cpp)
+target_link_libraries(test_pascal_semantic_inheritance PRIVATE viper_testing fe_pascal)
+add_test(NAME test_pascal_semantic_inheritance COMMAND test_pascal_semantic_inheritance)
+set_tests_properties(test_pascal_semantic_inheritance PROPERTIES LABELS pascal)
 
 # =============================================================================
 # Test Labels Configuration

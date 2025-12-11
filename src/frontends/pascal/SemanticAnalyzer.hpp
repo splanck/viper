@@ -698,6 +698,16 @@ class SemanticAnalyzer
     /// @return True if abstract, false otherwise.
     bool isAbstractClass(const std::string &className) const;
 
+    /// @brief Check if a member with given visibility in declaringClass is visible from
+    /// accessingClass.
+    /// @param visibility The member's visibility (Public or Private).
+    /// @param declaringClass Name of the class that declares the member.
+    /// @param accessingClass Name of the class trying to access the member (empty if outside any
+    /// class).
+    /// @return True if the member is visible.
+    bool isMemberVisible(Visibility visibility, const std::string &declaringClass,
+                         const std::string &accessingClass) const;
+
     /// @brief Check if an interface extends another interface.
     /// @param derivedName Name of the derived interface.
     /// @param baseName Name of the potential base interface.

@@ -14,7 +14,7 @@ This document tracks bugs discovered while porting the Frogger, VTris, and Centi
 ## Semantic Analysis Bugs
 
 ### 2. Class Field Access in Methods Not Working
-**Status**: Known issue
+**Status**: ✅ FIXED (December 2025)
 **Description**: When a method accesses a field of `Self`, the field is not resolved:
 ```pascal
 type
@@ -30,7 +30,7 @@ begin
 end;
 ```
 **Impact**: Cannot use class fields in methods
-**Workaround**: None found
+**Resolution**: Fixed. Implicit field access (without `Self.` prefix) now correctly resolves to class fields.
 
 **Root Cause Analysis**:
 - Location: `SemanticAnalyzer.cpp`, function `typeOfName()` (line ~2007)
@@ -55,7 +55,7 @@ end;
 - The Lowerer would also need corresponding changes to emit `Self.fieldName` access IL code
 
 ### 3. Constructor Calls Not Recognized
-**Status**: Known issue
+**Status**: ✅ FIXED (December 2025)
 **Description**: `TClassName.Create` calls fail with "undefined method 'Create'"
 ```pascal
 var c: TCircle;
@@ -64,7 +64,7 @@ begin
 end.
 ```
 **Impact**: Cannot instantiate classes
-**Workaround**: None found
+**Resolution**: Fixed. `TClassName.Create` syntax now generates proper allocation + constructor call IL.
 
 **Root Cause Analysis**:
 - Location: `SemanticAnalyzer.cpp`, function `typeOfCall()` (line ~2150)
@@ -186,8 +186,8 @@ else if x < 0 then  // Creates empty else block for inner if
 **Resolution**: Only create else block when `stmt.elseBranch` exists
 
 ### 9. Record/Type Field Access Not Implemented
-**Status**: BLOCKING - Discovered during Frogger development
-**Description**: Field access on records does not generate any IL code - it falls through to default case returning constant 0.
+**Status**: ✅ FIXED (December 2025)
+**Description**: Field access on records was not generating IL code - fell through to default case returning 0.
 ```pascal
 type
   TPoint = record
@@ -195,39 +195,11 @@ type
   end;
 var p: TPoint;
 begin
-  p.X := 5;        // Doesn't work
-  WriteLn(p.X);    // Returns 0
+  p.X := 5;        // Now works - generates GEP + store
+  WriteLn(p.X);    // Now works - outputs 5
 end.
 ```
-**Impact**: Cannot use record types with field access
-**Workaround**: Use parallel arrays instead of records
-
-**Root Cause Analysis**:
-- Location: `Lowerer.cpp`, function `lowerExpr()` (line ~553)
-- The `lowerExpr()` switch statement handles these expression kinds:
-  - `IntLiteral`, `RealLiteral`, `StringLiteral`, `BoolLiteral`, `NilLiteral`
-  - `Name`, `Unary`, `Binary`, `Call`, `Index`
-- **`ExprKind::Field` is NOT handled** - it falls through to the `default` case:
-  ```cpp
-  default:
-      // Unsupported expression type - return zero
-      return {Value::constInt(0), Type(Type::Kind::I64)};
-  ```
-- This explains why `p.X` returns 0 - it's not implemented at all!
-- **Fix Required**:
-  1. Add `case ExprKind::Field:` to `lowerExpr()` that calls a new `lowerField()` function
-  2. Implement `lowerField(const FieldExpr &expr)`:
-     - Get the base address (record variable's alloca slot)
-     - Calculate field offset based on record layout
-     - For read: `gep` + `load`
-     - For write (in `lowerAssign`): `gep` + `store`
-  3. Would need field offset calculation infrastructure in Lowerer
-  4. Example IL for `p.X := 5`:
-     ```
-     %ptr = gep ptr %p, 0  ; offset for field X
-     store i64 %ptr, 5
-     ```
-- **Also affects**: Assignment to record fields in `lowerAssign()` - currently only handles `NameExpr` targets
+**Resolution**: Fixed by adding global variable lookup for records in both `lowerField()` (Lowerer_Expr.cpp) and `lowerAssign()` (Lowerer_Stmt.cpp). Field access now generates proper GEP + load/store IL.
 
 ### 10. Local Variable Types Not Tracked for Procedure Locals
 **Status**: FIXED
@@ -321,19 +293,18 @@ y := a mod b;  // ERROR: must use srem.chk0
 
 | Bug # | Issue | Root Cause Location | Complexity |
 |-------|-------|---------------------|------------|
-| 2 | Class field access in methods | `SemanticAnalyzer::typeOfName()` | Medium |
-| 3 | Constructor calls not recognized | `SemanticAnalyzer::typeOfCall()` | High |
 | 5 | Array dimensions cannot use constants | `SemanticAnalyzer::resolveType()` | Low |
 | 6 | Exit statement not implemented | Missing from Lexer/Parser/AST/Lowerer | Medium |
-| 9 | Record field access not implemented | `Lowerer::lowerExpr()` | High |
+
+### Fixed OOP Bugs (December 2025)
+- ✅ Bug #2 (Class field access in methods) - FIXED
+- ✅ Bug #3 (Constructor calls) - FIXED
+- ✅ Bug #9 (Record field access) - FIXED
 
 ### Priority Recommendations
 
-1. **Bug #9 (Record field access)** - Highest impact, blocks OOP-style programming
-2. **Bug #5 (Constant array dimensions)** - Easy fix, improves code maintainability
-3. **Bug #6 (Exit statement)** - Common Pascal idiom, medium complexity
-4. **Bug #2 (Class field access)** - Required for OOP, related to #9
-5. **Bug #3 (Constructor calls)** - Required for OOP, depends on #2 and #9
+1. **Bug #5 (Constant array dimensions)** - Easy fix, improves code maintainability
+2. **Bug #6 (Exit statement)** - Common Pascal idiom, medium complexity
 
 ---
 

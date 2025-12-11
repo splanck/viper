@@ -149,12 +149,28 @@ PasType SemanticAnalyzer::typeOfName(NameExpr &expr)
                 auto fieldIt = classInfo->fields.find(key);
                 if (fieldIt != classInfo->fields.end())
                 {
+                    // Check visibility: private fields only visible within declaring class
+                    if (!isMemberVisible(fieldIt->second.visibility, classInfo->name,
+                                         currentClassName_))
+                    {
+                        error(expr, "field '" + expr.name + "' is private in class '" +
+                                        classInfo->name + "'");
+                        return PasType::unknown();
+                    }
                     return fieldIt->second.type;
                 }
                 // Check properties
                 auto propIt = classInfo->properties.find(key);
                 if (propIt != classInfo->properties.end())
                 {
+                    // Check visibility: private properties only visible within declaring class
+                    if (!isMemberVisible(propIt->second.visibility, classInfo->name,
+                                         currentClassName_))
+                    {
+                        error(expr, "property '" + expr.name + "' is private in class '" +
+                                        classInfo->name + "'");
+                        return PasType::unknown();
+                    }
                     return propIt->second.type;
                 }
             }
@@ -490,6 +506,13 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
                             error(expr, "cannot call abstract method '" + calleeName + "'");
                             return PasType::unknown();
                         }
+                        // Check visibility: private methods only visible within declaring class
+                        if (!isMemberVisible(minfo.visibility, classInfo->name, currentClassName_))
+                        {
+                            error(expr, "method '" + calleeName + "' is private in class '" +
+                                            classInfo->name + "'");
+                            return PasType::unknown();
+                        }
 
                         // Mark the expression for the lowerer - it's a method call through with
                         expr.isWithMethodCall = true;
@@ -586,6 +609,14 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
                                     error(expr, "cannot call abstract method '" + calleeName + "'");
                                     return PasType::unknown();
                                 }
+                                // Check visibility for constructor
+                                if (!isMemberVisible(methodIt->second.visibility, classInfo->name,
+                                                     currentClassName_))
+                                {
+                                    error(expr, "constructor '" + calleeName + "' is private in class '" +
+                                                    classInfo->name + "'");
+                                    return PasType::unknown();
+                                }
                                 // Constructor found - return the class type (new instance)
                                 // Type-check arguments
                                 for (auto &arg : expr.args)
@@ -622,26 +653,26 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
                 std::string qualifiedKey = toLower(className + "." + calleeName);
                 sig = lookupFunction(qualifiedKey);
 
-                // If not found directly, check the class info for inherited methods
-                if (!sig)
+                // Always check visibility for class methods, even if found in function table
+                auto *classInfo = lookupClass(toLower(className));
+                if (classInfo)
                 {
-                    auto *classInfo = lookupClass(toLower(className));
-                    if (classInfo)
+                    std::string methodKey = toLower(calleeName);
+                    auto methodIt = classInfo->methods.find(methodKey);
+                    if (methodIt != classInfo->methods.end())
                     {
-                        std::string methodKey = toLower(calleeName);
-                        auto methodIt = classInfo->methods.find(methodKey);
-                        if (methodIt != classInfo->methods.end())
+                        if (methodIt->second.isAbstract)
                         {
-                            if (methodIt->second.isAbstract)
-                            {
-                                error(expr, "cannot call abstract method '" + calleeName + "'");
-                                return PasType::unknown();
-                            }
-                            // Create a temporary signature from method info
-                            // Note: This is a simplification - methods are properly stored
-                            // in functions_ with qualified names
-                            // For now, just allow the call if the method exists
-                            // Type checking for args happens below with the signature
+                            error(expr, "cannot call abstract method '" + calleeName + "'");
+                            return PasType::unknown();
+                        }
+                        // Check visibility: private methods only visible within declaring class
+                        if (!isMemberVisible(methodIt->second.visibility, classInfo->name,
+                                             currentClassName_))
+                        {
+                            error(expr, "method '" + calleeName + "' is private in class '" +
+                                            classInfo->name + "'");
+                            return PasType::unknown();
                         }
                     }
                 }
@@ -766,6 +797,14 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
                     if (methodIt->second.isAbstract)
                     {
                         error(expr, "cannot call abstract method '" + calleeName + "'");
+                        return PasType::unknown();
+                    }
+                    // Check visibility: private methods only visible within declaring class
+                    if (!isMemberVisible(methodIt->second.visibility, classInfo->name,
+                                         currentClassName_))
+                    {
+                        error(expr, "method '" + calleeName + "' is private in class '" +
+                                        classInfo->name + "'");
                         return PasType::unknown();
                     }
                     // For methods declared in class, use the method info
@@ -948,6 +987,14 @@ PasType SemanticAnalyzer::typeOfField(FieldExpr &expr)
                 auto fieldIt = classInfo->fields.find(fieldKey);
                 if (fieldIt != classInfo->fields.end())
                 {
+                    // Check visibility: private fields only visible within declaring class
+                    if (!isMemberVisible(fieldIt->second.visibility, classInfo->name,
+                                         currentClassName_))
+                    {
+                        error(expr, "field '" + expr.field + "' is private in class '" +
+                                        classInfo->name + "'");
+                        return PasType::unknown();
+                    }
                     return fieldIt->second.type;
                 }
                 if (classInfo->baseClass.empty())
@@ -958,9 +1005,19 @@ PasType SemanticAnalyzer::typeOfField(FieldExpr &expr)
             auto *ci = lookupClass(toLower(baseType.name));
             if (ci)
             {
-                // If the member is 'Create', treat as constructor call; enforce abstract rules
+                // If the member is 'Create', treat as constructor call; enforce abstract and visibility rules
                 if (fieldKey == toLower(std::string("Create")))
                 {
+                    // Check constructor visibility
+                    auto ctorIt = ci->methods.find(fieldKey);
+                    if (ctorIt != ci->methods.end())
+                    {
+                        if (!isMemberVisible(ctorIt->second.visibility, ci->name, currentClassName_))
+                        {
+                            error(expr, "constructor 'Create' is private in class '" + ci->name + "'");
+                            return PasType::unknown();
+                        }
+                    }
                     if (isAbstractClass(baseType.name))
                     {
                         error(expr, "cannot instantiate abstract class '" + baseType.name + "'");
@@ -971,6 +1028,13 @@ PasType SemanticAnalyzer::typeOfField(FieldExpr &expr)
                 auto mit = ci->methods.find(fieldKey);
                 if (mit != ci->methods.end())
                 {
+                    // Check visibility for method access
+                    if (!isMemberVisible(mit->second.visibility, ci->name, currentClassName_))
+                    {
+                        error(expr, "method '" + expr.field + "' is private in class '" + ci->name +
+                                        "'");
+                        return PasType::unknown();
+                    }
                     // Disallow abstract class instantiation
                     if (isAbstractClass(baseType.name))
                     {

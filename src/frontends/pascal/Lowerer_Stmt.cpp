@@ -495,6 +495,15 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
             }
             // Check for global class/record variable
             auto globalIt = globalTypes_.find(key);
+            if (globalIt != globalTypes_.end() && baseType.kind == PasTypeKind::Record)
+            {
+                // BUG-PAS-OOP-003 fix: Handle global record field assignment
+                Value globalAddr = getGlobalVarAddr(key, globalIt->second);
+                auto [fieldAddr, fieldType] = getFieldAddress(globalAddr, baseType, fieldExpr.field);
+                LowerResult value = lowerExpr(*stmt.value);
+                emitStore(fieldType, fieldAddr, value.value);
+                return;
+            }
             if (globalIt != globalTypes_.end() && baseType.kind == PasTypeKind::Class)
             {
                 // Get global address and load object pointer

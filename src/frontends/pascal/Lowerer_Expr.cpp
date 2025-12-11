@@ -1367,6 +1367,8 @@ LowerResult Lowerer::lowerField(const FieldExpr &expr)
         {
             const auto &nameExpr = static_cast<const NameExpr &>(*expr.base);
             std::string key = toLower(nameExpr.name);
+
+            // Check local variables first
             auto it = locals_.find(key);
             if (it != locals_.end())
             {
@@ -1377,13 +1379,21 @@ LowerResult Lowerer::lowerField(const FieldExpr &expr)
                 Value result = emitLoad(fieldType, fieldAddr);
                 return {result, fieldType};
             }
+
+            // Check global variables (BUG-PAS-OOP-003 fix)
+            auto globalIt = globalTypes_.find(key);
+            if (globalIt != globalTypes_.end())
+            {
+                Value baseAddr = getGlobalVarAddr(key, globalIt->second);
+                auto [fieldAddr, fieldType] = getFieldAddress(baseAddr, baseType, expr.field);
+
+                // Load the field value
+                Value result = emitLoad(fieldType, fieldAddr);
+                return {result, fieldType};
+            }
         }
         // Handle nested field access (e.g., a.b.c)
-        else if (expr.base->kind == ExprKind::Field)
-        {
-            // Recursively get the base field's address
-            // For now, fall through to default handling
-        }
+        // For now, fall through to default handling - nested record fields are rare
     }
     else if (baseType.kind == PasTypeKind::Class)
     {
