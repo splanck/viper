@@ -345,6 +345,16 @@ LowerResult Lowerer::lowerCall(const CallExpr &expr)
             return {result, Type(Type::Kind::Str)};
         }
 
+        // GotoXY(col, row) - Pascal convention is (col, row) but rt_term_locate expects (row, col)
+        // Swap the arguments before calling the runtime function
+        if (builtin == PascalBuiltin::GotoXY && args.size() >= 2)
+        {
+            usedExterns_.insert("rt_term_locate");
+            // Swap: GotoXY(col, row) -> rt_term_locate(row, col)
+            emitCall("rt_term_locate", {args[1], args[0]});
+            return {Value::constInt(0), Type(Type::Kind::Void)};
+        }
+
         // Handle builtins with runtime symbols
         const char *rtSym = getBuiltinRuntimeSymbol(builtin, firstArgType);
         if (rtSym)
