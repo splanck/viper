@@ -22,29 +22,11 @@ foreach (_viper_test_script IN LISTS VIPER_TEST_SCRIPT_FILES)
 endforeach ()
 
 find_package(Threads REQUIRED)
-find_package(GTest QUIET)
 
-set(_viper_testing_gtest_targets)
-if (GTest_FOUND)
-    list(APPEND _viper_testing_gtest_targets GTest::gtest)
-    if (TARGET GTest::gtest_main)
-        list(APPEND _viper_testing_gtest_targets GTest::gtest_main)
-    endif ()
-else ()
-    if (TARGET GTest::gtest)
-        list(APPEND _viper_testing_gtest_targets GTest::gtest)
-    elseif (TARGET gtest)
-        list(APPEND _viper_testing_gtest_targets gtest)
-    endif ()
-    if (TARGET GTest::gtest_main)
-        list(APPEND _viper_testing_gtest_targets GTest::gtest_main)
-    elseif (TARGET gtest_main)
-        list(APPEND _viper_testing_gtest_targets gtest_main)
-    endif ()
-endif ()
+set(_viper_testing_gtest_targets) # Intentional: rely on GTestStub.hpp instead of external gtest.
 
 add_library(viper_testing INTERFACE)
-target_link_libraries(viper_testing INTERFACE viper_common_opts viper::il_full ${_viper_testing_gtest_targets})
+target_link_libraries(viper_testing INTERFACE viper_common_opts viper::il_full)
 
 add_library(viper_test_common STATIC
         ${CMAKE_CURRENT_LIST_DIR}/common/CodegenFixture.cpp
@@ -215,6 +197,10 @@ viper_add_ctest(test_codegen_env_is_native $<TARGET_FILE:test_codegen_env_is_nat
 add_executable(test_diff_vm_native_property ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_diff_vm_native_property.cpp)
 target_link_libraries(test_diff_vm_native_property PRIVATE viper_test_common il_codegen_aarch64 ilc_cmd_arm64)
 viper_add_ctest(test_diff_vm_native_property $<TARGET_FILE:test_diff_vm_native_property>)
+
+add_executable(test_emit_x86_runtime_map ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_emit_x86_runtime_map.cpp)
+target_link_libraries(test_emit_x86_runtime_map PRIVATE viper_test_common viper_codegen_x86_64)
+viper_add_ctest(test_emit_x86_runtime_map $<TARGET_FILE:test_emit_x86_runtime_map>)
 
 # Optimizer pipeline differential testing (VM baseline vs O0/O1/O2)
 add_executable(test_il_opt_equivalence ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_il_opt_equivalence.cpp)

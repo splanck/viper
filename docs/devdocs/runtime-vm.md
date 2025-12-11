@@ -11,6 +11,16 @@ behaviour shared with the BASIC front end are specified in [specs/numerics.md](s
 For the authoritative error-handling model (trap kinds, handler ABI, and BASIC lowering) see
 [specs/errors.md](specs/errors.md).
 
+## Runtime symbol naming
+
+- Canonical runtime entry points are the dotted `Viper.*` names emitted by frontends and catalogued in
+  `src/il/runtime/generated/RuntimeSignatures.inc`.
+- Native backends must rewrite these to the C symbols exported by the runtime library via
+  `il::runtime::mapCanonicalRuntimeName` and the alias table in `src/il/runtime/RuntimeNameMap.inc`.
+- The alias map is the single source of truth for native symbol names; avoid ad-hoc string comparisons in emitters.
+- Tests guard the table (`test_runtime_name_map`) and the backends’ usage (`test_emit_x86_runtime_map`); add new
+  entries there when extending the runtime.
+
 <a id="runtime-abi"></a>
 ## Runtime ABI
 

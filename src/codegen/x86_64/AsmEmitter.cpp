@@ -22,6 +22,7 @@
 #include "AsmEmitter.hpp"
 #include "asmfmt/Format.hpp"
 #include "common/Mangle.hpp"
+#include "il/runtime/RuntimeNameMap.hpp"
 
 #include <algorithm>
 #include <array>
@@ -959,7 +960,11 @@ std::string AsmEmitter::formatCallTarget(const Operand &operand, const TargetInf
 {
     return std::visit(
         Overload{[&](const OpLabel &label)
-                 { return asmfmt::format_label(viper::common::MangleLink(label.name)); },
+                 {
+                     if (auto mapped = il::runtime::mapCanonicalRuntimeName(label.name))
+                         return asmfmt::format_label(std::string{*mapped});
+                     return asmfmt::format_label(viper::common::MangleLink(label.name));
+                 },
                  [&](const OpReg &reg) { return std::string{"*"} + formatReg(reg, target); },
                  [&](const OpMem &mem) { return std::string{"*"} + formatMem(mem, target); },
                  [&](const OpImm &imm) { return formatImm(imm); },
