@@ -12,6 +12,9 @@ if (NOT res EQUAL 0)
     message(FATAL_ERROR "emit-il failed")
 endif ()
 file(READ ${GOLDEN} expected)
+## Normalize IL version to avoid test churn on version bumps.
+string(REGEX REPLACE "^il [0-9]+\\.[0-9]+\\.[0-9]+" "il VERSION" out "${out}")
+string(REGEX REPLACE "^il [0-9]+\\.[0-9]+\\.[0-9]+" "il VERSION" expected "${expected}")
 ## Normalize legacy rt_* aliases to canonical Viper.* names in both expected and output.
 set(_aliases rt_print_str;rt_print_i64;rt_print_f64;rt_len;rt_substr;rt_trap;rt_concat;rt_input_line;rt_to_int;rt_to_double;rt_parse_int64;rt_parse_double;rt_int_to_str;rt_f64_to_str;rt_split_fields;rt_str_i16_alloc;rt_str_i32_alloc;rt_str_f_alloc;rt_str_d_alloc)
 set(_canon Viper.Terminal.PrintStr;Viper.Terminal.PrintI64;Viper.Terminal.PrintF64;Viper.Strings.Len;Viper.Strings.Mid;Viper.Diagnostics.Trap;Viper.Strings.Concat;Viper.Terminal.ReadLine;Viper.Convert.ToInt;Viper.Convert.ToDouble;Viper.Parse.Int64;Viper.Parse.Double;Viper.Strings.FromInt;Viper.Strings.FromDouble;Viper.Strings.SplitFields;Viper.Strings.FromI16;Viper.Strings.FromI32;Viper.Strings.FromSingle;Viper.Strings.FromDoublePrecise)

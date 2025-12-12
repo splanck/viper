@@ -1,4 +1,4 @@
-il 0.1.2
+il 0.1.3
 extern @Viper.Terminal.PrintI64(i64) -> void
 func @main() -> i64 {
 entry:

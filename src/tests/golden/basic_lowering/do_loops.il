@@ -1,4 +1,4 @@
-il 0.1.2
+il 0.1.3
 extern @Viper.Terminal.PrintStr(str) -> void
 extern @Viper.Terminal.PrintI64(i64) -> void
 extern @Viper.Terminal.PrintF64(f64) -> void

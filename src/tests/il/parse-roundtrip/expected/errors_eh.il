@@ -1,4 +1,4 @@
-il 0.1.2
+il 0.1.3
 global const str @.msg0 = "next"
 global const str @.msg1 = "after"
 

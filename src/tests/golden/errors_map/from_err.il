@@ -1,4 +1,4 @@
-il 0.1.2
+il 0.1.3
 extern @rt_println_i32(i32) -> void
 
 func @main() -> void {

@@ -1,4 +1,4 @@
-il 0.1.2
+il 0.1.3
 func @unresolved() -> void {
 entry:
   // Branch to an undefined block; parser should report "unknown block".

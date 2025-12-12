@@ -25,11 +25,16 @@ execute_process(
 if (NOT res EQUAL 0)
     message(FATAL_ERROR "il-opt failed")
 endif ()
-execute_process(
-        COMMAND diff -u ${GOLDEN} ${OUT_FILE}
-        OUTPUT_VARIABLE diff
-        RESULT_VARIABLE diff_res)
-if (NOT diff_res EQUAL 0)
+## Normalize IL version to avoid test churn on version bumps.
+file(READ ${GOLDEN} golden_content)
+file(READ ${OUT_FILE} out_content)
+string(REGEX REPLACE "^il [0-9]+\\.[0-9]+\\.[0-9]+" "il VERSION" golden_content "${golden_content}")
+string(REGEX REPLACE "^il [0-9]+\\.[0-9]+\\.[0-9]+" "il VERSION" out_content "${out_content}")
+if (NOT out_content STREQUAL golden_content)
+    execute_process(
+            COMMAND diff -u ${GOLDEN} ${OUT_FILE}
+            OUTPUT_VARIABLE diff
+            RESULT_VARIABLE diff_res)
     set(art_dir "${CMAKE_CURRENT_BINARY_DIR}/_artifacts/il_opt_${test_name}")
     file(MAKE_DIRECTORY ${art_dir})
     configure_file(${GOLDEN} ${art_dir}/golden.il COPYONLY)

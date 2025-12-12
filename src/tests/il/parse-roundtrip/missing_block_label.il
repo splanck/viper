@@ -1,4 +1,4 @@
-il 0.1.2
+il 0.1.3
 func @missing_block_label() -> void {
 entry:
 :

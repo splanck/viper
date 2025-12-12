@@ -1,4 +1,4 @@
-il 0.1.2
+il 0.1.3
 func @resume_label_non_postdom(i1 %flag, Error %err, ResumeTok %tok) -> void {
 entry:
   eh.push ^handler

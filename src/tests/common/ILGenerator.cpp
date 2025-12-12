@@ -153,15 +153,22 @@ ILGeneratorResult ILGenerator::generate(const ILGeneratorConfig &config)
         Value lhs = randomValue(availableTemps, config.minConstant, config.maxConstant);
         Value rhs = randomValue(availableTemps, config.minConstant, config.maxConstant);
 
+        // For overflow-checked arithmetic, use only constants to prevent chain overflow.
+        // Temps can grow unboundedly, causing overflow when chained.
+        if (instr.op == Opcode::IAddOvf || instr.op == Opcode::ISubOvf ||
+            instr.op == Opcode::IMulOvf)
+        {
+            lhs = Value::constInt(randomConstant(config.minConstant, config.maxConstant));
+            rhs = Value::constInt(randomConstant(config.minConstant, config.maxConstant));
+        }
+
         // For division, ensure non-zero divisor (use constants only to avoid runtime div-by-zero)
+        // Also avoid MIN_INT64 / -1 which overflows
         if (instr.op == Opcode::SDivChk0 || instr.op == Opcode::UDivChk0)
         {
-            // Always use a non-zero constant as divisor to avoid trap
-            std::int64_t divisor = randomConstant(config.minConstant, config.maxConstant);
-            if (divisor == 0)
-            {
-                divisor = 1;
-            }
+            // Use small constants for both operands to avoid overflow
+            lhs = Value::constInt(randomConstant(config.minConstant, config.maxConstant));
+            std::int64_t divisor = randomConstant(1, 10); // positive only
             rhs = Value::constInt(divisor);
         }
 

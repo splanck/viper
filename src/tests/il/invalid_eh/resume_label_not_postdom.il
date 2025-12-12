@@ -1,4 +1,4 @@
-il 0.1.2
+il 0.1.3
 
 func @resume_label_not_postdom(i1 %flag, Error %err, ResumeTok %tok) -> void {
 entry:

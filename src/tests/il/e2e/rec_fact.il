@@ -4,7 +4,7 @@
 // Ownership/Lifetime: IL program executed by ilc for e2e testing.
 // Links: docs/dev/vm.md
 
-il 0.1.2
+il 0.1.3
 extern @rt_print_i64(i64) -> void
 
 func @fact(i64 %n) -> i64 {

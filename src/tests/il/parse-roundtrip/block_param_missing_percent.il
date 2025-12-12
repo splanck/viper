@@ -1,4 +1,4 @@
-il 0.1.2
+il 0.1.3
 func @block_param_missing_percent() -> i32 {
 entry:
   br bb0()

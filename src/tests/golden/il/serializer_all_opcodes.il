@@ -1,4 +1,4 @@
-il 0.1.2
+il 0.1.3
 extern @do_work(i64, i64) -> i64
 global const str @.Lstr = "ops"
 func @all_ops() -> i64 {

@@ -1,4 +1,4 @@
-il 0.1.2
+il 0.1.3
 extern @rt_print_i64(i64) -> void
 func @main() -> i64 {
 entry:

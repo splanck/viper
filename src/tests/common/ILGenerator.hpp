@@ -59,8 +59,10 @@ struct ILGeneratorConfig
     bool includeShifts = true;
 
     /// @brief Range for generated integer constants.
-    std::int64_t minConstant = -1000;
-    std::int64_t maxConstant = 1000;
+    /// @note Kept small to avoid overflow when chaining arithmetic operations.
+    ///       With [-10, 10], even 20 chained multiplies stay within i64 range.
+    std::int64_t minConstant = -10;
+    std::int64_t maxConstant = 10;
 };
 
 /// @brief Result of IL generation including the module and metadata.
@@ -114,7 +116,7 @@ class ILGenerator
 
   private:
     /// @brief Available arithmetic opcodes for generation.
-    /// @note Uses checked ops per IL spec: iadd.ovf, isub.ovf, imul.ovf, sdiv.chk0
+    /// @note Uses checked ops as required by IL spec for signed integers.
     static constexpr il::core::Opcode kArithOps[] = {
         il::core::Opcode::IAddOvf,
         il::core::Opcode::ISubOvf,
