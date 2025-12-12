@@ -73,12 +73,12 @@ struct RuntimeMethod
 
 struct RuntimeClass
 {
-    std::string name;                       // Class name (e.g., "Viper.String")
-    std::string type_id;                    // Type ID suffix (e.g., "String")
-    std::string layout;                     // Layout type (e.g., "opaque*", "obj")
-    std::string ctor_id;                    // Constructor function id or empty
-    std::vector<RuntimeProperty> props;     // Properties
-    std::vector<RuntimeMethod> methods;     // Methods
+    std::string name;                   // Class name (e.g., "Viper.String")
+    std::string type_id;                // Type ID suffix (e.g., "String")
+    std::string layout;                 // Layout type (e.g., "opaque*", "obj")
+    std::string ctor_id;                // Constructor function id or empty
+    std::vector<RuntimeProperty> props; // Properties
+    std::vector<RuntimeMethod> methods; // Methods
 };
 
 //===----------------------------------------------------------------------===//
@@ -137,7 +137,7 @@ static std::vector<std::string> split(std::string_view sv, char delim)
     {
         if (i < sv.size())
         {
-            if (sv[i] == '"' && (i == 0 || sv[i-1] != '\\'))
+            if (sv[i] == '"' && (i == 0 || sv[i - 1] != '\\'))
                 in_quotes = !in_quotes;
             else if (!in_quotes && sv[i] == '(')
                 paren_depth++;
@@ -195,7 +195,7 @@ static std::optional<std::string> extractParens(std::string_view line, std::stri
     size_t i = 0;
     for (; i < line.size() && depth > 0; ++i)
     {
-        if (line[i] == '"' && (i == 0 || line[i-1] != '\\'))
+        if (line[i] == '"' && (i == 0 || line[i - 1] != '\\'))
             in_quotes = !in_quotes;
         else if (!in_quotes && line[i] == '(')
             depth++;
@@ -293,7 +293,8 @@ static void parseRtClassBegin(ParseState &state, const std::string &args)
     cls.ctor_id = parts[3];
 
     // Remove quotes from all string fields
-    auto stripQuotes = [](std::string &s) {
+    auto stripQuotes = [](std::string &s)
+    {
         if (s.size() >= 2 && s.front() == '"' && s.back() == '"')
             s = s.substr(1, s.size() - 2);
     };
@@ -323,7 +324,8 @@ static void parseRtProp(ParseState &state, const std::string &args)
     prop.setter_id = parts[3];
 
     // Remove quotes from all string fields
-    auto stripQuotes = [](std::string &s) {
+    auto stripQuotes = [](std::string &s)
+    {
         if (s.size() >= 2 && s.front() == '"' && s.back() == '"')
             s = s.substr(1, s.size() - 2);
     };
@@ -353,7 +355,8 @@ static void parseRtMethod(ParseState &state, const std::string &args)
     method.target_id = parts[2];
 
     // Remove quotes from all string fields
-    auto stripQuotes = [](std::string &s) {
+    auto stripQuotes = [](std::string &s)
+    {
         if (s.size() >= 2 && s.front() == '"' && s.back() == '"')
             s = s.substr(1, s.size() - 2);
     };
@@ -504,8 +507,7 @@ static void generateClasses(const ParseState &state, const fs::path &outDir)
         std::exit(1);
     }
 
-    out << fileHeader("RuntimeClasses.inc",
-                      "Runtime class catalog with properties and methods.");
+    out << fileHeader("RuntimeClasses.inc", "Runtime class catalog with properties and methods.");
 
     for (const auto &cls : state.classes)
     {

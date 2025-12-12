@@ -397,7 +397,8 @@ LowerResult Lowerer::lowerCall(const CallExpr &expr)
                 }
 
                 // Convert f64 to i64 if Pascal expects Integer but runtime returns f64
-                // (e.g., Trunc, Round, Floor, Ceil return f64 from runtime but Pascal expects Integer)
+                // (e.g., Trunc, Round, Floor, Ceil return f64 from runtime but Pascal expects
+                // Integer)
                 if (pascalRetType.kind == Type::Kind::I64 && rtRetType.kind == Type::Kind::F64)
                 {
                     result = emitUnary(Opcode::CastFpToSiRteChk, Type(Type::Kind::I64), result);

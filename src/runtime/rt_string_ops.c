@@ -24,9 +24,11 @@
 
 #include "rt_int_format.h"
 #include "rt_internal.h"
+#include "rt_seq.h"
 #include "rt_string.h"
 
 #include <assert.h>
+#include <ctype.h>
 #include <limits.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -745,4 +747,514 @@ int64_t rt_str_ge(rt_string a, rt_string b)
     if (cmp != 0)
         return cmp > 0;
     return alen >= blen;
+}
+
+//===----------------------------------------------------------------------===//
+// Extended String Functions (Viper.String expansion)
+//===----------------------------------------------------------------------===//
+
+/// @brief Replace all occurrences of needle with replacement.
+/// @param haystack Source string.
+/// @param needle String to find.
+/// @param replacement String to substitute.
+/// @return Newly allocated string with replacements.
+rt_string rt_str_replace(rt_string haystack, rt_string needle, rt_string replacement)
+{
+    if (!haystack)
+        return rt_empty_string();
+    if (!needle || !replacement)
+        return rt_string_ref(haystack);
+
+    size_t hay_len = rt_string_len_bytes(haystack);
+    size_t needle_len = rt_string_len_bytes(needle);
+    size_t repl_len = rt_string_len_bytes(replacement);
+
+    // Empty needle: return original string
+    if (needle_len == 0)
+        return rt_string_ref(haystack);
+
+    // Count occurrences to calculate result size
+    size_t count = 0;
+    const char *p = haystack->data;
+    const char *end = p + hay_len;
+    while (p <= end - needle_len)
+    {
+        if (memcmp(p, needle->data, needle_len) == 0)
+        {
+            count++;
+            p += needle_len;
+        }
+        else
+        {
+            p++;
+        }
+    }
+
+    if (count == 0)
+        return rt_string_ref(haystack);
+
+    // Calculate result length (avoiding overflow)
+    size_t result_len;
+    if (repl_len >= needle_len)
+    {
+        size_t add_per = repl_len - needle_len;
+        if (add_per > 0 && count > (SIZE_MAX - hay_len) / add_per)
+        {
+            rt_trap("rt_str_replace: length overflow");
+            return NULL;
+        }
+        result_len = hay_len + count * add_per;
+    }
+    else
+    {
+        size_t sub_per = needle_len - repl_len;
+        result_len = hay_len - count * sub_per;
+    }
+
+    rt_string result = rt_string_alloc(result_len, result_len + 1);
+    if (!result)
+        return NULL;
+
+    // Build result
+    char *dst = result->data;
+    p = haystack->data;
+    const char *prev = haystack->data;
+
+    while (p <= end - needle_len)
+    {
+        if (memcmp(p, needle->data, needle_len) == 0)
+        {
+            size_t chunk = (size_t)(p - prev);
+            if (chunk > 0)
+            {
+                memcpy(dst, prev, chunk);
+                dst += chunk;
+            }
+            if (repl_len > 0)
+            {
+                memcpy(dst, replacement->data, repl_len);
+                dst += repl_len;
+            }
+            p += needle_len;
+            prev = p;
+        }
+        else
+        {
+            p++;
+        }
+    }
+
+    // Copy remainder
+    size_t remainder = (size_t)(end - prev);
+    if (remainder > 0)
+    {
+        memcpy(dst, prev, remainder);
+        dst += remainder;
+    }
+    *dst = '\0';
+
+    return result;
+}
+
+/// @brief Check if string starts with prefix.
+/// @param str Source string.
+/// @param prefix Prefix to check.
+/// @return 1 if str starts with prefix, 0 otherwise.
+int64_t rt_str_starts_with(rt_string str, rt_string prefix)
+{
+    if (!str || !prefix)
+        return 0;
+
+    size_t str_len = rt_string_len_bytes(str);
+    size_t prefix_len = rt_string_len_bytes(prefix);
+
+    if (prefix_len > str_len)
+        return 0;
+    if (prefix_len == 0)
+        return 1;
+
+    return memcmp(str->data, prefix->data, prefix_len) == 0;
+}
+
+/// @brief Check if string ends with suffix.
+/// @param str Source string.
+/// @param suffix Suffix to check.
+/// @return 1 if str ends with suffix, 0 otherwise.
+int64_t rt_str_ends_with(rt_string str, rt_string suffix)
+{
+    if (!str || !suffix)
+        return 0;
+
+    size_t str_len = rt_string_len_bytes(str);
+    size_t suffix_len = rt_string_len_bytes(suffix);
+
+    if (suffix_len > str_len)
+        return 0;
+    if (suffix_len == 0)
+        return 1;
+
+    return memcmp(str->data + str_len - suffix_len, suffix->data, suffix_len) == 0;
+}
+
+/// @brief Check if string contains needle.
+/// @param str Source string.
+/// @param needle Substring to find.
+/// @return 1 if str contains needle, 0 otherwise.
+int64_t rt_str_has(rt_string str, rt_string needle)
+{
+    if (!str || !needle)
+        return 0;
+
+    size_t str_len = rt_string_len_bytes(str);
+    size_t needle_len = rt_string_len_bytes(needle);
+
+    if (needle_len == 0)
+        return 1;
+    if (needle_len > str_len)
+        return 0;
+
+    // Simple substring search
+    for (size_t i = 0; i + needle_len <= str_len; i++)
+    {
+        if (memcmp(str->data + i, needle->data, needle_len) == 0)
+            return 1;
+    }
+    return 0;
+}
+
+/// @brief Count non-overlapping occurrences of needle in str.
+/// @param str Source string.
+/// @param needle Substring to count.
+/// @return Number of non-overlapping occurrences.
+int64_t rt_str_count(rt_string str, rt_string needle)
+{
+    if (!str || !needle)
+        return 0;
+
+    size_t str_len = rt_string_len_bytes(str);
+    size_t needle_len = rt_string_len_bytes(needle);
+
+    if (needle_len == 0)
+        return 0;
+    if (needle_len > str_len)
+        return 0;
+
+    int64_t count = 0;
+    const char *p = str->data;
+    const char *end = p + str_len;
+
+    while (p <= end - needle_len)
+    {
+        if (memcmp(p, needle->data, needle_len) == 0)
+        {
+            count++;
+            p += needle_len; // Non-overlapping
+        }
+        else
+        {
+            p++;
+        }
+    }
+
+    return count;
+}
+
+/// @brief Pad string on the left to reach specified width.
+/// @param str Source string.
+/// @param width Target width.
+/// @param pad_str Padding character (first char used).
+/// @return Newly allocated padded string.
+rt_string rt_str_pad_left(rt_string str, int64_t width, rt_string pad_str)
+{
+    if (!str)
+        return rt_empty_string();
+
+    size_t str_len = rt_string_len_bytes(str);
+
+    if (width <= (int64_t)str_len || !pad_str || rt_string_len_bytes(pad_str) == 0)
+        return rt_string_ref(str);
+
+    char pad_char = pad_str->data[0];
+    size_t target = (size_t)width;
+    size_t pad_count = target - str_len;
+
+    rt_string result = rt_string_alloc(target, target + 1);
+    if (!result)
+        return NULL;
+
+    memset(result->data, pad_char, pad_count);
+    memcpy(result->data + pad_count, str->data, str_len);
+    result->data[target] = '\0';
+
+    return result;
+}
+
+/// @brief Pad string on the right to reach specified width.
+/// @param str Source string.
+/// @param width Target width.
+/// @param pad_str Padding character (first char used).
+/// @return Newly allocated padded string.
+rt_string rt_str_pad_right(rt_string str, int64_t width, rt_string pad_str)
+{
+    if (!str)
+        return rt_empty_string();
+
+    size_t str_len = rt_string_len_bytes(str);
+
+    if (width <= (int64_t)str_len || !pad_str || rt_string_len_bytes(pad_str) == 0)
+        return rt_string_ref(str);
+
+    char pad_char = pad_str->data[0];
+    size_t target = (size_t)width;
+    size_t pad_count = target - str_len;
+
+    rt_string result = rt_string_alloc(target, target + 1);
+    if (!result)
+        return NULL;
+
+    memcpy(result->data, str->data, str_len);
+    memset(result->data + str_len, pad_char, pad_count);
+    result->data[target] = '\0';
+
+    return result;
+}
+
+/// @brief Split string by delimiter into a sequence.
+/// @param str Source string.
+/// @param delim Delimiter string.
+/// @return Seq containing string parts.
+void *rt_str_split(rt_string str, rt_string delim)
+{
+    void *result = rt_seq_new();
+
+    if (!str)
+    {
+        // Push empty string for null input
+        rt_seq_push(result, (void *)rt_empty_string());
+        return result;
+    }
+
+    size_t str_len = rt_string_len_bytes(str);
+    size_t delim_len = delim ? rt_string_len_bytes(delim) : 0;
+
+    // Empty delimiter: return single element with original string
+    if (delim_len == 0)
+    {
+        rt_seq_push(result, (void *)rt_string_ref(str));
+        return result;
+    }
+
+    const char *start = str->data;
+    const char *p = start;
+    const char *end = str->data + str_len;
+
+    while (p <= end - delim_len)
+    {
+        if (memcmp(p, delim->data, delim_len) == 0)
+        {
+            size_t chunk_len = (size_t)(p - start);
+            rt_string chunk = rt_string_from_bytes(start, chunk_len);
+            rt_seq_push(result, (void *)chunk);
+            p += delim_len;
+            start = p;
+        }
+        else
+        {
+            p++;
+        }
+    }
+
+    // Add final segment
+    size_t final_len = (size_t)(end - start);
+    rt_string final = rt_string_from_bytes(start, final_len);
+    rt_seq_push(result, (void *)final);
+
+    return result;
+}
+
+/// @brief Join sequence of strings with separator.
+/// @param sep Separator string.
+/// @param seq Sequence of strings to join.
+/// @return Newly allocated joined string.
+rt_string rt_strings_join(rt_string sep, void *seq)
+{
+    if (!seq)
+        return rt_empty_string();
+
+    int64_t len = rt_seq_len(seq);
+    if (len == 0)
+        return rt_empty_string();
+
+    size_t sep_len = sep ? rt_string_len_bytes(sep) : 0;
+
+    // Calculate total length
+    size_t total = 0;
+    for (int64_t i = 0; i < len; i++)
+    {
+        rt_string item = (rt_string)rt_seq_get(seq, i);
+        size_t item_len = item ? rt_string_len_bytes(item) : 0;
+        if (total > SIZE_MAX - item_len)
+        {
+            rt_trap("rt_strings_join: length overflow");
+            return NULL;
+        }
+        total += item_len;
+        if (i < len - 1 && sep_len > 0)
+        {
+            if (total > SIZE_MAX - sep_len)
+            {
+                rt_trap("rt_strings_join: length overflow");
+                return NULL;
+            }
+            total += sep_len;
+        }
+    }
+
+    rt_string result = rt_string_alloc(total, total + 1);
+    if (!result)
+        return NULL;
+
+    char *dst = result->data;
+    for (int64_t i = 0; i < len; i++)
+    {
+        rt_string item = (rt_string)rt_seq_get(seq, i);
+        size_t item_len = item ? rt_string_len_bytes(item) : 0;
+        if (item_len > 0)
+        {
+            memcpy(dst, item->data, item_len);
+            dst += item_len;
+        }
+
+        if (i < len - 1 && sep_len > 0)
+        {
+            memcpy(dst, sep->data, sep_len);
+            dst += sep_len;
+        }
+    }
+
+    *dst = '\0';
+    return result;
+}
+
+/// @brief Repeat string count times.
+/// @param str Source string.
+/// @param count Number of repetitions.
+/// @return Newly allocated repeated string.
+rt_string rt_str_repeat(rt_string str, int64_t count)
+{
+    if (!str || count <= 0)
+        return rt_empty_string();
+
+    size_t str_len = rt_string_len_bytes(str);
+    if (str_len == 0)
+        return rt_empty_string();
+
+    // Check for overflow
+    if ((size_t)count > SIZE_MAX / str_len)
+    {
+        rt_trap("rt_str_repeat: length overflow");
+        return NULL;
+    }
+
+    size_t total = str_len * (size_t)count;
+    rt_string result = rt_string_alloc(total, total + 1);
+    if (!result)
+        return NULL;
+
+    char *dst = result->data;
+    for (int64_t i = 0; i < count; i++)
+    {
+        memcpy(dst, str->data, str_len);
+        dst += str_len;
+    }
+
+    *dst = '\0';
+    return result;
+}
+
+/// @brief Reverse string bytes (ASCII-safe).
+/// @param str Source string.
+/// @return Newly allocated reversed string.
+rt_string rt_str_flip(rt_string str)
+{
+    if (!str)
+        return rt_empty_string();
+
+    size_t len = rt_string_len_bytes(str);
+    if (len == 0)
+        return rt_empty_string();
+
+    rt_string result = rt_string_alloc(len, len + 1);
+    if (!result)
+        return NULL;
+
+    for (size_t i = 0; i < len; i++)
+    {
+        result->data[i] = str->data[len - 1 - i];
+    }
+
+    result->data[len] = '\0';
+    return result;
+}
+
+/// @brief Compare two strings, returning -1, 0, or 1.
+/// @param a First string.
+/// @param b Second string.
+/// @return -1 if a < b, 0 if a == b, 1 if a > b.
+int64_t rt_str_cmp(rt_string a, rt_string b)
+{
+    if (!a && !b)
+        return 0;
+    if (!a)
+        return -1;
+    if (!b)
+        return 1;
+
+    size_t alen = rt_string_len_bytes(a);
+    size_t blen = rt_string_len_bytes(b);
+    size_t minlen = alen < blen ? alen : blen;
+
+    int result = memcmp(a->data, b->data, minlen);
+    if (result != 0)
+        return (result > 0) - (result < 0);
+
+    if (alen < blen)
+        return -1;
+    if (alen > blen)
+        return 1;
+    return 0;
+}
+
+/// @brief Case-insensitive string comparison, returning -1, 0, or 1.
+/// @param a First string.
+/// @param b Second string.
+/// @return -1 if a < b, 0 if a == b, 1 if a > b (case-insensitive).
+int64_t rt_str_cmp_nocase(rt_string a, rt_string b)
+{
+    if (!a && !b)
+        return 0;
+    if (!a)
+        return -1;
+    if (!b)
+        return 1;
+
+    size_t alen = rt_string_len_bytes(a);
+    size_t blen = rt_string_len_bytes(b);
+    size_t minlen = alen < blen ? alen : blen;
+
+    for (size_t i = 0; i < minlen; i++)
+    {
+        unsigned char ca = (unsigned char)tolower((unsigned char)a->data[i]);
+        unsigned char cb = (unsigned char)tolower((unsigned char)b->data[i]);
+        if (ca < cb)
+            return -1;
+        if (ca > cb)
+            return 1;
+    }
+
+    if (alen < blen)
+        return -1;
+    if (alen > blen)
+        return 1;
+    return 0;
 }

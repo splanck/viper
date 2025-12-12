@@ -14,8 +14,11 @@ The Viper Runtime Library provides a set of built-in classes and utilities avail
 - [Viper.Object](#viperobject)
 - [Viper.Text.StringBuilder](#vipertextstringbuilder)
 - [Viper.Collections.List](#vipercollectionslist)
-- [Viper.Collections.Dictionary](#vipercollectionsdictionary)
+- [Viper.Collections.Map](#vipercollectionsmap)
 - [Viper.Collections.Seq](#vipercollectionsseq)
+- [Viper.Collections.Stack](#vipercollectionsstack)
+- [Viper.Collections.Queue](#vipercollectionsqueue)
+- [Viper.Collections.Bytes](#vipercollectionsbytes)
 - [Viper.Math](#vipermath)
 - [Viper.Terminal](#viperterminal)
 - [Viper.Convert](#viperconvert)
@@ -54,8 +57,11 @@ The Viper Runtime Library provides a set of built-in classes and utilities avail
 | Class | Type | Description |
 |-------|------|-------------|
 | `List` | Instance | Dynamic array of objects |
-| `Dictionary` | Instance | String-keyed hash map |
+| `Map` | Instance | String-keyed hash map with Keys/Values iteration |
 | `Seq` | Instance | Dynamic sequence (growable array) with stack/queue operations |
+| `Stack` | Instance | LIFO (last-in-first-out) collection |
+| `Queue` | Instance | FIFO (first-in-first-out) collection |
+| `Bytes` | Instance | Efficient byte array for binary data |
 
 ### Viper.IO
 
@@ -111,6 +117,43 @@ String manipulation class. In Viper, strings are immutable sequences of characte
 | `Chr(code)` | `String(Integer)` | Returns a single-character string from an ASCII/Unicode code point |
 | `Asc()` | `Integer()` | Returns the ASCII/Unicode code of the first character |
 
+### Extended Methods
+
+**Search & Match:**
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `StartsWith(prefix)` | `Boolean(String)` | Returns true if string starts with prefix |
+| `EndsWith(suffix)` | `Boolean(String)` | Returns true if string ends with suffix |
+| `Has(needle)` | `Boolean(String)` | Returns true if string contains needle |
+| `Count(needle)` | `Integer(String)` | Counts non-overlapping occurrences of needle |
+
+**Transformation:**
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `Replace(needle, replacement)` | `String(String, String)` | Replaces all occurrences of needle with replacement |
+| `PadLeft(width, padChar)` | `String(Integer, String)` | Pads string on left to reach width using first char of padChar |
+| `PadRight(width, padChar)` | `String(Integer, String)` | Pads string on right to reach width using first char of padChar |
+| `Repeat(count)` | `String(Integer)` | Repeats the string count times |
+| `Flip()` | `String()` | Reverses the string (byte-level, ASCII-safe) |
+| `Split(delimiter)` | `Seq(String)` | Splits string by delimiter into a Seq of strings |
+
+**Comparison:**
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `Cmp(other)` | `Integer(String)` | Compares strings, returns -1, 0, or 1 |
+| `CmpNoCase(other)` | `Integer(String)` | Case-insensitive comparison, returns -1, 0, or 1 |
+
+### Static Functions (Viper.Strings)
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `Viper.Strings.Join(separator, items)` | `String(String, Seq)` | Joins sequence of strings with separator |
+
+**Note:** `Flip()` performs byte-level reversal. It works correctly for ASCII strings but may produce invalid results for multi-byte UTF-8 characters.
+
 ### Example
 
 ```basic
@@ -125,6 +168,36 @@ PRINT s.IndexOf("World") ' Output: 9
 
 DIM code AS INTEGER
 code = s.Trim().Asc()   ' code = 72 (ASCII for 'H')
+```
+
+### Extended Methods Example
+
+```basic
+DIM s AS STRING
+s = "hello world"
+
+' Search and match
+PRINT s.StartsWith("hello")  ' Output: true
+PRINT s.EndsWith("world")    ' Output: true
+PRINT s.Has("lo wo")         ' Output: true
+PRINT s.Count("l")           ' Output: 3
+
+' Transformation
+PRINT s.Replace("world", "universe")  ' Output: "hello universe"
+PRINT "42".PadLeft(5, "0")            ' Output: "00042"
+PRINT "hi".PadRight(5, ".")           ' Output: "hi..."
+PRINT "ab".Repeat(3)                   ' Output: "ababab"
+PRINT "hello".Flip()                   ' Output: "olleh"
+
+' Split and join
+DIM parts AS Viper.Collections.Seq
+parts = "a,b,c".Split(",")
+PRINT parts.Len                        ' Output: 3
+PRINT Viper.Strings.Join("-", parts)   ' Output: "a-b-c"
+
+' Comparison
+PRINT "abc".Cmp("abd")                 ' Output: -1
+PRINT "ABC".CmpNoCase("abc")           ' Output: 0
 ```
 
 ---
@@ -284,60 +357,77 @@ list.Clear()
 
 ---
 
-## Viper.Collections.Dictionary
+## Viper.Collections.Map
 
-Hash map with string keys and object values.
+A key-value dictionary with string keys. Provides O(1) average-case lookup, insertion, and deletion.
 
 **Type:** Instance (obj)
-**Constructor:** `NEW Viper.Collections.Dictionary()`
+**Constructor:** `NEW Viper.Collections.Map()`
 
 ### Properties
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `Count` | Integer | Number of key-value pairs in the dictionary |
+| `Len` | Integer | Number of key-value pairs in the map |
+| `IsEmpty` | Boolean | Returns true if the map has no entries |
 
 ### Methods
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `Set(key, value)` | `Void(String, Object)` | Sets a key-value pair (adds or updates) |
-| `Get(key)` | `Object(String)` | Gets the value for a key |
-| `ContainsKey(key)` | `Boolean(String)` | Returns true if the key exists |
-| `Remove(key)` | `Boolean(String)` | Removes a key-value pair; returns true if removed |
-| `Clear()` | `Void()` | Removes all key-value pairs |
+| `Set(key, value)` | `Void(String, Object)` | Add or update key-value pair |
+| `Get(key)` | `Object(String)` | Get value for key (returns NULL if not found) |
+| `Has(key)` | `Boolean(String)` | Check if key exists |
+| `Remove(key)` | `Boolean(String)` | Remove key-value pair; returns true if found |
+| `Clear()` | `Void()` | Remove all entries |
+| `Keys()` | `Seq()` | Get sequence of all keys |
+| `Values()` | `Seq()` | Get sequence of all values |
 
 ### Example
 
 ```basic
-DIM dict AS Viper.Collections.Dictionary
-dict = NEW Viper.Collections.Dictionary()
+DIM scores AS Viper.Collections.Map
+scores = NEW Viper.Collections.Map()
 
 ' Add entries
-dict.Set("name", nameObj)
-dict.Set("age", ageObj)
-dict.Set("city", cityObj)
+scores.Set("Alice", 95)
+scores.Set("Bob", 87)
+scores.Set("Carol", 92)
 
-PRINT dict.Count  ' Output: 3
+PRINT scores.Len      ' Output: 3
+PRINT scores.IsEmpty  ' Output: False
 
-' Check existence
-IF dict.ContainsKey("name") THEN
-    DIM value AS Object
-    value = dict.Get("name")
-    PRINT "Found: "; value.ToString()
+' Check existence and get value
+IF scores.Has("Alice") THEN
+    PRINT "Alice's score: "; scores.Get("Alice")
 END IF
 
-' Update
-dict.Set("name", newNameObj)
+' Update existing entry
+scores.Set("Bob", 91)
 
-' Remove
-IF dict.Remove("city") THEN
-    PRINT "Removed city"
+' Remove an entry
+IF scores.Remove("Carol") THEN
+    PRINT "Removed Carol"
 END IF
+
+' Iterate over keys
+DIM names AS Viper.Collections.Seq
+names = scores.Keys()
+FOR i = 0 TO names.Len - 1
+    PRINT names.Get(i)
+NEXT i
 
 ' Clear all
-dict.Clear()
+scores.Clear()
+PRINT scores.IsEmpty  ' Output: True
 ```
+
+### Use Cases
+
+- **Configuration storage:** Store key-value settings
+- **Caching:** Cache computed values by key
+- **Lookup tables:** Map identifiers to objects
+- **Counting:** Count occurrences by key
 
 ---
 
@@ -446,6 +536,196 @@ NEXT i
 - **Queue:** Use `Push()` to add and `Remove(0)` to dequeue (FIFO)
 - **Dynamic Array:** Use `Get()`/`Set()` for random access
 - **Slicing:** Use `Slice()` to extract sub-sequences
+
+---
+
+## Viper.Collections.Stack
+
+A LIFO (last-in-first-out) collection. Elements are added and removed from the top.
+
+**Type:** Instance (obj)
+**Constructor:** `NEW Viper.Collections.Stack()`
+
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `Len` | Integer | Number of elements on the stack |
+| `IsEmpty` | Boolean | Returns true if the stack has no elements |
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `Push(value)` | `Void(Object)` | Add element to top of stack |
+| `Pop()` | `Object()` | Remove and return top element (traps if empty) |
+| `Peek()` | `Object()` | Return top element without removing (traps if empty) |
+| `Clear()` | `Void()` | Remove all elements |
+
+### Example
+
+```basic
+DIM stack AS Viper.Collections.Stack
+stack = NEW Viper.Collections.Stack()
+
+' Push elements onto the stack
+stack.Push("first")
+stack.Push("second")
+stack.Push("third")
+
+PRINT stack.Len      ' Output: 3
+PRINT stack.IsEmpty  ' Output: False
+
+' Pop returns elements in LIFO order
+PRINT stack.Pop()    ' Output: "third"
+PRINT stack.Peek()   ' Output: "second" (still on stack)
+PRINT stack.Len      ' Output: 2
+
+' Clear the stack
+stack.Clear()
+PRINT stack.IsEmpty  ' Output: True
+```
+
+### Use Cases
+
+- **Undo/Redo:** Push actions to track history, pop to undo
+- **Expression parsing:** Track operators and operands
+- **Backtracking algorithms:** Store states to return to
+- **Function call simulation:** Track return addresses
+
+---
+
+## Viper.Collections.Queue
+
+A FIFO (first-in-first-out) collection. Elements are added at the back and removed from the front. Implemented as a circular buffer for O(1) add and take operations.
+
+**Type:** Instance (obj)
+**Constructor:** `NEW Viper.Collections.Queue()`
+
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `Len` | Integer | Number of elements in the queue |
+| `IsEmpty` | Boolean | Returns true if the queue has no elements |
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `Add(value)` | `Void(Object)` | Add element to back of queue |
+| `Take()` | `Object()` | Remove and return front element (traps if empty) |
+| `Peek()` | `Object()` | Return front element without removing (traps if empty) |
+| `Clear()` | `Void()` | Remove all elements |
+
+### Example
+
+```basic
+DIM queue AS Viper.Collections.Queue
+queue = NEW Viper.Collections.Queue()
+
+' Add elements to the queue
+queue.Add("first")
+queue.Add("second")
+queue.Add("third")
+
+PRINT queue.Len      ' Output: 3
+PRINT queue.IsEmpty  ' Output: False
+
+' Take returns elements in FIFO order
+PRINT queue.Take()   ' Output: "first"
+PRINT queue.Peek()   ' Output: "second" (still in queue)
+PRINT queue.Len      ' Output: 2
+
+' Clear the queue
+queue.Clear()
+PRINT queue.IsEmpty  ' Output: True
+```
+
+### Use Cases
+
+- **Task scheduling:** Process tasks in the order they arrive
+- **Breadth-first search:** Track nodes to visit
+- **Message passing:** Handle messages in arrival order
+- **Print queues:** Process print jobs sequentially
+
+---
+
+## Viper.Collections.Bytes
+
+An efficient byte array for binary data. More memory-efficient than Seq for byte manipulation.
+
+**Type:** Instance (obj)
+**Constructors:**
+- `NEW Viper.Collections.Bytes(length)` - Create zero-filled byte array
+- `Viper.Collections.Bytes.FromStr(str)` - Create from string (UTF-8 bytes)
+- `Viper.Collections.Bytes.FromHex(hex)` - Create from hexadecimal string
+
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `Len` | Integer | Number of bytes |
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `Get(index)` | `Integer(Integer)` | Get byte value (0-255) at index |
+| `Set(index, value)` | `Void(Integer, Integer)` | Set byte value at index (clamped to 0-255) |
+| `Slice(start, end)` | `Bytes(Integer, Integer)` | Create new byte array from range [start, end) |
+| `Copy(dstOffset, src, srcOffset, count)` | `Void(...)` | Copy bytes between arrays |
+| `ToStr()` | `String()` | Convert to string (interprets as UTF-8) |
+| `ToHex()` | `String()` | Convert to lowercase hexadecimal string |
+| `Fill(value)` | `Void(Integer)` | Set all bytes to value |
+| `Find(value)` | `Integer(Integer)` | Find first occurrence (-1 if not found) |
+| `Clone()` | `Bytes()` | Create independent copy |
+
+### Example
+
+```basic
+' Create a 4-byte array and set values
+DIM data AS Viper.Collections.Bytes
+data = NEW Viper.Collections.Bytes(4)
+data.Set(0, &HDE)
+data.Set(1, &HAD)
+data.Set(2, &HBE)
+data.Set(3, &HEF)
+
+PRINT data.ToHex()  ' Output: "deadbeef"
+PRINT data.Len      ' Output: 4
+
+' Create from hex string
+DIM copy AS Viper.Collections.Bytes
+copy = Viper.Collections.Bytes.FromHex("cafebabe")
+PRINT copy.Get(0)   ' Output: 202 (0xCA)
+
+' Create from string
+DIM text AS Viper.Collections.Bytes
+text = Viper.Collections.Bytes.FromStr("Hello")
+PRINT text.Len      ' Output: 5
+PRINT text.Get(0)   ' Output: 72 (ASCII 'H')
+
+' Slice and copy
+DIM slice AS Viper.Collections.Bytes
+slice = data.Slice(1, 3)  ' Bytes at indices 1 and 2
+PRINT slice.Len           ' Output: 2
+
+' Find a byte
+PRINT data.Find(&HBE)     ' Output: 2
+
+' Fill with a value
+data.Fill(0)
+PRINT data.ToHex()        ' Output: "00000000"
+```
+
+### Use Cases
+
+- **Binary file parsing:** Read and manipulate binary file formats
+- **Network protocols:** Pack and unpack protocol messages
+- **Cryptography:** Handle raw byte sequences
+- **Image data:** Manipulate raw pixel data
+- **Base encoding:** Convert between binary and text representations
 
 ---
 

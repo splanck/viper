@@ -17,8 +17,8 @@
 #pragma once
 
 #include "frontends/pascal/AST.hpp"
-#include "frontends/pascal/sem/Types.hpp"
 #include "frontends/pascal/sem/OOPTypes.hpp"
+#include "frontends/pascal/sem/Types.hpp"
 #include "support/diagnostics.hpp"
 #include <optional>
 #include <set>

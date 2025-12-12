@@ -27,9 +27,9 @@
 /// Internal sequence structure.
 typedef struct rt_seq_impl
 {
-    int64_t len;    ///< Number of elements currently in the sequence
-    int64_t cap;    ///< Current capacity (allocated slots)
-    void **items;   ///< Array of element pointers
+    int64_t len;  ///< Number of elements currently in the sequence
+    int64_t cap;  ///< Current capacity (allocated slots)
+    void **items; ///< Array of element pointers
 } rt_seq_impl;
 
 /// @brief Ensure the sequence has capacity for at least `needed` elements.
@@ -283,8 +283,7 @@ void rt_seq_insert(void *obj, int64_t idx, void *val)
     // Shift elements to the right
     if (idx < seq->len)
     {
-        memmove(&seq->items[idx + 1], &seq->items[idx],
-                (size_t)(seq->len - idx) * sizeof(void *));
+        memmove(&seq->items[idx + 1], &seq->items[idx], (size_t)(seq->len - idx) * sizeof(void *));
     }
 
     seq->items[idx] = val;
@@ -312,8 +311,8 @@ void *rt_seq_remove(void *obj, int64_t idx)
     // Shift elements to the left
     if (idx < seq->len - 1)
     {
-        memmove(&seq->items[idx], &seq->items[idx + 1],
-                (size_t)(seq->len - idx - 1) * sizeof(void *));
+        memmove(
+            &seq->items[idx], &seq->items[idx + 1], (size_t)(seq->len - idx - 1) * sizeof(void *));
     }
 
     seq->len--;

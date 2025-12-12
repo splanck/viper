@@ -43,8 +43,11 @@ enum class RuntimeTypeId : std::size_t
     RTCLS_Canvas,
     RTCLS_Color,
     RTCLS_DateTime,
-    RTCLS_Dictionary,
+    RTCLS_Map,
     RTCLS_Seq,
+    RTCLS_Stack,
+    RTCLS_Queue,
+    RTCLS_Bytes,
     RTCLS_Terminal,
     RTCLS_Time,
 };

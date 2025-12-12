@@ -120,16 +120,15 @@ bool usesIndirectCall(const Function &fn)
 TEST(ABICompat, ObjectHeaderLayout_VptrAtOffset0)
 {
     // Pascal: vptr is stored at object start (requires explicit constructor)
-    auto pasResult = compilePas(
-        "program Test; type TFoo = class public X: Integer; constructor Create; end; "
-        "constructor TFoo.Create; begin X := 0 end; "
-        "var f: TFoo; begin f := TFoo.Create end.");
+    auto pasResult =
+        compilePas("program Test; type TFoo = class public X: Integer; constructor Create; end; "
+                   "constructor TFoo.Create; begin X := 0 end; "
+                   "var f: TFoo; begin f := TFoo.Create end.");
 
     // BASIC: vptr is stored at object start
-    auto basResult = compileBas(
-        "CLASS TFoo\n  PUBLIC X AS INTEGER\n"
-        "  PUBLIC SUB New()\n    X = 0\n  END SUB\nEND CLASS\n"
-        "DIM f AS TFoo = NEW TFoo()\n");
+    auto basResult = compileBas("CLASS TFoo\n  PUBLIC X AS INTEGER\n"
+                                "  PUBLIC SUB New()\n    X = 0\n  END SUB\nEND CLASS\n"
+                                "DIM f AS TFoo = NEW TFoo()\n");
 
     ASSERT_TRUE(pasResult.succeeded());
     ASSERT_TRUE(basResult.succeeded());
@@ -150,10 +149,9 @@ TEST(ABICompat, FieldLayout_AfterVptr)
         "constructor TFoo.Create; begin X := 1; Y := 2 end; "
         "var f: TFoo; begin f := TFoo.Create end.");
 
-    auto basResult = compileBas(
-        "CLASS TFoo\n  PUBLIC X AS INTEGER\n  PUBLIC Y AS INTEGER\n"
-        "  PUBLIC SUB New()\n    X = 1\n    Y = 2\n  END SUB\nEND CLASS\n"
-        "DIM f AS TFoo = NEW TFoo()\n");
+    auto basResult = compileBas("CLASS TFoo\n  PUBLIC X AS INTEGER\n  PUBLIC Y AS INTEGER\n"
+                                "  PUBLIC SUB New()\n    X = 1\n    Y = 2\n  END SUB\nEND CLASS\n"
+                                "DIM f AS TFoo = NEW TFoo()\n");
 
     ASSERT_TRUE(pasResult.succeeded());
     ASSERT_TRUE(basResult.succeeded());
@@ -170,8 +168,8 @@ TEST(ABICompat, FieldLayout_AfterVptr)
 
 TEST(ABICompat, ClassRegistration_SameRuntimeCall)
 {
-    auto pasResult = compilePas(
-        "program Test; type TFoo = class public X: Integer; end; begin end.");
+    auto pasResult =
+        compilePas("program Test; type TFoo = class public X: Integer; end; begin end.");
 
     auto basResult = compileBas("CLASS TFoo\n  PUBLIC X AS INTEGER\nEND CLASS\n");
 
@@ -185,11 +183,10 @@ TEST(ABICompat, ClassRegistration_SameRuntimeCall)
 
 TEST(ABICompat, InheritedClass_SameRegistration)
 {
-    auto pasResult = compilePas(
-        "program Test; type TBase = class end; TChild = class(TBase) end; begin end.");
+    auto pasResult =
+        compilePas("program Test; type TBase = class end; TChild = class(TBase) end; begin end.");
 
-    auto basResult = compileBas(
-        "CLASS TBase\nEND CLASS\nCLASS TChild : TBase\nEND CLASS\n");
+    auto basResult = compileBas("CLASS TBase\nEND CLASS\nCLASS TChild : TBase\nEND CLASS\n");
 
     ASSERT_TRUE(pasResult.succeeded());
     ASSERT_TRUE(basResult.succeeded());
@@ -209,16 +206,16 @@ TEST(ABICompat, VtableSlotAssignment_InheritedSlots)
     // Base class defines virtual method, child overrides it
     // Override must use same slot as base
 
-    auto pasResult = compilePas(
-        "program Test; type TBase = class public procedure Speak; virtual; end; "
-        "TChild = class(TBase) public procedure Speak; override; end; "
-        "procedure TBase.Speak; begin end; procedure TChild.Speak; begin end; "
-        "var a: TBase; begin a := TChild.Create; a.Speak end.");
+    auto pasResult =
+        compilePas("program Test; type TBase = class public procedure Speak; virtual; end; "
+                   "TChild = class(TBase) public procedure Speak; override; end; "
+                   "procedure TBase.Speak; begin end; procedure TChild.Speak; begin end; "
+                   "var a: TBase; begin a := TChild.Create; a.Speak end.");
 
-    auto basResult = compileBas(
-        "CLASS TBase\n  VIRTUAL SUB Speak()\n  END SUB\nEND CLASS\n"
-        "CLASS TChild : TBase\n  OVERRIDE SUB Speak()\n  END SUB\nEND CLASS\n"
-        "DIM a AS TBase = NEW TChild()\na.Speak()\n");
+    auto basResult =
+        compileBas("CLASS TBase\n  VIRTUAL SUB Speak()\n  END SUB\nEND CLASS\n"
+                   "CLASS TChild : TBase\n  OVERRIDE SUB Speak()\n  END SUB\nEND CLASS\n"
+                   "DIM a AS TBase = NEW TChild()\na.Speak()\n");
 
     ASSERT_TRUE(pasResult.succeeded());
     ASSERT_TRUE(basResult.succeeded());
@@ -245,10 +242,10 @@ TEST(ABICompat, VtableSlotAssignment_NewVirtualAppendsSlot)
         "procedure TBase.A; begin end; procedure TChild.B; begin end; "
         "var b: TBase; c: TChild; begin b := TBase.Create; c := TChild.Create; b.A; c.B end.");
 
-    auto basResult = compileBas(
-        "CLASS TBase\n  VIRTUAL SUB A()\n  END SUB\nEND CLASS\n"
-        "CLASS TChild : TBase\n  VIRTUAL SUB B()\n  END SUB\nEND CLASS\n"
-        "DIM b AS TBase = NEW TBase()\nDIM c AS TChild = NEW TChild()\nb.A()\nc.B()\n");
+    auto basResult =
+        compileBas("CLASS TBase\n  VIRTUAL SUB A()\n  END SUB\nEND CLASS\n"
+                   "CLASS TChild : TBase\n  VIRTUAL SUB B()\n  END SUB\nEND CLASS\n"
+                   "DIM b AS TBase = NEW TBase()\nDIM c AS TChild = NEW TChild()\nb.A()\nc.B()\n");
 
     ASSERT_TRUE(pasResult.succeeded());
     ASSERT_TRUE(basResult.succeeded());
@@ -263,16 +260,16 @@ TEST(ABICompat, VirtualDispatch_ThroughBaseType)
 {
     // Calling virtual method through base type pointer
 
-    auto pasResult = compilePas(
-        "program Test; type TAnimal = class public procedure Speak; virtual; end; "
-        "TDog = class(TAnimal) public procedure Speak; override; end; "
-        "procedure TAnimal.Speak; begin end; procedure TDog.Speak; begin end; "
-        "var a: TAnimal; begin a := TDog.Create; a.Speak end.");
+    auto pasResult =
+        compilePas("program Test; type TAnimal = class public procedure Speak; virtual; end; "
+                   "TDog = class(TAnimal) public procedure Speak; override; end; "
+                   "procedure TAnimal.Speak; begin end; procedure TDog.Speak; begin end; "
+                   "var a: TAnimal; begin a := TDog.Create; a.Speak end.");
 
-    auto basResult = compileBas(
-        "CLASS TAnimal\n  VIRTUAL SUB Speak()\n  END SUB\nEND CLASS\n"
-        "CLASS TDog : TAnimal\n  OVERRIDE SUB Speak()\n  END SUB\nEND CLASS\n"
-        "DIM a AS TAnimal = NEW TDog()\na.Speak()\n");
+    auto basResult =
+        compileBas("CLASS TAnimal\n  VIRTUAL SUB Speak()\n  END SUB\nEND CLASS\n"
+                   "CLASS TDog : TAnimal\n  OVERRIDE SUB Speak()\n  END SUB\nEND CLASS\n"
+                   "DIM a AS TAnimal = NEW TDog()\na.Speak()\n");
 
     ASSERT_TRUE(pasResult.succeeded());
     ASSERT_TRUE(basResult.succeeded());
@@ -288,14 +285,12 @@ TEST(ABICompat, NonVirtualDispatch_DirectCall)
 {
     // Non-virtual methods should use direct calls
 
-    auto pasResult = compilePas(
-        "program Test; type TFoo = class public procedure Work; end; "
-        "procedure TFoo.Work; begin end; "
-        "var f: TFoo; begin f := TFoo.Create; f.Work end.");
+    auto pasResult = compilePas("program Test; type TFoo = class public procedure Work; end; "
+                                "procedure TFoo.Work; begin end; "
+                                "var f: TFoo; begin f := TFoo.Create; f.Work end.");
 
-    auto basResult = compileBas(
-        "CLASS TFoo\n  SUB Work()\n  END SUB\nEND CLASS\n"
-        "DIM f AS TFoo = NEW TFoo()\nf.Work()\n");
+    auto basResult = compileBas("CLASS TFoo\n  SUB Work()\n  END SUB\nEND CLASS\n"
+                                "DIM f AS TFoo = NEW TFoo()\nf.Work()\n");
 
     ASSERT_TRUE(pasResult.succeeded());
     ASSERT_TRUE(basResult.succeeded());
@@ -316,13 +311,12 @@ TEST(ABICompat, RTTI_TypeCast_SameRuntime)
 {
     // 'as' operator in both languages
 
-    auto pasResult = compilePas(
-        "program Test; type TBase = class end; TChild = class(TBase) end; "
-        "var b: TBase; c: TChild?; begin b := TChild.Create; c := b as TChild end.");
+    auto pasResult =
+        compilePas("program Test; type TBase = class end; TChild = class(TBase) end; "
+                   "var b: TBase; c: TChild?; begin b := TChild.Create; c := b as TChild end.");
 
-    auto basResult = compileBas(
-        "CLASS TBase\nEND CLASS\nCLASS TChild : TBase\nEND CLASS\n"
-        "DIM b AS TBase = NEW TChild()\nDIM c AS TChild = b AS TChild\n");
+    auto basResult = compileBas("CLASS TBase\nEND CLASS\nCLASS TChild : TBase\nEND CLASS\n"
+                                "DIM b AS TBase = NEW TChild()\nDIM c AS TChild = b AS TChild\n");
 
     ASSERT_TRUE(pasResult.succeeded());
     ASSERT_TRUE(basResult.succeeded());
@@ -336,13 +330,12 @@ TEST(ABICompat, RTTI_TypeCheck_RuntimeExterns)
 {
     // 'is' operator - both need RTTI support
 
-    auto pasResult = compilePas(
-        "program Test; type TBase = class end; TChild = class(TBase) end; "
-        "var b: TBase; r: Boolean; begin b := TChild.Create; r := b is TChild end.");
+    auto pasResult =
+        compilePas("program Test; type TBase = class end; TChild = class(TBase) end; "
+                   "var b: TBase; r: Boolean; begin b := TChild.Create; r := b is TChild end.");
 
-    auto basResult = compileBas(
-        "CLASS TBase\nEND CLASS\nCLASS TChild : TBase\nEND CLASS\n"
-        "DIM b AS TBase = NEW TChild()\nDIM r AS BOOLEAN = b IS TChild\n");
+    auto basResult = compileBas("CLASS TBase\nEND CLASS\nCLASS TChild : TBase\nEND CLASS\n"
+                                "DIM b AS TBase = NEW TChild()\nDIM r AS BOOLEAN = b IS TChild\n");
 
     ASSERT_TRUE(pasResult.succeeded());
     ASSERT_TRUE(basResult.succeeded());
@@ -366,10 +359,9 @@ TEST(ABICompat, Interface_ImplementationRegistration)
 {
     // Both languages registering interface implementations
 
-    auto pasResult = compilePas(
-        "program Test; type IDrawable = interface procedure Draw; end; "
-        "TShape = class(IDrawable) public procedure Draw; end; "
-        "procedure TShape.Draw; begin end; begin end.");
+    auto pasResult = compilePas("program Test; type IDrawable = interface procedure Draw; end; "
+                                "TShape = class(IDrawable) public procedure Draw; end; "
+                                "procedure TShape.Draw; begin end; begin end.");
 
     auto basResult = compileBas(
         "INTERFACE IDrawable\n  SUB Draw()\nEND INTERFACE\n"
@@ -390,16 +382,15 @@ TEST(ABICompat, Interface_MethodDispatch)
     // Implementation details differ (Pascal inlines lookup, BASIC may use runtime call)
     // but both achieve the same semantic result
 
-    auto pasResult = compilePas(
-        "program Test; type IRunnable = interface procedure Run; end; "
-        "TTask = class(IRunnable) public procedure Run; end; "
-        "procedure TTask.Run; begin end; "
-        "var r: IRunnable; begin r := TTask.Create; r.Run end.");
+    auto pasResult = compilePas("program Test; type IRunnable = interface procedure Run; end; "
+                                "TTask = class(IRunnable) public procedure Run; end; "
+                                "procedure TTask.Run; begin end; "
+                                "var r: IRunnable; begin r := TTask.Create; r.Run end.");
 
-    auto basResult = compileBas(
-        "INTERFACE IRunnable\n  SUB Run()\nEND INTERFACE\n"
-        "CLASS TTask IMPLEMENTS IRunnable\n  PUBLIC SUB Run()\n  END SUB\nEND CLASS\n"
-        "DIM r AS IRunnable = NEW TTask()\nr.Run()\n");
+    auto basResult =
+        compileBas("INTERFACE IRunnable\n  SUB Run()\nEND INTERFACE\n"
+                   "CLASS TTask IMPLEMENTS IRunnable\n  PUBLIC SUB Run()\n  END SUB\nEND CLASS\n"
+                   "DIM r AS IRunnable = NEW TTask()\nr.Run()\n");
 
     ASSERT_TRUE(pasResult.succeeded());
     ASSERT_TRUE(basResult.succeeded());
@@ -419,15 +410,14 @@ TEST(ABICompat, Constructor_AllocationFlow)
 {
     // Constructor should: allocate, init vtable, call ctor body
 
-    auto pasResult = compilePas(
-        "program Test; type TFoo = class public X: Integer; constructor Create; end; "
-        "constructor TFoo.Create; begin X := 42 end; "
-        "var f: TFoo; begin f := TFoo.Create end.");
+    auto pasResult =
+        compilePas("program Test; type TFoo = class public X: Integer; constructor Create; end; "
+                   "constructor TFoo.Create; begin X := 42 end; "
+                   "var f: TFoo; begin f := TFoo.Create end.");
 
-    auto basResult = compileBas(
-        "CLASS TFoo\n  PUBLIC X AS INTEGER\n"
-        "  PUBLIC SUB New()\n    X = 42\n  END SUB\nEND CLASS\n"
-        "DIM f AS TFoo = NEW TFoo()\n");
+    auto basResult = compileBas("CLASS TFoo\n  PUBLIC X AS INTEGER\n"
+                                "  PUBLIC SUB New()\n    X = 42\n  END SUB\nEND CLASS\n"
+                                "DIM f AS TFoo = NEW TFoo()\n");
 
     ASSERT_TRUE(pasResult.succeeded());
     ASSERT_TRUE(basResult.succeeded());
@@ -456,12 +446,11 @@ TEST(ABICompat, MethodNaming_CasePreservation)
 {
     // Pascal preserves case, BASIC uppercases
 
-    auto pasResult = compilePas(
-        "program Test; type TMyClass = class public procedure DoSomething; end; "
-        "procedure TMyClass.DoSomething; begin end; begin end.");
+    auto pasResult =
+        compilePas("program Test; type TMyClass = class public procedure DoSomething; end; "
+                   "procedure TMyClass.DoSomething; begin end; begin end.");
 
-    auto basResult = compileBas(
-        "CLASS TMyClass\n  SUB DoSomething()\n  END SUB\nEND CLASS\n");
+    auto basResult = compileBas("CLASS TMyClass\n  SUB DoSomething()\n  END SUB\nEND CLASS\n");
 
     ASSERT_TRUE(pasResult.succeeded());
     ASSERT_TRUE(basResult.succeeded());
@@ -477,12 +466,12 @@ TEST(ABICompat, ConstructorNaming_Conventions)
 {
     // Pascal uses named constructors, BASIC uses __ctor
 
-    auto pasResult = compilePas(
-        "program Test; type TFoo = class public constructor Create; constructor Init(x: Integer); end; "
-        "constructor TFoo.Create; begin end; constructor TFoo.Init(x: Integer); begin end; begin end.");
+    auto pasResult = compilePas("program Test; type TFoo = class public constructor Create; "
+                                "constructor Init(x: Integer); end; "
+                                "constructor TFoo.Create; begin end; constructor TFoo.Init(x: "
+                                "Integer); begin end; begin end.");
 
-    auto basResult = compileBas(
-        "CLASS TFoo\n  PUBLIC SUB New()\n  END SUB\nEND CLASS\n");
+    auto basResult = compileBas("CLASS TFoo\n  PUBLIC SUB New()\n  END SUB\nEND CLASS\n");
 
     ASSERT_TRUE(pasResult.succeeded());
     ASSERT_TRUE(basResult.succeeded());
@@ -506,9 +495,8 @@ TEST(ABICompat, NamingDifference_PreventDirectCalls)
     // schemes, which means direct cross-language method calls would
     // require symbol name normalization at link time.
 
-    auto pasResult = compilePas(
-        "program Test; type TFoo = class public procedure Work; end; "
-        "procedure TFoo.Work; begin end; begin end.");
+    auto pasResult = compilePas("program Test; type TFoo = class public procedure Work; end; "
+                                "procedure TFoo.Work; begin end; begin end.");
 
     auto basResult = compileBas("CLASS TFoo\n  SUB Work()\n  END SUB\nEND CLASS\n");
 

@@ -487,8 +487,7 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
             // Fallback: try common Viper.* namespaces even without explicit USING
             if (!rtSig)
             {
-                static const char *defaultNamespaces[] = {
-                    "Viper.Terminal", "Viper.Time"};
+                static const char *defaultNamespaces[] = {"Viper.Terminal", "Viper.Time"};
                 for (const char *ns : defaultNamespaces)
                 {
                     std::string candidate = std::string(ns) + "." + expr.callee;

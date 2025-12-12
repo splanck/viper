@@ -14,8 +14,8 @@
 
 #pragma once
 
-#include "frontends/pascal/sem/Types.hpp"
 #include "frontends/pascal/AST.hpp"
+#include "frontends/pascal/sem/Types.hpp"
 #include "support/source_location.hpp"
 #include <map>
 #include <string>

@@ -282,6 +282,90 @@ extern "C"
     /// @return Non-owning runtime string view.
     rt_string rt_const_cstr(const char *str);
 
+    //===----------------------------------------------------------------------===//
+    // Extended String Functions (Viper.String expansion)
+    //===----------------------------------------------------------------------===//
+
+    /// @brief Replace all occurrences of needle with replacement.
+    /// @param haystack Source string.
+    /// @param needle String to find.
+    /// @param replacement String to substitute.
+    /// @return Newly allocated string with replacements.
+    rt_string rt_str_replace(rt_string haystack, rt_string needle, rt_string replacement);
+
+    /// @brief Check if string starts with prefix.
+    /// @param str Source string.
+    /// @param prefix Prefix to check.
+    /// @return 1 if str starts with prefix, 0 otherwise.
+    int64_t rt_str_starts_with(rt_string str, rt_string prefix);
+
+    /// @brief Check if string ends with suffix.
+    /// @param str Source string.
+    /// @param suffix Suffix to check.
+    /// @return 1 if str ends with suffix, 0 otherwise.
+    int64_t rt_str_ends_with(rt_string str, rt_string suffix);
+
+    /// @brief Check if string contains needle.
+    /// @param str Source string.
+    /// @param needle Substring to find.
+    /// @return 1 if str contains needle, 0 otherwise.
+    int64_t rt_str_has(rt_string str, rt_string needle);
+
+    /// @brief Count non-overlapping occurrences of needle in str.
+    /// @param str Source string.
+    /// @param needle Substring to count.
+    /// @return Number of non-overlapping occurrences.
+    int64_t rt_str_count(rt_string str, rt_string needle);
+
+    /// @brief Pad string on the left to reach specified width.
+    /// @param str Source string.
+    /// @param width Target width.
+    /// @param pad_str Padding character (first char used).
+    /// @return Newly allocated padded string.
+    rt_string rt_str_pad_left(rt_string str, int64_t width, rt_string pad_str);
+
+    /// @brief Pad string on the right to reach specified width.
+    /// @param str Source string.
+    /// @param width Target width.
+    /// @param pad_str Padding character (first char used).
+    /// @return Newly allocated padded string.
+    rt_string rt_str_pad_right(rt_string str, int64_t width, rt_string pad_str);
+
+    /// @brief Split string by delimiter into a sequence.
+    /// @param str Source string.
+    /// @param delim Delimiter string.
+    /// @return Seq containing string parts.
+    void *rt_str_split(rt_string str, rt_string delim);
+
+    /// @brief Join sequence of strings with separator.
+    /// @param sep Separator string.
+    /// @param seq Sequence of strings to join.
+    /// @return Newly allocated joined string.
+    rt_string rt_strings_join(rt_string sep, void *seq);
+
+    /// @brief Repeat string count times.
+    /// @param str Source string.
+    /// @param count Number of repetitions.
+    /// @return Newly allocated repeated string.
+    rt_string rt_str_repeat(rt_string str, int64_t count);
+
+    /// @brief Reverse string bytes (ASCII-safe).
+    /// @param str Source string.
+    /// @return Newly allocated reversed string.
+    rt_string rt_str_flip(rt_string str);
+
+    /// @brief Compare two strings, returning -1, 0, or 1.
+    /// @param a First string.
+    /// @param b Second string.
+    /// @return -1 if a < b, 0 if a == b, 1 if a > b.
+    int64_t rt_str_cmp(rt_string a, rt_string b);
+
+    /// @brief Case-insensitive string comparison, returning -1, 0, or 1.
+    /// @param a First string.
+    /// @param b Second string.
+    /// @return -1 if a < b, 0 if a == b, 1 if a > b (case-insensitive).
+    int64_t rt_str_cmp_nocase(rt_string a, rt_string b);
+
 #ifdef __cplusplus
 }
 #endif

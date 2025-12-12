@@ -16,6 +16,6 @@ add_executable(rtgen rtgen.cpp)
 target_compile_features(rtgen PRIVATE cxx_std_17)
 
 # On macOS, link with the standard library explicitly
-if(APPLE)
+if (APPLE)
     target_link_libraries(rtgen PRIVATE "-lc++")
-endif()
+endif ()

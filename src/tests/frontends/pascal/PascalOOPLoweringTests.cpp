@@ -118,8 +118,7 @@ size_t countGepInstructions(const il::core::Function &fn)
 TEST(PascalOOPLowering, GeneratesModuleInitFunction)
 {
     SourceManager sm;
-    const std::string src =
-        "program Test; type TFoo = class public X: Integer; end; begin end.";
+    const std::string src = "program Test; type TFoo = class public X: Integer; end; begin end.";
     PascalCompilerInput input{.source = src, .path = "test_init.pas"};
     PascalCompilerOptions opts{};
 
@@ -134,8 +133,7 @@ TEST(PascalOOPLowering, GeneratesModuleInitFunction)
 TEST(PascalOOPLowering, ClassRegistrationCallsRuntime)
 {
     SourceManager sm;
-    const std::string src =
-        "program Test; type TFoo = class public X: Integer; end; begin end.";
+    const std::string src = "program Test; type TFoo = class public X: Integer; end; begin end.";
     PascalCompilerInput input{.source = src, .path = "test_reg.pas"};
     PascalCompilerOptions opts{};
 
@@ -152,8 +150,7 @@ TEST(PascalOOPLowering, ClassRegistrationCallsRuntime)
 TEST(PascalOOPLowering, VtableGlobalCreated)
 {
     SourceManager sm;
-    const std::string src =
-        "program Test; type TFoo = class public X: Integer; end; begin end.";
+    const std::string src = "program Test; type TFoo = class public X: Integer; end; begin end.";
     PascalCompilerInput input{.source = src, .path = "test_vtable.pas"};
     PascalCompilerOptions opts{};
 
@@ -215,11 +212,10 @@ TEST(PascalOOPLowering, ConstructorSetsVtable)
 TEST(PascalOOPLowering, NonVirtualMethodDirectCall)
 {
     SourceManager sm;
-    const std::string src =
-        "program Test; type TFoo = class public X: Integer; "
-        "procedure DoWork; end; "
-        "procedure TFoo.DoWork; begin X := 1 end; "
-        "var f: TFoo; begin f := TFoo.Create; f.DoWork end.";
+    const std::string src = "program Test; type TFoo = class public X: Integer; "
+                            "procedure DoWork; end; "
+                            "procedure TFoo.DoWork; begin X := 1 end; "
+                            "var f: TFoo; begin f := TFoo.Create; f.DoWork end.";
     PascalCompilerInput input{.source = src, .path = "test_direct.pas"};
     PascalCompilerOptions opts{};
 
@@ -236,13 +232,12 @@ TEST(PascalOOPLowering, NonVirtualMethodDirectCall)
 TEST(PascalOOPLowering, VirtualMethodUsesVtable)
 {
     SourceManager sm;
-    const std::string src =
-        "program Test; type TBase = class public "
-        "procedure Speak; virtual; end; "
-        "TDog = class(TBase) public procedure Speak; override; end; "
-        "procedure TBase.Speak; begin WriteLn('base') end; "
-        "procedure TDog.Speak; begin WriteLn('dog') end; "
-        "var a: TBase; begin a := TDog.Create; a.Speak end.";
+    const std::string src = "program Test; type TBase = class public "
+                            "procedure Speak; virtual; end; "
+                            "TDog = class(TBase) public procedure Speak; override; end; "
+                            "procedure TBase.Speak; begin WriteLn('base') end; "
+                            "procedure TDog.Speak; begin WriteLn('dog') end; "
+                            "var a: TBase; begin a := TDog.Create; a.Speak end.";
     PascalCompilerInput input{.source = src, .path = "test_virtual.pas"};
     PascalCompilerOptions opts{};
 
@@ -259,11 +254,10 @@ TEST(PascalOOPLowering, VirtualMethodUsesVtable)
 TEST(PascalOOPLowering, MethodReceiverIsSelf)
 {
     SourceManager sm;
-    const std::string src =
-        "program Test; type TFoo = class public X: Integer; "
-        "procedure SetX(V: Integer); end; "
-        "procedure TFoo.SetX(V: Integer); begin Self.X := V end; "
-        "begin end.";
+    const std::string src = "program Test; type TFoo = class public X: Integer; "
+                            "procedure SetX(V: Integer); end; "
+                            "procedure TFoo.SetX(V: Integer); begin Self.X := V end; "
+                            "begin end.";
     PascalCompilerInput input{.source = src, .path = "test_self.pas"};
     PascalCompilerOptions opts{};
 
@@ -285,10 +279,9 @@ TEST(PascalOOPLowering, MethodReceiverIsSelf)
 TEST(PascalOOPLowering, DerivedClassIncludesBaseFields)
 {
     SourceManager sm;
-    const std::string src =
-        "program Test; type TBase = class public X: Integer; end; "
-        "TDerived = class(TBase) public Y: Integer; end; "
-        "var d: TDerived; begin d := TDerived.Create; d.X := 1; d.Y := 2 end.";
+    const std::string src = "program Test; type TBase = class public X: Integer; end; "
+                            "TDerived = class(TBase) public Y: Integer; end; "
+                            "var d: TDerived; begin d := TDerived.Create; d.X := 1; d.Y := 2 end.";
     PascalCompilerInput input{.source = src, .path = "test_inherit.pas"};
     PascalCompilerOptions opts{};
 
@@ -345,12 +338,11 @@ TEST(PascalOOPLowering, MultiLevelInheritance)
 TEST(PascalOOPLowering, InterfaceImplementationCompiles)
 {
     SourceManager sm;
-    const std::string src =
-        "program Test; "
-        "type IGreeter = interface procedure Greet; end; "
-        "TFriendly = class(IGreeter) public procedure Greet; end; "
-        "procedure TFriendly.Greet; begin WriteLn('Hello') end; "
-        "begin end.";
+    const std::string src = "program Test; "
+                            "type IGreeter = interface procedure Greet; end; "
+                            "TFriendly = class(IGreeter) public procedure Greet; end; "
+                            "procedure TFriendly.Greet; begin WriteLn('Hello') end; "
+                            "begin end.";
     PascalCompilerInput input{.source = src, .path = "test_iface.pas"};
     PascalCompilerOptions opts{};
 
@@ -362,12 +354,11 @@ TEST(PascalOOPLowering, InterfaceImplementationCompiles)
 TEST(PascalOOPLowering, InterfaceRegistration)
 {
     SourceManager sm;
-    const std::string src =
-        "program Test; "
-        "type IGreeter = interface procedure Greet; end; "
-        "TFriendly = class(IGreeter) public procedure Greet; end; "
-        "procedure TFriendly.Greet; begin WriteLn('Hello') end; "
-        "begin end.";
+    const std::string src = "program Test; "
+                            "type IGreeter = interface procedure Greet; end; "
+                            "TFriendly = class(IGreeter) public procedure Greet; end; "
+                            "procedure TFriendly.Greet; begin WriteLn('Hello') end; "
+                            "begin end.";
     PascalCompilerInput input{.source = src, .path = "test_iface_reg.pas"};
     PascalCompilerOptions opts{};
 
@@ -477,12 +468,11 @@ TEST(PascalOOPLowering, FieldAccessUsesGEP)
 TEST(PascalOOPLowering, InheritedFieldAccess)
 {
     SourceManager sm;
-    const std::string src =
-        "program Test; type TAnimal = class public Name: String; end; "
-        "TDog = class(TAnimal) public Breed: String; "
-        "procedure Print; end; "
-        "procedure TDog.Print; begin WriteLn(Name); WriteLn(Breed) end; "
-        "begin end.";
+    const std::string src = "program Test; type TAnimal = class public Name: String; end; "
+                            "TDog = class(TAnimal) public Breed: String; "
+                            "procedure Print; end; "
+                            "procedure TDog.Print; begin WriteLn(Name); WriteLn(Breed) end; "
+                            "begin end.";
     PascalCompilerInput input{.source = src, .path = "test_inherit_field.pas"};
     PascalCompilerOptions opts{};
 

@@ -393,7 +393,7 @@ PeepholeStats runPeephole(MFunction &fn)
         // Pass 1: Try to fold consecutive moves
         for (std::size_t i = 0; i + 1 < instrs.size(); ++i)
         {
-            tryFoldConsecutiveMoves(instrs, i, stats);
+            (void)tryFoldConsecutiveMoves(instrs, i, stats);
         }
 
         // Pass 2: Mark identity moves for removal

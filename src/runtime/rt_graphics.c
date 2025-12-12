@@ -135,8 +135,12 @@ void rt_canvas_line(void *canvas_ptr, int64_t x1, int64_t y1, int64_t x2, int64_
 
     rt_canvas *canvas = (rt_canvas *)canvas_ptr;
     if (canvas->gfx_win)
-        vgfx_line(
-            canvas->gfx_win, (int32_t)x1, (int32_t)y1, (int32_t)x2, (int32_t)y2, (vgfx_color_t)color);
+        vgfx_line(canvas->gfx_win,
+                  (int32_t)x1,
+                  (int32_t)y1,
+                  (int32_t)x2,
+                  (int32_t)y2,
+                  (vgfx_color_t)color);
 }
 
 void rt_canvas_box(void *canvas_ptr, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color)
@@ -179,7 +183,8 @@ void rt_canvas_ring(void *canvas_ptr, int64_t cx, int64_t cy, int64_t radius, in
 
     rt_canvas *canvas = (rt_canvas *)canvas_ptr;
     if (canvas->gfx_win)
-        vgfx_circle(canvas->gfx_win, (int32_t)cx, (int32_t)cy, (int32_t)radius, (vgfx_color_t)color);
+        vgfx_circle(
+            canvas->gfx_win, (int32_t)cx, (int32_t)cy, (int32_t)radius, (vgfx_color_t)color);
 }
 
 void rt_canvas_plot(void *canvas_ptr, int64_t x, int64_t y, int64_t color)
@@ -238,7 +243,8 @@ int64_t rt_color_rgba(int64_t r, int64_t g, int64_t b, int64_t a)
     uint8_t g8 = (g < 0) ? 0 : (g > 255) ? 255 : (uint8_t)g;
     uint8_t b8 = (b < 0) ? 0 : (b > 255) ? 255 : (uint8_t)b;
     uint8_t a8 = (a < 0) ? 0 : (a > 255) ? 255 : (uint8_t)a;
-    return (int64_t)(((uint32_t)a8 << 24) | ((uint32_t)r8 << 16) | ((uint32_t)g8 << 8) | (uint32_t)b8);
+    return (int64_t)(((uint32_t)a8 << 24) | ((uint32_t)r8 << 16) | ((uint32_t)g8 << 8) |
+                     (uint32_t)b8);
 }
 
 #else /* !VIPER_ENABLE_GRAPHICS */
@@ -370,7 +376,8 @@ int64_t rt_color_rgba(int64_t r, int64_t g, int64_t b, int64_t a)
     uint8_t g8 = (g < 0) ? 0 : (g > 255) ? 255 : (uint8_t)g;
     uint8_t b8 = (b < 0) ? 0 : (b > 255) ? 255 : (uint8_t)b;
     uint8_t a8 = (a < 0) ? 0 : (a > 255) ? 255 : (uint8_t)a;
-    return (int64_t)(((uint32_t)a8 << 24) | ((uint32_t)r8 << 16) | ((uint32_t)g8 << 8) | (uint32_t)b8);
+    return (int64_t)(((uint32_t)a8 << 24) | ((uint32_t)r8 << 16) | ((uint32_t)g8 << 8) |
+                     (uint32_t)b8);
 }
 
 #endif /* VIPER_ENABLE_GRAPHICS */

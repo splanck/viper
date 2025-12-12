@@ -596,4 +596,20 @@ function(viper_add_runtime_tests)
     viper_add_test(test_rt_seq ${VIPER_TESTS_DIR}/runtime/RTSeqTests.cpp)
     target_link_libraries(test_rt_seq PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_seq test_rt_seq)
+
+    viper_add_test(test_rt_stack ${VIPER_TESTS_DIR}/runtime/RTStackTests.cpp)
+    target_link_libraries(test_rt_stack PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_stack test_rt_stack)
+
+    viper_add_test(test_rt_queue ${VIPER_TESTS_DIR}/runtime/RTQueueTests.cpp)
+    target_link_libraries(test_rt_queue PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_queue test_rt_queue)
+
+    viper_add_test(test_rt_bytes ${VIPER_TESTS_DIR}/runtime/RTBytesTests.cpp)
+    target_link_libraries(test_rt_bytes PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_bytes test_rt_bytes)
+
+    viper_add_test(test_rt_string_ext ${VIPER_TESTS_DIR}/runtime/RTStringExtTests.cpp)
+    target_link_libraries(test_rt_string_ext PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_string_ext test_rt_string_ext)
 endfunction()

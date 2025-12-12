@@ -80,6 +80,24 @@ RT_FUNC(IndexOfFrom, rt_instr3,   "Viper.String.IndexOfFrom", "i64(str,i64,str)"
 RT_FUNC(Chr,       rt_chr,        "Viper.String.Chr",         "str(i64)")
 RT_FUNC(Asc,       rt_asc,        "Viper.String.Asc",         "i64(str)")
 
+// String expansion - search & match
+RT_FUNC(StrReplace,     rt_str_replace,      "Viper.String.Replace",       "str(str,str,str)")
+RT_FUNC(StrStartsWith,  rt_str_starts_with,  "Viper.String.StartsWith",    "i1(str,str)")
+RT_FUNC(StrEndsWith,    rt_str_ends_with,    "Viper.String.EndsWith",      "i1(str,str)")
+RT_FUNC(StrHas,         rt_str_has,          "Viper.String.Has",           "i1(str,str)")
+RT_FUNC(StrCount,       rt_str_count,        "Viper.String.Count",         "i64(str,str)")
+
+// String expansion - transformation
+RT_FUNC(StrPadLeft,     rt_str_pad_left,     "Viper.String.PadLeft",       "str(str,i64,str)")
+RT_FUNC(StrPadRight,    rt_str_pad_right,    "Viper.String.PadRight",      "str(str,i64,str)")
+RT_FUNC(StrSplit,       rt_str_split,        "Viper.String.Split",         "obj(str,str)")
+RT_FUNC(StrRepeat,      rt_str_repeat,       "Viper.String.Repeat",        "str(str,i64)")
+RT_FUNC(StrFlip,        rt_str_flip,         "Viper.String.Flip",          "str(str)")
+
+// String expansion - comparison
+RT_FUNC(StrCmp,         rt_str_cmp,          "Viper.String.Cmp",           "i64(str,str)")
+RT_FUNC(StrCmpNoCase,   rt_str_cmp_nocase,   "Viper.String.CmpNoCase",     "i64(str,str)")
+
 // String conversion and identity constructor
 RT_FUNC(StrFromStr,   rt_from_str,      "Viper.Strings.FromStr",    "str(str)")
 RT_FUNC(IntToStr,     rt_int_to_str,    "Viper.Strings.FromInt",    "str(i64)")
@@ -90,6 +108,7 @@ RT_FUNC(StrFromSingle, rt_str_f_alloc,  "Viper.Strings.FromSingle", "str(f64)")
 RT_FUNC(StrFromDoublePrecise, rt_str_d_alloc, "Viper.Strings.FromDoublePrecise", "str(f64)")
 RT_FUNC(SplitFields,  rt_split_fields,  "Viper.Strings.SplitFields", "i64(str,ptr,i64)")
 RT_FUNC(StrEquals,    rt_str_eq,        "Viper.Strings.Equals",     "i1(str,str)")
+RT_FUNC(StringsJoin,  rt_strings_join,  "Viper.Strings.Join",       "str(str,obj)")
 
 // String aliases (alternative canonical names for same function)
 RT_ALIAS("Viper.Strings.Len", Len)
@@ -165,16 +184,19 @@ RT_FUNC(ListGetItem,   rt_list_get_item,    "Viper.Collections.List.get_Item",  
 RT_FUNC(ListSetItem,   rt_list_set_item,    "Viper.Collections.List.set_Item",  "void(obj,i64,obj)")
 
 //=============================================================================
-// COLLECTIONS - DICTIONARY
+// COLLECTIONS - MAP
 //=============================================================================
 
-RT_FUNC(DictNew,         rt_dict_new,          "Viper.Collections.Dictionary.New",         "obj()")
-RT_FUNC(DictGetCount,    rt_dict_count,        "Viper.Collections.Dictionary.get_Count",   "i64(obj)")
-RT_FUNC(DictSet,         rt_dict_set,          "Viper.Collections.Dictionary.Set",         "void(obj,str,obj)")
-RT_FUNC(DictGet,         rt_dict_get,          "Viper.Collections.Dictionary.Get",         "obj(obj,str)")
-RT_FUNC(DictContainsKey, rt_dict_contains_key, "Viper.Collections.Dictionary.ContainsKey", "i64(obj,str)")
-RT_FUNC(DictRemove,      rt_dict_remove,       "Viper.Collections.Dictionary.Remove",      "i64(obj,str)")
-RT_FUNC(DictClear,       rt_dict_clear,        "Viper.Collections.Dictionary.Clear",       "void(obj)")
+RT_FUNC(MapNew,     rt_map_new,      "Viper.Collections.Map.New",         "obj()")
+RT_FUNC(MapLen,     rt_map_len,      "Viper.Collections.Map.get_Len",     "i64(obj)")
+RT_FUNC(MapIsEmpty, rt_map_is_empty, "Viper.Collections.Map.get_IsEmpty", "i1(obj)")
+RT_FUNC(MapSet,     rt_map_set,      "Viper.Collections.Map.Set",         "void(obj,str,obj)")
+RT_FUNC(MapGet,     rt_map_get,      "Viper.Collections.Map.Get",         "obj(obj,str)")
+RT_FUNC(MapHas,     rt_map_has,      "Viper.Collections.Map.Has",         "i1(obj,str)")
+RT_FUNC(MapRemove,  rt_map_remove,   "Viper.Collections.Map.Remove",      "i1(obj,str)")
+RT_FUNC(MapClear,   rt_map_clear,    "Viper.Collections.Map.Clear",       "void(obj)")
+RT_FUNC(MapKeys,    rt_map_keys,     "Viper.Collections.Map.Keys",        "obj(obj)")
+RT_FUNC(MapValues,  rt_map_values,   "Viper.Collections.Map.Values",      "obj(obj)")
 
 //=============================================================================
 // COLLECTIONS - SEQ (Dynamic Sequence)
@@ -200,6 +222,48 @@ RT_FUNC(SeqSlice,        rt_seq_slice,         "Viper.Collections.Seq.Slice",   
 RT_FUNC(SeqClone,        rt_seq_clone,         "Viper.Collections.Seq.Clone",         "obj(obj)")
 RT_FUNC(SeqFirst,        rt_seq_first,         "Viper.Collections.Seq.First",         "obj(obj)")
 RT_FUNC(SeqLast,         rt_seq_last,          "Viper.Collections.Seq.Last",          "obj(obj)")
+
+//=============================================================================
+// COLLECTIONS - STACK
+//=============================================================================
+
+RT_FUNC(StackNew,     rt_stack_new,      "Viper.Collections.Stack.New",         "obj()")
+RT_FUNC(StackLen,     rt_stack_len,      "Viper.Collections.Stack.get_Len",     "i64(obj)")
+RT_FUNC(StackIsEmpty, rt_stack_is_empty, "Viper.Collections.Stack.get_IsEmpty", "i1(obj)")
+RT_FUNC(StackPush,    rt_stack_push,     "Viper.Collections.Stack.Push",        "void(obj,obj)")
+RT_FUNC(StackPop,     rt_stack_pop,      "Viper.Collections.Stack.Pop",         "obj(obj)")
+RT_FUNC(StackPeek,    rt_stack_peek,     "Viper.Collections.Stack.Peek",        "obj(obj)")
+RT_FUNC(StackClear,   rt_stack_clear,    "Viper.Collections.Stack.Clear",       "void(obj)")
+
+//=============================================================================
+// COLLECTIONS - QUEUE
+//=============================================================================
+
+RT_FUNC(QueueNew,     rt_queue_new,      "Viper.Collections.Queue.New",         "obj()")
+RT_FUNC(QueueLen,     rt_queue_len,      "Viper.Collections.Queue.get_Len",     "i64(obj)")
+RT_FUNC(QueueIsEmpty, rt_queue_is_empty, "Viper.Collections.Queue.get_IsEmpty", "i1(obj)")
+RT_FUNC(QueueAdd,     rt_queue_add,      "Viper.Collections.Queue.Add",         "void(obj,obj)")
+RT_FUNC(QueueTake,    rt_queue_take,     "Viper.Collections.Queue.Take",        "obj(obj)")
+RT_FUNC(QueuePeek,    rt_queue_peek,     "Viper.Collections.Queue.Peek",        "obj(obj)")
+RT_FUNC(QueueClear,   rt_queue_clear,    "Viper.Collections.Queue.Clear",       "void(obj)")
+
+//=============================================================================
+// COLLECTIONS - BYTES
+//=============================================================================
+
+RT_FUNC(BytesNew,     rt_bytes_new,      "Viper.Collections.Bytes.New",         "obj(i64)")
+RT_FUNC(BytesFromStr, rt_bytes_from_str, "Viper.Collections.Bytes.FromStr",     "obj(str)")
+RT_FUNC(BytesFromHex, rt_bytes_from_hex, "Viper.Collections.Bytes.FromHex",     "obj(str)")
+RT_FUNC(BytesLen,     rt_bytes_len,      "Viper.Collections.Bytes.get_Len",     "i64(obj)")
+RT_FUNC(BytesGet,     rt_bytes_get,      "Viper.Collections.Bytes.Get",         "i64(obj,i64)")
+RT_FUNC(BytesSet,     rt_bytes_set,      "Viper.Collections.Bytes.Set",         "void(obj,i64,i64)")
+RT_FUNC(BytesSlice,   rt_bytes_slice,    "Viper.Collections.Bytes.Slice",       "obj(obj,i64,i64)")
+RT_FUNC(BytesCopy,    rt_bytes_copy,     "Viper.Collections.Bytes.Copy",        "void(obj,i64,obj,i64,i64)")
+RT_FUNC(BytesToStr,   rt_bytes_to_str,   "Viper.Collections.Bytes.ToStr",       "str(obj)")
+RT_FUNC(BytesToHex,   rt_bytes_to_hex,   "Viper.Collections.Bytes.ToHex",       "str(obj)")
+RT_FUNC(BytesFill,    rt_bytes_fill,     "Viper.Collections.Bytes.Fill",        "void(obj,i64)")
+RT_FUNC(BytesFind,    rt_bytes_find,     "Viper.Collections.Bytes.Find",        "i64(obj,i64)")
+RT_FUNC(BytesClone,   rt_bytes_clone,    "Viper.Collections.Bytes.Clone",       "obj(obj)")
 
 //=============================================================================
 // TEXT - STRINGBUILDER
@@ -323,6 +387,19 @@ RT_CLASS_BEGIN("Viper.String", String, "opaque*", StrFromStr)
     RT_METHOD("IndexOfFrom", "i64(i64,str)", IndexOfFrom)
     RT_METHOD("Chr", "str(i64)", Chr)
     RT_METHOD("Asc", "i64()", Asc)
+    // String expansion methods
+    RT_METHOD("Replace", "str(str,str)", StrReplace)
+    RT_METHOD("StartsWith", "i1(str)", StrStartsWith)
+    RT_METHOD("EndsWith", "i1(str)", StrEndsWith)
+    RT_METHOD("Has", "i1(str)", StrHas)
+    RT_METHOD("Count", "i64(str)", StrCount)
+    RT_METHOD("PadLeft", "str(i64,str)", StrPadLeft)
+    RT_METHOD("PadRight", "str(i64,str)", StrPadRight)
+    RT_METHOD("Split", "obj(str)", StrSplit)
+    RT_METHOD("Repeat", "str(i64)", StrRepeat)
+    RT_METHOD("Flip", "str()", StrFlip)
+    RT_METHOD("Cmp", "i64(str)", StrCmp)
+    RT_METHOD("CmpNoCase", "i64(str)", StrCmpNoCase)
 RT_CLASS_END()
 
 // Viper.Text.StringBuilder
@@ -361,14 +438,17 @@ RT_CLASS_BEGIN("Viper.Collections.List", List, "obj", ListNew)
     RT_METHOD("set_Item", "void(i64,obj)", ListSetItem)
 RT_CLASS_END()
 
-// Viper.Collections.Dictionary
-RT_CLASS_BEGIN("Viper.Collections.Dictionary", Dictionary, "obj", DictNew)
-    RT_PROP("Count", "i64", DictGetCount, none)
-    RT_METHOD("Set", "void(str,obj)", DictSet)
-    RT_METHOD("Get", "obj(str)", DictGet)
-    RT_METHOD("ContainsKey", "i64(str)", DictContainsKey)
-    RT_METHOD("Remove", "i64(str)", DictRemove)
-    RT_METHOD("Clear", "void()", DictClear)
+// Viper.Collections.Map - key-value dictionary (string keys)
+RT_CLASS_BEGIN("Viper.Collections.Map", Map, "obj", MapNew)
+    RT_PROP("Len", "i64", MapLen, none)
+    RT_PROP("IsEmpty", "i1", MapIsEmpty, none)
+    RT_METHOD("Set", "void(str,obj)", MapSet)
+    RT_METHOD("Get", "obj(str)", MapGet)
+    RT_METHOD("Has", "i1(str)", MapHas)
+    RT_METHOD("Remove", "i1(str)", MapRemove)
+    RT_METHOD("Clear", "void()", MapClear)
+    RT_METHOD("Keys", "obj()", MapKeys)
+    RT_METHOD("Values", "obj()", MapValues)
 RT_CLASS_END()
 
 // Viper.Collections.Seq - dynamic sequence/array
@@ -391,6 +471,40 @@ RT_CLASS_BEGIN("Viper.Collections.Seq", Seq, "obj", SeqNew)
     RT_METHOD("Clone", "obj()", SeqClone)
     RT_METHOD("First", "obj()", SeqFirst)
     RT_METHOD("Last", "obj()", SeqLast)
+RT_CLASS_END()
+
+// Viper.Collections.Stack - LIFO collection
+RT_CLASS_BEGIN("Viper.Collections.Stack", Stack, "obj", StackNew)
+    RT_PROP("Len", "i64", StackLen, none)
+    RT_PROP("IsEmpty", "i1", StackIsEmpty, none)
+    RT_METHOD("Push", "void(obj)", StackPush)
+    RT_METHOD("Pop", "obj()", StackPop)
+    RT_METHOD("Peek", "obj()", StackPeek)
+    RT_METHOD("Clear", "void()", StackClear)
+RT_CLASS_END()
+
+// Viper.Collections.Queue - FIFO collection
+RT_CLASS_BEGIN("Viper.Collections.Queue", Queue, "obj", QueueNew)
+    RT_PROP("Len", "i64", QueueLen, none)
+    RT_PROP("IsEmpty", "i1", QueueIsEmpty, none)
+    RT_METHOD("Add", "void(obj)", QueueAdd)
+    RT_METHOD("Take", "obj()", QueueTake)
+    RT_METHOD("Peek", "obj()", QueuePeek)
+    RT_METHOD("Clear", "void()", QueueClear)
+RT_CLASS_END()
+
+// Viper.Collections.Bytes - efficient byte array
+RT_CLASS_BEGIN("Viper.Collections.Bytes", Bytes, "obj", BytesNew)
+    RT_PROP("Len", "i64", BytesLen, none)
+    RT_METHOD("Get", "i64(i64)", BytesGet)
+    RT_METHOD("Set", "void(i64,i64)", BytesSet)
+    RT_METHOD("Slice", "obj(i64,i64)", BytesSlice)
+    RT_METHOD("Copy", "void(i64,obj,i64,i64)", BytesCopy)
+    RT_METHOD("ToStr", "str()", BytesToStr)
+    RT_METHOD("ToHex", "str()", BytesToHex)
+    RT_METHOD("Fill", "void(i64)", BytesFill)
+    RT_METHOD("Find", "i64(i64)", BytesFind)
+    RT_METHOD("Clone", "obj()", BytesClone)
 RT_CLASS_END()
 
 // Viper.Math - static utility class

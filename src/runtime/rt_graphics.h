@@ -89,8 +89,7 @@ extern "C"
     /// @param w Rectangle width.
     /// @param h Rectangle height.
     /// @param color Outline color (0x00RRGGBB).
-    void rt_canvas_frame(
-        void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color);
+    void rt_canvas_frame(void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color);
 
     /// @brief Draw a filled circle.
     /// @param canvas Canvas handle.

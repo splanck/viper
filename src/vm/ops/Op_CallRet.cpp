@@ -178,8 +178,7 @@ VM::ExecResult handleCall(VM &vm,
         // rt_term_color_i32: Color setting (called frequently in games)
         if (in.callee == "rt_term_color_i32" && args.size() >= 2)
         {
-            rt_term_color_i32(static_cast<int32_t>(args[0].i64),
-                              static_cast<int32_t>(args[1].i64));
+            rt_term_color_i32(static_cast<int32_t>(args[0].i64), static_cast<int32_t>(args[1].i64));
             ops::storeResult(fr, in, out);
             return {};
         }

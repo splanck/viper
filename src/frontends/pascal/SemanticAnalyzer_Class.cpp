@@ -85,8 +85,9 @@ void SemanticAnalyzer::checkClassInfo(const ClassInfo &classInfo)
         {
             error(classInfo.loc,
                   "class '" + classInfo.name + "' cannot inherit from multiple classes; '" +
-                      ifaceName + "' is a class, not an interface; "
-                                  "Pascal supports single class inheritance only");
+                      ifaceName +
+                      "' is a class, not an interface; "
+                      "Pascal supports single class inheritance only");
         }
         else if (interfaces_.find(key) == interfaces_.end())
         {
@@ -307,8 +308,9 @@ void SemanticAnalyzer::checkInterfaceImplementationWith(
         {
             error(classInfo.loc,
                   "class '" + classInfo.name + "' must implement interface method '" +
-                      ifaceMethod.name + "' with matching signature; "
-                                         "add 'procedure " +
+                      ifaceMethod.name +
+                      "' with matching signature; "
+                      "add 'procedure " +
                       ifaceMethod.name + "' or 'function " + ifaceMethod.name + "' to the class");
         }
     }

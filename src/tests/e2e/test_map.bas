@@ -1,5 +1,5 @@
-' Test Viper.Collections.Dictionary infrastructure
-' Note: Full BASIC Dictionary integration pending frontend runtime lookup
+' Test Viper.Collections.Map infrastructure
+' Note: Full BASIC Map integration pending frontend runtime lookup
 
 ' Test hash map concepts with simulated behavior
 
@@ -10,7 +10,7 @@
 DIM count AS INTEGER
 count = 0
 
-' Test 2: Simulated dictionary operations
+' Test 2: Simulated map operations
 ' Add 3 items
 count = count + 1
 count = count + 1
@@ -22,24 +22,24 @@ ELSE
     PRINT "FAIL: count"
 END IF
 
-' Test 3: Simulated contains check
+' Test 3: Simulated Has check
 DIM found AS INTEGER
-found = 1  ' Simulating ContainsKey("alice") = true
+found = 1  ' Simulating Has("alice") = true
 
 IF found = 1 THEN
-    PRINT "PASS: ContainsKey existing"
+    PRINT "PASS: Has existing"
 ELSE
-    PRINT "FAIL: ContainsKey"
+    PRINT "FAIL: Has"
 END IF
 
 ' Test 4: Simulated missing key
 DIM missing AS INTEGER
-missing = 0  ' Simulating ContainsKey("nobody") = false
+missing = 0  ' Simulating Has("nobody") = false
 
 IF missing = 0 THEN
-    PRINT "PASS: ContainsKey missing"
+    PRINT "PASS: Has missing"
 ELSE
-    PRINT "FAIL: ContainsKey missing"
+    PRINT "FAIL: Has missing"
 END IF
 
 ' Test 5: Simulated remove
@@ -71,4 +71,4 @@ ELSE
     PRINT "FAIL: Clear"
 END IF
 
-PRINT "=== DICTIONARY TESTS COMPLETE ==="
+PRINT "=== MAP TESTS COMPLETE ==="

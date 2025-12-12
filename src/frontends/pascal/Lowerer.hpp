@@ -89,11 +89,11 @@ class Lowerer
     std::unique_ptr<il::build::IRBuilder> builder_; ///< IR builder
     SemanticAnalyzer *sema_{nullptr};               ///< Semantic analyzer
     Function *currentFunc_{nullptr};                ///< Current function
-    std::string currentFuncName_;         ///< Current function name (lowercase, for Result mapping)
-    std::string currentClassName_;        ///< Current class name (for Self/field access in methods)
+    std::string currentFuncName_;  ///< Current function name (lowercase, for Result mapping)
+    std::string currentClassName_; ///< Current class name (for Self/field access in methods)
     ::il::frontends::common::BlockManager blockMgr_; ///< Block management (common library)
-    std::map<std::string, Value> locals_; ///< Variable -> alloca slot
-    std::map<std::string, PasType> localTypes_; ///< Variable -> type (for procedure locals)
+    std::map<std::string, Value> locals_;            ///< Variable -> alloca slot
+    std::map<std::string, PasType> localTypes_;      ///< Variable -> type (for procedure locals)
     std::map<std::string, PasType>
         globalTypes_;                        ///< Global variable -> type (persists across funcs)
     std::map<std::string, Value> constants_; ///< Constant -> value

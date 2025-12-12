@@ -461,8 +461,9 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
                       argType.kind == PasTypeKind::Unknown))
                 {
                     error(*expr.args[0],
-                          "invalid type cast to '" + calleeName + "': source must be a class or "
-                                                                  "interface instance, not '" +
+                          "invalid type cast to '" + calleeName +
+                              "': source must be a class or "
+                              "interface instance, not '" +
                               argType.toString() + "'");
                 }
 
@@ -777,7 +778,8 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
                     else
                     {
                         error(expr,
-                              "interface '" + ifaceName + "' does not define method '" + calleeName +
+                              "interface '" + ifaceName + "' does not define method '" +
+                                  calleeName +
                                   "'; check the interface declaration for available methods");
                         return PasType::unknown();
                     }
@@ -1124,8 +1126,10 @@ PasType SemanticAnalyzer::typeOfField(FieldExpr &expr)
                 }
             }
             // Unknown member - report error
-            error(expr, "class '" + baseType.name + "' has no member named '" + expr.field +
-                            "'; check spelling or verify the member is declared in the class or its ancestors");
+            error(expr,
+                  "class '" + baseType.name + "' has no member named '" + expr.field +
+                      "'; check spelling or verify the member is declared in the class or its "
+                      "ancestors");
             return PasType::unknown();
         }
 
@@ -1191,8 +1195,9 @@ PasType SemanticAnalyzer::typeOfIs(IsExpr &expr)
     // Validate right-hand is a class/interface type
     if (!(target.kind == PasTypeKind::Class || target.kind == PasTypeKind::Interface))
     {
-        error(expr, "right-hand side of 'is' must be a class or interface type, not '" + target.toString() +
-                        "'; 'is' checks object types at runtime");
+        error(expr,
+              "right-hand side of 'is' must be a class or interface type, not '" +
+                  target.toString() + "'; 'is' checks object types at runtime");
         return PasType::boolean();
     }
 
@@ -1202,8 +1207,9 @@ PasType SemanticAnalyzer::typeOfIs(IsExpr &expr)
                   leftType.kind == PasTypeKind::Unknown);
     if (!lhsOk)
     {
-        error(expr, "left-hand side of 'is' must be a class or interface instance, not '" + leftType.toString() +
-                        "'; 'is' requires an object reference");
+        error(expr,
+              "left-hand side of 'is' must be a class or interface instance, not '" +
+                  leftType.toString() + "'; 'is' requires an object reference");
     }
 
     // Result type is Boolean
@@ -1225,8 +1231,9 @@ PasType SemanticAnalyzer::typeOfAs(AsExpr &expr)
     // Validate right-hand is a class/interface type
     if (!(target.kind == PasTypeKind::Class || target.kind == PasTypeKind::Interface))
     {
-        error(expr, "right-hand side of 'as' must be a class or interface type, not '" + target.toString() +
-                        "'; 'as' performs a safe downcast on object references");
+        error(expr,
+              "right-hand side of 'as' must be a class or interface type, not '" +
+                  target.toString() + "'; 'as' performs a safe downcast on object references");
         return PasType::unknown();
     }
 
@@ -1236,8 +1243,9 @@ PasType SemanticAnalyzer::typeOfAs(AsExpr &expr)
                   leftType.kind == PasTypeKind::Unknown);
     if (!lhsOk)
     {
-        error(expr, "left-hand side of 'as' must be a class or interface instance, not '" + leftType.toString() +
-                        "'; 'as' requires an object reference to cast");
+        error(expr,
+              "left-hand side of 'as' must be a class or interface instance, not '" +
+                  leftType.toString() + "'; 'as' requires an object reference to cast");
     }
 
     // Result type is the target type (safe cast returns nil on failure)

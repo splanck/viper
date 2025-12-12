@@ -25,7 +25,7 @@ inline constexpr std::string_view RTCLASS_OBJECT = "Viper.Object";
 inline constexpr std::string_view RTCLASS_STRINGBUILDER = "Viper.Text.StringBuilder";
 inline constexpr std::string_view RTCLASS_FILE = "Viper.IO.File";
 inline constexpr std::string_view RTCLASS_LIST = "Viper.Collections.List";
-inline constexpr std::string_view RTCLASS_DICTIONARY = "Viper.Collections.Dictionary";
+inline constexpr std::string_view RTCLASS_MAP = "Viper.Collections.Map";
 inline constexpr std::string_view RTCLASS_MATH = "Viper.Math";
 // RTCLASS_CONSOLE deprecated - Console consolidated into Terminal
 inline constexpr std::string_view RTCLASS_CONSOLE = "Viper.Terminal";

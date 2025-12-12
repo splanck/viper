@@ -352,8 +352,7 @@ TEST_F(DiffVmNativePropertyTest, ArithmeticWithComparisons)
     config.minBlocks = 1;
     config.maxBlocks = 1;
 
-    const std::uint64_t baseSeed =
-        getStableBaseSeed();
+    const std::uint64_t baseSeed = getStableBaseSeed();
 
     for (std::size_t i = 0; i < kDefaultIterations; ++i)
     {
@@ -382,8 +381,7 @@ TEST_F(DiffVmNativePropertyTest, BitwiseAndShifts)
     config.minBlocks = 1;
     config.maxBlocks = 1;
 
-    const std::uint64_t baseSeed =
-        getStableBaseSeed();
+    const std::uint64_t baseSeed = getStableBaseSeed();
 
     for (std::size_t i = 0; i < kDefaultIterations; ++i)
     {
@@ -413,8 +411,7 @@ TEST_F(DiffVmNativePropertyTest, MixedOperations)
     config.minBlocks = 1;
     config.maxBlocks = 1;
 
-    const std::uint64_t baseSeed =
-        getStableBaseSeed();
+    const std::uint64_t baseSeed = getStableBaseSeed();
 
     for (std::size_t i = 0; i < kDefaultIterations; ++i)
     {
@@ -443,8 +440,7 @@ TEST_F(DiffVmNativePropertyTest, ControlFlow)
     config.minBlocks = 2;
     config.maxBlocks = 4;
 
-    const std::uint64_t baseSeed =
-        getStableBaseSeed();
+    const std::uint64_t baseSeed = getStableBaseSeed();
 
     for (std::size_t i = 0; i < kDefaultIterations; ++i)
     {
@@ -504,8 +500,7 @@ int main()
     config.minBlocks = 1;
     config.maxBlocks = 3;
 
-    const std::uint64_t baseSeed =
-        getStableBaseSeed();
+    const std::uint64_t baseSeed = getStableBaseSeed();
 
     std::cout << "Running " << kDefaultIterations << " property test iterations...\n";
     std::cout << "Backend: " << backendName(g_selectedBackend) << "\n";

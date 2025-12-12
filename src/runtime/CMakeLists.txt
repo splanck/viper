@@ -38,9 +38,12 @@ set(RT_SOURCES
         rt_file_ext.c
         rt_list.c
         rt_seq.c
+        rt_stack.c
+        rt_queue.c
+        rt_bytes.c
         rt_graphics.c
         rt_datetime.c
-        rt_dictionary.c
+        rt_map.c
 )
 
 set(RT_PUBLIC_HEADERS
@@ -73,7 +76,7 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_ns_bridge.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_graphics.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_datetime.h
-        ${CMAKE_CURRENT_SOURCE_DIR}/rt_dictionary.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_map.h
 )
 
 add_library(viper_runtime STATIC ${RT_SOURCES})

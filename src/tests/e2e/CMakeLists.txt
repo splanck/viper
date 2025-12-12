@@ -450,14 +450,14 @@ function(viper_add_e2e_vm_suite)
             -P ${_VIPER_E2E_DIR}/test_basic_math_phase1.cmake)
     set_tests_properties(e2e_datetime PROPERTIES LABELS "e2e")
 
-    # Dictionary API tests
-    viper_add_ctest(e2e_dictionary
+    # Map API tests
+    viper_add_ctest(e2e_map
             ${CMAKE_COMMAND}
             -DILC=$<TARGET_FILE:ilc>
-            -DBAS_FILE=${CMAKE_SOURCE_DIR}/src/tests/e2e/test_dictionary.bas
-            -DGOLDEN=${CMAKE_SOURCE_DIR}/src/tests/e2e/test_dictionary.bas.out
+            -DBAS_FILE=${CMAKE_SOURCE_DIR}/src/tests/e2e/test_map.bas
+            -DGOLDEN=${CMAKE_SOURCE_DIR}/src/tests/e2e/test_map.bas.out
             -P ${_VIPER_E2E_DIR}/test_basic_math_phase1.cmake)
-    set_tests_properties(e2e_dictionary PROPERTIES LABELS "e2e")
+    set_tests_properties(e2e_map PROPERTIES LABELS "e2e")
 
     # USING statement tests (resource cleanup)
     viper_add_ctest(e2e_using

@@ -93,14 +93,13 @@ TEST(PascalBasicInterop, BothUseSameAllocationRuntime)
 
     // BASIC class with constructor
     SourceManager smBas;
-    const std::string basSrc =
-        "CLASS TBar\n"
-        "  PUBLIC X AS INTEGER\n"
-        "  PUBLIC SUB New()\n"
-        "    X = 0\n"
-        "  END SUB\n"
-        "END CLASS\n"
-        "DIM b AS TBar = NEW TBar()\n";
+    const std::string basSrc = "CLASS TBar\n"
+                               "  PUBLIC X AS INTEGER\n"
+                               "  PUBLIC SUB New()\n"
+                               "    X = 0\n"
+                               "  END SUB\n"
+                               "END CLASS\n"
+                               "DIM b AS TBar = NEW TBar()\n";
     il::frontends::basic::BasicCompilerInput basInput{.source = basSrc, .path = "interop.bas"};
     il::frontends::basic::BasicCompilerOptions basOpts{};
     auto basResult = il::frontends::basic::compileBasic(basInput, basOpts, smBas);
@@ -117,18 +116,16 @@ TEST(PascalBasicInterop, BothUseSameClassRegistration)
 {
     // Pascal class
     SourceManager smPas;
-    const std::string pasSrc =
-        "program Test; type TFoo = class public X: Integer; end; begin end.";
+    const std::string pasSrc = "program Test; type TFoo = class public X: Integer; end; begin end.";
     il::frontends::pascal::PascalCompilerInput pasInput{.source = pasSrc, .path = "reg.pas"};
     il::frontends::pascal::PascalCompilerOptions pasOpts{};
     auto pasResult = il::frontends::pascal::compilePascal(pasInput, pasOpts, smPas);
 
     // BASIC class
     SourceManager smBas;
-    const std::string basSrc =
-        "CLASS TBar\n"
-        "  PUBLIC X AS INTEGER\n"
-        "END CLASS\n";
+    const std::string basSrc = "CLASS TBar\n"
+                               "  PUBLIC X AS INTEGER\n"
+                               "END CLASS\n";
     il::frontends::basic::BasicCompilerInput basInput{.source = basSrc, .path = "reg.bas"};
     il::frontends::basic::BasicCompilerOptions basOpts{};
     auto basResult = il::frontends::basic::compileBasic(basInput, basOpts, smBas);
@@ -155,14 +152,13 @@ TEST(PascalBasicInterop, BothUseSameVtableAccess)
 
     // BASIC class
     SourceManager smBas;
-    const std::string basSrc =
-        "CLASS TBar\n"
-        "  PUBLIC X AS INTEGER\n"
-        "  PUBLIC SUB New()\n"
-        "    X = 0\n"
-        "  END SUB\n"
-        "END CLASS\n"
-        "DIM b AS TBar = NEW TBar()\n";
+    const std::string basSrc = "CLASS TBar\n"
+                               "  PUBLIC X AS INTEGER\n"
+                               "  PUBLIC SUB New()\n"
+                               "    X = 0\n"
+                               "  END SUB\n"
+                               "END CLASS\n"
+                               "DIM b AS TBar = NEW TBar()\n";
     il::frontends::basic::BasicCompilerInput basInput{.source = basSrc, .path = "vtable.bas"};
     il::frontends::basic::BasicCompilerOptions basOpts{};
     auto basResult = il::frontends::basic::compileBasic(basInput, basOpts, smBas);
@@ -196,19 +192,18 @@ TEST(PascalBasicInterop, BothUseIndirectCallForVirtual)
 
     // BASIC with virtual method called through base type
     SourceManager smBas;
-    const std::string basSrc =
-        "CLASS TBase\n"
-        "  VIRTUAL SUB Speak()\n"
-        "  END SUB\n"
-        "END CLASS\n"
-        "CLASS TDog : TBase\n"
-        "  OVERRIDE SUB Speak()\n"
-        "  END SUB\n"
-        "END CLASS\n"
-        "DIM a AS TBase\n"
-        "LET a = NEW TDog()\n"
-        "a.Speak()\n"
-        "END\n";
+    const std::string basSrc = "CLASS TBase\n"
+                               "  VIRTUAL SUB Speak()\n"
+                               "  END SUB\n"
+                               "END CLASS\n"
+                               "CLASS TDog : TBase\n"
+                               "  OVERRIDE SUB Speak()\n"
+                               "  END SUB\n"
+                               "END CLASS\n"
+                               "DIM a AS TBase\n"
+                               "LET a = NEW TDog()\n"
+                               "a.Speak()\n"
+                               "END\n";
     il::frontends::basic::BasicCompilerInput basInput{.source = basSrc, .path = "virtual.bas"};
     il::frontends::basic::BasicCompilerOptions basOpts{};
     auto basResult = il::frontends::basic::compileBasic(basInput, basOpts, smBas);
@@ -236,21 +231,19 @@ TEST(PascalBasicInterop, MethodNamingConvention)
 {
     // Pascal method naming: ClassName.MethodName (original case)
     SourceManager smPas;
-    const std::string pasSrc =
-        "program Test; type TFoo = class public procedure DoWork; end; "
-        "procedure TFoo.DoWork; begin end; begin end.";
+    const std::string pasSrc = "program Test; type TFoo = class public procedure DoWork; end; "
+                               "procedure TFoo.DoWork; begin end; begin end.";
     il::frontends::pascal::PascalCompilerInput pasInput{.source = pasSrc, .path = "naming.pas"};
     il::frontends::pascal::PascalCompilerOptions pasOpts{};
     auto pasResult = il::frontends::pascal::compilePascal(pasInput, pasOpts, smPas);
 
     // BASIC method naming: CLASSNAME.METHODNAME (uppercase)
     SourceManager smBas;
-    const std::string basSrc =
-        "CLASS TBar\n"
-        "  SUB DoWork()\n"
-        "  END SUB\n"
-        "END CLASS\n"
-        "END\n";
+    const std::string basSrc = "CLASS TBar\n"
+                               "  SUB DoWork()\n"
+                               "  END SUB\n"
+                               "END CLASS\n"
+                               "END\n";
     il::frontends::basic::BasicCompilerInput basInput{.source = basSrc, .path = "naming.bas"};
     il::frontends::basic::BasicCompilerOptions basOpts{};
     auto basResult = il::frontends::basic::compileBasic(basInput, basOpts, smBas);
@@ -271,21 +264,19 @@ TEST(PascalBasicInterop, ConstructorNamingConvention)
 {
     // Pascal constructor: ClassName.CtorName (case-preserved)
     SourceManager smPas;
-    const std::string pasSrc =
-        "program Test; type TFoo = class public constructor Create; end; "
-        "constructor TFoo.Create; begin end; begin end.";
+    const std::string pasSrc = "program Test; type TFoo = class public constructor Create; end; "
+                               "constructor TFoo.Create; begin end; begin end.";
     il::frontends::pascal::PascalCompilerInput pasInput{.source = pasSrc, .path = "ctor.pas"};
     il::frontends::pascal::PascalCompilerOptions pasOpts{};
     auto pasResult = il::frontends::pascal::compilePascal(pasInput, pasOpts, smPas);
 
     // BASIC constructor: CLASSNAME.__ctor (uppercase, __ctor suffix)
     SourceManager smBas;
-    const std::string basSrc =
-        "CLASS TBar\n"
-        "  SUB New()\n"
-        "  END SUB\n"
-        "END CLASS\n"
-        "END\n";
+    const std::string basSrc = "CLASS TBar\n"
+                               "  SUB New()\n"
+                               "  END SUB\n"
+                               "END CLASS\n"
+                               "END\n";
     il::frontends::basic::BasicCompilerInput basInput{.source = basSrc, .path = "ctor.bas"};
     il::frontends::basic::BasicCompilerOptions basOpts{};
     auto basResult = il::frontends::basic::compileBasic(basInput, basOpts, smBas);
@@ -320,11 +311,10 @@ TEST(PascalBasicInterop, BothUseSameRTTIRuntimeForIs)
 
     // BASIC using IS operator
     SourceManager smBas;
-    const std::string basSrc =
-        "CLASS TBase\nEND CLASS\n"
-        "CLASS TChild : TBase\nEND CLASS\n"
-        "DIM b AS TBase = NEW TChild()\n"
-        "DIM r AS BOOLEAN = b IS TChild\n";
+    const std::string basSrc = "CLASS TBase\nEND CLASS\n"
+                               "CLASS TChild : TBase\nEND CLASS\n"
+                               "DIM b AS TBase = NEW TChild()\n"
+                               "DIM r AS BOOLEAN = b IS TChild\n";
     il::frontends::basic::BasicCompilerInput basInput{.source = basSrc, .path = "is.bas"};
     il::frontends::basic::BasicCompilerOptions basOpts{};
     auto basResult = il::frontends::basic::compileBasic(basInput, basOpts, smBas);
@@ -358,11 +348,10 @@ TEST(PascalBasicInterop, BothUseSameRTTIRuntimeForAs)
 
     // BASIC using AS operator
     SourceManager smBas;
-    const std::string basSrc =
-        "CLASS TBase\nEND CLASS\n"
-        "CLASS TChild : TBase\nEND CLASS\n"
-        "DIM b AS TBase = NEW TChild()\n"
-        "DIM c AS TChild = b AS TChild\n";
+    const std::string basSrc = "CLASS TBase\nEND CLASS\n"
+                               "CLASS TChild : TBase\nEND CLASS\n"
+                               "DIM b AS TBase = NEW TChild()\n"
+                               "DIM c AS TChild = b AS TChild\n";
     il::frontends::basic::BasicCompilerInput basInput{.source = basSrc, .path = "as.bas"};
     il::frontends::basic::BasicCompilerOptions basOpts{};
     auto basResult = il::frontends::basic::compileBasic(basInput, basOpts, smBas);

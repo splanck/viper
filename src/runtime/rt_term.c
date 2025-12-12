@@ -149,8 +149,13 @@ int rt_term_is_raw_mode(void)
 #else // Windows doesn't need raw mode caching - _kbhit is already efficient
 
 void rt_term_enable_raw_mode(void) {}
+
 void rt_term_disable_raw_mode(void) {}
-int rt_term_is_raw_mode(void) { return 0; }
+
+int rt_term_is_raw_mode(void)
+{
+    return 0;
+}
 
 #endif
 
