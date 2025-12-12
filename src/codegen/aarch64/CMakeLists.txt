@@ -18,6 +18,7 @@ add_library(il_codegen_aarch64 STATIC
         RegAllocLinear.cpp
         Peephole.cpp)
 target_include_directories(il_codegen_aarch64 PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../..>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>)
@@ -39,4 +40,4 @@ add_custom_command(
         VERBATIM)
 
 add_custom_target(gen_aarch64_dispatch DEPENDS ${VIPER_A64_DISP})
-add_dependencies(il_codegen_aarch64 gen_aarch64_dispatch)
+add_dependencies(il_codegen_aarch64 gen_aarch64_dispatch generate_runtime_registry)

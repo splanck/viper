@@ -800,6 +800,7 @@ var
 
 begin
   Randomize;
+  AltScreen(1);  { Enable alt screen with batch mode for smooth rendering }
   HideCursor;
 
   Running := 1;
@@ -822,8 +823,9 @@ begin
       Running := 0;
   end;
 
-  ClrScr;
   ShowCursor;
+  AltScreen(0);  { Exit alt screen }
+  ClrScr;
   GotoXY(10, 12);
   TextColor(COLOR_CYAN);
   WriteLn('Thanks for playing vTRIS!');

@@ -773,6 +773,46 @@ std::array<BuiltinDescriptor, kBuiltinCount> makeDescriptors()
         R::Void,
         {{.symbol = "rt_term_show_cursor"}});
 
+    // AltScreen enables/disables alternate screen buffer and triggers
+    // batch mode + raw mode for optimal game/animation performance
+    set(B::AltScreen,
+        "AltScreen",
+        C::ViperTerminal,
+        1,
+        1,
+        false,
+        R::Void,
+        {{.symbol = "rt_term_alt_screen_i32"}},
+        {{.allowed = A::Boolean | A::Integer}});
+
+    // BeginBatch/EndBatch for explicit output batching control
+    set(B::BeginBatch,
+        "BeginBatch",
+        C::ViperTerminal,
+        0,
+        0,
+        false,
+        R::Void,
+        {{.symbol = "rt_term_begin_batch"}});
+
+    set(B::EndBatch,
+        "EndBatch",
+        C::ViperTerminal,
+        0,
+        0,
+        false,
+        R::Void,
+        {{.symbol = "rt_term_end_batch"}});
+
+    set(B::FlushOutput,
+        "FlushOutput",
+        C::ViperTerminal,
+        0,
+        0,
+        false,
+        R::Void,
+        {{.symbol = "rt_term_flush"}});
+
     //=========================================================================
     // Viper.IO Unit - File I/O
     //=========================================================================
@@ -1196,7 +1236,11 @@ std::vector<PascalBuiltin> getUnitBuiltins(std::string_view unitName)
                   PascalBuiltin::Delay,
                   PascalBuiltin::Sleep,
                   PascalBuiltin::HideCursor,
-                  PascalBuiltin::ShowCursor};
+                  PascalBuiltin::ShowCursor,
+                  PascalBuiltin::AltScreen,
+                  PascalBuiltin::BeginBatch,
+                  PascalBuiltin::EndBatch,
+                  PascalBuiltin::FlushOutput};
     }
     else if (key == "viper.io" || key == "viperio")
     {

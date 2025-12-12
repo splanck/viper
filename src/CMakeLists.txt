@@ -1,5 +1,32 @@
 add_subdirectory(support)
 
+#===----------------------------------------------------------------------===//
+# rtgen: Runtime registry generator
+#===----------------------------------------------------------------------===//
+# Build the generator tool that creates .inc files from runtime.def
+add_executable(rtgen tools/rtgen/rtgen.cpp)
+target_compile_features(rtgen PRIVATE cxx_std_17)
+
+# Generate runtime registry files
+set(RTGEN_OUTPUT_DIR "${CMAKE_BINARY_DIR}/generated/il/runtime")
+set(RTGEN_INPUT "${CMAKE_CURRENT_SOURCE_DIR}/il/runtime/runtime.def")
+set(RTGEN_OUTPUTS
+    "${RTGEN_OUTPUT_DIR}/RuntimeNameMap.inc"
+    "${RTGEN_OUTPUT_DIR}/RuntimeClasses.inc"
+)
+
+add_custom_command(
+    OUTPUT ${RTGEN_OUTPUTS}
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${RTGEN_OUTPUT_DIR}"
+    COMMAND rtgen "${RTGEN_INPUT}" "${RTGEN_OUTPUT_DIR}"
+    DEPENDS rtgen "${RTGEN_INPUT}"
+    COMMENT "Generating runtime registry files from runtime.def"
+    VERBATIM
+)
+
+add_custom_target(generate_runtime_registry DEPENDS ${RTGEN_OUTPUTS})
+#===----------------------------------------------------------------------===//
+
 add_library(viper_common STATIC
         common/RunProcess.cpp)
 target_include_directories(viper_common PUBLIC
@@ -34,7 +61,7 @@ target_include_directories(viper_il_core PUBLIC
 )
 target_link_libraries(viper_il_core PRIVATE viper_support)
 
-## Runtime signatures: use committed generated include (no Python at build time)
+## Runtime signatures: generated from runtime.def via rtgen
 
 add_library(il_runtime STATIC
         il/runtime/RuntimeSignatures.cpp
@@ -46,9 +73,11 @@ add_library(il_runtime STATIC
         il/runtime/signatures/Signatures_Math.cpp
         il/runtime/signatures/Signatures_Arrays.cpp
         il/runtime/classes/RuntimeClasses.cpp)
+add_dependencies(il_runtime generate_runtime_registry)
 target_link_libraries(il_runtime PUBLIC viper_il_core viper_runtime)
 target_compile_definitions(il_runtime PUBLIC VIPER_RUNTIME_NS_DUAL=$<BOOL:${VIPER_RUNTIME_NS_DUAL}>)
 target_include_directories(il_runtime PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
 )
@@ -264,8 +293,10 @@ add_library(il_codegen_x86_64 STATIC
         common/Mangle.cpp)
 set_target_properties(il_codegen_x86_64 PROPERTIES LINKER_LANGUAGE CXX)
 target_include_directories(il_codegen_x86_64 PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>)
+add_dependencies(il_codegen_x86_64 generate_runtime_registry)
 
 add_library(ilc_cmd_arm64 STATIC
         tools/ilc/cmd_codegen_arm64.cpp)

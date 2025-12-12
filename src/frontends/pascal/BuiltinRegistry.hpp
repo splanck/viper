@@ -131,6 +131,10 @@ enum class PascalBuiltin
     Sleep,          ///< Alias for Delay
     HideCursor,     ///< Hide terminal cursor
     ShowCursor,     ///< Show terminal cursor
+    AltScreen,      ///< Enable/disable alternate screen buffer
+    BeginBatch,     ///< Begin batch mode (defer output flushing)
+    EndBatch,       ///< End batch mode (flush accumulated output)
+    FlushOutput,    ///< Explicitly flush output buffer
 
     // Viper.IO unit (file I/O)
     FileExists,   ///< Check if file exists

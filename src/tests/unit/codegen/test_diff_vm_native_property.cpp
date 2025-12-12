@@ -34,6 +34,7 @@
 #include "tests/unit/GTestStub.hpp"
 #include "tools/ilc/cmd_codegen_arm64.hpp"
 
+#include <atomic>
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
@@ -41,6 +42,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <unistd.h>
 
 using namespace viper::tests;
 using namespace viper::tools::ilc;
@@ -51,6 +53,17 @@ namespace
 /// @brief Number of property test iterations.
 /// @details Keep low for CI stability; can be increased for local fuzzing.
 constexpr std::size_t kDefaultIterations = 15;
+
+/// @brief Get a stable base seed for reproducible tests.
+/// @details Uses a combination of PID and a counter to ensure unique but
+///          reproducible seeds across test runs in the same process.
+std::uint64_t getStableBaseSeed()
+{
+    static std::atomic<std::uint64_t> counter{0};
+    // Use PID to differentiate between parallel test processes
+    // Use counter to differentiate between test cases within a process
+    return static_cast<std::uint64_t>(getpid()) * 1000000ULL + counter.fetch_add(1);
+}
 
 /// @brief Backend type for differential testing.
 enum class Backend
@@ -137,7 +150,8 @@ void logBackendSelection()
 std::filesystem::path ensureOutputDir()
 {
     namespace fs = std::filesystem;
-    const fs::path dir{"build/test-out/diff-property"};
+    // Use PID to avoid conflicts when tests run in parallel
+    const fs::path dir{"build/test-out/diff-property-" + std::to_string(getpid())};
     fs::create_directories(dir);
     return dir;
 }
@@ -309,8 +323,7 @@ TEST_F(DiffVmNativePropertyTest, ArithmeticOnly)
     config.minBlocks = 1;
     config.maxBlocks = 1;
 
-    const std::uint64_t baseSeed =
-        static_cast<std::uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count());
+    const std::uint64_t baseSeed = getStableBaseSeed();
 
     for (std::size_t i = 0; i < kDefaultIterations; ++i)
     {
@@ -340,7 +353,7 @@ TEST_F(DiffVmNativePropertyTest, ArithmeticWithComparisons)
     config.maxBlocks = 1;
 
     const std::uint64_t baseSeed =
-        static_cast<std::uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count());
+        getStableBaseSeed();
 
     for (std::size_t i = 0; i < kDefaultIterations; ++i)
     {
@@ -370,7 +383,7 @@ TEST_F(DiffVmNativePropertyTest, BitwiseAndShifts)
     config.maxBlocks = 1;
 
     const std::uint64_t baseSeed =
-        static_cast<std::uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count());
+        getStableBaseSeed();
 
     for (std::size_t i = 0; i < kDefaultIterations; ++i)
     {
@@ -401,7 +414,7 @@ TEST_F(DiffVmNativePropertyTest, MixedOperations)
     config.maxBlocks = 1;
 
     const std::uint64_t baseSeed =
-        static_cast<std::uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count());
+        getStableBaseSeed();
 
     for (std::size_t i = 0; i < kDefaultIterations; ++i)
     {
@@ -431,7 +444,7 @@ TEST_F(DiffVmNativePropertyTest, ControlFlow)
     config.maxBlocks = 4;
 
     const std::uint64_t baseSeed =
-        static_cast<std::uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count());
+        getStableBaseSeed();
 
     for (std::size_t i = 0; i < kDefaultIterations; ++i)
     {
@@ -492,7 +505,7 @@ int main()
     config.maxBlocks = 3;
 
     const std::uint64_t baseSeed =
-        static_cast<std::uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count());
+        getStableBaseSeed();
 
     std::cout << "Running " << kDefaultIterations << " property test iterations...\n";
     std::cout << "Backend: " << backendName(g_selectedBackend) << "\n";

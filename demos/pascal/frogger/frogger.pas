@@ -488,6 +488,7 @@ end;
  ====================================================================}
 procedure GameLoop;
 begin
+  AltScreen(1);  { Enable alt screen - triggers batch mode for smooth rendering }
   ClrScr;
   HideCursor;
 
@@ -499,8 +500,9 @@ begin
     Delay(100);
   end;
 
-  ClrScr;
   ShowCursor;
+  AltScreen(0);  { Exit alt screen - back to normal terminal }
+  ClrScr;
 
   WriteLn;
   if HomesFilledCount = 5 then

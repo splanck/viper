@@ -1,0 +1,422 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/il/runtime/runtime.def
+// Purpose: Single source of truth for all Viper runtime definitions.
+//          This file is parsed by rtgen to generate:
+//            - RuntimeNameMap.inc   (canonical -> C symbol mapping)
+//            - RuntimeClasses.inc   (OOP class catalog)
+//
+// Syntax:
+//   RT_FUNC(id, c_symbol, "canonical", "signature")
+//   RT_ALIAS("canonical_alias", target_id)
+//   RT_CLASS_BEGIN("name", type_id, "layout", ctor_id)
+//     RT_PROP("name", "type", getter_id, setter_id_or_none)
+//     RT_METHOD("name", "signature", target_id)
+//   RT_CLASS_END()
+//
+// Notes:
+//   - id must be unique C++ identifier
+//   - c_symbol is the C runtime function name (rt_*)
+//   - canonical is the Viper.* namespace name
+//   - signature uses IL type syntax: void, i64, f64, str, obj, i1, ptr
+//   - For class methods, signature omits the receiver (arg0)
+//
+//===----------------------------------------------------------------------===//
+
+//=============================================================================
+// CONSOLE I/O
+//=============================================================================
+
+RT_FUNC(PrintStr,  rt_print_str,  "Viper.Console.PrintStr",  "void(str)")
+RT_FUNC(PrintI64,  rt_print_i64,  "Viper.Console.PrintI64",  "void(i64)")
+RT_FUNC(PrintF64,  rt_print_f64,  "Viper.Console.PrintF64",  "void(f64)")
+RT_FUNC(ReadLine,  rt_input_line, "Viper.Console.ReadLine",  "str()")
+
+//=============================================================================
+// STRING FUNCTIONS
+//=============================================================================
+
+RT_FUNC(Len,       rt_len,        "Viper.String.get_Length",  "i64(str)")
+RT_FUNC(StrIsEmpty, rt_str_is_empty, "Viper.String.get_IsEmpty", "i1(str)")
+RT_FUNC(Concat,    rt_concat,     "Viper.String.Concat",      "str(str,str)")
+RT_FUNC(Substr,    rt_substr,     "Viper.String.Substring",   "str(str,i64,i64)")
+RT_FUNC(Left,      rt_left,       "Viper.String.Left",        "str(str,i64)")
+RT_FUNC(Right,     rt_right,      "Viper.String.Right",       "str(str,i64)")
+RT_FUNC(Mid2,      rt_mid2,       "Viper.String.Mid",         "str(str,i64)")
+RT_FUNC(Mid3,      rt_mid3,       "Viper.String.MidLen",      "str(str,i64,i64)")
+RT_FUNC(Trim,      rt_trim,       "Viper.String.Trim",        "str(str)")
+RT_FUNC(LTrim,     rt_ltrim,      "Viper.String.TrimStart",   "str(str)")
+RT_FUNC(RTrim,     rt_rtrim,      "Viper.String.TrimEnd",     "str(str)")
+RT_FUNC(UCase,     rt_ucase,      "Viper.String.ToUpper",     "str(str)")
+RT_FUNC(LCase,     rt_lcase,      "Viper.String.ToLower",     "str(str)")
+RT_FUNC(IndexOf,   rt_instr2,     "Viper.String.IndexOf",     "i64(str,str)")
+RT_FUNC(IndexOfFrom, rt_instr3,   "Viper.String.IndexOfFrom", "i64(str,i64,str)")
+RT_FUNC(Chr,       rt_chr,        "Viper.String.Chr",         "str(i64)")
+RT_FUNC(Asc,       rt_asc,        "Viper.String.Asc",         "i64(str)")
+
+// String conversion and identity constructor
+RT_FUNC(StrFromStr,   rt_from_str,      "Viper.Strings.FromStr",    "str(str)")
+RT_FUNC(IntToStr,     rt_int_to_str,    "Viper.Strings.FromInt",    "str(i64)")
+RT_FUNC(F64ToStr,     rt_f64_to_str,    "Viper.Strings.FromDouble", "str(f64)")
+RT_FUNC(StrFromI32,   rt_str_i32_alloc, "Viper.Strings.FromI32",    "str(i32)")
+RT_FUNC(StrFromI16,   rt_str_i16_alloc, "Viper.Strings.FromI16",    "str(i16)")
+RT_FUNC(StrFromSingle, rt_str_f_alloc,  "Viper.Strings.FromSingle", "str(f64)")
+RT_FUNC(StrFromDoublePrecise, rt_str_d_alloc, "Viper.Strings.FromDoublePrecise", "str(f64)")
+RT_FUNC(SplitFields,  rt_split_fields,  "Viper.Strings.SplitFields", "i64(str,ptr,i64)")
+RT_FUNC(StrEquals,    rt_str_eq,        "Viper.Strings.Equals",     "i1(str,str)")
+
+// String aliases (alternative canonical names for same function)
+RT_ALIAS("Viper.Strings.Len", Len)
+RT_ALIAS("Viper.Strings.Concat", Concat)
+RT_ALIAS("Viper.Strings.Mid", Substr)
+RT_ALIAS("Viper.String.ConcatSelf", Concat)
+
+//=============================================================================
+// TYPE CONVERSION
+//=============================================================================
+
+RT_FUNC(ToInt,       rt_to_int,       "Viper.Convert.ToInt",      "i64(str)")
+RT_FUNC(ToDouble,    rt_to_double,    "Viper.Convert.ToDouble",   "f64(str)")
+RT_FUNC(ParseInt64,  rt_parse_int64,  "Viper.Parse.Int64",        "i32(ptr,ptr)")
+RT_FUNC(ParseDouble, rt_parse_double, "Viper.Parse.Double",       "i32(ptr,ptr)")
+
+//=============================================================================
+// DIAGNOSTICS
+//=============================================================================
+
+RT_FUNC(Trap, rt_trap, "Viper.Diagnostics.Trap", "void(str)")
+
+//=============================================================================
+// MATH FUNCTIONS
+//=============================================================================
+
+RT_FUNC(MathAbs,    rt_abs_f64,         "Viper.Math.Abs",    "f64(f64)")
+RT_FUNC(MathAbsInt, rt_abs_i64,         "Viper.Math.AbsInt", "i64(i64)")
+RT_FUNC(MathSqrt,   rt_sqrt,            "Viper.Math.Sqrt",   "f64(f64)")
+RT_FUNC(MathSin,    rt_sin,             "Viper.Math.Sin",    "f64(f64)")
+RT_FUNC(MathCos,    rt_cos,             "Viper.Math.Cos",    "f64(f64)")
+RT_FUNC(MathTan,    rt_tan,             "Viper.Math.Tan",    "f64(f64)")
+RT_FUNC(MathAtan,   rt_atan,            "Viper.Math.Atan",   "f64(f64)")
+RT_FUNC(MathFloor,  rt_floor,           "Viper.Math.Floor",  "f64(f64)")
+RT_FUNC(MathCeil,   rt_ceil,            "Viper.Math.Ceil",   "f64(f64)")
+RT_FUNC(MathPow,    rt_pow_f64_chkdom,  "Viper.Math.Pow",    "f64(f64,f64)")
+RT_FUNC(MathLog,    rt_log,             "Viper.Math.Log",    "f64(f64)")
+RT_FUNC(MathExp,    rt_exp,             "Viper.Math.Exp",    "f64(f64)")
+RT_FUNC(MathSgn,    rt_sgn_f64,         "Viper.Math.Sgn",    "f64(f64)")
+RT_FUNC(MathSgnInt, rt_sgn_i64,         "Viper.Math.SgnInt", "i64(i64)")
+RT_FUNC(MathMin,    rt_min_f64,         "Viper.Math.Min",    "f64(f64,f64)")
+RT_FUNC(MathMax,    rt_max_f64,         "Viper.Math.Max",    "f64(f64,f64)")
+RT_FUNC(MathMinInt, rt_min_i64,         "Viper.Math.MinInt", "i64(i64,i64)")
+RT_FUNC(MathMaxInt, rt_max_i64,         "Viper.Math.MaxInt", "i64(i64,i64)")
+
+//=============================================================================
+// RANDOM
+//=============================================================================
+
+RT_FUNC(RandomSeed,    rt_randomize_i64, "Viper.Random.Seed",    "void(i64)")
+RT_FUNC(RandomNext,    rt_rnd,           "Viper.Random.Next",    "f64()")
+RT_FUNC(RandomNextInt, rt_rand_int,      "Viper.Random.NextInt", "i64(i64)")
+
+//=============================================================================
+// ENVIRONMENT
+//=============================================================================
+
+RT_FUNC(EnvArgCount,  rt_args_count,     "Viper.Environment.GetArgumentCount", "i64()")
+RT_FUNC(EnvArgGet,    rt_args_get,       "Viper.Environment.GetArgument",      "str(i64)")
+RT_FUNC(EnvCmdLine,   rt_cmdline,        "Viper.Environment.GetCommandLine",   "str()")
+RT_FUNC(EnvIsNative,  rt_env_is_native,  "Viper.Environment.IsNative",         "i1()")
+
+//=============================================================================
+// COLLECTIONS - LIST
+//=============================================================================
+
+RT_FUNC(ListNew,       rt_ns_list_new,      "Viper.Collections.List.New",       "obj()")
+RT_FUNC(ListGetCount,  rt_list_get_count,   "Viper.Collections.List.get_Count", "i64(obj)")
+RT_FUNC(ListAdd,       rt_list_add,         "Viper.Collections.List.Add",       "void(obj,obj)")
+RT_FUNC(ListClear,     rt_list_clear,       "Viper.Collections.List.Clear",     "void(obj)")
+RT_FUNC(ListRemoveAt,  rt_list_remove_at,   "Viper.Collections.List.RemoveAt",  "void(obj,i64)")
+RT_FUNC(ListGetItem,   rt_list_get_item,    "Viper.Collections.List.get_Item",  "obj(obj,i64)")
+RT_FUNC(ListSetItem,   rt_list_set_item,    "Viper.Collections.List.set_Item",  "void(obj,i64,obj)")
+
+//=============================================================================
+// COLLECTIONS - DICTIONARY
+//=============================================================================
+
+RT_FUNC(DictNew,         rt_dict_new,          "Viper.Collections.Dictionary.New",         "obj()")
+RT_FUNC(DictGetCount,    rt_dict_count,        "Viper.Collections.Dictionary.get_Count",   "i64(obj)")
+RT_FUNC(DictSet,         rt_dict_set,          "Viper.Collections.Dictionary.Set",         "void(obj,str,obj)")
+RT_FUNC(DictGet,         rt_dict_get,          "Viper.Collections.Dictionary.Get",         "obj(obj,str)")
+RT_FUNC(DictContainsKey, rt_dict_contains_key, "Viper.Collections.Dictionary.ContainsKey", "i64(obj,str)")
+RT_FUNC(DictRemove,      rt_dict_remove,       "Viper.Collections.Dictionary.Remove",      "i64(obj,str)")
+RT_FUNC(DictClear,       rt_dict_clear,        "Viper.Collections.Dictionary.Clear",       "void(obj)")
+
+//=============================================================================
+// TEXT - STRINGBUILDER
+//=============================================================================
+
+RT_FUNC(SBNew,         rt_ns_stringbuilder_new,  "Viper.Text.StringBuilder.New",          "obj()")
+RT_FUNC(SBAppend,      rt_text_sb_append,        "Viper.Text.StringBuilder.Append",       "obj(obj,str)")
+RT_FUNC(SBToString,    rt_text_sb_to_string,     "Viper.Text.StringBuilder.ToString",     "str(obj)")
+RT_FUNC(SBClear,       rt_text_sb_clear,         "Viper.Text.StringBuilder.Clear",        "void(obj)")
+RT_FUNC(SBGetLength,   rt_text_sb_get_length,    "Viper.Text.StringBuilder.get_Length",   "i64(obj)")
+RT_FUNC(SBGetCapacity, rt_text_sb_get_capacity,  "Viper.Text.StringBuilder.get_Capacity", "i64(obj)")
+
+//=============================================================================
+// IO - FILE
+//=============================================================================
+
+RT_FUNC(FileExists,      rt_io_file_exists,         "Viper.IO.File.Exists",       "i1(str)")
+RT_FUNC(FileReadAllText, rt_io_file_read_all_text,  "Viper.IO.File.ReadAllText",  "str(str)")
+RT_FUNC(FileWriteAllText, rt_io_file_write_all_text, "Viper.IO.File.WriteAllText", "void(str,str)")
+RT_FUNC(FileDelete,      rt_io_file_delete,         "Viper.IO.File.Delete",       "void(str)")
+
+//=============================================================================
+// TERMINAL
+//=============================================================================
+
+RT_FUNC(TermClear,         rt_term_cls,              "Viper.Terminal.Clear",           "void()")
+RT_FUNC(TermInKey,         rt_inkey_str,             "Viper.Terminal.InKey",           "str()")
+RT_FUNC(TermSetColor,      rt_term_color_i32,        "Viper.Terminal.SetColor",        "void(i64,i64)")
+RT_FUNC(TermSetPosition,   rt_term_locate_i32,       "Viper.Terminal.SetPosition",     "void(i64,i64)")
+RT_FUNC(TermSetCursorVisible, rt_term_cursor_visible_i32, "Viper.Terminal.SetCursorVisible", "void(i64)")
+RT_FUNC(TermSetAltScreen,  rt_term_alt_screen_i32,   "Viper.Terminal.SetAltScreen",    "void(i64)")
+RT_FUNC(TermBell,          rt_bell,                  "Viper.Terminal.Bell",            "void()")
+RT_FUNC(TermGetKey,        rt_getkey_str,            "Viper.Terminal.GetKey",          "str()")
+RT_FUNC(TermGetKeyTimeout, rt_getkey_timeout_i32,    "Viper.Terminal.GetKeyTimeout",   "str(i64)")
+RT_FUNC(TermBeginBatch,    rt_term_begin_batch,      "Viper.Terminal.BeginBatch",      "void()")
+RT_FUNC(TermEndBatch,      rt_term_end_batch,        "Viper.Terminal.EndBatch",        "void()")
+RT_FUNC(TermFlush,         rt_term_flush,            "Viper.Terminal.Flush",           "void()")
+
+//=============================================================================
+// TIME
+//=============================================================================
+
+RT_FUNC(TimeSleepMs,     rt_sleep_ms,  "Viper.Time.SleepMs",      "void(i64)")
+RT_FUNC(TimeGetTickCount, rt_timer_ms, "Viper.Time.GetTickCount", "i64()")
+
+//=============================================================================
+// DATETIME
+//=============================================================================
+
+RT_FUNC(DateTimeNow,        rt_datetime_now,         "Viper.DateTime.Now",        "i64()")
+RT_FUNC(DateTimeNowMs,      rt_datetime_now_ms,      "Viper.DateTime.NowMs",      "i64()")
+RT_FUNC(DateTimeYear,       rt_datetime_year,        "Viper.DateTime.Year",       "i64(i64)")
+RT_FUNC(DateTimeMonth,      rt_datetime_month,       "Viper.DateTime.Month",      "i64(i64)")
+RT_FUNC(DateTimeDay,        rt_datetime_day,         "Viper.DateTime.Day",        "i64(i64)")
+RT_FUNC(DateTimeHour,       rt_datetime_hour,        "Viper.DateTime.Hour",       "i64(i64)")
+RT_FUNC(DateTimeMinute,     rt_datetime_minute,      "Viper.DateTime.Minute",     "i64(i64)")
+RT_FUNC(DateTimeSecond,     rt_datetime_second,      "Viper.DateTime.Second",     "i64(i64)")
+RT_FUNC(DateTimeDayOfWeek,  rt_datetime_day_of_week, "Viper.DateTime.DayOfWeek",  "i64(i64)")
+RT_FUNC(DateTimeFormat,     rt_datetime_format,      "Viper.DateTime.Format",     "str(i64,str)")
+RT_FUNC(DateTimeToISO,      rt_datetime_to_iso,      "Viper.DateTime.ToISO",      "str(i64)")
+RT_FUNC(DateTimeCreate,     rt_datetime_create,      "Viper.DateTime.Create",     "i64(i64,i64,i64,i64,i64,i64)")
+RT_FUNC(DateTimeAddSeconds, rt_datetime_add_seconds, "Viper.DateTime.AddSeconds", "i64(i64,i64)")
+RT_FUNC(DateTimeAddDays,    rt_datetime_add_days,    "Viper.DateTime.AddDays",    "i64(i64,i64)")
+RT_FUNC(DateTimeDiff,       rt_datetime_diff,        "Viper.DateTime.Diff",       "i64(i64,i64)")
+
+//=============================================================================
+// OBJECT (BASE CLASS)
+//=============================================================================
+
+RT_FUNC(ObjEquals,         rt_obj_equals,           "Viper.Object.Equals",          "i1(obj,obj)")
+RT_FUNC(ObjGetHashCode,    rt_obj_get_hash_code,    "Viper.Object.GetHashCode",     "i64(obj)")
+RT_FUNC(ObjReferenceEquals, rt_obj_reference_equals, "Viper.Object.ReferenceEquals", "i1(obj,obj)")
+RT_FUNC(ObjToString,       rt_obj_to_string,        "Viper.Object.ToString",        "str(obj)")
+
+//=============================================================================
+// GRAPHICS - WINDOW (uses rt_* names directly, no Viper.* canonical names)
+// Note: These functions don't have RuntimeSignatures entries yet, so we
+// don't generate RuntimeNameMap aliases for them. The RuntimeClasses catalog
+// references the rt_* symbols directly.
+//=============================================================================
+
+// Graphics functions are only used through RuntimeClasses, not RuntimeNameMap
+
+//=============================================================================
+// RUNTIME CLASSES
+//=============================================================================
+
+// Viper.String - built-in string type (ctor is identity function for string → String)
+RT_CLASS_BEGIN("Viper.String", String, "opaque*", StrFromStr)
+    RT_PROP("Length", "i64", Len, none)
+    RT_PROP("IsEmpty", "i1", StrIsEmpty, none)
+    RT_METHOD("Substring", "str(i64,i64)", Substr)
+    RT_METHOD("Concat", "str(str)", Concat)
+    RT_METHOD("Left", "str(i64)", Left)
+    RT_METHOD("Right", "str(i64)", Right)
+    RT_METHOD("Mid", "str(i64)", Mid2)
+    RT_METHOD("MidLen", "str(i64,i64)", Mid3)
+    RT_METHOD("Trim", "str()", Trim)
+    RT_METHOD("TrimStart", "str()", LTrim)
+    RT_METHOD("TrimEnd", "str()", RTrim)
+    RT_METHOD("ToUpper", "str()", UCase)
+    RT_METHOD("ToLower", "str()", LCase)
+    RT_METHOD("IndexOf", "i64(str)", IndexOf)
+    RT_METHOD("IndexOfFrom", "i64(i64,str)", IndexOfFrom)
+    RT_METHOD("Chr", "str(i64)", Chr)
+    RT_METHOD("Asc", "i64()", Asc)
+RT_CLASS_END()
+
+// Viper.Text.StringBuilder
+RT_CLASS_BEGIN("Viper.Text.StringBuilder", StringBuilder, "opaque*", SBNew)
+    RT_PROP("Length", "i64", SBGetLength, none)
+    RT_PROP("Capacity", "i64", SBGetCapacity, none)
+    RT_METHOD("Append", "obj(str)", SBAppend)
+    RT_METHOD("ToString", "str()", SBToString)
+    RT_METHOD("Clear", "void()", SBClear)
+RT_CLASS_END()
+
+// Viper.Object - base class
+RT_CLASS_BEGIN("Viper.Object", Object, "obj", none)
+    RT_METHOD("Equals", "i1(obj)", ObjEquals)
+    RT_METHOD("GetHashCode", "i64()", ObjGetHashCode)
+    RT_METHOD("ToString", "str()", ObjToString)
+    RT_METHOD("ReferenceEquals", "i1(obj,obj)", ObjReferenceEquals)
+RT_CLASS_END()
+
+// Viper.IO.File - static utility class
+RT_CLASS_BEGIN("Viper.IO.File", File, "obj", none)
+    RT_METHOD("Exists", "i1(str)", FileExists)
+    RT_METHOD("ReadAllText", "str(str)", FileReadAllText)
+    RT_METHOD("WriteAllText", "void(str,str)", FileWriteAllText)
+    RT_METHOD("Delete", "void(str)", FileDelete)
+RT_CLASS_END()
+
+// Viper.Collections.List
+RT_CLASS_BEGIN("Viper.Collections.List", List, "obj", ListNew)
+    RT_PROP("Count", "i64", ListGetCount, none)
+    RT_METHOD("Add", "void(obj)", ListAdd)
+    RT_METHOD("Clear", "void()", ListClear)
+    RT_METHOD("RemoveAt", "void(i64)", ListRemoveAt)
+    RT_METHOD("get_Item", "obj(i64)", ListGetItem)
+    RT_METHOD("set_Item", "void(i64,obj)", ListSetItem)
+RT_CLASS_END()
+
+// Viper.Collections.Dictionary
+RT_CLASS_BEGIN("Viper.Collections.Dictionary", Dictionary, "obj", DictNew)
+    RT_PROP("Count", "i64", DictGetCount, none)
+    RT_METHOD("Set", "void(str,obj)", DictSet)
+    RT_METHOD("Get", "obj(str)", DictGet)
+    RT_METHOD("ContainsKey", "i64(str)", DictContainsKey)
+    RT_METHOD("Remove", "i64(str)", DictRemove)
+    RT_METHOD("Clear", "void()", DictClear)
+RT_CLASS_END()
+
+// Viper.Math - static utility class
+RT_CLASS_BEGIN("Viper.Math", Math, "obj", none)
+    RT_METHOD("Abs", "f64(f64)", MathAbs)
+    RT_METHOD("AbsInt", "i64(i64)", MathAbsInt)
+    RT_METHOD("Sqrt", "f64(f64)", MathSqrt)
+    RT_METHOD("Sin", "f64(f64)", MathSin)
+    RT_METHOD("Cos", "f64(f64)", MathCos)
+    RT_METHOD("Tan", "f64(f64)", MathTan)
+    RT_METHOD("Atan", "f64(f64)", MathAtan)
+    RT_METHOD("Floor", "f64(f64)", MathFloor)
+    RT_METHOD("Ceil", "f64(f64)", MathCeil)
+    RT_METHOD("Pow", "f64(f64,f64)", MathPow)
+    RT_METHOD("Log", "f64(f64)", MathLog)
+    RT_METHOD("Exp", "f64(f64)", MathExp)
+    RT_METHOD("Sgn", "f64(f64)", MathSgn)
+    RT_METHOD("SgnInt", "i64(i64)", MathSgnInt)
+    RT_METHOD("Min", "f64(f64,f64)", MathMin)
+    RT_METHOD("Max", "f64(f64,f64)", MathMax)
+    RT_METHOD("MinInt", "i64(i64,i64)", MathMinInt)
+    RT_METHOD("MaxInt", "i64(i64,i64)", MathMaxInt)
+RT_CLASS_END()
+
+// Viper.Console - static utility class
+RT_CLASS_BEGIN("Viper.Console", Console, "obj", none)
+    RT_METHOD("WriteLine", "void(str)", PrintStr)
+    RT_METHOD("ReadLine", "str()", ReadLine)
+RT_CLASS_END()
+
+// Viper.Convert - static utility class
+RT_CLASS_BEGIN("Viper.Convert", Convert, "obj", none)
+    RT_METHOD("ToInt64", "i64(str)", ToInt)
+    RT_METHOD("ToDouble", "f64(str)", ToDouble)
+    RT_METHOD("ToString_Int", "str(i64)", IntToStr)
+    RT_METHOD("ToString_Double", "str(f64)", F64ToStr)
+RT_CLASS_END()
+
+// Viper.Random - static utility class
+RT_CLASS_BEGIN("Viper.Random", Random, "obj", none)
+    RT_METHOD("Seed", "void(i64)", RandomSeed)
+    RT_METHOD("Next", "f64()", RandomNext)
+    RT_METHOD("NextInt", "i64(i64)", RandomNextInt)
+RT_CLASS_END()
+
+// Viper.Environment - static utility class
+RT_CLASS_BEGIN("Viper.Environment", Environment, "obj", none)
+    RT_METHOD("GetArgumentCount", "i64()", EnvArgCount)
+    RT_METHOD("GetArgument", "str(i64)", EnvArgGet)
+    RT_METHOD("GetCommandLine", "str()", EnvCmdLine)
+    RT_METHOD("IsNative", "i1()", EnvIsNative)
+RT_CLASS_END()
+
+// Viper.Graphics.Window - uses rt_* names directly (no canonical Viper.* mapping)
+RT_CLASS_BEGIN("Viper.Graphics.Window", GfxWindow, "obj", "Viper.Graphics.Window.New")
+    RT_PROP("Width", "i64", "rt_gfx_window_width", none)
+    RT_PROP("Height", "i64", "rt_gfx_window_height", none)
+    RT_PROP("ShouldClose", "i64", "rt_gfx_window_should_close", none)
+    RT_METHOD("Update", "void()", "rt_gfx_window_update")
+    RT_METHOD("Clear", "void(i64)", "rt_gfx_window_clear")
+    RT_METHOD("DrawLine", "void(i64,i64,i64,i64,i64)", "rt_gfx_draw_line")
+    RT_METHOD("DrawRect", "void(i64,i64,i64,i64,i64)", "rt_gfx_draw_rect")
+    RT_METHOD("DrawRectOutline", "void(i64,i64,i64,i64,i64)", "rt_gfx_draw_rect_outline")
+    RT_METHOD("DrawCircle", "void(i64,i64,i64,i64)", "rt_gfx_draw_circle")
+    RT_METHOD("DrawCircleOutline", "void(i64,i64,i64,i64)", "rt_gfx_draw_circle_outline")
+    RT_METHOD("SetPixel", "void(i64,i64,i64)", "rt_gfx_set_pixel")
+    RT_METHOD("PollEvent", "i64()", "rt_gfx_poll_event")
+    RT_METHOD("KeyDown", "i64(i64)", "rt_gfx_key_down")
+RT_CLASS_END()
+
+// Viper.Graphics.Color - uses rt_* names directly
+RT_CLASS_BEGIN("Viper.Graphics.Color", GfxColor, "obj", none)
+    RT_METHOD("RGB", "i64(i64,i64,i64)", "rt_gfx_rgb")
+RT_CLASS_END()
+
+// Viper.DateTime - static utility class
+RT_CLASS_BEGIN("Viper.DateTime", DateTime, "obj", none)
+    RT_METHOD("Now", "i64()", DateTimeNow)
+    RT_METHOD("NowMs", "i64()", DateTimeNowMs)
+    RT_METHOD("Year", "i64(i64)", DateTimeYear)
+    RT_METHOD("Month", "i64(i64)", DateTimeMonth)
+    RT_METHOD("Day", "i64(i64)", DateTimeDay)
+    RT_METHOD("Hour", "i64(i64)", DateTimeHour)
+    RT_METHOD("Minute", "i64(i64)", DateTimeMinute)
+    RT_METHOD("Second", "i64(i64)", DateTimeSecond)
+    RT_METHOD("DayOfWeek", "i64(i64)", DateTimeDayOfWeek)
+    RT_METHOD("Format", "str(i64,str)", DateTimeFormat)
+    RT_METHOD("ToISO", "str(i64)", DateTimeToISO)
+    RT_METHOD("Create", "i64(i64,i64,i64,i64,i64,i64)", DateTimeCreate)
+    RT_METHOD("AddSeconds", "i64(i64,i64)", DateTimeAddSeconds)
+    RT_METHOD("AddDays", "i64(i64,i64)", DateTimeAddDays)
+    RT_METHOD("Diff", "i64(i64,i64)", DateTimeDiff)
+RT_CLASS_END()
+
+// Viper.Terminal - static utility class
+RT_CLASS_BEGIN("Viper.Terminal", Terminal, "obj", none)
+    RT_METHOD("Clear", "void()", TermClear)
+    RT_METHOD("SetColor", "void(i64,i64)", TermSetColor)
+    RT_METHOD("SetPosition", "void(i64,i64)", TermSetPosition)
+    RT_METHOD("SetCursorVisible", "void(i64)", TermSetCursorVisible)
+    RT_METHOD("SetAltScreen", "void(i64)", TermSetAltScreen)
+    RT_METHOD("Bell", "void()", TermBell)
+    RT_METHOD("InKey", "str()", TermInKey)
+    RT_METHOD("GetKey", "str()", TermGetKey)
+    RT_METHOD("GetKeyTimeout", "str(i64)", TermGetKeyTimeout)
+    RT_METHOD("BeginBatch", "void()", TermBeginBatch)
+    RT_METHOD("EndBatch", "void()", TermEndBatch)
+    RT_METHOD("Flush", "void()", TermFlush)
+RT_CLASS_END()
+
+// Viper.Time - static utility class
+RT_CLASS_BEGIN("Viper.Time", Time, "obj", none)
+    RT_METHOD("SleepMs", "void(i64)", TimeSleepMs)
+    RT_METHOD("GetTickCount", "i64()", TimeGetTickCount)
+RT_CLASS_END()

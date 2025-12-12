@@ -34,32 +34,32 @@ DIM SCREEN_BUFFER AS STRING
 
 REM Clear the entire screen
 SUB ClearScreen()
-    PRINT ESC; "[2J"
+    CLS
 END SUB
 
-REM Use alternate screen buffer (prevents flicker)
+REM Use alternate screen buffer (enables batch mode for smooth rendering)
 SUB UseAltScreen()
-    PRINT ESC; "[?1049h"
+    ALTSCREEN ON
 END SUB
 
 REM Restore normal screen buffer
 SUB UseNormalScreen()
-    PRINT ESC; "[?1049l"
+    ALTSCREEN OFF
 END SUB
 
 REM Hide the cursor
 SUB HideCursor()
-    PRINT ESC; "[?25l"
+    CURSOR OFF
 END SUB
 
 REM Show the cursor
 SUB ShowCursor()
-    PRINT ESC; "[?25h"
+    CURSOR ON
 END SUB
 
 REM Move cursor to specific row and column
 SUB GotoXY(row AS INTEGER, col AS INTEGER)
-    PRINT ESC; "["; STR$(row); ";"; STR$(col); "H";
+    LOCATE row, col
 END SUB
 
 REM Print text at specific position
@@ -80,22 +80,24 @@ REM ====================================================================
 
 REM Start a new frame - just reposition cursor (no clear to avoid flicker)
 SUB BeginFrame()
-    PRINT ESC; "[H";
+    LOCATE 1, 1
 END SUB
 
 REM Draw colored text at position (direct output)
 SUB BufferColorAt(row AS INTEGER, col AS INTEGER, clr AS STRING, text AS STRING)
-    PRINT ESC; "["; STR$(row); ";"; STR$(col); "H"; ESC; clr; text; ESC; RESET;
+    LOCATE row, col
+    PRINT ESC; clr; text; ESC; RESET;
 END SUB
 
 REM Draw text at position (direct output)
 SUB BufferAt(row AS INTEGER, col AS INTEGER, text AS STRING)
-    PRINT ESC; "["; STR$(row); ";"; STR$(col); "H"; text;
+    LOCATE row, col
+    PRINT text;
 END SUB
 
-REM Flush frame (flush output buffer)
+REM Flush frame (flush output buffer) - now handled by batch mode
 SUB FlushFrame()
-    PRINT ""
+    REM No-op when batch mode is active - output is flushed at frame end
 END SUB
 
 REM Helper: Build a string of repeated characters
