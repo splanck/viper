@@ -448,6 +448,34 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_file_mode PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_file_mode test_rt_file_mode)
 
+    viper_add_test(test_rt_path ${VIPER_TESTS_DIR}/runtime/RTPathTests.cpp)
+    target_link_libraries(test_rt_path PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_path test_rt_path)
+
+    viper_add_test(test_rt_dir ${VIPER_TESTS_DIR}/runtime/RTDirTests.cpp)
+    target_link_libraries(test_rt_dir PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_dir test_rt_dir)
+
+    viper_add_test(test_rt_file_ext ${VIPER_TESTS_DIR}/runtime/RTFileExtTests.cpp)
+    target_link_libraries(test_rt_file_ext PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_file_ext test_rt_file_ext)
+
+    viper_add_test(test_rt_math_ext ${VIPER_TESTS_DIR}/runtime/RTMathExtTests.cpp)
+    target_link_libraries(test_rt_math_ext PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_math_ext test_rt_math_ext)
+
+    viper_add_test(test_rt_clock ${VIPER_TESTS_DIR}/runtime/RTClockTests.cpp)
+    target_link_libraries(test_rt_clock PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_clock test_rt_clock)
+
+    viper_add_test(test_rt_stopwatch ${VIPER_TESTS_DIR}/runtime/RTStopwatchTests.cpp)
+    target_link_libraries(test_rt_stopwatch PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_stopwatch test_rt_stopwatch)
+
+    viper_add_test(test_rt_guid ${VIPER_TESTS_DIR}/runtime/RTGuidTests.cpp)
+    target_link_libraries(test_rt_guid PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_guid test_rt_guid)
+
     viper_add_test(test_rt_abs_i64_overflow ${VIPER_TESTS_DIR}/runtime/RTAbsI64OverflowTests.cpp)
     target_link_libraries(test_rt_abs_i64_overflow PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_abs_i64_overflow test_rt_abs_i64_overflow)

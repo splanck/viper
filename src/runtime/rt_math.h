@@ -193,6 +193,76 @@ extern "C"
     /// @return The larger of @p a and @p b.
     long long rt_max_i64(long long a, long long b);
 
+    //=========================================================================
+    // Additional Math Functions
+    //=========================================================================
+
+    /// @brief Compute arc tangent of y/x using signs to determine quadrant.
+    double rt_atan2(double y, double x);
+
+    /// @brief Compute arc sine of x.
+    double rt_asin(double x);
+
+    /// @brief Compute arc cosine of x.
+    double rt_acos(double x);
+
+    /// @brief Compute hyperbolic sine of x.
+    double rt_sinh(double x);
+
+    /// @brief Compute hyperbolic cosine of x.
+    double rt_cosh(double x);
+
+    /// @brief Compute hyperbolic tangent of x.
+    double rt_tanh(double x);
+
+    /// @brief Round to nearest integer.
+    double rt_round(double x);
+
+    /// @brief Truncate toward zero.
+    double rt_trunc(double x);
+
+    /// @brief Compute base-10 logarithm.
+    double rt_log10(double x);
+
+    /// @brief Compute base-2 logarithm.
+    double rt_log2(double x);
+
+    /// @brief Compute floating-point remainder.
+    double rt_fmod(double x, double y);
+
+    /// @brief Compute sqrt(x*x + y*y) without overflow.
+    double rt_hypot(double x, double y);
+
+    /// @brief Clamp a value to a range [lo, hi].
+    double rt_clamp_f64(double val, double lo, double hi);
+
+    /// @brief Clamp an integer to a range [lo, hi].
+    long long rt_clamp_i64(long long val, long long lo, long long hi);
+
+    /// @brief Linear interpolation between a and b.
+    double rt_lerp(double a, double b, double t);
+
+    /// @brief Wrap a value to range [lo, hi).
+    double rt_wrap_f64(double val, double lo, double hi);
+
+    /// @brief Wrap an integer to range [lo, hi).
+    long long rt_wrap_i64(long long val, long long lo, long long hi);
+
+    /// @brief Return the constant Pi.
+    double rt_math_pi(void);
+
+    /// @brief Return Euler's number.
+    double rt_math_e(void);
+
+    /// @brief Return Tau (2*Pi).
+    double rt_math_tau(void);
+
+    /// @brief Convert radians to degrees.
+    double rt_deg(double radians);
+
+    /// @brief Convert degrees to radians.
+    double rt_rad(double degrees);
+
 #ifdef __cplusplus
 }
 #endif

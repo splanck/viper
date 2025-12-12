@@ -10,8 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_internal.h"
 #include "rt_bytes.h"
+#include "rt_internal.h"
 #include "rt_string.h"
 
 #include <cassert>
@@ -33,17 +33,17 @@ extern "C" void vm_trap(const char *msg)
     rt_abort(msg);
 }
 
-#define EXPECT_TRAP(expr)                                                      \
-    do                                                                         \
-    {                                                                          \
-        g_trap_expected = true;                                                \
-        g_last_trap = nullptr;                                                 \
-        if (setjmp(g_trap_jmp) == 0)                                           \
-        {                                                                      \
-            expr;                                                              \
-            assert(false && "Expected trap did not occur");                    \
-        }                                                                      \
-        g_trap_expected = false;                                               \
+#define EXPECT_TRAP(expr)                                                                          \
+    do                                                                                             \
+    {                                                                                              \
+        g_trap_expected = true;                                                                    \
+        g_last_trap = nullptr;                                                                     \
+        if (setjmp(g_trap_jmp) == 0)                                                               \
+        {                                                                                          \
+            expr;                                                                                  \
+            assert(false && "Expected trap did not occur");                                        \
+        }                                                                                          \
+        g_trap_expected = false;                                                                   \
     } while (0)
 
 static void test_new_creates_zero_filled_bytes()
@@ -238,8 +238,8 @@ static void test_copy_bounds_check()
     void *src = rt_bytes_new(5);
     void *dst = rt_bytes_new(5);
 
-    EXPECT_TRAP(rt_bytes_copy(dst, 3, src, 0, 5)); // dst overflow
-    EXPECT_TRAP(rt_bytes_copy(dst, 0, src, 3, 5)); // src overflow
+    EXPECT_TRAP(rt_bytes_copy(dst, 3, src, 0, 5));  // dst overflow
+    EXPECT_TRAP(rt_bytes_copy(dst, 0, src, 3, 5));  // src overflow
     EXPECT_TRAP(rt_bytes_copy(dst, -1, src, 0, 1)); // negative dst index
     EXPECT_TRAP(rt_bytes_copy(dst, 0, src, -1, 1)); // negative src index
     EXPECT_TRAP(rt_bytes_copy(dst, 0, src, 0, -1)); // negative count

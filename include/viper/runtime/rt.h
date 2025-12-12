@@ -53,6 +53,31 @@ void rt_sleep_ms(int32_t ms);
 /// @return Milliseconds from a monotonic source (non-decreasing). Suitable for diffs.
 int64_t rt_timer_ms(void);
 
+//=============================================================================
+// Viper.Time.Clock functions
+//=============================================================================
+
+/// What: Sleep for approximately @p ms milliseconds (i64 interface).
+/// Why:  Viper.Time.Clock.Sleep entry point.
+/// How:  Delegates to rt_sleep_ms after clamping to int32 range.
+///
+/// @param ms Milliseconds to sleep; negative values are treated as 0.
+void rt_clock_sleep(int64_t ms);
+
+/// What: Return monotonic time in milliseconds since an unspecified epoch.
+/// Why:  Viper.Time.Clock.Ticks entry point.
+/// How:  Delegates to rt_timer_ms.
+///
+/// @return Milliseconds from a monotonic source (non-decreasing).
+int64_t rt_clock_ticks(void);
+
+/// What: Return monotonic time in microseconds since an unspecified epoch.
+/// Why:  Viper.Time.Clock.TicksUs entry point for high-precision timing.
+/// How:  Reads a steady clock at microsecond resolution.
+///
+/// @return Microseconds from a monotonic source (non-decreasing).
+int64_t rt_clock_ticks_us(void);
+
 // --- High-level file helpers for Viper.IO.File ---
 /// What: Return 1 if the file at @p path exists, 0 otherwise.
 /// Why:  BASIC IO helpers need a fast existence check.

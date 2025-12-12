@@ -99,6 +99,16 @@ extern "C"
     /// @errors RT_SB_ERROR_INVALID if @p text is NULL.
     rt_sb_status rt_sb_append_cstr(rt_string_builder *sb, const char *text);
 
+    /// What: Append a fixed-length byte sequence to the builder.
+    /// Why:  Support appending strings when length is already known (avoids strlen).
+    /// How:  Reserves space, copies len bytes, updates length.
+    ///
+    /// @param sb   Builder instance.
+    /// @param text Pointer to bytes (may be NULL if len == 0).
+    /// @param len  Number of bytes to copy.
+    /// @return RT_SB_OK on success; error code as per rt_sb_reserve or RT_SB_ERROR_INVALID.
+    rt_sb_status rt_sb_append_bytes(rt_string_builder *sb, const char *text, size_t len);
+
     /// What: Append a signed 64-bit integer.
     /// Why:  Support efficient numeric formatting without intermediate strings.
     /// How:  Formats value into a scratch buffer with deterministic representation and appends.

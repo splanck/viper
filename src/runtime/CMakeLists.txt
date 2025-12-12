@@ -44,6 +44,10 @@ set(RT_SOURCES
         rt_graphics.c
         rt_datetime.c
         rt_map.c
+        rt_path.c
+        rt_dir.c
+        rt_stopwatch.c
+        rt_guid.c
 )
 
 set(RT_PUBLIC_HEADERS
@@ -77,6 +81,8 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_graphics.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_datetime.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_map.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_path.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_dir.h
 )
 
 add_library(viper_runtime STATIC ${RT_SOURCES})

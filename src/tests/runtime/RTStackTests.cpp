@@ -10,8 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_stack.h"
 #include "rt_internal.h"
+#include "rt_stack.h"
 
 #include <cassert>
 #include <csetjmp>
@@ -32,17 +32,17 @@ extern "C" void vm_trap(const char *msg)
     rt_abort(msg);
 }
 
-#define EXPECT_TRAP(expr)                                                      \
-    do                                                                         \
-    {                                                                          \
-        g_trap_expected = true;                                                \
-        g_last_trap = nullptr;                                                 \
-        if (setjmp(g_trap_jmp) == 0)                                           \
-        {                                                                      \
-            expr;                                                              \
-            assert(false && "Expected trap did not occur");                    \
-        }                                                                      \
-        g_trap_expected = false;                                               \
+#define EXPECT_TRAP(expr)                                                                          \
+    do                                                                                             \
+    {                                                                                              \
+        g_trap_expected = true;                                                                    \
+        g_last_trap = nullptr;                                                                     \
+        if (setjmp(g_trap_jmp) == 0)                                                               \
+        {                                                                                          \
+            expr;                                                                                  \
+            assert(false && "Expected trap did not occur");                                        \
+        }                                                                                          \
+        g_trap_expected = false;                                                                   \
     } while (0)
 
 static void test_new_and_basic_properties()

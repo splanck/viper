@@ -12,18 +12,30 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "rt_bytes.h"
 #include "rt_file.h"
 #include "rt_file_path.h"
 #include "rt_internal.h"
+#include "rt_seq.h"
 #include "rt_string.h"
 
 #include <errno.h>
 #include <fcntl.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+
+#ifdef _WIN32
+#include <io.h>
+#include <sys/utime.h>
+#define utime _utime
+#define utimbuf _utimbuf
+#else
+#include <utime.h>
+#endif
 
 /// What: Return 1 if the file at @p path exists, 0 otherwise.
 /// Why:  Support Viper.IO.File.Exists semantics from the runtime.
@@ -137,4 +149,336 @@ void rt_io_file_delete(rt_string path)
     if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
         return;
     (void)unlink(cpath);
+}
+
+/// What: Copy a file from @p src to @p dst.
+/// Why:  Allow file duplication without platform-specific APIs.
+/// How:  Reads src file and writes to dst file.
+void rt_file_copy(rt_string src, rt_string dst)
+{
+    const char *src_path = NULL;
+    const char *dst_path = NULL;
+    if (!rt_file_path_from_vstr(src, &src_path) || !src_path)
+        return;
+    if (!rt_file_path_from_vstr(dst, &dst_path) || !dst_path)
+        return;
+
+    int src_fd = open(src_path, O_RDONLY);
+    if (src_fd < 0)
+        return;
+
+    int dst_fd = open(dst_path, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+    if (dst_fd < 0)
+    {
+        close(src_fd);
+        return;
+    }
+
+    char buf[8192];
+    ssize_t n;
+    while ((n = read(src_fd, buf, sizeof(buf))) > 0)
+    {
+        size_t written = 0;
+        while (written < (size_t)n)
+        {
+            ssize_t w = write(dst_fd, buf + written, (size_t)n - written);
+            if (w < 0)
+            {
+                if (errno == EINTR)
+                    continue;
+                close(src_fd);
+                close(dst_fd);
+                return;
+            }
+            written += (size_t)w;
+        }
+    }
+
+    close(src_fd);
+    close(dst_fd);
+}
+
+/// What: Move/rename a file from @p src to @p dst.
+/// Why:  Allow file relocation without platform-specific APIs.
+/// How:  Uses rename(); falls back to copy+delete if needed.
+void rt_file_move(rt_string src, rt_string dst)
+{
+    const char *src_path = NULL;
+    const char *dst_path = NULL;
+    if (!rt_file_path_from_vstr(src, &src_path) || !src_path)
+        return;
+    if (!rt_file_path_from_vstr(dst, &dst_path) || !dst_path)
+        return;
+
+    if (rename(src_path, dst_path) == 0)
+        return;
+
+    // Fallback: copy then delete (for cross-filesystem moves)
+    rt_file_copy(src, dst);
+    (void)unlink(src_path);
+}
+
+/// What: Get the size of a file in bytes.
+/// Why:  Allow querying file size without opening the file.
+/// How:  Uses stat() to get file size.
+int64_t rt_file_size(rt_string path)
+{
+    const char *cpath = NULL;
+    if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
+        return -1;
+
+    struct stat st;
+    if (stat(cpath, &st) != 0)
+        return -1;
+
+    return (int64_t)st.st_size;
+}
+
+/// What: Read entire file as a Bytes object.
+/// Why:  Support binary file reading.
+/// How:  Opens file, reads all bytes, returns Bytes object.
+void *rt_file_read_bytes(rt_string path)
+{
+    const char *cpath = NULL;
+    if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
+        return rt_bytes_new(0);
+
+    int fd = open(cpath, O_RDONLY);
+    if (fd < 0)
+        return rt_bytes_new(0);
+
+    struct stat st;
+    if (fstat(fd, &st) != 0)
+    {
+        close(fd);
+        return rt_bytes_new(0);
+    }
+
+    size_t size = (st.st_size > 0) ? (size_t)st.st_size : 0;
+    if (size == 0)
+    {
+        close(fd);
+        return rt_bytes_new(0);
+    }
+
+    // Create bytes object with the file size
+    void *bytes = rt_bytes_new((int64_t)size);
+
+    // Read directly into bytes data
+    // We need to access the internal data pointer for this
+    // Use a temporary buffer and copy
+    char *buf = (char *)malloc(size);
+    if (!buf)
+    {
+        close(fd);
+        return bytes; // Return empty bytes
+    }
+
+    size_t off = 0;
+    while (off < size)
+    {
+        ssize_t n = read(fd, buf + off, size - off);
+        if (n < 0)
+        {
+            if (errno == EINTR)
+                continue;
+            free(buf);
+            close(fd);
+            return bytes;
+        }
+        if (n == 0)
+            break;
+        off += (size_t)n;
+    }
+    close(fd);
+
+    // Copy into bytes object
+    for (size_t i = 0; i < off; i++)
+    {
+        rt_bytes_set(bytes, (int64_t)i, (uint8_t)buf[i]);
+    }
+
+    free(buf);
+    return bytes;
+}
+
+/// What: Write a Bytes object to a file.
+/// Why:  Support binary file writing.
+/// How:  Opens file, writes all bytes from Bytes object.
+void rt_file_write_bytes(rt_string path, void *bytes)
+{
+    const char *cpath = NULL;
+    if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
+        return;
+
+    if (!bytes)
+        return;
+
+    int fd = open(cpath, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+    if (fd < 0)
+        return;
+
+    int64_t len = rt_bytes_len(bytes);
+    for (int64_t i = 0; i < len; i++)
+    {
+        uint8_t byte = (uint8_t)rt_bytes_get(bytes, i);
+        ssize_t n;
+        do
+        {
+            n = write(fd, &byte, 1);
+        } while (n < 0 && errno == EINTR);
+    }
+
+    close(fd);
+}
+
+/// What: Read entire file as a sequence of lines.
+/// Why:  Support line-by-line text file reading.
+/// How:  Reads file, splits by newlines, returns Seq of strings.
+void *rt_file_read_lines(rt_string path)
+{
+    void *seq = rt_seq_new();
+
+    rt_string content = rt_io_file_read_all_text(path);
+    if (!content || rt_len(content) == 0)
+        return seq;
+
+    const char *data = rt_string_cstr(content);
+    if (!data)
+        return seq;
+
+    size_t len = (size_t)rt_len(content);
+    size_t line_start = 0;
+
+    for (size_t i = 0; i <= len; i++)
+    {
+        if (i == len || data[i] == '\n')
+        {
+            size_t line_end = i;
+            // Handle \r\n
+            if (line_end > line_start && data[line_end - 1] == '\r')
+                line_end--;
+
+            rt_string line = rt_string_from_bytes(data + line_start, line_end - line_start);
+            rt_seq_push(seq, line);
+            line_start = i + 1;
+        }
+    }
+
+    return seq;
+}
+
+/// What: Write a sequence of strings to a file as lines.
+/// Why:  Support line-by-line text file writing.
+/// How:  Writes each string followed by newline.
+void rt_file_write_lines(rt_string path, void *lines)
+{
+    const char *cpath = NULL;
+    if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
+        return;
+
+    if (!lines)
+        return;
+
+    int fd = open(cpath, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+    if (fd < 0)
+        return;
+
+    int64_t count = rt_seq_len(lines);
+    for (int64_t i = 0; i < count; i++)
+    {
+        rt_string line = (rt_string)rt_seq_get(lines, i);
+        if (line)
+        {
+            const uint8_t *data = NULL;
+            size_t len = rt_file_string_view(line, &data);
+            size_t written = 0;
+            while (written < len)
+            {
+                ssize_t n = write(fd, data + written, len - written);
+                if (n < 0)
+                {
+                    if (errno == EINTR)
+                        continue;
+                    break;
+                }
+                written += (size_t)n;
+            }
+        }
+        // Write newline
+        char nl = '\n';
+        ssize_t n;
+        do
+        {
+            n = write(fd, &nl, 1);
+        } while (n < 0 && errno == EINTR);
+    }
+
+    close(fd);
+}
+
+/// What: Append text to an existing file.
+/// Why:  Support appending without reading+writing entire file.
+/// How:  Opens file with O_APPEND and writes text.
+void rt_file_append(rt_string path, rt_string text)
+{
+    const char *cpath = NULL;
+    if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
+        return;
+
+    int fd = open(cpath, O_WRONLY | O_CREAT | O_APPEND, 0666);
+    if (fd < 0)
+        return;
+
+    const uint8_t *data = NULL;
+    size_t len = rt_file_string_view(text, &data);
+    size_t written = 0;
+    while (written < len)
+    {
+        ssize_t n = write(fd, data + written, len - written);
+        if (n < 0)
+        {
+            if (errno == EINTR)
+                continue;
+            break;
+        }
+        written += (size_t)n;
+    }
+
+    close(fd);
+}
+
+/// What: Get file modification time as Unix timestamp.
+/// Why:  Support querying when a file was last modified.
+/// How:  Uses stat() to get mtime.
+int64_t rt_file_modified(rt_string path)
+{
+    const char *cpath = NULL;
+    if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
+        return 0;
+
+    struct stat st;
+    if (stat(cpath, &st) != 0)
+        return 0;
+
+    return (int64_t)st.st_mtime;
+}
+
+/// What: Create file or update modification time.
+/// Why:  Support "touch" semantics from Unix.
+/// How:  Creates file if not exists, updates mtime if exists.
+void rt_file_touch(rt_string path)
+{
+    const char *cpath = NULL;
+    if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
+        return;
+
+    // Try to update mtime (works if file exists)
+    if (utime(cpath, NULL) == 0)
+        return;
+
+    // File doesn't exist, create it
+    int fd = open(cpath, O_WRONLY | O_CREAT, 0666);
+    if (fd >= 0)
+        close(fd);
 }

@@ -1067,7 +1067,7 @@ void *rt_str_split(rt_string str, rt_string delim)
     // Add final segment
     size_t final_len = (size_t)(end - start);
     rt_string final = rt_string_from_bytes(start, final_len);
-    rt_seq_push(result, (void *)final);
+    rt_seq_push(result, (void *) final);
 
     return result;
 }

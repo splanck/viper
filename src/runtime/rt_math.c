@@ -225,6 +225,226 @@ extern "C"
         return a > b ? a : b;
     }
 
+    //=========================================================================
+    // Additional Math Functions
+    //=========================================================================
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+#ifndef M_E
+#define M_E 2.71828182845904523536
+#endif
+#define M_TAU (2.0 * M_PI)
+
+    /// @brief Compute arc tangent of y/x using signs to determine quadrant.
+    /// @param y Y coordinate.
+    /// @param x X coordinate.
+    /// @return Angle in radians in range [-pi, pi].
+    double rt_atan2(double y, double x)
+    {
+        return atan2(y, x);
+    }
+
+    /// @brief Compute arc sine of x.
+    /// @param x Input in range [-1, 1].
+    /// @return Angle in radians in range [-pi/2, pi/2].
+    double rt_asin(double x)
+    {
+        return asin(x);
+    }
+
+    /// @brief Compute arc cosine of x.
+    /// @param x Input in range [-1, 1].
+    /// @return Angle in radians in range [0, pi].
+    double rt_acos(double x)
+    {
+        return acos(x);
+    }
+
+    /// @brief Compute hyperbolic sine of x.
+    /// @param x Input value.
+    /// @return sinh(x).
+    double rt_sinh(double x)
+    {
+        return sinh(x);
+    }
+
+    /// @brief Compute hyperbolic cosine of x.
+    /// @param x Input value.
+    /// @return cosh(x).
+    double rt_cosh(double x)
+    {
+        return cosh(x);
+    }
+
+    /// @brief Compute hyperbolic tangent of x.
+    /// @param x Input value.
+    /// @return tanh(x).
+    double rt_tanh(double x)
+    {
+        return tanh(x);
+    }
+
+    /// @brief Round to nearest integer, away from zero on tie.
+    /// @param x Input value.
+    /// @return Rounded value.
+    double rt_round(double x)
+    {
+        return round(x);
+    }
+
+    /// @brief Truncate toward zero.
+    /// @param x Input value.
+    /// @return Truncated value.
+    double rt_trunc(double x)
+    {
+        return trunc(x);
+    }
+
+    /// @brief Compute base-10 logarithm.
+    /// @param x Input (must be positive).
+    /// @return log10(x).
+    double rt_log10(double x)
+    {
+        return log10(x);
+    }
+
+    /// @brief Compute base-2 logarithm.
+    /// @param x Input (must be positive).
+    /// @return log2(x).
+    double rt_log2(double x)
+    {
+        return log2(x);
+    }
+
+    /// @brief Compute floating-point remainder.
+    /// @param x Dividend.
+    /// @param y Divisor.
+    /// @return Remainder of x/y.
+    double rt_fmod(double x, double y)
+    {
+        return fmod(x, y);
+    }
+
+    /// @brief Compute sqrt(x*x + y*y) without overflow.
+    /// @param x First value.
+    /// @param y Second value.
+    /// @return Hypotenuse.
+    double rt_hypot(double x, double y)
+    {
+        return hypot(x, y);
+    }
+
+    /// @brief Clamp a value to a range [lo, hi].
+    /// @param val Value to clamp.
+    /// @param lo Lower bound.
+    /// @param hi Upper bound.
+    /// @return Clamped value.
+    double rt_clamp_f64(double val, double lo, double hi)
+    {
+        if (val < lo)
+            return lo;
+        if (val > hi)
+            return hi;
+        return val;
+    }
+
+    /// @brief Clamp an integer to a range [lo, hi].
+    /// @param val Value to clamp.
+    /// @param lo Lower bound.
+    /// @param hi Upper bound.
+    /// @return Clamped value.
+    long long rt_clamp_i64(long long val, long long lo, long long hi)
+    {
+        if (val < lo)
+            return lo;
+        if (val > hi)
+            return hi;
+        return val;
+    }
+
+    /// @brief Linear interpolation between a and b.
+    /// @param a Start value.
+    /// @param b End value.
+    /// @param t Interpolation factor (0 = a, 1 = b).
+    /// @return Interpolated value.
+    double rt_lerp(double a, double b, double t)
+    {
+        return a + t * (b - a);
+    }
+
+    /// @brief Wrap a value to range [lo, hi).
+    /// @param val Value to wrap.
+    /// @param lo Lower bound (inclusive).
+    /// @param hi Upper bound (exclusive).
+    /// @return Wrapped value.
+    double rt_wrap_f64(double val, double lo, double hi)
+    {
+        double range = hi - lo;
+        if (range <= 0.0)
+            return lo;
+
+        double result = fmod(val - lo, range);
+        if (result < 0.0)
+            result += range;
+        return result + lo;
+    }
+
+    /// @brief Wrap an integer to range [lo, hi).
+    /// @param val Value to wrap.
+    /// @param lo Lower bound (inclusive).
+    /// @param hi Upper bound (exclusive).
+    /// @return Wrapped value.
+    long long rt_wrap_i64(long long val, long long lo, long long hi)
+    {
+        long long range = hi - lo;
+        if (range <= 0)
+            return lo;
+
+        long long result = (val - lo) % range;
+        if (result < 0)
+            result += range;
+        return result + lo;
+    }
+
+    /// @brief Return the constant Pi.
+    /// @return Pi (3.14159...).
+    double rt_math_pi(void)
+    {
+        return M_PI;
+    }
+
+    /// @brief Return Euler's number.
+    /// @return e (2.71828...).
+    double rt_math_e(void)
+    {
+        return M_E;
+    }
+
+    /// @brief Return Tau (2*Pi).
+    /// @return Tau (6.28318...).
+    double rt_math_tau(void)
+    {
+        return M_TAU;
+    }
+
+    /// @brief Convert radians to degrees.
+    /// @param radians Angle in radians.
+    /// @return Angle in degrees.
+    double rt_deg(double radians)
+    {
+        return radians * (180.0 / M_PI);
+    }
+
+    /// @brief Convert degrees to radians.
+    /// @param degrees Angle in degrees.
+    /// @return Angle in radians.
+    double rt_rad(double degrees)
+    {
+        return degrees * (M_PI / 180.0);
+    }
+
 #ifdef __cplusplus
 }
 #endif

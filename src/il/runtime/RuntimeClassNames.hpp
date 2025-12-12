@@ -36,7 +36,10 @@ inline constexpr std::string_view RTCLASS_DATETIME = "Viper.DateTime";
 inline constexpr std::string_view RTCLASS_GFX_WINDOW = "Viper.Graphics.Window";
 inline constexpr std::string_view RTCLASS_GFX_COLOR = "Viper.Graphics.Color";
 inline constexpr std::string_view RTCLASS_TERMINAL = "Viper.Terminal";
-inline constexpr std::string_view RTCLASS_TIME = "Viper.Time";
+inline constexpr std::string_view RTCLASS_TIME = "Viper.Time"; // Deprecated, use RTCLASS_CLOCK
+inline constexpr std::string_view RTCLASS_CLOCK = "Viper.Time.Clock";
+inline constexpr std::string_view RTCLASS_STOPWATCH = "Viper.Diagnostics.Stopwatch";
+inline constexpr std::string_view RTCLASS_GUID = "Viper.Text.Guid";
 
 // Utility namespace prefixes
 inline constexpr std::string_view RTNS_STRINGS = "Viper.Strings";

@@ -13,6 +13,7 @@ The Viper Runtime Library provides a set of built-in classes and utilities avail
 - [Viper.String](#viperstring)
 - [Viper.Object](#viperobject)
 - [Viper.Text.StringBuilder](#vipertextstringbuilder)
+- [Viper.Text.Guid](#vipertextguid)
 - [Viper.Collections.List](#vipercollectionslist)
 - [Viper.Collections.Map](#vipercollectionsmap)
 - [Viper.Collections.Seq](#vipercollectionsseq)
@@ -26,8 +27,13 @@ The Viper Runtime Library provides a set of built-in classes and utilities avail
 - [Viper.Environment](#viperenvironment)
 - [Viper.DateTime](#viperdatetime)
 - [Viper.IO.File](#viperiofile)
+- [Viper.IO.Path](#viperiopath)
+- [Viper.IO.Dir](#viperiodir)
 - [Viper.Graphics.Canvas](#vipergraphicscanvas)
 - [Viper.Graphics.Color](#vipergraphicscolor)
+- [Viper.Time.Clock](#vipertimeclock)
+- [Viper.Diagnostics.Stopwatch](#viperdiagnosticsstopwatch)
+- [Runtime Architecture](#runtime-architecture)
 
 ---
 
@@ -51,6 +57,7 @@ The Viper Runtime Library provides a set of built-in classes and utilities avail
 | Class | Type | Description |
 |-------|------|-------------|
 | `StringBuilder` | Instance | Mutable string builder for efficient concatenation |
+| `Guid` | Static | UUID version 4 generation and manipulation |
 
 ### Viper.Collections
 
@@ -68,6 +75,8 @@ The Viper Runtime Library provides a set of built-in classes and utilities avail
 | Class | Type | Description |
 |-------|------|-------------|
 | `File` | Static | File system operations (read, write, delete) |
+| `Path` | Static | Cross-platform path manipulation utilities |
+| `Dir` | Static | Directory operations (create, remove, list) |
 
 ### Viper.Graphics
 
@@ -75,6 +84,18 @@ The Viper Runtime Library provides a set of built-in classes and utilities avail
 |-------|------|-------------|
 | `Canvas` | Instance | 2D graphics canvas with drawing primitives |
 | `Color` | Static | Color creation utilities |
+
+### Viper.Time
+
+| Class | Type | Description |
+|-------|------|-------------|
+| `Clock` | Static | Basic timing utilities (sleep, ticks) |
+
+### Viper.Diagnostics
+
+| Class | Type | Description |
+|-------|------|-------------|
+| `Stopwatch` | Instance | High-precision timing for benchmarking |
 
 ### Class Types
 
@@ -300,6 +321,64 @@ result = ""
 FOR i = 1 TO 1000
     result = result + "item "  ' Creates new string each iteration
 NEXT i
+```
+
+---
+
+## Viper.Text.Guid
+
+UUID version 4 (random) generation and manipulation per RFC 4122.
+
+**Type:** Static utility class
+
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `Empty` | String | Returns the nil UUID "00000000-0000-0000-0000-000000000000" |
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `New()` | `String()` | Generate a new random UUID v4 |
+| `IsValid(guid)` | `Boolean(String)` | Check if string is a valid GUID format |
+| `ToBytes(guid)` | `Bytes(String)` | Convert GUID string to 16-byte array |
+| `FromBytes(bytes)` | `String(Bytes)` | Convert 16-byte array to GUID string |
+
+### Notes
+
+- Generated GUIDs follow UUID version 4 format (random)
+- Format: `xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx` where:
+  - `4` indicates version 4 (random UUID)
+  - `y` is one of `8`, `9`, `a`, or `b` (variant indicator)
+- All hex characters are lowercase
+- Uses cryptographically secure random source where available (/dev/urandom on Unix, CryptGenRandom on Windows)
+- `ToBytes()` traps if the GUID format is invalid
+- `FromBytes()` traps if the Bytes object is not exactly 16 bytes
+
+### Example
+
+```basic
+' Generate a new GUID
+DIM id AS STRING = Viper.Text.Guid.New()
+PRINT id  ' Example: "550e8400-e29b-41d4-a716-446655440000"
+
+' Check if a string is a valid GUID
+DIM valid AS INTEGER = Viper.Text.Guid.IsValid(id)
+PRINT valid  ' Output: 1 (true)
+
+DIM invalid AS INTEGER = Viper.Text.Guid.IsValid("not-a-guid")
+PRINT invalid  ' Output: 0 (false)
+
+' Get the empty/nil GUID
+DIM empty AS STRING = Viper.Text.Guid.Empty
+PRINT empty  ' Output: "00000000-0000-0000-0000-000000000000"
+
+' Convert to/from bytes for storage or transmission
+DIM bytes AS OBJECT = Viper.Text.Guid.ToBytes(id)
+DIM restored AS STRING = Viper.Text.Guid.FromBytes(bytes)
+PRINT restored = id  ' Output: 1 (true)
 ```
 
 ---
@@ -735,50 +814,127 @@ Mathematical functions and constants.
 
 **Type:** Static utility class
 
-### Methods
+### Constants
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `Pi` | `Double` | π (3.14159265358979...) |
+| `E` | `Double` | Euler's number (2.71828182845904...) |
+| `Tau` | `Double` | τ = 2π (6.28318530717958...) |
+
+### Basic Functions
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `Abs(x)` | `Double(Double)` | Absolute value of a floating-point number |
 | `AbsInt(x)` | `Integer(Integer)` | Absolute value of an integer |
 | `Sqrt(x)` | `Double(Double)` | Square root |
+| `Pow(base, exp)` | `Double(Double, Double)` | Raises base to the power of exp |
+| `Exp(x)` | `Double(Double)` | e raised to the power x |
+| `Sgn(x)` | `Double(Double)` | Sign of x: -1, 0, or 1 |
+| `SgnInt(x)` | `Integer(Integer)` | Sign of integer x: -1, 0, or 1 |
+
+### Trigonometric Functions
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
 | `Sin(x)` | `Double(Double)` | Sine (radians) |
 | `Cos(x)` | `Double(Double)` | Cosine (radians) |
 | `Tan(x)` | `Double(Double)` | Tangent (radians) |
 | `Atan(x)` | `Double(Double)` | Arctangent (returns radians) |
+| `Atan2(y, x)` | `Double(Double, Double)` | Arctangent of y/x (returns radians, respects quadrant) |
+| `Asin(x)` | `Double(Double)` | Arc sine (returns radians) |
+| `Acos(x)` | `Double(Double)` | Arc cosine (returns radians) |
+
+### Hyperbolic Functions
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `Sinh(x)` | `Double(Double)` | Hyperbolic sine |
+| `Cosh(x)` | `Double(Double)` | Hyperbolic cosine |
+| `Tanh(x)` | `Double(Double)` | Hyperbolic tangent |
+
+### Logarithmic Functions
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `Log(x)` | `Double(Double)` | Natural logarithm (base e) |
+| `Log10(x)` | `Double(Double)` | Base-10 logarithm |
+| `Log2(x)` | `Double(Double)` | Base-2 logarithm |
+
+### Rounding Functions
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
 | `Floor(x)` | `Double(Double)` | Largest integer less than or equal to x |
 | `Ceil(x)` | `Double(Double)` | Smallest integer greater than or equal to x |
-| `Pow(base, exp)` | `Double(Double, Double)` | Raises base to the power of exp |
-| `Log(x)` | `Double(Double)` | Natural logarithm (base e) |
-| `Exp(x)` | `Double(Double)` | e raised to the power x |
-| `Sgn(x)` | `Double(Double)` | Sign of x: -1, 0, or 1 |
-| `SgnInt(x)` | `Integer(Integer)` | Sign of integer x: -1, 0, or 1 |
+| `Round(x)` | `Double(Double)` | Round to nearest integer |
+| `Trunc(x)` | `Double(Double)` | Truncate toward zero |
+
+### Min/Max Functions
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
 | `Min(a, b)` | `Double(Double, Double)` | Smaller of two floating-point values |
 | `Max(a, b)` | `Double(Double, Double)` | Larger of two floating-point values |
 | `MinInt(a, b)` | `Integer(Integer, Integer)` | Smaller of two integers |
 | `MaxInt(a, b)` | `Integer(Integer, Integer)` | Larger of two integers |
+| `Clamp(val, lo, hi)` | `Double(Double, Double, Double)` | Constrain value to range [lo, hi] |
+| `ClampInt(val, lo, hi)` | `Integer(Integer, Integer, Integer)` | Constrain integer to range [lo, hi] |
+
+### Utility Functions
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `FMod(x, y)` | `Double(Double, Double)` | Floating-point remainder of x/y |
+| `Lerp(a, b, t)` | `Double(Double, Double, Double)` | Linear interpolation: a + t*(b-a) |
+| `Wrap(val, lo, hi)` | `Double(Double, Double, Double)` | Wrap value to range [lo, hi) |
+| `WrapInt(val, lo, hi)` | `Integer(Integer, Integer, Integer)` | Wrap integer to range [lo, hi) |
+| `Hypot(x, y)` | `Double(Double, Double)` | Hypotenuse: sqrt(x² + y²) |
+
+### Angle Conversion
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `Deg(radians)` | `Double(Double)` | Convert radians to degrees |
+| `Rad(degrees)` | `Double(Double)` | Convert degrees to radians |
 
 ### Example
 
 ```basic
-DIM x AS DOUBLE
-x = 2.5
+' Using constants
+PRINT Viper.Math.Pi              ' Output: 3.14159265358979
+PRINT Viper.Math.E               ' Output: 2.71828182845905
 
+' Basic math
 PRINT Viper.Math.Sqrt(16)        ' Output: 4.0
 PRINT Viper.Math.Pow(2, 10)      ' Output: 1024.0
 PRINT Viper.Math.Abs(-42.5)      ' Output: 42.5
+
+' Rounding
 PRINT Viper.Math.Floor(2.7)      ' Output: 2.0
 PRINT Viper.Math.Ceil(2.1)       ' Output: 3.0
+PRINT Viper.Math.Round(2.5)      ' Output: 3.0
+PRINT Viper.Math.Trunc(-2.7)     ' Output: -2.0
 
 ' Trigonometry (radians)
-DIM pi AS DOUBLE
-pi = 3.14159265358979
-PRINT Viper.Math.Sin(pi / 2)     ' Output: 1.0
-PRINT Viper.Math.Cos(0)          ' Output: 1.0
+PRINT Viper.Math.Sin(Viper.Math.Pi / 2)  ' Output: 1.0
+PRINT Viper.Math.Cos(0)                   ' Output: 1.0
 
-' Min/Max
-PRINT Viper.Math.MaxInt(10, 20)  ' Output: 20
-PRINT Viper.Math.Min(3.5, 2.1)   ' Output: 2.1
+' Angle conversion
+PRINT Viper.Math.Deg(Viper.Math.Pi)      ' Output: 180.0
+PRINT Viper.Math.Rad(90)                  ' Output: 1.5707963...
+
+' Min/Max/Clamp
+PRINT Viper.Math.MaxInt(10, 20)          ' Output: 20
+PRINT Viper.Math.Clamp(15, 0, 10)        ' Output: 10.0
+
+' Lerp and Wrap
+PRINT Viper.Math.Lerp(0, 100, 0.5)       ' Output: 50.0
+PRINT Viper.Math.Wrap(370, 0, 360)       ' Output: 10.0
+
+' Geometry
+PRINT Viper.Math.Hypot(3, 4)             ' Output: 5.0
 ```
 
 ---
@@ -1007,6 +1163,126 @@ age_seconds = Viper.DateTime.Diff(now, birthday)
 
 ---
 
+## Viper.Time.Clock
+
+Basic timing utilities for sleeping and measuring elapsed time.
+
+**Type:** Static utility class
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `Sleep(ms)` | `Void(Integer)` | Pause execution for the specified number of milliseconds |
+| `Ticks()` | `Integer()` | Returns monotonic time in milliseconds since an unspecified epoch |
+| `TicksUs()` | `Integer()` | Returns monotonic time in microseconds since an unspecified epoch |
+
+### Notes
+
+- `Ticks()` and `TicksUs()` return monotonic, non-decreasing values suitable for measuring elapsed time
+- The epoch (starting point) is unspecified - only use these functions for measuring durations, not absolute time
+- `TicksUs()` provides microsecond resolution for high-precision timing
+- `Sleep(0)` returns immediately without sleeping
+- Negative values passed to `Sleep()` are treated as 0
+
+### Example
+
+```basic
+' Measure execution time
+DIM startMs AS INTEGER = Viper.Time.Clock.Ticks()
+
+' Do some work...
+FOR i = 1 TO 1000000
+    ' busy loop
+NEXT
+
+DIM endMs AS INTEGER = Viper.Time.Clock.Ticks()
+PRINT "Elapsed time: "; endMs - startMs; " ms"
+
+' High-precision timing with microseconds
+DIM startUs AS INTEGER = Viper.Time.Clock.TicksUs()
+' ... fast operation ...
+DIM endUs AS INTEGER = Viper.Time.Clock.TicksUs()
+PRINT "Elapsed: "; endUs - startUs; " microseconds"
+
+' Sleep for a short delay
+Viper.Time.Clock.Sleep(100)  ' Sleep for 100ms
+```
+
+---
+
+## Viper.Diagnostics.Stopwatch
+
+High-precision stopwatch for benchmarking and performance measurement. Supports pause/resume timing with nanosecond resolution.
+
+**Type:** Instance class (requires `New()` or `StartNew()`)
+
+### Constructors
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `New()` | `Stopwatch()` | Create a new stopped stopwatch |
+| `StartNew()` | `Stopwatch()` | Create and immediately start a new stopwatch |
+
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `ElapsedMs` | `Integer` (read-only) | Total elapsed time in milliseconds |
+| `ElapsedUs` | `Integer` (read-only) | Total elapsed time in microseconds |
+| `ElapsedNs` | `Integer` (read-only) | Total elapsed time in nanoseconds |
+| `IsRunning` | `Boolean` (read-only) | True if stopwatch is currently running |
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `Start()` | `Void()` | Start or resume timing (no effect if already running) |
+| `Stop()` | `Void()` | Pause timing, preserving accumulated time |
+| `Reset()` | `Void()` | Stop and clear all accumulated time |
+| `Restart()` | `Void()` | Reset and start in one atomic operation |
+
+### Notes
+
+- Stopwatch provides nanosecond resolution on supported platforms
+- Time accumulates across multiple Start/Stop cycles until Reset
+- Reading `ElapsedMs`/`ElapsedUs`/`ElapsedNs` while running returns current elapsed time
+- `Start()` has no effect if already running (doesn't reset)
+- `Stop()` has no effect if already stopped
+
+### Example
+
+```basic
+' Create and start a stopwatch
+DIM sw AS OBJECT = Viper.Diagnostics.Stopwatch.StartNew()
+
+' Code to benchmark
+FOR i = 1 TO 1000000
+    DIM x AS INTEGER = i * i
+NEXT
+
+sw.Stop()
+PRINT "Elapsed: "; sw.ElapsedMs; " ms"
+PRINT "Elapsed: "; sw.ElapsedUs; " us"
+PRINT "Elapsed: "; sw.ElapsedNs; " ns"
+
+' Resume timing for additional work
+sw.Start()
+FOR i = 1 TO 500000
+    DIM x AS INTEGER = i * i
+NEXT
+sw.Stop()
+PRINT "Total: "; sw.ElapsedMs; " ms"
+
+' Reset and restart
+sw.Restart()
+' More benchmarking...
+sw.Stop()
+PRINT "New timing: "; sw.ElapsedMs; " ms"
+```
+
+---
+
 ## Viper.IO.File
 
 File system operations.
@@ -1021,6 +1297,16 @@ File system operations.
 | `ReadAllText(path)` | `String(String)` | Reads the entire file contents as a string |
 | `WriteAllText(path, content)` | `Void(String, String)` | Writes a string to a file (overwrites if exists) |
 | `Delete(path)` | `Void(String)` | Deletes a file |
+| `Copy(src, dst)` | `Void(String, String)` | Copies a file from src to dst |
+| `Move(src, dst)` | `Void(String, String)` | Moves/renames a file from src to dst |
+| `Size(path)` | `Integer(String)` | Returns file size in bytes, or -1 if not found |
+| `ReadBytes(path)` | `Bytes(String)` | Reads the entire file as binary data |
+| `WriteBytes(path, bytes)` | `Void(String, Bytes)` | Writes binary data to a file |
+| `ReadLines(path)` | `Seq(String)` | Reads the file as a sequence of lines |
+| `WriteLines(path, lines)` | `Void(String, Seq)` | Writes a sequence of strings as lines |
+| `Append(path, text)` | `Void(String, String)` | Appends text to a file |
+| `Modified(path)` | `Integer(String)` | Returns file modification time as Unix timestamp |
+| `Touch(path)` | `Void(String)` | Creates file or updates its modification time |
 
 ### Example
 
@@ -1043,9 +1329,256 @@ IF Viper.IO.File.Exists(filename) THEN
 END IF
 ```
 
-### Note
+### Binary File Example
 
-For more advanced file operations (line-by-line reading, binary files, etc.), use the lower-level file I/O statements (`OPEN`, `INPUT #`, `PRINT #`, `CLOSE`).
+```basic
+' Create binary data
+DIM data AS Bytes
+data = Viper.Collections.Bytes.New(4)
+data.Set(0, &H48)  ' H
+data.Set(1, &H69)  ' i
+data.Set(2, &H21)  ' !
+data.Set(3, &H00)  ' null byte
+
+' Write binary file
+Viper.IO.File.WriteBytes("test.bin", data)
+
+' Read binary file
+DIM loaded AS Bytes
+loaded = Viper.IO.File.ReadBytes("test.bin")
+PRINT "Size:"; loaded.Len()  ' Output: Size: 4
+```
+
+### Line-by-Line Example
+
+```basic
+' Write lines to file
+DIM lines AS Seq
+lines = Viper.Collections.Seq.New()
+lines.Push("First line")
+lines.Push("Second line")
+lines.Push("Third line")
+Viper.IO.File.WriteLines("output.txt", lines)
+
+' Read lines from file
+DIM readLines AS Seq
+readLines = Viper.IO.File.ReadLines("output.txt")
+FOR i = 0 TO readLines.Len() - 1
+    PRINT readLines.Get(i)
+NEXT i
+
+' Append to file
+Viper.IO.File.Append("output.txt", "Appended text")
+```
+
+### File Management Example
+
+```basic
+' Copy file
+Viper.IO.File.Copy("source.txt", "backup.txt")
+
+' Move/rename file
+Viper.IO.File.Move("old_name.txt", "new_name.txt")
+
+' Get file info
+DIM size AS INTEGER
+size = Viper.IO.File.Size("data.txt")
+PRINT "File size:"; size; "bytes"
+
+DIM mtime AS INTEGER
+mtime = Viper.IO.File.Modified("data.txt")
+PRINT "Modified:"; mtime
+
+' Create empty file or update timestamp
+Viper.IO.File.Touch("marker.txt")
+```
+
+---
+
+## Viper.IO.Path
+
+Cross-platform path manipulation utilities. All functions work with both Unix (`/`) and Windows (`\`) path separators.
+
+**Type:** Static utility class
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `Join(a, b)` | `String(String, String)` | Joins two path components with the platform separator |
+| `Dir(path)` | `String(String)` | Returns the directory portion of a path |
+| `Name(path)` | `String(String)` | Returns the filename portion of a path |
+| `Stem(path)` | `String(String)` | Returns the filename without extension |
+| `Ext(path)` | `String(String)` | Returns the file extension (including the dot) |
+| `WithExt(path, ext)` | `String(String, String)` | Replaces the extension of a path |
+| `IsAbs(path)` | `Boolean(String)` | Returns true if the path is absolute |
+| `Abs(path)` | `String(String)` | Converts a relative path to absolute |
+| `Norm(path)` | `String(String)` | Normalizes a path (removes `.`, `..`, duplicate separators) |
+| `Sep()` | `String()` | Returns the platform-specific path separator |
+
+### Example
+
+```basic
+DIM path AS STRING
+path = "/home/user/documents/report.txt"
+
+' Extract path components
+PRINT Viper.IO.Path.Dir(path)   ' Output: "/home/user/documents"
+PRINT Viper.IO.Path.Name(path)  ' Output: "report.txt"
+PRINT Viper.IO.Path.Stem(path)  ' Output: "report"
+PRINT Viper.IO.Path.Ext(path)   ' Output: ".txt"
+
+' Join paths
+DIM newPath AS STRING
+newPath = Viper.IO.Path.Join("/home/user", "downloads")
+PRINT newPath  ' Output: "/home/user/downloads"
+
+' Replace extension
+DIM mdPath AS STRING
+mdPath = Viper.IO.Path.WithExt(path, ".md")
+PRINT mdPath  ' Output: "/home/user/documents/report.md"
+
+' Check if absolute
+PRINT Viper.IO.Path.IsAbs(path)      ' Output: true
+PRINT Viper.IO.Path.IsAbs("foo/bar") ' Output: false
+
+' Normalize paths
+PRINT Viper.IO.Path.Norm("/foo//bar/../baz")  ' Output: "/foo/baz"
+PRINT Viper.IO.Path.Norm("./a/b/../c")        ' Output: "a/c"
+
+' Get platform separator
+PRINT Viper.IO.Path.Sep()  ' Output: "/" on Unix, "\" on Windows
+```
+
+### Path Normalization
+
+The `Norm()` function performs the following transformations:
+- Removes redundant separators (`//` becomes `/`)
+- Resolves `.` components (current directory)
+- Resolves `..` components (parent directory) where possible
+- Returns `.` for an empty result
+- Preserves leading `..` in relative paths
+
+### Platform Differences
+
+| Behavior | Unix | Windows |
+|----------|------|---------|
+| Path separator | `/` | `\` |
+| Absolute path detection | Starts with `/` | Starts with `C:\` or `\\` |
+| Example absolute path | `/home/user` | `C:\Users\user` |
+
+### Use Cases
+
+- **Building file paths:** Use `Join()` to create paths safely
+- **Extracting components:** Use `Dir()`, `Name()`, `Stem()`, `Ext()` to parse paths
+- **Changing extensions:** Use `WithExt()` to replace file extensions
+- **Cleaning paths:** Use `Norm()` to clean up user-provided paths
+- **Portable code:** Use `Sep()` for platform-specific separators
+
+---
+
+## Viper.IO.Dir
+
+Cross-platform directory operations for creating, removing, listing, and navigating directories.
+
+**Type:** Static utility class
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `Exists(path)` | `Boolean(String)` | Returns true if the directory exists |
+| `Make(path)` | `Void(String)` | Creates a single directory (parent must exist) |
+| `MakeAll(path)` | `Void(String)` | Creates a directory and all parent directories |
+| `Remove(path)` | `Void(String)` | Removes an empty directory |
+| `RemoveAll(path)` | `Void(String)` | Recursively removes a directory and all its contents |
+| `List(path)` | `Seq(String)` | Returns all entries in a directory (excluding `.` and `..`) |
+| `Files(path)` | `Seq(String)` | Returns only files in a directory (no subdirectories) |
+| `Dirs(path)` | `Seq(String)` | Returns only subdirectories in a directory |
+| `Current()` | `String()` | Returns the current working directory |
+| `SetCurrent(path)` | `Void(String)` | Changes the current working directory |
+| `Move(src, dst)` | `Void(String, String)` | Moves/renames a directory |
+
+### Example
+
+```basic
+' Check if a directory exists
+IF Viper.IO.Dir.Exists("/home/user/documents") THEN
+    PRINT "Documents folder exists"
+END IF
+
+' Create a new directory
+Viper.IO.Dir.Make("/home/user/newdir")
+
+' Create nested directories (like mkdir -p)
+Viper.IO.Dir.MakeAll("/home/user/a/b/c/d")
+
+' List all entries in a directory
+DIM entries AS Viper.Collections.Seq
+entries = Viper.IO.Dir.List("/home/user")
+FOR i = 0 TO entries.Len - 1
+    PRINT entries.Get(i)
+NEXT i
+
+' List only files (no subdirectories)
+DIM files AS Viper.Collections.Seq
+files = Viper.IO.Dir.Files("/home/user")
+
+' List only subdirectories
+DIM subdirs AS Viper.Collections.Seq
+subdirs = Viper.IO.Dir.Dirs("/home/user")
+
+' Get and change current working directory
+DIM cwd AS STRING
+cwd = Viper.IO.Dir.Current()
+PRINT "Current directory: "; cwd
+
+Viper.IO.Dir.SetCurrent("/home/user/projects")
+PRINT "New directory: "; Viper.IO.Dir.Current()
+
+' Restore original directory
+Viper.IO.Dir.SetCurrent(cwd)
+
+' Move/rename a directory
+Viper.IO.Dir.Move("/home/user/oldname", "/home/user/newname")
+
+' Remove an empty directory
+Viper.IO.Dir.Remove("/home/user/emptydir")
+
+' Recursively remove a directory and all its contents
+' WARNING: This permanently deletes files!
+Viper.IO.Dir.RemoveAll("/home/user/tempdir")
+```
+
+### Error Handling
+
+Directory operations trap on errors:
+- `Make()` traps if the parent directory doesn't exist or creation fails
+- `Remove()` traps if the directory is not empty or doesn't exist
+- `RemoveAll()` silently ignores non-existent directories
+- `SetCurrent()` traps if the directory doesn't exist
+
+Use `Exists()` to check before performing operations that may fail.
+
+### Listing Functions
+
+The three listing functions return `Seq` objects containing entry names (not full paths):
+
+| Function | Returns | Includes |
+|----------|---------|----------|
+| `List(path)` | All entries | Files and subdirectories |
+| `Files(path)` | Files only | Regular files, no directories |
+| `Dirs(path)` | Directories only | Subdirectories, no files |
+
+All listing functions exclude `.` and `..` entries. If the directory doesn't exist or can't be read, an empty sequence is returned.
+
+### Use Cases
+
+- **File management:** List, copy, move, and delete directories
+- **Build systems:** Create output directories with `MakeAll()`
+- **Cleanup:** Remove temporary directories with `RemoveAll()`
+- **Navigation:** Get and set the working directory
+- **Filtering:** Separate files from subdirectories with `Files()` and `Dirs()`
 
 ---
 
@@ -1162,6 +1695,84 @@ semiTransparent = Viper.Graphics.Color.RGBA(255, 0, 0, 128)  ' 50% transparent r
 canvas.Box(10, 10, 100, 100, red)
 canvas.Disc(200, 200, 50, purple)
 ```
+
+---
+
+## Runtime Architecture
+
+### Overview
+
+The Viper runtime is defined in `src/il/runtime/runtime.def` using X-macros. This single source of truth generates:
+
+- `RuntimeNameMap.inc` — Maps canonical names to C symbols
+- `RuntimeClasses.inc` — OOP class catalog for the type system
+
+### RT_FUNC Syntax
+
+```
+RT_FUNC(id, c_symbol, "canonical_name", "signature")
+```
+
+- **id**: Unique C++ identifier used in generated code
+- **c_symbol**: The C function name (rt_* prefix by convention)
+- **canonical_name**: The Viper namespace path (e.g., "Viper.Math.Sin")
+- **signature**: IL type signature using type abbreviations
+
+### RT_CLASS Syntax
+
+```
+RT_CLASS_BEGIN("canonical_name", type_id, "layout", ctor_id)
+    RT_PROP("name", "type", getter_id, setter_id_or_none)
+    RT_METHOD("name", "signature", target_id)
+RT_CLASS_END()
+```
+
+Classes define the OOP interface exposed to Viper languages. Method signatures omit the receiver (arg0).
+
+### Type Abbreviations
+
+| Abbrev | Type | Size |
+|--------|------|------|
+| `void` | No value | 0 |
+| `i1` | Boolean | 1 bit |
+| `i8` | Signed byte | 8 bits |
+| `i16` | Short integer | 16 bits |
+| `i32` | Integer | 32 bits |
+| `i64` | Long integer | 64 bits |
+| `f32` | Single float | 32 bits |
+| `f64` | Double float | 64 bits |
+| `str` | String | pointer |
+| `obj` | Object | pointer |
+| `ptr` | Raw pointer | pointer |
+
+### Quick Reference
+
+| Class | Description |
+|-------|-------------|
+| `Viper.Object` | Base class with Equals, GetHashCode, ToString |
+| `Viper.String` | String manipulation (Substring, Trim, Replace, etc.) |
+| `Viper.Strings` | Static string utilities (Join, FromInt, etc.) |
+| `Viper.Math` | Math functions (Sin, Cos, Sqrt, etc.) and constants (Pi, E) |
+| `Viper.Terminal` | Terminal I/O (Say, Print, Ask, ReadLine) |
+| `Viper.Convert` | Type conversion (ToInt, ToDouble) |
+| `Viper.Environment` | Command-line args, environment info |
+| `Viper.Random` | Random number generation |
+| `Viper.Collections.Seq` | Dynamic array with Push, Pop, Get, Set |
+| `Viper.Collections.Stack` | LIFO with Push, Pop, Peek |
+| `Viper.Collections.Queue` | FIFO with Add, Take, Peek |
+| `Viper.Collections.Map` | String-keyed dictionary |
+| `Viper.Collections.Bytes` | Efficient byte array |
+| `Viper.Collections.List` | Dynamic list of objects |
+| `Viper.IO.File` | File read/write/copy/delete |
+| `Viper.IO.Dir` | Directory create/list/delete |
+| `Viper.IO.Path` | Path join/split/normalize |
+| `Viper.Text.StringBuilder` | Efficient string concatenation |
+| `Viper.Text.Guid` | UUID v4 generation |
+| `Viper.Graphics.Canvas` | Window and 2D drawing |
+| `Viper.Graphics.Color` | RGB/RGBA color creation |
+| `Viper.Time.Clock` | Sleep and tick counting |
+| `Viper.DateTime` | Date/time creation and formatting |
+| `Viper.Diagnostics.Stopwatch` | Benchmarking timer |
 
 ---
 

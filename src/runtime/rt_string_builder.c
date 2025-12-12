@@ -204,7 +204,7 @@ rt_sb_status rt_sb_reserve(rt_string_builder *sb, size_t required)
 /// @param text Pointer to the bytes to append; may be null when @p len is zero.
 /// @param len Number of bytes to copy from @p text.
 /// @return Status code describing success, allocation failure, or invalid input.
-static rt_sb_status rt_sb_append_bytes(rt_string_builder *sb, const char *text, size_t len)
+rt_sb_status rt_sb_append_bytes(rt_string_builder *sb, const char *text, size_t len)
 {
     if (!sb || (!text && len > 0))
         return RT_SB_ERROR_INVALID;
