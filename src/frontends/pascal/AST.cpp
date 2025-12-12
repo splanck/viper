@@ -54,6 +54,8 @@ const char *exprKindToString(ExprKind kind)
             return "Dereference";
         case ExprKind::Is:
             return "Is";
+        case ExprKind::As:
+            return "As";
     }
     return "?";
 }

@@ -158,6 +158,24 @@ extern "C"
     /// @details Forces all buffered output to be written immediately.
     void rt_term_flush(void);
 
+    // =========================================================================
+    // Terminal Raw Mode Caching (Performance Optimization)
+    // =========================================================================
+
+    /// @brief Enable cached raw mode for efficient key polling.
+    /// @details Switches terminal to raw mode once. Subsequent INKEY$ calls
+    ///          use select() without needing to change terminal settings.
+    ///          This dramatically improves performance in game loops.
+    void rt_term_enable_raw_mode(void);
+
+    /// @brief Disable raw mode and restore original terminal settings.
+    /// @details Should be called before program exit or when leaving game mode.
+    void rt_term_disable_raw_mode(void);
+
+    /// @brief Check if raw mode caching is currently active.
+    /// @return Non-zero if raw mode is active, zero otherwise.
+    int rt_term_is_raw_mode(void);
+
 #ifdef __cplusplus
 }
 #endif

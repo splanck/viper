@@ -42,6 +42,118 @@
 #include <unistd.h>
 #endif
 
+// =============================================================================
+// PERFORMANCE OPTIMIZATION: Terminal Raw Mode Caching
+// =============================================================================
+//
+// Problem: Every INKEY$() call was doing tcgetattr + tcsetattr + tcsetattr,
+// which are expensive system calls. In a game loop running at 60 FPS, this
+// meant 180+ syscalls per second just for keyboard polling.
+//
+// Solution: Cache the terminal state. When "raw mode" is enabled:
+// - Store original termios settings once
+// - Set raw mode once
+// - Subsequent INKEY$() calls just use select() - no termios changes
+// - Restore original settings when raw mode is disabled or program exits
+//
+// Raw mode is automatically enabled when:
+// - Alt screen buffer is activated (typical for games)
+// - Explicitly via rt_term_enable_raw_mode()
+//
+// =============================================================================
+
+#if !defined(_WIN32)
+/// @brief Cached original terminal settings (before raw mode).
+static struct termios g_orig_termios;
+
+/// @brief Cached raw mode terminal settings.
+static struct termios g_raw_termios;
+
+/// @brief Whether raw mode caching is currently active.
+static int g_raw_mode_active = 0;
+
+/// @brief Whether we've captured the original terminal settings.
+static int g_termios_saved = 0;
+
+/// @brief File descriptor for stdin (cached to avoid repeated fileno calls).
+static int g_stdin_fd = -1;
+
+/// @brief Whether atexit handler has been registered.
+static int g_atexit_registered = 0;
+
+/// @brief Cleanup handler called on program exit.
+/// @details Ensures terminal is restored to original state if raw mode was active.
+static void term_atexit_handler(void)
+{
+    rt_term_disable_raw_mode();
+}
+
+/// @brief Initialize terminal state caching.
+/// @details Called lazily on first use. Saves original terminal settings.
+static void init_term_cache(void)
+{
+    if (g_stdin_fd < 0)
+        g_stdin_fd = fileno(stdin);
+
+    if (!g_termios_saved && g_stdin_fd >= 0 && isatty(g_stdin_fd))
+    {
+        if (tcgetattr(g_stdin_fd, &g_orig_termios) == 0)
+        {
+            g_termios_saved = 1;
+            // Prepare raw mode settings
+            g_raw_termios = g_orig_termios;
+            g_raw_termios.c_lflag &= ~(ICANON | ECHO);
+            g_raw_termios.c_cc[VMIN] = 0;
+            g_raw_termios.c_cc[VTIME] = 0;
+        }
+    }
+}
+
+/// @brief Enable cached raw mode for efficient key polling.
+/// @details Switches terminal to raw mode once. Subsequent INKEY$ calls
+///          will use select() without needing to change terminal settings.
+void rt_term_enable_raw_mode(void)
+{
+    init_term_cache();
+    if (g_raw_mode_active || !g_termios_saved)
+        return;
+
+    // Register atexit handler to ensure terminal is restored on exit
+    if (!g_atexit_registered)
+    {
+        atexit(term_atexit_handler);
+        g_atexit_registered = 1;
+    }
+
+    if (tcsetattr(g_stdin_fd, TCSANOW, &g_raw_termios) == 0)
+        g_raw_mode_active = 1;
+}
+
+/// @brief Disable raw mode and restore original terminal settings.
+/// @details Should be called before program exit or when leaving game mode.
+void rt_term_disable_raw_mode(void)
+{
+    if (!g_raw_mode_active || !g_termios_saved)
+        return;
+
+    tcsetattr(g_stdin_fd, TCSANOW, &g_orig_termios);
+    g_raw_mode_active = 0;
+}
+
+/// @brief Check if raw mode caching is currently active.
+int rt_term_is_raw_mode(void)
+{
+    return g_raw_mode_active;
+}
+
+#else // Windows doesn't need raw mode caching - _kbhit is already efficient
+
+void rt_term_enable_raw_mode(void) {}
+void rt_term_disable_raw_mode(void) {}
+int rt_term_is_raw_mode(void) { return 0; }
+
+#endif
+
 /// @brief Determine whether stdout is attached to a terminal.
 /// @details Guards terminal escape emission so batch output (e.g. redirected to
 ///          a file) remains free of ANSI sequences.
@@ -205,11 +317,30 @@ void rt_term_cursor_visible_i32(int32_t show)
 ///          to exit and restore the original screen.  The helper only outputs
 ///          escape codes when stdout is a terminal so redirected output remains
 ///          free of ANSI sequences.
+///
+/// PERFORMANCE: Automatically enables/disables raw mode caching when entering/
+///              exiting alt screen. Games typically use alt screen, so this
+///              provides automatic optimization for game loops.
 void rt_term_alt_screen_i32(int32_t enable)
 {
     if (!stdout_isatty())
         return;
-    out_str(enable ? "\x1b[?1049h" : "\x1b[?1049l");
+    if (enable)
+    {
+        out_str("\x1b[?1049h");
+        // Auto-enable raw mode for better INKEY$ performance in games
+        rt_term_enable_raw_mode();
+        // Also auto-enable batch mode for screen rendering
+        rt_output_begin_batch();
+    }
+    else
+    {
+        // End batch mode before exiting alt screen
+        rt_output_end_batch();
+        // Restore original terminal settings
+        rt_term_disable_raw_mode();
+        out_str("\x1b[?1049l");
+    }
 }
 
 /// @brief Emit a bell/beep sound using BEL character or platform-specific API.
@@ -280,13 +411,22 @@ static int readkey_blocking(void)
 }
 
 /// @brief Poll the POSIX terminal for a key without blocking.
-/// @details Places the terminal in non-canonical, non-blocking mode and attempts
-///          to read a byte.  When successful the byte is stored in @p out and the
-///          function returns 1.  When stdin is a pipe or redirected file, uses
-///          select() to poll for available data without modifying terminal settings.
+/// @details When raw mode caching is active, uses only select() for maximum
+///          performance. Otherwise falls back to the traditional approach of
+///          temporarily setting raw mode for each call.
+///
+/// PERFORMANCE: With raw mode caching, this function does:
+///   - 1 select() syscall (unavoidable for non-blocking check)
+///   - 0-1 read() syscall (only if data available)
+/// Without caching, each call did:
+///   - 1 tcgetattr() syscall
+///   - 1 tcsetattr() syscall (set raw)
+///   - 1 select() or read() syscall
+///   - 1 tcsetattr() syscall (restore)
+/// That's 3x fewer syscalls in the hot path!
 static int readkey_nonblocking(int *out)
 {
-    int fd = fileno(stdin);
+    int fd = g_stdin_fd >= 0 ? g_stdin_fd : fileno(stdin);
 
     // Check if stdin is a TTY or a pipe/file
     if (!isatty(fd))
@@ -314,7 +454,34 @@ static int readkey_nonblocking(int *out)
         return 0;
     }
 
-    // For TTY: use termios to disable canonical mode
+    // FAST PATH: If raw mode is already active, just use select() + read()
+    // This eliminates the tcgetattr/tcsetattr overhead entirely!
+    if (g_raw_mode_active)
+    {
+        fd_set readfds;
+        FD_ZERO(&readfds);
+        FD_SET(fd, &readfds);
+
+        struct timeval timeout;
+        timeout.tv_sec = 0;
+        timeout.tv_usec = 0;
+
+        int ret = select(fd + 1, &readfds, NULL, NULL, &timeout);
+        if (ret > 0 && FD_ISSET(fd, &readfds))
+        {
+            unsigned char ch = 0;
+            ssize_t n = read(fd, &ch, 1);
+            if (n == 1)
+            {
+                *out = (int)ch;
+                return 1;
+            }
+        }
+        return 0;
+    }
+
+    // SLOW PATH: Traditional approach - set raw mode temporarily
+    // This is only used when raw mode caching hasn't been enabled
     struct termios orig, raw;
     if (tcgetattr(fd, &orig) != 0)
         return 0;
@@ -473,9 +640,12 @@ int32_t rt_keypressed(void)
 /// @details Uses select() with zero timeout to poll the terminal. Returns non-zero
 ///          if a key is pending, zero otherwise. When stdin is a pipe or file,
 ///          directly uses select() without modifying terminal settings.
+///
+/// PERFORMANCE: When raw mode caching is active, this only does a single
+///              select() syscall instead of tcgetattr + tcsetattr + select + tcsetattr.
 int32_t rt_keypressed(void)
 {
-    int fd = fileno(stdin);
+    int fd = g_stdin_fd >= 0 ? g_stdin_fd : fileno(stdin);
 
     // For pipes/files: just use select directly
     if (!isatty(fd))
@@ -492,7 +662,22 @@ int32_t rt_keypressed(void)
         return (ret > 0 && FD_ISSET(fd, &readfds)) ? 1 : 0;
     }
 
-    // For TTY: need to put terminal in raw mode first
+    // FAST PATH: If raw mode is already active, just use select()
+    if (g_raw_mode_active)
+    {
+        fd_set readfds;
+        FD_ZERO(&readfds);
+        FD_SET(fd, &readfds);
+
+        struct timeval timeout;
+        timeout.tv_sec = 0;
+        timeout.tv_usec = 0;
+
+        int ret = select(fd + 1, &readfds, NULL, NULL, &timeout);
+        return (ret > 0 && FD_ISSET(fd, &readfds)) ? 1 : 0;
+    }
+
+    // SLOW PATH: For TTY when raw mode not cached - set raw mode temporarily
     struct termios orig, raw;
     if (tcgetattr(fd, &orig) != 0)
         return 0;
