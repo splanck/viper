@@ -17,6 +17,7 @@
 
 #include "frontends/basic/BasicTypes.hpp"
 #include "frontends/basic/ast/NodeFwd.hpp"
+#include "frontends/common/ExprResult.hpp"
 #include "frontends/common/StringHash.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 #include "viper/il/Module.hpp"
@@ -35,11 +36,8 @@ namespace il::frontends::basic
 using ::il::frontends::common::StringHash;
 
 /// @brief Result of lowering an expression to a value and type pair.
-struct RVal
-{
-    il::core::Value value;
-    il::core::Type type;
-};
+/// @details Now uses the common ExprResult type for consistency across frontends.
+using RVal = ::il::frontends::common::ExprResult;
 
 /// @brief Result of lowering a PRINT# argument to a string.
 struct PrintChArgString

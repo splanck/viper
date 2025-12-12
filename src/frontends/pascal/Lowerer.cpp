@@ -43,7 +43,6 @@ Lowerer::Module Lowerer::lower(Program &prog, SemanticAnalyzer &sema)
                             { builder_->addGlobalStr(label, content); });
     loopStack_.clear();
     usedExterns_.clear();
-    blockCounter_ = 0;
     classLayouts_.clear();
     vtableLayouts_.clear();
     nextClassId_ = 1;
@@ -103,6 +102,7 @@ Lowerer::Module Lowerer::lower(Program &prog, SemanticAnalyzer &sema)
 
     // Create @main function
     currentFunc_ = &builder_->startFunction("main", Type(Type::Kind::I64), {});
+    blockMgr_.bind(builder_.get(), currentFunc_);
 
     locals_.clear();
     localTypes_.clear();
@@ -154,7 +154,6 @@ Lowerer::Module Lowerer::lower(Unit &unit, SemanticAnalyzer &sema)
                             { builder_->addGlobalStr(label, content); });
     loopStack_.clear();
     usedExterns_.clear();
-    blockCounter_ = 0;
     classLayouts_.clear();
     vtableLayouts_.clear();
     nextClassId_ = 1;
@@ -199,6 +198,7 @@ Lowerer::Module Lowerer::lower(Unit &unit, SemanticAnalyzer &sema)
     {
         std::string initName = unit.name + "_init";
         currentFunc_ = &builder_->startFunction(initName, Type(Type::Kind::Void), {});
+        blockMgr_.bind(builder_.get(), currentFunc_);
         size_t entryIdx = createBlock("entry");
         setBlock(entryIdx);
         lowerBlock(*unit.initSection);

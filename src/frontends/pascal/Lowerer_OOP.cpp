@@ -258,6 +258,7 @@ void Lowerer::emitOopModuleInit()
     // Create __pas_oop_init function
     Function *savedFunc = currentFunc_;
     currentFunc_ = &builder_->startFunction("__pas_oop_init", Type(Type::Kind::Void), {});
+    blockMgr_.bind(builder_.get(), currentFunc_);
 
     size_t entryIdx = createBlock("entry");
     setBlock(entryIdx);
@@ -310,6 +311,8 @@ void Lowerer::emitOopModuleInit()
 
     emitRetVoid();
     currentFunc_ = savedFunc;
+    if (savedFunc)
+        blockMgr_.bind(builder_.get(), savedFunc);
 }
 
 void Lowerer::emitVtableRegistration(const std::string &className)

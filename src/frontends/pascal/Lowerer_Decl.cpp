@@ -242,6 +242,7 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
     // Create function - for methods, use ClassName.MethodName
     std::string funcName = decl.isMethod() ? (decl.className + "." + decl.name) : decl.name;
     currentFunc_ = &builder_->startFunction(funcName, returnType, params);
+    blockMgr_.bind(builder_.get(), currentFunc_);
 
     // Create entry block
     size_t entryIdx = createBlock("entry");
@@ -369,6 +370,7 @@ void Lowerer::lowerProcedureDecl(ProcedureDecl &decl)
     // Create procedure (void return) - for methods, use ClassName.MethodName
     std::string funcName = decl.isMethod() ? (decl.className + "." + decl.name) : decl.name;
     currentFunc_ = &builder_->startFunction(funcName, Type(Type::Kind::Void), params);
+    blockMgr_.bind(builder_.get(), currentFunc_);
 
     // Create entry block
     size_t entryIdx = createBlock("entry");
@@ -490,6 +492,7 @@ void Lowerer::lowerConstructorDecl(ConstructorDecl &decl)
     // Create constructor function: ClassName.ConstructorName (void return)
     std::string funcName = decl.className + "." + decl.name;
     currentFunc_ = &builder_->startFunction(funcName, Type(Type::Kind::Void), params);
+    blockMgr_.bind(builder_.get(), currentFunc_);
 
     // Create entry block
     size_t entryIdx = createBlock("entry");
@@ -565,6 +568,7 @@ void Lowerer::lowerDestructorDecl(DestructorDecl &decl)
     // Create destructor function: ClassName.DestructorName (void return)
     std::string funcName = decl.className + "." + decl.name;
     currentFunc_ = &builder_->startFunction(funcName, Type(Type::Kind::Void), params);
+    blockMgr_.bind(builder_.get(), currentFunc_);
 
     // Create entry block
     size_t entryIdx = createBlock("entry");

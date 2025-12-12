@@ -28,21 +28,17 @@ inline std::string toLower(const std::string &s)
 }
 
 //===----------------------------------------------------------------------===//
-// Block Management
+// Block Management (delegating to common::BlockManager)
 //===----------------------------------------------------------------------===//
 
 size_t Lowerer::createBlock(const std::string &base)
 {
-    std::ostringstream oss;
-    oss << base << "_" << blockCounter_++;
-    builder_->createBlock(*currentFunc_, oss.str());
-    return currentFunc_->blocks.size() - 1;
+    return blockMgr_.createBlock(base);
 }
 
 void Lowerer::setBlock(size_t blockIdx)
 {
-    currentBlockIdx_ = blockIdx;
-    builder_->setInsertPoint(currentFunc_->blocks[blockIdx]);
+    blockMgr_.setBlock(blockIdx);
 }
 
 std::string Lowerer::getStringGlobal(const std::string &value)
@@ -417,8 +413,9 @@ unsigned Lowerer::nextTempId()
 
 size_t Lowerer::createHandlerBlock(const std::string &base)
 {
+    // Generate unique block name using BlockManager's counter
     std::ostringstream oss;
-    oss << base << "_" << blockCounter_++;
+    oss << base << "_" << blockMgr_.nextBlockId();
 
     // Create block with handler parameters: %err : Error, %tok : ResumeTok
     // IRBuilder::createBlock with params properly assigns IDs and registers names

@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include "frontends/common/BlockManager.hpp"
 #include "frontends/common/ExprResult.hpp"
 #include "frontends/common/LoopContext.hpp"
 #include "frontends/common/NameMangler.hpp"
@@ -90,7 +91,7 @@ class Lowerer
     Function *currentFunc_{nullptr};                ///< Current function
     std::string currentFuncName_;         ///< Current function name (lowercase, for Result mapping)
     std::string currentClassName_;        ///< Current class name (for Self/field access in methods)
-    size_t currentBlockIdx_{0};           ///< Current block index
+    ::il::frontends::common::BlockManager blockMgr_; ///< Block management (common library)
     std::map<std::string, Value> locals_; ///< Variable -> alloca slot
     std::map<std::string, PasType> localTypes_; ///< Variable -> type (for procedure locals)
     std::map<std::string, PasType>
@@ -99,7 +100,6 @@ class Lowerer
     ::il::frontends::common::StringTable stringTable_;    ///< String interning table
     ::il::frontends::common::LoopContextStack loopStack_; ///< Loop context stack
     std::set<std::string> usedExterns_;                   ///< Tracked runtime externs
-    unsigned blockCounter_{0};                            ///< Block name counter
     Value currentResumeTok_;                              ///< Resume token in current handler
     bool inExceptHandler_{false};                         ///< True when inside except handler
 
@@ -130,7 +130,7 @@ class Lowerer
     /// @brief Get the current block by index.
     BasicBlock *currentBlock()
     {
-        return &currentFunc_->blocks[currentBlockIdx_];
+        return blockMgr_.currentBlock();
     }
 
     //=========================================================================
@@ -147,7 +147,7 @@ class Lowerer
     /// @brief Get a block by index.
     BasicBlock &getBlock(size_t idx)
     {
-        return currentFunc_->blocks[idx];
+        return blockMgr_.getBlock(idx);
     }
 
     /// @brief Get or create a global string constant.
