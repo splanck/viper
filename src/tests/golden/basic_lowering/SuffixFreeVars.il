@@ -1,7 +1,7 @@
 il 0.1.2
-extern @Viper.Console.PrintStr(str) -> void
-extern @Viper.Console.PrintI64(i64) -> void
-extern @Viper.Console.PrintF64(f64) -> void
+extern @Viper.Terminal.PrintStr(str) -> void
+extern @Viper.Terminal.PrintI64(i64) -> void
+extern @Viper.Terminal.PrintF64(f64) -> void
 extern @Viper.Strings.Len(str) -> i64
 extern @Viper.Strings.Mid(str, i64, i64) -> str
 extern @Viper.String.Left(str, i64) -> str
@@ -101,24 +101,24 @@ UL999999994:
   .loc 1 7 7
   call @rt_str_retain_maybe(%t20)
   .loc 1 7 7
-  call @Viper.Console.PrintStr(%t20)
+  call @Viper.Terminal.PrintStr(%t20)
   .loc 1 7 7
   call @rt_str_release_maybe(%t20)
   .loc 1 7 7
   %t21 = const_str @.L1
   .loc 1 7 7
-  call @Viper.Console.PrintStr(%t21)
+  call @Viper.Terminal.PrintStr(%t21)
   .loc 1 7 1
   br UL999999993
 UL999999993:
   .loc 1 8 7
   %t22 = load i64, %t1
   .loc 1 8 7
-  call @Viper.Console.PrintI64(%t22)
+  call @Viper.Terminal.PrintI64(%t22)
   .loc 1 8 7
   %t23 = const_str @.L1
   .loc 1 8 7
-  call @Viper.Console.PrintStr(%t23)
+  call @Viper.Terminal.PrintStr(%t23)
   .loc 1 8 1
   br UL999999992
 UL999999992:
@@ -175,11 +175,11 @@ bc_ok1:
   .loc 1 9 7
   %t32 = call @rt_arr_i64_get(%t24, 0)
   .loc 1 9 7
-  call @Viper.Console.PrintI64(%t32)
+  call @Viper.Terminal.PrintI64(%t32)
   .loc 1 9 7
   %t33 = const_str @.L1
   .loc 1 9 7
-  call @Viper.Console.PrintStr(%t33)
+  call @Viper.Terminal.PrintStr(%t33)
   .loc 1 9 1
   br exit
 bc_oob1:

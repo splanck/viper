@@ -194,8 +194,8 @@ void IoStatementLowerer::lowerPrint(const PrintStmt &stmt)
                         lowerer_.emitCall("rt_str_retain_maybe", {value.value});
                     }
 
-                    // Print strings via Viper.Console.PrintStr
-                    lowerer_.emitCall("Viper.Console.PrintStr", {value.value});
+                    // Print strings via Viper.Terminal.PrintStr
+                    lowerer_.emitCall("Viper.Terminal.PrintStr", {value.value});
 
                     if (isLvalue)
                     {
@@ -209,14 +209,14 @@ void IoStatementLowerer::lowerPrint(const PrintStmt &stmt)
                 }
                 if (value.type.kind == IlType::Kind::F64)
                 {
-                    lowerer_.emitCall("Viper.Console.PrintF64", {value.value});
+                    lowerer_.emitCall("Viper.Terminal.PrintF64", {value.value});
                     updateColumn(widthEstimate);
                     break;
                 }
                 // Booleans are handled by lowerScalarExpr which calls coerceToI64,
                 // converting to BASIC logical -1/0 (True=-1, False=0).
                 value = lowerer_.lowerScalarExpr(std::move(value), stmt.loc);
-                lowerer_.emitCall("Viper.Console.PrintI64", {value.value});
+                lowerer_.emitCall("Viper.Terminal.PrintI64", {value.value});
                 updateColumn(widthEstimate);
                 break;
             }
@@ -232,7 +232,7 @@ void IoStatementLowerer::lowerPrint(const PrintStmt &stmt)
                 std::string padding(spaces, ' ');
                 std::string spaceLbl = lowerer_.getStringLabel(padding);
                 Value sp = lowerer_.emitConstStr(spaceLbl);
-                lowerer_.emitCall("Viper.Console.PrintStr", {sp});
+                lowerer_.emitCall("Viper.Terminal.PrintStr", {sp});
                 break;
             }
             case PrintItem::Kind::Semicolon:
@@ -245,7 +245,7 @@ void IoStatementLowerer::lowerPrint(const PrintStmt &stmt)
     {
         std::string nlLbl = lowerer_.getStringLabel("\n");
         Value nl = lowerer_.emitConstStr(nlLbl);
-        lowerer_.emitCall("Viper.Console.PrintStr", {nl});
+        lowerer_.emitCall("Viper.Terminal.PrintStr", {nl});
         resetColumn();
     }
 }
@@ -491,15 +491,14 @@ void IoStatementLowerer::lowerInput(const InputStmt &stmt)
             std::string lbl = lowerer_.getStringLabel(se->value);
             Value v = lowerer_.emitConstStr(lbl);
             // Use rt_* printing helper to match unit test expectations
-            lowerer_.emitCall("Viper.Console.PrintStr", {v});
+            lowerer_.emitCall("Viper.Terminal.PrintStr", {v});
         }
     }
     if (stmt.vars.empty())
         return;
 
-    // Read a full line from the console using the rt_* helper alias
-    lowerer_.requestHelper(il::runtime::RuntimeFeature::InputLine);
-    Value line = lowerer_.emitCallRet(IlType(IlType::Kind::Str), "Viper.Console.ReadLine", {});
+    // Read a full line from the console using Viper.Terminal.ReadLine.
+    Value line = lowerer_.emitCallRet(IlType(IlType::Kind::Str), "Viper.Terminal.ReadLine", {});
     // Precompute store kinds for each variable to avoid repeated symbol lookups.
     enum class StoreKind
     {

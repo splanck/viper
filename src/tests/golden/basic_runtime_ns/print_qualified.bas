@@ -1,3 +1,3 @@
 REM BASIC: Fully-qualified call to builtin extern
-Viper.Console.PrintI64(456)
+Viper.Terminal.PrintI64(456)
 

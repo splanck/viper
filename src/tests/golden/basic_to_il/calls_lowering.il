@@ -1,7 +1,7 @@
 il 0.1.2
-extern @Viper.Console.PrintStr(str) -> void
-extern @Viper.Console.PrintI64(i64) -> void
-extern @Viper.Console.PrintF64(f64) -> void
+extern @Viper.Terminal.PrintStr(str) -> void
+extern @Viper.Terminal.PrintI64(i64) -> void
+extern @Viper.Terminal.PrintF64(f64) -> void
 extern @Viper.Strings.Len(str) -> i64
 extern @Viper.Strings.Mid(str, i64, i64) -> str
 extern @Viper.String.Left(str, i64) -> str
@@ -153,11 +153,11 @@ L10:
   .loc 1 15 10
   %t1 = call @F#(%t0)
   .loc 1 15 10
-  call @Viper.Console.PrintF64(%t1)
+  call @Viper.Terminal.PrintF64(%t1)
   .loc 1 15 10
   %t2 = const_str @.L1
   .loc 1 15 10
-  call @Viper.Console.PrintStr(%t2)
+  call @Viper.Terminal.PrintStr(%t2)
   .loc 1 15 4
   br L20
 L20:
@@ -166,22 +166,22 @@ L20:
   .loc 1 16 10
   %t4 = call @ID$(%t3)
   .loc 1 16 10
-  call @Viper.Console.PrintStr(%t4)
+  call @Viper.Terminal.PrintStr(%t4)
   .loc 1 16 10
   %t5 = const_str @.L1
   .loc 1 16 10
-  call @Viper.Console.PrintStr(%t5)
+  call @Viper.Terminal.PrintStr(%t5)
   .loc 1 16 4
   br L30
 L30:
   .loc 1 17 10
   %t6 = call @FIRST#(2)
   .loc 1 17 10
-  call @Viper.Console.PrintF64(%t6)
+  call @Viper.Terminal.PrintF64(%t6)
   .loc 1 17 10
   %t7 = const_str @.L1
   .loc 1 17 10
-  call @Viper.Console.PrintStr(%t7)
+  call @Viper.Terminal.PrintStr(%t7)
   .loc 1 17 4
   br L40
 L40:

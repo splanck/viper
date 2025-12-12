@@ -265,6 +265,27 @@ void RuntimeHelperTracker::declareRequiredRuntime(build::IRBuilder &b, bool boun
                 }
             }
 
+            // Similarly, prefer Viper.Terminal.* over Viper.Console.* (Console
+            // is now an alias for backward compatibility).
+            if (d.name.rfind("Viper.Console.", 0) == 0)
+            {
+                if (auto sigId = il::runtime::findRuntimeSignatureId(d.name))
+                {
+                    const auto &reg = il::runtime::runtimeRegistry();
+                    for (const auto &other : reg)
+                    {
+                        auto otherId = il::runtime::findRuntimeSignatureId(other.name);
+                        if (!otherId || *otherId != *sigId)
+                            continue;
+                        if (other.name.rfind("Viper.Terminal.", 0) == 0)
+                        {
+                            // Prefer the Viper.Terminal.* variant.
+                            return;
+                        }
+                    }
+                }
+            }
+
             // Avoid declaring certain OOP-style or ctor helpers unless used.
             // Tests/goldens expect these only when referenced.
             if (d.name == std::string_view{"Viper.String.get_IsEmpty"} ||

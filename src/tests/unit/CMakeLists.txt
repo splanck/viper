@@ -592,4 +592,8 @@ function(viper_add_runtime_tests)
     viper_add_test(test_rt_split_fields ${VIPER_TESTS_DIR}/runtime/RTSplitFieldsTests.cpp)
     target_link_libraries(test_rt_split_fields PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_split_fields test_rt_split_fields)
+
+    viper_add_test(test_rt_seq ${VIPER_TESTS_DIR}/runtime/RTSeqTests.cpp)
+    target_link_libraries(test_rt_seq PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_seq test_rt_seq)
 endfunction()

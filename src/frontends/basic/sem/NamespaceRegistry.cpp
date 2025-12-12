@@ -142,7 +142,7 @@ void NamespaceRegistry::seedFromRuntimeBuiltins(
             continue;
 
         // Generate all namespace prefixes up to (but not including) the last segment.
-        // Example: "Viper.Console.PrintI64" → prefixes: "Viper", "Viper.Console".
+        // Example: "Viper.Terminal.PrintI64" → prefixes: "Viper", "Viper.Console".
         std::string current;
         current.reserve(name.size());
         std::size_t start = 0;

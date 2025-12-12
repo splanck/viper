@@ -37,6 +37,7 @@ set(RT_SOURCES
         rt_ns_bridge.c
         rt_file_ext.c
         rt_list.c
+        rt_seq.c
         rt_graphics.c
         rt_datetime.c
         rt_dictionary.c

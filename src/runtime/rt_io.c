@@ -584,3 +584,79 @@ int32_t rt_seek_ch_err(int ch, int64_t pos)
     (void)rt_file_channel_set_eof(ch, false);
     return 0;
 }
+
+// =============================================================================
+// Viper.Terminal I/O Functions
+// =============================================================================
+
+/// @brief Print a string followed by a newline.
+/// @param s Runtime string to print; may be null.
+void rt_term_say(rt_string s)
+{
+    rt_print_str(s);
+    rt_output_str("\n");
+}
+
+/// @brief Print an integer followed by a newline.
+/// @param v Integer value to print.
+void rt_term_say_i64(int64_t v)
+{
+    rt_print_i64(v);
+    rt_output_str("\n");
+}
+
+/// @brief Print a floating-point number followed by a newline.
+/// @param v Double value to print.
+void rt_term_say_f64(double v)
+{
+    rt_print_f64(v);
+    rt_output_str("\n");
+}
+
+/// @brief Print a boolean as "true" or "false" followed by a newline.
+/// @param v Boolean value (0 = false, non-zero = true).
+void rt_term_say_bool(int8_t v)
+{
+    rt_output_str(v ? "true\n" : "false\n");
+}
+
+/// @brief Print a string without a trailing newline.
+/// @param s Runtime string to print; may be null.
+void rt_term_print(rt_string s)
+{
+    rt_print_str(s);
+    rt_output_flush();
+}
+
+/// @brief Print an integer without a trailing newline.
+/// @param v Integer value to print.
+void rt_term_print_i64(int64_t v)
+{
+    rt_print_i64(v);
+    rt_output_flush();
+}
+
+/// @brief Print a floating-point number without a trailing newline.
+/// @param v Double value to print.
+void rt_term_print_f64(double v)
+{
+    rt_print_f64(v);
+    rt_output_flush();
+}
+
+/// @brief Print a prompt and read a line of input.
+/// @param prompt Runtime string to display before reading input.
+/// @return Newly allocated runtime string containing the user's input.
+rt_string rt_term_ask(rt_string prompt)
+{
+    rt_print_str(prompt);
+    rt_output_flush();
+    return rt_input_line();
+}
+
+/// @brief Read a line of input from stdin.
+/// @return Newly allocated runtime string containing the input line.
+rt_string rt_term_read_line(void)
+{
+    return rt_input_line();
+}

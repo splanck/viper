@@ -56,7 +56,7 @@ bool blockPrintsConstant(const il::core::BasicBlock &bb, long long value)
     {
         if (instr.op != il::core::Opcode::Call)
             continue;
-        if (instr.callee != "rt_print_i64" && instr.callee != "Viper.Console.PrintI64")
+        if (instr.callee != "rt_print_i64" && instr.callee != "Viper.Terminal.PrintI64")
             continue;
         if (instr.operands.empty())
             continue;

@@ -63,6 +63,37 @@ extern "C"
     /// @return Total number of fields discovered in @p line.
     int64_t rt_split_fields(rt_string line, rt_string *out_fields, int64_t max_fields);
 
+    // =========================================================================
+    // Viper.Terminal I/O Functions
+    // =========================================================================
+
+    /// @brief Print string followed by newline.
+    void rt_term_say(rt_string s);
+
+    /// @brief Print integer followed by newline.
+    void rt_term_say_i64(int64_t v);
+
+    /// @brief Print floating-point number followed by newline.
+    void rt_term_say_f64(double v);
+
+    /// @brief Print boolean as "true" or "false" followed by newline.
+    void rt_term_say_bool(int8_t v);
+
+    /// @brief Print string without trailing newline.
+    void rt_term_print(rt_string s);
+
+    /// @brief Print integer without trailing newline.
+    void rt_term_print_i64(int64_t v);
+
+    /// @brief Print floating-point number without trailing newline.
+    void rt_term_print_f64(double v);
+
+    /// @brief Print prompt and read a line of input.
+    rt_string rt_term_ask(rt_string prompt);
+
+    /// @brief Read a line of input from stdin.
+    rt_string rt_term_read_line(void);
+
     /// @brief Report EOF status for the specified channel.
     /// @param ch Numeric channel identifier previously passed to OPEN.
     /// @return -1 when the next read would hit EOF, 0 otherwise, or an error code on failure.

@@ -29,7 +29,7 @@ TEST(Codegen_X64_RuntimeNameMap, CanonicalNamesMapToRuntimeSymbols)
     fn.name = "main";
     MBasicBlock entry{};
     entry.label = fn.name;
-    entry.append(MInstr::make(MOpcode::CALL, {makeLabelOperand("Viper.Console.PrintI64")}));
+    entry.append(MInstr::make(MOpcode::CALL, {makeLabelOperand("Viper.Terminal.PrintI64")}));
     entry.append(MInstr::make(MOpcode::RET));
     fn.blocks.push_back(entry);
 
@@ -38,7 +38,7 @@ TEST(Codegen_X64_RuntimeNameMap, CanonicalNamesMapToRuntimeSymbols)
     const std::string asmText = os.str();
 
     EXPECT_NE(asmText.find("rt_print_i64"), std::string::npos);
-    EXPECT_EQ(asmText.find("Viper.Console.PrintI64"), std::string::npos);
+    EXPECT_EQ(asmText.find("Viper.Terminal.PrintI64"), std::string::npos);
 }
 
 int main(int argc, char **argv)

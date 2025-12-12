@@ -47,7 +47,7 @@ static void test_direct_qualified_builtin_call()
     // Fully-qualified dotted call to builtin extern.
     // Accept either zero diagnostics or parser choosing a different path that still compiles.
     const std::string src = R"(
-100 Viper.Console.PrintI64(42)
+100 Viper.Terminal.PrintI64(42)
 )";
     std::string out = analyzeAndGetOutput(src);
     // Should not report unknown procedure for the canonical qualified name.
@@ -70,7 +70,7 @@ static void test_shadowing_builtin_extern()
 {
     // Attempt to declare a user SUB that collides with a builtin extern.
     const std::string src = R"(
-100 SUB Viper.Console.PrintI64(x AS INTEGER)
+100 SUB Viper.Terminal.PrintI64(x AS INTEGER)
 110 END SUB
 )";
     std::string out = analyzeAndGetOutput(src);

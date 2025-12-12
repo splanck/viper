@@ -1,8 +1,8 @@
 il 0.1.2
-extern @Viper.Console.PrintI64(i64) -> void
+extern @Viper.Terminal.PrintI64(i64) -> void
 func @main() -> i64 {
 entry:
-  call @Viper.Console.PrintI64(42)
+  call @Viper.Terminal.PrintI64(42)
   ret 0
 }
 

@@ -403,7 +403,7 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
         }
         const std::string &calleeKey = calleeResolved.empty() ? expr.callee : calleeResolved;
         // Prefer runtime builtin externs when the name matches a canonical
-        // runtime descriptor (e.g., "Viper.Console.PrintI64"). Otherwise, fall
+        // runtime descriptor (e.g., "Viper.Terminal.PrintI64"). Otherwise, fall
         // back to user-defined procedure signatures collected from the AST.
         const il::runtime::RuntimeSignature *rtSig = il::runtime::findRuntimeSignature(calleeKey);
         // If not found and the call is unqualified, try resolving against USING imports.
@@ -488,7 +488,7 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
             if (!rtSig)
             {
                 static const char *defaultNamespaces[] = {
-                    "Viper.Console", "Viper.Terminal", "Viper.Time"};
+                    "Viper.Terminal", "Viper.Time"};
                 for (const char *ns : defaultNamespaces)
                 {
                     std::string candidate = std::string(ns) + "." + expr.callee;
@@ -559,7 +559,7 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
                 args.push_back(arg.value);
             }
             lowerer_.curLoc = expr.loc;
-            // Emit direct call to the canonical runtime extern (e.g., @Viper.Console.PrintI64).
+            // Emit direct call to the canonical runtime extern (e.g., @Viper.Terminal.PrintI64).
             if (rtSig->retType.kind != IlType::Kind::Void)
             {
                 const std::string &target = calleeResolved.empty() ? calleeKey : calleeResolved;

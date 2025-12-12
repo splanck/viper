@@ -1,7 +1,7 @@
 il 0.1.2
-extern @Viper.Console.PrintStr(str) -> void
-extern @Viper.Console.PrintI64(i64) -> void
-extern @Viper.Console.PrintF64(f64) -> void
+extern @Viper.Terminal.PrintStr(str) -> void
+extern @Viper.Terminal.PrintI64(i64) -> void
+extern @Viper.Terminal.PrintF64(f64) -> void
 extern @Viper.Strings.Len(str) -> i64
 extern @Viper.Strings.Mid(str, i64, i64) -> str
 extern @Viper.Diagnostics.Trap(str) -> void
@@ -90,11 +90,11 @@ bc_ok0:
   .loc 1 2 10
   %t15 = call @rt_arr_i64_get(%t7, 1)
   .loc 1 2 10
-  call @Viper.Console.PrintI64(%t15)
+  call @Viper.Terminal.PrintI64(%t15)
   .loc 1 2 10
   %t16 = const_str @.L0
   .loc 1 2 10
-  call @Viper.Console.PrintStr(%t16)
+  call @Viper.Terminal.PrintStr(%t16)
   .loc 1 2 4
   br exit
 bc_oob0:

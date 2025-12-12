@@ -1,7 +1,7 @@
 il 0.1.2
-extern @Viper.Console.PrintStr(str) -> void
-extern @Viper.Console.PrintI64(i64) -> void
-extern @Viper.Console.PrintF64(f64) -> void
+extern @Viper.Terminal.PrintStr(str) -> void
+extern @Viper.Terminal.PrintI64(i64) -> void
+extern @Viper.Terminal.PrintF64(f64) -> void
 extern @Viper.Strings.Len(str) -> i64
 extern @Viper.Strings.Mid(str, i64, i64) -> str
 extern @Viper.String.Left(str, i64) -> str
@@ -17,9 +17,9 @@ extern @Viper.String.IndexOf(str, str) -> i64
 extern @Viper.String.IndexOfFrom(i64, str, str) -> i64
 extern @Viper.String.Chr(i64) -> str
 extern @Viper.String.Asc(str) -> i64
-extern @Viper.Console.ReadLine() -> str
 extern @Viper.Convert.ToInt(str) -> i64
 extern @rt_str_empty() -> str
+extern @Viper.Terminal.ReadLine() -> str
 extern @rt_str_release_maybe(str) -> void
 global const str @.L0 = "\n"
 func @__mod_init$oop() -> void {
@@ -36,7 +36,7 @@ entry:
   br L10
 L10:
   .loc 1 1 4
-  %t3 = call @Viper.Console.ReadLine()
+  %t3 = call @Viper.Terminal.ReadLine()
   .loc 1 1 4
   %t4 = call @Viper.Convert.ToInt(%t3)
   .loc 1 1 4
@@ -73,11 +73,11 @@ L40:
   .loc 1 4 12
   %t13 = or %t12, -1
   .loc 1 4 12
-  call @Viper.Console.PrintI64(%t13)
+  call @Viper.Terminal.PrintI64(%t13)
   .loc 1 4 12
   %t14 = const_str @.L0
   .loc 1 4 12
-  call @Viper.Console.PrintStr(%t14)
+  call @Viper.Terminal.PrintStr(%t14)
   .loc 1 4 4
   br L50
 L50:
@@ -90,11 +90,11 @@ L50:
   .loc 1 5 16
   %t18 = and 0, %t17
   .loc 1 5 16
-  call @Viper.Console.PrintI64(%t18)
+  call @Viper.Terminal.PrintI64(%t18)
   .loc 1 5 16
   %t19 = const_str @.L0
   .loc 1 5 16
-  call @Viper.Console.PrintStr(%t19)
+  call @Viper.Terminal.PrintStr(%t19)
   .loc 1 5 4
   br exit
 exit:

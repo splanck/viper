@@ -1,7 +1,7 @@
 il 0.1.2
-extern @Viper.Console.PrintStr(str) -> void
-extern @Viper.Console.PrintI64(i64) -> void
-extern @Viper.Console.PrintF64(f64) -> void
+extern @Viper.Terminal.PrintStr(str) -> void
+extern @Viper.Terminal.PrintI64(i64) -> void
+extern @Viper.Terminal.PrintF64(f64) -> void
 extern @Viper.Strings.Len(str) -> i64
 extern @Viper.Strings.Mid(str, i64, i64) -> str
 extern @Viper.String.Left(str, i64) -> str
@@ -51,11 +51,11 @@ L40:
   .loc 1 4 4
   %t7 = isub.ovf 0, %t6
   .loc 1 4 10
-  call @Viper.Console.PrintI64(%t7)
+  call @Viper.Terminal.PrintI64(%t7)
   .loc 1 4 10
   %t8 = const_str @.L0
   .loc 1 4 10
-  call @Viper.Console.PrintStr(%t8)
+  call @Viper.Terminal.PrintStr(%t8)
   .loc 1 4 4
   br exit
 exit:
@@ -67,11 +67,11 @@ if_test_0:
   cbr %t3, if_then_0, if_else
 if_then_0:
   .loc 1 3 20
-  call @Viper.Console.PrintI64(1)
+  call @Viper.Terminal.PrintI64(1)
   .loc 1 3 20
   %t4 = const_str @.L0
   .loc 1 3 20
-  call @Viper.Console.PrintStr(%t4)
+  call @Viper.Terminal.PrintStr(%t4)
   .loc 1 3 4
   br if_exit
 if_else:

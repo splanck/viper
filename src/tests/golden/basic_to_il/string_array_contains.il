@@ -1,7 +1,7 @@
 il 0.1.2
-extern @Viper.Console.PrintStr(str) -> void
-extern @Viper.Console.PrintI64(i64) -> void
-extern @Viper.Console.PrintF64(f64) -> void
+extern @Viper.Terminal.PrintStr(str) -> void
+extern @Viper.Terminal.PrintI64(i64) -> void
+extern @Viper.Terminal.PrintF64(f64) -> void
 extern @Viper.Strings.Len(str) -> i64
 extern @Viper.Strings.Mid(str, i64, i64) -> str
 extern @Viper.String.Left(str, i64) -> str
@@ -188,13 +188,13 @@ bc_ok2:
   .loc 1 5 7
   call @rt_str_retain_maybe(%t36)
   .loc 1 5 7
-  call @Viper.Console.PrintStr(%t36)
+  call @Viper.Terminal.PrintStr(%t36)
   .loc 1 5 7
   call @rt_str_release_maybe(%t36)
   .loc 1 5 7
   %t37 = const_str @.L2
   .loc 1 5 7
-  call @Viper.Console.PrintStr(%t37)
+  call @Viper.Terminal.PrintStr(%t37)
   .loc 1 5 1
   br UL999999996
 bc_oob2:
@@ -210,13 +210,13 @@ bc_ok3:
   .loc 1 6 7
   call @rt_str_retain_maybe(%t47)
   .loc 1 6 7
-  call @Viper.Console.PrintStr(%t47)
+  call @Viper.Terminal.PrintStr(%t47)
   .loc 1 6 7
   call @rt_str_release_maybe(%t47)
   .loc 1 6 7
   %t48 = const_str @.L2
   .loc 1 6 7
-  call @Viper.Console.PrintStr(%t48)
+  call @Viper.Terminal.PrintStr(%t48)
   .loc 1 6 1
   br UL999999995
 bc_oob3:

@@ -1,7 +1,7 @@
 il 0.1.2
-extern @Viper.Console.PrintStr(str) -> void
-extern @Viper.Console.PrintI64(i64) -> void
-extern @Viper.Console.PrintF64(f64) -> void
+extern @Viper.Terminal.PrintStr(str) -> void
+extern @Viper.Terminal.PrintI64(i64) -> void
+extern @Viper.Terminal.PrintF64(f64) -> void
 extern @Viper.Strings.Len(str) -> i64
 extern @Viper.Strings.Mid(str, i64, i64) -> str
 extern @Viper.String.Left(str, i64) -> str
@@ -29,11 +29,11 @@ entry:
   br UL1000000000
 UL1000000000:
   .loc 1 1 8
-  call @Viper.Console.PrintI64(3)
+  call @Viper.Terminal.PrintI64(3)
   .loc 1 1 8
   %t0 = const_str @.L0
   .loc 1 1 8
-  call @Viper.Console.PrintStr(%t0)
+  call @Viper.Terminal.PrintStr(%t0)
   .loc 1 1 1
   br exit
 exit:

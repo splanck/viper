@@ -104,7 +104,7 @@ class NamespaceRegistry
     [[nodiscard]] const NamespaceInfo *info(const std::string &full) const;
 
     /// @brief Seed known namespaces from runtime built-in descriptors.
-    /// @details For each runtime descriptor with a dotted name (e.g., "Viper.Console.PrintI64"),
+    /// @details For each runtime descriptor with a dotted name (e.g., "Viper.Terminal.PrintI64"),
     ///          insert all namespace prefixes into the registry: "Viper", "Viper.Console".
     ///          Names are handled case-insensitively; canonical casing from descriptors is
     ///          preserved.

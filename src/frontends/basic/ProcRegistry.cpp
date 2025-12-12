@@ -317,7 +317,7 @@ const ProcRegistry::ProcEntry *ProcRegistry::LookupExact(std::string_view qualif
 /// @details Iterates runtime descriptors, selects canonical dotted names (e.g.,
 ///          "Viper.*"), maps IL types to BASIC types, and registers them as
 ///          procedures so the semantic analyzer can resolve calls like
-///          Viper.Console.PrintI64.
+///          Viper.Terminal.PrintI64.
 void ProcRegistry::seedRuntimeBuiltins()
 {
     using namespace il::runtime;

@@ -560,13 +560,13 @@ static std::string mapToCanonicalRuntime(std::string_view name)
         return std::string(name);
 
     // Identify a canonical descriptor in the alias group sharing the same
-    // generated signature id. Prefer entries with a namespace ('.' in name),
-    // and when both Viper.String.* and Viper.Strings.* variants are present,
-    // choose Viper.Strings.* for stability and golden expectations.
+    // generated signature id. Prefer entries with a namespace ('.' in name).
+    // Priority: Viper.Strings.* > Viper.Terminal.* > other Viper.* namespaces.
     if (auto sigId = findRuntimeSignatureId(desc->name))
     {
         const RuntimeDescriptor *best = desc;
         const RuntimeDescriptor *stringsPreferred = nullptr;
+        const RuntimeDescriptor *terminalPreferred = nullptr;
         const auto &reg = runtimeRegistry();
         for (const auto &entry : reg)
         {
@@ -581,12 +581,19 @@ static std::string mapToCanonicalRuntime(std::string_view name)
                 stringsPreferred = &entry;
                 break; // strongest preference satisfied
             }
-            // Track a canonical candidate if no Strings.* variant is found.
+            if (entry.name.rfind("Viper.Terminal.", 0) == 0)
+            {
+                terminalPreferred = &entry;
+                continue; // keep looking for Strings.*
+            }
+            // Track a canonical candidate if no preferred variant found yet.
             if (best == desc)
                 best = &entry;
         }
         if (stringsPreferred)
             return std::string(stringsPreferred->name);
+        if (terminalPreferred)
+            return std::string(terminalPreferred->name);
         return std::string(best->name);
     }
 

@@ -51,10 +51,21 @@ TEST(RuntimeMethodIndexBasic, ObjectMethodsTargets)
     auto eq = runtimeMethodIndex().find("Viper.Object", "Equals", 1);
     ASSERT_TRUE(eq.has_value());
     EXPECT_EQ(eq->target, std::string("Viper.Object.Equals"));
-    // ReferenceEquals has arity 2
+
+    // GetHashCode has arity 0
+    auto hc = runtimeMethodIndex().find("Viper.Object", "GetHashCode", 0);
+    ASSERT_TRUE(hc.has_value());
+    EXPECT_EQ(hc->target, std::string("Viper.Object.GetHashCode"));
+
+    // ToString has arity 0
+    auto ts = runtimeMethodIndex().find("Viper.Object", "ToString", 0);
+    ASSERT_TRUE(ts.has_value());
+    EXPECT_EQ(ts->target, std::string("Viper.Object.ToString"));
+
+    // ReferenceEquals is a static function, not an instance method.
+    // It should NOT be found via the method index.
     auto re = runtimeMethodIndex().find("Viper.Object", "ReferenceEquals", 2);
-    ASSERT_TRUE(re.has_value());
-    EXPECT_EQ(re->target, std::string("Viper.Object.ReferenceEquals"));
+    EXPECT_FALSE(re.has_value());
 }
 
 int main(int argc, char **argv)

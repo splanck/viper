@@ -15,14 +15,15 @@ The Viper Runtime Library provides a set of built-in classes and utilities avail
 - [Viper.Text.StringBuilder](#vipertextstringbuilder)
 - [Viper.Collections.List](#vipercollectionslist)
 - [Viper.Collections.Dictionary](#vipercollectionsdictionary)
+- [Viper.Collections.Seq](#vipercollectionsseq)
 - [Viper.Math](#vipermath)
-- [Viper.Console](#viperconsole)
+- [Viper.Terminal](#viperterminal)
 - [Viper.Convert](#viperconvert)
 - [Viper.Random](#viperrandom)
 - [Viper.Environment](#viperenvironment)
 - [Viper.DateTime](#viperdatetime)
 - [Viper.IO.File](#viperiofile)
-- [Viper.Graphics.Window](#vipergraphicswindow)
+- [Viper.Graphics.Canvas](#vipergraphicscanvas)
 - [Viper.Graphics.Color](#vipergraphicscolor)
 
 ---
@@ -36,7 +37,7 @@ The Viper Runtime Library provides a set of built-in classes and utilities avail
 | `String` | Instance | Immutable string with manipulation methods |
 | `Object` | Base class | Root type for all reference types |
 | `Math` | Static | Mathematical functions (trig, pow, abs, etc.) |
-| `Console` | Static | Console input/output |
+| `Terminal` | Static | Terminal input/output |
 | `Convert` | Static | Type conversion utilities |
 | `Random` | Static | Random number generation |
 | `Environment` | Static | Command-line arguments and environment |
@@ -54,6 +55,7 @@ The Viper Runtime Library provides a set of built-in classes and utilities avail
 |-------|------|-------------|
 | `List` | Instance | Dynamic array of objects |
 | `Dictionary` | Instance | String-keyed hash map |
+| `Seq` | Instance | Dynamic sequence (growable array) with stack/queue operations |
 
 ### Viper.IO
 
@@ -65,7 +67,7 @@ The Viper Runtime Library provides a set of built-in classes and utilities avail
 
 | Class | Type | Description |
 |-------|------|-------------|
-| `Window` | Instance | 2D graphics window with drawing primitives |
+| `Canvas` | Instance | 2D graphics canvas with drawing primitives |
 | `Color` | Static | Color creation utilities |
 
 ### Class Types
@@ -133,14 +135,19 @@ Base class for all Viper reference types. Provides fundamental object operations
 
 **Type:** Base class (not instantiated directly)
 
-### Methods
+### Instance Methods
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `Equals(other)` | `Boolean(Object)` | Compares this object with another for equality |
 | `GetHashCode()` | `Integer()` | Returns a hash code for the object |
 | `ToString()` | `String()` | Returns a string representation of the object |
-| `ReferenceEquals(a, b)` | `Boolean(Object, Object)` | Static method that tests if two references point to the same object |
+
+### Static Functions
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `Viper.Object.ReferenceEquals(a, b)` | `Boolean(Object, Object)` | Tests if two references point to the same object instance |
 
 ### Example
 
@@ -154,6 +161,11 @@ END IF
 
 PRINT obj1.ToString()
 PRINT obj1.GetHashCode()
+
+' Static function call - check if same instance
+IF Viper.Object.ReferenceEquals(obj1, obj2) THEN
+    PRINT "Same object instance"
+END IF
 ```
 
 ---
@@ -329,6 +341,114 @@ dict.Clear()
 
 ---
 
+## Viper.Collections.Seq
+
+Dynamic sequence (growable array) with stack and queue operations. Viper's primary growable collection type, supporting push/pop, insert/remove, and slicing operations.
+
+**Type:** Instance (obj)
+**Constructor:** `NEW Viper.Collections.Seq()` or `Viper.Collections.Seq.WithCapacity(cap)`
+
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `Len` | Integer | Number of elements currently in the sequence |
+| `Cap` | Integer | Current allocated capacity |
+| `IsEmpty` | Boolean | Returns true if the sequence has zero elements |
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `Get(index)` | `Object(Integer)` | Returns the element at the specified index (0-based) |
+| `Set(index, value)` | `Void(Integer, Object)` | Sets the element at the specified index |
+| `Push(value)` | `Void(Object)` | Appends an element to the end |
+| `Pop()` | `Object()` | Removes and returns the last element |
+| `Peek()` | `Object()` | Returns the last element without removing it |
+| `First()` | `Object()` | Returns the first element |
+| `Last()` | `Object()` | Returns the last element |
+| `Insert(index, value)` | `Void(Integer, Object)` | Inserts an element at the specified position |
+| `Remove(index)` | `Object(Integer)` | Removes and returns the element at the specified position |
+| `Clear()` | `Void()` | Removes all elements |
+| `Find(value)` | `Integer(Object)` | Returns the index of a value, or -1 if not found |
+| `Has(value)` | `Boolean(Object)` | Returns true if the sequence contains the value |
+| `Reverse()` | `Void()` | Reverses the elements in place |
+| `Slice(start, end)` | `Seq(Integer, Integer)` | Returns a new sequence with elements from start (inclusive) to end (exclusive) |
+| `Clone()` | `Seq()` | Returns a shallow copy of the sequence |
+
+### Example
+
+```basic
+DIM seq AS Viper.Collections.Seq
+seq = NEW Viper.Collections.Seq()
+
+' Add elements (stack-like)
+seq.Push(item1)
+seq.Push(item2)
+seq.Push(item3)
+
+PRINT seq.Len      ' Output: 3
+PRINT seq.IsEmpty  ' Output: False
+
+' Access elements by index
+DIM first AS Object
+first = seq.Get(0)
+
+' Modify by index
+seq.Set(1, newItem)
+
+' Stack operations
+DIM last AS Object
+last = seq.Pop()   ' Removes and returns item3
+last = seq.Peek()  ' Returns item2 without removing
+
+' Insert and remove at arbitrary positions
+seq.Insert(0, itemAtStart)  ' Insert at beginning
+seq.Remove(1)               ' Remove second element
+
+' Search
+IF seq.Has(someItem) THEN
+    PRINT "Found at index: "; seq.Find(someItem)
+END IF
+
+' Slicing
+DIM slice AS Viper.Collections.Seq
+slice = seq.Slice(1, 3)  ' Elements at indices 1 and 2
+
+' Clone for independent copy
+DIM copy AS Viper.Collections.Seq
+copy = seq.Clone()
+
+' Reverse in place
+seq.Reverse()
+
+' Clear all
+seq.Clear()
+```
+
+### Creating with Initial Capacity
+
+For better performance when the size is known in advance:
+
+```basic
+DIM seq AS Viper.Collections.Seq
+seq = Viper.Collections.Seq.WithCapacity(1000)
+
+' No reallocations needed for first 1000 pushes
+FOR i = 1 TO 1000
+    seq.Push(items(i))
+NEXT i
+```
+
+### Use Cases
+
+- **Stack:** Use `Push()` and `Pop()` for LIFO operations
+- **Queue:** Use `Push()` to add and `Remove(0)` to dequeue (FIFO)
+- **Dynamic Array:** Use `Get()`/`Set()` for random access
+- **Slicing:** Use `Slice()` to extract sub-sequences
+
+---
+
 ## Viper.Math
 
 Mathematical functions and constants.
@@ -383,9 +503,9 @@ PRINT Viper.Math.Min(3.5, 2.1)   ' Output: 2.1
 
 ---
 
-## Viper.Console
+## Viper.Terminal
 
-Console input and output operations.
+Terminal input and output operations.
 
 **Type:** Static utility class
 
@@ -393,21 +513,29 @@ Console input and output operations.
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `WriteLine(text)` | `Void(String)` | Writes text followed by a newline to standard output |
+| `PrintStr(text)` | `Void(String)` | Writes text to standard output |
+| `PrintI64(value)` | `Void(I64)` | Writes an integer to standard output |
+| `PrintF64(value)` | `Void(F64)` | Writes a floating-point number to standard output |
 | `ReadLine()` | `String()` | Reads a line of text from standard input |
 
 ### Example
 
 ```basic
-Viper.Console.WriteLine("What is your name?")
+Viper.Terminal.PrintStr("What is your name?")
+Viper.Terminal.PrintStr(CHR$(10))  ' Newline
 DIM name AS STRING
-name = Viper.Console.ReadLine()
-Viper.Console.WriteLine("Hello, " + name + "!")
+name = Viper.Terminal.ReadLine()
+Viper.Terminal.PrintStr("Hello, " + name + "!")
+Viper.Terminal.PrintStr(CHR$(10))
 ```
 
 ### Note
 
-For most BASIC programs, the `PRINT` and `INPUT` statements are more convenient. Use `Viper.Console` when you need explicit control or are working at the IL level.
+For most BASIC programs, the `PRINT` and `INPUT` statements are more convenient. Use `Viper.Terminal` when you need explicit control or are working at the IL level.
+
+### Backward Compatibility
+
+`Viper.Console.*` names are retained as aliases for backward compatibility. New code should use `Viper.Terminal.*`.
 
 ---
 
@@ -641,35 +769,35 @@ For more advanced file operations (line-by-line reading, binary files, etc.), us
 
 ---
 
-## Viper.Graphics.Window
+## Viper.Graphics.Canvas
 
-2D graphics window for visual applications and games.
+2D graphics canvas for visual applications and games.
 
 **Type:** Instance (obj)
-**Constructor:** `NEW Viper.Graphics.Window(width, height, title)` — *Note: Constructor parameters may require IL-level setup*
+**Constructor:** `NEW Viper.Graphics.Canvas(title, width, height)`
 
 ### Properties
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `Width` | Integer | Window width in pixels |
-| `Height` | Integer | Window height in pixels |
-| `ShouldClose` | Integer | Non-zero if the user requested to close the window |
+| `Width` | Integer | Canvas width in pixels |
+| `Height` | Integer | Canvas height in pixels |
+| `ShouldClose` | Integer | Non-zero if the user requested to close the canvas |
 
 ### Methods
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `Update()` | `Void()` | Presents the back buffer and processes events |
-| `Clear(color)` | `Void(Integer)` | Clears the window with a solid color |
-| `DrawLine(x1, y1, x2, y2, color)` | `Void(Integer...)` | Draws a line between two points |
-| `DrawRect(x, y, w, h, color)` | `Void(Integer...)` | Draws a filled rectangle |
-| `DrawRectOutline(x, y, w, h, color)` | `Void(Integer...)` | Draws a rectangle outline |
-| `DrawCircle(x, y, r, color)` | `Void(Integer...)` | Draws a filled circle |
-| `DrawCircleOutline(x, y, r, color)` | `Void(Integer...)` | Draws a circle outline |
-| `SetPixel(x, y, color)` | `Void(Integer, Integer, Integer)` | Sets a single pixel |
-| `PollEvent()` | `Integer()` | Polls for input events |
-| `KeyDown(keycode)` | `Integer(Integer)` | Returns non-zero if the specified key is pressed |
+| `Flip()` | `Void()` | Presents the back buffer and displays drawn content |
+| `Clear(color)` | `Void(Integer)` | Clears the canvas with a solid color |
+| `Line(x1, y1, x2, y2, color)` | `Void(Integer...)` | Draws a line between two points |
+| `Box(x, y, w, h, color)` | `Void(Integer...)` | Draws a filled rectangle |
+| `Frame(x, y, w, h, color)` | `Void(Integer...)` | Draws a rectangle outline |
+| `Disc(cx, cy, r, color)` | `Void(Integer...)` | Draws a filled circle |
+| `Ring(cx, cy, r, color)` | `Void(Integer...)` | Draws a circle outline |
+| `Plot(x, y, color)` | `Void(Integer, Integer, Integer)` | Sets a single pixel |
+| `Poll()` | `Integer()` | Polls for input events; returns event type (0 = none) |
+| `KeyHeld(keycode)` | `Integer(Integer)` | Returns non-zero if the specified key is held down |
 
 ### Color Format
 
@@ -680,34 +808,40 @@ Colors are specified as 32-bit integers in `0x00RRGGBB` format:
 - White: `0x00FFFFFF`
 - Black: `0x00000000`
 
-Use `Viper.Graphics.Color.RGB()` to create colors from components.
+Use `Viper.Graphics.Color.RGB()` or `Viper.Graphics.Color.RGBA()` to create colors from components.
 
 ### Example
 
 ```basic
-' Create a window
-DIM win AS Viper.Graphics.Window
-' (Window creation requires runtime setup)
+' Create a canvas
+DIM canvas AS Viper.Graphics.Canvas
+canvas = NEW Viper.Graphics.Canvas("My Game", 800, 600)
 
 ' Main loop
-DO WHILE win.ShouldClose = 0
+DO WHILE canvas.ShouldClose = 0
+    ' Poll events
+    canvas.Poll()
+
     ' Clear to black
-    win.Clear(&H00000000)
+    canvas.Clear(&H00000000)
 
-    ' Draw a red rectangle
-    win.DrawRect(100, 100, 200, 150, &H00FF0000)
+    ' Draw a red filled rectangle
+    canvas.Box(100, 100, 200, 150, &H00FF0000)
 
-    ' Draw a blue circle
-    win.DrawCircle(400, 300, 50, &H000000FF)
+    ' Draw a blue filled circle
+    canvas.Disc(400, 300, 50, &H000000FF)
 
     ' Draw a green line
-    win.DrawLine(0, 0, 800, 600, &H0000FF00)
+    canvas.Line(0, 0, 800, 600, &H0000FF00)
+
+    ' Draw a white rectangle outline
+    canvas.Frame(50, 50, 100, 100, &H00FFFFFF)
+
+    ' Draw a yellow circle outline
+    canvas.Ring(600, 200, 40, &H00FFFF00)
 
     ' Present
-    win.Update()
-
-    ' Poll events
-    win.PollEvent()
+    canvas.Flip()
 LOOP
 ```
 
@@ -724,6 +858,7 @@ Color utility functions for graphics operations.
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `RGB(r, g, b)` | `Integer(Integer, Integer, Integer)` | Creates a color value from red, green, blue components (0-255 each) |
+| `RGBA(r, g, b, a)` | `Integer(Integer, Integer, Integer, Integer)` | Creates a color with alpha from red, green, blue, alpha components (0-255 each) |
 
 ### Example
 
@@ -740,12 +875,12 @@ blue = Viper.Graphics.Color.RGB(0, 0, 255)
 DIM purple AS INTEGER
 purple = Viper.Graphics.Color.RGB(128, 0, 128)
 
-DIM gray AS INTEGER
-gray = Viper.Graphics.Color.RGB(128, 128, 128)
+DIM semiTransparent AS INTEGER
+semiTransparent = Viper.Graphics.Color.RGBA(255, 0, 0, 128)  ' 50% transparent red
 
-' Use with graphics window
-win.DrawRect(10, 10, 100, 100, red)
-win.DrawCircle(200, 200, 50, purple)
+' Use with graphics canvas
+canvas.Box(10, 10, 100, 100, red)
+canvas.Disc(200, 200, 50, purple)
 ```
 
 ---

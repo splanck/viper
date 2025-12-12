@@ -492,7 +492,9 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
     /// @param stmt INPUT statement referencing destination variables.
     void before(const InputStmt &stmt)
     {
-        lowerer_.requestHelper(Lowerer::RuntimeFeature::InputLine);
+        // Note: Viper.Terminal.ReadLine is declared via trackCalleeName when called.
+        // No need to request RuntimeFeature::InputLine since that was for the legacy
+        // rt_input_line helper which is no longer used by BASIC frontend.
         if (stmt.vars.size() > 1)
         {
             lowerer_.requestHelper(Lowerer::RuntimeFeature::SplitFields);

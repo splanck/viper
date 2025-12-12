@@ -1,2 +1,2 @@
-10 Viper.Console.PrintStr(("abcd").Substring(2,2))
+10 Viper.Terminal.PrintStr(("abcd").Substring(2,2))
 20 END

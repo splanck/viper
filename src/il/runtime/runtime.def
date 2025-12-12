@@ -29,13 +29,34 @@
 //===----------------------------------------------------------------------===//
 
 //=============================================================================
-// CONSOLE I/O
+// TERMINAL I/O
 //=============================================================================
 
-RT_FUNC(PrintStr,  rt_print_str,  "Viper.Console.PrintStr",  "void(str)")
-RT_FUNC(PrintI64,  rt_print_i64,  "Viper.Console.PrintI64",  "void(i64)")
-RT_FUNC(PrintF64,  rt_print_f64,  "Viper.Console.PrintF64",  "void(f64)")
-RT_FUNC(ReadLine,  rt_input_line, "Viper.Console.ReadLine",  "str()")
+// Legacy print functions (still used by BASIC PRINT statement)
+RT_FUNC(PrintStr,  rt_print_str,  "Viper.Terminal.PrintStr",  "void(str)")
+RT_FUNC(PrintI64,  rt_print_i64,  "Viper.Terminal.PrintI64",  "void(i64)")
+RT_FUNC(PrintF64,  rt_print_f64,  "Viper.Terminal.PrintF64",  "void(f64)")
+
+// Terminal I/O with newline (Say = print + newline)
+RT_FUNC(TermSay,      rt_term_say,       "Viper.Terminal.Say",       "void(str)")
+RT_FUNC(TermSayInt,   rt_term_say_i64,   "Viper.Terminal.SayInt",    "void(i64)")
+RT_FUNC(TermSayNum,   rt_term_say_f64,   "Viper.Terminal.SayNum",    "void(f64)")
+RT_FUNC(TermSayBool,  rt_term_say_bool,  "Viper.Terminal.SayBool",   "void(i1)")
+
+// Terminal I/O without newline (Print = no newline, flush immediately)
+RT_FUNC(TermPrint,    rt_term_print,     "Viper.Terminal.Print",     "void(str)")
+RT_FUNC(TermPrintInt, rt_term_print_i64, "Viper.Terminal.PrintInt",  "void(i64)")
+RT_FUNC(TermPrintNum, rt_term_print_f64, "Viper.Terminal.PrintNum",  "void(f64)")
+
+// Terminal input
+RT_FUNC(TermAsk,      rt_term_ask,       "Viper.Terminal.Ask",       "str(str)")
+RT_FUNC(TermReadLine, rt_term_read_line, "Viper.Terminal.ReadLine",  "str()")
+
+// Console aliases (backward compatibility - Console is now consolidated into Terminal)
+RT_ALIAS("Viper.Console.PrintStr", PrintStr)
+RT_ALIAS("Viper.Console.PrintI64", PrintI64)
+RT_ALIAS("Viper.Console.PrintF64", PrintF64)
+RT_ALIAS("Viper.Console.ReadLine", TermReadLine)
 
 //=============================================================================
 // STRING FUNCTIONS
@@ -156,6 +177,31 @@ RT_FUNC(DictRemove,      rt_dict_remove,       "Viper.Collections.Dictionary.Rem
 RT_FUNC(DictClear,       rt_dict_clear,        "Viper.Collections.Dictionary.Clear",       "void(obj)")
 
 //=============================================================================
+// COLLECTIONS - SEQ (Dynamic Sequence)
+//=============================================================================
+
+RT_FUNC(SeqNew,          rt_seq_new,           "Viper.Collections.Seq.New",           "obj()")
+RT_FUNC(SeqWithCapacity, rt_seq_with_capacity, "Viper.Collections.Seq.WithCapacity",  "obj(i64)")
+RT_FUNC(SeqLen,          rt_seq_len,           "Viper.Collections.Seq.get_Len",       "i64(obj)")
+RT_FUNC(SeqCap,          rt_seq_cap,           "Viper.Collections.Seq.get_Cap",       "i64(obj)")
+RT_FUNC(SeqIsEmpty,      rt_seq_is_empty,      "Viper.Collections.Seq.get_IsEmpty",   "i1(obj)")
+RT_FUNC(SeqGet,          rt_seq_get,           "Viper.Collections.Seq.Get",           "obj(obj,i64)")
+RT_FUNC(SeqSet,          rt_seq_set,           "Viper.Collections.Seq.Set",           "void(obj,i64,obj)")
+RT_FUNC(SeqPush,         rt_seq_push,          "Viper.Collections.Seq.Push",          "void(obj,obj)")
+RT_FUNC(SeqPop,          rt_seq_pop,           "Viper.Collections.Seq.Pop",           "obj(obj)")
+RT_FUNC(SeqPeek,         rt_seq_peek,          "Viper.Collections.Seq.Peek",          "obj(obj)")
+RT_FUNC(SeqInsert,       rt_seq_insert,        "Viper.Collections.Seq.Insert",        "void(obj,i64,obj)")
+RT_FUNC(SeqRemove,       rt_seq_remove,        "Viper.Collections.Seq.Remove",        "obj(obj,i64)")
+RT_FUNC(SeqClear,        rt_seq_clear,         "Viper.Collections.Seq.Clear",         "void(obj)")
+RT_FUNC(SeqFind,         rt_seq_find,          "Viper.Collections.Seq.Find",          "i64(obj,obj)")
+RT_FUNC(SeqHas,          rt_seq_has,           "Viper.Collections.Seq.Has",           "i1(obj,obj)")
+RT_FUNC(SeqReverse,      rt_seq_reverse,       "Viper.Collections.Seq.Reverse",       "void(obj)")
+RT_FUNC(SeqSlice,        rt_seq_slice,         "Viper.Collections.Seq.Slice",         "obj(obj,i64,i64)")
+RT_FUNC(SeqClone,        rt_seq_clone,         "Viper.Collections.Seq.Clone",         "obj(obj)")
+RT_FUNC(SeqFirst,        rt_seq_first,         "Viper.Collections.Seq.First",         "obj(obj)")
+RT_FUNC(SeqLast,         rt_seq_last,          "Viper.Collections.Seq.Last",          "obj(obj)")
+
+//=============================================================================
 // TEXT - STRINGBUILDER
 //=============================================================================
 
@@ -229,13 +275,30 @@ RT_FUNC(ObjReferenceEquals, rt_obj_reference_equals, "Viper.Object.ReferenceEqua
 RT_FUNC(ObjToString,       rt_obj_to_string,        "Viper.Object.ToString",        "str(obj)")
 
 //=============================================================================
-// GRAPHICS - WINDOW (uses rt_* names directly, no Viper.* canonical names)
-// Note: These functions don't have RuntimeSignatures entries yet, so we
-// don't generate RuntimeNameMap aliases for them. The RuntimeClasses catalog
-// references the rt_* symbols directly.
+// GRAPHICS - CANVAS
 //=============================================================================
 
-// Graphics functions are only used through RuntimeClasses, not RuntimeNameMap
+RT_FUNC(CanvasNew,         rt_canvas_new,          "Viper.Graphics.Canvas.New",            "obj(str,i64,i64)")
+RT_FUNC(CanvasWidth,       rt_canvas_width,        "Viper.Graphics.Canvas.get_Width",      "i64(obj)")
+RT_FUNC(CanvasHeight,      rt_canvas_height,       "Viper.Graphics.Canvas.get_Height",     "i64(obj)")
+RT_FUNC(CanvasShouldClose, rt_canvas_should_close, "Viper.Graphics.Canvas.get_ShouldClose","i64(obj)")
+RT_FUNC(CanvasFlip,        rt_canvas_flip,         "Viper.Graphics.Canvas.Flip",           "void(obj)")
+RT_FUNC(CanvasClear,       rt_canvas_clear,        "Viper.Graphics.Canvas.Clear",          "void(obj,i64)")
+RT_FUNC(CanvasLine,        rt_canvas_line,         "Viper.Graphics.Canvas.Line",           "void(obj,i64,i64,i64,i64,i64)")
+RT_FUNC(CanvasBox,         rt_canvas_box,          "Viper.Graphics.Canvas.Box",            "void(obj,i64,i64,i64,i64,i64)")
+RT_FUNC(CanvasFrame,       rt_canvas_frame,        "Viper.Graphics.Canvas.Frame",          "void(obj,i64,i64,i64,i64,i64)")
+RT_FUNC(CanvasDisc,        rt_canvas_disc,         "Viper.Graphics.Canvas.Disc",           "void(obj,i64,i64,i64,i64)")
+RT_FUNC(CanvasRing,        rt_canvas_ring,         "Viper.Graphics.Canvas.Ring",           "void(obj,i64,i64,i64,i64)")
+RT_FUNC(CanvasPlot,        rt_canvas_plot,         "Viper.Graphics.Canvas.Plot",           "void(obj,i64,i64,i64)")
+RT_FUNC(CanvasPoll,        rt_canvas_poll,         "Viper.Graphics.Canvas.Poll",           "i64(obj)")
+RT_FUNC(CanvasKeyHeld,     rt_canvas_key_held,     "Viper.Graphics.Canvas.KeyHeld",        "i64(obj,i64)")
+
+//=============================================================================
+// GRAPHICS - COLOR
+//=============================================================================
+
+RT_FUNC(ColorRGB,          rt_color_rgb,           "Viper.Graphics.Color.RGB",             "i64(i64,i64,i64)")
+RT_FUNC(ColorRGBA,         rt_color_rgba,          "Viper.Graphics.Color.RGBA",            "i64(i64,i64,i64,i64)")
 
 //=============================================================================
 // RUNTIME CLASSES
@@ -271,12 +334,13 @@ RT_CLASS_BEGIN("Viper.Text.StringBuilder", StringBuilder, "opaque*", SBNew)
     RT_METHOD("Clear", "void()", SBClear)
 RT_CLASS_END()
 
-// Viper.Object - base class
+// Viper.Object - base class for all objects
+// Note: ReferenceEquals is a static function, not an instance method.
+// Call as: Viper.Object.ReferenceEquals(a, b)
 RT_CLASS_BEGIN("Viper.Object", Object, "obj", none)
     RT_METHOD("Equals", "i1(obj)", ObjEquals)
     RT_METHOD("GetHashCode", "i64()", ObjGetHashCode)
     RT_METHOD("ToString", "str()", ObjToString)
-    RT_METHOD("ReferenceEquals", "i1(obj,obj)", ObjReferenceEquals)
 RT_CLASS_END()
 
 // Viper.IO.File - static utility class
@@ -307,6 +371,28 @@ RT_CLASS_BEGIN("Viper.Collections.Dictionary", Dictionary, "obj", DictNew)
     RT_METHOD("Clear", "void()", DictClear)
 RT_CLASS_END()
 
+// Viper.Collections.Seq - dynamic sequence/array
+RT_CLASS_BEGIN("Viper.Collections.Seq", Seq, "obj", SeqNew)
+    RT_PROP("Len", "i64", SeqLen, none)
+    RT_PROP("Cap", "i64", SeqCap, none)
+    RT_PROP("IsEmpty", "i1", SeqIsEmpty, none)
+    RT_METHOD("Get", "obj(i64)", SeqGet)
+    RT_METHOD("Set", "void(i64,obj)", SeqSet)
+    RT_METHOD("Push", "void(obj)", SeqPush)
+    RT_METHOD("Pop", "obj()", SeqPop)
+    RT_METHOD("Peek", "obj()", SeqPeek)
+    RT_METHOD("Insert", "void(i64,obj)", SeqInsert)
+    RT_METHOD("Remove", "obj(i64)", SeqRemove)
+    RT_METHOD("Clear", "void()", SeqClear)
+    RT_METHOD("Find", "i64(obj)", SeqFind)
+    RT_METHOD("Has", "i1(obj)", SeqHas)
+    RT_METHOD("Reverse", "void()", SeqReverse)
+    RT_METHOD("Slice", "obj(i64,i64)", SeqSlice)
+    RT_METHOD("Clone", "obj()", SeqClone)
+    RT_METHOD("First", "obj()", SeqFirst)
+    RT_METHOD("Last", "obj()", SeqLast)
+RT_CLASS_END()
+
 // Viper.Math - static utility class
 RT_CLASS_BEGIN("Viper.Math", Math, "obj", none)
     RT_METHOD("Abs", "f64(f64)", MathAbs)
@@ -327,12 +413,6 @@ RT_CLASS_BEGIN("Viper.Math", Math, "obj", none)
     RT_METHOD("Max", "f64(f64,f64)", MathMax)
     RT_METHOD("MinInt", "i64(i64,i64)", MathMinInt)
     RT_METHOD("MaxInt", "i64(i64,i64)", MathMaxInt)
-RT_CLASS_END()
-
-// Viper.Console - static utility class
-RT_CLASS_BEGIN("Viper.Console", Console, "obj", none)
-    RT_METHOD("WriteLine", "void(str)", PrintStr)
-    RT_METHOD("ReadLine", "str()", ReadLine)
 RT_CLASS_END()
 
 // Viper.Convert - static utility class
@@ -358,26 +438,27 @@ RT_CLASS_BEGIN("Viper.Environment", Environment, "obj", none)
     RT_METHOD("IsNative", "i1()", EnvIsNative)
 RT_CLASS_END()
 
-// Viper.Graphics.Window - uses rt_* names directly (no canonical Viper.* mapping)
-RT_CLASS_BEGIN("Viper.Graphics.Window", GfxWindow, "obj", "Viper.Graphics.Window.New")
-    RT_PROP("Width", "i64", "rt_gfx_window_width", none)
-    RT_PROP("Height", "i64", "rt_gfx_window_height", none)
-    RT_PROP("ShouldClose", "i64", "rt_gfx_window_should_close", none)
-    RT_METHOD("Update", "void()", "rt_gfx_window_update")
-    RT_METHOD("Clear", "void(i64)", "rt_gfx_window_clear")
-    RT_METHOD("DrawLine", "void(i64,i64,i64,i64,i64)", "rt_gfx_draw_line")
-    RT_METHOD("DrawRect", "void(i64,i64,i64,i64,i64)", "rt_gfx_draw_rect")
-    RT_METHOD("DrawRectOutline", "void(i64,i64,i64,i64,i64)", "rt_gfx_draw_rect_outline")
-    RT_METHOD("DrawCircle", "void(i64,i64,i64,i64)", "rt_gfx_draw_circle")
-    RT_METHOD("DrawCircleOutline", "void(i64,i64,i64,i64)", "rt_gfx_draw_circle_outline")
-    RT_METHOD("SetPixel", "void(i64,i64,i64)", "rt_gfx_set_pixel")
-    RT_METHOD("PollEvent", "i64()", "rt_gfx_poll_event")
-    RT_METHOD("KeyDown", "i64(i64)", "rt_gfx_key_down")
+// Viper.Graphics.Canvas - drawing surface
+RT_CLASS_BEGIN("Viper.Graphics.Canvas", Canvas, "obj", CanvasNew)
+    RT_PROP("Width", "i64", CanvasWidth, none)
+    RT_PROP("Height", "i64", CanvasHeight, none)
+    RT_PROP("ShouldClose", "i64", CanvasShouldClose, none)
+    RT_METHOD("Flip", "void()", CanvasFlip)
+    RT_METHOD("Clear", "void(i64)", CanvasClear)
+    RT_METHOD("Line", "void(i64,i64,i64,i64,i64)", CanvasLine)
+    RT_METHOD("Box", "void(i64,i64,i64,i64,i64)", CanvasBox)
+    RT_METHOD("Frame", "void(i64,i64,i64,i64,i64)", CanvasFrame)
+    RT_METHOD("Disc", "void(i64,i64,i64,i64)", CanvasDisc)
+    RT_METHOD("Ring", "void(i64,i64,i64,i64)", CanvasRing)
+    RT_METHOD("Plot", "void(i64,i64,i64)", CanvasPlot)
+    RT_METHOD("Poll", "i64()", CanvasPoll)
+    RT_METHOD("KeyHeld", "i64(i64)", CanvasKeyHeld)
 RT_CLASS_END()
 
-// Viper.Graphics.Color - uses rt_* names directly
-RT_CLASS_BEGIN("Viper.Graphics.Color", GfxColor, "obj", none)
-    RT_METHOD("RGB", "i64(i64,i64,i64)", "rt_gfx_rgb")
+// Viper.Graphics.Color - color utilities
+RT_CLASS_BEGIN("Viper.Graphics.Color", Color, "obj", none)
+    RT_METHOD("RGB", "i64(i64,i64,i64)", ColorRGB)
+    RT_METHOD("RGBA", "i64(i64,i64,i64,i64)", ColorRGBA)
 RT_CLASS_END()
 
 // Viper.DateTime - static utility class
@@ -399,17 +480,31 @@ RT_CLASS_BEGIN("Viper.DateTime", DateTime, "obj", none)
     RT_METHOD("Diff", "i64(i64,i64)", DateTimeDiff)
 RT_CLASS_END()
 
-// Viper.Terminal - static utility class
+// Viper.Terminal - terminal I/O, cursor control, and keyboard input
 RT_CLASS_BEGIN("Viper.Terminal", Terminal, "obj", none)
+    // Output with newline
+    RT_METHOD("Say", "void(str)", TermSay)
+    RT_METHOD("SayInt", "void(i64)", TermSayInt)
+    RT_METHOD("SayNum", "void(f64)", TermSayNum)
+    RT_METHOD("SayBool", "void(i1)", TermSayBool)
+    // Output without newline
+    RT_METHOD("Print", "void(str)", TermPrint)
+    RT_METHOD("PrintInt", "void(i64)", TermPrintInt)
+    RT_METHOD("PrintNum", "void(f64)", TermPrintNum)
+    // Input
+    RT_METHOD("Ask", "str(str)", TermAsk)
+    RT_METHOD("ReadLine", "str()", TermReadLine)
+    RT_METHOD("InKey", "str()", TermInKey)
+    RT_METHOD("GetKey", "str()", TermGetKey)
+    RT_METHOD("GetKeyTimeout", "str(i64)", TermGetKeyTimeout)
+    // Screen control
     RT_METHOD("Clear", "void()", TermClear)
     RT_METHOD("SetColor", "void(i64,i64)", TermSetColor)
     RT_METHOD("SetPosition", "void(i64,i64)", TermSetPosition)
     RT_METHOD("SetCursorVisible", "void(i64)", TermSetCursorVisible)
     RT_METHOD("SetAltScreen", "void(i64)", TermSetAltScreen)
     RT_METHOD("Bell", "void()", TermBell)
-    RT_METHOD("InKey", "str()", TermInKey)
-    RT_METHOD("GetKey", "str()", TermGetKey)
-    RT_METHOD("GetKeyTimeout", "str(i64)", TermGetKeyTimeout)
+    // Buffering control
     RT_METHOD("BeginBatch", "void()", TermBeginBatch)
     RT_METHOD("EndBatch", "void()", TermEndBatch)
     RT_METHOD("Flush", "void()", TermFlush)

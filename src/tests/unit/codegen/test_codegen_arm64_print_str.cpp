@@ -2,7 +2,7 @@
 // Part of the Viper project, under the GNU GPL v3.
 //===----------------------------------------------------------------------===//
 // File: tests/unit/codegen/test_codegen_arm64_print_str.cpp
-// Purpose: Verify const_str + call to Viper.Console.PrintStr lower and link.
+// Purpose: Verify const_str + call to Viper.Terminal.PrintStr lower and link.
 //===----------------------------------------------------------------------===//
 
 #include "tests/unit/GTestStub.hpp"
@@ -44,12 +44,12 @@ TEST(Arm64CLI, PrintConstStrAsm)
     const std::string in = outPath("arm64_print_str.il");
     const std::string out = outPath("arm64_print_str.s");
     const std::string il = "il 0.1\n"
-                           "extern @Viper.Console.PrintStr(str) -> void\n"
+                           "extern @Viper.Terminal.PrintStr(str) -> void\n"
                            "global const str @.Lmsg = \"Hello\"\n"
                            "func @main() -> i64 {\n"
                            "entry:\n"
                            "  %p = const_str @.Lmsg\n"
-                           "  call @Viper.Console.PrintStr(%p)\n"
+                           "  call @Viper.Terminal.PrintStr(%p)\n"
                            "  %z = alloca 8\n"
                            "  store i64, %z, 0\n"
                            "  %r = load i64, %z\n"
@@ -67,12 +67,12 @@ TEST(Arm64CLI, PrintConstStrRunNative)
 {
     const std::string in = outPath("arm64_print_str_run.il");
     const std::string il = "il 0.1\n"
-                           "extern @Viper.Console.PrintStr(str) -> void\n"
+                           "extern @Viper.Terminal.PrintStr(str) -> void\n"
                            "global const str @.Lmsg = \"Hello\"\n"
                            "func @main() -> i64 {\n"
                            "entry:\n"
                            "  %p = const_str @.Lmsg\n"
-                           "  call @Viper.Console.PrintStr(%p)\n"
+                           "  call @Viper.Terminal.PrintStr(%p)\n"
                            "  %z = alloca 8\n"
                            "  store i64, %z, 0\n"
                            "  %r = load i64, %z\n"
