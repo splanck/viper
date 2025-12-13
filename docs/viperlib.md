@@ -285,6 +285,7 @@ Mutable string builder for efficient string concatenation. Use when building str
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `Append(text)` | `StringBuilder(String)` | Appends text and returns self for chaining |
+| `AppendLine(text)` | `StringBuilder(String)` | Appends text and then `\n`; returns self for chaining |
 | `ToString()` | `String()` | Returns the accumulated string |
 | `Clear()` | `Void()` | Clears the buffer |
 
@@ -299,6 +300,11 @@ sb.Append("Hello, ").Append("World!").Append(" How are you?")
 
 PRINT sb.ToString()  ' Output: "Hello, World! How are you?"
 PRINT sb.Length      ' Output: 28
+
+' Append lines
+sb.Clear()
+sb.AppendLine("a").AppendLine("b")
+PRINT sb.ToString()  ' Output: "a\nb\n"
 
 sb.Clear()
 PRINT sb.Length      ' Output: 0

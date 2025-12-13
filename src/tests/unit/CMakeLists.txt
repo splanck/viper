@@ -504,15 +504,19 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_chr_invalid PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_chr_invalid test_rt_chr_invalid)
 
-    # rt_args tests
-    viper_add_test(test_rt_args ${VIPER_TESTS_DIR}/runtime/RTArgsTests.cpp)
-    target_link_libraries(test_rt_args PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-    viper_add_ctest(test_rt_args test_rt_args)
+	    # rt_args tests
+	    viper_add_test(test_rt_args ${VIPER_TESTS_DIR}/runtime/RTArgsTests.cpp)
+	    target_link_libraries(test_rt_args PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+	    viper_add_ctest(test_rt_args test_rt_args)
 
-    # Sleep runtime test
-    viper_add_test(test_rt_sleep ${VIPER_TESTS_DIR}/runtime/RT_SleepTests.cpp)
-    target_link_libraries(test_rt_sleep PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-    viper_add_ctest(test_rt_sleep test_rt_sleep)
+	    viper_add_test(test_rt_args_trap ${VIPER_TESTS_DIR}/runtime/RTArgsTrapTests.cpp)
+	    target_link_libraries(test_rt_args_trap PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+	    viper_add_ctest(test_rt_args_trap test_rt_args_trap)
+
+	    # Sleep runtime test
+	    viper_add_test(test_rt_sleep ${VIPER_TESTS_DIR}/runtime/RT_SleepTests.cpp)
+	    target_link_libraries(test_rt_sleep PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+	    viper_add_ctest(test_rt_sleep test_rt_sleep)
 
     # Timer runtime test
     viper_add_test(test_rt_timer ${VIPER_TESTS_DIR}/runtime/RT_TimerTests.cpp)
@@ -565,13 +569,19 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_oop_dispatch PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_oop_dispatch test_rt_oop_dispatch)
 
-    viper_add_test(test_rt_type_registry ${VIPER_TESTS_DIR}/runtime/RTTypeRegistryTests.cpp)
-    target_link_libraries(test_rt_type_registry PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-    viper_add_ctest(test_rt_type_registry test_rt_type_registry)
+	    viper_add_test(test_rt_type_registry ${VIPER_TESTS_DIR}/runtime/RTTypeRegistryTests.cpp)
+	    target_link_libraries(test_rt_type_registry PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+	    viper_add_ctest(test_rt_type_registry test_rt_type_registry)
 
-    viper_add_test(test_rt_array_i32 ${VIPER_TESTS_DIR}/runtime/RTArrayI32Tests.cpp)
-    target_link_libraries(test_rt_array_i32 PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-    viper_add_ctest(test_rt_array_i32 test_rt_array_i32)
+	    viper_add_test(
+	            test_rt_type_registry_context_isolation
+	            ${VIPER_TESTS_DIR}/runtime/RTTypeRegistryContextIsolationTests.cpp)
+	    target_link_libraries(test_rt_type_registry_context_isolation PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+	    viper_add_ctest(test_rt_type_registry_context_isolation test_rt_type_registry_context_isolation)
+
+	    viper_add_test(test_rt_array_i32 ${VIPER_TESTS_DIR}/runtime/RTArrayI32Tests.cpp)
+	    target_link_libraries(test_rt_array_i32 PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+	    viper_add_ctest(test_rt_array_i32 test_rt_array_i32)
 
     viper_add_test(test_rt_array_i32_refcount ${VIPER_TESTS_DIR}/runtime/RTArrayI32RefcountTests.cpp)
     target_link_libraries(test_rt_array_i32_refcount PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
@@ -636,6 +646,14 @@ function(viper_add_runtime_tests)
     viper_add_test(test_rt_queue ${VIPER_TESTS_DIR}/runtime/RTQueueTests.cpp)
     target_link_libraries(test_rt_queue PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_queue test_rt_queue)
+
+    viper_add_test(test_rt_map ${VIPER_TESTS_DIR}/runtime/RTMapTests.cpp)
+    target_link_libraries(test_rt_map PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_map test_rt_map)
+
+    viper_add_test(test_rt_modvar ${VIPER_TESTS_DIR}/runtime/RTModvarTests.cpp)
+    target_link_libraries(test_rt_modvar PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_modvar test_rt_modvar)
 
     viper_add_test(test_rt_bytes ${VIPER_TESTS_DIR}/runtime/RTBytesTests.cpp)
     target_link_libraries(test_rt_bytes PRIVATE ${VIPER_RUNTIME_TEST_LIBS})

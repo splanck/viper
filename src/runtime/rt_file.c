@@ -39,6 +39,35 @@ typedef struct RtFileChannelEntry
     bool at_eof;
 } RtFileChannelEntry;
 
+void rt_file_state_cleanup(RtContext *ctx)
+{
+    if (!ctx)
+        return;
+
+    RtFileChannelEntry *entries = (RtFileChannelEntry *)ctx->file_state.entries;
+    size_t count = ctx->file_state.count;
+    if (entries)
+    {
+        for (size_t i = 0; i < count; ++i)
+        {
+            RtFileChannelEntry *entry = &entries[i];
+            if (entry->in_use)
+            {
+                RtError err = RT_ERROR_NONE;
+                (void)rt_file_close(&entry->file, &err);
+                entry->in_use = false;
+                entry->at_eof = false;
+                rt_file_init(&entry->file);
+            }
+        }
+        free(entries);
+    }
+
+    ctx->file_state.entries = NULL;
+    ctx->file_state.count = 0;
+    ctx->file_state.capacity = 0;
+}
+
 static inline RtContext *rt_get_or_legacy(void)
 {
     RtContext *ctx = rt_get_current_context();

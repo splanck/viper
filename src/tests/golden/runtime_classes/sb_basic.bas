@@ -1,5 +1,9 @@
 10 DIM sb AS Viper.Text.StringBuilder
 20 sb = NEW Viper.Text.StringBuilder()
-40 Viper.Terminal.PrintI64(sb.Length)
-50 sb.ToString()
-60 END
+30 sb = Viper.Text.StringBuilder.AppendLine(sb, "a")
+40 sb = Viper.Text.StringBuilder.AppendLine(sb, "b")
+50 PRINT sb.Length
+60 DIM bytes AS Viper.Collections.Bytes
+70 bytes = Viper.Collections.Bytes.FromStr(sb.ToString())
+80 PRINT bytes.ToHex()
+90 END

@@ -16,6 +16,7 @@
 #include "rt_string.h"
 
 #include <assert.h>
+#include <stdlib.h>
 #include <string.h>
 
 typedef enum
@@ -71,16 +72,21 @@ static RtModvarEntry *mv_find_or_create(RtContext *ctx,
     // grow table
     if (ctx->modvar_count == ctx->modvar_capacity)
     {
-        size_t newCap = ctx->modvar_capacity ? ctx->modvar_capacity * 2 : 16;
-        void *np = rt_alloc((int64_t)(newCap * sizeof(RtModvarEntry)));
+        size_t oldCap = ctx->modvar_capacity;
+        if (oldCap > (SIZE_MAX / 2))
+            rt_trap("rt_modvar: table capacity overflow");
+        size_t newCap = oldCap ? oldCap * 2 : 16;
+        if (newCap > (SIZE_MAX / sizeof(RtModvarEntry)))
+            rt_trap("rt_modvar: table size overflow");
+        RtModvarEntry *np =
+            (RtModvarEntry *)realloc(ctx->modvar_entries, newCap * sizeof(RtModvarEntry));
         if (!np)
             rt_trap("rt_modvar: table alloc failed");
-        // move old contents
-        if (ctx->modvar_entries && ctx->modvar_count)
+        if (newCap > oldCap)
         {
-            memcpy(np, ctx->modvar_entries, ctx->modvar_count * sizeof(RtModvarEntry));
+            memset(np + oldCap, 0, (newCap - oldCap) * sizeof(RtModvarEntry));
         }
-        ctx->modvar_entries = (RtModvarEntry *)np;
+        ctx->modvar_entries = np;
         ctx->modvar_capacity = newCap;
     }
     // insert new

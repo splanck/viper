@@ -97,7 +97,7 @@ static void free_entry(rt_map_entry *entry)
     {
         free(entry->key);
         if (entry->value && rt_obj_release_check0(entry->value))
-            free(entry->value);
+            rt_obj_free(entry->value);
         free(entry);
     }
 }
@@ -194,7 +194,7 @@ void rt_map_set(void *obj, rt_string key, void *value)
         rt_obj_retain_maybe(value);
         existing->value = value;
         if (old_value && rt_obj_release_check0(old_value))
-            free(old_value);
+            rt_obj_free(old_value);
         return;
     }
 

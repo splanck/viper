@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_args.h"
+#include "rt_context.h"
 #include "rt_internal.h"
 #include "rt_string_builder.h"
 
@@ -23,80 +24,106 @@
 #include <windows.h>
 #endif
 
-typedef struct rt_args_store
+static RtArgsState *rt_args_state(void)
 {
-    rt_string *items;
-    size_t size;
-    size_t cap;
-} rt_args_store;
+    RtContext *ctx = rt_get_current_context();
+    if (!ctx)
+        ctx = rt_legacy_context();
+    return ctx ? &ctx->args_state : NULL;
+}
 
-static rt_args_store g_args = {NULL, 0, 0};
-
-static void rt_args_grow_if_needed(size_t new_size)
+static int rt_args_grow_if_needed(RtArgsState *state, size_t new_size)
 {
-    if (new_size <= g_args.cap)
-        return;
-    size_t new_cap = g_args.cap ? g_args.cap * 2 : 8;
+    if (!state)
+        return 0;
+    if (new_size <= state->cap)
+        return 1;
+    size_t new_cap = state->cap ? state->cap * 2 : 8;
     while (new_cap < new_size)
+    {
+        if (new_cap > SIZE_MAX / 2)
+        {
+            rt_trap("rt_args: capacity overflow");
+            return 0;
+        }
         new_cap *= 2;
-    rt_string *next = (rt_string *)realloc(g_args.items, new_cap * sizeof(rt_string));
+    }
+    if (new_cap > SIZE_MAX / sizeof(rt_string))
+    {
+        rt_trap("rt_args: size overflow");
+        return 0;
+    }
+    rt_string *next = (rt_string *)realloc(state->items, new_cap * sizeof(rt_string));
     if (!next)
     {
-        fprintf(stderr, "rt_args: allocation failed\n");
-        abort();
+        rt_trap("rt_args: allocation failed");
+        return 0;
     }
-    g_args.items = next;
-    g_args.cap = new_cap;
+    state->items = next;
+    state->cap = new_cap;
+    return 1;
 }
 
 void rt_args_clear(void)
 {
-    for (size_t i = 0; i < g_args.size; ++i)
+    RtArgsState *state = rt_args_state();
+    if (!state)
+        return;
+    for (size_t i = 0; i < state->size; ++i)
     {
-        if (g_args.items[i])
-            rt_string_unref(g_args.items[i]);
-        g_args.items[i] = NULL;
+        if (state->items[i])
+            rt_string_unref(state->items[i]);
+        state->items[i] = NULL;
     }
-    g_args.size = 0;
+    state->size = 0;
 }
 
 void rt_args_push(rt_string s)
 {
-    rt_args_grow_if_needed(g_args.size + 1);
+    RtArgsState *state = rt_args_state();
+    if (!state)
+        return;
+    if (!rt_args_grow_if_needed(state, state->size + 1))
+        return;
     // Retain; store NULL as empty string for predictability
     if (!s)
         s = rt_str_empty();
     else
         rt_string_ref(s);
-    g_args.items[g_args.size++] = s;
+    state->items[state->size++] = s;
 }
 
 int64_t rt_args_count(void)
 {
-    return (int64_t)g_args.size;
+    RtArgsState *state = rt_args_state();
+    return state ? (int64_t)state->size : 0;
 }
 
 rt_string rt_args_get(int64_t index)
 {
-    if (index < 0 || (size_t)index >= g_args.size)
+    RtArgsState *state = rt_args_state();
+    if (!state)
+        return NULL;
+    if (index < 0 || (size_t)index >= state->size)
     {
-        fprintf(stderr, "rt_args_get: index out of range\n");
-        abort();
+        rt_trap("rt_args_get: index out of range");
+        return NULL;
     }
-    rt_string s = g_args.items[index];
+    rt_string s = state->items[index];
     // Return retained reference to match common getter semantics
     return rt_string_ref(s);
 }
 
 rt_string rt_cmdline(void)
 {
-    if (g_args.size == 0)
+    RtArgsState *state = rt_args_state();
+    if (!state || state->size == 0)
         return rt_str_empty();
     rt_string_builder sb;
     rt_sb_init(&sb);
-    for (size_t i = 0; i < g_args.size; ++i)
+    for (size_t i = 0; i < state->size; ++i)
     {
-        const char *cstr = rt_string_cstr(g_args.items[i]);
+        const char *cstr = rt_string_cstr(state->items[i]);
         if (i > 0)
             (void)rt_sb_append_cstr(&sb, " ");
         (void)rt_sb_append_cstr(&sb, cstr ? cstr : "");
@@ -104,6 +131,27 @@ rt_string rt_cmdline(void)
     rt_string out = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
     return out;
+}
+
+void rt_args_state_cleanup(RtContext *ctx)
+{
+    if (!ctx)
+        return;
+
+    RtArgsState *state = &ctx->args_state;
+    if (state->items)
+    {
+        for (size_t i = 0; i < state->size; ++i)
+        {
+            if (state->items[i])
+                rt_string_unref(state->items[i]);
+            state->items[i] = NULL;
+        }
+        free(state->items);
+    }
+    state->items = NULL;
+    state->size = 0;
+    state->cap = 0;
 }
 
 int64_t rt_env_is_native(void)

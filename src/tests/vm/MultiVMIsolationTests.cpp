@@ -9,6 +9,7 @@
 #include "tests/unit/GTestStub.hpp"
 
 #include "rt_context.h"
+#include "rt_args.h"
 #include "rt_file.h"
 #include "rt_modvar.h"
 #include "rt_oop.h"
@@ -140,6 +141,57 @@ TEST(MultiVMIsolation, FileChannels_IsolatedPerContext)
 
     std::filesystem::remove(fileA);
     std::filesystem::remove(fileB);
+}
+
+TEST(MultiVMIsolation, Args_IsolatedPerContext)
+{
+    RtContext a{}, b{};
+    rt_context_init(&a);
+    rt_context_init(&b);
+
+    // Ensure the legacy store is empty so adoption doesn't interfere.
+    rt_set_current_context(nullptr);
+    rt_args_clear();
+    ASSERT_EQ(rt_args_count(), 0);
+
+    // Context A stores ["a0"].
+    rt_set_current_context(&a);
+    rt_args_clear();
+    rt_string a0 = rt_const_cstr("a0");
+    rt_args_push(a0);
+    rt_string_unref(a0);
+    ASSERT_EQ(rt_args_count(), 1);
+    rt_string gotA0 = rt_args_get(0);
+    ASSERT_TRUE(std::strcmp(rt_string_cstr(gotA0), "a0") == 0);
+    rt_string_unref(gotA0);
+
+    // Context B stores ["b0", "b1"].
+    rt_set_current_context(&b);
+    rt_args_clear();
+    rt_string b0 = rt_const_cstr("b0");
+    rt_string b1 = rt_const_cstr("b1");
+    rt_args_push(b0);
+    rt_args_push(b1);
+    rt_string_unref(b0);
+    rt_string_unref(b1);
+    ASSERT_EQ(rt_args_count(), 2);
+    rt_string gotB0 = rt_args_get(0);
+    rt_string gotB1 = rt_args_get(1);
+    ASSERT_TRUE(std::strcmp(rt_string_cstr(gotB0), "b0") == 0);
+    ASSERT_TRUE(std::strcmp(rt_string_cstr(gotB1), "b1") == 0);
+    rt_string_unref(gotB0);
+    rt_string_unref(gotB1);
+
+    // Switching back to A should restore A's view.
+    rt_set_current_context(&a);
+    ASSERT_EQ(rt_args_count(), 1);
+    rt_string gotA0Again = rt_args_get(0);
+    ASSERT_TRUE(std::strcmp(rt_string_cstr(gotA0Again), "a0") == 0);
+    rt_string_unref(gotA0Again);
+
+    rt_context_cleanup(&a);
+    rt_context_cleanup(&b);
+    rt_set_current_context(nullptr);
 }
 
 // =============================================================================

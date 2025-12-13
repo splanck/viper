@@ -12,7 +12,13 @@
 
 #include "rt_context.h"
 #include "rt_internal.h"
+#include "rt_string.h"
+#include <stdlib.h>
 #include <string.h>
+
+void rt_file_state_cleanup(RtContext *ctx);
+void rt_type_registry_cleanup(RtContext *ctx);
+void rt_args_state_cleanup(RtContext *ctx);
 
 /// @brief Thread-local pointer to the active runtime context.
 /// @details Each thread can have at most one active VM context. The VM sets
@@ -40,6 +46,11 @@ void rt_context_init(RtContext *ctx)
     ctx->file_state.count = 0;
     ctx->file_state.capacity = 0;
 
+    // Initialize argument store
+    ctx->args_state.items = NULL;
+    ctx->args_state.size = 0;
+    ctx->args_state.cap = 0;
+
     // Initialize type registry state
     ctx->type_registry.classes = NULL;
     ctx->type_registry.classes_len = 0;
@@ -58,32 +69,34 @@ void rt_context_cleanup(RtContext *ctx)
     if (!ctx)
         return;
 
-    // Free all modvar entries
+    rt_file_state_cleanup(ctx);
+    rt_args_state_cleanup(ctx);
+
     for (size_t i = 0; i < ctx->modvar_count; ++i)
     {
         RtModvarEntry *e = &ctx->modvar_entries[i];
-        if (e->name)
+        if (e->kind == 4 && e->addr)
         {
-            // Free the name string (was allocated via rt_alloc)
-            // Note: We don't call rt_free here because rt_alloc doesn't have a matching free
-            // The memory will be cleaned up when the context is destroyed
+            rt_string *slot = (rt_string *)e->addr;
+            if (slot && *slot)
+            {
+                rt_string_unref(*slot);
+                *slot = NULL;
+            }
         }
-        if (e->addr)
-        {
-            // Free the storage block (was allocated via rt_alloc)
-            // Same note as above
-        }
+        free(e->name);
+        free(e->addr);
+        e->name = NULL;
+        e->addr = NULL;
+        e->size = 0;
+        e->kind = 0;
     }
+    free(ctx->modvar_entries);
+    ctx->modvar_entries = NULL;
+	    ctx->modvar_count = 0;
+	    ctx->modvar_capacity = 0;
 
-    // Free the modvar entries array itself
-    if (ctx->modvar_entries)
-    {
-        // Free via rt_alloc's allocator
-        ctx->modvar_entries = NULL;
-    }
-
-    ctx->modvar_count = 0;
-    ctx->modvar_capacity = 0;
+    rt_type_registry_cleanup(ctx);
 }
 
 /// @brief Bind a runtime context to the current thread.
@@ -91,6 +104,7 @@ void rt_set_current_context(RtContext *ctx)
 {
     RtContext *old = g_rt_context;
     g_rt_context = ctx;
+
     if (ctx)
     {
         // Adopt legacy state on first bind to preserve single-VM behaviour.
@@ -99,7 +113,8 @@ void rt_set_current_context(RtContext *ctx)
             rt_context_init(&g_legacy_ctx);
             g_legacy_inited = 1;
         }
-        // Move file_state if destination is empty and legacy has entries
+
+        // Move file_state if destination is empty and legacy has entries.
         if (ctx->file_state.entries == NULL && g_legacy_ctx.file_state.entries != NULL)
         {
             ctx->file_state = g_legacy_ctx.file_state;
@@ -107,7 +122,17 @@ void rt_set_current_context(RtContext *ctx)
             g_legacy_ctx.file_state.count = 0;
             g_legacy_ctx.file_state.capacity = 0;
         }
-        // Move type registry if destination is empty and legacy has data
+
+        // Move args_state if destination is empty and legacy has entries.
+        if (ctx->args_state.items == NULL && g_legacy_ctx.args_state.items != NULL)
+        {
+            ctx->args_state = g_legacy_ctx.args_state;
+            g_legacy_ctx.args_state.items = NULL;
+            g_legacy_ctx.args_state.size = 0;
+            g_legacy_ctx.args_state.cap = 0;
+        }
+
+        // Move type registry if destination is empty and legacy has data.
         if (ctx->type_registry.classes == NULL && g_legacy_ctx.type_registry.classes != NULL)
         {
             ctx->type_registry = g_legacy_ctx.type_registry;
@@ -124,12 +149,13 @@ void rt_set_current_context(RtContext *ctx)
     }
     else if (old)
     {
-        // Unbinding: move state back to legacy so calls after VM exit keep working
+        // Unbinding: move state back to legacy so calls after VM exit keep working.
         if (!g_legacy_inited)
         {
             rt_context_init(&g_legacy_ctx);
             g_legacy_inited = 1;
         }
+
         if (g_legacy_ctx.file_state.entries == NULL && old->file_state.entries != NULL)
         {
             g_legacy_ctx.file_state = old->file_state;
@@ -137,6 +163,15 @@ void rt_set_current_context(RtContext *ctx)
             old->file_state.count = 0;
             old->file_state.capacity = 0;
         }
+
+        if (g_legacy_ctx.args_state.items == NULL && old->args_state.items != NULL)
+        {
+            g_legacy_ctx.args_state = old->args_state;
+            old->args_state.items = NULL;
+            old->args_state.size = 0;
+            old->args_state.cap = 0;
+        }
+
         if (g_legacy_ctx.type_registry.classes == NULL && old->type_registry.classes != NULL)
         {
             g_legacy_ctx.type_registry = old->type_registry;

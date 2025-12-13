@@ -491,6 +491,7 @@ RT_FUNC(GuidToBytes,   rt_guid_to_bytes,   "Viper.Text.Guid.ToBytes",   "obj(str
 //=============================================================================
 
 RT_FUNC(SBAppend,      rt_text_sb_append,       "Viper.Text.StringBuilder.Append",       "obj(obj,str)")
+RT_FUNC(SBAppendLine,  rt_text_sb_append_line,  "Viper.Text.StringBuilder.AppendLine",   "obj(obj,str)")
 RT_FUNC(SBClear,       rt_text_sb_clear,        "Viper.Text.StringBuilder.Clear",        "void(obj)")
 RT_FUNC(SBGetCapacity, rt_text_sb_get_capacity, "Viper.Text.StringBuilder.get_Capacity", "i64(obj)")
 RT_FUNC(SBGetLength,   rt_text_sb_get_length,   "Viper.Text.StringBuilder.get_Length",   "i64(obj)")
@@ -876,6 +877,7 @@ RT_CLASS_BEGIN("Viper.Text.StringBuilder", StringBuilder, "opaque*", SBNew)
     RT_PROP("Capacity", "i64", SBGetCapacity, none)
     RT_PROP("Length", "i64", SBGetLength, none)
     RT_METHOD("Append", "obj(str)", SBAppend)
+    RT_METHOD("AppendLine", "obj(str)", SBAppendLine)
     RT_METHOD("Clear", "void()", SBClear)
     RT_METHOD("ToString", "str()", SBToString)
 RT_CLASS_END()

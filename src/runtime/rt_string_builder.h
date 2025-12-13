@@ -168,6 +168,14 @@ extern "C"
     /// @return The same @p sb pointer for fluent chaining.
     void *rt_text_sb_append(void *sb, rt_string s);
 
+    /// @brief Append @p s and then a single '\n' newline character.
+    /// @details Treats a NULL @p s as empty, but still appends the newline. Uses a single LF byte
+    ///          regardless of platform (no CRLF translation).
+    /// @param sb Opaque StringBuilder object pointer.
+    /// @param s  Runtime string to append (NULL treated as empty).
+    /// @return The same @p sb pointer for fluent chaining.
+    void *rt_text_sb_append_line(void *sb, rt_string s);
+
     /// What: Materialize the builder as a runtime string.
     /// Why:  Produce an immutable snapshot of the current content.
     /// How:  Allocates an rt_string and copies the builder's bytes (zero-length yields empty

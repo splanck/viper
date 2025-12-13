@@ -29,6 +29,30 @@ typedef struct rt_bytes_impl
     uint8_t *data; ///< Byte storage.
 } rt_bytes_impl;
 
+static rt_bytes_impl *rt_bytes_alloc(int64_t len)
+{
+    if (len < 0)
+        len = 0;
+
+    size_t total = sizeof(rt_bytes_impl);
+    if (len > 0)
+    {
+        if ((uint64_t)len > (uint64_t)SIZE_MAX - total)
+            rt_trap("Bytes: memory allocation failed");
+        total += (size_t)len;
+    }
+    if (total > (size_t)INT64_MAX)
+        rt_trap("Bytes: memory allocation failed");
+
+    rt_bytes_impl *bytes = (rt_bytes_impl *)rt_obj_new_i64(0, (int64_t)total);
+    if (!bytes)
+        rt_trap("Bytes: memory allocation failed");
+
+    bytes->len = len;
+    bytes->data = len > 0 ? ((uint8_t *)bytes + sizeof(rt_bytes_impl)) : NULL;
+    return bytes;
+}
+
 /// Hex character lookup table for encoding.
 static const char hex_chars[] = "0123456789abcdef";
 
@@ -69,26 +93,7 @@ static int b64_digit_value(char c)
 
 void *rt_bytes_new(int64_t len)
 {
-    if (len < 0)
-        len = 0;
-
-    rt_bytes_impl *bytes = (rt_bytes_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_bytes_impl));
-    if (!bytes)
-        rt_trap("Bytes: memory allocation failed");
-
-    bytes->len = len;
-    if (len > 0)
-    {
-        bytes->data = (uint8_t *)calloc((size_t)len, 1);
-        if (!bytes->data)
-            rt_trap("Bytes: memory allocation failed");
-    }
-    else
-    {
-        bytes->data = NULL;
-    }
-
-    return bytes;
+    return rt_bytes_alloc(len);
 }
 
 void *rt_bytes_from_str(rt_string str)
@@ -99,23 +104,9 @@ void *rt_bytes_from_str(rt_string str)
 
     size_t len = strlen(cstr);
 
-    rt_bytes_impl *bytes = (rt_bytes_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_bytes_impl));
-    if (!bytes)
-        rt_trap("Bytes: memory allocation failed");
-
-    bytes->len = (int64_t)len;
+    rt_bytes_impl *bytes = rt_bytes_alloc((int64_t)len);
     if (len > 0)
-    {
-        bytes->data = (uint8_t *)malloc(len);
-        if (!bytes->data)
-            rt_trap("Bytes: memory allocation failed");
         memcpy(bytes->data, cstr, len);
-    }
-    else
-    {
-        bytes->data = NULL;
-    }
-
     return bytes;
 }
 
@@ -131,32 +122,16 @@ void *rt_bytes_from_hex(rt_string hex)
         rt_trap("Bytes.FromHex: hex string length must be even");
 
     int64_t len = (int64_t)(hex_len / 2);
-
-    rt_bytes_impl *bytes = (rt_bytes_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_bytes_impl));
-    if (!bytes)
-        rt_trap("Bytes: memory allocation failed");
-
-    bytes->len = len;
-    if (len > 0)
+    rt_bytes_impl *bytes = rt_bytes_alloc(len);
+    for (int64_t i = 0; i < len; i++)
     {
-        bytes->data = (uint8_t *)malloc((size_t)len);
-        if (!bytes->data)
-            rt_trap("Bytes: memory allocation failed");
+        int hi = hex_digit_value(hex_str[i * 2]);
+        int lo = hex_digit_value(hex_str[i * 2 + 1]);
 
-        for (int64_t i = 0; i < len; i++)
-        {
-            int hi = hex_digit_value(hex_str[i * 2]);
-            int lo = hex_digit_value(hex_str[i * 2 + 1]);
+        if (hi < 0 || lo < 0)
+            rt_trap("Bytes.FromHex: invalid hex character");
 
-            if (hi < 0 || lo < 0)
-                rt_trap("Bytes.FromHex: invalid hex character");
-
-            bytes->data[i] = (uint8_t)((hi << 4) | lo);
-        }
-    }
-    else
-    {
-        bytes->data = NULL;
+        bytes->data[i] = (uint8_t)((hi << 4) | lo);
     }
 
     return bytes;
@@ -212,16 +187,9 @@ void *rt_bytes_slice(void *obj, int64_t start, int64_t end)
 
     int64_t new_len = end - start;
 
-    rt_bytes_impl *result = (rt_bytes_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_bytes_impl));
-    if (!result)
-        rt_trap("Bytes: memory allocation failed");
-
-    result->len = new_len;
-    result->data = (uint8_t *)malloc((size_t)new_len);
-    if (!result->data)
-        rt_trap("Bytes: memory allocation failed");
-
-    memcpy(result->data, bytes->data + start, (size_t)new_len);
+    rt_bytes_impl *result = rt_bytes_alloc(new_len);
+    if (new_len > 0)
+        memcpy(result->data, bytes->data + start, (size_t)new_len);
     return result;
 }
 
@@ -386,14 +354,7 @@ void *rt_bytes_from_base64(rt_string b64)
     if (out_len > (size_t)INT64_MAX)
         rt_trap("Bytes.FromBase64: decoded data too large");
 
-    rt_bytes_impl *bytes = (rt_bytes_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_bytes_impl));
-    if (!bytes)
-        rt_trap("Bytes: memory allocation failed");
-
-    bytes->len = (int64_t)out_len;
-    bytes->data = (uint8_t *)malloc(out_len);
-    if (!bytes->data)
-        rt_trap("Bytes: memory allocation failed");
+    rt_bytes_impl *bytes = rt_bytes_alloc((int64_t)out_len);
 
     size_t out_pos = 0;
     for (size_t i = 0; i < b64_len; i += 4)

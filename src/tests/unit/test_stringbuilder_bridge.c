@@ -39,6 +39,7 @@ extern void *rt_ns_stringbuilder_new(void);
 extern int64_t rt_text_sb_get_length(void *sb);
 extern int64_t rt_text_sb_get_capacity(void *sb);
 extern void *rt_text_sb_append(void *sb, rt_string s);
+extern void *rt_text_sb_append_line(void *sb, rt_string s);
 extern rt_string rt_text_sb_to_string(void *sb);
 extern void rt_text_sb_clear(void *sb);
 extern rt_string rt_string_from_bytes(const char *bytes, size_t len);
@@ -172,6 +173,26 @@ void test_append_multiple(void)
     TEST_END();
 }
 
+void test_append_line(void)
+{
+    TEST_START("append line");
+
+    void *sb = rt_ns_stringbuilder_new();
+
+    void *ret = rt_text_sb_append_line(sb, make_string("a"));
+    ASSERT_TRUE(ret == sb);
+    ret = rt_text_sb_append_line(sb, make_string("b"));
+    ASSERT_TRUE(ret == sb);
+
+    ASSERT_EQ(4, rt_text_sb_get_length(sb));
+
+    rt_string result = rt_text_sb_to_string(sb);
+    ASSERT_EQ(4, rt_len(result));
+    ASSERT_STR_EQ("a\nb\n", result->data);
+
+    TEST_END();
+}
+
 void test_clear(void)
 {
     TEST_START("clear operation");
@@ -290,6 +311,7 @@ int main(void)
     test_new_and_initial_state();
     test_append_single();
     test_append_multiple();
+    test_append_line();
     test_clear();
     test_capacity_growth();
     test_empty_append();

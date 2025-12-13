@@ -478,6 +478,47 @@ void *rt_text_sb_append(void *sb, rt_string s)
     return sb;
 }
 
+/// @brief Append @p s and then a single '\n' newline character.
+/// @details Treats a NULL @p s as empty, but still appends the newline. Uses a single LF byte
+///          regardless of platform (no CRLF translation). Returns the receiver for fluent
+///          chaining.
+void *rt_text_sb_append_line(void *sb, rt_string s)
+{
+    rt_string_builder *builder = get_builder(sb);
+    if (!builder)
+        return sb;
+
+    const char *str_data = s ? s->data : NULL;
+    size_t str_len = s ? (size_t)rt_len(s) : 0;
+
+    // Reserve enough space for string bytes + '\n' + NUL terminator.
+    size_t required = builder->len + str_len + 2;
+    if (required < builder->len)
+    {
+        assert(0 && "rt_text_sb_append_line: size overflow");
+        return sb;
+    }
+
+    rt_sb_status status = rt_sb_reserve(builder, required);
+    if (status == RT_SB_OK)
+    {
+        if (str_data && str_len > 0)
+        {
+            memcpy(builder->data + builder->len, str_data, str_len);
+            builder->len += str_len;
+        }
+
+        builder->data[builder->len++] = '\n';
+        builder->data[builder->len] = '\0';
+    }
+    else if (status != RT_SB_ERROR_ALLOC)
+    {
+        assert(0 && "rt_text_sb_append_line failed with unexpected error");
+    }
+
+    return sb;
+}
+
 rt_string rt_text_sb_to_string(void *sb)
 {
     rt_string_builder *builder = get_builder(sb);

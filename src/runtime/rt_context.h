@@ -17,6 +17,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "rt_string.h"
+
 #ifdef __cplusplus
 extern "C"
 {
@@ -40,6 +42,13 @@ extern "C"
         size_t count;
         size_t capacity;
     } RtFileState;
+
+    typedef struct RtArgsState
+    {
+        rt_string *items;
+        size_t size;
+        size_t cap;
+    } RtArgsState;
 
     typedef struct RtTypeRegistryState
     {
@@ -68,12 +77,14 @@ extern "C"
         // File channel table (rt_file.c)
         RtFileState file_state;
 
+        // Command-line argument store (rt_args.c)
+        RtArgsState args_state;
+
         // Type registry (rt_type_registry.c)
         RtTypeRegistryState type_registry;
 
         // Future expansions:
-        // - Command-line arguments (rt_args.c)
-        // - Command-line arguments (rt_args.c)
+        // - VM-only state
     } RtContext;
 
     /// @brief Initialize a runtime context with default values.
