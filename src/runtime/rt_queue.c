@@ -34,6 +34,19 @@ typedef struct rt_queue_impl
     void **items; ///< Circular buffer of element pointers
 } rt_queue_impl;
 
+static void rt_queue_finalize(void *obj)
+{
+    if (!obj)
+        return;
+    rt_queue_impl *q = (rt_queue_impl *)obj;
+    free(q->items);
+    q->items = NULL;
+    q->len = 0;
+    q->cap = 0;
+    q->head = 0;
+    q->tail = 0;
+}
+
 /// @brief Grow the queue capacity and linearize the circular buffer.
 /// @param q Queue to grow.
 static void queue_grow(rt_queue_impl *q)
@@ -85,10 +98,12 @@ void *rt_queue_new(void)
     q->head = 0;
     q->tail = 0;
     q->items = malloc((size_t)QUEUE_DEFAULT_CAP * sizeof(void *));
+    rt_obj_set_finalizer(q, rt_queue_finalize);
 
     if (!q->items)
     {
-        rt_obj_free(q);
+        if (rt_obj_release_check0(q))
+            rt_obj_free(q);
         rt_trap("Queue: memory allocation failed");
     }
 

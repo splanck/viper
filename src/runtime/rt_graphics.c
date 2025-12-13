@@ -14,6 +14,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_graphics.h"
+#include "rt_object.h"
 #include "rt_string.h"
 
 #include <stddef.h>
@@ -33,15 +34,30 @@ typedef struct
     vgfx_event_t last_event; ///< Last polled event for retrieval
 } rt_canvas;
 
+static void rt_canvas_finalize(void *obj)
+{
+    if (!obj)
+        return;
+
+    rt_canvas *canvas = (rt_canvas *)obj;
+    if (canvas->gfx_win)
+    {
+        vgfx_destroy_window(canvas->gfx_win);
+        canvas->gfx_win = NULL;
+    }
+}
+
 void *rt_canvas_new(rt_string title, int64_t width, int64_t height)
 {
-    rt_canvas *canvas = malloc(sizeof(rt_canvas));
+    rt_canvas *canvas = (rt_canvas *)rt_obj_new_i64(0, (int64_t)sizeof(rt_canvas));
     if (!canvas)
         return NULL;
 
     canvas->vptr = NULL;
+    canvas->gfx_win = NULL;
     canvas->should_close = 0;
     canvas->last_event.type = VGFX_EVENT_NONE;
+    rt_obj_set_finalizer(canvas, rt_canvas_finalize);
 
     vgfx_window_params_t params = vgfx_window_params_default();
     params.width = (int32_t)width;
@@ -52,7 +68,8 @@ void *rt_canvas_new(rt_string title, int64_t width, int64_t height)
     canvas->gfx_win = vgfx_create_window(&params);
     if (!canvas->gfx_win)
     {
-        free(canvas);
+        if (rt_obj_release_check0(canvas))
+            rt_obj_free(canvas);
         return NULL;
     }
 
@@ -64,11 +81,8 @@ void rt_canvas_destroy(void *canvas_ptr)
     if (!canvas_ptr)
         return;
 
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (canvas->gfx_win)
-        vgfx_destroy_window(canvas->gfx_win);
-
-    free(canvas);
+    if (rt_obj_release_check0(canvas_ptr))
+        rt_obj_free(canvas_ptr);
 }
 
 int64_t rt_canvas_width(void *canvas_ptr)

@@ -32,6 +32,17 @@ typedef struct rt_stack_impl
     void **items; ///< Array of element pointers
 } rt_stack_impl;
 
+static void rt_stack_finalize(void *obj)
+{
+    if (!obj)
+        return;
+    rt_stack_impl *stack = (rt_stack_impl *)obj;
+    free(stack->items);
+    stack->items = NULL;
+    stack->len = 0;
+    stack->cap = 0;
+}
+
 /// @brief Ensure the stack has capacity for at least `needed` elements.
 /// @param stack Stack to potentially grow.
 /// @param needed Minimum required capacity.
@@ -69,10 +80,12 @@ void *rt_stack_new(void)
     stack->len = 0;
     stack->cap = STACK_DEFAULT_CAP;
     stack->items = malloc((size_t)STACK_DEFAULT_CAP * sizeof(void *));
+    rt_obj_set_finalizer(stack, rt_stack_finalize);
 
     if (!stack->items)
     {
-        rt_obj_free(stack);
+        if (rt_obj_release_check0(stack))
+            rt_obj_free(stack);
         rt_trap("Stack: memory allocation failed");
     }
 

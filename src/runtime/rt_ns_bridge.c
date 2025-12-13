@@ -27,6 +27,14 @@ typedef struct
     rt_string_builder builder; // embedded builder state
 } StringBuilder;
 
+static void rt_ns_stringbuilder_finalize(void *obj)
+{
+    if (!obj)
+        return;
+    StringBuilder *sb = (StringBuilder *)obj;
+    rt_sb_free(&sb->builder);
+}
+
 /// @brief Allocate a new instance of the namespaced StringBuilder class.
 ///
 /// @details This bridges the high-level Viper.Strings.Builder class to a
@@ -46,6 +54,7 @@ void *rt_ns_stringbuilder_new(void)
     {
         // Initialize the embedded builder
         rt_sb_init(&sb->builder);
+        rt_obj_set_finalizer(sb, rt_ns_stringbuilder_finalize);
     }
     return sb;
 }

@@ -33,6 +33,17 @@ typedef struct rt_seq_impl
     void **items; ///< Array of element pointers
 } rt_seq_impl;
 
+static void rt_seq_finalize(void *obj)
+{
+    if (!obj)
+        return;
+    rt_seq_impl *seq = (rt_seq_impl *)obj;
+    free(seq->items);
+    seq->items = NULL;
+    seq->len = 0;
+    seq->cap = 0;
+}
+
 /// @brief Ensure the sequence has capacity for at least `needed` elements.
 /// @param seq Sequence to potentially grow.
 /// @param needed Minimum required capacity.
@@ -70,10 +81,12 @@ void *rt_seq_new(void)
     seq->len = 0;
     seq->cap = SEQ_DEFAULT_CAP;
     seq->items = malloc((size_t)SEQ_DEFAULT_CAP * sizeof(void *));
+    rt_obj_set_finalizer(seq, rt_seq_finalize);
 
     if (!seq->items)
     {
-        rt_obj_free(seq);
+        if (rt_obj_release_check0(seq))
+            rt_obj_free(seq);
         rt_trap("Seq: memory allocation failed");
     }
 
@@ -97,10 +110,12 @@ void *rt_seq_with_capacity(int64_t cap)
     seq->len = 0;
     seq->cap = cap;
     seq->items = malloc((size_t)cap * sizeof(void *));
+    rt_obj_set_finalizer(seq, rt_seq_finalize);
 
     if (!seq->items)
     {
-        rt_obj_free(seq);
+        if (rt_obj_release_check0(seq))
+            rt_obj_free(seq);
         rt_trap("Seq: memory allocation failed");
     }
 
