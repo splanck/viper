@@ -337,6 +337,78 @@ void *rt_dir_list(rt_string path)
     return result;
 }
 
+/// @brief List all directory entries as a Viper.Collections.Seq of strings.
+/// @details Returns entry names (excluding . and ..) in the same enumeration order used by
+///          rt_dir_list/rt_dir_files/rt_dir_dirs. No sorting is performed, so ordering is
+///          platform- and filesystem-dependent.
+/// @param path Directory path to list.
+/// @return Viper.Collections.Seq containing runtime strings for each entry name.
+/// @note Traps when the directory does not exist or cannot be enumerated.
+void *rt_dir_entries_seq(rt_string path)
+{
+    const char *cpath = NULL;
+    if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
+        rt_trap("Viper.IO.Dir.Entries: invalid directory path");
+
+    struct stat st;
+    if (stat(cpath, &st) != 0)
+        rt_trap("Viper.IO.Dir.Entries: directory not found");
+
+#ifdef _WIN32
+    if ((st.st_mode & _S_IFDIR) == 0)
+        rt_trap("Viper.IO.Dir.Entries: directory not found");
+#else
+    if (!S_ISDIR(st.st_mode))
+        rt_trap("Viper.IO.Dir.Entries: directory not found");
+#endif
+
+    void *result = rt_seq_new();
+
+#ifdef _WIN32
+    WIN32_FIND_DATAA fd;
+    char pattern[PATH_MAX];
+    snprintf(pattern, PATH_MAX, "%s\\*", cpath);
+
+    HANDLE h = FindFirstFileA(pattern, &fd);
+    if (h == INVALID_HANDLE_VALUE)
+    {
+        DWORD err = GetLastError();
+        if (err == ERROR_FILE_NOT_FOUND)
+            return result;
+        rt_trap("Viper.IO.Dir.Entries: failed to open directory");
+    }
+
+    do
+    {
+        if (strcmp(fd.cFileName, ".") != 0 && strcmp(fd.cFileName, "..") != 0)
+        {
+            rt_string name = rt_string_from_bytes(fd.cFileName, strlen(fd.cFileName));
+            rt_seq_push(result, (void *)name);
+        }
+    } while (FindNextFileA(h, &fd));
+
+    FindClose(h);
+#else
+    DIR *dir = opendir(cpath);
+    if (!dir)
+        rt_trap("Viper.IO.Dir.Entries: failed to open directory");
+
+    struct dirent *ent;
+    while ((ent = readdir(dir)) != NULL)
+    {
+        if (strcmp(ent->d_name, ".") != 0 && strcmp(ent->d_name, "..") != 0)
+        {
+            rt_string name = rt_string_from_bytes(ent->d_name, strlen(ent->d_name));
+            rt_seq_push(result, (void *)name);
+        }
+    }
+
+    closedir(dir);
+#endif
+
+    return result;
+}
+
 /// @brief List only files in a directory.
 void *rt_dir_files(rt_string path)
 {

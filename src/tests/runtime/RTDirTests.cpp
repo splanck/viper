@@ -8,8 +8,8 @@
 // File: tests/runtime/RTDirTests.cpp
 // Purpose: Validate runtime directory operations in rt_dir.c.
 // Key invariants: Directory operations work correctly across platforms,
-//                 List/Files/Dirs return proper Seq objects, paths are handled
-//                 correctly.
+//                 List/Files/Dirs/Entries return proper Seq objects, paths are
+//                 handled correctly.
 // Ownership/Lifetime: Uses runtime library; tests return newly allocated strings
 //                     and sequences that must be released.
 // Links: docs/viperlib.md
@@ -19,9 +19,38 @@
 #include "rt_seq.h"
 
 #include <cassert>
+#include <csetjmp>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+
+namespace
+{
+static jmp_buf g_trap_jmp;
+static const char *g_last_trap = nullptr;
+static bool g_trap_expected = false;
+} // namespace
+
+extern "C" void vm_trap(const char *msg)
+{
+    g_last_trap = msg;
+    if (g_trap_expected)
+        longjmp(g_trap_jmp, 1);
+    rt_abort(msg);
+}
+
+#define EXPECT_TRAP(expr)                                                                          \
+    do                                                                                             \
+    {                                                                                              \
+        g_trap_expected = true;                                                                    \
+        g_last_trap = nullptr;                                                                     \
+        if (setjmp(g_trap_jmp) == 0)                                                               \
+        {                                                                                          \
+            expr;                                                                                  \
+            assert(false && "Expected trap did not occur");                                        \
+        }                                                                                          \
+        g_trap_expected = false;                                                                   \
+    } while (0)
 
 #ifdef _WIN32
 #include <direct.h>
@@ -226,6 +255,56 @@ static void test_list()
     printf("\n");
 }
 
+/// @brief Test rt_dir_entries_seq.
+static void test_entries()
+{
+    printf("Testing rt_dir_entries_seq:\n");
+
+    const char *base = get_test_base();
+    char subdir[512], file1[512], file2[512];
+    snprintf(subdir, sizeof(subdir), "%s/subdir", base);
+    snprintf(file1, sizeof(file1), "%s/file1.txt", base);
+    snprintf(file2, sizeof(file2), "%s/file2.txt", base);
+
+    // Create structure
+    mkdir_p(base);
+    mkdir_p(subdir);
+    create_file(file1);
+    create_file(file2);
+
+    rt_string path = rt_const_cstr(base);
+    void *entries = rt_dir_entries_seq(path);
+
+    // Should have 3 entries (subdir and 2 files)
+    int64_t count = rt_seq_len(entries);
+    test_result("entries has 3 entries", count == 3);
+
+    bool found_subdir = false;
+    bool found_file1 = false;
+    bool found_file2 = false;
+    for (int64_t i = 0; i < count; i++)
+    {
+        rt_string entry = (rt_string)rt_seq_get(entries, i);
+        if (rt_str_eq(entry, rt_const_cstr("subdir")))
+            found_subdir = true;
+        if (rt_str_eq(entry, rt_const_cstr("file1.txt")))
+            found_file1 = true;
+        if (rt_str_eq(entry, rt_const_cstr("file2.txt")))
+            found_file2 = true;
+    }
+    test_result("found subdir", found_subdir);
+    test_result("found file1", found_file1);
+    test_result("found file2", found_file2);
+
+    // Clean up (sequences leak in tests, this is fine)
+    remove_file(file1);
+    remove_file(file2);
+    rmdir_p(subdir);
+    rmdir_p(base);
+
+    printf("\n");
+}
+
 /// @brief Test rt_dir_files.
 static void test_files()
 {
@@ -391,6 +470,9 @@ static void test_empty_dir()
     void *list = rt_dir_list(path);
     test_result("empty list has 0 entries", rt_seq_len(list) == 0);
 
+    void *entries = rt_dir_entries_seq(path);
+    test_result("empty entries has 0 entries", rt_seq_len(entries) == 0);
+
     void *files = rt_dir_files(path);
     test_result("empty files has 0 entries", rt_seq_len(files) == 0);
 
@@ -421,6 +503,25 @@ static void test_nonexistent_dir()
     printf("\n");
 }
 
+/// @brief Test rt_dir_entries_seq traps on non-existent directory.
+static void test_entries_missing_dir_traps()
+{
+    printf("Testing missing directory traps:\n");
+
+    const char *base = get_test_base();
+    char missing[512];
+    snprintf(missing, sizeof(missing), "%s_missing", base);
+    (void)rmdir_p(missing);
+
+    rt_string path = rt_const_cstr(missing);
+    EXPECT_TRAP(rt_dir_entries_seq(path));
+
+    bool ok = g_last_trap && strstr(g_last_trap, "Viper.IO.Dir.Entries") != NULL;
+    test_result("trap message mentions Entries", ok);
+
+    printf("\n");
+}
+
 /// @brief Entry point for directory tests.
 int main()
 {
@@ -431,12 +532,14 @@ int main()
     test_make_all();
     test_remove_all();
     test_list();
+    test_entries();
     test_files();
     test_dirs();
     test_current();
     test_move();
     test_empty_dir();
     test_nonexistent_dir();
+    test_entries_missing_dir_traps();
 
     printf("All directory tests passed!\n");
     return 0;

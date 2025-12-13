@@ -7,7 +7,7 @@
 //
 // File: src/runtime/rt_dir.h
 // Purpose: Cross-platform directory operations for Viper.IO.Dir.
-// Key invariants: Directory operations are platform-independent, List/Files/Dirs
+// Key invariants: Directory operations are platform-independent, List/Files/Dirs/Entries
 //                 return Seq objects that must be released by the caller.
 // Ownership/Lifetime: All functions returning strings or sequences allocate
 //                     new objects that the caller must release.
@@ -55,6 +55,15 @@ extern "C"
     /// @param path Directory path to list.
     /// @return Seq of entry names (excluding . and ..).
     void *rt_dir_list(rt_string path);
+
+    /// @brief List all directory entries as a Viper.Collections.Seq of strings.
+    /// @details Returns entry names (excluding . and ..) in the same enumeration order used by
+    ///          rt_dir_list/rt_dir_files/rt_dir_dirs. No sorting is performed, so ordering is
+    ///          platform- and filesystem-dependent.
+    /// @param path Directory path to list.
+    /// @return Viper.Collections.Seq containing runtime strings for each entry name.
+    /// @note Traps when the directory does not exist or cannot be enumerated.
+    void *rt_dir_entries_seq(rt_string path);
 
     /// @brief List only files in a directory.
     /// @param path Directory path to list.

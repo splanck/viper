@@ -1558,12 +1558,15 @@ Cross-platform directory operations for creating, removing, listing, and navigat
 | `MakeAll(path)` | `Void(String)` | Creates a directory and all parent directories |
 | `Remove(path)` | `Void(String)` | Removes an empty directory |
 | `RemoveAll(path)` | `Void(String)` | Recursively removes a directory and all its contents |
+| `Entries(path)` | `Seq(String)` | Returns directory entries (files + subdirectories); traps if the directory does not exist |
 | `List(path)` | `Seq(String)` | Returns all entries in a directory (excluding `.` and `..`) |
 | `Files(path)` | `Seq(String)` | Returns only files in a directory (no subdirectories) |
 | `Dirs(path)` | `Seq(String)` | Returns only subdirectories in a directory |
 | `Current()` | `String()` | Returns the current working directory |
 | `SetCurrent(path)` | `Void(String)` | Changes the current working directory |
 | `Move(src, dst)` | `Void(String, String)` | Moves/renames a directory |
+
+**Note:** `Entries()`, `List()`, `Files()`, and `Dirs()` return entry names (not full paths). Use `Viper.IO.Path.Join(dir, name)` to build full paths when needed.
 
 ### Example
 
@@ -1585,6 +1588,10 @@ entries = Viper.IO.Dir.List("/home/user")
 FOR i = 0 TO entries.Len - 1
     PRINT entries.Get(i)
 NEXT i
+
+' List directory entries (files + subdirectories); traps if the directory is missing
+DIM all_entries AS Viper.Collections.Seq
+all_entries = Viper.IO.Dir.Entries("/home/user")
 
 ' List only files (no subdirectories)
 DIM files AS Viper.Collections.Seq
