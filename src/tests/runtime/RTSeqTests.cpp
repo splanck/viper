@@ -10,7 +10,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "rt_context.h"
 #include "rt_internal.h"
+#include "rt_random.h"
 #include "rt_seq.h"
 
 #include <cassert>
@@ -88,6 +90,46 @@ static void test_push_and_get()
     assert(rt_seq_get(seq, 0) == &a);
     assert(rt_seq_get(seq, 1) == &b);
     assert(rt_seq_get(seq, 2) == &c);
+}
+
+static void test_push_all_appends()
+{
+    void *a = rt_seq_new();
+    void *b = rt_seq_new();
+
+    int v1 = 1;
+    int v2 = 2;
+    int v3 = 3;
+
+    rt_seq_push(a, &v1);
+    rt_seq_push(a, &v2);
+    rt_seq_push(b, &v3);
+
+    rt_seq_push_all(a, b);
+
+    assert(rt_seq_len(a) == 3);
+    assert(rt_seq_get(a, 0) == &v1);
+    assert(rt_seq_get(a, 1) == &v2);
+    assert(rt_seq_get(a, 2) == &v3);
+}
+
+static void test_push_all_self_doubles()
+{
+    void *seq = rt_seq_new();
+
+    int a = 10;
+    int b = 20;
+
+    rt_seq_push(seq, &a);
+    rt_seq_push(seq, &b);
+
+    rt_seq_push_all(seq, seq);
+
+    assert(rt_seq_len(seq) == 4);
+    assert(rt_seq_get(seq, 0) == &a);
+    assert(rt_seq_get(seq, 1) == &b);
+    assert(rt_seq_get(seq, 2) == &a);
+    assert(rt_seq_get(seq, 3) == &b);
 }
 
 static void test_set()
@@ -302,6 +344,37 @@ static void test_reverse()
     assert(rt_seq_get(seq3, 2) == &a);
 }
 
+static void test_shuffle_deterministic()
+{
+    RtContext ctx;
+    rt_context_init(&ctx);
+    rt_set_current_context(&ctx);
+
+    void *seq = rt_seq_new();
+    int vals[5] = {1, 2, 3, 4, 5};
+    for (int i = 0; i < 5; ++i)
+        rt_seq_push(seq, &vals[i]);
+
+    rt_randomize_i64(1);
+    rt_seq_shuffle(seq);
+
+    // Expected Fisher–Yates result with seed=1 and LCG in rt_rand_int.
+    // Original order: [1,2,3,4,5] -> indices [2,4,0,3,1]
+    assert(rt_seq_len(seq) == 5);
+    assert(rt_seq_get(seq, 0) == &vals[2]);
+    assert(rt_seq_get(seq, 1) == &vals[4]);
+    assert(rt_seq_get(seq, 2) == &vals[0]);
+    assert(rt_seq_get(seq, 3) == &vals[3]);
+    assert(rt_seq_get(seq, 4) == &vals[1]);
+
+    // Verify it's a permutation of the original pointers.
+    for (int i = 0; i < 5; ++i)
+        assert(rt_seq_has(seq, &vals[i]) == 1);
+
+    rt_set_current_context(nullptr);
+    rt_context_cleanup(&ctx);
+}
+
 static void test_slice()
 {
     void *seq = rt_seq_new();
@@ -482,6 +555,8 @@ int main()
     test_new_and_basic_properties();
     test_with_capacity();
     test_push_and_get();
+    test_push_all_appends();
+    test_push_all_self_doubles();
     test_set();
     test_pop();
     test_peek();
@@ -491,6 +566,7 @@ int main()
     test_clear();
     test_find_and_has();
     test_reverse();
+    test_shuffle_deterministic();
     test_slice();
     test_clone();
     test_capacity_growth();

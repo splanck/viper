@@ -60,6 +60,13 @@ extern "C"
     /// @param val Element to add.
     void rt_seq_push(void *obj, void *val);
 
+    /// @brief Append all elements of @p other onto @p obj.
+    /// @details Preserves element ordering. Self-appends are supported: when @p obj == @p other,
+    ///          the operation doubles the original sequence contents without looping indefinitely.
+    /// @param obj Opaque Seq object pointer.
+    /// @param other Opaque Seq object pointer whose elements will be appended (treated as empty when NULL).
+    void rt_seq_push_all(void *obj, void *other);
+
     /// @brief Remove and return the last element from the sequence.
     /// @param obj Opaque Seq object pointer.
     /// @return The removed element; traps if empty.
@@ -111,6 +118,12 @@ extern "C"
     /// @brief Reverse the elements in the sequence in place.
     /// @param obj Opaque Seq object pointer.
     void rt_seq_reverse(void *obj);
+
+    /// @brief Shuffle the elements in the sequence in place.
+    /// @details Uses an in-place Fisher–Yates shuffle driven by the same deterministic RNG as
+    ///          Viper.Random.NextInt (so Viper.Random.Seed influences the result).
+    /// @param obj Opaque Seq object pointer.
+    void rt_seq_shuffle(void *obj);
 
     /// @brief Create a new sequence containing elements from [start, end).
     /// @param obj Source Seq object pointer.

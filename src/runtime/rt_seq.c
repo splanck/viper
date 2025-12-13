@@ -17,6 +17,7 @@
 
 #include "rt_internal.h"
 #include "rt_object.h"
+#include "rt_random.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -187,6 +188,38 @@ void rt_seq_push(void *obj, void *val)
     seq_ensure_capacity(seq, seq->len + 1);
     seq->items[seq->len] = val;
     seq->len++;
+}
+
+/// @brief Append all elements of @p other onto @p obj.
+/// @details Preserves element ordering. When @p obj == @p other, the operation is defined as
+///          doubling the original sequence contents and must not loop indefinitely.
+/// @param obj Destination sequence object (mutated).
+/// @param other Source sequence object whose elements will be appended; treated as empty when NULL.
+void rt_seq_push_all(void *obj, void *other)
+{
+    if (!obj)
+        rt_trap("Seq.PushAll: null sequence");
+    if (!other)
+        return;
+
+    rt_seq_impl *seq = (rt_seq_impl *)obj;
+    rt_seq_impl *src = (rt_seq_impl *)other;
+
+    if (src->len <= 0)
+        return;
+
+    if (seq == src)
+    {
+        int64_t original_len = seq->len;
+        seq_ensure_capacity(seq, original_len + original_len);
+        memcpy(&seq->items[original_len], seq->items, (size_t)original_len * sizeof(void *));
+        seq->len = original_len + original_len;
+        return;
+    }
+
+    seq_ensure_capacity(seq, seq->len + src->len);
+    memcpy(&seq->items[seq->len], src->items, (size_t)src->len * sizeof(void *));
+    seq->len += src->len;
 }
 
 /// @brief Remove and return the last element from the sequence.
@@ -371,6 +404,28 @@ void rt_seq_reverse(void *obj)
     for (int64_t i = 0; i < seq->len / 2; i++)
     {
         int64_t j = seq->len - 1 - i;
+        void *tmp = seq->items[i];
+        seq->items[i] = seq->items[j];
+        seq->items[j] = tmp;
+    }
+}
+
+/// @brief Shuffle the sequence in place using Fisher–Yates.
+/// @details Randomness is sourced from @ref rt_rand_int (Viper.Random.NextInt), so seeding via
+///          Viper.Random.Seed produces deterministic shuffles.
+/// @param obj Sequence object (mutated).
+void rt_seq_shuffle(void *obj)
+{
+    if (!obj)
+        return;
+
+    rt_seq_impl *seq = (rt_seq_impl *)obj;
+    if (seq->len <= 1)
+        return;
+
+    for (int64_t i = seq->len - 1; i > 0; --i)
+    {
+        int64_t j = (int64_t)rt_rand_int((long long)(i + 1));
         void *tmp = seq->items[i];
         seq->items[i] = seq->items[j];
         seq->items[j] = tmp;
