@@ -242,6 +242,26 @@ void *rt_map_get(void *obj, rt_string key)
     return entry ? entry->value : NULL;
 }
 
+/// @brief Get value for @p key or return @p default_value when missing.
+/// @details This helper does not mutate the map: missing keys do not create new entries.
+void *rt_map_get_or(void *obj, rt_string key, void *default_value)
+{
+    if (!obj)
+        return default_value;
+
+    rt_map_impl *map = (rt_map_impl *)obj;
+    if (map->capacity == 0)
+        return default_value;
+
+    size_t key_len;
+    const char *key_data = get_key_data(key, &key_len);
+    uint64_t hash = fnv1a_hash(key_data, key_len);
+    size_t idx = hash % map->capacity;
+
+    rt_map_entry *entry = find_entry(map->buckets[idx], key_data, key_len);
+    return entry ? entry->value : default_value;
+}
+
 int8_t rt_map_has(void *obj, rt_string key)
 {
     if (!obj)
@@ -257,6 +277,51 @@ int8_t rt_map_has(void *obj, rt_string key)
     size_t idx = hash % map->capacity;
 
     return find_entry(map->buckets[idx], key_data, key_len) ? 1 : 0;
+}
+
+/// @brief Insert (@p key, @p value) only when @p key is missing.
+/// @details Returns 1 when insertion occurs; returns 0 when the key already exists or on failure.
+int8_t rt_map_set_if_missing(void *obj, rt_string key, void *value)
+{
+    if (!obj)
+        return 0;
+
+    rt_map_impl *map = (rt_map_impl *)obj;
+    if (map->capacity == 0)
+        return 0;
+
+    size_t key_len;
+    const char *key_data = get_key_data(key, &key_len);
+    uint64_t hash = fnv1a_hash(key_data, key_len);
+    size_t idx = hash % map->capacity;
+
+    if (find_entry(map->buckets[idx], key_data, key_len))
+        return 0;
+
+    rt_map_entry *entry = (rt_map_entry *)malloc(sizeof(rt_map_entry));
+    if (!entry)
+        return 0;
+
+    entry->key = (char *)malloc(key_len + 1);
+    if (!entry->key)
+    {
+        free(entry);
+        return 0;
+    }
+
+    memcpy(entry->key, key_data, key_len);
+    entry->key[key_len] = '\0';
+    entry->key_len = key_len;
+
+    rt_obj_retain_maybe(value);
+    entry->value = value;
+
+    entry->next = map->buckets[idx];
+    map->buckets[idx] = entry;
+    map->count++;
+
+    maybe_resize(map);
+    return 1;
 }
 
 int8_t rt_map_remove(void *obj, rt_string key)

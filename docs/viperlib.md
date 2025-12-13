@@ -464,7 +464,9 @@ A key-value dictionary with string keys. Provides O(1) average-case lookup, inse
 |--------|-----------|-------------|
 | `Set(key, value)` | `Void(String, Object)` | Add or update key-value pair |
 | `Get(key)` | `Object(String)` | Get value for key (returns NULL if not found) |
+| `GetOr(key, defaultValue)` | `Object(String, Object)` | Get value for key, or return `defaultValue` if missing (does not insert) |
 | `Has(key)` | `Boolean(String)` | Check if key exists |
+| `SetIfMissing(key, value)` | `Boolean(String, Object)` | Insert key-value pair only when missing; returns true if inserted |
 | `Remove(key)` | `Boolean(String)` | Remove key-value pair; returns true if found |
 | `Clear()` | `Void()` | Remove all entries |
 | `Keys()` | `Seq()` | Get sequence of all keys |
@@ -487,6 +489,16 @@ PRINT scores.IsEmpty  ' Output: False
 ' Check existence and get value
 IF scores.Has("Alice") THEN
     PRINT "Alice's score: "; scores.Get("Alice")
+END IF
+
+' Get-or-default without inserting
+PRINT scores.GetOr("Dave", 0)   ' Output: 0 (and "Dave" is still missing)
+
+' Insert only if missing
+IF scores.SetIfMissing("Bob", 123) THEN
+    PRINT "Inserted Bob"
+ELSE
+    PRINT "Bob already exists"
 END IF
 
 ' Update existing entry

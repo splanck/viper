@@ -50,11 +50,27 @@ extern "C"
     /// @return Value pointer or NULL if not found.
     void *rt_map_get(void *obj, rt_string key);
 
+    /// @brief Get value for key or return a default when missing.
+    /// @details Does not mutate the map: missing keys do not create new entries.
+    /// @param obj Map pointer.
+    /// @param key String key.
+    /// @param default_value Value to return when @p key is not present.
+    /// @return Existing value when present; otherwise @p default_value.
+    void *rt_map_get_or(void *obj, rt_string key, void *default_value);
+
     /// @brief Check if key exists.
     /// @param obj Map pointer.
     /// @param key String key.
     /// @return 1 if key exists, 0 otherwise.
     int8_t rt_map_has(void *obj, rt_string key);
+
+    /// @brief Insert @p value for @p key only when the key is missing.
+    /// @details When @p key is already present, leaves the map unchanged and returns 0.
+    /// @param obj Map pointer.
+    /// @param key String key (will be copied when inserted).
+    /// @param value Object value (will be retained when inserted).
+    /// @return 1 when an entry was inserted, 0 otherwise.
+    int8_t rt_map_set_if_missing(void *obj, rt_string key, void *value);
 
     /// @brief Remove entry by key.
     /// @param obj Map pointer.

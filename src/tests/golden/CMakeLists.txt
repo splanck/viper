@@ -231,6 +231,15 @@ function(viper_add_golden_suite_tests)
             "-DEXPECT=${EXPECT_OOP_SEQ_OPS}"
             -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
 
+    file(READ ${_VIPER_GOLDEN_DIR}/oop_runtime/map_ops.stdout EXPECT_OOP_MAP_OPS)
+    string(STRIP "${EXPECT_OOP_MAP_OPS}" EXPECT_OOP_MAP_OPS)
+    viper_add_ctest(oop_runtime_map_ops
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/oop_runtime/map_ops.bas
+            "-DEXPECT=${EXPECT_OOP_MAP_OPS}"
+            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+
     file(READ ${_VIPER_GOLDEN_DIR}/oop_runtime/file_exists_toggle.stdout EXPECT_OOP_FILE_EXISTS)
     string(STRIP "${EXPECT_OOP_FILE_EXISTS}" EXPECT_OOP_FILE_EXISTS)
     viper_add_ctest(oop_runtime_file_exists_toggle
