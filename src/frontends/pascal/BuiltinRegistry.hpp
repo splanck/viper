@@ -36,6 +36,7 @@ enum class BuiltinCategory
     ViperTerminal,    ///< Viper.Terminal unit functions (console control)
     ViperIO,          ///< Viper.IO unit functions (file I/O)
     ViperDateTime,    ///< Viper.DateTime unit functions
+    ViperDiagnostics, ///< Viper.Diagnostics unit functions
     ViperEnvironment, ///< Viper.Environment unit functions
 };
 
@@ -161,10 +162,17 @@ enum class PascalBuiltin
     FormatDateTime, ///< Format timestamp as string
     CreateDateTime, ///< Create timestamp from components
 
+    // Viper.Diagnostics unit
+    Assert, ///< Runtime assertion helper
+
     // Viper.Environment unit
     ParamCount,     ///< Number of command-line arguments
     ParamStr,       ///< Get command-line argument by index
     GetCommandLine, ///< Get full command line
+    GetVariable,    ///< Get environment variable value ("" when missing)
+    HasVariable,    ///< Check whether environment variable exists
+    SetVariable,    ///< Set or overwrite environment variable
+    EndProgram,     ///< Terminate process with exit code
 
     // Count (must be last)
     Count

@@ -1021,6 +1021,20 @@ std::array<BuiltinDescriptor, kBuiltinCount> makeDescriptors()
          {.allowed = A::Integer}});
 
     //=========================================================================
+    // Viper.Diagnostics Unit
+    //=========================================================================
+
+    set(B::Assert,
+        "Assert",
+        C::ViperDiagnostics,
+        2,
+        2,
+        false,
+        R::Void,
+        {{.symbol = "Viper.Diagnostics.Assert"}},
+        {{.allowed = A::Boolean}, {.allowed = A::String}});
+
+    //=========================================================================
     // Viper.Environment Unit
     //=========================================================================
 
@@ -1051,6 +1065,46 @@ std::array<BuiltinDescriptor, kBuiltinCount> makeDescriptors()
         false,
         R::String,
         {{.symbol = "Viper.Environment.GetCommandLine"}});
+
+    set(B::GetVariable,
+        "GetVariable",
+        C::ViperEnvironment,
+        1,
+        1,
+        false,
+        R::String,
+        {{.symbol = "Viper.Environment.GetVariable"}},
+        {{.allowed = A::String}});
+
+    set(B::HasVariable,
+        "HasVariable",
+        C::ViperEnvironment,
+        1,
+        1,
+        false,
+        R::Boolean,
+        {{.symbol = "Viper.Environment.HasVariable"}},
+        {{.allowed = A::String}});
+
+    set(B::SetVariable,
+        "SetVariable",
+        C::ViperEnvironment,
+        2,
+        2,
+        false,
+        R::Void,
+        {{.symbol = "Viper.Environment.SetVariable"}},
+        {{.allowed = A::String}, {.allowed = A::String}});
+
+    set(B::EndProgram,
+        "EndProgram",
+        C::ViperEnvironment,
+        1,
+        1,
+        false,
+        R::Void,
+        {{.symbol = "Viper.Environment.EndProgram"}},
+        {{.allowed = A::Integer}});
 
     return desc;
 }
@@ -1195,8 +1249,8 @@ bool isViperUnit(std::string_view unitName)
     return key == "viper.strings" || key == "viperstrings" || key == "viper.math" ||
            key == "vipermath" || key == "viper.terminal" || key == "viperterminal" ||
            key == "viper.io" || key == "viperio" || key == "viper.datetime" ||
-           key == "viperdatetime" || key == "viper.environment" || key == "viperenvironment" ||
-           key == "sysutils" || // Common Delphi unit name
+           key == "viperdatetime" || key == "viper.diagnostics" || key == "viperdiagnostics" ||
+           key == "viper.environment" || key == "viperenvironment" || key == "sysutils" || // Common Delphi unit name
            key == "crt";        // CRT is common Pascal terminal unit name
 }
 
@@ -1263,10 +1317,19 @@ std::vector<PascalBuiltin> getUnitBuiltins(std::string_view unitName)
                   PascalBuiltin::FormatDateTime,
                   PascalBuiltin::CreateDateTime};
     }
+    else if (key == "viper.diagnostics" || key == "viperdiagnostics")
+    {
+        result = {PascalBuiltin::Assert};
+    }
     else if (key == "viper.environment" || key == "viperenvironment")
     {
-        result = {
-            PascalBuiltin::ParamCount, PascalBuiltin::ParamStr, PascalBuiltin::GetCommandLine};
+        result = {PascalBuiltin::ParamCount,
+                  PascalBuiltin::ParamStr,
+                  PascalBuiltin::GetCommandLine,
+                  PascalBuiltin::GetVariable,
+                  PascalBuiltin::HasVariable,
+                  PascalBuiltin::SetVariable,
+                  PascalBuiltin::EndProgram};
     }
     else if (key == "sysutils")
     {

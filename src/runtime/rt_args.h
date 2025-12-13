@@ -5,11 +5,10 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Runtime support for passing command-line arguments to programs. The helpers
-// provide a simple process-wide argument store with clear/push semantics and
-// query functions to retrieve the argument count and individual arguments.
-// Strings are reference-counted runtime strings; the store retains pushed
-// strings and returns retained copies from getters so callers own a reference.
+// Runtime support for command-line arguments and environment queries. The
+// helpers provide a simple process-wide argument store with clear/push
+// semantics, query functions to retrieve argument metadata, and utilities to
+// inspect or modify process environment variables.
 //
 //===----------------------------------------------------------------------===//
 
@@ -51,6 +50,34 @@ extern "C"
     /// @brief Report whether the program is running as native code (not in the VM).
     /// @return 1 when executing a native binary, 0 when running under the VM.
     int64_t rt_env_is_native(void);
+
+    /// @brief Look up an environment variable by name.
+    /// @details Returns an empty string when the variable is missing. The name
+    ///          must be non-empty; the function traps otherwise.
+    /// @param name Environment variable to read.
+    /// @return Newly allocated runtime string with the value or empty when unset.
+    rt_string rt_env_get_var(rt_string name);
+
+    /// @brief Test whether an environment variable is present.
+    /// @details Treats empty values as "present"; returns 0 when missing. The
+    ///          variable name must be non-empty.
+    /// @param name Environment variable to probe.
+    /// @return 1 when present, 0 when missing.
+    int64_t rt_env_has_var(rt_string name);
+
+    /// @brief Set or overwrite an environment variable.
+    /// @details Accepts empty values; overwrites existing entries. Variable
+    ///          names must be non-empty. Cross-platform: uses setenv on POSIX
+    ///          and SetEnvironmentVariable on Windows so empty values remain
+    ///          present.
+    /// @param name Variable name to set.
+    /// @param value Desired value (may be empty). NULL treated as empty.
+    void rt_env_set_var(rt_string name, rt_string value);
+
+    /// @brief Terminate the current process with the provided exit code.
+    /// @details Delegates to exit so any atexit handlers run before exit.
+    /// @param code Exit status to report to the host OS.
+    void rt_env_exit(int64_t code);
 
 #ifdef __cplusplus
 }

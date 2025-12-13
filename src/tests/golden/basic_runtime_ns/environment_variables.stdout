@@ -1,0 +1,6 @@
+initial-has=0
+initial-val=
+after-set-has=1
+after-set-val=abc
+after-clear-has=1
+after-clear-val=

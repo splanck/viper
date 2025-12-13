@@ -37,6 +37,26 @@
 #include <utime.h>
 #endif
 
+#if defined(O_BINARY)
+#define RT_FILE_O_BINARY O_BINARY
+#elif defined(_O_BINARY)
+#define RT_FILE_O_BINARY _O_BINARY
+#else
+#define RT_FILE_O_BINARY 0
+#endif
+
+/// @brief Convert a runtime string path to a host path; traps on failure.
+/// @param path Runtime string containing the path.
+/// @param context Trap message to use when conversion fails.
+/// @return Null-terminated host path.
+static const char *rt_io_file_require_path(rt_string path, const char *context)
+{
+    const char *cpath = NULL;
+    if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
+        rt_trap(context);
+    return cpath;
+}
+
 /// What: Return 1 if the file at @p path exists, 0 otherwise.
 /// Why:  Support Viper.IO.File.Exists semantics from the runtime.
 /// How:  Converts @p path to a host path and calls stat().
@@ -138,6 +158,250 @@ void rt_io_file_write_all_text(rt_string path, rt_string contents)
         written += (size_t)n;
     }
     (void)close(fd);
+}
+
+/// What: Append @p text and a newline to @p path (creating it when missing).
+/// Why:  Provide a convenient "append line" helper for Viper.IO.File.
+/// How:  Opens with O_APPEND and writes the UTF-8 bytes followed by '\n'.
+void rt_io_file_append_line(rt_string path, rt_string text)
+{
+    const char *cpath =
+        rt_io_file_require_path(path, "Viper.IO.File.AppendLine: invalid file path");
+
+    int fd = open(cpath, O_WRONLY | O_CREAT | O_APPEND | RT_FILE_O_BINARY, 0666);
+    if (fd < 0)
+        rt_trap("Viper.IO.File.AppendLine: failed to open file");
+
+    const uint8_t *data = NULL;
+    size_t len = rt_file_string_view(text, &data);
+    size_t written = 0;
+    while (written < len)
+    {
+        ssize_t n = write(fd, data + written, len - written);
+        if (n < 0)
+        {
+            if (errno == EINTR)
+                continue;
+            (void)close(fd);
+            rt_trap("Viper.IO.File.AppendLine: failed to write file");
+        }
+        if (n == 0)
+        {
+            (void)close(fd);
+            rt_trap("Viper.IO.File.AppendLine: failed to write file");
+        }
+        written += (size_t)n;
+    }
+
+    char nl = '\n';
+    ssize_t n;
+    do
+    {
+        n = write(fd, &nl, 1);
+    } while (n < 0 && errno == EINTR);
+    if (n != 1)
+    {
+        (void)close(fd);
+        rt_trap("Viper.IO.File.AppendLine: failed to write newline");
+    }
+
+    (void)close(fd);
+}
+
+/// What: Read the entire file at @p path as a Bytes object.
+/// Why:  Provide binary file input for Viper.IO.File.ReadAllBytes.
+/// How:  Reads the file into a temporary buffer and copies it into a new Bytes.
+void *rt_io_file_read_all_bytes(rt_string path)
+{
+    const char *cpath =
+        rt_io_file_require_path(path, "Viper.IO.File.ReadAllBytes: invalid file path");
+
+    int fd = open(cpath, O_RDONLY | RT_FILE_O_BINARY);
+    if (fd < 0)
+        rt_trap("Viper.IO.File.ReadAllBytes: failed to open file");
+
+    struct stat st;
+    if (fstat(fd, &st) != 0)
+    {
+        (void)close(fd);
+        rt_trap("Viper.IO.File.ReadAllBytes: failed to stat file");
+    }
+
+    size_t size = (st.st_size > 0) ? (size_t)st.st_size : 0;
+    if (size == 0)
+    {
+        (void)close(fd);
+        return rt_bytes_new(0);
+    }
+
+    uint8_t *buf = (uint8_t *)malloc(size);
+    if (!buf)
+    {
+        (void)close(fd);
+        rt_trap("Viper.IO.File.ReadAllBytes: allocation failed");
+    }
+
+    size_t off = 0;
+    while (off < size)
+    {
+        ssize_t n = read(fd, buf + off, size - off);
+        if (n < 0)
+        {
+            if (errno == EINTR)
+                continue;
+            free(buf);
+            (void)close(fd);
+            rt_trap("Viper.IO.File.ReadAllBytes: failed to read file");
+        }
+        if (n == 0)
+            break;
+        off += (size_t)n;
+    }
+    (void)close(fd);
+
+    void *bytes = rt_bytes_new((int64_t)off);
+    for (size_t i = 0; i < off; ++i)
+    {
+        rt_bytes_set(bytes, (int64_t)i, buf[i]);
+    }
+
+    free(buf);
+    return bytes;
+}
+
+/// What: Write an entire Bytes object to @p path, overwriting the file.
+/// Why:  Provide binary file output for Viper.IO.File.WriteAllBytes.
+/// How:  Writes bytes in chunks to avoid per-byte syscalls.
+void rt_io_file_write_all_bytes(rt_string path, void *bytes)
+{
+    const char *cpath =
+        rt_io_file_require_path(path, "Viper.IO.File.WriteAllBytes: invalid file path");
+
+    if (!bytes)
+        rt_trap("Viper.IO.File.WriteAllBytes: null Bytes");
+
+    int fd = open(cpath, O_WRONLY | O_CREAT | O_TRUNC | RT_FILE_O_BINARY, 0666);
+    if (fd < 0)
+        rt_trap("Viper.IO.File.WriteAllBytes: failed to open file");
+
+    int64_t len = rt_bytes_len(bytes);
+    uint8_t chunk[4096];
+    int64_t pos = 0;
+    while (pos < len)
+    {
+        int64_t remaining = len - pos;
+        int64_t to_copy = remaining > (int64_t)sizeof(chunk) ? (int64_t)sizeof(chunk) : remaining;
+        for (int64_t i = 0; i < to_copy; ++i)
+        {
+            chunk[i] = (uint8_t)rt_bytes_get(bytes, pos + i);
+        }
+
+        size_t written = 0;
+        size_t chunk_len = (size_t)to_copy;
+        while (written < chunk_len)
+        {
+            ssize_t n = write(fd, chunk + written, chunk_len - written);
+            if (n < 0)
+            {
+                if (errno == EINTR)
+                    continue;
+                (void)close(fd);
+                rt_trap("Viper.IO.File.WriteAllBytes: failed to write file");
+            }
+            if (n == 0)
+            {
+                (void)close(fd);
+                rt_trap("Viper.IO.File.WriteAllBytes: failed to write file");
+            }
+            written += (size_t)n;
+        }
+
+        pos += to_copy;
+    }
+
+    (void)close(fd);
+}
+
+/// What: Read a text file and return a Seq of lines.
+/// Why:  Provide convenient line-based file input for Viper.IO.File.ReadAllLines.
+/// How:  Reads the file and splits on '\n' and '\r\n', stripping line terminators.
+void *rt_io_file_read_all_lines(rt_string path)
+{
+    const char *cpath =
+        rt_io_file_require_path(path, "Viper.IO.File.ReadAllLines: invalid file path");
+
+    int fd = open(cpath, O_RDONLY | RT_FILE_O_BINARY);
+    if (fd < 0)
+        rt_trap("Viper.IO.File.ReadAllLines: failed to open file");
+
+    struct stat st;
+    if (fstat(fd, &st) != 0)
+    {
+        (void)close(fd);
+        rt_trap("Viper.IO.File.ReadAllLines: failed to stat file");
+    }
+
+    size_t size = (st.st_size > 0) ? (size_t)st.st_size : 0;
+    if (size == 0)
+    {
+        (void)close(fd);
+        return rt_seq_new();
+    }
+
+    char *buf = (char *)malloc(size);
+    if (!buf)
+    {
+        (void)close(fd);
+        rt_trap("Viper.IO.File.ReadAllLines: allocation failed");
+    }
+
+    size_t off = 0;
+    while (off < size)
+    {
+        ssize_t n = read(fd, buf + off, size - off);
+        if (n < 0)
+        {
+            if (errno == EINTR)
+                continue;
+            free(buf);
+            (void)close(fd);
+            rt_trap("Viper.IO.File.ReadAllLines: failed to read file");
+        }
+        if (n == 0)
+            break;
+        off += (size_t)n;
+    }
+    (void)close(fd);
+
+    void *seq = rt_seq_new();
+    size_t i = 0;
+    while (i < off)
+    {
+        size_t start = i;
+        while (i < off && buf[i] != '\n' && buf[i] != '\r')
+            ++i;
+        size_t end = i;
+
+        rt_string line = (end == start) ? rt_str_empty() : rt_string_from_bytes(buf + start, end - start);
+        rt_seq_push(seq, line);
+
+        if (i >= off)
+            break;
+        if (buf[i] == '\r')
+        {
+            if (i + 1 < off && buf[i + 1] == '\n')
+                i += 2;
+            else
+                i += 1;
+        }
+        else
+        {
+            ++i; // '\n'
+        }
+    }
+
+    free(buf);
+    return seq;
 }
 
 /// What: Delete the file at @p path.

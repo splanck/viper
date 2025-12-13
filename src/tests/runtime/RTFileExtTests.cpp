@@ -75,6 +75,19 @@ static void create_test_file(const char *path, const char *content)
     }
 }
 
+/// @brief Helper to create a test file with raw bytes (no newline translation).
+static void create_test_file_bin(const char *path, const void *data, size_t len)
+{
+    FILE *f = fopen(path, "wb");
+    if (!f)
+        return;
+    if (len > 0 && data)
+    {
+        (void)fwrite(data, 1, len, f);
+    }
+    fclose(f);
+}
+
 /// @brief Helper to remove a file.
 static void remove_file(const char *path)
 {
@@ -320,6 +333,93 @@ static void test_append()
     printf("\n");
 }
 
+/// @brief Test rt_io_file_append_line.
+static void test_append_line()
+{
+    printf("Testing rt_io_file_append_line:\n");
+
+    const char *base = get_test_base();
+    char file_path[512];
+    snprintf(file_path, sizeof(file_path), "%s_append_line_test.txt", base);
+
+    rt_string path = rt_const_cstr(file_path);
+
+    remove_file(file_path);
+
+    rt_io_file_append_line(path, rt_const_cstr("Line 1"));
+    rt_io_file_append_line(path, rt_const_cstr("Line 2"));
+
+    rt_string content = rt_io_file_read_all_text(path);
+    test_result("content matches", rt_str_eq(content, rt_const_cstr("Line 1\nLine 2\n")));
+
+    remove_file(file_path);
+
+    printf("\n");
+}
+
+/// @brief Test rt_io_file_read_all_bytes / rt_io_file_write_all_bytes.
+static void test_read_write_all_bytes()
+{
+    printf("Testing rt_io_file_read_all_bytes/rt_io_file_write_all_bytes:\n");
+
+    const char *base = get_test_base();
+    char file_path[512];
+    snprintf(file_path, sizeof(file_path), "%s_read_all_bytes_test.bin", base);
+
+    rt_string path = rt_const_cstr(file_path);
+    remove_file(file_path);
+
+    void *bytes = rt_bytes_new(4);
+    rt_bytes_set(bytes, 0, 0xDE);
+    rt_bytes_set(bytes, 1, 0xAD);
+    rt_bytes_set(bytes, 2, 0xBE);
+    rt_bytes_set(bytes, 3, 0xEF);
+
+    rt_io_file_write_all_bytes(path, bytes);
+
+    void *read_bytes = rt_io_file_read_all_bytes(path);
+    test_result("len == 4", rt_bytes_len(read_bytes) == 4);
+    test_result("byte0 == 0xDE", rt_bytes_get(read_bytes, 0) == 0xDE);
+    test_result("byte1 == 0xAD", rt_bytes_get(read_bytes, 1) == 0xAD);
+    test_result("byte2 == 0xBE", rt_bytes_get(read_bytes, 2) == 0xBE);
+    test_result("byte3 == 0xEF", rt_bytes_get(read_bytes, 3) == 0xEF);
+
+    remove_file(file_path);
+
+    printf("\n");
+}
+
+/// @brief Test rt_io_file_read_all_lines.
+static void test_read_all_lines()
+{
+    printf("Testing rt_io_file_read_all_lines:\n");
+
+    const char *base = get_test_base();
+    char file_path[512];
+    snprintf(file_path, sizeof(file_path), "%s_read_all_lines_test.txt", base);
+
+    static const char content[] = "one\r\ntwo\nthree\r\nfour";
+    create_test_file_bin(file_path, content, sizeof(content) - 1);
+
+    rt_string path = rt_const_cstr(file_path);
+    void *lines = rt_io_file_read_all_lines(path);
+    test_result("line count == 4", rt_seq_len(lines) == 4);
+
+    rt_string line0 = (rt_string)rt_seq_get(lines, 0);
+    rt_string line1 = (rt_string)rt_seq_get(lines, 1);
+    rt_string line2 = (rt_string)rt_seq_get(lines, 2);
+    rt_string line3 = (rt_string)rt_seq_get(lines, 3);
+
+    test_result("line0", rt_str_eq(line0, rt_const_cstr("one")));
+    test_result("line1", rt_str_eq(line1, rt_const_cstr("two")));
+    test_result("line2", rt_str_eq(line2, rt_const_cstr("three")));
+    test_result("line3", rt_str_eq(line3, rt_const_cstr("four")));
+
+    remove_file(file_path);
+
+    printf("\n");
+}
+
 /// @brief Test rt_file_modified.
 static void test_modified()
 {
@@ -457,6 +557,9 @@ int main()
     test_read_write_bytes();
     test_read_write_lines();
     test_append();
+    test_append_line();
+    test_read_write_all_bytes();
+    test_read_all_lines();
     test_modified();
     test_touch();
     test_empty_file();

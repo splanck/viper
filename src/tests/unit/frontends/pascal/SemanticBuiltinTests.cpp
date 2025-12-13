@@ -505,6 +505,83 @@ TEST(PascalBuiltinTest, ViperMathWithoutUsesError)
 }
 
 //===----------------------------------------------------------------------===//
+// Viper.Diagnostics Unit Tests
+//===----------------------------------------------------------------------===//
+
+TEST(PascalBuiltinTest, ViperDiagnosticsAssert)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram("program Test;\n"
+                                 "uses Viper.Diagnostics;\n"
+                                 "begin\n"
+                                 "  Assert(True, 'ok');\n"
+                                 "end.",
+                                 diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalBuiltinTest, ViperDiagnosticsWithoutUsesError)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram("program Test;\n"
+                                 "begin\n"
+                                 "  Assert(True, 'ok');\n"
+                                 "end.",
+                                 diag);
+    EXPECT_FALSE(result);
+    EXPECT_NE(diag.errorCount(), 0u);
+}
+
+//===----------------------------------------------------------------------===//
+// Viper.Environment Unit Tests
+//===----------------------------------------------------------------------===//
+
+TEST(PascalBuiltinTest, ViperEnvironmentVariables)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram("program Test;\n"
+                                 "uses Viper.Environment;\n"
+                                 "var name, value: String; has: Boolean;\n"
+                                 "begin\n"
+                                 "  name := 'VIPER_TEST_ENV';\n"
+                                 "  value := GetVariable(name);\n"
+                                 "  has := HasVariable(name);\n"
+                                 "  SetVariable(name, 'abc');\n"
+                                 "  value := GetVariable(name);\n"
+                                 "end.",
+                                 diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalBuiltinTest, ViperEnvironmentEndProgram)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram("program Test;\n"
+                                 "uses Viper.Environment;\n"
+                                 "begin\n"
+                                 "  EndProgram(7);\n"
+                                 "end.",
+                                 diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalBuiltinTest, ViperEnvironmentWithoutUsesError)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram("program Test;\n"
+                                 "var value: String;\n"
+                                 "begin\n"
+                                 "  value := GetVariable('X');\n"
+                                 "end.",
+                                 diag);
+    EXPECT_FALSE(result);
+    EXPECT_NE(diag.errorCount(), 0u);
+}
+
+//===----------------------------------------------------------------------===//
 // Core Math Functions (Available Without Unit Import)
 //===----------------------------------------------------------------------===//
 

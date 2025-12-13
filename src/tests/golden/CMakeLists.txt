@@ -223,6 +223,15 @@ function(viper_add_golden_suite_tests)
             -DCLEANUP_FILE=${CMAKE_CURRENT_BINARY_DIR}/tmp_exists.txt
             -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
 
+    file(READ ${_VIPER_GOLDEN_DIR}/oop_runtime/io_file_helpers.stdout EXPECT_OOP_IO_FILE_HELPERS)
+    string(STRIP "${EXPECT_OOP_IO_FILE_HELPERS}" EXPECT_OOP_IO_FILE_HELPERS)
+    viper_add_ctest(oop_runtime_io_file_helpers
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/oop_runtime/io_file_helpers.bas
+            "-DEXPECT=${EXPECT_OOP_IO_FILE_HELPERS}"
+            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+
     # User-defined class ToString() prints qualified name
     file(READ ${_VIPER_GOLDEN_DIR}/oop_runtime/user_class_tostring.stdout EXPECT_USER_CLASS_TOSTRING)
     string(STRIP "${EXPECT_USER_CLASS_TOSTRING}" EXPECT_USER_CLASS_TOSTRING)
@@ -943,6 +952,29 @@ function(viper_add_golden_suite_tests)
             -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_runtime_ns/strings_len.bas
             "-DEXPECT=${EXPECT_VIPER_STR_LEN}"
             -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+
+    file(READ ${_VIPER_GOLDEN_DIR}/basic_runtime_ns/environment_variables.stdout EXPECT_ENV_VARS)
+    string(STRIP "${EXPECT_ENV_VARS}" EXPECT_ENV_VARS)
+    viper_add_ctest(basic_runtime_ns_environment_variables
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_runtime_ns/environment_variables.bas
+            "-DEXPECT=${EXPECT_ENV_VARS}"
+            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+
+    viper_add_ctest(il_environment_end_program
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DIL_FILE=${_VIPER_GOLDEN_DIR}/il/environment_end_program.il
+            -DEXPECT_EXIT=7
+            -P ${_VIPER_GOLDEN_DIR}/check_run_exit_code.cmake)
+
+    viper_add_ctest(basic_runtime_ns_environment_end_program
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_runtime_ns/environment_end_program.bas
+            -DEXPECT_EXIT=7
+            -P ${_VIPER_GOLDEN_DIR}/check_run_exit_code.cmake)
 
     file(READ ${_VIPER_GOLDEN_DIR}/basic_runtime_ns/diagnostics_assert_success.stdout EXPECT_DIAG_ASSERT_OK)
     string(STRIP "${EXPECT_DIAG_ASSERT_OK}" EXPECT_DIAG_ASSERT_OK)

@@ -41,6 +41,32 @@ extern "C"
     /// @param contents String contents to write.
     void rt_io_file_write_all_text(rt_string path, rt_string contents);
 
+    /// @brief Append a line of text to a file.
+    /// @details Appends @p text followed by a single '\n' byte. Creates the file
+    ///          if it does not already exist.
+    /// @param path File path to append to.
+    /// @param text Line contents to append (may be empty).
+    void rt_io_file_append_line(rt_string path, rt_string text);
+
+    /// @brief Read entire file as binary data.
+    /// @details Traps on I/O failures (missing file, permission errors, etc.).
+    /// @param path File path to read.
+    /// @return Bytes object containing file contents.
+    void *rt_io_file_read_all_bytes(rt_string path);
+
+    /// @brief Write an entire Bytes object to a file.
+    /// @details Overwrites any existing file contents. Traps on I/O failures.
+    /// @param path File path to write.
+    /// @param bytes Bytes object to write (must be non-null).
+    void rt_io_file_write_all_bytes(rt_string path, void *bytes);
+
+    /// @brief Read entire file and split it into lines.
+    /// @details Returns a Seq of strings with line endings removed. Accepts '\n'
+    ///          and '\r\n'. Traps on I/O failures.
+    /// @param path File path to read.
+    /// @return Seq of strings (one per line).
+    void *rt_io_file_read_all_lines(rt_string path);
+
     /// @brief Delete a file.
     /// @param path File path to delete.
     void rt_io_file_delete(rt_string path);

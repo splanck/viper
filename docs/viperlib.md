@@ -1064,7 +1064,11 @@ Command-line arguments and environment access.
 | `GetArgumentCount()` | `Integer()` | Returns the number of command-line arguments |
 | `GetArgument(index)` | `String(Integer)` | Returns the argument at the specified index (0-based) |
 | `GetCommandLine()` | `String()` | Returns the full command line as a single string |
+| `GetVariable(name)` | `String(String)` | Returns the value of an environment variable, or `""` when missing |
+| `HasVariable(name)` | `Boolean(String)` | Returns `TRUE` when the environment variable exists |
 | `IsNative()` | `Boolean()` | Returns `TRUE` when running native code, `FALSE` when running in the VM |
+| `SetVariable(name, value)` | `Void(String, String)` | Sets or overwrites an environment variable (empty value allowed) |
+| `EndProgram(code)` | `Void(Integer)` | Terminates the program with the provided exit code |
 
 ### Example
 
@@ -1084,6 +1088,23 @@ NEXT i
 ' Arg 2: arg3
 
 PRINT "Full command: "; Viper.Environment.GetCommandLine()
+
+' Environment variables
+DIM name AS STRING
+DIM value AS STRING
+name = "VIPER_SAMPLE_ENV"
+value = Viper.Environment.GetVariable(name)
+IF Viper.Environment.HasVariable(name) THEN
+    PRINT name; " is set to "; value
+ELSE
+    PRINT name; " is not set"
+END IF
+
+Viper.Environment.SetVariable(name, "abc")
+PRINT "Updated value: "; Viper.Environment.GetVariable(name)
+
+' Process exit
+' Viper.Environment.EndProgram(7)
 ```
 
 ---
@@ -1337,11 +1358,21 @@ File system operations.
 | `Size(path)` | `Integer(String)` | Returns file size in bytes, or -1 if not found |
 | `ReadBytes(path)` | `Bytes(String)` | Reads the entire file as binary data |
 | `WriteBytes(path, bytes)` | `Void(String, Bytes)` | Writes binary data to a file |
+| `ReadAllBytes(path)` | `Bytes(String)` | Reads the entire file as binary data (traps on I/O errors) |
+| `WriteAllBytes(path, bytes)` | `Void(String, Bytes)` | Writes binary data to a file (overwrites; traps on I/O errors) |
 | `ReadLines(path)` | `Seq(String)` | Reads the file as a sequence of lines |
 | `WriteLines(path, lines)` | `Void(String, Seq)` | Writes a sequence of strings as lines |
 | `Append(path, text)` | `Void(String, String)` | Appends text to a file |
+| `AppendLine(path, text)` | `Void(String, String)` | Appends text followed by `\n` to a file (creates if missing) |
+| `ReadAllLines(path)` | `Seq(String)` | Reads file as a sequence of lines; strips `\n` / `\r\n` terminators (traps on I/O errors) |
 | `Modified(path)` | `Integer(String)` | Returns file modification time as Unix timestamp |
 | `Touch(path)` | `Void(String)` | Creates file or updates its modification time |
+
+### Notes
+
+- `AppendLine` always appends a single `\n` byte (no platform newline normalization).
+- `ReadAllLines` splits on `\n` and `\r\n` and does not include line endings in returned strings; a trailing line ending does not add an extra empty final line.
+- `ReadAllBytes`, `WriteAllBytes`, and `ReadAllLines` trap (write a diagnostic to stderr and terminate) on I/O errors.
 
 ### Example
 
@@ -1376,11 +1407,11 @@ data.Set(2, &H21)  ' !
 data.Set(3, &H00)  ' null byte
 
 ' Write binary file
-Viper.IO.File.WriteBytes("test.bin", data)
+Viper.IO.File.WriteAllBytes("test.bin", data)
 
 ' Read binary file
 DIM loaded AS Bytes
-loaded = Viper.IO.File.ReadBytes("test.bin")
+loaded = Viper.IO.File.ReadAllBytes("test.bin")
 PRINT "Size:"; loaded.Len()  ' Output: Size: 4
 ```
 
@@ -1397,7 +1428,7 @@ Viper.IO.File.WriteLines("output.txt", lines)
 
 ' Read lines from file
 DIM readLines AS Seq
-readLines = Viper.IO.File.ReadLines("output.txt")
+readLines = Viper.IO.File.ReadAllLines("output.txt")
 FOR i = 0 TO readLines.Len() - 1
     PRINT readLines.Get(i)
 NEXT i
@@ -1790,7 +1821,7 @@ Classes define the OOP interface exposed to Viper languages. Method signatures o
 | `Viper.Math` | Math functions (Sin, Cos, Sqrt, etc.) and constants (Pi, E) |
 | `Viper.Terminal` | Terminal I/O (Say, Print, Ask, ReadLine) |
 | `Viper.Convert` | Type conversion (ToInt, ToDouble) |
-| `Viper.Environment` | Command-line args, environment info |
+| `Viper.Environment` | Command-line args, environment variables, process exit |
 | `Viper.Random` | Random number generation |
 | `Viper.Collections.Seq` | Dynamic array with Push, Pop, Get, Set |
 | `Viper.Collections.Stack` | LIFO with Push, Pop, Peek |
