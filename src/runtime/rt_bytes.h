@@ -39,6 +39,13 @@ extern "C"
     /// @return Pointer to new Bytes object.
     void *rt_bytes_from_hex(rt_string hex);
 
+    /// @brief Create a byte array from an RFC 4648 Base64 string.
+    /// @details Uses the standard Base64 alphabet (A–Z a–z 0–9 + /) with '=' padding.
+    ///          Traps on invalid characters, invalid padding, or invalid length.
+    /// @param b64 Base64 string to decode.
+    /// @return Pointer to new Bytes object containing the decoded bytes.
+    void *rt_bytes_from_base64(rt_string b64);
+
     /// @brief Get the length of a byte array.
     /// @param obj Bytes object pointer.
     /// @return Number of bytes.
@@ -80,6 +87,13 @@ extern "C"
     /// @param obj Bytes object pointer.
     /// @return New string with hex representation.
     rt_string rt_bytes_to_hex(void *obj);
+
+    /// @brief Convert byte array to an RFC 4648 Base64 string.
+    /// @details Uses the standard Base64 alphabet (A–Z a–z 0–9 + /) with '=' padding and
+    ///          emits no line breaks.
+    /// @param obj Bytes object pointer.
+    /// @return New string with Base64 representation.
+    rt_string rt_bytes_to_base64(void *obj);
 
     /// @brief Fill all bytes with the given value.
     /// @param obj Bytes object pointer.

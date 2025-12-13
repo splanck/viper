@@ -741,6 +741,7 @@ An efficient byte array for binary data. More memory-efficient than Seq for byte
 - `NEW Viper.Collections.Bytes(length)` - Create zero-filled byte array
 - `Viper.Collections.Bytes.FromStr(str)` - Create from string (UTF-8 bytes)
 - `Viper.Collections.Bytes.FromHex(hex)` - Create from hexadecimal string
+- `Viper.Collections.Bytes.FromBase64(b64)` - Decode RFC 4648 Base64 string (traps on invalid input)
 
 ### Properties
 
@@ -758,6 +759,7 @@ An efficient byte array for binary data. More memory-efficient than Seq for byte
 | `Copy(dstOffset, src, srcOffset, count)` | `Void(...)` | Copy bytes between arrays |
 | `ToStr()` | `String()` | Convert to string (interprets as UTF-8) |
 | `ToHex()` | `String()` | Convert to lowercase hexadecimal string |
+| `ToBase64()` | `String()` | Convert to RFC 4648 Base64 string (A-Z a-z 0-9 + /, with '=' padding) |
 | `Fill(value)` | `Void(Integer)` | Set all bytes to value |
 | `Find(value)` | `Integer(Integer)` | Find first occurrence (-1 if not found) |
 | `Clone()` | `Bytes()` | Create independent copy |
@@ -786,6 +788,12 @@ DIM text AS Viper.Collections.Bytes
 text = Viper.Collections.Bytes.FromStr("Hello")
 PRINT text.Len      ' Output: 5
 PRINT text.Get(0)   ' Output: 72 (ASCII 'H')
+
+' Base64 encode/decode (RFC 4648)
+PRINT text.ToBase64()  ' Output: "SGVsbG8="
+DIM decoded AS Viper.Collections.Bytes
+decoded = Viper.Collections.Bytes.FromBase64("SGVsbG8=")
+PRINT decoded.ToStr()  ' Output: "Hello"
 
 ' Slice and copy
 DIM slice AS Viper.Collections.Bytes

@@ -272,6 +272,54 @@ static void test_to_hex()
     assert(strcmp(cstr, "deadbeef") == 0);
 }
 
+static void test_to_base64()
+{
+    rt_string input = rt_string_from_bytes("hello", 5);
+    void *bytes = rt_bytes_from_str(input);
+
+    rt_string b64 = rt_bytes_to_base64(bytes);
+    const char *cstr = rt_string_cstr(b64);
+    assert(strcmp(cstr, "aGVsbG8=") == 0);
+}
+
+static void test_from_base64_to_str()
+{
+    rt_string b64 = rt_string_from_bytes("aGVsbG8=", 8);
+    void *bytes = rt_bytes_from_base64(b64);
+
+    rt_string decoded = rt_bytes_to_str(bytes);
+    const char *cstr = rt_string_cstr(decoded);
+    assert(strcmp(cstr, "hello") == 0);
+}
+
+static void test_base64_empty_roundtrip()
+{
+    void *bytes = rt_bytes_new(0);
+    rt_string b64 = rt_bytes_to_base64(bytes);
+    assert(rt_string_cstr(b64)[0] == '\0');
+
+    void *decoded = rt_bytes_from_base64(rt_string_from_bytes("", 0));
+    assert(rt_bytes_len(decoded) == 0);
+}
+
+static void test_from_base64_invalid_chars_traps()
+{
+    rt_string b64 = rt_string_from_bytes("!!!!", 4);
+    EXPECT_TRAP(rt_bytes_from_base64(b64));
+    assert(g_last_trap && strstr(g_last_trap, "Bytes.FromBase64") != nullptr);
+}
+
+static void test_from_base64_bad_padding_traps()
+{
+    rt_string b64 = rt_string_from_bytes("AA=A", 4);
+    EXPECT_TRAP(rt_bytes_from_base64(b64));
+    assert(g_last_trap && strstr(g_last_trap, "Bytes.FromBase64") != nullptr);
+
+    rt_string noncanonical = rt_string_from_bytes("AB==", 4);
+    EXPECT_TRAP(rt_bytes_from_base64(noncanonical));
+    assert(g_last_trap && strstr(g_last_trap, "Bytes.FromBase64") != nullptr);
+}
+
 static void test_hex_roundtrip()
 {
     // Create bytes, convert to hex, convert back
@@ -371,6 +419,9 @@ static void test_null_handling()
     rt_string hex = rt_bytes_to_hex(nullptr);
     assert(rt_string_cstr(hex)[0] == '\0');
 
+    rt_string b64 = rt_bytes_to_base64(nullptr);
+    assert(rt_string_cstr(b64)[0] == '\0');
+
     // Fill on null should not crash
     rt_bytes_fill(nullptr, 0);
 }
@@ -403,6 +454,11 @@ int main()
     test_copy_bounds_check();
     test_to_str();
     test_to_hex();
+    test_to_base64();
+    test_from_base64_to_str();
+    test_base64_empty_roundtrip();
+    test_from_base64_invalid_chars_traps();
+    test_from_base64_bad_padding_traps();
     test_hex_roundtrip();
     test_fill();
     test_fill_clamps_to_byte();
