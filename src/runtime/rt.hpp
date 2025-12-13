@@ -28,6 +28,12 @@ extern "C"
     /// @param msg Null-terminated message string.
     void rt_trap(const char *msg);
 
+    /// @brief Trap when @p condition is false with the provided diagnostic.
+    /// @param condition Boolean flag; zero triggers a trap.
+    /// @param message Runtime string describing the assertion; defaults to
+    ///        "Assertion failed" when empty or null.
+    void rt_diag_assert(int8_t condition, rt_string message);
+
     /// @brief Print trap message and terminate process.
     /// @param msg Null-terminated message string.
     void rt_abort(const char *msg);

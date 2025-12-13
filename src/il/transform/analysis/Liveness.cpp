@@ -83,10 +83,10 @@ LivenessInfo::SetView LivenessInfo::liveIn(const core::BasicBlock *block) const
 {
     if (!block)
         return SetView();
-    auto it = liveInBits_.find(block);
-    if (it == liveInBits_.end())
+    auto it = blockIndex_.find(block);
+    if (it == blockIndex_.end() || it->second >= liveInBits_.size())
         return SetView();
-    return SetView(&it->second);
+    return SetView(&liveInBits_[it->second]);
 }
 
 /// @brief Retrieve the live-out set for a block.
@@ -106,10 +106,10 @@ LivenessInfo::SetView LivenessInfo::liveOut(const core::BasicBlock *block) const
 {
     if (!block)
         return SetView();
-    auto it = liveOutBits_.find(block);
-    if (it == liveOutBits_.end())
+    auto it = blockIndex_.find(block);
+    if (it == blockIndex_.end() || it->second >= liveOutBits_.size())
         return SetView();
-    return SetView(&it->second);
+    return SetView(&liveOutBits_[it->second]);
 }
 
 /// @brief Report the number of dense SSA identifiers tracked by the analysis.
@@ -251,14 +251,20 @@ LivenessInfo computeLiveness(core::Module &module, core::Function &fn, const CFG
     static_cast<void>(module);
     const std::size_t valueCount = determineValueCapacity(fn);
 
-    std::unordered_map<const BasicBlock *, BlockInfo> blockInfo;
-    blockInfo.reserve(fn.blocks.size());
-
     LivenessInfo info;
     info.valueCount_ = valueCount;
+    info.blocks_.reserve(fn.blocks.size());
+    info.liveInBits_.assign(fn.blocks.size(), std::vector<bool>(valueCount, false));
+    info.liveOutBits_.assign(fn.blocks.size(), std::vector<bool>(valueCount, false));
 
-    for (auto &block : fn.blocks)
+    std::vector<BlockInfo> blockInfo(fn.blocks.size(), BlockInfo(valueCount));
+
+    for (std::size_t idx = 0; idx < fn.blocks.size(); ++idx)
     {
+        auto &block = fn.blocks[idx];
+        info.blocks_.push_back(&block);
+        info.blockIndex_[&block] = idx;
+
         BlockInfo state(valueCount);
 
         for (const auto &param : block.params)
@@ -293,9 +299,7 @@ LivenessInfo computeLiveness(core::Module &module, core::Function &fn, const CFG
                 setBit(state.defs, *instr.result);
         }
 
-        blockInfo.emplace(&block, std::move(state));
-        info.liveInBits_.emplace(&block, std::vector<bool>(valueCount, false));
-        info.liveOutBits_.emplace(&block, std::vector<bool>(valueCount, false));
+        blockInfo[idx] = std::move(state);
     }
 
     std::vector<bool> scratchOut(valueCount, false);
@@ -305,24 +309,22 @@ LivenessInfo computeLiveness(core::Module &module, core::Function &fn, const CFG
     while (changed)
     {
         changed = false;
-        for (auto it = fn.blocks.rbegin(); it != fn.blocks.rend(); ++it)
+        for (std::size_t reverseIdx = fn.blocks.size(); reverseIdx-- > 0;)
         {
-            const BasicBlock *block = &*it;
-            auto stateIt = blockInfo.find(block);
-            assert(stateIt != blockInfo.end());
-            BlockInfo &state = stateIt->second;
+            const BasicBlock *block = info.blocks_[reverseIdx];
+            BlockInfo &state = blockInfo[reverseIdx];
 
-            auto &liveOut = info.liveOutBits_[block];
+            auto &liveOut = info.liveOutBits_[reverseIdx];
             std::fill(scratchOut.begin(), scratchOut.end(), false);
             auto succIt = cfg.successors.find(block);
             if (succIt != cfg.successors.end())
             {
                 for (const BasicBlock *succ : succIt->second)
                 {
-                    auto liveInIt = info.liveInBits_.find(succ);
-                    if (liveInIt == info.liveInBits_.end())
+                    auto succIdxIt = info.blockIndex_.find(succ);
+                    if (succIdxIt == info.blockIndex_.end())
                         continue;
-                    mergeBits(scratchOut, liveInIt->second);
+                    mergeBits(scratchOut, info.liveInBits_[succIdxIt->second]);
                 }
             }
             if (scratchOut != liveOut)
@@ -337,7 +339,7 @@ LivenessInfo computeLiveness(core::Module &module, core::Function &fn, const CFG
                 if (liveOut[idx] && !state.defs[idx])
                     scratchIn[idx] = true;
             }
-            auto &liveIn = info.liveInBits_[block];
+            auto &liveIn = info.liveInBits_[reverseIdx];
             if (scratchIn != liveIn)
             {
                 liveIn = scratchIn;

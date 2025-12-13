@@ -105,8 +105,10 @@ class LivenessInfo
     using BitSet = std::vector<bool>;
 
     std::size_t valueCount_{0};
-    std::unordered_map<const core::BasicBlock *, BitSet> liveInBits_;
-    std::unordered_map<const core::BasicBlock *, BitSet> liveOutBits_;
+    std::vector<const core::BasicBlock *> blocks_;
+    std::unordered_map<const core::BasicBlock *, std::size_t> blockIndex_;
+    std::vector<BitSet> liveInBits_;
+    std::vector<BitSet> liveOutBits_;
 
     friend LivenessInfo computeLiveness(core::Module &module, core::Function &fn);
     friend LivenessInfo computeLiveness(core::Module &module,

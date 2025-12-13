@@ -38,7 +38,7 @@
 #include <cassert>
 #include <functional>
 #include <iostream>
-#include <mutex>
+#include <shared_mutex>
 #include <string>
 #include <typeindex>
 #include <unordered_map>
@@ -128,7 +128,24 @@ class AnalysisManager
     /// @return Reference to the cached or freshly computed result.
     template <typename Result> Result &getModuleResult(const std::string &id)
     {
-        std::lock_guard<std::mutex> lock(mutex_);
+        // Fast-path for cache hits under a shared lock to avoid blocking other readers.
+        {
+            std::shared_lock<std::shared_mutex> lock(mutex_);
+            assert(moduleAnalyses_ && "no module analyses registered");
+            auto it = moduleAnalyses_->find(id);
+            assert(it != moduleAnalyses_->end() && "unknown module analysis");
+            auto cacheIt = moduleCache_.find(id);
+            if (cacheIt != moduleCache_.end() && cacheIt->second.has_value())
+            {
+                assert(it->second.type == std::type_index(typeid(Result)) &&
+                       "analysis result type mismatch");
+                auto *value = std::any_cast<Result>(&cacheIt->second);
+                assert(value && "analysis result cast failed");
+                return *value;
+            }
+        }
+
+        std::unique_lock<std::shared_mutex> lock(mutex_);
         assert(moduleAnalyses_ && "no module analyses registered");
         auto it = moduleAnalyses_->find(id);
         assert(it != moduleAnalyses_->end() && "unknown module analysis");
@@ -152,7 +169,37 @@ class AnalysisManager
     /// @return Reference to the cached or freshly computed result.
     template <typename Result> Result &getFunctionResult(const std::string &id, core::Function &fn)
     {
-        std::lock_guard<std::mutex> lock(mutex_);
+        // Shared lock allows concurrent cache hits across functions.
+        {
+            std::shared_lock<std::shared_mutex> lock(mutex_);
+            assert(functionAnalyses_ && "no function analyses registered");
+            auto it = functionAnalyses_->find(id);
+#ifndef NDEBUG
+            if (it == functionAnalyses_->end())
+            {
+                std::cerr << "Unknown function analysis '" << id << "'; registered:";
+                for (const auto &entry : *functionAnalyses_)
+                    std::cerr << " " << entry.first;
+                std::cerr << std::endl;
+            }
+#endif
+            assert(it != functionAnalyses_->end() && "unknown function analysis");
+            auto cacheIt = functionCache_.find(id);
+            if (cacheIt != functionCache_.end())
+            {
+                auto fnIt = cacheIt->second.find(&fn);
+                if (fnIt != cacheIt->second.end() && fnIt->second.has_value())
+                {
+                    assert(it->second.type == std::type_index(typeid(Result)) &&
+                           "analysis result type mismatch");
+                    auto *value = std::any_cast<Result>(&fnIt->second);
+                    assert(value && "analysis result cast failed");
+                    return *value;
+                }
+            }
+        }
+
+        std::unique_lock<std::shared_mutex> lock(mutex_);
         assert(functionAnalyses_ && "no function analyses registered");
         auto it = functionAnalyses_->find(id);
 #ifndef NDEBUG
@@ -205,7 +252,7 @@ class AnalysisManager
     /// @return Number of module and function analyses computed so far.
     AnalysisCounts counts() const
     {
-        std::lock_guard<std::mutex> lock(mutex_);
+        std::shared_lock<std::shared_mutex> lock(mutex_);
         return counts_;
     }
 
@@ -217,7 +264,7 @@ class AnalysisManager
     std::unordered_map<std::string, std::unordered_map<const core::Function *, std::any>>
         functionCache_;
     AnalysisCounts counts_{};
-    mutable std::mutex mutex_;
+    mutable std::shared_mutex mutex_;
 
     friend class AnalysisCacheInvalidator;
 };

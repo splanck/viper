@@ -184,12 +184,21 @@ LoopInfo computeLoopInfo(Module &module, Function &function)
     }
 
     // Exits: edges from loop body to outside.
+    const auto labelMapIt = cfgCtx.functionLabelToBlock.find(&function);
+    const auto *labelMap = labelMapIt == cfgCtx.functionLabelToBlock.end() ? nullptr
+                                                                           : &labelMapIt->second;
     for (auto &loop : info.loops_)
     {
         std::vector<LoopExit> exits;
         for (const auto &label : loop.blockLabels)
         {
-            BasicBlock *block = ::viper::il::findBlock(function, label);
+            BasicBlock *block = nullptr;
+            if (labelMap)
+            {
+                auto it = labelMap->find(label);
+                if (it != labelMap->end())
+                    block = it->second;
+            }
             if (!block || block->instructions.empty())
                 continue;
             const Instr &term = block->instructions.back();

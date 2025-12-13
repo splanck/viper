@@ -64,7 +64,7 @@ struct SerializeContext
     }
 };
 
-using Formatter = std::function<void(const Instr &, std::ostream &, const SerializeContext &)>;
+using Formatter = void (*)(const Instr &, std::ostream &, const SerializeContext &);
 
 /// @brief Convert an opcode enumerator into an array index.
 /// @param op Opcode value to convert.
@@ -335,70 +335,48 @@ void printSwitchI32Operands(const Instr &instr, std::ostream &os, const Serializ
 /// @brief Retrieve the formatter function for a given opcode.
 /// @param op Opcode to format.
 /// @return Function object responsible for serialising operands of @p op.
-const Formatter &formatterFor(Opcode op)
-{
-    static const auto formatters = []
+    const Formatter &formatterFor(Opcode op)
     {
-        std::array<Formatter, kNumOpcodes> table;
-        for (auto &fmt : table)
+        static const auto formatters = []
         {
-            fmt = [](const Instr &instr, std::ostream &os, const SerializeContext &ctx)
-            { printDefaultOperands(instr, os, ctx); };
-        }
-        table[toIndex(Opcode::Call)] =
-            [](const Instr &instr, std::ostream &os, const SerializeContext &ctx)
-        { printCallOperands(instr, os, ctx); };
-        table[toIndex(Opcode::Ret)] =
-            [](const Instr &instr, std::ostream &os, const SerializeContext &ctx)
-        { printRetOperand(instr, os, ctx); };
-        table[toIndex(Opcode::Br)] =
-            [](const Instr &instr, std::ostream &os, const SerializeContext &ctx)
-        { printBrOperands(instr, os, ctx); };
-        table[toIndex(Opcode::CBr)] =
-            [](const Instr &instr, std::ostream &os, const SerializeContext &ctx)
-        { printCBrOperands(instr, os, ctx); };
-        table[toIndex(Opcode::SwitchI32)] =
-            [](const Instr &instr, std::ostream &os, const SerializeContext &ctx)
-        { printSwitchI32Operands(instr, os, ctx); };
-        table[toIndex(Opcode::Load)] =
-            [](const Instr &instr, std::ostream &os, const SerializeContext &ctx)
-        { printLoadOperands(instr, os, ctx); };
-        table[toIndex(Opcode::Store)] =
-            [](const Instr &instr, std::ostream &os, const SerializeContext &ctx)
-        { printStoreOperands(instr, os, ctx); };
-        table[toIndex(Opcode::TrapKind)] =
-            [](const Instr &instr, std::ostream &os, const SerializeContext &ctx)
-        { printTrapKindOperand(instr, os, ctx); };
-        table[toIndex(Opcode::TrapFromErr)] =
-            [](const Instr &instr, std::ostream &os, const SerializeContext &ctx)
-        { printTrapFromErrOperands(instr, os, ctx); };
-        table[toIndex(Opcode::EhPush)] =
-            [](const Instr &instr, std::ostream &os, const SerializeContext &ctx)
-        {
-            if (!instr.labels.empty())
+            std::array<Formatter, kNumOpcodes> table;
+            table.fill(&printDefaultOperands);
+            table[toIndex(Opcode::Call)] = &printCallOperands;
+            table[toIndex(Opcode::Ret)] = &printRetOperand;
+            table[toIndex(Opcode::Br)] = &printBrOperands;
+            table[toIndex(Opcode::CBr)] = &printCBrOperands;
+            table[toIndex(Opcode::SwitchI32)] = &printSwitchI32Operands;
+            table[toIndex(Opcode::Load)] = &printLoadOperands;
+            table[toIndex(Opcode::Store)] = &printStoreOperands;
+            table[toIndex(Opcode::TrapKind)] = &printTrapKindOperand;
+            table[toIndex(Opcode::TrapFromErr)] = &printTrapFromErrOperands;
+            table[toIndex(Opcode::EhPush)] =
+                [](const Instr &instr, std::ostream &os, const SerializeContext &ctx)
             {
-                os << ' ';
-                printCaretBranchTarget(instr, 0, os, ctx);
-            }
-        };
-        table[toIndex(Opcode::ResumeLabel)] =
-            [](const Instr &instr, std::ostream &os, const SerializeContext &ctx)
-        {
-            if (!instr.operands.empty())
+                if (!instr.labels.empty())
+                {
+                    os << ' ';
+                    printCaretBranchTarget(instr, 0, os, ctx);
+                }
+            };
+            table[toIndex(Opcode::ResumeLabel)] =
+                [](const Instr &instr, std::ostream &os, const SerializeContext &ctx)
             {
-                os << ' ';
-                printValue(os, instr.operands[0], ctx);
-            }
-            if (!instr.labels.empty())
-            {
-                os << ", ";
-                printCaretBranchTarget(instr, 0, os, ctx);
-            }
-        };
-        return table;
-    }();
-    return formatters[toIndex(op)];
-}
+                if (!instr.operands.empty())
+                {
+                    os << ' ';
+                    printValue(os, instr.operands[0], ctx);
+                }
+                if (!instr.labels.empty())
+                {
+                    os << ", ";
+                    printCaretBranchTarget(instr, 0, os, ctx);
+                }
+            };
+            return table;
+        }();
+        return formatters[toIndex(op)];
+    }
 
 /// @brief Emit a single extern declaration following canonical IL syntax.
 /// @param e Imported function descriptor to serialise; not owned.

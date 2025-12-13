@@ -17,6 +17,7 @@
 #include "il/transform/LICM.hpp"
 
 #include "il/transform/AnalysisManager.hpp"
+#include "il/transform/analysis/Liveness.hpp"
 #include "il/transform/analysis/LoopInfo.hpp"
 
 #include "il/analysis/BasicAA.hpp"
@@ -31,6 +32,7 @@
 
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -74,40 +76,6 @@ bool isSafeToHoist(const Instr &instr, bool allowLoadHoist)
         return true;
 
     return false;
-}
-
-BasicBlock *findBlock(Function &function, const std::string &label)
-{
-    return viper::il::findBlock(function, label);
-}
-
-BasicBlock *findPreheader(Function &function, const Loop &loop, BasicBlock &header)
-{
-    BasicBlock *preheader = nullptr;
-    for (auto &block : function.blocks)
-    {
-        if (loop.contains(block.label))
-            continue;
-        if (!block.terminated || block.instructions.empty())
-            continue;
-        const Instr &term = block.instructions.back();
-        bool targetsHeader = false;
-        for (const auto &label : term.labels)
-        {
-            if (label == header.label)
-            {
-                targetsHeader = true;
-                break;
-            }
-        }
-        if (!targetsHeader)
-            continue;
-
-        if (preheader && preheader != &block)
-            return nullptr;
-        preheader = &block;
-    }
-    return preheader;
 }
 
 void seedInvariants(const Loop &loop, Function &function, std::unordered_set<unsigned> &invariants)
@@ -174,6 +142,36 @@ void collectDominanceOrder(BasicBlock *block,
 
 } // namespace
 
+BasicBlock *lookupBlock(const std::unordered_map<std::string, BasicBlock *> &blocks,
+                        const std::string &label)
+{
+    auto it = blocks.find(label);
+    return it == blocks.end() ? nullptr : it->second;
+}
+
+BasicBlock *findPreheader(const Loop &loop,
+                          BasicBlock &header,
+                          const CFGInfo &cfg,
+                          const std::unordered_map<std::string, BasicBlock *> &blocks)
+{
+    auto predsIt = cfg.predecessors.find(&header);
+    if (predsIt == cfg.predecessors.end())
+        return nullptr;
+    BasicBlock *preheader = nullptr;
+    for (const auto *pred : predsIt->second)
+    {
+        if (!pred || loop.contains(pred->label))
+            continue;
+        auto *mutablePred = lookupBlock(blocks, pred->label);
+        if (!mutablePred)
+            continue;
+        if (preheader && preheader != mutablePred)
+            return nullptr;
+        preheader = mutablePred;
+    }
+    return preheader;
+}
+
 std::string_view LICM::id() const
 {
     return "licm";
@@ -184,16 +182,22 @@ PreservedAnalyses LICM::run(Function &function, AnalysisManager &analysis)
     auto &domTree = analysis.getFunctionResult<viper::analysis::DomTree>("dominators", function);
     auto &loopInfo = analysis.getFunctionResult<LoopInfo>("loop-info", function);
     auto &aa = analysis.getFunctionResult<viper::analysis::BasicAA>("basic-aa", function);
+    auto &cfg = analysis.getFunctionResult<CFGInfo>("cfg", function);
+
+    std::unordered_map<std::string, BasicBlock *> blockLookup;
+    blockLookup.reserve(function.blocks.size());
+    for (auto &blk : function.blocks)
+        blockLookup.emplace(blk.label, &blk);
 
     bool changed = false;
 
     for (const Loop &loop : loopInfo.loops())
     {
-        BasicBlock *header = findBlock(function, loop.headerLabel);
+        BasicBlock *header = lookupBlock(blockLookup, loop.headerLabel);
         if (!header)
             continue;
 
-        BasicBlock *preheader = findPreheader(function, loop, *header);
+        BasicBlock *preheader = findPreheader(loop, *header, cfg, blockLookup);
         if (!preheader)
             continue;
 
@@ -205,7 +209,7 @@ PreservedAnalyses LICM::run(Function &function, AnalysisManager &analysis)
         std::vector<StoreSite> loopStores;
         for (const auto &label : loop.blockLabels)
         {
-            BasicBlock *blk = findBlock(function, label);
+            BasicBlock *blk = lookupBlock(blockLookup, label);
             if (!blk)
                 continue;
             for (const auto &ins : blk->instructions)

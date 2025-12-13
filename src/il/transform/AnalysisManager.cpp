@@ -185,7 +185,7 @@ AnalysisManager::AnalysisManager(core::Module &module, const AnalysisRegistry &r
 /// @param preserved Summary of analyses that remain valid.
 void AnalysisManager::invalidateAfterModulePass(const PreservedAnalyses &preserved)
 {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::unique_lock<std::shared_mutex> lock(mutex_);
     AnalysisCacheInvalidator(*this, preserved).afterModulePass();
 }
 
@@ -197,7 +197,7 @@ void AnalysisManager::invalidateAfterModulePass(const PreservedAnalyses &preserv
 void AnalysisManager::invalidateAfterFunctionPass(const PreservedAnalyses &preserved,
                                                   core::Function &fn)
 {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::unique_lock<std::shared_mutex> lock(mutex_);
     AnalysisCacheInvalidator(*this, preserved).afterFunctionPass(fn);
 }
 

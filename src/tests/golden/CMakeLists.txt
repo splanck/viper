@@ -944,6 +944,29 @@ function(viper_add_golden_suite_tests)
             "-DEXPECT=${EXPECT_VIPER_STR_LEN}"
             -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
 
+    file(READ ${_VIPER_GOLDEN_DIR}/basic_runtime_ns/diagnostics_assert_success.stdout EXPECT_DIAG_ASSERT_OK)
+    string(STRIP "${EXPECT_DIAG_ASSERT_OK}" EXPECT_DIAG_ASSERT_OK)
+    viper_add_ctest(basic_runtime_ns_diagnostics_assert_success
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_runtime_ns/diagnostics_assert_success.bas
+            "-DEXPECT=${EXPECT_DIAG_ASSERT_OK}"
+            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+
+    viper_add_ctest(basic_runtime_ns_diagnostics_assert_trap_message
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_runtime_ns/diagnostics_assert_trap_msg.bas
+            "-DEXPECT=boom"
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_basic_run_error.cmake)
+
+    viper_add_ctest(basic_runtime_ns_diagnostics_assert_trap_default
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_runtime_ns/diagnostics_assert_trap_default.bas
+            "-DEXPECT=Assertion failed"
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_basic_run_error.cmake)
+
     # Additional families can be added incrementally (Strings.Concat, Convert, Parse, Diagnostics)
 
     # BASIC error: reserved root declaration under Viper

@@ -17,6 +17,7 @@
 //   COLLECTIONS - SEQ
 //   COLLECTIONS - STACK
 //   DATETIME
+//   DIAGNOSTICS - ASSERT
 //   DIAGNOSTICS - STOPWATCH
 //   DIAGNOSTICS - TRAP
 //   ENVIRONMENT
@@ -181,6 +182,12 @@ RT_FUNC(DateTimeNowMs,      rt_datetime_now_ms,      "Viper.DateTime.NowMs",    
 RT_FUNC(DateTimeSecond,     rt_datetime_second,      "Viper.DateTime.Second",     "i64(i64)")
 RT_FUNC(DateTimeToISO,      rt_datetime_to_iso,      "Viper.DateTime.ToISO",      "str(i64)")
 RT_FUNC(DateTimeYear,       rt_datetime_year,        "Viper.DateTime.Year",       "i64(i64)")
+
+//=============================================================================
+// DIAGNOSTICS - ASSERT
+//=============================================================================
+
+RT_FUNC(DiagAssert, rt_diag_assert, "Viper.Diagnostics.Assert", "void(i1,str)")
 
 //=============================================================================
 // DIAGNOSTICS - STOPWATCH
@@ -836,4 +843,3 @@ RT_CLASS_BEGIN("Viper.Time.Clock", Clock, "obj", none)
     RT_METHOD("Ticks", "i64()", ClockTicks)
     RT_METHOD("TicksUs", "i64()", ClockTicksUs)
 RT_CLASS_END()
-

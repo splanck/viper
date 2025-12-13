@@ -34,6 +34,10 @@
 
 #pragma once
 
+#include <stdint.h>
+
+#include "rt_string.h"
+
 #ifdef __cplusplus
 extern "C"
 {
@@ -41,6 +45,12 @@ extern "C"
 
     /// @brief Traps the runtime on division by zero.
     void rt_trap_div0(void);
+
+    /// @brief Trap when @p condition is false with the supplied diagnostic.
+    /// @param condition Non-zero when the assertion passes.
+    /// @param message Runtime string describing the assertion; falls back to a
+    ///        default when empty.
+    void rt_diag_assert(int8_t condition, rt_string message);
 
 #ifdef __cplusplus
 }

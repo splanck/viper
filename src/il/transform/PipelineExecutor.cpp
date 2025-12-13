@@ -23,9 +23,10 @@
 #include "il/core/Module.hpp"
 #include "viper/pass/PassManager.hpp"
 
+#include <atomic>
 #include <cassert>
 #include <chrono>
-#include <future>
+#include <thread>
 #include <utility>
 
 namespace il::transform
@@ -134,27 +135,41 @@ void PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
                             return true;
                         };
 
-                        bool allOk = true;
+                        bool executedAll = true;
                         if (parallelFunctionPasses_ && module.functions.size() > 1)
                         {
-                            std::vector<std::future<bool>> tasks;
-                            tasks.reserve(module.functions.size());
-                            for (auto &fn : module.functions)
+                            const std::size_t workerCount = std::min<std::size_t>(
+                                module.functions.size(),
+                                std::max<std::size_t>(1, std::thread::hardware_concurrency()));
+                            std::atomic_size_t nextIndex{0};
+                            std::atomic_bool allOk{true};
+                            std::vector<std::thread> workers;
+                            workers.reserve(workerCount);
+                            for (std::size_t w = 0; w < workerCount; ++w)
                             {
-                                tasks.push_back(std::async(std::launch::async,
-                                                           [&runFunctionPass, &fn]()
-                                                           { return runFunctionPass(fn); }));
+                                workers.emplace_back([&]()
+                                                     {
+                                                         for (;;)
+                                                         {
+                                                             std::size_t idx = nextIndex.fetch_add(1);
+                                                             if (idx >= module.functions.size())
+                                                                 break;
+                                                             if (!runFunctionPass(module.functions[idx]))
+                                                                 allOk.store(false, std::memory_order_relaxed);
+                                                         }
+                                                     });
                             }
-                            for (auto &task : tasks)
-                                allOk &= task.get();
+                            for (auto &worker : workers)
+                                worker.join();
+                            executedAll = allOk.load(std::memory_order_relaxed);
                         }
                         else
                         {
                             for (auto &fn : module.functions)
-                                allOk &= runFunctionPass(fn);
+                                executedAll &= runFunctionPass(fn);
                         }
 
-                        executed = allOk;
+                        executed = executedAll;
                         break;
                     }
                 }

@@ -4,6 +4,7 @@ extern @Viper.Terminal.PrintI64(i64) -> void
 extern @Viper.Terminal.PrintF64(f64) -> void
 extern @Viper.Strings.Len(str) -> i64
 extern @Viper.Strings.Mid(str, i64, i64) -> str
+extern @Viper.Diagnostics.Assert(i1, str) -> void
 extern @Viper.Diagnostics.Trap(str) -> void
 extern @Viper.String.Left(str, i64) -> str
 extern @Viper.String.Right(str, i64) -> str
