@@ -81,6 +81,44 @@ extern "C"
     /// @param elem  Replacement element pointer (may be NULL).
     void rt_list_set_item(void *list, int64_t index, void *elem);
 
+    /// What: Check whether the list contains @p elem.
+    /// Why:  Provide a common membership query for Viper.Collections.List.
+    /// How:  Scans the list and compares elements using the same notion as Seq.Has/Seq.Find
+    ///       (reference equality).
+    ///
+    /// @param list Opaque List object pointer.
+    /// @param elem Element to look for (may be NULL).
+    /// @return 1 if present, 0 otherwise.
+    int8_t rt_list_has(void *list, void *elem);
+
+    /// What: Find the first index of @p elem in the list.
+    /// Why:  Enable search and removal patterns without manual iteration.
+    /// How:  Scans the list left-to-right and compares by reference equality.
+    ///
+    /// @param list Opaque List object pointer.
+    /// @param elem Element to look for (may be NULL).
+    /// @return Index of the first matching element, or -1 when not found.
+    int64_t rt_list_find(void *list, void *elem);
+
+    /// What: Insert @p elem at @p index, shifting elements to the right.
+    /// Why:  Support positional insertion for dynamic list operations.
+    /// How:  Grows the backing storage by one and shifts elements right; retains inserted value.
+    ///
+    /// @param list  Opaque List object pointer.
+    /// @param index 0-based insert position; must satisfy 0 <= index <= Count.
+    /// @param elem  Element to insert (may be NULL).
+    /// @pre Index must be within bounds; violating traps at runtime.
+    void rt_list_insert(void *list, int64_t index, void *elem);
+
+    /// What: Remove the first occurrence of @p elem from the list.
+    /// Why:  Provide a common removal helper with boolean success reporting.
+    /// How:  Searches for @p elem using reference equality and removes it when found.
+    ///
+    /// @param list Opaque List object pointer.
+    /// @param elem Element to remove (may be NULL).
+    /// @return 1 when an element was removed, 0 otherwise.
+    int8_t rt_list_remove(void *list, void *elem);
+
 #ifdef __cplusplus
 }
 #endif

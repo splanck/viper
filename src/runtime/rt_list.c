@@ -130,3 +130,61 @@ void rt_list_remove_at(void *list, int64_t index)
         L->arr = rt_arr_obj_resize(L->arr, len - 1);
     }
 }
+
+int64_t rt_list_find(void *list, void *elem)
+{
+    if (!list)
+        return -1;
+
+    rt_list_impl *L = as_list(list);
+    size_t len = rt_arr_obj_len(L->arr);
+
+    for (size_t i = 0; i < len; ++i)
+    {
+        if (L->arr[i] == elem)
+            return (int64_t)i;
+    }
+
+    return -1;
+}
+
+int8_t rt_list_has(void *list, void *elem)
+{
+    return rt_list_find(list, elem) >= 0 ? 1 : 0;
+}
+
+void rt_list_insert(void *list, int64_t index, void *elem)
+{
+    if (!list)
+        rt_trap("List.Insert: null list");
+    if (index < 0)
+        rt_trap("List.Insert: negative index");
+
+    rt_list_impl *L = as_list(list);
+    size_t len = rt_arr_obj_len(L->arr);
+    if ((uint64_t)index > (uint64_t)len)
+        rt_trap("List.Insert: index out of bounds");
+
+    void **arr2 = rt_arr_obj_resize(L->arr, len + 1);
+    if (!arr2)
+        rt_trap("List.Insert: memory allocation failed");
+    L->arr = arr2;
+
+    // Shift elements right from the end to index.
+    for (size_t i = len; i > (size_t)index; --i)
+    {
+        void *prev = L->arr[i - 1];
+        rt_arr_obj_put(L->arr, i, prev);
+    }
+
+    rt_arr_obj_put(L->arr, (size_t)index, elem);
+}
+
+int8_t rt_list_remove(void *list, void *elem)
+{
+    int64_t idx = rt_list_find(list, elem);
+    if (idx < 0)
+        return 0;
+    rt_list_remove_at(list, idx);
+    return 1;
+}

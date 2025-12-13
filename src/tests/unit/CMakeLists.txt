@@ -625,6 +625,10 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_seq PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_seq test_rt_seq)
 
+    viper_add_test(test_rt_list ${VIPER_TESTS_DIR}/runtime/RTListTests.cpp)
+    target_link_libraries(test_rt_list PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_list test_rt_list)
+
     viper_add_test(test_rt_stack ${VIPER_TESTS_DIR}/runtime/RTStackTests.cpp)
     target_link_libraries(test_rt_stack PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_stack test_rt_stack)

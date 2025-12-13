@@ -404,6 +404,10 @@ Dynamic array that grows automatically. Stores object references.
 |--------|-----------|-------------|
 | `Add(item)` | `Void(Object)` | Appends an item to the end of the list |
 | `Clear()` | `Void()` | Removes all items from the list |
+| `Has(item)` | `Boolean(Object)` | Returns true if the list contains the object (reference equality) |
+| `Find(item)` | `Integer(Object)` | Returns index of the first matching object, or `-1` if not found |
+| `Insert(index, item)` | `Void(Integer, Object)` | Inserts the item at `index` (0..Count); `index == Count` appends; traps if out of range |
+| `Remove(item)` | `Boolean(Object)` | Removes the first matching object (reference equality); returns true if removed |
 | `RemoveAt(index)` | `Void(Integer)` | Removes the item at the specified index |
 | `get_Item(index)` | `Object(Integer)` | Gets the item at the specified index |
 | `set_Item(index, value)` | `Void(Integer, Object)` | Sets the item at the specified index |
@@ -415,22 +419,24 @@ DIM list AS Viper.Collections.List
 list = NEW Viper.Collections.List()
 
 ' Add items
-list.Add(item1)
-list.Add(item2)
-list.Add(item3)
+DIM a AS Object = NEW Viper.Collections.List()
+DIM b AS Object = NEW Viper.Collections.List()
+DIM c AS Object = NEW Viper.Collections.List()
 
-PRINT list.Count  ' Output: 3
+list.Add(a)
+list.Add(c)
+list.Insert(1, b)          ' [a, b, c]
 
-' Access by index
-DIM first AS Object
-first = list.get_Item(0)
+PRINT list.Find(b)         ' Output: 1
 
-' Modify by index
-list.set_Item(1, newItem)
+IF list.Has(a) THEN
+  PRINT 1                  ' Output: 1 (true)
+END IF
 
-' Remove item
-list.RemoveAt(0)
-PRINT list.Count  ' Output: 2
+IF list.Remove(a) THEN
+  PRINT list.Count         ' Output: 2
+END IF
+PRINT list.Find(a)         ' Output: -1
 
 ' Clear all
 list.Clear()
