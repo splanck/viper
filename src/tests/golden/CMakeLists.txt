@@ -259,6 +259,15 @@ function(viper_add_golden_suite_tests)
             "-DEXPECT=${EXPECT_OOP_IO_FILE_HELPERS}"
             -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
 
+    file(READ ${_VIPER_GOLDEN_DIR}/oop_runtime/dir_seq_wrappers.stdout EXPECT_OOP_DIR_SEQ_WRAPPERS)
+    string(STRIP "${EXPECT_OOP_DIR_SEQ_WRAPPERS}" EXPECT_OOP_DIR_SEQ_WRAPPERS)
+    viper_add_ctest(oop_runtime_dir_seq_wrappers
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/oop_runtime/dir_seq_wrappers.bas
+            "-DEXPECT=${EXPECT_OOP_DIR_SEQ_WRAPPERS}"
+            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+
     # User-defined class ToString() prints qualified name
     file(READ ${_VIPER_GOLDEN_DIR}/oop_runtime/user_class_tostring.stdout EXPECT_USER_CLASS_TOSTRING)
     string(STRIP "${EXPECT_USER_CLASS_TOSTRING}" EXPECT_USER_CLASS_TOSTRING)

@@ -391,6 +391,81 @@ static void test_dirs()
     printf("\n");
 }
 
+/// @brief Test Seq-returning wrappers for directory listing.
+static void test_list_seq_wrappers()
+{
+    printf("Testing rt_dir_*_seq wrappers:\n");
+
+    const char *base = get_test_base();
+    char subdir[512], file1[512], file2[512];
+    snprintf(subdir, sizeof(subdir), "%s/subdir", base);
+    snprintf(file1, sizeof(file1), "%s/file1.txt", base);
+    snprintf(file2, sizeof(file2), "%s/file2.txt", base);
+
+    // Create structure
+    mkdir_p(base);
+    mkdir_p(subdir);
+    create_file(file1);
+    create_file(file2);
+
+    rt_string path = rt_const_cstr(base);
+
+    void *list = rt_dir_list_seq(path);
+    int64_t list_count = rt_seq_len(list);
+    test_result("list_seq has 3 entries", list_count == 3);
+
+    bool found_subdir = false;
+    bool found_file1 = false;
+    bool found_file2 = false;
+    for (int64_t i = 0; i < list_count; i++)
+    {
+        rt_string entry = (rt_string)rt_seq_get(list, i);
+        if (rt_str_eq(entry, rt_const_cstr("subdir")))
+            found_subdir = true;
+        if (rt_str_eq(entry, rt_const_cstr("file1.txt")))
+            found_file1 = true;
+        if (rt_str_eq(entry, rt_const_cstr("file2.txt")))
+            found_file2 = true;
+    }
+    test_result("list_seq found subdir", found_subdir);
+    test_result("list_seq found file1", found_file1);
+    test_result("list_seq found file2", found_file2);
+
+    void *files = rt_dir_files_seq(path);
+    int64_t files_count = rt_seq_len(files);
+    test_result("files_seq has 2 entries", files_count == 2);
+
+    bool files_has_subdir = false;
+    for (int64_t i = 0; i < files_count; i++)
+    {
+        rt_string entry = (rt_string)rt_seq_get(files, i);
+        if (rt_str_eq(entry, rt_const_cstr("subdir")))
+            files_has_subdir = true;
+    }
+    test_result("files_seq excludes subdir", !files_has_subdir);
+
+    void *dirs = rt_dir_dirs_seq(path);
+    int64_t dirs_count = rt_seq_len(dirs);
+    test_result("dirs_seq has 1 entry", dirs_count == 1);
+
+    bool dirs_has_file1 = false;
+    for (int64_t i = 0; i < dirs_count; i++)
+    {
+        rt_string entry = (rt_string)rt_seq_get(dirs, i);
+        if (rt_str_eq(entry, rt_const_cstr("file1.txt")))
+            dirs_has_file1 = true;
+    }
+    test_result("dirs_seq excludes files", !dirs_has_file1);
+
+    // Clean up (sequences leak in tests, this is fine)
+    remove_file(file1);
+    remove_file(file2);
+    rmdir_p(subdir);
+    rmdir_p(base);
+
+    printf("\n");
+}
+
 /// @brief Test rt_dir_current and rt_dir_set_current.
 static void test_current()
 {
@@ -535,6 +610,7 @@ int main()
     test_entries();
     test_files();
     test_dirs();
+    test_list_seq_wrappers();
     test_current();
     test_move();
     test_empty_dir();

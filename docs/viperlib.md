@@ -1599,8 +1599,11 @@ Cross-platform directory operations for creating, removing, listing, and navigat
 | `RemoveAll(path)` | `Void(String)` | Recursively removes a directory and all its contents |
 | `Entries(path)` | `Seq(String)` | Returns directory entries (files + subdirectories); traps if the directory does not exist |
 | `List(path)` | `Seq(String)` | Returns all entries in a directory (excluding `.` and `..`) |
+| `ListSeq(path)` | `Seq(String)` | Seq-returning alias of `List(path)` (same semantics) |
 | `Files(path)` | `Seq(String)` | Returns only files in a directory (no subdirectories) |
+| `FilesSeq(path)` | `Seq(String)` | Seq-returning alias of `Files(path)` (same semantics) |
 | `Dirs(path)` | `Seq(String)` | Returns only subdirectories in a directory |
+| `DirsSeq(path)` | `Seq(String)` | Seq-returning alias of `Dirs(path)` (same semantics) |
 | `Current()` | `String()` | Returns the current working directory |
 | `SetCurrent(path)` | `Void(String)` | Changes the current working directory |
 | `Move(src, dst)` | `Void(String, String)` | Moves/renames a directory |
@@ -1681,6 +1684,15 @@ The three listing functions return `Seq` objects containing entry names (not ful
 | `List(path)` | All entries | Files and subdirectories |
 | `Files(path)` | Files only | Regular files, no directories |
 | `Dirs(path)` | Directories only | Subdirectories, no files |
+
+The `ListSeq()`/`FilesSeq()`/`DirsSeq()` variants are equivalent Seq-returning aliases for these legacy `ptr(str)` APIs.
+Use the `*Seq` forms when a frontend or toolchain stage requires an object-typed `Seq` result explicitly.
+
+```basic
+DIM names AS Viper.Collections.Seq
+names = Viper.IO.Dir.ListSeq("/home/user")
+PRINT names.Len
+```
 
 All listing functions exclude `.` and `..` entries. If the directory doesn't exist or can't be read, an empty sequence is returned.
 

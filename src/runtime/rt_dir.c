@@ -337,6 +337,14 @@ void *rt_dir_list(rt_string path)
     return result;
 }
 
+/// @brief List all entries in a directory as a Viper.Collections.Seq.
+/// @details Wrapper for rt_dir_list; preserves entry name formatting, enumeration order, and
+///          empty-on-error behavior.
+void *rt_dir_list_seq(rt_string path)
+{
+    return rt_dir_list(path);
+}
+
 /// @brief List all directory entries as a Viper.Collections.Seq of strings.
 /// @details Returns entry names (excluding . and ..) in the same enumeration order used by
 ///          rt_dir_list/rt_dir_files/rt_dir_dirs. No sorting is performed, so ordering is
@@ -465,6 +473,14 @@ void *rt_dir_files(rt_string path)
     return result;
 }
 
+/// @brief List only files in a directory as a Viper.Collections.Seq.
+/// @details Wrapper for rt_dir_files; preserves entry name formatting, enumeration order, and
+///          empty-on-error behavior.
+void *rt_dir_files_seq(rt_string path)
+{
+    return rt_dir_files(path);
+}
+
 /// @brief List only subdirectories in a directory.
 void *rt_dir_dirs(rt_string path)
 {
@@ -520,6 +536,14 @@ void *rt_dir_dirs(rt_string path)
 #endif
 
     return result;
+}
+
+/// @brief List only subdirectories in a directory as a Viper.Collections.Seq.
+/// @details Wrapper for rt_dir_dirs; preserves entry name formatting, enumeration order, and
+///          empty-on-error behavior.
+void *rt_dir_dirs_seq(rt_string path)
+{
+    return rt_dir_dirs(path);
 }
 
 /// @brief Get the current working directory.
