@@ -23,6 +23,7 @@ namespace
 static jmp_buf g_trap_jmp;
 static const char *g_last_trap = nullptr;
 static bool g_trap_expected = false;
+static int g_finalizer_calls = 0;
 } // namespace
 
 extern "C" void vm_trap(const char *msg)
@@ -57,6 +58,11 @@ static void *new_obj()
     void *p = rt_obj_new_i64(0, 8);
     assert(p != nullptr);
     return p;
+}
+
+static void count_finalizer(void *)
+{
+    ++g_finalizer_calls;
 }
 
 static void cleanup_list(void *list)
@@ -198,6 +204,26 @@ static void test_insert_out_of_range_traps()
     rt_release_obj(a);
 }
 
+static void test_list_finalizer_releases_elements()
+{
+    void *list = rt_ns_list_new();
+    assert(list != nullptr);
+
+    g_finalizer_calls = 0;
+
+    void *a = new_obj();
+    rt_obj_set_finalizer(a, count_finalizer);
+
+    rt_list_add(list, a);
+    rt_release_obj(a); // list should now be the only owner
+    assert(g_finalizer_calls == 0);
+
+    // Release the list without calling Clear(): the list finalizer must release the backing
+    // array, which releases contained objects.
+    rt_release_obj(list);
+    assert(g_finalizer_calls == 1);
+}
+
 int main()
 {
     test_has_empty_and_nonempty();
@@ -205,6 +231,6 @@ int main()
     test_insert_begin_middle_end();
     test_remove_returns_bool_and_removes_first_only();
     test_insert_out_of_range_traps();
+    test_list_finalizer_releases_elements();
     return 0;
 }
-

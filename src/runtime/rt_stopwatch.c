@@ -18,10 +18,10 @@
 #include "rt_stopwatch.h"
 
 #include "rt_internal.h"
+#include "rt_object.h"
 
 #include <stdbool.h>
 #include <stdint.h>
-#include <stdlib.h>
 
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
@@ -92,7 +92,7 @@ static int64_t stopwatch_get_elapsed_ns(ViperStopwatch *sw)
 /// @return Pointer to new stopwatch object.
 void *rt_stopwatch_new(void)
 {
-    ViperStopwatch *sw = (ViperStopwatch *)malloc(sizeof(ViperStopwatch));
+    ViperStopwatch *sw = (ViperStopwatch *)rt_obj_new_i64(0, (int64_t)sizeof(ViperStopwatch));
     if (!sw)
     {
         rt_trap("Stopwatch: memory allocation failed");

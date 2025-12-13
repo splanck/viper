@@ -54,8 +54,25 @@ static inline void *alloc_payload(size_t bytes)
 /// @return Pointer to zeroed storage when successful; otherwise @c NULL.
 void *rt_obj_new_i64(int64_t class_id, int64_t byte_size)
 {
-    (void)class_id;
-    return alloc_payload((size_t)byte_size);
+    void *payload = alloc_payload((size_t)byte_size);
+    if (!payload)
+        return NULL;
+    rt_heap_hdr_t *hdr = rt_heap_hdr(payload);
+    if (hdr)
+        hdr->class_id = class_id;
+    return payload;
+}
+
+void rt_obj_set_finalizer(void *p, rt_obj_finalizer_t fn)
+{
+    if (!p)
+        return;
+    rt_heap_hdr_t *hdr = rt_heap_hdr(p);
+    if (!hdr)
+        return;
+    if ((rt_heap_kind_t)hdr->kind != RT_HEAP_OBJECT)
+        return;
+    hdr->finalizer = (rt_heap_finalizer_t)fn;
 }
 
 /// @brief Increment the reference count for a runtime-managed object.
@@ -95,6 +112,13 @@ void rt_obj_free(void *p)
 {
     if (!p)
         return;
+    rt_heap_hdr_t *hdr = rt_heap_hdr(p);
+    if (hdr && (rt_heap_kind_t)hdr->kind == RT_HEAP_OBJECT && hdr->refcnt == 0 && hdr->finalizer)
+    {
+        rt_heap_finalizer_t fin = hdr->finalizer;
+        hdr->finalizer = NULL;
+        fin(p);
+    }
     rt_heap_free_zero_ref(p);
 }
 

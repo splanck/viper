@@ -102,6 +102,20 @@ static void free_entry(rt_map_entry *entry)
     }
 }
 
+static void rt_map_finalize(void *obj)
+{
+    if (!obj)
+        return;
+    rt_map_impl *map = (rt_map_impl *)obj;
+    if (!map->buckets || map->capacity == 0)
+        return;
+    rt_map_clear(map);
+    free(map->buckets);
+    map->buckets = NULL;
+    map->capacity = 0;
+    map->count = 0;
+}
+
 /// @brief Resize the hash table.
 static void map_resize(rt_map_impl *map, size_t new_capacity)
 {
@@ -152,10 +166,12 @@ void *rt_map_new(void)
         // Can't trap here, just return partially initialized
         map->capacity = 0;
         map->count = 0;
+        rt_obj_set_finalizer(map, rt_map_finalize);
         return map;
     }
     map->capacity = MAP_INITIAL_CAPACITY;
     map->count = 0;
+    rt_obj_set_finalizer(map, rt_map_finalize);
     return map;
 }
 

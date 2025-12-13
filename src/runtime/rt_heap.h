@@ -63,6 +63,11 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/// @brief Optional callback invoked before freeing a heap payload.
+/// @details Finalizers run only for RT_HEAP_OBJECT payloads when their reference count reaches
+///          zero and the owning code calls the corresponding free routine (e.g., rt_obj_free).
+typedef void (*rt_heap_finalizer_t)(void *payload);
+
 typedef enum
 {
     RT_HEAP_STRING = 1,
@@ -89,6 +94,8 @@ typedef struct rt_heap_hdr
     size_t refcnt;
     size_t len;
     size_t cap;
+    int64_t class_id;               ///< Optional runtime class identifier (objects only).
+    rt_heap_finalizer_t finalizer;  ///< Optional finalizer callback (objects only).
 } rt_heap_hdr_t;
 
 #define RT_MAGIC 0x52504956u /* 'VIPR' little-endian */

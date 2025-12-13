@@ -12,6 +12,7 @@
 // Links: docs/viperlib.md
 
 #include "rt_stopwatch.h"
+#include "rt_object.h"
 
 #include <cassert>
 #include <cstdio>
@@ -43,6 +44,12 @@ static void test_result(const char *name, bool passed)
     assert(passed);
 }
 
+static void rt_release_obj(void *p)
+{
+    if (p && rt_obj_release_check0(p))
+        rt_obj_free(p);
+}
+
 /// @brief Test creating a new stopwatch.
 static void test_new()
 {
@@ -53,6 +60,7 @@ static void test_new()
     test_result("New() starts stopped", rt_stopwatch_is_running(sw) == 0);
     test_result("New() has zero elapsed", rt_stopwatch_elapsed_ms(sw) == 0);
     test_result("New() has zero elapsed (ns)", rt_stopwatch_elapsed_ns(sw) == 0);
+    rt_release_obj(sw);
 
     printf("\n");
 }
@@ -71,6 +79,7 @@ static void test_start_new()
 
     int64_t elapsed = rt_stopwatch_elapsed_ms(sw);
     test_result("StartNew() accumulates time", elapsed >= 5); // Allow some slack
+    rt_release_obj(sw);
 
     printf("\n");
 }
@@ -101,6 +110,7 @@ static void test_start_stop()
     sleep_ms(50);
     int64_t elapsed2 = rt_stopwatch_elapsed_ms(sw);
     test_result("Time doesn't accumulate when stopped", elapsed2 == elapsed);
+    rt_release_obj(sw);
 
     printf("\n");
 }
@@ -126,6 +136,7 @@ static void test_start_idempotent()
     // Should have approximately 60ms total, not 30ms
     test_result("Start() while running doesn't reset (>= 50ms)", elapsed >= 50);
     test_result("Start() while running doesn't reset (<= 100ms)", elapsed <= 100);
+    rt_release_obj(sw);
 
     printf("\n");
 }
@@ -147,6 +158,7 @@ static void test_stop_idempotent()
 
     int64_t elapsed2 = rt_stopwatch_elapsed_ms(sw);
     test_result("Stop() while stopped doesn't change elapsed", elapsed1 == elapsed2);
+    rt_release_obj(sw);
 
     printf("\n");
 }
@@ -165,6 +177,7 @@ static void test_reset()
     test_result("Reset() sets IsRunning=false", rt_stopwatch_is_running(sw) == 0);
     test_result("Reset() clears elapsed time", rt_stopwatch_elapsed_ms(sw) == 0);
     test_result("Reset() clears elapsed time (ns)", rt_stopwatch_elapsed_ns(sw) == 0);
+    rt_release_obj(sw);
 
     printf("\n");
 }
@@ -189,6 +202,7 @@ static void test_restart()
     sleep_ms(30);
     elapsed = rt_stopwatch_elapsed_ms(sw);
     test_result("Restart() allows accumulation (>= 25ms)", elapsed >= 25);
+    rt_release_obj(sw);
 
     printf("\n");
 }
@@ -223,6 +237,7 @@ static void test_accumulation()
     test_result("Third interval > second", elapsed3 > elapsed2);
     test_result("Total accumulation >= 75ms", elapsed3 >= 75);
     test_result("Total accumulation <= 150ms", elapsed3 <= 150);
+    rt_release_obj(sw);
 
     printf("\n");
 }
@@ -250,6 +265,7 @@ static void test_elapsed_while_running()
     int64_t e4 = rt_stopwatch_elapsed_ms(sw);
 
     test_result("Elapsed stable after stop", e4 == e3);
+    rt_release_obj(sw);
 
     printf("\n");
 }
@@ -278,6 +294,7 @@ static void test_time_units()
     // Verify relationships
     test_result("ElapsedUs ~= ElapsedMs * 1000", us >= (ms * 990) && us <= (ms * 1010));
     test_result("ElapsedNs ~= ElapsedUs * 1000", ns >= (us * 990) && ns <= (us * 1010));
+    rt_release_obj(sw);
 
     printf("\n");
 }

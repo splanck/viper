@@ -24,6 +24,7 @@ namespace
 static jmp_buf g_trap_jmp;
 static const char *g_last_trap = nullptr;
 static bool g_trap_expected = false;
+static int g_finalizer_calls = 0;
 } // namespace
 
 extern "C" void vm_trap(const char *msg)
@@ -45,6 +46,11 @@ static void *new_obj()
     void *p = rt_obj_new_i64(0, 8);
     assert(p != nullptr);
     return p;
+}
+
+static void count_finalizer(void *)
+{
+    ++g_finalizer_calls;
 }
 
 static rt_string make_key(const char *text)
@@ -97,10 +103,30 @@ static void test_overwrite_frees_old_last_reference_without_invalid_free()
     rt_release_obj(map);
 }
 
+static void test_free_runs_map_finalizer_and_releases_values()
+{
+    void *map = rt_map_new();
+    assert(map != nullptr);
+
+    rt_string key = make_key("k");
+    void *value = new_obj();
+
+    g_finalizer_calls = 0;
+    rt_obj_set_finalizer(value, count_finalizer);
+
+    rt_map_set(map, key, value);
+    rt_release_obj(value); // map now owns the only remaining ref
+    assert(g_finalizer_calls == 0);
+
+    rt_string_unref(key);
+    rt_release_obj(map);
+    assert(g_finalizer_calls == 1);
+}
+
 int main()
 {
     test_remove_frees_last_reference_without_invalid_free();
     test_overwrite_frees_old_last_reference_without_invalid_free();
+    test_free_runs_map_finalizer_and_releases_values();
     return 0;
 }
-

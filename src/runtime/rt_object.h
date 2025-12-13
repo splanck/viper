@@ -42,6 +42,9 @@ extern "C"
 {
 #endif
 
+    /// @brief Finalizer callback invoked from @ref rt_obj_free before releasing heap storage.
+    typedef void (*rt_obj_finalizer_t)(void *obj);
+
     /// @brief Allocate a new runtime-managed object with the given class identifier and size.
     /// @param class_id Runtime class identifier tag for the object to create.
     /// @param byte_size Total size in bytes to allocate for the object payload.
@@ -61,6 +64,13 @@ extern "C"
     /// @brief Release storage for a runtime-managed object without modifying its reference count.
     /// @param p Pointer to a runtime-managed object to free; must not be NULL.
     void rt_obj_free(void *p);
+
+    /// @brief Install a finalizer callback for a runtime-managed object.
+    /// @details The finalizer runs exactly once from @ref rt_obj_free when the reference count has
+    ///          already reached zero (typically after @ref rt_obj_release_check0 returns true).
+    /// @param p Object payload pointer returned by @ref rt_obj_new_i64; ignored when NULL.
+    /// @param fn Finalizer callback or NULL to clear.
+    void rt_obj_set_finalizer(void *p, rt_obj_finalizer_t fn);
 
     // --- System.Object runtime surface ---
     // Instance methods

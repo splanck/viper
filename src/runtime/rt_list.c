@@ -30,6 +30,18 @@ typedef struct rt_list_impl
     void **arr;  // dynamic array of elements
 } rt_list_impl;
 
+static void rt_list_finalize(void *obj)
+{
+    if (!obj)
+        return;
+    rt_list_impl *L = (rt_list_impl *)obj;
+    if (L->arr)
+    {
+        rt_arr_obj_release(L->arr);
+        L->arr = NULL;
+    }
+}
+
 void *rt_ns_list_new(void)
 {
     // Allocate object payload with header via object allocator to match object lifetime rules
@@ -38,6 +50,7 @@ void *rt_ns_list_new(void)
         return NULL;
     list->vptr = NULL;
     list->arr = NULL;
+    rt_obj_set_finalizer(list, rt_list_finalize);
     return list;
 }
 
