@@ -30,8 +30,10 @@
 #include <iostream>
 #include <optional>
 #include <sstream>
+#include <cctype>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <unordered_map>
 #include <vector>
 
@@ -202,22 +204,301 @@ static int linkToExe(const std::string &asmPath,
                      std::ostream &out,
                      std::ostream &err)
 {
-    // Link against the built runtime static library to satisfy rt_* calls.
-    // When executed under CTest, cwd is the build directory, so the runtime
-    // archive is reachable at src/runtime/libviper_runtime.a.
-    auto try_link = [&](const char *libPath) -> RunResult
-    { return run_process({"cc", "-arch", "arm64", asmPath, libPath, "-o", exePath}); };
-    RunResult rr = try_link("src/runtime/libviper_runtime.a");
-    if (rr.exit_code != 0)
+    auto file_exists = [](const std::filesystem::path &path) -> bool
     {
-        // Fallback for tests whose CWD is build/src/tests
-        rr = try_link("../runtime/libviper_runtime.a");
-    }
-    if (rr.exit_code != 0)
+        std::error_code ec;
+        return std::filesystem::exists(path, ec);
+    };
+
+    auto read_file = [&](const std::filesystem::path &path, std::string &dst) -> bool
     {
-        // Fallback for running from project root with build directory
-        rr = try_link("build/src/runtime/libviper_runtime.a");
+        std::ifstream in(path, std::ios::binary);
+        if (!in)
+            return false;
+        std::ostringstream ss;
+        ss << in.rdbuf();
+        dst = ss.str();
+        return true;
+    };
+
+    auto find_build_dir = [&]() -> std::optional<std::filesystem::path>
+    {
+        std::error_code ec;
+        std::filesystem::path cur = std::filesystem::current_path(ec);
+        if (!ec)
+        {
+            for (int depth = 0; depth < 8; ++depth)
+            {
+                if (file_exists(cur / "CMakeCache.txt"))
+                    return cur;
+                if (!cur.has_parent_path())
+                    break;
+                cur = cur.parent_path();
+            }
+        }
+
+        // Fallback for running from repo root with the default build directory.
+        const std::filesystem::path defaultBuild = std::filesystem::path("build");
+        if (file_exists(defaultBuild / "CMakeCache.txt"))
+            return defaultBuild;
+
+        return std::nullopt;
+    };
+
+    auto parse_runtime_symbols = [](std::string_view text) -> std::unordered_set<std::string>
+    {
+        auto is_ident = [](unsigned char c) -> bool
+        { return std::isalnum(c) || c == '_'; };
+
+        std::unordered_set<std::string> symbols;
+        for (std::size_t i = 0; i + 3 < text.size(); ++i)
+        {
+            std::size_t start = std::string_view::npos;
+            std::size_t boundary = std::string_view::npos;
+            if (text[i] == 'r' && text[i + 1] == 't' && text[i + 2] == '_')
+            {
+                start = i;
+                boundary = (start == 0) ? std::string_view::npos : (start - 1);
+            }
+            else if (text[i] == '_' && text[i + 1] == 'r' && text[i + 2] == 't' && text[i + 3] == '_')
+            {
+                start = i + 1;
+                boundary = (i == 0) ? std::string_view::npos : (i - 1);
+            }
+
+            if (start == std::string_view::npos)
+                continue;
+            if (boundary != std::string_view::npos && is_ident(static_cast<unsigned char>(text[boundary])))
+                continue;
+
+            std::size_t j = start;
+            while (j < text.size() && is_ident(static_cast<unsigned char>(text[j])))
+                ++j;
+
+            if (j > start)
+                symbols.emplace(text.substr(start, j - start));
+            i = j;
+        }
+        return symbols;
+    };
+
+    enum class RtComponent
+    {
+        Base,
+        Arrays,
+        Oop,
+        Collections,
+        Text,
+        IoFs,
+        Exec,
+        Graphics,
+    };
+
+    auto needs_component_for_symbol = [](std::string_view sym) -> std::optional<RtComponent>
+    {
+        auto starts = [&](std::string_view p) -> bool { return sym.rfind(p, 0) == 0; };
+
+        if (starts("rt_arr_"))
+            return RtComponent::Arrays;
+
+        if (starts("rt_obj_") || starts("rt_type_") || starts("rt_cast_") || starts("rt_ns_") ||
+            sym == "rt_bind_interface")
+            return RtComponent::Oop;
+
+        if (starts("rt_list_") || starts("rt_map_") || starts("rt_treemap_") || starts("rt_bag_") ||
+            starts("rt_queue_") || starts("rt_ring_") || starts("rt_seq_") || starts("rt_stack_") ||
+            starts("rt_bytes_"))
+            return RtComponent::Collections;
+
+        if (starts("rt_codec_") || starts("rt_csv_") || starts("rt_guid_") || starts("rt_hash_") ||
+            starts("rt_parse_"))
+            return RtComponent::Text;
+
+        if (starts("rt_file_") || starts("rt_dir_") || starts("rt_path_") || starts("rt_binfile_") ||
+            starts("rt_linereader_") || starts("rt_linewriter_") || starts("rt_io_file_") ||
+            sym == "rt_eof_ch" || sym == "rt_lof_ch" || sym == "rt_loc_ch" || sym == "rt_close_err" ||
+            sym == "rt_seek_ch_err" || sym == "rt_write_ch_err" || sym == "rt_println_ch_err" ||
+            sym == "rt_line_input_ch_err" || sym == "rt_open_err_vstr")
+            return RtComponent::IoFs;
+
+        if (starts("rt_exec_") || starts("rt_machine_"))
+            return RtComponent::Exec;
+
+        if (starts("rt_canvas_") || starts("rt_color_") || starts("rt_vec2_") || starts("rt_vec3_") ||
+            starts("rt_pixels_"))
+            return RtComponent::Graphics;
+
+        return std::nullopt;
+    };
+
+    std::string asmText;
+    if (!read_file(asmPath, asmText))
+    {
+        err << "error: unable to read '" << asmPath << "' for runtime library selection\n";
+        return 1;
     }
+
+    const std::unordered_set<std::string> symbols = parse_runtime_symbols(asmText);
+
+    bool needArrays = false;
+    bool needOop = false;
+    bool needCollections = false;
+    bool needText = false;
+    bool needIoFs = false;
+    bool needExec = false;
+    bool needGraphics = false;
+
+    for (const auto &sym : symbols)
+    {
+        const auto comp = needs_component_for_symbol(sym);
+        if (!comp)
+            continue;
+        switch (*comp)
+        {
+            case RtComponent::Arrays:
+                needArrays = true;
+                break;
+            case RtComponent::Oop:
+                needOop = true;
+                break;
+            case RtComponent::Collections:
+                needCollections = true;
+                break;
+            case RtComponent::Text:
+                needText = true;
+                break;
+            case RtComponent::IoFs:
+                needIoFs = true;
+                break;
+            case RtComponent::Exec:
+                needExec = true;
+                break;
+            case RtComponent::Graphics:
+                needGraphics = true;
+                break;
+            case RtComponent::Base:
+                break;
+        }
+    }
+
+    // Component dependencies (internal runtime calls).
+    if (needText || needIoFs || needExec)
+        needCollections = true;
+    if (needCollections || needArrays || needGraphics)
+        needOop = true;
+
+    const std::optional<std::filesystem::path> buildDirOpt = find_build_dir();
+    const std::filesystem::path buildDir = buildDirOpt.value_or(std::filesystem::path{});
+
+    auto runtime_archive_path = [&](std::string_view libBaseName) -> std::filesystem::path
+    {
+        if (!buildDir.empty())
+            return buildDir / "src/runtime" / (std::string("lib") + std::string(libBaseName) + ".a");
+        return std::filesystem::path("src/runtime") /
+               (std::string("lib") + std::string(libBaseName) + ".a");
+    };
+
+    std::vector<std::pair<std::string, std::filesystem::path>> requiredArchives;
+    requiredArchives.emplace_back("viper_rt_base", runtime_archive_path("viper_rt_base"));
+    if (needOop)
+        requiredArchives.emplace_back("viper_rt_oop", runtime_archive_path("viper_rt_oop"));
+    if (needArrays)
+        requiredArchives.emplace_back("viper_rt_arrays", runtime_archive_path("viper_rt_arrays"));
+    if (needCollections)
+        requiredArchives.emplace_back("viper_rt_collections", runtime_archive_path("viper_rt_collections"));
+    if (needText)
+        requiredArchives.emplace_back("viper_rt_text", runtime_archive_path("viper_rt_text"));
+    if (needIoFs)
+        requiredArchives.emplace_back("viper_rt_io_fs", runtime_archive_path("viper_rt_io_fs"));
+    if (needExec)
+        requiredArchives.emplace_back("viper_rt_exec", runtime_archive_path("viper_rt_exec"));
+    if (needGraphics)
+        requiredArchives.emplace_back("viper_rt_graphics", runtime_archive_path("viper_rt_graphics"));
+
+    std::vector<std::string> missingTargets;
+    if (!buildDir.empty())
+    {
+        for (const auto &[tgt, path] : requiredArchives)
+        {
+            if (!file_exists(path))
+                missingTargets.push_back(tgt);
+        }
+        if (needGraphics)
+        {
+            const std::filesystem::path gfxLib = buildDir / "lib" / "libvipergfx.a";
+            if (!file_exists(gfxLib))
+                missingTargets.push_back("vipergfx");
+        }
+        if (!missingTargets.empty())
+        {
+            std::vector<std::string> cmd = {"cmake", "--build", buildDir.string(), "--target"};
+            cmd.insert(cmd.end(), missingTargets.begin(), missingTargets.end());
+            const RunResult build = run_process(cmd);
+            if (!build.out.empty())
+                out << build.out;
+#if defined(_WIN32)
+            if (!build.err.empty())
+                err << build.err;
+#endif
+            if (build.exit_code != 0)
+            {
+                err << "error: failed to build required runtime libraries in '" << buildDir.string()
+                    << "'\n";
+                return 1;
+            }
+        }
+    }
+
+    // Link order: dependents first, base last.
+    std::vector<std::string> linkCmd = {"cc", "-arch", "arm64", asmPath};
+    auto appendArchiveIf = [&](std::string_view name)
+    {
+        const std::filesystem::path path = runtime_archive_path(name);
+        if (file_exists(path))
+            linkCmd.push_back(path.string());
+    };
+
+    if (needGraphics)
+        appendArchiveIf("viper_rt_graphics");
+    if (needExec)
+        appendArchiveIf("viper_rt_exec");
+    if (needIoFs)
+        appendArchiveIf("viper_rt_io_fs");
+    if (needText)
+        appendArchiveIf("viper_rt_text");
+    if (needCollections)
+        appendArchiveIf("viper_rt_collections");
+    if (needArrays)
+        appendArchiveIf("viper_rt_arrays");
+    if (needOop)
+        appendArchiveIf("viper_rt_oop");
+    appendArchiveIf("viper_rt_base");
+
+    if (needGraphics)
+    {
+        std::filesystem::path gfxLib;
+        if (!buildDir.empty())
+            gfxLib = buildDir / "lib" / "libvipergfx.a";
+        else
+            gfxLib = std::filesystem::path("lib") / "libvipergfx.a";
+        if (file_exists(gfxLib))
+            linkCmd.push_back(gfxLib.string());
+#if defined(__APPLE__)
+        linkCmd.push_back("-framework");
+        linkCmd.push_back("Cocoa");
+#endif
+    }
+
+#if defined(__APPLE__)
+    linkCmd.push_back("-Wl,-dead_strip");
+#elif !defined(_WIN32)
+    linkCmd.push_back("-Wl,--gc-sections");
+#endif
+
+    linkCmd.push_back("-o");
+    linkCmd.push_back(exePath);
+
+    const RunResult rr = run_process(linkCmd);
     if (rr.exit_code == -1)
     {
         err << "error: failed to launch system linker command\n";

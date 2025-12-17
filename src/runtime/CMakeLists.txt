@@ -1,4 +1,4 @@
-set(RT_SOURCES
+set(RT_BASE_SOURCES
         rt_context.c
         rt_error.c
         rt_trap.c
@@ -10,21 +10,9 @@ set(RT_SOURCES
         rt_string_format.c
         rt_string_encode.c
         rt_io.c
-        rt_file.c
-        rt_file_io.c
-        rt_file_path.c
         rt_math.c
         rt_random.c
-        rt_array.c
-        rt_array_i64.c
-        rt_array_f64.c
-        rt_array_str.c
-        rt_array_obj.c
-        rt_bag.c
-        rt_binfile.c
         rt_bits.c
-        rt_linereader.c
-        rt_linewriter.c
         rt_heap.c
         rt_numeric.c
         rt_numeric_conv.c
@@ -35,35 +23,68 @@ set(RT_SOURCES
         rt_printf_compat.c
         rt_term.c
         rt_time.c
+        rt_datetime.c
+        rt_stopwatch.c
+        rt_countdown.c
+        rt_modvar.c
+        rt_args.c
+        rt_log.c
+)
+
+set(RT_ARRAY_SOURCES
+        rt_array.c
+        rt_array_i64.c
+        rt_array_f64.c
+        rt_array_str.c
+        rt_array_obj.c
+)
+
+set(RT_OOP_SOURCES
         rt_object.c
         rt_oop_dispatch.c
         rt_type_registry.c
-        rt_modvar.c
-        rt_args.c
         rt_ns_bridge.c
-        rt_file_ext.c
+)
+
+set(RT_COLLECTIONS_SOURCES
+        rt_bag.c
         rt_list.c
-        rt_log.c
         rt_seq.c
         rt_stack.c
         rt_queue.c
         rt_ring.c
-        rt_bytes.c
-        rt_codec.c
-        rt_csv.c
-        rt_graphics.c
-        rt_datetime.c
-        rt_exec.c
         rt_map.c
         rt_treemap.c
-        rt_parse.c
-        rt_path.c
-        rt_dir.c
-        rt_stopwatch.c
-        rt_countdown.c
+        rt_bytes.c
+)
+
+set(RT_TEXT_SOURCES
+        rt_codec.c
+        rt_csv.c
         rt_guid.c
         rt_hash.c
+        rt_parse.c
+)
+
+set(RT_IO_FS_SOURCES
+        rt_file.c
+        rt_file_io.c
+        rt_file_path.c
+        rt_file_ext.c
+        rt_binfile.c
+        rt_linereader.c
+        rt_linewriter.c
+        rt_path.c
+        rt_dir.c
+)
+
+set(RT_EXEC_SOURCES
+        rt_exec.c
         rt_machine.c
+)
+
+set(RT_GRAPHICS_SOURCES
+        rt_graphics.c
         rt_vec2.c
         rt_vec3.c
         rt_pixels.c
@@ -108,20 +129,96 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_pixels.h
 )
 
-add_library(viper_runtime STATIC ${RT_SOURCES})
-target_include_directories(viper_runtime
-        PUBLIC
-        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src/runtime>
-        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
-        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper_runtime>
-        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper/runtime>
-        PRIVATE
-        ${PROJECT_SOURCE_DIR}/src
+add_library(viper_rt_base_obj OBJECT ${RT_BASE_SOURCES})
+add_library(viper_rt_arrays_obj OBJECT ${RT_ARRAY_SOURCES})
+add_library(viper_rt_oop_obj OBJECT ${RT_OOP_SOURCES})
+add_library(viper_rt_collections_obj OBJECT ${RT_COLLECTIONS_SOURCES})
+add_library(viper_rt_text_obj OBJECT ${RT_TEXT_SOURCES})
+add_library(viper_rt_io_fs_obj OBJECT ${RT_IO_FS_SOURCES})
+add_library(viper_rt_exec_obj OBJECT ${RT_EXEC_SOURCES})
+add_library(viper_rt_graphics_obj OBJECT ${RT_GRAPHICS_SOURCES})
+
+add_library(viper_rt_base STATIC $<TARGET_OBJECTS:viper_rt_base_obj>)
+add_library(viper_rt_arrays STATIC $<TARGET_OBJECTS:viper_rt_arrays_obj>)
+add_library(viper_rt_oop STATIC $<TARGET_OBJECTS:viper_rt_oop_obj>)
+add_library(viper_rt_collections STATIC $<TARGET_OBJECTS:viper_rt_collections_obj>)
+add_library(viper_rt_text STATIC $<TARGET_OBJECTS:viper_rt_text_obj>)
+add_library(viper_rt_io_fs STATIC $<TARGET_OBJECTS:viper_rt_io_fs_obj>)
+add_library(viper_rt_exec STATIC $<TARGET_OBJECTS:viper_rt_exec_obj>)
+add_library(viper_rt_graphics STATIC $<TARGET_OBJECTS:viper_rt_graphics_obj>)
+
+add_library(viper_runtime STATIC
+        $<TARGET_OBJECTS:viper_rt_base_obj>
+        $<TARGET_OBJECTS:viper_rt_arrays_obj>
+        $<TARGET_OBJECTS:viper_rt_oop_obj>
+        $<TARGET_OBJECTS:viper_rt_collections_obj>
+        $<TARGET_OBJECTS:viper_rt_text_obj>
+        $<TARGET_OBJECTS:viper_rt_io_fs_obj>
+        $<TARGET_OBJECTS:viper_rt_exec_obj>
+        $<TARGET_OBJECTS:viper_rt_graphics_obj>
 )
+
+set(VIPER_RUNTIME_COMPONENT_OBJECT_LIBS
+        viper_rt_base_obj
+        viper_rt_arrays_obj
+        viper_rt_oop_obj
+        viper_rt_collections_obj
+        viper_rt_text_obj
+        viper_rt_io_fs_obj
+        viper_rt_exec_obj
+        viper_rt_graphics_obj
+)
+
+set(VIPER_RUNTIME_COMPONENT_LIBS
+        viper_rt_base
+        viper_rt_arrays
+        viper_rt_oop
+        viper_rt_collections
+        viper_rt_text
+        viper_rt_io_fs
+        viper_rt_exec
+        viper_rt_graphics
+        viper_runtime
+)
+
+foreach(_rtobj IN LISTS VIPER_RUNTIME_COMPONENT_OBJECT_LIBS)
+    target_include_directories(${_rtobj} PRIVATE
+            ${PROJECT_SOURCE_DIR}/src/runtime
+            ${PROJECT_SOURCE_DIR}/include
+            ${PROJECT_SOURCE_DIR}/src
+    )
+    if (MSVC)
+        # Function-level linking (enables dead code elimination when supported by the linker)
+        target_compile_options(${_rtobj} PRIVATE /Gy)
+    else ()
+        target_compile_options(${_rtobj} PRIVATE -ffunction-sections -fdata-sections)
+    endif ()
+    if (NOT WIN32)
+        target_compile_definitions(${_rtobj} PRIVATE _POSIX_C_SOURCE=200809L)
+    endif ()
+endforeach()
+
+foreach(_rtlib IN LISTS VIPER_RUNTIME_COMPONENT_LIBS)
+    target_include_directories(${_rtlib}
+            PUBLIC
+            $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src/runtime>
+            $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper_runtime>
+            $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper/runtime>
+    )
+endforeach()
+
+target_link_libraries(viper_rt_arrays PUBLIC viper_rt_oop viper_rt_base)
+target_link_libraries(viper_rt_oop PUBLIC viper_rt_base)
+target_link_libraries(viper_rt_collections PUBLIC viper_rt_oop viper_rt_base)
+target_link_libraries(viper_rt_text PUBLIC viper_rt_collections viper_rt_base)
+target_link_libraries(viper_rt_io_fs PUBLIC viper_rt_collections viper_rt_oop viper_rt_base)
+target_link_libraries(viper_rt_exec PUBLIC viper_rt_collections viper_rt_base)
+target_link_libraries(viper_rt_graphics PUBLIC viper_rt_oop viper_rt_base)
 
 if (NOT WIN32)
     target_link_libraries(viper_runtime PUBLIC m)
-    target_compile_definitions(viper_runtime PRIVATE _POSIX_C_SOURCE=200809L)
+    target_link_libraries(viper_rt_base PUBLIC m)
 endif ()
 
 # VIPER_RC_DEBUG can be manually enabled for refcount debugging:
@@ -140,10 +237,11 @@ option(VIPER_ENABLE_GRAPHICS "Enable ViperGFX graphics support" ON)
 
 if (VIPER_ENABLE_GRAPHICS AND TARGET vipergfx)
     message(STATUS "viper_runtime: Graphics support enabled")
-    target_compile_definitions(viper_runtime PRIVATE VIPER_ENABLE_GRAPHICS)
-    target_include_directories(viper_runtime PRIVATE
+    target_compile_definitions(viper_rt_graphics_obj PRIVATE VIPER_ENABLE_GRAPHICS)
+    target_include_directories(viper_rt_graphics_obj PRIVATE
             ${PROJECT_SOURCE_DIR}/src/lib/graphics/include
     )
+    target_link_libraries(viper_rt_graphics PUBLIC vipergfx)
     target_link_libraries(viper_runtime PUBLIC vipergfx)
 else ()
     message(STATUS "viper_runtime: Graphics support disabled (vipergfx not available)")

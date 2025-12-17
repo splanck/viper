@@ -257,6 +257,10 @@ add_executable(test_codegen_arm64_print_str ${CMAKE_CURRENT_SOURCE_DIR}/unit/cod
 target_link_libraries(test_codegen_arm64_print_str PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
 viper_add_ctest(test_codegen_arm64_print_str $<TARGET_FILE:test_codegen_arm64_print_str>)
 
+add_executable(test_codegen_arm64_dead_strip ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_dead_strip.cpp)
+target_link_libraries(test_codegen_arm64_dead_strip PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
+viper_add_ctest(test_codegen_arm64_dead_strip $<TARGET_FILE:test_codegen_arm64_dead_strip>)
+
 add_executable(test_codegen_arm64_modvar_addr ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_modvar_addr.cpp)
 target_link_libraries(test_codegen_arm64_modvar_addr PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
 viper_add_ctest(test_codegen_arm64_modvar_addr $<TARGET_FILE:test_codegen_arm64_modvar_addr>)

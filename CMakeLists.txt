@@ -430,6 +430,14 @@ add_custom_target(distclean
 
 set(VIPER_PUBLIC_LIB_TARGETS
   viper_support
+  viper_rt_base
+  viper_rt_arrays
+  viper_rt_oop
+  viper_rt_collections
+  viper_rt_text
+  viper_rt_io_fs
+  viper_rt_exec
+  viper_rt_graphics
   viper_runtime
   viper_pass
   viper_il_core
