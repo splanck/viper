@@ -6,8 +6,49 @@
 
 ## Contents
 
-- [Viper.String](#viperstring)
 - [Viper.Object](#viperobject)
+- [Viper.String](#viperstring)
+
+---
+
+## Viper.Object
+
+Base class for all Viper reference types. Provides fundamental object operations.
+
+**Type:** Base class (not instantiated directly)
+
+### Instance Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `Equals(other)` | `Boolean(Object)` | Compares this object with another for equality |
+| `GetHashCode()` | `Integer()` | Returns a hash code for the object |
+| `ToString()` | `String()` | Returns a string representation of the object |
+
+### Static Functions
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `Viper.Object.ReferenceEquals(a, b)` | `Boolean(Object, Object)` | Tests if two references point to the same object instance |
+
+### Example
+
+```basic
+DIM obj1 AS Viper.Object
+DIM obj2 AS Viper.Object
+
+IF obj1.Equals(obj2) THEN
+    PRINT "Objects are equal"
+END IF
+
+PRINT obj1.ToString()
+PRINT obj1.GetHashCode()
+
+' Static function call - check if same instance
+IF Viper.Object.ReferenceEquals(obj1, obj2) THEN
+    PRINT "Same object instance"
+END IF
+```
 
 ---
 
@@ -126,53 +167,4 @@ PRINT Viper.Strings.Join("-", parts)   ' Output: "a-b-c"
 PRINT "abc".Cmp("abd")                 ' Output: -1
 PRINT "ABC".CmpNoCase("abc")           ' Output: 0
 ```
-
----
-
-## Viper.Object
-
----
-
-## Viper.Object
-
-Base class for all Viper reference types. Provides fundamental object operations.
-
-**Type:** Base class (not instantiated directly)
-
-### Instance Methods
-
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `Equals(other)` | `Boolean(Object)` | Compares this object with another for equality |
-| `GetHashCode()` | `Integer()` | Returns a hash code for the object |
-| `ToString()` | `String()` | Returns a string representation of the object |
-
-### Static Functions
-
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| `Viper.Object.ReferenceEquals(a, b)` | `Boolean(Object, Object)` | Tests if two references point to the same object instance |
-
-### Example
-
-```basic
-DIM obj1 AS Viper.Object
-DIM obj2 AS Viper.Object
-
-IF obj1.Equals(obj2) THEN
-    PRINT "Objects are equal"
-END IF
-
-PRINT obj1.ToString()
-PRINT obj1.GetHashCode()
-
-' Static function call - check if same instance
-IF Viper.Object.ReferenceEquals(obj1, obj2) THEN
-    PRINT "Same object instance"
-END IF
-```
-
----
-
-## Viper.Text.StringBuilder
 

@@ -6,11 +6,103 @@
 
 ## Contents
 
-- [Viper.Math](#vipermath)
 - [Viper.Bits](#viperbits)
+- [Viper.Math](#vipermath)
 - [Viper.Random](#viperrandom)
 - [Viper.Vec2](#vipervec2)
 - [Viper.Vec3](#vipervec3)
+
+---
+
+## Viper.Bits
+
+Bit manipulation utilities for working with 64-bit integers at the bit level.
+
+**Type:** Static (no instantiation required)
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `And(a, b)` | `i64(i64, i64)` | Bitwise AND |
+| `Or(a, b)` | `i64(i64, i64)` | Bitwise OR |
+| `Xor(a, b)` | `i64(i64, i64)` | Bitwise XOR |
+| `Not(val)` | `i64(i64)` | Bitwise NOT (complement) |
+| `Shl(val, count)` | `i64(i64, i64)` | Logical shift left |
+| `Shr(val, count)` | `i64(i64, i64)` | Arithmetic shift right (sign-extended) |
+| `Ushr(val, count)` | `i64(i64, i64)` | Logical shift right (zero-fill) |
+| `Rotl(val, count)` | `i64(i64, i64)` | Rotate left |
+| `Rotr(val, count)` | `i64(i64, i64)` | Rotate right |
+| `Count(val)` | `i64(i64)` | Population count (number of 1 bits) |
+| `LeadZ(val)` | `i64(i64)` | Count leading zeros |
+| `TrailZ(val)` | `i64(i64)` | Count trailing zeros |
+| `Flip(val)` | `i64(i64)` | Reverse all 64 bits |
+| `Swap(val)` | `i64(i64)` | Byte swap (endian swap) |
+| `Get(val, bit)` | `i1(i64, i64)` | Get bit at position (0-63) |
+| `Set(val, bit)` | `i64(i64, i64)` | Set bit at position |
+| `Clear(val, bit)` | `i64(i64, i64)` | Clear bit at position |
+| `Toggle(val, bit)` | `i64(i64, i64)` | Toggle bit at position |
+
+### Method Details
+
+#### Shift Operations
+
+- **Shl** — Logical shift left. Shifts bits left, filling with zeros on the right.
+- **Shr** — Arithmetic shift right. Shifts bits right, preserving the sign bit (sign-extended).
+- **Ushr** — Logical shift right. Shifts bits right, filling with zeros on the left.
+
+Shift counts are clamped: negative counts or counts >= 64 return 0 (for Shl/Ushr) or the sign bit extended (for Shr with negative values).
+
+#### Rotate Operations
+
+- **Rotl** — Rotate left. Bits shifted out on the left wrap around to the right.
+- **Rotr** — Rotate right. Bits shifted out on the right wrap around to the left.
+
+Rotate counts are normalized to 0-63 (count MOD 64).
+
+#### Bit Counting
+
+- **Count** — Population count (popcount). Returns the number of 1 bits.
+- **LeadZ** — Count leading zeros. Returns 64 for zero, 0 for negative values.
+- **TrailZ** — Count trailing zeros. Returns 64 for zero.
+
+#### Single Bit Operations
+
+All single-bit operations accept bit positions 0-63. Out-of-range positions return the input unchanged (for Set/Clear/Toggle) or false (for Get).
+
+### Example
+
+```basic
+' Basic bitwise operations
+DIM a AS INTEGER = &HFF
+DIM b AS INTEGER = &H0F
+PRINT Viper.Bits.And(a, b)  ' 15 (&H0F)
+PRINT Viper.Bits.Or(a, b)   ' 255 (&HFF)
+PRINT Viper.Bits.Xor(a, b)  ' 240 (&HF0)
+
+' Shift operations
+DIM val AS INTEGER = 1
+PRINT Viper.Bits.Shl(val, 4)   ' 16
+PRINT Viper.Bits.Shr(16, 2)    ' 4
+
+' Count set bits
+DIM mask AS INTEGER = &HFF
+PRINT Viper.Bits.Count(mask)   ' 8
+
+' Work with individual bits
+DIM flags AS INTEGER = 0
+flags = Viper.Bits.Set(flags, 0)    ' Set bit 0
+flags = Viper.Bits.Set(flags, 3)    ' Set bit 3
+PRINT Viper.Bits.Get(flags, 0)      ' True
+PRINT Viper.Bits.Get(flags, 1)      ' False
+flags = Viper.Bits.Toggle(flags, 3) ' Toggle bit 3 off
+PRINT flags                          ' 1
+
+' Endian conversion
+DIM big AS INTEGER = &H0102030405060708
+DIM little AS INTEGER = Viper.Bits.Swap(big)
+' little = &H0807060504030201
+```
 
 ---
 
@@ -145,106 +237,6 @@ PRINT Viper.Math.Hypot(3, 4)             ' Output: 5.0
 
 ---
 
-## Viper.Terminal
-
----
-
-## Viper.Bits
-
-Bit manipulation utilities for working with 64-bit integers at the bit level.
-
-**Type:** Static (no instantiation required)
-
-### Methods
-
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `And(a, b)` | `i64(i64, i64)` | Bitwise AND |
-| `Or(a, b)` | `i64(i64, i64)` | Bitwise OR |
-| `Xor(a, b)` | `i64(i64, i64)` | Bitwise XOR |
-| `Not(val)` | `i64(i64)` | Bitwise NOT (complement) |
-| `Shl(val, count)` | `i64(i64, i64)` | Logical shift left |
-| `Shr(val, count)` | `i64(i64, i64)` | Arithmetic shift right (sign-extended) |
-| `Ushr(val, count)` | `i64(i64, i64)` | Logical shift right (zero-fill) |
-| `Rotl(val, count)` | `i64(i64, i64)` | Rotate left |
-| `Rotr(val, count)` | `i64(i64, i64)` | Rotate right |
-| `Count(val)` | `i64(i64)` | Population count (number of 1 bits) |
-| `LeadZ(val)` | `i64(i64)` | Count leading zeros |
-| `TrailZ(val)` | `i64(i64)` | Count trailing zeros |
-| `Flip(val)` | `i64(i64)` | Reverse all 64 bits |
-| `Swap(val)` | `i64(i64)` | Byte swap (endian swap) |
-| `Get(val, bit)` | `i1(i64, i64)` | Get bit at position (0-63) |
-| `Set(val, bit)` | `i64(i64, i64)` | Set bit at position |
-| `Clear(val, bit)` | `i64(i64, i64)` | Clear bit at position |
-| `Toggle(val, bit)` | `i64(i64, i64)` | Toggle bit at position |
-
-### Method Details
-
-#### Shift Operations
-
-- **Shl** — Logical shift left. Shifts bits left, filling with zeros on the right.
-- **Shr** — Arithmetic shift right. Shifts bits right, preserving the sign bit (sign-extended).
-- **Ushr** — Logical shift right. Shifts bits right, filling with zeros on the left.
-
-Shift counts are clamped: negative counts or counts >= 64 return 0 (for Shl/Ushr) or the sign bit extended (for Shr with negative values).
-
-#### Rotate Operations
-
-- **Rotl** — Rotate left. Bits shifted out on the left wrap around to the right.
-- **Rotr** — Rotate right. Bits shifted out on the right wrap around to the left.
-
-Rotate counts are normalized to 0-63 (count MOD 64).
-
-#### Bit Counting
-
-- **Count** — Population count (popcount). Returns the number of 1 bits.
-- **LeadZ** — Count leading zeros. Returns 64 for zero, 0 for negative values.
-- **TrailZ** — Count trailing zeros. Returns 64 for zero.
-
-#### Single Bit Operations
-
-All single-bit operations accept bit positions 0-63. Out-of-range positions return the input unchanged (for Set/Clear/Toggle) or false (for Get).
-
-### Example
-
-```basic
-' Basic bitwise operations
-DIM a AS INTEGER = &HFF
-DIM b AS INTEGER = &H0F
-PRINT Viper.Bits.And(a, b)  ' 15 (&H0F)
-PRINT Viper.Bits.Or(a, b)   ' 255 (&HFF)
-PRINT Viper.Bits.Xor(a, b)  ' 240 (&HF0)
-
-' Shift operations
-DIM val AS INTEGER = 1
-PRINT Viper.Bits.Shl(val, 4)   ' 16
-PRINT Viper.Bits.Shr(16, 2)    ' 4
-
-' Count set bits
-DIM mask AS INTEGER = &HFF
-PRINT Viper.Bits.Count(mask)   ' 8
-
-' Work with individual bits
-DIM flags AS INTEGER = 0
-flags = Viper.Bits.Set(flags, 0)    ' Set bit 0
-flags = Viper.Bits.Set(flags, 3)    ' Set bit 3
-PRINT Viper.Bits.Get(flags, 0)      ' True
-PRINT Viper.Bits.Get(flags, 1)      ' False
-flags = Viper.Bits.Toggle(flags, 3) ' Toggle bit 3 off
-PRINT flags                          ' 1
-
-' Endian conversion
-DIM big AS INTEGER = &H0102030405060708
-DIM little AS INTEGER = Viper.Bits.Swap(big)
-' little = &H0807060504030201
-```
-
----
-
-## Viper.Collections.List
-
----
-
 ## Viper.Random
 
 Random number generation.
@@ -280,10 +272,6 @@ DIM die AS INTEGER
 die = Viper.Random.NextInt(6) + 1
 PRINT "You rolled: "; die
 ```
-
----
-
-## Viper.Environment
 
 ---
 
@@ -380,10 +368,6 @@ END IF
 
 ## Viper.Vec3
 
----
-
-## Viper.Vec3
-
 3D vector math for positions, directions, velocities, and physics calculations in 3D space.
 
 **Type:** Instance (obj)
@@ -466,8 +450,4 @@ DIM endpoint AS OBJECT = Viper.Vec3.New(100.0, 100.0, 100.0)
 DIM midpoint AS OBJECT = start.Lerp(endpoint, 0.5)
 PRINT "Midpoint: ("; midpoint.X; ", "; midpoint.Y; ", "; midpoint.Z; ")"  ' (50, 50, 50)
 ```
-
----
-
-## Viper.Diagnostics.Assert
 

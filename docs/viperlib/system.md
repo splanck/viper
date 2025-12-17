@@ -6,50 +6,10 @@
 
 ## Contents
 
-- [Viper.Terminal](#viperterminal)
 - [Viper.Environment](#viperenvironment)
 - [Viper.Exec](#viperexec)
 - [Viper.Machine](#vipermachine)
-
----
-
-## Viper.Terminal
-
-Terminal input and output operations.
-
-**Type:** Static utility class
-
-### Methods
-
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `PrintStr(text)` | `Void(String)` | Writes text to standard output |
-| `PrintI64(value)` | `Void(I64)` | Writes an integer to standard output |
-| `PrintF64(value)` | `Void(F64)` | Writes a floating-point number to standard output |
-| `ReadLine()` | `String()` | Reads a line of text from standard input |
-
-### Example
-
-```basic
-Viper.Terminal.PrintStr("What is your name?")
-Viper.Terminal.PrintStr(CHR$(10))  ' Newline
-DIM name AS STRING
-name = Viper.Terminal.ReadLine()
-Viper.Terminal.PrintStr("Hello, " + name + "!")
-Viper.Terminal.PrintStr(CHR$(10))
-```
-
-### Note
-
-For most BASIC programs, the `PRINT` and `INPUT` statements are more convenient. Use `Viper.Terminal` when you need explicit control or are working at the IL level.
-
-### Backward Compatibility
-
-`Viper.Console.*` names are retained as aliases for backward compatibility. New code should use `Viper.Terminal.*`.
-
----
-
-## Viper.Convert
+- [Viper.Terminal](#viperterminal)
 
 ---
 
@@ -108,10 +68,6 @@ PRINT "Updated value: "; Viper.Environment.GetVariable(name)
 ' Process exit
 ' Viper.Environment.EndProgram(7)
 ```
-
----
-
-## Viper.Exec
 
 ---
 
@@ -196,10 +152,6 @@ END IF
 
 ---
 
-## Viper.Fmt
-
----
-
 ## Viper.Machine
 
 System information queries providing read-only access to machine properties.
@@ -276,5 +228,37 @@ END IF
 
 ---
 
-## Viper.DateTime
+## Viper.Terminal
+
+Terminal input and output operations.
+
+**Type:** Static utility class
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `PrintStr(text)` | `Void(String)` | Writes text to standard output |
+| `PrintI64(value)` | `Void(I64)` | Writes an integer to standard output |
+| `PrintF64(value)` | `Void(F64)` | Writes a floating-point number to standard output |
+| `ReadLine()` | `String()` | Reads a line of text from standard input |
+
+### Example
+
+```basic
+Viper.Terminal.PrintStr("What is your name?")
+Viper.Terminal.PrintStr(CHR$(10))  ' Newline
+DIM name AS STRING
+name = Viper.Terminal.ReadLine()
+Viper.Terminal.PrintStr("Hello, " + name + "!")
+Viper.Terminal.PrintStr(CHR$(10))
+```
+
+### Note
+
+For most BASIC programs, the `PRINT` and `INPUT` statements are more convenient. Use `Viper.Terminal` when you need explicit control or are working at the IL level.
+
+### Backward Compatibility
+
+`Viper.Console.*` names are retained as aliases for backward compatibility. New code should use `Viper.Terminal.*`.
 

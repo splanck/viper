@@ -6,15 +6,199 @@
 
 ## Contents
 
+- [Viper.Collections.Bag](#vipercollectionsbag)
+- [Viper.Collections.Bytes](#vipercollectionsbytes)
 - [Viper.Collections.List](#vipercollectionslist)
 - [Viper.Collections.Map](#vipercollectionsmap)
+- [Viper.Collections.Queue](#vipercollectionsqueue)
+- [Viper.Collections.Ring](#vipercollectionsring)
 - [Viper.Collections.Seq](#vipercollectionsseq)
 - [Viper.Collections.Stack](#vipercollectionsstack)
 - [Viper.Collections.TreeMap](#vipercollectionstreemap)
-- [Viper.Collections.Queue](#vipercollectionsqueue)
-- [Viper.Collections.Bytes](#vipercollectionsbytes)
-- [Viper.Collections.Bag](#vipercollectionsbag)
-- [Viper.Collections.Ring](#vipercollectionsring)
+
+---
+
+## Viper.Collections.Bag
+
+A set data structure for storing unique strings. Efficiently handles membership testing, set operations (union, intersection, difference), and enumeration.
+
+**Type:** Instance (obj)
+**Constructor:** `NEW Viper.Collections.Bag()`
+
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `Len` | Integer | Number of strings in the bag |
+| `IsEmpty` | Boolean | True if bag contains no strings |
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `Put(str)` | `Boolean(String)` | Add a string; returns true if new, false if already present |
+| `Drop(str)` | `Boolean(String)` | Remove a string; returns true if removed, false if not found |
+| `Has(str)` | `Boolean(String)` | Check if string is in the bag |
+| `Clear()` | `Void()` | Remove all strings from the bag |
+| `Items()` | `Seq()` | Get all strings as a Seq (order undefined) |
+| `Merge(other)` | `Bag(Bag)` | Return new bag with union of both bags |
+| `Common(other)` | `Bag(Bag)` | Return new bag with intersection of both bags |
+| `Diff(other)` | `Bag(Bag)` | Return new bag with elements in this but not other |
+
+### Notes
+
+- Strings are stored by value (copied into the bag)
+- Order of strings returned by `Items()` is not guaranteed (hash table)
+- Set operations (`Merge`, `Common`, `Diff`) return new bags; originals are unchanged
+- Uses FNV-1a hash function for O(1) average-case operations
+- Automatically resizes when load factor exceeds 75%
+
+### Example
+
+```basic
+' Create and populate a bag
+DIM fruits AS OBJECT = NEW Viper.Collections.Bag()
+fruits.Put("apple")
+fruits.Put("banana")
+fruits.Put("cherry")
+PRINT fruits.Len           ' Output: 3
+
+' Duplicate add returns false
+DIM wasNew AS INTEGER = fruits.Put("apple")
+PRINT wasNew               ' Output: 0 (already present)
+
+' Membership testing
+PRINT fruits.Has("banana") ' Output: 1 (true)
+PRINT fruits.Has("grape")  ' Output: 0 (false)
+
+' Remove an element
+DIM removed AS INTEGER = fruits.Drop("banana")
+PRINT removed              ' Output: 1 (was removed)
+PRINT fruits.Has("banana") ' Output: 0 (no longer present)
+
+' Set operations
+DIM bagA AS OBJECT = NEW Viper.Collections.Bag()
+bagA.Put("a")
+bagA.Put("b")
+bagA.Put("c")
+
+DIM bagB AS OBJECT = NEW Viper.Collections.Bag()
+bagB.Put("b")
+bagB.Put("c")
+bagB.Put("d")
+
+' Union: elements in either bag
+DIM merged AS OBJECT = bagA.Merge(bagB)
+PRINT merged.Len           ' Output: 4 (a, b, c, d)
+
+' Intersection: elements in both bags
+DIM common AS OBJECT = bagA.Common(bagB)
+PRINT common.Len           ' Output: 2 (b, c)
+
+' Difference: elements in A but not B
+DIM diff AS OBJECT = bagA.Diff(bagB)
+PRINT diff.Len             ' Output: 1 (a only)
+
+' Enumerate all elements
+DIM items AS OBJECT = fruits.Items()
+FOR i AS INTEGER = 0 TO items.Len - 1
+    PRINT items.Get(i)
+NEXT
+```
+
+### Use Cases
+
+- **Deduplication:** Track unique values encountered
+- **Membership testing:** Fast O(1) lookup for string membership
+- **Set mathematics:** Compute unions, intersections, and differences
+- **Tag systems:** Manage collections of unique tags or labels
+- **Visited tracking:** Track visited items in algorithms
+
+---
+
+## Viper.Collections.Bytes
+
+An efficient byte array for binary data. More memory-efficient than Seq for byte manipulation.
+
+**Type:** Instance (obj)
+**Constructors:**
+- `NEW Viper.Collections.Bytes(length)` - Create zero-filled byte array
+- `Viper.Collections.Bytes.FromStr(str)` - Create from string (UTF-8 bytes)
+- `Viper.Collections.Bytes.FromHex(hex)` - Create from hexadecimal string
+- `Viper.Collections.Bytes.FromBase64(b64)` - Decode RFC 4648 Base64 string (traps on invalid input)
+
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `Len` | Integer | Number of bytes |
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `Get(index)` | `Integer(Integer)` | Get byte value (0-255) at index |
+| `Set(index, value)` | `Void(Integer, Integer)` | Set byte value at index (clamped to 0-255) |
+| `Slice(start, end)` | `Bytes(Integer, Integer)` | Create new byte array from range [start, end) |
+| `Copy(dstOffset, src, srcOffset, count)` | `Void(...)` | Copy bytes between arrays |
+| `ToStr()` | `String()` | Convert to string (interprets as UTF-8) |
+| `ToHex()` | `String()` | Convert to lowercase hexadecimal string |
+| `ToBase64()` | `String()` | Convert to RFC 4648 Base64 string (A-Z a-z 0-9 + /, with '=' padding) |
+| `Fill(value)` | `Void(Integer)` | Set all bytes to value |
+| `Find(value)` | `Integer(Integer)` | Find first occurrence (-1 if not found) |
+| `Clone()` | `Bytes()` | Create independent copy |
+
+### Example
+
+```basic
+' Create a 4-byte array and set values
+DIM data AS Viper.Collections.Bytes
+data = NEW Viper.Collections.Bytes(4)
+data.Set(0, &HDE)
+data.Set(1, &HAD)
+data.Set(2, &HBE)
+data.Set(3, &HEF)
+
+PRINT data.ToHex()  ' Output: "deadbeef"
+PRINT data.Len      ' Output: 4
+
+' Create from hex string
+DIM copy AS Viper.Collections.Bytes
+copy = Viper.Collections.Bytes.FromHex("cafebabe")
+PRINT copy.Get(0)   ' Output: 202 (0xCA)
+
+' Create from string
+DIM text AS Viper.Collections.Bytes
+text = Viper.Collections.Bytes.FromStr("Hello")
+PRINT text.Len      ' Output: 5
+PRINT text.Get(0)   ' Output: 72 (ASCII 'H')
+
+' Base64 encode/decode (RFC 4648)
+PRINT text.ToBase64()  ' Output: "SGVsbG8="
+DIM decoded AS Viper.Collections.Bytes
+decoded = Viper.Collections.Bytes.FromBase64("SGVsbG8=")
+PRINT decoded.ToStr()  ' Output: "Hello"
+
+' Slice and copy
+DIM slice AS Viper.Collections.Bytes
+slice = data.Slice(1, 3)  ' Bytes at indices 1 and 2
+PRINT slice.Len           ' Output: 2
+
+' Find a byte
+PRINT data.Find(&HBE)     ' Output: 2
+
+' Fill with a value
+data.Fill(0)
+PRINT data.ToHex()        ' Output: "00000000"
+```
+
+### Use Cases
+
+- **Binary file parsing:** Read and manipulate binary file formats
+- **Network protocols:** Pack and unpack protocol messages
+- **Cryptography:** Handle raw byte sequences
+- **Image data:** Manipulate raw pixel data
+- **Base encoding:** Convert between binary and text representations
 
 ---
 
@@ -74,10 +258,6 @@ PRINT list.Find(a)         ' Output: -1
 ' Clear all
 list.Clear()
 ```
-
----
-
-## Viper.Collections.Map
 
 ---
 
@@ -167,7 +347,132 @@ PRINT scores.IsEmpty  ' Output: True
 
 ---
 
-## Viper.Collections.Seq
+## Viper.Collections.Queue
+
+A FIFO (first-in-first-out) collection. Elements are added at the back and removed from the front. Implemented as a circular buffer for O(1) add and take operations.
+
+**Type:** Instance (obj)
+**Constructor:** `NEW Viper.Collections.Queue()`
+
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `Len` | Integer | Number of elements in the queue |
+| `IsEmpty` | Boolean | Returns true if the queue has no elements |
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `Add(value)` | `Void(Object)` | Add element to back of queue |
+| `Take()` | `Object()` | Remove and return front element (traps if empty) |
+| `Peek()` | `Object()` | Return front element without removing (traps if empty) |
+| `Clear()` | `Void()` | Remove all elements |
+
+### Example
+
+```basic
+DIM queue AS Viper.Collections.Queue
+queue = NEW Viper.Collections.Queue()
+
+' Add elements to the queue
+queue.Add("first")
+queue.Add("second")
+queue.Add("third")
+
+PRINT queue.Len      ' Output: 3
+PRINT queue.IsEmpty  ' Output: False
+
+' Take returns elements in FIFO order
+PRINT queue.Take()   ' Output: "first"
+PRINT queue.Peek()   ' Output: "second" (still in queue)
+PRINT queue.Len      ' Output: 2
+
+' Clear the queue
+queue.Clear()
+PRINT queue.IsEmpty  ' Output: True
+```
+
+### Use Cases
+
+- **Task scheduling:** Process tasks in the order they arrive
+- **Breadth-first search:** Track nodes to visit
+- **Message passing:** Handle messages in arrival order
+- **Print queues:** Process print jobs sequentially
+
+---
+
+## Viper.Collections.Ring
+
+A fixed-size circular buffer (ring buffer). When full, pushing new elements automatically overwrites the oldest elements.
+
+**Type:** Instance class
+
+**Constructor:** `NEW Viper.Collections.Ring(capacity)`
+
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `Len` | `Integer` | Number of elements currently stored |
+| `Cap` | `Integer` | Maximum capacity (fixed at creation) |
+| `IsEmpty` | `Boolean` | True if ring has no elements |
+| `IsFull` | `Boolean` | True if ring is at capacity |
+
+### Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `Push(item)` | void | Add item; overwrites oldest if full |
+| `Pop()` | Object | Remove and return oldest item (NULL if empty) |
+| `Peek()` | Object | Return oldest item without removing (NULL if empty) |
+| `Get(index)` | Object | Get item by logical index (0 = oldest) |
+| `Clear()` | void | Remove all elements |
+
+### Example
+
+```basic
+' Create a ring buffer with capacity 3
+DIM recent AS OBJECT = NEW Viper.Collections.Ring(3)
+
+' Push some values
+recent.Push("first")
+recent.Push("second")
+recent.Push("third")
+PRINT recent.Len        ' Output: 3
+PRINT recent.IsFull     ' Output: 1 (true)
+
+' Push when full overwrites oldest
+recent.Push("fourth")
+PRINT recent.Len        ' Output: 3 (still 3)
+PRINT recent.Peek()     ' Output: second (first was overwritten)
+
+' Get by index (0 = oldest)
+PRINT recent.Get(0)     ' Output: second
+PRINT recent.Get(1)     ' Output: third
+PRINT recent.Get(2)     ' Output: fourth
+
+' Pop removes oldest (FIFO)
+DIM oldest AS STRING = recent.Pop()
+PRINT oldest            ' Output: second
+PRINT recent.Len        ' Output: 2
+
+' Interleaved push/pop
+recent.Push("fifth")
+PRINT recent.Pop()      ' Output: third
+PRINT recent.Pop()      ' Output: fourth
+PRINT recent.Pop()      ' Output: fifth
+PRINT recent.IsEmpty    ' Output: 1 (true)
+```
+
+### Use Cases
+
+- **Recent history:** Keep N most recent log entries, commands, or events
+- **Sliding window:** Process data in fixed-size windows
+- **Bounded caching:** Cache with automatic eviction of oldest entries
+- **Event buffering:** Buffer events with guaranteed memory bounds
+- **Audio/video buffering:** Fixed-size media sample buffers
 
 ---
 
@@ -294,10 +599,6 @@ NEXT i
 
 ## Viper.Collections.Stack
 
----
-
-## Viper.Collections.Stack
-
 A LIFO (last-in-first-out) collection. Elements are added and removed from the top.
 
 **Type:** Instance (obj)
@@ -354,11 +655,7 @@ PRINT stack.IsEmpty  ' Output: True
 
 ## Viper.Collections.TreeMap
 
----
-
-## Viper.Collections.TreeMap
-
-A sorted key-value map that maintains keys in lexicographic order. Unlike Map (hash-based), TreeMap supports ordered traversal and range queries.
+A sorted key-value map that maintains keys in sorted order. Uses a sorted array with binary search for O(log n) lookups. Supports range queries via Floor/Ceil operations.
 
 **Type:** Instance (obj)
 **Constructor:** `NEW Viper.Collections.TreeMap()`
@@ -374,392 +671,58 @@ A sorted key-value map that maintains keys in lexicographic order. Unlike Map (h
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `Set(key, value)` | `Void(String, Object)` | Insert or update a key-value pair |
-| `Get(key)` | `Object(String)` | Get value for key (returns NULL if not found) |
-| `Has(key)` | `Boolean(String)` | Check if key exists in map |
-| `Drop(key)` | `Boolean(String)` | Remove key-value pair (returns true if removed) |
-| `Clear()` | `Void()` | Remove all entries from the map |
+| `Set(key, value)` | `Void(String, Object)` | Set or update a key-value pair |
+| `Get(key)` | `Object(String)` | Get the value for a key (returns null if not found) |
+| `Has(key)` | `Boolean(String)` | Check if a key exists |
+| `Drop(key)` | `Boolean(String)` | Remove a key-value pair; returns true if removed |
+| `Clear()` | `Void()` | Remove all entries |
 | `Keys()` | `Seq()` | Get all keys as a Seq in sorted order |
 | `Values()` | `Seq()` | Get all values as a Seq in key-sorted order |
-| `First()` | `String()` | Get the smallest (first) key (empty if map empty) |
-| `Last()` | `String()` | Get the largest (last) key (empty if map empty) |
-| `Floor(key)` | `String(String)` | Get largest key <= given key (empty if none) |
-| `Ceil(key)` | `String(String)` | Get smallest key >= given key (empty if none) |
+| `First()` | `String()` | Get the smallest (first) key; returns empty string if empty |
+| `Last()` | `String()` | Get the largest (last) key; returns empty string if empty |
+| `Floor(key)` | `String()` | Get the largest key <= given key; returns empty string if none |
+| `Ceil(key)` | `String()` | Get the smallest key >= given key; returns empty string if none |
 
 ### Example
 
 ```basic
-DIM tm AS OBJECT = NEW Viper.Collections.TreeMap()
+DIM tm AS Viper.Collections.TreeMap
+tm = NEW Viper.Collections.TreeMap()
 
-' Insert in any order - will be stored sorted
-tm.Set("cherry", 3)
-tm.Set("apple", 1)
-tm.Set("banana", 2)
+' Insert in any order - stored sorted
+tm.Set("cherry", "red")
+tm.Set("apple", "green")
+tm.Set("banana", "yellow")
 
-' Keys are in sorted order
+' Keys are always in sorted order
 DIM keys AS OBJECT = tm.Keys()
-FOR i = 0 TO keys.Len - 1
-    PRINT keys.Get(i)  ' apple, banana, cherry
-NEXT
+PRINT keys.Get(0)  ' Output: "apple"
+PRINT keys.Get(1)  ' Output: "banana"
+PRINT keys.Get(2)  ' Output: "cherry"
 
-' Get first and last
-PRINT "First: "; tm.First()  ' apple
-PRINT "Last: "; tm.Last()    ' cherry
+' First/Last access
+PRINT tm.First()   ' Output: "apple"
+PRINT tm.Last()    ' Output: "cherry"
 
-' Range queries with Floor/Ceil
-PRINT tm.Floor("blueberry")  ' banana (largest key <= "blueberry")
-PRINT tm.Ceil("blueberry")   ' cherry (smallest key >= "blueberry")
+' Range queries
+PRINT tm.Floor("blueberry")  ' Output: "banana" (largest key <= "blueberry")
+PRINT tm.Ceil("blueberry")   ' Output: "cherry" (smallest key >= "blueberry")
 ```
-
-### Use Cases
-
-- **Sorted dictionaries:** When you need keys in order
-- **Range queries:** Find keys in a range using Floor/Ceil
-- **Leaderboards:** Store scores with player names, iterate in order
-- **Auto-complete:** Find suggestions using Ceil to get next matching keys
 
 ### TreeMap vs Map
 
 | Feature | TreeMap | Map |
 |---------|---------|-----|
-| Key order | Sorted (lexicographic) | Unordered (hash-based) |
-| Get/Set | O(log n) | O(1) average |
-| First/Last | O(1) | Not supported |
-| Floor/Ceil | O(log n) | Not supported |
-| Iteration | Sorted order | Arbitrary order |
-
-Use TreeMap when you need sorted keys or range queries. Use Map when you need fastest access and don't care about order.
-
----
-
-## Viper.Collections.Queue
-
----
-
-## Viper.Collections.Queue
-
-A FIFO (first-in-first-out) collection. Elements are added at the back and removed from the front. Implemented as a circular buffer for O(1) add and take operations.
-
-**Type:** Instance (obj)
-**Constructor:** `NEW Viper.Collections.Queue()`
-
-### Properties
-
-| Property | Type | Description |
-|----------|------|-------------|
-| `Len` | Integer | Number of elements in the queue |
-| `IsEmpty` | Boolean | Returns true if the queue has no elements |
-
-### Methods
-
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `Add(value)` | `Void(Object)` | Add element to back of queue |
-| `Take()` | `Object()` | Remove and return front element (traps if empty) |
-| `Peek()` | `Object()` | Return front element without removing (traps if empty) |
-| `Clear()` | `Void()` | Remove all elements |
-
-### Example
-
-```basic
-DIM queue AS Viper.Collections.Queue
-queue = NEW Viper.Collections.Queue()
-
-' Add elements to the queue
-queue.Add("first")
-queue.Add("second")
-queue.Add("third")
-
-PRINT queue.Len      ' Output: 3
-PRINT queue.IsEmpty  ' Output: False
-
-' Take returns elements in FIFO order
-PRINT queue.Take()   ' Output: "first"
-PRINT queue.Peek()   ' Output: "second" (still in queue)
-PRINT queue.Len      ' Output: 2
-
-' Clear the queue
-queue.Clear()
-PRINT queue.IsEmpty  ' Output: True
-```
+| Key order | Sorted | Unordered |
+| Lookup | O(log n) | O(1) average |
+| Insert | O(n) | O(1) average |
+| First/Last | O(1) | Not available |
+| Floor/Ceil | O(log n) | Not available |
 
 ### Use Cases
 
-- **Task scheduling:** Process tasks in the order they arrive
-- **Breadth-first search:** Track nodes to visit
-- **Message passing:** Handle messages in arrival order
-- **Print queues:** Process print jobs sequentially
-
----
-
-## Viper.Collections.Bytes
-
----
-
-## Viper.Collections.Bytes
-
-An efficient byte array for binary data. More memory-efficient than Seq for byte manipulation.
-
-**Type:** Instance (obj)
-**Constructors:**
-- `NEW Viper.Collections.Bytes(length)` - Create zero-filled byte array
-- `Viper.Collections.Bytes.FromStr(str)` - Create from string (UTF-8 bytes)
-- `Viper.Collections.Bytes.FromHex(hex)` - Create from hexadecimal string
-- `Viper.Collections.Bytes.FromBase64(b64)` - Decode RFC 4648 Base64 string (traps on invalid input)
-
-### Properties
-
-| Property | Type | Description |
-|----------|------|-------------|
-| `Len` | Integer | Number of bytes |
-
-### Methods
-
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `Get(index)` | `Integer(Integer)` | Get byte value (0-255) at index |
-| `Set(index, value)` | `Void(Integer, Integer)` | Set byte value at index (clamped to 0-255) |
-| `Slice(start, end)` | `Bytes(Integer, Integer)` | Create new byte array from range [start, end) |
-| `Copy(dstOffset, src, srcOffset, count)` | `Void(...)` | Copy bytes between arrays |
-| `ToStr()` | `String()` | Convert to string (interprets as UTF-8) |
-| `ToHex()` | `String()` | Convert to lowercase hexadecimal string |
-| `ToBase64()` | `String()` | Convert to RFC 4648 Base64 string (A-Z a-z 0-9 + /, with '=' padding) |
-| `Fill(value)` | `Void(Integer)` | Set all bytes to value |
-| `Find(value)` | `Integer(Integer)` | Find first occurrence (-1 if not found) |
-| `Clone()` | `Bytes()` | Create independent copy |
-
-### Example
-
-```basic
-' Create a 4-byte array and set values
-DIM data AS Viper.Collections.Bytes
-data = NEW Viper.Collections.Bytes(4)
-data.Set(0, &HDE)
-data.Set(1, &HAD)
-data.Set(2, &HBE)
-data.Set(3, &HEF)
-
-PRINT data.ToHex()  ' Output: "deadbeef"
-PRINT data.Len      ' Output: 4
-
-' Create from hex string
-DIM copy AS Viper.Collections.Bytes
-copy = Viper.Collections.Bytes.FromHex("cafebabe")
-PRINT copy.Get(0)   ' Output: 202 (0xCA)
-
-' Create from string
-DIM text AS Viper.Collections.Bytes
-text = Viper.Collections.Bytes.FromStr("Hello")
-PRINT text.Len      ' Output: 5
-PRINT text.Get(0)   ' Output: 72 (ASCII 'H')
-
-' Base64 encode/decode (RFC 4648)
-PRINT text.ToBase64()  ' Output: "SGVsbG8="
-DIM decoded AS Viper.Collections.Bytes
-decoded = Viper.Collections.Bytes.FromBase64("SGVsbG8=")
-PRINT decoded.ToStr()  ' Output: "Hello"
-
-' Slice and copy
-DIM slice AS Viper.Collections.Bytes
-slice = data.Slice(1, 3)  ' Bytes at indices 1 and 2
-PRINT slice.Len           ' Output: 2
-
-' Find a byte
-PRINT data.Find(&HBE)     ' Output: 2
-
-' Fill with a value
-data.Fill(0)
-PRINT data.ToHex()        ' Output: "00000000"
-```
-
-### Use Cases
-
-- **Binary file parsing:** Read and manipulate binary file formats
-- **Network protocols:** Pack and unpack protocol messages
-- **Cryptography:** Handle raw byte sequences
-- **Image data:** Manipulate raw pixel data
-- **Base encoding:** Convert between binary and text representations
-
----
-
-## Viper.Collections.Bag
-
----
-
-## Viper.Collections.Bag
-
-A set data structure for storing unique strings. Efficiently handles membership testing, set operations (union, intersection, difference), and enumeration.
-
-**Type:** Instance (obj)
-**Constructor:** `NEW Viper.Collections.Bag()`
-
-### Properties
-
-| Property | Type | Description |
-|----------|------|-------------|
-| `Len` | Integer | Number of strings in the bag |
-| `IsEmpty` | Boolean | True if bag contains no strings |
-
-### Methods
-
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `Put(str)` | `Boolean(String)` | Add a string; returns true if new, false if already present |
-| `Drop(str)` | `Boolean(String)` | Remove a string; returns true if removed, false if not found |
-| `Has(str)` | `Boolean(String)` | Check if string is in the bag |
-| `Clear()` | `Void()` | Remove all strings from the bag |
-| `Items()` | `Seq()` | Get all strings as a Seq (order undefined) |
-| `Merge(other)` | `Bag(Bag)` | Return new bag with union of both bags |
-| `Common(other)` | `Bag(Bag)` | Return new bag with intersection of both bags |
-| `Diff(other)` | `Bag(Bag)` | Return new bag with elements in this but not other |
-
-### Notes
-
-- Strings are stored by value (copied into the bag)
-- Order of strings returned by `Items()` is not guaranteed (hash table)
-- Set operations (`Merge`, `Common`, `Diff`) return new bags; originals are unchanged
-- Uses FNV-1a hash function for O(1) average-case operations
-- Automatically resizes when load factor exceeds 75%
-
-### Example
-
-```basic
-' Create and populate a bag
-DIM fruits AS OBJECT = NEW Viper.Collections.Bag()
-fruits.Put("apple")
-fruits.Put("banana")
-fruits.Put("cherry")
-PRINT fruits.Len           ' Output: 3
-
-' Duplicate add returns false
-DIM wasNew AS INTEGER = fruits.Put("apple")
-PRINT wasNew               ' Output: 0 (already present)
-
-' Membership testing
-PRINT fruits.Has("banana") ' Output: 1 (true)
-PRINT fruits.Has("grape")  ' Output: 0 (false)
-
-' Remove an element
-DIM removed AS INTEGER = fruits.Drop("banana")
-PRINT removed              ' Output: 1 (was removed)
-PRINT fruits.Has("banana") ' Output: 0 (no longer present)
-
-' Set operations
-DIM bagA AS OBJECT = NEW Viper.Collections.Bag()
-bagA.Put("a")
-bagA.Put("b")
-bagA.Put("c")
-
-DIM bagB AS OBJECT = NEW Viper.Collections.Bag()
-bagB.Put("b")
-bagB.Put("c")
-bagB.Put("d")
-
-' Union: elements in either bag
-DIM merged AS OBJECT = bagA.Merge(bagB)
-PRINT merged.Len           ' Output: 4 (a, b, c, d)
-
-' Intersection: elements in both bags
-DIM common AS OBJECT = bagA.Common(bagB)
-PRINT common.Len           ' Output: 2 (b, c)
-
-' Difference: elements in A but not B
-DIM diff AS OBJECT = bagA.Diff(bagB)
-PRINT diff.Len             ' Output: 1 (a only)
-
-' Enumerate all elements
-DIM items AS OBJECT = fruits.Items()
-FOR i AS INTEGER = 0 TO items.Len - 1
-    PRINT items.Get(i)
-NEXT
-```
-
-### Use Cases
-
-- **Deduplication:** Track unique values encountered
-- **Membership testing:** Fast O(1) lookup for string membership
-- **Set mathematics:** Compute unions, intersections, and differences
-- **Tag systems:** Manage collections of unique tags or labels
-- **Visited tracking:** Track visited items in algorithms
-
----
-
-## Viper.Collections.Ring
-
----
-
-## Viper.Collections.Ring
-
-A fixed-size circular buffer (ring buffer). When full, pushing new elements automatically overwrites the oldest elements.
-
-**Type:** Instance class
-
-**Constructor:** `NEW Viper.Collections.Ring(capacity)`
-
-### Properties
-
-| Property | Type | Description |
-|----------|------|-------------|
-| `Len` | `Integer` | Number of elements currently stored |
-| `Cap` | `Integer` | Maximum capacity (fixed at creation) |
-| `IsEmpty` | `Boolean` | True if ring has no elements |
-| `IsFull` | `Boolean` | True if ring is at capacity |
-
-### Methods
-
-| Method | Returns | Description |
-|--------|---------|-------------|
-| `Push(item)` | void | Add item; overwrites oldest if full |
-| `Pop()` | Object | Remove and return oldest item (NULL if empty) |
-| `Peek()` | Object | Return oldest item without removing (NULL if empty) |
-| `Get(index)` | Object | Get item by logical index (0 = oldest) |
-| `Clear()` | void | Remove all elements |
-
-### Example
-
-```basic
-' Create a ring buffer with capacity 3
-DIM recent AS OBJECT = NEW Viper.Collections.Ring(3)
-
-' Push some values
-recent.Push("first")
-recent.Push("second")
-recent.Push("third")
-PRINT recent.Len        ' Output: 3
-PRINT recent.IsFull     ' Output: 1 (true)
-
-' Push when full overwrites oldest
-recent.Push("fourth")
-PRINT recent.Len        ' Output: 3 (still 3)
-PRINT recent.Peek()     ' Output: second (first was overwritten)
-
-' Get by index (0 = oldest)
-PRINT recent.Get(0)     ' Output: second
-PRINT recent.Get(1)     ' Output: third
-PRINT recent.Get(2)     ' Output: fourth
-
-' Pop removes oldest (FIFO)
-DIM oldest AS STRING = recent.Pop()
-PRINT oldest            ' Output: second
-PRINT recent.Len        ' Output: 2
-
-' Interleaved push/pop
-recent.Push("fifth")
-PRINT recent.Pop()      ' Output: third
-PRINT recent.Pop()      ' Output: fourth
-PRINT recent.Pop()      ' Output: fifth
-PRINT recent.IsEmpty    ' Output: 1 (true)
-```
-
-### Use Cases
-
-- **Recent history:** Keep N most recent log entries, commands, or events
-- **Sliding window:** Process data in fixed-size windows
-- **Bounded caching:** Cache with automatic eviction of oldest entries
-- **Event buffering:** Buffer events with guaranteed memory bounds
-- **Audio/video buffering:** Fixed-size media sample buffers
-
----
-
-## Viper.Math
+- **Ordered iteration:** When you need keys in sorted order
+- **Range queries:** Finding entries within a key range
+- **Priority systems:** Using keys as priorities
+- **Prefix matching:** Finding nearest matches for partial keys
 

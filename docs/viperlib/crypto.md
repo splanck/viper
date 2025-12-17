@@ -67,7 +67,3 @@ DIM hash AS STRING = Viper.Crypto.Hash.SHA256Bytes(bytes)
 PRINT hash
 ```
 
----
-
-## Viper.Bits
-

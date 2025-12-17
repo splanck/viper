@@ -289,7 +289,7 @@ Installs: `vbasic`, `vpascal`, `ilrun`, `ilc`, `il-verify`, `il-dis`
 | [BASIC Reference](docs/basic-reference.md) | Complete BASIC language specification |
 | [Pascal Tutorial](docs/pascal-language.md) | Learn Viper Pascal by example |
 | [Pascal Reference](docs/pascal-reference.md) | Complete Pascal language specification |
-| [Runtime Library](docs/viperlib.md) | Viper.* classes, methods, and properties |
+| [Runtime Library](docs/viperlib/README.md) | Viper.* classes, methods, and properties |
 | [IL Guide](docs/il-guide.md) | IL specification and examples |
 | [IL Quickstart](docs/il-quickstart.md) | Fast introduction to Viper IL |
 | [VM Architecture](docs/vm.md) | VM design and internals |

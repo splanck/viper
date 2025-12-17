@@ -68,14 +68,12 @@ Classes define the OOP interface exposed to Viper languages. Method signatures o
 | `Viper.Math` | Math functions (Sin, Cos, Sqrt, etc.) and constants (Pi, E) |
 | `Viper.Terminal` | Terminal I/O (Say, Print, Ask, ReadLine) |
 | `Viper.Convert` | Type conversion (ToInt, ToDouble) |
-| `Viper.Parse` | Safe parsing (TryInt, IntOr, IsInt, IntRadix) |
 | `Viper.Environment` | Command-line args, environment variables, process exit |
 | `Viper.Random` | Random number generation |
 | `Viper.Collections.Seq` | Dynamic array with Push, Pop, Get, Set |
 | `Viper.Collections.Stack` | LIFO with Push, Pop, Peek |
 | `Viper.Collections.Queue` | FIFO with Add, Take, Peek |
 | `Viper.Collections.Map` | String-keyed dictionary |
-| `Viper.Collections.TreeMap` | Sorted string-keyed map with Floor/Ceil |
 | `Viper.Collections.Bytes` | Efficient byte array |
 | `Viper.Collections.Bag` | String set with union, intersection, difference |
 | `Viper.Collections.Ring` | Fixed-size circular buffer (overwrites oldest) |
@@ -88,20 +86,14 @@ Classes define the OOP interface exposed to Viper languages. Method signatures o
 | `Viper.IO.LineWriter` | Buffered text file writing |
 | `Viper.Text.StringBuilder` | Efficient string concatenation |
 | `Viper.Text.Codec` | Base64, Hex, URL encoding/decoding |
-| `Viper.Text.Csv` | CSV parsing and formatting (RFC 4180) |
 | `Viper.Text.Guid` | UUID v4 generation |
 | `Viper.Crypto.Hash` | MD5, SHA1, SHA256, CRC32 hashing |
 | `Viper.Graphics.Canvas` | Window and 2D drawing |
 | `Viper.Graphics.Color` | RGB/RGBA color creation |
 | `Viper.Graphics.Pixels` | Software image buffer for pixel manipulation |
 | `Viper.Time.Clock` | Sleep and tick counting |
-| `Viper.Time.Countdown` | Interval timing with expiration |
 | `Viper.DateTime` | Date/time creation and formatting |
 | `Viper.Diagnostics.Stopwatch` | Benchmarking timer |
-
----
-
-## Type Reference
 
 ---
 
@@ -115,8 +107,4 @@ Classes define the OOP interface exposed to Viper languages. Method signatures o
 | `String` | `str` | Immutable string |
 | `Object` | `obj` | Reference to any object |
 | `Void` | `void` | No return value |
-
----
-
-## See Also
 

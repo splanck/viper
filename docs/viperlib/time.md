@@ -7,9 +7,9 @@
 ## Contents
 
 - [Viper.DateTime](#viperdatetime)
+- [Viper.Diagnostics.Stopwatch](#viperdiagnosticsstopwatch)
 - [Viper.Time.Clock](#vipertimeclock)
 - [Viper.Time.Countdown](#vipertimecountdown)
-- [Viper.Diagnostics.Stopwatch](#viperdiagnosticsstopwatch)
 
 ---
 
@@ -90,162 +90,6 @@ age_seconds = Viper.DateTime.Diff(now, birthday)
 
 ---
 
-## Viper.Time.Clock
-
----
-
-## Viper.Time.Clock
-
-Basic timing utilities for sleeping and measuring elapsed time.
-
-**Type:** Static utility class
-
-### Methods
-
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `Sleep(ms)` | `Void(Integer)` | Pause execution for the specified number of milliseconds |
-| `Ticks()` | `Integer()` | Returns monotonic time in milliseconds since an unspecified epoch |
-| `TicksUs()` | `Integer()` | Returns monotonic time in microseconds since an unspecified epoch |
-
-### Notes
-
-- `Ticks()` and `TicksUs()` return monotonic, non-decreasing values suitable for measuring elapsed time
-- The epoch (starting point) is unspecified - only use these functions for measuring durations, not absolute time
-- `TicksUs()` provides microsecond resolution for high-precision timing
-- `Sleep(0)` returns immediately without sleeping
-- Negative values passed to `Sleep()` are treated as 0
-
-### Example
-
-```basic
-' Measure execution time
-DIM startMs AS INTEGER = Viper.Time.Clock.Ticks()
-
-' Do some work...
-FOR i = 1 TO 1000000
-    ' busy loop
-NEXT
-
-DIM endMs AS INTEGER = Viper.Time.Clock.Ticks()
-PRINT "Elapsed time: "; endMs - startMs; " ms"
-
-' High-precision timing with microseconds
-DIM startUs AS INTEGER = Viper.Time.Clock.TicksUs()
-' ... fast operation ...
-DIM endUs AS INTEGER = Viper.Time.Clock.TicksUs()
-PRINT "Elapsed: "; endUs - startUs; " microseconds"
-
-' Sleep for a short delay
-Viper.Time.Clock.Sleep(100)  ' Sleep for 100ms
-```
-
----
-
-## Viper.Time.Countdown
-
----
-
-## Viper.Time.Countdown
-
-Interval timing with expiration detection. Useful for timeouts, rate limiting, and periodic actions.
-
-**Type:** Instance (obj)
-**Constructor:** `Viper.Time.Countdown.New(interval_ms)`
-
-### Properties
-
-| Property | Type | Access | Description |
-|----------|------|--------|-------------|
-| `Elapsed` | `Integer` | Read | Total elapsed time in milliseconds since start/last reset |
-| `Remaining` | `Integer` | Read | Time remaining until expiration: max(0, Interval - Elapsed) |
-| `Expired` | `Boolean` | Read | True if Elapsed >= Interval |
-| `Interval` | `Integer` | Read/Write | Target interval duration in milliseconds |
-| `IsRunning` | `Boolean` | Read | True if the countdown is currently running |
-
-### Methods
-
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `Start()` | `Void()` | Start or resume the countdown timer |
-| `Stop()` | `Void()` | Stop/pause the timer (preserves elapsed time) |
-| `Reset()` | `Void()` | Reset elapsed time to 0 and stop the timer |
-| `Wait()` | `Void()` | Block until the countdown expires (starts timer if not running) |
-
-### Notes
-
-- All times are in milliseconds
-- `Remaining` never goes negative - it returns 0 when expired
-- `Wait()` automatically starts the timer if not already running
-- `Wait()` returns immediately if already expired
-- Negative intervals passed to `New()` or `set_Interval` are clamped to 0
-- Elapsed time accumulates across multiple Start/Stop cycles
-
-### Example
-
-```basic
-' Create a 500ms countdown
-DIM cd AS OBJECT = Viper.Time.Countdown.New(500)
-
-' Start the countdown
-cd.Start()
-
-' Poll for expiration
-WHILE NOT cd.Expired
-    PRINT "Remaining: "; cd.Remaining; " ms"
-    Viper.Time.Clock.Sleep(100)
-WEND
-
-PRINT "Countdown expired!"
-
-' Reset and wait (blocking)
-cd.Reset()
-PRINT "Waiting for 500ms..."
-cd.Wait()
-PRINT "Done!"
-
-' Change the interval
-cd.Interval = 1000
-cd.Reset()
-cd.Start()
-PRINT "New 1-second countdown started"
-```
-
-### Use Cases
-
-```basic
-' Rate limiting - only allow action every 100ms
-DIM rateLimiter AS OBJECT = Viper.Time.Countdown.New(100)
-rateLimiter.Start()
-
-SUB DoRateLimitedAction()
-    IF rateLimiter.Expired THEN
-        ' Perform the action
-        PRINT "Action performed!"
-        rateLimiter.Reset()
-        rateLimiter.Start()
-    END IF
-END SUB
-
-' Timeout pattern
-DIM timeout AS OBJECT = Viper.Time.Countdown.New(5000)  ' 5 second timeout
-timeout.Start()
-
-WHILE NOT operationComplete AND NOT timeout.Expired
-    ' Keep trying...
-WEND
-
-IF timeout.Expired THEN
-    PRINT "Operation timed out!"
-END IF
-```
-
----
-
-## Viper.Vec2
-
----
-
 ## Viper.Diagnostics.Stopwatch
 
 High-precision stopwatch for benchmarking and performance measurement. Supports pause/resume timing with nanosecond resolution.
@@ -318,5 +162,133 @@ PRINT "New timing: "; sw.ElapsedMs; " ms"
 
 ---
 
-## Viper.IO.File
+## Viper.Time.Clock
+
+Basic timing utilities for sleeping and measuring elapsed time.
+
+**Type:** Static utility class
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `Sleep(ms)` | `Void(Integer)` | Pause execution for the specified number of milliseconds |
+| `Ticks()` | `Integer()` | Returns monotonic time in milliseconds since an unspecified epoch |
+| `TicksUs()` | `Integer()` | Returns monotonic time in microseconds since an unspecified epoch |
+
+### Notes
+
+- `Ticks()` and `TicksUs()` return monotonic, non-decreasing values suitable for measuring elapsed time
+- The epoch (starting point) is unspecified - only use these functions for measuring durations, not absolute time
+- `TicksUs()` provides microsecond resolution for high-precision timing
+- `Sleep(0)` returns immediately without sleeping
+- Negative values passed to `Sleep()` are treated as 0
+
+### Example
+
+```basic
+' Measure execution time
+DIM startMs AS INTEGER = Viper.Time.Clock.Ticks()
+
+' Do some work...
+FOR i = 1 TO 1000000
+    ' busy loop
+NEXT
+
+DIM endMs AS INTEGER = Viper.Time.Clock.Ticks()
+PRINT "Elapsed time: "; endMs - startMs; " ms"
+
+' High-precision timing with microseconds
+DIM startUs AS INTEGER = Viper.Time.Clock.TicksUs()
+' ... fast operation ...
+DIM endUs AS INTEGER = Viper.Time.Clock.TicksUs()
+PRINT "Elapsed: "; endUs - startUs; " microseconds"
+
+' Sleep for a short delay
+Viper.Time.Clock.Sleep(100)  ' Sleep for 100ms
+```
+
+---
+
+## Viper.Time.Countdown
+
+A countdown timer for implementing timeouts, delays, and timed operations. Tracks remaining time and signals when the interval has expired.
+
+**Type:** Instance class (requires `New(interval)`)
+
+### Constructor
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `New(interval)` | `Countdown(Integer)` | Create a countdown timer with specified interval in milliseconds |
+
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `Elapsed` | `Integer` (read-only) | Milliseconds elapsed since start |
+| `Remaining` | `Integer` (read-only) | Milliseconds remaining until expiration (0 if expired) |
+| `Expired` | `Boolean` (read-only) | True if the countdown has finished |
+| `Interval` | `Integer` (read/write) | The countdown duration in milliseconds |
+| `IsRunning` | `Boolean` (read-only) | True if the countdown is currently running |
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `Start()` | `Void()` | Start or resume the countdown |
+| `Stop()` | `Void()` | Pause the countdown, preserving remaining time |
+| `Reset()` | `Void()` | Stop and reset to full interval |
+| `Wait()` | `Void()` | Block until the countdown expires |
+
+### Notes
+
+- Unlike Stopwatch (which counts up), Countdown counts down from an interval
+- `Remaining` returns 0 once expired (never negative)
+- `Expired` becomes true when elapsed time reaches or exceeds the interval
+- `Wait()` blocks the current thread until expiration; returns immediately if already expired
+- Changing `Interval` while running affects when `Expired` becomes true
+
+### Example
+
+```basic
+' Create a 5-second countdown
+DIM timer AS OBJECT = Viper.Time.Countdown.New(5000)
+timer.Start()
+
+' Game loop with timeout
+WHILE NOT timer.Expired
+    PRINT "Time remaining: "; timer.Remaining; " ms"
+    Viper.Time.Clock.Sleep(500)
+WEND
+PRINT "Time's up!"
+
+' Use for operation timeout
+DIM timeout AS OBJECT = Viper.Time.Countdown.New(1000)
+timeout.Start()
+
+WHILE NOT operationComplete AND NOT timeout.Expired
+    ' Try operation...
+WEND
+
+IF timeout.Expired THEN
+    PRINT "Operation timed out"
+END IF
+
+' Blocking wait
+DIM delay AS OBJECT = Viper.Time.Countdown.New(2000)
+delay.Start()
+PRINT "Waiting 2 seconds..."
+delay.Wait()
+PRINT "Done!"
+```
+
+### Comparison with Clock.Sleep
+
+| Use Case | Recommended |
+|----------|-------------|
+| Simple fixed delay | `Clock.Sleep(ms)` |
+| Timeout with early exit | `Countdown` |
+| Progress tracking during wait | `Countdown` |
+| Pause/resume timing | `Countdown` |
 

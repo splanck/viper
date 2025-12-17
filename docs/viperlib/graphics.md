@@ -92,10 +92,6 @@ LOOP
 
 ## Viper.Graphics.Color
 
----
-
-## Viper.Graphics.Color
-
 Color utility functions for graphics operations.
 
 **Type:** Static utility class
@@ -129,10 +125,6 @@ semiTransparent = Viper.Graphics.Color.RGBA(255, 0, 0, 128)  ' 50% transparent r
 canvas.Box(10, 10, 100, 100, red)
 canvas.Disc(200, 200, 50, purple)
 ```
-
----
-
-## Viper.Graphics.Pixels
 
 ---
 
@@ -221,8 +213,4 @@ data = pixels.ToBytes()
 - Out-of-bounds writes are silently ignored
 - The `Copy` method automatically clips to buffer boundaries
 - `ToBytes` returns 4 bytes per pixel (width × height × 4 total bytes)
-
----
-
-## Runtime Architecture
 
