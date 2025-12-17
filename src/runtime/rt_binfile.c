@@ -94,8 +94,7 @@ void *rt_binfile_open(void *path, void *mode)
         return NULL;
     }
 
-    rt_binfile_impl *bf =
-        (rt_binfile_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_binfile_impl));
+    rt_binfile_impl *bf = (rt_binfile_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_binfile_impl));
     if (!bf)
     {
         fclose(fp);
@@ -269,18 +268,18 @@ int64_t rt_binfile_seek(void *obj, int64_t offset, int64_t origin)
     int whence;
     switch (origin)
     {
-    case 0:
-        whence = SEEK_SET;
-        break;
-    case 1:
-        whence = SEEK_CUR;
-        break;
-    case 2:
-        whence = SEEK_END;
-        break;
-    default:
-        rt_trap("BinFile.Seek: invalid origin (use 0, 1, or 2)");
-        return -1;
+        case 0:
+            whence = SEEK_SET;
+            break;
+        case 1:
+            whence = SEEK_CUR;
+            break;
+        case 2:
+            whence = SEEK_END;
+            break;
+        default:
+            rt_trap("BinFile.Seek: invalid origin (use 0, 1, or 2)");
+            return -1;
     }
 
     if (fseek(bf->fp, (long)offset, whence) != 0)

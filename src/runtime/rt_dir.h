@@ -57,7 +57,8 @@ extern "C"
     void *rt_dir_list(rt_string path);
 
     /// @brief List all entries in a directory as a Viper.Collections.Seq.
-    /// @details Seq-returning wrapper for rt_dir_list. Returns entry names (excluding . and ..) in the
+    /// @details Seq-returning wrapper for rt_dir_list. Returns entry names (excluding . and ..) in
+    /// the
     ///          same enumeration order as rt_dir_list (no sorting; platform/filesystem-dependent).
     ///          If the directory does not exist or cannot be read, returns an empty sequence.
     /// @param path Directory path to list.
@@ -93,8 +94,9 @@ extern "C"
 
     /// @brief List only subdirectories in a directory as a Viper.Collections.Seq.
     /// @details Seq-returning wrapper for rt_dir_dirs. Returns directory names (excluding . and ..)
-    ///          in the same enumeration order as rt_dir_dirs (no sorting; platform/filesystem-dependent).
-    ///          If the directory does not exist or cannot be read, returns an empty sequence.
+    ///          in the same enumeration order as rt_dir_dirs (no sorting;
+    ///          platform/filesystem-dependent). If the directory does not exist or cannot be read,
+    ///          returns an empty sequence.
     /// @param path Directory path to list.
     /// @return Viper.Collections.Seq containing runtime strings for each directory name.
     void *rt_dir_dirs_seq(rt_string path);

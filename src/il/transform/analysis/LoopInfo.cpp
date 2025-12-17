@@ -185,8 +185,8 @@ LoopInfo computeLoopInfo(Module &module, Function &function)
 
     // Exits: edges from loop body to outside.
     const auto labelMapIt = cfgCtx.functionLabelToBlock.find(&function);
-    const auto *labelMap = labelMapIt == cfgCtx.functionLabelToBlock.end() ? nullptr
-                                                                           : &labelMapIt->second;
+    const auto *labelMap =
+        labelMapIt == cfgCtx.functionLabelToBlock.end() ? nullptr : &labelMapIt->second;
     for (auto &loop : info.loops_)
     {
         std::vector<LoopExit> exits;

@@ -38,7 +38,8 @@ static void test_url_encode_basic()
     test_result("Empty string encodes to empty", strcmp(rt_string_cstr(enc_empty), "") == 0);
 
     // Unreserved characters pass through unchanged
-    rt_string unreserved = rt_const_cstr("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~");
+    rt_string unreserved =
+        rt_const_cstr("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~");
     rt_string enc_unreserved = rt_codec_url_encode(unreserved);
     test_result("Unreserved chars unchanged",
                 strcmp(rt_string_cstr(enc_unreserved), rt_string_cstr(unreserved)) == 0);
@@ -51,7 +52,8 @@ static void test_url_encode_basic()
     // Special characters encode correctly (lowercase hex)
     rt_string special = rt_const_cstr("key=value&other=test");
     rt_string enc_special = rt_codec_url_encode(special);
-    test_result("Special chars encoded", strcmp(rt_string_cstr(enc_special), "key%3dvalue%26other%3dtest") == 0);
+    test_result("Special chars encoded",
+                strcmp(rt_string_cstr(enc_special), "key%3dvalue%26other%3dtest") == 0);
 
     // Unicode/extended ASCII (lowercase hex)
     rt_string utf8 = rt_const_cstr("caf\xC3\xA9"); // cafe with accent
@@ -88,7 +90,8 @@ static void test_url_decode_basic()
     // Multiple encodings (uppercase and lowercase both work)
     rt_string multi = rt_const_cstr("key%3dvalue%26other%3dtest");
     rt_string dec_multi = rt_codec_url_decode(multi);
-    test_result("Multiple encodings decoded", strcmp(rt_string_cstr(dec_multi), "key=value&other=test") == 0);
+    test_result("Multiple encodings decoded",
+                strcmp(rt_string_cstr(dec_multi), "key=value&other=test") == 0);
 
     // Case insensitive hex
     rt_string upper = rt_const_cstr("hello%2Fworld");
@@ -109,7 +112,8 @@ static void test_url_decode_basic()
 
     rt_string invalid3 = rt_const_cstr("100%GH");
     rt_string dec_invalid3 = rt_codec_url_decode(invalid3);
-    test_result("Invalid hex %GH passes through", strcmp(rt_string_cstr(dec_invalid3), "100%GH") == 0);
+    test_result("Invalid hex %GH passes through",
+                strcmp(rt_string_cstr(dec_invalid3), "100%GH") == 0);
 
     printf("\n");
 }
@@ -118,15 +122,14 @@ static void test_url_roundtrip()
 {
     printf("Testing URL encode/decode roundtrip:\n");
 
-    const char *test_strings[] = {
-        "",
-        "hello",
-        "hello world",
-        "key=value&other=test",
-        "http://example.com/path?query=value#anchor",
-        "!@#$%^&*()_+{}|:\"<>?",
-        "\x01\x02\x03\x7F\x80\xFF",
-        NULL};
+    const char *test_strings[] = {"",
+                                  "hello",
+                                  "hello world",
+                                  "key=value&other=test",
+                                  "http://example.com/path?query=value#anchor",
+                                  "!@#$%^&*()_+{}|:\"<>?",
+                                  "\x01\x02\x03\x7F\x80\xFF",
+                                  NULL};
 
     bool all_passed = true;
     for (int i = 0; test_strings[i] != NULL; i++)
@@ -169,17 +172,21 @@ static void test_base64_encode()
     test_result("'foo' -> 'Zm9v'", strcmp(rt_string_cstr(rt_codec_base64_enc(foo)), "Zm9v") == 0);
 
     rt_string foob = rt_const_cstr("foob");
-    test_result("'foob' -> 'Zm9vYg=='", strcmp(rt_string_cstr(rt_codec_base64_enc(foob)), "Zm9vYg==") == 0);
+    test_result("'foob' -> 'Zm9vYg=='",
+                strcmp(rt_string_cstr(rt_codec_base64_enc(foob)), "Zm9vYg==") == 0);
 
     rt_string fooba = rt_const_cstr("fooba");
-    test_result("'fooba' -> 'Zm9vYmE='", strcmp(rt_string_cstr(rt_codec_base64_enc(fooba)), "Zm9vYmE=") == 0);
+    test_result("'fooba' -> 'Zm9vYmE='",
+                strcmp(rt_string_cstr(rt_codec_base64_enc(fooba)), "Zm9vYmE=") == 0);
 
     rt_string foobar = rt_const_cstr("foobar");
-    test_result("'foobar' -> 'Zm9vYmFy'", strcmp(rt_string_cstr(rt_codec_base64_enc(foobar)), "Zm9vYmFy") == 0);
+    test_result("'foobar' -> 'Zm9vYmFy'",
+                strcmp(rt_string_cstr(rt_codec_base64_enc(foobar)), "Zm9vYmFy") == 0);
 
     // "Hello" test
     rt_string hello = rt_const_cstr("Hello");
-    test_result("'Hello' -> 'SGVsbG8='", strcmp(rt_string_cstr(rt_codec_base64_enc(hello)), "SGVsbG8=") == 0);
+    test_result("'Hello' -> 'SGVsbG8='",
+                strcmp(rt_string_cstr(rt_codec_base64_enc(hello)), "SGVsbG8=") == 0);
 
     printf("\n");
 }
@@ -204,17 +211,21 @@ static void test_base64_decode()
     test_result("'Zm9v' -> 'foo'", strcmp(rt_string_cstr(rt_codec_base64_dec(zm9v)), "foo") == 0);
 
     rt_string zm9vyg = rt_const_cstr("Zm9vYg==");
-    test_result("'Zm9vYg==' -> 'foob'", strcmp(rt_string_cstr(rt_codec_base64_dec(zm9vyg)), "foob") == 0);
+    test_result("'Zm9vYg==' -> 'foob'",
+                strcmp(rt_string_cstr(rt_codec_base64_dec(zm9vyg)), "foob") == 0);
 
     rt_string zm9vyme = rt_const_cstr("Zm9vYmE=");
-    test_result("'Zm9vYmE=' -> 'fooba'", strcmp(rt_string_cstr(rt_codec_base64_dec(zm9vyme)), "fooba") == 0);
+    test_result("'Zm9vYmE=' -> 'fooba'",
+                strcmp(rt_string_cstr(rt_codec_base64_dec(zm9vyme)), "fooba") == 0);
 
     rt_string zm9vymy = rt_const_cstr("Zm9vYmFy");
-    test_result("'Zm9vYmFy' -> 'foobar'", strcmp(rt_string_cstr(rt_codec_base64_dec(zm9vymy)), "foobar") == 0);
+    test_result("'Zm9vYmFy' -> 'foobar'",
+                strcmp(rt_string_cstr(rt_codec_base64_dec(zm9vymy)), "foobar") == 0);
 
     // "Hello" test
     rt_string hello_b64 = rt_const_cstr("SGVsbG8=");
-    test_result("'SGVsbG8=' -> 'Hello'", strcmp(rt_string_cstr(rt_codec_base64_dec(hello_b64)), "Hello") == 0);
+    test_result("'SGVsbG8=' -> 'Hello'",
+                strcmp(rt_string_cstr(rt_codec_base64_dec(hello_b64)), "Hello") == 0);
 
     printf("\n");
 }
@@ -270,12 +281,14 @@ static void test_hex_encode()
     test_result("'a' -> '61'", strcmp(rt_string_cstr(rt_codec_hex_enc(a)), "61") == 0);
 
     rt_string hello = rt_const_cstr("Hello");
-    test_result("'Hello' -> '48656c6c6f'", strcmp(rt_string_cstr(rt_codec_hex_enc(hello)), "48656c6c6f") == 0);
+    test_result("'Hello' -> '48656c6c6f'",
+                strcmp(rt_string_cstr(rt_codec_hex_enc(hello)), "48656c6c6f") == 0);
 
     // High-byte characters (no embedded nulls - Codec works on C strings)
     // For binary data with nulls, use Bytes.ToHex/FromHex instead
     rt_string binary = rt_const_cstr("\xFF\x10\x20");
-    test_result("High-byte chars -> 'ff1020'", strcmp(rt_string_cstr(rt_codec_hex_enc(binary)), "ff1020") == 0);
+    test_result("High-byte chars -> 'ff1020'",
+                strcmp(rt_string_cstr(rt_codec_hex_enc(binary)), "ff1020") == 0);
 
     printf("\n");
 }
@@ -294,15 +307,18 @@ static void test_hex_decode()
     test_result("'61' -> 'a'", strcmp(rt_string_cstr(rt_codec_hex_dec(hex_a)), "a") == 0);
 
     rt_string hex_hello = rt_const_cstr("48656c6c6f");
-    test_result("'48656c6c6f' -> 'Hello'", strcmp(rt_string_cstr(rt_codec_hex_dec(hex_hello)), "Hello") == 0);
+    test_result("'48656c6c6f' -> 'Hello'",
+                strcmp(rt_string_cstr(rt_codec_hex_dec(hex_hello)), "Hello") == 0);
 
     // Uppercase hex
     rt_string hex_upper = rt_const_cstr("48656C6C6F");
-    test_result("Uppercase hex decodes", strcmp(rt_string_cstr(rt_codec_hex_dec(hex_upper)), "Hello") == 0);
+    test_result("Uppercase hex decodes",
+                strcmp(rt_string_cstr(rt_codec_hex_dec(hex_upper)), "Hello") == 0);
 
     // Mixed case
     rt_string hex_mixed = rt_const_cstr("48656c6C6f");
-    test_result("Mixed case hex decodes", strcmp(rt_string_cstr(rt_codec_hex_dec(hex_mixed)), "Hello") == 0);
+    test_result("Mixed case hex decodes",
+                strcmp(rt_string_cstr(rt_codec_hex_dec(hex_mixed)), "Hello") == 0);
 
     printf("\n");
 }

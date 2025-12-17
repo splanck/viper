@@ -10,9 +10,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_pixels.h"
 #include "rt_bytes.h"
 #include "rt_internal.h"
+#include "rt_pixels.h"
 
 #include <cassert>
 #include <cstdio>

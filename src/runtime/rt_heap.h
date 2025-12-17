@@ -94,8 +94,8 @@ typedef struct rt_heap_hdr
     size_t refcnt;
     size_t len;
     size_t cap;
-    int64_t class_id;               ///< Optional runtime class identifier (objects only).
-    rt_heap_finalizer_t finalizer;  ///< Optional finalizer callback (objects only).
+    int64_t class_id;              ///< Optional runtime class identifier (objects only).
+    rt_heap_finalizer_t finalizer; ///< Optional finalizer callback (objects only).
 } rt_heap_hdr_t;
 
 #define RT_MAGIC 0x52504956u /* 'VIPR' little-endian */

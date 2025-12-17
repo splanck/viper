@@ -32,11 +32,11 @@
 /// @brief Ring buffer implementation structure.
 typedef struct rt_ring_impl
 {
-    void **vptr;    ///< Vtable pointer placeholder.
-    void **items;   ///< Array of element pointers.
+    void **vptr;     ///< Vtable pointer placeholder.
+    void **items;    ///< Array of element pointers.
     size_t capacity; ///< Maximum number of elements.
-    size_t head;    ///< Index of oldest element.
-    size_t count;   ///< Number of elements currently stored.
+    size_t head;     ///< Index of oldest element.
+    size_t count;    ///< Number of elements currently stored.
 } rt_ring_impl;
 
 static void rt_ring_finalize(void *obj)

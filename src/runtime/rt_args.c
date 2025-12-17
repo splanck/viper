@@ -190,7 +190,8 @@ static const char *rt_env_require_name(rt_string name, const char *context)
 /// @return Newly allocated runtime string containing the value or empty when missing.
 rt_string rt_env_get_var(rt_string name)
 {
-    const char *cname = rt_env_require_name(name, "Viper.Environment.GetVariable: name must not be empty");
+    const char *cname =
+        rt_env_require_name(name, "Viper.Environment.GetVariable: name must not be empty");
 
 #ifdef _WIN32
     DWORD required = GetEnvironmentVariableA(cname, NULL, 0);
@@ -245,7 +246,8 @@ rt_string rt_env_get_var(rt_string name)
 /// @return 1 if present, 0 if missing.
 int64_t rt_env_has_var(rt_string name)
 {
-    const char *cname = rt_env_require_name(name, "Viper.Environment.HasVariable: name must not be empty");
+    const char *cname =
+        rt_env_require_name(name, "Viper.Environment.HasVariable: name must not be empty");
 
 #ifdef _WIN32
     DWORD required = GetEnvironmentVariableA(cname, NULL, 0);
@@ -267,7 +269,8 @@ int64_t rt_env_has_var(rt_string name)
 /// @param value New value (NULL treated as empty string).
 void rt_env_set_var(rt_string name, rt_string value)
 {
-    const char *cname = rt_env_require_name(name, "Viper.Environment.SetVariable: name must not be empty");
+    const char *cname =
+        rt_env_require_name(name, "Viper.Environment.SetVariable: name must not be empty");
     const char *cvalue = value ? rt_string_cstr(value) : "";
 
 #ifdef _WIN32

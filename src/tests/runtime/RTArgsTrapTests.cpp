@@ -13,8 +13,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_args.h"
 #include "rt.hpp"
+#include "rt_args.h"
 
 #include <cassert>
 #include <string>
@@ -45,4 +45,3 @@ int main()
 
     return 0;
 }
-

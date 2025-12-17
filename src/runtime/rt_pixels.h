@@ -62,9 +62,8 @@ extern "C"
     /// @param sy Source Y coordinate.
     /// @param w Width of rectangle to copy.
     /// @param h Height of rectangle to copy.
-    void rt_pixels_copy(void *dst, int64_t dx, int64_t dy,
-                        void *src, int64_t sx, int64_t sy,
-                        int64_t w, int64_t h);
+    void rt_pixels_copy(
+        void *dst, int64_t dx, int64_t dy, void *src, int64_t sx, int64_t sy, int64_t w, int64_t h);
 
     /// @brief Create a deep copy of a Pixels buffer.
     void *rt_pixels_clone(void *pixels);

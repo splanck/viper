@@ -29,6 +29,16 @@
 namespace il::frontends::basic::semantic_analyzer_detail
 {
 
+/// @brief Case-insensitive lowercase for qualified names (preserves dots).
+static std::string toLowerQualified(std::string_view s)
+{
+    std::string out;
+    out.reserve(s.size());
+    for (unsigned char c : s)
+        out.push_back(static_cast<char>(std::tolower(c)));
+    return out;
+}
+
 } // namespace il::frontends::basic::semantic_analyzer_detail
 
 namespace il::frontends::basic
@@ -37,6 +47,7 @@ namespace il::frontends::basic
 using semantic_analyzer_detail::astToSemanticType;
 using semantic_analyzer_detail::levenshtein;
 using semantic_analyzer_detail::semanticTypeName;
+using semantic_analyzer_detail::toLowerQualified;
 
 /// @brief Visitor that routes AST expression nodes through SemanticAnalyzer helpers.
 ///
@@ -619,11 +630,11 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeNew(NewExpr &expr)
         if (tyreg.kindOf(expr.className) == TypeKind::BuiltinExternalType)
         {
             const auto &classes = il::runtime::runtimeClassCatalog();
-            const std::string canon = Canon(expr.className);
+            const std::string canon = toLowerQualified(expr.className);
             const il::runtime::RuntimeClass *found = nullptr;
             for (const auto &c : classes)
             {
-                if (Canon(std::string(c.qname)) == canon)
+                if (toLowerQualified(c.qname) == canon)
                 {
                     found = &c;
                     break;

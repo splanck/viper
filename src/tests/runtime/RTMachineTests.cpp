@@ -10,8 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_machine.h"
 #include "rt_internal.h"
+#include "rt_machine.h"
 #include "rt_string.h"
 
 #include <cassert>
@@ -34,10 +34,8 @@ static void test_os()
     assert(rt_len(os) > 0);
 
     // OS should be one of the known values
-    bool valid = strcmp(os_str, "linux") == 0 ||
-                 strcmp(os_str, "macos") == 0 ||
-                 strcmp(os_str, "windows") == 0 ||
-                 strcmp(os_str, "unknown") == 0;
+    bool valid = strcmp(os_str, "linux") == 0 || strcmp(os_str, "macos") == 0 ||
+                 strcmp(os_str, "windows") == 0 || strcmp(os_str, "unknown") == 0;
     assert(valid);
 
     printf("OS: %s\n", os_str);
@@ -118,7 +116,8 @@ static void test_mem_total()
     assert(mem > 1024 * 1024);
 
     printf("MemTotal: %lld bytes (%.2f GB)\n",
-           (long long)mem, (double)mem / (1024.0 * 1024.0 * 1024.0));
+           (long long)mem,
+           (double)mem / (1024.0 * 1024.0 * 1024.0));
 }
 
 static void test_mem_free()
@@ -128,7 +127,8 @@ static void test_mem_free()
     assert(mem >= 0);
 
     printf("MemFree: %lld bytes (%.2f GB)\n",
-           (long long)mem, (double)mem / (1024.0 * 1024.0 * 1024.0));
+           (long long)mem,
+           (double)mem / (1024.0 * 1024.0 * 1024.0));
 }
 
 static void test_endian()
@@ -140,8 +140,7 @@ static void test_endian()
     assert(endian_str != nullptr);
 
     // Should be "little" or "big"
-    bool valid = strcmp(endian_str, "little") == 0 ||
-                 strcmp(endian_str, "big") == 0;
+    bool valid = strcmp(endian_str, "little") == 0 || strcmp(endian_str, "big") == 0;
     assert(valid);
 
     printf("Endian: %s\n", endian_str);

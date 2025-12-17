@@ -10,8 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_linewriter.h"
 #include "rt_internal.h"
+#include "rt_linewriter.h"
 #include "rt_string.h"
 
 #include <cassert>

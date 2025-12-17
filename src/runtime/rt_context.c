@@ -93,8 +93,8 @@ void rt_context_cleanup(RtContext *ctx)
     }
     free(ctx->modvar_entries);
     ctx->modvar_entries = NULL;
-	    ctx->modvar_count = 0;
-	    ctx->modvar_capacity = 0;
+    ctx->modvar_count = 0;
+    ctx->modvar_capacity = 0;
 
     rt_type_registry_cleanup(ctx);
 }

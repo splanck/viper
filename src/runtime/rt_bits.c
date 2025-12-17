@@ -135,12 +135,35 @@ int64_t rt_bits_leadz(int64_t val)
     // Portable fallback using binary search
     uint64_t u = (uint64_t)val;
     int64_t n = 0;
-    if ((u & 0xFFFFFFFF00000000ULL) == 0) { n += 32; u <<= 32; }
-    if ((u & 0xFFFF000000000000ULL) == 0) { n += 16; u <<= 16; }
-    if ((u & 0xFF00000000000000ULL) == 0) { n += 8;  u <<= 8; }
-    if ((u & 0xF000000000000000ULL) == 0) { n += 4;  u <<= 4; }
-    if ((u & 0xC000000000000000ULL) == 0) { n += 2;  u <<= 2; }
-    if ((u & 0x8000000000000000ULL) == 0) { n += 1; }
+    if ((u & 0xFFFFFFFF00000000ULL) == 0)
+    {
+        n += 32;
+        u <<= 32;
+    }
+    if ((u & 0xFFFF000000000000ULL) == 0)
+    {
+        n += 16;
+        u <<= 16;
+    }
+    if ((u & 0xFF00000000000000ULL) == 0)
+    {
+        n += 8;
+        u <<= 8;
+    }
+    if ((u & 0xF000000000000000ULL) == 0)
+    {
+        n += 4;
+        u <<= 4;
+    }
+    if ((u & 0xC000000000000000ULL) == 0)
+    {
+        n += 2;
+        u <<= 2;
+    }
+    if ((u & 0x8000000000000000ULL) == 0)
+    {
+        n += 1;
+    }
     return n;
 #endif
 }
@@ -163,12 +186,35 @@ int64_t rt_bits_trailz(int64_t val)
     // Portable fallback using binary search
     uint64_t u = (uint64_t)val;
     int64_t n = 0;
-    if ((u & 0x00000000FFFFFFFFULL) == 0) { n += 32; u >>= 32; }
-    if ((u & 0x000000000000FFFFULL) == 0) { n += 16; u >>= 16; }
-    if ((u & 0x00000000000000FFULL) == 0) { n += 8;  u >>= 8; }
-    if ((u & 0x000000000000000FULL) == 0) { n += 4;  u >>= 4; }
-    if ((u & 0x0000000000000003ULL) == 0) { n += 2;  u >>= 2; }
-    if ((u & 0x0000000000000001ULL) == 0) { n += 1; }
+    if ((u & 0x00000000FFFFFFFFULL) == 0)
+    {
+        n += 32;
+        u >>= 32;
+    }
+    if ((u & 0x000000000000FFFFULL) == 0)
+    {
+        n += 16;
+        u >>= 16;
+    }
+    if ((u & 0x00000000000000FFULL) == 0)
+    {
+        n += 8;
+        u >>= 8;
+    }
+    if ((u & 0x000000000000000FULL) == 0)
+    {
+        n += 4;
+        u >>= 4;
+    }
+    if ((u & 0x0000000000000003ULL) == 0)
+    {
+        n += 2;
+        u >>= 2;
+    }
+    if ((u & 0x0000000000000001ULL) == 0)
+    {
+        n += 1;
+    }
     return n;
 #endif
 }

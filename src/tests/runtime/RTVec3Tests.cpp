@@ -10,8 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_vec3.h"
 #include "rt_internal.h"
+#include "rt_vec3.h"
 
 #include <cassert>
 #include <cmath>

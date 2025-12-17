@@ -64,7 +64,8 @@ extern "C"
     /// @details Preserves element ordering. Self-appends are supported: when @p obj == @p other,
     ///          the operation doubles the original sequence contents without looping indefinitely.
     /// @param obj Opaque Seq object pointer.
-    /// @param other Opaque Seq object pointer whose elements will be appended (treated as empty when NULL).
+    /// @param other Opaque Seq object pointer whose elements will be appended (treated as empty
+    /// when NULL).
     void rt_seq_push_all(void *obj, void *other);
 
     /// @brief Remove and return the last element from the sequence.

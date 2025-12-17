@@ -14,8 +14,8 @@
 #include "rt_internal.h"
 
 #include <cassert>
-#include <cstdio>
 #include <cstdint>
+#include <cstdio>
 
 extern "C" void vm_trap(const char *msg)
 {
@@ -99,7 +99,7 @@ static void test_ushr()
     // Negative values should zero-fill
     int64_t neg = -1;
     int64_t result = rt_bits_ushr(neg, 1);
-    assert(result > 0);  // Should be positive after zero-fill
+    assert(result > 0); // Should be positive after zero-fill
     assert(result == (int64_t)0x7FFFFFFFFFFFFFFFLL);
     // Edge cases
     assert(rt_bits_ushr(1, 64) == 0);
@@ -116,8 +116,8 @@ static void test_rotl()
     assert(rt_bits_rotl(1, 0) == 1);
     assert(rt_bits_rotl(1, 1) == 2);
     assert(rt_bits_rotl(1, 63) == (int64_t)(1ULL << 63));
-    assert(rt_bits_rotl(1, 64) == 1);  // Full rotation
-    assert(rt_bits_rotl((int64_t)(1ULL << 63), 1) == 1);  // Rotate high bit to low
+    assert(rt_bits_rotl(1, 64) == 1);                    // Full rotation
+    assert(rt_bits_rotl((int64_t)(1ULL << 63), 1) == 1); // Rotate high bit to low
     printf("test_rotl: PASSED\n");
 }
 
@@ -125,8 +125,8 @@ static void test_rotr()
 {
     assert(rt_bits_rotr(1, 0) == 1);
     assert(rt_bits_rotr(2, 1) == 1);
-    assert(rt_bits_rotr(1, 1) == (int64_t)(1ULL << 63));  // Rotate low bit to high
-    assert(rt_bits_rotr(1, 64) == 1);  // Full rotation
+    assert(rt_bits_rotr(1, 1) == (int64_t)(1ULL << 63)); // Rotate low bit to high
+    assert(rt_bits_rotr(1, 64) == 1);                    // Full rotation
     printf("test_rotr: PASSED\n");
 }
 
@@ -142,8 +142,8 @@ static void test_count()
     assert(rt_bits_count(7) == 3);
     assert(rt_bits_count(0xFF) == 8);
     assert(rt_bits_count(0xFFFF) == 16);
-    assert(rt_bits_count(-1) == 64);  // All bits set
-    assert(rt_bits_count(0x5555555555555555LL) == 32);  // Alternating bits
+    assert(rt_bits_count(-1) == 64);                   // All bits set
+    assert(rt_bits_count(0x5555555555555555LL) == 32); // Alternating bits
     printf("test_count: PASSED\n");
 }
 
@@ -153,8 +153,8 @@ static void test_leadz()
     assert(rt_bits_leadz(1) == 63);
     assert(rt_bits_leadz(2) == 62);
     assert(rt_bits_leadz(0xFF) == 56);
-    assert(rt_bits_leadz(-1) == 0);  // All bits set
-    assert(rt_bits_leadz((int64_t)(1ULL << 63)) == 0);  // High bit set
+    assert(rt_bits_leadz(-1) == 0);                    // All bits set
+    assert(rt_bits_leadz((int64_t)(1ULL << 63)) == 0); // High bit set
     printf("test_leadz: PASSED\n");
 }
 
@@ -226,7 +226,7 @@ static void test_set()
     assert(rt_bits_set(0, 0) == 1);
     assert(rt_bits_set(0, 1) == 2);
     assert(rt_bits_set(0, 3) == 8);
-    assert(rt_bits_set(1, 0) == 1);  // Already set
+    assert(rt_bits_set(1, 0) == 1); // Already set
     assert(rt_bits_set(0, 63) == (int64_t)(1ULL << 63));
     // Out of range should return unchanged
     assert(rt_bits_set(0, 64) == 0);
@@ -240,7 +240,7 @@ static void test_clear()
     assert(rt_bits_clear(3, 0) == 2);
     assert(rt_bits_clear(3, 1) == 1);
     assert(rt_bits_clear(0xFF, 0) == 0xFE);
-    assert(rt_bits_clear(0, 0) == 0);  // Already clear
+    assert(rt_bits_clear(0, 0) == 0); // Already clear
     // Out of range should return unchanged
     assert(rt_bits_clear(1, 64) == 1);
     assert(rt_bits_clear(1, -1) == 1);
@@ -291,7 +291,7 @@ static void test_edge_cases()
     assert(rt_bits_leadz(max_pos) == 1);
 
     // Minimum negative value
-    int64_t min_neg = (int64_t)(1ULL << 63);  // -9223372036854775808
+    int64_t min_neg = (int64_t)(1ULL << 63); // -9223372036854775808
     assert(rt_bits_count(min_neg) == 1);
     assert(rt_bits_leadz(min_neg) == 0);
     assert(rt_bits_trailz(min_neg) == 63);

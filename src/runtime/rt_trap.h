@@ -52,6 +52,68 @@ extern "C"
     ///        default when empty.
     void rt_diag_assert(int8_t condition, rt_string message);
 
+    /// @brief Assert two integers are equal.
+    /// @param expected The expected value.
+    /// @param actual The actual value.
+    /// @param message Description of what was being tested.
+    void rt_diag_assert_eq(int64_t expected, int64_t actual, rt_string message);
+
+    /// @brief Assert two integers are not equal.
+    /// @param a First value.
+    /// @param b Second value.
+    /// @param message Description of what was being tested.
+    void rt_diag_assert_neq(int64_t a, int64_t b, rt_string message);
+
+    /// @brief Assert two numbers are approximately equal.
+    /// @param expected The expected value.
+    /// @param actual The actual value.
+    /// @param message Description of what was being tested.
+    void rt_diag_assert_eq_num(double expected, double actual, rt_string message);
+
+    /// @brief Assert two strings are equal.
+    /// @param expected The expected string.
+    /// @param actual The actual string.
+    /// @param message Description of what was being tested.
+    void rt_diag_assert_eq_str(rt_string expected, rt_string actual, rt_string message);
+
+    /// @brief Assert an object reference is null.
+    /// @param obj The object to check.
+    /// @param message Description of what was being tested.
+    void rt_diag_assert_null(void *obj, rt_string message);
+
+    /// @brief Assert an object reference is not null.
+    /// @param obj The object to check.
+    /// @param message Description of what was being tested.
+    void rt_diag_assert_not_null(void *obj, rt_string message);
+
+    /// @brief Unconditionally fail with a message.
+    /// @param message Failure description.
+    void rt_diag_assert_fail(rt_string message);
+
+    /// @brief Assert first value is greater than second.
+    /// @param a First value.
+    /// @param b Second value.
+    /// @param message Description of what was being tested.
+    void rt_diag_assert_gt(int64_t a, int64_t b, rt_string message);
+
+    /// @brief Assert first value is less than second.
+    /// @param a First value.
+    /// @param b Second value.
+    /// @param message Description of what was being tested.
+    void rt_diag_assert_lt(int64_t a, int64_t b, rt_string message);
+
+    /// @brief Assert first value is greater than or equal to second.
+    /// @param a First value.
+    /// @param b Second value.
+    /// @param message Description of what was being tested.
+    void rt_diag_assert_gte(int64_t a, int64_t b, rt_string message);
+
+    /// @brief Assert first value is less than or equal to second.
+    /// @param a First value.
+    /// @param b Second value.
+    /// @param message Description of what was being tested.
+    void rt_diag_assert_lte(int64_t a, int64_t b, rt_string message);
+
 #ifdef __cplusplus
 }
 #endif

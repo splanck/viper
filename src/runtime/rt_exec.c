@@ -175,9 +175,9 @@ static rt_string exec_capture_spawn(const char *program, void *args)
 
     posix_spawn_file_actions_t actions;
     posix_spawn_file_actions_init(&actions);
-    posix_spawn_file_actions_addclose(&actions, pipefd[0]);              // Close read end in child
+    posix_spawn_file_actions_addclose(&actions, pipefd[0]);               // Close read end in child
     posix_spawn_file_actions_adddup2(&actions, pipefd[1], STDOUT_FILENO); // Redirect stdout to pipe
-    posix_spawn_file_actions_addclose(&actions, pipefd[1]);              // Close original write end
+    posix_spawn_file_actions_addclose(&actions, pipefd[1]); // Close original write end
 
     pid_t pid;
     int status = posix_spawn(&pid, program, &actions, NULL, argv, environ);
@@ -284,17 +284,7 @@ static int64_t exec_spawn(const char *program, void *args)
     si.cb = sizeof(si);
     ZeroMemory(&pi, sizeof(pi));
 
-    BOOL success = CreateProcessA(
-        program,
-        cmdline,
-        NULL,
-        NULL,
-        FALSE,
-        0,
-        NULL,
-        NULL,
-        &si,
-        &pi);
+    BOOL success = CreateProcessA(program, cmdline, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi);
 
     free(cmdline);
 
@@ -350,17 +340,16 @@ static rt_string exec_capture_spawn(const char *program, void *args)
     si.hStdInput = NULL;
     ZeroMemory(&pi, sizeof(pi));
 
-    BOOL success = CreateProcessA(
-        program,
-        cmdline,
-        NULL,
-        NULL,
-        TRUE, // Inherit handles
-        0,
-        NULL,
-        NULL,
-        &si,
-        &pi);
+    BOOL success = CreateProcessA(program,
+                                  cmdline,
+                                  NULL,
+                                  NULL,
+                                  TRUE, // Inherit handles
+                                  0,
+                                  NULL,
+                                  NULL,
+                                  &si,
+                                  &pi);
 
     free(cmdline);
     CloseHandle(hWritePipe);
@@ -379,7 +368,8 @@ static rt_string exec_capture_spawn(const char *program, void *args)
     if (buf)
     {
         DWORD bytesRead;
-        while (ReadFile(hReadPipe, buf + len, (DWORD)(cap - len), &bytesRead, NULL) && bytesRead > 0)
+        while (ReadFile(hReadPipe, buf + len, (DWORD)(cap - len), &bytesRead, NULL) &&
+               bytesRead > 0)
         {
             len += bytesRead;
             if (cap - len < 256 && cap < CAPTURE_MAX_SIZE)

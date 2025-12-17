@@ -39,9 +39,9 @@
 #endif
 
 #ifdef __APPLE__
-#include <sys/sysctl.h>
 #include <mach/mach.h>
 #include <mach/mach_host.h>
+#include <sys/sysctl.h>
 #endif
 
 #ifdef __linux__
@@ -87,7 +87,9 @@ rt_string rt_machine_os_ver(void)
     if (GetVersionExA(&osvi))
     {
         char buf[64];
-        snprintf(buf, sizeof(buf), "%lu.%lu.%lu",
+        snprintf(buf,
+                 sizeof(buf),
+                 "%lu.%lu.%lu",
                  (unsigned long)osvi.dwMajorVersion,
                  (unsigned long)osvi.dwMinorVersion,
                  (unsigned long)osvi.dwBuildNumber);
@@ -369,13 +371,15 @@ int64_t rt_machine_mem_free(void)
         return 0;
     }
 
-    if (host_statistics64(mach_port, HOST_VM_INFO64, (host_info64_t)&vm_stats, &count) != KERN_SUCCESS)
+    if (host_statistics64(mach_port, HOST_VM_INFO64, (host_info64_t)&vm_stats, &count) !=
+        KERN_SUCCESS)
     {
         return 0;
     }
 
     // Free memory = free pages + inactive pages (can be reclaimed)
-    int64_t free_mem = ((int64_t)vm_stats.free_count + (int64_t)vm_stats.inactive_count) * (int64_t)page_size;
+    int64_t free_mem =
+        ((int64_t)vm_stats.free_count + (int64_t)vm_stats.inactive_count) * (int64_t)page_size;
     return free_mem;
 
 #elif defined(__linux__)

@@ -277,8 +277,8 @@ rt_string rt_bytes_to_base64(void *obj)
     size_t o = 0;
     while (i + 3 <= input_len)
     {
-        uint32_t triple =
-            ((uint32_t)bytes->data[i] << 16) | ((uint32_t)bytes->data[i + 1] << 8) | bytes->data[i + 2];
+        uint32_t triple = ((uint32_t)bytes->data[i] << 16) | ((uint32_t)bytes->data[i + 1] << 8) |
+                          bytes->data[i + 2];
         out[o++] = b64_chars[(triple >> 18) & 0x3F];
         out[o++] = b64_chars[(triple >> 12) & 0x3F];
         out[o++] = b64_chars[(triple >> 6) & 0x3F];

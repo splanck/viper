@@ -23,9 +23,9 @@
 /// @brief Pixels implementation structure.
 typedef struct rt_pixels_impl
 {
-    int64_t width;   ///< Width in pixels.
-    int64_t height;  ///< Height in pixels.
-    uint32_t *data;  ///< Pixel storage (RGBA, row-major).
+    int64_t width;  ///< Width in pixels.
+    int64_t height; ///< Height in pixels.
+    uint32_t *data; ///< Pixel storage (RGBA, row-major).
 } rt_pixels_impl;
 
 /// @brief Allocate a new Pixels object.
@@ -54,7 +54,8 @@ static rt_pixels_impl *pixels_alloc(int64_t width, int64_t height)
 
     pixels->width = width;
     pixels->height = height;
-    pixels->data = pixel_count > 0 ? (uint32_t *)((uint8_t *)pixels + sizeof(rt_pixels_impl)) : NULL;
+    pixels->data =
+        pixel_count > 0 ? (uint32_t *)((uint8_t *)pixels + sizeof(rt_pixels_impl)) : NULL;
 
     // Zero-fill (transparent black)
     if (pixels->data && data_size > 0)
@@ -171,9 +172,8 @@ void rt_pixels_clear(void *pixels)
 // Copy Operations
 //=============================================================================
 
-void rt_pixels_copy(void *dst, int64_t dx, int64_t dy,
-                    void *src, int64_t sx, int64_t sy,
-                    int64_t w, int64_t h)
+void rt_pixels_copy(
+    void *dst, int64_t dx, int64_t dy, void *src, int64_t sx, int64_t sy, int64_t w, int64_t h)
 {
     if (!dst || !src)
     {

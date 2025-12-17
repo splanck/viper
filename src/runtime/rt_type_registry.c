@@ -22,13 +22,13 @@
 
 // Simple runtime registries for classes and interfaces.
 
-	typedef struct
-	{
-	    int type_id;
-	    const rt_class_info *ci;
-	    int base_type_id; // -1 if none
-	    int owned_ci;     // non-zero when ci must be freed during cleanup
-	} class_entry;
+typedef struct
+{
+    int type_id;
+    const rt_class_info *ci;
+    int base_type_id; // -1 if none
+    int owned_ci;     // non-zero when ci must be freed during cleanup
+} class_entry;
 
 typedef struct
 {
@@ -398,11 +398,11 @@ const rt_class_info *rt_get_class_info_from_vptr(void **vptr)
 /// @param qname        Qualified class name (borrowed).
 /// @param vslot_count  Number of entries in the vtable.
 /// @param base_type_id Base class id or -1 when none.
-	void rt_register_class_with_base(
-	    int type_id, void **vtable, const char *qname, int vslot_count, int base_type_id)
-	{
-	    if (!vtable)
-	        return;
+void rt_register_class_with_base(
+    int type_id, void **vtable, const char *qname, int vslot_count, int base_type_id)
+{
+    if (!vtable)
+        return;
     rt_class_info *ci = (rt_class_info *)malloc(sizeof(rt_class_info));
     if (!ci)
     {
@@ -417,15 +417,15 @@ const rt_class_info *rt_get_class_info_from_vptr(void **vptr)
     // Wire base class pointer by looking up base_type_id in the registry.
     // The base class must be registered before derived classes for this to work.
     ci->base = NULL;
-	    if (base_type_id >= 0)
-	    {
-	        const class_entry *base_entry = find_class_by_type(base_type_id);
-	        if (base_entry && base_entry->ci)
-	            ci->base = base_entry->ci;
-	    }
+    if (base_type_id >= 0)
+    {
+        const class_entry *base_entry = find_class_by_type(base_type_id);
+        if (base_entry && base_entry->ci)
+            ci->base = base_entry->ci;
+    }
 
-	    rt_register_class_entry(ci, 1);
-	}
+    rt_register_class_entry(ci, 1);
+}
 
 /// @brief Convenience wrapper to register a root class (no base).
 void rt_register_class_direct(int type_id, void **vtable, const char *qname, int vslot_count)
@@ -465,17 +465,17 @@ void rt_register_class_with_base_rs(
 /// @param type_id   Class type id.
 /// @param iface_id  Interface id.
 /// @param itable    Interface method table.
-	void rt_register_interface_impl(int64_t type_id, int64_t iface_id, void **itable)
-	{
-	    rt_bind_interface((int)type_id, (int)iface_id, itable);
-	}
+void rt_register_interface_impl(int64_t type_id, int64_t iface_id, void **itable)
+{
+    rt_bind_interface((int)type_id, (int)iface_id, itable);
+}
 
 /// @brief Lookup interface implementation table by type id and interface id.
 /// @param type_id  Class type id.
 /// @param iface_id Interface id.
 /// @return Interface method table or NULL.
-	void **rt_get_interface_impl(int64_t type_id, int64_t iface_id)
-	{
+void **rt_get_interface_impl(int64_t type_id, int64_t iface_id)
+{
     int tid = (int)type_id;
     int iid = (int)iface_id;
 
@@ -493,40 +493,40 @@ void rt_register_class_with_base_rs(
             return itable;
         ce = find_class_by_type(ce->base_type_id);
     }
-	    return NULL;
-	}
+    return NULL;
+}
 
-	void rt_type_registry_cleanup(RtContext *ctx)
-	{
-	    if (!ctx)
-	        return;
+void rt_type_registry_cleanup(RtContext *ctx)
+{
+    if (!ctx)
+        return;
 
-	    class_entry *classes = (class_entry *)ctx->type_registry.classes;
-	    size_t len = ctx->type_registry.classes_len;
-	    if (classes)
-	    {
-	        for (size_t i = 0; i < len; ++i)
-	        {
-	            if (classes[i].owned_ci && classes[i].ci)
-	                free((void *)classes[i].ci);
-	            classes[i].ci = NULL;
-	            classes[i].owned_ci = 0;
-	            classes[i].type_id = 0;
-	            classes[i].base_type_id = -1;
-	        }
-	    }
+    class_entry *classes = (class_entry *)ctx->type_registry.classes;
+    size_t len = ctx->type_registry.classes_len;
+    if (classes)
+    {
+        for (size_t i = 0; i < len; ++i)
+        {
+            if (classes[i].owned_ci && classes[i].ci)
+                free((void *)classes[i].ci);
+            classes[i].ci = NULL;
+            classes[i].owned_ci = 0;
+            classes[i].type_id = 0;
+            classes[i].base_type_id = -1;
+        }
+    }
 
-	    free(ctx->type_registry.classes);
-	    free(ctx->type_registry.ifaces);
-	    free(ctx->type_registry.bindings);
+    free(ctx->type_registry.classes);
+    free(ctx->type_registry.ifaces);
+    free(ctx->type_registry.bindings);
 
-	    ctx->type_registry.classes = NULL;
-	    ctx->type_registry.classes_len = 0;
-	    ctx->type_registry.classes_cap = 0;
-	    ctx->type_registry.ifaces = NULL;
-	    ctx->type_registry.ifaces_len = 0;
-	    ctx->type_registry.ifaces_cap = 0;
-	    ctx->type_registry.bindings = NULL;
-	    ctx->type_registry.bindings_len = 0;
-	    ctx->type_registry.bindings_cap = 0;
-	}
+    ctx->type_registry.classes = NULL;
+    ctx->type_registry.classes_len = 0;
+    ctx->type_registry.classes_cap = 0;
+    ctx->type_registry.ifaces = NULL;
+    ctx->type_registry.ifaces_len = 0;
+    ctx->type_registry.ifaces_cap = 0;
+    ctx->type_registry.bindings = NULL;
+    ctx->type_registry.bindings_len = 0;
+    ctx->type_registry.bindings_cap = 0;
+}

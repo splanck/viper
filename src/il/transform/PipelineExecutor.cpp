@@ -147,17 +147,18 @@ void PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
                             workers.reserve(workerCount);
                             for (std::size_t w = 0; w < workerCount; ++w)
                             {
-                                workers.emplace_back([&]()
-                                                     {
-                                                         for (;;)
-                                                         {
-                                                             std::size_t idx = nextIndex.fetch_add(1);
-                                                             if (idx >= module.functions.size())
-                                                                 break;
-                                                             if (!runFunctionPass(module.functions[idx]))
-                                                                 allOk.store(false, std::memory_order_relaxed);
-                                                         }
-                                                     });
+                                workers.emplace_back(
+                                    [&]()
+                                    {
+                                        for (;;)
+                                        {
+                                            std::size_t idx = nextIndex.fetch_add(1);
+                                            if (idx >= module.functions.size())
+                                                break;
+                                            if (!runFunctionPass(module.functions[idx]))
+                                                allOk.store(false, std::memory_order_relaxed);
+                                        }
+                                    });
                             }
                             for (auto &worker : workers)
                                 worker.join();

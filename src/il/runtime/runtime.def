@@ -19,6 +19,7 @@
 //   COLLECTIONS - RING
 //   COLLECTIONS - SEQ
 //   COLLECTIONS - STACK
+//   COLLECTIONS - TREEMAP
 //   CRYPTO - HASH
 //   DATETIME
 //   DIAGNOSTICS - ASSERT
@@ -42,6 +43,7 @@
 //   STRING FUNCTIONS
 //   TERMINAL I/O
 //   TEXT - CODEC
+//   TEXT - CSV
 //   TEXT - GUID
 //   TEXT - STRINGBUILDER
 //   TIME - CLOCK
@@ -241,6 +243,25 @@ RT_FUNC(StackPop,     rt_stack_pop,      "Viper.Collections.Stack.Pop",         
 RT_FUNC(StackPush,    rt_stack_push,     "Viper.Collections.Stack.Push",        "void(obj,obj)")
 
 //=============================================================================
+// COLLECTIONS - TREEMAP
+//=============================================================================
+
+RT_FUNC(TreeMapNew,     rt_treemap_new,      "Viper.Collections.TreeMap.New",         "obj()")
+RT_FUNC(TreeMapLen,     rt_treemap_len,      "Viper.Collections.TreeMap.get_Len",     "i64(obj)")
+RT_FUNC(TreeMapIsEmpty, rt_treemap_is_empty, "Viper.Collections.TreeMap.get_IsEmpty", "i1(obj)")
+RT_FUNC(TreeMapSet,     rt_treemap_set,      "Viper.Collections.TreeMap.Set",         "void(obj,str,obj)")
+RT_FUNC(TreeMapGet,     rt_treemap_get,      "Viper.Collections.TreeMap.Get",         "obj(obj,str)")
+RT_FUNC(TreeMapHas,     rt_treemap_has,      "Viper.Collections.TreeMap.Has",         "i1(obj,str)")
+RT_FUNC(TreeMapDrop,    rt_treemap_drop,     "Viper.Collections.TreeMap.Drop",        "i1(obj,str)")
+RT_FUNC(TreeMapClear,   rt_treemap_clear,    "Viper.Collections.TreeMap.Clear",       "void(obj)")
+RT_FUNC(TreeMapKeys,    rt_treemap_keys,     "Viper.Collections.TreeMap.Keys",        "obj(obj)")
+RT_FUNC(TreeMapValues,  rt_treemap_values,   "Viper.Collections.TreeMap.Values",      "obj(obj)")
+RT_FUNC(TreeMapFirst,   rt_treemap_first,    "Viper.Collections.TreeMap.First",       "str(obj)")
+RT_FUNC(TreeMapLast,    rt_treemap_last,     "Viper.Collections.TreeMap.Last",        "str(obj)")
+RT_FUNC(TreeMapFloor,   rt_treemap_floor,    "Viper.Collections.TreeMap.Floor",       "str(obj,str)")
+RT_FUNC(TreeMapCeil,    rt_treemap_ceil,     "Viper.Collections.TreeMap.Ceil",        "str(obj,str)")
+
+//=============================================================================
 // CRYPTO - HASH
 //=============================================================================
 
@@ -278,6 +299,17 @@ RT_FUNC(DateTimeYear,       rt_datetime_year,        "Viper.DateTime.Year",     
 //=============================================================================
 
 RT_FUNC(DiagAssert, rt_diag_assert, "Viper.Diagnostics.Assert", "void(i1,str)")
+RT_FUNC(DiagAssertEq, rt_diag_assert_eq, "Viper.Diagnostics.AssertEq", "void(i64,i64,str)")
+RT_FUNC(DiagAssertNeq, rt_diag_assert_neq, "Viper.Diagnostics.AssertNeq", "void(i64,i64,str)")
+RT_FUNC(DiagAssertEqNum, rt_diag_assert_eq_num, "Viper.Diagnostics.AssertEqNum", "void(f64,f64,str)")
+RT_FUNC(DiagAssertEqStr, rt_diag_assert_eq_str, "Viper.Diagnostics.AssertEqStr", "void(str,str,str)")
+RT_FUNC(DiagAssertNull, rt_diag_assert_null, "Viper.Diagnostics.AssertNull", "void(obj,str)")
+RT_FUNC(DiagAssertNotNull, rt_diag_assert_not_null, "Viper.Diagnostics.AssertNotNull", "void(obj,str)")
+RT_FUNC(DiagAssertFail, rt_diag_assert_fail, "Viper.Diagnostics.AssertFail", "void(str)")
+RT_FUNC(DiagAssertGt, rt_diag_assert_gt, "Viper.Diagnostics.AssertGt", "void(i64,i64,str)")
+RT_FUNC(DiagAssertLt, rt_diag_assert_lt, "Viper.Diagnostics.AssertLt", "void(i64,i64,str)")
+RT_FUNC(DiagAssertGte, rt_diag_assert_gte, "Viper.Diagnostics.AssertGte", "void(i64,i64,str)")
+RT_FUNC(DiagAssertLte, rt_diag_assert_lte, "Viper.Diagnostics.AssertLte", "void(i64,i64,str)")
 
 //=============================================================================
 // DIAGNOSTICS - STOPWATCH
@@ -467,6 +499,23 @@ RT_FUNC(LineWriterWriteChar,  rt_linewriter_write_char,  "Viper.IO.LineWriter.Wr
 RT_FUNC(LineWriterWriteLn,    rt_linewriter_write_ln,    "Viper.IO.LineWriter.WriteLn",     "void(obj,str)")
 
 //=============================================================================
+// LOG
+//=============================================================================
+
+RT_FUNC(LogDebug,    rt_log_debug,       "Viper.Log.Debug",     "void(str)")
+RT_FUNC(LogInfo,     rt_log_info,        "Viper.Log.Info",      "void(str)")
+RT_FUNC(LogWarn,     rt_log_warn,        "Viper.Log.Warn",      "void(str)")
+RT_FUNC(LogError,    rt_log_error,       "Viper.Log.Error",     "void(str)")
+RT_FUNC(LogLevel,    rt_log_level,       "Viper.Log.get_Level", "i64()")
+RT_FUNC(LogSetLevel, rt_log_set_level,   "Viper.Log.set_Level", "void(i64)")
+RT_FUNC(LogEnabled,  rt_log_enabled,     "Viper.Log.Enabled",   "i1(i64)")
+RT_FUNC(LogDEBUG,    rt_log_level_debug, "Viper.Log.get_DEBUG", "i64()")
+RT_FUNC(LogINFO,     rt_log_level_info,  "Viper.Log.get_INFO",  "i64()")
+RT_FUNC(LogWARN,     rt_log_level_warn,  "Viper.Log.get_WARN",  "i64()")
+RT_FUNC(LogERROR,    rt_log_level_error, "Viper.Log.get_ERROR", "i64()")
+RT_FUNC(LogOFF,      rt_log_level_off,   "Viper.Log.get_OFF",   "i64()")
+
+//=============================================================================
 // MACHINE
 //=============================================================================
 
@@ -652,6 +701,19 @@ RT_FUNC(CodecUrlDecode, rt_codec_url_decode, "Viper.Text.Codec.UrlDecode", "str(
 RT_FUNC(CodecUrlEncode, rt_codec_url_encode, "Viper.Text.Codec.UrlEncode", "str(str)")
 
 //=============================================================================
+// TEXT - CSV
+//=============================================================================
+
+RT_FUNC(CsvParseLine,       rt_csv_parse_line,        "Viper.Text.Csv.ParseLine",       "obj(str)")
+RT_FUNC(CsvParseLineWith,   rt_csv_parse_line_with,   "Viper.Text.Csv.ParseLineWith",   "obj(str,str)")
+RT_FUNC(CsvParse,           rt_csv_parse,             "Viper.Text.Csv.Parse",           "obj(str)")
+RT_FUNC(CsvParseWith,       rt_csv_parse_with,        "Viper.Text.Csv.ParseWith",       "obj(str,str)")
+RT_FUNC(CsvFormatLine,      rt_csv_format_line,       "Viper.Text.Csv.FormatLine",      "str(obj)")
+RT_FUNC(CsvFormatLineWith,  rt_csv_format_line_with,  "Viper.Text.Csv.FormatLineWith",  "str(obj,str)")
+RT_FUNC(CsvFormat,          rt_csv_format,            "Viper.Text.Csv.Format",          "str(obj)")
+RT_FUNC(CsvFormatWith,      rt_csv_format_with,       "Viper.Text.Csv.FormatWith",      "str(obj,str)")
+
+//=============================================================================
 // TEXT - GUID
 //=============================================================================
 
@@ -686,6 +748,22 @@ RT_ALIAS("Viper.Time.SleepMs", ClockSleep)
 RT_ALIAS("Viper.Time.GetTickCount", ClockTicks)
 
 //=============================================================================
+// TIME - COUNTDOWN
+//=============================================================================
+
+RT_FUNC(CountdownNew,         rt_countdown_new,          "Viper.Time.Countdown.New",          "obj(i64)")
+RT_FUNC(CountdownStart,       rt_countdown_start,        "Viper.Time.Countdown.Start",        "void(obj)")
+RT_FUNC(CountdownStop,        rt_countdown_stop,         "Viper.Time.Countdown.Stop",         "void(obj)")
+RT_FUNC(CountdownReset,       rt_countdown_reset,        "Viper.Time.Countdown.Reset",        "void(obj)")
+RT_FUNC(CountdownElapsed,     rt_countdown_elapsed,      "Viper.Time.Countdown.get_Elapsed",  "i64(obj)")
+RT_FUNC(CountdownRemaining,   rt_countdown_remaining,    "Viper.Time.Countdown.get_Remaining","i64(obj)")
+RT_FUNC(CountdownExpired,     rt_countdown_expired,      "Viper.Time.Countdown.get_Expired",  "i1(obj)")
+RT_FUNC(CountdownInterval,    rt_countdown_interval,     "Viper.Time.Countdown.get_Interval", "i64(obj)")
+RT_FUNC(CountdownSetInterval, rt_countdown_set_interval, "Viper.Time.Countdown.set_Interval", "void(obj,i64)")
+RT_FUNC(CountdownIsRunning,   rt_countdown_is_running,   "Viper.Time.Countdown.get_IsRunning","i1(obj)")
+RT_FUNC(CountdownWait,        rt_countdown_wait,         "Viper.Time.Countdown.Wait",         "void(obj)")
+
+//=============================================================================
 // TYPE CONVERSION
 //=============================================================================
 
@@ -693,6 +771,36 @@ RT_FUNC(ParseDouble, rt_parse_double, "Viper.Parse.Double",     "i32(ptr,ptr)")
 RT_FUNC(ParseInt64,  rt_parse_int64,  "Viper.Parse.Int64",      "i32(ptr,ptr)")
 RT_FUNC(ToDouble,    rt_to_double,    "Viper.Convert.ToDouble", "f64(str)")
 RT_FUNC(ToInt,       rt_to_int,       "Viper.Convert.ToInt",    "i64(str)")
+
+// Safe parsing functions (return success/failure, use defaults)
+RT_FUNC(ParseTryInt,   rt_parse_try_int,   "Viper.Parse.TryInt",   "i1(str,ptr)")
+RT_FUNC(ParseTryNum,   rt_parse_try_num,   "Viper.Parse.TryNum",   "i1(str,ptr)")
+RT_FUNC(ParseTryBool,  rt_parse_try_bool,  "Viper.Parse.TryBool",  "i1(str,ptr)")
+RT_FUNC(ParseIntOr,    rt_parse_int_or,    "Viper.Parse.IntOr",    "i64(str,i64)")
+RT_FUNC(ParseNumOr,    rt_parse_num_or,    "Viper.Parse.NumOr",    "f64(str,f64)")
+RT_FUNC(ParseBoolOr,   rt_parse_bool_or,   "Viper.Parse.BoolOr",   "i1(str,i1)")
+RT_FUNC(ParseIsInt,    rt_parse_is_int,    "Viper.Parse.IsInt",    "i1(str)")
+RT_FUNC(ParseIsNum,    rt_parse_is_num,    "Viper.Parse.IsNum",    "i1(str)")
+RT_FUNC(ParseIntRadix, rt_parse_int_radix, "Viper.Parse.IntRadix", "i64(str,i64,i64)")
+
+//=============================================================================
+// FMT (value formatting)
+//=============================================================================
+
+RT_FUNC(FmtInt,      rt_fmt_int,       "Viper.Fmt.Int",      "str(i64)")
+RT_FUNC(FmtIntRadix, rt_fmt_int_radix, "Viper.Fmt.IntRadix", "str(i64,i64)")
+RT_FUNC(FmtIntPad,   rt_fmt_int_pad,   "Viper.Fmt.IntPad",   "str(i64,i64,str)")
+RT_FUNC(FmtNum,      rt_fmt_num,       "Viper.Fmt.Num",      "str(f64)")
+RT_FUNC(FmtNumFixed, rt_fmt_num_fixed, "Viper.Fmt.NumFixed", "str(f64,i64)")
+RT_FUNC(FmtNumSci,   rt_fmt_num_sci,   "Viper.Fmt.NumSci",   "str(f64,i64)")
+RT_FUNC(FmtNumPct,   rt_fmt_num_pct,   "Viper.Fmt.NumPct",   "str(f64,i64)")
+RT_FUNC(FmtBool,     rt_fmt_bool,      "Viper.Fmt.Bool",     "str(i1)")
+RT_FUNC(FmtBoolYN,   rt_fmt_bool_yn,   "Viper.Fmt.BoolYN",   "str(i1)")
+RT_FUNC(FmtSize,     rt_fmt_size,      "Viper.Fmt.Size",     "str(i64)")
+RT_FUNC(FmtHex,      rt_fmt_hex,       "Viper.Fmt.Hex",      "str(i64)")
+RT_FUNC(FmtHexPad,   rt_fmt_hex_pad,   "Viper.Fmt.HexPad",   "str(i64,i64)")
+RT_FUNC(FmtBin,      rt_fmt_bin,       "Viper.Fmt.Bin",      "str(i64)")
+RT_FUNC(FmtOct,      rt_fmt_oct,       "Viper.Fmt.Oct",      "str(i64)")
 
 //=============================================================================
 // VEC2
@@ -889,6 +997,23 @@ RT_CLASS_BEGIN("Viper.Collections.Stack", Stack, "obj", StackNew)
     RT_METHOD("Push", "void(obj)", StackPush)
 RT_CLASS_END()
 
+// Viper.Collections.TreeMap - sorted key-value map
+RT_CLASS_BEGIN("Viper.Collections.TreeMap", TreeMap, "obj", TreeMapNew)
+    RT_PROP("IsEmpty", "i1", TreeMapIsEmpty, none)
+    RT_PROP("Len", "i64", TreeMapLen, none)
+    RT_METHOD("Ceil", "str(str)", TreeMapCeil)
+    RT_METHOD("Clear", "void()", TreeMapClear)
+    RT_METHOD("Drop", "i1(str)", TreeMapDrop)
+    RT_METHOD("First", "str()", TreeMapFirst)
+    RT_METHOD("Floor", "str(str)", TreeMapFloor)
+    RT_METHOD("Get", "obj(str)", TreeMapGet)
+    RT_METHOD("Has", "i1(str)", TreeMapHas)
+    RT_METHOD("Keys", "obj()", TreeMapKeys)
+    RT_METHOD("Last", "str()", TreeMapLast)
+    RT_METHOD("Set", "void(str,obj)", TreeMapSet)
+    RT_METHOD("Values", "obj()", TreeMapValues)
+RT_CLASS_END()
+
 // Viper.Convert - static utility class
 RT_CLASS_BEGIN("Viper.Convert", Convert, "obj", none)
     RT_METHOD("ToDouble", "f64(str)", ToDouble)
@@ -960,6 +1085,24 @@ RT_CLASS_BEGIN("Viper.Exec", Exec, "obj", none)
     RT_METHOD("RunArgs", "i64(str,obj)", ExecRunArgs)
     RT_METHOD("Shell", "i64(str)", ExecShell)
     RT_METHOD("ShellCapture", "str(str)", ExecShellCapture)
+RT_CLASS_END()
+
+// Viper.Fmt - value formatting utilities
+RT_CLASS_BEGIN("Viper.Fmt", Fmt, "obj", none)
+    RT_METHOD("Bin", "str(i64)", FmtBin)
+    RT_METHOD("Bool", "str(i1)", FmtBool)
+    RT_METHOD("BoolYN", "str(i1)", FmtBoolYN)
+    RT_METHOD("Hex", "str(i64)", FmtHex)
+    RT_METHOD("HexPad", "str(i64,i64)", FmtHexPad)
+    RT_METHOD("Int", "str(i64)", FmtInt)
+    RT_METHOD("IntPad", "str(i64,i64,str)", FmtIntPad)
+    RT_METHOD("IntRadix", "str(i64,i64)", FmtIntRadix)
+    RT_METHOD("Num", "str(f64)", FmtNum)
+    RT_METHOD("NumFixed", "str(f64,i64)", FmtNumFixed)
+    RT_METHOD("NumPct", "str(f64,i64)", FmtNumPct)
+    RT_METHOD("NumSci", "str(f64,i64)", FmtNumSci)
+    RT_METHOD("Oct", "str(i64)", FmtOct)
+    RT_METHOD("Size", "str(i64)", FmtSize)
 RT_CLASS_END()
 
 // Viper.Graphics.Canvas - drawing surface
@@ -1085,6 +1228,21 @@ RT_CLASS_BEGIN("Viper.IO.LineWriter", LineWriter, "obj", LineWriterOpen)
     RT_METHOD("Write", "void(str)", LineWriterWrite)
     RT_METHOD("WriteChar", "void(i64)", LineWriterWriteChar)
     RT_METHOD("WriteLn", "void(str)", LineWriterWriteLn)
+RT_CLASS_END()
+
+// Viper.Log - simple logging utilities
+RT_CLASS_BEGIN("Viper.Log", Log, "obj", none)
+    RT_PROP("Level", "i64", LogLevel, LogSetLevel)
+    RT_PROP("DEBUG", "i64", LogDEBUG, none)
+    RT_PROP("INFO", "i64", LogINFO, none)
+    RT_PROP("WARN", "i64", LogWARN, none)
+    RT_PROP("ERROR", "i64", LogERROR, none)
+    RT_PROP("OFF", "i64", LogOFF, none)
+    RT_METHOD("Debug", "void(str)", LogDebug)
+    RT_METHOD("Info", "void(str)", LogInfo)
+    RT_METHOD("Warn", "void(str)", LogWarn)
+    RT_METHOD("Error", "void(str)", LogError)
+    RT_METHOD("Enabled", "i1(i64)", LogEnabled)
 RT_CLASS_END()
 
 // Viper.Machine - system information queries
@@ -1227,6 +1385,18 @@ RT_CLASS_BEGIN("Viper.Text.Codec", Codec, "obj", none)
     RT_METHOD("UrlEncode", "str(str)", CodecUrlEncode)
 RT_CLASS_END()
 
+// Viper.Text.Csv - CSV parsing and formatting (RFC 4180)
+RT_CLASS_BEGIN("Viper.Text.Csv", Csv, "obj", none)
+    RT_METHOD("Format", "str(obj)", CsvFormat)
+    RT_METHOD("FormatLine", "str(obj)", CsvFormatLine)
+    RT_METHOD("FormatLineWith", "str(obj,str)", CsvFormatLineWith)
+    RT_METHOD("FormatWith", "str(obj,str)", CsvFormatWith)
+    RT_METHOD("Parse", "obj(str)", CsvParse)
+    RT_METHOD("ParseLine", "obj(str)", CsvParseLine)
+    RT_METHOD("ParseLineWith", "obj(str,str)", CsvParseLineWith)
+    RT_METHOD("ParseWith", "obj(str,str)", CsvParseWith)
+RT_CLASS_END()
+
 // Viper.Text.Guid - UUID generation and manipulation
 RT_CLASS_BEGIN("Viper.Text.Guid", Guid, "obj", none)
     RT_PROP("Empty", "str", GuidEmpty, none)
@@ -1251,6 +1421,19 @@ RT_CLASS_BEGIN("Viper.Time.Clock", Clock, "obj", none)
     RT_METHOD("Sleep", "void(i64)", ClockSleep)
     RT_METHOD("Ticks", "i64()", ClockTicks)
     RT_METHOD("TicksUs", "i64()", ClockTicksUs)
+RT_CLASS_END()
+
+// Viper.Time.Countdown - interval timing with expiration
+RT_CLASS_BEGIN("Viper.Time.Countdown", Countdown, "obj", CountdownNew)
+    RT_PROP("Elapsed", "i64", CountdownElapsed, none)
+    RT_PROP("Remaining", "i64", CountdownRemaining, none)
+    RT_PROP("Expired", "i1", CountdownExpired, none)
+    RT_PROP("Interval", "i64", CountdownInterval, CountdownSetInterval)
+    RT_PROP("IsRunning", "i1", CountdownIsRunning, none)
+    RT_METHOD("Start", "void()", CountdownStart)
+    RT_METHOD("Stop", "void()", CountdownStop)
+    RT_METHOD("Reset", "void()", CountdownReset)
+    RT_METHOD("Wait", "void()", CountdownWait)
 RT_CLASS_END()
 
 // Viper.Vec2 - 2D vector math

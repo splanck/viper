@@ -18,6 +18,8 @@
 ///          division by zero occurs.  The helper writes a deterministic message
 ///          to stderr and terminates the process with exit code 1.
 
+#include <inttypes.h>
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -58,4 +60,164 @@ void rt_diag_assert(int8_t condition, rt_string message)
     }
 
     rt_trap(msg);
+}
+
+/// @brief Helper to extract message string with fallback.
+static const char *get_message(rt_string message, const char *fallback)
+{
+    if (message && message->data)
+    {
+        size_t len = message->heap ? rt_heap_len(message->data) : message->literal_len;
+        if (len > 0)
+            return rt_string_cstr(message);
+    }
+    return fallback;
+}
+
+/// @brief Assert two integers are equal.
+void rt_diag_assert_eq(int64_t expected, int64_t actual, rt_string message)
+{
+    if (expected == actual)
+        return;
+
+    const char *msg = get_message(message, "AssertEq failed");
+    char buf[256];
+    snprintf(buf, sizeof(buf), "%s: expected %" PRId64 ", got %" PRId64, msg, expected, actual);
+    rt_trap(buf);
+}
+
+/// @brief Assert two integers are not equal.
+void rt_diag_assert_neq(int64_t a, int64_t b, rt_string message)
+{
+    if (a != b)
+        return;
+
+    const char *msg = get_message(message, "AssertNeq failed");
+    char buf[256];
+    snprintf(buf, sizeof(buf), "%s: values should not be equal (both are %" PRId64 ")", msg, a);
+    rt_trap(buf);
+}
+
+/// @brief Assert two numbers are approximately equal.
+void rt_diag_assert_eq_num(double expected, double actual, rt_string message)
+{
+    // Use a relative epsilon for float comparison
+    double epsilon = 1e-9;
+    double diff = fabs(expected - actual);
+    double maxval = fmax(fabs(expected), fabs(actual));
+
+    // Handle special cases
+    if (expected == actual)
+        return;
+    if (isnan(expected) && isnan(actual))
+        return;
+
+    // Use relative comparison for large values, absolute for small
+    bool equal = (maxval < 1.0) ? (diff < epsilon) : (diff / maxval < epsilon);
+    if (equal)
+        return;
+
+    const char *msg = get_message(message, "AssertEqNum failed");
+    char buf[256];
+    snprintf(buf, sizeof(buf), "%s: expected %g, got %g (diff=%g)", msg, expected, actual, diff);
+    rt_trap(buf);
+}
+
+/// @brief Assert two strings are equal.
+void rt_diag_assert_eq_str(rt_string expected, rt_string actual, rt_string message)
+{
+    const char *exp_str = expected ? rt_string_cstr(expected) : "";
+    const char *act_str = actual ? rt_string_cstr(actual) : "";
+
+    if (exp_str == NULL)
+        exp_str = "";
+    if (act_str == NULL)
+        act_str = "";
+
+    if (strcmp(exp_str, act_str) == 0)
+        return;
+
+    const char *msg = get_message(message, "AssertEqStr failed");
+    char buf[512];
+    snprintf(buf, sizeof(buf), "%s: expected \"%s\", got \"%s\"", msg, exp_str, act_str);
+    rt_trap(buf);
+}
+
+/// @brief Assert an object reference is null.
+void rt_diag_assert_null(void *obj, rt_string message)
+{
+    if (obj == NULL)
+        return;
+
+    const char *msg = get_message(message, "AssertNull failed");
+    char buf[256];
+    snprintf(buf, sizeof(buf), "%s: expected null, got non-null object", msg);
+    rt_trap(buf);
+}
+
+/// @brief Assert an object reference is not null.
+void rt_diag_assert_not_null(void *obj, rt_string message)
+{
+    if (obj != NULL)
+        return;
+
+    const char *msg = get_message(message, "AssertNotNull failed");
+    char buf[256];
+    snprintf(buf, sizeof(buf), "%s: expected non-null, got null", msg);
+    rt_trap(buf);
+}
+
+/// @brief Unconditionally fail with a message.
+void rt_diag_assert_fail(rt_string message)
+{
+    const char *msg = get_message(message, "AssertFail called");
+    rt_trap(msg);
+}
+
+/// @brief Assert first value is greater than second.
+void rt_diag_assert_gt(int64_t a, int64_t b, rt_string message)
+{
+    if (a > b)
+        return;
+
+    const char *msg = get_message(message, "AssertGt failed");
+    char buf[256];
+    snprintf(buf, sizeof(buf), "%s: expected %" PRId64 " > %" PRId64, msg, a, b);
+    rt_trap(buf);
+}
+
+/// @brief Assert first value is less than second.
+void rt_diag_assert_lt(int64_t a, int64_t b, rt_string message)
+{
+    if (a < b)
+        return;
+
+    const char *msg = get_message(message, "AssertLt failed");
+    char buf[256];
+    snprintf(buf, sizeof(buf), "%s: expected %" PRId64 " < %" PRId64, msg, a, b);
+    rt_trap(buf);
+}
+
+/// @brief Assert first value is greater than or equal to second.
+void rt_diag_assert_gte(int64_t a, int64_t b, rt_string message)
+{
+    if (a >= b)
+        return;
+
+    const char *msg = get_message(message, "AssertGte failed");
+    char buf[256];
+    snprintf(buf, sizeof(buf), "%s: expected %" PRId64 " >= %" PRId64, msg, a, b);
+    rt_trap(buf);
+}
+
+/// @brief Assert first value is less than or equal to second.
+void rt_diag_assert_lte(int64_t a, int64_t b, rt_string message)
+{
+    if (a <= b)
+        return;
+
+    const char *msg = get_message(message, "AssertLte failed");
+    char buf[256];
+    snprintf(buf, sizeof(buf), "%s: expected %" PRId64 " <= %" PRId64, msg, a, b);
+    rt_trap(buf);
 }

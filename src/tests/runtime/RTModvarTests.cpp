@@ -55,4 +55,3 @@ int main()
     rt_context_cleanup(&ctx);
     return 0;
 }
-

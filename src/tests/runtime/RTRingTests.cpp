@@ -166,7 +166,7 @@ static void test_overwrite_oldest_when_full()
     assert(rt_ring_is_full(ring) == 1);
 
     // Push when full should overwrite oldest (a)
-    rt_ring_push(ring, &d); // [d, b, c] logically [b, c, d]
+    rt_ring_push(ring, &d);         // [d, b, c] logically [b, c, d]
     assert(rt_ring_len(ring) == 3); // Still 3
     assert(rt_ring_is_full(ring) == 1);
 

@@ -330,7 +330,8 @@ rt_string rt_codec_base64_dec(rt_string str)
             break;
         }
 
-        uint32_t triple = ((uint32_t)v0 << 18) | ((uint32_t)v1 << 12) | ((uint32_t)v2 << 6) | (uint32_t)v3;
+        uint32_t triple =
+            ((uint32_t)v0 << 18) | ((uint32_t)v1 << 12) | ((uint32_t)v2 << 6) | (uint32_t)v3;
         out[out_pos++] = (char)((triple >> 16) & 0xFF);
         out[out_pos++] = (char)((triple >> 8) & 0xFF);
         out[out_pos++] = (char)(triple & 0xFF);

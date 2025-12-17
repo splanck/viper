@@ -790,7 +790,8 @@ static void generateSignatures(const ParseState &state, const fs::path &outDir)
             sigStr += ")";
 
             // Build the DirectHandler template args
-            std::string handlerArgs = "&" + target.c_symbol + ", " + ilTypeToCType(parsed.returnType);
+            std::string handlerArgs =
+                "&" + target.c_symbol + ", " + ilTypeToCType(parsed.returnType);
             for (const auto &argType : parsed.argTypes)
             {
                 handlerArgs += ", " + ilTypeToCType(argType);

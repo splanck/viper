@@ -11,8 +11,8 @@
 //                 Start/Stop/Reset/Restart behave as documented.
 // Links: docs/viperlib.md
 
-#include "rt_stopwatch.h"
 #include "rt_object.h"
+#include "rt_stopwatch.h"
 
 #include <cassert>
 #include <cstdio>

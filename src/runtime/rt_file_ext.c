@@ -382,7 +382,8 @@ void *rt_io_file_read_all_lines(rt_string path)
             ++i;
         size_t end = i;
 
-        rt_string line = (end == start) ? rt_str_empty() : rt_string_from_bytes(buf + start, end - start);
+        rt_string line =
+            (end == start) ? rt_str_empty() : rt_string_from_bytes(buf + start, end - start);
         rt_seq_push(seq, line);
 
         if (i >= off)

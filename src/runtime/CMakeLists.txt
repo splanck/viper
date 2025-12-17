@@ -29,6 +29,7 @@ set(RT_SOURCES
         rt_numeric.c
         rt_numeric_conv.c
         rt_debug.c
+        rt_fmt.c
         rt_format.c
         rt_int_format.c
         rt_printf_compat.c
@@ -42,19 +43,24 @@ set(RT_SOURCES
         rt_ns_bridge.c
         rt_file_ext.c
         rt_list.c
+        rt_log.c
         rt_seq.c
         rt_stack.c
         rt_queue.c
         rt_ring.c
         rt_bytes.c
         rt_codec.c
+        rt_csv.c
         rt_graphics.c
         rt_datetime.c
         rt_exec.c
         rt_map.c
+        rt_treemap.c
+        rt_parse.c
         rt_path.c
         rt_dir.c
         rt_stopwatch.c
+        rt_countdown.c
         rt_guid.c
         rt_hash.c
         rt_machine.c
@@ -83,8 +89,10 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_oop.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_debug.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_file.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_fmt.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_format.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_int_format.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_log.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_printf_compat.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_string_builder.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_output.h
@@ -94,6 +102,7 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_graphics.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_datetime.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_map.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_parse.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_path.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_dir.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_pixels.h

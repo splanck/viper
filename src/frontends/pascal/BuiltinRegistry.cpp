@@ -1250,7 +1250,8 @@ bool isViperUnit(std::string_view unitName)
            key == "vipermath" || key == "viper.terminal" || key == "viperterminal" ||
            key == "viper.io" || key == "viperio" || key == "viper.datetime" ||
            key == "viperdatetime" || key == "viper.diagnostics" || key == "viperdiagnostics" ||
-           key == "viper.environment" || key == "viperenvironment" || key == "sysutils" || // Common Delphi unit name
+           key == "viper.environment" || key == "viperenvironment" ||
+           key == "sysutils" || // Common Delphi unit name
            key == "crt";        // CRT is common Pascal terminal unit name
 }
 

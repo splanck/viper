@@ -61,4 +61,4 @@ add_custom_command(
         VERBATIM)
 
 add_custom_target(gen_x86_64_encodings DEPENDS ${VIPER_X64_ENC} ${VIPER_X64_OPFMT})
-add_dependencies(viper_codegen_x86_64 gen_x86_64_encodings)
+add_dependencies(viper_codegen_x86_64 gen_x86_64_encodings generate_runtime_registry)
