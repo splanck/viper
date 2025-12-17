@@ -16,6 +16,7 @@ The Viper Runtime Library provides a set of built-in classes and utilities avail
 - [Viper.Text.Codec](#vipertextcodec)
 - [Viper.Text.Guid](#vipertextguid)
 - [Viper.Crypto.Hash](#vipercryptohash)
+- [Viper.Bits](#viperbits)
 - [Viper.Collections.List](#vipercollectionslist)
 - [Viper.Collections.Map](#vipercollectionsmap)
 - [Viper.Collections.Seq](#vipercollectionsseq)
@@ -23,18 +24,27 @@ The Viper Runtime Library provides a set of built-in classes and utilities avail
 - [Viper.Collections.Queue](#vipercollectionsqueue)
 - [Viper.Collections.Bytes](#vipercollectionsbytes)
 - [Viper.Collections.Bag](#vipercollectionsbag)
+- [Viper.Collections.Ring](#vipercollectionsring)
 - [Viper.Math](#vipermath)
 - [Viper.Terminal](#viperterminal)
 - [Viper.Convert](#viperconvert)
 - [Viper.Random](#viperrandom)
 - [Viper.Environment](#viperenvironment)
+- [Viper.Exec](#viperexec)
+- [Viper.Machine](#vipermachine)
 - [Viper.DateTime](#viperdatetime)
 - [Viper.IO.File](#viperiofile)
 - [Viper.IO.Path](#viperiopath)
 - [Viper.IO.Dir](#viperiodir)
+- [Viper.IO.BinFile](#viperiobinfile)
+- [Viper.IO.LineReader](#viperiolinereader)
+- [Viper.IO.LineWriter](#viperiolinewriter)
 - [Viper.Graphics.Canvas](#vipergraphicscanvas)
 - [Viper.Graphics.Color](#vipergraphicscolor)
+- [Viper.Graphics.Pixels](#vipergraphicspixels)
 - [Viper.Time.Clock](#vipertimeclock)
+- [Viper.Vec2](#vipervec2)
+- [Viper.Vec3](#vipervec3)
 - [Viper.Diagnostics.Assert](#viperdiagnosticsassert)
 - [Viper.Diagnostics.Stopwatch](#viperdiagnosticsstopwatch)
 - [Runtime Architecture](#runtime-architecture)
@@ -49,12 +59,17 @@ The Viper Runtime Library provides a set of built-in classes and utilities avail
 |-------|------|-------------|
 | `String` | Instance | Immutable string with manipulation methods |
 | `Object` | Base class | Root type for all reference types |
+| `Bits` | Static | Bit manipulation utilities (shifts, rotates, counting) |
 | `Math` | Static | Mathematical functions (trig, pow, abs, etc.) |
 | `Terminal` | Static | Terminal input/output |
 | `Convert` | Static | Type conversion utilities |
 | `Random` | Static | Random number generation |
 | `Environment` | Static | Command-line arguments and environment |
+| `Exec` | Static | External command execution |
+| `Machine` | Static | System information queries |
 | `DateTime` | Static | Date and time operations |
+| `Vec2` | Instance | 2D vector math (positions, directions, physics) |
+| `Vec3` | Instance | 3D vector math (positions, directions, physics) |
 
 ### Viper.Text
 
@@ -74,6 +89,14 @@ The Viper Runtime Library provides a set of built-in classes and utilities avail
 | `Stack` | Instance | LIFO (last-in-first-out) collection |
 | `Queue` | Instance | FIFO (first-in-first-out) collection |
 | `Bytes` | Instance | Efficient byte array for binary data |
+| `Bag` | Instance | String set with set operations (union, intersection, difference) |
+| `Ring` | Instance | Fixed-size circular buffer (overwrites oldest when full) |
+
+### Viper.Crypto
+
+| Class | Type | Description |
+|-------|------|-------------|
+| `Hash` | Static | Cryptographic hashes (MD5, SHA1, SHA256) and checksums (CRC32) |
 
 ### Viper.IO
 
@@ -82,6 +105,9 @@ The Viper Runtime Library provides a set of built-in classes and utilities avail
 | `File` | Static | File system operations (read, write, delete) |
 | `Path` | Static | Cross-platform path manipulation utilities |
 | `Dir` | Static | Directory operations (create, remove, list) |
+| `BinFile` | Instance | Binary file stream for random access I/O |
+| `LineReader` | Instance | Line-by-line text file reading |
+| `LineWriter` | Instance | Buffered text file writing |
 
 ### Viper.Graphics
 
@@ -89,6 +115,7 @@ The Viper Runtime Library provides a set of built-in classes and utilities avail
 |-------|------|-------------|
 | `Canvas` | Instance | 2D graphics canvas with drawing primitives |
 | `Color` | Static | Color creation utilities |
+| `Pixels` | Instance | Software image buffer for pixel manipulation |
 
 ### Viper.Time
 
@@ -508,6 +535,98 @@ DIM bytes AS OBJECT = NEW Viper.Collections.Bytes()
 bytes.WriteString("Hello")
 DIM hash AS STRING = Viper.Crypto.Hash.SHA256Bytes(bytes)
 PRINT hash
+```
+
+---
+
+## Viper.Bits
+
+Bit manipulation utilities for working with 64-bit integers at the bit level.
+
+**Type:** Static (no instantiation required)
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `And(a, b)` | `i64(i64, i64)` | Bitwise AND |
+| `Or(a, b)` | `i64(i64, i64)` | Bitwise OR |
+| `Xor(a, b)` | `i64(i64, i64)` | Bitwise XOR |
+| `Not(val)` | `i64(i64)` | Bitwise NOT (complement) |
+| `Shl(val, count)` | `i64(i64, i64)` | Logical shift left |
+| `Shr(val, count)` | `i64(i64, i64)` | Arithmetic shift right (sign-extended) |
+| `Ushr(val, count)` | `i64(i64, i64)` | Logical shift right (zero-fill) |
+| `Rotl(val, count)` | `i64(i64, i64)` | Rotate left |
+| `Rotr(val, count)` | `i64(i64, i64)` | Rotate right |
+| `Count(val)` | `i64(i64)` | Population count (number of 1 bits) |
+| `LeadZ(val)` | `i64(i64)` | Count leading zeros |
+| `TrailZ(val)` | `i64(i64)` | Count trailing zeros |
+| `Flip(val)` | `i64(i64)` | Reverse all 64 bits |
+| `Swap(val)` | `i64(i64)` | Byte swap (endian swap) |
+| `Get(val, bit)` | `i1(i64, i64)` | Get bit at position (0-63) |
+| `Set(val, bit)` | `i64(i64, i64)` | Set bit at position |
+| `Clear(val, bit)` | `i64(i64, i64)` | Clear bit at position |
+| `Toggle(val, bit)` | `i64(i64, i64)` | Toggle bit at position |
+
+### Method Details
+
+#### Shift Operations
+
+- **Shl** — Logical shift left. Shifts bits left, filling with zeros on the right.
+- **Shr** — Arithmetic shift right. Shifts bits right, preserving the sign bit (sign-extended).
+- **Ushr** — Logical shift right. Shifts bits right, filling with zeros on the left.
+
+Shift counts are clamped: negative counts or counts >= 64 return 0 (for Shl/Ushr) or the sign bit extended (for Shr with negative values).
+
+#### Rotate Operations
+
+- **Rotl** — Rotate left. Bits shifted out on the left wrap around to the right.
+- **Rotr** — Rotate right. Bits shifted out on the right wrap around to the left.
+
+Rotate counts are normalized to 0-63 (count MOD 64).
+
+#### Bit Counting
+
+- **Count** — Population count (popcount). Returns the number of 1 bits.
+- **LeadZ** — Count leading zeros. Returns 64 for zero, 0 for negative values.
+- **TrailZ** — Count trailing zeros. Returns 64 for zero.
+
+#### Single Bit Operations
+
+All single-bit operations accept bit positions 0-63. Out-of-range positions return the input unchanged (for Set/Clear/Toggle) or false (for Get).
+
+### Example
+
+```basic
+' Basic bitwise operations
+DIM a AS INTEGER = &HFF
+DIM b AS INTEGER = &H0F
+PRINT Viper.Bits.And(a, b)  ' 15 (&H0F)
+PRINT Viper.Bits.Or(a, b)   ' 255 (&HFF)
+PRINT Viper.Bits.Xor(a, b)  ' 240 (&HF0)
+
+' Shift operations
+DIM val AS INTEGER = 1
+PRINT Viper.Bits.Shl(val, 4)   ' 16
+PRINT Viper.Bits.Shr(16, 2)    ' 4
+
+' Count set bits
+DIM mask AS INTEGER = &HFF
+PRINT Viper.Bits.Count(mask)   ' 8
+
+' Work with individual bits
+DIM flags AS INTEGER = 0
+flags = Viper.Bits.Set(flags, 0)    ' Set bit 0
+flags = Viper.Bits.Set(flags, 3)    ' Set bit 3
+PRINT Viper.Bits.Get(flags, 0)      ' True
+PRINT Viper.Bits.Get(flags, 1)      ' False
+flags = Viper.Bits.Toggle(flags, 3) ' Toggle bit 3 off
+PRINT flags                          ' 1
+
+' Endian conversion
+DIM big AS INTEGER = &H0102030405060708
+DIM little AS INTEGER = Viper.Bits.Swap(big)
+' little = &H0807060504030201
 ```
 
 ---
@@ -1074,6 +1193,79 @@ NEXT
 
 ---
 
+## Viper.Collections.Ring
+
+A fixed-size circular buffer (ring buffer). When full, pushing new elements automatically overwrites the oldest elements.
+
+**Type:** Instance class
+
+**Constructor:** `NEW Viper.Collections.Ring(capacity)`
+
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `Len` | `Integer` | Number of elements currently stored |
+| `Cap` | `Integer` | Maximum capacity (fixed at creation) |
+| `IsEmpty` | `Boolean` | True if ring has no elements |
+| `IsFull` | `Boolean` | True if ring is at capacity |
+
+### Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `Push(item)` | void | Add item; overwrites oldest if full |
+| `Pop()` | Object | Remove and return oldest item (NULL if empty) |
+| `Peek()` | Object | Return oldest item without removing (NULL if empty) |
+| `Get(index)` | Object | Get item by logical index (0 = oldest) |
+| `Clear()` | void | Remove all elements |
+
+### Example
+
+```basic
+' Create a ring buffer with capacity 3
+DIM recent AS OBJECT = NEW Viper.Collections.Ring(3)
+
+' Push some values
+recent.Push("first")
+recent.Push("second")
+recent.Push("third")
+PRINT recent.Len        ' Output: 3
+PRINT recent.IsFull     ' Output: 1 (true)
+
+' Push when full overwrites oldest
+recent.Push("fourth")
+PRINT recent.Len        ' Output: 3 (still 3)
+PRINT recent.Peek()     ' Output: second (first was overwritten)
+
+' Get by index (0 = oldest)
+PRINT recent.Get(0)     ' Output: second
+PRINT recent.Get(1)     ' Output: third
+PRINT recent.Get(2)     ' Output: fourth
+
+' Pop removes oldest (FIFO)
+DIM oldest AS STRING = recent.Pop()
+PRINT oldest            ' Output: second
+PRINT recent.Len        ' Output: 2
+
+' Interleaved push/pop
+recent.Push("fifth")
+PRINT recent.Pop()      ' Output: third
+PRINT recent.Pop()      ' Output: fourth
+PRINT recent.Pop()      ' Output: fifth
+PRINT recent.IsEmpty    ' Output: 1 (true)
+```
+
+### Use Cases
+
+- **Recent history:** Keep N most recent log entries, commands, or events
+- **Sliding window:** Process data in fixed-size windows
+- **Bounded caching:** Cache with automatic eviction of oldest entries
+- **Event buffering:** Buffer events with guaranteed memory bounds
+- **Audio/video buffering:** Fixed-size media sample buffers
+
+---
+
 ## Viper.Math
 
 Mathematical functions and constants.
@@ -1373,6 +1565,163 @@ PRINT "Updated value: "; Viper.Environment.GetVariable(name)
 
 ---
 
+## Viper.Exec
+
+External command execution for running system commands and capturing output.
+
+**Type:** Static utility class
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `Run(program)` | `Integer(String)` | Execute program, wait for completion, return exit code |
+| `RunArgs(program, args)` | `Integer(String, Seq)` | Execute program with arguments, return exit code |
+| `Capture(program)` | `String(String)` | Execute program, capture and return stdout |
+| `CaptureArgs(program, args)` | `String(String, Seq)` | Execute program with arguments, capture stdout |
+| `Shell(command)` | `Integer(String)` | Run command through system shell, return exit code |
+| `ShellCapture(command)` | `String(String)` | Run command through shell, capture stdout |
+
+### Security Warning
+
+**Shell injection vulnerability:** The `Shell` and `ShellCapture` methods pass commands directly to the system shell (`/bin/sh -c` on Unix, `cmd /c` on Windows). Never pass unsanitized user input to these functions. If you need to run a command with user-provided data, use `RunArgs` or `CaptureArgs` instead, which safely handle arguments without shell interpretation.
+
+```basic
+' DANGEROUS - shell injection risk:
+userInput = "file.txt; rm -rf /"
+Viper.Exec.Shell("cat " + userInput)  ' DO NOT DO THIS
+
+' SAFE - use RunArgs with explicit arguments:
+DIM args AS OBJECT = Viper.Collections.Seq.New()
+args.Push(userInput)
+Viper.Exec.RunArgs("/bin/cat", args)  ' Arguments are passed directly
+```
+
+### Example
+
+```basic
+' Simple command execution
+DIM exitCode AS INTEGER
+exitCode = Viper.Exec.Shell("echo Hello World")
+PRINT "Exit code: "; exitCode
+
+' Capture command output
+DIM output AS STRING
+output = Viper.Exec.ShellCapture("date")
+PRINT "Current date: "; output
+
+' Execute program with arguments
+DIM args AS OBJECT = Viper.Collections.Seq.New()
+args.Push("-l")
+args.Push("-a")
+exitCode = Viper.Exec.RunArgs("/bin/ls", args)
+
+' Capture output with arguments
+DIM result AS STRING
+args = Viper.Collections.Seq.New()
+args.Push("--version")
+result = Viper.Exec.CaptureArgs("/usr/bin/python3", args)
+PRINT "Python version: "; result
+
+' Check if command succeeded
+IF Viper.Exec.Shell("test -f /etc/passwd") = 0 THEN
+    PRINT "File exists"
+ELSE
+    PRINT "File does not exist"
+END IF
+
+' Run a script and check result
+exitCode = Viper.Exec.Shell("./myscript.sh")
+IF exitCode <> 0 THEN
+    PRINT "Script failed with exit code: "; exitCode
+END IF
+```
+
+### Platform Notes
+
+- **Run/RunArgs/Capture/CaptureArgs**: Execute programs directly using `posix_spawn` (Unix) or `CreateProcess` (Windows). Arguments are passed without shell interpretation.
+- **Shell/ShellCapture**: Use `/bin/sh -c` on Unix or `cmd /c` on Windows. Commands are interpreted by the shell.
+- Exit codes: 0 typically indicates success. Negative values indicate the process was terminated by a signal (Unix) or failed to start.
+- Capture functions return empty string if the program fails to start.
+
+---
+
+## Viper.Machine
+
+System information queries providing read-only access to machine properties.
+
+**Type:** Static utility class
+
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `OS` | `String` | Operating system name: `"linux"`, `"macos"`, `"windows"`, or `"unknown"` |
+| `OSVer` | `String` | Operating system version string (e.g., `"14.2.1"` on macOS) |
+| `Host` | `String` | Machine hostname |
+| `User` | `String` | Current username |
+| `Home` | `String` | Path to user's home directory |
+| `Temp` | `String` | Path to system temporary directory |
+| `Cores` | `Integer` | Number of logical CPU cores |
+| `MemTotal` | `Integer` | Total RAM in bytes |
+| `MemFree` | `Integer` | Available RAM in bytes |
+| `Endian` | `String` | Byte order: `"little"` or `"big"` |
+
+### Example
+
+```basic
+' Operating system information
+PRINT "OS: "; Viper.Machine.OS
+PRINT "Version: "; Viper.Machine.OSVer
+
+' User and host
+PRINT "User: "; Viper.Machine.User
+PRINT "Host: "; Viper.Machine.Host
+
+' Directory paths
+PRINT "Home: "; Viper.Machine.Home
+PRINT "Temp: "; Viper.Machine.Temp
+
+' Hardware information
+PRINT "CPU Cores: "; Viper.Machine.Cores
+PRINT "Total RAM: "; Viper.Machine.MemTotal / 1073741824; " GB"
+PRINT "Free RAM: "; Viper.Machine.MemFree / 1073741824; " GB"
+
+' System characteristics
+PRINT "Byte Order: "; Viper.Machine.Endian
+
+' Conditional behavior based on OS
+IF Viper.Machine.OS = "macos" THEN
+    PRINT "Running on macOS"
+ELSEIF Viper.Machine.OS = "linux" THEN
+    PRINT "Running on Linux"
+ELSEIF Viper.Machine.OS = "windows" THEN
+    PRINT "Running on Windows"
+END IF
+
+' Check available memory before large allocation
+DIM requiredMem AS INTEGER = 1073741824  ' 1 GB
+IF Viper.Machine.MemFree > requiredMem THEN
+    PRINT "Sufficient memory available"
+ELSE
+    PRINT "Warning: Low memory"
+END IF
+```
+
+### Platform Notes
+
+- **OS**: Returns lowercase platform identifier. Compile-time detection.
+- **OSVer**: On macOS reads `kern.osproductversion` via sysctl. On Linux reads `/etc/os-release` VERSION_ID. Falls back to `uname` release string.
+- **Host**: Uses `gethostname()` on Unix, `GetComputerName()` on Windows.
+- **User**: Uses `getpwuid()` on Unix, `GetUserName()` on Windows, with fallback to environment variables.
+- **Home**: Uses `HOME` environment variable on Unix, `USERPROFILE` on Windows.
+- **Temp**: Uses `TMPDIR`/`TMP`/`TEMP` environment variables on Unix (defaulting to `/tmp`), `GetTempPath()` on Windows.
+- **Cores**: Returns logical (hyper-threaded) core count via `sysconf(_SC_NPROCESSORS_ONLN)` on Unix, `GetSystemInfo()` on Windows.
+- **MemTotal/MemFree**: On macOS uses `sysctl` and `host_statistics64`. On Linux uses `sysinfo()`. On Windows uses `GlobalMemoryStatusEx()`.
+- **Endian**: Runtime detection via union trick. Most modern systems are little-endian.
+
+---
+
 ## Viper.DateTime
 
 Date and time operations. Timestamps are Unix timestamps (seconds since January 1, 1970 UTC).
@@ -1494,6 +1843,184 @@ PRINT "Elapsed: "; endUs - startUs; " microseconds"
 
 ' Sleep for a short delay
 Viper.Time.Clock.Sleep(100)  ' Sleep for 100ms
+```
+
+---
+
+## Viper.Vec2
+
+2D vector math for positions, directions, velocities, and physics calculations.
+
+**Type:** Instance (obj)
+**Constructor:** `Viper.Vec2.New(x, y)` or `Viper.Vec2.Zero()` or `Viper.Vec2.One()`
+
+### Static Constructors
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `New(x, y)` | `obj(f64, f64)` | Create a new vector with given components |
+| `Zero()` | `obj()` | Create a vector at origin (0, 0) |
+| `One()` | `obj()` | Create a vector (1, 1) |
+
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `X` | `f64` | X component (read-only) |
+| `Y` | `f64` | Y component (read-only) |
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `Add(other)` | `obj(obj)` | Add two vectors: self + other |
+| `Sub(other)` | `obj(obj)` | Subtract vectors: self - other |
+| `Mul(scalar)` | `obj(f64)` | Multiply by scalar: self * s |
+| `Div(scalar)` | `obj(f64)` | Divide by scalar: self / s |
+| `Neg()` | `obj()` | Negate vector: -self |
+| `Dot(other)` | `f64(obj)` | Dot product of two vectors |
+| `Cross(other)` | `f64(obj)` | 2D cross product (scalar z-component) |
+| `Len()` | `f64()` | Length (magnitude) of vector |
+| `LenSq()` | `f64()` | Squared length (avoids sqrt) |
+| `Norm()` | `obj()` | Normalize to unit length |
+| `Dist(other)` | `f64(obj)` | Distance to another point |
+| `Lerp(other, t)` | `obj(obj, f64)` | Linear interpolation (t=0 returns self, t=1 returns other) |
+| `Angle()` | `f64()` | Angle in radians (atan2(y, x)) |
+| `Rotate(angle)` | `obj(f64)` | Rotate by angle in radians |
+
+### Notes
+
+- Vectors are immutable - all operations return new vectors
+- `Norm()` returns zero vector if input has zero length
+- `Div()` traps on division by zero
+- `Cross()` returns the scalar z-component of the 3D cross product (treating 2D vectors as 3D with z=0)
+- Angles are in radians; use `Viper.Math.Rad()` and `Viper.Math.Deg()` for conversion
+
+### Example
+
+```basic
+' Create vectors
+DIM pos AS OBJECT = Viper.Vec2.New(100.0, 200.0)
+DIM vel AS OBJECT = Viper.Vec2.New(5.0, -3.0)
+
+' Move position by velocity
+pos = pos.Add(vel)
+PRINT "Position: ("; pos.X; ", "; pos.Y; ")"
+
+' Calculate distance
+DIM target AS OBJECT = Viper.Vec2.New(150.0, 180.0)
+DIM dist AS DOUBLE = pos.Dist(target)
+PRINT "Distance to target: "; dist
+
+' Normalize to get direction
+DIM dir AS OBJECT = vel.Norm()
+PRINT "Direction: ("; dir.X; ", "; dir.Y; ")"
+PRINT "Direction length: "; dir.Len()  ' Should be 1.0
+
+' Rotate a vector 90 degrees
+DIM right AS OBJECT = Viper.Vec2.New(1.0, 0.0)
+DIM up AS OBJECT = right.Rotate(3.14159265 / 2.0)
+PRINT "Rotated: ("; up.X; ", "; up.Y; ")"  ' (0, 1)
+
+' Linear interpolation for smooth movement
+DIM start AS OBJECT = Viper.Vec2.Zero()
+DIM endpoint AS OBJECT = Viper.Vec2.New(100.0, 100.0)
+DIM midpoint AS OBJECT = start.Lerp(endpoint, 0.5)
+PRINT "Midpoint: ("; midpoint.X; ", "; midpoint.Y; ")"  ' (50, 50)
+
+' Dot product to check perpendicularity
+DIM a AS OBJECT = Viper.Vec2.New(1.0, 0.0)
+DIM b AS OBJECT = Viper.Vec2.New(0.0, 1.0)
+IF a.Dot(b) = 0.0 THEN
+    PRINT "Vectors are perpendicular"
+END IF
+```
+
+---
+
+## Viper.Vec3
+
+3D vector math for positions, directions, velocities, and physics calculations in 3D space.
+
+**Type:** Instance (obj)
+**Constructor:** `Viper.Vec3.New(x, y, z)` or `Viper.Vec3.Zero()` or `Viper.Vec3.One()`
+
+### Static Constructors
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `New(x, y, z)` | `obj(f64, f64, f64)` | Create a new vector with given components |
+| `Zero()` | `obj()` | Create a vector at origin (0, 0, 0) |
+| `One()` | `obj()` | Create a vector (1, 1, 1) |
+
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `X` | `f64` | X component (read-only) |
+| `Y` | `f64` | Y component (read-only) |
+| `Z` | `f64` | Z component (read-only) |
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `Add(other)` | `obj(obj)` | Add two vectors: self + other |
+| `Sub(other)` | `obj(obj)` | Subtract vectors: self - other |
+| `Mul(scalar)` | `obj(f64)` | Multiply by scalar: self * s |
+| `Div(scalar)` | `obj(f64)` | Divide by scalar: self / s |
+| `Neg()` | `obj()` | Negate vector: -self |
+| `Dot(other)` | `f64(obj)` | Dot product of two vectors |
+| `Cross(other)` | `obj(obj)` | Cross product (returns Vec3) |
+| `Len()` | `f64()` | Length (magnitude) of vector |
+| `LenSq()` | `f64()` | Squared length (avoids sqrt) |
+| `Norm()` | `obj()` | Normalize to unit length |
+| `Dist(other)` | `f64(obj)` | Distance to another point |
+| `Lerp(other, t)` | `obj(obj, f64)` | Linear interpolation (t=0 returns self, t=1 returns other) |
+
+### Notes
+
+- Vectors are immutable - all operations return new vectors
+- `Norm()` returns zero vector if input has zero length
+- `Div()` traps on division by zero
+- `Cross()` returns a Vec3 perpendicular to both input vectors (right-hand rule)
+- The cross product formula: a × b = (ay*bz - az*by, az*bx - ax*bz, ax*by - ay*bx)
+
+### Example
+
+```basic
+' Create 3D vectors
+DIM pos AS OBJECT = Viper.Vec3.New(100.0, 200.0, 50.0)
+DIM vel AS OBJECT = Viper.Vec3.New(5.0, -3.0, 2.0)
+
+' Move position by velocity
+pos = pos.Add(vel)
+PRINT "Position: ("; pos.X; ", "; pos.Y; ", "; pos.Z; ")"
+
+' Calculate distance in 3D
+DIM target AS OBJECT = Viper.Vec3.New(150.0, 180.0, 60.0)
+DIM dist AS DOUBLE = pos.Dist(target)
+PRINT "Distance to target: "; dist
+
+' Normalize to get direction
+DIM dir AS OBJECT = vel.Norm()
+PRINT "Direction length: "; dir.Len()  ' Should be 1.0
+
+' Cross product for surface normals
+DIM edge1 AS OBJECT = Viper.Vec3.New(1.0, 0.0, 0.0)
+DIM edge2 AS OBJECT = Viper.Vec3.New(0.0, 1.0, 0.0)
+DIM normal AS OBJECT = edge1.Cross(edge2)
+PRINT "Normal: ("; normal.X; ", "; normal.Y; ", "; normal.Z; ")"  ' (0, 0, 1)
+
+' Verify cross product is perpendicular
+PRINT "Dot with edge1: "; normal.Dot(edge1)  ' 0
+PRINT "Dot with edge2: "; normal.Dot(edge2)  ' 0
+
+' Linear interpolation for smooth 3D movement
+DIM start AS OBJECT = Viper.Vec3.Zero()
+DIM endpoint AS OBJECT = Viper.Vec3.New(100.0, 100.0, 100.0)
+DIM midpoint AS OBJECT = start.Lerp(endpoint, 0.5)
+PRINT "Midpoint: ("; midpoint.X; ", "; midpoint.Y; ", "; midpoint.Z; ")"  ' (50, 50, 50)
 ```
 
 ---
@@ -1931,6 +2458,298 @@ All listing functions exclude `.` and `..` entries. If the directory doesn't exi
 
 ---
 
+## Viper.IO.BinFile
+
+Binary file stream for reading and writing raw bytes with random access capabilities.
+
+**Type:** Instance class
+
+**Constructor:** `Viper.IO.BinFile.Open(path, mode)`
+
+### Open Modes
+
+| Mode | Description |
+|------|-------------|
+| `"r"` | Read only (file must exist) |
+| `"w"` | Write only (creates or truncates) |
+| `"rw"` | Read and write (file must exist) |
+| `"a"` | Append (creates if needed, writes at end) |
+
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `Pos` | Integer | Current file position (read-only) |
+| `Size` | Integer | Total file size in bytes (read-only) |
+| `Eof` | Boolean | True if at end of file (read-only) |
+
+### Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `Close()` | void | Close the file and release resources |
+| `Read(bytes, offset, count)` | Integer | Read up to count bytes into Bytes object at offset; returns bytes read |
+| `Write(bytes, offset, count)` | void | Write count bytes from Bytes object starting at offset |
+| `ReadByte()` | Integer | Read single byte (0-255) or -1 at EOF |
+| `WriteByte(value)` | void | Write single byte (0-255) |
+| `Seek(offset, origin)` | Integer | Seek to position; returns new position |
+| `Flush()` | void | Flush buffered writes to disk |
+
+### Seek Origins
+
+| Origin | Description |
+|--------|-------------|
+| `0` | From beginning of file (SEEK_SET) |
+| `1` | From current position (SEEK_CUR) |
+| `2` | From end of file (SEEK_END) |
+
+### Example
+
+```basic
+' Write binary data
+DIM bf AS OBJECT = Viper.IO.BinFile.Open("data.bin", "w")
+
+' Write individual bytes
+bf.WriteByte(&HCA)
+bf.WriteByte(&HFE)
+bf.WriteByte(&HBA)
+bf.WriteByte(&HBE)
+
+' Write from a Bytes object
+DIM data AS OBJECT = NEW Viper.Collections.Bytes(4)
+data.Set(0, 1)
+data.Set(1, 2)
+data.Set(2, 3)
+data.Set(3, 4)
+bf.Write(data, 0, 4)
+
+bf.Close()
+
+' Read binary data
+bf = Viper.IO.BinFile.Open("data.bin", "r")
+
+' Check file size
+PRINT bf.Size                 ' Output: 8
+
+' Read byte by byte
+PRINT HEX(bf.ReadByte())      ' Output: CA
+PRINT HEX(bf.ReadByte())      ' Output: FE
+
+' Seek to position
+bf.Seek(0, 0)                 ' Back to start
+
+' Read into a Bytes buffer
+DIM buffer AS OBJECT = NEW Viper.Collections.Bytes(8)
+DIM bytesRead AS INTEGER = bf.Read(buffer, 0, 8)
+PRINT bytesRead               ' Output: 8
+
+' Check for end of file
+PRINT bf.Eof                  ' Output: 1
+
+bf.Close()
+
+' Read/write mode for random access
+bf = Viper.IO.BinFile.Open("data.bin", "rw")
+
+' Seek to position 4 and overwrite
+bf.Seek(4, 0)
+bf.WriteByte(&HFF)
+
+bf.Close()
+```
+
+### Use Cases
+
+- **Binary file formats:** Read/write structured binary data
+- **Random access:** Seek to arbitrary positions in files
+- **Large files:** Process files too large to load entirely into memory
+- **Low-level I/O:** Direct byte-level file manipulation
+- **Database files:** Read/write fixed-record binary databases
+
+---
+
+## Viper.IO.LineReader
+
+Line-by-line text file reader with support for multiple line ending conventions.
+
+**Type:** Instance class
+
+**Constructor:** `Viper.IO.LineReader.Open(path)`
+
+### Line Endings
+
+LineReader automatically handles all common line ending formats:
+
+| Format | Characters | Description |
+|--------|------------|-------------|
+| LF | `\n` | Unix/Linux/macOS |
+| CR | `\r` | Classic Mac |
+| CRLF | `\r\n` | Windows |
+
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `Eof` | Boolean | True if at end of file (read-only) |
+
+### Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `Close()` | void | Close the file and release resources |
+| `Read()` | String | Read one line (without newline); returns empty string at EOF |
+| `ReadChar()` | Integer | Read single character (0-255) or -1 at EOF |
+| `PeekChar()` | Integer | View next character without consuming (0-255 or -1) |
+| `ReadAll()` | String | Read all remaining content as a string |
+
+### Example
+
+```basic
+' Read a file line by line
+DIM reader AS OBJECT = Viper.IO.LineReader.Open("data.txt")
+
+DO WHILE NOT reader.Eof
+    DIM line AS STRING = reader.Read()
+    IF NOT reader.Eof THEN
+        PRINT line
+    END IF
+LOOP
+
+reader.Close()
+
+' Character-by-character reading
+reader = Viper.IO.LineReader.Open("chars.txt")
+
+DO WHILE NOT reader.Eof
+    DIM ch AS INTEGER = reader.ReadChar()
+    IF ch >= 0 THEN
+        PRINT CHR(ch);
+    END IF
+LOOP
+
+reader.Close()
+
+' Peek at next character without consuming
+reader = Viper.IO.LineReader.Open("peek.txt")
+
+' Peek and read
+DIM nextChar AS INTEGER = reader.PeekChar()
+PRINT "Next char will be: "; CHR(nextChar)
+
+DIM actualChar AS INTEGER = reader.ReadChar()
+PRINT "Read char: "; CHR(actualChar)   ' Same as peeked
+
+reader.Close()
+
+' Read entire remaining file content
+reader = Viper.IO.LineReader.Open("large.txt")
+
+' Skip first line
+DIM header AS STRING = reader.Read()
+
+' Read everything else
+DIM content AS STRING = reader.ReadAll()
+PRINT "Remaining content length: "; LEN(content)
+
+reader.Close()
+```
+
+### Use Cases
+
+- **Text file processing:** Process files line by line
+- **Log file reading:** Parse log files with various line endings
+- **Configuration parsing:** Read config files line by line
+- **Character-level parsing:** Build custom parsers with PeekChar/ReadChar
+- **Cross-platform files:** Handle files with different line ending conventions
+
+---
+
+## Viper.IO.LineWriter
+
+Buffered text file writer with configurable line endings.
+
+**Type:** Instance class
+
+**Constructors:**
+- `Viper.IO.LineWriter.Open(path)` - Create or overwrite file
+- `Viper.IO.LineWriter.Append(path)` - Open for appending
+
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `NewLine` | String | Line ending string (read/write, defaults to platform) |
+
+### Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `Close()` | void | Close the file and release resources |
+| `Write(text)` | void | Write string without newline |
+| `WriteLn(text)` | void | Write string followed by newline |
+| `WriteChar(ch)` | void | Write single character (0-255) |
+| `Flush()` | void | Flush buffered output to disk |
+
+### Platform Newlines
+
+| Platform | Default NewLine |
+|----------|-----------------|
+| Windows | `\r\n` (CRLF) |
+| Unix/Linux/macOS | `\n` (LF) |
+
+### Example
+
+```basic
+' Write text to a file
+DIM writer AS OBJECT = Viper.IO.LineWriter.Open("output.txt")
+
+' Write lines with automatic newline
+writer.WriteLn("First line")
+writer.WriteLn("Second line")
+
+' Write without newline
+writer.Write("No ")
+writer.Write("newline ")
+writer.Write("here")
+writer.WriteLn("")  ' Add newline at end
+
+writer.Close()
+
+' Append to existing file
+writer = Viper.IO.LineWriter.Append("output.txt")
+writer.WriteLn("Appended line")
+writer.Close()
+
+' Custom line endings (Windows-style)
+writer = Viper.IO.LineWriter.Open("windows.txt")
+writer.NewLine = CHR(13) + CHR(10)  ' CRLF
+writer.WriteLn("Windows line ending")
+writer.Close()
+
+' Unix-style line endings
+writer = Viper.IO.LineWriter.Open("unix.txt")
+writer.NewLine = CHR(10)  ' LF only
+writer.WriteLn("Unix line ending")
+writer.Close()
+
+' Write individual characters
+writer = Viper.IO.LineWriter.Open("chars.txt")
+FOR i AS INTEGER = 65 TO 90  ' A-Z
+    writer.WriteChar(i)
+NEXT
+writer.Close()
+```
+
+### Use Cases
+
+- **Text file generation:** Create configuration files, reports, logs
+- **Cross-platform output:** Control line endings for target platform
+- **Log writing:** Append entries to log files
+- **Data export:** Write CSV, TSV, or other text formats
+- **Code generation:** Generate source code with proper line endings
+
+---
+
 ## Viper.Graphics.Canvas
 
 2D graphics canvas for visual applications and games.
@@ -2047,6 +2866,94 @@ canvas.Disc(200, 200, 50, purple)
 
 ---
 
+## Viper.Graphics.Pixels
+
+Software image buffer for direct pixel manipulation. Use for procedural texture generation, image processing, or custom rendering.
+
+**Type:** Instance class
+
+**Constructor:** `NEW Viper.Graphics.Pixels(width, height)`
+
+Creates a new pixel buffer initialized to transparent black (0x00000000).
+
+### Properties
+
+| Property | Type | Access | Description |
+|----------|------|--------|-------------|
+| `Width` | Integer | Read | Width of the buffer in pixels |
+| `Height` | Integer | Read | Height of the buffer in pixels |
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `Get(x, y)` | `Integer(Integer, Integer)` | Get pixel color at (x, y) as packed RGBA (0xRRGGBBAA). Returns 0 if out of bounds |
+| `Set(x, y, color)` | `Void(Integer, Integer, Integer)` | Set pixel color at (x, y). Silently ignores out of bounds |
+| `Fill(color)` | `Void(Integer)` | Fill entire buffer with a color |
+| `Clear()` | `Void()` | Clear buffer to transparent black (0x00000000) |
+| `Copy(dx, dy, src, sx, sy, w, h)` | `Void(Integer, Integer, Pixels, Integer, Integer, Integer, Integer)` | Copy a rectangle from source to this buffer |
+| `Clone()` | `Pixels()` | Create a deep copy of this buffer |
+| `ToBytes()` | `Bytes()` | Convert to raw bytes (RGBA, row-major) |
+
+### Static Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `FromBytes(width, height, bytes)` | `Pixels(Integer, Integer, Bytes)` | Create from raw bytes (RGBA, row-major) |
+
+### Color Format
+
+Colors are stored as packed 32-bit RGBA integers in the format `0xRRGGBBAA`:
+- `RR` - Red component (0-255)
+- `GG` - Green component (0-255)
+- `BB` - Blue component (0-255)
+- `AA` - Alpha component (0-255, where 255 = opaque)
+
+Use `Viper.Graphics.Color.RGBA()` to create colors.
+
+### Example
+
+```basic
+DIM pixels AS Viper.Graphics.Pixels
+pixels = NEW Viper.Graphics.Pixels(256, 256)
+
+' Create a gradient
+DIM x AS INTEGER
+DIM y AS INTEGER
+FOR y = 0 TO 255
+    FOR x = 0 TO 255
+        ' Red increases left-to-right, green increases top-to-bottom
+        DIM r AS INTEGER = x
+        DIM g AS INTEGER = y
+        DIM color AS INTEGER = Viper.Graphics.Color.RGB(r, g, 0)
+        pixels.Set(x, y, color)
+    NEXT x
+NEXT y
+
+' Copy a region
+DIM copy AS Viper.Graphics.Pixels
+copy = NEW Viper.Graphics.Pixels(64, 64)
+copy.Copy(0, 0, pixels, 100, 100, 64, 64)
+
+' Clone the entire buffer
+DIM backup AS Viper.Graphics.Pixels
+backup = pixels.Clone()
+
+' Convert to bytes for serialization
+DIM data AS Viper.Collections.Bytes
+data = pixels.ToBytes()
+```
+
+### Notes
+
+- Pixel data is stored in row-major order (row 0 first, then row 1, etc.)
+- Out-of-bounds reads return 0 (transparent black)
+- Out-of-bounds writes are silently ignored
+- The `Copy` method automatically clips to buffer boundaries
+- `ToBytes` returns 4 bytes per pixel (width × height × 4 total bytes)
+
+---
+
 ## Runtime Architecture
 
 ### Overview
@@ -2111,14 +3018,22 @@ Classes define the OOP interface exposed to Viper languages. Method signatures o
 | `Viper.Collections.Queue` | FIFO with Add, Take, Peek |
 | `Viper.Collections.Map` | String-keyed dictionary |
 | `Viper.Collections.Bytes` | Efficient byte array |
+| `Viper.Collections.Bag` | String set with union, intersection, difference |
+| `Viper.Collections.Ring` | Fixed-size circular buffer (overwrites oldest) |
 | `Viper.Collections.List` | Dynamic list of objects |
 | `Viper.IO.File` | File read/write/copy/delete |
 | `Viper.IO.Dir` | Directory create/list/delete |
 | `Viper.IO.Path` | Path join/split/normalize |
+| `Viper.IO.BinFile` | Binary file stream with random access |
+| `Viper.IO.LineReader` | Line-by-line text file reading |
+| `Viper.IO.LineWriter` | Buffered text file writing |
 | `Viper.Text.StringBuilder` | Efficient string concatenation |
+| `Viper.Text.Codec` | Base64, Hex, URL encoding/decoding |
 | `Viper.Text.Guid` | UUID v4 generation |
+| `Viper.Crypto.Hash` | MD5, SHA1, SHA256, CRC32 hashing |
 | `Viper.Graphics.Canvas` | Window and 2D drawing |
 | `Viper.Graphics.Color` | RGB/RGBA color creation |
+| `Viper.Graphics.Pixels` | Software image buffer for pixel manipulation |
 | `Viper.Time.Clock` | Sleep and tick counting |
 | `Viper.DateTime` | Date/time creation and formatting |
 | `Viper.Diagnostics.Stopwatch` | Benchmarking timer |

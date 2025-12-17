@@ -21,6 +21,10 @@ set(RT_SOURCES
         rt_array_str.c
         rt_array_obj.c
         rt_bag.c
+        rt_binfile.c
+        rt_bits.c
+        rt_linereader.c
+        rt_linewriter.c
         rt_heap.c
         rt_numeric.c
         rt_numeric_conv.c
@@ -41,16 +45,22 @@ set(RT_SOURCES
         rt_seq.c
         rt_stack.c
         rt_queue.c
+        rt_ring.c
         rt_bytes.c
         rt_codec.c
         rt_graphics.c
         rt_datetime.c
+        rt_exec.c
         rt_map.c
         rt_path.c
         rt_dir.c
         rt_stopwatch.c
         rt_guid.c
         rt_hash.c
+        rt_machine.c
+        rt_vec2.c
+        rt_vec3.c
+        rt_pixels.c
 )
 
 set(RT_PUBLIC_HEADERS
@@ -86,6 +96,7 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_map.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_path.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_dir.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_pixels.h
 )
 
 add_library(viper_runtime STATIC ${RT_SOURCES})

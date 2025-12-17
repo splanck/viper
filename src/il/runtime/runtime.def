@@ -10,11 +10,13 @@
 // This file defines all Viper runtime functions and classes.
 // Sections are organized alphabetically by namespace.
 //
+//   BITS
 //   COLLECTIONS - BAG
 //   COLLECTIONS - BYTES
 //   COLLECTIONS - LIST
 //   COLLECTIONS - MAP
 //   COLLECTIONS - QUEUE
+//   COLLECTIONS - RING
 //   COLLECTIONS - SEQ
 //   COLLECTIONS - STACK
 //   CRYPTO - HASH
@@ -23,11 +25,17 @@
 //   DIAGNOSTICS - STOPWATCH
 //   DIAGNOSTICS - TRAP
 //   ENVIRONMENT
+//   EXEC
 //   GRAPHICS - CANVAS
 //   GRAPHICS - COLOR
+//   GRAPHICS - PIXELS
+//   IO - BINFILE
+//   IO - LINEREADER
+//   IO - LINEWRITER
 //   IO - DIRECTORY
 //   IO - FILE
 //   IO - PATH
+//   MACHINE
 //   MATH FUNCTIONS
 //   OBJECT (BASE CLASS)
 //   RANDOM
@@ -38,6 +46,8 @@
 //   TEXT - STRINGBUILDER
 //   TIME - CLOCK
 //   TYPE CONVERSION
+//   VEC2
+//   VEC3
 //
 //   RUNTIME CLASSES (RT_CLASS definitions)
 //
@@ -71,6 +81,29 @@
 //   - For class methods, signature omits the receiver (arg0)
 //
 //===----------------------------------------------------------------------===//
+
+//=============================================================================
+// BITS
+//=============================================================================
+
+RT_FUNC(BitsAnd,    rt_bits_and,    "Viper.Bits.And",    "i64(i64,i64)")
+RT_FUNC(BitsClear,  rt_bits_clear,  "Viper.Bits.Clear",  "i64(i64,i64)")
+RT_FUNC(BitsCount,  rt_bits_count,  "Viper.Bits.Count",  "i64(i64)")
+RT_FUNC(BitsFlip,   rt_bits_flip,   "Viper.Bits.Flip",   "i64(i64)")
+RT_FUNC(BitsGet,    rt_bits_get,    "Viper.Bits.Get",    "i1(i64,i64)")
+RT_FUNC(BitsLeadZ,  rt_bits_leadz,  "Viper.Bits.LeadZ",  "i64(i64)")
+RT_FUNC(BitsNot,    rt_bits_not,    "Viper.Bits.Not",    "i64(i64)")
+RT_FUNC(BitsOr,     rt_bits_or,     "Viper.Bits.Or",     "i64(i64,i64)")
+RT_FUNC(BitsRotl,   rt_bits_rotl,   "Viper.Bits.Rotl",   "i64(i64,i64)")
+RT_FUNC(BitsRotr,   rt_bits_rotr,   "Viper.Bits.Rotr",   "i64(i64,i64)")
+RT_FUNC(BitsSet,    rt_bits_set,    "Viper.Bits.Set",    "i64(i64,i64)")
+RT_FUNC(BitsShl,    rt_bits_shl,    "Viper.Bits.Shl",    "i64(i64,i64)")
+RT_FUNC(BitsShr,    rt_bits_shr,    "Viper.Bits.Shr",    "i64(i64,i64)")
+RT_FUNC(BitsSwap,   rt_bits_swap,   "Viper.Bits.Swap",   "i64(i64)")
+RT_FUNC(BitsToggle, rt_bits_toggle, "Viper.Bits.Toggle", "i64(i64,i64)")
+RT_FUNC(BitsTrailZ, rt_bits_trailz, "Viper.Bits.TrailZ", "i64(i64)")
+RT_FUNC(BitsUshr,   rt_bits_ushr,   "Viper.Bits.Ushr",   "i64(i64,i64)")
+RT_FUNC(BitsXor,    rt_bits_xor,    "Viper.Bits.Xor",    "i64(i64,i64)")
 
 //=============================================================================
 // COLLECTIONS - BYTES
@@ -152,6 +185,21 @@ RT_FUNC(QueueLen,     rt_queue_len,      "Viper.Collections.Queue.get_Len",     
 RT_FUNC(QueueNew,     rt_queue_new,      "Viper.Collections.Queue.New",         "obj()")
 RT_FUNC(QueuePeek,    rt_queue_peek,     "Viper.Collections.Queue.Peek",        "obj(obj)")
 RT_FUNC(QueueTake,    rt_queue_take,     "Viper.Collections.Queue.Take",        "obj(obj)")
+
+//=============================================================================
+// COLLECTIONS - RING
+//=============================================================================
+
+RT_FUNC(RingCap,     rt_ring_cap,      "Viper.Collections.Ring.get_Cap",     "i64(obj)")
+RT_FUNC(RingClear,   rt_ring_clear,    "Viper.Collections.Ring.Clear",       "void(obj)")
+RT_FUNC(RingGet,     rt_ring_get,      "Viper.Collections.Ring.Get",         "obj(obj,i64)")
+RT_FUNC(RingIsEmpty, rt_ring_is_empty, "Viper.Collections.Ring.get_IsEmpty", "i1(obj)")
+RT_FUNC(RingIsFull,  rt_ring_is_full,  "Viper.Collections.Ring.get_IsFull",  "i1(obj)")
+RT_FUNC(RingLen,     rt_ring_len,      "Viper.Collections.Ring.get_Len",     "i64(obj)")
+RT_FUNC(RingNew,     rt_ring_new,      "Viper.Collections.Ring.New",         "obj(i64)")
+RT_FUNC(RingPeek,    rt_ring_peek,     "Viper.Collections.Ring.Peek",        "obj(obj)")
+RT_FUNC(RingPop,     rt_ring_pop,      "Viper.Collections.Ring.Pop",         "obj(obj)")
+RT_FUNC(RingPush,    rt_ring_push,     "Viper.Collections.Ring.Push",        "void(obj,obj)")
 
 //=============================================================================
 // COLLECTIONS - SEQ
@@ -266,6 +314,17 @@ RT_FUNC(EnvIsNative, rt_env_is_native, "Viper.Environment.IsNative",         "i1
 RT_FUNC(EnvSetVar,   rt_env_set_var,   "Viper.Environment.SetVariable",      "void(str,str)")
 
 //=============================================================================
+// EXEC
+//=============================================================================
+
+RT_FUNC(ExecCapture,     rt_exec_capture,      "Viper.Exec.Capture",      "str(str)")
+RT_FUNC(ExecCaptureArgs, rt_exec_capture_args, "Viper.Exec.CaptureArgs",  "str(str,obj)")
+RT_FUNC(ExecRun,         rt_exec_run,          "Viper.Exec.Run",          "i64(str)")
+RT_FUNC(ExecRunArgs,     rt_exec_run_args,     "Viper.Exec.RunArgs",      "i64(str,obj)")
+RT_FUNC(ExecShell,       rt_exec_shell,        "Viper.Exec.Shell",        "i64(str)")
+RT_FUNC(ExecShellCapture,rt_exec_shell_capture,"Viper.Exec.ShellCapture", "str(str)")
+
+//=============================================================================
 // GRAPHICS - CANVAS
 //=============================================================================
 
@@ -290,6 +349,22 @@ RT_FUNC(CanvasWidth,       rt_canvas_width,        "Viper.Graphics.Canvas.get_Wi
 
 RT_FUNC(ColorRGB,  rt_color_rgb,  "Viper.Graphics.Color.RGB",  "i64(i64,i64,i64)")
 RT_FUNC(ColorRGBA, rt_color_rgba, "Viper.Graphics.Color.RGBA", "i64(i64,i64,i64,i64)")
+
+//=============================================================================
+// GRAPHICS - PIXELS
+//=============================================================================
+
+RT_FUNC(PixelsClear,     rt_pixels_clear,      "Viper.Graphics.Pixels.Clear",     "void(obj)")
+RT_FUNC(PixelsClone,     rt_pixels_clone,      "Viper.Graphics.Pixels.Clone",     "obj(obj)")
+RT_FUNC(PixelsCopy,      rt_pixels_copy,       "Viper.Graphics.Pixels.Copy",      "void(obj,i64,i64,obj,i64,i64,i64,i64)")
+RT_FUNC(PixelsFill,      rt_pixels_fill,       "Viper.Graphics.Pixels.Fill",      "void(obj,i64)")
+RT_FUNC(PixelsFromBytes, rt_pixels_from_bytes, "Viper.Graphics.Pixels.FromBytes", "obj(i64,i64,obj)")
+RT_FUNC(PixelsGet,       rt_pixels_get,        "Viper.Graphics.Pixels.Get",       "i64(obj,i64,i64)")
+RT_FUNC(PixelsHeight,    rt_pixels_height,     "Viper.Graphics.Pixels.get_Height","i64(obj)")
+RT_FUNC(PixelsNew,       rt_pixels_new,        "Viper.Graphics.Pixels.New",       "obj(i64,i64)")
+RT_FUNC(PixelsSet,       rt_pixels_set,        "Viper.Graphics.Pixels.Set",       "void(obj,i64,i64,i64)")
+RT_FUNC(PixelsToBytes,   rt_pixels_to_bytes,   "Viper.Graphics.Pixels.ToBytes",   "obj(obj)")
+RT_FUNC(PixelsWidth,     rt_pixels_width,      "Viper.Graphics.Pixels.get_Width", "i64(obj)")
 
 //=============================================================================
 // IO - DIRECTORY
@@ -348,6 +423,63 @@ RT_FUNC(PathNorm,    rt_path_norm,     "Viper.IO.Path.Norm",    "str(str)")
 RT_FUNC(PathSep,     rt_path_sep,      "Viper.IO.Path.Sep",     "str()")
 RT_FUNC(PathStem,    rt_path_stem,     "Viper.IO.Path.Stem",    "str(str)")
 RT_FUNC(PathWithExt, rt_path_with_ext, "Viper.IO.Path.WithExt", "str(str,str)")
+
+//=============================================================================
+// IO - BINFILE
+//=============================================================================
+
+RT_FUNC(BinFileClose,     rt_binfile_close,      "Viper.IO.BinFile.Close",      "void(obj)")
+RT_FUNC(BinFileEof,       rt_binfile_eof,        "Viper.IO.BinFile.get_Eof",    "i1(obj)")
+RT_FUNC(BinFileFlush,     rt_binfile_flush,      "Viper.IO.BinFile.Flush",      "void(obj)")
+RT_FUNC(BinFileOpen,      rt_binfile_open,       "Viper.IO.BinFile.Open",       "obj(str,str)")
+RT_FUNC(BinFilePos,       rt_binfile_pos,        "Viper.IO.BinFile.get_Pos",    "i64(obj)")
+RT_FUNC(BinFileRead,      rt_binfile_read,       "Viper.IO.BinFile.Read",       "i64(obj,obj,i64,i64)")
+RT_FUNC(BinFileReadByte,  rt_binfile_read_byte,  "Viper.IO.BinFile.ReadByte",   "i64(obj)")
+RT_FUNC(BinFileSeek,      rt_binfile_seek,       "Viper.IO.BinFile.Seek",       "i64(obj,i64,i64)")
+RT_FUNC(BinFileSize,      rt_binfile_size,       "Viper.IO.BinFile.get_Size",   "i64(obj)")
+RT_FUNC(BinFileWrite,     rt_binfile_write,      "Viper.IO.BinFile.Write",      "void(obj,obj,i64,i64)")
+RT_FUNC(BinFileWriteByte, rt_binfile_write_byte, "Viper.IO.BinFile.WriteByte",  "void(obj,i64)")
+
+//=============================================================================
+// IO - LINEREADER
+//=============================================================================
+
+RT_FUNC(LineReaderClose,    rt_linereader_close,     "Viper.IO.LineReader.Close",     "void(obj)")
+RT_FUNC(LineReaderEof,      rt_linereader_eof,       "Viper.IO.LineReader.get_Eof",   "i1(obj)")
+RT_FUNC(LineReaderOpen,     rt_linereader_open,      "Viper.IO.LineReader.Open",      "obj(str)")
+RT_FUNC(LineReaderPeekChar, rt_linereader_peek_char, "Viper.IO.LineReader.PeekChar",  "i64(obj)")
+RT_FUNC(LineReaderRead,     rt_linereader_read,      "Viper.IO.LineReader.Read",      "str(obj)")
+RT_FUNC(LineReaderReadAll,  rt_linereader_read_all,  "Viper.IO.LineReader.ReadAll",   "str(obj)")
+RT_FUNC(LineReaderReadChar, rt_linereader_read_char, "Viper.IO.LineReader.ReadChar",  "i64(obj)")
+
+//=============================================================================
+// IO - LINEWRITER
+//=============================================================================
+
+RT_FUNC(LineWriterAppend,     rt_linewriter_append,      "Viper.IO.LineWriter.Append",      "obj(str)")
+RT_FUNC(LineWriterClose,      rt_linewriter_close,       "Viper.IO.LineWriter.Close",       "void(obj)")
+RT_FUNC(LineWriterFlush,      rt_linewriter_flush,       "Viper.IO.LineWriter.Flush",       "void(obj)")
+RT_FUNC(LineWriterNewLine,    rt_linewriter_newline,     "Viper.IO.LineWriter.get_NewLine", "str(obj)")
+RT_FUNC(LineWriterOpen,       rt_linewriter_open,        "Viper.IO.LineWriter.Open",        "obj(str)")
+RT_FUNC(LineWriterSetNewLine, rt_linewriter_set_newline, "Viper.IO.LineWriter.set_NewLine", "void(obj,str)")
+RT_FUNC(LineWriterWrite,      rt_linewriter_write,       "Viper.IO.LineWriter.Write",       "void(obj,str)")
+RT_FUNC(LineWriterWriteChar,  rt_linewriter_write_char,  "Viper.IO.LineWriter.WriteChar",   "void(obj,i64)")
+RT_FUNC(LineWriterWriteLn,    rt_linewriter_write_ln,    "Viper.IO.LineWriter.WriteLn",     "void(obj,str)")
+
+//=============================================================================
+// MACHINE
+//=============================================================================
+
+RT_FUNC(MachineCores,    rt_machine_cores,     "Viper.Machine.get_Cores",    "i64()")
+RT_FUNC(MachineEndian,   rt_machine_endian,    "Viper.Machine.get_Endian",   "str()")
+RT_FUNC(MachineHome,     rt_machine_home,      "Viper.Machine.get_Home",     "str()")
+RT_FUNC(MachineHost,     rt_machine_host,      "Viper.Machine.get_Host",     "str()")
+RT_FUNC(MachineMemFree,  rt_machine_mem_free,  "Viper.Machine.get_MemFree",  "i64()")
+RT_FUNC(MachineMemTotal, rt_machine_mem_total, "Viper.Machine.get_MemTotal", "i64()")
+RT_FUNC(MachineOS,       rt_machine_os,        "Viper.Machine.get_OS",       "str()")
+RT_FUNC(MachineOSVer,    rt_machine_os_ver,    "Viper.Machine.get_OSVer",    "str()")
+RT_FUNC(MachineTemp,     rt_machine_temp,      "Viper.Machine.get_Temp",     "str()")
+RT_FUNC(MachineUser,     rt_machine_user,      "Viper.Machine.get_User",     "str()")
 
 //=============================================================================
 // MATH FUNCTIONS
@@ -563,6 +695,53 @@ RT_FUNC(ToDouble,    rt_to_double,    "Viper.Convert.ToDouble", "f64(str)")
 RT_FUNC(ToInt,       rt_to_int,       "Viper.Convert.ToInt",    "i64(str)")
 
 //=============================================================================
+// VEC2
+//=============================================================================
+
+RT_FUNC(Vec2Add,    rt_vec2_add,    "Viper.Vec2.Add",    "obj(obj,obj)")
+RT_FUNC(Vec2Angle,  rt_vec2_angle,  "Viper.Vec2.Angle",  "f64(obj)")
+RT_FUNC(Vec2Cross,  rt_vec2_cross,  "Viper.Vec2.Cross",  "f64(obj,obj)")
+RT_FUNC(Vec2Dist,   rt_vec2_dist,   "Viper.Vec2.Dist",   "f64(obj,obj)")
+RT_FUNC(Vec2Div,    rt_vec2_div,    "Viper.Vec2.Div",    "obj(obj,f64)")
+RT_FUNC(Vec2Dot,    rt_vec2_dot,    "Viper.Vec2.Dot",    "f64(obj,obj)")
+RT_FUNC(Vec2Len,    rt_vec2_len,    "Viper.Vec2.Len",    "f64(obj)")
+RT_FUNC(Vec2LenSq,  rt_vec2_len_sq, "Viper.Vec2.LenSq",  "f64(obj)")
+RT_FUNC(Vec2Lerp,   rt_vec2_lerp,   "Viper.Vec2.Lerp",   "obj(obj,obj,f64)")
+RT_FUNC(Vec2Mul,    rt_vec2_mul,    "Viper.Vec2.Mul",    "obj(obj,f64)")
+RT_FUNC(Vec2Neg,    rt_vec2_neg,    "Viper.Vec2.Neg",    "obj(obj)")
+RT_FUNC(Vec2New,    rt_vec2_new,    "Viper.Vec2.New",    "obj(f64,f64)")
+RT_FUNC(Vec2Norm,   rt_vec2_norm,   "Viper.Vec2.Norm",   "obj(obj)")
+RT_FUNC(Vec2One,    rt_vec2_one,    "Viper.Vec2.One",    "obj()")
+RT_FUNC(Vec2Rotate, rt_vec2_rotate, "Viper.Vec2.Rotate", "obj(obj,f64)")
+RT_FUNC(Vec2Sub,    rt_vec2_sub,    "Viper.Vec2.Sub",    "obj(obj,obj)")
+RT_FUNC(Vec2X,      rt_vec2_x,      "Viper.Vec2.get_X",  "f64(obj)")
+RT_FUNC(Vec2Y,      rt_vec2_y,      "Viper.Vec2.get_Y",  "f64(obj)")
+RT_FUNC(Vec2Zero,   rt_vec2_zero,   "Viper.Vec2.Zero",   "obj()")
+
+//=============================================================================
+// VEC3
+//=============================================================================
+
+RT_FUNC(Vec3Add,    rt_vec3_add,    "Viper.Vec3.Add",    "obj(obj,obj)")
+RT_FUNC(Vec3Cross,  rt_vec3_cross,  "Viper.Vec3.Cross",  "obj(obj,obj)")
+RT_FUNC(Vec3Dist,   rt_vec3_dist,   "Viper.Vec3.Dist",   "f64(obj,obj)")
+RT_FUNC(Vec3Div,    rt_vec3_div,    "Viper.Vec3.Div",    "obj(obj,f64)")
+RT_FUNC(Vec3Dot,    rt_vec3_dot,    "Viper.Vec3.Dot",    "f64(obj,obj)")
+RT_FUNC(Vec3Len,    rt_vec3_len,    "Viper.Vec3.Len",    "f64(obj)")
+RT_FUNC(Vec3LenSq,  rt_vec3_len_sq, "Viper.Vec3.LenSq",  "f64(obj)")
+RT_FUNC(Vec3Lerp,   rt_vec3_lerp,   "Viper.Vec3.Lerp",   "obj(obj,obj,f64)")
+RT_FUNC(Vec3Mul,    rt_vec3_mul,    "Viper.Vec3.Mul",    "obj(obj,f64)")
+RT_FUNC(Vec3Neg,    rt_vec3_neg,    "Viper.Vec3.Neg",    "obj(obj)")
+RT_FUNC(Vec3New,    rt_vec3_new,    "Viper.Vec3.New",    "obj(f64,f64,f64)")
+RT_FUNC(Vec3Norm,   rt_vec3_norm,   "Viper.Vec3.Norm",   "obj(obj)")
+RT_FUNC(Vec3One,    rt_vec3_one,    "Viper.Vec3.One",    "obj()")
+RT_FUNC(Vec3Sub,    rt_vec3_sub,    "Viper.Vec3.Sub",    "obj(obj,obj)")
+RT_FUNC(Vec3X,      rt_vec3_x,      "Viper.Vec3.get_X",  "f64(obj)")
+RT_FUNC(Vec3Y,      rt_vec3_y,      "Viper.Vec3.get_Y",  "f64(obj)")
+RT_FUNC(Vec3Z,      rt_vec3_z,      "Viper.Vec3.get_Z",  "f64(obj)")
+RT_FUNC(Vec3Zero,   rt_vec3_zero,   "Viper.Vec3.Zero",   "obj()")
+
+//=============================================================================
 //=============================================================================
 //
 // RUNTIME CLASSES
@@ -572,6 +751,28 @@ RT_FUNC(ToInt,       rt_to_int,       "Viper.Convert.ToInt",    "i64(str)")
 //
 //=============================================================================
 //=============================================================================
+
+// Viper.Bits - bit manipulation utilities
+RT_CLASS_BEGIN("Viper.Bits", Bits, "obj", none)
+    RT_METHOD("And", "i64(i64,i64)", BitsAnd)
+    RT_METHOD("Clear", "i64(i64,i64)", BitsClear)
+    RT_METHOD("Count", "i64(i64)", BitsCount)
+    RT_METHOD("Flip", "i64(i64)", BitsFlip)
+    RT_METHOD("Get", "i1(i64,i64)", BitsGet)
+    RT_METHOD("LeadZ", "i64(i64)", BitsLeadZ)
+    RT_METHOD("Not", "i64(i64)", BitsNot)
+    RT_METHOD("Or", "i64(i64,i64)", BitsOr)
+    RT_METHOD("Rotl", "i64(i64,i64)", BitsRotl)
+    RT_METHOD("Rotr", "i64(i64,i64)", BitsRotr)
+    RT_METHOD("Set", "i64(i64,i64)", BitsSet)
+    RT_METHOD("Shl", "i64(i64,i64)", BitsShl)
+    RT_METHOD("Shr", "i64(i64,i64)", BitsShr)
+    RT_METHOD("Swap", "i64(i64)", BitsSwap)
+    RT_METHOD("Toggle", "i64(i64,i64)", BitsToggle)
+    RT_METHOD("TrailZ", "i64(i64)", BitsTrailZ)
+    RT_METHOD("Ushr", "i64(i64,i64)", BitsUshr)
+    RT_METHOD("Xor", "i64(i64,i64)", BitsXor)
+RT_CLASS_END()
 
 // Viper.Collections.Bytes - efficient byte array
 RT_CLASS_BEGIN("Viper.Collections.Bytes", Bytes, "obj", BytesNew)
@@ -639,6 +840,19 @@ RT_CLASS_BEGIN("Viper.Collections.Queue", Queue, "obj", QueueNew)
     RT_METHOD("Clear", "void()", QueueClear)
     RT_METHOD("Peek", "obj()", QueuePeek)
     RT_METHOD("Take", "obj()", QueueTake)
+RT_CLASS_END()
+
+// Viper.Collections.Ring - fixed-size circular buffer
+RT_CLASS_BEGIN("Viper.Collections.Ring", Ring, "obj", RingNew)
+    RT_PROP("Cap", "i64", RingCap, none)
+    RT_PROP("IsEmpty", "i1", RingIsEmpty, none)
+    RT_PROP("IsFull", "i1", RingIsFull, none)
+    RT_PROP("Len", "i64", RingLen, none)
+    RT_METHOD("Clear", "void()", RingClear)
+    RT_METHOD("Get", "obj(i64)", RingGet)
+    RT_METHOD("Peek", "obj()", RingPeek)
+    RT_METHOD("Pop", "obj()", RingPop)
+    RT_METHOD("Push", "void(obj)", RingPush)
 RT_CLASS_END()
 
 // Viper.Collections.Seq - dynamic sequence/array
@@ -738,6 +952,16 @@ RT_CLASS_BEGIN("Viper.Environment", Environment, "obj", none)
     RT_METHOD("SetVariable", "void(str,str)", EnvSetVar)
 RT_CLASS_END()
 
+// Viper.Exec - external command execution
+RT_CLASS_BEGIN("Viper.Exec", Exec, "obj", none)
+    RT_METHOD("Capture", "str(str)", ExecCapture)
+    RT_METHOD("CaptureArgs", "str(str,obj)", ExecCaptureArgs)
+    RT_METHOD("Run", "i64(str)", ExecRun)
+    RT_METHOD("RunArgs", "i64(str,obj)", ExecRunArgs)
+    RT_METHOD("Shell", "i64(str)", ExecShell)
+    RT_METHOD("ShellCapture", "str(str)", ExecShellCapture)
+RT_CLASS_END()
+
 // Viper.Graphics.Canvas - drawing surface
 RT_CLASS_BEGIN("Viper.Graphics.Canvas", Canvas, "obj", CanvasNew)
     RT_PROP("Height", "i64", CanvasHeight, none)
@@ -759,6 +983,19 @@ RT_CLASS_END()
 RT_CLASS_BEGIN("Viper.Graphics.Color", Color, "obj", none)
     RT_METHOD("RGB", "i64(i64,i64,i64)", ColorRGB)
     RT_METHOD("RGBA", "i64(i64,i64,i64,i64)", ColorRGBA)
+RT_CLASS_END()
+
+// Viper.Graphics.Pixels - software image buffer
+RT_CLASS_BEGIN("Viper.Graphics.Pixels", Pixels, "obj", PixelsNew)
+    RT_PROP("Width", "i64", PixelsWidth, none)
+    RT_PROP("Height", "i64", PixelsHeight, none)
+    RT_METHOD("Get", "i64(i64,i64)", PixelsGet)
+    RT_METHOD("Set", "void(i64,i64,i64)", PixelsSet)
+    RT_METHOD("Fill", "void(i64)", PixelsFill)
+    RT_METHOD("Clear", "void()", PixelsClear)
+    RT_METHOD("Copy", "void(i64,i64,obj,i64,i64,i64,i64)", PixelsCopy)
+    RT_METHOD("Clone", "obj()", PixelsClone)
+    RT_METHOD("ToBytes", "obj()", PixelsToBytes)
 RT_CLASS_END()
 
 // Viper.IO.Dir - directory operations
@@ -814,6 +1051,54 @@ RT_CLASS_BEGIN("Viper.IO.Path", Path, "obj", none)
     RT_METHOD("Sep", "str()", PathSep)
     RT_METHOD("Stem", "str(str)", PathStem)
     RT_METHOD("WithExt", "str(str,str)", PathWithExt)
+RT_CLASS_END()
+
+// Viper.IO.BinFile - binary file stream operations
+RT_CLASS_BEGIN("Viper.IO.BinFile", BinFile, "obj", BinFileOpen)
+    RT_PROP("Eof", "i1", BinFileEof, none)
+    RT_PROP("Pos", "i64", BinFilePos, none)
+    RT_PROP("Size", "i64", BinFileSize, none)
+    RT_METHOD("Close", "void()", BinFileClose)
+    RT_METHOD("Flush", "void()", BinFileFlush)
+    RT_METHOD("Read", "i64(obj,i64,i64)", BinFileRead)
+    RT_METHOD("ReadByte", "i64()", BinFileReadByte)
+    RT_METHOD("Seek", "i64(i64,i64)", BinFileSeek)
+    RT_METHOD("Write", "void(obj,i64,i64)", BinFileWrite)
+    RT_METHOD("WriteByte", "void(i64)", BinFileWriteByte)
+RT_CLASS_END()
+
+// Viper.IO.LineReader - line-by-line text file reader
+RT_CLASS_BEGIN("Viper.IO.LineReader", LineReader, "obj", LineReaderOpen)
+    RT_PROP("Eof", "i1", LineReaderEof, none)
+    RT_METHOD("Close", "void()", LineReaderClose)
+    RT_METHOD("PeekChar", "i64()", LineReaderPeekChar)
+    RT_METHOD("Read", "str()", LineReaderRead)
+    RT_METHOD("ReadAll", "str()", LineReaderReadAll)
+    RT_METHOD("ReadChar", "i64()", LineReaderReadChar)
+RT_CLASS_END()
+
+// Viper.IO.LineWriter - buffered text file writer
+RT_CLASS_BEGIN("Viper.IO.LineWriter", LineWriter, "obj", LineWriterOpen)
+    RT_PROP("NewLine", "str", LineWriterNewLine, LineWriterSetNewLine)
+    RT_METHOD("Close", "void()", LineWriterClose)
+    RT_METHOD("Flush", "void()", LineWriterFlush)
+    RT_METHOD("Write", "void(str)", LineWriterWrite)
+    RT_METHOD("WriteChar", "void(i64)", LineWriterWriteChar)
+    RT_METHOD("WriteLn", "void(str)", LineWriterWriteLn)
+RT_CLASS_END()
+
+// Viper.Machine - system information queries
+RT_CLASS_BEGIN("Viper.Machine", Machine, "obj", none)
+    RT_PROP("Cores", "i64", MachineCores, none)
+    RT_PROP("Endian", "str", MachineEndian, none)
+    RT_PROP("Home", "str", MachineHome, none)
+    RT_PROP("Host", "str", MachineHost, none)
+    RT_PROP("MemFree", "i64", MachineMemFree, none)
+    RT_PROP("MemTotal", "i64", MachineMemTotal, none)
+    RT_PROP("OS", "str", MachineOS, none)
+    RT_PROP("OSVer", "str", MachineOSVer, none)
+    RT_PROP("Temp", "str", MachineTemp, none)
+    RT_PROP("User", "str", MachineUser, none)
 RT_CLASS_END()
 
 // Viper.Math - static utility class
@@ -966,4 +1251,43 @@ RT_CLASS_BEGIN("Viper.Time.Clock", Clock, "obj", none)
     RT_METHOD("Sleep", "void(i64)", ClockSleep)
     RT_METHOD("Ticks", "i64()", ClockTicks)
     RT_METHOD("TicksUs", "i64()", ClockTicksUs)
+RT_CLASS_END()
+
+// Viper.Vec2 - 2D vector math
+RT_CLASS_BEGIN("Viper.Vec2", Vec2, "obj", Vec2New)
+    RT_PROP("X", "f64", Vec2X, none)
+    RT_PROP("Y", "f64", Vec2Y, none)
+    RT_METHOD("Add", "obj(obj)", Vec2Add)
+    RT_METHOD("Sub", "obj(obj)", Vec2Sub)
+    RT_METHOD("Mul", "obj(f64)", Vec2Mul)
+    RT_METHOD("Div", "obj(f64)", Vec2Div)
+    RT_METHOD("Dot", "f64(obj)", Vec2Dot)
+    RT_METHOD("Cross", "f64(obj)", Vec2Cross)
+    RT_METHOD("Len", "f64()", Vec2Len)
+    RT_METHOD("LenSq", "f64()", Vec2LenSq)
+    RT_METHOD("Norm", "obj()", Vec2Norm)
+    RT_METHOD("Dist", "f64(obj)", Vec2Dist)
+    RT_METHOD("Lerp", "obj(obj,f64)", Vec2Lerp)
+    RT_METHOD("Angle", "f64()", Vec2Angle)
+    RT_METHOD("Rotate", "obj(f64)", Vec2Rotate)
+    RT_METHOD("Neg", "obj()", Vec2Neg)
+RT_CLASS_END()
+
+// Viper.Vec3 - 3D vector math
+RT_CLASS_BEGIN("Viper.Vec3", Vec3, "obj", Vec3New)
+    RT_PROP("X", "f64", Vec3X, none)
+    RT_PROP("Y", "f64", Vec3Y, none)
+    RT_PROP("Z", "f64", Vec3Z, none)
+    RT_METHOD("Add", "obj(obj)", Vec3Add)
+    RT_METHOD("Sub", "obj(obj)", Vec3Sub)
+    RT_METHOD("Mul", "obj(f64)", Vec3Mul)
+    RT_METHOD("Div", "obj(f64)", Vec3Div)
+    RT_METHOD("Dot", "f64(obj)", Vec3Dot)
+    RT_METHOD("Cross", "obj(obj)", Vec3Cross)
+    RT_METHOD("Len", "f64()", Vec3Len)
+    RT_METHOD("LenSq", "f64()", Vec3LenSq)
+    RT_METHOD("Norm", "obj()", Vec3Norm)
+    RT_METHOD("Dist", "f64(obj)", Vec3Dist)
+    RT_METHOD("Lerp", "obj(obj,f64)", Vec3Lerp)
+    RT_METHOD("Neg", "obj()", Vec3Neg)
 RT_CLASS_END()
