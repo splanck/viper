@@ -11,18 +11,18 @@ The Viper Runtime Library provides built-in classes and utilities available to a
 
 | Module | Description |
 |--------|-------------|
-| [Core Types](core.md) | `String`, `Object` — foundational types |
-| [Collections](collections.md) | `List`, `Map`, `Seq`, `Stack`, `Queue`, `Bytes`, `Bag`, `Ring`, `TreeMap` |
-| [Input/Output](io.md) | `File`, `Path`, `Dir`, `BinFile`, `LineReader`, `LineWriter` |
-| [Text Processing](text.md) | `StringBuilder`, `Codec`, `Csv`, `Guid` |
-| [Mathematics](math.md) | `Math`, `Bits`, `Random`, `Vec2`, `Vec3` |
-| [Time & Timing](time.md) | `DateTime`, `Clock`, `Countdown`, `Stopwatch` |
-| [System](system.md) | `Terminal`, `Environment`, `Exec`, `Machine` |
-| [Utilities](utilities.md) | `Convert`, `Parse`, `Fmt`, `Log` |
-| [Graphics](graphics.md) | `Canvas`, `Color`, `Pixels` |
-| [Cryptography](crypto.md) | `Hash` (MD5, SHA1, SHA256, CRC32) |
-| [Diagnostics](diagnostics.md) | `Assert` |
 | [Architecture](architecture.md) | Runtime internals, type reference |
+| [Collections](collections.md) | `Bag`, `Bytes`, `List`, `Map`, `Queue`, `Ring`, `Seq`, `Stack`, `TreeMap` |
+| [Core Types](core.md) | `Object`, `String` — foundational types |
+| [Cryptography](crypto.md) | `Hash` (CRC32, MD5, SHA1, SHA256) |
+| [Diagnostics](diagnostics.md) | `Assert`, `Stopwatch` |
+| [Graphics](graphics.md) | `Canvas`, `Color`, `Pixels` |
+| [Input/Output](io.md) | `BinFile`, `Dir`, `File`, `LineReader`, `LineWriter`, `Path` |
+| [Mathematics](math.md) | `Bits`, `Math`, `Random`, `Vec2`, `Vec3` |
+| [System](system.md) | `Environment`, `Exec`, `Machine`, `Terminal` |
+| [Text Processing](text.md) | `Codec`, `Csv`, `Guid`, `StringBuilder` |
+| [Time & Timing](time.md) | `Clock`, `Countdown`, `DateTime`, `Stopwatch` |
+| [Utilities](utilities.md) | `Convert`, `Fmt`, `Log`, `Parse` |
 
 ---
 
@@ -32,56 +32,49 @@ The Viper Runtime Library provides built-in classes and utilities available to a
 
 | Class | Type | Description |
 |-------|------|-------------|
-| [`String`](core.md#viperstring) | Instance | Immutable string with manipulation methods |
-| [`Object`](core.md#viperobject) | Base | Root type for all reference types |
-| [`Math`](math.md#vipermath) | Static | Mathematical functions (trig, pow, abs, etc.) |
 | [`Bits`](math.md#viperbits) | Static | Bit manipulation (shifts, rotates, counting) |
-| [`Random`](math.md#viperrandom) | Static | Random number generation |
-| [`Vec2`](math.md#vipervec2) | Instance | 2D vector math |
-| [`Vec3`](math.md#vipervec3) | Instance | 3D vector math |
-| [`Terminal`](system.md#viperterminal) | Static | Terminal input/output |
+| [`Convert`](utilities.md#viperconvert) | Static | Type conversion utilities |
+| [`DateTime`](time.md#viperdatetime) | Static | Date and time operations |
 | [`Environment`](system.md#viperenvironment) | Static | Command-line args and environment |
 | [`Exec`](system.md#viperexec) | Static | External command execution |
-| [`Machine`](system.md#vipermachine) | Static | System information queries |
-| [`DateTime`](time.md#viperdatetime) | Static | Date and time operations |
-| [`Convert`](utilities.md#viperconvert) | Static | Type conversion utilities |
-| [`Parse`](utilities.md#viperparse) | Static | String parsing utilities |
 | [`Fmt`](utilities.md#viperfmt) | Static | String formatting |
 | [`Log`](utilities.md#viperlog) | Static | Logging utilities |
-
-### Viper.Text
-
-| Class | Type | Description |
-|-------|------|-------------|
-| [`StringBuilder`](text.md#vipertextstringbuilder) | Instance | Mutable string builder |
-| [`Codec`](text.md#vipertextcodec) | Static | Base64, Hex, URL encoding |
-| [`Csv`](text.md#vipertextcsv) | Static | CSV parsing and formatting |
-| [`Guid`](text.md#vipertextguid) | Static | UUID v4 generation |
+| [`Machine`](system.md#vipermachine) | Static | System information queries |
+| [`Math`](math.md#vipermath) | Static | Mathematical functions (trig, pow, abs, etc.) |
+| [`Object`](core.md#viperobject) | Base | Root type for all reference types |
+| [`Parse`](utilities.md#viperparse) | Static | String parsing utilities |
+| [`Random`](math.md#viperrandom) | Static | Random number generation |
+| [`String`](core.md#viperstring) | Instance | Immutable string with manipulation methods |
+| [`Terminal`](system.md#viperterminal) | Static | Terminal input/output |
+| [`Vec2`](math.md#vipervec2) | Instance | 2D vector math |
+| [`Vec3`](math.md#vipervec3) | Instance | 3D vector math |
 
 ### Viper.Collections
 
 | Class | Type | Description |
 |-------|------|-------------|
+| [`Bag`](collections.md#vipercollectionsbag) | Instance | String set with set operations |
+| [`Bytes`](collections.md#vipercollectionsbytes) | Instance | Byte array for binary data |
 | [`List`](collections.md#vipercollectionslist) | Instance | Dynamic array of objects |
 | [`Map`](collections.md#vipercollectionsmap) | Instance | String-keyed hash map |
+| [`Queue`](collections.md#vipercollectionsqueue) | Instance | FIFO collection |
+| [`Ring`](collections.md#vipercollectionsring) | Instance | Fixed-size circular buffer |
 | [`Seq`](collections.md#vipercollectionsseq) | Instance | Growable array with stack/queue ops |
 | [`Stack`](collections.md#vipercollectionsstack) | Instance | LIFO collection |
-| [`Queue`](collections.md#vipercollectionsqueue) | Instance | FIFO collection |
 | [`TreeMap`](collections.md#vipercollectionstreemap) | Instance | Sorted key-value map |
-| [`Bytes`](collections.md#vipercollectionsbytes) | Instance | Byte array for binary data |
-| [`Bag`](collections.md#vipercollectionsbag) | Instance | String set with set operations |
-| [`Ring`](collections.md#vipercollectionsring) | Instance | Fixed-size circular buffer |
 
-### Viper.IO
+### Viper.Crypto
 
 | Class | Type | Description |
 |-------|------|-------------|
-| [`File`](io.md#viperiofile) | Static | File read/write/delete |
-| [`Path`](io.md#viperiopath) | Static | Path manipulation |
-| [`Dir`](io.md#viperiodir) | Static | Directory operations |
-| [`BinFile`](io.md#viperiobinfile) | Instance | Binary file stream |
-| [`LineReader`](io.md#viperiolinereader) | Instance | Line-by-line text reading |
-| [`LineWriter`](io.md#viperiolinewriter) | Instance | Buffered text writing |
+| [`Hash`](crypto.md#vipercryptohash) | Static | CRC32, MD5, SHA1, SHA256 |
+
+### Viper.Diagnostics
+
+| Class | Type | Description |
+|-------|------|-------------|
+| [`Assert`](diagnostics.md#viperdiagnosticsassert) | Static | Assertion checking |
+| [`Stopwatch`](time.md#viperdiagnosticsstopwatch) | Instance | Performance timing |
 
 ### Viper.Graphics
 
@@ -91,25 +84,32 @@ The Viper Runtime Library provides built-in classes and utilities available to a
 | [`Color`](graphics.md#vipergraphicscolor) | Static | Color creation |
 | [`Pixels`](graphics.md#vipergraphicspixels) | Instance | Software image buffer |
 
+### Viper.IO
+
+| Class | Type | Description |
+|-------|------|-------------|
+| [`BinFile`](io.md#viperiobinfile) | Instance | Binary file stream |
+| [`Dir`](io.md#viperiodir) | Static | Directory operations |
+| [`File`](io.md#viperiofile) | Static | File read/write/delete |
+| [`LineReader`](io.md#viperiolinereader) | Instance | Line-by-line text reading |
+| [`LineWriter`](io.md#viperiolinewriter) | Instance | Buffered text writing |
+| [`Path`](io.md#viperiopath) | Static | Path manipulation |
+
+### Viper.Text
+
+| Class | Type | Description |
+|-------|------|-------------|
+| [`Codec`](text.md#vipertextcodec) | Static | Base64, Hex, URL encoding |
+| [`Csv`](text.md#vipertextcsv) | Static | CSV parsing and formatting |
+| [`Guid`](text.md#vipertextguid) | Static | UUID v4 generation |
+| [`StringBuilder`](text.md#vipertextstringbuilder) | Instance | Mutable string builder |
+
 ### Viper.Time
 
 | Class | Type | Description |
 |-------|------|-------------|
 | [`Clock`](time.md#vipertimeclock) | Static | Sleep and tick counting |
 | [`Countdown`](time.md#vipertimecountdown) | Instance | Interval timing |
-
-### Viper.Diagnostics
-
-| Class | Type | Description |
-|-------|------|-------------|
-| [`Assert`](diagnostics.md#viperdiagnosticsassert) | Static | Assertion checking |
-| [`Stopwatch`](time.md#viperdiagnosticsstopwatch) | Instance | Performance timing |
-
-### Viper.Crypto
-
-| Class | Type | Description |
-|-------|------|-------------|
-| [`Hash`](crypto.md#vipercryptohash) | Static | MD5, SHA1, SHA256, CRC32 |
 
 ---
 
@@ -125,15 +125,15 @@ The Viper Runtime Library provides built-in classes and utilities available to a
 
 | Need | Use | Why |
 |------|-----|-----|
+| Binary data | `Bytes` | Efficient byte manipulation |
+| FIFO (first-in-first-out) | `Queue` | Enqueue/dequeue interface |
+| Fixed-size buffer | `Ring` | Overwrites oldest when full |
 | Indexed array | `Seq` | Fast random access, push/pop |
 | Key-value pairs | `Map` | O(1) lookup by string key |
-| Sorted key-value | `TreeMap` | Keys in sorted order, floor/ceil queries |
-| LIFO (last-in-first-out) | `Stack` | Simple push/pop interface |
-| FIFO (first-in-first-out) | `Queue` | Enqueue/dequeue interface |
-| Unique strings | `Bag` | Set operations (union, intersect, diff) |
-| Binary data | `Bytes` | Efficient byte manipulation |
-| Fixed-size buffer | `Ring` | Overwrites oldest when full |
 | Legacy compatibility | `List` | Similar to VB6 Collection |
+| LIFO (last-in-first-out) | `Stack` | Simple push/pop interface |
+| Sorted key-value | `TreeMap` | Keys in sorted order, floor/ceil queries |
+| Unique strings | `Bag` | Set operations (union, intersect, diff) |
 
 ---
 
