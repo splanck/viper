@@ -1,4 +1,5 @@
 # Viper Pascal — Language Specification
+
 ## Version 0.1 Draft 6
 
 <div align="center">
@@ -26,19 +27,19 @@ Viper Pascal is Pascal distilled to its essence:
 
 The following legacy Pascal features are intentionally omitted:
 
-| Omitted | Rationale |
-|---------|-----------|
-| `with` statement | Obscures scope, widely discouraged |
-| `goto` / `label` | Use structured control flow |
-| `packed` | No manual memory layout |
-| `set` types | Use enums and conditionals |
-| Variant records | Use class inheritance |
-| Nested procedures | Simplifies scoping |
-| Pointer types | Use classes for references |
-| `new` / `dispose` | Automatic memory management |
-| File types | Use Viper.IO library (future) |
-| Generics | Deferred to v0.2 |
-| User overloading | Deferred to v0.2 |
+| Omitted           | Rationale                          |
+|-------------------|------------------------------------|
+| `with` statement  | Obscures scope, widely discouraged |
+| `goto` / `label`  | Use structured control flow        |
+| `packed`          | No manual memory layout            |
+| `set` types       | Use enums and conditionals         |
+| Variant records   | Use class inheritance              |
+| Nested procedures | Simplifies scoping                 |
+| Pointer types     | Use classes for references         |
+| `new` / `dispose` | Automatic memory management        |
+| File types        | Use Viper.IO library (future)      |
+| Generics          | Deferred to v0.2                   |
+| User overloading  | Deferred to v0.2                   |
 
 ---
 
@@ -80,6 +81,7 @@ digit      = "0".."9"
 ### Reserved Words
 
 **Keywords:**
+
 ```
 and        array      begin      break      case
 class      const      constructor continue   destructor
@@ -94,6 +96,7 @@ override   weak
 ```
 
 **Predefined identifiers** (not keywords, but reserved):
+
 ```
 Self       Result     True       False
 Integer    Real       Boolean    String
@@ -102,7 +105,8 @@ Exception
 
 These cannot be redeclared as variable, type, or procedure names.
 
-The lexer recognizes `True`, `False`, and `nil` as distinct token kinds. `True` and `False` also appear as predefined identifiers and cannot be redefined.
+The lexer recognizes `True`, `False`, and `nil` as distinct token kinds. `True` and `False` also appear as predefined
+identifiers and cannot be redefined.
 
 ### Numeric Literals
 
@@ -180,10 +184,10 @@ end.
 
 ### Memory Model
 
-| Category | Semantics | Examples |
-|----------|-----------|----------|
-| **Value types** | Copied on assignment | Integer, Real, Boolean, records, fixed arrays, enums |
-| **Reference types** | Shared on assignment, reference counted | String, classes, interfaces, dynamic arrays |
+| Category            | Semantics                               | Examples                                             |
+|---------------------|-----------------------------------------|------------------------------------------------------|
+| **Value types**     | Copied on assignment                    | Integer, Real, Boolean, records, fixed arrays, enums |
+| **Reference types** | Shared on assignment, reference counted | String, classes, interfaces, dynamic arrays          |
 
 ```pascal
 var
@@ -193,24 +197,25 @@ var
 
 ### Primitive Types
 
-| Type | Description | IL Type | Default |
-|------|-------------|---------|---------|
-| `Integer` | 64-bit signed | I64 | 0 |
-| `Real` | 64-bit IEEE 754 | F64 | 0.0 |
-| `Boolean` | True/False | I1 | False |
-| `String` | Managed text (UTF-8) | Str | '' |
+| Type      | Description          | IL Type | Default |
+|-----------|----------------------|---------|---------|
+| `Integer` | 64-bit signed        | I64     | 0       |
+| `Real`    | 64-bit IEEE 754      | F64     | 0.0     |
+| `Boolean` | True/False           | I1      | False   |
+| `String`  | Managed text (UTF-8) | Str     | ''      |
 
 ### Strings and Unicode
 
 Strings are immutable sequences of bytes encoded as UTF-8.
 
-| Function | Returns |
-|----------|---------|
-| `Length(s)` | Number of bytes |
-| `Chr(n)` | Single-byte string from code 0..255 |
-| `Asc(s)` | First byte as integer 0..255 |
+| Function    | Returns                             |
+|-------------|-------------------------------------|
+| `Length(s)` | Number of bytes                     |
+| `Chr(n)`    | Single-byte string from code 0..255 |
+| `Asc(s)`    | First byte as integer 0..255        |
 
-**Note:** All string operations are byte-based. For Unicode-aware operations (code points, grapheme clusters), a future `Viper.Unicode` module will be provided.
+**Note:** All string operations are byte-based. For Unicode-aware operations (code points, grapheme clusters), a future
+`Viper.Unicode` module will be provided.
 
 ### Enums
 
@@ -236,6 +241,7 @@ end.
 ```
 
 **Rules:**
+
 - Enum values are integers starting at 0
 - Comparisons (`=`, `<>`, `<`, `>`, `<=`, `>=`) are allowed
 - Arithmetic on enums is **not** allowed (no `Color + 1`)
@@ -266,6 +272,7 @@ end.
 ```
 
 **Rules:**
+
 - `nil` represents "no value"
 - `T` implicitly converts to `T?`
 - `T?` does **not** implicitly convert to `T`
@@ -273,10 +280,13 @@ end.
 - `T??` (double optional) is a compile error
 
 **For reference types (classes, interfaces):**
+
 - `TClass` is non-nullable by default
 - `TClass?` explicitly allows nil
 - Assigning nil to a non-optional class variable is a compile error
-- Reading a non-optional class or interface variable that has not been definitely assigned is a compile-time error. Valid programs never observe a nil value of a non-optional class or interface type, even though implementations may initialize the underlying storage to nil for safety.
+- Reading a non-optional class or interface variable that has not been definitely assigned is a compile-time error.
+  Valid programs never observe a nil value of a non-optional class or interface type, even though implementations may
+  initialize the underlying storage to nil for safety.
 
 **Flow-sensitive narrowing:**
 
@@ -296,13 +306,15 @@ end;
 ```
 
 Narrowing applies to:
+
 - `if x <> nil then` — narrowed in then-branch
 - `if x = nil then ... else` — narrowed in else-branch
 - `while x <> nil do` — narrowed in loop body
 
 Narrowing does **not** propagate across procedure calls or assignments.
 
-**Implementation note:** For value types, `T?` is represented as a `(hasValue: Boolean, value: T)` pair. For reference types, `nil` is the null pointer.
+**Implementation note:** For value types, `T?` is represented as a `(hasValue: Boolean, value: T)` pair. For reference
+types, `nil` is the null pointer.
 
 ### Arrays
 
@@ -333,6 +345,7 @@ end.
 ```
 
 **Rules:**
+
 - All array indices are 0-based
 - Out-of-bounds access causes a runtime panic (not catchable)
 - Dynamic arrays default to `nil` (length 0)
@@ -380,11 +393,14 @@ var
 
 **Default initialization:**
 
-- **Value types** (Integer, Real, Boolean, enums, records, fixed arrays) are initialized to their type's default value (0, 0.0, False, all fields defaulted)
+- **Value types** (Integer, Real, Boolean, enums, records, fixed arrays) are initialized to their type's default value (
+  0, 0.0, False, all fields defaulted)
 - **String** variables are initialized to the empty string `''`
 - **Dynamic arrays** are initialized to `nil` (length 0)
 - **Optional types** (`T?`) are initialized to `nil`
-- **Non-optional class and interface variables** (`TClass`, `IFoo`) are **not** implicitly initialized. They must be definitely assigned before first read; using such a variable before the compiler can prove it has been assigned is a compile-time error.
+- **Non-optional class and interface variables** (`TClass`, `IFoo`) are **not** implicitly initialized. They must be
+  definitely assigned before first read; using such a variable before the compiler can prove it has been assigned is a
+  compile-time error.
 
 ---
 
@@ -392,14 +408,14 @@ var
 
 ### Arithmetic
 
-| Operator | Description | Operands | Result |
-|----------|-------------|----------|--------|
-| `+` | Addition | Integer, Real | Wider type |
-| `-` | Subtraction | Integer, Real | Wider type |
-| `*` | Multiplication | Integer, Real | Wider type |
-| `/` | Division | Integer, Real | Always Real |
-| `div` | Integer division | Integer only | Integer |
-| `mod` | Remainder | Integer only | Integer |
+| Operator | Description      | Operands      | Result      |
+|----------|------------------|---------------|-------------|
+| `+`      | Addition         | Integer, Real | Wider type  |
+| `-`      | Subtraction      | Integer, Real | Wider type  |
+| `*`      | Multiplication   | Integer, Real | Wider type  |
+| `/`      | Division         | Integer, Real | Always Real |
+| `div`    | Integer division | Integer only  | Integer     |
+| `mod`    | Remainder        | Integer only  | Integer     |
 
 **Type promotion:** If either operand is Real, result is Real.
 
@@ -408,41 +424,42 @@ var
 **Overflow:** Integer overflow wraps (two's complement). No runtime check.
 
 **div/mod semantics:** Truncated toward zero. `a = (a div b) * b + (a mod b)` always holds. Examples:
+
 - `7 div 3` = 2, `7 mod 3` = 1
 - `-7 div 3` = -2, `-7 mod 3` = -1
 - `7 div -3` = -2, `7 mod -3` = 1
 
 ### Comparison
 
-| Operator | Description |
-|----------|-------------|
-| `=` | Equal |
-| `<>` | Not equal |
+| Operator          | Description        |
+|-------------------|--------------------|
+| `=`               | Equal              |
+| `<>`              | Not equal          |
 | `<` `>` `<=` `>=` | Ordered comparison |
 
 Works on Integer, Real, String (lexicographic byte comparison), Boolean, enums.
 
 ### Logical
 
-| Operator | Description |
-|----------|-------------|
-| `and` | Logical AND (short-circuit) |
-| `or` | Logical OR (short-circuit) |
-| `not` | Logical NOT |
+| Operator | Description                 |
+|----------|-----------------------------|
+| `and`    | Logical AND (short-circuit) |
+| `or`     | Logical OR (short-circuit)  |
+| `not`    | Logical NOT                 |
 
 Short-circuit: `a and b` does not evaluate `b` if `a` is False. `a or b` does not evaluate `b` if `a` is True.
 
 ### String
 
-| Operator | Description |
-|----------|-------------|
-| `+` | Concatenation |
+| Operator | Description   |
+|----------|---------------|
+| `+`      | Concatenation |
 
 ### Null Coalescing
 
-| Operator | Description |
-|----------|-------------|
-| `??` | Return LHS if not nil, else RHS (left-associative, chainable) |
+| Operator | Description                                                   |
+|----------|---------------------------------------------------------------|
+| `??`     | Return LHS if not nil, else RHS (left-associative, chainable) |
 
 ### Precedence (Highest to Lowest)
 
@@ -509,6 +526,7 @@ for b in message do
 ```
 
 **Semantics:**
+
 - Bounds `a` and `b` in `for i := a to b` are evaluated once at loop entry
 - If `a > b` in `to`, loop executes 0 times
 - If `a < b` in `downto`, loop executes 0 times
@@ -608,21 +626,22 @@ end;
 
 ### Parameter Passing
 
-| Syntax | Semantics |
-|--------|-----------|
-| `x: Integer` | By value (copy) |
+| Syntax           | Semantics                                 |
+|------------------|-------------------------------------------|
+| `x: Integer`     | By value (copy)                           |
 | `var x: Integer` | By reference (caller's variable modified) |
-| `x: Integer = 0` | Default value (optional parameter) |
+| `x: Integer = 0` | Default value (optional parameter)        |
 
 ### Overloading
 
-User-defined procedure/function overloading is **not** supported in v0.1. 
+User-defined procedure/function overloading is **not** supported in v0.1.
 
 Built-in functions (`Abs`, `Length`, `Write`, `WriteLn`) have compiler-provided overloads that accept multiple types.
 
 **Statement restrictions:**
 
-A standalone `designator` used as a statement (call_stmt) must denote a procedure or function call. Using a variable, field, or array element as a standalone statement (e.g., `x;` or `arr[0];`) is a compile-time error.
+A standalone `designator` used as a statement (call_stmt) must denote a procedure or function call. Using a variable,
+field, or array element as a standalone statement (e.g., `x;` or `arr[0];`) is a compile-time error.
 
 ---
 
@@ -687,6 +706,7 @@ type
 **Default visibility:** If no section is specified, members are `public`.
 
 **Visibility rules:**
+
 - `private` — accessible only within the same unit
 - `public` — accessible from anywhere
 
@@ -712,6 +732,7 @@ end;
 ```
 
 **Rules:**
+
 - Constructors initialize object state and return the new instance
 - Destructors are called automatically when reference count reaches zero
 - Destructor must be named `Destroy` (convention)
@@ -719,8 +740,10 @@ end;
 - Use `inherited` in destructors to call parent cleanup
 
 **Additional rules:**
+
 - It is a compile-time error to specify a return type on a constructor or destructor implementation
-- It is a compile-time error for a destructor to declare any parameters; the implementation must match the parameterless `destructor Destroy;` declaration in the class
+- It is a compile-time error for a destructor to declare any parameters; the implementation must match the parameterless
+  `destructor Destroy;` declaration in the class
 
 ### Inheritance
 
@@ -766,6 +789,7 @@ end;
 ```
 
 **Rules:**
+
 - Single inheritance only
 - `virtual` marks a method as overridable
 - `override` is required when overriding a virtual method
@@ -803,6 +827,7 @@ end;
 ```
 
 **Rules:**
+
 - Interfaces contain only method signatures (no fields, no constructors)
 - A class can implement multiple interfaces (comma-separated)
 - A class can extend one base class AND implement multiple interfaces:
@@ -811,7 +836,8 @@ end;
   ```
 - Interface references are reference-counted
 - The first identifier after `class(` that names a class is the base class; all others must be interfaces
-- If more than one class type appears in the parent list, it is a compile-time error. At most one base class is permitted.
+- If more than one class type appears in the parent list, it is a compile-time error. At most one base class is
+  permitted.
 
 ### Weak References
 
@@ -828,6 +854,7 @@ type
 ```
 
 **Rules:**
+
 - `weak` only applies to class and interface fields
 - Weak references do not prevent deallocation
 - When the target is deallocated, the weak reference automatically becomes `nil`
@@ -851,7 +878,8 @@ type
     end;
 ```
 
-*This declaration is illustrative only. `Exception` is a built-in type provided by the implementation and cannot be redeclared or redefined by user code.*
+*This declaration is illustrative only. `Exception` is a built-in type provided by the implementation and cannot be
+redeclared or redefined by user code.*
 
 ### Try-Except
 
@@ -895,7 +923,8 @@ finally
 end;
 ```
 
-The `finally` block runs whether or not an exception was raised. If an exception was raised, it propagates after the `finally` block completes.
+The `finally` block runs whether or not an exception was raised. If an exception was raised, it propagates after the
+`finally` block completes.
 
 ### Raising Exceptions
 
@@ -922,24 +951,26 @@ end;
 ```
 
 **Rules:**
+
 - `raise;` (without expression) is only valid inside an `except` block
 - `raise;` outside an `except` block is a compile error
 - `raise Expr;` creates and raises a new exception
 
 ### What Is and Isn't Catchable
 
-| Condition | Behavior |
-|-----------|----------|
-| `raise Exception.Create(...)` | Catchable with `try/except` |
-| Array out-of-bounds | Runtime panic (not catchable) |
-| Integer division by zero | Runtime panic (not catchable) |
-| Integer overflow | Wraps silently (no error) |
-| Real division by zero | Returns `Inf` or `NaN` (no error) |
-| Nil dereference | Runtime panic (not catchable) |
+| Condition                     | Behavior                          |
+|-------------------------------|-----------------------------------|
+| `raise Exception.Create(...)` | Catchable with `try/except`       |
+| Array out-of-bounds           | Runtime panic (not catchable)     |
+| Integer division by zero      | Runtime panic (not catchable)     |
+| Integer overflow              | Wraps silently (no error)         |
+| Real division by zero         | Returns `Inf` or `NaN` (no error) |
+| Nil dereference               | Runtime panic (not catchable)     |
 
 ### Uncaught Exceptions
 
 If an exception propagates out of the main program:
+
 1. Error message is printed to stderr
 2. Program exits with non-zero exit code
 
@@ -977,12 +1008,13 @@ end.
 
 ### Interface vs Implementation
 
-| Section | Contains | Visible to importers |
-|---------|----------|---------------------|
-| `interface` | const, type, procedure/function signatures | Yes |
-| `implementation` | Full implementations, private helpers | No |
+| Section          | Contains                                   | Visible to importers |
+|------------------|--------------------------------------------|----------------------|
+| `interface`      | const, type, procedure/function signatures | Yes                  |
+| `implementation` | Full implementations, private helpers      | No                   |
 
-**No exported variables:** `var` declarations are not allowed in the `interface` section. This prevents global mutable state from being shared across units.
+**No exported variables:** `var` declarations are not allowed in the `interface` section. This prevents global mutable
+state from being shared across units.
 
 ### Using Units
 
@@ -999,7 +1031,8 @@ begin
 end.
 ```
 
-**Note:** There are two uses of `interface` in the language: the unit `interface` section (public API) and `interface` type definitions (contracts for classes). Context distinguishes them.
+**Note:** There are two uses of `interface` in the language: the unit `interface` section (public API) and `interface`
+type definitions (contracts for classes). Context distinguishes them.
 
 ### Classes in Units
 
@@ -1041,27 +1074,29 @@ end.
 
 Available without imports:
 
-| Function | Description | Returns |
-|----------|-------------|---------|
-| `Write(...)` | Print without newline | (none) |
-| `WriteLn(...)` | Print with newline | (none) |
-| `ReadLn` | Read line from input | String |
-| `ReadInteger` | Read and parse integer | Integer (raises on error) |
-| `ReadReal` | Read and parse real | Real (raises on error) |
-| `Length(arr)` | Array length | Integer |
-| `Length(str)` | String byte length | Integer |
-| `SetLength(arr, n)` | Resize dynamic array | (none) |
-| `IntToStr(i)` | Integer to string | String |
-| `RealToStr(r)` | Real to string | String |
-| `StrToInt(s)` | String to integer | Integer (raises on error) |
-| `StrToReal(s)` | String to real | Real (raises on error) |
+| Function            | Description            | Returns                   |
+|---------------------|------------------------|---------------------------|
+| `Write(...)`        | Print without newline  | (none)                    |
+| `WriteLn(...)`      | Print with newline     | (none)                    |
+| `ReadLn`            | Read line from input   | String                    |
+| `ReadInteger`       | Read and parse integer | Integer (raises on error) |
+| `ReadReal`          | Read and parse real    | Real (raises on error)    |
+| `Length(arr)`       | Array length           | Integer                   |
+| `Length(str)`       | String byte length     | Integer                   |
+| `SetLength(arr, n)` | Resize dynamic array   | (none)                    |
+| `IntToStr(i)`       | Integer to string      | String                    |
+| `RealToStr(r)`      | Real to string         | String                    |
+| `StrToInt(s)`       | String to integer      | Integer (raises on error) |
+| `StrToReal(s)`      | String to real         | Real (raises on error)    |
 
 **Write and WriteLn:**
+
 - Accept any number of arguments
 - Each argument must be Integer, Real, Boolean, or String
 - Example: `WriteLn('Value: ', x, ', Ready: ', ready);`
 
 **ReadLn:**
+
 - Returns one line of input without the trailing newline
 - Can be used as a statement (discards result): `ReadLn;`
 
@@ -1086,17 +1121,18 @@ begin
 end.
 ```
 
-| Function | Description | Maps to |
-|----------|-------------|---------|
-| `Upper(s)` | Uppercase (ASCII only) | `rt_ucase` |
-| `Lower(s)` | Lowercase (ASCII only) | `rt_lcase` |
-| `Left(s, n)` | First n bytes | `rt_left` |
-| `Right(s, n)` | Last n bytes | `rt_right` |
-| `Mid(s, start, len)` | Substring (0-based start) | `rt_mid3` |
-| `Chr(n)` | Byte (0-255) to single-char string | `rt_chr` |
-| `Asc(s)` | First byte as integer (0-255) | `rt_asc` |
+| Function             | Description                        | Maps to    |
+|----------------------|------------------------------------|------------|
+| `Upper(s)`           | Uppercase (ASCII only)             | `rt_ucase` |
+| `Lower(s)`           | Lowercase (ASCII only)             | `rt_lcase` |
+| `Left(s, n)`         | First n bytes                      | `rt_left`  |
+| `Right(s, n)`        | Last n bytes                       | `rt_right` |
+| `Mid(s, start, len)` | Substring (0-based start)          | `rt_mid3`  |
+| `Chr(n)`             | Byte (0-255) to single-char string | `rt_chr`   |
+| `Asc(s)`             | First byte as integer (0-255)      | `rt_asc`   |
 
-**Note:** All operations are byte-based and ASCII-only. They do not respect multi-byte UTF-8 sequences. Use a future `Viper.Unicode` module for proper Unicode handling.
+**Note:** All operations are byte-based and ASCII-only. They do not respect multi-byte UTF-8 sequences. Use a future
+`Viper.Unicode` module for proper Unicode handling.
 
 ---
 
@@ -1121,26 +1157,26 @@ begin
 end.
 ```
 
-| Function | Description | Maps to |
-|----------|-------------|---------|
-| `Sqrt(x)` | Square root | `rt_sqrt` |
-| `Abs(x)` | Absolute value (Integer or Real) | `rt_abs_i64` / `rt_abs_f64` |
-| `Floor(x)` | Round toward -∞ | `rt_floor` |
-| `Ceil(x)` | Round toward +∞ | `rt_ceil` |
-| `Sin(x)` | Sine (radians) | `rt_sin` |
-| `Cos(x)` | Cosine (radians) | `rt_cos` |
-| `Tan(x)` | Tangent (radians) | `rt_tan` |
-| `Atan(x)` | Arctangent | `rt_atan` |
-| `Exp(x)` | e^x | `rt_exp` |
-| `Ln(x)` | Natural logarithm | `rt_log` |
-| `Pow(base, exp)` | Power | `rt_pow` |
+| Function         | Description                      | Maps to                     |
+|------------------|----------------------------------|-----------------------------|
+| `Sqrt(x)`        | Square root                      | `rt_sqrt`                   |
+| `Abs(x)`         | Absolute value (Integer or Real) | `rt_abs_i64` / `rt_abs_f64` |
+| `Floor(x)`       | Round toward -∞                  | `rt_floor`                  |
+| `Ceil(x)`        | Round toward +∞                  | `rt_ceil`                   |
+| `Sin(x)`         | Sine (radians)                   | `rt_sin`                    |
+| `Cos(x)`         | Cosine (radians)                 | `rt_cos`                    |
+| `Tan(x)`         | Tangent (radians)                | `rt_tan`                    |
+| `Atan(x)`        | Arctangent                       | `rt_atan`                   |
+| `Exp(x)`         | e^x                              | `rt_exp`                    |
+| `Ln(x)`          | Natural logarithm                | `rt_log`                    |
+| `Pow(base, exp)` | Power                            | `rt_pow`                    |
 
 **Constants:**
 
-| Constant | Value |
-|----------|-------|
-| `Pi` | 3.14159265358979 |
-| `E` | 2.71828182845904 |
+| Constant | Value            |
+|----------|------------------|
+| `Pi`     | 3.14159265358979 |
+| `E`      | 2.71828182845904 |
 
 ---
 
@@ -1150,31 +1186,34 @@ These notes are non-normative guidance for frontend implementers.
 
 ### IL Mapping
 
-| Pascal | IL Opcode / Runtime |
-|--------|---------------------|
-| `+`, `-`, `*` on Integer | `Add`, `Sub`, `Mul` |
-| `+`, `-`, `*` on Real | `Fadd`, `Fsub`, `Fmul` |
-| `div` | `Sdiv` |
-| `mod` | `Srem` |
-| `/` (always Real result) | `Fdiv` (after `Sitofp` if needed) |
-| Integer overflow | Wraps (use plain ops, not `IaddOvf` etc.) |
-| Integer division by zero | Use `SdivChk0` or emit explicit check + `Trap` |
-| Array bounds | Emit check + `rt_arr_oob_panic` or rely on runtime |
-| `try/except`, `try/finally` | `EhPush`, `EhPop`, `ResumeSame`, `ResumeNext` |
+| Pascal                      | IL Opcode / Runtime                                |
+|-----------------------------|----------------------------------------------------|
+| `+`, `-`, `*` on Integer    | `Add`, `Sub`, `Mul`                                |
+| `+`, `-`, `*` on Real       | `Fadd`, `Fsub`, `Fmul`                             |
+| `div`                       | `Sdiv`                                             |
+| `mod`                       | `Srem`                                             |
+| `/` (always Real result)    | `Fdiv` (after `Sitofp` if needed)                  |
+| Integer overflow            | Wraps (use plain ops, not `IaddOvf` etc.)          |
+| Integer division by zero    | Use `SdivChk0` or emit explicit check + `Trap`     |
+| Array bounds                | Emit check + `rt_arr_oob_panic` or rely on runtime |
+| `try/except`, `try/finally` | `EhPush`, `EhPop`, `ResumeSame`, `ResumeNext`      |
 
 ### Variable Initialization
 
-All local variables must be initialized to their default values at scope entry. The lowerer should emit stores of 0, 0.0, False, '', or nil immediately after `Alloca` for each local slot.
+All local variables must be initialized to their default values at scope entry. The lowerer should emit stores of 0,
+0.0, False, '', or nil immediately after `Alloca` for each local slot.
 
 ### Optional Types for Value Types
 
-`T?` where T is a value type (Integer, Real, Boolean, enum, record) should be represented as a pair: `(hasValue: I1, value: T)`. This allows distinguishing between "no value" and "value is zero/false."
+`T?` where T is a value type (Integer, Real, Boolean, enum, record) should be represented as a pair:
+`(hasValue: I1, value: T)`. This allows distinguishing between "no value" and "value is zero/false."
 
 For reference types (String, class, interface, dynamic array), use the null pointer as `nil`.
 
 ### Dynamic Array Fields in Classes
 
 Dynamic array fields in classes are stored as pointer-sized handles. Follow the BASIC frontend pattern:
+
 - Constructor calls `rt_arr_*_new` to allocate
 - Field access loads the handle, then calls `rt_arr_*_get`/`rt_arr_*_set`
 - Use `rt_arr_*_len` for bounds checking
@@ -1302,12 +1341,12 @@ char        = (* any character except "'" *) .
 
 ## Summary
 
-| Category | Contents |
-|----------|----------|
-| **Types** | Integer, Real, Boolean, String, enums, records, classes, interfaces, arrays, optionals |
-| **Built-in** | Write, WriteLn, ReadLn, ReadInteger, ReadReal, Length, SetLength, IntToStr, RealToStr, StrToInt, StrToReal |
-| **Viper.Strings** | Upper, Lower, Left, Right, Mid, Chr, Asc |
-| **Viper.Math** | Sqrt, Abs, Floor, Ceil, Sin, Cos, Tan, Atan, Exp, Ln, Pow, Pi, E |
+| Category          | Contents                                                                                                   |
+|-------------------|------------------------------------------------------------------------------------------------------------|
+| **Types**         | Integer, Real, Boolean, String, enums, records, classes, interfaces, arrays, optionals                     |
+| **Built-in**      | Write, WriteLn, ReadLn, ReadInteger, ReadReal, Length, SetLength, IntToStr, RealToStr, StrToInt, StrToReal |
+| **Viper.Strings** | Upper, Lower, Left, Right, Mid, Chr, Asc                                                                   |
+| **Viper.Math**    | Sqrt, Abs, Floor, Ceil, Sin, Cos, Tan, Atan, Exp, Ln, Pow, Pi, E                                           |
 
 ---
 

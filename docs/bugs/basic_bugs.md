@@ -13,6 +13,7 @@
 ## RECENTLY RESOLVED BUGS
 
 ### BUG-122: LEN("") returns garbage value instead of 0
+
 **Status**: ✅ **RESOLVED** - Fixed 2025-12-03
 **Discovered**: 2025-12-03 (comprehensive test development)
 **Category**: String Functions
@@ -21,6 +22,7 @@
 **Symptom**: Calling `LEN("")` on an empty string returns a very large garbage value (9223372036854775807) instead of 0.
 
 **Minimal Reproduction**:
+
 ```basic
 DIM s AS STRING
 s = ""
@@ -41,11 +43,13 @@ in garbage values.
 since all string globals are const (the IL parser requires an initializer for str globals).
 
 **Files Changed**:
+
 - `src/vm/VMInit.cpp:217-221` - Removed `!g.init.empty()` check
 
 ---
 
 ### BUG-123: Point.ToString() returns class name instead of formatted string
+
 **Status**: ✅ **RESOLVED** - Fixed 2025-12-03
 **Discovered**: 2025-12-03 (comprehensive test development)
 **Category**: OOP / String Methods
@@ -54,6 +58,7 @@ since all string globals are const (the IL parser requires an initializer for st
 **Symptom**: A FUNCTION method that returns a concatenated string returns the class name instead.
 
 **Minimal Reproduction**:
+
 ```basic
 CLASS Point
     PUBLIC x AS INTEGER
@@ -82,20 +87,24 @@ had its own override of the method. This caused user-defined `ToString()` method
 class has the method before falling back to `Viper.Object.ToString` or `Viper.Object.Equals`.
 
 **Files Changed**:
+
 - `src/frontends/basic/lower/oop/Lower_OOP_Expr.cpp:946-1023` - Added `userClassHasMethod` check
 - `src/tests/e2e/comprehensive/oop_features.bas.out:5` - Updated golden file expectation
 
 ---
 
 ### BUG-107: RETURN statement in FUNCTION causes type mismatch error
+
 **Status**: ✅ **RESOLVED** - Fixed 2025-11-19
 **Discovered**: 2025-11-18 (Poker game stress test - hand evaluation)
 **Category**: Control Flow / Functions
 **Severity**: MEDIUM - Workaround available (remove RETURN)
 
-**Symptom**: Using RETURN statement inside a FUNCTION to early-exit causes a compilation error: "ret value type mismatch"
+**Symptom**: Using RETURN statement inside a FUNCTION to early-exit causes a compilation error: "ret value type
+mismatch"
 
 **Minimal Reproduction**:
+
 ```basic
 Function HasThreeOfKind() AS Boolean
     DIM i AS Integer
@@ -110,11 +119,13 @@ End Function
 ```
 
 **Error Message**:
+
 ```
 poker_hand.bas:100:17: error: HAND.HASTHREEOFKIND:if_then_0_HAND.HASTHREEOFKIND: ret: ret value type mismatch
 ```
 
 **Workaround**: Remove RETURN statement and use flag variable:
+
 ```basic
 Function HasThreeOfKind() AS Boolean
     DIM i AS Integer
@@ -132,48 +143,70 @@ End Function
 **Impact**: MEDIUM - Early returns are useful for clarity but can be worked around
 
 **Test Files**:
+
 - `bugs/bug_testing/poker_hand.bas` (original version with RETURN)
 - `bugs/bug_testing/poker_test_hands.bas` - Test suite for hand evaluation
 
-**Expected Behavior**: RETURN should exit the function early with the already-set return value (VB-style implicit return via assignment to function name).
+**Expected Behavior**: RETURN should exit the function early with the already-set return value (VB-style implicit return
+via assignment to function name).
 
 **Root Cause**:
-- In FUNCTION bodies, a bare `RETURN` (no value) is lowered as a void return even when the function's declared return type is non-void.
-- Specifically, `Lowerer::lowerReturn` emits `emitRetVoid()` when `stmt.value` is absent, without considering the enclosing function's return type.
-- This produces IL `ret` with no value inside a non-void function, triggering the verifier error “ret value type mismatch”.
+
+- In FUNCTION bodies, a bare `RETURN` (no value) is lowered as a void return even when the function's declared return
+  type is non-void.
+- Specifically, `Lowerer::lowerReturn` emits `emitRetVoid()` when `stmt.value` is absent, without considering the
+  enclosing function's return type.
+- This produces IL `ret` with no value inside a non-void function, triggering the verifier error “ret value type
+  mismatch”.
 
 References:
-- `src/frontends/basic/lower/Lowerer_Stmt.cpp` — `Lowerer::lowerReturn` else-branch calls `emitRetVoid()` for missing value (around lines 600–640).
+
+- `src/frontends/basic/lower/Lowerer_Stmt.cpp` — `Lowerer::lowerReturn` else-branch calls `emitRetVoid()` for missing
+  value (around lines 600–640).
 
 Analysis Notes:
-- The frontend already supports “VB-style” implicit returns by assigning to the function name. The return lowering needs to branch to a unified epilogue that always returns the current result register for FUNCTIONs, and only emit `ret void` for SUBs.
+
+- The frontend already supports “VB-style” implicit returns by assigning to the function name. The return lowering needs
+  to branch to a unified epilogue that always returns the current result register for FUNCTIONs, and only emit
+  `ret void` for SUBs.
 
 Fix:
-- In `Lowerer::lowerReturn`, when encountering a bare `RETURN` inside a FUNCTION (non-void return), emit a branch to the synthetic exit block instead of `ret void`. The unified epilogue (`emitFinalReturn`) now returns the implicit result or default.
+
+- In `Lowerer::lowerReturn`, when encountering a bare `RETURN` inside a FUNCTION (non-void return), emit a branch to the
+  synthetic exit block instead of `ret void`. The unified epilogue (`emitFinalReturn`) now returns the implicit result
+  or default.
 - SUB semantics unchanged (`ret void`).
 
 Code change:
+
 - File: `src/frontends/basic/lower/Lowerer_Stmt.cpp`
-- Logic: if `context().function()->retType.kind != Void`, do `emitBr(&func->blocks[ctx.exitIndex()])`; else `emitRetVoid()`.
+- Logic: if `context().function()->retType.kind != Void`, do `emitBr(&func->blocks[ctx.exitIndex()])`; else
+  `emitRetVoid()`.
 
 Tests to add (follow-up):
+
 - Unit: bare `RETURN` in BOOLEAN/I64/Str/F64 functions returns last assigned to function name.
 - E2E: Poker hand evaluation path with early return compiles and runs.
-- For FUNCTIONs: on bare `RETURN`, branch to the synthetic exit block (`emitFinalReturn`), where we emit `ret <result>` (the register holding the function’s implicit return variable), preserving any required boolean coercions.
+- For FUNCTIONs: on bare `RETURN`, branch to the synthetic exit block (`emitFinalReturn`), where we emit
+  `ret <result>` (the register holding the function’s implicit return variable), preserving any required boolean
+  coercions.
 - Keep SUB behaviour unchanged (still `ret void`).
 - Add a unit test: bare `RETURN` inside a FUNCTION compiles and returns the last assigned value to the function name.
 
 ---
 
 ### BUG-108: Array bounds issue with local boolean arrays in methods
+
 **Status**: ✅ **RESOLVED** - Fixed 2025-11-19
 **Discovered**: 2025-11-18 (Poker game stress test - CountPairs function)
 **Category**: Arrays / Scoping
 **Severity**: HIGH - Causes runtime crash
 
-**Symptom**: Creating a local boolean array inside a class method and using it for tracking causes an array index out of bounds error at runtime.
+**Symptom**: Creating a local boolean array inside a class method and using it for tracking causes an array index out of
+bounds error at runtime.
 
 **Minimal Reproduction**:
+
 ```basic
 Class Hand
     DIM cards(5) AS Card
@@ -203,6 +236,7 @@ End Class
 ```
 
 **Error Message**:
+
 ```
 rt_arr_i32: index 6 out of bounds (len=5)
 ```
@@ -210,42 +244,66 @@ rt_arr_i32: index 6 out of bounds (len=5)
 **Expected Behavior**: Should be able to create and use local arrays inside class methods without bounds errors.
 
 **Root Cause**:
-- Array accesses inside methods use multiple resolution paths (locals, module-level globals, and implicit fields). In the store path for arrays in methods, the code can incorrectly reinterpret a local array name as an implicit field array when a similarly named field exists in scope.
-- When this misresolution happens, the bounds check and store operate on the field array handle rather than the local array, so `len` comes from the field (e.g., a `cards(5)` field), producing errors like “rt_arr_i32: index 6 out of bounds (len=5)” even though the local array was declared larger (e.g., `counted(15)`).
+
+- Array accesses inside methods use multiple resolution paths (locals, module-level globals, and implicit fields). In
+  the store path for arrays in methods, the code can incorrectly reinterpret a local array name as an implicit field
+  array when a similarly named field exists in scope.
+- When this misresolution happens, the bounds check and store operate on the field array handle rather than the local
+  array, so `len` comes from the field (e.g., a `cards(5)` field), producing errors like “rt_arr_i32: index 6 out of
+  bounds (len=5)” even though the local array was declared larger (e.g., `counted(15)`).
 
 Evidence and Code Paths:
-- Lowering for array element stores in methods: `assignArrayElement` may detect “implicit field array” by calling `isFieldInScope(target.name)` and then rewrites the precomputed `access.base` to point at the field handle (`ME.<field>`), see:
-  - `src/frontends/basic/LowerStmt_Runtime.cpp`: `assignArrayElement` (implicit field path around lines 310–360) and length check immediately following.
-- Local/global/field resolution: `resolveVariableStorage` prefers local slots but can fall back to implicit field resolution (`resolveImplicitField`) when it fails to find a symbol, see:
-  - `src/frontends/basic/Lowerer.Procedure.cpp`: `resolveVariableStorage` and `resolveImplicitField`.
-- Field-scope detection uses an exact field-name match (`isFieldInScope`), but symbol tables for locals can be incomplete during certain lowering orders, leading to the fallback path engaging.
+
+- Lowering for array element stores in methods: `assignArrayElement` may detect “implicit field array” by calling
+  `isFieldInScope(target.name)` and then rewrites the precomputed `access.base` to point at the field handle (
+  `ME.<field>`), see:
+    - `src/frontends/basic/LowerStmt_Runtime.cpp`: `assignArrayElement` (implicit field path around lines 310–360) and
+      length check immediately following.
+- Local/global/field resolution: `resolveVariableStorage` prefers local slots but can fall back to implicit field
+  resolution (`resolveImplicitField`) when it fails to find a symbol, see:
+    - `src/frontends/basic/Lowerer.Procedure.cpp`: `resolveVariableStorage` and `resolveImplicitField`.
+- Field-scope detection uses an exact field-name match (`isFieldInScope`), but symbol tables for locals can be
+  incomplete during certain lowering orders, leading to the fallback path engaging.
 
 Contributing Factors:
-- Mixed use of implicit field detection and storage rewriting in the store path, while the load path computes base/len earlier via `lowerArrayAccess`.
-- Method-scope arrays and same-scope fields increase collision risk when local symbol resolution is delayed or shadowed by module/field lookups.
+
+- Mixed use of implicit field detection and storage rewriting in the store path, while the load path computes base/len
+  earlier via `lowerArrayAccess`.
+- Method-scope arrays and same-scope fields increase collision risk when local symbol resolution is delayed or shadowed
+  by module/field lookups.
 
 Fix:
-- Guard the implicit-field rewrite in `assignArrayElement` so it only triggers when there is no local/param symbol with the same name. If a local exists, keep the `lowerArrayAccess`-computed base (local array) and its bounds.
-- This preserves consistent base/len between load and store paths and prevents accidental aliasing to the instance field.
+
+- Guard the implicit-field rewrite in `assignArrayElement` so it only triggers when there is no local/param symbol with
+  the same name. If a local exists, keep the `lowerArrayAccess`-computed base (local array) and its bounds.
+- This preserves consistent base/len between load and store paths and prevents accidental aliasing to the instance
+  field.
 
 Code change:
+
 - File: `src/frontends/basic/LowerStmt_Runtime.cpp`
-- Logic: compute `localSym = findSymbol(target.name)`; only treat as implicit field when `isFieldInScope && !(localSym && localSym->slotId)`.
+- Logic: compute `localSym = findSymbol(target.name)`; only treat as implicit field when
+  `isFieldInScope && !(localSym && localSym->slotId)`.
 
 Tests to add (follow-up):
-- Method-local boolean array with same name as a field; large index works when within local length; field length unaffected.
+
+- Method-local boolean array with same name as a field; large index works when within local length; field length
+  unaffected.
 
 ---
 
 ### BUG-109: Segmentation fault when accessing nested object fields in arrays
+
 **Status**: ✅ **RESOLVED** - Fixed 2025-11-19
 **Discovered**: 2025-11-18 (Poker game stress test - multi-player arrays)
 **Category**: OOP / Memory / Arrays
 **Severity**: CRITICAL - Segmentation fault, no workaround for multi-player scenarios
 
-**Symptom**: When storing objects in an array, and those objects have object-typed fields (nested objects), accessing the nested object's fields or methods causes a segmentation fault (exit code 139).
+**Symptom**: When storing objects in an array, and those objects have object-typed fields (nested objects), accessing
+the nested object's fields or methods causes a segmentation fault (exit code 139).
 
 **Minimal Reproduction**:
+
 ```basic
 Class Hand
     DIM cards(5) AS Card
@@ -284,65 +342,99 @@ LET c = NEW Card("Hearts", "Ace", 14)
 players(0).hand.AddCard(c)  ' SEGFAULT!
 ```
 
-**Error**: Program crashes with exit code 139 (segmentation fault) in some scenarios; partial mitigations add traps for some null dereferences, but root cause persists for arrays-of-objects with nested object fields.
+**Error**: Program crashes with exit code 139 (segmentation fault) in some scenarios; partial mitigations add traps for
+some null dereferences, but root cause persists for arrays-of-objects with nested object fields.
 
 **Impact**: CRITICAL (prior). Fixed by adding null checks; programs now receive clear diagnostics instead of crashing.
 
 **Test Files**:
+
 - `bugs/bug_testing/poker_debug_array_hands.bas` - Minimal reproduction (crashes)
 - `bugs/bug_testing/poker_multi_player.bas` - Multi-player poker (crashes)
 - `bugs/bug_testing/poker_game_test.bas` - Single player works fine
 - `bugs/bug_testing/poker_debug_deal.bas` - Single hand dealing works fine
 
 **Observed Behavior**:
+
 - ✅ Single object with nested objects: WORKS
 - ✅ Array of simple objects (no object fields): WORKS
 - ✅ Object with object field (single instance): WORKS
 - ❌ Array of objects with object fields: CRASHES
 
-**Expected Behavior**: Should be able to have nested objects (objects containing other objects as fields) and store them in arrays without crashes. This is essential for any moderately complex OOP program.
+**Expected Behavior**: Should be able to have nested objects (objects containing other objects as fields) and store them
+in arrays without crashes. This is essential for any moderately complex OOP program.
 
 **Root Cause (Deep Investigation)**:
-- Primary: Inconsistent class layout key usage and fallback behaviour in member access lowering when the base is an array element.
-  - Layout cache is keyed by unqualified class names (e.g., `Player`, `Hand`). Several call sites use fully qualified names (or otherwise-normalized names) without reconciling to the unqualified key.
-  - In `resolveMemberField(const MemberAccessExpr&)`, layout lookup uses `className = resolveObjectClass(*expr.base)` and then `classLayouts_.find(className)` directly. When `className` casing/qualification does not match the cache key, the lookup fails.
-  - On failed lookup, `lowerMemberAccessExpr` returns an integer zero sentinel (`i64 0`) rather than a typed null pointer, silently degrading the base value for subsequent chained operations.
+
+- Primary: Inconsistent class layout key usage and fallback behaviour in member access lowering when the base is an
+  array element.
+    - Layout cache is keyed by unqualified class names (e.g., `Player`, `Hand`). Several call sites use fully qualified
+      names (or otherwise-normalized names) without reconciling to the unqualified key.
+    - In `resolveMemberField(const MemberAccessExpr&)`, layout lookup uses `className = resolveObjectClass(*expr.base)`
+      and then `classLayouts_.find(className)` directly. When `className` casing/qualification does not match the cache
+      key, the lookup fails.
+    - On failed lookup, `lowerMemberAccessExpr` returns an integer zero sentinel (`i64 0`) rather than a typed null
+      pointer, silently degrading the base value for subsequent chained operations.
 - Secondary: Null-checks only fire for typed pointer bases.
-  - Recent mitigation added a null check in `resolveMemberField` and `lowerMethodCallExpr`, but these only trigger when the base is typed as `ptr`. When `resolveMemberField` returns `i64 0` due to a layout miss, the null guard is skipped, and later lowering attempts to use `0` as an object pointer, leading to invalid GEP/loads or calls and a segfault rather than a VM trap.
+    - Recent mitigation added a null check in `resolveMemberField` and `lowerMethodCallExpr`, but these only trigger
+      when the base is typed as `ptr`. When `resolveMemberField` returns `i64 0` due to a layout miss, the null guard is
+      skipped, and later lowering attempts to use `0` as an object pointer, leading to invalid GEP/loads or calls and a
+      segfault rather than a VM trap.
 - Evidence (code paths):
-  - Layout construction keys on declaration names: `src/frontends/basic/Lower_OOP_Scan.cpp` stores layouts as `(decl.name, layout)`.
-  - Lookup sites pass through `resolveObjectClass()` outputs without canonicalization: `src/frontends/basic/Lower_OOP_Expr.cpp` in both `resolveMemberField` and `lowerMethodCallExpr`.
-  - On layout miss, `lowerMemberAccessExpr` returns `{Value::constInt(0), Type::I64}` (untyped zero), see `src/frontends/basic/Lower_OOP_Expr.cpp` returning default on nullopt; downstream chains treat it as a valid base.
-  - Arrays-of-objects exacerbate the mismatch: `resolveObjectClass(ArrayExpr)` uses module-level caches or field metadata to derive an element class (often qualified), which may not match the unqualified key used by the layout map in other code paths.
+    - Layout construction keys on declaration names: `src/frontends/basic/Lower_OOP_Scan.cpp` stores layouts as
+      `(decl.name, layout)`.
+    - Lookup sites pass through `resolveObjectClass()` outputs without canonicalization:
+      `src/frontends/basic/Lower_OOP_Expr.cpp` in both `resolveMemberField` and `lowerMethodCallExpr`.
+    - On layout miss, `lowerMemberAccessExpr` returns `{Value::constInt(0), Type::I64}` (untyped zero), see
+      `src/frontends/basic/Lower_OOP_Expr.cpp` returning default on nullopt; downstream chains treat it as a valid base.
+    - Arrays-of-objects exacerbate the mismatch: `resolveObjectClass(ArrayExpr)` uses module-level caches or field
+      metadata to derive an element class (often qualified), which may not match the unqualified key used by the layout
+      map in other code paths.
 
 References:
-- Array-of-object loads: `src/frontends/basic/lower/Lowerer_Expr.cpp` — `visit(const ArrayExpr&)` uses `rt_arr_obj_get` to retrieve elements (retains result).
-- Member field access: `src/frontends/basic/Lower_OOP_Expr.cpp` — `resolveMemberField` performs layout lookup; on miss returns a zero value.
-- Method calls: `src/frontends/basic/Lower_OOP_Expr.cpp` — `lowerMethodCallExpr` relies on `resolveObjectClass(*expr.base)` for dispatch; receiver guarding currently checks only pointer-typed bases.
+
+- Array-of-object loads: `src/frontends/basic/lower/Lowerer_Expr.cpp` — `visit(const ArrayExpr&)` uses `rt_arr_obj_get`
+  to retrieve elements (retains result).
+- Member field access: `src/frontends/basic/Lower_OOP_Expr.cpp` — `resolveMemberField` performs layout lookup; on miss
+  returns a zero value.
+- Method calls: `src/frontends/basic/Lower_OOP_Expr.cpp` — `lowerMethodCallExpr` relies on
+  `resolveObjectClass(*expr.base)` for dispatch; receiver guarding currently checks only pointer-typed bases.
 
 Mitigations in tree (partial):
-- Null checks were added in member access and method call lowering, reducing some null-deref crashes. However, they do not cover the layout-miss path and do not canonicalize class keys, so the bug remains.
+
+- Null checks were added in member access and method call lowering, reducing some null-deref crashes. However, they do
+  not cover the layout-miss path and do not canonicalize class keys, so the bug remains.
 
 Proposed Solution:
+
 1) Canonicalize class layout lookups:
-   - Introduce a helper `canonicalClassKey(std::string_view)` that maps qualified/cased names to the unqualified key used by `classLayouts_` (or change the cache to use qualified keys consistently).
-   - Apply this canonicalization at all `classLayouts_.find(...)` call sites, including `resolveMemberField`, array-field paths in `Emit_Expr.cpp`, and any other layout-dependent code.
+    - Introduce a helper `canonicalClassKey(std::string_view)` that maps qualified/cased names to the unqualified key
+      used by `classLayouts_` (or change the cache to use qualified keys consistently).
+    - Apply this canonicalization at all `classLayouts_.find(...)` call sites, including `resolveMemberField`,
+      array-field paths in `Emit_Expr.cpp`, and any other layout-dependent code.
 2) Make member access failures explicit and typed:
-   - When `resolveMemberField` cannot find a layout or field, emit a typed null pointer for object fields (not `i64 0`) and immediately guard with a null-trap branch. This prevents silent propagation of an untyped zero into method calls.
+    - When `resolveMemberField` cannot find a layout or field, emit a typed null pointer for object fields (not `i64 0`)
+      and immediately guard with a null-trap branch. This prevents silent propagation of an untyped zero into method
+      calls.
 3) Strengthen `resolveObjectClass(ArrayExpr)` and related paths:
-   - Prefer module-level element-class cache (`lookupModuleArrayElemClass`) consistently; avoid relying on `SymbolInfo::isObject` for arrays since it represents storage, not element type.
-   - Add assertions/diagnostics when element class cannot be resolved for an object array.
+    - Prefer module-level element-class cache (`lookupModuleArrayElemClass`) consistently; avoid relying on
+      `SymbolInfo::isObject` for arrays since it represents storage, not element type.
+    - Add assertions/diagnostics when element class cannot be resolved for an object array.
 4) Tests:
-   - Arrays of objects with nested object fields: both initialized and null cases for member access and method calls.
-   - Namespaced classes to validate canonicalization (qualified vs. unqualified lookups).
+    - Arrays of objects with nested object fields: both initialized and null cases for member access and method calls.
+    - Namespaced classes to validate canonicalization (qualified vs. unqualified lookups).
 
 Implementation Summary:
-- Added canonical class-layout lookup in `Lowerer` to normalize qualified/unqualified names and casing before querying `classLayouts_`.
-- Replaced direct `classLayouts_.find(...)` uses in member access, array-field access, and related lowering with `findClassLayout(...)`.
+
+- Added canonical class-layout lookup in `Lowerer` to normalize qualified/unqualified names and casing before querying
+  `classLayouts_`.
+- Replaced direct `classLayouts_.find(...)` uses in member access, array-field access, and related lowering with
+  `findClassLayout(...)`.
 - Changed member access fallback to return a typed null pointer (ptr) instead of `i64 0` so later null-guards apply.
 - Inserted explicit null-check/trap for member access and method receivers when pointer-typed.
 
 Files:
+
 - `src/frontends/basic/Lowerer.hpp` — declared `findClassLayout` and `canonicalLayoutKey`.
 - `src/frontends/basic/Lowerer.Procedure.cpp` — defined canonicalization and lookup helpers.
 - `src/frontends/basic/Lower_OOP_Expr.cpp` — use canonical lookup; return typed null on failure; null-checks.
@@ -351,19 +443,24 @@ Files:
 - `src/frontends/basic/lower/Lowerer_Expr.cpp` — canonical lookup in method-like array-field lowering and casts.
 
 Result:
-- Arrays-of-objects with nested object fields no longer segfault. Null elements trigger structured traps with location info; initialized elements work for field access and method calls.
+
+- Arrays-of-objects with nested object fields no longer segfault. Null elements trigger structured traps with location
+  info; initialized elements work for field access and method calls.
 
 ---
 
 ### BUG-110: Stack overflow in string concatenation loops
+
 **Status**: ✅ **RESOLVED** - Fixed 2025-11-19
 **Discovered**: 2025-11-18 (Frogger performance analysis)
 **Category**: Compiler / IL Generation / Memory Management
 **Severity**: CRITICAL - Limits string concatenation to ~60-90 total operations per function
 
-**Symptom**: Repeated string concatenation in loops causes stack overflow after ~60-90 total concatenations across all variables in a function. Error message: "stack overflow in alloca"
+**Symptom**: Repeated string concatenation in loops causes stack overflow after ~60-90 total concatenations across all
+variables in a function. Error message: "stack overflow in alloca"
 
 **Minimal Reproduction**:
+
 ```basic
 REM Crashes after building 2-3 strings with 30 concatenations each
 DIM s1 AS STRING
@@ -388,6 +485,7 @@ NEXT i
 ```
 
 **Error Message**:
+
 ```
 Trap @main#2 line 33: Overflow (code=0): stack overflow in alloca
 ```
@@ -412,6 +510,7 @@ for_body:
 ```
 
 **The problem**:
+
 - Each concatenation allocates **2 stack slots** (alloca) for temporaries
 - These allocas are **emitted inside the loop body**
 - Stack space is **never reclaimed** until the function returns
@@ -419,13 +518,16 @@ for_body:
 - With 3 variables × 60 allocations = 180 total allocas → **stack overflow**
 
 **IL Design Issue**: `alloca` instructions should be:
+
 1. Hoisted to function entry (outside all loops), OR
 2. Replaced with a different temporary storage mechanism, OR
 3. Have a way to reclaim stack space during function execution
 
-Previously, the IL lowerer emitted allocas directly in the loop body, causing unbounded stack growth in any loop with string operations.
+Previously, the IL lowerer emitted allocas directly in the loop body, causing unbounded stack growth in any loop with
+string operations.
 
 **Impact**:
+
 - **CRITICAL** for text-based games (Frogger screen rendering)
 - **CRITICAL** for any string-heavy application
 - Prevents building strings longer than ~100 characters via concatenation
@@ -433,18 +535,23 @@ Previously, the IL lowerer emitted allocas directly in the loop body, causing un
 - Makes string builders impossible to implement in BASIC
 
 **Fix**:
-- Removed per-iteration `alloca` spills in string concatenation lowering. Concatenation now passes operands directly to `rt_concat`, which consumes (releases) both inputs safely.
+
+- Removed per-iteration `alloca` spills in string concatenation lowering. Concatenation now passes operands directly to
+  `rt_concat`, which consumes (releases) both inputs safely.
 
 Code change:
+
 - File: `src/frontends/basic/LowerExprNumeric.cpp`
 - Section: `NumericExprLowering::lowerStringBinary` for `BinaryExpr::Op::Add`.
 - Replaced stack slot spills/loads with a direct call: `rt_concat(lhs.value, rhs.value)`.
 
 Impact:
+
 - Eliminates unbounded stack growth during string concatenation loops.
 - Improves performance and allows building long strings in loops safely.
 
 **Performance Impact** (Frogger case study):
+
 - Frogger rendering: ~1,245 BufferColorAt calls per frame
 - Each call builds ANSI sequences via string concatenation
 - Cannot use helper functions like `RepeatChar(ch, count)` due to this bug
@@ -452,15 +559,18 @@ Impact:
 - Result: ~103ms per frame = 9.7 FPS (instead of 30+ FPS)
 
 **Test Files**:
+
 - `bugs/bug_testing/bug110_minimal_repro.bas` - Minimal reproduction (crashes)
 - `bugs/bug_testing/test_string_concat_limits.bas` - Binary search for threshold
 - `bugs/bug_testing/test_string_concat_many_vars.bas` - Demonstrates cumulative effect
 - `bugs/bug_testing/test_string_concat_cumulative.bas` - Shows workaround (DIM in loop)
 - `bugs/bug_testing/test_string_concat_reuse.bas` - Variable reuse (still fails)
 
-**Expected Behavior**: Should be able to concatenate strings in loops without arbitrary limits. String concatenation should not consume stack space that grows with iteration count.
+**Expected Behavior**: Should be able to concatenate strings in loops without arbitrary limits. String concatenation
+should not consume stack space that grows with iteration count.
 
 **Observed Thresholds**:
+
 - Single variable, single loop: ~60-90 iterations before overflow
 - Multiple variables (3+), 30 iterations each: Crashes on 3rd variable
 - Total allocas before overflow: ~120-180 (platform dependent)
@@ -468,14 +578,17 @@ Impact:
 ---
 
 ### BUG-114: Line continuation character (_) not supported
+
 **Status**: ✅ **RESOLVED** - Fixed 2025-11-23
 **Discovered**: 2025-11-23 (BasicDB development - method signatures)
 **Category**: Parser / Syntax
 **Severity**: MEDIUM - Workaround available (single-line formatting)
 
-**Symptom**: The BASIC parser does not recognize the underscore (`_`) character for line continuation in function/subroutine parameter lists or other multi-line statements.
+**Symptom**: The BASIC parser does not recognize the underscore (`_`) character for line continuation in
+function/subroutine parameter lists or other multi-line statements.
 
 **Minimal Reproduction**:
+
 ```basic
 SUB SetData(newId AS INTEGER, fname AS STRING, lname AS STRING, _
             em AS STRING, ph AS STRING)
@@ -484,18 +597,21 @@ END SUB
 ```
 
 **Error Message**:
+
 ```
 error[B0001]: expected ident, got ?
 error[B0001]: expected ), got eol
 ```
 
 **Impact**:
+
 - Forces long parameter lists onto single lines
 - Reduces code readability for methods with many parameters
 - Makes functions with 5+ parameters harder to maintain
 - Not a blocking issue, just a style limitation
 
 **Workaround**: Keep all parameters on a single line:
+
 ```basic
 SUB SetData(newId AS INTEGER, fname AS STRING, lname AS STRING, em AS STRING, ph AS STRING)
     PRINT "Setting data..."
@@ -504,31 +620,38 @@ END SUB
 
 **Test File**: `devdocs/basic/basicdb.bas` - Database with long method signatures
 
-**Expected Behavior**: Line continuation character should allow splitting long statements across multiple lines for readability, as supported in standard BASIC dialects.
+**Expected Behavior**: Line continuation character should allow splitting long statements across multiple lines for
+readability, as supported in standard BASIC dialects.
 
 **Notes**:
+
 - This is a parser-level limitation
 - Standard BASIC feature not implemented
 - Low priority as workaround is simple
 
 **Resolution** (2025-11-23):
+
 - **Root Cause**: Lexer did not handle `_` character followed by newline
 - **Fix**: Added case in `Lexer.cpp:538-554` to recognize `_` + newline as line continuation
-- **Implementation**: When `_` is encountered, lexer skips optional whitespace, checks for newline, and recursively calls `next()` to continue on next line
+- **Implementation**: When `_` is encountered, lexer skips optional whitespace, checks for newline, and recursively
+  calls `next()` to continue on next line
 - **Files Modified**: `src/frontends/basic/Lexer.cpp`
 - **Test Status**: Line continuation now works in all contexts (parameter lists, statements, expressions)
 
 ---
 
 ### BUG-115: Constructor SUB New() causes "missing result" error
+
 **Status**: ✅ **RESOLVED** - Fixed 2025-11-23 (via regression fix)
 **Discovered**: 2025-11-23 (BasicDB development - OOP attempt)
 **Category**: OOP / Code Generation
 **Severity**: HIGH - Blocks constructor pattern
 
-**Symptom**: When a CLASS defines an explicit `SUB New()` constructor, the compiler generates code that causes a "ret: missing result" error at runtime during object instantiation.
+**Symptom**: When a CLASS defines an explicit `SUB New()` constructor, the compiler generates code that causes a "ret:
+missing result" error at runtime during object instantiation.
 
 **Minimal Reproduction**:
+
 ```basic
 CLASS Record
     PUBLIC id AS INTEGER
@@ -545,16 +668,19 @@ rec = NEW Record()  ' Runtime error here
 ```
 
 **Error Message**:
+
 ```
 error: RECORD.__ctor:entry_RECORD.__ctor: ret: missing result
 ```
 
 **Impact**:
+
 - Cannot use constructor pattern for object initialization
 - Must rely on explicit Init() methods after construction
 - Reduces OOP capabilities and idiomatic usage
 
 **Workaround**: Remove `SUB New()` constructor and use separate Init() method:
+
 ```basic
 CLASS Record
     PUBLIC id AS INTEGER
@@ -573,13 +699,17 @@ rec.Init()  ' Call Init after construction
 
 **Test File**: `devdocs/basic/test_class_minimal.bas` - Minimal class with constructor
 
-**Expected Behavior**: `SUB New()` should be called during object instantiation without errors, allowing initialization logic in constructor.
+**Expected Behavior**: `SUB New()` should be called during object instantiation without errors, allowing initialization
+logic in constructor.
 
 **Related**: BUG-116 (NEW operator broken) - same root cause
 
 **Resolution** (2025-11-23):
-- **Root Cause**: Critical regression - missing `GAddr` opcode entry in `SpecTables.cpp` caused all opcode specs after index 57 to be misaligned by one position
-- **Impact**: `Ret` opcode (index 64) was getting `TrapKind`'s spec (index 65), causing all void functions to fail with "missing result" error
+
+- **Root Cause**: Critical regression - missing `GAddr` opcode entry in `SpecTables.cpp` caused all opcode specs after
+  index 57 to be misaligned by one position
+- **Impact**: `Ret` opcode (index 64) was getting `TrapKind`'s spec (index 65), causing all void functions to fail
+  with "missing result" error
 - **Fix**: Added missing `GAddr` entry at position 57 in `src/il/verify/generated/SpecTables.cpp:727-738`
 - **Files Modified**: `src/il/verify/generated/SpecTables.cpp`
 - **Test Status**: Constructors now work correctly; all BASIC tests passing (46/46)
@@ -588,14 +718,18 @@ rec.Init()  ' Call Init after construction
 ---
 
 ### BUG-116: 🔴 CRITICAL - NEW operator for class instantiation broken
+
 **Status**: ✅ **RESOLVED** - Fixed 2025-11-23 (via regression fix)
 **Discovered**: 2025-11-23 (BasicDB development - OOP attempt)
 **Category**: OOP / Code Generation / Runtime
 **Severity**: CRITICAL - Completely blocks OOP instantiation
 
-**Symptom**: The NEW operator for instantiating classes causes a runtime error. The automatically-generated constructor (`__ctor`) doesn't properly return a value, causing a "ret: missing result" error even for minimal classes without explicit constructors.
+**Symptom**: The NEW operator for instantiating classes causes a runtime error. The automatically-generated
+constructor (`__ctor`) doesn't properly return a value, causing a "ret: missing result" error even for minimal classes
+without explicit constructors.
 
 **Minimal Reproduction**:
+
 ```basic
 CLASS TestClass
     DIM value AS INTEGER
@@ -606,39 +740,48 @@ obj = NEW TestClass()  ' Runtime error here
 ```
 
 **Error Message**:
+
 ```
 error: TESTCLASS.__ctor:entry_TESTCLASS.__ctor: ret: missing result
 ```
 
 **Impact**:
+
 - **COMPLETELY BLOCKS object-oriented programming**
 - Cannot instantiate any class objects
 - OOP features are unusable
 - Forces procedural programming approach
 
 **Attempted Workarounds (ALL FAILED)**:
+
 - Removing explicit NEW() constructor - still fails
 - Changing PUBLIC to regular visibility - still fails
 - Using DIM instead of PUBLIC for fields - still fails
 - Minimal class with single field - still fails
 
 **Current Workaround**:
+
 - Must use procedural programming with global arrays
 - Cannot use OOP at all for data structures
 - Use parallel arrays instead of object collections
 
 **Test Files**:
+
 - `devdocs/basic/test_class_minimal.bas` - Minimal reproduction
 - `devdocs/basic/basicdb.bas` - Had to abandon OOP design
 
-**Expected Behavior**: `NEW ClassName()` should instantiate an object and return a valid reference, allowing full OOP usage.
+**Expected Behavior**: `NEW ClassName()` should instantiate an object and return a valid reference, allowing full OOP
+usage.
 
-**Root Cause**: The generated `__ctor` function doesn't properly return the object reference. This affects all class instantiation, making OOP fundamentally broken.
+**Root Cause**: The generated `__ctor` function doesn't properly return the object reference. This affects all class
+instantiation, making OOP fundamentally broken.
 
 **Related**: BUG-115 (Constructor NEW() method) - same root cause
 
 **Resolution** (2025-11-23):
-- **Root Cause**: Critical regression - missing `GAddr` opcode entry in `SpecTables.cpp` caused opcode spec table misalignment
+
+- **Root Cause**: Critical regression - missing `GAddr` opcode entry in `SpecTables.cpp` caused opcode spec table
+  misalignment
 - **Impact**: ALL void functions (including constructors) failed verification with "ret: missing result" error
 - **Fix**: Added missing `GAddr` opcode specification at index 57 in generated spec table
 - **Files Modified**: `src/il/verify/generated/SpecTables.cpp:727-738`
@@ -648,14 +791,18 @@ error: TESTCLASS.__ctor:entry_TESTCLASS.__ctor: ret: missing result
 ---
 
 ### BUG-117: String comparison operators (>, <) runtime error
+
 **Status**: ✅ **RESOLVED** - Fixed 2025-11-23
 **Discovered**: 2025-11-23 (BasicDB development - string sorting)
 **Category**: Runtime / String Operations
 **Severity**: HIGH - Blocks string sorting functionality
 
-**Symptom**: String comparison using `>` and `<` operators causes runtime errors in certain contexts, particularly in sorting functions with array element comparisons. The runtime function `@rt_str_gt` appears to be missing or not properly linked.
+**Symptom**: String comparison using `>` and `<` operators causes runtime errors in certain contexts, particularly in
+sorting functions with array element comparisons. The runtime function `@rt_str_gt` appears to be missing or not
+properly linked.
 
 **Minimal Reproduction**:
+
 ```basic
 DIM names$(10)
 names$(0) = "Smith"
@@ -670,30 +817,37 @@ NEXT i
 ```
 
 **Error Message**:
+
 ```
 error: DB_SORTBYLASTNAME:bc_ok1_DB_SORTBYLASTNAME: %60 = call %t43 %t59:
 unknown callee @rt_str_gt
 ```
 
 **Impact**:
+
 - **BLOCKS sorting by string fields**
 - Cannot implement alphabetical sorting
 - String comparison with `>` and `<` operators unusable
 - Equality comparison (`=`) works fine
 - Limits database and list processing functionality
 
-**Context**: The `basic_audit.md` claims "Full lexicographic string comparison now supported for all relational operators", but this appears to be incomplete or broken in certain contexts (arrays, complex expressions).
+**Context**: The `basic_audit.md` claims "Full lexicographic string comparison now supported for all relational
+operators", but this appears to be incomplete or broken in certain contexts (arrays, complex expressions).
 
 **Workaround**:
+
 - None available for sorting
 - Must comment out string-based sorting functions
 - Can only sort by integer fields
 
-**Test File**: `devdocs/basic/basicdb.bas` - String sorting functions commented out (DB_SortByLastName, DB_SortByFirstName, DB_SortByCity)
+**Test File**: `devdocs/basic/basicdb.bas` - String sorting functions commented out (DB_SortByLastName,
+DB_SortByFirstName, DB_SortByCity)
 
-**Expected Behavior**: String comparison operators (`>`, `<`, `>=`, `<=`) should work consistently in all contexts, including array element comparisons and sorting loops.
+**Expected Behavior**: String comparison operators (`>`, `<`, `>=`, `<=`) should work consistently in all contexts,
+including array element comparisons and sorting loops.
 
 **Notes**:
+
 - May be related to BUG-031 (String comparison resolved 2025-11-12) - possible regression
 - May be specific to array element comparisons vs simple variable comparisons
 - The runtime function `@rt_str_gt` exists for simple comparisons but may not be called correctly in complex expressions
@@ -701,8 +855,11 @@ unknown callee @rt_str_gt
 **Related**: BUG-031 was reportedly resolved, but this issue persists in array/sorting contexts
 
 **Resolution** (2025-11-23):
-- **Root Cause**: String comparison runtime functions (`rt_str_gt`, `rt_str_lt`, `rt_str_le`, `rt_str_ge`) were not being declared as IL externs
-- **Technical Details**: Only `BoundsChecked` lowering kind functions were declared; string comparison functions use `Feature` lowering kind
+
+- **Root Cause**: String comparison runtime functions (`rt_str_gt`, `rt_str_lt`, `rt_str_le`, `rt_str_ge`) were not
+  being declared as IL externs
+- **Technical Details**: Only `BoundsChecked` lowering kind functions were declared; string comparison functions use
+  `Feature` lowering kind
 - **Fix**: Added `RuntimeLoweringKind::Feature` to extern declaration logic in `LowerRuntime.cpp:839-840`
 - **Files Modified**: `src/frontends/basic/LowerRuntime.cpp`
 - **Test Status**: String comparison operators now work in all contexts (arrays, sorting, complex expressions)
@@ -711,14 +868,17 @@ unknown callee @rt_str_gt
 ---
 
 ### BUG-118: AND/OR operators require BOOLEAN operands - no bitwise integer support
+
 **Status**: 📋 **DESIGN DECISION** - Intentional limitation
 **Discovered**: 2025-11-25 (Pac-Man game development)
 **Category**: Semantics / Operators / Design
 **Severity**: MEDIUM - Workaround available using MOD
 
-**Symptom**: The `AND` and `OR` keywords in Viper BASIC are strictly logical operators requiring boolean operands. Using them for bitwise integer operations (common in traditional BASIC dialects) produces a type error.
+**Symptom**: The `AND` and `OR` keywords in Viper BASIC are strictly logical operators requiring boolean operands. Using
+them for bitwise integer operations (common in traditional BASIC dialects) produces a type error.
 
 **Minimal Reproduction**:
+
 ```basic
 Dim i As Integer
 i = 5
@@ -728,17 +888,20 @@ End If
 ```
 
 **Error Message**:
+
 ```
 error[E1002]: Logical operator AND requires BOOLEAN operands, got INT and INT.
 ```
 
 **Root Cause Analysis**:
+
 - File: `src/frontends/basic/sem/Check_Expr_Binary.cpp:334-348`
 - The `validateLogicalOperands` function explicitly requires both operands to be boolean type
 - The rule table at lines 415-422 maps `LogicalAnd` and `LogicalOr` operators to this validator
 - This is an intentional semantic design choice, not a bug - Viper BASIC separates logical and bitwise operations
 
 **Evidence**:
+
 ```cpp
 void validateLogicalOperands(sem::ExprCheckContext &context,
                              const BinaryExpr &expr,
@@ -754,6 +917,7 @@ void validateLogicalOperands(sem::ExprCheckContext &context,
 ```
 
 **Workaround**: Use `MOD` for odd/even checks, restructure logic for other bitwise operations:
+
 ```basic
 ' Instead of: If (i And 1) = 0 Then
 If (i Mod 2) = 0 Then
@@ -762,25 +926,30 @@ End If
 ```
 
 **Impact**:
+
 - Traditional BASIC programs using bitwise AND/OR need modification
 - Common patterns like `If (flags And MASK) <> 0` must be rewritten
 - Odd/even checks easily workaroundable with MOD
 
-**Design Note**: This differs from QB/VB where AND/OR serve dual purpose (bitwise on integers, logical on booleans). Viper BASIC enforces type safety at the cost of traditional BASIC compatibility.
+**Design Note**: This differs from QB/VB where AND/OR serve dual purpose (bitwise on integers, logical on booleans).
+Viper BASIC enforces type safety at the cost of traditional BASIC compatibility.
 
 **Test File**: `bugs/bug_testing/bug118_bitwise_and.bas`
 
 ---
 
 ### BUG-119: And operator in If conditions with Return causes label generation error
+
 **Status**: ✅ **RESOLVED** - Fixed 2025-11-25
 **Discovered**: 2025-11-25 (Pac-Man game development - Ghost.GetChar method)
 **Category**: Code Generation / Control Flow
 **Severity**: HIGH - Blocked common patterns in functions with early returns
 
-**Symptom**: Using boolean `And` expressions inside `If` conditions where both branches have `Return` statements caused a code generation error where labels are referenced but never created.
+**Symptom**: Using boolean `And` expressions inside `If` conditions where both branches have `Return` statements caused
+a code generation error where labels are referenced but never created.
 
 **Minimal Reproduction**:
+
 ```basic
 Function GetChar() As String
     Dim a As Integer
@@ -796,23 +965,29 @@ Print GetChar()
 ```
 
 **Error Message**:
+
 ```
 error: GETCHAR: unknown label and_rhs_0_GETCHAR
 ```
 
 **Root Cause Analysis**:
+
 - File: `src/frontends/basic/lower/Lower_If.cpp:198-200`
 - When an If statement has no fallthrough (both branches return), the exit block is removed via `pop_back()`
-- However, `lowerCondBranch` in `Emit_Control.cpp:117-122` adds intermediate `and_rhs` blocks for short-circuit evaluation AFTER the If blocks are created
+- However, `lowerCondBranch` in `Emit_Control.cpp:117-122` adds intermediate `and_rhs` blocks for short-circuit
+  evaluation AFTER the If blocks are created
 - The `pop_back()` removed the last block, which was the `and_rhs` block, NOT the intended exit block
-- Block order: `if_test`, `if_then`, `if_else`, `if_end` (exit), `and_rhs` → `pop_back()` removed `and_rhs` instead of `if_end`
+- Block order: `if_test`, `if_then`, `if_else`, `if_end` (exit), `and_rhs` → `pop_back()` removed `and_rhs` instead of
+  `if_end`
 
 **Fix**:
+
 - Changed `func->blocks.pop_back()` to `func->blocks.erase()` at the specific exit block index
 - This ensures the correct block is removed regardless of what blocks were added after it
 - File modified: `src/frontends/basic/lower/Lower_If.cpp`
 
 **Code Change**:
+
 ```cpp
 // Before (BUG-119):
 func->blocks.pop_back();
@@ -831,14 +1006,17 @@ func->blocks.erase(func->blocks.begin() +
 ---
 
 ### BUG-120: Method calls on local object copies fail inside procedures
+
 **Status**: ✅ **RESOLVED** - Fixed 2025-11-25
 **Discovered**: 2025-11-25 (Pac-Man game development - ResetPositions sub)
 **Category**: OOP / Procedure Scope / Method Resolution
 **Severity**: HIGH - Blocks common OOP patterns
 
-**Symptom**: When copying an object from an array into a local variable inside a Sub or Function, method calls on that local variable fail with "unknown procedure" error. The same code works at module level.
+**Symptom**: When copying an object from an array into a local variable inside a Sub or Function, method calls on that
+local variable fail with "unknown procedure" error. The same code works at module level.
 
 **Minimal Reproduction**:
+
 ```basic
 Class Ghost
     Dim X As Integer
@@ -882,6 +1060,7 @@ method call on a class). Otherwise, let the lowerer handle it - it has more comp
 information and will correctly resolve object method calls.
 
 **Files Changed**:
+
 - `src/frontends/basic/SemanticAnalyzer.Stmts.Runtime.cpp:68-109` - Relaxed BUG-037 check
 - `src/tests/basic/CMakeLists.txt:1201-1209` - Updated test expectation for t04_cross_file_2
 
@@ -890,19 +1069,23 @@ information and will correctly resolve object method calls.
 ---
 
 ### BUG-121: LOCATE with large out-of-range values may cause narrowing cast trap
+
 **Status**: 📋 **NOT A BUG** - Expected behavior (safety feature)
 **Discovered**: 2025-11-25 (Pac-Man game development - DrawGhost function)
 **Category**: Runtime / Terminal Operations / Type Safety
 **Severity**: LOW - Only affects edge cases with extreme values
 
-**Symptom**: Using LOCATE with row/column values significantly outside the valid terminal range (e.g., values > 255) can cause a runtime trap in certain contexts, though simple tests with values like 300 appear to work.
+**Symptom**: Using LOCATE with row/column values significantly outside the valid terminal range (e.g., values > 255) can
+cause a runtime trap in certain contexts, though simple tests with values like 300 appear to work.
 
 **Original Error** (from Pac-Man development):
+
 ```
 Trap @DRAWGHOST#8 line 1424: InvalidCast (code=0): value out of range in cast.si_narrow.chk
 ```
 
 **Minimal Reproduction** (did NOT reproduce in isolation):
+
 ```basic
 Dim row As Integer
 Dim col As Integer
@@ -913,17 +1096,20 @@ Print "X"
 ```
 
 **Context Where Issue Occurred**:
+
 - Inside a complex procedure with multiple calculations
 - Row/column values computed from object field arithmetic
 - Possibly involves intermediate overflow or negative values
 
 **Root Cause Analysis**:
+
 - The LOCATE statement internally narrows integer arguments to byte-sized values
 - The `cast.si_narrow.chk` instruction validates that the value fits in the target range
 - Large positive values (> 255) or negative values trigger the narrowing check failure
 - The trap only occurs when the runtime's checked narrowing is engaged
 
 **Workaround**: Add bounds checking before all LOCATE calls:
+
 ```basic
 If sy < 1 Then sy = 1
 If sy > 24 Then sy = 24
@@ -933,11 +1119,13 @@ LOCATE sy, sx
 ```
 
 **Impact**:
+
 - LOW - Only affects programs that compute cursor positions arithmetically
 - Easy workaround with explicit bounds checking
 - Standard terminal programs typically stay within valid ranges
 
-**Note**: This may not be a bug per se - the checked narrowing is a safety feature. Programs should validate cursor positions before using LOCATE.
+**Note**: This may not be a bug per se - the checked narrowing is a safety feature. Programs should validate cursor
+positions before using LOCATE.
 
 **Test File**: `bugs/bug_testing/bug121_locate_bounds.bas`
 
@@ -946,14 +1134,17 @@ LOCATE sy, sx
 ## RECENTLY RESOLVED BUGS (2025-11-18)
 
 ### BUG-106: Field and Method Name Collision Causes Runtime Crash
+
 **Status**: ✅ **RESOLVED** - Fixed 2025-11-18
 **Discovered**: 2025-11-18 (Frogger stress test - OOP class design)
 **Category**: OOP / Name Resolution / Runtime
 **Severity**: MEDIUM - Crashes at runtime, but easy to avoid
 
-**Symptom**: When a class has both a field and a method with the same name (case-insensitive), the program compiles successfully but crashes with segmentation fault (exit code 139) at runtime.
+**Symptom**: When a class has both a field and a method with the same name (case-insensitive), the program compiles
+successfully but crashes with segmentation fault (exit code 139) at runtime.
 
 **Minimal Reproduction**:
+
 ```basic
 CLASS Frog
     DIM isAlive AS INTEGER
@@ -976,6 +1167,7 @@ PRINT frog.IsAlive()  ' Crashes here
 **Error**: Segmentation fault (exit code 139) - no compiler warning or error
 
 **Workaround**: Use distinct names for fields and methods:
+
 ```basic
 CLASS Frog
     DIM alive AS INTEGER  ' Different name
@@ -989,18 +1181,21 @@ END CLASS
 **Impact**: MEDIUM - No compiler diagnostic, but pattern is easy to avoid once known
 
 **Test Files**:
+
 - `/tmp/bug_testing/frogger_test02d_isalive.bas` - Reproduces crash
 - Workaround: Rename field to avoid collision
 
 **ROOT CAUSE** (Identified 2025-11-18):
 
-The crash occurs due to incorrect name resolution during VB-style implicit return (assigning to function name). When a field and method share the same name, the function name symbol lacks a slot, causing resolution to incorrectly use the field instead of the return value slot.
+The crash occurs due to incorrect name resolution during VB-style implicit return (assigning to function name). When a
+field and method share the same name, the function name symbol lacks a slot, causing resolution to incorrectly use the
+field instead of the return value slot.
 
 **Detailed Sequence:**
 
 1. **Semantic Analysis** (`Semantic_OOP.cpp:184`):
-   - Detects VB-style implicit return: `IsAlive = isAlive`
-   - Method name assignment for return value
+    - Detects VB-style implicit return: `IsAlive = isAlive`
+    - Method name assignment for return value
 
 2. **Method Lowering Setup** (`Lower_OOP_Emit.cpp:539-542`):
    ```cpp
@@ -1008,24 +1203,24 @@ The crash occurs due to incorrect name resolution during VB-style implicit retur
        setSymbolType(method.name, *method.ret);
    }
    ```
-   - Creates symbol for "IsAlive" with type INTEGER
-   - **Critical bug: Does NOT mark symbol as referenced**
+    - Creates symbol for "IsAlive" with type INTEGER
+    - **Critical bug: Does NOT mark symbol as referenced**
 
 3. **Slot Allocation** (`Lowerer.Procedure.cpp:1231, 1257`):
-   - `allocateLocalSlots()` only processes **referenced** symbols (line 1231/1257)
-   - Skips "IsAlive" because `info.referenced == false`
-   - **No slot allocated for return value**
+    - `allocateLocalSlots()` only processes **referenced** symbols (line 1231/1257)
+    - Skips "IsAlive" because `info.referenced == false`
+    - **No slot allocated for return value**
 
 4. **Assignment Lowering** (`LowerStmt_Runtime.cpp:397`):
-   - Processes `IsAlive = isAlive` assignment
-   - Calls `resolveVariableStorage("IsAlive")`
+    - Processes `IsAlive = isAlive` assignment
+    - Calls `resolveVariableStorage("IsAlive")`
 
 5. **Variable Resolution** (`Lowerer.Procedure.cpp:570-726`):
-   - Line 639: Finds "IsAlive" symbol in symbol table
-   - Line 641: Checks `if (info->slotId)` → **FALSE** (no slot!)
-   - Falls through past local symbols check
-   - Line 711: `resolveImplicitField("IsAlive")` → **finds field!**
-   - Returns **field storage** instead of return value
+    - Line 639: Finds "IsAlive" symbol in symbol table
+    - Line 641: Checks `if (info->slotId)` → **FALSE** (no slot!)
+    - Falls through past local symbols check
+    - Line 711: `resolveImplicitField("IsAlive")` → **finds field!**
+    - Returns **field storage** instead of return value
 
 6. **IL Generation** (observed in `/tmp/bug_testing/frogger_test02d_isalive.bas`):
    ```il
@@ -1038,17 +1233,18 @@ The crash occurs due to incorrect name resolution during VB-style implicit retur
      ret 0                   ; Returns 0, not the field value!
    }
    ```
-   - Assignment stores to field offset 8, not return value
-   - Function always returns 0
-   - Field memory corrupted
+    - Assignment stores to field offset 8, not return value
+    - Function always returns 0
+    - Field memory corrupted
 
 7. **Runtime Crash**:
-   - Memory corruption from incorrect field write
-   - Segmentation fault (exit 139) when accessing corrupted field
+    - Memory corruption from incorrect field write
+    - Segmentation fault (exit 139) when accessing corrupted field
 
 **Fix Options:**
 
 **Option 1** (Simplest): Mark function name symbol as referenced when created:
+
 ```cpp
 // Lower_OOP_Emit.cpp:539-542
 if (findSymbol(method.name)) {
@@ -1056,9 +1252,11 @@ if (findSymbol(method.name)) {
     markSymbolReferenced(method.name);  // ADD THIS LINE
 }
 ```
+
 This ensures `allocateLocalSlots()` creates a slot for the return value.
 
 **Option 2**: Check for function name before field resolution:
+
 ```cpp
 // Lowerer.Procedure.cpp - before line 711 (resolveImplicitField)
 if (auto *func = context().function()) {
@@ -1070,6 +1268,7 @@ if (auto *func = context().function()) {
 ```
 
 **Option 3** (Best): Add compile-time diagnostic:
+
 - Detect field/method name collisions during semantic analysis
 - Emit error or warning to prevent ambiguous designs
 - Location: `Semantic_OOP.cpp` when processing class definitions
@@ -1079,12 +1278,15 @@ if (auto *func = context().function()) {
 **Location**: `src/frontends/basic/Semantic_OOP.cpp:405-430` in `buildOopIndex()`
 
 **Implementation**:
+
 - Added validation loop after all class members are collected
 - Performs case-insensitive comparison between field names and method names
 - Emits diagnostic B2017 when collision detected
-- Error message: `"method 'X' conflicts with field 'Y' (names are case-insensitive); rename one to avoid runtime errors"`
+- Error message:
+  `"method 'X' conflicts with field 'Y' (names are case-insensitive); rename one to avoid runtime errors"`
 
 **Code**:
+
 ```cpp
 // BUG-106 fix: Check for field/method name collisions (case-insensitive)
 for (const auto &[methodName, methodInfo] : info.methods)
@@ -1115,12 +1317,14 @@ for (const auto &[methodName, methodInfo] : info.methods)
 ```
 
 **Test Result**:
+
 ```
 $ ./build/src/tools/ilc/ilc front basic -emit-il /tmp/bug_testing/frogger_test02d_isalive.bas
 error[B2017]: method 'ISALIVE' conflicts with field 'ISALIVE' (names are case-insensitive); rename one to avoid runtime errors
 ```
 
 **Validation**:
+
 - ✅ Diagnostic catches the collision at compile-time
 - ✅ Error prevents runtime crashes
 - ✅ Valid code with distinct names compiles successfully
@@ -1133,14 +1337,17 @@ error[B2017]: method 'ISALIVE' conflicts with field 'ISALIVE' (names are case-in
 ### BUG-104 and BUG-105 (Previously Resolved)
 
 ### BUG-104: Method Calls on Array Elements in IF Conditions Cause "Use Before Def" Error
+
 **Status**: ✅ **RESOLVED** - Fixed 2025-11-18
 **Discovered**: 2025-11-18 (Poker game v5 stress test, confirmed in adventure game stress test)
 **Category**: Code Generation / Method Calls / Arrays / Control Flow
 **Severity**: MEDIUM - Workaround is simple but adds boilerplate
 
-**Symptom**: Calling a method on an object array element directly in an IF condition causes "unknown temp; use before def" compile error. This occurs at module scope, in SUBs, FUNCTIONs, and class methods.
+**Symptom**: Calling a method on an object array element directly in an IF condition causes "unknown temp; use before
+def" compile error. This occurs at module scope, in SUBs, FUNCTIONs, and class methods.
 
 **Minimal Reproduction**:
+
 ```basic
 CLASS Card
     DIM value AS INTEGER
@@ -1169,6 +1376,7 @@ END IF
 ```
 
 **Error Message**:
+
 ```
 error: main:if_then_0: %62 = call %t54: unknown temp %54; use before def of %54
 ```
@@ -1178,14 +1386,17 @@ error: main:if_then_0: %62 = call %t54: unknown temp %54; use before def of %54
 **Actual**: Compiler error during IL generation
 
 **Scope**: Affects ALL scopes:
+
 - ✗ Module scope (main)
 - ✗ SUB procedures
 - ✗ FUNCTION procedures
 - ✗ Class methods (untested but likely)
 
-**Impact**: MEDIUM - Forces extraction of method results to temporary variables before IF statements, adding boilerplate code. Does not prevent functionality, just makes code more verbose.
+**Impact**: MEDIUM - Forces extraction of method results to temporary variables before IF statements, adding boilerplate
+code. Does not prevent functionality, just makes code more verbose.
 
 **Workaround**: Extract method call result to a temporary variable before the IF statement:
+
 ```basic
 REM Workaround that works:
 DIM cardValue AS INTEGER
@@ -1197,12 +1408,14 @@ END IF
 ```
 
 **Test Files**:
+
 - `/tmp/bug_testing/test_bug104_minimal.bas` - Minimal reproduction (fails)
 - `/tmp/bug_testing/test_bug104_workaround.bas` - Workaround pattern (works)
 - `/tmp/bug_testing/test_bug104_scope.bas` - Scope testing (fails in SUB)
 - `/tmp/bug_testing/hand_v5.bas` - Real-world example (Hand.IsFlush method, lines 50-68)
 
 **Affected Code Patterns**:
+
 ```basic
 REM Pattern that fails:
 IF obj.Method() = value THEN          ' Simple object: may work
@@ -1215,36 +1428,55 @@ temp = array(i).Method()
 IF temp = value THEN                  ' Always works
 ```
 
-**Related Patterns**: This is PATTERN-01 from the Poker Game v5 stress test, now confirmed as a bug rather than just a design limitation.
+**Related Patterns**: This is PATTERN-01 from the Poker Game v5 stress test, now confirmed as a bug rather than just a
+design limitation.
 
 **ROOT CAUSE** (Identified 2025-11-18):
 
-Use-before-def arises from a control-flow mismatch introduced by array bounds-check blocks in combination with virtual/interface method dispatch on the array element receiver.
+Use-before-def arises from a control-flow mismatch introduced by array bounds-check blocks in combination with
+virtual/interface method dispatch on the array element receiver.
 
-- The IF condition is lowered in a dedicated test block via `lowerIfCondition` → `lowerCondBranch`, which evaluates the condition and emits a `cbr` in that block.
-- When the left side of the comparison is `array(i).Method()`, lowering the receiver `ArrayExpr` triggers bounds-check block insertion in `lowerArrayAccess` (adds `bc_oob*`/`bc_ok*` and switches the current block to `bc_ok*`). For string/object-element arrays, the code intentionally re-lowers base/index inside `bc_ok*` to keep SSA temps local to that block.
-- Next, method-call lowering (`lowerMethodCallExpr`) may perform virtual/interface dispatch. Interface dispatch computes a function pointer (`fnPtr`) via a load and then emits `call.indirect fnPtr, ...`.
-- The combination above can leave the `call.indirect`’s callee temp defined in a predecessor block while the final comparison and `cbr` are emitted in the original test block, so the verifier sees the callee temp as “unknown” at its use site: “%N = call %tX … unknown temp %X; use before def”.
+- The IF condition is lowered in a dedicated test block via `lowerIfCondition` → `lowerCondBranch`, which evaluates the
+  condition and emits a `cbr` in that block.
+- When the left side of the comparison is `array(i).Method()`, lowering the receiver `ArrayExpr` triggers bounds-check
+  block insertion in `lowerArrayAccess` (adds `bc_oob*`/`bc_ok*` and switches the current block to `bc_ok*`). For
+  string/object-element arrays, the code intentionally re-lowers base/index inside `bc_ok*` to keep SSA temps local to
+  that block.
+- Next, method-call lowering (`lowerMethodCallExpr`) may perform virtual/interface dispatch. Interface dispatch computes
+  a function pointer (`fnPtr`) via a load and then emits `call.indirect fnPtr, ...`.
+- The combination above can leave the `call.indirect`’s callee temp defined in a predecessor block while the final
+  comparison and `cbr` are emitted in the original test block, so the verifier sees the callee temp as “unknown” at its
+  use site: “%N = call %tX … unknown temp %X; use before def”.
 
 Fix direction:
-- In `lowerCondBranch`, detect when the condition contains reference-counted array element access (string/object) and sink the entire evaluation (including the call) into the `bc_ok*` block by introducing a mid block and branching to it before emitting the final `cbr`. Alternatively, extend `lowerArrayAccess`’s “re-lower in ok block” pattern to also re-lower any dependent call-expression so all temps are produced in the same block that consumes them.
-- The simple user workaround (assign to a temp first) has the same effect: it forces evaluation in sequence in a single block before the IF.
+
+- In `lowerCondBranch`, detect when the condition contains reference-counted array element access (string/object) and
+  sink the entire evaluation (including the call) into the `bc_ok*` block by introducing a mid block and branching to it
+  before emitting the final `cbr`. Alternatively, extend `lowerArrayAccess`’s “re-lower in ok block” pattern to also
+  re-lower any dependent call-expression so all temps are produced in the same block that consumes them.
+- The simple user workaround (assign to a temp first) has the same effect: it forces evaluation in sequence in a single
+  block before the IF.
 
 **Similar Working Cases**:
+
 - ✅ Method calls on simple objects in IF: `IF card.GetValue() = 0 THEN` (works)
 - ✅ Array element access without methods: `IF cards(0) = value THEN` (works)
 - ✅ Method calls outside IF: `temp = cards(0).GetValue()` (works)
 
 **Fix Applied**: 2025-11-18
+
 - File: `src/frontends/basic/lower/Lowerer_Expr.cpp`
 - Change: Removed `deferReleaseObj()` calls for object array access (lines 200-206)
 - Reasoning: Same as BUG-071 fix for string arrays - deferred release causes dominance violations
 - Consuming code (method calls, assignments) now handles object lifetime directly
 - Prevents object temps from being referenced across basic block boundaries
 
-**Root Cause**: When accessing object arrays in conditional expressions, the object reference was registered for deferred cleanup. This cleanup code was emitted in the THEN/ELSE blocks, but the object temp was only defined in the bounds-check block, violating SSA dominance rules.
+**Root Cause**: When accessing object arrays in conditional expressions, the object reference was registered for
+deferred cleanup. This cleanup code was emitted in the THEN/ELSE blocks, but the object temp was only defined in the
+bounds-check block, violating SSA dominance rules.
 
 **Test Results**: ✅ All tests pass (664/664)
+
 - `test_bug104_minimal.bas` - now works
 - `test_bug104_scope.bas` - works in all scopes
 - `poker_game_v5.bas` - still works (was using workaround)
@@ -1253,25 +1485,32 @@ Fix direction:
 ---
 
 ### BUG-105: Runtime Crash with Multiple Similar Classes Having Nested Object Arrays
+
 **Status**: ✅ **RESOLVED** - Fixed 2025-11-18
 **Discovered**: 2025-11-18 (Poker game v5 stress test - Player/CPUPlayer classes)
 **Category**: OOP / Memory Management / Runtime / Object Arrays / Reference Counting
 **Severity**: HIGH - Caused premature object deallocation, but only with nested method calls
 
-**Symptom**: When passing object parameters through nested method calls, objects were being freed prematurely even though they were stored in arrays, causing runtime assertion failure in heap management.
+**Symptom**: When passing object parameters through nested method calls, objects were being freed prematurely even
+though they were stored in arrays, causing runtime assertion failure in heap management.
 
 **Error Message**:
+
 ```
 Assertion failed: (hdr->magic == RT_MAGIC), function payload_to_hdr, file rt_heap.c, line 48
 ```
 
-**Root Cause**: Class methods were automatically releasing object and array parameters at method return. This was incorrect because parameters are **borrowed references** from the caller, not owned by the method. When methods were nested (e.g., `PlayerA.AddItem` → `Container.Add`), the object would be released TWICE:
+**Root Cause**: Class methods were automatically releasing object and array parameters at method return. This was
+incorrect because parameters are **borrowed references** from the caller, not owned by the method. When methods were
+nested (e.g., `PlayerA.AddItem` → `Container.Add`), the object would be released TWICE:
+
 1. Once at the end of `Container.Add` (refcount 2→1) ✓
 2. Once at the end of `PlayerA.AddItem` (refcount 1→0) ❌ **Freed prematurely!**
 
 The object was freed even though `rt_arr_obj_put` had stored it in the array with its own retain.
 
 **Minimal Reproduction**:
+
 ```basic
 CLASS Container
     DIM items(1) AS Inner
@@ -1296,11 +1535,14 @@ item = NEW Inner()       ' Old object freed in module variable reassignment
 pa.ShowContainer()       ' CRASH - accessing freed object
 ```
 
-**Why Single-Level Calls Worked**: With direct `Container.Add(item)` call, only ONE parameter release occurred, leaving refcount=1 for the array's reference.
+**Why Single-Level Calls Worked**: With direct `Container.Add(item)` call, only ONE parameter release occurred, leaving
+refcount=1 for the array's reference.
 
-**Fix Applied**: Removed `releaseObjectParams()` and `releaseArrayParams()` calls from all class method epilogues (`Lower_OOP_Emit.cpp` lines 383, 463, 616). Object/array parameters are now correctly treated as borrowed references.
+**Fix Applied**: Removed `releaseObjectParams()` and `releaseArrayParams()` calls from all class method epilogues (
+`Lower_OOP_Emit.cpp` lines 383, 463, 616). Object/array parameters are now correctly treated as borrowed references.
 
 **Test Results After Fix**:
+
 ```
 ✅ test_bug105_combo.bas      - Dual classes + variable reuse (was crashing, now works)
 ✅ test_bug105_nested.bas     - Complex nested structure (now works)
@@ -1311,11 +1553,12 @@ pa.ShowContainer()       ' CRASH - accessing freed object
 ```
 
 **Files Modified**:
+
 - `src/frontends/basic/Lower_OOP_Emit.cpp` (lines 383-386, 463-467, 616-621)
-  - Commented out `releaseObjectParams(metadata.paramNames)` in constructor epilogue
-  - Commented out `releaseArrayParams(metadata.paramNames)` in constructor epilogue
-  - Same for destructor and method epilogues
-  - Added BUG-105 fix comments explaining borrowed reference semantics
+    - Commented out `releaseObjectParams(metadata.paramNames)` in constructor epilogue
+    - Commented out `releaseArrayParams(metadata.paramNames)` in constructor epilogue
+    - Same for destructor and method epilogues
+    - Added BUG-105 fix comments explaining borrowed reference semantics
 - Also includes BUG-104 fix in `Lower_OOP_Emit.cpp` for destructor array field release
 
 **Impact**: All nested method calls with object/array parameters now work correctly. No more premature deallocation.
@@ -1327,14 +1570,17 @@ pa.ShowContainer()       ' CRASH - accessing freed object
 ## RECENTLY RESOLVED BUGS
 
 ### BUG-103: Passing Object Arrays as Function Parameters Causes Runtime Crash
+
 **Status**: ✅ **RESOLVED** (2025-11-18)
 **Discovered**: 2025-11-18 (Poker game stress test - Hand evaluation functions)
 **Category**: OOP / Arrays / Function Parameters
 **Severity**: CRITICAL - Runtime crash with assertion failure
 
-**Symptom**: When an object array is passed as a parameter to a function, the program crashes with assertion failure: "Assertion failed: (hdr->kind == RT_HEAP_ARRAY), function rt_arr_obj_assert_header, file rt_array_obj.c, line 32"
+**Symptom**: When an object array is passed as a parameter to a function, the program crashes with assertion failure: "
+Assertion failed: (hdr->kind == RT_HEAP_ARRAY), function rt_arr_obj_assert_header, file rt_array_obj.c, line 32"
 
 **Minimal Reproduction**:
+
 ```basic
 CLASS Card
     DIM value AS INTEGER
@@ -1368,33 +1614,52 @@ PRINT result
 **Expected**: Function receives object array and processes it normally
 **Actual**: Runtime assertion failure when accessing array elements inside function
 
-**Impact**: CRITICAL - Cannot use functions to process object arrays, severely limiting code organization and reusability
+**Impact**: CRITICAL - Cannot use functions to process object arrays, severely limiting code organization and
+reusability
 
-**Workaround**: Keep all object array processing inside the class that owns the array. Do not pass object arrays to standalone functions.
+**Workaround**: Keep all object array processing inside the class that owns the array. Do not pass object arrays to
+standalone functions.
 
 **Test File**: `/tmp/bug_testing/poker_v4_hand_simple.bas` (calls CheckFlush with object array parameter)
 
 **ROOT CAUSE** (Identified 2025-11-18):
 
-Mixed typing for array parameters causes the callee to use object-array element access while the incoming pointer does not reference an object-array header.
+Mixed typing for array parameters causes the callee to use object-array element access while the incoming pointer does
+not reference an object-array header.
 
-- Parameter materialization correctly treats `cards() AS Card` as an array of objects and stores the incoming handle into the stack slot (`materializeParams` -> `storeArray(..., isObjectArray=true)`). It also marks the parameter symbol as both `isArray` and `isObject` so later decisions can select object-array helpers.
-- However, during element access in the callee, `lowerArrayAccess` may fail to find parameter symbol metadata in specific contexts (e.g., after resets or in nested scopes), falling back to analyzer metadata (`SemanticAnalyzer::lookupArrayMetadata`) which tracks only String vs Int arrays and treats object arrays as numeric. In this fallback path, the helper selection and the refcounted-array re-lowering logic diverge: helper selection can choose object-array ops from a partial symbol, while the re-lowering path reloads the base from storage using the non-object analyzer view, yielding a non-array (or wrong-kind) pointer into `rt_arr_obj_*` routines.
-- The first object-array operation (`rt_arr_obj_get/len`) then asserts in `rt_arr_obj_assert_header` because the handle does not identify an object-array header.
+- Parameter materialization correctly treats `cards() AS Card` as an array of objects and stores the incoming handle
+  into the stack slot (`materializeParams` -> `storeArray(..., isObjectArray=true)`). It also marks the parameter symbol
+  as both `isArray` and `isObject` so later decisions can select object-array helpers.
+- However, during element access in the callee, `lowerArrayAccess` may fail to find parameter symbol metadata in
+  specific contexts (e.g., after resets or in nested scopes), falling back to analyzer metadata (
+  `SemanticAnalyzer::lookupArrayMetadata`) which tracks only String vs Int arrays and treats object arrays as numeric.
+  In this fallback path, the helper selection and the refcounted-array re-lowering logic diverge: helper selection can
+  choose object-array ops from a partial symbol, while the re-lowering path reloads the base from storage using the
+  non-object analyzer view, yielding a non-array (or wrong-kind) pointer into `rt_arr_obj_*` routines.
+- The first object-array operation (`rt_arr_obj_get/len`) then asserts in `rt_arr_obj_assert_header` because the handle
+  does not identify an object-array header.
 
 Fix direction:
-- Ensure parameter symbols for object arrays are always available to `lowerArrayAccess` (do not drop them during resets) and are consulted preferentially over analyzer metadata.
-- Unify helper selection and the re-lowering base/index recomputation to use a single consistent source of truth (parameter symbol typing) so the array-kind cannot diverge mid-lowering.
-- Optional: extend analyzer typing to record object-element arrays distinctly to remove the numeric fallback for object arrays.
+
+- Ensure parameter symbols for object arrays are always available to `lowerArrayAccess` (do not drop them during resets)
+  and are consulted preferentially over analyzer metadata.
+- Unify helper selection and the re-lowering base/index recomputation to use a single consistent source of truth (
+  parameter symbol typing) so the array-kind cannot diverge mid-lowering.
+- Optional: extend analyzer typing to record object-element arrays distinctly to remove the numeric fallback for object
+  arrays.
 
 **RESOLUTION** (2025-11-18):
 
-Fixed by correcting variable resolution order in `resolveVariableStorage` so that function parameters properly shadow module-level variables with the same name.
+Fixed by correcting variable resolution order in `resolveVariableStorage` so that function parameters properly shadow
+module-level variables with the same name.
 
 **Root Cause Refined**:
-The actual issue was in `Lowerer::resolveVariableStorage` (Lowerer.Procedure.cpp:636). When accessing an array parameter, the code checked for module-level symbols BEFORE checking for local/parameter symbols. This caused function parameters to be bypassed when a module-level variable with the same name existed.
+The actual issue was in `Lowerer::resolveVariableStorage` (Lowerer.Procedure.cpp:636). When accessing an array
+parameter, the code checked for module-level symbols BEFORE checking for local/parameter symbols. This caused function
+parameters to be bypassed when a module-level variable with the same name existed.
 
 Example scenario:
+
 ```basic
 DIM hand AS Hand          ' Module-level variable
 FUNCTION CheckFlush(hand() AS Card, ...) AS INTEGER
@@ -1402,21 +1667,25 @@ FUNCTION CheckFlush(hand() AS Card, ...) AS INTEGER
 END FUNCTION
 ```
 
-When CheckFlush accessed `hand(0)`, `resolveVariableStorage` found the module-level `hand` variable first and generated code to use `rt_modvar_addr_ptr("HAND")` instead of the parameter slot. This accessed the wrong memory location, causing crashes.
+When CheckFlush accessed `hand(0)`, `resolveVariableStorage` found the module-level `hand` variable first and generated
+code to use `rt_modvar_addr_ptr("HAND")` instead of the parameter slot. This accessed the wrong memory location, causing
+crashes.
 
 **Changes Made**:
 
 1. **Reordered symbol resolution** (`src/frontends/basic/Lowerer.Procedure.cpp:636-657`):
-   - Check local/parameter symbols FIRST via `findSymbol()`
-   - Only fall back to module-level symbols if no local symbol found
-   - For module-level symbols in @main, preserve existing behavior (use local slots for non-cross-proc globals, rt_modvar for cross-proc globals)
+    - Check local/parameter symbols FIRST via `findSymbol()`
+    - Only fall back to module-level symbols if no local symbol found
+    - For module-level symbols in @main, preserve existing behavior (use local slots for non-cross-proc globals,
+      rt_modvar for cross-proc globals)
 
 2. **Added proper shadowing logic**:
-   - True locals/parameters always use their stack slots (lines 647-649)
-   - Module-level symbols in @main use local slots only if NOT cross-procedure (lines 651-653)
-   - All other cases fall through to rt_modvar infrastructure
+    - True locals/parameters always use their stack slots (lines 647-649)
+    - Module-level symbols in @main use local slots only if NOT cross-procedure (lines 651-653)
+    - All other cases fall through to rt_modvar infrastructure
 
 **Verification**:
+
 - All 664 tests passing ✅
 - Object array parameters work correctly ✅
 - Module-level variable sharing across procedures preserved ✅
@@ -1427,14 +1696,17 @@ When CheckFlush accessed `hand(0)`, `resolveVariableStorage` found the module-le
 ---
 
 ### BUG-102: Methods Cannot Call Other Methods in Same Class
+
 **Status**: ✅ **RESOLVED** (2025-11-18)
 **Discovered**: 2025-11-18 (Poker game stress test - Hand evaluation)
 **Category**: OOP / Method Resolution / Scoping
 **Severity**: HIGH - Severely limits OOP design patterns
 
-**Symptom**: When a class method (FUNCTION or SUB) attempts to call another method defined in the same class, compilation fails with "unknown callee @methodname" error.
+**Symptom**: When a class method (FUNCTION or SUB) attempts to call another method defined in the same class,
+compilation fails with "unknown callee @methodname" error.
 
 **Minimal Reproduction**:
+
 ```basic
 CLASS Hand
     DIM value AS INTEGER
@@ -1464,25 +1736,35 @@ PRINT h.DoubleValue()  ' Should print 10
 **Actual**: Compilation error "call: unknown callee @getvalue"
 
 **Impact**: HIGH - Forces developers to:
+
 - Duplicate code instead of factoring into helper methods
 - Inline complex logic, making code unmaintainable
 - Cannot implement common OOP patterns (template method, strategy, etc.)
 - Severely limits usefulness of classes
 
-**Workaround**: Inline all method logic instead of calling helper methods. Access member variables directly instead of using getter/setter methods.
+**Workaround**: Inline all method logic instead of calling helper methods. Access member variables directly instead of
+using getter/setter methods.
 
-**Test File**: `/tmp/bug_testing/poker_v4_hand.bas` (attempts to call IsFlush(), IsStraight(), GetRankPattern() from GetHandRank())
+**Test File**: `/tmp/bug_testing/poker_v4_hand.bas` (attempts to call IsFlush(), IsStraight(), GetRankPattern() from
+GetHandRank())
 
 **ROOT CAUSE** (Identified 2025-11-18):
 
 Unqualified intra-class calls are parsed and lowered as free-function calls instead of method calls on `ME`.
 
-- Inside a class method, calling `GetValue()` without a receiver is parsed as a plain `CallExpr` (free procedure), not a `MethodCallExpr`. Neither the parser nor the lowerer rewrites such calls to `ME.GetValue()` or resolves them against the enclosing class scope.
-- During lowering, `CallExpr` resolution looks up a global procedure named `getvalue`. Since no such free function exists, the lowerer emits a call to `@GETVALUE`, which is not declared, producing “unknown callee @getvalue”.
+- Inside a class method, calling `GetValue()` without a receiver is parsed as a plain `CallExpr` (free procedure), not a
+  `MethodCallExpr`. Neither the parser nor the lowerer rewrites such calls to `ME.GetValue()` or resolves them against
+  the enclosing class scope.
+- During lowering, `CallExpr` resolution looks up a global procedure named `getvalue`. Since no such free function
+  exists, the lowerer emits a call to `@GETVALUE`, which is not declared, producing “unknown callee @getvalue”.
 
 Fix direction:
-- In class-method context, resolve bare identifiers that match method names on the current class to method calls with implicit receiver `ME`. This can be implemented in the parser (desugaring to `MethodCallExpr`) or in lowering (detecting `CallExpr` in a field scope and rewriting to `MethodCallExpr(ME, name)`).
-- Update semantic analysis and signature resolution to recognize implicit-receiver method calls so type checking and return-type inference work uniformly.
+
+- In class-method context, resolve bare identifiers that match method names on the current class to method calls with
+  implicit receiver `ME`. This can be implemented in the parser (desugaring to `MethodCallExpr`) or in lowering (
+  detecting `CallExpr` in a field scope and rewriting to `MethodCallExpr(ME, name)`).
+- Update semantic analysis and signature resolution to recognize implicit-receiver method calls so type checking and
+  return-type inference work uniformly.
 
 **RESOLUTION** (2025-11-18):
 
@@ -1491,21 +1773,22 @@ Fixed by implementing parser-level rewriting of intra-class method calls to meth
 **Changes Made**:
 
 1. **Added current class tracking to Parser** (`Parser.hpp`):
-   - Added `ClassDecl *currentClass_` member variable to track the class being parsed
-   - Set to `decl.get()` when entering parseClassDecl()
-   - Reset to `nullptr` when exiting class parsing
+    - Added `ClassDecl *currentClass_` member variable to track the class being parsed
+    - Set to `decl.get()` when entering parseClassDecl()
+    - Reset to `nullptr` when exiting class parsing
 
 2. **Updated parseClassDecl()** (`Parser_Stmt_OOP.cpp`):
-   - Set `currentClass_ = decl.get()` after creating ClassDecl (line 61)
-   - Reset `currentClass_ = nullptr` before returning (line 566)
+    - Set `currentClass_ = decl.get()` after creating ClassDecl (line 61)
+    - Reset `currentClass_ = nullptr` before returning (line 566)
 
 3. **Modified parseArrayOrVar()** (`Parser_Expr.cpp`):
-   - After parsing a call expression, check if `currentClass_` is set (line 393)
-   - Iterate through class members to find matching methods (case-insensitive) (lines 396-427)
-   - If match found, create `MethodCallExpr` with `MeExpr` as base instead of `CallExpr`
-   - Otherwise, create regular `CallExpr` for non-method calls
+    - After parsing a call expression, check if `currentClass_` is set (line 393)
+    - Iterate through class members to find matching methods (case-insensitive) (lines 396-427)
+    - If match found, create `MethodCallExpr` with `MeExpr` as base instead of `CallExpr`
+    - Otherwise, create regular `CallExpr` for non-method calls
 
 **Code Changes Summary**:
+
 ```cpp
 // Parser.hpp - Add tracking
 ClassDecl *currentClass_ = nullptr;
@@ -1533,6 +1816,7 @@ if (currentClass_) {
 ```
 
 **Verification**:
+
 - Minimal test: Method calling another method in same class ✅
 - Chained calls: Method calling method that calls another method ✅
 - Multiple calls: Method calling several different methods ✅
@@ -1542,20 +1826,24 @@ if (currentClass_) {
 - All 664 tests passing ✅
 
 **Test Files**:
+
 - `/tmp/bug_testing/test_bug102_method_calls.bas` - Original minimal reproduction
 - `/tmp/bug_testing/test_bug102_fixed.bas` - Comprehensive verification
 
 ---
 
 ### BUG-099: Functions Returning Objects Cause Type Mismatch / Object Parameters May Corrupt State
+
 **Status**: ✅ **RESOLVED** (2025-11-18)
 **Discovered**: 2025-11-18 (Poker game stress test)
 **Category**: OOP / Functions / Parameter Passing
 **Severity**: HIGH - Prevents returning objects from functions
 
-**Symptom**: When a function returns an object, assigning the result causes "call arg type mismatch" error. Additionally, passing objects as SUB/FUNCTION parameters may cause memory corruption or unexpected behavior.
+**Symptom**: When a function returns an object, assigning the result causes "call arg type mismatch" error.
+Additionally, passing objects as SUB/FUNCTION parameters may cause memory corruption or unexpected behavior.
 
 **Minimal Reproduction**:
+
 ```basic
 CLASS Card
     DIM value AS INTEGER
@@ -1584,6 +1872,7 @@ card = deck.Draw()  ' ERROR: call arg type mismatch
 **Impact**: HIGH - Cannot use functions to return objects, limits OOP design patterns
 
 **Workaround**: Use SUB with object parameter instead of FUNCTION return value
+
 ```basic
 SUB Draw(result AS Card)
     result = cards(0)
@@ -1592,60 +1881,87 @@ END SUB
 
 **Test File**: `/tmp/bug_testing/poker_deck.bas`
 
-**Additional Notes**: Even with the SUB workaround, object parameters may exhibit issues with array bounds or state corruption
+**Additional Notes**: Even with the SUB workaround, object parameters may exhibit issues with array bounds or state
+corruption
 
 **ROOT CAUSE** (Verified 2025-11-18):
 
 There are two distinct issues that combine to break object returns and object-typed flows across calls:
 
 - Methods cannot declare object return types; parser treats `AS <Class>` as a primitive type.
-  - In class method parsing (`Parser_Stmt_OOP.cpp:443-445`), when `AS` is encountered, the parser calls `parseTypeKeyword()` (`Parser_Stmt_Core.cpp:468-502`) which only recognizes primitive keywords (BOOLEAN, INTEGER, DOUBLE, SINGLE, STRING).
-  - **Code verification**: `parseTypeKeyword()` checks for known primitive types and returns `Type::I64` as the default (line 501) when an unrecognized identifier like "Card" is encountered.
-  - There is no capture of an explicit class return for methods (contrast with top-level `FunctionDecl.explicitClassRetQname`). As a result, methods like `FUNCTION Draw() AS Card` are parsed as returning `INTEGER` (I64), not a pointer/object.
-  - Downstream, procedure signatures for methods are built from this AST `Type`, so callers and assignments expect an `i64` return, causing "call arg type mismatch" when used as an object.
+    - In class method parsing (`Parser_Stmt_OOP.cpp:443-445`), when `AS` is encountered, the parser calls
+      `parseTypeKeyword()` (`Parser_Stmt_Core.cpp:468-502`) which only recognizes primitive keywords (BOOLEAN, INTEGER,
+      DOUBLE, SINGLE, STRING).
+    - **Code verification**: `parseTypeKeyword()` checks for known primitive types and returns `Type::I64` as the
+      default (line 501) when an unrecognized identifier like "Card" is encountered.
+    - There is no capture of an explicit class return for methods (contrast with top-level
+      `FunctionDecl.explicitClassRetQname`). As a result, methods like `FUNCTION Draw() AS Card` are parsed as returning
+      `INTEGER` (I64), not a pointer/object.
+    - Downstream, procedure signatures for methods are built from this AST `Type`, so callers and assignments expect an
+      `i64` return, causing "call arg type mismatch" when used as an object.
 
-- Object-return detection for function/method call expressions is incomplete/misleading when marking assignment targets as objects.
-  - In `LowerStmt_Runtime.cpp:lowerLet`, the LHS is marked as an object only when `resolveObjectClass(*stmt.expr)` returns a non-empty class.
-  - For free functions that legitimately return an object via `AS <Class>` (`FunctionDecl.explicitClassRetQname`), `resolveObjectClass(const CallExpr&)` returns empty, so the LHS variable is not marked as an object and ends up with a non-pointer slot/type, again causing mismatches.
-  - For methods, `resolveObjectClass(const MethodCallExpr&)` returns the base object’s class when the method’s return type is non-primitive, not the actual declared return class (see `Lower_OOP_Expr.cpp`: it returns `baseClass` rather than the method’s return class). This mis-tags the LHS with the wrong class and can route destructor/retain paths incorrectly, leading to leaks or corruption.
+- Object-return detection for function/method call expressions is incomplete/misleading when marking assignment targets
+  as objects.
+    - In `LowerStmt_Runtime.cpp:lowerLet`, the LHS is marked as an object only when `resolveObjectClass(*stmt.expr)`
+      returns a non-empty class.
+    - For free functions that legitimately return an object via `AS <Class>` (`FunctionDecl.explicitClassRetQname`),
+      `resolveObjectClass(const CallExpr&)` returns empty, so the LHS variable is not marked as an object and ends up
+      with a non-pointer slot/type, again causing mismatches.
+    - For methods, `resolveObjectClass(const MethodCallExpr&)` returns the base object’s class when the method’s return
+      type is non-primitive, not the actual declared return class (see `Lower_OOP_Expr.cpp`: it returns `baseClass`
+      rather than the method’s return class). This mis-tags the LHS with the wrong class and can route destructor/retain
+      paths incorrectly, leading to leaks or corruption.
 
 Consequence:
-- Methods cannot return objects at all (treated as I64); free functions that return objects are not recognized at assignment sites; and method call returns mis-mark the target with the base class name.
+
+- Methods cannot return objects at all (treated as I64); free functions that return objects are not recognized at
+  assignment sites; and method call returns mis-mark the target with the base class name.
 
 **FIX SUMMARY** (2025-11-18):
 
 The fix required comprehensive changes across the parser, semantic analysis, and lowering phases:
 
 **1. Parser Changes**:
+
 - Added `explicitClassRetQname` field to `MethodDecl` in `ast/StmtDecl.hpp:181-184`
-- Updated `Parser_Stmt_OOP.cpp:441-492` to parse `AS <Class>` for methods, storing the class name without canonicalization to preserve casing for method mangling
+- Updated `Parser_Stmt_OOP.cpp:441-492` to parse `AS <Class>` for methods, storing the class name without
+  canonicalization to preserve casing for method mangling
 
 **2. Field Type Handling**:
+
 - Fixed `Parser_Stmt_OOP.cpp:231` to preserve original class name casing for object fields (not canonicalize)
 - Updated `Lower_OOP_Scan.cpp:164` to propagate `objectClassName` from field declarations to layout
 
 **3. OOP Index**:
+
 - Added `returnClassName` field to `MethodSig` struct in `Semantic_OOP.hpp:47-49`
 - Updated `Semantic_OOP.cpp:372-383` to populate `returnClassName` when methods are registered
 - Added `Lowerer::findMethodReturnClassName()` in `Lowerer.cpp:135-154` to query method return class names
 
 **4. Method Signature Generation**:
+
 - Fixed `Lower_OOP_Emit.cpp:485-520` to use `Type::Kind::Ptr` for object-returning methods
 - Fixed `Lower_OOP_Emit.cpp:611-613` to use `methodRetType` (not AST type) when loading return values
 
 **5. Object Class Resolution**:
+
 - Updated `Lower_OOP_Expr.cpp:206-212` to call `findMethodReturnClassName()` instead of returning base class
 
 **6. Field Symbol Management**:
+
 - Fixed `Lowerer.Procedure.cpp:456-457` to preserve `isObject` and `objectClass` when creating field symbols
 
 **7. Destructor Generation**:
+
 - Updated `Lower_OOP_Emit.cpp:189-197` to handle object field releases in destructors
 
 **8. Return Value Handling**:
-- Fixed `Lower_OOP_Emit.cpp:598-604` to exclude method name from object release when returning an object, preventing the return value from being zeroed before return
+
+- Fixed `Lower_OOP_Emit.cpp:598-604` to exclude method name from object release when returning an object, preventing the
+  return value from being zeroed before return
 
 **Files Modified**:
+
 - `src/frontends/basic/ast/StmtDecl.hpp`
 - `src/frontends/basic/Parser_Stmt_OOP.cpp`
 - `src/frontends/basic/Semantic_OOP.hpp`
@@ -1662,16 +1978,20 @@ The fix required comprehensive changes across the parser, semantic analysis, and
 ---
 
 ### BUG-100: AddFile Does Not Expose Global Variables Across File Boundaries
+
 **Status**: ✅ **RESOLVED** (2025-11-18)
 **Discovered**: 2025-11-18 (Poker game stress test - multi-file structure)
 **Category**: AddFile / Scope / Global Variables
 **Severity**: HIGH - Limits multi-file program structure
 
-**Symptom**: When using AddFile to include a BASIC file that declares global variables (arrays, scalars, etc.), those globals are not visible to:
+**Symptom**: When using AddFile to include a BASIC file that declares global variables (arrays, scalars, etc.), those
+globals are not visible to:
+
 1. The main file that included them
 2. Other files included via AddFile
 
 **Minimal Reproduction**:
+
 ```basic
 REM deck_module.bas
 DIM g_deck(51) AS Card  ' Global deck array
@@ -1707,18 +2027,24 @@ PRINT g_deck(0).ToString()  ' ERROR: unknown procedure 'g_deck'
 **Workaround**: Place all code in a single file instead of using AddFile for modular structure
 
 **Test Files**:
+
 - `/tmp/bug_testing/poker_game_test.bas` (fails with AddFile)
 - `/tmp/bug_testing/poker_single_file_test.bas` (works without AddFile)
 
-**Additional Notes**: AddFile appears to include code (functions/subs work) but does not expose global variable declarations. This makes it difficult to structure larger programs into separate modules with shared state.
+**Additional Notes**: AddFile appears to include code (functions/subs work) but does not expose global variable
+declarations. This makes it difficult to structure larger programs into separate modules with shared state.
 
 **ROOT CAUSE** (Verified 2025-11-18):
 
-Parser-level array disambiguation is not propagated across ADDFILE boundaries, causing array element syntax `name(i)` from an included file to be misparsed as a procedure call in the including file.
+Parser-level array disambiguation is not propagated across ADDFILE boundaries, causing array element syntax `name(i)`
+from an included file to be misparsed as a procedure call in the including file.
 
-- The parser uses a per-parser `arrays_` registry to differentiate `arr(i)` (ArrayExpr) from `proc(i)` (CallExpr) while parsing expressions.
-- ADDFILE is implemented by spawning a child `Parser` that parses the included file into a separate `Program`, then splicing its `procs` and `main` into the parent program (`Parser.cpp:handleTopLevelAddFile` line 370).
-- **Code verification** (`Parser.cpp:451-465`): Child parser is created at line 451, program parsed at line 452, then only `procs` and `main` are merged at lines 462-465:
+- The parser uses a per-parser `arrays_` registry to differentiate `arr(i)` (ArrayExpr) from `proc(i)` (CallExpr) while
+  parsing expressions.
+- ADDFILE is implemented by spawning a child `Parser` that parses the included file into a separate `Program`, then
+  splicing its `procs` and `main` into the parent program (`Parser.cpp:handleTopLevelAddFile` line 370).
+- **Code verification** (`Parser.cpp:451-465`): Child parser is created at line 451, program parsed at line 452, then
+  only `procs` and `main` are merged at lines 462-465:
   ```cpp
   Parser child(contents, newFileId, emitter_, sm_, includeStack_, /*suppress*/ true);
   auto subprog = child.parseProgram();
@@ -1728,31 +2054,41 @@ Parser-level array disambiguation is not propagated across ADDFILE boundaries, c
   for (auto &s : subprog->main)
       prog.main.push_back(std::move(s));
   ```
-- Any `DIM` arrays declared inside the included file populate the child parser's `arrays_`, but this registry is not merged back into the parent parser. Later, when the parent parser parses code that references those arrays (in main or in other included files), it does not know the identifiers are arrays and parses `g_deck(0)` as a `CallExpr` to a procedure named `g_deck`.
+- Any `DIM` arrays declared inside the included file populate the child parser's `arrays_`, but this registry is not
+  merged back into the parent parser. Later, when the parent parser parses code that references those arrays (in main or
+  in other included files), it does not know the identifiers are arrays and parses `g_deck(0)` as a `CallExpr` to a
+  procedure named `g_deck`.
 - This produces diagnostics like "unknown procedure 'g_deck'" even though `DIM g_deck(...)` exists in an included file.
 
 Consequence:
-- Functions and SUBs from included files work (because they are spliced as declarations), but array element references to globals declared in included files are misparsed and rejected.
+
+- Functions and SUBs from included files work (because they are spliced as declarations), but array element references
+  to globals declared in included files are misparsed and rejected.
 
 **FIX SUMMARY** (2025-11-18):
 
 The fix required two changes to the ADDFILE handling in Parser.cpp:
 
 **1. Propagate Parent Arrays to Child**:
+
 - Before parsing the included file, copy the parent parser's `arrays_` registry to the child parser (`Parser.cpp:453`)
 - This allows the child parser to know about arrays declared in previously included files and the parent file
 - Without this, a file included via ADDFILE cannot reference arrays from earlier includes
 
 **2. Merge Child Arrays Back to Parent**:
-- After parsing the included file, merge the child parser's `arrays_` registry back into the parent (`Parser.cpp:468-469`)
+
+- After parsing the included file, merge the child parser's `arrays_` registry back into the parent (
+  `Parser.cpp:468-469`)
 - This ensures arrays declared in the included file are visible to code parsed after the ADDFILE statement
 - Without this, the parent file and subsequent includes cannot reference arrays declared in this include
 
 **Files Modified**:
+
 - `src/frontends/basic/Parser.cpp:453` - Copy parent arrays to child before parsing
 - `src/frontends/basic/Parser.cpp:468-469` - Merge child arrays to parent after parsing
 
 **Test Cases**:
+
 - Single AddFile: File declaring array can be included and array is accessible
 - Multiple AddFile: Arrays visible across multiple included files in sequence
 - Nested references: File B included via AddFile can reference arrays from File A also included via AddFile
@@ -1760,14 +2096,18 @@ The fix required two changes to the ADDFILE handling in Parser.cpp:
 ---
 
 ### BUG-101: IF Inside FOR Loop with Non-Local Arrays Causes "unknown label bb_0"
+
 **Status**: ✅ **RESOLVED** (2025-11-18)
 **Discovered**: 2025-11-18 (Poker game stress test - hand evaluation logic)
 **Category**: Code Generation / Control Flow / Arrays
 **Severity**: CRITICAL - Prevents common loop+conditional patterns with arrays
 
-**Symptom**: When a FOR loop contains an IF statement that accesses non-local arrays (global arrays or array parameters), the generated IL code references labels `bb_0` and `bb_1` that are never defined, causing runtime error "unknown label bb_0".
+**Symptom**: When a FOR loop contains an IF statement that accesses non-local arrays (global arrays or array
+parameters), the generated IL code references labels `bb_0` and `bb_1` that are never defined, causing runtime error "
+unknown label bb_0".
 
 **Minimal Reproduction** (Global Array):
+
 ```basic
 DIM g_arr(4) AS INTEGER
 
@@ -1790,6 +2130,7 @@ END FUNCTION
 ```
 
 **Minimal Reproduction** (Array Parameter):
+
 ```basic
 FUNCTION TestParam(arr() AS INTEGER) AS INTEGER
     DIM i AS INTEGER
@@ -1809,11 +2150,15 @@ END FUNCTION
 **Expected**: Function executes correctly, returning 0 (since no elements equal 99)
 **Actual**: Runtime error "TEST: unknown label bb_0"
 
-**Impact**: CRITICAL - Cannot use IF statements inside FOR loops with global arrays or array parameters, making it nearly impossible to write functions that validate or process arrays
+**Impact**: CRITICAL - Cannot use IF statements inside FOR loops with global arrays or array parameters, making it
+nearly impossible to write functions that validate or process arrays
 
 **ROOT CAUSE** (Verified 2025-11-18):
 
-Pointer invalidation of IF-block targets during condition lowering when the condition references non-local arrays (globals or array params). The array bounds-check path inserts new blocks into the function during expression lowering, which can reallocate the `blocks` vector and invalidate previously captured block pointers for the IF's true/false targets.
+Pointer invalidation of IF-block targets during condition lowering when the condition references non-local arrays (
+globals or array params). The array bounds-check path inserts new blocks into the function during expression lowering,
+which can reallocate the `blocks` vector and invalidate previously captured block pointers for the IF's true/false
+targets.
 
 **Detailed code flow**:
 
@@ -1826,7 +2171,7 @@ Pointer invalidation of IF-block targets during condition lowering when the cond
    ```
 
 2. **Condition lowering** (`lower/Emit_Control.cpp:95-103`):
-   - `lowerIfCondition` forwards to `lowerCondBranch` (line 102) with the block pointers
+    - `lowerIfCondition` forwards to `lowerCondBranch` (line 102) with the block pointers
 
 3. **Expression evaluation triggers reallocation** (`lower/Emit_Control.cpp:147-149`):
    ```cpp
@@ -1834,9 +2179,9 @@ Pointer invalidation of IF-block targets during condition lowering when the cond
    cond = coerceToBool(std::move(cond), loc);
    emitCBr(cond.value, trueBlk, falseBlk);            // Line 149 - uses STALE pointers!
    ```
-   - When `lowerExpr(expr)` encounters array access, it calls `lowerArrayAccess` which adds bc_oob/bc_ok blocks
-   - These `builder->addBlock(*func, ...)` calls reallocate `func->blocks` vector
-   - This invalidates the `thenBlk` and `falseBlk` pointers captured at step 1
+    - When `lowerExpr(expr)` encounters array access, it calls `lowerArrayAccess` which adds bc_oob/bc_ok blocks
+    - These `builder->addBlock(*func, ...)` calls reallocate `func->blocks` vector
+    - This invalidates the `thenBlk` and `falseBlk` pointers captured at step 1
 
 4. **Fallback label assignment** (`lower/common/CommonLowering.cpp:317-320`):
    ```cpp
@@ -1845,20 +2190,28 @@ Pointer invalidation of IF-block targets during condition lowering when the cond
    if (f->label.empty())                               // Line 319
        f->label = lowerer_->nextFallbackBlockLabel();  // Assigns "bb_1"
    ```
-   - Accessing `t->label` on stale pointer reads invalid memory, appears empty
-   - Fallback labels `bb_0` and `bb_1` are assigned, but no blocks with these labels exist
+    - Accessing `t->label` on stale pointer reads invalid memory, appears empty
+    - Fallback labels `bb_0` and `bb_1` are assigned, but no blocks with these labels exist
 
 **Note**: The logical AND/OR branch in `lowerCondBranch` (lines 114-142) correctly handles this by:
+
 - Converting pointers to indices immediately (lines 114-115)
 - Refreshing pointers from indices after recursive calls (lines 136-139)
 
 The simple expression path (lines 147-149) lacks this refresh logic.
 
-Why only non-local arrays: array bounds checks for locals are emitted earlier in contexts that do not cause reallocation at this point (or the pointer set happens after), so the pointer invalidation does not trigger. Globals/params trigger the block insertions precisely during the IF condition lowering path.
+Why only non-local arrays: array bounds checks for locals are emitted earlier in contexts that do not cause reallocation
+at this point (or the pointer set happens after), so the pointer invalidation does not trigger. Globals/params trigger
+the block insertions precisely during the IF condition lowering path.
 
 Fix direction:
-- Avoid passing raw block pointers into `lowerCondBranch` that outlive expression lowering. Pass block indices or refresh the `thenBlk`/`falseBlk` pointers after expression lowering and before emitting the final `emitCBr`. This mirrors the existing pattern in `lowerIfBranch`, which passes the exit block by index to avoid stale pointers.
-- Alternatively, pre-create and label the target blocks and capture their indices, then reload pointers after the condition lowering (post array bounds-check block insertions) before emitting `emitCBr`.
+
+- Avoid passing raw block pointers into `lowerCondBranch` that outlive expression lowering. Pass block indices or
+  refresh the `thenBlk`/`falseBlk` pointers after expression lowering and before emitting the final `emitCBr`. This
+  mirrors the existing pattern in `lowerIfBranch`, which passes the exit block by index to avoid stale pointers.
+- Alternatively, pre-create and label the target blocks and capture their indices, then reload pointers after the
+  condition lowering (post array bounds-check block insertions) before emitting `emitCBr`.
+
 ```il
 %t23 = trunc1 %t22
 .loc 1 40 21
@@ -1869,20 +2222,24 @@ bc_oob0_TESTGLOBAL:
 }  ; Function ends without defining bb_0 or bb_1
 ```
 
-**Workaround**: Only use simple local arrays (declared in the same function scope) with IF inside FOR loops. Avoid global arrays and array parameters.
+**Workaround**: Only use simple local arrays (declared in the same function scope) with IF inside FOR loops. Avoid
+global arrays and array parameters.
 
 **Works**:
+
 - FOR loop with IF accessing local arrays declared in same function
 - Multiple FOR loops without IF
 - FOR loops with IF and non-array variables
 
 **Fails**:
+
 - FOR loop with IF accessing global arrays
 - FOR loop with IF accessing array parameters (passed to function)
 - Nested FOR with IF, followed by another FOR with IF
 - Any combination of non-local array access within IF inside FOR
 
 **Test Files**:
+
 - `/tmp/bug_testing/test_local_vs_global_array.bas` - Demonstrates local vs global arrays
 - `/tmp/bug_testing/test_array_params.bas` - Demonstrates array parameter issue
 - `/tmp/bug_testing/test_if_array_compare.bas` - Various IF patterns
@@ -1890,24 +2247,28 @@ bc_oob0_TESTGLOBAL:
 - `/tmp/bug_testing/test_multiple_for_loops.bas` - Multiple FOR loops in same function
 - `/tmp/bug_testing/poker_comprehensive.bas` - Real-world use case (IsStraight function)
 
-**Affected Code**: Likely in `src/frontends/basic/lower/` - IF statement code generation within FOR loop context when accessing global variables
+**Affected Code**: Likely in `src/frontends/basic/lower/` - IF statement code generation within FOR loop context when
+accessing global variables
 
 **RESOLUTION** (2025-11-18):
 
-Fixed by implementing block pointer refresh logic in `src/frontends/basic/lower/Emit_Control.cpp:147-165`. The fix mirrors the existing pattern used for logical AND/OR branches (lines 114-142) where block indices are captured before expression lowering and pointers are refreshed afterward.
+Fixed by implementing block pointer refresh logic in `src/frontends/basic/lower/Emit_Control.cpp:147-165`. The fix
+mirrors the existing pattern used for logical AND/OR branches (lines 114-142) where block indices are captured before
+expression lowering and pointers are refreshed afterward.
 
 **Changes Made**:
 
 1. **Captured block indices before expression lowering** (`Emit_Control.cpp:147-156`):
-   - Convert block pointers to consistent indices before calling `lowerExpr()`
-   - Indices remain valid even when `func->blocks` vector is reallocated
+    - Convert block pointers to consistent indices before calling `lowerExpr()`
+    - Indices remain valid even when `func->blocks` vector is reallocated
 
 2. **Refreshed pointers after expression lowering** (`Emit_Control.cpp:161-165`):
-   - Reload function pointer (may have changed due to vector reallocation)
-   - Rebuild block pointers from the refreshed indices
-   - Use refreshed pointers in `emitCBr()` call
+    - Reload function pointer (may have changed due to vector reallocation)
+    - Rebuild block pointers from the refreshed indices
+    - Use refreshed pointers in `emitCBr()` call
 
 **Code Changes**:
+
 ```cpp
 // Before (lines 147-149):
 RVal cond = lowerExpr(expr);
@@ -1936,6 +2297,7 @@ emitCBr(cond.value, trueTarget, falseTarget);
 ```
 
 **Verification**:
+
 - Global array test: `FOR i = 0 TO 3: IF g_arr(i) <> 99 THEN result = 0: NEXT` ✅
 - Array parameter test: Same pattern with array passed as function parameter ✅
 - Complex nested loops: 2D arrays with nested FOR/IF ✅
@@ -1944,14 +2306,17 @@ emitCBr(cond.value, trueTarget, falseTarget);
 ---
 
 ### BUG-094: 2D Array Assignments in Class Methods Store All Values at Same Location
+
 **Status**: ✅ **RESOLVED** - Fixed 2025-11-18 (verified and completed 2025-11-18)
 **Discovered**: 2025-11-18 (Chess game development - board representation)
 **Category**: OOP / Arrays / Memory Management
 **Severity**: HIGH - Breaks 2D array usage in classes
 
-**Symptom**: When assigning values to different elements of a 2D array that is a class field, all assignments appear to write to the same location. Reading back the values shows the last assigned value in all positions.
+**Symptom**: When assigning values to different elements of a 2D array that is a class field, all assignments appear to
+write to the same location. Reading back the values shows the last assigned value in all positions.
 
 **Minimal Reproduction**:
+
 ```basic
 CLASS Test
     DIM pieces(7, 7) AS INTEGER
@@ -1981,50 +2346,61 @@ END CLASS
 
 **Root Cause**:
 
-- Field arrays do not register dimension metadata with the semantic analyzer, and the lowerer’s multi‑dimensional index linearization falls back to using only the first subscript when extents are unknown.
-  - In `lower/Emit_Expr.cpp`, `lowerArrayAccess()` computes a flattened index via `computeFlatIndex()`, which consults `SemanticAnalyzer::lookupArrayMetadata(expr.name)`.
-  - For class fields, `expr.name` is dotted (e.g., `ME.pieces`) or implicit (`pieces` inside a method). These names are not keys in `SemanticAnalyzer::arrays_`, so metadata is absent and the code falls back to `idxVals[0]` (first index only). Consequently, all accesses `(i, j)` for a fixed `i` alias the same linear index, matching the observed “last write wins across columns”.
+- Field arrays do not register dimension metadata with the semantic analyzer, and the lowerer’s multi‑dimensional index
+  linearization falls back to using only the first subscript when extents are unknown.
+    - In `lower/Emit_Expr.cpp`, `lowerArrayAccess()` computes a flattened index via `computeFlatIndex()`, which consults
+      `SemanticAnalyzer::lookupArrayMetadata(expr.name)`.
+    - For class fields, `expr.name` is dotted (e.g., `ME.pieces`) or implicit (`pieces` inside a method). These names
+      are not keys in `SemanticAnalyzer::arrays_`, so metadata is absent and the code falls back to `idxVals[0]` (first
+      index only). Consequently, all accesses `(i, j)` for a fixed `i` alias the same linear index, matching the
+      observed “last write wins across columns”.
 
 - Additionally, array fields declared with extents are allocated with an under‑sized total length in constructors.
-  - In `Lower_OOP_Emit.cpp` constructor emission, total length is computed as the product of declared extents without applying BASIC’s inclusive bound semantics (+1 per dimension). For `DIM pieces(7,7)`, this yields `7*7=49` instead of the correct `8*8=64`.
+    - In `Lower_OOP_Emit.cpp` constructor emission, total length is computed as the product of declared extents without
+      applying BASIC’s inclusive bound semantics (+1 per dimension). For `DIM pieces(7,7)`, this yields `7*7=49` instead
+      of the correct `8*8=64`.
 
 **Fix Applied** (2025-11-18):
 
 The bug had three parts that needed fixing:
 
 1. **Parser double +1 error** (`Parser_Stmt_OOP.cpp:180`)
-   - Parser was adding +1 when storing array extents: `size = stoll(lexeme) + 1`
-   - Then lowerer was adding +1 again when computing sizes
-   - **Fixed**: Parser now stores extents as-is (e.g., 7 for `DIM a(7)`), +1 only applied in lowerer
+    - Parser was adding +1 when storing array extents: `size = stoll(lexeme) + 1`
+    - Then lowerer was adding +1 again when computing sizes
+    - **Fixed**: Parser now stores extents as-is (e.g., 7 for `DIM a(7)`), +1 only applied in lowerer
 
 2. **MethodCallExpr read path** (`lower/Lowerer_Expr.cpp:398-464`)
-   - Field array reads via `me.pieces(7, 0)` only used first index
-   - **Fixed**: Added multi-dimensional index flattening using `fld->arrayExtents`
-   - Computes: `flat = i0*(E1+1)*(E2+1) + i1*(E2+1) + i2` for row-major layout
+    - Field array reads via `me.pieces(7, 0)` only used first index
+    - **Fixed**: Added multi-dimensional index flattening using `fld->arrayExtents`
+    - Computes: `flat = i0*(E1+1)*(E2+1) + i1*(E2+1) + i2` for row-major layout
 
 3. **MethodCallExpr write path** (`LowerStmt_Runtime.cpp:463-524`)
-   - Field array writes via `me.pieces(7, 0) = value` only used first index
-   - **Fixed**: Added identical multi-dimensional index flattening for assignments
+    - Field array writes via `me.pieces(7, 0) = value` only used first index
+    - **Fixed**: Added identical multi-dimensional index flattening for assignments
 
 **Affected files**:
+
 - `src/frontends/basic/Parser_Stmt_OOP.cpp` (parser extent storage)
 - `src/frontends/basic/lower/Lowerer_Expr.cpp` (read path)
 - `src/frontends/basic/LowerStmt_Runtime.cpp` (write path)
 
 **Verification**: Test `/tmp/test_class_array.bas` now passes. All 664 tests passing.
 
-
 ### BUG-095: Array Bounds Check Reports False Positive with Valid Indices
+
 **Status**: ⚠️ **NOT A BUG** - Resolved 2025-11-18 (User code error, not compiler bug)
 **Discovered**: 2025-11-18 (Chess game with ANSI colors - Display function)
 **Category**: Language Semantics / FOR Loop Variables / User Education
 **Severity**: N/A - Working as designed
 
-**Symptom**: Runtime reports "rt_arr_i32: index 72 out of bounds (len=64)" even though all array accesses use calculated indices that should be within bounds (0-63).
+**Symptom**: Runtime reports "rt_arr_i32: index 72 out of bounds (len=64)" even though all array accesses use calculated
+indices that should be within bounds (0-63).
 
-**Context**: Chess game using 1D array of size 64 (DIM pieces(63)) with index calculation `row * 8 + col` where row ∈ [0,7] and col ∈ [0,7].
+**Context**: Chess game using 1D array of size 64 (DIM pieces(63)) with index calculation `row * 8 + col` where
+row ∈ [0,7] and col ∈ [0,7].
 
 **Observed Behavior**:
+
 - Array declared as `DIM pieces(63) AS INTEGER` (64 elements, indices 0-63)
 - All accesses use `idx = row * 8 + col` where both row and col are in range [0,7]
 - Maximum index should be 7*8+7 = 63 (valid)
@@ -2037,18 +2413,23 @@ The bug had three parts that needed fixing:
 
 **Test File**: `/tmp/chess.bas`
 
-**Notes**: Index 72 suggests row=9 is being calculated somewhere, but code inspection shows all loops use correct bounds (row: 7 TO 0, col: 0 TO 7)
+**Notes**: Index 72 suggests row=9 is being calculated somewhere, but code inspection shows all loops use correct
+bounds (row: 7 TO 0, col: 0 TO 7)
 
 **ROOT CAUSE IDENTIFIED** (2025-11-18):
 
-This is **NOT a compiler bug**. The bounds check is working correctly. The error occurs due to **using FOR loop variables after the loop has exited**.
+This is **NOT a compiler bug**. The bounds check is working correctly. The error occurs due to **using FOR loop
+variables after the loop has exited**.
 
 **FOR Loop Variable Semantics (Standard Behavior)**:
+
 - After `FOR i = 0 TO 7` exits, the variable `i` has value `8` (one past the end)
 - After `FOR i = 7 TO 0 STEP -1` exits, the variable `i` has value `-1` (one past the end in descending direction)
-- This is **correct behavior** - the loop variable is incremented/decremented one final time before the loop exit condition is checked
+- This is **correct behavior** - the loop variable is incremented/decremented one final time before the loop exit
+  condition is checked
 
 **The Actual Bug** (In User Code):
+
 ```basic
 DIM pieces(63) AS INTEGER  ' 64 elements, valid indices 0-63
 DIM row AS INTEGER
@@ -2067,6 +2448,7 @@ pieces(row * 8 + col) = value  ' ✗ Tries to access pieces(72)!
 ```
 
 **Minimal Reproduction**:
+
 ```basic
 DIM pieces(63) AS INTEGER
 DIM row AS INTEGER
@@ -2086,6 +2468,7 @@ pieces(row * 8 + col) = 999  ' ERROR: index 72 out of bounds (len=64)
 **Test File**: `/tmp/test_bug095_repro.bas` demonstrates this behavior.
 
 **Resolution**:
+
 - ✅ Bounds checking is working correctly
 - ✅ FOR loop semantics are correct (matching QBasic/VB behavior)
 - ✅ No compiler changes needed
@@ -2093,6 +2476,7 @@ pieces(row * 8 + col) = 999  ' ERROR: index 72 out of bounds (len=64)
 
 **Recommendation**:
 If you need to use final values, declare separate variables:
+
 ```basic
 DIM finalRow AS INTEGER
 DIM finalCol AS INTEGER
@@ -2111,14 +2495,17 @@ NEXT row
 ---
 
 ### BUG-096: Cannot Assign Objects to Array Elements When Array is Class Field
+
 **Status**: ✅ **RESOLVED** - Fixed 2025-11-18 (completed with BUG-098 fix)
 **Discovered**: 2025-11-18 (Frogger game stress test - Game class with vehicle array)
 **Category**: OOP / Arrays / Type System
 **Severity**: HIGH - Prevents using object arrays as class fields
 
-**Symptom**: Assigning an object to an array element fails with compile error "@rt_arr_i32_set value operand must be i64" when the array is a class field. Same code works correctly when array is at module scope.
+**Symptom**: Assigning an object to an array element fails with compile error "@rt_arr_i32_set value operand must be
+i64" when the array is a class field. Same code works correctly when array is at module scope.
 
 **Minimal Reproduction**:
+
 ```basic
 CLASS Vehicle
     DIM x AS INTEGER
@@ -2136,57 +2523,77 @@ END CLASS
 ```
 
 **Works at Module Scope**:
+
 ```basic
 DIM vehicles(2) AS Vehicle
 vehicles(0) = NEW Vehicle(10)  ' This works fine!
 ```
 
 **Error Message**:
+
 ```
 error: CONTAINER.__ctor:bc_ok0_CONTAINER.__ctor: call %t16 0 %t7: @rt_arr_i32_set value operand must be i64
 ```
 
 **Observed Behavior**:
+
 - Arrays of objects work correctly at module/global scope
 - Arrays of objects as class fields cannot be assigned to
 - Error occurs during compilation/lowering phase
 - Error suggests type mismatch - trying to use i32 array operations for object pointers
 
-**Impact**: HIGH - Severely limits OOP design patterns. Cannot have classes that manage collections of other objects as fields.
+**Impact**: HIGH - Severely limits OOP design patterns. Cannot have classes that manage collections of other objects as
+fields.
 
 **Workaround**: Store objects at module scope instead of as class fields, or redesign to avoid object arrays in classes
 
 **Test Files**:
+
 - `/tmp/bug_testing/test_vehicle_array.bas` (works - module scope)
 - `/tmp/bug_testing/test_object_array_in_class.bas` (fails - class field)
 - `/tmp/bug_testing/game.bas` (blocked by this bug)
 
-**Notes**: Related to BUG-094 (2D arrays in classes). Both involve arrays as class fields. May be same root cause in how class field arrays are lowered/typed.
+**Notes**: Related to BUG-094 (2D arrays in classes). Both involve arrays as class fields. May be same root cause in how
+class field arrays are lowered/typed.
 
 **ROOT CAUSE** (Identified and FIXED 2025-11-18):
 
-Assignments to object-typed field arrays that parse as a MethodCallExpr due to BASIC's shared () syntax were routed through a dedicated path in `LowerStmt_Runtime.cpp` that did not handle object arrays.
+Assignments to object-typed field arrays that parse as a MethodCallExpr due to BASIC's shared () syntax were routed
+through a dedicated path in `LowerStmt_Runtime.cpp` that did not handle object arrays.
 
-- In `LowerStmt_Runtime.cpp`, the `lowerLet` lvalue handling includes a branch for when the target is a MethodCallExpr (used to disambiguate field-array indexing like `ME.items(idx)` which the parser represents as a method call):
-  - The path starting `else if (auto *mc = as<const MethodCallExpr>(*stmt.target))` computes the field pointer and array handle, performs bounds checks, and then emits the store.
-  - This branch only distinguishes string vs numeric elements and always emits `rt_arr_i32_set` for non-strings. It lacks the object-array case (`rt_arr_obj_put`).
-- When the RHS is an object (Ptr) such as `NEW Vehicle(10)`, selecting the numeric path causes a type mismatch at the call site: `rt_arr_i32_set` expects an `i64` value operand, but the lowered RHS remains `ptr`, yielding the observed compile-time error “value operand must be i64”.
+- In `LowerStmt_Runtime.cpp`, the `lowerLet` lvalue handling includes a branch for when the target is a MethodCallExpr (
+  used to disambiguate field-array indexing like `ME.items(idx)` which the parser represents as a method call):
+    - The path starting `else if (auto *mc = as<const MethodCallExpr>(*stmt.target))` computes the field pointer and
+      array handle, performs bounds checks, and then emits the store.
+    - This branch only distinguishes string vs numeric elements and always emits `rt_arr_i32_set` for non-strings. It
+      lacks the object-array case (`rt_arr_obj_put`).
+- When the RHS is an object (Ptr) such as `NEW Vehicle(10)`, selecting the numeric path causes a type mismatch at the
+  call site: `rt_arr_i32_set` expects an `i64` value operand, but the lowered RHS remains `ptr`, yielding the observed
+  compile-time error “value operand must be i64”.
 
 Evidence:
+
 - File: `src/frontends/basic/LowerStmt_Runtime.cpp`
-  - Method-call-as-array path around the first store uses only `rt_arr_str_put` or `rt_arr_i32_set` (no object case), whereas the implicit-field-array and general array-element paths correctly use `rt_arr_obj_put` when the element type is an object.
+    - Method-call-as-array path around the first store uses only `rt_arr_str_put` or `rt_arr_i32_set` (no object case),
+      whereas the implicit-field-array and general array-element paths correctly use `rt_arr_obj_put` when the element
+      type is an object.
 
 Consequence:
-- Object arrays work at module scope and in non-MethodCallExpr array paths, but fail specifically for class field arrays written using the `ME.field(idx)` form that the parser maps to MethodCallExpr.
+
+- Object arrays work at module scope and in non-MethodCallExpr array paths, but fail specifically for class field arrays
+  written using the `ME.field(idx)` form that the parser maps to MethodCallExpr.
 
 **Fix Applied** (2025-11-18):
-- Extended the MethodCallExpr-based field-array assignment branch to detect object element type (`!fld->objectClassName.empty()`) and emit `rt_arr_obj_put(arr, idx, ptr)` mirroring the other array-store paths.
+
+- Extended the MethodCallExpr-based field-array assignment branch to detect object element type (
+  `!fld->objectClassName.empty()`) and emit `rt_arr_obj_put(arr, idx, ptr)` mirroring the other array-store paths.
 - Lines 540-544 in `LowerStmt_Runtime.cpp` now correctly handle object arrays with `rt_arr_obj_put`.
 
 **Initial Fix** (2025-11-18): Assignment support added
 **Complete Fix** (2025-11-18): Method call support added (see below)
 
 **Verification**:
+
 - ✅ Test `test_object_array_in_class.bas` PASSES - Assignment works
 - ✅ Test `test_class_field_array_methods.bas` PASSES - Method calls work
 - ✅ Test `test_bug096_fixed.bas` PASSES - Full game scenario works
@@ -2197,22 +2604,24 @@ Consequence:
 The complete fix required two additional changes beyond the initial assignment fix:
 
 1. **resolveObjectClass for MethodCallExpr** (`Lower_OOP_Expr.cpp:184-227`)
-   - Added check for field array access before checking method return types
-   - When `container.items(0)` is parsed as MethodCallExpr, now checks if `items` is an array field
-   - Returns the array element class name for proper method dispatch
+    - Added check for field array access before checking method return types
+    - When `container.items(0)` is parsed as MethodCallExpr, now checks if `items` is an array field
+    - Returns the array element class name for proper method dispatch
 
 2. **Object array getter in MethodCallExpr** (`lower/Lowerer_Expr.cpp:479-489`)
-   - Added `else if (!fld->objectClassName.empty())` branch
-   - Calls `rt_arr_obj_get` instead of `rt_arr_i32_get` for object arrays
-   - Returns pointer type instead of i64 type
+    - Added `else if (!fld->objectClassName.empty())` branch
+    - Calls `rt_arr_obj_get` instead of `rt_arr_i32_get` for object arrays
+    - Returns pointer type instead of i64 type
 
 **All Fixed Paths**:
+
 - ✅ Assignment: `me.items(0) = NEW Item(10)` - works
 - ✅ Method calls: `container.items(0).Show()` - works
 - ✅ From module scope: both work
 - ✅ From class methods: both work
 
 **Affected Files**:
+
 - `src/frontends/basic/LowerStmt_Runtime.cpp` (assignment - fixed earlier)
 - `src/frontends/basic/Lower_OOP_Expr.cpp` (class resolution - fixed now)
 - `src/frontends/basic/lower/Lowerer_Expr.cpp` (object array getter - fixed now)
@@ -2220,14 +2629,17 @@ The complete fix required two additional changes beyond the initial assignment f
 ---
 
 ### BUG-097: Cannot Call Methods on Global Array Elements from Class Methods
+
 **Status**: ✅ **RESOLVED** - Fixed 2025-11-25
 **Discovered**: 2025-11-18 (Frogger game stress test - Game class updating vehicles)
 **Category**: OOP / Method Calls / Scope Resolution
 **Severity**: HIGH - Prevents common OOP pattern of managing global collections
 
-**Symptom**: Calling a method on an array element from within CLASS methods fails with compile error "unknown callee @METHOD_NAME". Method calls on array elements worked from module-level SUBs but failed from class methods.
+**Symptom**: Calling a method on an array element from within CLASS methods fails with compile error "unknown callee
+@METHOD_NAME". Method calls on array elements worked from module-level SUBs but failed from class methods.
 
 **Minimal Reproduction**:
+
 ```basic
 CLASS Widget
     DIM value AS INTEGER
@@ -2257,6 +2669,7 @@ END SUB
 ```
 
 **Works ONLY at Module Scope**:
+
 ```basic
 DIM widgets(2) AS Widget
 DIM i AS INTEGER
@@ -2266,51 +2679,76 @@ NEXT i
 ```
 
 **Error Message**:
+
 ```
 error: MANAGER.UPDATEALL:bc_ok0_MANAGER.UPDATEALL: call %t24: unknown callee @UPDATE
 ```
 
 **Observed Behavior**:
+
 - Method calls on array elements work ONLY at module scope (outside any SUB/FUNCTION)
 - Method calls on array elements FAIL when called from within:
-  - Class methods (SUB/FUNCTION inside CLASS)
-  - Module-level SUBs/FUNCTIONs
-  - Any nested scope with a procedure
+    - Class methods (SUB/FUNCTION inside CLASS)
+    - Module-level SUBs/FUNCTIONs
+    - Any nested scope with a procedure
 - Error occurs during compilation/lowering phase
 - Method name resolution appears to fail when caller is inside ANY procedure scope
 
-**Impact**: CRITICAL - Makes it nearly impossible to build OOP programs that manage collections of objects. Cannot iterate over object arrays and call methods from within any procedure. Severely limits practical OOP usage.
+**Impact**: CRITICAL - Makes it nearly impossible to build OOP programs that manage collections of objects. Cannot
+iterate over object arrays and call methods from within any procedure. Severely limits practical OOP usage.
 
-**Workaround**: All loops that call methods on array elements must be at module scope. This severely constrains program architecture and prevents proper encapsulation.
+**Workaround**: All loops that call methods on array elements must be at module scope. This severely constrains program
+architecture and prevents proper encapsulation.
 
 **Test Files**:
+
 - `/tmp/bug_testing/test_array_method_call.bas` (works - module scope iteration)
 - `/tmp/bug_testing/test_global_array_method.bas` (fails - class method)
 - `/tmp/bug_testing/test_module_function_array.bas` (fails - module-level SUB)
 - `/tmp/bug_testing/game_v2.bas` (blocked by this bug)
 
-**Notes**: Scope resolution issue - method lookup on array element expressions may not be checking global scope when called from within class context. Combined with BUG-096, makes it very difficult to implement collection-based OOP designs.
+**Notes**: Scope resolution issue - method lookup on array element expressions may not be checking global scope when
+called from within class context. Combined with BUG-096, makes it very difficult to implement collection-based OOP
+designs.
 
 **ROOT CAUSE** (Identified 2025-11-18):
 
-Method dispatch fails because the lowerer cannot recover the receiver’s class when the receiver is a module-level object array element referenced inside any procedure (class methods or SUB/FUNCTION). The class is derived via `resolveObjectClass`, which relies on per-procedure symbol metadata cleared between procedures.
+Method dispatch fails because the lowerer cannot recover the receiver’s class when the receiver is a module-level object
+array element referenced inside any procedure (class methods or SUB/FUNCTION). The class is derived via
+`resolveObjectClass`, which relies on per-procedure symbol metadata cleared between procedures.
 
-- `Lowerer::resolveObjectClass(const Expr&)` handles `ArrayExpr` by consulting `findSymbol(arr->name)` and returning `info->objectClass` when `info->isObject` is set (module-level object arrays) or by checking member/implicit field layouts. It does not query a persistent global registry for module-scope symbols.
-- At procedure/method emission time, `resetLoweringState()` clears the symbol table (`resetSymbolState()`), so global `DIM` information (including object-array element class) is lost. The subsequent per-body variable scan (`collectVars(body)`) recreates a fresh symbol for `g_widgets` when encountered, but it only marks it as an array and infers a primitive array type; it does not restore the object element class.
-- As a result, for `g_widgets(i).Update()` inside procedures, `resolveObjectClass` sees no `isObject`/`objectClass` and returns empty class name. Method call lowering then builds an unqualified callee (`@UPDATE`) instead of a mangled class method, leading to “unknown callee @UPDATE”.
+- `Lowerer::resolveObjectClass(const Expr&)` handles `ArrayExpr` by consulting `findSymbol(arr->name)` and returning
+  `info->objectClass` when `info->isObject` is set (module-level object arrays) or by checking member/implicit field
+  layouts. It does not query a persistent global registry for module-scope symbols.
+- At procedure/method emission time, `resetLoweringState()` clears the symbol table (`resetSymbolState()`), so global
+  `DIM` information (including object-array element class) is lost. The subsequent per-body variable scan (
+  `collectVars(body)`) recreates a fresh symbol for `g_widgets` when encountered, but it only marks it as an array and
+  infers a primitive array type; it does not restore the object element class.
+- As a result, for `g_widgets(i).Update()` inside procedures, `resolveObjectClass` sees no `isObject`/`objectClass` and
+  returns empty class name. Method call lowering then builds an unqualified callee (`@UPDATE`) instead of a mangled
+  class method, leading to “unknown callee @UPDATE”.
 
 Evidence:
+
 - File: `src/frontends/basic/Lower_OOP_Expr.cpp`
-  - `resolveObjectClass(const ArrayExpr&)` first checks `findSymbol(arr->name)` for `isObject/objectClass` (works only when symbol info carries object-array typing), then handles dotted member/implicit field via class layouts. There is no fallback to semantic analyzer for module-level arrays.
+    - `resolveObjectClass(const ArrayExpr&)` first checks `findSymbol(arr->name)` for `isObject/objectClass` (works only
+      when symbol info carries object-array typing), then handles dotted member/implicit field via class layouts. There
+      is no fallback to semantic analyzer for module-level arrays.
 - Files: `src/frontends/basic/Lowerer.Procedure.cpp`
-  - `resetLoweringState()` calls `resetSymbolState()` which erases non-literal symbols between procedures; `markSymbolReferenced/markArray` rebuilds entries without object element class.
-  - `findSymbol` only searches the current procedure’s symbol map and the active field scope, not a global symbol registry.
+    - `resetLoweringState()` calls `resetSymbolState()` which erases non-literal symbols between procedures;
+      `markSymbolReferenced/markArray` rebuilds entries without object element class.
+    - `findSymbol` only searches the current procedure’s symbol map and the active field scope, not a global symbol
+      registry.
 
 Consequence:
-- Method calls on array elements succeed at module scope (where symbol info still has object-array typing) but fail from within any procedure scope where the symbol table has been reset.
+
+- Method calls on array elements succeed at module scope (where symbol info still has object-array typing) but fail from
+  within any procedure scope where the symbol table has been reset.
 
 **Fix Attempted** (2025-11-18) - NOT YET WORKING:
-- Added code in `resolveObjectClass(ArrayExpr)` (lines 146-156 of `Lower_OOP_Expr.cpp`) to consult semantic analyzer for module-level arrays:
+
+- Added code in `resolveObjectClass(ArrayExpr)` (lines 146-156 of `Lower_OOP_Expr.cpp`) to consult semantic analyzer for
+  module-level arrays:
   ```cpp
   if (const auto *sema = semanticAnalyzer())
   {
@@ -2324,11 +2762,13 @@ Consequence:
   ```
 
 **Verification** (2025-11-18):
+
 - ✗ Test `test_module_function_array.bas` still FAILS
 - ✗ Test `test_global_array_method.bas` still FAILS
 - ✗ Error: "unknown callee @UPDATE" persists
 
 **Analysis**: The fix approach is correct but incomplete. Likely issues:
+
 - `lookupModuleArrayElemClass` may not be populated with module-level array element classes
 - `isModuleLevelSymbol` check may be failing
 - Module-level object array metadata may not be preserved during semantic analysis
@@ -2337,6 +2777,7 @@ Consequence:
 **FIX APPLIED** (2025-11-25):
 
 The root cause was in the order of operations in `Lowerer.Program.cpp`:
+
 1. `clearModuleObjectArrayCache()` clears the cache
 2. `scanOOP()` and `scanProgram()` scan declarations
 3. `emitOopDeclsAndBodies()` emits class methods - **cache was empty at this point!**
@@ -2358,9 +2799,11 @@ lowerer.emitProgram(prog);
 ```
 
 **Files Changed**:
+
 - `src/frontends/basic/Lowerer.Program.cpp:108-112` - Added early cache population
 
 **Verification**:
+
 - ✅ Test `test_bug097.bas` now PASSES
 - ✅ Method calls on global array elements work from class methods
 - ✅ All 735 tests passing
@@ -2368,15 +2811,18 @@ lowerer.emitProgram(prog);
 ---
 
 ### BUG-098: Cannot Call Methods on Class Field Array Elements
+
 **Status**: ✅ **RESOLVED** - Fixed 2025-11-18 (fixed together with completing BUG-096)
 **Discovered**: 2025-11-18 (BUG-096/097 verification - discovered during root cause analysis)
 **Category**: OOP / Method Calls / Class Fields / Arrays
 **Severity**: HIGH - Prevents calling methods on object array fields
 **Related**: Extension of BUG-097 - shares same root cause in `resolveObjectClass`
 
-**Symptom**: Calling a method on a class field array element fails with "unknown callee" error, even at module scope. This occurs when accessing an object array that is a field of a class instance.
+**Symptom**: Calling a method on a class field array element fails with "unknown callee" error, even at module scope.
+This occurs when accessing an object array that is a field of a class instance.
 
 **Minimal Reproduction**:
+
 ```basic
 CLASS Item
     DIM value AS INTEGER
@@ -2409,11 +2855,13 @@ container.items(0).Show()  ' ✗ ERROR: unknown callee @SHOW
 **Actual**: Compiler error "unknown callee @SHOW"
 
 **Error Message**:
+
 ```
 error: unknown callee @SHOW
 ```
 
 **Observed Behavior**:
+
 - Assignment to class field arrays works (fixed in BUG-096)
 - But method calls on those array elements fail
 - Fails even at module scope (unlike BUG-097 which only fails in procedures)
@@ -2421,6 +2869,7 @@ error: unknown callee @SHOW
 - Error suggests method resolution can't determine the object's class
 
 **Pattern Comparison**:
+
 ```basic
 ' Module-scope arrays: ✅ Method calls work
 DIM widgets(2) AS Widget
@@ -2438,9 +2887,11 @@ CLASS Container
 END CLASS
 ```
 
-**Impact**: HIGH - Even though BUG-096 allows assigning objects to class field arrays, you cannot call any methods on those objects, making the feature nearly useless for practical OOP.
+**Impact**: HIGH - Even though BUG-096 allows assigning objects to class field arrays, you cannot call any methods on
+those objects, making the feature nearly useless for practical OOP.
 
 **Example Use Case Blocked**:
+
 ```basic
 CLASS Game
     DIM entities(99) AS Entity
@@ -2461,6 +2912,7 @@ game.entities(0).Update()  ' ✗ Still fails (BUG-098)
 ```
 
 **Workaround**: Store objects at module scope instead of as class fields:
+
 ```basic
 ' Workaround: Use module-scope arrays
 DIM g_entities(99) AS Entity
@@ -2476,38 +2928,46 @@ g_entities(0).Update()  ' ✅ Works
 ```
 
 **Test Files**:
+
 - `/tmp/bug_testing/test_class_field_array_methods.bas` (reproduces bug)
 - `/tmp/bug_testing/test_bug096_fixed.bas` (shows partial fix - assignment works, methods don't)
 
 **ROOT CAUSE** (Analysis 2025-11-18):
 
-This bug shares the same root cause as BUG-097: the `resolveObjectClass` function in `Lower_OOP_Expr.cpp` cannot determine the class name for the receiver expression.
+This bug shares the same root cause as BUG-097: the `resolveObjectClass` function in `Lower_OOP_Expr.cpp` cannot
+determine the class name for the receiver expression.
 
 **Specific issue for class field arrays**:
+
 - Expression form: `container.items(0).Show()` where `items` is a class field array
 - The receiver for `Show()` is `container.items(0)`, which is a nested member access + array indexing
 - `resolveObjectClass` needs to:
-  1. Recognize `container` as an instance of `Container` class
-  2. Look up `items` in the `Container` class layout
-  3. Determine that `items` is an object array with element type `Item`
-  4. Return "Item" as the class name
+    1. Recognize `container` as an instance of `Container` class
+    2. Look up `items` in the `Container` class layout
+    3. Determine that `items` is an object array with element type `Item`
+    4. Return "Item" as the class name
 
 **What's likely failing**:
+
 - The nested access path `container.items(0)` may not be fully resolved
-- `resolveObjectClass` may handle simple field access (`obj.field`) but not array element access of a field (`obj.fieldArray(index)`)
+- `resolveObjectClass` may handle simple field access (`obj.field`) but not array element access of a field (
+  `obj.fieldArray(index)`)
 - Class layout lookup may not provide array element class information
 - The MethodCallExpr parsing (where `items(0)` looks like a method call) may confuse the resolution
 
 **Evidence from attempted BUG-097 fix**:
-The BUG-097 fix in `Lower_OOP_Expr.cpp` (lines 146-156) only handles the case where the array itself is at module scope (`g_widgets(i)`), not where it's a field of another object (`container.items(i)`).
+The BUG-097 fix in `Lower_OOP_Expr.cpp` (lines 146-156) only handles the case where the array itself is at module
+scope (`g_widgets(i)`), not where it's a field of another object (`container.items(i)`).
 
 **Relationship to BUG-097**:
+
 - BUG-097: Cannot resolve class for `moduleArray(i)` from procedures (symbol table reset issue)
 - BUG-098: Cannot resolve class for `obj.fieldArray(i)` anywhere (nested access + array resolution issue)
 - Both: `resolveObjectClass` returns empty string, causing "unknown callee" errors
 - Both: Likely need same type of metadata preservation/lookup enhancement
 
 **Status**: Not yet fixed. Requires extending `resolveObjectClass` to handle:
+
 1. Nested member access with array indexing
 2. Class field layout queries for array element types
 3. Proper handling of MethodCallExpr representing field array indexing in object class resolution
@@ -2530,7 +2990,9 @@ The fix was completed in two parts:
        }
    }
    ```
-   When `resolveObjectClass` encounters a MethodCallExpr, it now checks if it's actually a field array access before checking for methods. For `container.items(0)`, it looks up `items` in the Container class layout and returns the element class "Item".
+   When `resolveObjectClass` encounters a MethodCallExpr, it now checks if it's actually a field array access before
+   checking for methods. For `container.items(0)`, it looks up `items` in the Container class layout and returns the
+   element class "Item".
 
 2. **Object array getter** (`lower/Lowerer_Expr.cpp:479-489`)
    ```cpp
@@ -2546,29 +3008,35 @@ The fix was completed in two parts:
        return;
    }
    ```
-   When accessing a field array element, now checks if it's an object array and uses `rt_arr_obj_get` returning a pointer, instead of `rt_arr_i32_get` returning i64.
+   When accessing a field array element, now checks if it's an object array and uses `rt_arr_obj_get` returning a
+   pointer, instead of `rt_arr_i32_get` returning i64.
 
 **Verification**:
+
 - ✅ Test `test_class_field_array_methods.bas` now PASSES
 - ✅ `container.items(0).Show()` works at module scope
 - ✅ `me.items(i).Show()` works from class methods
 - ✅ All 664 tests passing
 
-**Result**: Object arrays as class fields are now fully functional - both assignment and method calls work from any scope.
+**Result**: Object arrays as class fields are now fully functional - both assignment and method calls work from any
+scope.
 
 ---
 
 ## OUTSTANDING BUGS (Previously Resolved)
 
 ### BUG-092: Nested IF Statements in FUNCTIONs Execute Incorrect Branch
+
 **Status**: ✅ **RESOLVED** - Fixed 2025-11-18
 **Discovered**: 2025-11-18 (Chess game development - board display issue)
 **Category**: Control Flow / Functions / Conditionals
 **Severity**: HIGH - Causes incorrect program logic in FUNCTIONs
 
-**Symptom**: When using nested IF statements inside a FUNCTION, the condition evaluation appears to be inverted or incorrect. The same code works correctly in SUBs.
+**Symptom**: When using nested IF statements inside a FUNCTION, the condition evaluation appears to be inverted or
+incorrect. The same code works correctly in SUBs.
 
 **Minimal Reproduction**:
+
 ```basic
 CONST WHITE = 0
 CONST BLACK = 1
@@ -2592,10 +3060,12 @@ REM Calling GetSymbol(BLACK, PAWN) returns "" instead of "p"
 ```
 
 **Expected**:
+
 - `GetSymbol(WHITE, PAWN)` should return "P"
 - `GetSymbol(BLACK, PAWN)` should return "p"
 
 **Actual**:
+
 - `GetSymbol(WHITE, PAWN)` returns "p" (ELSE branch executed instead of THEN)
 - `GetSymbol(BLACK, PAWN)` returns "" (THEN branch executed but nested IF doesn't match)
 
@@ -2604,6 +3074,7 @@ REM Calling GetSymbol(BLACK, PAWN) returns "" instead of "p"
 **Impact**: HIGH - Affects program correctness in any FUNCTION using nested IF statements.
 
 **Workaround**: Use flat compound conditions with AND instead of nesting:
+
 ```basic
 FUNCTION GetSymbol(color AS INTEGER, piece AS INTEGER) AS STRING
     DIM symbol AS STRING
@@ -2614,13 +3085,15 @@ END FUNCTION
 ```
 
 **Notes**:
+
 - IF statements work correctly in SUBs and at module level
 - Compound conditions with AND/OR work correctly as workaround
 - SELECT CASE cannot be used as workaround (doesn't support CONST identifiers in labels)
 
 **ROOT CAUSE** (Identified 2025-11-18):
 
-The bug is **specifically with single-line IF statements (without END IF) nested inside IF/ELSE blocks in FUNCTIONs**. Investigation revealed:
+The bug is **specifically with single-line IF statements (without END IF) nested inside IF/ELSE blocks in FUNCTIONs**.
+Investigation revealed:
 
 1. **Pattern that triggers the bug**:
    ```basic
@@ -2646,21 +3119,26 @@ The bug is **specifically with single-line IF statements (without END IF) nested
    ```
 
 3. **Test Results**:
-   - Single-level IFs in FUNCTIONs: ✓ Work correctly
-   - Block-form nested IFs in FUNCTIONs: ✓ Work correctly
-   - Single-line nested IFs in FUNCTIONs: ✗ BROKEN (outer condition inverted)
-   - All IF forms in SUBs: ✓ Work correctly
-   - All IF forms at module level: ✓ Work correctly
+    - Single-level IFs in FUNCTIONs: ✓ Work correctly
+    - Block-form nested IFs in FUNCTIONs: ✓ Work correctly
+    - Single-line nested IFs in FUNCTIONs: ✗ BROKEN (outer condition inverted)
+    - All IF forms in SUBs: ✓ Work correctly
+    - All IF forms at module level: ✓ Work correctly
 
-4. **Specific Behavior**: When the outer IF condition evaluates to TRUE, the ELSE branch is executed. When it evaluates to FALSE, the THEN branch is executed (but nested single-line IFs don't match, leaving variables unassigned).
+4. **Specific Behavior**: When the outer IF condition evaluates to TRUE, the ELSE branch is executed. When it evaluates
+   to FALSE, the THEN branch is executed (but nested single-line IFs don't match, leaving variables unassigned).
 
 **Location**: Parser bug in `src/frontends/basic/Parser_Stmt_If.cpp:184`
 
 **FIX** (Implemented 2025-11-18):
 
-The bug was in the parser, not the lowerer. The `parseElseChain` function (which handles single-line IF statements) was calling `skipOptionalLineLabelAfterBreak` to look for ELSE/ELSEIF keywords. This function **skips line breaks**, allowing single-line IFs to incorrectly consume ELSE keywords from the next line when nested inside multi-line IF blocks.
+The bug was in the parser, not the lowerer. The `parseElseChain` function (which handles single-line IF statements) was
+calling `skipOptionalLineLabelAfterBreak` to look for ELSE/ELSEIF keywords. This function **skips line breaks**,
+allowing single-line IFs to incorrectly consume ELSE keywords from the next line when nested inside multi-line IF
+blocks.
 
 **Example of the bug**:
+
 ```basic
 IF 1 = 1 THEN
     IF 2 = 2 THEN PRINT "A"
@@ -2670,12 +3148,14 @@ END IF
 ```
 
 Before the fix, the parser produced this AST:
+
 ```
 IF (1 = 1) THEN
   (IF (2 = 2) THEN PRINT "A" ELSE PRINT "B")  ← ELSE wrongly attached to inner IF!
 ```
 
 After the fix, the parser produces the correct AST:
+
 ```
 IF (1 = 1) THEN
   (IF (2 = 2) THEN PRINT "A")
@@ -2684,10 +3164,12 @@ ELSE
 ```
 
 **Changed**: `src/frontends/basic/Parser_Stmt_If.cpp:184`
+
 - **Before**: Called `skipOptionalLineLabelAfterBreak` which skips line breaks looking for ELSE
 - **After**: Removed the line break skipping; single-line IFs now only consume ELSE on the same line
 
 **Testing**: All 276 BASIC tests pass with the fix. The parser now correctly distinguishes between:
+
 - Single-line IFs with ELSE on same line: `IF cond THEN stmt1 ELSE stmt2`
 - Single-line IFs nested in multi-line blocks: ELSE belongs to the outer block
 
@@ -2695,14 +3177,17 @@ ELSE
 **Test Files**: `/tmp/test_parser_else_bug.bas`, `/tmp/test_single_line_if_func.bas`
 
 ### BUG-093: INPUT Statement Treats STRING Variables as Numbers
+
 **Status**: ✅ **RESOLVED** - Fixed 2025-11-18
 **Discovered**: 2025-11-18 (Chess game development - interactive input attempt)
 **Category**: I/O / Type System / Variables
 **Severity**: HIGH - Blocks interactive string input in programs
 
-**Symptom**: When using INPUT to read into a STRING variable, the variable is subsequently treated as a numeric type by the compiler, causing type mismatch errors when passing to string functions.
+**Symptom**: When using INPUT to read into a STRING variable, the variable is subsequently treated as a numeric type by
+the compiler, causing type mismatch errors when passing to string functions.
 
 **Minimal Reproduction**:
+
 ```basic
 DIM move AS STRING
 PRINT "Enter move: ";
@@ -2723,10 +3208,12 @@ PRINT LEFT$(move, 1)
 
 **ROOT CAUSE** (Identified 2025-11-18):
 
-The bug is in the semantic analyzer's `resolveAndTrackSymbol` function in `src/frontends/basic/SemanticAnalyzer.cpp` at lines 149-169.
+The bug is in the semantic analyzer's `resolveAndTrackSymbol` function in `src/frontends/basic/SemanticAnalyzer.cpp` at
+lines 149-169.
 
 **The Problem**:
-When INPUT is analyzed, it calls `resolveAndTrackSymbol(name, SymbolKind::InputTarget)`. This function has logic that **unconditionally resets the variable's type to the default type** when `kind == SymbolKind::InputTarget`:
+When INPUT is analyzed, it calls `resolveAndTrackSymbol(name, SymbolKind::InputTarget)`. This function has logic that *
+*unconditionally resets the variable's type to the default type** when `kind == SymbolKind::InputTarget`:
 
 ```cpp
 const bool forceDefault = kind == SymbolKind::InputTarget;  // Line 149
@@ -2747,6 +3234,7 @@ if (forceDefault || itType == varTypes_.end())
 ```
 
 **Execution Flow for `DIM move AS STRING; INPUT move`**:
+
 1. `DIM move AS STRING` sets `varTypes_["move"] = Type::String` ✓
 2. `INPUT move` calls `resolveAndTrackSymbol("move", SymbolKind::InputTarget)`
 3. `forceDefault = true` because kind is InputTarget (line 149)
@@ -2756,11 +3244,13 @@ if (forceDefault || itType == varTypes_.end())
 
 **FIX** (Implemented 2025-11-18):
 
-The fix was simple: remove the `forceDefault` logic that unconditionally overwrites variable types when processing INPUT statements.
+The fix was simple: remove the `forceDefault` logic that unconditionally overwrites variable types when processing INPUT
+statements.
 
 **Changed**: `src/frontends/basic/SemanticAnalyzer.cpp:149-152`
 
 **Before**:
+
 ```cpp
 const bool forceDefault = kind == SymbolKind::InputTarget;
 auto itType = varTypes_.find(name);
@@ -2772,6 +3262,7 @@ if (forceDefault || itType == varTypes_.end())
 ```
 
 **After**:
+
 ```cpp
 // BUG-093 fix: Do not override explicitly declared types (from DIM) when processing
 // INPUT statements. Only set default type if the variable has no type yet.
@@ -2784,11 +3275,13 @@ if (itType == varTypes_.end())
 ```
 
 **Result**:
+
 - Variables declared with `DIM name AS STRING` now retain their STRING type through INPUT
 - Undeclared variables (e.g., `INPUT name$`) still get suffix-based default types
 - All 276 BASIC tests pass
 
 **Testing**:
+
 - ✅ `DIM move AS STRING; INPUT move; PRINT LEFT$(move, 1)` - Works correctly
 - ✅ `INPUT name$` (undeclared) - Still uses suffix-based STRING type
 - ✅ `INPUT age` (undeclared) - Still uses default INTEGER type
@@ -2802,19 +3295,23 @@ if (itType == varTypes_.end())
 ## RECENTLY RESOLVED BUGS
 
 ### BUG-091: Compiler Crash with 2D Array Access in Expressions
+
 **Status**: ✅ **RESOLVED** - Fixed 2025-11-17
 **Discovered**: 2025-11-17 (Chess Engine v2 stress test)
 **Category**: Arrays / Expression Analysis / Compiler Crash
 **Severity**: CRITICAL - Compiler crash, blocks multi-dimensional array usage
 
-**Symptom**: Accessing 2D (or higher) arrays in expressions causes compiler crash with assertion failure in expression type scanner.
+**Symptom**: Accessing 2D (or higher) arrays in expressions causes compiler crash with assertion failure in expression
+type scanner.
 
 **Error Message**:
+
 ```
 Assertion failed: (!stack_.empty()), function pop, file Scan_ExprTypes.cpp, line 108
 ```
 
 **Minimal Reproduction**:
+
 ```basic
 DIM board(8, 8) AS INTEGER
 board(1, 1) = 5
@@ -2823,9 +3320,12 @@ DIM x AS INTEGER
 x = board(1, 1) + 10  REM CRASH!
 ```
 
-**ROOT CAUSE**: In `Scan_ExprTypes.cpp`, the `after(const ArrayExpr &expr)` method only handled the deprecated single-index field (`expr.index`), not the multi-dimensional indices vector (`expr.indices`). For 2D arrays with two indices, only one value was popped from the expression type stack, leaving the stack imbalanced.
+**ROOT CAUSE**: In `Scan_ExprTypes.cpp`, the `after(const ArrayExpr &expr)` method only handled the deprecated
+single-index field (`expr.index`), not the multi-dimensional indices vector (`expr.indices`). For 2D arrays with two
+indices, only one value was popped from the expression type stack, leaving the stack imbalanced.
 
 **FIX**: Updated `after(const ArrayExpr &expr)` to loop through all indices in `expr.indices` and pop each one:
+
 ```cpp
 void after(const ArrayExpr &expr)
 {
@@ -2848,6 +3348,7 @@ void after(const ArrayExpr &expr)
 **Files Modified**: `src/frontends/basic/lower/Scan_ExprTypes.cpp`
 
 ### BUG-090: Cannot Pass Object Array Field as Parameter (Runtime Crash)
+
 **Status**: ✅ **RESOLVED** - Fixed 2025-11-17 (resolved together with BUG-089)
 **Discovered**: 2025-11-17 (Chess Engine v2 stress test)
 **Category**: OOP / Runtime / Arrays / Parameters
@@ -2856,11 +3357,13 @@ void after(const ArrayExpr &expr)
 **Symptom**: Passing an object array that is a class field as a parameter causes runtime crash with assertion failure.
 
 **Error Message**:
+
 ```
 Assertion failed: (hdr->elem_kind == RT_ELEM_NONE), function rt_arr_obj_assert_header, file rt_array_obj.c, line 34.
 ```
 
 **Minimal Reproduction**:
+
 ```basic
 CLASS Item
     val AS INTEGER
@@ -2878,9 +3381,11 @@ CLASS Container
 END CLASS
 ```
 
-**ROOT CAUSE**: Constructor generation in `Lower_OOP_Emit.cpp` allocated object array fields using `rt_arr_i32_new` (which sets `elem_kind = RT_ELEM_I32`) instead of `rt_arr_obj_new` (which sets `elem_kind = RT_ELEM_NONE`).
+**ROOT CAUSE**: Constructor generation in `Lower_OOP_Emit.cpp` allocated object array fields using `rt_arr_i32_new` (
+which sets `elem_kind = RT_ELEM_I32`) instead of `rt_arr_obj_new` (which sets `elem_kind = RT_ELEM_NONE`).
 
 **FIX**: Added object array detection in constructor generation:
+
 ```cpp
 else if (!field.objectClassName.empty())
 {
@@ -2892,19 +3397,23 @@ else if (!field.objectClassName.empty())
 **Files Modified**: `src/frontends/basic/Lower_OOP_Emit.cpp`
 
 ### BUG-089: Cannot Call Methods on Object Array Fields from Class Methods
+
 **Status**: ✅ **RESOLVED** - Fixed 2025-11-17
 **Discovered**: 2025-11-17 (Chess Engine v2 stress test)
 **Category**: OOP / Arrays / Method Calls / Code Generation
 **Severity**: CRITICAL - Unknown callee error, blocks object-oriented programming
 
-**Symptom**: Attempting to call a method on an object array element that is a class field results in "unknown callee" compiler error.
+**Symptom**: Attempting to call a method on an object array element that is a class field results in "unknown callee"
+compiler error.
 
 **Error Message**:
+
 ```
 error: unknown callee @SETVAL
 ```
 
 **Minimal Reproduction**:
+
 ```basic
 CLASS Item
     SUB SetVal(v AS INTEGER)
@@ -2923,11 +3432,13 @@ END CLASS
 ```
 
 **ROOT CAUSE**: Multiple code paths didn't properly detect and handle object arrays in class fields:
+
 1. Array access expressions didn't track if they were member object arrays
 2. Method call lowering didn't recognize object array elements as objects
 3. Object class resolution didn't handle array expressions for implicit fields
 
 **FIX**: Enhanced 5 different code paths to detect and handle object arrays:
+
 - `Lower_OOP_Emit.cpp`: Constructor generation using `rt_arr_obj_new`
 - `Emit_Expr.cpp`: Track `isMemberObjectArray` for array access
 - `LowerStmt_Runtime.cpp`: Handle object arrays in assignments and calls
@@ -2937,6 +3448,7 @@ END CLASS
 **Key Insight**: In BASIC, `items(i)` is parsed as `CallExpr`, not `ArrayExpr`.
 
 **Files Modified**:
+
 - `src/frontends/basic/Lower_OOP_Emit.cpp`
 - `src/frontends/basic/lower/Emit_Expr.cpp`
 - `src/frontends/basic/lower/LowerStmt_Runtime.cpp`
@@ -2968,9 +3480,11 @@ END CLASS
 
 **Test Scope**: Built complete 5-card draw poker game with AI, ANSI graphics, and OOP to stress test language features.
 
-**Files**: `/tmp/bug_testing/poker_game_v5.bas` (260 lines), supporting libraries, full report in `POKER_STRESS_TEST_V5_REPORT.md`
+**Files**: `/tmp/bug_testing/poker_game_v5.bas` (260 lines), supporting libraries, full report in
+`POKER_STRESS_TEST_V5_REPORT.md`
 
 **Successfully Tested Features** (All Working):
+
 - ✅ Multiple classes (Card, Hand, Deck, Player) with ~30 methods
 - ✅ Object arrays (52-card deck, 5-card hand)
 - ✅ AddFile directive with transitive includes
@@ -2983,6 +3497,7 @@ END CLASS
 **Patterns & Workarounds Discovered**:
 
 **PATTERN-01: Method Calls in IF Conditions Require Extraction**
+
 - **Symptom**: Direct method calls in IF conditions can cause "use before def" errors
 - **Example**: `IF cards(i).GetSuit() <> firstSuit THEN` → Error
 - **Workaround**: Extract method result to temporary variable first
@@ -2994,6 +3509,7 @@ END CLASS
 - **Affected Code**: Hand.IsFlush() in `/tmp/bug_testing/hand_v5.bas`
 
 **PATTERN-02: Variable Scope in Loops**
+
 - **Symptom**: Variables declared with DIM inside FOR loops cause "unknown procedure" errors
 - **Example**: `FOR i = 1 TO 5: DIM c AS Card: c = deck.Deal()` → Error
 - **Workaround**: Declare all variables at function/SUB scope before loops
@@ -3008,6 +3524,7 @@ END CLASS
 - **Note**: This is **intentional behavior**, not a bug (variables have function scope)
 
 **PATTERN-03: GOTO from FOR Loop Not Supported**
+
 - **Symptom**: Using GOTO to jump out of FOR loop gives "unknown line" error
 - **Example**: `FOR round = 1 TO 3: IF fold THEN GOTO NextRound` → Error
 - **Workaround**: Use boolean flags instead of GOTO
@@ -3027,6 +3544,7 @@ END CLASS
 - **Affected Code**: poker_game_v5.bas betting phase (lines 196-214)
 
 **PATTERN-04: AddFile Duplicate Includes**
+
 - **Symptom**: Including same file multiple times via AddFile chain causes "duplicate function" errors
 - **Example**: `poker.bas` includes `hand.bas` and `deck.bas`, but `deck.bas` also includes `hand.bas`
 - **Workaround**: Create "library" versions of files without test code for clean transitive includes
@@ -3046,6 +3564,7 @@ END CLASS
 - **Files Created**: `card_lib.bas`, `hand_lib.bas` in `/tmp/bug_testing/`
 
 **PATTERN-05: Multiple Similar Classes May Cause Runtime Issues**
+
 - **Symptom**: Having two classes with very similar structure (Player and CPUPlayer) caused runtime crash
 - **Error**: `Assertion failed: (hdr->magic == RT_MAGIC), function payload_to_hdr, file rt_heap.c, line 48`
 - **Test File**: `/tmp/bug_testing/player_v5.bas` (dual Player/CPUPlayer classes)
@@ -3072,14 +3591,17 @@ END CLASS
   END CLASS
   ```
 - **Impact**: Low - workaround is actually better OOP design (composition over inheritance)
-- **Status**: Not blocking - may be related to constructor/memory management, needs further investigation if becomes problematic
+- **Status**: Not blocking - may be related to constructor/memory management, needs further investigation if becomes
+  problematic
 - **Note**: Successfully worked around - poker game uses this pattern and works perfectly
 
 **Overall Assessment**: ✅ **ALL CRITICAL FEATURES STABLE**
 
-The poker game demonstrates that Viper BASIC OOP can support complex applications within the current test environment. All issues encountered have workarounds; the system remains experimental and not suited for production.
+The poker game demonstrates that Viper BASIC OOP can support complex applications within the current test environment.
+All issues encountered have workarounds; the system remains experimental and not suited for production.
 
 **Game Statistics**:
+
 - 260 lines of game logic
 - 4 classes with ~30 methods
 - Object arrays (deck: 52 cards, hand: 5 cards)
@@ -3093,19 +3615,24 @@ The poker game demonstrates that Viper BASIC OOP can support complex application
 ## DESIGN DECISIONS (Not Bugs)
 
 ### BUG-095: FOR Loop Variables After Loop Exit
+
 **Status**: ⚠️  **DESIGN DECISION** - Not a bug
 **Category**: Language Semantics / FOR Loops
-**Resolution**: FOR loop variables are set to one value past the end condition when the loop exits. This matches QBasic/VB behavior and is intentional. See full documentation above in the OUTSTANDING BUGS section.
+**Resolution**: FOR loop variables are set to one value past the end condition when the loop exits. This matches
+QBasic/VB behavior and is intentional. See full documentation above in the OUTSTANDING BUGS section.
 
 ### BUG-088: COLOR Keyword Collision with Class Field Names
+
 **Status**: ⚠️  **DESIGN DECISION** - Not a bug
 **Category**: Keywords / Naming
 **Resolution**: Reserved keywords cannot be used as identifiers. This is intentional language design.
 
 ### BUG-054: EXIT DO statement not supported
+
 **Status**: ⚠️  **DESIGN DECISION** - Use EXIT WHILE/EXIT FOR instead
 
 ### BUG-055: Boolean expressions require extra parentheses
+
 **Status**: ⚠️  **DESIGN DECISION** - Intentional for clarity
 
 ---
@@ -3113,6 +3640,7 @@ The poker game demonstrates that Viper BASIC OOP can support complex application
 ## RESOLVED BUGS (Previously Documented)
 
 ### Recently Resolved (2025-11-17)
+
 - ✅ **BUG-067**: Array fields - RESOLVED 2025-11-17
 - ✅ **BUG-068**: Function name implicit returns - RESOLVED 2025-11-17
 - ✅ **BUG-070**: Boolean parameters - RESOLVED 2025-11-17
@@ -3123,6 +3651,7 @@ The poker game demonstrates that Viper BASIC OOP can support complex application
 - ✅ **BUG-081**: FOR loop with object member variables - RESOLVED 2025-11-17
 
 ### All Previously Resolved Bugs (BUG-001 through BUG-066)
+
 - ✅ **BUG-001**: String concatenation requires $ suffix - RESOLVED 2025-11-12
 - ✅ **BUG-002**: & operator for string concatenation not supported - RESOLVED 2025-11-12
 - ✅ **BUG-003**: FUNCTION name assignment syntax not supported - RESOLVED 2025-11-12
@@ -3192,11 +3721,13 @@ The poker game demonstrates that Viper BASIC OOP can support complex application
 ## ADDITIONAL INFORMATION
 
 **For detailed bug descriptions and test cases:**
+
 - See `/bugs/bug_testing/` directory for test cases and stress tests
 - Recent bugs (089-091) documented above with full details
 - Older bugs condensed to preserve space while maintaining history
 
 **Testing Sources:**
+
 - Chess Engine v2 stress test (discovered 12 critical bugs)
 - Poker Game v5 stress test (discovered 5 patterns/workarounds)
 - Language audit and systematic feature testing
@@ -3214,14 +3745,17 @@ The poker game demonstrates that Viper BASIC OOP can support complex application
 ---
 
 ### BUG-111: 🔴 CRITICAL - Local arrays in methods cannot copy from object field arrays
+
 **Status:** CONFIRMED BUG with WORKAROUND
 **Discovered:** 2025-11-19 (vTris rotation algorithm)
 **Category:** Arrays / OOP / Methods
 **Severity:** HIGH - Breaks algorithms requiring temporary array storage
 
-**Symptom**: When copying a 2D array from an object field (Me.Field) to a local array (temp) inside a method, the values are not copied - all values remain 0.
+**Symptom**: When copying a 2D array from an object field (Me.Field) to a local array (temp) inside a method, the values
+are not copied - all values remain 0.
 
 **Minimal Reproduction**:
+
 ```basic
 Class Test
     Dim A(4, 4) As Integer
@@ -3248,12 +3782,14 @@ Class Test
 End Class
 ```
 
-**Impact**: 
+**Impact**:
+
 - Breaks rotation algorithms
 - Prevents any algorithm needing temporary array storage in methods
 - Forces awkward workarounds
 
 **Workaround**: Use class-level arrays instead of local arrays:
+
 ```basic
 Class Test
     Dim A(4, 4) As Integer
@@ -3271,6 +3807,7 @@ End Class
 ```
 
 **Test Files**:
+
 - `bugs/bug_testing/test08_array_access.bas` - Demonstrates bug
 - `bugs/bug_testing/test09_class_temp_array.bas` - Demonstrates workaround
 - `examples/vTris/pieces.bas` - Real-world usage (rotation method)
@@ -3280,16 +3817,20 @@ End Class
 ---
 
 ### BUG-112: 🔴 CRITICAL - CheckLines() destroys floor by including row 20 in line-clear check
+
 **Status:** CONFIRMED BUG - FIXED
 **Discovered:** 2025-11-19 (vTris gameplay testing)
 **Category:** Game Logic / Array Bounds
 **Severity:** CRITICAL - Game becomes unplayable after first line clear
 
-**Symptom**: After clearing the first line in vTris, pieces fall through the bottom of the board. Pieces appear cut off at the bottom border and show impossible configurations.
+**Symptom**: After clearing the first line in vTris, pieces fall through the bottom of the board. Pieces appear cut off
+at the bottom border and show impossible configurations.
 
-**Root Cause**: The `CheckLines()` function in `board.bas` was checking rows `1 To 20` instead of `0 To 19`. Row 20 is the floor (all cells = 9), so it was always detected as "full" and cleared whenever any line was cleared.
+**Root Cause**: The `CheckLines()` function in `board.bas` was checking rows `1 To 20` instead of `0 To 19`. Row 20 is
+the floor (all cells = 9), so it was always detected as "full" and cleared whenever any line was cleared.
 
 **What Happened**:
+
 1. Game starts with floor correctly set at row 20 (all cells = 9)
 2. Player clears first line
 3. `CheckLines()` checks rows 1-20
@@ -3298,16 +3839,19 @@ End Class
 6. Pieces now fall through where floor used to be
 
 **Bug Code** (`board.bas` line 85):
+
 ```basic
 For row = 1 To 20  ' ❌ WRONG: Includes floor (row 20) and skips top (row 0)
 ```
 
 **Fixed Code**:
+
 ```basic
 For row = 0 To 19  ' ✅ CORRECT: Only checks playable area
 ```
 
 **Impact**:
+
 - Game unplayable after first line clear
 - Pieces fall through bottom
 - Pieces appear cut off or in impossible positions
@@ -3316,6 +3860,7 @@ For row = 0 To 19  ' ✅ CORRECT: Only checks playable area
 **Test File**: `bugs/bug_testing/test15_floor_after_clear.bas` - Verifies floor integrity after clearing lines
 
 **Additional Issues Found**:
+
 - Original code also skipped row 0 (top row) from line-clear checks
 - Should check all 20 playable rows: 0-19
 
@@ -3324,22 +3869,27 @@ For row = 0 To 19  ' ✅ CORRECT: Only checks playable area
 ---
 
 ### BUG-113: 🔴 CRITICAL - Object assignment creates reference instead of copy
+
 **Status:** CONFIRMED BUG - FIXED with workaround
 **Discovered:** 2025-11-19 (vTris piece spawning)
 **Category:** OOP / Object References
 **Severity:** CRITICAL - Breaks object lifecycle management
 
-**Symptom**: When assigning one object to another (`obj1 = obj2`), both variables reference the SAME object. Modifying one modifies the other.
+**Symptom**: When assigning one object to another (`obj1 = obj2`), both variables reference the SAME object. Modifying
+one modifies the other.
 
-**Root Cause**: Object assignment in Viper BASIC creates a reference copy, not a deep copy. This is similar to pointer/reference semantics in other languages.
+**Root Cause**: Object assignment in Viper BASIC creates a reference copy, not a deep copy. This is similar to
+pointer/reference semantics in other languages.
 
 **Impact on vTris**:
+
 - `CurrentPiece = NextPiece` made both variables point to the same object
 - When CurrentPiece moved down, NextPiece preview also moved
 - When CurrentPiece was at bottom, NextPiece was also at bottom
 - Next spawned piece appeared at bottom instead of top (couldn't descend)
 
 **Bug Code**:
+
 ```basic
 Sub SpawnPiece()
     CurrentPiece = NextPiece  ' ❌ Both point to same object!
@@ -3350,6 +3900,7 @@ End Sub
 ```
 
 **Fixed Code**:
+
 ```basic
 Sub SpawnPiece()
     ' Create NEW object with same type
@@ -3368,31 +3919,36 @@ End Sub
 
 **File Location**: `demos/vTris/vtris.bas:218-234`
 
-**Note**: This is expected behavior for reference types in many languages. Not necessarily a bug, but important to understand for proper OOP in Viper BASIC.
+**Note**: This is expected behavior for reference types in many languages. Not necessarily a bug, but important to
+understand for proper OOP in Viper BASIC.
 
 ---
 
 ### Language Design Clarifications (Not Bugs)
 
 #### 4. CALL keyword not supported
+
 **Status:** Language design decision
 **Description:** `Call Me.Method()` syntax not supported
 **Workaround:** Use direct call: `Me.Method()`
 **Test:** All vTris files
 
-#### 5. SET keyword not supported  
+#### 5. SET keyword not supported
+
 **Status:** Language design decision
 **Description:** `Set obj = New Class()` not supported
 **Workaround:** Use direct assignment: `obj = New Class()`
 **Test:** `bugs/bug_testing/test01_point.bas`
 
 #### 6. Reserved keywords as field names
+
 **Status:** Language design decision
 **Description:** Keywords like `Color`, `Print` cannot be used as field names
 **Workaround:** Use different names (`PieceColor`, `Display`, etc.)
 **Test:** `bugs/bug_testing/test02_tetromino.bas`
 
 #### 7. Function name qualification in methods
+
 **Status:** Language design decision
 **Description:** Must use `Str$(x)` not `Str(x)` in class methods
 **Workaround:** Always use type suffixes for built-in functions
@@ -3403,6 +3959,7 @@ End Sub
 ### vTris Test Suite Results
 
 **Test Files Created:**
+
 1. ✅ `test01_point.bas` - Basic OOP (classes, constructors, methods)
 2. ✅ `test02_tetromino.bas` - Arrays in classes, 2D arrays
 3. ✅ `test03_ansi.bas` - Terminal control (CLS, COLOR, LOCATE)
@@ -3429,11 +3986,13 @@ End Sub
 Location: `examples/vTris/`
 
 **Files:**
+
 - `pieces.bas` (150 lines) - Piece class with all 7 tetromino types + rotation
 - `board.bas` (150 lines) - Board class with collision detection & ANSI rendering
 - `vtris_simple.bas` (150 lines) - Main game loop with keyboard input
 
 **Features:**
+
 - ✅ All 7 standard Tetris pieces (I, O, T, S, Z, J, L)
 - ✅ Piece rotation with collision detection
 - ✅ Board management (walls, floor, boundaries)
@@ -3446,6 +4005,7 @@ Location: `examples/vTris/`
 - ✅ Modular architecture using AddFile
 
 **Code Statistics:**
+
 - ~600 lines of production BASIC code
 - 3 classes created
 - 15+ methods implemented
@@ -3456,6 +4016,7 @@ Location: `examples/vTris/`
 ### Features Successfully Stress Tested
 
 **Core OOP:**
+
 - ✅ Class definitions with multiple fields
 - ✅ Constructors (Sub New)
 - ✅ Instance methods (Sub/Function)
@@ -3465,23 +4026,27 @@ Location: `examples/vTris/`
 - ✅ Method parameters
 
 **Advanced OOP:**
+
 - ✅ 2D arrays as class fields
 - ✅ Array access in methods
 - ✅ Complex nested loops with object field access
 - ✅ Sophisticated algorithms (rotation, collision detection)
 
 **Modular Code:**
+
 - ✅ AddFile for multi-file projects
 - ✅ Class definitions in separate files
 - ✅ Cross-file class usage
 
 **Graphics/Terminal:**
+
 - ✅ CLS (clear screen)
 - ✅ COLOR (foreground/background)
 - ✅ LOCATE (cursor positioning)
 - ✅ Unicode box drawing characters (█, ║, ╔, ═, etc.)
 
 **Input/Control:**
+
 - ✅ Inkey$ for keyboard input
 - ✅ Sleep for timing control
 - ✅ Rnd() for random numbers
@@ -3491,9 +4056,11 @@ Location: `examples/vTris/`
 
 ### Stress Test Conclusions
 
-**Overall Assessment:** Experimental — OOP is capable enough for complex demos in tests (with documented workarounds), but not suited for production use.
+**Overall Assessment:** Experimental — OOP is capable enough for complex demos in tests (with documented workarounds),
+but not suited for production use.
 
 **Findings:**
+
 1. **One critical bug found** (local array copying) with viable workaround
 2. **Language design clarified** (SET, CALL, reserved keywords, function suffixes)
 3. **All core OOP features work correctly**
@@ -3501,15 +4068,18 @@ Location: `examples/vTris/`
 5. **Modular code organization works well**
 
 **Recommendations:**
+
 1. **HIGH PRIORITY:** Fix local array copying from object fields (BUG-111)
 2. **MEDIUM PRIORITY:** Add compiler diagnostic for reserved keyword usage
 3. **DOCUMENTATION:** Document type suffix requirement for built-in functions in methods
 
 **Developer Guidance:**
+
 - Use class-level arrays for any temporary storage in methods
-- Avoid reserved keywords in all identifiers  
+- Avoid reserved keywords in all identifiers
 - Always use type suffixes (Str$, Chr$, etc.) in class methods
 - Test incrementally when using complex OOP patterns
 - AddFile is reliable for modular code organization
 
-**Bottom Line:** Viper BASIC OOP features are solid enough for real-world game development. The array copying bug is the only significant limitation, and the workaround is straightforward.
+**Bottom Line:** Viper BASIC OOP features are solid enough for real-world game development. The array copying bug is the
+only significant limitation, and the workaround is straightforward.

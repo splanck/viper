@@ -1,4 +1,5 @@
 # ViperLang — Language Specification
+
 ## Version 0.1 RC1 (Release Candidate 1)
 
 <div align="center">
@@ -16,7 +17,7 @@
 ViperLang aims for five core principles:
 
 1. **Truly Simple** — The entire language fits in your head
-2. **One Way** — There's an obvious way to do things  
+2. **One Way** — There's an obvious way to do things
 3. **Modern First** — Async, pattern matching, and null safety by default
 4. **Fast by Default** — Zero-cost abstractions, no hidden allocations
 5. **Amazing Tools** — Formatter, linter, and test runner are part of the language
@@ -67,6 +68,7 @@ async func main() {
 ```
 
 **Key points:**
+
 - Semicolons optional (formatter adds them as needed)
 - Types are non-nullable by default
 - String interpolation with `${}`
@@ -78,7 +80,8 @@ async func main() {
 
 ### Values (Copy Types)
 
-Values are **copy types**. They copy when assigned or passed. Mutating a variable that holds a value affects only that copy:
+Values are **copy types**. They copy when assigned or passed. Mutating a variable that holds a value affects only that
+copy:
 
 ```viper
 value Color {
@@ -95,6 +98,7 @@ myColor.g = 128    // Only affects myColor; red unchanged
 **Rule:** Cannot mutate temporaries or accessor returns (e.g., `getColor().r = 10` is illegal).
 
 Values are ideal for:
+
 - Small data (points, colors, dates)
 - Domain values (money, IDs, coordinates)
 - Data without identity
@@ -123,6 +127,7 @@ account2.deposit(50)?    // Both see balance of 150
 ```
 
 Entities are ideal for:
+
 - Stateful objects
 - Resources (files, connections)
 - Domain entities with identity
@@ -154,6 +159,7 @@ entity Dog extends Animal {
 ```
 
 **Rules:**
+
 - Only entities can inherit (not values)
 - Single inheritance only
 - `override` keyword required when overriding
@@ -193,6 +199,7 @@ Both values and entities can implement interfaces.
 ### Optionals
 
 **T? is syntactic sugar for Option[T]**:
+
 - `null` is syntactic sugar for `None`
 - Assigning `T` to `T?` automatically wraps in `Some(T)`
 - The `?` operator propagates both `Error` (from Result) and `None` (from Option)
@@ -451,6 +458,7 @@ async func main() {
 ```
 
 **Task Rules:**
+
 - `await` re-raises task errors (preserves stack trace)
 - `all([...])` fails fast: first error cancels remaining tasks
 - Returns results in input order
@@ -483,6 +491,7 @@ async {
 ```
 
 **Channel Rules:**
+
 - `receive()` returns `Option[T]` (None after close and drain)
 - `send()` returns `Result[Void]` (Error(Closed) if closed)
 - Bounded channels apply backpressure (block on send when full)
@@ -521,6 +530,7 @@ if timeout {
 ### Reference Counting
 
 ViperLang uses **automatic reference counting** with cycle detection:
+
 - Values: Stack-allocated when possible, no refcounting needed
 - Entities: Reference counted, deallocated when count reaches zero
 - Cycles: Detected and collected periodically
@@ -547,8 +557,9 @@ if let parent = node.parent {
 ```
 
 **Rules:**
+
 - Weak references don't increase refcount
-- Reading weak references returns `T?` 
+- Reading weak references returns `T?`
 - Automatically cleared when target deallocated
 
 ---

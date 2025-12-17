@@ -7,23 +7,23 @@ Source layout for the Viper compiler toolchain (current tree, kept in sync).
 
 ## Quick Reference
 
-| Directory | Purpose |
-|-----------|---------|
-| `src/il/` | IL core types, builder, I/O, verifier, analysis, transforms, API |
-| `src/vm/` | Virtual Machine interpreter, opcode handlers, debug, runtime bridge |
-| `src/codegen/` | Native code generation backends (`x86_64/`, `aarch64/`, `common/`) |
-| `src/frontends/basic/` | BASIC frontend (lexer, parser, semantics, lowering to IL) |
-| `src/runtime/` | C runtime library (strings, arrays, I/O, numeric, OOP) |
-| `src/support/` | Shared support: diagnostics, arena, source manager, symbols, result |
-| `src/common/` | Cross-cutting utils (mangling, integer helpers, process runner) |
-| `src/parse/` | Cursor utilities used by frontends (`include/viper/parse/Cursor.h`) |
-| `src/pass/` | Generic pass manager façade (`include/viper/pass/PassManager.hpp`) |
-| `src/tools/` | CLI tools (`ilc`, `vbasic`, `ilrun`, `il-verify`, `il-dis`, BASIC utils) |
-| `src/lib/graphics/` | ViperGFX 2D graphics library (C API, examples, tests) |
-| `src/tui/` | Minimal TUI utility + tests (`apps/tui_demo.cpp`) |
-| `src/tests/` | Unit, golden, e2e, and perf tests by area |
-| `include/` | Public headers (`viper/il`, `viper/vm`, `viper/runtime`, `viper/...`) |
-| `src/buildmeta/` | Version files (`IL_VERSION`, `VERSION`) used at build time |
+| Directory              | Purpose                                                                  |
+|------------------------|--------------------------------------------------------------------------|
+| `src/il/`              | IL core types, builder, I/O, verifier, analysis, transforms, API         |
+| `src/vm/`              | Virtual Machine interpreter, opcode handlers, debug, runtime bridge      |
+| `src/codegen/`         | Native code generation backends (`x86_64/`, `aarch64/`, `common/`)       |
+| `src/frontends/basic/` | BASIC frontend (lexer, parser, semantics, lowering to IL)                |
+| `src/runtime/`         | C runtime library (strings, arrays, I/O, numeric, OOP)                   |
+| `src/support/`         | Shared support: diagnostics, arena, source manager, symbols, result      |
+| `src/common/`          | Cross-cutting utils (mangling, integer helpers, process runner)          |
+| `src/parse/`           | Cursor utilities used by frontends (`include/viper/parse/Cursor.h`)      |
+| `src/pass/`            | Generic pass manager façade (`include/viper/pass/PassManager.hpp`)       |
+| `src/tools/`           | CLI tools (`ilc`, `vbasic`, `ilrun`, `il-verify`, `il-dis`, BASIC utils) |
+| `src/lib/graphics/`    | ViperGFX 2D graphics library (C API, examples, tests)                    |
+| `src/tui/`             | Minimal TUI utility + tests (`apps/tui_demo.cpp`)                        |
+| `src/tests/`           | Unit, golden, e2e, and perf tests by area                                |
+| `include/`             | Public headers (`viper/il`, `viper/vm`, `viper/runtime`, `viper/...`)    |
+| `src/buildmeta/`       | Version files (`IL_VERSION`, `VERSION`) used at build time               |
 
 ## Subsystems
 

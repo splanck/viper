@@ -6,7 +6,9 @@ last-updated: 2025-12-07
 
 # Viper Pascal — Reference
 
-Complete language reference for Viper Pascal. This document describes **program structure**, **statements**, **expressions & operators**, **built-in functions**, **units**, and **exception handling**. For a tutorial introduction, see **[Pascal Tutorial](pascal-language.md)**.
+Complete language reference for Viper Pascal. This document describes **program structure**, **statements**, *
+*expressions & operators**, **built-in functions**, **units**, and **exception handling**. For a tutorial introduction,
+see **[Pascal Tutorial](pascal-language.md)**.
 
 ---
 
@@ -91,13 +93,13 @@ end.
 
 ### Literals
 
-| Type | Examples |
-|------|----------|
-| Integer | `42`, `-17`, `0` |
-| Real | `3.14`, `-0.5`, `1.0e10` |
-| String | `'Hello'`, `'It''s'` (escaped quote) |
-| Char | `'A'`, `'x'` |
-| Boolean | `True`, `False` |
+| Type    | Examples                             |
+|---------|--------------------------------------|
+| Integer | `42`, `-17`, `0`                     |
+| Real    | `3.14`, `-0.5`, `1.0e10`             |
+| String  | `'Hello'`, `'It''s'` (escaped quote) |
+| Char    | `'A'`, `'x'`                         |
+| Boolean | `True`, `False`                      |
 
 ### Separators
 
@@ -113,13 +115,13 @@ end.
 
 ### Basic Types
 
-| Type | Description | Range/Size |
-|------|-------------|------------|
-| `Integer` | Signed integer | 64-bit |
-| `Real` | Floating point | 64-bit IEEE 754 |
-| `Boolean` | Logical value | `True`, `False` |
-| `Char` | Single character | 8-bit |
-| `String` | Text string | Dynamic length |
+| Type      | Description      | Range/Size      |
+|-----------|------------------|-----------------|
+| `Integer` | Signed integer   | 64-bit          |
+| `Real`    | Floating point   | 64-bit IEEE 754 |
+| `Boolean` | Logical value    | `True`, `False` |
+| `Char`    | Single character | 8-bit           |
+| `String`  | Text string      | Dynamic length  |
 
 ### Type Aliases
 
@@ -211,9 +213,9 @@ end;
 
 ### Visibility Sections
 
-| Section | Access |
-|---------|--------|
-| `public` | Accessible from anywhere |
+| Section   | Access                           |
+|-----------|----------------------------------|
+| `public`  | Accessible from anywhere         |
 | `private` | Only accessible within the class |
 
 ```pascal
@@ -251,6 +253,7 @@ end;
 ```
 
 **Notes:**
+
 - Constructors are named `Create` by convention but can have any name
 - Destructors must be named `Destroy`
 - Use `inherited` to call base class destructor
@@ -561,10 +564,10 @@ end;
 
 ### Parameter Passing
 
-| Mode | Syntax | Semantics |
-|------|--------|-----------|
-| Value | `x: Integer` | Copy passed, original unchanged |
-| Reference | `var x: Integer` | Original variable modified |
+| Mode      | Syntax           | Semantics                       |
+|-----------|------------------|---------------------------------|
+| Value     | `x: Integer`     | Copy passed, original unchanged |
+| Reference | `var x: Integer` | Original variable modified      |
 
 ```pascal
 procedure Increment(var n: Integer);
@@ -729,41 +732,41 @@ Process(a, b, c);
 
 ### Arithmetic Operators
 
-| Operator | Description | Example |
-|----------|-------------|---------|
-| `+` | Addition | `a + b` |
-| `-` | Subtraction | `a - b` |
-| `*` | Multiplication | `a * b` |
-| `/` | Real division | `a / b` |
-| `div` | Integer division | `a div b` |
-| `mod` | Modulus | `a mod b` |
-| `-` | Unary minus | `-x` |
+| Operator | Description      | Example   |
+|----------|------------------|-----------|
+| `+`      | Addition         | `a + b`   |
+| `-`      | Subtraction      | `a - b`   |
+| `*`      | Multiplication   | `a * b`   |
+| `/`      | Real division    | `a / b`   |
+| `div`    | Integer division | `a div b` |
+| `mod`    | Modulus          | `a mod b` |
+| `-`      | Unary minus      | `-x`      |
 
 ### Comparison Operators
 
-| Operator | Description | Example |
-|----------|-------------|---------|
-| `=` | Equal | `a = b` |
-| `<>` | Not equal | `a <> b` |
-| `<` | Less than | `a < b` |
-| `<=` | Less or equal | `a <= b` |
-| `>` | Greater than | `a > b` |
-| `>=` | Greater or equal | `a >= b` |
+| Operator | Description      | Example  |
+|----------|------------------|----------|
+| `=`      | Equal            | `a = b`  |
+| `<>`     | Not equal        | `a <> b` |
+| `<`      | Less than        | `a < b`  |
+| `<=`     | Less or equal    | `a <= b` |
+| `>`      | Greater than     | `a > b`  |
+| `>=`     | Greater or equal | `a >= b` |
 
 ### Boolean Operators
 
-| Operator | Description | Example |
-|----------|-------------|---------|
-| `and` | Logical AND | `a and b` |
-| `or` | Logical OR | `a or b` |
-| `not` | Logical NOT | `not a` |
-| `xor` | Logical XOR | `a xor b` |
+| Operator | Description | Example   |
+|----------|-------------|-----------|
+| `and`    | Logical AND | `a and b` |
+| `or`     | Logical OR  | `a or b`  |
+| `not`    | Logical NOT | `not a`   |
+| `xor`    | Logical XOR | `a xor b` |
 
 ### String Operators
 
-| Operator | Description | Example |
-|----------|-------------|---------|
-| `+` | Concatenation | `'Hello' + ' World'` |
+| Operator | Description   | Example              |
+|----------|---------------|----------------------|
+| `+`      | Concatenation | `'Hello' + ' World'` |
 
 ### Operator Precedence (High to Low)
 
@@ -778,69 +781,69 @@ Process(a, b, c);
 
 ### I/O Procedures
 
-| Name | Description |
-|------|-------------|
-| `Write(...)` | Write values without newline |
-| `WriteLn(...)` | Write values with newline |
-| `Read(var)` | Read value from input |
-| `ReadLn(var)` | Read line from input |
+| Name           | Description                  |
+|----------------|------------------------------|
+| `Write(...)`   | Write values without newline |
+| `WriteLn(...)` | Write values with newline    |
+| `Read(var)`    | Read value from input        |
+| `ReadLn(var)`  | Read line from input         |
 
 ### String Functions
 
-| Name | Arguments | Returns | Description |
-|------|-----------|---------|-------------|
-| `Length` | `(s: String)` | `Integer` | String length |
-| `Copy` | `(s: String; start, len: Integer)` | `String` | Substring (1-based) |
-| `Pos` | `(substr, s: String)` | `Integer` | Find position (0 if not found) |
-| `Concat` | `(s1, s2: String)` | `String` | Concatenate strings |
-| `UpCase` | `(c: Char)` | `Char` | Uppercase character |
-| `LowerCase` | `(s: String)` | `String` | Lowercase string |
-| `UpperCase` | `(s: String)` | `String` | Uppercase string |
-| `Trim` | `(s: String)` | `String` | Remove whitespace |
+| Name        | Arguments                          | Returns   | Description                    |
+|-------------|------------------------------------|-----------|--------------------------------|
+| `Length`    | `(s: String)`                      | `Integer` | String length                  |
+| `Copy`      | `(s: String; start, len: Integer)` | `String`  | Substring (1-based)            |
+| `Pos`       | `(substr, s: String)`              | `Integer` | Find position (0 if not found) |
+| `Concat`    | `(s1, s2: String)`                 | `String`  | Concatenate strings            |
+| `UpCase`    | `(c: Char)`                        | `Char`    | Uppercase character            |
+| `LowerCase` | `(s: String)`                      | `String`  | Lowercase string               |
+| `UpperCase` | `(s: String)`                      | `String`  | Uppercase string               |
+| `Trim`      | `(s: String)`                      | `String`  | Remove whitespace              |
 
 ### Conversion Functions
 
-| Name | Arguments | Returns | Description |
-|------|-----------|---------|-------------|
-| `IntToStr` | `(n: Integer)` | `String` | Integer to string |
-| `FloatToStr` | `(x: Real)` | `String` | Float to string |
-| `StrToInt` | `(s: String)` | `Integer` | String to integer |
-| `StrToFloat` | `(s: String)` | `Real` | String to float |
-| `Ord` | `(c: Char)` | `Integer` | Character to ASCII |
-| `Chr` | `(n: Integer)` | `Char` | ASCII to character |
+| Name         | Arguments      | Returns   | Description        |
+|--------------|----------------|-----------|--------------------|
+| `IntToStr`   | `(n: Integer)` | `String`  | Integer to string  |
+| `FloatToStr` | `(x: Real)`    | `String`  | Float to string    |
+| `StrToInt`   | `(s: String)`  | `Integer` | String to integer  |
+| `StrToFloat` | `(s: String)`  | `Real`    | String to float    |
+| `Ord`        | `(c: Char)`    | `Integer` | Character to ASCII |
+| `Chr`        | `(n: Integer)` | `Char`    | ASCII to character |
 
 ### Math Functions
 
-| Name | Arguments | Returns | Description |
-|------|-----------|---------|-------------|
-| `Abs` | `(x)` | Same | Absolute value |
-| `Sqr` | `(x)` | Same | Square (x * x) |
-| `Sqrt` | `(x: Real)` | `Real` | Square root |
-| `Sin` | `(x: Real)` | `Real` | Sine |
-| `Cos` | `(x: Real)` | `Real` | Cosine |
-| `Tan` | `(x: Real)` | `Real` | Tangent |
-| `Exp` | `(x: Real)` | `Real` | e^x |
-| `Ln` | `(x: Real)` | `Real` | Natural logarithm |
-| `Round` | `(x: Real)` | `Integer` | Round to nearest |
+| Name    | Arguments   | Returns   | Description          |
+|---------|-------------|-----------|----------------------|
+| `Abs`   | `(x)`       | Same      | Absolute value       |
+| `Sqr`   | `(x)`       | Same      | Square (x * x)       |
+| `Sqrt`  | `(x: Real)` | `Real`    | Square root          |
+| `Sin`   | `(x: Real)` | `Real`    | Sine                 |
+| `Cos`   | `(x: Real)` | `Real`    | Cosine               |
+| `Tan`   | `(x: Real)` | `Real`    | Tangent              |
+| `Exp`   | `(x: Real)` | `Real`    | e^x                  |
+| `Ln`    | `(x: Real)` | `Real`    | Natural logarithm    |
+| `Round` | `(x: Real)` | `Integer` | Round to nearest     |
 | `Trunc` | `(x: Real)` | `Integer` | Truncate toward zero |
 
 ### Ordinal Functions
 
-| Name | Arguments | Returns | Description |
-|------|-----------|---------|-------------|
-| `Succ` | `(x)` | Same | Successor value |
-| `Pred` | `(x)` | Same | Predecessor value |
-| `Inc` | `(var x)` | — | Increment variable |
-| `Dec` | `(var x)` | — | Decrement variable |
+| Name   | Arguments | Returns | Description        |
+|--------|-----------|---------|--------------------|
+| `Succ` | `(x)`     | Same    | Successor value    |
+| `Pred` | `(x)`     | Same    | Predecessor value  |
+| `Inc`  | `(var x)` | —       | Increment variable |
+| `Dec`  | `(var x)` | —       | Decrement variable |
 
 ### Array Functions
 
-| Name | Arguments | Returns | Description |
-|------|-----------|---------|-------------|
-| `Low` | `(arr)` | `Integer` | Lowest index |
-| `High` | `(arr)` | `Integer` | Highest index |
-| `Length` | `(arr)` | `Integer` | Array length |
-| `SetLength` | `(var arr; len)` | — | Resize dynamic array |
+| Name        | Arguments        | Returns   | Description          |
+|-------------|------------------|-----------|----------------------|
+| `Low`       | `(arr)`          | `Integer` | Lowest index         |
+| `High`      | `(arr)`          | `Integer` | Highest index        |
+| `Length`    | `(arr)`          | `Integer` | Array length         |
+| `SetLength` | `(var arr; len)` | —         | Resize dynamic array |
 
 ---
 
@@ -893,6 +896,7 @@ end.
 ### Interface Section Rules
 
 The interface section may contain:
+
 - Constant declarations (`const`)
 - Type declarations (`type`)
 - Function and procedure signatures
@@ -1143,18 +1147,19 @@ end;
 Programs can run in two modes:
 
 1. **VM Execution** (default): `vpascal program.pas`
-   - Immediate execution via interpreter
-   - Full debugging support
-   - Overflow-checked arithmetic
+    - Immediate execution via interpreter
+    - Full debugging support
+    - Overflow-checked arithmetic
 
 2. **Native Compilation**: Via `ilc codegen arm64`
-   - Compile to native ARM64 binary
-   - Better performance
-   - Requires explicit compilation step
+    - Compile to native ARM64 binary
+    - Better performance
+    - Requires explicit compilation step
 
 ### Compatibility Notes
 
 Viper Pascal is inspired by standard Pascal but includes modernizations:
+
 - Exception handling (try/except/finally)
 - Dynamic strings
 - 64-bit integers by default

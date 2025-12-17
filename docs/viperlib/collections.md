@@ -20,30 +20,31 @@
 
 ## Viper.Collections.Bag
 
-A set data structure for storing unique strings. Efficiently handles membership testing, set operations (union, intersection, difference), and enumeration.
+A set data structure for storing unique strings. Efficiently handles membership testing, set operations (union,
+intersection, difference), and enumeration.
 
 **Type:** Instance (obj)
 **Constructor:** `NEW Viper.Collections.Bag()`
 
 ### Properties
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `Len` | Integer | Number of strings in the bag |
+| Property  | Type    | Description                     |
+|-----------|---------|---------------------------------|
+| `Len`     | Integer | Number of strings in the bag    |
 | `IsEmpty` | Boolean | True if bag contains no strings |
 
 ### Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `Put(str)` | `Boolean(String)` | Add a string; returns true if new, false if already present |
-| `Drop(str)` | `Boolean(String)` | Remove a string; returns true if removed, false if not found |
-| `Has(str)` | `Boolean(String)` | Check if string is in the bag |
-| `Clear()` | `Void()` | Remove all strings from the bag |
-| `Items()` | `Seq()` | Get all strings as a Seq (order undefined) |
-| `Merge(other)` | `Bag(Bag)` | Return new bag with union of both bags |
-| `Common(other)` | `Bag(Bag)` | Return new bag with intersection of both bags |
-| `Diff(other)` | `Bag(Bag)` | Return new bag with elements in this but not other |
+| Method          | Signature         | Description                                                  |
+|-----------------|-------------------|--------------------------------------------------------------|
+| `Put(str)`      | `Boolean(String)` | Add a string; returns true if new, false if already present  |
+| `Drop(str)`     | `Boolean(String)` | Remove a string; returns true if removed, false if not found |
+| `Has(str)`      | `Boolean(String)` | Check if string is in the bag                                |
+| `Clear()`       | `Void()`          | Remove all strings from the bag                              |
+| `Items()`       | `Seq()`           | Get all strings as a Seq (order undefined)                   |
+| `Merge(other)`  | `Bag(Bag)`        | Return new bag with union of both bags                       |
+| `Common(other)` | `Bag(Bag)`        | Return new bag with intersection of both bags                |
+| `Diff(other)`   | `Bag(Bag)`        | Return new bag with elements in this but not other           |
 
 ### Notes
 
@@ -122,6 +123,7 @@ An efficient byte array for binary data. More memory-efficient than Seq for byte
 
 **Type:** Instance (obj)
 **Constructors:**
+
 - `NEW Viper.Collections.Bytes(length)` - Create zero-filled byte array
 - `Viper.Collections.Bytes.FromStr(str)` - Create from string (UTF-8 bytes)
 - `Viper.Collections.Bytes.FromHex(hex)` - Create from hexadecimal string
@@ -129,24 +131,24 @@ An efficient byte array for binary data. More memory-efficient than Seq for byte
 
 ### Properties
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `Len` | Integer | Number of bytes |
+| Property | Type    | Description     |
+|----------|---------|-----------------|
+| `Len`    | Integer | Number of bytes |
 
 ### Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `Get(index)` | `Integer(Integer)` | Get byte value (0-255) at index |
-| `Set(index, value)` | `Void(Integer, Integer)` | Set byte value at index (clamped to 0-255) |
-| `Slice(start, end)` | `Bytes(Integer, Integer)` | Create new byte array from range [start, end) |
-| `Copy(dstOffset, src, srcOffset, count)` | `Void(...)` | Copy bytes between arrays |
-| `ToStr()` | `String()` | Convert to string (interprets as UTF-8) |
-| `ToHex()` | `String()` | Convert to lowercase hexadecimal string |
-| `ToBase64()` | `String()` | Convert to RFC 4648 Base64 string (A-Z a-z 0-9 + /, with '=' padding) |
-| `Fill(value)` | `Void(Integer)` | Set all bytes to value |
-| `Find(value)` | `Integer(Integer)` | Find first occurrence (-1 if not found) |
-| `Clone()` | `Bytes()` | Create independent copy |
+| Method                                   | Signature                 | Description                                                           |
+|------------------------------------------|---------------------------|-----------------------------------------------------------------------|
+| `Get(index)`                             | `Integer(Integer)`        | Get byte value (0-255) at index                                       |
+| `Set(index, value)`                      | `Void(Integer, Integer)`  | Set byte value at index (clamped to 0-255)                            |
+| `Slice(start, end)`                      | `Bytes(Integer, Integer)` | Create new byte array from range [start, end)                         |
+| `Copy(dstOffset, src, srcOffset, count)` | `Void(...)`               | Copy bytes between arrays                                             |
+| `ToStr()`                                | `String()`                | Convert to string (interprets as UTF-8)                               |
+| `ToHex()`                                | `String()`                | Convert to lowercase hexadecimal string                               |
+| `ToBase64()`                             | `String()`                | Convert to RFC 4648 Base64 string (A-Z a-z 0-9 + /, with '=' padding) |
+| `Fill(value)`                            | `Void(Integer)`           | Set all bytes to value                                                |
+| `Find(value)`                            | `Integer(Integer)`        | Find first occurrence (-1 if not found)                               |
+| `Clone()`                                | `Bytes()`                 | Create independent copy                                               |
 
 ### Example
 
@@ -211,23 +213,23 @@ Dynamic array that grows automatically. Stores object references.
 
 ### Properties
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `Count` | Integer | Number of items in the list |
+| Property | Type    | Description                 |
+|----------|---------|-----------------------------|
+| `Count`  | Integer | Number of items in the list |
 
 ### Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `Add(item)` | `Void(Object)` | Appends an item to the end of the list |
-| `Clear()` | `Void()` | Removes all items from the list |
-| `Has(item)` | `Boolean(Object)` | Returns true if the list contains the object (reference equality) |
-| `Find(item)` | `Integer(Object)` | Returns index of the first matching object, or `-1` if not found |
-| `Insert(index, item)` | `Void(Integer, Object)` | Inserts the item at `index` (0..Count); `index == Count` appends; traps if out of range |
-| `Remove(item)` | `Boolean(Object)` | Removes the first matching object (reference equality); returns true if removed |
-| `RemoveAt(index)` | `Void(Integer)` | Removes the item at the specified index |
-| `get_Item(index)` | `Object(Integer)` | Gets the item at the specified index |
-| `set_Item(index, value)` | `Void(Integer, Object)` | Sets the item at the specified index |
+| Method                   | Signature               | Description                                                                             |
+|--------------------------|-------------------------|-----------------------------------------------------------------------------------------|
+| `Add(item)`              | `Void(Object)`          | Appends an item to the end of the list                                                  |
+| `Clear()`                | `Void()`                | Removes all items from the list                                                         |
+| `Has(item)`              | `Boolean(Object)`       | Returns true if the list contains the object (reference equality)                       |
+| `Find(item)`             | `Integer(Object)`       | Returns index of the first matching object, or `-1` if not found                        |
+| `Insert(index, item)`    | `Void(Integer, Object)` | Inserts the item at `index` (0..Count); `index == Count` appends; traps if out of range |
+| `Remove(item)`           | `Boolean(Object)`       | Removes the first matching object (reference equality); returns true if removed         |
+| `RemoveAt(index)`        | `Void(Integer)`         | Removes the item at the specified index                                                 |
+| `get_Item(index)`        | `Object(Integer)`       | Gets the item at the specified index                                                    |
+| `set_Item(index, value)` | `Void(Integer, Object)` | Sets the item at the specified index                                                    |
 
 ### Example
 
@@ -270,24 +272,24 @@ A key-value dictionary with string keys. Provides O(1) average-case lookup, inse
 
 ### Properties
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `Len` | Integer | Number of key-value pairs in the map |
+| Property  | Type    | Description                            |
+|-----------|---------|----------------------------------------|
+| `Len`     | Integer | Number of key-value pairs in the map   |
 | `IsEmpty` | Boolean | Returns true if the map has no entries |
 
 ### Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `Set(key, value)` | `Void(String, Object)` | Add or update key-value pair |
-| `Get(key)` | `Object(String)` | Get value for key (returns NULL if not found) |
-| `GetOr(key, defaultValue)` | `Object(String, Object)` | Get value for key, or return `defaultValue` if missing (does not insert) |
-| `Has(key)` | `Boolean(String)` | Check if key exists |
-| `SetIfMissing(key, value)` | `Boolean(String, Object)` | Insert key-value pair only when missing; returns true if inserted |
-| `Remove(key)` | `Boolean(String)` | Remove key-value pair; returns true if found |
-| `Clear()` | `Void()` | Remove all entries |
-| `Keys()` | `Seq()` | Get sequence of all keys |
-| `Values()` | `Seq()` | Get sequence of all values |
+| Method                     | Signature                 | Description                                                              |
+|----------------------------|---------------------------|--------------------------------------------------------------------------|
+| `Set(key, value)`          | `Void(String, Object)`    | Add or update key-value pair                                             |
+| `Get(key)`                 | `Object(String)`          | Get value for key (returns NULL if not found)                            |
+| `GetOr(key, defaultValue)` | `Object(String, Object)`  | Get value for key, or return `defaultValue` if missing (does not insert) |
+| `Has(key)`                 | `Boolean(String)`         | Check if key exists                                                      |
+| `SetIfMissing(key, value)` | `Boolean(String, Object)` | Insert key-value pair only when missing; returns true if inserted        |
+| `Remove(key)`              | `Boolean(String)`         | Remove key-value pair; returns true if found                             |
+| `Clear()`                  | `Void()`                  | Remove all entries                                                       |
+| `Keys()`                   | `Seq()`                   | Get sequence of all keys                                                 |
+| `Values()`                 | `Seq()`                   | Get sequence of all values                                               |
 
 ### Example
 
@@ -349,26 +351,27 @@ PRINT scores.IsEmpty  ' Output: True
 
 ## Viper.Collections.Queue
 
-A FIFO (first-in-first-out) collection. Elements are added at the back and removed from the front. Implemented as a circular buffer for O(1) add and take operations.
+A FIFO (first-in-first-out) collection. Elements are added at the back and removed from the front. Implemented as a
+circular buffer for O(1) add and take operations.
 
 **Type:** Instance (obj)
 **Constructor:** `NEW Viper.Collections.Queue()`
 
 ### Properties
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `Len` | Integer | Number of elements in the queue |
+| Property  | Type    | Description                               |
+|-----------|---------|-------------------------------------------|
+| `Len`     | Integer | Number of elements in the queue           |
 | `IsEmpty` | Boolean | Returns true if the queue has no elements |
 
 ### Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `Add(value)` | `Void(Object)` | Add element to back of queue |
-| `Take()` | `Object()` | Remove and return front element (traps if empty) |
-| `Peek()` | `Object()` | Return front element without removing (traps if empty) |
-| `Clear()` | `Void()` | Remove all elements |
+| Method       | Signature      | Description                                            |
+|--------------|----------------|--------------------------------------------------------|
+| `Add(value)` | `Void(Object)` | Add element to back of queue                           |
+| `Take()`     | `Object()`     | Remove and return front element (traps if empty)       |
+| `Peek()`     | `Object()`     | Return front element without removing (traps if empty) |
+| `Clear()`    | `Void()`       | Remove all elements                                    |
 
 ### Example
 
@@ -405,7 +408,8 @@ PRINT queue.IsEmpty  ' Output: True
 
 ## Viper.Collections.Ring
 
-A fixed-size circular buffer (ring buffer). When full, pushing new elements automatically overwrites the oldest elements.
+A fixed-size circular buffer (ring buffer). When full, pushing new elements automatically overwrites the oldest
+elements.
 
 **Type:** Instance class
 
@@ -413,22 +417,22 @@ A fixed-size circular buffer (ring buffer). When full, pushing new elements auto
 
 ### Properties
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `Len` | `Integer` | Number of elements currently stored |
-| `Cap` | `Integer` | Maximum capacity (fixed at creation) |
-| `IsEmpty` | `Boolean` | True if ring has no elements |
-| `IsFull` | `Boolean` | True if ring is at capacity |
+| Property  | Type      | Description                          |
+|-----------|-----------|--------------------------------------|
+| `Len`     | `Integer` | Number of elements currently stored  |
+| `Cap`     | `Integer` | Maximum capacity (fixed at creation) |
+| `IsEmpty` | `Boolean` | True if ring has no elements         |
+| `IsFull`  | `Boolean` | True if ring is at capacity          |
 
 ### Methods
 
-| Method | Returns | Description |
-|--------|---------|-------------|
-| `Push(item)` | void | Add item; overwrites oldest if full |
-| `Pop()` | Object | Remove and return oldest item (NULL if empty) |
-| `Peek()` | Object | Return oldest item without removing (NULL if empty) |
-| `Get(index)` | Object | Get item by logical index (0 = oldest) |
-| `Clear()` | void | Remove all elements |
+| Method       | Returns | Description                                         |
+|--------------|---------|-----------------------------------------------------|
+| `Push(item)` | void    | Add item; overwrites oldest if full                 |
+| `Pop()`      | Object  | Remove and return oldest item (NULL if empty)       |
+| `Peek()`     | Object  | Return oldest item without removing (NULL if empty) |
+| `Get(index)` | Object  | Get item by logical index (0 = oldest)              |
+| `Clear()`    | void    | Remove all elements                                 |
 
 ### Example
 
@@ -478,40 +482,41 @@ PRINT recent.IsEmpty    ' Output: 1 (true)
 
 ## Viper.Collections.Seq
 
-Dynamic sequence (growable array) with stack and queue operations. Viper's primary growable collection type, supporting push/pop, insert/remove, and slicing operations.
+Dynamic sequence (growable array) with stack and queue operations. Viper's primary growable collection type, supporting
+push/pop, insert/remove, and slicing operations.
 
 **Type:** Instance (obj)
 **Constructor:** `NEW Viper.Collections.Seq()` or `Viper.Collections.Seq.WithCapacity(cap)`
 
 ### Properties
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `Len` | Integer | Number of elements currently in the sequence |
-| `Cap` | Integer | Current allocated capacity |
+| Property  | Type    | Description                                    |
+|-----------|---------|------------------------------------------------|
+| `Len`     | Integer | Number of elements currently in the sequence   |
+| `Cap`     | Integer | Current allocated capacity                     |
 | `IsEmpty` | Boolean | Returns true if the sequence has zero elements |
 
 ### Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `Get(index)` | `Object(Integer)` | Returns the element at the specified index (0-based) |
-| `Set(index, value)` | `Void(Integer, Object)` | Sets the element at the specified index |
-| `Push(value)` | `Void(Object)` | Appends an element to the end |
-| `PushAll(other)` | `Void(Seq)` | Appends all elements of `other` onto this sequence (self-appends double the sequence) |
-| `Pop()` | `Object()` | Removes and returns the last element |
-| `Peek()` | `Object()` | Returns the last element without removing it |
-| `First()` | `Object()` | Returns the first element |
-| `Last()` | `Object()` | Returns the last element |
-| `Insert(index, value)` | `Void(Integer, Object)` | Inserts an element at the specified position |
-| `Remove(index)` | `Object(Integer)` | Removes and returns the element at the specified position |
-| `Clear()` | `Void()` | Removes all elements |
-| `Find(value)` | `Integer(Object)` | Returns the index of a value, or -1 if not found |
-| `Has(value)` | `Boolean(Object)` | Returns true if the sequence contains the value |
-| `Reverse()` | `Void()` | Reverses the elements in place |
-| `Shuffle()` | `Void()` | Shuffles the elements in place (deterministic when `Viper.Random.Seed` is set) |
-| `Slice(start, end)` | `Seq(Integer, Integer)` | Returns a new sequence with elements from start (inclusive) to end (exclusive) |
-| `Clone()` | `Seq()` | Returns a shallow copy of the sequence |
+| Method                 | Signature               | Description                                                                           |
+|------------------------|-------------------------|---------------------------------------------------------------------------------------|
+| `Get(index)`           | `Object(Integer)`       | Returns the element at the specified index (0-based)                                  |
+| `Set(index, value)`    | `Void(Integer, Object)` | Sets the element at the specified index                                               |
+| `Push(value)`          | `Void(Object)`          | Appends an element to the end                                                         |
+| `PushAll(other)`       | `Void(Seq)`             | Appends all elements of `other` onto this sequence (self-appends double the sequence) |
+| `Pop()`                | `Object()`              | Removes and returns the last element                                                  |
+| `Peek()`               | `Object()`              | Returns the last element without removing it                                          |
+| `First()`              | `Object()`              | Returns the first element                                                             |
+| `Last()`               | `Object()`              | Returns the last element                                                              |
+| `Insert(index, value)` | `Void(Integer, Object)` | Inserts an element at the specified position                                          |
+| `Remove(index)`        | `Object(Integer)`       | Removes and returns the element at the specified position                             |
+| `Clear()`              | `Void()`                | Removes all elements                                                                  |
+| `Find(value)`          | `Integer(Object)`       | Returns the index of a value, or -1 if not found                                      |
+| `Has(value)`           | `Boolean(Object)`       | Returns true if the sequence contains the value                                       |
+| `Reverse()`            | `Void()`                | Reverses the elements in place                                                        |
+| `Shuffle()`            | `Void()`                | Shuffles the elements in place (deterministic when `Viper.Random.Seed` is set)        |
+| `Slice(start, end)`    | `Seq(Integer, Integer)` | Returns a new sequence with elements from start (inclusive) to end (exclusive)        |
+| `Clone()`              | `Seq()`                 | Returns a shallow copy of the sequence                                                |
 
 ### Example
 
@@ -606,19 +611,19 @@ A LIFO (last-in-first-out) collection. Elements are added and removed from the t
 
 ### Properties
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `Len` | Integer | Number of elements on the stack |
+| Property  | Type    | Description                               |
+|-----------|---------|-------------------------------------------|
+| `Len`     | Integer | Number of elements on the stack           |
 | `IsEmpty` | Boolean | Returns true if the stack has no elements |
 
 ### Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `Push(value)` | `Void(Object)` | Add element to top of stack |
-| `Pop()` | `Object()` | Remove and return top element (traps if empty) |
-| `Peek()` | `Object()` | Return top element without removing (traps if empty) |
-| `Clear()` | `Void()` | Remove all elements |
+| Method        | Signature      | Description                                          |
+|---------------|----------------|------------------------------------------------------|
+| `Push(value)` | `Void(Object)` | Add element to top of stack                          |
+| `Pop()`       | `Object()`     | Remove and return top element (traps if empty)       |
+| `Peek()`      | `Object()`     | Return top element without removing (traps if empty) |
+| `Clear()`     | `Void()`       | Remove all elements                                  |
 
 ### Example
 
@@ -655,33 +660,34 @@ PRINT stack.IsEmpty  ' Output: True
 
 ## Viper.Collections.TreeMap
 
-A sorted key-value map that maintains keys in sorted order. Uses a sorted array with binary search for O(log n) lookups. Supports range queries via Floor/Ceil operations.
+A sorted key-value map that maintains keys in sorted order. Uses a sorted array with binary search for O(log n) lookups.
+Supports range queries via Floor/Ceil operations.
 
 **Type:** Instance (obj)
 **Constructor:** `NEW Viper.Collections.TreeMap()`
 
 ### Properties
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `Len` | Integer | Number of key-value pairs in the map |
+| Property  | Type    | Description                            |
+|-----------|---------|----------------------------------------|
+| `Len`     | Integer | Number of key-value pairs in the map   |
 | `IsEmpty` | Boolean | Returns true if the map has no entries |
 
 ### Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `Set(key, value)` | `Void(String, Object)` | Set or update a key-value pair |
-| `Get(key)` | `Object(String)` | Get the value for a key (returns null if not found) |
-| `Has(key)` | `Boolean(String)` | Check if a key exists |
-| `Drop(key)` | `Boolean(String)` | Remove a key-value pair; returns true if removed |
-| `Clear()` | `Void()` | Remove all entries |
-| `Keys()` | `Seq()` | Get all keys as a Seq in sorted order |
-| `Values()` | `Seq()` | Get all values as a Seq in key-sorted order |
-| `First()` | `String()` | Get the smallest (first) key; returns empty string if empty |
-| `Last()` | `String()` | Get the largest (last) key; returns empty string if empty |
-| `Floor(key)` | `String()` | Get the largest key <= given key; returns empty string if none |
-| `Ceil(key)` | `String()` | Get the smallest key >= given key; returns empty string if none |
+| Method            | Signature              | Description                                                     |
+|-------------------|------------------------|-----------------------------------------------------------------|
+| `Set(key, value)` | `Void(String, Object)` | Set or update a key-value pair                                  |
+| `Get(key)`        | `Object(String)`       | Get the value for a key (returns null if not found)             |
+| `Has(key)`        | `Boolean(String)`      | Check if a key exists                                           |
+| `Drop(key)`       | `Boolean(String)`      | Remove a key-value pair; returns true if removed                |
+| `Clear()`         | `Void()`               | Remove all entries                                              |
+| `Keys()`          | `Seq()`                | Get all keys as a Seq in sorted order                           |
+| `Values()`        | `Seq()`                | Get all values as a Seq in key-sorted order                     |
+| `First()`         | `String()`             | Get the smallest (first) key; returns empty string if empty     |
+| `Last()`          | `String()`             | Get the largest (last) key; returns empty string if empty       |
+| `Floor(key)`      | `String()`             | Get the largest key <= given key; returns empty string if none  |
+| `Ceil(key)`       | `String()`             | Get the smallest key >= given key; returns empty string if none |
 
 ### Example
 
@@ -711,12 +717,12 @@ PRINT tm.Ceil("blueberry")   ' Output: "cherry" (smallest key >= "blueberry")
 
 ### TreeMap vs Map
 
-| Feature | TreeMap | Map |
-|---------|---------|-----|
-| Key order | Sorted | Unordered |
-| Lookup | O(log n) | O(1) average |
-| Insert | O(n) | O(1) average |
-| First/Last | O(1) | Not available |
+| Feature    | TreeMap  | Map           |
+|------------|----------|---------------|
+| Key order  | Sorted   | Unordered     |
+| Lookup     | O(log n) | O(1) average  |
+| Insert     | O(n)     | O(1) average  |
+| First/Last | O(1)     | Not available |
 | Floor/Ceil | O(log n) | Not available |
 
 ### Use Cases

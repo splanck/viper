@@ -21,16 +21,16 @@ Command-line arguments and environment access.
 
 ### Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `GetArgumentCount()` | `Integer()` | Returns the number of command-line arguments |
-| `GetArgument(index)` | `String(Integer)` | Returns the argument at the specified index (0-based) |
-| `GetCommandLine()` | `String()` | Returns the full command line as a single string |
-| `GetVariable(name)` | `String(String)` | Returns the value of an environment variable, or `""` when missing |
-| `HasVariable(name)` | `Boolean(String)` | Returns `TRUE` when the environment variable exists |
-| `IsNative()` | `Boolean()` | Returns `TRUE` when running native code, `FALSE` when running in the VM |
-| `SetVariable(name, value)` | `Void(String, String)` | Sets or overwrites an environment variable (empty value allowed) |
-| `EndProgram(code)` | `Void(Integer)` | Terminates the program with the provided exit code |
+| Method                     | Signature              | Description                                                             |
+|----------------------------|------------------------|-------------------------------------------------------------------------|
+| `GetArgumentCount()`       | `Integer()`            | Returns the number of command-line arguments                            |
+| `GetArgument(index)`       | `String(Integer)`      | Returns the argument at the specified index (0-based)                   |
+| `GetCommandLine()`         | `String()`             | Returns the full command line as a single string                        |
+| `GetVariable(name)`        | `String(String)`       | Returns the value of an environment variable, or `""` when missing      |
+| `HasVariable(name)`        | `Boolean(String)`      | Returns `TRUE` when the environment variable exists                     |
+| `IsNative()`               | `Boolean()`            | Returns `TRUE` when running native code, `FALSE` when running in the VM |
+| `SetVariable(name, value)` | `Void(String, String)` | Sets or overwrites an environment variable (empty value allowed)        |
+| `EndProgram(code)`         | `Void(Integer)`        | Terminates the program with the provided exit code                      |
 
 ### Example
 
@@ -79,18 +79,21 @@ External command execution for running system commands and capturing output.
 
 ### Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `Run(program)` | `Integer(String)` | Execute program, wait for completion, return exit code |
-| `RunArgs(program, args)` | `Integer(String, Seq)` | Execute program with arguments, return exit code |
-| `Capture(program)` | `String(String)` | Execute program, capture and return stdout |
-| `CaptureArgs(program, args)` | `String(String, Seq)` | Execute program with arguments, capture stdout |
-| `Shell(command)` | `Integer(String)` | Run command through system shell, return exit code |
-| `ShellCapture(command)` | `String(String)` | Run command through shell, capture stdout |
+| Method                       | Signature              | Description                                            |
+|------------------------------|------------------------|--------------------------------------------------------|
+| `Run(program)`               | `Integer(String)`      | Execute program, wait for completion, return exit code |
+| `RunArgs(program, args)`     | `Integer(String, Seq)` | Execute program with arguments, return exit code       |
+| `Capture(program)`           | `String(String)`       | Execute program, capture and return stdout             |
+| `CaptureArgs(program, args)` | `String(String, Seq)`  | Execute program with arguments, capture stdout         |
+| `Shell(command)`             | `Integer(String)`      | Run command through system shell, return exit code     |
+| `ShellCapture(command)`      | `String(String)`       | Run command through shell, capture stdout              |
 
 ### Security Warning
 
-**Shell injection vulnerability:** The `Shell` and `ShellCapture` methods pass commands directly to the system shell (`/bin/sh -c` on Unix, `cmd /c` on Windows). Never pass unsanitized user input to these functions. If you need to run a command with user-provided data, use `RunArgs` or `CaptureArgs` instead, which safely handle arguments without shell interpretation.
+**Shell injection vulnerability:** The `Shell` and `ShellCapture` methods pass commands directly to the system shell (
+`/bin/sh -c` on Unix, `cmd /c` on Windows). Never pass unsanitized user input to these functions. If you need to run a
+command with user-provided data, use `RunArgs` or `CaptureArgs` instead, which safely handle arguments without shell
+interpretation.
 
 ```basic
 ' DANGEROUS - shell injection risk:
@@ -145,9 +148,11 @@ END IF
 
 ### Platform Notes
 
-- **Run/RunArgs/Capture/CaptureArgs**: Execute programs directly using `posix_spawn` (Unix) or `CreateProcess` (Windows). Arguments are passed without shell interpretation.
+- **Run/RunArgs/Capture/CaptureArgs**: Execute programs directly using `posix_spawn` (Unix) or `CreateProcess` (
+  Windows). Arguments are passed without shell interpretation.
 - **Shell/ShellCapture**: Use `/bin/sh -c` on Unix or `cmd /c` on Windows. Commands are interpreted by the shell.
-- Exit codes: 0 typically indicates success. Negative values indicate the process was terminated by a signal (Unix) or failed to start.
+- Exit codes: 0 typically indicates success. Negative values indicate the process was terminated by a signal (Unix) or
+  failed to start.
 - Capture functions return empty string if the program fails to start.
 
 ---
@@ -160,18 +165,18 @@ System information queries providing read-only access to machine properties.
 
 ### Properties
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `OS` | `String` | Operating system name: `"linux"`, `"macos"`, `"windows"`, or `"unknown"` |
-| `OSVer` | `String` | Operating system version string (e.g., `"14.2.1"` on macOS) |
-| `Host` | `String` | Machine hostname |
-| `User` | `String` | Current username |
-| `Home` | `String` | Path to user's home directory |
-| `Temp` | `String` | Path to system temporary directory |
-| `Cores` | `Integer` | Number of logical CPU cores |
-| `MemTotal` | `Integer` | Total RAM in bytes |
-| `MemFree` | `Integer` | Available RAM in bytes |
-| `Endian` | `String` | Byte order: `"little"` or `"big"` |
+| Property   | Type      | Description                                                              |
+|------------|-----------|--------------------------------------------------------------------------|
+| `OS`       | `String`  | Operating system name: `"linux"`, `"macos"`, `"windows"`, or `"unknown"` |
+| `OSVer`    | `String`  | Operating system version string (e.g., `"14.2.1"` on macOS)              |
+| `Host`     | `String`  | Machine hostname                                                         |
+| `User`     | `String`  | Current username                                                         |
+| `Home`     | `String`  | Path to user's home directory                                            |
+| `Temp`     | `String`  | Path to system temporary directory                                       |
+| `Cores`    | `Integer` | Number of logical CPU cores                                              |
+| `MemTotal` | `Integer` | Total RAM in bytes                                                       |
+| `MemFree`  | `Integer` | Available RAM in bytes                                                   |
+| `Endian`   | `String`  | Byte order: `"little"` or `"big"`                                        |
 
 ### Example
 
@@ -217,13 +222,16 @@ END IF
 ### Platform Notes
 
 - **OS**: Returns lowercase platform identifier. Compile-time detection.
-- **OSVer**: On macOS reads `kern.osproductversion` via sysctl. On Linux reads `/etc/os-release` VERSION_ID. Falls back to `uname` release string.
+- **OSVer**: On macOS reads `kern.osproductversion` via sysctl. On Linux reads `/etc/os-release` VERSION_ID. Falls back
+  to `uname` release string.
 - **Host**: Uses `gethostname()` on Unix, `GetComputerName()` on Windows.
 - **User**: Uses `getpwuid()` on Unix, `GetUserName()` on Windows, with fallback to environment variables.
 - **Home**: Uses `HOME` environment variable on Unix, `USERPROFILE` on Windows.
 - **Temp**: Uses `TMPDIR`/`TMP`/`TEMP` environment variables on Unix (defaulting to `/tmp`), `GetTempPath()` on Windows.
-- **Cores**: Returns logical (hyper-threaded) core count via `sysconf(_SC_NPROCESSORS_ONLN)` on Unix, `GetSystemInfo()` on Windows.
-- **MemTotal/MemFree**: On macOS uses `sysctl` and `host_statistics64`. On Linux uses `sysinfo()`. On Windows uses `GlobalMemoryStatusEx()`.
+- **Cores**: Returns logical (hyper-threaded) core count via `sysconf(_SC_NPROCESSORS_ONLN)` on Unix, `GetSystemInfo()`
+  on Windows.
+- **MemTotal/MemFree**: On macOS uses `sysctl` and `host_statistics64`. On Linux uses `sysinfo()`. On Windows uses
+  `GlobalMemoryStatusEx()`.
 - **Endian**: Runtime detection via union trick. Most modern systems are little-endian.
 
 ---
@@ -236,12 +244,12 @@ Terminal input and output operations.
 
 ### Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `PrintStr(text)` | `Void(String)` | Writes text to standard output |
-| `PrintI64(value)` | `Void(I64)` | Writes an integer to standard output |
-| `PrintF64(value)` | `Void(F64)` | Writes a floating-point number to standard output |
-| `ReadLine()` | `String()` | Reads a line of text from standard input |
+| Method            | Signature      | Description                                       |
+|-------------------|----------------|---------------------------------------------------|
+| `PrintStr(text)`  | `Void(String)` | Writes text to standard output                    |
+| `PrintI64(value)` | `Void(I64)`    | Writes an integer to standard output              |
+| `PrintF64(value)` | `Void(F64)`    | Writes a floating-point number to standard output |
+| `ReadLine()`      | `String()`     | Reads a line of text from standard input          |
 
 ### Example
 
@@ -256,7 +264,8 @@ Viper.Terminal.PrintStr(CHR$(10))
 
 ### Note
 
-For most BASIC programs, the `PRINT` and `INPUT` statements are more convenient. Use `Viper.Terminal` when you need explicit control or are working at the IL level.
+For most BASIC programs, the `PRINT` and `INPUT` statements are more convenient. Use `Viper.Terminal` when you need
+explicit control or are working at the IL level.
 
 ### Backward Compatibility
 

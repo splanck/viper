@@ -6,7 +6,9 @@ last-verified: 2025-11-13
 
 # Viper IL — Complete Guide
 
-Comprehensive guide to Viper's Intermediate Language (IL), covering everything from quickstart to advanced topics. This document consolidates the quickstart, normative reference, BASIC lowering rules, optimization passes, and worked examples for IL v0.1.
+Comprehensive guide to Viper's Intermediate Language (IL), covering everything from quickstart to advanced topics. This
+document consolidates the quickstart, normative reference, BASIC lowering rules, optimization passes, and worked
+examples for IL v0.1.
 
 > **Note:** IL v0.1.2 features are documented where they differ from v0.1.
 
@@ -28,13 +30,16 @@ Comprehensive guide to Viper's Intermediate Language (IL), covering everything f
 ---
 
 <a id="quickstart"></a>
+
 ## Quickstart
 
-Welcome! This guide is for developers from languages like C#, Java, TypeScript, or Python who want a hands-on tour of Viper's intermediate language. **No prior compiler experience is required.**
+Welcome! This guide is for developers from languages like C#, Java, TypeScript, or Python who want a hands-on tour of
+Viper's intermediate language. **No prior compiler experience is required.**
 
 ### What is Viper IL?
 
-Viper IL is the **"thin waist"** of the Viper toolchain — a versioned, textual intermediate representation that decouples frontends from backends:
+Viper IL is the **"thin waist"** of the Viper toolchain — a versioned, textual intermediate representation that
+decouples frontends from backends:
 
 - **Frontends** (BASIC, Pascal, etc.) compile to IL
 - **VM** executes IL deterministically
@@ -55,19 +60,23 @@ Viper IL is the **"thin waist"** of the Viper toolchain — a versioned, textual
 An IL module is plain text. Its top‑level layout is:
 
 1. **Version line** – `il 0.1` (or `il 0.1.2` for experimental features) pins the expected IL grammar.
-2. **Extern declarations** – `extern @name(signature) -> ret` describes functions provided by the runtime or other modules.
+2. **Extern declarations** – `extern @name(signature) -> ret` describes functions provided by the runtime or other
+   modules.
 3. **Global constants** – `global const str @.msg = "hi"` defines immutable data.
 4. **Functions** – `func @main() -> i64 { ... }` contains basic blocks and instructions.
 
 Inside a function:
 
-* Each basic block starts with a label like `entry:`. There is no fall‑through; control transfers with a terminator such as `ret`, `br`, or `cbr`.
+* Each basic block starts with a label like `entry:`. There is no fall‑through; control transfers with a terminator such
+  as `ret`, `br`, or `cbr`.
 * Instructions assign results to SSA registers (`%v0`, `%tmp1`). A register is defined once and used many times.
 * Comments begin with `#` and run to the end of the line.
 
-These pieces mirror what a compiler would normally keep in its internal IR and make it explicit for learning and debugging.
+These pieces mirror what a compiler would normally keep in its internal IR and make it explicit for learning and
+debugging.
 
 ### Your first IL program
+
 Create a file `first.il` with the contents:
 
 ```il
@@ -105,16 +114,21 @@ Expected output:
 - `}` – close the function body.
 
 Compatibility:
+
 - When built with `-DVIPER_RUNTIME_NS_DUAL=ON`, legacy `@rt_*` externs are accepted as aliases of `@Viper.*`.
 - New code should emit `@Viper.*`.
- - Planned: Starting in v0.3.0, legacy `@rt_*` aliases will be OFF by default. Enable with `-DVIPER_RUNTIME_NS_DUAL=ON` if you need to load legacy IL.
+- Planned: Starting in v0.3.0, legacy `@rt_*` aliases will be OFF by default. Enable with `-DVIPER_RUNTIME_NS_DUAL=ON`
+  if you need to load legacy IL.
 
-**What just happened?** `Viper.Console.PrintI64` is supplied by the runtime and prints its argument. Every function ends with a terminator such as `ret` giving the program's exit code.
+**What just happened?** `Viper.Console.PrintI64` is supplied by the runtime and prints its argument. Every function ends
+with a terminator such as `ret` giving the program's exit code.
 
 **Gotcha:** Every module must start with a version line (e.g., `il 0.1`).
 
 ### Values and types
-IL is statically typed and uses SSA-style virtual registers (`%v0`, `%t1`, ...). Primitive types include `i1` (bool), `i16`, `i32`, `i64`, `f64`, `ptr`, and `str`, plus specialized types `error` and `resumetok` for exception handling.
+
+IL is statically typed and uses SSA-style virtual registers (`%v0`, `%t1`, ...). Primitive types include `i1` (bool),
+`i16`, `i32`, `i64`, `f64`, `ptr`, and `str`, plus specialized types `error` and `resumetok` for exception handling.
 
 ```il
 il 0.1
@@ -142,6 +156,7 @@ entry:
 **Gotcha:** All integers are 64-bit; mixing `i64` and `f64` requires explicit casts.
 
 ### Locals, params, and calls
+
 Functions declare typed parameters. Values are passed and returned explicitly.
 
 ```il
@@ -200,6 +215,7 @@ entry:
 **Gotcha:** Comparison results are `i1`; printing them with `Viper.Console.PrintI64` zero-extends to `i64`.
 
 ### Control flow
+
 Blocks end with a terminator. `cbr` chooses a target based on an `i1` value.
 
 ```il
@@ -239,6 +255,7 @@ done:
 **Gotcha:** There is no fall-through; every block must end with a terminator.
 
 ### Strings and text
+
 Strings live in globals and use `Viper.Console.PrintStr` for output.
 
 ```il
@@ -266,6 +283,7 @@ entry:
 **Gotcha:** Strings are reference-counted; do not `alloca` them manually.
 
 ### Errors and exit codes
+
 Returning a non-zero `i64` sets the process exit code. `trap` reports an error and aborts.
 
 ```il
@@ -287,6 +305,7 @@ Running the above produces a non-zero exit and prints the message.
 **Gotcha:** After a `trap` the VM stops; no `ret` is required.
 
 ### From high-level code to IL
+
 A tiny BASIC program:
 
 ```basic
@@ -316,21 +335,25 @@ entry:
 **What just happened?** The front end evaluated the expression, emitted an `add`, and called the print routine.
 
 ### Debugging IL
+
 - `ilc -run --trace foo.il` prints each instruction as it executes.
 - `il-verify foo.il` checks structural rules without running.
 - Common errors like "type mismatch" or "undefined block" point to the offending line.
 
 ### Tips & best practices
+
 - Keep functions small and testable.
 - Use meaningful block labels and value names with `@name` and `%v0` hints.
 - Prefer deterministic behaviour; avoid relying on undefined order.
 
 ### Next steps
+
 - Read the full [IL reference](#reference) for all instructions.
 - Explore the `examples/` and `tests/golden/` directories for more programs.
 - Try adding your own IL file and running it with `ilc`.
 
 ### Common mistakes
+
 - Forgetting the version line (`il 0.1.2`).
 - Missing terminators at the end of blocks.
 - Mismatched types in instructions or extern calls.
@@ -338,33 +361,46 @@ entry:
 Happy hacking!
 
 <a id="reference"></a>
+
 ## Reference
 
 ### Normative scope
 
-The archived IL v0.1.2 specification established the design principles still in force today: IL acts as the "thin waist" between front ends and execution engines, enforces explicit control flow with one terminator per block, and keeps the type system intentionally small (`i1`, `i64`, `f64`, `ptr`, `str`, `void`). The material below supersedes earlier drafts (including v0.1.1) while remaining source-compatible with modules written for those versions. Numeric promotion semantics are specified in [devdocs/specs/numerics.md](devdocs/specs/numerics.md) and the unified trap/handler model is defined in [devdocs/specs/errors.md](devdocs/specs/errors.md); both documents are normative for all front ends and the VM.
+The archived IL v0.1.2 specification established the design principles still in force today: IL acts as the "thin waist"
+between front ends and execution engines, enforces explicit control flow with one terminator per block, and keeps the
+type system intentionally small (`i1`, `i64`, `f64`, `ptr`, `str`, `void`). The material below supersedes earlier
+drafts (including v0.1.1) while remaining source-compatible with modules written for those versions. Numeric promotion
+semantics are specified in [devdocs/specs/numerics.md](devdocs/specs/numerics.md) and the unified trap/handler model is
+defined in [devdocs/specs/errors.md](devdocs/specs/errors.md); both documents are normative for all front ends and the
+VM.
 
 ### IL Reference (v0.1.2)
 
 > Start here: [IL Quickstart](#quickstart) for a hands-on introduction.
 
 #### Overview
-Viper IL is the project’s "thin waist" intermediate language designed to sit between diverse front ends and back ends. Its goals are:
+
+Viper IL is the project’s "thin waist" intermediate language designed to sit between diverse front ends and back ends.
+Its goals are:
 
 * **Determinism** – VM and native back ends must produce identical observable behaviour.
 * **Explicit control flow** – each basic block ends with exactly one terminator; no fallthrough.
 * **Static types** – a minimal set of primitive types (`i1`, `i64`, `f64`, `ptr`, `str`, `void`).
 
-Execution is organized as functions consisting of labelled basic blocks.  Modules may execute either under the IL virtual machine interpreter or after lowering to native code through a C runtime.  Front ends such as BASIC first lower into IL patterns described in [BASIC lowering](#lowering).
+Execution is organized as functions consisting of labelled basic blocks. Modules may execute either under the IL virtual
+machine interpreter or after lowering to native code through a C runtime. Front ends such as BASIC first lower into IL
+patterns described in [BASIC lowering](#lowering).
 
 #### Module & Function Syntax
-An IL module is a set of declarations and function definitions.  It starts with a version line:
+
+An IL module is a set of declarations and function definitions. It starts with a version line:
 
 ```text
 il 0.1
 ```
 
-An optional `target "..."` metadata line may follow.  The VM ignores it, but native back ends can use it as advisory information.
+An optional `target "..."` metadata line may follow. The VM ignores it, but native back ends can use it as advisory
+information.
 
 ```text
 il 0.1
@@ -383,6 +419,7 @@ entry:
 ```
 
 ##### Minimal Function
+
 ```text
 il 0.1
 func @main() -> i64 {
@@ -392,6 +429,7 @@ entry:
 ```
 
 ##### Extern Declarations
+
 External functions are declared with `extern` and may be called like normal functions.
 
 ```text
@@ -405,6 +443,7 @@ entry:
 ```
 
 ##### Global Constants
+
 Module-level constants bind a symbol to immutable data such as strings.
 
 ```text
@@ -418,24 +457,31 @@ entry:
 ```
 
 #### Types
-| Type | Meaning | Alignment | Notes |
-|------|---------|-----------|-------|
-| `void` | no value | — | function return only |
-| `i1` | boolean | 1 | produced by comparisons and `trunc1` |
-| `i16` | 16-bit signed int | 2 | wrap on overflow |
-| `i32` | 32-bit signed int | 4 | wrap on overflow |
-| `i64` | 64-bit signed int | 8 | wrap on overflow |
-| `f64` | 64-bit IEEE float | 8 | NaN/Inf propagate |
-| `ptr` | untyped pointer | 8 | byte-addressed |
-| `str` | opaque string handle | 8 | managed by runtime |
-| `error` | error value | 8 | exception handling only |
-| `resumetok` | resume token | 8 | exception handling only |
+
+| Type        | Meaning              | Alignment | Notes                                |
+|-------------|----------------------|-----------|--------------------------------------|
+| `void`      | no value             | —         | function return only                 |
+| `i1`        | boolean              | 1         | produced by comparisons and `trunc1` |
+| `i16`       | 16-bit signed int    | 2         | wrap on overflow                     |
+| `i32`       | 32-bit signed int    | 4         | wrap on overflow                     |
+| `i64`       | 64-bit signed int    | 8         | wrap on overflow                     |
+| `f64`       | 64-bit IEEE float    | 8         | NaN/Inf propagate                    |
+| `ptr`       | untyped pointer      | 8         | byte-addressed                       |
+| `str`       | opaque string handle | 8         | managed by runtime                   |
+| `error`     | error value          | 8         | exception handling only              |
+| `resumetok` | resume token         | 8         | exception handling only              |
 
 #### Constants & Literals
-Integers use decimal notation (`-?[0-9]+`).  Floats use decimal with optional fraction (`-?[0-9]+(\.[0-9]+)?`) and permit `NaN`, `Inf`, and `-Inf`.  Booleans `true`/`false` sugar to `i1` values `1`/`0`.  Strings appear in quotes with escapes `\"`, `\\`, `\n`, `\t`, `\xNN`.  `const_null` yields a `ptr` null.
+
+Integers use decimal notation (`-?[0-9]+`). Floats use decimal with optional fraction (`-?[0-9]+(\.[0-9]+)?`) and permit
+`NaN`, `Inf`, and `-Inf`. Booleans `true`/`false` sugar to `i1` values `1`/`0`. Strings appear in quotes with escapes
+`\"`, `\\`, `\n`, `\t`, `\xNN`.  `const_null` yields a `ptr` null.
 
 #### Basic Blocks
-Functions contain one or more labelled blocks.  Labels end in `:` and the first block is `entry`.  A block may declare parameters; each predecessor must supply matching arguments.  Omitting the argument list is shorthand for passing no values (for example, `br next` is the same as `br next()`).
+
+Functions contain one or more labelled blocks. Labels end in `:` and the first block is `entry`. A block may declare
+parameters; each predecessor must supply matching arguments. Omitting the argument list is shorthand for passing no
+values (for example, `br next` is the same as `br next()`).
 
 ```text
 il 0.1
@@ -452,7 +498,9 @@ body(%i: i64, %acc: i64):
 ```
 
 #### Control Flow
+
 ##### `br`
+
 Unconditional branch to a block with optional arguments.
 
 ```text
@@ -460,6 +508,7 @@ br next(%v)
 ```
 
 ##### `cbr`
+
 Conditional branch on an `i1` value.
 
 ```text
@@ -467,6 +516,7 @@ cbr %cond, then, else
 ```
 
 ##### `switch.i32`
+
 Multi-way branch on an `i32` scrutinee with an explicit default.
 
 ```text
@@ -480,9 +530,11 @@ with a branch target using `value -> ^label(args?)`. When no case matches, the
 default label is taken. Each target may optionally supply block arguments.
 
 ##### `ret`
+
 Return from the current function.
 
 ##### `trap`
+
 Abort execution with an unconditional runtime trap.
 
 ```text
@@ -493,23 +545,27 @@ entry:
 ```
 
 #### Instructions
-Each non-terminator instruction optionally assigns to a `%temp` and produces a result.  Below, `x` and `y` denote operands.
+
+Each non-terminator instruction optionally assigns to a `%temp` and produces a result. Below, `x` and `y` denote
+operands.
 
 > _Opcode table note:_ An `InstrType` sentinel means the result or operand type
 > is taken from the instruction's declared type.
 
 ##### Integer Arithmetic
-| Instr | Form | Result |
-|-------|------|--------|
-| `add` | `add x, y` | `i64` |
-| `sub` | `sub x, y` | `i64` |
-| `mul` | `mul x, y` | `i64` |
-| `sdiv` | `sdiv x, y` | `i64` (trap on divide-by-zero or `INT64_MIN / -1`) |
-| `udiv` | `udiv x, y` | `i64` (trap on divide-by-zero) |
-| `srem` | `srem x, y` | `i64` (trap on divide-by-zero) |
-| `urem` | `urem x, y` | `i64` (trap on divide-by-zero) |
 
-`sdiv` and `srem` follow C semantics: the quotient is truncated toward zero and the remainder keeps the dividend's sign.  Front ends such as BASIC map `\` to `sdiv` and `MOD` to `srem`.
+| Instr  | Form        | Result                                             |
+|--------|-------------|----------------------------------------------------|
+| `add`  | `add x, y`  | `i64`                                              |
+| `sub`  | `sub x, y`  | `i64`                                              |
+| `mul`  | `mul x, y`  | `i64`                                              |
+| `sdiv` | `sdiv x, y` | `i64` (trap on divide-by-zero or `INT64_MIN / -1`) |
+| `udiv` | `udiv x, y` | `i64` (trap on divide-by-zero)                     |
+| `srem` | `srem x, y` | `i64` (trap on divide-by-zero)                     |
+| `urem` | `urem x, y` | `i64` (trap on divide-by-zero)                     |
+
+`sdiv` and `srem` follow C semantics: the quotient is truncated toward zero and the remainder keeps the dividend's sign.
+Front ends such as BASIC map `\` to `sdiv` and `MOD` to `srem`.
 
 ```text
 il 0.1
@@ -521,27 +577,30 @@ entry:
 ```
 
 ##### Checked Integer Arithmetic
-| Instr | Form | Result | Notes |
-|-------|------|--------|-------|
-| `iadd.ovf` | `iadd.ovf x, y` | `i64` | trap on signed overflow |
-| `isub.ovf` | `isub.ovf x, y` | `i64` | trap on signed overflow |
-| `imul.ovf` | `imul.ovf x, y` | `i64` | trap on signed overflow |
-| `sdiv.chk0` | `sdiv.chk0 x, y` | `i64` | trap on divide-by-zero or overflow |
-| `udiv.chk0` | `udiv.chk0 x, y` | `i64` | trap on divide-by-zero |
-| `srem.chk0` | `srem.chk0 x, y` | `i64` | trap on divide-by-zero |
-| `urem.chk0` | `urem.chk0 x, y` | `i64` | trap on divide-by-zero |
 
-The `.ovf` variants detect signed overflow and trap before producing a wrapped result. The `.chk0` variants explicitly check for zero divisors.
+| Instr       | Form             | Result | Notes                              |
+|-------------|------------------|--------|------------------------------------|
+| `iadd.ovf`  | `iadd.ovf x, y`  | `i64`  | trap on signed overflow            |
+| `isub.ovf`  | `isub.ovf x, y`  | `i64`  | trap on signed overflow            |
+| `imul.ovf`  | `imul.ovf x, y`  | `i64`  | trap on signed overflow            |
+| `sdiv.chk0` | `sdiv.chk0 x, y` | `i64`  | trap on divide-by-zero or overflow |
+| `udiv.chk0` | `udiv.chk0 x, y` | `i64`  | trap on divide-by-zero             |
+| `srem.chk0` | `srem.chk0 x, y` | `i64`  | trap on divide-by-zero             |
+| `urem.chk0` | `urem.chk0 x, y` | `i64`  | trap on divide-by-zero             |
+
+The `.ovf` variants detect signed overflow and trap before producing a wrapped result. The `.chk0` variants explicitly
+check for zero divisors.
 
 ##### Bitwise and Shifts
-| Instr | Form | Result |
-|-------|------|--------|
-| `and` | `and x, y` | `i64` |
-| `or`  | `or x, y`  | `i64` |
-| `xor` | `xor x, y` | `i64` |
-| `shl` | `shl x, y` | `i64` |
-| `lshr`| `lshr x, y`| `i64` |
-| `ashr`| `ashr x, y`| `i64` |
+
+| Instr  | Form        | Result |
+|--------|-------------|--------|
+| `and`  | `and x, y`  | `i64`  |
+| `or`   | `or x, y`   | `i64`  |
+| `xor`  | `xor x, y`  | `i64`  |
+| `shl`  | `shl x, y`  | `i64`  |
+| `lshr` | `lshr x, y` | `i64`  |
+| `ashr` | `ashr x, y` | `i64`  |
 
 Shift counts are masked modulo 64, matching the behaviour of x86-64 shifts.
 
@@ -550,23 +609,25 @@ Shift counts are masked modulo 64, matching the behaviour of x86-64 shifts.
 ```
 
 ##### Floating-Point Arithmetic
-| Instr | Form | Result |
-|-------|------|--------|
-| `fadd` | `fadd x, y` | `f64` |
-| `fsub` | `fsub x, y` | `f64` |
-| `fmul` | `fmul x, y` | `f64` |
-| `fdiv` | `fdiv x, y` | `f64` |
+
+| Instr  | Form        | Result |
+|--------|-------------|--------|
+| `fadd` | `fadd x, y` | `f64`  |
+| `fsub` | `fsub x, y` | `f64`  |
+| `fmul` | `fmul x, y` | `f64`  |
+| `fdiv` | `fdiv x, y` | `f64`  |
 
 ```text
 %f = fmul 2.0, 4.0
 ```
 
 ##### Comparisons
-| Instrs | Form | Result |
-|--------|------|--------|
-| `icmp_eq`, `icmp_ne` | `icmp_eq x, y` | `i1` |
-| `scmp_lt`, `scmp_le`, `scmp_gt`, `scmp_ge` | `scmp_lt x, y` | `i1` signed compare |
-| `ucmp_lt`, `ucmp_le`, `ucmp_gt`, `ucmp_ge` | `ucmp_lt x, y` | `i1` unsigned compare |
+
+| Instrs                                                           | Form           | Result                                                |
+|------------------------------------------------------------------|----------------|-------------------------------------------------------|
+| `icmp_eq`, `icmp_ne`                                             | `icmp_eq x, y` | `i1`                                                  |
+| `scmp_lt`, `scmp_le`, `scmp_gt`, `scmp_ge`                       | `scmp_lt x, y` | `i1` signed compare                                   |
+| `ucmp_lt`, `ucmp_le`, `ucmp_gt`, `ucmp_ge`                       | `ucmp_lt x, y` | `i1` unsigned compare                                 |
 | `fcmp_lt`, `fcmp_le`, `fcmp_gt`, `fcmp_ge`, `fcmp_eq`, `fcmp_ne` | `fcmp_eq x, y` | `i1` (`NaN` makes `fcmp_eq` false and `fcmp_ne` true) |
 
 ```text
@@ -574,20 +635,22 @@ Shift counts are masked modulo 64, matching the behaviour of x86-64 shifts.
 ```
 
 ##### Conversions
-| Instr | Form | Result | Notes |
-|-------|------|--------|-------|
-| `sitofp` | `sitofp x` | `f64` | signed int to float |
-| `fptosi` | `fptosi x` | `i64` | trap on NaN or overflow |
-| `cast.si_to_fp` | `cast.si_to_fp i16 x` | `f64` | signed int (any size) to float |
-| `cast.ui_to_fp` | `cast.ui_to_fp i16 x` | `f64` | unsigned int to float |
-| `cast.fp_to_si.rte.chk` | `cast.fp_to_si.rte.chk i32 x` | `i32` | float to signed int (round-to-even, trap on overflow) |
-| `cast.fp_to_ui.rte.chk` | `cast.fp_to_ui.rte.chk i32 x` | `i32` | float to unsigned int (round-to-even, trap on overflow) |
-| `cast.si_narrow.chk` | `cast.si_narrow.chk i16 x` | `i16` | narrow signed int, trap on overflow |
-| `cast.ui_narrow.chk` | `cast.ui_narrow.chk i16 x` | `i16` | narrow unsigned int, trap on overflow |
-| `zext1`  | `zext1 x`  | `i64` | zero-extend i1 to i64 |
-| `trunc1` | `trunc1 x` | `i1` | truncate i64 to i1 |
 
-The `cast.*` family provides type-aware conversions with explicit overflow and rounding behavior. The `.rte` suffix denotes round-to-even (IEEE 754 default). The `.chk` suffix indicates trap-on-overflow.
+| Instr                   | Form                          | Result | Notes                                                   |
+|-------------------------|-------------------------------|--------|---------------------------------------------------------|
+| `sitofp`                | `sitofp x`                    | `f64`  | signed int to float                                     |
+| `fptosi`                | `fptosi x`                    | `i64`  | trap on NaN or overflow                                 |
+| `cast.si_to_fp`         | `cast.si_to_fp i16 x`         | `f64`  | signed int (any size) to float                          |
+| `cast.ui_to_fp`         | `cast.ui_to_fp i16 x`         | `f64`  | unsigned int to float                                   |
+| `cast.fp_to_si.rte.chk` | `cast.fp_to_si.rte.chk i32 x` | `i32`  | float to signed int (round-to-even, trap on overflow)   |
+| `cast.fp_to_ui.rte.chk` | `cast.fp_to_ui.rte.chk i32 x` | `i32`  | float to unsigned int (round-to-even, trap on overflow) |
+| `cast.si_narrow.chk`    | `cast.si_narrow.chk i16 x`    | `i16`  | narrow signed int, trap on overflow                     |
+| `cast.ui_narrow.chk`    | `cast.ui_narrow.chk i16 x`    | `i16`  | narrow unsigned int, trap on overflow                   |
+| `zext1`                 | `zext1 x`                     | `i64`  | zero-extend i1 to i64                                   |
+| `trunc1`                | `trunc1 x`                    | `i1`   | truncate i64 to i1                                      |
+
+The `cast.*` family provides type-aware conversions with explicit overflow and rounding behavior. The `.rte` suffix
+denotes round-to-even (IEEE 754 default). The `.chk` suffix indicates trap-on-overflow.
 
 ```text
 %f = sitofp 42
@@ -595,20 +658,22 @@ The `cast.*` family provides type-aware conversions with explicit overflow and r
 ```
 
 ##### Memory Operations
-| Instr | Form | Result |
-|-------|------|--------|
-| `alloca` | `alloca size` | `ptr` (size < 0 traps; memory zero-initialized) |
-| `gep`    | `gep ptr, offs` | `ptr` (no bounds checks) |
-| `idx.chk` | `idx.chk idx, bound` | — (trap if idx < 0 or idx >= bound) |
-| `load`   | `load type, ptr` | `type` (null or misaligned trap) |
-| `store`  | `store type, ptr, value` | — (null or misaligned trap) |
-| `addr_of`| `addr_of @global` | `ptr` |
-| `const_str` | `const_str @label` | `str` |
-| `const_null`| `const_null` | `ptr` |
+
+| Instr        | Form                     | Result                                          |
+|--------------|--------------------------|-------------------------------------------------|
+| `alloca`     | `alloca size`            | `ptr` (size < 0 traps; memory zero-initialized) |
+| `gep`        | `gep ptr, offs`          | `ptr` (no bounds checks)                        |
+| `idx.chk`    | `idx.chk idx, bound`     | — (trap if idx < 0 or idx >= bound)             |
+| `load`       | `load type, ptr`         | `type` (null or misaligned trap)                |
+| `store`      | `store type, ptr, value` | — (null or misaligned trap)                     |
+| `addr_of`    | `addr_of @global`        | `ptr`                                           |
+| `const_str`  | `const_str @label`       | `str`                                           |
+| `const_null` | `const_null`             | `ptr`                                           |
 
 `idx.chk` performs bounds checking for array accesses, trapping if the index is out of range.
 
-`i64`, `f64`, `ptr`, and `str` loads and stores require 8-byte alignment; misaligned or null accesses trap.  Stack allocations created by `alloca` are zero-initialized and live until the function returns.
+`i64`, `f64`, `ptr`, and `str` loads and stores require 8-byte alignment; misaligned or null accesses trap. Stack
+allocations created by `alloca` are zero-initialized and live until the function returns.
 
 ```text
 func @main() -> i64 {
@@ -621,12 +686,14 @@ entry:
 ```
 
 ##### Calls
-| Instr | Form | Result |
-|-------|------|--------|
-| `call` | `call @f(%x, %y)` | return type of `@f` |
+
+| Instr           | Form                            | Result                   |
+|-----------------|---------------------------------|--------------------------|
+| `call`          | `call @f(%x, %y)`               | return type of `@f`      |
 | `call.indirect` | `call.indirect %fn_ptr(%x, %y)` | return type from pointer |
 
-Direct calls use `@symbol` references. Indirect calls use a function pointer as the first operand, followed by arguments. The verifier checks arity and types for both forms.
+Direct calls use `@symbol` references. Indirect calls use a function pointer as the first operand, followed by
+arguments. The verifier checks arity and types for both forms.
 
 ```text
 call @f(%x, %y)
@@ -638,6 +705,7 @@ call @f(%x, %y)
 IL provides a structured error handling system with error values, handler stacks, and resumption points.
 
 **Error Types:**
+
 - `error` — Opaque error value containing kind, code, IP, and line number
 - `resumetok` — Token identifying a resumption point in the error handler stack
 
@@ -672,6 +740,7 @@ IL provides a structured error handling system with error values, handler stacks
 | `err.get_line` | `err.get_line %err` | `i32` |
 
 **Example:**
+
 ```il
 func @divide(a: i64, b: i64) -> i64 {
 entry:
@@ -688,40 +757,42 @@ handler:
 ```
 
 #### Runtime ABI
-The IL runtime provides helper functions used by front ends and tests. All functions use canonical `Viper.*` namespace names. Legacy `@rt_*` aliases are maintained for compatibility when built with `-DVIPER_RUNTIME_NS_DUAL=ON`.
+
+The IL runtime provides helper functions used by front ends and tests. All functions use canonical `Viper.*` namespace
+names. Legacy `@rt_*` aliases are maintained for compatibility when built with `-DVIPER_RUNTIME_NS_DUAL=ON`.
 
 ##### Console I/O
 
-| Function | Signature | Notes |
-|----------|-----------|-------|
-| `@Viper.Console.PrintStr` | `str -> void` | write string to stdout |
-| `@Viper.Console.PrintI64` | `i64 -> void` | write integer to stdout |
-| `@Viper.Console.PrintF64` | `f64 -> void` | write float to stdout |
-| `@Viper.Console.ReadLine` | `-> str` | read line from stdin, newline stripped |
+| Function                  | Signature     | Notes                                  |
+|---------------------------|---------------|----------------------------------------|
+| `@Viper.Console.PrintStr` | `str -> void` | write string to stdout                 |
+| `@Viper.Console.PrintI64` | `i64 -> void` | write integer to stdout                |
+| `@Viper.Console.PrintF64` | `f64 -> void` | write float to stdout                  |
+| `@Viper.Console.ReadLine` | `-> str`      | read line from stdin, newline stripped |
 
 ##### String Operations
 
-| Function | Signature | Notes |
-|----------|-----------|-------|
-| `@Viper.Strings.Len` | `str -> i64` | length in bytes |
-| `@Viper.Strings.Concat` | `str × str -> str` | concatenate strings |
-| `@Viper.Strings.Mid` | `str × i64 × i64 -> str` | substring; indices clamp; negative bounds trap |
-| `@Viper.Strings.FromInt` | `i64 -> str` | convert integer to string |
-| `@Viper.Strings.FromDouble` | `f64 -> str` | convert double to string |
+| Function                    | Signature                | Notes                                          |
+|-----------------------------|--------------------------|------------------------------------------------|
+| `@Viper.Strings.Len`        | `str -> i64`             | length in bytes                                |
+| `@Viper.Strings.Concat`     | `str × str -> str`       | concatenate strings                            |
+| `@Viper.Strings.Mid`        | `str × i64 × i64 -> str` | substring; indices clamp; negative bounds trap |
+| `@Viper.Strings.FromInt`    | `i64 -> str`             | convert integer to string                      |
+| `@Viper.Strings.FromDouble` | `f64 -> str`             | convert double to string                       |
 
 ##### Type Conversion
 
-| Function | Signature | Notes |
-|----------|-----------|-------|
-| `@Viper.Convert.ToInt` | `str -> i64` | convert string to integer; traps on invalid numeric |
-| `@Viper.Convert.ToDouble` | `str -> f64` | convert string to double; traps on invalid numeric |
+| Function                  | Signature    | Notes                                               |
+|---------------------------|--------------|-----------------------------------------------------|
+| `@Viper.Convert.ToInt`    | `str -> i64` | convert string to integer; traps on invalid numeric |
+| `@Viper.Convert.ToDouble` | `str -> f64` | convert string to double; traps on invalid numeric  |
 
 ##### Memory Management
 
-| Function | Signature | Notes |
-|----------|-----------|-------|
-| `@rt_alloc` | `i64 -> ptr` | allocate bytes; negative size traps |
-| `@rt_free` | `ptr -> void` | deallocate buffer (optional in v0.1.2) |
+| Function     | Signature         | Notes                                     |
+|--------------|-------------------|-------------------------------------------|
+| `@rt_alloc`  | `i64 -> ptr`      | allocate bytes; negative size traps       |
+| `@rt_free`   | `ptr -> void`     | deallocate buffer (optional in v0.1.2)    |
 | `@rt_str_eq` | `str × str -> i1` | string equality (internal runtime helper) |
 
 #### Terminal & Keyboard Features
@@ -736,13 +807,17 @@ RuntimeFeature → Symbol
 
 These helpers are gated by feature requests during lowering rather than being emitted unconditionally.
 
-Strings are reference-counted by the runtime implementation.  See [src/runtime/](../src/runtime/) for additional details.
+Strings are reference-counted by the runtime implementation. See [src/runtime/](../src/runtime/) for additional details.
 
 #### Memory Model
-IL v0.1.2 is single-threaded.  Pointers are plain addresses with no aliasing rules beyond the type requirements of `load` and `store`.  Memory obtained through `alloca` or the runtime follows the alignment rules above, and invalid accesses (null or misaligned) trap deterministically.
+
+IL v0.1.2 is single-threaded. Pointers are plain addresses with no aliasing rules beyond the type requirements of `load`
+and `store`. Memory obtained through `alloca` or the runtime follows the alignment rules above, and invalid accesses (
+null or misaligned) trap deterministically.
 
 #### Source Locations
-`.loc file line col` annotates instructions with source information.  It has no semantic effect.
+
+`.loc file line col` annotates instructions with source information. It has no semantic effect.
 
 ```text
 .loc 1 3 4
@@ -750,10 +825,12 @@ IL v0.1.2 is single-threaded.  Pointers are plain addresses with no aliasing rul
 ```
 
 #### Verifier Rules
+
 Operand and result type checks are now table-driven from `OpcodeInfo`. The
 verifier still has bespoke handlers for `idxchk`, calls, and the handful of ops
 wired directly to runtime contracts. Passes can also observe the
 `hasSideEffects` flag directly via the shared verifier table.
+
 * First block is `entry` and every block ends with exactly one terminator.
 * All referenced labels exist in the same function.
 * Operand and result types match instruction signatures.
@@ -784,6 +861,7 @@ module was hand-written or generated by an outdated toolchain. The behaviour is
 validated by [`src/tests/vm/UnknownOpcodeTests.cpp`](../src/tests/vm/UnknownOpcodeTests.cpp).
 
 #### Text Grammar (EBNF)
+
 ```ebnf
 module      ::= "il" VERSION (target_decl)? decl*
 VERSION     ::= NUMBER "." NUMBER ("." NUMBER)?
@@ -825,6 +903,7 @@ type        ::= "void" | "i1" | "i16" | "i32" | "i64" | "f64" | "ptr" | "str" | 
 ```
 
 #### Calling Convention (SysV x64)
+
 Native back ends target the System V x86-64 ABI:
 
 * Integer and pointer arguments: `rdi`, `rsi`, `rdx`, `rcx`, `r8`, `r9`.
@@ -833,24 +912,29 @@ Native back ends target the System V x86-64 ABI:
 * Call sites maintain 16-byte stack alignment; `i1` arguments are zero-extended to 32 bits.
 
 #### Versioning & Conformance
-Modules must begin with `il 0.1.2`.  A conforming implementation accepts this grammar, obeys the semantics above, and traps on the conditions listed for each instruction.  Implementations are validated against the sample suite under [examples/il](../examples/il/).
+
+Modules must begin with `il 0.1.2`. A conforming implementation accepts this grammar, obeys the semantics above, and
+traps on the conditions listed for each instruction. Implementations are validated against the sample suite
+under [examples/il](../examples/il/).
 
 <a id="lowering"></a>
+
 ## Lowering
 
 ### BASIC to IL Lowering Reference
 
-**Note:** Built-in math functions use runtime helpers. These are internal helpers that have not yet been migrated to the `Viper.*` namespace and still use `@rt_*` names.
+**Note:** Built-in math functions use runtime helpers. These are internal helpers that have not yet been migrated to the
+`Viper.*` namespace and still use `@rt_*` names.
 
-| BASIC         | IL runtime call |
-|---------------|-----------------|
-| `SQR(x)`      | `call @rt_sqrt(x)` |
-| `ABS(i)`      | `call @rt_abs_i64(i)` |
-| `ABS(x#)`     | `call @rt_abs_f64(x)` |
-| `FLOOR(x)`    | `call @rt_floor(x)` |
-| `CEIL(x)`     | `call @rt_ceil(x)` |
-| `F(x)`        | `call <retTy> @F(args…)` |
-| `S(x$, a())`  | `call void @S(str, ptr)` |
+| BASIC        | IL runtime call          |
+|--------------|--------------------------|
+| `SQR(x)`     | `call @rt_sqrt(x)`       |
+| `ABS(i)`     | `call @rt_abs_i64(i)`    |
+| `ABS(x#)`    | `call @rt_abs_f64(x)`    |
+| `FLOOR(x)`   | `call @rt_floor(x)`      |
+| `CEIL(x)`    | `call @rt_ceil(x)`       |
+| `F(x)`       | `call <retTy> @F(args…)` |
+| `S(x$, a())` | `call void @S(str, ptr)` |
 
 Integer arguments to `SQR`, `FLOOR`, and `CEIL` are first widened to `f64`.
 
@@ -865,13 +949,13 @@ User-defined `FUNCTION` and `SUB` calls lower to direct `call` instructions.
 Arguments are evaluated left-to-right and converted to the callee's expected
 types:
 
-| BASIC form | Lowered IL | Notes |
-|------------|------------|-------|
-| `F(1)` (callee expects `f64`) | `%t0 = sitofp 1`<br>`%r = call f64 @F(%t0)` | Widen integer arguments with `sitofp` before the call. |
-| `CALL P(T$)` | `call void @P(str %T)` | String parameters pass runtime-managed handles directly. |
-| `CALL P(A())` | `call void @P(ptr %A)` | Arrays pass by reference without copying. |
-| `CALL S()` | `call void @S()` | `SUB` invocation used as a statement. |
-| `X = F()` | `%x = call i64 @F()` | `FUNCTION` invocation used as an expression. |
+| BASIC form                    | Lowered IL                                  | Notes                                                    |
+|-------------------------------|---------------------------------------------|----------------------------------------------------------|
+| `F(1)` (callee expects `f64`) | `%t0 = sitofp 1`<br>`%r = call f64 @F(%t0)` | Widen integer arguments with `sitofp` before the call.   |
+| `CALL P(T$)`                  | `call void @P(str %T)`                      | String parameters pass runtime-managed handles directly. |
+| `CALL P(A())`                 | `call void @P(ptr %A)`                      | Arrays pass by reference without copying.                |
+| `CALL S()`                    | `call void @S()`                            | `SUB` invocation used as a statement.                    |
+| `X = F()`                     | `%x = call i64 @F()`                        | `FUNCTION` invocation used as an expression.             |
 
 Recursive calls lower the same way; see [factorial.bas](#example-4-read-input-and-compute-factorial)
 for a recursion sanity check.
@@ -891,10 +975,10 @@ This ordering guarantees functions are listed before `@main`.
 
 ### Procedure Definitions
 
-| BASIC                                | IL                                                      |
-|--------------------------------------|----------------------------------------------------------|
-| `FUNCTION f(...) ... END FUNCTION`   | `func @f(<params>) -> <retTy>`<br>`entry_f`/`ret_f` blocks |
-| `SUB s(...) ... END SUB`             | `func @s(<params>)`<br>`entry_s`/`ret_s` blocks            |
+| BASIC                              | IL                                                         |
+|------------------------------------|------------------------------------------------------------|
+| `FUNCTION f(...) ... END FUNCTION` | `func @f(<params>) -> <retTy>`<br>`entry_f`/`ret_f` blocks |
+| `SUB s(...) ... END SUB`           | `func @s(<params>)`<br>`entry_s`/`ret_s` blocks            |
 
 Return type is derived from the name suffix (`$` → `str`, `#` → `f64`, none →
 `i64`). Parameters lower by scalar type or as array handles.
@@ -1065,6 +1149,7 @@ or_join_0:
 ```
 
 <a id="passes"></a>
+
 ## Passes
 
 ### Passes overview
@@ -1072,22 +1157,23 @@ or_join_0:
 The optimisation passes below operate on IL after front-end lowering.
 
 <a id="constfold"></a>
+
 ### constfold (v1)
 
 Folds literal computations at the IL level.
 
 #### Supported folds
 
-| Pattern | Result |
-|--------|--------|
-| `ABS(i64 lit)` | absolute value as i64 |
-| `ABS(f64 lit)` | absolute value as f64 |
-| `FLOOR(f64 lit)` | `floor` result |
-| `CEIL(f64 lit)` | `ceil` result |
-| `SQR(f64 lit ≥ 0)` | `sqrt` result |
-| `POW(f64 lit, i64 lit)` *(\|exp\| ≤ 16)* | `pow` result |
-| `SIN(0)` | `0` |
-| `COS(0)` | `1` |
+| Pattern                                  | Result                |
+|------------------------------------------|-----------------------|
+| `ABS(i64 lit)`                           | absolute value as i64 |
+| `ABS(f64 lit)`                           | absolute value as f64 |
+| `FLOOR(f64 lit)`                         | `floor` result        |
+| `CEIL(f64 lit)`                          | `ceil` result         |
+| `SQR(f64 lit ≥ 0)`                       | `sqrt` result         |
+| `POW(f64 lit, i64 lit)` *(\|exp\| ≤ 16)* | `pow` result          |
+| `SIN(0)`                                 | `0`                   |
+| `COS(0)`                                 | `1`                   |
 
 All floating-point folds use C math semantics and emit exact `f64` literals in the
 optimized IL.
@@ -1099,6 +1185,7 @@ optimized IL.
 * `POW` folds only for small integer exponents and `SQR` requires non‑negative inputs.
 
 <a id="mem2reg"></a>
+
 ### mem2reg (v3)
 
 Promotes stack slots to SSA registers across branches and loops by introducing
@@ -1218,9 +1305,13 @@ removed loads/stores when the pass runs.
 
 ### BASIC to IL Examples
 
-The archived BASIC to IL gallery collected six small BASIC programs (≈10–20 lines each) with their fully lowered IL modules. The examples below update that material to IL v0.1.2 while preserving the original teaching intent.
+The archived BASIC to IL gallery collected six small BASIC programs (≈10–20 lines each) with their fully lowered IL
+modules. The examples below update that material to IL v0.1.2 while preserving the original teaching intent.
 
-**Legacy Notation:** The examples in this section use legacy `@rt_*` function names for compatibility. These work when the runtime is built with `-DVIPER_RUNTIME_NS_DUAL=ON` (the current default). New code should use the canonical `@Viper.*` names documented in the Runtime ABI section above. For example:
+**Legacy Notation:** The examples in this section use legacy `@rt_*` function names for compatibility. These work when
+the runtime is built with `-DVIPER_RUNTIME_NS_DUAL=ON` (the current default). New code should use the canonical
+`@Viper.*` names documented in the Runtime ABI section above. For example:
+
 - `@rt_print_str` → `@Viper.Console.PrintStr`
 - `@rt_print_i64` → `@Viper.Console.PrintI64`
 - `@rt_len` → `@Viper.Strings.Len`
@@ -1619,6 +1710,7 @@ done:
 * Coverage: together they exercise arithmetic, branching, loops, input, strings, heap, and floating-point operations.
 
 Sources:
+
 - docs/il-guide.md#quickstart
 - docs/il-guide.md#reference
 - docs/il-guide.md#reference

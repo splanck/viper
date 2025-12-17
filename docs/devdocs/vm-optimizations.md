@@ -29,12 +29,12 @@ peak performance and can be toggled without recompiling the VM runtime.
 The interpreter chooses the dispatch loop at process start. Set the
 `VIPER_DISPATCH` environment variable to override the default:
 
-| Value | Selected loop | Notes |
-|-------|----------------|-------|
-| _unset_ | `switch` (or direct-threaded when available) | Default at startup. |
-| `table` | Function-pointer table | Always available. |
-| `switch` | `switch` dispatch | Portable and optimisation-friendly. |
-| `threaded` | Direct-threaded dispatch | Requires building with threaded dispatch support; otherwise falls back to `switch`. |
+| Value      | Selected loop                                | Notes                                                                               |
+|------------|----------------------------------------------|-------------------------------------------------------------------------------------|
+| _unset_    | `switch` (or direct-threaded when available) | Default at startup.                                                                 |
+| `table`    | Function-pointer table                       | Always available.                                                                   |
+| `switch`   | `switch` dispatch                            | Portable and optimisation-friendly.                                                 |
+| `threaded` | Direct-threaded dispatch                     | Requires building with threaded dispatch support; otherwise falls back to `switch`. |
 
 Direct-threaded dispatch is gated by the `VIPER_VM_THREADED` CMake option. Pass
 `-DVIPER_VM_THREADED=ON` when configuring CMake to emit the threaded loop.
@@ -52,11 +52,11 @@ and their successor indices. The dispatcher computes:
 
 The heuristic chooses among three backends:
 
-| Backend | When selected | Notes |
-|---------|---------------|-------|
-| Dense jump table | `range ≤ 4096` **and** `density ≥ 0.60` | Materialises a contiguous table indexed by `scrutinee - base`. |
-| Sorted cases | default | Keeps cases sorted and uses binary search. |
-| Hashed cases | `case_count ≥ 64` **and** `density < 0.15` | Builds an `unordered_map` keyed by case value. |
+| Backend          | When selected                              | Notes                                                          |
+|------------------|--------------------------------------------|----------------------------------------------------------------|
+| Dense jump table | `range ≤ 4096` **and** `density ≥ 0.60`    | Materialises a contiguous table indexed by `scrutinee - base`. |
+| Sorted cases     | default                                    | Keeps cases sorted and uses binary search.                     |
+| Hashed cases     | `case_count ≥ 64` **and** `density < 0.15` | Builds an `unordered_map` keyed by case value.                 |
 
 Each entry records the default branch index to fall back on when no case
 matches. Duplicate case values are ignored while building metadata so the cache
@@ -87,6 +87,7 @@ override the heuristic. Accepted values (case-insensitive) are:
 
 The chosen mode is global for the process and applies to all VM instances
 created afterwards.
+
 # Tail-Call Optimisation (TCO)
 
 The interpreter can perform tail-call optimisation (TCO) to reuse the current

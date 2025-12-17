@@ -9,7 +9,8 @@ last-updated: 2025-12-07
 Learn Viper Pascal by example. For a complete reference, see **[Pascal Reference](pascal-reference.md)**.
 
 > **What is Viper Pascal?**
-> A clean, modern Pascal dialect designed for clarity: structured programming, strong typing, units for modular code, and straightforward I/O. It runs on Viper's VM and can be compiled to native code.
+> A clean, modern Pascal dialect designed for clarity: structured programming, strong typing, units for modular code,
+> and straightforward I/O. It runs on Viper's VM and can be compiled to native code.
 
 ---
 
@@ -38,6 +39,7 @@ end.
 ```
 
 **Key points:**
+
 - Programs start with `program Name;` and end with `end.`
 - Statements are separated by semicolons
 - `{ comments }` or `(* comments *)` for multi-line, `//` for single-line
@@ -78,13 +80,13 @@ end.
 
 ### Basic Types
 
-| Type | Description | Example |
-|------|-------------|---------|
-| `Integer` | 64-bit signed integer | `42`, `-17` |
-| `Real` | 64-bit floating point | `3.14`, `-0.5` |
-| `Boolean` | True or False | `True`, `False` |
-| `Char` | Single character | `'A'`, `'x'` |
-| `String` | Text string | `'Hello'` |
+| Type      | Description           | Example         |
+|-----------|-----------------------|-----------------|
+| `Integer` | 64-bit signed integer | `42`, `-17`     |
+| `Real`    | 64-bit floating point | `3.14`, `-0.5`  |
+| `Boolean` | True or False         | `True`, `False` |
+| `Char`    | Single character      | `'A'`, `'x'`    |
+| `String`  | Text string           | `'Hello'`       |
 
 ### Constants
 
@@ -303,6 +305,7 @@ end.
 ```
 
 **Key points:**
+
 - `interface` section declares public symbols (visible to users)
 - `implementation` section contains the actual code
 - Variables cannot be exported from the interface section
@@ -517,19 +520,23 @@ end.
 ## 10. Where to Go Next
 
 **Learn More:**
+
 - **[Pascal Reference](pascal-reference.md)** — Complete language reference
 - **[IL Guide](il-guide.md)** — Understanding the intermediate language
 
 **Explore Examples:**
+
 - Browse `examples/pascal/` for more sample programs
 - Check `src/tests/data/pascal/` for test cases
 
 **Tools:**
+
 - `vpascal program.pas` — Run a Pascal program
 - `vpascal program.pas --emit-il` — See the generated IL
 - `vpascal program.pas -o output.il` — Save IL to file
 
 **Advanced Topics:**
+
 - Multi-file compilation with units
 - Exception handling patterns
 - Native code compilation with `ilc codegen arm64`

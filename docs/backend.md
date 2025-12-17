@@ -6,12 +6,15 @@ last-updated: 2025-11-13
 
 # Viper Backend — Native Code Generation
 
-Comprehensive guide to the Viper native backends (x86-64 and AArch64), which compile Viper IL programs to executable machine code. This document covers the backend's design philosophy, compilation pipeline, code generation strategies, and source code organization.
+Comprehensive guide to the Viper native backends (x86-64 and AArch64), which compile Viper IL programs to executable
+machine code. This document covers the backend's design philosophy, compilation pipeline, code generation strategies,
+and source code organization.
 
 > Status
 >
 > - AArch64: The native backend has been validated end‑to‑end on Apple Silicon by running a full “Frogger” demo.
-> - x86_64: The backend is implemented (Phase A bring‑up) but has not been tested on actual x86_64 hardware yet. Treat it as experimental/unvalidated.
+> - x86_64: The backend is implemented (Phase A bring‑up) but has not been tested on actual x86_64 hardware yet. Treat
+    it as experimental/unvalidated.
 
 ---
 
@@ -37,7 +40,8 @@ Comprehensive guide to the Viper native backends (x86-64 and AArch64), which com
 
 ### What is the Viper Backend?
 
-The Viper backend is a **native code generator** that translates Viper IL (Intermediate Language) programs into executable x86-64 machine code. It implements the final compilation stage in the Viper toolchain:
+The Viper backend is a **native code generator** that translates Viper IL (Intermediate Language) programs into
+executable x86-64 machine code. It implements the final compilation stage in the Viper toolchain:
 
 ```
 Source → Frontend → IL → Backend → Assembly → Executable
@@ -45,14 +49,14 @@ Source → Frontend → IL → Backend → Assembly → Executable
 
 ### Key Characteristics
 
-| Feature | Description |
-|---------|-------------|
-| **Target** | x86-64 (AMD64) architecture |
-| **ABI** | System V AMD64 calling convention |
-| **Output** | AT&T syntax assembly (GAS-compatible) |
-| **Strategy** | SSA-based with linear scan register allocation |
-| **Pipeline** | Multi-pass: Lowering → Selection → Allocation → Emission |
-| **Current Phase** | Phase A (bring-up, educational focus) |
+| Feature           | Description                                              |
+|-------------------|----------------------------------------------------------|
+| **Target**        | x86-64 (AMD64) architecture                              |
+| **ABI**           | System V AMD64 calling convention                        |
+| **Output**        | AT&T syntax assembly (GAS-compatible)                    |
+| **Strategy**      | SSA-based with linear scan register allocation           |
+| **Pipeline**      | Multi-pass: Lowering → Selection → Allocation → Emission |
+| **Current Phase** | Phase A (bring-up, educational focus)                    |
 
 ### Phase A Goals
 
@@ -144,6 +148,7 @@ class PassManager {
 ```
 
 **Execution model:**
+
 - Passes run sequentially in registration order
 - Failure in any pass short-circuits the pipeline
 - Diagnostics accumulate throughout execution
@@ -187,6 +192,7 @@ Machine IR (MIR) is the **backend's internal representation**, positioned betwee
 - **Assembly**: Final textual output
 
 MIR provides:
+
 - **SSA form**: Virtual registers assigned once
 - **Target-specific opcodes**: x86-64 instruction semantics
 - **Flexible operands**: Registers, immediates, memory, labels
@@ -202,6 +208,7 @@ struct VReg {
 ```
 
 Virtual registers are:
+
 - Numbered sequentially starting from 1
 - Classified as GPR (general-purpose) or XMM (floating-point)
 - Mapped to IL SSA values during lowering
@@ -256,6 +263,7 @@ struct MInstr {
 ```
 
 **Supported opcodes (Phase A):**
+
 - **Moves**: `MOVrr`, `MOVri`, `LEA`, `CMOVNErr`
 - **Arithmetic**: `ADDrr/ri`, `SUBrr`, `IMULrr`, `DIVS64rr`, `REMS64rr`
 - **Bitwise**: `ANDrr/ri`, `ORrr/ri`, `XORrr/ri`, `SHLri/rc`, `SHRri/rc`, `SARri/rc`
@@ -274,6 +282,7 @@ struct MBasicBlock {
 ```
 
 Blocks are:
+
 - Labeled for control flow
 - Contain ordered instruction sequences
 - Terminated implicitly (no explicit terminator in MIR)
@@ -305,6 +314,7 @@ class LowerILToMIR {
 ```
 
 **Key responsibilities:**
+
 1. Map IL SSA values to MIR virtual registers
 2. Translate IL opcodes to MIR instruction sequences
 3. Materialize block parameters as `PX_COPY` pseudo-instructions
@@ -323,6 +333,7 @@ struct LoweringRule {
 ```
 
 **Rule selection:**
+
 ```cpp
 const LoweringRule* rule = viper_select_rule(ilInstr);
 if (rule) {
@@ -331,6 +342,7 @@ if (rule) {
 ```
 
 **Categories:**
+
 - **Arithmetic** (`Lowering.Arith.cpp`): `add`, `sub`, `mul`, `div`, `rem`
 - **Bitwise** (`Lowering.Bitwise.cpp`): `and`, `or`, `xor`, `shl`, `shr`
 - **Control Flow** (`Lowering.CF.cpp`): `br`, `cbr`, `ret`, `switch`
@@ -352,6 +364,7 @@ class MIRBuilder {
 ```
 
 **Example lowering (IL `add`):**
+
 ```cpp
 // IL: %3 = add %1, %2
 void emitAdd(const ILInstr& instr, MIRBuilder& b) {
@@ -408,19 +421,23 @@ class ISel {
 **1. Immediate Operand Constraints**
 
 x86-64 restricts immediate sizes:
+
 - Memory operands: 32-bit immediates only
 - Register operands: 64-bit immediates allowed for `MOVri`
 
 **2. Compare + Branch Fusion**
 
 Fuse compare/test instructions with conditional branches:
+
 ```
 CMPrr %a, %b
 SETcc %tmp
 TESTrr %tmp, %tmp
 JCC label
 ```
+
 →
+
 ```
 CMPrr %a, %b
 JCC label
@@ -429,6 +446,7 @@ JCC label
 **3. Boolean Materialization**
 
 IL `i1` values are materialized using `SETcc` + `MOVZXrr32`:
+
 ```
 CMPrr %a, %b
 SETcc %result8      # Set byte based on condition
@@ -438,6 +456,7 @@ MOVZXrr32 %result, %result8  # Zero-extend to 64-bit
 **4. Conditional Moves**
 
 Select-like patterns are lowered to `CMOVcc`:
+
 ```
 CMPrr %cond, 0
 CMOVNErr %dest, %true_val  # Move if not equal (cond != 0)
@@ -446,11 +465,14 @@ CMOVNErr %dest, %true_val  # Move if not equal (cond != 0)
 **5. LEA Folding**
 
 Single-use `LEA` instructions are folded into memory operands:
+
 ```
 LEA %tmp, [%base + disp]
 MOV %dest, [%tmp]
 ```
+
 →
+
 ```
 MOV %dest, [%base + disp]
 ```
@@ -470,6 +492,7 @@ class LinearScanAllocator {
 ```
 
 **Algorithm overview:**
+
 1. **Compute live intervals** for each virtual register
 2. **Walk instructions** in block order
 3. **Expire old intervals** and release physical registers
@@ -489,10 +512,12 @@ enum class RegClass {
 ```
 
 **Allocatable registers:**
+
 - **GPR**: `RAX`, `RCX`, `RDX`, `RSI`, `RDI`, `R8`-`R11` (10 registers)
 - **XMM**: `XMM0`-`XMM7` (8 registers)
 
 **Reserved registers:**
+
 - `RSP`: Stack pointer
 - `RBP`: Frame pointer
 - `RBX`, `R12`-`R15`: Callee-saved (allocated but require save/restore)
@@ -522,6 +547,7 @@ When no free registers are available:
 4. **Insert reload**: Before each use of victim
 
 **Spill code example:**
+
 ```
 # Before allocation
 ADDrr %v1, %v2
@@ -544,11 +570,13 @@ class Coalescer {
 ```
 
 **Coalescing conditions:**
+
 - Source and destination are both virtual registers
 - Destination has not been allocated yet
 - No interference in live ranges
 
 **When successful:**
+
 ```
 PX_COPY %v2, %v1  → (eliminated, %v2 uses same phys reg as %v1)
 ```
@@ -677,6 +705,7 @@ struct EncodingRow {
 ```
 
 **Example encoding:**
+
 ```cpp
 {MOpcode::ADDrr, "addq", EncodingForm::RegReg,
  OperandOrder::R_R, {Reg, Reg}, EncodingFlag::REXW}
@@ -685,12 +714,14 @@ struct EncodingRow {
 ### Operand Formatting
 
 AT&T syntax rules:
+
 - **Registers**: `%rax`, `%xmm0`
 - **Immediates**: `$42`
 - **Memory**: `displacement(%base, %index, scale)`
 - **Labels**: `symbol` or `symbol(%rip)` for RIP-relative
 
 **Examples:**
+
 ```asm
 movq   %rax, %rbx           # Register to register
 movq   $42, %rax            # Immediate to register
@@ -714,6 +745,7 @@ class RoDataPool {
 ```
 
 **Emitted rodata section:**
+
 ```asm
     .section .rodata
 .LC0:
@@ -731,6 +763,7 @@ class RoDataPool {
 The backend implements the **System V AMD64 calling convention**:
 
 **Integer/Pointer Arguments:**
+
 1. `RDI`
 2. `RSI`
 3. `RDX`
@@ -740,6 +773,7 @@ The backend implements the **System V AMD64 calling convention**:
 7. Stack (right-to-left)
 
 **Floating-Point Arguments:**
+
 1. `XMM0`
 2. `XMM1`
 3. `XMM2`
@@ -751,10 +785,12 @@ The backend implements the **System V AMD64 calling convention**:
 9. Stack
 
 **Return Values:**
+
 - Integer/pointer: `RAX`
 - Floating-point: `XMM0`
 
 **Caller/Callee-Saved:**
+
 - **Caller-saved**: `RAX`, `RCX`, `RDX`, `RSI`, `RDI`, `R8`-`R11`, `XMM0`-`XMM15`
 - **Callee-saved**: `RBX`, `RBP`, `R12`-`R15`
 
@@ -773,6 +809,7 @@ void lowerCall(MBasicBlock& block, size_t insertIdx,
 ```
 
 **Call sequence:**
+
 1. **Compute argument layout** (register vs. stack)
 2. **Emit argument moves** to physical registers
 3. **Update stack pointer** if stack arguments present
@@ -781,6 +818,7 @@ void lowerCall(MBasicBlock& block, size_t insertIdx,
 6. **Restore stack pointer**
 
 **Example:**
+
 ```asm
 # Call foo(a, b, c) where a,b,c are in %v1,%v2,%v3
 movq   %v1, %rdi       # First arg
@@ -796,17 +834,18 @@ movq   %rax, %v_result # Capture return value
 
 ### Overview
 
-The AArch64 backend targets 64-bit ARM processors (Apple Silicon, ARM servers). It shares design principles with the x86-64 backend but is tailored for the ARM instruction set and AAPCS64 calling convention.
+The AArch64 backend targets 64-bit ARM processors (Apple Silicon, ARM servers). It shares design principles with the
+x86-64 backend but is tailored for the ARM instruction set and AAPCS64 calling convention.
 
 ### Key Characteristics
 
-| Feature | Description |
-|---------|-------------|
-| **Target** | AArch64 (ARM64) architecture |
-| **ABI** | AAPCS64 (ARM Procedure Call Standard) |
-| **Output** | ARM assembly (GAS-compatible) |
+| Feature      | Description                                    |
+|--------------|------------------------------------------------|
+| **Target**   | AArch64 (ARM64) architecture                   |
+| **ABI**      | AAPCS64 (ARM Procedure Call Standard)          |
+| **Output**   | ARM assembly (GAS-compatible)                  |
 | **Strategy** | SSA-based with linear scan register allocation |
-| **Status** | Functional for core operations |
+| **Status**   | Functional for core operations                 |
 
 ### Supported Features
 
@@ -913,36 +952,43 @@ src/codegen/
 ### Key Files by Functionality
 
 **Core Infrastructure:**
+
 - `Backend.hpp`, `Backend.cpp` — High-level API
 - `CodegenPipeline.hpp` — End-to-end compilation
 - `MachineIR.hpp` — MIR data structures
 - `TargetX64.hpp` — x86-64 register/ABI definitions
 
 **Lowering:**
+
 - `LowerILToMIR.hpp` — IL to MIR adapter
 - `LoweringRules.hpp` — Rule-based lowering
 - `Lowering.*.cpp` — Lowering implementations by category
 
 **Legalization:**
+
 - `ISel.hpp` — Instruction selection and legalization
 - `Peephole.hpp` — Simple peephole optimizations
 - `LowerDiv.cpp` — Division/remainder lowering
 
 **Register Allocation:**
+
 - `ra/Allocator.hpp` — Linear scan algorithm
 - `ra/LiveIntervals.hpp` — Liveness analysis
 - `ra/Spiller.hpp` — Spill code insertion
 - `ra/Coalescer.hpp` — Copy coalescing
 
 **ABI & Frame:**
+
 - `CallLowering.hpp` — System V call lowering
 - `FrameLowering.hpp` — Stack frame construction
 
 **Emission:**
+
 - `AsmEmitter.hpp` — AT&T assembly output
 - `asmfmt/Format.hpp` — Operand formatting
 
 **Passes:**
+
 - `passes/PassManager.hpp` — Pass orchestration
 - `passes/*Pass.hpp` — Individual pipeline passes
 
@@ -953,6 +999,7 @@ src/codegen/
 ### Phase A: Bring-Up (Current)
 
 **Goals:**
+
 - ✅ Complete IL opcode coverage
 - ✅ Functional register allocation
 - ✅ Correct code generation
@@ -960,6 +1007,7 @@ src/codegen/
 - ✅ Educational clarity
 
 **Characteristics:**
+
 - Simple linear scan allocation
 - No optimizations beyond basic peephole
 - AT&T syntax only
@@ -967,6 +1015,7 @@ src/codegen/
 - Emphasis on correctness over performance
 
 **Supported Features:**
+
 - Integer arithmetic (add, sub, mul, div, rem)
 - Floating-point arithmetic (add, sub, mul, div)
 - Bitwise operations (and, or, xor, shifts)
@@ -976,6 +1025,7 @@ src/codegen/
 - Basic exception handling
 
 **Limitations:**
+
 - No indirect calls
 - No SIMD instructions
 - No advanced optimizations (loop opts, inlining, etc.)
@@ -985,18 +1035,21 @@ src/codegen/
 ### Future Phases
 
 **Phase B: Optimization**
+
 - Graph coloring register allocator
 - SSA-based optimizations
 - Instruction scheduling
 - Loop optimizations
 
 **Phase C: Advanced Features**
+
 - SIMD instruction generation
 - Position-independent code (PIC)
 - Debug info (DWARF)
 - Link-time optimization (LTO)
 
 **Phase D: Production**
+
 - Profile-guided optimization (PGO)
 - Code size optimization
 - Advanced peephole passes
@@ -1033,20 +1086,26 @@ src/codegen/
 ## Further Reading
 
 **Viper Documentation:**
+
 - **[IL Guide](il-guide.md)** — IL specification and semantics
 - **[IL Reference](il-reference.md)** — Complete opcode catalog
 - **[VM Architecture](vm.md)** — VM execution model
 
 **Developer Documentation** (in `/devdocs`):**
+
 - `codegen/x86_64.md` — Additional x86-64 backend notes
 - `architecture.md` — Overall system architecture
 - `abi/` — ABI specification details
 
 **External References:**
-- **System V AMD64 ABI**: [https://refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf](https://refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf)
-- **Intel x86-64 Manual**: [https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html](https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html)
+
+- **System V AMD64 ABI
+  **: [https://refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf](https://refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf)
+- **Intel x86-64 Manual
+  **: [https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html](https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html)
 - **SSA Book**: "SSA-based Compiler Design" by Rastello & Bouchez Tichadou
 
 **Source Code:**
+
 - `src/codegen/x86_64/` — Backend implementation
 - `tests/codegen/` — Backend tests

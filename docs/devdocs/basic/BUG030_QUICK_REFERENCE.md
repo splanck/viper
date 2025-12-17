@@ -2,7 +2,8 @@
 
 ## The Problem in One Sentence
 
-**Global variables are completely isolated from SUB/FUNCTION procedures - each procedure sees a separate zero-initialized copy.**
+**Global variables are completely isolated from SUB/FUNCTION procedures - each procedure sees a separate
+zero-initialized copy.**
 
 ---
 
@@ -21,11 +22,13 @@ PRINT COUNTER
 ```
 
 ### What SHOULD Happen:
+
 ```
 Prints: 101
 ```
 
 ### What ACTUALLY Happens:
+
 ```
 Prints: 100
 ```
@@ -36,20 +39,21 @@ Prints: 100
 
 ## Quick Test Results Table
 
-| What You Try | What You See |
-|--------------|--------------|
-| Main sets global to 100 | ✅ Works |
-| SUB reads global | ❌ Sees 0 instead of 100 |
-| SUB modifies global to 200 | ❌ Main still sees 100 |
-| FUNCTION reads global | ❌ Sees 0 instead of 100 |
-| FUNCTION returns global * 2 | ❌ Returns 0 (because sees 0) |
-| SUB sets 200, FUNCTION reads | ❌ FUNCTION sees 0, not 200 |
+| What You Try                 | What You See                 |
+|------------------------------|------------------------------|
+| Main sets global to 100      | ✅ Works                      |
+| SUB reads global             | ❌ Sees 0 instead of 100      |
+| SUB modifies global to 200   | ❌ Main still sees 100        |
+| FUNCTION reads global        | ❌ Sees 0 instead of 100      |
+| FUNCTION returns global * 2  | ❌ Returns 0 (because sees 0) |
+| SUB sets 200, FUNCTION reads | ❌ FUNCTION sees 0, not 200   |
 
 ---
 
 ## What Works (Pass Data Instead)
 
 ✅ **Parameters work:**
+
 ```basic
 SUB PrintValue(x AS INTEGER)
     PRINT x  ' Correctly prints passed value
@@ -59,6 +63,7 @@ PrintValue(42)  ' Prints: 42
 ```
 
 ✅ **Return values work:**
+
 ```basic
 FUNCTION Double(x AS INTEGER) AS INTEGER
     RETURN x * 2
@@ -68,6 +73,7 @@ result = Double(21)  ' Returns: 42
 ```
 
 ✅ **GOSUB works (but limited):**
+
 ```basic
 counter = 100
 GOSUB Increment
@@ -120,6 +126,7 @@ ShowBug()
 ```
 
 **Output:**
+
 ```
 In Main: TEST = 999
 In SUB: TEST = 0
@@ -130,6 +137,7 @@ In SUB: TEST = 0
 ## Impact
 
 🔴 **CRITICAL**: Cannot write any program that needs:
+
 - Shared state
 - Database operations
 - Game state (health, score, inventory)

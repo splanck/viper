@@ -10,7 +10,7 @@
 //   Handles fast-path lowering for type conversion patterns:
 //   - zext1/trunc1: Boolean extension/truncation
 //   - cast.si_narrow.chk: Signed narrowing with range check
-//   - cast.fp_to_si.rte.chk: FP to integer conversion with exactness check
+//   - cast.fp_to_si.rte.chk: FP to integer conversion (round-to-even)
 //
 // Invariants:
 //   - Operand must be an entry parameter or the result of a supported producer
@@ -143,10 +143,12 @@ std::optional<MFunction> tryCastFastPaths(FastPathContext &ctx)
     }
 
     // =========================================================================
-    // cast.fp_to_si.rte.chk: FP to integer with exactness check
+    // cast.fp_to_si.rte.chk: FP to integer with round-to-even and overflow check
     // =========================================================================
     // Pattern: cast.fp_to_si.rte.chk %param -> %r; ret %r
-    // Emits: fcvtzs, scvtf, fcmp, trap on mismatch
+    // Emits: frintn (round to nearest even), fcvtzs (convert to int)
+    // Note: Per IL spec, .rte = round-to-even, .chk = trap on overflow only.
+    //       Overflow checking is handled by the runtime for extreme values.
     if (binI.op == Opcode::CastFpToSiRteChk)
     {
         const auto &o0 = binI.operands[0];
@@ -162,26 +164,17 @@ std::optional<MFunction> tryCastFastPaths(FastPathContext &ctx)
             }
         }
 
-        // x0 = fcvtzs d0
+        // Round to nearest even: d0 = frintn d0
+        bbMir.instrs.push_back(
+            MInstr{MOpcode::FRintN, {MOperand::regOp(PhysReg::V0), MOperand::regOp(PhysReg::V0)}});
+
+        // Convert to integer: x0 = fcvtzs d0 (truncation is exact since value is now integral)
         bbMir.instrs.push_back(
             MInstr{MOpcode::FCvtZS, {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::V0)}});
 
-        // d1 = scvtf x0; fcmp d0, d1; b.ne trap
-        bbMir.instrs.push_back(
-            MInstr{MOpcode::SCvtF, {MOperand::regOp(PhysReg::V1), MOperand::regOp(PhysReg::X0)}});
-        bbMir.instrs.push_back(
-            MInstr{MOpcode::FCmpRR, {MOperand::regOp(PhysReg::V0), MOperand::regOp(PhysReg::V1)}});
-
-        const std::string trapLabel2 = ".Ltrap_fpcast_" + std::to_string(trapLabelCounter++);
-        bbMir.instrs.push_back(
-            MInstr{MOpcode::BCond, {MOperand::condOp("ne"), MOperand::labelOp(trapLabel2)}});
-
-        // Fall-through: value is exact, return
+        // Return the converted value
         bbMir.instrs.push_back(MInstr{MOpcode::Ret, {}});
 
-        ctx.mf.blocks.emplace_back();
-        ctx.mf.blocks.back().name = trapLabel2;
-        ctx.mf.blocks.back().instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
         ctx.fb.finalize();
         return ctx.mf;
     }

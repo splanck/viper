@@ -32,6 +32,7 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
 ```
 
 **Build types:**
+
 - `Debug` — Full debug symbols, no optimization
 - `Release` — Optimized, minimal debug info
 - `RelWithDebInfo` — Optimized with debug symbols (recommended)
@@ -78,6 +79,7 @@ Each tool should display its help message without errors.
 ```
 
 **Expected output:**
+
 ```
 Hello, World!
 Condition is true
@@ -90,6 +92,7 @@ Condition is true
 ```
 
 **Expected output:**
+
 ```
 Hello, World!
 ```
@@ -114,7 +117,8 @@ You can inspect the generated IL or run IL programs directly:
 ./build/src/tools/ilrun/ilrun hello.il
 ```
 
-For more examples, see the **[BASIC Tutorial](basic-language.md)**, **[Pascal Tutorial](pascal-language.md)**, and the `examples/` directory.
+For more examples, see the **[BASIC Tutorial](basic-language.md)**, **[Pascal Tutorial](pascal-language.md)**, and the
+`examples/` directory.
 
 ---
 
@@ -122,23 +126,24 @@ For more examples, see the **[BASIC Tutorial](basic-language.md)**, **[Pascal Tu
 
 ### User-Facing Tools (Simplified CLI)
 
-| Tool | Purpose | Example |
-|------|---------|---------|
-| `vbasic` | Run/compile BASIC programs | `vbasic script.bas` |
-| `vpascal` | Run/compile Pascal programs | `vpascal program.pas` |
-| `ilrun` | Execute IL programs | `ilrun program.il` |
-| `il-verify` | Verify IL correctness | `il-verify program.il` |
-| `il-dis` | Disassemble IL | `il-dis program.il` |
+| Tool        | Purpose                     | Example                |
+|-------------|-----------------------------|------------------------|
+| `vbasic`    | Run/compile BASIC programs  | `vbasic script.bas`    |
+| `vpascal`   | Run/compile Pascal programs | `vpascal program.pas`  |
+| `ilrun`     | Execute IL programs         | `ilrun program.il`     |
+| `il-verify` | Verify IL correctness       | `il-verify program.il` |
+| `il-dis`    | Disassemble IL              | `il-dis program.il`    |
 
 ### Advanced Tools
 
-| Tool | Purpose | Example |
-|------|---------|---------|
-| `ilc` | Unified compiler (advanced) | `ilc front basic -run script.bas` |
-| `basic-ast-dump` | Dump BASIC AST | `basic-ast-dump script.bas` |
-| `basic-lex-dump` | Dump BASIC tokens | `basic-lex-dump script.bas` |
+| Tool             | Purpose                     | Example                           |
+|------------------|-----------------------------|-----------------------------------|
+| `ilc`            | Unified compiler (advanced) | `ilc front basic -run script.bas` |
+| `basic-ast-dump` | Dump BASIC AST              | `basic-ast-dump script.bas`       |
+| `basic-lex-dump` | Dump BASIC tokens           | `basic-lex-dump script.bas`       |
 
-> **Note:** The old `ilc` commands still work for backwards compatibility, but the new simplified tools (`vbasic`, `vpascal`, `ilrun`) are recommended for everyday use.
+> **Note:** The old `ilc` commands still work for backwards compatibility, but the new simplified tools (`vbasic`,
+`vpascal`, `ilrun`) are recommended for everyday use.
 
 ---
 
@@ -146,7 +151,8 @@ For more examples, see the **[BASIC Tutorial](basic-language.md)**, **[Pascal Tu
 
 ### Unified Error Model
 
-All frontends, IL, and the VM share a consistent error and trap model. Diagnostics remain uniform regardless of entry point.
+All frontends, IL, and the VM share a consistent error and trap model. Diagnostics remain uniform regardless of entry
+point.
 
 > **Learn more:** See `devdocs/specs/errors.md` for trap kinds, handler semantics, and BASIC `ON ERROR` lowering rules.
 
@@ -168,6 +174,7 @@ Viper guarantees consistent numeric behavior across all platforms and execution 
 ## What to Read Next
 
 **Language Documentation:**
+
 - **[BASIC Tutorial](basic-language.md)** — Learn Viper BASIC by example
 - **[BASIC Reference](basic-reference.md)** — Complete BASIC language reference
 - **[Pascal Tutorial](pascal-language.md)** — Learn Viper Pascal by example
@@ -175,9 +182,11 @@ Viper guarantees consistent numeric behavior across all platforms and execution 
 - **[IL Guide](il-guide.md)** — Comprehensive IL documentation
 
 **Implementation Guides:**
+
 - **[Frontend How-To](frontend-howto.md)** — Build your own language frontend
 
 **Developer Documentation** (in `/devdocs`):
+
 - `architecture.md` — System architecture overview
 - `runtime-vm.md` — VM and runtime internals
 - `contributor-guide.md` — Contribution guidelines

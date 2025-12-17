@@ -73,6 +73,8 @@ class AsmEmitter
     void emitFCvtZS(std::ostream &os, PhysReg dstGPR, PhysReg srcFPR) const;
     void emitUCvtF(std::ostream &os, PhysReg dstFPR, PhysReg srcGPR) const;
     void emitFCvtZU(std::ostream &os, PhysReg dstGPR, PhysReg srcFPR) const;
+    // Rounding (FP to FP)
+    void emitFRintN(std::ostream &os, PhysReg dstFPR, PhysReg srcFPR) const;
     void emitAddRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const;
     void emitSubRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const;
     void emitMulRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const;

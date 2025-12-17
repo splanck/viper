@@ -8,11 +8,14 @@ created: 2025-11-15
 
 ## Executive Summary
 
-**Objective**: Simplify Viper CLI from `ilc front basic -run script.bas` (5 tokens) to `vbasic script.bas` (2 tokens), matching industry standards (Python, Node.js, Ruby, Lua).
+**Objective**: Simplify Viper CLI from `ilc front basic -run script.bas` (5 tokens) to `vbasic script.bas` (2 tokens),
+matching industry standards (Python, Node.js, Ruby, Lua).
 
-**Approach**: Create user-friendly wrappers (`vbasic`, `ilrun`) while preserving existing `ilc` functionality for backwards compatibility.
+**Approach**: Create user-friendly wrappers (`vbasic`, `ilrun`) while preserving existing `ilc` functionality for
+backwards compatibility.
 
 **Timeline**: 3 phases over 2-3 weeks
+
 - Phase 1: Core wrappers (vbasic, ilrun) - 3-5 days
 - Phase 2: Documentation and testing - 2-3 days
 - Phase 3: Optional enhancements - 1-2 days
@@ -42,13 +45,13 @@ src/
 
 ### Current Command Patterns
 
-| Task | Current Command | Token Count |
-|------|----------------|-------------|
-| Run BASIC | `ilc front basic -run file.bas` | 5 |
-| Emit BASIC IL | `ilc front basic -emit-il file.bas` | 5 |
-| Run IL | `ilc -run file.il` | 3 |
-| Compile IL → native | `ilc codegen x64 -S file.il -o exe` | 7 |
-| Optimize IL | `ilc il-opt file.il -o out.il` | 5 |
+| Task                | Current Command                     | Token Count |
+|---------------------|-------------------------------------|-------------|
+| Run BASIC           | `ilc front basic -run file.bas`     | 5           |
+| Emit BASIC IL       | `ilc front basic -emit-il file.bas` | 5           |
+| Run IL              | `ilc -run file.il`                  | 3           |
+| Compile IL → native | `ilc codegen x64 -S file.il -o exe` | 7           |
+| Optimize IL         | `ilc il-opt file.il -o out.il`      | 5           |
 
 ### Problems Identified
 
@@ -64,12 +67,12 @@ src/
 
 ### New User-Facing Commands
 
-| Tool | Purpose | Example | Priority |
-|------|---------|---------|----------|
-| `vbasic` | Run/compile BASIC programs | `vbasic game.bas` | P0 |
-| `ilrun` | Execute IL programs | `ilrun program.il` | P0 |
-| `ilc` | Compile IL → native | `ilc program.il -o exe` | P1 |
-| `ilopt` | Optimize IL | `ilopt program.il -o out.il` | P2 |
+| Tool     | Purpose                    | Example                      | Priority |
+|----------|----------------------------|------------------------------|----------|
+| `vbasic` | Run/compile BASIC programs | `vbasic game.bas`            | P0       |
+| `ilrun`  | Execute IL programs        | `ilrun program.il`           | P0       |
+| `ilc`    | Compile IL → native        | `ilc program.il -o exe`      | P1       |
+| `ilopt`  | Optimize IL                | `ilopt program.il -o out.il` | P2       |
 
 ### Developer Tools (Keep As-Is)
 
@@ -87,6 +90,7 @@ src/
 **Location**: `src/tools/vbasic/`
 
 **Files to Create**:
+
 ```
 src/tools/vbasic/
 ├── main.cpp          # New thin wrapper
@@ -96,12 +100,14 @@ src/tools/vbasic/
 **Implementation Strategy**:
 
 **Option A: Thin Wrapper (Recommended)**
+
 - New executable that translates `vbasic` args → `ilc front basic` args
 - Reuses all existing `cmdFrontBasic` logic
 - ~200 lines of code
 - Minimal maintenance burden
 
 **Option B: Shared Library**
+
 - Extract `cmdFrontBasic` into shared library
 - Both `ilc` and `vbasic` link against it
 - More refactoring, same end result
@@ -223,6 +229,7 @@ install(TARGETS vbasic RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 ```
 
 **Testing Plan**:
+
 ```bash
 # Basic execution
 ./build/src/tools/vbasic/vbasic examples/basic/ex1_hello_cond.bas
@@ -244,6 +251,7 @@ install(TARGETS vbasic RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 **Location**: `src/tools/ilrun/`
 
 **Files to Create**:
+
 ```
 src/tools/ilrun/
 ├── main.cpp          # New thin wrapper
@@ -337,11 +345,13 @@ install(TARGETS ilrun RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 **Options**:
 
 **A. Keep `ilc` As-Is (Recommended for Phase 1)**
+
 - Maintain full backwards compatibility
 - No breaking changes
 - Users gradually migrate to `vbasic`/`ilrun`
 
 **B. Add Deprecation Warnings (Future)**
+
 ```cpp
 if (cmd == "front") {
     std::cerr << "Warning: 'ilc front basic' is deprecated. Use 'vbasic' instead.\n";
@@ -349,6 +359,7 @@ if (cmd == "front") {
 ```
 
 **C. Simplify `ilc` (Far Future)**
+
 - Remove `front` and `-run` subcommands
 - Focus on IL compilation only
 - Requires major version bump
@@ -360,6 +371,7 @@ if (cmd == "front") {
 ### 2.1: Update Documentation
 
 **Files to Modify**:
+
 - `docs/getting-started.md` - Replace `ilc front basic` examples with `vbasic`
 - `docs/basic-language.md` - Update all command examples
 - `docs/basic-reference.md` - Update code examples
@@ -367,11 +379,13 @@ if (cmd == "front") {
 - `CLAUDE.md` - Update build commands section
 
 **New Documentation**:
+
 - `docs/tools/vbasic.md` - Complete vbasic reference
 - `docs/tools/ilrun.md` - Complete ilrun reference
 - `docs/migration-guide.md` - ilc → vbasic migration
 
 **Example Update**:
+
 ```markdown
 <!-- BEFORE -->
 ./build/src/tools/ilc/ilc front basic -run examples/basic/ex1_hello_cond.bas
@@ -386,12 +400,14 @@ vbasic examples/basic/ex1_hello_cond.bas
 ### 2.2: Test Coverage
 
 **Unit Tests**:
+
 - Argument parsing for `vbasic`
 - Argument translation vbasic → ilc
 - Help text formatting
 - Error handling
 
 **Integration Tests**:
+
 ```bash
 # Test matrix
 for test in examples/basic/*.bas; do
@@ -409,6 +425,7 @@ done
 ```
 
 **Golden Tests**:
+
 ```cmake
 # Add to tests/CMakeLists.txt
 add_test(NAME vbasic_hello
@@ -420,11 +437,13 @@ set_tests_properties(vbasic_hello PROPERTIES
 ### 2.3: Install and PATH Setup
 
 **CMake Install Rules** (already in place, just verify):
+
 ```cmake
 install(TARGETS vbasic ilrun RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 ```
 
 **User Setup Instructions**:
+
 ```bash
 # After cmake --install build --prefix ~/.local
 export PATH="$HOME/.local/bin:$PATH"
@@ -441,17 +460,20 @@ ilrun program.il
 ### 3.1: Smart Compilation Pipeline (`vbasic -c`)
 
 Currently, compiling BASIC → native requires 2 commands:
+
 ```bash
 ilc front basic -emit-il game.bas > game.il
 ilc codegen x64 -S game.il -o game
 ```
 
 **Goal**: Single command
+
 ```bash
 vbasic game.bas -c -o game
 ```
 
 **Implementation**:
+
 ```cpp
 // In vbasic main.cpp
 if (compile_mode) {
@@ -471,6 +493,7 @@ if (compile_mode) {
 ```
 
 **Dependencies**:
+
 - Link against `il_codegen_x86_64` library
 - Reuse `cmd_codegen_x64` logic
 - Handle platform detection (x64 only for now)
@@ -480,6 +503,7 @@ if (compile_mode) {
 **Goal**: `ilc file.bas` → auto-run BASIC, `ilc file.il` → auto-run IL
 
 **Implementation**:
+
 ```cpp
 // In ilc main.cpp, before subcommand dispatch
 if (argc == 2) {
@@ -508,6 +532,7 @@ if (argc == 2) {
 **Goal**: Rename `ilc il-opt` → `ilopt`
 
 **Implementation**:
+
 ```cpp
 // src/tools/ilopt/main.cpp
 #include "tools/ilc/cli.hpp"
@@ -518,6 +543,7 @@ int main(int argc, char** argv) {
 ```
 
 **CMake**:
+
 ```cmake
 add_executable(ilopt
     tools/ilopt/main.cpp
@@ -534,22 +560,26 @@ install(TARGETS ilopt RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 ### Backwards Compatibility
 
 **Phase 1-2 (2-4 weeks)**:
+
 - All old commands continue working
 - Documentation shows new commands first, old commands second
 - No deprecation warnings
 
 **Phase 3-6 months**:
+
 - Add soft deprecation notices
 - Update all examples to new commands
 - Community feedback period
 
 **Phase 6-12 months**:
+
 - Add `--deprecated` warning flag
 - Plan for `ilc` simplification in major version
 
 ### Communication
 
 **Changelog Entry**:
+
 ```markdown
 ## [Version X.Y.0] - 2025-MM-DD
 
@@ -644,18 +674,22 @@ src/tools/
 ## Risk Assessment
 
 ### Low Risk
+
 - Creating new wrapper tools (no changes to existing code)
 - Documentation updates
 - Adding deprecation notices (non-breaking)
 
 ### Medium Risk
+
 - Compilation pipeline (`vbasic -c`) - requires careful integration
 - Auto-detection in `ilc` - could cause unexpected behavior
 
 ### High Risk
+
 - Removing old `ilc` subcommands - breaking change, defer to major version
 
 ### Mitigation
+
 - Extensive testing with existing examples
 - Keep all old commands working
 - Gradual migration with long deprecation period
@@ -666,16 +700,19 @@ src/tools/
 ## Success Metrics
 
 ### Usability
+
 - [ ] New user can run BASIC program without reading documentation
 - [ ] Command length reduced from 5 tokens to 2 tokens
 - [ ] Help text clearly explains most common use cases
 
 ### Compatibility
+
 - [ ] All existing `ilc` commands continue working
 - [ ] All tests pass with new tools
 - [ ] CI/CD builds successfully
 
 ### Adoption
+
 - [ ] Documentation uses new commands throughout
 - [ ] Examples updated to new commands
 - [ ] Community feedback positive
@@ -685,20 +722,20 @@ src/tools/
 ## Open Questions
 
 1. **Should `vbasic` default to run or compile?**
-   - Recommendation: Run (matches Python, Node, Ruby)
-   - Explicit `-c` flag for compilation
+    - Recommendation: Run (matches Python, Node, Ruby)
+    - Explicit `-c` flag for compilation
 
 2. **Should `ilc` remain as monolithic tool?**
-   - Recommendation: Yes for now, simplify in future major version
-   - Add deprecation warnings first
+    - Recommendation: Yes for now, simplify in future major version
+    - Add deprecation warnings first
 
 3. **Should we create `ilc` symlink for backwards compat?**
-   - Recommendation: Keep actual `ilc` binary, no symlinks needed
+    - Recommendation: Keep actual `ilc` binary, no symlinks needed
 
 4. **What about Windows?**
-   - Same approach works on Windows
-   - CMake handles .exe extension automatically
-   - PATH setup similar to Unix
+    - Same approach works on Windows
+    - CMake handles .exe extension automatically
+    - PATH setup similar to Unix
 
 ---
 

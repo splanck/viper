@@ -4,6 +4,6 @@ Shared IL helper functions (`src/il/utils/`).
 
 ## Utilities
 
-| File | Purpose |
-|------|---------|
+| File            | Purpose                                                 |
+|-----------------|---------------------------------------------------------|
 | `Utils.hpp/cpp` | IR queries: block membership, terminator classification |

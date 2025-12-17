@@ -6,11 +6,13 @@ last-updated: 2025-11-12
 
 # Namespace Feature CI Testing Guide
 
-This document describes the continuous integration (CI) gates and testing procedures for the Track A namespace implementation.
+This document describes the continuous integration (CI) gates and testing procedures for the Track A namespace
+implementation.
 
 ## Overview
 
-The namespace feature includes comprehensive testing at multiple levels to prevent regressions and ensure deterministic UX:
+The namespace feature includes comprehensive testing at multiple levels to prevent regressions and ensure deterministic
+UX:
 
 - **11 unit tests** - Parser, semantic analysis, lowering, diagnostics
 - **11 golden tests** - Positive flows (4) and error cases (7)
@@ -28,6 +30,7 @@ The namespace feature includes comprehensive testing at multiple levels to preve
 ```
 
 This runs:
+
 1. Reserved namespace policy check
 2. All 11 unit tests
 3. All 11 golden tests
@@ -42,7 +45,8 @@ Exit code 0 means all checks passed.
 ./scripts/ci_sanitizer_tests.sh
 ```
 
-This creates separate builds with AddressSanitizer and UndefinedBehaviorSanitizer, then runs the full namespace test suite with each.
+This creates separate builds with AddressSanitizer and UndefinedBehaviorSanitizer, then runs the full namespace test
+suite with each.
 
 **Requirements**: Clang compiler (sanitizers work best with Clang)
 
@@ -60,21 +64,22 @@ Ensures user-facing code (tests/golden/basic, examples/basic) does not use the r
 
 Located in `tests/unit/`:
 
-| Test | Purpose |
-|------|---------|
-| test_basic_parse_namespace | NAMESPACE syntax parsing |
-| test_basic_parse_using | USING directive parsing |
-| test_namespace_registry | Namespace registration and lookup |
-| test_using_context | USING directive management |
-| test_type_resolver | Type resolution with namespaces |
-| test_using_semantics | USING semantic analysis |
-| test_ns_resolve_pass | Name resolution pass |
-| test_lowerer_namespace | IL lowering with namespaces |
-| test_namespace_diagnostics | All 9 error codes |
-| test_namespace_integration | End-to-end integration |
+| Test                        | Purpose                                      |
+|-----------------------------|----------------------------------------------|
+| test_basic_parse_namespace  | NAMESPACE syntax parsing                     |
+| test_basic_parse_using      | USING directive parsing                      |
+| test_namespace_registry     | Namespace registration and lookup            |
+| test_using_context          | USING directive management                   |
+| test_type_resolver          | Type resolution with namespaces              |
+| test_using_semantics        | USING semantic analysis                      |
+| test_ns_resolve_pass        | Name resolution pass                         |
+| test_lowerer_namespace      | IL lowering with namespaces                  |
+| test_namespace_diagnostics  | All 9 error codes                            |
+| test_namespace_integration  | End-to-end integration                       |
 | test_using_compiletime_only | **NEW**: USING produces no runtime artifacts |
 
 Run individually:
+
 ```bash
 ctest -R test_namespace_registry --output-on-failure
 ```
@@ -84,12 +89,14 @@ ctest -R test_namespace_registry --output-on-failure
 Located in `tests/golden/basic/` and `tests/golden/basic_errors/`:
 
 **Positive flows (4):**
+
 - namespace_simple.bas - Basic namespace declaration
 - namespace_using.bas - USING directive examples
 - namespace_inheritance.bas - Cross-namespace inheritance
 - viper_root_example.bas - Illustrative Track B example
 
 **Error cases (7):**
+
 - namespace_notfound.bas → E_NS_001
 - namespace_ambiguous.bas → E_NS_003
 - namespace_duplicate_alias.bas → E_NS_004 (via E_NS_001)
@@ -99,6 +106,7 @@ Located in `tests/golden/basic/` and `tests/golden/basic_errors/`:
 - reserved_root_user_using.bas → E_NS_009
 
 Run individually:
+
 ```bash
 ctest -R golden_basic_namespace_simple --output-on-failure
 ```
@@ -108,6 +116,7 @@ ctest -R golden_basic_namespace_simple --output-on-failure
 Located in `tests/e2e/test_namespace_e2e.cpp`:
 
 Tests multi-file compilation with:
+
 - Two-file base/derived with USING
 - Three-file alias usage
 - Multi-file ambiguity detection
@@ -120,6 +129,7 @@ Tests multi-file compilation with:
 Located in `examples/basic/namespace_demo.bas`:
 
 Demonstrates:
+
 - Nested namespace declarations
 - Merged namespaces (multiple blocks)
 - USING directives
@@ -128,6 +138,7 @@ Demonstrates:
 - Case-insensitive lookups
 
 Compile with:
+
 ```bash
 ./build/src/tools/ilc/ilc front basic -emit-il examples/basic/namespace_demo.bas
 ```
@@ -184,16 +195,19 @@ The script `check_reserved_namespaces.sh` prevents drift from the reserved names
 **Rule**: User code cannot use `NAMESPACE Viper` or `USING Viper` (root).
 
 **Checked directories**:
+
 - tests/golden/basic/
 - tests/e2e/
 - examples/basic/
 
 **Allowed exceptions** (documented in script):
+
 - tests/golden/basic/viper_root_example.bas - Track B illustration
 - tests/golden/basic_errors/reserved_root_user_decl.bas - E_NS_009 test
 - tests/golden/basic_errors/reserved_root_user_using.bas - E_NS_009 test
 
 To add an exception:
+
 ```bash
 # Edit scripts/check_reserved_namespaces.sh
 ALLOWED_FILES=(
@@ -207,24 +221,28 @@ ALLOWED_FILES=(
 The test `test_using_compiletime_only` ensures USING directives produce no runtime artifacts:
 
 **Checks**:
+
 - IL size delta < 200 bytes vs empty program
 - No additional function definitions
 - No additional type definitions
 - USING keyword does not appear in IL
 
-**Why this matters**: USING is a compile-time directive. If it generates runtime code, something is wrong with the implementation.
+**Why this matters**: USING is a compile-time directive. If it generates runtime code, something is wrong with the
+implementation.
 
 ## Sanitizer Testing
 
 ### AddressSanitizer (ASan)
 
 Detects:
+
 - Use-after-free
 - Heap buffer overflow
 - Stack buffer overflow
 - Memory leaks
 
 Enable manually:
+
 ```bash
 cmake -S . -B build_asan -DIL_SANITIZE_ADDRESS=ON -DCMAKE_BUILD_TYPE=Debug
 cmake --build build_asan
@@ -234,12 +252,14 @@ BUILD_DIR=build_asan ./scripts/ci_namespace_tests.sh
 ### UndefinedBehaviorSanitizer (UBSan)
 
 Detects:
+
 - Integer overflow
 - Null pointer dereference
 - Division by zero
 - Alignment violations
 
 Enable manually:
+
 ```bash
 cmake -S . -B build_ubsan -DIL_SANITIZE_UNDEFINED=ON -DCMAKE_BUILD_TYPE=Debug
 cmake --build build_ubsan
@@ -295,10 +315,10 @@ The namespace tests are designed to run quickly:
 
 | Test Category | Count | Typical Time |
 |---------------|-------|--------------|
-| Unit tests | 11 | ~0.1 sec |
-| Golden tests | 11 | ~0.2 sec |
-| E2E test | 1 | ~0.01 sec |
-| Total | 23 | ~0.3 sec |
+| Unit tests    | 11    | ~0.1 sec     |
+| Golden tests  | 11    | ~0.2 sec     |
+| E2E test      | 1     | ~0.01 sec    |
+| Total         | 23    | ~0.3 sec     |
 
 **With sanitizers**: ~1.0 sec (ASan) + ~1.0 sec (UBSan)
 
@@ -316,6 +336,7 @@ The namespace test suite covers:
 - ✅ Examples: Runnable demonstration compiles successfully
 
 **Not yet covered**:
+
 - ⏸️ Multi-file type resolution (e2e test disabled)
 - ⏸️ Namespace alias in single-file scenarios (triggers false E_NS_004)
 
@@ -342,6 +363,7 @@ The namespace test suite covers:
 ### Modifying policy checks
 
 Edit `scripts/check_reserved_namespaces.sh`:
+
 - Add/remove checked directories in `CHECK_DIRS`
 - Add exceptions to `ALLOWED_FILES`
 - Adjust regex patterns if needed
@@ -352,13 +374,16 @@ Edit `scripts/check_reserved_namespaces.sh`:
 A: Set `CXX=clang++` before running: `CXX=clang++ ./scripts/ci_sanitizer_tests.sh`
 
 **Q: E2E test always shows as "Not Run (Disabled)"**
-A: This is expected. The test infrastructure is complete but disabled pending multi-file type resolution fixes. See tests/e2e/test_namespace_e2e.cpp:367 for the TODO.
+A: This is expected. The test infrastructure is complete but disabled pending multi-file type resolution fixes. See
+tests/e2e/test_namespace_e2e.cpp:367 for the TODO.
 
 **Q: Reserved namespace check fails on viper_root_example.bas**
-A: This file is an allowed exception (it's illustrative for Track B). Make sure it's in the ALLOWED_FILES list in check_reserved_namespaces.sh.
+A: This file is an allowed exception (it's illustrative for Track B). Make sure it's in the ALLOWED_FILES list in
+check_reserved_namespaces.sh.
 
 **Q: USING compile-time test fails with large delta**
-A: The test allows up to 200 bytes difference. If you've changed the IL serialization format, you may need to adjust the threshold or investigate why USING is generating code.
+A: The test allows up to 200 bytes difference. If you've changed the IL serialization format, you may need to adjust the
+threshold or investigate why USING is generating code.
 
 ## Related Documentation
 

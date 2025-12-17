@@ -21,23 +21,23 @@ String-based encoding and decoding utilities for Base64, Hex, and URL encoding.
 
 ### Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `Base64Enc(str)` | `String(String)` | Base64-encode a string's bytes |
+| Method           | Signature        | Description                              |
+|------------------|------------------|------------------------------------------|
+| `Base64Enc(str)` | `String(String)` | Base64-encode a string's bytes           |
 | `Base64Dec(str)` | `String(String)` | Decode a Base64 string to original bytes |
-| `HexEnc(str)` | `String(String)` | Hex-encode a string's bytes (lowercase) |
-| `HexDec(str)` | `String(String)` | Decode a hex string to original bytes |
-| `UrlEncode(str)` | `String(String)` | URL-encode a string (percent-encoding) |
-| `UrlDecode(str)` | `String(String)` | URL-decode a string |
+| `HexEnc(str)`    | `String(String)` | Hex-encode a string's bytes (lowercase)  |
+| `HexDec(str)`    | `String(String)` | Decode a hex string to original bytes    |
+| `UrlEncode(str)` | `String(String)` | URL-encode a string (percent-encoding)   |
+| `UrlDecode(str)` | `String(String)` | URL-decode a string                      |
 
 ### Notes
 
 - All methods operate on strings (C strings without embedded null bytes)
 - For binary data with null bytes, use `Bytes.ToBase64`/`Bytes.FromBase64` or `Bytes.ToHex`/`Bytes.FromHex`
 - **URL Encoding:**
-  - Unreserved characters (A-Z, a-z, 0-9, `-`, `_`, `.`, `~`) pass through unchanged
-  - All other characters are encoded as `%XX` (lowercase hex)
-  - Decoding treats `+` as space (form encoding convention)
+    - Unreserved characters (A-Z, a-z, 0-9, `-`, `_`, `.`, `~`) pass through unchanged
+    - All other characters are encoded as `%XX` (lowercase hex)
+    - Decoding treats `+` as space (form encoding convention)
 - **Base64:** RFC 4648 standard alphabet with `=` padding
 - **Hex:** Lowercase hex encoding (e.g., "Hello" → "48656c6c6f")
 - Invalid input to `Base64Dec` or `HexDec` will trap
@@ -79,24 +79,24 @@ RFC 4180-compliant CSV parsing and formatting.
 
 ### Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `ParseLine(line)` | `Seq(String)` | Parse a single CSV line into fields using comma delimiter |
-| `ParseLineWith(line, delim)` | `Seq(String, String)` | Parse a single CSV line with custom delimiter |
-| `Parse(text)` | `Seq(String)` | Parse multi-line CSV text into rows (each row is a Seq of fields) |
-| `ParseWith(text, delim)` | `Seq(String, String)` | Parse multi-line CSV with custom delimiter |
-| `FormatLine(fields)` | `String(Seq)` | Format a Seq of fields into a CSV line |
-| `FormatLineWith(fields, delim)` | `String(Seq, String)` | Format fields with custom delimiter |
-| `Format(rows)` | `String(Seq)` | Format a Seq of rows into multi-line CSV text |
-| `FormatWith(rows, delim)` | `String(Seq, String)` | Format rows with custom delimiter |
+| Method                          | Signature             | Description                                                       |
+|---------------------------------|-----------------------|-------------------------------------------------------------------|
+| `ParseLine(line)`               | `Seq(String)`         | Parse a single CSV line into fields using comma delimiter         |
+| `ParseLineWith(line, delim)`    | `Seq(String, String)` | Parse a single CSV line with custom delimiter                     |
+| `Parse(text)`                   | `Seq(String)`         | Parse multi-line CSV text into rows (each row is a Seq of fields) |
+| `ParseWith(text, delim)`        | `Seq(String, String)` | Parse multi-line CSV with custom delimiter                        |
+| `FormatLine(fields)`            | `String(Seq)`         | Format a Seq of fields into a CSV line                            |
+| `FormatLineWith(fields, delim)` | `String(Seq, String)` | Format fields with custom delimiter                               |
+| `Format(rows)`                  | `String(Seq)`         | Format a Seq of rows into multi-line CSV text                     |
+| `FormatWith(rows, delim)`       | `String(Seq, String)` | Format rows with custom delimiter                                 |
 
 ### Notes
 
 - **RFC 4180 Compliance:**
-  - Fields containing delimiters, quotes, or newlines are automatically quoted
-  - Embedded quotes are escaped by doubling (`""`)
-  - Newlines within quoted fields are preserved
-  - Leading/trailing whitespace in fields is preserved
+    - Fields containing delimiters, quotes, or newlines are automatically quoted
+    - Embedded quotes are escaped by doubling (`""`)
+    - Newlines within quoted fields are preserved
+    - Leading/trailing whitespace in fields is preserved
 - Custom delimiter must be a single character
 - Empty fields are supported (adjacent delimiters create empty strings)
 - Parse functions return `Seq` objects (use `Count`, `Get(index)` to access)
@@ -152,25 +152,25 @@ UUID version 4 (random) generation and manipulation per RFC 4122.
 
 ### Properties
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `Empty` | String | Returns the nil UUID "00000000-0000-0000-0000-000000000000" |
+| Property | Type   | Description                                                 |
+|----------|--------|-------------------------------------------------------------|
+| `Empty`  | String | Returns the nil UUID "00000000-0000-0000-0000-000000000000" |
 
 ### Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `New()` | `String()` | Generate a new random UUID v4 |
-| `IsValid(guid)` | `Boolean(String)` | Check if string is a valid GUID format |
-| `ToBytes(guid)` | `Bytes(String)` | Convert GUID string to 16-byte array |
-| `FromBytes(bytes)` | `String(Bytes)` | Convert 16-byte array to GUID string |
+| Method             | Signature         | Description                            |
+|--------------------|-------------------|----------------------------------------|
+| `New()`            | `String()`        | Generate a new random UUID v4          |
+| `IsValid(guid)`    | `Boolean(String)` | Check if string is a valid GUID format |
+| `ToBytes(guid)`    | `Bytes(String)`   | Convert GUID string to 16-byte array   |
+| `FromBytes(bytes)` | `String(Bytes)`   | Convert 16-byte array to GUID string   |
 
 ### Notes
 
 - Generated GUIDs follow UUID version 4 format (random)
 - Format: `xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx` where:
-  - `4` indicates version 4 (random UUID)
-  - `y` is one of `8`, `9`, `a`, or `b` (variant indicator)
+    - `4` indicates version 4 (random UUID)
+    - `y` is one of `8`, `9`, `a`, or `b` (variant indicator)
 - All hex characters are lowercase
 - Uses cryptographically secure random source where available (/dev/urandom on Unix, CryptGenRandom on Windows)
 - `ToBytes()` traps if the GUID format is invalid
@@ -204,26 +204,27 @@ PRINT restored = id  ' Output: 1 (true)
 
 ## Viper.Text.StringBuilder
 
-Mutable string builder for efficient string concatenation. Use when building strings incrementally to avoid creating many intermediate string objects.
+Mutable string builder for efficient string concatenation. Use when building strings incrementally to avoid creating
+many intermediate string objects.
 
 **Type:** Instance (opaque*)
 **Constructor:** `NEW Viper.Text.StringBuilder()`
 
 ### Properties
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `Length` | Integer | Current length of the accumulated string |
-| `Capacity` | Integer | Current buffer capacity |
+| Property   | Type    | Description                              |
+|------------|---------|------------------------------------------|
+| `Length`   | Integer | Current length of the accumulated string |
+| `Capacity` | Integer | Current buffer capacity                  |
 
 ### Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `Append(text)` | `StringBuilder(String)` | Appends text and returns self for chaining |
+| Method             | Signature               | Description                                           |
+|--------------------|-------------------------|-------------------------------------------------------|
+| `Append(text)`     | `StringBuilder(String)` | Appends text and returns self for chaining            |
 | `AppendLine(text)` | `StringBuilder(String)` | Appends text and then `\n`; returns self for chaining |
-| `ToString()` | `String()` | Returns the accumulated string |
-| `Clear()` | `Void()` | Clears the buffer |
+| `ToString()`       | `String()`              | Returns the accumulated string                        |
+| `Clear()`          | `Void()`                | Clears the buffer                                     |
 
 ### Example
 

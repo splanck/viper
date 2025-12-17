@@ -6,7 +6,8 @@ last-updated: 2025-11-13
 
 # Viper IL — Reference
 
-Complete reference for Viper IL syntax, types, instructions, and verification rules. Each instruction includes minimal examples from real IL code.
+Complete reference for Viper IL syntax, types, instructions, and verification rules. Each instruction includes minimal
+examples from real IL code.
 
 For introductory material, see **[IL Quickstart](il-quickstart.md)** or **[IL Guide](il-guide.md)**.
 
@@ -17,12 +18,12 @@ For introductory material, see **[IL Quickstart](il-quickstart.md)** or **[IL Gu
 - [Types](#types)
 - [Functions & Blocks](#functions--blocks)
 - [Instruction Catalog](#instruction-catalog-by-category)
-  - [Arithmetic](#arithmetic)
-  - [Comparison](#comparison)
-  - [Memory](#memory)
-  - [Control](#control)
-  - [Exceptions](#exceptions)
-  - [Misc](#misc)
+    - [Arithmetic](#arithmetic)
+    - [Comparison](#comparison)
+    - [Memory](#memory)
+    - [Control](#control)
+    - [Exceptions](#exceptions)
+    - [Misc](#misc)
 - [Verification Rules](#verification-rules-selected-highlights)
 - [Tools](#tools)
 
@@ -32,14 +33,14 @@ For introductory material, see **[IL Quickstart](il-quickstart.md)** or **[IL Gu
 
 Viper IL supports the following primitive types:
 
-| Type       | Description |
-|------------|-------------|
+| Type         | Description                                               |
+|--------------|-----------------------------------------------------------|
 | **Integers** | `i1`, `i16`, `i32`, `i64` — Frontends typically use `i64` |
-| **Floats** | `f64` — Double-precision floating-point |
-| **Pointers** | `ptr` — Opaque pointers (no element type) |
-| **Strings** | `str` — Runtime handle for managed strings |
-| **Void** | `void` — No return value (procedures) |
-| **Special** | `error`, `resumetok` — Exception handling types |
+| **Floats**   | `f64` — Double-precision floating-point                   |
+| **Pointers** | `ptr` — Opaque pointers (no element type)                 |
+| **Strings**  | `str` — Runtime handle for managed strings                |
+| **Void**     | `void` — No return value (procedures)                     |
+| **Special**  | `error`, `resumetok` — Exception handling types           |
 
 > **Note:** The verifier validates type correctness. Use `il-verify` to check your IL code.
 
@@ -57,6 +58,7 @@ entry:
 ```
 
 **Structure:**
+
 - **Symbol names**: `@name` for functions and globals
 - **Basic blocks**: Labeled with `label:` (no caret prefix)
 - **Terminators**: Every block must end with `ret`, `br`, `cbr`, or `switch`
@@ -100,6 +102,7 @@ entry:
 %p = gaddr @.Counter        # pointer to module variable storage
 store i64, %p, 1            # write 1 into the counter
 ```
+
 ```
 
 **`fadd`** — Floating-point addition.
@@ -386,7 +389,6 @@ switch.i32 %sel, ^default(%sel), 0 -> ^case0(%sel)
 switch.i32 %arg, ^default(%arg) junk, 0 -> ^case0(%arg)
 ```
 
-
 ### Exceptions
 
 **`eh.entry`** — Mark entry point of an error handler block.
@@ -540,9 +542,9 @@ extern @Viper.Console.PrintI64(i64) -> void
 ```
 
 Compatibility:
+
 - When built with `-DVIPER_RUNTIME_NS_DUAL=ON`, legacy `@rt_*` externs are accepted as aliases of `@Viper.*`.
 - New code should emit `@Viper.*`.
-
 
 **`func`** — Begin function definition with signature.
 

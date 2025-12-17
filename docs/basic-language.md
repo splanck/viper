@@ -9,7 +9,8 @@ last-updated: 2025-11-15
 Learn Viper BASIC by example. For a complete reference, see **[BASIC Reference](basic-reference.md)**.
 
 > **What is Viper BASIC?**
-> A compact, modernized BASIC designed for clarity: `LET` for assignment, clean arrays, short-circuit booleans, lightweight objects, and straightforward console/file I/O. It runs on Viper's VM and can be lowered to native code.
+> A compact, modernized BASIC designed for clarity: `LET` for assignment, clean arrays, short-circuit booleans,
+> lightweight objects, and straightforward console/file I/O. It runs on Viper's VM and can be lowered to native code.
 
 ---
 
@@ -37,6 +38,7 @@ Learn Viper BASIC by example. For a complete reference, see **[BASIC Reference](
 ```
 
 **Key points:**
+
 - Line numbers are optional
 - Use `:` to put multiple statements on one line
 - `'` starts a single-line comment
@@ -48,7 +50,8 @@ Learn Viper BASIC by example. For a complete reference, see **[BASIC Reference](
 
 ### Assignment with LET
 
-Assignments **require** `LET`. Variables can be declared implicitly by assigning, or explicitly with `DIM` to pin a type.
+Assignments **require** `LET`. Variables can be declared implicitly by assigning, or explicitly with `DIM` to pin a
+type.
 
 ```basic
 10 LET I = 42
@@ -153,7 +156,8 @@ Use `ANDALSO` and `ORELSE` for short-circuit evaluation:
 60 END IF
 ```
 
-> **Note:** `AND` and `OR` always evaluate both operands. Use `ANDALSO` and `ORELSE` to avoid errors like division by zero.
+> **Note:** `AND` and `OR` always evaluate both operands. Use `ANDALSO` and `ORELSE` to avoid errors like division by
+> zero.
 
 ---
 
@@ -196,7 +200,9 @@ Viper BASIC supports lightweight object-oriented programming with classes, metho
 Array fields in classes
 -----------------------
 
-Fields may be scalars or arrays. Declare array fields with dimensions inside `CLASS`; access elements with `obj.field(index)` similarly to regular arrays. When an array field declares a fixed extent, the constructor initializes it to that length; otherwise, assign an array handle at runtime before use.
+Fields may be scalars or arrays. Declare array fields with dimensions inside `CLASS`; access elements with
+`obj.field(index)` similarly to regular arrays. When an array field declares a fixed extent, the constructor initializes
+it to that length; otherwise, assign an array handle at runtime before use.
 
 ```basic
 10 CLASS Board
@@ -211,7 +217,9 @@ Fields may be scalars or arrays. Declare array fields with dimensions inside `CL
 ```
 
 Notes:
-- Single-dimension array field access is supported using `obj.field(i)`. Multi-dimension field access will be added; non-member arrays already support multiple indices.
+
+- Single-dimension array field access is supported using `obj.field(i)`. Multi-dimension field access will be added;
+  non-member arrays already support multiple indices.
 - String array fields are supported; assignment manages string lifetimes under the hood.
 
 ### Basic Class
@@ -242,15 +250,21 @@ Notes:
 ```
 
 **Key points:**
+
 - `ME` refers to the current instance (like `this` in C++ or `self` in Python)
-- Inside a class method, unqualified method calls implicitly target `ME`. For example, `Increment()` is equivalent to `ME.Increment()`.
+- Inside a class method, unqualified method calls implicitly target `ME`. For example, `Increment()` is equivalent to
+  `ME.Increment()`.
 - `NEW` is a special constructor method
 - `DELETE` frees the object (calls `DESTRUCTOR` if defined)
 
 Common mistakes and tips:
+
 - Missing parentheses when passing arguments will be rejected with a clear diagnostic.
 - For readability and consistency, prefer parentheses even for zero-argument calls.
-- Avoid naming a field and a method with the same (case-insensitive) name when the field is an array. Array-field access uses the same `obj.field(...)` syntax as method calls; the compiler resolves `obj.field(i)` as array access only when the field is declared as an array. Non-array fields with the same name as methods are treated as methods in calls (e.g., `obj.Value()`).
+- Avoid naming a field and a method with the same (case-insensitive) name when the field is an array. Array-field access
+  uses the same `obj.field(...)` syntax as method calls; the compiler resolves `obj.field(i)` as array access only when
+  the field is declared as an array. Non-array fields with the same name as methods are treated as methods in calls (
+  e.g., `obj.Value()`).
 
 ### Destructors
 
@@ -314,6 +328,7 @@ DIM R AS Renderer          REM Unqualified via USING
 ```
 
 **Placement rules:**
+
 - `USING` must appear at file scope
 - `USING` must come before `NAMESPACE`, `CLASS`, or `INTERFACE` declarations
 - Each file's `USING` directives are file-scoped
@@ -406,6 +421,7 @@ DIM H3 AS mylib.helper
 ```
 
 **File modes:**
+
 - `INPUT` — Read from file
 - `OUTPUT` — Write to file (overwrites)
 - `APPEND` — Write to file (appends)
@@ -430,6 +446,7 @@ DIM H3 AS mylib.helper
 ```
 
 **Resume options:**
+
 - `RESUME` — Retry the statement that caused the error
 - `RESUME NEXT` — Continue with the next statement
 - `RESUME <line>` — Jump to a specific line (use `RESUME 0` to end)
@@ -491,14 +508,17 @@ DIM H3 AS mylib.helper
 ## 10. Where to Go Next
 
 **Learn More:**
+
 - **[BASIC Reference](basic-reference.md)** — Complete language reference
 - **[IL Guide](il-guide.md)** — Understanding the intermediate language
 
 **Explore Examples:**
+
 - Browse `examples/basic/` for more sample programs
 - Check `tests/golden/basic/` for test cases
 
 **Advanced Topics:**
+
 - Object-oriented patterns: builders, resource guards with `DESTRUCTOR`
 - Namespace organization strategies for large projects
 - Error handling best practices

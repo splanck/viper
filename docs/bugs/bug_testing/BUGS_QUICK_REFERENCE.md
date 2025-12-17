@@ -3,6 +3,7 @@
 ## CRITICAL (Must Fix for OOP)
 
 ### BUG-047: IF/THEN crashes inside class methods
+
 ```basic
 CLASS Test
     SUB DoSomething()
@@ -12,9 +13,11 @@ CLASS Test
     END SUB
 END CLASS
 ```
+
 **Fix Required**: Enable IF/THEN/END IF in class methods
 
 ### BUG-048: Cannot call module SUBs from class methods
+
 ```basic
 SUB Utility()
     PRINT "Helper"
@@ -26,6 +29,7 @@ CLASS Test
     END SUB
 END CLASS
 ```
+
 **Fix Required**: Enable cross-scope function calls
 
 ---
@@ -33,18 +37,23 @@ END CLASS
 ## MAJOR (Fundamental Features)
 
 ### BUG-045: STRING arrays broken
+
 ```basic
 DIM names(5) AS STRING    ' Declares as INT instead
 names(0) = "Alice"        ' ERROR: type mismatch
 ```
+
 **Workaround**: Use object arrays with string fields
 
 ### BUG-046: Cannot call methods on array elements
+
 ```basic
 DIM items(3) AS Item
 items(0).Init("Sword")    ' ERROR: expected procedure call
 ```
+
 **Workaround**:
+
 ```basic
 DIM temp AS Item
 temp = items(0)
@@ -57,20 +66,24 @@ items(0) = temp
 ## MODERATE (IL Generation Issues)
 
 ### BUG-050: Multiple CASE values fail
+
 ```basic
 SELECT CASE x
     CASE 1, 2, 3    ' ERROR: IL generation
         PRINT "Match"
 END SELECT
 ```
+
 **Workaround**: Separate CASE statements
 
 ### BUG-051: DO UNTIL broken
+
 ```basic
 DO UNTIL i > 5    ' ERROR: IL generation
     i = i + 1
 LOOP
 ```
+
 **Workaround**: `DO WHILE NOT (i > 5)`
 
 ---
@@ -78,16 +91,20 @@ LOOP
 ## MINOR (Missing Features)
 
 ### BUG-044: No CHR() function
+
 ```basic
 ESC = CHR(27)    ' ERROR: unknown procedure
 ```
+
 **Impact**: Cannot generate ANSI codes or control characters
 
 ### BUG-049: RND() takes no arguments
+
 ```basic
 x = RND(1)    ' ERROR: expected )
 x = RND()     ' OK
 ```
+
 **Impact**: Cannot control RNG behavior
 
 ---

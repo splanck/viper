@@ -1,6 +1,7 @@
 # Viper Documentation
 
-Welcome to the Viper compiler toolchain documentation. This directory contains language references, tutorials, and implementation guides.
+Welcome to the Viper compiler toolchain documentation. This directory contains language references, tutorials, and
+implementation guides.
 
 > **Developer resources**: Architecture docs, code maps, and contributor guides are in `/devdocs`.
 
@@ -8,13 +9,13 @@ Welcome to the Viper compiler toolchain documentation. This directory contains l
 
 ## Quick Links
 
-| Document | Description |
-|----------|-------------|
+| Document                              | Description                                |
+|---------------------------------------|--------------------------------------------|
 | [Getting Started](getting-started.md) | Build, install, and run your first program |
-| [BASIC Tutorial](basic-language.md) | Learn Viper BASIC by example |
-| [Pascal Tutorial](pascal-language.md) | Learn Viper Pascal by example |
-| [Runtime Library](viperlib.md) | Viper.* classes and methods reference |
-| [IL Guide](il-guide.md) | Comprehensive IL specification |
+| [BASIC Tutorial](basic-language.md)   | Learn Viper BASIC by example               |
+| [Pascal Tutorial](pascal-language.md) | Learn Viper Pascal by example              |
+| [Runtime Library](viperlib.md)        | Viper.* classes and methods reference      |
+| [IL Guide](il-guide.md)               | Comprehensive IL specification             |
 
 ---
 

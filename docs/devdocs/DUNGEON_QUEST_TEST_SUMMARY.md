@@ -8,31 +8,34 @@
 
 ## Summary
 
-This testing session involved building progressively more complex versions of a text-based dungeon adventure game to stress-test the VIPER BASIC implementation. The goal was to "poke at every corner" of the VIPER BASIC syntax and find bugs, gaps, and broken features.
+This testing session involved building progressively more complex versions of a text-based dungeon adventure game to
+stress-test the VIPER BASIC implementation. The goal was to "poke at every corner" of the VIPER BASIC syntax and find
+bugs, gaps, and broken features.
 
 ## Versions Created
 
 1. **dungeon_quest.bas** (296 lines) - Initial version with DO WHILE + GOSUB
-   - Discovered BUG-026 (DO WHILE + GOSUB causes empty block error)
+    - Discovered BUG-026 (DO WHILE + GOSUB causes empty block error)
 
 2. **dungeon_quest_v2.bas** (447 lines) - Workaround using FOR loop
-   - **STATUS**: ✅ WORKS - This is the current reference version
-   - Tests: arrays, loops, IF-THEN-ELSE, SELECT CASE, score tracking
+    - **STATUS**: ✅ WORKS - This is the current reference version
+    - Tests: arrays, loops, IF-THEN-ELSE, SELECT CASE, score tracking
 
 3. **dungeon_quest_v3.bas** (725 lines) - Added math testing, monsters, combat
-   - Discovered BUG-027 (MOD operator broken with INTEGER type)
-   - Discovered BUG-028 (Integer division \\ broken with INTEGER type)
-   - Discovered IL-BUG-001 (Complex nested IF-ELSEIF triggers IL verifier error)
+    - Discovered BUG-027 (MOD operator broken with INTEGER type)
+    - Discovered BUG-028 (Integer division \\ broken with INTEGER type)
+    - Discovered IL-BUG-001 (Complex nested IF-ELSEIF triggers IL verifier error)
 
 4. **dungeon_quest_v4.bas** (791 lines) - Attempted proper SUB/FUNCTION structure
-   - Discovered BUG-029 (EXIT FUNCTION not supported)
-   - Discovered BUG-030 (SUBs/FUNCTIONs cannot access global variables) **CRITICAL**
+    - Discovered BUG-029 (EXIT FUNCTION not supported)
+    - Discovered BUG-030 (SUBs/FUNCTIONs cannot access global variables) **CRITICAL**
 
 ---
 
 ## Bugs Discovered
 
 ### BUG-026: DO WHILE loops with GOSUB cause "empty block" error
+
 **Severity**: High
 **Impact**: Cannot structure programs with DO WHILE loops calling subroutines
 
@@ -47,6 +50,7 @@ LOOP
 ---
 
 ### BUG-027: MOD operator doesn't work with INTEGER type (%)
+
 **Severity**: High
 **Impact**: Cannot perform modulo operations on INTEGER variables
 
@@ -63,6 +67,7 @@ c% = a% MOD b%  ' ERROR: operand type mismatch
 ---
 
 ### BUG-028: Integer division operator (\\) doesn't work with INTEGER type (%)
+
 **Severity**: High
 **Impact**: Cannot perform integer division on INTEGER variables
 **Related**: BUG-027 (same root cause)
@@ -78,6 +83,7 @@ c% = a% \ b%  ' ERROR: operand type mismatch
 ---
 
 ### BUG-029: EXIT FUNCTION not supported
+
 **Severity**: Medium
 **Impact**: Cannot exit early from FUNCTION
 
@@ -96,6 +102,7 @@ END FUNCTION
 ---
 
 ### BUG-030: SUBs and FUNCTIONs cannot access global variables
+
 **Severity**: **CRITICAL**
 **Impact**: Makes SUB/FUNCTION essentially unusable for non-trivial programs
 
@@ -110,18 +117,21 @@ END SUB
 
 **Error**: `error[B1001]: unknown variable 'GLOBALVAR%'`
 
-**Analysis**: Each SUB/FUNCTION has completely isolated scope. Cannot access module-level variables, making them useless for programs that need shared state.
+**Analysis**: Each SUB/FUNCTION has completely isolated scope. Cannot access module-level variables, making them useless
+for programs that need shared state.
 
 ---
 
 ### IL-BUG-001: IL verifier error with complex nested IF-ELSEIF structures
+
 **Component**: IL Verifier / BASIC Frontend IL Generation
 **Severity**: High
 **Impact**: Cannot create complex branching logic
 
 **Pattern**: Large IF-ELSEIF chain (6+ branches) where multiple ELSEIF branches contain nested IF-ELSE statements
 
-**Error**: `error: main:if_test_6: cbr %t928 label if_test_06 label if_else2: expected 2 branch argument bundles, or none`
+**Error**:
+`error: main:if_test_6: cbr %t928 label if_test_06 label if_else2: expected 2 branch argument bundles, or none`
 
 **Note**: IL generation succeeds, but VM execution fails during verification
 
@@ -131,12 +141,12 @@ END SUB
 
 The combination of BUG-026 and BUG-030 creates a fundamental problem:
 
-| Approach | Problem |
-|----------|---------|
-| DO WHILE + GOSUB | BUG-026: Causes "empty block" error |
-| SUB/FUNCTION | BUG-030: Cannot access globals (useless) |
-| FOR + inline code | IL-BUG-001: Triggers verifier errors |
-| FOR + GOSUB | Works, but limited complexity before hitting IL bugs |
+| Approach          | Problem                                              |
+|-------------------|------------------------------------------------------|
+| DO WHILE + GOSUB  | BUG-026: Causes "empty block" error                  |
+| SUB/FUNCTION      | BUG-030: Cannot access globals (useless)             |
+| FOR + inline code | IL-BUG-001: Triggers verifier errors                 |
+| FOR + GOSUB       | Works, but limited complexity before hitting IL bugs |
 
 **Conclusion**: There is currently NO viable way to write modular, complex programs (>500 lines) in VIPER BASIC.
 
@@ -215,10 +225,12 @@ All test programs saved to `/devdocs/basic/`:
 ## Conclusion
 
 This comprehensive testing exercise successfully:
+
 - Created a 447-line working game demonstrating core BASIC features
 - Discovered 5 new BASIC frontend bugs + 1 IL/verifier bug
 - Identified a "modularity crisis" preventing complex program development
 - Documented workarounds and limitations
 - Provided minimal reproduction cases for all bugs
 
-The VIPER BASIC implementation works well for simple programs (<300 lines, no procedures), but needs significant fixes to support modular, complex applications.
+The VIPER BASIC implementation works well for simple programs (<300 lines, no procedures), but needs significant fixes
+to support modular, complex applications.

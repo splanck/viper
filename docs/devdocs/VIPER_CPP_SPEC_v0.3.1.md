@@ -7,7 +7,8 @@ Define a bounded, project-specific subset of C++ sufficient to:
 1. Compile the Viper toolchain (frontends, IL, passes, codegen, VM, runtime) in a hosted environment.
 2. Eventually compile the Vana kernel and core runtime in a freestanding environment.
 
-Viper C++ is **not** a general-purpose C++ implementation. It is a self-hosting dialect tuned specifically to the Viper codebase.
+Viper C++ is **not** a general-purpose C++ implementation. It is a self-hosting dialect tuned specifically to the Viper
+codebase.
 
 ## Derived From
 
@@ -21,6 +22,7 @@ Viper commit as of 2024-11-24.
 ## Conformance Language
 
 This specification uses RFC 2119 terminology:
+
 - **MUST** / **REQUIRED** — absolute requirement
 - **SHOULD** / **RECOMMENDED** — best practice with valid exceptions
 - **MAY** / **OPTIONAL** — truly optional
@@ -31,13 +33,14 @@ This specification uses RFC 2119 terminology:
 
 Viper C++ defines three profiles corresponding to how the code is used:
 
-| Profile | Scope (directories) | Purpose |
-|---------|---------------------|---------|
-| **Core** | `include/viper`, `src/{codegen, frontends, il, parse, pass, runtime, support, vm, tools, common}` | Self-hosting compiler + VM |
-| **Extended** | Core + `src/tui`, `src/tests` | TUI, tests, dev tools |
-| **Kernel** | Subset of Core | Vana kernel; freestanding, no EH/RTTI |
+| Profile      | Scope (directories)                                                                               | Purpose                               |
+|--------------|---------------------------------------------------------------------------------------------------|---------------------------------------|
+| **Core**     | `include/viper`, `src/{codegen, frontends, il, parse, pass, runtime, support, vm, tools, common}` | Self-hosting compiler + VM            |
+| **Extended** | Core + `src/tui`, `src/tests`                                                                     | TUI, tests, dev tools                 |
+| **Kernel**   | Subset of Core                                                                                    | Vana kernel; freestanding, no EH/RTTI |
 
 Every feature is tagged with the profile(s) that MUST support it:
+
 - **Core** — required for the self-hosting compiler
 - **Extended** — used only in tests / TUI / auxiliary tools
 - **Kernel** — subset that MUST work under `-fno-exceptions -fno-rtti` with a freestanding standard library
@@ -50,23 +53,23 @@ Unless otherwise noted, a rule applies to all three profiles.
 
 ### 1.1 Included (all profiles)
 
-| Element | Notes |
-|---------|-------|
-| C-style comments `/* ... */` | MUST support |
-| C++ comments `// ...` | MUST support |
-| Integer literals | Decimal, hex (`0x`), binary (`0b`), digit separators (`'`) |
-| Floating literals | Standard + scientific notation |
-| String literals | Normal and raw (`R"(...)"`), standard escape sequences |
-| Character literals | Normal + escapes |
-| Boolean literals | `true`, `false` |
-| Null pointer literal | `nullptr` |
+| Element                      | Notes                                                      |
+|------------------------------|------------------------------------------------------------|
+| C-style comments `/* ... */` | MUST support                                               |
+| C++ comments `// ...`        | MUST support                                               |
+| Integer literals             | Decimal, hex (`0x`), binary (`0b`), digit separators (`'`) |
+| Floating literals            | Standard + scientific notation                             |
+| String literals              | Normal and raw (`R"(...)"`), standard escape sequences     |
+| Character literals           | Normal + escapes                                           |
+| Boolean literals             | `true`, `false`                                            |
+| Null pointer literal         | `nullptr`                                                  |
 
 ### 1.2 Excluded (all profiles)
 
-| Element | Rationale |
-|---------|-----------|
-| User-defined literals | Not used in Viper |
-| Wide/Unicode literals (`L""`, `u""`, `U""`, `u8""`) | Not used |
+| Element                                             | Rationale         |
+|-----------------------------------------------------|-------------------|
+| User-defined literals                               | Not used in Viper |
+| Wide/Unicode literals (`L""`, `u""`, `U""`, `u8""`) | Not used          |
 
 ---
 
@@ -75,6 +78,7 @@ Unless otherwise noted, a rule applies to all three profiles.
 ### 2.1 Fundamental Types (all profiles)
 
 **REQUIRED:**
+
 - `bool`
 - `char`, `signed char`, `unsigned char`
 - `short`, `unsigned short`
@@ -87,12 +91,14 @@ Unless otherwise noted, a rule applies to all three profiles.
 - `std::intN_t`, `std::uintN_t` for N ∈ {8, 16, 32, 64}
 
 **EXCLUDED:**
+
 - `long double`
 - `wchar_t`, `char8_t`, `char16_t`, `char32_t`
 
 ### 2.2 Compound Types (all profiles)
 
 **REQUIRED:**
+
 - Pointers: `T*`, `const T*`
 - References: `T&`, `const T&`
 - Rvalue references: `T&&` (for move semantics)
@@ -101,23 +107,27 @@ Unless otherwise noted, a rule applies to all three profiles.
 - Classes and structs (see §4)
 
 **Unions:**
-- Core/Extended: Plain `union` is permitted ONLY as a local implementation detail for trivial bit reinterpretation. Public tagged unions MUST use `std::variant`.
+
+- Core/Extended: Plain `union` is permitted ONLY as a local implementation detail for trivial bit reinterpretation.
+  Public tagged unions MUST use `std::variant`.
 - Kernel: Same rules; in practice, union usage is limited to low-level code.
 
 ### 2.3 Type Qualifiers
 
-| Qualifier | Status |
-|-----------|--------|
-| `const` | REQUIRED |
-| `constexpr` | REQUIRED |
-| `mutable` | ALLOWED |
-| `volatile` | FORBIDDEN in Core/Extended — Viper C++ MAY reject it |
+| Qualifier   | Status                                               |
+|-------------|------------------------------------------------------|
+| `const`     | REQUIRED                                             |
+| `constexpr` | REQUIRED                                             |
+| `mutable`   | ALLOWED                                              |
+| `volatile`  | FORBIDDEN in Core/Extended — Viper C++ MAY reject it |
 
-**Kernel exception:** Code that genuinely needs `volatile` (e.g., MMIO) SHOULD isolate those uses in small, audited headers. A future revision may carve out a tiny allowed subset of `volatile` for this purpose.
+**Kernel exception:** Code that genuinely needs `volatile` (e.g., MMIO) SHOULD isolate those uses in small, audited
+headers. A future revision may carve out a tiny allowed subset of `volatile` for this purpose.
 
 ### 2.4 Type Inference (all profiles)
 
 **REQUIRED:**
+
 - `auto` (variables and return types)
 - `decltype`, `decltype(auto)`
 - Structured bindings: `auto [a, b] = expr;`
@@ -142,6 +152,7 @@ if constexpr (requires(Derived& d, const Node& n) { d.before(n); }) {
 ```
 
 **NOT ALLOWED:**
+
 - Requires clauses on function or class templates
 - Complex boolean algebra of constraints
 - Concept hierarchies beyond shallow re-use
@@ -167,22 +178,26 @@ thread_local int tls;  // Kernel: allowed, but no std::thread
 ### 3.2 Function Declarations (all profiles)
 
 **SUPPORTED:**
+
 - Normal functions, `noexcept`, `constexpr`, `inline`, `static`
 - Trailing return types: `auto f() -> ReturnType;`
 - Attributes: `[[nodiscard]]`, `[[maybe_unused]]`, etc.
 
 **NOT SUPPORTED:**
+
 - `consteval` functions
 
 ### 3.3 Namespaces
 
 **SUPPORTED:**
+
 - Nested namespaces: `namespace il::core { ... }`
 - Traditional: `namespace il { namespace core { ... } }`
 - `using namespace std;` — ALLOWED but DISCOURAGED
 - `using std::string;` — RECOMMENDED
 
-**Inline namespaces:** Syntax MAY be accepted but MUST NOT be used in Core; they have no special semantics in Viper C++. A conforming Viper C++ compiler MAY diagnose inline namespaces as ill-formed.
+**Inline namespaces:** Syntax MAY be accepted but MUST NOT be used in Core; they have no special semantics in Viper C++.
+A conforming Viper C++ compiler MAY diagnose inline namespaces as ill-formed.
 
 ---
 
@@ -191,6 +206,7 @@ thread_local int tls;  // Kernel: allowed, but no std::thread
 ### 4.1 Class Structure (all profiles)
 
 **FULLY SUPPORTED:**
+
 - All usual members: constructors, destructors, copy/move, static members
 - Defaulted / deleted special members
 - `explicit` constructors
@@ -198,10 +214,12 @@ thread_local int tls;  // Kernel: allowed, but no std::thread
 ### 4.2 Inheritance
 
 **ALLOWED:**
+
 - Single inheritance: `class Derived : public Base { ... };`
 - "Interface composition": multiple inheritance of pure abstract base classes with no data members
 
 **FORBIDDEN:**
+
 - Multiple inheritance involving any base with data members
 - Virtual inheritance (`virtual Base`)
 
@@ -210,23 +228,26 @@ Viper C++ MUST diagnose forbidden inheritance forms as hard errors.
 ### 4.3 Special Members
 
 All standard special member functions are REQUIRED:
+
 - Default / copy / move constructors
 - Copy / move assignment
 - Destructor (virtual where needed)
 
 **Guidelines:**
+
 - Use `= default` and `= delete` liberally
 - Use `override` for all overriding virtual functions
 - Viper C++ SHOULD warn on missing `override` in Core code
 
 ### 4.4 RTTI by Profile
 
-| Feature | Core | Extended | Kernel |
-|---------|------|----------|--------|
-| `dynamic_cast` | DISCOURAGED | ALLOWED | FORBIDDEN |
-| `typeid` | DISCOURAGED | ALLOWED | FORBIDDEN |
+| Feature        | Core        | Extended | Kernel    |
+|----------------|-------------|----------|-----------|
+| `dynamic_cast` | DISCOURAGED | ALLOWED  | FORBIDDEN |
+| `typeid`       | DISCOURAGED | ALLOWED  | FORBIDDEN |
 
-**Core policy:** Existing `dynamic_cast` uses SHOULD be migrated to explicit discriminators and helper functions (`is<T>()`, `as<T>()` style). New Core code MUST NOT introduce RTTI.
+**Core policy:** Existing `dynamic_cast` uses SHOULD be migrated to explicit discriminators and helper functions (
+`is<T>()`, `as<T>()` style). New Core code MUST NOT introduce RTTI.
 
 **Kernel:** Compiled with `-fno-rtti`. RTTI APIs are not available.
 
@@ -237,6 +258,7 @@ All standard special member functions are REQUIRED:
 ### 5.1 Supported Forms (all profiles)
 
 **REQUIRED in Core:**
+
 - Class templates with a small number of type parameters
 - Function templates
 - Variadic templates ONLY for forwarding (`Args&&...`)
@@ -265,10 +287,12 @@ Expected(U&& value);
 ```
 
 **Conditions MUST be built from:**
+
 - Standard type traits (`std::is_integral_v`, `std::is_same_v`, etc.)
 - `&&`, `||`, `!` over those traits
 
 **FORBIDDEN:**
+
 - Nested or recursive `enable_if` games
 - Expression-SFINAE (`decltype(...)` tricks)
 - Custom trait stacks that become a meta-language
@@ -287,6 +311,7 @@ Expected(U&& value);
 ### 6.1 Basic Lambdas (all profiles)
 
 **ALLOWED:**
+
 - Normal lambdas: `[] {}`, `[](int x) { ... }`
 - Captures: `[=]`, `[&]`, `[x]`, `[&x]`, `[this]`, init-captures
 - `mutable` lambdas
@@ -303,6 +328,7 @@ Viper C++ MUST support restricted generic lambdas:
 ```
 
 **Restrictions:**
+
 - Parameters MUST be `auto`, `auto&`, `const auto&`, or `auto*`
 - No parameter packs in lambdas
 - No `template<...>` on the lambda
@@ -327,6 +353,7 @@ All standard operators on fundamental types MUST be supported.
 ### 7.2 Operator Overloading
 
 **ALLOWED (Core):**
+
 - Equality and ordering: `operator==`, `operator!=`, `operator<`
 - Assignment operators
 - Stream insertion (`operator<<`) for diagnostics
@@ -334,6 +361,7 @@ All standard operators on fundamental types MUST be supported.
 - Smart pointer `operator*` / `operator->`
 
 **FORBIDDEN (Core):**
+
 - User-defined arithmetic (`operator+`, `operator*`, etc.) unless carefully justified
 - Overloading `operator new` / `operator delete` (global or per-class)
 
@@ -346,6 +374,7 @@ All standard operators on fundamental types MUST be supported.
 ## 8. Control Flow
 
 **SUPPORTED (all profiles):**
+
 - `if`, `if constexpr`, `switch`
 - `for` (classic), range-for, range-for with structured bindings
 - `while`, `do-while`
@@ -353,6 +382,7 @@ All standard operators on fundamental types MUST be supported.
 - `goto` — ALLOWED but DISCOURAGED; see §15.2
 
 **Statement attributes:**
+
 - `[[likely]]`, `[[unlikely]]`
 - `[[fallthrough]]` in switch statements
 
@@ -365,16 +395,19 @@ All standard operators on fundamental types MUST be supported.
 Exceptions are SUPPORTED but intentionally limited.
 
 **ALLOWED:**
+
 - `throw` of types derived from `std::exception`
 - `try` / `catch` with `catch (const std::exception& e)` and `catch (...)`
 - `noexcept` on functions
 
 **RECOMMENDED:**
+
 - Prefer `Result<T>` / expected-style APIs for ordinary error handling
 - Reserve exceptions for "non-local abort" paths
 - Always catch by `const&`
 
-**Cultural rule:** Core code MAY use exceptions; new Core APIs SHOULD default to `Result<T>`-style error reporting unless there is a strong reason to prefer exceptions.
+**Cultural rule:** Core code MAY use exceptions; new Core APIs SHOULD default to `Result<T>`-style error reporting
+unless there is a strong reason to prefer exceptions.
 
 ### 9.2 Kernel
 
@@ -390,53 +423,55 @@ Exceptions are SUPPORTED but intentionally limited.
 
 ### 10.1 Core Profile — Required Headers
 
-| Header | Key Types |
-|--------|-----------|
-| `<string>` | `std::string` |
-| `<string_view>` | `std::string_view` |
-| `<vector>` | `std::vector` |
-| `<array>` | `std::array` |
-| `<optional>` | `std::optional`, `std::nullopt` |
-| `<variant>` | `std::variant`, `std::get_if`, `std::holds_alternative` |
-| `<any>` | `std::any`, `std::any_cast` |
-| `<memory>` | `std::unique_ptr`, `std::make_unique` |
-| `<utility>` | `std::move`, `std::forward`, `std::pair`, `std::exchange` |
-| `<functional>` | `std::function`, `std::hash` |
-| `<algorithm>` | `std::find`, `std::sort`, `std::any_of`, etc. |
-| `<numeric>` | `std::accumulate` |
-| `<unordered_map>`, `<unordered_set>`, `<map>`, `<set>` | Associative containers |
-| `<sstream>` | `std::ostringstream`, `std::istringstream` |
-| `<fstream>` | Basic file I/O |
-| `<iostream>` | `std::cout`, `std::cerr` |
-| `<filesystem>` | `std::filesystem::path`, basic operations |
-| `<limits>` | `std::numeric_limits` |
-| `<cstdint>`, `<cstddef>`, `<cstring>`, `<cstdio>`, `<cassert>` | C compatibility |
-| `<initializer_list>` | `std::initializer_list` |
-| `<span>` | `std::span` |
-| `<type_traits>` | Core traits, `std::enable_if` |
-| `<mutex>` | `std::mutex`, `std::lock_guard`, `std::unique_lock` |
-| `<concepts>` | `std::convertible_to` |
+| Header                                                         | Key Types                                                 |
+|----------------------------------------------------------------|-----------------------------------------------------------|
+| `<string>`                                                     | `std::string`                                             |
+| `<string_view>`                                                | `std::string_view`                                        |
+| `<vector>`                                                     | `std::vector`                                             |
+| `<array>`                                                      | `std::array`                                              |
+| `<optional>`                                                   | `std::optional`, `std::nullopt`                           |
+| `<variant>`                                                    | `std::variant`, `std::get_if`, `std::holds_alternative`   |
+| `<any>`                                                        | `std::any`, `std::any_cast`                               |
+| `<memory>`                                                     | `std::unique_ptr`, `std::make_unique`                     |
+| `<utility>`                                                    | `std::move`, `std::forward`, `std::pair`, `std::exchange` |
+| `<functional>`                                                 | `std::function`, `std::hash`                              |
+| `<algorithm>`                                                  | `std::find`, `std::sort`, `std::any_of`, etc.             |
+| `<numeric>`                                                    | `std::accumulate`                                         |
+| `<unordered_map>`, `<unordered_set>`, `<map>`, `<set>`         | Associative containers                                    |
+| `<sstream>`                                                    | `std::ostringstream`, `std::istringstream`                |
+| `<fstream>`                                                    | Basic file I/O                                            |
+| `<iostream>`                                                   | `std::cout`, `std::cerr`                                  |
+| `<filesystem>`                                                 | `std::filesystem::path`, basic operations                 |
+| `<limits>`                                                     | `std::numeric_limits`                                     |
+| `<cstdint>`, `<cstddef>`, `<cstring>`, `<cstdio>`, `<cassert>` | C compatibility                                           |
+| `<initializer_list>`                                           | `std::initializer_list`                                   |
+| `<span>`                                                       | `std::span`                                               |
+| `<type_traits>`                                                | Core traits, `std::enable_if`                             |
+| `<mutex>`                                                      | `std::mutex`, `std::lock_guard`, `std::unique_lock`       |
+| `<concepts>`                                                   | `std::convertible_to`                                     |
 
 ### 10.2 Extended Profile — Additional Headers
 
 Extended code (TUI, tests) uses or may introduce the following headers:
 
-| Header | Current Usage |
-|--------|---------------|
-| `<regex>` | **Used** — TUI syntax highlighter (`src/tui`) |
-| `<thread>` | Tests only (`src/tests`) |
-| `<atomic>` | Tests only (`src/tests`) |
-| `<condition_variable>` | Reserved for future use |
+| Header                 | Current Usage                                 |
+|------------------------|-----------------------------------------------|
+| `<regex>`              | **Used** — TUI syntax highlighter (`src/tui`) |
+| `<thread>`             | Tests only (`src/tests`)                      |
+| `<atomic>`             | Tests only (`src/tests`)                      |
+| `<condition_variable>` | Reserved for future use                       |
 
 ### 10.3 Kernel Profile — Freestanding Subset
 
 **ALLOWED:**
+
 - `<cstdint>`, `<cstddef>`, `<limits>`, `<type_traits>`
 - `<utility>` (`std::move`, `std::forward`)
 - `<array>`, `<span>`
 - `<optional>`, `<variant>` (if freestanding impl available)
 
 **NOT ALLOWED:**
+
 - `<iostream>`, `<fstream>`, `<sstream>`
 - `<string>` (kernel uses its own string type)
 - `<mutex>`, `<thread>`, `<atomic>`, `<condition_variable>` — all synchronization comes from kernel-provided primitives
@@ -457,6 +492,7 @@ Extended code (TUI, tests) uses or may introduce the following headers:
 ## 11. Attributes
 
 **SUPPORTED (all profiles):**
+
 - `[[nodiscard]]`
 - `[[maybe_unused]]`
 - `[[noreturn]]`
@@ -465,6 +501,7 @@ Extended code (TUI, tests) uses or may introduce the following headers:
 - `[[deprecated]]`
 
 **EXCLUDED:**
+
 - `[[no_unique_address]]`
 - `[[carries_dependency]]`
 - Vendor-specific or custom attributes
@@ -474,6 +511,7 @@ Extended code (TUI, tests) uses or may introduce the following headers:
 ## 12. Preprocessor
 
 **SUPPORTED:**
+
 - `#pragma once` (PREFERRED header guard)
 - Traditional include guards: `#ifndef` / `#define` / `#endif`
 - `#include` of system and project headers
@@ -482,10 +520,12 @@ Extended code (TUI, tests) uses or may introduce the following headers:
 - `#error` (and `#warning` if supported)
 
 **Predefined macros:**
+
 - `__FILE__`, `__LINE__`, `__func__`, `__cplusplus`
 - `__has_include`, `__has_cpp_attribute` where available
 
 **Guidelines:**
+
 - MINIMIZE macro usage
 - PREFER `constexpr` for constants
 - PREFER templates for function-like behavior
@@ -497,6 +537,7 @@ Extended code (TUI, tests) uses or may introduce the following headers:
 ### 13.1 Ownership Patterns
 
 **Core rules:**
+
 - Heap-allocated objects MUST be owned by `std::unique_ptr<T>` or containers
 - Shared ownership (`std::shared_ptr`) is effectively FORBIDDEN in Core
 - Manual `new` / `delete` are FORBIDDEN
@@ -504,6 +545,7 @@ Extended code (TUI, tests) uses or may introduce the following headers:
 ### 13.2 Banned Ownership Patterns
 
 **FORBIDDEN (Core/Kernel):**
+
 - Raw owning pointers (`T* p = new T; delete p;`)
 - Owning C-style arrays (`new T[N]` / `delete[]`)
 - Custom `operator new` / `operator delete`
@@ -513,23 +555,27 @@ Extended code (TUI, tests) uses or may introduce the following headers:
 `reinterpret_cast` is ALLOWED ONLY in specific patterns:
 
 **Pattern 1: Pointer ↔ void* round-trip**
+
 ```cpp
 void* p = reinterpret_cast<void*>(objPtr);
 auto* obj = reinterpret_cast<MyType*>(p);
 ```
 
 **Pattern 2: Pointer ↔ integer for tagging/hashing**
+
 ```cpp
 std::uintptr_t bits = reinterpret_cast<std::uintptr_t>(ptr);
 auto* ptr2 = reinterpret_cast<void*>(bits);
 ```
 
 **Pattern 3: Opaque handle types at subsystem boundaries**
+
 ```cpp
 auto* impl = reinterpret_cast<rt_string_impl*>(handle);
 ```
 
 **Pattern 4: Memory-mapped type access (alignment/layout controlled)**
+
 ```cpp
 out.i64 = *reinterpret_cast<const std::int64_t*>(ptr);
 ```
@@ -537,11 +583,13 @@ out.i64 = *reinterpret_cast<const std::int64_t*>(ptr);
 **Pattern 5: Function pointer casts for runtime ABI**
 
 **FORBIDDEN patterns:**
+
 - Casting between unrelated object types (`Foo*` → `Bar*`)
 - Cases where `static_cast` or `const_cast` would suffice
 - Structural punning between polymorphic classes
 
-**Union for bit reinterpretation:** Plain `union` MAY be used as a local helper ONLY for trivial bit reinterpretation between fundamental types (e.g., `double` ↔ `uint64_t`), with explicit discriminator handling.
+**Union for bit reinterpretation:** Plain `union` MAY be used as a local helper ONLY for trivial bit reinterpretation
+between fundamental types (e.g., `double` ↔ `uint64_t`), with explicit discriminator handling.
 
 ---
 
@@ -550,9 +598,11 @@ out.i64 = *reinterpret_cast<const std::int64_t*>(ptr);
 ### 14.1 Core (Host)
 
 **REQUIRED:**
+
 - `<mutex>` with `std::mutex`, `std::lock_guard`, `std::unique_lock`
 
 **NOT REQUIRED for Core:**
+
 - `<thread>` — no thread creation in Core
 - `<atomic>`, `<condition_variable>` — only in tests
 
@@ -562,7 +612,8 @@ Tests MAY use `std::thread`, `std::atomic`, `std::condition_variable`.
 
 ### 14.3 Kernel
 
-**NO standard concurrency library.** Kernel builds MUST NOT include `<thread>`, `<mutex>`, `<atomic>`, or `<condition_variable>`. All synchronization comes from kernel-provided primitives.
+**NO standard concurrency library.** Kernel builds MUST NOT include `<thread>`, `<mutex>`, `<atomic>`, or
+`<condition_variable>`. All synchronization comes from kernel-provided primitives.
 
 - `thread_local` keyword ALLOWED
 - Standard threading/synchronization headers FORBIDDEN
@@ -573,28 +624,28 @@ Tests MAY use `std::thread`, `std::atomic`, `std::condition_variable`.
 
 ### 15.1 Hard Errors (Compiler MUST Reject in Core/Kernel)
 
-| Construct | Rationale |
-|-----------|-----------|
-| Coroutines (`co_await`, `co_yield`, `co_return`) | Complexity, not used |
-| Modules (`module`, `export module`) | Not mature, not used |
-| Variable-length arrays; `alloca` | Stack safety |
-| User-defined literals | Not used |
-| `operator new` / `operator delete` overloads | Memory safety |
-| Multiple inheritance with data members | Complexity |
-| Virtual inheritance | Complexity |
-| Template template parameters | Complexity |
-| Inline assembly (`asm`, `__asm__`) | Use separate `.s` files |
+| Construct                                        | Rationale               |
+|--------------------------------------------------|-------------------------|
+| Coroutines (`co_await`, `co_yield`, `co_return`) | Complexity, not used    |
+| Modules (`module`, `export module`)              | Not mature, not used    |
+| Variable-length arrays; `alloca`                 | Stack safety            |
+| User-defined literals                            | Not used                |
+| `operator new` / `operator delete` overloads     | Memory safety           |
+| Multiple inheritance with data members           | Complexity              |
+| Virtual inheritance                              | Complexity              |
+| Template template parameters                     | Complexity              |
+| Inline assembly (`asm`, `__asm__`)               | Use separate `.s` files |
 
 ### 15.2 Warnings / Lint Violations (ALLOWED but DISCOURAGED)
 
-| Construct | Guidance |
-|-----------|----------|
-| `goto` across scopes | Prefer structured control flow |
-| C-style casts in C++ | Use `static_cast`, etc. |
-| `reinterpret_cast` outside §13.3 | Must justify |
-| `dynamic_cast` in Core | Migrate to discriminators |
-| Exceptions for expected errors | Prefer `Result<T>` |
-| Raw `new` / `delete` in Extended | Avoid normalizing |
+| Construct                        | Guidance                       |
+|----------------------------------|--------------------------------|
+| `goto` across scopes             | Prefer structured control flow |
+| C-style casts in C++             | Use `static_cast`, etc.        |
+| `reinterpret_cast` outside §13.3 | Must justify                   |
+| `dynamic_cast` in Core           | Migrate to discriminators      |
+| Exceptions for expected errors   | Prefer `Result<T>`             |
+| Raw `new` / `delete` in Extended | Avoid normalizing              |
 
 ---
 
@@ -603,11 +654,11 @@ Tests MAY use `std::thread`, `std::atomic`, `std::condition_variable`.
 - `override` on all overridden virtual functions
 - `[[nodiscard]]` on functions whose return values must not be ignored
 - **Naming:**
-  - Namespaces: `lower_snake` (`viper::il`)
-  - Types: `PascalCase`
-  - Functions/variables: `camelCase`
-  - Data members: `camelCase_` (trailing underscore)
-  - Macros: `UPPER_SNAKE`
+    - Namespaces: `lower_snake` (`viper::il`)
+    - Types: `PascalCase`
+    - Functions/variables: `camelCase`
+    - Data members: `camelCase_` (trailing underscore)
+    - Macros: `UPPER_SNAKE`
 - PREFER `enum class` for new enums
 - Keep headers self-contained
 
@@ -615,26 +666,26 @@ Tests MAY use `std::thread`, `std::atomic`, `std::condition_variable`.
 
 ## 17. Implementation Phases
 
-| Phase | Target | Features |
-|-------|--------|----------|
-| 1 | `src/runtime`, `src/lib/graphics` | C99 subset only |
-| 2 | `src/{il, vm, support, common, parse}` | Classes, single inheritance, basic templates |
-| 3 | `src/codegen`, `src/frontends/basic` | Move semantics, restricted generic lambdas (§6.2), `if constexpr`, limited concepts (§2.5) |
-| 4 | All Core except TUI/tests | `std::any`, `<mutex>`, full `std::variant` |
-| 5 | `src/tui`, `src/tests` | `<regex>`, `<thread>`, RTTI in tests |
-| 6 | Vana kernel | Freestanding, no EH, no RTTI |
+| Phase | Target                                 | Features                                                                                   |
+|-------|----------------------------------------|--------------------------------------------------------------------------------------------|
+| 1     | `src/runtime`, `src/lib/graphics`      | C99 subset only                                                                            |
+| 2     | `src/{il, vm, support, common, parse}` | Classes, single inheritance, basic templates                                               |
+| 3     | `src/codegen`, `src/frontends/basic`   | Move semantics, restricted generic lambdas (§6.2), `if constexpr`, limited concepts (§2.5) |
+| 4     | All Core except TUI/tests              | `std::any`, `<mutex>`, full `std::variant`                                                 |
+| 5     | `src/tui`, `src/tests`                 | `<regex>`, `<thread>`, RTTI in tests                                                       |
+| 6     | Vana kernel                            | Freestanding, no EH, no RTTI                                                               |
 
 ---
 
 ## 18. Verification Levels
 
-| Level | Requirement |
-|-------|-------------|
-| 1 | Core builds — Phases 1-4 compile with Viper C++ |
-| 2 | Core tests — Unit tests and golden tests pass |
-| 3 | Extended builds — `src/tui` and `src/tests` compile |
-| 4 | Full test suite — 100% pass, output equivalence with Clang |
-| 5 | Self-hosting — Viper C++ builds itself and passes Levels 1-4 |
+| Level | Requirement                                                  |
+|-------|--------------------------------------------------------------|
+| 1     | Core builds — Phases 1-4 compile with Viper C++              |
+| 2     | Core tests — Unit tests and golden tests pass                |
+| 3     | Extended builds — `src/tui` and `src/tests` compile          |
+| 4     | Full test suite — 100% pass, output equivalence with Clang   |
+| 5     | Self-hosting — Viper C++ builds itself and passes Levels 1-4 |
 
 ---
 
@@ -644,20 +695,21 @@ Tests MAY use `std::thread`, `std::atomic`, `std::condition_variable`.
 
 ### 19.1 Current IL Capabilities (Relevant to C++)
 
-| Feature | Current Support | Notes |
-|---------|-----------------|-------|
-| Direct calls | `call @func(args)` | ✅ Full support |
-| Indirect calls | `call.indirect %ptr(args)` | ✅ Full support — used for vtable dispatch |
-| Exception handling | `eh.push`, `eh.pop`, `trap`, `resume.*` | ⚠️ BASIC-style, not C++ semantics |
-| Type registry | Runtime `rt_type_registry` | ⚠️ Basic, needs extension for RTTI |
-| Globals | `global const`, `global var` | ✅ Full support |
-| Memory ops | `load`, `store`, `alloca` | ✅ Full support |
+| Feature            | Current Support                         | Notes                                     |
+|--------------------|-----------------------------------------|-------------------------------------------|
+| Direct calls       | `call @func(args)`                      | ✅ Full support                            |
+| Indirect calls     | `call.indirect %ptr(args)`              | ✅ Full support — used for vtable dispatch |
+| Exception handling | `eh.push`, `eh.pop`, `trap`, `resume.*` | ⚠️ BASIC-style, not C++ semantics         |
+| Type registry      | Runtime `rt_type_registry`              | ⚠️ Basic, needs extension for RTTI        |
+| Globals            | `global const`, `global var`            | ✅ Full support                            |
+| Memory ops         | `load`, `store`, `alloca`               | ✅ Full support                            |
 
 ### 19.2 Required IL Extensions
 
 #### 19.2.1 Scope-Based Cleanup (RAII) — REQUIRED
 
-**Problem:** C++ requires destructor calls during stack unwinding. The current `eh.push/pop` model doesn't support automatic cleanup.
+**Problem:** C++ requires destructor calls during stack unwinding. The current `eh.push/pop` model doesn't support
+automatic cleanup.
 
 **Primary mechanism: `cleanup.push/pop/done`**
 
@@ -681,6 +733,7 @@ cleanupBlock:
 ```
 
 **IL changes REQUIRED:**
+
 - New opcode: `cleanup.push ^block` — register cleanup block for current scope
 - New opcode: `cleanup.pop` — normal exit, run cleanup then continue
 - New opcode: `cleanup.done` — terminates cleanup block
@@ -693,7 +746,8 @@ cleanupBlock:
 %result = invoke @mayThrow(%arg) to ^continue unwind ^cleanup
 ```
 
-The `invoke` instruction MAY be implemented as syntactic sugar over explicit `cleanup.push` + `throw.typed` sequences. It is OPTIONAL; implementors MAY choose to support only `cleanup.*` instructions.
+The `invoke` instruction MAY be implemented as syntactic sugar over explicit `cleanup.push` + `throw.typed` sequences.
+It is OPTIONAL; implementors MAY choose to support only `cleanup.*` instructions.
 
 #### 19.2.2 Type-Based Exception Handling — REQUIRED
 
@@ -721,14 +775,17 @@ rethrow:
 ```
 
 **IL changes REQUIRED:**
+
 - Extend `Error` record with `type_id: i64` field
 - New opcode: `throw.typed %typeId, %obj` — throw typed exception
 - New opcode: `rethrow %tok` — continue unwinding after partial handling
 - Handler blocks receive type ID parameter
 
 **Exception object lifetime:**
+
 - `%obj` MUST be a `ptr` to a heap-allocated exception object owned by the runtime
-- After a matching handler finishes (resumes, rethrows, or returns), the runtime is responsible for destroying and freeing the exception object
+- After a matching handler finishes (resumes, rethrows, or returns), the runtime is responsible for destroying and
+  freeing the exception object
 - Handlers MUST treat `%err: ptr` as borrowed; they MUST NOT free it
 
 #### 19.2.3 RTTI Instructions (Extended Profile Only)
@@ -754,6 +811,7 @@ rethrow:
 ```
 
 **IL changes (Extended profile only):**
+
 - New opcode: `typeof.obj %ptr -> i64` — get concrete runtime type ID
 - New opcode: `isa.dyn %ptr, i64 -> i1` — check inheritance chain
 - New opcode: `cast.dyn %ptr, i64 -> ptr` — dynamic cast, null on failure
@@ -783,6 +841,7 @@ func @MyGlobal_ctor() -> void {
 ```
 
 **IL changes REQUIRED:**
+
 - New directive: `module.init @func priority=N`
 - Module structure: `std::vector<InitEntry> inits` with priority ordering
 - VM: call init functions in priority order before `@main`
@@ -809,29 +868,30 @@ The frontend generates explicit destructor calls; the IL does not need special d
 
 ### 19.3 IL Extension Summary
 
-| Extension | Priority | Profiles | Notes |
-|-----------|----------|----------|-------|
-| `cleanup.push/pop/done` | **REQUIRED** | Core, Extended | Primary RAII mechanism |
-| `throw.typed` | **REQUIRED** | Core, Extended | Type-based exceptions |
-| `rethrow` | **REQUIRED** | Core, Extended | Continue unwinding |
-| `module.init` | **REQUIRED** | Core, Extended | Static initialization |
-| `invoke` instruction | OPTIONAL | Core, Extended | Sugar over cleanup.* |
-| `typeof.obj`, `isa.dyn`, `cast.dyn`, `typeinfo` | OPTIONAL | Extended only | RTTI support |
+| Extension                                       | Priority     | Profiles       | Notes                  |
+|-------------------------------------------------|--------------|----------------|------------------------|
+| `cleanup.push/pop/done`                         | **REQUIRED** | Core, Extended | Primary RAII mechanism |
+| `throw.typed`                                   | **REQUIRED** | Core, Extended | Type-based exceptions  |
+| `rethrow`                                       | **REQUIRED** | Core, Extended | Continue unwinding     |
+| `module.init`                                   | **REQUIRED** | Core, Extended | Static initialization  |
+| `invoke` instruction                            | OPTIONAL     | Core, Extended | Sugar over cleanup.*   |
+| `typeof.obj`, `isa.dyn`, `cast.dyn`, `typeinfo` | OPTIONAL     | Extended only  | RTTI support           |
 
 ### 19.4 Runtime Extensions
 
 The C runtime (`src/runtime`) needs these additions:
 
-| Function | Purpose |
-|----------|---------|
-| `rt_isa_dynamic(obj, typeId)` | Check if object's type inherits from target |
-| `rt_cast_dynamic(obj, typeId)` | Dynamic cast, returns null on failure |
-| `rt_get_type_id(obj)` | Get object's concrete runtime type ID |
-| `rt_type_inherits(typeId, baseTypeId)` | Check inheritance relationship |
-| `rt_exception_alloc(typeId, size)` | Allocate exception object |
-| `rt_exception_free(obj)` | Free exception object after handling |
+| Function                               | Purpose                                     |
+|----------------------------------------|---------------------------------------------|
+| `rt_isa_dynamic(obj, typeId)`          | Check if object's type inherits from target |
+| `rt_cast_dynamic(obj, typeId)`         | Dynamic cast, returns null on failure       |
+| `rt_get_type_id(obj)`                  | Get object's concrete runtime type ID       |
+| `rt_type_inherits(typeId, baseTypeId)` | Check inheritance relationship              |
+| `rt_exception_alloc(typeId, size)`     | Allocate exception object                   |
+| `rt_exception_free(obj)`               | Free exception object after handling        |
 
 The existing `rt_type_registry.c` provides a foundation but needs:
+
 - Inheritance chain traversal
 - Type ID → class info lookup (currently O(n), could be O(1) with hashtable)
 - Exception object pool or allocator
@@ -842,43 +902,43 @@ The existing `rt_type_registry.c` provides a foundation but needs:
 
 **Counts are approximate and reflect the 2024-11-24 snapshot; they are not conformance criteria.**
 
-| Feature | Approximate Count |
-|---------|-------------------|
-| `std::string` | ~4,460 |
-| `std::move` | ~1,000 |
-| `std::vector` | ~900 |
-| `std::string_view` | ~800 |
-| `[[nodiscard]]` | ~760 |
-| `noexcept` | ~630 |
-| `constexpr` | ~430 |
-| RTTI uses (mostly tests) | ~276 |
-| `std::optional` | ~240 |
-| `mutable` | ~155 |
-| `enum class` | ~130 |
-| `reinterpret_cast` | ~130 |
-| `std::unique_ptr` | ~100 |
-| `std::function` | ~70 |
-| Operator overloads | ~60 |
-| `static_assert` | ~35 |
-| `throw` | ~30 |
-| `if constexpr` | ~15 |
-| Generic lambdas | ~15 |
-| `std::enable_if` | ~6 |
-| `std::any` | ~3 |
-| `std::mutex` | ~7 |
-| Named concepts | 1 |
-| `requires` expressions | ~5 |
+| Feature                  | Approximate Count |
+|--------------------------|-------------------|
+| `std::string`            | ~4,460            |
+| `std::move`              | ~1,000            |
+| `std::vector`            | ~900              |
+| `std::string_view`       | ~800              |
+| `[[nodiscard]]`          | ~760              |
+| `noexcept`               | ~630              |
+| `constexpr`              | ~430              |
+| RTTI uses (mostly tests) | ~276              |
+| `std::optional`          | ~240              |
+| `mutable`                | ~155              |
+| `enum class`             | ~130              |
+| `reinterpret_cast`       | ~130              |
+| `std::unique_ptr`        | ~100              |
+| `std::function`          | ~70               |
+| Operator overloads       | ~60               |
+| `static_assert`          | ~35               |
+| `throw`                  | ~30               |
+| `if constexpr`           | ~15               |
+| Generic lambdas          | ~15               |
+| `std::enable_if`         | ~6                |
+| `std::any`               | ~3                |
+| `std::mutex`             | ~7                |
+| Named concepts           | 1                 |
+| `requires` expressions   | ~5                |
 
 ---
 
 ## 21. Document History
 
-| Version | Date | Changes |
-|---------|------|---------|
-| 0.1 | 2024-11-24 | Initial draft from static analysis |
-| 0.2 | 2024-11-24 | Added profiles, generic lambdas, concepts, SFINAE, `<any>`, `<mutex>`, RTTI policy, `reinterpret_cast` whitelist |
-| 0.3 | 2024-11-25 | Refined wording (MUST/SHOULD/MAY), clarified union handling, profile tagging per feature, marked counts as descriptive, added IL extension plan for C++ (RAII, typed exceptions, RTTI, static init) |
-| 0.3.1 | 2024-11-25 | Corrections: clarified inline namespace handling, added `volatile` kernel carve-out, added exception cultural rule, clarified Extended header usage (regex=TUI, thread/atomic=tests), picked `cleanup.*` as REQUIRED RAII mechanism (`invoke` now OPTIONAL), added exception object lifetime semantics, Phase 3 now explicitly mentions restricted generic lambdas, expanded document history |
+| Version | Date       | Changes                                                                                                                                                                                                                                                                                                                                                                                       |
+|---------|------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 0.1     | 2024-11-24 | Initial draft from static analysis                                                                                                                                                                                                                                                                                                                                                            |
+| 0.2     | 2024-11-24 | Added profiles, generic lambdas, concepts, SFINAE, `<any>`, `<mutex>`, RTTI policy, `reinterpret_cast` whitelist                                                                                                                                                                                                                                                                              |
+| 0.3     | 2024-11-25 | Refined wording (MUST/SHOULD/MAY), clarified union handling, profile tagging per feature, marked counts as descriptive, added IL extension plan for C++ (RAII, typed exceptions, RTTI, static init)                                                                                                                                                                                           |
+| 0.3.1   | 2024-11-25 | Corrections: clarified inline namespace handling, added `volatile` kernel carve-out, added exception cultural rule, clarified Extended header usage (regex=TUI, thread/atomic=tests), picked `cleanup.*` as REQUIRED RAII mechanism (`invoke` now OPTIONAL), added exception object lifetime semantics, Phase 3 now explicitly mentions restricted generic lambdas, expanded document history |
 
 ---
 

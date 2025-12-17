@@ -2,7 +2,8 @@
 
 ## Summary
 
-**Status**: Working correctly. Constructor arguments in `NEW` expressions are properly passed to the `SUB NEW` constructor.
+**Status**: Working correctly. Constructor arguments in `NEW` expressions are properly passed to the `SUB NEW`
+constructor.
 
 ## Test Result
 
@@ -17,6 +18,7 @@ PASS: constructor args work
 ### 1. Parser (`Parser_Stmt_OOP.cpp:592-627`)
 
 When parsing `SUB NEW`:
+
 - Line 592-593: Identifies `SUB NEW` by checking if the sub name equals "NEW"
 - Line 594: Creates a `ConstructorDecl` AST node
 - Line 603: **`ctor->params = parseParamList()`** - parses constructor parameters
@@ -26,6 +28,7 @@ When parsing `SUB NEW`:
 ### 2. Semantic Analysis (`Semantic_OOP_Builder.cpp:152-165`)
 
 Constructor parameters are captured:
+
 - Line 154: `info.hasConstructor = true` - marks class as having a constructor
 - Lines 155-162: Copies each `ctor.params` into `info.ctorParams`
   ```cpp
@@ -41,6 +44,7 @@ Constructor parameters are captured:
 ### 3. Constructor Emission (`Lower_OOP_Emit.cpp:237-313`)
 
 The constructor function is generated with parameters:
+
 - Line 246: `metadata.paramCount = 1 + ctor.params.size()` - counts parameters (including ME)
 - Line 248: First IR param is `{"ME", Type::Ptr}` - the object reference
 - Lines 249-259: Each constructor parameter is added to `metadata.irParams`:
@@ -60,11 +64,11 @@ The constructor function is generated with parameters:
 When lowering `NEW Point(10, 20)`:
 
 1. **Object Allocation** (lines 116-131):
-   - Retrieves object size and class ID from `classLayouts_`
-   - Calls `rt_obj_new_i64` to allocate the object
+    - Retrieves object size and class ID from `classLayouts_`
+    - Calls `rt_obj_new_i64` to allocate the object
 
 2. **VTable Initialization** (lines 134-145):
-   - Stores vtable pointer at offset 0
+    - Stores vtable pointer at offset 0
 
 3. **Build Constructor Arguments** (lines 147-178):
    ```cpp
@@ -100,6 +104,7 @@ When lowering `NEW Point(10, 20)`:
 ## Key Data Structures
 
 ### ClassInfo::CtorParam (`OopIndex.hpp:90-94`)
+
 ```cpp
 struct CtorParam
 {
@@ -109,6 +114,7 @@ struct CtorParam
 ```
 
 ### ClassInfo (`OopIndex.hpp:76-141`)
+
 - `hasConstructor`: True if class declares a constructor
 - `hasSynthCtor`: True when lowering must synthesize a constructor
 - `ctorParams`: Vector of constructor parameter signatures
@@ -117,12 +123,13 @@ struct CtorParam
 
 - `hasConstructor`: Set when the user explicitly declares `SUB NEW`
 - `hasSynthCtor`: Set when no user constructor exists but one needs to be synthesized
-  - This happens for classes with initializable fields but no explicit constructor
-  - See `Lower_OOP_Emit.cpp:780-786` where a synthetic constructor is created
+    - This happens for classes with initializable fields but no explicit constructor
+    - See `Lower_OOP_Emit.cpp:780-786` where a synthetic constructor is created
 
 ## Conclusion
 
 Constructor arguments flow correctly through all phases:
+
 1. **Parser** captures parameters in `ConstructorDecl.params`
 2. **Semantic Analysis** copies to `ClassInfo.ctorParams` for type checking
 3. **Constructor Emission** generates IL function with correct parameters

@@ -2,9 +2,11 @@
 
 ## Executive Summary
 
-Array field assignments like `arr(idx) = val` inside class methods are **silently dropped** by the compiler with no error or warning. The assignment statement is correctly parsed but completely disappears during IL code generation.
+Array field assignments like `arr(idx) = val` inside class methods are **silently dropped** by the compiler with no
+error or warning. The assignment statement is correctly parsed but completely disappears during IL code generation.
 
-**Root Cause**: Missing `isArray` field in `ClassLayout::Field` struct causes array metadata to be lost during OOP scanning, leading to incorrect symbol table initialization in field scopes.
+**Root Cause**: Missing `isArray` field in `ClassLayout::Field` struct causes array metadata to be lost during OOP
+scanning, leading to incorrect symbol table initialization in field scopes.
 
 ## Symptom
 
@@ -19,6 +21,7 @@ END CLASS
 ```
 
 **Generated IL** (incorrect):
+
 ```il
 func @TEST.SETITEM(ptr %ME, i64 %IDX, str %VAL) -> void {
 entry_TEST.SETITEM(%ME:ptr, %IDX:i64, %VAL:str):
@@ -41,11 +44,13 @@ ret_TEST.SETITEM:
 **File**: Parser (AST construction)
 
 The assignment is correctly parsed as an `ArrayExpr`:
+
 ```
 (METHOD SETITEM (IDX VAL) {0:(LET (ARR IDX) VAL)})
 ```
 
 The AST node `ClassDecl::Field` (StmtDecl.hpp:221-231) includes:
+
 - `bool isArray{false};` (line 228)
 - `std::vector<long long> arrayExtents;` (line 230)
 
@@ -81,6 +86,7 @@ void after(const ClassDecl &decl)
 ```
 
 **Problem**: `ClassLayout::Field` struct (Lowerer.hpp:803-809) only contains:
+
 ```cpp
 struct Field
 {
@@ -127,9 +133,11 @@ void Lowerer::pushFieldScope(const std::string &className)
 }
 ```
 
-**Problem**: Line 441 hardcodes `info.isArray = false` for ALL fields because `ClassLayout::Field` doesn't contain the `isArray` information needed to set it correctly.
+**Problem**: Line 441 hardcodes `info.isArray = false` for ALL fields because `ClassLayout::Field` doesn't contain the
+`isArray` information needed to set it correctly.
 
 **Result**: Field scope symbols map has:
+
 - `"ARR"` → `SymbolInfo{type=Str, isArray=false}` ❌ **WRONG!** Should be `isArray=true`
 
 ---
@@ -200,6 +208,7 @@ void Lowerer::assignArrayElement(const ArrayExpr &target, RVal value, il::suppor
 
 **Analysis of Recovery Logic**:
 The code at lines 312-341 is specifically designed to handle implicit field arrays! It should:
+
 1. Detect that "ARR" is a field using `isFieldInScope("ARR")`
 2. Recompute the array base by loading from `ME.<field>`
 3. Get the correct element type from the class layout
@@ -230,11 +239,13 @@ bool Lowerer::isFieldInScope(std::string_view name) const
 **Expected**: Should find "ARR" in `fieldScopeStack_.back().symbols` and return `true`.
 
 **Hypothesis**: Either:
+
 1. The field scope was not pushed (layout lookup failed in `pushFieldScope`), OR
 2. Case sensitivity mismatch ("ARR" vs "arr"), OR
 3. The symbols map is empty even though the layout exists
 
-**Evidence from IL**: Since no array store is emitted, either `isFieldInScope` returns false OR there's another failure point in the recovery code.
+**Evidence from IL**: Since no array store is emitted, either `isFieldInScope` returns false OR there's another failure
+point in the recovery code.
 
 ---
 
@@ -249,10 +260,13 @@ If the implicit field array check fails, control would flow to:
 // Fallback: not a supported lvalue form; do nothing here (analyzer should have errored).
 ```
 
-But this is in a DIFFERENT branch (MethodCallExpr, not ArrayExpr). For ArrayExpr, if `assignArrayElement` fails to emit code, the assignment is simply lost.
+But this is in a DIFFERENT branch (MethodCallExpr, not ArrayExpr). For ArrayExpr, if `assignArrayElement` fails to emit
+code, the assignment is simply lost.
 
 Actually, looking more carefully, if `isImplicitFieldArray` is false and there's no local symbol info for "ARR", then:
-- Lines 343-345: Condition checks `info && info->type == AstType::Str` → `info` is nullptr (from line 293: `findSymbol("ARR")` returns nullptr)
+
+- Lines 343-345: Condition checks `info && info->type == AstType::Str` → `info` is nullptr (from line 293:
+  `findSymbol("ARR")` returns nullptr)
 - Line 344: `isMemberArray` is false
 - Line 345: `isImplicitFieldArray` is false
 - Condition fails, falls through to line 354
@@ -260,33 +274,35 @@ Actually, looking more carefully, if `isImplicitFieldArray` is false and there's
 Line 354-359: Checks for object arrays - also requires `info` which is nullptr
 Line 360-367: Integer array fallback - still uses `access.base` which may be invalid
 
-**Hypothesis**: `access.base` is returning an invalid or unusable value from `lowerArrayAccess`, causing the subsequent `emitCall` to fail silently or not emit the call.
+**Hypothesis**: `access.base` is returning an invalid or unusable value from `lowerArrayAccess`, causing the subsequent
+`emitCall` to fail silently or not emit the call.
 
 ---
 
 ## Root Cause Chain
 
 1. **AST → ClassLayout translation loses array metadata**
-   - `ClassDecl::Field` has `isArray` and `arrayExtents`
-   - `ClassLayout::Field` does NOT have these fields
-   - OOP scan uses `isArray` to compute size but doesn't preserve it
+    - `ClassDecl::Field` has `isArray` and `arrayExtents`
+    - `ClassLayout::Field` does NOT have these fields
+    - OOP scan uses `isArray` to compute size but doesn't preserve it
 
 2. **Field scope initialization sets wrong metadata**
-   - `pushFieldScope` hardcodes `info.isArray = false` (line 441)
-   - Cannot set correctly because `ClassLayout::Field` lacks the information
+    - `pushFieldScope` hardcodes `info.isArray = false` (line 441)
+    - Cannot set correctly because `ClassLayout::Field` lacks the information
 
 3. **Symbol resolution treats field as non-array**
-   - `findSymbol("ARR")` returns nullptr (it's a field, not a local)
-   - `resolveVariableStorage("ARR")` via `resolveImplicitField` returns storage with `slotInfo.isArray = false` (line 687)
+    - `findSymbol("ARR")` returns nullptr (it's a field, not a local)
+    - `resolveVariableStorage("ARR")` via `resolveImplicitField` returns storage with `slotInfo.isArray = false` (line
+      687)
 
 4. **Array access lowering fails or produces wrong base**
-   - `lowerArrayAccess` may not handle field arrays correctly when `isMemberArray` is false
-   - Returns `ArrayAccess` with invalid or wrong `base` value
+    - `lowerArrayAccess` may not handle field arrays correctly when `isMemberArray` is false
+    - Returns `ArrayAccess` with invalid or wrong `base` value
 
 5. **Assignment emission fails to detect implicit field array**
-   - `isFieldInScope("ARR")` may return false (need to verify)
-   - OR recovery code runs but subsequent emit call fails silently
-   - Either way, no `rt_arr_str_put` is emitted
+    - `isFieldInScope("ARR")` may return false (need to verify)
+    - OR recovery code runs but subsequent emit call fails silently
+    - Either way, no `rt_arr_str_put` is emitted
 
 ---
 
@@ -336,11 +352,13 @@ Ensure `isFieldInScope` uses case-insensitive lookup (similar to the `findField`
 **Test Case**: `/Users/stephen/git/viper/bugs/bug_testing/debug_parse_test.bas`
 
 **Verify Fix**:
+
 ```bash
 ./build/src/tools/ilc/ilc front basic -emit-il bugs/bug_testing/debug_parse_test.bas | grep -A 20 "TEST.SETITEM"
 ```
 
 Should see:
+
 ```il
 call @rt_arr_str_put(%base, %index, %tmp)
 ```

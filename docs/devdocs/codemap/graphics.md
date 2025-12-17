@@ -4,56 +4,56 @@ Cross-platform software 2D graphics library (`src/lib/graphics/`).
 
 ## Public API (`include/`)
 
-| File | Purpose |
-|------|---------|
-| `vgfx.h` | Complete public API: window, drawing, input, events |
-| `vgfx_config.h` | Configuration macros and defaults |
+| File            | Purpose                                             |
+|-----------------|-----------------------------------------------------|
+| `vgfx.h`        | Complete public API: window, drawing, input, events |
+| `vgfx_config.h` | Configuration macros and defaults                   |
 
 ## Core Implementation (`src/`)
 
-| File | Purpose |
-|------|---------|
-| `vgfx.c` | Platform-agnostic core: window lifecycle, event queue, FPS limiting |
-| `vgfx_draw.c` | Drawing primitives: line, rect, circle (Bresenham, midpoint) |
-| `vgfx_internal.h` | Internal structures and platform backend declarations |
+| File              | Purpose                                                             |
+|-------------------|---------------------------------------------------------------------|
+| `vgfx.c`          | Platform-agnostic core: window lifecycle, event queue, FPS limiting |
+| `vgfx_draw.c`     | Drawing primitives: line, rect, circle (Bresenham, midpoint)        |
+| `vgfx_internal.h` | Internal structures and platform backend declarations               |
 
 ## Platform Backends (`src/`)
 
-| File | Purpose |
-|------|---------|
+| File                    | Purpose                                |
+|-------------------------|----------------------------------------|
 | `vgfx_platform_macos.m` | macOS Cocoa backend (fully functional) |
-| `vgfx_platform_linux.c` | Linux X11 backend (stub) |
-| `vgfx_platform_win32.c` | Windows Win32 backend (stub) |
-| `vgfx_platform_mock.c` | Mock backend for deterministic testing |
+| `vgfx_platform_linux.c` | Linux X11 backend (stub)               |
+| `vgfx_platform_win32.c` | Windows Win32 backend (stub)           |
+| `vgfx_platform_mock.c`  | Mock backend for deterministic testing |
 
 ## Tests (`tests/`)
 
-| File | Purpose |
-|------|---------|
-| `test_harness.h` | Test harness macros |
-| `vgfx_mock.h` | Mock backend test helpers |
-| `test_window.c` | Window lifecycle tests |
-| `test_pixels.c` | Pixel operation tests |
-| `test_drawing.c` | Drawing primitive tests |
-| `test_input.c` | Input and event queue tests |
+| File             | Purpose                     |
+|------------------|-----------------------------|
+| `test_harness.h` | Test harness macros         |
+| `vgfx_mock.h`    | Mock backend test helpers   |
+| `test_window.c`  | Window lifecycle tests      |
+| `test_pixels.c`  | Pixel operation tests       |
+| `test_drawing.c` | Drawing primitive tests     |
+| `test_input.c`   | Input and event queue tests |
 
 ## Examples (`examples/`)
 
-| File | Purpose |
-|------|---------|
+| File           | Purpose                                 |
+|----------------|-----------------------------------------|
 | `basic_draw.c` | Interactive demo with drawing and input |
-| `quick_test.c` | Automated visual test (30 frames) |
-| `api_test.c` | API validation (all backends) |
+| `quick_test.c` | Automated visual test (30 frames)       |
+| `api_test.c`   | API validation (all backends)           |
 
 ## Documentation
 
-| File | Purpose |
-|------|---------|
-| `README.md` | Main documentation and quick start |
-| `gfxlib.md` | Complete specification |
-| `STATUS.md` | Implementation status tracker |
-| `INTEGRATION.md` | CMake integration guide |
-| `MACOS_BACKEND.md` | macOS backend implementation notes |
-| `DRAWING_PRIMITIVES.md` | Drawing algorithm details |
-| `TEST_INFRASTRUCTURE.md` | Testing approach |
-| `docs/VIPER_INTEGRATION.md` | BASIC runtime integration guide |
+| File                        | Purpose                            |
+|-----------------------------|------------------------------------|
+| `README.md`                 | Main documentation and quick start |
+| `gfxlib.md`                 | Complete specification             |
+| `STATUS.md`                 | Implementation status tracker      |
+| `INTEGRATION.md`            | CMake integration guide            |
+| `MACOS_BACKEND.md`          | macOS backend implementation notes |
+| `DRAWING_PRIMITIVES.md`     | Drawing algorithm details          |
+| `TEST_INFRASTRUCTURE.md`    | Testing approach                   |
+| `docs/VIPER_INTEGRATION.md` | BASIC runtime integration guide    |

@@ -16,18 +16,18 @@ and any future languages that target the IL trap mechanism.
 The VM recognizes the following trap kinds. They are defined and shared between
 checked IL operations, the runtime C ABI, and BASIC surface semantics.
 
-| Kind | Description |
-|------|-------------|
-| `DivideByZero` | Integer divide/remainder with a zero divisor. |
-| `Overflow` | Checked arithmetic overflow (e.g., `INT64_MIN / -1`, `i64` abs). |
-| `InvalidCast` | Invalid numeric or pointer cast. |
-| `DomainError` | Invalid mathematical domain (e.g., sqrt of negative). |
-| `Bounds` | Bounds check failure (arrays, strings). |
-| `FileNotFound` | File system open on a path that does not exist. |
-| `EOF` | End-of-file reached while input still expected. |
-| `IOError` | Other I/O failure (permissions, device errors). |
-| `InvalidOperation` | Operation outside the allowed state machine. |
-| `RuntimeError` | Catch-all for unexpected runtime failures. |
+| Kind               | Description                                                      |
+|--------------------|------------------------------------------------------------------|
+| `DivideByZero`     | Integer divide/remainder with a zero divisor.                    |
+| `Overflow`         | Checked arithmetic overflow (e.g., `INT64_MIN / -1`, `i64` abs). |
+| `InvalidCast`      | Invalid numeric or pointer cast.                                 |
+| `DomainError`      | Invalid mathematical domain (e.g., sqrt of negative).            |
+| `Bounds`           | Bounds check failure (arrays, strings).                          |
+| `FileNotFound`     | File system open on a path that does not exist.                  |
+| `EOF`              | End-of-file reached while input still expected.                  |
+| `IOError`          | Other I/O failure (permissions, device errors).                  |
+| `InvalidOperation` | Operation outside the allowed state machine.                     |
+| `RuntimeError`     | Catch-all for unexpected runtime failures.                       |
 
 ## IL Error-Handling Primitives
 
@@ -121,35 +121,35 @@ simply fall off the end (which behaves like re-raising the same trap).
 
 ### Checked IL Instruction → Trap Kind
 
-| Instruction | Condition | Trap Kind |
-|-------------|-----------|-----------|
-| `sdiv.chk0` | Divisor is `0` | `DivideByZero` |
-| `sdiv.chk_ov` | Dividend `INT64_MIN` with divisor `-1` | `Overflow` |
-| `srem.chk0` | Divisor is `0` | `DivideByZero` |
-| `srem.chk_ov` | Dividend `INT64_MIN` with divisor `-1` | `Overflow` |
-| `udiv.chk0` | Divisor is `0` | `DivideByZero` |
-| `urem.chk0` | Divisor is `0` | `DivideByZero` |
-| `cast.si_to_i64.chk` | Source outside `i64` range | `Overflow` |
-| `cast.f64_to_i64.chk` | NaN or value outside `i64` | `InvalidCast` |
-| `cast.ptr_to_i64.chk` | Pointer cannot be represented | `InvalidCast` |
-| `idx.chk` | Index outside `[0, length)` | `Bounds` |
-| `load.chk` | Null/misaligned pointer | `InvalidOperation` |
-| `store.chk` | Null/misaligned pointer | `InvalidOperation` |
-| `pow.chkdom` | Invalid exponent domain | `DomainError` |
+| Instruction           | Condition                              | Trap Kind          |
+|-----------------------|----------------------------------------|--------------------|
+| `sdiv.chk0`           | Divisor is `0`                         | `DivideByZero`     |
+| `sdiv.chk_ov`         | Dividend `INT64_MIN` with divisor `-1` | `Overflow`         |
+| `srem.chk0`           | Divisor is `0`                         | `DivideByZero`     |
+| `srem.chk_ov`         | Dividend `INT64_MIN` with divisor `-1` | `Overflow`         |
+| `udiv.chk0`           | Divisor is `0`                         | `DivideByZero`     |
+| `urem.chk0`           | Divisor is `0`                         | `DivideByZero`     |
+| `cast.si_to_i64.chk`  | Source outside `i64` range             | `Overflow`         |
+| `cast.f64_to_i64.chk` | NaN or value outside `i64`             | `InvalidCast`      |
+| `cast.ptr_to_i64.chk` | Pointer cannot be represented          | `InvalidCast`      |
+| `idx.chk`             | Index outside `[0, length)`            | `Bounds`           |
+| `load.chk`            | Null/misaligned pointer                | `InvalidOperation` |
+| `store.chk`           | Null/misaligned pointer                | `InvalidOperation` |
+| `pow.chkdom`          | Invalid exponent domain                | `DomainError`      |
 
 ### Runtime `Err` Code → Trap Kind
 
-| Runtime `Err` | Trap Kind |
-|---------------|-----------|
-| `FileNotFound` | `FileNotFound` |
-| `EOF` | `EOF` |
-| `IOError` | `IOError` |
-| `Overflow` | `Overflow` |
-| `InvalidCast` | `InvalidCast` |
-| `DomainError` | `DomainError` |
-| `Bounds` | `Bounds` |
-| `InvalidOperation` | `InvalidOperation` |
-| `RuntimeError` (any other non-zero) | `RuntimeError` |
+| Runtime `Err`                       | Trap Kind          |
+|-------------------------------------|--------------------|
+| `FileNotFound`                      | `FileNotFound`     |
+| `EOF`                               | `EOF`              |
+| `IOError`                           | `IOError`          |
+| `Overflow`                          | `Overflow`         |
+| `InvalidCast`                       | `InvalidCast`      |
+| `DomainError`                       | `DomainError`      |
+| `Bounds`                            | `Bounds`           |
+| `InvalidOperation`                  | `InvalidOperation` |
+| `RuntimeError` (any other non-zero) | `RuntimeError`     |
 
 The C runtime reports success or failure and fills an `Err` out-parameter. VM
 glue converts that code into the listed trap kind and raises `trap.err` with the
@@ -194,11 +194,11 @@ remove the active handler.
 
 ### Resume Variants
 
-| BASIC Statement | IL Equivalent |
-|-----------------|---------------|
-| `RESUME` | `resume.same %tok` |
-| `RESUME NEXT` | `resume.next %tok` |
-| `RESUME label` | `resume.label %tok, ^label` |
+| BASIC Statement | IL Equivalent               |
+|-----------------|-----------------------------|
+| `RESUME`        | `resume.same %tok`          |
+| `RESUME NEXT`   | `resume.next %tok`          |
+| `RESUME label`  | `resume.label %tok, ^label` |
 
 The `%tok` value is always the resume token received by the handler block. Hand
 crafted IL must not forge resume tokens.

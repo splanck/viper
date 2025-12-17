@@ -8,9 +8,12 @@
 
 ## Executive Summary
 
-Pascal OOP infrastructure is **remarkably complete** at the parser, semantic analysis, and lowering levels (~4,500 lines of dedicated OOP code). However, several practical bugs prevent end-to-end functionality. This roadmap prioritizes bug fixes to unlock the existing infrastructure.
+Pascal OOP infrastructure is **remarkably complete** at the parser, semantic analysis, and lowering levels (~4,500 lines
+of dedicated OOP code). However, several practical bugs prevent end-to-end functionality. This roadmap prioritizes bug
+fixes to unlock the existing infrastructure.
 
 **Important:** The Viper Pascal spec deliberately omits some BASIC OOP features:
+
 - No `final` modifier (not in spec)
 - No `is`/`as` RTTI operators (not in spec)
 - No `Delete`/`Dispose` (automatic memory management)
@@ -25,61 +28,61 @@ These omissions are **intentional design decisions**, not gaps to fill.
 
 ### Parser Level: COMPLETE ✅
 
-| Feature | Status | Location |
-|---------|--------|----------|
-| `class` declarations | ✅ Complete | Parser_OOP.cpp:23-136 |
-| `interface` declarations | ✅ Complete | Parser_OOP.cpp:138-261 |
-| Heritage clause (base + interfaces) | ✅ Complete | Parser_OOP.cpp:53-70 |
-| Method signatures | ✅ Complete | Parser_OOP.cpp:450-540 |
-| Constructor declarations | ✅ Complete | Parser_OOP.cpp:542-603 |
-| Destructor declarations | ✅ Complete | Parser_OOP.cpp:605-654 |
-| Property declarations | ✅ Complete | Parser_OOP.cpp:300-340 |
-| Visibility (public/private) | ✅ Complete | Parser_OOP.cpp:278-298 |
-| Virtual/Override/Abstract | ✅ Complete | Parser_OOP.cpp:507-530 |
-| Weak fields | ✅ Complete | Parser_OOP.cpp:420-430 |
-| Inherited statement | ✅ Complete | AST.hpp:771-784 |
+| Feature                             | Status     | Location               |
+|-------------------------------------|------------|------------------------|
+| `class` declarations                | ✅ Complete | Parser_OOP.cpp:23-136  |
+| `interface` declarations            | ✅ Complete | Parser_OOP.cpp:138-261 |
+| Heritage clause (base + interfaces) | ✅ Complete | Parser_OOP.cpp:53-70   |
+| Method signatures                   | ✅ Complete | Parser_OOP.cpp:450-540 |
+| Constructor declarations            | ✅ Complete | Parser_OOP.cpp:542-603 |
+| Destructor declarations             | ✅ Complete | Parser_OOP.cpp:605-654 |
+| Property declarations               | ✅ Complete | Parser_OOP.cpp:300-340 |
+| Visibility (public/private)         | ✅ Complete | Parser_OOP.cpp:278-298 |
+| Virtual/Override/Abstract           | ✅ Complete | Parser_OOP.cpp:507-530 |
+| Weak fields                         | ✅ Complete | Parser_OOP.cpp:420-430 |
+| Inherited statement                 | ✅ Complete | AST.hpp:771-784        |
 
 ### AST Nodes: COMPLETE ✅
 
-| Node Type | Fields | Location |
-|-----------|--------|----------|
-| `ClassDecl` | name, baseClass, interfaces, members | AST.hpp:1101-1112 |
-| `InterfaceDecl` | name, baseInterfaces, methods | AST.hpp:1114-1125 |
-| `ClassMember` | visibility, kind, field/method/property | AST.hpp:1038-1065 |
-| `PropertyDecl` | name, type, getter, setter | AST.hpp:1023-1035 |
-| `ConstructorDecl` | name, params, body, isForward | AST.hpp:1068-1081 |
-| `DestructorDecl` | name, body, isVirtual, isOverride | AST.hpp:1084-1098 |
-| `MethodSig` | name, params, returnType, modifiers | AST.hpp:1011-1020 |
-| `InheritedStmt` | methodName, args | AST.hpp:771-784 |
-| `IsExpr` | value, typeName | AST.hpp:60 |
+| Node Type         | Fields                                  | Location          |
+|-------------------|-----------------------------------------|-------------------|
+| `ClassDecl`       | name, baseClass, interfaces, members    | AST.hpp:1101-1112 |
+| `InterfaceDecl`   | name, baseInterfaces, methods           | AST.hpp:1114-1125 |
+| `ClassMember`     | visibility, kind, field/method/property | AST.hpp:1038-1065 |
+| `PropertyDecl`    | name, type, getter, setter              | AST.hpp:1023-1035 |
+| `ConstructorDecl` | name, params, body, isForward           | AST.hpp:1068-1081 |
+| `DestructorDecl`  | name, body, isVirtual, isOverride       | AST.hpp:1084-1098 |
+| `MethodSig`       | name, params, returnType, modifiers     | AST.hpp:1011-1020 |
+| `InheritedStmt`   | methodName, args                        | AST.hpp:771-784   |
+| `IsExpr`          | value, typeName                         | AST.hpp:60        |
 
 ### Semantic Analysis: COMPREHENSIVE ✅
 
-| Feature | Status | Location |
-|---------|--------|----------|
-| Class registration | ✅ Complete | SemanticAnalyzer_Decl.cpp:358-624 |
-| Interface registration | ✅ Complete | SemanticAnalyzer_Decl.cpp:626-657 |
-| Override validation | ✅ Complete | SemanticAnalyzer_Class.cpp:109-132 |
-| Signature matching | ✅ Complete | SemanticAnalyzer_Class.cpp:162-182 |
-| Interface conformance | ✅ Complete | SemanticAnalyzer_Class.cpp:189-244 |
+| Feature                  | Status     | Location                           |
+|--------------------------|------------|------------------------------------|
+| Class registration       | ✅ Complete | SemanticAnalyzer_Decl.cpp:358-624  |
+| Interface registration   | ✅ Complete | SemanticAnalyzer_Decl.cpp:626-657  |
+| Override validation      | ✅ Complete | SemanticAnalyzer_Class.cpp:109-132 |
+| Signature matching       | ✅ Complete | SemanticAnalyzer_Class.cpp:162-182 |
+| Interface conformance    | ✅ Complete | SemanticAnalyzer_Class.cpp:189-244 |
 | Abstract class detection | ✅ Complete | SemanticAnalyzer_Class.cpp:369-420 |
-| Weak field validation | ✅ Complete | SemanticAnalyzer_Class.cpp:269-290 |
-| Inheritance hierarchy | ✅ Complete | SemanticAnalyzer_Class.cpp:343-367 |
+| Weak field validation    | ✅ Complete | SemanticAnalyzer_Class.cpp:269-290 |
+| Inheritance hierarchy    | ✅ Complete | SemanticAnalyzer_Class.cpp:343-367 |
 
 ### Lowering to IL: COMPREHENSIVE ✅
 
-| Feature | Status | Location |
-|---------|--------|----------|
-| Class layout computation | ✅ Complete | Lowerer_OOP.cpp:108-163 |
-| Vtable layout | ✅ Complete | Lowerer_OOP.cpp:165-218 |
+| Feature                    | Status     | Location                |
+|----------------------------|------------|-------------------------|
+| Class layout computation   | ✅ Complete | Lowerer_OOP.cpp:108-163 |
+| Vtable layout              | ✅ Complete | Lowerer_OOP.cpp:165-218 |
 | Runtime class registration | ✅ Complete | Lowerer_OOP.cpp:250-372 |
-| Constructor calls | ✅ Complete | Lowerer_OOP.cpp:411-465 |
-| Virtual method dispatch | ✅ Complete | Lowerer_OOP.cpp:471-559 |
-| Object field access | ✅ Complete | Lowerer_OOP.cpp:565-618 |
-| IS expression | ✅ Complete | Lowerer_Expr.cpp:60-89 |
-| Inherited statement | ✅ Complete | Lowerer_Stmt.cpp:96-140 |
-| Interface tables | ✅ Complete | Lowerer_OOP.cpp:709-815 |
-| Interface method dispatch | ✅ Complete | Lowerer_OOP.cpp:869-975 |
+| Constructor calls          | ✅ Complete | Lowerer_OOP.cpp:411-465 |
+| Virtual method dispatch    | ✅ Complete | Lowerer_OOP.cpp:471-559 |
+| Object field access        | ✅ Complete | Lowerer_OOP.cpp:565-618 |
+| IS expression              | ✅ Complete | Lowerer_Expr.cpp:60-89  |
+| Inherited statement        | ✅ Complete | Lowerer_Stmt.cpp:96-140 |
+| Interface tables           | ✅ Complete | Lowerer_OOP.cpp:709-815 |
+| Interface method dispatch  | ✅ Complete | Lowerer_OOP.cpp:869-975 |
 
 ---
 
@@ -113,6 +116,7 @@ end.
 
 **Status:** FIXED (verified December 2025)
 **Resolution:** Global record and class field access now correctly lowered to IL. The fix added:
+
 - Global variable lookup in `lowerField()` for record field reads (Lowerer_Expr.cpp)
 - Global record field assignment handling in `lowerAssign()` (Lowerer_Stmt.cpp)
 
@@ -129,28 +133,28 @@ end.
 
 ## Feature Gap Analysis: Pascal vs BASIC
 
-| Feature | BASIC | Pascal | Gap |
-|---------|-------|--------|-----|
-| Classes | ✅ | ✅ | None |
-| Single inheritance | ✅ | ✅ | None |
-| Interfaces | ✅ | ✅ | None |
-| VIRTUAL methods | ✅ | ✅ | None |
-| OVERRIDE methods | ✅ | ✅ | None |
-| ABSTRACT methods | ✅ | ✅ | None |
-| FINAL methods | ✅ | ❓ | Verify |
-| FINAL classes | ✅ | ❌ | **Gap** |
-| Properties | ✅ | ✅ | None |
-| Constructors | ✅ | ✅* | Bug #2 |
-| Destructors | ✅ | ✅ | None |
-| IS operator | ✅ | ✅ | None |
-| AS operator | ✅ | ❓ | Verify |
-| Self/ME keyword | ✅ | ✅ | None |
-| BASE/Inherited calls | ✅ | ✅ | None |
-| DELETE statement | ✅ | ❌ | **Gap** |
-| PUBLIC/PRIVATE | ✅ | ✅ | None |
-| Static fields | ✅ | ❌ | **Gap** |
-| Static methods | ✅ | ❌ | **Gap** |
-| Static constructors | ✅ | ❌ | **Gap** |
+| Feature              | BASIC | Pascal | Gap     |
+|----------------------|-------|--------|---------|
+| Classes              | ✅     | ✅      | None    |
+| Single inheritance   | ✅     | ✅      | None    |
+| Interfaces           | ✅     | ✅      | None    |
+| VIRTUAL methods      | ✅     | ✅      | None    |
+| OVERRIDE methods     | ✅     | ✅      | None    |
+| ABSTRACT methods     | ✅     | ✅      | None    |
+| FINAL methods        | ✅     | ❓      | Verify  |
+| FINAL classes        | ✅     | ❌      | **Gap** |
+| Properties           | ✅     | ✅      | None    |
+| Constructors         | ✅     | ✅*     | Bug #2  |
+| Destructors          | ✅     | ✅      | None    |
+| IS operator          | ✅     | ✅      | None    |
+| AS operator          | ✅     | ❓      | Verify  |
+| Self/ME keyword      | ✅     | ✅      | None    |
+| BASE/Inherited calls | ✅     | ✅      | None    |
+| DELETE statement     | ✅     | ❌      | **Gap** |
+| PUBLIC/PRIVATE       | ✅     | ✅      | None    |
+| Static fields        | ✅     | ❌      | **Gap** |
+| Static methods       | ✅     | ❌      | **Gap** |
+| Static constructors  | ✅     | ❌      | **Gap** |
 
 ---
 
@@ -163,6 +167,7 @@ end.
 **Status:** ✅ COMPLETE - All 3 bugs fixed
 
 **Completed:**
+
 - ✅ BUG-PAS-OOP-001: Field access in methods - FIXED
 - ✅ BUG-PAS-OOP-002: Constructor calls - FIXED
 - ✅ BUG-PAS-OOP-003: Field access lowering - FIXED (December 2025)
@@ -174,6 +179,7 @@ end.
 **Goal:** Complete RTTI with safe downcasting.
 
 **Tasks:**
+
 1. Add `AsExpr` to AST (similar to IsExpr)
 2. Add parsing for `expr as TypeName`
 3. Add semantic analysis (verify type compatibility)
@@ -186,6 +192,7 @@ end.
 **Goal:** Explicit object destruction.
 
 **Tasks:**
+
 1. Add `DeleteStmt` to AST
 2. Add parsing for `Delete(expr)` or `FreeAndNil(expr)`
 3. Add semantic analysis (verify object type)
@@ -198,6 +205,7 @@ end.
 **Goal:** Prevent method override in descendants.
 
 **Tasks:**
+
 1. Add `isFinal` flag to MethodSig and MethodInfo
 2. Parse `final` keyword after method signature
 3. Validate: cannot override final methods in semantic analysis
@@ -210,6 +218,7 @@ end.
 **Goal:** Prevent class inheritance.
 
 **Tasks:**
+
 1. Add `isFinal` flag to ClassDecl and ClassInfo
 2. Parse `final` keyword in class declaration
 3. Validate: cannot inherit from final class
@@ -221,6 +230,7 @@ end.
 **Goal:** Class-level fields and methods.
 
 **Tasks:**
+
 1. Add `isStatic` flag to FieldInfo and MethodInfo
 2. Parse `class var` and `class function/procedure` syntax
 3. Semantic analysis: static members don't have Self
@@ -233,6 +243,7 @@ end.
 **Goal:** Separate visibility for getter/setter.
 
 **Tasks:**
+
 1. Add per-accessor visibility to PropertyDecl
 2. Parse `private set` or `protected get` modifiers
 3. Validate access at call sites
@@ -244,6 +255,7 @@ end.
 **Goal:** Match BASIC's diagnostic quality.
 
 **Tasks:**
+
 1. Add specific error codes for all OOP errors
 2. Add "did you mean" suggestions for method names
 3. Add "signature expected" hints for override mismatches
@@ -255,6 +267,7 @@ end.
 **Goal:** Complete Pascal OOP documentation.
 
 **Tasks:**
+
 1. Update docs/pascal-language.md with OOP section
 2. Create docs/devdocs/pascal-oop-semantics.md
 3. Document differences from Delphi/FreePascal
@@ -264,6 +277,7 @@ end.
 **Goal:** Verify Pascal OOP works with BASIC OOP.
 
 **Tasks:**
+
 1. Create test cases mixing Pascal and BASIC classes
 2. Verify vtable layout compatibility
 3. Verify interface dispatch compatibility
@@ -273,6 +287,7 @@ end.
 ## Acceptance Criteria for Each Stage
 
 ### Stage 1 Complete When:
+
 - [x] `TMyClass.Create` compiles and instantiates ✅ DONE
 - [x] `Self.field` resolves inside methods ✅ DONE
 - [x] Implicit `field` (without Self) resolves in methods ✅ DONE
@@ -280,18 +295,22 @@ end.
 - [x] `record.field` read/write works in expressions ✅ DONE (BUG-003 fixed)
 
 ### Stage 2 Complete When:
+
 - [ ] `expr as TClass` returns typed pointer or nil
 - [ ] `expr as IInterface` returns typed pointer or nil
 
 ### Stage 3 Complete When:
+
 - [ ] `Delete(obj)` calls destructor and frees memory
 - [ ] `FreeAndNil(obj)` calls destructor and sets to nil
 
 ### Stage 4-5 Complete When:
+
 - [ ] `final` methods cannot be overridden
 - [ ] `final` classes cannot be inherited
 
 ### Stage 6 Complete When:
+
 - [ ] `class var` fields shared across instances
 - [ ] `class function` callable without instance
 
@@ -300,11 +319,13 @@ end.
 ## Test Coverage Plan
 
 ### Unit Tests (src/tests/unit/frontends/pascal/)
+
 - `PascalOOPParserTests.cpp` - parsing all OOP constructs
 - `PascalOOPSemanticTests.cpp` - type checking and validation
 - `PascalOOPLoweringTests.cpp` - IL generation
 
 ### Integration Tests (src/tests/data/pascal/)
+
 - `oop_class_basic.pas` - simple class with fields and methods
 - `oop_inheritance.pas` - base/derived class hierarchy
 - `oop_interface.pas` - interface implementation
@@ -313,6 +334,7 @@ end.
 - `oop_property.pas` - property access
 
 ### Golden Tests
+
 - IL output verification for each OOP construct
 - Compare Pascal and BASIC IL for equivalent programs
 
@@ -320,12 +342,12 @@ end.
 
 ## Risk Assessment
 
-| Risk | Impact | Mitigation |
-|------|--------|------------|
-| Bug fixes break existing code | Medium | Comprehensive test coverage first |
-| Vtable incompatibility with BASIC | High | Share Lowerer_OOP.cpp patterns |
-| Static member complexity | Medium | Implement after core bugs fixed |
-| Documentation lag | Low | Update docs with each stage |
+| Risk                              | Impact | Mitigation                        |
+|-----------------------------------|--------|-----------------------------------|
+| Bug fixes break existing code     | Medium | Comprehensive test coverage first |
+| Vtable incompatibility with BASIC | High   | Share Lowerer_OOP.cpp patterns    |
+| Static member complexity          | Medium | Implement after core bugs fixed   |
+| Documentation lag                 | Low    | Update docs with each stage       |
 
 ---
 
@@ -334,6 +356,7 @@ end.
 **Not providing time estimates per CLAUDE.md instructions.**
 
 Priority order based on impact:
+
 1. **Stage 1** - Most critical, unlocks all other work
 2. **Stage 2** - Completes RTTI story
 3. **Stage 3** - Enables proper memory management
@@ -345,16 +368,19 @@ Priority order based on impact:
 ## Appendix: File Reference
 
 ### Core OOP Files
+
 - `src/frontends/pascal/Parser_OOP.cpp` (766 lines)
 - `src/frontends/pascal/SemanticAnalyzer_Class.cpp` (468 lines)
 - `src/frontends/pascal/Lowerer_OOP.cpp` (1000 lines)
 - `src/frontends/pascal/AST.hpp` (OOP nodes at lines 1011-1125)
 
 ### Supporting Files
+
 - `src/frontends/pascal/SemanticAnalyzer.hpp` (type system)
 - `src/frontends/pascal/SemanticAnalyzer_Decl.cpp` (class registration)
 - `src/frontends/pascal/Lowerer_Expr.cpp` (IS expression)
 - `src/frontends/pascal/Lowerer_Stmt.cpp` (inherited statement)
 
 ### Bug Documentation
+
 - `bugs/pascal_bugs.md` - Known Pascal bugs

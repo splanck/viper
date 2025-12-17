@@ -5,38 +5,41 @@
 
 ## Executive Summary
 
-The OOP implementation has significant gaps. While basic class definition, instantiation, and simple methods work, **inheritance is fundamentally broken** - derived classes cannot access inherited fields or methods. Additionally, **INTERFACE/IMPLEMENTS is not implemented** (parser doesn't recognize the keywords), and **IS/AS operators are not implemented**.
+The OOP implementation has significant gaps. While basic class definition, instantiation, and simple methods work, *
+*inheritance is fundamentally broken** - derived classes cannot access inherited fields or methods. Additionally, *
+*INTERFACE/IMPLEMENTS is not implemented** (parser doesn't recognize the keywords), and **IS/AS operators are not
+implemented**.
 
 ---
 
 ## Feature Status Overview
 
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Class definition | **WORKS** | `CLASS ... END CLASS` |
-| Field declaration | **WORKS** | `PUBLIC field AS Type` |
-| Methods (Sub/Function) | **WORKS** | Instance methods work correctly |
-| Constructors (SUB NEW) | **WORKS** | With parameters |
-| Object instantiation | **WORKS** | `NEW ClassName()` |
-| Field access | **WORKS** | `obj.field` |
-| Method calls | **WORKS** | `obj.Method()` |
-| ME keyword | **WORKS** | Self-reference in methods |
-| Object composition | **WORKS** | Object fields in classes |
-| Arrays of objects | **WORKS** | `DIM arr(n) AS ClassName` |
-| Object as parameter | **WORKS** | Pass by reference |
-| Object as return value | **PARTIAL** | Single function works; multiple object-returning functions may fail |
-| Inheritance (CLASS B : A) | **BROKEN** | Derived class can't access inherited members |
-| VIRTUAL methods | **PARTIAL** | Works only with explicit OVERRIDE |
-| OVERRIDE | **WORKS** | When used with VIRTUAL |
-| BASE.Method() | **WORKS** | Call parent implementation |
-| VIRTUAL ABSTRACT | **WORKS** | Abstract method declaration |
-| FINAL | **WORKS** | Prevents override |
-| INTERFACE/IMPLEMENTS | **NOT IMPLEMENTED** | Parser error: "unknown statement 'INTERFACE'" |
-| IS operator | **NOT IMPLEMENTED** | Parser error: "expected THEN, got IS" |
-| AS operator (cast) | **NOT IMPLEMENTED** | Parser error: "unknown statement 'AS'" |
-| PROPERTY (GET/SET) | **PARTIAL** | Parser accepts syntax but may not work at runtime |
-| PRIVATE (access modifier) | **NOT IMPLEMENTED** | Parser error in class body |
-| Type coercion in constructors | **BROKEN** | Integer literal not auto-converted to DOUBLE |
+| Feature                       | Status              | Notes                                                               |
+|-------------------------------|---------------------|---------------------------------------------------------------------|
+| Class definition              | **WORKS**           | `CLASS ... END CLASS`                                               |
+| Field declaration             | **WORKS**           | `PUBLIC field AS Type`                                              |
+| Methods (Sub/Function)        | **WORKS**           | Instance methods work correctly                                     |
+| Constructors (SUB NEW)        | **WORKS**           | With parameters                                                     |
+| Object instantiation          | **WORKS**           | `NEW ClassName()`                                                   |
+| Field access                  | **WORKS**           | `obj.field`                                                         |
+| Method calls                  | **WORKS**           | `obj.Method()`                                                      |
+| ME keyword                    | **WORKS**           | Self-reference in methods                                           |
+| Object composition            | **WORKS**           | Object fields in classes                                            |
+| Arrays of objects             | **WORKS**           | `DIM arr(n) AS ClassName`                                           |
+| Object as parameter           | **WORKS**           | Pass by reference                                                   |
+| Object as return value        | **PARTIAL**         | Single function works; multiple object-returning functions may fail |
+| Inheritance (CLASS B : A)     | **BROKEN**          | Derived class can't access inherited members                        |
+| VIRTUAL methods               | **PARTIAL**         | Works only with explicit OVERRIDE                                   |
+| OVERRIDE                      | **WORKS**           | When used with VIRTUAL                                              |
+| BASE.Method()                 | **WORKS**           | Call parent implementation                                          |
+| VIRTUAL ABSTRACT              | **WORKS**           | Abstract method declaration                                         |
+| FINAL                         | **WORKS**           | Prevents override                                                   |
+| INTERFACE/IMPLEMENTS          | **NOT IMPLEMENTED** | Parser error: "unknown statement 'INTERFACE'"                       |
+| IS operator                   | **NOT IMPLEMENTED** | Parser error: "expected THEN, got IS"                               |
+| AS operator (cast)            | **NOT IMPLEMENTED** | Parser error: "unknown statement 'AS'"                              |
+| PROPERTY (GET/SET)            | **PARTIAL**         | Parser accepts syntax but may not work at runtime                   |
+| PRIVATE (access modifier)     | **NOT IMPLEMENTED** | Parser error in class body                                          |
+| Type coercion in constructors | **BROKEN**          | Integer literal not auto-converted to DOUBLE                        |
 
 ---
 
@@ -51,6 +54,7 @@ The OOP implementation has significant gaps. While basic class definition, insta
 When a class inherits from another class, the derived class cannot access fields defined in the parent class.
 
 **Test Case:**
+
 ```basic
 CLASS Parent
     PUBLIC value AS INTEGER
@@ -65,6 +69,7 @@ c.value = 100  ' ERROR: no such property 'VALUE' on 'CHILD'
 ```
 
 **Error:**
+
 ```
 error[E_PROP_NO_SUCH_PROPERTY]: no such property 'VALUE' on 'CHILD'
 ```
@@ -82,6 +87,7 @@ error[E_PROP_NO_SUCH_PROPERTY]: no such property 'VALUE' on 'CHILD'
 Non-virtual methods defined in a parent class cannot be called on derived class instances.
 
 **Test Case:**
+
 ```basic
 CLASS Parent
     PUBLIC SUB Greet()
@@ -98,6 +104,7 @@ c.Greet()  ' ERROR: no matching overload for 'GREET()'
 ```
 
 **Error:**
+
 ```
 error[E_OVERLOAD_NO_MATCH]: no matching overload for 'GREET()'
 ```
@@ -115,6 +122,7 @@ error[E_OVERLOAD_NO_MATCH]: no matching overload for 'GREET()'
 Even VIRTUAL methods are not accessible on derived class instances unless explicitly overridden.
 
 **Test Case:**
+
 ```basic
 CLASS Parent
     VIRTUAL SUB Speak()
@@ -134,6 +142,7 @@ c.Speak()  ' ERROR: no matching overload for 'SPEAK()'
 **Workaround:** Add `OVERRIDE SUB Speak() : BASE.Speak() : END SUB` in every subclass.
 
 **Note:** This works correctly when using a parent-type variable:
+
 ```basic
 DIM p AS Parent
 p = NEW Child()
@@ -151,6 +160,7 @@ p.Speak()  ' WORKS - prints "Parent speaks"
 The INTERFACE keyword is not recognized by the parser.
 
 **Test Case:**
+
 ```basic
 INTERFACE IGreeter
     SUB Greet()
@@ -158,11 +168,13 @@ END INTERFACE
 ```
 
 **Error:**
+
 ```
 error[B0001]: unknown statement 'INTERFACE'; expected keyword or procedure call
 ```
 
-**Note:** Golden test files exist in `src/tests/golden/basic_oop_iface/` but these tests are NOT run - the interface feature was never completed.
+**Note:** Golden test files exist in `src/tests/golden/basic_oop_iface/` but these tests are NOT run - the interface
+feature was never completed.
 
 ---
 
@@ -175,6 +187,7 @@ error[B0001]: unknown statement 'INTERFACE'; expected keyword or procedure call
 The IS and AS keywords for type testing and casting are not recognized.
 
 **Test Case:**
+
 ```basic
 DIM a AS Parent
 a = NEW Child()
@@ -184,6 +197,7 @@ END IF
 ```
 
 **Error:**
+
 ```
 error[B0001]: expected THEN, got IS
 ```
@@ -208,6 +222,7 @@ Additionally, allowed implicit float-to-int argument conversions in call express
 to support BASIC's traditional type coercion rules.
 
 **Test Case (now works):**
+
 ```basic
 CLASS Point
     PUBLIC x AS INTEGER
@@ -251,6 +266,7 @@ PRINT m.y  ' Outputs: 10
 Integer literals are not automatically converted to DOUBLE when passed to constructor parameters expecting DOUBLE.
 
 **Test Case:**
+
 ```basic
 CLASS Account
     SUB NEW(initial AS DOUBLE)
@@ -275,6 +291,7 @@ acc = NEW Account(1000)  ' ERROR: expects f64 but got i64
 The PRIVATE access modifier is not recognized in class field declarations.
 
 **Test Case:**
+
 ```basic
 CLASS Person
     PRIVATE name AS STRING  ' ERROR
@@ -282,6 +299,7 @@ END CLASS
 ```
 
 **Error:**
+
 ```
 error[B0001]: expected END, got ?
 ```
@@ -297,12 +315,14 @@ error[B0001]: expected END, got ?
 "Base" is reserved for the BASE.Method() syntax and cannot be used as a class name.
 
 **Test Case:**
+
 ```basic
 CLASS Base  ' ERROR
 END CLASS
 ```
 
 **Error:**
+
 ```
 error[B0001]: expected ident, got BASE
 ```
@@ -331,13 +351,16 @@ error[B0001]: expected ident, got BASE
 ## Recommendations
 
 ### Priority 1 (Critical - blocks basic OOP usage)
+
 1. Fix inherited field/method visibility (BUG-OOP-001, BUG-OOP-002, BUG-OOP-003)
 
 ### Priority 2 (High - missing core features)
+
 2. Implement INTERFACE/IMPLEMENTS (BUG-OOP-004)
 3. Implement IS/AS operators (BUG-OOP-005)
 
 ### Priority 3 (Medium)
+
 4. Fix multiple object-returning functions (BUG-OOP-006)
 5. Implement PRIVATE access modifier (BUG-OOP-008)
 6. Add implicit type coercion for constructors (BUG-OOP-007)
@@ -347,6 +370,7 @@ error[B0001]: expected ident, got BASE
 ## Test Files Location
 
 All test files created during this investigation are in `/tmp/`:
+
 - `oop_test_01_basic_class.bas` - Basic class (PASS)
 - `oop_test_02_fields.bas` - Field types (PASS)
 - `oop_test_03_methods.bas` - Methods (PASS)
@@ -376,64 +400,89 @@ All test files created during this investigation are in `/tmp/`:
 ## Root Cause Analysis (Deep Dive)
 
 ### BUG-OOP-001 — Inherited fields inaccessible on derived instances
+
 - Cause: Field lookup and object layout omit base-class fields.
-  - Lowering searches only `cinfo->fields` (declaring class). See `Lower_OOP_MemberAccess.cpp` (resolveMemberField) — no base walk, no use of `OopIndex::findFieldInHierarchy`.
-  - Layout (`Lower_OOP_Scan.cpp`) is built from `decl.fields` only; base fields are not prefixed into derived layouts.
+    - Lowering searches only `cinfo->fields` (declaring class). See `Lower_OOP_MemberAccess.cpp` (resolveMemberField) —
+      no base walk, no use of `OopIndex::findFieldInHierarchy`.
+    - Layout (`Lower_OOP_Scan.cpp`) is built from `decl.fields` only; base fields are not prefixed into derived layouts.
 - Fix:
-  - Merge base layout into derived at scan time (vptr at offset 0, then base fields, then derived fields).
-  - Use `findFieldInHierarchy` (or merged layout) for member access; keep PRIVATE access checks.
+    - Merge base layout into derived at scan time (vptr at offset 0, then base fields, then derived fields).
+    - Use `findFieldInHierarchy` (or merged layout) for member access; keep PRIVATE access checks.
 - Challenges: ABI shift for field offsets; ensure base is resolved before derived.
 
 ### BUG-OOP-002 — Inherited methods not accessible on derived instances
+
 - Cause: Overload resolution and slot lookup don’t consult bases.
-  - `sem::resolveMethodOverload` inspects only the current class’s `methods` map (no base walk), leading to `E_OVERLOAD_NO_MATCH` for `Child.Greet()`.
-  - `getVirtualSlot` returns `-1` for derived receivers when only the base declares the method.
+    - `sem::resolveMethodOverload` inspects only the current class’s `methods` map (no base walk), leading to
+      `E_OVERLOAD_NO_MATCH` for `Child.Greet()`.
+    - `getVirtualSlot` returns `-1` for derived receivers when only the base declares the method.
 - Fix:
-  - Extend resolution to walk `baseQualified` chain (or use `OopIndex::findMethodInHierarchy`) with access filters; prefer most-derived match.
-  - Have `getVirtualSlot` fall back to the first matching base slot so dynamic dispatch can be emitted for derived receivers.
-- Challenges: Respect PRIVATE across class boundaries; avoid ambiguous picks when both base/derived supply property accessors.
+    - Extend resolution to walk `baseQualified` chain (or use `OopIndex::findMethodInHierarchy`) with access filters;
+      prefer most-derived match.
+    - Have `getVirtualSlot` fall back to the first matching base slot so dynamic dispatch can be emitted for derived
+      receivers.
+- Challenges: Respect PRIVATE across class boundaries; avoid ambiguous picks when both base/derived supply property
+  accessors.
 
 ### BUG-OOP-003 — Virtual methods not inherited without override
-- Cause: Same root as BUG-OOP-002. For a `Child` receiver, slot discovery fails when the method is declared only in `Parent`, so indirect dispatch isn’t used.
+
+- Cause: Same root as BUG-OOP-002. For a `Child` receiver, slot discovery fails when the method is declared only in
+  `Parent`, so indirect dispatch isn’t used.
 - Fix: Same as BUG-OOP-002; preserve BASE-qualified semantics for direct base calls.
 
 ### BUG-OOP-004 — INTERFACE/IMPLEMENTS not implemented
+
 - Cause: Parser has no handler for `INTERFACE` and does not parse `IMPLEMENTS` on `CLASS` headers.
-  - Lexing + AST + OOP index exist; parsing is missing (`registerOopParsers` does not register INTERFACE; no `parseInterfaceDecl()`).
+    - Lexing + AST + OOP index exist; parsing is missing (`registerOopParsers` does not register INTERFACE; no
+      `parseInterfaceDecl()`).
 - Fix:
-  - Implement `parseInterfaceDecl()` and register it; add `IMPLEMENTS` clause parsing in `Parser_Stmt_OOP.cpp` to populate `ClassDecl::implementsQualifiedNames`.
-  - Lowering/runtime hooks already exist (`Lower_OOP_Emit.cpp`, `rt_type_registry.c`).
+    - Implement `parseInterfaceDecl()` and register it; add `IMPLEMENTS` clause parsing in `Parser_Stmt_OOP.cpp` to
+      populate `ClassDecl::implementsQualifiedNames`.
+    - Lowering/runtime hooks already exist (`Lower_OOP_Emit.cpp`, `rt_type_registry.c`).
 - Challenges: Grammar placement (e.g., `CLASS B : A IMPLEMENTS I1, I2`), diagnostics clarity.
 
 ### BUG-OOP-005 — IS/AS operators not implemented
-- Cause: `IsExpr`/`AsExpr` exist in AST/semantics/lowering, but `Parser_Expr.cpp` never constructs them; `IS` appears only in `SELECT CASE` relations.
-- Fix: Teach the expression parser to parse `value IS <QualifiedType>` and `value AS <QualifiedType>`, constructing `IsExpr`/`AsExpr`. Name resolution is already handled in the semantic analyzer.
+
+- Cause: `IsExpr`/`AsExpr` exist in AST/semantics/lowering, but `Parser_Expr.cpp` never constructs them; `IS` appears
+  only in `SELECT CASE` relations.
+- Fix: Teach the expression parser to parse `value IS <QualifiedType>` and `value AS <QualifiedType>`, constructing
+  `IsExpr`/`AsExpr`. Name resolution is already handled in the semantic analyzer.
 - Challenges: None significant; ensure no collision with statement-level `AS` in declarations.
 
 ### BUG-OOP-006 — Multiple object-returning functions: IL ret type mismatch
+
 - Symptom: `ret value type mismatch: expected ptr but got i64` on the second object-returning FUNCTION.
-- Likely Cause: Some return paths for ptr-typed FUNCTIONs fall through to `emitRet(v.value)` where `v` is `i64`. This can happen when symbol typing for the returned local object is stale or when the specialized `VarExpr` path in `lowerReturn` doesn’t trigger.
+- Likely Cause: Some return paths for ptr-typed FUNCTIONs fall through to `emitRet(v.value)` where `v` is `i64`. This
+  can happen when symbol typing for the returned local object is stale or when the specialized `VarExpr` path in
+  `lowerReturn` doesn’t trigger.
 - Fix:
-  - Harden `lowerReturn`: when enclosing FUNCTION returns `ptr`, ensure `RETURN <var>` always loads the slot as `ptr` for object variables; reject or diagnose non-`ptr` expressions.
-  - Verify symbol typing is deterministically set for `DIM name AS Class` (both in `VarCollectWalker::before(DimStmt)` and `Scan_RuntimeNeeds::before(DimStmt)`), and per-proc state is reset before each function.
+    - Harden `lowerReturn`: when enclosing FUNCTION returns `ptr`, ensure `RETURN <var>` always loads the slot as `ptr`
+      for object variables; reject or diagnose non-`ptr` expressions.
+    - Verify symbol typing is deterministically set for `DIM name AS Class` (both in `VarCollectWalker::before(DimStmt)`
+      and `Scan_RuntimeNeeds::before(DimStmt)`), and per-proc state is reset before each function.
 - Challenges: Avoid reinterpreting integers as pointers; preserve string/object lifetimes on return.
 
 ### BUG-OOP-007 — No implicit coercion for constructor arguments
+
 - Cause: `lowerNewExpr` passes arguments through unchanged; ctor parameter types are ignored.
 - Fix: Look up ctor signature in `OopIndex` and coerce args (`i64`→`f64`, boolean normalization) just like method calls.
 - Challenges: Constructor overloads; reuse existing overload rules if multiple ctors are supported.
 
 ### BUG-OOP-008 — PRIVATE not recognized in class body
-- Status now: Supported. Parser consumes single-use `PUBLIC`/`PRIVATE` and applies to the next field/member; shorthand field forms are accepted.
+
+- Status now: Supported. Parser consumes single-use `PUBLIC`/`PRIVATE` and applies to the next field/member; shorthand
+  field forms are accepted.
 - Earlier failure was likely pre-fix behavior; retain better error recovery for malformed members.
 
 ### BUG-OOP-009 — "Base" reserved as class name
+
 - Cause: `BASE` is a keyword for base-qualified calls.
 - Decision: Keep reserved; optionally improve diagnostic suggesting a different class name.
 
 ---
 
 ## Proposed Fix Plan (Summary)
+
 - Fields/inheritance: Merge base fields into derived layouts; use hierarchical lookup; enforce PRIVATE.
 - Methods/inheritance: Walk bases in overload resolution and slot lookup; prefer most-derived; keep BASE semantics.
 - Interfaces: Implement `parseInterfaceDecl` and `IMPLEMENTS` parsing; reuse existing lowering/runtime hooks.
@@ -442,6 +491,7 @@ All test files created during this investigation are in `/tmp/`:
 - Constructors: Coerce NEW-args to ctor param types.
 
 ## Risks & Challenges
+
 - ABI shifts (field layout) require recompiling; acceptable but must be documented.
 - Parser additions must not regress statement disambiguation; add golden tests.
 - Base-walk in overload resolution should be cached to avoid performance regressions.

@@ -1,4 +1,5 @@
 # ViperLang — Quick Reference
+
 ## Version 0.1 RC1 (Release Candidate 1)
 
 <div align="center">
@@ -26,6 +27,7 @@ async func main() {
 ## Types
 
 ### Values (Copy Types)
+
 ```viper
 value Point {
     x: Number
@@ -40,6 +42,7 @@ p2.x = 30         // Only p2 changes; p1 unchanged
 **Key:** Values copy on assignment. Cannot mutate temporaries (`getPoint().x = 10` is illegal).
 
 ### Entities (Reference Types)
+
 ```viper
 entity User {
     name: Text
@@ -56,6 +59,7 @@ u2.name = "Bob"   // Both u1 and u2 see "Bob"
 ```
 
 ### Inheritance (Entities Only)
+
 ```viper
 entity Animal {
     name: Text
@@ -75,6 +79,7 @@ entity Dog extends Animal {
 ```
 
 ### Interfaces
+
 ```viper
 interface Drawable {
     func draw(canvas: Canvas)
@@ -117,6 +122,7 @@ let (first, second) = getPair()
 ## Control Flow
 
 ### Pattern Matching
+
 ```viper
 value Result[T] = Ok(T) | Error(Text)
 
@@ -134,6 +140,7 @@ match number {
 ```
 
 ### If/Else
+
 ```viper
 if condition {
     doSomething()
@@ -153,6 +160,7 @@ if let user = findUser(id) {
 ```
 
 ### Loops
+
 ```viper
 // For each
 for item in list {
@@ -183,6 +191,7 @@ for i in 0..=10 {
 ```
 
 ### Guard (Early Return)
+
 ```viper
 func process(data: Data?) -> Text {
     guard data != null else {
@@ -307,10 +316,12 @@ func mustExist(id: Text) -> User {
 ## Collections and Indexing
 
 ### Indexing Rules
+
 - `collection[i]` — **Panics** if out of bounds
 - `collection.get(i)` — Returns `Option[T]` (safe)
 
 ### List
+
 ```viper
 let list = [1, 2, 3, 4, 5]
 
@@ -331,6 +342,7 @@ let sum = list.reduce(0, (a, b) => a + b)
 ```
 
 ### Map
+
 ```viper
 let map = Map[Text, Integer]()
 map.put("alice", 30)
@@ -348,6 +360,7 @@ let bad = map["eve"]    // panic!
 ```
 
 ### Set
+
 ```viper
 let set = Set[Text]()
 set.add("apple")
@@ -424,6 +437,7 @@ channel.close()  // Safe to call again
 ## Memory Management
 
 ### Reference Counting (Automatic)
+
 ```viper
 // Values: copied, no refcounting
 let p1 = Point(x: 10, y: 20)
@@ -436,6 +450,7 @@ let e2 = e1  // Refcount = 2
 ```
 
 ### Weak References (Break Cycles)
+
 ```viper
 entity Node {
     value: Any
@@ -533,6 +548,7 @@ async func main() {
 ## Cheat Sheet
 
 ### Types
+
 - `Integer` - 64-bit integer
 - `Number` - 64-bit float
 - `Text` - UTF-8 string
@@ -540,6 +556,7 @@ async func main() {
 - `T?` - Optional T (same as Option[T])
 
 ### Keywords (25 total)
+
 ```
 async     await     break     continue   else
 entity    expose    extends   for        func
@@ -550,6 +567,7 @@ while
 ```
 
 ### Operators
+
 - Math: `+ - * / %`
 - Compare: `== != < > <= >=`
 - Logic: `&& || !`

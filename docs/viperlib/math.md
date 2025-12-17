@@ -22,26 +22,26 @@ Bit manipulation utilities for working with 64-bit integers at the bit level.
 
 ### Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `And(a, b)` | `i64(i64, i64)` | Bitwise AND |
-| `Or(a, b)` | `i64(i64, i64)` | Bitwise OR |
-| `Xor(a, b)` | `i64(i64, i64)` | Bitwise XOR |
-| `Not(val)` | `i64(i64)` | Bitwise NOT (complement) |
-| `Shl(val, count)` | `i64(i64, i64)` | Logical shift left |
-| `Shr(val, count)` | `i64(i64, i64)` | Arithmetic shift right (sign-extended) |
-| `Ushr(val, count)` | `i64(i64, i64)` | Logical shift right (zero-fill) |
-| `Rotl(val, count)` | `i64(i64, i64)` | Rotate left |
-| `Rotr(val, count)` | `i64(i64, i64)` | Rotate right |
-| `Count(val)` | `i64(i64)` | Population count (number of 1 bits) |
-| `LeadZ(val)` | `i64(i64)` | Count leading zeros |
-| `TrailZ(val)` | `i64(i64)` | Count trailing zeros |
-| `Flip(val)` | `i64(i64)` | Reverse all 64 bits |
-| `Swap(val)` | `i64(i64)` | Byte swap (endian swap) |
-| `Get(val, bit)` | `i1(i64, i64)` | Get bit at position (0-63) |
-| `Set(val, bit)` | `i64(i64, i64)` | Set bit at position |
-| `Clear(val, bit)` | `i64(i64, i64)` | Clear bit at position |
-| `Toggle(val, bit)` | `i64(i64, i64)` | Toggle bit at position |
+| Method             | Signature       | Description                            |
+|--------------------|-----------------|----------------------------------------|
+| `And(a, b)`        | `i64(i64, i64)` | Bitwise AND                            |
+| `Or(a, b)`         | `i64(i64, i64)` | Bitwise OR                             |
+| `Xor(a, b)`        | `i64(i64, i64)` | Bitwise XOR                            |
+| `Not(val)`         | `i64(i64)`      | Bitwise NOT (complement)               |
+| `Shl(val, count)`  | `i64(i64, i64)` | Logical shift left                     |
+| `Shr(val, count)`  | `i64(i64, i64)` | Arithmetic shift right (sign-extended) |
+| `Ushr(val, count)` | `i64(i64, i64)` | Logical shift right (zero-fill)        |
+| `Rotl(val, count)` | `i64(i64, i64)` | Rotate left                            |
+| `Rotr(val, count)` | `i64(i64, i64)` | Rotate right                           |
+| `Count(val)`       | `i64(i64)`      | Population count (number of 1 bits)    |
+| `LeadZ(val)`       | `i64(i64)`      | Count leading zeros                    |
+| `TrailZ(val)`      | `i64(i64)`      | Count trailing zeros                   |
+| `Flip(val)`        | `i64(i64)`      | Reverse all 64 bits                    |
+| `Swap(val)`        | `i64(i64)`      | Byte swap (endian swap)                |
+| `Get(val, bit)`    | `i1(i64, i64)`  | Get bit at position (0-63)             |
+| `Set(val, bit)`    | `i64(i64, i64)` | Set bit at position                    |
+| `Clear(val, bit)`  | `i64(i64, i64)` | Clear bit at position                  |
+| `Toggle(val, bit)` | `i64(i64, i64)` | Toggle bit at position                 |
 
 ### Method Details
 
@@ -51,7 +51,8 @@ Bit manipulation utilities for working with 64-bit integers at the bit level.
 - **Shr** — Arithmetic shift right. Shifts bits right, preserving the sign bit (sign-extended).
 - **Ushr** — Logical shift right. Shifts bits right, filling with zeros on the left.
 
-Shift counts are clamped: negative counts or counts >= 64 return 0 (for Shl/Ushr) or the sign bit extended (for Shr with negative values).
+Shift counts are clamped: negative counts or counts >= 64 return 0 (for Shl/Ushr) or the sign bit extended (for Shr with
+negative values).
 
 #### Rotate Operations
 
@@ -68,7 +69,8 @@ Rotate counts are normalized to 0-63 (count MOD 64).
 
 #### Single Bit Operations
 
-All single-bit operations accept bit positions 0-63. Out-of-range positions return the input unchanged (for Set/Clear/Toggle) or false (for Get).
+All single-bit operations accept bit positions 0-63. Out-of-range positions return the input unchanged (for
+Set/Clear/Toggle) or false (for Get).
 
 ### Example
 
@@ -114,86 +116,86 @@ Mathematical functions and constants.
 
 ### Constants
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `Pi` | `Double` | π (3.14159265358979...) |
-| `E` | `Double` | Euler's number (2.71828182845904...) |
-| `Tau` | `Double` | τ = 2π (6.28318530717958...) |
+| Property | Type     | Description                          |
+|----------|----------|--------------------------------------|
+| `Pi`     | `Double` | π (3.14159265358979...)              |
+| `E`      | `Double` | Euler's number (2.71828182845904...) |
+| `Tau`    | `Double` | τ = 2π (6.28318530717958...)         |
 
 ### Basic Functions
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `Abs(x)` | `Double(Double)` | Absolute value of a floating-point number |
-| `AbsInt(x)` | `Integer(Integer)` | Absolute value of an integer |
-| `Sqrt(x)` | `Double(Double)` | Square root |
-| `Pow(base, exp)` | `Double(Double, Double)` | Raises base to the power of exp |
-| `Exp(x)` | `Double(Double)` | e raised to the power x |
-| `Sgn(x)` | `Double(Double)` | Sign of x: -1, 0, or 1 |
-| `SgnInt(x)` | `Integer(Integer)` | Sign of integer x: -1, 0, or 1 |
+| Method           | Signature                | Description                               |
+|------------------|--------------------------|-------------------------------------------|
+| `Abs(x)`         | `Double(Double)`         | Absolute value of a floating-point number |
+| `AbsInt(x)`      | `Integer(Integer)`       | Absolute value of an integer              |
+| `Sqrt(x)`        | `Double(Double)`         | Square root                               |
+| `Pow(base, exp)` | `Double(Double, Double)` | Raises base to the power of exp           |
+| `Exp(x)`         | `Double(Double)`         | e raised to the power x                   |
+| `Sgn(x)`         | `Double(Double)`         | Sign of x: -1, 0, or 1                    |
+| `SgnInt(x)`      | `Integer(Integer)`       | Sign of integer x: -1, 0, or 1            |
 
 ### Trigonometric Functions
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `Sin(x)` | `Double(Double)` | Sine (radians) |
-| `Cos(x)` | `Double(Double)` | Cosine (radians) |
-| `Tan(x)` | `Double(Double)` | Tangent (radians) |
-| `Atan(x)` | `Double(Double)` | Arctangent (returns radians) |
+| Method        | Signature                | Description                                            |
+|---------------|--------------------------|--------------------------------------------------------|
+| `Sin(x)`      | `Double(Double)`         | Sine (radians)                                         |
+| `Cos(x)`      | `Double(Double)`         | Cosine (radians)                                       |
+| `Tan(x)`      | `Double(Double)`         | Tangent (radians)                                      |
+| `Atan(x)`     | `Double(Double)`         | Arctangent (returns radians)                           |
 | `Atan2(y, x)` | `Double(Double, Double)` | Arctangent of y/x (returns radians, respects quadrant) |
-| `Asin(x)` | `Double(Double)` | Arc sine (returns radians) |
-| `Acos(x)` | `Double(Double)` | Arc cosine (returns radians) |
+| `Asin(x)`     | `Double(Double)`         | Arc sine (returns radians)                             |
+| `Acos(x)`     | `Double(Double)`         | Arc cosine (returns radians)                           |
 
 ### Hyperbolic Functions
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `Sinh(x)` | `Double(Double)` | Hyperbolic sine |
-| `Cosh(x)` | `Double(Double)` | Hyperbolic cosine |
+| Method    | Signature        | Description        |
+|-----------|------------------|--------------------|
+| `Sinh(x)` | `Double(Double)` | Hyperbolic sine    |
+| `Cosh(x)` | `Double(Double)` | Hyperbolic cosine  |
 | `Tanh(x)` | `Double(Double)` | Hyperbolic tangent |
 
 ### Logarithmic Functions
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `Log(x)` | `Double(Double)` | Natural logarithm (base e) |
-| `Log10(x)` | `Double(Double)` | Base-10 logarithm |
-| `Log2(x)` | `Double(Double)` | Base-2 logarithm |
+| Method     | Signature        | Description                |
+|------------|------------------|----------------------------|
+| `Log(x)`   | `Double(Double)` | Natural logarithm (base e) |
+| `Log10(x)` | `Double(Double)` | Base-10 logarithm          |
+| `Log2(x)`  | `Double(Double)` | Base-2 logarithm           |
 
 ### Rounding Functions
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `Floor(x)` | `Double(Double)` | Largest integer less than or equal to x |
-| `Ceil(x)` | `Double(Double)` | Smallest integer greater than or equal to x |
-| `Round(x)` | `Double(Double)` | Round to nearest integer |
-| `Trunc(x)` | `Double(Double)` | Truncate toward zero |
+| Method     | Signature        | Description                                 |
+|------------|------------------|---------------------------------------------|
+| `Floor(x)` | `Double(Double)` | Largest integer less than or equal to x     |
+| `Ceil(x)`  | `Double(Double)` | Smallest integer greater than or equal to x |
+| `Round(x)` | `Double(Double)` | Round to nearest integer                    |
+| `Trunc(x)` | `Double(Double)` | Truncate toward zero                        |
 
 ### Min/Max Functions
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `Min(a, b)` | `Double(Double, Double)` | Smaller of two floating-point values |
-| `Max(a, b)` | `Double(Double, Double)` | Larger of two floating-point values |
-| `MinInt(a, b)` | `Integer(Integer, Integer)` | Smaller of two integers |
-| `MaxInt(a, b)` | `Integer(Integer, Integer)` | Larger of two integers |
-| `Clamp(val, lo, hi)` | `Double(Double, Double, Double)` | Constrain value to range [lo, hi] |
-| `ClampInt(val, lo, hi)` | `Integer(Integer, Integer, Integer)` | Constrain integer to range [lo, hi] |
+| Method                  | Signature                            | Description                          |
+|-------------------------|--------------------------------------|--------------------------------------|
+| `Min(a, b)`             | `Double(Double, Double)`             | Smaller of two floating-point values |
+| `Max(a, b)`             | `Double(Double, Double)`             | Larger of two floating-point values  |
+| `MinInt(a, b)`          | `Integer(Integer, Integer)`          | Smaller of two integers              |
+| `MaxInt(a, b)`          | `Integer(Integer, Integer)`          | Larger of two integers               |
+| `Clamp(val, lo, hi)`    | `Double(Double, Double, Double)`     | Constrain value to range [lo, hi]    |
+| `ClampInt(val, lo, hi)` | `Integer(Integer, Integer, Integer)` | Constrain integer to range [lo, hi]  |
 
 ### Utility Functions
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `FMod(x, y)` | `Double(Double, Double)` | Floating-point remainder of x/y |
-| `Lerp(a, b, t)` | `Double(Double, Double, Double)` | Linear interpolation: a + t*(b-a) |
-| `Wrap(val, lo, hi)` | `Double(Double, Double, Double)` | Wrap value to range [lo, hi) |
-| `WrapInt(val, lo, hi)` | `Integer(Integer, Integer, Integer)` | Wrap integer to range [lo, hi) |
-| `Hypot(x, y)` | `Double(Double, Double)` | Hypotenuse: sqrt(x² + y²) |
+| Method                 | Signature                            | Description                       |
+|------------------------|--------------------------------------|-----------------------------------|
+| `FMod(x, y)`           | `Double(Double, Double)`             | Floating-point remainder of x/y   |
+| `Lerp(a, b, t)`        | `Double(Double, Double, Double)`     | Linear interpolation: a + t*(b-a) |
+| `Wrap(val, lo, hi)`    | `Double(Double, Double, Double)`     | Wrap value to range [lo, hi)      |
+| `WrapInt(val, lo, hi)` | `Integer(Integer, Integer, Integer)` | Wrap integer to range [lo, hi)    |
+| `Hypot(x, y)`          | `Double(Double, Double)`             | Hypotenuse: sqrt(x² + y²)         |
 
 ### Angle Conversion
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
+| Method         | Signature        | Description                |
+|----------------|------------------|----------------------------|
 | `Deg(radians)` | `Double(Double)` | Convert radians to degrees |
 | `Rad(degrees)` | `Double(Double)` | Convert degrees to radians |
 
@@ -245,11 +247,11 @@ Random number generation.
 
 ### Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `Seed(value)` | `Void(Integer)` | Seeds the random number generator |
-| `Next()` | `Double()` | Returns a random double in the range [0.0, 1.0) |
-| `NextInt(max)` | `Integer(Integer)` | Returns a random integer in the range [0, max) |
+| Method         | Signature          | Description                                     |
+|----------------|--------------------|-------------------------------------------------|
+| `Seed(value)`  | `Void(Integer)`    | Seeds the random number generator               |
+| `Next()`       | `Double()`         | Returns a random double in the range [0.0, 1.0) |
+| `NextInt(max)` | `Integer(Integer)` | Returns a random integer in the range [0, max)  |
 
 ### Example
 
@@ -284,37 +286,37 @@ PRINT "You rolled: "; die
 
 ### Static Constructors
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
+| Method      | Signature       | Description                               |
+|-------------|-----------------|-------------------------------------------|
 | `New(x, y)` | `obj(f64, f64)` | Create a new vector with given components |
-| `Zero()` | `obj()` | Create a vector at origin (0, 0) |
-| `One()` | `obj()` | Create a vector (1, 1) |
+| `Zero()`    | `obj()`         | Create a vector at origin (0, 0)          |
+| `One()`     | `obj()`         | Create a vector (1, 1)                    |
 
 ### Properties
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `X` | `f64` | X component (read-only) |
-| `Y` | `f64` | Y component (read-only) |
+| Property | Type  | Description             |
+|----------|-------|-------------------------|
+| `X`      | `f64` | X component (read-only) |
+| `Y`      | `f64` | Y component (read-only) |
 
 ### Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `Add(other)` | `obj(obj)` | Add two vectors: self + other |
-| `Sub(other)` | `obj(obj)` | Subtract vectors: self - other |
-| `Mul(scalar)` | `obj(f64)` | Multiply by scalar: self * s |
-| `Div(scalar)` | `obj(f64)` | Divide by scalar: self / s |
-| `Neg()` | `obj()` | Negate vector: -self |
-| `Dot(other)` | `f64(obj)` | Dot product of two vectors |
-| `Cross(other)` | `f64(obj)` | 2D cross product (scalar z-component) |
-| `Len()` | `f64()` | Length (magnitude) of vector |
-| `LenSq()` | `f64()` | Squared length (avoids sqrt) |
-| `Norm()` | `obj()` | Normalize to unit length |
-| `Dist(other)` | `f64(obj)` | Distance to another point |
+| Method           | Signature       | Description                                                |
+|------------------|-----------------|------------------------------------------------------------|
+| `Add(other)`     | `obj(obj)`      | Add two vectors: self + other                              |
+| `Sub(other)`     | `obj(obj)`      | Subtract vectors: self - other                             |
+| `Mul(scalar)`    | `obj(f64)`      | Multiply by scalar: self * s                               |
+| `Div(scalar)`    | `obj(f64)`      | Divide by scalar: self / s                                 |
+| `Neg()`          | `obj()`         | Negate vector: -self                                       |
+| `Dot(other)`     | `f64(obj)`      | Dot product of two vectors                                 |
+| `Cross(other)`   | `f64(obj)`      | 2D cross product (scalar z-component)                      |
+| `Len()`          | `f64()`         | Length (magnitude) of vector                               |
+| `LenSq()`        | `f64()`         | Squared length (avoids sqrt)                               |
+| `Norm()`         | `obj()`         | Normalize to unit length                                   |
+| `Dist(other)`    | `f64(obj)`      | Distance to another point                                  |
 | `Lerp(other, t)` | `obj(obj, f64)` | Linear interpolation (t=0 returns self, t=1 returns other) |
-| `Angle()` | `f64()` | Angle in radians (atan2(y, x)) |
-| `Rotate(angle)` | `obj(f64)` | Rotate by angle in radians |
+| `Angle()`        | `f64()`         | Angle in radians (atan2(y, x))                             |
+| `Rotate(angle)`  | `obj(f64)`      | Rotate by angle in radians                                 |
 
 ### Notes
 
@@ -375,35 +377,35 @@ END IF
 
 ### Static Constructors
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
+| Method         | Signature            | Description                               |
+|----------------|----------------------|-------------------------------------------|
 | `New(x, y, z)` | `obj(f64, f64, f64)` | Create a new vector with given components |
-| `Zero()` | `obj()` | Create a vector at origin (0, 0, 0) |
-| `One()` | `obj()` | Create a vector (1, 1, 1) |
+| `Zero()`       | `obj()`              | Create a vector at origin (0, 0, 0)       |
+| `One()`        | `obj()`              | Create a vector (1, 1, 1)                 |
 
 ### Properties
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `X` | `f64` | X component (read-only) |
-| `Y` | `f64` | Y component (read-only) |
-| `Z` | `f64` | Z component (read-only) |
+| Property | Type  | Description             |
+|----------|-------|-------------------------|
+| `X`      | `f64` | X component (read-only) |
+| `Y`      | `f64` | Y component (read-only) |
+| `Z`      | `f64` | Z component (read-only) |
 
 ### Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `Add(other)` | `obj(obj)` | Add two vectors: self + other |
-| `Sub(other)` | `obj(obj)` | Subtract vectors: self - other |
-| `Mul(scalar)` | `obj(f64)` | Multiply by scalar: self * s |
-| `Div(scalar)` | `obj(f64)` | Divide by scalar: self / s |
-| `Neg()` | `obj()` | Negate vector: -self |
-| `Dot(other)` | `f64(obj)` | Dot product of two vectors |
-| `Cross(other)` | `obj(obj)` | Cross product (returns Vec3) |
-| `Len()` | `f64()` | Length (magnitude) of vector |
-| `LenSq()` | `f64()` | Squared length (avoids sqrt) |
-| `Norm()` | `obj()` | Normalize to unit length |
-| `Dist(other)` | `f64(obj)` | Distance to another point |
+| Method           | Signature       | Description                                                |
+|------------------|-----------------|------------------------------------------------------------|
+| `Add(other)`     | `obj(obj)`      | Add two vectors: self + other                              |
+| `Sub(other)`     | `obj(obj)`      | Subtract vectors: self - other                             |
+| `Mul(scalar)`    | `obj(f64)`      | Multiply by scalar: self * s                               |
+| `Div(scalar)`    | `obj(f64)`      | Divide by scalar: self / s                                 |
+| `Neg()`          | `obj()`         | Negate vector: -self                                       |
+| `Dot(other)`     | `f64(obj)`      | Dot product of two vectors                                 |
+| `Cross(other)`   | `obj(obj)`      | Cross product (returns Vec3)                               |
+| `Len()`          | `f64()`         | Length (magnitude) of vector                               |
+| `LenSq()`        | `f64()`         | Squared length (avoids sqrt)                               |
+| `Norm()`         | `obj()`         | Normalize to unit length                                   |
+| `Dist(other)`    | `f64(obj)`      | Distance to another point                                  |
 | `Lerp(other, t)` | `obj(obj, f64)` | Linear interpolation (t=0 returns self, t=1 returns other) |
 
 ### Notes

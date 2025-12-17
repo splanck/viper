@@ -6,31 +6,40 @@ last-verified: 2025-12-10
 
 # Testing Guide
 
-This document describes the testing infrastructure for the Viper compiler stack, with a focus on property-based differential testing between execution backends.
+This document describes the testing infrastructure for the Viper compiler stack, with a focus on property-based
+differential testing between execution backends.
 
 ## Test Categories
 
 ### Unit Tests
+
 Located in `src/tests/unit/`. Test individual components in isolation:
+
 - IL core types and operations
 - Verifier checks
 - VM opcode semantics
 - Codegen utilities
 
 ### Golden Tests
+
 Located in `src/tests/golden/`. Test textual stability of outputs:
+
 - IL serialization format
 - BASIC/Pascal compiler output
 - Diagnostic messages
 
 ### End-to-End Tests
+
 Located in `src/tests/e2e/`. Test complete pipelines:
+
 - BASIC programs compiled and executed
 - Pascal programs compiled and executed
 - IL programs through VM and native backends
 
 ### Differential Tests
-Located in `src/tests/unit/codegen/`. Verify that VM and native backends produce identical results for the same IL programs.
+
+Located in `src/tests/unit/codegen/`. Verify that VM and native backends produce identical results for the same IL
+programs.
 
 ---
 
@@ -39,6 +48,7 @@ Located in `src/tests/unit/codegen/`. Verify that VM and native backends produce
 ### Overview
 
 The differential testing framework generates random-but-valid IL programs and verifies that:
+
 1. The IL passes verification
 2. VM execution produces a result
 3. Native (AArch64) execution produces the same result
@@ -68,20 +78,21 @@ std::cout << result.ilSource << "\n";
 
 #### Configuration Options
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `minInstructions` | 3 | Minimum instructions per block |
-| `maxInstructions` | 20 | Maximum instructions per block |
-| `minBlocks` | 1 | Minimum basic blocks |
-| `maxBlocks` | 4 | Maximum basic blocks |
-| `includeComparisons` | true | Include comparison operations |
-| `includeControlFlow` | true | Include branches (not yet implemented) |
-| `minConstant` | -1000 | Minimum constant value |
-| `maxConstant` | 1000 | Maximum constant value |
+| Option               | Default | Description                            |
+|----------------------|---------|----------------------------------------|
+| `minInstructions`    | 3       | Minimum instructions per block         |
+| `maxInstructions`    | 20      | Maximum instructions per block         |
+| `minBlocks`          | 1       | Minimum basic blocks                   |
+| `maxBlocks`          | 4       | Maximum basic blocks                   |
+| `includeComparisons` | true    | Include comparison operations          |
+| `includeControlFlow` | true    | Include branches (not yet implemented) |
+| `minConstant`        | -1000   | Minimum constant value                 |
+| `maxConstant`        | 1000    | Maximum constant value                 |
 
 #### Generated Operations
 
 The generator produces IL using checked operations per the IL spec:
+
 - `iadd.ovf` - Signed addition with overflow trap
 - `isub.ovf` - Signed subtraction with overflow trap
 - `imul.ovf` - Signed multiplication with overflow trap
@@ -118,6 +129,7 @@ ctest --test-dir build -R diff_vm_native_property --output-on-failure
 ### Test Iterations
 
 By default, the test runs 15 iterations per test case. Each iteration:
+
 1. Generates a new IL program from a unique seed
 2. Verifies the IL
 3. Runs on VM
@@ -187,6 +199,7 @@ Differential tests automatically skip native execution on unsupported platforms.
 ### Overview
 
 The VM concurrency tests verify thread-safety of the VM execution model:
+
 - Each VM instance is single-threaded
 - Thread-local storage (`tlsActiveVM`) correctly tracks active VM per thread
 - `ActiveVMGuard` RAII pattern properly manages VM context binding
@@ -196,6 +209,7 @@ The VM concurrency tests verify thread-safety of the VM execution model:
 ### Stress Test
 
 Located in `src/tests/unit/test_vm_concurrency_stress.cpp`. Exercises:
+
 - Multiple VMs running concurrently across threads
 - Runtime function callbacks (e.g., `Viper.Math.AbsInt`)
 - Rapid VM creation and destruction
@@ -245,6 +259,7 @@ WARNING: ThreadSanitizer: data race
 ```
 
 Key fields:
+
 - **Location**: Memory address involved in race
 - **Operation**: Read or write, with size
 - **Threads**: Which threads are racing
@@ -260,6 +275,7 @@ race:deliberate_benign_race_function
 ```
 
 Run with suppressions:
+
 ```bash
 TSAN_OPTIONS="suppressions=tsan.supp" ./build-tsan/src/tests/test_vm_concurrency_stress
 ```
@@ -271,7 +287,8 @@ The tests verify these invariants from `docs/vm.md`:
 1. **Single-threaded per VM**: Each VM instance processes instructions on one thread at a time
 2. **Thread-local binding**: `tlsActiveVM` holds the active VM for the current thread
 3. **Nesting allowed**: Same VM can be bound multiple times (recursive callbacks)
-4. **Different VM forbidden**: Attempting to bind a different VM on the same thread triggers assertion failure (debug builds)
+4. **Different VM forbidden**: Attempting to bind a different VM on the same thread triggers assertion failure (debug
+   builds)
 5. **Clean state**: After VM::run() completes, thread-local state is cleared
 
 ---

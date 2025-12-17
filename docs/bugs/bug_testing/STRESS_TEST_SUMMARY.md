@@ -1,10 +1,14 @@
 # Viper BASIC OOP Stress Test Summary
+
 ## Chess Game Implementation Attempt (2025-11-17)
 
 ### Objective
-Build a complex OOP chess game with ANSI graphics, AI, and ADDFILE includes to stress test Viper BASIC's OOP capabilities and find bugs before stabilization.
+
+Build a complex OOP chess game with ANSI graphics, AI, and ADDFILE includes to stress test Viper BASIC's OOP
+capabilities and find bugs before stabilization.
 
 ### Approach
+
 Incremental development: Start with basic classes, add arrays, add methods, add loops, test each step.
 
 ---
@@ -12,6 +16,7 @@ Incremental development: Start with basic classes, add arrays, add methods, add 
 ## CRITICAL BUGS FOUND
 
 ### Summary
+
 **3 CRITICAL OOP BLOCKERS + 1 Language Issue** → **ALL FIXED! (BUG-083, BUG-084, BUG-085 ALL RESOLVED!)**
 
 All bugs found were code generation errors. ALL THREE CRITICAL BUGS FIXED ON THE SAME DAY (2025-11-17)!
@@ -19,27 +24,32 @@ All bugs found were code generation errors. ALL THREE CRITICAL BUGS FIXED ON THE
 ---
 
 ### BUG-083: Cannot Call Methods on Object Array Elements
+
 **Severity**: CRITICAL
 **Status**: ✅ **FIXED** (2025-11-17)
 
 **What Failed** (before fix):
+
 ```basic
 DIM pieces(3) AS ChessPiece
 pieces(1).Init()  // ERROR: IL generation fails (empty block error)
 ```
 
-**Root Cause**: Vector pointer invalidation in `releaseDeferredTemps()`. When adding blocks to `func->blocks`, vector reallocation invalidated the `current_` block pointer.
+**Root Cause**: Vector pointer invalidation in `releaseDeferredTemps()`. When adding blocks to `func->blocks`, vector
+reallocation invalidated the `current_` block pointer.
 
 **Fix**: Added `ctx.setCurrent(&func->blocks[originIdx])` after adding blocks to reset the pointer. One-line fix!
 
 **Impact Before Fix**: Could not call methods on objects stored in arrays.
 
 **Impact After Fix**:
+
 - ✅ Method calls on array elements work (outside loops)
 - ✅ Test chess_02c_no_loop.bas now passes
 - ⚠️ Tests with loops still fail (BUG-085)
 
 **Files**:
+
 - chess_02_array.bas (has loop - still fails due to BUG-085)
 - chess_02b_array_simple.bas (has loop - still fails due to BUG-085)
 - chess_02c_no_loop.bas (no loop - ✅ NOW PASSES!)
@@ -47,10 +57,12 @@ pieces(1).Init()  // ERROR: IL generation fails (empty block error)
 ---
 
 ### BUG-084: String FUNCTION Methods Completely Broken
+
 **Severity**: CRITICAL
 **Status**: ✅ **FIXED** (2025-11-17)
 
 **What Failed** (before fix):
+
 ```basic
 CLASS Piece
     FUNCTION GetSymbol() AS STRING
@@ -59,22 +71,28 @@ CLASS Piece
 END CLASS
 ```
 
-**Root Cause**: The `emitClassMethod` function never called `setSymbolType` to register the method's return type. When the method name was used as a variable (VB-style implicit return), it defaulted to I64 instead of the declared return type.
+**Root Cause**: The `emitClassMethod` function never called `setSymbolType` to register the method's return type. When
+the method name was used as a variable (VB-style implicit return), it defaulted to I64 instead of the declared return
+type.
 
-**Fix**: Added `setSymbolType(method.name, *method.ret)` in `Lower_OOP_Emit.cpp` after variable collection. One-line fix with massive impact.
+**Fix**: Added `setSymbolType(method.name, *method.ret)` in `Lower_OOP_Emit.cpp` after variable collection. One-line fix
+with massive impact.
 
 **Impact Before Fix**:
+
 - Cannot return strings from methods
 - Cannot use SELECT CASE with strings in methods
 - Works fine in module-level functions
 - Makes OOP string operations impossible
 
 **Impact After Fix**:
+
 - ✅ All string method operations now work
 - ✅ SELECT CASE with strings in methods works
 - ✅ All test files now pass
 
 **Test Files** (now all pass):
+
 - test_select_method.bas (SELECT CASE variant) - ✅ WORKS
 - test_method_string_simple.bas (simple assignment) - ✅ WORKS
 - test_method_string_direct.bas (direct return) - ✅ WORKS
@@ -82,10 +100,12 @@ END CLASS
 ---
 
 ### BUG-085: Object Array Access in ANY Loop Broken
+
 **Severity**: CRITICAL
 **Status**: ✅ **FIXED** (2025-11-17)
 
 **What Failed** (before fix):
+
 ```basic
 FOR i = 1 TO 3
     pieces(i).pieceType = i  // ERROR: use before def
@@ -97,18 +117,22 @@ DO WHILE i <= 3
 LOOP
 ```
 
-**Root Cause**: Deferred temporary cleanup happened at function exit, but loop-local temporaries from `rt_arr_obj_get` only existed in loop scope. This caused use-before-def errors.
+**Root Cause**: Deferred temporary cleanup happened at function exit, but loop-local temporaries from `rt_arr_obj_get`
+only existed in loop scope. This caused use-before-def errors.
 
-**Fix**: Release deferred temporaries after each statement instead of at function exit. Added `releaseDeferredTemps()` call in `lowerStmt()`.
+**Fix**: Release deferred temporaries after each statement instead of at function exit. Added `releaseDeferredTemps()`
+call in `lowerStmt()`.
 
 **Impact Before Fix**: Object arrays unusable for real programs. Required manual unrolling.
 
 **Impact After Fix**:
+
 - ✅ Object array access in all loop types now works
 - ✅ FOR, WHILE, and DO loops all functional
 - ✅ All test files now pass
 
 **Files**:
+
 - chess_07_fields_only.bas - ✅ NOW PASSES (FOR loop works!)
 - chess_09_while_loop.bas - ✅ NOW PASSES (WHILE loop works!)
 - chess_02_array.bas - ✅ NOW PASSES (complex OOP with loops!)
@@ -117,6 +141,7 @@ LOOP
 ---
 
 ### Reserved Keyword Issue (Minor)
+
 **What**: COLOR, ROW, COL cannot be used as field names (reserved keywords)
 **Workaround**: Use different names (pieceColor, rowPos, colPos)
 **Impact**: Minor annoyance, easy workaround
@@ -155,9 +180,11 @@ Despite the critical bugs, we verified these features DO work:
 
 ## IMPACT ON CHESS GAME
 
-~~**Cannot Continue** without fixing at least BUG-084 and BUG-085.~~ **UPDATE**: BUG-084 and BUG-083 now fixed! Only BUG-085 remains.
+~~**Cannot Continue** without fixing at least BUG-084 and BUG-085.~~ **UPDATE**: BUG-084 and BUG-083 now fixed! Only
+BUG-085 remains.
 
 Required for chess:
+
 - Arrays of pieces (16 per player) ✅ Can create
 - Get piece symbols (strings) ✅ BUG-084 fixed - string methods work!
 - Call methods on pieces in arrays ⚠️ BUG-083 fixed - works outside loops only
@@ -166,6 +193,7 @@ Required for chess:
 - Iterate over pieces for AI ❌ BUG-085 blocks
 
 **Possible workarounds for BUG-085 would require**:
+
 - Manual unrolling of all 32 piece operations (unmaintainable)
 - ~~No string methods (severely limits UI)~~ ✅ Fixed - string methods work!
 - ~~Module-level functions for everything (defeats OOP purpose)~~ ⚠️ Partially fixed - methods work outside loops
@@ -175,6 +203,7 @@ Required for chess:
 ## TEST COVERAGE
 
 ### Tests Created
+
 1. chess_01_piece.bas - Basic piece class (PASS after rename)
 2. chess_02_array.bas - Array + methods (FAIL - BUG-083)
 3. chess_02b_array_simple.bas - Simplified (FAIL - BUG-083)
@@ -201,18 +230,26 @@ Required for chess:
 ## RECOMMENDATIONS
 
 ### ~~Priority 1: Fix BUG-084 (String Methods)~~ ✅ COMPLETED
-~~This is likely a simple type system bug in method lowering. The function return slot type is incorrectly set to i64 instead of string in class methods.~~
 
-**FIX APPLIED (2025-11-17)**: Added `setSymbolType` call in `emitClassMethod`. One-line fix, all string method tests now pass.
+~~This is likely a simple type system bug in method lowering. The function return slot type is incorrectly set to i64
+instead of string in class methods.~~
+
+**FIX APPLIED (2025-11-17)**: Added `setSymbolType` call in `emitClassMethod`. One-line fix, all string method tests now
+pass.
 
 ### Priority 1 (Current): Fix BUG-085 (Arrays in Loops)
-Critical for any realistic object array usage. Affects ALL loop types, suggesting fundamental issue with loop + array + object interaction in IL generation.
+
+Critical for any realistic object array usage. Affects ALL loop types, suggesting fundamental issue with loop + array +
+object interaction in IL generation.
 
 ### Priority 2: Fix BUG-083 (Method Calls on Arrays)
+
 May be related to BUG-085. Could potentially be fixed together.
 
 ### Testing Strategy
+
 Current test suite (642 tests) doesn't catch these because:
+
 - Tests don't combine OOP + arrays + loops
 - ~~Tests don't test string-returning methods in classes~~ ✅ (BUG-084 tests added)
 - Tests don't stress real-world OOP patterns
@@ -223,9 +260,11 @@ Current test suite (642 tests) doesn't catch these because:
 
 ## CONCLUSION
 
-The stress test was HIGHLY EFFECTIVE at finding critical bugs. Attempting to build a real OOP program (chess game) immediately exposed fundamental issues that unit tests missed.
+The stress test was HIGHLY EFFECTIVE at finding critical bugs. Attempting to build a real OOP program (chess game)
+immediately exposed fundamental issues that unit tests missed.
 
 **OOP Status**: ✅ **FULLY FUNCTIONAL** - All 3 critical bugs fixed!
+
 - ✅ Basic OOP works (classes, objects, simple methods)
 - ✅ String methods work (BUG-084 fixed)
 - ✅ Method calls on array elements work (BUG-083 fixed)
@@ -233,6 +272,7 @@ The stress test was HIGHLY EFFECTIVE at finding critical bugs. Attempting to bui
 - ✅ Loops with object arrays fully functional
 
 **Next Steps**:
+
 1. ✅ ~~Fix BUG-084 (string methods)~~ **DONE!**
 2. ✅ ~~Fix BUG-083 (method calls on arrays)~~ **DONE!**
 3. ✅ ~~Fix BUG-085 (arrays in loops)~~ **DONE!**
@@ -245,13 +285,16 @@ The stress test was HIGHLY EFFECTIVE at finding critical bugs. Attempting to bui
 
 ## PHASE 2: CONTINUED STRESS TESTING (2025-11-17)
 
-After resolving all critical OOP bugs, stress testing continued with the chess game implementation. **2 new bugs discovered:**
+After resolving all critical OOP bugs, stress testing continued with the chess game implementation. **2 new bugs
+discovered:**
 
 ### BUG-086: Array Parameters Not Supported
+
 **Severity**: MEDIUM - Language limitation
 **Discovery**: During ADDFILE testing, attempted to create modular DisplayBoard function
 
 **Impact**:
+
 - Cannot pass arrays as parameters to SUBs/FUNCTIONs
 - Limits code modularity and reusability
 - ADDFILE usefulness reduced (can't factor array operations into separate modules)
@@ -263,10 +306,12 @@ After resolving all critical OOP bugs, stress testing continued with the chess g
 ---
 
 ### BUG-087: Nested IF Inside SELECT CASE Causes IL Errors
+
 **Severity**: MEDIUM - Code generation bug
 **Discovery**: During move validation implementation
 
 **What Failed**:
+
 ```basic
 SELECT CASE ME.pieceType
     CASE 1
@@ -279,6 +324,7 @@ END SELECT
 ```
 
 **Impact**:
+
 - Cannot use complex nested control flow in SELECT CASE blocks
 - Forces use of IF/ELSEIF instead of SELECT CASE
 - Limits expressiveness of CASE blocks
@@ -292,6 +338,7 @@ END SELECT
 ## STRESS TEST PROGRESS
 
 ### Completed Steps:
+
 1. ✅ **Step 1**: Base ChessPiece class - Tests basic OOP (PASS)
 2. ✅ **Step 2**: Board with 2D array - Tests arrays + loops (PASS)
 3. ✅ **Step 3**: ANSI colors - Tests string manipulation, CHR$, ANSI codes (PASS)
@@ -300,6 +347,7 @@ END SELECT
 6. ✅ **Step 6**: Player input/move execution - Tests INPUT, move logic (PASS)
 
 ### Test Files Created:
+
 - chess_step01_base_class.bas
 - chess_step02_board.bas
 - chess_step03_ansi_colors.bas
@@ -313,6 +361,7 @@ END SELECT
 - test_select_exit_function.bas (shows simple SELECT CASE works)
 
 ### Features Successfully Tested:
+
 ✅ OOP classes and methods
 ✅ Arrays of objects
 ✅ Nested FOR loops with object arrays
@@ -326,6 +375,7 @@ END SELECT
 ✅ Method calls returning booleans
 
 ### Known Limitations Found:
+
 ⚠️ Array parameters not supported (BUG-086)
 ⚠️ Nested IF in SELECT CASE broken (BUG-087)
 ⚠️ INPUT only works with INTEGER (BUG-080, previously known)
@@ -339,12 +389,14 @@ END SELECT
 **Phase 2 Results**: Found 2 medium-severity bugs with viable workarounds (BUG-086, BUG-087)
 
 **Overall Assessment**:
+
 - ✅ Core OOP functionality is **solid** - all critical bugs fixed
 - ✅ Stress testing methodology **highly effective** at finding edge cases
 - ⚠️ Some language features incomplete (array parameters)
 - ⚠️ Some code generation edge cases remain (SELECT CASE + nested IF)
 
 **Recommendation**:
+
 - BUG-087 should be fixed (code generation bug, limits SELECT CASE usefulness)
 - BUG-086 is a language feature gap - lower priority but valuable for future
 

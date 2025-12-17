@@ -6,7 +6,10 @@ last-verified: 2025-11-25
 
 # Viper Architecture Overview
 
-**Purpose:** This document explains how Viper compiles and runs programs end-to-end: front ends (e.g., BASIC) → intermediate language (IL) → optimization passes → execution on the VM interpreter → native code generation. It merges prior overview notes and archived blueprints so contributors have a single map to the system; deep dives live in linked pages.
+**Purpose:** This document explains how Viper compiles and runs programs end-to-end: front ends (e.g., BASIC) →
+intermediate language (IL) → optimization passes → execution on the VM interpreter → native code generation. It merges
+prior overview notes and archived blueprints so contributors have a single map to the system; deep dives live in linked
+pages.
 
 If you're new to the IL, start with the [IL Quickstart](../il-quickstart.md).
 
@@ -14,8 +17,10 @@ If you're new to the IL, start with the [IL Quickstart](../il-quickstart.md).
 
 - Multi-language front ends (begin with BASIC) that all lower to a common IL "thin waist."
 - Interpreter backend that executes IL directly for fast bring-up, tests, and debugging.
-- Native backends that translate IL to assembly (x86-64 SysV and ARM64 AAPCS64), assembled and linked into runnable binaries.
-- Small, solo-friendly codebase with clear module boundaries, strong tests, and a documented runtime ABI (versioned; evolving).
+- Native backends that translate IL to assembly (x86-64 SysV and ARM64 AAPCS64), assembled and linked into runnable
+  binaries.
+- Small, solo-friendly codebase with clear module boundaries, strong tests, and a documented runtime ABI (versioned;
+  evolving).
 
 ## High-level pipeline
 
@@ -25,8 +30,9 @@ The core stages and artifacts:
 - **Lowering:** AST → IL module (functions, blocks, instructions).
 - **Optimization passes:** constant folding, dead code elimination, peephole rewriting.
 - **Execution backends:**
-  - **VM interpreter** — primary development/debugging target.
-  - **Code generation** — AArch64 validated (Apple Silicon); x86_64 implemented but experimental/unvalidated on real x86.
+    - **VM interpreter** — primary development/debugging target.
+    - **Code generation** — AArch64 validated (Apple Silicon); x86_64 implemented but experimental/unvalidated on real
+      x86.
 
 ```text
 +-----------------------+        +-----------------------+
@@ -53,11 +59,13 @@ The core stages and artifacts:
    +----------------------+        +---------------------+
 ```
 
-All languages feed the same IL builder, and both the VM and code generator consume that shared representation, keeping the IL as the thin waist between language-specific semantics and machine execution.
+All languages feed the same IL builder, and both the VM and code generator consume that shared representation, keeping
+the IL as the thin waist between language-specific semantics and machine execution.
 
 ### End-to-end lifecycle
 
-`ilc` is the command-line entry point. It parses arguments, loads source files, and drives the compile and execute pipeline:
+`ilc` is the command-line entry point. It parses arguments, loads source files, and drives the compile and execute
+pipeline:
 
 1. BASIC front end emits IL.
 2. `PassManager` applies optimizations.
@@ -90,23 +98,30 @@ When the native backend is enabled, the same IL feeds the code generator instead
 
 ### Front end (BASIC)
 
-The BASIC front end performs tokenization, parsing, semantic analysis, and lowering to IL. Tokens are produced by a hand-written lexer, and the recursive-descent parser builds an AST with nodes for statements and expressions.
+The BASIC front end performs tokenization, parsing, semantic analysis, and lowering to IL. Tokens are produced by a
+hand-written lexer, and the recursive-descent parser builds an AST with nodes for statements and expressions.
 
 Subcomponents and duties:
 
 - **Lexer:** emits identifiers, numbers, strings, and keywords.
-- **Parser:** produces the AST for BASIC constructs (e.g., `LET`, `PRINT`, `IF/THEN/ELSE`, `WHILE/WEND`, `GOTO`, `GOSUB/RETURN`).
-- **Semantic analysis:** manages symbol tables, resolves types (`INT` vs `STRING`), enforces lvalue rules, performs simple constant folding, and handles suffix conventions such as `$` for strings.
+- **Parser:** produces the AST for BASIC constructs (e.g., `LET`, `PRINT`, `IF/THEN/ELSE`, `WHILE/WEND`, `GOTO`,
+  `GOSUB/RETURN`).
+- **Semantic analysis:** manages symbol tables, resolves types (`INT` vs `STRING`), enforces lvalue rules, performs
+  simple constant folding, and handles suffix conventions such as `$` for strings.
 - **Desugaring:** normalizes constructs (e.g., `ELSEIF` into nested `IF` blocks).
 - **Lowering:** walks the AST and emits IL instructions via the IR builder.
 
-Intrinsic functions like `LEN`, `LEFT$`, and `MID$` are looked up in a static registry during semantic analysis. They lower to runtime calls such as `rt_len` and `rt_substr`.
+Intrinsic functions like `LEN`, `LEFT$`, and `MID$` are looked up in a static registry during semantic analysis. They
+lower to runtime calls such as `rt_len` and `rt_substr`.
 
-Diagnostics flow through `DiagnosticEmitter`, which tracks file and line information. Errors stop compilation before lowering, keeping the emitted IL well-formed.
+Diagnostics flow through `DiagnosticEmitter`, which tracks file and line information. Errors stop compilation before
+lowering, keeping the emitted IL well-formed.
 
 ### Intermediate Language (IL)
 
-The IL is a typed, block-structured representation with SSA-like virtual registers. Functions contain labelled basic blocks ending in explicit terminators, and the verifier checks single terminators per block, operand types, and call signatures.
+The IL is a typed, block-structured representation with SSA-like virtual registers. Functions contain labelled basic
+blocks ending in explicit terminators, and the verifier checks single terminators per block, operand types, and call
+signatures.
 
 ```text
 +-------------------------------+
@@ -133,9 +148,11 @@ Key design points:
 
 - **Types:** `i1`, `i32`, `i64`, `f64`, `ptr`, `str`; keep the set minimal and orthogonal.
 - **Values:** virtual registers, constants, globals, function symbols; names are interned for determinism.
-- **Instructions (v1 focus):** arithmetic (`add`, `sub`, `mul`, `div`), bitwise ops, comparisons, control flow (`br`, `cbr`, `ret`, `trap`), memory ops (`alloca`, `load`, `store`, `gep`), calls, constant constructors, and minimal casts.
+- **Instructions (v1 focus):** arithmetic (`add`, `sub`, `mul`, `div`), bitwise ops, comparisons, control flow (`br`,
+  `cbr`, `ret`, `trap`), memory ops (`alloca`, `load`, `store`, `gep`), calls, constant constructors, and minimal casts.
 - **Metadata:** source locations, attributes, visibility, and string tables stored per module.
-- **Calling convention:** by-value scalars with explicit pointers for aggregates; strings remain opaque handles manipulated through runtime helpers.
+- **Calling convention:** by-value scalars with explicit pointers for aggregates; strings remain opaque handles
+  manipulated through runtime helpers.
 
 ### Pass pipeline
 
@@ -149,7 +166,8 @@ The verifier runs after passes to enforce correctness before execution or code g
 
 ### Runtime & ABI (externs)
 
-Extern symbols in IL map to C functions declared in `src/runtime/rt.hpp`. Strings use reference-counted heap objects; numeric values are 64-bit.
+Extern symbols in IL map to C functions declared in `src/runtime/rt.hpp`. Strings use reference-counted heap objects;
+numeric values are 64-bit.
 
 Initial runtime surface (all prefixed `rt_`):
 
@@ -160,21 +178,34 @@ Initial runtime surface (all prefixed `rt_`):
 
 #### Runtime memory model
 
-Strings and arrays share a single heap layout described by [`rt_heap.h`](../../src/runtime/rt_heap.h). Every payload pointer is preceded by an `rt_heap_hdr_t` header containing a magic tag, the allocation kind, the element kind, reference count, length, and capacity. The helper accessors in `rt_heap.c` validate this header on every retain/release in debug builds, ensuring both strings and arrays obey the same invariants.
+Strings and arrays share a single heap layout described by [`rt_heap.h`](../../src/runtime/rt_heap.h). Every payload
+pointer is preceded by an `rt_heap_hdr_t` header containing a magic tag, the allocation kind, the element kind,
+reference count, length, and capacity. The helper accessors in `rt_heap.c` validate this header on every retain/release
+in debug builds, ensuring both strings and arrays obey the same invariants.
 
-Arrays are true reference types: assigning to another variable or passing as a parameter forwards the handle and bumps the refcount. No eager copy happens. When `rt_arr_i32_resize` observes a shared array (`refcnt > 1`) it allocates a fresh payload, copies the active prefix, releases the old handle, and returns the new pointer—effectively copy-on-resize. In-place growth only occurs when the array is uniquely owned.
+Arrays are true reference types: assigning to another variable or passing as a parameter forwards the handle and bumps
+the refcount. No eager copy happens. When `rt_arr_i32_resize` observes a shared array (`refcnt > 1`) it allocates a
+fresh payload, copies the active prefix, releases the old handle, and returns the new pointer—effectively
+copy-on-resize. In-place growth only occurs when the array is uniquely owned.
 
-Ownership rules mirror strings. The lowering pipeline emits retains on assignment boundaries, scope exit releases, parameter teardown releases, and function returns transfer ownership to the caller. Violating these rules (e.g., releasing then reusing a temp in the same block) is caught by the IL verifier.
+Ownership rules mirror strings. The lowering pipeline emits retains on assignment boundaries, scope exit releases,
+parameter teardown releases, and function returns transfer ownership to the caller. Violating these rules (e.g.,
+releasing then reusing a temp in the same block) is caught by the IL verifier.
 
-Define `VIPER_RC_DEBUG=1` (set automatically for Debug builds) or export the environment variable `VIPER_RC_DEBUG` to make the runtime log every retain/release along with the resulting refcount. These checks highlight double releases, missing retains, or stale handles early in development.
+Define `VIPER_RC_DEBUG=1` (set automatically for Debug builds) or export the environment variable `VIPER_RC_DEBUG` to
+make the runtime log every retain/release along with the resulting refcount. These checks highlight double releases,
+missing retains, or stale handles early in development.
 
 Additional runtime details live in the [Runtime & VM Guide](runtime-vm.md#runtime-memory-model).
 
-Front-end intrinsics lower directly to these routines. Both the VM and native code call the same C ABI. The ABI is versioned and may evolve; breaking changes require coordinated updates.
+Front-end intrinsics lower directly to these routines. Both the VM and native code call the same C ABI. The ABI is
+versioned and may evolve; breaking changes require coordinated updates.
 
 ### VM interpreter
 
-The VM is a stack machine that dispatches opcodes in a `switch` loop. Each call creates a frame holding registers, an evaluation stack, and block state. Values are stored in a tagged `Slot` that represents integers, floats, pointers, and strings.
+The VM is a stack machine that dispatches opcodes in a `switch` loop. Each call creates a frame holding registers, an
+evaluation stack, and block state. Values are stored in a tagged `Slot` that represents integers, floats, pointers, and
+strings.
 
 Execution model and state:
 
@@ -204,14 +235,19 @@ for (;;) {
 }
 ```
 
-Runtime services manage heap-allocated strings with reference counting. Extern calls bridge to C helpers for I/O and string manipulation. The VM can trace execution (`--trace`, `--trace-calls`) to dump executed instructions, call/return events, and value states, aiding debugging and performance analysis. Traps surface structured diagnostics that include function, block, and source location information.
+Runtime services manage heap-allocated strings with reference counting. Extern calls bridge to C helpers for I/O and
+string manipulation. The VM can trace execution (`--trace`, `--trace-calls`) to dump executed instructions, call/return
+events, and value states, aiding debugging and performance analysis. Traps surface structured diagnostics that include
+function, block, and source location information.
 
 ### Code generation
 
 `src/codegen/` contains native backends for x86-64 and ARM64:
 
-- **x86-64** (`src/codegen/x86_64/`) — Implemented Phase A backend targeting System V AMD64 ABI (linear-scan). Not yet validated on actual x86 hardware; experimental.
-- **ARM64** (`src/codegen/aarch64/`) — Functional backend targeting AAPCS64 (Apple Silicon, Linux ARM64). Validated end‑to‑end on Apple Silicon by running a full Frogger demo.
+- **x86-64** (`src/codegen/x86_64/`) — Implemented Phase A backend targeting System V AMD64 ABI (linear-scan). Not yet
+  validated on actual x86 hardware; experimental.
+- **ARM64** (`src/codegen/aarch64/`) — Functional backend targeting AAPCS64 (Apple Silicon, Linux ARM64). Validated
+  end‑to‑end on Apple Silicon by running a full Frogger demo.
 
 Pipeline expectations:
 
@@ -235,33 +271,41 @@ The CLI (`ilc`) dispatches to focused handlers based on the first tokens:
 - `front basic -run <file.bas> [--trace] [--stdin-from <file>] [--max-steps N] [--bounds-checks]`
 - `il-opt <in.il> -o <out.il> --passes p1,p2`
 
-Handlers live in `src/tools/ilc/cmd_run_il.cpp`, `cmd_front_basic.cpp`, and `cmd_il_opt.cpp`; `src/tools/ilc/main.cpp` merely dispatches to these subcommands. Additional tools (verifier, disassembler) reuse the same IL libraries.
+Handlers live in `src/tools/ilc/cmd_run_il.cpp`, `cmd_front_basic.cpp`, and `cmd_il_opt.cpp`; `src/tools/ilc/main.cpp`
+merely dispatches to these subcommands. Additional tools (verifier, disassembler) reuse the same IL libraries.
 
-Diagnostics carry source mapping (file/line/column) through AST → IL → VM/native for clear errors, and a REPL (`ilc repl`) is a nice-to-have backed by the VM.
+Diagnostics carry source mapping (file/line/column) through AST → IL → VM/native for clear errors, and a REPL (
+`ilc repl`) is a nice-to-have backed by the VM.
 
 ### Extensibility points
 
 - **New front end:** add a directory under `src/frontends/` and emit IL modules that honor the runtime ABI.
-- **New intrinsic:** register in `src/frontends/basic/Intrinsics.cpp`, implement a runtime extern, and extend the verifier if new types are involved.
+- **New intrinsic:** register in `src/frontends/basic/Intrinsics.cpp`, implement a runtime extern, and extend the
+  verifier if new types are involved.
 - **New IL pass:** implement in `src/il/transform/`, register with `PassManager`, and ensure verifier invariants hold.
-- **Additional languages:** reuse symbol-table and type-checker utilities, desugar loops into blocks/branches, and keep the IL small and orthogonal so backends remain simple.
+- **Additional languages:** reuse symbol-table and type-checker utilities, desugar loops into blocks/branches, and keep
+  the IL small and orthogonal so backends remain simple.
 - **Runtime growth:** extend the C ABI in backward-compatible ways; both the VM and native backends immediately benefit.
 
 ### Deterministic naming
 
-Deterministic label naming ensures recompiling the same source yields identical IL. Deterministic labels keep golden tests from drifting and make builds reproducible, so the IR builder interns symbols and assigns names deterministically.
+Deterministic label naming ensures recompiling the same source yields identical IL. Deterministic labels keep golden
+tests from drifting and make builds reproducible, so the IR builder interns symbols and assigns names deterministically.
 
 ### Performance notes
 
-Interpreter hot spots include opcode dispatch and string routines. Constant folding and dead code elimination have the largest impact on throughput. Future improvements:
+Interpreter hot spots include opcode dispatch and string routines. Constant folding and dead code elimination have the
+largest impact on throughput. Future improvements:
 
 - Switch-based dispatch can evolve into direct-threaded dispatch (computed gotos).
 - Intern frequent strings and cache constants.
-- In the backend, add peephole rewrites, constant folding during IL build, and linear-scan register allocation with live-interval splitting.
+- In the backend, add peephole rewrites, constant folding during IL build, and linear-scan register allocation with
+  live-interval splitting.
 
 ### Compatibility & versioning
 
-Modules declare an IL version (`il 0.1.2`) at the top. The runtime ABI is versioned; breaking changes require bumping the IL version and updating consumers.
+Modules declare an IL version (`il 0.1.2`) at the top. The runtime ABI is versioned; breaking changes require bumping
+the IL version and updating consumers.
 
 ### Glossary
 
@@ -275,6 +319,7 @@ Modules declare an IL version (`il 0.1.2`) at the top. The runtime ABI is versio
 - **VM frame:** stack record for a function invocation.
 
 <a id="cpp-overview"></a>
+
 ## C++ Project Overview
 
 ### Guiding principles
@@ -306,7 +351,8 @@ Modules declare an IL version (`il 0.1.2`) at the top. The runtime ABI is versio
 /scripts/            # dev scripts (format, lint, build, test)
 ```
 
-Top-level CMake targets include `il_core`, `il_vm`, `il_codegen_x86_64`, `il_codegen_aarch64`, `frontend_basic`, `librt`, CLI executables (`ilc`, `vbasic`, `ilrun`, `il-dis`, `il-verify`), and dedicated test binaries.
+Top-level CMake targets include `il_core`, `il_vm`, `il_codegen_x86_64`, `il_codegen_aarch64`, `frontend_basic`,
+`librt`, CLI executables (`ilc`, `vbasic`, `ilrun`, `il-dis`, `il-verify`), and dedicated test binaries.
 
 ### Tooling & Build
 
@@ -331,7 +377,8 @@ Top-level CMake targets include `il_core`, `il_vm`, `il_codegen_x86_64`, `il_cod
 - `TypeKind` enum (`Void`, `I1`, `I64`, `F64`, `Ptr`, `Str`) with lightweight equality/hash.
 - `Value` tagged structs (`Temp`, `ConstInt`, `ConstFloat`, `ConstStr`, `GlobalAddr`) with compact payloads.
 - `Instr` stores opcode, result type, optional destination, operands (`small_vector`), and `SourceLoc`.
-- IR aggregates: `BasicBlock`, `Function` (params, return type, blocks, attributes, visibility), `Global`, and `Module` (target triple, extern declarations, string literals).
+- IR aggregates: `BasicBlock`, `Function` (params, return type, blocks, attributes, visibility), `Global`, and
+  `Module` (target triple, extern declarations, string literals).
 - Symbol tables use interned strings to avoid duplication.
 
 #### IRBuilder (ergonomic construction)
@@ -358,8 +405,10 @@ Top-level CMake targets include `il_core`, `il_vm`, `il_codegen_x86_64`, `il_cod
 The runtime provides a comprehensive C ABI with the following components:
 
 **Core modules:**
+
 - **I/O**: `rt_io.c` - console printing and line input
-- **Strings**: `rt_string.h`, `rt_string.c`, `rt_string_builder.c`, `rt_string_encode.c`, `rt_string_format.c`, `rt_string_ops.c` - string operations, conversion, formatting
+- **Strings**: `rt_string.h`, `rt_string.c`, `rt_string_builder.c`, `rt_string_encode.c`, `rt_string_format.c`,
+  `rt_string_ops.c` - string operations, conversion, formatting
 - **Memory**: `rt_memory.c`, `rt_heap.h`, `rt_heap.c` - allocation, reference counting, heap management
 - **Arrays**: `rt_array.h`, `rt_array.c` - dynamic arrays with copy-on-resize semantics
 - **Math**: `rt_math.c`, `rt_fp.c` - mathematical functions, floating-point utilities
@@ -378,7 +427,8 @@ The runtime provides a comprehensive C ABI with the following components:
 
 #### Execution engine
 
-- Types: `Slot` (tagged union of `uint64_t`, `double`, pointers), `Frame` (function reference, register array, stack for `alloca`, instruction cursor), and `VM` (module pointer, host function table, call stack).
+- Types: `Slot` (tagged union of `uint64_t`, `double`, pointers), `Frame` (function reference, register array, stack for
+  `alloca`, instruction cursor), and `VM` (module pointer, host function table, call stack).
 - Dispatch uses a classic `switch` with optional evolution to computed gotos.
 - `alloca` implemented as a bump pointer in the frame-local stack; memory ops rely on `memcpy` with runtime checks.
 - Calls push new frames for IL functions or marshal arguments to C externs.
@@ -423,14 +473,17 @@ Functional and validated end‑to‑end on Apple Silicon. Pipeline:
 ### Extensibility for new languages
 
 - Contract: new front ends must emit valid IL and adhere to the runtime ABI.
-- BASIC specifics: keywords map to straightforward control flow and runtime calls; dynamic-leaning typing handled via coercions to the IL's small type set (`i64`, `f64`, `str`) plus runtime helpers.
-- Future front ends (Tiny C, Pascal, …): reuse symbol-table utilities, keep desugaring consistent, and avoid pushing complexity into the IL.
+- BASIC specifics: keywords map to straightforward control flow and runtime calls; dynamic-leaning typing handled via
+  coercions to the IL's small type set (`i64`, `f64`, `str`) plus runtime helpers.
+- Future front ends (Tiny C, Pascal, …): reuse symbol-table utilities, keep desugaring consistent, and avoid pushing
+  complexity into the IL.
 
 ### IL details worth nailing early
 
 - Prefer `i64` and `f64` as canonical numeric types; use `i1` for booleans and keep strings opaque.
 - Clearly define undefined behavior (e.g., division by zero triggers a runtime diagnostic).
-- Verifier must enforce operand dominance, single terminators per block, type correctness, call signature adherence, and no implicit fallthrough.
+- Verifier must enforce operand dominance, single terminators per block, type correctness, call signature adherence, and
+  no implicit fallthrough.
 
 ### Interpreter vs. codegen division of labor
 
@@ -490,7 +543,8 @@ ret
 ### Performance considerations
 
 - Interpreter: investigate computed gotos for dispatch, intern common strings, and cache constant values.
-- Backend: add peephole optimizations, leverage constant folding during IL construction, and improve register allocation.
+- Backend: add peephole optimizations, leverage constant folding during IL construction, and improve register
+  allocation.
 
 ### Risks & mitigations
 
@@ -501,10 +555,14 @@ ret
 
 ### Suggested roadmap
 
-- **Milestone A (bring-up):** BASIC front end for `PRINT`, `LET`, `IF`, `GOTO`; IL core + verifier + serializer; runtime printing; VM executes small programs with golden tests.
-- **Milestone B (control & funcs):** `WHILE/WEND`, `FOR/NEXT`, simple functions; runtime input (`rt_input_line`); CLI flags `-emit-il`, `-run`.
-- **Milestone C (codegen v1):** x86-64 SysV codegen, linear-scan register allocation, emit `.s`, assemble/link with `librt.a`; differential tests (VM vs native).
-- **Milestone D (quality):** peephole optimizer, improved diagnostics, expanded library (strings/math/file I/O); optional bytecode encoding for a faster VM.
+- **Milestone A (bring-up):** BASIC front end for `PRINT`, `LET`, `IF`, `GOTO`; IL core + verifier + serializer; runtime
+  printing; VM executes small programs with golden tests.
+- **Milestone B (control & funcs):** `WHILE/WEND`, `FOR/NEXT`, simple functions; runtime input (`rt_input_line`); CLI
+  flags `-emit-il`, `-run`.
+- **Milestone C (codegen v1):** x86-64 SysV codegen, linear-scan register allocation, emit `.s`, assemble/link with
+  `librt.a`; differential tests (VM vs native).
+- **Milestone D (quality):** peephole optimizer, improved diagnostics, expanded library (strings/math/file I/O);
+  optional bytecode encoding for a faster VM.
 
 ### Definition of done for v1
 
@@ -514,27 +572,33 @@ ret
 - Interpreter-first workflow keeps the IL as the versioned contract between language and machine layers.
 
 <a id="tui-architecture"></a>
+
 ## ViperTUI Architecture
 
-ViperTUI is an experimental terminal UI library built in layers. Each layer stays focused and exposes a small surface so higher tiers can be tested without a real terminal.
+ViperTUI is an experimental terminal UI library built in layers. Each layer stays focused and exposes a small surface so
+higher tiers can be tested without a real terminal.
 
 ### Layers
 
 #### Term
 
-Low-level terminal handling lives under `tui/term/`. `TermIO` abstracts writes to the terminal while `TerminalSession` configures raw mode and manages alt-screen state. Clipboard support uses OSC 52 sequences but can be disabled for tests.
+Low-level terminal handling lives under `tui/term/`. `TermIO` abstracts writes to the terminal while `TerminalSession`
+configures raw mode and manages alt-screen state. Clipboard support uses OSC 52 sequences but can be disabled for tests.
 
 #### Render
 
-`tui/render/` converts a widget tree into escape sequences. It maintains an in-memory surface and computes minimal diffs before emitting to `TermIO`.
+`tui/render/` converts a widget tree into escape sequences. It maintains an in-memory surface and computes minimal diffs
+before emitting to `TermIO`.
 
 #### UI
 
-`tui/ui/` holds the widget tree and focus management. It delivers input events, invokes widget callbacks, and triggers re-renders when state changes.
+`tui/ui/` holds the widget tree and focus management. It delivers input events, invokes widget callbacks, and triggers
+re-renders when state changes.
 
 #### Widgets
 
-Reusable components such as lists, containers, and modals live in `tui/widgets/`. Widgets compose other widgets and render through the UI and render layers.
+Reusable components such as lists, containers, and modals live in `tui/widgets/`. Widgets compose other widgets and
+render through the UI and render layers.
 
 #### Text
 
@@ -542,12 +606,15 @@ Reusable components such as lists, containers, and modals live in `tui/widgets/`
 
 #### Tests
 
-Tests exercise the layers without a real TTY by using `StringTermIO` to capture rendered output. Setting `VIPERTUI_NO_TTY=1` ensures `TerminalSession` stays inactive so tests run headless.
+Tests exercise the layers without a real TTY by using `StringTermIO` to capture rendered output. Setting
+`VIPERTUI_NO_TTY=1` ensures `TerminalSession` stays inactive so tests run headless.
 
 ### Environment Flags
 
-- `VIPERTUI_NO_TTY` – when set to `1`, `TerminalSession` skips TTY setup and the application renders a single frame then exits (useful for CI and tests).
-- `VIPERTUI_DISABLE_OSC52` – disables OSC 52 clipboard sequences so tests do not emit control codes on unsupported terminals.
+- `VIPERTUI_NO_TTY` – when set to `1`, `TerminalSession` skips TTY setup and the application renders a single frame then
+  exits (useful for CI and tests).
+- `VIPERTUI_DISABLE_OSC52` – disables OSC 52 clipboard sequences so tests do not emit control codes on unsupported
+  terminals.
 
 ### Headless Testing Pattern
 
@@ -563,4 +630,5 @@ assert(tio.buffer().find("expected text") != std::string::npos);
 
 `StringTermIO` records all writes and allows assertions on the exact escape sequences produced by the render layer.
 
-Sources: docs/architecture.md; docs/architecture.md#tui-architecture; archive/docs/architecture.md#cpp-overview; archive/docs/project-overview.md; archive/docs/dev-cli.md; archive/docs/dev/architecture.md.
+Sources: docs/architecture.md; docs/architecture.md#tui-architecture; archive/docs/architecture.md#cpp-overview;
+archive/docs/project-overview.md; archive/docs/dev-cli.md; archive/docs/dev/architecture.md.

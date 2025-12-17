@@ -8,7 +8,8 @@
 
 ### Release Overview
 
-Version 0.1.2 is a pre-alpha development release that delivers an OOP runtime system and advances the AArch64 native backend.
+Version 0.1.2 is a pre-alpha development release that delivers an OOP runtime system and advances the AArch64 native
+backend.
 
 ### New Features
 
@@ -16,21 +17,23 @@ Version 0.1.2 is a pre-alpha development release that delivers an OOP runtime sy
 
 Complete object-oriented runtime exposing C functions as clean classes:
 
-- **Three-layer architecture**: RuntimeClasses.inc (declarative catalog), RuntimeSignatures.inc (IL-to-C bridge), and C implementations
+- **Three-layer architecture**: RuntimeClasses.inc (declarative catalog), RuntimeSignatures.inc (IL-to-C bridge), and C
+  implementations
 - **Core classes fully operational**:
-  - `Viper.String` — Length, Substring, Concat, Trim, ToUpper, ToLower, IndexOf
-  - `Viper.Collections.List` — Add, Clear, RemoveAt, Count, indexed access
-  - `Viper.Collections.Dictionary` — Set, Get, ContainsKey, Remove, Clear
-  - `Viper.Text.StringBuilder` — Append, ToString, Clear, Length, Capacity
-  - `Viper.Math` — Abs, Sqrt, Sin, Cos, Tan, Floor, Ceil, Pow, Min, Max
-  - `Viper.DateTime` — Now, Year, Month, Day, Hour, Format, Create, AddDays
-  - `Viper.IO.File` — Exists, ReadAllText, WriteAllText, Delete
-  - `Viper.Console` — WriteLine, ReadLine
-  - `Viper.Random` — Seed, Next, NextInt
-  - `Viper.Environment` — GetArgumentCount, GetArgument, GetCommandLine
-  - `Viper.Graphics.Window` — Full 2D graphics with drawing primitives
+    - `Viper.String` — Length, Substring, Concat, Trim, ToUpper, ToLower, IndexOf
+    - `Viper.Collections.List` — Add, Clear, RemoveAt, Count, indexed access
+    - `Viper.Collections.Dictionary` — Set, Get, ContainsKey, Remove, Clear
+    - `Viper.Text.StringBuilder` — Append, ToString, Clear, Length, Capacity
+    - `Viper.Math` — Abs, Sqrt, Sin, Cos, Tan, Floor, Ceil, Pow, Min, Max
+    - `Viper.DateTime` — Now, Year, Month, Day, Hour, Format, Create, AddDays
+    - `Viper.IO.File` — Exists, ReadAllText, WriteAllText, Delete
+    - `Viper.Console` — WriteLine, ReadLine
+    - `Viper.Random` — Seed, Next, NextInt
+    - `Viper.Environment` — GetArgumentCount, GetArgument, GetCommandLine
+    - `Viper.Graphics.Window` — Full 2D graphics with drawing primitives
 
 Example:
+
 ```basic
 DIM sb AS Viper.Text.StringBuilder
 sb = NEW Viper.Text.StringBuilder()
@@ -55,6 +58,7 @@ The ARM64 backend has matured from early development to functional:
 - **Automated regression tests** for native compilation
 
 Example:
+
 ```bash
 # Compile Frogger to native ARM64
 ./build/src/tools/ilc/ilc front basic -emit-il demos/basic/frogger/frogger.bas > frogger.il
@@ -75,12 +79,12 @@ Classic arcade game implementation showcasing OOP and terminal graphics:
 
 ### Project Statistics
 
-| Metric | v0.1.2 |
-|--------|--------|
-| Total Lines (LOC) | 242,000 |
+| Metric              | v0.1.2  |
+|---------------------|---------|
+| Total Lines (LOC)   | 242,000 |
 | Source Lines (SLOC) | 155,000 |
-| C/C++ Source Files | 1,353 |
-| Test SLOC | 42,000 |
+| C/C++ Source Files  | 1,353   |
+| Test SLOC           | 42,000  |
 
 ### Bug Fixes
 
@@ -96,7 +100,9 @@ Classic arcade game implementation showcasing OOP and terminal graphics:
 
 ### Release Overview
 
-Version 0.1.1 is a pre-alpha development release that introduces native code generation, complete object-oriented programming support, and a modernized runtime architecture. This release represents significant progress toward an eventual 1.0 milestone.
+Version 0.1.1 is a pre-alpha development release that introduces native code generation, complete object-oriented
+programming support, and a modernized runtime architecture. This release represents significant progress toward an
+eventual 1.0 milestone.
 
 ### New Features
 
@@ -105,14 +111,15 @@ Version 0.1.1 is a pre-alpha development release that introduces native code gen
 Transform BASIC and IL programs into native machine code (experimental):
 
 - **x86-64 backend** implementation
-  - Linear scan register allocation
-  - Instruction selection with pattern matching
-  - Peephole optimizations for generated assembly
-  - Integration with system linkers and runtime libraries
-  - Direct execution of compiled native binaries
+    - Linear scan register allocation
+    - Instruction selection with pattern matching
+    - Peephole optimizations for generated assembly
+    - Integration with system linkers and runtime libraries
+    - Direct execution of compiled native binaries
 - **AArch64 backend** infrastructure (early development)
 
 Example:
+
 ```bash
 # Compile to native executable
 ./vbasic program.bas -o program
@@ -131,6 +138,7 @@ Complete OOP implementation for the BASIC frontend:
 - Base class method invocation via `BASE.Method()`
 
 Example:
+
 ```basic
 CLASS Shape
   PRIVATE x AS INTEGER
@@ -166,6 +174,7 @@ Organize code with hierarchical namespaces:
 - Case-insensitive matching
 
 Example:
+
 ```basic
 NAMESPACE Company.Product.Graphics
   CLASS Renderer
@@ -190,15 +199,15 @@ DIM r2 AS Gfx.Renderer
 Complete redesign of the runtime library:
 
 - **Migration from `rt_*` to `Viper.*` naming convention**
-  - Old: `rt_print_str`, `rt_print_i64`, `rt_file_open`
-  - New: `Viper.Console.PrintStr`, `Viper.Console.PrintI64`, `Viper.File.Open`
+    - Old: `rt_print_str`, `rt_print_i64`, `rt_file_open`
+    - New: `Viper.Console.PrintStr`, `Viper.Console.PrintI64`, `Viper.File.Open`
 - **Backward compatibility mode** available via build flag
 - **New runtime components**:
-  - String builder for efficient text manipulation
-  - Enhanced array operations with object support
-  - Time and date functionality
-  - Command-line argument processing
-  - Type registry for runtime reflection
+    - String builder for efficient text manipulation
+    - Enhanced array operations with object support
+    - Time and date functionality
+    - Command-line argument processing
+    - Type registry for runtime reflection
 
 #### Graphics Programming Support
 
@@ -210,6 +219,7 @@ New graphics library for visual applications:
 - Minimal dependencies
 
 Example:
+
 ```basic
 USING Viper.Graphics
 
@@ -269,18 +279,21 @@ ext.fn = reinterpret_cast<void *>(&times2_handler);
 ### Performance Enhancements
 
 #### VM Optimizations
+
 - Compile-time evaluation via constexpr functions
 - Improved inline expansion for hot paths
 - Reduced overhead in trap handling
 - Optimized opcode dispatch mechanisms
 
 #### Tail Call Optimization
+
 - Automatic detection and optimization of tail-recursive calls
 - Stack space savings for functional programming patterns
 
 ### Documentation & Examples
 
 #### New Documentation
+
 - Architecture guide
 - BASIC frontend implementation details
 - Viper Language Specification v0.1 RC1
@@ -300,6 +313,7 @@ ext.fn = reinterpret_cast<void *>(&times2_handler);
 ### Build System Enhancements
 
 #### New Build Options
+
 ```cmake
 VIPER_RUNTIME_NS_DUAL      # Enable legacy rt_* runtime aliases
 VIPER_VM_TAILCALL          # Enable tail call optimization
@@ -309,6 +323,7 @@ IL_ENABLE_X64_NATIVE_RUN   # Enable native execution support
 ```
 
 #### Platform Support
+
 - Windows (x86-64)
 - Linux (x86-64)
 - macOS (x86-64 and Apple Silicon)
@@ -316,12 +331,12 @@ IL_ENABLE_X64_NATIVE_RUN   # Enable native execution support
 
 ### Project Statistics
 
-| Metric | v0.1.0 | v0.1.1 | Change |
-|--------|--------|--------|--------|
-| Lines of Code | 85,000 | 125,000+ | +47% |
-| Test Cases | 200 | 500+ | +150% |
-| Documentation Files | 15 | 55+ | +267% |
-| Performance | Baseline | 2-3x faster | +200% |
+| Metric              | v0.1.0   | v0.1.1      | Change |
+|---------------------|----------|-------------|--------|
+| Lines of Code       | 85,000   | 125,000+    | +47%   |
+| Test Cases          | 200      | 500+        | +150%  |
+| Documentation Files | 15       | 55+         | +267%  |
+| Performance         | Baseline | 2-3x faster | +200%  |
 
 ### Bug Fixes
 
@@ -336,17 +351,18 @@ IL_ENABLE_X64_NATIVE_RUN   # Enable native execution support
 ### Breaking Changes
 
 1. **Runtime Function Names**: Now use `Viper.*` namespace by default
-   - Enable compatibility: `-DVIPER_RUNTIME_NS_DUAL=ON`
+    - Enable compatibility: `-DVIPER_RUNTIME_NS_DUAL=ON`
 
 2. **Directory Structure Changes**:
-   - Test directory: `/tests` → `/src/tests`
-   - TUI subsystem: root → `/src/tui`
+    - Test directory: `/tests` → `/src/tests`
+    - TUI subsystem: root → `/src/tui`
 
 ### Migration Guide
 
 #### Updating Runtime Calls
 
 Option 1 - Update to new names:
+
 ```basic
 ' Old (v0.1.0)
 DECLARE SUB rt_print_str(s AS STRING)
@@ -358,6 +374,7 @@ CALL Viper.Console.PrintStr("Hello")
 ```
 
 Option 2 - Use compatibility mode:
+
 ```bash
 cmake -S . -B build -DVIPER_RUNTIME_NS_DUAL=ON
 ```
@@ -368,13 +385,16 @@ cmake -S . -B build -DVIPER_RUNTIME_NS_DUAL=ON
 
 ### Initial Release Overview
 
-Version 0.1.0 is the first pre-alpha release of the Viper compiler platform, providing an early working implementation of a compiler toolchain with a BASIC frontend, typed intermediate language, and virtual machine. This initial release establishes the foundation for ongoing development toward version 1.0.
+Version 0.1.0 is the first pre-alpha release of the Viper compiler platform, providing an early working implementation
+of a compiler toolchain with a BASIC frontend, typed intermediate language, and virtual machine. This initial release
+establishes the foundation for ongoing development toward version 1.0.
 
 ### Core Features
 
 #### BASIC Compiler Frontend
 
 Complete BASIC implementation with modern extensions:
+
 - Full lexer, parser, and semantic analyzer
 - Type system (integers, floats, strings, arrays)
 - Control flow: `IF/THEN/ELSE`, `FOR/NEXT`, `WHILE/WEND`, `DO/LOOP`
@@ -386,6 +406,7 @@ Complete BASIC implementation with modern extensions:
 #### Viper Intermediate Language (IL)
 
 Strongly-typed, SSA-inspired intermediate representation:
+
 - Human-readable text format
 - Binary format for efficient storage
 - Comprehensive type system
@@ -393,6 +414,7 @@ Strongly-typed, SSA-inspired intermediate representation:
 - External function declarations
 
 Example:
+
 ```il
 il 0.1
 extern @rt_print_str(str) -> void
@@ -412,10 +434,11 @@ entry:
 #### Virtual Machine
 
 High-performance bytecode interpreter:
+
 - Three dispatch modes:
-  - Switch dispatch - Classic switch-based
-  - Table dispatch - Function pointer table
-  - Threaded dispatch - Direct threading (GCC/Clang)
+    - Switch dispatch - Classic switch-based
+    - Table dispatch - Function pointer table
+    - Threaded dispatch - Direct threading (GCC/Clang)
 - Stack-based execution model
 - Efficient memory management
 - Runtime error handling
@@ -423,6 +446,7 @@ High-performance bytecode interpreter:
 #### Runtime Library
 
 Portable C runtime providing:
+
 - String manipulation
 - Mathematical operations
 - File I/O
@@ -507,6 +531,7 @@ cmake --install build --prefix /usr/local
 ### Quick Start
 
 Create `hello.bas`:
+
 ```basic
 10 PRINT "Hello from Viper!"
 20 FOR i = 1 TO 5
@@ -516,11 +541,13 @@ Create `hello.bas`:
 ```
 
 Run it:
+
 ```bash
 ./vbasic hello.bas
 ```
 
 Compile to native:
+
 ```bash
 ./vbasic hello.bas -o hello
 ./hello
@@ -541,24 +568,25 @@ Compile to native:
 
 ## Feature Comparison
 
-| Feature | v0.1.0 | v0.1.1 |
-|---------|--------|--------|
-| BASIC Compiler | Complete | Enhanced with OOP |
-| IL Format | Baseline | Extended |
-| VM Execution | 3 dispatch modes | Optimized with tail calls |
-| Native Codegen | No | x86-64 implemented (experimental) |
-| OOP Support | No | Classes & Interfaces |
-| Namespaces | No | Full hierarchy |
-| Graphics | No | Basic library |
-| Runtime | `rt_*` functions | `Viper.*` namespace |
-| Debugging | Basic | Stepping debugger |
-| Documentation | 15 files | 55+ files |
+| Feature        | v0.1.0           | v0.1.1                            |
+|----------------|------------------|-----------------------------------|
+| BASIC Compiler | Complete         | Enhanced with OOP                 |
+| IL Format      | Baseline         | Extended                          |
+| VM Execution   | 3 dispatch modes | Optimized with tail calls         |
+| Native Codegen | No               | x86-64 implemented (experimental) |
+| OOP Support    | No               | Classes & Interfaces              |
+| Namespaces     | No               | Full hierarchy                    |
+| Graphics       | No               | Basic library                     |
+| Runtime        | `rt_*` functions | `Viper.*` namespace               |
+| Debugging      | Basic            | Stepping debugger                 |
+| Documentation  | 15 files         | 55+ files                         |
 
 ---
 
 ## Future Roadmap
 
 ### Path to v1.0 (Milestone)
+
 - Stabilize core APIs and IL format
 - Complete test coverage for all components
 - Comprehensive error recovery
@@ -566,18 +594,21 @@ Compile to native:
 - Production-grade documentation
 
 ### Near Term (v0.2.x - v0.9.x)
+
 - IL optimization passes (mem2reg, SimplifyCFG, LICM)
 - Graph coloring register allocation
 - Additional language frontends
 - Debugger integration with breakpoints
 
 ### Post-1.0 Features
+
 - LLVM IR backend option
 - WebAssembly target
 - Language Server Protocol support
 - Package manager for libraries
 
 ### Long Term Vision
+
 - Self-hosting compiler
 - JIT compilation mode
 - Advanced optimizations

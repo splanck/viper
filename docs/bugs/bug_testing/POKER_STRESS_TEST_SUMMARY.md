@@ -1,63 +1,68 @@
 # Texas Hold'em Poker - VIPER BASIC OOP Stress Test
 
 **Date**: 2025-11-16
-**Objective**: Stress test VIPER BASIC OOP capabilities by building a complex poker game with multiple classes, ANSI graphics, and sophisticated object interactions.
+**Objective**: Stress test VIPER BASIC OOP capabilities by building a complex poker game with multiple classes, ANSI
+graphics, and sophisticated object interactions.
 
 ---
 
 ## Test Files Created (Progressive Development)
 
 ### Phase 1: Card Class
+
 - **poker_v1_card_class.bas** ✅ **SUCCESS**
-  - Basic Card class with suit/rank fields
-  - Methods: Init(), GetSuitName(), GetRankName(), Display()
-  - ANSI color support (red for hearts/diamonds, white for spades/clubs)
-  - Unicode suit symbols (♠♥♦♣)
-  - **Result**: Works perfectly
+    - Basic Card class with suit/rank fields
+    - Methods: Init(), GetSuitName(), GetRankName(), Display()
+    - ANSI color support (red for hearts/diamonds, white for spades/clubs)
+    - Unicode suit symbols (♠♥♦♣)
+    - **Result**: Works perfectly
 
 ### Phase 2: Deck Class - Bug Discovery
+
 - **poker_v2_deck_class.bas** ❌ **FAILED - BUG-074 DISCOVERED**
-  - Added Deck class after Card class
-  - Deck.ShowCard() creates Card objects
-  - **Error**: `DECK.__ctor:entry_DECK.__ctor: call %t27: unknown temp %27`
-  - **Discovery**: Constructor corrupted with string cleanup from wrong scope
+    - Added Deck class after Card class
+    - Deck.ShowCard() creates Card objects
+    - **Error**: `DECK.__ctor:entry_DECK.__ctor: call %t27: unknown temp %27`
+    - **Discovery**: Constructor corrupted with string cleanup from wrong scope
 
 - **poker_v3_simple_deck.bas** ❌ **FAILED - Confirmed BUG-074**
-  - Simplified version to isolate the bug
-  - Same constructor corruption error
-  - **Conclusion**: Bug triggered when class B uses class A defined earlier
+    - Simplified version to isolate the bug
+    - Same constructor corruption error
+    - **Conclusion**: Bug triggered when class B uses class A defined earlier
 
 ### Phase 3: Bug Investigation
+
 - **test_empty_class.bas** ✅ Works
 - **test_methods_no_fields.bas** ✅ Works
 - **test_two_classes.bas** ✅ Works
 - **test_object_in_method.bas** ✅ Works
 - **test_me_method_calls.bas** ✅ Works
 - **poker_v4_reversed_order.bas** ✅ **WORKAROUND FOUND**
-  - Defined Deck BEFORE Card (forward reference)
-  - **Result**: Works perfectly!
-  - **Workaround**: Define classes in reverse dependency order
+    - Defined Deck BEFORE Card (forward reference)
+    - **Result**: Works perfectly!
+    - **Workaround**: Define classes in reverse dependency order
 
 ### Phase 4: Working Implementations
+
 - **poker_v5_working_deck.bas** ✅ **SUCCESS**
-  - Full 52-card deck with Deck defined before Card
-  - Methods: GetCardSuit(), GetCardRank(), ShowCard(), ShowAllCards()
-  - Displays all suits correctly with colors
-  - **Result**: Perfect deck visualization
+    - Full 52-card deck with Deck defined before Card
+    - Methods: GetCardSuit(), GetCardRank(), ShowCard(), ShowAllCards()
+    - Displays all suits correctly with colors
+    - **Result**: Perfect deck visualization
 
 - **poker_v6_player_class.bas** ✅ **SUCCESS**
-  - Player class with hand management
-  - Fields: name, chips, card1/card2 (workaround for BUG-067)
-  - Methods: Init(), GiveCard(), ShowHand(), ClearHand(), Bet()
-  - Deck dealing system
-  - **Result**: Complete player and dealing system
+    - Player class with hand management
+    - Fields: name, chips, card1/card2 (workaround for BUG-067)
+    - Methods: Init(), GiveCard(), ShowHand(), ClearHand(), Bet()
+    - Deck dealing system
+    - **Result**: Complete player and dealing system
 
 - **poker_v7_table.bas** ✅ **SUCCESS**
-  - Table class managing community cards and pot
-  - Community cards: flop (3 cards), turn (1 card), river (1 card)
-  - Beautiful ANSI boxed display with colors
-  - Full poker hand simulation (pre-flop → flop → turn → river → showdown)
-  - **Result**: Complete working poker table!
+    - Table class managing community cards and pot
+    - Community cards: flop (3 cards), turn (1 card), river (1 card)
+    - Beautiful ANSI boxed display with colors
+    - Full poker hand simulation (pre-flop → flop → turn → river → showdown)
+    - **Result**: Complete working poker table!
 
 ---
 
@@ -65,9 +70,11 @@
 
 ### **BUG-074 CRITICAL**: Constructor Corruption When Class Uses Previously-Defined Class
 
-**Symptom**: When a class B uses another class A that was defined earlier in the source file, the constructor for class B becomes corrupted with string cleanup code from unrelated contexts, causing "use before def" errors.
+**Symptom**: When a class B uses another class A that was defined earlier in the source file, the constructor for class
+B becomes corrupted with string cleanup code from unrelated contexts, causing "use before def" errors.
 
 **IL Evidence**:
+
 ```
 func @DECK.__ctor(ptr %ME) -> void {
 entry_DECK.__ctor(%ME:ptr):
@@ -82,7 +89,8 @@ ret_DECK.__ctor:
 }
 ```
 
-**Workaround**: Define classes in reverse dependency order - define the "using" class before the "used" class. Forward references work correctly.
+**Workaround**: Define classes in reverse dependency order - define the "using" class before the "used" class. Forward
+references work correctly.
 
 **Impact**: CRITICAL - Severely restricts multi-class programs. Must use counterintuitive class ordering.
 
@@ -93,6 +101,7 @@ ret_DECK.__ctor:
 ## Features Successfully Stress Tested
 
 ### OOP Features
+
 ✅ Multiple classes in one file (4 classes: Card, Deck, Player, Table)
 ✅ Object creation in methods
 ✅ Method calls on ME (self)
@@ -105,6 +114,7 @@ ret_DECK.__ctor:
 ✅ Object parameters (workaround for BUG-073 avoided)
 
 ### Language Features
+
 ✅ ANSI colors (COLOR command) - Multiple colors used
 ✅ Complex PRINT statements with semicolons for inline printing
 ✅ Unicode symbols (♠♥♦♣) in strings
@@ -118,6 +128,7 @@ ret_DECK.__ctor:
 ✅ Comparison operators (<=, >=, =, OR, AND)
 
 ### Graphics/Display
+
 ✅ Box-drawing characters (╔ ╗ ║ ═ ╠ ╣ ╚ ─)
 ✅ Colored output for suits (red for hearts/diamonds, white for spades/clubs)
 ✅ Colored output for UI elements (cyan, yellow, green)
@@ -128,29 +139,32 @@ ret_DECK.__ctor:
 ## Known Bugs Worked Around
 
 1. **BUG-067**: Array Fields in Classes Not Supported
-   - **Workaround**: Used multiple scalar fields (card1Suit, card1Rank, card2Suit, card2Rank) instead of arrays
+    - **Workaround**: Used multiple scalar fields (card1Suit, card1Rank, card2Suit, card2Rank) instead of arrays
 
 2. **BUG-069**: Objects Not Initialized in Constructor
-   - **Workaround**: Avoided object fields where possible, used calculated values
+    - **Workaround**: Avoided object fields where possible, used calculated values
 
 3. **BUG-074**: Constructor Corruption (NEW - discovered during this test)
-   - **Workaround**: Defined classes in reverse dependency order (Deck before Card, etc.)
+    - **Workaround**: Defined classes in reverse dependency order (Deck before Card, etc.)
 
 ---
 
 ## Additional FOR Loop Tests
 
 ### test_for_loop_with_classes.bas ✅
+
 - Tests FOR loops with objects
 - Tests method calls inside FOR loops
 - Tests multiple objects in FOR loops
 - **Result**: All scenarios work correctly
 
 ### test_loop_var_method.bas ✅
+
 - Tests passing loop variable to method as parameter
 - **Result**: Works correctly
 
 ### test_for_print_bug.bas
+
 - Tests PRINT statements in FOR loops
 - Tests COLOR changes in FOR loops
 - (Not run in this session, but available for testing)
@@ -172,9 +186,12 @@ ret_DECK.__ctor:
 
 ## Conclusion
 
-The Texas Hold'em Poker stress test successfully demonstrated that VIPER BASIC can handle complex OOP programs with multiple classes, sophisticated object interactions, and rich ANSI graphics. The test discovered one NEW CRITICAL BUG (BUG-074) and successfully worked around three known bugs.
+The Texas Hold'em Poker stress test successfully demonstrated that VIPER BASIC can handle complex OOP programs with
+multiple classes, sophisticated object interactions, and rich ANSI graphics. The test discovered one NEW CRITICAL BUG (
+BUG-074) and successfully worked around three known bugs.
 
 The final poker table program displays a complete Texas Hold'em game with:
+
 - Player hands with chip counts
 - Community cards (flop, turn, river)
 - Pot management
@@ -182,4 +199,5 @@ The final poker table program displays a complete Texas Hold'em game with:
 - Beautiful colored ANSI display
 - Professional-looking box UI
 
-**Overall Assessment**: VIPER BASIC OOP is functional but requires workarounds for known bugs. With proper understanding of the limitations, complex programs can be successfully built.
+**Overall Assessment**: VIPER BASIC OOP is functional but requires workarounds for known bugs. With proper understanding
+of the limitations, complex programs can be successfully built.

@@ -1,6 +1,7 @@
 # Threading Model and Global State
 
-This document describes the threading model for the Viper VM and the scope of process-global state shared across VM instances.
+This document describes the threading model for the Viper VM and the scope of process-global state shared across VM
+instances.
 
 ---
 
@@ -19,7 +20,8 @@ Viper supports running multiple VM instances concurrently, with the following de
 
 ### Thread-Local Active VM
 
-The VM uses thread-local storage (TLS) to track the currently active VM instance on each thread. This is managed via `ActiveVMGuard` in `src/vm/VMContext.cpp`:
+The VM uses thread-local storage (TLS) to track the currently active VM instance on each thread. This is managed via
+`ActiveVMGuard` in `src/vm/VMContext.cpp`:
 
 ```cpp
 thread_local VM *tlsActiveVM = nullptr;
@@ -34,7 +36,9 @@ thread_local VM *tlsActiveVM = nullptr;
 
 **Why this matters:**
 
-The runtime bridge (`RuntimeBridge`) uses the active VM to route traps. When a runtime function traps, it queries `VM::activeInstance()` to find the correct VM for error handling. Without an active VM, traps go directly to `rt_abort()`.
+The runtime bridge (`RuntimeBridge`) uses the active VM to route traps. When a runtime function traps, it queries
+`VM::activeInstance()` to find the correct VM for error handling. Without an active VM, traps go directly to
+`rt_abort()`.
 
 ### Safe Multi-VM Usage
 
@@ -80,7 +84,8 @@ ActiveVMGuard g2(&vm2);  // Assertion failure in debug builds
 
 ### Extern Registry
 
-The extern registry maps external function names to their implementations. It is **process-global** and shared by all VM instances.
+The extern registry maps external function names to their implementations. It is **process-global** and shared by all VM
+instances.
 
 **Location:** `src/vm/RuntimeBridge.cpp`
 
@@ -91,12 +96,12 @@ ExternRegistry &currentExternRegistry();        // Currently always returns glob
 
 **Characteristics:**
 
-| Property | Value |
-|----------|-------|
-| Scope | Process-global singleton |
-| Thread safety | Mutex-protected |
-| Lifetime | Process lifetime |
-| Visibility | All VMs see all registrations |
+| Property      | Value                         |
+|---------------|-------------------------------|
+| Scope         | Process-global singleton      |
+| Thread safety | Mutex-protected               |
+| Lifetime      | Process lifetime              |
+| Visibility    | All VMs see all registrations |
 
 **Implications:**
 
@@ -136,11 +141,11 @@ The BASIC frontend exposes process-global feature flags for controlling compilat
 
 **Available flags:**
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `enableRuntimeNamespaces` | true | Allow `USING Viper.*` imports |
-| `enableRuntimeTypeBridging` | true | Direct runtime type constructors |
-| `enableSelectCaseConstLabels` | true | CONST labels in SELECT CASE |
+| Flag                          | Default | Description                      |
+|-------------------------------|---------|----------------------------------|
+| `enableRuntimeNamespaces`     | true    | Allow `USING Viper.*` imports    |
+| `enableRuntimeTypeBridging`   | true    | Direct runtime type constructors |
+| `enableSelectCaseConstLabels` | true    | CONST labels in SELECT CASE      |
 
 **Thread safety:**
 
@@ -224,19 +229,19 @@ If you need isolated external function sets:
 
 ## Source Code References
 
-| Component | Location | Purpose |
-|-----------|----------|---------|
-| Active VM TLS | `src/vm/VMContext.cpp:38` | Thread-local active VM pointer |
-| ActiveVMGuard | `src/vm/VMContext.cpp:72-114` | RAII guard for VM activation |
-| Extern Registry | `src/vm/RuntimeBridge.cpp:309-425` | Process-global function registry |
-| Frontend Options | `src/frontends/basic/Options.hpp` | Atomic feature flags |
+| Component        | Location                           | Purpose                          |
+|------------------|------------------------------------|----------------------------------|
+| Active VM TLS    | `src/vm/VMContext.cpp:38`          | Thread-local active VM pointer   |
+| ActiveVMGuard    | `src/vm/VMContext.cpp:72-114`      | RAII guard for VM activation     |
+| Extern Registry  | `src/vm/RuntimeBridge.cpp:309-425` | Process-global function registry |
+| Frontend Options | `src/frontends/basic/Options.hpp`  | Atomic feature flags             |
 
 ---
 
 ## Summary
 
-| State | Scope | Thread Safety | Notes |
-|-------|-------|---------------|-------|
-| Active VM | Thread-local | Automatic via TLS | One VM per thread |
-| Extern Registry | Process-global | Mutex-protected | Shared by all VMs |
-| Frontend Options | Process-global | Atomic (relaxed) | Configure before threading |
+| State            | Scope          | Thread Safety     | Notes                      |
+|------------------|----------------|-------------------|----------------------------|
+| Active VM        | Thread-local   | Automatic via TLS | One VM per thread          |
+| Extern Registry  | Process-global | Mutex-protected   | Shared by all VMs          |
+| Frontend Options | Process-global | Atomic (relaxed)  | Configure before threading |

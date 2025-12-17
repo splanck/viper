@@ -3,6 +3,7 @@
 This document specifies the frontend overload resolution used by the BASIC OOP features.
 
 Scope (0.2.x):
+
 - Methods on classes only. Interface calls are matched by slot name/arity as before.
 - Property accessors (`get_*/set_*`) participate as ordinary candidates.
 - Conversions: only widening numeric (INTEGER→DOUBLE) are permitted implicitly.
@@ -15,8 +16,8 @@ Given a target class `C` and a name `N` at a call site:
 - If the argument count is 0, include `get_N` (synthesized from `PROPERTY`).
 - If the argument count is 1, include `set_N`.
 - Filter candidates by:
-  - Static/instance: static invocations only match static methods; instance calls only match instance methods.
-  - Access control: `PRIVATE` methods are only viable when called from the declaring class.
+    - Static/instance: static invocations only match static methods; instance calls only match instance methods.
+    - Access control: `PRIVATE` methods are only viable when called from the declaring class.
 
 ## Ranking and Conversions
 
@@ -32,8 +33,10 @@ No user-defined conversions, no string/boolean coercions, and no array re-interp
 
 ## Diagnostics
 
-- `E_OVERLOAD_NO_MATCH`: Emitted when the filtered candidate set contains no viable matches after conversions. The message includes the attempted signature.
-- `E_OVERLOAD_AMBIGUOUS`: Emitted when multiple candidates achieve the same best score. The message lists fully-qualified signatures of the top candidates.
+- `E_OVERLOAD_NO_MATCH`: Emitted when the filtered candidate set contains no viable matches after conversions. The
+  message includes the attempted signature.
+- `E_OVERLOAD_AMBIGUOUS`: Emitted when multiple candidates achieve the same best score. The message lists
+  fully-qualified signatures of the top candidates.
 
 ## Examples
 

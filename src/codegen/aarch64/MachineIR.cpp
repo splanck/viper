@@ -57,6 +57,8 @@ namespace viper::codegen::aarch64
             return "UCvtF";
         case MOpcode::FCvtZU:
             return "FCvtZU";
+        case MOpcode::FRintN:
+            return "FRintN";
         case MOpcode::SubSpImm:
             return "SubSpImm";
         case MOpcode::AddSpImm:

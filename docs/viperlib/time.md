@@ -21,11 +21,11 @@ Basic timing utilities for sleeping and measuring elapsed time.
 
 ### Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `Sleep(ms)` | `Void(Integer)` | Pause execution for the specified number of milliseconds |
-| `Ticks()` | `Integer()` | Returns monotonic time in milliseconds since an unspecified epoch |
-| `TicksUs()` | `Integer()` | Returns monotonic time in microseconds since an unspecified epoch |
+| Method      | Signature       | Description                                                       |
+|-------------|-----------------|-------------------------------------------------------------------|
+| `Sleep(ms)` | `Void(Integer)` | Pause execution for the specified number of milliseconds          |
+| `Ticks()`   | `Integer()`     | Returns monotonic time in milliseconds since an unspecified epoch |
+| `TicksUs()` | `Integer()`     | Returns monotonic time in microseconds since an unspecified epoch |
 
 ### Notes
 
@@ -63,34 +63,35 @@ Viper.Time.Clock.Sleep(100)  ' Sleep for 100ms
 
 ## Viper.Time.Countdown
 
-A countdown timer for implementing timeouts, delays, and timed operations. Tracks remaining time and signals when the interval has expired.
+A countdown timer for implementing timeouts, delays, and timed operations. Tracks remaining time and signals when the
+interval has expired.
 
 **Type:** Instance class (requires `New(interval)`)
 
 ### Constructor
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
+| Method          | Signature            | Description                                                      |
+|-----------------|----------------------|------------------------------------------------------------------|
 | `New(interval)` | `Countdown(Integer)` | Create a countdown timer with specified interval in milliseconds |
 
 ### Properties
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `Elapsed` | `Integer` (read-only) | Milliseconds elapsed since start |
-| `Remaining` | `Integer` (read-only) | Milliseconds remaining until expiration (0 if expired) |
-| `Expired` | `Boolean` (read-only) | True if the countdown has finished |
-| `Interval` | `Integer` (read/write) | The countdown duration in milliseconds |
-| `IsRunning` | `Boolean` (read-only) | True if the countdown is currently running |
+| Property    | Type                   | Description                                            |
+|-------------|------------------------|--------------------------------------------------------|
+| `Elapsed`   | `Integer` (read-only)  | Milliseconds elapsed since start                       |
+| `Remaining` | `Integer` (read-only)  | Milliseconds remaining until expiration (0 if expired) |
+| `Expired`   | `Boolean` (read-only)  | True if the countdown has finished                     |
+| `Interval`  | `Integer` (read/write) | The countdown duration in milliseconds                 |
+| `IsRunning` | `Boolean` (read-only)  | True if the countdown is currently running             |
 
 ### Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `Start()` | `Void()` | Start or resume the countdown |
-| `Stop()` | `Void()` | Pause the countdown, preserving remaining time |
-| `Reset()` | `Void()` | Stop and reset to full interval |
-| `Wait()` | `Void()` | Block until the countdown expires |
+| Method    | Signature | Description                                    |
+|-----------|-----------|------------------------------------------------|
+| `Start()` | `Void()`  | Start or resume the countdown                  |
+| `Stop()`  | `Void()`  | Pause the countdown, preserving remaining time |
+| `Reset()` | `Void()`  | Stop and reset to full interval                |
+| `Wait()`  | `Void()`  | Block until the countdown expires              |
 
 ### Notes
 
@@ -136,12 +137,12 @@ PRINT "Done!"
 
 ### Comparison with Clock.Sleep
 
-| Use Case | Recommended |
-|----------|-------------|
-| Simple fixed delay | `Clock.Sleep(ms)` |
-| Timeout with early exit | `Countdown` |
-| Progress tracking during wait | `Countdown` |
-| Pause/resume timing | `Countdown` |
+| Use Case                      | Recommended       |
+|-------------------------------|-------------------|
+| Simple fixed delay            | `Clock.Sleep(ms)` |
+| Timeout with early exit       | `Countdown`       |
+| Progress tracking during wait | `Countdown`       |
+| Pause/resume timing           | `Countdown`       |
 
 ---
 
@@ -153,23 +154,23 @@ Date and time operations. Timestamps are Unix timestamps (seconds since January 
 
 ### Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `Now()` | `Integer()` | Returns the current Unix timestamp (seconds) |
-| `NowMs()` | `Integer()` | Returns the current timestamp in milliseconds |
-| `Year(timestamp)` | `Integer(Integer)` | Extracts the year from a timestamp |
-| `Month(timestamp)` | `Integer(Integer)` | Extracts the month (1-12) from a timestamp |
-| `Day(timestamp)` | `Integer(Integer)` | Extracts the day of month (1-31) from a timestamp |
-| `Hour(timestamp)` | `Integer(Integer)` | Extracts the hour (0-23) from a timestamp |
-| `Minute(timestamp)` | `Integer(Integer)` | Extracts the minute (0-59) from a timestamp |
-| `Second(timestamp)` | `Integer(Integer)` | Extracts the second (0-59) from a timestamp |
-| `DayOfWeek(timestamp)` | `Integer(Integer)` | Returns day of week (0=Sunday, 6=Saturday) |
-| `Format(timestamp, format)` | `String(Integer, String)` | Formats a timestamp using strftime-style format |
-| `ToISO(timestamp)` | `String(Integer)` | Returns ISO 8601 formatted string |
-| `Create(y, m, d, h, min, s)` | `Integer(Integer...)` | Creates a timestamp from components |
-| `AddSeconds(timestamp, seconds)` | `Integer(Integer, Integer)` | Adds seconds to a timestamp |
-| `AddDays(timestamp, days)` | `Integer(Integer, Integer)` | Adds days to a timestamp |
-| `Diff(t1, t2)` | `Integer(Integer, Integer)` | Returns the difference in seconds between two timestamps |
+| Method                           | Signature                   | Description                                              |
+|----------------------------------|-----------------------------|----------------------------------------------------------|
+| `Now()`                          | `Integer()`                 | Returns the current Unix timestamp (seconds)             |
+| `NowMs()`                        | `Integer()`                 | Returns the current timestamp in milliseconds            |
+| `Year(timestamp)`                | `Integer(Integer)`          | Extracts the year from a timestamp                       |
+| `Month(timestamp)`               | `Integer(Integer)`          | Extracts the month (1-12) from a timestamp               |
+| `Day(timestamp)`                 | `Integer(Integer)`          | Extracts the day of month (1-31) from a timestamp        |
+| `Hour(timestamp)`                | `Integer(Integer)`          | Extracts the hour (0-23) from a timestamp                |
+| `Minute(timestamp)`              | `Integer(Integer)`          | Extracts the minute (0-59) from a timestamp              |
+| `Second(timestamp)`              | `Integer(Integer)`          | Extracts the second (0-59) from a timestamp              |
+| `DayOfWeek(timestamp)`           | `Integer(Integer)`          | Returns day of week (0=Sunday, 6=Saturday)               |
+| `Format(timestamp, format)`      | `String(Integer, String)`   | Formats a timestamp using strftime-style format          |
+| `ToISO(timestamp)`               | `String(Integer)`           | Returns ISO 8601 formatted string                        |
+| `Create(y, m, d, h, min, s)`     | `Integer(Integer...)`       | Creates a timestamp from components                      |
+| `AddSeconds(timestamp, seconds)` | `Integer(Integer, Integer)` | Adds seconds to a timestamp                              |
+| `AddDays(timestamp, days)`       | `Integer(Integer, Integer)` | Adds days to a timestamp                                 |
+| `Diff(t1, t2)`                   | `Integer(Integer, Integer)` | Returns the difference in seconds between two timestamps |
 
 ### Example
 
@@ -209,49 +210,50 @@ age_seconds = Viper.DateTime.Diff(now, birthday)
 
 ### Format Specifiers
 
-| Specifier | Description | Example |
-|-----------|-------------|---------|
-| `%Y` | 4-digit year | 2025 |
-| `%m` | 2-digit month | 01-12 |
-| `%d` | 2-digit day | 01-31 |
-| `%H` | 24-hour hour | 00-23 |
-| `%M` | Minute | 00-59 |
-| `%S` | Second | 00-59 |
-| `%A` | Full weekday name | Monday |
-| `%B` | Full month name | January |
+| Specifier | Description       | Example |
+|-----------|-------------------|---------|
+| `%Y`      | 4-digit year      | 2025    |
+| `%m`      | 2-digit month     | 01-12   |
+| `%d`      | 2-digit day       | 01-31   |
+| `%H`      | 24-hour hour      | 00-23   |
+| `%M`      | Minute            | 00-59   |
+| `%S`      | Second            | 00-59   |
+| `%A`      | Full weekday name | Monday  |
+| `%B`      | Full month name   | January |
 
 ---
 
 ## Viper.Diagnostics.Stopwatch
 
-High-precision stopwatch for benchmarking and performance measurement. Supports pause/resume timing with nanosecond resolution.
+High-precision stopwatch for benchmarking and performance measurement. Supports pause/resume timing with nanosecond
+resolution.
 
 **Type:** Instance class (requires `New()` or `StartNew()`)
 
 ### Constructors
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `New()` | `Stopwatch()` | Create a new stopped stopwatch |
+| Method       | Signature     | Description                                  |
+|--------------|---------------|----------------------------------------------|
+| `New()`      | `Stopwatch()` | Create a new stopped stopwatch               |
 | `StartNew()` | `Stopwatch()` | Create and immediately start a new stopwatch |
 
 ### Properties
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `ElapsedMs` | `Integer` (read-only) | Total elapsed time in milliseconds |
-| `ElapsedUs` | `Integer` (read-only) | Total elapsed time in microseconds |
-| `ElapsedNs` | `Integer` (read-only) | Total elapsed time in nanoseconds |
+| Property    | Type                  | Description                            |
+|-------------|-----------------------|----------------------------------------|
+| `ElapsedMs` | `Integer` (read-only) | Total elapsed time in milliseconds     |
+| `ElapsedUs` | `Integer` (read-only) | Total elapsed time in microseconds     |
+| `ElapsedNs` | `Integer` (read-only) | Total elapsed time in nanoseconds      |
 | `IsRunning` | `Boolean` (read-only) | True if stopwatch is currently running |
 
 ### Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `Start()` | `Void()` | Start or resume timing (no effect if already running) |
-| `Stop()` | `Void()` | Pause timing, preserving accumulated time |
-| `Reset()` | `Void()` | Stop and clear all accumulated time |
-| `Restart()` | `Void()` | Reset and start in one atomic operation |
+| Method      | Signature | Description                                           |
+|-------------|-----------|-------------------------------------------------------|
+| `Start()`   | `Void()`  | Start or resume timing (no effect if already running) |
+| `Stop()`    | `Void()`  | Pause timing, preserving accumulated time             |
+| `Reset()`   | `Void()`  | Stop and clear all accumulated time                   |
+| `Restart()` | `Void()`  | Reset and start in one atomic operation               |
 
 ### Notes
 

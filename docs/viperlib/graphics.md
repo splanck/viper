@@ -21,30 +21,31 @@
 
 ### Properties
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `Width` | Integer | Canvas width in pixels |
-| `Height` | Integer | Canvas height in pixels |
+| Property      | Type    | Description                                        |
+|---------------|---------|----------------------------------------------------|
+| `Width`       | Integer | Canvas width in pixels                             |
+| `Height`      | Integer | Canvas height in pixels                            |
 | `ShouldClose` | Integer | Non-zero if the user requested to close the canvas |
 
 ### Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `Flip()` | `Void()` | Presents the back buffer and displays drawn content |
-| `Clear(color)` | `Void(Integer)` | Clears the canvas with a solid color |
-| `Line(x1, y1, x2, y2, color)` | `Void(Integer...)` | Draws a line between two points |
-| `Box(x, y, w, h, color)` | `Void(Integer...)` | Draws a filled rectangle |
-| `Frame(x, y, w, h, color)` | `Void(Integer...)` | Draws a rectangle outline |
-| `Disc(cx, cy, r, color)` | `Void(Integer...)` | Draws a filled circle |
-| `Ring(cx, cy, r, color)` | `Void(Integer...)` | Draws a circle outline |
-| `Plot(x, y, color)` | `Void(Integer, Integer, Integer)` | Sets a single pixel |
-| `Poll()` | `Integer()` | Polls for input events; returns event type (0 = none) |
-| `KeyHeld(keycode)` | `Integer(Integer)` | Returns non-zero if the specified key is held down |
+| Method                        | Signature                         | Description                                           |
+|-------------------------------|-----------------------------------|-------------------------------------------------------|
+| `Flip()`                      | `Void()`                          | Presents the back buffer and displays drawn content   |
+| `Clear(color)`                | `Void(Integer)`                   | Clears the canvas with a solid color                  |
+| `Line(x1, y1, x2, y2, color)` | `Void(Integer...)`                | Draws a line between two points                       |
+| `Box(x, y, w, h, color)`      | `Void(Integer...)`                | Draws a filled rectangle                              |
+| `Frame(x, y, w, h, color)`    | `Void(Integer...)`                | Draws a rectangle outline                             |
+| `Disc(cx, cy, r, color)`      | `Void(Integer...)`                | Draws a filled circle                                 |
+| `Ring(cx, cy, r, color)`      | `Void(Integer...)`                | Draws a circle outline                                |
+| `Plot(x, y, color)`           | `Void(Integer, Integer, Integer)` | Sets a single pixel                                   |
+| `Poll()`                      | `Integer()`                       | Polls for input events; returns event type (0 = none) |
+| `KeyHeld(keycode)`            | `Integer(Integer)`                | Returns non-zero if the specified key is held down    |
 
 ### Color Format
 
 Colors are specified as 32-bit integers in `0x00RRGGBB` format:
+
 - Red: `0x00FF0000`
 - Green: `0x0000FF00`
 - Blue: `0x000000FF`
@@ -98,9 +99,9 @@ Color utility functions for graphics operations.
 
 ### Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `RGB(r, g, b)` | `Integer(Integer, Integer, Integer)` | Creates a color value from red, green, blue components (0-255 each) |
+| Method             | Signature                                     | Description                                                                     |
+|--------------------|-----------------------------------------------|---------------------------------------------------------------------------------|
+| `RGB(r, g, b)`     | `Integer(Integer, Integer, Integer)`          | Creates a color value from red, green, blue components (0-255 each)             |
 | `RGBA(r, g, b, a)` | `Integer(Integer, Integer, Integer, Integer)` | Creates a color with alpha from red, green, blue, alpha components (0-255 each) |
 
 ### Example
@@ -130,7 +131,8 @@ canvas.Disc(200, 200, 50, purple)
 
 ## Viper.Graphics.Pixels
 
-Software image buffer for direct pixel manipulation. Use for procedural texture generation, image processing, or custom rendering.
+Software image buffer for direct pixel manipulation. Use for procedural texture generation, image processing, or custom
+rendering.
 
 **Type:** Instance class
 
@@ -140,32 +142,33 @@ Creates a new pixel buffer initialized to transparent black (0x00000000).
 
 ### Properties
 
-| Property | Type | Access | Description |
-|----------|------|--------|-------------|
-| `Width` | Integer | Read | Width of the buffer in pixels |
-| `Height` | Integer | Read | Height of the buffer in pixels |
+| Property | Type    | Access | Description                    |
+|----------|---------|--------|--------------------------------|
+| `Width`  | Integer | Read   | Width of the buffer in pixels  |
+| `Height` | Integer | Read   | Height of the buffer in pixels |
 
 ### Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `Get(x, y)` | `Integer(Integer, Integer)` | Get pixel color at (x, y) as packed RGBA (0xRRGGBBAA). Returns 0 if out of bounds |
-| `Set(x, y, color)` | `Void(Integer, Integer, Integer)` | Set pixel color at (x, y). Silently ignores out of bounds |
-| `Fill(color)` | `Void(Integer)` | Fill entire buffer with a color |
-| `Clear()` | `Void()` | Clear buffer to transparent black (0x00000000) |
-| `Copy(dx, dy, src, sx, sy, w, h)` | `Void(Integer, Integer, Pixels, Integer, Integer, Integer, Integer)` | Copy a rectangle from source to this buffer |
-| `Clone()` | `Pixels()` | Create a deep copy of this buffer |
-| `ToBytes()` | `Bytes()` | Convert to raw bytes (RGBA, row-major) |
+| Method                            | Signature                                                            | Description                                                                       |
+|-----------------------------------|----------------------------------------------------------------------|-----------------------------------------------------------------------------------|
+| `Get(x, y)`                       | `Integer(Integer, Integer)`                                          | Get pixel color at (x, y) as packed RGBA (0xRRGGBBAA). Returns 0 if out of bounds |
+| `Set(x, y, color)`                | `Void(Integer, Integer, Integer)`                                    | Set pixel color at (x, y). Silently ignores out of bounds                         |
+| `Fill(color)`                     | `Void(Integer)`                                                      | Fill entire buffer with a color                                                   |
+| `Clear()`                         | `Void()`                                                             | Clear buffer to transparent black (0x00000000)                                    |
+| `Copy(dx, dy, src, sx, sy, w, h)` | `Void(Integer, Integer, Pixels, Integer, Integer, Integer, Integer)` | Copy a rectangle from source to this buffer                                       |
+| `Clone()`                         | `Pixels()`                                                           | Create a deep copy of this buffer                                                 |
+| `ToBytes()`                       | `Bytes()`                                                            | Convert to raw bytes (RGBA, row-major)                                            |
 
 ### Static Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
+| Method                            | Signature                         | Description                             |
+|-----------------------------------|-----------------------------------|-----------------------------------------|
 | `FromBytes(width, height, bytes)` | `Pixels(Integer, Integer, Bytes)` | Create from raw bytes (RGBA, row-major) |
 
 ### Color Format
 
 Colors are stored as packed 32-bit RGBA integers in the format `0xRRGGBBAA`:
+
 - `RR` - Red component (0-255)
 - `GG` - Green component (0-255)
 - `BB` - Blue component (0-255)

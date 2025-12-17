@@ -14,7 +14,8 @@ last-updated: 2025-11-21
 
 ## Overview
 
-ViperGFX is a cross-platform software 2D graphics library integrated into the Viper project. It provides window management, pixel operations, drawing primitives, and input handling through a simple C API.
+ViperGFX is a cross-platform software 2D graphics library integrated into the Viper project. It provides window
+management, pixel operations, drawing primitives, and input handling through a simple C API.
 
 ### Key Features
 
@@ -36,12 +37,12 @@ ViperGFX is a cross-platform software 2D graphics library integrated into the Vi
 
 ## Platform Support
 
-| Platform | Backend | Status |
-|----------|---------|--------|
-| **macOS** | Cocoa/AppKit | ✅ **Fully Implemented** |
-| **Linux** | X11 | ⏳ Stub (planned) |
-| **Windows** | Win32 GDI | ⏳ Stub (planned) |
-| **Testing** | Mock backend | ✅ Fully Implemented |
+| Platform    | Backend      | Status                  |
+|-------------|--------------|-------------------------|
+| **macOS**   | Cocoa/AppKit | ✅ **Fully Implemented** |
+| **Linux**   | X11          | ⏳ Stub (planned)        |
+| **Windows** | Win32 GDI    | ⏳ Stub (planned)        |
+| **Testing** | Mock backend | ✅ Fully Implemented     |
 
 ---
 
@@ -328,6 +329,7 @@ The mock backend (`vgfx_platform_mock.c`) provides:
 ### Detailed Specification
 
 For complete implementation details, see:
+
 - **[gfxlib.md](../src/lib/graphics/gfxlib.md)** — Full specification
 - **[INTEGRATION.md](../src/lib/graphics/INTEGRATION.md)** — Build integration details
 - **[STATUS.md](../src/lib/graphics/STATUS.md)** — Implementation status
@@ -338,6 +340,7 @@ For complete implementation details, see:
 ### API Reference
 
 Full API documentation is available in the header comments:
+
 - **[vgfx.h](../src/lib/graphics/include/vgfx.h)** — Public API with Doxygen comments
 
 ---
@@ -353,12 +356,14 @@ option(VGFX_BUILD_EXAMPLES "Build ViperGFX examples" ON)
 ```
 
 When building as part of Viper:
+
 - Tests are controlled by `VIPER_BUILD_TESTING`
 - Examples are controlled by `BUILD_EXAMPLES`
 
 ### Platform Detection
 
 The build system automatically selects the correct backend:
+
 - **macOS**: Cocoa backend (`vgfx_platform_macos.m`)
 - **Linux**: X11 backend (`vgfx_platform_linux.c`)
 - **Windows**: Win32 backend (`vgfx_platform_win32.c`)
@@ -392,6 +397,7 @@ ViperGFX uses pure software rendering with the following characteristics:
 ### Typical Performance
 
 On modern hardware (2020+ Mac):
+
 - **800×600 window**: 60 FPS sustained
 - **Full-screen drawing**: ~1000 primitives per frame at 60 FPS
 - **Event latency**: <1ms for keyboard/mouse

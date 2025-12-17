@@ -9,7 +9,8 @@ Viper uses two generation models:
 1. **Manually Maintained Tables** — Committed files synchronized with source enums/APIs
 2. **CMake-Generated Tables** — Built at configure time from JSON specifications
 
-All generated files are committed to the repository (not build-time only) to ensure reproducible builds without external dependencies.
+All generated files are committed to the repository (not build-time only) to ensure reproducible builds without external
+dependencies.
 
 ---
 
@@ -17,25 +18,25 @@ All generated files are committed to the repository (not build-time only) to ens
 
 ### Source of Truth
 
-| File | Purpose |
-|------|---------|
-| `src/il/core/Opcode.def` | X-macro opcode definitions |
+| File                     | Purpose                               |
+|--------------------------|---------------------------------------|
+| `src/il/core/Opcode.def` | X-macro opcode definitions            |
 | `src/il/core/Opcode.hpp` | Opcode enum generated from Opcode.def |
 
 ### Generated Files
 
 Located in `src/vm/ops/generated/`:
 
-| File | Purpose |
-|------|---------|
-| `OpSchema.hpp` | Compile-time opcode metadata (mnemonic, arity, types, flags) |
-| `HandlerTable.hpp` | Function table mapping opcodes to handlers |
-| `InlineHandlersDecl.inc` | Forward declarations for inline handlers |
-| `InlineHandlersImpl.inc` | Inline handler implementations |
-| `SwitchDispatchDecl.inc` | Switch-based dispatch declaration |
-| `SwitchDispatchImpl.inc` | Switch-based dispatch implementation |
-| `ThreadedLabels.inc` | Computed-goto label address table |
-| `ThreadedCases.inc` | Computed-goto case labels and handler bodies |
+| File                     | Purpose                                                      |
+|--------------------------|--------------------------------------------------------------|
+| `OpSchema.hpp`           | Compile-time opcode metadata (mnemonic, arity, types, flags) |
+| `HandlerTable.hpp`       | Function table mapping opcodes to handlers                   |
+| `InlineHandlersDecl.inc` | Forward declarations for inline handlers                     |
+| `InlineHandlersImpl.inc` | Inline handler implementations                               |
+| `SwitchDispatchDecl.inc` | Switch-based dispatch declaration                            |
+| `SwitchDispatchImpl.inc` | Switch-based dispatch implementation                         |
+| `ThreadedLabels.inc`     | Computed-goto label address table                            |
+| `ThreadedCases.inc`      | Computed-goto case labels and handler bodies                 |
 
 ### Regeneration
 
@@ -61,15 +62,15 @@ These files are **manually maintained** but must stay synchronized with `Opcode.
 
 ### Source of Truth
 
-| File | Purpose |
-|------|---------|
-| `src/runtime/*.c` | C runtime function implementations |
-| `include/viper/runtime/*.h` | C runtime API headers |
+| File                        | Purpose                            |
+|-----------------------------|------------------------------------|
+| `src/runtime/*.c`           | C runtime function implementations |
+| `include/viper/runtime/*.h` | C runtime API headers              |
 
 ### Generated Files
 
-| File | Purpose |
-|------|---------|
+| File                                             | Purpose                                     |
+|--------------------------------------------------|---------------------------------------------|
 | `src/il/runtime/generated/RuntimeSignatures.inc` | DescriptorRow entries for runtime functions |
 
 ### Regeneration
@@ -96,14 +97,14 @@ The runtime signature table is **manually maintained** to match the C runtime AP
 
 ### Source of Truth
 
-| File | Purpose |
-|------|---------|
+| File                     | Purpose                                     |
+|--------------------------|---------------------------------------------|
 | `src/il/core/Opcode.def` | Opcode definitions with arity/type metadata |
 
 ### Generated Files
 
-| File | Purpose |
-|------|---------|
+| File                                     | Purpose                                 |
+|------------------------------------------|-----------------------------------------|
 | `src/il/verify/generated/SpecTables.cpp` | InstructionSpec entries for each opcode |
 
 ### Regeneration
@@ -121,23 +122,23 @@ The runtime signature table is **manually maintained** to match the C runtime AP
 
 ### Source of Truth
 
-| File | Purpose |
-|------|---------|
-| `tools/spec/x86_64_encodings.json` | x86-64 instruction encodings |
+| File                                | Purpose                       |
+|-------------------------------------|-------------------------------|
+| `tools/spec/x86_64_encodings.json`  | x86-64 instruction encodings  |
 | `tools/spec/aarch64_encodings.json` | AArch64 instruction encodings |
 
 ### Generated Files
 
-| Directory | Files |
-|-----------|-------|
-| `src/codegen/x86_64/generated/` | `EncodingTable.inc`, `OpFmtTable.inc` |
-| `src/codegen/aarch64/generated/` | `OpcodeDispatch.inc` |
+| Directory                        | Files                                 |
+|----------------------------------|---------------------------------------|
+| `src/codegen/x86_64/generated/`  | `EncodingTable.inc`, `OpFmtTable.inc` |
+| `src/codegen/aarch64/generated/` | `OpcodeDispatch.inc`                  |
 
 ### Generators
 
-| Script | Output |
-|--------|--------|
-| `cmake/GenX86Encodings.cmake` | x86-64 encoding tables |
+| Script                           | Output                  |
+|----------------------------------|-------------------------|
+| `cmake/GenX86Encodings.cmake`    | x86-64 encoding tables  |
 | `cmake/GenAArch64Dispatch.cmake` | AArch64 dispatch switch |
 
 ### Regeneration
@@ -159,11 +160,12 @@ cmake --build build
 
 ### Source of Truth
 
-| File | Purpose |
-|------|---------|
+| File                                       | Purpose                          |
+|--------------------------------------------|----------------------------------|
 | `src/frontends/basic/builtin_registry.inc` | Macro-based builtin declarations |
 
-This file uses X-macro techniques and is included multiple times with different macro definitions. It is **intentionally macro-based** for fast iteration.
+This file uses X-macro techniques and is included multiple times with different macro definitions. It is **intentionally
+macro-based** for fast iteration.
 
 ---
 
@@ -171,11 +173,12 @@ This file uses X-macro techniques and is included multiple times with different 
 
 ### Source of Truth
 
-| File | Purpose |
-|------|---------|
+| File                                        | Purpose                                |
+|---------------------------------------------|----------------------------------------|
 | `src/il/runtime/classes/RuntimeClasses.inc` | Macro-based runtime class declarations |
 
-This file defines runtime class descriptors (String, Array, Object, etc.) using macros. It can be replaced by a YAML-driven generator in the future.
+This file defines runtime class descriptors (String, Array, Object, etc.) using macros. It can be replaced by a
+YAML-driven generator in the future.
 
 ---
 

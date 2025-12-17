@@ -8,15 +8,21 @@ Frequently asked questions about the Viper compiler toolchain.
 
 ### 1. What is Viper?
 
-Viper is an IL-based compiler toolchain that includes multiple language frontends (BASIC and Pascal), an intermediate language (IL), virtual machine, and native code generator. It's designed as a research and educational platform for exploring language implementation, compiler design, and runtime systems.
+Viper is an IL-based compiler toolchain that includes multiple language frontends (BASIC and Pascal), an intermediate
+language (IL), virtual machine, and native code generator. It's designed as a research and educational platform for
+exploring language implementation, compiler design, and runtime systems.
 
 ### 2. What makes Viper different?
 
-Viper uses a modern compiler architecture with an intermediate representation (IL) that separates language semantics from execution. Programs can run in a VM for development/debugging or be compiled to native code for performance. The IL layer makes it easy to add new language frontends—both BASIC and Pascal compile to the same IL and share a common runtime.
+Viper uses a modern compiler architecture with an intermediate representation (IL) that separates language semantics
+from execution. Programs can run in a VM for development/debugging or be compiled to native code for performance. The IL
+layer makes it easy to add new language frontends—both BASIC and Pascal compile to the same IL and share a common
+runtime.
 
 ### 3. Is Viper suitable for production use?
 
-No. Viper is an experimental research project at an early stage. While it implements substantial subsets of BASIC and Pascal, it's intended for education, experimentation, and compiler research rather than production use.
+No. Viper is an experimental research project at an early stage. While it implements substantial subsets of BASIC and
+Pascal, it's intended for education, experimentation, and compiler research rather than production use.
 
 ---
 
@@ -34,22 +40,26 @@ Requirements: CMake 3.20+, Clang or GCC with C++20 support. See the top-level RE
 ### 5. How do I run a program?
 
 **BASIC:**
+
 ```bash
 ./build/src/tools/vbasic/vbasic myprogram.bas
 ```
 
 **Pascal:**
+
 ```bash
 ./build/src/tools/vpascal/vpascal myprogram.pas
 ```
 
 For additional options:
+
 ```bash
 ./build/src/tools/vbasic/vbasic --help
 ./build/src/tools/vpascal/vpascal --help
 ```
 
 The advanced `ilc` command is also available:
+
 ```bash
 ./build/src/tools/ilc/ilc front basic -run myprogram.bas
 ./build/src/tools/ilc/ilc front pascal -run myprogram.pas
@@ -66,6 +76,7 @@ The advanced `ilc` command is also available:
 ### 7. What platforms does Viper support?
 
 Viper builds and runs on:
+
 - **macOS** (Apple Silicon and Intel)
 - **Linux** (x86-64)
 
@@ -78,6 +89,7 @@ Native code generation targets x86-64 (SysV ABI) and AArch64.
 ### 8. What BASIC dialect does Viper implement?
 
 Viper BASIC is inspired by classic BASIC (especially QBasic/QuickBASIC) with modern extensions. It includes:
+
 - Structured control flow (If/Then/Else, For/Next, While/Wend, Do/Loop, Select Case)
 - Procedures (Sub/Function) with parameters
 - Object-oriented programming (Class, Sub New, method calls)
@@ -89,6 +101,7 @@ Viper BASIC is inspired by classic BASIC (especially QBasic/QuickBASIC) with mod
 ### 9. Does Viper BASIC support object-oriented programming?
 
 Yes! Viper BASIC includes:
+
 - Class definitions with fields and methods
 - Constructors (`Sub New`)
 - Object instantiation (`New` keyword)
@@ -100,6 +113,7 @@ See `/demos/vTris/` for extensive OOP examples.
 ### 10. Are there any known language limitations or gotchas?
 
 Key limitations to be aware of:
+
 - **Case-insensitive** identifiers (parameter names can collide with field names)
 - **No local array copying** from object fields (use class-level temp arrays as workaround)
 - **Object assignment creates references**, not copies (use `New` for independent objects)
@@ -130,6 +144,7 @@ Paths are relative to the file containing the `AddFile` statement.
 ### 12. What Pascal dialect does Viper implement?
 
 Viper Pascal is inspired by standard Pascal with modern extensions. It includes:
+
 - Structured control flow (If/Then/Else, For/To/Downto, While/Do, Repeat/Until, Case)
 - Procedures and functions with parameters
 - Units for modular code organization
@@ -163,6 +178,7 @@ Use `uses` to import units into your program.
 ### 14. What built-in functions are available in Pascal?
 
 Built-in functions include:
+
 - **Math**: `Abs`, `Sqr`, `Sqrt`, `Sin`, `Cos`, `Tan`, `Exp`, `Ln`, `Round`, `Trunc`
 - **String**: `Length`, `Copy`, `Pos`, `Concat`, `UpperCase`, `LowerCase`, `Trim`
 - **Conversion**: `IntToStr`, `FloatToStr`, `StrToInt`, `StrToFloat`, `Chr`, `Ord`
@@ -177,7 +193,9 @@ See `/src/frontends/pascal/BuiltinRegistry.cpp` for the complete list.
 
 ### 15. What is the Viper IL?
 
-The Viper Intermediate Language is a low-level, typed, control-flow graph representation that sits between frontends (BASIC, Pascal) and backends (VM or native code). It's similar to LLVM IR or .NET CIL but designed specifically for this project's needs.
+The Viper Intermediate Language is a low-level, typed, control-flow graph representation that sits between frontends (
+BASIC, Pascal) and backends (VM or native code). It's similar to LLVM IR or .NET CIL but designed specifically for this
+project's needs.
 
 See `/docs/il-guide.md` for the complete IL specification.
 
@@ -190,6 +208,7 @@ Yes! The IL has a textual assembly syntax. You can write `.il` files and run the
 ```
 
 Tools available:
+
 - `il-dis` - Disassembler
 - `il-verify` - IL verifier
 - `ilrun` - IL interpreter
@@ -210,7 +229,8 @@ The IL layer provides optimization passes, verification, and serialization. Diff
 
 ### 18. What's the difference between VM and native execution?
 
-- **VM (Interpreter)**: Executes IL directly. Slower but includes debugging support (breakpoints, stepping, watches). Default execution mode.
+- **VM (Interpreter)**: Executes IL directly. Slower but includes debugging support (breakpoints, stepping, watches).
+  Default execution mode.
 - **Native**: Compiles IL to machine code. Much faster but fewer debugging features.
 
 For development, use VM mode. For performance testing, use native compilation.
@@ -232,13 +252,15 @@ See VM debugging tests in `/tests/vm/` for examples.
 ### 20. What runtime functions are available?
 
 Both BASIC and Pascal share the same runtime library. Built-in functions include:
+
 - **Math**: `Sin`, `Cos`, `Tan`, `Sqrt`, `Abs`, `Round`, `Trunc`
 - **String**: `Length`/`Len`, `Copy`/`Mid$`, `Concat`, `Trim`
 - **I/O**: `Print`/`Write`, `Input`/`Read`
 - **Graphics**: `Color`, `Locate`, `Cls`
 - **Conversion**: `IntToStr`/`Str$`, `StrToInt`/`Val`
 
-See the respective builtin registries in `/src/frontends/basic/` and `/src/frontends/pascal/` for language-specific function lists.
+See the respective builtin registries in `/src/frontends/basic/` and `/src/frontends/pascal/` for language-specific
+function lists.
 
 ---
 
@@ -262,6 +284,7 @@ See `/docs/frontend-howto.md` for detailed guidance.
 ### 23. Where can I find more documentation?
 
 Key documentation files:
+
 - `/docs/il-guide.md` - Complete IL specification (normative reference)
 - `/docs/architecture.md` - System architecture overview
 - `/docs/codemap.md` - Source code organization and navigation
@@ -279,33 +302,39 @@ For code-level documentation, see header comments in source files.
 ## Quick Reference
 
 **Build and run a BASIC program:**
+
 ```bash
 cmake --build build -j
 ./build/src/tools/vbasic/vbasic program.bas
 ```
 
 **Build and run a Pascal program:**
+
 ```bash
 ./build/src/tools/vpascal/vpascal program.pas
 ```
 
 **Run with debugging:**
+
 ```bash
 ./build/src/tools/ilrun/ilrun program.il --break main:10
 ```
 
 **View generated IL:**
+
 ```bash
 ./build/src/tools/vbasic/vbasic program.bas --emit-il
 ./build/src/tools/vpascal/vpascal program.pas --emit-il
 ```
 
 **Run tests:**
+
 ```bash
 ctest --test-dir build --output-on-failure
 ```
 
 **Format code:**
+
 ```bash
 clang-format -i <files>
 ```

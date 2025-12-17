@@ -19,8 +19,8 @@ not satisfied.
 
 ### Signature
 
-| Function | Signature | Description |
-|----------|-----------|-------------|
+| Function                   | Signature               | Description                                                       |
+|----------------------------|-------------------------|-------------------------------------------------------------------|
 | `Viper.Diagnostics.Assert` | `Void(Boolean, String)` | Traps when @p condition is false; uses default message when empty |
 
 ### Notes

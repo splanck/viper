@@ -25,40 +25,40 @@ Binary file stream for reading and writing raw bytes with random access capabili
 
 ### Open Modes
 
-| Mode | Description |
-|------|-------------|
-| `"r"` | Read only (file must exist) |
-| `"w"` | Write only (creates or truncates) |
-| `"rw"` | Read and write (file must exist) |
-| `"a"` | Append (creates if needed, writes at end) |
+| Mode   | Description                               |
+|--------|-------------------------------------------|
+| `"r"`  | Read only (file must exist)               |
+| `"w"`  | Write only (creates or truncates)         |
+| `"rw"` | Read and write (file must exist)          |
+| `"a"`  | Append (creates if needed, writes at end) |
 
 ### Properties
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `Pos` | Integer | Current file position (read-only) |
-| `Size` | Integer | Total file size in bytes (read-only) |
-| `Eof` | Boolean | True if at end of file (read-only) |
+| Property | Type    | Description                          |
+|----------|---------|--------------------------------------|
+| `Pos`    | Integer | Current file position (read-only)    |
+| `Size`   | Integer | Total file size in bytes (read-only) |
+| `Eof`    | Boolean | True if at end of file (read-only)   |
 
 ### Methods
 
-| Method | Returns | Description |
-|--------|---------|-------------|
-| `Close()` | void | Close the file and release resources |
-| `Read(bytes, offset, count)` | Integer | Read up to count bytes into Bytes object at offset; returns bytes read |
-| `Write(bytes, offset, count)` | void | Write count bytes from Bytes object starting at offset |
-| `ReadByte()` | Integer | Read single byte (0-255) or -1 at EOF |
-| `WriteByte(value)` | void | Write single byte (0-255) |
-| `Seek(offset, origin)` | Integer | Seek to position; returns new position |
-| `Flush()` | void | Flush buffered writes to disk |
+| Method                        | Returns | Description                                                            |
+|-------------------------------|---------|------------------------------------------------------------------------|
+| `Close()`                     | void    | Close the file and release resources                                   |
+| `Read(bytes, offset, count)`  | Integer | Read up to count bytes into Bytes object at offset; returns bytes read |
+| `Write(bytes, offset, count)` | void    | Write count bytes from Bytes object starting at offset                 |
+| `ReadByte()`                  | Integer | Read single byte (0-255) or -1 at EOF                                  |
+| `WriteByte(value)`            | void    | Write single byte (0-255)                                              |
+| `Seek(offset, origin)`        | Integer | Seek to position; returns new position                                 |
+| `Flush()`                     | void    | Flush buffered writes to disk                                          |
 
 ### Seek Origins
 
-| Origin | Description |
-|--------|-------------|
-| `0` | From beginning of file (SEEK_SET) |
-| `1` | From current position (SEEK_CUR) |
-| `2` | From end of file (SEEK_END) |
+| Origin | Description                       |
+|--------|-----------------------------------|
+| `0`    | From beginning of file (SEEK_SET) |
+| `1`    | From current position (SEEK_CUR)  |
+| `2`    | From end of file (SEEK_END)       |
 
 ### Example
 
@@ -133,25 +133,26 @@ Cross-platform directory operations for creating, removing, listing, and navigat
 
 ### Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `Exists(path)` | `Boolean(String)` | Returns true if the directory exists |
-| `Make(path)` | `Void(String)` | Creates a single directory (parent must exist) |
-| `MakeAll(path)` | `Void(String)` | Creates a directory and all parent directories |
-| `Remove(path)` | `Void(String)` | Removes an empty directory |
-| `RemoveAll(path)` | `Void(String)` | Recursively removes a directory and all its contents |
-| `Entries(path)` | `Seq(String)` | Returns directory entries (files + subdirectories); traps if the directory does not exist |
-| `List(path)` | `Seq(String)` | Returns all entries in a directory (excluding `.` and `..`) |
-| `ListSeq(path)` | `Seq(String)` | Seq-returning alias of `List(path)` (same semantics) |
-| `Files(path)` | `Seq(String)` | Returns only files in a directory (no subdirectories) |
-| `FilesSeq(path)` | `Seq(String)` | Seq-returning alias of `Files(path)` (same semantics) |
-| `Dirs(path)` | `Seq(String)` | Returns only subdirectories in a directory |
-| `DirsSeq(path)` | `Seq(String)` | Seq-returning alias of `Dirs(path)` (same semantics) |
-| `Current()` | `String()` | Returns the current working directory |
-| `SetCurrent(path)` | `Void(String)` | Changes the current working directory |
-| `Move(src, dst)` | `Void(String, String)` | Moves/renames a directory |
+| Method             | Signature              | Description                                                                               |
+|--------------------|------------------------|-------------------------------------------------------------------------------------------|
+| `Exists(path)`     | `Boolean(String)`      | Returns true if the directory exists                                                      |
+| `Make(path)`       | `Void(String)`         | Creates a single directory (parent must exist)                                            |
+| `MakeAll(path)`    | `Void(String)`         | Creates a directory and all parent directories                                            |
+| `Remove(path)`     | `Void(String)`         | Removes an empty directory                                                                |
+| `RemoveAll(path)`  | `Void(String)`         | Recursively removes a directory and all its contents                                      |
+| `Entries(path)`    | `Seq(String)`          | Returns directory entries (files + subdirectories); traps if the directory does not exist |
+| `List(path)`       | `Seq(String)`          | Returns all entries in a directory (excluding `.` and `..`)                               |
+| `ListSeq(path)`    | `Seq(String)`          | Seq-returning alias of `List(path)` (same semantics)                                      |
+| `Files(path)`      | `Seq(String)`          | Returns only files in a directory (no subdirectories)                                     |
+| `FilesSeq(path)`   | `Seq(String)`          | Seq-returning alias of `Files(path)` (same semantics)                                     |
+| `Dirs(path)`       | `Seq(String)`          | Returns only subdirectories in a directory                                                |
+| `DirsSeq(path)`    | `Seq(String)`          | Seq-returning alias of `Dirs(path)` (same semantics)                                      |
+| `Current()`        | `String()`             | Returns the current working directory                                                     |
+| `SetCurrent(path)` | `Void(String)`         | Changes the current working directory                                                     |
+| `Move(src, dst)`   | `Void(String, String)` | Moves/renames a directory                                                                 |
 
-**Note:** `Entries()`, `List()`, `Files()`, and `Dirs()` return entry names (not full paths). Use `Viper.IO.Path.Join(dir, name)` to build full paths when needed.
+**Note:** `Entries()`, `List()`, `Files()`, and `Dirs()` return entry names (not full paths). Use
+`Viper.IO.Path.Join(dir, name)` to build full paths when needed.
 
 ### Example
 
@@ -211,6 +212,7 @@ Viper.IO.Dir.RemoveAll("/home/user/tempdir")
 ### Error Handling
 
 Directory operations trap on errors:
+
 - `Make()` traps if the parent directory doesn't exist or creation fails
 - `Remove()` traps if the directory is not empty or doesn't exist
 - `RemoveAll()` silently ignores non-existent directories
@@ -222,11 +224,11 @@ Use `Exists()` to check before performing operations that may fail.
 
 The three listing functions return `Seq` objects containing entry names (not full paths):
 
-| Function | Returns | Includes |
-|----------|---------|----------|
-| `List(path)` | All entries | Files and subdirectories |
-| `Files(path)` | Files only | Regular files, no directories |
-| `Dirs(path)` | Directories only | Subdirectories, no files |
+| Function      | Returns          | Includes                      |
+|---------------|------------------|-------------------------------|
+| `List(path)`  | All entries      | Files and subdirectories      |
+| `Files(path)` | Files only       | Regular files, no directories |
+| `Dirs(path)`  | Directories only | Subdirectories, no files      |
 
 The `ListSeq()`/`FilesSeq()`/`DirsSeq()` variants are equivalent Seq-returning aliases for these legacy `ptr(str)` APIs.
 Use the `*Seq` forms when a frontend or toolchain stage requires an object-typed `Seq` result explicitly.
@@ -237,7 +239,8 @@ names = Viper.IO.Dir.ListSeq("/home/user")
 PRINT names.Len
 ```
 
-All listing functions exclude `.` and `..` entries. If the directory doesn't exist or can't be read, an empty sequence is returned.
+All listing functions exclude `.` and `..` entries. If the directory doesn't exist or can't be read, an empty sequence
+is returned.
 
 ### Use Cases
 
@@ -257,31 +260,32 @@ File system operations.
 
 ### Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `Exists(path)` | `Boolean(String)` | Returns true if the file exists |
-| `ReadAllText(path)` | `String(String)` | Reads the entire file contents as a string |
-| `WriteAllText(path, content)` | `Void(String, String)` | Writes a string to a file (overwrites if exists) |
-| `Delete(path)` | `Void(String)` | Deletes a file |
-| `Copy(src, dst)` | `Void(String, String)` | Copies a file from src to dst |
-| `Move(src, dst)` | `Void(String, String)` | Moves/renames a file from src to dst |
-| `Size(path)` | `Integer(String)` | Returns file size in bytes, or -1 if not found |
-| `ReadBytes(path)` | `Bytes(String)` | Reads the entire file as binary data |
-| `WriteBytes(path, bytes)` | `Void(String, Bytes)` | Writes binary data to a file |
-| `ReadAllBytes(path)` | `Bytes(String)` | Reads the entire file as binary data (traps on I/O errors) |
-| `WriteAllBytes(path, bytes)` | `Void(String, Bytes)` | Writes binary data to a file (overwrites; traps on I/O errors) |
-| `ReadLines(path)` | `Seq(String)` | Reads the file as a sequence of lines |
-| `WriteLines(path, lines)` | `Void(String, Seq)` | Writes a sequence of strings as lines |
-| `Append(path, text)` | `Void(String, String)` | Appends text to a file |
-| `AppendLine(path, text)` | `Void(String, String)` | Appends text followed by `\n` to a file (creates if missing) |
-| `ReadAllLines(path)` | `Seq(String)` | Reads file as a sequence of lines; strips `\n` / `\r\n` terminators (traps on I/O errors) |
-| `Modified(path)` | `Integer(String)` | Returns file modification time as Unix timestamp |
-| `Touch(path)` | `Void(String)` | Creates file or updates its modification time |
+| Method                        | Signature              | Description                                                                               |
+|-------------------------------|------------------------|-------------------------------------------------------------------------------------------|
+| `Exists(path)`                | `Boolean(String)`      | Returns true if the file exists                                                           |
+| `ReadAllText(path)`           | `String(String)`       | Reads the entire file contents as a string                                                |
+| `WriteAllText(path, content)` | `Void(String, String)` | Writes a string to a file (overwrites if exists)                                          |
+| `Delete(path)`                | `Void(String)`         | Deletes a file                                                                            |
+| `Copy(src, dst)`              | `Void(String, String)` | Copies a file from src to dst                                                             |
+| `Move(src, dst)`              | `Void(String, String)` | Moves/renames a file from src to dst                                                      |
+| `Size(path)`                  | `Integer(String)`      | Returns file size in bytes, or -1 if not found                                            |
+| `ReadBytes(path)`             | `Bytes(String)`        | Reads the entire file as binary data                                                      |
+| `WriteBytes(path, bytes)`     | `Void(String, Bytes)`  | Writes binary data to a file                                                              |
+| `ReadAllBytes(path)`          | `Bytes(String)`        | Reads the entire file as binary data (traps on I/O errors)                                |
+| `WriteAllBytes(path, bytes)`  | `Void(String, Bytes)`  | Writes binary data to a file (overwrites; traps on I/O errors)                            |
+| `ReadLines(path)`             | `Seq(String)`          | Reads the file as a sequence of lines                                                     |
+| `WriteLines(path, lines)`     | `Void(String, Seq)`    | Writes a sequence of strings as lines                                                     |
+| `Append(path, text)`          | `Void(String, String)` | Appends text to a file                                                                    |
+| `AppendLine(path, text)`      | `Void(String, String)` | Appends text followed by `\n` to a file (creates if missing)                              |
+| `ReadAllLines(path)`          | `Seq(String)`          | Reads file as a sequence of lines; strips `\n` / `\r\n` terminators (traps on I/O errors) |
+| `Modified(path)`              | `Integer(String)`      | Returns file modification time as Unix timestamp                                          |
+| `Touch(path)`                 | `Void(String)`         | Creates file or updates its modification time                                             |
 
 ### Notes
 
 - `AppendLine` always appends a single `\n` byte (no platform newline normalization).
-- `ReadAllLines` splits on `\n` and `\r\n` and does not include line endings in returned strings; a trailing line ending does not add an extra empty final line.
+- `ReadAllLines` splits on `\n` and `\r\n` and does not include line endings in returned strings; a trailing line ending
+  does not add an extra empty final line.
 - `ReadAllBytes`, `WriteAllBytes`, and `ReadAllLines` trap (write a diagnostic to stderr and terminate) on I/O errors.
 
 ### Example
@@ -383,27 +387,27 @@ Line-by-line text file reader with support for multiple line ending conventions.
 
 LineReader automatically handles all common line ending formats:
 
-| Format | Characters | Description |
-|--------|------------|-------------|
-| LF | `\n` | Unix/Linux/macOS |
-| CR | `\r` | Classic Mac |
-| CRLF | `\r\n` | Windows |
+| Format | Characters | Description      |
+|--------|------------|------------------|
+| LF     | `\n`       | Unix/Linux/macOS |
+| CR     | `\r`       | Classic Mac      |
+| CRLF   | `\r\n`     | Windows          |
 
 ### Properties
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `Eof` | Boolean | True if at end of file (read-only) |
+| Property | Type    | Description                        |
+|----------|---------|------------------------------------|
+| `Eof`    | Boolean | True if at end of file (read-only) |
 
 ### Methods
 
-| Method | Returns | Description |
-|--------|---------|-------------|
-| `Close()` | void | Close the file and release resources |
-| `Read()` | String | Read one line (without newline); returns empty string at EOF |
-| `ReadChar()` | Integer | Read single character (0-255) or -1 at EOF |
-| `PeekChar()` | Integer | View next character without consuming (0-255 or -1) |
-| `ReadAll()` | String | Read all remaining content as a string |
+| Method       | Returns | Description                                                  |
+|--------------|---------|--------------------------------------------------------------|
+| `Close()`    | void    | Close the file and release resources                         |
+| `Read()`     | String  | Read one line (without newline); returns empty string at EOF |
+| `ReadChar()` | Integer | Read single character (0-255) or -1 at EOF                   |
+| `PeekChar()` | Integer | View next character without consuming (0-255 or -1)          |
+| `ReadAll()`  | String  | Read all remaining content as a string                       |
 
 ### Example
 
@@ -474,31 +478,32 @@ Buffered text file writer with configurable line endings.
 **Type:** Instance class
 
 **Constructors:**
+
 - `Viper.IO.LineWriter.Open(path)` - Create or overwrite file
 - `Viper.IO.LineWriter.Append(path)` - Open for appending
 
 ### Properties
 
-| Property | Type | Description |
-|----------|------|-------------|
+| Property  | Type   | Description                                           |
+|-----------|--------|-------------------------------------------------------|
 | `NewLine` | String | Line ending string (read/write, defaults to platform) |
 
 ### Methods
 
-| Method | Returns | Description |
-|--------|---------|-------------|
-| `Close()` | void | Close the file and release resources |
-| `Write(text)` | void | Write string without newline |
-| `WriteLn(text)` | void | Write string followed by newline |
-| `WriteChar(ch)` | void | Write single character (0-255) |
-| `Flush()` | void | Flush buffered output to disk |
+| Method          | Returns | Description                          |
+|-----------------|---------|--------------------------------------|
+| `Close()`       | void    | Close the file and release resources |
+| `Write(text)`   | void    | Write string without newline         |
+| `WriteLn(text)` | void    | Write string followed by newline     |
+| `WriteChar(ch)` | void    | Write single character (0-255)       |
+| `Flush()`       | void    | Flush buffered output to disk        |
 
 ### Platform Newlines
 
-| Platform | Default NewLine |
-|----------|-----------------|
-| Windows | `\r\n` (CRLF) |
-| Unix/Linux/macOS | `\n` (LF) |
+| Platform         | Default NewLine |
+|------------------|-----------------|
+| Windows          | `\r\n` (CRLF)   |
+| Unix/Linux/macOS | `\n` (LF)       |
 
 ### Example
 
@@ -561,18 +566,18 @@ Cross-platform path manipulation utilities. All functions work with both Unix (`
 
 ### Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `Join(a, b)` | `String(String, String)` | Joins two path components with the platform separator |
-| `Dir(path)` | `String(String)` | Returns the directory portion of a path |
-| `Name(path)` | `String(String)` | Returns the filename portion of a path |
-| `Stem(path)` | `String(String)` | Returns the filename without extension |
-| `Ext(path)` | `String(String)` | Returns the file extension (including the dot) |
-| `WithExt(path, ext)` | `String(String, String)` | Replaces the extension of a path |
-| `IsAbs(path)` | `Boolean(String)` | Returns true if the path is absolute |
-| `Abs(path)` | `String(String)` | Converts a relative path to absolute |
-| `Norm(path)` | `String(String)` | Normalizes a path (removes `.`, `..`, duplicate separators) |
-| `Sep()` | `String()` | Returns the platform-specific path separator |
+| Method               | Signature                | Description                                                 |
+|----------------------|--------------------------|-------------------------------------------------------------|
+| `Join(a, b)`         | `String(String, String)` | Joins two path components with the platform separator       |
+| `Dir(path)`          | `String(String)`         | Returns the directory portion of a path                     |
+| `Name(path)`         | `String(String)`         | Returns the filename portion of a path                      |
+| `Stem(path)`         | `String(String)`         | Returns the filename without extension                      |
+| `Ext(path)`          | `String(String)`         | Returns the file extension (including the dot)              |
+| `WithExt(path, ext)` | `String(String, String)` | Replaces the extension of a path                            |
+| `IsAbs(path)`        | `Boolean(String)`        | Returns true if the path is absolute                        |
+| `Abs(path)`          | `String(String)`         | Converts a relative path to absolute                        |
+| `Norm(path)`         | `String(String)`         | Normalizes a path (removes `.`, `..`, duplicate separators) |
+| `Sep()`              | `String()`               | Returns the platform-specific path separator                |
 
 ### Example
 
@@ -611,6 +616,7 @@ PRINT Viper.IO.Path.Sep()  ' Output: "/" on Unix, "\" on Windows
 ### Path Normalization
 
 The `Norm()` function performs the following transformations:
+
 - Removes redundant separators (`//` becomes `/`)
 - Resolves `.` components (current directory)
 - Resolves `..` components (parent directory) where possible
@@ -619,11 +625,11 @@ The `Norm()` function performs the following transformations:
 
 ### Platform Differences
 
-| Behavior | Unix | Windows |
-|----------|------|---------|
-| Path separator | `/` | `\` |
+| Behavior                | Unix            | Windows                   |
+|-------------------------|-----------------|---------------------------|
+| Path separator          | `/`             | `\`                       |
 | Absolute path detection | Starts with `/` | Starts with `C:\` or `\\` |
-| Example absolute path | `/home/user` | `C:\Users\user` |
+| Example absolute path   | `/home/user`    | `C:\Users\user`           |
 
 ### Use Cases
 

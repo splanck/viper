@@ -18,16 +18,16 @@ Cryptographic hash functions and checksums for strings and binary data.
 
 ### Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `CRC32(str)` | `Integer(String)` | Compute CRC32 checksum of a string |
-| `CRC32Bytes(bytes)` | `Integer(Bytes)` | Compute CRC32 checksum of a Bytes object |
-| `MD5(str)` | `String(String)` | Compute MD5 hash of a string |
-| `MD5Bytes(bytes)` | `String(Bytes)` | Compute MD5 hash of a Bytes object |
-| `SHA1(str)` | `String(String)` | Compute SHA1 hash of a string |
-| `SHA1Bytes(bytes)` | `String(Bytes)` | Compute SHA1 hash of a Bytes object |
-| `SHA256(str)` | `String(String)` | Compute SHA256 hash of a string |
-| `SHA256Bytes(bytes)` | `String(Bytes)` | Compute SHA256 hash of a Bytes object |
+| Method               | Signature         | Description                              |
+|----------------------|-------------------|------------------------------------------|
+| `CRC32(str)`         | `Integer(String)` | Compute CRC32 checksum of a string       |
+| `CRC32Bytes(bytes)`  | `Integer(Bytes)`  | Compute CRC32 checksum of a Bytes object |
+| `MD5(str)`           | `String(String)`  | Compute MD5 hash of a string             |
+| `MD5Bytes(bytes)`    | `String(Bytes)`   | Compute MD5 hash of a Bytes object       |
+| `SHA1(str)`          | `String(String)`  | Compute SHA1 hash of a string            |
+| `SHA1Bytes(bytes)`   | `String(Bytes)`   | Compute SHA1 hash of a Bytes object      |
+| `SHA256(str)`        | `String(String)`  | Compute SHA256 hash of a string          |
+| `SHA256Bytes(bytes)` | `String(Bytes)`   | Compute SHA256 hash of a Bytes object    |
 
 ### Notes
 
@@ -36,7 +36,9 @@ Cryptographic hash functions and checksums for strings and binary data.
 - MD5 returns a 32-character hex string
 - SHA1 returns a 40-character hex string
 - SHA256 returns a 64-character hex string
-- **Security Warning:** MD5 and SHA1 are cryptographically broken and should NOT be used for security-sensitive applications. Use SHA256 or better for security purposes. These are provided for checksums, fingerprinting, and legacy compatibility.
+- **Security Warning:** MD5 and SHA1 are cryptographically broken and should NOT be used for security-sensitive
+  applications. Use SHA256 or better for security purposes. These are provided for checksums, fingerprinting, and legacy
+  compatibility.
 
 ### Example
 

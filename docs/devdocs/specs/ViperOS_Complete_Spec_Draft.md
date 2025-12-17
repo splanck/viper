@@ -1,4 +1,5 @@
 # ViperOS — Technical Specification v1.2
+
 ## Complete Implementation-Ready Specification
 
 **Version:** 1.2  
@@ -11,56 +12,56 @@
 
 ### Part I: Core Architecture
 
-| # | Section | Description |
-|---|---------|-------------|
-| 1 | [Overview](#1-overview) | What ViperOS is, target platforms, goals |
-| 2 | [Design Principles](#2-design-principles) | Viper-native, capability-based, async-first |
-| 3 | [Boot Architecture](#3-boot-architecture) | UEFI boot, vboot, VBootInfo structure |
-| 4 | [Graphics Console](#4-graphics-console) | Framebuffer text, colors, splash, panic |
-| 5 | [Memory Architecture](#5-memory-architecture) | Virtual layout, KHeap/LHeap, handles |
-| 6 | [Kernel Type Awareness](#6-kernel-type-awareness) | Built-in kinds, shallow typing |
-| 7 | [Process Model](#7-process-model) | Vipers, Tasks, structured concurrency |
-| 8 | [Syscall Semantics](#8-syscall-semantics) | Non-blocking rule, error codes, ABI |
-| 9 | [Capability System](#9-capability-system) | Rights, derivation, transfer |
+| # | Section                                           | Description                                 |
+|---|---------------------------------------------------|---------------------------------------------|
+| 1 | [Overview](#1-overview)                           | What ViperOS is, target platforms, goals    |
+| 2 | [Design Principles](#2-design-principles)         | Viper-native, capability-based, async-first |
+| 3 | [Boot Architecture](#3-boot-architecture)         | UEFI boot, vboot, VBootInfo structure       |
+| 4 | [Graphics Console](#4-graphics-console)           | Framebuffer text, colors, splash, panic     |
+| 5 | [Memory Architecture](#5-memory-architecture)     | Virtual layout, KHeap/LHeap, handles        |
+| 6 | [Kernel Type Awareness](#6-kernel-type-awareness) | Built-in kinds, shallow typing              |
+| 7 | [Process Model](#7-process-model)                 | Vipers, Tasks, structured concurrency       |
+| 8 | [Syscall Semantics](#8-syscall-semantics)         | Non-blocking rule, error codes, ABI         |
+| 9 | [Capability System](#9-capability-system)         | Rights, derivation, transfer                |
 
 ### Part II: Subsystems
 
-| # | Section | Description |
-|---|---------|-------------|
-| 10 | [IPC: Channels](#10-ipc-channels) | Message passing, non-blocking send/recv |
-| 11 | [Async I/O & Polling](#11-async-io--polling) | PollWait, VPollEvent, poll flags |
-| 12 | [ViperFS](#12-viperfs) | Capability-based filesystem |
-| 13 | [Graphics](#13-graphics) | Framebuffer, surfaces |
-| 14 | [Input](#14-input) | Keyboard, mouse polling |
-| 15 | [Bootstrap & Drivers](#15-bootstrap--drivers) | Driver model, vinit |
-| 16 | [Hardware Abstraction Layer](#16-hardware-abstraction-layer) | Arch and platform interfaces |
+| #  | Section                                                      | Description                             |
+|----|--------------------------------------------------------------|-----------------------------------------|
+| 10 | [IPC: Channels](#10-ipc-channels)                            | Message passing, non-blocking send/recv |
+| 11 | [Async I/O & Polling](#11-async-io--polling)                 | PollWait, VPollEvent, poll flags        |
+| 12 | [ViperFS](#12-viperfs)                                       | Capability-based filesystem             |
+| 13 | [Graphics](#13-graphics)                                     | Framebuffer, surfaces                   |
+| 14 | [Input](#14-input)                                           | Keyboard, mouse polling                 |
+| 15 | [Bootstrap & Drivers](#15-bootstrap--drivers)                | Driver model, vinit                     |
+| 16 | [Hardware Abstraction Layer](#16-hardware-abstraction-layer) | Arch and platform interfaces            |
 
 ### Part III: User Space
 
-| # | Section | Description |
-|---|---------|-------------|
-| 17 | [Installed System](#17-installed-system) | Complete file listing for fresh install |
-| 18 | [Directory Layout](#18-directory-layout) | Filesystem hierarchy, drive naming |
-| 19 | [Standard Library](#19-standard-library) | Viper.* namespace hierarchy |
-| 20 | [Core Utilities](#20-core-utilities) | Programs that ship with ViperOS |
-| 21 | [Shell (vsh)](#21-shell-vsh) | Command shell, prompt, syntax |
-| 22 | [Configuration Format](#22-configuration-format) | ViperConfig (.vcfg) syntax |
-| 23 | [File Formats](#23-file-formats) | .vpr, .vlib, .vfont, .vcfg |
+| #  | Section                                          | Description                             |
+|----|--------------------------------------------------|-----------------------------------------|
+| 17 | [Installed System](#17-installed-system)         | Complete file listing for fresh install |
+| 18 | [Directory Layout](#18-directory-layout)         | Filesystem hierarchy, drive naming      |
+| 19 | [Standard Library](#19-standard-library)         | Viper.* namespace hierarchy             |
+| 20 | [Core Utilities](#20-core-utilities)             | Programs that ship with ViperOS         |
+| 21 | [Shell (vsh)](#21-shell-vsh)                     | Command shell, prompt, syntax           |
+| 22 | [Configuration Format](#22-configuration-format) | ViperConfig (.vcfg) syntax              |
+| 23 | [File Formats](#23-file-formats)                 | .vpr, .vlib, .vfont, .vcfg              |
 
 ### Part IV: Development
 
-| # | Section | Description |
-|---|---------|-------------|
-| 24 | [Syscall Reference](#24-syscall-reference) | Complete syscall table |
-| 25 | [Testing Infrastructure](#25-testing-infrastructure) | QEMU modes, test scripts |
-| 26 | [Development Phases](#26-development-phases) | 6-phase roadmap |
-| 27 | [Design Decisions Summary](#27-design-decisions-summary) | Quick reference table |
+| #  | Section                                                  | Description              |
+|----|----------------------------------------------------------|--------------------------|
+| 24 | [Syscall Reference](#24-syscall-reference)               | Complete syscall table   |
+| 25 | [Testing Infrastructure](#25-testing-infrastructure)     | QEMU modes, test scripts |
+| 26 | [Development Phases](#26-development-phases)             | 6-phase roadmap          |
+| 27 | [Design Decisions Summary](#27-design-decisions-summary) | Quick reference table    |
 
 ### Appendices
 
-| # | Section | Description |
-|---|---------|-------------|
-| A | [Color Reference](#appendix-a-color-reference) | ViperOS color palette |
+| # | Section                                        | Description                     |
+|---|------------------------------------------------|---------------------------------|
+| A | [Color Reference](#appendix-a-color-reference) | ViperOS color palette           |
 | B | [Quick Reference](#appendix-b-quick-reference) | Syscalls, directories, commands |
 
 ---
@@ -73,7 +74,9 @@
 
 ### 1.1 What is ViperOS?
 
-ViperOS is a custom operating system designed from scratch to natively host the Viper Platform. Unlike traditional operating systems that treat applications as opaque binaries, ViperOS understands Viper IL as its native execution format.
+ViperOS is a custom operating system designed from scratch to natively host the Viper Platform. Unlike traditional
+operating systems that treat applications as opaque binaries, ViperOS understands Viper IL as its native execution
+format.
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
@@ -106,7 +109,8 @@ ViperOS is a custom operating system designed from scratch to natively host the 
 
 ### 2.1 Viper-Native
 
-Viper IL is the syscall boundary. Applications don't link against libc; they call kernel services directly through the `VCALL` IL primitive.
+Viper IL is the syscall boundary. Applications don't link against libc; they call kernel services directly through the
+`VCALL` IL primitive.
 
 ### 2.2 Capability-Based Security
 
@@ -118,7 +122,8 @@ No blocking syscalls except `PollWait`. Operations either complete immediately o
 
 ### 2.4 Microkernel Architecture
 
-The kernel is small (<50,000 lines target). It handles scheduling, memory, IPC, capabilities, and HAL. Everything else runs in user space.
+The kernel is small (<50,000 lines target). It handles scheduling, memory, IPC, capabilities, and HAL. Everything else
+runs in user space.
 
 ### 2.5 Shallow Type Awareness
 
@@ -126,7 +131,8 @@ The kernel understands a fixed set of ~8 built-in Viper types. User-defined type
 
 ### 2.6 Graphics-First
 
-ViperOS boots directly into graphics mode. The console is graphical from the first moment. Serial output is for debugging only.
+ViperOS boots directly into graphics mode. The console is graphical from the first moment. Serial output is for
+debugging only.
 
 ---
 
@@ -152,6 +158,7 @@ ViperOS boots directly into graphics mode. The console is graphical from the fir
 ### 3.2 Bootloader (vboot)
 
 vboot is a UEFI application that:
+
 1. Loads kernel ELF from ESP
 2. Obtains memory map and framebuffer from UEFI
 3. Sets up initial page tables
@@ -254,7 +261,8 @@ typedef struct {
 
 ### 4.1 Overview
 
-ViperOS boots directly into graphics mode. The graphical console provides text output from the earliest moments of boot. Serial output is maintained in parallel for debugging.
+ViperOS boots directly into graphics mode. The graphical console provides text output from the earliest moments of boot.
+Serial output is maintained in parallel for debugging.
 
 ### 4.2 Color Scheme
 
@@ -328,6 +336,7 @@ void gcon_hide_splash(void);
 ### 4.6 Dual Output
 
 During boot and for debugging, output goes to both:
+
 - Graphics console (user-visible)
 - Serial port (development/logging)
 
@@ -645,48 +654,48 @@ SYS:                                    # Boot device (D0:\)
 
 ViperOS uses Amiga-style logical device names that map to physical paths:
 
-| Device | Points To | Purpose |
-|--------|-----------|---------|
-| `SYS:` | D0:\ | Boot device root |
-| `C:` | SYS:c | Commands |
-| `S:` | SYS:s | Startup scripts |
-| `L:` | SYS:l | Handlers/devices |
-| `LIBS:` | SYS:libs | Viper libraries |
-| `FONTS:` | SYS:fonts | System fonts |
-| `PREFS:` | SYS:prefs | Preferences |
-| `T:` | SYS:t | Temporary files |
-| `HOME:` | SYS:home\default | User home |
-| `RAM:` | (memory) | RAM disk |
-| `D0:` | (physical) | First disk |
-| `D1:` | (physical) | Second disk |
+| Device   | Points To        | Purpose          |
+|----------|------------------|------------------|
+| `SYS:`   | D0:\             | Boot device root |
+| `C:`     | SYS:c            | Commands         |
+| `S:`     | SYS:s            | Startup scripts  |
+| `L:`     | SYS:l            | Handlers/devices |
+| `LIBS:`  | SYS:libs         | Viper libraries  |
+| `FONTS:` | SYS:fonts        | System fonts     |
+| `PREFS:` | SYS:prefs        | Preferences      |
+| `T:`     | SYS:t            | Temporary files  |
+| `HOME:`  | SYS:home\default | User home        |
+| `RAM:`   | (memory)         | RAM disk         |
+| `D0:`    | (physical)       | First disk       |
+| `D1:`    | (physical)       | Second disk      |
 
 Users can create additional assigns with the `Assign` command.
 
 ### 17.3 File Count Summary
 
-| Directory | Files | Purpose |
-|-----------|-------|---------|
-| `SYS:` | 1 | Kernel |
-| `SYS:libs` | 11 | Standard libraries |
-| `SYS:c` | 29 | Commands |
-| `SYS:s` | 2 | Startup scripts |
-| `SYS:prefs` | 1 | Configuration |
-| `SYS:fonts` | 1 | Console font |
-| `SYS:viper` | 3 | System services |
-| `HOME:` | 1 | User shell config |
-| **Total** | **49 files** | |
+| Directory   | Files        | Purpose            |
+|-------------|--------------|--------------------|
+| `SYS:`      | 1            | Kernel             |
+| `SYS:libs`  | 11           | Standard libraries |
+| `SYS:c`     | 29           | Commands           |
+| `SYS:s`     | 2            | Startup scripts    |
+| `SYS:prefs` | 1            | Configuration      |
+| `SYS:fonts` | 1            | Console font       |
+| `SYS:viper` | 3            | System services    |
+| `HOME:`     | 1            | User shell config  |
+| **Total**   | **49 files** |                    |
 
 ### 17.4 Disk Space (Estimated)
 
-| Component | Size |
-|-----------|------|
-| Kernel | ~200 KB |
-| System services | ~50 KB |
-| Standard libraries | ~300 KB |
-| Commands | ~200 KB |
-| Fonts | ~4 KB |
-| Config/scripts | ~5 KB |
-| **Total** | **~760 KB** |
+| Component          | Size        |
+|--------------------|-------------|
+| Kernel             | ~200 KB     |
+| System services    | ~50 KB      |
+| Standard libraries | ~300 KB     |
+| Commands           | ~200 KB     |
+| Fonts              | ~4 KB       |
+| Config/scripts     | ~5 KB       |
+| **Total**          | **~760 KB** |
 
 Minimum disk requirement: 2 MB (with room for logs and user files).
 
@@ -709,50 +718,51 @@ ESP (FAT32, ~64 MB)
 
 ### 18.1 Device-Oriented Hierarchy
 
-ViperOS uses Amiga-style logical devices rather than a single rooted tree. Every path begins with a device name followed by a colon.
+ViperOS uses Amiga-style logical devices rather than a single rooted tree. Every path begins with a device name followed
+by a colon.
 
-| Device | Purpose | Writable |
-|--------|---------|----------|
-| `SYS:` | Boot device root | Partially |
-| `SYS:c` | System commands | No |
-| `SYS:s` | Startup scripts | No |
-| `SYS:l` | Handlers/devices | No |
-| `SYS:libs` | Viper libraries | No |
-| `SYS:fonts` | System fonts | No |
-| `SYS:prefs` | Preferences | Yes |
-| `SYS:viper` | System services | No |
-| `SYS:t` | Temporary files | Yes |
-| `SYS:home` | User directories | Yes |
-| `HOME:` | Current user home | Yes |
-| `T:` | Temp (alias for SYS:t) | Yes |
-| `RAM:` | RAM disk | Yes |
+| Device      | Purpose                | Writable  |
+|-------------|------------------------|-----------|
+| `SYS:`      | Boot device root       | Partially |
+| `SYS:c`     | System commands        | No        |
+| `SYS:s`     | Startup scripts        | No        |
+| `SYS:l`     | Handlers/devices       | No        |
+| `SYS:libs`  | Viper libraries        | No        |
+| `SYS:fonts` | System fonts           | No        |
+| `SYS:prefs` | Preferences            | Yes       |
+| `SYS:viper` | System services        | No        |
+| `SYS:t`     | Temporary files        | Yes       |
+| `SYS:home`  | User directories       | Yes       |
+| `HOME:`     | Current user home      | Yes       |
+| `T:`        | Temp (alias for SYS:t) | Yes       |
+| `RAM:`      | RAM disk               | Yes       |
 
 ### 18.2 Physical vs Logical Devices
 
 **Physical devices** map directly to hardware:
 
-| Device | Description |
-|--------|-------------|
-| `D0:` | First disk (boot disk) |
-| `D1:` | Second disk |
-| `D2:` | Third disk |
-| `SER:` | Serial port |
-| `CON:` | Console |
+| Device | Description            |
+|--------|------------------------|
+| `D0:`  | First disk (boot disk) |
+| `D1:`  | Second disk            |
+| `D2:`  | Third disk             |
+| `SER:` | Serial port            |
+| `CON:` | Console                |
 
 **Logical devices** are assigns that point to paths:
 
-| Device | Default Assignment |
-|--------|-------------------|
-| `SYS:` | D0:\ |
-| `C:` | SYS:c |
-| `S:` | SYS:s |
-| `L:` | SYS:l |
-| `LIBS:` | SYS:libs |
-| `FONTS:` | SYS:fonts |
-| `PREFS:` | SYS:prefs |
-| `T:` | SYS:t |
-| `HOME:` | SYS:home\default |
-| `RAM:` | (built-in RAM disk) |
+| Device   | Default Assignment  |
+|----------|---------------------|
+| `SYS:`   | D0:\                |
+| `C:`     | SYS:c               |
+| `S:`     | SYS:s               |
+| `L:`     | SYS:l               |
+| `LIBS:`  | SYS:libs            |
+| `FONTS:` | SYS:fonts           |
+| `PREFS:` | SYS:prefs           |
+| `T:`     | SYS:t               |
+| `HOME:`  | SYS:home\default    |
+| `RAM:`   | (built-in RAM disk) |
 
 ### 18.3 The Assign Command
 
@@ -789,12 +799,12 @@ When a command is entered without a path:
 
 ### 18.6 Special Directories
 
-| Directory | Purpose |
-|-----------|---------|
-| `S:` | Startup scripts (startup-sequence) |
-| `L:` | Device handlers and libraries |
-| `T:` | Temporary files (cleared on boot) |
-| `RAM:` | Fast temporary storage (lost on reboot) |
+| Directory | Purpose                                 |
+|-----------|-----------------------------------------|
+| `S:`      | Startup scripts (startup-sequence)      |
+| `L:`      | Device handlers and libraries           |
+| `T:`      | Temporary files (cleared on boot)       |
+| `RAM:`    | Fast temporary storage (lost on reboot) |
 
 ---
 
@@ -1018,94 +1028,94 @@ These are the 29 commands that ship in `C:` (SYS:c) with every ViperOS installat
 
 ### 20.1 File Commands
 
-| Command | Synopsis | Description |
-|---------|----------|-------------|
-| `Dir` | `dir [path]` | Brief directory listing |
-| `List` | `list [path]` | Detailed listing with sizes and dates |
-| `Type` | `type file` | Display file contents |
-| `Copy` | `copy from to [all]` | Copy files |
-| `Delete` | `delete file [file...]` | Delete files |
-| `Rename` | `rename old new` | Rename or move file |
-| `MakeDir` | `makedir name` | Create directory |
-| `Protect` | `protect file [flags]` | Set file protection flags |
+| Command   | Synopsis                | Description                           |
+|-----------|-------------------------|---------------------------------------|
+| `Dir`     | `dir [path]`            | Brief directory listing               |
+| `List`    | `list [path]`           | Detailed listing with sizes and dates |
+| `Type`    | `type file`             | Display file contents                 |
+| `Copy`    | `copy from to [all]`    | Copy files                            |
+| `Delete`  | `delete file [file...]` | Delete files                          |
+| `Rename`  | `rename old new`        | Rename or move file                   |
+| `MakeDir` | `makedir name`          | Create directory                      |
+| `Protect` | `protect file [flags]`  | Set file protection flags             |
 
 ### 20.2 Information Commands
 
-| Command | Synopsis | Description |
-|---------|----------|-------------|
-| `Info` | `info [device]` | Show device/disk information |
-| `Avail` | `avail [chip|fast|total]` | Show memory available |
-| `Status` | `status [task]` | Show running tasks |
-| `Version` | `version` | Show ViperOS version |
+| Command   | Synopsis        | Description                  |
+|-----------|-----------------|------------------------------|
+| `Info`    | `info [device]` | Show device/disk information |
+| `Avail`   | `avail [chip    | fast                         |total]` | Show memory available |
+| `Status`  | `status [task]` | Show running tasks           |
+| `Version` | `version`       | Show ViperOS version         |
 
 ### 20.3 Text Commands
 
-| Command | Synopsis | Description |
-|---------|----------|-------------|
-| `Echo` | `echo [text]` | Print text to output |
-| `Ask` | `ask prompt` | Prompt user for yes/no |
+| Command  | Synopsis              | Description              |
+|----------|-----------------------|--------------------------|
+| `Echo`   | `echo [text]`         | Print text to output     |
+| `Ask`    | `ask prompt`          | Prompt user for yes/no   |
 | `Search` | `search pattern file` | Search for text in files |
-| `Sort` | `sort [from] [to]` | Sort lines |
+| `Sort`   | `sort [from] [to]`    | Sort lines               |
 
 ### 20.4 Device & Path Commands
 
-| Command | Synopsis | Description |
-|---------|----------|-------------|
+| Command  | Synopsis                | Description                        |
+|----------|-------------------------|------------------------------------|
 | `Assign` | `assign [name: [path]]` | Create/list/remove logical devices |
-| `Path` | `path [dir] [add|remove]` | Show or modify command path |
-| `Cd` | `cd path` | Change current directory |
+| `Path`   | `path [dir] [add        | remove]`                           | Show or modify command path |
+| `Cd`     | `cd path`               | Change current directory           |
 
 ### 20.5 Execution Commands
 
-| Command | Synopsis | Description |
-|---------|----------|-------------|
-| `Run` | `run command` | Run command in background |
-| `Execute` | `execute script` | Run script file |
-| `Wait` | `wait [secs]` | Wait for time or background task |
-| `Break` | `break [task]` | Send break signal to task |
+| Command   | Synopsis         | Description                      |
+|-----------|------------------|----------------------------------|
+| `Run`     | `run command`    | Run command in background        |
+| `Execute` | `execute script` | Run script file                  |
+| `Wait`    | `wait [secs]`    | Wait for time or background task |
+| `Break`   | `break [task]`   | Send break signal to task        |
 
 ### 20.6 Shell Commands
 
-| Command | Synopsis | Description |
-|---------|----------|-------------|
-| `Cls` | `cls` | Clear screen |
+| Command    | Synopsis          | Description           |
+|------------|-------------------|-----------------------|
+| `Cls`      | `cls`             | Clear screen          |
 | `NewShell` | `newshell [con:]` | Open new shell window |
-| `EndShell` | `endshell` | Close current shell |
+| `EndShell` | `endshell`        | Close current shell   |
 
 ### 20.7 System Commands
 
-| Command | Synopsis | Description |
-|---------|----------|-------------|
-| `Date` | `date [date]` | Show or set system date |
-| `Time` | `time [time]` | Show or set system time |
-| `Shutdown` | `shutdown` | Shut down system |
-| `Reboot` | `reboot` | Restart system |
+| Command    | Synopsis      | Description             |
+|------------|---------------|-------------------------|
+| `Date`     | `date [date]` | Show or set system date |
+| `Time`     | `time [time]` | Show or set system time |
+| `Shutdown` | `shutdown`    | Shut down system        |
+| `Reboot`   | `reboot`      | Restart system          |
 
 ### 20.8 Return Codes
 
 All commands return standard codes (accessible via `$RC` variable):
 
-| Code | Meaning |
-|------|---------|
-| 0 | OK (success) |
-| 5 | WARN (warning, non-fatal) |
-| 10 | ERROR (operation failed) |
-| 20 | FAIL (complete failure) |
+| Code | Meaning                   |
+|------|---------------------------|
+| 0    | OK (success)              |
+| 5    | WARN (warning, non-fatal) |
+| 10   | ERROR (operation failed)  |
+| 20   | FAIL (complete failure)   |
 
 ### 20.9 File Protection Flags
 
 The `Protect` command sets Amiga-style flags:
 
-| Flag | Meaning |
-|------|---------|
-| `r` | Readable |
-| `w` | Writable |
-| `e` | Executable |
-| `d` | Deletable |
-| `s` | Script (execute with shell) |
-| `p` | Pure (reentrant, can be made resident) |
-| `a` | Archived (backed up) |
-| `h` | Hidden |
+| Flag | Meaning                                |
+|------|----------------------------------------|
+| `r`  | Readable                               |
+| `w`  | Writable                               |
+| `e`  | Executable                             |
+| `d`  | Deletable                              |
+| `s`  | Script (execute with shell)            |
+| `p`  | Pure (reentrant, can be made resident) |
+| `a`  | Archived (backed up)                   |
+| `h`  | Hidden                                 |
 
 Example: `protect myfile.vpr +e-d` (add execute, remove delete)
 
@@ -1202,29 +1212,29 @@ The prompt can be customized via the `PROMPT` environment variable.
 
 These commands are built into the shell (not external programs):
 
-| Command | Description |
-|---------|-------------|
-| `Cd` | Change current directory |
-| `Set` | Set local environment variable |
-| `Unset` | Remove environment variable |
-| `Alias` | Create command alias |
-| `Unalias` | Remove alias |
-| `History` | Show command history |
-| `If/Else/EndIf` | Conditional execution |
-| `Skip` | Skip to label |
-| `Lab` | Define label |
-| `Quit` | Exit shell with return code |
-| `Why` | Show why last command failed |
-| `Resident` | Make command memory-resident |
+| Command         | Description                    |
+|-----------------|--------------------------------|
+| `Cd`            | Change current directory       |
+| `Set`           | Set local environment variable |
+| `Unset`         | Remove environment variable    |
+| `Alias`         | Create command alias           |
+| `Unalias`       | Remove alias                   |
+| `History`       | Show command history           |
+| `If/Else/EndIf` | Conditional execution          |
+| `Skip`          | Skip to label                  |
+| `Lab`           | Define label                   |
+| `Quit`          | Exit shell with return code    |
+| `Why`           | Show why last command failed   |
+| `Resident`      | Make command memory-resident   |
 
 ### 21.3 Environment Variables
 
-| Variable | Purpose |
-|----------|---------|
-| `$RC` | Return code of last command |
-| `$Result` | Result string of last command |
-| `$Process` | Current process number |
-| `$Prompt` | Shell prompt format |
+| Variable   | Purpose                       |
+|------------|-------------------------------|
+| `$RC`      | Return code of last command   |
+| `$Result`  | Result string of last command |
+| `$Process` | Current process number        |
+| `$Prompt`  | Shell prompt format           |
 
 ### 21.4 Script Syntax
 
@@ -1289,10 +1299,11 @@ List | Search ".vpr"
 On boot, the shell executes:
 
 1. `S:startup-sequence` (system startup)
-2. `S:shell-startup` (shell initialization)  
+2. `S:shell-startup` (shell initialization)
 3. `S:user-startup` (user customization, if exists)
 
 Example `S:startup-sequence`:
+
 ```
 ; ViperOS Startup Sequence
 Echo "ViperOS starting..."
@@ -1316,24 +1327,24 @@ Echo "Welcome to ViperOS!"
 
 The shell uses the standard ViperOS color scheme:
 
-| Element | Color |
-|---------|-------|
-| Prompt | Viper green (#00AA44) |
-| Normal text | Viper green |
-| Errors | Red (#CC3333) |
-| Directories (List) | White (#EEEEEE) |
-| Executables (List) | Bright green |
-| Protected files | Dim green (#006633) |
+| Element            | Color                 |
+|--------------------|-----------------------|
+| Prompt             | Viper green (#00AA44) |
+| Normal text        | Viper green           |
+| Errors             | Red (#CC3333)         |
+| Directories (List) | White (#EEEEEE)       |
+| Executables (List) | Bright green          |
+| Protected files    | Dim green (#006633)   |
 
 ### 21.8 Key Bindings
 
-| Key | Action |
-|-----|--------|
-| ↑/↓ | History navigation |
-| Tab | Command/path completion |
+| Key    | Action                     |
+|--------|----------------------------|
+| ↑/↓    | History navigation         |
+| Tab    | Command/path completion    |
 | Ctrl+C | Send break to current task |
-| Ctrl+D | End of input (EOF) |
-| Ctrl+\ | Quit shell |
+| Ctrl+D | End of input (EOF)         |
+| Ctrl+\ | Quit shell                 |
 
 ---
 
@@ -1650,6 +1661,7 @@ ViperOS can run in QEMU in two modes:
 ```
 
 Opens QEMU with:
+
 - SDL/GTK window showing ViperOS display
 - Serial output mirrored to terminal
 - Interactive keyboard/mouse input
@@ -1662,6 +1674,7 @@ Opens QEMU with:
 ```
 
 Opens QEMU with:
+
 - No display window (`-display none`)
 - Serial output to stdout
 - VNC available for debugging (`-vnc :0`)
@@ -1850,6 +1863,7 @@ gdb build/kernel/kernel.elf
 **Goal:** Boot to graphical console with ViperOS logo.
 
 Deliverables:
+
 - vboot bootloader
 - Kernel boots on QEMU
 - Graphics console (8x16 font)
@@ -1864,6 +1878,7 @@ Deliverables:
 **Goal:** Multiple tasks, IPC.
 
 Deliverables:
+
 - Task struct, scheduler
 - Context switching
 - Channels
@@ -1877,6 +1892,7 @@ Deliverables:
 **Goal:** First user-space Viper.
 
 Deliverables:
+
 - Per-Viper address spaces
 - Capability tables
 - KHeap syscalls
@@ -1890,6 +1906,7 @@ Deliverables:
 **Goal:** Boot from disk, interactive shell.
 
 Deliverables:
+
 - ViperFS implementation
 - vinit, vsh from disk
 - AmigaDOS-style commands (Dir, List, Copy, etc.)
@@ -1903,6 +1920,7 @@ Deliverables:
 **Goal:** Usable interactive system.
 
 Deliverables:
+
 - Keyboard driver
 - Line editing in shell
 - Command history
@@ -1916,6 +1934,7 @@ Deliverables:
 **Goal:** Network connectivity.
 
 Deliverables:
+
 - virtio-net driver
 - TCP/IP stack
 - DNS client
@@ -1928,43 +1947,43 @@ Deliverables:
 
 ## 27. Design Decisions Summary
 
-| Question | Decision |
-|----------|----------|
-| Heritage | **Amiga-inspired** (not UNIX, not DOS) |
-| Boot display | Graphics-first (framebuffer console) |
-| Boot splash | Simple ViperOS logo |
-| Console colors | Green on dark brown |
-| Panic colors | Yellow on green |
-| Shell prompt | `SYS:>` (Amiga-style device:path) |
-| Device naming | Logical assigns (SYS:, HOME:, C:, etc.) |
-| Physical drives | D0:, D1:, D2:, ... |
-| Path separator | Backslash `\` |
-| Commands directory | `C:` (SYS:c) |
-| Startup scripts | `S:` (SYS:s) |
-| Config format | ViperConfig (.vcfg) - custom |
-| Font (v0) | Topaz - baked-in 8x16 bitmap |
-| Testing | QEMU graphical + headless |
-| Boot protocol | Custom vboot + VBootInfo |
-| Kernel type awareness | Shallow (8 kinds) |
-| Tasks | 1:1 kernel threads |
-| Blocking | Only PollWait |
-| Heap | KHeap/LHeap split |
-| Scheduler | Round-robin |
-| Return codes | 0=OK, 5=WARN, 10=ERROR, 20=FAIL |
+| Question              | Decision                                |
+|-----------------------|-----------------------------------------|
+| Heritage              | **Amiga-inspired** (not UNIX, not DOS)  |
+| Boot display          | Graphics-first (framebuffer console)    |
+| Boot splash           | Simple ViperOS logo                     |
+| Console colors        | Green on dark brown                     |
+| Panic colors          | Yellow on green                         |
+| Shell prompt          | `SYS:>` (Amiga-style device:path)       |
+| Device naming         | Logical assigns (SYS:, HOME:, C:, etc.) |
+| Physical drives       | D0:, D1:, D2:, ...                      |
+| Path separator        | Backslash `\`                           |
+| Commands directory    | `C:` (SYS:c)                            |
+| Startup scripts       | `S:` (SYS:s)                            |
+| Config format         | ViperConfig (.vcfg) - custom            |
+| Font (v0)             | Topaz - baked-in 8x16 bitmap            |
+| Testing               | QEMU graphical + headless               |
+| Boot protocol         | Custom vboot + VBootInfo                |
+| Kernel type awareness | Shallow (8 kinds)                       |
+| Tasks                 | 1:1 kernel threads                      |
+| Blocking              | Only PollWait                           |
+| Heap                  | KHeap/LHeap split                       |
+| Scheduler             | Round-robin                             |
+| Return codes          | 0=OK, 5=WARN, 10=ERROR, 20=FAIL         |
 
 ---
 
 ## Appendix A: Color Reference
 
-| Name | Hex | RGB | Usage |
-|------|-----|-----|-------|
-| Viper Green | #00AA44 | 0, 170, 68 | Primary text |
-| Dark Brown | #1A1208 | 26, 18, 8 | Background |
-| Yellow | #FFDD00 | 255, 221, 0 | Warnings, panic text |
-| Dim Green | #006633 | 0, 102, 51 | Secondary text |
-| White | #EEEEEE | 238, 238, 238 | Bright text |
-| Red | #CC3333 | 204, 51, 51 | Errors |
-| Panic BG | #00AA44 | 0, 170, 68 | Panic background |
+| Name        | Hex     | RGB           | Usage                |
+|-------------|---------|---------------|----------------------|
+| Viper Green | #00AA44 | 0, 170, 68    | Primary text         |
+| Dark Brown  | #1A1208 | 26, 18, 8     | Background           |
+| Yellow      | #FFDD00 | 255, 221, 0   | Warnings, panic text |
+| Dim Green   | #006633 | 0, 102, 51    | Secondary text       |
+| White       | #EEEEEE | 238, 238, 238 | Bright text          |
+| Red         | #CC3333 | 204, 51, 51   | Errors               |
+| Panic BG    | #00AA44 | 0, 170, 68    | Panic background     |
 
 ---
 
@@ -1972,55 +1991,55 @@ Deliverables:
 
 ### Default Assigns
 
-| Device | Points To | Purpose |
-|--------|-----------|---------|
-| `SYS:` | D0:\ | Boot device |
-| `C:` | SYS:c | Commands |
-| `S:` | SYS:s | Startup scripts |
-| `L:` | SYS:l | Handlers |
-| `LIBS:` | SYS:libs | Viper libraries |
-| `FONTS:` | SYS:fonts | System fonts |
-| `T:` | SYS:t | Temporary files |
-| `HOME:` | SYS:home\default | User home |
-| `RAM:` | (memory) | RAM disk |
+| Device   | Points To        | Purpose         |
+|----------|------------------|-----------------|
+| `SYS:`   | D0:\             | Boot device     |
+| `C:`     | SYS:c            | Commands        |
+| `S:`     | SYS:s            | Startup scripts |
+| `L:`     | SYS:l            | Handlers        |
+| `LIBS:`  | SYS:libs         | Viper libraries |
+| `FONTS:` | SYS:fonts        | System fonts    |
+| `T:`     | SYS:t            | Temporary files |
+| `HOME:`  | SYS:home\default | User home       |
+| `RAM:`   | (memory)         | RAM disk        |
 
 ### Syscall by Category
 
-| Category | Syscalls |
-|----------|----------|
-| Memory | HeapAlloc, HeapRetain, HeapRelease, HeapWrap |
-| Tasks | TaskSpawn, TaskYield, TaskExit, TaskJoin |
-| Channels | ChannelCreate, ChannelSend, ChannelRecv |
-| I/O | IORead, IOWrite, IOControl, IOClose |
-| Poll | PollCreate, PollAdd, PollWait |
-| Graphics | SurfaceAcquire, SurfacePresent |
+| Category | Syscalls                                     |
+|----------|----------------------------------------------|
+| Memory   | HeapAlloc, HeapRetain, HeapRelease, HeapWrap |
+| Tasks    | TaskSpawn, TaskYield, TaskExit, TaskJoin     |
+| Channels | ChannelCreate, ChannelSend, ChannelRecv      |
+| I/O      | IORead, IOWrite, IOControl, IOClose          |
+| Poll     | PollCreate, PollAdd, PollWait                |
+| Graphics | SurfaceAcquire, SurfacePresent               |
 
 ### Core Commands (C:)
 
-| Command | Purpose |
-|---------|---------|
-| Dir | Brief directory listing |
-| List | Detailed directory listing |
-| Type | Display file contents |
-| Copy | Copy files |
-| Delete | Delete files |
-| Rename | Rename/move files |
-| MakeDir | Create directory |
-| Info | Device information |
-| Avail | Memory available |
-| Status | Running tasks |
-| Assign | Manage logical devices |
-| Run | Background execution |
+| Command | Purpose                    |
+|---------|----------------------------|
+| Dir     | Brief directory listing    |
+| List    | Detailed directory listing |
+| Type    | Display file contents      |
+| Copy    | Copy files                 |
+| Delete  | Delete files               |
+| Rename  | Rename/move files          |
+| MakeDir | Create directory           |
+| Info    | Device information         |
+| Avail   | Memory available           |
+| Status  | Running tasks              |
+| Assign  | Manage logical devices     |
+| Run     | Background execution       |
 
 ### Shell Built-ins
 
-| Command | Purpose |
-|---------|---------|
-| Cd | Change directory |
-| Set/Unset | Environment variables |
-| Alias | Command aliases |
-| If/Else/EndIf | Conditionals |
-| Quit | Exit with code |
+| Command       | Purpose               |
+|---------------|-----------------------|
+| Cd            | Change directory      |
+| Set/Unset     | Environment variables |
+| Alias         | Command aliases       |
+| If/Else/EndIf | Conditionals          |
+| Quit          | Exit with code        |
 
 ---
 

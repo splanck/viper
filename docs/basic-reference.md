@@ -6,7 +6,9 @@ last-updated: 2025-11-13
 
 # Viper BASIC — Reference
 
-Complete language reference for Viper BASIC. This document describes **statements**, **expressions & operators**, **built-in functions**, **object features**, and **I/O**. For a tutorial introduction, see **[BASIC Tutorial](basic-language.md)**.
+Complete language reference for Viper BASIC. This document describes **statements**, **expressions & operators**, *
+*built-in functions**, **object features**, and **I/O**. For a tutorial introduction, see *
+*[BASIC Tutorial](basic-language.md)**.
 
 ---
 
@@ -51,7 +53,8 @@ Comment. A leading apostrophe starts a comment.
 
 ### CLASS / NEW / DELETE
 
-Defines classes with scalar or array fields; construct with NEW, optionally free with DELETE. Array fields may be declared with dimensions and accessed using `obj.field(index)`.
+Defines classes with scalar or array fields; construct with NEW, optionally free with DELETE. Array fields may be
+declared with dimensions and accessed using `obj.field(index)`.
 
 ```basic
 10 CLASS Counter
@@ -85,7 +88,9 @@ Array fields:
 ```
 
 Notes:
-- When an array field includes dimensions in the class definition, the constructor allocates the array to the specified length.
+
+- When an array field includes dimensions in the class definition, the constructor allocates the array to the specified
+  length.
 - String array fields are supported; element loads/stores retain/release strings automatically.
 
 ### BEEP
@@ -118,7 +123,8 @@ Closes an open file number.
 
 ### COLOR
 
-Sets terminal foreground and background colors. Uses values 0-7 for normal colors, 8-15 for bright colors, or -1 to leave unchanged.
+Sets terminal foreground and background colors. Uses values 0-7 for normal colors, 8-15 for bright colors, or -1 to
+leave unchanged.
 
 ```basic
 10 COLOR 15, 1   ' Bright white on blue
@@ -209,7 +215,9 @@ Subroutine call to a line label; returns with RETURN (statement-form).
 
 ## Runtime Classes (Viper.*)
 
-Runtime classes are built-in types provided by the Viper runtime and exposed under the `Viper.*` namespace. They behave like objects with properties and methods but are implemented by canonical runtime extern functions. The receiver (instance) is passed as the first argument when lowering to the runtime.
+Runtime classes are built-in types provided by the Viper runtime and exposed under the `Viper.*` namespace. They behave
+like objects with properties and methods but are implemented by canonical runtime extern functions. The receiver (
+instance) is passed as the first argument when lowering to the runtime.
 
 - Properties/methods lower to canonical `Viper.*` externs with the receiver as arg0.
 - Behavior and traps match the underlying runtime helpers.
@@ -227,11 +235,13 @@ Runtime classes are built-in types provided by the Viper runtime and exposed und
 ```
 
 Lowering equivalence (receiver as first argument):
+
 - `s.Length` → `Viper.String.get_Length(s)`
 - `s.Substring(i, j)` → `Viper.String.Substring(s, i, j)`
 - `NEW Viper.String(x)` → `Viper.Strings.FromStr(x)` (when available)
 
 Null and bounds:
+
 - Accessing a property/method on a null receiver traps.
 - `Substring` traps on invalid inputs consistent with runtime rules; zero-length results return the empty string.
 
@@ -246,24 +256,30 @@ BASIC `STRING` alias:
 ### `Viper.String` API
 
 Properties:
+
 - `Length: i64` → `Viper.String.get_Length(string)`
 - `IsEmpty: i1` → `Viper.String.get_IsEmpty(string)`
 
 Methods:
+
 - `Substring(i64 start, i64 length) -> string` → `Viper.String.Substring(string, i64, i64)`
 - `Concat(string other) -> string` → `Viper.String.ConcatSelf(string, string)`
 
 Constructor helper (optional):
+
 - `FromStr(string s) -> string` → `Viper.Strings.FromStr(string)`
 
 ### `Viper.Collections.List` (non-generic)
 
-Canonical, non-generic list that stores object references (opaque `obj`). Type safety is enforced by user code; the runtime does not check element types.
+Canonical, non-generic list that stores object references (opaque `obj`). Type safety is enforced by user code; the
+runtime does not check element types.
 
 Properties:
+
 - `Count: i64` → `Viper.Collections.List.get_Count(obj)`
 
 Methods:
+
 - `Add(obj value) -> void` → `Viper.Collections.List.Add(obj,obj)`
 - `Clear() -> void` → `Viper.Collections.List.Clear(obj)`
 - `RemoveAt(i64 index) -> void` → `Viper.Collections.List.RemoveAt(obj,i64)`
@@ -271,6 +287,7 @@ Methods:
 - `set_Item(i64 index, obj value) -> void` → `Viper.Collections.List.set_Item(obj,i64,obj)`
 
 Semantics:
+
 - Indexes are zero-based. Negative or out-of-range indexes trap at runtime (bounds error).
 - `Clear()` resets `Count` to 0.
 - Elements are stored as opaque references; no automatic type conversions are performed.
@@ -365,12 +382,14 @@ END TRY
 ```
 
 Behavior:
+
 - Errors raised in the TRY body transfer to the CATCH block.
 - After the CATCH block finishes, execution continues after `END TRY`.
 - `errVar` (optional) is a local INTEGER (i64) visible only within the CATCH block.
 - Inside CATCH, `ERR()` returns the error code (same meaning as in `ON ERROR` handlers).
 - Nested TRY/CATCH is allowed; handlers stack in last-in–first-out order.
-- Interaction with `ON ERROR GOTO`: a TRY installs a handler on top of any existing handler and pops it at `END TRY` (the outer `ON ERROR` handler remains active).
+- Interaction with `ON ERROR GOTO`: a TRY installs a handler on top of any existing handler and pops it at `END TRY` (
+  the outer `ON ERROR` handler remains active).
 
 Examples
 
@@ -566,7 +585,7 @@ Writes comma-delimited data with quotes, to a file number.
 The following built-ins are available. Use them in expressions (e.g., `LET X = ABS(-3)`).
 
 | Name    | Args | Returns |
-| ------- | ---- | ------- |
+|---------|------|---------|
 | ABS     | 1    | Depends |
 | ASC     | 1    | Integer |
 | CDBL    | 1    | Float   |
@@ -605,6 +624,7 @@ The following built-ins are available. Use them in expressions (e.g., `LET X = A
 ### Built-in examples
 
 **Numeric**
+
 ```basic
 10 PRINT ABS(-3)         ' 3
 20 PRINT SQR(9)          ' 3
@@ -618,6 +638,7 @@ The following built-ins are available. Use them in expressions (e.g., `LET X = A
 ```
 
 **String**
+
 ```basic
 10 PRINT LEN("abc")            ' 3
 20 PRINT LEFT$("hello", 2)     ' "he"
@@ -634,6 +655,7 @@ The following built-ins are available. Use them in expressions (e.g., `LET X = A
 ```
 
 **Conversion & random**
+
 ```basic
 10 PRINT CINT(3.9)             ' 4
 20 PRINT CLNG(3.9)             ' 4
@@ -645,6 +667,7 @@ The following built-ins are available. Use them in expressions (e.g., `LET X = A
 ```
 
 **Keyboard**
+
 ```basic
 10 LET K$ = INKEY$()
 20 IF K$ = "" THEN K$ = GETKEY$()
@@ -652,6 +675,7 @@ The following built-ins are available. Use them in expressions (e.g., `LET X = A
 ```
 
 **File query**
+
 ```basic
 10 OPEN "in.txt" FOR INPUT AS #1
 20 PRINT EOF(#1)         ' 0 until end of file
@@ -662,7 +686,8 @@ The following built-ins are available. Use them in expressions (e.g., `LET X = A
 
 ## Standard Library & Namespaces
 
-The Viper standard library exposes procedures and types under the reserved `Viper.*` root namespace. You can call procedures fully qualified, or import a namespace with `USING`.
+The Viper standard library exposes procedures and types under the reserved `Viper.*` root namespace. You can call
+procedures fully qualified, or import a namespace with `USING`.
 
 - Fully qualified:
 
@@ -685,7 +710,8 @@ PrintI64(42)
 
 ### Runtime Procedures
 
-All runtime procedures are available under canonical `Viper.*` namespace names. Legacy `rt_*` aliases are maintained for compatibility. Signatures shown as `Name(params)->result`.
+All runtime procedures are available under canonical `Viper.*` namespace names. Legacy `rt_*` aliases are maintained for
+compatibility. Signatures shown as `Name(params)->result`.
 
 #### Viper.Console
 
@@ -734,7 +760,8 @@ Error and diagnostic utilities:
 
 ### Runtime Types
 
-Standard library classes are recognized under `Viper.*`. These namespaced runtime types are known to the compiler for declarations and construction. Their method surfaces are being exposed progressively.
+Standard library classes are recognized under `Viper.*`. These namespaced runtime types are known to the compiler for
+declarations and construction. Their method surfaces are being exposed progressively.
 
 #### Viper
 
@@ -783,15 +810,19 @@ LET sb = NEW Viper.Text.StringBuilder()
 
 ### Migration Note
 
-Legacy `rt_*` function names (e.g., `rt_print_str`, `rt_len`) are maintained as aliases to their canonical `Viper.*` counterparts. New code should use the canonical names.
+Legacy `rt_*` function names (e.g., `rt_print_str`, `rt_len`) are maintained as aliases to their canonical `Viper.*`
+counterparts. New code should use the canonical names.
 
 ## Reserved Root
 
-The `Viper` root namespace is reserved for the standard library. User code may not declare symbols under `Viper` (for example, `NAMESPACE Viper.Tools` is an error). You may import and call `Viper.*` library procedures, but define your own symbols under a different root.
+The `Viper` root namespace is reserved for the standard library. User code may not declare symbols under `Viper` (for
+example, `NAMESPACE Viper.Tools` is an error). You may import and call `Viper.*` library procedures, but define your own
+symbols under a different root.
 
 ## Namespaces & USING
 
-**IMPORTANT**: USING directives are **file-scoped only** and must appear at the top of the file before any declarations. USING directives cannot appear inside NAMESPACE, CLASS, or INTERFACE blocks.
+**IMPORTANT**: USING directives are **file-scoped only** and must appear at the top of the file before any declarations.
+USING directives cannot appear inside NAMESPACE, CLASS, or INTERFACE blocks.
 
 ### Correct Usage
 
@@ -838,8 +869,8 @@ END NAMESPACE
 2. **Before declarations**: USING must appear before any NAMESPACE, CLASS, or INTERFACE declarations
 3. **File-scoped effect**: Each file's USING directives do not affect other compilation units
 4. **Two forms**:
-   - Simple: `USING Viper.Console` (imports all from namespace)
-   - Aliased: `USING VC = Viper.Console` (creates shorthand alias)
+    - Simple: `USING Viper.Console` (imports all from namespace)
+    - Aliased: `USING VC = Viper.Console` (creates shorthand alias)
 
 For complete namespace documentation, see [Namespace Reference](devdocs/namespaces.md).
 
@@ -972,13 +1003,17 @@ For complete namespace documentation, see [Namespace Reference](devdocs/namespac
 - `WEND`
 - `WHILE`
 - `WRITE`
+
 ### TRY/CATCH and ON ERROR Interop
 
 TRY/CATCH composes with legacy `ON ERROR GOTO` as a nested handler:
 
 - Precedence: a TRY installs a fresh error handler on top of any active `ON ERROR GOTO` handler.
-- Restoration: when the TRY region finishes without error, the TRY handler is popped and the prior `ON ERROR GOTO` handler remains in effect.
-- Catch resumption: the CATCH body terminates by resuming to the first block after the TRY via a resume token. A `RESUME` inside a CATCH is allowed but typically unnecessary because the compiler emits a `resume.label` to the join point.
+- Restoration: when the TRY region finishes without error, the TRY handler is popped and the prior `ON ERROR GOTO`
+  handler remains in effect.
+- Catch resumption: the CATCH body terminates by resuming to the first block after the TRY via a resume token. A
+  `RESUME` inside a CATCH is allowed but typically unnecessary because the compiler emits a `resume.label` to the join
+  point.
 
 Example:
 
@@ -994,16 +1029,20 @@ Example:
 110 RESUME NEXT
 
 Semantics:
+
 - Inner exceptions raised between lines 20–39 are caught by the TRY handler.
 - After `END TRY`, the previously active `ON ERROR GOTO Outer` handler continues to apply.
+
 ## Runtime classes (Viper.*)
 
-Runtime-backed classes expose an object surface (properties, methods, constructors) that lower to canonical extern functions provided by the runtime. Two families are currently available:
+Runtime-backed classes expose an object surface (properties, methods, constructors) that lower to canonical extern
+functions provided by the runtime. Two families are currently available:
 
 - Viper.String (aliased in BASIC as STRING)
 - Viper.Text.StringBuilder
 
-These object members are functional equivalents of the procedural helpers under Viper.Strings.* and Viper.Text.*. The compiler lowers property and method calls to the corresponding extern with the receiver as argument 0.
+These object members are functional equivalents of the procedural helpers under Viper.Strings.* and Viper.Text.*. The
+compiler lowers property and method calls to the corresponding extern with the receiver as argument 0.
 
 Examples:
 
@@ -1025,12 +1064,16 @@ Examples:
 Conventions and semantics:
 
 - Properties and methods lower to canonical externs with the receiver as arg0.
-  - Examples: s.Length → call @Viper.Strings.Len(s);
-    s.Substring(i,n) → call @Viper.Strings.Mid(s,i,n);
-    sb.ToString() → call @Viper.Text.StringBuilder.ToString(sb)
+    - Examples: s.Length → call @Viper.Strings.Len(s);
+      s.Substring(i,n) → call @Viper.Strings.Mid(s,i,n);
+      sb.ToString() → call @Viper.Text.StringBuilder.ToString(sb)
 - STRING alias: The BASIC type STRING is the same nominal runtime class as Viper.String.
 - Index base: Substring uses the same convention as MID$ — start is 0-based; length is a count.
-- Null receivers trap: Accessing a property or method on a null object raises a runtime trap that can be caught with TRY/CATCH.
-- Procedural equivalence: For every object member there is a procedural helper under Viper.Strings.* or Viper.Text.* with the receiver passed explicitly as the first argument. Use these forms where convenient or when a member name collides with a BASIC keyword (e.g., APPEND).
+- Null receivers trap: Accessing a property or method on a null object raises a runtime trap that can be caught with
+  TRY/CATCH.
+- Procedural equivalence: For every object member there is a procedural helper under Viper.Strings.* or Viper.Text.*
+  with the receiver passed explicitly as the first argument. Use these forms where convenient or when a member name
+  collides with a BASIC keyword (e.g., APPEND).
 
-Cross-reference: See [Standard Library & Namespaces](#standard-library--namespaces) for procedural helpers under Viper.Strings.* and Viper.Text.*.
+Cross-reference: See [Standard Library & Namespaces](#standard-library--namespaces) for procedural helpers under
+Viper.Strings.* and Viper.Text.*.

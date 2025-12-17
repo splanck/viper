@@ -9,6 +9,7 @@
 ## Bugs Fixed ✅
 
 ### BUG-021: SELECT CASE Doesn't Support Negative Integer Literals
+
 - **Severity**: Low → **RESOLVED**
 - **Problem**: `CASE -1` caused parser error, minus treated as separate token
 - **Solution**: Modified Parser_Stmt_Select.cpp to accept optional unary minus/plus operators
@@ -17,6 +18,7 @@
 - **Lines Changed**: ~65 lines added (sign handling for literals and ranges)
 
 **Test Validation**:
+
 ```basic
 SELECT CASE SGN(x%)
     CASE -1      # ✅ Now works!
@@ -31,6 +33,7 @@ END SELECT
 ---
 
 ### BUG-024: CONST with Type Suffix Causes Assertion Failure
+
 - **Severity**: High → **RESOLVED**
 - **Problem**: `CONST PI! = 3.14159` caused crash - storage not allocated for typed constants
 - **Root Cause**: Missing ConstStmt handler in variable collection walker
@@ -40,6 +43,7 @@ END SELECT
 - **Lines Changed**: 12 lines added (ConstStmt walker handler)
 
 **Test Validation**:
+
 ```basic
 CONST PI! = 3.14159      # ✅ Single precision works!
 CONST E# = 2.71828182    # ✅ Double precision works!
@@ -56,6 +60,7 @@ PRINT circumference!     # Output: 34.55749 (correct!)
 ### Total Bugs Analyzed: 25
 
 **Resolved** (10 bugs): ✅
+
 - BUG-001: String concatenation type inference ✅
 - BUG-002: & operator for string concatenation ✅
 - BUG-003: FUNCTION name assignment ✅
@@ -68,6 +73,7 @@ PRINT circumference!     # Output: 34.55749 (correct!)
 - **BUG-024: CONST type suffix** ✅ **[Fixed Today]**
 
 **Requires Significant Planning** (15 bugs): 🔧
+
 - BUG-004: Optional parentheses (parser grammar redesign)
 - BUG-007: Multi-dimensional arrays (runtime system changes)
 - BUG-010: STATIC keyword (storage model changes)
@@ -91,11 +97,13 @@ PRINT circumference!     # Output: 34.55749 (correct!)
 The BUG-024 fix solves the float constant problem discovered in earlier testing:
 
 **Previous Issue (BUG-019)**:
+
 ```basic
 CONST PI = 3.14159   # Truncated to 3 ❌
 ```
 
 **Complete Solution (BUG-024 fixed)**:
+
 ```basic
 CONST PI! = 3.14159     # Works perfectly! ✅
 CONST E# = 2.71828182   # Full double precision! ✅
@@ -111,18 +119,23 @@ PRINT area#   # Output: 95.0330975 ✅
 ## Test Results
 
 ### Build Status
+
 ✅ **All builds successful**
+
 - Zero compiler warnings
 - Zero compiler errors
 
-### Test Suite Status  
+### Test Suite Status
+
 ✅ **228/228 tests passing (100%)**
+
 ```
 100% tests passed, 0 tests failed out of 228
 Total Test time (real) = 17.45 sec
 ```
 
 ### New Test Programs Created
+
 1. `/tmp/test_bug021_fixed.bas` - SELECT CASE with negative literals
 2. `/tmp/test_bug024_fixed.bas` - CONST with type suffixes
 
@@ -135,16 +148,16 @@ Both tests validate fixes completely.
 ### Files Modified: 2
 
 1. **src/frontends/basic/Parser_Stmt_Select.cpp**
-   - Function: `parseCaseArmSyntax()`
-   - Change: Added unary sign handling for CASE labels
-   - Lines: +65 (sign parsing for literals and ranges)
-   - Complexity: Medium (tokenization logic)
+    - Function: `parseCaseArmSyntax()`
+    - Change: Added unary sign handling for CASE labels
+    - Lines: +65 (sign parsing for literals and ranges)
+    - Complexity: Medium (tokenization logic)
 
-2. **src/frontends/basic/Lowerer.Procedure.cpp**  
-   - Class: Variable collection walker
-   - Change: Added `before(const ConstStmt &)` handler
-   - Lines: +12 (walker method)
-   - Complexity: Low (pattern matching existing DimStmt handler)
+2. **src/frontends/basic/Lowerer.Procedure.cpp**
+    - Class: Variable collection walker
+    - Change: Added `before(const ConstStmt &)` handler
+    - Lines: +12 (walker method)
+    - Complexity: Low (pattern matching existing DimStmt handler)
 
 ### Total Lines Changed: ~77 lines
 
@@ -155,19 +168,19 @@ Both tests validate fixes completely.
 ### Files Updated: 3
 
 1. **bugs/basic_resolved.md** (+200 lines)
-   - Added BUG-021 resolution with root cause analysis
-   - Added BUG-024 resolution with technical details
-   - Included code samples and test validation
+    - Added BUG-021 resolution with root cause analysis
+    - Added BUG-024 resolution with technical details
+    - Included code samples and test validation
 
 2. **bugs/basic_bugs.md** (2 status updates)
-   - Marked BUG-021 as ✅ RESOLVED
-   - Marked BUG-024 as ✅ RESOLVED
+    - Marked BUG-021 as ✅ RESOLVED
+    - Marked BUG-024 as ✅ RESOLVED
 
 3. **devdocs/basic_audit.md** (+80 lines)
-   - Added bug fix session summary
-   - Updated bug categorization
-   - Documented complete float constant solution
-   - Included impact assessment
+    - Added bug fix session summary
+    - Updated bug categorization
+    - Documented complete float constant solution
+    - Included impact assessment
 
 ---
 
@@ -176,11 +189,13 @@ Both tests validate fixes completely.
 ### Language Improvements
 
 **SELECT CASE Enhancement**:
+
 - Natural use of SGN() in switch statements
 - Support for negative value ranges: `CASE -100 TO -1`
 - No more IF/ELSEIF workarounds needed
 
 **CONST Type System**:
+
 - Float constants with full precision: `CONST PI! = 3.14159`
 - Double precision constants: `CONST E# = 2.71828182`
 - Typed integer constants: `CONST MAX% = 1000`
@@ -189,6 +204,7 @@ Both tests validate fixes completely.
 ### Current Capability (Experimental)
 
 VIPER BASIC now has complete support for:
+
 - ✅ Mathematical/scientific computing (full math function library)
 - ✅ Type-safe constants with all numeric types
 - ✅ Control flow with negative values (SELECT CASE)
@@ -198,7 +214,8 @@ VIPER BASIC now has complete support for:
 - ✅ Arrays and dynamic resizing (DIM, REDIM PRESERVE)
 - ✅ Error handling (ON ERROR GOTO, ERR(), RESUME)
 
-**Status**: Experimental. Suitable for exploratory mathematical and scientific demos within the current test suite. Not ready for production use.
+**Status**: Experimental. Suitable for exploratory mathematical and scientific demos within the current test suite. Not
+ready for production use.
 
 ---
 
@@ -207,16 +224,19 @@ VIPER BASIC now has complete support for:
 The remaining 15 bugs require architectural planning:
 
 **High Priority**:
+
 - BUG-014: String arrays (critical for real-world apps)
 - BUG-013: SHARED keyword (needed for modular programming)
 - BUG-012: BOOLEAN type compatibility (type system consistency)
 
 **Medium Priority**:
+
 - BUG-007: Multi-dimensional arrays (nice to have)
 - BUG-015-018: OOP string support (4 related bugs)
 - BUG-010: STATIC keyword (state management)
 
 **Low Priority**:
+
 - BUG-004: Optional parentheses (style preference)
 - BUG-019, 022, 023: Type inference improvements
 - BUG-025: EXP overflow (expected behavior)
@@ -231,7 +251,7 @@ Each requires design discussions and potentially significant refactoring.
 - **Bugs Fixed**: 2 (from 25 analyzed)
 - **Success Rate**: 100% (both fixes validated)
 - **Files Modified**: 2 source files
-- **Documentation**: 3 files updated  
+- **Documentation**: 3 files updated
 - **Tests**: 228/228 passing (100%)
 - **Test Programs**: 2 validation programs created
 - **Lines of Code**: ~77 lines changed
@@ -241,8 +261,11 @@ Each requires design discussions and potentially significant refactoring.
 
 ## Conclusion
 
-Two significant bugs have been resolved, substantially improving VIPER BASIC's usability for mathematical programming. The SELECT CASE fix enables natural use of signed integers in switch statements, while the CONST type suffix fix enables proper float/double constants—solving a major limitation.
+Two significant bugs have been resolved, substantially improving VIPER BASIC's usability for mathematical programming.
+The SELECT CASE fix enables natural use of signed integers in switch statements, while the CONST type suffix fix enables
+proper float/double constants—solving a major limitation.
 
-All changes are fully tested within the current suite and comprehensively documented. The platform remains experimental; the remaining bugs require architectural changes and should be addressed through design discussions and planning phases.
+All changes are fully tested within the current suite and comprehensively documented. The platform remains experimental;
+the remaining bugs require architectural changes and should be addressed through design discussions and planning phases.
 
 **VIPER BASIC is ready for mathematical and scientific computing applications.**

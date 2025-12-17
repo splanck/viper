@@ -11,6 +11,7 @@ This directory contains comprehensive stress tests for Viper BASIC's OOP impleme
 ## Purpose
 
 Build increasingly complex OOP programs to discover bugs and limitations in Viper BASIC, with focus on:
+
 - Classes and methods
 - Arrays (integer, object, string)
 - String manipulation
@@ -21,20 +22,24 @@ Build increasingly complex OOP programs to discover bugs and limitations in Vipe
 ## Test Files (26 files, 1501 lines)
 
 ### Basic Feature Tests (test_01 through test_16)
+
 Progressive tests of individual language features.
 
 ### Complete Applications
+
 - **adventure_game_v2.bas** - Text adventure with 5 rooms, 5 items, player stats (180 lines)
 - **dungeon_crawler.bas** - RPG simulation with 6 classes, combat system (280 lines)
 - **comprehensive_test.bas** - All features in one program (330 lines)
 
 ### Support Files
+
 - **colors.bas** - Color utility module (for ADDFILE testing)
 - **game_utils.bas** - Game helper functions
 
 ## Bugs Found
 
 **8 new bugs discovered** (BUG-044 through BUG-051):
+
 - 2 CRITICAL: IF in methods (BUG-047), module function calls (BUG-048)
 - 2 MAJOR: STRING arrays (BUG-045), array method calls (BUG-046)
 - 2 MODERATE: Multiple CASE values (BUG-050), DO UNTIL (BUG-051)
@@ -61,6 +66,7 @@ From the viper root directory:
 ## Key Findings
 
 ### What Works ✅
+
 - Classes with fields and methods
 - Object instantiation and field access
 - Integer arrays and object arrays
@@ -73,12 +79,14 @@ From the viper root directory:
 - Boolean operations
 
 ### Critical Issues ❌
+
 - IF/THEN crashes inside class methods (BUG-047)
 - Cannot call module SUBs from class methods (BUG-048)
 - STRING arrays don't work (BUG-045)
 - Cannot call methods on array elements (BUG-046)
 
 ### Workarounds Used
+
 See STRESS_TEST_SUMMARY.md for detailed workarounds.
 
 ## Files Overview

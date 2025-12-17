@@ -2,26 +2,29 @@
 
 ## Static Members
 
-- Static fields are class-wide storage. They lower to module-scope globals; reads/writes are independent of any instance.
+- Static fields are class-wide storage. They lower to module-scope globals; reads/writes are independent of any
+  instance.
 - Static methods do not receive `ME`; referencing `ME` in a static method is a semantic error.
-- The static constructor (`STATIC SUB NEW()`) is parameterless and runs once per class during module initialization before user code.
+- The static constructor (`STATIC SUB NEW()`) is parameterless and runs once per class during module initialization
+  before user code.
 
 ## Properties
 
 - A `PROPERTY` defines up to two accessors:
-  - `GET` produces a value; `SET` receives the new value (parameter defaults to `value` and the property type).
-  - Accessor-level access is supported: `PUBLIC`/`PRIVATE` modifier may appear on each accessor and cannot be more permissive than the property head.
+    - `GET` produces a value; `SET` receives the new value (parameter defaults to `value` and the property type).
+    - Accessor-level access is supported: `PUBLIC`/`PRIVATE` modifier may appear on each accessor and cannot be more
+      permissive than the property head.
 
 ### Property sugar
 
 Expressions and assignments are mapped to accessor calls:
 
 - Instance:
-  - `x.Name` → `get_Name(x)`
-  - `x.Name = v` → `set_Name(x, v)`
+    - `x.Name` → `get_Name(x)`
+    - `x.Name = v` → `set_Name(x, v)`
 - Static:
-  - `C.Name` → `get_Name()`
-  - `C.Name = v` → `set_Name(v)`
+    - `C.Name` → `get_Name()`
+    - `C.Name = v` → `set_Name(v)`
 
 Access control applies at the accessor, not the head, when the accessor has a stricter modifier.
 
@@ -46,9 +49,11 @@ Access control applies at the accessor, not the head, when the accessor has a st
 
 ### DISPOSE
 
-- `DISPOSE expr` performs deterministic cleanup of an object: invokes the derived→base destructor chain and releases storage when the retain count drops to zero.
+- `DISPOSE expr` performs deterministic cleanup of an object: invokes the derived→base destructor chain and releases
+  storage when the retain count drops to zero.
 - Disposing `NULL` is a no‑op.
-- Double dispose: debug builds mark objects as disposed at destructor entry and trap when a disposed object is disposed again.
+- Double dispose: debug builds mark objects as disposed at destructor entry and trap when a disposed object is disposed
+  again.
 - Recursion guard: disposing `ME` in a destructor body is diagnosed to prevent infinite recursion.
 
 ## Runtime Model (Overview)
@@ -59,10 +64,10 @@ how the BASIC frontend discovers and binds built‑in runtime classes.
 - Object layout: Every object payload begins with a vptr (pointer to a class
   vtable). The C struct used by helpers mirrors this:
 
-  - At offset 0: `void **vptr` — points at the class vtable (when used)
-  - Instance fields follow. Some built‑in classes embed helper structs (e.g.,
-    `StringBuilder` embeds an `rt_string_builder`; `List` embeds a dynamic array
-    of object references).
+    - At offset 0: `void **vptr` — points at the class vtable (when used)
+    - Instance fields follow. Some built‑in classes embed helper structs (e.g.,
+      `StringBuilder` embeds an `rt_string_builder`; `List` embeds a dynamic array
+      of object references).
 
 - Class/RTTI: The runtime can register classes via `rt_class_info` so helpers
   like `rt_get_vfunc` and type checks (`rt_typeid_of`, `rt_type_is_a`) work. The
@@ -71,41 +76,42 @@ how the BASIC frontend discovers and binds built‑in runtime classes.
 
 - Catalog → Signatures → C:
 
-  - Runtime class catalog (C++): `src/il/runtime/classes/RuntimeClasses.inc` is
-    the single source of truth for built‑in classes and their members
-    (properties + methods). Frontends seed their type/property/method registries
-    from this catalog.
+    - Runtime class catalog (C++): `src/il/runtime/classes/RuntimeClasses.inc` is
+      the single source of truth for built‑in classes and their members
+      (properties + methods). Frontends seed their type/property/method registries
+      from this catalog.
 
-  - Runtime signatures (C++): `src/il/runtime/RuntimeSignatures.inc` maps the
-    canonical names (e.g., `Viper.Text.StringBuilder.Append`, `Viper.IO.File.ReadAllText`) to concrete
-    C functions and IL signature strings.
+    - Runtime signatures (C++): `src/il/runtime/RuntimeSignatures.inc` maps the
+      canonical names (e.g., `Viper.Text.StringBuilder.Append`, `Viper.IO.File.ReadAllText`) to concrete
+      C functions and IL signature strings.
 
-  - C implementations: `src/runtime/rt_*.c` provide the actual behavior
-    (`rt_string_builder.c`, `rt_object.c`, `rt_file_ext.c`, `rt_list.c`, etc.).
-    Many OOP methods are thin bridges over procedural helpers (e.g.,
-    `Viper.Strings.*`).
+    - C implementations: `src/runtime/rt_*.c` provide the actual behavior
+      (`rt_string_builder.c`, `rt_object.c`, `rt_file_ext.c`, `rt_list.c`, etc.).
+      Many OOP methods are thin bridges over procedural helpers (e.g.,
+      `Viper.Strings.*`).
 
 ### Canonical Runtime Classes
 
 The following built‑in classes are available under the `Viper.*` namespace:
 
 - `Viper.Object` — Base class for all objects
-  - Methods: `ToString()`, `Equals(obj)`, `GetHashCode()`, `ReferenceEquals(obj,obj)`
+    - Methods: `ToString()`, `Equals(obj)`, `GetHashCode()`, `ReferenceEquals(obj,obj)`
 - `Viper.String` — Managed string type
-  - Properties: `Length`, `IsEmpty`
-  - Methods: `Substring(i64,i64)`, `Concat(str)`
+    - Properties: `Length`, `IsEmpty`
+    - Methods: `Substring(i64,i64)`, `Concat(str)`
 - `Viper.Text.StringBuilder` — Mutable string builder
-  - Properties: `Length`, `Capacity`
-  - Methods: `Append(str)`, `ToString()`, `Clear()`
+    - Properties: `Length`, `Capacity`
+    - Methods: `Append(str)`, `ToString()`, `Clear()`
 - `Viper.IO.File` — File operations (static utility class)
-  - Methods: `Exists(str)`, `ReadAllText(str)`, `WriteAllText(str,str)`, `Delete(str)`
+    - Methods: `Exists(str)`, `ReadAllText(str)`, `WriteAllText(str,str)`, `Delete(str)`
 - `Viper.Collections.List` — Dynamic list of object references
-  - Properties: `Count`
-  - Methods: `Add(obj)`, `Clear()`, `RemoveAt(i64)`, `get_Item(i64)`, `set_Item(i64,obj)`
+    - Properties: `Count`
+    - Methods: `Add(obj)`, `Clear()`, `RemoveAt(i64)`, `get_Item(i64)`, `set_Item(i64,obj)`
 - `Viper.Math` — Mathematical functions (static utility class)
-  - Methods: `Abs(f64)`, `Sqrt(f64)`, `Sin(f64)`, `Cos(f64)`, `Tan(f64)`, `Floor(f64)`, `Ceil(f64)`, `Pow(f64,f64)`, `Log(f64)`, `Exp(f64)`
+    - Methods: `Abs(f64)`, `Sqrt(f64)`, `Sin(f64)`, `Cos(f64)`, `Tan(f64)`, `Floor(f64)`, `Ceil(f64)`, `Pow(f64,f64)`,
+      `Log(f64)`, `Exp(f64)`
 - `Viper.Console` — Console I/O (static utility class)
-  - Methods: `WriteLine(str)`, `ReadLine()`
+    - Methods: `WriteLine(str)`, `ReadLine()`
 
 **Note:** Legacy `Viper.System.*` aliases have been removed. Use the canonical `Viper.*` names.
 

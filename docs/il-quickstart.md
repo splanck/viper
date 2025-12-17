@@ -6,7 +6,8 @@ last-updated: 2025-11-13
 
 # Viper IL — Quickstart
 
-Get started with Viper's Intermediate Language (IL) in minutes. This guide shows you how to write, verify, and execute IL programs.
+Get started with Viper's Intermediate Language (IL) in minutes. This guide shows you how to write, verify, and execute
+IL programs.
 
 ---
 
@@ -20,7 +21,8 @@ Viper IL is a **typed, readable intermediate language** that serves as the core 
 - **Transforms** (SimplifyCFG, Liveness, etc.) optimize IL
 - **Backends** compile IL to native code
 
-IL is designed to be **human-readable** and **easy to inspect**, making it ideal for learning compiler concepts and debugging.
+IL is designed to be **human-readable** and **easy to inspect**, making it ideal for learning compiler concepts and
+debugging.
 
 ---
 
@@ -45,6 +47,7 @@ entry:
 ```
 
 Compatibility:
+
 - When built with `-DVIPER_RUNTIME_NS_DUAL=ON`, legacy `@rt_*` externs are accepted as aliases of `@Viper.*`.
 - New code should emit `@Viper.*`.
 
@@ -63,6 +66,7 @@ ilc -run hello.il
 ```
 
 Output:
+
 ```
 Hello, Viper IL!
 ```
@@ -112,6 +116,7 @@ entry:
 ```
 
 **Key points:**
+
 - `@name` — Function symbol
 - `%var` — SSA register (assigned once, used many times)
 - `entry:` — First basic block label
@@ -200,6 +205,7 @@ il-verify program.il
 ```
 
 The verifier catches:
+
 - Type mismatches
 - Missing terminators
 - Invalid control flow
@@ -249,11 +255,13 @@ Available passes: `simplifycfg`, `liveness`, `licm`, `sccp`
 ## Next Steps
 
 **Learn More:**
+
 - **[IL Reference](il-reference.md)** — Complete instruction catalog
 - **[IL Guide](il-guide.md)** — Comprehensive guide with examples
 - **[Frontend How-To](frontend-howto.md)** — Build your own frontend
 
 **Explore:**
+
 - Check `tests/golden/il/` for more IL examples
 - Run `ilc --help` for all available options
 - Experiment with optimization passes

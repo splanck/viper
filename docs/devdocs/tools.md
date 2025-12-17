@@ -75,21 +75,21 @@ Execute IL modules with debugging controls.
 ilc -run <file.il> [flags]
 ```
 
-| Flag | Description |
-|------|-------------|
-| `--trace=il` | Emit line-per-instruction trace |
-| `--trace=src` | Show source file, line, column for each step |
-| `--stdin-from <file>` | Feed program stdin from file |
-| `--max-steps <N>` | Limit execution to N interpreter steps |
-| `--bounds-checks` | Enable runtime bounds checking |
-| `--break <Label\|file:line>` | Halt before executing instruction |
-| `--break-src <file:line>` | Explicit source-line breakpoint |
-| `--debug-cmds <file>` | Read debugger actions from file |
-| `--step` | Enter debug mode, break at entry |
-| `--continue` | Ignore breakpoints and run to completion |
-| `--watch <name>` | Print when scalar changes |
-| `--count` | Print executed instruction count at exit |
-| `--time` | Print wall-clock execution time |
+| Flag                         | Description                                  |
+|------------------------------|----------------------------------------------|
+| `--trace=il`                 | Emit line-per-instruction trace              |
+| `--trace=src`                | Show source file, line, column for each step |
+| `--stdin-from <file>`        | Feed program stdin from file                 |
+| `--max-steps <N>`            | Limit execution to N interpreter steps       |
+| `--bounds-checks`            | Enable runtime bounds checking               |
+| `--break <Label\|file:line>` | Halt before executing instruction            |
+| `--break-src <file:line>`    | Explicit source-line breakpoint              |
+| `--debug-cmds <file>`        | Read debugger actions from file              |
+| `--step`                     | Enter debug mode, break at entry             |
+| `--continue`                 | Ignore breakpoints and run to completion     |
+| `--watch <name>`             | Print when scalar changes                    |
+| `--count`                    | Print executed instruction count at exit     |
+| `--time`                     | Print wall-clock execution time              |
 
 ### ilc front basic
 
@@ -111,10 +111,10 @@ Run optimization passes on IL modules.
 ilc il-opt <in.il> -o <out.il> [flags]
 ```
 
-| Flag | Description |
-|------|-------------|
-| `--passes a,b,c` | Override the pass list |
-| `--no-mem2reg` | Drop mem2reg from default pipeline |
+| Flag              | Description                        |
+|-------------------|------------------------------------|
+| `--passes a,b,c`  | Override the pass list             |
+| `--no-mem2reg`    | Drop mem2reg from default pipeline |
 | `--mem2reg-stats` | Print counts of promoted variables |
 
 Default pipeline: `mem2reg,constfold,peephole,dce`
@@ -136,11 +136,11 @@ ilc codegen arm64 <in.il> -S <out.s>
 
 ## Exit Codes
 
-| Code | Meaning |
-|------|---------|
-| `0` | Program completed successfully |
+| Code | Meaning                                   |
+|------|-------------------------------------------|
+| `0`  | Program completed successfully            |
 | `10` | Halted at breakpoint with no debug script |
-| `>0` | Trap or error |
+| `>0` | Trap or error                             |
 
 ---
 

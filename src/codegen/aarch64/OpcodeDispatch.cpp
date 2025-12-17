@@ -146,6 +146,8 @@ bool lowerInstruction(const il::core::Instr &ins,
         case Opcode::CastFpToSiRteChk:
         case Opcode::CastFpToUiRteChk:
         {
+            // Per IL spec: .rte = round-to-even, .chk = trap on overflow only.
+            // First round to nearest even, then convert to integer.
             if (!ins.result || ins.operands.empty())
                 return true;
             uint16_t fv = 0;
@@ -161,45 +163,29 @@ bool lowerInstruction(const il::core::Instr &ins,
                                         fv,
                                         fcls))
                 return true;
+
+            // Round to nearest even first (frintn)
+            const uint16_t rounded = ctx.nextVRegId++;
+            bbOut().instrs.push_back(MInstr{
+                MOpcode::FRintN,
+                {MOperand::vregOp(RegClass::FPR, rounded), MOperand::vregOp(RegClass::FPR, fv)}});
+
+            // Convert rounded value to integer
             const uint16_t dst = ctx.nextVRegId++;
             ctx.tempVReg[*ins.result] = dst;
             if (ins.op == Opcode::CastFpToSiRteChk)
             {
                 bbOut().instrs.push_back(MInstr{
                     MOpcode::FCvtZS,
-                    {MOperand::vregOp(RegClass::GPR, dst), MOperand::vregOp(RegClass::FPR, fv)}});
+                    {MOperand::vregOp(RegClass::GPR, dst),
+                     MOperand::vregOp(RegClass::FPR, rounded)}});
             }
             else
             {
                 bbOut().instrs.push_back(MInstr{
                     MOpcode::FCvtZU,
-                    {MOperand::vregOp(RegClass::GPR, dst), MOperand::vregOp(RegClass::FPR, fv)}});
-            }
-            const uint16_t rr = ctx.nextVRegId++;
-            if (ins.op == Opcode::CastFpToSiRteChk)
-            {
-                bbOut().instrs.push_back(MInstr{
-                    MOpcode::SCvtF,
-                    {MOperand::vregOp(RegClass::FPR, rr), MOperand::vregOp(RegClass::GPR, dst)}});
-            }
-            else
-            {
-                bbOut().instrs.push_back(MInstr{
-                    MOpcode::UCvtF,
-                    {MOperand::vregOp(RegClass::FPR, rr), MOperand::vregOp(RegClass::GPR, dst)}});
-            }
-            bbOut().instrs.push_back(
-                MInstr{MOpcode::FCmpRR,
-                       {MOperand::vregOp(RegClass::FPR, fv), MOperand::vregOp(RegClass::FPR, rr)}});
-            {
-                const std::string trapLabel2 =
-                    ".Ltrap_fpcast_" + std::to_string(ctx.trapLabelCounter++);
-                bbOut().instrs.push_back(MInstr{
-                    MOpcode::BCond, {MOperand::condOp("ne"), MOperand::labelOp(trapLabel2)}});
-                ctx.mf.blocks.emplace_back();
-                ctx.mf.blocks.back().name = trapLabel2;
-                ctx.mf.blocks.back().instrs.push_back(
-                    MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
+                    {MOperand::vregOp(RegClass::GPR, dst),
+                     MOperand::vregOp(RegClass::FPR, rounded)}});
             }
             return true;
         }

@@ -6,11 +6,14 @@ last-updated: 2025-11-12
 
 # Viper BASIC Namespaces — Reference
 
-This document provides a complete reference for the namespace feature in Viper BASIC (Track A implementation). For tutorial-style examples, see [basic-language.md](../basic-language.md). For grammar details, see [grammar.md](grammar.md).
+This document provides a complete reference for the namespace feature in Viper BASIC (Track A implementation). For
+tutorial-style examples, see [basic-language.md](../basic-language.md). For grammar details,
+see [grammar.md](grammar.md).
 
 ## Overview
 
-Namespaces organize types (classes and interfaces) into hierarchical groups, preventing name collisions and improving code clarity. The namespace system includes:
+Namespaces organize types (classes and interfaces) into hierarchical groups, preventing name collisions and improving
+code clarity. The namespace system includes:
 
 - **NAMESPACE declarations**: Define nested namespace hierarchies
 - **USING directives**: Import namespaces for unqualified type references
@@ -22,14 +25,16 @@ Namespaces organize types (classes and interfaces) into hierarchical groups, pre
 Track A is fully implemented and includes:
 
 - Syntax: `NAMESPACE A.B ... END NAMESPACE` (dotted segments form a nested hierarchy)
-- Declarations: procedures (SUB/FUNCTION) and types inside a namespace are considered fully-qualified at that path (e.g., `A.B.F`, `A.Point`)
+- Declarations: procedures (SUB/FUNCTION) and types inside a namespace are considered fully-qualified at that path (
+  e.g., `A.B.F`, `A.Point`)
 - **USING directives**: Import namespaces for unqualified type references (both simple and aliased forms)
 - **Namespace aliases**: Create shorthand names with `USING Alias = Full.Path`
 - Type resolution algorithm: searches current namespace → parent namespaces → USING imports → global
 - Calls:
-  - Qualified: `A.B.F()` calls the exact fully-qualified procedure
-  - Unqualified: resolves via current namespace, parent-walk, and USING imports
-- Case-insensitive: all segments and identifiers are matched ignoring case. The following are equivalent: `Namespace`, `NAMESPACE`, `nameSpace`; and `A.B.F` ≡ `a.b.f` for lookup and duplicate checks
+    - Qualified: `A.B.F()` calls the exact fully-qualified procedure
+    - Unqualified: resolves via current namespace, parent-walk, and USING imports
+- Case-insensitive: all segments and identifiers are matched ignoring case. The following are equivalent: `Namespace`,
+  `NAMESPACE`, `nameSpace`; and `A.B.F` ≡ `a.b.f` for lookup and duplicate checks
 - Nine diagnostic error codes (E_NS_001 through E_NS_009) for comprehensive error handling
 
 ### Basic Examples
@@ -116,9 +121,12 @@ Both calls succeed. Without the USING directive, only the qualified call (`Lib.P
 
 Current implementation has the following limitations:
 
-- **Qualified names in DIM AS**: Parser does not yet support dotted paths like `DIM p AS Graphics.Point`. Use USING directives to enable unqualified type references.
-- **Case-sensitive qualified procedure calls**: Lowercase qualified calls like `a.b.f()` fail when the procedure is defined as `A.B.F()`. This is a bug; all lookups should be case-insensitive per the specification.
-- **File-scoped USING only**: USING directives are not inherited across compilation units; each file must declare its own imports.
+- **Qualified names in DIM AS**: Parser does not yet support dotted paths like `DIM p AS Graphics.Point`. Use USING
+  directives to enable unqualified type references.
+- **Case-sensitive qualified procedure calls**: Lowercase qualified calls like `a.b.f()` fail when the procedure is
+  defined as `A.B.F()`. This is a bug; all lookups should be case-insensitive per the specification.
+- **File-scoped USING only**: USING directives are not inherited across compilation units; each file must declare its
+  own imports.
 
 ## NAMESPACE Declaration
 
@@ -220,11 +228,13 @@ USING Collections    REM Error: E_NS_005
 ### Semantics
 
 **Simple form** (`USING Collections`):
+
 - Makes all types from the namespace available for unqualified lookup
 - Multiple USING directives accumulate
 - Order matters: earlier imports checked first during resolution
 
 **Alias form** (`USING Coll = Collections`):
+
 - Creates a shorthand alias for the namespace path
 - Alias can be used in type references: `Coll.List`
 - Aliases must be unique within a file
@@ -327,17 +337,17 @@ USING Viper              REM Error: E_NS_009
 
 The namespace system defines nine error codes covering all failure modes.
 
-| Code | Category | Description |
-|------|----------|-------------|
-| E_NS_001 | Not Found | Namespace does not exist |
-| E_NS_002 | Not Found | Type not found in namespace |
-| E_NS_003 | Ambiguity | Type reference is ambiguous |
-| E_NS_004 | Duplicate | Alias already defined |
-| E_NS_005 | Placement | USING after declaration |
-| E_NS_006 | Structure | Nested USING not allowed |
-| E_NS_007 | Reserved | Global type shadowed by namespace |
-| E_NS_008 | Placement | USING inside namespace block |
-| E_NS_009 | Reserved | Viper namespace reserved |
+| Code     | Category  | Description                       |
+|----------|-----------|-----------------------------------|
+| E_NS_001 | Not Found | Namespace does not exist          |
+| E_NS_002 | Not Found | Type not found in namespace       |
+| E_NS_003 | Ambiguity | Type reference is ambiguous       |
+| E_NS_004 | Duplicate | Alias already defined             |
+| E_NS_005 | Placement | USING after declaration           |
+| E_NS_006 | Structure | Nested USING not allowed          |
+| E_NS_007 | Reserved  | Global type shadowed by namespace |
+| E_NS_008 | Placement | USING inside namespace block      |
+| E_NS_009 | Reserved  | Viper namespace reserved          |
 
 ### E_NS_001: Namespace Not Found
 
@@ -407,11 +417,13 @@ END
 **Fixes**:
 
 1. Use fully-qualified name:
+
 ```basic
 CLASS MyClass : A.Thing
 ```
 
 2. Use namespace alias:
+
 ```basic
 USING AliasA = A
 CLASS MyClass : AliasA.Thing
@@ -432,7 +444,8 @@ USING Coll = Utilities    REM Error: E_NS_004
 
 **Fix**: Use unique aliases for different namespaces.
 
-**Note**: This error is difficult to demonstrate in single-file tests due to ordering constraints (USING must come before namespace declarations, but checking namespace existence happens before checking duplicate aliases).
+**Note**: This error is difficult to demonstrate in single-file tests due to ordering constraints (USING must come
+before namespace declarations, but checking namespace existence happens before checking duplicate aliases).
 
 ---
 
@@ -540,11 +553,13 @@ DIM myList AS List    REM Error: E_NS_003
 **Solutions**:
 
 1. **Fully-qualify the reference**:
+
 ```basic
 DIM myList AS Collections.List
 ```
 
 2. **Use namespace aliases**:
+
 ```basic
 USING Coll = Collections
 USING Util = Utilities
@@ -552,6 +567,7 @@ DIM myList AS Coll.List
 ```
 
 3. **Remove unnecessary USING directives**:
+
 ```basic
 USING Collections    REM Only import what you need
 DIM myList AS List
@@ -645,6 +661,7 @@ This is intentional BASIC behavior, not a pitfall.
 Each file's USING directives are **file-scoped** and do not affect other files:
 
 **file1.bas**:
+
 ```basic
 USING Collections
 
@@ -655,6 +672,7 @@ END NAMESPACE
 ```
 
 **file2.bas**:
+
 ```basic
 NAMESPACE App
   CLASS OtherApp : Collections.List    REM Must fully-qualify: no USING here
@@ -667,6 +685,7 @@ END NAMESPACE
 Multiple files can contribute to the same namespace:
 
 **file1.bas**:
+
 ```basic
 NAMESPACE Collections
   CLASS List
@@ -675,6 +694,7 @@ END NAMESPACE
 ```
 
 **file2.bas**:
+
 ```basic
 NAMESPACE Collections
   CLASS Dictionary
@@ -701,13 +721,15 @@ Both `List` and `Dictionary` belong to `Collections` namespace after linking.
 
 ## Viper.* Runtime Namespace (Implemented)
 
-The Viper standard library exposes runtime functions and types under the reserved `Viper.*` root namespace. This canonical namespace organization is now implemented and available in IL and BASIC code.
+The Viper standard library exposes runtime functions and types under the reserved `Viper.*` root namespace. This
+canonical namespace organization is now implemented and available in IL and BASIC code.
 
 ### Runtime Functions by Namespace
 
 #### Viper.Console
 
 Console I/O operations:
+
 - `Viper.Console.PrintStr(str)->void` — Print string
 - `Viper.Console.PrintI64(i64)->void` — Print integer
 - `Viper.Console.PrintF64(f64)->void` — Print double
@@ -716,6 +738,7 @@ Console I/O operations:
 #### Viper.Strings
 
 String manipulation and conversion:
+
 - `Viper.Strings.Len(str)->i64` — String length
 - `Viper.Strings.Mid(str,i64,i64)->str` — Substring
 - `Viper.Strings.Concat(str,str)->str` — Concatenate strings
@@ -731,128 +754,145 @@ String manipulation and conversion:
 #### Viper.Convert
 
 Type conversion with error handling:
+
 - `Viper.Convert.ToInt(str)->i64` — String to int (throws on error)
 - `Viper.Convert.ToDouble(str)->f64` — String to double (throws on error)
 
 #### Viper.Parse
 
 Type parsing with explicit error codes:
+
 - `Viper.Parse.Int64(cstr,ptr i64)->i32` — Parse int64
 - `Viper.Parse.Double(cstr,ptr f64)->i32` — Parse double
 
 #### Viper.Diagnostics
 
 Error and diagnostic utilities:
+
 - `Viper.Diagnostics.Trap(str)->void` — Trigger runtime trap
 
 ### Runtime Classes (Viper.*)
 
-Canonical runtime classes are exposed under the `Viper.*` root and are used directly by the BASIC frontend. These are first‑class and tested:
+Canonical runtime classes are exposed under the `Viper.*` root and are used directly by the BASIC frontend. These are
+first‑class and tested:
 
 #### Viper
+
 - `Viper.Object` — Base class for all objects
-  - Methods:
-    - `ToString() -> STRING` — default returns the class qualified name
-    - `Equals(OBJECT other) -> BOOL` — reference equality by default
-    - `GetHashCode() -> I64` — process‑consistent hash derived from the object pointer
-    - `ReferenceEquals(OBJECT a, OBJECT b) -> BOOL` — static; reference equality
+    - Methods:
+        - `ToString() -> STRING` — default returns the class qualified name
+        - `Equals(OBJECT other) -> BOOL` — reference equality by default
+        - `GetHashCode() -> I64` — process‑consistent hash derived from the object pointer
+        - `ReferenceEquals(OBJECT a, OBJECT b) -> BOOL` — static; reference equality
 - `Viper.String` — Managed string type (BASIC `STRING` is an alias)
-  - Properties: `Length -> I64`, `IsEmpty -> BOOL`
-  - Methods:
-    - `Substring(I64 start, I64 length) -> STRING` — Extract substring
-    - `Concat(STRING other) -> STRING` — Concatenate strings
-    - `Left(I64 count) -> STRING` — First N characters
-    - `Right(I64 count) -> STRING` — Last N characters
-    - `Mid(I64 start) -> STRING` — Substring from position to end
-    - `MidLen(I64 start, I64 length) -> STRING` — Substring with length
-    - `Trim() -> STRING` — Remove leading/trailing whitespace
-    - `TrimStart() -> STRING` — Remove leading whitespace
-    - `TrimEnd() -> STRING` — Remove trailing whitespace
-    - `ToUpper() -> STRING` — Convert to uppercase
-    - `ToLower() -> STRING` — Convert to lowercase
-    - `IndexOf(STRING needle) -> I64` — Find first occurrence (1-based, 0 if not found)
-    - `IndexOfFrom(I64 start, STRING needle) -> I64` — Find from position
-    - `Chr(I64 code) -> STRING` — Character from ASCII code (static)
-    - `Asc() -> I64` — ASCII code of first character
+    - Properties: `Length -> I64`, `IsEmpty -> BOOL`
+    - Methods:
+        - `Substring(I64 start, I64 length) -> STRING` — Extract substring
+        - `Concat(STRING other) -> STRING` — Concatenate strings
+        - `Left(I64 count) -> STRING` — First N characters
+        - `Right(I64 count) -> STRING` — Last N characters
+        - `Mid(I64 start) -> STRING` — Substring from position to end
+        - `MidLen(I64 start, I64 length) -> STRING` — Substring with length
+        - `Trim() -> STRING` — Remove leading/trailing whitespace
+        - `TrimStart() -> STRING` — Remove leading whitespace
+        - `TrimEnd() -> STRING` — Remove trailing whitespace
+        - `ToUpper() -> STRING` — Convert to uppercase
+        - `ToLower() -> STRING` — Convert to lowercase
+        - `IndexOf(STRING needle) -> I64` — Find first occurrence (1-based, 0 if not found)
+        - `IndexOfFrom(I64 start, STRING needle) -> I64` — Find from position
+        - `Chr(I64 code) -> STRING` — Character from ASCII code (static)
+        - `Asc() -> I64` — ASCII code of first character
 
 #### Viper.Text
+
 - `Viper.Text.StringBuilder` — Mutable string builder
-  - Ctor: `NEW()`
-  - Properties: `Length -> I64`, `Capacity -> I64`
-  - Methods: `Append(STRING) -> OBJECT` (returns the builder for chaining), `Clear() -> VOID`, `ToString() -> STRING`
+    - Ctor: `NEW()`
+    - Properties: `Length -> I64`, `Capacity -> I64`
+    - Methods: `Append(STRING) -> OBJECT` (returns the builder for chaining), `Clear() -> VOID`, `ToString() -> STRING`
 
 #### Viper.IO
+
 - `Viper.IO.File` — File operations class (static utility)
-  - Methods (static): `Exists(STRING) -> BOOL`, `ReadAllText(STRING) -> STRING`, `WriteAllText(STRING,STRING) -> VOID`, `Delete(STRING) -> VOID`
+    - Methods (static): `Exists(STRING) -> BOOL`, `ReadAllText(STRING) -> STRING`,
+      `WriteAllText(STRING,STRING) -> VOID`, `Delete(STRING) -> VOID`
 
 #### Viper.Collections
+
 - `Viper.Collections.List` — Dynamic list of object references (non‑generic)
-  - Ctor: `NEW()`; Property: `Count -> I64`
-  - Methods: `Add(OBJECT)`, `Clear()`, `RemoveAt(I64)`, `get_Item(I64)->OBJECT`, `set_Item(I64,OBJECT)`
+    - Ctor: `NEW()`; Property: `Count -> I64`
+    - Methods: `Add(OBJECT)`, `Clear()`, `RemoveAt(I64)`, `get_Item(I64)->OBJECT`, `set_Item(I64,OBJECT)`
 
 #### Viper.Math
+
 - `Viper.Math` — Mathematical functions (static utility)
-  - Methods (static):
-    - `Abs(F64) -> F64` — Absolute value (float)
-    - `AbsInt(I64) -> I64` — Absolute value (integer)
-    - `Sqrt(F64) -> F64` — Square root
-    - `Sin(F64) -> F64` — Sine (radians)
-    - `Cos(F64) -> F64` — Cosine (radians)
-    - `Tan(F64) -> F64` — Tangent (radians)
-    - `Atan(F64) -> F64` — Arctangent (radians)
-    - `Floor(F64) -> F64` — Round down
-    - `Ceil(F64) -> F64` — Round up
-    - `Pow(F64, F64) -> F64` — Power function
-    - `Log(F64) -> F64` — Natural logarithm
-    - `Exp(F64) -> F64` — Exponential (e^x)
-    - `Sgn(F64) -> F64` — Sign (-1, 0, +1) for float
-    - `SgnInt(I64) -> I64` — Sign (-1, 0, +1) for integer
-    - `Min(F64, F64) -> F64` — Minimum of two floats
-    - `Max(F64, F64) -> F64` — Maximum of two floats
-    - `MinInt(I64, I64) -> I64` — Minimum of two integers
-    - `MaxInt(I64, I64) -> I64` — Maximum of two integers
+    - Methods (static):
+        - `Abs(F64) -> F64` — Absolute value (float)
+        - `AbsInt(I64) -> I64` — Absolute value (integer)
+        - `Sqrt(F64) -> F64` — Square root
+        - `Sin(F64) -> F64` — Sine (radians)
+        - `Cos(F64) -> F64` — Cosine (radians)
+        - `Tan(F64) -> F64` — Tangent (radians)
+        - `Atan(F64) -> F64` — Arctangent (radians)
+        - `Floor(F64) -> F64` — Round down
+        - `Ceil(F64) -> F64` — Round up
+        - `Pow(F64, F64) -> F64` — Power function
+        - `Log(F64) -> F64` — Natural logarithm
+        - `Exp(F64) -> F64` — Exponential (e^x)
+        - `Sgn(F64) -> F64` — Sign (-1, 0, +1) for float
+        - `SgnInt(I64) -> I64` — Sign (-1, 0, +1) for integer
+        - `Min(F64, F64) -> F64` — Minimum of two floats
+        - `Max(F64, F64) -> F64` — Maximum of two floats
+        - `MinInt(I64, I64) -> I64` — Minimum of two integers
+        - `MaxInt(I64, I64) -> I64` — Maximum of two integers
 
 #### Viper.Console
+
 - `Viper.Console` — Console I/O (static utility)
-  - Methods (static): `WriteLine(STRING)->VOID`, `ReadLine()->STRING`
+    - Methods (static): `WriteLine(STRING)->VOID`, `ReadLine()->STRING`
 
 #### Viper.Random
+
 - `Viper.Random` — Random number generation (static utility)
-  - Methods (static):
-    - `Seed(I64) -> VOID` — Seed the random number generator
-    - `Next() -> F64` — Return next random number in [0, 1)
+    - Methods (static):
+        - `Seed(I64) -> VOID` — Seed the random number generator
+        - `Next() -> F64` — Return next random number in [0, 1)
 
 #### Viper.Environment
+
 - `Viper.Environment` — Command-line and environment (static utility)
-  - Methods (static):
-    - `GetArgumentCount() -> I64` — Number of command-line arguments
-    - `GetArgument(I64 index) -> STRING` — Get argument by index (0-based)
-    - `GetCommandLine() -> STRING` — Full command line as single string
+    - Methods (static):
+        - `GetArgumentCount() -> I64` — Number of command-line arguments
+        - `GetArgument(I64 index) -> STRING` — Get argument by index (0-based)
+        - `GetCommandLine() -> STRING` — Full command line as single string
 
 #### Viper.Time
+
 - `Viper.Time` — Time and timing utilities (static utility)
-  - Methods (static):
-    - `GetTickCount() -> I64` — Milliseconds since program start
-    - `Sleep(I32 ms) -> VOID` — Pause execution for milliseconds
+    - Methods (static):
+        - `GetTickCount() -> I64` — Milliseconds since program start
+        - `Sleep(I32 ms) -> VOID` — Pause execution for milliseconds
 
 #### Viper.Terminal
+
 - `Viper.Terminal` — Terminal/console control (static utility)
-  - Methods (static):
-    - `Clear() -> VOID` — Clear the screen
-    - `SetColor(I32 fg, I32 bg) -> VOID` — Set foreground/background colors
-    - `SetPosition(I32 row, I32 col) -> VOID` — Move cursor position
-    - `SetCursorVisible(I32 visible) -> VOID` — Show/hide cursor (0=hide, 1=show)
-    - `SetAltScreen(I32 enable) -> VOID` — Switch to/from alternate screen buffer
-    - `Bell() -> VOID` — Sound terminal bell
-    - `GetKey() -> STRING` — Wait for and return keypress
-    - `GetKeyTimeout(I32 ms) -> STRING` — Wait with timeout (empty if timeout)
-    - `InKey() -> STRING` — Non-blocking key check (empty if no key)
+    - Methods (static):
+        - `Clear() -> VOID` — Clear the screen
+        - `SetColor(I32 fg, I32 bg) -> VOID` — Set foreground/background colors
+        - `SetPosition(I32 row, I32 col) -> VOID` — Move cursor position
+        - `SetCursorVisible(I32 visible) -> VOID` — Show/hide cursor (0=hide, 1=show)
+        - `SetAltScreen(I32 enable) -> VOID` — Switch to/from alternate screen buffer
+        - `Bell() -> VOID` — Sound terminal bell
+        - `GetKey() -> STRING` — Wait for and return keypress
+        - `GetKeyTimeout(I32 ms) -> STRING` — Wait with timeout (empty if timeout)
+        - `InKey() -> STRING` — Non-blocking key check (empty if no key)
 
 **Note:** Legacy `Viper.System.*` aliases have been removed. Use the canonical `Viper.*` names.
 
 ### Legacy Aliases
 
-For backward compatibility, legacy `rt_*` function names are maintained as aliases when built with `-DVIPER_RUNTIME_NS_DUAL=ON` (currently the default). Examples:
+For backward compatibility, legacy `rt_*` function names are maintained as aliases when built with
+`-DVIPER_RUNTIME_NS_DUAL=ON` (currently the default). Examples:
+
 - `rt_print_str` → `Viper.Console.PrintStr`
 - `rt_print_i64` → `Viper.Console.PrintI64`
 - `rt_len` → `Viper.Strings.Len`
@@ -861,7 +901,10 @@ New code should use the canonical `Viper.*` names.
 
 ### OOP Runtime vs Procedural Helpers
 
-The OOP `Viper.*` classes are the preferred surface for new code. The legacy procedural helpers (e.g., `Viper.Strings.Len`, `Viper.IO.*`) remain available and are used internally by some lowering bridges for backwards compatibility. Migration is straightforward: replace procedural calls with equivalent class property/method calls as listed above.
+The OOP `Viper.*` classes are the preferred surface for new code. The legacy procedural helpers (e.g.,
+`Viper.Strings.Len`, `Viper.IO.*`) remain available and are used internally by some lowering bridges for backwards
+compatibility. Migration is straightforward: replace procedural calls with equivalent class property/method calls as
+listed above.
 
 ### Examples
 
@@ -1012,4 +1055,5 @@ Viper BASIC namespaces provide:
 
 The system is designed to be simple, predictable, and compatible with BASIC's case-insensitive semantics.
 
-For more examples, see the golden tests in `tests/golden/basic/namespace_*.bas` and the e2e tests in `tests/e2e/test_namespace_e2e.cpp`.
+For more examples, see the golden tests in `tests/golden/basic/namespace_*.bas` and the e2e tests in
+`tests/e2e/test_namespace_e2e.cpp`.

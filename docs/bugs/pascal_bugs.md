@@ -21,7 +21,8 @@ This document tracks known issues, limitations, and planned improvements for Pas
 
 ### RESOLVED: Interface implementation requires explicit method in declaring class
 
-**Description:** When a class implements an interface, the method must be declared in the class itself or an immediate parent. Deep inheritance chains where the interface method is only in a grandparent could fail to be detected.
+**Description:** When a class implements an interface, the method must be declared in the class itself or an immediate
+parent. Deep inheritance chains where the interface method is only in a grandparent could fail to be detected.
 
 **Resolution:** Interface checking now walks the full inheritance chain to find implementing methods.
 
@@ -41,7 +42,8 @@ This document tracks known issues, limitations, and planned improvements for Pas
 
 ### RESOLVED: Override without base virtual not detected
 
-**Description:** Using `override` on a method when no virtual method with that name exists in the base class should produce an error.
+**Description:** Using `override` on a method when no virtual method with that name exists in the base class should
+produce an error.
 
 **Resolution:** Semantic analyzer validates that override targets an existing virtual method.
 
@@ -73,7 +75,8 @@ This document tracks known issues, limitations, and planned improvements for Pas
 
 ### OPEN: Inherited method not directly callable on child type variable
 
-**Description:** When calling an inherited method through a child class variable, the method may not be found if only declared in the parent.
+**Description:** When calling an inherited method through a child class variable, the method may not be found if only
+declared in the parent.
 
 ```pascal
 type
@@ -98,7 +101,8 @@ end.
 
 ### OPEN: Constructor overloading resolution edge cases
 
-**Description:** When multiple constructors have similar signatures, overload resolution may not always pick the best match in edge cases involving type coercion.
+**Description:** When multiple constructors have similar signatures, overload resolution may not always pick the best
+match in edge cases involving type coercion.
 
 **Severity:** Low
 
@@ -167,6 +171,7 @@ end.
 ## Test Coverage Summary
 
 ### Semantic Tests (100+ tests)
+
 - `SemanticClassTests.cpp` - Class, interface, visibility, weak refs
 - `SemanticInheritanceTests.cpp` - Inheritance, virtual, override, abstract
 - `SemanticDestructorTests.cpp` - Destructor semantics
@@ -174,17 +179,21 @@ end.
 - `PascalOOPDiagnosticsTests.cpp` - Error message quality
 
 ### Parser Tests
+
 - `ParserOOPTests.cpp` - OOP syntax parsing
 - `ParserDeclTypeTests.cpp` - Type declarations including classes
 
 ### Lowering Tests
+
 - `BasicOOP_Lowering.cpp` - IL generation for OOP constructs
 
 ### E2E Tests
+
 - `PascalIsTests.cpp` - IS/AS operators runtime behavior
 - `examples/pascal/oop_shapes.pas` - Comprehensive OOP example
 
 ### Interop Tests
+
 - `PascalBasicInteropTests.cpp` - Pascal/BASIC compatibility
 - `PascalBasicABITests.cpp` - ABI-level compatibility
 

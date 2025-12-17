@@ -21,12 +21,12 @@ Type conversion utilities.
 
 ### Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `ToInt64(text)` | `Integer(String)` | Parses a string as a 64-bit integer |
-| `ToDouble(text)` | `Double(String)` | Parses a string as a double-precision float |
-| `ToString_Int(value)` | `String(Integer)` | Converts an integer to its string representation |
-| `ToString_Double(value)` | `String(Double)` | Converts a double to its string representation |
+| Method                   | Signature         | Description                                      |
+|--------------------------|-------------------|--------------------------------------------------|
+| `ToInt64(text)`          | `Integer(String)` | Parses a string as a 64-bit integer              |
+| `ToDouble(text)`         | `Double(String)`  | Parses a string as a double-precision float      |
+| `ToString_Int(value)`    | `String(Integer)` | Converts an integer to its string representation |
+| `ToString_Double(value)` | `String(Double)`  | Converts a double to its string representation   |
 
 ### Example
 
@@ -57,22 +57,22 @@ String formatting utilities for converting values to formatted strings.
 
 ### Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `Int(value)` | `String(Integer)` | Format integer as decimal string |
-| `IntRadix(value, radix)` | `String(Integer, Integer)` | Format integer in specified radix (2-36) |
-| `IntPad(value, width, pad)` | `String(Integer, Integer, String)` | Format integer with padding |
-| `Num(value)` | `String(Double)` | Format number with default precision |
-| `NumFixed(value, decimals)` | `String(Double, Integer)` | Format number with fixed decimal places |
-| `NumSci(value, decimals)` | `String(Double, Integer)` | Format number in scientific notation |
-| `NumPct(value, decimals)` | `String(Double, Integer)` | Format number as percentage |
-| `Bool(value)` | `String(Boolean)` | Format as "true" or "false" |
-| `BoolYN(value)` | `String(Boolean)` | Format as "Yes" or "No" |
-| `Size(bytes)` | `String(Integer)` | Format byte count as human-readable size |
-| `Hex(value)` | `String(Integer)` | Format as lowercase hex |
-| `HexPad(value, width)` | `String(Integer, Integer)` | Format as hex with zero-padding |
-| `Bin(value)` | `String(Integer)` | Format as binary |
-| `Oct(value)` | `String(Integer)` | Format as octal |
+| Method                      | Signature                          | Description                              |
+|-----------------------------|------------------------------------|------------------------------------------|
+| `Int(value)`                | `String(Integer)`                  | Format integer as decimal string         |
+| `IntRadix(value, radix)`    | `String(Integer, Integer)`         | Format integer in specified radix (2-36) |
+| `IntPad(value, width, pad)` | `String(Integer, Integer, String)` | Format integer with padding              |
+| `Num(value)`                | `String(Double)`                   | Format number with default precision     |
+| `NumFixed(value, decimals)` | `String(Double, Integer)`          | Format number with fixed decimal places  |
+| `NumSci(value, decimals)`   | `String(Double, Integer)`          | Format number in scientific notation     |
+| `NumPct(value, decimals)`   | `String(Double, Integer)`          | Format number as percentage              |
+| `Bool(value)`               | `String(Boolean)`                  | Format as "true" or "false"              |
+| `BoolYN(value)`             | `String(Boolean)`                  | Format as "Yes" or "No"                  |
+| `Size(bytes)`               | `String(Integer)`                  | Format byte count as human-readable size |
+| `Hex(value)`                | `String(Integer)`                  | Format as lowercase hex                  |
+| `HexPad(value, width)`      | `String(Integer, Integer)`         | Format as hex with zero-padding          |
+| `Bin(value)`                | `String(Integer)`                  | Format as binary                         |
+| `Oct(value)`                | `String(Integer)`                  | Format as octal                          |
 
 ### Example
 
@@ -114,28 +114,28 @@ Structured logging with configurable log levels.
 
 ### Log Levels
 
-| Constant | Value | Description |
-|----------|-------|-------------|
-| `DEBUG` | 0 | Detailed debugging information |
-| `INFO` | 1 | General informational messages |
-| `WARN` | 2 | Warning conditions |
-| `ERROR` | 3 | Error conditions |
-| `OFF` | 4 | Disable all logging |
+| Constant | Value | Description                    |
+|----------|-------|--------------------------------|
+| `DEBUG`  | 0     | Detailed debugging information |
+| `INFO`   | 1     | General informational messages |
+| `WARN`   | 2     | Warning conditions             |
+| `ERROR`  | 3     | Error conditions               |
+| `OFF`    | 4     | Disable all logging            |
 
 ### Properties
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `Level` | `Integer` (read/write) | Current minimum log level (messages below this are suppressed) |
+| Property | Type                   | Description                                                    |
+|----------|------------------------|----------------------------------------------------------------|
+| `Level`  | `Integer` (read/write) | Current minimum log level (messages below this are suppressed) |
 
 ### Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `Debug(message)` | `Void(String)` | Log a debug message |
-| `Info(message)` | `Void(String)` | Log an info message |
-| `Warn(message)` | `Void(String)` | Log a warning message |
-| `Error(message)` | `Void(String)` | Log an error message |
+| Method           | Signature          | Description                     |
+|------------------|--------------------|---------------------------------|
+| `Debug(message)` | `Void(String)`     | Log a debug message             |
+| `Info(message)`  | `Void(String)`     | Log an info message             |
+| `Warn(message)`  | `Void(String)`     | Log a warning message           |
+| `Error(message)` | `Void(String)`     | Log an error message            |
 | `Enabled(level)` | `Boolean(Integer)` | Check if a log level is enabled |
 
 ### Notes
@@ -173,29 +173,30 @@ Viper.Log.Level = Viper.Log.OFF
 
 ## Viper.Parse
 
-Safe parsing utilities with error handling. Unlike `Viper.Convert` which traps on invalid input, these methods allow graceful error handling.
+Safe parsing utilities with error handling. Unlike `Viper.Convert` which traps on invalid input, these methods allow
+graceful error handling.
 
 **Type:** Static utility class
 
 ### Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `TryInt(text, outPtr)` | `Boolean(String, Ptr)` | Try to parse integer, return success |
-| `TryNum(text, outPtr)` | `Boolean(String, Ptr)` | Try to parse double, return success |
-| `TryBool(text, outPtr)` | `Boolean(String, Ptr)` | Try to parse boolean, return success |
-| `IntOr(text, default)` | `Integer(String, Integer)` | Parse integer or return default |
-| `NumOr(text, default)` | `Double(String, Double)` | Parse double or return default |
-| `BoolOr(text, default)` | `Boolean(String, Boolean)` | Parse boolean or return default |
-| `IsInt(text)` | `Boolean(String)` | Check if string is a valid integer |
-| `IsNum(text)` | `Boolean(String)` | Check if string is a valid number |
+| Method                           | Signature                           | Description                               |
+|----------------------------------|-------------------------------------|-------------------------------------------|
+| `TryInt(text, outPtr)`           | `Boolean(String, Ptr)`              | Try to parse integer, return success      |
+| `TryNum(text, outPtr)`           | `Boolean(String, Ptr)`              | Try to parse double, return success       |
+| `TryBool(text, outPtr)`          | `Boolean(String, Ptr)`              | Try to parse boolean, return success      |
+| `IntOr(text, default)`           | `Integer(String, Integer)`          | Parse integer or return default           |
+| `NumOr(text, default)`           | `Double(String, Double)`            | Parse double or return default            |
+| `BoolOr(text, default)`          | `Boolean(String, Boolean)`          | Parse boolean or return default           |
+| `IsInt(text)`                    | `Boolean(String)`                   | Check if string is a valid integer        |
+| `IsNum(text)`                    | `Boolean(String)`                   | Check if string is a valid number         |
 | `IntRadix(text, radix, default)` | `Integer(String, Integer, Integer)` | Parse integer in given radix with default |
 
 ### Notes
 
 - **Boolean parsing** accepts (case-insensitive):
-  - True: `"true"`, `"yes"`, `"1"`, `"on"`
-  - False: `"false"`, `"no"`, `"0"`, `"off"`
+    - True: `"true"`, `"yes"`, `"1"`, `"on"`
+    - False: `"false"`, `"no"`, `"0"`, `"off"`
 - `IsInt` and `IsNum` accept optional leading `+` or `-`
 - `IntRadix` supports radix 2-36 (digits 0-9, letters a-z)
 - Leading/trailing whitespace is trimmed before parsing
@@ -226,10 +227,10 @@ PRINT enabled  ' Output: 1 (true)
 
 ### Comparison with Viper.Convert
 
-| Scenario | Use |
-|----------|-----|
-| Trusted input (internal data) | `Viper.Convert` |
-| User input (may be invalid) | `Viper.Parse` |
-| Need default value | `Viper.Parse.*Or` |
-| Need validation only | `Viper.Parse.Is*` |
+| Scenario                      | Use               |
+|-------------------------------|-------------------|
+| Trusted input (internal data) | `Viper.Convert`   |
+| User input (may be invalid)   | `Viper.Parse`     |
+| Need default value            | `Viper.Parse.*Or` |
+| Need validation only          | `Viper.Parse.Is*` |
 

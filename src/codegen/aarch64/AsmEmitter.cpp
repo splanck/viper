@@ -654,6 +654,15 @@ void AsmEmitter::emitFCvtZU(std::ostream &os, PhysReg dstGPR, PhysReg srcFPR) co
     os << "\n";
 }
 
+void AsmEmitter::emitFRintN(std::ostream &os, PhysReg dstFPR, PhysReg srcFPR) const
+{
+    os << "  frintn ";
+    printD(os, dstFPR);
+    os << ", ";
+    printD(os, srcFPR);
+    os << "\n";
+}
+
 void AsmEmitter::emitFunction(std::ostream &os, const MFunction &fn) const
 {
     emitFunctionHeader(os, fn.name);

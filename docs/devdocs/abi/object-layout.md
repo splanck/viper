@@ -6,7 +6,8 @@ last-updated: 2025-10-24
 
 # Object Layout and Call ABI (Milestone B)
 
-This page documents the runtime object layout and how both BASIC and Pascal front ends lower method calls to IL. Both languages use the same ABI for runtime compatibility.
+This page documents the runtime object layout and how both BASIC and Pascal front ends lower method calls to IL. Both
+languages use the same ABI for runtime compatibility.
 
 ## Object header and vtable
 
@@ -21,11 +22,16 @@ This page documents the runtime object layout and how both BASIC and Pascal fron
 
 ## Lowering of calls
 
-- Virtual calls: when targeting a method with a vtable slot, lowering emits an indirect call using the method symbol as the callee operand and passes the receiver as the first argument. In IL this is represented with `call.indirect` and a global callee operand; the runtime resolves the actual function via the receiver’s vptr and the method’s slot.
-- Direct calls: for non‑virtual methods, `FINAL` methods, or `BASE`‑qualified calls, lowering emits a direct call to the mangled symbol.
-- Base‑qualified calls: `BASE.M(...)` is lowered to a direct call to the immediate base class’s implementation of `M`, substituting the current instance (`ME`) for the receiver argument.
+- Virtual calls: when targeting a method with a vtable slot, lowering emits an indirect call using the method symbol as
+  the callee operand and passes the receiver as the first argument. In IL this is represented with `call.indirect` and a
+  global callee operand; the runtime resolves the actual function via the receiver’s vptr and the method’s slot.
+- Direct calls: for non‑virtual methods, `FINAL` methods, or `BASE`‑qualified calls, lowering emits a direct call to the
+  mangled symbol.
+- Base‑qualified calls: `BASE.M(...)` is lowered to a direct call to the immediate base class’s implementation of `M`,
+  substituting the current instance (`ME`) for the receiver argument.
 
 ## Allocation
 
-- `NEW C(...)` requests the runtime helper to allocate an object of class `C`, then invokes the constructor as a direct call with the newly allocated object as the leading argument.
+- `NEW C(...)` requests the runtime helper to allocate an object of class `C`, then invokes the constructor as a direct
+  call with the newly allocated object as the leading argument.
 

@@ -9,9 +9,12 @@
 
 ## Executive Summary
 
-**Global variables declared at module level are completely isolated from SUB and FUNCTION procedures.** Each procedure sees a separate, zero-initialized copy of global variables. Modifications made inside procedures have NO effect on the actual global variables in main code or other procedures.
+**Global variables declared at module level are completely isolated from SUB and FUNCTION procedures.** Each procedure
+sees a separate, zero-initialized copy of global variables. Modifications made inside procedures have NO effect on the
+actual global variables in main code or other procedures.
 
-This is not a scope visibility issue - it's a **complete isolation bug** where procedures operate on different memory locations than the main program.
+This is not a scope visibility issue - it's a **complete isolation bug** where procedures operate on different memory
+locations than the main program.
 
 ---
 
@@ -25,6 +28,7 @@ In standard BASIC (QBASIC, GW-BASIC, Visual Basic, etc.):
 4. **Procedures communicate via globals** - SUB can modify, FUNCTION can read the modification
 
 ### Expected Example:
+
 ```basic
 DIM COUNTER AS INTEGER
 COUNTER = 100
@@ -45,14 +49,14 @@ PRINT COUNTER  ' Should print 101
 
 ### Test Results Summary
 
-| Scenario | Main Value | SUB Sees | FUNCTION Sees | Main After | Status |
-|----------|------------|----------|---------------|------------|--------|
-| 1. Main→SUB→Main | 100 | 0 | - | 100 | ❌ BROKEN |
-| 2. Main→FUNC→Main | 100 | - | 0 | 100 | ❌ BROKEN |
-| 3. SUB sets, FUNC reads | 50 | 0→200 | 0 | 50 | ❌ BROKEN |
-| 4. STRING globals | "Hello" | ""→"World" | "" | "Hello" | ❌ BROKEN |
-| 5. SUB→SUB | 10 | 0→20 | - (0) | 10 | ❌ BROKEN |
-| 6. FUNC→FUNC | 15 | - | 0→30, 0 | 15 | ❌ BROKEN |
+| Scenario                | Main Value | SUB Sees   | FUNCTION Sees | Main After | Status   |
+|-------------------------|------------|------------|---------------|------------|----------|
+| 1. Main→SUB→Main        | 100        | 0          | -             | 100        | ❌ BROKEN |
+| 2. Main→FUNC→Main       | 100        | -          | 0             | 100        | ❌ BROKEN |
+| 3. SUB sets, FUNC reads | 50         | 0→200      | 0             | 50         | ❌ BROKEN |
+| 4. STRING globals       | "Hello"    | ""→"World" | ""            | "Hello"    | ❌ BROKEN |
+| 5. SUB→SUB              | 10         | 0→20       | - (0)         | 10         | ❌ BROKEN |
+| 6. FUNC→FUNC            | 15         | -          | 0→30, 0       | 15         | ❌ BROKEN |
 
 ---
 
@@ -61,6 +65,7 @@ PRINT COUNTER  ' Should print 101
 ### Test 1: Main → SUB → Main (INTEGER)
 
 **Code**:
+
 ```basic
 DIM COUNTER AS INTEGER
 COUNTER = 100
@@ -75,6 +80,7 @@ PRINT "After SUB: COUNTER = " + STR$(COUNTER)
 ```
 
 **Actual Output**:
+
 ```
 Main before SUB: COUNTER = 100
 In SUB before increment: COUNTER = 0    ← SUB sees 0, not 100!
@@ -83,6 +89,7 @@ Main after SUB: COUNTER = 100           ← Main still sees 100!
 ```
 
 **Analysis**:
+
 - Main code: `COUNTER` is at memory location A, value = 100
 - Inside SUB: `COUNTER` is at memory location B, value = 0 (zero-initialized)
 - SUB modifies location B to 50
@@ -95,6 +102,7 @@ Main after SUB: COUNTER = 100           ← Main still sees 100!
 ### Test 2: Main → FUNCTION → Main (INTEGER)
 
 **Code**:
+
 ```basic
 DIM VALUE AS INTEGER
 VALUE = 100
@@ -109,6 +117,7 @@ PRINT "FUNCTION returned: " + STR$(result)
 ```
 
 **Actual Output**:
+
 ```
 Main before FUNCTION: VALUE = 100
 In FUNCTION: VALUE = 0            ← FUNCTION sees 0!
@@ -123,6 +132,7 @@ Main after FUNCTION: VALUE = 100
 ### Test 3: SUB Modifies, Then FUNCTION Reads
 
 **Code**:
+
 ```basic
 DIM SHARED_VAR AS INTEGER
 SHARED_VAR = 50
@@ -140,6 +150,7 @@ result = GetValue()
 ```
 
 **Actual Output**:
+
 ```
 Main initial: SHARED_VAR = 50
 SUB before: SHARED_VAR = 0        ← SUB sees 0
@@ -151,6 +162,7 @@ Main final: SHARED_VAR = 50
 ```
 
 **Analysis**:
+
 - SUB's modification is invisible to FUNCTION
 - FUNCTION's copy is also separate from SUB's copy
 - Three separate memory locations exist!
@@ -162,6 +174,7 @@ Main final: SHARED_VAR = 50
 ### Test 4: STRING Global Variables
 
 **Code**:
+
 ```basic
 DIM MESSAGE AS STRING
 MESSAGE = "Hello"
@@ -176,6 +189,7 @@ PRINT "Main after SUB: MESSAGE = " + MESSAGE
 ```
 
 **Actual Output**:
+
 ```
 Main initial: MESSAGE = Hello
 SUB before: MESSAGE =              ← Empty string (zero-init for strings)
@@ -190,6 +204,7 @@ Main after SUB: MESSAGE = Hello    ← Main unchanged
 ### Test 5: SUB → SUB Communication
 
 **Code**:
+
 ```basic
 DIM STATE AS INTEGER
 STATE = 10
@@ -207,6 +222,7 @@ SecondSub()
 ```
 
 **Actual Output**:
+
 ```
 Main initial: STATE = 10
 FirstSub before: STATE = 0
@@ -222,6 +238,7 @@ SecondSub reads: STATE = 0         ← SecondSub sees 0, not FirstSub's 20!
 ### Test 6: FUNCTION → FUNCTION Communication
 
 **Code**:
+
 ```basic
 DIM DATA AS INTEGER
 DATA = 15
@@ -240,6 +257,7 @@ r2 = SecondFunc()
 ```
 
 **Actual Output**:
+
 ```
 Main initial: DATA = 15
 FirstFunc before: DATA = 0
@@ -272,6 +290,7 @@ Based on test results, VIPER BASIC appears to create **separate variable instanc
 ```
 
 Each procedure gets a **shadow copy** that:
+
 1. Is zero-initialized (0 for INTEGER, "" for STRING)
 2. Can be read and modified locally
 3. Has NO connection to the actual global variable
@@ -282,6 +301,7 @@ Each procedure gets a **shadow copy** that:
 ## What Actually Works
 
 ✅ **Parameters** - SUB/FUNCTION parameters work correctly:
+
 ```basic
 SUB PrintValue(x AS INTEGER)
     PRINT x  ' Works - prints the passed value
@@ -289,6 +309,7 @@ END SUB
 ```
 
 ✅ **Return values** - FUNCTIONs can return values:
+
 ```basic
 FUNCTION Add(a AS INTEGER, b AS INTEGER) AS INTEGER
     RETURN a + b  ' Works correctly
@@ -296,6 +317,7 @@ END FUNCTION
 ```
 
 ✅ **Local variables** - Variables declared inside SUB/FUNCTION work:
+
 ```basic
 SUB Test()
     DIM local AS INTEGER
@@ -330,6 +352,7 @@ END SUB
 ### Workarounds and Limitations
 
 **Workaround 1**: Pass everything as parameters
+
 ```basic
 ' Instead of using globals, pass all state:
 FUNCTION Add1(counter AS INTEGER) AS INTEGER
@@ -340,11 +363,13 @@ counter = Add1(counter)  ' Awkward and verbose
 ```
 
 **Limitation**:
+
 - Becomes extremely verbose for >2-3 variables
 - Cannot handle complex data structures
 - Defeats the purpose of procedures
 
 **Workaround 2**: Use GOSUB instead of SUB/FUNCTION
+
 ```basic
 counter = 100
 GOSUB Increment
@@ -356,6 +381,7 @@ Increment:
 ```
 
 **Limitation**:
+
 - No parameters or return values
 - No local variables
 - No scoping or modularity
@@ -364,6 +390,7 @@ Increment:
 **Workaround 3**: Inline all code (no procedures)
 
 **Limitation**:
+
 - Code duplication
 - No code reuse
 - Unmaintainable for programs >500 lines
@@ -414,7 +441,8 @@ Increment
 PRINT counter  ' Prints: 101
 ```
 
-**Note**: Some BASIC dialects require `DIM SHARED` for globals, but VIPER BASIC doesn't support `SHARED` keyword, and regular `DIM` at module level should create a global.
+**Note**: Some BASIC dialects require `DIM SHARED` for globals, but VIPER BASIC doesn't support `SHARED` keyword, and
+regular `DIM` at module level should create a global.
 
 ---
 
@@ -455,13 +483,15 @@ All tests compile successfully but produce incorrect runtime behavior.
 **Severity**: This is a **language-breaking bug** that makes SUB/FUNCTION essentially useless.
 
 **Blocks**:
+
 - BasicDB v0.6 refactoring (confirmed)
 - Any database or CRUD application
 - Any game with shared state
 - Any program using modular design
 - Any program >500 lines (per DUNGEON_QUEST_TEST_SUMMARY.md)
 
-**Impact**: Combined with BUG-026 (DO WHILE + GOSUB), there is **NO viable way to write modular, complex programs** in current VIPER BASIC.
+**Impact**: Combined with BUG-026 (DO WHILE + GOSUB), there is **NO viable way to write modular, complex programs** in
+current VIPER BASIC.
 
 ---
 

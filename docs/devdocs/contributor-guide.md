@@ -7,12 +7,14 @@ last-verified: 2025-11-25
 # Contributor Guide
 
 <a id="contributing"></a>
+
 ## Contributing
 
 - The repository includes a lightweight `Analysis` library in `src/il/analysis`.
   Run the tests under `tests/analysis` when modifying these utilities.
 
 <a id="style-guide"></a>
+
 ## Style Guide
 
 See [CLAUDE.md](../../CLAUDE.md) for project-wide policies. This guide defines
@@ -160,6 +162,7 @@ enum class TokenKind {
 ```
 
 <a id="testing"></a>
+
 ## Testing
 
 ### Tolerance checks for float e2e
@@ -176,9 +179,11 @@ if any absolute difference exceeds the specified tolerance. The CMake test drive
 after executing the sample.
 
 <a id="frontend-internals"></a>
+
 ## Frontend Internals
 
 <a id="frontend-internals-parser"></a>
+
 ### Parser
 
 The lexer recognizes single-line comments beginning with an apostrophe `'`
@@ -189,6 +194,7 @@ are produced. Line and column counters continue to advance so subsequent
 tokens report accurate locations.
 
 <a id="frontend-internals-semantics"></a>
+
 ### Semantics
 
 The semantic analyzer walks the BASIC AST to perform checks and annotate
@@ -246,6 +252,7 @@ If analysis fails, `missing return in FUNCTION <name>` is reported at the
 flow analysis (e.g., constant conditions or loop bounds).
 
 <a id="frontend-internals-analysis"></a>
+
 ### Analysis Utilities
 
 #### CFG
@@ -298,6 +305,7 @@ terminator. They depend only on `il_core`, allowing passes to use them without
 pulling in the Analysis layer.
 
 <a id="frontend-internals-ir-builder"></a>
+
 ### IR Builder Helpers
 
 The IR builder provides convenience routines for constructing control flow with
@@ -331,6 +339,7 @@ Both helpers assert that the number of arguments matches the destination block's
 parameter list.
 
 <a id="debugging"></a>
+
 ## Debugging
 
 ### Breakpoints and Source Tracing
@@ -341,12 +350,15 @@ parameter list.
 
 #### Flags
 
-- `--break <file:line>`: Generic breakpoint flag. If the argument contains a path separator or dot, it is interpreted as a source-line breakpoint.
+- `--break <file:line>`: Generic breakpoint flag. If the argument contains a path separator or dot, it is interpreted as
+  a source-line breakpoint.
 - `--break-src <file:line>`: Explicit source-line breakpoint.
 
-Paths are normalized before comparison, including platform separators and `.`/`..` segments. When the normalized path does not match the location recorded in the IL, `ilc` falls back to comparing only the basename.
+Paths are normalized before comparison, including platform separators and `.`/`..` segments. When the normalized path
+does not match the location recorded in the IL, `ilc` falls back to comparing only the basename.
 
-Specifying the same breakpoint more than once coalesces into a single breakpoint. When multiple instructions map to the same source line, `ilc` reports the breakpoint once per line until control transfers to a different basic block.
+Specifying the same breakpoint more than once coalesces into a single breakpoint. When multiple instructions map to the
+same source line, `ilc` reports the breakpoint once per line until control transfers to a different basic block.
 
 #### Examples
 
@@ -370,7 +382,8 @@ These built-in functions interact with the terminal and require manual testing t
 ilc front basic -run examples/inkey_smoke.bas
 ```
 
-Expected: Program polls once, prints "No key" (or the key code if pressed quickly), and exits immediately without blocking.
+Expected: Program polls once, prints "No key" (or the key code if pressed quickly), and exits immediately without
+blocking.
 
 #### Blocking read (GETKEY$)
 
@@ -383,7 +396,8 @@ ilc front basic -run /tmp/getkey.bas
 
 Expected: Program waits for one keystroke, then prints the ASCII code and exits.
 
-**Note:** INKEY$ never blocks; GETKEY$ waits for input. Both functions require parentheses even though they take zero arguments.
+**Note:** INKEY$ never blocks; GETKEY$ waits for input. Both functions require parentheses even though they take zero
+arguments.
 
 ### Debugging BASIC Recursion Failures
 
@@ -406,11 +420,13 @@ the recursion never reaches the base case. At startup the trace should show
 the function, the program may have been lowered incorrectly.
 
 <a id="migrations"></a>
+
 ## Migrations
 
 No active migrations are in flight. Follow release notes and ADRs for future migration plans.
 
 Sources:
+
 - docs/contributor-guide.md#contributing
 - docs/contributor-guide.md#style-guide
 - docs/contributor-guide.md#testing

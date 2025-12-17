@@ -61,6 +61,8 @@ enum class MOpcode
     FCvtZS, // fcvtzs xDst, dSrc
     UCvtF,  // ucvtf dDst, xSrc
     FCvtZU, // fcvtzu xDst, dSrc
+    // Floating-point rounding
+    FRintN, // frintn dDst, dSrc (round to nearest, ties to even)
     // Stack pointer adjust (for outgoing arg area)
     SubSpImm,
     AddSpImm,

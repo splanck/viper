@@ -6,7 +6,8 @@ last-updated: 2025-12-09
 
 # Viper VM — Architecture & Implementation Guide
 
-Comprehensive guide to the Viper Virtual Machine (VM), a stack-based bytecode interpreter that executes Viper IL programs. This document covers the VM's design philosophy, architecture, execution model, and source code organization.
+Comprehensive guide to the Viper Virtual Machine (VM), a stack-based bytecode interpreter that executes Viper IL
+programs. This document covers the VM's design philosophy, architecture, execution model, and source code organization.
 
 ---
 
@@ -30,7 +31,8 @@ Comprehensive guide to the Viper Virtual Machine (VM), a stack-based bytecode in
 
 ### What is the Viper VM?
 
-The Viper VM is a **stack-based bytecode interpreter** that executes programs written in Viper's Intermediate Language (IL). It serves as the primary execution engine for the Viper toolchain, providing:
+The Viper VM is a **stack-based bytecode interpreter** that executes programs written in Viper's Intermediate Language (
+IL). It serves as the primary execution engine for the Viper toolchain, providing:
 
 - **Deterministic execution** of IL programs
 - **Debugging and tracing** capabilities
@@ -40,14 +42,14 @@ The Viper VM is a **stack-based bytecode interpreter** that executes programs wr
 
 ### Key Characteristics
 
-| Feature | Description |
-|---------|-------------|
-| **Architecture** | Stack-based interpreter with SSA register file |
-| **Dispatch** | Pluggable (function table, switch, computed goto) |
-| **Memory** | Frame-local operand stack with explicit allocation via `alloca` (64KB default) |
-| **Error Handling** | Structured exception handling with trap metadata |
-| **Debugging** | Built-in breakpoints, stepping, and tracing |
-| **Performance** | Tail-call optimization, opcode counting, inline caching |
+| Feature            | Description                                                                    |
+|--------------------|--------------------------------------------------------------------------------|
+| **Architecture**   | Stack-based interpreter with SSA register file                                 |
+| **Dispatch**       | Pluggable (function table, switch, computed goto)                              |
+| **Memory**         | Frame-local operand stack with explicit allocation via `alloca` (64KB default) |
+| **Error Handling** | Structured exception handling with trap metadata                               |
+| **Debugging**      | Built-in breakpoints, stepping, and tracing                                    |
+| **Performance**    | Tail-call optimization, opcode counting, inline caching                        |
 
 ---
 
@@ -126,6 +128,7 @@ class VM {
 ```
 
 **Key responsibilities:**
+
 - Module initialization and function lookup
 - Dispatch strategy selection and lifecycle
 - String literal caching and lifetime management
@@ -151,6 +154,7 @@ struct Frame {
 ```
 
 **Key responsibilities:**
+
 - SSA value storage in register file
 - Stack allocation via `alloca` instruction (bump `sp` within `stack`)
 - Block parameter passing
@@ -170,7 +174,8 @@ union Slot {
 };
 ```
 
-All IL values are represented as `Slot` during execution. Type safety is enforced by the IL verifier and opcode handlers.
+All IL values are represented as `Slot` during execution. Type safety is enforced by the IL verifier and opcode
+handlers.
 
 ### 4. Dispatch Drivers
 
@@ -192,6 +197,7 @@ Category-organized functions that implement IL instructions:
 - **Memory** (`OpHandlers_Memory.hpp`): `alloca`, `load`, `store`, `gep`
 
 Each handler has signature:
+
 ```cpp
 ExecResult handler(VM& vm, Frame& fr, const Instr& in,
                   const BlockMap& blocks,
@@ -230,16 +236,19 @@ For each instruction:
 ### Control Flow
 
 **Basic blocks:**
+
 - Execution starts at the `entry` block
 - Terminators (`ret`, `br`, `cbr`, `switch`) transfer control
 - Block parameters are transferred before entering a new block
 
 **Function calls:**
+
 - `call` opcode pushes a new frame onto the execution stack
 - Arguments are evaluated and passed as block parameters
 - Return value is propagated back via `Slot`
 
 **Tail calls:**
+
 - Detected via `call.tail` attribute
 - Reuses current frame instead of allocating new one
 - Eliminates stack growth for recursive functions
@@ -326,6 +335,7 @@ VIPER_DISPATCH=threaded ./ilc -run program.il
 ### Shared Dispatch Loop
 
 All strategies share a common dispatch loop (`runSharedDispatchLoop`) that handles:
+
 - State reset per iteration (`beginDispatch`)
 - Instruction selection (`selectInstruction`)
 - Debug hooks (`VIPER_VM_DISPATCH_BEFORE/AFTER`)
@@ -364,6 +374,7 @@ The VM provides compile-time configurable hooks for profiling and embedding:
 ```
 
 **Predefined behavior:**
+
 - `VIPER_VM_DISPATCH_BEFORE`: Increments per-opcode counters when `VIPER_VM_OPCOUNTS=1`
 - `VIPER_VM_DISPATCH_AFTER`: Calls poll callback every N instructions if configured
 
@@ -376,6 +387,7 @@ Enable compile-time opcode counting:
 ```
 
 Access counters at runtime:
+
 ```cpp
 vm.resetOpcodeCounts();
 vm.run();
@@ -406,11 +418,13 @@ ilc bench program.il --max-steps 1000000
 ```
 
 **Output format (text):**
+
 ```
 BENCH <file> <strategy> instr=<N> time_ms=<T> insns_per_sec=<R>
 ```
 
 **Output format (JSON):**
+
 ```json
 [
   {
@@ -426,12 +440,14 @@ BENCH <file> <strategy> instr=<N> time_ms=<T> insns_per_sec=<R>
 ```
 
 **Strategy selection flags:**
+
 - `--table`: Run only FnTable dispatch
 - `--switch`: Run only Switch dispatch
 - `--threaded`: Run only Threaded dispatch
 - (default): Run all three strategies
 
 **Example benchmark IL programs** are available in `examples/il/benchmarks/`:
+
 - `arith_stress.il`: Heavy arithmetic workload
 - `branch_stress.il`: Branch-heavy control flow
 - `call_stress.il`: Function call overhead testing
@@ -463,12 +479,14 @@ size_t sp = 0;  // Stack pointer in bytes
 ```
 
 **Usage:**
+
 - `alloca N` allocates N bytes on the stack
 - Returns a `ptr` pointing into `stack` at offset `sp`
 - Stack grows upward (`sp` increases)
 - No explicit deallocation (frame-scoped)
 
 **Limits:**
+
 - Fixed 1KB size per frame
 - Overflow causes trap
 - Suitable for small temporaries (strings, small arrays)
@@ -520,6 +538,7 @@ std::vector<HandlerRecord> ehStack;
 ```
 
 **IL instructions:**
+
 - `eh.push label handler` — Push handler onto stack
 - `eh.pop` — Pop handler from stack
 - `eh.entry` — Mark entry point of handler block
@@ -531,8 +550,8 @@ When a trap occurs:
 1. **Capture context**: Function, block, instruction, source location
 2. **Search for handler**: Walk `ehStack` for active handler
 3. **Dispatch or unwind**:
-   - **Handler found**: Jump to handler block, set `activeError`
-   - **No handler**: Throw `TrapDispatchSignal` to unwind stack
+    - **Handler found**: Jump to handler block, set `activeError`
+    - **No handler**: Throw `TrapDispatchSignal` to unwind stack
 4. **Resume**: Handler uses `resume.same`, `resume.next`, or `resume.label`
 
 ### Structured Error Payload
@@ -547,6 +566,7 @@ struct VmError {
 ```
 
 Accessible via:
+
 - `trap.kind` — Read current trap kind
 - `err.get_kind %e` — Extract kind from error value
 - `err.get_code %e` — Extract code from error value
@@ -572,13 +592,15 @@ class RuntimeBridge {
 ```
 
 **Call flow:**
+
 1. IL `call @Viper.Console.PrintI64(args)` instruction (or legacy `@rt_*` alias)
 2. Handler evaluates arguments into `Slot` vector
 3. `RuntimeBridge::call()` looks up function descriptor by canonical name
 4. C function is invoked with marshalled arguments
 5. Return value is marshalled back to `Slot`
 
-**Note:** The runtime supports both canonical `@Viper.*` names and legacy `@rt_*` aliases when built with `-DVIPER_RUNTIME_NS_DUAL=ON`.
+**Note:** The runtime supports both canonical `@Viper.*` names and legacy `@rt_*` aliases when built with
+`-DVIPER_RUNTIME_NS_DUAL=ON`.
 
 ### Runtime Call Context
 
@@ -631,6 +653,7 @@ struct TraceConfig {
 ```
 
 Output format:
+
 ```
 [func:block:ip] opcode operands → result
 ```
@@ -653,6 +676,7 @@ class DebugCtrl {
 ```
 
 **Breakpoint types:**
+
 - Block label breakpoints
 - Source line breakpoints
 - Step count breakpoints
@@ -736,29 +760,35 @@ src/vm/
 ### Key Files by Functionality
 
 **Core Interpreter:**
+
 - `VM.hpp`, `VM.cpp` — Main interpreter class
 - `VMContext.hpp` — Shared execution helpers
 - `Runner.cpp` — Public API facade
 
 **Dispatch:**
+
 - `VM.cpp` — Dispatch driver implementations
 - `ops/generated/` — Generated dispatch tables
 
 **Opcode Handlers:**
+
 - `OpHandlers*.hpp` — Handler declarations by category
 - `ops/Op_*.cpp` — Complex handler implementations
 - `int_ops_*.cpp`, `fp_ops.cpp`, `mem_ops.cpp` — Arithmetic implementations
 
 **Exception Handling:**
+
 - `Trap.hpp`, `Trap.cpp` — Trap types and formatting
 - `err_bridge.hpp` — Error bridge integration
 - `ops/Op_TrapEh.cpp` — Exception handler opcodes
 
 **Runtime Integration:**
+
 - `RuntimeBridge.hpp`, `RuntimeBridge.cpp` — C runtime adapter
 - `Marshal.hpp`, `Marshal.cpp` — Value marshalling
 
 **Debugging:**
+
 - `debug/Debug.cpp` — Breakpoint management
 - `debug/Trace.cpp` — Trace output formatting
 - `debug/VMDebug.cpp` — Debug integration
@@ -794,6 +824,7 @@ std::array<uint64_t, kNumOpcodes> opCounts_;
 Tracks execution count per opcode for profiling.
 
 **API:**
+
 ```cpp
 const auto& counts = vm.opcodeCounts();
 auto top = vm.topOpcodes(10);  // Top 10 opcodes
@@ -804,7 +835,8 @@ vm.resetOpcodeCounts();
 
 The VM execution context has been optimized to minimize overhead on the hot path:
 
-**ExecState-based dispatch:** The dispatch macros (`VIPER_VM_DISPATCH_BEFORE`, `VIPER_VM_DISPATCH_AFTER`) use `ExecState` directly instead of `VMContext`, avoiding an extra indirection per instruction:
+**ExecState-based dispatch:** The dispatch macros (`VIPER_VM_DISPATCH_BEFORE`, `VIPER_VM_DISPATCH_AFTER`) use
+`ExecState` directly instead of `VMContext`, avoiding an extra indirection per instruction:
 
 ```cpp
 // Hot path uses ExecState directly
@@ -818,7 +850,8 @@ struct PollConfig {
 };
 ```
 
-**VMContext for external APIs:** The `VMContext` wrapper is still used for external APIs (`stepOnce`, `fetchOpcode`, `handleTrapDispatch`) to provide a stable interface, but it's not required on the per-instruction hot path.
+**VMContext for external APIs:** The `VMContext` wrapper is still used for external APIs (`stepOnce`, `fetchOpcode`,
+`handleTrapDispatch`) to provide a stable interface, but it's not required on the per-instruction hot path.
 
 ### Execution Stack Pre-allocation
 
@@ -838,6 +871,7 @@ struct ExecStackGuard {
 ```
 
 **Optimizations:**
+
 - Pre-allocated capacity eliminates heap allocation for typical call depths
 - Unified `ExecStackGuard` in VM.hpp removes code duplication
 - `noexcept` specifiers enable compiler optimizations
@@ -851,6 +885,7 @@ std::unordered_map<std::string_view, ViperStringHandle, ...> inlineLiteralCache;
 ```
 
 **Optimizations:**
+
 - Pre-populated during VM construction by scanning all ConstStr operands in the module
 - Fast path uses `find()` for pre-populated strings (common case)
 - Fallback `try_emplace` only for edge cases (dynamically generated strings)
@@ -915,20 +950,24 @@ Allows embedding applications to maintain responsiveness.
 ## Further Reading
 
 **Viper Documentation:**
+
 - **[IL Guide](il-guide.md)** — IL specification and semantics
 - **[IL Reference](il-reference.md)** — Complete opcode catalog
 - **[Getting Started](getting-started.md)** — Build and run Viper
 
 **Developer Documentation** (in `/devdocs`):**
+
 - `runtime-vm.md` — VM and runtime internals (detailed)
 - `architecture.md` — Overall system architecture
 - `specs/errors.md` — Error handling specification
 - `vm-*.md` — VM-specific topics (stepping, profiling, etc.)
 
 **Source Code:**
+
 - `src/vm/` — VM implementation
 - `src/runtime/` — C runtime library
 - `src/tests/vm/` — VM unit tests
+
 # Viper VM — Performance Tuning and Benchmarking
 
 This guide summarizes runtime tuning knobs for the VM and how to benchmark dispatch performance across modes.
@@ -936,13 +975,15 @@ This guide summarizes runtime tuning knobs for the VM and how to benchmark dispa
 ## Dispatch Modes
 
 - Env `VIPER_DISPATCH`:
-  - `table`: function-table dispatch via `executeOpcode`
-  - `switch`: inline switch dispatch with generated handlers
-  - `threaded`: computed goto (if built with `VIPER_VM_THREADED`)
+    - `table`: function-table dispatch via `executeOpcode`
+    - `switch`: inline switch dispatch with generated handlers
+    - `threaded`: computed goto (if built with `VIPER_VM_THREADED`)
 
-- Env `VIPER_ENABLE_OPCOUNTS` (default on): enable per-opcode execution counters. You can query counts via `Runner::opcodeCounts()` or the `--count` flag in `ilc -run`.
+- Env `VIPER_ENABLE_OPCOUNTS` (default on): enable per-opcode execution counters. You can query counts via
+  `Runner::opcodeCounts()` or the `--count` flag in `ilc -run`.
 
-- Env `VIPER_INTERRUPT_EVERY_N`: periodically invoke a host callback every N instructions (see `RunConfig::interruptEveryN`).
+- Env `VIPER_INTERRUPT_EVERY_N`: periodically invoke a host callback every N instructions (see
+  `RunConfig::interruptEveryN`).
 
 ## Switch Backend Heuristics
 
@@ -968,7 +1009,8 @@ Environment variables:
 - `IL_GLOB` (default `examples/il/*.il`): glob for IL programs to benchmark (relative to repo root).
 - `ILC_BIN`: optional path to `ilc`; otherwise auto-detected under `build/`.
 
-Each invocation writes a timestamped section header and a per-row timestamp, along with averages and min/max timings, the actual dispatch kind, and instruction counts extracted from `--count` and `--time` summaries.
+Each invocation writes a timestamped section header and a per-row timestamp, along with averages and min/max timings,
+the actual dispatch kind, and instruction counts extracted from `--count` and `--time` summaries.
 
 Example:
 
@@ -976,7 +1018,9 @@ Example:
 RUNS_PER_CASE=5 IL_GLOB='src/tests/il/e2e/*.il' scripts/vm_benchmark.sh
 ```
 
-The script sets `VIPER_DEBUG_VM=1` so the VM prints the resolved dispatch kind, and `VIPER_ENABLE_OPCOUNTS=1` to capture counts.
+The script sets `VIPER_DEBUG_VM=1` so the VM prints the resolved dispatch kind, and `VIPER_ENABLE_OPCOUNTS=1` to capture
+counts.
+
 ### Concurrency Model
 
 Each `VM` instance is single‑threaded: only one thread may execute within a given

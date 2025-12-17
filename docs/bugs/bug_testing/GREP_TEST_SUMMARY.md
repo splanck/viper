@@ -8,6 +8,7 @@
 ## What Was Built
 
 **ViperGrep** - A fully functional grep clone in Viper BASIC with:
+
 - Pattern searching with INSTR
 - Case-insensitive search with LCASE$
 - Multiple file processing
@@ -44,6 +45,7 @@
 ## Features Successfully Tested
 
 ### File I/O ✅
+
 - `OPEN filename FOR INPUT AS #n` - Works perfectly
 - `LINE INPUT #n, variable` - Reads lines correctly
 - `EOF(#n)` - Detects end of file
@@ -51,6 +53,7 @@
 - File not found errors trap cleanly
 
 ### String Functions ✅
+
 - `INSTR(text, pattern)` - Returns position (1-based) or 0
 - `LCASE$(text)` - Converts to lowercase
 - `UCASE$(text)` - Converts to uppercase
@@ -61,11 +64,13 @@
 - String concatenation with `+`
 
 ### Control Flow ✅
+
 - `WHILE...WEND` loops work perfectly
 - `IF...THEN...END IF` works at module level
 - `FOR...NEXT` loops work
 
 ### Classes ✅
+
 - Class definition with fields
 - Object creation with NEW
 - Field access (obj.field)
@@ -73,6 +78,7 @@
 - Arrays of objects
 
 ### Other ✅
+
 - `ARGS` variable for command line arguments
 - Integer division for averages
 - Comment support with `'`
@@ -82,10 +88,12 @@
 ## Bugs Discovered
 
 ### BUG-052: ON ERROR GOTO not implemented
+
 **Test**: grep_10_on_error.bas
 **Error**: `error: main:UL999999995: empty block`
 
-Cannot use ON ERROR GOTO for error handling. All runtime errors (file not found, division by zero, etc.) cause immediate program termination with Trap message.
+Cannot use ON ERROR GOTO for error handling. All runtime errors (file not found, division by zero, etc.) cause immediate
+program termination with Trap message.
 
 **Impact**: Moderate - Cannot build robust programs that handle errors gracefully.
 
@@ -106,6 +114,7 @@ Cannot use ON ERROR GOTO for error handling. All runtime errors (file not found,
 ### vipergrep_simple.bas (172 lines)
 
 Complete grep implementation with:
+
 - Pattern matching (case-insensitive)
 - Multiple file search (3 files)
 - Line number display
@@ -113,6 +122,7 @@ Complete grep implementation with:
 - Statistics summary
 
 **Output Example**:
+
 ```
 ================================================================
                       VIPERGREP SIMPLE
@@ -147,6 +157,7 @@ SUMMARY:
 ### vipergrep_multi.bas (119 lines)
 
 Multi-file grep with:
+
 - Modular design with helper SUBs
 - ProcessFile SUB for each file
 - Search configuration with OOP
@@ -157,6 +168,7 @@ Multi-file grep with:
 ## Test Data Files
 
 Created in /tmp:
+
 - **grep_test_data.txt** - 5 lines, 2 matches
 - **grep_test_data2.txt** - 5 lines, 0 matches
 - **grep_test_data3.txt** - 5 lines, 3 matches
@@ -197,18 +209,18 @@ Created in /tmp:
 
 ## Comparison with Real grep
 
-| Feature | Real grep | ViperGrep | Status |
-|---------|-----------|-----------|--------|
-| Pattern search | ✅ Regex | ✅ Literal | Partial |
-| Case-insensitive | ✅ -i flag | ✅ Hardcoded | Works |
-| Line numbers | ✅ -n flag | ✅ Hardcoded | Works |
-| Multiple files | ✅ Args | ✅ Hardcoded | Works |
-| Recursive | ✅ -r flag | ❌ No | - |
-| Count only | ✅ -c flag | ✅ Possible | Works |
-| Invert match | ✅ -v flag | ✅ Possible | Works |
-| Color output | ✅ ANSI | ⚠️ Brackets | Workaround |
-| Error handling | ✅ Graceful | ❌ Crashes | BUG-052 |
-| Stdin | ✅ Pipe | ❌ No | - |
+| Feature          | Real grep  | ViperGrep   | Status     |
+|------------------|------------|-------------|------------|
+| Pattern search   | ✅ Regex    | ✅ Literal   | Partial    |
+| Case-insensitive | ✅ -i flag  | ✅ Hardcoded | Works      |
+| Line numbers     | ✅ -n flag  | ✅ Hardcoded | Works      |
+| Multiple files   | ✅ Args     | ✅ Hardcoded | Works      |
+| Recursive        | ✅ -r flag  | ❌ No        | -          |
+| Count only       | ✅ -c flag  | ✅ Possible  | Works      |
+| Invert match     | ✅ -v flag  | ✅ Possible  | Works      |
+| Color output     | ✅ ANSI     | ⚠️ Brackets | Workaround |
+| Error handling   | ✅ Graceful | ❌ Crashes   | BUG-052    |
+| Stdin            | ✅ Pipe     | ❌ No        | -          |
 
 ---
 
@@ -223,18 +235,23 @@ Created in /tmp:
 
 ## Conclusion
 
-ViperGrep successfully demonstrates that Viper BASIC can build practical file-processing utilities. The language has excellent file I/O and string manipulation capabilities. The main limitation is error handling - without ON ERROR GOTO, it's difficult to build robust programs that gracefully handle missing files or other errors.
+ViperGrep successfully demonstrates that Viper BASIC can build practical file-processing utilities. The language has
+excellent file I/O and string manipulation capabilities. The main limitation is error handling - without ON ERROR GOTO,
+it's difficult to build robust programs that gracefully handle missing files or other errors.
 
-**Overall Assessment**: Viper BASIC is **suitable for file processing utilities** with the caveat that error handling must be done by ensuring all operations succeed (defensive programming).
+**Overall Assessment**: Viper BASIC is **suitable for file processing utilities** with the caveat that error handling
+must be done by ensuring all operations succeed (defensive programming).
 
 ---
 
 **Files to Review**:
+
 - `/bugs/bug_testing/vipergrep_simple.bas` - Best working example
 - `/bugs/bug_testing/vipergrep_multi.bas` - Modular design
 - `/bugs/bug_testing/grep_03_file_read.bas` - File I/O basics
 
 **Test Command**:
+
 ```bash
 cd /Users/stephen/git/viper
 ./build/src/tools/ilc/ilc front basic -run bugs/bug_testing/vipergrep_simple.bas 2>&1 | grep -v "rt_heap"

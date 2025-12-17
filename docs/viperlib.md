@@ -4,18 +4,18 @@
 
 The Viper Runtime Library documentation has been reorganized into separate files for easier navigation:
 
-| Module | Description |
-|--------|-------------|
-| [Architecture](viperlib/architecture.md) | Runtime internals |
-| [Collections](viperlib/collections.md) | `Bag`, `Bytes`, `List`, `Map`, `Queue`, `Ring`, `Seq`, `Stack`, `TreeMap` |
-| [Core Types](viperlib/core.md) | `Object`, `String` |
-| [Cryptography](viperlib/crypto.md) | `Hash` |
-| [Diagnostics](viperlib/diagnostics.md) | `Assert`, `Stopwatch` |
-| [Graphics](viperlib/graphics.md) | `Canvas`, `Color`, `Pixels` |
-| [Index](viperlib/README.md) | Overview and quick navigation |
-| [Input/Output](viperlib/io.md) | `BinFile`, `Dir`, `File`, `LineReader`, `LineWriter`, `Path` |
-| [Mathematics](viperlib/math.md) | `Bits`, `Math`, `Random`, `Vec2`, `Vec3` |
-| [System](viperlib/system.md) | `Environment`, `Exec`, `Machine`, `Terminal` |
-| [Text Processing](viperlib/text.md) | `Codec`, `Csv`, `Guid`, `StringBuilder` |
-| [Time & Timing](viperlib/time.md) | `Clock`, `Countdown`, `DateTime`, `Stopwatch` |
-| [Utilities](viperlib/utilities.md) | `Convert`, `Fmt`, `Log`, `Parse` |
+| Module                                   | Description                                                               |
+|------------------------------------------|---------------------------------------------------------------------------|
+| [Architecture](viperlib/architecture.md) | Runtime internals                                                         |
+| [Collections](viperlib/collections.md)   | `Bag`, `Bytes`, `List`, `Map`, `Queue`, `Ring`, `Seq`, `Stack`, `TreeMap` |
+| [Core Types](viperlib/core.md)           | `Object`, `String`                                                        |
+| [Cryptography](viperlib/crypto.md)       | `Hash`                                                                    |
+| [Diagnostics](viperlib/diagnostics.md)   | `Assert`, `Stopwatch`                                                     |
+| [Graphics](viperlib/graphics.md)         | `Canvas`, `Color`, `Pixels`                                               |
+| [Index](viperlib/README.md)              | Overview and quick navigation                                             |
+| [Input/Output](viperlib/io.md)           | `BinFile`, `Dir`, `File`, `LineReader`, `LineWriter`, `Path`              |
+| [Mathematics](viperlib/math.md)          | `Bits`, `Math`, `Random`, `Vec2`, `Vec3`                                  |
+| [System](viperlib/system.md)             | `Environment`, `Exec`, `Machine`, `Terminal`                              |
+| [Text Processing](viperlib/text.md)      | `Codec`, `Csv`, `Guid`, `StringBuilder`                                   |
+| [Time & Timing](viperlib/time.md)        | `Clock`, `Countdown`, `DateTime`, `Stopwatch`                             |
+| [Utilities](viperlib/utilities.md)       | `Convert`, `Fmt`, `Log`, `Parse`                                          |

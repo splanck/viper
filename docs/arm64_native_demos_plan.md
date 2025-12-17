@@ -5,14 +5,17 @@ This document outlines the work required to compile and run chess, vtris, and fr
 ## Current Status
 
 **Assembly Generation**: ✅ WORKING
+
 - All three demos (chess, vtris, frogger) successfully generate valid ARM64 assembly
 - All ARM64 codegen bugs (ARM-004 through ARM-009) have been fixed
 
 **Linking**: ✅ WORKING
+
 - All symbol mappings added to `mapRuntimeSymbol()` in `AsmEmitter.cpp`
 - All three demos (chess, vtris, frogger) compile, assemble, and link successfully
 
 **Testing**: ✅ WORKING
+
 - ctest tests added for ARM64 native linking (`arm64_native_chess`, `arm64_native_vtris`, `arm64_native_frogger`)
 - All 747 tests pass
 
@@ -105,6 +108,7 @@ clang++ /tmp/frogger.o build/src/runtime/libviper_runtime.a -o /tmp/frogger_nati
 ### Phase 3: Tests Added
 
 New ctest tests in `src/tests/e2e/CMakeLists.txt`:
+
 - `arm64_native_chess` - Full pipeline test for chess demo
 - `arm64_native_vtris` - Full pipeline test for vtris demo
 - `arm64_native_frogger` - Full pipeline test for frogger demo
@@ -113,10 +117,10 @@ Test script: `src/tests/e2e/test_arm64_native_link.cmake`
 
 ## Files Modified
 
-| File | Changes |
-|------|---------|
-| `src/codegen/aarch64/AsmEmitter.cpp` | Added ~35 symbol mappings to `mapRuntimeSymbol()` |
-| `src/tests/e2e/CMakeLists.txt` | Added 3 ARM64 native linking tests |
+| File                                         | Changes                                                 |
+|----------------------------------------------|---------------------------------------------------------|
+| `src/codegen/aarch64/AsmEmitter.cpp`         | Added ~35 symbol mappings to `mapRuntimeSymbol()`       |
+| `src/tests/e2e/CMakeLists.txt`               | Added 3 ARM64 native linking tests                      |
 | `src/tests/e2e/test_arm64_native_link.cmake` | New test script for full compile/assemble/link pipeline |
 
 ## Success Criteria (All Met)

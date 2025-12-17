@@ -5,160 +5,285 @@
       "mnemonic": "movq",
       "form": "RegReg",
       "order": "R_R",
-      "pattern": ["Reg", "Reg"],
-      "flags": ["RequiresModRM", "REXW"]
+      "pattern": [
+        "Reg",
+        "Reg"
+      ],
+      "flags": [
+        "RequiresModRM",
+        "REXW"
+      ]
     },
     {
       "opcode": "MOVri",
       "mnemonic": "movq",
       "form": "RegImm",
       "order": "R_I",
-      "pattern": ["Reg", "Imm"],
-      "flags": ["UsesImm64"]
+      "pattern": [
+        "Reg",
+        "Imm"
+      ],
+      "flags": [
+        "UsesImm64"
+      ]
     },
     {
       "opcode": "CMOVNErr",
       "mnemonic": "cmovne",
       "form": "RegReg",
       "order": "R_R",
-      "pattern": ["Reg", "Reg"],
-      "flags": ["RequiresModRM"]
+      "pattern": [
+        "Reg",
+        "Reg"
+      ],
+      "flags": [
+        "RequiresModRM"
+      ]
     },
     {
       "opcode": "LEA",
       "mnemonic": "leaq",
       "form": "Lea",
       "order": "LEA",
-      "pattern": ["Reg", "Any"],
-      "flags": ["RequiresModRM", "REXW"]
+      "pattern": [
+        "Reg",
+        "Any"
+      ],
+      "flags": [
+        "RequiresModRM",
+        "REXW"
+      ]
     },
     {
       "opcode": "ADDrr",
       "mnemonic": "addq",
       "form": "RegReg",
       "order": "R_R",
-      "pattern": ["Reg", "Reg"],
-      "flags": ["RequiresModRM", "REXW"]
+      "pattern": [
+        "Reg",
+        "Reg"
+      ],
+      "flags": [
+        "RequiresModRM",
+        "REXW"
+      ]
     },
     {
       "opcode": "ADDri",
       "mnemonic": "addq",
       "form": "RegImm",
       "order": "R_I",
-      "pattern": ["Reg", "Imm"],
-      "flags": ["RequiresModRM", "UsesImm32", "REXW"]
+      "pattern": [
+        "Reg",
+        "Imm"
+      ],
+      "flags": [
+        "RequiresModRM",
+        "UsesImm32",
+        "REXW"
+      ]
     },
     {
       "opcode": "ANDrr",
       "mnemonic": "andq",
       "form": "RegReg",
       "order": "R_R",
-      "pattern": ["Reg", "Reg"],
-      "flags": ["RequiresModRM", "REXW"]
+      "pattern": [
+        "Reg",
+        "Reg"
+      ],
+      "flags": [
+        "RequiresModRM",
+        "REXW"
+      ]
     },
     {
       "opcode": "ANDri",
       "mnemonic": "andq",
       "form": "RegImm",
       "order": "R_I",
-      "pattern": ["Reg", "Imm"],
-      "flags": ["RequiresModRM", "UsesImm32", "REXW"]
+      "pattern": [
+        "Reg",
+        "Imm"
+      ],
+      "flags": [
+        "RequiresModRM",
+        "UsesImm32",
+        "REXW"
+      ]
     },
     {
       "opcode": "ORrr",
       "mnemonic": "orq",
       "form": "RegReg",
       "order": "R_R",
-      "pattern": ["Reg", "Reg"],
-      "flags": ["RequiresModRM", "REXW"]
+      "pattern": [
+        "Reg",
+        "Reg"
+      ],
+      "flags": [
+        "RequiresModRM",
+        "REXW"
+      ]
     },
     {
       "opcode": "ORri",
       "mnemonic": "orq",
       "form": "RegImm",
       "order": "R_I",
-      "pattern": ["Reg", "Imm"],
-      "flags": ["RequiresModRM", "UsesImm32", "REXW"]
+      "pattern": [
+        "Reg",
+        "Imm"
+      ],
+      "flags": [
+        "RequiresModRM",
+        "UsesImm32",
+        "REXW"
+      ]
     },
     {
       "opcode": "XORrr",
       "mnemonic": "xorq",
       "form": "RegReg",
       "order": "R_R",
-      "pattern": ["Reg", "Reg"],
-      "flags": ["RequiresModRM", "REXW"]
+      "pattern": [
+        "Reg",
+        "Reg"
+      ],
+      "flags": [
+        "RequiresModRM",
+        "REXW"
+      ]
     },
     {
       "opcode": "XORri",
       "mnemonic": "xorq",
       "form": "RegImm",
       "order": "R_I",
-      "pattern": ["Reg", "Imm"],
-      "flags": ["RequiresModRM", "UsesImm32", "REXW"]
+      "pattern": [
+        "Reg",
+        "Imm"
+      ],
+      "flags": [
+        "RequiresModRM",
+        "UsesImm32",
+        "REXW"
+      ]
     },
     {
       "opcode": "SUBrr",
       "mnemonic": "subq",
       "form": "RegReg",
       "order": "R_R",
-      "pattern": ["Reg", "Reg"],
-      "flags": ["RequiresModRM", "REXW"]
+      "pattern": [
+        "Reg",
+        "Reg"
+      ],
+      "flags": [
+        "RequiresModRM",
+        "REXW"
+      ]
     },
     {
       "opcode": "SHLri",
       "mnemonic": "shlq",
       "form": "ShiftImm",
       "order": "R_I",
-      "pattern": ["Reg", "Imm"],
-      "flags": ["RequiresModRM", "UsesImm8", "REXW"]
+      "pattern": [
+        "Reg",
+        "Imm"
+      ],
+      "flags": [
+        "RequiresModRM",
+        "UsesImm8",
+        "REXW"
+      ]
     },
     {
       "opcode": "SHLrc",
       "mnemonic": "shlq",
       "form": "ShiftReg",
       "order": "SHIFT",
-      "pattern": ["Reg", "Reg"],
-      "flags": ["RequiresModRM", "REXW"]
+      "pattern": [
+        "Reg",
+        "Reg"
+      ],
+      "flags": [
+        "RequiresModRM",
+        "REXW"
+      ]
     },
     {
       "opcode": "SHRri",
       "mnemonic": "shrq",
       "form": "ShiftImm",
       "order": "R_I",
-      "pattern": ["Reg", "Imm"],
-      "flags": ["RequiresModRM", "UsesImm8", "REXW"]
+      "pattern": [
+        "Reg",
+        "Imm"
+      ],
+      "flags": [
+        "RequiresModRM",
+        "UsesImm8",
+        "REXW"
+      ]
     },
     {
       "opcode": "SHRrc",
       "mnemonic": "shrq",
       "form": "ShiftReg",
       "order": "SHIFT",
-      "pattern": ["Reg", "Reg"],
-      "flags": ["RequiresModRM", "REXW"]
+      "pattern": [
+        "Reg",
+        "Reg"
+      ],
+      "flags": [
+        "RequiresModRM",
+        "REXW"
+      ]
     },
     {
       "opcode": "SARri",
       "mnemonic": "sarq",
       "form": "ShiftImm",
       "order": "R_I",
-      "pattern": ["Reg", "Imm"],
-      "flags": ["RequiresModRM", "UsesImm8", "REXW"]
+      "pattern": [
+        "Reg",
+        "Imm"
+      ],
+      "flags": [
+        "RequiresModRM",
+        "UsesImm8",
+        "REXW"
+      ]
     },
     {
       "opcode": "SARrc",
       "mnemonic": "sarq",
       "form": "ShiftReg",
       "order": "SHIFT",
-      "pattern": ["Reg", "Reg"],
-      "flags": ["RequiresModRM", "REXW"]
+      "pattern": [
+        "Reg",
+        "Reg"
+      ],
+      "flags": [
+        "RequiresModRM",
+        "REXW"
+      ]
     },
     {
       "opcode": "IMULrr",
       "mnemonic": "imulq",
       "form": "RegReg",
       "order": "R_R",
-      "pattern": ["Reg", "Reg"],
-      "flags": ["RequiresModRM", "REXW"]
+      "pattern": [
+        "Reg",
+        "Reg"
+      ],
+      "flags": [
+        "RequiresModRM",
+        "REXW"
+      ]
     },
     {
       "opcode": "CQO",
@@ -166,78 +291,128 @@
       "form": "Nullary",
       "order": "NONE",
       "pattern": [],
-      "flags": ["REXW"]
+      "flags": [
+        "REXW"
+      ]
     },
     {
       "opcode": "IDIVrm",
       "mnemonic": "idivq",
       "form": "Unary",
       "order": "DIRECT",
-      "pattern": ["RegOrMem"],
-      "flags": ["RequiresModRM", "REXW"]
+      "pattern": [
+        "RegOrMem"
+      ],
+      "flags": [
+        "RequiresModRM",
+        "REXW"
+      ]
     },
     {
       "opcode": "DIVrm",
       "mnemonic": "divq",
       "form": "Unary",
       "order": "DIRECT",
-      "pattern": ["RegOrMem"],
-      "flags": ["RequiresModRM", "REXW"]
+      "pattern": [
+        "RegOrMem"
+      ],
+      "flags": [
+        "RequiresModRM",
+        "REXW"
+      ]
     },
     {
       "opcode": "XORrr32",
       "mnemonic": "xorl",
       "form": "RegReg",
       "order": "R_R",
-      "pattern": ["Reg", "Reg"],
-      "flags": ["RequiresModRM"]
+      "pattern": [
+        "Reg",
+        "Reg"
+      ],
+      "flags": [
+        "RequiresModRM"
+      ]
     },
     {
       "opcode": "CMPrr",
       "mnemonic": "cmpq",
       "form": "RegReg",
       "order": "R_R",
-      "pattern": ["Reg", "Reg"],
-      "flags": ["RequiresModRM", "REXW"]
+      "pattern": [
+        "Reg",
+        "Reg"
+      ],
+      "flags": [
+        "RequiresModRM",
+        "REXW"
+      ]
     },
     {
       "opcode": "CMPri",
       "mnemonic": "cmpq",
       "form": "RegImm",
       "order": "R_I",
-      "pattern": ["Reg", "Imm"],
-      "flags": ["RequiresModRM", "UsesImm32", "REXW"]
+      "pattern": [
+        "Reg",
+        "Imm"
+      ],
+      "flags": [
+        "RequiresModRM",
+        "UsesImm32",
+        "REXW"
+      ]
     },
     {
       "opcode": "SETcc",
       "mnemonic": "set",
       "form": "Setcc",
       "order": "SETCC",
-      "pattern": ["Imm", "RegOrMem"],
-      "flags": ["RequiresModRM", "UsesCondition"]
+      "pattern": [
+        "Imm",
+        "RegOrMem"
+      ],
+      "flags": [
+        "RequiresModRM",
+        "UsesCondition"
+      ]
     },
     {
       "opcode": "MOVZXrr32",
       "mnemonic": "movzbq",
       "form": "RegReg",
       "order": "MOVZX_RR8",
-      "pattern": ["Reg", "Reg"],
-      "flags": ["RequiresModRM", "REXW"]
+      "pattern": [
+        "Reg",
+        "Reg"
+      ],
+      "flags": [
+        "RequiresModRM",
+        "REXW"
+      ]
     },
     {
       "opcode": "TESTrr",
       "mnemonic": "testq",
       "form": "RegReg",
       "order": "R_R",
-      "pattern": ["Reg", "Reg"],
-      "flags": ["RequiresModRM", "REXW"]
+      "pattern": [
+        "Reg",
+        "Reg"
+      ],
+      "flags": [
+        "RequiresModRM",
+        "REXW"
+      ]
     },
     {
       "opcode": "JMP",
       "mnemonic": "jmp",
       "form": "Jump",
       "order": "JUMP",
-      "pattern": ["LabelOrRegOrMem"],
+      "pattern": [
+        "LabelOrRegOrMem"
+      ],
       "flags": []
     },
     {
@@ -245,15 +420,22 @@
       "mnemonic": "j",
       "form": "Condition",
       "order": "JCC",
-      "pattern": ["Imm", "LabelOrRegOrMem"],
-      "flags": ["UsesCondition"]
+      "pattern": [
+        "Imm",
+        "LabelOrRegOrMem"
+      ],
+      "flags": [
+        "UsesCondition"
+      ]
     },
     {
       "opcode": "CALL",
       "mnemonic": "callq",
       "form": "Call",
       "order": "CALL",
-      "pattern": ["Any"],
+      "pattern": [
+        "Any"
+      ],
       "flags": []
     },
     {
@@ -277,80 +459,132 @@
       "mnemonic": "addsd",
       "form": "RegReg",
       "order": "R_R",
-      "pattern": ["Reg", "Reg"],
-      "flags": ["RequiresModRM"]
+      "pattern": [
+        "Reg",
+        "Reg"
+      ],
+      "flags": [
+        "RequiresModRM"
+      ]
     },
     {
       "opcode": "FSUB",
       "mnemonic": "subsd",
       "form": "RegReg",
       "order": "R_R",
-      "pattern": ["Reg", "Reg"],
-      "flags": ["RequiresModRM"]
+      "pattern": [
+        "Reg",
+        "Reg"
+      ],
+      "flags": [
+        "RequiresModRM"
+      ]
     },
     {
       "opcode": "FMUL",
       "mnemonic": "mulsd",
       "form": "RegReg",
       "order": "R_R",
-      "pattern": ["Reg", "Reg"],
-      "flags": ["RequiresModRM"]
+      "pattern": [
+        "Reg",
+        "Reg"
+      ],
+      "flags": [
+        "RequiresModRM"
+      ]
     },
     {
       "opcode": "FDIV",
       "mnemonic": "divsd",
       "form": "RegReg",
       "order": "R_R",
-      "pattern": ["Reg", "Reg"],
-      "flags": ["RequiresModRM"]
+      "pattern": [
+        "Reg",
+        "Reg"
+      ],
+      "flags": [
+        "RequiresModRM"
+      ]
     },
     {
       "opcode": "UCOMIS",
       "mnemonic": "ucomisd",
       "form": "RegReg",
       "order": "R_R",
-      "pattern": ["Reg", "Reg"],
-      "flags": ["RequiresModRM"]
+      "pattern": [
+        "Reg",
+        "Reg"
+      ],
+      "flags": [
+        "RequiresModRM"
+      ]
     },
     {
       "opcode": "CVTSI2SD",
       "mnemonic": "cvtsi2sdq",
       "form": "RegReg",
       "order": "R_R",
-      "pattern": ["Reg", "Reg"],
-      "flags": ["RequiresModRM", "REXW"]
+      "pattern": [
+        "Reg",
+        "Reg"
+      ],
+      "flags": [
+        "RequiresModRM",
+        "REXW"
+      ]
     },
     {
       "opcode": "CVTTSD2SI",
       "mnemonic": "cvttsd2siq",
       "form": "RegReg",
       "order": "R_R",
-      "pattern": ["Reg", "Reg"],
-      "flags": ["RequiresModRM", "REXW"]
+      "pattern": [
+        "Reg",
+        "Reg"
+      ],
+      "flags": [
+        "RequiresModRM",
+        "REXW"
+      ]
     },
     {
       "opcode": "MOVSDrr",
       "mnemonic": "movsd",
       "form": "RegReg",
       "order": "R_R",
-      "pattern": ["Reg", "Reg"],
-      "flags": ["RequiresModRM"]
+      "pattern": [
+        "Reg",
+        "Reg"
+      ],
+      "flags": [
+        "RequiresModRM"
+      ]
     },
     {
       "opcode": "MOVSDrm",
       "mnemonic": "movsd",
       "form": "RegMem",
       "order": "R_M",
-      "pattern": ["Reg", "Mem"],
-      "flags": ["RequiresModRM"]
+      "pattern": [
+        "Reg",
+        "Mem"
+      ],
+      "flags": [
+        "RequiresModRM"
+      ]
     },
     {
       "opcode": "MOVSDmr",
       "mnemonic": "movsd",
       "form": "MemReg",
       "order": "M_R",
-      "pattern": ["Mem", "Reg"],
-      "flags": ["RequiresModRM"]
+      "pattern": [
+        "Mem",
+        "Reg"
+      ],
+      "flags": [
+        "RequiresModRM"
+      ]
     }
   ]
 }

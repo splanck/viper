@@ -6,7 +6,8 @@ last-updated: 2025-11-13
 
 # How to Write a Viper Frontend
 
-Complete implementation guide for building language frontends that compile to Viper IL. Designed for C++ programmers with no prior Viper experience.
+Complete implementation guide for building language frontends that compile to Viper IL. Designed for C++ programmers
+with no prior Viper experience.
 
 ---
 
@@ -47,34 +48,39 @@ This guide teaches you how to implement a complete language frontend for Viper:
 
 Viper is a compiler infrastructure with multiple components:
 
-| Component | Description |
-|-----------|-------------|
-| **IL** | SSA-based intermediate representation (similar to LLVM IR) |
-| **VM** | Bytecode interpreter for rapid development and testing |
-| **Runtime** | C-based runtime library (strings, arrays, I/O, GC) |
-| **Verifier** | Static analysis and type checking for IL |
-| **Codegen** | Native code generation (x86-64, future) |
+| Component    | Description                                                |
+|--------------|------------------------------------------------------------|
+| **IL**       | SSA-based intermediate representation (similar to LLVM IR) |
+| **VM**       | Bytecode interpreter for rapid development and testing     |
+| **Runtime**  | C-based runtime library (strings, arrays, I/O, GC)         |
+| **Verifier** | Static analysis and type checking for IL                   |
+| **Codegen**  | Native code generation (x86-64, future)                    |
 
 **Compilation flow:**
+
 ```
 Source Language → Frontend → IL → VM/Codegen → Execution
 ```
 
-Viper currently includes two frontends: **BASIC** and **Pascal**. Both compile to the same IL and share the runtime library.
+Viper currently includes two frontends: **BASIC** and **Pascal**. Both compile to the same IL and share the runtime
+library.
 
 ### Prerequisites
 
 **Required Knowledge:**
+
 - **Modern C++**: C++20 features (`std::optional`, structured bindings; concepts/ranges helpful)
 - **Compiler Basics**: Lexing, parsing, AST construction
 - **SSA Form**: Basic understanding of phi nodes and basic blocks
 
 **Required Tools:**
+
 - CMake 3.20 or later
 - C++20-capable compiler (Clang or GCC recommended)
 - Git
 
 **Recommended Reading:**
+
 - **[IL Guide](il-guide.md)** — Viper IL specification and examples
 - **[Getting Started](getting-started.md)** — Build and run Viper
 - `/devdocs/architecture.md` — System architecture overview
@@ -83,21 +89,28 @@ Viper currently includes two frontends: **BASIC** and **Pascal**. Both compile t
 
 ## 2. Quick Start: Minimal Frontend
 
-Let's build a minimal frontend that compiles `PRINT 42` to executable IL. This demonstrates the complete pipeline in ~150 lines.
+Let's build a minimal frontend that compiles `PRINT 42` to executable IL. This demonstrates the complete pipeline in ~
+150 lines.
 
 ### Understanding the Pipeline
 
 Before diving into code, understand what a frontend must accomplish:
 
-1. **Lexical Analysis (Lexer)**: Convert raw source text into a stream of tokens. For example, `"PRINT 42"` becomes tokens `[PRINT, NUMBER(42)]`. The lexer handles whitespace, keywords, and basic syntax validation.
+1. **Lexical Analysis (Lexer)**: Convert raw source text into a stream of tokens. For example, `"PRINT 42"` becomes
+   tokens `[PRINT, NUMBER(42)]`. The lexer handles whitespace, keywords, and basic syntax validation.
 
-2. **Syntax Analysis (Parser)**: Build an Abstract Syntax Tree (AST) from the token stream. The AST represents the program's structure in memory. For our example, we'd create a `PrintStmt` node containing the value `42`.
+2. **Syntax Analysis (Parser)**: Build an Abstract Syntax Tree (AST) from the token stream. The AST represents the
+   program's structure in memory. For our example, we'd create a `PrintStmt` node containing the value `42`.
 
-3. **Semantic Analysis**: Validate the AST (type checking, name resolution). Our minimal example skips this to focus on the core pipeline, but real frontends need this phase.
+3. **Semantic Analysis**: Validate the AST (type checking, name resolution). Our minimal example skips this to focus on
+   the core pipeline, but real frontends need this phase.
 
-4. **IL Lowering**: Convert the AST into Viper IL using the IRBuilder API. This is where you emit SSA instructions, manage basic blocks, and call runtime functions. The IL is a platform-independent representation that can be interpreted by the VM or compiled to native code.
+4. **IL Lowering**: Convert the AST into Viper IL using the IRBuilder API. This is where you emit SSA instructions,
+   manage basic blocks, and call runtime functions. The IL is a platform-independent representation that can be
+   interpreted by the VM or compiled to native code.
 
-The minimal frontend below implements steps 1, 2, and 4 in a single file, demonstrating the complete flow from source text to executable IL.
+The minimal frontend below implements steps 1, 2, and 4 in a single file, demonstrating the complete flow from source
+text to executable IL.
 
 ### File: minimal_frontend.cpp
 
@@ -466,6 +479,7 @@ cmake --build build
 ```
 
 **Output (IL text format):**
+
 ```
 il 0.1
 
@@ -488,6 +502,7 @@ entry:
 - `ret 0` — Return terminator (exit code)
 
 This IL can be:
+
 - **Verified**: `il-verify output.il` checks for structural correctness
 - **Executed**: `ilc -run output.il` runs it in the VM
 - **Compiled**: (future) x86-64 codegen
@@ -496,23 +511,30 @@ This IL can be:
 
 This minimal example demonstrates the complete frontend pipeline:
 
-1. **Lexer** — Converts source text to tokens. Uses simple state machine with position tracking. Production lexers add line/column info and keyword tables.
+1. **Lexer** — Converts source text to tokens. Uses simple state machine with position tracking. Production lexers add
+   line/column info and keyword tables.
 
-2. **Parser** — Builds AST from tokens using recursive descent. Enforces grammar rules. Production parsers add error recovery and precedence climbing for expressions.
+2. **Parser** — Builds AST from tokens using recursive descent. Enforces grammar rules. Production parsers add error
+   recovery and precedence climbing for expressions.
 
-3. **AST** — In-memory tree structure representing program semantics. Keep nodes simple and data-focused. Use unique_ptr for ownership.
+3. **AST** — In-memory tree structure representing program semantics. Keep nodes simple and data-focused. Use unique_ptr
+   for ownership.
 
-4. **Lowerer** — Translates AST to IL using IRBuilder API. Handles SSA generation, basic block management, and runtime function calls. This is where language semantics meet IL instructions.
+4. **Lowerer** — Translates AST to IL using IRBuilder API. Handles SSA generation, basic block management, and runtime
+   function calls. This is where language semantics meet IL instructions.
 
 5. **Module** — Container for all IL (functions, globals, externs). Passed to Serializer for output or VM for execution.
 
-6. **IRBuilder** — Fluent API for emitting IL. Automatically manages SSA temporaries and enforces IL structural rules (every block needs terminator, etc.).
+6. **IRBuilder** — Fluent API for emitting IL. Automatically manages SSA temporaries and enforces IL structural rules (
+   every block needs terminator, etc.).
 
-7. **Runtime ABI** — Many language features are implemented as C functions (string ops, array ops, I/O). Declare them as extern and call them like regular IL functions.
+7. **Runtime ABI** — Many language features are implemented as C functions (string ops, array ops, I/O). Declare them as
+   extern and call them like regular IL functions.
 
 **What we skipped in this minimal example:**
 
-- **Semantic Analysis**: Type checking, name resolution, control flow validation. Real frontends need this phase between parsing and lowering.
+- **Semantic Analysis**: Type checking, name resolution, control flow validation. Real frontends need this phase between
+  parsing and lowering.
 - **Error Handling**: Diagnostics with source locations, error recovery strategies.
 - **Expressions**: Operator precedence, type conversions, function calls.
 - **Variables**: SSA slot management (alloca/load/store), scoping.
@@ -526,11 +548,13 @@ Now let's explore each component in detail, starting with build system integrati
 
 ## 3. Build System Integration
 
-Viper uses CMake for build management. This section explains how to integrate your frontend into the build system so it can be compiled and used by the `ilc` command-line tool.
+Viper uses CMake for build management. This section explains how to integrate your frontend into the build system so it
+can be compiled and used by the `ilc` command-line tool.
 
 ### Directory Structure
 
-**Why this organization?** Viper organizes frontends under `src/frontends/` to keep them separate from the IL core infrastructure. Each frontend is a self-contained directory with its own CMakeLists.txt.
+**Why this organization?** Viper organizes frontends under `src/frontends/` to keep them separate from the IL core
+infrastructure. Each frontend is a self-contained directory with its own CMakeLists.txt.
 
 Create your frontend under `src/frontends/`:
 
@@ -546,13 +570,18 @@ src/frontends/yourfrontend/
 ```
 
 **Design rationale:**
-- **Header-only AST**: AST nodes are typically simple data structures (no complex behavior), so they live in a single header file.
-- **Separate compilation units**: Lexer, Parser, SemanticAnalyzer, and Lowerer are split into .cpp/.hpp to speed up compilation (large frontends can take minutes to rebuild).
-- **TypeRules separation**: Type system logic (coercion, promotion, compatibility) is complex enough to warrant its own file.
+
+- **Header-only AST**: AST nodes are typically simple data structures (no complex behavior), so they live in a single
+  header file.
+- **Separate compilation units**: Lexer, Parser, SemanticAnalyzer, and Lowerer are split into .cpp/.hpp to speed up
+  compilation (large frontends can take minutes to rebuild).
+- **TypeRules separation**: Type system logic (coercion, promotion, compatibility) is complex enough to warrant its own
+  file.
 
 ### CMakeLists.txt
 
-**What this does:** Defines a static library target (`fe_yourfrontend`) that compiles your frontend sources and links against Viper IL infrastructure. The library can then be linked into the `ilc` tool or other programs.
+**What this does:** Defines a static library target (`fe_yourfrontend`) that compiles your frontend sources and links
+against Viper IL infrastructure. The library can then be linked into the `ilc` tool or other programs.
 
 **File:** `src/frontends/yourfrontend/CMakeLists.txt`
 
@@ -609,14 +638,17 @@ target_compile_features(fe_yourfrontend PUBLIC cxx_std_17)
 
 ### Register with ilc Tool
 
-**Why register with ilc?** The `ilc` (IL Compiler) tool is Viper's command-line interface for all compilation operations. It provides a unified interface:
+**Why register with ilc?** The `ilc` (IL Compiler) tool is Viper's command-line interface for all compilation
+operations. It provides a unified interface:
+
 ```bash
 ilc front basic source.bas    # Compile BASIC
 ilc front c source.c           # Compile C (future)
 ilc front yourfrontend test.src  # Your frontend!
 ```
 
-Registering your frontend makes it accessible via `ilc front yourfrontend`, which is essential for testing and integration with the test suite.
+Registering your frontend makes it accessible via `ilc front yourfrontend`, which is essential for testing and
+integration with the test suite.
 
 **File:** `src/tools/ilc/CMakeLists.txt` (add to existing file)
 
@@ -637,7 +669,8 @@ target_link_libraries(ilc PRIVATE
 
 **File:** `src/tools/ilc/main.cpp` (add to command dispatch)
 
-**What this does:** Adds a command dispatch path for your frontend. When the user runs `ilc front yourfrontend <args>`, this code routes control to your `cmdFrontYourFrontend()` function.
+**What this does:** Adds a command dispatch path for your frontend. When the user runs `ilc front yourfrontend <args>`,
+this code routes control to your `cmdFrontYourFrontend()` function.
 
 ```cpp
 // Forward declare your command handler
@@ -665,11 +698,14 @@ int main(int argc, char **argv) {
 }
 ```
 
-**Design pattern note:** Viper uses a simple string-based dispatch instead of a command framework (like CLI11 or boost::program_options). This keeps dependencies minimal and build times fast.
+**Design pattern note:** Viper uses a simple string-based dispatch instead of a command framework (like CLI11 or boost::
+program_options). This keeps dependencies minimal and build times fast.
 
 ### Command Handler Template
 
-**What this does:** Implements the entry point for your frontend when invoked via `ilc front yourfrontend`. This is the glue code that:
+**What this does:** Implements the entry point for your frontend when invoked via `ilc front yourfrontend`. This is the
+glue code that:
+
 1. Parses command-line options
 2. Loads source files
 3. Invokes your compiler
@@ -825,15 +861,20 @@ int cmdFrontYourFrontend(int argc, char **argv) {
 
 **Key design patterns demonstrated:**
 
-1. **Option parsing**: Simple loop-based parsing. For complex CLI interfaces, consider using a library (CLI11, cxxopts) or Viper's own option parser.
+1. **Option parsing**: Simple loop-based parsing. For complex CLI interfaces, consider using a library (CLI11, cxxopts)
+   or Viper's own option parser.
 
-2. **Diagnostics accumulation**: Errors are collected during compilation (not immediately fatal). This allows reporting multiple errors at once, improving the developer experience.
+2. **Diagnostics accumulation**: Errors are collected during compilation (not immediately fatal). This allows reporting
+   multiple errors at once, improving the developer experience.
 
-3. **Separate IL emission and execution paths**: `-emit-il` is for debugging and inspection; `-run` is for testing. This separation makes it easy to compare IL output (golden tests) and runtime behavior (E2E tests).
+3. **Separate IL emission and execution paths**: `-emit-il` is for debugging and inspection; `-run` is for testing. This
+   separation makes it easy to compare IL output (golden tests) and runtime behavior (E2E tests).
 
-4. **Verification before execution**: Always verify IL before running it. Verification catches frontend bugs that would otherwise cause VM crashes or undefined behavior.
+4. **Verification before execution**: Always verify IL before running it. Verification catches frontend bugs that would
+   otherwise cause VM crashes or undefined behavior.
 
-5. **Exit code forwarding**: The VM's exit code (return value from @main) is forwarded to the shell. This enables shell scripting and CI integration.
+5. **Exit code forwarding**: The VM's exit code (return value from @main) is forwarded to the shell. This enables shell
+   scripting and CI integration.
 
 ### Build and Test
 
@@ -856,11 +897,13 @@ cmake --build build --target ilc
 
 ## 4. High-Level Architecture
 
-This section explains the big-picture organization of a Viper frontend: the compilation pipeline, error handling strategy, and file organization patterns.
+This section explains the big-picture organization of a Viper frontend: the compilation pipeline, error handling
+strategy, and file organization patterns.
 
 ### Compilation Pipeline
 
-**Understanding the flow:** Modern compilers use a multi-stage pipeline where each stage transforms the input into a progressively lower-level representation. This modularity makes the compiler easier to understand, test, and debug.
+**Understanding the flow:** Modern compilers use a multi-stage pipeline where each stage transforms the input into a
+progressively lower-level representation. This modularity makes the compiler easier to understand, test, and debug.
 
 ```
 Source Code
@@ -903,6 +946,7 @@ Source Code
 ```
 
 **Why so many stages?** Each stage has a clear responsibility and can be tested independently. For example:
+
 - **Parsing tests**: Compare AST output to expected structure (golden tests)
 - **Semantic tests**: Check that errors are correctly detected
 - **IL tests**: Compare generated IL to expected IL (golden tests)
@@ -910,7 +954,8 @@ Source Code
 
 ### Key Principle: Abort-Early Error Handling
 
-**Design philosophy:** Accumulate ALL errors from a stage before aborting. This improves developer experience by showing multiple errors at once (instead of the frustrating "fix one error, get another" cycle).
+**Design philosophy:** Accumulate ALL errors from a stage before aborting. This improves developer experience by showing
+multiple errors at once (instead of the frustrating "fix one error, get another" cycle).
 
 Each stage checks for errors before proceeding:
 
@@ -950,11 +995,13 @@ CompilerResult compile(const std::string &source, ...) {
 
 **Key pattern:** `if (diagnostics.errorCount() > 0) return result;`
 
-This check appears after every stage that can emit errors. The frontend accumulates ALL errors from the stage before checking the count, so users see all problems at once.
+This check appears after every stage that can emit errors. The frontend accumulates ALL errors from the stage before
+checking the count, so users see all problems at once.
 
 ### File Organization Pattern
 
-**Why organize by phase?** Compiler frontends are large (10k+ lines). Organizing by compilation phase makes it easy to navigate the code ("where does type checking happen?" → SemanticAnalyzer.cpp).
+**Why organize by phase?** Compiler frontends are large (10k+ lines). Organizing by compilation phase makes it easy to
+navigate the code ("where does type checking happen?" → SemanticAnalyzer.cpp).
 
 Organize by **compilation phase**, not by language feature:
 
@@ -985,36 +1032,47 @@ src/frontends/yourfrontend/
 ```
 
 **Splitting large files:** Each phase (Parser, SemanticAnalyzer, Lowerer) is split by AST node type:
+
 - **_Expr.cpp**: Expression handling
 - **_Stmt.cpp**: Statement handling
 - **_Decl.cpp**: Declaration handling
 
-This pattern scales well: The BASIC frontend has 40+ files organized this way, and navigation is straightforward ("where is FOR loop parsing?" → Parser_Stmt.cpp, search for "parseFor").
+This pattern scales well: The BASIC frontend has 40+ files organized this way, and navigation is straightforward ("where
+is FOR loop parsing?" → Parser_Stmt.cpp, search for "parseFor").
 
-**Alternative organization (not recommended):** Organizing by language feature (if.cpp, while.cpp, for.cpp) scatters related code across the codebase and makes it hard to understand the compilation flow.
+**Alternative organization (not recommended):** Organizing by language feature (if.cpp, while.cpp, for.cpp) scatters
+related code across the codebase and makes it hard to understand the compilation flow.
 
 ---
 
 ## 5. Parser Design
 
-This section provides production-quality lexer and parser implementations. The lexer converts source text into tokens, and the parser builds an AST from those tokens using recursive descent with precedence climbing for expressions.
+This section provides production-quality lexer and parser implementations. The lexer converts source text into tokens,
+and the parser builds an AST from those tokens using recursive descent with precedence climbing for expressions.
 
 **Key design decisions explained:**
-- **Hand-written vs generated**: We use hand-written lexer/parser instead of generator tools (flex/bison, ANTLR) for several reasons: (1) easier debugging, (2) better error messages, (3) no tool dependencies, (4) full control over error recovery.
+
+- **Hand-written vs generated**: We use hand-written lexer/parser instead of generator tools (flex/bison, ANTLR) for
+  several reasons: (1) easier debugging, (2) better error messages, (3) no tool dependencies, (4) full control over
+  error recovery.
 - **Recursive descent**: Simple, fast, and easy to understand. Each grammar rule becomes a function.
-- **Precedence climbing**: Handles operator precedence elegantly without explicit grammar rules for each precedence level.
+- **Precedence climbing**: Handles operator precedence elegantly without explicit grammar rules for each precedence
+  level.
 - **Single-token lookahead**: Sufficient for most languages; more lookahead adds complexity without much benefit.
 
 ### Lexer Implementation
 
-**Purpose**: The lexer (also called "scanner" or "tokenizer") is the first phase of compilation. It converts raw source text into a stream of tokens, handling:
+**Purpose**: The lexer (also called "scanner" or "tokenizer") is the first phase of compilation. It converts raw source
+text into a stream of tokens, handling:
+
 - Whitespace normalization (spaces/tabs/newlines don't affect parsing)
 - Comment removal
 - Keyword recognition (if/while/for vs identifiers)
 - Literal parsing (numbers, strings)
 - Source location tracking (file, line, column for error messages)
 
-**Design pattern**: The lexer maintains a position cursor (`pos_`) that advances through the source string. It uses `peek_char()` to look ahead without consuming and `get_char()` to consume the current character.
+**Design pattern**: The lexer maintains a position cursor (`pos_`) that advances through the source string. It uses
+`peek_char()` to look ahead without consuming and `get_char()` to consume the current character.
 
 **File:** `Lexer.hpp`
 
@@ -1309,36 +1367,46 @@ char Lexer::get_char() {
 
 **Lexer implementation notes:**
 
-1. **Token structure**: Each token carries its kind (IntLiteral, If, Plus, etc.), the original text, source location, and value (for literals). The union holds int64_t or double depending on the literal type.
+1. **Token structure**: Each token carries its kind (IntLiteral, If, Plus, etc.), the original text, source location,
+   and value (for literals). The union holds int64_t or double depending on the literal type.
 
-2. **Keyword table**: Using `std::unordered_map` for O(1) keyword lookup is more maintainable than a giant if-else chain. Production lexers often use perfect hashing or tries for even better performance.
+2. **Keyword table**: Using `std::unordered_map` for O(1) keyword lookup is more maintainable than a giant if-else
+   chain. Production lexers often use perfect hashing or tries for even better performance.
 
-3. **Comment handling**: The example shows C++-style line comments (`//`). For block comments (`/* */`), you'd track nesting depth and handle EOF inside comments.
+3. **Comment handling**: The example shows C++-style line comments (`//`). For block comments (`/* */`), you'd track
+   nesting depth and handle EOF inside comments.
 
-4. **String escapes**: The `lexString()` function handles basic escape sequences (\n, \t, \\, \"). Production lexers would support Unicode escapes (\uXXXX), hex escapes (\xXX), etc.
+4. **String escapes**: The `lexString()` function handles basic escape sequences (\n, \t, \\, \"). Production lexers
+   would support Unicode escapes (\uXXXX), hex escapes (\xXX), etc.
 
 5. **Number parsing**: This lexer handles integers and floating-point (with decimal point). Production lexers would add:
-   - Scientific notation (1.23e-10)
-   - Hexadecimal (0xFF), octal (0o77), binary (0b1010)
-   - Type suffixes (42L for long, 3.14f for float)
-   - Underscores as separators (1_000_000)
+    - Scientific notation (1.23e-10)
+    - Hexadecimal (0xFF), octal (0o77), binary (0b1010)
+    - Type suffixes (42L for long, 3.14f for float)
+    - Underscores as separators (1_000_000)
 
-6. **Two-character operators**: The lexer must check for two-character operators (==, !=, <=, >=) before falling back to single-character operators (=, !, <, >). Order matters!
+6. **Two-character operators**: The lexer must check for two-character operators (==, !=, <=, >=) before falling back to
+   single-character operators (=, !, <, >). Order matters!
 
-7. **Error handling**: Returning `TokenKind::Error` for unknown characters lets the parser report the error with proper source location. Production lexers might continue lexing to find more errors.
+7. **Error handling**: Returning `TokenKind::Error` for unknown characters lets the parser report the error with proper
+   source location. Production lexers might continue lexing to find more errors.
 
 ### Parser Implementation
 
-**Purpose**: The parser builds an Abstract Syntax Tree (AST) from the token stream. It enforces the grammar rules of your language and detects syntax errors (missing semicolons, unmatched parentheses, etc.).
+**Purpose**: The parser builds an Abstract Syntax Tree (AST) from the token stream. It enforces the grammar rules of
+your language and detects syntax errors (missing semicolons, unmatched parentheses, etc.).
 
 **Recursive descent**: Each grammar rule becomes a parsing function. For example:
+
 - `parseExpression()` handles expressions
 - `parseIfStatement()` handles `if (condition) { ... } else { ... }`
 - `parseWhileStatement()` handles `while (condition) { ... }`
 
 The functions call each other recursively, mirroring the grammar's structure.
 
-**Error recovery**: When the parser encounters a syntax error, it uses `resyncAfterError()` to skip tokens until it finds a safe synchronization point (semicolon, closing brace, keyword). This allows parsing to continue and report multiple errors.
+**Error recovery**: When the parser encounters a syntax error, it uses `resyncAfterError()` to skip tokens until it
+finds a safe synchronization point (semicolon, closing brace, keyword). This allows parsing to continue and report
+multiple errors.
 
 **File:** `Parser.hpp`
 
@@ -1395,17 +1463,21 @@ private:
 
 **Precedence Climbing for Expressions:**
 
-**Why precedence climbing?** Expression parsing is tricky because operators have different precedences (multiplication before addition) and associativities (left-to-right vs right-to-left). Precedence climbing handles this elegantly in a single recursive function.
+**Why precedence climbing?** Expression parsing is tricky because operators have different precedences (multiplication
+before addition) and associativities (left-to-right vs right-to-left). Precedence climbing handles this elegantly in a
+single recursive function.
 
 **How it works:**
+
 1. Parse the left operand (a primary or unary expression)
 2. While we see operators with precedence ≥ minPrecedence:
-   - Consume the operator
-   - Recursively parse the right operand with precedence `prec + 1` (for left-associativity)
-   - Build a BinaryExpr node combining left, operator, right
-   - The new BinaryExpr becomes the left operand for the next iteration
+    - Consume the operator
+    - Recursively parse the right operand with precedence `prec + 1` (for left-associativity)
+    - Build a BinaryExpr node combining left, operator, right
+    - The new BinaryExpr becomes the left operand for the next iteration
 
 **Example**: Parsing `2 + 3 * 4`
+
 1. Parse left = `2`
 2. See `+` (prec 5), recursively parse right with minPrecedence = 6
 3. In recursive call: parse left = `3`, see `*` (prec 6), parse right = `4`, return `3 * 4`
@@ -1487,14 +1559,18 @@ int Parser::precedence(TokenKind kind) const {
 
 ### Error Recovery
 
-**Why error recovery?** If the parser stops at the first syntax error, users only see one error at a time. Good error recovery lets the parser continue and report multiple errors, improving the developer experience.
+**Why error recovery?** If the parser stops at the first syntax error, users only see one error at a time. Good error
+recovery lets the parser continue and report multiple errors, improving the developer experience.
 
-**Strategy**: When we encounter a syntax error, skip tokens until we reach a "synchronization point" - a place where we can safely resume parsing. Common sync points:
+**Strategy**: When we encounter a syntax error, skip tokens until we reach a "synchronization point" - a place where we
+can safely resume parsing. Common sync points:
+
 - Semicolons (statement boundaries)
 - Closing braces (block boundaries)
 - Keywords like `if`, `while`, `for` (new statement starts)
 
 **Example**: Parsing `x = 1 } y = 2;`
+
 1. Parse `x = 1`
 2. Expect semicolon, see `}` → **ERROR**
 3. Resync: skip `}`, see `y` → not a sync point, keep going
@@ -1536,24 +1612,30 @@ bool Parser::expect(TokenKind kind) {
 
 ## 6. AST Design
 
-The Abstract Syntax Tree (AST) is the in-memory representation of your program's structure after parsing. It's "abstract" because it omits syntactic details (parentheses, semicolons) and focuses on semantic structure.
+The Abstract Syntax Tree (AST) is the in-memory representation of your program's structure after parsing. It's "
+abstract" because it omits syntactic details (parentheses, semicolons) and focuses on semantic structure.
 
 **Design principles:**
 
-1. **Type safety**: Use strongly-typed node classes instead of generic "Node" with a switch on type. This leverages C++'s type system to catch errors at compile time.
+1. **Type safety**: Use strongly-typed node classes instead of generic "Node" with a switch on type. This leverages
+   C++'s type system to catch errors at compile time.
 
-2. **Ownership**: Use `std::unique_ptr` for child nodes (clear ownership), raw pointers for cross-references (no ownership).
+2. **Ownership**: Use `std::unique_ptr` for child nodes (clear ownership), raw pointers for cross-references (no
+   ownership).
 
-3. **Immutability**: AST nodes should be created during parsing and not modified afterward. Transformations create new nodes.
+3. **Immutability**: AST nodes should be created during parsing and not modified afterward. Transformations create new
+   nodes.
 
 4. **Hierarchy**: Three main categories:
-   - **Expressions**: Produce values (literals, variables, operators, function calls)
-   - **Statements**: Perform actions (if, while, return, assignments)
-   - **Declarations**: Define entities (functions, variables, classes)
+    - **Expressions**: Produce values (literals, variables, operators, function calls)
+    - **Statements**: Perform actions (if, while, return, assignments)
+    - **Declarations**: Define entities (functions, variables, classes)
 
 5. **Source locations**: Every node tracks its source location for error reporting.
 
-**Why this design?** The BASIC frontend uses this exact pattern and it scales well to 50+ node types. The pattern makes it easy to:
+**Why this design?** The BASIC frontend uses this exact pattern and it scales well to 50+ node types. The pattern makes
+it easy to:
+
 - Add new node types (just inherit from Expr/Stmt/Decl)
 - Traverse the AST (visitor pattern or manual switch)
 - Transform the AST (create new nodes with modified children)
@@ -1762,31 +1844,42 @@ struct Program {
 
 **AST design notes:**
 
-1. **Base classes**: `Expr`, `Stmt`, and `Decl` are abstract base classes. They contain a `Kind` enum for runtime type checking (used in switch statements) and a virtual destructor for polymorphic deletion.
+1. **Base classes**: `Expr`, `Stmt`, and `Decl` are abstract base classes. They contain a `Kind` enum for runtime type
+   checking (used in switch statements) and a virtual destructor for polymorphic deletion.
 
-2. **Kind enum**: Each node has a `kind` field that identifies its concrete type. This is used for downcasting: `if (expr.kind == Expr::Kind::Binary) { auto &bin = static_cast<BinaryExpr&>(expr); ... }`
+2. **Kind enum**: Each node has a `kind` field that identifies its concrete type. This is used for downcasting:
+   `if (expr.kind == Expr::Kind::Binary) { auto &bin = static_cast<BinaryExpr&>(expr); ... }`
 
-3. **Smart pointer aliases**: `ExprPtr`, `StmtPtr`, `DeclPtr` are shorthand for `std::unique_ptr<...>`. This makes code more readable and simplifies refactoring.
+3. **Smart pointer aliases**: `ExprPtr`, `StmtPtr`, `DeclPtr` are shorthand for `std::unique_ptr<...>`. This makes code
+   more readable and simplifies refactoring.
 
 4. **Literal nodes**: Simple struct with a value field. No child nodes.
 
-5. **Operator nodes**: `UnaryExpr` and `BinaryExpr` have an `op` enum and child expressions. The operator type is stored in the enum, not as a string (more type-safe).
+5. **Operator nodes**: `UnaryExpr` and `BinaryExpr` have an `op` enum and child expressions. The operator type is stored
+   in the enum, not as a string (more type-safe).
 
-6. **Control flow nodes**: `IfStmt`, `WhileStmt`, `ForStmt` have condition expressions and body statements. `elseBranch` is nullable (nullptr if no else).
+6. **Control flow nodes**: `IfStmt`, `WhileStmt`, `ForStmt` have condition expressions and body statements. `elseBranch`
+   is nullable (nullptr if no else).
 
-7. **Declaration nodes**: `FunctionDecl` has parameters, return type, and body. `VariableDecl` has type and optional initializer.
+7. **Declaration nodes**: `FunctionDecl` has parameters, return type, and body. `VariableDecl` has type and optional
+   initializer.
 
-8. **Program root**: The top-level `Program` node owns all declarations. This is the entry point for semantic analysis and lowering.
+8. **Program root**: The top-level `Program` node owns all declarations. This is the entry point for semantic analysis
+   and lowering.
 
 ### Visitor Pattern (Optional)
 
-**When to use visitors?** The visitor pattern is useful when you have many operations that traverse the AST (type checking, code generation, pretty printing, optimization passes). It centralizes the traversal logic instead of scattering it across switch statements.
+**When to use visitors?** The visitor pattern is useful when you have many operations that traverse the AST (type
+checking, code generation, pretty printing, optimization passes). It centralizes the traversal logic instead of
+scattering it across switch statements.
 
 **Trade-offs:**
+
 - **Pros**: Clean separation of concerns, easy to add new operations, type-safe
 - **Cons**: Boilerplate (one visit method per node type), harder to add new node types
 
-**Alternative**: Manual switch on `kind` is simpler for small frontends (<20 node types). The BASIC frontend uses both approaches: visitors for complex passes (semantic analysis, lowering), switches for simple operations.
+**Alternative**: Manual switch on `kind` is simpler for small frontends (<20 node types). The BASIC frontend uses both
+approaches: visitors for complex passes (semantic analysis, lowering), switches for simple operations.
 
 ```cpp
 // In AST.hpp
@@ -1814,6 +1907,7 @@ struct BinaryExpr : Expr {
 ```
 
 **Usage example:**
+
 ```cpp
 class TypeChecker : public ExprVisitor {
     Type currentType_;
@@ -1845,20 +1939,24 @@ Type result = checker.currentType_;
 ## 7. Semantic Analysis
 
 Semantic analysis validates the AST's meaning, catching errors that the parser can't detect:
+
 - **Type errors**: Adding string + integer, calling function with wrong argument types
 - **Name resolution**: Undefined variables, duplicate declarations
 - **Control flow**: Break outside loop, return from void function with value
 - **Const correctness**: Assigning to const variables
 
-**Why separate from parsing?** Parsing checks syntax (grammar rules), semantic analysis checks meaning (type rules, scoping rules). Separating these phases makes the compiler easier to understand and test.
+**Why separate from parsing?** Parsing checks syntax (grammar rules), semantic analysis checks meaning (type rules,
+scoping rules). Separating these phases makes the compiler easier to understand and test.
 
 **Two-phase approach:**
+
 1. **First pass**: Collect all declarations (functions, types, constants) into symbol tables
 2. **Second pass**: Analyze function bodies, checking types and name resolution
 
 This allows forward references (calling a function defined later in the file).
 
-**Output**: The SemanticAnalyzer builds symbol tables that the lowerer uses to generate IL. It also annotates AST nodes with type information (optional, but useful for lowering).
+**Output**: The SemanticAnalyzer builds symbol tables that the lowerer uses to generate IL. It also annotates AST nodes
+with type information (optional, but useful for lowering).
 
 ### SemanticAnalyzer Structure
 
@@ -2145,32 +2243,39 @@ void SemanticAnalyzer::emitError(const std::string &message,
 
 **Semantic analyzer notes:**
 
-1. **Two-pass design**: First pass collects all function signatures, second pass analyzes bodies. This allows forward references.
+1. **Two-pass design**: First pass collects all function signatures, second pass analyzes bodies. This allows forward
+   references.
 
-2. **Scope stack**: `scopes_` is a stack of symbol sets. Each function/block pushes a scope, pops on exit. This implements lexical scoping.
+2. **Scope stack**: `scopes_` is a stack of symbol sets. Each function/block pushes a scope, pops on exit. This
+   implements lexical scoping.
 
-3. **Symbol tables**: `variables_` and `functions_` are global maps. For production, use a proper symbol table with scope-aware lookup.
+3. **Symbol tables**: `variables_` and `functions_` are global maps. For production, use a proper symbol table with
+   scope-aware lookup.
 
-4. **Type promotion**: `promoteTypes()` implements the numeric tower (Int + Float → Float). Real languages have more complex rules (short + int → int, etc.).
+4. **Type promotion**: `promoteTypes()` implements the numeric tower (Int + Float → Float). Real languages have more
+   complex rules (short + int → int, etc.).
 
 5. **Error accumulation**: Semantic errors are collected, not fatal. This allows reporting multiple errors at once.
 
-6. **Query API**: The lowerer calls `lookupVarType()`, `lookupFunction()`, etc. to get semantic information. This is the interface between semantic analysis and lowering.
+6. **Query API**: The lowerer calls `lookupVarType()`, `lookupFunction()`, etc. to get semantic information. This is the
+   interface between semantic analysis and lowering.
 
 7. **Missing features**: This example skips:
-   - Function overloading
-   - Type inference
-   - Const/mutability checking
-   - Control flow analysis (unreachable code, uninitialized variables)
-   - Template/generic types
+    - Function overloading
+    - Type inference
+    - Const/mutability checking
+    - Control flow analysis (unreachable code, uninitialized variables)
+    - Template/generic types
 
 ---
 
 ## 8. IL Lowering with IRBuilder
 
-**Purpose**: IL lowering is the final frontend phase that translates the validated AST into Viper IL. This is where your language's semantics are encoded as low-level SSA instructions.
+**Purpose**: IL lowering is the final frontend phase that translates the validated AST into Viper IL. This is where your
+language's semantics are encoded as low-level SSA instructions.
 
 **Key challenges:**
+
 - **Control flow**: Translating high-level constructs (if/while/for) into basic blocks and branches
 - **SSA generation**: Converting mutable variables into SSA temporaries with alloca/load/store
 - **Type mapping**: Translating language types to IL types
@@ -2178,13 +2283,16 @@ void SemanticAnalyzer::emitError(const std::string &message,
 - **Expression evaluation**: Emitting arithmetic, comparisons, and conversions
 
 **IRBuilder vs manual IL construction**: The IRBuilder provides a fluent API that hides some IL complexity:
+
 - Automatically reserves SSA temporary IDs
 - Tracks current insertion point
 - Provides high-level operations (emitCall, emitRet)
 
 For operations not exposed by IRBuilder (arithmetic, loads, stores), you construct `Instr` objects directly.
 
-**Pattern used throughout Viper**: The lowerer walks the AST recursively, maintaining state (current function, current block, local variable table) and emitting IL instructions as it goes. The resulting IL module is then verified and executed.
+**Pattern used throughout Viper**: The lowerer walks the AST recursively, maintaining state (current function, current
+block, local variable table) and emitting IL instructions as it goes. The resulting IL module is then verified and
+executed.
 
 ### IRBuilder API Reference
 
@@ -2917,6 +3025,7 @@ Value Lowerer::coerceBoolToI64(Value val) {
 Viper provides a C-based runtime library with common functionality.
 
 **Include:**
+
 ```cpp
 #include "il/runtime/RuntimeSignatures.hpp"
 ```
@@ -2972,41 +3081,53 @@ rt_arr_str_put(ptr, i64, str) -> void  // Set element
 
 ### OOP: Array Fields (BASIC CLASS)
 
-Array fields declared inside a `CLASS` are represented as pointer-sized handles in the object layout. Lowering supports both reads and writes via the same runtime helpers used for normal arrays; the only difference is that the base array handle is loaded from the object field before invoking the helper.
+Array fields declared inside a `CLASS` are represented as pointer-sized handles in the object layout. Lowering supports
+both reads and writes via the same runtime helpers used for normal arrays; the only difference is that the base array
+handle is loaded from the object field before invoking the helper.
 
 Key pieces in the BASIC frontend:
-- Constructor initialization: If an array field declares extents (e.g., `DIM data(8) AS INTEGER`), the constructor allocates the array and stores the handle into the field.
-  - File: `src/frontends/basic/Lower_OOP_Emit.cpp`
-  - Function: `Lowerer::emitClassConstructor`
-  - Mapping:
-    - Integer arrays → `rt_arr_i32_new(len)`
-    - String arrays → `rt_arr_str_alloc(len)`
+
+- Constructor initialization: If an array field declares extents (e.g., `DIM data(8) AS INTEGER`), the constructor
+  allocates the array and stores the handle into the field.
+    - File: `src/frontends/basic/Lower_OOP_Emit.cpp`
+    - Function: `Lowerer::emitClassConstructor`
+    - Mapping:
+        - Integer arrays → `rt_arr_i32_new(len)`
+        - String arrays → `rt_arr_str_alloc(len)`
 - Loads: `obj.field(i)` lowers to a load of the array handle from the field followed by `rt_arr_*_get(obj.field, i)`.
-  - Files:
-    - `src/frontends/basic/lower/Emit_Expr.cpp` (dotted array names in `lowerArrayAccess`)
-    - `src/frontends/basic/lower/Lowerer_Expr.cpp` (treat `MethodCallExpr` on field name as array get only when the field is declared as an array; guard with `fld->isArray`)
-  - Helpers: `rt_arr_i32_get`, `rt_arr_str_get`, `rt_arr_obj_get` (for object-element arrays), with `rt_arr_*_len` for bounds checks when emitted.
+    - Files:
+        - `src/frontends/basic/lower/Emit_Expr.cpp` (dotted array names in `lowerArrayAccess`)
+        - `src/frontends/basic/lower/Lowerer_Expr.cpp` (treat `MethodCallExpr` on field name as array get only when the
+          field is declared as an array; guard with `fld->isArray`)
+    - Helpers: `rt_arr_i32_get`, `rt_arr_str_get`, `rt_arr_obj_get` (for object-element arrays), with `rt_arr_*_len` for
+      bounds checks when emitted.
 - Stores: `obj.field(i) = value` lowers to a store into the array referenced by the field.
-  - File: `src/frontends/basic/LowerStmt_Runtime.cpp`
-  - Paths:
-    - `assignArrayElement` handles dotted names, selecting helpers by element type
-    - LHS `MethodCallExpr` path synthesizes store for `obj.field(index)`
-  - Helpers: `rt_arr_i32_set`, `rt_arr_str_put`, `rt_arr_obj_put` (for object-element arrays) with bounds checks via `rt_arr_*_len` + `rt_arr_oob_panic`.
+    - File: `src/frontends/basic/LowerStmt_Runtime.cpp`
+    - Paths:
+        - `assignArrayElement` handles dotted names, selecting helpers by element type
+        - LHS `MethodCallExpr` path synthesizes store for `obj.field(index)`
+    - Helpers: `rt_arr_i32_set`, `rt_arr_str_put`, `rt_arr_obj_put` (for object-element arrays) with bounds checks via
+      `rt_arr_*_len` + `rt_arr_oob_panic`.
 - Layout: Array fields occupy pointer-sized storage so subsequent field offsets are consistent.
-  - Files:
-    - `src/frontends/basic/Lower_OOP_Scan.cpp` (class layout builder)
-    - `src/frontends/basic/Lowerer.hpp` (`ClassLayout` metadata)
+    - Files:
+        - `src/frontends/basic/Lower_OOP_Scan.cpp` (class layout builder)
+        - `src/frontends/basic/Lowerer.hpp` (`ClassLayout` metadata)
 
 Example lowering flow for `obj.field(i) = 42` (integer array field):
+
 1) Load `self` pointer; compute field address via `GEP(self, field.offset)`
 2) Load array handle from field pointer
 3) Coerce index to i64; compute/emit bounds check using `rt_arr_i32_len`
 4) Call `rt_arr_i32_set(handle, index, 42)`
 
 Notes:
-- String array fields retain/release element handles using `rt_arr_str_put/rt_arr_str_get` and the standard string retain/release hooks.
-- Object array fields use `rt_arr_obj_len/get/put` and are not refcounted at the array-handle level; only element objects participate in retain/release.
-- Single-dimension indexing of array fields is supported; multi-dimension flattening for fields follows the same row‑major approach as normal arrays when metadata is available.
+
+- String array fields retain/release element handles using `rt_arr_str_put/rt_arr_str_get` and the standard string
+  retain/release hooks.
+- Object array fields use `rt_arr_obj_len/get/put` and are not refcounted at the array-handle level; only element
+  objects participate in retain/release.
+- Single-dimension indexing of array fields is supported; multi-dimension flattening for fields follows the same
+  row‑major approach as normal arrays when metadata is available.
 
 ### I/O Operations
 
@@ -3323,11 +3444,13 @@ TEST(ParserTests, ParseIfStatement) {
 Compare generated IL against expected output.
 
 **Input:** `tests/golden/yourfrontend/hello.src`
+
 ```
 print("Hello, World!")
 ```
 
 **Expected:** `tests/golden/yourfrontend/hello.il`
+
 ```
 il 0.1
 
@@ -3344,6 +3467,7 @@ global const str @str.0 = "Hello, World!"
 ```
 
 **Test Driver:**
+
 ```cpp
 TEST_P(GoldenTest, CompareIL) {
     std::string inputPath = GetParam();
@@ -3369,6 +3493,7 @@ TEST_P(GoldenTest, CompareIL) {
 Run complete programs and check output.
 
 **Input:** `tests/e2e/yourfrontend/fibonacci.src`
+
 ```
 function fib(n) {
     if n <= 1 then return n
@@ -3379,6 +3504,7 @@ print(fib(10))
 ```
 
 **Test:**
+
 ```cpp
 TEST(E2ETest, Fibonacci) {
     auto result = compileAndRun("tests/e2e/yourfrontend/fibonacci.src");
@@ -3398,6 +3524,7 @@ TEST(E2ETest, Fibonacci) {
 **Error:** IL verifier fails with "block not terminated"
 
 **Cause:**
+
 ```cpp
 builder_.setInsertPoint(block);
 // ... emit some instructions ...
@@ -3405,6 +3532,7 @@ builder_.setInsertPoint(block);
 ```
 
 **Fix:** Every block must end with a terminator (br, cbr, ret, trap):
+
 ```cpp
 if (!currentBlock_->terminated) {
     builder_.br(nextBlock, {});
@@ -3417,6 +3545,7 @@ if (!currentBlock_->terminated) {
 **Error:** IL verifier fails with "use of undefined value"
 
 **Cause:**
+
 ```cpp
 // WRONG: using %2 before it's defined
 %1 = add %0, %2
@@ -3424,6 +3553,7 @@ if (!currentBlock_->terminated) {
 ```
 
 **Fix:** Define values before use:
+
 ```cpp
 %2 = const 42
 %1 = add %0, %2
@@ -3434,12 +3564,14 @@ if (!currentBlock_->terminated) {
 **Error:** IL verifier fails with "type mismatch"
 
 **Cause:**
+
 ```cpp
 // WRONG: adding i64 and f64
 %result = add %int_val, %float_val
 ```
 
 **Fix:** Coerce to common type:
+
 ```cpp
 %float_int = sitofp %int_val
 %result = fadd %float_int, %float_val
@@ -3450,6 +3582,7 @@ if (!currentBlock_->terminated) {
 **Error:** IL verifier fails with "argument count mismatch"
 
 **Cause:**
+
 ```cpp
 // Block expects 2 arguments
 BasicBlock &loop = builder_.createBlock(fn, "loop",
@@ -3460,6 +3593,7 @@ builder_.br(loop, {Value::constInt(0)});  // WRONG
 ```
 
 **Fix:** Match argument count:
+
 ```cpp
 builder_.br(loop, {Value::constInt(0), Value::constInt(0)});
 ```
@@ -3469,12 +3603,14 @@ builder_.br(loop, {Value::constInt(0), Value::constInt(0)});
 **Error:** Memory leaks in long-running programs
 
 **Cause:** Not releasing runtime-managed values:
+
 ```cpp
 Value str = emitStringConcat(s1, s2);
 // FORGOT: rt_string_unref(str)
 ```
 
 **Fix:** Release when done:
+
 ```cpp
 Value str = emitStringConcat(s1, s2);
 // ... use str ...
@@ -3484,6 +3620,7 @@ builder_.emitCall("rt_string_unref", {str}, std::nullopt, loc);
 ### 6. Debugging Tips
 
 **Enable IL Verification:**
+
 ```cpp
 #include "il/verify/Verifier.hpp"
 
@@ -3497,11 +3634,13 @@ if (!result) {
 ```
 
 **Dump IL to stderr:**
+
 ```cpp
 il::io::Serializer::write(module, std::cerr);
 ```
 
 **Trace VM Execution:**
+
 ```bash
 ./ilc front yourfrontend -run --trace=il test.src
 ./ilc front yourfrontend -run --trace=src test.src
@@ -3509,6 +3648,7 @@ il::io::Serializer::write(module, std::cerr);
 
 **Check Opcode Usage:**
 Ensure you're using the right opcode for the operation:
+
 - Signed arithmetic: `add`, `sub`, `mul`, `sdiv`, `srem`
 - Unsigned: `udiv`, `urem`
 - Floating-point: `fadd`, `fsub`, `fmul`, `fdiv`
@@ -3600,25 +3740,28 @@ This guide has covered everything needed to implement a new frontend:
 - **Leverage runtime** — Use existing runtime functions
 
 Good luck building your frontend!
+
 ### ADDFILE Directive (Parse-Time Include)
 
-BASIC front-ends can support a simple include directive that splices another BASIC file into the current program at parse time.
+BASIC front-ends can support a simple include directive that splices another BASIC file into the current program at
+parse time.
 
 - Syntax: `ADDFILE "path.bas"`
 - Scope: File-scope only (top level). Not permitted inside `SUB`/`FUNCTION`/`CLASS`/`NAMESPACE` bodies.
 - Behavior:
-  - Loads the referenced `.bas` file and parses it as a nested program.
-  - Appends included procedures to the current program’s procedure list.
-  - Inserts included top-level statements where the directive appears, preserving order.
+    - Loads the referenced `.bas` file and parses it as a nested program.
+    - Appends included procedures to the current program’s procedure list.
+    - Inserts included top-level statements where the directive appears, preserving order.
 - Path Resolution:
-  - Relative paths are resolved against the directory of the including file.
-  - Absolute paths are supported as-is.
+    - Relative paths are resolved against the directory of the including file.
+    - Absolute paths are supported as-is.
 - Safety:
-  - Cycle detection prevents recursive inclusion of the same file; a diagnostic is emitted.
-  - Depth limit (default: 32) guards against runaway recursion; exceeding the limit triggers a diagnostic.
+    - Cycle detection prevents recursive inclusion of the same file; a diagnostic is emitted.
+    - Depth limit (default: 32) guards against runaway recursion; exceeding the limit triggers a diagnostic.
 - Diagnostics:
-  - I/O failures (unreadable/missing files) report the resolved path.
-  - Each included file is registered with the SourceManager so diagnostics point to the correct file and line.
+    - I/O failures (unreadable/missing files) report the resolved path.
+    - Each included file is registered with the SourceManager so diagnostics point to the correct file and line.
 - Notes:
-  - A numeric line label may precede the directive (e.g., `100 ADDFILE "inc.bas"`); the label is recorded and the directive still applies.
-  - Any trailing tokens on the directive line are ignored up to end-of-line; inline comments are acceptable.
+    - A numeric line label may precede the directive (e.g., `100 ADDFILE "inc.bas"`); the label is recorded and the
+      directive still applies.
+    - Any trailing tokens on the directive line are ignored up to end-of-line; inline comments are acceptable.
