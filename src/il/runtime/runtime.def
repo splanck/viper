@@ -10,12 +10,14 @@
 // This file defines all Viper runtime functions and classes.
 // Sections are organized alphabetically by namespace.
 //
+//   COLLECTIONS - BAG
 //   COLLECTIONS - BYTES
 //   COLLECTIONS - LIST
 //   COLLECTIONS - MAP
 //   COLLECTIONS - QUEUE
 //   COLLECTIONS - SEQ
 //   COLLECTIONS - STACK
+//   CRYPTO - HASH
 //   DATETIME
 //   DIAGNOSTICS - ASSERT
 //   DIAGNOSTICS - STOPWATCH
@@ -31,6 +33,7 @@
 //   RANDOM
 //   STRING FUNCTIONS
 //   TERMINAL I/O
+//   TEXT - CODEC
 //   TEXT - GUID
 //   TEXT - STRINGBUILDER
 //   TIME - CLOCK
@@ -88,6 +91,22 @@ RT_FUNC(BytesSlice,   rt_bytes_slice,    "Viper.Collections.Bytes.Slice",     "o
 RT_FUNC(BytesToBase64,   rt_bytes_to_base64,   "Viper.Collections.Bytes.ToBase64",   "str(obj)")
 RT_FUNC(BytesToHex,   rt_bytes_to_hex,   "Viper.Collections.Bytes.ToHex",     "str(obj)")
 RT_FUNC(BytesToStr,   rt_bytes_to_str,   "Viper.Collections.Bytes.ToStr",     "str(obj)")
+
+//=============================================================================
+// COLLECTIONS - BAG
+//=============================================================================
+
+RT_FUNC(BagClear,   rt_bag_clear,    "Viper.Collections.Bag.Clear",       "void(obj)")
+RT_FUNC(BagCommon,  rt_bag_common,   "Viper.Collections.Bag.Common",      "obj(obj,obj)")
+RT_FUNC(BagDiff,    rt_bag_diff,     "Viper.Collections.Bag.Diff",        "obj(obj,obj)")
+RT_FUNC(BagDrop,    rt_bag_drop,     "Viper.Collections.Bag.Drop",        "i1(obj,str)")
+RT_FUNC(BagHas,     rt_bag_has,      "Viper.Collections.Bag.Has",         "i1(obj,str)")
+RT_FUNC(BagIsEmpty, rt_bag_is_empty, "Viper.Collections.Bag.get_IsEmpty", "i1(obj)")
+RT_FUNC(BagItems,   rt_bag_items,    "Viper.Collections.Bag.Items",       "obj(obj)")
+RT_FUNC(BagLen,     rt_bag_len,      "Viper.Collections.Bag.get_Len",     "i64(obj)")
+RT_FUNC(BagMerge,   rt_bag_merge,    "Viper.Collections.Bag.Merge",       "obj(obj,obj)")
+RT_FUNC(BagNew,     rt_bag_new,      "Viper.Collections.Bag.New",         "obj()")
+RT_FUNC(BagPut,     rt_bag_put,      "Viper.Collections.Bag.Put",         "i1(obj,str)")
 
 //=============================================================================
 // COLLECTIONS - LIST
@@ -172,6 +191,19 @@ RT_FUNC(StackNew,     rt_stack_new,      "Viper.Collections.Stack.New",         
 RT_FUNC(StackPeek,    rt_stack_peek,     "Viper.Collections.Stack.Peek",        "obj(obj)")
 RT_FUNC(StackPop,     rt_stack_pop,      "Viper.Collections.Stack.Pop",         "obj(obj)")
 RT_FUNC(StackPush,    rt_stack_push,     "Viper.Collections.Stack.Push",        "void(obj,obj)")
+
+//=============================================================================
+// CRYPTO - HASH
+//=============================================================================
+
+RT_FUNC(HashCRC32,      rt_hash_crc32,       "Viper.Crypto.Hash.CRC32",      "i64(str)")
+RT_FUNC(HashCRC32Bytes, rt_hash_crc32_bytes, "Viper.Crypto.Hash.CRC32Bytes", "i64(obj)")
+RT_FUNC(HashMD5,        rt_hash_md5,         "Viper.Crypto.Hash.MD5",        "str(str)")
+RT_FUNC(HashMD5Bytes,   rt_hash_md5_bytes,   "Viper.Crypto.Hash.MD5Bytes",   "str(obj)")
+RT_FUNC(HashSHA1,       rt_hash_sha1,        "Viper.Crypto.Hash.SHA1",       "str(str)")
+RT_FUNC(HashSHA1Bytes,  rt_hash_sha1_bytes,  "Viper.Crypto.Hash.SHA1Bytes",  "str(obj)")
+RT_FUNC(HashSHA256,     rt_hash_sha256,      "Viper.Crypto.Hash.SHA256",     "str(str)")
+RT_FUNC(HashSHA256Bytes,rt_hash_sha256_bytes,"Viper.Crypto.Hash.SHA256Bytes","str(obj)")
 
 //=============================================================================
 // DATETIME
@@ -477,6 +509,17 @@ RT_ALIAS("Viper.Console.PrintF64", PrintF64)
 RT_ALIAS("Viper.Console.ReadLine", TermReadLine)
 
 //=============================================================================
+// TEXT - CODEC
+//=============================================================================
+
+RT_FUNC(CodecBase64Dec, rt_codec_base64_dec, "Viper.Text.Codec.Base64Dec", "str(str)")
+RT_FUNC(CodecBase64Enc, rt_codec_base64_enc, "Viper.Text.Codec.Base64Enc", "str(str)")
+RT_FUNC(CodecHexDec,    rt_codec_hex_dec,    "Viper.Text.Codec.HexDec",    "str(str)")
+RT_FUNC(CodecHexEnc,    rt_codec_hex_enc,    "Viper.Text.Codec.HexEnc",    "str(str)")
+RT_FUNC(CodecUrlDecode, rt_codec_url_decode, "Viper.Text.Codec.UrlDecode", "str(str)")
+RT_FUNC(CodecUrlEncode, rt_codec_url_encode, "Viper.Text.Codec.UrlEncode", "str(str)")
+
+//=============================================================================
 // TEXT - GUID
 //=============================================================================
 
@@ -543,6 +586,20 @@ RT_CLASS_BEGIN("Viper.Collections.Bytes", Bytes, "obj", BytesNew)
     RT_METHOD("ToBase64", "str()", BytesToBase64)
     RT_METHOD("ToHex", "str()", BytesToHex)
     RT_METHOD("ToStr", "str()", BytesToStr)
+RT_CLASS_END()
+
+// Viper.Collections.Bag - set of unique strings
+RT_CLASS_BEGIN("Viper.Collections.Bag", Bag, "obj", BagNew)
+    RT_PROP("IsEmpty", "i1", BagIsEmpty, none)
+    RT_PROP("Len", "i64", BagLen, none)
+    RT_METHOD("Clear", "void()", BagClear)
+    RT_METHOD("Common", "obj(obj)", BagCommon)
+    RT_METHOD("Diff", "obj(obj)", BagDiff)
+    RT_METHOD("Drop", "i1(str)", BagDrop)
+    RT_METHOD("Has", "i1(str)", BagHas)
+    RT_METHOD("Items", "obj()", BagItems)
+    RT_METHOD("Merge", "obj(obj)", BagMerge)
+    RT_METHOD("Put", "i1(str)", BagPut)
 RT_CLASS_END()
 
 // Viper.Collections.List
@@ -624,6 +681,18 @@ RT_CLASS_BEGIN("Viper.Convert", Convert, "obj", none)
     RT_METHOD("ToInt64", "i64(str)", ToInt)
     RT_METHOD("ToString_Double", "str(f64)", F64ToStr)
     RT_METHOD("ToString_Int", "str(i64)", IntToStr)
+RT_CLASS_END()
+
+// Viper.Crypto.Hash - cryptographic hash functions (MD5, SHA1, SHA256, CRC32)
+RT_CLASS_BEGIN("Viper.Crypto.Hash", Hash, "obj", none)
+    RT_METHOD("CRC32", "i64(str)", HashCRC32)
+    RT_METHOD("CRC32Bytes", "i64(obj)", HashCRC32Bytes)
+    RT_METHOD("MD5", "str(str)", HashMD5)
+    RT_METHOD("MD5Bytes", "str(obj)", HashMD5Bytes)
+    RT_METHOD("SHA1", "str(str)", HashSHA1)
+    RT_METHOD("SHA1Bytes", "str(obj)", HashSHA1Bytes)
+    RT_METHOD("SHA256", "str(str)", HashSHA256)
+    RT_METHOD("SHA256Bytes", "str(obj)", HashSHA256Bytes)
 RT_CLASS_END()
 
 // Viper.DateTime - static utility class
@@ -861,6 +930,16 @@ RT_CLASS_BEGIN("Viper.Terminal", Terminal, "obj", none)
     RT_METHOD("SetColor", "void(i64,i64)", TermSetColor)
     RT_METHOD("SetCursorVisible", "void(i64)", TermSetCursorVisible)
     RT_METHOD("SetPosition", "void(i64,i64)", TermSetPosition)
+RT_CLASS_END()
+
+// Viper.Text.Codec - Base64, Hex, and URL encoding/decoding utilities
+RT_CLASS_BEGIN("Viper.Text.Codec", Codec, "obj", none)
+    RT_METHOD("Base64Dec", "str(str)", CodecBase64Dec)
+    RT_METHOD("Base64Enc", "str(str)", CodecBase64Enc)
+    RT_METHOD("HexDec", "str(str)", CodecHexDec)
+    RT_METHOD("HexEnc", "str(str)", CodecHexEnc)
+    RT_METHOD("UrlDecode", "str(str)", CodecUrlDecode)
+    RT_METHOD("UrlEncode", "str(str)", CodecUrlEncode)
 RT_CLASS_END()
 
 // Viper.Text.Guid - UUID generation and manipulation

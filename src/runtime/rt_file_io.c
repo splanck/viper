@@ -5,17 +5,20 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Provides the POSIX-backed file I/O layer used by the BASIC runtime.  The
-// functions in this translation unit manage descriptor lifetimes, translate
-// errno codes into the runtime's structured diagnostics, and implement
-// higher-level helpers such as line reading and binary writes.  Centralising the
-// logic keeps the VM and native runtimes in sync when interacting with the host
-// filesystem.
+// Provides the file I/O layer used by the BASIC runtime.  The functions in this
+// translation unit manage descriptor lifetimes, translate errno codes into the
+// runtime's structured diagnostics, and implement higher-level helpers such as
+// line reading and binary writes.  Centralising the logic keeps the VM and
+// native runtimes in sync when interacting with the host filesystem.
+//
+// Platform support:
+//   - POSIX (Linux, macOS): Uses standard POSIX APIs (open, read, write, etc.)
+//   - Windows: Uses MSVC CRT APIs (_open, _read, _write, etc.)
 //
 //===----------------------------------------------------------------------===//
 
 /// @file
-/// @brief POSIX file I/O wrappers for the BASIC runtime.
+/// @brief Cross-platform file I/O wrappers for the BASIC runtime.
 /// @details Offers safe descriptor management, buffered line reads, and error
 ///          propagation utilities that convert errno into @ref RtError records.
 ///          All routines maintain invariants around @ref RtFile handles so
@@ -31,11 +34,62 @@
 #include <limits.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
+
+#if defined(_WIN32)
+#include <io.h>
+#include <share.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+// Windows doesn't define ssize_t, so we provide it
+#if !defined(ssize_t)
+#include <BaseTsd.h>
+typedef SSIZE_T ssize_t;
+#endif
+// Map POSIX names to Windows CRT equivalents
+#define open _open
+#define close _close
+#define read _read
+#define write _write
+#define lseek _lseeki64
+// Windows file permission flags
+#define S_IRUSR _S_IREAD
+#define S_IWUSR _S_IWRITE
+#define S_IRGRP 0
+#define S_IWGRP 0
+#define S_IROTH 0
+#define S_IWOTH 0
+// Windows doesn't have these errno values
+#ifndef EISDIR
+#define EISDIR ENOENT
+#endif
+#ifndef ENOTDIR
+#define ENOTDIR ENOENT
+#endif
+#ifndef ENOSPC
+#define ENOSPC EIO
+#endif
+#ifndef EFBIG
+#define EFBIG EIO
+#endif
+#ifndef EPIPE
+#define EPIPE EIO
+#endif
+#ifndef EAGAIN
+#define EAGAIN EIO
+#endif
+#ifndef EINTR
+#define EINTR 0 // Windows doesn't have EINTR; reads/writes don't get interrupted
+#endif
+// off_t and mode_t for Windows
+typedef __int64 off_t;
+typedef unsigned short mode_t;
+#else
+// POSIX systems
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
-
-#include <stdint.h>
+#endif
 
 /// @brief Clamp errno values into the 32-bit range stored by @ref RtError.
 /// @details Ensures large positive or negative errno values fit into the
@@ -548,7 +602,13 @@ bool rt_file_write(RtFile *file, const uint8_t *data, size_t len, RtError *out_e
     while (written < len)
     {
         errno = 0;
-        ssize_t n = write(file->fd, data + written, len - written);
+        size_t chunk = len - written;
+#if defined(_WIN32)
+        // Windows _write takes unsigned int, clamp to avoid overflow
+        if (chunk > UINT_MAX)
+            chunk = UINT_MAX;
+#endif
+        ssize_t n = write(file->fd, data + written, chunk);
         if (n < 0)
         {
             if (errno == EINTR)

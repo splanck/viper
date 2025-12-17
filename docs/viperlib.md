@@ -13,13 +13,16 @@ The Viper Runtime Library provides a set of built-in classes and utilities avail
 - [Viper.String](#viperstring)
 - [Viper.Object](#viperobject)
 - [Viper.Text.StringBuilder](#vipertextstringbuilder)
+- [Viper.Text.Codec](#vipertextcodec)
 - [Viper.Text.Guid](#vipertextguid)
+- [Viper.Crypto.Hash](#vipercryptohash)
 - [Viper.Collections.List](#vipercollectionslist)
 - [Viper.Collections.Map](#vipercollectionsmap)
 - [Viper.Collections.Seq](#vipercollectionsseq)
 - [Viper.Collections.Stack](#vipercollectionsstack)
 - [Viper.Collections.Queue](#vipercollectionsqueue)
 - [Viper.Collections.Bytes](#vipercollectionsbytes)
+- [Viper.Collections.Bag](#vipercollectionsbag)
 - [Viper.Math](#vipermath)
 - [Viper.Terminal](#viperterminal)
 - [Viper.Convert](#viperconvert)
@@ -58,6 +61,7 @@ The Viper Runtime Library provides a set of built-in classes and utilities avail
 | Class | Type | Description |
 |-------|------|-------------|
 | `StringBuilder` | Instance | Mutable string builder for efficient concatenation |
+| `Codec` | Static | Base64, Hex, and URL encoding/decoding |
 | `Guid` | Static | UUID version 4 generation and manipulation |
 
 ### Viper.Collections
@@ -333,6 +337,64 @@ NEXT i
 
 ---
 
+## Viper.Text.Codec
+
+String-based encoding and decoding utilities for Base64, Hex, and URL encoding.
+
+**Type:** Static utility class
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `Base64Enc(str)` | `String(String)` | Base64-encode a string's bytes |
+| `Base64Dec(str)` | `String(String)` | Decode a Base64 string to original bytes |
+| `HexEnc(str)` | `String(String)` | Hex-encode a string's bytes (lowercase) |
+| `HexDec(str)` | `String(String)` | Decode a hex string to original bytes |
+| `UrlEncode(str)` | `String(String)` | URL-encode a string (percent-encoding) |
+| `UrlDecode(str)` | `String(String)` | URL-decode a string |
+
+### Notes
+
+- All methods operate on strings (C strings without embedded null bytes)
+- For binary data with null bytes, use `Bytes.ToBase64`/`Bytes.FromBase64` or `Bytes.ToHex`/`Bytes.FromHex`
+- **URL Encoding:**
+  - Unreserved characters (A-Z, a-z, 0-9, `-`, `_`, `.`, `~`) pass through unchanged
+  - All other characters are encoded as `%XX` (lowercase hex)
+  - Decoding treats `+` as space (form encoding convention)
+- **Base64:** RFC 4648 standard alphabet with `=` padding
+- **Hex:** Lowercase hex encoding (e.g., "Hello" → "48656c6c6f")
+- Invalid input to `Base64Dec` or `HexDec` will trap
+
+### Example
+
+```basic
+' URL encoding for query parameters
+DIM original AS STRING = "key=value&name=John Doe"
+DIM encoded AS STRING = Viper.Text.Codec.UrlEncode(original)
+PRINT encoded  ' Output: "key%3dvalue%26name%3dJohn%20Doe"
+
+DIM decoded AS STRING = Viper.Text.Codec.UrlDecode(encoded)
+PRINT decoded = original  ' Output: 1 (true)
+
+' Base64 encoding for data transmission
+DIM data AS STRING = "Hello, World!"
+DIM b64 AS STRING = Viper.Text.Codec.Base64Enc(data)
+PRINT b64  ' Output: "SGVsbG8sIFdvcmxkIQ=="
+
+DIM restored AS STRING = Viper.Text.Codec.Base64Dec(b64)
+PRINT restored  ' Output: "Hello, World!"
+
+' Hex encoding for display
+DIM hex AS STRING = Viper.Text.Codec.HexEnc("ABC")
+PRINT hex  ' Output: "414243"
+
+DIM unhex AS STRING = Viper.Text.Codec.HexDec(hex)
+PRINT unhex  ' Output: "ABC"
+```
+
+---
+
 ## Viper.Text.Guid
 
 UUID version 4 (random) generation and manipulation per RFC 4122.
@@ -387,6 +449,65 @@ PRINT empty  ' Output: "00000000-0000-0000-0000-000000000000"
 DIM bytes AS OBJECT = Viper.Text.Guid.ToBytes(id)
 DIM restored AS STRING = Viper.Text.Guid.FromBytes(bytes)
 PRINT restored = id  ' Output: 1 (true)
+```
+
+---
+
+## Viper.Crypto.Hash
+
+Cryptographic hash functions and checksums for strings and binary data.
+
+**Type:** Static utility class
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `CRC32(str)` | `Integer(String)` | Compute CRC32 checksum of a string |
+| `CRC32Bytes(bytes)` | `Integer(Bytes)` | Compute CRC32 checksum of a Bytes object |
+| `MD5(str)` | `String(String)` | Compute MD5 hash of a string |
+| `MD5Bytes(bytes)` | `String(Bytes)` | Compute MD5 hash of a Bytes object |
+| `SHA1(str)` | `String(String)` | Compute SHA1 hash of a string |
+| `SHA1Bytes(bytes)` | `String(Bytes)` | Compute SHA1 hash of a Bytes object |
+| `SHA256(str)` | `String(String)` | Compute SHA256 hash of a string |
+| `SHA256Bytes(bytes)` | `String(Bytes)` | Compute SHA256 hash of a Bytes object |
+
+### Notes
+
+- All hash outputs (MD5, SHA1, SHA256) are lowercase hex strings
+- CRC32 returns an integer (the raw checksum value)
+- MD5 returns a 32-character hex string
+- SHA1 returns a 40-character hex string
+- SHA256 returns a 64-character hex string
+- **Security Warning:** MD5 and SHA1 are cryptographically broken and should NOT be used for security-sensitive applications. Use SHA256 or better for security purposes. These are provided for checksums, fingerprinting, and legacy compatibility.
+
+### Example
+
+```basic
+' Compute checksums and hashes
+DIM data AS STRING = "Hello, World!"
+
+' CRC32 checksum (returns integer)
+DIM crc AS INTEGER = Viper.Crypto.Hash.CRC32(data)
+PRINT crc  ' Output: some integer value
+
+' MD5 hash (32 hex characters)
+DIM md5 AS STRING = Viper.Crypto.Hash.MD5(data)
+PRINT md5  ' Output: "65a8e27d8879283831b664bd8b7f0ad4"
+
+' SHA1 hash (40 hex characters)
+DIM sha1 AS STRING = Viper.Crypto.Hash.SHA1(data)
+PRINT sha1  ' Output: "0a0a9f2a6772942557ab5355d76af442f8f65e01"
+
+' SHA256 hash (64 hex characters)
+DIM sha256 AS STRING = Viper.Crypto.Hash.SHA256(data)
+PRINT sha256  ' Output: "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f"
+
+' Hash binary data using Bytes variants
+DIM bytes AS OBJECT = NEW Viper.Collections.Bytes()
+bytes.WriteString("Hello")
+DIM hash AS STRING = Viper.Crypto.Hash.SHA256Bytes(bytes)
+PRINT hash
 ```
 
 ---
@@ -852,6 +973,104 @@ PRINT data.ToHex()        ' Output: "00000000"
 - **Cryptography:** Handle raw byte sequences
 - **Image data:** Manipulate raw pixel data
 - **Base encoding:** Convert between binary and text representations
+
+---
+
+## Viper.Collections.Bag
+
+A set data structure for storing unique strings. Efficiently handles membership testing, set operations (union, intersection, difference), and enumeration.
+
+**Type:** Instance (obj)
+**Constructor:** `NEW Viper.Collections.Bag()`
+
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `Len` | Integer | Number of strings in the bag |
+| `IsEmpty` | Boolean | True if bag contains no strings |
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `Put(str)` | `Boolean(String)` | Add a string; returns true if new, false if already present |
+| `Drop(str)` | `Boolean(String)` | Remove a string; returns true if removed, false if not found |
+| `Has(str)` | `Boolean(String)` | Check if string is in the bag |
+| `Clear()` | `Void()` | Remove all strings from the bag |
+| `Items()` | `Seq()` | Get all strings as a Seq (order undefined) |
+| `Merge(other)` | `Bag(Bag)` | Return new bag with union of both bags |
+| `Common(other)` | `Bag(Bag)` | Return new bag with intersection of both bags |
+| `Diff(other)` | `Bag(Bag)` | Return new bag with elements in this but not other |
+
+### Notes
+
+- Strings are stored by value (copied into the bag)
+- Order of strings returned by `Items()` is not guaranteed (hash table)
+- Set operations (`Merge`, `Common`, `Diff`) return new bags; originals are unchanged
+- Uses FNV-1a hash function for O(1) average-case operations
+- Automatically resizes when load factor exceeds 75%
+
+### Example
+
+```basic
+' Create and populate a bag
+DIM fruits AS OBJECT = NEW Viper.Collections.Bag()
+fruits.Put("apple")
+fruits.Put("banana")
+fruits.Put("cherry")
+PRINT fruits.Len           ' Output: 3
+
+' Duplicate add returns false
+DIM wasNew AS INTEGER = fruits.Put("apple")
+PRINT wasNew               ' Output: 0 (already present)
+
+' Membership testing
+PRINT fruits.Has("banana") ' Output: 1 (true)
+PRINT fruits.Has("grape")  ' Output: 0 (false)
+
+' Remove an element
+DIM removed AS INTEGER = fruits.Drop("banana")
+PRINT removed              ' Output: 1 (was removed)
+PRINT fruits.Has("banana") ' Output: 0 (no longer present)
+
+' Set operations
+DIM bagA AS OBJECT = NEW Viper.Collections.Bag()
+bagA.Put("a")
+bagA.Put("b")
+bagA.Put("c")
+
+DIM bagB AS OBJECT = NEW Viper.Collections.Bag()
+bagB.Put("b")
+bagB.Put("c")
+bagB.Put("d")
+
+' Union: elements in either bag
+DIM merged AS OBJECT = bagA.Merge(bagB)
+PRINT merged.Len           ' Output: 4 (a, b, c, d)
+
+' Intersection: elements in both bags
+DIM common AS OBJECT = bagA.Common(bagB)
+PRINT common.Len           ' Output: 2 (b, c)
+
+' Difference: elements in A but not B
+DIM diff AS OBJECT = bagA.Diff(bagB)
+PRINT diff.Len             ' Output: 1 (a only)
+
+' Enumerate all elements
+DIM items AS OBJECT = fruits.Items()
+FOR i AS INTEGER = 0 TO items.Len - 1
+    PRINT items.Get(i)
+NEXT
+```
+
+### Use Cases
+
+- **Deduplication:** Track unique values encountered
+- **Membership testing:** Fast O(1) lookup for string membership
+- **Set mathematics:** Compute unions, intersections, and differences
+- **Tag systems:** Manage collections of unique tags or labels
+- **Visited tracking:** Track visited items in algorithms
 
 ---
 

@@ -20,6 +20,7 @@ set(RT_SOURCES
         rt_array_f64.c
         rt_array_str.c
         rt_array_obj.c
+        rt_bag.c
         rt_heap.c
         rt_numeric.c
         rt_numeric_conv.c
@@ -41,6 +42,7 @@ set(RT_SOURCES
         rt_stack.c
         rt_queue.c
         rt_bytes.c
+        rt_codec.c
         rt_graphics.c
         rt_datetime.c
         rt_map.c
@@ -48,6 +50,7 @@ set(RT_SOURCES
         rt_dir.c
         rt_stopwatch.c
         rt_guid.c
+        rt_hash.c
 )
 
 set(RT_PUBLIC_HEADERS

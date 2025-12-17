@@ -78,43 +78,69 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Default to strict builds: treat warnings as errors unless opted out.
 option(IL_WARN_AS_ERROR "Treat warnings as errors" ON)
-option(IL_USE_LLD "Use lld linker if available" ON)
+option(IL_USE_LLD "Use lld linker if available (GCC/Clang only)" ON)
 option(IL_USE_LIBCXX "Use libc++ on Clang (Linux)" OFF)
 option(IL_SANITIZE_ADDRESS "Enable address sanitizer" OFF)
 option(IL_SANITIZE_UNDEFINED "Enable undefined behavior sanitizer" OFF)
 
-set(IL_COMPILE_FLAGS -Wall -Wextra -Wpedantic)
+set(IL_COMPILE_FLAGS)
 set(IL_LINK_FLAGS)
 
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  list(APPEND IL_COMPILE_FLAGS -Wno-unused-parameter -Wno-unused-private-field -Wno-mismatched-tags)
-  if(IL_SANITIZE_ADDRESS)
-    list(APPEND IL_COMPILE_FLAGS -fsanitize=address)
-    list(APPEND IL_LINK_FLAGS -fsanitize=address)
+if(MSVC)
+  # MSVC-specific compiler flags
+  list(APPEND IL_COMPILE_FLAGS /W4 /permissive- /utf-8)
+  # Suppress common benign warnings
+  list(APPEND IL_COMPILE_FLAGS
+    /wd4100  # unreferenced formal parameter (like -Wno-unused-parameter)
+    /wd4127  # conditional expression is constant
+    /wd4201  # nonstandard extension: nameless struct/union
+    /wd4458  # declaration hides class member
+  )
+  if(IL_WARN_AS_ERROR)
+    list(APPEND IL_COMPILE_FLAGS /WX)
   endif()
-  if(IL_SANITIZE_UNDEFINED)
-    list(APPEND IL_COMPILE_FLAGS -fsanitize=undefined)
-    list(APPEND IL_LINK_FLAGS -fsanitize=undefined)
+  if(VIPER_BUILD_TESTING)
+    list(APPEND IL_COMPILE_FLAGS
+      /wd4189  # local variable initialized but not referenced
+      /wd4505  # unreferenced local function
+    )
   endif()
-elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-  # Keep parity with Clang: suppress benign unused parameter warnings under -Werror
-  list(APPEND IL_COMPILE_FLAGS -Wno-unused-parameter)
-endif()
+  # MSVC-specific defines for secure CRT
+  add_compile_definitions(_CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_WARNINGS)
+else()
+  # GCC/Clang compiler flags
+  list(APPEND IL_COMPILE_FLAGS -Wall -Wextra -Wpedantic)
 
-if(IL_WARN_AS_ERROR)
-  list(APPEND IL_COMPILE_FLAGS -Werror)
-endif()
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    list(APPEND IL_COMPILE_FLAGS -Wno-unused-parameter -Wno-unused-private-field -Wno-mismatched-tags)
+    if(IL_SANITIZE_ADDRESS)
+      list(APPEND IL_COMPILE_FLAGS -fsanitize=address)
+      list(APPEND IL_LINK_FLAGS -fsanitize=address)
+    endif()
+    if(IL_SANITIZE_UNDEFINED)
+      list(APPEND IL_COMPILE_FLAGS -fsanitize=undefined)
+      list(APPEND IL_LINK_FLAGS -fsanitize=undefined)
+    endif()
+  elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    # Keep parity with Clang: suppress benign unused parameter warnings under -Werror
+    list(APPEND IL_COMPILE_FLAGS -Wno-unused-parameter)
+  endif()
 
-# Test code often has variables/functions/types used only in assertions (compiled out in release builds)
-if(VIPER_BUILD_TESTING)
-  list(APPEND IL_COMPILE_FLAGS -Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-function -Wno-unused-lambda-capture -Wno-unused-local-typedef)
-endif()
+  if(IL_WARN_AS_ERROR)
+    list(APPEND IL_COMPILE_FLAGS -Werror)
+  endif()
 
-if(IL_USE_LLD)
-  include(CheckLinkerFlag)
-  check_linker_flag(CXX "-fuse-ld=lld" IL_HAS_LLD)
-  if(IL_HAS_LLD)
-    list(APPEND IL_LINK_FLAGS -fuse-ld=lld)
+  # Test code often has variables/functions/types used only in assertions (compiled out in release builds)
+  if(VIPER_BUILD_TESTING)
+    list(APPEND IL_COMPILE_FLAGS -Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-function -Wno-unused-lambda-capture -Wno-unused-local-typedef)
+  endif()
+
+  if(IL_USE_LLD)
+    include(CheckLinkerFlag)
+    check_linker_flag(CXX "-fuse-ld=lld" IL_HAS_LLD)
+    if(IL_HAS_LLD)
+      list(APPEND IL_LINK_FLAGS -fuse-ld=lld)
+    endif()
   endif()
 endif()
 
@@ -377,13 +403,20 @@ if(APPLE)
   # Build a macOS installer package (.pkg) suitable for CLI tools
   set(CPACK_GENERATOR "productbuild")
   set(CPACK_PACKAGE_FILE_NAME "Viper-${PROJECT_VERSION}-macos")
-else()
-  if(UNIX)
-    # Build both DEB and RPM if possible; users can choose
-    set(CPACK_GENERATOR "DEB;RPM")
-    set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Viper Project")
-    set(CPACK_PACKAGE_FILE_NAME "viper-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
+elseif(WIN32)
+  # Windows: ZIP archive (always works) and NSIS installer if available
+  set(CPACK_GENERATOR "ZIP")
+  set(CPACK_PACKAGE_FILE_NAME "Viper-${PROJECT_VERSION}-win64")
+  # Optional: Enable NSIS installer if available
+  find_program(NSIS_FOUND makensis)
+  if(NSIS_FOUND)
+    list(APPEND CPACK_GENERATOR "NSIS")
   endif()
+elseif(UNIX)
+  # Build both DEB and RPM if possible; users can choose
+  set(CPACK_GENERATOR "DEB;RPM")
+  set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Viper Project")
+  set(CPACK_PACKAGE_FILE_NAME "viper-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
 endif()
 
 include(CPack)

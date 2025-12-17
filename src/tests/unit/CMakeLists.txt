@@ -476,6 +476,18 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_guid PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_guid test_rt_guid)
 
+    viper_add_test(test_rt_codec ${VIPER_TESTS_DIR}/runtime/RTCodecTests.cpp)
+    target_link_libraries(test_rt_codec PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_codec test_rt_codec)
+
+    viper_add_test(test_rt_hash ${VIPER_TESTS_DIR}/runtime/RTHashTests.cpp)
+    target_link_libraries(test_rt_hash PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_hash test_rt_hash)
+
+    viper_add_test(test_rt_bag ${VIPER_TESTS_DIR}/runtime/RTBagTests.cpp)
+    target_link_libraries(test_rt_bag PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_bag test_rt_bag)
+
     viper_add_test(test_rt_abs_i64_overflow ${VIPER_TESTS_DIR}/runtime/RTAbsI64OverflowTests.cpp)
     target_link_libraries(test_rt_abs_i64_overflow PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_abs_i64_overflow test_rt_abs_i64_overflow)

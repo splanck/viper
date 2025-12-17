@@ -43,6 +43,7 @@ enum class RuntimeTypeId : std::size_t
     RTCLS_Random,
     RTCLS_Environment,
     RTCLS_Canvas,
+    RTCLS_Codec,
     RTCLS_Color,
     RTCLS_DateTime,
     RTCLS_Map,
@@ -50,10 +51,12 @@ enum class RuntimeTypeId : std::size_t
     RTCLS_Stack,
     RTCLS_Queue,
     RTCLS_Bytes,
+    RTCLS_Bag,
     RTCLS_Terminal,
     RTCLS_Clock,
     RTCLS_Stopwatch,
     RTCLS_Guid,
+    RTCLS_Hash,
 };
 
 /// @brief Describes a property on a runtime class.

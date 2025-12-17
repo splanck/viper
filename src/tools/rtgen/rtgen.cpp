@@ -443,6 +443,103 @@ static ParseState parseFile(const fs::path &path)
 }
 
 //===----------------------------------------------------------------------===//
+// Type Mapping (IL signature types to C types)
+//===----------------------------------------------------------------------===//
+
+/// @brief Map IL type to C type for DirectHandler template.
+static std::string ilTypeToCType(const std::string &ilType)
+{
+    if (ilType == "str")
+        return "rt_string";
+    if (ilType == "i64")
+        return "int64_t";
+    if (ilType == "i32")
+        return "int32_t";
+    if (ilType == "i16")
+        return "int16_t";
+    if (ilType == "i8" || ilType == "i1")
+        return "int8_t";
+    if (ilType == "f64")
+        return "double";
+    if (ilType == "f32")
+        return "float";
+    if (ilType == "void")
+        return "void";
+    if (ilType == "obj" || ilType == "ptr")
+        return "void *";
+    // Default to void* for unknown types
+    return "void *";
+}
+
+/// @brief Map IL type to signature string format.
+static std::string ilTypeToSigType(const std::string &ilType)
+{
+    if (ilType == "str")
+        return "string";
+    if (ilType == "obj")
+        return "ptr";
+    // Most types map directly
+    return ilType;
+}
+
+/// @brief Parse a signature like "str(i64,str)" into return type and arg types.
+struct ParsedSignature
+{
+    std::string returnType;
+    std::vector<std::string> argTypes;
+};
+
+static ParsedSignature parseSignature(const std::string &sig)
+{
+    ParsedSignature result;
+
+    // Find the opening paren
+    size_t parenPos = sig.find('(');
+    if (parenPos == std::string::npos)
+    {
+        result.returnType = sig;
+        return result;
+    }
+
+    result.returnType = sig.substr(0, parenPos);
+
+    // Extract args between parens
+    size_t closePos = sig.rfind(')');
+    if (closePos == std::string::npos || closePos <= parenPos + 1)
+    {
+        return result; // No args
+    }
+
+    std::string argsStr = sig.substr(parenPos + 1, closePos - parenPos - 1);
+    if (argsStr.empty())
+    {
+        return result; // Empty args "()"
+    }
+
+    // Split by comma
+    size_t start = 0;
+    for (size_t i = 0; i <= argsStr.size(); ++i)
+    {
+        if (i == argsStr.size() || argsStr[i] == ',')
+        {
+            std::string arg = argsStr.substr(start, i - start);
+            // Trim whitespace
+            while (!arg.empty() && (arg.front() == ' ' || arg.front() == '\t'))
+                arg.erase(0, 1);
+            while (!arg.empty() && (arg.back() == ' ' || arg.back() == '\t'))
+                arg.pop_back();
+            if (!arg.empty())
+            {
+                result.argTypes.push_back(arg);
+            }
+            start = i + 1;
+        }
+    }
+
+    return result;
+}
+
+//===----------------------------------------------------------------------===//
 // Code Generation
 //===----------------------------------------------------------------------===//
 
@@ -598,6 +695,122 @@ static void generateClasses(const ParseState &state, const fs::path &outDir)
     std::cout << "  Generated " << outPath << "\n";
 }
 
+static void generateSignatures(const ParseState &state, const fs::path &outDir)
+{
+    fs::path outPath = outDir / "RuntimeSignatures.inc";
+    std::ofstream out(outPath);
+    if (!out)
+    {
+        std::cerr << "error: cannot write " << outPath << "\n";
+        std::exit(1);
+    }
+
+    out << fileHeader("RuntimeSignatures.inc",
+                      "Runtime descriptor rows for all runtime functions.");
+
+    // Track which sections we've started for organization
+    std::string currentSection;
+
+    for (const auto &func : state.functions)
+    {
+        // Extract namespace for section comments (e.g., "Viper.Text.Codec" -> "Viper.Text.Codec")
+        std::string ns;
+        size_t lastDot = func.canonical.rfind('.');
+        if (lastDot != std::string::npos)
+        {
+            ns = func.canonical.substr(0, lastDot);
+        }
+
+        // Add section comment when namespace changes
+        if (!ns.empty() && ns != currentSection)
+        {
+            if (!currentSection.empty())
+            {
+                out << "\n";
+            }
+            out << "    // " << ns << "\n";
+            currentSection = ns;
+        }
+
+        // Parse the signature
+        ParsedSignature parsed = parseSignature(func.signature);
+
+        // Build the signature string (e.g., "string(string)")
+        std::string sigStr = ilTypeToSigType(parsed.returnType) + "(";
+        for (size_t i = 0; i < parsed.argTypes.size(); ++i)
+        {
+            if (i > 0)
+                sigStr += ", ";
+            sigStr += ilTypeToSigType(parsed.argTypes[i]);
+        }
+        sigStr += ")";
+
+        // Build the DirectHandler template args
+        // Format: DirectHandler<&c_symbol, ReturnCType, Arg1CType, Arg2CType, ...>
+        std::string handlerArgs = "&" + func.c_symbol + ", " + ilTypeToCType(parsed.returnType);
+        for (const auto &argType : parsed.argTypes)
+        {
+            handlerArgs += ", " + ilTypeToCType(argType);
+        }
+
+        // Emit the DescriptorRow
+        out << "    DescriptorRow{\"" << func.canonical << "\",\n";
+        out << "                  std::nullopt,\n";
+        out << "                  \"" << sigStr << "\",\n";
+        out << "                  &DirectHandler<" << handlerArgs << ">::invoke,\n";
+        out << "                  kManualLowering,\n";
+        out << "                  nullptr,\n";
+        out << "                  0,\n";
+        out << "                  RuntimeTrapClass::None},\n";
+    }
+
+    // Emit aliases - they reference the same C symbol as their target
+    if (!state.aliases.empty())
+    {
+        out << "\n    // Aliases\n";
+        for (const auto &alias : state.aliases)
+        {
+            auto it = state.func_by_id.find(alias.target_id);
+            if (it == state.func_by_id.end())
+                continue;
+
+            const auto &target = state.functions[it->second];
+
+            // Parse the target's signature
+            ParsedSignature parsed = parseSignature(target.signature);
+
+            // Build the signature string
+            std::string sigStr = ilTypeToSigType(parsed.returnType) + "(";
+            for (size_t i = 0; i < parsed.argTypes.size(); ++i)
+            {
+                if (i > 0)
+                    sigStr += ", ";
+                sigStr += ilTypeToSigType(parsed.argTypes[i]);
+            }
+            sigStr += ")";
+
+            // Build the DirectHandler template args
+            std::string handlerArgs = "&" + target.c_symbol + ", " + ilTypeToCType(parsed.returnType);
+            for (const auto &argType : parsed.argTypes)
+            {
+                handlerArgs += ", " + ilTypeToCType(argType);
+            }
+
+            // Emit the DescriptorRow for the alias
+            out << "    DescriptorRow{\"" << alias.canonical << "\",\n";
+            out << "                  std::nullopt,\n";
+            out << "                  \"" << sigStr << "\",\n";
+            out << "                  &DirectHandler<" << handlerArgs << ">::invoke,\n";
+            out << "                  kManualLowering,\n";
+            out << "                  nullptr,\n";
+            out << "                  0,\n";
+            out << "                  RuntimeTrapClass::None},\n";
+        }
+    }
+
+    std::cout << "  Generated " << outPath << "\n";
+}
+
 //===----------------------------------------------------------------------===//
 // Main
 //===----------------------------------------------------------------------===//
@@ -641,6 +854,9 @@ int main(int argc, char **argv)
     std::cout << "rtgen: Generating output files in " << outputDir << "\n";
     generateNameMap(state, outputDir);
     generateClasses(state, outputDir);
+    // Note: RuntimeSignatures.inc is still manually maintained for now due to
+    // special-case handling (RtSig enums, DUAL conditionals, specific C types).
+    // TODO: Migrate to fully generated RuntimeSignatures.inc
 
     std::cout << "rtgen: Done\n";
     return 0;
