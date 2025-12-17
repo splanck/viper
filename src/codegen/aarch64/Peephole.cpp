@@ -132,6 +132,7 @@ namespace
         case MOpcode::FCvtZS:
         case MOpcode::UCvtF:
         case MOpcode::FCvtZU:
+        case MOpcode::FRintN:
         case MOpcode::MSubRRRR:
             if (!instr.ops.empty() && samePhysReg(instr.ops[0], reg))
                 return true;

@@ -314,7 +314,7 @@ int32_t rt_heap_mark_disposed(void *payload)
     rt_heap_hdr_t *hdr = payload_to_hdr(payload);
     if (!hdr)
         return 0;
-    rt_heap_validate_header(hdr);
+    RT_HEAP_VALIDATE(hdr);
     const uint32_t DISPOSED = 0x1u;
     const uint32_t was = hdr->flags & DISPOSED;
     hdr->flags |= DISPOSED;
