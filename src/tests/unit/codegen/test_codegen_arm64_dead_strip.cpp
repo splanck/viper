@@ -4,10 +4,8 @@
 // File: tests/unit/codegen/test_codegen_arm64_dead_strip.cpp
 // Purpose: Verify native linking dead-strips unused runtime symbols.
 //===----------------------------------------------------------------------===//
-
-#include "tests/unit/GTestStub.hpp"
-
 #include "common/RunProcess.hpp"
+#include "tests/TestHarness.hpp"
 #include "tools/ilc/cmd_codegen_arm64.hpp"
 
 #include <filesystem>
@@ -57,7 +55,6 @@ TEST(Arm64CLI, DeadStripsUnusedRuntimeSymbols)
 
 int main(int argc, char **argv)
 {
-    testing::InitGoogleTest(&argc, &argv);
-    return RUN_ALL_TESTS();
+    viper_test::init(&argc, &argv);
+    return viper_test::run_all_tests();
 }
-

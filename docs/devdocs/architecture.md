@@ -345,7 +345,7 @@ the IL version and updating consumers.
   frontends/basic/   # BASIC lexer, parser, AST, lowering
   tools/ilc/         # CLI driver and subcommands
 /tests/
-  unit/              # gtest/catch2 unit tests
+  unit/              # dependency-free unit tests (internal harness)
   golden/            # text-based golden tests
   e2e/               # compile & run comparisons
 /scripts/            # dev scripts (format, lint, build, test)
@@ -358,7 +358,7 @@ Top-level CMake targets include `il_core`, `il_vm`, `il_codegen_x86_64`, `il_cod
 
 - C++20 (`-std=c++20`) with `-Wall -Wextra -Wpedantic -Werror`.
 - Sanitizers (`-fsanitize=address,undefined`) in dev/CI.
-- Dependencies kept small and vendorable: `fmt`, CLI11/lyra, Catch2 or gtest.
+- Dependencies kept small and vendorable: `fmt`, CLI11/lyra, and a tiny in-tree test harness.
 - Formatting via `clang-format`, linting with `clang-tidy`.
 - CI matrix (Linux/macOS) caches builds and runs sanitizers plus tests.
 

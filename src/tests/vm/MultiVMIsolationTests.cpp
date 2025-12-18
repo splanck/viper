@@ -5,15 +5,13 @@
 // Purpose: Verify per-VM isolation for RNG, module variables, file channels,
 //          and runtime type registry (class/interface registration).
 //===----------------------------------------------------------------------===//
-
-#include "tests/unit/GTestStub.hpp"
-
 #include "rt_args.h"
 #include "rt_context.h"
 #include "rt_file.h"
 #include "rt_modvar.h"
 #include "rt_oop.h"
 #include "rt_random.h"
+#include "tests/TestHarness.hpp"
 #include "viper/runtime/rt.h"
 
 #include <cmath>
@@ -71,6 +69,11 @@ TEST(MultiVMIsolation, RNG_IsolatedPerContext)
     (void)rt_rnd();
     double expected_b3 = rt_rnd();
     ASSERT_TRUE(approx_eq(b3, expected_b3));
+
+    rt_set_current_context(rt_legacy_context());
+    rt_context_cleanup(&tmp);
+    rt_context_cleanup(&a);
+    rt_context_cleanup(&b);
 }
 
 TEST(MultiVMIsolation, Modvar_IsolatedPerContext)
@@ -98,6 +101,10 @@ TEST(MultiVMIsolation, Modvar_IsolatedPerContext)
     // Switch back to A and ensure it remained at 2
     rt_set_current_context(&a);
     ASSERT_EQ(*xa, 2);
+
+    rt_set_current_context(rt_legacy_context());
+    rt_context_cleanup(&a);
+    rt_context_cleanup(&b);
 }
 
 TEST(MultiVMIsolation, FileChannels_IsolatedPerContext)
@@ -141,6 +148,10 @@ TEST(MultiVMIsolation, FileChannels_IsolatedPerContext)
 
     std::filesystem::remove(fileA);
     std::filesystem::remove(fileB);
+
+    rt_set_current_context(rt_legacy_context());
+    rt_context_cleanup(&a);
+    rt_context_cleanup(&b);
 }
 
 TEST(MultiVMIsolation, Args_IsolatedPerContext)
@@ -257,6 +268,7 @@ TEST(MultiVMIsolation, TypeRegistry_ClassRegistrationIsolated)
     // ctx1 should NOT see TYPE_C (only registered in ctx2)
     ASSERT_EQ(rt_get_class_vtable(TYPE_C), nullptr);
 
+    rt_set_current_context(rt_legacy_context());
     rt_context_cleanup(&ctx1);
     rt_context_cleanup(&ctx2);
 }
@@ -292,6 +304,7 @@ TEST(MultiVMIsolation, TypeRegistry_TypeIsAIsolated)
     rt_set_current_context(&ctx1);
     ASSERT_TRUE(rt_type_is_a(TYPE_DERIVED, TYPE_BASE));
 
+    rt_set_current_context(rt_legacy_context());
     rt_context_cleanup(&ctx1);
     rt_context_cleanup(&ctx2);
 }
@@ -326,6 +339,7 @@ TEST(MultiVMIsolation, TypeRegistry_InterfaceBindingIsolated)
     rt_set_current_context(&ctx1);
     ASSERT_TRUE(rt_type_implements(TYPE_CLASS, IFACE_ID));
 
+    rt_set_current_context(rt_legacy_context());
     rt_context_cleanup(&ctx1);
     rt_context_cleanup(&ctx2);
 }
@@ -368,6 +382,7 @@ TEST(MultiVMIsolation, TypeRegistry_ItableLookupIsolated)
     rt_set_current_context(&ctx1);
     ASSERT_EQ(rt_itable_lookup(&obj_ctx1, IFACE_ID), itable_ctx1);
 
+    rt_set_current_context(rt_legacy_context());
     rt_context_cleanup(&ctx1);
     rt_context_cleanup(&ctx2);
 }
@@ -408,12 +423,13 @@ TEST(MultiVMIsolation, TypeRegistry_ClassInfoFromVptrIsolated)
     // But should still find its own
     ASSERT_EQ(rt_get_class_info_from_vptr(vtable_class_a_ctx1), info_ctx1);
 
+    rt_set_current_context(rt_legacy_context());
     rt_context_cleanup(&ctx1);
     rt_context_cleanup(&ctx2);
 }
 
 int main(int argc, char **argv)
 {
-    testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

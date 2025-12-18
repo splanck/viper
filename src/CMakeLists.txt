@@ -229,6 +229,7 @@ add_library(il_vm STATIC
         vm/debug/VM_DebugUtils.cpp
         vm/VMInit.cpp
         vm/VMContext.cpp
+        vm/ThreadsRuntime.cpp
         vm/debug/VMDebug.cpp
         vm/RuntimeBridge.cpp
         vm/Marshal.cpp

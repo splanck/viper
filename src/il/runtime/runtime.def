@@ -46,6 +46,7 @@
 //   TEXT - CSV
 //   TEXT - GUID
 //   TEXT - STRINGBUILDER
+//   THREADS
 //   TIME - CLOCK
 //   TYPE CONVERSION
 //   VEC2
@@ -736,6 +737,34 @@ RT_FUNC(SBNew,         rt_ns_stringbuilder_new, "Viper.Text.StringBuilder.New", 
 RT_FUNC(SBToString,    rt_text_sb_to_string,    "Viper.Text.StringBuilder.ToString",     "str(obj)")
 
 //=============================================================================
+// THREADS
+//=============================================================================
+
+RT_FUNC(MonitorEnter,       rt_monitor_enter,         "Viper.Threads.Monitor.Enter",       "void(obj)")
+RT_FUNC(MonitorTryEnter,    rt_monitor_try_enter,     "Viper.Threads.Monitor.TryEnter",    "i1(obj)")
+RT_FUNC(MonitorTryEnterFor, rt_monitor_try_enter_for, "Viper.Threads.Monitor.TryEnterFor", "i1(obj,i64)")
+RT_FUNC(MonitorExit,        rt_monitor_exit,          "Viper.Threads.Monitor.Exit",        "void(obj)")
+RT_FUNC(MonitorWait,        rt_monitor_wait,          "Viper.Threads.Monitor.Wait",        "void(obj)")
+RT_FUNC(MonitorWaitFor,     rt_monitor_wait_for,      "Viper.Threads.Monitor.WaitFor",     "i1(obj,i64)")
+RT_FUNC(MonitorPause,       rt_monitor_pause,         "Viper.Threads.Monitor.Pause",       "void(obj)")
+RT_FUNC(MonitorPauseAll,    rt_monitor_pause_all,     "Viper.Threads.Monitor.PauseAll",    "void(obj)")
+
+RT_FUNC(ThreadStart,     rt_thread_start,        "Viper.Threads.Thread.Start",       "obj(ptr,ptr)")
+RT_FUNC(ThreadJoin,      rt_thread_join,         "Viper.Threads.Thread.Join",        "void(obj)")
+RT_FUNC(ThreadTryJoin,   rt_thread_try_join,     "Viper.Threads.Thread.TryJoin",     "i1(obj)")
+RT_FUNC(ThreadJoinFor,   rt_thread_join_for,     "Viper.Threads.Thread.JoinFor",     "i1(obj,i64)")
+RT_FUNC(ThreadGetId,     rt_thread_get_id,       "Viper.Threads.Thread.get_Id",      "i64(obj)")
+RT_FUNC(ThreadGetIsAlive,rt_thread_get_is_alive, "Viper.Threads.Thread.get_IsAlive", "i1(obj)")
+RT_FUNC(ThreadSleep,     rt_thread_sleep,        "Viper.Threads.Thread.Sleep",       "void(i64)")
+RT_FUNC(ThreadYield,     rt_thread_yield,        "Viper.Threads.Thread.Yield",       "void()")
+
+RT_FUNC(SafeI64New,             rt_safe_i64_new,              "Viper.Threads.SafeI64.New",             "obj(i64)")
+RT_FUNC(SafeI64Get,             rt_safe_i64_get,              "Viper.Threads.SafeI64.Get",             "i64(obj)")
+RT_FUNC(SafeI64Set,             rt_safe_i64_set,              "Viper.Threads.SafeI64.Set",             "void(obj,i64)")
+RT_FUNC(SafeI64Add,             rt_safe_i64_add,              "Viper.Threads.SafeI64.Add",             "i64(obj,i64)")
+RT_FUNC(SafeI64CompareExchange, rt_safe_i64_compare_exchange, "Viper.Threads.SafeI64.CompareExchange", "i64(obj,i64,i64)")
+
+//=============================================================================
 // TIME - CLOCK
 //=============================================================================
 
@@ -1414,6 +1443,38 @@ RT_CLASS_BEGIN("Viper.Text.StringBuilder", StringBuilder, "opaque*", SBNew)
     RT_METHOD("AppendLine", "obj(str)", SBAppendLine)
     RT_METHOD("Clear", "void()", SBClear)
     RT_METHOD("ToString", "str()", SBToString)
+RT_CLASS_END()
+
+// Viper.Threads.Monitor - FIFO-fair, re-entrant monitor primitive
+RT_CLASS_BEGIN("Viper.Threads.Monitor", ThreadsMonitor, "obj", none)
+    RT_METHOD("Enter", "void(obj)", MonitorEnter)
+    RT_METHOD("TryEnter", "i1(obj)", MonitorTryEnter)
+    RT_METHOD("TryEnterFor", "i1(obj,i64)", MonitorTryEnterFor)
+    RT_METHOD("Exit", "void(obj)", MonitorExit)
+    RT_METHOD("Wait", "void(obj)", MonitorWait)
+    RT_METHOD("WaitFor", "i1(obj,i64)", MonitorWaitFor)
+    RT_METHOD("Pause", "void(obj)", MonitorPause)
+    RT_METHOD("PauseAll", "void(obj)", MonitorPauseAll)
+RT_CLASS_END()
+
+// Viper.Threads.SafeI64 - FIFO-safe integer cell
+RT_CLASS_BEGIN("Viper.Threads.SafeI64", ThreadsSafeI64, "obj", SafeI64New)
+    RT_METHOD("Get", "i64()", SafeI64Get)
+    RT_METHOD("Set", "void(i64)", SafeI64Set)
+    RT_METHOD("Add", "i64(i64)", SafeI64Add)
+    RT_METHOD("CompareExchange", "i64(i64,i64)", SafeI64CompareExchange)
+RT_CLASS_END()
+
+// Viper.Threads.Thread - OS thread handle
+RT_CLASS_BEGIN("Viper.Threads.Thread", ThreadsThread, "obj", none)
+    RT_PROP("Id", "i64", ThreadGetId, none)
+    RT_PROP("IsAlive", "i1", ThreadGetIsAlive, none)
+    RT_METHOD("Start", "obj(ptr,ptr)", ThreadStart)
+    RT_METHOD("Join", "void()", ThreadJoin)
+    RT_METHOD("TryJoin", "i1()", ThreadTryJoin)
+    RT_METHOD("JoinFor", "i1(i64)", ThreadJoinFor)
+    RT_METHOD("Sleep", "void(i64)", ThreadSleep)
+    RT_METHOD("Yield", "void()", ThreadYield)
 RT_CLASS_END()
 
 // Viper.Time.Clock - basic timing utilities (sleep, ticks)

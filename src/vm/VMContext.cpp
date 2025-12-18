@@ -104,7 +104,8 @@ std::string opcodeMnemonic(il::core::Opcode op)
 ///          this occurs legitimately in recursive function calls within the VM.
 ///
 /// @param vm VM instance that will be considered active for the guard scope.
-ActiveVMGuard::ActiveVMGuard(VM *vm) : previous(tlsActiveVM), current(vm)
+ActiveVMGuard::ActiveVMGuard(VM *vm)
+    : previous(tlsActiveVM), current(vm), previousRtContext(rt_get_current_context())
 {
     // Debug assertion: Catch accidental re-entry with a *different* VM.
     // Re-activating the same VM is allowed (nested calls within the interpreter).
@@ -115,9 +116,9 @@ ActiveVMGuard::ActiveVMGuard(VM *vm) : previous(tlsActiveVM), current(vm)
 
     tlsActiveVM = vm;
     // Bind the VM's runtime context to this thread
-    if (vm && vm->rtContext)
+    if (vm && vm->programState_ && vm->programState_->rtContext)
     {
-        rt_set_current_context(vm->rtContext.get());
+        rt_set_current_context(vm->programState_->rtContext.get());
     }
 }
 
@@ -136,15 +137,9 @@ ActiveVMGuard::~ActiveVMGuard()
            "ActiveVMGuard: tlsActiveVM was modified unexpectedly during guard lifetime. "
            "This may indicate a concurrency bug or mismatched guard lifetimes.");
 
-    // Restore the previous VM's runtime context (or NULL if no previous VM)
-    if (previous && previous->rtContext)
-    {
-        rt_set_current_context(previous->rtContext.get());
-    }
-    else
-    {
-        rt_set_current_context(nullptr);
-    }
+    // Restore the previously bound runtime context, which may not correspond
+    // to a VM-owned RtContext (e.g., native threads inheriting rt_legacy_context()).
+    rt_set_current_context(previousRtContext);
     tlsActiveVM = previous;
 }
 
@@ -266,16 +261,16 @@ Slot VMContext::eval(Frame &fr, const il::core::Value &value) const
             }
 
             // Check mutable globals
-            auto mIt = vmInstance->mutableGlobalMap.find(value.str);
-            if (mIt != vmInstance->mutableGlobalMap.end())
+            auto mIt = vmInstance->programState_->mutableGlobalMap.find(value.str);
+            if (mIt != vmInstance->programState_->mutableGlobalMap.end())
             {
                 s.ptr = mIt->second;
                 return s;
             }
 
             // Fall back to const string globals
-            auto it = vmInstance->strMap.find(value.str);
-            if (it == vmInstance->strMap.end())
+            auto it = vmInstance->programState_->strMap.find(value.str);
+            if (it == vmInstance->programState_->strMap.end())
             {
                 RuntimeBridge::trap(TrapKind::DomainError, "unknown global", {}, fr.func->name, "");
             }
@@ -577,16 +572,16 @@ Slot VM::eval(Frame &fr, const il::core::Value &value)
             }
 
             // Check mutable globals
-            auto mIt = mutableGlobalMap.find(value.str);
-            if (mIt != mutableGlobalMap.end())
+            auto mIt = programState_->mutableGlobalMap.find(value.str);
+            if (mIt != programState_->mutableGlobalMap.end())
             {
                 s.ptr = mIt->second;
                 return s;
             }
 
             // Fall back to const string globals
-            auto it = strMap.find(value.str);
-            if (it == strMap.end())
+            auto it = programState_->strMap.find(value.str);
+            if (it == programState_->strMap.end())
             {
                 RuntimeBridge::trap(TrapKind::DomainError, "unknown global", {}, fr.func->name, "");
             }

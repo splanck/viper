@@ -16,18 +16,10 @@
 #include "codegen/x86_64/Backend.hpp"
 
 #include <array>
-#include <string>
-#include <string_view>
-
-#if __has_include(<gtest/gtest.h>)
-#ifdef VIPER_HAS_GTEST
-#include <gtest/gtest.h>
-#define VIPER_HAS_GTEST 1
-#else
 #include <cstdlib>
 #include <iostream>
-#define VIPER_HAS_GTEST 0
-#endif
+#include <string>
+#include <string_view>
 
 namespace viper::codegen::x64
 {
@@ -124,21 +116,6 @@ template <std::size_t N>
 } // namespace
 } // namespace viper::codegen::x64
 
-#if VIPER_HAS_GTEST
-
-TEST(CodegenX64AbiProbeTest, EmitsRegisterAndAlignmentSequence)
-{
-    using namespace viper::codegen::x64;
-
-    const ILModule module = makeProbeModule();
-    const CodegenResult result = emitModuleToAssembly(module, {});
-
-    ASSERT_TRUE(result.errors.empty()) << result.errors;
-    EXPECT_TRUE(verifyProbeAssembly(result.asmText)) << result.asmText;
-}
-
-#else
-
 int main()
 {
     using namespace viper::codegen::x64;
@@ -153,5 +130,3 @@ int main()
     }
     return EXIT_SUCCESS;
 }
-
-#endif

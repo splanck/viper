@@ -25,16 +25,16 @@
 #include "il/core/Value.hpp"
 #include "tools/common/module_loader.hpp"
 
+#include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <optional>
 #include <sstream>
-#include <cctype>
 #include <string>
 #include <string_view>
-#include <unordered_set>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace viper::tools::ilc
@@ -247,8 +247,7 @@ static int linkToExe(const std::string &asmPath,
 
     auto parse_runtime_symbols = [](std::string_view text) -> std::unordered_set<std::string>
     {
-        auto is_ident = [](unsigned char c) -> bool
-        { return std::isalnum(c) || c == '_'; };
+        auto is_ident = [](unsigned char c) -> bool { return std::isalnum(c) || c == '_'; };
 
         std::unordered_set<std::string> symbols;
         for (std::size_t i = 0; i + 3 < text.size(); ++i)
@@ -260,7 +259,8 @@ static int linkToExe(const std::string &asmPath,
                 start = i;
                 boundary = (start == 0) ? std::string_view::npos : (start - 1);
             }
-            else if (text[i] == '_' && text[i + 1] == 'r' && text[i + 2] == 't' && text[i + 3] == '_')
+            else if (text[i] == '_' && text[i + 1] == 'r' && text[i + 2] == 't' &&
+                     text[i + 3] == '_')
             {
                 start = i + 1;
                 boundary = (i == 0) ? std::string_view::npos : (i - 1);
@@ -268,7 +268,8 @@ static int linkToExe(const std::string &asmPath,
 
             if (start == std::string_view::npos)
                 continue;
-            if (boundary != std::string_view::npos && is_ident(static_cast<unsigned char>(text[boundary])))
+            if (boundary != std::string_view::npos &&
+                is_ident(static_cast<unsigned char>(text[boundary])))
                 continue;
 
             std::size_t j = start;
@@ -291,6 +292,7 @@ static int linkToExe(const std::string &asmPath,
         Text,
         IoFs,
         Exec,
+        Threads,
         Graphics,
     };
 
@@ -314,18 +316,22 @@ static int linkToExe(const std::string &asmPath,
             starts("rt_parse_"))
             return RtComponent::Text;
 
-        if (starts("rt_file_") || starts("rt_dir_") || starts("rt_path_") || starts("rt_binfile_") ||
-            starts("rt_linereader_") || starts("rt_linewriter_") || starts("rt_io_file_") ||
-            sym == "rt_eof_ch" || sym == "rt_lof_ch" || sym == "rt_loc_ch" || sym == "rt_close_err" ||
-            sym == "rt_seek_ch_err" || sym == "rt_write_ch_err" || sym == "rt_println_ch_err" ||
+        if (starts("rt_file_") || starts("rt_dir_") || starts("rt_path_") ||
+            starts("rt_binfile_") || starts("rt_linereader_") || starts("rt_linewriter_") ||
+            starts("rt_io_file_") || sym == "rt_eof_ch" || sym == "rt_lof_ch" ||
+            sym == "rt_loc_ch" || sym == "rt_close_err" || sym == "rt_seek_ch_err" ||
+            sym == "rt_write_ch_err" || sym == "rt_println_ch_err" ||
             sym == "rt_line_input_ch_err" || sym == "rt_open_err_vstr")
             return RtComponent::IoFs;
 
         if (starts("rt_exec_") || starts("rt_machine_"))
             return RtComponent::Exec;
 
-        if (starts("rt_canvas_") || starts("rt_color_") || starts("rt_vec2_") || starts("rt_vec3_") ||
-            starts("rt_pixels_"))
+        if (starts("rt_monitor_") || starts("rt_thread_") || starts("rt_safe_"))
+            return RtComponent::Threads;
+
+        if (starts("rt_canvas_") || starts("rt_color_") || starts("rt_vec2_") ||
+            starts("rt_vec3_") || starts("rt_pixels_"))
             return RtComponent::Graphics;
 
         return std::nullopt;
@@ -346,6 +352,7 @@ static int linkToExe(const std::string &asmPath,
     bool needText = false;
     bool needIoFs = false;
     bool needExec = false;
+    bool needThreads = false;
     bool needGraphics = false;
 
     for (const auto &sym : symbols)
@@ -373,6 +380,9 @@ static int linkToExe(const std::string &asmPath,
             case RtComponent::Exec:
                 needExec = true;
                 break;
+            case RtComponent::Threads:
+                needThreads = true;
+                break;
             case RtComponent::Graphics:
                 needGraphics = true;
                 break;
@@ -384,7 +394,7 @@ static int linkToExe(const std::string &asmPath,
     // Component dependencies (internal runtime calls).
     if (needText || needIoFs || needExec)
         needCollections = true;
-    if (needCollections || needArrays || needGraphics)
+    if (needCollections || needArrays || needGraphics || needThreads)
         needOop = true;
 
     const std::optional<std::filesystem::path> buildDirOpt = find_build_dir();
@@ -393,7 +403,8 @@ static int linkToExe(const std::string &asmPath,
     auto runtime_archive_path = [&](std::string_view libBaseName) -> std::filesystem::path
     {
         if (!buildDir.empty())
-            return buildDir / "src/runtime" / (std::string("lib") + std::string(libBaseName) + ".a");
+            return buildDir / "src/runtime" /
+                   (std::string("lib") + std::string(libBaseName) + ".a");
         return std::filesystem::path("src/runtime") /
                (std::string("lib") + std::string(libBaseName) + ".a");
     };
@@ -405,15 +416,19 @@ static int linkToExe(const std::string &asmPath,
     if (needArrays)
         requiredArchives.emplace_back("viper_rt_arrays", runtime_archive_path("viper_rt_arrays"));
     if (needCollections)
-        requiredArchives.emplace_back("viper_rt_collections", runtime_archive_path("viper_rt_collections"));
+        requiredArchives.emplace_back("viper_rt_collections",
+                                      runtime_archive_path("viper_rt_collections"));
     if (needText)
         requiredArchives.emplace_back("viper_rt_text", runtime_archive_path("viper_rt_text"));
     if (needIoFs)
         requiredArchives.emplace_back("viper_rt_io_fs", runtime_archive_path("viper_rt_io_fs"));
     if (needExec)
         requiredArchives.emplace_back("viper_rt_exec", runtime_archive_path("viper_rt_exec"));
+    if (needThreads)
+        requiredArchives.emplace_back("viper_rt_threads", runtime_archive_path("viper_rt_threads"));
     if (needGraphics)
-        requiredArchives.emplace_back("viper_rt_graphics", runtime_archive_path("viper_rt_graphics"));
+        requiredArchives.emplace_back("viper_rt_graphics",
+                                      runtime_archive_path("viper_rt_graphics"));
 
     std::vector<std::string> missingTargets;
     if (!buildDir.empty())
@@ -470,6 +485,8 @@ static int linkToExe(const std::string &asmPath,
         appendArchiveIf("viper_rt_collections");
     if (needArrays)
         appendArchiveIf("viper_rt_arrays");
+    if (needThreads)
+        appendArchiveIf("viper_rt_threads");
     if (needOop)
         appendArchiveIf("viper_rt_oop");
     appendArchiveIf("viper_rt_base");

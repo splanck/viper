@@ -371,6 +371,12 @@ void VM::dispatchOpcodeSwitch(ExecState &state, const il::core::Instr &instr)
             inline_handle_ConstStr(state);
             break;
         }
+        case il::core::Opcode::GAddr:
+        {
+            traceInstruction(instr, state.fr);
+            inline_handle_GAddr(state);
+            break;
+        }
         case il::core::Opcode::ConstNull:
         {
             traceInstruction(instr, state.fr);

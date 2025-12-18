@@ -4,13 +4,83 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-//
-// File: codegen/aarch64/InstrLowering.cpp
-// Purpose: Opcode-specific lowering handlers for IL->MIR conversion.
-//
-// This file contains extracted handler functions for individual IL opcodes,
-// reducing the size of LowerILToMIR.cpp and improving maintainability.
-//
+///
+/// @file InstrLowering.cpp
+/// @brief Opcode-specific lowering handlers for IL to MIR conversion.
+///
+/// This file implements the instruction lowering logic that converts individual
+/// IL instructions into sequences of AArch64 MIR instructions. Each IL opcode
+/// has a corresponding handler that emits the appropriate machine instructions.
+///
+/// **What is Instruction Lowering?**
+/// Instruction lowering translates high-level IL operations into low-level
+/// machine operations. A single IL instruction may expand to multiple MIR
+/// instructions depending on the operation complexity and available hardware.
+///
+/// **Lowering Examples:**
+/// ```
+/// IL: %1 = add.i64 %0, 42
+/// MIR: v1 = MovRI #42        ; materialize constant
+///      v2 = AddRRR v0, v1    ; actual addition
+///
+/// IL: %1 = mul.i64 %0, 8
+/// MIR: v1 = LslRI v0, #3     ; strength reduce: x * 8 = x << 3
+///
+/// IL: %1 = srem.i64 %0, %2
+/// MIR: v3 = SDivRRR v0, v2   ; quotient = a / b
+///      v1 = MSubRRRR v0, v3, v2  ; remainder = a - (quotient * b)
+/// ```
+///
+/// **Value Materialization:**
+/// Before an IL value can be used as an MIR operand, it must be "materialized"
+/// into a virtual register:
+///
+/// | IL Value Kind | Materialization                                |
+/// |---------------|------------------------------------------------|
+/// | Temp          | Look up in tempVReg map or reload from spill  |
+/// | ConstInt      | MovRI (immediate to register)                  |
+/// | ConstFloat    | Load from rodata pool via AdrPage + LdrFprBaseImm |
+/// | GlobalAddr    | AdrPage + AddPageOff (PC-relative addressing)  |
+/// | NullPtr       | MovRI #0                                       |
+///
+/// **Register Class Selection:**
+/// Operands are classified by their IL type:
+/// | IL Type | Register Class | Physical Registers |
+/// |---------|----------------|-------------------|
+/// | i1-i64  | GPR            | x0-x28            |
+/// | ptr     | GPR            | x0-x28            |
+/// | f64     | FPR            | d0-d31            |
+///
+/// **Comparison Lowering:**
+/// IL comparison opcodes (icmp_*, fcmp_*) lower to:
+/// 1. CmpRR/FCmpRR - set condition flags
+/// 2. Cset - materialize flag as 0/1 in result register
+///
+/// **Condition Codes:**
+/// | IL Opcode  | AArch64 Condition |
+/// |------------|-------------------|
+/// | ICmpEQ     | eq                |
+/// | ICmpNE     | ne                |
+/// | ICmpSLT    | lt                |
+/// | ICmpSLE    | le                |
+/// | ICmpSGT    | gt                |
+/// | ICmpSGE    | ge                |
+/// | ICmpULT    | lo                |
+/// | ICmpUGT    | hi                |
+///
+/// **Handler Organization:**
+/// Handlers are grouped by category:
+/// - Arithmetic: add, sub, mul, div, rem
+/// - Bitwise: and, or, xor, shl, shr
+/// - Comparison: icmp_*, fcmp_*
+/// - Conversion: sext, zext, trunc, sitofp, fptosi
+/// - Memory: load, store, alloca
+/// - Call: call instruction lowering
+///
+/// @see LowerILToMIR.cpp For main lowering orchestration
+/// @see OpcodeDispatch.cpp For opcode-to-handler dispatch
+/// @see OpcodeMappings.hpp For opcode-to-condition tables
+///
 //===----------------------------------------------------------------------===//
 
 #include "InstrLowering.hpp"

@@ -3406,7 +3406,7 @@ Test individual components in isolation.
 **File:** `tests/unit/yourfrontend/LexerTests.cpp`
 
 ```cpp
-#include <gtest/gtest.h>
+#include "tests/TestHarness.hpp"
 #include "yourfrontend/Lexer.hpp"
 
 TEST(LexerTests, TokenizeNumber) {
@@ -3423,11 +3423,19 @@ TEST(LexerTests, TokenizeKeyword) {
 
     EXPECT_EQ(tok.kind, TokenKind::If);
 }
+
+int main(int argc, char **argv) {
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
+}
 ```
 
 **File:** `tests/unit/yourfrontend/ParserTests.cpp`
 
 ```cpp
+#include "tests/TestHarness.hpp"
+#include "yourfrontend/Parser.hpp"
+
 TEST(ParserTests, ParseIfStatement) {
     std::string source = "if x < 10 then return x";
     il::support::DiagnosticEngine de;
@@ -3436,6 +3444,11 @@ TEST(ParserTests, ParseIfStatement) {
     auto prog = parser.parseProgram();
     ASSERT_NE(prog, nullptr);
     ASSERT_EQ(prog->declarations.size(), 0);  // No top-level decls
+}
+
+int main(int argc, char **argv) {
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }
 ```
 

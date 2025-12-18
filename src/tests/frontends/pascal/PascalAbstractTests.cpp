@@ -12,13 +12,7 @@
 
 #include "frontends/pascal/Compiler.hpp"
 #include "support/source_manager.hpp"
-
-#ifdef VIPER_HAS_GTEST
-#include <gtest/gtest.h>
-#else
-#include "../../unit/GTestStub.hpp"
-#endif
-
+#include "tests/TestHarness.hpp"
 using namespace il::frontends::pascal;
 using namespace il::support;
 
@@ -78,9 +72,7 @@ TEST(PascalAbstractTest, CannotCallAbstractMethodDirectly)
 
 } // namespace
 
-#ifndef VIPER_HAS_GTEST
 int main()
 {
-    return RUN_ALL_TESTS();
+    return viper_test::run_all_tests();
 }
-#endif

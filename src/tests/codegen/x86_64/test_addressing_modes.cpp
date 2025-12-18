@@ -15,15 +15,8 @@
 
 #include "codegen/x86_64/Backend.hpp"
 
+#include <iostream>
 #include <string>
-
-#if __has_include(<gtest/gtest.h>)
-#ifdef VIPER_HAS_GTEST
-#include <gtest/gtest.h>
-#define VIPER_HAS_GTEST 1
-#else
-#define VIPER_HAS_GTEST 0
-#endif
 
 using namespace viper::codegen::x64;
 
@@ -102,27 +95,25 @@ namespace
 
 } // namespace
 
-#if VIPER_HAS_GTEST
-TEST(CodegenX64AddrTest, EmitsSIB)
-{
-    const auto text = buildAsm();
-    // Expect SIB form with scale 8 and displacement +16. Base/index order may vary.
-    const bool sibA = text.find("(%rdi,%rsi,8)") != std::string::npos;
-    const bool sibB = text.find("(%rsi,%rdi,8)") != std::string::npos;
-    EXPECT_TRUE(sibA || sibB) << text;
-    EXPECT_NE(text.find("16("), std::string::npos) << text;
-    EXPECT_EQ(text.find("leaq"), std::string::npos) << text;
-}
-#else
 int main()
 {
     const auto text = buildAsm();
-    if (text.find("(%rdi,%rsi,8)") == std::string::npos)
+    const bool sibA = text.find("(%rdi,%rsi,8)") != std::string::npos;
+    const bool sibB = text.find("(%rsi,%rdi,8)") != std::string::npos;
+    if (!sibA && !sibB)
+    {
+        std::cerr << "Expected SIB addressing mode:\n" << text;
         return 1;
+    }
     if (text.find("16(") == std::string::npos)
+    {
+        std::cerr << "Expected displacement +16:\n" << text;
         return 2;
+    }
     if (text.find("leaq") != std::string::npos)
+    {
+        std::cerr << "Did not expect folded LEA:\n" << text;
         return 3;
+    }
     return 0;
 }
-#endif

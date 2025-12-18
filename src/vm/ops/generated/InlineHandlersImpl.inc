@@ -657,6 +657,17 @@ void VM::inline_handle_ConstStr(ExecState &st)
     handleInlineResult(st, exec);
 }
 
+void VM::inline_handle_GAddr(ExecState &st)
+{
+    const Instr *instr = st.currentInstr;
+    if (!instr)
+    {
+        trapUnimplemented(Opcode::GAddr);
+    }
+    ExecResult exec = il::vm::detail::handleGAddr(*this, st.fr, *instr, st.blocks, st.bb, st.ip);
+    handleInlineResult(st, exec);
+}
+
 void VM::inline_handle_ConstNull(ExecState &st)
 {
     const Instr *instr = st.currentInstr;

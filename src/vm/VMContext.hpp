@@ -78,8 +78,9 @@ struct ActiveVMGuard
     ActiveVMGuard &operator=(const ActiveVMGuard &) = delete;
 
   private:
-    VM *previous = nullptr; ///< Previously active VM instance.
-    VM *current = nullptr;  ///< VM installed by this guard (for debug checks).
+    VM *previous = nullptr;                 ///< Previously active VM instance.
+    VM *current = nullptr;                  ///< VM installed by this guard (for debug checks).
+    RtContext *previousRtContext = nullptr; ///< Previously bound runtime context.
 };
 
 /**

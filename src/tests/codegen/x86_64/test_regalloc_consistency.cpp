@@ -16,17 +16,9 @@
 #include "codegen/x86_64/RegAllocLinear.hpp"
 #include "codegen/x86_64/TargetX64.hpp"
 
-#if __has_include(<gtest/gtest.h>)
-#ifdef VIPER_HAS_GTEST
-#include <gtest/gtest.h>
-#define VIPER_HAS_GTEST 1
-#else
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
-#define VIPER_HAS_GTEST 0
-#endif
-
-#include <algorithm>
 
 using namespace viper::codegen::x64;
 
@@ -68,39 +60,74 @@ void addPressureFunction(MFunction &func)
 
 } // namespace
 
-#if VIPER_HAS_GTEST
-
-TEST(RegAllocConsistency, MatchesExpectedAssignments)
+int main()
 {
     TargetInfo &target = sysvTarget();
 
     MFunction simple{};
     addSimpleFunction(simple);
     auto simpleResult = allocate(simple, target);
-    ASSERT_EQ(simpleResult.vregToPhys.size(), 2U);
-    EXPECT_EQ(simpleResult.vregToPhys[1], PhysReg::RAX);
-    EXPECT_EQ(simpleResult.vregToPhys[2], PhysReg::RDI);
-    EXPECT_EQ(simpleResult.spillSlotsGPR, 0);
+    if (simpleResult.vregToPhys.size() != 2U)
+    {
+        std::cerr << "Simple allocation: expected 2 vregs\n";
+        return EXIT_FAILURE;
+    }
+    if (simpleResult.vregToPhys[1] != PhysReg::RAX || simpleResult.vregToPhys[2] != PhysReg::RDI)
+    {
+        std::cerr << "Simple allocation: unexpected vreg assignments\n";
+        return EXIT_FAILURE;
+    }
+    if (simpleResult.spillSlotsGPR != 0)
+    {
+        std::cerr << "Simple allocation: expected 0 spill slots\n";
+        return EXIT_FAILURE;
+    }
 
     MFunction pressure{};
     addPressureFunction(pressure);
     auto pressureResult = allocate(pressure, target);
-    EXPECT_EQ(pressureResult.spillSlotsGPR, 1);
-    ASSERT_EQ(pressureResult.vregToPhys.size(), 14U);
-    EXPECT_EQ(pressureResult.vregToPhys.at(2), PhysReg::RDI);
-    EXPECT_EQ(pressureResult.vregToPhys.at(3), PhysReg::RSI);
-    EXPECT_EQ(pressureResult.vregToPhys.at(4), PhysReg::RDX);
-    EXPECT_EQ(pressureResult.vregToPhys.at(5), PhysReg::RCX);
-    EXPECT_EQ(pressureResult.vregToPhys.at(6), PhysReg::R8);
-    EXPECT_EQ(pressureResult.vregToPhys.at(7), PhysReg::R9);
-    EXPECT_EQ(pressureResult.vregToPhys.at(8), PhysReg::R10);
-    EXPECT_EQ(pressureResult.vregToPhys.at(9), PhysReg::R11);
-    EXPECT_EQ(pressureResult.vregToPhys.at(10), PhysReg::RBX);
-    EXPECT_EQ(pressureResult.vregToPhys.at(11), PhysReg::R12);
-    EXPECT_EQ(pressureResult.vregToPhys.at(12), PhysReg::R13);
-    EXPECT_EQ(pressureResult.vregToPhys.at(13), PhysReg::R14);
-    EXPECT_EQ(pressureResult.vregToPhys.at(14), PhysReg::R15);
-    EXPECT_EQ(pressureResult.vregToPhys.at(15), PhysReg::RAX);
+    if (pressureResult.spillSlotsGPR != 1)
+    {
+        std::cerr << "Pressure allocation: expected 1 spill slot\n";
+        return EXIT_FAILURE;
+    }
+    if (pressureResult.vregToPhys.size() != 14U)
+    {
+        std::cerr << "Pressure allocation: expected 14 assigned vregs\n";
+        return EXIT_FAILURE;
+    }
+
+    struct Expect
+    {
+        uint16_t vreg;
+        PhysReg phys;
+    };
+    constexpr Expect kExpected[] = {
+        {2, PhysReg::RDI},
+        {3, PhysReg::RSI},
+        {4, PhysReg::RDX},
+        {5, PhysReg::RCX},
+        {6, PhysReg::R8},
+        {7, PhysReg::R9},
+        {8, PhysReg::R10},
+        {9, PhysReg::R11},
+        {10, PhysReg::RBX},
+        {11, PhysReg::R12},
+        {12, PhysReg::R13},
+        {13, PhysReg::R14},
+        {14, PhysReg::R15},
+        {15, PhysReg::RAX},
+    };
+    for (const auto &expect : kExpected)
+    {
+        auto it = pressureResult.vregToPhys.find(expect.vreg);
+        if (it == pressureResult.vregToPhys.end() || it->second != expect.phys)
+        {
+            std::cerr << "Pressure allocation: unexpected mapping for vreg " << expect.vreg
+                      << "\n";
+            return EXIT_FAILURE;
+        }
+    }
 
     const auto &pressureBlock = pressure.blocks.front().instructions;
     const bool hasSpillStore =
@@ -111,41 +138,11 @@ TEST(RegAllocConsistency, MatchesExpectedAssignments)
                         return instr.opcode == MOpcode::MOVrr && instr.operands.size() == 2 &&
                                std::holds_alternative<OpMem>(instr.operands[0]);
                     });
-    EXPECT_TRUE(hasSpillStore);
-}
-
-int main(int argc, char **argv)
-{
-    testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
-}
-
-#else
-
-int main()
-{
-    TargetInfo &target = sysvTarget();
-
-    MFunction simple{};
-    addSimpleFunction(simple);
-    auto simpleResult = allocate(simple, target);
-    if (simpleResult.vregToPhys.size() != 2U || simpleResult.vregToPhys[1] != PhysReg::RAX ||
-        simpleResult.vregToPhys[2] != PhysReg::RDI || simpleResult.spillSlotsGPR != 0)
+    if (!hasSpillStore)
     {
-        std::cerr << "Simple allocation mismatch";
-        return EXIT_FAILURE;
-    }
-
-    MFunction pressure{};
-    addPressureFunction(pressure);
-    auto pressureResult = allocate(pressure, target);
-    if (pressureResult.spillSlotsGPR != 1 || pressureResult.vregToPhys.size() != 14U)
-    {
-        std::cerr << "Pressure allocation summary mismatch";
+        std::cerr << "Pressure allocation: expected spill store\n";
         return EXIT_FAILURE;
     }
 
     return EXIT_SUCCESS;
 }
-
-#endif

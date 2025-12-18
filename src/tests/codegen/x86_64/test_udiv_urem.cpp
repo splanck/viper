@@ -15,18 +15,10 @@
 
 #include "codegen/x86_64/Backend.hpp"
 
-#include <sstream>
-#include <string>
-
-#if __has_include(<gtest/gtest.h>)
-#ifdef VIPER_HAS_GTEST
-#include <gtest/gtest.h>
-#define VIPER_HAS_GTEST 1
-#else
 #include <cstdlib>
 #include <iostream>
-#define VIPER_HAS_GTEST 0
-#endif
+#include <sstream>
+#include <string>
 
 namespace viper::codegen::x64
 {
@@ -152,24 +144,6 @@ namespace
 } // namespace
 } // namespace viper::codegen::x64
 
-#if VIPER_HAS_GTEST
-
-TEST(CodegenX64UnsignedDivRemTest, EmitsGuardedUnsignedDivSequence)
-{
-    using namespace viper::codegen::x64;
-
-    const ILModule module = makeUnsignedDivRemModule();
-    const CodegenResult result = emitModuleToAssembly(module, {});
-
-    ASSERT_TRUE(result.errors.empty()) << result.errors;
-
-    EXPECT_TRUE(hasEdxZeroExtend(result.asmText)) << result.asmText;
-    EXPECT_TRUE(hasDivqInstruction(result.asmText)) << result.asmText;
-    EXPECT_TRUE(hasTrapGuard(result.asmText)) << result.asmText;
-}
-
-#else
-
 int main()
 {
     using namespace viper::codegen::x64;
@@ -192,5 +166,3 @@ int main()
 
     return EXIT_SUCCESS;
 }
-
-#endif

@@ -1023,8 +1023,13 @@ counts.
 
 ### Concurrency Model
 
-Each `VM` instance is single‑threaded: only one thread may execute within a given
-instance at a time. To parallelize, create one VM per thread. The active VM is
-tracked via a thread‑local guard (see `ActiveVMGuard` in `src/vm/VMContext.*`), which
-binds the VM and its runtime context for the duration of execution. In debug builds,
-re‑entering an already active VM on the same thread triggers an assertion.
+Each `VM` instance is single‑threaded: only one host thread may execute within a given VM instance at a time. To
+parallelize at the *embedder* level, create one VM per host thread (each VM has its own program state).
+
+For *language-level* shared-memory threads (`Viper.Threads`), the VM spawns a new host thread and runs a new VM instance
+that shares a single `VM::ProgramState` (shared globals + shared `RtContext`) with its parent. This preserves the “one
+host thread per VM instance” invariant while allowing a Viper program to share memory across its threads.
+
+The active VM is tracked via a thread‑local guard (see `ActiveVMGuard` in `src/vm/VMContext.*`), which binds the VM and
+its runtime context for the duration of execution. In debug builds, attempting to activate a different VM while one is
+already active on the same thread triggers an assertion.

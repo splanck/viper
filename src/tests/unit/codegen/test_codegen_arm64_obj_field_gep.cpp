@@ -4,9 +4,7 @@
 // File: tests/unit/codegen/test_codegen_arm64_obj_field_gep.cpp
 // Purpose: Verify GEP + load/store on object memory via rt_obj_new_i64.
 //===----------------------------------------------------------------------===//
-
-#include "tests/unit/GTestStub.hpp"
-
+#include "tests/TestHarness.hpp"
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -52,6 +50,6 @@ TEST(Arm64CLI, ObjField_Gep_LoadStore_Run)
 
 int main(int argc, char **argv)
 {
-    testing::InitGoogleTest(&argc, &argv);
-    return RUN_ALL_TESTS();
+    viper_test::init(&argc, &argv);
+    return viper_test::run_all_tests();
 }

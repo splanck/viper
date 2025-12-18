@@ -76,7 +76,9 @@ static size_t rt_string_len_bytes(rt_string s)
 /// @return Non-zero when the header marks an immortal allocation.
 static int rt_string_is_immortal_hdr(const rt_heap_hdr_t *hdr)
 {
-    return hdr && hdr->refcnt >= kImmortalRefcnt;
+    if (!hdr)
+        return 0;
+    return __atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED) >= kImmortalRefcnt;
 }
 
 /// @brief Wrap a raw heap payload in a runtime string handle.
@@ -140,28 +142,41 @@ static rt_string rt_string_alloc(size_t len, size_t cap)
 static rt_string rt_empty_string(void)
 {
     static rt_string empty = NULL;
-    if (!empty)
+    rt_string cached = __atomic_load_n(&empty, __ATOMIC_ACQUIRE);
+    if (cached)
+        return cached;
+
+    char *payload = (char *)rt_heap_alloc(RT_HEAP_STRING, RT_ELEM_NONE, 1, 0, 1);
+    if (!payload)
+        rt_trap("rt_empty_string: alloc");
+    payload[0] = '\0';
+
+    rt_heap_hdr_t *hdr = rt_heap_hdr(payload);
+    assert(hdr);
+    assert(hdr->kind == RT_HEAP_STRING);
+    __atomic_store_n(&hdr->refcnt, kImmortalRefcnt, __ATOMIC_RELAXED);
+
+    rt_string candidate = (rt_string)rt_alloc(sizeof(*candidate));
+    if (!candidate)
     {
-        char *payload = (char *)rt_heap_alloc(RT_HEAP_STRING, RT_ELEM_NONE, 1, 0, 1);
-        if (!payload)
-            rt_trap("rt_empty_string: alloc");
-        payload[0] = '\0';
-        rt_heap_hdr_t *hdr = rt_heap_hdr(payload);
-        assert(hdr);
-        assert(hdr->kind == RT_HEAP_STRING);
-        hdr->refcnt = kImmortalRefcnt;
-        empty = (rt_string)rt_alloc(sizeof(*empty));
-        if (!empty)
-        {
-            rt_trap("rt_empty_string: alloc");
-            return NULL;
-        }
-        empty->data = payload;
-        empty->heap = hdr;
-        empty->literal_len = 0;
-        empty->literal_refs = 0;
+        rt_trap("rt_empty_string: alloc");
+        return NULL;
     }
-    return empty;
+    candidate->data = payload;
+    candidate->heap = hdr;
+    candidate->literal_len = 0;
+    candidate->literal_refs = 0;
+
+    rt_string expected = NULL;
+    if (!__atomic_compare_exchange_n(
+            &empty, &expected, candidate, /*weak=*/0, __ATOMIC_RELEASE, __ATOMIC_ACQUIRE))
+    {
+        // Lost the race; discard our candidate and use the published singleton.
+        free(candidate);
+        free((void *)hdr);
+        return expected;
+    }
+    return candidate;
 }
 
 /// @brief Allocate a runtime string from a byte span.

@@ -4,13 +4,93 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-//
-// File: codegen/aarch64/OpcodeDispatch.cpp
-// Purpose: Instruction lowering dispatch for IL->MIR conversion.
-//
-// This file contains the main instruction lowering switch statement,
-// extracted from LowerILToMIR.cpp to reduce function size.
-//
+///
+/// @file OpcodeDispatch.cpp
+/// @brief Instruction opcode dispatch for IL to MIR lowering on AArch64.
+///
+/// This file implements the main instruction lowering switch statement that
+/// dispatches IL opcodes to their appropriate MIR lowering handlers. It serves
+/// as the central routing point for converting individual IL instructions into
+/// sequences of AArch64 machine instructions.
+///
+/// **Dispatch Architecture:**
+/// ```
+/// ┌─────────────────────────────────────────────────────────────────────────┐
+/// │                    lowerInstruction() Entry Point                       │
+/// └────────────────────────────────────┬────────────────────────────────────┘
+///                                      │
+///           ┌──────────────────────────┼──────────────────────────────────┐
+///           │                          │                                  │
+///           ▼                          ▼                                  ▼
+/// ┌─────────────────┐      ┌─────────────────┐            ┌─────────────────┐
+/// │  Type Casts     │      │  Arithmetic     │            │  Memory/Call    │
+/// │  Zext1, Trunc1  │      │  FAdd, FSub,    │            │  Store, Load,   │
+/// │  CastSiNarrowChk│      │  FMul, FDiv,    │            │  GEP, Call,     │
+/// │  CastFpToSiRte  │      │  SDivChk0, etc  │            │  Ret, Alloca    │
+/// └─────────────────┘      └─────────────────┘            └─────────────────┘
+///           │                          │                                  │
+///           └──────────────────────────┼──────────────────────────────────┘
+///                                      ▼
+///                         ┌─────────────────────┐
+///                         │  MIR Instructions   │
+///                         │  added to bbOut()   │
+///                         └─────────────────────┘
+/// ```
+///
+/// **Opcode Categories Handled:**
+///
+/// | Category          | Opcodes                                           |
+/// |-------------------|---------------------------------------------------|
+/// | Bit Manipulation  | Zext1, Trunc1                                     |
+/// | Integer Casts     | CastSiNarrowChk, CastUiNarrowChk                  |
+/// | FP Casts          | CastFpToSiRteChk, CastFpToUiRteChk                |
+/// | Int-to-FP         | CastSiToFp, CastUiToFp, Sitofp                    |
+/// | FP-to-Int         | Fptosi                                            |
+/// | Checked Division  | SRemChk0, SDivChk0, UDivChk0, URemChk0            |
+/// | FP Arithmetic     | FAdd, FSub, FMul, FDiv                            |
+/// | FP Comparison     | FCmpEQ, FCmpNE, FCmpLT, FCmpLE, FCmpGT, FCmpGE    |
+/// | Memory Ops        | Store, Load, GEP, Alloca                          |
+/// | Control Flow      | Call, Ret, Br, CBr (terminators deferred)         |
+/// | Constants         | ConstStr                                          |
+///
+/// **Value Materialization:**
+/// Each handler uses `materializeValueToVReg()` from InstrLowering.hpp to
+/// convert IL values (temps, constants, globals) into virtual registers:
+/// ```cpp
+/// uint16_t vreg = 0;
+/// RegClass cls = RegClass::GPR;
+/// if (materializeValueToVReg(operand, bbIn, ti, fb, bbOut(),
+///                            tempVReg, tempRegClass, nextVRegId, vreg, cls))
+/// {
+///     // Use vreg in MIR instruction
+/// }
+/// ```
+///
+/// **Trap Blocks for Checked Operations:**
+/// Checked operations (CastSiNarrowChk, SDivChk0, etc.) generate trap blocks
+/// that branch to `rt_trap` on overflow or divide-by-zero:
+/// ```
+/// Block:                    Trap Block:
+/// cmp original, widened     .Ltrap_cast_N:
+/// b.ne .Ltrap_cast_N    →     bl rt_trap
+/// mov result, value
+/// ```
+///
+/// **Return Value Convention:**
+/// - Returns `true` if the opcode was handled (MIR emitted)
+/// - Returns `false` if the opcode should be handled by the caller
+/// - Terminators (Br, CBr) return `true` but are lowered in a separate pass
+///
+/// **Cross-Block Value Handling:**
+/// The dispatch operates within the context of `LoweringContext` which tracks:
+/// - `tempVReg`: Map from IL temp ID to MIR vreg ID
+/// - `tempRegClass`: Register class (GPR/FPR) for each temp
+/// - `crossBlockSpillOffset`: Spill slots for cross-block live values
+///
+/// @see InstrLowering.cpp For individual opcode lowering implementations
+/// @see LowerILToMIR.cpp For the main lowering orchestrator
+/// @see TerminatorLowering.cpp For control-flow terminator handling
+///
 //===----------------------------------------------------------------------===//
 
 #include "OpcodeDispatch.hpp"
@@ -175,17 +255,15 @@ bool lowerInstruction(const il::core::Instr &ins,
             ctx.tempVReg[*ins.result] = dst;
             if (ins.op == Opcode::CastFpToSiRteChk)
             {
-                bbOut().instrs.push_back(MInstr{
-                    MOpcode::FCvtZS,
-                    {MOperand::vregOp(RegClass::GPR, dst),
-                     MOperand::vregOp(RegClass::FPR, rounded)}});
+                bbOut().instrs.push_back(MInstr{MOpcode::FCvtZS,
+                                                {MOperand::vregOp(RegClass::GPR, dst),
+                                                 MOperand::vregOp(RegClass::FPR, rounded)}});
             }
             else
             {
-                bbOut().instrs.push_back(MInstr{
-                    MOpcode::FCvtZU,
-                    {MOperand::vregOp(RegClass::GPR, dst),
-                     MOperand::vregOp(RegClass::FPR, rounded)}});
+                bbOut().instrs.push_back(MInstr{MOpcode::FCvtZU,
+                                                {MOperand::vregOp(RegClass::GPR, dst),
+                                                 MOperand::vregOp(RegClass::FPR, rounded)}});
             }
             return true;
         }

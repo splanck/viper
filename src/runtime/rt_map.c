@@ -37,24 +37,64 @@
 #define FNV_PRIME 0x100000001b3ULL
 
 /// @brief Entry in the hash map (collision chain node).
+///
+/// Each entry stores a key-value pair in the Map. Entries are organized into
+/// collision chains (linked lists) within each bucket. The Map owns a copy
+/// of each string key and retains a reference to each value.
 typedef struct rt_map_entry
 {
-    char *key;                 ///< Owned copy of key string.
-    size_t key_len;            ///< Length of key.
-    void *value;               ///< Retained value pointer.
-    struct rt_map_entry *next; ///< Next entry in collision chain.
+    char *key;                 ///< Owned copy of key string (null-terminated).
+    size_t key_len;            ///< Length of key string (excluding null terminator).
+    void *value;               ///< Retained reference to the value object.
+    struct rt_map_entry *next; ///< Next entry in collision chain (or NULL).
 } rt_map_entry;
 
-/// @brief Map implementation structure.
+/// @brief Map (string-to-object dictionary) implementation structure.
+///
+/// The Map is implemented as a hash table with separate chaining for
+/// collision resolution. It provides O(1) average-case lookup, insertion,
+/// and deletion for string-keyed associations.
+///
+/// **Hash table structure:**
+/// ```
+/// buckets array:
+///   [0] -> entry("apple", valA) -> entry("apricot", valB) -> NULL
+///   [1] -> NULL
+///   [2] -> entry("banana", valC) -> NULL
+///   [3] -> entry("cherry", valD) -> entry("coconut", valE) -> NULL
+///   ...
+///   [capacity-1] -> NULL
+/// ```
+///
+/// **Hash function:**
+/// Uses FNV-1a, a fast non-cryptographic hash with good distribution.
+///
+/// **Load factor:**
+/// Resizes when count/capacity exceeds 75% (3/4) to maintain O(1) performance.
+///
+/// **Key/Value ownership:**
+/// - Keys: The Map owns copies of all keys (not references to originals)
+/// - Values: The Map retains references (increments ref count)
 typedef struct rt_map_impl
 {
-    void **vptr;            ///< Vtable pointer placeholder.
-    rt_map_entry **buckets; ///< Array of bucket heads.
-    size_t capacity;        ///< Number of buckets.
-    size_t count;           ///< Number of entries.
+    void **vptr;            ///< Vtable pointer placeholder (for OOP compatibility).
+    rt_map_entry **buckets; ///< Array of bucket heads (collision chain pointers).
+    size_t capacity;        ///< Number of buckets in the hash table.
+    size_t count;           ///< Number of key-value pairs currently in the Map.
 } rt_map_impl;
 
-/// @brief Compute FNV-1a hash of a byte sequence.
+/// @brief Computes FNV-1a hash of a byte sequence.
+///
+/// FNV-1a (Fowler-Noll-Vo) is a fast, non-cryptographic hash function with
+/// good avalanche properties. It's used here to distribute keys evenly
+/// across the hash table buckets.
+///
+/// @param data Pointer to the byte sequence to hash.
+/// @param len Length of the byte sequence.
+///
+/// @return 64-bit hash value.
+///
+/// @note O(n) time complexity where n is the length of the input.
 static uint64_t fnv1a_hash(const char *data, size_t len)
 {
     uint64_t hash = FNV_OFFSET_BASIS;
@@ -66,7 +106,16 @@ static uint64_t fnv1a_hash(const char *data, size_t len)
     return hash;
 }
 
-/// @brief Get key data and length from rt_string.
+/// @brief Extracts C string data and length from a Viper string.
+///
+/// Helper function to safely get the underlying character data from a
+/// Viper string object for use with the hash table operations.
+///
+/// @param key The Viper string to extract data from.
+/// @param out_len Pointer to receive the string length.
+///
+/// @return Pointer to the string's character data (not owned by caller).
+///         Returns "" with length 0 if key is NULL.
 static const char *get_key_data(rt_string key, size_t *out_len)
 {
     const char *cstr = rt_string_cstr(key);
@@ -79,7 +128,18 @@ static const char *get_key_data(rt_string key, size_t *out_len)
     return cstr;
 }
 
-/// @brief Find entry in bucket chain.
+/// @brief Finds an entry in a bucket's collision chain.
+///
+/// Performs a linear search through the linked list of entries in a bucket
+/// to find one matching the given key.
+///
+/// @param head The head of the collision chain to search.
+/// @param key The key string to search for.
+/// @param key_len Length of the key string.
+///
+/// @return Pointer to the matching entry, or NULL if not found.
+///
+/// @note O(k) time where k is the chain length.
 static rt_map_entry *find_entry(rt_map_entry *head, const char *key, size_t key_len)
 {
     for (rt_map_entry *e = head; e; e = e->next)
@@ -90,7 +150,14 @@ static rt_map_entry *find_entry(rt_map_entry *head, const char *key, size_t key_
     return NULL;
 }
 
-/// @brief Free an entry and its owned key.
+/// @brief Frees an entry, its owned key, and releases its value reference.
+///
+/// Releases all resources associated with a map entry:
+/// 1. Frees the copied key string
+/// 2. Releases the reference to the value (may free if last reference)
+/// 3. Frees the entry structure itself
+///
+/// @param entry The entry to free. If NULL, this is a no-op.
 static void free_entry(rt_map_entry *entry)
 {
     if (entry)
@@ -102,6 +169,15 @@ static void free_entry(rt_map_entry *entry)
     }
 }
 
+/// @brief Finalizer callback invoked when a Map is garbage collected.
+///
+/// This function is automatically called by Viper's garbage collector when a
+/// Map object becomes unreachable. It clears all entries (freeing keys and
+/// releasing value references) and frees the buckets array.
+///
+/// @param obj Pointer to the Map object being finalized. May be NULL (no-op).
+///
+/// @note This function is idempotent - safe to call on already-finalized maps.
 static void rt_map_finalize(void *obj)
 {
     if (!obj)
@@ -116,7 +192,16 @@ static void rt_map_finalize(void *obj)
     map->count = 0;
 }
 
-/// @brief Resize the hash table.
+/// @brief Resizes the hash table to a new capacity and rehashes all entries.
+///
+/// When the load factor becomes too high, this function creates a new larger
+/// bucket array and rehashes all existing entries to maintain O(1) performance.
+///
+/// @param map The Map to resize.
+/// @param new_capacity The new number of buckets.
+///
+/// @note On allocation failure, the old buckets are kept (silent failure).
+/// @note O(n) time complexity where n is the number of entries.
 static void map_resize(rt_map_impl *map, size_t new_capacity)
 {
     rt_map_entry **new_buckets = (rt_map_entry **)calloc(new_capacity, sizeof(rt_map_entry *));
@@ -143,7 +228,13 @@ static void map_resize(rt_map_impl *map, size_t new_capacity)
     map->capacity = new_capacity;
 }
 
-/// @brief Check if resize is needed and perform it.
+/// @brief Checks if resize is needed and performs it.
+///
+/// Triggers a resize when the load factor exceeds 75% (3/4).
+///
+/// @param map The Map to potentially resize.
+///
+/// @note The capacity doubles on each resize.
 static void maybe_resize(rt_map_impl *map)
 {
     // Resize when count * DEN > capacity * NUM (i.e., load factor > NUM/DEN)
@@ -153,6 +244,36 @@ static void maybe_resize(rt_map_impl *map)
     }
 }
 
+/// @brief Creates a new empty Map (string-to-object dictionary).
+///
+/// Allocates and initializes a Map data structure for storing key-value pairs
+/// where keys are strings and values are objects. The Map uses a hash table
+/// with separate chaining for O(1) average-case operations.
+///
+/// **Usage example:**
+/// ```
+/// Dim map = Map.New()
+/// map.Set("name", "Alice")
+/// map.Set("age", 30)
+/// Print map.Get("name")  ' Outputs: Alice
+/// Print map.Len()        ' Outputs: 2
+/// ```
+///
+/// **Implementation notes:**
+/// - Uses FNV-1a hash function for key hashing
+/// - Collision resolution via separate chaining (linked lists)
+/// - Automatically grows when load factor exceeds 75%
+///
+/// @return A pointer to the newly created Map object, or NULL if memory
+///         allocation fails for the Map structure.
+///
+/// @note Initial capacity is 16 buckets.
+/// @note Keys are copied (not referenced), values are retained (ref counted).
+/// @note Thread safety: Not thread-safe. External synchronization required.
+///
+/// @see rt_map_set For adding key-value pairs
+/// @see rt_map_get For retrieving values
+/// @see rt_map_finalize For cleanup behavior
 void *rt_map_new(void)
 {
     rt_map_impl *map = (rt_map_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_map_impl));
@@ -175,6 +296,20 @@ void *rt_map_new(void)
     return map;
 }
 
+/// @brief Returns the number of key-value pairs in the Map.
+///
+/// This function returns how many entries have been added to the Map.
+/// The count is maintained internally and returned in O(1) time.
+///
+/// @param obj Pointer to a Map object. If NULL, returns 0.
+///
+/// @return The number of entries in the Map (>= 0). Returns 0 if obj is NULL.
+///
+/// @note O(1) time complexity.
+///
+/// @see rt_map_is_empty For a boolean check
+/// @see rt_map_set For operations that may increase the count
+/// @see rt_map_remove For operations that decrease the count
 int64_t rt_map_len(void *obj)
 {
     if (!obj)
@@ -182,11 +317,59 @@ int64_t rt_map_len(void *obj)
     return (int64_t)((rt_map_impl *)obj)->count;
 }
 
+/// @brief Checks whether the Map contains no entries.
+///
+/// A Map is considered empty when its count is 0, which occurs:
+/// - Immediately after creation
+/// - After all entries have been removed
+/// - After calling rt_map_clear
+///
+/// @param obj Pointer to a Map object. If NULL, returns true (1).
+///
+/// @return 1 (true) if the Map is empty or obj is NULL, 0 (false) otherwise.
+///
+/// @note O(1) time complexity.
+///
+/// @see rt_map_len For the exact count
+/// @see rt_map_clear For removing all entries
 int8_t rt_map_is_empty(void *obj)
 {
     return rt_map_len(obj) == 0;
 }
 
+/// @brief Sets a value for a key in the Map.
+///
+/// Associates the given value with the given key. If the key already exists,
+/// its value is replaced (the old value's reference is released). If the key
+/// is new, a new entry is created.
+///
+/// **Example:**
+/// ```
+/// Dim map = Map.New()
+/// map.Set("name", "Alice")
+/// map.Set("age", 30)
+/// map.Set("name", "Bob")    ' Replaces "Alice" with "Bob"
+/// Print map.Get("name")     ' Outputs: Bob
+/// ```
+///
+/// **Key handling:**
+/// The Map copies the key string - the original can be freed after this call.
+///
+/// **Value handling:**
+/// The Map retains a reference to the value. The old value (if replacing)
+/// has its reference released.
+///
+/// @param obj Pointer to a Map object. If NULL, this is a no-op.
+/// @param key The string key to associate with the value.
+/// @param value The value to store. Reference is retained by the Map.
+///
+/// @note O(1) average-case time complexity.
+/// @note May trigger a resize if the load factor exceeds 75%.
+/// @note Thread safety: Not thread-safe.
+///
+/// @see rt_map_get For retrieving values
+/// @see rt_map_has For checking if a key exists
+/// @see rt_map_remove For removing entries
 void rt_map_set(void *obj, rt_string key, void *value)
 {
     if (!obj)
@@ -240,6 +423,31 @@ void rt_map_set(void *obj, rt_string key, void *value)
     maybe_resize(map);
 }
 
+/// @brief Retrieves the value associated with a key.
+///
+/// Looks up the key in the Map and returns its associated value. Returns NULL
+/// if the key is not found.
+///
+/// **Example:**
+/// ```
+/// Dim map = Map.New()
+/// map.Set("name", "Alice")
+/// Print map.Get("name")     ' Outputs: Alice
+/// Print map.Get("missing")  ' Outputs: Nothing (NULL)
+/// ```
+///
+/// @param obj Pointer to a Map object. If NULL, returns NULL.
+/// @param key The string key to look up.
+///
+/// @return The value associated with the key, or NULL if not found.
+///
+/// @note O(1) average-case time complexity.
+/// @note Does not modify the Map.
+/// @note Thread safety: Safe for concurrent reads if no concurrent writes.
+///
+/// @see rt_map_get_or For providing a default value
+/// @see rt_map_has For checking existence without retrieving
+/// @see rt_map_set For storing values
 void *rt_map_get(void *obj, rt_string key)
 {
     if (!obj)
@@ -258,8 +466,35 @@ void *rt_map_get(void *obj, rt_string key)
     return entry ? entry->value : NULL;
 }
 
-/// @brief Get value for @p key or return @p default_value when missing.
-/// @details This helper does not mutate the map: missing keys do not create new entries.
+/// @brief Retrieves the value associated with a key, or a default if not found.
+///
+/// Looks up the key in the Map and returns its associated value. If the key
+/// is not found, returns the provided default value instead of NULL.
+///
+/// **Example:**
+/// ```
+/// Dim map = Map.New()
+/// map.Set("name", "Alice")
+/// Print map.GetOr("name", "Unknown")    ' Outputs: Alice
+/// Print map.GetOr("missing", "Unknown") ' Outputs: Unknown
+/// ```
+///
+/// **Comparison with Get:**
+/// - Get returns NULL for missing keys
+/// - GetOr returns your chosen default for missing keys
+///
+/// @param obj Pointer to a Map object. If NULL, returns default_value.
+/// @param key The string key to look up.
+/// @param default_value The value to return if the key is not found.
+///
+/// @return The value associated with the key, or default_value if not found.
+///
+/// @note O(1) average-case time complexity.
+/// @note Does not modify the Map - missing keys do not create new entries.
+/// @note Thread safety: Safe for concurrent reads if no concurrent writes.
+///
+/// @see rt_map_get For returning NULL on missing keys
+/// @see rt_map_has For checking existence
 void *rt_map_get_or(void *obj, rt_string key, void *default_value)
 {
     if (!obj)
@@ -278,6 +513,30 @@ void *rt_map_get_or(void *obj, rt_string key, void *default_value)
     return entry ? entry->value : default_value;
 }
 
+/// @brief Tests whether a key exists in the Map.
+///
+/// Performs a key lookup without retrieving the value. Useful for checking
+/// if a key is present before conditionally operating on it.
+///
+/// **Example:**
+/// ```
+/// Dim map = Map.New()
+/// map.Set("name", "Alice")
+/// Print map.Has("name")    ' Outputs: True
+/// Print map.Has("missing") ' Outputs: False
+/// ```
+///
+/// @param obj Pointer to a Map object. If NULL, returns 0 (false).
+/// @param key The string key to search for.
+///
+/// @return 1 (true) if the key exists, 0 (false) otherwise.
+///
+/// @note O(1) average-case time complexity.
+/// @note Does not modify the Map.
+/// @note Thread safety: Safe for concurrent reads if no concurrent writes.
+///
+/// @see rt_map_get For retrieving the value
+/// @see rt_map_set For adding entries
 int8_t rt_map_has(void *obj, rt_string key)
 {
     if (!obj)
@@ -295,8 +554,37 @@ int8_t rt_map_has(void *obj, rt_string key)
     return find_entry(map->buckets[idx], key_data, key_len) ? 1 : 0;
 }
 
-/// @brief Insert (@p key, @p value) only when @p key is missing.
-/// @details Returns 1 when insertion occurs; returns 0 when the key already exists or on failure.
+/// @brief Sets a value for a key only if the key doesn't already exist.
+///
+/// Conditionally inserts a key-value pair. If the key already exists, the Map
+/// is not modified and the function returns 0. This is useful for implementing
+/// "insert if not exists" logic atomically.
+///
+/// **Example:**
+/// ```
+/// Dim map = Map.New()
+/// Print map.SetIfMissing("name", "Alice")  ' Outputs: 1 (inserted)
+/// Print map.SetIfMissing("name", "Bob")    ' Outputs: 0 (already exists)
+/// Print map.Get("name")                    ' Outputs: Alice
+/// ```
+///
+/// **Use cases:**
+/// - Setting default values only when not already set
+/// - First-wins insertion semantics
+/// - Implementing caching patterns
+///
+/// @param obj Pointer to a Map object. If NULL, returns 0.
+/// @param key The string key to conditionally set.
+/// @param value The value to store if the key is missing.
+///
+/// @return 1 if the key was missing and the value was inserted, 0 if the key
+///         already existed or an error occurred.
+///
+/// @note O(1) average-case time complexity.
+/// @note Thread safety: Not thread-safe.
+///
+/// @see rt_map_set For unconditional set (replaces existing)
+/// @see rt_map_has For checking existence
 int8_t rt_map_set_if_missing(void *obj, rt_string key, void *value)
 {
     if (!obj)
@@ -340,6 +628,32 @@ int8_t rt_map_set_if_missing(void *obj, rt_string key, void *value)
     return 1;
 }
 
+/// @brief Removes the entry with the specified key from the Map.
+///
+/// Looks up the key and removes its entry if found. The key string is freed
+/// and the value's reference is released.
+///
+/// **Example:**
+/// ```
+/// Dim map = Map.New()
+/// map.Set("name", "Alice")
+/// map.Set("age", 30)
+/// Print map.Remove("name")    ' Outputs: 1 (removed)
+/// Print map.Remove("missing") ' Outputs: 0 (not found)
+/// Print map.Len()             ' Outputs: 1
+/// ```
+///
+/// @param obj Pointer to a Map object. If NULL, returns 0.
+/// @param key The string key to remove.
+///
+/// @return 1 if the key was found and removed, 0 if not found or obj is NULL.
+///
+/// @note O(1) average-case time complexity.
+/// @note The Map does not shrink after removal - capacity is maintained.
+/// @note Thread safety: Not thread-safe.
+///
+/// @see rt_map_set For adding entries
+/// @see rt_map_clear For removing all entries
 int8_t rt_map_remove(void *obj, rt_string key)
 {
     if (!obj)
@@ -373,6 +687,37 @@ int8_t rt_map_remove(void *obj, rt_string key)
     return 0;
 }
 
+/// @brief Removes all entries from the Map.
+///
+/// Clears the Map by freeing all entries (keys and releasing value references).
+/// After this call, the Map is empty but retains its bucket array capacity
+/// for efficient reuse.
+///
+/// **Memory behavior:**
+/// - All entry nodes are freed
+/// - All copied key strings are freed
+/// - All value references are released
+/// - Bucket array is retained (not freed)
+/// - Capacity remains unchanged
+///
+/// **Example:**
+/// ```
+/// Dim map = Map.New()
+/// map.Set("a", 1)
+/// map.Set("b", 2)
+/// Print map.Len()    ' Outputs: 2
+/// map.Clear()
+/// Print map.Len()    ' Outputs: 0
+/// ```
+///
+/// @param obj Pointer to a Map object. If NULL, this is a no-op.
+///
+/// @note O(n) time complexity where n is the number of entries.
+/// @note The bucket array capacity is preserved for potential reuse.
+/// @note Thread safety: Not thread-safe.
+///
+/// @see rt_map_finalize For complete cleanup including bucket array
+/// @see rt_map_is_empty For checking if empty
 void rt_map_clear(void *obj)
 {
     if (!obj)
@@ -393,6 +738,36 @@ void rt_map_clear(void *obj)
     map->count = 0;
 }
 
+/// @brief Returns all keys in the Map as a Seq.
+///
+/// Creates a new Seq containing copies of all keys currently in the Map.
+/// This allows iterating over the Map's keys.
+///
+/// **Order guarantee:**
+/// Keys are returned in hash table iteration order (bucket by bucket, then
+/// chain order within each bucket). This order is NOT guaranteed to be
+/// consistent across different runs or after modifications to the Map.
+///
+/// **Example:**
+/// ```
+/// Dim map = Map.New()
+/// map.Set("name", "Alice")
+/// map.Set("age", 30)
+/// Dim keys = map.Keys()
+/// For i = 0 To keys.Len() - 1
+///     Print keys.Get(i)  ' Outputs each key (order varies)
+/// Next
+/// ```
+///
+/// @param obj Pointer to a Map object. If NULL, returns an empty Seq.
+///
+/// @return A new Seq containing copies of all keys in the Map.
+///
+/// @note O(n) time and space complexity where n is the number of entries.
+/// @note Iteration order is implementation-defined (not sorted).
+/// @note Thread safety: Not thread-safe.
+///
+/// @see rt_map_values For getting all values
 void *rt_map_keys(void *obj)
 {
     void *result = rt_seq_new();
@@ -417,6 +792,35 @@ void *rt_map_keys(void *obj)
     return result;
 }
 
+/// @brief Returns all values in the Map as a Seq.
+///
+/// Creates a new Seq containing all values currently in the Map. The values
+/// are the same objects as stored in the Map (not copies).
+///
+/// **Order guarantee:**
+/// Values are returned in hash table iteration order (matching the order
+/// of Keys()). This order is NOT guaranteed to be consistent.
+///
+/// **Example:**
+/// ```
+/// Dim map = Map.New()
+/// map.Set("name", "Alice")
+/// map.Set("age", 30)
+/// Dim values = map.Values()
+/// For i = 0 To values.Len() - 1
+///     Print values.Get(i)  ' Outputs each value (order varies)
+/// Next
+/// ```
+///
+/// @param obj Pointer to a Map object. If NULL, returns an empty Seq.
+///
+/// @return A new Seq containing all values in the Map.
+///
+/// @note O(n) time complexity where n is the number of entries.
+/// @note Values are the same objects (not copies) - shared with the Map.
+/// @note Thread safety: Not thread-safe.
+///
+/// @see rt_map_keys For getting all keys
 void *rt_map_values(void *obj)
 {
     void *result = rt_seq_new();

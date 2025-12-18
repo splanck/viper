@@ -79,6 +79,7 @@
 #include "rt_seq.h"
 #include "rt_stack.h"
 #include "rt_stopwatch.h"
+#include "rt_threads.h"
 #include "rt_treemap.h"
 #include "rt_vec2.h"
 #include "rt_vec3.h"

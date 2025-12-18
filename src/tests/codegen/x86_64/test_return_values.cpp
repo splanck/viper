@@ -15,19 +15,11 @@
 
 #include "codegen/x86_64/Backend.hpp"
 
+#include <cstdlib>
+#include <iostream>
 #include <regex>
 #include <string>
 #include <string_view>
-
-#if __has_include(<gtest/gtest.h>)
-#ifdef VIPER_HAS_GTEST
-#include <gtest/gtest.h>
-#define VIPER_HAS_GTEST 1
-#else
-#include <cstdlib>
-#include <iostream>
-#define VIPER_HAS_GTEST 0
-#endif
 
 namespace viper::codegen::x64
 {
@@ -99,34 +91,6 @@ namespace
 } // namespace
 } // namespace viper::codegen::x64
 
-#if VIPER_HAS_GTEST
-
-TEST(CodegenX64ReturnValuesTest, EmitsIntegerReturnMove)
-{
-    using namespace viper::codegen::x64;
-
-    const ILModule module = makeReturnModule();
-    const CodegenResult result = emitModuleToAssembly(module, {});
-
-    ASSERT_TRUE(result.errors.empty()) << result.asmText;
-    const std::regex movPattern{"movq %[^,]+, %rax"};
-    EXPECT_TRUE(hasMovRetSequence(result.asmText, movPattern)) << result.asmText;
-}
-
-TEST(CodegenX64ReturnValuesTest, EmitsFloatReturnMove)
-{
-    using namespace viper::codegen::x64;
-
-    const ILModule module = makeReturnModule();
-    const CodegenResult result = emitModuleToAssembly(module, {});
-
-    ASSERT_TRUE(result.errors.empty()) << result.asmText;
-    const std::regex movPattern{"movsd [^,]+, %xmm0"};
-    EXPECT_TRUE(hasMovRetSequence(result.asmText, movPattern)) << result.asmText;
-}
-
-#else
-
 int main()
 {
     using namespace viper::codegen::x64;
@@ -152,5 +116,3 @@ int main()
 
     return EXIT_SUCCESS;
 }
-
-#endif

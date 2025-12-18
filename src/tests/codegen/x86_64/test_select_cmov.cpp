@@ -15,17 +15,9 @@
 
 #include "codegen/x86_64/Backend.hpp"
 
-#include <string>
-
-#if __has_include(<gtest/gtest.h>)
-#ifdef VIPER_HAS_GTEST
-#include <gtest/gtest.h>
-#define VIPER_HAS_GTEST 1
-#else
 #include <cstdlib>
 #include <iostream>
-#define VIPER_HAS_GTEST 0
-#endif
+#include <string>
 
 namespace viper::codegen::x64
 {
@@ -119,21 +111,6 @@ namespace
 } // namespace
 } // namespace viper::codegen::x64
 
-#if VIPER_HAS_GTEST
-
-TEST(CodegenX64SelectTest, EmitsTestMovCmovSequence)
-{
-    using namespace viper::codegen::x64;
-
-    const ILModule module = makeSelectModule();
-    const CodegenResult result = emitModuleToAssembly(module, {});
-
-    EXPECT_TRUE(result.errors.empty());
-    EXPECT_TRUE(hasSelectSequence(result.asmText)) << result.asmText;
-}
-
-#else
-
 int main()
 {
     using namespace viper::codegen::x64;
@@ -148,5 +125,3 @@ int main()
     }
     return EXIT_SUCCESS;
 }
-
-#endif

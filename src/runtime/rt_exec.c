@@ -4,14 +4,84 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_exec.c
-// Purpose: Implement external command execution for Viper.Exec.
-//
-// SECURITY NOTE: Shell functions (Shell, ShellCapture) pass commands directly
-// to the system shell. Never pass unsanitized user input to these functions
-// as this creates shell injection vulnerabilities.
-//
+///
+/// @file rt_exec.c
+/// @brief External command execution for Viper.Exec class.
+///
+/// This file provides functions for executing external programs and shell
+/// commands. It supports both direct program execution (with arguments) and
+/// shell command execution for more complex pipelines.
+///
+/// **Execution Methods:**
+/// ```
+/// ┌─────────────────────────────────────────────────────────────────────┐
+/// │ Viper.Exec                                                          │
+/// ├─────────────────┬───────────────────────────────────────────────────┤
+/// │ Method          │ Description                                       │
+/// ├─────────────────┼───────────────────────────────────────────────────┤
+/// │ Run(prog)       │ Execute program, wait for completion              │
+/// │ RunArgs(p,args) │ Execute program with arguments                    │
+/// │ Capture(prog)   │ Execute and capture stdout                        │
+/// │ CaptureArgs()   │ Execute with args and capture stdout              │
+/// │ Shell(cmd)      │ Execute via system shell                          │
+/// │ ShellCapture()  │ Execute via shell and capture output              │
+/// └─────────────────┴───────────────────────────────────────────────────┘
+/// ```
+///
+/// **Direct Execution vs Shell:**
+/// | Feature              | Run/RunArgs    | Shell           |
+/// |----------------------|----------------|-----------------|
+/// | Argument handling    | Direct array   | String parsing  |
+/// | Shell features       | No             | Yes (pipes, etc)|
+/// | Security risk        | Lower          | Higher          |
+/// | Performance          | Better         | Overhead        |
+/// | Cross-platform       | Consistent     | Shell-dependent |
+///
+/// **Usage Examples:**
+/// ```
+/// ' Run a simple program
+/// Dim code = Exec.Run("/usr/bin/ls")
+///
+/// ' Run with arguments (safer)
+/// Dim args = Seq.New()
+/// args.Push("-l")
+/// args.Push("-a")
+/// code = Exec.RunArgs("/usr/bin/ls", args)
+///
+/// ' Capture output
+/// Dim output = Exec.Capture("/usr/bin/date")
+/// Print "Current date: " & output
+///
+/// ' Use shell for pipelines
+/// output = Exec.ShellCapture("ls -la | grep .txt")
+/// ```
+///
+/// **⚠️ SECURITY WARNING:**
+/// Shell functions (Shell, ShellCapture) pass commands directly to the
+/// system shell. **NEVER** pass unsanitized user input to these functions
+/// as this creates shell injection vulnerabilities:
+/// ```
+/// ' DANGEROUS - shell injection vulnerability!
+/// Dim userInput = GetUserInput()
+/// Exec.Shell("rm " & userInput)  ' User could input: "; rm -rf /"
+///
+/// ' SAFER - use direct execution with args
+/// Dim args = Seq.New()
+/// args.Push(userInput)
+/// Exec.RunArgs("/bin/rm", args)  ' Arguments are not shell-interpreted
+/// ```
+///
+/// **Platform Implementation:**
+/// | Operation   | Unix                | Windows              |
+/// |-------------|---------------------|----------------------|
+/// | Run         | posix_spawn()       | CreateProcess()      |
+/// | Shell       | /bin/sh -c          | cmd.exe /c           |
+/// | Capture     | pipe + fork         | CreatePipe + Process |
+///
+/// **Thread Safety:** All functions are thread-safe.
+///
+/// @see rt_args.c For command-line argument handling
+///
 //===----------------------------------------------------------------------===//
 
 #include "rt_exec.h"
@@ -404,10 +474,46 @@ static rt_string exec_capture_spawn(const char *program, void *args)
 
 #endif // _WIN32
 
-// ============================================================================
+//=============================================================================
 // Public API Implementation
-// ============================================================================
+//=============================================================================
 
+/// @brief Execute a program and wait for it to complete.
+///
+/// Runs the specified program as a child process and waits for it to finish.
+/// The program path should be an absolute path or a program in the system PATH.
+///
+/// **Usage example:**
+/// ```
+/// ' Run a program and check exit code
+/// Dim code = Exec.Run("/usr/bin/date")
+/// If code = 0 Then
+///     Print "Program succeeded"
+/// Else
+///     Print "Program failed with code: " & code
+/// End If
+///
+/// ' Run with full path
+/// code = Exec.Run("C:\Windows\notepad.exe")
+/// ```
+///
+/// **Exit codes:**
+/// - 0: Success (by convention)
+/// - Positive: Application-specific error codes
+/// - Negative: Signal number (Unix) or system error
+/// - -1: Failed to start program
+///
+/// @param program Path to the program to execute.
+///
+/// @return Exit code from the program, or -1 if the program could not be started.
+///
+/// @note Use RunArgs for passing command-line arguments.
+/// @note The program runs with inherited environment variables.
+/// @note Traps if program is NULL or empty.
+///
+/// @see rt_exec_run_args For running with arguments
+/// @see rt_exec_capture For capturing output
+/// @see rt_exec_shell For running shell commands
 int64_t rt_exec_run(rt_string program)
 {
     if (!program)
@@ -426,6 +532,43 @@ int64_t rt_exec_run(rt_string program)
     return exec_spawn(prog_str, NULL);
 }
 
+/// @brief Execute a program and capture its standard output.
+///
+/// Runs the specified program and captures everything it writes to stdout.
+/// The program's stderr is not captured. Use this when you need the output
+/// of a command for further processing.
+///
+/// **Usage example:**
+/// ```
+/// ' Get current date
+/// Dim dateStr = Exec.Capture("/bin/date")
+/// Print "Today is: " & dateStr.Trim()
+///
+/// ' Get system information
+/// Dim hostname = Exec.Capture("/bin/hostname")
+/// Print "Running on: " & hostname.Trim()
+///
+/// ' Parse command output
+/// Dim users = Exec.Capture("/usr/bin/who")
+/// Dim lines = users.Split(Chr(10))
+/// Print "Logged in users: " & lines.Len()
+/// ```
+///
+/// **Output handling:**
+/// - Maximum capture size: 16 MB
+/// - Output includes newlines as written by the program
+/// - Binary output is captured as-is (use Trim() to remove trailing newlines)
+///
+/// @param program Path to the program to execute.
+///
+/// @return String containing the program's stdout, or empty string on failure.
+///
+/// @note Does not capture stderr - only stdout.
+/// @note Returns empty string if program cannot be started.
+/// @note Traps if program is NULL.
+///
+/// @see rt_exec_capture_args For running with arguments
+/// @see rt_exec_shell_capture For shell commands with capture
 rt_string rt_exec_capture(rt_string program)
 {
     if (!program)
@@ -444,6 +587,49 @@ rt_string rt_exec_capture(rt_string program)
     return exec_capture_spawn(prog_str, NULL);
 }
 
+/// @brief Execute a program with arguments and wait for completion.
+///
+/// Runs a program with the specified command-line arguments. This is the
+/// preferred method for executing programs with user-provided arguments
+/// because arguments are passed directly without shell interpretation.
+///
+/// **Usage example:**
+/// ```
+/// ' List directory contents
+/// Dim args = Seq.New()
+/// args.Push("-l")
+/// args.Push("-a")
+/// args.Push("/home/user")
+/// Dim code = Exec.RunArgs("/bin/ls", args)
+///
+/// ' Copy a file
+/// args = Seq.New()
+/// args.Push("source.txt")
+/// args.Push("dest.txt")
+/// Exec.RunArgs("/bin/cp", args)
+///
+/// ' Run with user input (safe from shell injection)
+/// args = Seq.New()
+/// args.Push(userProvidedFilename)  ' Safe even with special chars
+/// Exec.RunArgs("/bin/cat", args)
+/// ```
+///
+/// **Arguments:**
+/// - Arguments are passed as separate strings (no shell parsing)
+/// - Special characters in arguments are preserved literally
+/// - No shell expansion (*, ?, ~, etc.)
+///
+/// @param program Path to the program to execute.
+/// @param args Seq of strings containing command-line arguments (may be NULL).
+///
+/// @return Exit code from the program, or -1 if the program could not be started.
+///
+/// @note Safer than Shell for user-provided arguments.
+/// @note Arguments are NOT shell-expanded.
+/// @note Pass NULL for args if no arguments needed.
+///
+/// @see rt_exec_run For running without arguments
+/// @see rt_exec_capture_args For capturing output with arguments
 int64_t rt_exec_run_args(rt_string program, void *args)
 {
     if (!program)
@@ -462,6 +648,39 @@ int64_t rt_exec_run_args(rt_string program, void *args)
     return exec_spawn(prog_str, args);
 }
 
+/// @brief Execute a program with arguments and capture stdout.
+///
+/// Runs a program with command-line arguments and captures its standard output.
+/// Combines the safety of argument arrays with output capture.
+///
+/// **Usage example:**
+/// ```
+/// ' Get details about a file
+/// Dim args = Seq.New()
+/// args.Push("-l")
+/// args.Push(filename)
+/// Dim info = Exec.CaptureArgs("/bin/ls", args)
+/// Print "File info: " & info.Trim()
+///
+/// ' Query git for commit info
+/// args = Seq.New()
+/// args.Push("log")
+/// args.Push("--oneline")
+/// args.Push("-5")
+/// Dim commits = Exec.CaptureArgs("/usr/bin/git", args)
+/// ```
+///
+/// @param program Path to the program to execute.
+/// @param args Seq of strings containing command-line arguments (may be NULL).
+///
+/// @return String containing the program's stdout, or empty string on failure.
+///
+/// @note Does not capture stderr.
+/// @note Arguments are NOT shell-expanded.
+/// @note Returns empty string if program cannot be started.
+///
+/// @see rt_exec_run_args For running without capture
+/// @see rt_exec_shell_capture For shell commands with capture
 rt_string rt_exec_capture_args(rt_string program, void *args)
 {
     if (!program)
@@ -480,6 +699,51 @@ rt_string rt_exec_capture_args(rt_string program, void *args)
     return exec_capture_spawn(prog_str, args);
 }
 
+/// @brief Execute a command through the system shell.
+///
+/// Runs a command string through the system shell, enabling shell features
+/// like pipes, redirections, variable expansion, and wildcards.
+///
+/// **Usage example:**
+/// ```
+/// ' Use shell pipelines
+/// Dim code = Exec.Shell("ls -la | grep .txt | wc -l")
+///
+/// ' Use redirection
+/// Exec.Shell("echo hello > output.txt")
+///
+/// ' Use shell features
+/// Exec.Shell("for f in *.txt; do echo $f; done")
+/// ```
+///
+/// **Shell used:**
+/// - Unix: `/bin/sh -c "command"`
+/// - Windows: `cmd.exe /c "command"`
+///
+/// **⚠️ SECURITY WARNING:**
+/// **NEVER** pass unsanitized user input to this function!
+/// ```
+/// ' DANGEROUS - shell injection!
+/// Exec.Shell("grep " & userInput & " file.txt")
+/// ' If userInput = "; rm -rf /", disaster ensues!
+///
+/// ' Use RunArgs instead for user input
+/// Dim args = Seq.New()
+/// args.Push(userInput)
+/// args.Push("file.txt")
+/// Exec.RunArgs("/bin/grep", args)
+/// ```
+///
+/// @param command Shell command string to execute.
+///
+/// @return Exit code from the shell, or -1 on failure.
+///
+/// @note Empty command returns 0 (success).
+/// @note Uses system shell - behavior may vary across platforms.
+/// @note Traps if command is NULL.
+///
+/// @see rt_exec_run_args For safer execution with user input
+/// @see rt_exec_shell_capture For capturing shell output
 int64_t rt_exec_shell(rt_string command)
 {
     if (!command)
@@ -519,6 +783,49 @@ int64_t rt_exec_shell(rt_string command)
 #endif
 }
 
+/// @brief Execute a shell command and capture its output.
+///
+/// Runs a command through the system shell and captures its standard output.
+/// This is useful for running complex shell pipelines and capturing the result.
+///
+/// **Usage example:**
+/// ```
+/// ' Count text files
+/// Dim count = Exec.ShellCapture("ls *.txt | wc -l")
+/// Print "Found " & count.Trim() & " text files"
+///
+/// ' Get filtered process list
+/// Dim procs = Exec.ShellCapture("ps aux | grep python")
+/// Print procs
+///
+/// ' Use shell features
+/// Dim result = Exec.ShellCapture("echo $HOME")
+/// Print "Home directory: " & result.Trim()
+///
+/// ' Complex pipeline
+/// Dim topFiles = Exec.ShellCapture("du -h * | sort -rh | head -5")
+/// ```
+///
+/// **Output handling:**
+/// - Captures stdout only (not stderr)
+/// - Maximum capture size: 16 MB
+/// - Output includes newlines as written
+/// - Use .Trim() to remove trailing newlines
+///
+/// **⚠️ SECURITY WARNING:**
+/// Same warnings apply as for Shell(). **NEVER** pass unsanitized user
+/// input to this function - use CaptureArgs() instead.
+///
+/// @param command Shell command string to execute.
+///
+/// @return String containing the command's stdout, or empty string on failure.
+///
+/// @note Uses popen() - both stdout and stderr may be captured on some systems.
+/// @note Empty command returns empty string.
+/// @note Traps if command is NULL.
+///
+/// @see rt_exec_capture_args For safer capture with user input
+/// @see rt_exec_shell For shell without capture
 rt_string rt_exec_shell_capture(rt_string command)
 {
     if (!command)

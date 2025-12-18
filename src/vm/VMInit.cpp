@@ -41,6 +41,8 @@ using namespace il::core;
 namespace il::vm
 {
 
+void registerThreadsRuntimeExternals();
+
 namespace
 {
 
@@ -58,6 +60,16 @@ struct NumericLocaleInitializer
 };
 
 [[maybe_unused]] const NumericLocaleInitializer kNumericLocaleInitializer{};
+
+struct ThreadsRuntimeInitializer
+{
+    ThreadsRuntimeInitializer()
+    {
+        registerThreadsRuntimeExternals();
+    }
+};
+
+[[maybe_unused]] const ThreadsRuntimeInitializer kThreadsRuntimeInitializer{};
 
 /// @brief Static initializer that runs runtime descriptor sanity checks.
 /// @details Validates that runtime descriptors are consistent before any VM
@@ -171,6 +183,26 @@ VM::VM(const Module &m,
     : mod(m), tracer(tc), debug(std::move(dbg)), script(script), maxSteps(ms),
       stackBytes_(stackBytes ? stackBytes : Frame::kDefaultStackSize)
 {
+    debug.setSourceManager(tc.sm);
+    init(nullptr);
+}
+
+VM::VM(const Module &m,
+       std::shared_ptr<ProgramState> program,
+       TraceConfig tc,
+       uint64_t ms,
+       DebugCtrl dbg,
+       DebugScript *script,
+       std::size_t stackBytes)
+    : mod(m), tracer(tc), debug(std::move(dbg)), script(script), maxSteps(ms),
+      stackBytes_(stackBytes ? stackBytes : Frame::kDefaultStackSize)
+{
+    debug.setSourceManager(tc.sm);
+    init(std::move(program));
+}
+
+void VM::init(std::shared_ptr<ProgramState> program)
+{
     // Runtime overrides via environment -------------------------------------
     if (const char *envCounts = std::getenv("VIPER_ENABLE_OPCOUNTS"))
     {
@@ -252,35 +284,42 @@ VM::VM(const Module &m,
         std::fprintf(stderr, "[DEBUG][VM] dispatch kind: %s\n", dispatchKindName(dispatchKind));
     }
 
-    debug.setSourceManager(tc.sm);
     // Cache pointer to opcode handler table once.
     handlerTable_ = &VM::getOpcodeHandlers();
 
-    // Initialize per-VM runtime context for isolated state
-    rtContext = std::unique_ptr<RtContext, RtContextDeleter>(new RtContext());
-    rt_context_init(rtContext.get());
-
-    // Reserve map capacities based on module sizes to reduce rehashing.
-    fnMap.reserve(m.functions.size());
-    strMap.reserve(m.globals.size());
-    mutableGlobalMap.reserve(m.globals.size());
-    // Cache function pointers and constant strings for fast lookup during
-    // execution and for resolving runtime bridge requests such as ConstStr.
-    for (const auto &f : m.functions)
-        fnMap[f.name] = &f;
-    for (const auto &g : m.globals)
+    if (program)
     {
-        // String globals (including empty strings) go into strMap.
-        // The parser requires all `global [const] str` declarations to have an
-        // initializer, so this branch handles both "foo" and "" literals.
-        if (g.type.kind == il::core::Type::Kind::Str)
+        programState_ = std::move(program);
+        if (!programState_->module)
         {
-            strMap[g.name] = ViperStringHandle(toViperString(g.init, AssumeNullTerminated::Yes));
+            programState_->module = &mod;
         }
-        else
+        else if (programState_->module != &mod)
         {
-            // Mutable globals: allocate zero-initialized storage
-            size_t size = 8; // Default to 8 bytes for most types
+            std::fprintf(stderr, "VM: fatal: thread program state module mismatch\n");
+            std::abort();
+        }
+    }
+    else
+    {
+        programState_ = std::make_shared<ProgramState>();
+        programState_->module = &mod;
+        programState_->rtContext = std::shared_ptr<RtContext>(new RtContext(), RtContextDeleter{});
+        rt_context_init(programState_->rtContext.get());
+
+        programState_->strMap.reserve(mod.globals.size());
+        programState_->mutableGlobalMap.reserve(mod.globals.size());
+
+        for (const auto &g : mod.globals)
+        {
+            if (g.type.kind == il::core::Type::Kind::Str)
+            {
+                programState_->strMap[g.name] =
+                    ViperStringHandle(toViperString(g.init, AssumeNullTerminated::Yes));
+                continue;
+            }
+
+            size_t size = 8;
             if (g.type.kind == il::core::Type::Kind::I1)
                 size = 1;
             void *storage = std::calloc(1, size);
@@ -289,9 +328,16 @@ VM::VM(const Module &m,
                 std::fprintf(stderr, "VM: fatal: failed to allocate mutable global storage\n");
                 std::abort();
             }
-            mutableGlobalMap[g.name] = storage;
+            programState_->mutableGlobalMap[g.name] = storage;
         }
     }
+
+    // Reserve map capacities based on module sizes to reduce rehashing.
+    fnMap.reserve(mod.functions.size());
+    // Cache function pointers and constant strings for fast lookup during
+    // execution and for resolving runtime bridge requests such as ConstStr.
+    for (const auto &f : mod.functions)
+        fnMap[f.name] = &f;
 
     // Pre-populate string literal cache to eliminate map lookups on hot path.
     // This scans all const_str operands in the module and creates rt_string
@@ -299,7 +345,7 @@ VM::VM(const Module &m,
     // First, estimate the number of string occurrences to reserve capacity.
     {
         size_t estimate = 0;
-        for (const auto &f : m.functions)
+        for (const auto &f : mod.functions)
             for (const auto &block : f.blocks)
                 for (const auto &instr : block.instructions)
                 {
@@ -314,7 +360,7 @@ VM::VM(const Module &m,
         if (estimate)
             inlineLiteralCache.reserve(estimate);
     }
-    for (const auto &f : m.functions)
+    for (const auto &f : mod.functions)
     {
         for (const auto &block : f.blocks)
         {
@@ -325,10 +371,8 @@ VM::VM(const Module &m,
                 {
                     if (operand.kind == Value::Kind::ConstStr)
                     {
-                        // Only insert if not already present (avoid duplicates)
                         if (inlineLiteralCache.find(operand.str) == inlineLiteralCache.end())
                         {
-                            // Use same logic as evalConstStr in VMContext.cpp
                             if (operand.str.find('\0') == std::string::npos)
                                 inlineLiteralCache[operand.str] =
                                     ViperStringHandle(rt_const_cstr(operand.str.c_str()));
@@ -363,27 +407,17 @@ VM::VM(const Module &m,
     }
 
     // Build reverse map from BasicBlock -> Function for fast exception handler lookup.
-    // This eliminates the O(N*M) linear scan in prepareTrap, providing a 50-90%
-    // improvement in exception handling performance.
-    // Compute total blocks to reserve map capacity and avoid rehashing.
     {
         size_t totalBlocks = 0;
-        for (const auto &f : m.functions)
+        for (const auto &f : mod.functions)
             totalBlocks += f.blocks.size();
         blockToFunction.reserve(totalBlocks);
-        for (const auto &f : m.functions)
+        for (const auto &f : mod.functions)
             for (const auto &block : f.blocks)
                 blockToFunction[&block] = &f;
     }
 
-    // Initialize fast-path debug flags from current configuration.
-    // These flags enable cheap boolean tests in hot paths to avoid
-    // function calls and complex checks when debugging is disabled.
     refreshDebugFlags();
-
-    // Pre-allocate the execution stack to avoid reallocation during typical execution.
-    // Most programs have call depths < 64, so this eliminates heap allocation for
-    // ExecStackGuard push/pop operations in common cases (HIGH-5 optimization).
     execStack.reserve(kExecStackInitialCapacity);
 }
 

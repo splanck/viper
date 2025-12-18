@@ -46,7 +46,7 @@ static rt_heap_hdr_t *payload_to_hdr(void *payload)
     uint8_t *raw = (uint8_t *)payload;
     rt_heap_hdr_t *hdr = (rt_heap_hdr_t *)(raw - sizeof(rt_heap_hdr_t));
     assert(hdr->magic == RT_MAGIC);
-    assert(hdr->refcnt != (size_t)-1);
+    assert(__atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED) != (size_t)-1);
     return hdr;
 }
 
@@ -62,7 +62,7 @@ static void rt_heap_validate_header(const rt_heap_hdr_t *hdr)
 {
     assert(hdr);
     assert(hdr->magic == RT_MAGIC);
-    assert(hdr->refcnt != (size_t)-1);
+    assert(__atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED) != (size_t)-1);
     switch ((rt_heap_kind_t)hdr->kind)
     {
         case RT_HEAP_STRING:
@@ -120,7 +120,7 @@ void *rt_heap_alloc(rt_heap_kind_t kind,
     hdr->kind = (uint16_t)kind;
     hdr->elem_kind = (uint16_t)elem_kind;
     hdr->flags = 0;
-    hdr->refcnt = 1;
+    __atomic_store_n(&hdr->refcnt, 1, __ATOMIC_RELAXED);
     hdr->len = init_len;
     hdr->cap = cap;
     if (payload_bytes > 0)
@@ -147,23 +147,19 @@ void rt_heap_retain(void *payload)
 
     // Debug validation (no-op in release builds)
     RT_HEAP_VALIDATE(hdr);
-    assert(hdr->refcnt > 0);
-
-    // Fast path: just increment (overflow check only for extreme cases)
-#ifdef NDEBUG
-    // Release build: skip overflow check for common case
-    hdr->refcnt++;
-#else
-    // Debug build: guard against overflow
-    if (hdr->refcnt >= SIZE_MAX - 1)
+    const size_t old = __atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED);
+    assert(old > 0);
+#ifndef NDEBUG
+    // Debug build: best-effort overflow guard (cannot be made perfect without a CAS loop).
+    if (old >= SIZE_MAX - 1)
     {
         rt_trap("refcount overflow");
         return;
     }
-    hdr->refcnt++;
-#ifdef VIPER_RC_DEBUG
-    fprintf(stderr, "rt_heap_retain(%p) => %zu\n", payload, hdr->refcnt);
 #endif
+    const size_t next = __atomic_fetch_add(&hdr->refcnt, 1, __ATOMIC_RELAXED) + 1;
+#ifdef VIPER_RC_DEBUG
+    fprintf(stderr, "rt_heap_retain(%p) => %zu\n", payload, next);
 #endif
 }
 
@@ -183,13 +179,16 @@ static size_t rt_heap_release_impl(rt_heap_hdr_t *hdr, void *payload, int free_w
     if (!hdr)
         return 0;
     RT_HEAP_VALIDATE(hdr);
-    assert(hdr->refcnt > 0);
-    size_t next = --hdr->refcnt;
+    const size_t old = __atomic_fetch_sub(&hdr->refcnt, 1, __ATOMIC_RELEASE);
+    assert(old > 0);
+    const size_t next = old - 1;
 #ifdef VIPER_RC_DEBUG
     fprintf(stderr, "rt_heap_release(%p) => %zu\n", payload, next);
 #endif
     if (next == 0 && free_when_zero)
     {
+        // Acquire fence pairs with releasing decrements from other threads.
+        __atomic_thread_fence(__ATOMIC_ACQUIRE);
         memset(hdr, 0, sizeof(*hdr));
         free(hdr);
         return 0;
@@ -237,7 +236,7 @@ void rt_heap_free_zero_ref(void *payload)
     if (!hdr)
         return;
     RT_HEAP_VALIDATE(hdr);
-    if (hdr->refcnt != 0)
+    if (__atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED) != 0)
         return;
     memset(hdr, 0, sizeof(*hdr));
     free(hdr);

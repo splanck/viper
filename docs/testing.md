@@ -160,7 +160,7 @@ Located in `src/tests/common/CodegenFixture.hpp`. Orchestrates comparison betwee
 ### Unit Test Template
 
 ```cpp
-#include "tests/unit/GTestStub.hpp"
+#include "tests/TestHarness.hpp"
 
 TEST(MySuite, MyTest) {
     // Arrange
@@ -169,8 +169,8 @@ TEST(MySuite, MyTest) {
 }
 
 int main(int argc, char **argv) {
-    ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }
 ```
 
@@ -205,6 +205,13 @@ The VM concurrency tests verify thread-safety of the VM execution model:
 - `ActiveVMGuard` RAII pattern properly manages VM context binding
 - Runtime callbacks preserve thread-local context
 - Trap reports include correct VM context
+
+`Viper.Threads` adds additional tests that verify shared-memory threading semantics:
+
+- FIFO-fair, re-entrant monitor behavior (`Viper.Threads.Monitor`)
+- Thread lifecycle and join timeouts (`Viper.Threads.Thread`)
+- FIFO-serialized safe variables (`Viper.Threads.SafeI64`)
+- VM thread start override (`Viper.Threads.Thread.Start`) and shared globals behavior
 
 ### Stress Test
 
@@ -290,6 +297,12 @@ The tests verify these invariants from `docs/vm.md`:
 4. **Different VM forbidden**: Attempting to bind a different VM on the same thread triggers assertion failure (debug
    builds)
 5. **Clean state**: After VM::run() completes, thread-local state is cleared
+
+### Defined vs Undefined Threaded Programs
+
+Viper’s VM/native determinism guarantee applies to **defined** threaded programs: shared mutable state must be accessed
+via `Viper.Threads.Monitor` (or the `Viper.Threads.Safe*` wrappers). Programs with data races are **undefined** (VM and
+native are not required to match).
 
 ---
 

@@ -28,14 +28,6 @@
 #include <sys/wait.h>
 #endif
 
-#if __has_include(<gtest/gtest.h>)
-#ifdef VIPER_HAS_GTEST
-#include <gtest/gtest.h>
-#define VIPER_HAS_GTEST 1
-#else
-#define VIPER_HAS_GTEST 0
-#endif
-
 namespace
 {
 
@@ -211,22 +203,6 @@ entry:
 
 } // namespace
 
-#if VIPER_HAS_GTEST
-
-TEST(CodegenObjectOnlyCliTest, EmitsObjectWithoutMain)
-{
-    const ObjectOnlyResult result = runObjectOnlyCompileTest();
-    ASSERT_TRUE(result.success) << result.message;
-}
-
-int main(int argc, char **argv)
-{
-    ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
-}
-
-#else
-
 int main()
 {
     const ObjectOnlyResult result = runObjectOnlyCompileTest();
@@ -237,5 +213,3 @@ int main()
     }
     return EXIT_SUCCESS;
 }
-
-#endif

@@ -4,15 +4,64 @@
 // See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_stopwatch.c
-// Purpose: High-precision stopwatch for benchmarking and performance measurement.
-// Key invariants: Accumulated time is monotonic; stopwatch state is consistent
-//                 across start/stop cycles; nanosecond resolution where available.
-// Ownership/Lifetime: Stopwatch objects are heap-allocated; caller responsible
-//                     for lifetime management.
-// Links: docs/viperlib.md
-//
+///
+/// @file rt_stopwatch.c
+/// @brief High-precision stopwatch for benchmarking and performance measurement.
+///
+/// This file implements a stopwatch that measures elapsed time with nanosecond
+/// resolution (where available). Unlike DateTime.NowMs(), the Stopwatch uses a
+/// monotonic clock that is not affected by system time changes, making it ideal
+/// for accurate performance measurement.
+///
+/// **Stopwatch vs DateTime:**
+/// - Stopwatch: Uses monotonic clock, immune to system time changes
+/// - DateTime: Uses wall clock, can jump forward/backward with system time
+///
+/// **Timer States:**
+/// ```
+/// ┌─────────────────────────────────────────────────────────────┐
+/// │                                                             │
+/// │  STOPPED ──────► RUNNING ──────► STOPPED                    │
+/// │     │    Start()    │    Stop()     │                       │
+/// │     │               │               │                       │
+/// │     └───────────────┴───────────────┘                       │
+/// │                 Reset()                                     │
+/// └─────────────────────────────────────────────────────────────┘
+/// ```
+///
+/// **Time Units:**
+/// ```
+/// 1 second = 1,000 milliseconds (ms)
+///          = 1,000,000 microseconds (μs/us)
+///          = 1,000,000,000 nanoseconds (ns)
+/// ```
+///
+/// **Typical Usage Pattern:**
+/// ```
+/// Dim sw = Stopwatch.StartNew()    ' Create and start
+/// ' ... code to measure ...
+/// sw.Stop()
+/// Print "Elapsed: " & sw.ElapsedMs & " ms"
+///
+/// sw.Restart()                     ' Reset and start again
+/// ' ... more code ...
+/// Print "Elapsed: " & sw.ElapsedMs & " ms"
+/// ```
+///
+/// **Use Cases:**
+/// - Benchmarking code performance
+/// - Profiling function execution time
+/// - Game frame timing
+/// - Animation timing
+/// - Rate limiting
+/// - Timeout detection
+///
+/// **Thread Safety:** Stopwatch objects are not thread-safe. External
+/// synchronization is required for multi-threaded access.
+///
+/// @see rt_countdown.c For countdown timers (measuring time until expiration)
+/// @see rt_datetime.c For wall clock time operations
+///
 //===----------------------------------------------------------------------===//
 
 #include "rt_stopwatch.h"
@@ -88,8 +137,28 @@ static int64_t stopwatch_get_elapsed_ns(ViperStopwatch *sw)
 // Public API
 //=============================================================================
 
-/// @brief Create a new stopped stopwatch.
-/// @return Pointer to new stopwatch object.
+/// @brief Creates a new stopwatch in stopped state.
+///
+/// Allocates and initializes a Stopwatch object with zero elapsed time.
+/// The stopwatch starts in a stopped state. Call Start() to begin timing.
+///
+/// **Usage example:**
+/// ```
+/// Dim sw = Stopwatch.New()    ' Creates stopped stopwatch
+/// ' ... prepare for measurement ...
+/// sw.Start()                  ' Begin timing
+/// ' ... code to measure ...
+/// sw.Stop()
+/// Print sw.ElapsedMs & " ms"
+/// ```
+///
+/// @return A new Stopwatch object in stopped state. Traps on allocation failure.
+///
+/// @note O(1) time complexity.
+/// @note The stopwatch is managed by Viper's garbage collector.
+///
+/// @see rt_stopwatch_start_new For creating and immediately starting
+/// @see rt_stopwatch_start For starting the stopwatch
 void *rt_stopwatch_new(void)
 {
     ViperStopwatch *sw = (ViperStopwatch *)rt_obj_new_i64(0, (int64_t)sizeof(ViperStopwatch));
@@ -106,8 +175,32 @@ void *rt_stopwatch_new(void)
     return sw;
 }
 
-/// @brief Create and immediately start a new stopwatch.
-/// @return Pointer to new running stopwatch object.
+/// @brief Creates a new stopwatch and immediately starts it.
+///
+/// Convenience function that creates a new Stopwatch object and starts it
+/// in a single call. This is the most common way to create a stopwatch when
+/// you want to begin timing immediately.
+///
+/// **Usage example:**
+/// ```
+/// Dim sw = Stopwatch.StartNew()
+/// ' ... code to measure ...
+/// sw.Stop()
+/// Print "Elapsed: " & sw.ElapsedMs & " ms"
+/// ```
+///
+/// **Equivalent to:**
+/// ```
+/// Dim sw = Stopwatch.New()
+/// sw.Start()
+/// ```
+///
+/// @return A new Stopwatch object that is already running.
+///
+/// @note O(1) time complexity.
+/// @note This is the preferred way to create a stopwatch for benchmarking.
+///
+/// @see rt_stopwatch_new For creating without starting
 void *rt_stopwatch_start_new(void)
 {
     ViperStopwatch *sw = (ViperStopwatch *)rt_stopwatch_new();
@@ -115,9 +208,37 @@ void *rt_stopwatch_start_new(void)
     return sw;
 }
 
-/// @brief Start or resume the stopwatch.
-/// @param obj Stopwatch pointer.
-/// @details Has no effect if already running.
+/// @brief Starts or resumes the stopwatch.
+///
+/// Begins or resumes tracking elapsed time. If the stopwatch is already
+/// running, this function has no effect. When started after being stopped,
+/// new time is added to the previously accumulated time.
+///
+/// **State transitions:**
+/// - Stopped → Running (begins timing)
+/// - Running → Running (no change)
+///
+/// **Usage example:**
+/// ```
+/// Dim sw = Stopwatch.New()
+/// sw.Start()               ' Begin timing
+/// Sleep(100)
+/// sw.Stop()                ' Pause timing (100ms elapsed)
+/// Sleep(100)               ' This time is not counted
+/// sw.Start()               ' Resume timing
+/// Sleep(100)
+/// sw.Stop()
+/// Print sw.ElapsedMs       ' ~200ms (not 300ms)
+/// ```
+///
+/// @param obj Pointer to a Stopwatch object.
+///
+/// @note O(1) time complexity.
+/// @note Has no effect if already running.
+/// @note Elapsed time accumulates across multiple start/stop cycles.
+///
+/// @see rt_stopwatch_stop For pausing the stopwatch
+/// @see rt_stopwatch_restart For resetting and starting
 void rt_stopwatch_start(void *obj)
 {
     ViperStopwatch *sw = (ViperStopwatch *)obj;
@@ -129,9 +250,34 @@ void rt_stopwatch_start(void *obj)
     }
 }
 
-/// @brief Stop/pause the stopwatch.
-/// @param obj Stopwatch pointer.
-/// @details Preserves accumulated time. Has no effect if already stopped.
+/// @brief Stops (pauses) the stopwatch.
+///
+/// Pauses time tracking while preserving the accumulated elapsed time. The
+/// stopwatch can be resumed later with Start(). If already stopped, has no
+/// effect.
+///
+/// **State transitions:**
+/// - Running → Stopped (preserves time)
+/// - Stopped → Stopped (no change)
+///
+/// **Usage example:**
+/// ```
+/// Dim sw = Stopwatch.StartNew()
+/// ' ... measured code ...
+/// sw.Stop()
+///
+/// ' Read elapsed time multiple times (it won't change while stopped)
+/// Print "First read: " & sw.ElapsedMs
+/// Print "Second read: " & sw.ElapsedMs  ' Same value
+/// ```
+///
+/// @param obj Pointer to a Stopwatch object.
+///
+/// @note O(1) time complexity.
+/// @note Preserves accumulated elapsed time.
+///
+/// @see rt_stopwatch_start For resuming the stopwatch
+/// @see rt_stopwatch_reset For clearing elapsed time
 void rt_stopwatch_stop(void *obj)
 {
     ViperStopwatch *sw = (ViperStopwatch *)obj;
@@ -144,8 +290,29 @@ void rt_stopwatch_stop(void *obj)
     }
 }
 
-/// @brief Reset the stopwatch to zero and stop it.
-/// @param obj Stopwatch pointer.
+/// @brief Resets the stopwatch to zero and stops it.
+///
+/// Clears all accumulated elapsed time and stops the stopwatch. After reset,
+/// the stopwatch is as if it were newly created.
+///
+/// **Usage example:**
+/// ```
+/// Dim sw = Stopwatch.StartNew()
+/// Sleep(100)
+/// Print sw.ElapsedMs         ' ~100ms
+///
+/// sw.Reset()
+/// Print sw.ElapsedMs         ' 0
+/// Print sw.IsRunning         ' False
+/// ```
+///
+/// @param obj Pointer to a Stopwatch object.
+///
+/// @note O(1) time complexity.
+/// @note After reset: Elapsed = 0, IsRunning = false
+///
+/// @see rt_stopwatch_restart For resetting and immediately starting
+/// @see rt_stopwatch_start For starting after reset
 void rt_stopwatch_reset(void *obj)
 {
     ViperStopwatch *sw = (ViperStopwatch *)obj;
@@ -155,9 +322,37 @@ void rt_stopwatch_reset(void *obj)
     sw->running = false;
 }
 
-/// @brief Reset and immediately start the stopwatch.
-/// @param obj Stopwatch pointer.
-/// @details Equivalent to Reset() followed by Start() but atomic.
+/// @brief Resets the stopwatch to zero and immediately starts it.
+///
+/// Atomically clears all accumulated time and starts timing from zero. This
+/// is equivalent to Reset() followed by Start(), but done in a single call
+/// for convenience and to avoid race conditions.
+///
+/// **Usage example:**
+/// ```
+/// Dim sw = Stopwatch.StartNew()
+///
+/// For i = 1 To 5
+///     sw.Restart()           ' Reset and start for each iteration
+///     DoSomeWork()
+///     Print "Iteration " & i & ": " & sw.ElapsedMs & " ms"
+/// Next
+/// ```
+///
+/// **Equivalent to:**
+/// ```
+/// sw.Reset()
+/// sw.Start()
+/// ```
+///
+/// @param obj Pointer to a Stopwatch object.
+///
+/// @note O(1) time complexity.
+/// @note After restart: Elapsed = 0, IsRunning = true
+/// @note Useful for repeated measurements in a loop.
+///
+/// @see rt_stopwatch_reset For resetting without starting
+/// @see rt_stopwatch_start For starting without resetting
 void rt_stopwatch_restart(void *obj)
 {
     ViperStopwatch *sw = (ViperStopwatch *)obj;
@@ -167,33 +362,113 @@ void rt_stopwatch_restart(void *obj)
     sw->running = true;
 }
 
-/// @brief Get elapsed time in nanoseconds.
-/// @param obj Stopwatch pointer.
-/// @return Total elapsed nanoseconds.
+/// @brief Gets the total elapsed time in nanoseconds.
+///
+/// Returns the total accumulated elapsed time with nanosecond precision.
+/// If the stopwatch is running, includes the time since it was started.
+///
+/// **Time conversion reference:**
+/// ```
+/// nanoseconds / 1,000         = microseconds
+/// nanoseconds / 1,000,000     = milliseconds
+/// nanoseconds / 1,000,000,000 = seconds
+/// ```
+///
+/// @param obj Pointer to a Stopwatch object.
+///
+/// @return Total elapsed time in nanoseconds.
+///
+/// @note O(1) time complexity.
+/// @note Can be called while running (returns current elapsed time).
+/// @note Maximum measurable time: ~292 years at nanosecond precision.
+///
+/// @see rt_stopwatch_elapsed_us For microseconds
+/// @see rt_stopwatch_elapsed_ms For milliseconds
 int64_t rt_stopwatch_elapsed_ns(void *obj)
 {
     return stopwatch_get_elapsed_ns((ViperStopwatch *)obj);
 }
 
-/// @brief Get elapsed time in microseconds.
-/// @param obj Stopwatch pointer.
-/// @return Total elapsed microseconds.
+/// @brief Gets the total elapsed time in microseconds.
+///
+/// Returns the total accumulated elapsed time in microseconds (μs).
+/// One microsecond is one millionth of a second.
+///
+/// **Useful for:**
+/// - Measuring fast operations (< 1ms)
+/// - Higher precision than milliseconds
+/// - Database query timing
+/// - API call latency
+///
+/// @param obj Pointer to a Stopwatch object.
+///
+/// @return Total elapsed time in microseconds.
+///
+/// @note O(1) time complexity.
+/// @note Truncates (does not round) nanoseconds.
+///
+/// @see rt_stopwatch_elapsed_ns For nanoseconds (highest precision)
+/// @see rt_stopwatch_elapsed_ms For milliseconds
 int64_t rt_stopwatch_elapsed_us(void *obj)
 {
     return stopwatch_get_elapsed_ns((ViperStopwatch *)obj) / 1000;
 }
 
-/// @brief Get elapsed time in milliseconds.
-/// @param obj Stopwatch pointer.
-/// @return Total elapsed milliseconds.
+/// @brief Gets the total elapsed time in milliseconds.
+///
+/// Returns the total accumulated elapsed time in milliseconds (ms).
+/// This is the most commonly used time unit for performance measurement.
+///
+/// **Usage example:**
+/// ```
+/// Dim sw = Stopwatch.StartNew()
+/// LoadDataFromDatabase()
+/// sw.Stop()
+///
+/// If sw.ElapsedMs > 1000 Then
+///     Print "Warning: Query took " & sw.ElapsedMs & " ms"
+/// End If
+/// ```
+///
+/// @param obj Pointer to a Stopwatch object.
+///
+/// @return Total elapsed time in milliseconds.
+///
+/// @note O(1) time complexity.
+/// @note Truncates (does not round) nanoseconds.
+///
+/// @see rt_stopwatch_elapsed_ns For nanoseconds (highest precision)
+/// @see rt_stopwatch_elapsed_us For microseconds
 int64_t rt_stopwatch_elapsed_ms(void *obj)
 {
     return stopwatch_get_elapsed_ns((ViperStopwatch *)obj) / 1000000;
 }
 
-/// @brief Check if the stopwatch is currently running.
-/// @param obj Stopwatch pointer.
-/// @return Non-zero if running, zero if stopped.
+/// @brief Checks if the stopwatch is currently running.
+///
+/// Returns true if the stopwatch is actively tracking time (Start() was
+/// called and Stop() has not been called since).
+///
+/// **Usage example:**
+/// ```
+/// Dim sw = Stopwatch.New()
+/// Print sw.IsRunning          ' False
+///
+/// sw.Start()
+/// Print sw.IsRunning          ' True
+///
+/// sw.Stop()
+/// Print sw.IsRunning          ' False
+/// ```
+///
+/// @param obj Pointer to a Stopwatch object.
+///
+/// @return 1 (true) if running, 0 (false) if stopped.
+///
+/// @note O(1) time complexity.
+///
+/// @see rt_stopwatch_start For starting the stopwatch
+/// @see rt_stopwatch_stop For stopping the stopwatch
 int8_t rt_stopwatch_is_running(void *obj)
 {
     return ((ViperStopwatch *)obj)->running ? 1 : 0;

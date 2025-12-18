@@ -12,11 +12,9 @@
 // Links: src/codegen/x86_64/LoweringRules.cpp, src/codegen/x86_64/LoweringRuleTable.hpp
 //
 //===----------------------------------------------------------------------===//
-
-#include "GTestStub.hpp"
-
 #include "codegen/x86_64/LowerILToMIR.hpp"
 #include "codegen/x86_64/LoweringRules.hpp"
+#include "tests/TestHarness.hpp"
 
 #include <string>
 
@@ -135,6 +133,6 @@ TEST(LoweringRuleLookup, SelectsCallRule)
 
 int main(int argc, char **argv)
 {
-    testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

@@ -4,10 +4,103 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/codegen/aarch64/RodataPool.cpp
-// Purpose: Deduplicate and emit string literals for AArch64 assembly.
-//
+///
+/// @file RodataPool.cpp
+/// @brief Read-only data pool for string literal deduplication and emission.
+///
+/// This file implements the RodataPool class which manages string literals
+/// during AArch64 code generation. It deduplicates identical string constants
+/// and emits them to the appropriate read-only data section in the generated
+/// assembly.
+///
+/// **What is a Rodata Pool?**
+/// A rodata (read-only data) pool collects all string literals used in a
+/// compilation unit and emits them efficiently. String deduplication ensures
+/// that identical strings share a single storage location, reducing binary size.
+///
+/// **Pool Architecture:**
+/// ```
+/// IL Module:                           RodataPool:
+/// ┌────────────────────────┐          ┌────────────────────────────────┐
+/// │ global @hello = "Hi"   │          │  contentToLabel_:              │
+/// │ global @greet = "Hi"   │ ───────► │    "Hi" → "L.str.0"            │
+/// │ global @world = "World"│          │    "World" → "L.str.1"         │
+/// └────────────────────────┘          │                                │
+///                                     │  nameToLabel_:                 │
+///                                     │    "@hello" → "L.str.0"        │
+///                                     │    "@greet" → "L.str.0" (dup!) │
+///                                     │    "@world" → "L.str.1"        │
+///                                     │                                │
+///                                     │  ordered_:                     │
+///                                     │    [("L.str.0", "Hi"),         │
+///                                     │     ("L.str.1", "World")]      │
+///                                     └────────────────────────────────┘
+/// ```
+///
+/// **Deduplication Strategy:**
+/// 1. Each string added via `addString()` is checked against existing content
+/// 2. If content already exists, the IL name maps to the existing label
+/// 3. If content is new, a fresh label is generated and the string is stored
+/// ```cpp
+/// // First occurrence: creates new entry
+/// pool.addString("@hello", "Hi");  // L.str.0 → "Hi"
+///
+/// // Duplicate content: reuses existing label
+/// pool.addString("@greet", "Hi");  // @greet → L.str.0 (same as @hello)
+/// ```
+///
+/// **Escape Sequences:**
+/// The `escapeAsciz()` function converts raw bytes to assembly-safe strings:
+///
+/// | Input Byte | Output Sequence |
+/// |------------|-----------------|
+/// | `"`        | `\"`            |
+/// | `\`        | `\\`            |
+/// | `\n`       | `\n`            |
+/// | `\t`       | `\t`            |
+/// | 0x00-0x1F  | `\x00`-`\x1F`   |
+/// | 0x80-0xFF  | `\x80`-`\xFF`   |
+/// | 0x20-0x7E  | printable char  |
+///
+/// **Assembly Output:**
+/// ```asm
+/// ; On macOS/Darwin:
+/// .section __TEXT,__const
+/// L.str.0:
+///   .asciz "Hi"
+/// L.str.1:
+///   .asciz "World"
+///
+/// ; On Linux:
+/// .section .rodata
+/// L.str.0:
+///   .asciz "Hi"
+/// L.str.1:
+///   .asciz "World"
+/// ```
+///
+/// **Integration with Code Generation:**
+/// ```cpp
+/// // 1. Build pool from module globals
+/// RodataPool pool;
+/// pool.buildFromModule(module);
+///
+/// // 2. During instruction lowering, reference labels
+/// // adrp x0, L.str.0@PAGE
+/// // add  x0, x0, L.str.0@PAGEOFF
+///
+/// // 3. Emit rodata section before/after code
+/// pool.emit(output);
+/// ```
+///
+/// **Label Naming Convention:**
+/// - Labels are generated as `L.str.N` where N is the insertion order index
+/// - The `L.` prefix indicates a local label (not exported in symbol table)
+/// - This prevents symbol collisions with user-defined identifiers
+///
+/// @see AsmEmitter.cpp For assembly generation that uses rodata labels
+/// @see LowerILToMIR.cpp For const_str instruction lowering
+///
 //===----------------------------------------------------------------------===//
 
 #include "codegen/aarch64/RodataPool.hpp"

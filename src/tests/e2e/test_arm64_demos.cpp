@@ -4,13 +4,7 @@
 // File: tests/e2e/test_arm64_demos.cpp
 // Purpose: End-to-end tests for ARM64 code generation with demo programs
 //===----------------------------------------------------------------------===//
-
-#ifdef VIPER_HAS_GTEST
-#include <gtest/gtest.h>
-#else
-#include "../unit/GTestStub.hpp"
-#endif
-
+#include "tests/TestHarness.hpp"
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -271,6 +265,6 @@ TEST(ARM64E2E, VtrisCompilesToAsm)
 
 int main(int argc, char **argv)
 {
-    testing::InitGoogleTest(&argc, &argv);
-    return RUN_ALL_TESTS();
+    viper_test::init(&argc, &argv);
+    return viper_test::run_all_tests();
 }

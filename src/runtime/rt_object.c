@@ -4,21 +4,93 @@
 // See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
-//
-// Implements the BASIC runtime's object allocation façade.  The helpers bridge
-// the public C ABI to the shared heap so runtime clients can request
-// zero-initialised payloads, participate in reference counting, and release
-// objects without needing direct knowledge of the heap metadata layout.  Keeping
-// the wrappers here guarantees that both VM and native backends observe
-// identical retain/release semantics.
-//
+///
+/// @file rt_object.c
+/// @brief Object allocation and lifetime management for Viper.
+///
+/// This file implements the core object allocation and reference counting
+/// system for Viper's runtime. All heap-allocated objects (class instances,
+/// collections, etc.) use these functions for memory management.
+///
+/// **What is an Object?**
+/// In Viper's runtime, an "object" is any heap-allocated value that:
+/// - Has a header with reference count and type metadata
+/// - Participates in automatic memory management
+/// - May have a vtable pointer for polymorphism (class instances)
+///
+/// **Memory Layout:**
+/// ```
+/// ┌─────────────────────────────────────────────────────────────────────────┐
+/// │                         Heap Allocation                                 │
+/// │                                                                         │
+/// │  ┌──────────────────────┐  ┌────────────────────────────────────────┐   │
+/// │  │   rt_heap_hdr_t      │  │         Payload (user data)            │   │
+/// │  │ ┌──────────────────┐ │  │ ┌────────────────────────────────────┐ │   │
+/// │  │ │ refcnt: 1        │ │  │ │ vptr: *vtable (class instances)   │ │   │
+/// │  │ │ kind: OBJECT     │ │  │ │ field1: ...                       │ │   │
+/// │  │ │ class_id: 42     │ │  │ │ field2: ...                       │ │   │
+/// │  │ │ finalizer: fn    │ │  │ │ ...                               │ │   │
+/// │  │ └──────────────────┘ │  │ └────────────────────────────────────┘ │   │
+/// │  └──────────────────────┘  └────────────────────────────────────────┘   │
+/// │           ▲                              ▲                              │
+/// │           │                              │                              │
+/// │      Hidden from user             Returned to user                      │
+/// └─────────────────────────────────────────────────────────────────────────┘
+/// ```
+///
+/// **Reference Counting:**
+/// Objects use reference counting for automatic memory management:
+/// ```
+/// Dim obj = New MyClass()   ' refcnt = 1
+/// Dim other = obj           ' refcnt = 2 (retain)
+/// other = Nothing           ' refcnt = 1 (release)
+/// obj = Nothing             ' refcnt = 0 → finalizer runs, memory freed
+/// ```
+///
+/// **Object Lifecycle:**
+/// ```
+///   rt_obj_new_i64()
+///        │
+///        ▼
+///   ┌─────────┐     rt_obj_retain_maybe()     ┌─────────┐
+///   │ refcnt  │ ◀────────────────────────────▶│ refcnt  │
+///   │   = 1   │     rt_obj_release_check0()   │   > 1   │
+///   └────┬────┘                               └─────────┘
+///        │
+///        │ rt_obj_release_check0() when refcnt → 0
+///        ▼
+///   ┌─────────┐
+///   │ refcnt  │ ─── rt_obj_free() ───▶ [freed]
+///   │   = 0   │     (runs finalizer)
+///   └─────────┘
+/// ```
+///
+/// **Finalizers:**
+/// Objects can have custom finalizers that run when the reference count
+/// reaches zero. This enables cleanup of external resources:
+/// ```
+/// rt_obj_set_finalizer(obj, my_cleanup_fn);
+/// ```
+///
+/// **System.Object Methods:**
+/// This file also implements the default behavior for System.Object methods:
+/// | Method            | Implementation                                    |
+/// |-------------------|---------------------------------------------------|
+/// | ReferenceEquals   | Pointer comparison                                |
+/// | Equals            | Default: pointer comparison (can be overridden)   |
+/// | GetHashCode       | Default: pointer value as hash                    |
+/// | ToString          | Default: class qualified name from type registry  |
+///
+/// **Thread Safety:**
+/// Reference counting uses atomic operations, making retain/release safe
+/// to call from multiple threads. However, the object's fields are not
+/// automatically synchronized.
+///
+/// @see rt_heap.c For the underlying memory allocator
+/// @see rt_type_registry.c For class metadata and vtables
+/// @see rt_oop.h For OOP type definitions
+///
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Object allocation and lifetime management utilities for the runtime.
-/// @details Defines the ABI-surface functions that allocate tagged payloads on
-///          the shared heap, increment or decrement reference counts, and expose
-///          BASIC-compatible retain/release helpers.
 
 #include "rt_object.h"
 #include "rt_heap.h"
@@ -63,6 +135,30 @@ void *rt_obj_new_i64(int64_t class_id, int64_t byte_size)
     return payload;
 }
 
+/// @brief Set a custom finalizer for an object.
+///
+/// Registers a callback function to be invoked when the object's reference
+/// count reaches zero. This allows objects to clean up external resources
+/// (file handles, network connections, native memory, etc.) before the
+/// object memory is freed.
+///
+/// **Usage example:**
+/// ```c
+/// void my_cleanup(void *obj) {
+///     MyResource *r = (MyResource *)obj;
+///     close_handle(r->handle);
+/// }
+///
+/// void *obj = rt_obj_new_i64(0, sizeof(MyResource));
+/// rt_obj_set_finalizer(obj, my_cleanup);
+/// ```
+///
+/// @param p Object to attach finalizer to (may be NULL).
+/// @param fn Finalizer function, or NULL to clear any existing finalizer.
+///
+/// @note Ignored for NULL pointers or non-object heap allocations.
+/// @note Finalizer runs before the object memory is freed.
+/// @note Only one finalizer per object; setting replaces any previous.
 void rt_obj_set_finalizer(void *p, rt_obj_finalizer_t fn)
 {
     if (!p)
@@ -113,7 +209,8 @@ void rt_obj_free(void *p)
     if (!p)
         return;
     rt_heap_hdr_t *hdr = rt_heap_hdr(p);
-    if (hdr && (rt_heap_kind_t)hdr->kind == RT_HEAP_OBJECT && hdr->refcnt == 0 && hdr->finalizer)
+    if (hdr && (rt_heap_kind_t)hdr->kind == RT_HEAP_OBJECT &&
+        __atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED) == 0 && hdr->finalizer)
     {
         rt_heap_finalizer_t fin = hdr->finalizer;
         hdr->finalizer = NULL;
@@ -122,26 +219,97 @@ void rt_obj_free(void *p)
     rt_heap_free_zero_ref(p);
 }
 
-// --- System.Object surface implementations ---
+// ============================================================================
+// System.Object Method Implementations
+// ============================================================================
 
+/// @brief Check if two object references point to the same instance.
+///
+/// Implements the System.Object.ReferenceEquals static method. This always
+/// performs pointer comparison, ignoring any overridden Equals method.
+///
+/// **Usage example:**
+/// ```vb
+/// If Object.ReferenceEquals(a, b) Then
+///     Print "a and b are the same instance"
+/// End If
+/// ```
+///
+/// @param a First object reference (may be NULL).
+/// @param b Second object reference (may be NULL).
+///
+/// @return 1 if a and b point to the same memory address, 0 otherwise.
+///
+/// @note NULL == NULL returns 1.
 int64_t rt_obj_reference_equals(void *a, void *b)
 {
     return a == b ? 1 : 0;
 }
 
+/// @brief Default implementation of Object.Equals.
+///
+/// Returns true if two references point to the same instance. This default
+/// behavior can be overridden by derived classes to implement value equality.
+///
+/// **Usage example:**
+/// ```vb
+/// If obj1.Equals(obj2) Then
+///     Print "Objects are equal"
+/// End If
+/// ```
+///
+/// @param self The object to compare from.
+/// @param other The object to compare against.
+///
+/// @return 1 if equal, 0 if not equal.
+///
+/// @note Default implementation is reference equality.
+/// @note Derived classes may override to provide value-based equality.
 int64_t rt_obj_equals(void *self, void *other)
 {
-    // Default: reference equality
     return self == other ? 1 : 0;
 }
 
+/// @brief Default implementation of Object.GetHashCode.
+///
+/// Returns a hash code derived from the object's memory address. This provides
+/// a stable hash for the object's lifetime but is not suitable for value-based
+/// hashing.
+///
+/// **Usage example:**
+/// ```vb
+/// Dim hash = obj.GetHashCode()
+/// ```
+///
+/// @param self The object to hash.
+///
+/// @return 64-bit hash code based on the object's address.
+///
+/// @note Derived classes should override if overriding Equals.
+/// @note Two equal objects (by Equals) must return the same hash code.
 int64_t rt_obj_get_hash_code(void *self)
 {
-    // Use pointer value truncated/extended to 64-bit as stable hash
     uintptr_t v = (uintptr_t)self;
     return (int64_t)v;
 }
 
+/// @brief Default implementation of Object.ToString.
+///
+/// Returns the class's qualified name as a string. For example, a Dog class
+/// would return "Dog", and a class in a namespace would return "MyApp.Dog".
+///
+/// **Usage example:**
+/// ```vb
+/// Dim str = obj.ToString()
+/// Print str  ' Prints the class name
+/// ```
+///
+/// @param self The object to convert to string (may be NULL).
+///
+/// @return A new string containing the class name, or "<null>" if self is NULL.
+///
+/// @note Returns "Object" if type metadata is unavailable.
+/// @note Does not include memory address for deterministic test output.
 rt_string rt_obj_to_string(void *self)
 {
     if (!self)
@@ -150,8 +318,6 @@ rt_string rt_obj_to_string(void *self)
     const rt_class_info *ci = rt_get_class_info_from_vptr(obj->vptr);
     if (!ci || !ci->qname)
         return rt_string_from_bytes("Object", 6);
-    // Return the class qualified name as the default string representation
-    // (no address to keep determinism and test stability)
     const char *name = ci->qname;
     size_t len = 0;
     while (name[len] != '\0')

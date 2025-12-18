@@ -12,17 +12,11 @@
 // Links: docs/devdocs/ViperPascal_v0_1_Draft6_Specification.md
 //
 //===----------------------------------------------------------------------===//
-
-#ifdef VIPER_HAS_GTEST
-#include <gtest/gtest.h>
-#else
-#include "../../GTestStub.hpp"
-#endif
-
 #include "frontends/pascal/AST.hpp"
 #include "frontends/pascal/Lexer.hpp"
 #include "frontends/pascal/Parser.hpp"
 #include "support/diagnostics.hpp"
+#include "tests/TestHarness.hpp"
 #include <memory>
 #include <string>
 
@@ -917,9 +911,7 @@ TEST(PascalParserCase, CaseWithBlockBody)
 
 } // namespace
 
-#ifndef VIPER_HAS_GTEST
 int main()
 {
-    return RUN_ALL_TESTS();
+    return viper_test::run_all_tests();
 }
-#endif

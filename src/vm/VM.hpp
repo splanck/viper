@@ -446,6 +446,22 @@ class VM
     using StrMap = std::
         unordered_map<std::string_view, ViperStringHandle, TransparentHashSV, TransparentEqualSV>;
 
+    using MutableGlobalMap =
+        std::unordered_map<std::string_view, void *, TransparentHashSV, TransparentEqualSV>;
+
+    /// @brief Shared "program instance" state used by multi-threaded VM execution.
+    /// @details Owns the shared runtime context and shared module globals storage so VM threads
+    ///          have a consistent shared-memory view.
+    struct ProgramState
+    {
+        const il::core::Module *module = nullptr; ///< Borrowed; must outlive this state.
+        std::shared_ptr<RtContext> rtContext;     ///< Shared runtime context for VM threads.
+        StrMap strMap;                            ///< Shared global string handles.
+        MutableGlobalMap mutableGlobalMap;        ///< Shared mutable module globals storage.
+
+        ~ProgramState();
+    };
+
     /**
      * @brief Construct a VM for executing an IL module.
      *
@@ -470,6 +486,17 @@ class VM
        DebugScript *script = nullptr,
        std::size_t stackBytes = Frame::kDefaultStackSize);
 
+    /// @brief Construct a VM bound to an existing shared program state.
+    /// @details Used to implement VM threads: each VM instance has its own interpreter state but
+    ///          shares globals and runtime context via @p program.
+    VM(const il::core::Module &m,
+       std::shared_ptr<ProgramState> program,
+       TraceConfig tc = {},
+       uint64_t maxSteps = 0,
+       DebugCtrl dbg = {},
+       DebugScript *script = nullptr,
+       std::size_t stackBytes = Frame::kDefaultStackSize);
+
     /// @brief Release runtime string handles retained by the VM.
     ~VM();
 
@@ -477,6 +504,19 @@ class VM
     VM &operator=(const VM &) = delete;
     VM(VM &&) noexcept = default;
     VM &operator=(VM &&) = delete;
+
+    /// @brief Access the IL module bound to this VM instance.
+    /// @return Reference to the module supplied at construction.
+    [[nodiscard]] const il::core::Module &module() const noexcept
+    {
+        return mod;
+    }
+
+    /// @brief Access the shared program state for this VM instance (if any).
+    [[nodiscard]] std::shared_ptr<ProgramState> programState() const noexcept
+    {
+        return programState_;
+    }
 
     /**
      * @brief Execute the module's main function.
@@ -614,11 +654,11 @@ class VM
         void operator()(RtContext *ctx) const noexcept;
     };
 
-    /// @brief Per-VM runtime context for isolated state.
-    /// @ownership Owned by the VM via unique_ptr; initialized on construction, cleaned up on
-    /// destruction.
-    /// @details Provides isolated RNG, modvar, and other runtime state per VM instance.
-    std::unique_ptr<RtContext, RtContextDeleter> rtContext;
+    void init(std::shared_ptr<ProgramState> program);
+
+    /// @brief Shared program instance state (globals + runtime context).
+    /// @details Always non-null; default constructor creates a fresh state.
+    std::shared_ptr<ProgramState> programState_;
 
     /// @brief Trace output sink.
     /// @ownership Owned by the VM.
@@ -689,17 +729,6 @@ class VM
                        TransparentHashSV,
                        TransparentEqualSV>
         fnMap;
-
-    /// @brief Interned runtime strings.
-    /// @ownership Owned by the VM via ViperStringHandle RAII; manages string handles for globals.
-    std::unordered_map<std::string_view, ViperStringHandle, TransparentHashSV, TransparentEqualSV>
-        strMap;
-
-    /// @brief Storage for mutable module-level globals.
-    /// @ownership Owned by the VM; each global maps to allocated storage.
-    /// @invariant Storage lifetime matches VM lifetime; freed in destructor.
-    std::unordered_map<std::string_view, void *, TransparentHashSV, TransparentEqualSV>
-        mutableGlobalMap;
 
     /// @brief Cached runtime handles for inline string literals containing embedded NULs.
     /// @ownership Owned by the VM via ViperStringHandle RAII; handles created via @c

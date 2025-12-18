@@ -24,8 +24,7 @@
 #include "il/transform/PassRegistry.hpp"
 #include "il/verify/Verifier.hpp"
 #include "support/diag_expected.hpp"
-#include "tests/unit/GTestStub.hpp"
-
+#include "tests/TestHarness.hpp"
 #include <algorithm>
 #include <array>
 #include <cstdint>
@@ -593,10 +592,8 @@ TEST(OptimizerDifferential, PipelinesPreserveVmSemantics)
     }
 }
 
-#ifndef VIPER_HAS_GTEST
 int main(int argc, char **argv)
 {
-    ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }
-#endif

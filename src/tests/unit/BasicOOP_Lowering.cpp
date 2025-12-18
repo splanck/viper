@@ -12,19 +12,13 @@
 // Links: docs/codemap.md
 //
 //===----------------------------------------------------------------------===//
-
-#ifdef VIPER_HAS_GTEST
-#include <gtest/gtest.h>
-#else
-#include "GTestStub.hpp"
-#endif
-
 #include "frontends/basic/BasicCompiler.hpp"
 #include "il/core/Extern.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Module.hpp"
 #include "il/core/Opcode.hpp"
 #include "support/source_manager.hpp"
+#include "tests/TestHarness.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -736,6 +730,6 @@ TEST(BasicOOPLoweringTest, MethodFunctionSuffixReturnTypes)
 
 int main(int argc, char **argv)
 {
-    ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

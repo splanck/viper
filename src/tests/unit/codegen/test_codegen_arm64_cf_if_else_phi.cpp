@@ -4,9 +4,7 @@
 // File: tests/unit/codegen/test_codegen_arm64_cf_if_else_phi.cpp
 // Purpose: Verify if/else lowering with block params (phi via edge stores).
 //===----------------------------------------------------------------------===//
-
-#include "tests/unit/GTestStub.hpp"
-
+#include "tests/TestHarness.hpp"
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -73,6 +71,6 @@ TEST(Arm64CLI, CF_IfElse_Phi)
 
 int main(int argc, char **argv)
 {
-    testing::InitGoogleTest(&argc, &argv);
-    return RUN_ALL_TESTS();
+    viper_test::init(&argc, &argv);
+    return viper_test::run_all_tests();
 }

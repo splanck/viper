@@ -12,10 +12,8 @@
 // Links: docs/architecture.md
 //
 //===----------------------------------------------------------------------===//
-
-#include "../../GTestStub.hpp"
-
 #include "il/runtime/signatures/Registry.hpp"
+#include "tests/TestHarness.hpp"
 
 #include <string_view>
 
@@ -70,6 +68,6 @@ TEST(SignaturesPurity, ReadonlyStringHelpers)
 
 int main(int argc, char **argv)
 {
-    testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

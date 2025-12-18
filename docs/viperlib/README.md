@@ -22,6 +22,7 @@ implemented in C and exposed through the IL runtime system.
 | [Mathematics](math.md)          | `Bits`, `Math`, `Random`, `Vec2`, `Vec3`                                  |
 | [System](system.md)             | `Environment`, `Exec`, `Machine`, `Terminal`                              |
 | [Text Processing](text.md)      | `Codec`, `Csv`, `Guid`, `StringBuilder`                                   |
+| [Threads](threads.md)           | `Monitor`, `Thread`, `SafeI64`                                             |
 | [Time & Timing](time.md)        | `Clock`, `Countdown`, `DateTime`, `Stopwatch`                             |
 | [Utilities](utilities.md)       | `Convert`, `Fmt`, `Log`, `Parse`                                          |
 
@@ -104,6 +105,14 @@ implemented in C and exposed through the IL runtime system.
 | [`Csv`](text.md#vipertextcsv)                     | Static   | CSV parsing and formatting |
 | [`Guid`](text.md#vipertextguid)                   | Static   | UUID v4 generation         |
 | [`StringBuilder`](text.md#vipertextstringbuilder) | Instance | Mutable string builder     |
+
+### Viper.Threads
+
+| Class                                         | Type     | Description                                  |
+|-----------------------------------------------|----------|----------------------------------------------|
+| [`Monitor`](threads.md#viperthreadsmonitor)   | Static   | FIFO-fair, re-entrant object monitor         |
+| [`Thread`](threads.md#viperthreadsthread)     | Instance | OS thread handle + join/sleep/yield helpers  |
+| [`SafeI64`](threads.md#viperthreadssafei64)   | Instance | FIFO-serialized safe integer cell            |
 
 ### Viper.Time
 

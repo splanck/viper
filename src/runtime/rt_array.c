@@ -275,7 +275,7 @@ int rt_arr_i32_resize(int32_t **a_inout, size_t new_len)
         return 0;
     }
 
-    if (hdr->refcnt > 1)
+    if (__atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED) > 1)
     {
         int32_t *fresh = rt_arr_i32_new(new_len);
         if (!fresh)

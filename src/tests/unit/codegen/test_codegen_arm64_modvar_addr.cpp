@@ -4,9 +4,7 @@
 // File: tests/unit/codegen/test_codegen_arm64_modvar_addr.cpp
 // Purpose: Verify call to rt_modvar_addr_i64 and pointer-based load/store.
 //===----------------------------------------------------------------------===//
-
-#include "tests/unit/GTestStub.hpp"
-
+#include "tests/TestHarness.hpp"
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -78,6 +76,6 @@ TEST(Arm64CLI, ModvarAddr_LoadStore)
 
 int main(int argc, char **argv)
 {
-    testing::InitGoogleTest(&argc, &argv);
-    return RUN_ALL_TESTS();
+    viper_test::init(&argc, &argv);
+    return viper_test::run_all_tests();
 }

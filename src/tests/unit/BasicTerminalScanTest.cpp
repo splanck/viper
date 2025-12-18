@@ -12,17 +12,11 @@
 // Links: docs/il-guide.md#reference, src/frontends/basic/LowerStmt_Runtime.cpp
 //
 //===----------------------------------------------------------------------===//
-
-#ifdef VIPER_HAS_GTEST
-#include <gtest/gtest.h>
-#else
-#include "GTestStub.hpp"
-#endif
-
 #include "frontends/basic/BasicCompiler.hpp"
 #include "il/core/Extern.hpp"
 #include "il/core/Module.hpp"
 #include "support/source_manager.hpp"
+#include "tests/TestHarness.hpp"
 #include "viper/il/IO.hpp"
 
 #include <algorithm>
@@ -82,6 +76,6 @@ TEST(BasicTerminalScanTest, EmitsTerminalExternsInILText)
 
 int main(int argc, char **argv)
 {
-    ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

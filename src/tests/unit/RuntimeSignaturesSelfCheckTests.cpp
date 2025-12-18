@@ -12,10 +12,8 @@
 // Links: docs/architecture.md
 //
 //===----------------------------------------------------------------------===//
-
-#include "tests/unit/GTestStub.hpp"
-
 #include "il/runtime/RuntimeSignatures.hpp"
+#include "tests/TestHarness.hpp"
 
 #include <unordered_set>
 
@@ -124,6 +122,6 @@ TEST(RuntimeSignaturesSelfCheck, ReasonableParameterCounts)
 
 int main(int argc, char **argv)
 {
-    testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

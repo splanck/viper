@@ -83,6 +83,10 @@ extern "C"
         // Type registry (rt_type_registry.c)
         RtTypeRegistryState type_registry;
 
+        // Number of threads currently bound to this context via rt_set_current_context.
+        // Used to make legacy state handoff safe under concurrent VM threads.
+        size_t bind_count;
+
         // Future expansions:
         // - VM-only state
     } RtContext;

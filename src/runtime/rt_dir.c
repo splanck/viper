@@ -4,14 +4,75 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_dir.c
-// Purpose: Cross-platform directory operations for Viper.IO.Dir.
-// Key invariants: Directory operations work consistently across Unix and Windows,
-//                 all functions handle rt_string input/output correctly.
-// Ownership/Lifetime: Returned strings and sequences are newly allocated.
-// Links: docs/viperlib.md
-//
+///
+/// @file rt_dir.c
+/// @brief Cross-platform directory operations for Viper.IO.Dir class.
+///
+/// This file provides directory manipulation functions that work consistently
+/// across Windows and Unix platforms. All path handling uses the Viper runtime
+/// string type and automatically handles platform-specific path separators.
+///
+/// **Directory Tree Visualization:**
+/// ```
+/// project/                      <-- Directory (can be created, listed, removed)
+/// ├── src/                      <-- Subdirectory
+/// │   ├── main.bas              <-- File
+/// │   └── utils.bas             <-- File
+/// ├── docs/                     <-- Subdirectory
+/// │   └── readme.txt            <-- File
+/// └── build/                    <-- Empty directory
+/// ```
+///
+/// **Path Separators by Platform:**
+/// | Platform | Separator | Example                    |
+/// |----------|-----------|----------------------------|
+/// | Windows  | `\`       | `C:\Users\docs\file.txt`   |
+/// | Unix     | `/`       | `/home/user/docs/file.txt` |
+///
+/// **Common Operations:**
+/// ```
+/// ' Check if directory exists
+/// If Dir.Exists("output") Then
+///     Print "Output directory found"
+/// End If
+///
+/// ' Create a directory (and parents)
+/// Dir.MakeAll("output/reports/2024")
+///
+/// ' List directory contents
+/// Dim files = Dir.Files("src")
+/// For Each file In files
+///     Print file
+/// Next
+///
+/// ' Clean up temporary files
+/// Dir.RemoveAll("temp")
+/// ```
+///
+/// **Error Handling:**
+/// Most functions trap (terminate with error) on failure:
+/// - Invalid paths (NULL, malformed)
+/// - Permission denied
+/// - Directory not found (for removal/listing)
+/// - Filesystem errors (disk full, read-only)
+///
+/// **Thread Safety:** Directory operations may not be thread-safe due to
+/// underlying OS limitations. External synchronization is recommended for
+/// multi-threaded access to the same directories.
+///
+/// **Platform Implementation:**
+/// | Operation    | Windows API          | Unix API      |
+/// |--------------|----------------------|---------------|
+/// | Exists       | stat() + _S_IFDIR    | stat() + S_ISDIR |
+/// | Create       | _mkdir()             | mkdir()       |
+/// | Remove       | _rmdir()             | rmdir()       |
+/// | List         | FindFirstFile/Next   | opendir/readdir |
+/// | Current      | _getcwd()            | getcwd()      |
+/// | Change       | _chdir()             | chdir()       |
+///
+/// @see rt_path.c For path manipulation (join, split, extension)
+/// @see rt_file.c For file operations (read, write, copy)
+///
 //===----------------------------------------------------------------------===//
 
 #include "rt_dir.h"
@@ -45,7 +106,44 @@
 #define PATH_SEP '/'
 #endif
 
-/// @brief Check if a directory exists.
+/// @brief Check if a directory exists at the specified path.
+///
+/// Tests whether a directory exists and is accessible at the given path.
+/// This function distinguishes directories from files - a path that points
+/// to a regular file will return false.
+///
+/// **Usage example:**
+/// ```
+/// ' Check before creating
+/// If Not Dir.Exists("output") Then
+///     Dir.Make("output")
+/// End If
+///
+/// ' Validate user input
+/// Dim folder = InputBox("Enter folder path:")
+/// If Dir.Exists(folder) Then
+///     ProcessFolder(folder)
+/// Else
+///     Print "Directory not found: " & folder
+/// End If
+/// ```
+///
+/// **Behavior:**
+/// - Returns true only for directories, not regular files
+/// - Follows symbolic links (checks the target)
+/// - Returns false for inaccessible directories (permission denied)
+/// - Returns false for non-existent paths
+///
+/// @param path Directory path to check.
+///
+/// @return 1 (true) if path is an existing directory, 0 (false) otherwise.
+///
+/// @note O(1) time complexity (single stat() call).
+/// @note Does not create the directory - use rt_dir_make for that.
+/// @note Returns false rather than trapping on errors.
+///
+/// @see rt_dir_make For creating directories
+/// @see rt_file_exists For checking file existence
 int64_t rt_dir_exists(rt_string path)
 {
     const char *cpath = NULL;
@@ -63,7 +161,49 @@ int64_t rt_dir_exists(rt_string path)
 #endif
 }
 
-/// @brief Create a single directory.
+/// @brief Create a single directory at the specified path.
+///
+/// Creates a new directory at the given path. The parent directory must
+/// already exist. If the directory already exists, the function succeeds
+/// silently (idempotent operation).
+///
+/// **Usage example:**
+/// ```
+/// ' Create output directory
+/// Dir.Make("output")
+///
+/// ' Create in existing parent
+/// Dir.Make("existing_parent/new_folder")
+///
+/// ' Safe creation (already exists is OK)
+/// Dir.Make("logs")  ' Creates if needed
+/// Dir.Make("logs")  ' Succeeds again (no error)
+/// ```
+///
+/// **Permission mode (Unix):**
+/// New directories are created with mode 0755:
+/// - Owner: read, write, execute (rwx)
+/// - Group: read, execute (r-x)
+/// - Others: read, execute (r-x)
+///
+/// **Common errors:**
+/// | Error                | Cause                                    |
+/// |----------------------|------------------------------------------|
+/// | Invalid path         | NULL or malformed path string            |
+/// | Parent not found     | Parent directory doesn't exist           |
+/// | Permission denied    | No write permission in parent directory  |
+/// | Disk full            | No space available on filesystem         |
+///
+/// @param path Path where the directory should be created.
+///
+/// @note O(1) time complexity.
+/// @note Traps on failure (except when directory already exists).
+/// @note Use rt_dir_make_all to create parent directories automatically.
+/// @note Does not modify existing directories.
+///
+/// @see rt_dir_make_all For creating nested directories
+/// @see rt_dir_exists For checking if directory exists
+/// @see rt_dir_remove For removing directories
 void rt_dir_make(rt_string path)
 {
     const char *cpath = NULL;
@@ -86,7 +226,54 @@ void rt_dir_make(rt_string path)
 #endif
 }
 
-/// @brief Create a directory and all parent directories.
+/// @brief Create a directory and all missing parent directories.
+///
+/// Creates the target directory and any intermediate directories that don't
+/// exist along the path. This is similar to the Unix `mkdir -p` command.
+/// If the full path already exists, the function succeeds silently.
+///
+/// **Usage example:**
+/// ```
+/// ' Create nested directory structure
+/// Dir.MakeAll("output/reports/2024/january")
+/// ' Creates: output/, output/reports/, output/reports/2024/,
+/// '          output/reports/2024/january/
+///
+/// ' Create path with existing parents (only missing parts created)
+/// Dir.MakeAll("existing/new/deep/path")
+///
+/// ' Safe to call multiple times
+/// Dir.MakeAll("logs/app")
+/// Dir.MakeAll("logs/app")  ' No error
+/// ```
+///
+/// **Creation order:**
+/// ```
+/// Path: "a/b/c/d"
+///
+/// Step 1: Check/Create "a"
+/// Step 2: Check/Create "a/b"
+/// Step 3: Check/Create "a/b/c"
+/// Step 4: Check/Create "a/b/c/d"
+/// ```
+///
+/// **Permission mode (Unix):**
+/// Each created directory uses mode 0755 (rwxr-xr-x).
+///
+/// **Edge cases:**
+/// - Trailing slashes are automatically removed
+/// - Empty path is a no-op
+/// - Absolute paths (starting with / or drive letter) work correctly
+///
+/// @param path Full path to create, including all intermediate directories.
+///
+/// @note O(n) time complexity where n is the path depth.
+/// @note Traps on failure (permission denied, disk full, etc.).
+/// @note Idempotent - safe to call multiple times with same path.
+/// @note Handles both forward and backslashes as separators.
+///
+/// @see rt_dir_make For creating a single directory
+/// @see rt_dir_remove_all For recursively removing directories
 void rt_dir_make_all(rt_string path)
 {
     const char *cpath = NULL;
@@ -173,6 +360,45 @@ void rt_dir_make_all(rt_string path)
 }
 
 /// @brief Remove an empty directory.
+///
+/// Deletes a directory that contains no files or subdirectories. The directory
+/// must be empty - use rt_dir_remove_all to delete directories with contents.
+///
+/// **Usage example:**
+/// ```
+/// ' Remove temporary directory after use
+/// Dir.Remove("temp_work")
+///
+/// ' Clean up after processing
+/// For Each file In Dir.Files("staging")
+///     File.Delete(Path.Join("staging", file))
+/// Next
+/// Dir.Remove("staging")  ' Now empty, can remove
+/// ```
+///
+/// **Requirements:**
+/// - Directory must exist
+/// - Directory must be empty (no files or subdirectories)
+/// - Caller must have write permission to parent directory
+/// - Directory must not be in use (current working directory, open handles)
+///
+/// **Common errors:**
+/// | Error                | Cause                                    |
+/// |----------------------|------------------------------------------|
+/// | Invalid path         | NULL or malformed path string            |
+/// | Directory not empty  | Contains files or subdirectories         |
+/// | Permission denied    | No write permission to parent directory  |
+/// | Directory in use     | Is current working directory or has open handles |
+///
+/// @param path Path to the empty directory to remove.
+///
+/// @note O(1) time complexity.
+/// @note Traps on failure.
+/// @note Does not remove parent directories (even if empty after removal).
+///
+/// @see rt_dir_remove_all For removing directories with contents
+/// @see rt_dir_make For creating directories
+/// @see rt_dir_exists For checking if directory exists
 void rt_dir_remove(rt_string path)
 {
     const char *cpath = NULL;
@@ -195,7 +421,15 @@ void rt_dir_remove(rt_string path)
 #endif
 }
 
-/// @brief Helper: Delete a file (for use in rt_dir_remove_all).
+/// @brief Internal helper to delete a single file.
+///
+/// Used by rt_dir_remove_all during recursive directory deletion. Silently
+/// ignores errors to continue deletion of other files.
+///
+/// @param path Absolute or relative path to the file.
+///
+/// @note Errors are silently ignored (best-effort deletion).
+/// @note Not part of the public API.
 static void delete_file(const char *path)
 {
 #ifdef _WIN32
@@ -206,6 +440,59 @@ static void delete_file(const char *path)
 }
 
 /// @brief Recursively remove a directory and all its contents.
+///
+/// Deletes a directory along with all files and subdirectories it contains.
+/// This is equivalent to the Unix `rm -rf` command. Use with caution as this
+/// operation is irreversible.
+///
+/// **Usage example:**
+/// ```
+/// ' Clean up temporary build directory
+/// Dir.RemoveAll("build/temp")
+///
+/// ' Remove project and all contents
+/// If Confirm("Delete project folder?") Then
+///     Dir.RemoveAll("my_project")
+/// End If
+///
+/// ' Safe cleanup pattern
+/// If Dir.Exists("cache") Then
+///     Dir.RemoveAll("cache")
+/// End If
+/// ```
+///
+/// **Deletion order (depth-first):**
+/// ```
+/// project/
+/// ├── src/
+/// │   ├── main.bas  ← deleted first (file)
+/// │   └── utils.bas ← deleted second (file)
+/// │   └── (src/ deleted after contents)
+/// └── docs/
+///     └── readme.txt ← deleted
+///     └── (docs/ deleted after contents)
+/// └── (project/ deleted last)
+/// ```
+///
+/// **Warning:** This function:
+/// - Permanently deletes files (no recycle bin)
+/// - Cannot be undone
+/// - May delete more than expected if symlinks point elsewhere
+/// - Continues on errors (best-effort deletion)
+///
+/// **Edge cases:**
+/// - Non-existent directory: attempts rmdir anyway (may fail silently)
+/// - Empty directory: removes it directly
+/// - Read-only files: deletion may fail on some platforms
+///
+/// @param path Path to the directory to remove recursively.
+///
+/// @note O(n) time complexity where n is total number of files/directories.
+/// @note Does not follow symbolic links into other directories.
+/// @note Silent on most errors (best-effort deletion).
+///
+/// @see rt_dir_remove For removing empty directories only
+/// @see rt_dir_make_all For creating nested directories
 void rt_dir_remove_all(rt_string path)
 {
     const char *cpath = NULL;
@@ -288,7 +575,59 @@ void rt_dir_remove_all(rt_string path)
 #endif
 }
 
-/// @brief List all entries in a directory.
+/// @brief List all entries (files and subdirectories) in a directory.
+///
+/// Returns a sequence containing the names of all files and subdirectories
+/// in the specified directory. The special entries "." and ".." are excluded.
+/// Entry names are returned without the directory path prefix.
+///
+/// **Usage example:**
+/// ```
+/// ' List all items in current directory
+/// Dim entries = Dir.List(".")
+/// For Each entry In entries
+///     Print entry
+/// Next
+///
+/// ' Process each entry
+/// Dim items = Dir.List("downloads")
+/// Print "Found " & items.Len() & " items"
+///
+/// ' Check if directory is empty
+/// If Dir.List("folder").Len() = 0 Then
+///     Print "Directory is empty"
+/// End If
+/// ```
+///
+/// **Return format:**
+/// ```
+/// Directory: project/
+/// ├── main.bas
+/// ├── utils.bas
+/// └── docs/
+///
+/// Returns: ["main.bas", "utils.bas", "docs"]
+/// (Names only, no "project/" prefix)
+/// ```
+///
+/// **Ordering:**
+/// The order of entries is filesystem-dependent and not guaranteed:
+/// - May be alphabetical on some systems
+/// - May be insertion order on others
+/// - Use sorting if consistent order is needed
+///
+/// @param path Directory path to list.
+///
+/// @return Seq containing entry names as strings. Returns empty Seq on error.
+///
+/// @note O(n) time complexity where n is number of entries.
+/// @note Returns empty sequence on error (does not trap).
+/// @note Does not recurse into subdirectories.
+/// @note Hidden files (starting with .) are included.
+///
+/// @see rt_dir_files For listing only files
+/// @see rt_dir_dirs For listing only subdirectories
+/// @see rt_dir_entries_seq For trapping version
 void *rt_dir_list(rt_string path)
 {
     void *result = rt_seq_new();
@@ -338,20 +677,69 @@ void *rt_dir_list(rt_string path)
 }
 
 /// @brief List all entries in a directory as a Viper.Collections.Seq.
-/// @details Wrapper for rt_dir_list; preserves entry name formatting, enumeration order, and
-///          empty-on-error behavior.
+///
+/// Wrapper for rt_dir_list that returns entries as a Viper.Collections.Seq.
+/// Preserves the same behavior: entry name formatting, enumeration order,
+/// and empty-on-error handling.
+///
+/// **Usage example:**
+/// ```
+/// Dim entries = Dir.ListSeq("src")
+/// Print "Directory contains " & entries.Len() & " items"
+/// ```
+///
+/// @param path Directory path to list.
+///
+/// @return Seq containing entry names. Returns empty Seq on error.
+///
+/// @note Delegates to rt_dir_list.
+/// @note Same behavior as rt_dir_list.
+///
+/// @see rt_dir_list For implementation details
 void *rt_dir_list_seq(rt_string path)
 {
     return rt_dir_list(path);
 }
 
-/// @brief List all directory entries as a Viper.Collections.Seq of strings.
-/// @details Returns entry names (excluding . and ..) in the same enumeration order used by
-///          rt_dir_list/rt_dir_files/rt_dir_dirs. No sorting is performed, so ordering is
-///          platform- and filesystem-dependent.
+/// @brief List all directory entries with error trapping on failure.
+///
+/// Similar to rt_dir_list but traps (terminates with error) if the directory
+/// does not exist or cannot be read. Use this when directory existence is
+/// required, not optional.
+///
+/// **Usage example:**
+/// ```
+/// ' Will trap if "config" doesn't exist
+/// Dim configs = Dir.Entries("config")
+///
+/// ' Use when directory must exist
+/// Dim sources = Dir.Entries("src")
+/// For Each src In sources
+///     Compile(src)
+/// Next
+/// ```
+///
+/// **Difference from rt_dir_list:**
+/// | Function       | Missing Dir | Permission Denied |
+/// |----------------|-------------|-------------------|
+/// | Dir.List       | Empty Seq   | Empty Seq         |
+/// | Dir.Entries    | Trap        | Trap              |
+///
+/// **When to use which:**
+/// - Dir.List: Directory may or may not exist, handle both cases
+/// - Dir.Entries: Directory must exist, trap on absence is appropriate
+///
 /// @param path Directory path to list.
-/// @return Viper.Collections.Seq containing runtime strings for each entry name.
-/// @note Traps when the directory does not exist or cannot be enumerated.
+///
+/// @return Viper.Collections.Seq containing entry names as strings.
+///
+/// @note O(n) time complexity where n is number of entries.
+/// @note Traps if directory doesn't exist or can't be opened.
+/// @note Does not sort entries - order is filesystem-dependent.
+///
+/// @see rt_dir_list For non-trapping version
+/// @see rt_dir_files For listing only files
+/// @see rt_dir_dirs For listing only subdirectories
 void *rt_dir_entries_seq(rt_string path)
 {
     const char *cpath = NULL;
@@ -417,7 +805,55 @@ void *rt_dir_entries_seq(rt_string path)
     return result;
 }
 
-/// @brief List only files in a directory.
+/// @brief List only regular files in a directory (excludes subdirectories).
+///
+/// Returns a sequence containing the names of all regular files in the
+/// specified directory. Subdirectories, symbolic links, and special files
+/// are excluded from the results.
+///
+/// **Usage example:**
+/// ```
+/// ' List all files to process
+/// Dim files = Dir.Files("input")
+/// For Each file In files
+///     ProcessFile(Path.Join("input", file))
+/// Next
+///
+/// ' Count source files
+/// Dim sources = Dir.Files("src")
+/// Print "Found " & sources.Len() & " source files"
+///
+/// ' Filter by extension (manual)
+/// For Each f In Dir.Files("docs")
+///     If Path.Ext(f) = ".txt" Then
+///         Print f
+///     End If
+/// Next
+/// ```
+///
+/// **What is included vs excluded:**
+/// | Entry Type       | Included? |
+/// |------------------|-----------|
+/// | Regular files    | Yes       |
+/// | Subdirectories   | No        |
+/// | Symbolic links   | No*       |
+/// | Device files     | No        |
+/// | Named pipes      | No        |
+///
+/// *On Unix, symlinks to files are excluded; on Windows behavior varies.
+///
+/// @param path Directory path to scan.
+///
+/// @return Seq containing file names as strings. Returns empty Seq on error.
+///
+/// @note O(n) time complexity where n is number of entries.
+/// @note Returns empty sequence on error (does not trap).
+/// @note Does not recurse into subdirectories.
+/// @note File names are returned without directory prefix.
+///
+/// @see rt_dir_dirs For listing only subdirectories
+/// @see rt_dir_list For listing all entries
+/// @see rt_dir_files_seq For wrapper version
 void *rt_dir_files(rt_string path)
 {
     void *result = rt_seq_new();
@@ -474,14 +910,78 @@ void *rt_dir_files(rt_string path)
 }
 
 /// @brief List only files in a directory as a Viper.Collections.Seq.
-/// @details Wrapper for rt_dir_files; preserves entry name formatting, enumeration order, and
-///          empty-on-error behavior.
+///
+/// Wrapper for rt_dir_files that returns file names as a Viper.Collections.Seq.
+/// Preserves the same filtering behavior (only regular files, no directories).
+///
+/// **Usage example:**
+/// ```
+/// Dim files = Dir.FilesSeq("data")
+/// Print "Found " & files.Len() & " data files"
+/// ```
+///
+/// @param path Directory path to scan.
+///
+/// @return Seq containing file names. Returns empty Seq on error.
+///
+/// @note Delegates to rt_dir_files.
+///
+/// @see rt_dir_files For implementation details
 void *rt_dir_files_seq(rt_string path)
 {
     return rt_dir_files(path);
 }
 
-/// @brief List only subdirectories in a directory.
+/// @brief List only subdirectories in a directory (excludes files).
+///
+/// Returns a sequence containing the names of all subdirectories in the
+/// specified directory. Regular files and special entries (. and ..) are
+/// excluded from the results.
+///
+/// **Usage example:**
+/// ```
+/// ' List all project subdirectories
+/// Dim folders = Dir.Dirs("projects")
+/// For Each folder In folders
+///     Print "Project: " & folder
+/// Next
+///
+/// ' Navigate directory structure
+/// Sub ShowTree(path As String, indent As Integer)
+///     Print Space(indent) & Path.Name(path)
+///     For Each subdir In Dir.Dirs(path)
+///         ShowTree(Path.Join(path, subdir), indent + 2)
+///     Next
+/// End Sub
+///
+/// ' Check for subdirectories
+/// If Dir.Dirs("output").Len() > 0 Then
+///     Print "Has subdirectories"
+/// End If
+/// ```
+///
+/// **What is included vs excluded:**
+/// | Entry Type       | Included? |
+/// |------------------|-----------|
+/// | Subdirectories   | Yes       |
+/// | Regular files    | No        |
+/// | "." and ".."     | No        |
+/// | Symbolic links   | Varies*   |
+///
+/// *On Unix, follows symlinks to check if target is directory.
+///
+/// @param path Directory path to scan.
+///
+/// @return Seq containing subdirectory names as strings. Returns empty Seq on error.
+///
+/// @note O(n) time complexity where n is number of entries.
+/// @note Returns empty sequence on error (does not trap).
+/// @note Does not recurse - returns only immediate children.
+/// @note Directory names are returned without path prefix.
+///
+/// @see rt_dir_files For listing only files
+/// @see rt_dir_list For listing all entries
+/// @see rt_dir_dirs_seq For wrapper version
 void *rt_dir_dirs(rt_string path)
 {
     void *result = rt_seq_new();
@@ -538,15 +1038,68 @@ void *rt_dir_dirs(rt_string path)
     return result;
 }
 
-/// @brief List only subdirectories in a directory as a Viper.Collections.Seq.
-/// @details Wrapper for rt_dir_dirs; preserves entry name formatting, enumeration order, and
-///          empty-on-error behavior.
+/// @brief List only subdirectories as a Viper.Collections.Seq.
+///
+/// Wrapper for rt_dir_dirs that returns subdirectory names as a
+/// Viper.Collections.Seq. Preserves the same filtering behavior.
+///
+/// **Usage example:**
+/// ```
+/// Dim subdirs = Dir.DirsSeq("src")
+/// Print "Found " & subdirs.Len() & " subdirectories"
+/// ```
+///
+/// @param path Directory path to scan.
+///
+/// @return Seq containing subdirectory names. Returns empty Seq on error.
+///
+/// @note Delegates to rt_dir_dirs.
+///
+/// @see rt_dir_dirs For implementation details
 void *rt_dir_dirs_seq(rt_string path)
 {
     return rt_dir_dirs(path);
 }
 
-/// @brief Get the current working directory.
+/// @brief Get the current working directory path.
+///
+/// Returns the absolute path of the process's current working directory.
+/// This is the directory used as the base for resolving relative paths in
+/// file operations.
+///
+/// **Usage example:**
+/// ```
+/// ' Display current location
+/// Print "Working in: " & Dir.Current()
+///
+/// ' Save and restore working directory
+/// Dim original = Dir.Current()
+/// Dir.SetCurrent("subdir")
+/// ' ... do work in subdir ...
+/// Dir.SetCurrent(original)  ' Restore
+///
+/// ' Build absolute path from relative
+/// Dim absPath = Path.Join(Dir.Current(), "file.txt")
+/// ```
+///
+/// **Return format:**
+/// - Windows: `C:\Users\name\project`
+/// - Unix: `/home/user/project`
+///
+/// **Important notes:**
+/// - The current directory is process-wide, not per-thread
+/// - Changing directories in one thread affects all threads
+/// - Relative paths are resolved against this directory
+///
+/// @return Absolute path to the current working directory.
+///
+/// @note O(1) time complexity.
+/// @note Traps if the current directory cannot be determined.
+/// @note Returns newly allocated string (caller manages memory).
+/// @note Maximum path length is PATH_MAX (typically 4096 on Unix, 260 on Windows).
+///
+/// @see rt_dir_set_current For changing the working directory
+/// @see rt_path_absolute For converting relative paths to absolute
 rt_string rt_dir_current(void)
 {
     char buffer[PATH_MAX];
@@ -569,6 +1122,51 @@ rt_string rt_dir_current(void)
 }
 
 /// @brief Change the current working directory.
+///
+/// Changes the process's current working directory to the specified path.
+/// After this call, relative paths in file operations will be resolved
+/// relative to the new directory.
+///
+/// **Usage example:**
+/// ```
+/// ' Change to project directory
+/// Dir.SetCurrent("/home/user/project")
+///
+/// ' Now relative paths work from project/
+/// Dim files = Dir.Files("src")  ' Lists project/src/
+///
+/// ' Use with pattern: save, change, restore
+/// Dim saved = Dir.Current()
+/// Dir.SetCurrent("build")
+/// RunBuildCommands()
+/// Dir.SetCurrent(saved)
+/// ```
+///
+/// **Valid paths:**
+/// - Absolute paths: `/home/user/dir` or `C:\Users\dir`
+/// - Relative paths: `subdir` or `../sibling`
+/// - Home expansion: NOT supported (use full path)
+///
+/// **Common errors:**
+/// | Error                | Cause                              |
+/// |----------------------|------------------------------------|
+/// | Invalid path         | NULL or malformed path string      |
+/// | Directory not found  | Path does not exist                |
+/// | Not a directory      | Path points to a file              |
+/// | Permission denied    | No execute permission on directory |
+///
+/// **Warning:** Changing the current directory affects ALL threads in the
+/// process. Avoid changing directories in multi-threaded applications or
+/// use proper synchronization.
+///
+/// @param path Path to the new working directory.
+///
+/// @note O(1) time complexity.
+/// @note Traps on failure (directory not found, permission denied).
+/// @note Process-wide effect - affects all threads.
+///
+/// @see rt_dir_current For getting the current working directory
+/// @see rt_dir_exists For checking if directory exists before changing
 void rt_dir_set_current(rt_string path)
 {
     const char *cpath = NULL;
@@ -591,7 +1189,66 @@ void rt_dir_set_current(rt_string path)
 #endif
 }
 
-/// @brief Move/rename a directory.
+/// @brief Move or rename a directory.
+///
+/// Moves a directory from one location to another, or renames it. This
+/// operation is atomic on the same filesystem - either the entire directory
+/// is moved or the operation fails (no partial moves).
+///
+/// **Usage example:**
+/// ```
+/// ' Rename a directory
+/// Dir.Move("old_name", "new_name")
+///
+/// ' Move to different location
+/// Dir.Move("project/temp", "archive/temp_backup")
+///
+/// ' Move with rename
+/// Dir.Move("downloads/data", "processed/data_2024")
+/// ```
+///
+/// **Operation modes:**
+/// | Source           | Destination      | Result                      |
+/// |------------------|------------------|-----------------------------|
+/// | `dir1`           | `dir2`           | Rename dir1 to dir2         |
+/// | `path/dir1`      | `other/dir1`     | Move to other location      |
+/// | `path/dir1`      | `other/dir2`     | Move and rename             |
+///
+/// **Requirements:**
+/// - Source directory must exist
+/// - Destination must not exist (won't overwrite)
+/// - Parent of destination must exist
+/// - Both paths should be on same filesystem for atomic move
+///
+/// **Common errors:**
+/// | Error                | Cause                                    |
+/// |----------------------|------------------------------------------|
+/// | Invalid path         | NULL or malformed source/dest path       |
+/// | Source not found     | Source directory doesn't exist           |
+/// | Dest already exists  | Destination path already exists          |
+/// | Permission denied    | No write permission to source or dest    |
+/// | Cross-device         | Moving across filesystems (may fail)     |
+///
+/// **Cross-filesystem moves:**
+/// Some platforms don't support atomic moves across filesystems. In such
+/// cases, use a copy-then-delete pattern instead:
+/// ```
+/// ' Manual cross-filesystem move
+/// CopyDir(src, dst)
+/// Dir.RemoveAll(src)
+/// ```
+///
+/// @param src Source directory path.
+/// @param dst Destination directory path.
+///
+/// @note O(1) time complexity for same-filesystem moves.
+/// @note Traps on failure.
+/// @note Uses rename() system call internally.
+/// @note Not atomic across different filesystems.
+///
+/// @see rt_dir_make For creating directories
+/// @see rt_dir_remove For removing directories
+/// @see rt_file_move For moving files
 void rt_dir_move(rt_string src, rt_string dst)
 {
     const char *csrc = NULL;

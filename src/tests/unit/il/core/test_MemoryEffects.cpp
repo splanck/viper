@@ -12,15 +12,13 @@
 // Links: src/il/core/OpcodeInfo.hpp
 //
 //===----------------------------------------------------------------------===//
-
-#include "../../GTestStub.hpp"
-
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/OpcodeInfo.hpp"
 #include "il/core/Type.hpp"
 #include "il/core/Value.hpp"
+#include "tests/TestHarness.hpp"
 
 using il::core::BasicBlock;
 using il::core::Function;
@@ -115,6 +113,6 @@ TEST(MemoryEffects, ClassifiesRepresentativeOpcodes)
 
 int main(int argc, char **argv)
 {
-    testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

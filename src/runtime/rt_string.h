@@ -43,8 +43,9 @@
 // follows "create rule" semantics common in C APIs.
 //
 // Thread Safety:
-// String operations are thread-safe for read-only access to immortal strings.
-// Mutable operations or reference count modifications require external synchronization.
+// Reference counting for heap-backed strings is atomic, so retain/release is safe across
+// threads when the same string handle is shared. String payload mutation (e.g., builders)
+// still requires higher-level synchronization.
 //
 // C/C++ Interoperability:
 // The API uses C linkage (extern "C") and plain C types to ensure compatibility

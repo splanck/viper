@@ -17,8 +17,7 @@
 
 #include "il/runtime/RuntimeNameMap.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
-#include "tests/unit/GTestStub.hpp"
-
+#include "tests/TestHarness.hpp"
 #include <iostream>
 #include <string_view>
 #include <unordered_set>
@@ -58,6 +57,6 @@ TEST(RuntimeNameMap, AliasesResolveToRegisteredDescriptors)
 
 int main(int argc, char **argv)
 {
-    ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

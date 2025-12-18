@@ -11,18 +11,12 @@
 // and are consistent with BASIC's OOP diagnostics.
 //
 //===----------------------------------------------------------------------===//
-
-#ifdef VIPER_HAS_GTEST
-#include <gtest/gtest.h>
-#else
-#include "../../GTestStub.hpp"
-#endif
-
 #include "frontends/pascal/AST.hpp"
 #include "frontends/pascal/Lexer.hpp"
 #include "frontends/pascal/Parser.hpp"
 #include "frontends/pascal/SemanticAnalyzer.hpp"
 #include "support/diagnostics.hpp"
+#include "tests/TestHarness.hpp"
 #include <memory>
 #include <string>
 
@@ -557,9 +551,7 @@ end.
 
 } // namespace
 
-#ifndef VIPER_HAS_GTEST
 int main()
 {
-    return RUN_ALL_TESTS();
+    return viper_test::run_all_tests();
 }
-#endif

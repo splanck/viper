@@ -32,6 +32,7 @@
 #include "rt_ns_bridge.h"
 #include "rt_modvar.h"
 #include "rt_args.h"
+#include "rt_threads.h"
 #include "rt_trap.h"
 
 #ifdef __cplusplus

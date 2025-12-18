@@ -4,10 +4,102 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/codegen/aarch64/AsmEmitter.cpp
-// Purpose: Minimal assembly emission helpers for the AArch64 backend.
-//
+///
+/// @file AsmEmitter.cpp
+/// @brief Assembly text emission for AArch64 Machine IR.
+///
+/// This file implements the final stage of the AArch64 code generation pipeline,
+/// converting register-allocated Machine IR into assembler-compatible text that
+/// can be processed by the system assembler (as/clang).
+///
+/// **What is the AsmEmitter?**
+/// The AsmEmitter translates MIR instructions with physical registers into
+/// AArch64 assembly syntax. It handles:
+/// - Instruction mnemonic selection
+/// - Register name formatting (x0-x30, d0-d31, sp, fp)
+/// - Immediate operand formatting
+/// - Symbol mangling for the target platform
+/// - Prologue/epilogue generation for function frames
+///
+/// **Output Format:**
+/// The emitter produces GNU Assembler (GAS) compatible syntax:
+/// ```asm
+/// .text
+/// .align 2
+/// .globl _main
+/// _main:
+///   stp x29, x30, [sp, #-16]!
+///   mov x29, sp
+///   mov x0, #42
+///   bl _print_i64
+///   mov x0, #0
+///   ldp x29, x30, [sp], #16
+///   ret
+/// ```
+///
+/// **Symbol Mangling:**
+/// The emitter applies platform-specific name mangling:
+/// | Platform | C Symbol `foo`  | Reason                    |
+/// |----------|-----------------|---------------------------|
+/// | Darwin   | `_foo`          | Underscore prefix         |
+/// | Linux    | `foo`           | No prefix                 |
+///
+/// **Runtime Symbol Mapping:**
+/// IL extern names are mapped to C runtime symbols:
+/// | IL Name                    | C Symbol        |
+/// |----------------------------|-----------------|
+/// | Viper.Console.PrintI64     | rt_print_i64    |
+/// | Viper.String.Concat        | rt_str_concat   |
+/// | Viper.Math.Sqrt            | rt_math_sqrt    |
+///
+/// **Function Structure:**
+/// ```
+/// emitFunctionHeader()     ; .text, .globl, label
+/// emitPrologue()           ; stp fp/lr, allocate frame
+///   ... instruction body ...
+/// emitEpilogue()           ; deallocate frame, ldp fp/lr, ret
+/// ```
+///
+/// **Prologue/Epilogue Generation:**
+/// The emitter generates standard AAPCS64-compliant function prologues:
+/// ```asm
+/// ; Prologue
+/// stp x29, x30, [sp, #-16]!   ; Save FP and LR, update SP
+/// mov x29, sp                  ; Set up frame pointer
+/// sub sp, sp, #<framesize>     ; Allocate local frame (if needed)
+/// stp x19, x20, [sp, #-16]!    ; Save callee-saved regs (if used)
+///
+/// ; Epilogue
+/// ldp x19, x20, [sp], #16      ; Restore callee-saved regs
+/// add sp, sp, #<framesize>     ; Deallocate local frame
+/// ldp x29, x30, [sp], #16      ; Restore FP and LR
+/// ret                          ; Return to caller
+/// ```
+///
+/// **Instruction Emission:**
+/// Each MIR opcode maps to one or more assembly instructions:
+/// | MOpcode       | Assembly Output            |
+/// |---------------|----------------------------|
+/// | MovRR         | mov xd, xn                 |
+/// | MovRI         | mov xd, #imm               |
+/// | AddRRR        | add xd, xn, xm             |
+/// | LdrRegFpImm   | ldr xd, [x29, #offset]     |
+/// | Bl            | bl <symbol>                |
+/// | BCond         | b.<cond> <label>           |
+///
+/// **Register Naming:**
+/// | PhysReg | GPR Name | FPR Name | Special |
+/// |---------|----------|----------|---------|
+/// | X0-X28  | x0-x28   | -        | -       |
+/// | X29     | x29      | -        | fp      |
+/// | X30     | x30      | -        | lr      |
+/// | SP      | sp       | -        | -       |
+/// | D0-D31  | -        | d0-d31   | -       |
+///
+/// @see MachineIR.hpp For MIR type definitions
+/// @see RegAllocLinear.cpp For register allocation
+/// @see TargetAArch64.hpp For register and ABI definitions
+///
 //===----------------------------------------------------------------------===//
 
 #include "AsmEmitter.hpp"

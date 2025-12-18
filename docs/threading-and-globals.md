@@ -1,18 +1,25 @@
 # Threading Model and Global State
 
-This document describes the threading model for the Viper VM and the scope of process-global state shared across VM
-instances.
+This document describes the VM’s concurrency model and the scope of process-global state shared across VM instances.
+It also covers how `Viper.Threads` is implemented in the VM.
 
 ---
 
 ## Overview
 
-Viper supports running multiple VM instances concurrently, with the following design principles:
+Viper supports two distinct (and compatible) concurrency patterns:
 
-1. **One thread per VM**: Each VM instance must be used by exactly one thread at a time.
-2. **Multiple VMs allowed**: Different threads may run different VM instances in parallel.
-3. **Shared extern registry**: External function registrations are process-global.
-4. **Thread-local active VM**: The "current" VM is tracked via thread-local storage.
+1. **Host-level concurrency (multiple independent VMs)**: the embedder runs different VM instances in parallel. Each VM
+   has its own isolated runtime context and module globals.
+2. **Language-level concurrency (`Viper.Threads`)**: a single Viper program starts threads via
+   `Viper.Threads.Thread.Start`. In the VM this is implemented by spawning host OS threads, each running its own VM
+   interpreter state while sharing a *single* program instance state (globals + runtime context).
+
+In both cases:
+
+- **One host thread per VM instance at a time**: a single `VM` object must not be executed concurrently.
+- **Thread-local active VM**: the “current” VM is tracked via TLS for correct trap routing and runtime context binding.
+- **Extern registry is process-global**: external function registrations are shared across all VMs.
 
 ---
 
@@ -40,7 +47,7 @@ The runtime bridge (`RuntimeBridge`) uses the active VM to route traps. When a r
 `VM::activeInstance()` to find the correct VM for error handling. Without an active VM, traps go directly to
 `rt_abort()`.
 
-### Safe Multi-VM Usage
+### Safe Multi-VM Usage (Independent VMs)
 
 To run multiple VMs on different threads:
 
@@ -79,6 +86,30 @@ ActiveVMGuard g2(&vm2);  // Assertion failure in debug builds
 ```
 
 ---
+
+## VM Program State (Shared-Memory Threads)
+
+`Viper.Threads` requires shared memory: module globals and the runtime context must be shared across threads. In the VM,
+this is implemented by introducing a shared **ProgramState** object:
+
+- `VM::ProgramState` lives in `src/vm/VM.hpp` and is owned by `std::shared_ptr`.
+- A normal VM creates a fresh `ProgramState` during init (`src/vm/VMInit.cpp`).
+- A VM thread spawned via `Viper.Threads.Thread.Start` constructs a new VM with the parent’s `ProgramState`, so:
+  - module global storage is shared,
+  - the runtime context (`RtContext`) is shared, and
+  - function pointers (`addr_of @fn`) resolve to the same module functions.
+
+This keeps the “one VM instance per host thread” invariant while still providing a shared-memory model for Viper
+program threads.
+
+### `Viper.Threads.Thread.Start` in the VM
+
+In the VM, `Viper.Threads.Thread.Start` is overridden via the extern registry (see `src/vm/ThreadsRuntime.cpp`). The VM
+implementation:
+
+1. validates the entry pointer (must be `addr_of @function` with signature `void()` or `void(ptr)`),
+2. spawns a host OS thread using the runtime thread helper, and
+3. runs the target IL function in a fresh VM instance that shares the parent’s `ProgramState`.
 
 ## Process-Global State
 
@@ -233,6 +264,8 @@ If you need isolated external function sets:
 |------------------|------------------------------------|----------------------------------|
 | Active VM TLS    | `src/vm/VMContext.cpp:38`          | Thread-local active VM pointer   |
 | ActiveVMGuard    | `src/vm/VMContext.cpp:72-114`      | RAII guard for VM activation     |
+| ProgramState     | `src/vm/VM.hpp:~290`               | Shared globals + RtContext state |
+| Threads override | `src/vm/ThreadsRuntime.cpp`        | VM override for Thread.Start     |
 | Extern Registry  | `src/vm/RuntimeBridge.cpp:309-425` | Process-global function registry |
 | Frontend Options | `src/frontends/basic/Options.hpp`  | Atomic feature flags             |
 

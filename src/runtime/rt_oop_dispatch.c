@@ -4,31 +4,118 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_oop_dispatch.c
-// Purpose: Provide minimal virtual dispatch helpers for runtime-managed objects.
-// Key invariants: vptr points to an array of function pointers; slot indices
-//                 are bounds-checked at runtime.
-// Ownership/Lifetime: Does not own object memory; returns raw function
-//                     pointers for indirect calls.
-// Links: src/runtime/rt_oop.h
+///
+/// @file rt_oop_dispatch.c
+/// @brief Virtual method dispatch for Viper's object-oriented runtime.
+///
+/// This file implements the virtual method dispatch mechanism that enables
+/// polymorphism in Viper programs. When a method is called on an object, the
+/// runtime looks up the correct implementation based on the object's actual
+/// type at runtime.
+///
+/// **What is Virtual Dispatch?**
+/// Virtual dispatch allows calling methods through a base class reference
+/// while executing the derived class's implementation:
+/// ```vb
+/// Class Animal
+///     Overridable Sub Speak()
+///         Print "..."
+///     End Sub
+/// End Class
+///
+/// Class Dog Inherits Animal
+///     Overrides Sub Speak()
+///         Print "Woof!"
+///     End Sub
+/// End Class
+///
+/// Dim pet As Animal = New Dog()
+/// pet.Speak()  ' Prints "Woof!" - Dog's implementation is called
+/// ```
+///
+/// **VTable Architecture:**
+/// Each class has a virtual table (vtable) containing pointers to its method
+/// implementations. Objects store a pointer to their class's vtable (vptr):
+/// ```
+/// ┌─────────────────────────────────────────────────────────────────────────┐
+/// │                         Virtual Dispatch                                │
+/// │                                                                         │
+/// │  ┌─────────────────┐           ┌─────────────────────────────────────┐  │
+/// │  │     Object      │           │          Dog VTable                 │  │
+/// │  │ ┌─────────────┐ │           │ ┌─────────────────────────────────┐ │  │
+/// │  │ │ vptr ───────┼─┼───────────┼▶│ slot 0: Dog_ToString           │ │  │
+/// │  │ │ field1      │ │           │ │ slot 1: Dog_Equals             │ │  │
+/// │  │ │ field2      │ │           │ │ slot 2: Dog_Speak  ◀── override │ │  │
+/// │  │ └─────────────┘ │           │ │ slot 3: Animal_Run             │ │  │
+/// │  └─────────────────┘           │ └─────────────────────────────────┘ │  │
+/// │                                └─────────────────────────────────────┘  │
+/// │                                                                         │
+/// │  Call sequence: obj.Speak()                                             │
+/// │    1. Load vptr from object                                             │
+/// │    2. Load slot 2 from vtable → Dog_Speak                               │
+/// │    3. Call Dog_Speak(obj)                                               │
+/// └─────────────────────────────────────────────────────────────────────────┘
+/// ```
+///
+/// **Slot Assignment:**
+/// Virtual method slots are assigned during class lowering:
+/// | Slot | Method                                   |
+/// |------|------------------------------------------|
+/// | 0    | Object.ToString                          |
+/// | 1    | Object.Equals                            |
+/// | 2    | Object.GetHashCode                       |
+/// | 3+   | Class-specific virtual methods           |
+///
+/// **Safety Checks:**
+/// The dispatch function performs runtime validation:
+/// - NULL object check → returns NULL
+/// - NULL vptr check → returns NULL
+/// - Slot bounds check → returns NULL if out of range
+///
+/// **Thread Safety:**
+/// VTable lookups are read-only and thread-safe. The vtable contents are
+/// established at class registration and never modified.
+///
+/// @see rt_type_registry.c For class and vtable registration
+/// @see rt_object.c For object allocation and lifecycle
+/// @see rt_oop.h For OOP type definitions
+///
+//===----------------------------------------------------------------------===//
 
 #include "rt_oop.h"
 
+/// @brief Look up a virtual function pointer from an object's vtable.
+///
+/// Retrieves the function pointer at a specific slot in the object's vtable.
+/// This is the core operation for virtual method dispatch. The slot index
+/// corresponds to the virtual method's position in the class hierarchy.
+///
+/// **Dispatch sequence:**
+/// ```
+/// obj.Method()
+///   ↓
+/// rt_get_vfunc(obj, METHOD_SLOT)
+///   ↓
+/// obj->vptr[slot] → function pointer
+///   ↓
+/// Indirect call through function pointer
+/// ```
+///
+/// **Safety behavior:**
+/// - NULL object → returns NULL (no crash)
+/// - NULL vptr → returns NULL (uninitialized object)
+/// - Unknown class → returns NULL (no bounds check possible)
+/// - Out of bounds slot → returns NULL (prevents buffer overread)
+///
+/// @param obj Object whose vtable is queried. May be NULL.
+/// @param slot Zero-based vtable slot index to fetch.
+///
+/// @return Function pointer at the slot, or NULL on any error condition.
+///
+/// @note Callers must check for NULL before calling the returned pointer.
+/// @note O(1) time complexity (array index lookup).
 void *rt_get_vfunc(const rt_object *obj, uint32_t slot)
 {
-    //
-    // @brief Look up a virtual function pointer from an object's vtable.
-    //
-    // @details Validates the object and its class metadata, performs bounds
-    //          checking against the vtable length, and returns the function
-    //          pointer at the requested slot. A NULL result indicates invalid
-    //          input, unknown class metadata, or an out-of-bounds slot index.
-    //
-    // @param obj  Object whose vtable is queried (may be NULL).
-    // @param slot Zero-based vtable slot index to fetch.
-    // @return Function pointer when present; NULL on error or out of range.
-
     if (!obj || !obj->vptr)
         return (void *)0;
 

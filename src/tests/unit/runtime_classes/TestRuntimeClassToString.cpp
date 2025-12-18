@@ -10,9 +10,7 @@
 //          the qualified type name using the per-VM type registry.
 //
 //===----------------------------------------------------------------------===//
-
-#include "tests/unit/GTestStub.hpp"
-
+#include "tests/TestHarness.hpp"
 extern "C"
 {
 #include "rt_context.h"
@@ -54,6 +52,6 @@ TEST(RuntimeClasses, ToString_UsesRegisteredQName)
 
 int main(int argc, char **argv)
 {
-    testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

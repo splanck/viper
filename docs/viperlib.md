@@ -17,5 +17,6 @@ The Viper Runtime Library documentation has been reorganized into separate files
 | [Mathematics](viperlib/math.md)          | `Bits`, `Math`, `Random`, `Vec2`, `Vec3`                                  |
 | [System](viperlib/system.md)             | `Environment`, `Exec`, `Machine`, `Terminal`                              |
 | [Text Processing](viperlib/text.md)      | `Codec`, `Csv`, `Guid`, `StringBuilder`                                   |
+| [Threads](viperlib/threads.md)           | `Monitor`, `Thread`, `SafeI64`                                             |
 | [Time & Timing](viperlib/time.md)        | `Clock`, `Countdown`, `DateTime`, `Stopwatch`                             |
 | [Utilities](viperlib/utilities.md)       | `Convert`, `Fmt`, `Log`, `Parse`                                          |

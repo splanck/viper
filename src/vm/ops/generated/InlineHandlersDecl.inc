@@ -78,6 +78,7 @@ void inline_handle_Load(ExecState &st);
 void inline_handle_Store(ExecState &st);
 void inline_handle_AddrOf(ExecState &st);
 void inline_handle_ConstStr(ExecState &st);
+void inline_handle_GAddr(ExecState &st);
 void inline_handle_ConstNull(ExecState &st);
 void inline_handle_Call(ExecState &st);
 void inline_handle_CallIndirect(ExecState &st);

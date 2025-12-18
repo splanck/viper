@@ -23,9 +23,7 @@
 #include "il/core/Type.hpp"
 #include "il/core/Value.hpp"
 #include "il/io/Serializer.hpp"
-
-#include "tests/unit/GTestStub.hpp"
-
+#include "tests/TestHarness.hpp"
 using namespace il::core;
 
 namespace
@@ -142,10 +140,8 @@ TEST(LICM, HoistsInvariantAdd)
     EXPECT_TRUE(foundAdd || addInHeader);
 }
 
-#ifndef VIPER_HAS_GTEST
 int main(int argc, char **argv)
 {
-    ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }
-#endif

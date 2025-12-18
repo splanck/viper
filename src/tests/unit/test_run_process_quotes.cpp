@@ -14,9 +14,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "common/RunProcess.hpp"
-
-#include "GTestStub.hpp"
-
+#include "tests/TestHarness.hpp"
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
@@ -155,6 +153,6 @@ TEST(RunProcess, CapturesWindowsStderr)
 
 int main(int argc, char **argv)
 {
-    ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

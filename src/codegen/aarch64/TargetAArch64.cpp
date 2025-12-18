@@ -4,11 +4,92 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/codegen/aarch64/TargetAArch64.cpp
-// Purpose: Materialise the AArch64 target description and surface helper queries
-//          about register classes and names for the macOS arm64 backend.
-//
+///
+/// @file TargetAArch64.cpp
+/// @brief AArch64 target description and register information for code generation.
+///
+/// This file implements the target description for the AArch64 (ARM64) backend,
+/// providing register classification, calling convention details, and register
+/// naming utilities. It defines the AAPCS64 (Arm 64-bit Architecture Procedure
+/// Call Standard) register usage for macOS/Darwin.
+///
+/// **Target Description Architecture:**
+/// ```
+/// ┌───────────────────────────────────────────────────────────────────────────┐
+/// │                          TargetInfo Structure                             │
+/// ├───────────────────────────────────────────────────────────────────────────┤
+/// │  callerSavedGPR[]  │ x0-x17: Registers that callers must save            │
+/// │  calleeSavedGPR[]  │ x19-x28, x29: Registers that callees must preserve  │
+/// │  callerSavedFPR[]  │ v0-v31: Floating-point registers (caller-saved)     │
+/// │  calleeSavedFPR[]  │ v8-v15: FP registers that callees must preserve     │
+/// │  intArgOrder[]     │ x0-x7: Integer argument passing registers           │
+/// │  f64ArgOrder[]     │ v0-v7: Floating-point argument passing registers    │
+/// │  intReturnReg      │ x0: Integer return value register                   │
+/// │  f64ReturnReg      │ v0: Floating-point return value register            │
+/// │  stackAlignment    │ 16: Required stack alignment in bytes               │
+/// └───────────────────────────────────────────────────────────────────────────┘
+/// ```
+///
+/// **AAPCS64 Register Roles:**
+/// ```
+/// General Purpose Registers (GPR):
+/// ┌─────────┬──────────────────────────────────────────────────────────┐
+/// │ x0-x7   │ Argument/result passing, caller-saved                    │
+/// │ x8      │ Indirect result location register, caller-saved          │
+/// │ x9-x15  │ Temporary registers, caller-saved                        │
+/// │ x16-x17 │ Intra-procedure-call scratch registers, caller-saved     │
+/// │ x18     │ Platform register (reserved on Darwin)                   │
+/// │ x19-x28 │ Callee-saved registers                                   │
+/// │ x29     │ Frame pointer (FP), callee-saved                         │
+/// │ x30     │ Link register (LR), saved/restored by prologue/epilogue  │
+/// │ sp      │ Stack pointer (special, not in GPR set)                  │
+/// └─────────┴──────────────────────────────────────────────────────────┘
+///
+/// Floating-Point/SIMD Registers (FPR):
+/// ┌─────────┬──────────────────────────────────────────────────────────┐
+/// │ v0-v7   │ Argument/result passing, caller-saved                    │
+/// │ v8-v15  │ Callee-saved (lower 64 bits only on Darwin)              │
+/// │ v16-v31 │ Caller-saved                                             │
+/// └─────────┴──────────────────────────────────────────────────────────┘
+/// ```
+///
+/// **Calling Convention Summary:**
+/// - Integer arguments: x0, x1, x2, x3, x4, x5, x6, x7 (in order)
+/// - Floating-point arguments: v0, v1, v2, v3, v4, v5, v6, v7 (in order)
+/// - Integer return value: x0 (or x0:x1 for 128-bit)
+/// - Floating-point return value: v0
+/// - Stack grows downward, 16-byte aligned
+/// - Callee saves x19-x28, x29 (FP), and the lower 64 bits of v8-v15
+///
+/// **Helper Functions:**
+///
+/// | Function    | Purpose                                        |
+/// |-------------|------------------------------------------------|
+/// | isGPR()     | Check if a physical register is a GPR          |
+/// | isFPR()     | Check if a physical register is an FPR         |
+/// | regName()   | Get the textual name of a physical register    |
+/// | darwinTarget() | Get the singleton Darwin target instance    |
+///
+/// **Usage Example:**
+/// ```cpp
+/// const TargetInfo& ti = darwinTarget();
+///
+/// // Get argument registers for a call
+/// for (size_t i = 0; i < args.size() && i < ti.intArgOrder.size(); ++i) {
+///     emit(MOV, ti.intArgOrder[i], args[i]);
+/// }
+///
+/// // Check if a register needs saving
+/// if (std::find(ti.calleeSavedGPR.begin(), ti.calleeSavedGPR.end(), reg)
+///     != ti.calleeSavedGPR.end()) {
+///     // Save in prologue, restore in epilogue
+/// }
+/// ```
+///
+/// @see MachineIR.hpp For PhysReg enumeration and RegClass
+/// @see RegAllocLinear.cpp For register allocation using target info
+/// @see AsmEmitter.cpp For assembly generation using register names
+///
 //===----------------------------------------------------------------------===//
 
 #include "TargetAArch64.hpp"

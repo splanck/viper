@@ -72,6 +72,9 @@ enum class RuntimeTypeId : std::size_t
     RTCLS_Vec2,
     RTCLS_Vec3,
     RTCLS_Pixels,
+    RTCLS_ThreadsMonitor,
+    RTCLS_ThreadsSafeI64,
+    RTCLS_ThreadsThread,
 };
 
 /// @brief Describes a property on a runtime class.

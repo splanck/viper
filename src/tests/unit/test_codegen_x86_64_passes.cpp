@@ -12,14 +12,12 @@
 // Links: src/codegen/x86_64/passes
 //
 //===----------------------------------------------------------------------===//
-
-#include "GTestStub.hpp"
-
 #include "codegen/x86_64/passes/EmitPass.hpp"
 #include "codegen/x86_64/passes/LegalizePass.hpp"
 #include "codegen/x86_64/passes/LoweringPass.hpp"
 #include "codegen/x86_64/passes/PassManager.hpp"
 #include "codegen/x86_64/passes/RegAllocPass.hpp"
+#include "tests/TestHarness.hpp"
 
 #include <memory>
 #include <string>
@@ -113,6 +111,6 @@ TEST(PassManager, ShortCircuitsOnFailure)
 
 int main(int argc, char **argv)
 {
-    testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

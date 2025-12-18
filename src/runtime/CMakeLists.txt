@@ -90,6 +90,12 @@ set(RT_GRAPHICS_SOURCES
         rt_pixels.c
 )
 
+set(RT_THREADS_SOURCES
+        rt_monitor.c
+        rt_safe_i64.c
+        rt_threads.c
+)
+
 set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_context.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_error.h
@@ -127,7 +133,10 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_path.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_dir.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_pixels.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_threads.h
 )
+
+find_package(Threads REQUIRED)
 
 add_library(viper_rt_base_obj OBJECT ${RT_BASE_SOURCES})
 add_library(viper_rt_arrays_obj OBJECT ${RT_ARRAY_SOURCES})
@@ -137,6 +146,7 @@ add_library(viper_rt_text_obj OBJECT ${RT_TEXT_SOURCES})
 add_library(viper_rt_io_fs_obj OBJECT ${RT_IO_FS_SOURCES})
 add_library(viper_rt_exec_obj OBJECT ${RT_EXEC_SOURCES})
 add_library(viper_rt_graphics_obj OBJECT ${RT_GRAPHICS_SOURCES})
+add_library(viper_rt_threads_obj OBJECT ${RT_THREADS_SOURCES})
 
 add_library(viper_rt_base STATIC $<TARGET_OBJECTS:viper_rt_base_obj>)
 add_library(viper_rt_arrays STATIC $<TARGET_OBJECTS:viper_rt_arrays_obj>)
@@ -146,6 +156,7 @@ add_library(viper_rt_text STATIC $<TARGET_OBJECTS:viper_rt_text_obj>)
 add_library(viper_rt_io_fs STATIC $<TARGET_OBJECTS:viper_rt_io_fs_obj>)
 add_library(viper_rt_exec STATIC $<TARGET_OBJECTS:viper_rt_exec_obj>)
 add_library(viper_rt_graphics STATIC $<TARGET_OBJECTS:viper_rt_graphics_obj>)
+add_library(viper_rt_threads STATIC $<TARGET_OBJECTS:viper_rt_threads_obj>)
 
 add_library(viper_runtime STATIC
         $<TARGET_OBJECTS:viper_rt_base_obj>
@@ -156,6 +167,7 @@ add_library(viper_runtime STATIC
         $<TARGET_OBJECTS:viper_rt_io_fs_obj>
         $<TARGET_OBJECTS:viper_rt_exec_obj>
         $<TARGET_OBJECTS:viper_rt_graphics_obj>
+        $<TARGET_OBJECTS:viper_rt_threads_obj>
 )
 
 set(VIPER_RUNTIME_COMPONENT_OBJECT_LIBS
@@ -167,6 +179,7 @@ set(VIPER_RUNTIME_COMPONENT_OBJECT_LIBS
         viper_rt_io_fs_obj
         viper_rt_exec_obj
         viper_rt_graphics_obj
+        viper_rt_threads_obj
 )
 
 set(VIPER_RUNTIME_COMPONENT_LIBS
@@ -178,10 +191,11 @@ set(VIPER_RUNTIME_COMPONENT_LIBS
         viper_rt_io_fs
         viper_rt_exec
         viper_rt_graphics
+        viper_rt_threads
         viper_runtime
 )
 
-foreach(_rtobj IN LISTS VIPER_RUNTIME_COMPONENT_OBJECT_LIBS)
+foreach (_rtobj IN LISTS VIPER_RUNTIME_COMPONENT_OBJECT_LIBS)
     target_include_directories(${_rtobj} PRIVATE
             ${PROJECT_SOURCE_DIR}/src/runtime
             ${PROJECT_SOURCE_DIR}/include
@@ -196,9 +210,9 @@ foreach(_rtobj IN LISTS VIPER_RUNTIME_COMPONENT_OBJECT_LIBS)
     if (NOT WIN32)
         target_compile_definitions(${_rtobj} PRIVATE _POSIX_C_SOURCE=200809L)
     endif ()
-endforeach()
+endforeach ()
 
-foreach(_rtlib IN LISTS VIPER_RUNTIME_COMPONENT_LIBS)
+foreach (_rtlib IN LISTS VIPER_RUNTIME_COMPONENT_LIBS)
     target_include_directories(${_rtlib}
             PUBLIC
             $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src/runtime>
@@ -206,7 +220,7 @@ foreach(_rtlib IN LISTS VIPER_RUNTIME_COMPONENT_LIBS)
             $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper_runtime>
             $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper/runtime>
     )
-endforeach()
+endforeach ()
 
 target_link_libraries(viper_rt_arrays PUBLIC viper_rt_oop viper_rt_base)
 target_link_libraries(viper_rt_oop PUBLIC viper_rt_base)
@@ -215,11 +229,15 @@ target_link_libraries(viper_rt_text PUBLIC viper_rt_collections viper_rt_base)
 target_link_libraries(viper_rt_io_fs PUBLIC viper_rt_collections viper_rt_oop viper_rt_base)
 target_link_libraries(viper_rt_exec PUBLIC viper_rt_collections viper_rt_base)
 target_link_libraries(viper_rt_graphics PUBLIC viper_rt_oop viper_rt_base)
+target_link_libraries(viper_rt_threads PUBLIC viper_rt_oop viper_rt_base)
 
 if (NOT WIN32)
     target_link_libraries(viper_runtime PUBLIC m)
     target_link_libraries(viper_rt_base PUBLIC m)
 endif ()
+
+target_link_libraries(viper_rt_threads PUBLIC Threads::Threads)
+target_link_libraries(viper_runtime PUBLIC Threads::Threads)
 
 # VIPER_RC_DEBUG can be manually enabled for refcount debugging:
 # cmake -DCMAKE_CXX_FLAGS="-DVIPER_RC_DEBUG=1" ...

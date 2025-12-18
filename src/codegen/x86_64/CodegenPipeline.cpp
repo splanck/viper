@@ -242,8 +242,7 @@ int invokeLinker(const std::filesystem::path &asmPath,
 
     auto parseRuntimeSymbols = [](std::string_view text) -> std::unordered_set<std::string>
     {
-        auto isIdent = [](unsigned char c) -> bool
-        { return std::isalnum(c) || c == '_'; };
+        auto isIdent = [](unsigned char c) -> bool { return std::isalnum(c) || c == '_'; };
 
         std::unordered_set<std::string> symbols;
         for (std::size_t i = 0; i + 3 < text.size(); ++i)
@@ -255,7 +254,8 @@ int invokeLinker(const std::filesystem::path &asmPath,
                 start = i;
                 boundary = (start == 0) ? std::string_view::npos : (start - 1);
             }
-            else if (text[i] == '_' && text[i + 1] == 'r' && text[i + 2] == 't' && text[i + 3] == '_')
+            else if (text[i] == '_' && text[i + 1] == 'r' && text[i + 2] == 't' &&
+                     text[i + 3] == '_')
             {
                 start = i + 1;
                 boundary = (i == 0) ? std::string_view::npos : (i - 1);
@@ -263,7 +263,8 @@ int invokeLinker(const std::filesystem::path &asmPath,
 
             if (start == std::string_view::npos)
                 continue;
-            if (boundary != std::string_view::npos && isIdent(static_cast<unsigned char>(text[boundary])))
+            if (boundary != std::string_view::npos &&
+                isIdent(static_cast<unsigned char>(text[boundary])))
                 continue;
 
             std::size_t j = start;
@@ -286,6 +287,7 @@ int invokeLinker(const std::filesystem::path &asmPath,
         Text,
         IoFs,
         Exec,
+        Threads,
         Graphics,
     };
 
@@ -309,18 +311,22 @@ int invokeLinker(const std::filesystem::path &asmPath,
             starts("rt_parse_"))
             return RtComponent::Text;
 
-        if (starts("rt_file_") || starts("rt_dir_") || starts("rt_path_") || starts("rt_binfile_") ||
-            starts("rt_linereader_") || starts("rt_linewriter_") || starts("rt_io_file_") ||
-            sym == "rt_eof_ch" || sym == "rt_lof_ch" || sym == "rt_loc_ch" || sym == "rt_close_err" ||
-            sym == "rt_seek_ch_err" || sym == "rt_write_ch_err" || sym == "rt_println_ch_err" ||
+        if (starts("rt_file_") || starts("rt_dir_") || starts("rt_path_") ||
+            starts("rt_binfile_") || starts("rt_linereader_") || starts("rt_linewriter_") ||
+            starts("rt_io_file_") || sym == "rt_eof_ch" || sym == "rt_lof_ch" ||
+            sym == "rt_loc_ch" || sym == "rt_close_err" || sym == "rt_seek_ch_err" ||
+            sym == "rt_write_ch_err" || sym == "rt_println_ch_err" ||
             sym == "rt_line_input_ch_err" || sym == "rt_open_err_vstr")
             return RtComponent::IoFs;
 
         if (starts("rt_exec_") || starts("rt_machine_"))
             return RtComponent::Exec;
 
-        if (starts("rt_canvas_") || starts("rt_color_") || starts("rt_vec2_") || starts("rt_vec3_") ||
-            starts("rt_pixels_"))
+        if (starts("rt_monitor_") || starts("rt_thread_") || starts("rt_safe_"))
+            return RtComponent::Threads;
+
+        if (starts("rt_canvas_") || starts("rt_color_") || starts("rt_vec2_") ||
+            starts("rt_vec3_") || starts("rt_pixels_"))
             return RtComponent::Graphics;
 
         return std::nullopt;
@@ -341,6 +347,7 @@ int invokeLinker(const std::filesystem::path &asmPath,
     bool needText = false;
     bool needIoFs = false;
     bool needExec = false;
+    bool needThreads = false;
     bool needGraphics = false;
 
     for (const auto &sym : symbols)
@@ -368,6 +375,9 @@ int invokeLinker(const std::filesystem::path &asmPath,
             case RtComponent::Exec:
                 needExec = true;
                 break;
+            case RtComponent::Threads:
+                needThreads = true;
+                break;
             case RtComponent::Graphics:
                 needGraphics = true;
                 break;
@@ -378,7 +388,7 @@ int invokeLinker(const std::filesystem::path &asmPath,
 
     if (needText || needIoFs || needExec)
         needCollections = true;
-    if (needCollections || needArrays || needGraphics)
+    if (needCollections || needArrays || needGraphics || needThreads)
         needOop = true;
 
     const std::optional<std::filesystem::path> buildDirOpt = findBuildDir();
@@ -387,7 +397,8 @@ int invokeLinker(const std::filesystem::path &asmPath,
     auto runtimeArchivePath = [&](std::string_view libBaseName) -> std::filesystem::path
     {
         if (!buildDir.empty())
-            return buildDir / "src/runtime" / (std::string("lib") + std::string(libBaseName) + ".a");
+            return buildDir / "src/runtime" /
+                   (std::string("lib") + std::string(libBaseName) + ".a");
         return std::filesystem::path("src/runtime") /
                (std::string("lib") + std::string(libBaseName) + ".a");
     };
@@ -399,13 +410,16 @@ int invokeLinker(const std::filesystem::path &asmPath,
     if (needArrays)
         requiredArchives.emplace_back("viper_rt_arrays", runtimeArchivePath("viper_rt_arrays"));
     if (needCollections)
-        requiredArchives.emplace_back("viper_rt_collections", runtimeArchivePath("viper_rt_collections"));
+        requiredArchives.emplace_back("viper_rt_collections",
+                                      runtimeArchivePath("viper_rt_collections"));
     if (needText)
         requiredArchives.emplace_back("viper_rt_text", runtimeArchivePath("viper_rt_text"));
     if (needIoFs)
         requiredArchives.emplace_back("viper_rt_io_fs", runtimeArchivePath("viper_rt_io_fs"));
     if (needExec)
         requiredArchives.emplace_back("viper_rt_exec", runtimeArchivePath("viper_rt_exec"));
+    if (needThreads)
+        requiredArchives.emplace_back("viper_rt_threads", runtimeArchivePath("viper_rt_threads"));
     if (needGraphics)
         requiredArchives.emplace_back("viper_rt_graphics", runtimeArchivePath("viper_rt_graphics"));
 
@@ -463,6 +477,8 @@ int invokeLinker(const std::filesystem::path &asmPath,
         appendArchiveIf("viper_rt_collections");
     if (needArrays)
         appendArchiveIf("viper_rt_arrays");
+    if (needThreads)
+        appendArchiveIf("viper_rt_threads");
     if (needOop)
         appendArchiveIf("viper_rt_oop");
     appendArchiveIf("viper_rt_base");
@@ -486,6 +502,8 @@ int invokeLinker(const std::filesystem::path &asmPath,
     cmd.push_back("-Wl,-dead_strip");
 #else
     cmd.push_back("-Wl,--gc-sections");
+    if (needThreads)
+        cmd.push_back("-pthread");
     cmd.push_back("-lm");
 #endif
 

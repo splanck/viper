@@ -4,9 +4,7 @@
 // File: tests/unit/codegen/test_codegen_arm64_cf_loop_phi.cpp
 // Purpose: Verify loop lowering with loop-carried block params.
 //===----------------------------------------------------------------------===//
-
-#include "tests/unit/GTestStub.hpp"
-
+#include "tests/TestHarness.hpp"
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -74,6 +72,6 @@ TEST(Arm64CLI, CF_Loop_Phi)
 
 int main(int argc, char **argv)
 {
-    testing::InitGoogleTest(&argc, &argv);
-    return RUN_ALL_TESTS();
+    viper_test::init(&argc, &argv);
+    return viper_test::run_all_tests();
 }

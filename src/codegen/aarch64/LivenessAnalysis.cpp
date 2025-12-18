@@ -4,14 +4,93 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-//
-// File: codegen/aarch64/LivenessAnalysis.cpp
-// Purpose: Cross-block liveness analysis for IL->MIR lowering.
-//
-// This file contains the implementation of cross-block liveness analysis,
-// which identifies temps that need spill/reload handling due to being
-// used in different blocks than where they are defined.
-//
+///
+/// @file LivenessAnalysis.cpp
+/// @brief Cross-block liveness analysis for IL to MIR lowering.
+///
+/// This file implements liveness analysis that identifies IL temporaries whose
+/// values must survive across basic block boundaries. Such temporaries require
+/// special handling during MIR lowering because the register allocator operates
+/// on a per-block basis.
+///
+/// **What is Cross-Block Liveness?**
+/// In SSA form, a temporary may be defined in one basic block and used in
+/// another. These "cross-block live" temporaries need their values preserved
+/// when control flows between blocks.
+///
+/// **Problem Statement:**
+/// ```
+/// block entry:
+///   %0 = const.i64 42       ; %0 defined here
+///   br loop
+///
+/// block loop:
+///   print_i64 %0            ; %0 used here (different block!)
+///   cbr condition, loop, exit
+/// ```
+///
+/// Since the register allocator processes blocks independently, it has no
+/// knowledge that %0's value must survive the transition from "entry" to "loop".
+/// The liveness analysis identifies such temporaries so the lowering pass can:
+/// 1. Allocate spill slots for them
+/// 2. Store them before block exits
+/// 3. Reload them at block entries
+///
+/// **Analysis Algorithm:**
+/// ```
+/// 1. Build definition map: tempId → defining block index
+///    - Block parameters are "defined" by their block
+///    - Instructions with results define their result temp
+///
+/// 2. Scan all temp uses in each block
+///    - For each temp used in block B
+///    - If temp was defined in block D where D ≠ B
+///    - Mark temp as "cross-block live"
+///
+/// 3. Allocate spill slots for cross-block temps
+///    - Each cross-block temp gets a stack slot
+///    - Slot offset is recorded for later use
+/// ```
+///
+/// **Output: LivenessInfo Structure:**
+/// | Field          | Description                                 |
+/// |----------------|---------------------------------------------|
+/// | tempDefBlock   | Map from temp ID to defining block index    |
+/// | crossBlockTemps| Set of temp IDs that are live across blocks |
+/// | spillOffset    | Map from temp ID to spill slot offset       |
+///
+/// **Exclusions:**
+/// - Alloca temps are excluded because they represent stack addresses,
+///   not values. Their address can be recomputed from the frame pointer.
+///
+/// **Example:**
+/// ```
+/// Input IL:
+///   block entry:
+///     %0 = alloca 8         ; excluded - alloca
+///     %1 = const.i64 42     ; cross-block if used in loop
+///     %2 = const.i64 1      ; local only
+///     br loop
+///
+///   block loop:
+///     %3 = add.i64 %1, %2   ; %1 is cross-block, %2 is local
+///     br exit
+///
+/// Output:
+///   crossBlockTemps = {1}   ; only %1 needs spilling
+///   spillOffset[1] = -24    ; spill slot for %1
+/// ```
+///
+/// **Integration with Lowering:**
+/// The lowering pass uses LivenessInfo to:
+/// 1. Insert stores after definitions of cross-block temps
+/// 2. Insert reloads before uses in different blocks
+/// 3. Skip alloca temps (they don't need value preservation)
+///
+/// @see LowerILToMIR.cpp For usage during IL lowering
+/// @see FrameBuilder.cpp For spill slot allocation
+/// @see RegAllocLinear.cpp For per-block register allocation
+///
 //===----------------------------------------------------------------------===//
 
 #include "LivenessAnalysis.hpp"

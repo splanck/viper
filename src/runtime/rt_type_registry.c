@@ -4,15 +4,106 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_type_registry.c
-// Purpose: Lightweight class metadata registry used by the OOP runtime.
-// Key roles: Supports Object.ToString (via qname lookup), runtime type queries
-//            (type ids, is-a tests, interface bindings), and registration of
-//            both built-in and user-defined classes (per-VM RtContext).
-// Ownership/Lifetime: Stores pointers to rt_class_info descriptors; entries are
-//            associated with the active RtContext so multiple VMs remain isolated.
-// Links: src/runtime/rt_oop.h
+///
+/// @file rt_type_registry.c
+/// @brief Runtime type system for Viper's object-oriented features.
+///
+/// This file implements the type registry that enables Viper's OOP features
+/// at runtime. The registry maintains metadata about classes and interfaces,
+/// supporting operations like type casting, inheritance checks, interface
+/// dispatch, and Object.ToString().
+///
+/// **What is the Type Registry?**
+/// The type registry is a per-VM database of class and interface metadata
+/// that enables:
+/// - Runtime type identification (typeof, is-a checks)
+/// - Virtual method dispatch via vtables
+/// - Interface method dispatch via itables
+/// - Object.ToString() default implementation
+/// - Safe type casting (TryCast, DirectCast)
+///
+/// **Type System Architecture:**
+/// ```
+/// ┌─────────────────────────────────────────────────────────────────────────┐
+/// │                         Type Registry                                   │
+/// │                                                                         │
+/// │  ┌────────────────┐  ┌────────────────┐  ┌────────────────────────┐     │
+/// │  │ Classes Array  │  │ Interfaces     │  │ Bindings               │     │
+/// │  │                │  │ Array          │  │ (Class→Interface)      │     │
+/// │  │ ┌────────────┐ │  │ ┌────────────┐ │  │ ┌──────────────────┐   │     │
+/// │  │ │ type_id    │ │  │ │ iface_id   │ │  │ │ type_id          │   │     │
+/// │  │ │ ci (meta)  │ │  │ │ name       │ │  │ │ iface_id         │   │     │
+/// │  │ │ base_type  │ │  │ │ slot_count │ │  │ │ itable (methods) │   │     │
+/// │  │ └────────────┘ │  │ └────────────┘ │  │ └──────────────────┘   │     │
+/// │  └────────────────┘  └────────────────┘  └────────────────────────┘     │
+/// └─────────────────────────────────────────────────────────────────────────┘
+/// ```
+///
+/// **Class Info Structure (rt_class_info):**
+/// ```
+/// ┌─────────────────────────────────────────────────────┐
+/// │ rt_class_info                                       │
+/// │   type_id: 42        ← Unique identifier            │
+/// │   qname: "MyClass"   ← Qualified name for ToString  │
+/// │   vtable: [...]      ← Virtual method pointers      │
+/// │   vtable_len: 5      ← Number of virtual methods    │
+/// │   base: *ParentInfo  ← Pointer to base class info   │
+/// └─────────────────────────────────────────────────────┘
+/// ```
+///
+/// **Registration Order:**
+/// Classes must be registered before their derived classes so that base
+/// class pointers can be resolved:
+/// ```
+/// 1. rt_register_class_with_base(Animal, vtable, "Animal", 2, -1)
+/// 2. rt_register_class_with_base(Dog, vtable, "Dog", 3, Animal_id)
+///    ↑ Dog's base is resolved by looking up Animal in registry
+/// ```
+///
+/// **Type Operations:**
+/// | Operation             | Description                                    |
+/// |-----------------------|------------------------------------------------|
+/// | rt_register_class     | Add class metadata to registry                 |
+/// | rt_register_interface | Add interface metadata to registry             |
+/// | rt_bind_interface     | Associate itable with class for interface      |
+/// | rt_typeid_of          | Get type ID from object instance               |
+/// | rt_type_is_a          | Check inheritance relationship                 |
+/// | rt_type_implements    | Check if class implements interface            |
+/// | rt_cast_as            | Safe downcast to class type                    |
+/// | rt_cast_as_iface      | Safe cast to interface type                    |
+/// | rt_itable_lookup      | Get interface method table for object          |
+///
+/// **Inheritance Walk:**
+/// Type checks walk the inheritance chain by following base_type_id links:
+/// ```
+/// rt_type_is_a(Dog, Animal):
+///   Dog.base_type_id → Animal.type_id → match! return true
+///
+/// rt_type_is_a(Dog, Vehicle):
+///   Dog.base_type_id → Animal.type_id → no match
+///   Animal.base_type_id → -1 → end of chain, return false
+/// ```
+///
+/// **Interface Dispatch:**
+/// When calling an interface method, the runtime:
+/// 1. Gets the object's type_id from its vptr
+/// 2. Looks up the binding (type_id, iface_id) → itable
+/// 3. Calls the method at the appropriate itable slot
+///
+/// **Per-VM Isolation:**
+/// Each VM context has its own type registry, enabling multiple independent
+/// Viper programs to run in the same process without type ID conflicts.
+///
+/// **Thread Safety:**
+/// - Registration functions should be called during VM initialization
+/// - Query functions (typeid_of, is_a, etc.) are thread-safe for reads
+/// - Concurrent registration is not supported
+///
+/// @see rt_oop.h For OOP type definitions
+/// @see rt_oop_dispatch.c For virtual method dispatch
+/// @see rt_context.c For per-VM isolation
+///
+//===----------------------------------------------------------------------===//
 
 #include "rt_context.h"
 #include "rt_internal.h"
@@ -20,29 +111,63 @@
 #include <stdlib.h>
 #include <string.h>
 
-// Simple runtime registries for classes and interfaces.
+// ============================================================================
+// Internal Data Structures
+// ============================================================================
 
+/// @brief Entry in the class registry tracking one registered class.
+///
+/// Each entry associates a type ID with its class metadata (rt_class_info).
+/// The base_type_id enables inheritance chain traversal for is-a checks.
+///
+/// @note owned_ci indicates whether ci was allocated by the registry and
+///       must be freed during cleanup (vs. static metadata from codegen).
 typedef struct
 {
-    int type_id;
-    const rt_class_info *ci;
-    int base_type_id; // -1 if none
-    int owned_ci;     // non-zero when ci must be freed during cleanup
+    int type_id;              ///< Unique class identifier.
+    const rt_class_info *ci;  ///< Class metadata (vtable, name, base).
+    int base_type_id;         ///< Base class ID, or -1 for root classes.
+    int owned_ci;             ///< Non-zero if ci should be freed on cleanup.
 } class_entry;
 
+/// @brief Entry in the interface registry tracking one registered interface.
+///
+/// Stores the interface's unique ID and its registration metadata including
+/// the qualified name and slot count.
 typedef struct
 {
-    int iface_id;
-    rt_iface_reg reg;
+    int iface_id;    ///< Unique interface identifier.
+    rt_iface_reg reg; ///< Interface registration info (name, slot count).
 } iface_entry;
 
+/// @brief Entry in the bindings table associating a class with an interface.
+///
+/// When a class implements an interface, a binding is created that links
+/// the class type_id and iface_id to the interface method table (itable).
+/// The itable is an array of function pointers for the interface's methods.
+///
+/// **Example:**
+/// ```
+/// Class Dog implements IComparable
+///   → binding_entry { type_id=Dog, iface_id=IComparable, itable=... }
+/// ```
 typedef struct
 {
-    int type_id;
-    int iface_id;
-    void **itable;
+    int type_id;     ///< Class implementing the interface.
+    int iface_id;    ///< Interface being implemented.
+    void **itable;   ///< Array of function pointers for interface methods.
 } binding_entry;
 
+// ============================================================================
+// State Access Helpers
+// ============================================================================
+
+/// @brief Get the type registry state for the current context.
+///
+/// Returns the type registry from either the thread's bound VM context or
+/// the legacy fallback context. This enables per-VM type isolation.
+///
+/// @return Pointer to the current context's type registry state.
 static inline RtTypeRegistryState *rt_tr_state(void)
 {
     RtContext *ctx = rt_get_current_context();
@@ -496,6 +621,20 @@ void **rt_get_interface_impl(int64_t type_id, int64_t iface_id)
     return NULL;
 }
 
+/// @brief Clean up type registry resources for a context.
+///
+/// Frees all memory associated with the type registry including:
+/// - Class entries and their owned rt_class_info structures
+/// - Interface entries
+/// - Interface binding entries
+///
+/// After cleanup, the registry is empty and ready for reinitialization
+/// if needed.
+///
+/// @param ctx Context whose type registry should be cleaned up.
+///
+/// @note Safe to call with NULL or on an already-cleaned context.
+/// @note Owned class info structures are freed; static ones are left alone.
 void rt_type_registry_cleanup(RtContext *ctx)
 {
     if (!ctx)

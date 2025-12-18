@@ -123,7 +123,8 @@ extern "C"
     /// @pre init_len <= init_cap.
     /// @post refcnt == 1; len == init_len; cap == init_cap.
     /// @errors Returns NULL when size computations overflow or malloc fails.
-    /// @thread-safety Not thread-safe; callers must synchronize allocations.
+    /// @thread-safety Thread-safe (delegates to malloc/free). Payload mutation after publication
+    ///                is not synchronized by the heap layer.
     void *rt_heap_alloc(rt_heap_kind_t kind,
                         rt_elem_kind_t elem_kind,
                         size_t elem_size,
@@ -136,7 +137,7 @@ extern "C"
     ///
     /// @param payload Payload pointer previously returned by rt_heap_alloc (may be NULL).
     /// @post refcnt is increased by 1 when payload != NULL.
-    /// @thread-safety Not atomic; external synchronization required for shared objects.
+    /// @thread-safety Atomic refcount; safe to retain/release shared objects concurrently.
     void rt_heap_retain(void *payload);
 
     /// What: Decrement the reference count of @p payload, freeing on zero.
@@ -146,7 +147,7 @@ extern "C"
     /// @param payload Payload pointer or NULL (NULL is ignored).
     /// @return New reference count after decrement (0 when freed). Undefined when payload is NULL.
     /// @errors Behavior is undefined if refcnt underflows (double-free); debug builds may assert.
-    /// @thread-safety Not atomic; external synchronization required for shared objects.
+    /// @thread-safety Atomic refcount; safe to retain/release shared objects concurrently.
     size_t rt_heap_release(void *payload);
 
     /// What: Decrement refcount without immediate free.

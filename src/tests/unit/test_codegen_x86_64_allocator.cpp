@@ -12,13 +12,11 @@
 // Links: src/codegen/x86_64/ra/Allocator.hpp
 //
 //===----------------------------------------------------------------------===//
-
-#include "GTestStub.hpp"
-
 #include "codegen/x86_64/RegAllocLinear.hpp"
 #include "codegen/x86_64/TargetX64.hpp"
 #include "codegen/x86_64/ra/Allocator.hpp"
 #include "codegen/x86_64/ra/LiveIntervals.hpp"
+#include "tests/TestHarness.hpp"
 
 using namespace viper::codegen::x64;
 using namespace viper::codegen::x64::ra;
@@ -76,6 +74,6 @@ TEST(Allocator, AssignsRegisters)
 
 int main(int argc, char **argv)
 {
-    testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

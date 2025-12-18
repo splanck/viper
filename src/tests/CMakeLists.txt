@@ -23,8 +23,6 @@ endforeach ()
 
 find_package(Threads REQUIRED)
 
-set(_viper_testing_gtest_targets) # Intentional: rely on GTestStub.hpp instead of external gtest.
-
 add_library(viper_testing INTERFACE)
 target_link_libraries(viper_testing INTERFACE viper_common_opts viper::il_full)
 

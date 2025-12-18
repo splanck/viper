@@ -4,18 +4,98 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/codegen/aarch64/MachineIR.cpp
-// Purpose: Provide implementations for the AArch64 Machine IR types.
-//
-// Key invariants: Helpers preserve operand invariants declared in the headers
-//                 and maintain the stable textual form relied upon by
-//                 debugging utilities.
-//
-// Ownership/Lifetime: All Machine IR nodes own their operands by value.
-//
-// Links: docs/codemap.md#codegen
-//
+///
+/// @file MachineIR.cpp
+/// @brief AArch64 Machine IR type implementations and utilities.
+///
+/// This file provides the runtime support for Viper's AArch64 Machine IR (MIR),
+/// a low-level intermediate representation used between IL lowering and
+/// assembly emission. MIR represents code at the instruction level with
+/// explicit register operands and machine opcodes.
+///
+/// **What is Machine IR?**
+/// Machine IR is a target-specific representation that closely models the
+/// AArch64 instruction set. Unlike high-level IL which uses typed values and
+/// SSA temporaries, MIR uses:
+/// - Virtual registers (vregs) that are later allocated to physical registers
+/// - Physical registers for ABI-mandated operands (args, return values)
+/// - Machine opcodes that map 1:1 or 1:few to AArch64 instructions
+///
+/// **MIR Hierarchy:**
+/// ```
+/// MFunction           ← Function being compiled
+///   └─ blocks[]       ← Vector of MBasicBlock
+///        └─ instrs[]  ← Vector of MInstr (machine instructions)
+///             └─ operands[] ← MOperand values (regs, imms, labels)
+/// ```
+///
+/// **Operand Types (MOperand):**
+/// | Kind       | Description                          | Example        |
+/// |------------|--------------------------------------|----------------|
+/// | VReg       | Virtual register (to be allocated)   | v42:gpr        |
+/// | PhysReg    | Physical AArch64 register            | x0, d0, sp     |
+/// | Immediate  | Signed integer constant              | #-16, #4096    |
+/// | Label      | Basic block or symbol reference      | .LBB0_3        |
+/// | FrameSlot  | Stack frame offset (FP-relative)     | [fp, #-32]     |
+///
+/// **Register Classes:**
+/// | Class | Description              | Physical Registers |
+/// |-------|--------------------------|-------------------|
+/// | GPR   | General-purpose (64-bit) | x0-x28, x30 (lr) |
+/// | FPR   | Floating-point (64-bit)  | d0-d31           |
+///
+/// **Machine Opcodes (MOpcode):**
+/// MIR opcodes abstract over specific instruction encodings:
+/// | MOpcode     | AArch64 Instruction | Description              |
+/// |-------------|---------------------|--------------------------|
+/// | MovRR       | mov xd, xn          | GPR-to-GPR move          |
+/// | MovRI       | mov xd, #imm        | Load immediate to GPR    |
+/// | AddRRR      | add xd, xn, xm      | Integer addition         |
+/// | FAddRRR     | fadd dd, dn, dm     | FP addition              |
+/// | LdrRegFpImm | ldr xd, [fp, #off]  | Load from stack          |
+/// | Bl          | bl <symbol>         | Branch with link (call)  |
+/// | BCond       | b.<cond> <label>    | Conditional branch       |
+///
+/// **Lowering Pipeline Position:**
+/// ```
+/// IL (SSA)
+///    │
+///    ▼
+/// ┌──────────────────┐
+/// │ LowerILToMIR     │ ← Convert IL to MIR (this representation)
+/// └──────────────────┘
+///    │
+///    ▼
+/// MIR (virtual registers)
+///    │
+///    ▼
+/// ┌──────────────────┐
+/// │ RegAllocLinear   │ ← Assign physical registers, insert spills
+/// └──────────────────┘
+///    │
+///    ▼
+/// MIR (physical registers)
+///    │
+///    ▼
+/// ┌──────────────────┐
+/// │ AsmEmitter       │ ← Emit assembly text
+/// └──────────────────┘
+///    │
+///    ▼
+/// Assembly (.s)
+/// ```
+///
+/// **Key Invariants:**
+/// - All MIR nodes own their operands by value (no pointers)
+/// - Virtual registers have a register class (GPR or FPR)
+/// - Physical registers are fully determined by ABI and lowering rules
+/// - Immediate values fit in the instruction's immediate field
+///
+/// @see MachineIR.hpp For type definitions
+/// @see LowerILToMIR.cpp For IL→MIR conversion
+/// @see RegAllocLinear.cpp For register allocation
+/// @see AsmEmitter.cpp For assembly emission
+///
 //===----------------------------------------------------------------------===//
 
 #include "MachineIR.hpp"

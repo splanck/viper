@@ -17,18 +17,17 @@
 #include "il/core/Module.hpp"
 #include "il/io/Parser.hpp"
 #include "il/verify/Verifier.hpp"
-#include "tests/unit/GTestStub.hpp"
+#include "tests/TestHarness.hpp"
 #include "tools/ilc/cmd_codegen_arm64.hpp"
 
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <sstream>
 #include <string>
 
 using namespace viper::tests;
 using namespace viper::tools::ilc;
-
-#ifdef VIPER_HAS_GTEST
 
 namespace
 {
@@ -50,9 +49,13 @@ il::core::Module parseModule()
     std::istringstream iss{kIlSource};
     il::core::Module module;
     auto parseResult = il::io::Parser::parse(iss, module);
-    ASSERT_TRUE(parseResult) << "Failed to parse IL source";
+    if (!parseResult)
+        std::cerr << "Failed to parse IL source\n";
+    ASSERT_TRUE(parseResult);
     auto verifyResult = il::verify::Verifier::verify(module);
-    ASSERT_TRUE(verifyResult) << "IL failed verification";
+    if (!verifyResult)
+        std::cerr << "IL failed verification\n";
+    ASSERT_TRUE(verifyResult);
     return module;
 }
 
@@ -72,13 +75,13 @@ TEST(EnvironmentIsNative, VmReportsFalse)
     VmFixture fixture;
     il::core::Module module = parseModule();
     const auto result = fixture.run(module);
-    EXPECT_EQ(result, 0) << "VM should report non-native execution";
+    EXPECT_EQ(result, 0);
 }
 
 TEST(EnvironmentIsNative, NativeArm64ReportsTrueWhenAvailable)
 {
     if (!isArm64Host())
-        GTEST_SKIP() << "ARM64 native backend not available on this host";
+        VIPER_TEST_SKIP("ARM64 native backend not available on this host");
 
     // Write IL to a temp file
     const std::filesystem::path ilPath{"build/test-out/env_is_native.il"};
@@ -91,21 +94,11 @@ TEST(EnvironmentIsNative, NativeArm64ReportsTrueWhenAvailable)
 
     const char *argv[] = {ilPath.c_str(), "-run-native"};
     const int rc = cmd_codegen_arm64(2, const_cast<char **>(argv));
-    EXPECT_EQ(rc & 0xFF, 1) << "Native execution should report IsNative=1";
+    EXPECT_EQ(rc & 0xFF, 1);
 }
 
 int main(int argc, char **argv)
 {
-    ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }
-
-#else
-
-int main()
-{
-    // No gtest available; nothing to run.
-    return 0;
-}
-
-#endif // VIPER_HAS_GTEST

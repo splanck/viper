@@ -12,14 +12,8 @@
 // Links: docs/architecture.md
 //
 //===----------------------------------------------------------------------===//
-
-#ifdef VIPER_HAS_GTEST
-#include <gtest/gtest.h>
-#else
-#include "../GTestStub.hpp"
-#endif
-
 #include "il/runtime/classes/RuntimeClasses.hpp"
+#include "tests/TestHarness.hpp"
 
 #include <algorithm>
 #include <string>
@@ -92,6 +86,6 @@ TEST(RuntimeClassCatalogBasic, ContainsCanonicalTypes)
 
 int main(int argc, char **argv)
 {
-    ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

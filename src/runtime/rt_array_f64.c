@@ -175,7 +175,7 @@ int rt_arr_f64_resize(double **a_inout, size_t new_len)
         return 0;
     }
 
-    if (hdr->refcnt > 1)
+    if (__atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED) > 1)
     {
         double *fresh = rt_arr_f64_new(new_len);
         if (!fresh)

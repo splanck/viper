@@ -4,13 +4,50 @@
 // See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_codec.c
-// Purpose: Base64, Hex, and URL encoding/decoding utilities for strings.
-// Key invariants: All functions operate on strings; encoding is reversible.
-// Ownership/Lifetime: Returned strings are newly allocated.
-// Links: docs/viperlib.md
-//
+///
+/// @file rt_codec.c
+/// @brief Base64, Hex, and URL encoding/decoding utilities for strings.
+///
+/// This file implements encoding and decoding functions for common text-safe
+/// representations of binary data. These codecs are essential for:
+/// - Transmitting binary data over text-only protocols
+/// - Embedding data in URLs and HTML
+/// - Creating human-readable representations of bytes
+///
+/// **Supported Encodings:**
+///
+/// | Encoding | Expansion | Characters Used              | Use Case                |
+/// |----------|-----------|------------------------------|-------------------------|
+/// | Base64   | ~33%      | A-Z, a-z, 0-9, +, /, =       | Email attachments, JWT  |
+/// | Hex      | 100%      | 0-9, a-f                     | Debug output, hashes    |
+/// | URL      | Variable  | A-Z, a-z, 0-9, -, _, ., ~    | Query strings, paths    |
+///
+/// **Base64 Encoding (RFC 4648):**
+/// ```
+/// Input:   "Man"                       (3 bytes)
+/// Binary:  01001101 01100001 01101110  (24 bits)
+/// Groups:  010011 010110 000101 101110 (4 x 6-bit groups)
+/// Indices: 19     22     5      46
+/// Output:  "TWFu"                      (4 characters)
+/// ```
+///
+/// **Hex Encoding:**
+/// ```
+/// Input:   "Hi"
+/// Bytes:   0x48 0x69
+/// Output:  "4869"
+/// ```
+///
+/// **URL Encoding (Percent Encoding):**
+/// ```
+/// Input:   "Hello World!"
+/// Output:  "Hello%20World%21"
+/// ```
+///
+/// **Thread Safety:** All functions are thread-safe (no global state).
+///
+/// @see rt_hash.c For hashing functions that produce hex output
+///
 //===----------------------------------------------------------------------===//
 
 #include "rt_codec.h"
@@ -23,10 +60,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-/// Hex character lookup table for encoding.
+/// @brief Hex character lookup table for encoding (lowercase).
 static const char hex_chars[] = "0123456789abcdef";
 
-/// Base64 character lookup table for encoding (RFC 4648).
+/// @brief Base64 character lookup table for encoding (RFC 4648 standard alphabet).
 static const char b64_chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 /// @brief Convert hex character to value (0-15).
@@ -72,6 +109,41 @@ static int is_url_unreserved(unsigned char c)
 // URL Encoding/Decoding
 //=============================================================================
 
+/// @brief Encodes a string for safe use in URLs (percent encoding).
+///
+/// Replaces unsafe characters with percent-encoded equivalents (%XX where XX
+/// is the hexadecimal byte value). Safe characters are left unchanged.
+///
+/// **Unreserved (safe) characters:**
+/// - Letters: A-Z, a-z
+/// - Digits: 0-9
+/// - Special: - _ . ~
+///
+/// **Encoding examples:**
+/// ```
+/// Input:  "Hello World"     Output: "Hello%20World"
+/// Input:  "100% done!"      Output: "100%25%20done%21"
+/// Input:  "a=1&b=2"         Output: "a%3D1%26b%3D2"
+/// Input:  "café"            Output: "caf%C3%A9" (UTF-8 bytes encoded)
+/// ```
+///
+/// **Usage example:**
+/// ```
+/// Dim query = "search term with spaces"
+/// Dim encoded = Codec.UrlEncode(query)
+/// Dim url = "https://example.com/search?q=" & encoded
+/// ' url = "https://example.com/search?q=search%20term%20with%20spaces"
+/// ```
+///
+/// @param str The string to encode. NULL or empty returns empty string.
+///
+/// @return A newly allocated URL-encoded string. Traps on allocation failure.
+///
+/// @note O(n) time complexity where n is input length.
+/// @note Output length is at most 3× input length (all bytes encoded).
+/// @note UTF-8 strings have each byte encoded separately.
+///
+/// @see rt_codec_url_decode For decoding URL-encoded strings
 rt_string rt_codec_url_encode(rt_string str)
 {
     const char *input = rt_string_cstr(str);
@@ -119,6 +191,39 @@ rt_string rt_codec_url_encode(rt_string str)
     return result;
 }
 
+/// @brief Decodes a URL-encoded (percent-encoded) string.
+///
+/// Converts percent-encoded sequences (%XX) back to their original byte values.
+/// Also converts '+' to space (form encoding convention).
+///
+/// **Decoding examples:**
+/// ```
+/// Input:  "Hello%20World"           Output: "Hello World"
+/// Input:  "100%25%20done%21"        Output: "100% done!"
+/// Input:  "caf%C3%A9"               Output: "café"
+/// Input:  "a+b"                     Output: "a b" (+ becomes space)
+/// ```
+///
+/// **Error handling:**
+/// - Invalid sequences (e.g., "%GG") are passed through unchanged
+/// - Incomplete sequences at end (e.g., "%2") are passed through unchanged
+///
+/// **Usage example:**
+/// ```
+/// Dim encoded = "Hello%20World%21"
+/// Dim decoded = Codec.UrlDecode(encoded)
+/// Print decoded   ' Outputs: Hello World!
+/// ```
+///
+/// @param str The URL-encoded string to decode. NULL or empty returns empty string.
+///
+/// @return A newly allocated decoded string. Traps on allocation failure.
+///
+/// @note O(n) time complexity where n is input length.
+/// @note Output length is at most input length (no expansion possible).
+/// @note Forgiving: invalid sequences pass through unchanged.
+///
+/// @see rt_codec_url_encode For encoding strings for URLs
 rt_string rt_codec_url_decode(rt_string str)
 {
     const char *input = rt_string_cstr(str);
@@ -168,6 +273,46 @@ rt_string rt_codec_url_decode(rt_string str)
 // Base64 Encoding/Decoding
 //=============================================================================
 
+/// @brief Encodes a string to Base64 format (RFC 4648).
+///
+/// Converts binary data to a text representation using the Base64 alphabet.
+/// The output uses only printable ASCII characters and is suitable for
+/// embedding in JSON, XML, email, and other text formats.
+///
+/// **Base64 encoding process:**
+/// 1. Take 3 bytes (24 bits) of input
+/// 2. Split into 4 groups of 6 bits each
+/// 3. Map each 6-bit value to a character (A-Z, a-z, 0-9, +, /)
+/// 4. Pad with '=' if input length is not divisible by 3
+///
+/// **Padding:**
+/// - 0 remainder bytes: no padding
+/// - 1 remainder byte: "==" padding
+/// - 2 remainder bytes: "=" padding
+///
+/// **Examples:**
+/// ```
+/// Input:  "Man"      Output: "TWFu"      (no padding)
+/// Input:  "Ma"       Output: "TWE="      (1 pad char)
+/// Input:  "M"        Output: "TQ=="      (2 pad chars)
+/// Input:  "Hello"    Output: "SGVsbG8="
+/// ```
+///
+/// **Usage example:**
+/// ```
+/// Dim data = "Hello, World!"
+/// Dim encoded = Codec.Base64Enc(data)
+/// Print encoded   ' Outputs: SGVsbG8sIFdvcmxkIQ==
+/// ```
+///
+/// @param str The string to encode. NULL or empty returns empty string.
+///
+/// @return A newly allocated Base64-encoded string. Traps on allocation failure.
+///
+/// @note O(n) time complexity where n is input length.
+/// @note Output length is ceil(n/3)*4 (33% expansion plus padding).
+///
+/// @see rt_codec_base64_dec For decoding Base64 strings
 rt_string rt_codec_base64_enc(rt_string str)
 {
     const char *input = rt_string_cstr(str);
@@ -230,6 +375,39 @@ rt_string rt_codec_base64_enc(rt_string str)
     return result;
 }
 
+/// @brief Decodes a Base64-encoded string back to its original form.
+///
+/// Converts a Base64 string back to the original binary data. The input
+/// must be valid Base64 with proper padding.
+///
+/// **Decoding examples:**
+/// ```
+/// Input:  "TWFu"              Output: "Man"
+/// Input:  "SGVsbG8sIFdvcmxkIQ==" Output: "Hello, World!"
+/// Input:  "TQ=="              Output: "M"
+/// ```
+///
+/// **Validation:**
+/// - Input length must be a multiple of 4
+/// - Padding characters must only appear at the end
+/// - Only valid Base64 characters are allowed
+///
+/// **Usage example:**
+/// ```
+/// Dim encoded = "SGVsbG8sIFdvcmxkIQ=="
+/// Dim decoded = Codec.Base64Dec(encoded)
+/// Print decoded   ' Outputs: Hello, World!
+/// ```
+///
+/// @param str The Base64-encoded string to decode. NULL or empty returns empty string.
+///
+/// @return A newly allocated decoded string. Traps on invalid input or allocation failure.
+///
+/// @note O(n) time complexity where n is input length.
+/// @note Output length is approximately 3/4 of input length.
+/// @note Traps on invalid Base64 format (not forgiving like URL decode).
+///
+/// @see rt_codec_base64_enc For encoding strings to Base64
 rt_string rt_codec_base64_dec(rt_string str)
 {
     const char *input = rt_string_cstr(str);
@@ -353,6 +531,49 @@ rt_string rt_codec_base64_dec(rt_string str)
 // Hex Encoding/Decoding
 //=============================================================================
 
+/// @brief Encodes a string to hexadecimal representation.
+///
+/// Converts each byte of the input to its two-character hexadecimal
+/// representation using lowercase letters (0-9, a-f).
+///
+/// **Encoding process:**
+/// ```
+/// Input byte:  0x48 ('H')
+/// Output:      "48"
+///
+/// Input:  "Hi"
+/// Bytes:  0x48 0x69
+/// Output: "4869"
+/// ```
+///
+/// **Examples:**
+/// ```
+/// Input:  "Hello"     Output: "48656c6c6f"
+/// Input:  "\x00\xFF"  Output: "00ff"
+/// Input:  "ABC"       Output: "414243"
+/// ```
+///
+/// **Usage example:**
+/// ```
+/// Dim text = "Hello"
+/// Dim hex = Codec.HexEnc(text)
+/// Print hex   ' Outputs: 48656c6c6f
+///
+/// ' Useful for debugging binary data
+/// Dim binaryData = Chr(0) & Chr(255) & Chr(128)
+/// Print Codec.HexEnc(binaryData)  ' Outputs: 00ff80
+/// ```
+///
+/// @param str The string to encode. NULL or empty returns empty string.
+///
+/// @return A newly allocated hex-encoded string (lowercase). Traps on allocation failure.
+///
+/// @note O(n) time complexity where n is input length.
+/// @note Output length is exactly 2× input length.
+/// @note Uses lowercase hex digits (a-f, not A-F).
+///
+/// @see rt_codec_hex_dec For decoding hex strings
+/// @see rt_hash_md5 For hashing to hex output
 rt_string rt_codec_hex_enc(rt_string str)
 {
     const char *input = rt_string_cstr(str);
@@ -381,6 +602,42 @@ rt_string rt_codec_hex_enc(rt_string str)
     return result;
 }
 
+/// @brief Decodes a hexadecimal string back to binary data.
+///
+/// Converts pairs of hexadecimal characters back to their byte values.
+/// Accepts both uppercase (A-F) and lowercase (a-f) hex digits.
+///
+/// **Decoding examples:**
+/// ```
+/// Input:  "48656c6c6f"    Output: "Hello"
+/// Input:  "00FF80"        Output: "\x00\xFF\x80"
+/// Input:  "414243"        Output: "ABC"
+/// ```
+///
+/// **Validation:**
+/// - Input length must be even (2 chars per byte)
+/// - Only valid hex characters allowed (0-9, A-F, a-f)
+///
+/// **Usage example:**
+/// ```
+/// Dim hex = "48656c6c6f"
+/// Dim text = Codec.HexDec(hex)
+/// Print text   ' Outputs: Hello
+///
+/// ' Case insensitive
+/// Print Codec.HexDec("ABCD") = Codec.HexDec("abcd")  ' True
+/// ```
+///
+/// @param str The hex-encoded string to decode. NULL or empty returns empty string.
+///
+/// @return A newly allocated decoded string. Traps on invalid input or allocation failure.
+///
+/// @note O(n) time complexity where n is input length.
+/// @note Output length is exactly input length / 2.
+/// @note Traps if length is odd or contains invalid hex characters.
+/// @note Accepts both uppercase and lowercase hex digits.
+///
+/// @see rt_codec_hex_enc For encoding strings to hex
 rt_string rt_codec_hex_dec(rt_string str)
 {
     const char *input = rt_string_cstr(str);

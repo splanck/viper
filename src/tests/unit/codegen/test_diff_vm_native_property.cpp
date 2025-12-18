@@ -31,7 +31,7 @@
 #include "il/io/Parser.hpp"
 #include "il/verify/Verifier.hpp"
 #include "support/diag_expected.hpp"
-#include "tests/unit/GTestStub.hpp"
+#include "tests/TestHarness.hpp"
 #include "tools/ilc/cmd_codegen_arm64.hpp"
 
 #include <atomic>
@@ -292,26 +292,15 @@ DiffTestResult runDifferentialTest(ILGenerator &generator,
 
 } // namespace
 
-#ifdef VIPER_HAS_GTEST
-
-class DiffVmNativePropertyTest : public ::testing::Test
-{
-  protected:
-    void SetUp() override
-    {
-        outputDir_ = ensureOutputDir();
-    }
-
-    std::filesystem::path outputDir_;
-};
-
-TEST_F(DiffVmNativePropertyTest, ArithmeticOnly)
+TEST(DiffVmNativeProperty, ArithmeticOnly)
 {
     if (!isNativeAvailable())
     {
-        GTEST_SKIP() << "Native execution not available (backend: "
-                     << backendName(g_selectedBackend) << ")";
+        VIPER_TEST_SKIP(std::string("Native execution not available (backend: ") +
+                        backendName(g_selectedBackend) + ")");
     }
+
+    const std::filesystem::path outputDir = ensureOutputDir();
 
     ILGeneratorConfig config;
     config.includeControlFlow = false;
@@ -328,19 +317,23 @@ TEST_F(DiffVmNativePropertyTest, ArithmeticOnly)
     for (std::size_t i = 0; i < kDefaultIterations; ++i)
     {
         ILGenerator generator(baseSeed + i);
-        DiffTestResult result = runDifferentialTest(generator, config, outputDir_, i);
+        DiffTestResult result = runDifferentialTest(generator, config, outputDir, i);
 
-        ASSERT_TRUE(result.passed) << "Iteration " << i << " failed:\n" << result.errorMessage;
+        if (!result.passed)
+            std::cerr << "Iteration " << i << " failed:\n" << result.errorMessage << "\n";
+        ASSERT_TRUE(result.passed);
     }
 }
 
-TEST_F(DiffVmNativePropertyTest, ArithmeticWithComparisons)
+TEST(DiffVmNativeProperty, ArithmeticWithComparisons)
 {
     if (!isNativeAvailable())
     {
-        GTEST_SKIP() << "Native execution not available (backend: "
-                     << backendName(g_selectedBackend) << ")";
+        VIPER_TEST_SKIP(std::string("Native execution not available (backend: ") +
+                        backendName(g_selectedBackend) + ")");
     }
+
+    const std::filesystem::path outputDir = ensureOutputDir();
 
     ILGeneratorConfig config;
     config.includeControlFlow = false;
@@ -357,19 +350,23 @@ TEST_F(DiffVmNativePropertyTest, ArithmeticWithComparisons)
     for (std::size_t i = 0; i < kDefaultIterations; ++i)
     {
         ILGenerator generator(baseSeed + i);
-        DiffTestResult result = runDifferentialTest(generator, config, outputDir_, i);
+        DiffTestResult result = runDifferentialTest(generator, config, outputDir, i);
 
-        ASSERT_TRUE(result.passed) << "Iteration " << i << " failed:\n" << result.errorMessage;
+        if (!result.passed)
+            std::cerr << "Iteration " << i << " failed:\n" << result.errorMessage << "\n";
+        ASSERT_TRUE(result.passed);
     }
 }
 
-TEST_F(DiffVmNativePropertyTest, BitwiseAndShifts)
+TEST(DiffVmNativeProperty, BitwiseAndShifts)
 {
     if (!isNativeAvailable())
     {
-        GTEST_SKIP() << "Native execution not available (backend: "
-                     << backendName(g_selectedBackend) << ")";
+        VIPER_TEST_SKIP(std::string("Native execution not available (backend: ") +
+                        backendName(g_selectedBackend) + ")");
     }
+
+    const std::filesystem::path outputDir = ensureOutputDir();
 
     ILGeneratorConfig config;
     config.includeControlFlow = false;
@@ -386,21 +383,24 @@ TEST_F(DiffVmNativePropertyTest, BitwiseAndShifts)
     for (std::size_t i = 0; i < kDefaultIterations; ++i)
     {
         ILGenerator generator(baseSeed + i);
-        DiffTestResult result = runDifferentialTest(generator, config, outputDir_, i);
+        DiffTestResult result = runDifferentialTest(generator, config, outputDir, i);
 
-        ASSERT_TRUE(result.passed) << "Iteration " << i << " failed:\n" << result.errorMessage;
+        if (!result.passed)
+            std::cerr << "Iteration " << i << " failed:\n" << result.errorMessage << "\n";
+        ASSERT_TRUE(result.passed);
     }
 }
 
-TEST_F(DiffVmNativePropertyTest, MixedOperations)
+TEST(DiffVmNativeProperty, MixedOperations)
 {
     if (!isNativeAvailable())
     {
-        GTEST_SKIP() << "Native execution not available (backend: "
-                     << backendName(g_selectedBackend) << ")";
+        VIPER_TEST_SKIP(std::string("Native execution not available (backend: ") +
+                        backendName(g_selectedBackend) + ")");
     }
 
-    // Enable all operation types for comprehensive coverage
+    const std::filesystem::path outputDir = ensureOutputDir();
+
     ILGeneratorConfig config;
     config.includeControlFlow = false;
     config.includeComparisons = true;
@@ -416,19 +416,23 @@ TEST_F(DiffVmNativePropertyTest, MixedOperations)
     for (std::size_t i = 0; i < kDefaultIterations; ++i)
     {
         ILGenerator generator(baseSeed + i);
-        DiffTestResult result = runDifferentialTest(generator, config, outputDir_, i);
+        DiffTestResult result = runDifferentialTest(generator, config, outputDir, i);
 
-        ASSERT_TRUE(result.passed) << "Iteration " << i << " failed:\n" << result.errorMessage;
+        if (!result.passed)
+            std::cerr << "Iteration " << i << " failed:\n" << result.errorMessage << "\n";
+        ASSERT_TRUE(result.passed);
     }
 }
 
-TEST_F(DiffVmNativePropertyTest, ControlFlow)
+TEST(DiffVmNativeProperty, ControlFlow)
 {
     if (!isNativeAvailable())
     {
-        GTEST_SKIP() << "Native execution not available (backend: "
-                     << backendName(g_selectedBackend) << ")";
+        VIPER_TEST_SKIP(std::string("Native execution not available (backend: ") +
+                        backendName(g_selectedBackend) + ")");
     }
+
+    const std::filesystem::path outputDir = ensureOutputDir();
 
     ILGeneratorConfig config;
     config.includeControlFlow = true;
@@ -445,15 +449,16 @@ TEST_F(DiffVmNativePropertyTest, ControlFlow)
     for (std::size_t i = 0; i < kDefaultIterations; ++i)
     {
         ILGenerator generator(baseSeed + i);
-        DiffTestResult result = runDifferentialTest(generator, config, outputDir_, i);
+        DiffTestResult result = runDifferentialTest(generator, config, outputDir, i);
 
-        ASSERT_TRUE(result.passed) << "Iteration " << i << " failed:\n" << result.errorMessage;
+        if (!result.passed)
+            std::cerr << "Iteration " << i << " failed:\n" << result.errorMessage << "\n";
+        ASSERT_TRUE(result.passed);
     }
 }
 
-TEST_F(DiffVmNativePropertyTest, ReproducibilityWithSeed)
+TEST(DiffVmNativeProperty, ReproducibilityWithSeed)
 {
-    // Verify that the same seed produces the same IL
     constexpr std::uint64_t kTestSeed = 12345678;
 
     ILGeneratorConfig config;
@@ -467,61 +472,13 @@ TEST_F(DiffVmNativePropertyTest, ReproducibilityWithSeed)
     ILGeneratorResult result1 = gen1.generate(config);
     ILGeneratorResult result2 = gen2.generate(config);
 
-    ASSERT_EQ(result1.ilSource, result2.ilSource) << "Same seed should produce identical IL source";
+    if (result1.ilSource != result2.ilSource)
+        std::cerr << "Same seed should produce identical IL source\n";
+    ASSERT_EQ(result1.ilSource, result2.ilSource);
 }
 
 int main(int argc, char **argv)
 {
-    ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }
-
-#else
-
-int main()
-{
-    if (!isNativeAvailable())
-    {
-        std::cout << "Native execution not available (backend: " << backendName(g_selectedBackend)
-                  << "), skipping property tests\n";
-        return 0;
-    }
-
-    const std::filesystem::path outputDir = ensureOutputDir();
-
-    // Enable all operation types for comprehensive coverage
-    ILGeneratorConfig config;
-    config.includeControlFlow = true;
-    config.includeComparisons = true;
-    config.includeBitwise = true;
-    config.includeShifts = true;
-    config.minInstructions = 5;
-    config.maxInstructions = 15;
-    config.minBlocks = 1;
-    config.maxBlocks = 3;
-
-    const std::uint64_t baseSeed = getStableBaseSeed();
-
-    std::cout << "Running " << kDefaultIterations << " property test iterations...\n";
-    std::cout << "Backend: " << backendName(g_selectedBackend) << "\n";
-    std::cout << "Base seed: " << baseSeed << "\n";
-
-    for (std::size_t i = 0; i < kDefaultIterations; ++i)
-    {
-        ILGenerator generator(baseSeed + i);
-        DiffTestResult result = runDifferentialTest(generator, config, outputDir, i);
-
-        if (!result.passed)
-        {
-            std::cerr << "Iteration " << i << " FAILED:\n" << result.errorMessage << "\n";
-            return 1;
-        }
-
-        std::cout << "  Iteration " << i << " passed (seed=" << result.seed << ")\n";
-    }
-
-    std::cout << "All " << kDefaultIterations << " iterations passed!\n";
-    return 0;
-}
-
-#endif

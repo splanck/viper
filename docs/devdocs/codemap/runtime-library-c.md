@@ -77,6 +77,14 @@ Portable C runtime library (`src/runtime/`) providing strings, arrays, math, I/O
 | `rt_args.c/h`      | Command-line argument handling           |
 | `rt_time.c`        | Timer and sleep functionality            |
 
+## Threading
+
+| File              | Purpose                                              |
+|-------------------|------------------------------------------------------|
+| `rt_threads.c/h`  | OS thread helpers backing `Viper.Threads.Thread`     |
+| `rt_monitor.c`    | FIFO-fair, re-entrant monitor backing `Monitor`      |
+| `rt_safe_i64.c`   | FIFO-serialized safe integer backing `SafeI64`       |
+
 ## Diagnostics
 
 | File           | Purpose                             |

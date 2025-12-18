@@ -13,13 +13,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef VIPER_HAS_GTEST
-#include <gtest/gtest.h>
-#define VIPER_HAVE_GTEST 1
-#else
-#include "GTestStub.hpp"
-#define VIPER_HAVE_GTEST 0
-#endif
+#include "tests/TestHarness.hpp"
 
 #include "frontends/basic/BasicCompiler.hpp"
 #include "il/core/Function.hpp"
@@ -27,6 +21,7 @@
 #include "support/source_manager.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <string>
 
 using namespace il::frontends::basic;
@@ -56,11 +51,7 @@ static bool containsCall(const il::core::Module &m, std::string_view name)
 }
 } // namespace
 
-#if VIPER_HAVE_GTEST
 TEST(BasicBuiltinsArgsCmd, LowersToRuntime)
-#else
-int main()
-#endif
 {
     const std::string src = "10 PRINT ARGC()\n"
                             "20 PRINT ARG$(0)\n"
@@ -75,9 +66,10 @@ int main()
     EXPECT_TRUE(containsCall(mod, "rt_args_count"));
     EXPECT_TRUE(containsCall(mod, "rt_args_get"));
     EXPECT_TRUE(containsCall(mod, "rt_cmdline"));
-#if VIPER_HAVE_GTEST
-    (void)0;
-#else
-    return 0;
-#endif
+}
+
+int main(int argc, char **argv)
+{
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

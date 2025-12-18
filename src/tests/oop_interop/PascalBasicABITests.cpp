@@ -17,13 +17,7 @@
 #include "il/core/Module.hpp"
 #include "il/core/Opcode.hpp"
 #include "support/source_manager.hpp"
-
-#ifdef VIPER_HAS_GTEST
-#include <gtest/gtest.h>
-#else
-#include "../unit/GTestStub.hpp"
-#endif
-
+#include "tests/TestHarness.hpp"
 using namespace il::support;
 using namespace il::core;
 
@@ -519,9 +513,7 @@ TEST(ABICompat, NamingDifference_PreventDirectCalls)
 
 } // namespace
 
-#ifndef VIPER_HAS_GTEST
 int main()
 {
-    return RUN_ALL_TESTS();
+    return viper_test::run_all_tests();
 }
-#endif

@@ -12,12 +12,10 @@
 // Links: src/codegen/x86_64/ra/Spiller.hpp
 //
 //===----------------------------------------------------------------------===//
-
-#include "GTestStub.hpp"
-
 #include "codegen/x86_64/RegAllocLinear.hpp"
 #include "codegen/x86_64/ra/Allocator.hpp"
 #include "codegen/x86_64/ra/Spiller.hpp"
+#include "tests/TestHarness.hpp"
 
 #include <algorithm>
 
@@ -87,6 +85,6 @@ TEST(Spiller, SpillsActiveValue)
 
 int main(int argc, char **argv)
 {
-    testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

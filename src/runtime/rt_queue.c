@@ -24,7 +24,36 @@
 #define QUEUE_DEFAULT_CAP 16
 #define QUEUE_GROWTH_FACTOR 2
 
-/// Internal queue structure (circular buffer).
+/// @brief Internal queue implementation structure (circular buffer).
+///
+/// The Queue is implemented as a circular buffer (ring buffer) for efficient
+/// O(1) add and take operations. Elements are stored in a contiguous array,
+/// with head and tail indices that wrap around when they reach the end.
+///
+/// **Circular buffer concept:**
+/// Instead of shifting elements when removing from the front, we just move
+/// the head pointer forward. When indices reach the end of the array, they
+/// wrap around to the beginning (modulo arithmetic).
+///
+/// **Memory layout example (capacity=8, 4 elements):**
+/// ```
+/// Scenario 1 - Contiguous:
+///   indices: [0] [1] [2] [3] [4] [5] [6] [7]
+///   items:   [ ] [ ] [A] [B] [C] [D] [ ] [ ]
+///                     ^           ^
+///                   head=2     tail=6
+///
+/// Scenario 2 - Wrapped around:
+///   indices: [0] [1] [2] [3] [4] [5] [6] [7]
+///   items:   [C] [D] [ ] [ ] [ ] [ ] [A] [B]
+///             ^                       ^
+///           tail=2                  head=6
+/// ```
+///
+/// The circular design means:
+/// - Add (enqueue) at tail: O(1)
+/// - Take (dequeue) from head: O(1)
+/// - No element shifting needed
 typedef struct rt_queue_impl
 {
     int64_t len;  ///< Number of elements currently in the queue
@@ -34,6 +63,19 @@ typedef struct rt_queue_impl
     void **items; ///< Circular buffer of element pointers
 } rt_queue_impl;
 
+/// @brief Finalizer callback invoked when a Queue is garbage collected.
+///
+/// This function is automatically called by Viper's garbage collector when a
+/// Queue object becomes unreachable. It frees the internal items array to
+/// prevent memory leaks.
+///
+/// @param obj Pointer to the Queue object being finalized. May be NULL (no-op).
+///
+/// @note The Queue does NOT own the elements it contains. Elements are not
+///       freed during finalization - they must be managed separately.
+/// @note This function is idempotent - safe to call on already-finalized queues.
+///
+/// @see rt_queue_clear For removing elements without finalization
 static void rt_queue_finalize(void *obj)
 {
     if (!obj)
@@ -47,8 +89,26 @@ static void rt_queue_finalize(void *obj)
     q->tail = 0;
 }
 
-/// @brief Grow the queue capacity and linearize the circular buffer.
-/// @param q Queue to grow.
+/// @brief Grows the queue capacity and linearizes the circular buffer.
+///
+/// When the queue is full and a new element needs to be added, this function:
+/// 1. Allocates a new array with double the capacity
+/// 2. Copies elements from the circular buffer to the new array in linear order
+/// 3. Resets head to 0 and tail to len
+///
+/// **Linearization process:**
+/// The circular buffer may have elements wrapped around. During growth, we
+/// "unwrap" them into a contiguous linear array:
+/// ```
+/// Before (wrapped):     [C] [D] [ ] [ ] [A] [B]   head=4, tail=2
+/// After (linearized):   [A] [B] [C] [D] [ ] [ ] [ ] [ ]  head=0, tail=4
+/// ```
+///
+/// @param q Pointer to the queue implementation. Must not be NULL.
+///
+/// @note Capacity doubles each time (QUEUE_GROWTH_FACTOR = 2).
+/// @note Traps on memory allocation failure.
+/// @note O(n) time complexity where n is the number of elements.
 static void queue_grow(rt_queue_impl *q)
 {
     int64_t new_cap = q->cap * QUEUE_GROWTH_FACTOR;
@@ -83,8 +143,36 @@ static void queue_grow(rt_queue_impl *q)
     q->cap = new_cap;
 }
 
-/// @brief Create a new empty queue with default capacity.
-/// @return New queue object.
+/// @brief Creates a new empty Queue with default capacity.
+///
+/// Allocates and initializes a Queue data structure for FIFO (First-In-First-Out)
+/// operations. The Queue starts with a default capacity of 16 slots and grows
+/// automatically when needed.
+///
+/// The Queue is implemented as a circular buffer, providing O(1) add and take
+/// operations without element shifting.
+///
+/// **Usage example:**
+/// ```
+/// Dim queue = Queue.New()
+/// queue.Add("first")
+/// queue.Add("second")
+/// queue.Add("third")
+/// Print queue.Take()   ' Outputs: first
+/// Print queue.Take()   ' Outputs: second
+/// Print queue.Take()   ' Outputs: third
+/// ```
+///
+/// @return A pointer to the newly created Queue object. Traps and does not
+///         return if memory allocation fails.
+///
+/// @note Initial capacity is 16 elements (QUEUE_DEFAULT_CAP).
+/// @note The Queue does not own the elements stored in it.
+/// @note Thread safety: Not thread-safe. External synchronization required.
+///
+/// @see rt_queue_add For adding elements
+/// @see rt_queue_take For removing elements
+/// @see rt_queue_finalize For cleanup behavior
 void *rt_queue_new(void)
 {
     rt_queue_impl *q = (rt_queue_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_queue_impl));
@@ -110,9 +198,20 @@ void *rt_queue_new(void)
     return q;
 }
 
-/// @brief Get the number of elements in the queue.
-/// @param obj Queue object.
-/// @return Number of elements.
+/// @brief Returns the number of elements currently in the Queue.
+///
+/// This function returns how many elements have been added and not yet taken.
+/// The count is maintained internally and returned in O(1) time.
+///
+/// @param obj Pointer to a Queue object. If NULL, returns 0.
+///
+/// @return The number of elements in the Queue (>= 0). Returns 0 if obj is NULL.
+///
+/// @note O(1) time complexity.
+///
+/// @see rt_queue_is_empty For a boolean check
+/// @see rt_queue_add For operations that increase the count
+/// @see rt_queue_take For operations that decrease the count
 int64_t rt_queue_len(void *obj)
 {
     if (!obj)
@@ -120,9 +219,24 @@ int64_t rt_queue_len(void *obj)
     return ((rt_queue_impl *)obj)->len;
 }
 
-/// @brief Check if the queue is empty.
-/// @param obj Queue object.
-/// @return 1 if empty, 0 otherwise.
+/// @brief Checks whether the Queue contains no elements.
+///
+/// A Queue is considered empty when its length is 0, which occurs:
+/// - Immediately after creation
+/// - After all elements have been taken
+/// - After calling rt_queue_clear
+///
+/// Calling Take or Peek on an empty Queue will trap with an error.
+///
+/// @param obj Pointer to a Queue object. If NULL, returns true (1).
+///
+/// @return 1 (true) if the Queue is empty or obj is NULL, 0 (false) otherwise.
+///
+/// @note O(1) time complexity.
+///
+/// @see rt_queue_len For the exact count
+/// @see rt_queue_take For removing elements (traps if empty)
+/// @see rt_queue_peek For viewing front element (traps if empty)
 int8_t rt_queue_is_empty(void *obj)
 {
     if (!obj)
@@ -130,9 +244,31 @@ int8_t rt_queue_is_empty(void *obj)
     return ((rt_queue_impl *)obj)->len == 0 ? 1 : 0;
 }
 
-/// @brief Add an element to the back of the queue.
-/// @param obj Queue object.
-/// @param val Element to add.
+/// @brief Adds an element to the back of the Queue.
+///
+/// Enqueues a new element at the tail of the Queue. This is the primary
+/// insertion operation for FIFO behavior - elements are added at the back
+/// and removed from the front.
+///
+/// If the Queue's capacity is exceeded, it automatically grows (doubles)
+/// to accommodate the new element.
+///
+/// **Visual example:**
+/// ```
+/// Before Add(D):  front->[A, B, C]<-back
+/// After Add(D):   front->[A, B, C, D]<-back
+/// ```
+///
+/// @param obj Pointer to a Queue object. Must not be NULL.
+/// @param val The element to add. May be NULL (NULL is a valid element).
+///
+/// @note O(1) amortized time complexity. Occasional O(n) when resizing occurs.
+/// @note The Queue does not take ownership of val.
+/// @note Traps with "Queue.Add: null queue" if obj is NULL.
+/// @note Thread safety: Not thread-safe.
+///
+/// @see rt_queue_take For the removal operation
+/// @see rt_queue_peek For viewing without removing
 void rt_queue_add(void *obj, void *val)
 {
     if (!obj)
@@ -150,9 +286,35 @@ void rt_queue_add(void *obj, void *val)
     q->len++;
 }
 
-/// @brief Remove and return the front element from the queue.
-/// @param obj Queue object.
-/// @return The removed element.
+/// @brief Removes and returns the front element from the Queue.
+///
+/// Dequeues the element at the front of the Queue (the oldest element).
+/// This is the primary retrieval operation for FIFO behavior.
+///
+/// **Visual example:**
+/// ```
+/// Before Take():  front->[A, B, C, D]<-back
+/// After Take():   front->[B, C, D]<-back
+/// Returns: A
+/// ```
+///
+/// **Error handling:**
+/// Calling Take on an empty Queue is a programming error and traps with
+/// "Queue.Take: queue is empty". Always check rt_queue_is_empty before
+/// taking, or use a try-catch pattern if available.
+///
+/// @param obj Pointer to a Queue object. Must not be NULL.
+///
+/// @return The element that was at the front of the Queue.
+///
+/// @note O(1) time complexity.
+/// @note The Queue releases its reference - caller now owns the element.
+/// @note Traps if the Queue is empty or obj is NULL.
+/// @note Thread safety: Not thread-safe.
+///
+/// @see rt_queue_add For the insertion operation
+/// @see rt_queue_peek For viewing without removing
+/// @see rt_queue_is_empty For checking before take
 void *rt_queue_take(void *obj)
 {
     if (!obj)
@@ -172,9 +334,36 @@ void *rt_queue_take(void *obj)
     return val;
 }
 
-/// @brief Return the front element without removing it.
-/// @param obj Queue object.
-/// @return The front element.
+/// @brief Returns the front element without removing it from the Queue.
+///
+/// Peeks at the element at the front of the Queue (the next one to be taken)
+/// without modifying the Queue. Useful for:
+/// - Inspecting the next element before deciding to take it
+/// - Implementing conditional dequeue logic
+/// - Debugging or logging
+///
+/// **Example:**
+/// ```
+/// queue.Add("A")
+/// queue.Add("B")
+/// Print queue.Peek()  ' Outputs: A
+/// Print queue.Peek()  ' Outputs: A (still there)
+/// Print queue.Take()  ' Outputs: A (now removed)
+/// Print queue.Peek()  ' Outputs: B
+/// ```
+///
+/// @param obj Pointer to a Queue object. Must not be NULL.
+///
+/// @return The element at the front of the Queue (not removed).
+///
+/// @note O(1) time complexity.
+/// @note The Queue retains ownership - the returned pointer is only valid
+///       as long as the element remains in the Queue.
+/// @note Traps if the Queue is empty or obj is NULL.
+/// @note Thread safety: Not thread-safe.
+///
+/// @see rt_queue_take For removing while retrieving
+/// @see rt_queue_is_empty For checking before peek
 void *rt_queue_peek(void *obj)
 {
     if (!obj)
@@ -190,8 +379,27 @@ void *rt_queue_peek(void *obj)
     return q->items[q->head];
 }
 
-/// @brief Remove all elements from the queue.
-/// @param obj Queue object.
+/// @brief Removes all elements from the Queue.
+///
+/// Clears the Queue by resetting its length, head, and tail to 0.
+/// The capacity remains unchanged (no memory is freed), allowing the
+/// Queue to be efficiently reused.
+///
+/// **After clear:**
+/// - Length becomes 0
+/// - Head and tail reset to 0
+/// - is_empty returns true
+/// - Capacity unchanged (no reallocation)
+/// - All element references are forgotten (not freed)
+///
+/// @param obj Pointer to a Queue object. If NULL, this is a no-op.
+///
+/// @note O(1) time complexity - just resets the indices.
+/// @note The Queue does NOT free the elements.
+/// @note Thread safety: Not thread-safe.
+///
+/// @see rt_queue_finalize For complete cleanup
+/// @see rt_queue_is_empty For checking if empty
 void rt_queue_clear(void *obj)
 {
     if (!obj)

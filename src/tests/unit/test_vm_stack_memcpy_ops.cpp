@@ -314,11 +314,17 @@ void test_str_store_load()
     auto &mainFn = m.functions.front();
     auto state = il::vm::VMTestHook::prepare(vm, mainFn);
     auto step = [&]() { return il::vm::VMTestHook::step(vm, state); };
-    // alloca, const.str, store, load
-    assert(!step());
-    assert(!step());
-    assert(!step());
-    assert(!step());
+
+    // Execute: alloca, const.str, store, load
+    auto r0 = step();
+    assert(!r0); // alloca
+    auto r1 = step();
+    assert(!r1); // const.str
+    auto r2 = step();
+    assert(!r2); // store
+    auto r3 = step();
+    assert(!r3); // load
+
     rt_string s = state.fr.regs[2U].str;
     assert(s != nullptr);
     const char *c = rt_string_cstr(s);

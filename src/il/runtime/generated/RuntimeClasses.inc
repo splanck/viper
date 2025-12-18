@@ -10,6 +10,30 @@
 //
 //===----------------------------------------------------------------------===//
 
+RUNTIME_CLASS("Viper.Bits",
+              RTCLS_Bits,
+              "obj",
+              "",
+              RUNTIME_PROPS(),
+              RUNTIME_METHODS(RUNTIME_METHOD("And", "i64(i64,i64)", "Viper.Bits.And"),
+                              RUNTIME_METHOD("Clear", "i64(i64,i64)", "Viper.Bits.Clear"),
+                              RUNTIME_METHOD("Count", "i64(i64)", "Viper.Bits.Count"),
+                              RUNTIME_METHOD("Flip", "i64(i64)", "Viper.Bits.Flip"),
+                              RUNTIME_METHOD("Get", "i1(i64,i64)", "Viper.Bits.Get"),
+                              RUNTIME_METHOD("LeadZ", "i64(i64)", "Viper.Bits.LeadZ"),
+                              RUNTIME_METHOD("Not", "i64(i64)", "Viper.Bits.Not"),
+                              RUNTIME_METHOD("Or", "i64(i64,i64)", "Viper.Bits.Or"),
+                              RUNTIME_METHOD("Rotl", "i64(i64,i64)", "Viper.Bits.Rotl"),
+                              RUNTIME_METHOD("Rotr", "i64(i64,i64)", "Viper.Bits.Rotr"),
+                              RUNTIME_METHOD("Set", "i64(i64,i64)", "Viper.Bits.Set"),
+                              RUNTIME_METHOD("Shl", "i64(i64,i64)", "Viper.Bits.Shl"),
+                              RUNTIME_METHOD("Shr", "i64(i64,i64)", "Viper.Bits.Shr"),
+                              RUNTIME_METHOD("Swap", "i64(i64)", "Viper.Bits.Swap"),
+                              RUNTIME_METHOD("Toggle", "i64(i64,i64)", "Viper.Bits.Toggle"),
+                              RUNTIME_METHOD("TrailZ", "i64(i64)", "Viper.Bits.TrailZ"),
+                              RUNTIME_METHOD("Ushr", "i64(i64,i64)", "Viper.Bits.Ushr"),
+                              RUNTIME_METHOD("Xor", "i64(i64,i64)", "Viper.Bits.Xor")))
+
 RUNTIME_CLASS(
     "Viper.Collections.Bytes",
     RTCLS_Bytes,
@@ -26,6 +50,22 @@ RUNTIME_CLASS(
                     RUNTIME_METHOD("ToBase64", "str()", "Viper.Collections.Bytes.ToBase64"),
                     RUNTIME_METHOD("ToHex", "str()", "Viper.Collections.Bytes.ToHex"),
                     RUNTIME_METHOD("ToStr", "str()", "Viper.Collections.Bytes.ToStr")))
+
+RUNTIME_CLASS(
+    "Viper.Collections.Bag",
+    RTCLS_Bag,
+    "obj",
+    "Viper.Collections.Bag.New",
+    RUNTIME_PROPS(RUNTIME_PROP("IsEmpty", "i1", "Viper.Collections.Bag.get_IsEmpty", nullptr),
+                  RUNTIME_PROP("Len", "i64", "Viper.Collections.Bag.get_Len", nullptr)),
+    RUNTIME_METHODS(RUNTIME_METHOD("Clear", "void()", "Viper.Collections.Bag.Clear"),
+                    RUNTIME_METHOD("Common", "obj(obj)", "Viper.Collections.Bag.Common"),
+                    RUNTIME_METHOD("Diff", "obj(obj)", "Viper.Collections.Bag.Diff"),
+                    RUNTIME_METHOD("Drop", "i1(str)", "Viper.Collections.Bag.Drop"),
+                    RUNTIME_METHOD("Has", "i1(str)", "Viper.Collections.Bag.Has"),
+                    RUNTIME_METHOD("Items", "obj()", "Viper.Collections.Bag.Items"),
+                    RUNTIME_METHOD("Merge", "obj(obj)", "Viper.Collections.Bag.Merge"),
+                    RUNTIME_METHOD("Put", "i1(str)", "Viper.Collections.Bag.Put")))
 
 RUNTIME_CLASS(
     "Viper.Collections.List",
@@ -74,6 +114,21 @@ RUNTIME_CLASS(
                     RUNTIME_METHOD("Take", "obj()", "Viper.Collections.Queue.Take")))
 
 RUNTIME_CLASS(
+    "Viper.Collections.Ring",
+    RTCLS_Ring,
+    "obj",
+    "Viper.Collections.Ring.New",
+    RUNTIME_PROPS(RUNTIME_PROP("Cap", "i64", "Viper.Collections.Ring.get_Cap", nullptr),
+                  RUNTIME_PROP("IsEmpty", "i1", "Viper.Collections.Ring.get_IsEmpty", nullptr),
+                  RUNTIME_PROP("IsFull", "i1", "Viper.Collections.Ring.get_IsFull", nullptr),
+                  RUNTIME_PROP("Len", "i64", "Viper.Collections.Ring.get_Len", nullptr)),
+    RUNTIME_METHODS(RUNTIME_METHOD("Clear", "void()", "Viper.Collections.Ring.Clear"),
+                    RUNTIME_METHOD("Get", "obj(i64)", "Viper.Collections.Ring.Get"),
+                    RUNTIME_METHOD("Peek", "obj()", "Viper.Collections.Ring.Peek"),
+                    RUNTIME_METHOD("Pop", "obj()", "Viper.Collections.Ring.Pop"),
+                    RUNTIME_METHOD("Push", "void(obj)", "Viper.Collections.Ring.Push")))
+
+RUNTIME_CLASS(
     "Viper.Collections.Seq",
     RTCLS_Seq,
     "obj",
@@ -112,6 +167,25 @@ RUNTIME_CLASS(
                     RUNTIME_METHOD("Push", "void(obj)", "Viper.Collections.Stack.Push")))
 
 RUNTIME_CLASS(
+    "Viper.Collections.TreeMap",
+    RTCLS_TreeMap,
+    "obj",
+    "Viper.Collections.TreeMap.New",
+    RUNTIME_PROPS(RUNTIME_PROP("IsEmpty", "i1", "Viper.Collections.TreeMap.get_IsEmpty", nullptr),
+                  RUNTIME_PROP("Len", "i64", "Viper.Collections.TreeMap.get_Len", nullptr)),
+    RUNTIME_METHODS(RUNTIME_METHOD("Ceil", "str(str)", "Viper.Collections.TreeMap.Ceil"),
+                    RUNTIME_METHOD("Clear", "void()", "Viper.Collections.TreeMap.Clear"),
+                    RUNTIME_METHOD("Drop", "i1(str)", "Viper.Collections.TreeMap.Drop"),
+                    RUNTIME_METHOD("First", "str()", "Viper.Collections.TreeMap.First"),
+                    RUNTIME_METHOD("Floor", "str(str)", "Viper.Collections.TreeMap.Floor"),
+                    RUNTIME_METHOD("Get", "obj(str)", "Viper.Collections.TreeMap.Get"),
+                    RUNTIME_METHOD("Has", "i1(str)", "Viper.Collections.TreeMap.Has"),
+                    RUNTIME_METHOD("Keys", "obj()", "Viper.Collections.TreeMap.Keys"),
+                    RUNTIME_METHOD("Last", "str()", "Viper.Collections.TreeMap.Last"),
+                    RUNTIME_METHOD("Set", "void(str,obj)", "Viper.Collections.TreeMap.Set"),
+                    RUNTIME_METHOD("Values", "obj()", "Viper.Collections.TreeMap.Values")))
+
+RUNTIME_CLASS(
     "Viper.Convert",
     RTCLS_Convert,
     "obj",
@@ -121,6 +195,21 @@ RUNTIME_CLASS(
                     RUNTIME_METHOD("ToInt64", "i64(str)", "Viper.Convert.ToInt"),
                     RUNTIME_METHOD("ToString_Double", "str(f64)", "Viper.Strings.FromDouble"),
                     RUNTIME_METHOD("ToString_Int", "str(i64)", "Viper.Strings.FromInt")))
+
+RUNTIME_CLASS(
+    "Viper.Crypto.Hash",
+    RTCLS_Hash,
+    "obj",
+    "",
+    RUNTIME_PROPS(),
+    RUNTIME_METHODS(RUNTIME_METHOD("CRC32", "i64(str)", "Viper.Crypto.Hash.CRC32"),
+                    RUNTIME_METHOD("CRC32Bytes", "i64(obj)", "Viper.Crypto.Hash.CRC32Bytes"),
+                    RUNTIME_METHOD("MD5", "str(str)", "Viper.Crypto.Hash.MD5"),
+                    RUNTIME_METHOD("MD5Bytes", "str(obj)", "Viper.Crypto.Hash.MD5Bytes"),
+                    RUNTIME_METHOD("SHA1", "str(str)", "Viper.Crypto.Hash.SHA1"),
+                    RUNTIME_METHOD("SHA1Bytes", "str(obj)", "Viper.Crypto.Hash.SHA1Bytes"),
+                    RUNTIME_METHOD("SHA256", "str(str)", "Viper.Crypto.Hash.SHA256"),
+                    RUNTIME_METHOD("SHA256Bytes", "str(obj)", "Viper.Crypto.Hash.SHA256Bytes")))
 
 RUNTIME_CLASS("Viper.DateTime",
               RTCLS_DateTime,
@@ -175,6 +264,39 @@ RUNTIME_CLASS("Viper.Environment",
                   RUNTIME_METHOD("SetVariable", "void(str,str)", "Viper.Environment.SetVariable")))
 
 RUNTIME_CLASS(
+    "Viper.Exec",
+    RTCLS_Exec,
+    "obj",
+    "",
+    RUNTIME_PROPS(),
+    RUNTIME_METHODS(RUNTIME_METHOD("Capture", "str(str)", "Viper.Exec.Capture"),
+                    RUNTIME_METHOD("CaptureArgs", "str(str,obj)", "Viper.Exec.CaptureArgs"),
+                    RUNTIME_METHOD("Run", "i64(str)", "Viper.Exec.Run"),
+                    RUNTIME_METHOD("RunArgs", "i64(str,obj)", "Viper.Exec.RunArgs"),
+                    RUNTIME_METHOD("Shell", "i64(str)", "Viper.Exec.Shell"),
+                    RUNTIME_METHOD("ShellCapture", "str(str)", "Viper.Exec.ShellCapture")))
+
+RUNTIME_CLASS("Viper.Fmt",
+              RTCLS_Fmt,
+              "obj",
+              "",
+              RUNTIME_PROPS(),
+              RUNTIME_METHODS(RUNTIME_METHOD("Bin", "str(i64)", "Viper.Fmt.Bin"),
+                              RUNTIME_METHOD("Bool", "str(i1)", "Viper.Fmt.Bool"),
+                              RUNTIME_METHOD("BoolYN", "str(i1)", "Viper.Fmt.BoolYN"),
+                              RUNTIME_METHOD("Hex", "str(i64)", "Viper.Fmt.Hex"),
+                              RUNTIME_METHOD("HexPad", "str(i64,i64)", "Viper.Fmt.HexPad"),
+                              RUNTIME_METHOD("Int", "str(i64)", "Viper.Fmt.Int"),
+                              RUNTIME_METHOD("IntPad", "str(i64,i64,str)", "Viper.Fmt.IntPad"),
+                              RUNTIME_METHOD("IntRadix", "str(i64,i64)", "Viper.Fmt.IntRadix"),
+                              RUNTIME_METHOD("Num", "str(f64)", "Viper.Fmt.Num"),
+                              RUNTIME_METHOD("NumFixed", "str(f64,i64)", "Viper.Fmt.NumFixed"),
+                              RUNTIME_METHOD("NumPct", "str(f64,i64)", "Viper.Fmt.NumPct"),
+                              RUNTIME_METHOD("NumSci", "str(f64,i64)", "Viper.Fmt.NumSci"),
+                              RUNTIME_METHOD("Oct", "str(i64)", "Viper.Fmt.Oct"),
+                              RUNTIME_METHOD("Size", "str(i64)", "Viper.Fmt.Size")))
+
+RUNTIME_CLASS(
     "Viper.Graphics.Canvas",
     RTCLS_Canvas,
     "obj",
@@ -203,6 +325,22 @@ RUNTIME_CLASS(
     RUNTIME_PROPS(),
     RUNTIME_METHODS(RUNTIME_METHOD("RGB", "i64(i64,i64,i64)", "Viper.Graphics.Color.RGB"),
                     RUNTIME_METHOD("RGBA", "i64(i64,i64,i64,i64)", "Viper.Graphics.Color.RGBA")))
+
+RUNTIME_CLASS(
+    "Viper.Graphics.Pixels",
+    RTCLS_Pixels,
+    "obj",
+    "Viper.Graphics.Pixels.New",
+    RUNTIME_PROPS(RUNTIME_PROP("Width", "i64", "Viper.Graphics.Pixels.get_Width", nullptr),
+                  RUNTIME_PROP("Height", "i64", "Viper.Graphics.Pixels.get_Height", nullptr)),
+    RUNTIME_METHODS(
+        RUNTIME_METHOD("Get", "i64(i64,i64)", "Viper.Graphics.Pixels.Get"),
+        RUNTIME_METHOD("Set", "void(i64,i64,i64)", "Viper.Graphics.Pixels.Set"),
+        RUNTIME_METHOD("Fill", "void(i64)", "Viper.Graphics.Pixels.Fill"),
+        RUNTIME_METHOD("Clear", "void()", "Viper.Graphics.Pixels.Clear"),
+        RUNTIME_METHOD("Copy", "void(i64,i64,obj,i64,i64,i64,i64)", "Viper.Graphics.Pixels.Copy"),
+        RUNTIME_METHOD("Clone", "obj()", "Viper.Graphics.Pixels.Clone"),
+        RUNTIME_METHOD("ToBytes", "obj()", "Viper.Graphics.Pixels.ToBytes")))
 
 RUNTIME_CLASS("Viper.IO.Dir",
               RTCLS_Dir,
@@ -265,6 +403,79 @@ RUNTIME_CLASS("Viper.IO.Path",
                               RUNTIME_METHOD("Sep", "str()", "Viper.IO.Path.Sep"),
                               RUNTIME_METHOD("Stem", "str(str)", "Viper.IO.Path.Stem"),
                               RUNTIME_METHOD("WithExt", "str(str,str)", "Viper.IO.Path.WithExt")))
+
+RUNTIME_CLASS(
+    "Viper.IO.BinFile",
+    RTCLS_BinFile,
+    "obj",
+    "Viper.IO.BinFile.Open",
+    RUNTIME_PROPS(RUNTIME_PROP("Eof", "i1", "Viper.IO.BinFile.get_Eof", nullptr),
+                  RUNTIME_PROP("Pos", "i64", "Viper.IO.BinFile.get_Pos", nullptr),
+                  RUNTIME_PROP("Size", "i64", "Viper.IO.BinFile.get_Size", nullptr)),
+    RUNTIME_METHODS(RUNTIME_METHOD("Close", "void()", "Viper.IO.BinFile.Close"),
+                    RUNTIME_METHOD("Flush", "void()", "Viper.IO.BinFile.Flush"),
+                    RUNTIME_METHOD("Read", "i64(obj,i64,i64)", "Viper.IO.BinFile.Read"),
+                    RUNTIME_METHOD("ReadByte", "i64()", "Viper.IO.BinFile.ReadByte"),
+                    RUNTIME_METHOD("Seek", "i64(i64,i64)", "Viper.IO.BinFile.Seek"),
+                    RUNTIME_METHOD("Write", "void(obj,i64,i64)", "Viper.IO.BinFile.Write"),
+                    RUNTIME_METHOD("WriteByte", "void(i64)", "Viper.IO.BinFile.WriteByte")))
+
+RUNTIME_CLASS("Viper.IO.LineReader",
+              RTCLS_LineReader,
+              "obj",
+              "Viper.IO.LineReader.Open",
+              RUNTIME_PROPS(RUNTIME_PROP("Eof", "i1", "Viper.IO.LineReader.get_Eof", nullptr)),
+              RUNTIME_METHODS(RUNTIME_METHOD("Close", "void()", "Viper.IO.LineReader.Close"),
+                              RUNTIME_METHOD("PeekChar", "i64()", "Viper.IO.LineReader.PeekChar"),
+                              RUNTIME_METHOD("Read", "str()", "Viper.IO.LineReader.Read"),
+                              RUNTIME_METHOD("ReadAll", "str()", "Viper.IO.LineReader.ReadAll"),
+                              RUNTIME_METHOD("ReadChar", "i64()", "Viper.IO.LineReader.ReadChar")))
+
+RUNTIME_CLASS(
+    "Viper.IO.LineWriter",
+    RTCLS_LineWriter,
+    "obj",
+    "Viper.IO.LineWriter.Open",
+    RUNTIME_PROPS(RUNTIME_PROP(
+        "NewLine", "str", "Viper.IO.LineWriter.get_NewLine", "Viper.IO.LineWriter.set_NewLine")),
+    RUNTIME_METHODS(RUNTIME_METHOD("Close", "void()", "Viper.IO.LineWriter.Close"),
+                    RUNTIME_METHOD("Flush", "void()", "Viper.IO.LineWriter.Flush"),
+                    RUNTIME_METHOD("Write", "void(str)", "Viper.IO.LineWriter.Write"),
+                    RUNTIME_METHOD("WriteChar", "void(i64)", "Viper.IO.LineWriter.WriteChar"),
+                    RUNTIME_METHOD("WriteLn", "void(str)", "Viper.IO.LineWriter.WriteLn")))
+
+RUNTIME_CLASS(
+    "Viper.Log",
+    RTCLS_Log,
+    "obj",
+    "",
+    RUNTIME_PROPS(RUNTIME_PROP("Level", "i64", "Viper.Log.get_Level", "Viper.Log.set_Level"),
+                  RUNTIME_PROP("DEBUG", "i64", "Viper.Log.get_DEBUG", nullptr),
+                  RUNTIME_PROP("INFO", "i64", "Viper.Log.get_INFO", nullptr),
+                  RUNTIME_PROP("WARN", "i64", "Viper.Log.get_WARN", nullptr),
+                  RUNTIME_PROP("ERROR", "i64", "Viper.Log.get_ERROR", nullptr),
+                  RUNTIME_PROP("OFF", "i64", "Viper.Log.get_OFF", nullptr)),
+    RUNTIME_METHODS(RUNTIME_METHOD("Debug", "void(str)", "Viper.Log.Debug"),
+                    RUNTIME_METHOD("Info", "void(str)", "Viper.Log.Info"),
+                    RUNTIME_METHOD("Warn", "void(str)", "Viper.Log.Warn"),
+                    RUNTIME_METHOD("Error", "void(str)", "Viper.Log.Error"),
+                    RUNTIME_METHOD("Enabled", "i1(i64)", "Viper.Log.Enabled")))
+
+RUNTIME_CLASS("Viper.Machine",
+              RTCLS_Machine,
+              "obj",
+              "",
+              RUNTIME_PROPS(RUNTIME_PROP("Cores", "i64", "Viper.Machine.get_Cores", nullptr),
+                            RUNTIME_PROP("Endian", "str", "Viper.Machine.get_Endian", nullptr),
+                            RUNTIME_PROP("Home", "str", "Viper.Machine.get_Home", nullptr),
+                            RUNTIME_PROP("Host", "str", "Viper.Machine.get_Host", nullptr),
+                            RUNTIME_PROP("MemFree", "i64", "Viper.Machine.get_MemFree", nullptr),
+                            RUNTIME_PROP("MemTotal", "i64", "Viper.Machine.get_MemTotal", nullptr),
+                            RUNTIME_PROP("OS", "str", "Viper.Machine.get_OS", nullptr),
+                            RUNTIME_PROP("OSVer", "str", "Viper.Machine.get_OSVer", nullptr),
+                            RUNTIME_PROP("Temp", "str", "Viper.Machine.get_Temp", nullptr),
+                            RUNTIME_PROP("User", "str", "Viper.Machine.get_User", nullptr)),
+              RUNTIME_METHODS())
 
 RUNTIME_CLASS("Viper.Math",
               RTCLS_Math,
@@ -406,6 +617,21 @@ RUNTIME_CLASS(
                     RUNTIME_METHOD("UrlDecode", "str(str)", "Viper.Text.Codec.UrlDecode"),
                     RUNTIME_METHOD("UrlEncode", "str(str)", "Viper.Text.Codec.UrlEncode")))
 
+RUNTIME_CLASS("Viper.Text.Csv",
+              RTCLS_Csv,
+              "obj",
+              "",
+              RUNTIME_PROPS(),
+              RUNTIME_METHODS(
+                  RUNTIME_METHOD("Format", "str(obj)", "Viper.Text.Csv.Format"),
+                  RUNTIME_METHOD("FormatLine", "str(obj)", "Viper.Text.Csv.FormatLine"),
+                  RUNTIME_METHOD("FormatLineWith", "str(obj,str)", "Viper.Text.Csv.FormatLineWith"),
+                  RUNTIME_METHOD("FormatWith", "str(obj,str)", "Viper.Text.Csv.FormatWith"),
+                  RUNTIME_METHOD("Parse", "obj(str)", "Viper.Text.Csv.Parse"),
+                  RUNTIME_METHOD("ParseLine", "obj(str)", "Viper.Text.Csv.ParseLine"),
+                  RUNTIME_METHOD("ParseLineWith", "obj(str,str)", "Viper.Text.Csv.ParseLineWith"),
+                  RUNTIME_METHOD("ParseWith", "obj(str,str)", "Viper.Text.Csv.ParseWith")))
+
 RUNTIME_CLASS("Viper.Text.Guid",
               RTCLS_Guid,
               "obj",
@@ -428,6 +654,47 @@ RUNTIME_CLASS(
                     RUNTIME_METHOD("Clear", "void()", "Viper.Text.StringBuilder.Clear"),
                     RUNTIME_METHOD("ToString", "str()", "Viper.Text.StringBuilder.ToString")))
 
+RUNTIME_CLASS("Viper.Threads.Monitor",
+              RTCLS_ThreadsMonitor,
+              "obj",
+              "",
+              RUNTIME_PROPS(),
+              RUNTIME_METHODS(
+                  RUNTIME_METHOD("Enter", "void(obj)", "Viper.Threads.Monitor.Enter"),
+                  RUNTIME_METHOD("TryEnter", "i1(obj)", "Viper.Threads.Monitor.TryEnter"),
+                  RUNTIME_METHOD("TryEnterFor", "i1(obj,i64)", "Viper.Threads.Monitor.TryEnterFor"),
+                  RUNTIME_METHOD("Exit", "void(obj)", "Viper.Threads.Monitor.Exit"),
+                  RUNTIME_METHOD("Wait", "void(obj)", "Viper.Threads.Monitor.Wait"),
+                  RUNTIME_METHOD("WaitFor", "i1(obj,i64)", "Viper.Threads.Monitor.WaitFor"),
+                  RUNTIME_METHOD("Pause", "void(obj)", "Viper.Threads.Monitor.Pause"),
+                  RUNTIME_METHOD("PauseAll", "void(obj)", "Viper.Threads.Monitor.PauseAll")))
+
+RUNTIME_CLASS("Viper.Threads.SafeI64",
+              RTCLS_ThreadsSafeI64,
+              "obj",
+              "Viper.Threads.SafeI64.New",
+              RUNTIME_PROPS(),
+              RUNTIME_METHODS(RUNTIME_METHOD("Get", "i64()", "Viper.Threads.SafeI64.Get"),
+                              RUNTIME_METHOD("Set", "void(i64)", "Viper.Threads.SafeI64.Set"),
+                              RUNTIME_METHOD("Add", "i64(i64)", "Viper.Threads.SafeI64.Add"),
+                              RUNTIME_METHOD("CompareExchange",
+                                             "i64(i64,i64)",
+                                             "Viper.Threads.SafeI64.CompareExchange")))
+
+RUNTIME_CLASS(
+    "Viper.Threads.Thread",
+    RTCLS_ThreadsThread,
+    "obj",
+    "",
+    RUNTIME_PROPS(RUNTIME_PROP("Id", "i64", "Viper.Threads.Thread.get_Id", nullptr),
+                  RUNTIME_PROP("IsAlive", "i1", "Viper.Threads.Thread.get_IsAlive", nullptr)),
+    RUNTIME_METHODS(RUNTIME_METHOD("Start", "obj(ptr,ptr)", "Viper.Threads.Thread.Start"),
+                    RUNTIME_METHOD("Join", "void()", "Viper.Threads.Thread.Join"),
+                    RUNTIME_METHOD("TryJoin", "i1()", "Viper.Threads.Thread.TryJoin"),
+                    RUNTIME_METHOD("JoinFor", "i1(i64)", "Viper.Threads.Thread.JoinFor"),
+                    RUNTIME_METHOD("Sleep", "void(i64)", "Viper.Threads.Thread.Sleep"),
+                    RUNTIME_METHOD("Yield", "void()", "Viper.Threads.Thread.Yield")))
+
 RUNTIME_CLASS("Viper.Time.Clock",
               RTCLS_Clock,
               "obj",
@@ -436,3 +703,62 @@ RUNTIME_CLASS("Viper.Time.Clock",
               RUNTIME_METHODS(RUNTIME_METHOD("Sleep", "void(i64)", "Viper.Time.Clock.Sleep"),
                               RUNTIME_METHOD("Ticks", "i64()", "Viper.Time.Clock.Ticks"),
                               RUNTIME_METHOD("TicksUs", "i64()", "Viper.Time.Clock.TicksUs")))
+
+RUNTIME_CLASS(
+    "Viper.Time.Countdown",
+    RTCLS_Countdown,
+    "obj",
+    "Viper.Time.Countdown.New",
+    RUNTIME_PROPS(RUNTIME_PROP("Elapsed", "i64", "Viper.Time.Countdown.get_Elapsed", nullptr),
+                  RUNTIME_PROP("Remaining", "i64", "Viper.Time.Countdown.get_Remaining", nullptr),
+                  RUNTIME_PROP("Expired", "i1", "Viper.Time.Countdown.get_Expired", nullptr),
+                  RUNTIME_PROP("Interval",
+                               "i64",
+                               "Viper.Time.Countdown.get_Interval",
+                               "Viper.Time.Countdown.set_Interval"),
+                  RUNTIME_PROP("IsRunning", "i1", "Viper.Time.Countdown.get_IsRunning", nullptr)),
+    RUNTIME_METHODS(RUNTIME_METHOD("Start", "void()", "Viper.Time.Countdown.Start"),
+                    RUNTIME_METHOD("Stop", "void()", "Viper.Time.Countdown.Stop"),
+                    RUNTIME_METHOD("Reset", "void()", "Viper.Time.Countdown.Reset"),
+                    RUNTIME_METHOD("Wait", "void()", "Viper.Time.Countdown.Wait")))
+
+RUNTIME_CLASS("Viper.Vec2",
+              RTCLS_Vec2,
+              "obj",
+              "Viper.Vec2.New",
+              RUNTIME_PROPS(RUNTIME_PROP("X", "f64", "Viper.Vec2.get_X", nullptr),
+                            RUNTIME_PROP("Y", "f64", "Viper.Vec2.get_Y", nullptr)),
+              RUNTIME_METHODS(RUNTIME_METHOD("Add", "obj(obj)", "Viper.Vec2.Add"),
+                              RUNTIME_METHOD("Sub", "obj(obj)", "Viper.Vec2.Sub"),
+                              RUNTIME_METHOD("Mul", "obj(f64)", "Viper.Vec2.Mul"),
+                              RUNTIME_METHOD("Div", "obj(f64)", "Viper.Vec2.Div"),
+                              RUNTIME_METHOD("Dot", "f64(obj)", "Viper.Vec2.Dot"),
+                              RUNTIME_METHOD("Cross", "f64(obj)", "Viper.Vec2.Cross"),
+                              RUNTIME_METHOD("Len", "f64()", "Viper.Vec2.Len"),
+                              RUNTIME_METHOD("LenSq", "f64()", "Viper.Vec2.LenSq"),
+                              RUNTIME_METHOD("Norm", "obj()", "Viper.Vec2.Norm"),
+                              RUNTIME_METHOD("Dist", "f64(obj)", "Viper.Vec2.Dist"),
+                              RUNTIME_METHOD("Lerp", "obj(obj,f64)", "Viper.Vec2.Lerp"),
+                              RUNTIME_METHOD("Angle", "f64()", "Viper.Vec2.Angle"),
+                              RUNTIME_METHOD("Rotate", "obj(f64)", "Viper.Vec2.Rotate"),
+                              RUNTIME_METHOD("Neg", "obj()", "Viper.Vec2.Neg")))
+
+RUNTIME_CLASS("Viper.Vec3",
+              RTCLS_Vec3,
+              "obj",
+              "Viper.Vec3.New",
+              RUNTIME_PROPS(RUNTIME_PROP("X", "f64", "Viper.Vec3.get_X", nullptr),
+                            RUNTIME_PROP("Y", "f64", "Viper.Vec3.get_Y", nullptr),
+                            RUNTIME_PROP("Z", "f64", "Viper.Vec3.get_Z", nullptr)),
+              RUNTIME_METHODS(RUNTIME_METHOD("Add", "obj(obj)", "Viper.Vec3.Add"),
+                              RUNTIME_METHOD("Sub", "obj(obj)", "Viper.Vec3.Sub"),
+                              RUNTIME_METHOD("Mul", "obj(f64)", "Viper.Vec3.Mul"),
+                              RUNTIME_METHOD("Div", "obj(f64)", "Viper.Vec3.Div"),
+                              RUNTIME_METHOD("Dot", "f64(obj)", "Viper.Vec3.Dot"),
+                              RUNTIME_METHOD("Cross", "obj(obj)", "Viper.Vec3.Cross"),
+                              RUNTIME_METHOD("Len", "f64()", "Viper.Vec3.Len"),
+                              RUNTIME_METHOD("LenSq", "f64()", "Viper.Vec3.LenSq"),
+                              RUNTIME_METHOD("Norm", "obj()", "Viper.Vec3.Norm"),
+                              RUNTIME_METHOD("Dist", "f64(obj)", "Viper.Vec3.Dist"),
+                              RUNTIME_METHOD("Lerp", "obj(obj,f64)", "Viper.Vec3.Lerp"),
+                              RUNTIME_METHOD("Neg", "obj()", "Viper.Vec3.Neg")))

@@ -4,21 +4,51 @@
 // See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/runtime/rt_hash.c
-// Purpose: Cryptographic hash functions (MD5, SHA1, SHA256) and checksums (CRC32).
-// Key invariants: Hash outputs are lowercase hex strings; CRC32 returns integer.
-// Ownership/Lifetime: Returned strings are newly allocated.
-// Links: docs/viperlib.md
-//
-// Hash implementations based on public domain code and RFC specifications:
-// - MD5: RFC 1321
-// - SHA1: RFC 3174 / FIPS 180-1
-// - SHA256: RFC 6234 / FIPS 180-4
-// - CRC32: IEEE 802.3 polynomial
-//
-// Security Note: MD5 and SHA1 are cryptographically broken. Use SHA256 for security.
-//
+///
+/// @file rt_hash.c
+/// @brief Cryptographic hash functions (MD5, SHA1, SHA256) and checksums (CRC32).
+///
+/// This file implements various hashing algorithms for data integrity checking,
+/// content addressing, and cryptographic applications. All hash functions
+/// return lowercase hexadecimal strings for easy display and comparison.
+///
+/// **Available Hash Functions:**
+///
+/// | Algorithm | Output Size | Security | Speed    | Use Case              |
+/// |-----------|-------------|----------|----------|-----------------------|
+/// | MD5       | 128 bits    | Broken   | Fast     | Legacy, checksums     |
+/// | SHA-1     | 160 bits    | Broken   | Medium   | Legacy, git (moving)  |
+/// | SHA-256   | 256 bits    | Strong   | Medium   | Security, blockchain  |
+/// | CRC32     | 32 bits     | None     | V. Fast  | Error detection       |
+///
+/// **Security Warnings:**
+/// - **MD5**: Cryptographically broken. Collisions can be generated in seconds.
+///   Do NOT use for security. Acceptable for checksums and content addressing.
+/// - **SHA-1**: Cryptographically broken. Chosen-prefix collisions demonstrated.
+///   Do NOT use for new security applications.
+/// - **SHA-256**: Currently secure. Recommended for all security applications.
+/// - **CRC32**: NOT a cryptographic hash. Only suitable for error detection.
+///
+/// **Output Format:**
+/// ```
+/// Hash.MD5("Hello")    → "8b1a9953c4611296a827abf8c47804d7"  (32 chars)
+/// Hash.SHA1("Hello")   → "f7ff9e8b7bb2e09b70935a5d785e0cc5d9d0abf0" (40 chars)
+/// Hash.SHA256("Hello") → "185f8db32271fe25f561a6fc938b2e26..." (64 chars)
+/// Hash.CRC32("Hello")  → 4157704578 (integer)
+/// ```
+///
+/// **Common Use Cases:**
+/// - File integrity verification (download checksums)
+/// - Content-addressable storage (deduplication)
+/// - Password hashing (with proper salting and key stretching)
+/// - Digital signatures (as part of a larger scheme)
+/// - Cache keys and ETags
+///
+/// **Thread Safety:** All functions are thread-safe (no global mutable state
+/// except CRC32 table which is initialized once).
+///
+/// @see rt_codec.c For hex encoding/decoding utilities
+///
 //===----------------------------------------------------------------------===//
 
 #include "rt_hash.h"
@@ -595,6 +625,47 @@ static void compute_sha256(const uint8_t *data, size_t len, uint8_t hash[32])
 // Public API
 //=============================================================================
 
+/// @brief Computes the MD5 hash of a string.
+///
+/// Calculates the 128-bit MD5 message digest (RFC 1321) and returns it as
+/// a 32-character lowercase hexadecimal string.
+///
+/// **Security Warning:** MD5 is cryptographically broken. Collisions can be
+/// generated in seconds on modern hardware. Do NOT use for:
+/// - Password hashing
+/// - Digital signatures
+/// - Certificate verification
+/// - Any security-critical application
+///
+/// **Acceptable uses:**
+/// - File checksums (non-security)
+/// - Content deduplication
+/// - Cache key generation
+/// - Legacy system compatibility
+///
+/// **Examples:**
+/// ```
+/// Hash.MD5("")        → "d41d8cd98f00b204e9800998ecf8427e"
+/// Hash.MD5("Hello")   → "8b1a9953c4611296a827abf8c47804d7"
+/// Hash.MD5("a")       → "0cc175b9c0f1b6a831c399e269772661"
+/// ```
+///
+/// **Usage example:**
+/// ```
+/// Dim content = ReadFile("document.txt")
+/// Dim checksum = Hash.MD5(content)
+/// Print "MD5: " & checksum
+/// ```
+///
+/// @param str The string to hash. NULL is treated as empty string.
+///
+/// @return A 32-character lowercase hex string representing the MD5 hash.
+///
+/// @note O(n) time complexity where n is input length.
+/// @note Always returns exactly 32 characters.
+///
+/// @see rt_hash_sha256 For a secure alternative
+/// @see rt_hash_md5_bytes For hashing Bytes objects
 rt_string rt_hash_md5(rt_string str)
 {
     const char *cstr = rt_string_cstr(str);
@@ -606,6 +677,33 @@ rt_string rt_hash_md5(rt_string str)
     return bytes_to_hex_string(digest, 16);
 }
 
+/// @brief Computes the MD5 hash of a Bytes object.
+///
+/// Calculates the 128-bit MD5 message digest of binary data and returns it
+/// as a 32-character lowercase hexadecimal string. This function is useful
+/// for hashing binary data that may contain null bytes.
+///
+/// **Security Warning:** MD5 is cryptographically broken. See rt_hash_md5
+/// for details on appropriate use cases.
+///
+/// **Usage example:**
+/// ```
+/// Dim data = Bytes.New(256)
+/// ' ... fill with binary data ...
+/// Dim checksum = Hash.MD5Bytes(data)
+/// Print "Binary MD5: " & checksum
+/// ```
+///
+/// @param bytes A Bytes object containing the data to hash.
+///              NULL is treated as empty input.
+///
+/// @return A 32-character lowercase hex string representing the MD5 hash.
+///
+/// @note O(n) time complexity where n is the byte array length.
+/// @note Creates a temporary copy of the data for hashing.
+///
+/// @see rt_hash_md5 For hashing strings
+/// @see rt_hash_sha256_bytes For a secure alternative
 rt_string rt_hash_md5_bytes(void *bytes)
 {
     if (!bytes)
@@ -633,6 +731,46 @@ rt_string rt_hash_md5_bytes(void *bytes)
     return bytes_to_hex_string(digest, 16);
 }
 
+/// @brief Computes the SHA-1 hash of a string.
+///
+/// Calculates the 160-bit SHA-1 message digest (RFC 3174 / FIPS 180-1) and
+/// returns it as a 40-character lowercase hexadecimal string.
+///
+/// **Security Warning:** SHA-1 is cryptographically broken. Chosen-prefix
+/// collisions have been demonstrated (SHAttered attack, 2017). Do NOT use for:
+/// - Password hashing
+/// - Digital signatures
+/// - Certificate verification
+/// - Any security-critical application
+///
+/// **Acceptable uses:**
+/// - Git object identifiers (though Git is migrating to SHA-256)
+/// - Legacy system compatibility
+/// - Non-security checksums
+///
+/// **Examples:**
+/// ```
+/// Hash.SHA1("")        → "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+/// Hash.SHA1("Hello")   → "f7ff9e8b7bb2e09b70935a5d785e0cc5d9d0abf0"
+/// Hash.SHA1("abc")     → "a9993e364706816aba3e25717850c26c9cd0d89d"
+/// ```
+///
+/// **Usage example:**
+/// ```
+/// Dim content = ReadFile("source.c")
+/// Dim hash = Hash.SHA1(content)
+/// Print "SHA1: " & hash
+/// ```
+///
+/// @param str The string to hash. NULL is treated as empty string.
+///
+/// @return A 40-character lowercase hex string representing the SHA-1 hash.
+///
+/// @note O(n) time complexity where n is input length.
+/// @note Always returns exactly 40 characters.
+///
+/// @see rt_hash_sha256 For a secure alternative
+/// @see rt_hash_sha1_bytes For hashing Bytes objects
 rt_string rt_hash_sha1(rt_string str)
 {
     const char *cstr = rt_string_cstr(str);
@@ -644,6 +782,32 @@ rt_string rt_hash_sha1(rt_string str)
     return bytes_to_hex_string(digest, 20);
 }
 
+/// @brief Computes the SHA-1 hash of a Bytes object.
+///
+/// Calculates the 160-bit SHA-1 message digest of binary data and returns it
+/// as a 40-character lowercase hexadecimal string. This function is useful
+/// for hashing binary data that may contain null bytes.
+///
+/// **Security Warning:** SHA-1 is cryptographically broken. See rt_hash_sha1
+/// for details on appropriate use cases.
+///
+/// **Usage example:**
+/// ```
+/// Dim fileData = File.ReadAllBytes("image.png")
+/// Dim hash = Hash.SHA1Bytes(fileData)
+/// Print "Image SHA1: " & hash
+/// ```
+///
+/// @param bytes A Bytes object containing the data to hash.
+///              NULL is treated as empty input.
+///
+/// @return A 40-character lowercase hex string representing the SHA-1 hash.
+///
+/// @note O(n) time complexity where n is the byte array length.
+/// @note Creates a temporary copy of the data for hashing.
+///
+/// @see rt_hash_sha1 For hashing strings
+/// @see rt_hash_sha256_bytes For a secure alternative
 rt_string rt_hash_sha1_bytes(void *bytes)
 {
     if (!bytes)
@@ -670,6 +834,60 @@ rt_string rt_hash_sha1_bytes(void *bytes)
     return bytes_to_hex_string(digest, 20);
 }
 
+/// @brief Computes the SHA-256 hash of a string.
+///
+/// Calculates the 256-bit SHA-256 message digest (RFC 6234 / FIPS 180-4) and
+/// returns it as a 64-character lowercase hexadecimal string. SHA-256 is part
+/// of the SHA-2 family and is currently considered cryptographically secure.
+///
+/// **This is the recommended hash function for security applications.**
+///
+/// **Use cases:**
+/// - Password hashing (with proper salting and key stretching)
+/// - Digital signatures
+/// - Certificate verification
+/// - Blockchain and cryptocurrency
+/// - HMAC constructions
+/// - Content integrity verification
+/// - Secure token generation
+///
+/// **Examples:**
+/// ```
+/// Hash.SHA256("")      → "e3b0c44298fc1c149afbf4c8996fb924..."
+/// Hash.SHA256("Hello") → "185f8db32271fe25f561a6fc938b2e26..."
+/// Hash.SHA256("abc")   → "ba7816bf8f01cfea414140de5dae2223..."
+/// ```
+///
+/// **Usage example:**
+/// ```
+/// ' Verify file integrity
+/// Dim content = ReadFile("document.txt")
+/// Dim computed = Hash.SHA256(content)
+/// If computed = expectedHash Then
+///     Print "File integrity verified"
+/// Else
+///     Print "WARNING: File has been modified!"
+/// End If
+/// ```
+///
+/// **Password hashing (simplified):**
+/// ```
+/// ' NOTE: For production, use proper key derivation (PBKDF2, bcrypt, etc.)
+/// Dim salt = GenerateRandomBytes(16)
+/// Dim saltedPassword = salt & password
+/// Dim hash = Hash.SHA256(saltedPassword)
+/// ```
+///
+/// @param str The string to hash. NULL is treated as empty string.
+///
+/// @return A 64-character lowercase hex string representing the SHA-256 hash.
+///
+/// @note O(n) time complexity where n is input length.
+/// @note Always returns exactly 64 characters.
+/// @note Suitable for all security applications.
+///
+/// @see rt_hash_sha256_bytes For hashing Bytes objects
+/// @see rt_hash_md5 For legacy/checksum uses (NOT secure)
 rt_string rt_hash_sha256(rt_string str)
 {
     const char *cstr = rt_string_cstr(str);
@@ -681,6 +899,41 @@ rt_string rt_hash_sha256(rt_string str)
     return bytes_to_hex_string(hash, 32);
 }
 
+/// @brief Computes the SHA-256 hash of a Bytes object.
+///
+/// Calculates the 256-bit SHA-256 message digest of binary data and returns it
+/// as a 64-character lowercase hexadecimal string. This is the recommended
+/// function for securely hashing binary data.
+///
+/// **This is the recommended hash function for security applications
+/// involving binary data.**
+///
+/// **Usage example:**
+/// ```
+/// ' Hash a binary file
+/// Dim fileData = File.ReadAllBytes("document.pdf")
+/// Dim hash = Hash.SHA256Bytes(fileData)
+/// Print "SHA256: " & hash
+///
+/// ' Verify download integrity
+/// Dim downloadedData = DownloadFile(url)
+/// Dim computed = Hash.SHA256Bytes(downloadedData)
+/// If computed = expectedChecksum Then
+///     Print "Download verified successfully"
+/// End If
+/// ```
+///
+/// @param bytes A Bytes object containing the data to hash.
+///              NULL is treated as empty input.
+///
+/// @return A 64-character lowercase hex string representing the SHA-256 hash.
+///
+/// @note O(n) time complexity where n is the byte array length.
+/// @note Creates a temporary copy of the data for hashing.
+/// @note Suitable for all security applications.
+///
+/// @see rt_hash_sha256 For hashing strings
+/// @see rt_hash_md5_bytes For legacy/checksum uses (NOT secure)
 rt_string rt_hash_sha256_bytes(void *bytes)
 {
     if (!bytes)
@@ -707,6 +960,61 @@ rt_string rt_hash_sha256_bytes(void *bytes)
     return bytes_to_hex_string(hash, 32);
 }
 
+/// @brief Computes the CRC32 checksum of a string.
+///
+/// Calculates the 32-bit CRC (Cyclic Redundancy Check) using the IEEE 802.3
+/// polynomial (0xEDB88320, bit-reversed). Returns the checksum as an integer.
+///
+/// **Important:** CRC32 is NOT a cryptographic hash. It is designed for error
+/// detection in data transmission, not for security. The same input always
+/// produces the same output, but it is trivial to craft inputs that produce
+/// a desired CRC32 value.
+///
+/// **Use cases:**
+/// - File integrity checking (detect accidental corruption)
+/// - Network packet error detection
+/// - ZIP/GZIP file checksums
+/// - Quick data comparison (fingerprinting)
+/// - Hash table distribution (non-security)
+///
+/// **NOT suitable for:**
+/// - Password hashing
+/// - Digital signatures
+/// - Any security application
+/// - Collision resistance requirements
+///
+/// **Examples:**
+/// ```
+/// Hash.CRC32("")        → 0
+/// Hash.CRC32("Hello")   → 4157704578
+/// Hash.CRC32("123456789") → 3421780262 (standard test vector)
+/// ```
+///
+/// **Usage example:**
+/// ```
+/// ' Quick file comparison
+/// Dim content = ReadFile("data.bin")
+/// Dim checksum = Hash.CRC32(content)
+/// Print "CRC32: " & checksum
+///
+/// ' Verify integrity
+/// If Hash.CRC32(receivedData) = expectedCRC Then
+///     Print "Data received correctly"
+/// Else
+///     Print "Data corrupted during transfer"
+/// End If
+/// ```
+///
+/// @param str The string to compute CRC32 for. NULL is treated as empty string.
+///
+/// @return The 32-bit CRC32 checksum as an integer (0 to 4294967295).
+///
+/// @note O(n) time complexity where n is input length.
+/// @note Very fast compared to cryptographic hashes.
+/// @note Uses IEEE 802.3 polynomial (same as Ethernet, ZIP, PNG, etc.).
+///
+/// @see rt_hash_crc32_bytes For computing CRC32 of Bytes objects
+/// @see rt_hash_sha256 For security-sensitive applications
 int64_t rt_hash_crc32(rt_string str)
 {
     const char *cstr = rt_string_cstr(str);
@@ -716,6 +1024,43 @@ int64_t rt_hash_crc32(rt_string str)
     return (int64_t)compute_crc32((const uint8_t *)cstr, strlen(cstr));
 }
 
+/// @brief Computes the CRC32 checksum of a Bytes object.
+///
+/// Calculates the 32-bit CRC (Cyclic Redundancy Check) of binary data using
+/// the IEEE 802.3 polynomial. This is useful for binary data that may contain
+/// null bytes.
+///
+/// **Important:** CRC32 is NOT a cryptographic hash. See rt_hash_crc32 for
+/// details on appropriate use cases.
+///
+/// **Usage example:**
+/// ```
+/// ' Checksum binary file
+/// Dim fileData = File.ReadAllBytes("archive.zip")
+/// Dim crc = Hash.CRC32Bytes(fileData)
+/// Print "File CRC32: " & crc
+///
+/// ' Validate network packet
+/// Dim packet = ReceivePacket()
+/// Dim payloadCRC = Hash.CRC32Bytes(packet.Payload)
+/// If payloadCRC = packet.ExpectedCRC Then
+///     ProcessPacket(packet)
+/// Else
+///     RequestRetransmit()
+/// End If
+/// ```
+///
+/// @param bytes A Bytes object containing the data to checksum.
+///              NULL is treated as empty input.
+///
+/// @return The 32-bit CRC32 checksum as an integer (0 to 4294967295).
+///
+/// @note O(n) time complexity where n is the byte array length.
+/// @note Very fast compared to cryptographic hashes.
+/// @note Creates a temporary copy of the data for processing.
+///
+/// @see rt_hash_crc32 For computing CRC32 of strings
+/// @see rt_hash_sha256_bytes For security-sensitive applications
 int64_t rt_hash_crc32_bytes(void *bytes)
 {
     if (!bytes)

@@ -4,14 +4,8 @@
 
 #include "frontends/pascal/Compiler.hpp"
 #include "support/source_manager.hpp"
+#include "tests/TestHarness.hpp"
 #include <iostream>
-
-#ifdef VIPER_HAS_GTEST
-#include <gtest/gtest.h>
-#else
-#include "../../unit/GTestStub.hpp"
-#endif
-
 using namespace il::frontends::pascal;
 using namespace il::support;
 
@@ -69,9 +63,7 @@ end.
     EXPECT_TRUE(result.succeeded());
 }
 
-#ifndef VIPER_HAS_GTEST
 int main()
 {
-    return RUN_ALL_TESTS();
+    return viper_test::run_all_tests();
 }
-#endif

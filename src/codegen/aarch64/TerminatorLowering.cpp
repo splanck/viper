@@ -4,19 +4,86 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-//
-// File: codegen/aarch64/TerminatorLowering.cpp
-// Purpose: Terminator instruction lowering for IL->MIR conversion.
-//
-// This file contains the lowering logic for control-flow terminators:
-// - Br (unconditional branch)
-// - CBr (conditional branch)
-// - Trap / TrapFromErr
-// - SwitchI32 is handled inline in LowerILToMIR.cpp (not a terminator pass)
-//
-// Terminators are lowered in a separate pass after all other instructions
-// to ensure branches appear after the values they depend on are computed.
-//
+///
+/// @file TerminatorLowering.cpp
+/// @brief Control-flow terminator lowering for IL to MIR conversion.
+///
+/// This file handles the lowering of IL terminator instructions that end
+/// basic blocks and transfer control to other blocks. Terminators are
+/// lowered in a separate pass after all other instructions to ensure
+/// branch targets and phi-edge copies are correctly emitted.
+///
+/// **What are Terminators?**
+/// Terminators are instructions that end a basic block and specify where
+/// control flows next. IL terminators include:
+/// - `br` - Unconditional branch to a single target
+/// - `cbr` - Conditional branch based on a boolean value
+/// - `ret` - Return from function
+/// - `trap` - Abort execution with an error
+///
+/// **Phi-Edge Copies:**
+/// SSA phi nodes are eliminated by inserting copies on CFG edges. When a
+/// block branches to a target that has parameters (phi nodes), the branch
+/// arguments must be copied to the parameter spill slots:
+///
+/// ```
+/// IL:
+///   block loop(counter: i64):
+///     ...
+///     br loop(%counter + 1)   ; pass argument to phi
+///
+/// MIR:
+///   ; At end of block before br:
+///   v1 = AddRI v0, #1         ; compute new counter
+///   StrRegFpImm v1, [fp, #phi_slot]  ; store to phi spill
+///   Br .Lloop
+///
+///   .Lloop:
+///   LdrRegFpImm v0, [fp, #phi_slot]  ; reload phi value
+/// ```
+///
+/// **Branch Lowering:**
+/// | IL Terminator | MIR Sequence                                |
+/// |---------------|---------------------------------------------|
+/// | br target     | [phi copies] + Br .Ltarget                  |
+/// | cbr %c, T, F  | [phi copies] + CmpRI/Cset + BCond/Br        |
+/// | ret %v        | MovRR x0, %v + Ret                          |
+/// | trap          | Bl _rt_trap                                 |
+///
+/// **Conditional Branch Expansion:**
+/// IL cbr takes a boolean condition and two targets. Lowering produces:
+/// ```
+/// cbr %cond, then_block, else_block
+///
+/// MIR:
+///   ; Emit phi-edge copies for BOTH targets (computed before condition)
+///   ; Then emit condition test and branches:
+///   CmpRI v_cond, #0
+///   BCond ne, .Lthen_block   ; if cond != 0, branch to then
+///   Br .Lelse_block          ; fall through to else
+/// ```
+///
+/// **Trap Handling:**
+/// Trap instructions call the runtime trap handler with a message:
+/// ```
+/// trap "index out of bounds"
+///
+/// MIR:
+///   AdrPage x0, .Ltrap_msg_1@PAGE
+///   AddPageOff x0, x0, .Ltrap_msg_1@PAGEOFF
+///   Bl _rt_trap
+/// ```
+///
+/// **Why Separate Pass?**
+/// Terminators are lowered after all other instructions because:
+/// 1. All values used by the terminator must be computed first
+/// 2. Phi-edge copies reference block-local vreg mappings
+/// 3. Fall-through and branch ordering matters for code layout
+///
+/// @see LowerILToMIR.cpp For overall lowering orchestration
+/// @see InstrLowering.cpp For non-terminator instruction lowering
+/// @see FrameBuilder.cpp For phi spill slot allocation
+///
 //===----------------------------------------------------------------------===//
 
 #include "TerminatorLowering.hpp"

@@ -595,6 +595,15 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_timer PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_timer test_rt_timer)
 
+    # Threading runtime tests (Monitor/Thread/SafeI64)
+    viper_add_test(test_rt_threads_monitor ${VIPER_TESTS_DIR}/runtime/RTThreadsMonitorTests.cpp)
+    target_link_libraries(test_rt_threads_monitor PRIVATE ${VIPER_RUNTIME_TEST_LIBS} Threads::Threads)
+    viper_add_ctest(test_rt_threads_monitor test_rt_threads_monitor)
+
+    viper_add_test(test_rt_threads_thread ${VIPER_TESTS_DIR}/runtime/RTThreadsThreadTests.cpp)
+    target_link_libraries(test_rt_threads_thread PRIVATE ${VIPER_RUNTIME_TEST_LIBS} Threads::Threads)
+    viper_add_ctest(test_rt_threads_thread test_rt_threads_thread)
+
     viper_add_test(test_rt_string_size_clamp ${VIPER_TESTS_DIR}/runtime/RTStringSizeClampTests.cpp)
     target_link_libraries(test_rt_string_size_clamp PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_string_size_clamp test_rt_string_size_clamp)

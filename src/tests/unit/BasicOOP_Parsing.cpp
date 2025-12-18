@@ -12,17 +12,11 @@
 // Links: docs/codemap.md
 //
 //===----------------------------------------------------------------------===//
-
-#ifdef VIPER_HAS_GTEST
-#include <gtest/gtest.h>
-#else
-#include "GTestStub.hpp"
-#endif
-
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Parser.hpp"
 #include "support/diagnostics.hpp"
 #include "support/source_manager.hpp"
+#include "tests/TestHarness.hpp"
 
 #include <cctype>
 #include <cstddef>
@@ -206,6 +200,6 @@ TEST(BasicOOPParsingTest, ParsesFieldsWithOptionalDimPrefix)
 
 int main(int argc, char **argv)
 {
-    ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

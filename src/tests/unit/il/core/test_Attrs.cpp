@@ -12,13 +12,11 @@
 // Links: src/il/core/Function.hpp, src/il/core/Param.hpp, src/il/core/Instr.hpp,
 //
 //===----------------------------------------------------------------------===//
-
-#include "../../GTestStub.hpp"
-
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Param.hpp"
 #include "il/runtime/signatures/Registry.hpp"
+#include "tests/TestHarness.hpp"
 
 using il::core::Function;
 using il::core::Instr;
@@ -96,6 +94,6 @@ TEST(Attrs, RuntimeSignatureAttributeConstruction)
 
 int main(int argc, char **argv)
 {
-    testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

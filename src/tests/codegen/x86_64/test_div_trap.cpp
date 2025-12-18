@@ -20,20 +20,12 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
 #include <system_error>
-
-#if __has_include(<gtest/gtest.h>)
-#ifdef VIPER_HAS_GTEST
-#include <gtest/gtest.h>
-#define VIPER_HAS_GTEST 1
-#else
-#include <iostream>
-#define VIPER_HAS_GTEST 0
-#endif
 
 #ifndef _WIN32
 #include <sys/wait.h>
@@ -339,42 +331,6 @@ entry:
 } // namespace
 } // namespace viper::codegen::x64
 
-#if VIPER_HAS_GTEST
-
-TEST(CodegenX64DivTrapTest, EmitsGuardedDivisionSequence)
-{
-    using namespace viper::codegen::x64;
-
-    const ILModule module = makeDivModule();
-    const CodegenResult result = emitModuleToAssembly(module, {});
-
-    ASSERT_TRUE(result.errors.empty()) << result.errors;
-
-    const DivTrapSequence sequence = analyseDivTrapSequence(result.asmText);
-    EXPECT_TRUE(sequence.hasSelfTest) << result.asmText;
-    EXPECT_TRUE(sequence.hasTrapBranch) << result.asmText;
-    EXPECT_TRUE(sequence.hasCqto) << result.asmText;
-    EXPECT_TRUE(sequence.hasIdiv) << result.asmText;
-    EXPECT_TRUE(sequence.hasTrapCall) << result.asmText;
-}
-
-TEST(CodegenX64DivTrapTest, RunNativeTrapExitsNonZero)
-{
-    using namespace viper::codegen::x64;
-
-    const NativeRunResult result = runDivTrapNative();
-    if (result.skipped)
-    {
-        GTEST_SKIP() << result.message;
-    }
-
-    ASSERT_FALSE(result.launchFailed) << result.message;
-    EXPECT_NE(result.exitCode, 0) << "Expected non-zero exit code when running native trap. "
-                                  << result.message;
-}
-
-#else
-
 int main()
 {
     using namespace viper::codegen::x64;
@@ -415,5 +371,3 @@ int main()
 
     return EXIT_SUCCESS;
 }
-
-#endif

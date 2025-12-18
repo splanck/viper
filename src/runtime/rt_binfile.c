@@ -41,6 +41,24 @@ typedef struct rt_binfile_impl
     int8_t closed; ///< Closed flag.
 } rt_binfile_impl;
 
+/// @brief Finalizer callback invoked when a BinFile is garbage collected.
+///
+/// This function is automatically called by Viper's garbage collector when a
+/// BinFile object becomes unreachable. It ensures that the underlying operating
+/// system file handle is properly closed to prevent resource leaks.
+///
+/// The finalizer is a safety net - well-written programs should call
+/// rt_binfile_close explicitly when done with a file. However, if the program
+/// forgets to close the file or an exception occurs, this finalizer ensures
+/// the file is eventually closed when the object is collected.
+///
+/// @param obj Pointer to the BinFile object being finalized. May be NULL (no-op).
+///
+/// @note This function is idempotent - calling it on an already-closed file is safe.
+/// @note The finalizer does not raise errors; it silently closes the file if open.
+///
+/// @see rt_binfile_close For explicit file closure
+/// @see rt_obj_set_finalizer For how finalizers are registered
 static void rt_binfile_finalize(void *obj)
 {
     if (!obj)
@@ -54,6 +72,50 @@ static void rt_binfile_finalize(void *obj)
     }
 }
 
+/// @brief Opens a binary file for reading, writing, or both.
+///
+/// Creates a new BinFile object connected to the specified file path. The file
+/// is opened in binary mode (no newline translation) using the specified access
+/// mode. The returned BinFile is managed by Viper's garbage collector and will
+/// automatically close when collected if not explicitly closed.
+///
+/// **Supported modes:**
+/// | Mode  | Description                              | C equivalent |
+/// |-------|------------------------------------------|--------------|
+/// | "r"   | Read-only, file must exist               | "rb"         |
+/// | "w"   | Write-only, creates/truncates file       | "wb"         |
+/// | "rw"  | Read/write, file must exist              | "r+b"        |
+/// | "a"   | Append-only, creates if doesn't exist    | "ab"         |
+///
+/// **Usage example (conceptual):**
+/// ```
+/// Dim bf = BinFile.Open("data.bin", "rw")
+/// bf.WriteByte(0x42)
+/// bf.Seek(0, 0)       ' Seek to beginning
+/// Dim b = bf.ReadByte()
+/// bf.Close()
+/// ```
+///
+/// @param path Viper string containing the file path. Must not be NULL.
+///             Path is interpreted according to the OS (relative or absolute).
+/// @param mode Viper string containing the access mode ("r", "w", "rw", or "a").
+///             Must not be NULL.
+///
+/// @return A pointer to a new BinFile object on success. On failure, traps with
+///         an error message and returns NULL. Failure reasons include:
+///         - NULL path or mode string
+///         - Invalid mode string (not one of r/w/rw/a)
+///         - File cannot be opened (permissions, doesn't exist for "r"/"rw", etc.)
+///         - Memory allocation failure
+///
+/// @note The BinFile should be closed with rt_binfile_close when done. If not
+///       explicitly closed, it will be closed when garbage collected.
+/// @note All reads/writes are binary (no character encoding or newline translation).
+/// @note Thread safety: Not thread-safe. Each thread should have its own BinFile.
+///
+/// @see rt_binfile_close For closing the file
+/// @see rt_binfile_read For reading bytes into a buffer
+/// @see rt_binfile_write For writing bytes from a buffer
 void *rt_binfile_open(void *path, void *mode)
 {
     if (!path || !mode)
@@ -110,6 +172,30 @@ void *rt_binfile_open(void *path, void *mode)
     return bf;
 }
 
+/// @brief Explicitly closes a BinFile, releasing the underlying file handle.
+///
+/// Closes the file associated with this BinFile object, flushing any buffered
+/// data to disk. After calling close, any subsequent read/write/seek operations
+/// on this BinFile will trap with an error.
+///
+/// It is good practice to explicitly close files when done, rather than relying
+/// on the garbage collector. Benefits of explicit closing:
+/// - Immediate release of OS file handle resources
+/// - Ensures data is flushed to disk at a known point
+/// - Avoids potential resource exhaustion with many open files
+/// - Makes program behavior more predictable
+///
+/// @param obj Pointer to a BinFile object. If NULL, this function is a no-op.
+///
+/// @note This function is idempotent - calling close on an already-closed
+///       BinFile does nothing (no error).
+/// @note After closing, the BinFile object still exists in memory but is
+///       unusable. It will be freed when the garbage collector runs.
+/// @note Thread safety: Not thread-safe. Don't close a file while another
+///       thread is using it.
+///
+/// @see rt_binfile_open For opening files
+/// @see rt_binfile_flush For flushing without closing
 void rt_binfile_close(void *obj)
 {
     if (!obj)
@@ -124,6 +210,47 @@ void rt_binfile_close(void *obj)
     }
 }
 
+/// @brief Reads bytes from the file into a Bytes buffer.
+///
+/// Reads up to `count` bytes from the current file position into the provided
+/// Bytes buffer starting at `offset`. The file position advances by the number
+/// of bytes actually read. If end-of-file is reached during the read, the EOF
+/// flag is set and fewer bytes than requested may be returned.
+///
+/// **Bounds checking:**
+/// - If `offset` is negative, it is treated as 0
+/// - If `offset` is beyond the Bytes buffer length, returns 0 (no read)
+/// - If `offset + count` exceeds buffer length, count is clamped to fit
+///
+/// **Example usage:**
+/// ```
+/// Dim buf = Bytes.New(1024)
+/// Dim n = bf.Read(buf, 0, 1024)  ' Read up to 1024 bytes at offset 0
+/// If n < 1024 And bf.EOF() Then
+///     ' Reached end of file
+/// End If
+/// ```
+///
+/// @param obj Pointer to a BinFile object. Must not be NULL and file must be open.
+/// @param bytes Pointer to a Bytes object to receive the data. Must not be NULL.
+/// @param offset Starting offset within the Bytes buffer to write data.
+///               Negative values are treated as 0.
+/// @param count Maximum number of bytes to read. If <= 0, returns 0.
+///
+/// @return The number of bytes actually read (0 to count). May be less than
+///         count if EOF is reached. Returns 0 if:
+///         - count <= 0
+///         - offset is beyond buffer length
+///         - EOF was already reached
+///         Traps and returns 0 if obj or bytes is NULL, or file is closed.
+///
+/// @note The EOF flag is set if end-of-file is encountered during the read.
+///       Use rt_binfile_eof to check this flag.
+/// @note Thread safety: Not thread-safe for the same BinFile or Bytes object.
+///
+/// @see rt_binfile_read_byte For reading a single byte
+/// @see rt_binfile_write For writing bytes
+/// @see rt_binfile_eof For checking end-of-file status
 int64_t rt_binfile_read(void *obj, void *bytes, int64_t offset, int64_t count)
 {
     if (!obj)
@@ -165,6 +292,46 @@ int64_t rt_binfile_read(void *obj, void *bytes, int64_t offset, int64_t count)
     return (int64_t)read;
 }
 
+/// @brief Writes bytes from a Bytes buffer to the file.
+///
+/// Writes `count` bytes from the provided Bytes buffer starting at `offset`
+/// to the current file position. The file position advances by the number
+/// of bytes written. For files opened in append mode ("a"), writes always
+/// go to the end of the file regardless of the current position.
+///
+/// **Bounds checking:**
+/// - If `offset` is negative, it is treated as 0
+/// - If `offset` is beyond the Bytes buffer length, no data is written
+/// - If `offset + count` exceeds buffer length, count is clamped to fit
+///
+/// **Example usage:**
+/// ```
+/// Dim buf = Bytes.New(4)
+/// buf.Set(0, 0x89)  ' PNG magic
+/// buf.Set(1, 0x50)
+/// buf.Set(2, 0x4E)
+/// buf.Set(3, 0x47)
+/// bf.Write(buf, 0, 4)  ' Write all 4 bytes
+/// ```
+///
+/// @param obj Pointer to a BinFile object. Must not be NULL and file must be open.
+/// @param bytes Pointer to a Bytes object containing the data. Must not be NULL.
+/// @param offset Starting offset within the Bytes buffer to read data from.
+///               Negative values are treated as 0.
+/// @param count Number of bytes to write. If <= 0, does nothing.
+///
+/// @note This function traps on failure conditions:
+///       - NULL obj or bytes
+///       - File is closed
+///       - Partial write (disk full, I/O error)
+///
+/// @note Data may be buffered by the OS. Call rt_binfile_flush to ensure
+///       data is written to disk, or rt_binfile_close which flushes automatically.
+/// @note Thread safety: Not thread-safe for the same BinFile or Bytes object.
+///
+/// @see rt_binfile_write_byte For writing a single byte
+/// @see rt_binfile_read For reading bytes
+/// @see rt_binfile_flush For flushing buffered data
 void rt_binfile_write(void *obj, void *bytes, int64_t offset, int64_t count)
 {
     if (!obj)
@@ -204,6 +371,39 @@ void rt_binfile_write(void *obj, void *bytes, int64_t offset, int64_t count)
     }
 }
 
+/// @brief Reads a single byte from the file.
+///
+/// Reads one byte from the current file position and advances the position
+/// by one. This is the simplest read operation, useful for parsing byte-by-byte
+/// or reading small amounts of data.
+///
+/// The byte is returned as a positive integer (0-255). If the end of file is
+/// reached, -1 is returned and the EOF flag is set. This allows distinguishing
+/// between a valid byte value and end-of-file.
+///
+/// **Example usage:**
+/// ```
+/// Dim b = bf.ReadByte()
+/// While b >= 0
+///     ' Process byte b (0-255)
+///     b = bf.ReadByte()
+/// Wend
+/// ' b is -1 here, reached EOF
+/// ```
+///
+/// @param obj Pointer to a BinFile object. Must not be NULL and file must be open.
+///
+/// @return The byte value (0-255) on success, or -1 if:
+///         - End of file is reached (EOF flag is also set)
+///         Traps and returns -1 if obj is NULL or file is closed.
+///
+/// @note Performance: For reading many bytes, rt_binfile_read into a Bytes
+///       buffer is more efficient than calling ReadByte in a loop.
+/// @note Thread safety: Not thread-safe for the same BinFile object.
+///
+/// @see rt_binfile_read For bulk reading into a buffer
+/// @see rt_binfile_write_byte For writing a single byte
+/// @see rt_binfile_eof For checking end-of-file status
 int64_t rt_binfile_read_byte(void *obj)
 {
     if (!obj)
@@ -229,6 +429,38 @@ int64_t rt_binfile_read_byte(void *obj)
     return (int64_t)(unsigned char)c;
 }
 
+/// @brief Writes a single byte to the file.
+///
+/// Writes one byte to the current file position and advances the position
+/// by one. For files opened in append mode, the byte is written to the end
+/// of the file.
+///
+/// Only the low 8 bits of the byte value are written. Values outside 0-255
+/// are masked to fit (e.g., 256 becomes 0, -1 becomes 255).
+///
+/// **Example usage:**
+/// ```
+/// ' Write a simple header
+/// bf.WriteByte(0x89)
+/// bf.WriteByte(0x50)
+/// bf.WriteByte(0x4E)
+/// bf.WriteByte(0x47)
+/// ```
+///
+/// @param obj Pointer to a BinFile object. Must not be NULL and file must be open.
+/// @param byte The byte value to write (only low 8 bits are used).
+///
+/// @note This function traps on failure conditions:
+///       - NULL obj
+///       - File is closed
+///       - Write failure (disk full, I/O error)
+///
+/// @note Performance: For writing many bytes, rt_binfile_write from a Bytes
+///       buffer is more efficient than calling WriteByte in a loop.
+/// @note Thread safety: Not thread-safe for the same BinFile object.
+///
+/// @see rt_binfile_write For bulk writing from a buffer
+/// @see rt_binfile_read_byte For reading a single byte
 void rt_binfile_write_byte(void *obj, int64_t byte)
 {
     if (!obj)
@@ -250,6 +482,44 @@ void rt_binfile_write_byte(void *obj, int64_t byte)
     }
 }
 
+/// @brief Moves the file position to a new location.
+///
+/// Changes the current read/write position within the file. The new position
+/// is calculated based on the `origin` parameter and the `offset`:
+///
+/// | Origin | Name     | Description                           |
+/// |--------|----------|---------------------------------------|
+/// | 0      | SEEK_SET | Offset from beginning of file         |
+/// | 1      | SEEK_CUR | Offset from current position          |
+/// | 2      | SEEK_END | Offset from end of file (often <= 0)  |
+///
+/// After a successful seek, the EOF flag is cleared. This allows continuing
+/// to read after previously reaching end-of-file.
+///
+/// **Example usage:**
+/// ```
+/// bf.Seek(0, 0)      ' Go to beginning (origin=SEEK_SET)
+/// bf.Seek(100, 0)    ' Go to byte 100 from start
+/// bf.Seek(-10, 2)    ' Go to 10 bytes before end
+/// bf.Seek(5, 1)      ' Move forward 5 bytes from current position
+/// ```
+///
+/// @param obj Pointer to a BinFile object. Must not be NULL and file must be open.
+/// @param offset Number of bytes to move from the origin. May be negative
+///               for SEEK_CUR and SEEK_END.
+/// @param origin Reference point for the seek: 0=beginning, 1=current, 2=end.
+///
+/// @return The new absolute file position (bytes from beginning) on success,
+///         or -1 if the seek failed (e.g., seeking before start of file).
+///         Traps and returns -1 if obj is NULL, file is closed, or origin is invalid.
+///
+/// @note Seeking beyond EOF is allowed and extends the file on next write.
+/// @note On 32-bit systems, file positions may be limited to 2GB due to
+///       the use of `long` in the underlying C library.
+/// @note Thread safety: Not thread-safe for the same BinFile object.
+///
+/// @see rt_binfile_pos For getting current position without moving
+/// @see rt_binfile_size For getting total file size
 int64_t rt_binfile_seek(void *obj, int64_t offset, int64_t origin)
 {
     if (!obj)
@@ -294,6 +564,24 @@ int64_t rt_binfile_seek(void *obj, int64_t offset, int64_t origin)
     return (int64_t)ftell(bf->fp);
 }
 
+/// @brief Returns the current file position.
+///
+/// Gets the current read/write position within the file, measured in bytes
+/// from the beginning of the file. This is useful for:
+/// - Saving position before a read operation to restore later
+/// - Calculating how much data has been read/written
+/// - Validating that seeks worked correctly
+///
+/// @param obj Pointer to a BinFile object. May be NULL (returns -1).
+///
+/// @return The current position in bytes from the start of the file,
+///         or -1 if obj is NULL, file is closed, or an error occurred.
+///
+/// @note O(1) time complexity - just queries the file handle.
+/// @note Thread safety: Not thread-safe for the same BinFile object.
+///
+/// @see rt_binfile_seek For changing the position
+/// @see rt_binfile_size For getting total file size
 int64_t rt_binfile_pos(void *obj)
 {
     if (!obj)
@@ -306,6 +594,37 @@ int64_t rt_binfile_pos(void *obj)
     return (int64_t)ftell(bf->fp);
 }
 
+/// @brief Returns the total size of the file in bytes.
+///
+/// Determines the file size by seeking to the end and reading the position,
+/// then restoring the original position. This operation does not modify the
+/// logical file position from the caller's perspective.
+///
+/// For files opened in write or append mode, this returns the current size
+/// which may change as data is written.
+///
+/// **Example usage:**
+/// ```
+/// Dim size = bf.Size()
+/// Dim buf = Bytes.New(size)
+/// bf.Seek(0, 0)
+/// bf.Read(buf, 0, size)  ' Read entire file
+/// ```
+///
+/// @param obj Pointer to a BinFile object. May be NULL (returns -1).
+///
+/// @return The total file size in bytes, or -1 if:
+///         - obj is NULL
+///         - File is closed
+///         - An error occurred during the seek operations
+///
+/// @note This function temporarily modifies the file position internally
+///       but restores it before returning.
+/// @note On 32-bit systems, file sizes may be limited to 2GB.
+/// @note Thread safety: Not thread-safe for the same BinFile object.
+///
+/// @see rt_binfile_pos For getting current position
+/// @see rt_binfile_seek For navigation
 int64_t rt_binfile_size(void *obj)
 {
     if (!obj)
@@ -332,6 +651,24 @@ int64_t rt_binfile_size(void *obj)
     return (int64_t)size;
 }
 
+/// @brief Flushes buffered data to disk without closing the file.
+///
+/// Forces any data that has been written but is still in memory buffers
+/// to be written to the underlying storage device. This is useful when:
+/// - Ensuring data durability at specific points in the program
+/// - Making data visible to other processes reading the same file
+/// - Implementing a checkpoint/save mechanism
+///
+/// Note that even after flush, the OS may still buffer data. For maximum
+/// durability, consider using OS-specific sync mechanisms.
+///
+/// @param obj Pointer to a BinFile object. If NULL or closed, this is a no-op.
+///
+/// @note This function does not trap on failure - it silently does nothing
+///       if the file is NULL or closed.
+/// @note Thread safety: Not thread-safe for the same BinFile object.
+///
+/// @see rt_binfile_close For closing and flushing the file
 void rt_binfile_flush(void *obj)
 {
     if (!obj)
@@ -344,6 +681,36 @@ void rt_binfile_flush(void *obj)
     fflush(bf->fp);
 }
 
+/// @brief Checks whether the end of file has been reached.
+///
+/// Returns true if a previous read operation encountered the end of the file.
+/// The EOF flag is set when:
+/// - rt_binfile_read reads fewer bytes than requested due to EOF
+/// - rt_binfile_read_byte returns -1 due to EOF
+///
+/// The EOF flag is cleared when:
+/// - rt_binfile_seek successfully moves the position
+///
+/// **Example usage:**
+/// ```
+/// While Not bf.EOF()
+///     Dim line = ReadSomething(bf)
+///     ProcessLine(line)
+/// Wend
+/// ```
+///
+/// @param obj Pointer to a BinFile object. May be NULL.
+///
+/// @return 1 (true) if EOF has been reached, or if obj is NULL, or if file
+///         is closed. Returns 0 (false) if the file is open and EOF has not
+///         been encountered.
+///
+/// @note The EOF flag is "sticky" - once set, it remains set until a seek
+///       clears it. Reading at EOF will continue to return EOF.
+/// @note Thread safety: Not thread-safe for the same BinFile object.
+///
+/// @see rt_binfile_read For operations that set the EOF flag
+/// @see rt_binfile_seek For clearing the EOF flag
 int8_t rt_binfile_eof(void *obj)
 {
     if (!obj)

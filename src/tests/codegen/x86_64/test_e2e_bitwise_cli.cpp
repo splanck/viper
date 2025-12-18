@@ -21,14 +21,6 @@
 #include <optional>
 #include <string>
 
-#if __has_include(<gtest/gtest.h>)
-#ifdef VIPER_HAS_GTEST
-#include <gtest/gtest.h>
-#define VIPER_HAS_GTEST 1
-#else
-#define VIPER_HAS_GTEST 0
-#endif
-
 namespace
 {
 using viper::tests::CodegenComparisonOptions;
@@ -67,35 +59,6 @@ CodegenComparisonResult runScenario(CodegenFixture &fixture, const CliScenario &
 
 } // namespace
 
-#if VIPER_HAS_GTEST
-
-class CodegenBitwiseCliTest : public ::testing::TestWithParam<CliScenario>
-{
-  protected:
-    CodegenFixture fixture_;
-};
-
-TEST_P(CodegenBitwiseCliTest, VmAndNativeOutputsMatch)
-{
-    ASSERT_TRUE(fixture_.isReady()) << fixture_.setupError();
-    const CodegenComparisonResult result = runScenario(fixture_, GetParam());
-    ASSERT_TRUE(result.success) << result.message;
-}
-
-INSTANTIATE_TEST_SUITE_P(BitwiseCli,
-                         CodegenBitwiseCliTest,
-                         ::testing::ValuesIn(kScenarios),
-                         [](const ::testing::TestParamInfo<CliScenario> &info)
-                         { return info.param.name; });
-
-int main(int argc, char **argv)
-{
-    ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
-}
-
-#else
-
 int main()
 {
     CodegenFixture fixture;
@@ -117,5 +80,3 @@ int main()
 
     return EXIT_SUCCESS;
 }
-
-#endif

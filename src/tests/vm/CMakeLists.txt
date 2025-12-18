@@ -214,6 +214,11 @@ function(viper_add_vm_unit_tests)
     target_link_libraries(test_vm_threading_model PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} Threads::Threads)
     viper_add_ctest(test_vm_threading_model test_vm_threading_model)
 
+    # Viper.Threads integration tests (Thread.Start VM override + shared globals)
+    viper_add_test(test_vm_threads_runtime ${_VIPER_VM_DIR}/ThreadsRuntimeTests.cpp)
+    target_link_libraries(test_vm_threads_runtime PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} Threads::Threads)
+    viper_add_ctest(test_vm_threads_runtime test_vm_threads_runtime)
+
     # Concurrency stress test (many VMs across threads with traps and callbacks)
     viper_add_test(test_vm_concurrency_stress ${VIPER_TESTS_DIR}/unit/test_vm_concurrency_stress.cpp)
     target_link_libraries(test_vm_concurrency_stress PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} Threads::Threads)

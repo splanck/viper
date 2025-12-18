@@ -4,11 +4,69 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-//
-// Implements a simple argument store for the runtime. The store retains pushed
-// strings and releases them on clear. Getters return retained copies so callers
-// follow the usual ownership rules used by other rt_* getters.
-//
+///
+/// @file rt_args.c
+/// @brief Command-line arguments and environment variable handling.
+///
+/// This file provides access to command-line arguments passed to the program
+/// and environment variables from the operating system. It implements the
+/// Viper.Environment class functionality.
+///
+/// **Command-Line Arguments:**
+/// ```
+/// Program invocation: myprogram.exe arg1 arg2 arg3
+///
+/// Index:  0           1     2     3
+/// Value:  myprogram   arg1  arg2  arg3
+///         ^           ^
+///         |           +-- First real argument
+///         +-------------- Program name (index 0)
+/// ```
+///
+/// **Usage Examples:**
+/// ```
+/// ' Get argument count
+/// Dim count = Environment.GetArgumentCount()
+/// Print "Arguments: " & count
+///
+/// ' Get specific argument
+/// If count > 1 Then
+///     Dim firstArg = Environment.GetArgument(1)
+///     Print "First argument: " & firstArg
+/// End If
+///
+/// ' Get full command line
+/// Dim cmdLine = Environment.GetCommandLine()
+/// Print "Command: " & cmdLine
+///
+/// ' Work with environment variables
+/// Dim home = Environment.GetVariable("HOME")
+/// Print "Home directory: " & home
+///
+/// If Environment.HasVariable("DEBUG") Then
+///     Print "Debug mode enabled"
+/// End If
+///
+/// Environment.SetVariable("MY_VAR", "my value")
+/// ```
+///
+/// **Environment Variables:**
+/// | Function      | Description                              |
+/// |---------------|------------------------------------------|
+/// | GetVariable   | Get variable value (empty if not set)    |
+/// | HasVariable   | Check if variable exists                 |
+/// | SetVariable   | Set or create variable                   |
+///
+/// **Platform Notes:**
+/// - Environment variable names are case-sensitive on Unix, case-insensitive on Windows
+/// - Empty variable values are allowed
+/// - Setting a variable affects only the current process
+///
+/// **Thread Safety:** Argument access is thread-safe. Environment variable
+/// modification may not be thread-safe on all platforms.
+///
+/// @see rt_exec.c For executing external programs
+///
 //===----------------------------------------------------------------------===//
 
 #include "rt_args.h"
@@ -64,6 +122,14 @@ static int rt_args_grow_if_needed(RtArgsState *state, size_t new_size)
     return 1;
 }
 
+/// @brief Clear all stored command-line arguments.
+///
+/// Releases all stored argument strings and resets the argument count to zero.
+/// This is typically called during context cleanup or when reinitializing
+/// the argument state.
+///
+/// @note Internal use - typically not called directly from Viper code.
+/// @note Releases references to all stored strings.
 void rt_args_clear(void)
 {
     RtArgsState *state = rt_args_state();
@@ -78,6 +144,16 @@ void rt_args_clear(void)
     state->size = 0;
 }
 
+/// @brief Add a command-line argument to the argument store.
+///
+/// Appends an argument string to the argument list. Used during program
+/// initialization to populate arguments from main(argc, argv).
+///
+/// @param s Argument string to add. NULL is stored as empty string.
+///
+/// @note Internal use - arguments are set up by the runtime before main runs.
+/// @note The string is retained (reference count incremented).
+/// @note Traps on allocation failure.
 void rt_args_push(rt_string s)
 {
     RtArgsState *state = rt_args_state();
@@ -93,12 +169,57 @@ void rt_args_push(rt_string s)
     state->items[state->size++] = s;
 }
 
+/// @brief Get the number of command-line arguments.
+///
+/// Returns the total count of arguments including the program name (index 0).
+/// The count is always at least 1 when arguments have been initialized.
+///
+/// **Usage example:**
+/// ```
+/// Dim count = Environment.GetArgumentCount()
+/// If count < 2 Then
+///     Print "Usage: program <filename>"
+///     Environment.Exit(1)
+/// End If
+/// ```
+///
+/// @return Number of arguments (including program name), or 0 if not initialized.
+///
+/// @note Index 0 is the program name; real arguments start at index 1.
+/// @note O(1) time complexity.
+///
+/// @see rt_args_get For retrieving individual arguments
 int64_t rt_args_count(void)
 {
     RtArgsState *state = rt_args_state();
     return state ? (int64_t)state->size : 0;
 }
 
+/// @brief Get a command-line argument by index.
+///
+/// Retrieves the argument at the specified index. Index 0 is the program name,
+/// and subsequent indices are the actual command-line arguments.
+///
+/// **Usage example:**
+/// ```
+/// ' Get program name
+/// Dim progName = Environment.GetArgument(0)
+///
+/// ' Process arguments
+/// For i = 1 To Environment.GetArgumentCount() - 1
+///     Dim arg = Environment.GetArgument(i)
+///     ProcessArgument(arg)
+/// Next
+/// ```
+///
+/// @param index Zero-based index of the argument to retrieve.
+///
+/// @return The argument string at the specified index.
+///
+/// @note Traps if index is out of range.
+/// @note Returns a new reference (caller must manage memory).
+///
+/// @see rt_args_count For getting the argument count
 rt_string rt_args_get(int64_t index)
 {
     RtArgsState *state = rt_args_state();
@@ -114,6 +235,25 @@ rt_string rt_args_get(int64_t index)
     return rt_string_ref(s);
 }
 
+/// @brief Get the full command line as a single string.
+///
+/// Returns all command-line arguments concatenated with spaces. This is
+/// useful for logging or displaying the exact invocation.
+///
+/// **Usage example:**
+/// ```
+/// ' Log how the program was invoked
+/// Dim cmdLine = Environment.GetCommandLine()
+/// Log("Started with: " & cmdLine)
+/// ```
+///
+/// @return String containing all arguments separated by spaces.
+///
+/// @note Returns empty string if no arguments are available.
+/// @note Arguments are joined with single spaces.
+///
+/// @see rt_args_get For individual argument access
+/// @see rt_args_count For argument count
 rt_string rt_cmdline(void)
 {
     RtArgsState *state = rt_args_state();
@@ -133,6 +273,14 @@ rt_string rt_cmdline(void)
     return out;
 }
 
+/// @brief Clean up argument state for a context.
+///
+/// Releases all argument strings and frees the argument array. Called
+/// during context destruction.
+///
+/// @param ctx The context whose arguments should be cleaned up.
+///
+/// @note Internal use only.
 void rt_args_state_cleanup(RtContext *ctx)
 {
     if (!ctx)
@@ -154,6 +302,25 @@ void rt_args_state_cleanup(RtContext *ctx)
     state->cap = 0;
 }
 
+/// @brief Check if running in native (AOT-compiled) mode.
+///
+/// Returns whether the program is running as native compiled code (as opposed
+/// to being interpreted by the VM). This can be used for conditional behavior
+/// based on execution mode.
+///
+/// **Usage example:**
+/// ```
+/// If Environment.IsNative() Then
+///     Print "Running native code"
+/// Else
+///     Print "Running in VM"
+/// End If
+/// ```
+///
+/// @return 1 if running as native code, 0 if running in VM.
+///
+/// @note In native builds, this always returns 1.
+/// @note The VM overrides this to return 0.
 int64_t rt_env_is_native(void)
 {
     // Native runtime library is only linked into AOT binaries, so this path

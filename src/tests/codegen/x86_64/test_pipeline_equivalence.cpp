@@ -26,17 +26,9 @@
 #include "il/core/Type.hpp"
 #include "il/core/Value.hpp"
 
-#include <memory>
-
-#if __has_include(<gtest/gtest.h>)
-#ifdef VIPER_HAS_GTEST
-#include <gtest/gtest.h>
-#define VIPER_HAS_GTEST 1
-#else
 #include <cstdlib>
 #include <iostream>
-#define VIPER_HAS_GTEST 0
-#endif
+#include <memory>
 
 namespace
 {
@@ -101,21 +93,6 @@ namespace
 
 } // namespace
 
-#if VIPER_HAS_GTEST
-
-TEST(CodegenPipelineEquivalence, MatchesDirectBackend)
-{
-    const auto baseline = baselineAssembly();
-    ASSERT_TRUE(baseline.errors.empty()) << baseline.errors;
-
-    const auto managed = managedAssembly();
-    ASSERT_TRUE(managed.errors.empty());
-
-    EXPECT_EQ(baseline.asmText, managed.asmText);
-}
-
-#else
-
 int main()
 {
     const auto baseline = baselineAssembly();
@@ -139,5 +116,3 @@ int main()
     }
     return EXIT_SUCCESS;
 }
-
-#endif

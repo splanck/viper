@@ -5,13 +5,7 @@
 // Purpose: End-to-end run-native tests for Frogger and Vtris on macOS arm64.
 //          These tests are opt-in to avoid hanging interactive demos in CI.
 //===----------------------------------------------------------------------===//
-
-#ifdef VIPER_HAS_GTEST
-#include <gtest/gtest.h>
-#else
-#include "../unit/GTestStub.hpp"
-#endif
-
+#include "tests/TestHarness.hpp"
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -113,6 +107,6 @@ TEST(ARM64E2E, Vtris_RunNative_OptIn)
 
 int main(int argc, char **argv)
 {
-    testing::InitGoogleTest(&argc, &argv);
-    return RUN_ALL_TESTS();
+    viper_test::init(&argc, &argv);
+    return viper_test::run_all_tests();
 }

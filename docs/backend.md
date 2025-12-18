@@ -891,9 +891,12 @@ src/codegen/aarch64/
 # Generate ARM assembly from IL
 ilc codegen arm64 program.il -S program.s
 
-# Assemble and link (macOS)
+# Assemble and link (macOS, simple/monolithic runtime)
 as program.s -o program.o
 clang++ program.o build/src/runtime/libviper_runtime.a -o program
+
+# Recommended: let ilc link the native executable (auto-selects required runtime components)
+ilc codegen arm64 program.il -run-native
 ```
 
 ---

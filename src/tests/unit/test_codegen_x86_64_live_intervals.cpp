@@ -12,11 +12,9 @@
 // Links: src/codegen/x86_64/ra/LiveIntervals.hpp
 //
 //===----------------------------------------------------------------------===//
-
-#include "GTestStub.hpp"
-
 #include "codegen/x86_64/MachineIR.hpp"
 #include "codegen/x86_64/ra/LiveIntervals.hpp"
+#include "tests/TestHarness.hpp"
 
 using namespace viper::codegen::x64;
 using namespace viper::codegen::x64::ra;
@@ -64,6 +62,6 @@ TEST(LiveIntervals, ComputesLocalRanges)
 
 int main(int argc, char **argv)
 {
-    testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
 }

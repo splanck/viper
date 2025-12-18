@@ -61,6 +61,7 @@
 #include "rt_context.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <iostream>
 #include <string>
 
@@ -573,19 +574,17 @@ void VM::RtContextDeleter::operator()(RtContext *ctx) const noexcept
 // Section 4: VM LIFECYCLE AND RESOURCE MANAGEMENT
 //===----------------------------------------------------------------------===//
 
+VM::ProgramState::~ProgramState()
+{
+    for (auto &entry : mutableGlobalMap)
+        std::free(entry.second);
+}
+
 /// @brief Release resources owned by the VM, including cached strings, mutable globals, and runtime
 /// context.
 VM::~VM()
 {
-    // String maps use ViperStringHandle RAII - just clear to trigger automatic release
-    strMap.clear();
     inlineLiteralCache.clear();
-
-    for (auto &entry : mutableGlobalMap)
-        std::free(entry.second);
-    mutableGlobalMap.clear();
-
-    // rtContext cleanup handled automatically by unique_ptr with RtContextDeleter
 }
 
 // =============================================================================
