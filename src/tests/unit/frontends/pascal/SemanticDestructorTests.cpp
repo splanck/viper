@@ -255,6 +255,139 @@ TEST(PascalDestructorTest, ThreeLevelInheritanceChain)
     EXPECT_EQ(diag.errorCount(), 0u);
 }
 
+//===----------------------------------------------------------------------===//
+// Implicit Virtual Destructor Tests
+//===----------------------------------------------------------------------===//
+
+TEST(PascalDestructorTest, ImplicitVirtualDestructor)
+{
+    // Destructors are implicitly virtual per spec - no explicit 'virtual' keyword needed
+    DiagnosticEngine diag;
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  TBase = class\n"
+                                 "  public\n"
+                                 "    destructor Destroy;\n" // No explicit virtual
+                                 "  end;\n"
+                                 "destructor TBase.Destroy;\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "begin\n"
+                                 "end.",
+                                 diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalDestructorTest, ImplicitOverrideDestructor)
+{
+    // Derived class destructor is implicitly an override if base has destructor
+    DiagnosticEngine diag;
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  TBase = class\n"
+                                 "  public\n"
+                                 "    destructor Destroy;\n" // Implicitly virtual
+                                 "  end;\n"
+                                 "  TChild = class(TBase)\n"
+                                 "  public\n"
+                                 "    destructor Destroy;\n" // Implicitly override
+                                 "  end;\n"
+                                 "destructor TBase.Destroy;\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "destructor TChild.Destroy;\n"
+                                 "begin\n"
+                                 "  inherited Destroy;\n"
+                                 "end;\n"
+                                 "begin\n"
+                                 "end.",
+                                 diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalDestructorTest, ThreeLevelImplicitChain)
+{
+    // Three-level inheritance with implicit virtual/override
+    DiagnosticEngine diag;
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  TGrandParent = class\n"
+                                 "  public\n"
+                                 "    destructor Destroy;\n"
+                                 "  end;\n"
+                                 "  TParent = class(TGrandParent)\n"
+                                 "  public\n"
+                                 "    destructor Destroy;\n"
+                                 "  end;\n"
+                                 "  TChild = class(TParent)\n"
+                                 "  public\n"
+                                 "    destructor Destroy;\n"
+                                 "  end;\n"
+                                 "destructor TGrandParent.Destroy;\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "destructor TParent.Destroy;\n"
+                                 "begin\n"
+                                 "  inherited Destroy;\n"
+                                 "end;\n"
+                                 "destructor TChild.Destroy;\n"
+                                 "begin\n"
+                                 "  inherited Destroy;\n"
+                                 "end;\n"
+                                 "begin\n"
+                                 "end.",
+                                 diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalDestructorTest, ImplicitDestructorWithFields)
+{
+    // Destructor can clean up fields with implicit virtual
+    DiagnosticEngine diag;
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  TBase = class\n"
+                                 "  private\n"
+                                 "    FName: String;\n"
+                                 "  public\n"
+                                 "    constructor Create;\n"
+                                 "    destructor Destroy;\n"
+                                 "  end;\n"
+                                 "  TChild = class(TBase)\n"
+                                 "  private\n"
+                                 "    FValue: Integer;\n"
+                                 "  public\n"
+                                 "    constructor Create;\n"
+                                 "    destructor Destroy;\n"
+                                 "  end;\n"
+                                 "constructor TBase.Create;\n"
+                                 "begin\n"
+                                 "  FName := 'Base';\n"
+                                 "end;\n"
+                                 "destructor TBase.Destroy;\n"
+                                 "begin\n"
+                                 "  WriteLn('Cleaning ', FName);\n"
+                                 "end;\n"
+                                 "constructor TChild.Create;\n"
+                                 "begin\n"
+                                 "  inherited Create;\n"
+                                 "  FValue := 42;\n"
+                                 "end;\n"
+                                 "destructor TChild.Destroy;\n"
+                                 "begin\n"
+                                 "  WriteLn('Child value: ', FValue);\n"
+                                 "  inherited Destroy;\n"
+                                 "end;\n"
+                                 "begin\n"
+                                 "end.",
+                                 diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
 } // anonymous namespace
 
 int main()

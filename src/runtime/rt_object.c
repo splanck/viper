@@ -324,3 +324,62 @@ rt_string rt_obj_to_string(void *self)
         ++len;
     return rt_string_from_bytes(name, len);
 }
+
+// ============================================================================
+// Weak Reference Support
+// ============================================================================
+
+/// @brief Store a weak reference without incrementing reference count.
+///
+/// Used for weak reference fields to break reference cycles. The stored
+/// pointer does not keep the target object alive - if the target's reference
+/// count reaches zero through other paths, it will be freed.
+///
+/// **Usage example:**
+/// ```pascal
+/// type
+///   TNode = class
+///     weak parent: TNode;  // Does not keep parent alive
+///     children: TList;
+///   end;
+/// ```
+///
+/// @param addr Address of the field to store to.
+/// @param value Object pointer to store (may be NULL).
+///
+/// @note The caller is responsible for ensuring the target remains valid
+///       while the weak reference is in use.
+/// @note Future versions may track weak references for automatic zeroing.
+void rt_weak_store(void **addr, void *value)
+{
+    // Store without incrementing reference count
+    *addr = value;
+}
+
+/// @brief Load a weak reference.
+///
+/// Retrieves the stored pointer value. Currently returns the raw pointer
+/// without validation. Future versions may check if the target object is
+/// still alive and return NULL if it has been freed.
+///
+/// **Usage example:**
+/// ```pascal
+/// var node: TNode;
+/// if node.parent <> nil then
+///   // Use parent - but be careful, it may have been freed!
+/// ```
+///
+/// @param addr Address of the field to load from.
+///
+/// @return The stored pointer value, or NULL if the field is nil.
+///
+/// @warning The returned pointer may be dangling if the target object has
+///          been freed. The caller must ensure the target is still valid
+///          through other means (e.g., knowing the object lifetime).
+/// @note Future versions may validate the object is still alive.
+void *rt_weak_load(void **addr)
+{
+    // For now, just return the value
+    // Future: validate object still exists using zeroing weak refs
+    return *addr;
+}

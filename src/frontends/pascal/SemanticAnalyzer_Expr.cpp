@@ -962,6 +962,23 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
         }
     }
 
+    // For builtins with FromArg result kind (Pred, Succ, Abs, Sqr, etc.),
+    // return the actual argument type instead of the registered signature type.
+    // This preserves enum types correctly.
+    if (auto builtinOpt = lookupBuiltin(calleeKey))
+    {
+        const auto &desc = getBuiltinDescriptor(*builtinOpt);
+        if (desc.result == ResultKind::FromArg && !expr.args.empty() && expr.args[0])
+        {
+            // Get the type of the argument at resultArgIndex
+            size_t argIdx = desc.resultArgIndex;
+            if (argIdx < expr.args.size() && expr.args[argIdx])
+            {
+                return typeOf(*expr.args[argIdx]);
+            }
+        }
+    }
+
     return sig->returnType;
 }
 

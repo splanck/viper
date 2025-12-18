@@ -101,6 +101,21 @@ class SemanticAnalyzer
     /// @return The signature if found, or nullptr.
     const FuncSignature *lookupFunction(const std::string &name) const;
 
+    /// @brief Get the default expression for a function parameter.
+    /// @param funcName Function name (case-insensitive).
+    /// @param paramIndex Index of the parameter.
+    /// @return The default expression AST node, or nullptr if none.
+    const Expr *getDefaultParamExpr(const std::string &funcName, size_t paramIndex) const;
+
+    /// @brief Get the default expression for a method parameter.
+    /// @param className Class name (case-insensitive).
+    /// @param methodName Method name (case-insensitive).
+    /// @param paramIndex Index of the parameter.
+    /// @return The default expression AST node, or nullptr if none.
+    const Expr *getDefaultMethodParamExpr(const std::string &className,
+                                          const std::string &methodName,
+                                          size_t paramIndex) const;
+
     /// @brief Lookup a class by name.
     /// @param name Class name to look up.
     /// @return The class info if found, or nullptr.
@@ -426,6 +441,12 @@ class SemanticAnalyzer
     /// @brief Check if @p source can be assigned to @p target.
     bool isAssignableFrom(const PasType &target, const PasType &source);
 
+    /// @brief Check if two method signatures are compatible for interface implementation.
+    /// @param classMethod The method from the class implementation.
+    /// @param ifaceMethod The method from the interface.
+    /// @return True if signatures are compatible (same parameter types, var params, return type).
+    bool areSignaturesCompatible(const MethodInfo &classMethod, const MethodInfo &ifaceMethod);
+
     /// @brief Get the result type of a binary operation.
     PasType binaryResultType(BinaryExpr::Op op, const PasType &left, const PasType &right);
 
@@ -576,6 +597,10 @@ class SemanticAnalyzer
 
     /// @brief Registered function/procedure signatures
     std::unordered_map<std::string, FuncSignature> functions_;
+
+    /// @brief Map: "funcname:paramindex" -> default value expression AST node
+    /// Used for lowering default parameter values. Key is lowercase function name.
+    std::unordered_map<std::string, const Expr *> defaultParamExprs_;
 
     /// @brief Registered class information
     std::unordered_map<std::string, ClassInfo> classes_;

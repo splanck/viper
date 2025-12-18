@@ -87,6 +87,22 @@ LowerResult Lowerer::lowerCall(const CallExpr &expr)
                         argTypes.push_back(PasType::unknown());
                     }
 
+                    // Fill in default parameter values for missing arguments
+                    size_t userArgCount = expr.args.size();
+                    for (size_t i = userArgCount; i < methodInfo->params.size(); ++i)
+                    {
+                        if (i < methodInfo->hasDefault.size() && methodInfo->hasDefault[i])
+                        {
+                            const Expr *defaultExpr =
+                                sema_->getDefaultMethodParamExpr(currentClassName_, callee, i);
+                            if (defaultExpr)
+                            {
+                                LowerResult defVal = lowerExpr(*defaultExpr);
+                                args.push_back(defVal.value);
+                            }
+                        }
+                    }
+
                     // Direct call to Class.Method
                     std::string funcName = currentClassName_ + "." + callee;
                     Type retType = mapType(methodInfo->returnType);
@@ -136,6 +152,22 @@ LowerResult Lowerer::lowerCall(const CallExpr &expr)
                     const MethodInfo *methodInfo = ci->findMethod(mkey);
                     if (methodInfo)
                     {
+                        // Fill in default parameter values for missing arguments
+                        size_t userArgCount = expr.args.size();
+                        for (size_t i = userArgCount; i < methodInfo->params.size(); ++i)
+                        {
+                            if (i < methodInfo->hasDefault.size() && methodInfo->hasDefault[i])
+                            {
+                                const Expr *defaultExpr =
+                                    sema_->getDefaultMethodParamExpr(expr.withClassName, callee, i);
+                                if (defaultExpr)
+                                {
+                                    LowerResult defVal = lowerExpr(*defaultExpr);
+                                    args.push_back(defVal.value);
+                                }
+                            }
+                        }
+
                         // Direct call to Class.Method
                         std::string funcName = expr.withClassName + "." + callee;
                         Type retType = mapType(methodInfo->returnType);
@@ -226,6 +258,25 @@ LowerResult Lowerer::lowerCall(const CallExpr &expr)
                 break;
         }
         argTypes.push_back(pasType);
+    }
+
+    // Fill in default parameter values for missing arguments
+    const FuncSignature *sigForDefaults = sema_->lookupFunction(callee);
+    if (sigForDefaults)
+    {
+        for (size_t i = args.size(); i < sigForDefaults->params.size(); ++i)
+        {
+            if (i < sigForDefaults->hasDefault.size() && sigForDefaults->hasDefault[i])
+            {
+                const Expr *defaultExpr = sema_->getDefaultParamExpr(callee, i);
+                if (defaultExpr)
+                {
+                    LowerResult defVal = lowerExpr(*defaultExpr);
+                    args.push_back(defVal.value);
+                    argTypes.push_back(sigForDefaults->params[i].second);
+                }
+            }
+        }
     }
 
     // Check for builtin functions
@@ -353,6 +404,93 @@ LowerResult Lowerer::lowerCall(const CallExpr &expr)
             // Swap: GotoXY(col, row) -> rt_term_locate(row, col)
             emitCall("rt_term_locate", {args[1], args[0]});
             return {Value::constInt(0), Type(Type::Kind::Void)};
+        }
+
+        // SetLength for dynamic arrays - dispatch based on element type
+        if ((builtin == PascalBuiltin::SetLength || builtin == PascalBuiltin::SetLengthArr) &&
+            expr.args.size() >= 2)
+        {
+            // Get array type to determine element type
+            PasType arrType = typeOfExpr(*expr.args[0]);
+
+            // Select appropriate runtime function based on element type
+            std::string runtimeFunc = "rt_arr_i64_resize"; // default for integers
+
+            if (arrType.kind == PasTypeKind::Array && arrType.elementType)
+            {
+                switch (arrType.elementType->kind)
+                {
+                    case PasTypeKind::Integer:
+                    case PasTypeKind::Boolean:
+                    case PasTypeKind::Enum:
+                        runtimeFunc = "rt_arr_i64_resize";
+                        break;
+                    case PasTypeKind::Real:
+                        runtimeFunc = "rt_arr_f64_resize";
+                        break;
+                    case PasTypeKind::String:
+                    case PasTypeKind::Class:
+                    case PasTypeKind::Interface:
+                        // Strings and objects are reference-counted pointers
+                        runtimeFunc = "rt_arr_obj_resize";
+                        break;
+                    default:
+                        runtimeFunc = "rt_arr_i64_resize";
+                }
+            }
+            else if (arrType.kind == PasTypeKind::String)
+            {
+                // SetLength on a String - not currently supported
+                // Would need rt_str_setlength implementation
+                return {Value::constInt(0), Type(Type::Kind::Void)};
+            }
+
+            usedExterns_.insert(runtimeFunc);
+
+            // Get array address (var param) - need the slot address, not the array value
+            Value arrAddr;
+            if (expr.args[0]->kind == ExprKind::Name)
+            {
+                const auto &nameExpr = static_cast<const NameExpr &>(*expr.args[0]);
+                std::string key = toLower(nameExpr.name);
+                auto it = locals_.find(key);
+                if (it != locals_.end())
+                {
+                    arrAddr = it->second;
+                }
+                else
+                {
+                    // Check global variables
+                    auto globalIt = globalTypes_.find(key);
+                    if (globalIt != globalTypes_.end())
+                    {
+                        arrAddr = getGlobalVarAddr(key, globalIt->second);
+                    }
+                    else
+                    {
+                        return {Value::constInt(0), Type(Type::Kind::Void)};
+                    }
+                }
+            }
+            else
+            {
+                // For more complex lvalues, we'd need additional handling
+                // For now, just return void
+                return {Value::constInt(0), Type(Type::Kind::Void)};
+            }
+
+            // Load current array pointer and get new length
+            Value currentArr = emitLoad(Type(Type::Kind::Ptr), arrAddr);
+            LowerResult lenArg = lowerExpr(*expr.args[1]);
+
+            // Call resize function - returns the (possibly reallocated) array
+            Value newArr =
+                emitCallRet(Type(Type::Kind::Ptr), runtimeFunc, {currentArr, lenArg.value});
+
+            // Store the new array pointer back
+            emitStore(Type(Type::Kind::Ptr), arrAddr, newArr);
+
+            return {newArr, Type(Type::Kind::Ptr)};
         }
 
         // Handle builtins with runtime symbols

@@ -279,6 +279,39 @@ bool SemanticAnalyzer::isAssignableFrom(const PasType &target, const PasType &so
     return false;
 }
 
+bool SemanticAnalyzer::areSignaturesCompatible(const MethodInfo &classMethod,
+                                               const MethodInfo &ifaceMethod)
+{
+    // Check parameter count
+    if (classMethod.params.size() != ifaceMethod.params.size())
+        return false;
+
+    // Check each parameter type and var/out modifier
+    for (size_t i = 0; i < classMethod.params.size(); ++i)
+    {
+        // Check type compatibility (must be exact match for interface implementation)
+        const PasType &classParamType = classMethod.params[i].second;
+        const PasType &ifaceParamType = ifaceMethod.params[i].second;
+
+        if (!isAssignableFrom(classParamType, ifaceParamType) ||
+            !isAssignableFrom(ifaceParamType, classParamType))
+        {
+            return false;
+        }
+
+        // Check var/out parameter match
+        if (classMethod.isVarParam[i] != ifaceMethod.isVarParam[i])
+            return false;
+    }
+
+    // Check return type compatibility
+    const PasType &classRetType = classMethod.returnType;
+    const PasType &ifaceRetType = ifaceMethod.returnType;
+
+    // Return types must be compatible (class method can return subtype)
+    return isAssignableFrom(ifaceRetType, classRetType);
+}
+
 PasType SemanticAnalyzer::binaryResultType(BinaryExpr::Op op,
                                            const PasType &left,
                                            const PasType &right)

@@ -248,6 +248,61 @@ TEST(PascalArrayTest, SetLengthOnFixedArrayError)
     EXPECT_NE(diag.errorCount(), 0u);
 }
 
+TEST(PascalArrayTest, SetLengthOnDynamicRealArray)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram("program Test;\n"
+                                 "var arr: array of Real;\n"
+                                 "begin\n"
+                                 "  SetLength(arr, 10);\n"
+                                 "end.",
+                                 diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalArrayTest, SetLengthOnDynamicStringArray)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram("program Test;\n"
+                                 "var arr: array of String;\n"
+                                 "begin\n"
+                                 "  SetLength(arr, 10);\n"
+                                 "end.",
+                                 diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalArrayTest, SetLengthOnDynamicBooleanArray)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram("program Test;\n"
+                                 "var arr: array of Boolean;\n"
+                                 "begin\n"
+                                 "  SetLength(arr, 10);\n"
+                                 "end.",
+                                 diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalArrayTest, SetLengthOnDynamicObjectArray)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram("program Test;\n"
+                                 "type TItem = class\n"
+                                 "  Value: Integer;\n"
+                                 "end;\n"
+                                 "var arr: array of TItem;\n"
+                                 "begin\n"
+                                 "  SetLength(arr, 10);\n"
+                                 "end.",
+                                 diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
 //===----------------------------------------------------------------------===//
 // Index Type Tests
 //===----------------------------------------------------------------------===//

@@ -582,6 +582,30 @@ target_link_libraries(test_pascal_semantic_optional PRIVATE viper_testing fe_pas
 add_test(NAME test_pascal_semantic_optional COMMAND test_pascal_semantic_optional)
 set_tests_properties(test_pascal_semantic_optional PROPERTIES LABELS pascal)
 
+# Pascal value-type optional lowering tests
+add_executable(test_pascal_value_type_optional ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/ValueTypeOptionalTests.cpp)
+target_link_libraries(test_pascal_value_type_optional PRIVATE viper_testing fe_pascal)
+add_test(NAME test_pascal_value_type_optional COMMAND test_pascal_value_type_optional)
+set_tests_properties(test_pascal_value_type_optional PROPERTIES LABELS pascal)
+
+# Pascal weak reference lowering tests
+add_executable(test_pascal_weak_reference ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/WeakReferenceTests.cpp)
+target_link_libraries(test_pascal_weak_reference PRIVATE viper_testing fe_pascal)
+add_test(NAME test_pascal_weak_reference COMMAND test_pascal_weak_reference)
+set_tests_properties(test_pascal_weak_reference PROPERTIES LABELS pascal)
+
+# Pascal default parameter lowering tests
+add_executable(test_pascal_default_param_lowering ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/DefaultParamLoweringTests.cpp)
+target_link_libraries(test_pascal_default_param_lowering PRIVATE viper_testing fe_pascal)
+add_test(NAME test_pascal_default_param_lowering COMMAND test_pascal_default_param_lowering)
+set_tests_properties(test_pascal_default_param_lowering PROPERTIES LABELS pascal)
+
+# Pascal for-in typed array lowering tests
+add_executable(test_pascal_forin_typed_array ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/ForInTypedArrayTests.cpp)
+target_link_libraries(test_pascal_forin_typed_array PRIVATE viper_testing fe_pascal)
+add_test(NAME test_pascal_forin_typed_array COMMAND test_pascal_forin_typed_array)
+set_tests_properties(test_pascal_forin_typed_array PROPERTIES LABELS pascal)
+
 # Pascal semantic analyzer class/interface tests
 add_executable(test_pascal_semantic_class ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticClassTests.cpp)
 target_link_libraries(test_pascal_semantic_class PRIVATE viper_testing fe_pascal)

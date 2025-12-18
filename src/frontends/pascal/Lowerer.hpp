@@ -395,6 +395,33 @@ class Lowerer
     /// @brief Reserve next temp ID.
     unsigned nextTempId();
 
+    //=========================================================================
+    // Optional Type Helpers
+    //=========================================================================
+
+    /// @brief Check if an optional has a value (works for both value and reference types).
+    /// @param slot The alloca slot containing the optional.
+    /// @param optType The PasType of the optional (must be Optional kind).
+    /// @return An i1 value that is true if the optional has a value.
+    Value emitOptionalHasValue(Value slot, const PasType &optType);
+
+    /// @brief Load the value from an optional (assumes hasValue is true).
+    /// @param slot The alloca slot containing the optional.
+    /// @param optType The PasType of the optional (must be Optional kind).
+    /// @return The unwrapped value from the optional.
+    Value emitOptionalLoadValue(Value slot, const PasType &optType);
+
+    /// @brief Store a value to an optional (sets hasValue = true for value types).
+    /// @param slot The alloca slot containing the optional.
+    /// @param val The value to store.
+    /// @param optType The PasType of the optional (must be Optional kind).
+    void emitOptionalStoreValue(Value slot, Value val, const PasType &optType);
+
+    /// @brief Store nil to an optional (sets hasValue = false for value types).
+    /// @param slot The alloca slot containing the optional.
+    /// @param optType The PasType of the optional (must be Optional kind).
+    void emitOptionalStoreNil(Value slot, const PasType &optType);
+
     /// @brief Emit an indirect call with return value.
     Value emitCallIndirectRet(Type retTy, Value callee, const std::vector<Value> &args);
 

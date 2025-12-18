@@ -161,6 +161,25 @@ const FuncSignature *SemanticAnalyzer::lookupFunction(const std::string &name) c
     return nullptr;
 }
 
+const Expr *SemanticAnalyzer::getDefaultParamExpr(const std::string &funcName,
+                                                  size_t paramIndex) const
+{
+    std::string key = toLower(funcName) + ":" + std::to_string(paramIndex);
+    auto it = defaultParamExprs_.find(key);
+    return (it != defaultParamExprs_.end()) ? it->second : nullptr;
+}
+
+const Expr *SemanticAnalyzer::getDefaultMethodParamExpr(const std::string &className,
+                                                        const std::string &methodName,
+                                                        size_t paramIndex) const
+{
+    // Method defaults are stored with key "classname.methodname:paramindex"
+    std::string key =
+        toLower(className) + "." + toLower(methodName) + ":" + std::to_string(paramIndex);
+    auto it = defaultParamExprs_.find(key);
+    return (it != defaultParamExprs_.end()) ? it->second : nullptr;
+}
+
 //===----------------------------------------------------------------------===//
 // Error Reporting
 //===----------------------------------------------------------------------===//
@@ -196,17 +215,30 @@ void SemanticAnalyzer::registerPrimitives()
     // Register Exception as predefined class type
     types_["exception"] = PasType::classType("Exception");
 
-    // Register Exception class info for inheritance checking
+    // Register Exception class info for inheritance checking and constructor resolution
     ClassInfo excInfo;
     excInfo.name = "Exception";
     excInfo.baseClass = "";
     excInfo.hasConstructor = true;
-    // Add Message property (read-only string)
+
+    // Add Message field (String property)
     FieldInfo msgField;
     msgField.name = "Message";
     msgField.type = PasType::string();
     msgField.visibility = Visibility::Public;
     excInfo.fields["message"] = msgField;
+
+    // Add Create constructor: constructor Create(msg: String)
+    MethodInfo createCtor;
+    createCtor.name = "Create";
+    createCtor.params.push_back({"msg", PasType::string()});
+    createCtor.isVarParam.push_back(false);
+    createCtor.hasDefault.push_back(false);
+    createCtor.returnType = PasType::voidType(); // Constructors return void
+    createCtor.visibility = Visibility::Public;
+    createCtor.requiredParams = 1;
+    excInfo.methods["create"].push_back(createCtor);
+
     classes_["exception"] = excInfo;
 }
 

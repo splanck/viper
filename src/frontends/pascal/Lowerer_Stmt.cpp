@@ -161,7 +161,36 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
         {
             Value slot = it->second;
 
-            // Get target type
+            // Get target type - check localTypes_ first, then sema_
+            PasType targetType;
+            auto localTypeIt = localTypes_.find(key);
+            if (localTypeIt != localTypes_.end())
+            {
+                targetType = localTypeIt->second;
+            }
+            else
+            {
+                auto varType = sema_->lookupVariable(key);
+                if (varType)
+                    targetType = *varType;
+            }
+
+            // Check for optional type assignment
+            if (targetType.kind == PasTypeKind::Optional)
+            {
+                // Check if assigning nil
+                if (stmt.value->kind == ExprKind::NilLiteral)
+                {
+                    emitOptionalStoreNil(slot, targetType);
+                    return;
+                }
+                // Assigning a value to optional
+                LowerResult value = lowerExpr(*stmt.value);
+                emitOptionalStoreValue(slot, value.value, targetType);
+                return;
+            }
+
+            // Get target type for non-optional cases
             auto varType = sema_->lookupVariable(key);
 
             // Check for interface assignment (class to interface)
@@ -375,8 +404,25 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
                         // Lower value
                         LowerResult value = lowerExpr(*stmt.value);
 
-                        // Store to field
-                        emitStore(fieldType, fieldAddr, value.value);
+                        // Check if this is a weak reference field
+                        auto layoutIt = classLayouts_.find(toLower(currentClassName_));
+                        const ClassFieldLayout *fieldLayout = nullptr;
+                        if (layoutIt != classLayouts_.end())
+                        {
+                            fieldLayout = layoutIt->second.findField(nameExpr.name);
+                        }
+
+                        if (fieldLayout && fieldLayout->isWeak)
+                        {
+                            // Weak reference: store without incrementing refcount
+                            usedExterns_.insert("rt_weak_store");
+                            emitCall("rt_weak_store", {fieldAddr, value.value});
+                        }
+                        else
+                        {
+                            // Normal field: direct store
+                            emitStore(fieldType, fieldAddr, value.value);
+                        }
                         return;
                     }
                 }
@@ -483,7 +529,26 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
                     auto [fieldAddr, fieldType] =
                         getFieldAddress(objPtr, classTypeWithFields, fieldExpr.field);
                     LowerResult value = lowerExpr(*stmt.value);
-                    emitStore(fieldType, fieldAddr, value.value);
+
+                    // Check if this is a weak reference field
+                    auto layoutIt = classLayouts_.find(toLower(baseType.name));
+                    const ClassFieldLayout *fieldLayout = nullptr;
+                    if (layoutIt != classLayouts_.end())
+                    {
+                        fieldLayout = layoutIt->second.findField(fieldExpr.field);
+                    }
+
+                    if (fieldLayout && fieldLayout->isWeak)
+                    {
+                        // Weak reference: store without incrementing refcount
+                        usedExterns_.insert("rt_weak_store");
+                        emitCall("rt_weak_store", {fieldAddr, value.value});
+                    }
+                    else
+                    {
+                        // Normal field: direct store
+                        emitStore(fieldType, fieldAddr, value.value);
+                    }
                     return;
                 }
                 else
@@ -580,7 +645,26 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
                 auto [fieldAddr, fieldType] =
                     getFieldAddress(objPtr, classTypeWithFields, fieldExpr.field);
                 LowerResult value = lowerExpr(*stmt.value);
-                emitStore(fieldType, fieldAddr, value.value);
+
+                // Check if this is a weak reference field
+                auto layoutIt = classLayouts_.find(toLower(baseType.name));
+                const ClassFieldLayout *fieldLayout = nullptr;
+                if (layoutIt != classLayouts_.end())
+                {
+                    fieldLayout = layoutIt->second.findField(fieldExpr.field);
+                }
+
+                if (fieldLayout && fieldLayout->isWeak)
+                {
+                    // Weak reference: store without incrementing refcount
+                    usedExterns_.insert("rt_weak_store");
+                    emitCall("rt_weak_store", {fieldAddr, value.value});
+                }
+                else
+                {
+                    // Normal field: direct store
+                    emitStore(fieldType, fieldAddr, value.value);
+                }
                 return;
             }
             else if (!currentClassName_.empty())
@@ -897,6 +981,61 @@ void Lowerer::lowerForIn(const ForInStmt &stmt)
     bool isString = (collType.kind == PasTypeKind::String);
     bool isArray = (collType.kind == PasTypeKind::Array);
 
+    // Determine element type and runtime functions based on collection type
+    std::string lenFunc, getFunc;
+    Type::Kind elemILType = Type::Kind::I64;
+
+    if (isString)
+    {
+        lenFunc = "rt_len";
+        getFunc = "rt_substr"; // Special handling for strings (will use 3 args)
+        elemILType = Type::Kind::Str;
+    }
+    else if (isArray && collType.elementType)
+    {
+        PasTypeKind elemKind = collType.elementType->kind;
+
+        switch (elemKind)
+        {
+            case PasTypeKind::Integer:
+            case PasTypeKind::Boolean:
+            case PasTypeKind::Enum:
+                lenFunc = "rt_arr_i64_len";
+                getFunc = "rt_arr_i64_get";
+                elemILType = Type::Kind::I64;
+                break;
+            case PasTypeKind::Real:
+                lenFunc = "rt_arr_f64_len";
+                getFunc = "rt_arr_f64_get";
+                elemILType = Type::Kind::F64;
+                break;
+            case PasTypeKind::String:
+                lenFunc = "rt_arr_str_len";
+                getFunc = "rt_arr_str_get";
+                elemILType = Type::Kind::Str;
+                break;
+            case PasTypeKind::Class:
+            case PasTypeKind::Interface:
+            case PasTypeKind::Pointer:
+                lenFunc = "rt_arr_obj_len";
+                getFunc = "rt_arr_obj_get";
+                elemILType = Type::Kind::Ptr;
+                break;
+            default:
+                // Fallback to i64 for unknown types
+                lenFunc = "rt_arr_i64_len";
+                getFunc = "rt_arr_i64_get";
+                elemILType = Type::Kind::I64;
+                break;
+        }
+    }
+    else
+    {
+        // Fallback for unsupported collection types
+        lenFunc = "rt_arr_i64_len";
+        getFunc = "rt_arr_i64_get";
+    }
+
     // Allocate index variable
     Value indexSlot = emitAlloca(8);
     emitStore(Type(Type::Kind::I64), indexSlot, Value::constInt(0));
@@ -905,23 +1044,8 @@ void Lowerer::lowerForIn(const ForInStmt &stmt)
     LowerResult collection = lowerExpr(*stmt.collection);
 
     // Get length based on collection type
-    Value length;
-    if (isString)
-    {
-        // Call rt_len for strings
-        length = emitCallRet(Type(Type::Kind::I64), "rt_len", {collection.value});
-    }
-    else if (isArray)
-    {
-        // Call appropriate rt_arr_*_len based on element type
-        // For now, use generic i64 array length as placeholder
-        length = emitCallRet(Type(Type::Kind::I64), "rt_arr_i64_len", {collection.value});
-    }
-    else
-    {
-        // Fallback for unsupported types
-        length = Value::constInt(0);
-    }
+    usedExterns_.insert(lenFunc);
+    Value length = emitCallRet(Type(Type::Kind::I64), lenFunc, {collection.value});
 
     emitBr(headerBlock);
 
@@ -950,6 +1074,8 @@ void Lowerer::lowerForIn(const ForInStmt &stmt)
 
     // Get element at current index and store in loop variable
     Value currentIdx = emitLoad(Type(Type::Kind::I64), indexSlot);
+    usedExterns_.insert(getFunc);
+
     if (isString)
     {
         // Get single character as a string: rt_substr(s, i, 1)
@@ -957,12 +1083,11 @@ void Lowerer::lowerForIn(const ForInStmt &stmt)
             Type(Type::Kind::Str), "rt_substr", {collection.value, currentIdx, Value::constInt(1)});
         emitStore(Type(Type::Kind::Str), varSlot, elem);
     }
-    else if (isArray)
+    else
     {
-        // Get array element: rt_arr_i64_get(arr, i)
-        Value elem =
-            emitCallRet(Type(Type::Kind::I64), "rt_arr_i64_get", {collection.value, currentIdx});
-        emitStore(Type(Type::Kind::I64), varSlot, elem);
+        // Get array element using the appropriate typed getter
+        Value elem = emitCallRet(Type(elemILType), getFunc, {collection.value, currentIdx});
+        emitStore(Type(elemILType), varSlot, elem);
     }
 
     if (stmt.body)

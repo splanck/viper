@@ -14,10 +14,19 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/pascal/Lowerer.hpp"
+#include "frontends/common/CharUtils.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 
 namespace il::frontends::pascal
 {
+
+using common::char_utils::toLowercase;
+
+/// @brief Convert string to lowercase for case-insensitive comparisons.
+inline std::string toLower(const std::string &s)
+{
+    return toLowercase(s);
+}
 
 //===----------------------------------------------------------------------===//
 // Construction
@@ -117,11 +126,51 @@ Lowerer::Module Lowerer::lower(Program &prog, SemanticAnalyzer &sema)
         emitCall("__pas_oop_init", {});
     }
 
+    // Call unit initialization functions in order
+    for (const auto &unitName : prog.usedUnits)
+    {
+        std::string initFuncName = "__" + toLower(unitName) + "_init__";
+        // Check if function exists in module (it may have been merged from unit)
+        bool found = false;
+        for (const auto &func : module_->functions)
+        {
+            if (func.name == initFuncName)
+            {
+                found = true;
+                break;
+            }
+        }
+        if (found)
+        {
+            emitCall(initFuncName, {});
+        }
+    }
+
     allocateLocals(prog.decls, /*isMain=*/true);
 
     if (prog.body)
     {
         lowerBlock(*prog.body);
+    }
+
+    // Call unit finalization functions in reverse order before returning
+    for (auto it = prog.usedUnits.rbegin(); it != prog.usedUnits.rend(); ++it)
+    {
+        std::string finalFuncName = "__" + toLower(*it) + "_final__";
+        // Check if function exists in module
+        bool found = false;
+        for (const auto &func : module_->functions)
+        {
+            if (func.name == finalFuncName)
+            {
+                found = true;
+                break;
+            }
+        }
+        if (found)
+        {
+            emitCall(finalFuncName, {});
+        }
     }
 
     emitRet(Value::constInt(0));
@@ -165,6 +214,9 @@ Lowerer::Module Lowerer::lower(Unit &unit, SemanticAnalyzer &sema)
     // Emit OOP module initialization if there are classes
     emitOopModuleInit();
 
+    // Register unit-level variables
+    registerGlobals(unit.implDecls);
+
     // Lower all function/procedure declarations from implementation
     for (const auto &decl : unit.implDecls)
     {
@@ -194,14 +246,32 @@ Lowerer::Module Lowerer::lower(Unit &unit, SemanticAnalyzer &sema)
     }
 
     // Lower initialization section
-    if (unit.initSection)
+    if (unit.initSection && !unit.initSection->stmts.empty())
     {
-        std::string initName = unit.name + "_init";
+        std::string initName = "__" + toLower(unit.name) + "_init__";
         currentFunc_ = &builder_->startFunction(initName, Type(Type::Kind::Void), {});
         blockMgr_.bind(builder_.get(), currentFunc_);
+        locals_.clear();
+        localTypes_.clear();
         size_t entryIdx = createBlock("entry");
         setBlock(entryIdx);
+
         lowerBlock(*unit.initSection);
+        emitRetVoid();
+    }
+
+    // Lower finalization section
+    if (unit.finalSection && !unit.finalSection->stmts.empty())
+    {
+        std::string finalName = "__" + toLower(unit.name) + "_final__";
+        currentFunc_ = &builder_->startFunction(finalName, Type(Type::Kind::Void), {});
+        blockMgr_.bind(builder_.get(), currentFunc_);
+        locals_.clear();
+        localTypes_.clear();
+        size_t entryIdx = createBlock("entry");
+        setBlock(entryIdx);
+
+        lowerBlock(*unit.finalSection);
         emitRetVoid();
     }
 

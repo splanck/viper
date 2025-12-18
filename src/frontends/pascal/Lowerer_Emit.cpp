@@ -118,9 +118,16 @@ int64_t Lowerer::sizeOf(const PasType &pasType)
             // Interface is a fat pointer: { objPtr, itablePtr }
             return 16;
         case PasTypeKind::Optional:
-            if (pasType.innerType)
-                return 8 + sizeOf(*pasType.innerType);
-            return 16;
+            // Per spec: For value types, T? is represented as a (hasValue: Boolean, value: T) pair.
+            // For reference types, T? is just a nullable pointer (null = nil).
+            if (pasType.innerType && pasType.innerType->isValueType())
+            {
+                // Value-type optional: 8 bytes hasValue flag + value size (min 8 bytes aligned)
+                int64_t valueSize = sizeOf(*pasType.innerType);
+                return 8 + std::max(static_cast<int64_t>(8), valueSize);
+            }
+            // Reference-type optional: just a nullable pointer
+            return 8;
         default:
             return 8;
     }
@@ -476,5 +483,76 @@ void Lowerer::emitResumeLabel(Value resumeTok, size_t targetBlockIdx)
     currentBlock()->terminated = true;
 }
 
+//===----------------------------------------------------------------------===//
+// Optional Type Helpers
+//===----------------------------------------------------------------------===//
+
+Lowerer::Value Lowerer::emitOptionalHasValue(Value slot, const PasType &optType)
+{
+    if (optType.innerType && optType.innerType->isValueType())
+    {
+        // Value-type optional: load hasValue flag from offset 0
+        // The flag is stored as i64 (8 bytes) for alignment, but represents a boolean
+        Value flagVal = emitLoad(Type(Type::Kind::I64), slot);
+        // Convert to i1: non-zero means has value
+        return emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1), flagVal, Value::constInt(0));
+    }
+    else
+    {
+        // Reference-type optional: check for non-null pointer
+        Value ptr = emitLoad(Type(Type::Kind::Ptr), slot);
+        return emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1), ptr, Value::null());
+    }
+}
+
+Lowerer::Value Lowerer::emitOptionalLoadValue(Value slot, const PasType &optType)
+{
+    if (optType.innerType && optType.innerType->isValueType())
+    {
+        // Value-type optional: load value from offset 8 (after hasValue flag)
+        Value valueAddr = emitGep(slot, Value::constInt(8));
+        Type ilType = mapType(*optType.innerType);
+        return emitLoad(ilType, valueAddr);
+    }
+    else
+    {
+        // Reference-type optional: the pointer IS the value
+        Type ilType = optType.innerType ? mapType(*optType.innerType) : Type(Type::Kind::Ptr);
+        return emitLoad(ilType, slot);
+    }
+}
+
+void Lowerer::emitOptionalStoreValue(Value slot, Value val, const PasType &optType)
+{
+    if (optType.innerType && optType.innerType->isValueType())
+    {
+        // Value-type optional: store hasValue = 1 at offset 0, value at offset 8
+        emitStore(Type(Type::Kind::I64), slot, Value::constInt(1));
+        Value valueAddr = emitGep(slot, Value::constInt(8));
+        Type ilType = mapType(*optType.innerType);
+        emitStore(ilType, valueAddr, val);
+    }
+    else
+    {
+        // Reference-type optional: store pointer directly
+        Type ilType = optType.innerType ? mapType(*optType.innerType) : Type(Type::Kind::Ptr);
+        emitStore(ilType, slot, val);
+    }
+}
+
+void Lowerer::emitOptionalStoreNil(Value slot, const PasType &optType)
+{
+    if (optType.innerType && optType.innerType->isValueType())
+    {
+        // Value-type optional: store hasValue = 0 at offset 0
+        // (value at offset 8 is left undefined - doesn't matter when hasValue is false)
+        emitStore(Type(Type::Kind::I64), slot, Value::constInt(0));
+    }
+    else
+    {
+        // Reference-type optional: store null pointer
+        emitStore(Type(Type::Kind::Ptr), slot, Value::null());
+    }
+}
 
 } // namespace il::frontends::pascal

@@ -300,6 +300,93 @@ TEST(PascalInheritance, ConcreteSubclassOfAbstract)
     EXPECT_EQ(diag.errorCount(), 0u);
 }
 
+TEST(PascalInheritance, AbstractFunctionReturningReal)
+{
+    // Test abstract method returning a value type (Real)
+    DiagnosticEngine diag;
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  TShape = class\n"
+                                 "  public\n"
+                                 "    function Area: Real; virtual; abstract;\n"
+                                 "  end;\n"
+                                 "  TCircle = class(TShape)\n"
+                                 "  public\n"
+                                 "    Radius: Real;\n"
+                                 "    constructor Create(r: Real);\n"
+                                 "    function Area: Real; override;\n"
+                                 "  end;\n"
+                                 "constructor TCircle.Create(r: Real);\n"
+                                 "begin\n"
+                                 "  Radius := r\n"
+                                 "end;\n"
+                                 "function TCircle.Area: Real;\n"
+                                 "begin\n"
+                                 "  Result := 3.14159 * Radius * Radius\n"
+                                 "end;\n"
+                                 "var\n"
+                                 "  c: TCircle;\n"
+                                 "begin\n"
+                                 "  c := TCircle.Create(5.0)\n"
+                                 "end.",
+                                 diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalInheritance, AbstractShapeCannotBeInstantiated)
+{
+    // TShape with abstract Area cannot be instantiated
+    DiagnosticEngine diag;
+    bool result =
+        analyzeProgram("program Test;\n"
+                       "type\n"
+                       "  TShape = class\n"
+                       "  public\n"
+                       "    constructor Create;\n"
+                       "    function Area: Real; virtual; abstract;\n"
+                       "  end;\n"
+                       "constructor TShape.Create;\n"
+                       "begin\n"
+                       "end;\n"
+                       "var\n"
+                       "  s: TShape;\n"
+                       "begin\n"
+                       "  s := TShape.Create\n" // Error: cannot instantiate abstract class
+                       "end.",
+                       diag);
+    EXPECT_FALSE(result);
+    EXPECT_NE(diag.errorCount(), 0u);
+}
+
+TEST(PascalInheritance, InheritedAbstractNotImplementedIsAbstract)
+{
+    // If a derived class doesn't implement the abstract method, it's also abstract
+    DiagnosticEngine diag;
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  TBase = class\n"
+                                 "  public\n"
+                                 "    procedure DoWork; virtual; abstract;\n"
+                                 "  end;\n"
+                                 "  TDerived = class(TBase)\n"
+                                 "  public\n"
+                                 "    constructor Create;\n"
+                                 "    // Does not override DoWork - still abstract\n"
+                                 "  end;\n"
+                                 "constructor TDerived.Create;\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "var\n"
+                                 "  d: TDerived;\n"
+                                 "begin\n"
+                                 "  d := TDerived.Create\n" // Error: TDerived is still abstract
+                                 "end.",
+                                 diag);
+    EXPECT_FALSE(result);
+    EXPECT_NE(diag.errorCount(), 0u);
+}
+
 //===----------------------------------------------------------------------===//
 // Interface Implementation Tests
 //===----------------------------------------------------------------------===//
@@ -551,6 +638,159 @@ TEST(PascalInheritance, InheritedWithoutBaseFails)
                                  diag);
     EXPECT_FALSE(result);
     EXPECT_NE(diag.errorCount(), 0u);
+}
+
+//===----------------------------------------------------------------------===//
+// Interface Implementation Completeness Tests
+//===----------------------------------------------------------------------===//
+
+TEST(PascalInheritance, InterfaceMethodSignatureMismatchFails)
+{
+    DiagnosticEngine diag;
+    // Interface requires procedure Draw, but class has function Draw
+    bool result =
+        analyzeProgram("program Test;\n"
+                       "type\n"
+                       "  IDrawable = interface\n"
+                       "    procedure Draw;\n"
+                       "  end;\n"
+                       "  TBadShape = class(IDrawable)\n"
+                       "  public\n"
+                       "    function Draw: Integer;\n" // Wrong: returns Integer instead of void
+                       "  end;\n"
+                       "function TBadShape.Draw: Integer;\n"
+                       "begin\n"
+                       "  Result := 0\n"
+                       "end;\n"
+                       "begin\n"
+                       "end.",
+                       diag);
+    EXPECT_FALSE(result);
+    EXPECT_NE(diag.errorCount(), 0u);
+}
+
+TEST(PascalInheritance, InterfaceMethodParamCountMismatchFails)
+{
+    DiagnosticEngine diag;
+    // Interface requires procedure SetColor(c: Integer), but class has procedure SetColor
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  IColorable = interface\n"
+                                 "    procedure SetColor(c: Integer);\n"
+                                 "  end;\n"
+                                 "  TBadWidget = class(IColorable)\n"
+                                 "  public\n"
+                                 "    procedure SetColor;\n" // Wrong: missing parameter
+                                 "  end;\n"
+                                 "procedure TBadWidget.SetColor;\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "begin\n"
+                                 "end.",
+                                 diag);
+    EXPECT_FALSE(result);
+    EXPECT_NE(diag.errorCount(), 0u);
+}
+
+TEST(PascalInheritance, InterfaceMethodParamTypeMismatchFails)
+{
+    DiagnosticEngine diag;
+    // Interface requires procedure SetValue(x: Integer), but class has SetValue(x: String)
+    bool result =
+        analyzeProgram("program Test;\n"
+                       "type\n"
+                       "  IValued = interface\n"
+                       "    procedure SetValue(x: Integer);\n"
+                       "  end;\n"
+                       "  TBadItem = class(IValued)\n"
+                       "  public\n"
+                       "    procedure SetValue(x: String);\n" // Wrong: String instead of Integer
+                       "  end;\n"
+                       "procedure TBadItem.SetValue(x: String);\n"
+                       "begin\n"
+                       "end;\n"
+                       "begin\n"
+                       "end.",
+                       diag);
+    EXPECT_FALSE(result);
+    EXPECT_NE(diag.errorCount(), 0u);
+}
+
+TEST(PascalInheritance, InterfaceMethodVarParamMismatchFails)
+{
+    DiagnosticEngine diag;
+    // Interface requires procedure Update(var x: Integer), but class has Update(x: Integer)
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  IUpdatable = interface\n"
+                                 "    procedure Update(var x: Integer);\n"
+                                 "  end;\n"
+                                 "  TBadUpdater = class(IUpdatable)\n"
+                                 "  public\n"
+                                 "    procedure Update(x: Integer);\n" // Wrong: missing var
+                                 "  end;\n"
+                                 "procedure TBadUpdater.Update(x: Integer);\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "begin\n"
+                                 "end.",
+                                 diag);
+    EXPECT_FALSE(result);
+    EXPECT_NE(diag.errorCount(), 0u);
+}
+
+TEST(PascalInheritance, InterfaceWithFunctionMissingGetNameFails)
+{
+    // Test case from the prompt: TBadButton missing GetName
+    DiagnosticEngine diag;
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  IDrawable = interface\n"
+                                 "    procedure Draw;\n"
+                                 "    function GetName: String;\n"
+                                 "  end;\n"
+                                 "  TBadButton = class(IDrawable)\n"
+                                 "  public\n"
+                                 "    procedure Draw;\n"
+                                 "    // Missing: function GetName: String;\n"
+                                 "  end;\n"
+                                 "procedure TBadButton.Draw;\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "begin\n"
+                                 "end.",
+                                 diag);
+    EXPECT_FALSE(result);
+    EXPECT_NE(diag.errorCount(), 0u);
+}
+
+TEST(PascalInheritance, InterfaceCompleteImplementationSucceeds)
+{
+    // All interface methods are implemented correctly
+    DiagnosticEngine diag;
+    bool result = analyzeProgram("program Test;\n"
+                                 "type\n"
+                                 "  IDrawable = interface\n"
+                                 "    procedure Draw;\n"
+                                 "    function GetName: String;\n"
+                                 "  end;\n"
+                                 "  TGoodButton = class(IDrawable)\n"
+                                 "  public\n"
+                                 "    procedure Draw;\n"
+                                 "    function GetName: String;\n"
+                                 "  end;\n"
+                                 "procedure TGoodButton.Draw;\n"
+                                 "begin\n"
+                                 "end;\n"
+                                 "function TGoodButton.GetName: String;\n"
+                                 "begin\n"
+                                 "  Result := 'Button'\n"
+                                 "end;\n"
+                                 "begin\n"
+                                 "end.",
+                                 diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
 }
 
 } // namespace

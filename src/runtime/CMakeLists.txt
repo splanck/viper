@@ -44,6 +44,7 @@ set(RT_OOP_SOURCES
         rt_oop_dispatch.c
         rt_type_registry.c
         rt_ns_bridge.c
+        rt_exc.c
 )
 
 set(RT_COLLECTIONS_SOURCES

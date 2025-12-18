@@ -55,6 +55,7 @@
 #include "rt_csv.h"
 #include "rt_datetime.h"
 #include "rt_dir.h"
+#include "rt_exc.h"
 #include "rt_exec.h"
 #include "rt_file_ext.h"
 #include "rt_fmt.h"
@@ -69,6 +70,7 @@
 #include "rt_machine.h"
 #include "rt_map.h"
 #include "rt_math.h"
+#include "rt_object.h"
 #include "rt_oop.h"
 #include "rt_parse.h"
 #include "rt_path.h"
@@ -1626,6 +1628,23 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
                   "void(ptr)",
                   &DirectHandler<&rt_obj_free, void, void *>::invoke,
                   featureLowering(RuntimeFeature::ObjFree),
+                  nullptr,
+                  0,
+                  RuntimeTrapClass::None},
+    // --- Weak Reference Support ---
+    DescriptorRow{"rt_weak_store",
+                  std::nullopt,
+                  "void(ptr,ptr)",
+                  &DirectHandler<&rt_weak_store, void, void **, void *>::invoke,
+                  kManualLowering,
+                  nullptr,
+                  0,
+                  RuntimeTrapClass::None},
+    DescriptorRow{"rt_weak_load",
+                  std::nullopt,
+                  "ptr(ptr)",
+                  &DirectHandler<&rt_weak_load, void *, void **>::invoke,
+                  kManualLowering,
                   nullptr,
                   0,
                   RuntimeTrapClass::None},

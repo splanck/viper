@@ -96,6 +96,38 @@ TEST(PascalExceptionTest, CustomExceptionDerivesFromException)
     EXPECT_EQ(diag.errorCount(), 0u);
 }
 
+TEST(PascalExceptionTest, ExceptionCreateConstructor)
+{
+    // Exception.Create(msg) constructor should work
+    DiagnosticEngine diag;
+    bool result = analyzeProgram("program Test;\n"
+                                 "begin\n"
+                                 "  raise Exception.Create('Test error message');\n"
+                                 "end.",
+                                 diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalExceptionTest, ExceptionCreateAndAccessMessage)
+{
+    // Exception.Create followed by E.Message access
+    DiagnosticEngine diag;
+    bool result = analyzeProgram("program Test;\n"
+                                 "var msg: String;\n"
+                                 "begin\n"
+                                 "  try\n"
+                                 "    raise Exception.Create('Test error');\n"
+                                 "  except\n"
+                                 "    on E: Exception do\n"
+                                 "      msg := E.Message;\n"
+                                 "  end;\n"
+                                 "end.",
+                                 diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
 //===----------------------------------------------------------------------===//
 // Typed Handler Tests
 //===----------------------------------------------------------------------===//

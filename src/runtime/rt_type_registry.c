@@ -124,10 +124,10 @@
 ///       must be freed during cleanup (vs. static metadata from codegen).
 typedef struct
 {
-    int type_id;              ///< Unique class identifier.
-    const rt_class_info *ci;  ///< Class metadata (vtable, name, base).
-    int base_type_id;         ///< Base class ID, or -1 for root classes.
-    int owned_ci;             ///< Non-zero if ci should be freed on cleanup.
+    int type_id;             ///< Unique class identifier.
+    const rt_class_info *ci; ///< Class metadata (vtable, name, base).
+    int base_type_id;        ///< Base class ID, or -1 for root classes.
+    int owned_ci;            ///< Non-zero if ci should be freed on cleanup.
 } class_entry;
 
 /// @brief Entry in the interface registry tracking one registered interface.
@@ -136,7 +136,7 @@ typedef struct
 /// the qualified name and slot count.
 typedef struct
 {
-    int iface_id;    ///< Unique interface identifier.
+    int iface_id;     ///< Unique interface identifier.
     rt_iface_reg reg; ///< Interface registration info (name, slot count).
 } iface_entry;
 
@@ -153,9 +153,9 @@ typedef struct
 /// ```
 typedef struct
 {
-    int type_id;     ///< Class implementing the interface.
-    int iface_id;    ///< Interface being implemented.
-    void **itable;   ///< Array of function pointers for interface methods.
+    int type_id;   ///< Class implementing the interface.
+    int iface_id;  ///< Interface being implemented.
+    void **itable; ///< Array of function pointers for interface methods.
 } binding_entry;
 
 // ============================================================================

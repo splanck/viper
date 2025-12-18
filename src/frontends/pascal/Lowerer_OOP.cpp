@@ -138,6 +138,7 @@ void Lowerer::computeClassLayout(const std::string &className)
         fieldLayout.name = fieldInfo.name;
         fieldLayout.type = fieldInfo.type;
         fieldLayout.size = static_cast<std::size_t>(sizeOf(fieldInfo.type));
+        fieldLayout.isWeak = fieldInfo.isWeak; // Propagate weak flag
 
         // Align to 8 bytes for simplicity
         if (currentOffset % 8 != 0)
@@ -422,6 +423,29 @@ LowerResult Lowerer::lowerConstructorCall(const CallExpr &expr)
     std::string className = expr.constructorClassName;
     std::string key = toLower(className);
 
+    // Special handling for built-in Exception class
+    if (key == "exception")
+    {
+        // Exception.Create(msg) -> rt_exc_create(msg)
+        usedExterns_.insert("rt_exc_create");
+
+        // Get the message argument (first arg to Create)
+        Value msgArg = Value::null();
+        if (!expr.args.empty())
+        {
+            LowerResult argResult = lowerExpr(*expr.args[0]);
+            msgArg = argResult.value;
+        }
+        else
+        {
+            // Default to empty string if no message provided
+            msgArg = emitConstStr("");
+        }
+
+        Value excPtr = emitCallRet(Type(Type::Kind::Ptr), "rt_exc_create", {msgArg});
+        return {excPtr, Type(Type::Kind::Ptr)};
+    }
+
     auto layoutIt = classLayouts_.find(key);
     if (layoutIt == classLayouts_.end())
     {
@@ -460,6 +484,30 @@ LowerResult Lowerer::lowerConstructorCall(const CallExpr &expr)
     {
         LowerResult argResult = lowerExpr(*arg);
         ctorArgs.push_back(argResult.value);
+    }
+
+    // Fill in default parameter values for missing arguments
+    const ClassInfo *ci = sema_->lookupClass(key);
+    if (ci)
+    {
+        const MethodInfo *ctorInfo = ci->findMethod(toLower(ctorName));
+        if (ctorInfo)
+        {
+            size_t userArgCount = expr.args.size();
+            for (size_t i = userArgCount; i < ctorInfo->params.size(); ++i)
+            {
+                if (i < ctorInfo->hasDefault.size() && ctorInfo->hasDefault[i])
+                {
+                    const Expr *defaultExpr =
+                        sema_->getDefaultMethodParamExpr(className, ctorName, i);
+                    if (defaultExpr)
+                    {
+                        LowerResult defVal = lowerExpr(*defaultExpr);
+                        ctorArgs.push_back(defVal.value);
+                    }
+                }
+            }
+        }
     }
 
     // Step 5: Call the constructor
@@ -518,6 +566,22 @@ LowerResult Lowerer::lowerMethodCall(const FieldExpr &fieldExpr, const CallExpr 
     {
         LowerResult argResult = lowerExpr(*arg);
         args.push_back(argResult.value);
+    }
+
+    // Fill in default parameter values for missing arguments
+    // Note: args[0] is Self, so user args start at index 1
+    size_t userArgCount = callExpr.args.size();
+    for (size_t i = userArgCount; i < methodInfo->params.size(); ++i)
+    {
+        if (i < methodInfo->hasDefault.size() && methodInfo->hasDefault[i])
+        {
+            const Expr *defaultExpr = sema_->getDefaultMethodParamExpr(className, methodName, i);
+            if (defaultExpr)
+            {
+                LowerResult defVal = lowerExpr(*defaultExpr);
+                args.push_back(defVal.value);
+            }
+        }
     }
 
     // Determine return type
@@ -598,6 +662,21 @@ LowerResult Lowerer::lowerObjectFieldAccess(const FieldExpr &expr)
         return {Value::constInt(0), Type(Type::Kind::I64)};
     }
 
+    // Special handling for built-in Exception class
+    if (toLower(className) == "exception")
+    {
+        std::string fieldName = toLower(expr.field);
+        if (fieldName == "message")
+        {
+            // Exception.Message -> rt_exc_get_message(exc)
+            usedExterns_.insert("rt_exc_get_message");
+            Value msg = emitCallRet(Type(Type::Kind::Str), "rt_exc_get_message", {objPtr});
+            return {msg, Type(Type::Kind::Str)};
+        }
+        // Unknown Exception field - fall through to error
+        return {Value::constInt(0), Type(Type::Kind::I64)};
+    }
+
     // Get field offset
     auto layoutIt = classLayouts_.find(toLower(className));
     if (layoutIt == classLayouts_.end())
@@ -616,7 +695,20 @@ LowerResult Lowerer::lowerObjectFieldAccess(const FieldExpr &expr)
 
     // Load the field value
     Type fieldTy = mapType(field->type);
-    Value fieldVal = emitLoad(fieldTy, fieldPtr);
+    Value fieldVal;
+
+    if (field->isWeak)
+    {
+        // Weak reference: use rt_weak_load to get the value
+        // This returns the raw pointer without affecting reference counts
+        usedExterns_.insert("rt_weak_load");
+        fieldVal = emitCallRet(Type(Type::Kind::Ptr), "rt_weak_load", {fieldPtr});
+    }
+    else
+    {
+        // Normal field: direct load
+        fieldVal = emitLoad(fieldTy, fieldPtr);
+    }
 
     return {fieldVal, fieldTy};
 }

@@ -33,6 +33,7 @@ struct ClassFieldLayout
     PasType type;       ///< Field type
     std::size_t offset; ///< Byte offset from object base
     std::size_t size;   ///< Size in bytes
+    bool isWeak{false}; ///< Weak reference field (no refcount increment)
 };
 
 /// @brief Complete layout for a class including inherited fields.

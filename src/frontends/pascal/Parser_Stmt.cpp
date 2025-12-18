@@ -400,12 +400,28 @@ std::unique_ptr<Stmt> Parser::parseCase()
             return nullptr;
         arm.labels.push_back(std::move(label));
 
+        // Check for unsupported range syntax (a..b)
+        if (check(TokenKind::DotDot))
+        {
+            error("case ranges (a..b) are not supported in Viper Pascal v0.1; "
+                  "list individual values instead");
+            return nullptr;
+        }
+
         while (match(TokenKind::Comma))
         {
             label = parseExpression();
             if (!label)
                 return nullptr;
             arm.labels.push_back(std::move(label));
+
+            // Check for unsupported range syntax after comma
+            if (check(TokenKind::DotDot))
+            {
+                error("case ranges (a..b) are not supported in Viper Pascal v0.1; "
+                      "list individual values instead");
+                return nullptr;
+            }
         }
 
         if (!expect(TokenKind::Colon, "':'"))
@@ -471,8 +487,9 @@ std::vector<std::unique_ptr<Stmt>> Parser::parseStatementList()
     // Parse remaining statements separated by semicolons
     while (match(TokenKind::Semicolon))
     {
-        // Don't parse another statement if we're at end/until/else
-        if (check(TokenKind::KwEnd) || check(TokenKind::KwUntil) || check(TokenKind::KwElse))
+        // Don't parse another statement if we're at a section terminator
+        if (check(TokenKind::KwEnd) || check(TokenKind::KwUntil) || check(TokenKind::KwElse) ||
+            check(TokenKind::KwFinalization) || check(TokenKind::KwInitialization))
         {
             break;
         }

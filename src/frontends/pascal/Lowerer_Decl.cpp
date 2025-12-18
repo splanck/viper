@@ -168,10 +168,20 @@ void Lowerer::initializeLocal(const std::string &name, const PasType &type)
         }
         case PasTypeKind::Pointer:
         case PasTypeKind::Class:
-        case PasTypeKind::Interface:
-        case PasTypeKind::Optional:
-            // Initialize to nil
+            // Initialize to nil (null pointer)
             emitStore(Type(Type::Kind::Ptr), slot, Value::null());
+            break;
+        case PasTypeKind::Interface:
+            // Initialize to nil (null object pointer and null itable pointer)
+            emitStore(Type(Type::Kind::Ptr), slot, Value::null());
+            {
+                Value itablePtrAddr = emitGep(slot, Value::constInt(8));
+                emitStore(Type(Type::Kind::Ptr), itablePtrAddr, Value::null());
+            }
+            break;
+        case PasTypeKind::Optional:
+            // Initialize to nil using type-aware helper
+            emitOptionalStoreNil(slot, type);
             break;
         case PasTypeKind::Array:
             // Static arrays are inline storage; no initialization needed

@@ -102,6 +102,7 @@ int main()
         uint16_t vreg;
         PhysReg phys;
     };
+
     constexpr Expect kExpected[] = {
         {2, PhysReg::RDI},
         {3, PhysReg::RSI},
@@ -123,8 +124,7 @@ int main()
         auto it = pressureResult.vregToPhys.find(expect.vreg);
         if (it == pressureResult.vregToPhys.end() || it->second != expect.phys)
         {
-            std::cerr << "Pressure allocation: unexpected mapping for vreg " << expect.vreg
-                      << "\n";
+            std::cerr << "Pressure allocation: unexpected mapping for vreg " << expect.vreg << "\n";
             return EXIT_FAILURE;
         }
     }

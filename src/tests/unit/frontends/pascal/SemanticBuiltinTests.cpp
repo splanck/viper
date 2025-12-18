@@ -782,6 +782,282 @@ TEST(PascalBuiltinTest, V01_CharCanBeUsedAsIdentifier)
     EXPECT_EQ(diag.errorCount(), 0u);
 }
 
+//===----------------------------------------------------------------------===//
+// String Comparison Tests - Lexicographic byte comparison
+//===----------------------------------------------------------------------===//
+
+TEST(PascalBuiltinTest, StringComparisonEqual)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram("program Test;\n"
+                                 "var b: Boolean;\n"
+                                 "begin\n"
+                                 "  b := 'hello' = 'hello';\n"
+                                 "end.",
+                                 diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalBuiltinTest, StringComparisonNotEqual)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram("program Test;\n"
+                                 "var b: Boolean;\n"
+                                 "begin\n"
+                                 "  b := 'hello' <> 'world';\n"
+                                 "end.",
+                                 diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalBuiltinTest, StringComparisonLessThan)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram("program Test;\n"
+                                 "var b: Boolean;\n"
+                                 "begin\n"
+                                 "  b := 'apple' < 'banana';\n"
+                                 "end.",
+                                 diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalBuiltinTest, StringComparisonLessThanOrEqual)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram("program Test;\n"
+                                 "var b: Boolean;\n"
+                                 "begin\n"
+                                 "  b := 'hello' <= 'hello';\n"
+                                 "end.",
+                                 diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalBuiltinTest, StringComparisonGreaterThan)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram("program Test;\n"
+                                 "var b: Boolean;\n"
+                                 "begin\n"
+                                 "  b := 'zebra' > 'ant';\n"
+                                 "end.",
+                                 diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalBuiltinTest, StringComparisonGreaterThanOrEqual)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram("program Test;\n"
+                                 "var b: Boolean;\n"
+                                 "begin\n"
+                                 "  b := 'hello' >= 'hello';\n"
+                                 "end.",
+                                 diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalBuiltinTest, StringComparisonInIfStatement)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram("program Test;\n"
+                                 "begin\n"
+                                 "  if 'apple' < 'banana' then\n"
+                                 "    WriteLn('apple < banana');\n"
+                                 "  if 'zebra' > 'ant' then\n"
+                                 "    WriteLn('zebra > ant');\n"
+                                 "  if 'hello' <= 'hello' then\n"
+                                 "    WriteLn('hello <= hello');\n"
+                                 "end.",
+                                 diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalBuiltinTest, StringComparisonWithVariables)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram("program Test;\n"
+                                 "var s1, s2: String; b: Boolean;\n"
+                                 "begin\n"
+                                 "  s1 := 'hello';\n"
+                                 "  s2 := 'world';\n"
+                                 "  b := s1 < s2;\n"
+                                 "  b := s1 <= s2;\n"
+                                 "  b := s1 > s2;\n"
+                                 "  b := s1 >= s2;\n"
+                                 "end.",
+                                 diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+//===----------------------------------------------------------------------===//
+// Enum Ord/Pred/Succ Tests
+//===----------------------------------------------------------------------===//
+
+TEST(PascalBuiltinTest, EnumOrdReturnsOrdinalValue)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram("program Test;\n"
+                                 "type Color = (Red, Green, Blue);\n"
+                                 "var c: Color; n: Integer;\n"
+                                 "begin\n"
+                                 "  c := Green;\n"
+                                 "  n := Ord(c);\n"
+                                 "end.",
+                                 diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalBuiltinTest, EnumOrdWithConstant)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram("program Test;\n"
+                                 "type Color = (Red, Green, Blue);\n"
+                                 "var n: Integer;\n"
+                                 "begin\n"
+                                 "  n := Ord(Red);\n"
+                                 "  n := Ord(Green);\n"
+                                 "  n := Ord(Blue);\n"
+                                 "end.",
+                                 diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalBuiltinTest, EnumPredReturnsPreviousValue)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram("program Test;\n"
+                                 "type Color = (Red, Green, Blue);\n"
+                                 "var c: Color;\n"
+                                 "begin\n"
+                                 "  c := Green;\n"
+                                 "  c := Pred(c);\n"
+                                 "end.",
+                                 diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalBuiltinTest, EnumSuccReturnsNextValue)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram("program Test;\n"
+                                 "type Color = (Red, Green, Blue);\n"
+                                 "var c: Color;\n"
+                                 "begin\n"
+                                 "  c := Green;\n"
+                                 "  c := Succ(c);\n"
+                                 "end.",
+                                 diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalBuiltinTest, EnumPredSuccChained)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram("program Test;\n"
+                                 "type Color = (Red, Green, Blue);\n"
+                                 "var c: Color; n: Integer;\n"
+                                 "begin\n"
+                                 "  c := Green;\n"
+                                 "  n := Ord(c);\n"
+                                 "  n := Ord(Pred(c));\n"
+                                 "  n := Ord(Succ(c));\n"
+                                 "end.",
+                                 diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalBuiltinTest, EnumInCaseStatement)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram("program Test;\n"
+                                 "type Color = (Red, Green, Blue);\n"
+                                 "var c: Color;\n"
+                                 "begin\n"
+                                 "  c := Green;\n"
+                                 "  case c of\n"
+                                 "    Red: WriteLn('red');\n"
+                                 "    Green: WriteLn('green');\n"
+                                 "    Blue: WriteLn('blue');\n"
+                                 "  end;\n"
+                                 "end.",
+                                 diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalBuiltinTest, EnumWithWriteLn)
+{
+    // WriteLn with enum should print the ordinal value (as integer)
+    DiagnosticEngine diag;
+    bool result = analyzeProgram("program Test;\n"
+                                 "type Color = (Red, Green, Blue);\n"
+                                 "var c: Color;\n"
+                                 "begin\n"
+                                 "  c := Green;\n"
+                                 "  WriteLn(Ord(c));\n"
+                                 "end.",
+                                 diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalBuiltinTest, IntegerOrdIsIdentity)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram("program Test;\n"
+                                 "var n: Integer;\n"
+                                 "begin\n"
+                                 "  n := 42;\n"
+                                 "  n := Ord(n);\n"
+                                 "end.",
+                                 diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalBuiltinTest, IntegerPredSubtractsOne)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram("program Test;\n"
+                                 "var n: Integer;\n"
+                                 "begin\n"
+                                 "  n := 42;\n"
+                                 "  n := Pred(n);\n"
+                                 "end.",
+                                 diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalBuiltinTest, IntegerSuccAddsOne)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram("program Test;\n"
+                                 "var n: Integer;\n"
+                                 "begin\n"
+                                 "  n := 42;\n"
+                                 "  n := Succ(n);\n"
+                                 "end.",
+                                 diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
 } // namespace
 
 int main()

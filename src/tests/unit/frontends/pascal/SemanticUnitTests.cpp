@@ -541,6 +541,158 @@ end.
     EXPECT_TRUE(hasPrintNum);
 }
 
+//===----------------------------------------------------------------------===//
+// Unit Initialization/Finalization Tests
+//===----------------------------------------------------------------------===//
+
+TEST(PascalUnitTest, UnitInitializationSection)
+{
+    SourceManager sm;
+    PascalCompilerOptions opts{};
+
+    const std::string initUnit = R"(
+unit InitTest;
+interface
+  function GetCount: Integer;
+implementation
+  var Count: Integer;
+  function GetCount: Integer;
+  begin
+    Result := Count
+  end;
+initialization
+  Count := 42;
+end.
+)";
+
+    const std::string program = R"(
+program Demo;
+uses InitTest;
+var n: Integer;
+begin
+  n := GetCount
+end.
+)";
+
+    PascalMultiFileInput input;
+    input.units.push_back({initUnit, "InitTest.pas"});
+    input.program = {program, "Demo.pas"};
+
+    auto result = compilePascalMultiFile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+    EXPECT_EQ(result.diagnostics.errorCount(), 0u);
+
+    // Check that init function was generated
+    bool hasInit = false;
+    for (const auto &fn : result.module.functions)
+    {
+        if (fn.name == "__inittest_init__")
+            hasInit = true;
+    }
+    EXPECT_TRUE(hasInit);
+}
+
+TEST(PascalUnitTest, UnitFinalizationSection)
+{
+    SourceManager sm;
+    PascalCompilerOptions opts{};
+
+    const std::string finalUnit = R"(
+unit FinalTest;
+interface
+  procedure DoWork;
+implementation
+  procedure DoWork;
+  begin
+  end;
+finalization
+  WriteLn('Cleanup');
+end.
+)";
+
+    const std::string program = R"(
+program Demo;
+uses FinalTest;
+begin
+  DoWork
+end.
+)";
+
+    PascalMultiFileInput input;
+    input.units.push_back({finalUnit, "FinalTest.pas"});
+    input.program = {program, "Demo.pas"};
+
+    auto result = compilePascalMultiFile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+    EXPECT_EQ(result.diagnostics.errorCount(), 0u);
+
+    // Check that final function was generated
+    bool hasFinal = false;
+    for (const auto &fn : result.module.functions)
+    {
+        if (fn.name == "__finaltest_final__")
+            hasFinal = true;
+    }
+    EXPECT_TRUE(hasFinal);
+}
+
+TEST(PascalUnitTest, UnitBothInitAndFinalization)
+{
+    SourceManager sm;
+    PascalCompilerOptions opts{};
+
+    const std::string bothUnit = R"(
+unit BothTest;
+interface
+  function GetInitCount: Integer;
+implementation
+  var Count: Integer;
+  function GetInitCount: Integer;
+  begin
+    Result := Count
+  end;
+initialization
+  Count := 42;
+  WriteLn('BothTest initialized');
+finalization
+  WriteLn('BothTest finalized');
+end.
+)";
+
+    const std::string program = R"(
+program Demo;
+uses BothTest;
+var n: Integer;
+begin
+  n := GetInitCount
+end.
+)";
+
+    PascalMultiFileInput input;
+    input.units.push_back({bothUnit, "BothTest.pas"});
+    input.program = {program, "Demo.pas"};
+
+    auto result = compilePascalMultiFile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+    EXPECT_EQ(result.diagnostics.errorCount(), 0u);
+
+    // Check that both init and final functions were generated
+    bool hasInit = false;
+    bool hasFinal = false;
+    for (const auto &fn : result.module.functions)
+    {
+        if (fn.name == "__bothtest_init__")
+            hasInit = true;
+        if (fn.name == "__bothtest_final__")
+            hasFinal = true;
+    }
+    EXPECT_TRUE(hasInit);
+    EXPECT_TRUE(hasFinal);
+}
+
 } // namespace
 
 int main()

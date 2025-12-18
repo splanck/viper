@@ -80,24 +80,103 @@ LowerResult Lowerer::lowerBinary(const BinaryExpr &expr)
             break;
     }
 
+    // Handle optional nil comparisons specially
+    // x = nil or x <> nil where x is a value-type optional
+    if (expr.op == BinaryExpr::Op::Eq || expr.op == BinaryExpr::Op::Ne)
+    {
+        bool leftIsNil = (expr.left->kind == ExprKind::NilLiteral);
+        bool rightIsNil = (expr.right->kind == ExprKind::NilLiteral);
+
+        if (leftIsNil || rightIsNil)
+        {
+            // Get the non-nil side
+            const Expr *optExpr = leftIsNil ? expr.right.get() : expr.left.get();
+            PasType optType = typeOfExpr(*optExpr);
+
+            if (optType.isValueTypeOptional() && optExpr->kind == ExprKind::Name)
+            {
+                // Get the slot for the value-type optional
+                const auto &nameExpr = static_cast<const NameExpr &>(*optExpr);
+                std::string key = nameExpr.name;
+                for (auto &c : key)
+                    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+
+                auto it = locals_.find(key);
+                if (it != locals_.end())
+                {
+                    Value optSlot = it->second;
+                    // Check hasValue flag
+                    Value hasValue = emitOptionalHasValue(optSlot, optType);
+
+                    // For x = nil: return !hasValue (true if no value)
+                    // For x <> nil: return hasValue (true if has value)
+                    if (expr.op == BinaryExpr::Op::Eq)
+                    {
+                        // x = nil means hasValue is false
+                        Value result = emitBinary(Opcode::ICmpEq,
+                                                  Type(Type::Kind::I1),
+                                                  hasValue,
+                                                  Value::constBool(false));
+                        return {result, Type(Type::Kind::I1)};
+                    }
+                    else
+                    {
+                        // x <> nil means hasValue is true
+                        return {hasValue, Type(Type::Kind::I1)};
+                    }
+                }
+            }
+        }
+    }
+
     // Lower operands
     LowerResult lhs = lowerExpr(*expr.left);
     LowerResult rhs = lowerExpr(*expr.right);
 
     // Handle string comparisons via runtime call
     bool isString = (lhs.type.kind == Type::Kind::Str || rhs.type.kind == Type::Kind::Str);
-    if (isString && (expr.op == BinaryExpr::Op::Eq || expr.op == BinaryExpr::Op::Ne))
+    if (isString)
     {
-        // Call rt_str_eq(str, str) -> i1
-        usedExterns_.insert("rt_str_eq");
-        Value result = emitCallRet(Type(Type::Kind::I1), "rt_str_eq", {lhs.value, rhs.value});
-        if (expr.op == BinaryExpr::Op::Ne)
+        const char *rtFunc = nullptr;
+        bool negate = false;
+
+        switch (expr.op)
         {
-            // Negate the result for !=
-            Value zero = Value::constBool(false);
-            result = emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), result, zero);
+            case BinaryExpr::Op::Eq:
+                rtFunc = "rt_str_eq";
+                break;
+            case BinaryExpr::Op::Ne:
+                rtFunc = "rt_str_eq";
+                negate = true;
+                break;
+            case BinaryExpr::Op::Lt:
+                rtFunc = "rt_str_lt";
+                break;
+            case BinaryExpr::Op::Le:
+                rtFunc = "rt_str_le";
+                break;
+            case BinaryExpr::Op::Gt:
+                rtFunc = "rt_str_gt";
+                break;
+            case BinaryExpr::Op::Ge:
+                rtFunc = "rt_str_ge";
+                break;
+            default:
+                break;
         }
-        return {result, Type(Type::Kind::I1)};
+
+        if (rtFunc)
+        {
+            usedExterns_.insert(rtFunc);
+            Value result = emitCallRet(Type(Type::Kind::I1), rtFunc, {lhs.value, rhs.value});
+            if (negate)
+            {
+                // Negate the result for !=
+                Value zero = Value::constBool(false);
+                result = emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), result, zero);
+            }
+            return {result, Type(Type::Kind::I1)};
+        }
     }
 
     // Determine result type
@@ -283,35 +362,88 @@ LowerResult Lowerer::lowerCoalesce(const BinaryExpr &expr)
     size_t evalRhsBlock = createBlock("coalesce_rhs");
     size_t joinBlock = createBlock("coalesce_join");
 
-    // Allocate result slot before any branches
-    Value resultSlot = emitAlloca(8);
+    // Get the type of the left operand (the optional)
+    PasType leftType = typeOfExpr(*expr.left);
 
-    // Evaluate left operand
+    // Evaluate left operand - for value-type optionals, this returns the slot address
+    // For reference-type optionals, lowerExpr returns the loaded pointer value
     LowerResult left = lowerExpr(*expr.left);
 
-    // For reference-type optionals, null pointer means nil
-    // For value-type optionals, we'd check the hasValue flag at offset 0
-    // Currently, both are represented as Ptr (null = nil)
-    Value isNotNil = emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1), left.value, Value::null());
+    // Determine result type from the unwrapped optional or right side
+    Type resultType = leftType.innerType ? mapType(*leftType.innerType) : left.type;
+
+    // Allocate result slot before any branches
+    int64_t resultSize = leftType.innerType ? sizeOf(*leftType.innerType) : 8;
+    Value resultSlot = emitAlloca(resultSize);
+
+    // Check if optional has a value using type-aware nil check
+    Value isNotNil;
+    if (leftType.isValueTypeOptional())
+    {
+        // For value-type optionals, left.value is the address of the optional slot
+        // We need to get the slot address - if lowerExpr returned a loaded value, we have a problem
+        // Actually, for optional expressions, we need the slot to check hasValue
+        // Let's handle this by getting the slot from locals if it's a name expression
+        if (expr.left->kind == ExprKind::Name)
+        {
+            const auto &nameExpr = static_cast<const NameExpr &>(*expr.left);
+            std::string key = nameExpr.name;
+            for (auto &c : key)
+                c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            auto it = locals_.find(key);
+            if (it != locals_.end())
+            {
+                Value optSlot = it->second;
+                isNotNil = emitOptionalHasValue(optSlot, leftType);
+
+                emitCBr(isNotNil, useLeftBlock, evalRhsBlock);
+
+                // Use left value (not nil) - load the unwrapped value
+                setBlock(useLeftBlock);
+                Value leftVal = emitOptionalLoadValue(optSlot, leftType);
+                emitStore(resultType, resultSlot, leftVal);
+                emitBr(joinBlock);
+
+                // Evaluate right operand (left was nil) - store to result slot
+                setBlock(evalRhsBlock);
+                LowerResult right = lowerExpr(*expr.right);
+                emitStore(resultType, resultSlot, right.value);
+                emitBr(joinBlock);
+
+                // Join block - load from result slot
+                setBlock(joinBlock);
+                Value result = emitLoad(resultType, resultSlot);
+
+                return {result, resultType};
+            }
+        }
+        // Fallback: treat as reference type (shouldn't happen with proper typing)
+        isNotNil = emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1), left.value, Value::null());
+    }
+    else
+    {
+        // Reference-type optional: check for non-null pointer
+        isNotNil = emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1), left.value, Value::null());
+    }
 
     emitCBr(isNotNil, useLeftBlock, evalRhsBlock);
 
     // Use left value (not nil) - store to result slot
     setBlock(useLeftBlock);
-    emitStore(left.type, resultSlot, left.value);
+    emitStore(resultType, resultSlot, left.value);
     emitBr(joinBlock);
 
     // Evaluate right operand (left was nil) - store to result slot
     setBlock(evalRhsBlock);
     LowerResult right = lowerExpr(*expr.right);
-    emitStore(right.type, resultSlot, right.value);
+    emitStore(resultType, resultSlot, right.value);
     emitBr(joinBlock);
 
     // Join block - load from result slot
     setBlock(joinBlock);
-    Value result = emitLoad(right.type, resultSlot);
+    Value result = emitLoad(resultType, resultSlot);
 
-    return {result, right.type};
+    return {result, resultType};
 }
 
 } // namespace il::frontends::pascal

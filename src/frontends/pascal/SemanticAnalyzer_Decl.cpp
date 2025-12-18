@@ -303,12 +303,20 @@ void SemanticAnalyzer::registerProcedure(ProcedureDecl &decl)
     sig.isForward = decl.isForward;
     sig.requiredParams = requiredParams;
 
-    for (const auto &param : decl.params)
+    for (size_t i = 0; i < decl.params.size(); ++i)
     {
+        const auto &param = decl.params[i];
         PasType paramType = param.type ? resolveType(*param.type) : PasType::unknown();
         sig.params.emplace_back(param.name, paramType);
         sig.isVarParam.push_back(param.isVar);
         sig.hasDefault.push_back(param.defaultValue != nullptr);
+
+        // Store default expression for lowering
+        if (param.defaultValue)
+        {
+            std::string defKey = key + ":" + std::to_string(i);
+            defaultParamExprs_[defKey] = param.defaultValue.get();
+        }
     }
 
     functions_[key] = sig;
@@ -344,12 +352,20 @@ void SemanticAnalyzer::registerFunction(FunctionDecl &decl)
     sig.isForward = decl.isForward;
     sig.requiredParams = requiredParams;
 
-    for (const auto &param : decl.params)
+    for (size_t i = 0; i < decl.params.size(); ++i)
     {
+        const auto &param = decl.params[i];
         PasType paramType = param.type ? resolveType(*param.type) : PasType::unknown();
         sig.params.emplace_back(param.name, paramType);
         sig.isVarParam.push_back(param.isVar);
         sig.hasDefault.push_back(param.defaultValue != nullptr);
+
+        // Store default expression for lowering
+        if (param.defaultValue)
+        {
+            std::string defKey = key + ":" + std::to_string(i);
+            defaultParamExprs_[defKey] = param.defaultValue.get();
+        }
     }
 
     functions_[key] = sig;
@@ -410,8 +426,10 @@ void SemanticAnalyzer::registerClass(ClassDecl &decl)
                         method.visibility = member.visibility;
                         method.loc = fd.loc;
                         size_t required = 0;
-                        for (const auto &param : fd.params)
+                        std::string methodKey = toLower(decl.name) + "." + toLower(fd.name);
+                        for (size_t i = 0; i < fd.params.size(); ++i)
                         {
+                            const auto &param = fd.params[i];
                             PasType paramType =
                                 param.type ? resolveType(*param.type) : PasType::unknown();
                             method.params.emplace_back(param.name, paramType);
@@ -419,6 +437,12 @@ void SemanticAnalyzer::registerClass(ClassDecl &decl)
                             method.hasDefault.push_back(param.defaultValue != nullptr);
                             if (!param.defaultValue)
                                 ++required;
+                            else
+                            {
+                                // Store default expression for lowering
+                                std::string defKey = methodKey + ":" + std::to_string(i);
+                                defaultParamExprs_[defKey] = param.defaultValue.get();
+                            }
                         }
                         method.requiredParams = required;
                         // Check for duplicate signature in existing overloads
@@ -451,8 +475,10 @@ void SemanticAnalyzer::registerClass(ClassDecl &decl)
                         method.visibility = member.visibility;
                         method.loc = pd.loc;
                         size_t required = 0;
-                        for (const auto &param : pd.params)
+                        std::string methodKey = toLower(decl.name) + "." + toLower(pd.name);
+                        for (size_t i = 0; i < pd.params.size(); ++i)
                         {
+                            const auto &param = pd.params[i];
                             PasType paramType =
                                 param.type ? resolveType(*param.type) : PasType::unknown();
                             method.params.emplace_back(param.name, paramType);
@@ -460,6 +486,12 @@ void SemanticAnalyzer::registerClass(ClassDecl &decl)
                             method.hasDefault.push_back(param.defaultValue != nullptr);
                             if (!param.defaultValue)
                                 ++required;
+                            else
+                            {
+                                // Store default expression for lowering
+                                std::string defKey = methodKey + ":" + std::to_string(i);
+                                defaultParamExprs_[defKey] = param.defaultValue.get();
+                            }
                         }
                         method.requiredParams = required;
                         // Check for duplicate signature in existing overloads
@@ -495,8 +527,10 @@ void SemanticAnalyzer::registerClass(ClassDecl &decl)
                     method.visibility = member.visibility;
                     method.loc = cd.loc;
                     size_t required = 0;
-                    for (const auto &param : cd.params)
+                    std::string methodKey = toLower(decl.name) + "." + toLower(cd.name);
+                    for (size_t i = 0; i < cd.params.size(); ++i)
                     {
+                        const auto &param = cd.params[i];
                         PasType paramType =
                             param.type ? resolveType(*param.type) : PasType::unknown();
                         method.params.emplace_back(param.name, paramType);
@@ -504,6 +538,12 @@ void SemanticAnalyzer::registerClass(ClassDecl &decl)
                         method.hasDefault.push_back(param.defaultValue != nullptr);
                         if (!param.defaultValue)
                             ++required;
+                        else
+                        {
+                            // Store default expression for lowering
+                            std::string defKey = methodKey + ":" + std::to_string(i);
+                            defaultParamExprs_[defKey] = param.defaultValue.get();
+                        }
                     }
                     method.requiredParams = required;
                     // Check for duplicate signature in existing overloads
@@ -533,8 +573,17 @@ void SemanticAnalyzer::registerClass(ClassDecl &decl)
                     MethodInfo method;
                     method.name = dd.name;
                     method.returnType = PasType::voidType();
-                    method.isVirtual = dd.isVirtual;
-                    method.isOverride = dd.isOverride;
+                    // Destructors are implicitly virtual per spec
+                    method.isVirtual = true;
+                    // If base class has a destructor, this is an override
+                    if (!decl.baseClass.empty())
+                    {
+                        const ClassInfo *baseInfo = lookupClass(toLower(decl.baseClass));
+                        if (baseInfo && baseInfo->hasDestructor)
+                        {
+                            method.isOverride = true;
+                        }
+                    }
                     method.visibility = member.visibility;
                     method.loc = dd.loc;
                     // Destructors cannot be overloaded
@@ -660,6 +709,84 @@ void SemanticAnalyzer::registerClass(ClassDecl &decl)
         }
 
         info.properties[toLower(pinfo.name)] = pinfo;
+    }
+
+    // Validate interface implementations
+    for (const std::string &ifaceName : decl.interfaces)
+    {
+        std::string ifaceKey = toLower(ifaceName);
+        const InterfaceInfo *iface = lookupInterface(ifaceKey);
+        if (!iface)
+        {
+            error(decl.loc, "unknown interface '" + ifaceName + "'");
+            continue;
+        }
+
+        // Check each interface method is implemented (including inherited methods)
+        for (const auto &[methodName, ifaceMethods] : iface->methods)
+        {
+            std::string methodKey = toLower(methodName);
+
+            // Search for method in class and its base classes
+            const std::vector<MethodInfo> *classMethods = nullptr;
+
+            // First check current class
+            auto it = info.methods.find(methodKey);
+            if (it != info.methods.end())
+            {
+                classMethods = &it->second;
+            }
+            else
+            {
+                // Walk up inheritance chain to find the method
+                std::string baseClassName = decl.baseClass;
+                while (!baseClassName.empty() && !classMethods)
+                {
+                    const ClassInfo *baseClass = lookupClass(toLower(baseClassName));
+                    if (!baseClass)
+                        break;
+
+                    auto baseIt = baseClass->methods.find(methodKey);
+                    if (baseIt != baseClass->methods.end())
+                    {
+                        classMethods = &baseIt->second;
+                    }
+                    else
+                    {
+                        baseClassName = baseClass->baseClass;
+                    }
+                }
+            }
+
+            if (!classMethods)
+            {
+                error(decl.loc,
+                      "class '" + decl.name + "' does not implement method '" + methodName +
+                          "' required by interface '" + ifaceName + "'");
+                continue;
+            }
+
+            // For each interface method overload, find a compatible class method
+            for (const MethodInfo &ifaceMethod : ifaceMethods)
+            {
+                bool foundCompatible = false;
+                for (const MethodInfo &classMethod : *classMethods)
+                {
+                    if (areSignaturesCompatible(classMethod, ifaceMethod))
+                    {
+                        foundCompatible = true;
+                        break;
+                    }
+                }
+
+                if (!foundCompatible)
+                {
+                    error(decl.loc,
+                          "method '" + methodName + "' in class '" + decl.name +
+                              "' has incompatible signature with interface '" + ifaceName + "'");
+                }
+            }
+        }
     }
 
     classes_[key] = info;

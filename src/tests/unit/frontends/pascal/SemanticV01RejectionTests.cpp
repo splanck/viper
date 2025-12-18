@@ -301,6 +301,61 @@ TEST(PascalV01RejectionTest, ForwardDeclarationAllowed)
 }
 
 //===----------------------------------------------------------------------===//
+// Case Range Rejection Tests
+//===----------------------------------------------------------------------===//
+
+TEST(PascalV01RejectionTest, CaseRangeRejected)
+{
+    // Case ranges (1..5) are not supported in v0.1
+    DiagnosticEngine diag;
+    bool result = analyzeProgram("program Test;\n"
+                                 "var x: Integer;\n"
+                                 "begin\n"
+                                 "  case x of\n"
+                                 "    1..5: WriteLn('small');\n"
+                                 "  end;\n"
+                                 "end.",
+                                 diag);
+    EXPECT_FALSE(result);
+    EXPECT_NE(diag.errorCount(), 0u);
+}
+
+TEST(PascalV01RejectionTest, CaseRangeInListRejected)
+{
+    // Case ranges in a comma-separated list should also be rejected
+    DiagnosticEngine diag;
+    bool result = analyzeProgram("program Test;\n"
+                                 "var x: Integer;\n"
+                                 "begin\n"
+                                 "  case x of\n"
+                                 "    1, 5..10: WriteLn('values');\n"
+                                 "  end;\n"
+                                 "end.",
+                                 diag);
+    EXPECT_FALSE(result);
+    EXPECT_NE(diag.errorCount(), 0u);
+}
+
+TEST(PascalV01RejectionTest, CaseMultipleValuesAllowed)
+{
+    // Multiple individual values (not ranges) should be allowed
+    DiagnosticEngine diag;
+    bool result = analyzeProgram("program Test;\n"
+                                 "var x: Integer;\n"
+                                 "begin\n"
+                                 "  case x of\n"
+                                 "    1, 2, 3, 4, 5: WriteLn('small');\n"
+                                 "    6, 7, 8: WriteLn('medium');\n"
+                                 "  else\n"
+                                 "    WriteLn('large');\n"
+                                 "  end;\n"
+                                 "end.",
+                                 diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+//===----------------------------------------------------------------------===//
 // Valid Programs Should Still Work
 //===----------------------------------------------------------------------===//
 

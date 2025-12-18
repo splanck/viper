@@ -97,6 +97,17 @@ extern "C"
     /// How:  Returns 1 when pointers are identical, 0 otherwise.
     int64_t rt_obj_reference_equals(void *a, void *b);
 
+    // --- Weak Reference Support ---
+    /// @brief Store a weak reference without incrementing reference count.
+    /// @param addr Address of the field to store to.
+    /// @param value Object pointer to store (may be NULL).
+    void rt_weak_store(void **addr, void *value);
+
+    /// @brief Load a weak reference.
+    /// @param addr Address of the field to load from.
+    /// @return The stored pointer value.
+    void *rt_weak_load(void **addr);
+
 #ifdef __cplusplus
 }
 #endif
