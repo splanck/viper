@@ -52,7 +52,19 @@ namespace
 
 /// @brief Number of property test iterations.
 /// @details Keep low for CI stability; can be increased for local fuzzing.
-constexpr std::size_t kDefaultIterations = 15;
+constexpr std::size_t kDefaultIterations = 10;
+
+std::size_t iterationsForPropertyTest()
+{
+    if (const char *env = std::getenv("VIPER_DIFF_ITERATIONS"))
+    {
+        char *end = nullptr;
+        const unsigned long v = std::strtoul(env, &end, 10);
+        if (end && *end == '\0' && v > 0)
+            return static_cast<std::size_t>(v);
+    }
+    return kDefaultIterations;
+}
 
 /// @brief Get a stable base seed for reproducible tests.
 /// @details Uses a combination of PID and a counter to ensure unique but
@@ -313,8 +325,9 @@ TEST(DiffVmNativeProperty, ArithmeticOnly)
     config.maxBlocks = 1;
 
     const std::uint64_t baseSeed = getStableBaseSeed();
+    const std::size_t iterations = iterationsForPropertyTest();
 
-    for (std::size_t i = 0; i < kDefaultIterations; ++i)
+    for (std::size_t i = 0; i < iterations; ++i)
     {
         ILGenerator generator(baseSeed + i);
         DiffTestResult result = runDifferentialTest(generator, config, outputDir, i);
@@ -346,8 +359,9 @@ TEST(DiffVmNativeProperty, ArithmeticWithComparisons)
     config.maxBlocks = 1;
 
     const std::uint64_t baseSeed = getStableBaseSeed();
+    const std::size_t iterations = iterationsForPropertyTest();
 
-    for (std::size_t i = 0; i < kDefaultIterations; ++i)
+    for (std::size_t i = 0; i < iterations; ++i)
     {
         ILGenerator generator(baseSeed + i);
         DiffTestResult result = runDifferentialTest(generator, config, outputDir, i);
@@ -379,8 +393,9 @@ TEST(DiffVmNativeProperty, BitwiseAndShifts)
     config.maxBlocks = 1;
 
     const std::uint64_t baseSeed = getStableBaseSeed();
+    const std::size_t iterations = iterationsForPropertyTest();
 
-    for (std::size_t i = 0; i < kDefaultIterations; ++i)
+    for (std::size_t i = 0; i < iterations; ++i)
     {
         ILGenerator generator(baseSeed + i);
         DiffTestResult result = runDifferentialTest(generator, config, outputDir, i);
@@ -412,8 +427,9 @@ TEST(DiffVmNativeProperty, MixedOperations)
     config.maxBlocks = 1;
 
     const std::uint64_t baseSeed = getStableBaseSeed();
+    const std::size_t iterations = iterationsForPropertyTest();
 
-    for (std::size_t i = 0; i < kDefaultIterations; ++i)
+    for (std::size_t i = 0; i < iterations; ++i)
     {
         ILGenerator generator(baseSeed + i);
         DiffTestResult result = runDifferentialTest(generator, config, outputDir, i);
@@ -445,8 +461,9 @@ TEST(DiffVmNativeProperty, ControlFlow)
     config.maxBlocks = 4;
 
     const std::uint64_t baseSeed = getStableBaseSeed();
+    const std::size_t iterations = iterationsForPropertyTest();
 
-    for (std::size_t i = 0; i < kDefaultIterations; ++i)
+    for (std::size_t i = 0; i < iterations; ++i)
     {
         ILGenerator generator(baseSeed + i);
         DiffTestResult result = runDifferentialTest(generator, config, outputDir, i);

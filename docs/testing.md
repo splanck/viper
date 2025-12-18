@@ -128,7 +128,8 @@ ctest --test-dir build -R diff_vm_native_property --output-on-failure
 
 ### Test Iterations
 
-By default, the test runs 15 iterations per test case. Each iteration:
+By default, the test runs 10 iterations per test case. You can override this with
+`VIPER_DIFF_ITERATIONS` (e.g., `VIPER_DIFF_ITERATIONS=50` for local fuzzing). Each iteration:
 
 1. Generates a new IL program from a unique seed
 2. Verifies the IL
