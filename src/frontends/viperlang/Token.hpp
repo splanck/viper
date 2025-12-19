@@ -35,6 +35,11 @@ enum class TokenKind
     StringLiteral,  // "hello"
     Identifier,     // user-defined names
 
+    // String interpolation tokens
+    StringStart, // "text${  - start of interpolated string
+    StringMid,   // }text${  - middle part of interpolated string
+    StringEnd,   // }text"   - end of interpolated string
+
     // Keywords - Types (3)
     KwValue,     // value
     KwEntity,    // entity

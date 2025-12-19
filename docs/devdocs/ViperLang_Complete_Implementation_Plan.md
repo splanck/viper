@@ -2018,7 +2018,7 @@ After each increment, verify:
 | 1.5 IL Lowerer | [x] Complete | 1.4 |
 | 1.6 Compiler Driver | [x] Complete | 1.5 |
 | 1.7 Hello World Test | [x] Complete | 1.6 |
-| 1.8 viperlang CLI Tool | [x] Complete | 1.6 |
+| 1.8 viper CLI Tool | [x] Complete | 1.6 |
 
 ### Phase 2: Type System
 

@@ -573,6 +573,13 @@ ExprPtr Parser::parsePostfixFrom(ExprPtr expr)
 
             expr = std::make_unique<AsExpr>(loc, std::move(expr), std::move(type));
         }
+        else if (match(TokenKind::Question))
+        {
+            // Try expression: expr? - propagate null/error
+            // Note: This is different from optional type T? or ternary a ? b : c
+            SourceLoc loc = current_.loc;
+            expr = std::make_unique<TryExpr>(loc, std::move(expr));
+        }
         else
         {
             break;
@@ -618,6 +625,12 @@ ExprPtr Parser::parsePrimary()
         return std::make_unique<StringLiteralExpr>(loc, std::move(value));
     }
 
+    // Interpolated string: "text${expr}text${expr}text"
+    if (check(TokenKind::StringStart))
+    {
+        return parseInterpolatedString();
+    }
+
     // Boolean literals
     if (match(TokenKind::KwTrue))
     {
@@ -638,6 +651,12 @@ ExprPtr Parser::parsePrimary()
     if (match(TokenKind::KwSelf))
     {
         return std::make_unique<SelfExpr>(loc);
+    }
+
+    // Super
+    if (match(TokenKind::KwSuper))
+    {
+        return std::make_unique<SuperExprNode>(loc);
     }
 
     // New expression
@@ -667,14 +686,27 @@ ExprPtr Parser::parsePrimary()
     }
 
     // Parenthesized expression or unit literal
+    // Note: Lambda parsing is complex due to backtracking needs.
+    // For now, only support () => expr syntax
     if (match(TokenKind::LParen))
     {
-        // Check for unit literal ()
-        if (match(TokenKind::RParen))
+        // Check for unit literal () or lambda () => ...
+        if (check(TokenKind::RParen))
         {
+            advance(); // consume )
+            // Check for lambda with no parameters: () => body
+            if (match(TokenKind::Arrow))
+            {
+                ExprPtr body = parseExpression();
+                if (!body)
+                    return nullptr;
+                return std::make_unique<LambdaExpr>(loc, std::vector<LambdaParam>{}, nullptr,
+                                                    std::move(body));
+            }
             return std::make_unique<UnitLiteralExpr>(loc);
         }
 
+        // Regular parenthesized expression
         ExprPtr expr = parseExpression();
         if (!expr)
             return nullptr;
@@ -723,6 +755,79 @@ ExprPtr Parser::parseListLiteral()
         return nullptr;
 
     return std::make_unique<ListLiteralExpr>(loc, std::move(elements));
+}
+
+ExprPtr Parser::parseInterpolatedString()
+{
+    SourceLoc loc = current_.loc;
+
+    // First part: "text${
+    std::string firstPart = current_.stringValue;
+    advance(); // consume StringStart
+
+    // Build up a chain of string concatenations
+    // Start with the first string part (could be empty)
+    ExprPtr result = std::make_unique<StringLiteralExpr>(loc, std::move(firstPart));
+
+    // Parse the first interpolated expression
+    ExprPtr expr = parseExpression();
+    if (!expr)
+    {
+        error("expected expression in string interpolation");
+        return nullptr;
+    }
+
+    // Convert the expression to string if needed (we'll handle this in lowering)
+    // For now, just concatenate with Add operator (string concat)
+    result = std::make_unique<BinaryExpr>(loc, BinaryOp::Add, std::move(result), std::move(expr));
+
+    // Now we should see either StringMid or StringEnd
+    while (check(TokenKind::StringMid))
+    {
+        // Get the middle string part
+        std::string midPart = current_.stringValue;
+        advance(); // consume StringMid
+
+        // Concatenate the middle string part
+        if (!midPart.empty())
+        {
+            result = std::make_unique<BinaryExpr>(
+                loc, BinaryOp::Add, std::move(result),
+                std::make_unique<StringLiteralExpr>(loc, std::move(midPart)));
+        }
+
+        // Parse the next interpolated expression
+        expr = parseExpression();
+        if (!expr)
+        {
+            error("expected expression in string interpolation");
+            return nullptr;
+        }
+
+        // Concatenate the expression
+        result = std::make_unique<BinaryExpr>(loc, BinaryOp::Add, std::move(result), std::move(expr));
+    }
+
+    // Must end with StringEnd
+    if (!check(TokenKind::StringEnd))
+    {
+        error("expected end of interpolated string");
+        return nullptr;
+    }
+
+    // Get the final string part
+    std::string endPart = current_.stringValue;
+    advance(); // consume StringEnd
+
+    // Concatenate the final string part (if not empty)
+    if (!endPart.empty())
+    {
+        result = std::make_unique<BinaryExpr>(
+            loc, BinaryOp::Add, std::move(result),
+            std::make_unique<StringLiteralExpr>(loc, std::move(endPart)));
+    }
+
+    return result;
 }
 
 ExprPtr Parser::parseMapOrSetLiteral()
@@ -994,14 +1099,9 @@ StmtPtr Parser::parseIfStmt()
     SourceLoc loc = current_.loc;
     advance(); // consume 'if'
 
-    if (!expect(TokenKind::LParen, "("))
-        return nullptr;
-
+    // ViperLang uses "if condition {" without parentheses
     ExprPtr condition = parseExpression();
     if (!condition)
-        return nullptr;
-
-    if (!expect(TokenKind::RParen, ")"))
         return nullptr;
 
     StmtPtr thenBranch = parseStatement();
@@ -1025,14 +1125,9 @@ StmtPtr Parser::parseWhileStmt()
     SourceLoc loc = current_.loc;
     advance(); // consume 'while'
 
-    if (!expect(TokenKind::LParen, "("))
-        return nullptr;
-
+    // ViperLang uses "while condition {" without parentheses
     ExprPtr condition = parseExpression();
     if (!condition)
-        return nullptr;
-
-    if (!expect(TokenKind::RParen, ")"))
         return nullptr;
 
     StmtPtr body = parseStatement();
@@ -1132,9 +1227,116 @@ StmtPtr Parser::parseGuardStmt()
 
 StmtPtr Parser::parseMatchStmt()
 {
-    // TODO: implement match statement parsing
-    error("match statement not yet implemented");
-    return nullptr;
+    SourceLoc loc = current_.loc;
+    advance(); // consume 'match'
+
+    // Parse the scrutinee expression
+    ExprPtr scrutinee = parseExpression();
+    if (!scrutinee)
+        return nullptr;
+
+    if (!expect(TokenKind::LBrace, "{"))
+        return nullptr;
+
+    std::vector<MatchArm> arms;
+
+    // Parse match arms
+    while (!check(TokenKind::RBrace) && !check(TokenKind::Eof))
+    {
+        MatchArm arm;
+
+        // Parse pattern
+        if (check(TokenKind::Identifier))
+        {
+            // Could be a binding or constructor
+            std::string name = current_.text;
+            advance();
+            if (name == "_")
+            {
+                // Wildcard
+                arm.pattern.kind = MatchArm::Pattern::Kind::Wildcard;
+            }
+            else
+            {
+                // Binding pattern (for now, treat identifiers as bindings)
+                arm.pattern.kind = MatchArm::Pattern::Kind::Binding;
+                arm.pattern.binding = name;
+            }
+        }
+        else if (check(TokenKind::IntegerLiteral))
+        {
+            // Literal pattern
+            arm.pattern.kind = MatchArm::Pattern::Kind::Literal;
+            arm.pattern.literal = parsePrimary();
+        }
+        else if (check(TokenKind::StringLiteral))
+        {
+            // String literal pattern
+            arm.pattern.kind = MatchArm::Pattern::Kind::Literal;
+            arm.pattern.literal = parsePrimary();
+        }
+        else if (check(TokenKind::KwTrue) || check(TokenKind::KwFalse))
+        {
+            // Boolean literal pattern
+            arm.pattern.kind = MatchArm::Pattern::Kind::Literal;
+            arm.pattern.literal = parsePrimary();
+        }
+        else
+        {
+            error("expected pattern in match arm");
+            return nullptr;
+        }
+
+        // Check for guard: 'where condition'
+        // For now, skip guard parsing
+
+        // Expect =>
+        if (!expect(TokenKind::FatArrow, "=>"))
+            return nullptr;
+
+        // Parse arm body (expression or block)
+        if (check(TokenKind::LBrace))
+        {
+            // Block body - parse as block expression
+            SourceLoc blockLoc = current_.loc;
+            advance(); // consume '{'
+
+            std::vector<StmtPtr> statements;
+            while (!check(TokenKind::RBrace) && !check(TokenKind::Eof))
+            {
+                StmtPtr stmt = parseStatement();
+                if (!stmt)
+                {
+                    resyncAfterError();
+                    continue;
+                }
+                statements.push_back(std::move(stmt));
+            }
+
+            if (!expect(TokenKind::RBrace, "}"))
+                return nullptr;
+
+            arm.body = std::make_unique<BlockExpr>(blockLoc, std::move(statements), nullptr);
+        }
+        else
+        {
+            // Expression body
+            arm.body = parseExpression();
+            if (!arm.body)
+                return nullptr;
+
+            // Expect semicolon after expression body
+            if (!expect(TokenKind::Semicolon, ";"))
+                return nullptr;
+        }
+
+        arms.push_back(std::move(arm));
+    }
+
+    if (!expect(TokenKind::RBrace, "}"))
+        return nullptr;
+
+    return std::make_unique<MatchStmt>(loc, std::move(scrutinee), std::move(arms));
 }
 
 //===----------------------------------------------------------------------===//
@@ -1276,27 +1478,45 @@ ImportDecl Parser::parseImportDecl()
     SourceLoc loc = current_.loc;
     advance(); // consume 'import'
 
-    // Parse path: Viper.IO.File
     std::string path;
-    if (!check(TokenKind::Identifier))
-    {
-        error("expected import path");
-        return ImportDecl(loc, "");
-    }
 
-    path = current_.text;
-    advance();
-
-    while (match(TokenKind::Dot))
+    // Check for string literal (file path import)
+    if (check(TokenKind::StringLiteral))
     {
-        if (!check(TokenKind::Identifier))
+        // String token text includes quotes, so strip them
+        std::string raw = current_.text;
+        if (raw.size() >= 2 && raw.front() == '"' && raw.back() == '"')
         {
-            error("expected identifier in import path");
-            return ImportDecl(loc, path);
+            path = raw.substr(1, raw.size() - 2);
         }
-        path += ".";
-        path += current_.text;
+        else
+        {
+            path = raw;
+        }
         advance();
+    }
+    // Otherwise parse dotted identifier path: Viper.IO.File
+    else if (check(TokenKind::Identifier))
+    {
+        path = current_.text;
+        advance();
+
+        while (match(TokenKind::Dot))
+        {
+            if (!check(TokenKind::Identifier))
+            {
+                error("expected identifier in import path");
+                return ImportDecl(loc, path);
+            }
+            path += ".";
+            path += current_.text;
+            advance();
+        }
+    }
+    else
+    {
+        error("expected import path (string or identifier)");
+        return ImportDecl(loc, "");
     }
 
     if (!expect(TokenKind::Semicolon, ";"))
@@ -1322,6 +1542,11 @@ DeclPtr Parser::parseDeclaration()
     if (check(TokenKind::KwInterface))
     {
         return parseInterfaceDecl();
+    }
+    // Module-level variable declarations (global variables)
+    if (check(TokenKind::KwVar) || check(TokenKind::KwFinal))
+    {
+        return parseGlobalVarDecl();
     }
 
     error("expected declaration");
@@ -1623,17 +1848,68 @@ DeclPtr Parser::parseInterfaceDecl()
     if (!expect(TokenKind::LBrace, "{"))
         return nullptr;
 
-    // TODO: parse method signatures
+    // Parse method signatures
     while (!check(TokenKind::RBrace) && !check(TokenKind::Eof))
     {
-        // Skip for now
-        advance();
+        if (check(TokenKind::KwFunc))
+        {
+            // Parse method signature (method without body)
+            auto method = parseMethodDecl();
+            if (method)
+            {
+                iface->members.push_back(std::move(method));
+            }
+        }
+        else
+        {
+            error("expected method signature in interface");
+            advance();
+        }
     }
 
     if (!expect(TokenKind::RBrace, "}"))
         return nullptr;
 
     return iface;
+}
+
+DeclPtr Parser::parseGlobalVarDecl()
+{
+    SourceLoc loc = current_.loc;
+    bool isFinal = check(TokenKind::KwFinal);
+    advance(); // consume 'var' or 'final'
+
+    if (!check(TokenKind::Identifier))
+    {
+        error("expected variable name");
+        return nullptr;
+    }
+    std::string name = current_.text;
+    advance();
+
+    auto decl = std::make_unique<GlobalVarDecl>(loc, std::move(name));
+    decl->isFinal = isFinal;
+
+    // Optional type annotation: var x: Integer
+    if (match(TokenKind::Colon))
+    {
+        decl->type = parseType();
+        if (!decl->type)
+            return nullptr;
+    }
+
+    // Optional initializer: var x = 42
+    if (match(TokenKind::Equal))
+    {
+        decl->initializer = parseExpression();
+        if (!decl->initializer)
+            return nullptr;
+    }
+
+    if (!expect(TokenKind::Semicolon, ";"))
+        return nullptr;
+
+    return decl;
 }
 
 DeclPtr Parser::parseFieldDecl()

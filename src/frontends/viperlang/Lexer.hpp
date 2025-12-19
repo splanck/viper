@@ -103,6 +103,13 @@ class Lexer
     uint32_t line_ = 1;                   ///< Current line.
     uint32_t column_ = 1;                 ///< Current column.
     std::optional<Token> peeked_;         ///< Peeked token cache.
+
+    // String interpolation state
+    int interpolationDepth_ = 0;          ///< Nesting depth of interpolations.
+    std::vector<int> braceDepth_;         ///< Brace depth per interpolation level.
+
+    /// @brief Lex the continuation of an interpolated string after '}'.
+    Token lexInterpolatedStringContinuation();
 };
 
 } // namespace il::frontends::viperlang

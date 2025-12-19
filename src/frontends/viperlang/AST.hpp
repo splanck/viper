@@ -135,6 +135,7 @@ enum class ExprKind
     // Names
     Ident,
     SelfExpr,
+    SuperExpr,
 
     // Operations
     Binary,
@@ -148,6 +149,7 @@ enum class ExprKind
     Is,
     As,
     Range,
+    Try, // expr? - propagate null/error
 
     // Construction
     New,
@@ -232,6 +234,12 @@ struct IdentExpr : Expr
 struct SelfExpr : Expr
 {
     SelfExpr(SourceLoc l) : Expr(ExprKind::SelfExpr, l) {}
+};
+
+/// Super expression: super
+struct SuperExprNode : Expr
+{
+    SuperExprNode(SourceLoc l) : Expr(ExprKind::SuperExpr, l) {}
 };
 
 /// Binary operator
@@ -403,6 +411,17 @@ struct RangeExpr : Expr
 
     RangeExpr(SourceLoc l, ExprPtr s, ExprPtr e, bool incl)
         : Expr(ExprKind::Range, l), start(std::move(s)), end(std::move(e)), inclusive(incl)
+    {
+    }
+};
+
+/// Try expression: expr? - propagate null/error
+struct TryExpr : Expr
+{
+    ExprPtr operand;
+
+    TryExpr(SourceLoc l, ExprPtr e)
+        : Expr(ExprKind::Try, l), operand(std::move(e))
     {
     }
 };
@@ -726,6 +745,7 @@ enum class DeclKind
     Field,
     Method,
     Constructor,
+    GlobalVar, // Module-level variable declaration
 };
 
 /// Visibility
@@ -803,6 +823,20 @@ struct ConstructorDecl : Decl
     Visibility visibility = Visibility::Public;
 
     ConstructorDecl(SourceLoc l) : Decl(DeclKind::Constructor, l) {}
+};
+
+/// Global variable declaration (module-level var)
+struct GlobalVarDecl : Decl
+{
+    std::string name;
+    TypePtr type;       // nullptr = inferred
+    ExprPtr initializer; // nullptr = default
+    bool isFinal = false;
+
+    GlobalVarDecl(SourceLoc l, std::string n)
+        : Decl(DeclKind::GlobalVar, l), name(std::move(n))
+    {
+    }
 };
 
 /// Value type declaration

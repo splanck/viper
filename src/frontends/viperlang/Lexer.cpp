@@ -42,6 +42,12 @@ const char *tokenKindToString(TokenKind kind)
             return "string";
         case TokenKind::Identifier:
             return "identifier";
+        case TokenKind::StringStart:
+            return "string_start";
+        case TokenKind::StringMid:
+            return "string_mid";
+        case TokenKind::StringEnd:
+            return "string_end";
 
         // Keywords
         case TokenKind::KwValue:
@@ -641,6 +647,19 @@ Token Lexer::lexString()
             return tok;
         }
 
+        // Check for string interpolation: ${
+        if (c == '$' && peekChar(1) == '{')
+        {
+            // This is an interpolated string - change token kind to StringStart
+            tok.kind = TokenKind::StringStart;
+            tok.text.push_back(getChar()); // consume '$'
+            tok.text.push_back(getChar()); // consume '{'
+            // Enter interpolation mode
+            interpolationDepth_++;
+            braceDepth_.push_back(0);
+            return tok;
+        }
+
         // Check for newline (error in single-quoted string)
         if (c == '\n' || c == '\r')
         {
@@ -677,6 +696,75 @@ Token Lexer::lexString()
     }
 
     reportError(tok.loc, "unterminated string literal");
+    tok.kind = TokenKind::Error;
+    return tok;
+}
+
+Token Lexer::lexInterpolatedStringContinuation()
+{
+    Token tok;
+    tok.loc = currentLoc();
+
+    // We just consumed '}' - now continue reading the string
+    while (!eof())
+    {
+        char c = peekChar();
+
+        // Check for closing quote
+        if (c == '"')
+        {
+            tok.text.push_back(getChar());
+            tok.kind = TokenKind::StringEnd;
+            return tok;
+        }
+
+        // Check for another interpolation: ${
+        if (c == '$' && peekChar(1) == '{')
+        {
+            tok.kind = TokenKind::StringMid;
+            tok.text.push_back(getChar()); // consume '$'
+            tok.text.push_back(getChar()); // consume '{'
+            // Stay in interpolation mode but reset brace depth for this level
+            braceDepth_.back() = 0;
+            return tok;
+        }
+
+        // Check for newline (error in string)
+        if (c == '\n' || c == '\r')
+        {
+            reportError(tok.loc, "newline in string literal");
+            tok.kind = TokenKind::Error;
+            return tok;
+        }
+
+        // Check for escape sequence
+        if (c == '\\')
+        {
+            tok.text.push_back(getChar()); // consume '\'
+            if (eof())
+            {
+                reportError(tok.loc, "unterminated escape sequence");
+                tok.kind = TokenKind::Error;
+                return tok;
+            }
+            char escaped = peekChar();
+            tok.text.push_back(getChar());
+            if (auto esc = processEscape())
+            {
+                tok.stringValue.push_back(*esc);
+            }
+            else
+            {
+                reportError(tok.loc, std::string("invalid escape sequence: \\") + escaped);
+            }
+            continue;
+        }
+
+        tok.text.push_back(getChar());
+        tok.stringValue.push_back(c);
+    }
+
+    reportError(tok.loc, "unterminated interpolated string");
     tok.kind = TokenKind::Error;
     return tok;
 }
@@ -1026,12 +1114,33 @@ Token Lexer::next()
             tok.kind = TokenKind::LBrace;
             tok.text = "{";
             getChar();
+            // Track brace depth in interpolation mode
+            if (interpolationDepth_ > 0 && !braceDepth_.empty())
+            {
+                braceDepth_.back()++;
+            }
             break;
 
         case '}':
+            getChar();
+            // Check if this closes an interpolation
+            if (interpolationDepth_ > 0 && !braceDepth_.empty())
+            {
+                if (braceDepth_.back() == 0)
+                {
+                    // This closes the interpolation - continue lexing the string
+                    braceDepth_.pop_back();
+                    interpolationDepth_--;
+                    return lexInterpolatedStringContinuation();
+                }
+                else
+                {
+                    // Just a nested brace
+                    braceDepth_.back()--;
+                }
+            }
             tok.kind = TokenKind::RBrace;
             tok.text = "}";
-            getChar();
             break;
 
         default:

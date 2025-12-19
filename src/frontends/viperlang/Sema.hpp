@@ -108,6 +108,7 @@ class Sema
     //=========================================================================
 
     void analyzeImport(ImportDecl &decl);
+    void analyzeGlobalVarDecl(GlobalVarDecl &decl);
     void analyzeValueDecl(ValueDecl &decl);
     void analyzeEntityDecl(EntityDecl &decl);
     void analyzeInterfaceDecl(InterfaceDecl &decl);

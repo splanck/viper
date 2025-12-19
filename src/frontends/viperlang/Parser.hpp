@@ -102,6 +102,7 @@ class Parser
 
     ExprPtr parseListLiteral();
     ExprPtr parseMapOrSetLiteral();
+    ExprPtr parseInterpolatedString();
     std::vector<CallArg> parseCallArgs();
 
     //=========================================================================
@@ -133,6 +134,7 @@ class Parser
     DeclPtr parseValueDecl();
     DeclPtr parseEntityDecl();
     DeclPtr parseInterfaceDecl();
+    DeclPtr parseGlobalVarDecl();
     ImportDecl parseImportDecl();
 
     std::vector<Param> parseParameters();

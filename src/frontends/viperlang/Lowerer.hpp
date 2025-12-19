@@ -30,6 +30,7 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace il::frontends::viperlang
@@ -55,12 +56,20 @@ struct ValueTypeInfo
     std::vector<MethodDecl *> methods;
     size_t totalSize;
 
+    // O(1) lookup maps (built during construction)
+    std::unordered_map<std::string, size_t> fieldIndex;
+    std::unordered_map<std::string, MethodDecl *> methodMap;
+
     const FieldLayout *findField(const std::string &n) const
     {
-        for (const auto &f : fields)
-            if (f.name == n)
-                return &f;
-        return nullptr;
+        auto it = fieldIndex.find(n);
+        return it != fieldIndex.end() ? &fields[it->second] : nullptr;
+    }
+
+    MethodDecl *findMethod(const std::string &n) const
+    {
+        auto it = methodMap.find(n);
+        return it != methodMap.end() ? it->second : nullptr;
     }
 };
 
@@ -68,17 +77,42 @@ struct ValueTypeInfo
 struct EntityTypeInfo
 {
     std::string name;
+    std::string baseClass; // Parent class name for inheritance
     std::vector<FieldLayout> fields;
     std::vector<MethodDecl *> methods;
     size_t totalSize; // Size of object data (excluding vtable pointer)
     int classId;      // Runtime class ID for object allocation
 
+    // O(1) lookup maps (built during construction)
+    std::unordered_map<std::string, size_t> fieldIndex;
+    std::unordered_map<std::string, MethodDecl *> methodMap;
+
     const FieldLayout *findField(const std::string &n) const
     {
-        for (const auto &f : fields)
-            if (f.name == n)
-                return &f;
-        return nullptr;
+        auto it = fieldIndex.find(n);
+        return it != fieldIndex.end() ? &fields[it->second] : nullptr;
+    }
+
+    MethodDecl *findMethod(const std::string &n) const
+    {
+        auto it = methodMap.find(n);
+        return it != methodMap.end() ? it->second : nullptr;
+    }
+};
+
+/// @brief Interface type information.
+struct InterfaceTypeInfo
+{
+    std::string name;
+    std::vector<MethodDecl *> methods;
+
+    // O(1) lookup map
+    std::unordered_map<std::string, MethodDecl *> methodMap;
+
+    MethodDecl *findMethod(const std::string &n) const
+    {
+        auto it = methodMap.find(n);
+        return it != methodMap.end() ? it->second : nullptr;
     }
 };
 
@@ -114,8 +148,10 @@ class Lowerer
     std::map<std::string, Value> locals_;
     std::map<std::string, Value> slots_; // Slot pointers for mutable variables
     std::set<std::string> usedExterns_;
+    std::set<std::string> definedFunctions_; // Functions defined in this module
     std::map<std::string, ValueTypeInfo> valueTypes_;
     std::map<std::string, EntityTypeInfo> entityTypes_;
+    std::map<std::string, InterfaceTypeInfo> interfaceTypes_;
     const ValueTypeInfo *currentValueType_{nullptr};
     const EntityTypeInfo *currentEntityType_{nullptr};
     int nextClassId_{1}; // Class ID counter for entity types
@@ -145,6 +181,7 @@ class Lowerer
     void lowerFunctionDecl(FunctionDecl &decl);
     void lowerValueDecl(ValueDecl &decl);
     void lowerEntityDecl(EntityDecl &decl);
+    void lowerInterfaceDecl(InterfaceDecl &decl);
     void lowerMethodDecl(MethodDecl &decl, const std::string &typeName, bool isEntity = false);
 
     //=========================================================================
@@ -163,6 +200,7 @@ class Lowerer
     void lowerBreakStmt(BreakStmt *stmt);
     void lowerContinueStmt(ContinueStmt *stmt);
     void lowerGuardStmt(GuardStmt *stmt);
+    void lowerMatchStmt(MatchStmt *stmt);
 
     //=========================================================================
     // Expression Lowering
@@ -183,6 +221,8 @@ class Lowerer
     LowerResult lowerCoalesce(CoalesceExpr *expr);
     LowerResult lowerListLiteral(ListLiteralExpr *expr);
     LowerResult lowerIndex(IndexExpr *expr);
+    LowerResult lowerTry(TryExpr *expr);
+    LowerResult lowerLambda(LambdaExpr *expr);
 
     //=========================================================================
     // Instruction Emission Helpers
@@ -199,11 +239,51 @@ class Lowerer
     Value emitConstStr(const std::string &globalName);
     unsigned nextTempId();
 
+    /// @brief Emit a GEP (get element pointer) instruction.
+    Value emitGEP(Value ptr, int64_t offset);
+
+    /// @brief Emit a Load instruction.
+    Value emitLoad(Value ptr, Type type);
+
+    /// @brief Emit a Store instruction.
+    void emitStore(Value ptr, Value val, Type type);
+
+    /// @brief Emit a field load from a struct pointer.
+    Value emitFieldLoad(const FieldLayout *field, Value selfPtr);
+
+    /// @brief Emit a field store to a struct pointer.
+    void emitFieldStore(const FieldLayout *field, Value selfPtr, Value val);
+
+    /// @brief Lower a method call given the method decl and base expression result.
+    LowerResult lowerMethodCall(MethodDecl *method, const std::string &typeName,
+                                Value selfValue, CallExpr *expr);
+
+    //=========================================================================
+    // Boxing/Unboxing Helpers
+    //=========================================================================
+
+    /// @brief Box a primitive value for collection storage.
+    /// @param val The value to box.
+    /// @param type The IL type of the value.
+    /// @return Pointer to the boxed value.
+    Value emitBox(Value val, Type type);
+
+    /// @brief Unbox a value to a primitive type.
+    /// @param boxed The boxed pointer value.
+    /// @param expectedType The expected IL type.
+    /// @return The unboxed value with its type.
+    LowerResult emitUnbox(Value boxed, Type expectedType);
+
     //=========================================================================
     // Type Mapping
     //=========================================================================
 
     Type mapType(TypeRef type);
+
+    /// @brief Get the size in bytes for an IL type.
+    /// @param type The IL type.
+    /// @return Size in bytes (8 for 64-bit types, 4 for i32, 2 for i16, 1 for i1).
+    static size_t getILTypeSize(Type type);
 
     //=========================================================================
     // Local Variable Management
@@ -224,6 +304,9 @@ class Lowerer
 
     std::string mangleFunctionName(const std::string &name);
     std::string getStringGlobal(const std::string &value);
+
+    /// @brief Case-insensitive string comparison for method names.
+    static bool equalsIgnoreCase(const std::string &a, const std::string &b);
 };
 
 } // namespace il::frontends::viperlang

@@ -116,6 +116,32 @@ bool Sema::analyze(ModuleDecl &module)
             sym.decl = iface;
             defineSymbol(iface->name, sym);
         }
+        else if (auto *gvar = dynamic_cast<GlobalVarDecl *>(decl.get()))
+        {
+            // Determine the variable type
+            TypeRef varType;
+            if (gvar->type)
+            {
+                varType = resolveTypeNode(gvar->type.get());
+            }
+            else if (gvar->initializer)
+            {
+                // Type inference from initializer - defer to second pass
+                varType = types::unknown();
+            }
+            else
+            {
+                varType = types::unknown();
+            }
+
+            Symbol sym;
+            sym.kind = Symbol::Kind::Variable;
+            sym.name = gvar->name;
+            sym.type = varType;
+            sym.isFinal = gvar->isFinal;
+            sym.decl = gvar;
+            defineSymbol(gvar->name, sym);
+        }
     }
 
     // Second pass: analyze declarations
@@ -136,6 +162,10 @@ bool Sema::analyze(ModuleDecl &module)
         else if (auto *iface = dynamic_cast<InterfaceDecl *>(decl.get()))
         {
             analyzeInterfaceDecl(*iface);
+        }
+        else if (auto *gvar = dynamic_cast<GlobalVarDecl *>(decl.get()))
+        {
+            analyzeGlobalVarDecl(*gvar);
         }
     }
 
@@ -160,6 +190,26 @@ TypeRef Sema::resolveType(const TypeNode *node) const
 void Sema::analyzeImport(ImportDecl & /*decl*/)
 {
     // TODO: Implement import resolution
+}
+
+void Sema::analyzeGlobalVarDecl(GlobalVarDecl &decl)
+{
+    // Analyze initializer if present
+    if (decl.initializer)
+    {
+        TypeRef initType = analyzeExpr(decl.initializer.get());
+
+        // If type was inferred, update the symbol
+        Symbol *sym = lookupSymbol(decl.name);
+        if (sym && sym->type->isUnknown())
+        {
+            sym->type = initType;
+        }
+        else if (sym && !sym->type->isAssignableFrom(*initType))
+        {
+            errorTypeMismatch(decl.initializer->loc, sym->type, initType);
+        }
+    }
 }
 
 void Sema::analyzeValueDecl(ValueDecl &decl)
@@ -1020,9 +1070,11 @@ TypeRef Sema::analyzeNew(NewExpr *expr)
 {
     TypeRef type = resolveTypeNode(expr->type.get());
 
-    if (type->kind != TypeKindSem::Entity)
+    // Allow new for entity types and collection types (List, Set, Map)
+    if (type->kind != TypeKindSem::Entity && type->kind != TypeKindSem::List &&
+        type->kind != TypeKindSem::Set && type->kind != TypeKindSem::Map)
     {
-        error(expr->loc, "'new' can only be used with entity types");
+        error(expr->loc, "'new' can only be used with entity or collection types");
     }
 
     // Analyze constructor arguments

@@ -14,21 +14,21 @@ namespace viperlang
 
 void printVersion()
 {
-    std::cout << "viperlang v" << VIPER_VERSION_STR << "\n";
+    std::cout << "viper v" << VIPER_VERSION_STR << "\n";
     std::cout << "ViperLang Compiler\n";
     std::cout << "IL version: " << VIPER_IL_VERSION_STR << "\n";
 }
 
 void printUsage()
 {
-    std::cerr << "viperlang v" << VIPER_VERSION_STR << " - ViperLang Compiler\n"
+    std::cerr << "viper v" << VIPER_VERSION_STR << " - ViperLang Compiler\n"
               << "\n"
-              << "Usage: viperlang [options] <file.viper>\n"
+              << "Usage: viper [options] <file.viper>\n"
               << "\n"
               << "Usage Modes:\n"
-              << "  viperlang script.viper              Run program (default)\n"
-              << "  viperlang script.viper --emit-il    Emit IL to stdout\n"
-              << "  viperlang script.viper -o file.il   Emit IL to file\n"
+              << "  viper script.viper              Run program (default)\n"
+              << "  viper script.viper --emit-il    Emit IL to stdout\n"
+              << "  viper script.viper -o file.il   Emit IL to file\n"
               << "\n"
               << "Options:\n"
               << "  -o, --output FILE              Output file for IL\n"
@@ -38,8 +38,8 @@ void printUsage()
               << "  --version                      Show version information\n"
               << "\n"
               << "Examples:\n"
-              << "  viperlang hello.viper              Run program\n"
-              << "  viperlang hello.viper --emit-il    Show generated IL\n"
+              << "  viper hello.viper              Run program\n"
+              << "  viper hello.viper --emit-il    Show generated IL\n"
               << "\n";
 }
 

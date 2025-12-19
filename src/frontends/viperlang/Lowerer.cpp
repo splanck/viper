@@ -11,10 +11,14 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/viperlang/Lowerer.hpp"
+#include "frontends/viperlang/RuntimeNames.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
+#include <cctype>
 
 namespace il::frontends::viperlang
 {
+
+using namespace runtime;
 
 Lowerer::Lowerer(Sema &sema) : sema_(sema) {}
 
@@ -25,6 +29,7 @@ Lowerer::Module Lowerer::lower(ModuleDecl &module)
     builder_ = std::make_unique<il::build::IRBuilder>(*module_);
     locals_.clear();
     usedExterns_.clear();
+    definedFunctions_.clear();
 
     // Setup string table emitter
     stringTable_.setEmitter([this](const std::string &label, const std::string &content)
@@ -39,6 +44,10 @@ Lowerer::Module Lowerer::lower(ModuleDecl &module)
     // Add extern declarations for used runtime functions
     for (const auto &externName : usedExterns_)
     {
+        // Skip functions defined in this module
+        if (definedFunctions_.count(externName) > 0)
+            continue;
+
         // Skip methods defined in this module (value type and entity type methods)
         bool isLocalMethod = false;
         auto dotPos = externName.find('.');
@@ -121,8 +130,10 @@ void Lowerer::lowerDecl(Decl *decl)
         case DeclKind::Entity:
             lowerEntityDecl(*static_cast<EntityDecl *>(decl));
             break;
+        case DeclKind::Interface:
+            lowerInterfaceDecl(*static_cast<InterfaceDecl *>(decl));
+            break;
         default:
-            // Interface handled later
             break;
     }
 }
@@ -136,6 +147,7 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
 
     // Build parameter list
     std::vector<il::core::Param> params;
+    params.reserve(decl.params.size());
     for (const auto &param : decl.params)
     {
         TypeRef paramType = param.type ? sema_.resolveType(param.type.get()) : types::unknown();
@@ -144,6 +156,9 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
 
     // Mangle function name
     std::string mangledName = mangleFunctionName(decl.name);
+
+    // Track this function as defined in this module
+    definedFunctions_.insert(mangledName);
 
     // Create function
     currentFunc_ = &builder_->startFunction(mangledName, ilReturnType, params);
@@ -156,11 +171,18 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
     size_t entryIdx = currentFunc_->blocks.size() - 1;
     setBlock(entryIdx);
 
-    // Define parameters using the actual block param IDs (assigned by createBlock)
+    // Define parameters using slot-based storage for cross-block SSA correctness
+    // This ensures parameters are accessible in all basic blocks (if, while, guard, etc.)
     const auto &blockParams = currentFunc_->blocks[entryIdx].params;
     for (size_t i = 0; i < decl.params.size() && i < blockParams.size(); ++i)
     {
-        defineLocal(decl.params[i].name, Value::temp(blockParams[i].id));
+        TypeRef paramType =
+            decl.params[i].type ? sema_.resolveType(decl.params[i].type.get()) : types::unknown();
+        Type ilParamType = mapType(paramType);
+
+        // Create slot and store the parameter value
+        createSlot(decl.params[i].name, ilParamType);
+        storeToSlot(decl.params[i].name, Value::temp(blockParams[i].id), ilParamType);
     }
 
     // Lower function body
@@ -204,45 +226,27 @@ void Lowerer::lowerValueDecl(ValueDecl &decl)
             layout.name = field->name;
             layout.type = fieldType;
             layout.offset = info.totalSize;
+            layout.size = getILTypeSize(mapType(fieldType));
 
-            // Determine field size based on type
-            Type ilType = mapType(fieldType);
-            switch (ilType.kind)
-            {
-                case Type::Kind::I64:
-                case Type::Kind::F64:
-                case Type::Kind::Ptr:
-                case Type::Kind::Str:
-                    layout.size = 8;
-                    break;
-                case Type::Kind::I32:
-                    layout.size = 4;
-                    break;
-                case Type::Kind::I16:
-                    layout.size = 2;
-                    break;
-                case Type::Kind::I1:
-                    layout.size = 1;
-                    break;
-                default:
-                    layout.size = 8;
-                    break;
-            }
-
+            // Add to lookup map before pushing to vector
+            info.fieldIndex[field->name] = info.fields.size();
             info.fields.push_back(layout);
             info.totalSize += layout.size;
         }
         else if (member->kind == DeclKind::Method)
         {
-            info.methods.push_back(static_cast<MethodDecl *>(member.get()));
+            auto *method = static_cast<MethodDecl *>(member.get());
+            info.methodMap[method->name] = method;
+            info.methods.push_back(method);
         }
     }
 
-    // Store the value type info
-    valueTypes_[decl.name] = info;
+    // Store the value type info and get reference for method lowering
+    valueTypes_[decl.name] = std::move(info);
+    const ValueTypeInfo &storedInfo = valueTypes_[decl.name];
 
     // Lower all methods
-    for (auto *method : info.methods)
+    for (auto *method : storedInfo.methods)
     {
         lowerMethodDecl(*method, decl.name, false);
     }
@@ -251,12 +255,10 @@ void Lowerer::lowerValueDecl(ValueDecl &decl)
 void Lowerer::lowerEntityDecl(EntityDecl &decl)
 {
     // Compute field layout (entity fields start after object header)
-    // Object header is typically 8 bytes for class ID / refcount
-    constexpr size_t headerSize = 8;
-
     EntityTypeInfo info;
     info.name = decl.name;
-    info.totalSize = headerSize;
+    info.baseClass = decl.baseClass; // Store parent class for super calls
+    info.totalSize = kObjectHeaderSize;
     info.classId = nextClassId_++;
 
     for (auto &member : decl.members)
@@ -271,48 +273,52 @@ void Lowerer::lowerEntityDecl(EntityDecl &decl)
             layout.name = field->name;
             layout.type = fieldType;
             layout.offset = info.totalSize;
+            layout.size = getILTypeSize(mapType(fieldType));
 
-            // Determine field size based on type
-            Type ilType = mapType(fieldType);
-            switch (ilType.kind)
-            {
-                case Type::Kind::I64:
-                case Type::Kind::F64:
-                case Type::Kind::Ptr:
-                case Type::Kind::Str:
-                    layout.size = 8;
-                    break;
-                case Type::Kind::I32:
-                    layout.size = 4;
-                    break;
-                case Type::Kind::I16:
-                    layout.size = 2;
-                    break;
-                case Type::Kind::I1:
-                    layout.size = 1;
-                    break;
-                default:
-                    layout.size = 8;
-                    break;
-            }
-
+            // Add to lookup map before pushing to vector
+            info.fieldIndex[field->name] = info.fields.size();
             info.fields.push_back(layout);
             info.totalSize += layout.size;
         }
         else if (member->kind == DeclKind::Method)
         {
-            info.methods.push_back(static_cast<MethodDecl *>(member.get()));
+            auto *method = static_cast<MethodDecl *>(member.get());
+            info.methodMap[method->name] = method;
+            info.methods.push_back(method);
         }
     }
 
-    // Store the entity type info
-    entityTypes_[decl.name] = info;
+    // Store the entity type info and get reference for method lowering
+    entityTypes_[decl.name] = std::move(info);
+    const EntityTypeInfo &storedInfo = entityTypes_[decl.name];
 
     // Lower all methods
-    for (auto *method : info.methods)
+    for (auto *method : storedInfo.methods)
     {
         lowerMethodDecl(*method, decl.name, true);
     }
+}
+
+void Lowerer::lowerInterfaceDecl(InterfaceDecl &decl)
+{
+    // Store interface information for vtable dispatch
+    InterfaceTypeInfo info;
+    info.name = decl.name;
+
+    for (auto &member : decl.members)
+    {
+        if (member->kind == DeclKind::Method)
+        {
+            auto *method = static_cast<MethodDecl *>(member.get());
+            info.methodMap[method->name] = method;
+            info.methods.push_back(method);
+        }
+    }
+
+    interfaceTypes_[decl.name] = std::move(info);
+
+    // Note: Interface methods are not lowered directly since they're abstract.
+    // The implementing entity's methods are called at runtime.
 }
 
 void Lowerer::lowerMethodDecl(MethodDecl &decl, const std::string &typeName, bool isEntity)
@@ -342,6 +348,7 @@ void Lowerer::lowerMethodDecl(MethodDecl &decl, const std::string &typeName, boo
 
     // Build parameter list: self (ptr) + declared params
     std::vector<il::core::Param> params;
+    params.reserve(decl.params.size() + 1);
     params.push_back({"self", Type(Type::Kind::Ptr)});
 
     for (const auto &param : decl.params)
@@ -364,21 +371,27 @@ void Lowerer::lowerMethodDecl(MethodDecl &decl, const std::string &typeName, boo
     size_t entryIdx = currentFunc_->blocks.size() - 1;
     setBlock(entryIdx);
 
-    // Define locals using the actual block param IDs (assigned by createBlock)
+    // Define parameters using slot-based storage for cross-block SSA correctness
     const auto &blockParams = currentFunc_->blocks[entryIdx].params;
     if (!blockParams.empty())
     {
-        // 'self' is first block param
-        defineLocal("self", Value::temp(blockParams[0].id));
+        // 'self' is first block param - store in slot
+        createSlot("self", Type(Type::Kind::Ptr));
+        storeToSlot("self", Value::temp(blockParams[0].id), Type(Type::Kind::Ptr));
     }
 
-    // Define other parameters using their block param IDs
+    // Define other parameters using slot-based storage
     for (size_t i = 0; i < decl.params.size(); ++i)
     {
         // Block param i+1 corresponds to method param i (after self)
         if (i + 1 < blockParams.size())
         {
-            defineLocal(decl.params[i].name, Value::temp(blockParams[i + 1].id));
+            TypeRef paramType =
+                decl.params[i].type ? sema_.resolveType(decl.params[i].type.get()) : types::unknown();
+            Type ilParamType = mapType(paramType);
+
+            createSlot(decl.params[i].name, ilParamType);
+            storeToSlot(decl.params[i].name, Value::temp(blockParams[i + 1].id), ilParamType);
         }
     }
 
@@ -451,7 +464,7 @@ void Lowerer::lowerStmt(Stmt *stmt)
             lowerGuardStmt(static_cast<GuardStmt *>(stmt));
             break;
         case StmtKind::Match:
-            // TODO: Lower match statements
+            lowerMatchStmt(static_cast<MatchStmt *>(stmt));
             break;
     }
 }
@@ -768,6 +781,152 @@ void Lowerer::lowerGuardStmt(GuardStmt *stmt)
     setBlock(contIdx);
 }
 
+void Lowerer::lowerMatchStmt(MatchStmt *stmt)
+{
+    if (stmt->arms.empty())
+        return;
+
+    // Lower the scrutinee once and store in a slot for reuse
+    auto scrutinee = lowerExpr(stmt->scrutinee.get());
+    std::string scrutineeSlot = "__match_scrutinee";
+    createSlot(scrutineeSlot, scrutinee.type);
+    storeToSlot(scrutineeSlot, scrutinee.value, scrutinee.type);
+
+    // Create end block for the match
+    size_t endIdx = createBlock("match_end");
+
+    // Create blocks for each arm body and the next arm's test
+    std::vector<size_t> armBlocks;
+    std::vector<size_t> nextTestBlocks;
+    for (size_t i = 0; i < stmt->arms.size(); ++i)
+    {
+        armBlocks.push_back(createBlock("match_arm_" + std::to_string(i)));
+        if (i + 1 < stmt->arms.size())
+        {
+            nextTestBlocks.push_back(createBlock("match_test_" + std::to_string(i + 1)));
+        }
+        else
+        {
+            nextTestBlocks.push_back(endIdx); // Last arm falls through to end
+        }
+    }
+
+    // Lower each arm
+    for (size_t i = 0; i < stmt->arms.size(); ++i)
+    {
+        const auto &arm = stmt->arms[i];
+
+        // In the current block, test the pattern
+        Value scrutineeVal = loadFromSlot(scrutineeSlot, scrutinee.type);
+
+        switch (arm.pattern.kind)
+        {
+            case MatchArm::Pattern::Kind::Wildcard:
+                // Wildcard always matches - just jump to arm body
+                emitBr(armBlocks[i]);
+                break;
+
+            case MatchArm::Pattern::Kind::Literal:
+            {
+                // Compare scrutinee with literal
+                auto litResult = lowerExpr(arm.pattern.literal.get());
+                Value cond;
+                if (scrutinee.type.kind == Type::Kind::Str)
+                {
+                    // String comparison
+                    cond = emitCallRet(Type(Type::Kind::I1), kStringEquals,
+                                       {scrutineeVal, litResult.value});
+                }
+                else
+                {
+                    // Integer comparison
+                    cond = emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1),
+                                      scrutineeVal, litResult.value);
+                }
+
+                // If guard is present, check it too
+                if (arm.pattern.guard)
+                {
+                    size_t guardBlock = createBlock("match_guard_" + std::to_string(i));
+                    emitCBr(cond, guardBlock, nextTestBlocks[i]);
+                    setBlock(guardBlock);
+
+                    auto guardResult = lowerExpr(arm.pattern.guard.get());
+                    emitCBr(guardResult.value, armBlocks[i], nextTestBlocks[i]);
+                }
+                else
+                {
+                    emitCBr(cond, armBlocks[i], nextTestBlocks[i]);
+                }
+                break;
+            }
+
+            case MatchArm::Pattern::Kind::Binding:
+            {
+                // Binding pattern - bind the scrutinee to a local variable
+                // and execute the arm (always matches if reached)
+                defineLocal(arm.pattern.binding, scrutineeVal);
+
+                // If guard is present, check it
+                if (arm.pattern.guard)
+                {
+                    auto guardResult = lowerExpr(arm.pattern.guard.get());
+                    emitCBr(guardResult.value, armBlocks[i], nextTestBlocks[i]);
+                }
+                else
+                {
+                    emitBr(armBlocks[i]);
+                }
+                break;
+            }
+
+            case MatchArm::Pattern::Kind::Constructor:
+            case MatchArm::Pattern::Kind::Tuple:
+                // TODO: Implement constructor and tuple patterns
+                emitBr(nextTestBlocks[i]);
+                break;
+        }
+
+        // Lower the arm body (arm.body is an expression)
+        setBlock(armBlocks[i]);
+        if (arm.body)
+        {
+            // Check if it's a block expression
+            if (auto *blockExpr = dynamic_cast<BlockExpr *>(arm.body.get()))
+            {
+                // Lower each statement in the block
+                for (auto &stmt : blockExpr->statements)
+                {
+                    lowerStmt(stmt.get());
+                }
+            }
+            else
+            {
+                // It's a regular expression - just evaluate it
+                lowerExpr(arm.body.get());
+            }
+        }
+
+        // Jump to end after arm body (if not already terminated)
+        if (!isTerminated())
+        {
+            emitBr(endIdx);
+        }
+
+        // Set up next test block for pattern matching
+        if (i + 1 < stmt->arms.size())
+        {
+            setBlock(nextTestBlocks[i]);
+        }
+    }
+
+    // Remove the scrutinee slot
+    removeSlot(scrutineeSlot);
+
+    // Continue from end block
+    setBlock(endIdx);
+}
+
 //=============================================================================
 // Expression Lowering
 //=============================================================================
@@ -791,6 +950,25 @@ LowerResult Lowerer::lowerExpr(Expr *expr)
             return lowerNullLiteral(static_cast<NullLiteralExpr *>(expr));
         case ExprKind::Ident:
             return lowerIdent(static_cast<IdentExpr *>(expr));
+        case ExprKind::SelfExpr:
+        {
+            Value *selfPtr = lookupLocal("self");
+            if (selfPtr)
+            {
+                return {*selfPtr, Type(Type::Kind::Ptr)};
+            }
+            return {Value::constInt(0), Type(Type::Kind::Ptr)};
+        }
+        case ExprKind::SuperExpr:
+        {
+            // Super returns self pointer but is used for dispatching to parent methods
+            Value *selfPtr = lookupLocal("self");
+            if (selfPtr)
+            {
+                return {*selfPtr, Type(Type::Kind::Ptr)};
+            }
+            return {Value::constInt(0), Type(Type::Kind::Ptr)};
+        }
         case ExprKind::Binary:
             return lowerBinary(static_cast<BinaryExpr *>(expr));
         case ExprKind::Unary:
@@ -807,6 +985,10 @@ LowerResult Lowerer::lowerExpr(Expr *expr)
             return lowerListLiteral(static_cast<ListLiteralExpr *>(expr));
         case ExprKind::Index:
             return lowerIndex(static_cast<IndexExpr *>(expr));
+        case ExprKind::Try:
+            return lowerTry(static_cast<TryExpr *>(expr));
+        case ExprKind::Lambda:
+            return lowerLambda(static_cast<LambdaExpr *>(expr));
         default:
             return {Value::constInt(0), Type(Type::Kind::I64)};
     }
@@ -858,38 +1040,17 @@ LowerResult Lowerer::lowerIdent(IdentExpr *expr)
         return {*local, mapType(type)};
     }
 
-    // Check for implicit field access (self.field) inside a method
+    // Check for implicit field access (self.field) inside a value type method
     if (currentValueType_)
     {
         const FieldLayout *field = currentValueType_->findField(expr->name);
         if (field)
         {
-            // Get self pointer
             Value *selfPtr = lookupLocal("self");
             if (selfPtr)
             {
-                // Emit GEP to get field address
-                unsigned gepId = nextTempId();
-                il::core::Instr gepInstr;
-                gepInstr.result = gepId;
-                gepInstr.op = Opcode::GEP;
-                gepInstr.type = Type(Type::Kind::Ptr);
-                gepInstr.operands = {*selfPtr,
-                                     Value::constInt(static_cast<int64_t>(field->offset))};
-                blockMgr_.currentBlock()->instructions.push_back(gepInstr);
-                Value fieldAddr = Value::temp(gepId);
-
-                // Emit Load to get field value
-                Type fieldType = mapType(field->type);
-                unsigned loadId = nextTempId();
-                il::core::Instr loadInstr;
-                loadInstr.result = loadId;
-                loadInstr.op = Opcode::Load;
-                loadInstr.type = fieldType;
-                loadInstr.operands = {fieldAddr};
-                blockMgr_.currentBlock()->instructions.push_back(loadInstr);
-
-                return {Value::temp(loadId), fieldType};
+                Value loaded = emitFieldLoad(field, *selfPtr);
+                return {loaded, mapType(field->type)};
             }
         }
     }
@@ -900,32 +1061,11 @@ LowerResult Lowerer::lowerIdent(IdentExpr *expr)
         const FieldLayout *field = currentEntityType_->findField(expr->name);
         if (field)
         {
-            // Get self pointer
             Value *selfPtr = lookupLocal("self");
             if (selfPtr)
             {
-                // Emit GEP to get field address
-                unsigned gepId = nextTempId();
-                il::core::Instr gepInstr;
-                gepInstr.result = gepId;
-                gepInstr.op = Opcode::GEP;
-                gepInstr.type = Type(Type::Kind::Ptr);
-                gepInstr.operands = {*selfPtr,
-                                     Value::constInt(static_cast<int64_t>(field->offset))};
-                blockMgr_.currentBlock()->instructions.push_back(gepInstr);
-                Value fieldAddr = Value::temp(gepId);
-
-                // Emit Load to get field value
-                Type fieldType = mapType(field->type);
-                unsigned loadId = nextTempId();
-                il::core::Instr loadInstr;
-                loadInstr.result = loadId;
-                loadInstr.op = Opcode::Load;
-                loadInstr.type = fieldType;
-                loadInstr.operands = {fieldAddr};
-                blockMgr_.currentBlock()->instructions.push_back(loadInstr);
-
-                return {Value::temp(loadId), fieldType};
+                Value loaded = emitFieldLoad(field, *selfPtr);
+                return {loaded, mapType(field->type)};
             }
         }
     }
@@ -963,23 +1103,7 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
                     Value *selfPtr = lookupLocal("self");
                     if (selfPtr)
                     {
-                        // Emit GEP to get field address
-                        unsigned gepId = nextTempId();
-                        il::core::Instr gepInstr;
-                        gepInstr.result = gepId;
-                        gepInstr.op = Opcode::GEP;
-                        gepInstr.type = Type(Type::Kind::Ptr);
-                        gepInstr.operands = {*selfPtr,
-                                             Value::constInt(static_cast<int64_t>(field->offset))};
-                        blockMgr_.currentBlock()->instructions.push_back(gepInstr);
-                        Value fieldAddr = Value::temp(gepId);
-
-                        // Emit Store to set field value
-                        il::core::Instr storeInstr;
-                        storeInstr.op = Opcode::Store;
-                        storeInstr.type = right.type;
-                        storeInstr.operands = {fieldAddr, right.value};
-                        blockMgr_.currentBlock()->instructions.push_back(storeInstr);
+                        emitFieldStore(field, *selfPtr, right.value);
                         return right;
                     }
                 }
@@ -994,24 +1118,7 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
                     Value *selfPtr = lookupLocal("self");
                     if (selfPtr)
                     {
-                        // Field layout already includes header offset
-                        // Emit GEP to get field address
-                        unsigned gepId = nextTempId();
-                        il::core::Instr gepInstr;
-                        gepInstr.result = gepId;
-                        gepInstr.op = Opcode::GEP;
-                        gepInstr.type = Type(Type::Kind::Ptr);
-                        gepInstr.operands = {*selfPtr,
-                                             Value::constInt(static_cast<int64_t>(field->offset))};
-                        blockMgr_.currentBlock()->instructions.push_back(gepInstr);
-                        Value fieldAddr = Value::temp(gepId);
-
-                        // Emit Store to set field value
-                        il::core::Instr storeInstr;
-                        storeInstr.op = Opcode::Store;
-                        storeInstr.type = right.type;
-                        storeInstr.operands = {fieldAddr, right.value};
-                        blockMgr_.currentBlock()->instructions.push_back(storeInstr);
+                        emitFieldStore(field, *selfPtr, right.value);
                         return right;
                     }
                 }
@@ -1040,9 +1147,29 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
         case BinaryOp::Add:
             if (leftType && leftType->kind == TypeKindSem::String)
             {
-                // String concatenation
+                // String concatenation - convert right operand to string if needed
+                TypeRef rightType = sema_.typeOf(expr->right.get());
+                Value rightStr = right.value;
+
+                if (rightType && rightType->kind == TypeKindSem::Integer)
+                {
+                    // Convert integer to string
+                    rightStr = emitCallRet(Type(Type::Kind::Str), runtime::kStringFromInt, {right.value});
+                }
+                else if (rightType && rightType->kind == TypeKindSem::Number)
+                {
+                    // Convert number to string
+                    rightStr = emitCallRet(Type(Type::Kind::Str), runtime::kStringFromNum, {right.value});
+                }
+                else if (rightType && rightType->kind == TypeKindSem::Boolean)
+                {
+                    // Convert boolean to string: use "true" or "false"
+                    // For now, just convert 0/1 to string
+                    rightStr = emitCallRet(Type(Type::Kind::Str), runtime::kStringFromInt, {right.value});
+                }
+
                 Value result = emitCallRet(
-                    Type(Type::Kind::Str), "Viper.String.Concat", {left.value, right.value});
+                    Type(Type::Kind::Str), runtime::kStringConcat, {left.value, rightStr});
                 return {result, Type(Type::Kind::Str)};
             }
             op = isFloat ? Opcode::FAdd : Opcode::IAddOvf;
@@ -1064,7 +1191,7 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
             {
                 // String equality comparison via runtime
                 Value result = emitCallRet(
-                    Type(Type::Kind::I1), "Viper.Strings.Equals", {left.value, right.value});
+                    Type(Type::Kind::I1), kStringEquals, {left.value, right.value});
                 return {result, Type(Type::Kind::I1)};
             }
             op = isFloat ? Opcode::FCmpEQ : Opcode::ICmpEq;
@@ -1075,7 +1202,7 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
             {
                 // String inequality: !(a == b)
                 Value eqResult = emitCallRet(
-                    Type(Type::Kind::I1), "Viper.Strings.Equals", {left.value, right.value});
+                    Type(Type::Kind::I1), kStringEquals, {left.value, right.value});
                 Value result =
                     emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), eqResult, Value::constInt(0));
                 return {result, Type(Type::Kind::I1)};
@@ -1145,7 +1272,7 @@ LowerResult Lowerer::lowerUnary(UnaryExpr *expr)
             else
             {
                 Value result =
-                    emitBinary(Opcode::Sub, operand.type, Value::constInt(0), operand.value);
+                    emitBinary(Opcode::ISubOvf, operand.type, Value::constInt(0), operand.value);
                 return {result, operand.type};
             }
         }
@@ -1170,103 +1297,120 @@ LowerResult Lowerer::lowerUnary(UnaryExpr *expr)
 
 LowerResult Lowerer::lowerCall(CallExpr *expr)
 {
-    // Check for method call on value type: p.getX()
+    // Check for method call on value or entity type: obj.method()
     if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->callee.get()))
     {
+        // Check for super.method() call - dispatch to parent class method
+        if (fieldExpr->base->kind == ExprKind::SuperExpr)
+        {
+            // Get self pointer
+            Value *selfPtr = lookupLocal("self");
+            if (selfPtr && currentEntityType_ && !currentEntityType_->baseClass.empty())
+            {
+                // Look up method in the parent class
+                auto parentIt = entityTypes_.find(currentEntityType_->baseClass);
+                if (parentIt != entityTypes_.end())
+                {
+                    if (auto *method = parentIt->second.findMethod(fieldExpr->field))
+                    {
+                        return lowerMethodCall(method, currentEntityType_->baseClass, *selfPtr, expr);
+                    }
+                }
+            }
+        }
+
         // Get the type of the base expression
         TypeRef baseType = sema_.typeOf(fieldExpr->base.get());
         if (baseType)
         {
             std::string typeName = baseType->name;
+
+            // Check value type methods (O(1) lookup)
             auto it = valueTypes_.find(typeName);
             if (it != valueTypes_.end())
             {
-                const ValueTypeInfo &info = it->second;
-
-                // Check if the field name matches a method
-                for (auto *method : info.methods)
+                if (auto *method = it->second.findMethod(fieldExpr->field))
                 {
-                    if (method->name == fieldExpr->field)
-                    {
-                        // Lower the base expression (this is the 'self' pointer)
-                        auto baseResult = lowerExpr(fieldExpr->base.get());
-
-                        // Lower method arguments
-                        std::vector<Value> args;
-                        args.push_back(baseResult.value); // self is first argument
-
-                        for (auto &arg : expr->args)
-                        {
-                            auto result = lowerExpr(arg.value.get());
-                            args.push_back(result.value);
-                        }
-
-                        // Get method return type
-                        TypeRef returnType = method->returnType
-                                                 ? sema_.resolveType(method->returnType.get())
-                                                 : types::voidType();
-                        Type ilReturnType = mapType(returnType);
-
-                        // Call the method: TypeName.methodName
-                        std::string methodName = typeName + "." + method->name;
-
-                        if (ilReturnType.kind == Type::Kind::Void)
-                        {
-                            emitCall(methodName, args);
-                            return {Value::constInt(0), Type(Type::Kind::Void)};
-                        }
-                        else
-                        {
-                            Value result = emitCallRet(ilReturnType, methodName, args);
-                            return {result, ilReturnType};
-                        }
-                    }
+                    auto baseResult = lowerExpr(fieldExpr->base.get());
+                    return lowerMethodCall(method, typeName, baseResult.value, expr);
                 }
             }
 
-            // Check for method call on entity type: e.getX()
+            // Check entity type methods (O(1) lookup)
             auto entityIt = entityTypes_.find(typeName);
             if (entityIt != entityTypes_.end())
             {
-                const EntityTypeInfo &info = entityIt->second;
-
-                // Check if the field name matches a method
-                for (auto *method : info.methods)
+                if (auto *method = entityIt->second.findMethod(fieldExpr->field))
                 {
-                    if (method->name == fieldExpr->field)
+                    auto baseResult = lowerExpr(fieldExpr->base.get());
+                    return lowerMethodCall(method, typeName, baseResult.value, expr);
+                }
+            }
+
+            // Check for method call on List type: list.add(), list.get(), etc.
+            if (baseType->kind == TypeKindSem::List)
+            {
+                auto baseResult = lowerExpr(fieldExpr->base.get());
+                std::string methodName = fieldExpr->field;
+
+                // Lower arguments with boxing
+                std::vector<Value> args;
+                args.reserve(expr->args.size() + 1);
+                args.push_back(baseResult.value); // list is first argument
+
+                for (auto &arg : expr->args)
+                {
+                    auto result = lowerExpr(arg.value.get());
+                    args.push_back(emitBox(result.value, result.type));
+                }
+
+                // Map method names to runtime functions (case-insensitive)
+                const char *runtimeFunc = nullptr;
+                Type returnType = Type(Type::Kind::Void);
+
+                if (equalsIgnoreCase(methodName, "add"))
+                {
+                    runtimeFunc = kListAdd;
+                }
+                else if (equalsIgnoreCase(methodName, "get"))
+                {
+                    runtimeFunc = kListGet;
+                    returnType = Type(Type::Kind::Ptr); // Returns boxed value
+                }
+                else if (equalsIgnoreCase(methodName, "size") || equalsIgnoreCase(methodName, "count"))
+                {
+                    runtimeFunc = kListCount;
+                    returnType = Type(Type::Kind::I64);
+                }
+                else if (equalsIgnoreCase(methodName, "clear"))
+                {
+                    runtimeFunc = kListClear;
+                }
+
+                if (runtimeFunc != nullptr)
+                {
+                    if (returnType.kind == Type::Kind::Void)
                     {
-                        // Lower the base expression (this is the 'self' pointer)
-                        auto baseResult = lowerExpr(fieldExpr->base.get());
-
-                        // Lower method arguments
-                        std::vector<Value> args;
-                        args.push_back(baseResult.value); // self is first argument
-
-                        for (auto &arg : expr->args)
+                        emitCall(runtimeFunc, args);
+                        return {Value::constInt(0), Type(Type::Kind::Void)};
+                    }
+                    else if (returnType.kind == Type::Kind::Ptr)
+                    {
+                        // Returns boxed value, need to unbox based on element type
+                        Value boxed = emitCallRet(returnType, runtimeFunc, args);
+                        TypeRef elemType = baseType->elementType();
+                        if (elemType)
                         {
-                            auto result = lowerExpr(arg.value.get());
-                            args.push_back(result.value);
+                            Type ilElemType = mapType(elemType);
+                            return emitUnbox(boxed, ilElemType);
                         }
-
-                        // Get method return type
-                        TypeRef returnType = method->returnType
-                                                 ? sema_.resolveType(method->returnType.get())
-                                                 : types::voidType();
-                        Type ilReturnType = mapType(returnType);
-
-                        // Call the method: TypeName.methodName
-                        std::string methodName = typeName + "." + method->name;
-
-                        if (ilReturnType.kind == Type::Kind::Void)
-                        {
-                            emitCall(methodName, args);
-                            return {Value::constInt(0), Type(Type::Kind::Void)};
-                        }
-                        else
-                        {
-                            Value result = emitCallRet(ilReturnType, methodName, args);
-                            return {result, ilReturnType};
-                        }
+                        // Return the boxed/object value as-is for entity types
+                        return {boxed, Type(Type::Kind::Ptr)};
+                    }
+                    else
+                    {
+                        Value result = emitCallRet(returnType, runtimeFunc, args);
+                        return {result, returnType};
                     }
                 }
             }
@@ -1279,6 +1423,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
     {
         // Lower arguments
         std::vector<Value> args;
+        args.reserve(expr->args.size());
         for (auto &arg : expr->args)
         {
             auto result = lowerExpr(arg.value.get());
@@ -1318,16 +1463,16 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                     if (argType->kind == TypeKindSem::Integer)
                     {
                         strVal =
-                            emitCallRet(Type(Type::Kind::Str), "Viper.String.FromInt", {arg.value});
+                            emitCallRet(Type(Type::Kind::Str), kStringFromInt, {arg.value});
                     }
                     else if (argType->kind == TypeKindSem::Number)
                     {
                         strVal =
-                            emitCallRet(Type(Type::Kind::Str), "Viper.String.FromNum", {arg.value});
+                            emitCallRet(Type(Type::Kind::Str), kStringFromNum, {arg.value});
                     }
                 }
 
-                emitCall("Viper.Terminal.Say", {strVal});
+                emitCall(kTerminalSay, {strVal});
             }
             return {Value::constInt(0), Type(Type::Kind::Void)};
         }
@@ -1386,6 +1531,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
 
     // Lower arguments
     std::vector<Value> args;
+    args.reserve(expr->args.size());
     for (auto &arg : expr->args)
     {
         auto result = lowerExpr(arg.value.get());
@@ -1510,6 +1656,24 @@ LowerResult Lowerer::lowerNew(NewExpr *expr)
     if (!type)
     {
         return {Value::null(), Type(Type::Kind::Ptr)};
+    }
+
+    // Handle built-in collection types
+    if (type->kind == TypeKindSem::List)
+    {
+        // Create a new list via runtime
+        Value list = emitCallRet(Type(Type::Kind::Ptr), kListNew, {});
+        return {list, Type(Type::Kind::Ptr)};
+    }
+    if (type->kind == TypeKindSem::Set)
+    {
+        Value set = emitCallRet(Type(Type::Kind::Ptr), kSetNew, {});
+        return {set, Type(Type::Kind::Ptr)};
+    }
+    if (type->kind == TypeKindSem::Map)
+    {
+        Value map = emitCallRet(Type(Type::Kind::Ptr), kMapNew, {});
+        return {map, Type(Type::Kind::Ptr)};
     }
 
     // Find the entity type info
@@ -1660,42 +1824,14 @@ LowerResult Lowerer::lowerCoalesce(CoalesceExpr *expr)
 LowerResult Lowerer::lowerListLiteral(ListLiteralExpr *expr)
 {
     // Create a new list
-    Value list = emitCallRet(Type(Type::Kind::Ptr), "Viper.Collections.List.New", {});
+    Value list = emitCallRet(Type(Type::Kind::Ptr), kListNew, {});
 
     // Add each element to the list (boxed)
     for (auto &elem : expr->elements)
     {
         auto result = lowerExpr(elem.get());
-
-        // Box the element based on its type
-        Value boxed;
-        switch (result.type.kind)
-        {
-            case Type::Kind::I64:
-            case Type::Kind::I32:
-            case Type::Kind::I16:
-                boxed = emitCallRet(Type(Type::Kind::Ptr), "Viper.Box.I64", {result.value});
-                break;
-            case Type::Kind::F64:
-                boxed = emitCallRet(Type(Type::Kind::Ptr), "Viper.Box.F64", {result.value});
-                break;
-            case Type::Kind::I1:
-                boxed = emitCallRet(Type(Type::Kind::Ptr), "Viper.Box.I1", {result.value});
-                break;
-            case Type::Kind::Str:
-                boxed = emitCallRet(Type(Type::Kind::Ptr), "Viper.Box.Str", {result.value});
-                break;
-            case Type::Kind::Ptr:
-                // Objects don't need boxing, use directly
-                boxed = result.value;
-                break;
-            default:
-                boxed = result.value;
-                break;
-        }
-
-        // Add to list
-        emitCall("Viper.Collections.List.Add", {list, boxed});
+        Value boxed = emitBox(result.value, result.type);
+        emitCall(kListAdd, {list, boxed});
     }
 
     return {list, Type(Type::Kind::Ptr)};
@@ -1709,43 +1845,175 @@ LowerResult Lowerer::lowerIndex(IndexExpr *expr)
     // Assume this is a List - call get_Item
     // Result is a boxed value that needs unboxing based on expected type
     Value boxed = emitCallRet(
-        Type(Type::Kind::Ptr), "Viper.Collections.List.get_Item", {base.value, index.value});
+        Type(Type::Kind::Ptr), kListGet, {base.value, index.value});
 
     // Get the expected element type from semantic analysis
     TypeRef elemType = sema_.typeOf(expr);
     Type ilType = mapType(elemType);
 
-    // Unbox based on expected type
-    switch (ilType.kind)
+    return emitUnbox(boxed, ilType);
+}
+
+LowerResult Lowerer::lowerTry(TryExpr *expr)
+{
+    // The ? operator propagates null/error by returning early from the function
+    // For now, we implement this for optional types (null propagation)
+
+    auto operand = lowerExpr(expr->operand.get());
+
+    // Create blocks for the null check
+    size_t hasValueIdx = createBlock("try.hasvalue");
+    size_t returnNullIdx = createBlock("try.returnnull");
+
+    // Check if the value is null (comparing pointer as i64 to 0)
+    // First, store the pointer and load as i64 for comparison
+    unsigned ptrSlotId = nextTempId();
+    il::core::Instr ptrSlotInstr;
+    ptrSlotInstr.result = ptrSlotId;
+    ptrSlotInstr.op = Opcode::Alloca;
+    ptrSlotInstr.type = Type(Type::Kind::Ptr);
+    ptrSlotInstr.operands = {Value::constInt(8)};
+    blockMgr_.currentBlock()->instructions.push_back(ptrSlotInstr);
+    Value ptrSlot = Value::temp(ptrSlotId);
+
+    il::core::Instr storePtrInstr;
+    storePtrInstr.op = Opcode::Store;
+    storePtrInstr.type = Type(Type::Kind::Ptr);
+    storePtrInstr.operands = {ptrSlot, operand.value};
+    blockMgr_.currentBlock()->instructions.push_back(storePtrInstr);
+
+    unsigned ptrAsI64Id = nextTempId();
+    il::core::Instr loadAsI64Instr;
+    loadAsI64Instr.result = ptrAsI64Id;
+    loadAsI64Instr.op = Opcode::Load;
+    loadAsI64Instr.type = Type(Type::Kind::I64);
+    loadAsI64Instr.operands = {ptrSlot};
+    blockMgr_.currentBlock()->instructions.push_back(loadAsI64Instr);
+    Value ptrAsI64 = Value::temp(ptrAsI64Id);
+
+    Value isNotNull =
+        emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1), ptrAsI64, Value::constInt(0));
+    emitCBr(isNotNull, hasValueIdx, returnNullIdx);
+
+    // Return null block - return null from the current function
+    setBlock(returnNullIdx);
+    // For functions returning optional types, return null (0 as pointer)
+    // For void functions, we just return void
+    if (currentFunc_->retType.kind == Type::Kind::Void)
     {
-        case Type::Kind::I64:
-        case Type::Kind::I32:
-        case Type::Kind::I16:
-        {
-            Value unboxed = emitCallRet(Type(Type::Kind::I64), "Viper.Box.ToI64", {boxed});
-            return {unboxed, Type(Type::Kind::I64)};
-        }
-        case Type::Kind::F64:
-        {
-            Value unboxed = emitCallRet(Type(Type::Kind::F64), "Viper.Box.ToF64", {boxed});
-            return {unboxed, Type(Type::Kind::F64)};
-        }
-        case Type::Kind::I1:
-        {
-            Value unboxed = emitCallRet(Type(Type::Kind::I1), "Viper.Box.ToI1", {boxed});
-            return {unboxed, Type(Type::Kind::I1)};
-        }
-        case Type::Kind::Str:
-        {
-            Value unboxed = emitCallRet(Type(Type::Kind::Str), "Viper.Box.ToStr", {boxed});
-            return {unboxed, Type(Type::Kind::Str)};
-        }
-        case Type::Kind::Ptr:
-            // Object references don't need unboxing
-            return {boxed, Type(Type::Kind::Ptr)};
-        default:
-            return {boxed, Type(Type::Kind::Ptr)};
+        emitRetVoid();
     }
+    else
+    {
+        // Return null for optional/pointer return types
+        emitRet(Value::constInt(0));
+    }
+
+    // Has value block - continue with the unwrapped value
+    setBlock(hasValueIdx);
+
+    // Return the operand value (it's already unwrapped for simple optionals)
+    return operand;
+}
+
+LowerResult Lowerer::lowerLambda(LambdaExpr *expr)
+{
+    // Generate unique lambda function name
+    static int lambdaCounter = 0;
+    std::string lambdaName = "__lambda_" + std::to_string(lambdaCounter++);
+
+    // Determine return type (inferred as the body's type if not specified)
+    TypeRef returnType = types::unknown();
+    if (expr->returnType)
+    {
+        returnType = sema_.resolveType(expr->returnType.get());
+    }
+    else
+    {
+        returnType = sema_.typeOf(expr->body.get());
+    }
+    Type ilReturnType = mapType(returnType);
+
+    // Build parameter list
+    std::vector<il::core::Param> params;
+    params.reserve(expr->params.size());
+    for (const auto &param : expr->params)
+    {
+        TypeRef paramType = param.type ? sema_.resolveType(param.type.get()) : types::unknown();
+        params.push_back({param.name, mapType(paramType)});
+    }
+
+    // Save current function context
+    Function *savedFunc = currentFunc_;
+    auto savedLocals = std::move(locals_);
+    auto savedSlots = std::move(slots_);
+    locals_.clear();
+    slots_.clear();
+
+    // Create the lambda function
+    il::core::Function func;
+    func.name = lambdaName;
+    func.retType = ilReturnType;
+
+    // Create entry block
+    il::core::BasicBlock entryBlock;
+    entryBlock.label = "entry_0";
+    for (const auto &p : params)
+    {
+        entryBlock.params.push_back(p);
+    }
+    func.blocks.push_back(std::move(entryBlock));
+
+    module_->functions.push_back(std::move(func));
+    currentFunc_ = &module_->functions.back();
+    definedFunctions_.insert(lambdaName);
+
+    blockMgr_.reset(currentFunc_);
+
+    // Define parameters as locals
+    const auto &blockParams = currentFunc_->blocks[0].params;
+    for (size_t i = 0; i < expr->params.size() && i < blockParams.size(); ++i)
+    {
+        TypeRef paramType =
+            expr->params[i].type ? sema_.resolveType(expr->params[i].type.get()) : types::unknown();
+        Type ilParamType = mapType(paramType);
+        createSlot(expr->params[i].name, ilParamType);
+        storeToSlot(expr->params[i].name, Value::temp(blockParams[i].id), ilParamType);
+    }
+
+    // Lower the body expression
+    auto bodyResult = lowerExpr(expr->body.get());
+
+    // Return the body result
+    if (ilReturnType.kind == Type::Kind::Void)
+    {
+        if (!blockMgr_.isTerminated())
+        {
+            emitRetVoid();
+        }
+    }
+    else
+    {
+        if (!blockMgr_.isTerminated())
+        {
+            emitRet(bodyResult.value);
+        }
+    }
+
+    // Restore context
+    currentFunc_ = savedFunc;
+    locals_ = std::move(savedLocals);
+    slots_ = std::move(savedSlots);
+
+    if (savedFunc)
+    {
+        blockMgr_.reset(savedFunc);
+    }
+
+    // Return a function pointer to the lambda
+    // For now, return the function address using const_str-like approach
+    Value funcPtr = Value::global(lambdaName);
+    return {funcPtr, Type(Type::Kind::Ptr)};
 }
 
 //=============================================================================
@@ -1871,6 +2139,152 @@ unsigned Lowerer::nextTempId()
 }
 
 //=============================================================================
+// Boxing/Unboxing Helpers
+//=============================================================================
+
+Lowerer::Value Lowerer::emitBox(Value val, Type type)
+{
+    switch (type.kind)
+    {
+        case Type::Kind::I64:
+        case Type::Kind::I32:
+        case Type::Kind::I16:
+            return emitCallRet(Type(Type::Kind::Ptr), kBoxI64, {val});
+        case Type::Kind::F64:
+            return emitCallRet(Type(Type::Kind::Ptr), kBoxF64, {val});
+        case Type::Kind::I1:
+            return emitCallRet(Type(Type::Kind::Ptr), kBoxI1, {val});
+        case Type::Kind::Str:
+            return emitCallRet(Type(Type::Kind::Ptr), kBoxStr, {val});
+        case Type::Kind::Ptr:
+            // Objects don't need boxing
+            return val;
+        default:
+            return val;
+    }
+}
+
+LowerResult Lowerer::emitUnbox(Value boxed, Type expectedType)
+{
+    switch (expectedType.kind)
+    {
+        case Type::Kind::I64:
+        case Type::Kind::I32:
+        case Type::Kind::I16:
+        {
+            Value unboxed = emitCallRet(Type(Type::Kind::I64), kUnboxI64, {boxed});
+            return {unboxed, Type(Type::Kind::I64)};
+        }
+        case Type::Kind::F64:
+        {
+            Value unboxed = emitCallRet(Type(Type::Kind::F64), kUnboxF64, {boxed});
+            return {unboxed, Type(Type::Kind::F64)};
+        }
+        case Type::Kind::I1:
+        {
+            Value unboxed = emitCallRet(Type(Type::Kind::I1), kUnboxI1, {boxed});
+            return {unboxed, Type(Type::Kind::I1)};
+        }
+        case Type::Kind::Str:
+        {
+            Value unboxed = emitCallRet(Type(Type::Kind::Str), kUnboxStr, {boxed});
+            return {unboxed, Type(Type::Kind::Str)};
+        }
+        case Type::Kind::Ptr:
+            // Object references don't need unboxing
+            return {boxed, Type(Type::Kind::Ptr)};
+        default:
+            return {boxed, Type(Type::Kind::Ptr)};
+    }
+}
+
+//=============================================================================
+// Low-Level Instruction Emission
+//=============================================================================
+
+Lowerer::Value Lowerer::emitGEP(Value ptr, int64_t offset)
+{
+    unsigned gepId = nextTempId();
+    il::core::Instr gepInstr;
+    gepInstr.result = gepId;
+    gepInstr.op = Opcode::GEP;
+    gepInstr.type = Type(Type::Kind::Ptr);
+    gepInstr.operands = {ptr, Value::constInt(offset)};
+    blockMgr_.currentBlock()->instructions.push_back(std::move(gepInstr));
+    return Value::temp(gepId);
+}
+
+Lowerer::Value Lowerer::emitLoad(Value ptr, Type type)
+{
+    unsigned loadId = nextTempId();
+    il::core::Instr loadInstr;
+    loadInstr.result = loadId;
+    loadInstr.op = Opcode::Load;
+    loadInstr.type = type;
+    loadInstr.operands = {ptr};
+    blockMgr_.currentBlock()->instructions.push_back(std::move(loadInstr));
+    return Value::temp(loadId);
+}
+
+void Lowerer::emitStore(Value ptr, Value val, Type type)
+{
+    il::core::Instr storeInstr;
+    storeInstr.op = Opcode::Store;
+    storeInstr.type = type;
+    storeInstr.operands = {ptr, val};
+    blockMgr_.currentBlock()->instructions.push_back(std::move(storeInstr));
+}
+
+Lowerer::Value Lowerer::emitFieldLoad(const FieldLayout *field, Value selfPtr)
+{
+    Value fieldAddr = emitGEP(selfPtr, static_cast<int64_t>(field->offset));
+    Type fieldType = mapType(field->type);
+    return emitLoad(fieldAddr, fieldType);
+}
+
+void Lowerer::emitFieldStore(const FieldLayout *field, Value selfPtr, Value val)
+{
+    Value fieldAddr = emitGEP(selfPtr, static_cast<int64_t>(field->offset));
+    Type fieldType = mapType(field->type);
+    emitStore(fieldAddr, val, fieldType);
+}
+
+LowerResult Lowerer::lowerMethodCall(MethodDecl *method, const std::string &typeName,
+                                      Value selfValue, CallExpr *expr)
+{
+    // Lower method arguments
+    std::vector<Value> args;
+    args.reserve(expr->args.size() + 1);
+    args.push_back(selfValue); // self is first argument
+
+    for (auto &arg : expr->args)
+    {
+        auto result = lowerExpr(arg.value.get());
+        args.push_back(result.value);
+    }
+
+    // Get method return type
+    TypeRef returnType = method->returnType
+                             ? sema_.resolveType(method->returnType.get())
+                             : types::voidType();
+    Type ilReturnType = mapType(returnType);
+
+    // Call the method: TypeName.methodName
+    std::string methodName = typeName + "." + method->name;
+
+    if (ilReturnType.kind == Type::Kind::Void)
+    {
+        emitCall(methodName, args);
+        return {Value::constInt(0), Type(Type::Kind::Void)};
+    }
+    else
+    {
+        Value result = emitCallRet(ilReturnType, methodName, args);
+        return {result, ilReturnType};
+    }
+}
+
+//=============================================================================
 // Type Mapping
 //=============================================================================
 
@@ -1880,6 +2294,26 @@ Lowerer::Type Lowerer::mapType(TypeRef type)
         return Type(Type::Kind::Void);
 
     return Type(toILType(*type));
+}
+
+size_t Lowerer::getILTypeSize(Type type)
+{
+    switch (type.kind)
+    {
+        case Type::Kind::I64:
+        case Type::Kind::F64:
+        case Type::Kind::Ptr:
+        case Type::Kind::Str:
+            return 8;
+        case Type::Kind::I32:
+            return 4;
+        case Type::Kind::I16:
+            return 2;
+        case Type::Kind::I1:
+            return 1;
+        default:
+            return 8;
+    }
 }
 
 //=============================================================================
@@ -1964,6 +2398,19 @@ std::string Lowerer::mangleFunctionName(const std::string &name)
 std::string Lowerer::getStringGlobal(const std::string &value)
 {
     return stringTable_.intern(value);
+}
+
+bool Lowerer::equalsIgnoreCase(const std::string &a, const std::string &b)
+{
+    if (a.size() != b.size())
+        return false;
+    for (size_t i = 0; i < a.size(); ++i)
+    {
+        if (std::tolower(static_cast<unsigned char>(a[i])) !=
+            std::tolower(static_cast<unsigned char>(b[i])))
+            return false;
+    }
+    return true;
 }
 
 } // namespace il::frontends::viperlang

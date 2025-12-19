@@ -369,14 +369,14 @@ target_link_libraries(vpascal
         il_tools_common)
 install(TARGETS vpascal RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
-add_executable(viperlang
-        tools/viperlang/main.cpp
-        tools/viperlang/usage.cpp
-        tools/viperlang/ilc_compat.cpp
+add_executable(viper
+        tools/viper/main.cpp
+        tools/viper/usage.cpp
+        tools/viper/ilc_compat.cpp
         tools/ilc/cmd_front_viperlang.cpp
         tools/ilc/cli.cpp)
-set_target_properties(viperlang PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/viperlang)
-target_link_libraries(viperlang
+set_target_properties(viper PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/viper)
+target_link_libraries(viper
         PRIVATE
         viper_common_opts
         viper::il_full
@@ -385,7 +385,7 @@ target_link_libraries(viperlang
         fe_viperlang
         il_api
         il_tools_common)
-install(TARGETS viperlang RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(TARGETS viper RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 add_executable(ilrun
         tools/ilrun/main.cpp

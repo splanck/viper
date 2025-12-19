@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Main entry point for the viperlang command-line tool.
+// Main entry point for the viper command-line tool (ViperLang compiler).
 //
 //===----------------------------------------------------------------------===//
 
