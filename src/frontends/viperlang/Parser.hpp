@@ -134,6 +134,8 @@ class Parser
 
     std::vector<Param> parseParameters();
     std::vector<std::string> parseGenericParams();
+    DeclPtr parseFieldDecl();
+    DeclPtr parseMethodDecl();
 
     //=========================================================================
     // Member Variables

@@ -56,7 +56,7 @@ il::core::Type::Kind parseKindToken(std::string_view token)
         return Kind::F64;
     if (token == "str" || token == "string")
         return Kind::Str;
-    if (token.rfind("ptr", 0) == 0)
+    if (token.rfind("ptr", 0) == 0 || token == "obj")
         return Kind::Ptr;
     if (token == "resume" || token == "resume_tok")
         return Kind::ResumeTok;

@@ -1321,6 +1321,13 @@ void Sema::registerBuiltins()
     runtimeFunctions_["Viper.Terminal.Clear"] = types::voidType();
     runtimeFunctions_["Viper.Terminal.Bell"] = types::voidType();
     runtimeFunctions_["Viper.Terminal.Flush"] = types::voidType();
+    runtimeFunctions_["Viper.Terminal.SetColor"] = types::voidType();
+    runtimeFunctions_["Viper.Terminal.SetPosition"] = types::voidType();
+    runtimeFunctions_["Viper.Terminal.SetCursorVisible"] = types::voidType();
+    runtimeFunctions_["Viper.Terminal.SetAltScreen"] = types::voidType();
+    runtimeFunctions_["Viper.Terminal.BeginBatch"] = types::voidType();
+    runtimeFunctions_["Viper.Terminal.EndBatch"] = types::voidType();
+    runtimeFunctions_["Viper.Terminal.GetKeyTimeout"] = types::string();
 
     // Register Viper.String runtime functions
     runtimeFunctions_["Viper.String.Concat"] = types::string();
@@ -1360,6 +1367,14 @@ void Sema::registerBuiltins()
     runtimeFunctions_["Viper.Environment.GetArgument"] = types::string();
     runtimeFunctions_["Viper.Environment.GetArgumentCount"] = types::integer();
     runtimeFunctions_["Viper.Environment.GetCommandLine"] = types::string();
+
+    // Register Viper.Time runtime functions
+    runtimeFunctions_["Viper.Time.Clock.Sleep"] = types::voidType();
+    runtimeFunctions_["Viper.Time.Clock.Millis"] = types::integer();
+    runtimeFunctions_["Viper.Time.SleepMs"] = types::voidType();
+
+    // Note: Viper.Collections.List and Viper.Box functions are handled internally
+    // by the lowerer for list literals and boxing operations, not as user-callable functions.
 }
 
 } // namespace il::frontends::viperlang

@@ -76,9 +76,10 @@ void *rt_box_str(rt_string val)
     box->tag = RT_BOX_STR;
     box->data.str_val = val;
     // Retain the string since we're storing it
+    // Use rt_string_ref to handle both heap and literal strings
     if (val)
     {
-        rt_heap_retain(val);
+        rt_string_ref(val);
     }
     return box;
 }
@@ -145,10 +146,10 @@ rt_string rt_unbox_str(void *box)
         return NULL;
     }
     rt_string s = b->data.str_val;
-    // Retain before returning
+    // Retain before returning - use rt_string_ref for proper handling
     if (s)
     {
-        rt_heap_retain(s);
+        rt_string_ref(s);
     }
     return s;
 }

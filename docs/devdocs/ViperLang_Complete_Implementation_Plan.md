@@ -679,7 +679,15 @@ struct ViperType {
 
 ### 2.1 Values (Copy Types)
 
-**Status:** [ ] Not Started
+**Status:** [x] Complete
+- [x] Parser: Field and method declarations in value types
+- [x] Lowerer: Value type layout computation (field offsets/sizes)
+- [x] Lowerer: Method lowering with `self` parameter
+- [x] Lowerer: Implicit field access (self.x) in methods
+- [x] Value type construction (Point(1, 2))
+- [x] Value type method calls (p.getX())
+- [x] External field access (p.x)
+- [ ] Note: Field expressions in function call arguments need parser fix
 
 **Syntax:**
 
@@ -1499,7 +1507,7 @@ These are NOT currently available in the runtime.
 
 ### 7.1 List
 
-**Status:** [ ] Not Started
+**Status:** [x] Complete
 
 **Syntax:**
 
@@ -2016,26 +2024,26 @@ After each increment, verify:
 
 | Task | Status | Dependencies |
 |------|--------|--------------|
-| 2.1 Values | [ ] Not Started | 1.3 |
-| 2.2 Entities | [ ] Not Started | 1.3 |
-| 2.3 Optionals | [ ] Not Started | 2.1, 2.2 |
+| 2.1 Values | [x] Complete | 1.3 |
+| 2.2 Entities | [x] Complete | 1.3 |
+| 2.3 Optionals | [x] Complete | 2.1, 2.2 |
 | 2.4 Generics | [ ] Not Started | 2.1, 2.2 |
 
 ### Phase 3: Functions and Methods
 
 | Task | Status | Dependencies |
 |------|--------|--------------|
-| 3.1 Functions | [ ] Not Started | 1.3 |
-| 3.2 Methods | [ ] Not Started | 2.1, 2.2 |
+| 3.1 Functions | [x] Complete | 1.3 |
+| 3.2 Methods | [x] Complete | 2.1, 2.2 |
 | 3.3 Closures | [ ] Not Started | 0.5 |
 
 ### Phase 4: Control Flow
 
 | Task | Status | Dependencies |
 |------|--------|--------------|
-| 4.1 If/Else | [ ] Not Started | 1.3 |
+| 4.1 If/Else | [x] Complete | 1.3 |
 | 4.2 Match | [ ] Not Started | 2.1 |
-| 4.3 Loops | [ ] Not Started | 0.3 |
+| 4.3 Loops | [x] Complete | 0.3 |
 | 4.4 Guard | [ ] Not Started | 2.3 |
 
 ### Phase 5: Error Handling
@@ -2056,7 +2064,7 @@ After each increment, verify:
 
 | Task | Status | Dependencies |
 |------|--------|--------------|
-| 7.1 List | [ ] Not Started | 0.1, 0.2 |
+| 7.1 List | [x] Complete | 0.1, 0.2 |
 | 7.2 Map | [ ] Not Started | 0.1 |
 | 7.3 Set[String] | [ ] Not Started | None |
 | 7.3 Set[T] | Blocked | 0.4 |
@@ -2221,9 +2229,13 @@ If a feature proves too difficult:
 | 2.1 | Dec 2024 | Added Testing Philosophy section; Added Available Runtime APIs; Added Phase 10 Demo Applications (Frogger, vTRIS); Added testing guidance and example programs for each phase; Added Example Programs Status tracking; Added Potential Oversights & Risks appendix |
 | 2.2 | Dec 2024 | Synchronized with spec review fixes: Added Unit type, `let`/`is` keywords, Ptr type; Updated TokenKind enum; Clarified Result[Unit] usage |
 | 2.3 | Dec 2024 | Phase 1 complete: viperlang CLI tool created, hello.viper runs successfully, 9 compiler unit tests passing |
+| 2.4 | Dec 2024 | Phase 2 progress: Value types (2.1), Entity types (2.2), and Optionals (2.3) complete with tests |
+| 2.5 | Dec 2024 | Phases 3 & 4 progress: Functions (3.1), Methods (3.2), If/Else (4.1), and Loops (4.3) complete. For-in loops with ranges now use slot-based SSA for mutable variables. 12 compiler tests passing |
+| 2.6 | Dec 2024 | Phase 7.1 (List) complete with boxing/unboxing. Terminal functions added (SetColor, SetPosition, SetCursorVisible, SetAltScreen, BeginBatch, EndBatch, GetKeyTimeout) and Timer functions (Sleep, Millis). Fixed i64/i32 signature mismatches. Known bug: string comparison RHS const_str not emitted |
 
 ---
 
-**Status:** Phase 1 Complete - Implementation In Progress
+**Status:** Phases 1-4, 7.1 Complete - Working on Phase 10 (Demo Apps)
+**Known Bug:** String comparison (`==`) RHS const_str instruction not emitted in Lowerer
 **Final Goal:** Frogger and vTRIS demos running in ViperLang
-**Next Step:** Phase 2 - Type System (Values, Entities, Optionals, Generics)
+**Next Step:** Fix string comparison bug, then Phase 10 demos

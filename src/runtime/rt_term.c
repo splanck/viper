@@ -785,6 +785,18 @@ void rt_term_show_cursor(void)
     rt_term_cursor_visible_i32(1);
 }
 
+/// @brief Set cursor visibility (i64 wrapper for ViperLang).
+void rt_term_cursor_visible(int64_t show)
+{
+    rt_term_cursor_visible_i32((int32_t)show);
+}
+
+/// @brief Set alt screen mode (i64 wrapper for ViperLang).
+void rt_term_alt_screen(int64_t enable)
+{
+    rt_term_alt_screen_i32((int32_t)enable);
+}
+
 /// @brief Sleep for specified milliseconds (i64 wrapper).
 void rt_sleep_ms_i64(int64_t ms)
 {
@@ -795,4 +807,10 @@ void rt_sleep_ms_i64(int64_t ms)
 int64_t rt_keypressed_i64(void)
 {
     return (int64_t)rt_keypressed();
+}
+
+/// @brief Get key with timeout (i64 wrapper for ViperLang).
+rt_string rt_getkey_timeout(int64_t timeout_ms)
+{
+    return rt_getkey_timeout_i32((int32_t)timeout_ms);
 }

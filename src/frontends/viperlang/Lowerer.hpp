@@ -30,12 +30,57 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <vector>
 
 namespace il::frontends::viperlang
 {
 
 // Use common ExprResult
 using LowerResult = ::il::frontends::common::ExprResult;
+
+/// @brief Field layout for value types.
+struct FieldLayout
+{
+    std::string name;
+    TypeRef type;
+    size_t offset;
+    size_t size;
+};
+
+/// @brief Value type layout information.
+struct ValueTypeInfo
+{
+    std::string name;
+    std::vector<FieldLayout> fields;
+    std::vector<MethodDecl *> methods;
+    size_t totalSize;
+
+    const FieldLayout *findField(const std::string &n) const
+    {
+        for (const auto &f : fields)
+            if (f.name == n)
+                return &f;
+        return nullptr;
+    }
+};
+
+/// @brief Entity type layout information (reference types).
+struct EntityTypeInfo
+{
+    std::string name;
+    std::vector<FieldLayout> fields;
+    std::vector<MethodDecl *> methods;
+    size_t totalSize; // Size of object data (excluding vtable pointer)
+    int classId;      // Runtime class ID for object allocation
+
+    const FieldLayout *findField(const std::string &n) const
+    {
+        for (const auto &f : fields)
+            if (f.name == n)
+                return &f;
+        return nullptr;
+    }
+};
 
 /// @brief Lowers ViperLang AST to Viper IL.
 class Lowerer
@@ -67,7 +112,13 @@ class Lowerer
     ::il::frontends::common::StringTable stringTable_;
     ::il::frontends::common::LoopContextStack loopStack_;
     std::map<std::string, Value> locals_;
+    std::map<std::string, Value> slots_;  // Slot pointers for mutable variables
     std::set<std::string> usedExterns_;
+    std::map<std::string, ValueTypeInfo> valueTypes_;
+    std::map<std::string, EntityTypeInfo> entityTypes_;
+    const ValueTypeInfo *currentValueType_{nullptr};
+    const EntityTypeInfo *currentEntityType_{nullptr};
+    int nextClassId_{1}; // Class ID counter for entity types
 
     //=========================================================================
     // Block Management
@@ -92,6 +143,9 @@ class Lowerer
 
     void lowerDecl(Decl *decl);
     void lowerFunctionDecl(FunctionDecl &decl);
+    void lowerValueDecl(ValueDecl &decl);
+    void lowerEntityDecl(EntityDecl &decl);
+    void lowerMethodDecl(MethodDecl &decl, const std::string &typeName, bool isEntity = false);
 
     //=========================================================================
     // Statement Lowering
@@ -124,6 +178,11 @@ class Lowerer
     LowerResult lowerBinary(BinaryExpr *expr);
     LowerResult lowerUnary(UnaryExpr *expr);
     LowerResult lowerCall(CallExpr *expr);
+    LowerResult lowerField(FieldExpr *expr);
+    LowerResult lowerNew(NewExpr *expr);
+    LowerResult lowerCoalesce(CoalesceExpr *expr);
+    LowerResult lowerListLiteral(ListLiteralExpr *expr);
+    LowerResult lowerIndex(IndexExpr *expr);
 
     //=========================================================================
     // Instruction Emission Helpers
@@ -152,6 +211,12 @@ class Lowerer
 
     void defineLocal(const std::string &name, Value value);
     Value *lookupLocal(const std::string &name);
+
+    // Slot-based mutable variable support
+    Value createSlot(const std::string &name, Type type);
+    void storeToSlot(const std::string &name, Value value, Type type);
+    Value loadFromSlot(const std::string &name, Type type);
+    void removeSlot(const std::string &name);
 
     //=========================================================================
     // Helper Functions

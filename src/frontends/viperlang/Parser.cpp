@@ -688,13 +688,37 @@ std::vector<CallArg> Parser::parseCallArgs()
             {
                 // Not a named arg, parse as expression starting with this identifier
                 ExprPtr ident = std::make_unique<IdentExpr>(nameTok.loc, nameTok.text);
-                // Continue parsing postfix/binary operators
-                // For simplicity, re-parse the whole thing
-                // This is a bit wasteful but works
-                // Actually let's create the IdentExpr and continue parsing from parsePostfix level
+                // Continue parsing postfix operators (like [0], .field, etc.)
+                while (true)
+                {
+                    if (match(TokenKind::LBracket))
+                    {
+                        SourceLoc loc = current_.loc;
+                        ExprPtr index = parseExpression();
+                        if (!index)
+                            return {};
+                        if (!expect(TokenKind::RBracket, "]"))
+                            return {};
+                        ident = std::make_unique<IndexExpr>(loc, std::move(ident), std::move(index));
+                    }
+                    else if (match(TokenKind::Dot))
+                    {
+                        SourceLoc loc = current_.loc;
+                        if (!check(TokenKind::Identifier))
+                        {
+                            error("expected field name after '.'");
+                            return {};
+                        }
+                        std::string field = current_.text;
+                        advance();
+                        ident = std::make_unique<FieldExpr>(loc, std::move(ident), std::move(field));
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
                 arg.value = std::move(ident);
-                // Need to continue parsing operators after the identifier
-                // Simplified: just use the ident for now
             }
         }
         else
@@ -1351,11 +1375,32 @@ DeclPtr Parser::parseValueDecl()
     if (!expect(TokenKind::LBrace, "{"))
         return nullptr;
 
-    // TODO: parse members
+    // Parse members (fields and methods)
     while (!check(TokenKind::RBrace) && !check(TokenKind::Eof))
     {
-        // Skip for now
-        advance();
+        if (check(TokenKind::KwFunc))
+        {
+            // Method declaration
+            auto method = parseMethodDecl();
+            if (method)
+            {
+                value->members.push_back(std::move(method));
+            }
+        }
+        else if (check(TokenKind::Identifier))
+        {
+            // Field declaration: TypeName fieldName;
+            auto field = parseFieldDecl();
+            if (field)
+            {
+                value->members.push_back(std::move(field));
+            }
+        }
+        else
+        {
+            error("expected field or method declaration");
+            advance();
+        }
     }
 
     if (!expect(TokenKind::RBrace, "}"))
@@ -1413,11 +1458,32 @@ DeclPtr Parser::parseEntityDecl()
     if (!expect(TokenKind::LBrace, "{"))
         return nullptr;
 
-    // TODO: parse members
+    // Parse members (fields and methods)
     while (!check(TokenKind::RBrace) && !check(TokenKind::Eof))
     {
-        // Skip for now
-        advance();
+        if (check(TokenKind::KwFunc))
+        {
+            // Method declaration
+            auto method = parseMethodDecl();
+            if (method)
+            {
+                entity->members.push_back(std::move(method));
+            }
+        }
+        else if (check(TokenKind::Identifier))
+        {
+            // Field declaration: TypeName fieldName;
+            auto field = parseFieldDecl();
+            if (field)
+            {
+                entity->members.push_back(std::move(field));
+            }
+        }
+        else
+        {
+            error("expected field or method declaration");
+            advance();
+        }
     }
 
     if (!expect(TokenKind::RBrace, "}"))
@@ -1459,6 +1525,92 @@ DeclPtr Parser::parseInterfaceDecl()
         return nullptr;
 
     return iface;
+}
+
+DeclPtr Parser::parseFieldDecl()
+{
+    SourceLoc loc = current_.loc;
+
+    // Type name (e.g., Integer, String, Point)
+    if (!check(TokenKind::Identifier))
+    {
+        error("expected type name");
+        return nullptr;
+    }
+    std::string typeName = current_.text;
+    advance();
+
+    TypePtr type = std::make_unique<NamedType>(loc, typeName);
+
+    // Field name
+    if (!check(TokenKind::Identifier))
+    {
+        error("expected field name");
+        return nullptr;
+    }
+    std::string fieldName = current_.text;
+    advance();
+
+    auto field = std::make_unique<FieldDecl>(loc, std::move(fieldName));
+    field->type = std::move(type);
+
+    // Optional initializer: = expr
+    if (match(TokenKind::Equal))
+    {
+        field->initializer = parseExpression();
+    }
+
+    // Expect semicolon
+    if (!expect(TokenKind::Semicolon, ";"))
+        return nullptr;
+
+    return field;
+}
+
+DeclPtr Parser::parseMethodDecl()
+{
+    SourceLoc loc = current_.loc;
+    advance(); // consume 'func'
+
+    if (!check(TokenKind::Identifier))
+    {
+        error("expected method name");
+        return nullptr;
+    }
+    std::string name = current_.text;
+    advance();
+
+    auto method = std::make_unique<MethodDecl>(loc, std::move(name));
+
+    // Generic parameters
+    method->genericParams = parseGenericParams();
+
+    // Parameters
+    if (!expect(TokenKind::LParen, "("))
+        return nullptr;
+    method->params = parseParameters();
+    if (!expect(TokenKind::RParen, ")"))
+        return nullptr;
+
+    // Return type
+    if (match(TokenKind::Arrow))
+    {
+        method->returnType = parseType();
+    }
+
+    // Body
+    if (check(TokenKind::LBrace))
+    {
+        method->body = parseBlock();
+    }
+    else
+    {
+        // No body - interface method signature
+        if (!expect(TokenKind::Semicolon, ";"))
+            return nullptr;
+    }
+
+    return method;
 }
 
 } // namespace il::frontends::viperlang

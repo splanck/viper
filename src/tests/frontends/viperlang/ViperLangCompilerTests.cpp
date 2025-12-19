@@ -320,7 +320,7 @@ func start() {
 
     EXPECT_TRUE(result.succeeded());
 
-    // Check for Mul and Add instructions
+    // Check for Mul (or IMulOvf for signed) and Add instructions
     bool foundMul = false;
     bool foundAdd = false;
     for (const auto &fn : result.module.functions)
@@ -331,9 +331,9 @@ func start() {
             {
                 for (const auto &instr : block.instructions)
                 {
-                    if (instr.op == il::core::Opcode::Mul)
+                    if (instr.op == il::core::Opcode::Mul || instr.op == il::core::Opcode::IMulOvf)
                         foundMul = true;
-                    if (instr.op == il::core::Opcode::Add)
+                    if (instr.op == il::core::Opcode::Add || instr.op == il::core::Opcode::IAddOvf)
                         foundAdd = true;
                 }
             }
@@ -375,6 +375,185 @@ func start() {
     }
 
     EXPECT_TRUE(result.succeeded());
+}
+
+/// @brief Test that entity types with new keyword work correctly.
+TEST(ViperLangCompilerTest, EntityTypeWithNew)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+entity Person {
+    Integer age;
+    Integer score;
+
+    func getAge() -> Integer {
+        return age;
+    }
+}
+
+func start() {
+    var p = new Person(30, 100);
+    var age = p.age;
+    var method_age = p.getAge();
+    Viper.Terminal.SayInt(age);
+    Viper.Terminal.SayInt(method_age);
+}
+)";
+    CompilerInput input{.source = source, .path = "entity.viper"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    // Print diagnostics for debugging
+    if (!result.succeeded())
+    {
+        std::cerr << "Diagnostics for EntityTypeWithNew:\n";
+        for (const auto &d : result.diagnostics.diagnostics())
+        {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+
+    EXPECT_TRUE(result.succeeded());
+
+    // Check that rt_alloc is used for entity allocation
+    bool foundRtAlloc = false;
+    for (const auto &fn : result.module.functions)
+    {
+        if (fn.name == "main")
+        {
+            for (const auto &block : fn.blocks)
+            {
+                for (const auto &instr : block.instructions)
+                {
+                    if (instr.op == il::core::Opcode::Call && instr.callee == "rt_alloc")
+                        foundRtAlloc = true;
+                }
+            }
+        }
+    }
+    EXPECT_TRUE(foundRtAlloc);
+}
+
+/// @brief Test that optional types and coalesce operator work correctly.
+TEST(ViperLangCompilerTest, OptionalAndCoalesce)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+entity Person {
+    Integer age;
+}
+
+func start() {
+    var p1: Person? = new Person(30);
+    var p2: Person? = null;
+
+    var result1 = p1 ?? new Person(99);
+    var result2 = p2 ?? new Person(88);
+
+    var age1 = result1.age;
+    var age2 = result2.age;
+
+    Viper.Terminal.SayInt(age1);
+    Viper.Terminal.SayInt(age2);
+}
+)";
+    CompilerInput input{.source = source, .path = "optional.viper"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    // Print diagnostics for debugging
+    if (!result.succeeded())
+    {
+        std::cerr << "Diagnostics for OptionalAndCoalesce:\n";
+        for (const auto &d : result.diagnostics.diagnostics())
+        {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+
+    EXPECT_TRUE(result.succeeded());
+
+    // Check for coalesce-related blocks (should have coalesce_has, coalesce_null, coalesce_merge)
+    bool foundCoalesceBlock = false;
+    for (const auto &fn : result.module.functions)
+    {
+        if (fn.name == "main")
+        {
+            for (const auto &block : fn.blocks)
+            {
+                if (block.label.find("coalesce") != std::string::npos)
+                {
+                    foundCoalesceBlock = true;
+                    break;
+                }
+            }
+        }
+    }
+    EXPECT_TRUE(foundCoalesceBlock);
+}
+
+/// @brief Test that for-in loops with ranges work correctly.
+TEST(ViperLangCompilerTest, ForInLoop)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func start() {
+    var sum = 0;
+    for (i in 0..5) {
+        sum = sum + i;
+    }
+    Viper.Terminal.SayInt(sum);
+}
+)";
+    CompilerInput input{.source = source, .path = "forin.viper"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    // Print diagnostics for debugging
+    if (!result.succeeded())
+    {
+        std::cerr << "Diagnostics for ForInLoop:\n";
+        for (const auto &d : result.diagnostics.diagnostics())
+        {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+
+    EXPECT_TRUE(result.succeeded());
+
+    // Check for forin blocks and alloca/store/load pattern
+    bool foundForInCond = false;
+    bool foundAlloca = false;
+    for (const auto &fn : result.module.functions)
+    {
+        if (fn.name == "main")
+        {
+            for (const auto &block : fn.blocks)
+            {
+                if (block.label.find("forin_cond") != std::string::npos)
+                    foundForInCond = true;
+                for (const auto &instr : block.instructions)
+                {
+                    if (instr.op == il::core::Opcode::Alloca)
+                        foundAlloca = true;
+                }
+            }
+        }
+    }
+    EXPECT_TRUE(foundForInCond);
+    EXPECT_TRUE(foundAlloca);
 }
 
 } // namespace

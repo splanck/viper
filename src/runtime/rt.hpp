@@ -176,7 +176,10 @@ extern "C"
     void rt_term_textbg(int64_t bg);
     void rt_term_hide_cursor(void);
     void rt_term_show_cursor(void);
+    void rt_term_cursor_visible(int64_t show);
+    void rt_term_alt_screen(int64_t enable);
     void rt_sleep_ms_i64(int64_t ms);
+    rt_string rt_getkey_timeout(int64_t timeout_ms);
 
     // Output buffering control for improved terminal rendering performance
 

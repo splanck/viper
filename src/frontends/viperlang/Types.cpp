@@ -52,6 +52,10 @@ bool ViperType::isAssignableFrom(const ViperType &source) const
     if (source.kind == TypeKindSem::Never)
         return true;
 
+    // Unknown can be assigned to any type (inference placeholder, e.g., null literal)
+    if (source.kind == TypeKindSem::Unknown)
+        return true;
+
     // Optional accepts its inner type and null
     if (kind == TypeKindSem::Optional)
     {

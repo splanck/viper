@@ -45,6 +45,28 @@ Lowerer::Module Lowerer::lower(ModuleDecl &module)
             builder_->addExtern(
                 std::string(desc->name), desc->signature.retType, desc->signature.paramTypes);
         }
+        else
+        {
+            // Fallback: add extern with obj return type for box functions, void for others
+            // This ensures the IL is valid even if the runtime descriptor lookup fails
+            Type retType = Type(Type::Kind::Void);
+            if (externName.find("Box.") != std::string::npos &&
+                externName.find("To") == std::string::npos)
+            {
+                retType = Type(Type::Kind::Ptr); // Boxing returns obj (ptr)
+            }
+            else if (externName.find("Box.To") != std::string::npos)
+            {
+                // Unboxing returns the primitive type - use i64 as default
+                retType = Type(Type::Kind::I64);
+            }
+            else if (externName.find(".New") != std::string::npos ||
+                     externName.find(".get_") != std::string::npos)
+            {
+                retType = Type(Type::Kind::Ptr);
+            }
+            builder_->addExtern(externName, retType, {});
+        }
     }
 
     return std::move(*module_);
@@ -78,8 +100,14 @@ void Lowerer::lowerDecl(Decl *decl)
         case DeclKind::Function:
             lowerFunctionDecl(*static_cast<FunctionDecl *>(decl));
             break;
+        case DeclKind::Value:
+            lowerValueDecl(*static_cast<ValueDecl *>(decl));
+            break;
+        case DeclKind::Entity:
+            lowerEntityDecl(*static_cast<EntityDecl *>(decl));
+            break;
         default:
-            // Value, Entity, Interface handled later
+            // Interface handled later
             break;
     }
 }
@@ -107,16 +135,17 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
     blockMgr_.bind(builder_.get(), currentFunc_);
     locals_.clear();
 
-    // Create entry block
-    size_t entryIdx = createBlock("entry");
+    // Create entry block with the function's params as block params
+    // (required for proper VM argument passing)
+    builder_->createBlock(*currentFunc_, "entry_0", currentFunc_->params);
+    size_t entryIdx = currentFunc_->blocks.size() - 1;
     setBlock(entryIdx);
 
-    // Define parameters as locals (they are function arguments)
-    for (size_t i = 0; i < decl.params.size(); ++i)
+    // Define parameters using the actual block param IDs (assigned by createBlock)
+    const auto &blockParams = currentFunc_->blocks[entryIdx].params;
+    for (size_t i = 0; i < decl.params.size() && i < blockParams.size(); ++i)
     {
-        // Get argument value from function
-        Value argVal = Value::temp(static_cast<unsigned>(i));
-        defineLocal(decl.params[i].name, argVal);
+        defineLocal(decl.params[i].name, Value::temp(blockParams[i].id));
     }
 
     // Lower function body
@@ -139,6 +168,225 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
     }
 
     currentFunc_ = nullptr;
+}
+
+void Lowerer::lowerValueDecl(ValueDecl &decl)
+{
+    // Compute field layout
+    ValueTypeInfo info;
+    info.name = decl.name;
+    info.totalSize = 0;
+
+    for (auto &member : decl.members)
+    {
+        if (member->kind == DeclKind::Field)
+        {
+            auto *field = static_cast<FieldDecl *>(member.get());
+            TypeRef fieldType = field->type ? sema_.resolveType(field->type.get()) : types::unknown();
+
+            FieldLayout layout;
+            layout.name = field->name;
+            layout.type = fieldType;
+            layout.offset = info.totalSize;
+
+            // Determine field size based on type
+            Type ilType = mapType(fieldType);
+            switch (ilType.kind)
+            {
+                case Type::Kind::I64:
+                case Type::Kind::F64:
+                case Type::Kind::Ptr:
+                case Type::Kind::Str:
+                    layout.size = 8;
+                    break;
+                case Type::Kind::I32:
+                    layout.size = 4;
+                    break;
+                case Type::Kind::I16:
+                    layout.size = 2;
+                    break;
+                case Type::Kind::I1:
+                    layout.size = 1;
+                    break;
+                default:
+                    layout.size = 8;
+                    break;
+            }
+
+            info.fields.push_back(layout);
+            info.totalSize += layout.size;
+        }
+        else if (member->kind == DeclKind::Method)
+        {
+            info.methods.push_back(static_cast<MethodDecl *>(member.get()));
+        }
+    }
+
+    // Store the value type info
+    valueTypes_[decl.name] = info;
+
+    // Lower all methods
+    for (auto *method : info.methods)
+    {
+        lowerMethodDecl(*method, decl.name, false);
+    }
+}
+
+void Lowerer::lowerEntityDecl(EntityDecl &decl)
+{
+    // Compute field layout (entity fields start after object header)
+    // Object header is typically 8 bytes for class ID / refcount
+    constexpr size_t headerSize = 8;
+
+    EntityTypeInfo info;
+    info.name = decl.name;
+    info.totalSize = headerSize;
+    info.classId = nextClassId_++;
+
+    for (auto &member : decl.members)
+    {
+        if (member->kind == DeclKind::Field)
+        {
+            auto *field = static_cast<FieldDecl *>(member.get());
+            TypeRef fieldType = field->type ? sema_.resolveType(field->type.get()) : types::unknown();
+
+            FieldLayout layout;
+            layout.name = field->name;
+            layout.type = fieldType;
+            layout.offset = info.totalSize;
+
+            // Determine field size based on type
+            Type ilType = mapType(fieldType);
+            switch (ilType.kind)
+            {
+                case Type::Kind::I64:
+                case Type::Kind::F64:
+                case Type::Kind::Ptr:
+                case Type::Kind::Str:
+                    layout.size = 8;
+                    break;
+                case Type::Kind::I32:
+                    layout.size = 4;
+                    break;
+                case Type::Kind::I16:
+                    layout.size = 2;
+                    break;
+                case Type::Kind::I1:
+                    layout.size = 1;
+                    break;
+                default:
+                    layout.size = 8;
+                    break;
+            }
+
+            info.fields.push_back(layout);
+            info.totalSize += layout.size;
+        }
+        else if (member->kind == DeclKind::Method)
+        {
+            info.methods.push_back(static_cast<MethodDecl *>(member.get()));
+        }
+    }
+
+    // Store the entity type info
+    entityTypes_[decl.name] = info;
+
+    // Lower all methods
+    for (auto *method : info.methods)
+    {
+        lowerMethodDecl(*method, decl.name, true);
+    }
+}
+
+void Lowerer::lowerMethodDecl(MethodDecl &decl, const std::string &typeName, bool isEntity)
+{
+    // Find the type info
+    if (isEntity)
+    {
+        auto it = entityTypes_.find(typeName);
+        if (it == entityTypes_.end())
+            return;
+        currentEntityType_ = &it->second;
+        currentValueType_ = nullptr;
+    }
+    else
+    {
+        auto it = valueTypes_.find(typeName);
+        if (it == valueTypes_.end())
+            return;
+        currentValueType_ = &it->second;
+        currentEntityType_ = nullptr;
+    }
+
+    // Determine return type
+    TypeRef returnType =
+        decl.returnType ? sema_.resolveType(decl.returnType.get()) : types::voidType();
+    Type ilReturnType = mapType(returnType);
+
+    // Build parameter list: self (ptr) + declared params
+    std::vector<il::core::Param> params;
+    params.push_back({"self", Type(Type::Kind::Ptr)});
+
+    for (const auto &param : decl.params)
+    {
+        TypeRef paramType = param.type ? sema_.resolveType(param.type.get()) : types::unknown();
+        params.push_back({param.name, mapType(paramType)});
+    }
+
+    // Mangle method name: TypeName.methodName
+    std::string mangledName = typeName + "." + decl.name;
+
+    // Create function
+    currentFunc_ = &builder_->startFunction(mangledName, ilReturnType, params);
+    blockMgr_.bind(builder_.get(), currentFunc_);
+    locals_.clear();
+
+    // Create entry block with the function's params as block params
+    // (required for proper VM argument passing)
+    builder_->createBlock(*currentFunc_, "entry_0", currentFunc_->params);
+    size_t entryIdx = currentFunc_->blocks.size() - 1;
+    setBlock(entryIdx);
+
+    // Define locals using the actual block param IDs (assigned by createBlock)
+    const auto &blockParams = currentFunc_->blocks[entryIdx].params;
+    if (!blockParams.empty())
+    {
+        // 'self' is first block param
+        defineLocal("self", Value::temp(blockParams[0].id));
+    }
+
+    // Define other parameters using their block param IDs
+    for (size_t i = 0; i < decl.params.size(); ++i)
+    {
+        // Block param i+1 corresponds to method param i (after self)
+        if (i + 1 < blockParams.size())
+        {
+            defineLocal(decl.params[i].name, Value::temp(blockParams[i + 1].id));
+        }
+    }
+
+    // Lower method body
+    if (decl.body)
+    {
+        lowerStmt(decl.body.get());
+    }
+
+    // Add implicit return if needed
+    if (!isTerminated())
+    {
+        if (ilReturnType.kind == Type::Kind::Void)
+        {
+            emitRetVoid();
+        }
+        else
+        {
+            emitRet(Value::constInt(0));
+        }
+    }
+
+    currentFunc_ = nullptr;
+    currentValueType_ = nullptr;
+    currentEntityType_ = nullptr;
 }
 
 //=============================================================================
@@ -207,17 +455,19 @@ void Lowerer::lowerExprStmt(ExprStmt *stmt)
 void Lowerer::lowerVarStmt(VarStmt *stmt)
 {
     Value initValue;
+    Type ilType;
 
     if (stmt->initializer)
     {
         auto result = lowerExpr(stmt->initializer.get());
         initValue = result.value;
+        ilType = result.type;
     }
     else
     {
         // Default initialization
         TypeRef varType = stmt->type ? sema_.resolveType(stmt->type.get()) : types::unknown();
-        Type ilType = mapType(varType);
+        ilType = mapType(varType);
 
         switch (ilType.kind)
         {
@@ -242,7 +492,17 @@ void Lowerer::lowerVarStmt(VarStmt *stmt)
         }
     }
 
-    defineLocal(stmt->name, initValue);
+    // Use slot-based storage for all mutable variables (enables cross-block SSA)
+    if (!stmt->isFinal)
+    {
+        createSlot(stmt->name, ilType);
+        storeToSlot(stmt->name, initValue, ilType);
+    }
+    else
+    {
+        // Final/immutable variables can use direct SSA values
+        defineLocal(stmt->name, initValue);
+    }
 }
 
 void Lowerer::lowerIfStmt(IfStmt *stmt)
@@ -391,23 +651,31 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt)
     auto startResult = lowerExpr(rangeExpr->start.get());
     auto endResult = lowerExpr(rangeExpr->end.get());
 
-    // Create loop variable
-    defineLocal(stmt->variable, startResult.value);
+    // Create slot-based loop variable (alloca + initial store)
+    // This enables proper SSA across basic block boundaries
+    createSlot(stmt->variable, Type(Type::Kind::I64));
+    storeToSlot(stmt->variable, startResult.value, Type(Type::Kind::I64));
+
+    // Also store the end value in a slot so it's available in other blocks
+    std::string endVar = stmt->variable + "_end";
+    createSlot(endVar, Type(Type::Kind::I64));
+    storeToSlot(endVar, endResult.value, Type(Type::Kind::I64));
 
     // Branch to condition
     emitBr(condIdx);
 
     // Condition: i < end (or <= for inclusive)
     setBlock(condIdx);
-    Value *loopVar = lookupLocal(stmt->variable);
+    Value loopVar = loadFromSlot(stmt->variable, Type(Type::Kind::I64));
+    Value endVal = loadFromSlot(endVar, Type(Type::Kind::I64));
     Value cond;
     if (rangeExpr->inclusive)
     {
-        cond = emitBinary(Opcode::SCmpLE, Type(Type::Kind::I1), *loopVar, endResult.value);
+        cond = emitBinary(Opcode::SCmpLE, Type(Type::Kind::I1), loopVar, endVal);
     }
     else
     {
-        cond = emitBinary(Opcode::SCmpLT, Type(Type::Kind::I1), *loopVar, endResult.value);
+        cond = emitBinary(Opcode::SCmpLT, Type(Type::Kind::I1), loopVar, endVal);
     }
     emitCBr(cond, bodyIdx, endIdx);
 
@@ -421,13 +689,17 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt)
 
     // Update: i = i + 1
     setBlock(updateIdx);
-    loopVar = lookupLocal(stmt->variable);
-    Value nextVal = emitBinary(Opcode::Add, Type(Type::Kind::I64), *loopVar, Value::constInt(1));
-    defineLocal(stmt->variable, nextVal);
+    Value currentVal = loadFromSlot(stmt->variable, Type(Type::Kind::I64));
+    Value nextVal = emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), currentVal, Value::constInt(1));
+    storeToSlot(stmt->variable, nextVal, Type(Type::Kind::I64));
     emitBr(condIdx);
 
     loopStack_.pop();
     setBlock(endIdx);
+
+    // Clean up slots
+    removeSlot(stmt->variable);
+    removeSlot(endVar);
 }
 
 void Lowerer::lowerReturnStmt(ReturnStmt *stmt)
@@ -507,6 +779,16 @@ LowerResult Lowerer::lowerExpr(Expr *expr)
             return lowerUnary(static_cast<UnaryExpr *>(expr));
         case ExprKind::Call:
             return lowerCall(static_cast<CallExpr *>(expr));
+        case ExprKind::Field:
+            return lowerField(static_cast<FieldExpr *>(expr));
+        case ExprKind::New:
+            return lowerNew(static_cast<NewExpr *>(expr));
+        case ExprKind::Coalesce:
+            return lowerCoalesce(static_cast<CoalesceExpr *>(expr));
+        case ExprKind::ListLiteral:
+            return lowerListLiteral(static_cast<ListLiteralExpr *>(expr));
+        case ExprKind::Index:
+            return lowerIndex(static_cast<IndexExpr *>(expr));
         default:
             return {Value::constInt(0), Type(Type::Kind::I64)};
     }
@@ -541,11 +823,91 @@ LowerResult Lowerer::lowerNullLiteral(NullLiteralExpr * /*expr*/)
 
 LowerResult Lowerer::lowerIdent(IdentExpr *expr)
 {
+    // Check for slot-based mutable variables first (e.g., loop variables)
+    auto slotIt = slots_.find(expr->name);
+    if (slotIt != slots_.end())
+    {
+        TypeRef type = sema_.typeOf(expr);
+        Type ilType = mapType(type);
+        Value loaded = loadFromSlot(expr->name, ilType);
+        return {loaded, ilType};
+    }
+
     Value *local = lookupLocal(expr->name);
     if (local)
     {
         TypeRef type = sema_.typeOf(expr);
         return {*local, mapType(type)};
+    }
+
+    // Check for implicit field access (self.field) inside a method
+    if (currentValueType_)
+    {
+        const FieldLayout *field = currentValueType_->findField(expr->name);
+        if (field)
+        {
+            // Get self pointer
+            Value *selfPtr = lookupLocal("self");
+            if (selfPtr)
+            {
+                // Emit GEP to get field address
+                unsigned gepId = nextTempId();
+                il::core::Instr gepInstr;
+                gepInstr.result = gepId;
+                gepInstr.op = Opcode::GEP;
+                gepInstr.type = Type(Type::Kind::Ptr);
+                gepInstr.operands = {*selfPtr, Value::constInt(static_cast<int64_t>(field->offset))};
+                blockMgr_.currentBlock()->instructions.push_back(gepInstr);
+                Value fieldAddr = Value::temp(gepId);
+
+                // Emit Load to get field value
+                Type fieldType = mapType(field->type);
+                unsigned loadId = nextTempId();
+                il::core::Instr loadInstr;
+                loadInstr.result = loadId;
+                loadInstr.op = Opcode::Load;
+                loadInstr.type = fieldType;
+                loadInstr.operands = {fieldAddr};
+                blockMgr_.currentBlock()->instructions.push_back(loadInstr);
+
+                return {Value::temp(loadId), fieldType};
+            }
+        }
+    }
+
+    // Check for implicit field access (self.field) inside an entity method
+    if (currentEntityType_)
+    {
+        const FieldLayout *field = currentEntityType_->findField(expr->name);
+        if (field)
+        {
+            // Get self pointer
+            Value *selfPtr = lookupLocal("self");
+            if (selfPtr)
+            {
+                // Emit GEP to get field address
+                unsigned gepId = nextTempId();
+                il::core::Instr gepInstr;
+                gepInstr.result = gepId;
+                gepInstr.op = Opcode::GEP;
+                gepInstr.type = Type(Type::Kind::Ptr);
+                gepInstr.operands = {*selfPtr, Value::constInt(static_cast<int64_t>(field->offset))};
+                blockMgr_.currentBlock()->instructions.push_back(gepInstr);
+                Value fieldAddr = Value::temp(gepId);
+
+                // Emit Load to get field value
+                Type fieldType = mapType(field->type);
+                unsigned loadId = nextTempId();
+                il::core::Instr loadInstr;
+                loadInstr.result = loadId;
+                loadInstr.op = Opcode::Load;
+                loadInstr.type = fieldType;
+                loadInstr.operands = {fieldAddr};
+                blockMgr_.currentBlock()->instructions.push_back(loadInstr);
+
+                return {Value::temp(loadId), fieldType};
+            }
+        }
     }
 
     // Unknown identifier
@@ -563,7 +925,17 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
         // LHS must be an identifier for simple assignment
         if (auto *ident = dynamic_cast<IdentExpr *>(expr->left.get()))
         {
-            defineLocal(ident->name, right.value);
+            // Check if this is a slot-based variable (e.g., mutable loop variable)
+            auto slotIt = slots_.find(ident->name);
+            if (slotIt != slots_.end())
+            {
+                // Store to slot for mutable variables
+                storeToSlot(ident->name, right.value, right.type);
+            }
+            else
+            {
+                defineLocal(ident->name, right.value);
+            }
             return right;
         }
 
@@ -590,13 +962,13 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
                     Type(Type::Kind::Str), "Viper.String.Concat", {left.value, right.value});
                 return {result, Type(Type::Kind::Str)};
             }
-            op = isFloat ? Opcode::FAdd : Opcode::Add;
+            op = isFloat ? Opcode::FAdd : Opcode::IAddOvf;
             break;
         case BinaryOp::Sub:
-            op = isFloat ? Opcode::FSub : Opcode::Sub;
+            op = isFloat ? Opcode::FSub : Opcode::ISubOvf;
             break;
         case BinaryOp::Mul:
-            op = isFloat ? Opcode::FMul : Opcode::Mul;
+            op = isFloat ? Opcode::FMul : Opcode::IMulOvf;
             break;
         case BinaryOp::Div:
             op = isFloat ? Opcode::FDiv : Opcode::SDiv;
@@ -699,6 +1071,109 @@ LowerResult Lowerer::lowerUnary(UnaryExpr *expr)
 
 LowerResult Lowerer::lowerCall(CallExpr *expr)
 {
+    // Check for method call on value type: p.getX()
+    if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->callee.get()))
+    {
+        // Get the type of the base expression
+        TypeRef baseType = sema_.typeOf(fieldExpr->base.get());
+        if (baseType)
+        {
+            std::string typeName = baseType->name;
+            auto it = valueTypes_.find(typeName);
+            if (it != valueTypes_.end())
+            {
+                const ValueTypeInfo &info = it->second;
+
+                // Check if the field name matches a method
+                for (auto *method : info.methods)
+                {
+                    if (method->name == fieldExpr->field)
+                    {
+                        // Lower the base expression (this is the 'self' pointer)
+                        auto baseResult = lowerExpr(fieldExpr->base.get());
+
+                        // Lower method arguments
+                        std::vector<Value> args;
+                        args.push_back(baseResult.value); // self is first argument
+
+                        for (auto &arg : expr->args)
+                        {
+                            auto result = lowerExpr(arg.value.get());
+                            args.push_back(result.value);
+                        }
+
+                        // Get method return type
+                        TypeRef returnType = method->returnType
+                                                 ? sema_.resolveType(method->returnType.get())
+                                                 : types::voidType();
+                        Type ilReturnType = mapType(returnType);
+
+                        // Call the method: TypeName.methodName
+                        std::string methodName = typeName + "." + method->name;
+
+                        if (ilReturnType.kind == Type::Kind::Void)
+                        {
+                            emitCall(methodName, args);
+                            return {Value::constInt(0), Type(Type::Kind::Void)};
+                        }
+                        else
+                        {
+                            Value result = emitCallRet(ilReturnType, methodName, args);
+                            return {result, ilReturnType};
+                        }
+                    }
+                }
+            }
+
+            // Check for method call on entity type: e.getX()
+            auto entityIt = entityTypes_.find(typeName);
+            if (entityIt != entityTypes_.end())
+            {
+                const EntityTypeInfo &info = entityIt->second;
+
+                // Check if the field name matches a method
+                for (auto *method : info.methods)
+                {
+                    if (method->name == fieldExpr->field)
+                    {
+                        // Lower the base expression (this is the 'self' pointer)
+                        auto baseResult = lowerExpr(fieldExpr->base.get());
+
+                        // Lower method arguments
+                        std::vector<Value> args;
+                        args.push_back(baseResult.value); // self is first argument
+
+                        for (auto &arg : expr->args)
+                        {
+                            auto result = lowerExpr(arg.value.get());
+                            args.push_back(result.value);
+                        }
+
+                        // Get method return type
+                        TypeRef returnType = method->returnType
+                                                 ? sema_.resolveType(method->returnType.get())
+                                                 : types::voidType();
+                        Type ilReturnType = mapType(returnType);
+
+                        // Call the method: TypeName.methodName
+                        std::string methodName = typeName + "." + method->name;
+
+                        if (ilReturnType.kind == Type::Kind::Void)
+                        {
+                            emitCall(methodName, args);
+                            return {Value::constInt(0), Type(Type::Kind::Void)};
+                        }
+                        else
+                        {
+                            Value result = emitCallRet(ilReturnType, methodName, args);
+                            return {result, ilReturnType};
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Check if this is a resolved runtime call (e.g., Viper.Terminal.Say)
     std::string runtimeCallee = sema_.runtimeCallee(expr);
     if (!runtimeCallee.empty())
@@ -757,6 +1232,57 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
             }
             return {Value::constInt(0), Type(Type::Kind::Void)};
         }
+
+        // Check for value type construction
+        auto it = valueTypes_.find(ident->name);
+        if (it != valueTypes_.end())
+        {
+            const ValueTypeInfo &info = it->second;
+
+            // Lower arguments
+            std::vector<Value> argValues;
+            for (auto &arg : expr->args)
+            {
+                auto result = lowerExpr(arg.value.get());
+                argValues.push_back(result.value);
+            }
+
+            // Allocate stack space for the value
+            unsigned allocaId = nextTempId();
+            il::core::Instr allocaInstr;
+            allocaInstr.result = allocaId;
+            allocaInstr.op = Opcode::Alloca;
+            allocaInstr.type = Type(Type::Kind::Ptr);
+            allocaInstr.operands = {Value::constInt(static_cast<int64_t>(info.totalSize))};
+            blockMgr_.currentBlock()->instructions.push_back(allocaInstr);
+            Value ptr = Value::temp(allocaId);
+
+            // Store each argument into the corresponding field
+            for (size_t i = 0; i < argValues.size() && i < info.fields.size(); ++i)
+            {
+                const FieldLayout &field = info.fields[i];
+
+                // GEP to get field address
+                unsigned gepId = nextTempId();
+                il::core::Instr gepInstr;
+                gepInstr.result = gepId;
+                gepInstr.op = Opcode::GEP;
+                gepInstr.type = Type(Type::Kind::Ptr);
+                gepInstr.operands = {ptr, Value::constInt(static_cast<int64_t>(field.offset))};
+                blockMgr_.currentBlock()->instructions.push_back(gepInstr);
+                Value fieldAddr = Value::temp(gepId);
+
+                // Store the value
+                il::core::Instr storeInstr;
+                storeInstr.op = Opcode::Store;
+                storeInstr.type = mapType(field.type);
+                storeInstr.operands = {fieldAddr, argValues[i]};
+                blockMgr_.currentBlock()->instructions.push_back(storeInstr);
+            }
+
+            // Return pointer to the constructed value
+            return {ptr, Type(Type::Kind::Ptr)};
+        }
     }
 
     // Lower arguments
@@ -792,6 +1318,334 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
     {
         Value result = emitCallRet(ilReturnType, calleeName, args);
         return {result, ilReturnType};
+    }
+}
+
+LowerResult Lowerer::lowerField(FieldExpr *expr)
+{
+    // Lower the base expression
+    auto base = lowerExpr(expr->base.get());
+
+    // Get the type of the base expression
+    TypeRef baseType = sema_.typeOf(expr->base.get());
+    if (!baseType)
+    {
+        return {Value::constInt(0), Type(Type::Kind::I64)};
+    }
+
+    // Check if base is a value type
+    std::string typeName = baseType->name;
+    auto it = valueTypes_.find(typeName);
+    if (it != valueTypes_.end())
+    {
+        const ValueTypeInfo &info = it->second;
+        const FieldLayout *field = info.findField(expr->field);
+
+        if (field)
+        {
+            // GEP to get field address
+            unsigned gepId = nextTempId();
+            il::core::Instr gepInstr;
+            gepInstr.result = gepId;
+            gepInstr.op = Opcode::GEP;
+            gepInstr.type = Type(Type::Kind::Ptr);
+            gepInstr.operands = {base.value, Value::constInt(static_cast<int64_t>(field->offset))};
+            blockMgr_.currentBlock()->instructions.push_back(gepInstr);
+            Value fieldAddr = Value::temp(gepId);
+
+            // Load the field value
+            Type fieldType = mapType(field->type);
+            unsigned loadId = nextTempId();
+            il::core::Instr loadInstr;
+            loadInstr.result = loadId;
+            loadInstr.op = Opcode::Load;
+            loadInstr.type = fieldType;
+            loadInstr.operands = {fieldAddr};
+            blockMgr_.currentBlock()->instructions.push_back(loadInstr);
+
+            return {Value::temp(loadId), fieldType};
+        }
+    }
+
+    // Check if base is an entity type
+    auto entityIt = entityTypes_.find(typeName);
+    if (entityIt != entityTypes_.end())
+    {
+        const EntityTypeInfo &info = entityIt->second;
+        const FieldLayout *field = info.findField(expr->field);
+
+        if (field)
+        {
+            // GEP to get field address
+            unsigned gepId = nextTempId();
+            il::core::Instr gepInstr;
+            gepInstr.result = gepId;
+            gepInstr.op = Opcode::GEP;
+            gepInstr.type = Type(Type::Kind::Ptr);
+            gepInstr.operands = {base.value, Value::constInt(static_cast<int64_t>(field->offset))};
+            blockMgr_.currentBlock()->instructions.push_back(gepInstr);
+            Value fieldAddr = Value::temp(gepId);
+
+            // Load the field value
+            Type fieldType = mapType(field->type);
+            unsigned loadId = nextTempId();
+            il::core::Instr loadInstr;
+            loadInstr.result = loadId;
+            loadInstr.op = Opcode::Load;
+            loadInstr.type = fieldType;
+            loadInstr.operands = {fieldAddr};
+            blockMgr_.currentBlock()->instructions.push_back(loadInstr);
+
+            return {Value::temp(loadId), fieldType};
+        }
+    }
+
+    // Unknown field access
+    return {Value::constInt(0), Type(Type::Kind::I64)};
+}
+
+LowerResult Lowerer::lowerNew(NewExpr *expr)
+{
+    // Get the type from the new expression
+    TypeRef type = sema_.resolveType(expr->type.get());
+    if (!type)
+    {
+        return {Value::null(), Type(Type::Kind::Ptr)};
+    }
+
+    // Find the entity type info
+    std::string typeName = type->name;
+    auto it = entityTypes_.find(typeName);
+    if (it == entityTypes_.end())
+    {
+        // Not an entity type
+        return {Value::null(), Type(Type::Kind::Ptr)};
+    }
+
+    const EntityTypeInfo &info = it->second;
+
+    // Lower arguments
+    std::vector<Value> argValues;
+    for (auto &arg : expr->args)
+    {
+        auto result = lowerExpr(arg.value.get());
+        argValues.push_back(result.value);
+    }
+
+    // Allocate heap memory for the entity using rt_alloc
+    Value ptr =
+        emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {Value::constInt(static_cast<int64_t>(info.totalSize))});
+
+    // Store each argument into the corresponding field
+    for (size_t i = 0; i < argValues.size() && i < info.fields.size(); ++i)
+    {
+        const FieldLayout &field = info.fields[i];
+
+        // GEP to get field address
+        unsigned gepId = nextTempId();
+        il::core::Instr gepInstr;
+        gepInstr.result = gepId;
+        gepInstr.op = Opcode::GEP;
+        gepInstr.type = Type(Type::Kind::Ptr);
+        gepInstr.operands = {ptr, Value::constInt(static_cast<int64_t>(field.offset))};
+        blockMgr_.currentBlock()->instructions.push_back(gepInstr);
+        Value fieldAddr = Value::temp(gepId);
+
+        // Store the value
+        il::core::Instr storeInstr;
+        storeInstr.op = Opcode::Store;
+        storeInstr.type = mapType(field.type);
+        storeInstr.operands = {fieldAddr, argValues[i]};
+        blockMgr_.currentBlock()->instructions.push_back(storeInstr);
+    }
+
+    // Return pointer to the allocated entity
+    return {ptr, Type(Type::Kind::Ptr)};
+}
+
+LowerResult Lowerer::lowerCoalesce(CoalesceExpr *expr)
+{
+    // Get the type to determine how to handle the coalesce
+    TypeRef leftType = sema_.typeOf(expr->left.get());
+    TypeRef resultType = sema_.typeOf(expr);
+    Type ilResultType = mapType(resultType);
+
+    // For reference types (entities, etc.), check if the pointer is null
+    // For value-type optionals, we would need to check the flag field
+    // Currently implementing reference-type coalesce
+
+    // Allocate a stack slot for the result BEFORE branching
+    unsigned allocaId = nextTempId();
+    il::core::Instr allocaInstr;
+    allocaInstr.result = allocaId;
+    allocaInstr.op = Opcode::Alloca;
+    allocaInstr.type = Type(Type::Kind::Ptr);
+    allocaInstr.operands = {Value::constInt(8)}; // 8 bytes for ptr/i64
+    blockMgr_.currentBlock()->instructions.push_back(allocaInstr);
+    Value resultSlot = Value::temp(allocaId);
+
+    // Lower the left expression
+    auto left = lowerExpr(expr->left.get());
+
+    // Create blocks for the coalesce
+    size_t hasValueIdx = createBlock("coalesce_has");
+    size_t isNullIdx = createBlock("coalesce_null");
+    size_t mergeIdx = createBlock("coalesce_merge");
+
+    // Check if it's null (for reference types, compare pointer to 0)
+    // Note: ICmpNe requires i64 operands, so we convert the pointer via alloca/store/load
+    unsigned ptrSlotId = nextTempId();
+    il::core::Instr ptrSlotInstr;
+    ptrSlotInstr.result = ptrSlotId;
+    ptrSlotInstr.op = Opcode::Alloca;
+    ptrSlotInstr.type = Type(Type::Kind::Ptr);
+    ptrSlotInstr.operands = {Value::constInt(8)};
+    blockMgr_.currentBlock()->instructions.push_back(ptrSlotInstr);
+    Value ptrSlot = Value::temp(ptrSlotId);
+
+    il::core::Instr storePtrInstr;
+    storePtrInstr.op = Opcode::Store;
+    storePtrInstr.type = Type(Type::Kind::Ptr);
+    storePtrInstr.operands = {ptrSlot, left.value};
+    blockMgr_.currentBlock()->instructions.push_back(storePtrInstr);
+
+    unsigned ptrAsI64Id = nextTempId();
+    il::core::Instr loadAsI64Instr;
+    loadAsI64Instr.result = ptrAsI64Id;
+    loadAsI64Instr.op = Opcode::Load;
+    loadAsI64Instr.type = Type(Type::Kind::I64);
+    loadAsI64Instr.operands = {ptrSlot};
+    blockMgr_.currentBlock()->instructions.push_back(loadAsI64Instr);
+    Value ptrAsI64 = Value::temp(ptrAsI64Id);
+
+    Value isNotNull =
+        emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1), ptrAsI64, Value::constInt(0));
+    emitCBr(isNotNull, hasValueIdx, isNullIdx);
+
+    // Has value block - store left value and branch to merge
+    setBlock(hasValueIdx);
+    {
+        il::core::Instr storeInstr;
+        storeInstr.op = Opcode::Store;
+        storeInstr.type = ilResultType;
+        storeInstr.operands = {resultSlot, left.value};
+        blockMgr_.currentBlock()->instructions.push_back(storeInstr);
+    }
+    emitBr(mergeIdx);
+
+    // Is null block - evaluate right, store, and branch to merge
+    setBlock(isNullIdx);
+    auto right = lowerExpr(expr->right.get());
+    {
+        il::core::Instr storeInstr;
+        storeInstr.op = Opcode::Store;
+        storeInstr.type = ilResultType;
+        storeInstr.operands = {resultSlot, right.value};
+        blockMgr_.currentBlock()->instructions.push_back(storeInstr);
+    }
+    emitBr(mergeIdx);
+
+    // Merge block - load the result
+    setBlock(mergeIdx);
+    unsigned loadId = nextTempId();
+    il::core::Instr loadInstr;
+    loadInstr.result = loadId;
+    loadInstr.op = Opcode::Load;
+    loadInstr.type = ilResultType;
+    loadInstr.operands = {resultSlot};
+    blockMgr_.currentBlock()->instructions.push_back(loadInstr);
+
+    return {Value::temp(loadId), ilResultType};
+}
+
+LowerResult Lowerer::lowerListLiteral(ListLiteralExpr *expr)
+{
+    // Create a new list
+    Value list = emitCallRet(Type(Type::Kind::Ptr), "Viper.Collections.List.New", {});
+
+    // Add each element to the list (boxed)
+    for (auto &elem : expr->elements)
+    {
+        auto result = lowerExpr(elem.get());
+
+        // Box the element based on its type
+        Value boxed;
+        switch (result.type.kind)
+        {
+            case Type::Kind::I64:
+            case Type::Kind::I32:
+            case Type::Kind::I16:
+                boxed = emitCallRet(Type(Type::Kind::Ptr), "Viper.Box.I64", {result.value});
+                break;
+            case Type::Kind::F64:
+                boxed = emitCallRet(Type(Type::Kind::Ptr), "Viper.Box.F64", {result.value});
+                break;
+            case Type::Kind::I1:
+                boxed = emitCallRet(Type(Type::Kind::Ptr), "Viper.Box.I1", {result.value});
+                break;
+            case Type::Kind::Str:
+                boxed = emitCallRet(Type(Type::Kind::Ptr), "Viper.Box.Str", {result.value});
+                break;
+            case Type::Kind::Ptr:
+                // Objects don't need boxing, use directly
+                boxed = result.value;
+                break;
+            default:
+                boxed = result.value;
+                break;
+        }
+
+        // Add to list
+        emitCall("Viper.Collections.List.Add", {list, boxed});
+    }
+
+    return {list, Type(Type::Kind::Ptr)};
+}
+
+LowerResult Lowerer::lowerIndex(IndexExpr *expr)
+{
+    auto base = lowerExpr(expr->base.get());
+    auto index = lowerExpr(expr->index.get());
+
+    // Assume this is a List - call get_Item
+    // Result is a boxed value that needs unboxing based on expected type
+    Value boxed = emitCallRet(Type(Type::Kind::Ptr), "Viper.Collections.List.get_Item",
+                              {base.value, index.value});
+
+    // Get the expected element type from semantic analysis
+    TypeRef elemType = sema_.typeOf(expr);
+    Type ilType = mapType(elemType);
+
+    // Unbox based on expected type
+    switch (ilType.kind)
+    {
+        case Type::Kind::I64:
+        case Type::Kind::I32:
+        case Type::Kind::I16:
+        {
+            Value unboxed = emitCallRet(Type(Type::Kind::I64), "Viper.Box.ToI64", {boxed});
+            return {unboxed, Type(Type::Kind::I64)};
+        }
+        case Type::Kind::F64:
+        {
+            Value unboxed = emitCallRet(Type(Type::Kind::F64), "Viper.Box.ToF64", {boxed});
+            return {unboxed, Type(Type::Kind::F64)};
+        }
+        case Type::Kind::I1:
+        {
+            Value unboxed = emitCallRet(Type(Type::Kind::I1), "Viper.Box.ToI1", {boxed});
+            return {unboxed, Type(Type::Kind::I1)};
+        }
+        case Type::Kind::Str:
+        {
+            Value unboxed = emitCallRet(Type(Type::Kind::Str), "Viper.Box.ToStr", {boxed});
+            return {unboxed, Type(Type::Kind::Str)};
+        }
+        case Type::Kind::Ptr:
+            // Object references don't need unboxing
+            return {boxed, Type(Type::Kind::Ptr)};
+        default:
+            return {boxed, Type(Type::Kind::Ptr)};
     }
 }
 
@@ -931,8 +1785,60 @@ void Lowerer::defineLocal(const std::string &name, Value value)
 
 Lowerer::Value *Lowerer::lookupLocal(const std::string &name)
 {
+    // Check regular locals first
     auto it = locals_.find(name);
     return it != locals_.end() ? &it->second : nullptr;
+}
+
+Lowerer::Value Lowerer::createSlot(const std::string &name, Type type)
+{
+    // Allocate stack space for the variable
+    unsigned allocaId = nextTempId();
+    il::core::Instr allocaInstr;
+    allocaInstr.result = allocaId;
+    allocaInstr.op = Opcode::Alloca;
+    allocaInstr.type = Type(Type::Kind::Ptr);
+    allocaInstr.operands = {Value::constInt(8)}; // 8 bytes for i64/f64/ptr
+    blockMgr_.currentBlock()->instructions.push_back(allocaInstr);
+
+    Value slot = Value::temp(allocaId);
+    slots_[name] = slot;
+    return slot;
+}
+
+void Lowerer::storeToSlot(const std::string &name, Value value, Type type)
+{
+    auto it = slots_.find(name);
+    if (it == slots_.end())
+        return;
+
+    il::core::Instr storeInstr;
+    storeInstr.op = Opcode::Store;
+    storeInstr.type = type;
+    storeInstr.operands = {it->second, value};
+    blockMgr_.currentBlock()->instructions.push_back(storeInstr);
+}
+
+Lowerer::Value Lowerer::loadFromSlot(const std::string &name, Type type)
+{
+    auto it = slots_.find(name);
+    if (it == slots_.end())
+        return Value::constInt(0);
+
+    unsigned loadId = nextTempId();
+    il::core::Instr loadInstr;
+    loadInstr.result = loadId;
+    loadInstr.op = Opcode::Load;
+    loadInstr.type = type;
+    loadInstr.operands = {it->second};
+    blockMgr_.currentBlock()->instructions.push_back(loadInstr);
+
+    return Value::temp(loadId);
+}
+
+void Lowerer::removeSlot(const std::string &name)
+{
+    slots_.erase(name);
 }
 
 //=============================================================================
