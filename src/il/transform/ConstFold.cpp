@@ -595,49 +595,41 @@ void constFold(Module &m)
                                 else
                                     folded = false;
                                 break;
-                            // Integer comparisons
+                            // Integer comparisons - produce boolean results
                             case Opcode::ICmpEq:
-                                res = (lhs == rhs) ? 1 : 0;
+                                repl = Value::constBool(lhs == rhs);
                                 break;
                             case Opcode::ICmpNe:
-                                res = (lhs != rhs) ? 1 : 0;
+                                repl = Value::constBool(lhs != rhs);
                                 break;
                             case Opcode::SCmpLT:
-                                res = (lhs < rhs) ? 1 : 0;
+                                repl = Value::constBool(lhs < rhs);
                                 break;
                             case Opcode::SCmpLE:
-                                res = (lhs <= rhs) ? 1 : 0;
+                                repl = Value::constBool(lhs <= rhs);
                                 break;
                             case Opcode::SCmpGT:
-                                res = (lhs > rhs) ? 1 : 0;
+                                repl = Value::constBool(lhs > rhs);
                                 break;
                             case Opcode::SCmpGE:
-                                res = (lhs >= rhs) ? 1 : 0;
+                                repl = Value::constBool(lhs >= rhs);
                                 break;
-                            // Unsigned comparisons (treat as unsigned)
+                            // Unsigned comparisons (treat as unsigned) - produce boolean results
                             case Opcode::UCmpLT:
-                                res = (static_cast<unsigned long long>(lhs) <
-                                       static_cast<unsigned long long>(rhs))
-                                          ? 1
-                                          : 0;
+                                repl = Value::constBool(static_cast<unsigned long long>(lhs) <
+                                                        static_cast<unsigned long long>(rhs));
                                 break;
                             case Opcode::UCmpLE:
-                                res = (static_cast<unsigned long long>(lhs) <=
-                                       static_cast<unsigned long long>(rhs))
-                                          ? 1
-                                          : 0;
+                                repl = Value::constBool(static_cast<unsigned long long>(lhs) <=
+                                                        static_cast<unsigned long long>(rhs));
                                 break;
                             case Opcode::UCmpGT:
-                                res = (static_cast<unsigned long long>(lhs) >
-                                       static_cast<unsigned long long>(rhs))
-                                          ? 1
-                                          : 0;
+                                repl = Value::constBool(static_cast<unsigned long long>(lhs) >
+                                                        static_cast<unsigned long long>(rhs));
                                 break;
                             case Opcode::UCmpGE:
-                                res = (static_cast<unsigned long long>(lhs) >=
-                                       static_cast<unsigned long long>(rhs))
-                                          ? 1
-                                          : 0;
+                                repl = Value::constBool(static_cast<unsigned long long>(lhs) >=
+                                                        static_cast<unsigned long long>(rhs));
                                 break;
                             // Unsigned division and remainder
                             case Opcode::UDivChk0:
@@ -668,8 +660,16 @@ void constFold(Module &m)
                                 folded = false;
                                 break;
                         }
-                        if (folded)
+                        // For non-comparison operations, synthesize the integer result
+                        // Comparison operations already set repl directly
+                        if (folded && in.op != Opcode::ICmpEq && in.op != Opcode::ICmpNe &&
+                            in.op != Opcode::SCmpLT && in.op != Opcode::SCmpLE &&
+                            in.op != Opcode::SCmpGT && in.op != Opcode::SCmpGE &&
+                            in.op != Opcode::UCmpLT && in.op != Opcode::UCmpLE &&
+                            in.op != Opcode::UCmpGT && in.op != Opcode::UCmpGE)
+                        {
                             repl = Value::constInt(res);
+                        }
                     }
                     // Try floating-point folding
                     if (!folded)

@@ -656,6 +656,38 @@ function(viper_add_il_utils_test)
             test_il_latecleanup_fixpoint PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
     viper_add_ctest(test_il_latecleanup_fixpoint test_il_latecleanup_fixpoint)
 
+    # Loop unrolling tests
+    viper_add_test(
+            test_il_loop_unroll
+            ${VIPER_TESTS_DIR}/unit/il/transform/test_LoopUnroll.cpp)
+    target_link_libraries(
+            test_il_loop_unroll PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+    viper_add_ctest(test_il_loop_unroll test_il_loop_unroll)
+
+    # Jump threading tests
+    viper_add_test(
+            test_il_jump_threading
+            ${_VIPER_IL_DIR}/transform/jumpthreading_basic.cpp)
+    target_link_libraries(
+            test_il_jump_threading PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+    viper_add_ctest(test_il_jump_threading test_il_jump_threading)
+
+    # Cross-block DSE tests
+    viper_add_test(
+            test_il_dse_crossblock
+            ${_VIPER_IL_DIR}/transform/dse_crossblock.cpp)
+    target_link_libraries(
+            test_il_dse_crossblock PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+    viper_add_ctest(test_il_dse_crossblock test_il_dse_crossblock)
+
+    # Enhanced constant folding tests
+    viper_add_test(
+            test_il_constfold_enhanced
+            ${_VIPER_IL_DIR}/transform/constfold_enhanced.cpp)
+    target_link_libraries(
+            test_il_constfold_enhanced PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+    viper_add_ctest(test_il_constfold_enhanced test_il_constfold_enhanced)
+
     viper_add_test(test_il_opcode_info ${_VIPER_IL_DIR}/OpcodeInfoTests.cpp)
     target_link_libraries(test_il_opcode_info PRIVATE ${VIPER_IL_CORE_IO_LIBS})
     viper_add_ctest(test_il_opcode_info test_il_opcode_info)
