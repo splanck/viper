@@ -180,6 +180,7 @@ add_library(il_transform STATIC
         il/transform/LoopSimplify.cpp
         il/transform/LICM.cpp
         il/transform/IndVarSimplify.cpp
+        il/transform/LoopUnroll.cpp
         il/transform/GVN.cpp
         il/transform/ValueKey.cpp
         il/transform/SCCP.cpp
@@ -187,6 +188,7 @@ add_library(il_transform STATIC
         il/transform/SimplifyCFG/BlockMerging.cpp
         il/transform/SimplifyCFG/BranchFolding.cpp
         il/transform/SimplifyCFG/ForwardingElimination.cpp
+        il/transform/SimplifyCFG/JumpThreading.cpp
         il/transform/SimplifyCFG/ParamCanonicalization.cpp
         il/transform/SimplifyCFG/PassContext.cpp
         il/transform/SimplifyCFG/ReachabilityCleanup.cpp

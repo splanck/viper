@@ -242,6 +242,16 @@ static bool traceEnabled()
     return enabled;
 }
 
+/// @brief Check if a value is a float constant with the expected value.
+static bool isConstFloatEq(const Value &v, double target)
+{
+    if (v.kind == Value::Kind::ConstFloat)
+    {
+        return v.f64 == target;
+    }
+    return false;
+}
+
 /// @brief Determine whether @p in matches @p rule and compute the replacement.
 ///
 /// @param rule Peephole rule to evaluate.
@@ -259,6 +269,10 @@ static bool applyRule(const Rule &rule, const Instr &in, Value &out)
             if (!isConstEq(in.operands[rule.match.constIdx], rule.match.value))
                 return false;
             break;
+        case Match::Kind::ConstFloatOperand:
+            if (!isConstFloatEq(in.operands[rule.match.constIdx], rule.match.floatValue))
+                return false;
+            break;
         case Match::Kind::SameOperands:
             if (!sameValue(in.operands[0], in.operands[1]))
                 return false;
@@ -273,6 +287,9 @@ static bool applyRule(const Rule &rule, const Instr &in, Value &out)
         case Replace::Kind::Const:
             out = rule.repl.isBool ? Value::constBool(rule.repl.constValue != 0)
                                    : Value::constInt(rule.repl.constValue);
+            return true;
+        case Replace::Kind::ConstFloat:
+            out = Value::constFloat(rule.repl.floatConstValue);
             return true;
     }
     return false;

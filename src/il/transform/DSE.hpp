@@ -6,9 +6,11 @@
 //===----------------------------------------------------------------------===//
 //
 // Dead Store Elimination (DSE) — function-level pass
-// Removes stores that are provably overwritten before being read, using a
-// simple backward scan within each basic block and conservative clobbering
-// on calls. Aliasing queries rely on BasicAA when available.
+// Removes stores that are provably overwritten before being read, using:
+// 1. Intra-block DSE: Backward scan within each basic block
+// 2. Cross-block DSE: Forward dataflow to find stores dead on all paths
+//
+// Aliasing queries rely on BasicAA when available.
 //
 //===----------------------------------------------------------------------===//
 
@@ -20,16 +22,25 @@
 namespace il::transform
 {
 
-/// \brief Eliminate trivially dead stores inside a function.
+/// \brief Eliminate trivially dead stores inside a function (intra-block).
 /// \details Performs a backward walk per basic block. A store to address P is
 /// considered dead if no intervening load of an alias of P occurs before a
 /// subsequent store to an alias of P. Calls conservatively clobber memory when
 /// they may Mod/Ref according to BasicAA's ModRef classification.
-/// The transformation is intentionally conservative and intra-block to keep the
-/// build fast and safe.
 /// \param F Function to transform in place.
 /// \param AM Analysis manager for alias/modref queries.
 /// \return True when any store was removed.
 bool runDSE(il::core::Function &F, AnalysisManager &AM);
+
+/// \brief Eliminate dead stores across basic block boundaries.
+/// \details Uses forward dataflow to identify stores to non-escaping allocas
+/// that are overwritten on all paths before being read. This extends intra-block
+/// DSE to handle cases like:
+/// - Stores followed by conditional branches where all paths overwrite
+/// - Stores to variables that are reassigned before function exit
+/// \param F Function to transform in place.
+/// \param AM Analysis manager for alias/modref queries.
+/// \return True when any store was removed.
+bool runCrossBlockDSE(il::core::Function &F, AnalysisManager &AM);
 
 } // namespace il::transform

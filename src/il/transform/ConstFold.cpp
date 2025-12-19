@@ -302,6 +302,156 @@ static bool foldCall(const Instr &in, Value &out)
         }
         return false;
     }
+    // Trigonometric functions with constant folding for specific values
+    if (c == "rt_tan" && in.operands.size() == 1)
+    {
+        if (getConstFloat(in.operands[0], a) && a == 0.0)
+        {
+            out = Value::constFloat(0.0);
+            return true;
+        }
+        return false;
+    }
+    if (c == "rt_asin" && in.operands.size() == 1)
+    {
+        if (getConstFloat(in.operands[0], a) && a == 0.0)
+        {
+            out = Value::constFloat(0.0);
+            return true;
+        }
+        return false;
+    }
+    if (c == "rt_acos" && in.operands.size() == 1)
+    {
+        if (getConstFloat(in.operands[0], a) && a == 1.0)
+        {
+            out = Value::constFloat(0.0);
+            return true;
+        }
+        return false;
+    }
+    if (c == "rt_atan" && in.operands.size() == 1)
+    {
+        if (getConstFloat(in.operands[0], a) && a == 0.0)
+        {
+            out = Value::constFloat(0.0);
+            return true;
+        }
+        return false;
+    }
+    // Log/exp functions
+    if (c == "rt_log" && in.operands.size() == 1)
+    {
+        if (getConstFloat(in.operands[0], a) && a == 1.0)
+        {
+            out = Value::constFloat(0.0);
+            return true;
+        }
+        return false;
+    }
+    if (c == "rt_exp" && in.operands.size() == 1)
+    {
+        if (getConstFloat(in.operands[0], a) && a == 0.0)
+        {
+            out = Value::constFloat(1.0);
+            return true;
+        }
+        return false;
+    }
+    // Min/max with constant arguments
+    double b;
+    if (c == "rt_min_f64" && in.operands.size() == 2)
+    {
+        if (getConstFloat(in.operands[0], a) && getConstFloat(in.operands[1], b))
+        {
+            out = Value::constFloat(a < b ? a : b);
+            return true;
+        }
+        return false;
+    }
+    if (c == "rt_max_f64" && in.operands.size() == 2)
+    {
+        if (getConstFloat(in.operands[0], a) && getConstFloat(in.operands[1], b))
+        {
+            out = Value::constFloat(a > b ? a : b);
+            return true;
+        }
+        return false;
+    }
+    // Integer min/max
+    long long ai, bi;
+    if (c == "rt_min_i64" && in.operands.size() == 2)
+    {
+        if (isConstInt(in.operands[0], ai) && isConstInt(in.operands[1], bi))
+        {
+            out = Value::constInt(ai < bi ? ai : bi);
+            return true;
+        }
+        return false;
+    }
+    if (c == "rt_max_i64" && in.operands.size() == 2)
+    {
+        if (isConstInt(in.operands[0], ai) && isConstInt(in.operands[1], bi))
+        {
+            out = Value::constInt(ai > bi ? ai : bi);
+            return true;
+        }
+        return false;
+    }
+    // Clamp
+    if (c == "rt_clamp_f64" && in.operands.size() == 3)
+    {
+        double val, lo, hi;
+        if (getConstFloat(in.operands[0], val) &&
+            getConstFloat(in.operands[1], lo) &&
+            getConstFloat(in.operands[2], hi))
+        {
+            if (val < lo)
+                out = Value::constFloat(lo);
+            else if (val > hi)
+                out = Value::constFloat(hi);
+            else
+                out = Value::constFloat(val);
+            return true;
+        }
+        return false;
+    }
+    if (c == "rt_clamp_i64" && in.operands.size() == 3)
+    {
+        long long val, lo, hi;
+        if (isConstInt(in.operands[0], val) &&
+            isConstInt(in.operands[1], lo) &&
+            isConstInt(in.operands[2], hi))
+        {
+            if (val < lo)
+                out = Value::constInt(lo);
+            else if (val > hi)
+                out = Value::constInt(hi);
+            else
+                out = Value::constInt(val);
+            return true;
+        }
+        return false;
+    }
+    // Sign function
+    if (c == "rt_sgn_i64" && in.operands.size() == 1)
+    {
+        if (isConstInt(in.operands[0], ai))
+        {
+            out = Value::constInt(ai > 0 ? 1 : (ai < 0 ? -1 : 0));
+            return true;
+        }
+        return false;
+    }
+    if (c == "rt_sgn_f64" && in.operands.size() == 1)
+    {
+        if (getConstFloat(in.operands[0], a))
+        {
+            out = Value::constFloat(a > 0.0 ? 1.0 : (a < 0.0 ? -1.0 : 0.0));
+            return true;
+        }
+        return false;
+    }
     return false;
 }
 
@@ -425,12 +575,164 @@ void constFold(Module &m)
                             case Opcode::Xor:
                                 res = lhs ^ rhs;
                                 break;
+                            // Shift operations
+                            case Opcode::Shl:
+                                if (rhs >= 0 && rhs < 64)
+                                    res = lhs << rhs;
+                                else
+                                    folded = false;
+                                break;
+                            case Opcode::LShr:
+                                if (rhs >= 0 && rhs < 64)
+                                    res = static_cast<long long>(
+                                        static_cast<unsigned long long>(lhs) >> rhs);
+                                else
+                                    folded = false;
+                                break;
+                            case Opcode::AShr:
+                                if (rhs >= 0 && rhs < 64)
+                                    res = lhs >> rhs;
+                                else
+                                    folded = false;
+                                break;
+                            // Integer comparisons
+                            case Opcode::ICmpEq:
+                                res = (lhs == rhs) ? 1 : 0;
+                                break;
+                            case Opcode::ICmpNe:
+                                res = (lhs != rhs) ? 1 : 0;
+                                break;
+                            case Opcode::SCmpLT:
+                                res = (lhs < rhs) ? 1 : 0;
+                                break;
+                            case Opcode::SCmpLE:
+                                res = (lhs <= rhs) ? 1 : 0;
+                                break;
+                            case Opcode::SCmpGT:
+                                res = (lhs > rhs) ? 1 : 0;
+                                break;
+                            case Opcode::SCmpGE:
+                                res = (lhs >= rhs) ? 1 : 0;
+                                break;
+                            // Unsigned comparisons (treat as unsigned)
+                            case Opcode::UCmpLT:
+                                res = (static_cast<unsigned long long>(lhs) <
+                                       static_cast<unsigned long long>(rhs))
+                                          ? 1
+                                          : 0;
+                                break;
+                            case Opcode::UCmpLE:
+                                res = (static_cast<unsigned long long>(lhs) <=
+                                       static_cast<unsigned long long>(rhs))
+                                          ? 1
+                                          : 0;
+                                break;
+                            case Opcode::UCmpGT:
+                                res = (static_cast<unsigned long long>(lhs) >
+                                       static_cast<unsigned long long>(rhs))
+                                          ? 1
+                                          : 0;
+                                break;
+                            case Opcode::UCmpGE:
+                                res = (static_cast<unsigned long long>(lhs) >=
+                                       static_cast<unsigned long long>(rhs))
+                                          ? 1
+                                          : 0;
+                                break;
+                            // Unsigned division and remainder
+                            case Opcode::UDivChk0:
+                                if (rhs != 0)
+                                {
+                                    res = static_cast<long long>(
+                                        static_cast<unsigned long long>(lhs) /
+                                        static_cast<unsigned long long>(rhs));
+                                }
+                                else
+                                {
+                                    folded = false;
+                                }
+                                break;
+                            case Opcode::URemChk0:
+                                if (rhs != 0)
+                                {
+                                    res = static_cast<long long>(
+                                        static_cast<unsigned long long>(lhs) %
+                                        static_cast<unsigned long long>(rhs));
+                                }
+                                else
+                                {
+                                    folded = false;
+                                }
+                                break;
                             default:
                                 folded = false;
                                 break;
                         }
                         if (folded)
                             repl = Value::constInt(res);
+                    }
+                    // Try floating-point folding
+                    if (!folded)
+                    {
+                        double flhs = 0.0;
+                        double frhs = 0.0;
+                        if (getConstFloat(in.operands[0], flhs) &&
+                            getConstFloat(in.operands[1], frhs))
+                        {
+                            double fres = 0.0;
+                            folded = true;
+                            switch (in.op)
+                            {
+                                case Opcode::FAdd:
+                                    fres = flhs + frhs;
+                                    break;
+                                case Opcode::FSub:
+                                    fres = flhs - frhs;
+                                    break;
+                                case Opcode::FMul:
+                                    fres = flhs * frhs;
+                                    break;
+                                case Opcode::FDiv:
+                                    // Don't fold division by zero
+                                    if (frhs != 0.0)
+                                        fres = flhs / frhs;
+                                    else
+                                        folded = false;
+                                    break;
+                                // Float comparisons produce boolean (int) results
+                                case Opcode::FCmpEQ:
+                                    repl = Value::constBool(flhs == frhs);
+                                    break;
+                                case Opcode::FCmpNE:
+                                    repl = Value::constBool(flhs != frhs);
+                                    break;
+                                case Opcode::FCmpLT:
+                                    repl = Value::constBool(flhs < frhs);
+                                    break;
+                                case Opcode::FCmpLE:
+                                    repl = Value::constBool(flhs <= frhs);
+                                    break;
+                                case Opcode::FCmpGT:
+                                    repl = Value::constBool(flhs > frhs);
+                                    break;
+                                case Opcode::FCmpGE:
+                                    repl = Value::constBool(flhs >= frhs);
+                                    break;
+                                default:
+                                    folded = false;
+                                    break;
+                            }
+                            // For arithmetic operations, produce float result
+                            if (folded && in.op != Opcode::FCmpEQ && in.op != Opcode::FCmpNE &&
+                                in.op != Opcode::FCmpLT && in.op != Opcode::FCmpLE &&
+                                in.op != Opcode::FCmpGT && in.op != Opcode::FCmpGE)
+                            {
+                                if (std::isfinite(fres))
+                                    repl = Value::constFloat(fres);
+                                else
+                                    folded = false; // Don't fold to inf/nan
+                            }
+                        }
                     }
                 }
                 if (folded)

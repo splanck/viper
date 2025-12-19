@@ -15,20 +15,24 @@ Optimization passes (`src/il/transform/`) for IL programs.
 
 | File                | Purpose                                        |
 |---------------------|------------------------------------------------|
-| `ConstFold.hpp/cpp` | Constant folding for arithmetic and intrinsics |
+| `ConstFold.hpp/cpp` | Constant folding for arithmetic, comparisons, trig/math intrinsics |
 | `DCE.hpp/cpp`       | Dead code elimination                          |
-| `DSE.hpp/cpp`       | Dead store elimination                         |
+| `DSE.hpp/cpp`       | Dead store elimination (intra-block and cross-block) |
 | `Mem2Reg.hpp/cpp`   | Stack slot promotion to SSA                    |
-| `Peephole.hpp/cpp`  | Local algebraic simplifications                |
+| `Peephole.hpp/cpp`  | Local algebraic simplifications (57 rules including float ops) |
 | `EarlyCSE.hpp/cpp`  | Early common subexpression elimination         |
+| `GVN.hpp/cpp`       | Global value numbering with load elimination   |
+| `Inline.hpp/cpp`    | Function inlining with enhanced cost model     |
 
 ## Loop Passes
 
-| File                   | Purpose                                           |
-|------------------------|---------------------------------------------------|
-| `LICM.hpp/cpp`         | Loop-invariant code motion                        |
-| `LoopSimplify.hpp/cpp` | Loop normalization (preheaders, single backedges) |
-| `SCCP.hpp/cpp`         | Sparse conditional constant propagation           |
+| File                     | Purpose                                                |
+|--------------------------|--------------------------------------------------------|
+| `LICM.hpp/cpp`           | Loop-invariant code motion (hoisting)                  |
+| `LoopSimplify.hpp/cpp`   | Loop normalization (preheaders, single backedges)      |
+| `LoopUnroll.hpp/cpp`     | Loop unrolling for small constant-bound loops          |
+| `IndVarSimplify.hpp/cpp` | Induction variable optimization and strength reduction |
+| `SCCP.hpp/cpp`           | Sparse conditional constant propagation                |
 
 ## Analysis (`analysis/`)
 
@@ -45,6 +49,7 @@ Optimization passes (`src/il/transform/`) for IL programs.
 | `BlockMerging.hpp/cpp`          | Collapse trivial block chains             |
 | `BranchFolding.hpp/cpp`         | Simplify constant/identical branches      |
 | `ForwardingElimination.hpp/cpp` | Remove redundant forwarding blocks        |
+| `JumpThreading.hpp/cpp`         | Thread jumps through predictable branches |
 | `ParamCanonicalization.hpp/cpp` | Canonicalize block parameters             |
 | `ReachabilityCleanup.hpp/cpp`   | Prune unreachable blocks                  |
 | `Utils.hpp/cpp`                 | Shared predicate and branch utilities     |

@@ -50,18 +50,21 @@ struct Match
     /// Kinds of patterns the peephole engine supports.
     enum class Kind
     {
-        ConstOperand, ///< Match a specific constant at operand index.
-        SameOperands  ///< Match when both operands are identical.
+        ConstOperand,      ///< Match a specific integer constant at operand index.
+        ConstFloatOperand, ///< Match a specific float constant at operand index.
+        SameOperands       ///< Match when both operands are identical.
     };
 
     /// Opcode to match.
     core::Opcode op;
     /// Which matching strategy to use.
     Kind kind;
-    /// Operand index holding the constant (ConstOperand) or unused (SameOperands).
-    unsigned constIdx;
-    /// Required constant value (ConstOperand).
-    long long value;
+    /// Operand index holding the constant (ConstOperand/ConstFloatOperand) or unused (SameOperands).
+    unsigned constIdx = 0;
+    /// Required constant value (ConstOperand) - integer.
+    long long value = 0;
+    /// Required constant value (ConstFloatOperand) - float.
+    double floatValue = 0.0;
 };
 
 /// \brief Replacement describing how to rewrite a matched instruction.
@@ -70,17 +73,20 @@ struct Replace
     /// Strategy for producing the replacement value.
     enum class Kind
     {
-        Operand, ///< Forward an existing operand.
-        Const    ///< Synthesize an integer/boolean literal.
+        Operand,    ///< Forward an existing operand.
+        Const,      ///< Synthesize an integer/boolean literal.
+        ConstFloat  ///< Synthesize a floating-point literal.
     };
 
     Kind kind;
     /// Index of the operand to use when kind == Operand.
-    unsigned operandIdx;
+    unsigned operandIdx = 0;
     /// Constant payload when kind == Const.
-    long long constValue;
+    long long constValue = 0;
+    /// Float constant payload when kind == ConstFloat.
+    double floatConstValue = 0.0;
     /// Whether the constant literal is a boolean (i1) rather than i64.
-    bool isBool;
+    bool isBool = false;
 };
 
 /// \brief A peephole rule mapping a match to its replacement.
@@ -92,7 +98,7 @@ struct Rule
 };
 
 /// \brief Registry of peephole rules.
-inline constexpr std::array<Rule, 33> kRules{{
+inline constexpr std::array<Rule, 57> kRules{{
     // Integer arithmetic identities (checked overflow variants)
     {{core::Opcode::IAddOvf, Match::Kind::ConstOperand, 0, 0},
      {Replace::Kind::Operand, 1, 0, false},
@@ -199,6 +205,104 @@ inline constexpr std::array<Rule, 33> kRules{{
     {{core::Opcode::SCmpGE, Match::Kind::SameOperands, 0, 0},
      {Replace::Kind::Const, 0, 1, true},
      "scmp.ge-xx"},
+
+    // Unsigned reflexive comparisons
+    {{core::Opcode::UCmpLT, Match::Kind::SameOperands, 0, 0},
+     {Replace::Kind::Const, 0, 0, true},
+     "ucmp.lt-xx"},
+    {{core::Opcode::UCmpLE, Match::Kind::SameOperands, 0, 0},
+     {Replace::Kind::Const, 0, 1, true},
+     "ucmp.le-xx"},
+    {{core::Opcode::UCmpGT, Match::Kind::SameOperands, 0, 0},
+     {Replace::Kind::Const, 0, 0, true},
+     "ucmp.gt-xx"},
+    {{core::Opcode::UCmpGE, Match::Kind::SameOperands, 0, 0},
+     {Replace::Kind::Const, 0, 1, true},
+     "ucmp.ge-xx"},
+
+    // Float reflexive comparisons
+    {{core::Opcode::FCmpEQ, Match::Kind::SameOperands, 0, 0},
+     {Replace::Kind::Const, 0, 1, 0.0, true},
+     "fcmp.eq-xx"},
+    {{core::Opcode::FCmpNE, Match::Kind::SameOperands, 0, 0},
+     {Replace::Kind::Const, 0, 0, 0.0, true},
+     "fcmp.ne-xx"},
+    {{core::Opcode::FCmpLT, Match::Kind::SameOperands, 0, 0},
+     {Replace::Kind::Const, 0, 0, 0.0, true},
+     "fcmp.lt-xx"},
+    {{core::Opcode::FCmpLE, Match::Kind::SameOperands, 0, 0},
+     {Replace::Kind::Const, 0, 1, 0.0, true},
+     "fcmp.le-xx"},
+    {{core::Opcode::FCmpGT, Match::Kind::SameOperands, 0, 0},
+     {Replace::Kind::Const, 0, 0, 0.0, true},
+     "fcmp.gt-xx"},
+    {{core::Opcode::FCmpGE, Match::Kind::SameOperands, 0, 0},
+     {Replace::Kind::Const, 0, 1, 0.0, true},
+     "fcmp.ge-xx"},
+
+    // Float arithmetic identities: x * 1.0 = x
+    {{core::Opcode::FMul, Match::Kind::ConstFloatOperand, 0, 0, 1.0},
+     {Replace::Kind::Operand, 1},
+     "fmul*1x"},
+    {{core::Opcode::FMul, Match::Kind::ConstFloatOperand, 1, 0, 1.0},
+     {Replace::Kind::Operand, 0},
+     "fmul*x1"},
+
+    // Float arithmetic identities: x / 1.0 = x
+    {{core::Opcode::FDiv, Match::Kind::ConstFloatOperand, 1, 0, 1.0},
+     {Replace::Kind::Operand, 0},
+     "fdiv/x1"},
+
+    // Float arithmetic identities: x + 0.0 = x
+    {{core::Opcode::FAdd, Match::Kind::ConstFloatOperand, 0, 0, 0.0},
+     {Replace::Kind::Operand, 1},
+     "fadd+0x"},
+    {{core::Opcode::FAdd, Match::Kind::ConstFloatOperand, 1, 0, 0.0},
+     {Replace::Kind::Operand, 0},
+     "fadd+x0"},
+
+    // Float arithmetic identities: x - 0.0 = x
+    {{core::Opcode::FSub, Match::Kind::ConstFloatOperand, 1, 0, 0.0},
+     {Replace::Kind::Operand, 0},
+     "fsub-x0"},
+
+    // Float arithmetic identities: x * 0.0 = 0.0 (note: not valid for NaN/Inf)
+    // Skipped for safety - FP semantics require caution
+
+    // Float arithmetic identities: x - x = 0.0 (note: not valid for NaN)
+    // Skipped for safety - FP semantics require caution
+
+    // Integer division identities: x / 1 = x
+    {{core::Opcode::SDivChk0, Match::Kind::ConstOperand, 1, 1},
+     {Replace::Kind::Operand, 0},
+     "sdiv/x1"},
+    {{core::Opcode::UDivChk0, Match::Kind::ConstOperand, 1, 1},
+     {Replace::Kind::Operand, 0},
+     "udiv/x1"},
+
+    // Integer remainder identities: x % 1 = 0
+    {{core::Opcode::SRemChk0, Match::Kind::ConstOperand, 1, 1},
+     {Replace::Kind::Const, 0, 0},
+     "srem%x1"},
+    {{core::Opcode::URemChk0, Match::Kind::ConstOperand, 1, 1},
+     {Replace::Kind::Const, 0, 0},
+     "urem%x1"},
+
+    // Integer division identities: 0 / x = 0 (x != 0 checked by Chk0)
+    {{core::Opcode::SDivChk0, Match::Kind::ConstOperand, 0, 0},
+     {Replace::Kind::Const, 0, 0},
+     "sdiv/0x"},
+    {{core::Opcode::UDivChk0, Match::Kind::ConstOperand, 0, 0},
+     {Replace::Kind::Const, 0, 0},
+     "udiv/0x"},
+
+    // Integer remainder identities: 0 % x = 0 (x != 0 checked by Chk0)
+    {{core::Opcode::SRemChk0, Match::Kind::ConstOperand, 0, 0},
+     {Replace::Kind::Const, 0, 0},
+     "srem%0x"},
+    {{core::Opcode::URemChk0, Match::Kind::ConstOperand, 0, 0},
+     {Replace::Kind::Const, 0, 0},
+     "urem%0x"},
 }};
 
 /// \brief Run peephole simplifications over @p m using registered rules.

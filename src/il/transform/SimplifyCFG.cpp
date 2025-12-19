@@ -26,6 +26,7 @@
 #include "il/transform/SimplifyCFG/BlockMerging.hpp"
 #include "il/transform/SimplifyCFG/BranchFolding.hpp"
 #include "il/transform/SimplifyCFG/ForwardingElimination.hpp"
+#include "il/transform/SimplifyCFG/JumpThreading.hpp"
 #include "il/transform/SimplifyCFG/ParamCanonicalization.hpp"
 #include "il/transform/SimplifyCFG/ReachabilityCleanup.hpp"
 
@@ -138,6 +139,8 @@ bool SimplifyCFG::run(il::core::Function &F, Stats *outStats)
         if (aggressive)
             changed |= simplify_cfg::foldTrivialSwitches(ctx);
         changed |= simplify_cfg::foldTrivialConditionalBranches(ctx);
+        if (aggressive)
+            changed |= simplify_cfg::threadJumps(ctx);
         changed |= simplify_cfg::removeEmptyForwarders(ctx);
         changed |= simplify_cfg::mergeSinglePredBlocks(ctx);
         changed |= simplify_cfg::removeUnreachableBlocks(ctx);

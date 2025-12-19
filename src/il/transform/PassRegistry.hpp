@@ -271,6 +271,9 @@ void registerGVNPass(PassRegistry &registry);
 /// @brief Register the IndVarSimplify pass.
 void registerIndVarSimplifyPass(PassRegistry &registry);
 
+/// @brief Register the loop unrolling pass.
+void registerLoopUnrollPass(PassRegistry &registry);
+
 /// @brief Register the simple function inliner module pass.
 void registerInlinePass(PassRegistry &registry);
 

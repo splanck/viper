@@ -28,6 +28,7 @@
 #include "il/utils/Utils.hpp"
 
 #include <algorithm>
+#include <climits>
 #include <unordered_map>
 #include <vector>
 
@@ -38,7 +39,7 @@ namespace il::transform
 
 namespace
 {
-constexpr unsigned kMaxCallSites = 4;
+constexpr unsigned kMaxCallSites = 8;
 constexpr char kDepthKeySep = '\0';
 
 using BlockDepthMap = std::unordered_map<std::string, unsigned>;
@@ -48,20 +49,58 @@ struct InlineCost
     unsigned instrCount = 0;
     unsigned blockCount = 0;
     unsigned callSites = 0;
+    unsigned nestedCalls = 0;  // Number of calls within this function
+    unsigned returnCount = 0;  // Number of return statements
     bool recursive = false;
     bool hasEH = false;
     bool unsupportedCFG = false;
     bool hasReturn = false;
 
-    bool withinBudget(unsigned instrBudget, unsigned blockBudget) const
+    /// @brief Check if within basic structural constraints.
+    bool isInlinable() const
     {
-        if (recursive || hasEH || unsupportedCFG || !hasReturn)
+        return !recursive && !hasEH && !unsupportedCFG && hasReturn;
+    }
+
+    /// @brief Compute adjusted cost considering bonuses.
+    int adjustedCost(const InlineCostConfig &config, unsigned constArgCount) const
+    {
+        if (!isInlinable())
+            return INT_MAX;
+
+        int cost = static_cast<int>(instrCount);
+
+        // Apply bonuses
+        if (callSites == 1)
+            cost -= static_cast<int>(config.singleUseBonus);
+
+        if (instrCount <= 8)
+            cost -= static_cast<int>(config.tinyFunctionBonus);
+
+        // Constant arguments enable optimization
+        cost -= static_cast<int>(constArgCount * config.constArgBonus);
+
+        // Penalty for functions with many nested calls (may cause code explosion)
+        cost += static_cast<int>(nestedCalls * 2);
+
+        // Multiple returns are slightly more expensive to inline
+        if (returnCount > 1)
+            cost += static_cast<int>((returnCount - 1) * 2);
+
+        return cost;
+    }
+
+    bool withinBudget(const InlineCostConfig &config, unsigned constArgCount) const
+    {
+        if (!isInlinable())
             return false;
-        if (instrCount > instrBudget || blockCount > blockBudget)
+        if (blockCount > config.blockBudget)
             return false;
         if (callSites > kMaxCallSites)
             return false;
-        return true;
+
+        int cost = adjustedCost(config, constArgCount);
+        return cost <= static_cast<int>(config.instrThreshold);
     }
 };
 
@@ -184,6 +223,7 @@ InlineCost evaluateInlineCost(const Function &fn, const viper::analysis::CallGra
         if (term.op == Opcode::Ret)
         {
             cost.hasReturn = true;
+            ++cost.returnCount;
             bool expectValue = fn.retType.kind != Type::Kind::Void;
             bool hasValue = !term.operands.empty();
             if (expectValue != hasValue)
@@ -194,10 +234,31 @@ InlineCost evaluateInlineCost(const Function &fn, const viper::analysis::CallGra
         {
             if (isEHSensitive(I))
                 cost.hasEH = true;
+
+            // Count nested calls
+            if (I.op == Opcode::Call || I.op == Opcode::CallIndirect)
+                ++cost.nestedCalls;
         }
     }
 
     return cost;
+}
+
+/// @brief Count constant arguments in a call instruction.
+unsigned countConstantArgs(const Instr &callInstr)
+{
+    unsigned count = 0;
+    for (const auto &op : callInstr.operands)
+    {
+        if (op.kind == Value::Kind::ConstInt ||
+            op.kind == Value::Kind::ConstFloat ||
+            op.kind == Value::Kind::NullPtr ||
+            op.kind == Value::Kind::ConstStr)
+        {
+            ++count;
+        }
+    }
+    return count;
 }
 
 std::string makeUniqueLabel(const Function &function, const std::string &base)
@@ -456,6 +517,8 @@ PreservedAnalyses Inliner::run(Module &module, AnalysisManager &)
         costCache.emplace(fn.name, evaluateInlineCost(fn, cg));
     }
 
+    unsigned codeGrowth = 0;
+
     BlockDepthMap depths;
     for (const auto &fn : module.functions)
         for (const auto &B : fn.blocks)
@@ -501,8 +564,17 @@ PreservedAnalyses Inliner::run(Module &module, AnalysisManager &)
                     continue;
                 }
 
+                // Check code growth budget
                 const InlineCost &cost = costCache.at(callee->name);
-                if (!cost.withinBudget(instrThreshold_, blockBudget_))
+                if (codeGrowth + cost.instrCount > config_.maxCodeGrowth)
+                {
+                    ++instIdx;
+                    continue;
+                }
+
+                // Use enhanced cost model with constant argument bonuses
+                unsigned constArgs = countConstantArgs(I);
+                if (!cost.withinBudget(config_, constArgs))
                 {
                     ++instIdx;
                     continue;
@@ -510,11 +582,15 @@ PreservedAnalyses Inliner::run(Module &module, AnalysisManager &)
 
                 unsigned depth = getBlockDepth(depths, caller.name, block.label);
                 if (!inlineCallSite(
-                        caller, blockIdx, instIdx, *callee, depth, maxInlineDepth_, depths))
+                        caller, blockIdx, instIdx, *callee, depth, config_.maxInlineDepth, depths))
                 {
                     ++instIdx;
                     continue;
                 }
+
+                // Track code growth (callee instructions minus the call itself)
+                if (cost.instrCount > 1)
+                    codeGrowth += cost.instrCount - 1;
 
                 changed = true;
                 break; // block reshaped; move to next block

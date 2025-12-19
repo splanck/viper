@@ -5,22 +5,30 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements a conservative dead-store elimination pass. Operates per basic
-// block using a backward scan with a small alias-aware kill set. Calls with
-// possible Mod/Ref clobber the set. Loads clear the specific address from the
-// kill set. Only removes stores to addresses that are later overwritten before
-// any intervening read or escaping operation.
+// Implements dead-store elimination with two levels of analysis:
+// 1. Intra-block DSE: Backward scan within each basic block
+// 2. Cross-block DSE: Forward propagation of stores through the CFG to find
+//    stores that are killed on all paths before being read
+//
+// The pass uses BasicAA for alias disambiguation and is conservative about
+// calls that may modify or reference memory.
 //
 //===----------------------------------------------------------------------===//
 
 #include "il/transform/DSE.hpp"
 
 #include "il/analysis/BasicAA.hpp"
+#include "il/analysis/Dominators.hpp"
+#include "il/core/BasicBlock.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Opcode.hpp"
+#include "il/transform/analysis/Liveness.hpp"
 
+#include <algorithm>
 #include <optional>
+#include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 using namespace il::core;
 
@@ -180,6 +188,319 @@ bool runDSE(Function &F, AnalysisManager &AM)
                 continue;
             }
         }
+    }
+
+    return changed;
+}
+
+//===----------------------------------------------------------------------===//
+// Cross-Block DSE
+//===----------------------------------------------------------------------===//
+// This extension identifies stores that are provably dead because they are
+// overwritten on ALL paths before being read. It uses a forward dataflow
+// approach:
+// 1. For each store to alloca (non-escaping), track it as potentially dead
+// 2. Walk forward through successors
+// 3. Mark store as dead if all paths either:
+//    - Store to the same location again (killing the original)
+//    - Exit the function without reading the location
+//===----------------------------------------------------------------------===//
+
+namespace
+{
+
+/// Represents a store that might be dead
+struct PendingStore
+{
+    BasicBlock *block;
+    size_t instrIdx;
+    Value ptr;
+    std::optional<unsigned> size;
+};
+
+/// Check if an alloca escapes (is passed to a call or has its address taken)
+bool allocaEscapes(const Function &F, unsigned allocaId)
+{
+    for (const auto &B : F.blocks)
+    {
+        for (const auto &I : B.instructions)
+        {
+            // Check if alloca is used in a call
+            if (I.op == Opcode::Call || I.op == Opcode::CallIndirect)
+            {
+                for (const auto &op : I.operands)
+                {
+                    if (op.kind == Value::Kind::Temp && op.id == allocaId)
+                        return true;
+                }
+            }
+            // Check if address is stored somewhere
+            if (I.op == Opcode::Store && I.operands.size() >= 2)
+            {
+                // operands[0] is dst ptr, operands[1] is value
+                const auto &val = I.operands[1];
+                if (val.kind == Value::Kind::Temp && val.id == allocaId)
+                    return true;
+            }
+        }
+    }
+    return false;
+}
+
+/// Find the alloca ID if this is a direct pointer to a stack allocation
+std::optional<unsigned> getAllocaId(const Value &ptr, const Function &F)
+{
+    if (ptr.kind != Value::Kind::Temp)
+        return std::nullopt;
+
+    // Search for the alloca instruction
+    for (const auto &B : F.blocks)
+    {
+        for (const auto &I : B.instructions)
+        {
+            if (I.op == Opcode::Alloca && I.result && *I.result == ptr.id)
+            {
+                return ptr.id;
+            }
+        }
+    }
+    return std::nullopt;
+}
+
+/// Check if a block reads from the given address
+bool blockReadsFrom(const BasicBlock &B, const Value &ptr,
+                    std::optional<unsigned> size, viper::analysis::BasicAA &AA)
+{
+    for (const auto &I : B.instructions)
+    {
+        if (I.op == Opcode::Load && !I.operands.empty())
+        {
+            auto loadSize = viper::analysis::BasicAA::typeSizeBytes(I.type);
+            if (AA.alias(I.operands[0], ptr, loadSize, size) !=
+                viper::analysis::AliasResult::NoAlias)
+            {
+                return true;
+            }
+        }
+        // Calls might read
+        if (I.op == Opcode::Call || I.op == Opcode::CallIndirect)
+        {
+            auto mr = AA.modRef(I);
+            if (mr == viper::analysis::ModRefResult::Ref ||
+                mr == viper::analysis::ModRefResult::ModRef)
+            {
+                return true; // Conservative: assume call reads the address
+            }
+        }
+    }
+    return false;
+}
+
+/// Check if a block has a store that kills the pending store
+bool blockKillsStore(const BasicBlock &B, const Value &ptr,
+                     std::optional<unsigned> size, viper::analysis::BasicAA &AA)
+{
+    for (const auto &I : B.instructions)
+    {
+        if (I.op == Opcode::Store && !I.operands.empty())
+        {
+            auto storeSize = viper::analysis::BasicAA::typeSizeBytes(I.type);
+            if (AA.alias(I.operands[0], ptr, storeSize, size) ==
+                viper::analysis::AliasResult::MustAlias)
+            {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+/// Get successor block labels from a terminator instruction
+std::vector<std::string> getSuccessors(const BasicBlock &B)
+{
+    std::vector<std::string> succs;
+    if (B.instructions.empty())
+        return succs;
+    const auto &term = B.instructions.back();
+    for (const auto &label : term.labels)
+    {
+        succs.push_back(label);
+    }
+    return succs;
+}
+
+/// Check if terminator is a return instruction
+bool isReturn(const BasicBlock &B)
+{
+    if (B.instructions.empty())
+        return false;
+    return B.instructions.back().op == Opcode::Ret;
+}
+
+} // namespace
+
+/// Cross-block DSE: eliminate stores that are dead across block boundaries
+bool runCrossBlockDSE(Function &F, AnalysisManager &AM)
+{
+    if (F.blocks.empty())
+        return false;
+
+    viper::analysis::BasicAA &AA =
+        AM.getFunctionResult<viper::analysis::BasicAA>("basic-aa", F);
+
+    // Build a map from block label to block pointer for successor lookup
+    std::unordered_map<std::string, BasicBlock *> blockMap;
+    for (auto &B : F.blocks)
+    {
+        blockMap[B.label] = &B;
+    }
+
+    bool changed = false;
+    std::vector<std::pair<BasicBlock *, size_t>> toRemove;
+
+    // For each block, look for stores to non-escaping allocas
+    for (auto &B : F.blocks)
+    {
+        for (size_t i = 0; i < B.instructions.size(); ++i)
+        {
+            const Instr &I = B.instructions[i];
+            if (I.op != Opcode::Store || I.operands.empty())
+                continue;
+
+            const Value &ptr = I.operands[0];
+
+            // Only consider stores to allocas (stack allocations)
+            auto allocaId = getAllocaId(ptr, F);
+            if (!allocaId)
+                continue;
+
+            // Skip if the alloca escapes
+            if (allocaEscapes(F, *allocaId))
+                continue;
+
+            auto storeSize = viper::analysis::BasicAA::typeSizeBytes(I.type);
+
+            // Check if this store is read before being killed
+            // Walk forward from this point to see if store is dead
+            bool isDeadStore = true;
+            bool reachedRead = false;
+
+            // First check within same block after the store
+            for (size_t j = i + 1; j < B.instructions.size(); ++j)
+            {
+                const Instr &next = B.instructions[j];
+                if (next.op == Opcode::Load && !next.operands.empty())
+                {
+                    auto loadSize = viper::analysis::BasicAA::typeSizeBytes(next.type);
+                    if (AA.alias(next.operands[0], ptr, loadSize, storeSize) !=
+                        viper::analysis::AliasResult::NoAlias)
+                    {
+                        reachedRead = true;
+                        isDeadStore = false;
+                        break;
+                    }
+                }
+                if (next.op == Opcode::Store && !next.operands.empty())
+                {
+                    auto nextSize = viper::analysis::BasicAA::typeSizeBytes(next.type);
+                    if (AA.alias(next.operands[0], ptr, nextSize, storeSize) ==
+                        viper::analysis::AliasResult::MustAlias)
+                    {
+                        // Killed by later store in same block - already handled
+                        // by intra-block DSE
+                        isDeadStore = false;
+                        break;
+                    }
+                }
+                // Conservative for calls
+                if (next.op == Opcode::Call || next.op == Opcode::CallIndirect)
+                {
+                    auto mr = AA.modRef(next);
+                    if (mr != viper::analysis::ModRefResult::NoModRef)
+                    {
+                        isDeadStore = false;
+                        break;
+                    }
+                }
+            }
+
+            if (reachedRead || !isDeadStore)
+                continue;
+
+            // Now check successor blocks using a worklist
+            std::unordered_set<std::string> visited;
+            std::vector<std::string> worklist = getSuccessors(B);
+            bool allPathsKill = true;
+
+            while (!worklist.empty() && allPathsKill)
+            {
+                std::string label = worklist.back();
+                worklist.pop_back();
+
+                if (visited.count(label))
+                    continue;
+                visited.insert(label);
+
+                auto it = blockMap.find(label);
+                if (it == blockMap.end())
+                {
+                    allPathsKill = false;
+                    continue;
+                }
+                BasicBlock *succ = it->second;
+
+                // Check if this block reads from the address
+                if (blockReadsFrom(*succ, ptr, storeSize, AA))
+                {
+                    allPathsKill = false;
+                    continue;
+                }
+
+                // Check if this block kills the store
+                if (blockKillsStore(*succ, ptr, storeSize, AA))
+                {
+                    // This path kills the store, don't need to explore further
+                    continue;
+                }
+
+                // If this block returns without killing, the store might be
+                // observable (unless it's truly dead-on-exit)
+                if (isReturn(*succ))
+                {
+                    // Store is dead if we reach a return without reading
+                    continue;
+                }
+
+                // Add successors to worklist
+                auto nextSuccs = getSuccessors(*succ);
+                for (const auto &s : nextSuccs)
+                {
+                    if (!visited.count(s))
+                        worklist.push_back(s);
+                }
+            }
+
+            if (allPathsKill && visited.size() > 0)
+            {
+                toRemove.emplace_back(&B, i);
+            }
+        }
+    }
+
+    // Remove dead stores in reverse order to preserve indices
+    std::sort(toRemove.begin(), toRemove.end(),
+              [](const auto &a, const auto &b)
+              {
+                  if (a.first != b.first)
+                      return a.first > b.first;
+                  return a.second > b.second;
+              });
+
+    for (const auto &[block, idx] : toRemove)
+    {
+        block->instructions.erase(block->instructions.begin() +
+                                  static_cast<long>(idx));
+        changed = true;
     }
 
     return changed;

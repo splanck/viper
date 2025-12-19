@@ -47,12 +47,17 @@ up any new opportunities introduced by SSA promotion.
 
 ## Inline
 
-- Targets tiny direct callees with simple CFGs: <=32 instructions, <=4 blocks, <=4 call sites, inline depth capped at 2.
-  Skips EH-sensitive opcodes (`eh.*`, `resume.*`) and functions whose entry block takes params.
+- Enhanced cost model considers multiple factors beyond raw instruction count:
+  - Base instruction/block budgets (configurable thresholds, default <=32 instructions, <=4 blocks)
+  - Constant argument bonus: each constant arg reduces effective cost, enabling more inlining when optimization
+    opportunities exist
+  - Single-use function bonus: functions called only once get priority (can be DCE'd after)
+  - Tiny function bonus: very small functions (<=8 instructions) inline more aggressively
+  - Nested call penalty: functions with many internal calls incur code growth penalty
+  - Total code growth tracking: limits module-wide instruction expansion
+- Inline depth capped at 2 to prevent excessive nesting; skips EH-sensitive opcodes and recursive calls.
 - Rewrites calls by cloning the callee CFG, threading branch arguments for block parameters, and branching returns to a
   continuation block at the call site.
-- Future: consider invoke/EH awareness, entry-block parameter support, and cost-model tuning using size estimates or
-  profile hints.
 
 ## LateCleanup
 
@@ -80,6 +85,58 @@ up any new opportunities introduced by SSA promotion.
 - Execution runs in a forked child so unexpected traps or aborts do not bring down the test harness; discrepancies print
   the seed plus the IL text for repro.
 - Seeds default to a fixed constant for stability; override with `VIPER_OPT_EQ_SEED=<u64>` to fuzz locally.
+
+## Peephole
+
+The peephole pass applies 57 pattern-based algebraic simplifications:
+
+- **Integer arithmetic identities**: `x + 0 = x`, `x * 1 = x`, `x - 0 = x`, `x * 0 = 0`, `x - x = 0`
+- **Bitwise identities**: `x & -1 = x`, `x | 0 = x`, `x ^ 0 = x`, `x & 0 = 0`, `x ^ x = 0`, `x | x = x`
+- **Shift identities**: `x << 0 = x`, `x >> 0 = x`, `0 << y = 0`, `0 >> y = 0`
+- **Division identities**: `x / 1 = x`, `x % 1 = 0`, `0 / x = 0`, `0 % x = 0`
+- **Reflexive comparisons**: `x == x = true`, `x < x = false`, etc. for signed, unsigned, and float
+- **Float arithmetic**: `x * 1.0 = x`, `x / 1.0 = x`, `x + 0.0 = x`, `x - 0.0 = x`
+
+The pass is table-driven, making it easy to add new rules without modifying core logic.
+
+## ConstFold
+
+Constant folding evaluates pure operations at compile time:
+
+- **Arithmetic**: add, sub, mul, div, rem (signed and unsigned)
+- **Bitwise**: and, or, xor, shifts
+- **Comparisons**: all signed, unsigned, and float comparison opcodes
+- **Intrinsics**: `sin`, `cos`, `tan`, `sqrt`, `pow`, `floor`, `ceil`, `abs`, `log`, `exp`, `min`, `max`, `clamp`, `sgn`
+- **Type conversions**: int/float casts with constant operands
+
+## DSE (Dead Store Elimination)
+
+Two-level dead store elimination:
+
+1. **Intra-block DSE**: Backward scan within each basic block finds stores that are overwritten before being read.
+   Uses BasicAA for alias disambiguation and is conservative about calls that may modify or reference memory.
+
+2. **Cross-block DSE**: Forward dataflow analysis identifies stores to non-escaping allocas that are provably dead
+   because they are overwritten on all paths before being read. Uses escape analysis to ensure safety.
+
+## LoopUnroll
+
+Fully unrolls small constant-bound loops to reduce iteration overhead:
+
+- Identifies counted loops with known trip counts from comparison patterns
+- Configurable thresholds: max trip count (default 8), max loop size (50 instructions)
+- Handles single-latch, single-exit loops with proper SSA value threading
+- Clones loop body with value renaming through unrolled iterations
+- Removes original loop blocks after unrolling
+
+## JumpThreading (in SimplifyCFG)
+
+Threads jumps through blocks with predictable branch conditions:
+
+- When a predecessor passes a constant value that determines a conditional branch outcome, redirects the predecessor
+  to bypass the intermediate block and jump directly to the known successor
+- Eliminates unnecessary control flow and can enable further simplifications
+- Runs in aggressive mode alongside other SimplifyCFG transformations
 
 ## CheckOpt
 
