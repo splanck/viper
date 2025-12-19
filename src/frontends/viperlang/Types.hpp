@@ -4,12 +4,84 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-//
-// File: frontends/viperlang/Types.hpp
-// Purpose: Semantic type representation for ViperLang.
-// Key invariants: Types are immutable after construction.
-// Ownership/Lifetime: Types are shared via shared_ptr for interning.
-//
+///
+/// @file Types.hpp
+/// @brief Semantic type representation for the ViperLang programming language.
+///
+/// @details This file defines the semantic type system for ViperLang, which is
+/// distinct from the syntactic type nodes in AST.hpp. While AST type nodes
+/// represent how types are written in source code, the types defined here
+/// represent the resolved, semantic meaning of types after name resolution.
+///
+/// ## Design Overview
+///
+/// The ViperLang type system includes:
+///
+/// **Primitive Types:**
+/// - `Integer` (i64): 64-bit signed integer
+/// - `Number` (f64): 64-bit IEEE 754 floating point
+/// - `Boolean` (i1): True or false value
+/// - `String` (str): UTF-8 string reference
+/// - `Byte` (i32): 8-bit value stored as 32-bit integer (IL has no i8)
+/// - `Unit`: The singleton unit value, like void but with a value
+/// - `Void`: No return type for functions
+///
+/// **Wrapper Types:**
+/// - `Optional[T]`: Nullable type, written as `T?`
+/// - `Result[T]`: Success/error type for error handling
+///
+/// **Collection Types:**
+/// - `List[T]`: Dynamic array of elements
+/// - `Map[K, V]`: Key-value dictionary
+/// - `Set[T]`: Collection of unique elements
+///
+/// **User-Defined Types:**
+/// - `Value`: Copy-semantics type (struct-like)
+/// - `Entity`: Reference-semantics type (class-like)
+/// - `Interface`: Abstract type contract
+///
+/// **Function Type:**
+/// - `(A, B) -> C`: Function taking A and B, returning C
+///
+/// ## Type Interning
+///
+/// Primitive types use singleton instances to avoid duplication. The
+/// `types::` namespace provides factory functions that return shared
+/// pointers to canonical type instances:
+///
+/// ```cpp
+/// TypeRef intType = types::integer();    // Always same instance
+/// TypeRef strType = types::string();     // Always same instance
+/// TypeRef optInt = types::optional(types::integer());  // Creates new
+/// ```
+///
+/// ## IL Type Mapping
+///
+/// ViperLang types are mapped to IL types for code generation:
+/// - `Integer` → `i64`
+/// - `Number` → `f64`
+/// - `Boolean` → `i64` (0 or 1)
+/// - `String` → `ptr` (pointer to string data)
+/// - Reference types → `ptr` (pointer to object)
+/// - Value types → inline struct layout
+///
+/// ## Type Compatibility
+///
+/// The type system supports:
+/// - Exact type matching for primitives
+/// - Subtype polymorphism for entities (inheritance)
+/// - Interface implementation checking
+/// - Optional unwrapping and coalescing
+/// - Generic type parameter substitution
+///
+/// @invariant Types are immutable after construction.
+/// @invariant Primitive types use singleton instances.
+/// @invariant TypeRef is non-null for valid types (Unknown for unresolved).
+///
+/// @see AST.hpp - Syntactic type annotations
+/// @see Sema.hpp - Type checking and resolution
+/// @see Lowerer.hpp - Type mapping to IL
+///
 //===----------------------------------------------------------------------===//
 
 #pragma once
@@ -22,80 +94,278 @@
 namespace il::frontends::viperlang
 {
 
-// Forward declaration
+//===----------------------------------------------------------------------===//
+/// @name Type Reference
+/// @brief Forward declaration and smart pointer for semantic types.
+/// @{
+//===----------------------------------------------------------------------===//
+
 struct ViperType;
+
+/// @brief Shared pointer to an immutable semantic type.
+/// @details Types are shared via shared_ptr for efficient comparison and
+/// interning. Once created, types are never modified.
 using TypeRef = std::shared_ptr<const ViperType>;
 
+/// @}
+
+//===----------------------------------------------------------------------===//
+/// @name Type Kinds
+/// @brief Enumeration of all semantic type categories.
+/// @{
+//===----------------------------------------------------------------------===//
+
 /// @brief Semantic type kinds for ViperLang.
+/// @details This enum categorizes all types in the ViperLang type system.
+/// Each kind has specific semantics for operations, memory layout, and
+/// code generation.
 enum class TypeKindSem
 {
-    // Primitive types
-    Integer, // i64 - 64-bit signed integer
-    Number,  // f64 - 64-bit floating point
-    Boolean, // i1 (stored as i64) - true/false
-    String,  // str - UTF-8 string reference
-    Byte,    // i32 (NOT i8 - IL doesn't have i8)
-    Unit,    // void - single value () for Result[Unit]
-    Void,    // No return type for functions
+    // =========================================================================
+    /// @name Primitive Types
+    /// @brief Built-in value types with fixed representation.
+    /// @{
+    // =========================================================================
 
-    // Wrapper types
-    Optional, // T? - nullable type
-    Result,   // Result[T] - Ok/Err sum type
+    /// @brief 64-bit signed integer type.
+    /// @details Maps to IL `i64`. Supports arithmetic, comparison, and
+    /// bitwise operations. Range: -2^63 to 2^63-1.
+    Integer,
 
-    // Collection types
-    List, // List[T] - dynamic array
-    Map,  // Map[K,V] - key-value collection
-    Set,  // Set[T] - unique elements
+    /// @brief 64-bit IEEE 754 floating-point type.
+    /// @details Maps to IL `f64`. Supports arithmetic and comparison
+    /// operations. Follows IEEE 754 semantics for special values.
+    Number,
 
-    // Function type
-    Function, // (A, B) -> C
+    /// @brief Boolean type with true/false values.
+    /// @details Stored as i64 (0 for false, 1 for true) for IL compatibility.
+    /// Supports logical operations (&&, ||, !).
+    Boolean,
 
-    // User-defined types
-    Value,     // value type (copy semantics)
-    Entity,    // entity type (reference semantics)
-    Interface, // interface type
+    /// @brief UTF-8 string type.
+    /// @details Maps to IL `ptr` pointing to a runtime string structure.
+    /// Strings are immutable and reference-counted.
+    String,
 
-    // Special types
-    Error,   // Error value type
-    Ptr,     // Opaque pointer (for thread args, etc.)
-    Unknown, // Placeholder for type inference
-    Never,   // Bottom type (never returns)
-    Any,     // Top type (for interop)
+    /// @brief 8-bit byte value.
+    /// @details Stored as i32 because IL doesn't have an i8 type.
+    /// Used for low-level byte manipulation and I/O.
+    Byte,
 
-    // Generic type parameter
-    TypeParam, // T, U, etc.
+    /// @brief Unit type with a single value ().
+    /// @details Represents "void with a value". Used in Result[Unit] for
+    /// operations that succeed but have no meaningful return value.
+    Unit,
+
+    /// @brief Void type indicating no return value.
+    /// @details Used only for function return types. Functions with void
+    /// return type don't produce a value.
+    Void,
+
+    /// @}
+    // =========================================================================
+    /// @name Wrapper Types
+    /// @brief Types that wrap other types with additional semantics.
+    /// @{
+    // =========================================================================
+
+    /// @brief Optional (nullable) type: `T?`.
+    /// @details Wraps a type to allow null values. For reference types,
+    /// null is represented as a null pointer. For value types, requires
+    /// a flag + value pair.
+    Optional,
+
+    /// @brief Result type for error handling: `Result[T]`.
+    /// @details Represents either a success value of type T or an error.
+    /// Enables functional error handling without exceptions.
+    Result,
+
+    /// @}
+    // =========================================================================
+    /// @name Collection Types
+    /// @brief Generic collection types.
+    /// @{
+    // =========================================================================
+
+    /// @brief Dynamic array type: `List[T]`.
+    /// @details Heap-allocated, growable array of elements. Elements are
+    /// stored contiguously. Supports index access and iteration.
+    List,
+
+    /// @brief Key-value dictionary: `Map[K, V]`.
+    /// @details Hash-based dictionary for key-value pairs. Keys must be
+    /// hashable (primitives, strings, or types implementing Hashable).
+    Map,
+
+    /// @brief Set of unique elements: `Set[T]`.
+    /// @details Hash-based collection of unique elements. Elements must
+    /// be hashable and comparable for equality.
+    Set,
+
+    /// @}
+    // =========================================================================
+    /// @name Function Type
+    /// @{
+    // =========================================================================
+
+    /// @brief Function type: `(A, B) -> C`.
+    /// @details Represents a callable with parameter types and return type.
+    /// Used for function references, lambdas, and closures.
+    Function,
+
+    /// @}
+    // =========================================================================
+    /// @name User-Defined Types
+    /// @brief Types defined by the programmer.
+    /// @{
+    // =========================================================================
+
+    /// @brief Value type with copy semantics.
+    /// @details Instances are copied on assignment. No identity or reference
+    /// counting. Defined with the `value` keyword.
+    Value,
+
+    /// @brief Entity type with reference semantics.
+    /// @details Instances are heap-allocated with reference counting.
+    /// Support inheritance and interfaces. Defined with `entity` keyword.
+    Entity,
+
+    /// @brief Interface type (abstract contract).
+    /// @details Defines method signatures that implementing types must
+    /// provide. Used for polymorphism via interface references.
+    Interface,
+
+    /// @}
+    // =========================================================================
+    /// @name Special Types
+    /// @brief Types with special purposes in the type system.
+    /// @{
+    // =========================================================================
+
+    /// @brief Error value type.
+    /// @details Represents an error in a Result type. Contains error
+    /// information for error handling.
+    Error,
+
+    /// @brief Opaque pointer type.
+    /// @details Used for FFI, thread arguments, and other low-level
+    /// scenarios where a type-erased pointer is needed.
+    Ptr,
+
+    /// @brief Unknown/unresolved type placeholder.
+    /// @details Used during type inference when a type hasn't been
+    /// determined yet. Should be resolved before code generation.
+    Unknown,
+
+    /// @brief Bottom type (never returns).
+    /// @details The type of expressions that never complete normally,
+    /// such as infinite loops or always-throwing functions.
+    Never,
+
+    /// @brief Top type for interop.
+    /// @details Can hold any value. Used for FFI and dynamic scenarios.
+    /// Requires runtime type checks for safe use.
+    Any,
+
+    /// @}
+    // =========================================================================
+    /// @name Generic Type Parameter
+    /// @{
+    // =========================================================================
+
+    /// @brief Generic type parameter placeholder: `T`, `U`, etc.
+    /// @details Represents an uninstantiated type parameter in a generic
+    /// type or function. Replaced with concrete types during instantiation.
+    TypeParam,
+
+    /// @}
 };
+
+/// @}
+
+//===----------------------------------------------------------------------===//
+/// @name Semantic Type Structure
+/// @brief The main type representation used throughout semantic analysis.
+/// @{
+//===----------------------------------------------------------------------===//
 
 /// @brief Semantic type representation.
 /// @details Represents resolved types after parsing and name resolution.
+/// Types are immutable once constructed and shared via TypeRef.
+///
+/// ## Structure
+/// Each type has:
+/// - `kind`: The type category (primitive, collection, user-defined, etc.)
+/// - `name`: For named types (Value, Entity, Interface, TypeParam)
+/// - `typeArgs`: For generic types (List[T], Map[K,V], Function types)
+///
+/// ## Type Predicates
+/// The struct provides numerous predicate methods to check type properties:
+/// - `isPrimitive()`, `isNumeric()`, `isIntegral()`
+/// - `isReference()`, `isOptional()`, `isResult()`
+/// - `isCallable()`, `isGeneric()`, `isUserDefined()`
+///
+/// ## Type Accessors
+/// For compound types, accessor methods extract inner types:
+/// - `innerType()`: For Optional[T], returns T
+/// - `elementType()`: For List[T] or Set[T], returns T
+/// - `keyType()`, `valueType()`: For Map[K,V]
+/// - `paramTypes()`, `returnType()`: For Function types
 struct ViperType
 {
+    /// @brief The type kind identifying this type's category.
     TypeKindSem kind;
-    std::string name;              // For Value, Entity, Interface, TypeParam
-    std::vector<TypeRef> typeArgs; // For generics: List[T], Map[K,V], etc.
 
-    /// @brief Default constructor creates Unknown type.
+    /// @brief The type name for user-defined and parameter types.
+    /// @details Used for Value, Entity, Interface, and TypeParam kinds.
+    /// Empty for primitive and built-in generic types.
+    std::string name;
+
+    /// @brief Type arguments for generic types.
+    /// @details For example:
+    /// - List[Integer]: typeArgs = [Integer]
+    /// - Map[String, Integer]: typeArgs = [String, Integer]
+    /// - (Int, Int) -> Bool: typeArgs = [Int, Int, Bool]
+    std::vector<TypeRef> typeArgs;
+
+    /// @brief Default constructor creates an Unknown type.
+    /// @details Unknown types are placeholders during type inference.
     ViperType() : kind(TypeKindSem::Unknown) {}
 
-    /// @brief Construct primitive type.
+    /// @brief Construct a primitive or simple type.
+    /// @param k The type kind.
     explicit ViperType(TypeKindSem k) : kind(k) {}
 
-    /// @brief Construct named type (Value, Entity, Interface, TypeParam).
+    /// @brief Construct a named type (Value, Entity, Interface, TypeParam).
+    /// @param k The type kind.
+    /// @param n The type name.
     ViperType(TypeKindSem k, std::string n) : kind(k), name(std::move(n)) {}
 
-    /// @brief Construct generic type.
+    /// @brief Construct a generic type with type arguments.
+    /// @param k The type kind (List, Map, Set, Optional, Result, Function).
+    /// @param args The type arguments.
     ViperType(TypeKindSem k, std::vector<TypeRef> args) : kind(k), typeArgs(std::move(args)) {}
 
-    /// @brief Construct named generic type (e.g., custom generic value).
+    /// @brief Construct a named generic type.
+    /// @param k The type kind.
+    /// @param n The type name.
+    /// @param args The type arguments.
+    /// @details Used for user-defined generic types like MyList[T].
     ViperType(TypeKindSem k, std::string n, std::vector<TypeRef> args)
         : kind(k), name(std::move(n)), typeArgs(std::move(args))
     {
     }
 
     //=========================================================================
-    // Type Predicates
+    /// @name Type Predicates
+    /// @brief Methods to check type properties.
+    /// @{
     //=========================================================================
 
+    /// @brief Check if this is a primitive type.
+    /// @return True for Integer, Number, Boolean, String, Byte, Unit.
+    /// @details Primitive types have fixed representation and built-in
+    /// operations. They are always value types (copied on assignment).
     bool isPrimitive() const
     {
         switch (kind)
@@ -112,71 +382,116 @@ struct ViperType
         }
     }
 
+    /// @brief Check if this is a numeric type.
+    /// @return True for Integer, Number, Byte.
+    /// @details Numeric types support arithmetic operations.
     bool isNumeric() const
     {
         return kind == TypeKindSem::Integer || kind == TypeKindSem::Number ||
                kind == TypeKindSem::Byte;
     }
 
+    /// @brief Check if this is an integral (whole number) type.
+    /// @return True for Integer, Byte.
+    /// @details Integral types support bitwise operations and integer division.
     bool isIntegral() const
     {
         return kind == TypeKindSem::Integer || kind == TypeKindSem::Byte;
     }
 
+    /// @brief Check if this is a reference type.
+    /// @return True for Entity, Interface, List, Map, Set.
+    /// @details Reference types are heap-allocated and use reference semantics.
+    /// They are passed by pointer and may be null when wrapped in Optional.
     bool isReference() const
     {
         return kind == TypeKindSem::Entity || kind == TypeKindSem::Interface ||
                kind == TypeKindSem::List || kind == TypeKindSem::Map || kind == TypeKindSem::Set;
     }
 
+    /// @brief Check if this is an optional type.
+    /// @return True for Optional[T] types.
+    /// @details Optional types can hold either a value or null.
     bool isOptional() const
     {
         return kind == TypeKindSem::Optional;
     }
 
+    /// @brief Check if this is a result type.
+    /// @return True for Result[T] types.
+    /// @details Result types can hold either a success value or an error.
     bool isResult() const
     {
         return kind == TypeKindSem::Result;
     }
 
+    /// @brief Check if this is the void type.
+    /// @return True only for Void.
+    /// @details Void indicates no return value from a function.
     bool isVoid() const
     {
         return kind == TypeKindSem::Void;
     }
 
+    /// @brief Check if this is the unit type.
+    /// @return True only for Unit.
+    /// @details Unit is like void but has an actual value ().
     bool isUnit() const
     {
         return kind == TypeKindSem::Unit;
     }
 
+    /// @brief Check if this is an unknown/unresolved type.
+    /// @return True for Unknown types.
+    /// @details Unknown types are placeholders during type inference.
     bool isUnknown() const
     {
         return kind == TypeKindSem::Unknown;
     }
 
+    /// @brief Check if this is the never (bottom) type.
+    /// @return True only for Never.
+    /// @details Never indicates a computation that never completes normally.
     bool isNever() const
     {
         return kind == TypeKindSem::Never;
     }
 
+    /// @brief Check if this is a callable (function) type.
+    /// @return True for Function types.
+    /// @details Callable types can be invoked with arguments.
     bool isCallable() const
     {
         return kind == TypeKindSem::Function;
     }
 
+    /// @brief Check if this is a generic type with type arguments.
+    /// @return True if typeArgs is non-empty.
+    /// @details Generic types have been instantiated with specific type arguments.
     bool isGeneric() const
     {
         return !typeArgs.empty();
     }
 
     /// @brief Check if this is a user-defined type.
+    /// @return True for Value, Entity, Interface types.
+    /// @details User-defined types are declared in source code.
     bool isUserDefined() const
     {
         return kind == TypeKindSem::Value || kind == TypeKindSem::Entity ||
                kind == TypeKindSem::Interface;
     }
 
-    /// @brief Get inner type for Optional[T].
+    /// @}
+    //=========================================================================
+    /// @name Type Accessors
+    /// @brief Methods to access inner types for compound types.
+    /// @{
+    //=========================================================================
+
+    /// @brief Get the inner type for Optional[T].
+    /// @return The wrapped type T, or nullptr if not Optional.
+    /// @details For `Integer?`, returns the Integer type.
     TypeRef innerType() const
     {
         if (kind == TypeKindSem::Optional && !typeArgs.empty())
@@ -184,7 +499,9 @@ struct ViperType
         return nullptr;
     }
 
-    /// @brief Get success type for Result[T].
+    /// @brief Get the success type for Result[T].
+    /// @return The success type T, or nullptr if not Result.
+    /// @details For `Result[User]`, returns the User type.
     TypeRef successType() const
     {
         if (kind == TypeKindSem::Result && !typeArgs.empty())
@@ -192,7 +509,9 @@ struct ViperType
         return nullptr;
     }
 
-    /// @brief Get element type for List[T] or Set[T].
+    /// @brief Get the element type for List[T] or Set[T].
+    /// @return The element type T, or nullptr if not a collection.
+    /// @details For `List[Integer]`, returns the Integer type.
     TypeRef elementType() const
     {
         if ((kind == TypeKindSem::List || kind == TypeKindSem::Set) && !typeArgs.empty())
@@ -200,7 +519,9 @@ struct ViperType
         return nullptr;
     }
 
-    /// @brief Get key type for Map[K,V].
+    /// @brief Get the key type for Map[K, V].
+    /// @return The key type K, or nullptr if not a Map.
+    /// @details For `Map[String, Integer]`, returns the String type.
     TypeRef keyType() const
     {
         if (kind == TypeKindSem::Map && typeArgs.size() >= 2)
@@ -208,7 +529,9 @@ struct ViperType
         return nullptr;
     }
 
-    /// @brief Get value type for Map[K,V].
+    /// @brief Get the value type for Map[K, V].
+    /// @return The value type V, or nullptr if not a Map.
+    /// @details For `Map[String, Integer]`, returns the Integer type.
     TypeRef valueType() const
     {
         if (kind == TypeKindSem::Map && typeArgs.size() >= 2)
@@ -216,7 +539,10 @@ struct ViperType
         return nullptr;
     }
 
-    /// @brief Get return type for Function types.
+    /// @brief Get the return type for Function types.
+    /// @return The return type, or nullptr if not a Function.
+    /// @details For `(Int, Int) -> Bool`, returns Bool.
+    /// The return type is the last element in typeArgs.
     TypeRef returnType() const
     {
         if (kind == TypeKindSem::Function && !typeArgs.empty())
@@ -224,7 +550,10 @@ struct ViperType
         return nullptr;
     }
 
-    /// @brief Get parameter types for Function types.
+    /// @brief Get the parameter types for Function types.
+    /// @return Vector of parameter types, empty if not a Function.
+    /// @details For `(Int, Int) -> Bool`, returns [Int, Int].
+    /// Parameters are all typeArgs except the last (return type).
     std::vector<TypeRef> paramTypes() const
     {
         if (kind == TypeKindSem::Function && typeArgs.size() > 1)
@@ -234,66 +563,224 @@ struct ViperType
         return {};
     }
 
+    /// @}
     //=========================================================================
-    // Type Comparison
+    /// @name Type Comparison
+    /// @brief Methods for comparing types.
+    /// @{
     //=========================================================================
 
+    /// @brief Check if this type equals another type.
+    /// @param other The type to compare with.
+    /// @return True if the types are structurally equal.
+    /// @details Compares kind, name, and all type arguments recursively.
     bool equals(const ViperType &other) const;
+
+    /// @brief Check if a source type can be assigned to this type.
+    /// @param source The source type being assigned.
+    /// @return True if assignment is valid.
+    /// @details Considers subtyping for entities and interface implementation.
     bool isAssignableFrom(const ViperType &source) const;
+
+    /// @brief Check if this type can be converted to a target type.
+    /// @param target The target type for conversion.
+    /// @return True if conversion is possible.
+    /// @details Includes implicit conversions (e.g., Int to Number).
     bool isConvertibleTo(const ViperType &target) const;
 
+    /// @}
     //=========================================================================
-    // String Representation
+    /// @name String Representation
+    /// @{
     //=========================================================================
 
+    /// @brief Get a human-readable string representation of this type.
+    /// @return String like "Integer", "List[String]", "Map[String, Integer]".
+    /// @details Used for error messages and debugging output.
     std::string toString() const;
+
+    /// @}
 };
 
-//=============================================================================
-// Type Factory Functions
-//=============================================================================
+/// @}
 
-/// @brief Singleton type instances for primitives.
+//===----------------------------------------------------------------------===//
+/// @name Type Factory Functions
+/// @brief Factory functions for creating type instances.
+/// @details These functions provide a clean API for creating types and
+/// ensure singleton behavior for primitive types.
+/// @{
+//===----------------------------------------------------------------------===//
+
+/// @brief Type factory namespace.
+/// @details Provides singleton instances for primitives and constructors
+/// for compound types. Using these functions ensures proper type interning.
 namespace types
 {
 
-// Primitive types
+// =========================================================================
+/// @name Primitive Type Singletons
+/// @brief Return the singleton instance for each primitive type.
+/// @details These functions always return the same shared instance.
+/// @{
+// =========================================================================
+
+/// @brief Get the Integer type (64-bit signed integer).
+/// @return The singleton Integer type.
 TypeRef integer();
+
+/// @brief Get the Number type (64-bit floating point).
+/// @return The singleton Number type.
 TypeRef number();
+
+/// @brief Get the Boolean type.
+/// @return The singleton Boolean type.
 TypeRef boolean();
+
+/// @brief Get the String type.
+/// @return The singleton String type.
 TypeRef string();
+
+/// @brief Get the Byte type.
+/// @return The singleton Byte type.
 TypeRef byte();
+
+/// @brief Get the Unit type.
+/// @return The singleton Unit type.
 TypeRef unit();
+
+/// @brief Get the Void type.
+/// @return The singleton Void type.
 TypeRef voidType();
+
+/// @brief Get the Error type.
+/// @return The singleton Error type.
 TypeRef error();
+
+/// @brief Get the Ptr (opaque pointer) type.
+/// @return The singleton Ptr type.
 TypeRef ptr();
+
+/// @brief Get the Unknown type placeholder.
+/// @return The singleton Unknown type.
 TypeRef unknown();
+
+/// @brief Get the Never (bottom) type.
+/// @return The singleton Never type.
 TypeRef never();
+
+/// @brief Get the Any (top) type.
+/// @return The singleton Any type.
 TypeRef any();
 
-// Generic type constructors
+/// @}
+// =========================================================================
+/// @name Generic Type Constructors
+/// @brief Create compound types with type arguments.
+/// @{
+// =========================================================================
+
+/// @brief Create an Optional[T] type.
+/// @param inner The inner type T.
+/// @return A new Optional type wrapping T.
+/// @details Creates a nullable version of the inner type.
 TypeRef optional(TypeRef inner);
+
+/// @brief Create a Result[T] type.
+/// @param successType The success type T.
+/// @return A new Result type.
+/// @details Creates an error-handling type.
 TypeRef result(TypeRef successType);
+
+/// @brief Create a List[T] type.
+/// @param element The element type T.
+/// @return A new List type.
+/// @details Creates a dynamic array type.
 TypeRef list(TypeRef element);
+
+/// @brief Create a Set[T] type.
+/// @param element The element type T.
+/// @return A new Set type.
+/// @details Creates a unique collection type.
 TypeRef set(TypeRef element);
+
+/// @brief Create a Map[K, V] type.
+/// @param key The key type K.
+/// @param value The value type V.
+/// @return A new Map type.
+/// @details Creates a dictionary type.
 TypeRef map(TypeRef key, TypeRef value);
+
+/// @brief Create a function type.
+/// @param params The parameter types.
+/// @param ret The return type.
+/// @return A new Function type.
+/// @details For `(A, B) -> C`, params = [A, B], ret = C.
 TypeRef function(std::vector<TypeRef> params, TypeRef ret);
 
-// User-defined type constructors
+/// @}
+// =========================================================================
+/// @name User-Defined Type Constructors
+/// @brief Create types for user-defined value, entity, and interface types.
+/// @{
+// =========================================================================
+
+/// @brief Create a value type reference.
+/// @param name The value type name.
+/// @param typeParams Optional type parameters for generic types.
+/// @return A new Value type.
+/// @details Value types have copy semantics.
 TypeRef value(const std::string &name, std::vector<TypeRef> typeParams = {});
+
+/// @brief Create an entity type reference.
+/// @param name The entity type name.
+/// @param typeParams Optional type parameters for generic types.
+/// @return A new Entity type.
+/// @details Entity types have reference semantics.
 TypeRef entity(const std::string &name, std::vector<TypeRef> typeParams = {});
+
+/// @brief Create an interface type reference.
+/// @param name The interface type name.
+/// @param typeParams Optional type parameters for generic types.
+/// @return A new Interface type.
+/// @details Interface types define abstract contracts.
 TypeRef interface(const std::string &name, std::vector<TypeRef> typeParams = {});
+
+/// @brief Create a type parameter placeholder.
+/// @param name The type parameter name (e.g., "T", "U").
+/// @return A new TypeParam type.
+/// @details Used for uninstantiated generic type parameters.
 TypeRef typeParam(const std::string &name);
+
+/// @}
 
 } // namespace types
 
-//=============================================================================
-// IL Type Mapping
-//=============================================================================
+/// @}
+
+//===----------------------------------------------------------------------===//
+/// @name IL Type Mapping
+/// @brief Functions for mapping ViperLang types to IL types.
+/// @details These functions bridge the semantic type system with the
+/// intermediate language (IL) representation used for code generation.
+/// @{
+//===----------------------------------------------------------------------===//
 
 /// @brief Maps ViperLang semantic types to IL primitive types.
 /// @param type The ViperLang type to map.
 /// @return The corresponding IL type kind.
+///
+/// @details Type mapping rules:
+/// - Integer → i64
+/// - Number → f64
+/// - Boolean → i64 (stored as 0 or 1)
+/// - String → ptr (pointer to string structure)
+/// - Byte → i32 (IL has no i8)
+/// - Entity → ptr (pointer to object)
+/// - List/Map/Set → ptr (pointer to collection)
+/// - Optional of reference → ptr (null for none)
+/// - Optional of value → requires flag + value
+///
 /// @note Reference types (Entity, collections) map to Ptr.
 /// @note Optionals of value types require special handling (flag + value).
 il::core::Type::Kind toILType(const ViperType &type);
@@ -301,14 +788,32 @@ il::core::Type::Kind toILType(const ViperType &type);
 /// @brief Get the size in bytes for a type in memory.
 /// @param type The type to get the size for.
 /// @return Size in bytes, or 0 for unsized types.
+///
+/// @details Size rules:
+/// - Integer: 8 bytes
+/// - Number: 8 bytes
+/// - Boolean: 8 bytes (stored as i64)
+/// - Byte: 4 bytes (stored as i32)
+/// - String: pointer size (8 bytes on 64-bit)
+/// - Entity: pointer size
+/// - Collections: pointer size
 size_t typeSize(const ViperType &type);
 
 /// @brief Get the alignment in bytes for a type.
 /// @param type The type to get alignment for.
 /// @return Alignment in bytes.
+///
+/// @details Alignment typically matches size for primitive types.
+/// Composite types may have stricter alignment requirements.
 size_t typeAlignment(const ViperType &type);
 
 /// @brief Convert type kind to human-readable string.
+/// @param kind The type kind to convert.
+/// @return String name like "Integer", "Entity", "List".
+///
+/// @details Used for error messages and debugging output.
 const char *kindToString(TypeKindSem kind);
+
+/// @}
 
 } // namespace il::frontends::viperlang

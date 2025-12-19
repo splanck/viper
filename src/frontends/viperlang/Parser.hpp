@@ -4,12 +4,99 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-//
-// File: frontends/viperlang/Parser.hpp
-// Purpose: Recursive descent parser for ViperLang.
-// Key invariants: Precedence climbing for expressions; one-token lookahead.
-// Ownership/Lifetime: Parser borrows Lexer and DiagnosticEngine.
-//
+///
+/// @file Parser.hpp
+/// @brief Recursive descent parser for the ViperLang programming language.
+///
+/// @details The parser consumes tokens from the lexer and builds an Abstract
+/// Syntax Tree (AST) representing the program structure. It uses recursive
+/// descent with precedence climbing for expression parsing.
+///
+/// ## Parsing Strategy
+///
+/// The parser uses a combination of techniques:
+///
+/// **Recursive Descent:**
+/// Each grammar rule is implemented as a parsing method that calls other
+/// parsing methods for sub-rules. For example, `parseIfStmt()` calls
+/// `parseExpression()` for the condition and `parseBlock()` for the body.
+///
+/// **Precedence Climbing:**
+/// Binary expressions are parsed using precedence climbing to handle
+/// operator precedence and associativity correctly without deep recursion.
+///
+/// **One-Token Lookahead:**
+/// The parser uses single-token lookahead via `peek()` to make parsing
+/// decisions. This is sufficient for the ViperLang grammar.
+///
+/// ## Operator Precedence
+///
+/// Binary operators are parsed with the following precedence (highest first):
+///
+/// | Level | Operators         | Description              |
+/// |-------|-------------------|--------------------------|
+/// |   1   | `()` `[]` `.` `?.`| Primary & postfix        |
+/// |   2   | `!` `-` `~`       | Unary operators          |
+/// |   3   | `*` `/` `%`       | Multiplicative           |
+/// |   4   | `+` `-`           | Additive                 |
+/// |   5   | `<` `>` `<=` `>=` | Comparison               |
+/// |   6   | `==` `!=`         | Equality                 |
+/// |   7   | `&&`              | Logical AND              |
+/// |   8   | `||`              | Logical OR               |
+/// |   9   | `??`              | Null coalesce            |
+/// |  10   | `..` `..=`        | Range                    |
+/// |  11   | `?` `:`           | Ternary conditional      |
+/// |  12   | `=`               | Assignment               |
+///
+/// ## Grammar Overview
+///
+/// ```
+/// module     = "module" IDENT ";" import* declaration* EOF
+/// import     = "import" dotted-name ("as" IDENT)? ";"
+///
+/// declaration = value-decl | entity-decl | interface-decl
+///             | func-decl | global-var-decl
+///
+/// value-decl = "value" IDENT generic-params? interfaces? "{" member* "}"
+/// entity-decl = "entity" IDENT generic-params? extends? interfaces? "{" member* "}"
+/// func-decl = "func" IDENT generic-params? "(" params ")" return-type? block
+///
+/// statement = block | var-stmt | if-stmt | while-stmt | for-stmt
+///           | return-stmt | guard-stmt | match-stmt | expr-stmt
+///
+/// expression = assignment (precedence climbing for binary ops)
+/// ```
+///
+/// ## Error Recovery
+///
+/// On syntax errors, the parser:
+/// 1. Reports the error with location and message
+/// 2. Attempts to resynchronize at the next statement/declaration boundary
+/// 3. Continues parsing to find additional errors
+///
+/// This allows reporting multiple errors in a single parse pass.
+///
+/// ## Usage Example
+///
+/// ```cpp
+/// DiagnosticEngine diag;
+/// Lexer lexer(source, fileId, diag);
+/// Parser parser(lexer, diag);
+///
+/// auto module = parser.parseModule();
+/// if (parser.hasError()) {
+///     // Handle parse errors
+/// }
+/// ```
+///
+/// @invariant One-token lookahead via peek().
+/// @invariant Precedence climbing for expressions.
+/// @invariant Error recovery at statement boundaries.
+///
+/// @see Lexer.hpp - Token source
+/// @see AST.hpp - AST node types
+/// @see Sema.hpp - Semantic analysis of AST
+///
 //===----------------------------------------------------------------------===//
 
 #pragma once
@@ -24,37 +111,75 @@ namespace il::frontends::viperlang
 {
 
 /// @brief Recursive descent parser for ViperLang.
-/// @details Uses precedence climbing for expression parsing.
-/// Operator precedence (highest to lowest):
-///   1. Primary (literals, identifiers, parentheses)
-///   2. Postfix (call, index, field access)
-///   3. Unary (!, -, ~)
-///   4. Multiplicative (*, /, %)
-///   5. Additive (+, -)
-///   6. Comparison (<, >, <=, >=)
-///   7. Equality (==, !=)
-///   8. Logical AND (&&)
-///   9. Logical OR (||)
-///  10. Null coalesce (??)
-///  11. Range (.., ..=)
-///  12. Ternary (? :)
+///
+/// @details Consumes tokens from a Lexer and builds an AST. The parser
+/// handles the complete ViperLang grammar including:
+/// - Module structure (imports, declarations)
+/// - Type declarations (value, entity, interface)
+/// - Function and method declarations
+/// - All statement types
+/// - Full expression grammar with precedence
+///
+/// ## Token Consumption
+///
+/// The parser maintains a current token and provides methods for:
+/// - `peek()`: View current token without consuming
+/// - `advance()`: Consume current token and get next
+/// - `check(kind)`: Test if current token matches
+/// - `match(kind)`: Consume if matches, return success
+/// - `expect(kind, what)`: Require specific token, error if not
+///
+/// ## Ownership
+///
+/// The parser borrows references to the Lexer and DiagnosticEngine.
+/// Both must outlive the parser. The parser produces AST nodes that
+/// the caller owns via unique_ptr.
+///
+/// @invariant current_ is always valid (may be Eof token).
+/// @invariant Lexer and DiagnosticEngine outlive the parser.
 class Parser
 {
   public:
     /// @brief Create a parser over the given lexer.
+    /// @param lexer Token source for parsing.
+    /// @param diag Diagnostic engine for error reporting.
+    ///
+    /// @details Initializes the parser and fetches the first token.
+    /// The lexer and diagnostic engine are borrowed and must outlive
+    /// the parser.
     Parser(Lexer &lexer, il::support::DiagnosticEngine &diag);
 
     /// @brief Parse a complete module.
     /// @return The parsed ModuleDecl, or nullptr on fatal error.
+    ///
+    /// @details Parses the complete module structure:
+    /// 1. Optional `module ModuleName;` declaration
+    /// 2. Zero or more import declarations
+    /// 3. Zero or more top-level declarations
+    /// 4. Expects EOF at end
+    ///
+    /// Even on errors, attempts to return a partial AST if possible.
     std::unique_ptr<ModuleDecl> parseModule();
 
     /// @brief Parse a single expression (for testing).
+    /// @return The parsed expression, or nullptr on error.
+    ///
+    /// @details Parses an expression in isolation, useful for unit testing
+    /// the expression parser without full module context.
     ExprPtr parseExpression();
 
     /// @brief Parse a single statement (for testing).
+    /// @return The parsed statement, or nullptr on error.
+    ///
+    /// @details Parses a statement in isolation, useful for unit testing
+    /// the statement parser without full module context.
     StmtPtr parseStatement();
 
     /// @brief Check if any errors occurred during parsing.
+    /// @return True if at least one error was reported.
+    ///
+    /// @details Even if errors occurred, the parser may have produced
+    /// a partial AST. Check this after parsing to determine success.
     bool hasError() const
     {
         return hasError_;
@@ -62,94 +187,367 @@ class Parser
 
   private:
     //=========================================================================
-    // Token Handling
+    /// @name Token Handling
+    /// @brief Methods for consuming and examining tokens.
+    /// @{
     //=========================================================================
 
+    /// @brief Peek at the current token without consuming.
+    /// @return Reference to the current token.
+    ///
+    /// @details The token remains current until advance() is called.
     const Token &peek() const;
+
+    /// @brief Consume current token and advance to next.
+    /// @return The token that was consumed.
+    ///
+    /// @details After this call, peek() returns the next token.
     Token advance();
+
+    /// @brief Check if current token is of the given kind.
+    /// @param kind The token kind to check for.
+    /// @return True if current token matches.
+    ///
+    /// @details Does not consume the token.
     bool check(TokenKind kind) const;
+
+    /// @brief Consume current token if it matches the given kind.
+    /// @param kind The token kind to match.
+    /// @return True if matched and consumed, false otherwise.
+    ///
+    /// @details Equivalent to: if (check(kind)) { advance(); return true; }
     bool match(TokenKind kind);
+
+    /// @brief Require a specific token kind.
+    /// @param kind The expected token kind.
+    /// @param what Human-readable description of what was expected.
+    /// @return True if found, false if error reported.
+    ///
+    /// @details If the current token doesn't match, reports an error
+    /// like "expected 'what', found '...'". The token is consumed on match.
     bool expect(TokenKind kind, const char *what);
+
+    /// @brief Attempt to resynchronize after a syntax error.
+    ///
+    /// @details Skips tokens until reaching a likely statement or
+    /// declaration boundary, such as:
+    /// - Semicolons
+    /// - Keywords like `func`, `var`, `if`, `while`, `return`
+    /// - Closing braces
+    ///
+    /// This enables continued parsing to find additional errors.
     void resyncAfterError();
 
+    /// @}
     //=========================================================================
-    // Error Handling
+    /// @name Error Handling
+    /// @{
     //=========================================================================
 
+    /// @brief Report a syntax error at the current token.
+    /// @param message Error message describing the problem.
+    ///
+    /// @details Sets hasError_ and sends the error to the diagnostic engine.
+    /// The error location is taken from the current token.
     void error(const std::string &message);
+
+    /// @brief Report a syntax error at a specific location.
+    /// @param loc Source location of the error.
+    /// @param message Error message describing the problem.
+    ///
+    /// @details Used when the error location differs from the current token.
     void errorAt(SourceLoc loc, const std::string &message);
 
+    /// @}
     //=========================================================================
-    // Expression Parsing (Precedence Climbing)
+    /// @name Expression Parsing
+    /// @brief Methods for parsing expressions using precedence climbing.
+    /// @details Each method handles one precedence level, calling the
+    /// next higher precedence method for its operands.
+    /// @{
     //=========================================================================
 
+    /// @brief Parse a primary expression (literals, identifiers, parentheses).
+    /// @return The parsed expression.
+    ///
+    /// @details Handles:
+    /// - Literals: integers, floats, strings, true, false, null
+    /// - Identifiers
+    /// - Parenthesized expressions
+    /// - List literals: `[a, b, c]`
+    /// - Map/set literals: `{a: 1, b: 2}` or `{a, b, c}`
+    /// - Lambda expressions: `(x) => x + 1`
+    /// - If/match expressions
     ExprPtr parsePrimary();
+
+    /// @brief Parse postfix operators (call, index, field access).
+    /// @return The parsed expression with postfix operators applied.
+    ///
+    /// @details Handles chained postfix operations:
+    /// - Function calls: `f(x, y)`
+    /// - Array indexing: `a[i]`
+    /// - Field access: `obj.field`
+    /// - Optional chain: `obj?.field`
+    /// - Try operator: `expr?`
     ExprPtr parsePostfix();
+
+    /// @brief Continue parsing postfix operators from an existing expression.
+    /// @param expr The expression to extend with postfix operators.
+    /// @return The expression with additional postfix operators.
+    ///
+    /// @details Called from parsePostfix to handle chained operations.
     ExprPtr parsePostfixFrom(ExprPtr expr);
+
+    /// @brief Parse postfix and binary operators from an existing expression.
+    /// @param startExpr The expression to start from.
+    /// @return The complete expression.
+    ///
+    /// @details Combines postfix and binary parsing for complex expressions.
     ExprPtr parsePostfixAndBinaryFrom(ExprPtr startExpr);
+
+    /// @brief Continue parsing binary operators from an existing expression.
+    /// @param expr The left-hand operand.
+    /// @return The expression with binary operators applied.
+    ///
+    /// @details Uses precedence climbing to handle operator precedence.
     ExprPtr parseBinaryFrom(ExprPtr expr);
+
+    /// @brief Parse a unary expression.
+    /// @return The parsed expression.
+    ///
+    /// @details Handles prefix operators: `-`, `!`, `~`
+    /// Falls through to postfix parsing for non-unary expressions.
     ExprPtr parseUnary();
+
+    /// @brief Parse multiplicative expressions (*, /, %).
+    /// @return The parsed expression.
     ExprPtr parseMultiplicative();
+
+    /// @brief Parse additive expressions (+, -).
+    /// @return The parsed expression.
     ExprPtr parseAdditive();
+
+    /// @brief Parse comparison expressions (<, >, <=, >=).
+    /// @return The parsed expression.
     ExprPtr parseComparison();
+
+    /// @brief Parse equality expressions (==, !=).
+    /// @return The parsed expression.
     ExprPtr parseEquality();
+
+    /// @brief Parse logical AND expressions (&&).
+    /// @return The parsed expression.
     ExprPtr parseLogicalAnd();
+
+    /// @brief Parse logical OR expressions (||).
+    /// @return The parsed expression.
     ExprPtr parseLogicalOr();
+
+    /// @brief Parse null coalesce expressions (??).
+    /// @return The parsed expression.
     ExprPtr parseCoalesce();
+
+    /// @brief Parse range expressions (.., ..=).
+    /// @return The parsed expression.
     ExprPtr parseRange();
+
+    /// @brief Parse ternary conditional expressions (? :).
+    /// @return The parsed expression.
     ExprPtr parseTernary();
+
+    /// @brief Parse assignment expressions (=).
+    /// @return The parsed expression.
+    ///
+    /// @details Assignment is right-associative with lowest precedence.
     ExprPtr parseAssignment();
 
+    /// @brief Parse a list literal: [a, b, c].
+    /// @return The parsed ListLiteralExpr.
     ExprPtr parseListLiteral();
+
+    /// @brief Parse a map or set literal: {a: 1} or {a, b}.
+    /// @return The parsed MapLiteralExpr or SetLiteralExpr.
+    ///
+    /// @details Distinguishes between maps (with `:`) and sets (without).
     ExprPtr parseMapOrSetLiteral();
+
+    /// @brief Parse an interpolated string.
+    /// @return The parsed string expression (may be concatenation).
+    ///
+    /// @details Handles strings with `${...}` interpolations by parsing
+    /// the interpolated expressions and building concatenation expressions.
     ExprPtr parseInterpolatedString();
+
+    /// @brief Parse function call arguments.
+    /// @return Vector of CallArg (positional or named).
+    ///
+    /// @details Handles both positional and named arguments:
+    /// - `f(1, 2)` - positional
+    /// - `f(x: 1, y: 2)` - named
+    /// - `f(1, y: 2)` - mixed
     std::vector<CallArg> parseCallArgs();
 
+    /// @}
     //=========================================================================
-    // Statement Parsing
+    /// @name Statement Parsing
+    /// @brief Methods for parsing statements.
+    /// @{
     //=========================================================================
 
+    /// @brief Parse a block statement: { ... }.
+    /// @return The parsed BlockStmt.
+    ///
+    /// @details Parses statements until closing brace.
+    /// Creates a new scope for local variables.
     StmtPtr parseBlock();
+
+    /// @brief Parse a variable declaration: var x = 1; or final x = 1;
+    /// @return The parsed VarStmt.
+    ///
+    /// @details Handles:
+    /// - Mutable: `var x = 1;`
+    /// - Immutable: `final x = 1;`
+    /// - With type: `var x: Integer = 1;`
     StmtPtr parseVarDecl();
+
+    /// @brief Parse an if statement: if (cond) { } else { }
+    /// @return The parsed IfStmt.
+    ///
+    /// @details Handles optional else clause and else-if chains.
     StmtPtr parseIfStmt();
+
+    /// @brief Parse a while statement: while (cond) { }
+    /// @return The parsed WhileStmt.
     StmtPtr parseWhileStmt();
+
+    /// @brief Parse a for statement (C-style or for-in).
+    /// @return The parsed ForStmt or ForInStmt.
+    ///
+    /// @details Distinguishes between:
+    /// - C-style: `for (init; cond; update) { }`
+    /// - For-in: `for (x in collection) { }`
     StmtPtr parseForStmt();
+
+    /// @brief Parse a return statement: return expr;
+    /// @return The parsed ReturnStmt.
+    ///
+    /// @details Handles optional return value.
     StmtPtr parseReturnStmt();
+
+    /// @brief Parse a guard statement: guard (cond) else { }
+    /// @return The parsed GuardStmt.
+    ///
+    /// @details The else block must exit the scope (return, break, etc.).
     StmtPtr parseGuardStmt();
+
+    /// @brief Parse a match statement: match expr { ... }
+    /// @return The parsed MatchStmt.
+    ///
+    /// @details Parses match arms with patterns and bodies.
     StmtPtr parseMatchStmt();
 
+    /// @}
     //=========================================================================
-    // Type Parsing
+    /// @name Type Parsing
+    /// @brief Methods for parsing type annotations.
+    /// @{
     //=========================================================================
 
+    /// @brief Parse a type annotation.
+    /// @return The parsed TypeNode.
+    ///
+    /// @details Handles:
+    /// - Simple types: `Integer`, `String`
+    /// - Generic types: `List[T]`, `Map[K, V]`
+    /// - Optional types: `T?`
+    /// - Function types: `(A, B) -> C`
     TypePtr parseType();
+
+    /// @brief Parse a base type (without optional suffix).
+    /// @return The parsed TypeNode.
+    ///
+    /// @details Called by parseType() to get the base before checking
+    /// for `?` suffix.
     TypePtr parseBaseType();
 
+    /// @}
     //=========================================================================
-    // Declaration Parsing
+    /// @name Declaration Parsing
+    /// @brief Methods for parsing declarations.
+    /// @{
     //=========================================================================
 
+    /// @brief Parse a top-level declaration.
+    /// @return The parsed declaration, or nullptr on error.
+    ///
+    /// @details Dispatches to specific declaration parsers based on keyword.
     DeclPtr parseDeclaration();
+
+    /// @brief Parse a function declaration: func name(...) { }
+    /// @return The parsed FunctionDecl.
     DeclPtr parseFunctionDecl();
+
+    /// @brief Parse a value type declaration: value Name { }
+    /// @return The parsed ValueDecl.
     DeclPtr parseValueDecl();
+
+    /// @brief Parse an entity type declaration: entity Name { }
+    /// @return The parsed EntityDecl.
     DeclPtr parseEntityDecl();
+
+    /// @brief Parse an interface declaration: interface Name { }
+    /// @return The parsed InterfaceDecl.
     DeclPtr parseInterfaceDecl();
+
+    /// @brief Parse a global variable declaration: var x = 1;
+    /// @return The parsed GlobalVarDecl.
     DeclPtr parseGlobalVarDecl();
+
+    /// @brief Parse an import declaration: import Foo.Bar;
+    /// @return The parsed ImportDecl.
     ImportDecl parseImportDecl();
 
+    /// @brief Parse function/method parameters.
+    /// @return Vector of Param.
+    ///
+    /// @details Parses parameter list: `(name: Type, name2: Type = default)`
     std::vector<Param> parseParameters();
+
+    /// @brief Parse generic type parameters: [T, U]
+    /// @return Vector of type parameter names.
     std::vector<std::string> parseGenericParams();
+
+    /// @brief Parse a field declaration within a type.
+    /// @return The parsed FieldDecl.
     DeclPtr parseFieldDecl();
+
+    /// @brief Parse a method declaration within a type.
+    /// @return The parsed MethodDecl.
     DeclPtr parseMethodDecl();
 
+    /// @}
     //=========================================================================
-    // Member Variables
+    /// @name Member Variables
+    /// @{
     //=========================================================================
 
+    /// @brief Token source.
+    /// @details Borrowed reference; must outlive the parser.
     Lexer &lexer_;
+
+    /// @brief Diagnostic engine for error reporting.
+    /// @details Borrowed reference; must outlive the parser.
     il::support::DiagnosticEngine &diag_;
+
+    /// @brief Current token being examined.
+    /// @details Updated by advance(). Always valid (may be Eof).
     Token current_;
+
+    /// @brief Whether any errors have occurred during parsing.
+    /// @details Set by error() and errorAt().
     bool hasError_{false};
+
+    /// @}
 };
 
 } // namespace il::frontends::viperlang
