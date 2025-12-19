@@ -55,7 +55,7 @@ bool ViperType::isAssignableFrom(const ViperType &source) const
     // Optional accepts its inner type and null
     if (kind == TypeKindSem::Optional)
     {
-        if (source.kind == TypeKindSem::Unit)  // null
+        if (source.kind == TypeKindSem::Unit) // null
             return true;
         if (typeArgs.empty())
             return false;
@@ -70,16 +70,16 @@ bool ViperType::isAssignableFrom(const ViperType &source) const
 
     // Numeric promotions
     if (kind == TypeKindSem::Number && source.kind == TypeKindSem::Integer)
-        return true;  // Integer -> Number
+        return true; // Integer -> Number
     if (kind == TypeKindSem::Integer && source.kind == TypeKindSem::Byte)
-        return true;  // Byte -> Integer
+        return true; // Byte -> Integer
     if (kind == TypeKindSem::Number && source.kind == TypeKindSem::Byte)
-        return true;  // Byte -> Number
+        return true; // Byte -> Number
 
     // Interface assignment (TODO: check actual implementation)
     if (kind == TypeKindSem::Interface &&
         (source.kind == TypeKindSem::Entity || source.kind == TypeKindSem::Value))
-        return true;  // Needs actual interface checking
+        return true; // Needs actual interface checking
 
     return false;
 }
@@ -233,59 +233,106 @@ namespace types
 
 namespace
 {
-    // Singleton cache for primitive types
-    struct TypeCache
+// Singleton cache for primitive types
+struct TypeCache
+{
+    TypeRef integerType;
+    TypeRef numberType;
+    TypeRef booleanType;
+    TypeRef stringType;
+    TypeRef byteType;
+    TypeRef unitType;
+    TypeRef voidType;
+    TypeRef errorType;
+    TypeRef ptrType;
+    TypeRef unknownType;
+    TypeRef neverType;
+    TypeRef anyType;
+
+    static TypeCache &instance()
     {
-        TypeRef integerType;
-        TypeRef numberType;
-        TypeRef booleanType;
-        TypeRef stringType;
-        TypeRef byteType;
-        TypeRef unitType;
-        TypeRef voidType;
-        TypeRef errorType;
-        TypeRef ptrType;
-        TypeRef unknownType;
-        TypeRef neverType;
-        TypeRef anyType;
+        static TypeCache cache;
+        return cache;
+    }
 
-        static TypeCache &instance()
-        {
-            static TypeCache cache;
-            return cache;
-        }
-
-    private:
-        TypeCache()
-        {
-            integerType = std::make_shared<ViperType>(TypeKindSem::Integer);
-            numberType = std::make_shared<ViperType>(TypeKindSem::Number);
-            booleanType = std::make_shared<ViperType>(TypeKindSem::Boolean);
-            stringType = std::make_shared<ViperType>(TypeKindSem::String);
-            byteType = std::make_shared<ViperType>(TypeKindSem::Byte);
-            unitType = std::make_shared<ViperType>(TypeKindSem::Unit);
-            voidType = std::make_shared<ViperType>(TypeKindSem::Void);
-            errorType = std::make_shared<ViperType>(TypeKindSem::Error);
-            ptrType = std::make_shared<ViperType>(TypeKindSem::Ptr);
-            unknownType = std::make_shared<ViperType>(TypeKindSem::Unknown);
-            neverType = std::make_shared<ViperType>(TypeKindSem::Never);
-            anyType = std::make_shared<ViperType>(TypeKindSem::Any);
-        }
-    };
+  private:
+    TypeCache()
+    {
+        integerType = std::make_shared<ViperType>(TypeKindSem::Integer);
+        numberType = std::make_shared<ViperType>(TypeKindSem::Number);
+        booleanType = std::make_shared<ViperType>(TypeKindSem::Boolean);
+        stringType = std::make_shared<ViperType>(TypeKindSem::String);
+        byteType = std::make_shared<ViperType>(TypeKindSem::Byte);
+        unitType = std::make_shared<ViperType>(TypeKindSem::Unit);
+        voidType = std::make_shared<ViperType>(TypeKindSem::Void);
+        errorType = std::make_shared<ViperType>(TypeKindSem::Error);
+        ptrType = std::make_shared<ViperType>(TypeKindSem::Ptr);
+        unknownType = std::make_shared<ViperType>(TypeKindSem::Unknown);
+        neverType = std::make_shared<ViperType>(TypeKindSem::Never);
+        anyType = std::make_shared<ViperType>(TypeKindSem::Any);
+    }
+};
 } // anonymous namespace
 
-TypeRef integer() { return TypeCache::instance().integerType; }
-TypeRef number() { return TypeCache::instance().numberType; }
-TypeRef boolean() { return TypeCache::instance().booleanType; }
-TypeRef string() { return TypeCache::instance().stringType; }
-TypeRef byte() { return TypeCache::instance().byteType; }
-TypeRef unit() { return TypeCache::instance().unitType; }
-TypeRef voidType() { return TypeCache::instance().voidType; }
-TypeRef error() { return TypeCache::instance().errorType; }
-TypeRef ptr() { return TypeCache::instance().ptrType; }
-TypeRef unknown() { return TypeCache::instance().unknownType; }
-TypeRef never() { return TypeCache::instance().neverType; }
-TypeRef any() { return TypeCache::instance().anyType; }
+TypeRef integer()
+{
+    return TypeCache::instance().integerType;
+}
+
+TypeRef number()
+{
+    return TypeCache::instance().numberType;
+}
+
+TypeRef boolean()
+{
+    return TypeCache::instance().booleanType;
+}
+
+TypeRef string()
+{
+    return TypeCache::instance().stringType;
+}
+
+TypeRef byte()
+{
+    return TypeCache::instance().byteType;
+}
+
+TypeRef unit()
+{
+    return TypeCache::instance().unitType;
+}
+
+TypeRef voidType()
+{
+    return TypeCache::instance().voidType;
+}
+
+TypeRef error()
+{
+    return TypeCache::instance().errorType;
+}
+
+TypeRef ptr()
+{
+    return TypeCache::instance().ptrType;
+}
+
+TypeRef unknown()
+{
+    return TypeCache::instance().unknownType;
+}
+
+TypeRef never()
+{
+    return TypeCache::instance().neverType;
+}
+
+TypeRef any()
+{
+    return TypeCache::instance().anyType;
+}
 
 TypeRef optional(TypeRef inner)
 {
@@ -314,7 +361,7 @@ TypeRef map(TypeRef key, TypeRef value)
 
 TypeRef function(std::vector<TypeRef> params, TypeRef ret)
 {
-    params.push_back(ret);  // Store return type at the end
+    params.push_back(ret); // Store return type at the end
     return std::make_shared<ViperType>(TypeKindSem::Function, std::move(params));
 }
 
@@ -361,7 +408,7 @@ il::core::Type::Kind toILType(const ViperType &type)
             return il::core::Type::Kind::Str;
 
         case TypeKindSem::Byte:
-            return il::core::Type::Kind::I32;  // IL has no i8
+            return il::core::Type::Kind::I32; // IL has no i8
 
         case TypeKindSem::Unit:
         case TypeKindSem::Void:
@@ -420,16 +467,16 @@ size_t typeSize(const ViperType &type)
         case TypeKindSem::Number:
             return 8;
         case TypeKindSem::Boolean:
-            return 8;  // Stored as i64
+            return 8; // Stored as i64
         case TypeKindSem::String:
-            return 8;  // Pointer
+            return 8; // Pointer
         case TypeKindSem::Byte:
-            return 4;  // i32
+            return 4; // i32
         case TypeKindSem::Unit:
         case TypeKindSem::Void:
             return 0;
         case TypeKindSem::Error:
-            return 8;  // Pointer to error object
+            return 8; // Pointer to error object
         case TypeKindSem::Ptr:
             return 8;
         case TypeKindSem::Entity:
@@ -438,19 +485,19 @@ size_t typeSize(const ViperType &type)
         case TypeKindSem::Map:
         case TypeKindSem::Set:
         case TypeKindSem::Function:
-            return 8;  // Pointer
+            return 8; // Pointer
         case TypeKindSem::Optional:
             // flag (8) + value size
             if (!type.typeArgs.empty())
                 return 8 + typeSize(*type.typeArgs[0]);
-            return 16;  // Default
+            return 16; // Default
         case TypeKindSem::Result:
             // tag (8) + max(value size, error size)
             // Simplified: assume 16 bytes
             return 16;
         case TypeKindSem::Value:
             // User-defined value size determined by fields
-            return 0;  // Must be computed from type definition
+            return 0; // Must be computed from type definition
         case TypeKindSem::Unknown:
         case TypeKindSem::Never:
         case TypeKindSem::Any:
@@ -489,7 +536,7 @@ size_t typeAlignment(const ViperType &type)
         case TypeKindSem::TypeParam:
             return 1;
         case TypeKindSem::Value:
-            return 8;  // Default alignment
+            return 8; // Default alignment
     }
     return 1;
 }
@@ -498,28 +545,50 @@ const char *kindToString(TypeKindSem kind)
 {
     switch (kind)
     {
-        case TypeKindSem::Integer:   return "Integer";
-        case TypeKindSem::Number:    return "Number";
-        case TypeKindSem::Boolean:   return "Boolean";
-        case TypeKindSem::String:    return "String";
-        case TypeKindSem::Byte:      return "Byte";
-        case TypeKindSem::Unit:      return "Unit";
-        case TypeKindSem::Void:      return "Void";
-        case TypeKindSem::Optional:  return "Optional";
-        case TypeKindSem::Result:    return "Result";
-        case TypeKindSem::List:      return "List";
-        case TypeKindSem::Map:       return "Map";
-        case TypeKindSem::Set:       return "Set";
-        case TypeKindSem::Function:  return "Function";
-        case TypeKindSem::Value:     return "Value";
-        case TypeKindSem::Entity:    return "Entity";
-        case TypeKindSem::Interface: return "Interface";
-        case TypeKindSem::Error:     return "Error";
-        case TypeKindSem::Ptr:       return "Ptr";
-        case TypeKindSem::Unknown:   return "Unknown";
-        case TypeKindSem::Never:     return "Never";
-        case TypeKindSem::Any:       return "Any";
-        case TypeKindSem::TypeParam: return "TypeParam";
+        case TypeKindSem::Integer:
+            return "Integer";
+        case TypeKindSem::Number:
+            return "Number";
+        case TypeKindSem::Boolean:
+            return "Boolean";
+        case TypeKindSem::String:
+            return "String";
+        case TypeKindSem::Byte:
+            return "Byte";
+        case TypeKindSem::Unit:
+            return "Unit";
+        case TypeKindSem::Void:
+            return "Void";
+        case TypeKindSem::Optional:
+            return "Optional";
+        case TypeKindSem::Result:
+            return "Result";
+        case TypeKindSem::List:
+            return "List";
+        case TypeKindSem::Map:
+            return "Map";
+        case TypeKindSem::Set:
+            return "Set";
+        case TypeKindSem::Function:
+            return "Function";
+        case TypeKindSem::Value:
+            return "Value";
+        case TypeKindSem::Entity:
+            return "Entity";
+        case TypeKindSem::Interface:
+            return "Interface";
+        case TypeKindSem::Error:
+            return "Error";
+        case TypeKindSem::Ptr:
+            return "Ptr";
+        case TypeKindSem::Unknown:
+            return "Unknown";
+        case TypeKindSem::Never:
+            return "Never";
+        case TypeKindSem::Any:
+            return "Any";
+        case TypeKindSem::TypeParam:
+            return "TypeParam";
     }
     return "?";
 }

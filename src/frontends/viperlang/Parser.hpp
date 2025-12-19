@@ -55,7 +55,10 @@ class Parser
     StmtPtr parseStatement();
 
     /// @brief Check if any errors occurred during parsing.
-    bool hasError() const { return hasError_; }
+    bool hasError() const
+    {
+        return hasError_;
+    }
 
   private:
     //=========================================================================

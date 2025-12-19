@@ -2009,7 +2009,8 @@ After each increment, verify:
 | 1.4 Type System (Sema) | [x] Complete | 1.3 |
 | 1.5 IL Lowerer | [x] Complete | 1.4 |
 | 1.6 Compiler Driver | [x] Complete | 1.5 |
-| 1.7 Hello World Test | [~] In Progress | 1.6 |
+| 1.7 Hello World Test | [x] Complete | 1.6 |
+| 1.8 viperlang CLI Tool | [x] Complete | 1.6 |
 
 ### Phase 2: Type System
 
@@ -2089,7 +2090,7 @@ After each increment, verify:
 
 | Example | Phase | Status | Features Tested |
 |---------|-------|--------|-----------------|
-| `ex01_hello.viper` | 1 | [ ] | Print, entry point |
+| `ex01_hello.viper` | 1 | [x] Complete | Print, entry point |
 | `ex02_point.viper` | 2 | [ ] | Values, entities, fields |
 | `ex03_counter.viper` | 3 | [ ] | Methods, state |
 | `ex04_fizzbuzz.viper` | 4 | [ ] | Loops, conditionals |
@@ -2219,9 +2220,10 @@ If a feature proves too difficult:
 | 2.0 | Dec 2024 | Verified against actual IL/runtime capabilities; Added Phase 0 prerequisites; Changed entry point to start(); Updated to Java/C#-like syntax; Added progress tracking; Corrected IL type constraints (no i8, no structs); Added collection semantic limitations |
 | 2.1 | Dec 2024 | Added Testing Philosophy section; Added Available Runtime APIs; Added Phase 10 Demo Applications (Frogger, vTRIS); Added testing guidance and example programs for each phase; Added Example Programs Status tracking; Added Potential Oversights & Risks appendix |
 | 2.2 | Dec 2024 | Synchronized with spec review fixes: Added Unit type, `let`/`is` keywords, Ptr type; Updated TokenKind enum; Clarified Result[Unit] usage |
+| 2.3 | Dec 2024 | Phase 1 complete: viperlang CLI tool created, hello.viper runs successfully, 9 compiler unit tests passing |
 
 ---
 
-**Status:** Ready for Implementation
+**Status:** Phase 1 Complete - Implementation In Progress
 **Final Goal:** Frogger and vTRIS demos running in ViperLang
-**Next Step:** Begin Phase 0 prerequisites (Boxing Runtime)
+**Next Step:** Phase 2 - Type System (Values, Entities, Optionals, Generics)

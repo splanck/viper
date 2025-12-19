@@ -83,7 +83,8 @@ CompilerResult compileFile(const std::string &path,
         CompilerResult result{};
         result.diagnostics.report({il::support::Severity::Error,
                                    "Failed to open file: " + path,
-                                   il::support::SourceLoc{}, ""});
+                                   il::support::SourceLoc{},
+                                   ""});
         return result;
     }
 

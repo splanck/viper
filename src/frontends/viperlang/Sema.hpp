@@ -41,7 +41,7 @@ struct Symbol
     std::string name;
     TypeRef type;
     bool isFinal{false};
-    Decl *decl{nullptr};  // Owning declaration (if any)
+    Decl *decl{nullptr}; // Owning declaration (if any)
 };
 
 /// @brief Scope for symbol lookup.
@@ -53,7 +53,11 @@ class Scope
     void define(const std::string &name, Symbol symbol);
     Symbol *lookup(const std::string &name);
     Symbol *lookupLocal(const std::string &name);
-    Scope *parent() const { return parent_; }
+
+    Scope *parent() const
+    {
+        return parent_;
+    }
 
   private:
     Scope *parent_{nullptr};
@@ -79,10 +83,16 @@ class Sema
     TypeRef resolveType(const TypeNode *node) const;
 
     /// @brief Check if analysis produced errors.
-    bool hasError() const { return hasError_; }
+    bool hasError() const
+    {
+        return hasError_;
+    }
 
     /// @brief Get the current module being analyzed.
-    ModuleDecl *currentModule() const { return currentModule_; }
+    ModuleDecl *currentModule() const
+    {
+        return currentModule_;
+    }
 
     /// @brief Get the runtime function name for a call expression.
     /// @return The dotted name (e.g., "Viper.Terminal.Say") or empty if not a runtime call.

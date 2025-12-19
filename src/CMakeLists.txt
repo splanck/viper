@@ -308,6 +308,7 @@ add_executable(ilc
         tools/ilc/cmd_run_il.cpp
         tools/ilc/cmd_front_basic.cpp
         tools/ilc/cmd_front_pascal.cpp
+        tools/ilc/cmd_front_viperlang.cpp
         tools/ilc/cmd_il_opt.cpp
         tools/ilc/cmd_codegen_x64.cpp
         tools/ilc/cmd_bench.cpp
@@ -322,6 +323,7 @@ target_link_libraries(ilc
         il_transform
         fe_basic
         fe_pascal
+        fe_viperlang
         il_api
         il_tools_common
         viper_codegen_x86_64
@@ -366,6 +368,24 @@ target_link_libraries(vpascal
         il_api
         il_tools_common)
 install(TARGETS vpascal RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+add_executable(viperlang
+        tools/viperlang/main.cpp
+        tools/viperlang/usage.cpp
+        tools/viperlang/ilc_compat.cpp
+        tools/ilc/cmd_front_viperlang.cpp
+        tools/ilc/cli.cpp)
+set_target_properties(viperlang PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/viperlang)
+target_link_libraries(viperlang
+        PRIVATE
+        viper_common_opts
+        viper::il_full
+        il_vm
+        il_transform
+        fe_viperlang
+        il_api
+        il_tools_common)
+install(TARGETS viperlang RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 add_executable(ilrun
         tools/ilrun/main.cpp

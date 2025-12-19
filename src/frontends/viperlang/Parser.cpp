@@ -17,8 +17,7 @@
 namespace il::frontends::viperlang
 {
 
-Parser::Parser(Lexer &lexer, il::support::DiagnosticEngine &diag)
-    : lexer_(lexer), diag_(diag)
+Parser::Parser(Lexer &lexer, il::support::DiagnosticEngine &diag) : lexer_(lexer), diag_(diag)
 {
     current_ = lexer_.next();
 }
@@ -74,9 +73,8 @@ void Parser::resyncAfterError()
             advance();
             return;
         }
-        if (check(TokenKind::RBrace) || check(TokenKind::KwFunc) ||
-            check(TokenKind::KwValue) || check(TokenKind::KwEntity) ||
-            check(TokenKind::KwInterface))
+        if (check(TokenKind::RBrace) || check(TokenKind::KwFunc) || check(TokenKind::KwValue) ||
+            check(TokenKind::KwEntity) || check(TokenKind::KwInterface))
         {
             return;
         }
@@ -100,7 +98,7 @@ void Parser::errorAt(SourceLoc loc, const std::string &message)
         il::support::Severity::Error,
         message,
         loc,
-        "V2000"  // ViperLang parser error code
+        "V2000" // ViperLang parser error code
     });
 }
 
@@ -116,14 +114,17 @@ ExprPtr Parser::parseExpression()
 ExprPtr Parser::parseAssignment()
 {
     ExprPtr expr = parseTernary();
-    if (!expr) return nullptr;
+    if (!expr)
+        return nullptr;
 
     if (match(TokenKind::Equal))
     {
         SourceLoc loc = current_.loc;
-        ExprPtr value = parseAssignment();  // right-associative
-        if (!value) return nullptr;
-        return std::make_unique<BinaryExpr>(loc, BinaryOp::Assign, std::move(expr), std::move(value));
+        ExprPtr value = parseAssignment(); // right-associative
+        if (!value)
+            return nullptr;
+        return std::make_unique<BinaryExpr>(
+            loc, BinaryOp::Assign, std::move(expr), std::move(value));
     }
 
     return expr;
@@ -132,22 +133,25 @@ ExprPtr Parser::parseAssignment()
 ExprPtr Parser::parseTernary()
 {
     ExprPtr expr = parseRange();
-    if (!expr) return nullptr;
+    if (!expr)
+        return nullptr;
 
     if (match(TokenKind::Question))
     {
         SourceLoc loc = current_.loc;
         ExprPtr thenExpr = parseExpression();
-        if (!thenExpr) return nullptr;
+        if (!thenExpr)
+            return nullptr;
 
         if (!expect(TokenKind::Colon, ":"))
             return nullptr;
 
         ExprPtr elseExpr = parseTernary();
-        if (!elseExpr) return nullptr;
+        if (!elseExpr)
+            return nullptr;
 
-        return std::make_unique<TernaryExpr>(loc, std::move(expr),
-                                              std::move(thenExpr), std::move(elseExpr));
+        return std::make_unique<TernaryExpr>(
+            loc, std::move(expr), std::move(thenExpr), std::move(elseExpr));
     }
 
     return expr;
@@ -156,7 +160,8 @@ ExprPtr Parser::parseTernary()
 ExprPtr Parser::parseRange()
 {
     ExprPtr expr = parseCoalesce();
-    if (!expr) return nullptr;
+    if (!expr)
+        return nullptr;
 
     while (check(TokenKind::DotDot) || check(TokenKind::DotDotEqual))
     {
@@ -165,7 +170,8 @@ ExprPtr Parser::parseRange()
         advance();
 
         ExprPtr right = parseCoalesce();
-        if (!right) return nullptr;
+        if (!right)
+            return nullptr;
 
         expr = std::make_unique<RangeExpr>(loc, std::move(expr), std::move(right), inclusive);
     }
@@ -176,13 +182,15 @@ ExprPtr Parser::parseRange()
 ExprPtr Parser::parseCoalesce()
 {
     ExprPtr expr = parseLogicalOr();
-    if (!expr) return nullptr;
+    if (!expr)
+        return nullptr;
 
     while (match(TokenKind::QuestionQuestion))
     {
         SourceLoc loc = current_.loc;
         ExprPtr right = parseLogicalOr();
-        if (!right) return nullptr;
+        if (!right)
+            return nullptr;
 
         expr = std::make_unique<CoalesceExpr>(loc, std::move(expr), std::move(right));
     }
@@ -193,13 +201,15 @@ ExprPtr Parser::parseCoalesce()
 ExprPtr Parser::parseLogicalOr()
 {
     ExprPtr expr = parseLogicalAnd();
-    if (!expr) return nullptr;
+    if (!expr)
+        return nullptr;
 
     while (match(TokenKind::PipePipe))
     {
         SourceLoc loc = current_.loc;
         ExprPtr right = parseLogicalAnd();
-        if (!right) return nullptr;
+        if (!right)
+            return nullptr;
 
         expr = std::make_unique<BinaryExpr>(loc, BinaryOp::Or, std::move(expr), std::move(right));
     }
@@ -210,13 +220,15 @@ ExprPtr Parser::parseLogicalOr()
 ExprPtr Parser::parseLogicalAnd()
 {
     ExprPtr expr = parseEquality();
-    if (!expr) return nullptr;
+    if (!expr)
+        return nullptr;
 
     while (match(TokenKind::AmpAmp))
     {
         SourceLoc loc = current_.loc;
         ExprPtr right = parseEquality();
-        if (!right) return nullptr;
+        if (!right)
+            return nullptr;
 
         expr = std::make_unique<BinaryExpr>(loc, BinaryOp::And, std::move(expr), std::move(right));
     }
@@ -227,7 +239,8 @@ ExprPtr Parser::parseLogicalAnd()
 ExprPtr Parser::parseEquality()
 {
     ExprPtr expr = parseComparison();
-    if (!expr) return nullptr;
+    if (!expr)
+        return nullptr;
 
     while (check(TokenKind::EqualEqual) || check(TokenKind::NotEqual))
     {
@@ -236,7 +249,8 @@ ExprPtr Parser::parseEquality()
         advance();
 
         ExprPtr right = parseComparison();
-        if (!right) return nullptr;
+        if (!right)
+            return nullptr;
 
         expr = std::make_unique<BinaryExpr>(loc, op, std::move(expr), std::move(right));
     }
@@ -247,22 +261,28 @@ ExprPtr Parser::parseEquality()
 ExprPtr Parser::parseComparison()
 {
     ExprPtr expr = parseAdditive();
-    if (!expr) return nullptr;
+    if (!expr)
+        return nullptr;
 
-    while (check(TokenKind::Less) || check(TokenKind::LessEqual) ||
-           check(TokenKind::Greater) || check(TokenKind::GreaterEqual))
+    while (check(TokenKind::Less) || check(TokenKind::LessEqual) || check(TokenKind::Greater) ||
+           check(TokenKind::GreaterEqual))
     {
         BinaryOp op;
-        if (check(TokenKind::Less)) op = BinaryOp::Lt;
-        else if (check(TokenKind::LessEqual)) op = BinaryOp::Le;
-        else if (check(TokenKind::Greater)) op = BinaryOp::Gt;
-        else op = BinaryOp::Ge;
+        if (check(TokenKind::Less))
+            op = BinaryOp::Lt;
+        else if (check(TokenKind::LessEqual))
+            op = BinaryOp::Le;
+        else if (check(TokenKind::Greater))
+            op = BinaryOp::Gt;
+        else
+            op = BinaryOp::Ge;
 
         SourceLoc loc = current_.loc;
         advance();
 
         ExprPtr right = parseAdditive();
-        if (!right) return nullptr;
+        if (!right)
+            return nullptr;
 
         expr = std::make_unique<BinaryExpr>(loc, op, std::move(expr), std::move(right));
     }
@@ -273,7 +293,8 @@ ExprPtr Parser::parseComparison()
 ExprPtr Parser::parseAdditive()
 {
     ExprPtr expr = parseMultiplicative();
-    if (!expr) return nullptr;
+    if (!expr)
+        return nullptr;
 
     while (check(TokenKind::Plus) || check(TokenKind::Minus))
     {
@@ -282,7 +303,8 @@ ExprPtr Parser::parseAdditive()
         advance();
 
         ExprPtr right = parseMultiplicative();
-        if (!right) return nullptr;
+        if (!right)
+            return nullptr;
 
         expr = std::make_unique<BinaryExpr>(loc, op, std::move(expr), std::move(right));
     }
@@ -293,20 +315,25 @@ ExprPtr Parser::parseAdditive()
 ExprPtr Parser::parseMultiplicative()
 {
     ExprPtr expr = parseUnary();
-    if (!expr) return nullptr;
+    if (!expr)
+        return nullptr;
 
     while (check(TokenKind::Star) || check(TokenKind::Slash) || check(TokenKind::Percent))
     {
         BinaryOp op;
-        if (check(TokenKind::Star)) op = BinaryOp::Mul;
-        else if (check(TokenKind::Slash)) op = BinaryOp::Div;
-        else op = BinaryOp::Mod;
+        if (check(TokenKind::Star))
+            op = BinaryOp::Mul;
+        else if (check(TokenKind::Slash))
+            op = BinaryOp::Div;
+        else
+            op = BinaryOp::Mod;
 
         SourceLoc loc = current_.loc;
         advance();
 
         ExprPtr right = parseUnary();
-        if (!right) return nullptr;
+        if (!right)
+            return nullptr;
 
         expr = std::make_unique<BinaryExpr>(loc, op, std::move(expr), std::move(right));
     }
@@ -319,15 +346,19 @@ ExprPtr Parser::parseUnary()
     if (check(TokenKind::Minus) || check(TokenKind::Bang) || check(TokenKind::Tilde))
     {
         UnaryOp op;
-        if (check(TokenKind::Minus)) op = UnaryOp::Neg;
-        else if (check(TokenKind::Bang)) op = UnaryOp::Not;
-        else op = UnaryOp::BitNot;
+        if (check(TokenKind::Minus))
+            op = UnaryOp::Neg;
+        else if (check(TokenKind::Bang))
+            op = UnaryOp::Not;
+        else
+            op = UnaryOp::BitNot;
 
         SourceLoc loc = current_.loc;
         advance();
 
         ExprPtr operand = parseUnary();
-        if (!operand) return nullptr;
+        if (!operand)
+            return nullptr;
 
         return std::make_unique<UnaryExpr>(loc, op, std::move(operand));
     }
@@ -338,7 +369,8 @@ ExprPtr Parser::parseUnary()
 ExprPtr Parser::parsePostfix()
 {
     ExprPtr expr = parsePrimary();
-    if (!expr) return nullptr;
+    if (!expr)
+        return nullptr;
 
     while (true)
     {
@@ -357,7 +389,8 @@ ExprPtr Parser::parsePostfix()
             // Index
             SourceLoc loc = current_.loc;
             ExprPtr index = parseExpression();
-            if (!index) return nullptr;
+            if (!index)
+                return nullptr;
 
             if (!expect(TokenKind::RBracket, "]"))
                 return nullptr;
@@ -397,7 +430,8 @@ ExprPtr Parser::parsePostfix()
             // Type check
             SourceLoc loc = current_.loc;
             TypePtr type = parseType();
-            if (!type) return nullptr;
+            if (!type)
+                return nullptr;
 
             expr = std::make_unique<IsExpr>(loc, std::move(expr), std::move(type));
         }
@@ -406,7 +440,8 @@ ExprPtr Parser::parsePostfix()
             // Type cast
             SourceLoc loc = current_.loc;
             TypePtr type = parseType();
-            if (!type) return nullptr;
+            if (!type)
+                return nullptr;
 
             expr = std::make_unique<AsExpr>(loc, std::move(expr), std::move(type));
         }
@@ -473,7 +508,8 @@ ExprPtr Parser::parsePrimary()
     if (match(TokenKind::KwNew))
     {
         TypePtr type = parseType();
-        if (!type) return nullptr;
+        if (!type)
+            return nullptr;
 
         if (!expect(TokenKind::LParen, "("))
             return nullptr;
@@ -504,7 +540,8 @@ ExprPtr Parser::parsePrimary()
         }
 
         ExprPtr expr = parseExpression();
-        if (!expr) return nullptr;
+        if (!expr)
+            return nullptr;
 
         if (!expect(TokenKind::RParen, ")"))
             return nullptr;
@@ -531,7 +568,7 @@ ExprPtr Parser::parsePrimary()
 ExprPtr Parser::parseListLiteral()
 {
     SourceLoc loc = current_.loc;
-    advance();  // consume '['
+    advance(); // consume '['
 
     std::vector<ExprPtr> elements;
 
@@ -540,7 +577,8 @@ ExprPtr Parser::parseListLiteral()
         do
         {
             ExprPtr elem = parseExpression();
-            if (!elem) return nullptr;
+            if (!elem)
+                return nullptr;
             elements.push_back(std::move(elem));
         } while (match(TokenKind::Comma));
     }
@@ -554,7 +592,7 @@ ExprPtr Parser::parseListLiteral()
 ExprPtr Parser::parseMapOrSetLiteral()
 {
     SourceLoc loc = current_.loc;
-    advance();  // consume '{'
+    advance(); // consume '{'
 
     // Empty brace = empty map (by convention)
     if (check(TokenKind::RBrace))
@@ -565,7 +603,8 @@ ExprPtr Parser::parseMapOrSetLiteral()
 
     // Check if first element has colon (map) or not (set)
     ExprPtr first = parseExpression();
-    if (!first) return nullptr;
+    if (!first)
+        return nullptr;
 
     if (match(TokenKind::Colon))
     {
@@ -573,20 +612,23 @@ ExprPtr Parser::parseMapOrSetLiteral()
         std::vector<MapEntry> entries;
 
         ExprPtr firstValue = parseExpression();
-        if (!firstValue) return nullptr;
+        if (!firstValue)
+            return nullptr;
 
         entries.push_back({std::move(first), std::move(firstValue)});
 
         while (match(TokenKind::Comma))
         {
             ExprPtr key = parseExpression();
-            if (!key) return nullptr;
+            if (!key)
+                return nullptr;
 
             if (!expect(TokenKind::Colon, ":"))
                 return nullptr;
 
             ExprPtr value = parseExpression();
-            if (!value) return nullptr;
+            if (!value)
+                return nullptr;
 
             entries.push_back({std::move(key), std::move(value)});
         }
@@ -605,7 +647,8 @@ ExprPtr Parser::parseMapOrSetLiteral()
         while (match(TokenKind::Comma))
         {
             ExprPtr elem = parseExpression();
-            if (!elem) return nullptr;
+            if (!elem)
+                return nullptr;
             elements.push_back(std::move(elem));
         }
 
@@ -659,7 +702,8 @@ std::vector<CallArg> Parser::parseCallArgs()
             arg.value = parseExpression();
         }
 
-        if (!arg.value) return {};
+        if (!arg.value)
+            return {};
         args.push_back(std::move(arg));
     } while (match(TokenKind::Comma));
 
@@ -740,7 +784,8 @@ StmtPtr Parser::parseStatement()
 
     // Expression statement
     ExprPtr expr = parseExpression();
-    if (!expr) return nullptr;
+    if (!expr)
+        return nullptr;
 
     if (!expect(TokenKind::Semicolon, ";"))
         return nullptr;
@@ -776,7 +821,7 @@ StmtPtr Parser::parseVarDecl()
 {
     SourceLoc loc = current_.loc;
     bool isFinal = check(TokenKind::KwFinal);
-    advance();  // consume var/final
+    advance(); // consume var/final
 
     if (!check(TokenKind::Identifier))
     {
@@ -791,7 +836,8 @@ StmtPtr Parser::parseVarDecl()
     if (match(TokenKind::Colon))
     {
         type = parseType();
-        if (!type) return nullptr;
+        if (!type)
+            return nullptr;
     }
 
     // Optional initializer
@@ -799,59 +845,66 @@ StmtPtr Parser::parseVarDecl()
     if (match(TokenKind::Equal))
     {
         init = parseExpression();
-        if (!init) return nullptr;
+        if (!init)
+            return nullptr;
     }
 
     if (!expect(TokenKind::Semicolon, ";"))
         return nullptr;
 
-    return std::make_unique<VarStmt>(loc, std::move(name), std::move(type), std::move(init), isFinal);
+    return std::make_unique<VarStmt>(
+        loc, std::move(name), std::move(type), std::move(init), isFinal);
 }
 
 StmtPtr Parser::parseIfStmt()
 {
     SourceLoc loc = current_.loc;
-    advance();  // consume 'if'
+    advance(); // consume 'if'
 
     if (!expect(TokenKind::LParen, "("))
         return nullptr;
 
     ExprPtr condition = parseExpression();
-    if (!condition) return nullptr;
+    if (!condition)
+        return nullptr;
 
     if (!expect(TokenKind::RParen, ")"))
         return nullptr;
 
     StmtPtr thenBranch = parseStatement();
-    if (!thenBranch) return nullptr;
+    if (!thenBranch)
+        return nullptr;
 
     StmtPtr elseBranch;
     if (match(TokenKind::KwElse))
     {
         elseBranch = parseStatement();
-        if (!elseBranch) return nullptr;
+        if (!elseBranch)
+            return nullptr;
     }
 
-    return std::make_unique<IfStmt>(loc, std::move(condition),
-                                     std::move(thenBranch), std::move(elseBranch));
+    return std::make_unique<IfStmt>(
+        loc, std::move(condition), std::move(thenBranch), std::move(elseBranch));
 }
 
 StmtPtr Parser::parseWhileStmt()
 {
     SourceLoc loc = current_.loc;
-    advance();  // consume 'while'
+    advance(); // consume 'while'
 
     if (!expect(TokenKind::LParen, "("))
         return nullptr;
 
     ExprPtr condition = parseExpression();
-    if (!condition) return nullptr;
+    if (!condition)
+        return nullptr;
 
     if (!expect(TokenKind::RParen, ")"))
         return nullptr;
 
     StmtPtr body = parseStatement();
-    if (!body) return nullptr;
+    if (!body)
+        return nullptr;
 
     return std::make_unique<WhileStmt>(loc, std::move(condition), std::move(body));
 }
@@ -859,7 +912,7 @@ StmtPtr Parser::parseWhileStmt()
 StmtPtr Parser::parseForStmt()
 {
     SourceLoc loc = current_.loc;
-    advance();  // consume 'for'
+    advance(); // consume 'for'
 
     if (!expect(TokenKind::LParen, "("))
         return nullptr;
@@ -875,16 +928,18 @@ StmtPtr Parser::parseForStmt()
         {
             // For-in loop
             ExprPtr iterable = parseExpression();
-            if (!iterable) return nullptr;
+            if (!iterable)
+                return nullptr;
 
             if (!expect(TokenKind::RParen, ")"))
                 return nullptr;
 
             StmtPtr body = parseStatement();
-            if (!body) return nullptr;
+            if (!body)
+                return nullptr;
 
-            return std::make_unique<ForInStmt>(loc, std::move(varName),
-                                                std::move(iterable), std::move(body));
+            return std::make_unique<ForInStmt>(
+                loc, std::move(varName), std::move(iterable), std::move(body));
         }
 
         // Not for-in, so we need to parse as regular for
@@ -901,13 +956,14 @@ StmtPtr Parser::parseForStmt()
 StmtPtr Parser::parseReturnStmt()
 {
     SourceLoc loc = current_.loc;
-    advance();  // consume 'return'
+    advance(); // consume 'return'
 
     ExprPtr value;
     if (!check(TokenKind::Semicolon))
     {
         value = parseExpression();
-        if (!value) return nullptr;
+        if (!value)
+            return nullptr;
     }
 
     if (!expect(TokenKind::Semicolon, ";"))
@@ -919,13 +975,14 @@ StmtPtr Parser::parseReturnStmt()
 StmtPtr Parser::parseGuardStmt()
 {
     SourceLoc loc = current_.loc;
-    advance();  // consume 'guard'
+    advance(); // consume 'guard'
 
     if (!expect(TokenKind::LParen, "("))
         return nullptr;
 
     ExprPtr condition = parseExpression();
-    if (!condition) return nullptr;
+    if (!condition)
+        return nullptr;
 
     if (!expect(TokenKind::RParen, ")"))
         return nullptr;
@@ -934,7 +991,8 @@ StmtPtr Parser::parseGuardStmt()
         return nullptr;
 
     StmtPtr elseBlock = parseStatement();
-    if (!elseBlock) return nullptr;
+    if (!elseBlock)
+        return nullptr;
 
     return std::make_unique<GuardStmt>(loc, std::move(condition), std::move(elseBlock));
 }
@@ -953,7 +1011,8 @@ StmtPtr Parser::parseMatchStmt()
 TypePtr Parser::parseType()
 {
     TypePtr base = parseBaseType();
-    if (!base) return nullptr;
+    if (!base)
+        return nullptr;
 
     // Check for optional suffix ?
     while (match(TokenKind::Question))
@@ -982,7 +1041,8 @@ TypePtr Parser::parseBaseType()
             do
             {
                 TypePtr arg = parseType();
-                if (!arg) return nullptr;
+                if (!arg)
+                    return nullptr;
                 args.push_back(std::move(arg));
             } while (match(TokenKind::Comma));
 
@@ -1005,7 +1065,8 @@ TypePtr Parser::parseBaseType()
             do
             {
                 TypePtr elem = parseType();
-                if (!elem) return nullptr;
+                if (!elem)
+                    return nullptr;
                 elements.push_back(std::move(elem));
             } while (match(TokenKind::Comma));
         }
@@ -1017,7 +1078,8 @@ TypePtr Parser::parseBaseType()
         if (match(TokenKind::Arrow))
         {
             TypePtr returnType = parseType();
-            if (!returnType) return nullptr;
+            if (!returnType)
+                return nullptr;
 
             return std::make_unique<FunctionType>(loc, std::move(elements), std::move(returnType));
         }
@@ -1079,7 +1141,7 @@ std::unique_ptr<ModuleDecl> Parser::parseModule()
 ImportDecl Parser::parseImportDecl()
 {
     SourceLoc loc = current_.loc;
-    advance();  // consume 'import'
+    advance(); // consume 'import'
 
     // Parse path: Viper.IO.File
     std::string path;
@@ -1136,7 +1198,7 @@ DeclPtr Parser::parseDeclaration()
 DeclPtr Parser::parseFunctionDecl()
 {
     SourceLoc loc = current_.loc;
-    advance();  // consume 'func'
+    advance(); // consume 'func'
 
     if (!check(TokenKind::Identifier))
     {
@@ -1164,14 +1226,16 @@ DeclPtr Parser::parseFunctionDecl()
     if (match(TokenKind::Arrow))
     {
         func->returnType = parseType();
-        if (!func->returnType) return nullptr;
+        if (!func->returnType)
+            return nullptr;
     }
 
     // Body
     if (check(TokenKind::LBrace))
     {
         func->body = parseBlock();
-        if (!func->body) return nullptr;
+        if (!func->body)
+            return nullptr;
     }
     else
     {
@@ -1207,13 +1271,15 @@ std::vector<Param> Parser::parseParameters()
             return {};
 
         param.type = parseType();
-        if (!param.type) return {};
+        if (!param.type)
+            return {};
 
         // Default value
         if (match(TokenKind::Equal))
         {
             param.defaultValue = parseExpression();
-            if (!param.defaultValue) return {};
+            if (!param.defaultValue)
+                return {};
         }
 
         params.push_back(std::move(param));
@@ -1251,7 +1317,7 @@ std::vector<std::string> Parser::parseGenericParams()
 DeclPtr Parser::parseValueDecl()
 {
     SourceLoc loc = current_.loc;
-    advance();  // consume 'value'
+    advance(); // consume 'value'
 
     if (!check(TokenKind::Identifier))
     {
@@ -1301,7 +1367,7 @@ DeclPtr Parser::parseValueDecl()
 DeclPtr Parser::parseEntityDecl()
 {
     SourceLoc loc = current_.loc;
-    advance();  // consume 'entity'
+    advance(); // consume 'entity'
 
     if (!check(TokenKind::Identifier))
     {
@@ -1363,7 +1429,7 @@ DeclPtr Parser::parseEntityDecl()
 DeclPtr Parser::parseInterfaceDecl()
 {
     SourceLoc loc = current_.loc;
-    advance();  // consume 'interface'
+    advance(); // consume 'interface'
 
     if (!check(TokenKind::Identifier))
     {

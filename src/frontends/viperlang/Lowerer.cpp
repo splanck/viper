@@ -87,8 +87,8 @@ void Lowerer::lowerDecl(Decl *decl)
 void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
 {
     // Determine return type
-    TypeRef returnType = decl.returnType ? sema_.resolveType(decl.returnType.get())
-                                         : types::voidType();
+    TypeRef returnType =
+        decl.returnType ? sema_.resolveType(decl.returnType.get()) : types::voidType();
     Type ilReturnType = mapType(returnType);
 
     // Build parameter list
@@ -586,8 +586,8 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
             if (leftType && leftType->kind == TypeKindSem::String)
             {
                 // String concatenation
-                Value result =
-                    emitCallRet(Type(Type::Kind::Str), "Viper.String.Concat", {left.value, right.value});
+                Value result = emitCallRet(
+                    Type(Type::Kind::Str), "Viper.String.Concat", {left.value, right.value});
                 return {result, Type(Type::Kind::Str)};
             }
             op = isFloat ? Opcode::FAdd : Opcode::Add;
@@ -667,25 +667,29 @@ LowerResult Lowerer::lowerUnary(UnaryExpr *expr)
             // Synthesize negation: 0 - x (no INeg/FNeg opcode)
             if (isFloat)
             {
-                Value result = emitBinary(Opcode::FSub, operand.type, Value::constFloat(0.0), operand.value);
+                Value result =
+                    emitBinary(Opcode::FSub, operand.type, Value::constFloat(0.0), operand.value);
                 return {result, operand.type};
             }
             else
             {
-                Value result = emitBinary(Opcode::Sub, operand.type, Value::constInt(0), operand.value);
+                Value result =
+                    emitBinary(Opcode::Sub, operand.type, Value::constInt(0), operand.value);
                 return {result, operand.type};
             }
         }
         case UnaryOp::Not:
         {
             // Boolean NOT: compare with 0 (false)
-            Value result = emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), operand.value, Value::constInt(0));
+            Value result =
+                emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), operand.value, Value::constInt(0));
             return {result, Type(Type::Kind::I1)};
         }
         case UnaryOp::BitNot:
         {
             // Bitwise NOT: XOR with -1 (all bits set)
-            Value result = emitBinary(Opcode::Xor, operand.type, operand.value, Value::constInt(-1));
+            Value result =
+                emitBinary(Opcode::Xor, operand.type, operand.value, Value::constInt(-1));
             return {result, operand.type};
         }
     }
@@ -739,11 +743,13 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                 {
                     if (argType->kind == TypeKindSem::Integer)
                     {
-                        strVal = emitCallRet(Type(Type::Kind::Str), "Viper.String.FromInt", {arg.value});
+                        strVal =
+                            emitCallRet(Type(Type::Kind::Str), "Viper.String.FromInt", {arg.value});
                     }
                     else if (argType->kind == TypeKindSem::Number)
                     {
-                        strVal = emitCallRet(Type(Type::Kind::Str), "Viper.String.FromNum", {arg.value});
+                        strVal =
+                            emitCallRet(Type(Type::Kind::Str), "Viper.String.FromNum", {arg.value});
                     }
                 }
 
@@ -817,7 +823,9 @@ Lowerer::Value Lowerer::emitUnary(Opcode op, Type ty, Value operand)
     return Value::temp(id);
 }
 
-Lowerer::Value Lowerer::emitCallRet(Type retTy, const std::string &callee, const std::vector<Value> &args)
+Lowerer::Value Lowerer::emitCallRet(Type retTy,
+                                    const std::string &callee,
+                                    const std::vector<Value> &args)
 {
     usedExterns_.insert(callee);
     unsigned id = nextTempId();

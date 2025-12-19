@@ -96,13 +96,13 @@ class Lexer
     /// @return TokenKind if keyword, nullopt if identifier.
     static std::optional<TokenKind> lookupKeyword(const std::string &name);
 
-    std::string source_;                    ///< Source code.
-    uint32_t fileId_;                       ///< File ID.
-    il::support::DiagnosticEngine &diag_;   ///< Diagnostic engine.
-    size_t pos_ = 0;                        ///< Current position.
-    uint32_t line_ = 1;                     ///< Current line.
-    uint32_t column_ = 1;                   ///< Current column.
-    std::optional<Token> peeked_;           ///< Peeked token cache.
+    std::string source_;                  ///< Source code.
+    uint32_t fileId_;                     ///< File ID.
+    il::support::DiagnosticEngine &diag_; ///< Diagnostic engine.
+    size_t pos_ = 0;                      ///< Current position.
+    uint32_t line_ = 1;                   ///< Current line.
+    uint32_t column_ = 1;                 ///< Current column.
+    std::optional<Token> peeked_;         ///< Peeked token cache.
 };
 
 } // namespace il::frontends::viperlang

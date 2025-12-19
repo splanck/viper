@@ -61,8 +61,8 @@ bool Sema::analyze(ModuleDecl &module)
         if (auto *func = dynamic_cast<FunctionDecl *>(decl.get()))
         {
             // Determine return type
-            TypeRef returnType = func->returnType ? resolveTypeNode(func->returnType.get())
-                                                  : types::voidType();
+            TypeRef returnType =
+                func->returnType ? resolveTypeNode(func->returnType.get()) : types::voidType();
 
             // Build function type
             std::vector<TypeRef> paramTypes;
@@ -233,8 +233,8 @@ void Sema::analyzeInterfaceDecl(InterfaceDecl &decl)
         if (auto *method = dynamic_cast<MethodDecl *>(member.get()))
         {
             // Just register the method signature, no body analysis
-            TypeRef returnType = method->returnType ? resolveTypeNode(method->returnType.get())
-                                                    : types::voidType();
+            TypeRef returnType =
+                method->returnType ? resolveTypeNode(method->returnType.get()) : types::voidType();
             std::vector<TypeRef> paramTypes;
             for (const auto &param : method->params)
             {
@@ -259,8 +259,8 @@ void Sema::analyzeInterfaceDecl(InterfaceDecl &decl)
 void Sema::analyzeFunctionDecl(FunctionDecl &decl)
 {
     currentFunction_ = &decl;
-    expectedReturnType_ = decl.returnType ? resolveTypeNode(decl.returnType.get())
-                                          : types::voidType();
+    expectedReturnType_ =
+        decl.returnType ? resolveTypeNode(decl.returnType.get()) : types::voidType();
 
     pushScope();
 
@@ -273,7 +273,7 @@ void Sema::analyzeFunctionDecl(FunctionDecl &decl)
         sym.kind = Symbol::Kind::Parameter;
         sym.name = param.name;
         sym.type = paramType;
-        sym.isFinal = true;  // Parameters are immutable by default
+        sym.isFinal = true; // Parameters are immutable by default
         defineSymbol(param.name, sym);
     }
 
@@ -315,8 +315,8 @@ void Sema::analyzeFieldDecl(FieldDecl &decl, TypeRef /*ownerType*/)
 void Sema::analyzeMethodDecl(MethodDecl &decl, TypeRef ownerType)
 {
     currentSelfType_ = ownerType;
-    expectedReturnType_ = decl.returnType ? resolveTypeNode(decl.returnType.get())
-                                          : types::voidType();
+    expectedReturnType_ =
+        decl.returnType ? resolveTypeNode(decl.returnType.get()) : types::voidType();
 
     pushScope();
 
@@ -515,7 +515,7 @@ void Sema::analyzeForInStmt(ForInStmt *stmt)
     sym.kind = Symbol::Kind::Variable;
     sym.name = stmt->variable;
     sym.type = elementType ? elementType : types::unknown();
-    sym.isFinal = true;  // Loop variable is immutable
+    sym.isFinal = true; // Loop variable is immutable
     defineSymbol(stmt->variable, sym);
 
     analyzeStmt(stmt->body.get());
@@ -1200,8 +1200,8 @@ TypeRef Sema::resolveTypeNode(const TypeNode *node)
             {
                 params.push_back(resolveTypeNode(param.get()));
             }
-            TypeRef ret = func->returnType ? resolveTypeNode(func->returnType.get())
-                                           : types::voidType();
+            TypeRef ret =
+                func->returnType ? resolveTypeNode(func->returnType.get()) : types::voidType();
             return types::function(params, ret);
         }
 

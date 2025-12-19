@@ -30,88 +30,164 @@ const char *tokenKindToString(TokenKind kind)
 {
     switch (kind)
     {
-        case TokenKind::Eof: return "eof";
-        case TokenKind::Error: return "error";
-        case TokenKind::IntegerLiteral: return "integer";
-        case TokenKind::NumberLiteral: return "number";
-        case TokenKind::StringLiteral: return "string";
-        case TokenKind::Identifier: return "identifier";
+        case TokenKind::Eof:
+            return "eof";
+        case TokenKind::Error:
+            return "error";
+        case TokenKind::IntegerLiteral:
+            return "integer";
+        case TokenKind::NumberLiteral:
+            return "number";
+        case TokenKind::StringLiteral:
+            return "string";
+        case TokenKind::Identifier:
+            return "identifier";
 
         // Keywords
-        case TokenKind::KwValue: return "value";
-        case TokenKind::KwEntity: return "entity";
-        case TokenKind::KwInterface: return "interface";
-        case TokenKind::KwFinal: return "final";
-        case TokenKind::KwExpose: return "expose";
-        case TokenKind::KwHide: return "hide";
-        case TokenKind::KwOverride: return "override";
-        case TokenKind::KwWeak: return "weak";
-        case TokenKind::KwModule: return "module";
-        case TokenKind::KwImport: return "import";
-        case TokenKind::KwFunc: return "func";
-        case TokenKind::KwReturn: return "return";
-        case TokenKind::KwVar: return "var";
-        case TokenKind::KwNew: return "new";
-        case TokenKind::KwIf: return "if";
-        case TokenKind::KwElse: return "else";
-        case TokenKind::KwLet: return "let";
-        case TokenKind::KwMatch: return "match";
-        case TokenKind::KwWhile: return "while";
-        case TokenKind::KwFor: return "for";
-        case TokenKind::KwIn: return "in";
-        case TokenKind::KwIs: return "is";
-        case TokenKind::KwGuard: return "guard";
-        case TokenKind::KwBreak: return "break";
-        case TokenKind::KwContinue: return "continue";
-        case TokenKind::KwExtends: return "extends";
-        case TokenKind::KwImplements: return "implements";
-        case TokenKind::KwSelf: return "self";
-        case TokenKind::KwSuper: return "super";
-        case TokenKind::KwAs: return "as";
-        case TokenKind::KwTrue: return "true";
-        case TokenKind::KwFalse: return "false";
-        case TokenKind::KwNull: return "null";
+        case TokenKind::KwValue:
+            return "value";
+        case TokenKind::KwEntity:
+            return "entity";
+        case TokenKind::KwInterface:
+            return "interface";
+        case TokenKind::KwFinal:
+            return "final";
+        case TokenKind::KwExpose:
+            return "expose";
+        case TokenKind::KwHide:
+            return "hide";
+        case TokenKind::KwOverride:
+            return "override";
+        case TokenKind::KwWeak:
+            return "weak";
+        case TokenKind::KwModule:
+            return "module";
+        case TokenKind::KwImport:
+            return "import";
+        case TokenKind::KwFunc:
+            return "func";
+        case TokenKind::KwReturn:
+            return "return";
+        case TokenKind::KwVar:
+            return "var";
+        case TokenKind::KwNew:
+            return "new";
+        case TokenKind::KwIf:
+            return "if";
+        case TokenKind::KwElse:
+            return "else";
+        case TokenKind::KwLet:
+            return "let";
+        case TokenKind::KwMatch:
+            return "match";
+        case TokenKind::KwWhile:
+            return "while";
+        case TokenKind::KwFor:
+            return "for";
+        case TokenKind::KwIn:
+            return "in";
+        case TokenKind::KwIs:
+            return "is";
+        case TokenKind::KwGuard:
+            return "guard";
+        case TokenKind::KwBreak:
+            return "break";
+        case TokenKind::KwContinue:
+            return "continue";
+        case TokenKind::KwExtends:
+            return "extends";
+        case TokenKind::KwImplements:
+            return "implements";
+        case TokenKind::KwSelf:
+            return "self";
+        case TokenKind::KwSuper:
+            return "super";
+        case TokenKind::KwAs:
+            return "as";
+        case TokenKind::KwTrue:
+            return "true";
+        case TokenKind::KwFalse:
+            return "false";
+        case TokenKind::KwNull:
+            return "null";
 
         // Operators
-        case TokenKind::Plus: return "+";
-        case TokenKind::Minus: return "-";
-        case TokenKind::Star: return "*";
-        case TokenKind::Slash: return "/";
-        case TokenKind::Percent: return "%";
-        case TokenKind::Ampersand: return "&";
-        case TokenKind::Pipe: return "|";
-        case TokenKind::Caret: return "^";
-        case TokenKind::Tilde: return "~";
-        case TokenKind::Bang: return "!";
-        case TokenKind::Equal: return "=";
-        case TokenKind::EqualEqual: return "==";
-        case TokenKind::NotEqual: return "!=";
-        case TokenKind::Less: return "<";
-        case TokenKind::LessEqual: return "<=";
-        case TokenKind::Greater: return ">";
-        case TokenKind::GreaterEqual: return ">=";
-        case TokenKind::AmpAmp: return "&&";
-        case TokenKind::PipePipe: return "||";
-        case TokenKind::Arrow: return "->";
-        case TokenKind::FatArrow: return "=>";
-        case TokenKind::Question: return "?";
-        case TokenKind::QuestionQuestion: return "??";
-        case TokenKind::QuestionDot: return "?.";
-        case TokenKind::Dot: return ".";
-        case TokenKind::DotDot: return "..";
-        case TokenKind::DotDotEqual: return "..=";
-        case TokenKind::Colon: return ":";
-        case TokenKind::Semicolon: return ";";
-        case TokenKind::Comma: return ",";
-        case TokenKind::At: return "@";
+        case TokenKind::Plus:
+            return "+";
+        case TokenKind::Minus:
+            return "-";
+        case TokenKind::Star:
+            return "*";
+        case TokenKind::Slash:
+            return "/";
+        case TokenKind::Percent:
+            return "%";
+        case TokenKind::Ampersand:
+            return "&";
+        case TokenKind::Pipe:
+            return "|";
+        case TokenKind::Caret:
+            return "^";
+        case TokenKind::Tilde:
+            return "~";
+        case TokenKind::Bang:
+            return "!";
+        case TokenKind::Equal:
+            return "=";
+        case TokenKind::EqualEqual:
+            return "==";
+        case TokenKind::NotEqual:
+            return "!=";
+        case TokenKind::Less:
+            return "<";
+        case TokenKind::LessEqual:
+            return "<=";
+        case TokenKind::Greater:
+            return ">";
+        case TokenKind::GreaterEqual:
+            return ">=";
+        case TokenKind::AmpAmp:
+            return "&&";
+        case TokenKind::PipePipe:
+            return "||";
+        case TokenKind::Arrow:
+            return "->";
+        case TokenKind::FatArrow:
+            return "=>";
+        case TokenKind::Question:
+            return "?";
+        case TokenKind::QuestionQuestion:
+            return "??";
+        case TokenKind::QuestionDot:
+            return "?.";
+        case TokenKind::Dot:
+            return ".";
+        case TokenKind::DotDot:
+            return "..";
+        case TokenKind::DotDotEqual:
+            return "..=";
+        case TokenKind::Colon:
+            return ":";
+        case TokenKind::Semicolon:
+            return ";";
+        case TokenKind::Comma:
+            return ",";
+        case TokenKind::At:
+            return "@";
 
         // Brackets
-        case TokenKind::LParen: return "(";
-        case TokenKind::RParen: return ")";
-        case TokenKind::LBracket: return "[";
-        case TokenKind::RBracket: return "]";
-        case TokenKind::LBrace: return "{";
-        case TokenKind::RBrace: return "}";
+        case TokenKind::LParen:
+            return "(";
+        case TokenKind::RParen:
+            return ")";
+        case TokenKind::LBracket:
+            return "[";
+        case TokenKind::RBracket:
+            return "]";
+        case TokenKind::LBrace:
+            return "{";
+        case TokenKind::RBrace:
+            return "}";
     }
     return "?";
 }
@@ -193,9 +269,11 @@ inline bool isIdentifierContinue(char c)
 
 std::optional<TokenKind> Lexer::lookupKeyword(const std::string &name)
 {
-    auto it = std::lower_bound(
-        kKeywordTable.begin(), kKeywordTable.end(), name,
-        [](const KeywordEntry &entry, const std::string &key) { return entry.key < key; });
+    auto it = std::lower_bound(kKeywordTable.begin(),
+                               kKeywordTable.end(),
+                               name,
+                               [](const KeywordEntry &entry, const std::string &key)
+                               { return entry.key < key; });
     if (it != kKeywordTable.end() && it->key == name)
         return it->kind;
     return std::nullopt;
@@ -281,7 +359,7 @@ bool Lexer::skipBlockComment()
     getChar();
     getChar();
 
-    int depth = 1;  // Support nested comments
+    int depth = 1; // Support nested comments
     while (!eof() && depth > 0)
     {
         char c = getChar();
@@ -371,8 +449,8 @@ Token Lexer::lexNumber()
         if (next == 'x' || next == 'X')
         {
             // Hex literal
-            tok.text.push_back(getChar());  // '0'
-            tok.text.push_back(getChar());  // 'x'
+            tok.text.push_back(getChar()); // '0'
+            tok.text.push_back(getChar()); // 'x'
 
             if (!isHexDigit(peekChar()))
             {
@@ -406,8 +484,8 @@ Token Lexer::lexNumber()
         else if (next == 'b' || next == 'B')
         {
             // Binary literal
-            tok.text.push_back(getChar());  // '0'
-            tok.text.push_back(getChar());  // 'b'
+            tok.text.push_back(getChar()); // '0'
+            tok.text.push_back(getChar()); // 'b'
 
             if (peekChar() != '0' && peekChar() != '1')
             {
@@ -448,7 +526,7 @@ Token Lexer::lexNumber()
     if (peekChar() == '.' && peekChar(1) != '.')
     {
         tok.kind = TokenKind::NumberLiteral;
-        tok.text.push_back(getChar());  // consume '.'
+        tok.text.push_back(getChar()); // consume '.'
 
         // Consume fractional part
         while (!eof() && isDigit(peekChar()))
@@ -462,7 +540,7 @@ Token Lexer::lexNumber()
     if (e == 'e' || e == 'E')
     {
         tok.kind = TokenKind::NumberLiteral;
-        tok.text.push_back(getChar());  // consume 'e' or 'E'
+        tok.text.push_back(getChar()); // consume 'e' or 'E'
 
         // Optional sign
         char sign = peekChar();
@@ -517,14 +595,22 @@ std::optional<char> Lexer::processEscape()
     char c = getChar();
     switch (c)
     {
-        case 'n': return '\n';
-        case 'r': return '\r';
-        case 't': return '\t';
-        case '\\': return '\\';
-        case '"': return '"';
-        case '\'': return '\'';
-        case '0': return '\0';
-        case '$': return '$';  // For string interpolation escape
+        case 'n':
+            return '\n';
+        case 'r':
+            return '\r';
+        case 't':
+            return '\t';
+        case '\\':
+            return '\\';
+        case '"':
+            return '"';
+        case '\'':
+            return '\'';
+        case '0':
+            return '\0';
+        case '$':
+            return '$'; // For string interpolation escape
         default:
             return std::nullopt;
     }
@@ -542,7 +628,7 @@ Token Lexer::lexString()
         return lexTripleQuotedString();
     }
 
-    tok.text.push_back(getChar());  // consume opening "
+    tok.text.push_back(getChar()); // consume opening "
 
     while (!eof())
     {
@@ -566,7 +652,7 @@ Token Lexer::lexString()
         // Check for escape sequence
         if (c == '\\')
         {
-            tok.text.push_back(getChar());  // consume '\'
+            tok.text.push_back(getChar()); // consume '\'
             if (eof())
             {
                 reportError(tok.loc, "unterminated escape sequence");

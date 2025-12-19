@@ -95,6 +95,13 @@ int cmdFrontBasic(int argc, char **argv);
 ///         as parse failures or runtime traps.
 int cmdFrontPascal(int argc, char **argv);
 
+/// @brief Handle `ilc front viperlang` subcommands.
+///
+/// @param argc Number of arguments following `front viperlang`.
+/// @param argv Array of argument strings.
+/// @return `0` on successful compilation or execution, non‑zero on errors.
+int cmdFrontViperlang(int argc, char **argv);
+
 /// @brief Handle `ilc -run` with an externally managed source manager.
 ///
 /// Allows tests to preconfigure the @ref il::support::SourceManager used by the

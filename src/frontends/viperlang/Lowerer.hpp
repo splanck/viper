@@ -75,8 +75,16 @@ class Lowerer
 
     size_t createBlock(const std::string &base);
     void setBlock(size_t blockIdx);
-    BasicBlock &getBlock(size_t idx) { return blockMgr_.getBlock(idx); }
-    bool isTerminated() const { return blockMgr_.isTerminated(); }
+
+    BasicBlock &getBlock(size_t idx)
+    {
+        return blockMgr_.getBlock(idx);
+    }
+
+    bool isTerminated() const
+    {
+        return blockMgr_.isTerminated();
+    }
 
     //=========================================================================
     // Declaration Lowering

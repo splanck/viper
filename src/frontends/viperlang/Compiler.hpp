@@ -14,9 +14,9 @@
 
 #pragma once
 
+#include "il/core/Module.hpp"
 #include "support/diagnostics.hpp"
 #include "support/source_manager.hpp"
-#include "il/core/Module.hpp"
 #include <optional>
 #include <string>
 #include <string_view>

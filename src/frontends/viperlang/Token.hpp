@@ -30,96 +30,96 @@ enum class TokenKind
     Error,
 
     // Literals
-    IntegerLiteral,     // 42, 0xFF, 0b1010
-    NumberLiteral,      // 3.14, 6.02e23
-    StringLiteral,      // "hello"
-    Identifier,         // user-defined names
+    IntegerLiteral, // 42, 0xFF, 0b1010
+    NumberLiteral,  // 3.14, 6.02e23
+    StringLiteral,  // "hello"
+    Identifier,     // user-defined names
 
     // Keywords - Types (3)
-    KwValue,            // value
-    KwEntity,           // entity
-    KwInterface,        // interface
+    KwValue,     // value
+    KwEntity,    // entity
+    KwInterface, // interface
 
     // Keywords - Modifiers (5)
-    KwFinal,            // final
-    KwExpose,           // expose
-    KwHide,             // hide
-    KwOverride,         // override
-    KwWeak,             // weak
+    KwFinal,    // final
+    KwExpose,   // expose
+    KwHide,     // hide
+    KwOverride, // override
+    KwWeak,     // weak
 
     // Keywords - Declarations (6)
-    KwModule,           // module
-    KwImport,           // import
-    KwFunc,             // func
-    KwReturn,           // return
-    KwVar,              // var
-    KwNew,              // new
+    KwModule, // module
+    KwImport, // import
+    KwFunc,   // func
+    KwReturn, // return
+    KwVar,    // var
+    KwNew,    // new
 
     // Keywords - Control Flow (11)
-    KwIf,               // if
-    KwElse,             // else
-    KwLet,              // let
-    KwMatch,            // match
-    KwWhile,            // while
-    KwFor,              // for
-    KwIn,               // in
-    KwIs,               // is
-    KwGuard,            // guard
-    KwBreak,            // break
-    KwContinue,         // continue
+    KwIf,       // if
+    KwElse,     // else
+    KwLet,      // let
+    KwMatch,    // match
+    KwWhile,    // while
+    KwFor,      // for
+    KwIn,       // in
+    KwIs,       // is
+    KwGuard,    // guard
+    KwBreak,    // break
+    KwContinue, // continue
 
     // Keywords - Inheritance (4)
-    KwExtends,          // extends
-    KwImplements,       // implements
-    KwSelf,             // self
-    KwSuper,            // super
-    KwAs,               // as
+    KwExtends,    // extends
+    KwImplements, // implements
+    KwSelf,       // self
+    KwSuper,      // super
+    KwAs,         // as
 
     // Keywords - Literals (3)
-    KwTrue,             // true
-    KwFalse,            // false
-    KwNull,             // null
+    KwTrue,  // true
+    KwFalse, // false
+    KwNull,  // null
 
     // Operators
-    Plus,               // +
-    Minus,              // -
-    Star,               // *
-    Slash,              // /
-    Percent,            // %
-    Ampersand,          // &
-    Pipe,               // |
-    Caret,              // ^
-    Tilde,              // ~
-    Bang,               // !
-    Equal,              // =
-    EqualEqual,         // ==
-    NotEqual,           // !=
-    Less,               // <
-    LessEqual,          // <=
-    Greater,            // >
-    GreaterEqual,       // >=
-    AmpAmp,             // &&
-    PipePipe,           // ||
-    Arrow,              // ->
-    FatArrow,           // =>
-    Question,           // ?
-    QuestionQuestion,   // ??
-    QuestionDot,        // ?.
-    Dot,                // .
-    DotDot,             // ..
-    DotDotEqual,        // ..=
-    Colon,              // :
-    Semicolon,          // ;
-    Comma,              // ,
-    At,                 // @
+    Plus,             // +
+    Minus,            // -
+    Star,             // *
+    Slash,            // /
+    Percent,          // %
+    Ampersand,        // &
+    Pipe,             // |
+    Caret,            // ^
+    Tilde,            // ~
+    Bang,             // !
+    Equal,            // =
+    EqualEqual,       // ==
+    NotEqual,         // !=
+    Less,             // <
+    LessEqual,        // <=
+    Greater,          // >
+    GreaterEqual,     // >=
+    AmpAmp,           // &&
+    PipePipe,         // ||
+    Arrow,            // ->
+    FatArrow,         // =>
+    Question,         // ?
+    QuestionQuestion, // ??
+    QuestionDot,      // ?.
+    Dot,              // .
+    DotDot,           // ..
+    DotDotEqual,      // ..=
+    Colon,            // :
+    Semicolon,        // ;
+    Comma,            // ,
+    At,               // @
 
     // Brackets
-    LParen,             // (
-    RParen,             // )
-    LBracket,           // [
-    RBracket,           // ]
-    LBrace,             // {
-    RBrace,             // }
+    LParen,   // (
+    RParen,   // )
+    LBracket, // [
+    RBracket, // ]
+    LBrace,   // {
+    RBrace,   // }
 };
 
 /// @brief Convert TokenKind to string for debugging.
@@ -130,19 +130,21 @@ struct Token
 {
     TokenKind kind = TokenKind::Eof;
     il::support::SourceLoc loc{};
-    std::string text;               // Original source text
+    std::string text; // Original source text
 
     // Literal values
     int64_t intValue = 0;
     double floatValue = 0.0;
-    std::string stringValue;        // Unescaped string content
+    std::string stringValue; // Unescaped string content
 
     /// @brief Check if this token is of the given kind.
-    bool is(TokenKind k) const { return kind == k; }
+    bool is(TokenKind k) const
+    {
+        return kind == k;
+    }
 
     /// @brief Check if this token is one of the given kinds.
-    template <typename... Kinds>
-    bool isOneOf(Kinds... kinds) const
+    template <typename... Kinds> bool isOneOf(Kinds... kinds) const
     {
         return (is(kinds) || ...);
     }

@@ -30,40 +30,40 @@ using TypeRef = std::shared_ptr<const ViperType>;
 enum class TypeKindSem
 {
     // Primitive types
-    Integer,    // i64 - 64-bit signed integer
-    Number,     // f64 - 64-bit floating point
-    Boolean,    // i1 (stored as i64) - true/false
-    String,     // str - UTF-8 string reference
-    Byte,       // i32 (NOT i8 - IL doesn't have i8)
-    Unit,       // void - single value () for Result[Unit]
-    Void,       // No return type for functions
+    Integer, // i64 - 64-bit signed integer
+    Number,  // f64 - 64-bit floating point
+    Boolean, // i1 (stored as i64) - true/false
+    String,  // str - UTF-8 string reference
+    Byte,    // i32 (NOT i8 - IL doesn't have i8)
+    Unit,    // void - single value () for Result[Unit]
+    Void,    // No return type for functions
 
     // Wrapper types
-    Optional,   // T? - nullable type
-    Result,     // Result[T] - Ok/Err sum type
+    Optional, // T? - nullable type
+    Result,   // Result[T] - Ok/Err sum type
 
     // Collection types
-    List,       // List[T] - dynamic array
-    Map,        // Map[K,V] - key-value collection
-    Set,        // Set[T] - unique elements
+    List, // List[T] - dynamic array
+    Map,  // Map[K,V] - key-value collection
+    Set,  // Set[T] - unique elements
 
     // Function type
-    Function,   // (A, B) -> C
+    Function, // (A, B) -> C
 
     // User-defined types
-    Value,      // value type (copy semantics)
-    Entity,     // entity type (reference semantics)
-    Interface,  // interface type
+    Value,     // value type (copy semantics)
+    Entity,    // entity type (reference semantics)
+    Interface, // interface type
 
     // Special types
-    Error,      // Error value type
-    Ptr,        // Opaque pointer (for thread args, etc.)
-    Unknown,    // Placeholder for type inference
-    Never,      // Bottom type (never returns)
-    Any,        // Top type (for interop)
+    Error,   // Error value type
+    Ptr,     // Opaque pointer (for thread args, etc.)
+    Unknown, // Placeholder for type inference
+    Never,   // Bottom type (never returns)
+    Any,     // Top type (for interop)
 
     // Generic type parameter
-    TypeParam,  // T, U, etc.
+    TypeParam, // T, U, etc.
 };
 
 /// @brief Semantic type representation.
@@ -71,8 +71,8 @@ enum class TypeKindSem
 struct ViperType
 {
     TypeKindSem kind;
-    std::string name;                  // For Value, Entity, Interface, TypeParam
-    std::vector<TypeRef> typeArgs;     // For generics: List[T], Map[K,V], etc.
+    std::string name;              // For Value, Entity, Interface, TypeParam
+    std::vector<TypeRef> typeArgs; // For generics: List[T], Map[K,V], etc.
 
     /// @brief Default constructor creates Unknown type.
     ViperType() : kind(TypeKindSem::Unknown) {}
@@ -84,12 +84,13 @@ struct ViperType
     ViperType(TypeKindSem k, std::string n) : kind(k), name(std::move(n)) {}
 
     /// @brief Construct generic type.
-    ViperType(TypeKindSem k, std::vector<TypeRef> args)
-        : kind(k), typeArgs(std::move(args)) {}
+    ViperType(TypeKindSem k, std::vector<TypeRef> args) : kind(k), typeArgs(std::move(args)) {}
 
     /// @brief Construct named generic type (e.g., custom generic value).
     ViperType(TypeKindSem k, std::string n, std::vector<TypeRef> args)
-        : kind(k), name(std::move(n)), typeArgs(std::move(args)) {}
+        : kind(k), name(std::move(n)), typeArgs(std::move(args))
+    {
+    }
 
     //=========================================================================
     // Type Predicates
@@ -113,8 +114,7 @@ struct ViperType
 
     bool isNumeric() const
     {
-        return kind == TypeKindSem::Integer ||
-               kind == TypeKindSem::Number ||
+        return kind == TypeKindSem::Integer || kind == TypeKindSem::Number ||
                kind == TypeKindSem::Byte;
     }
 
@@ -125,29 +125,54 @@ struct ViperType
 
     bool isReference() const
     {
-        return kind == TypeKindSem::Entity ||
-               kind == TypeKindSem::Interface ||
-               kind == TypeKindSem::List ||
-               kind == TypeKindSem::Map ||
-               kind == TypeKindSem::Set;
+        return kind == TypeKindSem::Entity || kind == TypeKindSem::Interface ||
+               kind == TypeKindSem::List || kind == TypeKindSem::Map || kind == TypeKindSem::Set;
     }
 
-    bool isOptional() const { return kind == TypeKindSem::Optional; }
-    bool isResult() const { return kind == TypeKindSem::Result; }
-    bool isVoid() const { return kind == TypeKindSem::Void; }
-    bool isUnit() const { return kind == TypeKindSem::Unit; }
-    bool isUnknown() const { return kind == TypeKindSem::Unknown; }
-    bool isNever() const { return kind == TypeKindSem::Never; }
+    bool isOptional() const
+    {
+        return kind == TypeKindSem::Optional;
+    }
 
-    bool isCallable() const { return kind == TypeKindSem::Function; }
+    bool isResult() const
+    {
+        return kind == TypeKindSem::Result;
+    }
 
-    bool isGeneric() const { return !typeArgs.empty(); }
+    bool isVoid() const
+    {
+        return kind == TypeKindSem::Void;
+    }
+
+    bool isUnit() const
+    {
+        return kind == TypeKindSem::Unit;
+    }
+
+    bool isUnknown() const
+    {
+        return kind == TypeKindSem::Unknown;
+    }
+
+    bool isNever() const
+    {
+        return kind == TypeKindSem::Never;
+    }
+
+    bool isCallable() const
+    {
+        return kind == TypeKindSem::Function;
+    }
+
+    bool isGeneric() const
+    {
+        return !typeArgs.empty();
+    }
 
     /// @brief Check if this is a user-defined type.
     bool isUserDefined() const
     {
-        return kind == TypeKindSem::Value ||
-               kind == TypeKindSem::Entity ||
+        return kind == TypeKindSem::Value || kind == TypeKindSem::Entity ||
                kind == TypeKindSem::Interface;
     }
 

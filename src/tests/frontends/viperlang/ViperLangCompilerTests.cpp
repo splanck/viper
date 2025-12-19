@@ -123,8 +123,7 @@ func start() {
             {
                 for (const auto &instr : block.instructions)
                 {
-                    if (instr.op == il::core::Opcode::Call &&
-                        instr.callee == "Viper.Terminal.Say")
+                    if (instr.op == il::core::Opcode::Call && instr.callee == "Viper.Terminal.Say")
                     {
                         foundCall = true;
                     }
@@ -342,6 +341,40 @@ func start() {
     }
     EXPECT_TRUE(foundMul);
     EXPECT_TRUE(foundAdd);
+}
+
+/// @brief Test that value types parse correctly.
+TEST(ViperLangCompilerTest, ValueTypeDeclaration)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+value Point {
+    Integer x;
+    Integer y;
+}
+
+func start() {
+}
+)";
+    CompilerInput input{.source = source, .path = "value.viper"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    // Print diagnostics for debugging
+    if (!result.succeeded())
+    {
+        std::cerr << "Diagnostics for ValueTypeDeclaration:\n";
+        for (const auto &d : result.diagnostics.diagnostics())
+        {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+
+    EXPECT_TRUE(result.succeeded());
 }
 
 } // namespace
