@@ -2,7 +2,7 @@
 
 **Viper** is an IL-first compiler toolchain and virtual machine for exploring intermediate language design, multi-frontend architectures, and interpreter implementation techniques.
 
-High-level frontends—like the included BASIC and Pascal compilers—lower programs into a strongly typed, SSA-inspired intermediate language (**Viper IL**). The IL can be executed by the VM or compiled to native code.
+High-level frontends—like the included BASIC, Pascal, and ViperLang compilers—lower programs into a strongly typed, SSA-inspired intermediate language (**Viper IL**). The IL can be executed by the VM or compiled to native code.
 
 > **Status:** Early development. APIs, IL, and tooling change frequently. Not production-ready.
 
@@ -41,6 +41,12 @@ Run a BASIC program:
 ./build/src/tools/vbasic/vbasic examples/basic/ex1_hello_cond.bas
 ```
 
+Run a ViperLang program:
+
+```bash
+./build/src/tools/viper/viper demos/viperlang/frogger.viper
+```
+
 Run an IL program directly:
 
 ```bash
@@ -56,11 +62,11 @@ Viper is a compiler infrastructure with several components:
 | Component | Description |
 |-----------|-------------|
 | **IL** | Typed, SSA-based intermediate representation |
-| **Frontends** | Language compilers that lower to IL (BASIC included) |
+| **Frontends** | Language compilers: BASIC, Pascal, and ViperLang |
 | **VM** | Bytecode interpreter with pluggable dispatch strategies |
 | **Backends** | Native code generators (AArch64, x86-64) |
-| **Runtime** | Portable C libraries for strings, math, I/O, memory |
-| **Tools** | Compiler driver, verifier, disassembler |
+| **Runtime** | Portable C libraries for strings, math, I/O, memory, graphics, threading |
+| **Tools** | Compiler drivers, verifier, disassembler |
 
 ### Why Viper?
 
@@ -79,11 +85,12 @@ Viper is in **early development**. All components are functional but incomplete:
 |-----------|-------|
 | BASIC Frontend | Core language implemented; OOP features work but are evolving |
 | Pascal Frontend | Core language implemented; units, exceptions, native codegen |
+| ViperLang Frontend | Core language with entities, generics, imports; actively developed |
 | Viper IL | Stable core; instruction set still expanding |
 | Virtual Machine | Functional with multiple dispatch strategies |
 | AArch64 Backend | Validated on Apple Silicon; actively developed |
 | x86-64 Backend | Implemented but not validated on real hardware |
-| Runtime Libraries | Core functionality present; growing |
+| Runtime Libraries | Comprehensive: collections, I/O, graphics, threading, crypto |
 | IL Optimizer | Basic passes implemented; more planned |
 | Debugger/IDE | Early work; not yet usable |
 
@@ -93,18 +100,47 @@ Expect breaking changes. The IL specification, APIs, and tool interfaces are not
 
 ## Demos
 
-Several demos run on the VM today:
+Several demos showcase the platform's capabilities. See the **[demos/](demos/README.md)** directory for the full list.
+
+### BASIC Demos
 
 | Demo | Description |
 |------|-------------|
 | `demos/basic/frogger` | Frogger clone (console). Also runs natively on Apple Silicon. |
-| `demos/basic/chess` | Console chess with basic AI |
-| `demos/vTris` | Tetris-like game |
+| `demos/basic/chess` | Console chess with AI opponent |
+| `demos/basic/pacman` | Pac-Man clone with ghost AI |
+| `demos/basic/centipede` | Classic arcade game with OOP |
+| `demos/basic/monopoly` | Board game with 4-player AI |
+| `demos/basic/vtris` | Tetris clone with high scores |
+| `demos/basic/particles` | Graphics particle system using Canvas API |
 
-Run a demo:
+### Pascal Demos
+
+| Demo | Description |
+|------|-------------|
+| `demos/pascal/frogger` | Frogger port to Pascal |
+| `demos/pascal/centipede` | Centipede port to Pascal |
+| `demos/pascal/snake` | Classic snake game |
+| `demos/pascal/vtris` | Tetris port to Pascal |
+
+### ViperLang Demos
+
+| Demo | Description |
+|------|-------------|
+| `demos/viperlang/frogger` | Frogger with entity types and generics |
+| `demos/viperlang/entities` | Entity system demonstration |
+
+Run demos:
 
 ```bash
+# BASIC
 ./build/src/tools/vbasic/vbasic demos/basic/frogger/frogger.bas
+
+# Pascal
+./build/src/tools/vpascal/vpascal demos/pascal/frogger/frogger.pas
+
+# ViperLang
+./build/src/tools/viper/viper demos/viperlang/frogger.viper
 ```
 
 ---
@@ -114,7 +150,7 @@ Run a demo:
 ```
 ┌─────────────────────────────────────────┐
 │           Source Language               │
-│           (BASIC, Pascal)               │
+│      (BASIC, Pascal, ViperLang)         │
 └─────────────────┬───────────────────────┘
                   │
                   ▼
@@ -134,6 +170,13 @@ Run a demo:
 │   Virtual    │   │   Native Backend     │
 │   Machine    │   │  (AArch64, x86-64)   │
 └──────────────┘   └──────────────────────┘
+        │                   │
+        └─────────┬─────────┘
+                  ▼
+┌─────────────────────────────────────────┐
+│           Viper Runtime                 │
+│  (Collections, I/O, Graphics, Threads)  │
+└─────────────────────────────────────────┘
 ```
 
 ---
@@ -175,6 +218,28 @@ entry:
 
 ---
 
+## Runtime Library
+
+All frontends share the comprehensive **Viper Runtime**, providing:
+
+| Module | Classes | Description |
+|--------|---------|-------------|
+| **Core** | `Object`, `String` | Base types and string operations |
+| **Collections** | `List`, `Map`, `Bag`, `Queue`, `Stack`, `Seq`, `Ring`, `TreeMap`, `Bytes` | Data structures for any use case |
+| **I/O** | `File`, `Dir`, `Path`, `BinFile`, `LineReader`, `LineWriter` | File system access and streaming |
+| **Graphics** | `Canvas`, `Color`, `Pixels` | 2D graphics for games and visualization |
+| **System** | `Terminal`, `Environment`, `Exec`, `Machine` | System interaction and console I/O |
+| **Math** | `Math`, `Random`, `Bits`, `Vec2`, `Vec3` | Mathematical functions and vectors |
+| **Threads** | `Thread`, `Monitor`, `SafeI64` | Concurrent programming primitives |
+| **Text** | `StringBuilder`, `Codec`, `Csv`, `Guid` | String building and text encoding |
+| **Crypto** | `Hash` | CRC32, MD5, SHA1, SHA256 |
+| **Time** | `Clock`, `DateTime`, `Countdown`, `Stopwatch` | Time utilities and measurement |
+| **Diagnostics** | `Assert`, `Log` | Debugging and logging |
+
+See the **[Runtime Library Reference](docs/viperlib/README.md)** for complete API documentation.
+
+---
+
 ## Tools
 
 **Primary tools:**
@@ -183,6 +248,7 @@ entry:
 |------|---------|
 | `vbasic` | Run or compile BASIC programs |
 | `vpascal` | Run or compile Pascal programs |
+| `viper` | Run or compile ViperLang programs |
 | `ilrun` | Execute IL programs |
 | `il-verify` | Validate IL with detailed diagnostics |
 | `il-dis` | Disassemble IL for inspection |
@@ -196,11 +262,13 @@ entry:
 # Run Pascal
 ./build/src/tools/vpascal/vpascal program.pas
 
-# Emit IL from BASIC
-./build/src/tools/vbasic/vbasic program.bas --emit-il
+# Run ViperLang
+./build/src/tools/viper/viper program.viper
 
-# Emit IL from Pascal
+# Emit IL from any frontend
+./build/src/tools/vbasic/vbasic program.bas --emit-il
 ./build/src/tools/vpascal/vpascal program.pas --emit-il
+./build/src/tools/viper/viper program.viper --emit-il
 
 # Run IL
 ./build/src/tools/ilrun/ilrun program.il
@@ -220,6 +288,10 @@ entry:
 
 # Compile Pascal to native executable
 ./build/src/tools/ilc/ilc front pascal -emit-il program.pas > program.il
+./build/src/tools/ilc/ilc codegen arm64 program.il -o program
+
+# Compile ViperLang to native executable
+./build/src/tools/ilc/ilc front viperlang -emit-il program.viper > program.il
 ./build/src/tools/ilc/ilc codegen arm64 program.il -o program
 ```
 
@@ -270,7 +342,7 @@ ctest --test-dir build --output-on-failure
 sudo cmake --install build --prefix /usr/local
 ```
 
-Installs: `vbasic`, `vpascal`, `ilrun`, `ilc`, `il-verify`, `il-dis`
+Installs: `vbasic`, `vpascal`, `viper`, `ilrun`, `ilc`, `il-verify`, `il-dis`
 
 ### Platform Notes
 
@@ -289,6 +361,8 @@ Installs: `vbasic`, `vpascal`, `ilrun`, `ilc`, `il-verify`, `il-dis`
 | [BASIC Reference](docs/basic-reference.md) | Complete BASIC language specification |
 | [Pascal Tutorial](docs/pascal-language.md) | Learn Viper Pascal by example |
 | [Pascal Reference](docs/pascal-reference.md) | Complete Pascal language specification |
+| [ViperLang Getting Started](docs/viperlang-getting-started.md) | Learn ViperLang by example |
+| [ViperLang Reference](docs/viperlang-reference.md) | Complete ViperLang language specification |
 | [Runtime Library](docs/viperlib/README.md) | Viper.* classes, methods, and properties |
 | [IL Guide](docs/il-guide.md) | IL specification and examples |
 | [IL Quickstart](docs/il-quickstart.md) | Fast introduction to Viper IL |

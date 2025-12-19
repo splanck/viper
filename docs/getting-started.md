@@ -62,6 +62,7 @@ After building, confirm the primary tools work correctly:
 ```sh
 ./build/src/tools/vbasic/vbasic --help
 ./build/src/tools/vpascal/vpascal --help
+./build/src/tools/viper/viper --help
 ./build/src/tools/ilrun/ilrun --help
 ./build/src/tools/il-verify/il-verify --help
 ```
@@ -97,6 +98,30 @@ Condition is true
 Hello, World!
 ```
 
+### ViperLang
+
+Create a file `hello.viper`:
+
+```viper
+module Hello;
+
+func start() {
+    Viper.Terminal.Say("Hello, World!");
+}
+```
+
+Run it:
+
+```sh
+./build/src/tools/viper/viper hello.viper
+```
+
+**Expected output:**
+
+```
+Hello, World!
+```
+
 ---
 
 ## Working with IL Programs
@@ -110,6 +135,9 @@ You can inspect the generated IL or run IL programs directly:
 # Show generated IL from Pascal
 ./build/src/tools/vpascal/vpascal examples/pascal/hello.pas --emit-il
 
+# Show generated IL from ViperLang
+./build/src/tools/viper/viper hello.viper --emit-il
+
 # Save IL to a file
 ./build/src/tools/vbasic/vbasic examples/basic/ex1_hello_cond.bas -o hello.il
 
@@ -117,8 +145,8 @@ You can inspect the generated IL or run IL programs directly:
 ./build/src/tools/ilrun/ilrun hello.il
 ```
 
-For more examples, see the **[BASIC Tutorial](basic-language.md)**, **[Pascal Tutorial](pascal-language.md)**, and the
-`examples/` directory.
+For more examples, see the **[BASIC Tutorial](basic-language.md)**, **[Pascal Tutorial](pascal-language.md)**,
+**[ViperLang Tutorial](viperlang-getting-started.md)**, and the `examples/` and `demos/` directories.
 
 ---
 
@@ -126,13 +154,14 @@ For more examples, see the **[BASIC Tutorial](basic-language.md)**, **[Pascal Tu
 
 ### User-Facing Tools (Simplified CLI)
 
-| Tool        | Purpose                     | Example                |
-|-------------|-----------------------------|------------------------|
-| `vbasic`    | Run/compile BASIC programs  | `vbasic script.bas`    |
-| `vpascal`   | Run/compile Pascal programs | `vpascal program.pas`  |
-| `ilrun`     | Execute IL programs         | `ilrun program.il`     |
-| `il-verify` | Verify IL correctness       | `il-verify program.il` |
-| `il-dis`    | Disassemble IL              | `il-dis program.il`    |
+| Tool        | Purpose                       | Example                  |
+|-------------|-------------------------------|--------------------------|
+| `vbasic`    | Run/compile BASIC programs    | `vbasic script.bas`      |
+| `vpascal`   | Run/compile Pascal programs   | `vpascal program.pas`    |
+| `viper`     | Run/compile ViperLang programs | `viper program.viper`   |
+| `ilrun`     | Execute IL programs           | `ilrun program.il`       |
+| `il-verify` | Verify IL correctness         | `il-verify program.il`   |
+| `il-dis`    | Disassemble IL                | `il-dis program.il`      |
 
 ### Advanced Tools
 
@@ -179,6 +208,8 @@ Viper guarantees consistent numeric behavior across all platforms and execution 
 - **[BASIC Reference](basic-reference.md)** — Complete BASIC language reference
 - **[Pascal Tutorial](pascal-language.md)** — Learn Viper Pascal by example
 - **[Pascal Reference](pascal-reference.md)** — Complete Pascal language reference
+- **[ViperLang Tutorial](viperlang-getting-started.md)** — Learn ViperLang by example
+- **[ViperLang Reference](viperlang-reference.md)** — Complete ViperLang language reference
 - **[IL Guide](il-guide.md)** — Comprehensive IL documentation
 
 **Implementation Guides:**

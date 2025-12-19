@@ -1,6 +1,6 @@
 # Viper Demos
 
-Example programs demonstrating Viper BASIC and Viper Pascal capabilities.
+Example programs demonstrating Viper BASIC, Viper Pascal, and ViperLang capabilities.
 
 ## BASIC Demos
 
@@ -23,6 +23,13 @@ Example programs demonstrating Viper BASIC and Viper Pascal capabilities.
 | [Snake](pascal/snake/) | Classic snake game | Array-based implementation |
 | [vTris](pascal/vtris/) | Tetris port to Pascal | Terminal graphics |
 
+## ViperLang Demos
+
+| Demo | Description | Features |
+|------|-------------|----------|
+| [Frogger](viperlang/frogger.viper) | Frogger in ViperLang | Entity types, generics, imports |
+| [Entities](viperlang/entities.viper) | Entity system demo | Value/entity types, methods |
+
 ## Running Demos
 
 ### BASIC (VM Mode)
@@ -32,7 +39,12 @@ Example programs demonstrating Viper BASIC and Viper Pascal capabilities.
 
 ### Pascal (VM Mode)
 ```bash
-./build/src/tools/ilc/ilc front pascal -run demos/pascal/<demo>/<main>.pas
+./build/src/tools/vpascal/vpascal demos/pascal/<demo>/<main>.pas
+```
+
+### ViperLang (VM Mode)
+```bash
+./build/src/tools/viper/viper demos/viperlang/<demo>.viper
 ```
 
 ### Native Compilation (BASIC)
@@ -62,4 +74,5 @@ clang++ /tmp/demo.o build/src/runtime/libviper_runtime.a -o /tmp/demo
 
 - [BASIC Language Reference](../docs/basic-reference.md)
 - [Pascal Language Reference](../docs/pascal-reference.md)
+- [ViperLang Language Reference](../docs/viperlang-reference.md)
 - [Runtime Library](../docs/viperlib/README.md)
