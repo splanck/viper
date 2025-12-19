@@ -4,12 +4,71 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-//
-// File: frontends/viperlang/Compiler.hpp
-// Purpose: ViperLang compiler driver.
-// Key invariants: Coordinates lexer, parser, sema, and lowerer.
-// Ownership/Lifetime: Produces IL Module; borrows source text.
-//
+///
+/// @file Compiler.hpp
+/// @brief ViperLang compiler driver - orchestrates the complete compilation pipeline.
+///
+/// @details This file provides the main entry point for compiling ViperLang source
+/// code to Viper Intermediate Language (IL). The compiler driver coordinates all
+/// phases of compilation:
+///
+/// ## Compilation Pipeline
+///
+/// 1. **Lexing** - Tokenize source text (Lexer)
+/// 2. **Parsing** - Build AST from tokens (Parser)
+/// 3. **Import Resolution** - Load and merge imported modules
+/// 4. **Semantic Analysis** - Type checking and name resolution (Sema)
+/// 5. **IL Generation** - Lower AST to IL instructions (Lowerer)
+///
+/// ## Usage
+///
+/// The primary API consists of two functions:
+///
+/// **compile()** - Compile from a source string:
+/// ```cpp
+/// SourceManager sm;
+/// CompilerInput input{.source = sourceCode, .path = "main.viper"};
+/// CompilerOptions options{};
+/// CompilerResult result = compile(input, options, sm);
+///
+/// if (result.succeeded()) {
+///     // Use result.module
+/// } else {
+///     // Check result.diagnostics
+/// }
+/// ```
+///
+/// **compileFile()** - Compile from a file path:
+/// ```cpp
+/// SourceManager sm;
+/// CompilerOptions options{};
+/// CompilerResult result = compileFile("main.viper", options, sm);
+/// ```
+///
+/// ## Import Resolution
+///
+/// The compiler automatically resolves and merges imported modules:
+/// - Relative imports: `import ./utils;` or `import ../lib/helper;`
+/// - Simple imports: `import foo;` (looks in same directory)
+/// - Circular imports are detected and reported as errors
+/// - Maximum import depth of 50 levels
+/// - Maximum of 100 imported files
+///
+/// ## Error Handling
+///
+/// Errors at any compilation phase are accumulated in the CompilerResult's
+/// diagnostics field. Use `result.succeeded()` to check for errors, and
+/// iterate `result.diagnostics` for detailed error information.
+///
+/// @invariant All compilation phases are executed in order.
+/// @invariant Circular imports are detected before infinite recursion.
+/// @invariant Result module is valid only if succeeded() returns true.
+///
+/// @see Lexer.hpp - Tokenization
+/// @see Parser.hpp - AST construction
+/// @see Sema.hpp - Semantic analysis
+/// @see Lowerer.hpp - IL generation
+///
 //===----------------------------------------------------------------------===//
 
 #pragma once

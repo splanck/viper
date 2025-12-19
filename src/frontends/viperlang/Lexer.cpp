@@ -4,12 +4,32 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-//
-// File: frontends/viperlang/Lexer.cpp
-// Purpose: Implements the ViperLang lexer.
-// Key invariants: Case-sensitive keywords; proper line/column tracking.
-// Ownership/Lifetime: Lexer owns copy of source; DiagnosticEngine borrowed.
-//
+///
+/// @file Lexer.cpp
+/// @brief Implementation of the ViperLang lexical analyzer.
+///
+/// @details This file implements the Lexer class which tokenizes ViperLang
+/// source code. Key implementation details:
+///
+/// ## Keyword Lookup
+///
+/// Keywords are stored in a sorted array (kKeywordTable) for O(log n) binary
+/// search lookup. The table contains 33 keywords from "as" to "while".
+///
+/// ## String Interpolation
+///
+/// Interpolated strings like `"Hello ${name}!"` are handled by:
+/// 1. Returning StringStart token for `"Hello ${`
+/// 2. Tracking interpolation depth and brace nesting
+/// 3. Resuming string lexing after `}` to emit StringMid or StringEnd
+///
+/// ## Number Literals
+///
+/// Supports decimal, hexadecimal (0x), and binary (0b) integer literals,
+/// plus floating-point with optional exponent (1.5e-3).
+///
+/// @see Lexer.hpp for the class interface
+///
 //===----------------------------------------------------------------------===//
 
 #include "frontends/viperlang/Lexer.hpp"

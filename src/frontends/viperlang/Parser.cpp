@@ -4,12 +4,46 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-//
-// File: frontends/viperlang/Parser.cpp
-// Purpose: Implements the recursive descent parser for ViperLang.
-// Key invariants: Precedence climbing for expressions; one-token lookahead.
-// Ownership/Lifetime: Parser borrows Lexer and DiagnosticEngine.
-//
+///
+/// @file Parser.cpp
+/// @brief Implementation of ViperLang recursive descent parser.
+///
+/// @details This file implements the Parser class which builds an AST from
+/// a token stream. Key implementation details:
+///
+/// ## Parsing Strategy
+///
+/// Uses recursive descent with one-token lookahead. Each grammar rule has
+/// a corresponding parseXxx() method that:
+/// 1. Checks current token to decide which production to use
+/// 2. Consumes expected tokens with match() or expect()
+/// 3. Recursively calls other parsing methods
+/// 4. Constructs and returns AST nodes
+///
+/// ## Expression Parsing
+///
+/// Binary expressions use precedence climbing:
+/// - parseAssignment() → parseTernary() → parseLogicalOr() → ...
+/// - Each level calls the next higher precedence level for operands
+/// - Loops to handle left-associative operators at same level
+///
+/// ## Error Recovery
+///
+/// On syntax errors:
+/// 1. Report error with location and message
+/// 2. Call resyncAfterError() to skip to next statement boundary
+/// 3. Continue parsing to find additional errors
+///
+/// ## String Interpolation
+///
+/// Interpolated strings are parsed by:
+/// 1. Detecting StringStart token
+/// 2. Parsing expression between interpolation markers
+/// 3. Collecting StringMid/StringEnd tokens
+/// 4. Building string concatenation expressions
+///
+/// @see Parser.hpp for the class interface
+///
 //===----------------------------------------------------------------------===//
 
 #include "frontends/viperlang/Parser.hpp"

@@ -4,10 +4,40 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-//
-// File: frontends/viperlang/Sema.cpp
-// Purpose: Implementation of ViperLang semantic analyzer.
-//
+///
+/// @file Sema.cpp
+/// @brief Implementation of ViperLang semantic analyzer.
+///
+/// @details This file implements the Sema class which performs type checking
+/// and name resolution on ViperLang ASTs. Key implementation details:
+///
+/// ## Two-Pass Analysis
+///
+/// 1. **First pass**: Register all top-level declarations (functions, types,
+///    global variables) in the global scope without analyzing bodies
+/// 2. **Second pass**: Analyze declaration bodies with full symbol visibility
+///
+/// ## Scope Management
+///
+/// Scopes are dynamically allocated and linked via parent pointers:
+/// - Global scope: Functions, types, global variables
+/// - Type scope: Fields and methods of value/entity/interface
+/// - Function scope: Parameters
+/// - Block scope: Local variables
+///
+/// ## Expression Type Inference
+///
+/// Expression types are computed bottom-up and cached in exprTypes_ map.
+/// Each analyzeXxx method returns the inferred type and stores it.
+///
+/// ## Runtime Function Resolution
+///
+/// Calls to runtime functions (Viper.Terminal.Say, etc.) are detected by
+/// extracting dotted names from field access chains and looking them up
+/// in runtimeFunctions_. Resolved calls are stored in runtimeCallees_.
+///
+/// @see Sema.hpp for the class interface
+///
 //===----------------------------------------------------------------------===//
 
 #include "frontends/viperlang/Sema.hpp"

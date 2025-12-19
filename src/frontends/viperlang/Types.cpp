@@ -4,10 +4,35 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-//
-// File: frontends/viperlang/Types.cpp
-// Purpose: Implementation of ViperLang semantic types.
-//
+///
+/// @file Types.cpp
+/// @brief Implementation of ViperLang semantic type system.
+///
+/// @details This file implements the ViperType class and type factory
+/// functions. Key implementation details:
+///
+/// ## Type Interning
+///
+/// Primitive types (Integer, Number, Boolean, String, etc.) use singleton
+/// instances stored in a thread-safe TypeCache. This ensures type comparison
+/// can use pointer equality for primitives.
+///
+/// ## Type Equality and Assignment
+///
+/// - equals(): Structural equality checking, recursively comparing type args
+/// - isAssignableFrom(): Checks if a source type can be assigned to this type,
+///   handling optional wrapping, numeric promotions, and interface assignment
+/// - isConvertibleTo(): Includes explicit conversions like Int<->String
+///
+/// ## IL Type Mapping
+///
+/// The toILType() function maps ViperLang types to IL types:
+/// - Integer → i64, Number → f64, Boolean → i1
+/// - String and all reference types → ptr
+/// - Value types → ptr (passed by reference to stack slot)
+///
+/// @see Types.hpp for type definitions and factory function declarations
+///
 //===----------------------------------------------------------------------===//
 
 #include "frontends/viperlang/Types.hpp"

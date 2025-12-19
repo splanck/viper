@@ -4,10 +4,43 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-//
-// File: frontends/viperlang/Compiler.cpp
-// Purpose: ViperLang compiler driver implementation.
-//
+///
+/// @file Compiler.cpp
+/// @brief Implementation of ViperLang compiler driver.
+///
+/// @details This file implements the compile() and compileFile() functions
+/// that orchestrate the complete compilation pipeline. Key implementation:
+///
+/// ## Import Resolution
+///
+/// The processImports() function recursively resolves imports:
+/// 1. Resolves import paths relative to the importing file
+/// 2. Parses each imported file
+/// 3. Recursively processes that file's imports
+/// 4. Prepends imported declarations to the importing module
+///
+/// Import path resolution:
+/// - "./foo" or "../bar" → Relative to importing file
+/// - "foo" → Same directory as importing file, add .viper extension
+///
+/// ## Safety Guards
+///
+/// To prevent runaway compilation:
+/// - Maximum import depth: 50 levels
+/// - Maximum imported files: 100
+/// - Circular import detection via processedFiles set
+///
+/// ## Compilation Phases
+///
+/// The compile() function executes phases in order:
+/// 1. Create Lexer from source
+/// 2. Parse with Parser to get AST
+/// 3. Process imports (load and merge)
+/// 4. Semantic analysis with Sema
+/// 5. Lower to IL with Lowerer
+///
+/// @see Compiler.hpp for the public API
+///
 //===----------------------------------------------------------------------===//
 
 #include "frontends/viperlang/Compiler.hpp"
