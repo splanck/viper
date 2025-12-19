@@ -315,8 +315,21 @@ void Sema::analyzeFieldDecl(FieldDecl &decl, TypeRef /*ownerType*/)
 void Sema::analyzeMethodDecl(MethodDecl &decl, TypeRef ownerType)
 {
     currentSelfType_ = ownerType;
-    expectedReturnType_ =
+    TypeRef returnType =
         decl.returnType ? resolveTypeNode(decl.returnType.get()) : types::voidType();
+    expectedReturnType_ = returnType;
+
+    // Build parameter types
+    std::vector<TypeRef> paramTypes;
+    for (const auto &param : decl.params)
+    {
+        TypeRef paramType = param.type ? resolveTypeNode(param.type.get()) : types::unknown();
+        paramTypes.push_back(paramType);
+    }
+
+    // Register method type: "TypeName.methodName" -> function type
+    std::string methodKey = ownerType->name + "." + decl.name;
+    methodTypes_[methodKey] = types::function(paramTypes, returnType);
 
     pushScope();
 
@@ -936,8 +949,18 @@ TypeRef Sema::analyzeField(FieldExpr *expr)
 {
     TypeRef baseType = analyzeExpr(expr->base.get());
 
-    // TODO: Look up field in type's member table
-    // For now, return unknown
+    // Check if this is a method access on a value or entity type
+    if (baseType && (baseType->kind == TypeKindSem::Value || baseType->kind == TypeKindSem::Entity))
+    {
+        std::string methodKey = baseType->name + "." + expr->field;
+        auto it = methodTypes_.find(methodKey);
+        if (it != methodTypes_.end())
+        {
+            return it->second;
+        }
+    }
+
+    // TODO: Look up field types (not just methods)
     return types::unknown();
 }
 
@@ -1359,8 +1382,11 @@ void Sema::registerBuiltins()
     runtimeFunctions_["Viper.Math.MinInt"] = types::integer();
     runtimeFunctions_["Viper.Math.MaxInt"] = types::integer();
 
-    // Register Viper.Random runtime functions
+    // Register Viper.Random/Viper.Math runtime functions for random numbers
+    runtimeFunctions_["Viper.Math.Rnd"] = types::number();
+    runtimeFunctions_["Viper.Math.Randomize"] = types::voidType();
     runtimeFunctions_["Viper.Random.Next"] = types::number();
+    runtimeFunctions_["Viper.Random.NextInt"] = types::integer();
     runtimeFunctions_["Viper.Random.Seed"] = types::voidType();
 
     // Register Viper.Environment runtime functions

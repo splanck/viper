@@ -2029,6 +2029,8 @@ After each increment, verify:
 | 2.3 Optionals | [x] Complete | 2.1, 2.2 |
 | 2.4 Generics | [ ] Not Started | 2.1, 2.2 |
 
+**Entity Notes:** Entity types support methods, field access, field assignment, and heap allocation via `new`. Entity field layout includes 8-byte header (for vtable/type info).
+
 ### Phase 3: Functions and Methods
 
 | Task | Status | Dependencies |
@@ -2232,10 +2234,17 @@ If a feature proves too difficult:
 | 2.4 | Dec 2024 | Phase 2 progress: Value types (2.1), Entity types (2.2), and Optionals (2.3) complete with tests |
 | 2.5 | Dec 2024 | Phases 3 & 4 progress: Functions (3.1), Methods (3.2), If/Else (4.1), and Loops (4.3) complete. For-in loops with ranges now use slot-based SSA for mutable variables. 12 compiler tests passing |
 | 2.6 | Dec 2024 | Phase 7.1 (List) complete with boxing/unboxing. Terminal functions added (SetColor, SetPosition, SetCursorVisible, SetAltScreen, BeginBatch, EndBatch, GetKeyTimeout) and Timer functions (Sleep, Millis). Fixed i64/i32 signature mismatches. Known bug: string comparison RHS const_str not emitted |
+| 2.7 | Dec 19, 2024 | Fixed string comparison to use Viper.Strings.Equals runtime call; Fixed entity field assignment offset; Parser now handles binary ops in call args; Created 7 demo applications in /demos/viperlang/; All 907 tests passing |
 
 ---
 
 **Status:** Phases 1-4, 7.1 Complete - Working on Phase 10 (Demo Apps)
-**Known Bug:** String comparison (`==`) RHS const_str instruction not emitted in Lowerer
+**Known Bug:** FIXED - String comparison now uses `Viper.Strings.Equals` runtime call
 **Final Goal:** Frogger and vTRIS demos running in ViperLang
-**Next Step:** Fix string comparison bug, then Phase 10 demos
+**Next Step:** Continue with Map/Set collections and standard library wrappers
+
+**Recent Fixes (Dec 19, 2024):**
+- String comparison (`==`, `!=`) now correctly calls `Viper.Strings.Equals` runtime function
+- Entity field assignment uses correct offset (field.offset without extra header addition)
+- Parser now handles binary operators in function call arguments (e.g., `foo(x + 1, y)`)
+- 7 demo applications created in `/demos/viperlang/` that all compile successfully

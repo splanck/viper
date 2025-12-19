@@ -112,7 +112,7 @@ class Lowerer
     ::il::frontends::common::StringTable stringTable_;
     ::il::frontends::common::LoopContextStack loopStack_;
     std::map<std::string, Value> locals_;
-    std::map<std::string, Value> slots_;  // Slot pointers for mutable variables
+    std::map<std::string, Value> slots_; // Slot pointers for mutable variables
     std::set<std::string> usedExterns_;
     std::map<std::string, ValueTypeInfo> valueTypes_;
     std::map<std::string, EntityTypeInfo> entityTypes_;

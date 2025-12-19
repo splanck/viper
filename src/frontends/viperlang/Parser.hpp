@@ -85,6 +85,9 @@ class Parser
 
     ExprPtr parsePrimary();
     ExprPtr parsePostfix();
+    ExprPtr parsePostfixFrom(ExprPtr expr);
+    ExprPtr parsePostfixAndBinaryFrom(ExprPtr startExpr);
+    ExprPtr parseBinaryFrom(ExprPtr expr);
     ExprPtr parseUnary();
     ExprPtr parseMultiplicative();
     ExprPtr parseAdditive();

@@ -211,6 +211,9 @@ class Sema
     // Registered types
     std::unordered_map<std::string, TypeRef> typeRegistry_;
 
+    // Method return types: "TypeName.methodName" -> function type (for method calls)
+    std::unordered_map<std::string, TypeRef> methodTypes_;
+
     // Runtime functions: dotted name -> return type
     std::unordered_map<std::string, TypeRef> runtimeFunctions_;
 

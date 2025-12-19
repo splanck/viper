@@ -39,6 +39,21 @@ Lowerer::Module Lowerer::lower(ModuleDecl &module)
     // Add extern declarations for used runtime functions
     for (const auto &externName : usedExterns_)
     {
+        // Skip methods defined in this module (value type and entity type methods)
+        bool isLocalMethod = false;
+        auto dotPos = externName.find('.');
+        if (dotPos != std::string::npos)
+        {
+            std::string typeName = externName.substr(0, dotPos);
+            if (valueTypes_.find(typeName) != valueTypes_.end() ||
+                entityTypes_.find(typeName) != entityTypes_.end())
+            {
+                isLocalMethod = true;
+            }
+        }
+        if (isLocalMethod)
+            continue;
+
         const auto *desc = il::runtime::findRuntimeDescriptor(externName);
         if (desc)
         {
@@ -182,7 +197,8 @@ void Lowerer::lowerValueDecl(ValueDecl &decl)
         if (member->kind == DeclKind::Field)
         {
             auto *field = static_cast<FieldDecl *>(member.get());
-            TypeRef fieldType = field->type ? sema_.resolveType(field->type.get()) : types::unknown();
+            TypeRef fieldType =
+                field->type ? sema_.resolveType(field->type.get()) : types::unknown();
 
             FieldLayout layout;
             layout.name = field->name;
@@ -248,7 +264,8 @@ void Lowerer::lowerEntityDecl(EntityDecl &decl)
         if (member->kind == DeclKind::Field)
         {
             auto *field = static_cast<FieldDecl *>(member.get());
-            TypeRef fieldType = field->type ? sema_.resolveType(field->type.get()) : types::unknown();
+            TypeRef fieldType =
+                field->type ? sema_.resolveType(field->type.get()) : types::unknown();
 
             FieldLayout layout;
             layout.name = field->name;
@@ -690,7 +707,8 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt)
     // Update: i = i + 1
     setBlock(updateIdx);
     Value currentVal = loadFromSlot(stmt->variable, Type(Type::Kind::I64));
-    Value nextVal = emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), currentVal, Value::constInt(1));
+    Value nextVal =
+        emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), currentVal, Value::constInt(1));
     storeToSlot(stmt->variable, nextVal, Type(Type::Kind::I64));
     emitBr(condIdx);
 
@@ -856,7 +874,8 @@ LowerResult Lowerer::lowerIdent(IdentExpr *expr)
                 gepInstr.result = gepId;
                 gepInstr.op = Opcode::GEP;
                 gepInstr.type = Type(Type::Kind::Ptr);
-                gepInstr.operands = {*selfPtr, Value::constInt(static_cast<int64_t>(field->offset))};
+                gepInstr.operands = {*selfPtr,
+                                     Value::constInt(static_cast<int64_t>(field->offset))};
                 blockMgr_.currentBlock()->instructions.push_back(gepInstr);
                 Value fieldAddr = Value::temp(gepId);
 
@@ -891,7 +910,8 @@ LowerResult Lowerer::lowerIdent(IdentExpr *expr)
                 gepInstr.result = gepId;
                 gepInstr.op = Opcode::GEP;
                 gepInstr.type = Type(Type::Kind::Ptr);
-                gepInstr.operands = {*selfPtr, Value::constInt(static_cast<int64_t>(field->offset))};
+                gepInstr.operands = {*selfPtr,
+                                     Value::constInt(static_cast<int64_t>(field->offset))};
                 blockMgr_.currentBlock()->instructions.push_back(gepInstr);
                 Value fieldAddr = Value::temp(gepId);
 
@@ -931,15 +951,78 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
             {
                 // Store to slot for mutable variables
                 storeToSlot(ident->name, right.value, right.type);
+                return right;
             }
-            else
+
+            // Check for implicit field assignment (self.field) inside a value type method
+            if (currentValueType_)
             {
-                defineLocal(ident->name, right.value);
+                const FieldLayout *field = currentValueType_->findField(ident->name);
+                if (field)
+                {
+                    Value *selfPtr = lookupLocal("self");
+                    if (selfPtr)
+                    {
+                        // Emit GEP to get field address
+                        unsigned gepId = nextTempId();
+                        il::core::Instr gepInstr;
+                        gepInstr.result = gepId;
+                        gepInstr.op = Opcode::GEP;
+                        gepInstr.type = Type(Type::Kind::Ptr);
+                        gepInstr.operands = {*selfPtr,
+                                             Value::constInt(static_cast<int64_t>(field->offset))};
+                        blockMgr_.currentBlock()->instructions.push_back(gepInstr);
+                        Value fieldAddr = Value::temp(gepId);
+
+                        // Emit Store to set field value
+                        il::core::Instr storeInstr;
+                        storeInstr.op = Opcode::Store;
+                        storeInstr.type = right.type;
+                        storeInstr.operands = {fieldAddr, right.value};
+                        blockMgr_.currentBlock()->instructions.push_back(storeInstr);
+                        return right;
+                    }
+                }
             }
+
+            // Check for implicit field assignment (self.field) inside an entity method
+            if (currentEntityType_)
+            {
+                const FieldLayout *field = currentEntityType_->findField(ident->name);
+                if (field)
+                {
+                    Value *selfPtr = lookupLocal("self");
+                    if (selfPtr)
+                    {
+                        // Field layout already includes header offset
+                        // Emit GEP to get field address
+                        unsigned gepId = nextTempId();
+                        il::core::Instr gepInstr;
+                        gepInstr.result = gepId;
+                        gepInstr.op = Opcode::GEP;
+                        gepInstr.type = Type(Type::Kind::Ptr);
+                        gepInstr.operands = {*selfPtr,
+                                             Value::constInt(static_cast<int64_t>(field->offset))};
+                        blockMgr_.currentBlock()->instructions.push_back(gepInstr);
+                        Value fieldAddr = Value::temp(gepId);
+
+                        // Emit Store to set field value
+                        il::core::Instr storeInstr;
+                        storeInstr.op = Opcode::Store;
+                        storeInstr.type = right.type;
+                        storeInstr.operands = {fieldAddr, right.value};
+                        blockMgr_.currentBlock()->instructions.push_back(storeInstr);
+                        return right;
+                    }
+                }
+            }
+
+            // Regular variable assignment
+            defineLocal(ident->name, right.value);
             return right;
         }
 
-        // TODO: Handle field assignment, index assignment, etc.
+        // TODO: Handle explicit field assignment (obj.field = value), index assignment, etc.
         return {Value::constInt(0), Type(Type::Kind::I64)};
     }
 
@@ -977,10 +1060,26 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
             op = Opcode::SRem;
             break;
         case BinaryOp::Eq:
+            if (leftType && leftType->kind == TypeKindSem::String)
+            {
+                // String equality comparison via runtime
+                Value result = emitCallRet(
+                    Type(Type::Kind::I1), "Viper.Strings.Equals", {left.value, right.value});
+                return {result, Type(Type::Kind::I1)};
+            }
             op = isFloat ? Opcode::FCmpEQ : Opcode::ICmpEq;
             resultType = Type(Type::Kind::I1);
             break;
         case BinaryOp::Ne:
+            if (leftType && leftType->kind == TypeKindSem::String)
+            {
+                // String inequality: !(a == b)
+                Value eqResult = emitCallRet(
+                    Type(Type::Kind::I1), "Viper.Strings.Equals", {left.value, right.value});
+                Value result =
+                    emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), eqResult, Value::constInt(0));
+                return {result, Type(Type::Kind::I1)};
+            }
             op = isFloat ? Opcode::FCmpNE : Opcode::ICmpNe;
             resultType = Type(Type::Kind::I1);
             break;
@@ -1433,8 +1532,8 @@ LowerResult Lowerer::lowerNew(NewExpr *expr)
     }
 
     // Allocate heap memory for the entity using rt_alloc
-    Value ptr =
-        emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {Value::constInt(static_cast<int64_t>(info.totalSize))});
+    Value ptr = emitCallRet(
+        Type(Type::Kind::Ptr), "rt_alloc", {Value::constInt(static_cast<int64_t>(info.totalSize))});
 
     // Store each argument into the corresponding field
     for (size_t i = 0; i < argValues.size() && i < info.fields.size(); ++i)
@@ -1609,8 +1708,8 @@ LowerResult Lowerer::lowerIndex(IndexExpr *expr)
 
     // Assume this is a List - call get_Item
     // Result is a boxed value that needs unboxing based on expected type
-    Value boxed = emitCallRet(Type(Type::Kind::Ptr), "Viper.Collections.List.get_Item",
-                              {base.value, index.value});
+    Value boxed = emitCallRet(
+        Type(Type::Kind::Ptr), "Viper.Collections.List.get_Item", {base.value, index.value});
 
     // Get the expected element type from semantic analysis
     TypeRef elemType = sema_.typeOf(expr);
@@ -1754,7 +1853,16 @@ void Lowerer::emitRetVoid()
 
 Lowerer::Value Lowerer::emitConstStr(const std::string &globalName)
 {
-    return builder_->emitConstStr(globalName, {});
+    // Use blockMgr_ directly instead of builder_->emitConstStr to avoid
+    // stale curBlock pointer after createBlock reallocates the blocks vector
+    unsigned id = nextTempId();
+    il::core::Instr instr;
+    instr.result = id;
+    instr.op = Opcode::ConstStr;
+    instr.type = Type(Type::Kind::Str);
+    instr.operands.push_back(Value::global(globalName));
+    blockMgr_.currentBlock()->instructions.push_back(instr);
+    return Value::temp(id);
 }
 
 unsigned Lowerer::nextTempId()

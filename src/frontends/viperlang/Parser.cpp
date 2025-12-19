@@ -366,12 +366,140 @@ ExprPtr Parser::parseUnary()
     return parsePostfix();
 }
 
-ExprPtr Parser::parsePostfix()
+ExprPtr Parser::parsePostfixAndBinaryFrom(ExprPtr startExpr)
 {
-    ExprPtr expr = parsePrimary();
+    // Parse postfix operators on the starting expression
+    ExprPtr expr = parsePostfixFrom(std::move(startExpr));
     if (!expr)
         return nullptr;
+    // Continue with binary operators (but not assignment)
+    return parseBinaryFrom(std::move(expr));
+}
 
+ExprPtr Parser::parseBinaryFrom(ExprPtr expr)
+{
+    // Parse multiplicative ops
+    while (true)
+    {
+        if (match(TokenKind::Star))
+        {
+            SourceLoc loc = current_.loc;
+            ExprPtr right = parseUnary();
+            if (!right)
+                return nullptr;
+            expr =
+                std::make_unique<BinaryExpr>(loc, BinaryOp::Mul, std::move(expr), std::move(right));
+        }
+        else if (match(TokenKind::Slash))
+        {
+            SourceLoc loc = current_.loc;
+            ExprPtr right = parseUnary();
+            if (!right)
+                return nullptr;
+            expr =
+                std::make_unique<BinaryExpr>(loc, BinaryOp::Div, std::move(expr), std::move(right));
+        }
+        else if (match(TokenKind::Percent))
+        {
+            SourceLoc loc = current_.loc;
+            ExprPtr right = parseUnary();
+            if (!right)
+                return nullptr;
+            expr =
+                std::make_unique<BinaryExpr>(loc, BinaryOp::Mod, std::move(expr), std::move(right));
+        }
+        else
+        {
+            break;
+        }
+    }
+    // Parse additive ops
+    while (true)
+    {
+        if (match(TokenKind::Plus))
+        {
+            SourceLoc loc = current_.loc;
+            ExprPtr right = parseMultiplicative();
+            if (!right)
+                return nullptr;
+            expr =
+                std::make_unique<BinaryExpr>(loc, BinaryOp::Add, std::move(expr), std::move(right));
+        }
+        else if (match(TokenKind::Minus))
+        {
+            SourceLoc loc = current_.loc;
+            ExprPtr right = parseMultiplicative();
+            if (!right)
+                return nullptr;
+            expr =
+                std::make_unique<BinaryExpr>(loc, BinaryOp::Sub, std::move(expr), std::move(right));
+        }
+        else
+        {
+            break;
+        }
+    }
+    // Parse comparison ops
+    while (true)
+    {
+        BinaryOp op;
+        if (match(TokenKind::Less))
+            op = BinaryOp::Lt;
+        else if (match(TokenKind::LessEqual))
+            op = BinaryOp::Le;
+        else if (match(TokenKind::Greater))
+            op = BinaryOp::Gt;
+        else if (match(TokenKind::GreaterEqual))
+            op = BinaryOp::Ge;
+        else
+            break;
+
+        SourceLoc loc = current_.loc;
+        ExprPtr right = parseAdditive();
+        if (!right)
+            return nullptr;
+        expr = std::make_unique<BinaryExpr>(loc, op, std::move(expr), std::move(right));
+    }
+    // Parse equality ops
+    while (true)
+    {
+        BinaryOp op;
+        if (match(TokenKind::EqualEqual))
+            op = BinaryOp::Eq;
+        else if (match(TokenKind::NotEqual))
+            op = BinaryOp::Ne;
+        else
+            break;
+
+        SourceLoc loc = current_.loc;
+        ExprPtr right = parseComparison();
+        if (!right)
+            return nullptr;
+        expr = std::make_unique<BinaryExpr>(loc, op, std::move(expr), std::move(right));
+    }
+    // Parse logical and
+    while (match(TokenKind::AmpAmp))
+    {
+        SourceLoc loc = current_.loc;
+        ExprPtr right = parseEquality();
+        if (!right)
+            return nullptr;
+        expr = std::make_unique<BinaryExpr>(loc, BinaryOp::And, std::move(expr), std::move(right));
+    }
+    // Parse logical or
+    while (match(TokenKind::PipePipe))
+    {
+        SourceLoc loc = current_.loc;
+        ExprPtr right = parseLogicalAnd();
+        if (!right)
+            return nullptr;
+        expr = std::make_unique<BinaryExpr>(loc, BinaryOp::Or, std::move(expr), std::move(right));
+    }
+    return expr;
+}
+
+ExprPtr Parser::parsePostfixFrom(ExprPtr expr)
+{
     while (true)
     {
         if (match(TokenKind::LParen))
@@ -452,6 +580,14 @@ ExprPtr Parser::parsePostfix()
     }
 
     return expr;
+}
+
+ExprPtr Parser::parsePostfix()
+{
+    ExprPtr expr = parsePrimary();
+    if (!expr)
+        return nullptr;
+    return parsePostfixFrom(std::move(expr));
 }
 
 ExprPtr Parser::parsePrimary()
@@ -686,39 +822,12 @@ std::vector<CallArg> Parser::parseCallArgs()
             }
             else
             {
-                // Not a named arg, parse as expression starting with this identifier
+                // Not a named arg, parse rest of expression starting with this identifier
+                // We already consumed the identifier, so create an IdentExpr for it and
+                // continue parsing from current_ position (which is after the identifier)
                 ExprPtr ident = std::make_unique<IdentExpr>(nameTok.loc, nameTok.text);
-                // Continue parsing postfix operators (like [0], .field, etc.)
-                while (true)
-                {
-                    if (match(TokenKind::LBracket))
-                    {
-                        SourceLoc loc = current_.loc;
-                        ExprPtr index = parseExpression();
-                        if (!index)
-                            return {};
-                        if (!expect(TokenKind::RBracket, "]"))
-                            return {};
-                        ident = std::make_unique<IndexExpr>(loc, std::move(ident), std::move(index));
-                    }
-                    else if (match(TokenKind::Dot))
-                    {
-                        SourceLoc loc = current_.loc;
-                        if (!check(TokenKind::Identifier))
-                        {
-                            error("expected field name after '.'");
-                            return {};
-                        }
-                        std::string field = current_.text;
-                        advance();
-                        ident = std::make_unique<FieldExpr>(loc, std::move(ident), std::move(field));
-                    }
-                    else
-                    {
-                        break;
-                    }
-                }
-                arg.value = std::move(ident);
+                // Continue parsing using the binary expression parser with our ident as the LHS
+                arg.value = parsePostfixAndBinaryFrom(std::move(ident));
             }
         }
         else
