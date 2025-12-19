@@ -757,6 +757,16 @@ add_test(NAME test_pascal_semantic_inheritance COMMAND test_pascal_semantic_inhe
 set_tests_properties(test_pascal_semantic_inheritance PROPERTIES LABELS pascal)
 
 # =============================================================================
+# ViperLang Frontend Tests
+# =============================================================================
+
+# ViperLang compiler tests
+add_executable(test_viperlang_compiler ${CMAKE_CURRENT_SOURCE_DIR}/frontends/viperlang/ViperLangCompilerTests.cpp)
+target_link_libraries(test_viperlang_compiler PRIVATE viper_testing fe_viperlang)
+add_test(NAME test_viperlang_compiler COMMAND test_viperlang_compiler)
+set_tests_properties(test_viperlang_compiler PROPERTIES LABELS viperlang)
+
+# =============================================================================
 # Test Labels Configuration
 # =============================================================================
 # Labels are applied by pattern-matching test names. Tests defined in

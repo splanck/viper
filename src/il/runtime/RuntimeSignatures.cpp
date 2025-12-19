@@ -44,6 +44,7 @@
 #include "rt.hpp"
 #include "rt_args.h"
 #include "rt_array_f64.h"
+#include "rt_box.h"
 #include "rt_array_i64.h"
 #include "rt_array_obj.h"
 #include "rt_bag.h"

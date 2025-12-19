@@ -4,9 +4,9 @@
 
 <div align="center">
 
-**A modern language that's actually simple**
+**A modern language with familiar syntax**
 
-*Copy types. Pattern matching. No exceptions. One way to do things.*
+*Java-style declarations. Pattern matching. No exceptions. Memory safe.*
 
 </div>
 
@@ -16,11 +16,11 @@
 
 ViperLang adheres to five core principles:
 
-1. **Truly Simple** — The entire language fits in your head (25 keywords)
-2. **One Way** — There's an obvious way to do things
-3. **Modern First** — Async, pattern matching, and null safety by default
-4. **Fast by Default** — Zero-cost abstractions, no hidden allocations
-5. **Amazing Tools** — Formatter, linter, and test runner are part of the language
+1. **Familiar Syntax** — Java-style declarations and semicolons
+2. **Two Type Kinds** — Values (copied) and entities (referenced)
+3. **Null Safety** — Optional types prevent null pointer exceptions
+4. **No Exceptions** — Errors as values with Result[T]
+5. **Pattern Matching** — Exhaustive matching on sum types
 
 ---
 
@@ -29,23 +29,23 @@ ViperLang adheres to five core principles:
 1. [Core Concepts](#core-concepts)
 2. [Type System](#type-system)
 3. [Primitive Types](#primitive-types)
-4. [Values and Entities](#values-and-entities)
-5. [Optionals](#optionals)
-6. [Generics](#generics)
+4. [Variables](#variables)
+5. [Values and Entities](#values-and-entities)
+6. [Functions and Methods](#functions-and-methods)
 7. [Control Flow](#control-flow)
-8. [Error Handling](#error-handling)
-9. [Functions](#functions)
-10. [Concurrency](#concurrency) *(v0.2 Preview)*
-11. [Memory Management](#memory-management)
-12. [Modules and Visibility](#modules-and-visibility)
-13. [Collections](#collections)
-14. [Standard Library Mapping](#standard-library-mapping)
-15. [Complete Grammar](#complete-grammar)
-16. [Keywords](#keywords)
-17. [Operators](#operators)
-18. [Design Decisions](#design-decisions)
-19. [Testing](#testing)
-20. [Tooling](#tooling)
+8. [Optionals](#optionals)
+9. [Error Handling](#error-handling)
+10. [Generics](#generics)
+11. [Pattern Matching](#pattern-matching)
+12. [Interfaces](#interfaces)
+13. [Inheritance](#inheritance)
+14. [Collections](#collections)
+15. [Modules and Visibility](#modules-and-visibility)
+16. [Concurrency](#concurrency) *(v0.1)*
+17. [Memory Management](#memory-management)
+18. [Complete Grammar](#complete-grammar)
+19. [Keywords](#keywords)
+20. [Operators](#operators)
 
 ---
 
@@ -54,33 +54,35 @@ ViperLang adheres to five core principles:
 ViperLang programs are made of **modules** containing **types** and **functions**.
 
 ```viper
-module HelloWorld
+module HelloWorld;
 
 // Two kinds of types: values (copied) and entities (referenced)
 value Point {
-    x: Number
-    y: Number
+    Number x;
+    Number y;
 }
 
 entity User {
-    name: Text
-    email: Text
+    String name;
+    String email;
     
-    func greet() -> Text {
-        return "Hello, ${name}!"
+    expose func greet() -> String {
+        return "Hello, ${name}!";
     }
 }
 
 // Entry point
-func main() {
-    let user = User(name: "Alice", email: "alice@example.com")
-    print(user.greet())
+func start() {
+    User user = new User(name: "Alice", email: "alice@example.com");
+    print(user.greet());
 }
 ```
 
 **Key points:**
 
-- Semicolons optional (formatter adds them)
+- Semicolons required at end of statements
+- Type-first variable declarations: `Type name = value;`
+- `new` keyword for entity creation
 - Types are non-nullable by default
 - String interpolation with `${}`
 - Memory managed automatically (reference counting)
@@ -91,36 +93,31 @@ func main() {
 
 ### Type Philosophy
 
-ViperLang has a deliberately minimal type system with two fundamental categories:
+ViperLang has a minimal type system with two fundamental categories:
 
 | Category | Keyword | Semantics | Use Case |
 |----------|---------|-----------|----------|
 | **Copy Types** | `value` | Copied on assignment | Small data, domain values |
 | **Reference Types** | `entity` | Shared reference | Stateful objects, resources |
 
-### Type Aliases
+### Primitive Types
 
-For clarity, ViperLang provides semantic type names that map to implementation types:
-
-| Language Type | Implementation | IL Type | Description |
-|---------------|----------------|---------|-------------|
-| `Text` | `Viper.String` | `str` | UTF-8 immutable string |
-| `Integer` | — | `i64` | 64-bit signed integer |
-| `Number` | — | `f64` | 64-bit floating point |
-| `Boolean` | — | `i1` | True or false |
-| `Byte` | — | `i8` | 8-bit unsigned (0-255) |
-
-Both forms are valid and interchangeable:
+| Type | IL Type | Description |
+|------|---------|-------------|
+| `Integer` | `i64` | 64-bit signed integer |
+| `Number` | `f64` | 64-bit floating point |
+| `Boolean` | `i1` | True or false |
+| `String` | `str` | UTF-8 immutable string |
+| `Byte` | `i32` | 8-bit unsigned (0-255), stored as i32 |
+| `Unit` | `void` | Single value `()`, used in `Result[Unit]` |
 
 ```viper
-let name: Text = "Alice"      // Semantic name (preferred)
-let count: Integer = 42       // Semantic name (preferred)
-
-let name: String = "Alice"    // Implementation name (valid)
-let count: i64 = 42           // IL type name (valid in low-level code)
+Integer count = 42;
+Number pi = 3.14159;
+Boolean active = true;
+String name = "Alice";
+Byte b = 255;
 ```
-
-**Recommendation:** Use semantic names (`Text`, `Integer`, `Number`, `Boolean`) in application code. Use IL types (`i64`, `f64`, `str`) only in performance-critical or low-level code.
 
 ---
 
@@ -131,22 +128,22 @@ let count: i64 = 42           // IL type name (valid in low-level code)
 64-bit signed integer with full arithmetic support.
 
 ```viper
-let count: Integer = 42
-let negative: Integer = -17
-let hex: Integer = 0xFF
-let binary: Integer = 0b1010
-let big: Integer = 1_000_000    // Underscores for readability
+Integer count = 42;
+Integer negative = -17;
+Integer hex = 0xFF;
+Integer binary = 0b1010;
+Integer big = 1_000_000;    // Underscores for readability
 
 // Arithmetic
-let sum = a + b
-let diff = a - b
-let product = a * b
-let quotient = a / b           // Integer division
-let remainder = a % b
+Integer sum = a + b;
+Integer diff = a - b;
+Integer product = a * b;
+Integer quotient = a / b;   // Integer division
+Integer remainder = a % b;
 
 // Comparisons return Boolean
-let isEqual = a == b
-let isLess = a < b
+Boolean isEqual = a == b;
+Boolean isLess = a < b;
 ```
 
 ### Number
@@ -154,17 +151,13 @@ let isLess = a < b
 64-bit IEEE 754 floating-point.
 
 ```viper
-let pi: Number = 3.14159
-let scientific: Number = 6.022e23
-let negative: Number = -273.15
+Number pi = 3.14159;
+Number scientific = 6.022e23;
+Number negative = -273.15;
 
-// Arithmetic (same operators as Integer)
-let sum = a + b
-let quotient = a / b           // True division
-
-// Special values
-let inf = 1.0 / 0.0            // Infinity
-let nan = 0.0 / 0.0            // Not a Number
+// Arithmetic
+Number sum = a + b;
+Number quotient = a / b;    // True division
 ```
 
 ### Boolean
@@ -172,45 +165,99 @@ let nan = 0.0 / 0.0            // Not a Number
 Two values: `true` and `false`.
 
 ```viper
-let active: Boolean = true
-let done: Boolean = false
+Boolean active = true;
+Boolean done = false;
 
 // Logical operators
-let both = a && b              // Short-circuit AND
-let either = a || b            // Short-circuit OR
-let negated = !a               // NOT
+Boolean both = a && b;      // Short-circuit AND
+Boolean either = a || b;    // Short-circuit OR
+Boolean negated = !a;       // NOT
 ```
 
-### Text
+### String
 
 Immutable UTF-8 string with rich manipulation methods.
 
 ```viper
-let greeting: Text = "Hello, World!"
-let multiline: Text = """
+String greeting = "Hello, World!";
+String multiline = """
     This is a
     multi-line string
-"""
+""";
 
 // String interpolation
-let message = "Hello, ${name}! You have ${count} messages."
+String message = "Hello, ${name}! You have ${count} messages.";
 
-// Common operations (matches Viper.String runtime)
-let length = text.len()
-let upper = text.upper()
-let lower = text.lower()
-let trimmed = text.trim()
-let contains = text.has("needle")
-let parts = text.split(",")
+// Common operations
+Integer length = text.len();
+String upper = text.upper();
+String lower = text.lower();
+String trimmed = text.trim();
+Boolean contains = text.has("needle");
+List[String] parts = text.split(",");
 ```
 
 ### Byte
 
-8-bit unsigned integer for binary data.
+8-bit unsigned integer for binary data. Values are in range 0-255.
+
+**Note:** Due to IL constraints (no i8 type), `Byte` is stored internally as `i32`. Arithmetic operations mask to 8 bits. This is transparent to the programmer.
 
 ```viper
-let b: Byte = 255
-let ascii: Byte = 0x41         // 'A'
+Byte b = 255;
+Byte ascii = 0x41;         // 'A'
+Byte overflow = 256;       // ERROR: value out of range
+```
+
+---
+
+## Variables
+
+### Declaration Syntax
+
+Variables are declared with **type first, then name** (Java style):
+
+```viper
+// Explicit type
+Integer count = 42;
+String name = "Alice";
+List[Integer] numbers = [1, 2, 3];
+
+// Type inference with 'var'
+var count = 42;            // Inferred as Integer
+var name = "Alice";        // Inferred as String
+var numbers = [1, 2, 3];   // Inferred as List[Integer]
+```
+
+### Mutability
+
+Variables are **mutable by default**. Use `final` for immutable:
+
+```viper
+Integer x = 10;            // Mutable
+x = 20;                    // OK
+
+final Integer y = 10;      // Immutable
+y = 20;                    // ERROR: cannot assign to final variable
+
+final var z = 10;          // Immutable with type inference
+```
+
+### Fields
+
+Fields in types follow the same pattern:
+
+```viper
+value Point {
+    Number x;              // Mutable field
+    Number y;
+    final String label;    // Immutable field
+}
+
+entity User {
+    String name;           // Mutable field
+    final String id;       // Immutable after construction
+}
 ```
 
 ---
@@ -219,26 +266,63 @@ let ascii: Byte = 0x41         // 'A'
 
 ### Values (Copy Types)
 
-Values are **copied** when assigned or passed. Mutations affect only that copy:
+Values are **copied** when assigned or passed. Created **without** `new`:
 
 ```viper
 value Color {
-    r: Integer
-    g: Integer
-    b: Integer
+    Integer r;
+    Integer g;
+    Integer b;
 }
 
-let red = Color(r: 255, g: 0, b: 0)
-var myColor = red              // Creates a copy
-myColor.g = 128                // Only myColor changes; red unchanged
+Color red = Color(255, 0, 0);      // No 'new' for values
+Color myColor = red;               // Creates a copy
+myColor.g = 128;                   // Only myColor changes; red unchanged
 ```
 
 **Rules for values:**
 
-- Cannot mutate temporaries: `getColor().r = 10` is illegal
+- Created with `TypeName(args)` — no `new` keyword
+- Copied on assignment
 - Cannot inherit from other values
 - Can implement interfaces
 - Ideal for small, immutable data
+
+**Value mutability:**
+
+Value *variables* can have their fields mutated directly:
+
+```viper
+Color c = Color(255, 0, 0);
+c.g = 128;                    // OK: direct field mutation
+```
+
+However, value *methods* receive a copy of `self` and cannot mutate the caller's value:
+
+```viper
+value Point {
+    Number x;
+    Number y;
+
+    // Returns a new Point (does not modify caller's copy)
+    func translated(dx: Number, dy: Number) -> Point {
+        return Point(x + dx, y + dy);
+    }
+
+    // This would only modify the method's local copy, not the caller's
+    // func badMutate() { x = 0; }  // Allowed but doesn't affect caller
+}
+
+Point p = Point(1.0, 2.0);
+Point p2 = p.translated(10.0, 0.0);  // p is unchanged; p2 is new
+```
+
+To "mutate" a value via methods, reassign:
+
+```viper
+Point p = Point(1.0, 2.0);
+p = p.translated(10.0, 0.0);  // Replace p with new value
+```
 
 **When to use values:**
 
@@ -249,26 +333,34 @@ myColor.g = 128                // Only myColor changes; red unchanged
 
 ### Entities (Reference Types)
 
-Entities are **shared** by reference. Multiple variables can refer to the same object:
+Entities are **shared** by reference. Created **with** `new`:
 
 ```viper
 entity Account {
-    owner: Text
-    balance: Number
-    
-    func deposit(amount: Number) -> Result[Void] {
-        if amount <= 0 {
-            return Err(Error(code: "INVALID", message: "Amount must be positive"))
+    String owner;
+    Number balance;
+
+    expose func deposit(amount: Number) -> Result[Unit] {
+        if (amount <= 0) {
+            return Err(Error(code: "INVALID", message: "Amount must be positive"));
         }
-        balance = balance + amount
-        return Ok(())
+        balance = balance + amount;
+        return Ok(());  // () is the Unit value
     }
 }
 
-let account1 = Account(owner: "Alice", balance: 100)
-let account2 = account1        // Same object (reference)
-account2.deposit(50)?          // Both see balance of 150
+Account account1 = new Account(owner: "Alice", balance: 100);
+Account account2 = account1;    // Same object (reference)
+account2.deposit(50)?;          // Both see balance of 150
 ```
+
+**Key distinction:**
+
+| | Values | Entities |
+|-|--------|----------|
+| Creation | `Point(1, 2)` | `new User("Alice")` |
+| Assignment | Copies data | Copies reference |
+| Identity | No identity | Has identity |
 
 **When to use entities:**
 
@@ -277,328 +369,276 @@ account2.deposit(50)?          // Both see balance of 150
 - Objects with identity (User, Order, Session)
 - Types that shouldn't be copied
 
-### Inheritance (Entities Only)
-
-Entities support single inheritance:
-
-```viper
-entity Animal {
-    name: Text
-    
-    func speak() -> Text {
-        return "..."
-    }
-}
-
-entity Dog extends Animal {
-    breed: Text
-    
-    override func speak() -> Text {    // 'override' required
-        return "Woof!"
-    }
-    
-    func describe() -> Text {
-        let base = super.speak()       // Call parent (only in override)
-        return "${name} is a ${breed}"
-    }
-}
-```
-
-**Inheritance rules:**
-
-- Only entities can inherit (not values)
-- Single inheritance only (no diamond problem)
-- `override` keyword required when overriding methods
-- `super.method()` only valid inside an override of that method
-- Private fields (`hide`) are not visible to subclasses
-
-### Interfaces
-
-Interfaces define contracts. Both values and entities can implement them:
-
-```viper
-interface Drawable {
-    func draw(canvas: Canvas)
-    
-    // Default implementation (can only call interface members)
-    func drawTwice(canvas: Canvas) {
-        draw(canvas)
-        draw(canvas)
-    }
-}
-
-interface Serializable {
-    func toJson() -> Text
-}
-
-// Entity implementing multiple interfaces
-entity Button implements Drawable, Serializable {
-    label: Text
-    position: Point
-    
-    func draw(canvas: Canvas) {
-        canvas.drawRect(position)
-        canvas.drawText(label, position)
-    }
-    
-    func toJson() -> Text {
-        return "{\"label\": \"${label}\"}"
-    }
-}
-
-// Value implementing interface
-value Circle implements Drawable {
-    center: Point
-    radius: Number
-    
-    func draw(canvas: Canvas) {
-        canvas.drawCircle(center, radius)
-    }
-}
-```
-
-**Interface rules:**
-
-- Default methods may only use interface-declared members
-- No fields in interfaces
-- Multiple interface implementation allowed
-
 ---
 
-## Optionals
+## Functions and Methods
 
-### T? is Option[T]
+### Function Syntax
 
-Optionals represent values that may be absent. `T?` is syntactic sugar for `Option[T]`:
-
-```viper
-// These are equivalent:
-let maybe: Text? = null           // Sugar syntax
-let maybe: Option[Text] = None    // Explicit syntax
-
-// Assigning a value automatically wraps in Some
-maybe = "Hello"                   // Becomes Some("Hello")
-```
-
-### Working with Optionals
+Functions use `func` keyword. Parameter names are **optional**:
 
 ```viper
-// Pattern matching (most explicit)
-match findUser(id) {
-    Some(user) => print(user.name)
-    None => print("Not found")
+// With parameter names (required to use the values)
+func add(a: Integer, b: Integer) -> Integer {
+    return a + b;
 }
 
-// If-let (convenient for single case)
-if let user = findUser(id) {
-    print(user.name)             // user is User, not User?
+// Without parameter names (for signatures or unused params)
+func process(Integer, String) -> Boolean;
+
+// Void return (no -> clause)
+func sayHello(name: String) {
+    print("Hello, ${name}!");
 }
 
-// Optional chaining
-let street = user?.address?.street?.name    // Returns Text?
-
-// Null coalescing
-let name = user?.name ?? "Anonymous"        // Returns Text
-
-// Propagation with ?
-func getUserEmail(id: Text) -> Option[Text] {
-    let user = findUser(id)?               // Returns None if not found
-    let profile = user.profile?            // Returns None if no profile
-    return Some(profile.email)
+// With default parameters
+func greet(name: String, greeting: String = "Hello") -> String {
+    return "${greeting}, ${name}!";
 }
 ```
 
-### Option Definition
+**Default parameter rules:**
+- Default values must be **constant expressions** (literals, const values)
+- Evaluated at **compile time**, not each call
+- Parameters with defaults must come after parameters without defaults
 
-Option is a built-in sum type:
+### Parameter Name Rules
+
+- **With name:** `name: Type` — parameter can be used in body
+- **Without name:** `Type` — useful for interface declarations or ignored params
+- In implementations, you typically want names to use the values:
 
 ```viper
-value Option[T] = Some(T) | None
+// Interface declares signature (names optional)
+interface Comparator[T] {
+    func compare(T, T) -> Integer;
+}
+
+// Implementation needs names to use values
+entity StringComparator implements Comparator[String] {
+    expose func compare(a: String, b: String) -> Integer {
+        return a.compareTo(b);
+    }
+}
 ```
 
----
+### Methods
 
-## Generics
-
-Types and functions can be parameterized:
+Methods are defined inside types:
 
 ```viper
-// Generic value (sum type)
-value Result[T] = Ok(T) | Err(Error)
-
-// Generic entity
-entity Box[T] {
-    contents: T
+value Point {
+    Number x;
+    Number y;
     
-    func get() -> T {
-        return contents
+    func distanceTo(other: Point) -> Number {
+        Number dx = x - other.x;
+        Number dy = y - other.y;
+        return sqrt(dx * dx + dy * dy);
     }
     
-    func set(value: T) {
-        contents = value
+    func translated(dx: Number, dy: Number) -> Point {
+        return Point(x + dx, y + dy);
     }
 }
 
-// Generic function
-func first[T](list: List[T]) -> Option[T] {
-    if list.isEmpty() {
-        return None
+entity Counter {
+    Integer count = 0;
+    
+    expose func increment() {
+        count = count + 1;
     }
-    return Some(list[0])
-}
-
-// Generic function with multiple type parameters
-func zip[A, B](listA: List[A], listB: List[B]) -> List[(A, B)] {
-    // ...
+    
+    expose func getCount() -> Integer {
+        return count;
+    }
 }
 ```
 
-**Note:** Generic type constraints (bounds) are deferred to v0.2. In v0.1, generic types are unconstrained.
+### Named Arguments at Call Site
+
+Arguments can be passed by name at the call site:
+
+```viper
+Point p = Point(x: 10.0, y: 20.0);
+String msg = greet(name: "Alice", greeting: "Hi");
+
+// Positional arguments
+Point p = Point(10.0, 20.0);
+String msg = greet("Alice", "Hi");
+
+// Mix positional and named (positional must come first)
+String msg = greet("Alice", greeting: "Hi");
+```
 
 ---
 
 ## Control Flow
 
-### Pattern Matching
-
-Pattern matching is the primary control flow mechanism:
+### If/Else
 
 ```viper
-value Shape = 
-    | Circle(radius: Number)
-    | Rectangle(width: Number, height: Number)
-    | Triangle(base: Number, height: Number)
-
-func area(shape: Shape) -> Number {
-    match shape {
-        Circle(r) => 3.14159 * r * r
-        Rectangle(w, h) => w * h
-        Triangle(b, h) => 0.5 * b * h
-    }
-}
-
-// With guards
-match value {
-    n where n < 0 => "Negative"
-    0 => "Zero"
-    n where n > 0 => "Positive"
-}
-
-// Match as expression
-let description = match status {
-    Active => "Running"
-    Paused => "On hold"
-    Stopped => "Complete"
-}
-```
-
-### Destructuring
-
-```viper
-// Value destructuring
-let Point(x, y) = getPoint()
-
-// Tuple destructuring
-let (first, second) = getPair()
-
-// In function parameters
-func distance(Point(x1, y1): Point, Point(x2, y2): Point) -> Number {
-    let dx = x2 - x1
-    let dy = y2 - y1
-    return sqrt(dx * dx + dy * dy)
-}
-```
-
-### Conditionals
-
-```viper
-// Standard if/else
-if temperature > 30 {
-    turnOnAC()
-} else if temperature < 10 {
-    turnOnHeater()
+if (condition) {
+    // then branch
+} else if (otherCondition) {
+    // else-if branch
 } else {
-    maintainTemperature()
+    // else branch
 }
 
-// Conditional expression (ternary)
-let status = isOnline ? "Connected" : "Offline"
+// If expression (like ternary)
+Integer abs = x >= 0 ? x : -x;
 
-// If-let for optionals
-if let user = findUser(id) {
-    print(user.name)           // user is User, not User?
+// Multi-line if expression
+String grade = if (score >= 90) {
+    "A"
+} else if (score >= 80) {
+    "B"
 } else {
-    print("Not found")
-}
+    "C"
+};
+```
 
-// While-let
-while let message = channel.receive() {
-    process(message)
+### Guard
+
+Early exit for preconditions:
+
+```viper
+func process(data: String?) {
+    guard (data != null) else {
+        print("No data");
+        return;
+    }
+    // data is non-null here
+    print(data);
 }
 ```
 
-### Guard (Early Exit)
-
-Guard provides clean early-exit validation:
+### While Loop
 
 ```viper
-func processOrder(order: Order?) -> Result[Receipt] {
-    guard order != null else {
-        return Err(Error(code: "NULL", message: "Order required"))
-    }
-    
-    guard order.items.len() > 0 else {
-        return Err(Error(code: "EMPTY", message: "Order has no items"))
-    }
-    
-    guard order.total > 0 else {
-        return Err(Error(code: "INVALID", message: "Invalid total"))
-    }
-    
-    // order is now known to be valid
-    return Ok(createReceipt(order))
+while (condition) {
+    // body
+}
+
+// While-let (checks and unwraps optional)
+while (let item = iterator.next()) {
+    process(item);
 }
 ```
 
-**Note:** Guard is syntactic sugar that can always be replaced with `if-else`. It exists for readability in validation sequences.
-
-### Loops
+### For Loop
 
 ```viper
-// For-each
-for item in collection {
-    process(item)
+// Range-based for (half-open: 0 to 9)
+for (i in 0..10) {
+    print(i);
 }
 
-// For with index (using enumerate)
-for (index, item) in collection.enumerate() {
-    print("${index}: ${item}")
+// Inclusive range (0 to 10)
+for (i in 0..=10) {
+    print(i);
 }
 
-// While
-while hasMore() {
-    let item = getNext()
-    if shouldSkip(item) {
-        continue
+// Collection iteration
+for (item in list) {
+    print(item);
+}
+
+// With explicit type
+for (String item in list) {
+    print(item);
+}
+
+// Tuple destructuring (Map iteration)
+for ((key, value) in map) {
+    print("${key}: ${value}");
+}
+```
+
+**Tuple destructuring limitations (v0.1):**
+- Only 2-element tuples supported: `(a, b)`
+- Only in for-loops and match patterns
+- No nested destructuring in for-loops
+
+### Break and Continue
+
+```viper
+for (i in 0..100) {
+    if (i == 50) {
+        break;      // Exit loop
     }
-    if isDone() {
-        break
+    if (i % 2 == 0) {
+        continue;   // Skip to next iteration
     }
-    handle(item)
+    print(i);
 }
+```
 
-// Ranges
-for i in 0..10 {               // Half-open: 0, 1, 2, ..., 9
-    print(i)
+---
+
+## Optionals
+
+### Optional Types
+
+`T?` represents a value that may or may not exist:
+
+```viper
+String? maybeName = null;          // No value
+String? definitelyName = "Alice";  // Has value
+
+// Check and use
+if (maybeName != null) {
+    print(maybeName);              // Safe: compiler knows it's non-null
 }
+```
 
-for i in 0..=10 {              // Inclusive: 0, 1, 2, ..., 10
-    print(i)
+### Optional Chaining
+
+```viper
+// Safe navigation with ?.
+String? name = user?.profile?.name;
+
+// Safe indexing with ?[]
+Integer? first = list?[0];
+
+// Null coalescing with ??
+String name = maybeName ?? "Guest";
+```
+
+### If-Let
+
+Unwrap and bind in one step:
+
+```viper
+if (let name = maybeName) {
+    print("Hello, ${name}!");
+} else {
+    print("Hello, stranger!");
 }
+```
 
-// Reverse iteration
-for i in (0..10).reverse() {
-    print(i)                   // 9, 8, 7, ..., 0
+### While-Let
+
+Loop while optional has value:
+
+```viper
+while (let line = reader.readLine()) {
+    process(line);
+}
+```
+
+### Guard-Let
+
+Early exit if optional is null:
+
+```viper
+func greet(name: String?) {
+    guard (let n = name) else {
+        print("No name provided");
+        return;
+    }
+    print("Hello, ${n}!");
 }
 ```
 
@@ -606,274 +646,487 @@ for i in (0..10).reverse() {
 
 ## Error Handling
 
-### No Exceptions
+### Result Type
 
-ViperLang does not have exceptions. Errors are values returned from functions using `Result[T]`:
+ViperLang uses `Result[T]` instead of exceptions:
 
 ```viper
-value Error {
-    code: Text
-    message: Text
-}
+value Result[T] = Ok(T) | Err(Error);
 
-value Result[T] = Ok(T) | Err(Error)
+value Error {
+    String code;
+    String message;
+}
 ```
+
+**Unit Type for Success-Only Results:**
+
+When a function can fail but has no meaningful return value, use `Result[Unit]`:
+
+```viper
+func saveFile(path: String, content: String) -> Result[Unit] {
+    if (!isValidPath(path)) {
+        return Err(Error(code: "INVALID_PATH", message: "Path is invalid"));
+    }
+    File.write(path, content);
+    return Ok(());  // () is the Unit value
+}
+```
+
+The `Unit` type has exactly one value: `()`. It indicates "success with no data".
 
 ### Returning Errors
 
 ```viper
 func divide(a: Number, b: Number) -> Result[Number] {
-    if b == 0 {
-        return Err(Error(code: "DIV_ZERO", message: "Division by zero"))
+    if (b == 0) {
+        return Err(Error(code: "DIV_ZERO", message: "Division by zero"));
     }
-    return Ok(a / b)
-}
-
-func readFile(path: Text) -> Result[Text] {
-    if !fileExists(path) {
-        return Err(Error(code: "NOT_FOUND", message: "File not found: ${path}"))
-    }
-    // Read and return file contents
-    return Ok(contents)
-}
-```
-
-### Handling Errors
-
-```viper
-// Pattern matching (most explicit)
-match divide(10, 2) {
-    Ok(value) => print("Result: ${value}")
-    Err(e) => print("Error: ${e.message}")
-}
-
-// Propagation with ? (concise)
-func calculate() -> Result[Number] {
-    let a = getValue("a")?        // Returns Err if getValue fails
-    let b = getValue("b")?        // Returns Err if getValue fails
-    let result = divide(a, b)?    // Returns Err if divide fails
-    return Ok(result * 2)
+    return Ok(a / b);
 }
 ```
 
 ### The ? Operator
 
-The `?` operator works with both `Result` and `Option`:
+Propagate errors concisely:
 
 ```viper
-// With Result: propagates Err
-func processFile(path: Text) -> Result[Data] {
-    let content = readFile(path)?         // Err propagates up
-    let parsed = parseData(content)?      // Err propagates up
-    let validated = validate(parsed)?     // Err propagates up
-    return Ok(validated)
-}
-
-// With Option: propagates None
-func findUserEmail(id: Text) -> Option[Text] {
-    let user = findUser(id)?              // None propagates up
-    let profile = user.profile?           // None propagates up
-    return Some(profile.email)
+func calculate(x: String, y: String) -> Result[Number] {
+    Number a = parse(x)?;      // Returns Err if parse fails
+    Number b = parse(y)?;
+    Number result = divide(a, b)?;
+    return Ok(result);
 }
 ```
 
-### Panic
-
-For truly unrecoverable programmer errors:
+### Handling Results
 
 ```viper
-func getUser(id: Text) -> User {
-    match database.find(id) {
-        Some(user) => user
-        None => panic("User ${id} must exist")   // Crashes program
-    }
-}
-```
-
-**Rule:** Use `Result` for expected failures. Use `panic` only for violated invariants and impossible states.
-
----
-
-## Functions
-
-### Basic Functions
-
-```viper
-// Simple function
-func add(a: Integer, b: Integer) -> Integer {
-    return a + b
+// Pattern matching
+match (divide(10, 2)) {
+    Ok(value) => print("Result: ${value}");
+    Err(e) => print("Error: ${e.message}");
 }
 
-// No return value
-func greet(name: Text) {
-    print("Hello, ${name}!")
-}
-
-// Expression body (single expression)
-func double(x: Integer) -> Integer = x * 2
-
-// Default parameters
-func greet(name: Text = "World") {
-    print("Hello, ${name}!")
-}
-```
-
-### Named Arguments
-
-```viper
-func createUser(name: Text, email: Text, age: Integer = 0) -> User {
-    return User(name: name, email: email, age: age)
-}
-
-// Call with named arguments (order doesn't matter)
-let user = createUser(email: "bob@example.com", name: "Bob")
-```
-
-### Lambdas
-
-```viper
-// Full syntax
-let add = (a: Integer, b: Integer) -> Integer {
-    return a + b
-}
-
-// Expression syntax (single expression, inferred return type)
-let double = (x: Integer) -> x * 2
-
-// Type can be inferred from context
-let numbers = [1, 2, 3, 4, 5]
-let doubled = numbers.map(x => x * 2)
-let evens = numbers.filter(x => x % 2 == 0)
-```
-
-### Methods
-
-Methods are functions defined inside types:
-
-```viper
-entity Counter {
-    count: Integer = 0
-    
-    // Instance method (has access to fields)
-    func increment() {
-        count = count + 1
-    }
-    
-    // Method with return value
-    func get() -> Integer {
-        return count
-    }
-    
-    // Method with parameters
-    func add(amount: Integer) {
-        count = count + amount
-    }
+// Or with if-let
+if (let Ok(value) = divide(10, 2)) {
+    print("Result: ${value}");
 }
 ```
 
 ---
 
-## Concurrency
+## Generics
 
-> **Status:** Concurrency primitives are planned for v0.2. This section describes the intended design for early feedback. Implementation details may change.
-
-### Tasks and Async/Await (v0.2)
+### Generic Types
 
 ```viper
-// Async function
-async func fetchUser(id: Text) -> User {
-    let response = await http.get("/users/${id}")
-    return User.fromJson(response.body)
+value Box[T] {
+    T contents;
+    
+    func map[U](transform: func(T) -> U) -> Box[U] {
+        return Box[U](transform(contents));
+    }
 }
 
-// Sequential await
-async func main() {
-    let user = await fetchUser("123")
-    let posts = await fetchPosts(user.id)
-}
-
-// Parallel await with all()
-async func loadDashboard() {
-    let [user, settings, notifications] = await all([
-        fetchUser(),
-        fetchSettings(),
-        fetchNotifications()
-    ])
+value Pair[A, B] {
+    A first;
+    B second;
+    
+    func swap() -> Pair[B, A] {
+        return Pair[B, A](second, first);
+    }
 }
 ```
 
-### Channels (v0.2)
+### Generic Functions
 
 ```viper
-let channel = Channel[Message](capacity: 10)
+func identity[T](value: T) -> T {
+    return value;
+}
 
-// Producer
-async {
-    for i in 0..100 {
-        match channel.send(Message(i)) {
-            Ok(()) => continue
-            Err(Closed) => break
+func swap[A, B](pair: Pair[A, B]) -> Pair[B, A] {
+    return Pair[B, A](pair.second, pair.first);
+}
+```
+
+### Usage
+
+```viper
+Box[Integer] box = Box[Integer](42);
+Box[String] mapped = box.map((x: Integer) -> "${x}");
+
+// Type inference often works
+var box = Box(42);               // Box[Integer] inferred
+var result = identity("hello");  // String inferred
+```
+
+### Generic Constraints (v0.2 — Not Available in v0.1)
+
+v0.1 generics are **unconstrained**: type parameters accept any type, but you cannot use operators or methods on them without explicit casts.
+
+```viper
+// v0.1: Works — no operations on T
+func identity[T](x: T) -> T {
+    return x;
+}
+
+// v0.1: Works — explicit type in body
+func intMax(a: Integer, b: Integer) -> Integer {
+    return a > b ? a : b;
+}
+
+// v0.2: Generic constraint syntax (NOT available in v0.1)
+func max[T: Comparable](a: T, b: T) -> T {
+    return a > b ? a : b;
+}
+```
+
+**v0.1 Workarounds:**
+- Use concrete types instead of generic functions for operations
+- Use interface types where polymorphism is needed
+- Monomorphization handles type-specific code generation
+
+---
+
+## Pattern Matching
+
+### Sum Types
+
+Define types with multiple variants:
+
+```viper
+value Shape = 
+    | Circle(radius: Number)
+    | Rectangle(width: Number, height: Number)
+    | Triangle(a: Number, b: Number, c: Number);
+```
+
+### Match Expression
+
+```viper
+func area(shape: Shape) -> Number {
+    return match (shape) {
+        Circle(r) => 3.14159 * r * r;
+        Rectangle(w, h) => w * h;
+        Triangle(a, b, c) => {
+            Number s = (a + b + c) / 2;
+            return sqrt(s * (s-a) * (s-b) * (s-c));
         }
-    }
-    channel.close()
-}
-
-// Consumer
-async {
-    while let msg = channel.receive() {
-        process(msg)
-    }
+    };
 }
 ```
 
-**v0.2 Preview Notes:**
+### Pattern Types
 
-- `Task[T]` represents an async computation
-- `await` joins a task and gets its result
-- `all([...])` runs tasks in parallel, fails fast on first error
-- Channels are bounded with configurable capacity
-- `receive()` returns `Option[T]` (None when closed and drained)
-- `send()` returns `Result[(), Closed]`
+**Supported in v0.1:**
+
+| Pattern | Syntax | Description |
+|---------|--------|-------------|
+| Literal | `0`, `"hello"`, `true` | Match exact value |
+| Variable | `x` | Bind value to name |
+| Wildcard | `_` | Match anything, discard (reserved symbol) |
+| Constructor | `Some(x)`, `Circle(r)` | Match variant, bind fields |
+| Tuple | `(a, b)` | Match 2-element tuple |
+| Nested | `Some(Circle(r))` | Combine patterns |
+| Guard | `x if x > 0` | Conditional match |
+
+**Note:** `_` is a **reserved symbol**, not an identifier. It cannot be used as a variable name anywhere in the program. In patterns, it matches any value without binding.
+
+```viper
+match (value) {
+    // Literal patterns
+    0 => "zero";
+    1 => "one";
+
+    // Variable binding
+    x => "other: ${x}";
+
+    // Wildcard (ignore value)
+    _ => "anything";
+
+    // Constructor patterns
+    Some(x) => "has ${x}";
+    None => "empty";
+
+    // Nested patterns
+    Pair(Some(x), None) => "first only: ${x}";
+
+    // Guards
+    x if x > 0 => "positive";
+    x if x < 0 => "negative";
+}
+```
+
+**Not supported in v0.1:**
+- Range patterns (`1..10 =>`)
+- Type patterns (`x is Integer =>`)
+- 3+ element tuple patterns
+
+### Exhaustiveness
+
+The compiler ensures all cases are covered:
+
+```viper
+// ERROR: non-exhaustive match
+match (shape) {
+    Circle(r) => 3.14159 * r * r;
+    // Missing Rectangle and Triangle!
+}
+```
 
 ---
 
-## Memory Management
+## Interfaces
 
-### Reference Counting
-
-ViperLang uses automatic reference counting:
-
-- **Values:** Stack-allocated when possible, copied when assigned
-- **Entities:** Reference counted, deallocated when count reaches zero
-- **Cycles:** Detected and collected periodically
-
-### Weak References
-
-Break reference cycles with `weak`:
+### Defining Interfaces
 
 ```viper
-entity Node {
-    value: Integer
-    children: List[Node]
-    weak parent: Node?          // Doesn't increase refcount
+interface Drawable {
+    func draw(canvas: Canvas);
+    func bounds() -> Rectangle;
+    
+    // Default implementation
+    func drawWithBorder(canvas: Canvas, color: Color) {
+        draw(canvas);
+        canvas.strokeRect(bounds(), color);
+    }
 }
 
-entity Observer {
-    weak subject: Subject?      // Prevent retain cycles
+interface Serializable {
+    func toJson() -> String;
 }
 ```
 
-**Rules:**
+### Implementing Interfaces
 
-- Weak references don't increase refcount
-- Reading a weak reference returns `T?` (may be null if target was deallocated)
-- Use weak for parent pointers, delegates, observers
+Both values and entities can implement interfaces:
 
 ```viper
-// Reading weak reference
-if let parent = node.parent {
-    parent.notifyChild(node)
+value Circle implements Drawable, Serializable {
+    Point center;
+    Number radius;
+    
+    expose func draw(canvas: Canvas) {
+        canvas.fillCircle(center, radius);
+    }
+    
+    expose func bounds() -> Rectangle {
+        return Rectangle(
+            center.x - radius,
+            center.y - radius,
+            radius * 2,
+            radius * 2
+        );
+    }
+    
+    expose func toJson() -> String {
+        return """{"type":"circle","radius":${radius}}""";
+    }
 }
+```
+
+### Interface as Type
+
+```viper
+func render(items: List[Drawable], canvas: Canvas) {
+    for (item in items) {
+        item.draw(canvas);
+    }
+}
+```
+
+---
+
+## Inheritance
+
+### Entity Inheritance
+
+Only entities can inherit (not values):
+
+```viper
+entity Animal {
+    String name;
+    
+    func speak() -> String {
+        return "...";
+    }
+}
+
+entity Dog extends Animal {
+    String breed;
+    
+    override func speak() -> String {
+        return "Woof!";
+    }
+    
+    func fetch() -> String {
+        return "${name} fetches the ball";
+    }
+}
+```
+
+### Override Rules
+
+- `override` keyword required when overriding
+- Cannot override `final` methods
+- `super.method()` calls parent implementation
+
+```viper
+entity Cat extends Animal {
+    override func speak() -> String {
+        String base = super.speak();  // Call parent
+        return "Meow! (was: ${base})";
+    }
+}
+```
+
+### Using `super`
+
+The `super` keyword accesses the parent class implementation:
+
+| Usage | Description |
+|-------|-------------|
+| `super.method()` | Call parent's method |
+| `super.field` | Access parent's field (if visible) |
+
+**Constraints on `super`:**
+
+```viper
+entity Child extends Parent {
+    // OK: in override method
+    override func greet() -> String {
+        return super.greet() + "!";
+    }
+
+    // OK: in any method of a subclass
+    func callParent() {
+        super.doSomething();
+    }
+
+    // ERROR: super cannot be used outside a method
+    // String x = super.name;  // Not in a method body
+
+    // ERROR: super cannot be assigned
+    // super = something;
+}
+
+// ERROR: super cannot be used in non-extending entity
+entity Standalone {
+    func test() {
+        // super.anything();  // ERROR: no parent class
+    }
+}
+```
+
+**Note:** `super` always refers to the immediate parent class, not grandparents.
+
+### Polymorphism
+
+```viper
+func makeNoise(animal: Animal) {
+    print(animal.speak());
+}
+
+Dog dog = new Dog(name: "Rex", breed: "German Shepherd");
+Cat cat = new Cat(name: "Whiskers");
+
+makeNoise(dog);  // "Woof!"
+makeNoise(cat);  // "Meow! (was: ...)"
+```
+
+---
+
+## Collections
+
+### List
+
+Dynamic array:
+
+```viper
+List[Integer] numbers = [1, 2, 3, 4, 5];
+numbers.push(6);
+
+Integer first = numbers[0];          // Panics if out of bounds
+Integer? maybe = numbers.get(10);    // Returns null if out of bounds
+
+Integer length = numbers.len();
+
+// Functional operations
+List[Integer] doubled = numbers.map((x: Integer) -> x * 2);
+List[Integer] evens = numbers.filter((x: Integer) -> x % 2 == 0);
+Integer sum = numbers.fold(0, (acc: Integer, x: Integer) -> acc + x);
+
+// Iteration
+for (num in numbers) {
+    print(num);
+}
+```
+
+### Map
+
+Key-value dictionary:
+
+```viper
+Map[String, Integer] scores = {
+    "Alice": 100,
+    "Bob": 85
+};
+
+scores["Carol"] = 92;
+Integer aliceScore = scores["Alice"];     // Panics if missing
+Integer? maybeScore = scores.get("Dave"); // Returns null if missing
+
+Boolean hasAlice = scores.has("Alice");
+scores.drop("Bob");
+
+// Iteration
+for ((name, score) in scores) {
+    print("${name}: ${score}");
+}
+```
+
+### Set
+
+Unique elements:
+
+```viper
+Set[Integer] unique = {1, 2, 3, 2, 1};  // {1, 2, 3}
+
+unique.put(4);
+Boolean hasTwo = unique.has(2);
+unique.drop(1);
+
+for (item in unique) {
+    print(item);
+}
+```
+
+### Collection Literal Disambiguation
+
+Both Map and Set use `{}` syntax. The parser distinguishes them as follows:
+
+| Syntax | Interpretation |
+|--------|----------------|
+| `{}` | Empty Map (requires type annotation or context) |
+| `{expr, expr, ...}` | Set literal (no colons) |
+| `{expr: expr, ...}` | Map literal (has colons) |
+
+**Examples:**
+
+```viper
+// Requires type annotation for empty
+Map[String, Integer] emptyMap = {};
+Set[String] emptySet = Set[String]();  // Use constructor for empty Set
+
+// Unambiguous literals
+Set[Integer] nums = {1, 2, 3};           // Set (no colons)
+Map[String, Integer] ages = {"a": 1};    // Map (has colons)
+
+// Type inference from context
+var scores = {"Alice": 100};             // Inferred as Map[String, Integer]
+var tags = {"alpha", "beta"};            // Inferred as Set[String]
 ```
 
 ---
@@ -882,211 +1135,238 @@ if let parent = node.parent {
 
 ### Module Declaration
 
-Every file declares its module:
+```viper
+module MyApp.Services.UserService;
+```
+
+### Imports
 
 ```viper
-module MyApp.Services.UserService
-
-import MyApp.Models.User
-import MyApp.Data.Database as DB
-import Viper.IO
-
-// Module contents...
+import MyApp.Models.User;           // Import specific type
+import MyApp.Utils;                 // Import entire module
+import MyApp.Utils as U;            // Import with alias
+import MyApp.Models.{User, Order};  // Import multiple
 ```
 
 ### Visibility
 
-**Default: private.** Use `expose` to make items public:
+**Default visibility:**
+- **Entity fields:** Private by default (use `expose` for public)
+- **Value fields:** **Public by default** (data containers)
+- **Methods:** Private by default (use `expose` for public)
 
 ```viper
-module MyApp.Services
+entity User {
+    expose String name;        // Public field (explicit)
+    String passwordHash;       // Private field (default for entity)
 
-// Private by default
-value InternalConfig {
-    timeout: Integer
-}
-
-// Public type
-expose entity UserService {
-    // Private field
-    database: DB.Connection
-    
-    // Explicitly private (documentation)
-    hide cache: Map[Text, User]
-    
-    // Public method
-    expose func getUser(id: Text) -> Result[User] {
-        // ...
+    expose func getName() -> String {   // Public method
+        return name;
     }
-    
-    // Private helper
-    func validateId(id: Text) -> Boolean {
+
+    func validatePassword(String) -> Boolean {  // Private method
         // ...
     }
 }
+
+value Point {
+    Number x;              // Public (default for values)
+    Number y;              // Public (default for values)
+}
+
+// Use 'hide' to make inherited members private
+entity AdminUser extends User {
+    hide func getName() -> String {  // Now private in AdminUser
+        return super.getName();
+    }
+}
+```
+
+### Module-Level Visibility
+
+```viper
+module MyLib;
 
 // Public function
-expose func createService(config: Config) -> UserService {
-    // ...
+expose func publicApi(x: Integer) -> Integer {
+    return helper(x);
+}
+
+// Private function (module-internal)
+func helper(x: Integer) -> Integer {
+    return x * 2;
 }
 ```
-
-**Visibility rules:**
-
-- `expose` — Public to importers
-- `hide` — Explicitly private (same as default, but documents intent)
-- Default — Private within module
 
 ---
 
-## Collections
+## Concurrency (v0.1)
 
-### Built-in Collections
+ViperLang v0.1 is **thread-first**: OS threads + shared memory + FIFO locks.
 
-ViperLang provides generic collection types that map to the runtime library:
+### Threads
 
-| Language Type | Runtime Implementation | Description |
-|---------------|----------------------|-------------|
-| `List[T]` | `Viper.Collections.Seq` | Dynamic array |
-| `Map[Text, V]` | `Viper.Collections.Map` | String-keyed hash map |
-| `Set[T]` | `Viper.Collections.Bag` | Unique elements |
+Thread entry functions must have one of two signatures:
+- `func() -> Void` — No argument
+- `func(arg: Ptr) -> Void` — Single opaque pointer argument
 
-### List[T]
+**Thread.Start Overloads:**
+
+| Call | Entry Signature | Description |
+|------|-----------------|-------------|
+| `Thread.Start(fn)` | `func() -> Void` | Start thread with no argument |
+| `Thread.Start(fn, arg)` | `func(Ptr) -> Void` | Start thread, passing `arg` to entry |
+
+The `arg` parameter is an opaque `Ptr` (can be `null` or any entity/object cast to `Ptr`).
+
+**Type Checking:**
+- Compile-time: Entry function signature must match one of the two allowed forms
+- Runtime: Trap with `Thread.Start: invalid entry signature` if signature check fails
 
 ```viper
-// Creation
-let numbers: List[Integer] = [1, 2, 3, 4, 5]
-let empty: List[Text] = []
+import Viper.Threads;
 
-// Access (panics if out of bounds)
-let first = numbers[0]          // 1
-let bad = numbers[100]          // panic!
-
-// Safe access (returns Option)
-match numbers.get(0) {
-    Some(n) => print(n)
-    None => print("Empty")
+func worker() {
+    // Work with no argument
 }
 
-// Common operations
-numbers.push(6)                 // Add to end
-let last = numbers.pop()        // Remove from end
-let length = numbers.len()      // Count
-let found = numbers.has(3)      // Contains?
-let index = numbers.find(3)     // Index or -1
-
-// Functional operations
-let doubled = numbers.map(x => x * 2)
-let evens = numbers.filter(x => x % 2 == 0)
-let sum = numbers.reduce(0, (acc, x) => acc + x)
-```
-
-### Map[Text, V]
-
-```viper
-// Creation
-let ages: Map[Text, Integer] = Map()
-ages.set("Alice", 30)
-ages.set("Bob", 25)
-
-// Access (panics if missing)
-let aliceAge = ages["Alice"]    // 30
-let missing = ages["Eve"]       // panic!
-
-// Safe access
-match ages.get("Alice") {
-    Some(age) => print(age)
-    None => print("Not found")
+func workerWithArg(arg: Ptr) {
+    // Cast arg back to expected type
+    Counter c = arg as Counter;
+    c.increment();
 }
 
-// With default
-let age = ages.getOr("Charlie", 0)
+func start() {
+    Thread t1 = Thread.Start(worker);
 
-// Operations
-let exists = ages.has("Alice")
-ages.drop("Bob")                // Remove
-let keys = ages.keys()          // List[Text]
-let values = ages.values()      // List[Integer]
+    Counter c = new Counter();
+    Thread t2 = Thread.Start(workerWithArg, c as Ptr);
+
+    t1.join();
+    t2.join();
+}
 ```
 
-### Set[T]
+### Mutex and Monitor (FIFO, Re-entrant)
+
+`Mutex` is the recommended explicit lock object in `Viper.Threads`.
+It is implemented on top of the runtime’s FIFO-fair, re-entrant `Monitor` primitive.
 
 ```viper
-let tags: Set[Text] = Set()
-tags.put("viper")
-tags.put("language")
-tags.put("viper")               // No duplicate
+import Viper.Threads;
 
-let hasTags = tags.has("viper") // true
-let count = tags.len()          // 2
+entity Counter {
+    Mutex mu = new Mutex();
+    Integer value = 0;
 
-// Set operations
-let other: Set[Text] = Set()
-other.put("language")
-other.put("design")
-
-let union = tags.merge(other)       // All from both
-let intersection = tags.common(other) // In both
-let difference = tags.diff(other)    // In tags but not other
+    expose func inc() {
+        mu.enter();
+        value = value + 1;
+        mu.exit();
+    }
+}
 ```
 
-### Indexing Rules
+Wait/Pause (v0.1):
+- `wait()/waitFor(ms)` release the lock and re-acquire it before returning
+- `pause()/pauseAll()` wake one/all waiters (caller must own the lock)
 
-| Syntax | Behavior | Use When |
-|--------|----------|----------|
-| `list[i]` | Panics if out of bounds | You're certain index is valid |
-| `list.get(i)` | Returns `Option[T]` | Index might be invalid |
-| `map[key]` | Panics if key missing | You're certain key exists |
-| `map.get(key)` | Returns `Option[V]` | Key might be missing |
+### Safe Variables
 
-This follows the principle: panics for programmer errors, Options for expected cases.
+Viper exposes `SafeI64` as a FIFO-safe integer cell:
+
+```viper
+import Viper.Threads;
+
+func start() {
+    SafeI64 c = SafeI64.New(0);
+    c.Add(1);
+    Integer now = c.Get();
+    print("${now}");
+}
+```
+
+### Async/Await and Channels (v0.2 - Deferred)
+
+Async/await, tasks, channels, and schedulers are deferred to v0.2 (not part of v0.1).
 
 ---
 
-## Standard Library Mapping
+## Memory Management
 
-### Viper.* Runtime Integration
+### Automatic Reference Counting
 
-ViperLang code maps to the Viper runtime library:
-
-| Language Construct | Runtime Type/Function |
-|-------------------|----------------------|
-| `Text` methods | `Viper.String.*` |
-| `List[T]` | `Viper.Collections.Seq` |
-| `Map[Text, V]` | `Viper.Collections.Map` |
-| `Set[Text]` | `Viper.Collections.Bag` |
-| `print(x)` | `Viper.Terminal.PrintStr` |
-| `readLine()` | `Viper.Terminal.ReadLine` |
-| Math functions | `Viper.Math.*` |
-| File I/O | `Viper.IO.*` |
-
-### Naming Convention Alignment
-
-ViperLang uses short, distinctive names that match the runtime:
-
-| Method | Meaning | Rationale |
-|--------|---------|-----------|
-| `len()` | Length/count | Short, universal |
-| `has(x)` | Contains x? | Reads naturally |
-| `get(i)` | Safe access | Standard |
-| `set(i, v)` | Update at index | Standard |
-| `put(x)` | Add to collection | Distinct from `set` |
-| `drop(x)` | Remove from collection | Distinct from `remove` |
-| `push(x)` | Add to end | Stack terminology |
-| `pop()` | Remove from end | Stack terminology |
-
-### Direct Runtime Access
-
-For advanced use cases, runtime functions can be called directly:
+ViperLang uses ARC for entities:
 
 ```viper
-import Viper.Math
-import Viper.IO.File
-import Viper.Text.Codec
+func example() {
+    User user = new User("Alice");  // refcount = 1
+    User user2 = user;              // refcount = 2
+    // user goes out of scope       // refcount = 1
+    // user2 goes out of scope      // refcount = 0, deallocated
+}
+```
 
-let angle = Viper.Math.sin(0.5)
-let encoded = Viper.Text.Codec.base64Enc("Hello")
-let contents = Viper.IO.File.read("data.txt")
+### Weak References
+
+The `weak` modifier creates non-owning references that don't affect reference counting:
+
+```viper
+entity Node {
+    String value;
+    Node? next;           // Strong reference (affects refcount)
+    weak Node? parent;    // Weak reference (doesn't affect refcount)
+}
+```
+
+**Weak reference rules:**
+
+| Rule | Description |
+|------|-------------|
+| Position | Only valid on optional entity fields: `weak T?` |
+| Zeroing | When target is deallocated, weak field becomes `null` |
+| Load semantics | Reading yields `null` OR a retained strong reference |
+| Thread safety | Safe to read from any thread |
+
+**Usage patterns:**
+
+```viper
+entity Child {
+    weak Parent? parent;  // Weak back-reference (prevents cycle)
+
+    func getParentName() -> String? {
+        // Reading weak ref: returns strong ref or null
+        if (let p = parent) {
+            return p.name;  // Safe: p is retained while in scope
+        }
+        return null;
+    }
+}
+
+entity Parent {
+    String name;
+    List[Child] children;  // Strong references to children
+}
+```
+
+**Preventing reference cycles:**
+
+```viper
+// Without weak: memory leak (A → B → A)
+entity A { B? b; }
+entity B { A? a; }  // Cycle! Neither can be freed
+
+// With weak: no leak
+entity A { B? b; }
+entity B { weak A? a; }  // B doesn't keep A alive
+```
+
+**Invalid uses of `weak`:**
+```viper
+weak Integer x;           // ERROR: weak only on entity fields
+weak String? name;        // ERROR: String is not an entity
+Node? node;
+weak node = someNode;     // ERROR: weak is a field modifier, not a variable modifier
 ```
 
 ---
@@ -1094,136 +1374,175 @@ let contents = Viper.IO.File.read("data.txt")
 ## Complete Grammar
 
 ```ebnf
-// Program Structure
-program      = module import* declaration*
-module       = "module" path
-import       = "import" path ["as" name]
+(* Program structure *)
+program         = module_decl? import_decl* declaration* ;
+module_decl     = "module" qualified_name ";" ;
+import_decl     = "import" qualified_name ("as" IDENT)? ";" 
+                | "import" qualified_name ".{" IDENT ("," IDENT)* "}" ";" ;
 
-// Declarations
-declaration  = value_decl | entity_decl | interface_decl | func_decl
-value_decl   = "value" name [generics] "{" field* "}" 
-             | "value" name [generics] "=" variant ("|" variant)*
-entity_decl  = "entity" name [generics] [extends] [implements] "{" member* "}"
-interface_decl = "interface" name [generics] "{" method_sig* "}"
-func_decl    = [visibility] ["async"] "func" name [generics] params ["->" type] block
+(* Declarations *)
+declaration     = value_decl | entity_decl | interface_decl | func_decl ;
+value_decl      = "value" IDENT generics? implements? "{" member* "}"
+                | "value" IDENT generics? "=" variant ("|" variant)* ";" ;
+entity_decl     = "entity" IDENT generics? extends? implements? "{" member* "}" ;
+interface_decl  = "interface" IDENT generics? "{" signature* "}" ;
+func_decl       = visibility? "func" IDENT generics? "(" params? ")" ("->" type)? block ;
 
-// Sum Type Variants
-variant      = name ["(" field_list ")"]
+(* Type members *)
+member          = field_decl | method_decl ;
+field_decl      = visibility? "final"? type IDENT ("=" expr)? ";" ;
+method_decl     = visibility? "override"? "func" IDENT "(" params? ")" ("->" type)? block ;
 
-// Members
-field        = [visibility] ["weak"] name ":" type ["=" expr]
-member       = field | method
-method       = [visibility] ["override"] ["async"] "func" name [generics] params ["->" type] block?
-method_sig   = "func" name [generics] params ["->" type] [block]
-params       = "(" [param ("," param)*] ")"
-param        = name ":" type ["=" expr]
-visibility   = "hide" | "expose"
+(* Parameters - names are optional *)
+params          = param ("," param)* ;
+param           = (IDENT ":")? type ("=" expr)? ;
 
-// Types
-type         = name [generics] | type "?" | "weak" type | "(" type ")"
-generics     = "[" type ("," type)* "]"
-extends      = "extends" type
-implements   = "implements" type ("," type)*
+(* Generics *)
+generics        = "[" IDENT ("," IDENT)* "]" ;
+extends         = "extends" type ;
+implements      = "implements" type ("," type)* ;
 
-// Statements
-statement    = let_stmt | var_stmt | assign | if_stmt | match_stmt 
-             | while_stmt | for_stmt | return_stmt | guard_stmt | expr_stmt
-let_stmt     = "let" pattern [":" type] "=" expr
-var_stmt     = "var" name [":" type] "=" expr
-assign       = target "=" expr
-if_stmt      = "if" expr block ["else" (if_stmt | block)]
-             | "if" "let" pattern "=" expr block ["else" block]
-match_stmt   = "match" expr "{" case+ "}"
-while_stmt   = "while" expr block
-             | "while" "let" pattern "=" expr block
-for_stmt     = "for" pattern "in" expr block
-return_stmt  = "return" [expr]
-guard_stmt   = "guard" expr "else" block
-expr_stmt    = expr
+(* Types *)
+type            = IDENT generics?           (* Named type *)
+                | type "?"                   (* Optional *)
+                | "func" "(" types? ")" "->" type  (* Function type *)
+                ;
+types           = type ("," type)* ;
 
-// Expressions
-expr         = literal | name | binary | unary | call | member_access 
-             | index | lambda | match_expr | construct | list_literal
-             | range | optional_chain | null_coalesce | type_check | type_cast
-literal      = integer | number | text | "true" | "false" | "null"
-binary       = expr op expr
-unary        = op expr | expr "?"
-call         = expr "(" [arg ("," arg)*] ")"
-arg          = [name ":"] expr
-member_access = expr "." name
-index        = expr "[" expr "]"
-lambda       = "(" [param ("," param)*] ")" "->" (expr | block)
-             | name "=>" expr
-match_expr   = "match" expr "{" case+ "}"
-construct    = name "(" [field_init ("," field_init)*] ")"
-field_init   = name ":" expr
-list_literal = "[" [expr ("," expr)*] "]"
-range        = expr ".." expr | expr "..=" expr
-optional_chain = expr "?." name | expr "?[" expr "]"
-null_coalesce = expr "??" expr
-type_check   = expr "is" type
-type_cast    = expr "as" type
+(* Statements *)
+statement       = var_decl | assignment | expr_stmt | return_stmt
+                | if_stmt | match_stmt | while_stmt | for_stmt
+                | guard_stmt | break_stmt | continue_stmt | block ;
+var_decl        = ("final"? type | "var" | "final" "var") IDENT "=" expr ";" ;
+assignment      = expr "=" expr ";" ;
+expr_stmt       = expr ";" ;
+return_stmt     = "return" expr? ";" ;
+if_stmt         = "if" "(" expr ")" block ("else" (if_stmt | block))? ;
+match_stmt      = "match" "(" expr ")" "{" match_arm* "}" ;
+while_stmt      = "while" "(" ("let" IDENT "=")? expr ")" block ;
+for_stmt        = "for" "(" (type? IDENT | "(" IDENT "," IDENT ")") "in" expr ")" block ;
+guard_stmt      = "guard" "(" ("let" IDENT "=")? expr ")" "else" block ;
+break_stmt      = "break" ";" ;
+continue_stmt   = "continue" ";" ;
+block           = "{" statement* "}" ;
 
-// Patterns
-pattern      = literal | name | "_" | tuple_pattern | constructor_pattern
-tuple_pattern = "(" pattern ("," pattern)+ ")"
-constructor_pattern = name "(" [pattern ("," pattern)*] ")"
-case         = pattern ["where" expr] "=>" (expr | block)
+(* Expressions *)
+expr            = literal | IDENT | "self" | "super" "." IDENT
+                | "()"                       (* Unit literal *)
+                | expr "." IDENT | expr "?." IDENT
+                | expr "[" expr "]" | expr "?[" expr "]"
+                | expr "(" args? ")"
+                | "new" type "(" args? ")"
+                | type "(" args? ")"
+                | "[" exprs? "]" | "{" map_entries? "}"
+                | expr binop expr | unop expr | expr "?"
+                | expr "??" expr
+                | expr "?" expr ":" expr
+                | "if" "(" expr ")" block "else" block
+                | "match" "(" expr ")" "{" match_arm* "}"
+                | "(" params? ")" "->" (expr | block)
+                | "(" expr ")"
+                ;
 
-// Operators (by precedence, lowest to highest)
-op           = "||"                          // Logical OR
-             | "&&"                          // Logical AND
-             | "==" | "!=" | "<" | ">" | "<=" | ">="  // Comparison
-             | "+" | "-"                     // Addition
-             | "*" | "/" | "%"               // Multiplication
-             | "!" | "-"                     // Unary
+(* Operators *)
+binop           = "+" | "-" | "*" | "/" | "%" 
+                | "==" | "!=" | "<" | "<=" | ">" | ">="
+                | "&&" | "||" | ".." | "..=" ;
+unop            = "-" | "!" ;
 
-// Basics
-block        = "{" statement* "}"
-path         = name ("." name)*
-name         = letter (letter | digit | "_")*
-integer      = digit+ | "0x" hex+ | "0b" bin+
-number       = digit+ "." digit+ [("e" | "E") ["-"] digit+]
-text         = '"' char* '"' | '"""' multiline_char* '"""'
+(* Arguments *)
+args            = arg ("," arg)* ;
+arg             = (IDENT ":")? expr ;
+
+(* Patterns *)
+pattern         = "_"                        (* Wildcard - matches anything *)
+                | literal                    (* Literal match *)
+                | IDENT                      (* Variable binding *)
+                | IDENT "(" patterns? ")"    (* Constructor/variant pattern *)
+                | "(" pattern "," pattern ")" (* Tuple pattern - 2 elements only *)
+                ;
+patterns        = pattern ("," pattern)* ;
+match_arm       = pattern ("if" expr)? "=>" (expr | block) ";" ;
+
+(* Visibility *)
+visibility      = "expose" | "hide" ;
 ```
 
 ---
 
 ## Keywords
 
-ViperLang has exactly **25 keywords**:
+### Reserved Keywords (29)
 
-| Category | Keywords |
-|----------|----------|
-| Types | `value` `entity` `interface` `weak` |
-| Variables | `let` `var` |
-| Functions | `func` `return` `async` `await` |
-| Control | `if` `else` `match` `while` `for` `in` `guard` `break` `continue` |
-| OOP | `extends` `implements` `override` `super` |
-| Visibility | `expose` `hide` |
-| Modules | `module` `import` |
+| Keyword | Usage |
+|---------|-------|
+| `module` | Module declaration |
+| `import` | Import declaration |
+| `as` | Import alias, type cast |
+| `value` | Value type declaration |
+| `entity` | Entity type declaration |
+| `interface` | Interface declaration |
+| `implements` | Interface implementation |
+| `extends` | Entity inheritance |
+| `func` | Function/method declaration |
+| `return` | Return statement |
+| `var` | Type inference |
+| `final` | Immutable variable/field |
+| `new` | Entity creation |
+| `if` | Conditional |
+| `else` | Conditional branch |
+| `let` | Optional binding in if/while/guard |
+| `match` | Pattern matching |
+| `while` | While loop |
+| `for` | For loop |
+| `in` | Loop iteration |
+| `is` | Type check |
+| `break` | Loop exit |
+| `continue` | Loop continue |
+| `guard` | Guard statement |
+| `override` | Method override |
+| `weak` | Weak reference |
+| `expose` | Public visibility |
+| `hide` | Hide inherited member |
+| `self` | Current instance |
+| `super` | Parent class |
 
-**Reserved for future use:** `as`, `is` (currently operators)
+### v0.2 Keywords (+3)
+
+| Keyword | Usage |
+|---------|-------|
+| `async` | Async function |
+| `await` | Await expression |
+| `spawn` | Spawn task |
+
+### Contextual Keywords
+
+| Keyword | Usage |
+|---------|-------|
+| `true` | Boolean true |
+| `false` | Boolean false |
+| `null` | No value |
 
 ---
 
 ## Operators
 
-### By Precedence (lowest to highest)
+### Precedence Table (highest to lowest)
 
 | Precedence | Operators | Associativity | Description |
 |------------|-----------|---------------|-------------|
-| 1 | `??` | Right | Null coalescing |
-| 2 | `\|\|` | Left | Logical OR |
-| 3 | `&&` | Left | Logical AND |
-| 4 | `==` `!=` | Left | Equality |
-| 5 | `<` `>` `<=` `>=` | Left | Comparison |
-| 6 | `is` `as` | Left | Type check/cast |
-| 7 | `+` `-` | Left | Addition |
-| 8 | `*` `/` `%` | Left | Multiplication |
-| 9 | `!` `-` (unary) | Right | Unary |
-| 10 | `?` | Postfix | Propagation |
 | 11 | `.` `?.` `[]` `?[]` `()` | Left | Access/call |
+| 10 | `?` (postfix) | Postfix | Error propagation |
+| 9 | `!` `-` (unary) | Right | Unary |
+| 8 | `*` `/` `%` | Left | Multiplication |
+| 7 | `+` `-` | Left | Addition |
+| 6 | `..` `..=` | None | Range |
+| 5 | `is` `as` | Left | Type check/cast |
+| 4 | `<` `>` `<=` `>=` | Left | Comparison |
+| 3 | `==` `!=` | Left | Equality |
+| 2 | `&&` | Left | Logical AND |
+| 1 | `||` | Left | Logical OR |
+| 0 | `??` | Right | Null coalescing |
 
 ### Operator Summary
 
@@ -1234,11 +1553,74 @@ ViperLang has exactly **25 keywords**:
 | `&&` `\|\|` `!` | Logical | `a && b` |
 | `?.` | Optional chaining | `user?.name` |
 | `??` | Null coalescing | `name ?? "default"` |
-| `?` | Propagation | `getValue()?` |
+| `?` | Error propagation | `getValue()?` |
 | `is` | Type check | `x is Integer` |
-| `as` | Type cast | `x as Text` |
+| `as` | Type cast | `x as String` |
 | `..` | Half-open range | `0..10` |
 | `..=` | Inclusive range | `0..=10` |
+
+### Type Operations: `is` and `as`
+
+**The `is` operator** checks if a value is of a specific type at runtime:
+
+```viper
+func describe(obj: Animal) -> String {
+    if (obj is Dog) {
+        return "It's a dog!";
+    } else if (obj is Cat) {
+        return "It's a cat!";
+    }
+    return "Unknown animal";
+}
+```
+
+**Valid `is` checks:**
+- Entity subtype: `animal is Dog` (where Dog extends Animal)
+- Interface implementation: `shape is Drawable`
+- Sum type variant: `result is Ok` or `result is Err`
+
+**The `as` operator** performs type casting:
+
+```viper
+// Safe cast (returns optional)
+Dog? maybeDog = animal as? Dog;
+
+// Forced cast (panics if wrong type)
+Dog dog = animal as Dog;
+```
+
+| Syntax | Behavior | On Failure |
+|--------|----------|------------|
+| `x as T` | Forced cast | Panic with "invalid cast" |
+| `x as? T` | Safe cast | Returns `null` |
+
+**Usage examples:**
+
+```viper
+// Combining is + as
+if (animal is Dog) {
+    Dog d = animal as Dog;  // Safe: we just checked
+    d.fetch();
+}
+
+// Safe cast pattern
+if (let d = animal as? Dog) {
+    d.fetch();
+}
+
+// Ptr casting (for thread arguments)
+Counter c = new Counter();
+Thread.Start(worker, c as Ptr);
+
+func worker(arg: Ptr) {
+    Counter c = arg as Counter;
+    c.increment();
+}
+```
+
+**Not supported in v0.1:**
+- `is` with generic type parameters: `x is T` where T is generic
+- `is` with primitive types: `x is Integer` (use explicit type at declaration)
 
 ---
 
@@ -1246,285 +1628,168 @@ ViperLang has exactly **25 keywords**:
 
 ### Frozen for v0.1
 
-These decisions are final for v0.1:
-
-1. **Two type kinds:** `value` (copy) and `entity` (reference)
-2. **No exceptions:** All errors via `Result[T]`
-3. **? operator:** Works for both `Result` and `Option`
-4. **T? syntax:** Sugar for `Option[T]`, `null` for `None`
-5. **Indexing:** `[i]` panics, `.get(i)` returns `Option`
-6. **Ranges:** `..` half-open, `..=` inclusive
-7. **Visibility:** Private by default, `expose` for public
-8. **Single inheritance:** Entities only, `override` required
-9. **Default methods:** Interface defaults can only use interface members
-10. **Temporaries:** Cannot mutate temporaries or accessor returns
+1. **Java-style declarations:** `Type name = value;` with semicolons
+2. **Two type kinds:** `value` (copy) and `entity` (reference)
+3. **Entity creation with `new`:** `new User(...)` vs `Point(...)`
+4. **No exceptions:** All errors via `Result[T]`
+5. **? operator:** Works for both `Result` and `Option`
+6. **T? syntax:** Optional type, `null` for no value
+7. **Indexing:** `[i]` panics, `.get(i)` returns `Option`
+8. **Visibility:** Private by default, `expose` for public
+9. **Parameter names optional:** `func foo(Integer, String) -> Boolean`
+10. **`var` for inference:** `var x = 42;` instead of explicit type
 
 ### Deferred to v0.2
 
-These features are planned but not in v0.1:
-
-1. **Async/await and Task[T]** — Full concurrency model
-2. **Channels** — Inter-task communication
-3. **Generic constraints** — Type bounds like `[T: Comparable]`
-4. **Pattern matching in parameters** — `func f(Point(x, y): Point)`
-5. **Decimal type** — Arbitrary-precision decimal
-
-### Rationale Notes
-
-**Why no exceptions?**
-- Exceptions hide control flow
-- Errors as values are explicit and composable
-- The `?` operator provides ergonomic propagation
-
-**Why `value` and `entity` keywords?**
-- Clear semantic distinction (copy vs. reference)
-- More intuitive than `struct`/`class`
-- Matches how developers think about data
-
-**Why single inheritance only?**
-- Avoids diamond problem complexity
-- Interfaces provide multiple-conformance
-- Composition over inheritance
-
-**Why `expose` instead of `public`?**
-- Distinct from other languages (intentional)
-- Reads as an action: "expose this to importers"
-- Matches the private-by-default philosophy
+1. **Async/await and Task[T]**
+2. **Channels**
+3. **Generic constraints** — `[T: Comparable]`
+4. **Decimal type**
+5. **Pattern matching in parameters**
 
 ---
 
-## Testing
-
-Built-in testing with simple syntax:
+## Appendix: Complete Example
 
 ```viper
-module UserTests
+module TodoApp;
 
-import Viper.Test
-
-test "user creation" {
-    let user = User(name: "Alice", email: "alice@example.com")
-    assert user.name == "Alice"
-    assert user.email == "alice@example.com"
-}
-
-test "division by zero returns error" {
-    match divide(10, 0) {
-        Ok(_) => fail("Expected error")
-        Err(e) => assert e.code == "DIV_ZERO"
-    }
-}
-
-test "list operations" {
-    let list = [1, 2, 3]
-    assert list.len() == 3
-    assert list.has(2)
-    assert !list.has(4)
-}
-```
-
-Run tests with:
-
-```bash
-viper test                    # Run all tests
-viper test UserTests          # Run specific module
-viper test --filter "user"    # Filter by name
-```
-
----
-
-## Tooling
-
-The formatter, linter, and test runner are **part of the language specification**:
-
-```bash
-viper fmt              # Format code (enforced style)
-viper fmt --check      # Check without modifying
-
-viper lint             # Check for common issues
-viper lint --fix       # Auto-fix where possible
-
-viper test             # Run tests
-viper test --coverage  # With coverage report
-
-viper build            # Compile project
-viper build --release  # Optimized build
-
-viper run              # Build and run
-viper run --vm         # Run in VM (default)
-viper run --native     # Run native binary
-```
-
-### Formatting Rules (Enforced)
-
-- 4-space indentation
-- Opening braces on same line
-- Semicolons added by formatter (optional in source)
-- Maximum line length: 100 characters
-- Trailing commas in multi-line constructs
-
----
-
-## Appendix A: Complete Example
-
-```viper
-module TodoApp
-
-import Viper.IO.File
-import Viper.Text.Codec
+import Viper.IO.File;
 
 // Domain types
 value TodoId {
-    raw: Text
+    String raw;
 }
 
 value Todo {
-    id: TodoId
-    title: Text
-    done: Boolean
+    TodoId id;
+    String title;
+    Boolean done;
 }
 
 // Storage interface
 interface TodoStore {
-    func save(todo: Todo) -> Result[()]
-    func load(id: TodoId) -> Result[Option[Todo]]
-    func all() -> Result[List[Todo]]
-    func delete(id: TodoId) -> Result[()>
+    func save(Todo) -> Result[Unit];
+    func load(TodoId) -> Result[Todo?];
+    func all() -> Result[List[Todo]];
+    func delete(TodoId) -> Result[Unit];
 }
 
 // File-based implementation
 entity FileTodoStore implements TodoStore {
-    path: Text
-    
-    expose func save(todo: Todo) -> Result[()]> {
-        let json = todoToJson(todo)
-        let filename = "${path}/${todo.id.raw}.json"
-        File.write(filename, json)?
-        return Ok(())
+    String path;
+
+    expose func save(todo: Todo) -> Result[Unit] {
+        String json = todoToJson(todo);
+        String filename = "${path}/${todo.id.raw}.json";
+        File.write(filename, json)?;
+        return Ok(());
     }
     
-    expose func load(id: TodoId) -> Result[Option[Todo]] {
-        let filename = "${path}/${id.raw}.json"
-        if !File.exists(filename) {
-            return Ok(None)
+    expose func load(id: TodoId) -> Result[Todo?] {
+        String filename = "${path}/${id.raw}.json";
+        if (!File.exists(filename)) {
+            return Ok(null);
         }
-        let json = File.read(filename)?
-        let todo = todoFromJson(json)?
-        return Ok(Some(todo))
+        String json = File.read(filename)?;
+        Todo todo = todoFromJson(json)?;
+        return Ok(todo);
     }
     
     expose func all() -> Result[List[Todo]] {
-        let files = Dir.files(path)?
-        let todos: List[Todo] = []
-        for file in files {
-            if file.endsWith(".json") {
-                let content = File.read("${path}/${file}")?
-                let todo = todoFromJson(content)?
-                todos.push(todo)
+        List[String] files = Dir.files(path)?;
+        List[Todo] todos = [];
+        for (file in files) {
+            if (file.endsWith(".json")) {
+                String content = File.read("${path}/${file}")?;
+                Todo todo = todoFromJson(content)?;
+                todos.push(todo);
             }
         }
-        return Ok(todos)
+        return Ok(todos);
     }
     
-    expose func delete(id: TodoId) -> Result[()]> {
-        let filename = "${path}/${id.raw}.json"
-        File.delete(filename)?
-        return Ok(())
+    expose func delete(id: TodoId) -> Result[Unit] {
+        String filename = "${path}/${id.raw}.json";
+        File.delete(filename)?;
+        return Ok(());
     }
     
     // Private helpers
-    func todoToJson(todo: Todo) -> Text {
-        return "{\"id\":\"${todo.id.raw}\",\"title\":\"${todo.title}\",\"done\":${todo.done}}"
+    func todoToJson(todo: Todo) -> String {
+        return """{"id":"${todo.id.raw}","title":"${todo.title}","done":${todo.done}}""";
     }
     
-    func todoFromJson(json: Text) -> Result[Todo] {
-        // Simplified parsing for example
-        // Real implementation would use Viper.Json
+    func todoFromJson(json: String) -> Result[Todo] {
+        // Simplified - real implementation would use Viper.Json
         return Ok(Todo(
-            id: TodoId(raw: "extracted-id"),
-            title: "extracted-title",
+            id: TodoId("parsed-id"),
+            title: "parsed-title",
             done: false
-        ))
+        ));
     }
 }
 
-// Application entry point
-func main() {
-    let store = FileTodoStore(path: "./todos")
+// Entry point
+func start() {
+    FileTodoStore store = new FileTodoStore(path: "./todos");
     
-    // Create a todo
-    let todo = Todo(
-        id: TodoId(raw: "1"),
+    Todo todo = Todo(
+        id: TodoId("1"),
         title: "Learn ViperLang",
         done: false
-    )
+    );
     
-    match store.save(todo) {
-        Ok(()) => print("Saved!")
-        Err(e) => print("Error: ${e.message}")
+    match (store.save(todo)) {
+        Ok(_) => print("Saved!");
+        Err(e) => print("Error: ${e.message}");
     }
     
-    // List all todos
-    match store.all() {
+    match (store.all()) {
         Ok(todos) => {
-            print("Todos:")
-            for t in todos {
-                let status = t.done ? "✓" : " "
-                print("[${status}] ${t.title}")
+            print("Todos:");
+            for (t in todos) {
+                String status = t.done ? "✓" : " ";
+                print("[${status}] ${t.title}");
             }
         }
-        Err(e) => print("Error: ${e.message}")
+        Err(e) => print("Error: ${e.message}");
     }
 }
 ```
 
 ---
 
-## Appendix B: Migration from Other Languages
+## Migration from Other Languages
 
-### From Java/C#
+### From Java
 
-| Java/C# | ViperLang | Notes |
-|---------|-----------|-------|
+| Java | ViperLang | Notes |
+|------|-----------|-------|
 | `class` | `entity` | Reference type |
-| `struct` (C#) | `value` | Copy type |
+| `record` | `value` | Copy type |
 | `interface` | `interface` | Same concept |
-| `public` | `expose` | Explicit visibility |
+| `public` | `expose` | Visibility |
 | `private` | default | Private by default |
-| `try/catch` | `Result[T]` + `?` | Errors as values |
-| `null` | `T?` / `Option[T]` | Explicit optionals |
+| `new Foo()` | `new Foo()` | Entity creation |
+| `throw/catch` | `Result[T]` + `?` | Error handling |
+| `null` | `T?` / `null` | Explicit optionals |
 | `List<T>` | `List[T]` | Square brackets |
 
-### From Rust
+### From C#
 
-| Rust | ViperLang | Notes |
-|------|-----------|-------|
-| `struct` | `value` | Copy semantics |
-| `struct` + heap | `entity` | Reference counted |
-| `trait` | `interface` | With default methods |
-| `impl` | Inside type | Methods in type body |
-| `Result<T, E>` | `Result[T]` | Simplified error type |
-| `Option<T>` | `Option[T]` / `T?` | Same concept |
-| `?` operator | `?` operator | Same semantics |
-| `match` | `match` | Same concept |
-
-### From Go
-
-| Go | ViperLang | Notes |
+| C# | ViperLang | Notes |
 |----|-----------|-------|
-| `struct` | `value` | Copy semantics |
-| `*T` pointer | `entity` | No pointer syntax |
-| `interface{}` | `interface` | Nominal, not structural |
-| `error` return | `Result[T]` | Type-safe errors |
-| `if err != nil` | `?` operator | More concise |
-| No generics* | Generics | Full generics support |
+| `class` | `entity` | Reference type |
+| `struct` | `value` | Copy type |
+| `new Foo()` | `new Foo()` | Entity creation |
+| `Foo(...)` | `Foo(...)` | Value creation |
+| `var` | `var` | Type inference |
+| `?.` | `?.` | Optional chaining |
+| `??` | `??` | Null coalescing |
+| `readonly` | `final` | Immutable |
 
 ---
 
-**Status:** v0.1 Final Specification
-
-**Version History:**
-- v0.1 Final — Type alias clarification, runtime alignment, async deferred to v0.2
-- v0.1 RC1 — Initial release candidate
-
-**© 2024-2025 ViperLang Project**
+**Version:** v0.1 Final  
+**Status:** Specification Complete

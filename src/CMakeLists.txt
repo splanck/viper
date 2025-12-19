@@ -407,6 +407,7 @@ install(TARGETS il-dis RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 add_subdirectory(frontends/common)
 add_subdirectory(frontends/basic)
 add_subdirectory(frontends/pascal)
+add_subdirectory(frontends/viperlang)
 
 add_executable(basic-ast-dump
         tools/basic-ast-dump/main.cpp

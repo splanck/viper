@@ -40,6 +40,7 @@ set(RT_ARRAY_SOURCES
 )
 
 set(RT_OOP_SOURCES
+        rt_box.c
         rt_object.c
         rt_oop_dispatch.c
         rt_type_registry.c
@@ -113,6 +114,7 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_array_str.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_array_obj.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_heap.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_box.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_object.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_oop.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_debug.h

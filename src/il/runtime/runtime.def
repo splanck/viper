@@ -109,6 +109,23 @@ RT_FUNC(BitsUshr,   rt_bits_ushr,   "Viper.Bits.Ushr",   "i64(i64,i64)")
 RT_FUNC(BitsXor,    rt_bits_xor,    "Viper.Bits.Xor",    "i64(i64,i64)")
 
 //=============================================================================
+// BOX (BOXING/UNBOXING PRIMITIVES)
+//=============================================================================
+
+RT_FUNC(BoxI64,     rt_box_i64,     "Viper.Box.I64",     "obj(i64)")
+RT_FUNC(BoxF64,     rt_box_f64,     "Viper.Box.F64",     "obj(f64)")
+RT_FUNC(BoxI1,      rt_box_i1,      "Viper.Box.I1",      "obj(i64)")
+RT_FUNC(BoxStr,     rt_box_str,     "Viper.Box.Str",     "obj(str)")
+RT_FUNC(UnboxI64,   rt_unbox_i64,   "Viper.Box.ToI64",   "i64(obj)")
+RT_FUNC(UnboxF64,   rt_unbox_f64,   "Viper.Box.ToF64",   "f64(obj)")
+RT_FUNC(UnboxI1,    rt_unbox_i1,    "Viper.Box.ToI1",    "i64(obj)")
+RT_FUNC(UnboxStr,   rt_unbox_str,   "Viper.Box.ToStr",   "str(obj)")
+RT_FUNC(BoxType,    rt_box_type,    "Viper.Box.Type",    "i64(obj)")
+RT_FUNC(BoxEqI64,   rt_box_eq_i64,  "Viper.Box.EqI64",   "i64(obj,i64)")
+RT_FUNC(BoxEqF64,   rt_box_eq_f64,  "Viper.Box.EqF64",   "i64(obj,f64)")
+RT_FUNC(BoxEqStr,   rt_box_eq_str,  "Viper.Box.EqStr",   "i64(obj,str)")
+
+//=============================================================================
 // COLLECTIONS - BYTES
 //=============================================================================
 

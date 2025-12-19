@@ -1,112 +1,38 @@
-# ViperLang — Quick Reference
+# ViperLang v0.1 — Quick Reference
 
-## Version 0.1 Final
-
-<div align="center">
-
-**Everything you need in 10 minutes**
-
-*Copy types. Pattern matching. No exceptions. One way to do things.*
-
-</div>
-
----
-
-## Hello World
+## Syntax at a Glance
 
 ```viper
-module Hello
+module MyApp;                          // Module declaration
 
-func main() {
-    print("Hello, ViperLang!")
-}
-```
+import Viper.IO.File;                  // Import
 
----
-
-## Types at a Glance
-
-| Type | Alias | Description |
-|------|-------|-------------|
-| `Text` | `String` | UTF-8 string |
-| `Integer` | `i64` | 64-bit signed |
-| `Number` | `f64` | 64-bit float |
-| `Boolean` | `i1` | true/false |
-| `T?` | `Option[T]` | Nullable T |
-
----
-
-## Values (Copy Types)
-
-```viper
+// Value type (copied)
 value Point {
-    x: Number
-    y: Number
+    Number x;
+    Number y;
 }
 
-let p1 = Point(x: 10, y: 20)
-var p2 = p1       // Copies the value
-p2.x = 30         // Only p2 changes
-```
-
-**Rule:** Cannot mutate temporaries (`getPoint().x = 10` is illegal).
-
----
-
-## Entities (Reference Types)
-
-```viper
+// Entity type (referenced)  
 entity User {
-    name: Text
-    email: Text
+    String name;
+    final String id;                   // Immutable field
     
-    func display() -> Text {
-        return "${name} <${email}>"
+    expose func greet() -> String {
+        return "Hello, ${name}!";
     }
 }
 
-let u1 = User(name: "Alice", email: "alice@example.com")
-let u2 = u1       // Same object (reference)
-u2.name = "Bob"   // Both see "Bob"
-```
-
----
-
-## Inheritance (Entities Only)
-
-```viper
-entity Animal {
-    name: Text
-    func speak() -> Text { return "..." }
+// Function
+func add(a: Integer, b: Integer) -> Integer {
+    return a + b;
 }
 
-entity Dog extends Animal {
-    breed: Text
-    
-    override func speak() -> Text {  // 'override' required
-        return "Woof!"
-    }
-}
-```
-
----
-
-## Interfaces
-
-```viper
-interface Drawable {
-    func draw(canvas: Canvas)
-    
-    // Default implementation
-    func drawTwice(canvas: Canvas) {
-        draw(canvas)
-        draw(canvas)
-    }
-}
-
-entity Circle implements Drawable {
-    radius: Number
-    func draw(canvas: Canvas) { /* ... */ }
+// Entry point
+func start() {
+    Point p = Point(1.0, 2.0);         // Value: no 'new'
+    User u = new User("Alice", "123"); // Entity: with 'new'
+    print(u.greet());
 }
 ```
 
@@ -115,82 +41,61 @@ entity Circle implements Drawable {
 ## Variables
 
 ```viper
-let immutable = 42         // Can't reassign
-var mutable = 42           // Can reassign
-mutable = 43
+// Type-first declaration (Java style)
+Integer count = 42;
+String name = "Alice";
+List[Integer] nums = [1, 2, 3];
 
-let inferred = "Hello"     // Type: Text
-let typed: Number = 3.14   // Explicit type
+// Type inference
+var count = 42;                        // Integer
+var name = "Alice";                    // String
 
-// Destructuring
-let Point(x, y) = getPoint()
-let (first, second) = getPair()
+// Immutable
+final Integer x = 10;
+final var y = 20;
+
+// Mutable by default
+Integer z = 10;
+z = 20;                                // OK
 ```
 
 ---
 
-## Control Flow
+## Primitive Types
 
-### Pattern Matching
+| Type | Example | Description |
+|------|---------|-------------|
+| `Integer` | `42`, `-17`, `0xFF` | 64-bit signed |
+| `Number` | `3.14`, `6.02e23` | 64-bit float |
+| `Boolean` | `true`, `false` | Boolean |
+| `String` | `"hello"`, `"""multi"""` | UTF-8 string |
+| `Byte` | `255`, `0x41` | 8-bit unsigned (stored as i32) |
+| `Unit` | `()` | Single value, for `Result[Unit]` |
 
-```viper
-value Result[T] = Ok(T) | Err(Error)
+---
 
-match divide(10, 2) {
-    Ok(value) => print("Result: ${value}")
-    Err(e) => print("Error: ${e.message}")
-}
+## Value vs Entity
 
-// With guards
-match number {
-    n where n < 0 => "Negative"
-    0 => "Zero"
-    n where n > 0 => "Positive"
-}
-```
-
-### If/Else
-
-```viper
-if condition {
-    doSomething()
-} else if other {
-    doOther()
-} else {
-    doDefault()
-}
-
-// Ternary
-let result = condition ? "yes" : "no"
-
-// If-let for optionals
-if let user = findUser(id) {
-    print(user.name)  // user is User, not User?
-}
-```
-
-### Loops
+| | Value | Entity |
+|-|-------|--------|
+| Keyword | `value` | `entity` |
+| Creation | `Point(1, 2)` | `new User("Alice")` |
+| Assignment | Copies data | Copies reference |
+| Inheritance | No | Yes |
+| Use for | Data, coordinates | Objects, resources |
 
 ```viper
-for item in list { process(item) }
+// Value - copied
+value Color { Integer r; Integer g; Integer b; }
+Color c1 = Color(255, 0, 0);
+Color c2 = c1;                         // Copy
+c2.g = 128;                            // Only c2 changes
 
-while condition {
-    if done { break }
-    if skip { continue }
-}
-
-for i in 0..10 { }    // 0 to 9 (half-open)
-for i in 0..=10 { }   // 0 to 10 (inclusive)
-```
-
-### Guard
-
-```viper
-func process(data: Data?) -> Text {
-    guard data != null else { return "No data" }
-    guard data.isValid() else { return "Invalid" }
-    return data.process()
-}
+// Entity - shared
+entity Counter { Integer count; }
+Counter a = new Counter(0);
+Counter b = a;                         // Same object
+b.count = 10;                          // Both see change
 ```
 
 ---
@@ -198,76 +103,194 @@ func process(data: Data?) -> Text {
 ## Functions
 
 ```viper
-func add(a: Number, b: Number) -> Number {
-    return a + b
+// Basic function
+func add(a: Integer, b: Integer) -> Integer {
+    return a + b;
 }
 
-func greet(name: Text = "World") {
-    print("Hello, ${name}!")
+// No return value
+func sayHi(name: String) {
+    print("Hi ${name}!");
 }
 
-// Expression body
-func double(x: Number) -> Number = x * 2
+// Default parameters
+func greet(name: String, msg: String = "Hello") -> String {
+    return "${msg}, ${name}!";
+}
 
-// Lambda
-let triple = (x: Number) -> x * 3
-let doubled = list.map(x => x * 2)
+// Parameter names optional (for signatures)
+func process(Integer, String) -> Boolean;
+
+// Named arguments at call site
+greet(name: "Alice", msg: "Hi");
+greet("Bob");                          // Uses default
 ```
 
 ---
 
-## Error Handling (No Exceptions!)
+## Control Flow
 
 ```viper
-value Error {
-    code: Text
-    message: Text
+// If/else
+if (x > 0) {
+    print("positive");
+} else if (x < 0) {
+    print("negative");
+} else {
+    print("zero");
 }
 
-value Result[T] = Ok(T) | Err(Error)
+// Ternary
+Integer abs = x >= 0 ? x : -x;
 
-func readFile(path: Text) -> Result[Text] {
-    if !exists(path) {
-        return Err(Error(code: "NOT_FOUND", message: "File not found"))
-    }
-    return Ok(contents)
-}
+// While
+while (condition) { }
 
-// The ? operator propagates errors
-func processFile(path: Text) -> Result[Data] {
-    let content = readFile(path)?     // Returns Err if failed
-    let parsed = parse(content)?      // Returns Err if failed
-    return Ok(parsed)
+// For (range)
+for (i in 0..10) { }                   // 0 to 9
+for (i in 0..=10) { }                  // 0 to 10
+
+// For (collection)
+for (item in list) { }
+
+// Guard
+guard (x != null) else { return; }
+
+// Break/continue
+for (i in 0..100) {
+    if (i == 50) break;
+    if (i % 2 == 0) continue;
 }
 ```
 
 ---
 
-## Optionals (T? = Option[T])
+## Optionals
 
 ```viper
-let maybe: Text? = null   // Same as: Option[Text] = None
-maybe = "Hello"           // Same as: Some("Hello")
+String? name = null;                   // Optional, no value
+String? name = "Alice";                // Optional, has value
 
-// Pattern matching
-match maybe {
-    Some(value) => print(value)
-    None => print("Nothing")
+// Check
+if (name != null) {
+    print(name);
 }
+
+// Optional chaining
+String? result = user?.profile?.name;
+
+// Null coalescing
+String displayName = name ?? "Guest";
 
 // If-let
-if let value = maybe {
-    print(value)
+if (let n = name) {
+    print(n);
 }
 
-// Chaining and coalescing
-let length = user?.address?.street?.len()
-let name = user?.name ?? "Anonymous"
+// Guard-let
+guard (let n = name) else { return; }
+```
 
-// ? propagates None
-func getName(id: Text) -> Option[Text] {
-    let user = findUser(id)?
-    return Some(user.name)
+---
+
+## Error Handling
+
+```viper
+// Result type
+func divide(a: Number, b: Number) -> Result[Number] {
+    if (b == 0) {
+        return Err(Error("DIV_ZERO", "Division by zero"));
+    }
+    return Ok(a / b);
+}
+
+// ? operator propagates errors
+func calc(x: String) -> Result[Number] {
+    Number n = parse(x)?;              // Returns Err if fails
+    return Ok(n * 2);
+}
+
+// Match on result
+match (divide(10, 2)) {
+    Ok(v) => print("Result: ${v}");
+    Err(e) => print("Error: ${e.message}");
+}
+```
+
+---
+
+## Pattern Matching
+
+```viper
+// Sum types
+value Shape = 
+    | Circle(radius: Number)
+    | Rectangle(width: Number, height: Number);
+
+// Match
+match (shape) {
+    Circle(r) => 3.14 * r * r;
+    Rectangle(w, h) => w * h;
+}
+
+// With guards
+match (x) {
+    n if n > 0 => "positive";
+    n if n < 0 => "negative";
+    _ => "zero";
+}
+```
+
+---
+
+## Generics
+
+```viper
+value Box[T] {
+    T contents;
+}
+
+func identity[T](x: T) -> T {
+    return x;
+}
+
+// Usage
+Box[Integer] box = Box[Integer](42);
+var box = Box(42);                     // Type inferred
+```
+
+---
+
+## Interfaces
+
+```viper
+interface Drawable {
+    func draw(Canvas);
+}
+
+value Circle implements Drawable {
+    Number radius;
+    
+    expose func draw(canvas: Canvas) {
+        canvas.circle(radius);
+    }
+}
+```
+
+---
+
+## Inheritance
+
+```viper
+entity Animal {
+    String name;
+    func speak() -> String { return "..."; }
+}
+
+entity Dog extends Animal {
+    override func speak() -> String {
+        return "Woof!";
+    }
 }
 ```
 
@@ -275,185 +298,148 @@ func getName(id: Text) -> Option[Text] {
 
 ## Collections
 
-### List[T]
-
 ```viper
-let list = [1, 2, 3, 4, 5]
+// List
+List[Integer] nums = [1, 2, 3];
+nums.push(4);
+Integer first = nums[0];
+Integer? maybe = nums.get(10);
+for (n in nums) { }
 
-// Indexing (panics if out of bounds)
-let first = list[0]
+// Map
+Map[String, Integer] scores = {"Alice": 100, "Bob": 85};
+scores["Carol"] = 90;
+Integer? s = scores.get("Dave");
+for ((k, v) in scores) { }
 
-// Safe access (returns Option)
-match list.get(10) {
-    Some(val) => print(val)
-    None => print("Not found")
-}
-
-// Operations
-list.push(6)              // Add to end
-let last = list.pop()     // Remove from end
-let doubled = list.map(x => x * 2)
-let evens = list.filter(x => x % 2 == 0)
-```
-
-### Map[Text, V]
-
-```viper
-let map = Map[Text, Integer]()
-map.set("alice", 30)
-
-// Safe access
-match map.get("alice") {
-    Some(age) => print(age)
-    None => print("Not found")
-}
-
-// Direct access (panics if missing)
-let age = map["alice"]
+// Set
+Set[Integer] unique = {1, 2, 3};
+unique.put(4);
+Boolean has = unique.has(2);
 ```
 
 ---
 
-## Memory Management
+## Threads
 
 ```viper
-// Values: copied
-let p1 = Point(x: 10, y: 20)
-let p2 = p1  // Deep copy
+import Viper.Threads;
 
-// Entities: reference counted
-let e1 = Entity()
-let e2 = e1  // Refcount = 2
+// Thread entry must be: func() -> Void  OR  func(Ptr) -> Void
+func worker() { }
 
-// Weak references (break cycles)
-entity Node {
-    children: List[Node]
-    weak parent: Node?  // Doesn't increase refcount
+func start() {
+    Thread t = Thread.Start(worker);
+    t.join();
 }
 
-if let parent = node.parent {
-    parent.update()
+// FIFO, re-entrant locking
+entity Counter {
+    Mutex mu = new Mutex();
+    Integer value = 0;
+
+    expose func inc() {
+        mu.enter();
+        value = value + 1;
+        mu.exit();
+    }
 }
+
+// Wait/Pause (condition-variable style)
+// - wait() releases + re-acquires the lock
+// - pause()/pauseAll() wake one/all waiters (caller must own the lock)
 ```
 
 ---
 
 ## Visibility
 
-**Default: private.** Use `expose` for public:
-
 ```viper
-entity Service {
-    database: Connection        // Private
-    hide secret: Text          // Explicitly private
+entity User {
+    expose String name;                // Public
+    String password;                   // Private (default)
     
-    expose func getUser() { }  // Public
+    expose func getName() -> String {  // Public
+        return name;
+    }
+    
+    func hash() -> String { }          // Private
 }
 ```
 
 ---
 
-## Cheat Sheet
+## Operators
 
-### Primitive Types
-
-| Type | Description |
-|------|-------------|
-| `Integer` | 64-bit signed int |
-| `Number` | 64-bit float |
-| `Text` | UTF-8 string |
-| `Boolean` | true/false |
-| `T?` | Optional T |
-
-### Keywords (25)
-
-```
-async     await     break     continue   else
-entity    expose    extends   for        func
-guard     hide      if        implements import
-interface let       match     module     override
-return    super     value     var        weak
-while
-```
-
-### Operators
-
-| Category | Operators |
-|----------|-----------|
-| Math | `+ - * / %` |
-| Compare | `== != < > <= >=` |
-| Logic | `&& \|\| !` |
-| Optional | `?. ?? ?` |
-| Type | `is as` |
-| Range | `.. ..=` |
+| Op | Description | Example |
+|----|-------------|---------|
+| `+` `-` `*` `/` `%` | Arithmetic | `a + b` |
+| `==` `!=` `<` `>` `<=` `>=` | Comparison | `a < b` |
+| `&&` `\|\|` `!` | Logical | `a && b` |
+| `?.` | Optional chain | `x?.y` |
+| `??` | Null coalesce | `x ?? y` |
+| `?` | Error propagate | `x?` |
+| `..` `..=` | Range | `0..10` |
+| `is` | Type check | `x is T` |
+| `as` | Type cast | `x as T` |
 
 ---
 
-## Key Rules
+## Keywords
 
-1. **Values copy, entities reference**
-2. **No exceptions — use Result[T]**
-3. **? works for both Result and Option**
-4. **T? is Option[T] sugar**
-5. **list[i] panics, list.get(i) is safe**
-6. **Private by default, expose for public**
-7. **Pattern matching is primary control flow**
-8. **Weak references break cycles**
+**Types:** `value` `entity` `interface`
+**Modifiers:** `final` `expose` `hide` `override` `weak`
+**Declarations:** `module` `import` `func` `var` `new`
+**Control:** `if` `else` `let` `match` `while` `for` `in` `is` `guard` `break` `continue` `return`
+**Inheritance:** `extends` `implements` `self` `super` `as`
+**Literals:** `true` `false` `null`
+**v0.2:** `async` `await` `spawn`
 
 ---
 
-## Quick Example
+## Quick Examples
 
+### Hello World
 ```viper
-module TodoApp
-
-value Todo {
-    id: Text
-    title: Text
-    done: Boolean
+func start() {
+    print("Hello, World!");
 }
+```
 
-entity TodoService {
-    todos: Map[Text, Todo] = Map()
-    
-    expose func add(title: Text) -> Todo {
-        let id = generateId()
-        let todo = Todo(id: id, title: title, done: false)
-        todos.set(id, todo)
-        return todo
-    }
-    
-    expose func complete(id: Text) -> Result[Todo] {
-        match todos.get(id) {
-            Some(todo) => {
-                let updated = Todo(id: todo.id, title: todo.title, done: true)
-                todos.set(id, updated)
-                return Ok(updated)
-            }
-            None => Err(Error(code: "NOT_FOUND", message: "Todo not found"))
-        }
-    }
-    
-    expose func list() -> List[Todo] {
-        return todos.values()
+### FizzBuzz
+```viper
+func start() {
+    for (i in 1..=100) {
+        String out = if (i % 15 == 0) {
+            "FizzBuzz"
+        } else if (i % 3 == 0) {
+            "Fizz"
+        } else if (i % 5 == 0) {
+            "Buzz"
+        } else {
+            "${i}"
+        };
+        print(out);
     }
 }
+```
 
-func main() {
-    let service = TodoService()
-    
-    service.add("Learn ViperLang")
-    service.add("Build something cool")
-    
-    for todo in service.list() {
-        let status = todo.done ? "✓" : " "
-        print("[${status}] ${todo.title}")
+### Fibonacci
+```viper
+func fib(n: Integer) -> Integer {
+    if (n <= 1) {
+        return n;
+    }
+    return fib(n - 1) + fib(n - 2);
+}
+
+func start() {
+    for (i in 0..10) {
+        print(fib(i));
     }
 }
 ```
 
 ---
 
-**Status:** v0.1 Final
-
-**Learn in an hour. Master in a day. Build anything.**
+**Version:** v0.1 Final
