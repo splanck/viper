@@ -3,26 +3,26 @@ module Frogger;
 import "./entities";
 
 // Game constants
-var GAME_WIDTH = 70;
-var GAME_HEIGHT = 24;
-var HOME_ROW = 2;
-var RIVER_START = 4;
-var RIVER_END = 8;
-var MEDIAN_ROW = 10;
-var ROAD_START = 12;
-var ROAD_END = 16;
-var START_ROW = 18;
+Integer GAME_WIDTH = 70;
+Integer GAME_HEIGHT = 24;
+Integer HOME_ROW = 2;
+Integer RIVER_START = 4;
+Integer RIVER_END = 8;
+Integer MEDIAN_ROW = 10;
+Integer ROAD_START = 12;
+Integer ROAD_END = 16;
+Integer START_ROW = 18;
 
 // Game state
-var score = 0;
-var gameRunning = 1;
-var homesFilledCount = 0;
+Integer score = 0;
+Integer gameRunning = 1;
+Integer homesFilledCount = 0;
 
 // Game objects
-var frog: Frog;
-var vehicles: List[Vehicle];
-var platforms: List[Platform];
-var homes: List[Home];
+Frog frog;
+List vehicles;
+List platforms;
+List homes;
 
 func initGame() {
     score = 0;
@@ -37,39 +37,39 @@ func initGame() {
     vehicles = new List[Vehicle]();
 
     // Lane 1: Cars going right (row 12)
-    var v0 = new Vehicle();
+    Vehicle v0 = new Vehicle();
     v0.init(12, 5, 1, 1, 4);
     vehicles.add(v0);
-    var v1 = new Vehicle();
+    Vehicle v1 = new Vehicle();
     v1.init(12, 35, 1, 1, 4);
     vehicles.add(v1);
 
     // Lane 2: Trucks going left (row 13)
-    var v2 = new Vehicle();
+    Vehicle v2 = new Vehicle();
     v2.init(13, 15, 1, 0 - 1, 6);
     vehicles.add(v2);
-    var v3 = new Vehicle();
+    Vehicle v3 = new Vehicle();
     v3.init(13, 50, 1, 0 - 1, 6);
     vehicles.add(v3);
 
     // Lane 3: Fast cars going right (row 14)
-    var v4 = new Vehicle();
+    Vehicle v4 = new Vehicle();
     v4.init(14, 10, 2, 1, 4);
     vehicles.add(v4);
-    var v5 = new Vehicle();
+    Vehicle v5 = new Vehicle();
     v5.init(14, 45, 2, 1, 4);
     vehicles.add(v5);
 
     // Lane 4: Trucks going left (row 15)
-    var v6 = new Vehicle();
+    Vehicle v6 = new Vehicle();
     v6.init(15, 20, 1, 0 - 1, 6);
     vehicles.add(v6);
 
     // Lane 5: Fast cars going right (row 16)
-    var v7 = new Vehicle();
+    Vehicle v7 = new Vehicle();
     v7.init(16, 8, 2, 1, 4);
     vehicles.add(v7);
-    var v8 = new Vehicle();
+    Vehicle v8 = new Vehicle();
     v8.init(16, 40, 2, 1, 4);
     vehicles.add(v8);
 
@@ -77,60 +77,60 @@ func initGame() {
     platforms = new List[Platform]();
 
     // Row 4: Logs going right
-    var p0 = new Platform();
+    Platform p0 = new Platform();
     p0.init(4, 5, 1, 1, 8, 0);
     platforms.add(p0);
-    var p1 = new Platform();
+    Platform p1 = new Platform();
     p1.init(4, 40, 1, 1, 8, 0);
     platforms.add(p1);
 
     // Row 5: Turtles going left
-    var p2 = new Platform();
+    Platform p2 = new Platform();
     p2.init(5, 15, 1, 0 - 1, 5, 1);
     platforms.add(p2);
-    var p3 = new Platform();
+    Platform p3 = new Platform();
     p3.init(5, 50, 1, 0 - 1, 5, 1);
     platforms.add(p3);
 
     // Row 6: Long logs going right
-    var p4 = new Platform();
+    Platform p4 = new Platform();
     p4.init(6, 10, 1, 1, 12, 0);
     platforms.add(p4);
-    var p5 = new Platform();
+    Platform p5 = new Platform();
     p5.init(6, 50, 1, 1, 10, 0);
     platforms.add(p5);
 
     // Row 7: Turtles going left
-    var p6 = new Platform();
+    Platform p6 = new Platform();
     p6.init(7, 20, 1, 0 - 1, 4, 1);
     platforms.add(p6);
-    var p7 = new Platform();
+    Platform p7 = new Platform();
     p7.init(7, 55, 1, 0 - 1, 4, 1);
     platforms.add(p7);
 
     // Row 8: Logs going right
-    var p8 = new Platform();
+    Platform p8 = new Platform();
     p8.init(8, 12, 2, 1, 7, 0);
     platforms.add(p8);
-    var p9 = new Platform();
+    Platform p9 = new Platform();
     p9.init(8, 48, 2, 1, 7, 0);
     platforms.add(p9);
 
     // Create homes list
     homes = new List[Home]();
-    var h0 = new Home();
+    Home h0 = new Home();
     h0.init(8);
     homes.add(h0);
-    var h1 = new Home();
+    Home h1 = new Home();
     h1.init(20);
     homes.add(h1);
-    var h2 = new Home();
+    Home h2 = new Home();
     h2.init(32);
     homes.add(h2);
-    var h3 = new Home();
+    Home h3 = new Home();
     h3.init(44);
     homes.add(h3);
-    var h4 = new Home();
+    Home h4 = new Home();
     h4.init(56);
     homes.add(h4);
 }
@@ -156,7 +156,7 @@ func drawBoard() {
     Viper.Terminal.SayInt(score);
 
     // Draw homes row (blue water)
-    var i = 1;
+    Integer i = 1;
     while i <= GAME_WIDTH {
         Viper.Terminal.SetPosition(HOME_ROW, i);
         Viper.Terminal.SetColor(4);
@@ -165,10 +165,10 @@ func drawBoard() {
     }
 
     // Draw each home
-    var hi = 0;
+    Integer hi = 0;
     while hi < 5 {
-        var home = homes.get(hi);
-        var homeCol = home.getCol();
+        Home home = homes.get(hi);
+        Integer homeCol = home.getCol();
         Viper.Terminal.SetPosition(HOME_ROW, homeCol - 1);
         if home.isFilled() == 1 {
             Viper.Terminal.SetColor(2);
@@ -181,9 +181,9 @@ func drawBoard() {
     }
 
     // Draw river section (blue water)
-    var ri = RIVER_START;
+    Integer ri = RIVER_START;
     while ri <= RIVER_END {
-        var rj = 1;
+        Integer rj = 1;
         while rj <= GAME_WIDTH {
             Viper.Terminal.SetPosition(ri, rj);
             Viper.Terminal.SetColor(4);
@@ -194,15 +194,15 @@ func drawBoard() {
     }
 
     // Draw platforms (logs and turtles)
-    var pi = 0;
+    Integer pi = 0;
     while pi < 10 {
-        var plat = platforms.get(pi);
-        var platRow = plat.getRow();
-        var platCol = plat.getCol();
-        var platWidth = plat.getWidth();
-        var pj = 0;
+        Platform plat = platforms.get(pi);
+        Integer platRow = plat.getRow();
+        Integer platCol = plat.getCol();
+        Integer platWidth = plat.getWidth();
+        Integer pj = 0;
         while pj < platWidth {
-            var drawCol = platCol + pj;
+            Integer drawCol = platCol + pj;
             if drawCol >= 1 {
                 if drawCol <= GAME_WIDTH {
                     Viper.Terminal.SetPosition(platRow, drawCol);
@@ -221,7 +221,7 @@ func drawBoard() {
     }
 
     // Draw median (safe zone)
-    var mi = 1;
+    Integer mi = 1;
     while mi <= GAME_WIDTH {
         Viper.Terminal.SetPosition(MEDIAN_ROW, mi);
         Viper.Terminal.SetColor(2);
@@ -232,9 +232,9 @@ func drawBoard() {
     Viper.Terminal.Print("SAFE ZONE");
 
     // Draw road section
-    var roi = ROAD_START;
+    Integer roi = ROAD_START;
     while roi <= ROAD_END {
-        var roj = 1;
+        Integer roj = 1;
         while roj <= GAME_WIDTH {
             Viper.Terminal.SetPosition(roi, roj);
             Viper.Terminal.SetColor(7);
@@ -245,15 +245,15 @@ func drawBoard() {
     }
 
     // Draw vehicles
-    var vi = 0;
+    Integer vi = 0;
     while vi < 9 {
-        var veh = vehicles.get(vi);
-        var vehRow = veh.getRow();
-        var vehCol = veh.getCol();
-        var vehWidth = veh.getWidth();
-        var vj = 0;
+        Vehicle veh = vehicles.get(vi);
+        Integer vehRow = veh.getRow();
+        Integer vehCol = veh.getCol();
+        Integer vehWidth = veh.getWidth();
+        Integer vj = 0;
         while vj < vehWidth {
-            var drawCol = vehCol + vj;
+            Integer drawCol = vehCol + vj;
             if drawCol >= 1 {
                 if drawCol <= GAME_WIDTH {
                     Viper.Terminal.SetPosition(vehRow, drawCol);
@@ -271,7 +271,7 @@ func drawBoard() {
     }
 
     // Draw start area
-    var si = 1;
+    Integer si = 1;
     while si <= GAME_WIDTH {
         Viper.Terminal.SetPosition(START_ROW, si);
         Viper.Terminal.SetColor(2);
@@ -304,36 +304,36 @@ func isInRiver(row: Integer) -> Integer {
 }
 
 func updateGame() {
-    var frogRow = frog.getRow();
-    var frogCol = frog.getCol();
+    Integer frogRow = frog.getRow();
+    Integer frogCol = frog.getCol();
 
     // Move all vehicles
-    var vi = 0;
+    Integer vi = 0;
     while vi < 9 {
-        var veh = vehicles.get(vi);
+        Vehicle veh = vehicles.get(vi);
         veh.move();
         vi = vi + 1;
     }
 
     // Move all platforms
-    var pi = 0;
+    Integer pi = 0;
     while pi < 10 {
-        var plat = platforms.get(pi);
+        Platform plat = platforms.get(pi);
         plat.move();
         pi = pi + 1;
     }
 
     // Check if frog is in river
     if isInRiver(frogRow) == 1 {
-        var onPlatformFlag = 0;
+        Integer onPlatformFlag = 0;
 
         // Check each platform
-        var pci = 0;
+        Integer pci = 0;
         while pci < 10 {
-            var plat = platforms.get(pci);
+            Platform plat = platforms.get(pci);
             if plat.checkOnPlatform(frogRow, frogCol) == 1 {
                 onPlatformFlag = 1;
-                var platSpeed = plat.getSpeed() * plat.getDirection();
+                Integer platSpeed = plat.getSpeed() * plat.getDirection();
                 frog.setOnPlatform(platSpeed);
                 frog.updateOnPlatform();
             }
@@ -359,9 +359,9 @@ func updateGame() {
     // Check road collisions
     if frogRow >= ROAD_START {
         if frogRow <= ROAD_END {
-            var vci = 0;
+            Integer vci = 0;
             while vci < 9 {
-                var veh = vehicles.get(vci);
+                Vehicle veh = vehicles.get(vci);
                 if veh.checkCollision(frogRow, frogCol) == 1 {
                     frog.die();
                     if frog.isAlive() == 1 {
@@ -379,12 +379,12 @@ func updateGame() {
 
     // Check if frog reached a home
     if frogRow == HOME_ROW {
-        var foundHome = 0;
+        Integer foundHome = 0;
 
-        var hci = 0;
+        Integer hci = 0;
         while hci < 5 {
-            var home = homes.get(hci);
-            var homeCol = home.getCol();
+            Home home = homes.get(hci);
+            Integer homeCol = home.getCol();
             if frogCol >= homeCol - 1 {
                 if frogCol <= homeCol + 1 {
                     if home.isFilled() == 0 {
@@ -425,7 +425,7 @@ func updateGame() {
 }
 
 func handleInput() {
-    var key = Viper.Terminal.GetKeyTimeout(50);
+    String key = Viper.Terminal.GetKeyTimeout(50);
     if key == "w" {
         frog.moveUp();
     }

@@ -401,14 +401,24 @@ class Parser
     /// Creates a new scope for local variables.
     StmtPtr parseBlock();
 
-    /// @brief Parse a variable declaration: var x = 1; or final x = 1;
+    /// @brief Parse a variable declaration: var x = 1; or final x = 1; (legacy)
     /// @return The parsed VarStmt.
     ///
-    /// @details Handles:
+    /// @details Handles legacy syntax:
     /// - Mutable: `var x = 1;`
     /// - Immutable: `final x = 1;`
     /// - With type: `var x: Integer = 1;`
+    /// @deprecated Use parseJavaStyleVarDecl() for new code.
     StmtPtr parseVarDecl();
+
+    /// @brief Parse a Java-style variable declaration: Type name = expr;
+    /// @return The parsed VarStmt.
+    ///
+    /// @details Handles Java-style declarations:
+    /// - Simple: `Integer x = 1;`
+    /// - Generic: `List[String] items = ...;`
+    /// - Uninitialized: `Integer x;`
+    StmtPtr parseJavaStyleVarDecl();
 
     /// @brief Parse an if statement: if (cond) { } else { }
     /// @return The parsed IfStmt.
@@ -499,9 +509,18 @@ class Parser
     /// @return The parsed InterfaceDecl.
     DeclPtr parseInterfaceDecl();
 
-    /// @brief Parse a global variable declaration: var x = 1;
+    /// @brief Parse a global variable declaration: var x = 1; (legacy)
     /// @return The parsed GlobalVarDecl.
+    /// @deprecated Use parseJavaStyleGlobalVarDecl() for new code.
     DeclPtr parseGlobalVarDecl();
+
+    /// @brief Parse a Java-style global variable declaration: Type name = expr;
+    /// @return The parsed GlobalVarDecl.
+    ///
+    /// @details Handles Java-style declarations:
+    /// - Simple: `Integer x = 1;`
+    /// - Uninitialized: `Integer x;`
+    DeclPtr parseJavaStyleGlobalVarDecl();
 
     /// @brief Parse an import declaration: import Foo.Bar;
     /// @return The parsed ImportDecl.

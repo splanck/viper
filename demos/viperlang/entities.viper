@@ -48,7 +48,7 @@ entity Frog {
 
     func updateOnPlatform() {
         if onPlatform == 1 {
-            var newCol = col + platformSpeed;
+            Integer newCol = col + platformSpeed;
             if newCol >= 1 {
                 if newCol <= 70 {
                     col = newCol;
@@ -109,7 +109,7 @@ entity Vehicle {
     }
 
     func move() {
-        var newCol = col + speed * direction;
+        Integer newCol = col + speed * direction;
         if newCol > 75 {
             newCol = 1 - width;
         }
@@ -121,7 +121,7 @@ entity Vehicle {
 
     func checkCollision(frogRow: Integer, frogCol: Integer) -> Integer {
         if frogRow == row {
-            var i = 0;
+            Integer i = 0;
             while i < width {
                 if frogCol == col + i {
                     return 1;
@@ -158,7 +158,7 @@ entity Platform {
     }
 
     func move() {
-        var newCol = col + speed * direction;
+        Integer newCol = col + speed * direction;
         if newCol > 75 {
             newCol = 1 - width;
         }
@@ -170,7 +170,7 @@ entity Platform {
 
     func checkOnPlatform(frogRow: Integer, frogCol: Integer) -> Integer {
         if frogRow == row {
-            var i = 0;
+            Integer i = 0;
             while i < width {
                 if frogCol == col + i {
                     return 1;

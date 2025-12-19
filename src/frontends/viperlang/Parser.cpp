@@ -996,10 +996,31 @@ StmtPtr Parser::parseStatement()
         return parseBlock();
     }
 
-    // Variable declaration
-    if (check(TokenKind::KwVar) || check(TokenKind::KwFinal))
+    // Java-style variable declaration: Type name = expr;
+    // Detect by checking for Identifier followed by Identifier (or ? for optionals)
+    // This handles: Integer x = 5; Person? p = ...; List[T] items = ...;
+    if (check(TokenKind::Identifier))
     {
-        return parseVarDecl();
+        // Look ahead to see if this is a Java-style declaration
+        const Token &next = lexer_.peek();
+        if (next.kind == TokenKind::Identifier)
+        {
+            // Simple type followed by variable name: Integer x = 5;
+            return parseJavaStyleVarDecl();
+        }
+        else if (next.kind == TokenKind::Question)
+        {
+            // Optional type: Person? p = ...;
+            // Type names are typically capitalized, so Person? identifier is a declaration
+            // Try parsing as Java-style; parseType will consume Type?, then we expect identifier
+            return parseJavaStyleVarDecl();
+        }
+        else if (next.kind == TokenKind::LBracket)
+        {
+            // Generic type: List[T] x = ...;
+            // Parse as Java-style declaration
+            return parseJavaStyleVarDecl();
+        }
     }
 
     // If statement
@@ -1126,6 +1147,41 @@ StmtPtr Parser::parseVarDecl()
 
     return std::make_unique<VarStmt>(
         loc, std::move(name), std::move(type), std::move(init), isFinal);
+}
+
+StmtPtr Parser::parseJavaStyleVarDecl()
+{
+    SourceLoc loc = current_.loc;
+
+    // Parse the type (e.g., Integer, List[String], etc.)
+    TypePtr type = parseType();
+    if (!type)
+        return nullptr;
+
+    // Now we expect a variable name
+    if (!check(TokenKind::Identifier))
+    {
+        error("expected variable name after type");
+        return nullptr;
+    }
+    std::string name = current_.text;
+    advance();
+
+    // Optional initializer (= expr)
+    ExprPtr init;
+    if (match(TokenKind::Equal))
+    {
+        init = parseExpression();
+        if (!init)
+            return nullptr;
+    }
+
+    if (!expect(TokenKind::Semicolon, ";"))
+        return nullptr;
+
+    // Java-style declarations are mutable by default (isFinal = false)
+    return std::make_unique<VarStmt>(
+        loc, std::move(name), std::move(type), std::move(init), false);
 }
 
 StmtPtr Parser::parseIfStmt()
@@ -1578,9 +1634,16 @@ DeclPtr Parser::parseDeclaration()
         return parseInterfaceDecl();
     }
     // Module-level variable declarations (global variables)
-    if (check(TokenKind::KwVar) || check(TokenKind::KwFinal))
+    // Java-style: Integer x = 5; or legacy: var x = 5;
+    if (check(TokenKind::Identifier))
     {
-        return parseGlobalVarDecl();
+        // Look ahead to see if this is a Java-style declaration
+        const Token &next = lexer_.peek();
+        if (next.kind == TokenKind::Identifier)
+        {
+            // Simple type followed by variable name: Integer x = 5;
+            return parseJavaStyleGlobalVarDecl();
+        }
     }
 
     error("expected declaration");
@@ -1933,6 +1996,42 @@ DeclPtr Parser::parseGlobalVarDecl()
     }
 
     // Optional initializer: var x = 42
+    if (match(TokenKind::Equal))
+    {
+        decl->initializer = parseExpression();
+        if (!decl->initializer)
+            return nullptr;
+    }
+
+    if (!expect(TokenKind::Semicolon, ";"))
+        return nullptr;
+
+    return decl;
+}
+
+DeclPtr Parser::parseJavaStyleGlobalVarDecl()
+{
+    SourceLoc loc = current_.loc;
+
+    // Parse the type (e.g., Integer, List, etc.)
+    TypePtr type = parseType();
+    if (!type)
+        return nullptr;
+
+    // Now we expect a variable name
+    if (!check(TokenKind::Identifier))
+    {
+        error("expected variable name after type");
+        return nullptr;
+    }
+    std::string name = current_.text;
+    advance();
+
+    auto decl = std::make_unique<GlobalVarDecl>(loc, std::move(name));
+    decl->type = std::move(type);
+    decl->isFinal = false; // Java-style declarations are mutable by default
+
+    // Optional initializer: Integer x = 42
     if (match(TokenKind::Equal))
     {
         decl->initializer = parseExpression();

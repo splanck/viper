@@ -143,7 +143,7 @@ TEST(ViperLangCompilerTest, VariableDeclaration)
 module Test;
 
 func start() {
-    var x = 42;
+    Integer x = 42;
     Viper.Terminal.SayInt(x);
 }
 )";
@@ -230,7 +230,7 @@ TEST(ViperLangCompilerTest, WhileLoop)
 module Test;
 
 func start() {
-    var i = 0;
+    Integer i = 0;
     while (i < 10) {
         i = i + 1;
     }
@@ -309,7 +309,7 @@ TEST(ViperLangCompilerTest, Arithmetic)
 module Test;
 
 func start() {
-    var x = 1 + 2 * 3;
+    Integer x = 1 + 2 * 3;
     Viper.Terminal.SayInt(x);
 }
 )";
@@ -394,9 +394,9 @@ entity Person {
 }
 
 func start() {
-    var p = new Person(30, 100);
-    var age = p.age;
-    var method_age = p.getAge();
+    Person p = new Person(30, 100);
+    Integer age = p.age;
+    Integer method_age = p.getAge();
     Viper.Terminal.SayInt(age);
     Viper.Terminal.SayInt(method_age);
 }
@@ -450,14 +450,14 @@ entity Person {
 }
 
 func start() {
-    var p1: Person? = new Person(30);
-    var p2: Person? = null;
+    Person? p1 = new Person(30);
+    Person? p2 = null;
 
-    var result1 = p1 ?? new Person(99);
-    var result2 = p2 ?? new Person(88);
+    Person result1 = p1 ?? new Person(99);
+    Person result2 = p2 ?? new Person(88);
 
-    var age1 = result1.age;
-    var age2 = result2.age;
+    Integer age1 = result1.age;
+    Integer age2 = result2.age;
 
     Viper.Terminal.SayInt(age1);
     Viper.Terminal.SayInt(age2);
@@ -508,7 +508,7 @@ TEST(ViperLangCompilerTest, ForInLoop)
 module Test;
 
 func start() {
-    var sum = 0;
+    Integer sum = 0;
     for (i in 0..5) {
         sum = sum + i;
     }

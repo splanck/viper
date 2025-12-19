@@ -43,27 +43,27 @@ ViperLang aims for five core principles:
 ViperLang programs are made of **modules** containing **types** and **functions**.
 
 ```viper
-module HelloWorld
+module HelloWorld;
 
 // Two kinds of types: values (copied) and entities (referenced)
 value Point {
-    x: Number
-    y: Number
+    Number x;
+    Number y;
 }
 
 entity User {
-    name: Text
-    email: Text
-    
+    Text name;
+    Text email;
+
     func greet() -> Text {
-        return "Hello, ${name}!"
+        return "Hello, ${name}!";
     }
 }
 
 // Async is built-in
 async func main() {
-    let user = User(name: "Alice", email: "alice@example.com")
-    print(user.greet())
+    User user = new User(name: "Alice", email: "alice@example.com");
+    Viper.Terminal.Say(user.greet());
 }
 ```
 
@@ -85,14 +85,14 @@ copy:
 
 ```viper
 value Color {
-    r: Integer  // 0-255
-    g: Integer
-    b: Integer
+    Integer r;  // 0-255
+    Integer g;
+    Integer b;
 }
 
-let red = Color(r: 255, g: 0, b: 0)
-var myColor = red  // Copies the value
-myColor.g = 128    // Only affects myColor; red unchanged
+Color red = Color(r: 255, g: 0, b: 0);
+Color myColor = red;  // Copies the value
+myColor.g = 128;      // Only affects myColor; red unchanged
 ```
 
 **Rule:** Cannot mutate temporaries or accessor returns (e.g., `getColor().r = 10` is illegal).
@@ -109,21 +109,21 @@ Entities are mutable objects with identity:
 
 ```viper
 entity Account {
-    hide id: Text    // Private field
-    balance: Decimal
-    
+    hide Text id;    // Private field
+    Decimal balance;
+
     func deposit(amount: Decimal) -> Result[Void] {
         if amount <= 0 {
-            return Error("Amount must be positive")
+            return Error("Amount must be positive");
         }
-        balance = balance + amount
-        return Ok()
+        balance = balance + amount;
+        return Ok();
     }
 }
 
-let account1 = Account(balance: 100)
-let account2 = account1  // Same object (reference)
-account2.deposit(50)?    // Both see balance of 150
+Account account1 = new Account(balance: 100);
+Account account2 = account1;  // Same object (reference)
+account2.deposit(50)?;        // Both see balance of 150
 ```
 
 Entities are ideal for:
@@ -138,22 +138,22 @@ Entities support single inheritance:
 
 ```viper
 entity Animal {
-    name: Text
-    
+    Text name;
+
     func speak() -> Text {
-        return "..."
+        return "...";
     }
 }
 
 entity Dog extends Animal {
-    breed: Text
-    
+    Text breed;
+
     override func speak() -> Text {  // 'override' required
-        return "Woof!"
+        return "Woof!";
     }
-    
+
     func describe() -> Text {
-        return "${name} is a ${breed}"
+        return "${name} is a ${breed}";
     }
 }
 ```
@@ -172,22 +172,22 @@ Interfaces define contracts that types must fulfill:
 
 ```viper
 interface Drawable {
-    func draw(canvas: Canvas)
-    
+    func draw(canvas: Canvas);
+
     // Default implementation
     func drawTwice(canvas: Canvas) {
-        draw(canvas)
-        draw(canvas)
+        draw(canvas);
+        draw(canvas);
     }
 }
 
 entity Button implements Drawable {
-    label: Text
-    position: Point
-    
+    Text label;
+    Point position;
+
     func draw(canvas: Canvas) {
-        canvas.drawRect(position)
-        canvas.drawText(label, position)
+        canvas.drawRect(position);
+        canvas.drawText(label, position);
     }
 }
 ```
@@ -205,28 +205,28 @@ Both values and entities can implement interfaces.
 - The `?` operator propagates both `Error` (from Result) and `None` (from Option)
 
 ```viper
-let maybe: Text? = null      // Same as: Option[Text] = None
-maybe = "Hello"               // Same as: Some("Hello")
+Text? maybe = null;           // Same as: Option[Text] = None
+maybe = "Hello";              // Same as: Some("Hello")
 
 // Pattern matching (preferred)
 match maybe {
-    Some(text) => print(text)
-    None => print("Nothing")
+    Some(text) => Viper.Terminal.Say(text);
+    None => Viper.Terminal.Say("Nothing");
 }
 
-// If-let sugar
+// If-let sugar (future feature)
 if let text = maybe {
-    print(text)  // text is Text, not Text?
+    Viper.Terminal.Say(text);  // text is Text, not Text?
 }
 
 // Optional chaining and null coalescing
-let length = user?.address?.street?.length()  // Returns Integer?
-let name = user?.name ?? "Anonymous"          // Returns Text
+Integer? length = user?.address?.street?.length();  // Returns Integer?
+Text name = user?.name ?? "Anonymous";              // Returns Text
 
 // ? operator works with Option too
 func findName(id: Text) -> Option[Text] {
-    let user = findUser(id)?  // Returns None if findUser returns None
-    return Some(user.name)
+    User? user = findUser(id)?;  // Returns None if findUser returns None
+    return Some(user.name);
 }
 ```
 
@@ -239,17 +239,17 @@ Types and functions can be generic:
 value Option[T] = Some(T) | None
 
 entity List[T] {
-    hide items: Array[T]
-    
+    hide Array[T] items;
+
     func add(item: T) {
-        items.append(item)
+        items.append(item);
     }
-    
+
     func get(index: Integer) -> Option[T] {
         if index >= 0 && index < items.length {
-            return Some(items[index])
+            return Some(items[index]);
         }
-        return None
+        return None;
     }
 }
 ```
@@ -267,20 +267,20 @@ value Result[T] = Ok(T) | Error(Text)
 
 func divide(a: Number, b: Number) -> Result[Number] {
     if b == 0 {
-        return Error("Division by zero")
+        return Error("Division by zero");
     }
-    return Ok(a / b)
+    return Ok(a / b);
 }
 
 // Match expressions return values
-let message = match divide(10, 2) {
-    Ok(value) => "Result: ${value}"
-    Error(msg) => "Error: ${msg}"
-}
+Text message = match divide(10, 2) {
+    Ok(value) => "Result: ${value}";
+    Error(msg) => "Error: ${msg}";
+};
 
 // Destructuring
-let Point(x, y) = getPoint()
-let (first, rest) = list.split()
+Point(x, y) = getPoint();
+(first, rest) = list.split();
 ```
 
 ### Conditionals
@@ -288,37 +288,37 @@ let (first, rest) = list.split()
 ```viper
 // Standard if/else
 if temperature > 30 {
-    turnOnAC()
+    turnOnAC();
 } else if temperature < 10 {
-    turnOnHeater()
+    turnOnHeater();
 } else {
-    maintainTemperature()
+    maintainTemperature();
 }
 
 // Conditional expressions
-let status = isOnline ? "Connected" : "Offline"
+Text status = isOnline ? "Connected" : "Offline";
 
-// If-let for optionals
+// If-let for optionals (future feature)
 if let user = findUser(id) {
-    print(user.name)  // user is User, not User?
+    Viper.Terminal.Say(user.name);  // user is User, not User?
 }
 
-// While-let
+// While-let (future feature)
 while let message = channel.receive() {
-    process(message)
+    process(message);
 }
 
 // Guard for early returns
 func process(data: Data?) -> Text {
     guard data != null else {
-        return "No data"
+        return "No data";
     }
-    
+
     guard data.isValid() else {
-        return "Invalid data"
+        return "Invalid data";
     }
-    
-    return processValid(data)
+
+    return processValid(data);
 }
 ```
 
@@ -327,29 +327,29 @@ func process(data: Data?) -> Text {
 ```viper
 // For each
 for item in collection {
-    process(item)
+    process(item);
 }
 
 // While
 while hasMore() {
-    let item = getNext()
+    Item item = getNext();
     if shouldSkip(item) {
-        continue
+        continue;
     }
     if isDone() {
-        break
+        break;
     }
-    handle(item)
+    handle(item);
 }
 
 // Range (half-open: includes start, excludes end)
 for i in 0..10 {
-    print(i)  // 0 through 9
+    Viper.Terminal.SayInt(i);  // 0 through 9
 }
 
 // Inclusive range
 for i in 0..=10 {
-    print(i)  // 0 through 10
+    Viper.Terminal.SayInt(i);  // 0 through 10
 }
 ```
 
@@ -363,27 +363,27 @@ for i in 0..=10 {
 value Result[T] = Ok(T) | Error(ErrorInfo)
 
 value ErrorInfo {
-    code: Text
-    message: Text
-    details: Map[Text, Any]?
+    Text code;
+    Text message;
+    Map[Text, Any]? details;
 }
 
 func readFile(path: Text) -> Result[Text] {
-    if !exists(path) {
+    if !Viper.IO.File.Exists(path) {
         return Error(ErrorInfo(
             code: "NOT_FOUND",
             message: "File not found: ${path}"
-        ))
+        ));
     }
-    
-    // Read file...
-    return Ok(contents)
+
+    Text contents = Viper.IO.File.ReadAllText(path);
+    return Ok(contents);
 }
 
 // Handle with pattern matching
 match readFile("data.txt") {
-    Ok(content) => process(content)
-    Error(e) => print("Failed: ${e.message}")
+    Ok(content) => process(content);
+    Error(e) => Viper.Terminal.Say("Failed: ${e.message}");
 }
 ```
 
@@ -394,17 +394,17 @@ The `?` operator works for both Result and Option:
 ```viper
 // With Result: propagates Error
 func processFile(path: Text) -> Result[Data] {
-    let content = readFile(path)?     // Returns Error if failed
-    let parsed = parseData(content)?  // Returns Error if failed
-    let validated = validate(parsed)? // Returns Error if failed
-    return Ok(validated)
+    Text content = readFile(path)?;     // Returns Error if failed
+    Data parsed = parseData(content)?;  // Returns Error if failed
+    Data validated = validate(parsed)?; // Returns Error if failed
+    return Ok(validated);
 }
 
 // With Option: propagates None
 func getUserEmail(id: Text) -> Option[Text] {
-    let user = findUser(id)?    // Returns None if not found
-    let profile = user.profile?  // Returns None if no profile
-    return Some(profile.email)
+    User? user = findUser(id)?;     // Returns None if not found
+    Profile? profile = user.profile?; // Returns None if no profile
+    return Some(profile.email);
 }
 ```
 
@@ -415,8 +415,8 @@ For truly unrecoverable errors (programmer errors, violated invariants):
 ```viper
 func getUser(id: Text) -> User {
     match database.find(id) {
-        Some(user) => user
-        None => panic("User ${id} must exist")  // Crashes program
+        Some(user) => user;
+        None => panic("User ${id} must exist");  // Crashes program
     }
 }
 ```
@@ -429,31 +429,34 @@ func getUser(id: Text) -> User {
 
 ### Tasks and Async/Await
 
+> **Note:** Async/await is a planned feature for future versions. The syntax is shown here
+> for reference. Currently, ViperLang programs run synchronously.
+
 `async { }` creates a `Task[T]`. Tasks are futures that can be awaited:
 
 ```viper
-async func fetchUser(id: Text) -> User {
-    let response = await http.get("/users/${id}")
-    return User.fromJson(response.body)
+async func loadData(path: Text) -> Text {
+    // Future: async file I/O
+    return Viper.IO.File.ReadAllText(path);
 }
 
 async func main() {
     // Sequential
-    let user = await fetchUser("123")
-    let posts = await fetchPosts(user.id)
-    
+    Text data = await loadData("config.txt");
+    Text processed = await processData(data);
+
     // Parallel with all() - fails fast on first error
-    let [user, config] = await all([
-        fetchUser("123"),
-        fetchConfig()
-    ])
-    
+    [Text config, Text users] = await all([
+        loadData("config.txt"),
+        loadData("users.txt")
+    ]);
+
     // Create task directly
-    let task: Task[User] = async {
-        return fetchUser("123")
-    }
-    
-    let user = await task
+    Task[Text] task = async {
+        return loadData("data.txt");
+    };
+
+    Text result = await task;
 }
 ```
 
@@ -469,23 +472,23 @@ async func main() {
 Channels provide typed communication between tasks:
 
 ```viper
-let channel = Channel[Message](capacity: 10)
+Channel[Message] channel = new Channel[Message](10);
 
 // Producer
 async {
     for i in 0..100 {
-        match channel.send(Message(i)) {
-            Ok => continue
-            Error(Closed) => break
+        match channel.send(new Message(i)) {
+            Ok => continue;
+            Error(Closed) => break;
         }
     }
-    channel.close()
+    channel.close();
 }
 
 // Consumer
 async {
     while let msg = channel.receive() {  // Returns None when closed
-        process(msg)
+        process(msg);
     }
 }
 ```
@@ -503,23 +506,23 @@ Tasks have parent-child relationships:
 
 ```viper
 async func processItems(items: List[Item]) -> List[Result] {
-    let tasks = []
-    
+    List tasks = new List();
+
     for item in items {
         // Child tasks
         tasks.add(async {
-            return processItem(item)
-        })
+            return processItem(item);
+        });
     }
-    
+
     // Wait for all children
-    return await all(tasks)
+    return await all(tasks);
 }
 
 // Cancelling parent cancels children
-let task = async { processItems(items) }
+Task task = async { processItems(items); };
 if timeout {
-    task.cancel()  // All child tasks cancelled
+    task.cancel();  // All child tasks cancelled
 }
 ```
 
@@ -541,18 +544,18 @@ Break cycles with weak references:
 
 ```viper
 entity Node {
-    value: Any
-    children: List[Node]
-    weak parent: Node?  // Weak reference breaks cycle
+    Any value;
+    List[Node] children;
+    weak Node? parent;  // Weak reference breaks cycle
 }
 
 entity Delegate {
-    weak owner: Controller?  // Prevent retain cycles
+    weak Controller? owner;  // Prevent retain cycles
 }
 
 // Weak references return optionals
-if let parent = node.parent {
-    parent.updateChild(node)
+if node.parent != null {
+    node.parent.updateChild(node);
 }
 ```
 
@@ -571,11 +574,11 @@ if let parent = node.parent {
 Every file declares its module:
 
 ```viper
-module MyApp.Services.UserService
+module MyApp.Services.UserService;
 
-import MyApp.Models.User
-import MyApp.Data.Database as DB
-import Viper.Http
+import MyApp.Models.User;
+import MyApp.Data.Database as DB;
+import Viper.IO.File;
 
 // Module contents...
 ```
@@ -587,13 +590,13 @@ import Viper.Http
 ```viper
 entity UserService {
     // Private by default
-    database: DB.Connection
-    
+    DB.Connection database;
+
     // Explicitly public
     expose func getUser(id: Text) -> User {
-        return database.find(id)
+        return database.find(id);
     }
-    
+
     // Private helper
     func validateId(id: Text) {
         // ...
@@ -613,16 +616,20 @@ entity UserService {
 - `collection.get(i)` — Returns `Option[T]` (safe access)
 
 ```viper
-let list = [1, 2, 3]
+List list = new List();
+list.add(1);
+list.add(2);
+list.add(3);
 
-// Fast path - panics if out of bounds
-let first = list[0]  // 1
-let bad = list[10]   // panic!
+// Get element
+Integer first = list.get(0);  // 1
 
-// Safe path - returns Option
-match list.get(10) {
-    Some(val) => print(val)
-    None => print("No element at index 10")
+// Safe access
+if list.get_Count() > 10 {
+    Integer val = list.get(10);
+    Viper.Terminal.SayInt(val);
+} else {
+    Viper.Terminal.Say("No element at index 10");
 }
 ```
 
@@ -632,20 +639,72 @@ This matches the philosophy: panics for programmer errors, Result/Option for exp
 
 ## Standard Library
 
-Built-in modules for modern development:
+ViperLang uses the Viper.* runtime library for all standard functionality. Built-in modules:
 
 ```viper
-import Viper.Http      // HTTP client/server
-import Viper.Json      // JSON parsing
-import Viper.Test      // Testing framework
-import Viper.Async     // Async utilities
-import Viper.IO        // File I/O
-import Viper.Crypto    // Cryptography
-import Viper.Time      // Date/time handling
-import Viper.Process   // Run external commands
+// Collections
+import Viper.Collections.List    // Dynamic arrays
+import Viper.Collections.Map     // Key-value dictionaries
+import Viper.Collections.Seq     // Versatile sequences
+import Viper.Collections.Stack   // LIFO stack
+import Viper.Collections.Queue   // FIFO queue
+import Viper.Collections.Bag     // String sets
+import Viper.Collections.TreeMap // Ordered maps
+import Viper.Collections.Bytes   // Byte arrays
+
+// I/O
+import Viper.IO.File        // File operations (ReadAllText, WriteAllText, etc.)
+import Viper.IO.Dir         // Directory operations
+import Viper.IO.Path        // Path manipulation
+import Viper.IO.BinFile     // Binary file I/O
+import Viper.IO.LineReader  // Text file reading
+import Viper.IO.LineWriter  // Text file writing
+
+// Terminal & Environment
+import Viper.Terminal       // Console I/O (Print, ReadLine, GetKey, etc.)
+import Viper.Environment    // Args, env vars, exit
+
+// Text & Strings
+import Viper.String         // String operations (Split, Replace, Trim, etc.)
+import Viper.Text.Codec     // Base64, Hex, URL encoding
+import Viper.Text.Csv       // CSV parsing/formatting
+import Viper.Text.StringBuilder // Efficient string building
+import Viper.Text.Guid      // GUID generation
+import Viper.Convert        // Type conversions
+import Viper.Fmt            // Number formatting
+
+// Math & Random
+import Viper.Math           // Math functions (Sin, Cos, Sqrt, etc.)
+import Viper.Random         // Random number generation
+import Viper.Vec2           // 2D vector math
+import Viper.Vec3           // 3D vector math
+import Viper.Bits           // Bit manipulation
+
+// Time & Diagnostics
+import Viper.DateTime       // Date/time operations
+import Viper.Time.Clock     // Timing and sleep
+import Viper.Time.Countdown // Countdown timers
+import Viper.Diagnostics.Stopwatch // Performance timing
+
+// Crypto & Security
+import Viper.Crypto.Hash    // MD5, SHA1, SHA256, CRC32
+
+// System
+import Viper.Exec           // Run external commands
+import Viper.Machine        // System info (OS, CPU, memory)
+import Viper.Log            // Logging
+
+// Threading (when needed)
+import Viper.Threads.Thread  // Thread creation
+import Viper.Threads.Monitor // Synchronization
+
+// Graphics (optional)
+import Viper.Graphics.Canvas // 2D graphics window
+import Viper.Graphics.Color  // Color utilities
+import Viper.Graphics.Pixels // Pixel buffer
 ```
 
-Legacy protocols (XML, SOAP, etc.) are available as separate packages, not in core.
+All standard library access goes through the Viper.* namespace.
 
 ---
 
@@ -668,7 +727,7 @@ sum_type = "value" name [generics] "=" variant ("|" variant)*
 variant = name ["(" field_list ")"]
 
 // Members
-field = [visibility] name ":" type
+field = [visibility] type name ";"
 member = field | method
 method = [visibility] ["override"] ["async"] "func" name [generics] params ["->" type] block?
 params = "(" [param ("," param)*] ")"
@@ -682,9 +741,8 @@ extends = "extends" type
 implements = "implements" type ("," type)*
 
 // Statements
-statement = let | var | assign | if | if_let | while | while_let | for | match | return | guard | expr
-let = "let" pattern "=" expr
-var = "var" name [":" type] "=" expr
+statement = var_decl | assign | if | if_let | while | while_let | for | match | return | guard | expr
+var_decl = type name ["=" expr] ";"
 assign = lvalue "=" expr
 if = "if" expr block ["else" (if | block)]
 if_let = "if" "let" pattern "=" expr block ["else" block]
@@ -751,25 +809,25 @@ name = letter (letter | digit | "_")*
 Built-in testing with simple syntax:
 
 ```viper
-module UserTests
+module UserTests;
 
-import Viper.Test
+import Viper.Test;
 
 test "user creation" {
-    let user = User(name: "Alice", email: "alice@example.com")
-    assert user.name == "Alice"
-    assert user.email == "alice@example.com"
+    User user = new User(name: "Alice", email: "alice@example.com");
+    assert user.name == "Alice";
+    assert user.email == "alice@example.com";
 }
 
 test "async operations" async {
-    let result = await fetchData()
-    assert result != null
+    Text result = await fetchData();
+    assert result != null;
 }
 
 test "error cases" {
     match divide(10, 0) {
-        Ok(_) => fail("Should have failed")
-        Error(e) => assert e.code == "DIVISION_BY_ZERO"
+        Ok(_) => fail("Should have failed");
+        Error(e) => assert e.code == "DIVISION_BY_ZERO";
     }
 }
 ```
