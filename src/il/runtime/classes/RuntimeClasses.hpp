@@ -75,6 +75,9 @@ enum class RuntimeTypeId : std::size_t
     RTCLS_ThreadsMonitor,
     RTCLS_ThreadsSafeI64,
     RTCLS_ThreadsThread,
+    RTCLS_ThreadsGate,
+    RTCLS_ThreadsBarrier,
+    RTCLS_ThreadsRwLock,
 };
 
 /// @brief Describes a property on a runtime class.

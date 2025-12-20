@@ -604,6 +604,10 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_threads_thread PRIVATE ${VIPER_RUNTIME_TEST_LIBS} Threads::Threads)
     viper_add_ctest(test_rt_threads_thread test_rt_threads_thread)
 
+    viper_add_test(test_rt_threads_primitives ${VIPER_TESTS_DIR}/runtime/RTThreadsPrimitivesTests.cpp)
+    target_link_libraries(test_rt_threads_primitives PRIVATE ${VIPER_RUNTIME_TEST_LIBS} Threads::Threads)
+    viper_add_ctest(test_rt_threads_primitives test_rt_threads_primitives)
+
     viper_add_test(test_rt_string_size_clamp ${VIPER_TESTS_DIR}/runtime/RTStringSizeClampTests.cpp)
     target_link_libraries(test_rt_string_size_clamp PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_string_size_clamp test_rt_string_size_clamp)

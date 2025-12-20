@@ -57,6 +57,42 @@ extern "C"
     int64_t rt_safe_i64_add(void *obj, int64_t delta);
     int64_t rt_safe_i64_compare_exchange(void *obj, int64_t expected, int64_t desired);
 
+    // =========================================================================
+    // Viper.Threads.Gate
+    // =========================================================================
+
+    void *rt_gate_new(int64_t permits);
+    void rt_gate_enter(void *gate);
+    int8_t rt_gate_try_enter(void *gate);
+    int8_t rt_gate_try_enter_for(void *gate, int64_t ms);
+    void rt_gate_leave(void *gate);
+    void rt_gate_leave_many(void *gate, int64_t count);
+    int64_t rt_gate_get_permits(void *gate);
+
+    // =========================================================================
+    // Viper.Threads.Barrier
+    // =========================================================================
+
+    void *rt_barrier_new(int64_t parties);
+    int64_t rt_barrier_arrive(void *barrier);
+    void rt_barrier_reset(void *barrier);
+    int64_t rt_barrier_get_parties(void *barrier);
+    int64_t rt_barrier_get_waiting(void *barrier);
+
+    // =========================================================================
+    // Viper.Threads.RwLock
+    // =========================================================================
+
+    void *rt_rwlock_new(void);
+    void rt_rwlock_read_enter(void *lock);
+    void rt_rwlock_read_exit(void *lock);
+    void rt_rwlock_write_enter(void *lock);
+    void rt_rwlock_write_exit(void *lock);
+    int8_t rt_rwlock_try_read_enter(void *lock);
+    int8_t rt_rwlock_try_write_enter(void *lock);
+    int64_t rt_rwlock_get_readers(void *lock);
+    int8_t rt_rwlock_get_is_write_locked(void *lock);
+
 #ifdef __cplusplus
 }
 #endif

@@ -9,6 +9,9 @@
 - [Viper.Threads.Thread](#viperthreadsthread)
 - [Viper.Threads.Monitor](#viperthreadsmonitor)
 - [Viper.Threads.SafeI64](#viperthreadssafei64)
+- [Viper.Threads.Gate](#viperthreadsgate)
+- [Viper.Threads.Barrier](#viperthreadsbarrier)
+- [Viper.Threads.RwLock](#viperthreadsrwlock)
 
 ---
 
@@ -154,3 +157,131 @@ FIFO-serialized “safe variable” for shared counters and flags.
 - `SafeI64.Add: null object`
 - `SafeI64.CompareExchange: null object`
 
+---
+
+## Viper.Threads.Gate
+
+FIFO-fair permit gate (semaphore concept).
+
+**Type:** Instance class (requires `New(permits)`)
+
+### Constructor
+
+| Method         | Signature       | Description                            |
+|---------------|------------------|----------------------------------------|
+| `New(permits)` | `Gate(Integer)`  | Create a gate with `permits` available |
+
+### Methods
+
+| Method              | Signature            | Description                                          |
+|--------------------|----------------------|------------------------------------------------------|
+| `Enter()`          | `Void()`             | Acquire one permit (blocks, FIFO)                    |
+| `TryEnter()`       | `Boolean()`          | Try to acquire immediately                           |
+| `TryEnterFor(ms)`  | `Boolean(Integer)`   | Try to acquire with timeout in milliseconds          |
+| `Leave()`          | `Void()`             | Release one permit; wakes one waiter if present      |
+| `Leave(count)`     | `Void(Integer)`      | Release `count` permits; wakes up to `count` waiters |
+
+### Properties
+
+| Property    | Type                  | Description                    |
+|-------------|-----------------------|--------------------------------|
+| `Permits`   | `Integer` (read-only) | Current available permit count |
+
+### Notes
+
+- **FIFO:** Contended `Enter`/`TryEnterFor` acquisition is FIFO-fair.
+- **Timeout units:** milliseconds. `TryEnterFor` treats negative values as `0` (immediate).
+
+### Errors (Traps)
+
+- `Gate.New: permits cannot be negative`
+- `Gate.Enter: null object`
+- `Gate.TryEnter: null object`
+- `Gate.TryEnterFor: null object`
+- `Gate.Leave: null object`
+- `Gate.Leave: count cannot be negative`
+
+---
+
+## Viper.Threads.Barrier
+
+Reusable N-party barrier.
+
+**Type:** Instance class (requires `New(parties)`)
+
+### Constructor
+
+| Method         | Signature          | Description                                 |
+|---------------|--------------------|---------------------------------------------|
+| `New(parties)` | `Barrier(Integer)` | Create a barrier for `parties` participants |
+
+### Methods
+
+| Method      | Signature     | Description                                                  |
+|-------------|---------------|--------------------------------------------------------------|
+| `Arrive()`  | `Integer()`   | Arrive and wait; returns arrival index `0..Parties-1`        |
+| `Reset()`   | `Void()`      | Reset for reuse (traps if any threads are currently waiting) |
+
+### Properties
+
+| Property    | Type                  | Description              |
+|-------------|-----------------------|--------------------------|
+| `Parties`   | `Integer` (read-only) | Total parties required   |
+| `Waiting`   | `Integer` (read-only) | Number currently waiting |
+
+### Notes
+
+- When all parties arrive, all are released simultaneously and the barrier resets.
+
+### Errors (Traps)
+
+- `Barrier.New: parties must be >= 1`
+- `Barrier.Arrive: null object`
+- `Barrier.Reset: null object`
+- `Barrier.Reset: threads are waiting`
+
+---
+
+## Viper.Threads.RwLock
+
+Writer-preference reader-writer lock.
+
+**Type:** Instance class (requires `New()`)
+
+### Constructor
+
+| Method  | Signature  | Description       |
+|---------|------------|-------------------|
+| `New()` | `RwLock()` | Create a new lock |
+
+### Methods
+
+| Method             | Signature     | Description                                             |
+|-------------------|---------------|---------------------------------------------------------|
+| `ReadEnter()`      | `Void()`      | Acquire shared read lock (blocks on writer)             |
+| `ReadExit()`       | `Void()`      | Release read lock                                       |
+| `WriteEnter()`     | `Void()`      | Acquire exclusive write lock (blocks on readers/writer) |
+| `WriteExit()`      | `Void()`      | Release write lock                                      |
+| `TryReadEnter()`   | `Boolean()`   | Non-blocking read acquire                               |
+| `TryWriteEnter()`  | `Boolean()`   | Non-blocking write acquire                              |
+
+### Properties
+
+| Property         | Type                   | Description              |
+|------------------|------------------------|--------------------------|
+| `Readers`        | `Integer` (read-only)  | Count of active readers  |
+| `IsWriteLocked`  | `Boolean` (read-only)  | True if write lock held  |
+
+### Notes
+
+- **Writer preference:** new readers block while any writer is waiting.
+
+### Errors (Traps)
+
+- `RwLock.ReadEnter: null object`
+- `RwLock.ReadExit: null object`
+- `RwLock.ReadExit: exit without matching enter`
+- `RwLock.WriteEnter: null object`
+- `RwLock.WriteExit: null object`
+- `RwLock.WriteExit: exit without matching enter`
+- `RwLock.WriteExit: not owner`

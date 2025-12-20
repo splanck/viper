@@ -781,6 +781,30 @@ RT_FUNC(SafeI64Set,             rt_safe_i64_set,              "Viper.Threads.Saf
 RT_FUNC(SafeI64Add,             rt_safe_i64_add,              "Viper.Threads.SafeI64.Add",             "i64(obj,i64)")
 RT_FUNC(SafeI64CompareExchange, rt_safe_i64_compare_exchange, "Viper.Threads.SafeI64.CompareExchange", "i64(obj,i64,i64)")
 
+RT_FUNC(GateNew,         rt_gate_new,          "Viper.Threads.Gate.New",           "obj(i64)")
+RT_FUNC(GateEnter,       rt_gate_enter,        "Viper.Threads.Gate.Enter",         "void(obj)")
+RT_FUNC(GateTryEnter,    rt_gate_try_enter,    "Viper.Threads.Gate.TryEnter",      "i1(obj)")
+RT_FUNC(GateTryEnterFor, rt_gate_try_enter_for,"Viper.Threads.Gate.TryEnterFor",   "i1(obj,i64)")
+RT_FUNC(GateLeave,       rt_gate_leave,        "Viper.Threads.Gate.Leave",         "void(obj)")
+RT_FUNC(GateLeaveMany,   rt_gate_leave_many,   "Viper.Threads.Gate.LeaveMany",     "void(obj,i64)")
+RT_FUNC(GateGetPermits,  rt_gate_get_permits,  "Viper.Threads.Gate.get_Permits",   "i64(obj)")
+
+RT_FUNC(BarrierNew,        rt_barrier_new,         "Viper.Threads.Barrier.New",         "obj(i64)")
+RT_FUNC(BarrierArrive,     rt_barrier_arrive,      "Viper.Threads.Barrier.Arrive",      "i64(obj)")
+RT_FUNC(BarrierReset,      rt_barrier_reset,       "Viper.Threads.Barrier.Reset",       "void(obj)")
+RT_FUNC(BarrierGetParties, rt_barrier_get_parties, "Viper.Threads.Barrier.get_Parties", "i64(obj)")
+RT_FUNC(BarrierGetWaiting, rt_barrier_get_waiting, "Viper.Threads.Barrier.get_Waiting", "i64(obj)")
+
+RT_FUNC(RwLockNew,             rt_rwlock_new,                "Viper.Threads.RwLock.New",              "obj()")
+RT_FUNC(RwLockReadEnter,       rt_rwlock_read_enter,         "Viper.Threads.RwLock.ReadEnter",        "void(obj)")
+RT_FUNC(RwLockReadExit,        rt_rwlock_read_exit,          "Viper.Threads.RwLock.ReadExit",         "void(obj)")
+RT_FUNC(RwLockWriteEnter,      rt_rwlock_write_enter,        "Viper.Threads.RwLock.WriteEnter",       "void(obj)")
+RT_FUNC(RwLockWriteExit,       rt_rwlock_write_exit,         "Viper.Threads.RwLock.WriteExit",        "void(obj)")
+RT_FUNC(RwLockTryReadEnter,    rt_rwlock_try_read_enter,     "Viper.Threads.RwLock.TryReadEnter",     "i1(obj)")
+RT_FUNC(RwLockTryWriteEnter,   rt_rwlock_try_write_enter,    "Viper.Threads.RwLock.TryWriteEnter",    "i1(obj)")
+RT_FUNC(RwLockGetReaders,      rt_rwlock_get_readers,        "Viper.Threads.RwLock.get_Readers",      "i64(obj)")
+RT_FUNC(RwLockGetIsWriteLocked,rt_rwlock_get_is_write_locked,"Viper.Threads.RwLock.get_IsWriteLocked","i1(obj)")
+
 //=============================================================================
 // TIME - CLOCK
 //=============================================================================
@@ -1480,6 +1504,36 @@ RT_CLASS_BEGIN("Viper.Threads.SafeI64", ThreadsSafeI64, "obj", SafeI64New)
     RT_METHOD("Set", "void(i64)", SafeI64Set)
     RT_METHOD("Add", "i64(i64)", SafeI64Add)
     RT_METHOD("CompareExchange", "i64(i64,i64)", SafeI64CompareExchange)
+RT_CLASS_END()
+
+// Viper.Threads.Gate - FIFO-fair permit gate (semaphore)
+RT_CLASS_BEGIN("Viper.Threads.Gate", ThreadsGate, "obj", GateNew)
+    RT_PROP("Permits", "i64", GateGetPermits, none)
+    RT_METHOD("Enter", "void()", GateEnter)
+    RT_METHOD("TryEnter", "i1()", GateTryEnter)
+    RT_METHOD("TryEnterFor", "i1(i64)", GateTryEnterFor)
+    RT_METHOD("Leave", "void()", GateLeave)
+    RT_METHOD("Leave", "void(i64)", GateLeaveMany)
+RT_CLASS_END()
+
+// Viper.Threads.Barrier - reusable N-party barrier
+RT_CLASS_BEGIN("Viper.Threads.Barrier", ThreadsBarrier, "obj", BarrierNew)
+    RT_PROP("Parties", "i64", BarrierGetParties, none)
+    RT_PROP("Waiting", "i64", BarrierGetWaiting, none)
+    RT_METHOD("Arrive", "i64()", BarrierArrive)
+    RT_METHOD("Reset", "void()", BarrierReset)
+RT_CLASS_END()
+
+// Viper.Threads.RwLock - writer-preference reader-writer lock
+RT_CLASS_BEGIN("Viper.Threads.RwLock", ThreadsRwLock, "obj", RwLockNew)
+    RT_PROP("Readers", "i64", RwLockGetReaders, none)
+    RT_PROP("IsWriteLocked", "i1", RwLockGetIsWriteLocked, none)
+    RT_METHOD("ReadEnter", "void()", RwLockReadEnter)
+    RT_METHOD("ReadExit", "void()", RwLockReadExit)
+    RT_METHOD("WriteEnter", "void()", RwLockWriteEnter)
+    RT_METHOD("WriteExit", "void()", RwLockWriteExit)
+    RT_METHOD("TryReadEnter", "i1()", RwLockTryReadEnter)
+    RT_METHOD("TryWriteEnter", "i1()", RwLockTryWriteEnter)
 RT_CLASS_END()
 
 // Viper.Threads.Thread - OS thread handle

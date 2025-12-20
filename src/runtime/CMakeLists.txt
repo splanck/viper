@@ -96,6 +96,7 @@ set(RT_THREADS_SOURCES
         rt_monitor.c
         rt_safe_i64.c
         rt_threads.c
+        rt_threads_primitives.cpp
 )
 
 set(RT_PUBLIC_HEADERS
