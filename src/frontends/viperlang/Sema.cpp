@@ -176,7 +176,25 @@ bool Sema::analyze(ModuleDecl &module)
         }
     }
 
-    // Second pass: analyze declarations
+    // Second pass: register all method/field signatures (before analyzing bodies)
+    // This ensures cross-module method calls can be resolved regardless of declaration order
+    for (auto &decl : module.declarations)
+    {
+        if (auto *value = dynamic_cast<ValueDecl *>(decl.get()))
+        {
+            registerValueMembers(*value);
+        }
+        else if (auto *entity = dynamic_cast<EntityDecl *>(decl.get()))
+        {
+            registerEntityMembers(*entity);
+        }
+        else if (auto *iface = dynamic_cast<InterfaceDecl *>(decl.get()))
+        {
+            registerInterfaceMembers(*iface);
+        }
+    }
+
+    // Third pass: analyze declarations (bodies)
     for (auto &decl : module.declarations)
     {
         if (auto *func = dynamic_cast<FunctionDecl *>(decl.get()))
@@ -271,6 +289,103 @@ void Sema::analyzeValueDecl(ValueDecl &decl)
 
     popScope();
     currentSelfType_ = nullptr;
+}
+
+void Sema::registerEntityMembers(EntityDecl &decl)
+{
+    auto selfType = types::entity(decl.name);
+
+    // Register field types
+    for (auto &member : decl.members)
+    {
+        if (auto *field = dynamic_cast<FieldDecl *>(member.get()))
+        {
+            TypeRef fieldType = field->type ? resolveTypeNode(field->type.get()) : types::unknown();
+            std::string fieldKey = decl.name + "." + field->name;
+            fieldTypes_[fieldKey] = fieldType;
+            memberVisibility_[fieldKey] = field->visibility;
+        }
+    }
+
+    // Register method types (signatures only, not bodies)
+    for (auto &member : decl.members)
+    {
+        if (auto *method = dynamic_cast<MethodDecl *>(member.get()))
+        {
+            TypeRef returnType =
+                method->returnType ? resolveTypeNode(method->returnType.get()) : types::voidType();
+            std::vector<TypeRef> paramTypes;
+            for (const auto &param : method->params)
+            {
+                TypeRef paramType =
+                    param.type ? resolveTypeNode(param.type.get()) : types::unknown();
+                paramTypes.push_back(paramType);
+            }
+            std::string methodKey = decl.name + "." + method->name;
+            methodTypes_[methodKey] = types::function(paramTypes, returnType);
+            memberVisibility_[methodKey] = method->visibility;
+        }
+    }
+}
+
+void Sema::registerValueMembers(ValueDecl &decl)
+{
+    auto selfType = types::value(decl.name);
+
+    // Register field types
+    for (auto &member : decl.members)
+    {
+        if (auto *field = dynamic_cast<FieldDecl *>(member.get()))
+        {
+            TypeRef fieldType = field->type ? resolveTypeNode(field->type.get()) : types::unknown();
+            std::string fieldKey = decl.name + "." + field->name;
+            fieldTypes_[fieldKey] = fieldType;
+            memberVisibility_[fieldKey] = field->visibility;
+        }
+    }
+
+    // Register method types
+    for (auto &member : decl.members)
+    {
+        if (auto *method = dynamic_cast<MethodDecl *>(member.get()))
+        {
+            TypeRef returnType =
+                method->returnType ? resolveTypeNode(method->returnType.get()) : types::voidType();
+            std::vector<TypeRef> paramTypes;
+            for (const auto &param : method->params)
+            {
+                TypeRef paramType =
+                    param.type ? resolveTypeNode(param.type.get()) : types::unknown();
+                paramTypes.push_back(paramType);
+            }
+            std::string methodKey = decl.name + "." + method->name;
+            methodTypes_[methodKey] = types::function(paramTypes, returnType);
+            memberVisibility_[methodKey] = method->visibility;
+        }
+    }
+}
+
+void Sema::registerInterfaceMembers(InterfaceDecl &decl)
+{
+    // Register method types for interface
+    for (auto &member : decl.members)
+    {
+        if (auto *method = dynamic_cast<MethodDecl *>(member.get()))
+        {
+            TypeRef returnType =
+                method->returnType ? resolveTypeNode(method->returnType.get()) : types::voidType();
+            std::vector<TypeRef> paramTypes;
+            for (const auto &param : method->params)
+            {
+                TypeRef paramType =
+                    param.type ? resolveTypeNode(param.type.get()) : types::unknown();
+                paramTypes.push_back(paramType);
+            }
+            std::string methodKey = decl.name + "." + method->name;
+            methodTypes_[methodKey] = types::function(paramTypes, returnType);
+            memberVisibility_[methodKey] = method->visibility;
+        }
+    }
 }
 
 void Sema::analyzeEntityDecl(EntityDecl &decl)
@@ -1879,6 +1994,16 @@ void Sema::registerBuiltins()
     runtimeFunctions_["Viper.Terminal.BeginBatch"] = types::voidType();
     runtimeFunctions_["Viper.Terminal.EndBatch"] = types::voidType();
     runtimeFunctions_["Viper.Terminal.GetKeyTimeout"] = types::string();
+    runtimeFunctions_["Viper.Terminal.HasKey"] = types::boolean();
+    runtimeFunctions_["Viper.Terminal.ReadKey"] = types::string();
+    runtimeFunctions_["Viper.Terminal.Write"] = types::voidType();
+    runtimeFunctions_["Viper.Terminal.MoveCursor"] = types::voidType();
+    runtimeFunctions_["Viper.Terminal.SetForeground"] = types::voidType();
+    runtimeFunctions_["Viper.Terminal.SetBackground"] = types::voidType();
+    runtimeFunctions_["Viper.Terminal.ResetColors"] = types::voidType();
+    runtimeFunctions_["Viper.Terminal.HideCursor"] = types::voidType();
+    runtimeFunctions_["Viper.Terminal.ShowCursor"] = types::voidType();
+    runtimeFunctions_["Viper.Terminal.Sleep"] = types::voidType();
 
     // Register Viper.String runtime functions
     runtimeFunctions_["Viper.String.Concat"] = types::string();

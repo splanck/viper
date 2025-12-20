@@ -166,6 +166,40 @@ func start() {
     EXPECT_TRUE(foundUseFrogFunc);
 }
 
+/// @brief Bug #20: Parameter name 'value' should be allowed (contextual keyword).
+TEST(ViperLangTypes, ValueAsParameterName)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+entity Board {
+    List[Integer] items;
+
+    expose func init() {
+        items = [];
+        items.add(0);
+    }
+
+    expose func doSet(Integer idx, Integer value) {
+        items.set(idx, value);
+    }
+}
+
+func start() {
+    Board b = new Board();
+    b.init();
+    b.doSet(0, 42);
+}
+)";
+    CompilerInput input{.source = source, .path = "value_param.viper"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded()); // Bug #20: 'value' should be allowed as parameter name
+}
+
 } // namespace
 
 int main()

@@ -358,6 +358,19 @@ class Sema
     /// @details Registers the type and analyzes all members.
     void analyzeValueDecl(ValueDecl &decl);
 
+    /// @brief Register entity member signatures for cross-module resolution.
+    /// @param decl The entity declaration.
+    /// @details Registers field and method types before body analysis.
+    void registerEntityMembers(EntityDecl &decl);
+
+    /// @brief Register value type member signatures for cross-module resolution.
+    /// @param decl The value type declaration.
+    void registerValueMembers(ValueDecl &decl);
+
+    /// @brief Register interface member signatures for cross-module resolution.
+    /// @param decl The interface declaration.
+    void registerInterfaceMembers(InterfaceDecl &decl);
+
     /// @brief Analyze an entity type declaration.
     /// @param decl The entity type declaration.
     ///

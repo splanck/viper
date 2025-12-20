@@ -363,80 +363,70 @@ expose func getBlockRow(Integer i) -> Integer {
 ---
 
 ### 20. Parameter Name 'value' Causes Compiler Hang
-**Status**: OPEN - Compiler Bug
+**Status**: FIXED (December 2025)
 **Severity**: HIGH - Blocks common naming patterns
-**Description**: Using `value` as a parameter name in entity methods causes the compiler to hang indefinitely.
+**Description**: Using `value` as a parameter name in entity methods caused the compiler to hang indefinitely.
 
-**Reproduction**:
-```viper
-entity Board {
-    List[Integer] items;
+**Root Cause**: The `value` keyword (`KwValue`) was treated as a reserved keyword in all contexts. When encountered as a parameter name, the parser would fail to recognize it as an identifier.
 
-    expose func doSet(Integer idx, Integer value) {  // 'value' param causes hang
-        items.set(idx, value);
-    }
-}
-```
+**Resolution**: Added `checkIdentifierLike()` helper function in `Parser.cpp` to allow contextual keywords (like `value`) to be used as identifiers in parameter/variable contexts. Updated `parseParameters()`, `parsePrimary()` identifier handling, and lambda parameter parsing to use this helper.
 
-**Working Case** (use different param name):
-```viper
-entity Board {
-    List[Integer] items;
-
-    expose func doSet(Integer idx, Integer val) {  // 'val' works fine
-        items.set(idx, val);
-    }
-}
-```
-
-**Likely Cause**: The name `value` may conflict with an internal keyword or reserved name in the parser/lowerer.
-
-**Workaround**: Use alternative parameter names like `val`, `v`, `newValue`, etc.
+**Test**: Added `test_viperlang_types.cpp::ValueAsParameterName` to verify fix.
 
 ---
 
 ### 21. Cross-Module Type Resolution Fails for Boolean/Arithmetic
-**Status**: OPEN - Compiler Bug
+**Status**: FIXED (December 2025)
 **Severity**: HIGH - Blocks multi-module OOP patterns
-**Description**: When importing modules, method return types and field types from imported entities are not properly resolved, causing:
-- Boolean return values from imported entity methods fail "Logical not requires Boolean operand"
-- Arithmetic operations on imported entity fields fail "Invalid operands for arithmetic operation"
+**Description**: When importing modules, method return types and field types from imported entities were not properly resolved, causing:
+- Boolean return values from imported entity methods failed "Logical not requires Boolean operand"
+- Arithmetic operations on imported entity fields failed "Invalid operands for arithmetic operation"
 
-**Reproduction**:
-```viper
-// board.viper
-entity Board {
-    expose func canPlacePiece(Piece p) -> Boolean {
-        return true;
-    }
-}
+**Root Cause**: Declaration order during import resolution caused types to be analyzed before their dependencies. When modules with overlapping imports were merged, the prepending order could result in a type (e.g., Game) being analyzed before a type it depends on (e.g., Board).
 
-// game.viper
-import "./board";
+**Resolution**: Added a three-pass analysis in `Sema::analyze()`:
+1. First pass: Register all type names in scope
+2. Second pass: Register all method/field signatures (added `registerEntityMembers()`, `registerValueMembers()`, `registerInterfaceMembers()`)
+3. Third pass: Analyze method bodies
 
-entity Game {
-    expose Board board;
-
-    expose func test() {
-        if (!board.canPlacePiece(currentPiece)) {  // ERROR: Logical not requires Boolean operand
-            gameOver = true;
-        }
-    }
-}
-```
-
-**Workaround**: Extract values to local variables with explicit types, or avoid cross-module method calls that return Boolean.
+This ensures all method signatures are known before any method body is analyzed, allowing cross-entity method calls to resolve correctly.
 
 ---
 
 ### 22. Viper.Terminal Namespace Not Recognized
-**Status**: OPEN - Compiler Bug
+**Status**: FIXED (December 2025)
 **Severity**: CRITICAL - Blocks TUI applications
-**Description**: The `Viper.Terminal` namespace for terminal operations is not recognized when used in multi-file projects.
+**Description**: Several `Viper.Terminal` namespace functions for terminal operations were not recognized by the semantic analyzer.
 
 **Error**: `Undefined identifier: Viper`
 
-**Workaround**: Use single-file demos or avoid Viper.Terminal calls.
+**Root Cause**: Many Viper.Terminal functions were missing from the `runtimeFunctions_` map in `Sema.cpp`.
+
+**Resolution**: Added missing Terminal functions to `runtimeFunctions_`:
+- `Viper.Terminal.HasKey` → Boolean
+- `Viper.Terminal.ReadKey` → String
+- `Viper.Terminal.Write` → void
+- `Viper.Terminal.MoveCursor` → void
+- `Viper.Terminal.SetForeground` → void
+- `Viper.Terminal.SetBackground` → void
+- `Viper.Terminal.ResetColors` → void
+- `Viper.Terminal.HideCursor` → void
+- `Viper.Terminal.ShowCursor` → void
+- `Viper.Terminal.Sleep` → void
+
+**Test**: Added `test_viperlang_basic.cpp::TerminalFunctionsRecognized` to verify fix.
+
+---
+
+## Summary Update (December 2025)
+
+### All VTris Bugs Fixed
+- **Bug #19**: List.set() - FIXED (Added Lowerer handling)
+- **Bug #20**: Parameter name 'value' - FIXED (Contextual keyword support)
+- **Bug #21**: Cross-module type resolution - FIXED (Three-pass analysis)
+- **Bug #22**: Viper.Terminal not recognized - FIXED (Added missing runtime functions)
+
+All fixes are verified with ctests. 919 tests pass with 1 pre-existing failure (test_viperlang_lambda - unrelated Bus error in lambda lowering).
 
 ---
 

@@ -211,6 +211,13 @@ class Parser
     /// @details Does not consume the token.
     bool check(TokenKind kind) const;
 
+    /// @brief Check if current token can be used as an identifier.
+    /// @return True if current token is an identifier or contextual keyword.
+    ///
+    /// @details Allows certain keywords (like 'value') to be used as
+    /// identifiers in contexts like parameter names.
+    bool checkIdentifierLike() const;
+
     /// @brief Consume current token if it matches the given kind.
     /// @param kind The token kind to match.
     /// @return True if matched and consumed, false otherwise.

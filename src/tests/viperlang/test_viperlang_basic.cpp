@@ -206,6 +206,46 @@ func start() {
     EXPECT_TRUE(hasGreet);
 }
 
+/// @brief Bug #22: Terminal functions like MoveCursor, Write, etc. should be recognized.
+TEST(ViperLangBasic, TerminalFunctionsRecognized)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func start() {
+    Viper.Terminal.Clear();
+    Viper.Terminal.MoveCursor(1, 1);
+    Viper.Terminal.SetForeground(1);
+    Viper.Terminal.Write("Hello");
+    Viper.Terminal.ResetColors();
+    Viper.Terminal.HideCursor();
+    Viper.Terminal.ShowCursor();
+    if (Viper.Terminal.HasKey()) {
+        String key = Viper.Terminal.ReadKey();
+    }
+    Viper.Terminal.Sleep(100);
+    Viper.Terminal.Say("Done");
+}
+)";
+    CompilerInput input{.source = source, .path = "terminal.viper"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    if (!result.succeeded())
+    {
+        std::cerr << "Diagnostics for TerminalFunctionsRecognized:\n";
+        for (const auto &d : result.diagnostics.diagnostics())
+        {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+
+    EXPECT_TRUE(result.succeeded()); // Bug #22: Terminal functions should be recognized
+}
+
 } // namespace
 
 int main()

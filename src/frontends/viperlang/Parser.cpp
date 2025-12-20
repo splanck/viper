@@ -77,6 +77,22 @@ bool Parser::check(TokenKind kind) const
     return current_.kind == kind;
 }
 
+bool Parser::checkIdentifierLike() const
+{
+    // Allow identifiers and certain contextual keywords that can be used as names
+    if (current_.kind == TokenKind::Identifier)
+        return true;
+
+    // These keywords can be used as identifiers in parameter/variable contexts
+    switch (current_.kind)
+    {
+    case TokenKind::KwValue: // Common parameter name (e.g., setValue(Integer value))
+        return true;
+    default:
+        return false;
+    }
+}
+
 bool Parser::match(TokenKind kind)
 {
     if (check(kind))
@@ -803,8 +819,8 @@ ExprPtr Parser::parsePrimary()
         return std::make_unique<MatchExpr>(loc, std::move(scrutinee), std::move(arms));
     }
 
-    // Identifier
-    if (check(TokenKind::Identifier))
+    // Identifier (including contextual keywords like 'value' used as variable names)
+    if (checkIdentifierLike())
     {
         std::string name = current_.text;
         advance();
@@ -870,7 +886,7 @@ ExprPtr Parser::parsePrimary()
             {
                 LambdaParam param;
 
-                if (!check(TokenKind::Identifier))
+                if (!checkIdentifierLike())
                 {
                     error("expected parameter in lambda");
                     return nullptr;
@@ -890,9 +906,9 @@ ExprPtr Parser::parsePrimary()
                     if (!param.type)
                         return nullptr;
                 }
-                else if (check(TokenKind::Identifier))
+                else if (checkIdentifierLike())
                 {
-                    // Java style: Type name
+                    // Java style: Type name (name can be contextual keyword like 'value')
                     param.name = current_.text;
                     advance();
                     // Reconstruct the type from first token
@@ -915,8 +931,8 @@ ExprPtr Parser::parsePrimary()
                     if (!expect(TokenKind::RBracket, "]"))
                         return nullptr;
 
-                    // Now we should have the parameter name
-                    if (!check(TokenKind::Identifier))
+                    // Now we should have the parameter name (can be contextual keyword)
+                    if (!checkIdentifierLike())
                     {
                         error("expected parameter name after type");
                         return nullptr;
@@ -2032,13 +2048,13 @@ std::vector<Param> Parser::parseParameters()
     {
         Param param;
 
-        if (!check(TokenKind::Identifier))
+        if (!checkIdentifierLike())
         {
             error("expected parameter");
             return {};
         }
 
-        // Read first identifier
+        // Read first identifier (may be a contextual keyword like 'value')
         std::string first = current_.text;
         SourceLoc firstLoc = current_.loc;
         advance();
@@ -2052,9 +2068,9 @@ std::vector<Param> Parser::parseParameters()
             if (!param.type)
                 return {};
         }
-        else if (check(TokenKind::Identifier))
+        else if (checkIdentifierLike())
         {
-            // Java style: Type name
+            // Java style: Type name (name can be contextual keyword like 'value')
             param.name = current_.text;
             advance();
             param.type = std::make_unique<NamedType>(firstLoc, first);
@@ -2075,8 +2091,8 @@ std::vector<Param> Parser::parseParameters()
             if (!expect(TokenKind::RBracket, "]"))
                 return {};
 
-            // Now parse the parameter name
-            if (!check(TokenKind::Identifier))
+            // Now parse the parameter name (can be contextual keyword like 'value')
+            if (!checkIdentifierLike())
             {
                 error("expected parameter name after type");
                 return {};
@@ -2089,7 +2105,7 @@ std::vector<Param> Parser::parseParameters()
         {
             // Optional type Java style: Type? name
             advance(); // consume ?
-            if (!check(TokenKind::Identifier))
+            if (!checkIdentifierLike())
             {
                 error("expected parameter name after type");
                 return {};

@@ -10,11 +10,11 @@ High-level frontendsâ€”like the included BASIC, Pascal, and ViperLang compilersâ
 
 ## Download
 
-**Latest Release:** [v0.1.2-dev](https://github.com/splanck/viper/releases/tag/v0.1.2-dev)
+**Latest Release:** [v0.1.3-dev](https://github.com/splanck/viper/releases/tag/v0.1.3-dev)
 
-- [Source (tar.gz)](https://github.com/splanck/viper/archive/refs/tags/v0.1.2-dev.tar.gz)
-- [Source (zip)](https://github.com/splanck/viper/archive/refs/tags/v0.1.2-dev.zip)
-- [Release Notes](docs/devdocs/Viper_Release_Notes.md)
+- [Source (tar.gz)](https://github.com/splanck/viper/archive/refs/tags/v0.1.3-dev.tar.gz)
+- [Source (zip)](https://github.com/splanck/viper/archive/refs/tags/v0.1.3-dev.zip)
+- [Release Notes](docs/release_notes/Viper_Release_Notes_0_1_3.md)
 
 Or clone the repository:
 

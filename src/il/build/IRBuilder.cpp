@@ -171,7 +171,7 @@ il::core::Function &IRBuilder::startFunction(const std::string &name,
     mod.functions.push_back({name, ret, {}, {}, {}});
     calleeReturnTypes[name] = ret;
     curFunc = &mod.functions.back();
-    curBlock = nullptr;
+    curBlockIdx.reset();
     nextTemp = 0;
     for (auto p : params)
     {
@@ -356,7 +356,19 @@ void IRBuilder::cbr(il::core::Value cond,
 /// @post curBlock is updated to @p bb; termination state is preserved.
 void IRBuilder::setInsertPoint(il::core::BasicBlock &bb)
 {
-    curBlock = &bb;
+    assert(curFunc && "no active function");
+
+    std::optional<size_t> foundIdx;
+    for (size_t i = 0; i < curFunc->blocks.size(); ++i)
+    {
+        if (&curFunc->blocks[i] == &bb)
+        {
+            foundIdx = i;
+            break;
+        }
+    }
+    assert(foundIdx.has_value() && "insert point block does not belong to current function");
+    curBlockIdx = *foundIdx;
 }
 
 /// @brief Append an instruction to the current block and update termination state.
@@ -366,14 +378,16 @@ void IRBuilder::setInsertPoint(il::core::BasicBlock &bb)
 /// @post Terminator opcodes mark the block as finished to prevent further insertions.
 il::core::Instr &IRBuilder::append(il::core::Instr instr)
 {
-    assert(curBlock && "insert point not set");
+    assert(curBlockIdx.has_value() && "insert point not set");
     assert(curFunc && "no active function");
+
+    il::core::BasicBlock &curBlock = curFunc->blocks[*curBlockIdx];
 
 #ifndef NDEBUG
     // Cannot append normal instructions after a terminator
     if (!isTerminator(instr.op))
     {
-        assert(!curBlock->terminated &&
+        assert(!curBlock.terminated &&
                "cannot append non-terminator instruction to terminated block");
     }
 
@@ -399,11 +413,11 @@ il::core::Instr &IRBuilder::append(il::core::Instr instr)
 
     if (isTerminator(instr.op))
     {
-        assert(!curBlock->terminated && "block already terminated");
-        curBlock->terminated = true;
+        assert(!curBlock.terminated && "block already terminated");
+        curBlock.terminated = true;
     }
-    curBlock->instructions.push_back(std::move(instr));
-    return curBlock->instructions.back();
+    curBlock.instructions.push_back(std::move(instr));
+    return curBlock.instructions.back();
 }
 
 /// @brief Identify whether an opcode terminates a block's control flow.
