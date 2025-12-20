@@ -11,7 +11,7 @@ entity Frog {
     Integer onPlatform;
     Integer platformSpeed;
 
-    func init(r: Integer, c: Integer) {
+    expose func init(r: Integer, c: Integer) {
         row = r;
         col = c;
         startRow = r;
@@ -22,31 +22,31 @@ entity Frog {
         platformSpeed = 0;
     }
 
-    func moveUp() {
+    expose func moveUp() {
         if row > 1 {
             row = row - 1;
         }
     }
 
-    func moveDown() {
+    expose func moveDown() {
         if row < 24 {
             row = row + 1;
         }
     }
 
-    func moveLeft() {
+    expose func moveLeft() {
         if col > 1 {
             col = col - 1;
         }
     }
 
-    func moveRight() {
+    expose func moveRight() {
         if col < 70 {
             col = col + 1;
         }
     }
 
-    func updateOnPlatform() {
+    expose func updateOnPlatform() {
         if onPlatform == 1 {
             Integer newCol = col + platformSpeed;
             if newCol >= 1 {
@@ -57,17 +57,17 @@ entity Frog {
         }
     }
 
-    func setOnPlatform(speed: Integer) {
+    expose func setOnPlatform(speed: Integer) {
         onPlatform = 1;
         platformSpeed = speed;
     }
 
-    func clearPlatform() {
+    expose func clearPlatform() {
         onPlatform = 0;
         platformSpeed = 0;
     }
 
-    func die() {
+    expose func die() {
         lives = lives - 1;
         if lives <= 0 {
             alive = 0;
@@ -79,17 +79,17 @@ entity Frog {
         platformSpeed = 0;
     }
 
-    func reset() {
+    expose func reset() {
         row = startRow;
         col = startCol;
         onPlatform = 0;
         platformSpeed = 0;
     }
 
-    func getRow() -> Integer { return row; }
-    func getCol() -> Integer { return col; }
-    func getLives() -> Integer { return lives; }
-    func isAlive() -> Integer { return alive; }
+    expose func getRow() -> Integer { return row; }
+    expose func getCol() -> Integer { return col; }
+    expose func getLives() -> Integer { return lives; }
+    expose func isAlive() -> Integer { return alive; }
 }
 
 // Vehicle - Cars and trucks on the road
@@ -99,16 +99,18 @@ entity Vehicle {
     Integer speed;
     Integer direction;
     Integer width;
+    Integer isTruck;
 
-    func init(r: Integer, c: Integer, spd: Integer, dir: Integer, w: Integer) {
+    expose func init(r: Integer, c: Integer, spd: Integer, dir: Integer, w: Integer, truck: Integer) {
         row = r;
         col = c;
         speed = spd;
         direction = dir;
         width = w;
+        isTruck = truck;
     }
 
-    func move() {
+    expose func move() {
         Integer newCol = col + speed * direction;
         if newCol > 75 {
             newCol = 1 - width;
@@ -119,7 +121,7 @@ entity Vehicle {
         col = newCol;
     }
 
-    func checkCollision(frogRow: Integer, frogCol: Integer) -> Integer {
+    expose func checkCollision(frogRow: Integer, frogCol: Integer) -> Integer {
         if frogRow == row {
             Integer i = 0;
             while i < width {
@@ -132,11 +134,12 @@ entity Vehicle {
         return 0;
     }
 
-    func getRow() -> Integer { return row; }
-    func getCol() -> Integer { return col; }
-    func getWidth() -> Integer { return width; }
-    func getSpeed() -> Integer { return speed; }
-    func getDirection() -> Integer { return direction; }
+    expose func getRow() -> Integer { return row; }
+    expose func getCol() -> Integer { return col; }
+    expose func getWidth() -> Integer { return width; }
+    expose func getSpeed() -> Integer { return speed; }
+    expose func getDirection() -> Integer { return direction; }
+    expose func getIsTruck() -> Integer { return isTruck; }
 }
 
 // Platform - Logs and turtles in the river
@@ -148,7 +151,7 @@ entity Platform {
     Integer width;
     Integer isTurtle;
 
-    func init(r: Integer, c: Integer, spd: Integer, dir: Integer, w: Integer, turtle: Integer) {
+    expose func init(r: Integer, c: Integer, spd: Integer, dir: Integer, w: Integer, turtle: Integer) {
         row = r;
         col = c;
         speed = spd;
@@ -157,7 +160,7 @@ entity Platform {
         isTurtle = turtle;
     }
 
-    func move() {
+    expose func move() {
         Integer newCol = col + speed * direction;
         if newCol > 75 {
             newCol = 1 - width;
@@ -168,7 +171,7 @@ entity Platform {
         col = newCol;
     }
 
-    func checkOnPlatform(frogRow: Integer, frogCol: Integer) -> Integer {
+    expose func checkOnPlatform(frogRow: Integer, frogCol: Integer) -> Integer {
         if frogRow == row {
             Integer i = 0;
             while i < width {
@@ -181,12 +184,12 @@ entity Platform {
         return 0;
     }
 
-    func getRow() -> Integer { return row; }
-    func getCol() -> Integer { return col; }
-    func getWidth() -> Integer { return width; }
-    func getSpeed() -> Integer { return speed; }
-    func getDirection() -> Integer { return direction; }
-    func getIsTurtle() -> Integer { return isTurtle; }
+    expose func getRow() -> Integer { return row; }
+    expose func getCol() -> Integer { return col; }
+    expose func getWidth() -> Integer { return width; }
+    expose func getSpeed() -> Integer { return speed; }
+    expose func getDirection() -> Integer { return direction; }
+    expose func getIsTurtle() -> Integer { return isTurtle; }
 }
 
 // Home - Goal slots at the top
@@ -194,19 +197,19 @@ entity Home {
     Integer col;
     Integer filled;
 
-    func init(c: Integer) {
+    expose func init(c: Integer) {
         col = c;
         filled = 0;
     }
 
-    func fill() {
+    expose func fill() {
         filled = 1;
     }
 
-    func reset() {
+    expose func reset() {
         filled = 0;
     }
 
-    func getCol() -> Integer { return col; }
-    func isFilled() -> Integer { return filled; }
+    expose func getCol() -> Integer { return col; }
+    expose func isFilled() -> Integer { return filled; }
 }

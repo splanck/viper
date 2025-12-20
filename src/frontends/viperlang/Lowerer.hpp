@@ -839,6 +839,12 @@ class Lowerer
     /// @param name The variable name.
     void removeSlot(const std::string &name);
 
+    /// @brief Get the self pointer for the current method.
+    /// @details Checks both slots and locals for "self".
+    /// @param result Output parameter for the self pointer value.
+    /// @return True if self was found, false otherwise.
+    bool getSelfPtr(Value &result);
+
     /// @}
     //=========================================================================
     /// @name Helper Functions

@@ -206,6 +206,7 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
     currentFunc_ = &builder_->startFunction(mangledName, ilReturnType, params);
     blockMgr_.bind(builder_.get(), currentFunc_);
     locals_.clear();
+    slots_.clear();
 
     // Create entry block with the function's params as block params
     // (required for proper VM argument passing)
@@ -406,6 +407,7 @@ void Lowerer::lowerMethodDecl(MethodDecl &decl, const std::string &typeName, boo
     currentFunc_ = &builder_->startFunction(mangledName, ilReturnType, params);
     blockMgr_.bind(builder_.get(), currentFunc_);
     locals_.clear();
+    slots_.clear();
 
     // Create entry block with the function's params as block params
     // (required for proper VM argument passing)
@@ -994,20 +996,20 @@ LowerResult Lowerer::lowerExpr(Expr *expr)
             return lowerIdent(static_cast<IdentExpr *>(expr));
         case ExprKind::SelfExpr:
         {
-            Value *selfPtr = lookupLocal("self");
-            if (selfPtr)
+            Value selfPtr;
+            if (getSelfPtr(selfPtr))
             {
-                return {*selfPtr, Type(Type::Kind::Ptr)};
+                return {selfPtr, Type(Type::Kind::Ptr)};
             }
             return {Value::constInt(0), Type(Type::Kind::Ptr)};
         }
         case ExprKind::SuperExpr:
         {
             // Super returns self pointer but is used for dispatching to parent methods
-            Value *selfPtr = lookupLocal("self");
-            if (selfPtr)
+            Value selfPtr;
+            if (getSelfPtr(selfPtr))
             {
-                return {*selfPtr, Type(Type::Kind::Ptr)};
+                return {selfPtr, Type(Type::Kind::Ptr)};
             }
             return {Value::constInt(0), Type(Type::Kind::Ptr)};
         }
@@ -1096,10 +1098,10 @@ LowerResult Lowerer::lowerIdent(IdentExpr *expr)
         const FieldLayout *field = currentValueType_->findField(expr->name);
         if (field)
         {
-            Value *selfPtr = lookupLocal("self");
-            if (selfPtr)
+            Value selfPtr;
+            if (getSelfPtr(selfPtr))
             {
-                Value loaded = emitFieldLoad(field, *selfPtr);
+                Value loaded = emitFieldLoad(field, selfPtr);
                 return {loaded, mapType(field->type)};
             }
         }
@@ -1111,10 +1113,10 @@ LowerResult Lowerer::lowerIdent(IdentExpr *expr)
         const FieldLayout *field = currentEntityType_->findField(expr->name);
         if (field)
         {
-            Value *selfPtr = lookupLocal("self");
-            if (selfPtr)
+            Value selfPtr;
+            if (getSelfPtr(selfPtr))
             {
-                Value loaded = emitFieldLoad(field, *selfPtr);
+                Value loaded = emitFieldLoad(field, selfPtr);
                 return {loaded, mapType(field->type)};
             }
         }
@@ -1150,10 +1152,10 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
                 const FieldLayout *field = currentValueType_->findField(ident->name);
                 if (field)
                 {
-                    Value *selfPtr = lookupLocal("self");
-                    if (selfPtr)
+                    Value selfPtr;
+                    if (getSelfPtr(selfPtr))
                     {
-                        emitFieldStore(field, *selfPtr, right.value);
+                        emitFieldStore(field, selfPtr, right.value);
                         return right;
                     }
                 }
@@ -1165,10 +1167,10 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
                 const FieldLayout *field = currentEntityType_->findField(ident->name);
                 if (field)
                 {
-                    Value *selfPtr = lookupLocal("self");
-                    if (selfPtr)
+                    Value selfPtr;
+                    if (getSelfPtr(selfPtr))
                     {
-                        emitFieldStore(field, *selfPtr, right.value);
+                        emitFieldStore(field, selfPtr, right.value);
                         return right;
                     }
                 }
@@ -1413,8 +1415,8 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
         if (fieldExpr->base->kind == ExprKind::SuperExpr)
         {
             // Get self pointer
-            Value *selfPtr = lookupLocal("self");
-            if (selfPtr && currentEntityType_ && !currentEntityType_->baseClass.empty())
+            Value selfPtr;
+            if (getSelfPtr(selfPtr) && currentEntityType_ && !currentEntityType_->baseClass.empty())
             {
                 // Look up method in the parent class
                 auto parentIt = entityTypes_.find(currentEntityType_->baseClass);
@@ -1422,7 +1424,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                 {
                     if (auto *method = parentIt->second.findMethod(fieldExpr->field))
                     {
-                        return lowerMethodCall(method, currentEntityType_->baseClass, *selfPtr, expr);
+                        return lowerMethodCall(method, currentEntityType_->baseClass, selfPtr, expr);
                     }
                 }
             }
@@ -2971,6 +2973,27 @@ Lowerer::Value Lowerer::loadFromSlot(const std::string &name, Type type)
 void Lowerer::removeSlot(const std::string &name)
 {
     slots_.erase(name);
+}
+
+bool Lowerer::getSelfPtr(Value &result)
+{
+    // Check if self is stored in a slot (used in entity/value type methods)
+    auto slotIt = slots_.find("self");
+    if (slotIt != slots_.end())
+    {
+        result = loadFromSlot("self", Type(Type::Kind::Ptr));
+        return true;
+    }
+
+    // Check if self is a regular local
+    Value *local = lookupLocal("self");
+    if (local)
+    {
+        result = *local;
+        return true;
+    }
+
+    return false;
 }
 
 //=============================================================================

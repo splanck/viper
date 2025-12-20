@@ -143,9 +143,9 @@ inline constexpr const char *kTerminalKeyAvailable = "Viper.Terminal.KeyAvailabl
 inline constexpr const char *kStringConcat = "Viper.String.Concat";
 
 /// @brief Compare two strings for equality.
-/// @details Signature: Equals(str, str) -> i64
-/// Returns non-zero if the strings contain identical byte sequences.
-inline constexpr const char *kStringEquals = "Viper.String.Equals";
+/// @details Signature: Equals(str, str) -> i1
+/// Returns true if the strings contain identical byte sequences.
+inline constexpr const char *kStringEquals = "Viper.Strings.Equals";
 
 /// @brief Get the length of a string in bytes.
 /// @details Signature: Length(str) -> i64

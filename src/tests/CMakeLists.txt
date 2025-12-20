@@ -50,6 +50,7 @@ add_subdirectory(vm)
 add_subdirectory(perf)
 add_subdirectory(tools)
 add_subdirectory(basic)
+add_subdirectory(viperlang)
 add_subdirectory(golden)
 add_subdirectory(e2e)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/codegen/x86_64)
@@ -435,6 +436,7 @@ viper_add_runtime_tests()
 viper_add_e2e_vm_suite()
 viper_add_il_invalid_tests()
 viper_add_basic_main_tests()
+viper_add_viperlang_tests()
 viper_add_vm_unit_tests()
 viper_add_il_liveness_tests()
 viper_add_vm_path_tests()
@@ -755,16 +757,6 @@ add_executable(test_pascal_semantic_inheritance ${CMAKE_CURRENT_SOURCE_DIR}/unit
 target_link_libraries(test_pascal_semantic_inheritance PRIVATE viper_testing fe_pascal)
 add_test(NAME test_pascal_semantic_inheritance COMMAND test_pascal_semantic_inheritance)
 set_tests_properties(test_pascal_semantic_inheritance PROPERTIES LABELS pascal)
-
-# =============================================================================
-# ViperLang Frontend Tests
-# =============================================================================
-
-# ViperLang compiler tests
-add_executable(test_viperlang_compiler ${CMAKE_CURRENT_SOURCE_DIR}/frontends/viperlang/ViperLangCompilerTests.cpp)
-target_link_libraries(test_viperlang_compiler PRIVATE viper_testing fe_viperlang)
-add_test(NAME test_viperlang_compiler COMMAND test_viperlang_compiler)
-set_tests_properties(test_viperlang_compiler PROPERTIES LABELS viperlang)
 
 # =============================================================================
 # Test Labels Configuration
