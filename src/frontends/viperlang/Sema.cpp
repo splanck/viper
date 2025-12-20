@@ -41,6 +41,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/viperlang/Sema.hpp"
+#include <functional>
+#include <set>
 #include <sstream>
 
 namespace il::frontends::viperlang
@@ -369,7 +371,7 @@ void Sema::analyzeFunctionDecl(FunctionDecl &decl)
     expectedReturnType_ = nullptr;
 }
 
-void Sema::analyzeFieldDecl(FieldDecl &decl, TypeRef /*ownerType*/)
+void Sema::analyzeFieldDecl(FieldDecl &decl, TypeRef ownerType)
 {
     TypeRef fieldType = decl.type ? resolveTypeNode(decl.type.get()) : types::unknown();
 
@@ -381,6 +383,14 @@ void Sema::analyzeFieldDecl(FieldDecl &decl, TypeRef /*ownerType*/)
         {
             errorTypeMismatch(decl.initializer->loc, fieldType, initType);
         }
+    }
+
+    // Store field type and visibility for access checking
+    if (ownerType)
+    {
+        std::string fieldKey = ownerType->name + "." + decl.name;
+        fieldTypes_[fieldKey] = fieldType;
+        memberVisibility_[fieldKey] = decl.visibility;
     }
 
     Symbol sym;
@@ -410,6 +420,7 @@ void Sema::analyzeMethodDecl(MethodDecl &decl, TypeRef ownerType)
     // Register method type: "TypeName.methodName" -> function type
     std::string methodKey = ownerType->name + "." + decl.name;
     methodTypes_[methodKey] = types::function(paramTypes, returnType);
+    memberVisibility_[methodKey] = decl.visibility;
 
     pushScope();
 
@@ -649,11 +660,72 @@ void Sema::analyzeGuardStmt(GuardStmt *stmt)
 
 void Sema::analyzeMatchStmt(MatchStmt *stmt)
 {
-    analyzeExpr(stmt->scrutinee.get());
-    // TODO: Implement pattern matching analysis
+    TypeRef scrutineeType = analyzeExpr(stmt->scrutinee.get());
+
+    // Track if we have a wildcard or exhaustive pattern coverage
+    bool hasWildcard = false;
+    bool hasElseArm = false;
+    std::set<int64_t> coveredIntegers;
+    std::set<bool> coveredBooleans;
+
     for (auto &arm : stmt->arms)
     {
+        // Analyze the pattern and body
+        const auto &pattern = arm.pattern;
+
+        if (pattern.kind == MatchArm::Pattern::Kind::Wildcard)
+        {
+            hasWildcard = true;
+        }
+        else if (pattern.kind == MatchArm::Pattern::Kind::Binding)
+        {
+            // A binding without a guard acts as a wildcard
+            if (!pattern.guard)
+            {
+                hasWildcard = true;
+            }
+        }
+        else if (pattern.kind == MatchArm::Pattern::Kind::Literal && pattern.literal)
+        {
+            // Track which literals are covered
+            if (auto *intLit = dynamic_cast<IntLiteralExpr *>(pattern.literal.get()))
+            {
+                coveredIntegers.insert(intLit->value);
+            }
+            else if (auto *boolLit = dynamic_cast<BoolLiteralExpr *>(pattern.literal.get()))
+            {
+                coveredBooleans.insert(boolLit->value);
+            }
+        }
+
         analyzeExpr(arm.body.get());
+    }
+
+    // Check exhaustiveness based on scrutinee type
+    if (!hasWildcard)
+    {
+        if (scrutineeType && scrutineeType->kind == TypeKindSem::Boolean)
+        {
+            // Boolean must cover both true and false
+            if (coveredBooleans.size() < 2)
+            {
+                error(stmt->loc, "Non-exhaustive patterns: match on Boolean must cover both true "
+                                 "and false, or use a wildcard (_)");
+            }
+        }
+        else if (scrutineeType && scrutineeType->isIntegral())
+        {
+            // Integer types need a wildcard since we can't enumerate all values
+            error(stmt->loc, "Non-exhaustive patterns: match on Integer requires a wildcard (_) or "
+                             "else case to be exhaustive");
+        }
+        else if (scrutineeType && scrutineeType->kind == TypeKindSem::Optional)
+        {
+            // Optional types need to handle both Some and None cases
+            // For now, just warn that a wildcard is recommended
+            error(stmt->loc, "Non-exhaustive patterns: match on optional type should use a "
+                             "wildcard (_) or handle all cases");
+        }
     }
 }
 
@@ -733,6 +805,9 @@ TypeRef Sema::analyzeExpr(Expr *expr)
         case ExprKind::Lambda:
             result = analyzeLambda(static_cast<LambdaExpr *>(expr));
             break;
+        case ExprKind::Match:
+            result = analyzeMatchExpr(static_cast<MatchExpr *>(expr));
+            break;
         case ExprKind::ListLiteral:
             result = analyzeListLiteral(static_cast<ListLiteralExpr *>(expr));
             break;
@@ -741,6 +816,12 @@ TypeRef Sema::analyzeExpr(Expr *expr)
             break;
         case ExprKind::SetLiteral:
             result = analyzeSetLiteral(static_cast<SetLiteralExpr *>(expr));
+            break;
+        case ExprKind::Tuple:
+            result = analyzeTuple(static_cast<TupleExpr *>(expr));
+            break;
+        case ExprKind::TupleIndex:
+            result = analyzeTupleIndex(static_cast<TupleIndexExpr *>(expr));
             break;
         default:
             result = types::unknown();
@@ -1029,18 +1110,49 @@ TypeRef Sema::analyzeField(FieldExpr *expr)
 {
     TypeRef baseType = analyzeExpr(expr->base.get());
 
-    // Check if this is a method access on a value or entity type
+    // Check if this is a field or method access on a value or entity type
     if (baseType && (baseType->kind == TypeKindSem::Value || baseType->kind == TypeKindSem::Entity))
     {
-        std::string methodKey = baseType->name + "." + expr->field;
-        auto it = methodTypes_.find(methodKey);
-        if (it != methodTypes_.end())
+        std::string memberKey = baseType->name + "." + expr->field;
+
+        // Check if accessing from inside or outside the type
+        bool isInsideType = currentSelfType_ && currentSelfType_->name == baseType->name;
+
+        // Check visibility
+        auto visIt = memberVisibility_.find(memberKey);
+        if (visIt != memberVisibility_.end())
         {
-            return it->second;
+            if (visIt->second == Visibility::Private && !isInsideType)
+            {
+                error(expr->loc, "Cannot access private member '" + expr->field + "' of type '" +
+                                     baseType->name + "'");
+            }
+        }
+
+        // Check if it's a method
+        auto methodIt = methodTypes_.find(memberKey);
+        if (methodIt != methodTypes_.end())
+        {
+            return methodIt->second;
+        }
+
+        // Check if it's a field
+        auto fieldIt = fieldTypes_.find(memberKey);
+        if (fieldIt != fieldTypes_.end())
+        {
+            return fieldIt->second;
         }
     }
 
-    // TODO: Look up field types (not just methods)
+    // Handle built-in properties like .count on lists
+    if (baseType && baseType->kind == TypeKindSem::List)
+    {
+        if (expr->field == "count" || expr->field == "size")
+        {
+            return types::integer();
+        }
+    }
+
     return types::unknown();
 }
 
@@ -1096,6 +1208,89 @@ TypeRef Sema::analyzeRange(RangeExpr *expr)
     return types::list(types::integer());
 }
 
+TypeRef Sema::analyzeMatchExpr(MatchExpr *expr)
+{
+    TypeRef scrutineeType = analyzeExpr(expr->scrutinee.get());
+
+    // Track if we have a wildcard or exhaustive pattern coverage
+    bool hasWildcard = false;
+    std::set<int64_t> coveredIntegers;
+    std::set<bool> coveredBooleans;
+
+    TypeRef resultType = nullptr;
+
+    for (auto &arm : expr->arms)
+    {
+        // Analyze the pattern
+        const auto &pattern = arm.pattern;
+
+        if (pattern.kind == MatchArm::Pattern::Kind::Wildcard)
+        {
+            hasWildcard = true;
+        }
+        else if (pattern.kind == MatchArm::Pattern::Kind::Binding)
+        {
+            // A binding without a guard acts as a wildcard
+            if (!pattern.guard)
+            {
+                hasWildcard = true;
+            }
+        }
+        else if (pattern.kind == MatchArm::Pattern::Kind::Literal && pattern.literal)
+        {
+            // Track which literals are covered
+            if (auto *intLit = dynamic_cast<IntLiteralExpr *>(pattern.literal.get()))
+            {
+                coveredIntegers.insert(intLit->value);
+            }
+            else if (auto *boolLit = dynamic_cast<BoolLiteralExpr *>(pattern.literal.get()))
+            {
+                coveredBooleans.insert(boolLit->value);
+            }
+        }
+
+        // Analyze the body and track result type
+        TypeRef bodyType = analyzeExpr(arm.body.get());
+        if (!resultType)
+        {
+            resultType = bodyType;
+        }
+        else if (bodyType && !resultType->equals(*bodyType))
+        {
+            // Types differ - for now, use the first type
+            // TODO: Find common supertype
+        }
+    }
+
+    // Check exhaustiveness based on scrutinee type
+    if (!hasWildcard)
+    {
+        if (scrutineeType && scrutineeType->kind == TypeKindSem::Boolean)
+        {
+            // Boolean must cover both true and false
+            if (coveredBooleans.size() < 2)
+            {
+                error(expr->loc, "Non-exhaustive patterns: match on Boolean must cover both true "
+                                 "and false, or use a wildcard (_)");
+            }
+        }
+        else if (scrutineeType && scrutineeType->isIntegral())
+        {
+            // Integer types need a wildcard since we can't enumerate all values
+            error(expr->loc, "Non-exhaustive patterns: match on Integer requires a wildcard (_) or "
+                             "else case to be exhaustive");
+        }
+        else if (scrutineeType && scrutineeType->kind == TypeKindSem::Optional)
+        {
+            // Optional types need to handle both Some and None cases
+            error(expr->loc, "Non-exhaustive patterns: match on optional type should use a "
+                             "wildcard (_) or handle all cases");
+        }
+    }
+
+    return resultType ? resultType : types::unknown();
+}
+
 TypeRef Sema::analyzeNew(NewExpr *expr)
 {
     TypeRef type = resolveTypeNode(expr->type.get());
@@ -1118,6 +1313,13 @@ TypeRef Sema::analyzeNew(NewExpr *expr)
 
 TypeRef Sema::analyzeLambda(LambdaExpr *expr)
 {
+    // Collect names that are local to the lambda (params)
+    std::set<std::string> lambdaLocals;
+    for (const auto &param : expr->params)
+    {
+        lambdaLocals.insert(param.name);
+    }
+
     pushScope();
 
     std::vector<TypeRef> paramTypes;
@@ -1137,6 +1339,9 @@ TypeRef Sema::analyzeLambda(LambdaExpr *expr)
     TypeRef bodyType = analyzeExpr(expr->body.get());
 
     popScope();
+
+    // Collect captured variables (free variables referenced in the body)
+    collectCaptures(expr->body.get(), lambdaLocals, expr->captures);
 
     TypeRef returnType = expr->returnType ? resolveTypeNode(expr->returnType.get()) : bodyType;
     return types::function(paramTypes, returnType);
@@ -1195,6 +1400,37 @@ TypeRef Sema::analyzeSetLiteral(SetLiteralExpr *expr)
     }
 
     return types::set(elementType);
+}
+
+TypeRef Sema::analyzeTuple(TupleExpr *expr)
+{
+    std::vector<TypeRef> elementTypes;
+    for (auto &elem : expr->elements)
+    {
+        elementTypes.push_back(analyzeExpr(elem.get()));
+    }
+    return types::tuple(std::move(elementTypes));
+}
+
+TypeRef Sema::analyzeTupleIndex(TupleIndexExpr *expr)
+{
+    TypeRef tupleType = analyzeExpr(expr->tuple.get());
+
+    if (!tupleType->isTuple())
+    {
+        error(expr->loc, "tuple index access requires a tuple type, got '" + tupleType->toString() +
+                             "'");
+        return types::unknown();
+    }
+
+    if (expr->index >= tupleType->tupleElementTypes().size())
+    {
+        error(expr->loc, "tuple index " + std::to_string(expr->index) + " is out of bounds for " +
+                             tupleType->toString());
+        return types::unknown();
+    }
+
+    return tupleType->tupleElementType(expr->index);
 }
 
 //=============================================================================
@@ -1312,8 +1548,13 @@ TypeRef Sema::resolveTypeNode(const TypeNode *node)
 
         case TypeKind::Tuple:
         {
-            // TODO: Implement tuple types
-            return types::unknown();
+            const auto *tupleType = static_cast<const TupleType *>(node);
+            std::vector<TypeRef> elementTypes;
+            for (const auto &elem : tupleType->elements)
+            {
+                elementTypes.push_back(resolveType(elem.get()));
+            }
+            return types::tuple(std::move(elementTypes));
         }
     }
 
@@ -1344,6 +1585,148 @@ void Sema::defineSymbol(const std::string &name, Symbol symbol)
 Symbol *Sema::lookupSymbol(const std::string &name)
 {
     return currentScope_->lookup(name);
+}
+
+TypeRef Sema::lookupVarType(const std::string &name)
+{
+    Symbol *sym = currentScope_->lookup(name);
+    if (sym && (sym->kind == Symbol::Kind::Variable || sym->kind == Symbol::Kind::Parameter))
+    {
+        return sym->type;
+    }
+    return nullptr;
+}
+
+//=============================================================================
+// Closure Capture Collection
+//=============================================================================
+
+void Sema::collectCaptures(const Expr *expr, const std::set<std::string> &lambdaLocals,
+                           std::vector<CapturedVar> &captures)
+{
+    if (!expr)
+        return;
+
+    std::set<std::string> captured;
+
+    // Helper to recursively collect identifiers
+    std::function<void(const Expr *)> collect = [&](const Expr *e) {
+        if (!e)
+            return;
+
+        switch (e->kind)
+        {
+            case ExprKind::Ident:
+            {
+                auto *ident = static_cast<const IdentExpr *>(e);
+                // Check if this is a local variable (not a lambda param, not a function)
+                if (lambdaLocals.find(ident->name) == lambdaLocals.end())
+                {
+                    Symbol *sym = lookupSymbol(ident->name);
+                    if (sym && (sym->kind == Symbol::Kind::Variable ||
+                                sym->kind == Symbol::Kind::Parameter))
+                    {
+                        if (captured.find(ident->name) == captured.end())
+                        {
+                            captured.insert(ident->name);
+                            CapturedVar cv;
+                            cv.name = ident->name;
+                            cv.byReference = !sym->isFinal; // Mutable vars by reference
+                            captures.push_back(cv);
+                        }
+                    }
+                }
+                break;
+            }
+            case ExprKind::Binary:
+            {
+                auto *bin = static_cast<const BinaryExpr *>(e);
+                collect(bin->left.get());
+                collect(bin->right.get());
+                break;
+            }
+            case ExprKind::Unary:
+            {
+                auto *unary = static_cast<const UnaryExpr *>(e);
+                collect(unary->operand.get());
+                break;
+            }
+            case ExprKind::Call:
+            {
+                auto *call = static_cast<const CallExpr *>(e);
+                collect(call->callee.get());
+                for (const auto &arg : call->args)
+                    collect(arg.value.get());
+                break;
+            }
+            case ExprKind::Field:
+            {
+                auto *field = static_cast<const FieldExpr *>(e);
+                collect(field->base.get());
+                break;
+            }
+            case ExprKind::Index:
+            {
+                auto *idx = static_cast<const IndexExpr *>(e);
+                collect(idx->base.get());
+                collect(idx->index.get());
+                break;
+            }
+            case ExprKind::Block:
+            {
+                auto *block = static_cast<const BlockExpr *>(e);
+                // Would need to handle statements - skip for now
+                break;
+            }
+            case ExprKind::If:
+            {
+                auto *ifExpr = static_cast<const IfExpr *>(e);
+                collect(ifExpr->condition.get());
+                collect(ifExpr->thenBranch.get());
+                if (ifExpr->elseBranch)
+                    collect(ifExpr->elseBranch.get());
+                break;
+            }
+            case ExprKind::Match:
+            {
+                auto *match = static_cast<const MatchExpr *>(e);
+                collect(match->scrutinee.get());
+                for (const auto &arm : match->arms)
+                    collect(arm.body.get());
+                break;
+            }
+            case ExprKind::Tuple:
+            {
+                auto *tuple = static_cast<const TupleExpr *>(e);
+                for (const auto &elem : tuple->elements)
+                    collect(elem.get());
+                break;
+            }
+            case ExprKind::TupleIndex:
+            {
+                auto *ti = static_cast<const TupleIndexExpr *>(e);
+                collect(ti->tuple.get());
+                break;
+            }
+            case ExprKind::ListLiteral:
+            {
+                auto *list = static_cast<const ListLiteralExpr *>(e);
+                for (const auto &elem : list->elements)
+                    collect(elem.get());
+                break;
+            }
+            case ExprKind::Lambda:
+            {
+                // Nested lambda - don't descend, it will handle its own captures
+                break;
+            }
+            default:
+                // Literals and other expressions don't reference variables
+                break;
+        }
+    };
+
+    collect(expr);
 }
 
 //=============================================================================

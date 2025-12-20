@@ -613,6 +613,22 @@ class Lowerer
     /// @return LowerResult with pointer to new list.
     LowerResult lowerListLiteral(ListLiteralExpr *expr);
 
+    /// @brief Lower a tuple literal expression.
+    /// @return LowerResult with pointer to tuple on stack.
+    LowerResult lowerTuple(TupleExpr *expr);
+
+    /// @brief Lower a tuple index access expression.
+    /// @return LowerResult with the element value.
+    LowerResult lowerTupleIndex(TupleIndexExpr *expr);
+
+    /// @brief Lower a block expression.
+    /// @return LowerResult with the block's value (or void).
+    LowerResult lowerBlockExpr(BlockExpr *expr);
+
+    /// @brief Lower a match expression.
+    /// @return LowerResult with the match result value.
+    LowerResult lowerMatchExpr(MatchExpr *expr);
+
     /// @brief Lower an index expression.
     /// @return LowerResult with the element value.
     LowerResult lowerIndex(IndexExpr *expr);
@@ -658,6 +674,18 @@ class Lowerer
     /// @param callee The function name.
     /// @param args The argument values.
     void emitCall(const std::string &callee, const std::vector<Value> &args);
+
+    /// @brief Emit a void indirect function call.
+    /// @param funcPtr The function pointer value.
+    /// @param args The argument values.
+    void emitCallIndirect(Value funcPtr, const std::vector<Value> &args);
+
+    /// @brief Emit an indirect function call with return value.
+    /// @param retTy The return type.
+    /// @param funcPtr The function pointer value.
+    /// @param args The argument values.
+    /// @return The result value.
+    Value emitCallIndirectRet(Type retTy, Value funcPtr, const std::vector<Value> &args);
 
     /// @brief Emit an unconditional branch.
     /// @param targetIdx The target block index.

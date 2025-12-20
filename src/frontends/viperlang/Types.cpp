@@ -110,6 +110,25 @@ bool ViperType::isAssignableFrom(const ViperType &source) const
         (source.kind == TypeKindSem::Entity || source.kind == TypeKindSem::Value))
         return true; // Needs actual interface checking
 
+    // Generic container assignment: List[Unknown] -> List[T], etc.
+    // This handles empty literal inference ([] can be assigned to List[Integer])
+    if ((kind == TypeKindSem::List && source.kind == TypeKindSem::List) ||
+        (kind == TypeKindSem::Set && source.kind == TypeKindSem::Set) ||
+        (kind == TypeKindSem::Map && source.kind == TypeKindSem::Map))
+    {
+        // If source has Unknown type arguments, it can be assigned to any matching container
+        if (!source.typeArgs.empty() && source.typeArgs[0]->kind == TypeKindSem::Unknown)
+        {
+            return true;
+        }
+        // For maps, also check the value type
+        if (kind == TypeKindSem::Map && source.typeArgs.size() >= 2 &&
+            source.typeArgs[1]->kind == TypeKindSem::Unknown)
+        {
+            return true;
+        }
+    }
+
     return false;
 }
 
@@ -227,6 +246,17 @@ std::string ViperType::toString() const
                 ss << typeArgs.back()->toString();
             else
                 ss << "Void";
+            return ss.str();
+
+        case TypeKindSem::Tuple:
+            ss << "(";
+            for (size_t i = 0; i < typeArgs.size(); ++i)
+            {
+                if (i > 0)
+                    ss << ", ";
+                ss << typeArgs[i]->toString();
+            }
+            ss << ")";
             return ss.str();
 
         case TypeKindSem::Value:
@@ -394,6 +424,11 @@ TypeRef function(std::vector<TypeRef> params, TypeRef ret)
     return std::make_shared<ViperType>(TypeKindSem::Function, std::move(params));
 }
 
+TypeRef tuple(std::vector<TypeRef> elements)
+{
+    return std::make_shared<ViperType>(TypeKindSem::Tuple, std::move(elements));
+}
+
 TypeRef value(const std::string &name, std::vector<TypeRef> typeParams)
 {
     return std::make_shared<ViperType>(TypeKindSem::Value, name, std::move(typeParams));
@@ -473,6 +508,10 @@ il::core::Type::Kind toILType(const ViperType &type)
         case TypeKindSem::Function:
             return il::core::Type::Kind::Ptr;
 
+        // Tuples are stored inline as structs (accessed via pointer)
+        case TypeKindSem::Tuple:
+            return il::core::Type::Kind::Ptr;
+
         // Unknown types (inference placeholder)
         case TypeKindSem::Unknown:
         case TypeKindSem::TypeParam:
@@ -527,6 +566,14 @@ size_t typeSize(const ViperType &type)
         case TypeKindSem::Value:
             // User-defined value size determined by fields
             return 0; // Must be computed from type definition
+        case TypeKindSem::Tuple:
+            // Sum of all element sizes (simplified, ignoring alignment padding)
+            {
+                size_t size = 0;
+                for (const auto &elem : type.typeArgs)
+                    size += typeSize(*elem);
+                return size;
+            }
         case TypeKindSem::Unknown:
         case TypeKindSem::Never:
         case TypeKindSem::Any:
@@ -554,6 +601,7 @@ size_t typeAlignment(const ViperType &type)
         case TypeKindSem::Error:
         case TypeKindSem::Optional:
         case TypeKindSem::Result:
+        case TypeKindSem::Tuple:
             return 8;
         case TypeKindSem::Byte:
             return 4;
@@ -600,6 +648,8 @@ const char *kindToString(TypeKindSem kind)
             return "Set";
         case TypeKindSem::Function:
             return "Function";
+        case TypeKindSem::Tuple:
+            return "Tuple";
         case TypeKindSem::Value:
             return "Value";
         case TypeKindSem::Entity:

@@ -561,17 +561,27 @@ ExprPtr Parser::parsePostfixFrom(ExprPtr expr)
         }
         else if (match(TokenKind::Dot))
         {
-            // Field access
+            // Field access or tuple index
             SourceLoc loc = current_.loc;
-            if (!check(TokenKind::Identifier))
+
+            // Check for tuple index access: tuple.0, tuple.1, etc.
+            if (check(TokenKind::IntegerLiteral))
+            {
+                int64_t index = std::stoll(current_.text);
+                advance();
+                expr = std::make_unique<TupleIndexExpr>(loc, std::move(expr), static_cast<size_t>(index));
+            }
+            else if (check(TokenKind::Identifier))
+            {
+                std::string field = current_.text;
+                advance();
+                expr = std::make_unique<FieldExpr>(loc, std::move(expr), std::move(field));
+            }
+            else
             {
                 error("expected field name after '.'");
                 return nullptr;
             }
-            std::string field = current_.text;
-            advance();
-
-            expr = std::make_unique<FieldExpr>(loc, std::move(expr), std::move(field));
         }
         else if (match(TokenKind::QuestionDot))
         {
@@ -711,6 +721,85 @@ ExprPtr Parser::parsePrimary()
         return std::make_unique<NewExpr>(loc, std::move(type), std::move(args));
     }
 
+    // Match expression (can be used as value)
+    if (check(TokenKind::KwMatch))
+    {
+        advance(); // consume 'match'
+
+        // Expect opening paren for scrutinee
+        if (!expect(TokenKind::LParen, "("))
+            return nullptr;
+
+        ExprPtr scrutinee = parseExpression();
+        if (!scrutinee)
+            return nullptr;
+
+        if (!expect(TokenKind::RParen, ")"))
+            return nullptr;
+
+        if (!expect(TokenKind::LBrace, "{"))
+            return nullptr;
+
+        // Parse match arms
+        std::vector<MatchArm> arms;
+        while (!check(TokenKind::RBrace) && !check(TokenKind::Eof))
+        {
+            MatchArm arm;
+
+            // Parse pattern
+            if (check(TokenKind::Identifier) && current_.text == "_")
+            {
+                arm.pattern.kind = MatchArm::Pattern::Kind::Wildcard;
+                advance();
+            }
+            else if (check(TokenKind::IntegerLiteral))
+            {
+                arm.pattern.kind = MatchArm::Pattern::Kind::Literal;
+                arm.pattern.literal = std::make_unique<IntLiteralExpr>(current_.loc, current_.intValue);
+                advance();
+            }
+            else if (check(TokenKind::StringLiteral))
+            {
+                arm.pattern.kind = MatchArm::Pattern::Kind::Literal;
+                arm.pattern.literal = std::make_unique<StringLiteralExpr>(current_.loc, current_.stringValue);
+                advance();
+            }
+            else if (check(TokenKind::Identifier))
+            {
+                arm.pattern.kind = MatchArm::Pattern::Kind::Binding;
+                arm.pattern.binding = current_.text;
+                advance();
+            }
+            else
+            {
+                error("expected pattern in match arm");
+                return nullptr;
+            }
+
+            // Expect =>
+            if (!expect(TokenKind::FatArrow, "=>"))
+                return nullptr;
+
+            // Parse arm body (expression)
+            arm.body = parseExpression();
+            if (!arm.body)
+                return nullptr;
+
+            arms.push_back(std::move(arm));
+
+            // Optional comma or closing brace
+            if (!check(TokenKind::RBrace))
+            {
+                match(TokenKind::Comma);
+            }
+        }
+
+        if (!expect(TokenKind::RBrace, "}"))
+            return nullptr;
+
+        return std::make_unique<MatchExpr>(loc, std::move(scrutinee), std::move(arms));
+    }
+
     // Identifier
     if (check(TokenKind::Identifier))
     {
@@ -729,9 +818,36 @@ ExprPtr Parser::parsePrimary()
         {
             advance(); // consume )
             // Check for lambda with no parameters: () => body
-            if (match(TokenKind::Arrow))
+            if (match(TokenKind::FatArrow))
             {
-                ExprPtr body = parseExpression();
+                ExprPtr body;
+                // Check for block body: () => { ... }
+                if (check(TokenKind::LBrace))
+                {
+                    SourceLoc blockLoc = current_.loc;
+                    advance(); // consume '{'
+
+                    std::vector<StmtPtr> statements;
+                    while (!check(TokenKind::RBrace) && !check(TokenKind::Eof))
+                    {
+                        StmtPtr stmt = parseStatement();
+                        if (!stmt)
+                        {
+                            resyncAfterError();
+                            continue;
+                        }
+                        statements.push_back(std::move(stmt));
+                    }
+
+                    if (!expect(TokenKind::RBrace, "}"))
+                        return nullptr;
+
+                    body = std::make_unique<BlockExpr>(blockLoc, std::move(statements), nullptr);
+                }
+                else
+                {
+                    body = parseExpression();
+                }
                 if (!body)
                     return nullptr;
                 return std::make_unique<LambdaExpr>(loc, std::vector<LambdaParam>{}, nullptr,
@@ -740,15 +856,38 @@ ExprPtr Parser::parsePrimary()
             return std::make_unique<UnitLiteralExpr>(loc);
         }
 
-        // Regular parenthesized expression
-        ExprPtr expr = parseExpression();
-        if (!expr)
+        // Parse first expression - could be parenthesized expression or tuple
+        ExprPtr first = parseExpression();
+        if (!first)
             return nullptr;
+
+        // Check for comma - if present, this is a tuple
+        if (check(TokenKind::Comma))
+        {
+            std::vector<ExprPtr> elements;
+            elements.push_back(std::move(first));
+
+            while (match(TokenKind::Comma))
+            {
+                if (check(TokenKind::RParen))
+                    break; // Allow trailing comma
+
+                ExprPtr elem = parseExpression();
+                if (!elem)
+                    return nullptr;
+                elements.push_back(std::move(elem));
+            }
+
+            if (!expect(TokenKind::RParen, ")"))
+                return nullptr;
+
+            return std::make_unique<TupleExpr>(loc, std::move(elements));
+        }
 
         if (!expect(TokenKind::RParen, ")"))
             return nullptr;
 
-        return expr;
+        return first;
     }
 
     // List literal
@@ -996,6 +1135,12 @@ StmtPtr Parser::parseStatement()
         return parseBlock();
     }
 
+    // var/final variable declaration: var x = 5; final y: Integer = 10;
+    if (check(TokenKind::KwVar) || check(TokenKind::KwFinal))
+    {
+        return parseVarDecl();
+    }
+
     // Java-style variable declaration: Type name = expr;
     // Detect by checking for Identifier followed by Identifier (or ? for optionals)
     // This handles: Integer x = 5; Person? p = ...; List[T] items = ...;
@@ -1017,9 +1162,17 @@ StmtPtr Parser::parseStatement()
         }
         else if (next.kind == TokenKind::LBracket)
         {
-            // Generic type: List[T] x = ...;
-            // Parse as Java-style declaration
-            return parseJavaStyleVarDecl();
+            // Could be either:
+            // - Generic type declaration: Map[String, Integer] x = ...
+            // - Index expression: names[1] = "One"
+            //
+            // Use convention: type names start with uppercase, variables with lowercase
+            if (!current_.text.empty() && std::isupper(current_.text[0]))
+            {
+                // Uppercase - treat as generic type declaration
+                return parseJavaStyleVarDecl();
+            }
+            // Lowercase - fall through to expression statement
         }
     }
 
@@ -1809,12 +1962,26 @@ DeclPtr Parser::parseValueDecl()
     // Parse members (fields and methods)
     while (!check(TokenKind::RBrace) && !check(TokenKind::Eof))
     {
+        // Check for visibility modifier
+        Visibility visibility = Visibility::Public; // Default for value types
+        if (check(TokenKind::KwExpose))
+        {
+            visibility = Visibility::Public;
+            advance();
+        }
+        else if (check(TokenKind::KwHide))
+        {
+            visibility = Visibility::Private;
+            advance();
+        }
+
         if (check(TokenKind::KwFunc))
         {
             // Method declaration
             auto method = parseMethodDecl();
             if (method)
             {
+                static_cast<MethodDecl *>(method.get())->visibility = visibility;
                 value->members.push_back(std::move(method));
             }
         }
@@ -1824,6 +1991,7 @@ DeclPtr Parser::parseValueDecl()
             auto field = parseFieldDecl();
             if (field)
             {
+                static_cast<FieldDecl *>(field.get())->visibility = visibility;
                 value->members.push_back(std::move(field));
             }
         }
@@ -1892,12 +2060,26 @@ DeclPtr Parser::parseEntityDecl()
     // Parse members (fields and methods)
     while (!check(TokenKind::RBrace) && !check(TokenKind::Eof))
     {
+        // Check for visibility modifier
+        Visibility visibility = Visibility::Private; // Default for entity types
+        if (check(TokenKind::KwExpose))
+        {
+            visibility = Visibility::Public;
+            advance();
+        }
+        else if (check(TokenKind::KwHide))
+        {
+            visibility = Visibility::Private;
+            advance();
+        }
+
         if (check(TokenKind::KwFunc))
         {
             // Method declaration
             auto method = parseMethodDecl();
             if (method)
             {
+                static_cast<MethodDecl *>(method.get())->visibility = visibility;
                 entity->members.push_back(std::move(method));
             }
         }
@@ -1907,6 +2089,7 @@ DeclPtr Parser::parseEntityDecl()
             auto field = parseFieldDecl();
             if (field)
             {
+                static_cast<FieldDecl *>(field.get())->visibility = visibility;
                 entity->members.push_back(std::move(field));
             }
         }

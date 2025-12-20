@@ -1031,6 +1031,14 @@ LowerResult Lowerer::lowerExpr(Expr *expr)
             return lowerTry(static_cast<TryExpr *>(expr));
         case ExprKind::Lambda:
             return lowerLambda(static_cast<LambdaExpr *>(expr));
+        case ExprKind::Tuple:
+            return lowerTuple(static_cast<TupleExpr *>(expr));
+        case ExprKind::TupleIndex:
+            return lowerTupleIndex(static_cast<TupleIndexExpr *>(expr));
+        case ExprKind::Block:
+            return lowerBlockExpr(static_cast<BlockExpr *>(expr));
+        case ExprKind::Match:
+            return lowerMatchExpr(static_cast<MatchExpr *>(expr));
         default:
             return {Value::constInt(0), Type(Type::Kind::I64)};
     }
@@ -1171,7 +1179,66 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
             return right;
         }
 
-        // TODO: Handle explicit field assignment (obj.field = value), index assignment, etc.
+        // Handle index assignment (list[i] = value, map[key] = value)
+        if (auto *indexExpr = dynamic_cast<IndexExpr *>(expr->left.get()))
+        {
+            auto base = lowerExpr(indexExpr->base.get());
+            auto index = lowerExpr(indexExpr->index.get());
+            TypeRef baseType = sema_.typeOf(indexExpr->base.get());
+
+            if (baseType && baseType->kind == TypeKindSem::Map)
+            {
+                // Map index assignment: map[key] = value
+                Value boxedKey = emitBox(index.value, index.type);
+                Value boxedValue = emitBox(right.value, right.type);
+                emitCall(kMapSet, {base.value, boxedKey, boxedValue});
+                return right;
+            }
+            else
+            {
+                // List index assignment: list[i] = value
+                Value boxedValue = emitBox(right.value, right.type);
+                emitCall(kListSet, {base.value, index.value, boxedValue});
+                return right;
+            }
+        }
+
+        // Handle field assignment (obj.field = value)
+        if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->left.get()))
+        {
+            auto base = lowerExpr(fieldExpr->base.get());
+            TypeRef baseType = sema_.typeOf(fieldExpr->base.get());
+
+            if (baseType)
+            {
+                std::string typeName = baseType->name;
+
+                // Check value types
+                auto valueIt = valueTypes_.find(typeName);
+                if (valueIt != valueTypes_.end())
+                {
+                    const FieldLayout *field = valueIt->second.findField(fieldExpr->field);
+                    if (field)
+                    {
+                        emitFieldStore(field, base.value, right.value);
+                        return right;
+                    }
+                }
+
+                // Check entity types
+                auto entityIt = entityTypes_.find(typeName);
+                if (entityIt != entityTypes_.end())
+                {
+                    const FieldLayout *field = entityIt->second.findField(fieldExpr->field);
+                    if (field)
+                    {
+                        emitFieldStore(field, base.value, right.value);
+                        return right;
+                    }
+                }
+            }
+        }
+
         return {Value::constInt(0), Type(Type::Kind::I64)};
     }
 
@@ -1456,6 +1523,96 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                     }
                 }
             }
+
+            // Check for method call on Map type: map.set(), map.get(), map.containsKey(), etc.
+            if (baseType->kind == TypeKindSem::Map)
+            {
+                auto baseResult = lowerExpr(fieldExpr->base.get());
+                std::string methodName = fieldExpr->field;
+
+                // Get type args for boxing
+                TypeRef keyType = baseType->typeArgs.size() > 0 ? baseType->typeArgs[0] : nullptr;
+                TypeRef valueType = baseType->typeArgs.size() > 1 ? baseType->typeArgs[1] : nullptr;
+
+                // Map method names to runtime functions (case-insensitive)
+                const char *runtimeFunc = nullptr;
+                Type returnType = Type(Type::Kind::Void);
+
+                if (equalsIgnoreCase(methodName, "set") || equalsIgnoreCase(methodName, "put"))
+                {
+                    // map.set(key, value) - needs two boxed arguments
+                    if (expr->args.size() >= 2)
+                    {
+                        auto keyResult = lowerExpr(expr->args[0].value.get());
+                        auto valueResult = lowerExpr(expr->args[1].value.get());
+                        Value boxedKey = emitBox(keyResult.value, keyResult.type);
+                        Value boxedValue = emitBox(valueResult.value, valueResult.type);
+                        emitCall(kMapSet, {baseResult.value, boxedKey, boxedValue});
+                        return {Value::constInt(0), Type(Type::Kind::Void)};
+                    }
+                }
+                else if (equalsIgnoreCase(methodName, "get"))
+                {
+                    // map.get(key) - returns boxed value
+                    if (expr->args.size() >= 1)
+                    {
+                        auto keyResult = lowerExpr(expr->args[0].value.get());
+                        Value boxedKey = emitBox(keyResult.value, keyResult.type);
+                        Value boxed = emitCallRet(Type(Type::Kind::Ptr), kMapGet,
+                                                  {baseResult.value, boxedKey});
+                        if (valueType)
+                        {
+                            Type ilValueType = mapType(valueType);
+                            return emitUnbox(boxed, ilValueType);
+                        }
+                        return {boxed, Type(Type::Kind::Ptr)};
+                    }
+                }
+                else if (equalsIgnoreCase(methodName, "containsKey") || equalsIgnoreCase(methodName, "hasKey"))
+                {
+                    runtimeFunc = kMapContainsKey;
+                    returnType = Type(Type::Kind::I64);
+                }
+                else if (equalsIgnoreCase(methodName, "size") || equalsIgnoreCase(methodName, "count"))
+                {
+                    // count() takes no args, just the map
+                    Value result = emitCallRet(Type(Type::Kind::I64), kMapCount, {baseResult.value});
+                    return {result, Type(Type::Kind::I64)};
+                }
+                else if (equalsIgnoreCase(methodName, "remove"))
+                {
+                    runtimeFunc = kMapRemove;
+                    returnType = Type(Type::Kind::I64);
+                }
+                else if (equalsIgnoreCase(methodName, "clear"))
+                {
+                    emitCall(kMapClear, {baseResult.value});
+                    return {Value::constInt(0), Type(Type::Kind::Void)};
+                }
+
+                // Handle methods that need boxed key argument
+                if (runtimeFunc != nullptr)
+                {
+                    std::vector<Value> args;
+                    args.push_back(baseResult.value);
+                    for (auto &arg : expr->args)
+                    {
+                        auto result = lowerExpr(arg.value.get());
+                        args.push_back(emitBox(result.value, result.type));
+                    }
+
+                    if (returnType.kind == Type::Kind::Void)
+                    {
+                        emitCall(runtimeFunc, args);
+                        return {Value::constInt(0), Type(Type::Kind::Void)};
+                    }
+                    else
+                    {
+                        Value result = emitCallRet(returnType, runtimeFunc, args);
+                        return {result, returnType};
+                    }
+                }
+            }
         }
     }
 
@@ -1580,31 +1737,128 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
         args.push_back(result.value);
     }
 
-    // Get callee name
+    // Get callee name and check if it's a function or a variable holding a function pointer
     std::string calleeName;
+    bool isIndirectCall = false;
+    Value funcPtr;
+
+    // Check if callee type is a function/lambda type (for closure handling)
+    TypeRef calleeType = sema_.typeOf(expr->callee.get());
+    bool isLambdaClosure = calleeType && calleeType->isCallable();
+
     if (auto *ident = dynamic_cast<IdentExpr *>(expr->callee.get()))
     {
-        calleeName = mangleFunctionName(ident->name);
+        // Check if this is a variable holding a function pointer (not a defined function)
+        if (definedFunctions_.find(mangleFunctionName(ident->name)) == definedFunctions_.end())
+        {
+            // It's a variable - need indirect call
+            auto slotIt = slots_.find(ident->name);
+            if (slotIt != slots_.end())
+            {
+                // Load the closure pointer from the slot
+                unsigned loadId = nextTempId();
+                il::core::Instr loadInstr;
+                loadInstr.result = loadId;
+                loadInstr.op = Opcode::Load;
+                loadInstr.type = Type(Type::Kind::Ptr);
+                loadInstr.operands = {slotIt->second};
+                blockMgr_.currentBlock()->instructions.push_back(loadInstr);
+                funcPtr = Value::temp(loadId);
+                isIndirectCall = true;
+            }
+            else
+            {
+                // Check in locals
+                auto localIt = locals_.find(ident->name);
+                if (localIt != locals_.end())
+                {
+                    funcPtr = localIt->second;
+                    isIndirectCall = true;
+                }
+            }
+        }
+
+        if (!isIndirectCall)
+        {
+            calleeName = mangleFunctionName(ident->name);
+        }
     }
     else
     {
-        calleeName = "unknown";
+        // For other expressions, lower them to get a closure pointer
+        auto calleeResult = lowerExpr(expr->callee.get());
+        funcPtr = calleeResult.value;
+        isIndirectCall = true;
     }
 
     // Get return type
-    TypeRef calleeType = sema_.typeOf(expr->callee.get());
     TypeRef returnType = calleeType ? calleeType->returnType() : nullptr;
     Type ilReturnType = returnType ? mapType(returnType) : Type(Type::Kind::Void);
 
-    if (ilReturnType.kind == Type::Kind::Void)
+    if (isIndirectCall)
     {
-        emitCall(calleeName, args);
-        return {Value::constInt(0), Type(Type::Kind::Void)};
+        // For lambda closures, unpack the closure struct { funcPtr, envPtr }
+        if (isLambdaClosure)
+        {
+            // funcPtr currently points to the closure struct
+            Value closurePtr = funcPtr;
+
+            // Load the actual function pointer from offset 0
+            Value actualFuncPtr = emitLoad(closurePtr, Type(Type::Kind::Ptr));
+
+            // Load the environment pointer from offset 8
+            Value envFieldAddr = emitGEP(closurePtr, 8);
+            Value envPtr = emitLoad(envFieldAddr, Type(Type::Kind::Ptr));
+
+            // Prepend env to args (all lambdas expect __env as first param)
+            std::vector<Value> closureArgs;
+            closureArgs.reserve(args.size() + 1);
+            closureArgs.push_back(envPtr);
+            for (const auto &arg : args)
+            {
+                closureArgs.push_back(arg);
+            }
+
+            // Make the indirect call with env as first argument
+            if (ilReturnType.kind == Type::Kind::Void)
+            {
+                emitCallIndirect(actualFuncPtr, closureArgs);
+                return {Value::constInt(0), Type(Type::Kind::Void)};
+            }
+            else
+            {
+                Value result = emitCallIndirectRet(ilReturnType, actualFuncPtr, closureArgs);
+                return {result, ilReturnType};
+            }
+        }
+        else
+        {
+            // Non-closure indirect call (shouldn't happen often)
+            if (ilReturnType.kind == Type::Kind::Void)
+            {
+                emitCallIndirect(funcPtr, args);
+                return {Value::constInt(0), Type(Type::Kind::Void)};
+            }
+            else
+            {
+                Value result = emitCallIndirectRet(ilReturnType, funcPtr, args);
+                return {result, ilReturnType};
+            }
+        }
     }
     else
     {
-        Value result = emitCallRet(ilReturnType, calleeName, args);
-        return {result, ilReturnType};
+        // Direct call to named function
+        if (ilReturnType.kind == Type::Kind::Void)
+        {
+            emitCall(calleeName, args);
+            return {Value::constInt(0), Type(Type::Kind::Void)};
+        }
+        else
+        {
+            Value result = emitCallRet(ilReturnType, calleeName, args);
+            return {result, ilReturnType};
+        }
     }
 }
 
@@ -1879,15 +2133,121 @@ LowerResult Lowerer::lowerListLiteral(ListLiteralExpr *expr)
     return {list, Type(Type::Kind::Ptr)};
 }
 
+LowerResult Lowerer::lowerTuple(TupleExpr *expr)
+{
+    // Get the tuple type from sema
+    TypeRef tupleType = sema_.typeOf(expr);
+
+    // Calculate total size (assuming 8 bytes per element for simplicity)
+    size_t tupleSize = tupleType->tupleElementTypes().size() * 8;
+
+    // Allocate space for the tuple on the stack
+    unsigned slotId = nextTempId();
+    il::core::Instr allocInstr;
+    allocInstr.result = slotId;
+    allocInstr.op = Opcode::Alloca;
+    allocInstr.type = Type(Type::Kind::Ptr);
+    allocInstr.operands = {Value::constInt(static_cast<int64_t>(tupleSize))};
+    blockMgr_.currentBlock()->instructions.push_back(allocInstr);
+    Value tuplePtr = Value::temp(slotId);
+
+    // Store each element in the tuple
+    size_t offset = 0;
+    for (auto &elem : expr->elements)
+    {
+        auto result = lowerExpr(elem.get());
+
+        // Calculate element pointer
+        Value elemPtr = tuplePtr;
+        if (offset > 0)
+        {
+            unsigned gepId = nextTempId();
+            il::core::Instr gepInstr;
+            gepInstr.result = gepId;
+            gepInstr.op = Opcode::GEP;
+            gepInstr.type = Type(Type::Kind::Ptr);
+            gepInstr.operands = {tuplePtr, Value::constInt(static_cast<int64_t>(offset))};
+            blockMgr_.currentBlock()->instructions.push_back(gepInstr);
+            elemPtr = Value::temp(gepId);
+        }
+
+        // Store the value
+        il::core::Instr storeInstr;
+        storeInstr.op = Opcode::Store;
+        storeInstr.type = result.type;
+        storeInstr.operands = {elemPtr, result.value};
+        blockMgr_.currentBlock()->instructions.push_back(storeInstr);
+
+        offset += 8;
+    }
+
+    return {tuplePtr, Type(Type::Kind::Ptr)};
+}
+
+LowerResult Lowerer::lowerTupleIndex(TupleIndexExpr *expr)
+{
+    // Lower the tuple expression
+    auto tupleResult = lowerExpr(expr->tuple.get());
+
+    // Get the tuple type to determine element type
+    TypeRef tupleType = sema_.typeOf(expr->tuple.get());
+    TypeRef elemType = tupleType->tupleElementType(expr->index);
+    Type ilType = mapType(elemType);
+
+    // Calculate offset (assuming 8 bytes per element)
+    size_t offset = expr->index * 8;
+
+    // Calculate element pointer
+    Value elemPtr = tupleResult.value;
+    if (offset > 0)
+    {
+        unsigned gepId = nextTempId();
+        il::core::Instr gepInstr;
+        gepInstr.result = gepId;
+        gepInstr.op = Opcode::GEP;
+        gepInstr.type = Type(Type::Kind::Ptr);
+        gepInstr.operands = {tupleResult.value, Value::constInt(static_cast<int64_t>(offset))};
+        blockMgr_.currentBlock()->instructions.push_back(gepInstr);
+        elemPtr = Value::temp(gepId);
+    }
+
+    // Load the element value
+    unsigned loadId = nextTempId();
+    il::core::Instr loadInstr;
+    loadInstr.result = loadId;
+    loadInstr.op = Opcode::Load;
+    loadInstr.type = ilType;
+    loadInstr.operands = {elemPtr};
+    blockMgr_.currentBlock()->instructions.push_back(loadInstr);
+
+    return {Value::temp(loadId), ilType};
+}
+
 LowerResult Lowerer::lowerIndex(IndexExpr *expr)
 {
     auto base = lowerExpr(expr->base.get());
     auto index = lowerExpr(expr->index.get());
 
-    // Assume this is a List - call get_Item
-    // Result is a boxed value that needs unboxing based on expected type
-    Value boxed = emitCallRet(
-        Type(Type::Kind::Ptr), kListGet, {base.value, index.value});
+    // Get the base type to determine if it's a List or Map
+    TypeRef baseType = sema_.typeOf(expr->base.get());
+
+    Value boxed;
+    if (baseType && baseType->kind == TypeKindSem::Map)
+    {
+        // Map index access - key must be boxed first
+        TypeRef keyType = baseType->typeArgs.size() > 0 ? baseType->typeArgs[0] : nullptr;
+        Type keyIlType = keyType ? mapType(keyType) : Type(Type::Kind::Ptr);
+        Value boxedKey = emitBox(index.value, keyIlType);
+
+        // Call Map.get_Item
+        boxed = emitCallRet(Type(Type::Kind::Ptr), kMapGet,
+                            {base.value, boxedKey});
+    }
+    else
+    {
+        // List index access (default)
+        boxed = emitCallRet(Type(Type::Kind::Ptr), kListGet, {base.value, index.value});
+    }
 
     // Get the expected element type from semantic analysis
     TypeRef elemType = sema_.typeOf(expr);
@@ -1964,6 +2324,9 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr)
     static int lambdaCounter = 0;
     std::string lambdaName = "__lambda_" + std::to_string(lambdaCounter++);
 
+    // Check if lambda has captured variables
+    bool hasCaptures = !expr->captures.empty();
+
     // Determine return type (inferred as the body's type if not specified)
     TypeRef returnType = types::unknown();
     if (expr->returnType)
@@ -1976,17 +2339,78 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr)
     }
     Type ilReturnType = mapType(returnType);
 
-    // Build parameter list
+    // Build parameter list - always add env pointer as first param for uniform closure ABI
     std::vector<il::core::Param> params;
-    params.reserve(expr->params.size());
+    params.reserve(expr->params.size() + 1);
+    params.push_back({"__env", Type(Type::Kind::Ptr)});
     for (const auto &param : expr->params)
     {
         TypeRef paramType = param.type ? sema_.resolveType(param.type.get()) : types::unknown();
         params.push_back({param.name, mapType(paramType)});
     }
 
-    // Save current function context
-    Function *savedFunc = currentFunc_;
+    // Collect info about captured variables before switching contexts
+    // We need to capture their current values/slot pointers
+    struct CaptureInfo
+    {
+        std::string name;
+        Value value;
+        Type type;
+        bool isSlot;
+    };
+    std::vector<CaptureInfo> captureInfos;
+    if (hasCaptures)
+    {
+        for (const auto &cap : expr->captures)
+        {
+            CaptureInfo info;
+            info.name = cap.name;
+            info.isSlot = false;
+
+            // Look up the variable in current scope
+            auto slotIt = slots_.find(cap.name);
+            if (slotIt != slots_.end())
+            {
+                // Load from slot to capture by value
+                TypeRef varType = sema_.lookupVarType(cap.name);
+                info.type = varType ? mapType(varType) : Type(Type::Kind::I64);
+                info.value = loadFromSlot(cap.name, info.type);
+                info.isSlot = true;
+            }
+            else
+            {
+                auto localIt = locals_.find(cap.name);
+                if (localIt != locals_.end())
+                {
+                    info.value = localIt->second;
+                    TypeRef varType = sema_.lookupVarType(cap.name);
+                    info.type = varType ? mapType(varType) : Type(Type::Kind::I64);
+                }
+                else
+                {
+                    // Not found - might be a global or error
+                    info.value = Value::constInt(0);
+                    info.type = Type(Type::Kind::I64);
+                }
+            }
+            captureInfos.push_back(info);
+        }
+    }
+
+    // Save current function context (use index instead of pointer to handle vector reallocation)
+    size_t savedFuncIdx = static_cast<size_t>(-1);
+    if (currentFunc_)
+    {
+        for (size_t i = 0; i < module_->functions.size(); ++i)
+        {
+            if (&module_->functions[i] == currentFunc_)
+            {
+                savedFuncIdx = i;
+                break;
+            }
+        }
+    }
+    size_t savedBlockIdx = blockMgr_.currentBlockIndex();
     auto savedLocals = std::move(locals_);
     auto savedSlots = std::move(slots_);
     locals_.clear();
@@ -2012,19 +2436,68 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr)
 
     blockMgr_.reset(currentFunc_);
 
-    // Define parameters as locals
+    // Load captured variables from the environment struct if we have captures
     const auto &blockParams = currentFunc_->blocks[0].params;
-    for (size_t i = 0; i < expr->params.size() && i < blockParams.size(); ++i)
+    // First parameter is always __env (may be null for no-capture lambdas)
+    if (hasCaptures)
     {
-        TypeRef paramType =
-            expr->params[i].type ? sema_.resolveType(expr->params[i].type.get()) : types::unknown();
-        Type ilParamType = mapType(paramType);
-        createSlot(expr->params[i].name, ilParamType);
-        storeToSlot(expr->params[i].name, Value::temp(blockParams[i].id), ilParamType);
+        Value envPtr = Value::temp(blockParams[0].id);
+
+        // Load each captured variable from the environment
+        size_t offset = 0;
+        for (size_t i = 0; i < captureInfos.size(); ++i)
+        {
+            const auto &info = captureInfos[i];
+
+            // GEP to get field address within env struct
+            Value fieldAddr = emitGEP(envPtr, static_cast<int64_t>(offset));
+
+            // Load the captured value
+            Value capturedVal = emitLoad(fieldAddr, info.type);
+
+            // Create a slot for mutable captured variables
+            createSlot(info.name, info.type);
+            storeToSlot(info.name, capturedVal, info.type);
+
+            // Advance offset by the size of this type
+            offset += getILTypeSize(info.type);
+        }
     }
 
-    // Lower the body expression
-    auto bodyResult = lowerExpr(expr->body.get());
+    // Define user parameters as locals (skip __env at index 0)
+    for (size_t i = 0; i < expr->params.size(); ++i)
+    {
+        size_t paramIdx = i + 1; // Skip __env
+        if (paramIdx < blockParams.size())
+        {
+            TypeRef paramType = expr->params[i].type
+                                    ? sema_.resolveType(expr->params[i].type.get())
+                                    : types::unknown();
+            Type ilParamType = mapType(paramType);
+            createSlot(expr->params[i].name, ilParamType);
+            storeToSlot(expr->params[i].name, Value::temp(blockParams[paramIdx].id), ilParamType);
+        }
+    }
+
+    // Lower the body - handle both block expressions and simple expressions
+    LowerResult bodyResult{Value::constInt(0), Type(Type::Kind::Void)};
+    if (auto *blockExpr = dynamic_cast<BlockExpr *>(expr->body.get()))
+    {
+        // Lower each statement in the block
+        for (auto &stmt : blockExpr->statements)
+        {
+            lowerStmt(stmt.get());
+        }
+        // The block may have a final value expression
+        if (blockExpr->value)
+        {
+            bodyResult = lowerExpr(blockExpr->value.get());
+        }
+    }
+    else
+    {
+        bodyResult = lowerExpr(expr->body.get());
+    }
 
     // Return the body result
     if (ilReturnType.kind == Type::Kind::Void)
@@ -2042,20 +2515,64 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr)
         }
     }
 
-    // Restore context
-    currentFunc_ = savedFunc;
+    // Restore context (use saved index to get fresh pointer after potential vector reallocation)
+    if (savedFuncIdx != static_cast<size_t>(-1))
+    {
+        currentFunc_ = &module_->functions[savedFuncIdx];
+        blockMgr_.reset(currentFunc_);
+        blockMgr_.setBlock(savedBlockIdx);
+    }
+    else
+    {
+        currentFunc_ = nullptr;
+    }
     locals_ = std::move(savedLocals);
     slots_ = std::move(savedSlots);
 
-    if (savedFunc)
+    // Get the function pointer
+    Value funcPtr = Value::global(lambdaName);
+
+    // Always create a uniform closure struct: { funcPtr, envPtr }
+    // For no-capture lambdas, envPtr is null
+
+    // Allocate environment if we have captures
+    Value envPtr = Value::constInt(0); // null for no captures
+    if (hasCaptures)
     {
-        blockMgr_.reset(savedFunc);
+        size_t envSize = 0;
+        for (const auto &info : captureInfos)
+        {
+            envSize += getILTypeSize(info.type);
+        }
+
+        // Allocate environment struct using rt_alloc (classId=0 for closures)
+        Value classIdVal = Value::constInt(0);
+        Value envSizeVal = Value::constInt(static_cast<int64_t>(envSize));
+        envPtr = emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {classIdVal, envSizeVal});
+
+        // Store captured values into the environment
+        size_t offset = 0;
+        for (const auto &info : captureInfos)
+        {
+            Value fieldAddr = emitGEP(envPtr, static_cast<int64_t>(offset));
+            emitStore(fieldAddr, info.value, info.type);
+            offset += getILTypeSize(info.type);
+        }
     }
 
-    // Return a function pointer to the lambda
-    // For now, return the function address using const_str-like approach
-    Value funcPtr = Value::global(lambdaName);
-    return {funcPtr, Type(Type::Kind::Ptr)};
+    // Allocate closure struct: { ptr funcPtr, ptr envPtr } = 16 bytes
+    Value closureClassId = Value::constInt(0);
+    Value closureSizeVal = Value::constInt(16);
+    Value closurePtr = emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {closureClassId, closureSizeVal});
+
+    // Store function pointer at offset 0
+    emitStore(closurePtr, funcPtr, Type(Type::Kind::Ptr));
+
+    // Store environment pointer at offset 8 (null for no captures)
+    Value envFieldAddr = emitGEP(closurePtr, 8);
+    emitStore(envFieldAddr, envPtr, Type(Type::Kind::Ptr));
+
+    return {closurePtr, Type(Type::Kind::Ptr)};
 }
 
 //=============================================================================
@@ -2111,6 +2628,37 @@ void Lowerer::emitCall(const std::string &callee, const std::vector<Value> &args
     instr.callee = callee;
     instr.operands = args;
     blockMgr_.currentBlock()->instructions.push_back(instr);
+}
+
+void Lowerer::emitCallIndirect(Value funcPtr, const std::vector<Value> &args)
+{
+    il::core::Instr instr;
+    instr.op = Opcode::CallIndirect;
+    instr.type = Type(Type::Kind::Void);
+    // For call.indirect, the function pointer is the first operand
+    instr.operands.push_back(funcPtr);
+    for (const auto &arg : args)
+    {
+        instr.operands.push_back(arg);
+    }
+    blockMgr_.currentBlock()->instructions.push_back(instr);
+}
+
+Lowerer::Value Lowerer::emitCallIndirectRet(Type retTy, Value funcPtr, const std::vector<Value> &args)
+{
+    unsigned id = nextTempId();
+    il::core::Instr instr;
+    instr.result = id;
+    instr.op = Opcode::CallIndirect;
+    instr.type = retTy;
+    // For call.indirect, the function pointer is the first operand
+    instr.operands.push_back(funcPtr);
+    for (const auto &arg : args)
+    {
+        instr.operands.push_back(arg);
+    }
+    blockMgr_.currentBlock()->instructions.push_back(instr);
+    return Value::temp(id);
 }
 
 void Lowerer::emitBr(size_t targetIdx)
@@ -2453,6 +3001,174 @@ bool Lowerer::equalsIgnoreCase(const std::string &a, const std::string &b)
             return false;
     }
     return true;
+}
+
+LowerResult Lowerer::lowerBlockExpr(BlockExpr *expr)
+{
+    // Lower each statement in the block
+    for (auto &stmt : expr->statements)
+    {
+        lowerStmt(stmt.get());
+    }
+
+    // If there's a trailing value expression, lower it and return
+    if (expr->value)
+    {
+        return lowerExpr(expr->value.get());
+    }
+
+    // No value expression - return void/unit
+    return {Value::constInt(0), Type(Type::Kind::Void)};
+}
+
+LowerResult Lowerer::lowerMatchExpr(MatchExpr *expr)
+{
+    if (expr->arms.empty())
+    {
+        return {Value::constInt(0), Type(Type::Kind::Void)};
+    }
+
+    // Lower the scrutinee once and store in a slot for reuse
+    auto scrutinee = lowerExpr(expr->scrutinee.get());
+    std::string scrutineeSlot = "__match_scrutinee";
+    createSlot(scrutineeSlot, scrutinee.type);
+    storeToSlot(scrutineeSlot, scrutinee.value, scrutinee.type);
+
+    // Determine the result type from the first arm body
+    TypeRef resultType = sema_.typeOf(expr->arms[0].body.get());
+    Type ilResultType = mapType(resultType);
+
+    // Create a result slot to store the match result
+    std::string resultSlot = "__match_result";
+    createSlot(resultSlot, ilResultType);
+
+    // Create end block for the match
+    size_t endIdx = createBlock("match_end");
+
+    // Create blocks for each arm body and the next arm's test
+    std::vector<size_t> armBlocks;
+    std::vector<size_t> nextTestBlocks;
+    for (size_t i = 0; i < expr->arms.size(); ++i)
+    {
+        armBlocks.push_back(createBlock("match_arm_" + std::to_string(i)));
+        if (i + 1 < expr->arms.size())
+        {
+            nextTestBlocks.push_back(createBlock("match_test_" + std::to_string(i + 1)));
+        }
+        else
+        {
+            nextTestBlocks.push_back(endIdx); // Last arm falls through to end
+        }
+    }
+
+    // Lower each arm
+    for (size_t i = 0; i < expr->arms.size(); ++i)
+    {
+        const auto &arm = expr->arms[i];
+
+        // In the current block, test the pattern
+        Value scrutineeVal = loadFromSlot(scrutineeSlot, scrutinee.type);
+
+        switch (arm.pattern.kind)
+        {
+            case MatchArm::Pattern::Kind::Wildcard:
+                // Wildcard always matches - just jump to arm body
+                emitBr(armBlocks[i]);
+                break;
+
+            case MatchArm::Pattern::Kind::Literal:
+            {
+                // Compare scrutinee with literal
+                auto litResult = lowerExpr(arm.pattern.literal.get());
+                Value cond;
+                if (scrutinee.type.kind == Type::Kind::Str)
+                {
+                    // String comparison
+                    cond = emitCallRet(Type(Type::Kind::I1), kStringEquals,
+                                       {scrutineeVal, litResult.value});
+                }
+                else
+                {
+                    // Integer comparison
+                    cond = emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1),
+                                      scrutineeVal, litResult.value);
+                }
+
+                // If guard is present, check it too
+                if (arm.pattern.guard)
+                {
+                    size_t guardBlock = createBlock("match_guard_" + std::to_string(i));
+                    emitCBr(cond, guardBlock, nextTestBlocks[i]);
+                    setBlock(guardBlock);
+
+                    auto guardResult = lowerExpr(arm.pattern.guard.get());
+                    emitCBr(guardResult.value, armBlocks[i], nextTestBlocks[i]);
+                }
+                else
+                {
+                    emitCBr(cond, armBlocks[i], nextTestBlocks[i]);
+                }
+                break;
+            }
+
+            case MatchArm::Pattern::Kind::Binding:
+            {
+                // Binding pattern - bind the scrutinee to a local variable
+                // and execute the arm (always matches if reached)
+                defineLocal(arm.pattern.binding, scrutineeVal);
+
+                // If guard is present, check it
+                if (arm.pattern.guard)
+                {
+                    auto guardResult = lowerExpr(arm.pattern.guard.get());
+                    emitCBr(guardResult.value, armBlocks[i], nextTestBlocks[i]);
+                }
+                else
+                {
+                    emitBr(armBlocks[i]);
+                }
+                break;
+            }
+
+            case MatchArm::Pattern::Kind::Constructor:
+            case MatchArm::Pattern::Kind::Tuple:
+                // TODO: Implement constructor and tuple patterns
+                emitBr(nextTestBlocks[i]);
+                break;
+        }
+
+        // Lower the arm body and store result
+        setBlock(armBlocks[i]);
+        if (arm.body)
+        {
+            auto bodyResult = lowerExpr(arm.body.get());
+            storeToSlot(resultSlot, bodyResult.value, ilResultType);
+        }
+
+        // Jump to end after arm body (if not already terminated)
+        if (!isTerminated())
+        {
+            emitBr(endIdx);
+        }
+
+        // Set up next test block for pattern matching
+        if (i + 1 < expr->arms.size())
+        {
+            setBlock(nextTestBlocks[i]);
+        }
+    }
+
+    // Remove the scrutinee slot
+    removeSlot(scrutineeSlot);
+
+    // Continue from end block
+    setBlock(endIdx);
+
+    // Load and return the result
+    Value result = loadFromSlot(resultSlot, ilResultType);
+    removeSlot(resultSlot);
+
+    return {result, ilResultType};
 }
 
 } // namespace il::frontends::viperlang

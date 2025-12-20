@@ -514,6 +514,14 @@ enum class ExprKind
     /// @see SetLiteralExpr
     SetLiteral,
 
+    /// @brief Tuple literal: `(1, "hello", true)`.
+    /// @see TupleExpr
+    Tuple,
+
+    /// @brief Tuple element access: `tuple.0`, `tuple.1`.
+    /// @see TupleIndexExpr
+    TupleIndex,
+
     /// @}
     // =========================================================================
     /// @name Control Flow Expressions
@@ -1120,6 +1128,17 @@ struct LambdaParam
     TypePtr type;
 };
 
+/// @brief Captured variable in a closure.
+/// @details Represents a variable captured from the enclosing scope.
+struct CapturedVar
+{
+    /// @brief Variable name.
+    std::string name;
+
+    /// @brief Whether captured by reference (true) or value (false).
+    bool byReference = false;
+};
+
 /// @brief Anonymous function expression: `(x) => x + 1`.
 /// @details Creates a callable lambda that captures its environment.
 /// Lambdas can have typed or untyped parameters and optional return type.
@@ -1139,6 +1158,9 @@ struct LambdaExpr : Expr
 
     /// @brief Lambda body expression.
     ExprPtr body;
+
+    /// @brief Variables captured from enclosing scope (populated during sema).
+    mutable std::vector<CapturedVar> captures;
 
     /// @brief Construct a lambda expression.
     /// @param l Source location.
@@ -1209,6 +1231,54 @@ struct SetLiteralExpr : Expr
     /// @param e The elements.
     SetLiteralExpr(SourceLoc l, std::vector<ExprPtr> e)
         : Expr(ExprKind::SetLiteral, l), elements(std::move(e))
+    {
+    }
+};
+
+/// @brief Tuple literal expression: `(1, "hello", true)`.
+/// @details Creates a tuple containing multiple values of potentially
+/// different types. Tuples have fixed size and element types.
+///
+/// ## Examples
+/// - `(1, 2)` - Pair of integers
+/// - `(x, "name", true)` - Mixed types
+/// - `(point.x, point.y)` - From field access
+struct TupleExpr : Expr
+{
+    /// @brief The tuple elements.
+    std::vector<ExprPtr> elements;
+
+    /// @brief Construct a tuple literal.
+    /// @param l Source location.
+    /// @param e The elements.
+    TupleExpr(SourceLoc l, std::vector<ExprPtr> e)
+        : Expr(ExprKind::Tuple, l), elements(std::move(e))
+    {
+    }
+};
+
+/// @brief Tuple element access expression: `tuple.0`, `tuple.1`.
+/// @details Accesses an element of a tuple by its index. The index
+/// must be a compile-time constant within the tuple's bounds.
+///
+/// ## Examples
+/// - `pair.0` - First element
+/// - `pair.1` - Second element
+/// - `triple.2` - Third element
+struct TupleIndexExpr : Expr
+{
+    /// @brief The tuple being accessed.
+    ExprPtr tuple;
+
+    /// @brief The element index (0-based).
+    size_t index;
+
+    /// @brief Construct a tuple index expression.
+    /// @param l Source location.
+    /// @param t The tuple expression.
+    /// @param i The element index.
+    TupleIndexExpr(SourceLoc l, ExprPtr t, size_t i)
+        : Expr(ExprKind::TupleIndex, l), tuple(std::move(t)), index(i)
     {
     }
 };

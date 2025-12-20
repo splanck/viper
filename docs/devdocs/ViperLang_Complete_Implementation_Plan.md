@@ -2044,9 +2044,11 @@ After each increment, verify:
 | Task | Status | Dependencies |
 |------|--------|--------------|
 | 4.1 If/Else | [x] Complete | 1.3 |
-| 4.2 Match | [ ] Not Started | 2.1 |
+| 4.2 Match | [~] Partial | 2.1 |
 | 4.3 Loops | [x] Complete | 0.3 |
 | 4.4 Guard | [ ] Not Started | 2.3 |
+
+**Match Notes:** Match statements complete with exhaustive pattern checking for Boolean/Integer. Match expressions pending (lowerMatchExpr not implemented).
 
 ### Phase 5: Error Handling
 
@@ -2067,9 +2069,11 @@ After each increment, verify:
 | Task | Status | Dependencies |
 |------|--------|--------------|
 | 7.1 List | [x] Complete | 0.1, 0.2 |
-| 7.2 Map | [ ] Not Started | 0.1 |
+| 7.2 Map | [x] Complete | 0.1 |
 | 7.3 Set[String] | [ ] Not Started | None |
 | 7.3 Set[T] | Blocked | 0.4 |
+
+**Map Notes:** Map supports index access (`map[key]`), index assignment (`map[key] = value`), and methods (set, get, containsKey, count, remove, clear). Keys and values are boxed for storage.
 
 ### Phase 8: Advanced Features
 
@@ -2238,13 +2242,21 @@ If a feature proves too difficult:
 
 ---
 
-**Status:** Phases 1-4, 7.1 Complete - Working on Phase 10 (Demo Apps)
-**Known Bug:** FIXED - String comparison now uses `Viper.Strings.Equals` runtime call
+**Status:** Phases 1-4, 7.1-7.2 Complete - Map support added
+**Known Bugs:**
+- Lambda/closure lowering causes hang (BlockExpr body handling needs investigation)
+- Match expressions (not statements) hang during compilation
 **Final Goal:** Frogger and vTRIS demos running in ViperLang
-**Next Step:** Continue with Map/Set collections and standard library wrappers
+**Next Step:** Fix lambda/match expression issues, continue with standard library wrappers
 
 **Recent Fixes (Dec 19, 2024):**
 - String comparison (`==`, `!=`) now correctly calls `Viper.Strings.Equals` runtime function
 - Entity field assignment uses correct offset (field.offset without extra header addition)
 - Parser now handles binary operators in function call arguments (e.g., `foo(x + 1, y)`)
 - 7 demo applications created in `/demos/viperlang/` that all compile successfully
+- Map collection support added with index access (`map[key]`) and assignment (`map[key] = value`)
+- Map methods: set, get, containsKey, count, remove, clear
+- Visibility enforcement (`expose`/`hide` keywords) for entity and value type members
+- Exhaustive match checking for match statements (boolean/integer types)
+- Empty list type inference (`List[Unknown]` assignable to `List[T]`)
+- Parser now correctly distinguishes `TypeName[...]` (generic type) from `variable[...]` (index expression)

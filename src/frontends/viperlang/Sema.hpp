@@ -90,6 +90,7 @@
 #include "frontends/viperlang/AST.hpp"
 #include "frontends/viperlang/Types.hpp"
 #include "support/diagnostics.hpp"
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -325,6 +326,11 @@ class Sema
         return it != runtimeCallees_.end() ? it->second : "";
     }
 
+    /// @brief Look up the type of a variable by name.
+    /// @param name The variable name.
+    /// @return The variable's type, or nullptr if not found.
+    TypeRef lookupVarType(const std::string &name);
+
   private:
     //=========================================================================
     /// @name Declaration Analysis
@@ -522,6 +528,10 @@ class Sema
     /// @return types::list(types::integer()) for iteration.
     TypeRef analyzeRange(RangeExpr *expr);
 
+    /// @brief Analyze a match expression.
+    /// @return The common type of all arm bodies.
+    TypeRef analyzeMatchExpr(MatchExpr *expr);
+
     /// @brief Analyze a new expression (object creation).
     /// @return The entity type being constructed.
     TypeRef analyzeNew(NewExpr *expr);
@@ -541,6 +551,14 @@ class Sema
     /// @brief Analyze a set literal expression.
     /// @return types::set(elementType)
     TypeRef analyzeSetLiteral(SetLiteralExpr *expr);
+
+    /// @brief Analyze a tuple literal expression.
+    /// @return types::tuple(elementTypes)
+    TypeRef analyzeTuple(TupleExpr *expr);
+
+    /// @brief Analyze a tuple index access expression.
+    /// @return The type of the element at the given index.
+    TypeRef analyzeTupleIndex(TupleIndexExpr *expr);
 
     /// @}
     //=========================================================================
@@ -589,6 +607,13 @@ class Sema
     /// @param name The symbol name.
     /// @return Pointer to the symbol, or nullptr if not found.
     Symbol *lookupSymbol(const std::string &name);
+
+    /// @brief Collect captured variables from a lambda body.
+    /// @param expr The expression to scan for free variables.
+    /// @param lambdaLocals Names local to the lambda (params).
+    /// @param captures Output vector of captured variables.
+    void collectCaptures(const Expr *expr, const std::set<std::string> &lambdaLocals,
+                         std::vector<CapturedVar> &captures);
 
     /// @}
     //=========================================================================
@@ -671,6 +696,14 @@ class Sema
     /// @details Key format: "TypeName.methodName"
     /// Used for method call resolution.
     std::unordered_map<std::string, TypeRef> methodTypes_;
+
+    /// @brief Map from field signatures to field types.
+    /// @details Key format: "TypeName.fieldName"
+    std::unordered_map<std::string, TypeRef> fieldTypes_;
+
+    /// @brief Map from member signatures to visibility.
+    /// @details Key format: "TypeName.memberName"
+    std::unordered_map<std::string, Visibility> memberVisibility_;
 
     /// @brief Map from runtime function names to return types.
     /// @details Key format: "Viper.Module.FunctionName"

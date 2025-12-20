@@ -213,6 +213,11 @@ enum class TypeKindSem
     /// Used for function references, lambdas, and closures.
     Function,
 
+    /// @brief Tuple type: `(A, B, C)`.
+    /// @details Fixed-size, heterogeneous collection of values.
+    /// Elements are accessed by index: tuple.0, tuple.1, etc.
+    Tuple,
+
     /// @}
     // =========================================================================
     /// @name User-Defined Types
@@ -465,6 +470,14 @@ struct ViperType
         return kind == TypeKindSem::Function;
     }
 
+    /// @brief Check if this is a tuple type.
+    /// @return True for Tuple types.
+    /// @details Tuple types are fixed-size collections of potentially different types.
+    bool isTuple() const
+    {
+        return kind == TypeKindSem::Tuple;
+    }
+
     /// @brief Check if this is a generic type with type arguments.
     /// @return True if typeArgs is non-empty.
     /// @details Generic types have been instantiated with specific type arguments.
@@ -561,6 +574,24 @@ struct ViperType
             return std::vector<TypeRef>(typeArgs.begin(), typeArgs.end() - 1);
         }
         return {};
+    }
+
+    /// @brief Get the element types for Tuple types.
+    /// @return Vector of element types, empty if not a Tuple.
+    /// @details For `(Int, String)`, returns [Int, String].
+    const std::vector<TypeRef> &tupleElementTypes() const
+    {
+        return typeArgs;
+    }
+
+    /// @brief Get a specific tuple element type.
+    /// @param index The element index.
+    /// @return The type at the given index, or nullptr if out of bounds or not a tuple.
+    TypeRef tupleElementType(size_t index) const
+    {
+        if (kind == TypeKindSem::Tuple && index < typeArgs.size())
+            return typeArgs[index];
+        return nullptr;
     }
 
     /// @}
@@ -717,6 +748,12 @@ TypeRef map(TypeRef key, TypeRef value);
 /// @return A new Function type.
 /// @details For `(A, B) -> C`, params = [A, B], ret = C.
 TypeRef function(std::vector<TypeRef> params, TypeRef ret);
+
+/// @brief Create a tuple type.
+/// @param elements The element types.
+/// @return A new Tuple type.
+/// @details For `(A, B)`, elements = [A, B].
+TypeRef tuple(std::vector<TypeRef> elements);
 
 /// @}
 // =========================================================================

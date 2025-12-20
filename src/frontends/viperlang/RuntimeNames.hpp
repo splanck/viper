@@ -353,6 +353,36 @@ inline constexpr const char *kSetNew = "Viper.Collections.Set.New";
 /// Returns a pointer to a newly allocated Map object.
 inline constexpr const char *kMapNew = "Viper.Collections.Map.New";
 
+/// @brief Set a key-value pair in a Map.
+/// @details Signature: set_Item(ptr map, ptr key, ptr value) -> void
+/// Inserts or updates the value associated with the key.
+inline constexpr const char *kMapSet = "Viper.Collections.Map.set_Item";
+
+/// @brief Get a value from a Map by key.
+/// @details Signature: get_Item(ptr map, ptr key) -> ptr
+/// Returns the value associated with the key, or null if not found.
+inline constexpr const char *kMapGet = "Viper.Collections.Map.get_Item";
+
+/// @brief Check if a Map contains a key.
+/// @details Signature: ContainsKey(ptr map, ptr key) -> i64
+/// Returns non-zero if the key exists in the map.
+inline constexpr const char *kMapContainsKey = "Viper.Collections.Map.ContainsKey";
+
+/// @brief Get the number of entries in a Map.
+/// @details Signature: Count(ptr map) -> i64
+/// Returns the number of key-value pairs in the map.
+inline constexpr const char *kMapCount = "Viper.Collections.Map.Count";
+
+/// @brief Remove a key-value pair from a Map.
+/// @details Signature: Remove(ptr map, ptr key) -> i64
+/// Returns non-zero if the key was found and removed.
+inline constexpr const char *kMapRemove = "Viper.Collections.Map.Remove";
+
+/// @brief Clear all entries from a Map.
+/// @details Signature: Clear(ptr map) -> void
+/// Removes all key-value pairs from the map.
+inline constexpr const char *kMapClear = "Viper.Collections.Map.Clear";
+
 /// @}
 
 //=============================================================================
