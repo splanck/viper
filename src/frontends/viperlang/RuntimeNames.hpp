@@ -36,7 +36,8 @@
 
 #pragma once
 
-namespace il::frontends::viperlang::runtime {
+namespace il::frontends::viperlang::runtime
+{
 
 //=============================================================================
 // Terminal I/O Functions

@@ -209,8 +209,7 @@ void testJumpThreadingWithArgs()
     entryBr.op = Opcode::Br;
     entryBr.type = Type(Type::Kind::Void);
     entryBr.labels.push_back("mid");
-    entryBr.brArgs.emplace_back(
-        std::vector<Value>{Value::constBool(true), Value::constInt(42)});
+    entryBr.brArgs.emplace_back(std::vector<Value>{Value::constBool(true), Value::constInt(42)});
     entry.instructions.push_back(std::move(entryBr));
     entry.terminated = true;
 

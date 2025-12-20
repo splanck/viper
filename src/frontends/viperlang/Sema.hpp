@@ -612,7 +612,8 @@ class Sema
     /// @param expr The expression to scan for free variables.
     /// @param lambdaLocals Names local to the lambda (params).
     /// @param captures Output vector of captured variables.
-    void collectCaptures(const Expr *expr, const std::set<std::string> &lambdaLocals,
+    void collectCaptures(const Expr *expr,
+                         const std::set<std::string> &lambdaLocals,
                          std::vector<CapturedVar> &captures);
 
     /// @}

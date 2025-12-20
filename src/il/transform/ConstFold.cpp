@@ -402,8 +402,7 @@ static bool foldCall(const Instr &in, Value &out)
     if (c == "rt_clamp_f64" && in.operands.size() == 3)
     {
         double val, lo, hi;
-        if (getConstFloat(in.operands[0], val) &&
-            getConstFloat(in.operands[1], lo) &&
+        if (getConstFloat(in.operands[0], val) && getConstFloat(in.operands[1], lo) &&
             getConstFloat(in.operands[2], hi))
         {
             if (val < lo)
@@ -419,8 +418,7 @@ static bool foldCall(const Instr &in, Value &out)
     if (c == "rt_clamp_i64" && in.operands.size() == 3)
     {
         long long val, lo, hi;
-        if (isConstInt(in.operands[0], val) &&
-            isConstInt(in.operands[1], lo) &&
+        if (isConstInt(in.operands[0], val) && isConstInt(in.operands[1], lo) &&
             isConstInt(in.operands[2], hi))
         {
             if (val < lo)

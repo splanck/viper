@@ -430,8 +430,8 @@ void Lowerer::lowerMethodDecl(MethodDecl &decl, const std::string &typeName, boo
         // Block param i+1 corresponds to method param i (after self)
         if (i + 1 < blockParams.size())
         {
-            TypeRef paramType =
-                decl.params[i].type ? sema_.resolveType(decl.params[i].type.get()) : types::unknown();
+            TypeRef paramType = decl.params[i].type ? sema_.resolveType(decl.params[i].type.get())
+                                                    : types::unknown();
             Type ilParamType = mapType(paramType);
 
             createSlot(decl.params[i].name, ilParamType);
@@ -878,14 +878,14 @@ void Lowerer::lowerMatchStmt(MatchStmt *stmt)
                 if (scrutinee.type.kind == Type::Kind::Str)
                 {
                     // String comparison
-                    cond = emitCallRet(Type(Type::Kind::I1), kStringEquals,
-                                       {scrutineeVal, litResult.value});
+                    cond = emitCallRet(
+                        Type(Type::Kind::I1), kStringEquals, {scrutineeVal, litResult.value});
                 }
                 else
                 {
                     // Integer comparison
-                    cond = emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1),
-                                      scrutineeVal, litResult.value);
+                    cond = emitBinary(
+                        Opcode::ICmpEq, Type(Type::Kind::I1), scrutineeVal, litResult.value);
                 }
 
                 // If guard is present, check it too
@@ -1265,18 +1265,21 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
                 if (rightType && rightType->kind == TypeKindSem::Integer)
                 {
                     // Convert integer to string
-                    rightStr = emitCallRet(Type(Type::Kind::Str), runtime::kStringFromInt, {right.value});
+                    rightStr =
+                        emitCallRet(Type(Type::Kind::Str), runtime::kStringFromInt, {right.value});
                 }
                 else if (rightType && rightType->kind == TypeKindSem::Number)
                 {
                     // Convert number to string
-                    rightStr = emitCallRet(Type(Type::Kind::Str), runtime::kStringFromNum, {right.value});
+                    rightStr =
+                        emitCallRet(Type(Type::Kind::Str), runtime::kStringFromNum, {right.value});
                 }
                 else if (rightType && rightType->kind == TypeKindSem::Boolean)
                 {
                     // Convert boolean to string: use "true" or "false"
                     // For now, just convert 0/1 to string
-                    rightStr = emitCallRet(Type(Type::Kind::Str), runtime::kStringFromInt, {right.value});
+                    rightStr =
+                        emitCallRet(Type(Type::Kind::Str), runtime::kStringFromInt, {right.value});
                 }
 
                 Value result = emitCallRet(
@@ -1301,8 +1304,8 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
             if (leftType && leftType->kind == TypeKindSem::String)
             {
                 // String equality comparison via runtime
-                Value result = emitCallRet(
-                    Type(Type::Kind::I1), kStringEquals, {left.value, right.value});
+                Value result =
+                    emitCallRet(Type(Type::Kind::I1), kStringEquals, {left.value, right.value});
                 return {result, Type(Type::Kind::I1)};
             }
             op = isFloat ? Opcode::FCmpEQ : Opcode::ICmpEq;
@@ -1312,8 +1315,8 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
             if (leftType && leftType->kind == TypeKindSem::String)
             {
                 // String inequality: !(a == b)
-                Value eqResult = emitCallRet(
-                    Type(Type::Kind::I1), kStringEquals, {left.value, right.value});
+                Value eqResult =
+                    emitCallRet(Type(Type::Kind::I1), kStringEquals, {left.value, right.value});
                 Value result =
                     emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), eqResult, Value::constInt(0));
                 return {result, Type(Type::Kind::I1)};
@@ -1424,7 +1427,8 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                 {
                     if (auto *method = parentIt->second.findMethod(fieldExpr->field))
                     {
-                        return lowerMethodCall(method, currentEntityType_->baseClass, selfPtr, expr);
+                        return lowerMethodCall(
+                            method, currentEntityType_->baseClass, selfPtr, expr);
                     }
                 }
             }
@@ -1488,7 +1492,9 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                     runtimeFunc = kListGet;
                     returnType = Type(Type::Kind::Ptr); // Returns boxed value
                 }
-                else if (equalsIgnoreCase(methodName, "size") || equalsIgnoreCase(methodName, "count"))
+                else if (equalsIgnoreCase(methodName, "size") ||
+                         equalsIgnoreCase(methodName, "count") ||
+                         equalsIgnoreCase(methodName, "length"))
                 {
                     runtimeFunc = kListCount;
                     returnType = Type(Type::Kind::I64);
@@ -1496,6 +1502,21 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                 else if (equalsIgnoreCase(methodName, "clear"))
                 {
                     runtimeFunc = kListClear;
+                }
+                else if (equalsIgnoreCase(methodName, "set"))
+                {
+                    // list.set(index, value) - needs index (as boxed) and boxed value
+                    if (expr->args.size() >= 2)
+                    {
+                        // args already has: [list, boxedArg0, boxedArg1, ...]
+                        // We need: list, index, boxedValue
+                        // Index should be unboxed i64, value should be boxed
+                        auto indexResult = lowerExpr(expr->args[0].value.get());
+                        auto valueResult = lowerExpr(expr->args[1].value.get());
+                        Value boxedValue = emitBox(valueResult.value, valueResult.type);
+                        emitCall(kListSet, {baseResult.value, indexResult.value, boxedValue});
+                        return {Value::constInt(0), Type(Type::Kind::Void)};
+                    }
                 }
 
                 if (runtimeFunc != nullptr)
@@ -1560,8 +1581,8 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                     {
                         auto keyResult = lowerExpr(expr->args[0].value.get());
                         Value boxedKey = emitBox(keyResult.value, keyResult.type);
-                        Value boxed = emitCallRet(Type(Type::Kind::Ptr), kMapGet,
-                                                  {baseResult.value, boxedKey});
+                        Value boxed = emitCallRet(
+                            Type(Type::Kind::Ptr), kMapGet, {baseResult.value, boxedKey});
                         if (valueType)
                         {
                             Type ilValueType = mapType(valueType);
@@ -1570,15 +1591,18 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                         return {boxed, Type(Type::Kind::Ptr)};
                     }
                 }
-                else if (equalsIgnoreCase(methodName, "containsKey") || equalsIgnoreCase(methodName, "hasKey"))
+                else if (equalsIgnoreCase(methodName, "containsKey") ||
+                         equalsIgnoreCase(methodName, "hasKey"))
                 {
                     runtimeFunc = kMapContainsKey;
                     returnType = Type(Type::Kind::I64);
                 }
-                else if (equalsIgnoreCase(methodName, "size") || equalsIgnoreCase(methodName, "count"))
+                else if (equalsIgnoreCase(methodName, "size") ||
+                         equalsIgnoreCase(methodName, "count"))
                 {
                     // count() takes no args, just the map
-                    Value result = emitCallRet(Type(Type::Kind::I64), kMapCount, {baseResult.value});
+                    Value result =
+                        emitCallRet(Type(Type::Kind::I64), kMapCount, {baseResult.value});
                     return {result, Type(Type::Kind::I64)};
                 }
                 else if (equalsIgnoreCase(methodName, "remove"))
@@ -1663,13 +1687,11 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                 {
                     if (argType->kind == TypeKindSem::Integer)
                     {
-                        strVal =
-                            emitCallRet(Type(Type::Kind::Str), kStringFromInt, {arg.value});
+                        strVal = emitCallRet(Type(Type::Kind::Str), kStringFromInt, {arg.value});
                     }
                     else if (argType->kind == TypeKindSem::Number)
                     {
-                        strVal =
-                            emitCallRet(Type(Type::Kind::Str), kStringFromNum, {arg.value});
+                        strVal = emitCallRet(Type(Type::Kind::Str), kStringFromNum, {arg.value});
                     }
                 }
 
@@ -1993,9 +2015,13 @@ LowerResult Lowerer::lowerNew(NewExpr *expr)
         argValues.push_back(result.value);
     }
 
-    // Allocate heap memory for the entity using rt_alloc
-    Value ptr = emitCallRet(
-        Type(Type::Kind::Ptr), "rt_alloc", {Value::constInt(static_cast<int64_t>(info.totalSize))});
+    // Allocate heap memory for the entity using rt_obj_new_i64
+    // This properly initializes the heap header with magic, refcount, etc.
+    // so that entities can be added to lists and other reference-counted collections
+    Value ptr = emitCallRet(Type(Type::Kind::Ptr),
+                            "rt_obj_new_i64",
+                            {Value::constInt(static_cast<int64_t>(info.classId)),
+                             Value::constInt(static_cast<int64_t>(info.totalSize))});
 
     // Store each argument into the corresponding field
     for (size_t i = 0; i < argValues.size() && i < info.fields.size(); ++i)
@@ -2242,8 +2268,7 @@ LowerResult Lowerer::lowerIndex(IndexExpr *expr)
         Value boxedKey = emitBox(index.value, keyIlType);
 
         // Call Map.get_Item
-        boxed = emitCallRet(Type(Type::Kind::Ptr), kMapGet,
-                            {base.value, boxedKey});
+        boxed = emitCallRet(Type(Type::Kind::Ptr), kMapGet, {base.value, boxedKey});
     }
     else
     {
@@ -2360,6 +2385,7 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr)
         Type type;
         bool isSlot;
     };
+
     std::vector<CaptureInfo> captureInfos;
     if (hasCaptures)
     {
@@ -2472,9 +2498,8 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr)
         size_t paramIdx = i + 1; // Skip __env
         if (paramIdx < blockParams.size())
         {
-            TypeRef paramType = expr->params[i].type
-                                    ? sema_.resolveType(expr->params[i].type.get())
-                                    : types::unknown();
+            TypeRef paramType = expr->params[i].type ? sema_.resolveType(expr->params[i].type.get())
+                                                     : types::unknown();
             Type ilParamType = mapType(paramType);
             createSlot(expr->params[i].name, ilParamType);
             storeToSlot(expr->params[i].name, Value::temp(blockParams[paramIdx].id), ilParamType);
@@ -2565,7 +2590,8 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr)
     // Allocate closure struct: { ptr funcPtr, ptr envPtr } = 16 bytes
     Value closureClassId = Value::constInt(0);
     Value closureSizeVal = Value::constInt(16);
-    Value closurePtr = emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {closureClassId, closureSizeVal});
+    Value closurePtr =
+        emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {closureClassId, closureSizeVal});
 
     // Store function pointer at offset 0
     emitStore(closurePtr, funcPtr, Type(Type::Kind::Ptr));
@@ -2646,7 +2672,9 @@ void Lowerer::emitCallIndirect(Value funcPtr, const std::vector<Value> &args)
     blockMgr_.currentBlock()->instructions.push_back(instr);
 }
 
-Lowerer::Value Lowerer::emitCallIndirectRet(Type retTy, Value funcPtr, const std::vector<Value> &args)
+Lowerer::Value Lowerer::emitCallIndirectRet(Type retTy,
+                                            Value funcPtr,
+                                            const std::vector<Value> &args)
 {
     unsigned id = nextTempId();
     il::core::Instr instr;
@@ -2841,8 +2869,10 @@ void Lowerer::emitFieldStore(const FieldLayout *field, Value selfPtr, Value val)
     emitStore(fieldAddr, val, fieldType);
 }
 
-LowerResult Lowerer::lowerMethodCall(MethodDecl *method, const std::string &typeName,
-                                      Value selfValue, CallExpr *expr)
+LowerResult Lowerer::lowerMethodCall(MethodDecl *method,
+                                     const std::string &typeName,
+                                     Value selfValue,
+                                     CallExpr *expr)
 {
     // Lower method arguments
     std::vector<Value> args;
@@ -2856,9 +2886,8 @@ LowerResult Lowerer::lowerMethodCall(MethodDecl *method, const std::string &type
     }
 
     // Get method return type
-    TypeRef returnType = method->returnType
-                             ? sema_.resolveType(method->returnType.get())
-                             : types::voidType();
+    TypeRef returnType =
+        method->returnType ? sema_.resolveType(method->returnType.get()) : types::voidType();
     Type ilReturnType = mapType(returnType);
 
     // Call the method: TypeName.methodName
@@ -3107,14 +3136,14 @@ LowerResult Lowerer::lowerMatchExpr(MatchExpr *expr)
                 if (scrutinee.type.kind == Type::Kind::Str)
                 {
                     // String comparison
-                    cond = emitCallRet(Type(Type::Kind::I1), kStringEquals,
-                                       {scrutineeVal, litResult.value});
+                    cond = emitCallRet(
+                        Type(Type::Kind::I1), kStringEquals, {scrutineeVal, litResult.value});
                 }
                 else
                 {
                     // Integer comparison
-                    cond = emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1),
-                                      scrutineeVal, litResult.value);
+                    cond = emitBinary(
+                        Opcode::ICmpEq, Type(Type::Kind::I1), scrutineeVal, litResult.value);
                 }
 
                 // If guard is present, check it too

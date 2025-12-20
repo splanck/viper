@@ -4,7 +4,7 @@
 > These are early development releases. Viper is under active development and not ready for production use.  
 > Future milestones will define supported releases when appropriate.
 
-## Version 0.1.3 - Pre-Alpha (December 19, 2025)
+## Version 0.1.3 - Pre-Alpha (December 20, 2025)
 
 ### Release Overview
 
@@ -188,11 +188,11 @@ Shared components extracted for frontend reuse:
 ### Architecture
 
 ```
-┌──────────────┐  ┌──────────────┐  ┌──────────────┐
-│ BASIC Source │  │Pascal Source │  │ViperLang    │
-└──────┬───────┘  └──────┬───────┘  └──────┬───────┘
-       │                 │                 │
-       ▼                 ▼                 ▼
+┌──────────────┐  ┌───────────────┐  ┌───────────────┐
+│ BASIC Source │  │ Pascal Source │  │ ViperLang Src │
+└──────┬───────┘  └──────┬────────┘  └───────┬───────┘
+       │                 │                   │
+       ▼                 ▼                   ▼
 ┌─────────────────────────────────────────────────────┐
 │                     Viper IL                        │
 └─────────────────────────┬───────────────────────────┘

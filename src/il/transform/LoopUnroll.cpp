@@ -60,7 +60,9 @@ struct CountedLoop
 };
 
 /// @brief Find the preheader of a loop.
-BasicBlock *findPreheader(Function &function, const Loop &loop, BasicBlock &header,
+BasicBlock *findPreheader(Function &function,
+                          const Loop &loop,
+                          BasicBlock &header,
                           const CFGInfo &cfg,
                           const std::unordered_map<std::string, BasicBlock *> &blockMap)
 {
@@ -94,7 +96,10 @@ std::optional<size_t> labelIndex(const Instr &term, const std::string &target)
 
 /// @brief Analyze a loop to determine if it's a simple counted loop.
 std::optional<CountedLoop> analyzeCountedLoop(
-    Function &function, const Loop &loop, BasicBlock &header, BasicBlock &latch,
+    Function &function,
+    const Loop &loop,
+    BasicBlock &header,
+    BasicBlock &latch,
     BasicBlock *preheader,
     const std::unordered_map<std::string, BasicBlock *> &blockMap)
 {
@@ -147,9 +152,8 @@ std::optional<CountedLoop> analyzeCountedLoop(
 
     // Must be a signed comparison
     Opcode cmpOp = cmpInstr->op;
-    if (cmpOp != Opcode::SCmpLT && cmpOp != Opcode::SCmpLE &&
-        cmpOp != Opcode::SCmpGT && cmpOp != Opcode::SCmpGE &&
-        cmpOp != Opcode::ICmpEq && cmpOp != Opcode::ICmpNe)
+    if (cmpOp != Opcode::SCmpLT && cmpOp != Opcode::SCmpLE && cmpOp != Opcode::SCmpGT &&
+        cmpOp != Opcode::SCmpGE && cmpOp != Opcode::ICmpEq && cmpOp != Opcode::ICmpNe)
         return std::nullopt;
 
     if (cmpInstr->operands.size() != 2)
@@ -277,8 +281,7 @@ std::optional<CountedLoop> analyzeCountedLoop(
             const auto &argsToLatch = header.instructions.back().brArgs[*toLatchIdx];
             for (size_t i = 0; i < argsToLatch.size() && i < latch.params.size(); ++i)
             {
-                if (argsToLatch[i].kind == Value::Kind::Temp &&
-                    argsToLatch[i].id == ivId)
+                if (argsToLatch[i].kind == Value::Kind::Temp && argsToLatch[i].id == ivId)
                 {
                     ivId = latch.params[i].id;
                     break;
@@ -313,8 +316,7 @@ std::optional<CountedLoop> analyzeCountedLoop(
             const auto &argsToLatch = header.instructions.back().brArgs[*toLatchIdx];
             for (size_t i = 0; i < argsToLatch.size() && i < latch.params.size(); ++i)
             {
-                if (argsToLatch[i].kind == Value::Kind::Temp &&
-                    argsToLatch[i].id == ivId)
+                if (argsToLatch[i].kind == Value::Kind::Temp && argsToLatch[i].id == ivId)
                 {
                     ivId = latch.params[i].id;
                     break;
@@ -341,7 +343,8 @@ std::optional<CountedLoop> analyzeCountedLoop(
 
     // Compute trip count based on comparison and exit branch
     // exitBranchIdx tells us which branch exits: 0 = true branch exits, 1 = false branch exits
-    // The loop continues when the condition is true (if exitBranchIdx == 1) or false (if exitBranchIdx == 0)
+    // The loop continues when the condition is true (if exitBranchIdx == 1) or false (if
+    // exitBranchIdx == 0)
     bool loopWhileTrue = (exitBranchIdx == 1);
 
     unsigned tripCount = 0;
@@ -405,8 +408,9 @@ std::optional<CountedLoop> analyzeCountedLoop(
 }
 
 /// @brief Count instructions in a loop.
-size_t countLoopInstructions(const Loop &loop, Function &function,
-                              const std::unordered_map<std::string, BasicBlock *> &blockMap)
+size_t countLoopInstructions(const Loop &loop,
+                             Function &function,
+                             const std::unordered_map<std::string, BasicBlock *> &blockMap)
 {
     size_t count = 0;
     for (const auto &label : loop.blockLabels)
@@ -419,8 +423,12 @@ size_t countLoopInstructions(const Loop &loop, Function &function,
 }
 
 /// @brief Fully unroll a simple loop.
-bool fullyUnrollLoop(Function &function, const Loop &loop, BasicBlock &header,
-                     BasicBlock &latch, BasicBlock *preheader, const CountedLoop &counted,
+bool fullyUnrollLoop(Function &function,
+                     const Loop &loop,
+                     BasicBlock &header,
+                     BasicBlock &latch,
+                     BasicBlock *preheader,
+                     const CountedLoop &counted,
                      std::unordered_map<std::string, BasicBlock *> &blockMap)
 {
     // For full unrolling, we:
@@ -539,8 +547,7 @@ bool fullyUnrollLoop(Function &function, const Loop &loop, BasicBlock &header,
             }
 
             preheader->instructions.insert(
-                preheader->instructions.begin() + static_cast<long>(insertIdx),
-                std::move(cloned));
+                preheader->instructions.begin() + static_cast<long>(insertIdx), std::move(cloned));
             ++insertIdx;
         }
 
@@ -585,11 +592,12 @@ bool fullyUnrollLoop(Function &function, const Loop &loop, BasicBlock &header,
 
     // Remove original loop blocks from function
     std::unordered_set<std::string> loopBlockLabels(loop.blockLabels.begin(),
-                                                     loop.blockLabels.end());
-    function.blocks.erase(
-        std::remove_if(function.blocks.begin(), function.blocks.end(),
-                       [&](const BasicBlock &b) { return loopBlockLabels.count(b.label) > 0; }),
-        function.blocks.end());
+                                                    loop.blockLabels.end());
+    function.blocks.erase(std::remove_if(function.blocks.begin(),
+                                         function.blocks.end(),
+                                         [&](const BasicBlock &b)
+                                         { return loopBlockLabels.count(b.label) > 0; }),
+                          function.blocks.end());
 
     return true;
 }

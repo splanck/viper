@@ -268,8 +268,10 @@ std::optional<unsigned> getAllocaId(const Value &ptr, const Function &F)
 }
 
 /// Check if a block reads from the given address
-bool blockReadsFrom(const BasicBlock &B, const Value &ptr,
-                    std::optional<unsigned> size, viper::analysis::BasicAA &AA)
+bool blockReadsFrom(const BasicBlock &B,
+                    const Value &ptr,
+                    std::optional<unsigned> size,
+                    viper::analysis::BasicAA &AA)
 {
     for (const auto &I : B.instructions)
     {
@@ -297,8 +299,10 @@ bool blockReadsFrom(const BasicBlock &B, const Value &ptr,
 }
 
 /// Check if a block has a store that kills the pending store
-bool blockKillsStore(const BasicBlock &B, const Value &ptr,
-                     std::optional<unsigned> size, viper::analysis::BasicAA &AA)
+bool blockKillsStore(const BasicBlock &B,
+                     const Value &ptr,
+                     std::optional<unsigned> size,
+                     viper::analysis::BasicAA &AA)
 {
     for (const auto &I : B.instructions)
     {
@@ -345,8 +349,7 @@ bool runCrossBlockDSE(Function &F, AnalysisManager &AM)
     if (F.blocks.empty())
         return false;
 
-    viper::analysis::BasicAA &AA =
-        AM.getFunctionResult<viper::analysis::BasicAA>("basic-aa", F);
+    viper::analysis::BasicAA &AA = AM.getFunctionResult<viper::analysis::BasicAA>("basic-aa", F);
 
     // Build a map from block label to block pointer for successor lookup
     std::unordered_map<std::string, BasicBlock *> blockMap;
@@ -488,7 +491,8 @@ bool runCrossBlockDSE(Function &F, AnalysisManager &AM)
     }
 
     // Remove dead stores in reverse order to preserve indices
-    std::sort(toRemove.begin(), toRemove.end(),
+    std::sort(toRemove.begin(),
+              toRemove.end(),
               [](const auto &a, const auto &b)
               {
                   if (a.first != b.first)
@@ -498,8 +502,7 @@ bool runCrossBlockDSE(Function &F, AnalysisManager &AM)
 
     for (const auto &[block, idx] : toRemove)
     {
-        block->instructions.erase(block->instructions.begin() +
-                                  static_cast<long>(idx));
+        block->instructions.erase(block->instructions.begin() + static_cast<long>(idx));
         changed = true;
     }
 

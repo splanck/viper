@@ -106,8 +106,7 @@ void testSimpleCountedLoop()
     phBr.op = Opcode::Br;
     phBr.type = Type(Type::Kind::Void);
     phBr.labels.push_back("loop");
-    phBr.brArgs.emplace_back(
-        std::vector<Value>{Value::temp(phAcc.id), Value::temp(phI.id)});
+    phBr.brArgs.emplace_back(std::vector<Value>{Value::temp(phAcc.id), Value::temp(phI.id)});
     preheader.instructions.push_back(std::move(phBr));
     preheader.terminated = true;
 
@@ -135,7 +134,8 @@ void testSimpleCountedLoop()
     headerCbr.operands.push_back(Value::temp(cmpId));
     headerCbr.labels.push_back("body");
     headerCbr.labels.push_back("exit");
-    headerCbr.brArgs.emplace_back(std::vector<Value>{Value::temp(accParam.id), Value::temp(iParam.id)});
+    headerCbr.brArgs.emplace_back(
+        std::vector<Value>{Value::temp(accParam.id), Value::temp(iParam.id)});
     headerCbr.brArgs.emplace_back(std::vector<Value>{Value::temp(accParam.id)});
 
     loopHeader.instructions.push_back(std::move(cmp));

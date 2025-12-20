@@ -46,8 +46,8 @@ il::core::BasicBlock *findBlock(il::core::Function &F, const std::string &label)
 }
 
 /// @brief Build a map of all predecessors for each block.
-std::unordered_map<std::string, std::vector<il::core::BasicBlock *>>
-buildPredecessorMap(il::core::Function &F)
+std::unordered_map<std::string, std::vector<il::core::BasicBlock *>> buildPredecessorMap(
+    il::core::Function &F)
 {
     std::unordered_map<std::string, std::vector<il::core::BasicBlock *>> preds;
 
@@ -78,10 +78,9 @@ std::optional<size_t> labelIndex(const il::core::Instr &term, const std::string 
 }
 
 /// @brief Determine what constant value (if any) flows to a block parameter.
-std::optional<il::core::Value> getConstantArgForParam(
-    const il::core::BasicBlock &pred,
-    const il::core::BasicBlock &target,
-    size_t paramIndex)
+std::optional<il::core::Value> getConstantArgForParam(const il::core::BasicBlock &pred,
+                                                      const il::core::BasicBlock &target,
+                                                      size_t paramIndex)
 {
     const il::core::Instr *term = findTerminator(pred);
     if (!term)
@@ -100,8 +99,7 @@ std::optional<il::core::Value> getConstantArgForParam(
 
     const il::core::Value &arg = args[paramIndex];
     if (arg.kind == il::core::Value::Kind::ConstInt ||
-        arg.kind == il::core::Value::Kind::ConstFloat ||
-        arg.kind == il::core::Value::Kind::NullPtr)
+        arg.kind == il::core::Value::Kind::ConstFloat || arg.kind == il::core::Value::Kind::NullPtr)
     {
         return arg;
     }
@@ -155,11 +153,10 @@ bool isSimpleCbrBlock(const il::core::BasicBlock &block)
 }
 
 /// @brief Compute the arguments to pass to the threaded target.
-std::vector<il::core::Value> computeThreadedArgs(
-    const il::core::BasicBlock &pred,
-    const il::core::BasicBlock &intermediate,
-    const il::core::BasicBlock &target,
-    size_t targetBranchIdx)
+std::vector<il::core::Value> computeThreadedArgs(const il::core::BasicBlock &pred,
+                                                 const il::core::BasicBlock &intermediate,
+                                                 const il::core::BasicBlock &target,
+                                                 size_t targetBranchIdx)
 {
     const il::core::Instr *predTerm = findTerminator(pred);
     const il::core::Instr *intTerm = findTerminator(intermediate);
@@ -216,6 +213,7 @@ bool threadJumps(SimplifyCFG::SimplifyCFGPassContext &ctx)
         std::vector<il::core::Value> newArgs;
         size_t predBranchIdx;
     };
+
     std::vector<ThreadingCandidate> candidates;
 
     for (auto &block : F.blocks)
@@ -273,8 +271,8 @@ bool threadJumps(SimplifyCFG::SimplifyCFGPassContext &ctx)
             const std::string &newTarget = term.labels[targetBranchIdx];
 
             // Compute the arguments for the threaded jump
-            auto newArgs = computeThreadedArgs(*pred, block, *findBlock(F, newTarget),
-                                               targetBranchIdx);
+            auto newArgs =
+                computeThreadedArgs(*pred, block, *findBlock(F, newTarget), targetBranchIdx);
 
             // Find which branch index in pred goes to this block
             il::core::Instr *predTerm = findTerminator(*pred);
@@ -311,9 +309,9 @@ bool threadJumps(SimplifyCFG::SimplifyCFGPassContext &ctx)
 
         if (ctx.isDebugLoggingEnabled())
         {
-            std::string message = "threaded jump from '" + candidate.pred->label +
-                                  "' through '" + candidate.intermediate->label +
-                                  "' to '" + candidate.newTarget + "'";
+            std::string message = "threaded jump from '" + candidate.pred->label + "' through '" +
+                                  candidate.intermediate->label + "' to '" + candidate.newTarget +
+                                  "'";
             ctx.logDebug(message);
         }
     }

@@ -14,14 +14,14 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "il/analysis/BasicAA.hpp"
+#include "il/analysis/CFG.hpp"
+#include "il/analysis/Dominators.hpp"
 #include "il/build/IRBuilder.hpp"
 #include "il/core/Module.hpp"
 #include "il/transform/AnalysisManager.hpp"
 #include "il/transform/DSE.hpp"
 #include "il/transform/analysis/Liveness.hpp"
-#include "il/analysis/BasicAA.hpp"
-#include "il/analysis/CFG.hpp"
-#include "il/analysis/Dominators.hpp"
 #include "il/verify/Verifier.hpp"
 #include "support/diag_expected.hpp"
 

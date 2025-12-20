@@ -365,6 +365,12 @@ class Parser
     /// @return The parsed ListLiteralExpr.
     ExprPtr parseListLiteral();
 
+    /// @brief Parse a lambda body after parameters have been parsed.
+    /// @param loc The source location of the lambda start.
+    /// @param params The parsed lambda parameters.
+    /// @return The parsed LambdaExpr.
+    ExprPtr parseLambdaBody(SourceLoc loc, std::vector<LambdaParam> params);
+
     /// @brief Parse a map or set literal: {a: 1} or {a, b}.
     /// @return The parsed MapLiteralExpr or SetLiteralExpr.
     ///

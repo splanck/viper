@@ -335,7 +335,8 @@ class Lexer
     /// - `\$` → dollar sign (for escaping interpolation)
     ///
     /// Returns nullopt for unrecognized escape sequences.
-    std::optional<char> processEscape();
+    /// @param c The escape character (the character after the backslash).
+    std::optional<char> processEscape(char c);
 
     /// @brief Lex the continuation of an interpolated string after '}'.
     /// @return Token with kind StringMid, StringEnd, or Error.

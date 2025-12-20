@@ -749,8 +749,10 @@ class Lowerer
     /// @param selfValue The receiver value (self).
     /// @param expr The call expression for arguments.
     /// @return The call result.
-    LowerResult lowerMethodCall(MethodDecl *method, const std::string &typeName,
-                                Value selfValue, CallExpr *expr);
+    LowerResult lowerMethodCall(MethodDecl *method,
+                                const std::string &typeName,
+                                Value selfValue,
+                                CallExpr *expr);
 
     /// @}
     //=========================================================================

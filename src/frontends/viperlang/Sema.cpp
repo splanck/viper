@@ -709,22 +709,25 @@ void Sema::analyzeMatchStmt(MatchStmt *stmt)
             // Boolean must cover both true and false
             if (coveredBooleans.size() < 2)
             {
-                error(stmt->loc, "Non-exhaustive patterns: match on Boolean must cover both true "
-                                 "and false, or use a wildcard (_)");
+                error(stmt->loc,
+                      "Non-exhaustive patterns: match on Boolean must cover both true "
+                      "and false, or use a wildcard (_)");
             }
         }
         else if (scrutineeType && scrutineeType->isIntegral())
         {
             // Integer types need a wildcard since we can't enumerate all values
-            error(stmt->loc, "Non-exhaustive patterns: match on Integer requires a wildcard (_) or "
-                             "else case to be exhaustive");
+            error(stmt->loc,
+                  "Non-exhaustive patterns: match on Integer requires a wildcard (_) or "
+                  "else case to be exhaustive");
         }
         else if (scrutineeType && scrutineeType->kind == TypeKindSem::Optional)
         {
             // Optional types need to handle both Some and None cases
             // For now, just warn that a wildcard is recommended
-            error(stmt->loc, "Non-exhaustive patterns: match on optional type should use a "
-                             "wildcard (_) or handle all cases");
+            error(stmt->loc,
+                  "Non-exhaustive patterns: match on optional type should use a "
+                  "wildcard (_) or handle all cases");
         }
     }
 }
@@ -1051,6 +1054,59 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
         }
     }
 
+    // Handle special built-in method calls on collections
+    // This allows list.count() as an alternative to list.count
+    if (expr->callee->kind == ExprKind::Field)
+    {
+        auto *fieldExpr = static_cast<FieldExpr *>(expr->callee.get());
+        TypeRef baseType = analyzeExpr(fieldExpr->base.get());
+
+        // Handle List methods
+        if (baseType && baseType->kind == TypeKindSem::List)
+        {
+            if (fieldExpr->field == "count" || fieldExpr->field == "size" ||
+                fieldExpr->field == "length")
+            {
+                // Analyze arguments (should be empty)
+                for (auto &arg : expr->args)
+                {
+                    analyzeExpr(arg.value.get());
+                }
+                return types::integer();
+            }
+            if (fieldExpr->field == "isEmpty")
+            {
+                for (auto &arg : expr->args)
+                {
+                    analyzeExpr(arg.value.get());
+                }
+                return types::boolean();
+            }
+        }
+
+        // Handle String methods
+        if (baseType && baseType->kind == TypeKindSem::String)
+        {
+            if (fieldExpr->field == "length" || fieldExpr->field == "count" ||
+                fieldExpr->field == "size")
+            {
+                for (auto &arg : expr->args)
+                {
+                    analyzeExpr(arg.value.get());
+                }
+                return types::integer();
+            }
+            if (fieldExpr->field == "isEmpty")
+            {
+                for (auto &arg : expr->args)
+                {
+                    analyzeExpr(arg.value.get());
+                }
+                return types::boolean();
+            }
+        }
+    }
+
     TypeRef calleeType = analyzeExpr(expr->callee.get());
 
     // Analyze arguments
@@ -1124,8 +1180,9 @@ TypeRef Sema::analyzeField(FieldExpr *expr)
         {
             if (visIt->second == Visibility::Private && !isInsideType)
             {
-                error(expr->loc, "Cannot access private member '" + expr->field + "' of type '" +
-                                     baseType->name + "'");
+                error(expr->loc,
+                      "Cannot access private member '" + expr->field + "' of type '" +
+                          baseType->name + "'");
             }
         }
 
@@ -1270,21 +1327,24 @@ TypeRef Sema::analyzeMatchExpr(MatchExpr *expr)
             // Boolean must cover both true and false
             if (coveredBooleans.size() < 2)
             {
-                error(expr->loc, "Non-exhaustive patterns: match on Boolean must cover both true "
-                                 "and false, or use a wildcard (_)");
+                error(expr->loc,
+                      "Non-exhaustive patterns: match on Boolean must cover both true "
+                      "and false, or use a wildcard (_)");
             }
         }
         else if (scrutineeType && scrutineeType->isIntegral())
         {
             // Integer types need a wildcard since we can't enumerate all values
-            error(expr->loc, "Non-exhaustive patterns: match on Integer requires a wildcard (_) or "
-                             "else case to be exhaustive");
+            error(expr->loc,
+                  "Non-exhaustive patterns: match on Integer requires a wildcard (_) or "
+                  "else case to be exhaustive");
         }
         else if (scrutineeType && scrutineeType->kind == TypeKindSem::Optional)
         {
             // Optional types need to handle both Some and None cases
-            error(expr->loc, "Non-exhaustive patterns: match on optional type should use a "
-                             "wildcard (_) or handle all cases");
+            error(expr->loc,
+                  "Non-exhaustive patterns: match on optional type should use a "
+                  "wildcard (_) or handle all cases");
         }
     }
 
@@ -1418,15 +1478,16 @@ TypeRef Sema::analyzeTupleIndex(TupleIndexExpr *expr)
 
     if (!tupleType->isTuple())
     {
-        error(expr->loc, "tuple index access requires a tuple type, got '" + tupleType->toString() +
-                             "'");
+        error(expr->loc,
+              "tuple index access requires a tuple type, got '" + tupleType->toString() + "'");
         return types::unknown();
     }
 
     if (expr->index >= tupleType->tupleElementTypes().size())
     {
-        error(expr->loc, "tuple index " + std::to_string(expr->index) + " is out of bounds for " +
-                             tupleType->toString());
+        error(expr->loc,
+              "tuple index " + std::to_string(expr->index) + " is out of bounds for " +
+                  tupleType->toString());
         return types::unknown();
     }
 
@@ -1601,7 +1662,8 @@ TypeRef Sema::lookupVarType(const std::string &name)
 // Closure Capture Collection
 //=============================================================================
 
-void Sema::collectCaptures(const Expr *expr, const std::set<std::string> &lambdaLocals,
+void Sema::collectCaptures(const Expr *expr,
+                           const std::set<std::string> &lambdaLocals,
                            std::vector<CapturedVar> &captures)
 {
     if (!expr)
@@ -1610,7 +1672,8 @@ void Sema::collectCaptures(const Expr *expr, const std::set<std::string> &lambda
     std::set<std::string> captured;
 
     // Helper to recursively collect identifiers
-    std::function<void(const Expr *)> collect = [&](const Expr *e) {
+    std::function<void(const Expr *)> collect = [&](const Expr *e)
+    {
         if (!e)
             return;
 

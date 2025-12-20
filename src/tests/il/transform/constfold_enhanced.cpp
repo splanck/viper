@@ -67,7 +67,11 @@ void testIntegerComparisonFold()
 
     // %cmp = scmp_lt 5, 10 -> should fold to true (boolean)
     unsigned cmpId = builder.reserveTempId();
-    emitBinOp(entry, Opcode::SCmpLT, Value::constInt(5), Value::constInt(10), cmpId,
+    emitBinOp(entry,
+              Opcode::SCmpLT,
+              Value::constInt(5),
+              Value::constInt(10),
+              cmpId,
               Type(Type::Kind::I1));
     builder.emitRet(Value::temp(cmpId), {});
 
@@ -100,7 +104,11 @@ void testUnsignedComparisonFold()
 
     // %cmp = ucmp_gt 10, 5 -> should fold to true
     unsigned cmpId = builder.reserveTempId();
-    emitBinOp(entry, Opcode::UCmpGT, Value::constInt(10), Value::constInt(5), cmpId,
+    emitBinOp(entry,
+              Opcode::UCmpGT,
+              Value::constInt(10),
+              Value::constInt(5),
+              cmpId,
               Type(Type::Kind::I1));
     builder.emitRet(Value::temp(cmpId), {});
 
@@ -183,7 +191,11 @@ void testFloatComparisonFold()
 
     // %cmp = fcmp.lt 1.0, 2.0 -> should fold to true (boolean)
     unsigned cmpId = builder.reserveTempId();
-    emitBinOp(entry, Opcode::FCmpLT, Value::constFloat(1.0), Value::constFloat(2.0), cmpId,
+    emitBinOp(entry,
+              Opcode::FCmpLT,
+              Value::constFloat(1.0),
+              Value::constFloat(2.0),
+              cmpId,
               Type(Type::Kind::I1));
     builder.emitRet(Value::temp(cmpId), {});
 
@@ -212,7 +224,11 @@ void testEqualityFold()
 
     // %cmp = icmp.eq 42, 42 -> should fold to true
     unsigned cmpId = builder.reserveTempId();
-    emitBinOp(entry, Opcode::ICmpEq, Value::constInt(42), Value::constInt(42), cmpId,
+    emitBinOp(entry,
+              Opcode::ICmpEq,
+              Value::constInt(42),
+              Value::constInt(42),
+              cmpId,
               Type(Type::Kind::I1));
     builder.emitRet(Value::temp(cmpId), {});
 
@@ -241,8 +257,8 @@ void testInequalityFold()
 
     // %cmp = icmp.ne 1, 2 -> should fold to true
     unsigned cmpId = builder.reserveTempId();
-    emitBinOp(entry, Opcode::ICmpNe, Value::constInt(1), Value::constInt(2), cmpId,
-              Type(Type::Kind::I1));
+    emitBinOp(
+        entry, Opcode::ICmpNe, Value::constInt(1), Value::constInt(2), cmpId, Type(Type::Kind::I1));
     builder.emitRet(Value::temp(cmpId), {});
 
     verifyOrDie(module);

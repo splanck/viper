@@ -65,6 +65,7 @@ class Inliner : public ModulePass
 {
   public:
     Inliner() = default;
+
     explicit Inliner(InlineCostConfig config) : config_(config) {}
 
     std::string_view id() const override;

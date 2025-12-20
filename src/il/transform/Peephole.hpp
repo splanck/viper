@@ -59,7 +59,8 @@ struct Match
     core::Opcode op;
     /// Which matching strategy to use.
     Kind kind;
-    /// Operand index holding the constant (ConstOperand/ConstFloatOperand) or unused (SameOperands).
+    /// Operand index holding the constant (ConstOperand/ConstFloatOperand) or unused
+    /// (SameOperands).
     unsigned constIdx = 0;
     /// Required constant value (ConstOperand) - integer.
     long long value = 0;
@@ -73,9 +74,9 @@ struct Replace
     /// Strategy for producing the replacement value.
     enum class Kind
     {
-        Operand,    ///< Forward an existing operand.
-        Const,      ///< Synthesize an integer/boolean literal.
-        ConstFloat  ///< Synthesize a floating-point literal.
+        Operand,   ///< Forward an existing operand.
+        Const,     ///< Synthesize an integer/boolean literal.
+        ConstFloat ///< Synthesize a floating-point literal.
     };
 
     Kind kind;

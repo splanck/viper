@@ -613,12 +613,8 @@ Token Lexer::lexNumber()
     return tok;
 }
 
-std::optional<char> Lexer::processEscape()
+std::optional<char> Lexer::processEscape(char c)
 {
-    if (eof())
-        return std::nullopt;
-
-    char c = getChar();
     switch (c)
     {
         case 'n':
@@ -699,8 +695,8 @@ Token Lexer::lexString()
                 return tok;
             }
             char escaped = peekChar();
-            tok.text.push_back(getChar());
-            if (auto esc = processEscape())
+            tok.text.push_back(getChar()); // consume the escape character
+            if (auto esc = processEscape(escaped))
             {
                 tok.stringValue.push_back(*esc);
             }
@@ -768,8 +764,8 @@ Token Lexer::lexInterpolatedStringContinuation()
                 return tok;
             }
             char escaped = peekChar();
-            tok.text.push_back(getChar());
-            if (auto esc = processEscape())
+            tok.text.push_back(getChar()); // consume the escape character
+            if (auto esc = processEscape(escaped))
             {
                 tok.stringValue.push_back(*esc);
             }
@@ -816,12 +812,12 @@ Token Lexer::lexTripleQuotedString()
         // Handle escape sequences
         if (c == '\\')
         {
-            tok.text.push_back(getChar());
+            tok.text.push_back(getChar()); // consume '\'
             if (!eof())
             {
                 char escaped = peekChar();
-                tok.text.push_back(getChar());
-                if (auto esc = processEscape())
+                tok.text.push_back(getChar()); // consume the escape character
+                if (auto esc = processEscape(escaped))
                 {
                     tok.stringValue.push_back(*esc);
                 }

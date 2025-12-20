@@ -95,7 +95,7 @@ func start() {
 
     EXPECT_TRUE(result.succeeded());
 
-    bool foundRtAlloc = false;
+    bool foundRtObjNew = false;
     for (const auto &fn : result.module.functions)
     {
         if (fn.name == "main")
@@ -104,13 +104,66 @@ func start() {
             {
                 for (const auto &instr : block.instructions)
                 {
-                    if (instr.op == il::core::Opcode::Call && instr.callee == "rt_alloc")
-                        foundRtAlloc = true;
+                    if (instr.op == il::core::Opcode::Call && instr.callee == "rt_obj_new_i64")
+                        foundRtObjNew = true;
                 }
             }
         }
     }
-    EXPECT_TRUE(foundRtAlloc);
+    EXPECT_TRUE(foundRtObjNew);
+}
+
+/// @brief Test Bug #16 fix: Entity type as function parameter compiles correctly.
+/// Previously caused an infinite loop in the parser.
+TEST(ViperLangTypes, EntityAsParameter)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+entity Frog {
+    expose Integer x;
+}
+
+func useFrog(Frog f) {
+    Viper.Terminal.SayInt(f.x);
+}
+
+func start() {
+    var f = new Frog();
+    f.x = 42;
+    useFrog(f);
+}
+)";
+    CompilerInput input{.source = source, .path = "entity_param.viper"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    if (!result.succeeded())
+    {
+        std::cerr << "Diagnostics for EntityAsParameter:\n";
+        for (const auto &d : result.diagnostics.diagnostics())
+        {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+
+    EXPECT_TRUE(result.succeeded());
+
+    // Check that the useFrog function exists and takes a parameter
+    bool foundUseFrogFunc = false;
+    for (const auto &fn : result.module.functions)
+    {
+        if (fn.name == "Test.useFrog" || fn.name == "useFrog")
+        {
+            foundUseFrogFunc = true;
+            EXPECT_EQ(fn.params.size(), 1u);
+            break;
+        }
+    }
+    EXPECT_TRUE(foundUseFrogFunc);
 }
 
 } // namespace

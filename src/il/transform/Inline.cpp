@@ -49,8 +49,8 @@ struct InlineCost
     unsigned instrCount = 0;
     unsigned blockCount = 0;
     unsigned callSites = 0;
-    unsigned nestedCalls = 0;  // Number of calls within this function
-    unsigned returnCount = 0;  // Number of return statements
+    unsigned nestedCalls = 0; // Number of calls within this function
+    unsigned returnCount = 0; // Number of return statements
     bool recursive = false;
     bool hasEH = false;
     bool unsupportedCFG = false;
@@ -250,10 +250,8 @@ unsigned countConstantArgs(const Instr &callInstr)
     unsigned count = 0;
     for (const auto &op : callInstr.operands)
     {
-        if (op.kind == Value::Kind::ConstInt ||
-            op.kind == Value::Kind::ConstFloat ||
-            op.kind == Value::Kind::NullPtr ||
-            op.kind == Value::Kind::ConstStr)
+        if (op.kind == Value::Kind::ConstInt || op.kind == Value::Kind::ConstFloat ||
+            op.kind == Value::Kind::NullPtr || op.kind == Value::Kind::ConstStr)
         {
             ++count;
         }

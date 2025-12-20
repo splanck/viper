@@ -173,6 +173,64 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
+/// @brief Test Bug #17 fix: List[Entity] compiles correctly.
+/// Previously caused a runtime assertion failure when adding entities to lists.
+TEST(ViperLangCollections, ListOfEntities)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+entity Frog {
+    expose Integer x;
+}
+
+func start() {
+    List[Frog] frogs = [];
+    var f = new Frog();
+    f.x = 5;
+    frogs.add(f);
+    Integer count = frogs.count();
+    Viper.Terminal.SayInt(count);
+}
+)";
+    CompilerInput input{.source = source, .path = "list_entity.viper"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    if (!result.succeeded())
+    {
+        std::cerr << "Diagnostics for ListOfEntities:\n";
+        for (const auto &d : result.diagnostics.diagnostics())
+        {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+
+    EXPECT_TRUE(result.succeeded());
+
+    // Check that rt_obj_new_i64 is used for entity allocation (not rt_alloc)
+    // This ensures entities have proper heap headers for reference counting
+    bool foundRtObjNew = false;
+    for (const auto &fn : result.module.functions)
+    {
+        if (fn.name == "main")
+        {
+            for (const auto &block : fn.blocks)
+            {
+                for (const auto &instr : block.instructions)
+                {
+                    if (instr.op == il::core::Opcode::Call && instr.callee == "rt_obj_new_i64")
+                        foundRtObjNew = true;
+                }
+            }
+        }
+    }
+    EXPECT_TRUE(foundRtObjNew);
+}
+
 } // namespace
 
 int main()

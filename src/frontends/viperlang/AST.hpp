@@ -1084,10 +1084,7 @@ struct TryExpr : Expr
     /// @brief Construct a try expression.
     /// @param l Source location.
     /// @param e The operand expression.
-    TryExpr(SourceLoc l, ExprPtr e)
-        : Expr(ExprKind::Try, l), operand(std::move(e))
-    {
-    }
+    TryExpr(SourceLoc l, ExprPtr e) : Expr(ExprKind::Try, l), operand(std::move(e)) {}
 };
 
 /// @brief Object instantiation expression: `new Foo(args)`.
@@ -2051,10 +2048,7 @@ struct GlobalVarDecl : Decl
     /// @brief Construct a global variable declaration.
     /// @param l Source location.
     /// @param n Variable name.
-    GlobalVarDecl(SourceLoc l, std::string n)
-        : Decl(DeclKind::GlobalVar, l), name(std::move(n))
-    {
-    }
+    GlobalVarDecl(SourceLoc l, std::string n) : Decl(DeclKind::GlobalVar, l), name(std::move(n)) {}
 };
 
 /// @brief Value type declaration (copy semantics).
