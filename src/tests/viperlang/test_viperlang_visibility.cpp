@@ -50,7 +50,10 @@ func start() {
     for (const auto &d : result.diagnostics.diagnostics())
     {
         if (d.message.find("private") != std::string::npos)
+        {
             foundVisibilityError = true;
+            EXPECT_EQ(d.code, "V3000");
+        }
     }
     EXPECT_TRUE(foundVisibilityError);
 }

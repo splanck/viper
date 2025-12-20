@@ -353,22 +353,38 @@ void IRBuilder::cbr(il::core::Value cond,
 ///          instructions may be emitted.
 ///
 /// @param bb Block that becomes the current insertion point.
-/// @post curBlock is updated to @p bb; termination state is preserved.
+/// @post curFunc/curBlock are updated to @p bb; termination state is preserved.
 void IRBuilder::setInsertPoint(il::core::BasicBlock &bb)
 {
-    assert(curFunc && "no active function");
-
-    std::optional<size_t> foundIdx;
-    for (size_t i = 0; i < curFunc->blocks.size(); ++i)
+    // Fast path: insertion point belongs to the current function.
+    if (curFunc)
     {
-        if (&curFunc->blocks[i] == &bb)
+        for (size_t i = 0; i < curFunc->blocks.size(); ++i)
         {
-            foundIdx = i;
-            break;
+            if (&curFunc->blocks[i] == &bb)
+            {
+                curBlockIdx = i;
+                return;
+            }
         }
     }
-    assert(foundIdx.has_value() && "insert point block does not belong to current function");
-    curBlockIdx = *foundIdx;
+
+    // Slow path: locate the owning function (allows switching between functions).
+    for (auto &fn : mod.functions)
+    {
+        for (size_t i = 0; i < fn.blocks.size(); ++i)
+        {
+            if (&fn.blocks[i] == &bb)
+            {
+                curFunc = &fn;
+                curBlockIdx = i;
+                nextTemp = static_cast<unsigned>(curFunc->valueNames.size());
+                return;
+            }
+        }
+    }
+
+    assert(false && "insert point block does not belong to any function");
 }
 
 /// @brief Append an instruction to the current block and update termination state.

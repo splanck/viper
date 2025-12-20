@@ -41,6 +41,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/viperlang/Sema.hpp"
+#include <cassert>
 #include <functional>
 #include <set>
 #include <sstream>
@@ -77,9 +78,10 @@ Symbol *Scope::lookupLocal(const std::string &name)
 // Sema Implementation
 //=============================================================================
 
-Sema::Sema(il::support::DiagnosticEngine &diag)
-    : diag_(diag), globalScope_(std::make_unique<Scope>()), currentScope_(globalScope_.get())
+Sema::Sema(il::support::DiagnosticEngine &diag) : diag_(diag)
 {
+    scopes_.push_back(std::make_unique<Scope>());
+    currentScope_ = scopes_.back().get();
     registerBuiltins();
 }
 
@@ -90,89 +92,104 @@ bool Sema::analyze(ModuleDecl &module)
     // First pass: register all top-level declarations
     for (auto &decl : module.declarations)
     {
-        if (auto *func = dynamic_cast<FunctionDecl *>(decl.get()))
+        switch (decl->kind)
         {
-            // Determine return type
-            TypeRef returnType =
-                func->returnType ? resolveTypeNode(func->returnType.get()) : types::voidType();
-
-            // Build function type
-            std::vector<TypeRef> paramTypes;
-            for (const auto &param : func->params)
+            case DeclKind::Function:
             {
-                paramTypes.push_back(param.type ? resolveTypeNode(param.type.get())
-                                                : types::unknown());
+                auto *func = static_cast<FunctionDecl *>(decl.get());
+                // Determine return type
+                TypeRef returnType =
+                    func->returnType ? resolveTypeNode(func->returnType.get()) : types::voidType();
+
+                // Build function type
+                std::vector<TypeRef> paramTypes;
+                for (const auto &param : func->params)
+                {
+                    paramTypes.push_back(param.type ? resolveTypeNode(param.type.get())
+                                                    : types::unknown());
+                }
+                auto funcType = types::function(paramTypes, returnType);
+
+                Symbol sym;
+                sym.kind = Symbol::Kind::Function;
+                sym.name = func->name;
+                sym.type = funcType;
+                sym.decl = func;
+                defineSymbol(func->name, sym);
+                break;
             }
-            auto funcType = types::function(paramTypes, returnType);
-
-            Symbol sym;
-            sym.kind = Symbol::Kind::Function;
-            sym.name = func->name;
-            sym.type = funcType;
-            sym.decl = func;
-            defineSymbol(func->name, sym);
-        }
-        else if (auto *value = dynamic_cast<ValueDecl *>(decl.get()))
-        {
-            auto valueType = types::value(value->name);
-            typeRegistry_[value->name] = valueType;
-
-            Symbol sym;
-            sym.kind = Symbol::Kind::Type;
-            sym.name = value->name;
-            sym.type = valueType;
-            sym.decl = value;
-            defineSymbol(value->name, sym);
-        }
-        else if (auto *entity = dynamic_cast<EntityDecl *>(decl.get()))
-        {
-            auto entityType = types::entity(entity->name);
-            typeRegistry_[entity->name] = entityType;
-
-            Symbol sym;
-            sym.kind = Symbol::Kind::Type;
-            sym.name = entity->name;
-            sym.type = entityType;
-            sym.decl = entity;
-            defineSymbol(entity->name, sym);
-        }
-        else if (auto *iface = dynamic_cast<InterfaceDecl *>(decl.get()))
-        {
-            auto ifaceType = types::interface(iface->name);
-            typeRegistry_[iface->name] = ifaceType;
-
-            Symbol sym;
-            sym.kind = Symbol::Kind::Type;
-            sym.name = iface->name;
-            sym.type = ifaceType;
-            sym.decl = iface;
-            defineSymbol(iface->name, sym);
-        }
-        else if (auto *gvar = dynamic_cast<GlobalVarDecl *>(decl.get()))
-        {
-            // Determine the variable type
-            TypeRef varType;
-            if (gvar->type)
+            case DeclKind::Value:
             {
-                varType = resolveTypeNode(gvar->type.get());
-            }
-            else if (gvar->initializer)
-            {
-                // Type inference from initializer - defer to second pass
-                varType = types::unknown();
-            }
-            else
-            {
-                varType = types::unknown();
-            }
+                auto *value = static_cast<ValueDecl *>(decl.get());
+                auto valueType = types::value(value->name);
+                typeRegistry_[value->name] = valueType;
 
-            Symbol sym;
-            sym.kind = Symbol::Kind::Variable;
-            sym.name = gvar->name;
-            sym.type = varType;
-            sym.isFinal = gvar->isFinal;
-            sym.decl = gvar;
-            defineSymbol(gvar->name, sym);
+                Symbol sym;
+                sym.kind = Symbol::Kind::Type;
+                sym.name = value->name;
+                sym.type = valueType;
+                sym.decl = value;
+                defineSymbol(value->name, sym);
+                break;
+            }
+            case DeclKind::Entity:
+            {
+                auto *entity = static_cast<EntityDecl *>(decl.get());
+                auto entityType = types::entity(entity->name);
+                typeRegistry_[entity->name] = entityType;
+
+                Symbol sym;
+                sym.kind = Symbol::Kind::Type;
+                sym.name = entity->name;
+                sym.type = entityType;
+                sym.decl = entity;
+                defineSymbol(entity->name, sym);
+                break;
+            }
+            case DeclKind::Interface:
+            {
+                auto *iface = static_cast<InterfaceDecl *>(decl.get());
+                auto ifaceType = types::interface(iface->name);
+                typeRegistry_[iface->name] = ifaceType;
+
+                Symbol sym;
+                sym.kind = Symbol::Kind::Type;
+                sym.name = iface->name;
+                sym.type = ifaceType;
+                sym.decl = iface;
+                defineSymbol(iface->name, sym);
+                break;
+            }
+            case DeclKind::GlobalVar:
+            {
+                auto *gvar = static_cast<GlobalVarDecl *>(decl.get());
+                // Determine the variable type
+                TypeRef varType;
+                if (gvar->type)
+                {
+                    varType = resolveTypeNode(gvar->type.get());
+                }
+                else if (gvar->initializer)
+                {
+                    // Type inference from initializer - defer to second pass
+                    varType = types::unknown();
+                }
+                else
+                {
+                    varType = types::unknown();
+                }
+
+                Symbol sym;
+                sym.kind = Symbol::Kind::Variable;
+                sym.name = gvar->name;
+                sym.type = varType;
+                sym.isFinal = gvar->isFinal;
+                sym.decl = gvar;
+                defineSymbol(gvar->name, sym);
+                break;
+            }
+            default:
+                break;
         }
     }
 
@@ -180,42 +197,44 @@ bool Sema::analyze(ModuleDecl &module)
     // This ensures cross-module method calls can be resolved regardless of declaration order
     for (auto &decl : module.declarations)
     {
-        if (auto *value = dynamic_cast<ValueDecl *>(decl.get()))
+        switch (decl->kind)
         {
-            registerValueMembers(*value);
-        }
-        else if (auto *entity = dynamic_cast<EntityDecl *>(decl.get()))
-        {
-            registerEntityMembers(*entity);
-        }
-        else if (auto *iface = dynamic_cast<InterfaceDecl *>(decl.get()))
-        {
-            registerInterfaceMembers(*iface);
+            case DeclKind::Value:
+                registerValueMembers(*static_cast<ValueDecl *>(decl.get()));
+                break;
+            case DeclKind::Entity:
+                registerEntityMembers(*static_cast<EntityDecl *>(decl.get()));
+                break;
+            case DeclKind::Interface:
+                registerInterfaceMembers(*static_cast<InterfaceDecl *>(decl.get()));
+                break;
+            default:
+                break;
         }
     }
 
     // Third pass: analyze declarations (bodies)
     for (auto &decl : module.declarations)
     {
-        if (auto *func = dynamic_cast<FunctionDecl *>(decl.get()))
+        switch (decl->kind)
         {
-            analyzeFunctionDecl(*func);
-        }
-        else if (auto *value = dynamic_cast<ValueDecl *>(decl.get()))
-        {
-            analyzeValueDecl(*value);
-        }
-        else if (auto *entity = dynamic_cast<EntityDecl *>(decl.get()))
-        {
-            analyzeEntityDecl(*entity);
-        }
-        else if (auto *iface = dynamic_cast<InterfaceDecl *>(decl.get()))
-        {
-            analyzeInterfaceDecl(*iface);
-        }
-        else if (auto *gvar = dynamic_cast<GlobalVarDecl *>(decl.get()))
-        {
-            analyzeGlobalVarDecl(*gvar);
+            case DeclKind::Function:
+                analyzeFunctionDecl(*static_cast<FunctionDecl *>(decl.get()));
+                break;
+            case DeclKind::Value:
+                analyzeValueDecl(*static_cast<ValueDecl *>(decl.get()));
+                break;
+            case DeclKind::Entity:
+                analyzeEntityDecl(*static_cast<EntityDecl *>(decl.get()));
+                break;
+            case DeclKind::Interface:
+                analyzeInterfaceDecl(*static_cast<InterfaceDecl *>(decl.get()));
+                break;
+            case DeclKind::GlobalVar:
+                analyzeGlobalVarDecl(*static_cast<GlobalVarDecl *>(decl.get()));
+                break;
+            default:
+                break;
         }
     }
 
@@ -231,1382 +250,6 @@ TypeRef Sema::typeOf(const Expr *expr) const
 TypeRef Sema::resolveType(const TypeNode *node) const
 {
     return const_cast<Sema *>(this)->resolveTypeNode(node);
-}
-
-//=============================================================================
-// Declaration Analysis
-//=============================================================================
-
-void Sema::analyzeImport(ImportDecl & /*decl*/)
-{
-    // TODO: Implement import resolution
-}
-
-void Sema::analyzeGlobalVarDecl(GlobalVarDecl &decl)
-{
-    // Analyze initializer if present
-    if (decl.initializer)
-    {
-        TypeRef initType = analyzeExpr(decl.initializer.get());
-
-        // If type was inferred, update the symbol
-        Symbol *sym = lookupSymbol(decl.name);
-        if (sym && sym->type->isUnknown())
-        {
-            sym->type = initType;
-        }
-        else if (sym && !sym->type->isAssignableFrom(*initType))
-        {
-            errorTypeMismatch(decl.initializer->loc, sym->type, initType);
-        }
-    }
-}
-
-void Sema::analyzeValueDecl(ValueDecl &decl)
-{
-    auto selfType = types::value(decl.name);
-    currentSelfType_ = selfType;
-
-    pushScope();
-
-    // Analyze fields
-    for (auto &member : decl.members)
-    {
-        if (auto *field = dynamic_cast<FieldDecl *>(member.get()))
-        {
-            analyzeFieldDecl(*field, selfType);
-        }
-    }
-
-    // Analyze methods
-    for (auto &member : decl.members)
-    {
-        if (auto *method = dynamic_cast<MethodDecl *>(member.get()))
-        {
-            analyzeMethodDecl(*method, selfType);
-        }
-    }
-
-    popScope();
-    currentSelfType_ = nullptr;
-}
-
-void Sema::registerEntityMembers(EntityDecl &decl)
-{
-    auto selfType = types::entity(decl.name);
-
-    // Register field types
-    for (auto &member : decl.members)
-    {
-        if (auto *field = dynamic_cast<FieldDecl *>(member.get()))
-        {
-            TypeRef fieldType = field->type ? resolveTypeNode(field->type.get()) : types::unknown();
-            std::string fieldKey = decl.name + "." + field->name;
-            fieldTypes_[fieldKey] = fieldType;
-            memberVisibility_[fieldKey] = field->visibility;
-        }
-    }
-
-    // Register method types (signatures only, not bodies)
-    for (auto &member : decl.members)
-    {
-        if (auto *method = dynamic_cast<MethodDecl *>(member.get()))
-        {
-            TypeRef returnType =
-                method->returnType ? resolveTypeNode(method->returnType.get()) : types::voidType();
-            std::vector<TypeRef> paramTypes;
-            for (const auto &param : method->params)
-            {
-                TypeRef paramType =
-                    param.type ? resolveTypeNode(param.type.get()) : types::unknown();
-                paramTypes.push_back(paramType);
-            }
-            std::string methodKey = decl.name + "." + method->name;
-            methodTypes_[methodKey] = types::function(paramTypes, returnType);
-            memberVisibility_[methodKey] = method->visibility;
-        }
-    }
-}
-
-void Sema::registerValueMembers(ValueDecl &decl)
-{
-    auto selfType = types::value(decl.name);
-
-    // Register field types
-    for (auto &member : decl.members)
-    {
-        if (auto *field = dynamic_cast<FieldDecl *>(member.get()))
-        {
-            TypeRef fieldType = field->type ? resolveTypeNode(field->type.get()) : types::unknown();
-            std::string fieldKey = decl.name + "." + field->name;
-            fieldTypes_[fieldKey] = fieldType;
-            memberVisibility_[fieldKey] = field->visibility;
-        }
-    }
-
-    // Register method types
-    for (auto &member : decl.members)
-    {
-        if (auto *method = dynamic_cast<MethodDecl *>(member.get()))
-        {
-            TypeRef returnType =
-                method->returnType ? resolveTypeNode(method->returnType.get()) : types::voidType();
-            std::vector<TypeRef> paramTypes;
-            for (const auto &param : method->params)
-            {
-                TypeRef paramType =
-                    param.type ? resolveTypeNode(param.type.get()) : types::unknown();
-                paramTypes.push_back(paramType);
-            }
-            std::string methodKey = decl.name + "." + method->name;
-            methodTypes_[methodKey] = types::function(paramTypes, returnType);
-            memberVisibility_[methodKey] = method->visibility;
-        }
-    }
-}
-
-void Sema::registerInterfaceMembers(InterfaceDecl &decl)
-{
-    // Register method types for interface
-    for (auto &member : decl.members)
-    {
-        if (auto *method = dynamic_cast<MethodDecl *>(member.get()))
-        {
-            TypeRef returnType =
-                method->returnType ? resolveTypeNode(method->returnType.get()) : types::voidType();
-            std::vector<TypeRef> paramTypes;
-            for (const auto &param : method->params)
-            {
-                TypeRef paramType =
-                    param.type ? resolveTypeNode(param.type.get()) : types::unknown();
-                paramTypes.push_back(paramType);
-            }
-            std::string methodKey = decl.name + "." + method->name;
-            methodTypes_[methodKey] = types::function(paramTypes, returnType);
-            memberVisibility_[methodKey] = method->visibility;
-        }
-    }
-}
-
-void Sema::analyzeEntityDecl(EntityDecl &decl)
-{
-    auto selfType = types::entity(decl.name);
-    currentSelfType_ = selfType;
-
-    pushScope();
-
-    // Analyze fields
-    for (auto &member : decl.members)
-    {
-        if (auto *field = dynamic_cast<FieldDecl *>(member.get()))
-        {
-            analyzeFieldDecl(*field, selfType);
-        }
-    }
-
-    // Analyze methods
-    for (auto &member : decl.members)
-    {
-        if (auto *method = dynamic_cast<MethodDecl *>(member.get()))
-        {
-            analyzeMethodDecl(*method, selfType);
-        }
-    }
-
-    popScope();
-    currentSelfType_ = nullptr;
-}
-
-void Sema::analyzeInterfaceDecl(InterfaceDecl &decl)
-{
-    auto selfType = types::interface(decl.name);
-    currentSelfType_ = selfType;
-
-    pushScope();
-
-    // Analyze method signatures
-    for (auto &member : decl.members)
-    {
-        if (auto *method = dynamic_cast<MethodDecl *>(member.get()))
-        {
-            // Just register the method signature, no body analysis
-            TypeRef returnType =
-                method->returnType ? resolveTypeNode(method->returnType.get()) : types::voidType();
-            std::vector<TypeRef> paramTypes;
-            for (const auto &param : method->params)
-            {
-                paramTypes.push_back(param.type ? resolveTypeNode(param.type.get())
-                                                : types::unknown());
-            }
-            auto methodType = types::function(paramTypes, returnType);
-
-            Symbol sym;
-            sym.kind = Symbol::Kind::Method;
-            sym.name = method->name;
-            sym.type = methodType;
-            sym.decl = method;
-            defineSymbol(method->name, sym);
-        }
-    }
-
-    popScope();
-    currentSelfType_ = nullptr;
-}
-
-void Sema::analyzeFunctionDecl(FunctionDecl &decl)
-{
-    currentFunction_ = &decl;
-    expectedReturnType_ =
-        decl.returnType ? resolveTypeNode(decl.returnType.get()) : types::voidType();
-
-    pushScope();
-
-    // Define parameters
-    for (const auto &param : decl.params)
-    {
-        TypeRef paramType = param.type ? resolveTypeNode(param.type.get()) : types::unknown();
-
-        Symbol sym;
-        sym.kind = Symbol::Kind::Parameter;
-        sym.name = param.name;
-        sym.type = paramType;
-        sym.isFinal = true; // Parameters are immutable by default
-        defineSymbol(param.name, sym);
-    }
-
-    // Analyze body
-    if (decl.body)
-    {
-        analyzeStmt(decl.body.get());
-    }
-
-    popScope();
-
-    currentFunction_ = nullptr;
-    expectedReturnType_ = nullptr;
-}
-
-void Sema::analyzeFieldDecl(FieldDecl &decl, TypeRef ownerType)
-{
-    TypeRef fieldType = decl.type ? resolveTypeNode(decl.type.get()) : types::unknown();
-
-    // Check initializer type
-    if (decl.initializer)
-    {
-        TypeRef initType = analyzeExpr(decl.initializer.get());
-        if (!fieldType->isAssignableFrom(*initType))
-        {
-            errorTypeMismatch(decl.initializer->loc, fieldType, initType);
-        }
-    }
-
-    // Store field type and visibility for access checking
-    if (ownerType)
-    {
-        std::string fieldKey = ownerType->name + "." + decl.name;
-        fieldTypes_[fieldKey] = fieldType;
-        memberVisibility_[fieldKey] = decl.visibility;
-    }
-
-    Symbol sym;
-    sym.kind = Symbol::Kind::Field;
-    sym.name = decl.name;
-    sym.type = fieldType;
-    sym.isFinal = decl.isFinal;
-    sym.decl = &decl;
-    defineSymbol(decl.name, sym);
-}
-
-void Sema::analyzeMethodDecl(MethodDecl &decl, TypeRef ownerType)
-{
-    currentSelfType_ = ownerType;
-    TypeRef returnType =
-        decl.returnType ? resolveTypeNode(decl.returnType.get()) : types::voidType();
-    expectedReturnType_ = returnType;
-
-    // Build parameter types
-    std::vector<TypeRef> paramTypes;
-    for (const auto &param : decl.params)
-    {
-        TypeRef paramType = param.type ? resolveTypeNode(param.type.get()) : types::unknown();
-        paramTypes.push_back(paramType);
-    }
-
-    // Register method type: "TypeName.methodName" -> function type
-    std::string methodKey = ownerType->name + "." + decl.name;
-    methodTypes_[methodKey] = types::function(paramTypes, returnType);
-    memberVisibility_[methodKey] = decl.visibility;
-
-    pushScope();
-
-    // Define 'self' parameter implicitly
-    Symbol selfSym;
-    selfSym.kind = Symbol::Kind::Parameter;
-    selfSym.name = "self";
-    selfSym.type = ownerType;
-    selfSym.isFinal = true;
-    defineSymbol("self", selfSym);
-
-    // Define explicit parameters
-    for (const auto &param : decl.params)
-    {
-        TypeRef paramType = param.type ? resolveTypeNode(param.type.get()) : types::unknown();
-
-        Symbol sym;
-        sym.kind = Symbol::Kind::Parameter;
-        sym.name = param.name;
-        sym.type = paramType;
-        sym.isFinal = true;
-        defineSymbol(param.name, sym);
-    }
-
-    // Analyze body
-    if (decl.body)
-    {
-        analyzeStmt(decl.body.get());
-    }
-
-    popScope();
-
-    expectedReturnType_ = nullptr;
-}
-
-//=============================================================================
-// Statement Analysis
-//=============================================================================
-
-void Sema::analyzeStmt(Stmt *stmt)
-{
-    if (!stmt)
-        return;
-
-    switch (stmt->kind)
-    {
-        case StmtKind::Block:
-            analyzeBlockStmt(static_cast<BlockStmt *>(stmt));
-            break;
-        case StmtKind::Expr:
-            analyzeExpr(static_cast<ExprStmt *>(stmt)->expr.get());
-            break;
-        case StmtKind::Var:
-            analyzeVarStmt(static_cast<VarStmt *>(stmt));
-            break;
-        case StmtKind::If:
-            analyzeIfStmt(static_cast<IfStmt *>(stmt));
-            break;
-        case StmtKind::While:
-            analyzeWhileStmt(static_cast<WhileStmt *>(stmt));
-            break;
-        case StmtKind::For:
-            analyzeForStmt(static_cast<ForStmt *>(stmt));
-            break;
-        case StmtKind::ForIn:
-            analyzeForInStmt(static_cast<ForInStmt *>(stmt));
-            break;
-        case StmtKind::Return:
-            analyzeReturnStmt(static_cast<ReturnStmt *>(stmt));
-            break;
-        case StmtKind::Break:
-        case StmtKind::Continue:
-            // TODO: Check if inside loop
-            break;
-        case StmtKind::Guard:
-            analyzeGuardStmt(static_cast<GuardStmt *>(stmt));
-            break;
-        case StmtKind::Match:
-            analyzeMatchStmt(static_cast<MatchStmt *>(stmt));
-            break;
-    }
-}
-
-void Sema::analyzeBlockStmt(BlockStmt *stmt)
-{
-    pushScope();
-    for (auto &s : stmt->statements)
-    {
-        analyzeStmt(s.get());
-    }
-    popScope();
-}
-
-void Sema::analyzeVarStmt(VarStmt *stmt)
-{
-    TypeRef declaredType = stmt->type ? resolveTypeNode(stmt->type.get()) : nullptr;
-    TypeRef initType = stmt->initializer ? analyzeExpr(stmt->initializer.get()) : nullptr;
-
-    TypeRef varType;
-    if (declaredType && initType)
-    {
-        // Both declared and inferred - check compatibility
-        if (!declaredType->isAssignableFrom(*initType))
-        {
-            errorTypeMismatch(stmt->loc, declaredType, initType);
-        }
-        varType = declaredType;
-    }
-    else if (declaredType)
-    {
-        varType = declaredType;
-    }
-    else if (initType)
-    {
-        varType = initType;
-    }
-    else
-    {
-        error(stmt->loc, "Cannot infer type without initializer");
-        varType = types::unknown();
-    }
-
-    Symbol sym;
-    sym.kind = Symbol::Kind::Variable;
-    sym.name = stmt->name;
-    sym.type = varType;
-    sym.isFinal = stmt->isFinal;
-    defineSymbol(stmt->name, sym);
-}
-
-void Sema::analyzeIfStmt(IfStmt *stmt)
-{
-    TypeRef condType = analyzeExpr(stmt->condition.get());
-    if (condType->kind != TypeKindSem::Boolean)
-    {
-        error(stmt->condition->loc, "Condition must be Boolean");
-    }
-
-    analyzeStmt(stmt->thenBranch.get());
-    if (stmt->elseBranch)
-    {
-        analyzeStmt(stmt->elseBranch.get());
-    }
-}
-
-void Sema::analyzeWhileStmt(WhileStmt *stmt)
-{
-    TypeRef condType = analyzeExpr(stmt->condition.get());
-    if (condType->kind != TypeKindSem::Boolean)
-    {
-        error(stmt->condition->loc, "Condition must be Boolean");
-    }
-
-    analyzeStmt(stmt->body.get());
-}
-
-void Sema::analyzeForStmt(ForStmt *stmt)
-{
-    pushScope();
-    if (stmt->init)
-        analyzeStmt(stmt->init.get());
-    if (stmt->condition)
-    {
-        TypeRef condType = analyzeExpr(stmt->condition.get());
-        if (condType->kind != TypeKindSem::Boolean)
-        {
-            error(stmt->condition->loc, "Condition must be Boolean");
-        }
-    }
-    if (stmt->update)
-        analyzeExpr(stmt->update.get());
-    analyzeStmt(stmt->body.get());
-    popScope();
-}
-
-void Sema::analyzeForInStmt(ForInStmt *stmt)
-{
-    pushScope();
-
-    TypeRef iterableType = analyzeExpr(stmt->iterable.get());
-
-    // Determine element type from iterable
-    TypeRef elementType = types::unknown();
-    if (iterableType->kind == TypeKindSem::List || iterableType->kind == TypeKindSem::Set)
-    {
-        elementType = iterableType->elementType();
-    }
-    else if (auto *rangeExpr = dynamic_cast<RangeExpr *>(stmt->iterable.get()))
-    {
-        // Range produces integers
-        elementType = types::integer();
-    }
-
-    // Define loop variable
-    Symbol sym;
-    sym.kind = Symbol::Kind::Variable;
-    sym.name = stmt->variable;
-    sym.type = elementType ? elementType : types::unknown();
-    sym.isFinal = true; // Loop variable is immutable
-    defineSymbol(stmt->variable, sym);
-
-    analyzeStmt(stmt->body.get());
-    popScope();
-}
-
-void Sema::analyzeReturnStmt(ReturnStmt *stmt)
-{
-    if (stmt->value)
-    {
-        TypeRef valueType = analyzeExpr(stmt->value.get());
-        if (expectedReturnType_ && !expectedReturnType_->isAssignableFrom(*valueType))
-        {
-            errorTypeMismatch(stmt->value->loc, expectedReturnType_, valueType);
-        }
-    }
-    else
-    {
-        // No value - must be void return
-        if (expectedReturnType_ && expectedReturnType_->kind != TypeKindSem::Void)
-        {
-            error(stmt->loc, "Expected return value");
-        }
-    }
-}
-
-void Sema::analyzeGuardStmt(GuardStmt *stmt)
-{
-    TypeRef condType = analyzeExpr(stmt->condition.get());
-    if (condType->kind != TypeKindSem::Boolean)
-    {
-        error(stmt->condition->loc, "Condition must be Boolean");
-    }
-
-    analyzeStmt(stmt->elseBlock.get());
-    // TODO: Check that else block always exits (return, break, continue, trap)
-}
-
-void Sema::analyzeMatchStmt(MatchStmt *stmt)
-{
-    TypeRef scrutineeType = analyzeExpr(stmt->scrutinee.get());
-
-    // Track if we have a wildcard or exhaustive pattern coverage
-    bool hasWildcard = false;
-    bool hasElseArm = false;
-    std::set<int64_t> coveredIntegers;
-    std::set<bool> coveredBooleans;
-
-    for (auto &arm : stmt->arms)
-    {
-        // Analyze the pattern and body
-        const auto &pattern = arm.pattern;
-
-        if (pattern.kind == MatchArm::Pattern::Kind::Wildcard)
-        {
-            hasWildcard = true;
-        }
-        else if (pattern.kind == MatchArm::Pattern::Kind::Binding)
-        {
-            // A binding without a guard acts as a wildcard
-            if (!pattern.guard)
-            {
-                hasWildcard = true;
-            }
-        }
-        else if (pattern.kind == MatchArm::Pattern::Kind::Literal && pattern.literal)
-        {
-            // Track which literals are covered
-            if (auto *intLit = dynamic_cast<IntLiteralExpr *>(pattern.literal.get()))
-            {
-                coveredIntegers.insert(intLit->value);
-            }
-            else if (auto *boolLit = dynamic_cast<BoolLiteralExpr *>(pattern.literal.get()))
-            {
-                coveredBooleans.insert(boolLit->value);
-            }
-        }
-
-        analyzeExpr(arm.body.get());
-    }
-
-    // Check exhaustiveness based on scrutinee type
-    if (!hasWildcard)
-    {
-        if (scrutineeType && scrutineeType->kind == TypeKindSem::Boolean)
-        {
-            // Boolean must cover both true and false
-            if (coveredBooleans.size() < 2)
-            {
-                error(stmt->loc,
-                      "Non-exhaustive patterns: match on Boolean must cover both true "
-                      "and false, or use a wildcard (_)");
-            }
-        }
-        else if (scrutineeType && scrutineeType->isIntegral())
-        {
-            // Integer types need a wildcard since we can't enumerate all values
-            error(stmt->loc,
-                  "Non-exhaustive patterns: match on Integer requires a wildcard (_) or "
-                  "else case to be exhaustive");
-        }
-        else if (scrutineeType && scrutineeType->kind == TypeKindSem::Optional)
-        {
-            // Optional types need to handle both Some and None cases
-            // For now, just warn that a wildcard is recommended
-            error(stmt->loc,
-                  "Non-exhaustive patterns: match on optional type should use a "
-                  "wildcard (_) or handle all cases");
-        }
-    }
-}
-
-//=============================================================================
-// Expression Analysis
-//=============================================================================
-
-TypeRef Sema::analyzeExpr(Expr *expr)
-{
-    if (!expr)
-        return types::unknown();
-
-    TypeRef result;
-
-    switch (expr->kind)
-    {
-        case ExprKind::IntLiteral:
-            result = analyzeIntLiteral(static_cast<IntLiteralExpr *>(expr));
-            break;
-        case ExprKind::NumberLiteral:
-            result = analyzeNumberLiteral(static_cast<NumberLiteralExpr *>(expr));
-            break;
-        case ExprKind::StringLiteral:
-            result = analyzeStringLiteral(static_cast<StringLiteralExpr *>(expr));
-            break;
-        case ExprKind::BoolLiteral:
-            result = analyzeBoolLiteral(static_cast<BoolLiteralExpr *>(expr));
-            break;
-        case ExprKind::NullLiteral:
-            result = analyzeNullLiteral(static_cast<NullLiteralExpr *>(expr));
-            break;
-        case ExprKind::UnitLiteral:
-            result = analyzeUnitLiteral(static_cast<UnitLiteralExpr *>(expr));
-            break;
-        case ExprKind::Ident:
-            result = analyzeIdent(static_cast<IdentExpr *>(expr));
-            break;
-        case ExprKind::SelfExpr:
-            result = analyzeSelf(static_cast<SelfExpr *>(expr));
-            break;
-        case ExprKind::Binary:
-            result = analyzeBinary(static_cast<BinaryExpr *>(expr));
-            break;
-        case ExprKind::Unary:
-            result = analyzeUnary(static_cast<UnaryExpr *>(expr));
-            break;
-        case ExprKind::Ternary:
-            result = analyzeTernary(static_cast<TernaryExpr *>(expr));
-            break;
-        case ExprKind::Call:
-            result = analyzeCall(static_cast<CallExpr *>(expr));
-            break;
-        case ExprKind::Index:
-            result = analyzeIndex(static_cast<IndexExpr *>(expr));
-            break;
-        case ExprKind::Field:
-            result = analyzeField(static_cast<FieldExpr *>(expr));
-            break;
-        case ExprKind::OptionalChain:
-            result = analyzeOptionalChain(static_cast<OptionalChainExpr *>(expr));
-            break;
-        case ExprKind::Coalesce:
-            result = analyzeCoalesce(static_cast<CoalesceExpr *>(expr));
-            break;
-        case ExprKind::Is:
-            result = analyzeIs(static_cast<IsExpr *>(expr));
-            break;
-        case ExprKind::As:
-            result = analyzeAs(static_cast<AsExpr *>(expr));
-            break;
-        case ExprKind::Range:
-            result = analyzeRange(static_cast<RangeExpr *>(expr));
-            break;
-        case ExprKind::New:
-            result = analyzeNew(static_cast<NewExpr *>(expr));
-            break;
-        case ExprKind::Lambda:
-            result = analyzeLambda(static_cast<LambdaExpr *>(expr));
-            break;
-        case ExprKind::Match:
-            result = analyzeMatchExpr(static_cast<MatchExpr *>(expr));
-            break;
-        case ExprKind::ListLiteral:
-            result = analyzeListLiteral(static_cast<ListLiteralExpr *>(expr));
-            break;
-        case ExprKind::MapLiteral:
-            result = analyzeMapLiteral(static_cast<MapLiteralExpr *>(expr));
-            break;
-        case ExprKind::SetLiteral:
-            result = analyzeSetLiteral(static_cast<SetLiteralExpr *>(expr));
-            break;
-        case ExprKind::Tuple:
-            result = analyzeTuple(static_cast<TupleExpr *>(expr));
-            break;
-        case ExprKind::TupleIndex:
-            result = analyzeTupleIndex(static_cast<TupleIndexExpr *>(expr));
-            break;
-        default:
-            result = types::unknown();
-            break;
-    }
-
-    exprTypes_[expr] = result;
-    return result;
-}
-
-TypeRef Sema::analyzeIntLiteral(IntLiteralExpr * /*expr*/)
-{
-    return types::integer();
-}
-
-TypeRef Sema::analyzeNumberLiteral(NumberLiteralExpr * /*expr*/)
-{
-    return types::number();
-}
-
-TypeRef Sema::analyzeStringLiteral(StringLiteralExpr * /*expr*/)
-{
-    return types::string();
-}
-
-TypeRef Sema::analyzeBoolLiteral(BoolLiteralExpr * /*expr*/)
-{
-    return types::boolean();
-}
-
-TypeRef Sema::analyzeNullLiteral(NullLiteralExpr * /*expr*/)
-{
-    // null is Optional[Unknown] - needs context to determine actual type
-    return types::optional(types::unknown());
-}
-
-TypeRef Sema::analyzeUnitLiteral(UnitLiteralExpr * /*expr*/)
-{
-    return types::unit();
-}
-
-TypeRef Sema::analyzeIdent(IdentExpr *expr)
-{
-    Symbol *sym = lookupSymbol(expr->name);
-    if (!sym)
-    {
-        errorUndefined(expr->loc, expr->name);
-        return types::unknown();
-    }
-    return sym->type;
-}
-
-TypeRef Sema::analyzeSelf(SelfExpr *expr)
-{
-    if (!currentSelfType_)
-    {
-        error(expr->loc, "'self' can only be used inside a method");
-        return types::unknown();
-    }
-    return currentSelfType_;
-}
-
-TypeRef Sema::analyzeBinary(BinaryExpr *expr)
-{
-    TypeRef leftType = analyzeExpr(expr->left.get());
-    TypeRef rightType = analyzeExpr(expr->right.get());
-
-    switch (expr->op)
-    {
-        case BinaryOp::Add:
-        case BinaryOp::Sub:
-        case BinaryOp::Mul:
-        case BinaryOp::Div:
-        case BinaryOp::Mod:
-            // Numeric operations
-            if (leftType->kind == TypeKindSem::String && expr->op == BinaryOp::Add)
-            {
-                // String concatenation
-                return types::string();
-            }
-            if (leftType->isNumeric() && rightType->isNumeric())
-            {
-                // Return wider type
-                if (leftType->kind == TypeKindSem::Number || rightType->kind == TypeKindSem::Number)
-                    return types::number();
-                return types::integer();
-            }
-            error(expr->loc, "Invalid operands for arithmetic operation");
-            return types::unknown();
-
-        case BinaryOp::Eq:
-        case BinaryOp::Ne:
-        case BinaryOp::Lt:
-        case BinaryOp::Le:
-        case BinaryOp::Gt:
-        case BinaryOp::Ge:
-            // Comparison operations
-            return types::boolean();
-
-        case BinaryOp::And:
-        case BinaryOp::Or:
-            // Logical operations
-            if (leftType->kind != TypeKindSem::Boolean || rightType->kind != TypeKindSem::Boolean)
-            {
-                error(expr->loc, "Logical operators require Boolean operands");
-            }
-            return types::boolean();
-
-        case BinaryOp::BitAnd:
-        case BinaryOp::BitOr:
-        case BinaryOp::BitXor:
-            // Bitwise operations
-            if (!leftType->isIntegral() || !rightType->isIntegral())
-            {
-                error(expr->loc, "Bitwise operators require integral operands");
-            }
-            return types::integer();
-
-        case BinaryOp::Assign:
-            // Assignment - LHS must be assignable, types must be compatible
-            // For now, just check that the types are compatible
-            if (!rightType->isConvertibleTo(*leftType))
-            {
-                errorTypeMismatch(expr->loc, leftType, rightType);
-            }
-            // Assignment expression returns the assigned value
-            return leftType;
-    }
-
-    return types::unknown();
-}
-
-TypeRef Sema::analyzeUnary(UnaryExpr *expr)
-{
-    TypeRef operandType = analyzeExpr(expr->operand.get());
-
-    switch (expr->op)
-    {
-        case UnaryOp::Neg:
-            if (!operandType->isNumeric())
-            {
-                error(expr->loc, "Negation requires numeric operand");
-            }
-            return operandType;
-
-        case UnaryOp::Not:
-            if (operandType->kind != TypeKindSem::Boolean)
-            {
-                error(expr->loc, "Logical not requires Boolean operand");
-            }
-            return types::boolean();
-
-        case UnaryOp::BitNot:
-            if (!operandType->isIntegral())
-            {
-                error(expr->loc, "Bitwise not requires integral operand");
-            }
-            return types::integer();
-    }
-
-    return types::unknown();
-}
-
-TypeRef Sema::analyzeTernary(TernaryExpr *expr)
-{
-    TypeRef condType = analyzeExpr(expr->condition.get());
-    if (condType->kind != TypeKindSem::Boolean)
-    {
-        error(expr->condition->loc, "Condition must be Boolean");
-    }
-
-    TypeRef thenType = analyzeExpr(expr->thenExpr.get());
-    TypeRef elseType = analyzeExpr(expr->elseExpr.get());
-
-    // TODO: Compute common type
-    if (thenType->equals(*elseType))
-        return thenType;
-    if (thenType->isAssignableFrom(*elseType))
-        return thenType;
-    if (elseType->isAssignableFrom(*thenType))
-        return elseType;
-
-    error(expr->loc, "Incompatible types in ternary expression");
-    return types::unknown();
-}
-
-/// @brief Try to extract a dotted name from a field access chain.
-/// @param expr The expression to extract from.
-/// @param out The output string to append to.
-/// @return True if successful, false otherwise.
-static bool extractDottedName(Expr *expr, std::string &out)
-{
-    if (auto *ident = dynamic_cast<IdentExpr *>(expr))
-    {
-        out = ident->name;
-        return true;
-    }
-    if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr))
-    {
-        if (!extractDottedName(fieldExpr->base.get(), out))
-            return false;
-        out += ".";
-        out += fieldExpr->field;
-        return true;
-    }
-    return false;
-}
-
-TypeRef Sema::analyzeCall(CallExpr *expr)
-{
-    // First, try to resolve dotted runtime function names like Viper.Terminal.Say
-    std::string dottedName;
-    if (extractDottedName(expr->callee.get(), dottedName))
-    {
-        // Check if it's a known runtime function
-        auto it = runtimeFunctions_.find(dottedName);
-        if (it != runtimeFunctions_.end())
-        {
-            // Analyze arguments
-            for (auto &arg : expr->args)
-            {
-                analyzeExpr(arg.value.get());
-            }
-            // Store the resolved runtime call info
-            runtimeCallees_[expr] = dottedName;
-            return it->second;
-        }
-    }
-
-    // Handle special built-in method calls on collections
-    // This allows list.count() as an alternative to list.count
-    if (expr->callee->kind == ExprKind::Field)
-    {
-        auto *fieldExpr = static_cast<FieldExpr *>(expr->callee.get());
-        TypeRef baseType = analyzeExpr(fieldExpr->base.get());
-
-        // Handle List methods
-        if (baseType && baseType->kind == TypeKindSem::List)
-        {
-            if (fieldExpr->field == "count" || fieldExpr->field == "size" ||
-                fieldExpr->field == "length")
-            {
-                // Analyze arguments (should be empty)
-                for (auto &arg : expr->args)
-                {
-                    analyzeExpr(arg.value.get());
-                }
-                return types::integer();
-            }
-            if (fieldExpr->field == "isEmpty")
-            {
-                for (auto &arg : expr->args)
-                {
-                    analyzeExpr(arg.value.get());
-                }
-                return types::boolean();
-            }
-        }
-
-        // Handle String methods
-        if (baseType && baseType->kind == TypeKindSem::String)
-        {
-            if (fieldExpr->field == "length" || fieldExpr->field == "count" ||
-                fieldExpr->field == "size")
-            {
-                for (auto &arg : expr->args)
-                {
-                    analyzeExpr(arg.value.get());
-                }
-                return types::integer();
-            }
-            if (fieldExpr->field == "isEmpty")
-            {
-                for (auto &arg : expr->args)
-                {
-                    analyzeExpr(arg.value.get());
-                }
-                return types::boolean();
-            }
-        }
-    }
-
-    TypeRef calleeType = analyzeExpr(expr->callee.get());
-
-    // Analyze arguments
-    for (auto &arg : expr->args)
-    {
-        analyzeExpr(arg.value.get());
-    }
-
-    // If callee is a function type, return its return type
-    if (calleeType->kind == TypeKindSem::Function)
-    {
-        return calleeType->returnType();
-    }
-
-    // If callee is unknown, return unknown
-    if (calleeType->kind == TypeKindSem::Unknown)
-    {
-        return types::unknown();
-    }
-
-    // Could be a constructor call (Type(args))
-    if (calleeType->kind == TypeKindSem::Value || calleeType->kind == TypeKindSem::Entity)
-    {
-        return calleeType;
-    }
-
-    error(expr->loc, "Expression is not callable");
-    return types::unknown();
-}
-
-TypeRef Sema::analyzeIndex(IndexExpr *expr)
-{
-    TypeRef baseType = analyzeExpr(expr->base.get());
-    TypeRef indexType = analyzeExpr(expr->index.get());
-
-    if (baseType->kind == TypeKindSem::List || baseType->kind == TypeKindSem::String)
-    {
-        if (!indexType->isIntegral())
-        {
-            error(expr->index->loc, "Index must be an integer");
-        }
-        if (baseType->kind == TypeKindSem::String)
-            return types::string();
-        return baseType->elementType() ? baseType->elementType() : types::unknown();
-    }
-
-    if (baseType->kind == TypeKindSem::Map)
-    {
-        return baseType->valueType() ? baseType->valueType() : types::unknown();
-    }
-
-    error(expr->loc, "Expression is not indexable");
-    return types::unknown();
-}
-
-TypeRef Sema::analyzeField(FieldExpr *expr)
-{
-    TypeRef baseType = analyzeExpr(expr->base.get());
-
-    // Check if this is a field or method access on a value or entity type
-    if (baseType && (baseType->kind == TypeKindSem::Value || baseType->kind == TypeKindSem::Entity))
-    {
-        std::string memberKey = baseType->name + "." + expr->field;
-
-        // Check if accessing from inside or outside the type
-        bool isInsideType = currentSelfType_ && currentSelfType_->name == baseType->name;
-
-        // Check visibility
-        auto visIt = memberVisibility_.find(memberKey);
-        if (visIt != memberVisibility_.end())
-        {
-            if (visIt->second == Visibility::Private && !isInsideType)
-            {
-                error(expr->loc,
-                      "Cannot access private member '" + expr->field + "' of type '" +
-                          baseType->name + "'");
-            }
-        }
-
-        // Check if it's a method
-        auto methodIt = methodTypes_.find(memberKey);
-        if (methodIt != methodTypes_.end())
-        {
-            return methodIt->second;
-        }
-
-        // Check if it's a field
-        auto fieldIt = fieldTypes_.find(memberKey);
-        if (fieldIt != fieldTypes_.end())
-        {
-            return fieldIt->second;
-        }
-    }
-
-    // Handle built-in properties like .count on lists
-    if (baseType && baseType->kind == TypeKindSem::List)
-    {
-        if (expr->field == "count" || expr->field == "size")
-        {
-            return types::integer();
-        }
-    }
-
-    return types::unknown();
-}
-
-TypeRef Sema::analyzeOptionalChain(OptionalChainExpr *expr)
-{
-    TypeRef baseType = analyzeExpr(expr->base.get());
-
-    // Result is always optional
-    // TODO: Look up field type
-    return types::optional(types::unknown());
-}
-
-TypeRef Sema::analyzeCoalesce(CoalesceExpr *expr)
-{
-    TypeRef leftType = analyzeExpr(expr->left.get());
-    TypeRef rightType = analyzeExpr(expr->right.get());
-
-    // Left should be optional
-    if (leftType->kind != TypeKindSem::Optional)
-    {
-        error(expr->left->loc, "Left side of ?? must be optional");
-    }
-
-    // Result is the unwrapped type
-    TypeRef innerType = leftType->innerType();
-    return innerType ? innerType : rightType;
-}
-
-TypeRef Sema::analyzeIs(IsExpr *expr)
-{
-    analyzeExpr(expr->value.get());
-    resolveTypeNode(expr->type.get());
-    return types::boolean();
-}
-
-TypeRef Sema::analyzeAs(AsExpr *expr)
-{
-    analyzeExpr(expr->value.get());
-    return resolveTypeNode(expr->type.get());
-}
-
-TypeRef Sema::analyzeRange(RangeExpr *expr)
-{
-    TypeRef startType = analyzeExpr(expr->start.get());
-    TypeRef endType = analyzeExpr(expr->end.get());
-
-    if (!startType->isIntegral() || !endType->isIntegral())
-    {
-        error(expr->loc, "Range bounds must be integers");
-    }
-
-    // Range type is internal - used for iteration
-    return types::list(types::integer());
-}
-
-TypeRef Sema::analyzeMatchExpr(MatchExpr *expr)
-{
-    TypeRef scrutineeType = analyzeExpr(expr->scrutinee.get());
-
-    // Track if we have a wildcard or exhaustive pattern coverage
-    bool hasWildcard = false;
-    std::set<int64_t> coveredIntegers;
-    std::set<bool> coveredBooleans;
-
-    TypeRef resultType = nullptr;
-
-    for (auto &arm : expr->arms)
-    {
-        // Analyze the pattern
-        const auto &pattern = arm.pattern;
-
-        if (pattern.kind == MatchArm::Pattern::Kind::Wildcard)
-        {
-            hasWildcard = true;
-        }
-        else if (pattern.kind == MatchArm::Pattern::Kind::Binding)
-        {
-            // A binding without a guard acts as a wildcard
-            if (!pattern.guard)
-            {
-                hasWildcard = true;
-            }
-        }
-        else if (pattern.kind == MatchArm::Pattern::Kind::Literal && pattern.literal)
-        {
-            // Track which literals are covered
-            if (auto *intLit = dynamic_cast<IntLiteralExpr *>(pattern.literal.get()))
-            {
-                coveredIntegers.insert(intLit->value);
-            }
-            else if (auto *boolLit = dynamic_cast<BoolLiteralExpr *>(pattern.literal.get()))
-            {
-                coveredBooleans.insert(boolLit->value);
-            }
-        }
-
-        // Analyze the body and track result type
-        TypeRef bodyType = analyzeExpr(arm.body.get());
-        if (!resultType)
-        {
-            resultType = bodyType;
-        }
-        else if (bodyType && !resultType->equals(*bodyType))
-        {
-            // Types differ - for now, use the first type
-            // TODO: Find common supertype
-        }
-    }
-
-    // Check exhaustiveness based on scrutinee type
-    if (!hasWildcard)
-    {
-        if (scrutineeType && scrutineeType->kind == TypeKindSem::Boolean)
-        {
-            // Boolean must cover both true and false
-            if (coveredBooleans.size() < 2)
-            {
-                error(expr->loc,
-                      "Non-exhaustive patterns: match on Boolean must cover both true "
-                      "and false, or use a wildcard (_)");
-            }
-        }
-        else if (scrutineeType && scrutineeType->isIntegral())
-        {
-            // Integer types need a wildcard since we can't enumerate all values
-            error(expr->loc,
-                  "Non-exhaustive patterns: match on Integer requires a wildcard (_) or "
-                  "else case to be exhaustive");
-        }
-        else if (scrutineeType && scrutineeType->kind == TypeKindSem::Optional)
-        {
-            // Optional types need to handle both Some and None cases
-            error(expr->loc,
-                  "Non-exhaustive patterns: match on optional type should use a "
-                  "wildcard (_) or handle all cases");
-        }
-    }
-
-    return resultType ? resultType : types::unknown();
-}
-
-TypeRef Sema::analyzeNew(NewExpr *expr)
-{
-    TypeRef type = resolveTypeNode(expr->type.get());
-
-    // Allow new for entity types and collection types (List, Set, Map)
-    if (type->kind != TypeKindSem::Entity && type->kind != TypeKindSem::List &&
-        type->kind != TypeKindSem::Set && type->kind != TypeKindSem::Map)
-    {
-        error(expr->loc, "'new' can only be used with entity or collection types");
-    }
-
-    // Analyze constructor arguments
-    for (auto &arg : expr->args)
-    {
-        analyzeExpr(arg.value.get());
-    }
-
-    return type;
-}
-
-TypeRef Sema::analyzeLambda(LambdaExpr *expr)
-{
-    // Collect names that are local to the lambda (params)
-    std::set<std::string> lambdaLocals;
-    for (const auto &param : expr->params)
-    {
-        lambdaLocals.insert(param.name);
-    }
-
-    pushScope();
-
-    std::vector<TypeRef> paramTypes;
-    for (const auto &param : expr->params)
-    {
-        TypeRef paramType = param.type ? resolveTypeNode(param.type.get()) : types::unknown();
-        paramTypes.push_back(paramType);
-
-        Symbol sym;
-        sym.kind = Symbol::Kind::Parameter;
-        sym.name = param.name;
-        sym.type = paramType;
-        sym.isFinal = true;
-        defineSymbol(param.name, sym);
-    }
-
-    TypeRef bodyType = analyzeExpr(expr->body.get());
-
-    popScope();
-
-    // Collect captured variables (free variables referenced in the body)
-    collectCaptures(expr->body.get(), lambdaLocals, expr->captures);
-
-    TypeRef returnType = expr->returnType ? resolveTypeNode(expr->returnType.get()) : bodyType;
-    return types::function(paramTypes, returnType);
-}
-
-TypeRef Sema::analyzeListLiteral(ListLiteralExpr *expr)
-{
-    TypeRef elementType = types::unknown();
-
-    for (auto &elem : expr->elements)
-    {
-        TypeRef elemType = analyzeExpr(elem.get());
-        if (elementType->kind == TypeKindSem::Unknown)
-        {
-            elementType = elemType;
-        }
-        else if (!elementType->equals(*elemType))
-        {
-            // TODO: Find common type
-        }
-    }
-
-    return types::list(elementType);
-}
-
-TypeRef Sema::analyzeMapLiteral(MapLiteralExpr *expr)
-{
-    TypeRef keyType = types::unknown();
-    TypeRef valueType = types::unknown();
-
-    for (auto &entry : expr->entries)
-    {
-        TypeRef kType = analyzeExpr(entry.key.get());
-        TypeRef vType = analyzeExpr(entry.value.get());
-
-        if (keyType->kind == TypeKindSem::Unknown)
-            keyType = kType;
-        if (valueType->kind == TypeKindSem::Unknown)
-            valueType = vType;
-    }
-
-    return types::map(keyType, valueType);
-}
-
-TypeRef Sema::analyzeSetLiteral(SetLiteralExpr *expr)
-{
-    TypeRef elementType = types::unknown();
-
-    for (auto &elem : expr->elements)
-    {
-        TypeRef elemType = analyzeExpr(elem.get());
-        if (elementType->kind == TypeKindSem::Unknown)
-        {
-            elementType = elemType;
-        }
-    }
-
-    return types::set(elementType);
-}
-
-TypeRef Sema::analyzeTuple(TupleExpr *expr)
-{
-    std::vector<TypeRef> elementTypes;
-    for (auto &elem : expr->elements)
-    {
-        elementTypes.push_back(analyzeExpr(elem.get()));
-    }
-    return types::tuple(std::move(elementTypes));
-}
-
-TypeRef Sema::analyzeTupleIndex(TupleIndexExpr *expr)
-{
-    TypeRef tupleType = analyzeExpr(expr->tuple.get());
-
-    if (!tupleType->isTuple())
-    {
-        error(expr->loc,
-              "tuple index access requires a tuple type, got '" + tupleType->toString() + "'");
-        return types::unknown();
-    }
-
-    if (expr->index >= tupleType->tupleElementTypes().size())
-    {
-        error(expr->loc,
-              "tuple index " + std::to_string(expr->index) + " is out of bounds for " +
-                  tupleType->toString());
-        return types::unknown();
-    }
-
-    return tupleType->tupleElementType(expr->index);
 }
 
 //=============================================================================
@@ -1743,14 +386,16 @@ TypeRef Sema::resolveTypeNode(const TypeNode *node)
 
 void Sema::pushScope()
 {
-    currentScope_ = new Scope(currentScope_);
+    scopes_.push_back(std::make_unique<Scope>(currentScope_));
+    currentScope_ = scopes_.back().get();
 }
 
 void Sema::popScope()
 {
-    Scope *old = currentScope_;
+    assert(scopes_.size() > 1 && "cannot pop global scope");
     currentScope_ = currentScope_->parent();
-    delete old;
+    scopes_.pop_back();
+    assert(currentScope_ == scopes_.back().get() && "scope stack corrupted");
 }
 
 void Sema::defineSymbol(const std::string &name, Symbol symbol)
@@ -1914,7 +559,7 @@ void Sema::collectCaptures(const Expr *expr,
 void Sema::error(SourceLoc loc, const std::string &message)
 {
     hasError_ = true;
-    diag_.report({il::support::Severity::Error, message, loc, ""});
+    diag_.report({il::support::Severity::Error, message, loc, "V3000"});
 }
 
 void Sema::errorUndefined(SourceLoc loc, const std::string &name)

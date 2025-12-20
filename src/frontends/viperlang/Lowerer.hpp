@@ -94,6 +94,7 @@
 #include "frontends/common/LoopContext.hpp"
 #include "frontends/common/StringTable.hpp"
 #include "frontends/viperlang/AST.hpp"
+#include "frontends/viperlang/Options.hpp"
 #include "frontends/viperlang/Sema.hpp"
 #include "frontends/viperlang/Types.hpp"
 #include "il/build/IRBuilder.hpp"
@@ -355,7 +356,7 @@ class Lowerer
     /// @details The lowerer uses sema for:
     /// - Expression type lookup (sema.typeOf)
     /// - Runtime function resolution (sema.runtimeCallee)
-    explicit Lowerer(Sema &sema);
+    explicit Lowerer(Sema &sema, CompilerOptions options = {});
 
     /// @brief Lower a module to IL.
     /// @param module The parsed and analyzed module.
@@ -377,6 +378,9 @@ class Lowerer
 
     /// @brief Semantic analysis results.
     Sema &sema_;
+
+    /// @brief Frontend compilation options.
+    CompilerOptions options_;
 
     /// @brief The IL module being constructed.
     std::unique_ptr<Module> module_;

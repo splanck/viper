@@ -175,6 +175,13 @@ class BlockManager
         return blockCounter_;
     }
 
+    /// @brief Restore the next block counter value (for saved/restore contexts).
+    /// @param nextId Next suffix value to use when creating new blocks.
+    void setNextBlockId(unsigned nextId) noexcept
+    {
+        blockCounter_ = nextId;
+    }
+
   private:
     il::build::IRBuilder *builder_{nullptr};
     Function *currentFunc_{nullptr};

@@ -90,6 +90,7 @@
 #include "frontends/viperlang/AST.hpp"
 #include "frontends/viperlang/Types.hpp"
 #include "support/diagnostics.hpp"
+#include <memory>
 #include <set>
 #include <string>
 #include <unordered_map>
@@ -692,8 +693,8 @@ class Sema
     /// @details Used to validate return statements.
     TypeRef expectedReturnType_{nullptr};
 
-    /// @brief The global (module-level) scope.
-    std::unique_ptr<Scope> globalScope_;
+    /// @brief Owned lexical scope stack (scopes_[0] is global).
+    std::vector<std::unique_ptr<Scope>> scopes_;
 
     /// @brief The current scope for symbol lookup.
     Scope *currentScope_{nullptr};

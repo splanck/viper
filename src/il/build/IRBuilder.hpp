@@ -186,10 +186,10 @@ class IRBuilder
     unsigned reserveTempId();
 
   private:
-    il::core::Module &mod;                   ///< Module being constructed
-    il::core::Function *curFunc{nullptr};    ///< Current function
-    std::optional<size_t> curBlockIdx{};     ///< Current insertion block index
-    unsigned nextTemp{0};                    ///< Next temporary id
+    il::core::Module &mod;                ///< Module being constructed
+    il::core::Function *curFunc{nullptr}; ///< Current function
+    std::optional<size_t> curBlockIdx{};  ///< Current insertion block index
+    unsigned nextTemp{0};                 ///< Next temporary id
     std::unordered_map<std::string, il::core::Type>
         calleeReturnTypes; ///< Cached return types keyed by callee name
 

@@ -1,9 +1,21 @@
 set(VIPERLANG_SOURCES
         Lexer.cpp
-        Parser.cpp
+        ImportResolver.cpp
+        Parser_Tokens.cpp
+        Parser_Expr.cpp
+        Parser_Stmt.cpp
+        Parser_Type.cpp
+        Parser_Decl.cpp
         Types.cpp
         Sema.cpp
+        Sema_Decl.cpp
+        Sema_Stmt.cpp
+        Sema_Expr.cpp
         Lowerer.cpp
+        Lowerer_Decl.cpp
+        Lowerer_Stmt.cpp
+        Lowerer_Expr.cpp
+        Lowerer_Emit.cpp
         Compiler.cpp
 )
 

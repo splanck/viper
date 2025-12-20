@@ -1,0 +1,1225 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+///
+/// @file Parser_Expr.cpp
+/// @brief Expression parsing implementation for ViperLang parser.
+///
+/// @details This file implements the Parser class which builds an AST from
+/// a token stream. Key implementation details:
+///
+/// ## Parsing Strategy
+///
+/// Uses recursive descent with one-token lookahead. Each grammar rule has
+/// a corresponding parseXxx() method that:
+/// 1. Checks current token to decide which production to use
+/// 2. Consumes expected tokens with match() or expect()
+/// 3. Recursively calls other parsing methods
+/// 4. Constructs and returns AST nodes
+///
+/// ## Expression Parsing
+///
+/// Binary expressions use precedence climbing:
+/// - parseAssignment() → parseTernary() → parseLogicalOr() → ...
+/// - Each level calls the next higher precedence level for operands
+/// - Loops to handle left-associative operators at same level
+///
+/// ## Error Recovery
+///
+/// On syntax errors:
+/// 1. Report error with location and message
+/// 2. Call resyncAfterError() to skip to next statement boundary
+/// 3. Continue parsing to find additional errors
+///
+/// ## String Interpolation
+///
+/// Interpolated strings are parsed by:
+/// 1. Detecting StringStart token
+/// 2. Parsing expression between interpolation markers
+/// 3. Collecting StringMid/StringEnd tokens
+/// 4. Building string concatenation expressions
+///
+/// @see Parser.hpp for the class interface
+///
+//===----------------------------------------------------------------------===//
+
+#include "frontends/viperlang/Parser.hpp"
+
+namespace il::frontends::viperlang
+{
+
+//===----------------------------------------------------------------------===//
+// Expression Parsing
+//===----------------------------------------------------------------------===//
+
+ExprPtr Parser::parseExpression()
+{
+    return parseAssignment();
+}
+
+ExprPtr Parser::parseAssignment()
+{
+    ExprPtr expr = parseTernary();
+    if (!expr)
+        return nullptr;
+
+    Token eqTok;
+    if (match(TokenKind::Equal, &eqTok))
+    {
+        SourceLoc loc = eqTok.loc;
+        ExprPtr value = parseAssignment(); // right-associative
+        if (!value)
+            return nullptr;
+        return std::make_unique<BinaryExpr>(
+            loc, BinaryOp::Assign, std::move(expr), std::move(value));
+    }
+
+    return expr;
+}
+
+ExprPtr Parser::parseTernary()
+{
+    ExprPtr expr = parseRange();
+    if (!expr)
+        return nullptr;
+
+    Token qTok;
+    if (match(TokenKind::Question, &qTok))
+    {
+        SourceLoc loc = qTok.loc;
+        ExprPtr thenExpr = parseExpression();
+        if (!thenExpr)
+            return nullptr;
+
+        if (!expect(TokenKind::Colon, ":"))
+            return nullptr;
+
+        ExprPtr elseExpr = parseTernary();
+        if (!elseExpr)
+            return nullptr;
+
+        return std::make_unique<TernaryExpr>(
+            loc, std::move(expr), std::move(thenExpr), std::move(elseExpr));
+    }
+
+    return expr;
+}
+
+ExprPtr Parser::parseRange()
+{
+    ExprPtr expr = parseCoalesce();
+    if (!expr)
+        return nullptr;
+
+    while (check(TokenKind::DotDot) || check(TokenKind::DotDotEqual))
+    {
+        Token opTok = advance();
+        bool inclusive = opTok.kind == TokenKind::DotDotEqual;
+        SourceLoc loc = opTok.loc;
+
+        ExprPtr right = parseCoalesce();
+        if (!right)
+            return nullptr;
+
+        expr = std::make_unique<RangeExpr>(loc, std::move(expr), std::move(right), inclusive);
+    }
+
+    return expr;
+}
+
+ExprPtr Parser::parseCoalesce()
+{
+    ExprPtr expr = parseLogicalOr();
+    if (!expr)
+        return nullptr;
+
+    Token opTok;
+    while (match(TokenKind::QuestionQuestion, &opTok))
+    {
+        SourceLoc loc = opTok.loc;
+        ExprPtr right = parseLogicalOr();
+        if (!right)
+            return nullptr;
+
+        expr = std::make_unique<CoalesceExpr>(loc, std::move(expr), std::move(right));
+    }
+
+    return expr;
+}
+
+ExprPtr Parser::parseLogicalOr()
+{
+    ExprPtr expr = parseLogicalAnd();
+    if (!expr)
+        return nullptr;
+
+    Token opTok;
+    while (match(TokenKind::PipePipe, &opTok))
+    {
+        SourceLoc loc = opTok.loc;
+        ExprPtr right = parseLogicalAnd();
+        if (!right)
+            return nullptr;
+
+        expr = std::make_unique<BinaryExpr>(loc, BinaryOp::Or, std::move(expr), std::move(right));
+    }
+
+    return expr;
+}
+
+ExprPtr Parser::parseLogicalAnd()
+{
+    ExprPtr expr = parseEquality();
+    if (!expr)
+        return nullptr;
+
+    Token opTok;
+    while (match(TokenKind::AmpAmp, &opTok))
+    {
+        SourceLoc loc = opTok.loc;
+        ExprPtr right = parseEquality();
+        if (!right)
+            return nullptr;
+
+        expr = std::make_unique<BinaryExpr>(loc, BinaryOp::And, std::move(expr), std::move(right));
+    }
+
+    return expr;
+}
+
+ExprPtr Parser::parseEquality()
+{
+    ExprPtr expr = parseComparison();
+    if (!expr)
+        return nullptr;
+
+    while (check(TokenKind::EqualEqual) || check(TokenKind::NotEqual))
+    {
+        Token opTok = advance();
+        BinaryOp op = opTok.kind == TokenKind::EqualEqual ? BinaryOp::Eq : BinaryOp::Ne;
+        SourceLoc loc = opTok.loc;
+
+        ExprPtr right = parseComparison();
+        if (!right)
+            return nullptr;
+
+        expr = std::make_unique<BinaryExpr>(loc, op, std::move(expr), std::move(right));
+    }
+
+    return expr;
+}
+
+ExprPtr Parser::parseComparison()
+{
+    ExprPtr expr = parseAdditive();
+    if (!expr)
+        return nullptr;
+
+    while (check(TokenKind::Less) || check(TokenKind::LessEqual) || check(TokenKind::Greater) ||
+           check(TokenKind::GreaterEqual))
+    {
+        Token opTok = advance();
+        BinaryOp op;
+        switch (opTok.kind)
+        {
+            case TokenKind::Less:
+                op = BinaryOp::Lt;
+                break;
+            case TokenKind::LessEqual:
+                op = BinaryOp::Le;
+                break;
+            case TokenKind::Greater:
+                op = BinaryOp::Gt;
+                break;
+            case TokenKind::GreaterEqual:
+                op = BinaryOp::Ge;
+                break;
+            default:
+                error("expected comparison operator");
+                return nullptr;
+        }
+        SourceLoc loc = opTok.loc;
+
+        ExprPtr right = parseAdditive();
+        if (!right)
+            return nullptr;
+
+        expr = std::make_unique<BinaryExpr>(loc, op, std::move(expr), std::move(right));
+    }
+
+    return expr;
+}
+
+ExprPtr Parser::parseAdditive()
+{
+    ExprPtr expr = parseMultiplicative();
+    if (!expr)
+        return nullptr;
+
+    while (check(TokenKind::Plus) || check(TokenKind::Minus))
+    {
+        Token opTok = advance();
+        BinaryOp op = opTok.kind == TokenKind::Plus ? BinaryOp::Add : BinaryOp::Sub;
+        SourceLoc loc = opTok.loc;
+
+        ExprPtr right = parseMultiplicative();
+        if (!right)
+            return nullptr;
+
+        expr = std::make_unique<BinaryExpr>(loc, op, std::move(expr), std::move(right));
+    }
+
+    return expr;
+}
+
+ExprPtr Parser::parseMultiplicative()
+{
+    ExprPtr expr = parseUnary();
+    if (!expr)
+        return nullptr;
+
+    while (check(TokenKind::Star) || check(TokenKind::Slash) || check(TokenKind::Percent))
+    {
+        Token opTok = advance();
+        BinaryOp op;
+        switch (opTok.kind)
+        {
+            case TokenKind::Star:
+                op = BinaryOp::Mul;
+                break;
+            case TokenKind::Slash:
+                op = BinaryOp::Div;
+                break;
+            case TokenKind::Percent:
+                op = BinaryOp::Mod;
+                break;
+            default:
+                error("expected multiplicative operator");
+                return nullptr;
+        }
+        SourceLoc loc = opTok.loc;
+
+        ExprPtr right = parseUnary();
+        if (!right)
+            return nullptr;
+
+        expr = std::make_unique<BinaryExpr>(loc, op, std::move(expr), std::move(right));
+    }
+
+    return expr;
+}
+
+ExprPtr Parser::parseUnary()
+{
+    if (check(TokenKind::Minus) || check(TokenKind::Bang) || check(TokenKind::Tilde))
+    {
+        Token opTok = advance();
+        UnaryOp op;
+        switch (opTok.kind)
+        {
+            case TokenKind::Minus:
+                op = UnaryOp::Neg;
+                break;
+            case TokenKind::Bang:
+                op = UnaryOp::Not;
+                break;
+            case TokenKind::Tilde:
+                op = UnaryOp::BitNot;
+                break;
+            default:
+                error("expected unary operator");
+                return nullptr;
+        }
+        SourceLoc loc = opTok.loc;
+
+        ExprPtr operand = parseUnary();
+        if (!operand)
+            return nullptr;
+
+        return std::make_unique<UnaryExpr>(loc, op, std::move(operand));
+    }
+
+    return parsePostfix();
+}
+
+ExprPtr Parser::parsePostfixAndBinaryFrom(ExprPtr startExpr)
+{
+    // Parse postfix operators on the starting expression
+    ExprPtr expr = parsePostfixFrom(std::move(startExpr));
+    if (!expr)
+        return nullptr;
+    // Continue with binary operators (but not assignment)
+    return parseBinaryFrom(std::move(expr));
+}
+
+ExprPtr Parser::parseBinaryFrom(ExprPtr expr)
+{
+    // Parse multiplicative ops
+    while (true)
+    {
+        Token opTok;
+        if (match(TokenKind::Star, &opTok))
+        {
+            SourceLoc loc = opTok.loc;
+            ExprPtr right = parseUnary();
+            if (!right)
+                return nullptr;
+            expr =
+                std::make_unique<BinaryExpr>(loc, BinaryOp::Mul, std::move(expr), std::move(right));
+        }
+        else if (match(TokenKind::Slash, &opTok))
+        {
+            SourceLoc loc = opTok.loc;
+            ExprPtr right = parseUnary();
+            if (!right)
+                return nullptr;
+            expr =
+                std::make_unique<BinaryExpr>(loc, BinaryOp::Div, std::move(expr), std::move(right));
+        }
+        else if (match(TokenKind::Percent, &opTok))
+        {
+            SourceLoc loc = opTok.loc;
+            ExprPtr right = parseUnary();
+            if (!right)
+                return nullptr;
+            expr =
+                std::make_unique<BinaryExpr>(loc, BinaryOp::Mod, std::move(expr), std::move(right));
+        }
+        else
+        {
+            break;
+        }
+    }
+    // Parse additive ops
+    while (true)
+    {
+        Token opTok;
+        if (match(TokenKind::Plus, &opTok))
+        {
+            SourceLoc loc = opTok.loc;
+            ExprPtr right = parseMultiplicative();
+            if (!right)
+                return nullptr;
+            expr =
+                std::make_unique<BinaryExpr>(loc, BinaryOp::Add, std::move(expr), std::move(right));
+        }
+        else if (match(TokenKind::Minus, &opTok))
+        {
+            SourceLoc loc = opTok.loc;
+            ExprPtr right = parseMultiplicative();
+            if (!right)
+                return nullptr;
+            expr =
+                std::make_unique<BinaryExpr>(loc, BinaryOp::Sub, std::move(expr), std::move(right));
+        }
+        else
+        {
+            break;
+        }
+    }
+    // Parse comparison ops
+    while (true)
+    {
+        BinaryOp op;
+        Token opTok;
+        if (match(TokenKind::Less, &opTok))
+            op = BinaryOp::Lt;
+        else if (match(TokenKind::LessEqual, &opTok))
+            op = BinaryOp::Le;
+        else if (match(TokenKind::Greater, &opTok))
+            op = BinaryOp::Gt;
+        else if (match(TokenKind::GreaterEqual, &opTok))
+            op = BinaryOp::Ge;
+        else
+            break;
+
+        SourceLoc loc = opTok.loc;
+        ExprPtr right = parseAdditive();
+        if (!right)
+            return nullptr;
+        expr = std::make_unique<BinaryExpr>(loc, op, std::move(expr), std::move(right));
+    }
+    // Parse equality ops
+    while (true)
+    {
+        BinaryOp op;
+        Token opTok;
+        if (match(TokenKind::EqualEqual, &opTok))
+            op = BinaryOp::Eq;
+        else if (match(TokenKind::NotEqual, &opTok))
+            op = BinaryOp::Ne;
+        else
+            break;
+
+        SourceLoc loc = opTok.loc;
+        ExprPtr right = parseComparison();
+        if (!right)
+            return nullptr;
+        expr = std::make_unique<BinaryExpr>(loc, op, std::move(expr), std::move(right));
+    }
+    // Parse logical and
+    Token opTok;
+    while (match(TokenKind::AmpAmp, &opTok))
+    {
+        SourceLoc loc = opTok.loc;
+        ExprPtr right = parseEquality();
+        if (!right)
+            return nullptr;
+        expr = std::make_unique<BinaryExpr>(loc, BinaryOp::And, std::move(expr), std::move(right));
+    }
+    // Parse logical or
+    while (match(TokenKind::PipePipe, &opTok))
+    {
+        SourceLoc loc = opTok.loc;
+        ExprPtr right = parseLogicalAnd();
+        if (!right)
+            return nullptr;
+        expr = std::make_unique<BinaryExpr>(loc, BinaryOp::Or, std::move(expr), std::move(right));
+    }
+    return expr;
+}
+
+ExprPtr Parser::parsePostfixFrom(ExprPtr expr)
+{
+    while (true)
+    {
+        Token opTok;
+        if (match(TokenKind::LParen, &opTok))
+        {
+            // Function call
+            SourceLoc loc = opTok.loc;
+            std::vector<CallArg> args = parseCallArgs();
+            if (!expect(TokenKind::RParen, ")"))
+                return nullptr;
+
+            expr = std::make_unique<CallExpr>(loc, std::move(expr), std::move(args));
+        }
+        else if (match(TokenKind::LBracket, &opTok))
+        {
+            // Index
+            SourceLoc loc = opTok.loc;
+            ExprPtr index = parseExpression();
+            if (!index)
+                return nullptr;
+
+            if (!expect(TokenKind::RBracket, "]"))
+                return nullptr;
+
+            expr = std::make_unique<IndexExpr>(loc, std::move(expr), std::move(index));
+        }
+        else if (match(TokenKind::Dot, &opTok))
+        {
+            // Field access or tuple index
+            SourceLoc loc = opTok.loc;
+
+            // Check for tuple index access: tuple.0, tuple.1, etc.
+            if (check(TokenKind::IntegerLiteral))
+            {
+                int64_t index = peek().intValue;
+                advance(); // consume integer literal
+                expr = std::make_unique<TupleIndexExpr>(
+                    loc, std::move(expr), static_cast<size_t>(index));
+            }
+            else if (check(TokenKind::Identifier))
+            {
+                std::string field = peek().text;
+                advance(); // consume identifier
+                expr = std::make_unique<FieldExpr>(loc, std::move(expr), std::move(field));
+            }
+            else
+            {
+                error("expected field name after '.'");
+                return nullptr;
+            }
+        }
+        else if (match(TokenKind::QuestionDot, &opTok))
+        {
+            // Optional chain
+            SourceLoc loc = opTok.loc;
+            if (!check(TokenKind::Identifier))
+            {
+                error("expected field name after '?.'");
+                return nullptr;
+            }
+            std::string field = peek().text;
+            advance(); // consume identifier
+
+            expr = std::make_unique<OptionalChainExpr>(loc, std::move(expr), std::move(field));
+        }
+        else if (match(TokenKind::KwIs, &opTok))
+        {
+            // Type check
+            SourceLoc loc = opTok.loc;
+            TypePtr type = parseType();
+            if (!type)
+                return nullptr;
+
+            expr = std::make_unique<IsExpr>(loc, std::move(expr), std::move(type));
+        }
+        else if (match(TokenKind::KwAs, &opTok))
+        {
+            // Type cast
+            SourceLoc loc = opTok.loc;
+            TypePtr type = parseType();
+            if (!type)
+                return nullptr;
+
+            expr = std::make_unique<AsExpr>(loc, std::move(expr), std::move(type));
+        }
+        else if (match(TokenKind::Question, &opTok))
+        {
+            // Try expression: expr? - propagate null/error
+            // Note: This is different from optional type T? or ternary a ? b : c
+            SourceLoc loc = opTok.loc;
+            expr = std::make_unique<TryExpr>(loc, std::move(expr));
+        }
+        else
+        {
+            break;
+        }
+    }
+
+    return expr;
+}
+
+ExprPtr Parser::parsePostfix()
+{
+    ExprPtr expr = parsePrimary();
+    if (!expr)
+        return nullptr;
+    return parsePostfixFrom(std::move(expr));
+}
+
+ExprPtr Parser::parsePrimary()
+{
+    SourceLoc loc = peek().loc;
+
+    // Integer literal
+    if (check(TokenKind::IntegerLiteral))
+    {
+        int64_t value = peek().intValue;
+        advance();
+        return std::make_unique<IntLiteralExpr>(loc, value);
+    }
+
+    // Number literal
+    if (check(TokenKind::NumberLiteral))
+    {
+        double value = peek().floatValue;
+        advance();
+        return std::make_unique<NumberLiteralExpr>(loc, value);
+    }
+
+    // String literal
+    if (check(TokenKind::StringLiteral))
+    {
+        std::string value = peek().stringValue;
+        advance();
+        return std::make_unique<StringLiteralExpr>(loc, std::move(value));
+    }
+
+    // Interpolated string: "text${expr}text${expr}text"
+    if (check(TokenKind::StringStart))
+    {
+        return parseInterpolatedString();
+    }
+
+    // Boolean literals
+    if (match(TokenKind::KwTrue))
+    {
+        return std::make_unique<BoolLiteralExpr>(loc, true);
+    }
+    if (match(TokenKind::KwFalse))
+    {
+        return std::make_unique<BoolLiteralExpr>(loc, false);
+    }
+
+    // Null literal
+    if (match(TokenKind::KwNull))
+    {
+        return std::make_unique<NullLiteralExpr>(loc);
+    }
+
+    // Self
+    if (match(TokenKind::KwSelf))
+    {
+        return std::make_unique<SelfExpr>(loc);
+    }
+
+    // Super
+    if (match(TokenKind::KwSuper))
+    {
+        return std::make_unique<SuperExprNode>(loc);
+    }
+
+    // New expression
+    if (match(TokenKind::KwNew))
+    {
+        TypePtr type = parseType();
+        if (!type)
+            return nullptr;
+
+        if (!expect(TokenKind::LParen, "("))
+            return nullptr;
+
+        std::vector<CallArg> args = parseCallArgs();
+
+        if (!expect(TokenKind::RParen, ")"))
+            return nullptr;
+
+        return std::make_unique<NewExpr>(loc, std::move(type), std::move(args));
+    }
+
+    // Match expression (can be used as value)
+    if (check(TokenKind::KwMatch))
+    {
+        advance(); // consume 'match'
+
+        // Expect opening paren for scrutinee
+        if (!expect(TokenKind::LParen, "("))
+            return nullptr;
+
+        ExprPtr scrutinee = parseExpression();
+        if (!scrutinee)
+            return nullptr;
+
+        if (!expect(TokenKind::RParen, ")"))
+            return nullptr;
+
+        if (!expect(TokenKind::LBrace, "{"))
+            return nullptr;
+
+        // Parse match arms
+        std::vector<MatchArm> arms;
+        while (!check(TokenKind::RBrace) && !check(TokenKind::Eof))
+        {
+            MatchArm arm;
+
+            // Parse pattern
+            if (check(TokenKind::Identifier) && peek().text == "_")
+            {
+                arm.pattern.kind = MatchArm::Pattern::Kind::Wildcard;
+                advance();
+            }
+            else if (check(TokenKind::IntegerLiteral))
+            {
+                arm.pattern.kind = MatchArm::Pattern::Kind::Literal;
+                arm.pattern.literal = std::make_unique<IntLiteralExpr>(peek().loc, peek().intValue);
+                advance();
+            }
+            else if (check(TokenKind::StringLiteral))
+            {
+                arm.pattern.kind = MatchArm::Pattern::Kind::Literal;
+                arm.pattern.literal =
+                    std::make_unique<StringLiteralExpr>(peek().loc, peek().stringValue);
+                advance();
+            }
+            else if (check(TokenKind::Identifier))
+            {
+                arm.pattern.kind = MatchArm::Pattern::Kind::Binding;
+                arm.pattern.binding = peek().text;
+                advance();
+            }
+            else
+            {
+                error("expected pattern in match arm");
+                return nullptr;
+            }
+
+            // Expect =>
+            if (!expect(TokenKind::FatArrow, "=>"))
+                return nullptr;
+
+            // Parse arm body (expression)
+            arm.body = parseExpression();
+            if (!arm.body)
+                return nullptr;
+
+            arms.push_back(std::move(arm));
+
+            // Optional comma or closing brace
+            if (!check(TokenKind::RBrace))
+            {
+                match(TokenKind::Comma);
+            }
+        }
+
+        if (!expect(TokenKind::RBrace, "}"))
+            return nullptr;
+
+        return std::make_unique<MatchExpr>(loc, std::move(scrutinee), std::move(arms));
+    }
+
+    // Identifier (including contextual keywords like 'value' used as variable names)
+    if (checkIdentifierLike())
+    {
+        std::string name = peek().text;
+        advance();
+        return std::make_unique<IdentExpr>(loc, std::move(name));
+    }
+
+    // Parenthesized expression, unit literal, tuple, or lambda
+    if (match(TokenKind::LParen))
+    {
+        // Check for unit literal () or lambda () => ...
+        if (check(TokenKind::RParen))
+        {
+            advance(); // consume )
+            // Check for lambda with no parameters: () => body
+            if (match(TokenKind::FatArrow))
+            {
+                return parseLambdaBody(loc, {});
+            }
+            return std::make_unique<UnitLiteralExpr>(loc);
+        }
+
+        // Try to detect lambda parameter patterns:
+        // - (Type name, ...) => expr     -- Java-style typed params
+        // - (name: Type, ...) => expr    -- Swift-style typed params
+        // - (name, ...) => expr          -- untyped params
+        //
+        // Heuristics:
+        // 1. If we see Identifier followed by Identifier (and current is uppercase), likely Type
+        // name
+        // 2. If we see Identifier followed by :, likely name: Type
+        // 3. Otherwise, could be expression or untyped lambda param
+
+        const Token &next = peek(1);
+        bool looksLikeLambda = false;
+
+        if (check(TokenKind::Identifier))
+        {
+            // Check for Java-style: (Type name) where Type starts with uppercase
+            if (next.kind == TokenKind::Identifier && !peek().text.empty() &&
+                std::isupper(static_cast<unsigned char>(peek().text[0])))
+            {
+                looksLikeLambda = true;
+            }
+            // Check for Swift-style: (name: Type)
+            else if (next.kind == TokenKind::Colon)
+            {
+                looksLikeLambda = true;
+            }
+            // Check for generic type: (List[T] name)
+            else if (next.kind == TokenKind::LBracket && !peek().text.empty() &&
+                     std::isupper(static_cast<unsigned char>(peek().text[0])))
+            {
+                looksLikeLambda = true;
+            }
+        }
+
+        if (looksLikeLambda)
+        {
+            // Try to parse as lambda parameters
+            std::vector<LambdaParam> params;
+
+            do
+            {
+                LambdaParam param;
+
+                if (!checkIdentifierLike())
+                {
+                    error("expected parameter in lambda");
+                    return nullptr;
+                }
+
+                // Check which style: Java (Type name) or Swift (name: Type)
+                Token firstTok = advance();
+                std::string first = firstTok.text;
+                SourceLoc firstLoc = firstTok.loc;
+
+                if (check(TokenKind::Colon))
+                {
+                    // Swift style: name: Type
+                    advance(); // consume :
+                    param.name = first;
+                    param.type = parseType();
+                    if (!param.type)
+                        return nullptr;
+                }
+                else if (checkIdentifierLike())
+                {
+                    // Java style: Type name (name can be contextual keyword like 'value')
+                    param.name = peek().text;
+                    advance();
+                    // Reconstruct the type from first token
+                    param.type = std::make_unique<NamedType>(firstLoc, first);
+                }
+                else if (check(TokenKind::LBracket))
+                {
+                    // Generic type: List[T] name
+                    // We need to parse the type arguments
+                    advance(); // consume [
+                    std::vector<TypePtr> typeArgs;
+                    do
+                    {
+                        TypePtr arg = parseType();
+                        if (!arg)
+                            return nullptr;
+                        typeArgs.push_back(std::move(arg));
+                    } while (match(TokenKind::Comma));
+
+                    if (!expect(TokenKind::RBracket, "]"))
+                        return nullptr;
+
+                    // Now we should have the parameter name (can be contextual keyword)
+                    if (!checkIdentifierLike())
+                    {
+                        error("expected parameter name after type");
+                        return nullptr;
+                    }
+                    param.name = peek().text;
+                    advance();
+                    param.type =
+                        std::make_unique<GenericType>(firstLoc, first, std::move(typeArgs));
+                }
+                else
+                {
+                    // Untyped parameter or not a lambda - but we're already committed
+                    // Treat as untyped parameter
+                    param.name = first;
+                    param.type = nullptr;
+                }
+
+                params.push_back(std::move(param));
+
+            } while (match(TokenKind::Comma));
+
+            if (!expect(TokenKind::RParen, ")"))
+                return nullptr;
+
+            if (!expect(TokenKind::FatArrow, "=>"))
+                return nullptr;
+
+            return parseLambdaBody(loc, std::move(params));
+        }
+
+        // Parse first expression - could be parenthesized expression or tuple
+        ExprPtr first = parseExpression();
+        if (!first)
+            return nullptr;
+
+        // Check for comma - if present, this is a tuple
+        if (check(TokenKind::Comma))
+        {
+            std::vector<ExprPtr> elements;
+            elements.push_back(std::move(first));
+
+            while (match(TokenKind::Comma))
+            {
+                if (check(TokenKind::RParen))
+                    break; // Allow trailing comma
+
+                ExprPtr elem = parseExpression();
+                if (!elem)
+                    return nullptr;
+                elements.push_back(std::move(elem));
+            }
+
+            if (!expect(TokenKind::RParen, ")"))
+                return nullptr;
+
+            return std::make_unique<TupleExpr>(loc, std::move(elements));
+        }
+
+        if (!expect(TokenKind::RParen, ")"))
+            return nullptr;
+
+        // Check if this is a single-param lambda: (x) => expr
+        if (match(TokenKind::FatArrow))
+        {
+            // Convert the expression to a lambda parameter
+            if (first->kind == ExprKind::Ident)
+            {
+                auto *ident = static_cast<IdentExpr *>(first.get());
+                std::vector<LambdaParam> params;
+                LambdaParam param;
+                param.name = ident->name;
+                param.type = nullptr;
+                params.push_back(std::move(param));
+                return parseLambdaBody(loc, std::move(params));
+            }
+            else
+            {
+                error("expected identifier for lambda parameter");
+                return nullptr;
+            }
+        }
+
+        return first;
+    }
+
+    // List literal
+    if (check(TokenKind::LBracket))
+    {
+        return parseListLiteral();
+    }
+
+    // Map or Set literal
+    if (check(TokenKind::LBrace))
+    {
+        return parseMapOrSetLiteral();
+    }
+
+    error("expected expression");
+    return nullptr;
+}
+
+ExprPtr Parser::parseListLiteral()
+{
+    SourceLoc loc = peek().loc;
+    advance(); // consume '['
+
+    std::vector<ExprPtr> elements;
+
+    if (!check(TokenKind::RBracket))
+    {
+        do
+        {
+            ExprPtr elem = parseExpression();
+            if (!elem)
+                return nullptr;
+            elements.push_back(std::move(elem));
+        } while (match(TokenKind::Comma));
+    }
+
+    if (!expect(TokenKind::RBracket, "]"))
+        return nullptr;
+
+    return std::make_unique<ListLiteralExpr>(loc, std::move(elements));
+}
+
+ExprPtr Parser::parseLambdaBody(SourceLoc loc, std::vector<LambdaParam> params)
+{
+    ExprPtr body;
+    // Check for block body: => { ... }
+    if (check(TokenKind::LBrace))
+    {
+        SourceLoc blockLoc = peek().loc;
+        advance(); // consume '{'
+
+        std::vector<StmtPtr> statements;
+        while (!check(TokenKind::RBrace) && !check(TokenKind::Eof))
+        {
+            StmtPtr stmt = parseStatement();
+            if (!stmt)
+            {
+                resyncAfterError();
+                continue;
+            }
+            statements.push_back(std::move(stmt));
+        }
+
+        if (!expect(TokenKind::RBrace, "}"))
+            return nullptr;
+
+        body = std::make_unique<BlockExpr>(blockLoc, std::move(statements), nullptr);
+    }
+    else
+    {
+        body = parseExpression();
+    }
+    if (!body)
+        return nullptr;
+    return std::make_unique<LambdaExpr>(loc, std::move(params), nullptr, std::move(body));
+}
+
+ExprPtr Parser::parseInterpolatedString()
+{
+    SourceLoc loc = peek().loc;
+
+    // First part: "text${
+    std::string firstPart = peek().stringValue;
+    advance(); // consume StringStart
+
+    // Build up a chain of string concatenations
+    // Start with the first string part (could be empty)
+    ExprPtr result = std::make_unique<StringLiteralExpr>(loc, std::move(firstPart));
+
+    // Parse the first interpolated expression
+    ExprPtr expr = parseExpression();
+    if (!expr)
+    {
+        error("expected expression in string interpolation");
+        return nullptr;
+    }
+
+    // Convert the expression to string if needed (we'll handle this in lowering)
+    // For now, just concatenate with Add operator (string concat)
+    result = std::make_unique<BinaryExpr>(loc, BinaryOp::Add, std::move(result), std::move(expr));
+
+    // Now we should see either StringMid or StringEnd
+    while (check(TokenKind::StringMid))
+    {
+        // Get the middle string part
+        std::string midPart = peek().stringValue;
+        advance(); // consume StringMid
+
+        // Concatenate the middle string part
+        if (!midPart.empty())
+        {
+            result = std::make_unique<BinaryExpr>(
+                loc,
+                BinaryOp::Add,
+                std::move(result),
+                std::make_unique<StringLiteralExpr>(loc, std::move(midPart)));
+        }
+
+        // Parse the next interpolated expression
+        expr = parseExpression();
+        if (!expr)
+        {
+            error("expected expression in string interpolation");
+            return nullptr;
+        }
+
+        // Concatenate the expression
+        result =
+            std::make_unique<BinaryExpr>(loc, BinaryOp::Add, std::move(result), std::move(expr));
+    }
+
+    // Must end with StringEnd
+    if (!check(TokenKind::StringEnd))
+    {
+        error("expected end of interpolated string");
+        return nullptr;
+    }
+
+    // Get the final string part
+    std::string endPart = peek().stringValue;
+    advance(); // consume StringEnd
+
+    // Concatenate the final string part (if not empty)
+    if (!endPart.empty())
+    {
+        result = std::make_unique<BinaryExpr>(
+            loc,
+            BinaryOp::Add,
+            std::move(result),
+            std::make_unique<StringLiteralExpr>(loc, std::move(endPart)));
+    }
+
+    return result;
+}
+
+ExprPtr Parser::parseMapOrSetLiteral()
+{
+    SourceLoc loc = peek().loc;
+    advance(); // consume '{'
+
+    // Empty brace = empty map (by convention)
+    if (check(TokenKind::RBrace))
+    {
+        advance();
+        return std::make_unique<MapLiteralExpr>(loc, std::vector<MapEntry>{});
+    }
+
+    // Check if first element has colon (map) or not (set)
+    ExprPtr first = parseExpression();
+    if (!first)
+        return nullptr;
+
+    if (match(TokenKind::Colon))
+    {
+        // It's a map
+        std::vector<MapEntry> entries;
+
+        ExprPtr firstValue = parseExpression();
+        if (!firstValue)
+            return nullptr;
+
+        entries.push_back({std::move(first), std::move(firstValue)});
+
+        while (match(TokenKind::Comma))
+        {
+            ExprPtr key = parseExpression();
+            if (!key)
+                return nullptr;
+
+            if (!expect(TokenKind::Colon, ":"))
+                return nullptr;
+
+            ExprPtr value = parseExpression();
+            if (!value)
+                return nullptr;
+
+            entries.push_back({std::move(key), std::move(value)});
+        }
+
+        if (!expect(TokenKind::RBrace, "}"))
+            return nullptr;
+
+        return std::make_unique<MapLiteralExpr>(loc, std::move(entries));
+    }
+    else
+    {
+        // It's a set
+        std::vector<ExprPtr> elements;
+        elements.push_back(std::move(first));
+
+        while (match(TokenKind::Comma))
+        {
+            ExprPtr elem = parseExpression();
+            if (!elem)
+                return nullptr;
+            elements.push_back(std::move(elem));
+        }
+
+        if (!expect(TokenKind::RBrace, "}"))
+            return nullptr;
+
+        return std::make_unique<SetLiteralExpr>(loc, std::move(elements));
+    }
+}
+
+std::vector<CallArg> Parser::parseCallArgs()
+{
+    std::vector<CallArg> args;
+
+    if (check(TokenKind::RParen))
+    {
+        return args;
+    }
+
+    do
+    {
+        CallArg arg;
+
+        // Check for named argument: name: value
+        if (check(TokenKind::Identifier))
+        {
+            // Look ahead for colon
+            Token nameTok = advance();
+
+            if (match(TokenKind::Colon))
+            {
+                arg.name = nameTok.text;
+                arg.value = parseExpression();
+            }
+            else
+            {
+                // Not a named arg, parse rest of expression starting with this identifier
+                // We already consumed the identifier, so create an IdentExpr for it and
+                // continue parsing from the current token position (which is after the identifier)
+                ExprPtr ident = std::make_unique<IdentExpr>(nameTok.loc, nameTok.text);
+                // Continue parsing using the binary expression parser with our ident as the LHS
+                arg.value = parsePostfixAndBinaryFrom(std::move(ident));
+            }
+        }
+        else
+        {
+            arg.value = parseExpression();
+        }
+
+        if (!arg.value)
+            return {};
+        args.push_back(std::move(arg));
+    } while (match(TokenKind::Comma));
+
+    return args;
+}
+
+} // namespace il::frontends::viperlang

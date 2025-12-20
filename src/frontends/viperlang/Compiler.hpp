@@ -73,6 +73,7 @@
 
 #pragma once
 
+#include "frontends/viperlang/Options.hpp"
 #include "il/core/Module.hpp"
 #include "support/diagnostics.hpp"
 #include "support/source_manager.hpp"
@@ -82,25 +83,6 @@
 
 namespace il::frontends::viperlang
 {
-
-/// @brief Options controlling ViperLang compilation behavior.
-struct CompilerOptions
-{
-    /// @brief Enable runtime bounds checks for arrays.
-    bool boundsChecks{true};
-
-    /// @brief Enable overflow checks for arithmetic.
-    bool overflowChecks{true};
-
-    /// @brief Enable null checks for optional access.
-    bool nullChecks{true};
-
-    /// @brief Dump AST after parsing (for debugging).
-    bool dumpAst{false};
-
-    /// @brief Dump IL after lowering (for debugging).
-    bool dumpIL{false};
-};
 
 /// @brief Input parameters describing the source to compile.
 struct CompilerInput

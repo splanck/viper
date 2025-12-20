@@ -106,6 +106,7 @@
 #include "support/diagnostics.hpp"
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace il::frontends::viperlang
 {
@@ -135,7 +136,7 @@ namespace il::frontends::viperlang
 /// Both must outlive the parser. The parser produces AST nodes that
 /// the caller owns via unique_ptr.
 ///
-/// @invariant current_ is always valid (may be Eof token).
+/// @invariant peek() is always valid (may be Eof token).
 /// @invariant Lexer and DiagnosticEngine outlive the parser.
 class Parser
 {
@@ -192,11 +193,13 @@ class Parser
     /// @{
     //=========================================================================
 
-    /// @brief Peek at the current token without consuming.
-    /// @return Reference to the current token.
+    /// @brief Peek at a token without consuming.
+    /// @param offset Lookahead distance (0 = current token).
+    /// @return Reference to the token.
     ///
-    /// @details The token remains current until advance() is called.
-    const Token &peek() const;
+    /// @details Tokens are buffered on demand to support multi-token lookahead
+    /// and bounded backtracking during parsing.
+    const Token &peek(size_t offset = 0);
 
     /// @brief Consume current token and advance to next.
     /// @return The token that was consumed.
@@ -204,35 +207,31 @@ class Parser
     /// @details After this call, peek() returns the next token.
     Token advance();
 
-    /// @brief Check if current token is of the given kind.
-    /// @param kind The token kind to check for.
-    /// @return True if current token matches.
-    ///
-    /// @details Does not consume the token.
-    bool check(TokenKind kind) const;
+    /// @brief Check whether the token at @p offset matches @p kind.
+    bool check(TokenKind kind, size_t offset = 0);
 
     /// @brief Check if current token can be used as an identifier.
     /// @return True if current token is an identifier or contextual keyword.
     ///
     /// @details Allows certain keywords (like 'value') to be used as
     /// identifiers in contexts like parameter names.
-    bool checkIdentifierLike() const;
+    bool checkIdentifierLike();
 
     /// @brief Consume current token if it matches the given kind.
     /// @param kind The token kind to match.
+    /// @param out Optional pointer to receive the consumed token.
     /// @return True if matched and consumed, false otherwise.
-    ///
-    /// @details Equivalent to: if (check(kind)) { advance(); return true; }
-    bool match(TokenKind kind);
+    bool match(TokenKind kind, Token *out = nullptr);
 
     /// @brief Require a specific token kind.
     /// @param kind The expected token kind.
     /// @param what Human-readable description of what was expected.
+    /// @param out Optional pointer to receive the consumed token.
     /// @return True if found, false if error reported.
     ///
     /// @details If the current token doesn't match, reports an error
     /// like "expected 'what', found '...'". The token is consumed on match.
-    bool expect(TokenKind kind, const char *what);
+    bool expect(TokenKind kind, const char *what, Token *out = nullptr);
 
     /// @brief Attempt to resynchronize after a syntax error.
     ///
@@ -244,6 +243,38 @@ class Parser
     ///
     /// This enables continued parsing to find additional errors.
     void resyncAfterError();
+
+    /// @}
+
+    //=========================================================================
+    /// @name Speculative Parsing
+    /// @brief Bounded backtracking helpers for disambiguation.
+    /// @{
+    //=========================================================================
+
+    /// @brief RAII helper for bounded backtracking.
+    /// @details Suppresses diagnostics while active. If not committed, restores
+    ///          token position and error state when destroyed.
+    class Speculation
+    {
+      public:
+        explicit Speculation(Parser &parser);
+        ~Speculation();
+
+        Speculation(const Speculation &) = delete;
+        Speculation &operator=(const Speculation &) = delete;
+
+        void commit()
+        {
+            committed_ = true;
+        }
+
+      private:
+        Parser &parser_;
+        size_t savedPos_;
+        bool savedHasError_;
+        bool committed_{false};
+    };
 
     /// @}
     //=========================================================================
@@ -571,13 +602,18 @@ class Parser
     /// @details Borrowed reference; must outlive the parser.
     il::support::DiagnosticEngine &diag_;
 
-    /// @brief Current token being examined.
-    /// @details Updated by advance(). Always valid (may be Eof).
-    Token current_;
+    /// @brief Buffered token stream for multi-token lookahead.
+    std::vector<Token> tokens_;
+
+    /// @brief Current position within the token buffer.
+    size_t tokenPos_{0};
 
     /// @brief Whether any errors have occurred during parsing.
     /// @details Set by error() and errorAt().
     bool hasError_{false};
+
+    /// @brief Depth of speculative parsing scopes (suppresses diagnostics).
+    int suppressionDepth_{0};
 
     /// @}
 };

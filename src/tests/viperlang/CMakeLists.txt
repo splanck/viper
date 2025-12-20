@@ -56,4 +56,9 @@ function(viper_add_viperlang_tests)
     viper_add_test(test_viperlang_lambda ${_VIPER_VIPERLANG_DIR}/test_viperlang_lambda.cpp)
     target_link_libraries(test_viperlang_lambda PRIVATE ${VIPER_VIPERLANG_LIBS})
     viper_add_ctest(test_viperlang_lambda test_viperlang_lambda)
+
+    # Import resolution tests
+    viper_add_test(test_viperlang_imports ${_VIPER_VIPERLANG_DIR}/test_viperlang_imports.cpp)
+    target_link_libraries(test_viperlang_imports PRIVATE ${VIPER_VIPERLANG_LIBS})
+    viper_add_ctest(test_viperlang_imports test_viperlang_imports)
 endfunction()

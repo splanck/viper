@@ -1,0 +1,333 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+///
+/// @file Lowerer_Decl.cpp
+/// @brief Declaration lowering for the ViperLang IL lowerer.
+///
+//===----------------------------------------------------------------------===//
+
+#include "frontends/viperlang/Lowerer.hpp"
+#include "frontends/viperlang/RuntimeNames.hpp"
+
+namespace il::frontends::viperlang
+{
+
+using namespace runtime;
+
+//=============================================================================
+// Declaration Lowering
+//=============================================================================
+
+void Lowerer::lowerDecl(Decl *decl)
+{
+    if (!decl)
+        return;
+
+    switch (decl->kind)
+    {
+        case DeclKind::Function:
+            lowerFunctionDecl(*static_cast<FunctionDecl *>(decl));
+            break;
+        case DeclKind::Value:
+            lowerValueDecl(*static_cast<ValueDecl *>(decl));
+            break;
+        case DeclKind::Entity:
+            lowerEntityDecl(*static_cast<EntityDecl *>(decl));
+            break;
+        case DeclKind::Interface:
+            lowerInterfaceDecl(*static_cast<InterfaceDecl *>(decl));
+            break;
+        default:
+            break;
+    }
+}
+
+void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
+{
+    // Determine return type
+    TypeRef returnType =
+        decl.returnType ? sema_.resolveType(decl.returnType.get()) : types::voidType();
+    Type ilReturnType = mapType(returnType);
+
+    // Build parameter list
+    std::vector<il::core::Param> params;
+    params.reserve(decl.params.size());
+    for (const auto &param : decl.params)
+    {
+        TypeRef paramType = param.type ? sema_.resolveType(param.type.get()) : types::unknown();
+        params.push_back({param.name, mapType(paramType)});
+    }
+
+    // Mangle function name
+    std::string mangledName = mangleFunctionName(decl.name);
+
+    // Track this function as defined in this module
+    definedFunctions_.insert(mangledName);
+
+    // Create function
+    currentFunc_ = &builder_->startFunction(mangledName, ilReturnType, params);
+    blockMgr_.bind(builder_.get(), currentFunc_);
+    locals_.clear();
+    slots_.clear();
+
+    // Create entry block with the function's params as block params
+    // (required for proper VM argument passing)
+    builder_->createBlock(*currentFunc_, "entry_0", currentFunc_->params);
+    size_t entryIdx = currentFunc_->blocks.size() - 1;
+    setBlock(entryIdx);
+
+    // Define parameters using slot-based storage for cross-block SSA correctness
+    // This ensures parameters are accessible in all basic blocks (if, while, guard, etc.)
+    const auto &blockParams = currentFunc_->blocks[entryIdx].params;
+    for (size_t i = 0; i < decl.params.size() && i < blockParams.size(); ++i)
+    {
+        TypeRef paramType =
+            decl.params[i].type ? sema_.resolveType(decl.params[i].type.get()) : types::unknown();
+        Type ilParamType = mapType(paramType);
+
+        // Create slot and store the parameter value
+        createSlot(decl.params[i].name, ilParamType);
+        storeToSlot(decl.params[i].name, Value::temp(blockParams[i].id), ilParamType);
+    }
+
+    // Lower function body
+    if (decl.body)
+    {
+        lowerStmt(decl.body.get());
+    }
+
+    // Add implicit return if needed
+    if (!isTerminated())
+    {
+        if (ilReturnType.kind == Type::Kind::Void)
+        {
+            emitRetVoid();
+        }
+        else
+        {
+            emitRet(Value::constInt(0));
+        }
+    }
+
+    currentFunc_ = nullptr;
+}
+
+void Lowerer::lowerValueDecl(ValueDecl &decl)
+{
+    // Compute field layout
+    ValueTypeInfo info;
+    info.name = decl.name;
+    info.totalSize = 0;
+
+    for (auto &member : decl.members)
+    {
+        if (member->kind == DeclKind::Field)
+        {
+            auto *field = static_cast<FieldDecl *>(member.get());
+            TypeRef fieldType =
+                field->type ? sema_.resolveType(field->type.get()) : types::unknown();
+
+            FieldLayout layout;
+            layout.name = field->name;
+            layout.type = fieldType;
+            layout.offset = info.totalSize;
+            layout.size = getILTypeSize(mapType(fieldType));
+
+            // Add to lookup map before pushing to vector
+            info.fieldIndex[field->name] = info.fields.size();
+            info.fields.push_back(layout);
+            info.totalSize += layout.size;
+        }
+        else if (member->kind == DeclKind::Method)
+        {
+            auto *method = static_cast<MethodDecl *>(member.get());
+            info.methodMap[method->name] = method;
+            info.methods.push_back(method);
+        }
+    }
+
+    // Store the value type info and get reference for method lowering
+    valueTypes_[decl.name] = std::move(info);
+    const ValueTypeInfo &storedInfo = valueTypes_[decl.name];
+
+    // Lower all methods
+    for (auto *method : storedInfo.methods)
+    {
+        lowerMethodDecl(*method, decl.name, false);
+    }
+}
+
+void Lowerer::lowerEntityDecl(EntityDecl &decl)
+{
+    // Compute field layout (entity fields start after object header)
+    EntityTypeInfo info;
+    info.name = decl.name;
+    info.baseClass = decl.baseClass; // Store parent class for super calls
+    info.totalSize = kObjectHeaderSize;
+    info.classId = nextClassId_++;
+
+    for (auto &member : decl.members)
+    {
+        if (member->kind == DeclKind::Field)
+        {
+            auto *field = static_cast<FieldDecl *>(member.get());
+            TypeRef fieldType =
+                field->type ? sema_.resolveType(field->type.get()) : types::unknown();
+
+            FieldLayout layout;
+            layout.name = field->name;
+            layout.type = fieldType;
+            layout.offset = info.totalSize;
+            layout.size = getILTypeSize(mapType(fieldType));
+
+            // Add to lookup map before pushing to vector
+            info.fieldIndex[field->name] = info.fields.size();
+            info.fields.push_back(layout);
+            info.totalSize += layout.size;
+        }
+        else if (member->kind == DeclKind::Method)
+        {
+            auto *method = static_cast<MethodDecl *>(member.get());
+            info.methodMap[method->name] = method;
+            info.methods.push_back(method);
+        }
+    }
+
+    // Store the entity type info and get reference for method lowering
+    entityTypes_[decl.name] = std::move(info);
+    const EntityTypeInfo &storedInfo = entityTypes_[decl.name];
+
+    // Lower all methods
+    for (auto *method : storedInfo.methods)
+    {
+        lowerMethodDecl(*method, decl.name, true);
+    }
+}
+
+void Lowerer::lowerInterfaceDecl(InterfaceDecl &decl)
+{
+    // Store interface information for vtable dispatch
+    InterfaceTypeInfo info;
+    info.name = decl.name;
+
+    for (auto &member : decl.members)
+    {
+        if (member->kind == DeclKind::Method)
+        {
+            auto *method = static_cast<MethodDecl *>(member.get());
+            info.methodMap[method->name] = method;
+            info.methods.push_back(method);
+        }
+    }
+
+    interfaceTypes_[decl.name] = std::move(info);
+
+    // Note: Interface methods are not lowered directly since they're abstract.
+    // The implementing entity's methods are called at runtime.
+}
+
+void Lowerer::lowerMethodDecl(MethodDecl &decl, const std::string &typeName, bool isEntity)
+{
+    // Find the type info
+    if (isEntity)
+    {
+        auto it = entityTypes_.find(typeName);
+        if (it == entityTypes_.end())
+            return;
+        currentEntityType_ = &it->second;
+        currentValueType_ = nullptr;
+    }
+    else
+    {
+        auto it = valueTypes_.find(typeName);
+        if (it == valueTypes_.end())
+            return;
+        currentValueType_ = &it->second;
+        currentEntityType_ = nullptr;
+    }
+
+    // Determine return type
+    TypeRef returnType =
+        decl.returnType ? sema_.resolveType(decl.returnType.get()) : types::voidType();
+    Type ilReturnType = mapType(returnType);
+
+    // Build parameter list: self (ptr) + declared params
+    std::vector<il::core::Param> params;
+    params.reserve(decl.params.size() + 1);
+    params.push_back({"self", Type(Type::Kind::Ptr)});
+
+    for (const auto &param : decl.params)
+    {
+        TypeRef paramType = param.type ? sema_.resolveType(param.type.get()) : types::unknown();
+        params.push_back({param.name, mapType(paramType)});
+    }
+
+    // Mangle method name: TypeName.methodName
+    std::string mangledName = typeName + "." + decl.name;
+
+    // Create function
+    currentFunc_ = &builder_->startFunction(mangledName, ilReturnType, params);
+    blockMgr_.bind(builder_.get(), currentFunc_);
+    locals_.clear();
+    slots_.clear();
+
+    // Create entry block with the function's params as block params
+    // (required for proper VM argument passing)
+    builder_->createBlock(*currentFunc_, "entry_0", currentFunc_->params);
+    size_t entryIdx = currentFunc_->blocks.size() - 1;
+    setBlock(entryIdx);
+
+    // Define parameters using slot-based storage for cross-block SSA correctness
+    const auto &blockParams = currentFunc_->blocks[entryIdx].params;
+    if (!blockParams.empty())
+    {
+        // 'self' is first block param - store in slot
+        createSlot("self", Type(Type::Kind::Ptr));
+        storeToSlot("self", Value::temp(blockParams[0].id), Type(Type::Kind::Ptr));
+    }
+
+    // Define other parameters using slot-based storage
+    for (size_t i = 0; i < decl.params.size(); ++i)
+    {
+        // Block param i+1 corresponds to method param i (after self)
+        if (i + 1 < blockParams.size())
+        {
+            TypeRef paramType = decl.params[i].type ? sema_.resolveType(decl.params[i].type.get())
+                                                    : types::unknown();
+            Type ilParamType = mapType(paramType);
+
+            createSlot(decl.params[i].name, ilParamType);
+            storeToSlot(decl.params[i].name, Value::temp(blockParams[i + 1].id), ilParamType);
+        }
+    }
+
+    // Lower method body
+    if (decl.body)
+    {
+        lowerStmt(decl.body.get());
+    }
+
+    // Add implicit return if needed
+    if (!isTerminated())
+    {
+        if (ilReturnType.kind == Type::Kind::Void)
+        {
+            emitRetVoid();
+        }
+        else
+        {
+            emitRet(Value::constInt(0));
+        }
+    }
+
+    currentFunc_ = nullptr;
+    currentValueType_ = nullptr;
+    currentEntityType_ = nullptr;
+}
+
+
+} // namespace il::frontends::viperlang
