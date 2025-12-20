@@ -11,7 +11,9 @@
 - [Viper.IO.File](#viperiofile)
 - [Viper.IO.LineReader](#viperiolinereader)
 - [Viper.IO.LineWriter](#viperiolinewriter)
+- [Viper.IO.MemStream](#viperiomemstream)
 - [Viper.IO.Path](#viperiopath)
+- [Viper.IO.Watcher](#viperiowatcher)
 
 ---
 
@@ -558,6 +560,186 @@ writer.Close()
 
 ---
 
+## Viper.IO.MemStream
+
+In-memory binary stream for reading and writing raw bytes with auto-expanding buffer.
+
+**Type:** Instance class
+
+**Constructors:**
+
+- `Viper.IO.MemStream.New()` - Creates an empty stream with default capacity
+- `Viper.IO.MemStream.New(capacity)` - Creates an empty stream with specified initial capacity
+- `Viper.IO.MemStream.FromBytes(bytes)` - Creates a stream initialized with data from a Bytes object
+
+### Properties
+
+| Property   | Type    | Access     | Description                      |
+|------------|---------|------------|----------------------------------|
+| `Pos`      | Integer | Read/Write | Current stream position          |
+| `Len`      | Integer | Read-only  | Current data length in bytes     |
+| `Capacity` | Integer | Read-only  | Current buffer capacity in bytes |
+
+### Methods
+
+| Method            | Returns | Description                                      |
+|-------------------|---------|--------------------------------------------------|
+| `ReadI8()`        | Integer | Read signed 8-bit integer                        |
+| `WriteI8(value)`  | void    | Write signed 8-bit integer                       |
+| `ReadU8()`        | Integer | Read unsigned 8-bit integer                      |
+| `WriteU8(value)`  | void    | Write unsigned 8-bit integer                     |
+| `ReadI16()`       | Integer | Read signed 16-bit integer (little-endian)       |
+| `WriteI16(value)` | void    | Write signed 16-bit integer (little-endian)      |
+| `ReadU16()`       | Integer | Read unsigned 16-bit integer (little-endian)     |
+| `WriteU16(value)` | void    | Write unsigned 16-bit integer (little-endian)    |
+| `ReadI32()`       | Integer | Read signed 32-bit integer (little-endian)       |
+| `WriteI32(value)` | void    | Write signed 32-bit integer (little-endian)      |
+| `ReadU32()`       | Integer | Read unsigned 32-bit integer (little-endian)     |
+| `WriteU32(value)` | void    | Write unsigned 32-bit integer (little-endian)    |
+| `ReadI64()`       | Integer | Read signed 64-bit integer (little-endian)       |
+| `WriteI64(value)` | void    | Write signed 64-bit integer (little-endian)      |
+| `ReadF32()`       | Float   | Read 32-bit float (IEEE 754, little-endian)      |
+| `WriteF32(value)` | void    | Write 32-bit float (IEEE 754, little-endian)     |
+| `ReadF64()`       | Float   | Read 64-bit float (IEEE 754, little-endian)      |
+| `WriteF64(value)` | void    | Write 64-bit float (IEEE 754, little-endian)     |
+| `ReadBytes(n)`    | Bytes   | Read n bytes into a new Bytes object             |
+| `WriteBytes(b)`   | void    | Write all bytes from a Bytes object              |
+| `ReadStr(n)`      | String  | Read n bytes as a UTF-8 string                   |
+| `WriteStr(s)`     | void    | Write string as UTF-8 bytes                      |
+| `ToBytes()`       | Bytes   | Copy all data to a new Bytes object              |
+| `Clear()`         | void    | Reset stream to empty state (Pos=0, Len=0)       |
+| `Seek(pos)`       | void    | Set position absolutely                          |
+| `Skip(n)`         | void    | Move position forward by n bytes                 |
+
+### Byte Order
+
+All multi-byte integers and floats use **little-endian** byte order. This matches the native byte order on x86/x64 and ARM processors, and is the standard for most binary file formats.
+
+### Buffer Behavior
+
+- **Auto-expansion:** Writing beyond current capacity automatically grows the buffer
+- **Gap filling:** Writing past the current length fills the gap with zeros
+- **Read traps:** Reading past the end of data traps with an error
+
+### Example
+
+```basic
+' Create a new memory stream
+DIM ms AS OBJECT = Viper.IO.MemStream.New()
+
+' Write various data types
+ms.WriteI32(12345)       ' 4 bytes
+ms.WriteF64(3.14159)     ' 8 bytes
+ms.WriteStr("Hello")     ' 5 bytes
+
+PRINT "Length:"; ms.Len  ' Output: 17
+
+' Seek back to start to read
+ms.Seek(0)
+
+' Read the data back
+DIM intVal AS INTEGER = ms.ReadI32()
+DIM floatVal AS FLOAT = ms.ReadF64()
+DIM strVal AS STRING = ms.ReadStr(5)
+
+PRINT intVal     ' Output: 12345
+PRINT floatVal   ' Output: 3.14159
+PRINT strVal     ' Output: Hello
+```
+
+### Binary Protocol Example
+
+```basic
+' Create a packet with header and payload
+DIM packet AS OBJECT = Viper.IO.MemStream.New()
+
+' Write packet header
+packet.WriteU8(&HCA)     ' Magic byte 1
+packet.WriteU8(&HFE)     ' Magic byte 2
+packet.WriteU16(1)       ' Version
+packet.WriteU32(0)       ' Payload length (placeholder)
+
+' Remember header end position
+DIM headerEnd AS INTEGER = packet.Pos
+
+' Write payload
+packet.WriteStr("Hello, World!")
+
+' Calculate and update payload length
+DIM payloadLen AS INTEGER = packet.Len - headerEnd
+packet.Seek(4)           ' Position of length field
+packet.WriteU32(payloadLen)
+
+' Get final packet as bytes
+DIM data AS OBJECT = packet.ToBytes()
+PRINT "Packet size:"; data.Len  ' Output: 21
+```
+
+### FromBytes Example
+
+```basic
+' Load binary data into a stream for parsing
+DIM rawData AS OBJECT = Viper.IO.File.ReadAllBytes("data.bin")
+DIM ms AS OBJECT = Viper.IO.MemStream.FromBytes(rawData)
+
+' Parse the binary format
+DIM magic AS INTEGER = ms.ReadU32()
+DIM count AS INTEGER = ms.ReadI16()
+
+FOR i AS INTEGER = 0 TO count - 1
+    DIM value AS FLOAT = ms.ReadF64()
+    PRINT "Value"; i; ":"; value
+NEXT i
+```
+
+### Preallocated Capacity Example
+
+```basic
+' Preallocate buffer for known size
+DIM ms AS OBJECT = Viper.IO.MemStream.New(1024)
+
+PRINT "Initial capacity:"; ms.Capacity  ' Output: 1024
+PRINT "Initial length:"; ms.Len         ' Output: 0
+
+' Write data - no reallocation needed if under capacity
+FOR i AS INTEGER = 0 TO 99
+    ms.WriteI32(i)
+NEXT i
+
+PRINT "Final length:"; ms.Len  ' Output: 400
+```
+
+### Use Cases
+
+- **Binary protocols:** Build and parse network packets, file formats
+- **Serialization:** Convert structured data to/from bytes
+- **Buffer management:** Accumulate binary data before writing to file
+- **Testing:** Create test data for binary file parsers
+- **Data transformation:** Convert between formats in memory
+
+### Comparison with BinFile
+
+| Feature           | MemStream            | BinFile                    |
+|-------------------|----------------------|----------------------------|
+| Storage           | In-memory buffer     | Disk file                  |
+| Auto-expand       | Yes                  | No (file grows on write)   |
+| Random access     | Yes (via Pos/Seek)   | Yes (via Seek)             |
+| Persistence       | No                   | Yes                        |
+| Max size          | Limited by memory    | Limited by disk            |
+| Performance       | Very fast            | Slower (disk I/O)          |
+
+Use MemStream when:
+- Building binary data in memory before writing to file or network
+- Parsing binary data already loaded in memory
+- Performance is critical and data fits in memory
+
+Use BinFile when:
+- Working with files that are too large for memory
+- Data must persist across program runs
+- Random access to large files is needed
+
+---
+
 ## Viper.IO.Path
 
 Cross-platform path manipulation utilities. All functions work with both Unix (`/`) and Windows (`\`) path separators.
@@ -638,4 +820,133 @@ The `Norm()` function performs the following transformations:
 - **Changing extensions:** Use `WithExt()` to replace file extensions
 - **Cleaning paths:** Use `Norm()` to clean up user-provided paths
 - **Portable code:** Use `Sep()` for platform-specific separators
+
+---
+
+## Viper.IO.Watcher
+
+Cross-platform file system watcher for monitoring files and directories for changes.
+
+**Type:** Instance class
+
+**Constructor:** `Viper.IO.Watcher.New(path)` - Creates a watcher for the specified file or directory
+
+### Event Types
+
+| Constant        | Value | Description                         |
+|-----------------|-------|-------------------------------------|
+| `EVENT_NONE`    | 0     | No event (returned by Poll timeout) |
+| `EVENT_CREATED` | 1     | File or directory was created       |
+| `EVENT_MODIFIED`| 2     | File was modified                   |
+| `EVENT_DELETED` | 3     | File or directory was deleted       |
+| `EVENT_RENAMED` | 4     | File or directory was renamed       |
+
+### Properties
+
+| Property      | Type    | Description                                    |
+|---------------|---------|------------------------------------------------|
+| `Path`        | String  | The path being watched (read-only)             |
+| `IsWatching`  | Boolean | True if actively watching (read-only)          |
+| `EVENT_NONE`  | Integer | Event constant: No event (static, read-only)   |
+| `EVENT_CREATED` | Integer | Event constant: Created (static, read-only)  |
+| `EVENT_MODIFIED`| Integer | Event constant: Modified (static, read-only) |
+| `EVENT_DELETED` | Integer | Event constant: Deleted (static, read-only)  |
+| `EVENT_RENAMED` | Integer | Event constant: Renamed (static, read-only)  |
+
+### Methods
+
+| Method          | Returns | Description                                              |
+|-----------------|---------|----------------------------------------------------------|
+| `Start()`       | void    | Begin watching for file system events                    |
+| `Stop()`        | void    | Stop watching for events                                 |
+| `Poll()`        | Integer | Check for event (non-blocking); returns event type or 0  |
+| `PollFor(ms)`   | Integer | Wait up to ms milliseconds for event; returns event type |
+| `EventPath()`   | String  | Get the path of the file that triggered the last event   |
+| `EventType()`   | Integer | Get the type of the last polled event                    |
+
+### Platform Implementation
+
+| Platform | Backend API                |
+|----------|----------------------------|
+| Linux    | inotify                    |
+| macOS    | kqueue                     |
+| Windows  | ReadDirectoryChangesW      |
+
+### Example
+
+```basic
+' Watch a directory for changes
+DIM watcher AS OBJECT = Viper.IO.Watcher.New("/home/user/documents")
+
+' Start watching
+watcher.Start()
+
+' Check if we're watching
+PRINT "Watching:"; watcher.IsWatching  ' Output: 1
+
+' Main event loop
+DO
+    ' Poll with 1 second timeout
+    DIM event AS INTEGER = watcher.PollFor(1000)
+
+    IF event <> watcher.EVENT_NONE THEN
+        DIM path AS STRING = watcher.EventPath()
+
+        SELECT CASE event
+            CASE watcher.EVENT_CREATED
+                PRINT "Created: "; path
+            CASE watcher.EVENT_MODIFIED
+                PRINT "Modified: "; path
+            CASE watcher.EVENT_DELETED
+                PRINT "Deleted: "; path
+            CASE watcher.EVENT_RENAMED
+                PRINT "Renamed: "; path
+        END SELECT
+    END IF
+LOOP UNTIL shouldStop
+
+' Stop watching
+watcher.Stop()
+```
+
+### Non-Blocking Example
+
+```basic
+' Watch a single file
+DIM watcher AS OBJECT = Viper.IO.Watcher.New("/home/user/config.txt")
+watcher.Start()
+
+' Non-blocking poll in a game loop
+DO
+    ' Do other work...
+    ProcessGame()
+
+    ' Quick non-blocking check for file changes
+    DIM event AS INTEGER = watcher.Poll()
+    IF event = watcher.EVENT_MODIFIED THEN
+        PRINT "Config file changed, reloading..."
+        ReloadConfig()
+    END IF
+LOOP
+
+watcher.Stop()
+```
+
+### Use Cases
+
+- **Hot reload:** Watch config files and reload when changed
+- **Build systems:** Trigger rebuilds when source files change
+- **File sync:** Monitor directories for new files to process
+- **Development tools:** Auto-refresh on file changes
+- **Backup software:** Detect changes to back up
+
+### Notes
+
+- Creating a watcher traps if the path does not exist
+- The watcher must be started with `Start()` before events can be received
+- `Poll()` returns immediately with `EVENT_NONE` if no event is pending
+- `PollFor(ms)` waits up to the specified milliseconds for an event
+- After receiving an event, use `EventPath()` and `EventType()` to get details
+- Multiple events may be queued; call `Poll()` repeatedly to drain them
+- Platform-specific behavior may vary slightly for edge cases
 

@@ -69,6 +69,59 @@ extern "C"
     /// @return CRC32 value as integer.
     int64_t rt_hash_crc32_bytes(void *bytes);
 
+    //=========================================================================
+    // HMAC Functions
+    //=========================================================================
+
+    /// @brief Compute HMAC-MD5 of string data with string key.
+    /// @param key The secret key string.
+    /// @param data The data string to authenticate.
+    /// @return 32-character lowercase hex string.
+    rt_string rt_hash_hmac_md5(rt_string key, rt_string data);
+
+    /// @brief Compute HMAC-MD5 of Bytes data with Bytes key.
+    /// @param key The secret key as Bytes.
+    /// @param data The data as Bytes.
+    /// @return 32-character lowercase hex string.
+    rt_string rt_hash_hmac_md5_bytes(void *key, void *data);
+
+    /// @brief Compute HMAC-SHA1 of string data with string key.
+    /// @param key The secret key string.
+    /// @param data The data string to authenticate.
+    /// @return 40-character lowercase hex string.
+    rt_string rt_hash_hmac_sha1(rt_string key, rt_string data);
+
+    /// @brief Compute HMAC-SHA1 of Bytes data with Bytes key.
+    /// @param key The secret key as Bytes.
+    /// @param data The data as Bytes.
+    /// @return 40-character lowercase hex string.
+    rt_string rt_hash_hmac_sha1_bytes(void *key, void *data);
+
+    /// @brief Compute HMAC-SHA256 of string data with string key.
+    /// @param key The secret key string.
+    /// @param data The data string to authenticate.
+    /// @return 64-character lowercase hex string.
+    rt_string rt_hash_hmac_sha256(rt_string key, rt_string data);
+
+    /// @brief Compute HMAC-SHA256 of Bytes data with Bytes key.
+    /// @param key The secret key as Bytes.
+    /// @param data The data as Bytes.
+    /// @return 64-character lowercase hex string.
+    rt_string rt_hash_hmac_sha256_bytes(void *key, void *data);
+
+    //=========================================================================
+    // Internal HMAC functions (for PBKDF2)
+    //=========================================================================
+
+    /// @brief Compute raw HMAC-SHA256 (returns binary, not hex).
+    /// @param key Key bytes.
+    /// @param key_len Key length.
+    /// @param data Data bytes.
+    /// @param data_len Data length.
+    /// @param out Output buffer (32 bytes).
+    void rt_hash_hmac_sha256_raw(const uint8_t *key, size_t key_len, const uint8_t *data,
+                                 size_t data_len, uint8_t out[32]);
+
 #ifdef __cplusplus
 }
 #endif

@@ -51,6 +51,7 @@ set(RT_OOP_SOURCES
 set(RT_COLLECTIONS_SOURCES
         rt_bag.c
         rt_list.c
+        rt_pqueue.c
         rt_seq.c
         rt_stack.c
         rt_queue.c
@@ -65,6 +66,10 @@ set(RT_TEXT_SOURCES
         rt_csv.c
         rt_guid.c
         rt_hash.c
+        rt_keyderive.c
+        rt_rand.c
+        rt_regex.c
+        rt_template.c
         rt_parse.c
 )
 
@@ -74,10 +79,12 @@ set(RT_IO_FS_SOURCES
         rt_file_path.c
         rt_file_ext.c
         rt_binfile.c
+        rt_memstream.c
         rt_linereader.c
         rt_linewriter.c
         rt_path.c
         rt_dir.c
+        rt_watcher.c
 )
 
 set(RT_EXEC_SOURCES

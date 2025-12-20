@@ -207,6 +207,23 @@ RT_FUNC(QueuePeek,    rt_queue_peek,     "Viper.Collections.Queue.Peek",        
 RT_FUNC(QueueTake,    rt_queue_take,     "Viper.Collections.Queue.Take",        "obj(obj)")
 
 //=============================================================================
+// COLLECTIONS - HEAP (Priority Queue)
+//=============================================================================
+
+RT_FUNC(HeapClear,    rt_pqueue_clear,     "Viper.Collections.Heap.Clear",        "void(obj)")
+RT_FUNC(HeapIsEmpty,  rt_pqueue_is_empty,  "Viper.Collections.Heap.get_IsEmpty",  "i1(obj)")
+RT_FUNC(HeapIsMax,    rt_pqueue_is_max,    "Viper.Collections.Heap.get_IsMax",    "i1(obj)")
+RT_FUNC(HeapLen,      rt_pqueue_len,       "Viper.Collections.Heap.get_Len",      "i64(obj)")
+RT_FUNC(HeapNew,      rt_pqueue_new,       "Viper.Collections.Heap.New",          "obj()")
+RT_FUNC(HeapNewMax,   rt_pqueue_new_max,   "Viper.Collections.Heap.NewMax",       "obj(i1)")
+RT_FUNC(HeapPeek,     rt_pqueue_peek,      "Viper.Collections.Heap.Peek",         "obj(obj)")
+RT_FUNC(HeapPop,      rt_pqueue_pop,       "Viper.Collections.Heap.Pop",          "obj(obj)")
+RT_FUNC(HeapPush,     rt_pqueue_push,      "Viper.Collections.Heap.Push",         "void(obj,i64,obj)")
+RT_FUNC(HeapToSeq,    rt_pqueue_to_seq,    "Viper.Collections.Heap.ToSeq",        "obj(obj)")
+RT_FUNC(HeapTryPeek,  rt_pqueue_try_peek,  "Viper.Collections.Heap.TryPeek",      "obj(obj)")
+RT_FUNC(HeapTryPop,   rt_pqueue_try_pop,   "Viper.Collections.Heap.TryPop",       "obj(obj)")
+
+//=============================================================================
 // COLLECTIONS - RING
 //=============================================================================
 
@@ -291,6 +308,28 @@ RT_FUNC(HashSHA1,       rt_hash_sha1,        "Viper.Crypto.Hash.SHA1",       "st
 RT_FUNC(HashSHA1Bytes,  rt_hash_sha1_bytes,  "Viper.Crypto.Hash.SHA1Bytes",  "str(obj)")
 RT_FUNC(HashSHA256,     rt_hash_sha256,      "Viper.Crypto.Hash.SHA256",     "str(str)")
 RT_FUNC(HashSHA256Bytes,rt_hash_sha256_bytes,"Viper.Crypto.Hash.SHA256Bytes","str(obj)")
+
+// HMAC functions
+RT_FUNC(HashHmacMD5,        rt_hash_hmac_md5,         "Viper.Crypto.Hash.HmacMD5",        "str(str,str)")
+RT_FUNC(HashHmacMD5Bytes,   rt_hash_hmac_md5_bytes,   "Viper.Crypto.Hash.HmacMD5Bytes",   "str(obj,obj)")
+RT_FUNC(HashHmacSHA1,       rt_hash_hmac_sha1,        "Viper.Crypto.Hash.HmacSHA1",       "str(str,str)")
+RT_FUNC(HashHmacSHA1Bytes,  rt_hash_hmac_sha1_bytes,  "Viper.Crypto.Hash.HmacSHA1Bytes",  "str(obj,obj)")
+RT_FUNC(HashHmacSHA256,     rt_hash_hmac_sha256,      "Viper.Crypto.Hash.HmacSHA256",     "str(str,str)")
+RT_FUNC(HashHmacSHA256Bytes,rt_hash_hmac_sha256_bytes,"Viper.Crypto.Hash.HmacSHA256Bytes","str(obj,obj)")
+
+//=============================================================================
+// CRYPTO - KEY DERIVATION
+//=============================================================================
+
+RT_FUNC(KeyDerivePbkdf2SHA256,    rt_keyderive_pbkdf2_sha256,     "Viper.Crypto.KeyDerive.Pbkdf2SHA256",    "obj(str,obj,i64,i64)")
+RT_FUNC(KeyDerivePbkdf2SHA256Str, rt_keyderive_pbkdf2_sha256_str, "Viper.Crypto.KeyDerive.Pbkdf2SHA256Str", "str(str,obj,i64,i64)")
+
+//=============================================================================
+// CRYPTO - SECURE RANDOM
+//=============================================================================
+
+RT_FUNC(CryptoRandBytes, rt_crypto_rand_bytes, "Viper.Crypto.Rand.Bytes", "obj(i64)")
+RT_FUNC(CryptoRandInt,   rt_crypto_rand_int,   "Viper.Crypto.Rand.Int",   "i64(i64,i64)")
 
 //=============================================================================
 // DATETIME
@@ -491,6 +530,44 @@ RT_FUNC(BinFileWrite,     rt_binfile_write,      "Viper.IO.BinFile.Write",      
 RT_FUNC(BinFileWriteByte, rt_binfile_write_byte, "Viper.IO.BinFile.WriteByte",  "void(obj,i64)")
 
 //=============================================================================
+// IO - MEMSTREAM
+//=============================================================================
+
+RT_FUNC(MemStreamNew,         rt_memstream_new,          "Viper.IO.MemStream.New",          "obj()")
+RT_FUNC(MemStreamNewCapacity, rt_memstream_new_capacity, "Viper.IO.MemStream.NewCapacity",  "obj(i64)")
+RT_FUNC(MemStreamFromBytes,   rt_memstream_from_bytes,   "Viper.IO.MemStream.FromBytes",    "obj(obj)")
+RT_FUNC(MemStreamGetPos,      rt_memstream_get_pos,      "Viper.IO.MemStream.get_Pos",      "i64(obj)")
+RT_FUNC(MemStreamSetPos,      rt_memstream_set_pos,      "Viper.IO.MemStream.set_Pos",      "void(obj,i64)")
+RT_FUNC(MemStreamGetLen,      rt_memstream_get_len,      "Viper.IO.MemStream.get_Len",      "i64(obj)")
+RT_FUNC(MemStreamGetCapacity, rt_memstream_get_capacity, "Viper.IO.MemStream.get_Capacity", "i64(obj)")
+RT_FUNC(MemStreamReadI8,      rt_memstream_read_i8,      "Viper.IO.MemStream.ReadI8",       "i64(obj)")
+RT_FUNC(MemStreamWriteI8,     rt_memstream_write_i8,     "Viper.IO.MemStream.WriteI8",      "void(obj,i64)")
+RT_FUNC(MemStreamReadU8,      rt_memstream_read_u8,      "Viper.IO.MemStream.ReadU8",       "i64(obj)")
+RT_FUNC(MemStreamWriteU8,     rt_memstream_write_u8,     "Viper.IO.MemStream.WriteU8",      "void(obj,i64)")
+RT_FUNC(MemStreamReadI16,     rt_memstream_read_i16,     "Viper.IO.MemStream.ReadI16",      "i64(obj)")
+RT_FUNC(MemStreamWriteI16,    rt_memstream_write_i16,    "Viper.IO.MemStream.WriteI16",     "void(obj,i64)")
+RT_FUNC(MemStreamReadU16,     rt_memstream_read_u16,     "Viper.IO.MemStream.ReadU16",      "i64(obj)")
+RT_FUNC(MemStreamWriteU16,    rt_memstream_write_u16,    "Viper.IO.MemStream.WriteU16",     "void(obj,i64)")
+RT_FUNC(MemStreamReadI32,     rt_memstream_read_i32,     "Viper.IO.MemStream.ReadI32",      "i64(obj)")
+RT_FUNC(MemStreamWriteI32,    rt_memstream_write_i32,    "Viper.IO.MemStream.WriteI32",     "void(obj,i64)")
+RT_FUNC(MemStreamReadU32,     rt_memstream_read_u32,     "Viper.IO.MemStream.ReadU32",      "i64(obj)")
+RT_FUNC(MemStreamWriteU32,    rt_memstream_write_u32,    "Viper.IO.MemStream.WriteU32",     "void(obj,i64)")
+RT_FUNC(MemStreamReadI64,     rt_memstream_read_i64,     "Viper.IO.MemStream.ReadI64",      "i64(obj)")
+RT_FUNC(MemStreamWriteI64,    rt_memstream_write_i64,    "Viper.IO.MemStream.WriteI64",     "void(obj,i64)")
+RT_FUNC(MemStreamReadF32,     rt_memstream_read_f32,     "Viper.IO.MemStream.ReadF32",      "f64(obj)")
+RT_FUNC(MemStreamWriteF32,    rt_memstream_write_f32,    "Viper.IO.MemStream.WriteF32",     "void(obj,f64)")
+RT_FUNC(MemStreamReadF64,     rt_memstream_read_f64,     "Viper.IO.MemStream.ReadF64",      "f64(obj)")
+RT_FUNC(MemStreamWriteF64,    rt_memstream_write_f64,    "Viper.IO.MemStream.WriteF64",     "void(obj,f64)")
+RT_FUNC(MemStreamReadBytes,   rt_memstream_read_bytes,   "Viper.IO.MemStream.ReadBytes",    "obj(obj,i64)")
+RT_FUNC(MemStreamWriteBytes,  rt_memstream_write_bytes,  "Viper.IO.MemStream.WriteBytes",   "void(obj,obj)")
+RT_FUNC(MemStreamReadStr,     rt_memstream_read_str,     "Viper.IO.MemStream.ReadStr",      "str(obj,i64)")
+RT_FUNC(MemStreamWriteStr,    rt_memstream_write_str,    "Viper.IO.MemStream.WriteStr",     "void(obj,str)")
+RT_FUNC(MemStreamToBytes,     rt_memstream_to_bytes,     "Viper.IO.MemStream.ToBytes",      "obj(obj)")
+RT_FUNC(MemStreamClear,       rt_memstream_clear,        "Viper.IO.MemStream.Clear",        "void(obj)")
+RT_FUNC(MemStreamSeek,        rt_memstream_seek,         "Viper.IO.MemStream.Seek",         "void(obj,i64)")
+RT_FUNC(MemStreamSkip,        rt_memstream_skip,         "Viper.IO.MemStream.Skip",         "void(obj,i64)")
+
+//=============================================================================
 // IO - LINEREADER
 //=============================================================================
 
@@ -515,6 +592,25 @@ RT_FUNC(LineWriterSetNewLine, rt_linewriter_set_newline, "Viper.IO.LineWriter.se
 RT_FUNC(LineWriterWrite,      rt_linewriter_write,       "Viper.IO.LineWriter.Write",       "void(obj,str)")
 RT_FUNC(LineWriterWriteChar,  rt_linewriter_write_char,  "Viper.IO.LineWriter.WriteChar",   "void(obj,i64)")
 RT_FUNC(LineWriterWriteLn,    rt_linewriter_write_ln,    "Viper.IO.LineWriter.WriteLn",     "void(obj,str)")
+
+//=============================================================================
+// IO - WATCHER
+//=============================================================================
+
+RT_FUNC(WatcherNew,        rt_watcher_new,           "Viper.IO.Watcher.new",            "obj(str)")
+RT_FUNC(WatcherPath,       rt_watcher_get_path,      "Viper.IO.Watcher.get_Path",       "str(obj)")
+RT_FUNC(WatcherIsWatching, rt_watcher_get_is_watching, "Viper.IO.Watcher.get_IsWatching", "i1(obj)")
+RT_FUNC(WatcherStart,      rt_watcher_start,         "Viper.IO.Watcher.Start",          "void(obj)")
+RT_FUNC(WatcherStop,       rt_watcher_stop,          "Viper.IO.Watcher.Stop",           "void(obj)")
+RT_FUNC(WatcherPoll,       rt_watcher_poll,          "Viper.IO.Watcher.Poll",           "i64(obj)")
+RT_FUNC(WatcherPollFor,    rt_watcher_poll_for,      "Viper.IO.Watcher.PollFor",        "i64(obj,i64)")
+RT_FUNC(WatcherEventPath,  rt_watcher_event_path,    "Viper.IO.Watcher.EventPath",      "str(obj)")
+RT_FUNC(WatcherEventType,  rt_watcher_event_type,    "Viper.IO.Watcher.EventType",      "i64(obj)")
+RT_FUNC(WatcherEventNone,     rt_watcher_event_none,     "Viper.IO.Watcher.get_EVENT_NONE",     "i64()")
+RT_FUNC(WatcherEventCreated,  rt_watcher_event_created,  "Viper.IO.Watcher.get_EVENT_CREATED",  "i64()")
+RT_FUNC(WatcherEventModified, rt_watcher_event_modified, "Viper.IO.Watcher.get_EVENT_MODIFIED", "i64()")
+RT_FUNC(WatcherEventDeleted,  rt_watcher_event_deleted,  "Viper.IO.Watcher.get_EVENT_DELETED",  "i64()")
+RT_FUNC(WatcherEventRenamed,  rt_watcher_event_renamed,  "Viper.IO.Watcher.get_EVENT_RENAMED",  "i64()")
 
 //=============================================================================
 // LOG
@@ -752,6 +848,27 @@ RT_FUNC(SBGetCapacity, rt_text_sb_get_capacity, "Viper.Text.StringBuilder.get_Ca
 RT_FUNC(SBGetLength,   rt_text_sb_get_length,   "Viper.Text.StringBuilder.get_Length",   "i64(obj)")
 RT_FUNC(SBNew,         rt_ns_stringbuilder_new, "Viper.Text.StringBuilder.New",          "obj()")
 RT_FUNC(SBToString,    rt_text_sb_to_string,    "Viper.Text.StringBuilder.ToString",     "str(obj)")
+
+//=============================================================================
+// TEXT - PATTERN (Regex)
+//=============================================================================
+
+RT_FUNC(PatternIsMatch,      rt_pattern_is_match,       "Viper.Text.Pattern.IsMatch",      "i1(str,str)")
+RT_FUNC(PatternFind,         rt_pattern_find,           "Viper.Text.Pattern.Find",         "str(str,str)")
+RT_FUNC(PatternFindFrom,     rt_pattern_find_from,      "Viper.Text.Pattern.FindFrom",     "str(str,str,i64)")
+RT_FUNC(PatternFindPos,      rt_pattern_find_pos,       "Viper.Text.Pattern.FindPos",      "i64(str,str)")
+RT_FUNC(PatternFindAll,      rt_pattern_find_all,       "Viper.Text.Pattern.FindAll",      "obj(str,str)")
+RT_FUNC(PatternReplace,      rt_pattern_replace,        "Viper.Text.Pattern.Replace",      "str(str,str,str)")
+RT_FUNC(PatternReplaceFirst, rt_pattern_replace_first,  "Viper.Text.Pattern.ReplaceFirst", "str(str,str,str)")
+RT_FUNC(PatternSplit,        rt_pattern_split,          "Viper.Text.Pattern.Split",        "obj(str,str)")
+RT_FUNC(PatternEscape,       rt_pattern_escape,         "Viper.Text.Pattern.Escape",       "str(str)")
+
+RT_FUNC(TemplateRender,      rt_template_render,        "Viper.Text.Template.Render",      "str(str,obj)")
+RT_FUNC(TemplateRenderSeq,   rt_template_render_seq,    "Viper.Text.Template.RenderSeq",   "str(str,obj)")
+RT_FUNC(TemplateRenderWith,  rt_template_render_with,   "Viper.Text.Template.RenderWith",  "str(str,obj,str,str)")
+RT_FUNC(TemplateHas,         rt_template_has,           "Viper.Text.Template.Has",         "i1(str,str)")
+RT_FUNC(TemplateKeys,        rt_template_keys,          "Viper.Text.Template.Keys",        "obj(str)")
+RT_FUNC(TemplateEscape,      rt_template_escape,        "Viper.Text.Template.Escape",      "str(str)")
 
 //=============================================================================
 // THREADS
@@ -1020,6 +1137,20 @@ RT_CLASS_BEGIN("Viper.Collections.Queue", Queue, "obj", QueueNew)
     RT_METHOD("Take", "obj()", QueueTake)
 RT_CLASS_END()
 
+// Viper.Collections.Heap - priority queue (binary heap)
+RT_CLASS_BEGIN("Viper.Collections.Heap", Heap, "obj", HeapNew)
+    RT_PROP("IsEmpty", "i1", HeapIsEmpty, none)
+    RT_PROP("IsMax", "i1", HeapIsMax, none)
+    RT_PROP("Len", "i64", HeapLen, none)
+    RT_METHOD("Clear", "void()", HeapClear)
+    RT_METHOD("Peek", "obj()", HeapPeek)
+    RT_METHOD("Pop", "obj()", HeapPop)
+    RT_METHOD("Push", "void(i64,obj)", HeapPush)
+    RT_METHOD("ToSeq", "obj()", HeapToSeq)
+    RT_METHOD("TryPeek", "obj()", HeapTryPeek)
+    RT_METHOD("TryPop", "obj()", HeapTryPop)
+RT_CLASS_END()
+
 // Viper.Collections.Ring - fixed-size circular buffer
 RT_CLASS_BEGIN("Viper.Collections.Ring", Ring, "obj", RingNew)
     RT_PROP("Cap", "i64", RingCap, none)
@@ -1102,6 +1233,24 @@ RT_CLASS_BEGIN("Viper.Crypto.Hash", Hash, "obj", none)
     RT_METHOD("SHA1Bytes", "str(obj)", HashSHA1Bytes)
     RT_METHOD("SHA256", "str(str)", HashSHA256)
     RT_METHOD("SHA256Bytes", "str(obj)", HashSHA256Bytes)
+    RT_METHOD("HmacMD5", "str(str,str)", HashHmacMD5)
+    RT_METHOD("HmacMD5Bytes", "str(obj,obj)", HashHmacMD5Bytes)
+    RT_METHOD("HmacSHA1", "str(str,str)", HashHmacSHA1)
+    RT_METHOD("HmacSHA1Bytes", "str(obj,obj)", HashHmacSHA1Bytes)
+    RT_METHOD("HmacSHA256", "str(str,str)", HashHmacSHA256)
+    RT_METHOD("HmacSHA256Bytes", "str(obj,obj)", HashHmacSHA256Bytes)
+RT_CLASS_END()
+
+// Viper.Crypto.KeyDerive - key derivation functions
+RT_CLASS_BEGIN("Viper.Crypto.KeyDerive", KeyDerive, "obj", none)
+    RT_METHOD("Pbkdf2SHA256", "obj(str,obj,i64,i64)", KeyDerivePbkdf2SHA256)
+    RT_METHOD("Pbkdf2SHA256Str", "str(str,obj,i64,i64)", KeyDerivePbkdf2SHA256Str)
+RT_CLASS_END()
+
+// Viper.Crypto.Rand - secure random number generation
+RT_CLASS_BEGIN("Viper.Crypto.Rand", CryptoRand, "obj", none)
+    RT_METHOD("Bytes", "obj(i64)", CryptoRandBytes)
+    RT_METHOD("Int", "i64(i64,i64)", CryptoRandInt)
 RT_CLASS_END()
 
 // Viper.DateTime - static utility class
@@ -1280,6 +1429,39 @@ RT_CLASS_BEGIN("Viper.IO.BinFile", BinFile, "obj", BinFileOpen)
     RT_METHOD("WriteByte", "void(i64)", BinFileWriteByte)
 RT_CLASS_END()
 
+// Viper.IO.MemStream - in-memory binary stream
+RT_CLASS_BEGIN("Viper.IO.MemStream", MemStream, "obj", MemStreamNew)
+    RT_PROP("Pos", "i64", MemStreamGetPos, MemStreamSetPos)
+    RT_PROP("Len", "i64", MemStreamGetLen, none)
+    RT_PROP("Capacity", "i64", MemStreamGetCapacity, none)
+    RT_METHOD("ReadI8", "i64()", MemStreamReadI8)
+    RT_METHOD("WriteI8", "void(i64)", MemStreamWriteI8)
+    RT_METHOD("ReadU8", "i64()", MemStreamReadU8)
+    RT_METHOD("WriteU8", "void(i64)", MemStreamWriteU8)
+    RT_METHOD("ReadI16", "i64()", MemStreamReadI16)
+    RT_METHOD("WriteI16", "void(i64)", MemStreamWriteI16)
+    RT_METHOD("ReadU16", "i64()", MemStreamReadU16)
+    RT_METHOD("WriteU16", "void(i64)", MemStreamWriteU16)
+    RT_METHOD("ReadI32", "i64()", MemStreamReadI32)
+    RT_METHOD("WriteI32", "void(i64)", MemStreamWriteI32)
+    RT_METHOD("ReadU32", "i64()", MemStreamReadU32)
+    RT_METHOD("WriteU32", "void(i64)", MemStreamWriteU32)
+    RT_METHOD("ReadI64", "i64()", MemStreamReadI64)
+    RT_METHOD("WriteI64", "void(i64)", MemStreamWriteI64)
+    RT_METHOD("ReadF32", "f64()", MemStreamReadF32)
+    RT_METHOD("WriteF32", "void(f64)", MemStreamWriteF32)
+    RT_METHOD("ReadF64", "f64()", MemStreamReadF64)
+    RT_METHOD("WriteF64", "void(f64)", MemStreamWriteF64)
+    RT_METHOD("ReadBytes", "obj(i64)", MemStreamReadBytes)
+    RT_METHOD("WriteBytes", "void(obj)", MemStreamWriteBytes)
+    RT_METHOD("ReadStr", "str(i64)", MemStreamReadStr)
+    RT_METHOD("WriteStr", "void(str)", MemStreamWriteStr)
+    RT_METHOD("ToBytes", "obj()", MemStreamToBytes)
+    RT_METHOD("Clear", "void()", MemStreamClear)
+    RT_METHOD("Seek", "void(i64)", MemStreamSeek)
+    RT_METHOD("Skip", "void(i64)", MemStreamSkip)
+RT_CLASS_END()
+
 // Viper.IO.LineReader - line-by-line text file reader
 RT_CLASS_BEGIN("Viper.IO.LineReader", LineReader, "obj", LineReaderOpen)
     RT_PROP("Eof", "i1", LineReaderEof, none)
@@ -1298,6 +1480,23 @@ RT_CLASS_BEGIN("Viper.IO.LineWriter", LineWriter, "obj", LineWriterOpen)
     RT_METHOD("Write", "void(str)", LineWriterWrite)
     RT_METHOD("WriteChar", "void(i64)", LineWriterWriteChar)
     RT_METHOD("WriteLn", "void(str)", LineWriterWriteLn)
+RT_CLASS_END()
+
+// Viper.IO.Watcher - file system watcher
+RT_CLASS_BEGIN("Viper.IO.Watcher", Watcher, "obj", WatcherNew)
+    RT_PROP("Path", "str", WatcherPath, none)
+    RT_PROP("IsWatching", "i1", WatcherIsWatching, none)
+    RT_PROP("EVENT_NONE", "i64", WatcherEventNone, none)
+    RT_PROP("EVENT_CREATED", "i64", WatcherEventCreated, none)
+    RT_PROP("EVENT_MODIFIED", "i64", WatcherEventModified, none)
+    RT_PROP("EVENT_DELETED", "i64", WatcherEventDeleted, none)
+    RT_PROP("EVENT_RENAMED", "i64", WatcherEventRenamed, none)
+    RT_METHOD("Start", "void()", WatcherStart)
+    RT_METHOD("Stop", "void()", WatcherStop)
+    RT_METHOD("Poll", "i64()", WatcherPoll)
+    RT_METHOD("PollFor", "i64(i64)", WatcherPollFor)
+    RT_METHOD("EventPath", "str()", WatcherEventPath)
+    RT_METHOD("EventType", "i64()", WatcherEventType)
 RT_CLASS_END()
 
 // Viper.Log - simple logging utilities
@@ -1484,6 +1683,29 @@ RT_CLASS_BEGIN("Viper.Text.StringBuilder", StringBuilder, "opaque*", SBNew)
     RT_METHOD("AppendLine", "obj(str)", SBAppendLine)
     RT_METHOD("Clear", "void()", SBClear)
     RT_METHOD("ToString", "str()", SBToString)
+RT_CLASS_END()
+
+// Viper.Text.Pattern - regular expression pattern matching
+RT_CLASS_BEGIN("Viper.Text.Pattern", Pattern, "obj", none)
+    RT_METHOD("IsMatch", "i1(str,str)", PatternIsMatch)
+    RT_METHOD("Find", "str(str,str)", PatternFind)
+    RT_METHOD("FindFrom", "str(str,str,i64)", PatternFindFrom)
+    RT_METHOD("FindPos", "i64(str,str)", PatternFindPos)
+    RT_METHOD("FindAll", "obj(str,str)", PatternFindAll)
+    RT_METHOD("Replace", "str(str,str,str)", PatternReplace)
+    RT_METHOD("ReplaceFirst", "str(str,str,str)", PatternReplaceFirst)
+    RT_METHOD("Split", "obj(str,str)", PatternSplit)
+    RT_METHOD("Escape", "str(str)", PatternEscape)
+RT_CLASS_END()
+
+// Viper.Text.Template - simple string templating
+RT_CLASS_BEGIN("Viper.Text.Template", Template, "obj", none)
+    RT_METHOD("Render", "str(str,obj)", TemplateRender)
+    RT_METHOD("RenderSeq", "str(str,obj)", TemplateRenderSeq)
+    RT_METHOD("RenderWith", "str(str,obj,str,str)", TemplateRenderWith)
+    RT_METHOD("Has", "i1(str,str)", TemplateHas)
+    RT_METHOD("Keys", "obj(str)", TemplateKeys)
+    RT_METHOD("Escape", "str(str)", TemplateEscape)
 RT_CLASS_END()
 
 // Viper.Threads.Monitor - FIFO-fair, re-entrant monitor primitive

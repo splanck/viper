@@ -456,6 +456,10 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_dir PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_dir test_rt_dir)
 
+    viper_add_test(test_rt_watcher ${VIPER_TESTS_DIR}/runtime/RTWatcherTests.cpp)
+    target_link_libraries(test_rt_watcher PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_watcher test_rt_watcher)
+
     viper_add_test(test_rt_file_ext ${VIPER_TESTS_DIR}/runtime/RTFileExtTests.cpp)
     target_link_libraries(test_rt_file_ext PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_file_ext test_rt_file_ext)
@@ -488,6 +492,18 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_hash PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_hash test_rt_hash)
 
+    viper_add_test(test_rt_crypto ${VIPER_TESTS_DIR}/runtime/RTCryptoTests.cpp)
+    target_link_libraries(test_rt_crypto PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_crypto test_rt_crypto)
+
+    viper_add_test(test_rt_pattern ${VIPER_TESTS_DIR}/runtime/RTPatternTests.cpp)
+    target_link_libraries(test_rt_pattern PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_pattern test_rt_pattern)
+
+    viper_add_test(test_rt_template ${VIPER_TESTS_DIR}/runtime/RTTemplateTests.cpp)
+    target_link_libraries(test_rt_template PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_template test_rt_template)
+
     viper_add_test(test_rt_bag ${VIPER_TESTS_DIR}/runtime/RTBagTests.cpp)
     target_link_libraries(test_rt_bag PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_bag test_rt_bag)
@@ -495,6 +511,10 @@ function(viper_add_runtime_tests)
     viper_add_test(test_rt_binfile ${VIPER_TESTS_DIR}/runtime/RTBinFileTests.cpp)
     target_link_libraries(test_rt_binfile PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_binfile test_rt_binfile)
+
+    viper_add_test(test_rt_memstream ${VIPER_TESTS_DIR}/runtime/RTMemStreamTests.cpp)
+    target_link_libraries(test_rt_memstream PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_memstream test_rt_memstream)
 
     viper_add_test(test_rt_linereader ${VIPER_TESTS_DIR}/runtime/RTLineReaderTests.cpp)
     target_link_libraries(test_rt_linereader PRIVATE ${VIPER_RUNTIME_TEST_LIBS})

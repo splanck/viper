@@ -1,6 +1,6 @@
 # Text Processing
 
-> String building, encoding/decoding, and text utilities.
+> String building, encoding/decoding, pattern matching, and text utilities.
 
 **Part of the [Viper Runtime Library](README.md)**
 
@@ -9,6 +9,8 @@
 - [Viper.Text.Codec](#vipertextcodec)
 - [Viper.Text.Csv](#vipertextcsv)
 - [Viper.Text.Guid](#vipertextguid)
+- [Viper.Text.Pattern](#vipertextpattern)
+- [Viper.Text.Template](#vipertexttemplate)
 - [Viper.Text.StringBuilder](#vipertextstringbuilder)
 
 ---
@@ -199,6 +201,292 @@ DIM bytes AS OBJECT = Viper.Text.Guid.ToBytes(id)
 DIM restored AS STRING = Viper.Text.Guid.FromBytes(bytes)
 PRINT restored = id  ' Output: 1 (true)
 ```
+
+---
+
+## Viper.Text.Pattern
+
+Regular expression pattern matching for text search and manipulation.
+
+**Type:** Static utility class
+
+### Methods
+
+| Method                                | Signature                   | Description                                        |
+|---------------------------------------|-----------------------------|----------------------------------------------------|
+| `IsMatch(pattern, text)`              | `Boolean(String, String)`   | Test if pattern matches anywhere in text           |
+| `Find(pattern, text)`                 | `String(String, String)`    | Find first match, or empty string if none          |
+| `FindFrom(pattern, text, start)`      | `String(String, String, Integer)` | Find first match at or after start position  |
+| `FindPos(pattern, text)`              | `Integer(String, String)`   | Find position of first match, or -1 if none        |
+| `FindAll(pattern, text)`              | `Seq(String, String)`       | Find all non-overlapping matches                   |
+| `Replace(pattern, text, replacement)` | `String(String, String, String)` | Replace all matches with replacement         |
+| `ReplaceFirst(pattern, text, replacement)` | `String(String, String, String)` | Replace first match only                |
+| `Split(pattern, text)`                | `Seq(String, String)`       | Split text by pattern matches                      |
+| `Escape(text)`                        | `String(String)`            | Escape special regex characters for literal matching |
+
+### Supported Regex Syntax
+
+| Feature              | Syntax               | Description                                      |
+|----------------------|----------------------|--------------------------------------------------|
+| Literals             | `abc`                | Match literal characters                         |
+| Dot                  | `.`                  | Match any character except newline               |
+| Anchors              | `^` `$`              | Start/end of string                              |
+| Character class      | `[abc]` `[a-z]`      | Match any character in set                       |
+| Negated class        | `[^abc]` `[^0-9]`    | Match any character NOT in set                   |
+| Shorthand: digit     | `\d` `\D`            | Digit `[0-9]` / non-digit                        |
+| Shorthand: word      | `\w` `\W`            | Word char `[a-zA-Z0-9_]` / non-word              |
+| Shorthand: space     | `\s` `\S`            | Whitespace / non-whitespace                      |
+| Quantifier: star     | `*` `*?`             | Zero or more (greedy / non-greedy)               |
+| Quantifier: plus     | `+` `+?`             | One or more (greedy / non-greedy)                |
+| Quantifier: optional | `?` `??`             | Zero or one (greedy / non-greedy)                |
+| Grouping             | `(abc)`              | Group subexpressions                             |
+| Alternation          | `a\|b`               | Match either alternative                         |
+| Escape               | `\\` `\.` `\*` etc.  | Match literal special character                  |
+
+### NOT Supported
+
+The following advanced regex features are not implemented:
+
+- Backreferences (`\1`, `\2`, etc.)
+- Lookahead/lookbehind (`(?=...)`, `(?<=...)`, etc.)
+- Named groups (`(?P<name>...)`)
+- Unicode categories (`\p{L}`, etc.)
+- Possessive quantifiers (`*+`, `++`, etc.)
+- Bounded quantifiers (`{n}`, `{n,m}`)
+
+### Traps
+
+- Invalid pattern syntax traps with a descriptive error message
+
+### Pattern Matching Example
+
+```basic
+' Basic matching
+DIM text AS STRING = "Hello, World!"
+
+' Check if pattern matches
+IF Viper.Text.Pattern.IsMatch("\w+", text) THEN
+    PRINT "Contains word characters"
+END IF
+
+' Find first match
+DIM word AS STRING = Viper.Text.Pattern.Find("[A-Z][a-z]+", text)
+PRINT word  ' Output: "Hello"
+
+' Find position
+DIM pos AS INTEGER = Viper.Text.Pattern.FindPos("World", text)
+PRINT pos  ' Output: 7
+
+' Find all matches
+DIM words AS OBJECT = Viper.Text.Pattern.FindAll("\w+", text)
+PRINT words.Count  ' Output: 2 (Hello, World)
+```
+
+### Replace Example
+
+```basic
+' Replace all digits with X
+DIM result AS STRING = Viper.Text.Pattern.Replace("\d+", "abc123def456", "X")
+PRINT result  ' Output: "abcXdefX"
+
+' Replace first match only
+result = Viper.Text.Pattern.ReplaceFirst("\d+", "abc123def456", "X")
+PRINT result  ' Output: "abcXdef456"
+
+' Remove all whitespace
+result = Viper.Text.Pattern.Replace("\s+", "hello   world  test", "")
+PRINT result  ' Output: "helloworldtest"
+```
+
+### Split Example
+
+```basic
+' Split by whitespace
+DIM parts AS OBJECT = Viper.Text.Pattern.Split("\s+", "hello   world  test")
+PRINT parts.Count  ' Output: 3
+PRINT parts.Get(0) ' Output: "hello"
+PRINT parts.Get(1) ' Output: "world"
+PRINT parts.Get(2) ' Output: "test"
+
+' Split by comma
+parts = Viper.Text.Pattern.Split(",", "a,b,c,d")
+PRINT parts.Count  ' Output: 4
+```
+
+### Escape Example
+
+```basic
+' Escape special characters for literal matching
+DIM pattern AS STRING = Viper.Text.Pattern.Escape("file.txt")
+PRINT pattern  ' Output: "file\.txt"
+
+' Use escaped pattern to match literal dot
+DIM matches AS INTEGER = Viper.Text.Pattern.IsMatch(pattern, "file.txt")
+PRINT matches  ' Output: 1 (true)
+
+' Without escaping, dot matches any character
+matches = Viper.Text.Pattern.IsMatch("file.txt", "fileXtxt")
+PRINT matches  ' Output: 1 (true - dot matched X)
+```
+
+### Email Validation Example
+
+```basic
+' Simple email pattern (not comprehensive)
+DIM email_pattern AS STRING = "^\\w+@\\w+\\.\\w+$"
+
+FUNCTION IsValidEmail(email AS STRING) AS BOOLEAN
+    RETURN Viper.Text.Pattern.IsMatch(email_pattern, email)
+END FUNCTION
+
+PRINT IsValidEmail("user@example.com")  ' Output: 1 (true)
+PRINT IsValidEmail("invalid-email")     ' Output: 0 (false)
+```
+
+### Performance Notes
+
+- Compiled patterns are cached internally (LRU cache, 16 entries)
+- Frequently used patterns avoid recompilation overhead
+- For maximum performance with many operations, use consistent pattern strings
+
+---
+
+## Viper.Text.Template
+
+Simple string templating with placeholder substitution.
+
+**Type:** Static utility class
+
+### Methods
+
+| Method                                    | Signature                           | Description                                       |
+|-------------------------------------------|-------------------------------------|---------------------------------------------------|
+| `Render(template, values)`                | `String(String, Map)`               | Replace `{{key}}` placeholders with Map values    |
+| `RenderSeq(template, values)`             | `String(String, Seq)`               | Replace `{{0}}`, `{{1}}` with Seq values          |
+| `RenderWith(template, values, pre, suf)`  | `String(String, Map, String, String)` | Use custom delimiters instead of `{{` `}}`      |
+| `Has(template, key)`                      | `Boolean(String, String)`           | Check if template contains placeholder for key   |
+| `Keys(template)`                          | `Bag(String)`                       | Extract all unique placeholder keys               |
+| `Escape(text)`                            | `String(String)`                    | Escape `{{` and `}}` for literal output           |
+
+### Placeholder Syntax
+
+- Default delimiters: `{{` and `}}`
+- Whitespace inside placeholders is trimmed: `{{ name }}` = `{{name}}`
+- Missing keys are left as-is: `{{unknown}}` outputs `{{unknown}}`
+- Empty keys are left as-is: `{{}}` outputs `{{}}`
+- Unclosed placeholders are left as-is: `{{name` outputs `{{name`
+
+### Notes
+
+- Map values must be boxed strings (created with boxing)
+- Seq values must be boxed strings (created with boxing)
+- Non-string boxed values in the Map/Seq are ignored (placeholder left as-is)
+- Thread safe: all functions are stateless
+
+### Traps
+
+- `Render`: Traps if template or values is null
+- `RenderSeq`: Traps if template or values is null
+- `RenderWith`: Traps if template, values, prefix, or suffix is null; traps if prefix or suffix is empty
+
+### Basic Example
+
+```basic
+' Create a Map with values
+DIM values AS OBJECT = Map.New()
+values.Set("name", "Alice")
+values.Set("count", "5")
+
+' Render template
+DIM result AS STRING = Viper.Text.Template.Render("Hello {{name}}, you have {{count}} messages.", values)
+PRINT result  ' Output: "Hello Alice, you have 5 messages."
+
+' Whitespace in placeholders is ignored
+result = Viper.Text.Template.Render("Hello {{ name }}!", values)
+PRINT result  ' Output: "Hello Alice!"
+
+' Missing keys are left as-is
+result = Viper.Text.Template.Render("Hello {{unknown}}!", values)
+PRINT result  ' Output: "Hello {{unknown}}!"
+```
+
+### Positional Substitution Example
+
+```basic
+' Create a Seq with positional values
+DIM values AS OBJECT = Seq.New()
+values.Push("Alice")
+values.Push("Bob")
+values.Push("Charlie")
+
+' Use numeric indices
+DIM result AS STRING = Viper.Text.Template.RenderSeq("{{0}} and {{1}} meet {{2}}", values)
+PRINT result  ' Output: "Alice and Bob meet Charlie"
+
+' Out of range indices are left as-is
+result = Viper.Text.Template.RenderSeq("{{0}} and {{99}}", values)
+PRINT result  ' Output: "Alice and {{99}}"
+```
+
+### Custom Delimiters Example
+
+```basic
+DIM values AS OBJECT = Map.New()
+values.Set("name", "Alice")
+values.Set("count", "5")
+
+' Use dollar signs as delimiters
+DIM result AS STRING = Viper.Text.Template.RenderWith("Hello $name$!", values, "$", "$")
+PRINT result  ' Output: "Hello Alice!"
+
+' Use ERB-style delimiters
+result = Viper.Text.Template.RenderWith("<%= name %> has <%= count %> items", values, "<%=", "%>")
+PRINT result  ' Output: "Alice has 5 items"
+
+' Use percent delimiters
+result = Viper.Text.Template.RenderWith("Hello %name%!", values, "%", "%")
+PRINT result  ' Output: "Hello Alice!"
+```
+
+### Query Placeholder Keys Example
+
+```basic
+DIM template AS STRING = "Hello {{name}}, you have {{count}} messages from {{sender}}."
+
+' Check if template has a specific placeholder
+IF Viper.Text.Template.Has(template, "name") THEN
+    PRINT "Template uses 'name' placeholder"
+END IF
+
+' Get all placeholder keys (as a Bag - unique values)
+DIM keys AS OBJECT = Viper.Text.Template.Keys(template)
+PRINT keys.Len()  ' Output: 3
+
+' Iterate over keys (order not guaranteed)
+' Contains: "name", "count", "sender"
+```
+
+### Escape Example
+
+```basic
+' Escape braces to output them literally
+DIM text AS STRING = "Use {{name}} for placeholders"
+DIM escaped AS STRING = Viper.Text.Template.Escape(text)
+PRINT escaped  ' Output: "Use {{{{name}}}} for placeholders"
+
+' The escaped text, when rendered, produces the original braces
+DIM values AS OBJECT = Map.New()
+DIM result AS STRING = Viper.Text.Template.Render(escaped, values)
+PRINT result  ' Output: "Use {{name}} for placeholders"
+```
+
+### Use Cases
+
+- Generating emails with dynamic content
+- Building SQL queries (use with caution - prefer parameterized queries)
+- Templating configuration files
+- Generating reports with placeholder substitution
+- Simple string interpolation without full template engines
 
 ---
 

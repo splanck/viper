@@ -8,6 +8,7 @@
 
 - [Viper.Collections.Bag](#vipercollectionsbag)
 - [Viper.Collections.Bytes](#vipercollectionsbytes)
+- [Viper.Collections.Heap](#vipercollectionsheap)
 - [Viper.Collections.List](#vipercollectionslist)
 - [Viper.Collections.Map](#vipercollectionsmap)
 - [Viper.Collections.Queue](#vipercollectionsqueue)
@@ -403,6 +404,78 @@ PRINT queue.IsEmpty  ' Output: True
 - **Breadth-first search:** Track nodes to visit
 - **Message passing:** Handle messages in arrival order
 - **Print queues:** Process print jobs sequentially
+
+---
+
+## Viper.Collections.Heap
+
+A priority queue implemented as a binary heap. Elements are stored with an integer priority value and retrieved in priority order. Supports both min-heap (smallest priority first) and max-heap (largest priority first) modes.
+
+**Type:** Instance (obj)
+**Constructor:** `NEW Viper.Collections.Heap()` (min-heap) or `Heap.NewMax(isMax)` for max-heap
+
+### Properties
+
+| Property  | Type    | Description                                    |
+|-----------|---------|------------------------------------------------|
+| `Len`     | Integer | Number of elements in the heap                 |
+| `IsEmpty` | Boolean | Returns true if the heap has no elements       |
+| `IsMax`   | Boolean | Returns true if max-heap, false if min-heap    |
+
+### Methods
+
+| Method               | Signature              | Description                                                |
+|----------------------|------------------------|------------------------------------------------------------|
+| `Push(priority,val)` | `Void(Integer,Object)` | Add element with priority (lower = higher priority in min-heap) |
+| `Pop()`              | `Object()`             | Remove and return highest priority element (traps if empty) |
+| `Peek()`             | `Object()`             | Return highest priority element without removing (traps if empty) |
+| `TryPop()`           | `Object()`             | Remove and return highest priority element, or null if empty |
+| `TryPeek()`          | `Object()`             | Return highest priority element, or null if empty          |
+| `Clear()`            | `Void()`               | Remove all elements                                        |
+| `ToSeq()`            | `Seq()`                | Return elements in priority order as a Seq                 |
+
+### Example
+
+```basic
+DIM heap AS Viper.Collections.Heap
+heap = NEW Viper.Collections.Heap()  ' Create min-heap
+
+' Add tasks with priorities (lower = more urgent)
+heap.Push(3, "Low priority task")
+heap.Push(1, "Urgent task")
+heap.Push(2, "Medium priority task")
+
+PRINT heap.Len       ' Output: 3
+
+' Pop returns elements in priority order (lowest priority value first)
+PRINT heap.Pop()     ' Output: "Urgent task" (priority 1)
+PRINT heap.Pop()     ' Output: "Medium priority task" (priority 2)
+PRINT heap.Peek()    ' Output: "Low priority task" (priority 3, still in heap)
+
+' Max-heap example
+DIM maxHeap AS Viper.Collections.Heap
+maxHeap = Viper.Collections.Heap.NewMax(True)
+
+maxHeap.Push(1, "Low")
+maxHeap.Push(5, "High")
+maxHeap.Push(3, "Medium")
+
+PRINT maxHeap.Pop()  ' Output: "High" (priority 5 - highest)
+```
+
+### Use Cases
+
+- **Task scheduling:** Process tasks by priority
+- **Event-driven simulation:** Handle events in time order
+- **Dijkstra's algorithm:** Find shortest paths
+- **Huffman coding:** Build optimal prefix codes
+- **Median finding:** Use two heaps (min and max)
+
+### Errors (Traps)
+
+- `Heap.Pop: heap is empty` - Called Pop on empty heap
+- `Heap.Peek: heap is empty` - Called Peek on empty heap
+- `Heap.Push: null heap` - Called Push on null reference
 
 ---
 

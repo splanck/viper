@@ -1081,3 +1081,286 @@ int64_t rt_hash_crc32_bytes(void *bytes)
     free(data);
     return (int64_t)result;
 }
+
+//=============================================================================
+// HMAC Implementation (RFC 2104)
+//=============================================================================
+
+#define HMAC_BLOCK_SIZE 64 // Block size for MD5, SHA1, SHA256
+
+/// @brief Helper to extract bytes from a Bytes object.
+static uint8_t *extract_bytes_data(void *bytes, size_t *out_len)
+{
+    if (!bytes)
+    {
+        *out_len = 0;
+        return NULL;
+    }
+
+    int64_t len = rt_bytes_len(bytes);
+    *out_len = (size_t)len;
+
+    if (len == 0)
+        return NULL;
+
+    uint8_t *data = (uint8_t *)malloc((size_t)len);
+    if (!data)
+        rt_trap("HMAC: memory allocation failed");
+
+    for (int64_t i = 0; i < len; i++)
+    {
+        data[i] = (uint8_t)rt_bytes_get(bytes, i);
+    }
+
+    return data;
+}
+
+/// @brief Compute HMAC-MD5 with raw bytes.
+static void hmac_md5_raw(const uint8_t *key, size_t key_len, const uint8_t *data, size_t data_len,
+                         uint8_t out[16])
+{
+    uint8_t k_padded[HMAC_BLOCK_SIZE];
+    uint8_t k_ipad[HMAC_BLOCK_SIZE];
+    uint8_t k_opad[HMAC_BLOCK_SIZE];
+
+    // If key is longer than block size, hash it first
+    if (key_len > HMAC_BLOCK_SIZE)
+    {
+        compute_md5(key, key_len, k_padded);
+        memset(k_padded + 16, 0, HMAC_BLOCK_SIZE - 16);
+    }
+    else
+    {
+        memcpy(k_padded, key, key_len);
+        memset(k_padded + key_len, 0, HMAC_BLOCK_SIZE - key_len);
+    }
+
+    // XOR key with ipad and opad
+    for (int i = 0; i < HMAC_BLOCK_SIZE; i++)
+    {
+        k_ipad[i] = k_padded[i] ^ 0x36;
+        k_opad[i] = k_padded[i] ^ 0x5c;
+    }
+
+    // Inner hash: H(K xor ipad || data)
+    uint8_t inner_hash[16];
+    size_t inner_len = HMAC_BLOCK_SIZE + data_len;
+    uint8_t *inner_data = (uint8_t *)malloc(inner_len);
+    if (!inner_data)
+        rt_trap("HMAC: memory allocation failed");
+
+    memcpy(inner_data, k_ipad, HMAC_BLOCK_SIZE);
+    if (data_len > 0)
+        memcpy(inner_data + HMAC_BLOCK_SIZE, data, data_len);
+    compute_md5(inner_data, inner_len, inner_hash);
+    free(inner_data);
+
+    // Outer hash: H(K xor opad || inner_hash)
+    uint8_t outer_data[HMAC_BLOCK_SIZE + 16];
+    memcpy(outer_data, k_opad, HMAC_BLOCK_SIZE);
+    memcpy(outer_data + HMAC_BLOCK_SIZE, inner_hash, 16);
+    compute_md5(outer_data, HMAC_BLOCK_SIZE + 16, out);
+}
+
+/// @brief Compute HMAC-SHA1 with raw bytes.
+static void hmac_sha1_raw(const uint8_t *key, size_t key_len, const uint8_t *data, size_t data_len,
+                          uint8_t out[20])
+{
+    uint8_t k_padded[HMAC_BLOCK_SIZE];
+    uint8_t k_ipad[HMAC_BLOCK_SIZE];
+    uint8_t k_opad[HMAC_BLOCK_SIZE];
+
+    // If key is longer than block size, hash it first
+    if (key_len > HMAC_BLOCK_SIZE)
+    {
+        compute_sha1(key, key_len, k_padded);
+        memset(k_padded + 20, 0, HMAC_BLOCK_SIZE - 20);
+    }
+    else
+    {
+        memcpy(k_padded, key, key_len);
+        memset(k_padded + key_len, 0, HMAC_BLOCK_SIZE - key_len);
+    }
+
+    // XOR key with ipad and opad
+    for (int i = 0; i < HMAC_BLOCK_SIZE; i++)
+    {
+        k_ipad[i] = k_padded[i] ^ 0x36;
+        k_opad[i] = k_padded[i] ^ 0x5c;
+    }
+
+    // Inner hash: H(K xor ipad || data)
+    uint8_t inner_hash[20];
+    size_t inner_len = HMAC_BLOCK_SIZE + data_len;
+    uint8_t *inner_data = (uint8_t *)malloc(inner_len);
+    if (!inner_data)
+        rt_trap("HMAC: memory allocation failed");
+
+    memcpy(inner_data, k_ipad, HMAC_BLOCK_SIZE);
+    if (data_len > 0)
+        memcpy(inner_data + HMAC_BLOCK_SIZE, data, data_len);
+    compute_sha1(inner_data, inner_len, inner_hash);
+    free(inner_data);
+
+    // Outer hash: H(K xor opad || inner_hash)
+    uint8_t outer_data[HMAC_BLOCK_SIZE + 20];
+    memcpy(outer_data, k_opad, HMAC_BLOCK_SIZE);
+    memcpy(outer_data + HMAC_BLOCK_SIZE, inner_hash, 20);
+    compute_sha1(outer_data, HMAC_BLOCK_SIZE + 20, out);
+}
+
+/// @brief Compute HMAC-SHA256 with raw bytes (exported for PBKDF2).
+void rt_hash_hmac_sha256_raw(const uint8_t *key, size_t key_len, const uint8_t *data,
+                             size_t data_len, uint8_t out[32])
+{
+    uint8_t k_padded[HMAC_BLOCK_SIZE];
+    uint8_t k_ipad[HMAC_BLOCK_SIZE];
+    uint8_t k_opad[HMAC_BLOCK_SIZE];
+
+    // If key is longer than block size, hash it first
+    if (key_len > HMAC_BLOCK_SIZE)
+    {
+        compute_sha256(key, key_len, k_padded);
+        memset(k_padded + 32, 0, HMAC_BLOCK_SIZE - 32);
+    }
+    else
+    {
+        memcpy(k_padded, key, key_len);
+        memset(k_padded + key_len, 0, HMAC_BLOCK_SIZE - key_len);
+    }
+
+    // XOR key with ipad and opad
+    for (int i = 0; i < HMAC_BLOCK_SIZE; i++)
+    {
+        k_ipad[i] = k_padded[i] ^ 0x36;
+        k_opad[i] = k_padded[i] ^ 0x5c;
+    }
+
+    // Inner hash: H(K xor ipad || data)
+    uint8_t inner_hash[32];
+    size_t inner_len = HMAC_BLOCK_SIZE + data_len;
+    uint8_t *inner_data = (uint8_t *)malloc(inner_len);
+    if (!inner_data)
+        rt_trap("HMAC: memory allocation failed");
+
+    memcpy(inner_data, k_ipad, HMAC_BLOCK_SIZE);
+    if (data_len > 0)
+        memcpy(inner_data + HMAC_BLOCK_SIZE, data, data_len);
+    compute_sha256(inner_data, inner_len, inner_hash);
+    free(inner_data);
+
+    // Outer hash: H(K xor opad || inner_hash)
+    uint8_t outer_data[HMAC_BLOCK_SIZE + 32];
+    memcpy(outer_data, k_opad, HMAC_BLOCK_SIZE);
+    memcpy(outer_data + HMAC_BLOCK_SIZE, inner_hash, 32);
+    compute_sha256(outer_data, HMAC_BLOCK_SIZE + 32, out);
+}
+
+//=============================================================================
+// HMAC Public API
+//=============================================================================
+
+/// @brief Compute HMAC-MD5 of string data with string key.
+rt_string rt_hash_hmac_md5(rt_string key, rt_string data)
+{
+    const char *key_cstr = rt_string_cstr(key);
+    const char *data_cstr = rt_string_cstr(data);
+    if (!key_cstr)
+        key_cstr = "";
+    if (!data_cstr)
+        data_cstr = "";
+
+    uint8_t digest[16];
+    hmac_md5_raw((const uint8_t *)key_cstr, strlen(key_cstr), (const uint8_t *)data_cstr,
+                 strlen(data_cstr), digest);
+    return bytes_to_hex_string(digest, 16);
+}
+
+/// @brief Compute HMAC-MD5 of Bytes data with Bytes key.
+rt_string rt_hash_hmac_md5_bytes(void *key, void *data)
+{
+    size_t key_len, data_len;
+    uint8_t *key_data = extract_bytes_data(key, &key_len);
+    uint8_t *msg_data = extract_bytes_data(data, &data_len);
+
+    uint8_t digest[16];
+    hmac_md5_raw(key_data ? key_data : (const uint8_t *)"", key_len,
+                 msg_data ? msg_data : (const uint8_t *)"", data_len, digest);
+
+    if (key_data)
+        free(key_data);
+    if (msg_data)
+        free(msg_data);
+
+    return bytes_to_hex_string(digest, 16);
+}
+
+/// @brief Compute HMAC-SHA1 of string data with string key.
+rt_string rt_hash_hmac_sha1(rt_string key, rt_string data)
+{
+    const char *key_cstr = rt_string_cstr(key);
+    const char *data_cstr = rt_string_cstr(data);
+    if (!key_cstr)
+        key_cstr = "";
+    if (!data_cstr)
+        data_cstr = "";
+
+    uint8_t digest[20];
+    hmac_sha1_raw((const uint8_t *)key_cstr, strlen(key_cstr), (const uint8_t *)data_cstr,
+                  strlen(data_cstr), digest);
+    return bytes_to_hex_string(digest, 20);
+}
+
+/// @brief Compute HMAC-SHA1 of Bytes data with Bytes key.
+rt_string rt_hash_hmac_sha1_bytes(void *key, void *data)
+{
+    size_t key_len, data_len;
+    uint8_t *key_data = extract_bytes_data(key, &key_len);
+    uint8_t *msg_data = extract_bytes_data(data, &data_len);
+
+    uint8_t digest[20];
+    hmac_sha1_raw(key_data ? key_data : (const uint8_t *)"", key_len,
+                  msg_data ? msg_data : (const uint8_t *)"", data_len, digest);
+
+    if (key_data)
+        free(key_data);
+    if (msg_data)
+        free(msg_data);
+
+    return bytes_to_hex_string(digest, 20);
+}
+
+/// @brief Compute HMAC-SHA256 of string data with string key.
+rt_string rt_hash_hmac_sha256(rt_string key, rt_string data)
+{
+    const char *key_cstr = rt_string_cstr(key);
+    const char *data_cstr = rt_string_cstr(data);
+    if (!key_cstr)
+        key_cstr = "";
+    if (!data_cstr)
+        data_cstr = "";
+
+    uint8_t digest[32];
+    rt_hash_hmac_sha256_raw((const uint8_t *)key_cstr, strlen(key_cstr), (const uint8_t *)data_cstr,
+                            strlen(data_cstr), digest);
+    return bytes_to_hex_string(digest, 32);
+}
+
+/// @brief Compute HMAC-SHA256 of Bytes data with Bytes key.
+rt_string rt_hash_hmac_sha256_bytes(void *key, void *data)
+{
+    size_t key_len, data_len;
+    uint8_t *key_data = extract_bytes_data(key, &key_len);
+    uint8_t *msg_data = extract_bytes_data(data, &data_len);
+
+    uint8_t digest[32];
+    rt_hash_hmac_sha256_raw(key_data ? key_data : (const uint8_t *)"", key_len,
+                            msg_data ? msg_data : (const uint8_t *)"", data_len, digest);
+
+    if (key_data)
+        free(key_data);
+    if (msg_data)
+        free(msg_data);
+
+    return bytes_to_hex_string(digest, 32);
+}
