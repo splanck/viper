@@ -145,6 +145,11 @@ bool ImportResolver::processModule(ModuleDecl &module,
     inProgressFiles_.insert(normalizedPath);
     importStack_.push_back(normalizedPath);
 
+    // Collect all imported declarations first, then prepend them together.
+    // This ensures proper dependency order: if A imports B then C, and C also
+    // imports B (already processed), we get [B, C, A] not [C, B, A].
+    std::vector<DeclPtr> importedDecls;
+
     for (const auto &import : module.imports)
     {
         std::string importFilePath = resolveImportPath(import.path, modulePath);
@@ -166,10 +171,18 @@ bool ImportResolver::processModule(ModuleDecl &module,
         if (!processModule(*importedModule, importFilePath, import.loc, depth + 1))
             return false;
 
-        // Prepend imported declarations so imported definitions are visible.
-        std::vector<DeclPtr> combined;
-        combined.reserve(importedModule->declarations.size() + module.declarations.size());
+        // Collect this import's declarations (which include its transitive imports)
         for (auto &decl : importedModule->declarations)
+            importedDecls.push_back(std::move(decl));
+    }
+
+    // Now prepend all imported declarations before this module's declarations.
+    // This maintains proper dependency order: imports come first in import order.
+    if (!importedDecls.empty())
+    {
+        std::vector<DeclPtr> combined;
+        combined.reserve(importedDecls.size() + module.declarations.size());
+        for (auto &decl : importedDecls)
             combined.push_back(std::move(decl));
         for (auto &decl : module.declarations)
             combined.push_back(std::move(decl));

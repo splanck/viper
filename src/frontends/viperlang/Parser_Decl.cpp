@@ -46,6 +46,15 @@ std::unique_ptr<ModuleDecl> Parser::parseModule()
     // Parse declarations
     while (!check(TokenKind::Eof))
     {
+        // Skip any stray closing braces left over from error recovery.
+        // This prevents infinite loops when parse errors leave unmatched braces.
+        if (check(TokenKind::RBrace))
+        {
+            error("unexpected '}' at module level");
+            advance();
+            continue;
+        }
+
         DeclPtr decl = parseDeclaration();
         if (!decl)
         {

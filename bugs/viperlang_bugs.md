@@ -430,6 +430,105 @@ All fixes are verified with ctests. 919 tests pass with 1 pre-existing failure (
 
 ---
 
+## Bugs Found During Frogger Development (December 2025)
+
+### 23. Module-Level Constants Not Resolved in Expressions
+**Status**: FIXED (December 2025)
+**Severity**: CRITICAL - Blocks use of named constants
+**Description**: When a module defines constants at module level, they are not resolved to their values in expressions. They appear as `0` in the generated IL.
+
+**Root Cause**: The `lowerIdent()` function only checked local variables and entity fields - it never looked up module-level constants. Additionally, there was no mechanism to store the values of global variable declarations.
+
+**Resolution**:
+1. Added `globalConstants_` map to the Lowerer class to store constant values
+2. Added `lowerGlobalVarDecl()` to process `GlobalVarDecl` nodes and store literal values
+3. Updated `lowerIdent()` to check `globalConstants_` before returning 0 for unknown identifiers
+4. Added handling in the `lowerDecl()` switch for `DeclKind::GlobalVar`
+
+**Test**: Added `test_viperlang_expressions.cpp::ModuleLevelConstants` to verify fix.
+
+---
+
+### 24. Boolean AND/OR Operators Generate Invalid IL
+**Status**: FIXED (December 2025)
+**Severity**: CRITICAL - Blocks boolean expressions with &&/||
+**Description**: When using `&&` or `||` with boolean expressions, the generated IL produces an `and`/`or` instruction that expects `i64` operands but receives `i1` operands from comparison operations.
+
+**Root Cause**: The `and` and `or` IL opcodes operate on I64 values, but comparison operators (`<`, `>`, `<=`, `>=`, `==`, `!=`) return I1 (boolean) values. The lowerer was directly passing I1 values to And/Or without type conversion.
+
+**Resolution**: Updated the `BinaryOp::And` and `BinaryOp::Or` cases in `lowerBinary()` to:
+1. Zero-extend I1 operands to I64 using `Opcode::Zext1`
+2. Perform the bitwise And/Or on I64 values
+3. Truncate the result back to I1 using `Opcode::Trunc1`
+
+**Test**: Added `test_viperlang_expressions.cpp::BooleanAndOrWithComparisons` to verify fix.
+
+---
+
+### 25. Constants with Same Name in Different Scopes Resolve to Zero
+**Status**: FIXED (December 2025) - Same fix as Bug #23
+**Severity**: HIGH
+**Description**: Constants like `PLATFORM_LOG = 0` and `PLATFORM_TURTLE = 1` both resolve to `0` in generated IL, making type discrimination impossible.
+
+**Resolution**: Fixed by the same changes as Bug #23. All module-level constants are now properly stored and resolved during identifier lowering.
+
+---
+
+## Summary Update (December 2025 - Frogger)
+
+### All Bugs Fixed
+- **Bug #23**: Module-level constants not resolved - FIXED
+- **Bug #24**: Boolean AND/OR generates invalid IL - FIXED
+- **Bug #25**: Constants resolve to zero - FIXED (related to #23)
+
+All fixes are verified with ctests. The Frogger demo now compiles correctly to IL.
+
+---
+
+### 26. Method Calls on Entity Fields Via Implicit Self Lowered as Lambda Calls
+**Status**: FIXED (December 2025)
+**Severity**: CRITICAL - Blocks OOP patterns with entity composition
+**Description**: When calling a method on an entity field that's accessed via implicit self (i.e., without explicit `self.`), the method call is incorrectly lowered as a lambda/closure call instead of a direct entity method call.
+
+**Root Cause**: Import order was incorrect when a module imported both inner and outer modules, where outer also imports inner. The declarations were being prepended in the wrong order: if main imports inner then outer (and outer also imports inner which is already processed), we got [outer, inner, main] instead of [inner, outer, main]. This caused type analysis to fail because Outer was analyzed before Inner.
+
+**Resolution**: Fixed `ImportResolver.cpp` to collect all imported declarations first, then prepend them together in proper dependency order. This ensures that transitive imports maintain correct declaration order.
+
+**Test**: Added `test_viperlang_imports.cpp::TransitiveImportDeclarationOrder` to verify fix.
+
+---
+
+### 27. Match Expression with Boolean Literal Subject Causes Compiler Hang
+**Status**: FIXED (December 2025)
+**Severity**: HIGH - Blocks guard-style match patterns
+**Description**: Using `match (true)` or `match (false)` with comparison expressions in the arms caused the compiler to hang indefinitely.
+
+**Root Cause**: Two issues were found:
+1. The parser only recognized simple patterns (wildcard, literal, binding) but not expression patterns like `value < minVal`
+2. When parsing failed, the error recovery left unmatched `}` tokens at the module level, causing an infinite loop in the module parsing
+
+**Resolution**:
+1. Added `MatchArm::Pattern::Kind::Expression` to support expression patterns
+2. Updated parser to recognize expression patterns by checking if the token after an identifier is `=>` (binding) or something else (expression)
+3. Updated lowerer to evaluate expression patterns as boolean conditions
+4. Updated semantic analysis to type-check expression patterns
+5. Fixed module parsing loop to skip stray `}` tokens left by error recovery
+
+**Test**: Added `test_viperlang_match.cpp::MatchExpressionWithBooleanSubject` to verify fix.
+
+**Example** (now works):
+```viper
+func clamp(Integer value, Integer minVal, Integer maxVal) -> Integer {
+    return match (true) {
+        value < minVal => minVal,
+        value > maxVal => maxVal,
+        _ => value
+    };
+}
+```
+
+---
+
 ## Notes
 
 This file will be updated as more bugs are discovered during game development.

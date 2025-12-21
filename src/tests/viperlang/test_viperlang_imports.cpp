@@ -179,6 +179,113 @@ func b() {
     EXPECT_TRUE(foundCycle);
 }
 
+/// @brief Test that transitive imports maintain correct declaration order (Bug #26).
+/// When main imports both inner and outer, where outer also imports inner,
+/// the entities must be lowered in dependency order (Inner before Outer).
+TEST(ViperLangImports, TransitiveImportDeclarationOrder)
+{
+    const fs::path tempRoot = fs::temp_directory_path() / "viperlang_import_tests" /
+                              std::to_string(static_cast<unsigned long long>(::getpid()));
+    const fs::path dir = tempRoot / "transitive_order";
+
+    // Inner entity with a method
+    const fs::path innerPath = writeFile(dir, "inner.viper", R"(
+module Inner;
+
+entity Inner {
+    expose Integer myValue;
+
+    expose func init(Integer v) {
+        myValue = v;
+    }
+
+    expose func getValue() -> Integer {
+        return myValue;
+    }
+}
+)");
+
+    // Outer entity that has Inner field and calls its method
+    const fs::path outerPath = writeFile(dir, "outer.viper", R"(
+module Outer;
+
+import "./inner";
+
+entity Outer {
+    expose Inner inner;
+
+    expose func test() -> Integer {
+        return inner.getValue();
+    }
+}
+)");
+
+    // Main imports both inner AND outer (outer also imports inner)
+    const std::string mainSource = R"(
+module Main;
+
+import "./inner";
+import "./outer";
+
+func start() {
+    Outer o = new Outer();
+    o.inner = new Inner();
+    o.inner.init(42);
+    Integer result = o.test();
+    Viper.Terminal.SayInt(result);
+}
+)";
+    const fs::path mainPath = writeFile(dir, "main.viper", mainSource);
+    const std::string mainPathStr = mainPath.string();
+
+    SourceManager sm;
+    CompilerInput input{.source = mainSource, .path = mainPathStr};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    if (!result.succeeded())
+    {
+        std::cerr << "Diagnostics for TransitiveImportDeclarationOrder:\n";
+        for (const auto &d : result.diagnostics.diagnostics())
+        {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+    EXPECT_TRUE(result.succeeded());
+
+    // Verify Outer.test calls Inner.getValue directly (not via lambda/closure)
+    bool foundOuterTest = false;
+    bool foundDirectCall = false;
+    for (const auto &fn : result.module.functions)
+    {
+        if (fn.name == "Outer.test")
+        {
+            foundOuterTest = true;
+            for (const auto &block : fn.blocks)
+            {
+                for (const auto &instr : block.instructions)
+                {
+                    if (instr.op == il::core::Opcode::Call)
+                    {
+                        // Check if callee is Inner.getValue (direct call)
+                        if (instr.callee == "Inner.getValue")
+                        {
+                            foundDirectCall = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    EXPECT_TRUE(foundOuterTest);
+    EXPECT_TRUE(foundDirectCall);
+
+    (void)innerPath;
+    (void)outerPath;
+}
+
 } // namespace
 
 int main()

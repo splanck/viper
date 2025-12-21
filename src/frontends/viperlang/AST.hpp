@@ -1338,7 +1338,11 @@ struct MatchArm
             Constructor,
 
             /// @brief Tuple pattern: matches tuple structure.
-            Tuple
+            Tuple,
+
+            /// @brief Expression pattern: evaluates expression and matches if true.
+            /// Used for guard-style matching: `match (true) { x > 0 => ... }`
+            Expression
         };
 
         /// @brief The pattern kind.

@@ -430,6 +430,12 @@ class Lowerer
     /// @brief Counter for assigning unique class IDs.
     int nextClassId_{1};
 
+    /// @brief Global constant values: name -> IL value.
+    /// @details Stores the lowered values of module-level constants
+    /// (e.g., `Integer GAME_WIDTH = 70;`). Used during identifier
+    /// resolution to replace constant references with their values.
+    std::map<std::string, Value> globalConstants_;
+
     /// @}
     //=========================================================================
     /// @name Block Management
@@ -487,6 +493,12 @@ class Lowerer
     /// @brief Lower an interface declaration.
     /// @param decl The interface declaration.
     void lowerInterfaceDecl(InterfaceDecl &decl);
+
+    /// @brief Lower a global variable declaration.
+    /// @param decl The global variable declaration.
+    /// @details Handles module-level constants by storing their values in
+    /// globalConstants_ for later resolution during identifier lowering.
+    void lowerGlobalVarDecl(GlobalVarDecl &decl);
 
     /// @brief Lower a method declaration within a type.
     /// @param decl The method declaration.

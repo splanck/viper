@@ -117,6 +117,87 @@ func start() {
     EXPECT_TRUE(foundMatchBlock);
 }
 
+/// @brief Test that match expression with boolean subject and expression patterns works.
+/// This tests the guard-style matching: match (true) { cond => value, ... }
+TEST(ViperLangMatch, MatchExpressionWithBooleanSubject)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func clamp(Integer value, Integer minVal, Integer maxVal) -> Integer {
+    return match (true) {
+        value < minVal => minVal,
+        value > maxVal => maxVal,
+        _ => value
+    };
+}
+
+func start() {
+    Integer a = clamp(5, 0, 10);
+    Integer negative = 0 - 5;
+    Integer b = clamp(negative, 0, 10);
+    Integer c = clamp(15, 0, 10);
+    Viper.Terminal.SayInt(a);
+    Viper.Terminal.SayInt(b);
+    Viper.Terminal.SayInt(c);
+}
+)";
+    CompilerInput input{.source = source, .path = "match_bool.viper"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    if (!result.succeeded())
+    {
+        std::cerr << "Diagnostics for MatchExpressionWithBooleanSubject:\n";
+        for (const auto &d : result.diagnostics.diagnostics())
+        {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+
+    EXPECT_TRUE(result.succeeded());
+
+    // Verify clamp function has match blocks
+    bool foundClampMatchArm = false;
+    for (const auto &fn : result.module.functions)
+    {
+        if (fn.name == "clamp")
+        {
+            for (const auto &block : fn.blocks)
+            {
+                if (block.label.find("match_arm") != std::string::npos)
+                    foundClampMatchArm = true;
+            }
+        }
+    }
+    EXPECT_TRUE(foundClampMatchArm);
+
+    // Verify comparison instruction is generated for expression patterns
+    bool foundScmpLt = false;
+    bool foundScmpGt = false;
+    for (const auto &fn : result.module.functions)
+    {
+        if (fn.name == "clamp")
+        {
+            for (const auto &block : fn.blocks)
+            {
+                for (const auto &instr : block.instructions)
+                {
+                    if (instr.op == il::core::Opcode::SCmpLT)
+                        foundScmpLt = true;
+                    if (instr.op == il::core::Opcode::SCmpGT)
+                        foundScmpGt = true;
+                }
+            }
+        }
+    }
+    EXPECT_TRUE(foundScmpLt);
+    EXPECT_TRUE(foundScmpGt);
+}
+
 } // namespace
 
 int main()

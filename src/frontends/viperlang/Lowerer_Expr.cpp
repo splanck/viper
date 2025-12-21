@@ -169,6 +169,33 @@ LowerResult Lowerer::lowerIdent(IdentExpr *expr)
         }
     }
 
+    // Check for global constants (module-level const declarations)
+    auto constIt = globalConstants_.find(expr->name);
+    if (constIt != globalConstants_.end())
+    {
+        const Value &val = constIt->second;
+        // Determine the type from the value kind
+        Type ilType;
+        switch (val.kind)
+        {
+            case Value::Kind::ConstFloat:
+                ilType = Type(Type::Kind::F64);
+                break;
+            case Value::Kind::ConstStr:
+            case Value::Kind::GlobalAddr:
+                ilType = Type(Type::Kind::Str);
+                break;
+            case Value::Kind::ConstInt:
+                // Check if it's a boolean (i1) or integer (i64)
+                ilType = val.isBool ? Type(Type::Kind::I1) : Type(Type::Kind::I64);
+                break;
+            default:
+                ilType = Type(Type::Kind::I64);
+                break;
+        }
+        return {val, ilType};
+    }
+
     // Unknown identifier
     return {Value::constInt(0), Type(Type::Kind::I64)};
 }
@@ -416,13 +443,44 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
             resultType = Type(Type::Kind::I1);
             break;
         case BinaryOp::And:
-            op = Opcode::And;
-            resultType = Type(Type::Kind::I1);
-            break;
+        {
+            // Boolean AND: operands may be I1 from comparisons, but And opcode expects I64.
+            // Zero-extend both operands to I64, perform And, then truncate back to I1.
+            Value lhsExt = left.value;
+            Value rhsExt = right.value;
+
+            if (left.type.kind == Type::Kind::I1)
+            {
+                lhsExt = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), left.value);
+            }
+            if (right.type.kind == Type::Kind::I1)
+            {
+                rhsExt = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), right.value);
+            }
+
+            Value andResult = emitBinary(Opcode::And, Type(Type::Kind::I64), lhsExt, rhsExt);
+            Value truncResult = emitUnary(Opcode::Trunc1, Type(Type::Kind::I1), andResult);
+            return {truncResult, Type(Type::Kind::I1)};
+        }
         case BinaryOp::Or:
-            op = Opcode::Or;
-            resultType = Type(Type::Kind::I1);
-            break;
+        {
+            // Boolean OR: same treatment as AND.
+            Value lhsExt = left.value;
+            Value rhsExt = right.value;
+
+            if (left.type.kind == Type::Kind::I1)
+            {
+                lhsExt = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), left.value);
+            }
+            if (right.type.kind == Type::Kind::I1)
+            {
+                rhsExt = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), right.value);
+            }
+
+            Value orResult = emitBinary(Opcode::Or, Type(Type::Kind::I64), lhsExt, rhsExt);
+            Value truncResult = emitUnary(Opcode::Trunc1, Type(Type::Kind::I1), orResult);
+            return {truncResult, Type(Type::Kind::I1)};
+        }
         case BinaryOp::BitAnd:
             op = Opcode::And;
             break;
@@ -468,8 +526,14 @@ LowerResult Lowerer::lowerUnary(UnaryExpr *expr)
         case UnaryOp::Not:
         {
             // Boolean NOT: compare with 0 (false)
+            // ICmpEq expects I64 operands, so zero-extend I1 values first
+            Value opVal = operand.value;
+            if (operand.type.kind == Type::Kind::I1)
+            {
+                opVal = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), operand.value);
+            }
             Value result =
-                emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), operand.value, Value::constInt(0));
+                emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), opVal, Value::constInt(0));
             return {result, Type(Type::Kind::I1)};
         }
         case UnaryOp::BitNot:
@@ -1831,6 +1895,25 @@ LowerResult Lowerer::lowerMatchExpr(MatchExpr *expr)
                 {
                     emitBr(armBlocks[i]);
                 }
+                break;
+            }
+
+            case MatchArm::Pattern::Kind::Expression:
+            {
+                // Expression pattern - evaluate expression as boolean condition
+                // Used for guard-style matching: match (true) { x > 0 => ... }
+                auto exprResult = lowerExpr(arm.pattern.literal.get());
+                Value cond = exprResult.value;
+
+                // Ensure we have a boolean condition
+                if (exprResult.type.kind != Type::Kind::I1)
+                {
+                    // Compare with zero to get boolean
+                    cond = emitBinary(
+                        Opcode::ICmpNe, Type(Type::Kind::I1), exprResult.value, Value::constInt(0));
+                }
+
+                emitCBr(cond, armBlocks[i], nextTestBlocks[i]);
                 break;
             }
 

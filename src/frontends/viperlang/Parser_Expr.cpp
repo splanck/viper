@@ -701,32 +701,43 @@ ExprPtr Parser::parsePrimary()
             // Parse pattern
             if (check(TokenKind::Identifier) && peek().text == "_")
             {
+                // Wildcard pattern: _
                 arm.pattern.kind = MatchArm::Pattern::Kind::Wildcard;
                 advance();
             }
-            else if (check(TokenKind::IntegerLiteral))
+            else if (check(TokenKind::IntegerLiteral) && peek(1).kind == TokenKind::FatArrow)
             {
+                // Simple integer literal pattern
                 arm.pattern.kind = MatchArm::Pattern::Kind::Literal;
                 arm.pattern.literal = std::make_unique<IntLiteralExpr>(peek().loc, peek().intValue);
                 advance();
             }
-            else if (check(TokenKind::StringLiteral))
+            else if (check(TokenKind::StringLiteral) && peek(1).kind == TokenKind::FatArrow)
             {
+                // Simple string literal pattern
                 arm.pattern.kind = MatchArm::Pattern::Kind::Literal;
                 arm.pattern.literal =
                     std::make_unique<StringLiteralExpr>(peek().loc, peek().stringValue);
                 advance();
             }
-            else if (check(TokenKind::Identifier))
+            else if (check(TokenKind::Identifier) && peek(1).kind == TokenKind::FatArrow)
             {
+                // Simple binding pattern: identifier followed by =>
                 arm.pattern.kind = MatchArm::Pattern::Kind::Binding;
                 arm.pattern.binding = peek().text;
                 advance();
             }
             else
             {
-                error("expected pattern in match arm");
-                return nullptr;
+                // Expression pattern: parse full expression (for guard-style matching)
+                // e.g., match (true) { x > 0 => ..., y == 5 => ... }
+                arm.pattern.kind = MatchArm::Pattern::Kind::Expression;
+                arm.pattern.literal = parseExpression();
+                if (!arm.pattern.literal)
+                {
+                    error("expected pattern in match arm");
+                    return nullptr;
+                }
             }
 
             // Expect =>

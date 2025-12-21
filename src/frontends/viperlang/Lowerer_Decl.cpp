@@ -41,9 +41,54 @@ void Lowerer::lowerDecl(Decl *decl)
         case DeclKind::Interface:
             lowerInterfaceDecl(*static_cast<InterfaceDecl *>(decl));
             break;
+        case DeclKind::GlobalVar:
+            lowerGlobalVarDecl(*static_cast<GlobalVarDecl *>(decl));
+            break;
         default:
             break;
     }
+}
+
+void Lowerer::lowerGlobalVarDecl(GlobalVarDecl &decl)
+{
+    // Only handle constants with literal initializers
+    // These are lowered to compile-time constant values
+    if (!decl.initializer)
+        return;
+
+    Expr *init = decl.initializer.get();
+
+    // Handle integer literals
+    if (auto *intLit = dynamic_cast<IntLiteralExpr *>(init))
+    {
+        globalConstants_[decl.name] = Value::constInt(intLit->value);
+        return;
+    }
+
+    // Handle number (float) literals
+    if (auto *numLit = dynamic_cast<NumberLiteralExpr *>(init))
+    {
+        globalConstants_[decl.name] = Value::constFloat(numLit->value);
+        return;
+    }
+
+    // Handle boolean literals
+    if (auto *boolLit = dynamic_cast<BoolLiteralExpr *>(init))
+    {
+        globalConstants_[decl.name] = Value::constBool(boolLit->value);
+        return;
+    }
+
+    // Handle string literals
+    if (auto *strLit = dynamic_cast<StringLiteralExpr *>(init))
+    {
+        std::string label = stringTable_.intern(strLit->value);
+        globalConstants_[decl.name] = Value::constStr(label);
+        return;
+    }
+
+    // For non-literal initializers, we would need runtime initialization
+    // which is not yet supported. For now, skip these.
 }
 
 void Lowerer::lowerFunctionDecl(FunctionDecl &decl)

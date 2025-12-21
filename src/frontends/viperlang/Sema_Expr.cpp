@@ -593,6 +593,16 @@ TypeRef Sema::analyzeMatchExpr(MatchExpr *expr)
                     static_cast<BoolLiteralExpr *>(pattern.literal.get())->value);
             }
         }
+        else if (pattern.kind == MatchArm::Pattern::Kind::Expression && pattern.literal)
+        {
+            // Expression pattern - analyze the expression (should evaluate to boolean)
+            TypeRef exprType = analyzeExpr(pattern.literal.get());
+            if (exprType && exprType->kind != TypeKindSem::Boolean)
+            {
+                // Warn if expression doesn't return boolean
+                // (but still allow it - will be compared against zero at runtime)
+            }
+        }
 
         // Analyze the body and track result type
         TypeRef bodyType = analyzeExpr(arm.body.get());
