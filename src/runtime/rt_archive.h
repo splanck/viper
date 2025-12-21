@@ -1,0 +1,167 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: rt_archive.h
+// Purpose: ZIP archive support for Viper.IO.Archive.
+// Key invariants: Archives opened for reading are read-only.
+//                 Archives created for writing require Finish() before valid.
+// Ownership/Lifetime: Archive objects are managed by GC.
+// Links: docs/viperlib/io.md
+//
+//===----------------------------------------------------------------------===//
+
+#pragma once
+
+#include "rt_string.h"
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
+    //=========================================================================
+    // Archive Creation and Opening
+    //=========================================================================
+
+    /// @brief Open an existing ZIP archive for reading.
+    /// @param path File path as runtime string.
+    /// @return Archive object for reading.
+    /// @note Traps if file not found or not a valid ZIP file.
+    void *rt_archive_open(rt_string path);
+
+    /// @brief Create a new ZIP archive for writing.
+    /// @param path File path as runtime string.
+    /// @return Archive object for writing.
+    /// @note Traps if file cannot be created.
+    void *rt_archive_create(rt_string path);
+
+    /// @brief Open a ZIP archive from Bytes in memory.
+    /// @param data Bytes object containing ZIP data.
+    /// @return Archive object for reading.
+    /// @note Traps if data is not a valid ZIP archive.
+    void *rt_archive_from_bytes(void *data);
+
+    //=========================================================================
+    // Properties
+    //=========================================================================
+
+    /// @brief Get the file path of the archive.
+    /// @param obj Archive object.
+    /// @return File path or empty string if opened from bytes.
+    rt_string rt_archive_path(void *obj);
+
+    /// @brief Get the number of entries in the archive.
+    /// @param obj Archive object.
+    /// @return Number of entries.
+    int64_t rt_archive_count(void *obj);
+
+    /// @brief Get all entry names as a Seq.
+    /// @param obj Archive object.
+    /// @return Seq of entry names as strings.
+    void *rt_archive_names(void *obj);
+
+    //=========================================================================
+    // Reading Methods
+    //=========================================================================
+
+    /// @brief Check if an entry exists in the archive.
+    /// @param obj Archive object.
+    /// @param name Entry name.
+    /// @return 1 if entry exists, 0 otherwise.
+    int8_t rt_archive_has(void *obj, rt_string name);
+
+    /// @brief Read an entry as Bytes.
+    /// @param obj Archive object.
+    /// @param name Entry name.
+    /// @return Bytes object with entry contents.
+    /// @note Traps if entry not found, unsupported compression, or CRC mismatch.
+    void *rt_archive_read(void *obj, rt_string name);
+
+    /// @brief Read an entry as a string.
+    /// @param obj Archive object.
+    /// @param name Entry name.
+    /// @return String with entry contents (UTF-8).
+    /// @note Traps if entry not found, unsupported compression, or CRC mismatch.
+    rt_string rt_archive_read_str(void *obj, rt_string name);
+
+    /// @brief Extract an entry to a file on disk.
+    /// @param obj Archive object.
+    /// @param name Entry name.
+    /// @param dest_path Destination file path.
+    /// @note Traps if entry not found or write fails.
+    void rt_archive_extract(void *obj, rt_string name, rt_string dest_path);
+
+    /// @brief Extract all entries to a directory.
+    /// @param obj Archive object.
+    /// @param dest_dir Destination directory path.
+    /// @note Creates directories as needed. Traps on write failures.
+    void rt_archive_extract_all(void *obj, rt_string dest_dir);
+
+    /// @brief Get metadata for an entry.
+    /// @param obj Archive object.
+    /// @param name Entry name.
+    /// @return Map with keys: "size" (i64), "compressedSize" (i64),
+    ///         "modifiedTime" (i64), "isDirectory" (i1).
+    /// @note Traps if entry not found.
+    void *rt_archive_info(void *obj, rt_string name);
+
+    //=========================================================================
+    // Writing Methods (only valid for archives created with Create)
+    //=========================================================================
+
+    /// @brief Add a Bytes entry to the archive.
+    /// @param obj Archive object (must be opened for writing).
+    /// @param name Entry name.
+    /// @param data Bytes object with entry contents.
+    /// @note Traps if archive is read-only.
+    void rt_archive_add(void *obj, rt_string name, void *data);
+
+    /// @brief Add a string entry to the archive.
+    /// @param obj Archive object (must be opened for writing).
+    /// @param name Entry name.
+    /// @param text String with entry contents.
+    /// @note Traps if archive is read-only.
+    void rt_archive_add_str(void *obj, rt_string name, rt_string text);
+
+    /// @brief Add a file from disk to the archive.
+    /// @param obj Archive object (must be opened for writing).
+    /// @param name Entry name in archive.
+    /// @param src_path Source file path on disk.
+    /// @note Traps if archive is read-only or source file not found.
+    void rt_archive_add_file(void *obj, rt_string name, rt_string src_path);
+
+    /// @brief Add a directory entry to the archive.
+    /// @param obj Archive object (must be opened for writing).
+    /// @param name Directory name (will have / appended if missing).
+    /// @note Traps if archive is read-only.
+    void rt_archive_add_dir(void *obj, rt_string name);
+
+    /// @brief Finish writing and close the archive.
+    /// @param obj Archive object (must be opened for writing).
+    /// @note Writes the central directory and end record.
+    ///       Archive is no longer usable after this call.
+    /// @note Traps if archive is read-only or already finished.
+    void rt_archive_finish(void *obj);
+
+    //=========================================================================
+    // Static Methods
+    //=========================================================================
+
+    /// @brief Check if a file is a valid ZIP archive.
+    /// @param path File path as runtime string.
+    /// @return 1 if valid ZIP, 0 otherwise.
+    int8_t rt_archive_is_zip(rt_string path);
+
+    /// @brief Check if Bytes data is a valid ZIP archive.
+    /// @param data Bytes object to check.
+    /// @return 1 if valid ZIP, 0 otherwise.
+    int8_t rt_archive_is_zip_bytes(void *data);
+
+#ifdef __cplusplus
+}
+#endif

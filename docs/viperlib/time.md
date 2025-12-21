@@ -293,3 +293,10 @@ sw.Restart()
 sw.Stop()
 PRINT "New timing: "; sw.ElapsedMs; " ms"
 ```
+
+---
+
+## See Also
+
+- [Threads](threads.md) - `Thread.Sleep()` and synchronization with timeouts
+- [Graphics](graphics.md) - Frame timing with `Canvas` game loops

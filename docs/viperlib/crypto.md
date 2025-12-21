@@ -306,3 +306,11 @@ END SUB
 - Suitable for all cryptographic purposes
 - Unpredictable output even with partial state disclosure
 - Thread-safe on all platforms
+
+---
+
+## See Also
+
+- [Collections](collections.md) - `Bytes` for binary data handling
+- [Text Processing](text.md) - `Codec` for Base64/Hex encoding of hashes and keys
+- [Network](network.md) - Secure communication with HMAC message authentication

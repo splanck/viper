@@ -14,6 +14,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_graphics.h"
+#include "rt_input.h"
 #include "rt_object.h"
 #include "rt_string.h"
 
@@ -72,6 +73,15 @@ void *rt_canvas_new(rt_string title, int64_t width, int64_t height)
             rt_obj_free(canvas);
         return NULL;
     }
+
+    // Initialize keyboard input for this canvas
+    rt_keyboard_set_canvas(canvas->gfx_win);
+
+    // Initialize mouse input for this canvas
+    rt_mouse_set_canvas(canvas->gfx_win);
+
+    // Initialize gamepad input (no canvas reference needed)
+    rt_pad_init();
 
     return canvas;
 }
@@ -220,10 +230,44 @@ int64_t rt_canvas_poll(void *canvas_ptr)
     if (!canvas->gfx_win)
         return 0;
 
+    // Reset keyboard, mouse, and gamepad per-frame state at the start of polling
+    rt_keyboard_begin_frame();
+    rt_mouse_begin_frame();
+    rt_pad_begin_frame();
+
+    // Poll gamepads for state updates
+    rt_pad_poll();
+
+    // Update mouse position from current cursor location
+    int32_t mx = 0, my = 0;
+    vgfx_mouse_pos(canvas->gfx_win, &mx, &my);
+    rt_mouse_update_pos((int64_t)mx, (int64_t)my);
+
     if (vgfx_poll_event(canvas->gfx_win, &canvas->last_event))
     {
         if (canvas->last_event.type == VGFX_EVENT_CLOSE)
             canvas->should_close = 1;
+
+        // Forward keyboard events to keyboard module
+        if (canvas->last_event.type == VGFX_EVENT_KEY_DOWN)
+            rt_keyboard_on_key_down((int64_t)canvas->last_event.data.key.key);
+        else if (canvas->last_event.type == VGFX_EVENT_KEY_UP)
+            rt_keyboard_on_key_up((int64_t)canvas->last_event.data.key.key);
+
+        // Forward mouse events to mouse module
+        if (canvas->last_event.type == VGFX_EVENT_MOUSE_MOVE)
+        {
+            rt_mouse_update_pos((int64_t)canvas->last_event.data.mouse_move.x,
+                                (int64_t)canvas->last_event.data.mouse_move.y);
+        }
+        else if (canvas->last_event.type == VGFX_EVENT_MOUSE_DOWN)
+        {
+            rt_mouse_button_down((int64_t)canvas->last_event.data.mouse_button.button);
+        }
+        else if (canvas->last_event.type == VGFX_EVENT_MOUSE_UP)
+        {
+            rt_mouse_button_up((int64_t)canvas->last_event.data.mouse_button.button);
+        }
 
         return (int64_t)canvas->last_event.type;
     }

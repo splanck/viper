@@ -504,6 +504,18 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_template PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_template test_rt_template)
 
+    viper_add_test(test_rt_compress ${VIPER_TESTS_DIR}/runtime/RTCompressTests.cpp)
+    target_link_libraries(test_rt_compress PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_compress test_rt_compress)
+
+    viper_add_test(test_rt_archive ${VIPER_TESTS_DIR}/runtime/RTArchiveTests.cpp)
+    target_link_libraries(test_rt_archive PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_archive test_rt_archive)
+
+    viper_add_test(test_rt_network ${VIPER_TESTS_DIR}/runtime/RTNetworkTests.cpp)
+    target_link_libraries(test_rt_network PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_network test_rt_network)
+
     viper_add_test(test_rt_bag ${VIPER_TESTS_DIR}/runtime/RTBagTests.cpp)
     target_link_libraries(test_rt_bag PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_bag test_rt_bag)
@@ -567,6 +579,18 @@ function(viper_add_runtime_tests)
     viper_add_test(test_rt_pixels ${VIPER_TESTS_DIR}/runtime/RTPixelsTests.cpp)
     target_link_libraries(test_rt_pixels PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_pixels test_rt_pixels)
+
+    viper_add_test(test_rt_keyboard ${VIPER_TESTS_DIR}/runtime/RTKeyboardTests.cpp)
+    target_link_libraries(test_rt_keyboard PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_keyboard test_rt_keyboard)
+
+    viper_add_test(test_rt_mouse ${VIPER_TESTS_DIR}/runtime/RTMouseTests.cpp)
+    target_link_libraries(test_rt_mouse PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_mouse test_rt_mouse)
+
+    viper_add_test(test_rt_pad ${VIPER_TESTS_DIR}/runtime/RTPadTests.cpp)
+    target_link_libraries(test_rt_pad PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_pad test_rt_pad)
 
     viper_add_test(test_rt_abs_i64_overflow ${VIPER_TESTS_DIR}/runtime/RTAbsI64OverflowTests.cpp)
     target_link_libraries(test_rt_abs_i64_overflow PRIVATE ${VIPER_RUNTIME_TEST_LIBS})

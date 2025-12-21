@@ -13,8 +13,9 @@ The Viper Runtime Library documentation has been reorganized into separate files
 | [Diagnostics](viperlib/diagnostics.md)   | `Assert`, `Stopwatch`                                                     |
 | [Graphics](viperlib/graphics.md)         | `Canvas`, `Color`, `Pixels`                                               |
 | [Index](viperlib/README.md)              | Overview and quick navigation                                             |
-| [Input/Output](viperlib/io.md)           | `BinFile`, `Dir`, `File`, `LineReader`, `LineWriter`, `Path`              |
+| [Input/Output](viperlib/io.md)           | `Archive`, `BinFile`, `Compress`, `Dir`, `File`, `LineReader`, `LineWriter`, `MemStream`, `Path`, `Watcher` |
 | [Mathematics](viperlib/math.md)          | `Bits`, `Math`, `Random`, `Vec2`, `Vec3`                                  |
+| [Network](viperlib/network.md)           | `Dns`, `Tcp`, `TcpServer`, `Udp`                                          |
 | [System](viperlib/system.md)             | `Environment`, `Exec`, `Machine`, `Terminal`                              |
 | [Text Processing](viperlib/text.md)      | `Codec`, `Csv`, `Guid`, `StringBuilder`                                   |
 | [Threads](viperlib/threads.md)           | `Monitor`, `Thread`, `SafeI64`                                             |

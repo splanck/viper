@@ -453,3 +453,10 @@ DIM midpoint AS OBJECT = start.Lerp(endpoint, 0.5)
 PRINT "Midpoint: ("; midpoint.X; ", "; midpoint.Y; ", "; midpoint.Z; ")"  ' (50, 50, 50)
 ```
 
+---
+
+## See Also
+
+- [Graphics](graphics.md) - Use `Vec2` and `Vec3` with `Canvas` and `Pixels` for 2D/3D graphics
+- [Cryptography](crypto.md) - `Rand` for cryptographically secure randomness
+

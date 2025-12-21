@@ -169,3 +169,11 @@ PRINT "abc".Cmp("abd")                 ' Output: -1
 PRINT "ABC".CmpNoCase("abc")           ' Output: 0
 ```
 
+---
+
+## See Also
+
+- [Text Processing](text.md) - `StringBuilder` for efficient string building, `Pattern` for regex
+- [Utilities](utilities.md) - `Fmt` for string formatting, `Parse` for string parsing
+- [Collections](collections.md) - `Seq` for string lists, `Map` for string-keyed data
+

@@ -85,6 +85,8 @@ set(RT_IO_FS_SOURCES
         rt_path.c
         rt_dir.c
         rt_watcher.c
+        rt_compress.c
+        rt_archive.c
 )
 
 set(RT_EXEC_SOURCES
@@ -94,6 +96,7 @@ set(RT_EXEC_SOURCES
 
 set(RT_GRAPHICS_SOURCES
         rt_graphics.c
+        rt_input.c
         rt_vec2.c
         rt_vec3.c
         rt_pixels.c
@@ -104,6 +107,10 @@ set(RT_THREADS_SOURCES
         rt_safe_i64.c
         rt_threads.c
         rt_threads_primitives.cpp
+)
+
+set(RT_NETWORK_SOURCES
+        rt_network.c
 )
 
 set(RT_PUBLIC_HEADERS
@@ -138,6 +145,7 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_args.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_ns_bridge.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_graphics.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_input.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_datetime.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_map.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_parse.h
@@ -145,6 +153,7 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_dir.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_pixels.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_threads.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_network.h
 )
 
 find_package(Threads REQUIRED)
@@ -158,6 +167,7 @@ add_library(viper_rt_io_fs_obj OBJECT ${RT_IO_FS_SOURCES})
 add_library(viper_rt_exec_obj OBJECT ${RT_EXEC_SOURCES})
 add_library(viper_rt_graphics_obj OBJECT ${RT_GRAPHICS_SOURCES})
 add_library(viper_rt_threads_obj OBJECT ${RT_THREADS_SOURCES})
+add_library(viper_rt_network_obj OBJECT ${RT_NETWORK_SOURCES})
 
 add_library(viper_rt_base STATIC $<TARGET_OBJECTS:viper_rt_base_obj>)
 add_library(viper_rt_arrays STATIC $<TARGET_OBJECTS:viper_rt_arrays_obj>)
@@ -168,6 +178,7 @@ add_library(viper_rt_io_fs STATIC $<TARGET_OBJECTS:viper_rt_io_fs_obj>)
 add_library(viper_rt_exec STATIC $<TARGET_OBJECTS:viper_rt_exec_obj>)
 add_library(viper_rt_graphics STATIC $<TARGET_OBJECTS:viper_rt_graphics_obj>)
 add_library(viper_rt_threads STATIC $<TARGET_OBJECTS:viper_rt_threads_obj>)
+add_library(viper_rt_network STATIC $<TARGET_OBJECTS:viper_rt_network_obj>)
 
 add_library(viper_runtime STATIC
         $<TARGET_OBJECTS:viper_rt_base_obj>
@@ -179,6 +190,7 @@ add_library(viper_runtime STATIC
         $<TARGET_OBJECTS:viper_rt_exec_obj>
         $<TARGET_OBJECTS:viper_rt_graphics_obj>
         $<TARGET_OBJECTS:viper_rt_threads_obj>
+        $<TARGET_OBJECTS:viper_rt_network_obj>
 )
 
 set(VIPER_RUNTIME_COMPONENT_OBJECT_LIBS
@@ -191,6 +203,7 @@ set(VIPER_RUNTIME_COMPONENT_OBJECT_LIBS
         viper_rt_exec_obj
         viper_rt_graphics_obj
         viper_rt_threads_obj
+        viper_rt_network_obj
 )
 
 set(VIPER_RUNTIME_COMPONENT_LIBS
@@ -203,6 +216,7 @@ set(VIPER_RUNTIME_COMPONENT_LIBS
         viper_rt_exec
         viper_rt_graphics
         viper_rt_threads
+        viper_rt_network
         viper_runtime
 )
 
@@ -241,6 +255,13 @@ target_link_libraries(viper_rt_io_fs PUBLIC viper_rt_collections viper_rt_oop vi
 target_link_libraries(viper_rt_exec PUBLIC viper_rt_collections viper_rt_base)
 target_link_libraries(viper_rt_graphics PUBLIC viper_rt_oop viper_rt_base)
 target_link_libraries(viper_rt_threads PUBLIC viper_rt_oop viper_rt_base)
+target_link_libraries(viper_rt_network PUBLIC viper_rt_collections viper_rt_base)
+
+# Windows requires ws2_32 for sockets
+if (WIN32)
+    target_link_libraries(viper_rt_network PUBLIC ws2_32)
+    target_link_libraries(viper_runtime PUBLIC ws2_32)
+endif ()
 
 if (NOT WIN32)
     target_link_libraries(viper_runtime PUBLIC m)

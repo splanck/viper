@@ -613,6 +613,21 @@ RT_FUNC(WatcherEventDeleted,  rt_watcher_event_deleted,  "Viper.IO.Watcher.get_E
 RT_FUNC(WatcherEventRenamed,  rt_watcher_event_renamed,  "Viper.IO.Watcher.get_EVENT_RENAMED",  "i64()")
 
 //=============================================================================
+// IO - COMPRESS
+//=============================================================================
+
+RT_FUNC(CompressDeflate,     rt_compress_deflate,       "Viper.IO.Compress.Deflate",     "obj(obj)")
+RT_FUNC(CompressDeflateLvl,  rt_compress_deflate_lvl,   "Viper.IO.Compress.DeflateLvl",  "obj(obj,i64)")
+RT_FUNC(CompressInflate,     rt_compress_inflate,       "Viper.IO.Compress.Inflate",     "obj(obj)")
+RT_FUNC(CompressGzip,        rt_compress_gzip,          "Viper.IO.Compress.Gzip",        "obj(obj)")
+RT_FUNC(CompressGzipLvl,     rt_compress_gzip_lvl,      "Viper.IO.Compress.GzipLvl",     "obj(obj,i64)")
+RT_FUNC(CompressGunzip,      rt_compress_gunzip,        "Viper.IO.Compress.Gunzip",      "obj(obj)")
+RT_FUNC(CompressDeflateStr,  rt_compress_deflate_str,   "Viper.IO.Compress.DeflateStr",  "obj(str)")
+RT_FUNC(CompressInflateStr,  rt_compress_inflate_str,   "Viper.IO.Compress.InflateStr",  "str(obj)")
+RT_FUNC(CompressGzipStr,     rt_compress_gzip_str,      "Viper.IO.Compress.GzipStr",     "obj(str)")
+RT_FUNC(CompressGunzipStr,   rt_compress_gunzip_str,    "Viper.IO.Compress.GunzipStr",   "str(obj)")
+
+//=============================================================================
 // LOG
 //=============================================================================
 
@@ -1360,6 +1375,244 @@ RT_CLASS_BEGIN("Viper.Graphics.Pixels", Pixels, "obj", PixelsNew)
     RT_METHOD("ToBytes", "obj()", PixelsToBytes)
 RT_CLASS_END()
 
+// Viper.Input.Keyboard - keyboard input handling (static class)
+RT_CLASS_BEGIN("Viper.Input.Keyboard", Keyboard, "obj", none)
+    // Polling methods (current state)
+    RT_METHOD("IsDown", "i1(i64)", KeyboardIsDown)
+    RT_METHOD("IsUp", "i1(i64)", KeyboardIsUp)
+    RT_METHOD("AnyDown", "i1()", KeyboardAnyDown)
+    RT_METHOD("GetDown", "i64()", KeyboardGetDown)
+
+    // Event methods (since last Poll)
+    RT_METHOD("WasPressed", "i1(i64)", KeyboardWasPressed)
+    RT_METHOD("WasReleased", "i1(i64)", KeyboardWasReleased)
+    RT_METHOD("GetPressed", "obj()", KeyboardGetPressed)
+    RT_METHOD("GetReleased", "obj()", KeyboardGetReleased)
+
+    // Text input
+    RT_METHOD("GetText", "str()", KeyboardGetText)
+    RT_METHOD("EnableTextInput", "void()", KeyboardEnableTextInput)
+    RT_METHOD("DisableTextInput", "void()", KeyboardDisableTextInput)
+
+    // Modifier state
+    RT_METHOD("Shift", "i1()", KeyboardShift)
+    RT_METHOD("Ctrl", "i1()", KeyboardCtrl)
+    RT_METHOD("Alt", "i1()", KeyboardAlt)
+    RT_METHOD("CapsLock", "i1()", KeyboardCapsLock)
+
+    // Helper
+    RT_METHOD("KeyName", "str(i64)", KeyboardKeyName)
+
+    // Key code constants - Unknown
+    RT_PROP("KEY_UNKNOWN", "i64", KeyboardKeyUnknown, none)
+
+    // Letters (ASCII uppercase: 65-90)
+    RT_PROP("KEY_A", "i64", KeyboardKeyA, none)
+    RT_PROP("KEY_B", "i64", KeyboardKeyB, none)
+    RT_PROP("KEY_C", "i64", KeyboardKeyC, none)
+    RT_PROP("KEY_D", "i64", KeyboardKeyD, none)
+    RT_PROP("KEY_E", "i64", KeyboardKeyE, none)
+    RT_PROP("KEY_F", "i64", KeyboardKeyF, none)
+    RT_PROP("KEY_G", "i64", KeyboardKeyG, none)
+    RT_PROP("KEY_H", "i64", KeyboardKeyH, none)
+    RT_PROP("KEY_I", "i64", KeyboardKeyI, none)
+    RT_PROP("KEY_J", "i64", KeyboardKeyJ, none)
+    RT_PROP("KEY_K", "i64", KeyboardKeyK, none)
+    RT_PROP("KEY_L", "i64", KeyboardKeyL, none)
+    RT_PROP("KEY_M", "i64", KeyboardKeyM, none)
+    RT_PROP("KEY_N", "i64", KeyboardKeyN, none)
+    RT_PROP("KEY_O", "i64", KeyboardKeyO, none)
+    RT_PROP("KEY_P", "i64", KeyboardKeyP, none)
+    RT_PROP("KEY_Q", "i64", KeyboardKeyQ, none)
+    RT_PROP("KEY_R", "i64", KeyboardKeyR, none)
+    RT_PROP("KEY_S", "i64", KeyboardKeyS, none)
+    RT_PROP("KEY_T", "i64", KeyboardKeyT, none)
+    RT_PROP("KEY_U", "i64", KeyboardKeyU, none)
+    RT_PROP("KEY_V", "i64", KeyboardKeyV, none)
+    RT_PROP("KEY_W", "i64", KeyboardKeyW, none)
+    RT_PROP("KEY_X", "i64", KeyboardKeyX, none)
+    RT_PROP("KEY_Y", "i64", KeyboardKeyY, none)
+    RT_PROP("KEY_Z", "i64", KeyboardKeyZ, none)
+
+    // Numbers (ASCII digits: 48-57)
+    RT_PROP("KEY_0", "i64", KeyboardKey0, none)
+    RT_PROP("KEY_1", "i64", KeyboardKey1, none)
+    RT_PROP("KEY_2", "i64", KeyboardKey2, none)
+    RT_PROP("KEY_3", "i64", KeyboardKey3, none)
+    RT_PROP("KEY_4", "i64", KeyboardKey4, none)
+    RT_PROP("KEY_5", "i64", KeyboardKey5, none)
+    RT_PROP("KEY_6", "i64", KeyboardKey6, none)
+    RT_PROP("KEY_7", "i64", KeyboardKey7, none)
+    RT_PROP("KEY_8", "i64", KeyboardKey8, none)
+    RT_PROP("KEY_9", "i64", KeyboardKey9, none)
+
+    // Function keys (290-301)
+    RT_PROP("KEY_F1", "i64", KeyboardKeyF1, none)
+    RT_PROP("KEY_F2", "i64", KeyboardKeyF2, none)
+    RT_PROP("KEY_F3", "i64", KeyboardKeyF3, none)
+    RT_PROP("KEY_F4", "i64", KeyboardKeyF4, none)
+    RT_PROP("KEY_F5", "i64", KeyboardKeyF5, none)
+    RT_PROP("KEY_F6", "i64", KeyboardKeyF6, none)
+    RT_PROP("KEY_F7", "i64", KeyboardKeyF7, none)
+    RT_PROP("KEY_F8", "i64", KeyboardKeyF8, none)
+    RT_PROP("KEY_F9", "i64", KeyboardKeyF9, none)
+    RT_PROP("KEY_F10", "i64", KeyboardKeyF10, none)
+    RT_PROP("KEY_F11", "i64", KeyboardKeyF11, none)
+    RT_PROP("KEY_F12", "i64", KeyboardKeyF12, none)
+
+    // Navigation
+    RT_PROP("KEY_UP", "i64", KeyboardKeyUp, none)
+    RT_PROP("KEY_DOWN", "i64", KeyboardKeyDown, none)
+    RT_PROP("KEY_LEFT", "i64", KeyboardKeyLeft, none)
+    RT_PROP("KEY_RIGHT", "i64", KeyboardKeyRight, none)
+    RT_PROP("KEY_HOME", "i64", KeyboardKeyHome, none)
+    RT_PROP("KEY_END", "i64", KeyboardKeyEnd, none)
+    RT_PROP("KEY_PAGEUP", "i64", KeyboardKeyPageUp, none)
+    RT_PROP("KEY_PAGEDOWN", "i64", KeyboardKeyPageDown, none)
+    RT_PROP("KEY_INSERT", "i64", KeyboardKeyInsert, none)
+    RT_PROP("KEY_DELETE", "i64", KeyboardKeyDelete, none)
+
+    // Editing
+    RT_PROP("KEY_BACKSPACE", "i64", KeyboardKeyBackspace, none)
+    RT_PROP("KEY_TAB", "i64", KeyboardKeyTab, none)
+    RT_PROP("KEY_ENTER", "i64", KeyboardKeyEnter, none)
+    RT_PROP("KEY_SPACE", "i64", KeyboardKeySpace, none)
+    RT_PROP("KEY_ESCAPE", "i64", KeyboardKeyEscape, none)
+
+    // Modifiers
+    RT_PROP("KEY_SHIFT", "i64", KeyboardKeyShift, none)
+    RT_PROP("KEY_CTRL", "i64", KeyboardKeyCtrl, none)
+    RT_PROP("KEY_ALT", "i64", KeyboardKeyAlt, none)
+    RT_PROP("KEY_LSHIFT", "i64", KeyboardKeyLShift, none)
+    RT_PROP("KEY_RSHIFT", "i64", KeyboardKeyRShift, none)
+    RT_PROP("KEY_LCTRL", "i64", KeyboardKeyLCtrl, none)
+    RT_PROP("KEY_RCTRL", "i64", KeyboardKeyRCtrl, none)
+    RT_PROP("KEY_LALT", "i64", KeyboardKeyLAlt, none)
+    RT_PROP("KEY_RALT", "i64", KeyboardKeyRAlt, none)
+
+    // Punctuation
+    RT_PROP("KEY_MINUS", "i64", KeyboardKeyMinus, none)
+    RT_PROP("KEY_EQUALS", "i64", KeyboardKeyEquals, none)
+    RT_PROP("KEY_LBRACKET", "i64", KeyboardKeyLBracket, none)
+    RT_PROP("KEY_RBRACKET", "i64", KeyboardKeyRBracket, none)
+    RT_PROP("KEY_BACKSLASH", "i64", KeyboardKeyBackslash, none)
+    RT_PROP("KEY_SEMICOLON", "i64", KeyboardKeySemicolon, none)
+    RT_PROP("KEY_QUOTE", "i64", KeyboardKeyQuote, none)
+    RT_PROP("KEY_GRAVE", "i64", KeyboardKeyGrave, none)
+    RT_PROP("KEY_COMMA", "i64", KeyboardKeyComma, none)
+    RT_PROP("KEY_PERIOD", "i64", KeyboardKeyPeriod, none)
+    RT_PROP("KEY_SLASH", "i64", KeyboardKeySlash, none)
+
+    // Numpad
+    RT_PROP("KEY_NUM0", "i64", KeyboardKeyNum0, none)
+    RT_PROP("KEY_NUM1", "i64", KeyboardKeyNum1, none)
+    RT_PROP("KEY_NUM2", "i64", KeyboardKeyNum2, none)
+    RT_PROP("KEY_NUM3", "i64", KeyboardKeyNum3, none)
+    RT_PROP("KEY_NUM4", "i64", KeyboardKeyNum4, none)
+    RT_PROP("KEY_NUM5", "i64", KeyboardKeyNum5, none)
+    RT_PROP("KEY_NUM6", "i64", KeyboardKeyNum6, none)
+    RT_PROP("KEY_NUM7", "i64", KeyboardKeyNum7, none)
+    RT_PROP("KEY_NUM8", "i64", KeyboardKeyNum8, none)
+    RT_PROP("KEY_NUM9", "i64", KeyboardKeyNum9, none)
+    RT_PROP("KEY_NUMADD", "i64", KeyboardKeyNumAdd, none)
+    RT_PROP("KEY_NUMSUB", "i64", KeyboardKeyNumSub, none)
+    RT_PROP("KEY_NUMMUL", "i64", KeyboardKeyNumMul, none)
+    RT_PROP("KEY_NUMDIV", "i64", KeyboardKeyNumDiv, none)
+    RT_PROP("KEY_NUMENTER", "i64", KeyboardKeyNumEnter, none)
+    RT_PROP("KEY_NUMDOT", "i64", KeyboardKeyNumDot, none)
+RT_CLASS_END()
+
+// Viper.Input.Mouse - mouse input handling (static class)
+RT_CLASS_BEGIN("Viper.Input.Mouse", Mouse, "none", none)
+    // Position (relative to canvas)
+    RT_METHOD("X", "i64()", MouseX)
+    RT_METHOD("Y", "i64()", MouseY)
+    RT_METHOD("DeltaX", "i64()", MouseDeltaX)
+    RT_METHOD("DeltaY", "i64()", MouseDeltaY)
+
+    // Button state (polling)
+    RT_METHOD("IsDown", "i1(i64)", MouseIsDown)
+    RT_METHOD("IsUp", "i1(i64)", MouseIsUp)
+    RT_METHOD("Left", "i1()", MouseLeft)
+    RT_METHOD("Right", "i1()", MouseRight)
+    RT_METHOD("Middle", "i1()", MouseMiddle)
+
+    // Button events (since last poll)
+    RT_METHOD("WasPressed", "i1(i64)", MouseWasPressed)
+    RT_METHOD("WasReleased", "i1(i64)", MouseWasReleased)
+    RT_METHOD("WasClicked", "i1(i64)", MouseWasClicked)
+    RT_METHOD("WasDoubleClicked", "i1(i64)", MouseWasDoubleClicked)
+
+    // Scroll wheel
+    RT_METHOD("WheelX", "i64()", MouseWheelX)
+    RT_METHOD("WheelY", "i64()", MouseWheelY)
+
+    // Cursor control
+    RT_METHOD("Show", "void()", MouseShow)
+    RT_METHOD("Hide", "void()", MouseHide)
+    RT_METHOD("IsHidden", "i1()", MouseIsHidden)
+    RT_METHOD("Capture", "void()", MouseCapture)
+    RT_METHOD("Release", "void()", MouseRelease)
+    RT_METHOD("IsCaptured", "i1()", MouseIsCaptured)
+    RT_METHOD("SetPos", "void(i64,i64)", MouseSetPos)
+
+    // Button constants
+    RT_PROP("BUTTON_LEFT", "i64", MouseButtonLeft, none)
+    RT_PROP("BUTTON_RIGHT", "i64", MouseButtonRight, none)
+    RT_PROP("BUTTON_MIDDLE", "i64", MouseButtonMiddle, none)
+    RT_PROP("BUTTON_X1", "i64", MouseButtonX1, none)
+    RT_PROP("BUTTON_X2", "i64", MouseButtonX2, none)
+RT_CLASS_END()
+
+// Viper.Input.Pad - gamepad/controller input handling (static class)
+RT_CLASS_BEGIN("Viper.Input.Pad", Pad, "none", none)
+    // Controller enumeration
+    RT_METHOD("Count", "i64()", PadCount)
+    RT_METHOD("IsConnected", "i1(i64)", PadIsConnected)
+    RT_METHOD("Name", "str(i64)", PadName)
+
+    // Button state (polling)
+    RT_METHOD("IsDown", "i1(i64,i64)", PadIsDown)
+    RT_METHOD("IsUp", "i1(i64,i64)", PadIsUp)
+
+    // Button events (since last poll)
+    RT_METHOD("WasPressed", "i1(i64,i64)", PadWasPressed)
+    RT_METHOD("WasReleased", "i1(i64,i64)", PadWasReleased)
+
+    // Analog inputs (-1.0 to 1.0 for sticks, 0.0 to 1.0 for triggers)
+    RT_METHOD("LeftX", "f64(i64)", PadLeftX)
+    RT_METHOD("LeftY", "f64(i64)", PadLeftY)
+    RT_METHOD("RightX", "f64(i64)", PadRightX)
+    RT_METHOD("RightY", "f64(i64)", PadRightY)
+    RT_METHOD("LeftTrigger", "f64(i64)", PadLeftTrigger)
+    RT_METHOD("RightTrigger", "f64(i64)", PadRightTrigger)
+
+    // Deadzone handling
+    RT_METHOD("SetDeadzone", "void(f64)", PadSetDeadzone)
+    RT_METHOD("GetDeadzone", "f64()", PadGetDeadzone)
+
+    // Vibration/rumble
+    RT_METHOD("Vibrate", "void(i64,f64,f64)", PadVibrate)
+    RT_METHOD("StopVibration", "void(i64)", PadStopVibration)
+
+    // Button constants (standard gamepad layout)
+    RT_PROP("PAD_A", "i64", PadButtonA, none)
+    RT_PROP("PAD_B", "i64", PadButtonB, none)
+    RT_PROP("PAD_X", "i64", PadButtonX, none)
+    RT_PROP("PAD_Y", "i64", PadButtonY, none)
+    RT_PROP("PAD_LB", "i64", PadButtonLB, none)
+    RT_PROP("PAD_RB", "i64", PadButtonRB, none)
+    RT_PROP("PAD_BACK", "i64", PadButtonBack, none)
+    RT_PROP("PAD_START", "i64", PadButtonStart, none)
+    RT_PROP("PAD_LSTICK", "i64", PadButtonLStick, none)
+    RT_PROP("PAD_RSTICK", "i64", PadButtonRStick, none)
+    RT_PROP("PAD_UP", "i64", PadButtonUp, none)
+    RT_PROP("PAD_DOWN", "i64", PadButtonDown, none)
+    RT_PROP("PAD_LEFT", "i64", PadButtonLeft, none)
+    RT_PROP("PAD_RIGHT", "i64", PadButtonRight, none)
+    RT_PROP("PAD_GUIDE", "i64", PadButtonGuide, none)
+RT_CLASS_END()
+
 // Viper.IO.Dir - directory operations
 RT_CLASS_BEGIN("Viper.IO.Dir", Dir, "obj", none)
     RT_METHOD("Current", "str()", DirCurrent)
@@ -1497,6 +1750,49 @@ RT_CLASS_BEGIN("Viper.IO.Watcher", Watcher, "obj", WatcherNew)
     RT_METHOD("PollFor", "i64(i64)", WatcherPollFor)
     RT_METHOD("EventPath", "str()", WatcherEventPath)
     RT_METHOD("EventType", "i64()", WatcherEventType)
+RT_CLASS_END()
+
+RT_CLASS_BEGIN("Viper.IO.Compress", Compress, "obj", none)
+    RT_METHOD("Deflate", "obj(obj)", CompressDeflate)
+    RT_METHOD("DeflateLvl", "obj(obj,i64)", CompressDeflateLvl)
+    RT_METHOD("Inflate", "obj(obj)", CompressInflate)
+    RT_METHOD("Gzip", "obj(obj)", CompressGzip)
+    RT_METHOD("GzipLvl", "obj(obj,i64)", CompressGzipLvl)
+    RT_METHOD("Gunzip", "obj(obj)", CompressGunzip)
+    RT_METHOD("DeflateStr", "obj(str)", CompressDeflateStr)
+    RT_METHOD("InflateStr", "str(obj)", CompressInflateStr)
+    RT_METHOD("GzipStr", "obj(str)", CompressGzipStr)
+    RT_METHOD("GunzipStr", "str(obj)", CompressGunzipStr)
+RT_CLASS_END()
+
+// Viper.IO.Archive - ZIP archive support
+// Instance class for reading and writing ZIP files.
+// Open(path) or FromBytes(data) for reading, Create(path) for writing.
+RT_CLASS_BEGIN("Viper.IO.Archive", Archive, "obj", none)
+    // Static constructors
+    RT_METHOD("Open", "obj(str)", ArchiveOpen)
+    RT_METHOD("Create", "obj(str)", ArchiveCreate)
+    RT_METHOD("FromBytes", "obj(obj)", ArchiveFromBytes)
+    // Properties (instance, takes receiver as arg0)
+    RT_PROP("Path", "str", ArchivePath, none)
+    RT_PROP("Count", "i64", ArchiveCount, none)
+    RT_PROP("Names", "obj", ArchiveNames, none)
+    // Reading methods
+    RT_METHOD("Has", "i1(str)", ArchiveHas)
+    RT_METHOD("Read", "obj(str)", ArchiveRead)
+    RT_METHOD("ReadStr", "str(str)", ArchiveReadStr)
+    RT_METHOD("Extract", "void(str,str)", ArchiveExtract)
+    RT_METHOD("ExtractAll", "void(str)", ArchiveExtractAll)
+    RT_METHOD("Info", "obj(str)", ArchiveInfo)
+    // Writing methods
+    RT_METHOD("Add", "void(str,obj)", ArchiveAdd)
+    RT_METHOD("AddStr", "void(str,str)", ArchiveAddStr)
+    RT_METHOD("AddFile", "void(str,str)", ArchiveAddFile)
+    RT_METHOD("AddDir", "void(str)", ArchiveAddDir)
+    RT_METHOD("Finish", "void()", ArchiveFinish)
+    // Static methods
+    RT_METHOD("IsZip", "i1(str)", ArchiveIsZip)
+    RT_METHOD("IsZipBytes", "i1(obj)", ArchiveIsZipBytes)
 RT_CLASS_END()
 
 // Viper.Log - simple logging utilities
@@ -1827,4 +2123,161 @@ RT_CLASS_BEGIN("Viper.Vec3", Vec3, "obj", Vec3New)
     RT_METHOD("Dist", "f64(obj)", Vec3Dist)
     RT_METHOD("Lerp", "obj(obj,f64)", Vec3Lerp)
     RT_METHOD("Neg", "obj()", Vec3Neg)
+RT_CLASS_END()
+
+// Viper.Network.Tcp - TCP client connection
+RT_CLASS_BEGIN("Viper.Network.Tcp", Tcp, "obj", none)
+    // Static constructors
+    RT_METHOD("Connect", "obj(str,i64)", TcpConnect)
+    RT_METHOD("ConnectFor", "obj(str,i64,i64)", TcpConnectFor)
+    // Properties (instance, takes receiver as arg0)
+    RT_PROP("Host", "str", TcpHost, none)
+    RT_PROP("Port", "i64", TcpPort, none)
+    RT_PROP("LocalPort", "i64", TcpLocalPort, none)
+    RT_PROP("IsOpen", "i1", TcpIsOpen, none)
+    RT_PROP("Available", "i64", TcpAvailable, none)
+    // Send methods
+    RT_METHOD("Send", "i64(obj)", TcpSend)
+    RT_METHOD("SendStr", "i64(str)", TcpSendStr)
+    RT_METHOD("SendAll", "void(obj)", TcpSendAll)
+    // Receive methods
+    RT_METHOD("Recv", "obj(i64)", TcpRecv)
+    RT_METHOD("RecvStr", "str(i64)", TcpRecvStr)
+    RT_METHOD("RecvExact", "obj(i64)", TcpRecvExact)
+    RT_METHOD("RecvLine", "str()", TcpRecvLine)
+    // Timeout and close
+    RT_METHOD("SetRecvTimeout", "void(i64)", TcpSetRecvTimeout)
+    RT_METHOD("SetSendTimeout", "void(i64)", TcpSetSendTimeout)
+    RT_METHOD("Close", "void()", TcpClose)
+RT_CLASS_END()
+
+// Viper.Network.TcpServer - TCP server (listener)
+RT_CLASS_BEGIN("Viper.Network.TcpServer", TcpServer, "obj", none)
+    // Static constructors
+    RT_METHOD("Listen", "obj(i64)", TcpServerListen)
+    RT_METHOD("ListenAt", "obj(str,i64)", TcpServerListenAt)
+    // Properties
+    RT_PROP("Port", "i64", TcpServerPort, none)
+    RT_PROP("Address", "str", TcpServerAddress, none)
+    RT_PROP("IsListening", "i1", TcpServerIsListening, none)
+    // Accept and close
+    RT_METHOD("Accept", "obj()", TcpServerAccept)
+    RT_METHOD("AcceptFor", "obj(i64)", TcpServerAcceptFor)
+    RT_METHOD("Close", "void()", TcpServerClose)
+RT_CLASS_END()
+
+// Viper.Network.Udp - UDP datagram socket
+RT_CLASS_BEGIN("Viper.Network.Udp", Udp, "obj", none)
+    // Static constructors
+    RT_METHOD("New", "obj()", UdpNew)
+    RT_METHOD("Bind", "obj(i64)", UdpBind)
+    RT_METHOD("BindAt", "obj(str,i64)", UdpBindAt)
+    // Properties
+    RT_PROP("Port", "i64", UdpPort, none)
+    RT_PROP("Address", "str", UdpAddress, none)
+    RT_PROP("IsBound", "i1", UdpIsBound, none)
+    // Send methods
+    RT_METHOD("SendTo", "i64(str,i64,obj)", UdpSendTo)
+    RT_METHOD("SendToStr", "i64(str,i64,str)", UdpSendToStr)
+    // Receive methods
+    RT_METHOD("Recv", "obj(i64)", UdpRecv)
+    RT_METHOD("RecvFrom", "obj(i64)", UdpRecvFrom)
+    RT_METHOD("RecvFor", "obj(i64,i64)", UdpRecvFor)
+    RT_METHOD("SenderHost", "str()", UdpSenderHost)
+    RT_METHOD("SenderPort", "i64()", UdpSenderPort)
+    // Options and close
+    RT_METHOD("SetBroadcast", "void(i1)", UdpSetBroadcast)
+    RT_METHOD("JoinGroup", "void(str)", UdpJoinGroup)
+    RT_METHOD("LeaveGroup", "void(str)", UdpLeaveGroup)
+    RT_METHOD("SetRecvTimeout", "void(i64)", UdpSetRecvTimeout)
+    RT_METHOD("Close", "void()", UdpClose)
+RT_CLASS_END()
+
+// Viper.Network.Dns - DNS resolution utility class (static)
+RT_CLASS_BEGIN("Viper.Network.Dns", Dns, "none", none)
+    // Resolution methods
+    RT_METHOD("Resolve", "str(str)", DnsResolve)
+    RT_METHOD("ResolveAll", "obj(str)", DnsResolveAll)
+    RT_METHOD("Resolve4", "str(str)", DnsResolve4)
+    RT_METHOD("Resolve6", "str(str)", DnsResolve6)
+    RT_METHOD("Reverse", "str(str)", DnsReverse)
+    // Validation methods
+    RT_METHOD("IsIPv4", "i1(str)", DnsIsIPv4)
+    RT_METHOD("IsIPv6", "i1(str)", DnsIsIPv6)
+    RT_METHOD("IsIP", "i1(str)", DnsIsIP)
+    // Local info methods
+    RT_METHOD("LocalHost", "str()", DnsLocalHost)
+    RT_METHOD("LocalAddrs", "obj()", DnsLocalAddrs)
+RT_CLASS_END()
+
+// Viper.Network.Http - Static HTTP client utilities
+RT_CLASS_BEGIN("Viper.Network.Http", Http, "none", none)
+    // Simple GET/POST methods
+    RT_METHOD("Get", "str(str)", HttpGet)
+    RT_METHOD("GetBytes", "obj(str)", HttpGetBytes)
+    RT_METHOD("Post", "str(str,str)", HttpPost)
+    RT_METHOD("PostBytes", "obj(str,obj)", HttpPostBytes)
+    RT_METHOD("Download", "i1(str,str)", HttpDownload)
+    RT_METHOD("Head", "obj(str)", HttpHead)
+RT_CLASS_END()
+
+// Viper.Network.HttpReq - HTTP request builder (instance class)
+RT_CLASS_BEGIN("Viper.Network.HttpReq", HttpReq, "obj", none)
+    // Constructor
+    RT_METHOD("New", "obj(str,str)", HttpReqNew)
+    // Chainable setters
+    RT_METHOD("SetHeader", "obj(str,str)", HttpReqSetHeader)
+    RT_METHOD("SetBody", "obj(obj)", HttpReqSetBody)
+    RT_METHOD("SetBodyStr", "obj(str)", HttpReqSetBodyStr)
+    RT_METHOD("SetTimeout", "obj(i64)", HttpReqSetTimeout)
+    // Send request
+    RT_METHOD("Send", "obj()", HttpReqSend)
+RT_CLASS_END()
+
+// Viper.Network.HttpRes - HTTP response (instance class)
+RT_CLASS_BEGIN("Viper.Network.HttpRes", HttpRes, "obj", none)
+    // Properties
+    RT_PROP("Status", "i64", HttpResStatus, none)
+    RT_PROP("StatusText", "str", HttpResStatusText, none)
+    RT_PROP("Headers", "obj", HttpResHeaders, none)
+    // Methods
+    RT_METHOD("Body", "obj()", HttpResBody)
+    RT_METHOD("BodyStr", "str()", HttpResBodyStr)
+    RT_METHOD("Header", "str(str)", HttpResHeader)
+    RT_METHOD("IsOk", "i1()", HttpResIsOk)
+RT_CLASS_END()
+
+// Viper.Network.Url - URL parsing and construction (instance class)
+RT_CLASS_BEGIN("Viper.Network.Url", Url, "obj", none)
+    // Static constructors
+    RT_METHOD("Parse", "obj(str)", UrlParse)
+    RT_METHOD("New", "obj()", UrlNew)
+    // Read/write properties
+    RT_PROP("Scheme", "str", UrlScheme, UrlSetScheme)
+    RT_PROP("Host", "str", UrlHost, UrlSetHost)
+    RT_PROP("Port", "i64", UrlPort, UrlSetPort)
+    RT_PROP("Path", "str", UrlPath, UrlSetPath)
+    RT_PROP("Query", "str", UrlQuery, UrlSetQuery)
+    RT_PROP("Fragment", "str", UrlFragment, UrlSetFragment)
+    RT_PROP("User", "str", UrlUser, UrlSetUser)
+    RT_PROP("Pass", "str", UrlPass, UrlSetPass)
+    // Read-only computed properties
+    RT_PROP("Authority", "str", UrlAuthority, none)
+    RT_PROP("HostPort", "str", UrlHostPort, none)
+    RT_PROP("Full", "str", UrlFull, none)
+    // Query parameter methods
+    RT_METHOD("SetQueryParam", "obj(str,str)", UrlSetQueryParam)
+    RT_METHOD("GetQueryParam", "str(str)", UrlGetQueryParam)
+    RT_METHOD("HasQueryParam", "i1(str)", UrlHasQueryParam)
+    RT_METHOD("DelQueryParam", "obj(str)", UrlDelQueryParam)
+    RT_METHOD("QueryMap", "obj()", UrlQueryMap)
+    // Other methods
+    RT_METHOD("Resolve", "obj(str)", UrlResolve)
+    RT_METHOD("Clone", "obj()", UrlClone)
+    // Static utility methods
+    RT_METHOD("Encode", "str(str)", UrlEncode)
+    RT_METHOD("Decode", "str(str)", UrlDecode)
+    RT_METHOD("EncodeQuery", "str(obj)", UrlEncodeQueryMap)
+    RT_METHOD("DecodeQuery", "obj(str)", UrlDecodeQueryStr)
+    RT_METHOD("IsValid", "i1(str)", UrlIsValid)
 RT_CLASS_END()

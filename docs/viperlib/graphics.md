@@ -217,3 +217,11 @@ data = pixels.ToBytes()
 - The `Copy` method automatically clips to buffer boundaries
 - `ToBytes` returns 4 bytes per pixel (width × height × 4 total bytes)
 
+---
+
+## See Also
+
+- [Input](input.md) - `Keyboard`, `Mouse`, and `Pad` for interactive input with Canvas
+- [Mathematics](math.md) - `Vec2` and `Vec3` for 2D/3D graphics calculations
+- [Collections](collections.md) - `Bytes` for pixel data serialization
+

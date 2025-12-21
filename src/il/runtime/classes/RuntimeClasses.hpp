@@ -64,6 +64,8 @@ enum class RuntimeTypeId : std::size_t
     RTCLS_LineReader,
     RTCLS_LineWriter,
     RTCLS_Watcher,
+    RTCLS_Compress,
+    RTCLS_Archive,
     RTCLS_Log,
     RTCLS_Machine,
     RTCLS_Terminal,
@@ -85,6 +87,17 @@ enum class RuntimeTypeId : std::size_t
     RTCLS_ThreadsGate,
     RTCLS_ThreadsBarrier,
     RTCLS_ThreadsRwLock,
+    RTCLS_Tcp,
+    RTCLS_TcpServer,
+    RTCLS_Udp,
+    RTCLS_Dns,
+    RTCLS_Http,
+    RTCLS_HttpReq,
+    RTCLS_HttpRes,
+    RTCLS_Url,
+    RTCLS_Keyboard,
+    RTCLS_Mouse,
+    RTCLS_Pad,
 };
 
 /// @brief Describes a property on a runtime class.

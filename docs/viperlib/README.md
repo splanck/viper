@@ -18,8 +18,10 @@ implemented in C and exposed through the IL runtime system.
 | [Cryptography](crypto.md)       | `Hash` (CRC32, MD5, SHA1, SHA256)                                         |
 | [Diagnostics](diagnostics.md)   | `Assert`, `Stopwatch`                                                     |
 | [Graphics](graphics.md)         | `Canvas`, `Color`, `Pixels`                                               |
-| [Input/Output](io.md)           | `BinFile`, `Dir`, `File`, `LineReader`, `LineWriter`, `Path`              |
+| [Input](input.md)               | `Keyboard`, `Mouse`, `Pad` — input for games and interactive apps       |
+| [Input/Output](io.md)           | `Archive`, `BinFile`, `Compress`, `Dir`, `File`, `LineReader`, `LineWriter`, `MemStream`, `Path`, `Watcher` |
 | [Mathematics](math.md)          | `Bits`, `Math`, `Random`, `Vec2`, `Vec3`                                  |
+| [Network](network.md)           | `Dns`, `Tcp`, `TcpServer`, `Udp`                                          |
 | [System](system.md)             | `Environment`, `Exec`, `Machine`, `Terminal`                              |
 | [Text Processing](text.md)      | `Codec`, `Csv`, `Guid`, `StringBuilder`                                   |
 | [Threads](threads.md)           | `Monitor`, `Thread`, `SafeI64`                                             |
@@ -86,16 +88,37 @@ implemented in C and exposed through the IL runtime system.
 | [`Color`](graphics.md#vipergraphicscolor)   | Static   | Color creation        |
 | [`Pixels`](graphics.md#vipergraphicspixels) | Instance | Software image buffer |
 
+### Viper.Input
+
+| Class                                         | Type   | Description                      |
+|-----------------------------------------------|--------|----------------------------------|
+| [`Keyboard`](input.md#viperinputkeyboard)     | Static | Keyboard input for games and UI  |
+| [`Mouse`](input.md#viperinputmouse)           | Static | Mouse input for games and UI     |
+| [`Pad`](input.md#viperinputpad)               | Static | Gamepad/controller input         |
+
 ### Viper.IO
 
-| Class                                   | Type     | Description               |
-|-----------------------------------------|----------|---------------------------|
-| [`BinFile`](io.md#viperiobinfile)       | Instance | Binary file stream        |
-| [`Dir`](io.md#viperiodir)               | Static   | Directory operations      |
-| [`File`](io.md#viperiofile)             | Static   | File read/write/delete    |
-| [`LineReader`](io.md#viperiolinereader) | Instance | Line-by-line text reading |
-| [`LineWriter`](io.md#viperiolinewriter) | Instance | Buffered text writing     |
-| [`Path`](io.md#viperiopath)             | Static   | Path manipulation         |
+| Class                                   | Type     | Description                    |
+|-----------------------------------------|----------|--------------------------------|
+| [`Archive`](io.md#viperioarchive)       | Instance | ZIP archive read/write         |
+| [`BinFile`](io.md#viperiobinfile)       | Instance | Binary file stream             |
+| [`Compress`](io.md#viperiocompress)     | Static   | DEFLATE/GZIP compression       |
+| [`Dir`](io.md#viperiodir)               | Static   | Directory operations           |
+| [`File`](io.md#viperiofile)             | Static   | File read/write/delete         |
+| [`LineReader`](io.md#viperiolinereader) | Instance | Line-by-line text reading      |
+| [`LineWriter`](io.md#viperiolinewriter) | Instance | Buffered text writing          |
+| [`MemStream`](io.md#viperiomemstream)   | Instance | In-memory binary stream        |
+| [`Path`](io.md#viperiopath)             | Static   | Path manipulation              |
+| [`Watcher`](io.md#viperiowatcher)       | Instance | File system event monitoring   |
+
+### Viper.Network
+
+| Class                                     | Type     | Description                   |
+|-------------------------------------------|----------|-------------------------------|
+| [`Dns`](network.md#vipernetworkdns)       | Static   | DNS resolution and validation |
+| [`Tcp`](network.md#vipernetworktcp)       | Instance | TCP client connection         |
+| [`TcpServer`](network.md#vipernetworktcpserver) | Instance | TCP server (listener)   |
+| [`Udp`](network.md#vipernetworkudp)       | Instance | UDP datagram socket           |
 
 ### Viper.Text
 

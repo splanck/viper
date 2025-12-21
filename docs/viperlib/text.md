@@ -556,3 +556,11 @@ FOR i = 1 TO 1000
 NEXT i
 ```
 
+---
+
+## See Also
+
+- [Collections](collections.md) - `Seq`, `Map`, and `Bag` used with templates and CSV
+- [Input/Output](io.md) - `File` and `LineReader` for reading text files
+- [Cryptography](crypto.md) - `Hash` for checksums and authentication of text data
+
