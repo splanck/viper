@@ -188,6 +188,12 @@ LowerResult Lowerer::lowerIdent(IdentExpr *expr)
                 ilType = Type(Type::Kind::F64);
                 break;
             case Value::Kind::ConstStr:
+            {
+                // String constants need to emit a const_str instruction to load the global
+                // The stored value's str field contains the global label (e.g., ".L10")
+                Value loaded = emitConstStr(val.str);
+                return {loaded, Type(Type::Kind::Str)};
+            }
             case Value::Kind::GlobalAddr:
                 ilType = Type(Type::Kind::Str);
                 break;
@@ -527,10 +533,14 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
             if (leftType && leftType->kind == TypeKindSem::String)
             {
                 // String inequality: !(a == b)
+                // Get equals result (returns i1)
                 Value eqResult =
                     emitCallRet(Type(Type::Kind::I1), kStringEquals, {left.value, right.value});
+                // Zero-extend to i64 for comparison (ICmpEq expects i64 operands)
+                Value extResult = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), eqResult);
+                // Compare with 0 to negate: !(a == b) means (a == b) == 0
                 Value result =
-                    emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), eqResult, Value::constInt(0));
+                    emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), extResult, Value::constInt(0));
                 return {result, Type(Type::Kind::I1)};
             }
             op = isFloat ? Opcode::FCmpNE : Opcode::ICmpNe;

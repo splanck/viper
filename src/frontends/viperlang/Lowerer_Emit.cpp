@@ -336,6 +336,35 @@ size_t Lowerer::getILTypeSize(Type type)
     }
 }
 
+size_t Lowerer::getILTypeAlignment(Type type)
+{
+    // All types align to their size, with a minimum of 8 for pointer-sized types
+    // This matches the x86-64 SysV ABI requirements
+    switch (type.kind)
+    {
+        case Type::Kind::I64:
+        case Type::Kind::F64:
+        case Type::Kind::Ptr:
+        case Type::Kind::Str:
+            return 8;
+        case Type::Kind::I32:
+            return 4;
+        case Type::Kind::I16:
+            return 2;
+        case Type::Kind::I1:
+            // Boolean fields should be aligned to 8 bytes to avoid misalignment
+            // when followed by 8-byte fields
+            return 8;
+        default:
+            return 8;
+    }
+}
+
+size_t Lowerer::alignTo(size_t offset, size_t alignment)
+{
+    return (offset + alignment - 1) & ~(alignment - 1);
+}
+
 //=============================================================================
 // Local Variable Management
 //=============================================================================

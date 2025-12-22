@@ -119,9 +119,9 @@ All key codes are accessed as read-only properties on the Keyboard class.
 
 | Property        | Value | Property       | Value |
 |-----------------|-------|----------------|-------|
-| `KEY_SPACE`     | 32    | `KEY_TAB`      | 258   |
-| `KEY_ENTER`     | 257   | `KEY_BACKSPACE`| 259   |
-| `KEY_ESCAPE`    | 256   |                |       |
+| `KEY_UNKNOWN`   | 0     | `KEY_SPACE`    | 32    |
+| `KEY_TAB`       | 258   | `KEY_ENTER`    | 257   |
+| `KEY_BACKSPACE` | 259   | `KEY_ESCAPE`   | 256   |
 
 #### Modifier Keys
 

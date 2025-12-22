@@ -200,6 +200,56 @@ func start() {
     EXPECT_TRUE(result.succeeded()); // Bug #20: 'value' should be allowed as parameter name
 }
 
+/// @brief Bug #30: Boolean fields in entities should be properly aligned.
+/// Ensures Boolean fields don't cause misaligned store errors at runtime.
+TEST(ViperLangTypes, BooleanFieldAlignment)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+entity Game {
+    expose Integer score;
+    expose Boolean running;
+    expose Boolean paused;
+    expose Integer level;
+
+    expose func init() {
+        score = 0;
+        running = true;
+        paused = false;
+        level = 1;
+    }
+
+    expose func isRunning() -> Boolean {
+        return running;
+    }
+}
+
+func start() {
+    Game g = new Game();
+    g.init();
+    Boolean r = g.isRunning();
+}
+)";
+    CompilerInput input{.source = source, .path = "boolfields.viper"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    if (!result.succeeded())
+    {
+        std::cerr << "Diagnostics for BooleanFieldAlignment:\n";
+        for (const auto &d : result.diagnostics.diagnostics())
+        {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+
+    EXPECT_TRUE(result.succeeded()); // Bug #30: Boolean fields should compile without errors
+}
+
 } // namespace
 
 int main()

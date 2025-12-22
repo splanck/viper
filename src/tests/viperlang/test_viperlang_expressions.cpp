@@ -209,6 +209,122 @@ func start() {
     EXPECT_TRUE(foundMerge);
 }
 
+/// @brief Bug #29: String comparison with empty string.
+/// Empty string literals should be compared using Viper.Strings.Equals.
+TEST(ViperLangExpressions, StringComparisonWithEmptyString)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func checkEmpty(String s) -> Boolean {
+    return s == "";
+}
+
+func checkNotEmpty(String s) -> Boolean {
+    return s != "";
+}
+
+func start() {
+    Boolean empty = checkEmpty("");
+    Boolean notEmpty = checkNotEmpty("hello");
+}
+)";
+    CompilerInput input{.source = source, .path = "emptystr.viper"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    if (!result.succeeded())
+    {
+        std::cerr << "Diagnostics for StringComparisonWithEmptyString:\n";
+        for (const auto &d : result.diagnostics.diagnostics())
+        {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+
+    EXPECT_TRUE(result.succeeded());
+
+    // Verify that we're calling Viper.Strings.Equals for both functions
+    bool foundEqualsCall = false;
+    for (const auto &fn : result.module.functions)
+    {
+        if (fn.name == "checkEmpty" || fn.name == "checkNotEmpty")
+        {
+            for (const auto &block : fn.blocks)
+            {
+                for (const auto &instr : block.instructions)
+                {
+                    if (instr.op == il::core::Opcode::Call &&
+                        instr.callee == "Viper.Strings.Equals")
+                    {
+                        foundEqualsCall = true;
+                    }
+                }
+            }
+        }
+    }
+    EXPECT_TRUE(foundEqualsCall);
+}
+
+/// @brief Bug #32: String constants should be dereferenced when used.
+/// Global string constants should emit const_str instructions when accessed.
+TEST(ViperLangExpressions, StringConstantsDereferenced)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+final KEY_QUIT = "q";
+
+func checkKey(String key) -> Boolean {
+    return key == KEY_QUIT;
+}
+
+func start() {
+    Boolean result = checkKey("q");
+}
+)";
+    CompilerInput input{.source = source, .path = "strconst.viper"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    if (!result.succeeded())
+    {
+        std::cerr << "Diagnostics for StringConstantsDereferenced:\n";
+        for (const auto &d : result.diagnostics.diagnostics())
+        {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+
+    EXPECT_TRUE(result.succeeded());
+
+    // Verify that const_str is used to load the constant
+    bool foundConstStr = false;
+    for (const auto &fn : result.module.functions)
+    {
+        if (fn.name == "checkKey")
+        {
+            for (const auto &block : fn.blocks)
+            {
+                for (const auto &instr : block.instructions)
+                {
+                    if (instr.op == il::core::Opcode::ConstStr)
+                    {
+                        foundConstStr = true;
+                    }
+                }
+            }
+        }
+    }
+    EXPECT_TRUE(foundConstStr);
+}
+
 } // namespace
 
 int main()

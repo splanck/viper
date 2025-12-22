@@ -654,16 +654,15 @@ void Sema::registerBuiltins()
     runtimeFunctions_["Viper.Terminal.BeginBatch"] = types::voidType();
     runtimeFunctions_["Viper.Terminal.EndBatch"] = types::voidType();
     runtimeFunctions_["Viper.Terminal.GetKeyTimeout"] = types::string();
-    runtimeFunctions_["Viper.Terminal.HasKey"] = types::boolean();
-    runtimeFunctions_["Viper.Terminal.ReadKey"] = types::string();
-    runtimeFunctions_["Viper.Terminal.Write"] = types::voidType();
-    runtimeFunctions_["Viper.Terminal.MoveCursor"] = types::voidType();
-    runtimeFunctions_["Viper.Terminal.SetForeground"] = types::voidType();
-    runtimeFunctions_["Viper.Terminal.SetBackground"] = types::voidType();
-    runtimeFunctions_["Viper.Terminal.ResetColors"] = types::voidType();
-    runtimeFunctions_["Viper.Terminal.HideCursor"] = types::voidType();
-    runtimeFunctions_["Viper.Terminal.ShowCursor"] = types::voidType();
-    runtimeFunctions_["Viper.Terminal.Sleep"] = types::voidType();
+    // Note: Removed non-existent function names that were registered in Sema
+    // but not in the runtime. Users should use:
+    // - Viper.Terminal.SetPosition instead of MoveCursor
+    // - Viper.Terminal.SetColor instead of SetForeground/SetBackground
+    // - Viper.Terminal.Print instead of Write
+    // - Viper.Terminal.SetCursorVisible(0/1) instead of HideCursor/ShowCursor
+    // - Viper.Terminal.GetKey instead of ReadKey
+    // - Viper.Terminal.GetKeyTimeout(1) instead of HasKey
+    // - Viper.Time.SleepMs instead of Terminal.Sleep
 
     // Register Viper.String runtime functions
     runtimeFunctions_["Viper.String.Concat"] = types::string();

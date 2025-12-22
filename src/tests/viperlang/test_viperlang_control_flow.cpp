@@ -220,6 +220,53 @@ func start() {
     EXPECT_TRUE(foundMapLoop);
 }
 
+/// @brief Bug #28: Guard statement should work without parentheses.
+/// Swift-style guard syntax should be supported in entity methods.
+TEST(ViperLangControlFlow, GuardStatementWithoutParens)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+entity Player {
+    expose Integer state;
+
+    expose func moveUp() {
+        guard state != 0 else { return; }
+        state = state + 1;
+    }
+
+    expose func moveDown() {
+        guard (state != 0) else { return; }
+        state = state - 1;
+    }
+}
+
+func start() {
+    Player p = new Player();
+    p.state = 1;
+    p.moveUp();
+    p.moveDown();
+}
+)";
+    CompilerInput input{.source = source, .path = "guard.viper"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    if (!result.succeeded())
+    {
+        std::cerr << "Diagnostics for GuardStatementWithoutParens:\n";
+        for (const auto &d : result.diagnostics.diagnostics())
+        {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+
+    EXPECT_TRUE(result.succeeded()); // Bug #28: Guard without parens should parse correctly
+}
+
 } // namespace
 
 int main()

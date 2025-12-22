@@ -180,16 +180,19 @@ void Lowerer::lowerValueDecl(ValueDecl &decl)
             TypeRef fieldType =
                 field->type ? sema_.resolveType(field->type.get()) : types::unknown();
 
+            Type ilFieldType = mapType(fieldType);
+            size_t alignment = getILTypeAlignment(ilFieldType);
+
             FieldLayout layout;
             layout.name = field->name;
             layout.type = fieldType;
-            layout.offset = info.totalSize;
-            layout.size = getILTypeSize(mapType(fieldType));
+            layout.offset = alignTo(info.totalSize, alignment);
+            layout.size = getILTypeSize(ilFieldType);
 
             // Add to lookup map before pushing to vector
             info.fieldIndex[field->name] = info.fields.size();
             info.fields.push_back(layout);
-            info.totalSize += layout.size;
+            info.totalSize = layout.offset + layout.size;
         }
         else if (member->kind == DeclKind::Method)
         {
@@ -227,16 +230,19 @@ void Lowerer::lowerEntityDecl(EntityDecl &decl)
             TypeRef fieldType =
                 field->type ? sema_.resolveType(field->type.get()) : types::unknown();
 
+            Type ilFieldType = mapType(fieldType);
+            size_t alignment = getILTypeAlignment(ilFieldType);
+
             FieldLayout layout;
             layout.name = field->name;
             layout.type = fieldType;
-            layout.offset = info.totalSize;
-            layout.size = getILTypeSize(mapType(fieldType));
+            layout.offset = alignTo(info.totalSize, alignment);
+            layout.size = getILTypeSize(ilFieldType);
 
             // Add to lookup map before pushing to vector
             info.fieldIndex[field->name] = info.fields.size();
             info.fields.push_back(layout);
-            info.totalSize += layout.size;
+            info.totalSize = layout.offset + layout.size;
         }
         else if (member->kind == DeclKind::Method)
         {

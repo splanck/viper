@@ -65,7 +65,7 @@ Viper is a compiler infrastructure with several components:
 | **Frontends** | Language compilers: BASIC, Pascal, and ViperLang |
 | **VM** | Bytecode interpreter with pluggable dispatch strategies |
 | **Backends** | Native code generators (AArch64, x86-64) |
-| **Runtime** | Portable C libraries for strings, math, I/O, memory, graphics, threading |
+| **Runtime** | Portable C libraries for core types, collections, I/O, text, math, graphics, input, networking, threading |
 | **Tools** | Compiler drivers, verifier, disassembler |
 
 ### Why Viper?
@@ -90,7 +90,7 @@ Viper is in **early development**. All components are functional but incomplete:
 | Virtual Machine | Functional with multiple dispatch strategies |
 | AArch64 Backend | Validated on Apple Silicon; actively developed |
 | x86-64 Backend | Implemented but not validated on real hardware |
-| Runtime Libraries | Comprehensive: collections, I/O, graphics, threading, crypto |
+| Runtime Libraries | Growing: collections, I/O, text, math, graphics, input, networking, system, threads, crypto, time |
 | IL Optimizer | Basic passes implemented; more planned |
 | Debugger/IDE | Early work; not yet usable |
 
@@ -175,7 +175,8 @@ Run demos:
                   ▼
 ┌─────────────────────────────────────────┐
 │           Viper Runtime                 │
-│  (Collections, I/O, Graphics, Threads)  │
+│ (Collections, I/O, Text, Math, Graphics │
+│   Input, Network, Threads, System)      │
 └─────────────────────────────────────────┘
 ```
 
@@ -220,21 +221,24 @@ entry:
 
 ## Runtime Library
 
-All frontends share the comprehensive **Viper Runtime**, providing:
+All frontends share the **Viper Runtime**, providing:
 
 | Module | Classes | Description |
 |--------|---------|-------------|
 | **Core** | `Object`, `String` | Base types and string operations |
 | **Collections** | `List`, `Map`, `Bag`, `Queue`, `Stack`, `Seq`, `Ring`, `TreeMap`, `Bytes` | Data structures for any use case |
-| **I/O** | `File`, `Dir`, `Path`, `BinFile`, `LineReader`, `LineWriter` | File system access and streaming |
+| **I/O** | `Archive`, `File`, `Dir`, `Path`, `BinFile`, `Compress`, `LineReader`, `LineWriter`, `MemStream`, `Watcher` | File system access and streaming |
 | **Graphics** | `Canvas`, `Color`, `Pixels` | 2D graphics for games and visualization |
+| **Input** | `Keyboard`, `Mouse`, `Pad` | Input devices for games and interactive apps |
+| **Network** | `Dns`, `Tcp`, `TcpServer`, `Udp` | Networking and sockets |
 | **System** | `Terminal`, `Environment`, `Exec`, `Machine` | System interaction and console I/O |
 | **Math** | `Math`, `Random`, `Bits`, `Vec2`, `Vec3` | Mathematical functions and vectors |
 | **Threads** | `Thread`, `Monitor`, `SafeI64` | Concurrent programming primitives |
 | **Text** | `StringBuilder`, `Codec`, `Csv`, `Guid` | String building and text encoding |
 | **Crypto** | `Hash` | CRC32, MD5, SHA1, SHA256 |
 | **Time** | `Clock`, `DateTime`, `Countdown`, `Stopwatch` | Time utilities and measurement |
-| **Diagnostics** | `Assert`, `Log` | Debugging and logging |
+| **Utilities** | `Convert`, `Fmt`, `Parse`, `Log` | Conversion, formatting, parsing, logging |
+| **Diagnostics** | `Assert` | Debugging and assertions |
 
 See the **[Runtime Library Reference](docs/viperlib/README.md)** for complete API documentation.
 

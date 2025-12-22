@@ -529,6 +529,143 @@ func clamp(Integer value, Integer minVal, Integer maxVal) -> Integer {
 
 ---
 
+## Bugs Found During Frogger Rewrite (December 2025)
+
+### 28. Guard Statement Not Parsing in Entity Methods
+**Status**: FIXED (December 2025)
+**Severity**: MEDIUM - Blocks use of guard syntax in methods
+**Description**: The `guard` statement did not parse correctly inside entity methods when parentheses were omitted.
+
+**Root Cause**: The parser required parentheses around guard conditions, but Swift-style guard syntax allows them to be optional.
+
+**Resolution**: Updated `parseGuardStmt()` in `Parser_Stmt.cpp` to make parentheses optional around guard conditions, matching Swift-style syntax.
+
+**Test**: Added `test_viperlang_control_flow.cpp::GuardStatementWithoutParens` to verify fix.
+
+**Example** (now works):
+```viper
+entity Frog {
+    expose func moveUp() {
+        guard state != STATE_DEAD else { return; }  // Works without parentheses
+        guard (state != STATE_DEAD) else { return; }  // Also works with parentheses
+        // ...
+    }
+}
+```
+
+---
+
+### 29. String Comparison with Empty String Generates Invalid IL
+**Status**: FIXED (December 2025)
+**Severity**: HIGH - Blocks common patterns
+**Description**: Comparing a string variable with an empty string literal `""` generated incorrect IL with type mismatch.
+
+**Root Cause**: The string inequality (`!=`) code was using `ICmpEq` on an i1 result from `Viper.Strings.Equals`, but `ICmpEq` expects i64 operands.
+
+**Resolution**: Updated the `BinaryOp::Ne` case in `Lowerer_Expr.cpp` to zero-extend the i1 result to i64 before comparing with 0.
+
+**Test**: Added `test_viperlang_expressions.cpp::StringComparisonWithEmptyString` to verify fix.
+
+**Example** (now works):
+```viper
+String key = Viper.Terminal.InKey();
+if (key != "") {  // Works correctly
+    // process key
+}
+```
+
+---
+
+### 30. Boolean Fields in Entities Cause Misaligned Store
+**Status**: FIXED (December 2025)
+**Severity**: CRITICAL - Causes VM trap
+**Description**: Entity fields of type `Boolean` caused a misaligned store error in the VM at runtime when the entity was initialized.
+
+**Root Cause**: The field layout computation was not properly aligning fields. Boolean fields (1 byte) would be placed at unaligned offsets, causing misaligned memory access when followed by pointer-sized fields.
+
+**Resolution**:
+1. Added `getILTypeAlignment()` and `alignTo()` helper functions in `Lowerer_Emit.cpp`
+2. Updated field layout computation in `Lowerer_Decl.cpp` to properly align field offsets using alignment requirements
+3. Boolean fields now align to 8 bytes to avoid misalignment issues with subsequent fields
+
+**Test**: Added `test_viperlang_types.cpp::BooleanFieldAlignment` to verify fix.
+
+**Example** (now works):
+```viper
+entity Game {
+    expose Integer score;
+    expose Boolean running;  // Works correctly
+    expose Boolean paused;
+    expose Integer level;
+
+    expose func init() {
+        running = true;  // No more misaligned store
+    }
+}
+```
+
+---
+
+### 31. Sema Recognizes Runtime Functions That VM Doesn't Have
+**Status**: FIXED (December 2025)
+**Severity**: HIGH - Causes runtime errors
+**Description**: The ViperLang semantic analyzer recognized certain `Viper.Terminal.*` function names that were not registered in the IL runtime, causing runtime errors.
+
+**Root Cause**: Several function names were added to Sema's `runtimeFunctions_` map without corresponding runtime implementations.
+
+**Resolution**: Removed the non-existent function names from `Sema.cpp`. Users should use the correct runtime function names:
+
+| Use This | Instead Of |
+|----------|------------|
+| `Viper.Terminal.SetPosition(row, col)` | MoveCursor |
+| `Viper.Terminal.SetColor(fg, bg)` | SetForeground/SetBackground |
+| `Viper.Terminal.Print(text)` | Write |
+| `Viper.Terminal.SetCursorVisible(0/1)` | HideCursor/ShowCursor |
+| `Viper.Terminal.GetKey()` | ReadKey |
+| `Viper.Terminal.GetKeyTimeout(ms)` | HasKey (check result != "") |
+| `Viper.Time.SleepMs(ms)` | Terminal.Sleep |
+
+**Test**: Updated `test_viperlang_basic.cpp::TerminalFunctionsRecognized` to use correct function names.
+
+---
+
+### 32. String Constants Not Dereferenced in Function Arguments
+**Status**: FIXED (December 2025)
+**Severity**: CRITICAL - Breaks all string constant comparisons
+**Description**: When a `final` string constant was used as an argument to a function call (including string equality comparisons), the lowerer emitted the label name as a literal string instead of loading the value from the label.
+
+**Root Cause**: The `lowerIdent()` function correctly stored string constants as `Value::constStr(label)`, but when these values were used in expressions, they weren't being dereferenced. The lowerer needed to emit a `const_str` instruction to load the actual string value from the global.
+
+**Resolution**: Added a case in `lowerIdent()` in `Lowerer_Expr.cpp` to detect `Value::Kind::ConstStr` and emit a `const_str` instruction to properly load the string value.
+
+**Test**: Added `test_viperlang_expressions.cpp::StringConstantsDereferenced` to verify fix.
+
+**Example** (now works):
+```viper
+module Test;
+
+final KEY_QUIT = "q";
+
+func checkKey(String key) -> Boolean {
+    return key == KEY_QUIT;  // Works correctly - compares with "q"
+}
+```
+
+---
+
+## Summary Update (December 2025 - Frogger Rewrite)
+
+### All Bugs Fixed
+- **Bug #28**: Guard statement parsing - FIXED (parentheses now optional)
+- **Bug #29**: String comparison with "" - FIXED (proper i1 to i64 extension)
+- **Bug #30**: Boolean fields misaligned store - FIXED (proper field alignment)
+- **Bug #31**: Sema/Runtime function name mismatch - FIXED (removed non-existent names)
+- **Bug #32**: String constants not dereferenced - FIXED (emit const_str instruction)
+
+All fixes verified with unit tests. The Frogger demo now compiles and runs without workarounds.
+
+---
+
 ## Notes
 
 This file will be updated as more bugs are discovered during game development.

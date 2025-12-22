@@ -40,3 +40,4 @@ Last updated: 2025-12-21
 - 2025-12-21: Updated ViperLang parser/sema disambiguation (`?` vs ternary, named args, value-type `new`).
 - 2025-12-21: Updated docs for ViperLang reference, viperlib IO/input, and generated-files guidance.
 - 2025-12-21: Full build + test run completed (932 tests).
+- 2025-12-21: Reviewed runtime docs; documented Terminal APIs, keyboard `KEY_UNKNOWN`, and updated runtime README coverage.

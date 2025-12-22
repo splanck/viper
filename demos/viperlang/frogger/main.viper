@@ -3,82 +3,92 @@ module Frogger;
 import "./config";
 import "./colors";
 import "./frog";
-import "./vehicle";
-import "./platform";
+import "./car";
+import "./truck";
+import "./log";
+import "./turtle";
 import "./home";
-import "./powerup";
 import "./renderer";
 import "./game";
 
-// Draw the complete game board
-func drawBoard(Game game) {
-    // Title and status bar
-    drawTitleBar(game.score, game.frog.getLives(), game.level);
+// =============================================================================
+// Frogger - Main Entry Point
+// A classic arcade game implemented in ViperLang
+// =============================================================================
 
-    // Home row
-    drawHomeRow(game.home0, game.home1, game.home2, game.home3, game.home4);
-
-    // River section
+// Draw all game entities
+func drawGame(Game game) {
+    // Draw background layers (back to front)
+    drawHomeRow();
     drawRiver();
-
-    // Draw platforms on river
-    var i = 0;
-    while (i < MAX_PLATFORMS) {
-        Platform p = game.getPlatform(i);
-        drawPlatform(p);
-        i = i + 1;
-    }
-
-    // Safe zone
     drawSafeZone();
-
-    // Road section
     drawRoad();
-
-    // Draw vehicles on road
-    i = 0;
-    while (i < MAX_VEHICLES) {
-        Vehicle v = game.getVehicle(i);
-        drawVehicle(v);
-        i = i + 1;
-    }
-
-    // Start area
     drawStartArea();
 
-    // Draw power-ups
+    // Draw home slots
+    var i = 0;
+    while (i < MAX_HOMES) {
+        HomeSlot h = game.getHome(i);
+        drawHomeSlot(h);
+        i = i + 1;
+    }
+
+    // Draw platforms (logs and turtles)
     i = 0;
-    while (i < MAX_POWERUPS) {
-        PowerUp p = game.getPowerUp(i);
-        drawPowerUp(p);
+    while (i < 4) {
+        Log l = game.getLog(i);
+        drawLog(l);
+        i = i + 1;
+    }
+
+    i = 0;
+    while (i < 3) {
+        Turtle t = game.getTurtle(i);
+        drawTurtle(t);
+        i = i + 1;
+    }
+
+    // Draw vehicles
+    i = 0;
+    while (i < NUM_CARS) {
+        Car c = game.getCar(i);
+        drawCar(c);
+        i = i + 1;
+    }
+
+    i = 0;
+    while (i < NUM_TRUCKS) {
+        Truck t = game.getTruck(i);
+        drawTruck(t);
         i = i + 1;
     }
 
     // Draw frog
-    drawFrog(game.frog);
+    Frog f = game.getFrog();
+    drawFrog(f);
 
-    // Instructions
+    // Draw HUD
+    drawHUD(game.getScore(), f.getLives(), game.getLevel(), game.getTimeLeft());
+
+    // Draw instructions
     drawInstructions();
 
-    // Pause overlay if needed
+    // Draw pause overlay if paused
     if (game.isPaused()) {
         drawPauseOverlay();
     }
 }
 
-// Wait for any key press
+// Wait for any key press (blocking)
 func waitForKey() {
-    while (!Viper.Terminal.HasKey()) {
-        Viper.Terminal.Sleep(50);
-    }
-    String key = Viper.Terminal.ReadKey();
+    String key = Viper.Terminal.GetKey();
 }
 
-// Main game entry point
+// Main entry point
 func start() {
     // Initialize terminal
-    Viper.Terminal.Clear();
-    Viper.Terminal.HideCursor();
+    clearScreen();
+    hideCursor();
 
     // Show title screen
     drawTitleScreen();
@@ -87,25 +97,23 @@ func start() {
     // Create and initialize game
     Game game = createGame();
 
-    // Clear screen for gameplay
-    Viper.Terminal.Clear();
+    // Clear for gameplay
+    clearScreen();
 
     // Main game loop
-    while (!game.isGameOver()) {
-        // Handle input
-        if (Viper.Terminal.HasKey()) {
-            String key = Viper.Terminal.ReadKey();
-            game.handleInput(key);
-        }
+    while (game.isRunning()) {
+        // Handle input (using timeout - 1ms)
+        String key = Viper.Terminal.GetKeyTimeout(1);
+        game.handleInput(key);
 
         // Update game state
         game.update();
 
         // Draw everything
-        drawBoard(game);
+        drawGame(game);
 
         // Frame delay
-        Viper.Terminal.Sleep(FRAME_DELAY);
+        Viper.Time.SleepMs(FRAME_DELAY);
     }
 
     // Show game over screen
@@ -113,7 +121,7 @@ func start() {
     waitForKey();
 
     // Cleanup
-    Viper.Terminal.ShowCursor();
-    Viper.Terminal.Clear();
+    showCursor();
+    clearScreen();
     Viper.Terminal.Say("Thanks for playing Frogger!");
 }

@@ -244,22 +244,53 @@ Terminal input and output operations.
 
 ### Methods
 
-| Method            | Signature      | Description                                       |
-|-------------------|----------------|---------------------------------------------------|
-| `PrintStr(text)`  | `Void(String)` | Writes text to standard output                    |
-| `PrintI64(value)` | `Void(I64)`    | Writes an integer to standard output              |
-| `PrintF64(value)` | `Void(F64)`    | Writes a floating-point number to standard output |
-| `ReadLine()`      | `String()`     | Reads a line of text from standard input          |
+#### Output
+
+| Method            | Signature       | Description                                             |
+|-------------------|-----------------|---------------------------------------------------------|
+| `Print(text)`     | `Void(String)`  | Writes text without a trailing newline (flushes output) |
+| `PrintInt(value)` | `Void(Integer)` | Writes an integer without a trailing newline (flushes)  |
+| `PrintNum(value)` | `Void(Float)`   | Writes a floating-point number without a trailing newline (flushes) |
+| `Say(text)`       | `Void(String)`  | Writes text followed by a newline                       |
+| `SayBool(value)`  | `Void(Boolean)` | Writes `true` or `false` followed by a newline          |
+| `SayInt(value)`   | `Void(Integer)` | Writes an integer followed by a newline                 |
+| `SayNum(value)`   | `Void(Float)`   | Writes a floating-point number followed by a newline    |
+
+#### Input
+
+| Method               | Signature          | Description                                                 |
+|----------------------|--------------------|-------------------------------------------------------------|
+| `ReadLine()`         | `String()`         | Reads a line of text from standard input                    |
+| `Ask(prompt)`        | `String(String)`   | Prints a prompt and reads a line from standard input         |
+| `GetKey()`           | `String()`         | Blocks for a single key press and returns a 1-character string |
+| `GetKeyTimeout(ms)`  | `String(Integer)`  | Waits up to `ms` for a key; returns `""` on timeout (negative = block) |
+| `InKey()`            | `String()`         | Non-blocking key poll; returns `""` if no key is available   |
+
+#### Screen Control
+
+| Method                    | Signature                | Description                                              |
+|---------------------------|--------------------------|----------------------------------------------------------|
+| `Clear()`                 | `Void()`                 | Clears the terminal screen (TTY only)                    |
+| `SetPosition(row, col)`   | `Void(Integer, Integer)` | Move cursor to 1-based row/column (clamped to 1)          |
+| `SetColor(fg, bg)`        | `Void(Integer, Integer)` | Set BASIC color codes; use `-1` to leave a channel unchanged |
+| `SetCursorVisible(show)`  | `Void(Integer)`          | Show (`!= 0`) or hide (`0`) the cursor                   |
+| `SetAltScreen(enable)`    | `Void(Integer)`          | Enter (`!= 0`) or exit (`0`) the alternate screen        |
+| `Bell()`                  | `Void()`                 | Emits the terminal bell                                  |
+
+#### Output Batching
+
+| Method          | Signature | Description                                               |
+|-----------------|-----------|-----------------------------------------------------------|
+| `BeginBatch()`  | `Void()`  | Begin batch mode (defers flushes for terminal control)     |
+| `EndBatch()`    | `Void()`  | End batch mode and flush pending output                   |
+| `Flush()`       | `Void()`  | Force buffered output to be written immediately           |
 
 ### Example
 
 ```basic
-Viper.Terminal.PrintStr("What is your name?")
-Viper.Terminal.PrintStr(CHR$(10))  ' Newline
 DIM name AS STRING
-name = Viper.Terminal.ReadLine()
-Viper.Terminal.PrintStr("Hello, " + name + "!")
-Viper.Terminal.PrintStr(CHR$(10))
+name = Viper.Terminal.Ask("What is your name? ")
+Viper.Terminal.Say("Hello, " + name + "!")
 ```
 
 ### Note
@@ -271,10 +302,14 @@ explicit control or are working at the IL level.
 
 `Viper.Console.*` names are retained as aliases for backward compatibility. New code should use `Viper.Terminal.*`.
 
+### Legacy Buffered Output Names
+
+`Viper.Terminal.PrintStr`, `PrintI64`, and `PrintF64` (and their `Viper.Console.*` aliases) are low-level buffered
+output helpers used by some frontends. They do not flush automatically; call `Flush()` when you need immediate output.
+
 ---
 
 ## See Also
 
 - [Input/Output](io.md) - File system operations and stream I/O
 - [Network](network.md) - Network operations and DNS resolution
-

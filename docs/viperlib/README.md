@@ -13,18 +13,18 @@ implemented in C and exposed through the IL runtime system.
 | Module                          | Description                                                               |
 |---------------------------------|---------------------------------------------------------------------------|
 | [Architecture](architecture.md) | Runtime internals, type reference                                         |
-| [Collections](collections.md)   | `Bag`, `Bytes`, `List`, `Map`, `Queue`, `Ring`, `Seq`, `Stack`, `TreeMap` |
+| [Collections](collections.md)   | `Bag`, `Bytes`, `Heap`, `List`, `Map`, `Queue`, `Ring`, `Seq`, `Stack`, `TreeMap` |
 | [Core Types](core.md)           | `Object`, `String` — foundational types                                   |
-| [Cryptography](crypto.md)       | `Hash` (CRC32, MD5, SHA1, SHA256)                                         |
+| [Cryptography](crypto.md)       | `Hash`, `KeyDerive`, `Rand`                                               |
 | [Diagnostics](diagnostics.md)   | `Assert`, `Stopwatch`                                                     |
 | [Graphics](graphics.md)         | `Canvas`, `Color`, `Pixels`                                               |
 | [Input](input.md)               | `Keyboard`, `Mouse`, `Pad` — input for games and interactive apps       |
 | [Input/Output](io.md)           | `Archive`, `BinFile`, `Compress`, `Dir`, `File`, `LineReader`, `LineWriter`, `MemStream`, `Path`, `Watcher` |
 | [Mathematics](math.md)          | `Bits`, `Math`, `Random`, `Vec2`, `Vec3`                                  |
-| [Network](network.md)           | `Dns`, `Tcp`, `TcpServer`, `Udp`                                          |
+| [Network](network.md)           | `Dns`, `Http`, `HttpReq`, `HttpRes`, `Tcp`, `TcpServer`, `Udp`, `Url`      |
 | [System](system.md)             | `Environment`, `Exec`, `Machine`, `Terminal`                              |
-| [Text Processing](text.md)      | `Codec`, `Csv`, `Guid`, `StringBuilder`                                   |
-| [Threads](threads.md)           | `Monitor`, `Thread`, `SafeI64`                                             |
+| [Text Processing](text.md)      | `Codec`, `Csv`, `Guid`, `Pattern`, `StringBuilder`, `Template`            |
+| [Threads](threads.md)           | `Barrier`, `Gate`, `Monitor`, `RwLock`, `SafeI64`, `Thread`               |
 | [Time & Timing](time.md)        | `Clock`, `Countdown`, `DateTime`, `Stopwatch`                             |
 | [Utilities](utilities.md)       | `Convert`, `Fmt`, `Log`, `Parse`                                          |
 
@@ -62,6 +62,7 @@ implemented in C and exposed through the IL runtime system.
 | [`List`](collections.md#vipercollectionslist)       | Instance | Dynamic array of objects            |
 | [`Map`](collections.md#vipercollectionsmap)         | Instance | String-keyed hash map               |
 | [`Queue`](collections.md#vipercollectionsqueue)     | Instance | FIFO collection                     |
+| [`Heap`](collections.md#vipercollectionsheap)       | Instance | Priority queue (min/max heap)       |
 | [`Ring`](collections.md#vipercollectionsring)       | Instance | Fixed-size circular buffer          |
 | [`Seq`](collections.md#vipercollectionsseq)         | Instance | Growable array with stack/queue ops |
 | [`Stack`](collections.md#vipercollectionsstack)     | Instance | LIFO collection                     |
@@ -69,9 +70,11 @@ implemented in C and exposed through the IL runtime system.
 
 ### Viper.Crypto
 
-| Class                               | Type   | Description              |
-|-------------------------------------|--------|--------------------------|
-| [`Hash`](crypto.md#vipercryptohash) | Static | CRC32, MD5, SHA1, SHA256 |
+| Class                                         | Type   | Description                              |
+|-----------------------------------------------|--------|------------------------------------------|
+| [`Hash`](crypto.md#vipercryptohash)           | Static | CRC32, MD5, SHA1, SHA256                 |
+| [`KeyDerive`](crypto.md#vipercryptokeyderive) | Static | PBKDF2-SHA256 key derivation             |
+| [`Rand`](crypto.md#vipercryptorand)           | Static | Cryptographically secure random bytes    |
 
 ### Viper.Diagnostics
 
@@ -113,12 +116,16 @@ implemented in C and exposed through the IL runtime system.
 
 ### Viper.Network
 
-| Class                                     | Type     | Description                   |
-|-------------------------------------------|----------|-------------------------------|
-| [`Dns`](network.md#vipernetworkdns)       | Static   | DNS resolution and validation |
-| [`Tcp`](network.md#vipernetworktcp)       | Instance | TCP client connection         |
-| [`TcpServer`](network.md#vipernetworktcpserver) | Instance | TCP server (listener)   |
-| [`Udp`](network.md#vipernetworkudp)       | Instance | UDP datagram socket           |
+| Class                                           | Type     | Description                           |
+|-------------------------------------------------|----------|---------------------------------------|
+| [`Dns`](network.md#vipernetworkdns)             | Static   | DNS resolution and validation         |
+| [`Http`](network.md#vipernetworkhttp)           | Static   | Simple HTTP helpers                   |
+| [`HttpReq`](network.md#vipernetworkhttpreq)     | Instance | HTTP request builder                  |
+| [`HttpRes`](network.md#vipernetworkhttpres)     | Instance | HTTP response wrapper                 |
+| [`Tcp`](network.md#vipernetworktcp)             | Instance | TCP client connection                 |
+| [`TcpServer`](network.md#vipernetworktcpserver) | Instance | TCP server (listener)                 |
+| [`Udp`](network.md#vipernetworkudp)             | Instance | UDP datagram socket                   |
+| [`Url`](network.md#vipernetworkurl)             | Instance | URL parsing and building              |
 
 ### Viper.Text
 
@@ -127,15 +134,20 @@ implemented in C and exposed through the IL runtime system.
 | [`Codec`](text.md#vipertextcodec)                 | Static   | Base64, Hex, URL encoding  |
 | [`Csv`](text.md#vipertextcsv)                     | Static   | CSV parsing and formatting |
 | [`Guid`](text.md#vipertextguid)                   | Static   | UUID v4 generation         |
+| [`Pattern`](text.md#vipertextpattern)             | Static   | Regex pattern matching     |
 | [`StringBuilder`](text.md#vipertextstringbuilder) | Instance | Mutable string builder     |
+| [`Template`](text.md#vipertexttemplate)           | Static   | Template rendering         |
 
 ### Viper.Threads
 
 | Class                                         | Type     | Description                                  |
 |-----------------------------------------------|----------|----------------------------------------------|
+| [`Barrier`](threads.md#viperthreadsbarrier)   | Instance | Synchronization barrier for N participants   |
+| [`Gate`](threads.md#viperthreadsgate)         | Instance | Counting gate/semaphore                      |
 | [`Monitor`](threads.md#viperthreadsmonitor)   | Static   | FIFO-fair, re-entrant object monitor         |
-| [`Thread`](threads.md#viperthreadsthread)     | Instance | OS thread handle + join/sleep/yield helpers  |
+| [`RwLock`](threads.md#viperthreadsrwlock)     | Instance | Reader-writer lock                           |
 | [`SafeI64`](threads.md#viperthreadssafei64)   | Instance | FIFO-serialized safe integer cell            |
+| [`Thread`](threads.md#viperthreadsthread)     | Instance | OS thread handle + join/sleep/yield helpers  |
 
 ### Viper.Time
 
@@ -160,6 +172,7 @@ implemented in C and exposed through the IL runtime system.
 |---------------------------|-----------|------------------------------------------|
 | Binary data               | `Bytes`   | Efficient byte manipulation              |
 | FIFO (first-in-first-out) | `Queue`   | Enqueue/dequeue interface                |
+| Priority queue            | `Heap`    | Extract min/max by priority              |
 | Fixed-size buffer         | `Ring`    | Overwrites oldest when full              |
 | Indexed array             | `Seq`     | Fast random access, push/pop             |
 | Key-value pairs           | `Map`     | O(1) lookup by string key                |

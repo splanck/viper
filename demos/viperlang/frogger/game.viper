@@ -2,197 +2,149 @@ module Game;
 
 import "./config";
 import "./frog";
-import "./vehicle";
-import "./platform";
+import "./car";
+import "./truck";
+import "./log";
+import "./turtle";
 import "./home";
-import "./powerup";
 
-// Game entity - main game controller
+// =============================================================================
+// Game - Main game controller
+// Manages all entities, game state, and logic
+// =============================================================================
+
 entity Game {
+    // Player
     expose Frog frog;
+
+    // Score and state
     expose Integer score;
     expose Integer level;
     expose Integer homesFilled;
-    expose Boolean running;
-    expose Boolean paused;
+    expose Integer timeLeft;
+    expose Integer running;    // 1=running, 0=stopped (workaround for Boolean alignment bug)
+    expose Integer paused;     // 1=paused, 0=not paused
+    expose Integer won;        // 1=won, 0=not won
     expose Integer frameCount;
 
-    // Vehicles (10 total across 5 lanes)
-    expose Vehicle v0;
-    expose Vehicle v1;
-    expose Vehicle v2;
-    expose Vehicle v3;
-    expose Vehicle v4;
-    expose Vehicle v5;
-    expose Vehicle v6;
-    expose Vehicle v7;
-    expose Vehicle v8;
-    expose Vehicle v9;
+    // Cars (4 total)
+    expose Car car0;
+    expose Car car1;
+    expose Car car2;
+    expose Car car3;
 
-    // Platforms (10 total across 5 river rows)
-    expose Platform p0;
-    expose Platform p1;
-    expose Platform p2;
-    expose Platform p3;
-    expose Platform p4;
-    expose Platform p5;
-    expose Platform p6;
-    expose Platform p7;
-    expose Platform p8;
-    expose Platform p9;
+    // Trucks (3 total)
+    expose Truck truck0;
+    expose Truck truck1;
+    expose Truck truck2;
+
+    // Logs (4 total)
+    expose Log log0;
+    expose Log log1;
+    expose Log log2;
+    expose Log log3;
+
+    // Turtles (3 total - 2 normal, 1 sinking)
+    expose Turtle turtle0;
+    expose Turtle turtle1;
+    expose Turtle turtle2;
 
     // Home slots (5 total)
-    expose Home home0;
-    expose Home home1;
-    expose Home home2;
-    expose Home home3;
-    expose Home home4;
-
-    // Power-ups (3 slots)
-    expose PowerUp power0;
-    expose PowerUp power1;
-    expose PowerUp power2;
+    expose HomeSlot home0;
+    expose HomeSlot home1;
+    expose HomeSlot home2;
+    expose HomeSlot home3;
+    expose HomeSlot home4;
 
     expose func init() {
         score = 0;
         level = 1;
         homesFilled = 0;
-        running = true;
-        paused = false;
+        timeLeft = TIME_LIMIT;
+        running = 1;
+        paused = 0;
+        won = 0;
         frameCount = 0;
 
         frog = createFrog();
-
-        // Create homes
-        home0 = createHome(8);
-        home1 = createHome(22);
-        home2 = createHome(36);
-        home3 = createHome(50);
-        home4 = createHome(64);
-
-        // Initialize vehicles and platforms
         self.initVehicles();
         self.initPlatforms();
-
-        // Power-ups start inactive
-        power0 = createInactivePowerUp();
-        power1 = createInactivePowerUp();
-        power2 = createInactivePowerUp();
+        self.initHomes();
     }
 
     expose func initVehicles() {
-        // Lane 1 (row 12): Cars going right
-        v0 = createCar(12, 5, 1, 1);
-        v1 = createCar(12, 40, 1, 1);
+        // Lane 1 (row 13): Cars going right, medium speed
+        car0 = createCar(ROAD_START, 10, MEDIUM_SPEED, 1);
+        car1 = createCar(ROAD_START, 50, MEDIUM_SPEED, 1);
 
-        // Lane 2 (row 13): Trucks going left
-        v2 = createTruck(13, 20, 1, 0 - 1);
-        v3 = createTruck(13, 55, 1, 0 - 1);
+        // Lane 2 (row 14): Truck going left, slow
+        truck0 = createTruck(ROAD_START + 1, 30, SLOW_SPEED, 0 - 1);
 
-        // Lane 3 (row 14): Fast sports cars going right
-        v4 = createSportsCar(14, 10, 2, 1);
-        v5 = createSportsCar(14, 50, 2, 1);
+        // Lane 3 (row 15): Fast cars going right
+        car2 = createFastCar(ROAD_START + 2, 20, 1);
+        car3 = createFastCar(ROAD_START + 2, 60, 1);
 
-        // Lane 4 (row 15): Mixed vehicles going left
-        v6 = createTruck(15, 15, 1, 0 - 1);
-        v7 = createCar(15, 45, 2, 0 - 1);
-
-        // Lane 5 (row 16): Fast cars going right
-        v8 = createCar(16, 8, 2, 1);
-        v9 = createCar(16, 60, 2, 1);
+        // Lane 4 (row 16): Trucks going left, medium speed
+        truck1 = createTruck(ROAD_START + 3, 15, MEDIUM_SPEED, 0 - 1);
+        truck2 = createTruck(ROAD_START + 3, 55, MEDIUM_SPEED, 0 - 1);
     }
 
     expose func initPlatforms() {
-        // River row 1 (row 4): Logs going right
-        p0 = createLog(4, 5, 1, 1, 8);
-        p1 = createLog(4, 40, 1, 1, 8);
+        // River row 1 (row 5): Logs going right
+        log0 = createMediumLog(RIVER_START, 10, SLOW_SPEED, 1);
+        log1 = createMediumLog(RIVER_START, 50, SLOW_SPEED, 1);
 
-        // River row 2 (row 5): Turtles going left
-        p2 = createTurtle(5, 15, 1, 0 - 1, 5);
-        p3 = createSinkingTurtle(5, 50, 1, 0 - 1, 4);
+        // River row 2 (row 6): Turtles going left
+        turtle0 = createTurtle(RIVER_START + 1, 20, SLOW_SPEED, 0 - 1, 4);
+        turtle1 = createSinkingTurtle(RIVER_START + 1, 55, SLOW_SPEED, 0 - 1, 4);
 
-        // River row 3 (row 6): Long logs going right
-        p4 = createLog(6, 10, 1, 1, 12);
-        p5 = createLog(6, 50, 1, 1, 10);
+        // River row 3 (row 7): Long logs going right
+        log2 = createLongLog(RIVER_START + 2, 5, MEDIUM_SPEED, 1);
+        log3 = createShortLog(RIVER_START + 2, 45, MEDIUM_SPEED, 1);
 
-        // River row 4 (row 7): Sinking turtles going left
-        p6 = createSinkingTurtle(7, 20, 1, 0 - 1, 4);
-        p7 = createTurtle(7, 55, 1, 0 - 1, 5);
+        // River row 4 (row 8): Sinking turtles going left
+        turtle2 = createSinkingTurtle(RIVER_START + 3, 35, MEDIUM_SPEED, 0 - 1, 5);
 
-        // River row 5 (row 8): Fast logs going right
-        p8 = createLog(8, 12, 2, 1, 7);
-        p9 = createLog(8, 48, 2, 1, 7);
+        // River row 5 (row 9): covered by other logs at faster speed
     }
 
-    // Accessors for array-like access
-    expose func getVehicle(Integer i) -> Vehicle {
-        if (i == 0) { return v0; }
-        if (i == 1) { return v1; }
-        if (i == 2) { return v2; }
-        if (i == 3) { return v3; }
-        if (i == 4) { return v4; }
-        if (i == 5) { return v5; }
-        if (i == 6) { return v6; }
-        if (i == 7) { return v7; }
-        if (i == 8) { return v8; }
-        return v9;
-    }
-
-    expose func getPlatform(Integer i) -> Platform {
-        if (i == 0) { return p0; }
-        if (i == 1) { return p1; }
-        if (i == 2) { return p2; }
-        if (i == 3) { return p3; }
-        if (i == 4) { return p4; }
-        if (i == 5) { return p5; }
-        if (i == 6) { return p6; }
-        if (i == 7) { return p7; }
-        if (i == 8) { return p8; }
-        return p9;
-    }
-
-    expose func getHome(Integer i) -> Home {
-        if (i == 0) { return home0; }
-        if (i == 1) { return home1; }
-        if (i == 2) { return home2; }
-        if (i == 3) { return home3; }
-        return home4;
-    }
-
-    expose func getPowerUp(Integer i) -> PowerUp {
-        if (i == 0) { return power0; }
-        if (i == 1) { return power1; }
-        return power2;
-    }
-
-    // Position checks
-    expose func isInRiver(Integer row) -> Boolean {
-        return row >= RIVER_START && row <= RIVER_END;
-    }
-
-    expose func isOnRoad(Integer row) -> Boolean {
-        return row >= ROAD_START && row <= ROAD_END;
-    }
-
-    expose func isSafeZone(Integer row) -> Boolean {
-        return row == SAFE_ZONE_ROW || row == START_ROW;
+    expose func initHomes() {
+        // 5 home slots evenly spaced
+        home0 = createHomeSlot(10);
+        home1 = createHomeSlot(24);
+        home2 = createHomeSlot(38);
+        home3 = createHomeSlot(52);
+        home4 = createHomeSlot(66);
     }
 
     // Main update loop
     expose func update() {
-        if (paused || !running) {
-            return;
-        }
-
-        if (!frog.isAlive()) {
-            running = false;
+        if (paused == 1 || running == 0) {
             return;
         }
 
         frameCount = frameCount + 1;
 
-        // Update frog timers
-        frog.updateTimers();
+        // Update time
+        timeLeft = timeLeft - 1;
+        if (timeLeft <= 0) {
+            frog.die();
+        }
+
+        // Update frog
+        frog.update();
+
+        // Check if frog can respawn
+        if (frog.canRespawn()) {
+            frog.respawn();
+            timeLeft = TIME_LIMIT;
+        }
+
+        // Check if frog is out of lives
+        if (!frog.isAlive() && !frog.canRespawn()) {
+            running = 0;
+            return;
+        }
 
         // Move all vehicles
         self.updateVehicles();
@@ -200,35 +152,33 @@ entity Game {
         // Move all platforms
         self.updatePlatforms();
 
-        // Update homes (flies)
+        // Update homes (fly spawning)
         self.updateHomes();
 
-        // Update power-ups
-        self.updatePowerUps();
-
-        // Check collisions and interactions
-        self.checkFrogPosition();
-
-        // Maybe spawn power-up
-        self.maybeSpawnPowerUp();
+        // Check frog position and collisions
+        if (!frog.isDead()) {
+            self.checkFrogPosition();
+        }
     }
 
     expose func updateVehicles() {
-        var i = 0;
-        while (i < MAX_VEHICLES) {
-            Vehicle v = self.getVehicle(i);
-            v.move();
-            i = i + 1;
-        }
+        car0.move();
+        car1.move();
+        car2.move();
+        car3.move();
+        truck0.move();
+        truck1.move();
+        truck2.move();
     }
 
     expose func updatePlatforms() {
-        var i = 0;
-        while (i < MAX_PLATFORMS) {
-            Platform p = self.getPlatform(i);
-            p.move();
-            i = i + 1;
-        }
+        log0.move();
+        log1.move();
+        log2.move();
+        log3.move();
+        turtle0.move();
+        turtle1.move();
+        turtle2.move();
     }
 
     expose func updateHomes() {
@@ -238,54 +188,27 @@ entity Game {
         home3.update();
         home4.update();
 
-        // Randomly spawn flies
-        if (frameCount > 0) {
-            Integer flyChance = frameCount - ((frameCount / 500) * 500);
-            if (flyChance == 0) {
-                // Pick a random unfilled home
-                self.spawnFlyRandomHome();
-            }
+        // Maybe spawn a fly in an empty home
+        Integer flyChance = frameCount - ((frameCount / 300) * 300);
+        if (flyChance == 0) {
+            self.spawnRandomFly();
         }
     }
 
-    expose func spawnFlyRandomHome() {
-        // Simple rotation based on frame count
-        Integer pick = (frameCount / 500) - ((frameCount / 2500) * 5);
+    expose func spawnRandomFly() {
+        // Pick based on frame count
+        Integer pick = (frameCount / 300) - ((frameCount / 1500) * 5);
 
-        Home h = self.getHome(pick);
-        if (h.isEmpty()) {
-            h.spawnFly();
-        }
-    }
-
-    expose func updatePowerUps() {
-        power0.update();
-        power1.update();
-        power2.update();
-    }
-
-    expose func maybeSpawnPowerUp() {
-        // Spawn power-up every 300 frames
-        Integer spawnChance = frameCount - ((frameCount / 300) * 300);
-        if (spawnChance != 0) {
-            return;
-        }
-
-        // Find an inactive power-up slot
-        var i = 0;
-        while (i < MAX_POWERUPS) {
-            PowerUp p = self.getPowerUp(i);
-            if (!p.isActive()) {
-                // Spawn in safe zone or median
-                Integer row = SAFE_ZONE_ROW;
-                Integer col = 20 + (frameCount - ((frameCount / 40) * 40));
-
-                // Cycle through power-up types
-                Integer pType = 1 + (frameCount / 300) - ((frameCount / 900) * 3);
-                p.spawn(row, col, pType);
-                return;
-            }
-            i = i + 1;
+        if (pick == 0 && home0.isEmpty()) {
+            home0.spawnFly();
+        } else if (pick == 1 && home1.isEmpty()) {
+            home1.spawnFly();
+        } else if (pick == 2 && home2.isEmpty()) {
+            home2.spawnFly();
+        } else if (pick == 3 && home3.isEmpty()) {
+            home3.spawnFly();
+        } else if (pick == 4 && home4.isEmpty()) {
+            home4.spawnFly();
         }
     }
 
@@ -293,19 +216,17 @@ entity Game {
         Integer frogRow = frog.getRow();
         Integer frogCol = frog.getCol();
 
-        // Check power-up collection
-        self.checkPowerUpCollection(frogRow, frogCol);
-
-        // Check river
-        if (self.isInRiver(frogRow)) {
+        // Check if in river
+        if (frogRow >= RIVER_START && frogRow <= RIVER_END) {
             self.checkRiverPosition(frogRow, frogCol);
             return;
         }
 
+        // Clear platform riding when not in river
         frog.clearPlatform();
 
         // Check road collisions
-        if (self.isOnRoad(frogRow)) {
+        if (frogRow >= ROAD_START && frogRow <= ROAD_END) {
             self.checkRoadCollision(frogRow, frogCol);
             return;
         }
@@ -315,120 +236,163 @@ entity Game {
             self.checkHomeReached(frogCol);
             return;
         }
-
-        // Check bounds
-        if (frogCol < 1 || frogCol > GAME_WIDTH) {
-            frog.die();
-        }
     }
 
-    expose func checkPowerUpCollection(Integer row, Integer col) {
-        var i = 0;
-        while (i < MAX_POWERUPS) {
-            PowerUp p = self.getPowerUp(i);
-            if (p.checkCollect(row, col)) {
-                self.applyPowerUp(p);
-                p.collect();
-                score = score + SCORE_POWERUP;
-            }
-            i = i + 1;
-        }
-    }
-
-    expose func applyPowerUp(PowerUp p) {
-        if (p.isSpeed()) {
-            frog.activateSpeedBoost(50);
-        } else if (p.isInvincible()) {
-            frog.activateInvincibility(INVINCIBLE_FRAMES);
-        } else if (p.isExtraLife()) {
-            frog.addLife();
-        }
-    }
-
-    expose func checkRiverPosition(Integer row, Integer col) {
+    expose func checkRiverPosition(Integer frogRow, Integer frogCol) {
         Boolean onPlatform = false;
+        Integer rideSpeed = 0;
 
-        var i = 0;
-        while (i < MAX_PLATFORMS) {
-            Platform p = self.getPlatform(i);
-            if (p.checkOnPlatform(row, col)) {
-                onPlatform = true;
-                Integer rideSpeed = p.getRideSpeed();
-                frog.setOnPlatform(rideSpeed);
-                frog.updatePlatformRide();
-            }
-            i = i + 1;
+        // Check logs
+        if (log0.isOnLog(frogRow, frogCol)) {
+            onPlatform = true;
+            rideSpeed = log0.getRideSpeed();
+        } else if (log1.isOnLog(frogRow, frogCol)) {
+            onPlatform = true;
+            rideSpeed = log1.getRideSpeed();
+        } else if (log2.isOnLog(frogRow, frogCol)) {
+            onPlatform = true;
+            rideSpeed = log2.getRideSpeed();
+        } else if (log3.isOnLog(frogRow, frogCol)) {
+            onPlatform = true;
+            rideSpeed = log3.getRideSpeed();
         }
 
+        // Check turtles
         if (!onPlatform) {
+            if (turtle0.isOnTurtle(frogRow, frogCol)) {
+                onPlatform = true;
+                rideSpeed = turtle0.getRideSpeed();
+            } else if (turtle1.isOnTurtle(frogRow, frogCol)) {
+                onPlatform = true;
+                rideSpeed = turtle1.getRideSpeed();
+            } else if (turtle2.isOnTurtle(frogRow, frogCol)) {
+                onPlatform = true;
+                rideSpeed = turtle2.getRideSpeed();
+            }
+        }
+
+        if (onPlatform) {
+            frog.setOnPlatform(rideSpeed);
+            frog.updatePlatformRide();
+        } else {
+            // Drowned!
             frog.die();
         }
     }
 
-    expose func checkRoadCollision(Integer row, Integer col) {
-        var i = 0;
-        while (i < MAX_VEHICLES) {
-            Vehicle v = self.getVehicle(i);
-            if (v.checkCollision(row, col)) {
-                frog.die();
-                return;
-            }
-            i = i + 1;
+    expose func checkRoadCollision(Integer frogRow, Integer frogCol) {
+        // Check cars
+        if (car0.checkCollision(frogRow, frogCol)) {
+            frog.die();
+            return;
+        }
+        if (car1.checkCollision(frogRow, frogCol)) {
+            frog.die();
+            return;
+        }
+        if (car2.checkCollision(frogRow, frogCol)) {
+            frog.die();
+            return;
+        }
+        if (car3.checkCollision(frogRow, frogCol)) {
+            frog.die();
+            return;
+        }
+
+        // Check trucks
+        if (truck0.checkCollision(frogRow, frogCol)) {
+            frog.die();
+            return;
+        }
+        if (truck1.checkCollision(frogRow, frogCol)) {
+            frog.die();
+            return;
+        }
+        if (truck2.checkCollision(frogRow, frogCol)) {
+            frog.die();
+            return;
         }
     }
 
     expose func checkHomeReached(Integer frogCol) {
-        Boolean foundHome = false;
-
-        var i = 0;
-        while (i < MAX_HOMES) {
-            Home h = self.getHome(i);
-            if (h.checkLanding(frogCol)) {
-                if (h.isFilled()) {
-                    // Already filled - die
-                    frog.die();
-                    return;
-                }
-
-                foundHome = true;
-                Integer bonus = h.getBonusPoints();
-                h.fill();
-                homesFilled = homesFilled + 1;
-                score = score + bonus;
-
-                // Check win
-                if (homesFilled >= MAX_HOMES) {
-                    running = false;
-                } else {
-                    frog.reset();
-                }
-                return;
-            }
-            i = i + 1;
+        // Check each home slot
+        if (home0.checkLanding(frogCol)) {
+            self.landInHome(home0);
+            return;
+        }
+        if (home1.checkLanding(frogCol)) {
+            self.landInHome(home1);
+            return;
+        }
+        if (home2.checkLanding(frogCol)) {
+            self.landInHome(home2);
+            return;
+        }
+        if (home3.checkLanding(frogCol)) {
+            self.landInHome(home3);
+            return;
+        }
+        if (home4.checkLanding(frogCol)) {
+            self.landInHome(home4);
+            return;
         }
 
-        // Didn't land in a home slot - death
-        if (!foundHome) {
+        // Didn't land in a valid home slot - death!
+        frog.die();
+    }
+
+    expose func landInHome(HomeSlot home) {
+        if (home.isFilled()) {
+            // Already filled - death!
             frog.die();
+            return;
+        }
+
+        // Score bonus
+        Integer bonus = home.getBonusPoints();
+        Integer timeBonus = timeLeft / 10;
+        score = score + bonus + timeBonus;
+
+        // Fill the home
+        home.fill();
+        homesFilled = homesFilled + 1;
+
+        // Check for win
+        if (homesFilled >= MAX_HOMES) {
+            won = 1;
+            running = 0;
+        } else {
+            // Reset frog for next attempt
+            frog.resetForNewLevel();
+            timeLeft = TIME_LIMIT;
         }
     }
 
     // Input handling
+    // NOTE: Using inline strings due to Bug #32 - string constants not dereferenced
     expose func handleInput(String key) {
+        // Quit
         if (key == "q" || key == "Q") {
-            running = false;
+            running = 0;
             return;
         }
 
+        // Pause toggle
         if (key == "p" || key == "P") {
-            paused = !paused;
+            if (paused == 0) {
+                paused = 1;
+            } else {
+                paused = 0;
+            }
             return;
         }
 
-        if (paused) {
+        // Don't process movement when paused or dead
+        if (paused == 1 || frog.isDead()) {
             return;
         }
 
+        // Movement
         if (key == "w" || key == "W") {
             frog.moveUp();
         } else if (key == "s" || key == "S") {
@@ -440,17 +404,52 @@ entity Game {
         }
     }
 
-    // State queries
-    expose func isGameOver() -> Boolean {
-        return !running;
+    // Getters for array-like access
+    expose func getCar(Integer i) -> Car {
+        if (i == 0) { return car0; }
+        if (i == 1) { return car1; }
+        if (i == 2) { return car2; }
+        return car3;
     }
 
-    expose func hasWon() -> Boolean {
-        return homesFilled >= MAX_HOMES;
+    expose func getTruck(Integer i) -> Truck {
+        if (i == 0) { return truck0; }
+        if (i == 1) { return truck1; }
+        return truck2;
+    }
+
+    expose func getLog(Integer i) -> Log {
+        if (i == 0) { return log0; }
+        if (i == 1) { return log1; }
+        if (i == 2) { return log2; }
+        return log3;
+    }
+
+    expose func getTurtle(Integer i) -> Turtle {
+        if (i == 0) { return turtle0; }
+        if (i == 1) { return turtle1; }
+        return turtle2;
+    }
+
+    expose func getHome(Integer i) -> HomeSlot {
+        if (i == 0) { return home0; }
+        if (i == 1) { return home1; }
+        if (i == 2) { return home2; }
+        if (i == 3) { return home3; }
+        return home4;
+    }
+
+    // State queries
+    expose func isRunning() -> Boolean {
+        return running == 1;
     }
 
     expose func isPaused() -> Boolean {
-        return paused;
+        return paused == 1;
+    }
+
+    expose func hasWon() -> Boolean {
+        return won == 1;
     }
 
     expose func getScore() -> Integer {
@@ -463,6 +462,14 @@ entity Game {
 
     expose func getHomesFilled() -> Integer {
         return homesFilled;
+    }
+
+    expose func getTimeLeft() -> Integer {
+        return timeLeft;
+    }
+
+    expose func getFrog() -> Frog {
+        return frog;
     }
 }
 

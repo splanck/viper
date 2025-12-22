@@ -848,6 +848,21 @@ class Lowerer
     /// - i1: 1 byte (but often stored as 8)
     static size_t getILTypeSize(Type type);
 
+    /// @brief Get the alignment in bytes for an IL type.
+    /// @param type The IL type.
+    /// @return Alignment in bytes.
+    ///
+    /// @details Alignment ensures proper memory access for the type.
+    /// Boolean (i1) aligns to 8 bytes to avoid misalignment issues
+    /// when followed by pointer-sized fields.
+    static size_t getILTypeAlignment(Type type);
+
+    /// @brief Align an offset to a given alignment boundary.
+    /// @param offset The current offset.
+    /// @param alignment The required alignment.
+    /// @return The aligned offset (>= original offset).
+    static size_t alignTo(size_t offset, size_t alignment);
+
     /// @}
     //=========================================================================
     /// @name Local Variable Management

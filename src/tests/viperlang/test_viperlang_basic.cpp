@@ -206,7 +206,8 @@ func start() {
     EXPECT_TRUE(hasGreet);
 }
 
-/// @brief Bug #22: Terminal functions like MoveCursor, Write, etc. should be recognized.
+/// @brief Bug #22: Terminal functions should be recognized.
+/// Updated after Bug #31 fix to use correct runtime function names.
 TEST(ViperLangBasic, TerminalFunctionsRecognized)
 {
     SourceManager sm;
@@ -215,16 +216,16 @@ module Test;
 
 func start() {
     Viper.Terminal.Clear();
-    Viper.Terminal.MoveCursor(1, 1);
-    Viper.Terminal.SetForeground(1);
-    Viper.Terminal.Write("Hello");
-    Viper.Terminal.ResetColors();
-    Viper.Terminal.HideCursor();
-    Viper.Terminal.ShowCursor();
-    if (Viper.Terminal.HasKey()) {
-        String key = Viper.Terminal.ReadKey();
+    Viper.Terminal.SetPosition(1, 1);
+    Viper.Terminal.SetColor(1, 0);
+    Viper.Terminal.Print("Hello");
+    Viper.Terminal.SetCursorVisible(0);
+    Viper.Terminal.SetCursorVisible(1);
+    String key = Viper.Terminal.GetKeyTimeout(1);
+    if (key != "") {
+        key = Viper.Terminal.GetKey();
     }
-    Viper.Terminal.Sleep(100);
+    Viper.Time.SleepMs(100);
     Viper.Terminal.Say("Done");
 }
 )";

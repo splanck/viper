@@ -369,14 +369,14 @@ StmtPtr Parser::parseGuardStmt()
     Token guardTok = advance(); // consume 'guard'
     SourceLoc loc = guardTok.loc;
 
-    if (!expect(TokenKind::LParen, "("))
-        return nullptr;
+    // Parentheses are optional around the condition (Swift-style)
+    bool hasParens = match(TokenKind::LParen);
 
     ExprPtr condition = parseExpression();
     if (!condition)
         return nullptr;
 
-    if (!expect(TokenKind::RParen, ")"))
+    if (hasParens && !expect(TokenKind::RParen, ")"))
         return nullptr;
 
     if (!expect(TokenKind::KwElse, "else"))

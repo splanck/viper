@@ -1,26 +1,33 @@
 module Colors;
 
-// ANSI color codes
-Integer BLACK = 0;
-Integer RED = 1;
-Integer GREEN = 2;
-Integer YELLOW = 3;
-Integer BLUE = 4;
-Integer MAGENTA = 5;
-Integer CYAN = 6;
-Integer WHITE = 7;
+// =============================================================================
+// ANSI Terminal Colors
+// =============================================================================
 
-// Game element colors
-Integer COLOR_FROG = 2;          // GREEN
-Integer COLOR_WATER = 4;         // BLUE
-Integer COLOR_ROAD = 7;          // WHITE
-Integer COLOR_CAR = 1;           // RED
-Integer COLOR_TRUCK = 5;         // MAGENTA
-Integer COLOR_LOG = 3;           // YELLOW
-Integer COLOR_TURTLE = 2;        // GREEN
-Integer COLOR_HOME_EMPTY = 7;    // WHITE
-Integer COLOR_HOME_FILLED = 2;   // GREEN
-Integer COLOR_SAFE_ZONE = 2;     // GREEN
-Integer COLOR_TITLE = 6;         // CYAN
-Integer COLOR_POWERUP = 3;       // YELLOW
-Integer COLOR_INVINCIBLE = 6;    // CYAN
+// Base colors
+final BLACK = 0;
+final RED = 1;
+final GREEN = 2;
+final YELLOW = 3;
+final BLUE = 4;
+final MAGENTA = 5;
+final CYAN = 6;
+final WHITE = 7;
+
+// Game theme colors
+final COLOR_FROG = 2;           // Green
+final COLOR_FROG_DEAD = 1;      // Red
+final COLOR_WATER = 4;          // Blue
+final COLOR_ROAD = 7;           // White/Gray
+final COLOR_GRASS = 2;          // Green
+final COLOR_LOG = 3;            // Yellow/Brown
+final COLOR_TURTLE = 6;         // Cyan
+final COLOR_CAR_RED = 1;        // Red
+final COLOR_CAR_YELLOW = 3;     // Yellow
+final COLOR_TRUCK = 5;          // Magenta
+final COLOR_HOME_EMPTY = 7;     // White
+final COLOR_HOME_FILLED = 2;    // Green
+final COLOR_FLY = 3;            // Yellow
+final COLOR_TITLE = 6;          // Cyan
+final COLOR_HUD = 7;            // White
+final COLOR_INVINCIBLE = 6;     // Cyan (flashing)

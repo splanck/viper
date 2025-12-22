@@ -1,29 +1,50 @@
 module Home;
 
 import "./config";
-import "./position";
+import "./colors";
 
-// Home slot states
-Integer HOME_EMPTY = 0;
-Integer HOME_FILLED = 1;
-Integer HOME_HAS_FLY = 2;
+// =============================================================================
+// HomeSlot - Goal destination at the top of the screen
+// The frog must fill all 5 homes to win the level
+// =============================================================================
 
-// Home entity - goal slots at the top of the screen
-entity Home {
-    expose Position pos;
+// Home states
+final HOME_EMPTY = 0;
+final HOME_FILLED = 1;
+final HOME_HAS_FLY = 2;
+
+entity HomeSlot {
+    expose Integer col;
     expose Integer state;
     expose Integer flyTimer;
 
-    expose func init(Integer col) {
-        pos = createPosition(HOME_ROW, col);
+    expose func init(Integer c) {
+        col = c;
         state = HOME_EMPTY;
         flyTimer = 0;
     }
 
+    expose func update() {
+        // Update fly timer
+        if (state == HOME_HAS_FLY) {
+            flyTimer = flyTimer - 1;
+            if (flyTimer <= 0) {
+                state = HOME_EMPTY;
+            }
+        }
+    }
+
+    expose func spawnFly() {
+        if (state == HOME_EMPTY) {
+            state = HOME_HAS_FLY;
+            flyTimer = FLY_DURATION;
+        }
+    }
+
     expose func checkLanding(Integer frogCol) -> Boolean {
-        // Home has width of 3 centered on col
-        Integer leftEdge = pos.col - 1;
-        Integer rightEdge = pos.col + 1;
+        // Home slot has width of 5 centered on col
+        Integer leftEdge = col - 2;
+        Integer rightEdge = col + 2;
         return frogCol >= leftEdge && frogCol <= rightEdge;
     }
 
@@ -36,49 +57,55 @@ entity Home {
         flyTimer = 0;
     }
 
-    expose func spawnFly() {
-        if (state == HOME_EMPTY) {
-            state = HOME_HAS_FLY;
-            flyTimer = 100;  // Fly visible for 100 frames
-        }
-    }
-
-    expose func update() {
-        if (state == HOME_HAS_FLY) {
-            flyTimer = flyTimer - 1;
-            if (flyTimer <= 0) {
-                state = HOME_EMPTY;
-            }
-        }
-    }
-
-    expose func getCol() -> Integer {
-        return pos.col;
+    // State queries
+    expose func isEmpty() -> Boolean {
+        return state == HOME_EMPTY;
     }
 
     expose func isFilled() -> Boolean {
         return state == HOME_FILLED;
     }
 
-    expose func isEmpty() -> Boolean {
-        return state == HOME_EMPTY;
-    }
-
     expose func hasFly() -> Boolean {
         return state == HOME_HAS_FLY;
     }
 
+    // Getters
+    expose func getCol() -> Integer {
+        return col;
+    }
+
     expose func getBonusPoints() -> Integer {
         if (state == HOME_HAS_FLY) {
-            return SCORE_HOME + 200;  // Bonus for catching fly
+            return SCORE_HOME + SCORE_FLY_BONUS;
         }
         return SCORE_HOME;
+    }
+
+    expose func getColor() -> Integer {
+        if (state == HOME_FILLED) {
+            return COLOR_HOME_FILLED;
+        }
+        if (state == HOME_HAS_FLY) {
+            return COLOR_FLY;
+        }
+        return COLOR_HOME_EMPTY;
+    }
+
+    expose func getChar() -> String {
+        if (state == HOME_FILLED) {
+            return "F";
+        }
+        if (state == HOME_HAS_FLY) {
+            return "*";
+        }
+        return " ";
     }
 }
 
 // Factory function
-func createHome(Integer col) -> Home {
-    Home h = new Home();
+func createHomeSlot(Integer col) -> HomeSlot {
+    HomeSlot h = new HomeSlot();
     h.init(col);
     return h;
 }
