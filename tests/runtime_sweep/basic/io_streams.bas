@@ -57,7 +57,7 @@
 
 SUB AssertApprox(actual AS DOUBLE, expected AS DOUBLE, eps AS DOUBLE, msg AS STRING)
     IF Viper.Math.Abs(actual - expected) > eps THEN
-        Viper.Diagnostics.Assert(0, msg)
+        Viper.Diagnostics.Assert(FALSE, msg)
     END IF
 END SUB
 
@@ -72,14 +72,14 @@ Viper.IO.Dir.MakeAll(base)
 
 DIM binPath AS STRING
 binPath = Viper.IO.Path.Join(base, "bin.dat")
-DIM bf AS OBJECT
+DIM bf AS Viper.IO.BinFile
 bf = Viper.IO.BinFile.Open(binPath, "w")
-bf.WriteByte(&HCA)
-bf.WriteByte(&HFE)
+bf.WriteByte(202)
+bf.WriteByte(254)
 DIM buf AS Viper.Collections.Bytes
 buf = NEW Viper.Collections.Bytes(2)
-buf.Set(0, &H01)
-buf.Set(1, &H02)
+buf.Set(0, 1)
+buf.Set(1, 2)
 bf.Write(buf, 0, 2)
 bf.Flush()
 bf.Close()
@@ -89,7 +89,7 @@ Viper.Diagnostics.AssertEq(bf.Size, 4, "bin.size")
 Viper.Diagnostics.AssertEq(bf.Pos, 0, "bin.pos0")
 DIM b0 AS INTEGER
 b0 = bf.ReadByte()
-Viper.Diagnostics.AssertEq(b0, &HCA, "bin.readbyte")
+Viper.Diagnostics.AssertEq(b0, 202, "bin.readbyte")
 DIM readBuf AS Viper.Collections.Bytes
 readBuf = NEW Viper.Collections.Bytes(2)
 DIM readCount AS INTEGER
@@ -99,12 +99,12 @@ Viper.Diagnostics.AssertEqStr(readBuf.ToHex(), "fe01", "bin.read.hex")
 DIM newPos AS INTEGER
 newPos = bf.Seek(0, 0)
 Viper.Diagnostics.AssertEq(newPos, 0, "bin.seek")
-Viper.Diagnostics.Assert(bf.Eof = 0, "bin.eof")
+Viper.Diagnostics.Assert(bf.Eof = FALSE, "bin.eof")
 bf.Close()
 
 DIM linesPath AS STRING
 linesPath = Viper.IO.Path.Join(base, "lines.txt")
-DIM writer AS OBJECT
+DIM writer AS Viper.IO.LineWriter
 writer = Viper.IO.LineWriter.Open(linesPath)
 writer.NewLine = "\n"
 writer.Write("A")
@@ -113,7 +113,7 @@ writer.WriteLn("C")
 writer.Flush()
 writer.Close()
 
-DIM reader AS OBJECT
+DIM reader AS Viper.IO.LineReader
 reader = Viper.IO.LineReader.Open(linesPath)
 DIM peek AS INTEGER
 peek = reader.PeekChar()
@@ -128,7 +128,7 @@ rest = reader.ReadAll()
 reader.Close()
 Viper.Diagnostics.Assert(reader.Eof, "line.eof")
 
-DIM ms AS OBJECT
+DIM ms AS Viper.IO.MemStream
 ms = Viper.IO.MemStream.New()
 ms.WriteI8(-5)
 ms.WriteU8(250)

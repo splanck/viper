@@ -113,6 +113,18 @@ std::optional<SemanticAnalyzer::Type> SemanticAnalyzer::lookupVarType(const std:
     return std::nullopt;
 }
 
+/// @brief Query the declared runtime class name for an object variable.
+///
+/// @param name Variable name after scope resolution.
+/// @return Qualified class name when known; std::nullopt otherwise.
+std::optional<std::string> SemanticAnalyzer::lookupObjectClassQName(
+    const std::string &name) const
+{
+    if (auto it = objectClassTypes_.find(name); it != objectClassTypes_.end())
+        return it->second;
+    return std::nullopt;
+}
+
 /// @brief Check if a symbol is registered at module level.
 ///
 /// @details Returns true if the symbol exists in the module-level symbol table.

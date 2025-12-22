@@ -344,8 +344,7 @@ void rt_treemap_set(void *obj, rt_string key, void *value)
         if (e->value && rt_obj_release_check0(e->value))
             rt_obj_free(e->value);
         // Retain new value
-        if (value)
-            rt_heap_retain(value);
+        rt_obj_retain_maybe(value);
         e->value = value;
     }
     else
@@ -374,8 +373,7 @@ void rt_treemap_set(void *obj, rt_string key, void *value)
         e->keylen = keylen;
 
         // Retain value
-        if (value)
-            rt_heap_retain(value);
+        rt_obj_retain_maybe(value);
         e->value = value;
 
         tm->count++;

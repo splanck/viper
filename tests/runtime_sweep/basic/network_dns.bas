@@ -17,7 +17,7 @@ ip6 = "::1"
 
 Viper.Diagnostics.Assert(Viper.Network.Dns.IsIP(ip4), "dns.isip")
 Viper.Diagnostics.Assert(Viper.Network.Dns.IsIPv4(ip4), "dns.isipv4")
-Viper.Diagnostics.Assert(Viper.Network.Dns.IsIPv6(ip4) = 0, "dns.isipv6.false")
+Viper.Diagnostics.Assert(Viper.Network.Dns.IsIPv6(ip4) = FALSE, "dns.isipv6.false")
 Viper.Diagnostics.Assert(Viper.Network.Dns.IsIPv6(ip6), "dns.isipv6")
 
 DIM host AS STRING

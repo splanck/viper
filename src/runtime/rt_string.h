@@ -88,6 +88,12 @@ extern "C"
     /// @param s String handle that may be NULL.
     void rt_str_retain_maybe(rt_string s);
 
+    /// @brief Return non-zero when @p p points at a runtime string handle.
+    /// @details Used by generic object helpers to distinguish string handles from
+    ///          heap-managed objects without forcing callers to inspect internals.
+    /// @param p Pointer to test; may be NULL.
+    int rt_string_is_handle(void *p);
+
     rt_string rt_str_empty(void);
 
     /// @brief Allocate a runtime string by copying @p len bytes from @p bytes.

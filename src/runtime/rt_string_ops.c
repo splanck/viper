@@ -100,6 +100,7 @@ static rt_string rt_string_wrap(char *payload)
         rt_trap("rt_string_wrap: alloc");
         return NULL;
     }
+    s->magic = RT_STRING_MAGIC;
     s->data = payload;
     s->heap = hdr;
     s->literal_len = 0;
@@ -162,6 +163,7 @@ static rt_string rt_empty_string(void)
         rt_trap("rt_empty_string: alloc");
         return NULL;
     }
+    candidate->magic = RT_STRING_MAGIC;
     candidate->data = payload;
     candidate->heap = hdr;
     candidate->literal_len = 0;
@@ -195,6 +197,14 @@ rt_string rt_string_from_bytes(const char *bytes, size_t len)
         memcpy(s->data, bytes, len);
     s->data[len] = '\0';
     return s;
+}
+
+int rt_string_is_handle(void *p)
+{
+    if (!p)
+        return 0;
+    const rt_string s = (const rt_string)p;
+    return s->magic == RT_STRING_MAGIC ? 1 : 0;
 }
 
 /// @brief Increment the ownership count for a runtime string handle.
@@ -596,6 +606,11 @@ int64_t rt_str_index_of_from(rt_string hay, int64_t start, rt_string needle)
     return rt_instr3(start, hay, needle);
 }
 
+static int is_trim_ws(char c)
+{
+    return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f';
+}
+
 /// @brief Trim leading spaces and tabs from a string.
 /// @details Walks the leading whitespace and delegates to @ref rt_substr to
 ///          materialise the trimmed view.
@@ -607,7 +622,7 @@ rt_string rt_ltrim(rt_string s)
         rt_trap("rt_ltrim: null");
     size_t slen = rt_string_len_bytes(s);
     size_t i = 0;
-    while (i < slen && (s->data[i] == ' ' || s->data[i] == '\t'))
+    while (i < slen && is_trim_ws(s->data[i]))
         ++i;
     return rt_substr(s, (int64_t)i, (int64_t)(slen - i));
 }
@@ -622,7 +637,7 @@ rt_string rt_rtrim(rt_string s)
     if (!s)
         rt_trap("rt_rtrim: null");
     size_t end = rt_string_len_bytes(s);
-    while (end > 0 && (s->data[end - 1] == ' ' || s->data[end - 1] == '\t'))
+    while (end > 0 && is_trim_ws(s->data[end - 1]))
         --end;
     return rt_substr(s, 0, (int64_t)end);
 }
@@ -639,9 +654,9 @@ rt_string rt_trim(rt_string s)
     size_t slen = rt_string_len_bytes(s);
     size_t start = 0;
     size_t end = slen;
-    while (start < end && (s->data[start] == ' ' || s->data[start] == '\t'))
+    while (start < end && is_trim_ws(s->data[start]))
         ++start;
-    while (end > start && (s->data[end - 1] == ' ' || s->data[end - 1] == '\t'))
+    while (end > start && is_trim_ws(s->data[end - 1]))
         --end;
     return rt_substr(s, (int64_t)start, (int64_t)(end - start));
 }

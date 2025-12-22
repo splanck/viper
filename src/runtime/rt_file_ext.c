@@ -619,6 +619,8 @@ void *rt_file_read_lines(rt_string path)
     {
         if (i == len || data[i] == '\n')
         {
+            if (i == len && line_start == len)
+                break;
             size_t line_end = i;
             // Handle \r\n
             if (line_end > line_start && data[line_end - 1] == '\r')

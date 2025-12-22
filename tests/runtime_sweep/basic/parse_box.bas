@@ -22,16 +22,16 @@
 ' COVER: Viper.Box.EqStr
 
 DIM ok AS INTEGER
-ok = Viper.Parse.TryInt("42", 0)
+ok = Viper.Parse.TryInt("42", NOTHING)
 Viper.Diagnostics.Assert(ok = 0, "parse.tryint.null")
-ok = Viper.Parse.TryNum("3.25", 0)
+ok = Viper.Parse.TryNum("3.25", NOTHING)
 Viper.Diagnostics.Assert(ok = 0, "parse.trynum.null")
-ok = Viper.Parse.TryBool("true", 0)
+ok = Viper.Parse.TryBool("true", NOTHING)
 Viper.Diagnostics.Assert(ok = 0, "parse.trybool.null")
 
 Viper.Diagnostics.AssertEq(Viper.Parse.IntOr("42", -1), 42, "parse.intor")
 Viper.Diagnostics.AssertEqNum(Viper.Parse.NumOr("2.5", -1.0), 2.5, "parse.numor")
-Viper.Diagnostics.Assert(Viper.Parse.BoolOr("yes", 0), "parse.boolor")
+Viper.Diagnostics.Assert(Viper.Parse.BoolOr("yes", FALSE), "parse.boolor")
 Viper.Diagnostics.Assert(Viper.Parse.IsInt(" -7 "), "parse.isint")
 Viper.Diagnostics.Assert(Viper.Parse.IsNum("3.14"), "parse.isnum")
 Viper.Diagnostics.AssertEq(Viper.Parse.IntRadix("ff", 16, -1), 255, "parse.intradix")
@@ -55,9 +55,9 @@ Viper.Diagnostics.AssertEq(Viper.Box.Type(bNum), 1, "box.type.f64")
 Viper.Diagnostics.AssertEq(Viper.Box.Type(bBool), 2, "box.type.i1")
 Viper.Diagnostics.AssertEq(Viper.Box.Type(bStr), 3, "box.type.str")
 
-Viper.Diagnostics.Assert(Viper.Box.EqI64(bInt, 123), "box.eqi64")
-Viper.Diagnostics.Assert(Viper.Box.EqF64(bNum, 4.5), "box.eqf64")
-Viper.Diagnostics.Assert(Viper.Box.EqStr(bStr, "hi"), "box.eqstr")
+Viper.Diagnostics.AssertEq(Viper.Box.EqI64(bInt, 123), 1, "box.eqi64")
+Viper.Diagnostics.AssertEq(Viper.Box.EqF64(bNum, 4.5), 1, "box.eqf64")
+Viper.Diagnostics.AssertEq(Viper.Box.EqStr(bStr, "hi"), 1, "box.eqstr")
 
 PRINT "RESULT: ok"
 END

@@ -640,7 +640,7 @@ DeclPtr Parser::parseFieldDecl()
         return nullptr;
 
     // Field name
-    if (!check(TokenKind::Identifier))
+    if (!checkIdentifierLike())
     {
         error("expected field name");
         return nullptr;

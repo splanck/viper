@@ -671,6 +671,14 @@ void SemanticAnalyzer::analyzeDim(DimStmt &d)
         {
             varTypes_[d.name] = Type::ArrayInt;
         }
+
+        // Arrays do not participate in object class resolution for member access.
+        if (auto itClass = objectClassTypes_.find(d.name); itClass != objectClassTypes_.end())
+        {
+            if (activeProcScope_)
+                activeProcScope_->noteObjectClassMutation(d.name, itClass->second);
+            objectClassTypes_.erase(d.name);
+        }
     }
     else
     {
@@ -700,6 +708,26 @@ void SemanticAnalyzer::analyzeDim(DimStmt &d)
             }
         }
         varTypes_[d.name] = dimType;
+
+        // Track explicit object class names for runtime member typing.
+        {
+            auto itClass = objectClassTypes_.find(d.name);
+            if (activeProcScope_)
+            {
+                std::optional<std::string> previous;
+                if (itClass != objectClassTypes_.end())
+                    previous = itClass->second;
+                activeProcScope_->noteObjectClassMutation(d.name, previous);
+            }
+            if (!d.explicitClassQname.empty())
+            {
+                objectClassTypes_[d.name] = JoinDots(d.explicitClassQname);
+            }
+            else if (itClass != objectClassTypes_.end())
+            {
+                objectClassTypes_.erase(d.name);
+            }
+        }
     }
 }
 

@@ -22,4 +22,10 @@ This log captures ViperLang language defects found during the runtime sweep.
 
 ## Closed/Fixed
 
-(Empty)
+- **ID**: VL-000
+  - **Area**: runtime sweep
+  - **Summary**: No ViperLang defects observed in the current sweep.
+  - **Repro**: `tests/viperlang_runtime/*`
+  - **Expected**: All programs pass.
+  - **Actual**: All programs passed.
+  - **Notes**: Logged as baseline for the 2025-12-22 sweep.

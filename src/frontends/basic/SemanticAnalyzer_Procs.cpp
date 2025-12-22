@@ -76,6 +76,13 @@ SemanticAnalyzer::ProcedureScope::~ProcedureScope() noexcept
         else
             analyzer_.varTypes_.erase(delta.name);
     }
+    for (const auto &delta : objectClassDeltas_)
+    {
+        if (delta.previous)
+            analyzer_.objectClassTypes_[delta.name] = *delta.previous;
+        else
+            analyzer_.objectClassTypes_.erase(delta.name);
+    }
     for (const auto &delta : arrayDeltas_)
     {
         if (delta.previous)
@@ -115,6 +122,18 @@ void SemanticAnalyzer::ProcedureScope::noteVarTypeMutation(const std::string &na
     if (!trackedVarTypes_.insert(name).second)
         return;
     varTypeDeltas_.push_back({name, previous});
+}
+
+/// @brief Track that a variable's object class binding changed within the scope.
+///
+/// @param name Variable whose object class is being updated.
+/// @param previous Prior class name if one was present.
+void SemanticAnalyzer::ProcedureScope::noteObjectClassMutation(
+    const std::string &name, std::optional<std::string> previous)
+{
+    if (!trackedObjectClasses_.insert(name).second)
+        return;
+    objectClassDeltas_.push_back({name, std::move(previous)});
 }
 
 /// @brief Track that an array binding changed size or allocation state.
@@ -377,6 +396,7 @@ void SemanticAnalyzer::analyze(const Program &prog)
     forStack_.clear();
     loopStack_.clear();
     varTypes_.clear();
+    objectClassTypes_.clear();
     arrays_.clear();
     openChannels_.clear();
     errorHandlerActive_ = false;

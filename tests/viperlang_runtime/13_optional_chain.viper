@@ -19,7 +19,7 @@ func start() {
     var v = none?.next?.value ?? 7;
     assertEqInt(v, 7, "opt_chain_null");
 
-    var node = new Node(5, null);
+    var node: Node? = new Node(5, null);
     var v2 = node?.value ?? 0;
     assertEqInt(v2, 5, "opt_chain_value");
 

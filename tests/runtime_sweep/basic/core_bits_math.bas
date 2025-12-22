@@ -63,7 +63,7 @@
 
 SUB AssertApprox(actual AS DOUBLE, expected AS DOUBLE, eps AS DOUBLE, msg AS STRING)
     IF Viper.Math.Abs(actual - expected) > eps THEN
-        Viper.Diagnostics.Assert(0, msg)
+        Viper.Diagnostics.Assert(FALSE, msg)
     END IF
 END SUB
 
@@ -82,10 +82,10 @@ Viper.Diagnostics.AssertEq(Viper.Bits.Set(0, 1), 2, "bits.set")
 Viper.Diagnostics.AssertEq(Viper.Bits.Clear(3, 0), 2, "bits.clear")
 Viper.Diagnostics.AssertEq(Viper.Bits.Toggle(2, 1), 0, "bits.toggle")
 Viper.Diagnostics.Assert(Viper.Bits.Get(2, 1), "bits.get")
-Viper.Diagnostics.AssertEq(Viper.Bits.Count(&HFF), 8, "bits.count")
+Viper.Diagnostics.AssertEq(Viper.Bits.Count(255), 8, "bits.count")
 Viper.Diagnostics.AssertEq(Viper.Bits.LeadZ(1), 63, "bits.leadz")
 Viper.Diagnostics.AssertEq(Viper.Bits.TrailZ(8), 3, "bits.trailz")
-Viper.Diagnostics.AssertEq(Viper.Bits.Swap(&H0102030405060708), &H0807060504030201, "bits.swap")
+Viper.Diagnostics.AssertEq(Viper.Bits.Swap(72623859790382856), 578437695752307201, "bits.swap")
 Viper.Diagnostics.AssertEq(Viper.Bits.Rotl(1, 1), 2, "bits.rotl")
 Viper.Diagnostics.AssertEq(Viper.Bits.Rotr(2, 1), 1, "bits.rotr")
 Viper.Diagnostics.AssertEq(Viper.Bits.Flip(Viper.Bits.Flip(12345)), 12345, "bits.flip")

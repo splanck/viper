@@ -13,6 +13,7 @@
 
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
+#include "frontends/basic/IdentifierUtil.hpp"
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/NameMangler_OOP.hpp"
 #include "frontends/basic/OopIndex.hpp"
@@ -20,6 +21,7 @@
 #include "frontends/basic/SemanticAnalyzer.hpp"
 #include "frontends/basic/StringUtils.hpp"
 #include "frontends/basic/lower/oop/Lower_OOP_Internal.hpp"
+#include "il/runtime/classes/RuntimeClasses.hpp"
 
 #include <functional>
 #include <string>
@@ -81,6 +83,23 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const
             if (field && field->isArray && !field->objectClassName.empty())
             {
                 return qualify(field->objectClassName);
+            }
+        }
+
+        std::string calleeName;
+        if (!call->calleeQualified.empty())
+            calleeName = JoinDots(call->calleeQualified);
+        else
+            calleeName = call->callee;
+        if (!calleeName.empty())
+        {
+            const auto &classes = il::runtime::runtimeClassCatalog();
+            for (const auto &klass : classes)
+            {
+                if (!klass.ctor)
+                    continue;
+                if (string_utils::iequals(calleeName, klass.ctor))
+                    return std::string(klass.qname);
             }
         }
 

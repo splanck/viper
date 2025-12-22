@@ -211,6 +211,32 @@ inline constexpr const char *kStringFromNum = "Viper.Strings.FromDouble";
 /// @}
 
 //=============================================================================
+// Formatting Functions
+//=============================================================================
+/// @name Formatting Functions
+/// @brief Functions for rendering values as strings.
+/// @{
+
+/// @brief Convert a boolean to "true" or "false".
+/// @details Signature: Bool(i1) -> str
+inline constexpr const char *kFmtBool = "Viper.Fmt.Bool";
+
+/// @}
+
+//=============================================================================
+// Object Functions
+//=============================================================================
+/// @name Object Functions
+/// @brief Functions available on base runtime objects.
+/// @{
+
+/// @brief Convert an object to its string representation.
+/// @details Signature: ToString(obj) -> str
+inline constexpr const char *kObjectToString = "Viper.Object.ToString";
+
+/// @}
+
+//=============================================================================
 // Math Functions
 //=============================================================================
 /// @name Math Functions

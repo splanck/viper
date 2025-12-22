@@ -584,17 +584,16 @@ ExprPtr Parser::parsePrimary()
             if (ok)
             {
                 i += 2;
-                // BUG-OOP-040 fix: Use isSoftIdentToken() instead of just TokenKind::Identifier
-                // to allow soft keywords like RANDOM, FLOOR, COLOR in intermediate dotted segments.
-                // This enables forms like Viper.Random.Next() and Viper.Math.Floor().
-                while (isSoftIdentToken(peek(i).kind) && peek(i + 1).kind == TokenKind::Dot)
+                // BUG-OOP-040 fix: Use isMemberIdentToken() to allow keyword segments in
+                // dotted namespaces (e.g., Viper.Random.Next, Viper.IO.File.Delete).
+                while (isMemberIdentToken(peek(i).kind) && peek(i + 1).kind == TokenKind::Dot)
                 {
                     sawAdditionalDot = true;
                     i += 2;
                 }
-                // Accept final segment as identifier or soft keyword (e.g.,
-                // Viper.Text.StringBuilder.Append, Viper.Terminal.Color) (BUG-OOP-021)
-                if (!(isSoftIdentToken(peek(i).kind) && peek(i + 1).kind == TokenKind::LParen))
+                // Accept final segment as identifier or keyword (e.g.,
+                // Viper.Text.StringBuilder.Append, Viper.Terminal.Color). (BUG-OOP-021)
+                if (!(isMemberIdentToken(peek(i).kind) && peek(i + 1).kind == TokenKind::LParen))
                     ok = false;
                 // BUG-082 fix: Only treat as qualified procedure call if the first identifier
                 // is a known namespace. This applies to both single-dot (obj.Method) and
@@ -725,9 +724,9 @@ std::pair<std::vector<std::string>, il::support::SourceLoc> Parser::parseQualifi
     while (at(TokenKind::Dot))
     {
         consume();
-        // Allow identifier or soft keywords (e.g., APPEND, COLOR, FLOOR) inside qualified names.
-        // This supports forms like Viper.Terminal.Color or Viper.Math.Floor. (BUG-OOP-021)
-        if (isSoftIdentToken(peek().kind))
+        // Allow identifier or keyword segments inside qualified names.
+        // This supports forms like Viper.Terminal.Print or Viper.Math.Floor. (BUG-OOP-021)
+        if (isMemberIdentToken(peek().kind))
         {
             Token ident = peek();
             consume();
@@ -806,10 +805,9 @@ ExprPtr Parser::parsePostfix(ExprPtr expr)
     while (expr && at(TokenKind::Dot))
     {
         consume();
-        // BUG-OOP-040 fix: Permit soft keyword tokens (RANDOM, FLOOR, COLOR, APPEND, etc.)
-        // as method/namespace names in dotted member access to support runtime namespaces
-        // like Viper.Random.Next() and Viper.Text.StringBuilder.Append(...).
-        if (!isSoftIdentToken(peek().kind))
+        // BUG-OOP-040 fix: Permit keyword tokens as member names in dotted access
+        // to support runtime namespaces like Viper.Random.Next().
+        if (!isMemberIdentToken(peek().kind))
         {
             // Preserve original expectation for diagnostics when not matching.
             Token ident = expect(TokenKind::Identifier);
@@ -818,7 +816,7 @@ ExprPtr Parser::parsePostfix(ExprPtr expr)
         Token ident = peek();
         consume();
         std::string member;
-        if (isSoftIdentToken(ident.kind))
+        if (isMemberIdentToken(ident.kind))
             member = ident.lexeme;
 
         if (at(TokenKind::LParen))

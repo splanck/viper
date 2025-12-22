@@ -113,7 +113,7 @@ movePath = Viper.IO.Path.Join(base, "moved.bin")
 Viper.IO.File.Move(copyPath, movePath)
 Viper.Diagnostics.Assert(Viper.IO.File.Exists(movePath), "file.move")
 Viper.IO.File.Delete(movePath)
-Viper.Diagnostics.Assert(Viper.IO.File.Exists(movePath) = 0, "file.delete")
+Viper.Diagnostics.Assert(Viper.IO.File.Exists(movePath) = FALSE, "file.delete")
 
 DIM entries AS Viper.Collections.Seq
 entries = Viper.IO.Dir.Entries(base)
@@ -142,7 +142,7 @@ END IF
 Viper.IO.Dir.Move(base, baseMoved)
 Viper.Diagnostics.Assert(Viper.IO.Dir.Exists(baseMoved), "dir.move")
 Viper.IO.Dir.RemoveAll(baseMoved)
-Viper.Diagnostics.Assert(Viper.IO.Dir.Exists(baseMoved) = 0, "dir.removeall")
+Viper.Diagnostics.Assert(Viper.IO.Dir.Exists(baseMoved) = FALSE, "dir.removeall")
 
 DIM emptyDir AS STRING
 emptyDir = Viper.IO.Path.Join(cwd, "tests/runtime_sweep/tmp_empty")
@@ -151,7 +151,7 @@ IF Viper.IO.Dir.Exists(emptyDir) THEN
 END IF
 Viper.IO.Dir.Make(emptyDir)
 Viper.IO.Dir.Remove(emptyDir)
-Viper.Diagnostics.Assert(Viper.IO.Dir.Exists(emptyDir) = 0, "dir.remove")
+Viper.Diagnostics.Assert(Viper.IO.Dir.Exists(emptyDir) = FALSE, "dir.remove")
 
 Viper.IO.Dir.MakeAll(base)
 DIM cur AS STRING

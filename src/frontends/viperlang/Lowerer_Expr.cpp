@@ -727,6 +727,45 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                 auto baseResult = lowerExpr(fieldExpr->base.get());
                 std::string methodName = fieldExpr->field;
 
+                if (equalsIgnoreCase(methodName, "get"))
+                {
+                    if (expr->args.size() >= 1)
+                    {
+                        auto indexResult = lowerExpr(expr->args[0].value.get());
+                        Value boxed = emitCallRet(
+                            Type(Type::Kind::Ptr), kListGet, {baseResult.value, indexResult.value});
+                        TypeRef elemType = baseType->elementType();
+                        if (elemType)
+                        {
+                            Type ilElemType = mapType(elemType);
+                            return emitUnbox(boxed, ilElemType);
+                        }
+                        return {boxed, Type(Type::Kind::Ptr)};
+                    }
+                }
+
+                if (equalsIgnoreCase(methodName, "removeAt"))
+                {
+                    if (expr->args.size() >= 1)
+                    {
+                        auto indexResult = lowerExpr(expr->args[0].value.get());
+                        emitCall(kListRemoveAt, {baseResult.value, indexResult.value});
+                        return {Value::constInt(0), Type(Type::Kind::Void)};
+                    }
+                }
+
+                if (equalsIgnoreCase(methodName, "has") || equalsIgnoreCase(methodName, "contains"))
+                {
+                    if (expr->args.size() >= 1)
+                    {
+                        auto valueResult = lowerExpr(expr->args[0].value.get());
+                        Value boxedValue = emitBox(valueResult.value, valueResult.type);
+                        Value result = emitCallRet(
+                            Type(Type::Kind::I1), kListContains, {baseResult.value, boxedValue});
+                        return {result, Type(Type::Kind::I1)};
+                    }
+                }
+
                 // Lower arguments with boxing
                 std::vector<Value> args;
                 args.reserve(expr->args.size() + 1);
@@ -745,11 +784,6 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                 if (equalsIgnoreCase(methodName, "add"))
                 {
                     runtimeFunc = kListAdd;
-                }
-                else if (equalsIgnoreCase(methodName, "get"))
-                {
-                    runtimeFunc = kListGet;
-                    returnType = Type(Type::Kind::Ptr); // Returns boxed value
                 }
                 else if (equalsIgnoreCase(methodName, "size") ||
                          equalsIgnoreCase(methodName, "count") ||
@@ -981,6 +1015,54 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                 emitCall(kTerminalSay, {strVal});
             }
             return {Value::constInt(0), Type(Type::Kind::Void)};
+        }
+
+        if (ident->name == "toString")
+        {
+            if (expr->args.empty())
+                return {Value::constInt(0), Type(Type::Kind::Str)};
+
+            auto *argExpr = expr->args[0].value.get();
+            auto arg = lowerExpr(argExpr);
+            TypeRef argType = sema_.typeOf(argExpr);
+
+            if (argType)
+            {
+                switch (argType->kind)
+                {
+                    case TypeKindSem::String:
+                        return {arg.value, Type(Type::Kind::Str)};
+                    case TypeKindSem::Integer:
+                    {
+                        Value strVal =
+                            emitCallRet(Type(Type::Kind::Str), kStringFromInt, {arg.value});
+                        return {strVal, Type(Type::Kind::Str)};
+                    }
+                    case TypeKindSem::Number:
+                    {
+                        Value strVal =
+                            emitCallRet(Type(Type::Kind::Str), kStringFromNum, {arg.value});
+                        return {strVal, Type(Type::Kind::Str)};
+                    }
+                    case TypeKindSem::Boolean:
+                    {
+                        Value strVal =
+                            emitCallRet(Type(Type::Kind::Str), kFmtBool, {arg.value});
+                        return {strVal, Type(Type::Kind::Str)};
+                    }
+                    default:
+                        break;
+                }
+            }
+
+            if (arg.type.kind == Type::Kind::Ptr)
+            {
+                Value strVal =
+                    emitCallRet(Type(Type::Kind::Str), kObjectToString, {arg.value});
+                return {strVal, Type(Type::Kind::Str)};
+            }
+
+            return {Value::constInt(0), Type(Type::Kind::Str)};
         }
 
         // Check for value type construction
@@ -2293,6 +2375,55 @@ void Lowerer::emitPatternTest(const MatchArm::Pattern &pattern,
             if (!pattern.literal)
             {
                 emitBr(failureBlock);
+                return;
+            }
+            if (scrutinee.type && scrutinee.type->kind == TypeKindSem::Optional)
+            {
+                auto emitPtrCompare = [&](Opcode op) -> Value
+                {
+                    unsigned ptrSlotId = nextTempId();
+                    il::core::Instr ptrSlotInstr;
+                    ptrSlotInstr.result = ptrSlotId;
+                    ptrSlotInstr.op = Opcode::Alloca;
+                    ptrSlotInstr.type = Type(Type::Kind::Ptr);
+                    ptrSlotInstr.operands = {Value::constInt(8)};
+                    blockMgr_.currentBlock()->instructions.push_back(ptrSlotInstr);
+                    Value ptrSlot = Value::temp(ptrSlotId);
+
+                    il::core::Instr storePtrInstr;
+                    storePtrInstr.op = Opcode::Store;
+                    storePtrInstr.type = Type(Type::Kind::Ptr);
+                    storePtrInstr.operands = {ptrSlot, scrutinee.value};
+                    blockMgr_.currentBlock()->instructions.push_back(storePtrInstr);
+
+                    unsigned ptrAsI64Id = nextTempId();
+                    il::core::Instr loadAsI64Instr;
+                    loadAsI64Instr.result = ptrAsI64Id;
+                    loadAsI64Instr.op = Opcode::Load;
+                    loadAsI64Instr.type = Type(Type::Kind::I64);
+                    loadAsI64Instr.operands = {ptrSlot};
+                    blockMgr_.currentBlock()->instructions.push_back(loadAsI64Instr);
+                    Value ptrAsI64 = Value::temp(ptrAsI64Id);
+
+                    return emitBinary(op, Type(Type::Kind::I1), ptrAsI64, Value::constInt(0));
+                };
+
+                if (pattern.literal->kind == ExprKind::NullLiteral)
+                {
+                    Value isNull = emitPtrCompare(Opcode::ICmpEq);
+                    emitCBr(isNull, successBlock, failureBlock);
+                    return;
+                }
+
+                Value isNotNull = emitPtrCompare(Opcode::ICmpNe);
+                size_t someBlock = createBlock("match_opt_lit");
+                emitCBr(isNotNull, someBlock, failureBlock);
+                setBlock(someBlock);
+
+                TypeRef innerType = scrutinee.type->innerType();
+                auto innerValue = emitOptionalUnwrap(scrutinee.value, innerType);
+                PatternValue inner{innerValue.value, innerType};
+                emitPatternTest(pattern, inner, successBlock, failureBlock);
                 return;
             }
             auto litResult = lowerExpr(pattern.literal.get());

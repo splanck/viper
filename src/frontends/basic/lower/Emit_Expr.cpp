@@ -564,9 +564,11 @@ static std::string mapToCanonicalRuntime(std::string_view name)
     // Priority: Viper.Strings.* > Viper.Terminal.* > other Viper.* namespaces.
     if (auto sigId = findRuntimeSignatureId(desc->name))
     {
-        const RuntimeDescriptor *best = desc;
+        const bool callerCanonical = name.find('.') != std::string_view::npos;
+        const RuntimeDescriptor *callerDesc = (callerCanonical && desc->name == name) ? desc : nullptr;
         const RuntimeDescriptor *stringsPreferred = nullptr;
         const RuntimeDescriptor *terminalPreferred = nullptr;
+        const RuntimeDescriptor *firstCanonical = nullptr;
         const auto &reg = runtimeRegistry();
         for (const auto &entry : reg)
         {
@@ -576,6 +578,8 @@ static std::string mapToCanonicalRuntime(std::string_view name)
             const bool isCanonical = entry.name.find('.') != std::string_view::npos;
             if (!isCanonical)
                 continue;
+            if (!firstCanonical)
+                firstCanonical = &entry;
             if (entry.name.rfind("Viper.Strings.", 0) == 0)
             {
                 stringsPreferred = &entry;
@@ -586,15 +590,16 @@ static std::string mapToCanonicalRuntime(std::string_view name)
                 terminalPreferred = &entry;
                 continue; // keep looking for Strings.*
             }
-            // Track a canonical candidate if no preferred variant found yet.
-            if (best == desc)
-                best = &entry;
         }
         if (stringsPreferred)
             return std::string(stringsPreferred->name);
         if (terminalPreferred)
             return std::string(terminalPreferred->name);
-        return std::string(best->name);
+        if (callerDesc)
+            return std::string(callerDesc->name);
+        if (firstCanonical)
+            return std::string(firstCanonical->name);
+        return std::string(desc->name);
     }
 
     return std::string(desc->name);

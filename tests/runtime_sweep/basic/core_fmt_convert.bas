@@ -20,7 +20,7 @@
 
 SUB AssertApprox(actual AS DOUBLE, expected AS DOUBLE, eps AS DOUBLE, msg AS STRING)
     IF Viper.Math.Abs(actual - expected) > eps THEN
-        Viper.Diagnostics.Assert(0, msg)
+        Viper.Diagnostics.Assert(FALSE, msg)
     END IF
 END SUB
 
@@ -38,9 +38,9 @@ Viper.Diagnostics.AssertEqStr(Viper.Fmt.Num(3.14159), "3.14159", "fmt.num")
 Viper.Diagnostics.AssertEqStr(Viper.Fmt.NumFixed(3.14159, 2), "3.14", "fmt.numfixed")
 Viper.Diagnostics.AssertEqStr(Viper.Fmt.NumSci(1234.5, 2), "1.23e+03", "fmt.numsci")
 Viper.Diagnostics.AssertEqStr(Viper.Fmt.NumPct(0.756, 1), "75.6%", "fmt.numpct")
-Viper.Diagnostics.AssertEqStr(Viper.Fmt.Bool(1), "true", "fmt.bool")
-Viper.Diagnostics.AssertEqStr(Viper.Fmt.BoolYN(0), "No", "fmt.boolyn")
-Viper.Diagnostics.AssertEqStr(Viper.Fmt.Size(1024), "1 KB", "fmt.size")
+Viper.Diagnostics.AssertEqStr(Viper.Fmt.Bool(TRUE), "true", "fmt.bool")
+Viper.Diagnostics.AssertEqStr(Viper.Fmt.BoolYN(FALSE), "No", "fmt.boolyn")
+Viper.Diagnostics.AssertEqStr(Viper.Fmt.Size(1024), "1.0 KB", "fmt.size")
 Viper.Diagnostics.AssertEqStr(Viper.Fmt.Hex(255), "ff", "fmt.hex")
 Viper.Diagnostics.AssertEqStr(Viper.Fmt.HexPad(255, 4), "00ff", "fmt.hexpad")
 Viper.Diagnostics.AssertEqStr(Viper.Fmt.Bin(10), "1010", "fmt.bin")

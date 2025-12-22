@@ -127,6 +127,13 @@ def run_with_pty(cmd: list[str], input_text: str, timeout_s: float) -> tuple[int
             break
 
     os.close(master_fd)
+    if proc.returncode is None:
+        try:
+            proc.wait(timeout=0.5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+            return 124, output.decode("utf-8", errors="replace"), "timeout"
     return proc.returncode, output.decode("utf-8", errors="replace"), ""
 
 

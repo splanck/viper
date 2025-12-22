@@ -23,30 +23,37 @@ IF Viper.IO.Dir.Exists(base) THEN
 END IF
 Viper.IO.Dir.MakeAll(base)
 
-DIM watcher AS OBJECT
+DIM watcher AS Viper.IO.Watcher
 watcher = Viper.IO.Watcher.New(base)
 Viper.Diagnostics.AssertEqStr(watcher.Path, base, "watch.path")
-Viper.Diagnostics.Assert(watcher.IsWatching = 0, "watch.init")
+Viper.Diagnostics.Assert(watcher.IsWatching = FALSE, "watch.init")
 
 watcher.Start()
 Viper.Diagnostics.Assert(watcher.IsWatching, "watch.start")
 
+DIM watchFile AS STRING
+watchFile = Viper.IO.Path.Join(base, "event.txt")
+Viper.IO.File.WriteAllText(watchFile, "ping")
+
 DIM event1 AS INTEGER
 DIM event2 AS INTEGER
 event1 = watcher.Poll()
-event2 = watcher.PollFor(10)
-Viper.Diagnostics.Assert(event1 >= watcher.EVENT_NONE, "watch.poll")
-Viper.Diagnostics.Assert(event2 >= watcher.EVENT_NONE, "watch.pollfor")
+event2 = watcher.PollFor(50)
+    Viper.Diagnostics.Assert(event1 >= Viper.IO.Watcher.EVENT_NONE, "watch.poll")
+    Viper.Diagnostics.Assert(event2 >= Viper.IO.Watcher.EVENT_NONE, "watch.pollfor")
 
 DIM path1 AS STRING
 DIM type1 AS INTEGER
-path1 = watcher.EventPath()
-type1 = watcher.EventType()
-Viper.Diagnostics.Assert(type1 >= watcher.EVENT_NONE, "watch.eventtype")
+IF event1 <> Viper.IO.Watcher.EVENT_NONE OR event2 <> Viper.IO.Watcher.EVENT_NONE THEN
+    path1 = watcher.EventPath()
+    type1 = watcher.EventType()
+        Viper.Diagnostics.Assert(type1 >= Viper.IO.Watcher.EVENT_NONE, "watch.eventtype")
+END IF
 
 watcher.Stop()
-Viper.Diagnostics.Assert(watcher.IsWatching = 0, "watch.stop")
+Viper.Diagnostics.Assert(watcher.IsWatching = FALSE, "watch.stop")
 
+Viper.IO.File.Delete(watchFile)
 Viper.IO.Dir.RemoveAll(base)
 
 PRINT "RESULT: ok"

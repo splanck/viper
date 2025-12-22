@@ -96,6 +96,39 @@ static int64_t parse_index(const char *s, int len)
     return result;
 }
 
+static void append_literal_unescaped(rt_string_builder *sb,
+                                     const char *text,
+                                     int len,
+                                     const char *prefix,
+                                     int prefix_len,
+                                     const char *suffix,
+                                     int suffix_len)
+{
+    int i = 0;
+    while (i < len)
+    {
+        if (prefix_len > 0 && i + prefix_len * 2 <= len &&
+            memcmp(text + i, prefix, prefix_len) == 0 &&
+            memcmp(text + i + prefix_len, prefix, prefix_len) == 0)
+        {
+            rt_sb_append_bytes(sb, prefix, prefix_len);
+            i += prefix_len * 2;
+            continue;
+        }
+        if (suffix_len > 0 && i + suffix_len * 2 <= len &&
+            memcmp(text + i, suffix, suffix_len) == 0 &&
+            memcmp(text + i + suffix_len, suffix, suffix_len) == 0)
+        {
+            rt_sb_append_bytes(sb, suffix, suffix_len);
+            i += suffix_len * 2;
+            continue;
+        }
+
+        rt_sb_append_bytes(sb, text + i, 1);
+        i++;
+    }
+}
+
 //=============================================================================
 // Core Template Rendering
 //=============================================================================
@@ -124,7 +157,8 @@ static rt_string render_internal(const char *tmpl,
             // No more placeholders, append rest of template
             if (pos < tmpl_len)
             {
-                rt_sb_append_bytes(&sb, tmpl + pos, tmpl_len - pos);
+                append_literal_unescaped(
+                    &sb, tmpl + pos, tmpl_len - pos, prefix, prefix_len, suffix, suffix_len);
             }
             break;
         }
@@ -132,7 +166,17 @@ static rt_string render_internal(const char *tmpl,
         // Append text before placeholder
         if (start > pos)
         {
-            rt_sb_append_bytes(&sb, tmpl + pos, start - pos);
+            append_literal_unescaped(
+                &sb, tmpl + pos, start - pos, prefix, prefix_len, suffix, suffix_len);
+        }
+
+        if (start + prefix_len * 2 <= tmpl_len &&
+            memcmp(tmpl + start + prefix_len, prefix, prefix_len) == 0)
+        {
+            // Escaped prefix - emit literal and skip
+            rt_sb_append_bytes(&sb, prefix, prefix_len);
+            pos = start + prefix_len * 2;
+            continue;
         }
 
         // Find placeholder end
@@ -142,7 +186,8 @@ static rt_string render_internal(const char *tmpl,
         if (end < 0)
         {
             // No closing delimiter, append rest as-is
-            rt_sb_append_bytes(&sb, tmpl + start, tmpl_len - start);
+            append_literal_unescaped(
+                &sb, tmpl + start, tmpl_len - start, prefix, prefix_len, suffix, suffix_len);
             break;
         }
 

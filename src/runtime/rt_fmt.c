@@ -265,9 +265,13 @@ extern "C"
         }
         else
         {
-            // Other units - show with decimals
-            len = snprintf(
-                buffer, sizeof(buffer), "%s%.1f %s", negative ? "-" : "", size, units[unit_idx]);
+            // Units >= KB always show one decimal digit (e.g., 1.0 KB).
+            len = snprintf(buffer,
+                           sizeof(buffer),
+                           "%s%.1f %s",
+                           negative ? "-" : "",
+                           size,
+                           units[unit_idx]);
         }
 
         if (len < 0 || (size_t)len >= sizeof(buffer))

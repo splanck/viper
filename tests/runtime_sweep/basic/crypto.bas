@@ -21,7 +21,7 @@
 SUB FillBytes(s AS STRING, b AS Viper.Collections.Bytes)
     DIM i AS INTEGER
     FOR i = 0 TO s.Length - 1
-        b.Set(i, Viper.String.Asc(Viper.String.Mid(s, i + 1, 1)))
+        b.Set(i, Viper.String.Asc(Viper.String.MidLen(s, i + 1, 1)))
     NEXT i
 END SUB
 

@@ -394,8 +394,8 @@ Simple string templating with placeholder substitution.
 ```basic
 ' Create a Map with values
 DIM values AS OBJECT = Map.New()
-values.Set("name", "Alice")
-values.Set("count", "5")
+values.Set("name", Viper.Box.Str("Alice"))
+values.Set("count", Viper.Box.Str("5"))
 
 ' Render template
 DIM result AS STRING = Viper.Text.Template.Render("Hello {{name}}, you have {{count}} messages.", values)
@@ -415,9 +415,9 @@ PRINT result  ' Output: "Hello {{unknown}}!"
 ```basic
 ' Create a Seq with positional values
 DIM values AS OBJECT = Seq.New()
-values.Push("Alice")
-values.Push("Bob")
-values.Push("Charlie")
+values.Push(Viper.Box.Str("Alice"))
+values.Push(Viper.Box.Str("Bob"))
+values.Push(Viper.Box.Str("Charlie"))
 
 ' Use numeric indices
 DIM result AS STRING = Viper.Text.Template.RenderSeq("{{0}} and {{1}} meet {{2}}", values)
@@ -432,8 +432,8 @@ PRINT result  ' Output: "Alice and {{99}}"
 
 ```basic
 DIM values AS OBJECT = Map.New()
-values.Set("name", "Alice")
-values.Set("count", "5")
+values.Set("name", Viper.Box.Str("Alice"))
+values.Set("count", Viper.Box.Str("5"))
 
 ' Use dollar signs as delimiters
 DIM result AS STRING = Viper.Text.Template.RenderWith("Hello $name$!", values, "$", "$")
@@ -563,4 +563,3 @@ NEXT i
 - [Collections](collections.md) - `Seq`, `Map`, and `Bag` used with templates and CSV
 - [Input/Output](io.md) - `File` and `LineReader` for reading text files
 - [Cryptography](crypto.md) - `Hash` for checksums and authentication of text data
-

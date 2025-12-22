@@ -180,8 +180,14 @@ void rt_obj_set_finalizer(void *p, rt_obj_finalizer_t fn)
 ///          heap-managed API.
 void rt_obj_retain_maybe(void *p)
 {
-    if (p)
-        rt_heap_retain(p);
+    if (!p)
+        return;
+    if (rt_string_is_handle(p))
+    {
+        rt_str_retain_maybe((rt_string)p);
+        return;
+    }
+    rt_heap_retain(p);
 }
 
 /// @brief Decrement the reference count and report last-user semantics.
@@ -194,6 +200,11 @@ int32_t rt_obj_release_check0(void *p)
 {
     if (!p)
         return 0;
+    if (rt_string_is_handle(p))
+    {
+        rt_str_release_maybe((rt_string)p);
+        return 0;
+    }
     return (int32_t)(rt_heap_release_deferred(p) == 0);
 }
 
@@ -208,6 +219,11 @@ void rt_obj_free(void *p)
 {
     if (!p)
         return;
+    if (rt_string_is_handle(p))
+    {
+        rt_str_release_maybe((rt_string)p);
+        return;
+    }
     rt_heap_hdr_t *hdr = rt_heap_hdr(p);
     if (hdr && (rt_heap_kind_t)hdr->kind == RT_HEAP_OBJECT &&
         __atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED) == 0 && hdr->finalizer)

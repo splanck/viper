@@ -140,6 +140,40 @@ typedef struct rt_tcp_server
     bool is_listening; // Server state
 } rt_tcp_server_t;
 
+static void rt_tcp_finalize(void *obj)
+{
+    if (!obj)
+        return;
+    rt_tcp_t *tcp = (rt_tcp_t *)obj;
+    if (tcp->is_open)
+    {
+        CLOSE_SOCKET(tcp->sock);
+        tcp->is_open = false;
+    }
+    if (tcp->host)
+    {
+        free(tcp->host);
+        tcp->host = NULL;
+    }
+}
+
+static void rt_tcp_server_finalize(void *obj)
+{
+    if (!obj)
+        return;
+    rt_tcp_server_t *server = (rt_tcp_server_t *)obj;
+    if (server->is_listening)
+    {
+        CLOSE_SOCKET(server->sock);
+        server->is_listening = false;
+    }
+    if (server->address)
+    {
+        free(server->address);
+        server->address = NULL;
+    }
+}
+
 //=============================================================================
 // Windows WSA Initialization
 //=============================================================================
@@ -374,13 +408,14 @@ void *rt_tcp_connect_for(rt_string host, int64_t port, int64_t timeout_ms)
     set_nodelay(sock);
 
     // Create connection object
-    rt_tcp_t *tcp = (rt_tcp_t *)calloc(1, sizeof(rt_tcp_t));
+    rt_tcp_t *tcp = (rt_tcp_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_tcp_t));
     if (!tcp)
     {
         CLOSE_SOCKET(sock);
         free(host_cstr);
         rt_trap("Network: memory allocation failed");
     }
+    rt_obj_set_finalizer(tcp, rt_tcp_finalize);
 
     tcp->sock = sock;
     tcp->host = host_cstr;
@@ -812,13 +847,14 @@ void *rt_tcp_server_listen_at(rt_string address, int64_t port)
     }
 
     // Create server object
-    rt_tcp_server_t *server = (rt_tcp_server_t *)calloc(1, sizeof(rt_tcp_server_t));
+    rt_tcp_server_t *server = (rt_tcp_server_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_tcp_server_t));
     if (!server)
     {
         CLOSE_SOCKET(sock);
         free(addr_cstr);
         rt_trap("Network: memory allocation failed");
     }
+    rt_obj_set_finalizer(server, rt_tcp_server_finalize);
 
     server->sock = sock;
     server->address = addr_cstr;
@@ -921,13 +957,14 @@ void *rt_tcp_server_accept_for(void *obj, int64_t timeout_ms)
     strcpy(host_cstr, host_buf);
 
     // Create connection object
-    rt_tcp_t *tcp = (rt_tcp_t *)calloc(1, sizeof(rt_tcp_t));
+    rt_tcp_t *tcp = (rt_tcp_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_tcp_t));
     if (!tcp)
     {
         CLOSE_SOCKET(client_sock);
         free(host_cstr);
         rt_trap("Network: memory allocation failed");
     }
+    rt_obj_set_finalizer(tcp, rt_tcp_finalize);
 
     tcp->sock = client_sock;
     tcp->host = host_cstr;
@@ -969,6 +1006,24 @@ typedef struct rt_udp
     int recv_timeout_ms;               // Receive timeout (0 = none)
 } rt_udp_t;
 
+static void rt_udp_finalize(void *obj)
+{
+    if (!obj)
+        return;
+    rt_udp_t *udp = (rt_udp_t *)obj;
+    if (udp->is_open)
+    {
+        CLOSE_SOCKET(udp->sock);
+        udp->is_open = false;
+    }
+    udp->is_bound = false;
+    if (udp->address)
+    {
+        free(udp->address);
+        udp->address = NULL;
+    }
+}
+
 //=============================================================================
 // Udp - Creation
 //=============================================================================
@@ -983,12 +1038,13 @@ void *rt_udp_new(void)
         rt_trap("Network: failed to create UDP socket");
     }
 
-    rt_udp_t *udp = (rt_udp_t *)calloc(1, sizeof(rt_udp_t));
+    rt_udp_t *udp = (rt_udp_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_udp_t));
     if (!udp)
     {
         CLOSE_SOCKET(sock);
         rt_trap("Network: memory allocation failed");
     }
+    rt_obj_set_finalizer(udp, rt_udp_finalize);
 
     udp->sock = sock;
     udp->address = NULL;
@@ -1079,13 +1135,14 @@ void *rt_udp_bind_at(rt_string address, int64_t port)
     memcpy(addr_cstr, addr_ptr, addr_len + 1);
 
     // Create UDP object
-    rt_udp_t *udp = (rt_udp_t *)calloc(1, sizeof(rt_udp_t));
+    rt_udp_t *udp = (rt_udp_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_udp_t));
     if (!udp)
     {
         CLOSE_SOCKET(sock);
         free(addr_cstr);
         rt_trap("Network: memory allocation failed");
     }
+    rt_obj_set_finalizer(udp, rt_udp_finalize);
 
     udp->sock = sock;
     udp->address = addr_cstr;

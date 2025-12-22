@@ -147,8 +147,12 @@ int main()
     }
 
     {
-        rt_string_impl huge_literal = {nullptr, nullptr, std::numeric_limits<size_t>::max(), 0};
-        rt_string_impl small_literal = {nullptr, nullptr, 16, 0};
+        rt_string_impl huge_literal = {RT_STRING_MAGIC,
+                                       nullptr,
+                                       nullptr,
+                                       std::numeric_limits<size_t>::max(),
+                                       0};
+        rt_string_impl small_literal = {RT_STRING_MAGIC, nullptr, nullptr, 16, 0};
         g_last_trap = nullptr;
         g_trap_expected = true;
         if (setjmp(g_trap_jmp) == 0)

@@ -34,6 +34,7 @@
 #include "rt_heap.h"
 
 #include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C"
@@ -67,8 +68,11 @@ extern "C"
 
 struct rt_string_impl
 {
+    uint64_t magic;
     char *data;
     rt_heap_hdr_t *heap;
     size_t literal_len;
     size_t literal_refs;
 };
+
+#define RT_STRING_MAGIC 0x5354524D41474943ULL /* "STRMAGIC" */

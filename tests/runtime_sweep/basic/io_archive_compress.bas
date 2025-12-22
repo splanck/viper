@@ -32,7 +32,7 @@
 SUB FillBytes(s AS STRING, b AS Viper.Collections.Bytes)
     DIM i AS INTEGER
     FOR i = 0 TO s.Length - 1
-        b.Set(i, Viper.String.Asc(Viper.String.Mid(s, i + 1, 1)))
+        b.Set(i, Viper.String.Asc(Viper.String.MidLen(s, i + 1, 1)))
     NEXT i
 END SUB
 
@@ -59,7 +59,7 @@ dataBytes.Set(3, 4)
 DIM archivePath AS STRING
 archivePath = Viper.IO.Path.Join(base, "test.zip")
 
-DIM arc AS OBJECT
+DIM arc AS Viper.IO.Archive
 arc = Viper.IO.Archive.Create(archivePath)
 arc.AddStr("hello.txt", "hi")
 arc.Add("data.bin", dataBytes)
@@ -69,7 +69,7 @@ arc.Finish()
 
 Viper.Diagnostics.Assert(Viper.IO.Archive.IsZip(archivePath), "zip.iszip")
 
-DIM arc2 AS OBJECT
+DIM arc2 AS Viper.IO.Archive
 arc2 = Viper.IO.Archive.Open(archivePath)
 Viper.Diagnostics.Assert(arc2.Path <> "", "zip.path")
 Viper.Diagnostics.Assert(arc2.Count >= 3, "zip.count")
@@ -100,7 +100,7 @@ Viper.Diagnostics.Assert(Viper.IO.File.Exists(extractedNote), "zip.extract")
 DIM arcBytes AS Viper.Collections.Bytes
 arcBytes = Viper.IO.File.ReadAllBytes(archivePath)
 Viper.Diagnostics.Assert(Viper.IO.Archive.IsZipBytes(arcBytes), "zip.iszipbytes")
-DIM arc3 AS OBJECT
+DIM arc3 AS Viper.IO.Archive
 arc3 = Viper.IO.Archive.FromBytes(arcBytes)
 Viper.Diagnostics.AssertEqStr(arc3.ReadStr("hello.txt"), "hi", "zip.frombytes")
 

@@ -58,6 +58,10 @@
 ' COVER: Viper.Input.Keyboard.KEY_PAGEDOWN
 ' COVER: Viper.Input.Keyboard.KEY_INSERT
 ' COVER: Viper.Input.Keyboard.KEY_DELETE
+
+FUNCTION IsBool(v AS INTEGER) AS BOOLEAN
+    IsBool = (v = 0) OR (v = 1) OR (v = -1)
+END FUNCTION
 ' COVER: Viper.Input.Keyboard.KEY_BACKSPACE
 ' COVER: Viper.Input.Keyboard.KEY_TAB
 ' COVER: Viper.Input.Keyboard.KEY_ENTER
@@ -177,7 +181,7 @@
 
 SUB AssertApprox(actual AS DOUBLE, expected AS DOUBLE, eps AS DOUBLE, msg AS STRING)
     IF Viper.Math.Abs(actual - expected) > eps THEN
-        Viper.Diagnostics.Assert(0, msg)
+        Viper.Diagnostics.Assert(FALSE, msg)
     END IF
 END SUB
 
@@ -296,22 +300,22 @@ Viper.Diagnostics.AssertEq(Viper.Input.Keyboard.KEY_UNKNOWN, 0, "key.unknown")
 
 DIM down AS INTEGER
 down = Viper.Input.Keyboard.IsDown(Viper.Input.Keyboard.KEY_A)
-Viper.Diagnostics.Assert(down = 0 OR down = 1, "key.isdown")
+Viper.Diagnostics.Assert(IsBool(down), "key.isdown")
 DIM up AS INTEGER
 up = Viper.Input.Keyboard.IsUp(Viper.Input.Keyboard.KEY_A)
-Viper.Diagnostics.Assert(up = 0 OR up = 1, "key.isup")
+Viper.Diagnostics.Assert(IsBool(up), "key.isup")
 DIM anyDown AS INTEGER
 anyDown = Viper.Input.Keyboard.AnyDown()
-Viper.Diagnostics.Assert(anyDown = 0 OR anyDown = 1, "key.anydown")
+Viper.Diagnostics.Assert(IsBool(anyDown), "key.anydown")
 DIM downKey AS INTEGER
 downKey = Viper.Input.Keyboard.GetDown()
 Viper.Diagnostics.Assert(downKey >= 0, "key.getdown")
 DIM wasPressed AS INTEGER
 wasPressed = Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KEY_A)
-Viper.Diagnostics.Assert(wasPressed = 0 OR wasPressed = 1, "key.waspressed")
+Viper.Diagnostics.Assert(IsBool(wasPressed), "key.waspressed")
 DIM wasReleased AS INTEGER
 wasReleased = Viper.Input.Keyboard.WasReleased(Viper.Input.Keyboard.KEY_A)
-Viper.Diagnostics.Assert(wasReleased = 0 OR wasReleased = 1, "key.wasreleased")
+Viper.Diagnostics.Assert(IsBool(wasReleased), "key.wasreleased")
 DIM pressed AS Viper.Collections.Seq
 pressed = Viper.Input.Keyboard.GetPressed()
 Viper.Diagnostics.Assert(pressed.Len >= 0, "key.getpressed")
@@ -326,16 +330,16 @@ Viper.Diagnostics.Assert(text.Length >= 0, "key.gettext")
 Viper.Input.Keyboard.DisableTextInput()
 DIM shiftDown AS INTEGER
 shiftDown = Viper.Input.Keyboard.Shift()
-Viper.Diagnostics.Assert(shiftDown = 0 OR shiftDown = 1, "key.shift")
+Viper.Diagnostics.Assert(IsBool(shiftDown), "key.shift")
 DIM ctrlDown AS INTEGER
 ctrlDown = Viper.Input.Keyboard.Ctrl()
-Viper.Diagnostics.Assert(ctrlDown = 0 OR ctrlDown = 1, "key.ctrl")
+Viper.Diagnostics.Assert(IsBool(ctrlDown), "key.ctrl")
 DIM altDown AS INTEGER
 altDown = Viper.Input.Keyboard.Alt()
-Viper.Diagnostics.Assert(altDown = 0 OR altDown = 1, "key.alt")
+Viper.Diagnostics.Assert(IsBool(altDown), "key.alt")
 DIM caps AS INTEGER
 caps = Viper.Input.Keyboard.CapsLock()
-Viper.Diagnostics.Assert(caps = 0 OR caps = 1, "key.caps")
+Viper.Diagnostics.Assert(IsBool(caps), "key.caps")
 DIM keyName AS STRING
 keyName = Viper.Input.Keyboard.KeyName(Viper.Input.Keyboard.KEY_A)
 Viper.Diagnostics.AssertEqStr(keyName, "A", "key.name")
@@ -352,11 +356,11 @@ Viper.Input.Mouse.Hide()
 Viper.Input.Mouse.Show()
 DIM hidden AS INTEGER
 hidden = Viper.Input.Mouse.IsHidden()
-Viper.Diagnostics.Assert(hidden = 0 OR hidden = 1, "mouse.hidden")
+Viper.Diagnostics.Assert(IsBool(hidden), "mouse.hidden")
 Viper.Input.Mouse.Capture()
 DIM captured AS INTEGER
 captured = Viper.Input.Mouse.IsCaptured()
-Viper.Diagnostics.Assert(captured = 0 OR captured = 1, "mouse.captured")
+Viper.Diagnostics.Assert(IsBool(captured), "mouse.captured")
 Viper.Input.Mouse.Release()
 Viper.Input.Mouse.SetPos(1, 1)
 DIM mx AS INTEGER
@@ -369,10 +373,10 @@ DIM dy AS INTEGER
 dy = Viper.Input.Mouse.DeltaY()
 DIM mdown AS INTEGER
 mdown = Viper.Input.Mouse.IsDown(Viper.Input.Mouse.BUTTON_LEFT)
-Viper.Diagnostics.Assert(mdown = 0 OR mdown = 1, "mouse.isdown")
+Viper.Diagnostics.Assert(IsBool(mdown), "mouse.isdown")
 DIM mup AS INTEGER
 mup = Viper.Input.Mouse.IsUp(Viper.Input.Mouse.BUTTON_LEFT)
-Viper.Diagnostics.Assert(mup = 0 OR mup = 1, "mouse.isup")
+Viper.Diagnostics.Assert(IsBool(mup), "mouse.isup")
 DIM leftDown AS INTEGER
 leftDown = Viper.Input.Mouse.Left()
 DIM rightDown AS INTEGER

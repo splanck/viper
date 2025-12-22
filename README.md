@@ -65,7 +65,7 @@ Viper is a compiler infrastructure with several components:
 | **Frontends** | Language compilers: BASIC, Pascal, and ViperLang |
 | **VM** | Bytecode interpreter with pluggable dispatch strategies |
 | **Backends** | Native code generators (AArch64, x86-64) |
-| **Runtime** | Portable C libraries for core types, collections, I/O, text, math, graphics, input, networking, threading |
+| **Runtime** | Portable C libraries for core types, collections, I/O, text, math, graphics, input, networking, system, diagnostics, utilities, crypto, time, threading |
 | **Tools** | Compiler drivers, verifier, disassembler |
 
 ### Why Viper?
@@ -90,7 +90,7 @@ Viper is in **early development**. All components are functional but incomplete:
 | Virtual Machine | Functional with multiple dispatch strategies |
 | AArch64 Backend | Validated on Apple Silicon; actively developed |
 | x86-64 Backend | Implemented but not validated on real hardware |
-| Runtime Libraries | Growing: collections, I/O, text, math, graphics, input, networking, system, threads, crypto, time |
+| Runtime Libraries | Expanding: core types, collections, I/O, text, math, graphics, input, networking, system, diagnostics, utilities, crypto, time, threads |
 | IL Optimizer | Basic passes implemented; more planned |
 | Debugger/IDE | Early work; not yet usable |
 

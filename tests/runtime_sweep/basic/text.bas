@@ -91,7 +91,7 @@ Viper.Diagnostics.AssertEq(rows2.Len, 2, "csv.parsewith")
 DIM id AS STRING
 id = Viper.Text.Guid.New()
 Viper.Diagnostics.Assert(Viper.Text.Guid.IsValid(id), "guid.valid")
-Viper.Diagnostics.Assert(Viper.Text.Guid.IsValid("not-a-guid") = 0, "guid.invalid")
+Viper.Diagnostics.Assert(Viper.Text.Guid.IsValid("not-a-guid") = FALSE, "guid.invalid")
 Viper.Diagnostics.AssertEqStr(Viper.Text.Guid.Empty, "00000000-0000-0000-0000-000000000000", "guid.empty")
 DIM gidBytes AS Viper.Collections.Bytes
 gidBytes = Viper.Text.Guid.ToBytes(id)
@@ -117,8 +117,8 @@ Viper.Diagnostics.AssertEqStr(Viper.Text.Pattern.Escape("file.txt"), "file\\.txt
 
 DIM values AS Viper.Collections.Map
 values = Viper.Collections.Map.New()
-values.Set("name", "Alice")
-values.Set("count", "5")
+values.Set("name", Viper.Box.Str("Alice"))
+values.Set("count", Viper.Box.Str("5"))
 DIM templ AS STRING
 templ = "Hello {{name}}, you have {{count}} messages."
 DIM rendered AS STRING
@@ -126,9 +126,9 @@ rendered = Viper.Text.Template.Render(templ, values)
 Viper.Diagnostics.AssertEqStr(rendered, "Hello Alice, you have 5 messages.", "tmpl.render")
 DIM seqVals AS Viper.Collections.Seq
 seqVals = Viper.Collections.Seq.New()
-seqVals.Push("Alice")
-seqVals.Push("Bob")
-seqVals.Push("Charlie")
+seqVals.Push(Viper.Box.Str("Alice"))
+seqVals.Push(Viper.Box.Str("Bob"))
+seqVals.Push(Viper.Box.Str("Charlie"))
 DIM renderedSeq AS STRING
 renderedSeq = Viper.Text.Template.RenderSeq("{{0}} and {{1}} meet {{2}}", seqVals)
 Viper.Diagnostics.AssertEqStr(renderedSeq, "Alice and Bob meet Charlie", "tmpl.renderseq")

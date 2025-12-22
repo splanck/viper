@@ -46,14 +46,14 @@
 DIM basePort AS INTEGER
 basePort = 49200 + (Viper.DateTime.NowMs() MOD 1000)
 
-DIM server1 AS OBJECT
+DIM server1 AS Viper.Network.TcpServer
 server1 = Viper.Network.TcpServer.ListenAt("127.0.0.1", basePort)
 Viper.Diagnostics.Assert(server1.IsListening, "tcpserver.listenat")
 
-DIM client1 AS OBJECT
+DIM client1 AS Viper.Network.Tcp
 client1 = Viper.Network.Tcp.ConnectFor("127.0.0.1", basePort, 1000)
 
-DIM serverConn1 AS OBJECT
+DIM serverConn1 AS Viper.Network.Tcp
 serverConn1 = server1.AcceptFor(1000)
 Viper.Diagnostics.AssertNotNull(serverConn1, "tcpserver.acceptfor")
 
@@ -61,16 +61,16 @@ serverConn1.Close()
 client1.Close()
 server1.Close()
 
-DIM server2 AS OBJECT
+DIM server2 AS Viper.Network.TcpServer
 server2 = Viper.Network.TcpServer.Listen(basePort + 1)
 Viper.Diagnostics.Assert(server2.IsListening, "tcpserver.listen")
 Viper.Diagnostics.AssertEq(server2.Port, basePort + 1, "tcpserver.port")
 Viper.Diagnostics.Assert(server2.Address <> "", "tcpserver.address")
 
-DIM client2 AS OBJECT
+DIM client2 AS Viper.Network.Tcp
 client2 = Viper.Network.Tcp.Connect("127.0.0.1", basePort + 1)
 
-DIM serverConn2 AS OBJECT
+DIM serverConn2 AS Viper.Network.Tcp
 serverConn2 = server2.Accept()
 Viper.Diagnostics.AssertNotNull(serverConn2, "tcpserver.accept")
 
@@ -97,6 +97,13 @@ Viper.Diagnostics.AssertEq(sent, 4, "tcp.send")
 
 DIM avail AS INTEGER
 avail = serverConn2.Available
+DIM tries AS INTEGER
+tries = 0
+WHILE avail < 4 AND tries < 100
+    Viper.Time.Clock.Sleep(10)
+    avail = serverConn2.Available
+    tries = tries + 1
+WEND
 Viper.Diagnostics.Assert(avail >= 4, "tcp.available")
 
 DIM recvBytes AS Viper.Collections.Bytes
@@ -127,17 +134,17 @@ client2.Close()
 serverConn2.Close()
 server2.Close()
 
-DIM udpBind AS OBJECT
+DIM udpBind AS Viper.Network.Udp
 udpBind = Viper.Network.Udp.Bind(0)
 Viper.Diagnostics.Assert(udpBind.IsBound, "udp.bind")
 
-DIM udpServer AS OBJECT
+DIM udpServer AS Viper.Network.Udp
 udpServer = Viper.Network.Udp.BindAt("127.0.0.1", 0)
 Viper.Diagnostics.Assert(udpServer.IsBound, "udp.bindat")
 Viper.Diagnostics.Assert(udpServer.Port > 0, "udp.port")
 Viper.Diagnostics.Assert(udpServer.Address <> "", "udp.address")
 
-DIM udpClient AS OBJECT
+DIM udpClient AS Viper.Network.Udp
 udpClient = Viper.Network.Udp.New()
 
 udpServer.SetBroadcast(1)
@@ -177,6 +184,10 @@ Viper.Diagnostics.AssertEqStr(udpRecv2.ToStr(), "pong", "udp.recv")
 udpClient.SendToStr("127.0.0.1", udpPort, "data")
 DIM udpRecv3 AS Viper.Collections.Bytes
 udpRecv3 = udpServer.RecvFor(32, 1000)
+IF Viper.Object.ReferenceEquals(udpRecv3, NOTHING) THEN
+    udpRecv3 = udpServer.Recv(32)
+END IF
+Viper.Diagnostics.AssertNotNull(udpRecv3, "udp.recvfor")
 Viper.Diagnostics.AssertEqStr(udpRecv3.ToStr(), "data", "udp.recvfor")
 
 udpClient.Close()

@@ -35,7 +35,7 @@
 
 SUB AssertApprox(actual AS DOUBLE, expected AS DOUBLE, eps AS DOUBLE, msg AS STRING)
     IF Viper.Math.Abs(actual - expected) > eps THEN
-        Viper.Diagnostics.Assert(0, msg)
+        Viper.Diagnostics.Assert(FALSE, msg)
     END IF
 END SUB
 
@@ -82,8 +82,8 @@ DIM objB AS Viper.Collections.List
 objA = NEW Viper.Collections.List()
 objB = NEW Viper.Collections.List()
 Viper.Diagnostics.Assert(Viper.Object.Equals(objA, objA), "obj.equals.self")
-Viper.Diagnostics.Assert(Viper.Object.Equals(objA, objB) = 0, "obj.equals.other")
-Viper.Diagnostics.AssertNotNull(Viper.Object.ToString(objA), "obj.tostring")
+Viper.Diagnostics.Assert(Viper.Object.Equals(objA, objB) = FALSE, "obj.equals.other")
+Viper.Diagnostics.Assert(Viper.Object.ToString(objA) <> "", "obj.tostring")
 Viper.Diagnostics.Assert(Viper.Object.GetHashCode(objA) <> 0, "obj.hash")
 
 PRINT "RESULT: ok"

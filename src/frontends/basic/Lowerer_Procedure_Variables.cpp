@@ -27,6 +27,7 @@
 #include "frontends/basic/LoweringPipeline.hpp"
 #include "frontends/basic/ProcedureSymbolTracker.hpp"
 #include "frontends/basic/SemanticAnalyzer.hpp"
+#include "frontends/basic/StringUtils.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
 
 using namespace il::core;
@@ -290,10 +291,26 @@ Lowerer::SlotType Lowerer::getSlotType(std::string_view name) const
 {
     SlotType info;
     AstType astTy = inferVariableTypeForLowering(*this, name);
+    auto isGenericObject = [](std::string_view cls)
+    {
+        return string_utils::iequals(cls, "object");
+    };
 
-    // Check module-level scalar object cache first. (BUG-107)
+    const auto *sym = findSymbol(name);
+
+    if (sym && sym->isObject && !sym->objectClass.empty() && !isGenericObject(sym->objectClass))
+    {
+        info.type = Type(Type::Kind::Ptr);
+        info.isArray = false;
+        info.isBoolean = false;
+        info.isObject = true;
+        info.objectClass = sym->objectClass;
+        return info;
+    }
+
     auto modObjIt = moduleObjectClass_.find(name);
-    if (modObjIt != moduleObjectClass_.end())
+    if (modObjIt != moduleObjectClass_.end() && !modObjIt->second.empty() &&
+        !isGenericObject(modObjIt->second))
     {
         info.type = Type(Type::Kind::Ptr);
         info.isArray = false;
@@ -303,7 +320,7 @@ Lowerer::SlotType Lowerer::getSlotType(std::string_view name) const
         return info;
     }
 
-    if (const auto *sym = findSymbol(name))
+    if (sym)
     {
         if (sym->isObject)
         {
@@ -329,6 +346,15 @@ Lowerer::SlotType Lowerer::getSlotType(std::string_view name) const
             info.isBoolean = (astTy == AstType::Bool);
         else
             info.isBoolean = false;
+    }
+    else if (modObjIt != moduleObjectClass_.end())
+    {
+        info.type = Type(Type::Kind::Ptr);
+        info.isArray = false;
+        info.isBoolean = false;
+        info.isObject = true;
+        info.objectClass = modObjIt->second;
+        return info;
     }
     else
     {

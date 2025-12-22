@@ -319,6 +319,10 @@ class SemanticAnalyzer
     /// @param name Symbol whose type should be queried.
     /// @return Inferred type when recorded; std::nullopt otherwise.
     std::optional<Type> lookupVarType(const std::string &name) const;
+    /// @brief Look up the declared object class name for @p name when available.
+    /// @param name Symbol whose declared class should be queried.
+    /// @return Qualified class name when recorded; std::nullopt otherwise.
+    std::optional<std::string> lookupObjectClassQName(const std::string &name) const;
 
     /// @brief Check if a symbol is registered at module level.
     ///
@@ -353,6 +357,8 @@ class SemanticAnalyzer
 
         void noteSymbolInserted(const std::string &name);
         void noteVarTypeMutation(const std::string &name, std::optional<Type> previous);
+        void noteObjectClassMutation(const std::string &name,
+                                     std::optional<std::string> previous);
         void noteArrayMutation(const std::string &name, std::optional<ArrayMetadata> previous);
         void noteChannelMutation(long long channel, bool previouslyOpen);
         void noteLabelInserted(int label);
@@ -363,6 +369,11 @@ class SemanticAnalyzer
         {
             std::string name;
             std::optional<Type> previous;
+        };
+        struct ObjectClassDelta
+        {
+            std::string name;
+            std::optional<std::string> previous;
         };
 
         struct ArrayDelta
@@ -385,9 +396,11 @@ class SemanticAnalyzer
         std::vector<int> newLabels_;
         std::vector<int> newLabelRefs_;
         std::vector<VarTypeDelta> varTypeDeltas_;
+        std::vector<ObjectClassDelta> objectClassDeltas_;
         std::vector<ArrayDelta> arrayDeltas_;
         std::vector<ChannelDelta> channelDeltas_;
         std::unordered_set<std::string> trackedVarTypes_;
+        std::unordered_set<std::string> trackedObjectClasses_;
         std::unordered_set<std::string> trackedArrays_;
         std::unordered_set<long long> trackedChannels_;
         bool previousHandlerActive_{false};
@@ -582,6 +595,7 @@ class SemanticAnalyzer
     std::unordered_set<std::string> symbols_;
     std::unordered_set<std::string> constants_; ///< Constant names declared with CONST.
     std::unordered_map<std::string, Type> varTypes_;
+    std::unordered_map<std::string, std::string> objectClassTypes_;
     std::unordered_map<std::string, ArrayMetadata>
         arrays_;                                 ///< Array metadata with extents and total size
     std::unordered_set<long long> openChannels_; ///< Channels opened by literal handles.

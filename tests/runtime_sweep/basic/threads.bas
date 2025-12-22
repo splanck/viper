@@ -24,7 +24,7 @@ t = Viper.Threads.Thread.Start(ADDRESSOF WorkerThread, NOTHING)
 Viper.Diagnostics.Assert(t.Id > 0, "thread.id")
 DIM alive AS INTEGER
 alive = t.IsAlive
-Viper.Diagnostics.Assert(alive = 0 OR alive = 1, "thread.isalive")
+Viper.Diagnostics.Assert(alive = 0 OR alive = 1 OR alive = -1, "thread.isalive")
 
 DIM joined AS INTEGER
 joined = t.JoinFor(1)

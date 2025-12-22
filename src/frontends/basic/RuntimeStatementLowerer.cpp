@@ -28,6 +28,7 @@
 #include "Lowerer.hpp"
 #include "RuntimeCallHelpers.hpp"
 #include "frontends/basic/ASTUtils.hpp"
+#include "frontends/basic/IdentifierUtil.hpp"
 #include "frontends/basic/ILTypeUtils.hpp"
 #include "frontends/basic/LocationScope.hpp"
 #include "frontends/basic/NameMangler_OOP.hpp"
@@ -35,6 +36,7 @@
 #include "frontends/basic/sem/OverloadResolution.hpp"
 #include "frontends/basic/sem/RuntimePropertyIndex.hpp"
 #include "il/runtime/RuntimeClassNames.hpp"
+#include "il/runtime/classes/RuntimeClasses.hpp"
 
 #include <cassert>
 
@@ -44,6 +46,107 @@ using AstType = ::il::frontends::basic::Type;
 
 namespace il::frontends::basic
 {
+
+static bool collectQualifiedSegments(const Expr &expr, std::vector<std::string> &out)
+{
+    if (auto *var = as<const VarExpr>(expr))
+    {
+        out.push_back(var->name);
+        return true;
+    }
+    if (auto *mem = as<const MemberAccessExpr>(expr))
+    {
+        if (!mem->base)
+            return false;
+        if (!collectQualifiedSegments(*mem->base, out))
+            return false;
+        out.push_back(mem->member);
+        return true;
+    }
+    return false;
+}
+
+static std::optional<std::string> runtimeClassQNameFrom(const Expr &expr)
+{
+    std::vector<std::string> parts;
+    if (!collectQualifiedSegments(expr, parts))
+        return std::nullopt;
+    if (parts.empty() || !string_utils::iequals(parts.front(), "Viper"))
+        return std::nullopt;
+    std::string qname;
+    for (size_t i = 0; i < parts.size(); ++i)
+    {
+        if (i)
+            qname.push_back('.');
+        qname += parts[i];
+    }
+    return qname;
+}
+
+static std::optional<std::string> runtimeCtorClassQNameFromName(std::string_view calleeName)
+{
+    if (calleeName.empty())
+        return std::nullopt;
+
+    const auto &classes = il::runtime::runtimeClassCatalog();
+    for (const auto &klass : classes)
+    {
+        if (!klass.ctor)
+            continue;
+        if (string_utils::iequals(calleeName, klass.ctor))
+            return std::string(klass.qname);
+    }
+    std::size_t lastDot = calleeName.rfind('.');
+    if (lastDot == std::string_view::npos)
+        return std::nullopt;
+
+    std::string_view tail = calleeName.substr(lastDot + 1);
+    if (!string_utils::iequals(tail, "New"))
+        return std::nullopt;
+
+    std::string qname(calleeName.substr(0, lastDot));
+    for (const auto &klass : classes)
+    {
+        if (!string_utils::iequals(qname, klass.qname))
+            continue;
+        for (const auto &method : klass.methods)
+        {
+            if (!method.name || !method.signature)
+                continue;
+            if (!string_utils::iequals(method.name, "New"))
+                continue;
+            std::string_view sig(method.signature);
+            std::size_t lparen = sig.find('(');
+            std::string_view ret = lparen == std::string_view::npos ? sig : sig.substr(0, lparen);
+            if (string_utils::iequals(ret, "obj"))
+                return qname;
+        }
+    }
+    return std::nullopt;
+}
+
+static std::optional<std::string> runtimeCtorClassQNameFrom(const CallExpr &expr)
+{
+    std::string calleeName;
+    if (!expr.calleeQualified.empty())
+        calleeName = JoinDots(expr.calleeQualified);
+    else
+        calleeName = expr.callee;
+
+    return runtimeCtorClassQNameFromName(calleeName);
+}
+
+static std::optional<std::string> runtimeCtorClassQNameFrom(const MethodCallExpr &expr)
+{
+    if (!expr.base)
+        return std::nullopt;
+    auto baseQName = runtimeClassQNameFrom(*expr.base);
+    if (!baseQName)
+        return std::nullopt;
+
+    std::string calleeName = *baseQName + "." + expr.method;
+    return runtimeCtorClassQNameFromName(calleeName);
+}
 
 RuntimeStatementLowerer::RuntimeStatementLowerer(Lowerer &lowerer) : lowerer_(lowerer) {}
 
@@ -70,9 +173,22 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
             {
                 className = alloc->className;
             }
+            else if (const auto *call = as<const CallExpr>(*stmt.expr))
+            {
+                if (auto qname = runtimeCtorClassQNameFrom(*call))
+                    className = *qname;
+            }
             else
             {
                 className = lowerer_.resolveObjectClass(*stmt.expr);
+            }
+            if (className.empty())
+            {
+                if (const auto *mcall = as<const MethodCallExpr>(*stmt.expr))
+                {
+                    if (auto qname = runtimeCtorClassQNameFrom(*mcall))
+                        className = *qname;
+                }
             }
             if (!className.empty())
             {
@@ -467,6 +583,55 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
         {
             // Runtime class property setter via catalog (e.g., Viper.String)
             {
+                auto mapTy = [](std::string_view t) -> Lowerer::Type::Kind
+                {
+                    if (t == "i64")
+                        return Lowerer::Type::Kind::I64;
+                    if (t == "f64")
+                        return Lowerer::Type::Kind::F64;
+                    if (t == "i1")
+                        return Lowerer::Type::Kind::I1;
+                    if (t == "str")
+                        return Lowerer::Type::Kind::Str;
+                    return Lowerer::Type::Kind::I64;
+                };
+                auto &pidx = runtimePropertyIndex();
+
+                if (member->base)
+                {
+                    if (auto qClass = runtimeClassQNameFrom(*member->base))
+                    {
+                        auto prop = pidx.find(*qClass, member->member);
+                        if (prop)
+                        {
+                            if (prop->readonly || prop->setter.empty())
+                            {
+                                if (auto *em = lowerer_.diagnosticEmitter())
+                                {
+                                    std::string msg = "property '" + member->member + "' on '" +
+                                                      *qClass + "' is read-only";
+                                    em->emit(il::support::Severity::Error,
+                                             "E_PROP_READONLY",
+                                             stmt.loc,
+                                             static_cast<uint32_t>(member->member.size()),
+                                             std::move(msg));
+                                }
+                                return;
+                            }
+                            Lowerer::RVal v = value;
+                            auto k = mapTy(prop->type);
+                            if (k == Lowerer::Type::Kind::I1)
+                                v = lowerer_.coerceToBool(std::move(v), stmt.loc);
+                            else if (k == Lowerer::Type::Kind::F64)
+                                v = lowerer_.coerceToF64(std::move(v), stmt.loc);
+                            else if (k == Lowerer::Type::Kind::I64)
+                                v = lowerer_.coerceToI64(std::move(v), stmt.loc);
+                            lowerer_.emitCall(prop->setter, {v.value});
+                            return;
+                        }
+                    }
+                }
+
                 Lowerer::RVal baseVal = lowerer_.lowerExpr(*member->base);
                 std::string qClass;
                 {
@@ -478,7 +643,6 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
                     qClass = std::string(il::runtime::RTCLASS_STRING);
                 if (!qClass.empty())
                 {
-                    auto &pidx = runtimePropertyIndex();
                     auto prop = pidx.find(qClass, member->member);
                     if (prop)
                     {
@@ -496,18 +660,6 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
                             }
                             return;
                         }
-                        auto mapTy = [](std::string_view t) -> Lowerer::Type::Kind
-                        {
-                            if (t == "i64")
-                                return Lowerer::Type::Kind::I64;
-                            if (t == "f64")
-                                return Lowerer::Type::Kind::F64;
-                            if (t == "i1")
-                                return Lowerer::Type::Kind::I1;
-                            if (t == "str")
-                                return Lowerer::Type::Kind::Str;
-                            return Lowerer::Type::Kind::I64;
-                        };
                         Lowerer::RVal v = value;
                         // Coerce according to expected type token
                         auto k = mapTy(prop->type);

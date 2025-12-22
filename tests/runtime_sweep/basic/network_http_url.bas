@@ -76,18 +76,18 @@ DIM outPath AS STRING
 outPath = Viper.IO.Path.Join(tmpDir, "example.html")
 DIM ok AS INTEGER
 ok = Viper.Network.Http.Download(baseUrl, outPath)
-Viper.Diagnostics.Assert(ok, "http.download")
+Viper.Diagnostics.Assert(ok <> 0, "http.download")
 Viper.Diagnostics.Assert(Viper.IO.File.Size(outPath) > 0, "http.download.size")
 Viper.IO.File.Delete(outPath)
 Viper.IO.Dir.Remove(tmpDir)
 
-DIM headRes AS OBJECT
+DIM headRes AS Viper.Network.HttpRes
 headRes = Viper.Network.Http.Head(baseUrl)
 Viper.Diagnostics.Assert(headRes.Status >= 200, "http.head.status")
 Viper.Diagnostics.Assert(headRes.StatusText <> "", "http.head.statustext")
 Viper.Diagnostics.Assert(headRes.IsOk(), "http.head.isok")
 
-DIM headHeaders AS OBJECT
+DIM headHeaders AS Viper.Collections.Map
 headHeaders = headRes.Headers
 Viper.Diagnostics.Assert(headHeaders.Len > 0, "http.head.headers")
 
@@ -102,20 +102,20 @@ DIM headBodyStr AS STRING
 headBodyStr = headRes.BodyStr()
 Viper.Diagnostics.Assert(headBodyStr.Length >= 0, "http.head.bodystr")
 
-DIM req AS OBJECT
+DIM req AS Viper.Network.HttpReq
 req = Viper.Network.HttpReq.New("GET", baseUrl)
 req.SetHeader("Accept", "text/html")
 req.SetBodyStr("hello")
 req.SetBody(payload)
 req.SetTimeout(5000)
 
-DIM res AS OBJECT
+DIM res AS Viper.Network.HttpRes
 res = req.Send()
 Viper.Diagnostics.Assert(res.Status >= 200, "httpreq.status")
 Viper.Diagnostics.Assert(res.StatusText <> "", "httpreq.statustext")
 Viper.Diagnostics.Assert(res.IsOk(), "httpreq.isok")
 
-DIM resHeaders AS OBJECT
+DIM resHeaders AS Viper.Collections.Map
 resHeaders = res.Headers
 Viper.Diagnostics.Assert(resHeaders.Len > 0, "httpreq.headers")
 
@@ -131,7 +131,7 @@ DIM resHeader AS STRING
 resHeader = res.Header("content-type")
 Viper.Diagnostics.Assert(resHeader <> "", "httpreq.header")
 
-DIM url AS OBJECT
+DIM url AS Viper.Network.Url
 url = Viper.Network.Url.Parse("http://user:pass@example.com:8080/path/to?foo=bar&x=1#frag")
 Viper.Diagnostics.AssertEqStr(url.Scheme, "http", "url.scheme")
 Viper.Diagnostics.AssertEqStr(url.User, "user", "url.user")
@@ -145,7 +145,7 @@ Viper.Diagnostics.Assert(url.Authority <> "", "url.authority")
 Viper.Diagnostics.Assert(url.HostPort <> "", "url.hostport")
 Viper.Diagnostics.Assert(url.Full <> "", "url.full")
 
-DIM clone AS OBJECT
+DIM clone AS Viper.Network.Url
 clone = url.Clone()
 Viper.Diagnostics.AssertEqStr(clone.Full, url.Full, "url.clone")
 
@@ -156,18 +156,18 @@ Viper.Diagnostics.Assert(url.HasQueryParam("new"), "url.setparam")
 url.DelQueryParam("x")
 Viper.Diagnostics.Assert(url.HasQueryParam("x") = 0, "url.delparam")
 
-DIM qmap AS OBJECT
+DIM qmap AS Viper.Collections.Map
 qmap = url.QueryMap()
 Viper.Diagnostics.Assert(qmap.Len >= 2, "url.querymap")
-Viper.Diagnostics.AssertEqStr(qmap.Get("foo"), "bar", "url.querymap.foo")
+Viper.Diagnostics.AssertEqStr(Viper.Box.ToStr(qmap.Get("foo")), "bar", "url.querymap.foo")
 
-DIM base AS OBJECT
+DIM base AS Viper.Network.Url
 base = Viper.Network.Url.Parse("http://example.com/a/b/c")
-DIM resolved AS OBJECT
+DIM resolved AS Viper.Network.Url
 resolved = base.Resolve("d")
 Viper.Diagnostics.AssertEqStr(resolved.Full, "http://example.com/a/b/d", "url.resolve")
 
-DIM built AS OBJECT
+DIM built AS Viper.Network.Url
 built = Viper.Network.Url.New()
 built.Scheme = "http"
 built.Host = "example.com"
@@ -185,20 +185,20 @@ Viper.Diagnostics.AssertEqStr(dec, "hello world!", "url.decode")
 
 DIM params AS Viper.Collections.Map
 params = Viper.Collections.Map.New()
-params.Set("name", "John Doe")
-params.Set("city", "New York")
+params.Set("name", Viper.Box.Str("John Doe"))
+params.Set("city", Viper.Box.Str("New York"))
 
 DIM queryStr AS STRING
 queryStr = Viper.Network.Url.EncodeQuery(params)
 Viper.Diagnostics.Assert(Viper.String.Has(queryStr, "name=John%20Doe"), "url.encodequery.name")
 Viper.Diagnostics.Assert(Viper.String.Has(queryStr, "city=New%20York"), "url.encodequery.city")
 
-DIM parsed AS OBJECT
+DIM parsed AS Viper.Collections.Map
 parsed = Viper.Network.Url.DecodeQuery("a=1&b=2")
-Viper.Diagnostics.AssertEqStr(parsed.Get("a"), "1", "url.decodequery")
+Viper.Diagnostics.AssertEqStr(Viper.Box.ToStr(parsed.Get("a")), "1", "url.decodequery")
 
 Viper.Diagnostics.Assert(Viper.Network.Url.IsValid("http://example.com"), "url.isvalid")
-Viper.Diagnostics.Assert(Viper.Network.Url.IsValid("http://") = 0, "url.isvalid.false")
+Viper.Diagnostics.Assert(Viper.Network.Url.IsValid("http://") = FALSE, "url.isvalid.false")
 
 PRINT "RESULT: ok"
 END

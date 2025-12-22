@@ -45,30 +45,40 @@ Last updated: 2025-12-22
 ### 1) Coverage + Tests
 - [x] Extend runtime checklist with non-class namespaces (Box/Diagnostics/Parse).
 - [x] Add BASIC sweep coverage for Diagnostics/Parse/Box.
-- [ ] Run runtime sweep and update checklist.
+- [x] Run runtime sweep and update checklist.
 
 ### 2) Docs + README
 - [x] Update viperlib core/diagnostics/utilities docs for Box + diagnostics + parse notes.
 - [x] Update root README runtime class list.
+- [x] Audit viperlib docs vs runtime class list for coverage gaps.
 
 ### 3) Metrics + Reports
-- [ ] Regenerate `docs/devdocs/LOC_REPORT.md` with current `cloc` numbers.
-- [ ] Update `docs/devdocs/CODE_HOTSPOTS_REPORT.md` with top C/C++ hotspots and actions.
+- [x] Regenerate `docs/devdocs/LOC_REPORT.md` with current `cloc` numbers.
+- [x] Update `docs/devdocs/CODE_HOTSPOTS_REPORT.md` with top C/C++ hotspots and actions.
 
 ### 4) Build + Validation
 - [ ] Regenerate runtime registry snapshot with `rtgen`.
 - [ ] `cmake -S . -B build`
-- [ ] `cmake --build build -j`
-- [ ] `ctest --test-dir build --output-on-failure`
+- [x] `cmake --build build -j`
+- [x] `ctest --test-dir build --output-on-failure`
 
 ### 5) Bugs + Report
-- [ ] Update `bugs/runtime_bugs.md` and `bugs/viperlang.md` with findings.
-- [ ] Provide runtime sweep report and status summary.
+- [x] Update `bugs/runtime_bugs.md`, `bugs/viperlang.md`, and `bugs/basic_bugs.md` with findings.
+- [x] Provide runtime sweep report and status summary.
 
 ## Progress Log
+- 2025-12-22: Fixed runtime object retention for string handles and TreeMap value retention; collections sweep now passes.
+- 2025-12-22: Regenerated LOC/SLOC and C/C++ hotspot reports (`docs/devdocs/LOC_REPORT.md`, `docs/devdocs/CODE_HOTSPOTS_REPORT.md`).
+- 2025-12-22: Updated README runtime coverage and audited viperlib docs for class/method coverage gaps.
+- 2025-12-22: Updated runtime/viperlang/basic bug logs and refreshed runtime test matrix timestamp.
+- 2025-12-22: Rebuilt toolchain and reran runtime sweep (ViperLang + BASIC).
 - 2025-12-22: Extended runtime test matrix with Box/Diagnostics/Parse sections.
 - 2025-12-22: Added BASIC runtime sweep coverage for Diagnostics and Parse/Box helpers.
 - 2025-12-22: Updated viperlib core/diagnostics/utilities docs and refreshed README runtime class list.
+- 2025-12-22: Restored Fmt.Size decimal formatting, fixed StringBuilder bridge test string access, and normalized canonical runtime mapping.
+- 2025-12-22: Updated golden IL fixtures for `Viper.String.IndexOfFrom` receiver-first signature.
+- 2025-12-22: Full `ctest --test-dir build --output-on-failure` run completed (933 tests).
+- 2025-12-22: Runtime sweep re-run (ViperLang + BASIC) passed; updated Fmt.Size sweep expectation and utilities docs example output.
 - 2025-12-21: Regenerated LOC/SLOC report (`docs/devdocs/LOC_REPORT.md`).
 - 2025-12-21: Refreshed hotspot report (`docs/devdocs/CODE_HOTSPOTS_REPORT.md`).
 - 2025-12-21: Fixed runtime registry duplication and terminal lowering alignment.

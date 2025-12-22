@@ -15,6 +15,8 @@
 
 #pragma once
 
+#include <cctype>
+
 /// @brief Test whether the current token matches a given kind.
 /// @param k Token kind to compare against the current token.
 /// @return True if the current token is of kind @p k; otherwise false.
@@ -67,4 +69,20 @@ static bool isSoftIdentToken(TokenKind k)
         default:
             return false;
     }
+}
+
+/// @brief Check if a token kind can appear as a member/qualified name segment.
+/// @details This accepts identifiers and keywords after a dot to support runtime
+///          namespaces like Viper.IO.File.Delete or Viper.Threads.Thread.Sleep.
+/// @param k Token kind to test.
+/// @return True if the token can be treated as an identifier after '.'.
+static bool isMemberIdentToken(TokenKind k)
+{
+    if (k == TokenKind::Identifier)
+        return true;
+    const char *spelling = tokenKindToString(k);
+    if (!spelling || spelling[0] == '\0')
+        return false;
+    unsigned char first = static_cast<unsigned char>(spelling[0]);
+    return std::isalpha(first) && std::isupper(first);
 }

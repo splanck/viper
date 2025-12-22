@@ -24,6 +24,7 @@
 #include "frontends/basic/sem/TypeRegistry.hpp"
 #include "il/runtime/classes/RuntimeClasses.hpp"
 
+#include <algorithm>
 #include <limits>
 
 namespace il::frontends::basic::semantic_analyzer_detail
@@ -39,6 +40,123 @@ static std::string toLowerQualified(std::string_view s)
     return out;
 }
 
+static bool isRuntimeNamespaceChain(const Expr &expr)
+{
+    std::vector<std::string> parts;
+    const Expr *cur = &expr;
+    while (cur)
+    {
+        if (auto *var = as<const VarExpr>(*cur))
+        {
+            parts.push_back(var->name);
+            break;
+        }
+        if (auto *mem = as<const MemberAccessExpr>(*cur))
+        {
+            parts.push_back(mem->member);
+            cur = mem->base.get();
+            continue;
+        }
+        return false;
+    }
+
+    if (parts.empty())
+        return false;
+    std::reverse(parts.begin(), parts.end());
+    return string_utils::iequals(parts.front(), "Viper");
+}
+
+static bool collectQualifiedChain(const Expr &expr, std::vector<std::string> &out)
+{
+    const Expr *cur = &expr;
+    while (cur)
+    {
+        if (auto *var = as<const VarExpr>(*cur))
+        {
+            out.push_back(var->name);
+            break;
+        }
+        if (auto *mem = as<const MemberAccessExpr>(*cur))
+        {
+            out.push_back(mem->member);
+            cur = mem->base.get();
+            continue;
+        }
+        return false;
+    }
+    if (out.empty())
+        return false;
+    std::reverse(out.begin(), out.end());
+    return true;
+}
+
+static std::optional<std::string> runtimeClassQNameFromExpr(const Expr &expr)
+{
+    std::vector<std::string> parts;
+    if (!collectQualifiedChain(expr, parts))
+        return std::nullopt;
+    if (!string_utils::iequals(parts.front(), "Viper"))
+        return std::nullopt;
+    return JoinDots(parts);
+}
+
+static const il::runtime::RuntimeClass *findRuntimeClass(std::string_view qname)
+{
+    const auto &classes = il::runtime::runtimeClassCatalog();
+    for (const auto &c : classes)
+    {
+        if (string_utils::iequals(qname, c.qname))
+            return &c;
+    }
+    return nullptr;
+}
+
+static std::optional<SemanticAnalyzer::Type> semanticTypeFromRuntimeType(std::string_view ty)
+{
+    if (ty == "i64")
+        return SemanticAnalyzer::Type::Int;
+    if (ty == "f64")
+        return SemanticAnalyzer::Type::Float;
+    if (ty == "i1")
+        return SemanticAnalyzer::Type::Bool;
+    if (ty == "str")
+        return SemanticAnalyzer::Type::String;
+    if (ty == "obj")
+        return SemanticAnalyzer::Type::Object;
+    return std::nullopt;
+}
+
+static std::optional<SemanticAnalyzer::Type> resolveRuntimePropertyType(
+    SemanticAnalyzer &analyzer, const MemberAccessExpr &expr)
+{
+    const il::runtime::RuntimeClass *klass = nullptr;
+    if (expr.base)
+    {
+        if (auto qname = runtimeClassQNameFromExpr(*expr.base))
+        {
+            klass = findRuntimeClass(*qname);
+        }
+        else if (auto *var = as<const VarExpr>(*expr.base))
+        {
+            if (auto qname = analyzer.lookupObjectClassQName(var->name))
+            {
+                klass = findRuntimeClass(*qname);
+            }
+        }
+    }
+
+    if (!klass)
+        return std::nullopt;
+
+    for (const auto &prop : klass->properties)
+    {
+        if (string_utils::iequals(prop.name, expr.member))
+            return semanticTypeFromRuntimeType(prop.type ? prop.type : "");
+    }
+
+    return std::nullopt;
+}
+
 } // namespace il::frontends::basic::semantic_analyzer_detail
 
 namespace il::frontends::basic
@@ -46,6 +164,8 @@ namespace il::frontends::basic
 
 using semantic_analyzer_detail::astToSemanticType;
 using semantic_analyzer_detail::levenshtein;
+using semantic_analyzer_detail::isRuntimeNamespaceChain;
+using semantic_analyzer_detail::resolveRuntimePropertyType;
 using semantic_analyzer_detail::semanticTypeName;
 using semantic_analyzer_detail::toLowerQualified;
 
@@ -152,9 +272,14 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor
     void visit(MemberAccessExpr &expr) override
     {
         // Validate base expression (catches undefined variables like 'A' in 'A.B')
-        if (expr.base)
+        if (expr.base && !isRuntimeNamespaceChain(*expr.base))
         {
             analyzer_.visitExpr(*expr.base);
+        }
+        if (auto rtType = resolveRuntimePropertyType(analyzer_, expr))
+        {
+            result_ = *rtType;
+            return;
         }
         result_ = SemanticAnalyzer::Type::Unknown;
     }

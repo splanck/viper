@@ -34,6 +34,42 @@
 namespace il::frontends::basic
 {
 
+static bool collectQualifiedSegments(const Expr &expr, std::vector<std::string> &out)
+{
+    if (auto *var = as<const VarExpr>(expr))
+    {
+        out.push_back(var->name);
+        return true;
+    }
+    if (auto *mem = as<const MemberAccessExpr>(expr))
+    {
+        if (!mem->base)
+            return false;
+        if (!collectQualifiedSegments(*mem->base, out))
+            return false;
+        out.push_back(mem->member);
+        return true;
+    }
+    return false;
+}
+
+static std::optional<std::string> runtimeClassQNameFrom(const Expr &expr)
+{
+    std::vector<std::string> parts;
+    if (!collectQualifiedSegments(expr, parts))
+        return std::nullopt;
+    if (parts.empty() || !string_utils::iequals(parts.front(), "Viper"))
+        return std::nullopt;
+    std::string qname;
+    for (size_t i = 0; i < parts.size(); ++i)
+    {
+        if (i)
+            qname.push_back('.');
+        qname += parts[i];
+    }
+    return qname;
+}
+
 /// @brief Lower the implicit @c ME expression to a pointer load.
 ///
 /// @details Looks up the @c ME symbol in the current scope, falling back to a
@@ -179,6 +215,49 @@ Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr)
     auto access = resolveMemberField(expr);
     if (!access)
     {
+        if (expr.base)
+        {
+            if (auto qClass = runtimeClassQNameFrom(*expr.base))
+            {
+                auto isRuntimeClass = [&](const std::string &qn)
+                {
+                    const auto &rc = il::runtime::runtimeClassCatalog();
+                    for (const auto &c : rc)
+                        if (string_utils::iequals(qn, c.qname))
+                            return true;
+                    return false;
+                };
+                if (isRuntimeClass(*qClass))
+                {
+                    auto prop = runtimePropertyIndex().find(*qClass, expr.member);
+                    if (prop)
+                    {
+                        auto mapTy = [](std::string_view t) -> Type
+                        {
+                            if (t == "i64")
+                                return Type(Type::Kind::I64);
+                            if (t == "f64")
+                                return Type(Type::Kind::F64);
+                            if (t == "i1")
+                                return Type(Type::Kind::I1);
+                            if (t == "str")
+                                return Type(Type::Kind::Str);
+                            if (t == "obj")
+                                return Type(Type::Kind::Ptr);
+                            return Type(Type::Kind::I64);
+                        };
+                        Type retTy = mapTy(prop->type);
+                        runtimeTracker.trackCalleeName(prop->getter);
+                        curLoc = expr.loc;
+                        Value result = emitCallRet(retTy, prop->getter, {});
+                        if (retTy.kind == Type::Kind::Str)
+                            deferReleaseStr(result);
+                        return {result, retTy};
+                    }
+                }
+            }
+        }
+
         // Runtime class property (e.g., Viper.String) getter sugar via catalog
         if (expr.base)
         {

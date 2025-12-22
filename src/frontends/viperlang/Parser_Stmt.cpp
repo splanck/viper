@@ -258,6 +258,100 @@ StmtPtr Parser::parseForStmt()
 
     bool hasParen = match(TokenKind::LParen);
 
+    auto isCStyleFor = [&]() -> bool
+    {
+        int depth = 0;
+        for (int i = 0;; ++i)
+        {
+            TokenKind kind = peek(i).kind;
+            if (kind == TokenKind::Eof)
+                break;
+            if (!hasParen && kind == TokenKind::LBrace)
+                break;
+            if (kind == TokenKind::LParen)
+            {
+                depth++;
+                continue;
+            }
+            if (kind == TokenKind::RParen)
+            {
+                if (depth == 0)
+                    break;
+                depth--;
+                continue;
+            }
+            if (depth == 0)
+            {
+                if (kind == TokenKind::Semicolon)
+                    return true;
+                if (kind == TokenKind::KwIn)
+                    return false;
+            }
+        }
+        return false;
+    };
+
+    if (isCStyleFor())
+    {
+        if (!hasParen)
+        {
+            error("expected '(' in C-style for loop");
+            return nullptr;
+        }
+
+        StmtPtr init;
+        if (!check(TokenKind::Semicolon))
+        {
+            if (check(TokenKind::KwVar) || check(TokenKind::KwFinal))
+            {
+                init = parseVarDecl();
+                if (!init)
+                    return nullptr;
+            }
+            else
+            {
+                ExprPtr initExpr = parseExpression();
+                if (!initExpr)
+                    return nullptr;
+                if (!expect(TokenKind::Semicolon, ";"))
+                    return nullptr;
+                init = std::make_unique<ExprStmt>(initExpr->loc, std::move(initExpr));
+            }
+        }
+        else if (!expect(TokenKind::Semicolon, ";"))
+        {
+            return nullptr;
+        }
+
+        ExprPtr condition;
+        if (!check(TokenKind::Semicolon))
+        {
+            condition = parseExpression();
+            if (!condition)
+                return nullptr;
+        }
+        if (!expect(TokenKind::Semicolon, ";"))
+            return nullptr;
+
+        ExprPtr update;
+        if (!check(TokenKind::RParen))
+        {
+            update = parseExpression();
+            if (!update)
+                return nullptr;
+        }
+
+        if (!expect(TokenKind::RParen, ")"))
+            return nullptr;
+
+        StmtPtr body = parseStatement();
+        if (!body)
+            return nullptr;
+
+        return std::make_unique<ForStmt>(
+            loc, std::move(init), std::move(condition), std::move(update), std::move(body));
+    }
+
     // Optional extra parentheses for tuple binding: for ((a, b) in ...)
     bool hasTupleParen = false;
     if (hasParen && check(TokenKind::LParen))

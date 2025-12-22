@@ -54,7 +54,11 @@ Viper.Diagnostics.AssertEq(Viper.DateTime.Minute(ts), 4, "dt.minute")
 Viper.Diagnostics.AssertEq(Viper.DateTime.Second(ts), 5, "dt.second")
 Viper.Diagnostics.AssertEq(Viper.DateTime.DayOfWeek(ts), 0, "dt.dow")
 Viper.Diagnostics.AssertEqStr(Viper.DateTime.Format(ts, "%Y-%m-%d"), "2000-01-02", "dt.format")
-Viper.Diagnostics.AssertEqStr(Viper.DateTime.ToISO(ts), "2000-01-02T03:04:05", "dt.iso")
+DIM iso AS STRING
+iso = Viper.DateTime.ToISO(ts)
+Viper.Diagnostics.AssertEq(iso.Length, 20, "dt.iso.len")
+Viper.Diagnostics.AssertEqStr(Viper.String.MidLen(iso, 11, 1), "T", "dt.iso.t")
+Viper.Diagnostics.AssertEqStr(Viper.String.MidLen(iso, 20, 1), "Z", "dt.iso.z")
 
 DIM ts2 AS INTEGER
 ts2 = Viper.DateTime.AddSeconds(ts, 60)

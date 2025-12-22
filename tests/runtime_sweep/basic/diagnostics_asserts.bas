@@ -14,7 +14,7 @@
 DIM obj AS OBJECT
 obj = NEW Viper.Collections.List()
 
-Viper.Diagnostics.Assert(1, "assert")
+Viper.Diagnostics.Assert(TRUE, "assert")
 Viper.Diagnostics.AssertEq(42, 42, "assert.eq")
 Viper.Diagnostics.AssertNeq(41, 42, "assert.neq")
 Viper.Diagnostics.AssertEqNum(3.5, 3.5, "assert.eqnum")

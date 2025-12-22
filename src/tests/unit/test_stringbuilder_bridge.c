@@ -21,30 +21,8 @@
 #include <stdio.h>
 #include <string.h>
 
-// Runtime declarations - normally from headers
-// Need access to the string structure for testing
-struct rt_heap_hdr;
-typedef struct rt_heap_hdr rt_heap_hdr_t;
-
-struct rt_string_impl
-{
-    char *data;
-    rt_heap_hdr_t *heap;
-    size_t literal_len;
-    size_t literal_refs;
-};
-typedef struct rt_string_impl *rt_string;
-
-extern void *rt_ns_stringbuilder_new(void);
-extern int64_t rt_text_sb_get_length(void *sb);
-extern int64_t rt_text_sb_get_capacity(void *sb);
-extern void *rt_text_sb_append(void *sb, rt_string s);
-extern void *rt_text_sb_append_line(void *sb, rt_string s);
-extern rt_string rt_text_sb_to_string(void *sb);
-extern void rt_text_sb_clear(void *sb);
-extern rt_string rt_string_from_bytes(const char *bytes, size_t len);
-extern rt_string rt_str_empty(void);
-extern int64_t rt_len(rt_string s);
+#include "rt_ns_bridge.h"
+#include "rt_string_builder.h"
 
 // Runtime initialization not needed for these tests
 
@@ -148,7 +126,7 @@ void test_append_single(void)
 
     rt_string result = rt_text_sb_to_string(sb);
     ASSERT_EQ(5, rt_len(result));
-    ASSERT_STR_EQ("Hello", result->data);
+    ASSERT_STR_EQ("Hello", rt_string_cstr(result));
 
     TEST_END();
 }
@@ -168,7 +146,7 @@ void test_append_multiple(void)
 
     rt_string result = rt_text_sb_to_string(sb);
     ASSERT_EQ(13, rt_len(result));
-    ASSERT_STR_EQ("Hello, World!", result->data);
+    ASSERT_STR_EQ("Hello, World!", rt_string_cstr(result));
 
     TEST_END();
 }
@@ -188,7 +166,7 @@ void test_append_line(void)
 
     rt_string result = rt_text_sb_to_string(sb);
     ASSERT_EQ(4, rt_len(result));
-    ASSERT_STR_EQ("a\nb\n", result->data);
+    ASSERT_STR_EQ("a\nb\n", rt_string_cstr(result));
 
     TEST_END();
 }
@@ -214,7 +192,7 @@ void test_clear(void)
     ASSERT_EQ(3, rt_text_sb_get_length(sb));
 
     rt_string result = rt_text_sb_to_string(sb);
-    ASSERT_STR_EQ("New", result->data);
+    ASSERT_STR_EQ("New", rt_string_cstr(result));
 
     TEST_END();
 }
@@ -255,7 +233,7 @@ void test_empty_append(void)
     ASSERT_EQ(5, rt_text_sb_get_length(sb));
 
     rt_string result = rt_text_sb_to_string(sb);
-    ASSERT_STR_EQ("Start", result->data);
+    ASSERT_STR_EQ("Start", rt_string_cstr(result));
 
     TEST_END();
 }
@@ -275,7 +253,7 @@ void test_method_chaining(void)
     ASSERT_EQ(3, rt_text_sb_get_length(sb));
 
     rt_string str = rt_text_sb_to_string(sb);
-    ASSERT_STR_EQ("ABC", str->data);
+    ASSERT_STR_EQ("ABC", rt_string_cstr(str));
 
     TEST_END();
 }
@@ -289,7 +267,7 @@ void test_toString_preserves_state(void)
 
     // First ToString
     rt_string result1 = rt_text_sb_to_string(sb);
-    ASSERT_STR_EQ("Test", result1->data);
+    ASSERT_STR_EQ("Test", rt_string_cstr(result1));
     ASSERT_EQ(4, rt_text_sb_get_length(sb)); // Length unchanged
 
     // Can still append
@@ -297,7 +275,7 @@ void test_toString_preserves_state(void)
 
     // Second ToString shows accumulated content
     rt_string result2 = rt_text_sb_to_string(sb);
-    ASSERT_STR_EQ("Test123", result2->data);
+    ASSERT_STR_EQ("Test123", rt_string_cstr(result2));
     ASSERT_EQ(7, rt_text_sb_get_length(sb));
 
     TEST_END();

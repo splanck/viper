@@ -646,7 +646,7 @@ ExprPtr Parser::parsePostfixFrom(ExprPtr expr)
                 expr = std::make_unique<TupleIndexExpr>(
                     loc, std::move(expr), static_cast<size_t>(index));
             }
-            else if (check(TokenKind::Identifier))
+            else if (checkIdentifierLike())
             {
                 std::string field = peek().text;
                 advance(); // consume identifier
@@ -662,7 +662,7 @@ ExprPtr Parser::parsePostfixFrom(ExprPtr expr)
         {
             // Optional chain
             SourceLoc loc = opTok.loc;
-            if (!check(TokenKind::Identifier))
+            if (!checkIdentifierLike())
             {
                 error("expected field name after '?.'");
                 return nullptr;

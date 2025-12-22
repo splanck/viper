@@ -93,9 +93,9 @@ PRINT Viper.Fmt.Bool(TRUE)              ' Output: "true"
 PRINT Viper.Fmt.BoolYN(FALSE)           ' Output: "No"
 
 ' Size formatting (auto-scales to KB, MB, GB, etc.)
-PRINT Viper.Fmt.Size(1024)              ' Output: "1 KB"
-PRINT Viper.Fmt.Size(1048576)           ' Output: "1 MB"
-PRINT Viper.Fmt.Size(1234567890)        ' Output: "1.15 GB"
+PRINT Viper.Fmt.Size(1024)              ' Output: "1.0 KB"
+PRINT Viper.Fmt.Size(1048576)           ' Output: "1.0 MB"
+PRINT Viper.Fmt.Size(1234567890)        ' Output: "1.1 GB"
 
 ' Radix formatting
 PRINT Viper.Fmt.Hex(255)                ' Output: "ff"

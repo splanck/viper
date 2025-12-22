@@ -105,6 +105,7 @@ rt_string rt_const_cstr(const char *c)
         rt_trap("rt_const_cstr: alloc");
         return NULL;
     }
+    s->magic = RT_STRING_MAGIC;
     s->data = (char *)c;
     s->heap = NULL;
     s->literal_len = strlen(c);

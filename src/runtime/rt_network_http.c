@@ -12,6 +12,7 @@
 
 #include "rt_network.h"
 
+#include "rt_box.h"
 #include "rt_bytes.h"
 #include "rt_internal.h"
 #include "rt_map.h"
@@ -209,6 +210,38 @@ static void free_headers(http_header_t *headers)
         free(headers);
         headers = next;
     }
+}
+
+static void rt_http_req_finalize(void *obj)
+{
+    if (!obj)
+        return;
+    rt_http_req_t *req = (rt_http_req_t *)obj;
+    free(req->method);
+    req->method = NULL;
+    free_parsed_url(&req->url);
+    free_headers(req->headers);
+    req->headers = NULL;
+    free(req->body);
+    req->body = NULL;
+    req->body_len = 0;
+    req->timeout_ms = 0;
+}
+
+static void rt_http_res_finalize(void *obj)
+{
+    if (!obj)
+        return;
+    rt_http_res_t *res = (rt_http_res_t *)obj;
+    free(res->status_text);
+    res->status_text = NULL;
+    free(res->body);
+    res->body = NULL;
+    res->body_len = 0;
+    if (res->headers && rt_obj_release_check0(res->headers))
+        rt_obj_free(res->headers);
+    res->headers = NULL;
+    res->status = 0;
 }
 
 /// @brief Add header to request.
@@ -428,7 +461,12 @@ static void parse_header_line(const char *line, void *headers_map)
 
     rt_string name_str = rt_string_from_bytes(name, strlen(name));
     rt_string value_str = rt_string_from_bytes(value, strlen(value));
-    rt_map_set(headers_map, name_str, (void *)value_str);
+    void *boxed = rt_box_str(value_str);
+    rt_map_set(headers_map, name_str, boxed);
+    if (boxed && rt_obj_release_check0(boxed))
+        rt_obj_free(boxed);
+    rt_string_unref(value_str);
+    rt_string_unref(name_str);
     free(name);
 }
 
@@ -717,11 +755,19 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
 
     // Check for Content-Length
     rt_string content_length_key = rt_string_from_bytes("content-length", 14);
-    rt_string content_length_val = (rt_string)rt_map_get(headers_map, content_length_key);
+    void *content_length_box = rt_map_get(headers_map, content_length_key);
+    rt_string content_length_val = NULL;
+    if (content_length_box && rt_box_type(content_length_box) == RT_BOX_STR)
+        content_length_val = rt_unbox_str(content_length_box);
+    rt_string_unref(content_length_key);
 
     // Check for Transfer-Encoding: chunked
     rt_string transfer_encoding_key = rt_string_from_bytes("transfer-encoding", 17);
-    rt_string transfer_encoding_val = (rt_string)rt_map_get(headers_map, transfer_encoding_key);
+    void *transfer_encoding_box = rt_map_get(headers_map, transfer_encoding_key);
+    rt_string transfer_encoding_val = NULL;
+    if (transfer_encoding_box && rt_box_type(transfer_encoding_box) == RT_BOX_STR)
+        transfer_encoding_val = rt_unbox_str(transfer_encoding_box);
+    rt_string_unref(transfer_encoding_key);
 
     bool is_head = strcmp(req->method, "HEAD") == 0;
 
@@ -747,6 +793,10 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
     }
 
     rt_tcp_close(tcp);
+    if (transfer_encoding_val)
+        rt_string_unref(transfer_encoding_val);
+    if (content_length_val)
+        rt_string_unref(content_length_val);
 
     // Create response object (must use rt_obj_new_i64 for GC management)
     rt_http_res_t *res = (rt_http_res_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_http_res_t));
@@ -757,6 +807,7 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
         rt_trap("HTTP: memory allocation failed");
         return NULL;
     }
+    rt_obj_set_finalizer(res, rt_http_res_finalize);
 
     res->status = status;
     res->status_text = status_text;
@@ -794,12 +845,8 @@ rt_string rt_http_get(rt_string url)
 
     rt_string result = rt_string_from_bytes((const char *)res->body, res->body_len);
 
-    // Note: res is GC-managed (allocated with rt_obj_new_i64), don't free it
-    // But body and status_text are malloc'd, so free them
-    free(res->body);
-    free(res->status_text);
-    res->body = NULL;
-    res->status_text = NULL;
+    if (rt_obj_release_check0(res))
+        rt_obj_free(res);
 
     return result;
 }
@@ -828,9 +875,8 @@ void *rt_http_get_bytes(rt_string url)
     if (res->body && res->body_len > 0)
         memcpy(result_ptr, res->body, res->body_len);
 
-    free(res->body);
-    free(res->status_text);
-    // res is GC-managed, don't free
+    if (rt_obj_release_check0(res))
+        rt_obj_free(res);
 
     return result;
 }
@@ -869,9 +915,8 @@ rt_string rt_http_post(rt_string url, rt_string body)
 
     rt_string result = rt_string_from_bytes((const char *)res->body, res->body_len);
 
-    free(res->body);
-    free(res->status_text);
-    // res is GC-managed, don't free
+    if (rt_obj_release_check0(res))
+        rt_obj_free(res);
 
     return result;
 }
@@ -913,9 +958,8 @@ void *rt_http_post_bytes(rt_string url, void *body)
     if (res->body && res->body_len > 0)
         memcpy(result_ptr, res->body, res->body_len);
 
-    free(res->body);
-    free(res->status_text);
-    // res is GC-managed, don't free
+    if (rt_obj_release_check0(res))
+        rt_obj_free(res);
 
     return result;
 }
@@ -945,9 +989,8 @@ int8_t rt_http_download(rt_string url, rt_string dest_path)
 
     if (res->status < 200 || res->status >= 300)
     {
-        free(res->body);
-        free(res->status_text);
-        // res is GC-managed, don't free
+        if (rt_obj_release_check0(res))
+            rt_obj_free(res);
         return 0;
     }
 
@@ -955,20 +998,19 @@ int8_t rt_http_download(rt_string url, rt_string dest_path)
     FILE *f = fopen(path_str, "wb");
     if (!f)
     {
-        free(res->body);
-        free(res->status_text);
-        // res is GC-managed, don't free
+        if (rt_obj_release_check0(res))
+            rt_obj_free(res);
         return 0;
     }
 
     size_t written = fwrite(res->body, 1, res->body_len, f);
     fclose(f);
 
-    free(res->body);
-    free(res->status_text);
-    // res is GC-managed, don't free
+    size_t expected = res->body_len;
+    if (rt_obj_release_check0(res))
+        rt_obj_free(res);
 
-    return written == res->body_len ? 1 : 0;
+    return written == expected ? 1 : 0;
 }
 
 void *rt_http_head(rt_string url)
@@ -990,12 +1032,7 @@ void *rt_http_head(rt_string url)
     if (!res)
         rt_trap("HTTP: request failed");
 
-    void *headers = res->headers;
-    free(res->body);
-    free(res->status_text);
-    // res is GC-managed, don't free
-
-    return headers;
+    return res;
 }
 
 //=============================================================================
@@ -1018,6 +1055,7 @@ void *rt_http_req_new(rt_string method, rt_string url)
         rt_trap("HTTP: memory allocation failed");
 
     memset(req, 0, sizeof(*req));
+    rt_obj_set_finalizer(req, rt_http_req_finalize);
     req->method = strdup(method_str);
     req->timeout_ms = HTTP_DEFAULT_TIMEOUT_MS;
 
@@ -1053,6 +1091,13 @@ void *rt_http_req_set_body(void *obj, void *data)
 
     rt_http_req_t *req = (rt_http_req_t *)obj;
 
+    if (req->body)
+    {
+        free(req->body);
+        req->body = NULL;
+        req->body_len = 0;
+    }
+
     if (data)
     {
         int64_t len = rt_bytes_len(data);
@@ -1077,6 +1122,13 @@ void *rt_http_req_set_body_str(void *obj, rt_string text)
 
     rt_http_req_t *req = (rt_http_req_t *)obj;
     const char *text_str = rt_string_cstr(text);
+
+    if (req->body)
+    {
+        free(req->body);
+        req->body = NULL;
+        req->body_len = 0;
+    }
 
     if (text_str)
     {
@@ -1117,14 +1169,6 @@ void *rt_http_req_send(void *obj)
     }
 
     rt_http_res_t *res = do_http_request(req, HTTP_MAX_REDIRECTS);
-
-    // Cleanup request
-    free(req->method);
-    free_parsed_url(&req->url);
-    free_headers(req->headers);
-    free(req->body);
-    free(req);
-
     return res;
 }
 
@@ -1214,11 +1258,12 @@ rt_string rt_http_res_header(void *obj, rt_string name)
     rt_string lower_key = rt_string_from_bytes(lower_name, len);
     free(lower_name);
 
-    rt_string value = (rt_string)rt_map_get(res->headers, lower_key);
-    if (!value)
+    void *boxed = rt_map_get(res->headers, lower_key);
+    rt_string_unref(lower_key);
+    if (!boxed || rt_box_type(boxed) != RT_BOX_STR)
         return rt_string_from_bytes("", 0);
 
-    return value;
+    return rt_unbox_str(boxed);
 }
 
 int8_t rt_http_res_is_ok(void *obj)
@@ -1375,6 +1420,8 @@ static char *safe_strdup(const char *str)
 {
     return str ? strdup(str) : NULL;
 }
+
+static void free_url(rt_url_t *url);
 
 /// @brief Internal URL parsing.
 /// @return 0 on success, -1 on error.
@@ -1536,6 +1583,17 @@ static int parse_url_full(const char *url_str, rt_url_t *result)
 
         p = auth_end;
     }
+    else if (has_authority)
+    {
+        free_url(result);
+        return -1;
+    }
+
+    if (has_authority && (!result->host || result->host[0] == '\0'))
+    {
+        free_url(result);
+        return -1;
+    }
 
     // Parse path
     const char *path_start = p;
@@ -1611,6 +1669,14 @@ static void free_url(rt_url_t *url)
     memset(url, 0, sizeof(*url));
 }
 
+static void rt_url_finalize(void *obj)
+{
+    if (!obj)
+        return;
+    rt_url_t *url = (rt_url_t *)obj;
+    free_url(url);
+}
+
 void *rt_url_parse(rt_string url_str)
 {
     const char *str = rt_string_cstr(url_str);
@@ -1622,6 +1688,7 @@ void *rt_url_parse(rt_string url_str)
         rt_trap("URL: Memory allocation failed");
 
     memset(url, 0, sizeof(*url));
+    rt_obj_set_finalizer(url, rt_url_finalize);
 
     if (parse_url_full(str, url) != 0)
     {
@@ -1638,6 +1705,7 @@ void *rt_url_new(void)
         rt_trap("URL: Memory allocation failed");
 
     memset(url, 0, sizeof(*url));
+    rt_obj_set_finalizer(url, rt_url_finalize);
     return url;
 }
 
@@ -2010,7 +2078,10 @@ void *rt_url_set_query_param(void *obj, rt_string name, rt_string value)
         rt_string_from_bytes(url->query ? url->query : "", url->query ? strlen(url->query) : 0));
 
     // Set the new param
-    rt_map_set(map, name, (void *)value);
+    void *boxed = rt_box_str(value);
+    rt_map_set(map, name, boxed);
+    if (boxed && rt_obj_release_check0(boxed))
+        rt_obj_free(boxed);
 
     // Rebuild query string
     rt_string new_query = rt_url_encode_query(map);
@@ -2034,12 +2105,12 @@ rt_string rt_url_get_query_param(void *obj, rt_string name)
         return rt_string_from_bytes("", 0);
 
     void *map = rt_url_decode_query(rt_string_from_bytes(url->query, strlen(url->query)));
-    rt_string value = (rt_string)rt_map_get(map, name);
+    void *boxed = rt_map_get(map, name);
 
-    if (!value)
+    if (!boxed || rt_box_type(boxed) != RT_BOX_STR)
         return rt_string_from_bytes("", 0);
 
-    return value;
+    return rt_unbox_str(boxed);
 }
 
 int8_t rt_url_has_query_param(void *obj, rt_string name)
@@ -2111,6 +2182,7 @@ void *rt_url_resolve(void *obj, rt_string relative)
     if (!result)
         rt_trap("URL: Memory allocation failed");
     memset(result, 0, sizeof(*result));
+    rt_obj_set_finalizer(result, rt_url_finalize);
 
     // RFC 3986 resolution algorithm
     if (rel.scheme)
@@ -2213,6 +2285,8 @@ void *rt_url_clone(void *obj)
     rt_url_t *clone = (rt_url_t *)rt_obj_new_i64(0, sizeof(rt_url_t));
     if (!clone)
         rt_trap("URL: Memory allocation failed");
+    memset(clone, 0, sizeof(*clone));
+    rt_obj_set_finalizer(clone, rt_url_finalize);
 
     clone->scheme = safe_strdup(url->scheme);
     clone->user = safe_strdup(url->user);
@@ -2271,10 +2345,21 @@ rt_string rt_url_encode_query(void *map)
     for (int64_t i = 0; i < len; i++)
     {
         rt_string key = (rt_string)rt_seq_get(keys, i);
-        rt_string value = (rt_string)rt_map_get(map, key);
+        void *value = rt_map_get(map, key);
 
         const char *key_str = rt_string_cstr(key);
-        const char *value_str = rt_string_cstr(value);
+        rt_string value_str_handle = NULL;
+        if (value && rt_box_type(value) == RT_BOX_STR)
+        {
+            value_str_handle = rt_unbox_str(value);
+        }
+        else
+        {
+            value_str_handle = (rt_string)value;
+            if (value_str_handle)
+                rt_string_ref(value_str_handle);
+        }
+        const char *value_str = value_str_handle ? rt_string_cstr(value_str_handle) : "";
 
         char *enc_key = percent_encode(key_str, true);
         char *enc_value = value_str ? percent_encode(value_str, true) : strdup("");
@@ -2306,6 +2391,8 @@ rt_string rt_url_encode_query(void *map)
 
         free(enc_key);
         free(enc_value);
+        if (value_str_handle)
+            rt_string_unref(value_str_handle);
     }
 
     result[pos] = '\0';
@@ -2344,7 +2431,12 @@ void *rt_url_decode_query(rt_string query)
                     if (dec_key)
                     {
                         rt_string key_str = rt_string_from_bytes(dec_key, strlen(dec_key));
-                        rt_map_set(map, key_str, (void *)rt_string_from_bytes("", 0));
+                        rt_string empty = rt_string_from_bytes("", 0);
+                        void *boxed = rt_box_str(empty);
+                        rt_map_set(map, key_str, boxed);
+                        if (boxed && rt_obj_release_check0(boxed))
+                            rt_obj_free(boxed);
+                        rt_string_unref(empty);
                         free(dec_key);
                     }
                     free(key);
@@ -2376,7 +2468,11 @@ void *rt_url_decode_query(rt_string query)
                 {
                     rt_string key_str = rt_string_from_bytes(dec_key, strlen(dec_key));
                     rt_string val_str = rt_string_from_bytes(dec_val, strlen(dec_val));
-                    rt_map_set(map, key_str, (void *)val_str);
+                    void *boxed = rt_box_str(val_str);
+                    rt_map_set(map, key_str, boxed);
+                    if (boxed && rt_obj_release_check0(boxed))
+                        rt_obj_free(boxed);
+                    rt_string_unref(val_str);
                 }
 
                 free(dec_key);

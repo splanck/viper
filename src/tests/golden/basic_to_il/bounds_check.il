@@ -16,7 +16,7 @@ extern @Viper.String.TrimEnd(str) -> str
 extern @Viper.String.ToUpper(str) -> str
 extern @Viper.String.ToLower(str) -> str
 extern @Viper.String.IndexOf(str, str) -> i64
-extern @Viper.String.IndexOfFrom(i64, str, str) -> i64
+extern @Viper.String.IndexOfFrom(str, i64, str) -> i64
 extern @Viper.String.Chr(i64) -> str
 extern @Viper.String.Asc(str) -> i64
 extern @Viper.String.Replace(str, str, str) -> str

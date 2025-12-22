@@ -49,7 +49,7 @@ name = "VIPER_SWEEP_ENV"
 Viper.Environment.SetVariable(name, "ok")
 Viper.Diagnostics.Assert(Viper.Environment.HasVariable(name), "env.has")
 Viper.Diagnostics.AssertEqStr(Viper.Environment.GetVariable(name), "ok", "env.get")
-Viper.Diagnostics.Assert(Viper.Environment.IsNative() = 0, "env.native")
+Viper.Diagnostics.Assert(Viper.Environment.IsNative() = FALSE, "env.native")
 
 DIM args AS Viper.Collections.Seq
 args = Viper.Collections.Seq.New()

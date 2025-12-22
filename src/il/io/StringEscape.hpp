@@ -91,7 +91,7 @@ inline std::string encodeEscapedString(std::string_view input)
                 out.append("\\0");
                 break;
             default:
-                if (c < 0x20 || c == 0x7F)
+                if (c < 0x20 || c == 0x7F || c >= 0x80)
                 {
                     char buf[5];
                     std::snprintf(buf, sizeof(buf), "\\x%02X", c);
