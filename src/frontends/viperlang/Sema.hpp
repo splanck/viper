@@ -401,6 +401,11 @@ class Sema
     /// @param ownerType The type containing this method.
     void analyzeMethodDecl(MethodDecl &decl, TypeRef ownerType);
 
+    /// @brief Initialize all runtime function type mappings.
+    /// @details Populates runtimeFunctions_ with all Viper.* namespace functions
+    /// and their return types. Called once during Sema construction.
+    void initRuntimeFunctions();
+
     /// @}
     //=========================================================================
     /// @name Statement Analysis

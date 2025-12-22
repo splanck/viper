@@ -666,6 +666,257 @@ All fixes verified with unit tests. The Frogger demo now compiles and runs witho
 
 ---
 
+## Bugs Found During Frogger OOP Rewrite (December 2025)
+
+### 33. Unicode Escape Sequences Not Supported
+**Status**: CLOSED (Fixed December 2025)
+**Severity**: MEDIUM - Blocks convenient ANSI code constants
+**Description**: Unicode escape sequences like `\u001b` are not recognized in string literals.
+
+**Reproduction**:
+```viper
+final ESC = "\u001b";  // ERROR: invalid escape sequence: \u
+```
+
+**Workaround**: Use `Viper.String.Chr(27)` to create the escape character at runtime:
+```viper
+var ESC = Viper.String.Chr(27);
+```
+
+**Root Cause**: The `processEscape()` function in `src/frontends/viperlang/Lexer.cpp:616-639` only handles a limited set of escape sequences:
+```cpp
+std::optional<char> Lexer::processEscape(char c)
+{
+    switch (c)
+    {
+        case 'n': return '\n';
+        case 't': return '\t';
+        case 'r': return '\r';
+        case '\\': return '\\';
+        case '"': return '"';
+        case '\'': return '\'';
+        case '0': return '\0';
+        case '$': return '$';
+        default: return std::nullopt;  // Missing: 'u', 'x', 'b'
+    }
+}
+```
+
+**Fix Required**: Add cases for `'u'` (unicode) and `'x'` (hex) escape sequences. For unicode, need to parse 4 hex digits after `\u` and convert to UTF-8. For hex, need to parse 2 hex digits after `\x`.
+
+---
+
+### 34. Backspace Escape Sequence Not Supported
+**Status**: CLOSED (Fixed December 2025)
+**Severity**: LOW - Minor inconvenience
+**Description**: The backspace escape sequence `\b` is not recognized in string literals.
+
+**Reproduction**:
+```viper
+Viper.Terminal.Print("\b \b");  // ERROR: invalid escape sequence: \b
+```
+
+**Workaround**: Use `Viper.String.Chr(8)` to create the backspace character:
+```viper
+var BS = Viper.String.Chr(8);
+Viper.Terminal.Print(BS + " " + BS);
+```
+
+**Root Cause**: Same as Bug #33 - the `processEscape()` function in `src/frontends/viperlang/Lexer.cpp:616-639` does not include `'b'` in its switch statement.
+
+**Fix Required**: Add `case 'b': return '\b';` to the switch statement in `processEscape()`.
+
+---
+
+### 35. Function Type Parameters with Void Return Not Recognized
+**Status**: CLOSED (Fixed December 2025)
+**Severity**: MEDIUM - Blocks higher-order function patterns
+**Description**: Using `void` as the return type in a function type parameter causes a type error.
+
+**Reproduction**:
+```viper
+entity Vehicle {
+    expose func draw(printFn: (Integer, Integer, String, String) -> void) {
+        // ERROR: Unknown type: void
+    }
+}
+```
+
+**Workaround**: Restructure code to avoid passing void-returning functions as parameters. Call the render methods directly from the game loop instead of passing renderer functions.
+
+**Root Cause**: Two issues combine to cause this:
+
+1. **`void` is not a keyword**: In `src/frontends/viperlang/Token.hpp`, there is no `KwVoid` token kind. The keyword `Void` is only recognized via the string lookup in `resolveNamedType()` in `Sema.cpp:283`.
+
+2. **Type parsing for function types fails**: In `src/frontends/viperlang/Parser_Type.cpp:37-66`, the `parseBaseType()` function only handles `Identifier` tokens:
+   ```cpp
+   TypePtr Parser::parseBaseType()
+   {
+       if (check(TokenKind::Identifier))  // "void" is lowercase, won't match
+       {
+           Token nameTok = advance();
+           // ...
+       }
+       // No fallback for keywords
+   }
+   ```
+
+   When parsing the function type `(Integer, Integer) -> void`, the `void` token is either treated as an identifier (if capitalized as `Void`) or causes an error (if lowercase `void`).
+
+**Fix Required**: Either:
+1. Add `void` as a keyword token (`KwVoid`) and handle it in `parseBaseType()`, or
+2. Use `Void` (capital V) consistently and ensure the parser accepts it in type position
+
+---
+
+### 36. Many Viper.* Runtime Classes Not Registered in ViperLang
+**Status**: CLOSED
+**Severity**: CRITICAL - Blocks most non-trivial applications
+**Resolution**: Added `initRuntimeFunctions()` method to Sema.cpp with ~400 runtime function registrations covering all namespaces (Bits, Box, Collections, Crypto, DateTime, Diagnostics, Environment, Exec, Fmt, Graphics, Input, IO, Log, Machine, Math, Network, Parse, Random, String, Terminal, Text, Threads, Time, Vec2, Vec3, Convert).
+**Description**: The ViperLang semantic analyzer only registers a small subset of the Viper runtime classes. Many runtime classes that exist in the C runtime and are available to BASIC/Pascal are completely missing from ViperLang.
+
+**Currently Registered (in Sema.cpp)**:
+- `Viper.Terminal.*` (partial - Say, Print, Clear, SetColor, SetPosition, GetKey, etc.)
+- `Viper.String.*` (partial - Concat, Length, Left, Right, Mid, Trim, ToUpper, ToLower, IndexOf, Chr, Asc)
+- `Viper.Math.*` (Abs, Sin, Cos, Tan, Sqrt, Log, Exp, Floor, Ceil, Round, Min, Max)
+- `Viper.Random.*` (Next, NextInt, Seed)
+- `Viper.Environment.*` (GetArgument, GetArgumentCount, GetCommandLine)
+- `Viper.Time.*` (partial - Clock.Sleep, Clock.Millis, SleepMs)
+
+**Missing Runtime Classes (exist in runtime.def but not in Sema.cpp)**:
+
+| Namespace | Functions | Use Case |
+|-----------|-----------|----------|
+| `Viper.IO.File.*` | Exists, ReadAllText, WriteAllText, Delete, Copy, Move, Size, etc. | File operations |
+| `Viper.IO.Dir.*` | Create, Delete, Exists, Files, List | Directory operations |
+| `Viper.IO.Path.*` | Join, GetDir, GetName, GetExt, Exists | Path manipulation |
+| `Viper.IO.BinFile.*` | Open, Close, Read, Write, Seek | Binary file I/O |
+| `Viper.IO.LineReader.*` | Open, ReadLine, Close, Eof | Line-by-line file reading |
+| `Viper.IO.LineWriter.*` | Open, WriteLine, Close | Line-by-line file writing |
+| `Viper.IO.Compress.*` | Deflate, Inflate, GzipCompress, GzipDecompress | Compression |
+| `Viper.IO.Archive.*` | New, AddFile, ExtractAll, List | ZIP archives |
+| `Viper.IO.MemStream.*` | New, Read, Write, Seek, ToBytes | Memory streams |
+| `Viper.IO.Watcher.*` | New, Next, Close | File system watching |
+| `Viper.Text.StringBuilder.*` | New, Append, ToString, Clear, Length | String building |
+| `Viper.Text.Codec.*` | EncodeBase64, DecodeBase64, EncodeHex, DecodeHex | Encoding |
+| `Viper.Text.Csv.*` | Parse, ParseFile, Write | CSV handling |
+| `Viper.Text.Guid.*` | New, Parse, ToString | GUID generation |
+| `Viper.Text.Template.*` | New, Set, Render | Template rendering |
+| `Viper.Text.Pattern.*` | New, Match, FindAll, Replace | Regex patterns |
+| `Viper.Fmt.*` | Str, Int, Num, Bool, Pad, Size | Formatting |
+| `Viper.Parse.*` | Int, Num, Bool | String parsing |
+| `Viper.Convert.*` | IntToStr, NumToStr, BoolToStr | Type conversion |
+| `Viper.Log.*` | Info, Warn, Error, Debug | Logging |
+| `Viper.Collections.Bag.*` | New, Put, Has, Drop, Items | Set collections |
+| `Viper.Collections.Bytes.*` | New, Get, Set, Slice, ToHex, FromHex | Byte arrays |
+| `Viper.Collections.Heap.*` | New, Push, Pop, Peek | Priority queues |
+| `Viper.Collections.Map.*` | New, Get, Set, Has, Keys, Values | Hash maps |
+| `Viper.Collections.Queue.*` | New, Add, Take, Peek | FIFO queues |
+| `Viper.Collections.Ring.*` | New, Push, Pop, Get | Ring buffers |
+| `Viper.Collections.Seq.*` | New, Push, Pop, Get, Set | Dynamic arrays |
+| `Viper.Collections.Stack.*` | New, Push, Pop, Peek | LIFO stacks |
+| `Viper.Collections.TreeMap.*` | New, Set, Get, Has, Keys | Sorted maps |
+| `Viper.Crypto.Hash.*` | CRC32, MD5, SHA1, SHA256, Hmac* | Cryptographic hashing |
+| `Viper.Crypto.Rand.*` | Bytes, Int | Secure random |
+| `Viper.Crypto.KeyDerive.*` | Pbkdf2SHA256 | Key derivation |
+| `Viper.DateTime.*` | Now, Create, Format, Year, Month, Day, etc. | Date/time |
+| `Viper.Diagnostics.*` | Assert*, Trap, Stopwatch.* | Debugging |
+| `Viper.Exec.*` | Run, Capture, Shell | Process execution |
+| `Viper.Graphics.Canvas.*` | New, Plot, Line, Box, Text, etc. | 2D graphics |
+| `Viper.Graphics.Color.*` | RGB, RGBA, Blend | Color utilities |
+| `Viper.Graphics.Pixels.*` | New, Load, Get, Set | Pixel manipulation |
+| `Viper.Input.*` | Keyboard.*, Mouse.*, Pad.* | Input devices |
+| `Viper.Network.*` | Dns.*, Http.*, Tcp.*, Udp.*, Url.* | Networking |
+| `Viper.System.*` | Machine.*, Terminal.* (extended) | System info |
+| `Viper.Threads.*` | Thread.*, Barrier.*, Gate.*, Monitor.*, etc. | Threading |
+| `Viper.Bits.*` | And, Or, Xor, Not, Shl, Shr, etc. | Bitwise operations |
+| `Viper.Box.*` | I64, F64, Str, Type, etc. | Boxing/unboxing |
+| `Viper.Countdown.*` | New, Tick, Reset, Expired | Countdown timers |
+
+**Reproduction**:
+```viper
+// All of these fail with "Undefined identifier: Viper"
+if Viper.IO.File.Exists("file.txt") { }
+var sb = Viper.Text.StringBuilder.New();
+var hash = Viper.Crypto.Hash.MD5("test");
+var now = Viper.DateTime.Now();
+```
+
+**Workaround**: None for most functionality. Affected features simply cannot be used in ViperLang.
+
+**Root Cause**: The `runtimeFunctions_` map in `src/frontends/viperlang/Sema.cpp:637-712` only registers 57 runtime functions, while the full Viper runtime (defined in `src/runtime/runtime.def`) contains 1002+ functions.
+
+The registration code in `Sema::Sema()` only includes:
+```cpp
+// Only 57 functions registered out of 1002+ available:
+runtimeFunctions_["Viper.Terminal.Say"] = types::voidType();
+runtimeFunctions_["Viper.Terminal.Print"] = types::voidType();
+// ... ~55 more functions
+```
+
+When ViperLang code calls an unregistered function like `Viper.IO.File.Exists()`, the analyzer can't find it in `runtimeFunctions_` and reports "Undefined identifier: Viper".
+
+**Coverage**: Only **5.7%** of runtime functions are available to ViperLang:
+- BASIC/Pascal: 1002+ functions (full runtime)
+- ViperLang: 57 functions (5.7% coverage)
+
+**Resolution**: Add all missing runtime functions to `runtimeFunctions_` map in `src/frontends/viperlang/Sema.cpp`. Each function needs its return type specified. A script could generate the registration code from `runtime.def`.
+
+**Notes**: This is a significant gap between ViperLang and BASIC/Pascal. The runtime has 1002+ functions but ViperLang only exposes 57 of them.
+
+---
+
+### 37. Generic Type Inference for List Elements Not Supported
+**Status**: CLOSED
+**Severity**: MEDIUM - Requires explicit type annotations
+**Resolution**: Added proper generic type inference for collection methods in `Sema_Expr.cpp`. The `analyzeCall()` function now handles `List.get()`, `List.first()`, `List.last()`, `List.pop()` etc. to return the element type from the generic type parameter. Similar handling added for `Set` and `Map` methods.
+**Description**: When retrieving elements from typed lists (e.g., `List[Platform]`), the element type is not automatically inferred. Variables assigned from `.get()` have type `obj` instead of the element type, causing method calls on those variables to fail type checking.
+
+**Reproduction**:
+```viper
+var platforms: List[Platform] = [];
+platforms.add(new Platform(1, 5, 1, 1, "@", 3));
+
+for i in 0..platforms.size() {
+    var plat = platforms.get(i);  // plat has type 'obj', not 'Platform'
+    if plat.checkOnPlatform(1, 1) {  // ERROR: Condition must be Boolean
+        // checkOnPlatform returns Boolean, but 'obj.checkOnPlatform' is unknown
+    }
+}
+```
+
+**Workaround**: Use explicit type annotations when retrieving list elements:
+```viper
+for i in 0..platforms.size() {
+    var plat: Platform = platforms.get(i);  // Explicitly typed as Platform
+    if plat.checkOnPlatform(1, 1) {  // Works correctly now
+        // ...
+    }
+}
+```
+
+**Root Cause**: The `Viper.Collections.List.get_Item` function is registered with return type `types::ptr()` (obj):
+```cpp
+runtimeFunctions_["Viper.Collections.List.get_Item"] = types::ptr();
+```
+
+The semantic analyzer doesn't track generic type parameters on collection instances, so it cannot substitute the element type when resolving method calls.
+
+**Technical Details**:
+1. `List[Platform]` is parsed as a generic type but the element type is not propagated
+2. When `.get(i)` is called, the return type is `ptr` (obj) not `Platform`
+3. `obj.checkOnPlatform()` is looked up but fails since `obj` is not an entity type
+4. Returns `types::unknown()` which fails the Boolean condition check
+
+**Fix Required**: Implement generic type parameter tracking:
+1. Store generic type arguments on type references (e.g., `List[Platform]` knows its element is `Platform`)
+2. When resolving methods on generic types, substitute type parameters in return types
+3. `List[T].get(i)` should return `T`, not `obj`
+
+**Note**: Multi-file compilation via ImportResolver already works correctly. The initial investigation incorrectly attributed this to an import issue, but the actual root cause is missing generic type inference.
+
+---
+
 ## Notes
 
 This file will be updated as more bugs are discovered during game development.

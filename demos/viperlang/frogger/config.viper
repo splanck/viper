@@ -1,63 +1,62 @@
+// ============================================================================
+// Frogger - Game Configuration
+// ============================================================================
+// Game constants, dimensions, and colors.
+// ============================================================================
+
 module Config;
 
-// =============================================================================
-// Frogger Configuration - All game constants in one place
-// =============================================================================
+// Screen dimensions
+final GAME_WIDTH = 70;
+final GAME_HEIGHT = 24;
 
-// Display dimensions
-final SCREEN_WIDTH = 80;
-final SCREEN_HEIGHT = 24;
-final GAME_WIDTH = 78;
+// Row definitions
+final HOME_ROW = 2;
+final RIVER_START = 4;
+final RIVER_END = 8;
+final MEDIAN_ROW = 10;
+final ROAD_START = 12;
+final ROAD_END = 16;
+final START_ROW = 18;
 
-// Row layout (top to bottom)
-final TITLE_ROW = 1;
-final HOME_ROW = 3;
-final RIVER_START = 5;
-final RIVER_END = 9;
-final SAFE_ZONE_ROW = 11;
-final ROAD_START = 13;
-final ROAD_END = 17;
-final START_ROW = 19;
-final INSTRUCTIONS_ROW = 21;
-
-// Game balance
-final MAX_LIVES = 3;
-final MAX_HOMES = 5;
-final TIME_LIMIT = 600;
+// Starting lives
+final STARTING_LIVES = 3;
 
 // Scoring
 final SCORE_HOME = 200;
 final SCORE_FORWARD = 10;
-final SCORE_FLY_BONUS = 200;
-final SCORE_TIME_BONUS = 10;
 
-// Timing (frames)
-final FRAME_DELAY = 80;
-final FLY_DURATION = 150;
-final INVINCIBLE_DURATION = 50;
+// Timing (milliseconds)
+final GAME_TICK_MS = 100;
+final DEATH_DELAY_MS = 800;
+final HOME_DELAY_MS = 500;
+final INPUT_DELAY_MS = 50;
+final MENU_DELAY_MS = 200;
 
-// Entity counts
-final NUM_CARS = 4;
-final NUM_TRUCKS = 3;
-final NUM_LOGS = 4;
-final NUM_TURTLES = 3;
+// High score file
+final SCORE_FILE = "frogger_highscores.txt";
+final MAX_HIGH_SCORES = 5;
 
-// Physics
-final FROG_SPEED = 1;
-final SLOW_SPEED = 1;
-final MEDIUM_SPEED = 2;
-final FAST_SPEED = 3;
+// ANSI color codes (built at runtime due to escape sequence limitation)
+var COLOR_RESET: String;
+var COLOR_BLACK: String;
+var COLOR_RED: String;
+var COLOR_GREEN: String;
+var COLOR_YELLOW: String;
+var COLOR_BLUE: String;
+var COLOR_MAGENTA: String;
+var COLOR_CYAN: String;
+var COLOR_WHITE: String;
 
-// Key bindings
-final KEY_UP = "w";
-final KEY_UP_ALT = "W";
-final KEY_DOWN = "s";
-final KEY_DOWN_ALT = "S";
-final KEY_LEFT = "a";
-final KEY_LEFT_ALT = "A";
-final KEY_RIGHT = "d";
-final KEY_RIGHT_ALT = "D";
-final KEY_PAUSE = "p";
-final KEY_PAUSE_ALT = "P";
-final KEY_QUIT = "q";
-final KEY_QUIT_ALT = "Q";
+func initColors() {
+    var ESC = Viper.String.Chr(27);
+    COLOR_RESET = ESC + "[0m";
+    COLOR_BLACK = ESC + "[30m";
+    COLOR_RED = ESC + "[31m";
+    COLOR_GREEN = ESC + "[32m";
+    COLOR_YELLOW = ESC + "[33m";
+    COLOR_BLUE = ESC + "[34m";
+    COLOR_MAGENTA = ESC + "[35m";
+    COLOR_CYAN = ESC + "[36m";
+    COLOR_WHITE = ESC + "[37m";
+}

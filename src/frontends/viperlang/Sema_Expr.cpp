@@ -385,23 +385,52 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
         // Handle List methods
         if (baseType && baseType->kind == TypeKindSem::List)
         {
-            if (fieldExpr->field == "count" || fieldExpr->field == "size" ||
-                fieldExpr->field == "length")
+            TypeRef elemType = baseType->elementType();
+
+            // Methods that return the element type
+            if (fieldExpr->field == "get" || fieldExpr->field == "first" ||
+                fieldExpr->field == "last" || fieldExpr->field == "pop")
             {
-                // Analyze arguments (should be empty)
+                for (auto &arg : expr->args)
+                {
+                    analyzeExpr(arg.value.get());
+                }
+                return elemType ? elemType : types::unknown();
+            }
+
+            // Methods that return Integer
+            if (fieldExpr->field == "count" || fieldExpr->field == "size" ||
+                fieldExpr->field == "length" || fieldExpr->field == "indexOf" ||
+                fieldExpr->field == "lastIndexOf")
+            {
                 for (auto &arg : expr->args)
                 {
                     analyzeExpr(arg.value.get());
                 }
                 return types::integer();
             }
-            if (fieldExpr->field == "isEmpty")
+
+            // Methods that return Boolean
+            if (fieldExpr->field == "isEmpty" || fieldExpr->field == "contains" ||
+                fieldExpr->field == "remove")
             {
                 for (auto &arg : expr->args)
                 {
                     analyzeExpr(arg.value.get());
                 }
                 return types::boolean();
+            }
+
+            // Methods that return void
+            if (fieldExpr->field == "add" || fieldExpr->field == "insert" ||
+                fieldExpr->field == "set" || fieldExpr->field == "clear" ||
+                fieldExpr->field == "reverse" || fieldExpr->field == "sort")
+            {
+                for (auto &arg : expr->args)
+                {
+                    analyzeExpr(arg.value.get());
+                }
+                return types::voidType();
             }
         }
 
@@ -463,6 +492,37 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
             if (fieldExpr->field == "keys" || fieldExpr->field == "values")
             {
                 return types::unknown();
+            }
+        }
+
+        // Handle Set methods
+        if (baseType && baseType->kind == TypeKindSem::Set)
+        {
+            TypeRef elemType = baseType->elementType();
+
+            for (auto &arg : expr->args)
+            {
+                analyzeExpr(arg.value.get());
+            }
+
+            // Methods that return Boolean
+            if (fieldExpr->field == "contains" || fieldExpr->field == "has" ||
+                fieldExpr->field == "add" || fieldExpr->field == "remove")
+            {
+                return types::boolean();
+            }
+
+            // Methods that return Integer
+            if (fieldExpr->field == "size" || fieldExpr->field == "count" ||
+                fieldExpr->field == "length")
+            {
+                return types::integer();
+            }
+
+            // Methods that return void
+            if (fieldExpr->field == "clear")
+            {
+                return types::voidType();
             }
         }
 
