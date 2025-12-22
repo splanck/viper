@@ -11,6 +11,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// @file
+/// @brief Implements loop discovery and metadata for IL functions.
+/// @details Builds loop headers, bodies, nesting relationships, and exit edges
+///          using CFG and dominator information. Labels are stored instead of
+///          pointers so results stay valid after block reordering.
+
 #include "il/transform/analysis/LoopInfo.hpp"
 
 #include "il/analysis/CFG.hpp"
@@ -29,12 +35,20 @@ using namespace il::core;
 namespace il::transform
 {
 
+/// @brief Check whether a loop contains the block with @p label.
+/// @details Uses a cached hash set populated by @ref Loop::finalize to provide
+///          constant-time membership checks without scanning all labels.
+/// @param label Basic block label to query.
+/// @return True if the block is part of the loop; false otherwise.
 bool Loop::contains(std::string_view label) const
 {
     // Heterogeneous lookup - no temporary std::string allocation
     return members_.find(label) != members_.end();
 }
 
+/// @brief Finalize loop membership caches after mutation.
+/// @details Rebuilds the internal hash set from @ref blockLabels so membership
+///          checks are fast and consistent with the label list.
 void Loop::finalize()
 {
     members_.clear();
@@ -43,6 +57,11 @@ void Loop::finalize()
         members_.insert(label);
 }
 
+/// @brief Find a loop by its header label.
+/// @details Performs a linear search over the recorded loops. Loop counts are
+///          typically small, so a vector scan keeps the implementation simple.
+/// @param headerLabel Label of the loop header block.
+/// @return Pointer to the loop metadata, or nullptr if not found.
 const Loop *LoopInfo::findLoop(std::string_view headerLabel) const
 {
     for (const auto &loop : loops_)
@@ -53,12 +72,20 @@ const Loop *LoopInfo::findLoop(std::string_view headerLabel) const
     return nullptr;
 }
 
+/// @brief Add a loop to the analysis after preparing its membership cache.
+/// @details Calls @ref Loop::finalize to populate cached membership before
+///          storing the loop metadata.
+/// @param loop Loop metadata to add; moved into internal storage.
 void LoopInfo::addLoop(Loop loop)
 {
     loop.finalize();
     loops_.push_back(std::move(loop));
 }
 
+/// @brief Look up the parent loop for a nested loop.
+/// @details Uses the stored parent header label to find the enclosing loop.
+/// @param loop Child loop to query.
+/// @return Pointer to the parent loop, or nullptr for top-level loops.
 const Loop *LoopInfo::parent(const Loop &loop) const
 {
     if (loop.parentHeader.empty())
@@ -68,6 +95,13 @@ const Loop *LoopInfo::parent(const Loop &loop) const
 
 namespace
 {
+/// @brief Collect predecessor blocks for @p block using CFG context data.
+/// @details Returns a mutable vector of predecessors derived from the cached
+///          CFG context. The helper performs a const-cast because the CFG stores
+///          pointers as const to prevent accidental mutation during analysis.
+/// @param ctx CFG context holding predecessor maps.
+/// @param block Block whose predecessors should be returned.
+/// @return Vector of predecessor pointers (may be empty).
 std::vector<BasicBlock *> getPredecessors(const viper::analysis::CFGContext &ctx, BasicBlock &block)
 {
     auto it = ctx.blockPredecessors.find(&block);
@@ -82,6 +116,12 @@ std::vector<BasicBlock *> getPredecessors(const viper::analysis::CFGContext &ctx
     return {};
 }
 
+/// @brief Const overload that forwards to the mutable predecessor helper.
+/// @details Provides a convenience wrapper so const callers can reuse the
+///          same logic without duplicating the predecessor lookup.
+/// @param ctx CFG context holding predecessor maps.
+/// @param block Block whose predecessors should be returned.
+/// @return Vector of predecessor pointers (may be empty).
 std::vector<BasicBlock *> getPredecessors(const viper::analysis::CFGContext &ctx,
                                           const BasicBlock &block)
 {
@@ -90,6 +130,15 @@ std::vector<BasicBlock *> getPredecessors(const viper::analysis::CFGContext &ctx
 
 } // namespace
 
+/// @brief Compute loop information for a function.
+/// @details Identifies natural loops by locating backedges (predecessors
+///          dominated by the header), gathers loop bodies by walking dominated
+///          predecessors, and records latch blocks. After discovery, parent/
+///          child nesting is computed and exit edges are captured by scanning
+///          terminator successors that leave the loop.
+/// @param module Module providing shared CFG context.
+/// @param function Function to analyze for loop structure.
+/// @return Populated LoopInfo describing headers, bodies, nesting, and exits.
 LoopInfo computeLoopInfo(Module &module, Function &function)
 {
     LoopInfo info;

@@ -10,6 +10,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// @file
+/// @brief CLI implementation for the `ilc codegen arm64` subcommand.
+/// @details Parses arm64-specific flags, lowers IL to AArch64 MIR, emits
+///          assembly, and can optionally assemble, link, and execute native
+///          output using the host toolchain.
+
 #include "cmd_codegen_arm64.hpp"
 
 #include "codegen/aarch64/AsmEmitter.hpp"
@@ -50,25 +56,39 @@ using il::core::Opcode;
 // Keeps cmd driver tidy and centralizes opcode/sequence mapping.
 // (Pattern-lowering moved to LowerILToMIR)
 
+/// @brief Usage text emitted when argument parsing fails or is incomplete.
+/// @details The string mirrors the supported flags in @ref parseArgs so the CLI
+///          can emit a single source of truth for help and diagnostics.
 constexpr std::string_view kUsage =
     "usage: ilc codegen arm64 <file.il> [-S <file.s>] [-o <a.out>] [-run-native]\n"
     "       [--dump-mir-before-ra] [--dump-mir-after-ra] [--dump-mir-full]\n";
 
+/// @brief Lightweight argv view with bounds-checked helpers.
+/// @details Wraps the raw argc/argv pair to make argument parsing more explicit
+///          and defensive. The view does not own the underlying strings; it
+///          merely provides safe accessors and slicing helpers.
 struct ArgvView
 {
     int argc;
     char **argv;
 
+    /// @brief Report whether the view contains any usable arguments.
+    /// @return True if argc is zero or argv is null; otherwise false.
     [[nodiscard]] bool empty() const
     {
         return argc <= 0 || argv == nullptr;
     }
 
+    /// @brief Return the first argument if present.
+    /// @return argv[0] when available; otherwise an empty string view.
     [[nodiscard]] std::string_view front() const
     {
         return empty() ? std::string_view{} : argv[0];
     }
 
+    /// @brief Fetch an argument by index with bounds checks.
+    /// @param i Zero-based argument index to query.
+    /// @return argv[i] if in range; otherwise an empty string view.
     [[nodiscard]] std::string_view at(int i) const
     {
         if (i < 0 || i >= argc || argv == nullptr)
@@ -76,6 +96,10 @@ struct ArgvView
         return argv[i];
     }
 
+    /// @brief Create a view with the first @p n arguments removed.
+    /// @param n Count of arguments to drop from the front.
+    /// @return New ArgvView starting at argv[n], or an empty view if @p n exceeds
+    ///         the current argument count.
     [[nodiscard]] ArgvView drop_front(int n = 1) const
     {
         if (n >= argc)
@@ -84,17 +108,30 @@ struct ArgvView
     }
 };
 
+/// @brief Parsed CLI options for the arm64 codegen subcommand.
+/// @details Captures output destinations, flags, and diagnostics preferences
+///          so the rest of the pipeline can focus on lowering and emission.
 struct Options
 {
-    std::string input_il;
-    std::optional<std::string> output_s; // when set, always write assembly here
-    std::optional<std::string> output_o; // when set without -run-native, emit object/exe here
-    bool emit_asm = false;               // true when -S provided
-    bool run_native = false;             // execute after linking
-    bool dump_mir_before_ra = false;     // dump MIR before register allocation
-    bool dump_mir_after_ra = false;      // dump MIR after register allocation
+    std::string input_il;                    ///< Input IL path provided on the CLI.
+    std::optional<std::string> output_s;     ///< Explicit assembly output path when -S is used.
+    std::optional<std::string> output_o;     ///< Optional object/executable output path (-o).
+    bool emit_asm = false;                   ///< True when -S requests assembly emission.
+    bool run_native = false;                 ///< True when -run-native requests execution.
+    bool dump_mir_before_ra = false;         ///< Emit MIR before register allocation to stderr.
+    bool dump_mir_after_ra = false;          ///< Emit MIR after register allocation to stderr.
 };
 
+/// @brief Parse argv-style arguments into a structured @ref Options instance.
+/// @details Validates required positional arguments and supported flags. The
+///          parser emits the shared usage string and a descriptive error when
+///          an argument is missing or unrecognized. Supported options include:
+///          - `-S <path>` to emit assembly
+///          - `-o <path>` to choose object/executable output
+///          - `-run-native` to link and execute the result
+///          - MIR dumping flags for debugging
+/// @param args View of the argument vector (excluding the subcommand name).
+/// @return Populated Options on success; std::nullopt on validation failure.
 std::optional<Options> parseArgs(const ArgvView &args)
 {
     if (args.empty())
@@ -155,13 +192,23 @@ std::optional<Options> parseArgs(const ArgvView &args)
     return opts;
 }
 
-// Emit module-level string constants using a pooled, assembler-safe scheme
+/// @brief Emit pooled module-level string constants for AArch64 assembly.
+/// @details Delegates to the @ref viper::codegen::aarch64::RodataPool, which
+///          ensures deterministic labels and assembler-safe string contents.
+/// @param os Output stream receiving the `.rodata` fragments.
+/// @param pool Pre-populated rodata pool built from the IL module.
 static void emitGlobalsAArch64(std::ostream &os, const viper::codegen::aarch64::RodataPool &pool)
 {
     pool.emit(os);
 }
 
-// Minimal helpers adapted from x64 pipeline
+/// @brief Write text to disk, replacing any existing file.
+/// @details Opens @p path in binary truncate mode, streams @p text into the file,
+///          and reports IO failures to @p err so the caller can surface them.
+/// @param path Destination filesystem path.
+/// @param text UTF-8 assembly text to write.
+/// @param err Stream for diagnostic output on failure.
+/// @return True if the file was written successfully; false on open or write errors.
 static bool writeTextFile(const std::string &path, const std::string &text, std::ostream &err)
 {
     std::ofstream out(path, std::ios::binary | std::ios::trunc);
@@ -179,6 +226,15 @@ static bool writeTextFile(const std::string &path, const std::string &text, std:
     return true;
 }
 
+/// @brief Assemble an AArch64 assembly file into an object file.
+/// @details Invokes the system C compiler with `-arch arm64 -c` to assemble
+///          @p asmPath into @p objPath. Standard output is forwarded to @p out,
+///          and stderr is forwarded on Windows where the toolchain uses it.
+/// @param asmPath Path to the input `.s` file.
+/// @param objPath Output `.o` path.
+/// @param out Stream receiving tool output on success.
+/// @param err Stream receiving tool diagnostics on failure.
+/// @return 0 on success, 1 on assembler failure, -1 if the tool could not launch.
 static int assembleToObj(const std::string &asmPath,
                          const std::string &objPath,
                          std::ostream &out,
@@ -199,6 +255,19 @@ static int assembleToObj(const std::string &asmPath,
     return rr.exit_code == 0 ? 0 : 1;
 }
 
+/// @brief Link assembly into a native executable, adding runtime archives as needed.
+/// @details Scans the emitted assembly for referenced runtime symbols, selects
+///          the minimal set of runtime archives to link, and (when a build
+///          directory is available) triggers a cmake build for missing archives.
+///          The resulting `cc` invocation links in dependency order and applies
+///          platform-specific flags for dead code elimination and graphics
+///          frameworks. Diagnostics are sent to @p err and summarized via
+///          the returned status code.
+/// @param asmPath Path to the generated assembly file.
+/// @param exePath Destination path for the linked executable.
+/// @param out Stream receiving linker output on success.
+/// @param err Stream receiving linker diagnostics on failure.
+/// @return 0 on success, 1 on link failure, -1 if the tool could not launch.
 static int linkToExe(const std::string &asmPath,
                      const std::string &exePath,
                      std::ostream &out,
@@ -530,6 +599,13 @@ static int linkToExe(const std::string &asmPath,
     return rr.exit_code == 0 ? 0 : 1;
 }
 
+/// @brief Execute a linked native binary and forward its output.
+/// @details Runs the executable at @p exePath and forwards its stdout/stderr
+///          to @p out/@p err so the CLI behaves similarly to the VM runner.
+/// @param exePath Path to the executable to run.
+/// @param out Stream receiving program stdout.
+/// @param err Stream receiving program stderr or launcher diagnostics.
+/// @return Exit code from the program, or -1 if launching failed.
 static int runExe(const std::string &exePath, std::ostream &out, std::ostream &err)
 {
     const RunResult rr = run_process({exePath});
@@ -547,6 +623,17 @@ static int runExe(const std::string &exePath, std::ostream &out, std::ostream &e
     return rr.exit_code;
 }
 
+/// @brief Emit assembly and optionally assemble, link, and run native output.
+/// @details Loads the IL module from disk, lowers each function to MIR, runs
+///          register allocation and peephole optimizations, and emits assembly
+///          into a single text buffer. On Darwin targets, symbol fixups are
+///          applied so the host toolchain can link against runtime symbols.
+///          The function then writes the assembly to disk, and depending on
+///          flags, assembles to an object file, links an executable, and
+///          optionally executes it. Errors are reported via stderr and a
+///          non-zero status code.
+/// @param opts Parsed command-line options controlling emission and linkage.
+/// @return Zero on success; non-zero on load, codegen, IO, or tool failures.
 int emitAndMaybeLink(const Options &opts)
 {
     std::ostringstream err;
@@ -812,6 +899,12 @@ int emitAndMaybeLink(const Options &opts)
 
 } // namespace
 
+/// @brief CLI entry point for `ilc codegen arm64`.
+/// @details Parses argv-style options and delegates to
+///          @ref emitAndMaybeLink for the actual code generation pipeline.
+/// @param argc Number of arguments in @p argv.
+/// @param argv Argument vector including the input IL path and flags.
+/// @return Zero on success; non-zero on parsing or codegen failure.
 int cmd_codegen_arm64(int argc, char **argv)
 {
     const ArgvView args{argc, argv};

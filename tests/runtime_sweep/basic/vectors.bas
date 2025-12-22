@@ -32,6 +32,10 @@
 ' COVER: Viper.Vec3.Neg
 ' COVER: Viper.Vec3.Norm
 ' COVER: Viper.Vec3.Sub
+' COVER: Viper.Vec2.Zero
+' COVER: Viper.Vec2.One
+' COVER: Viper.Vec3.Zero
+' COVER: Viper.Vec3.One
 
 SUB AssertApprox(actual AS DOUBLE, expected AS DOUBLE, eps AS DOUBLE, msg AS STRING)
     IF Viper.Math.Abs(actual - expected) > eps THEN
@@ -145,6 +149,28 @@ c = a.Neg()
 Viper.Diagnostics.AssertEqNum(c.X, -1.0, "vec3.neg.x")
 Viper.Diagnostics.AssertEqNum(c.Y, -2.0, "vec3.neg.y")
 Viper.Diagnostics.AssertEqNum(c.Z, -3.0, "vec3.neg.z")
+
+' Test Vec2.Zero and Vec2.One
+DIM zero2 AS Viper.Vec2
+DIM one2 AS Viper.Vec2
+zero2 = Viper.Vec2.Zero()
+one2 = Viper.Vec2.One()
+Viper.Diagnostics.AssertEqNum(zero2.X, 0.0, "vec2.zero.x")
+Viper.Diagnostics.AssertEqNum(zero2.Y, 0.0, "vec2.zero.y")
+Viper.Diagnostics.AssertEqNum(one2.X, 1.0, "vec2.one.x")
+Viper.Diagnostics.AssertEqNum(one2.Y, 1.0, "vec2.one.y")
+
+' Test Vec3.Zero and Vec3.One
+DIM zero3 AS Viper.Vec3
+DIM one3 AS Viper.Vec3
+zero3 = Viper.Vec3.Zero()
+one3 = Viper.Vec3.One()
+Viper.Diagnostics.AssertEqNum(zero3.X, 0.0, "vec3.zero.x")
+Viper.Diagnostics.AssertEqNum(zero3.Y, 0.0, "vec3.zero.y")
+Viper.Diagnostics.AssertEqNum(zero3.Z, 0.0, "vec3.zero.z")
+Viper.Diagnostics.AssertEqNum(one3.X, 1.0, "vec3.one.x")
+Viper.Diagnostics.AssertEqNum(one3.Y, 1.0, "vec3.one.y")
+Viper.Diagnostics.AssertEqNum(one3.Z, 1.0, "vec3.one.z")
 
 PRINT "RESULT: ok"
 END

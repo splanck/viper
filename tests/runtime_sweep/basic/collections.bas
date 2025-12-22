@@ -22,7 +22,11 @@
 ' COVER: Viper.Collections.Bytes.ToBase64
 ' COVER: Viper.Collections.Bytes.ToHex
 ' COVER: Viper.Collections.Bytes.ToStr
+' COVER: Viper.Collections.Bytes.FromBase64
+' COVER: Viper.Collections.Bytes.FromHex
+' COVER: Viper.Collections.Bytes.FromStr
 ' COVER: Viper.Collections.Heap.New
+' COVER: Viper.Collections.Heap.NewMax
 ' COVER: Viper.Collections.Heap.IsEmpty
 ' COVER: Viper.Collections.Heap.IsMax
 ' COVER: Viper.Collections.Heap.Len
@@ -74,6 +78,7 @@
 ' COVER: Viper.Collections.Ring.Pop
 ' COVER: Viper.Collections.Ring.Push
 ' COVER: Viper.Collections.Seq.New
+' COVER: Viper.Collections.Seq.WithCapacity
 ' COVER: Viper.Collections.Seq.Cap
 ' COVER: Viper.Collections.Seq.IsEmpty
 ' COVER: Viper.Collections.Seq.Len
@@ -173,10 +178,26 @@ DIM textBytes AS Viper.Collections.Bytes
 textBytes = Viper.Collections.Bytes.FromStr("hello")
 Viper.Diagnostics.AssertEqStr(textBytes.ToStr(), "hello", "bytes.tostr")
 
+' Test FromBase64 and FromHex
+DIM fromB64 AS Viper.Collections.Bytes
+fromB64 = Viper.Collections.Bytes.FromBase64("3q2+7w==")
+Viper.Diagnostics.AssertEqStr(fromB64.ToHex(), "deadbeef", "bytes.frombase64")
+DIM fromHex AS Viper.Collections.Bytes
+fromHex = Viper.Collections.Bytes.FromHex("48656c6c6f")
+Viper.Diagnostics.AssertEqStr(fromHex.ToStr(), "Hello", "bytes.fromhex")
+
 DIM heap AS Viper.Collections.Heap
 heap = NEW Viper.Collections.Heap()
 Viper.Diagnostics.Assert(heap.IsEmpty, "heap.empty")
 Viper.Diagnostics.Assert(heap.IsMax = FALSE, "heap.ismax")
+
+' Test NewMax for max-heap
+DIM maxHeap AS Viper.Collections.Heap
+maxHeap = Viper.Collections.Heap.NewMax(TRUE)
+Viper.Diagnostics.Assert(maxHeap.IsMax, "heap.newmax.ismax")
+maxHeap.Push(1, "low")
+maxHeap.Push(5, "high")
+Viper.Diagnostics.AssertEqStr(maxHeap.Peek(), "high", "heap.newmax.peek")
 heap.Push(5, "high")
 heap.Push(1, "low")
 Viper.Diagnostics.AssertEq(heap.Len, 2, "heap.len")
@@ -265,6 +286,11 @@ ring.Push("d")
 Viper.Diagnostics.Assert(ring.IsFull, "ring.full")
 ring.Clear()
 Viper.Diagnostics.Assert(ring.IsEmpty, "ring.clear")
+
+' Test Seq.WithCapacity
+DIM seqCap AS Viper.Collections.Seq
+seqCap = Viper.Collections.Seq.WithCapacity(100)
+Viper.Diagnostics.Assert(seqCap.Cap >= 100, "seq.withcapacity")
 
 DIM seq AS Viper.Collections.Seq
 seq = Viper.Collections.Seq.New()

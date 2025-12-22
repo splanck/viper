@@ -198,7 +198,7 @@ viper_add_ctest(test_codegen_env_is_native $<TARGET_FILE:test_codegen_env_is_nat
 add_executable(test_diff_vm_native_property ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_diff_vm_native_property.cpp)
 target_link_libraries(test_diff_vm_native_property PRIVATE viper_test_common il_codegen_aarch64 ilc_cmd_arm64)
 viper_add_ctest(test_diff_vm_native_property $<TARGET_FILE:test_diff_vm_native_property>)
-set_tests_properties(test_diff_vm_native_property PROPERTIES RUN_SERIAL TRUE TIMEOUT 120)
+set_tests_properties(test_diff_vm_native_property PROPERTIES RUN_SERIAL TRUE TIMEOUT 120 LABELS "slow")
 
 add_executable(test_emit_x86_runtime_map ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_emit_x86_runtime_map.cpp)
 target_link_libraries(test_emit_x86_runtime_map PRIVATE viper_test_common viper_codegen_x86_64)

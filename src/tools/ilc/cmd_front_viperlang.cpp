@@ -9,6 +9,11 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// @file
+/// @brief CLI implementation for the `ilc front viperlang` subcommand.
+/// @details Handles argument parsing, compilation to IL, verification, and
+///          optional execution using the VM for the ViperLang frontend.
+
 #include "cli.hpp"
 #include "frontends/viperlang/Compiler.hpp"
 #include "il/api/expected_api.hpp"
@@ -30,15 +35,27 @@ using namespace il::support;
 namespace
 {
 
+/// @brief Parsed configuration for the ViperLang frontend subcommand.
+/// @details Captures whether the user requested IL emission or execution, plus
+///          shared CLI options and any extra program arguments.
 struct FrontViperlangConfig
 {
-    bool emitIl{false};
-    bool run{false};
-    std::string sourcePath;
-    ilc::SharedCliOptions shared;
-    std::vector<std::string> programArgs;
+    bool emitIl{false};                 ///< True when `-emit-il` is requested.
+    bool run{false};                    ///< True when `-run` is requested.
+    std::string sourcePath;             ///< Path to the input `.viper` source.
+    ilc::SharedCliOptions shared;       ///< Shared CLI settings (trace, steps, IO).
+    std::vector<std::string> programArgs; ///< Extra arguments forwarded to the program.
 };
 
+/// @brief Parse CLI arguments for the ViperLang frontend subcommand.
+/// @details Recognizes `-emit-il` and `-run`, delegates shared flags to
+///          @ref ilc::parseSharedOption, and collects any program arguments
+///          after `--`. When parsing fails, a diagnostic is returned with a
+///          precise message such as "unknown flag: X" or
+///          "specify exactly one of -emit-il or -run, followed by source file".
+/// @param argc Number of arguments in @p argv.
+/// @param argv Argument vector for the subcommand (excluding `ilc` itself).
+/// @return Expected configuration on success; diagnostic on failure.
 il::support::Expected<FrontViperlangConfig> parseFrontViperlangArgs(int argc, char **argv)
 {
     FrontViperlangConfig config{};
@@ -97,6 +114,16 @@ il::support::Expected<FrontViperlangConfig> parseFrontViperlangArgs(int argc, ch
     return il::support::Expected<FrontViperlangConfig>(std::move(config));
 }
 
+/// @brief Compile and optionally execute a ViperLang program.
+/// @details Compiles the provided source into IL, emits IL when requested, or
+///          otherwise verifies the IL and executes it via the VM. The runtime
+///          configuration respects shared CLI options (trace, max steps, stdin,
+///          and program arguments). Traps are reported to stderr, and the
+///          return code is coerced to non-zero when a trap occurs.
+/// @param config Parsed CLI configuration.
+/// @param source Full source text to compile.
+/// @param sm Source manager used for diagnostics and trace reporting.
+/// @return Zero on success; non-zero on compile, verify, IO, or runtime errors.
 int runFrontViperlang(const FrontViperlangConfig &config,
                       const std::string &source,
                       il::support::SourceManager &sm)
@@ -164,6 +191,12 @@ int runFrontViperlang(const FrontViperlangConfig &config,
 
 } // namespace
 
+/// @brief Entry point for the `ilc front viperlang` subcommand.
+/// @details Parses command-line flags, loads the source file, and delegates to
+///          @ref runFrontViperlang for compilation and execution.
+/// @param argc Number of arguments in @p argv.
+/// @param argv Argument vector for the subcommand.
+/// @return Zero on success; non-zero on parsing, IO, or runtime failure.
 int cmdFrontViperlang(int argc, char **argv)
 {
     SourceManager sm;

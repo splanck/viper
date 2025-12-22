@@ -232,9 +232,21 @@ static rt_string render_internal(const char *tmpl,
 
         if (found && boxed_value)
         {
-            // Values are boxed strings - unbox to get the actual string
-            if (rt_box_type(boxed_value) == RT_BOX_STR)
+            // Handle both boxed strings and raw rt_string handles
+            // Map may store either depending on how Set was called
+            if (rt_string_is_handle(boxed_value))
             {
+                // Raw rt_string pointer (not boxed)
+                rt_string value = (rt_string)boxed_value;
+                const char *val_str = rt_string_cstr(value);
+                if (val_str)
+                {
+                    rt_sb_append_cstr(&sb, val_str);
+                }
+            }
+            else if (rt_box_type(boxed_value) == RT_BOX_STR)
+            {
+                // Boxed string - unbox to get the actual string
                 rt_string value = rt_unbox_str(boxed_value);
                 if (value)
                 {

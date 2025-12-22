@@ -340,9 +340,16 @@ extern "C"
     /// @param val Value to clamp.
     /// @param lo Lower bound.
     /// @param hi Upper bound.
-    /// @return Clamped value.
+    /// @return Clamped value. If lo > hi, the bounds are swapped.
     double rt_clamp_f64(double val, double lo, double hi)
     {
+        // Handle inverted range by swapping
+        if (lo > hi)
+        {
+            double tmp = lo;
+            lo = hi;
+            hi = tmp;
+        }
         if (val < lo)
             return lo;
         if (val > hi)
@@ -354,9 +361,16 @@ extern "C"
     /// @param val Value to clamp.
     /// @param lo Lower bound.
     /// @param hi Upper bound.
-    /// @return Clamped value.
+    /// @return Clamped value. If lo > hi, the bounds are swapped.
     long long rt_clamp_i64(long long val, long long lo, long long hi)
     {
+        // Handle inverted range by swapping
+        if (lo > hi)
+        {
+            long long tmp = lo;
+            lo = hi;
+            hi = tmp;
+        }
         if (val < lo)
             return lo;
         if (val > hi)

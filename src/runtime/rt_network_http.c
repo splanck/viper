@@ -2494,6 +2494,37 @@ int8_t rt_url_is_valid(rt_string url_str)
     if (!str || *str == '\0')
         return 0;
 
+    // Reject strings with unencoded spaces (common non-URL indicator)
+    for (const char *p = str; *p; p++)
+    {
+        if (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r')
+            return 0;
+    }
+
+    // Reject URLs starting with :// (missing scheme)
+    if (str[0] == ':' && str[1] == '/' && str[2] == '/')
+        return 0;
+
+    // Check for scheme - must have letters before ://
+    const char *scheme_sep = strstr(str, "://");
+    if (scheme_sep)
+    {
+        // Scheme must be at least 1 character and only contain [a-zA-Z0-9+.-]
+        if (scheme_sep == str)
+            return 0; // Empty scheme
+        for (const char *p = str; p < scheme_sep; p++)
+        {
+            char c = *p;
+            int valid = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                        (c >= '0' && c <= '9') || c == '+' || c == '-' || c == '.';
+            if (!valid)
+                return 0;
+        }
+        // First character of scheme must be a letter
+        if (!((str[0] >= 'a' && str[0] <= 'z') || (str[0] >= 'A' && str[0] <= 'Z')))
+            return 0;
+    }
+
     rt_url_t url;
     memset(&url, 0, sizeof(url));
 

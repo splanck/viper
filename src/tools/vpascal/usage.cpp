@@ -9,6 +9,11 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// @file
+/// @brief Implements usage and version output for the `vpascal` CLI tool.
+/// @details Centralizes help text and version reporting for the Pascal frontend
+///          so the main driver stays minimal.
+
 #include "usage.hpp"
 #include "viper/version.hpp"
 #include <iostream>
@@ -16,6 +21,9 @@
 namespace vpascal
 {
 
+/// @brief Print tool and IL version information for vpascal.
+/// @details Writes the Pascal tool name and versions to stdout for scripting
+///          and diagnostic collection.
 void printVersion()
 {
     std::cout << "vpascal v" << VIPER_VERSION_STR << "\n";
@@ -23,6 +31,9 @@ void printVersion()
     std::cout << "IL version: " << VIPER_IL_VERSION_STR << "\n";
 }
 
+/// @brief Print usage information for the vpascal command.
+/// @details Emits the CLI synopsis, supported options, examples, and a short
+///          list of Pascal language notes to help users get started quickly.
 void printUsage()
 {
     std::cerr << "vpascal v" << VIPER_VERSION_STR << " - Viper Pascal Interpreter\n"
