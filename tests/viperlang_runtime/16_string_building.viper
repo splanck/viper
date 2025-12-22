@@ -1,0 +1,17 @@
+module RuntimeTest16;
+
+import "./_support";
+
+// EXPECT_OUT: RESULT: ok
+
+func start() {
+    var t = Viper.String.Trim("  aB  ");
+    var u = Viper.String.ToUpper(t);
+    var v = Viper.String.Concat(u, "!");
+    assertEqStr(v, "AB!", "concat");
+
+    var m = Viper.String.Mid("xyz", 2);
+    assertEqStr(m, "yz", "mid");
+
+    report();
+}

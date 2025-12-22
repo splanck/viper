@@ -1,0 +1,18 @@
+module RuntimeTest07;
+
+import "./_support";
+
+// EXPECT_OUT: RESULT: ok
+// EXPECT_TTY_INPUT: hello\nZ
+// COVER: Viper.Terminal.ReadLine
+// COVER: Viper.Terminal.GetKey
+
+func start() {
+    var line = Viper.Terminal.ReadLine();
+    assertEqStr(line, "hello", "readline");
+
+    var key = Viper.Terminal.GetKey();
+    assertNotEmpty(key, "getkey");
+
+    report();
+}

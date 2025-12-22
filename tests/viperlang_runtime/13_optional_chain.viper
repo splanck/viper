@@ -1,0 +1,27 @@
+module RuntimeTest13;
+
+import "./_support";
+
+// EXPECT_OUT: RESULT: ok
+
+entity Node {
+    expose Integer value;
+    expose Node? next;
+
+    expose func init(v: Integer, n: Node?) {
+        value = v;
+        next = n;
+    }
+}
+
+func start() {
+    var none: Node? = null;
+    var v = none?.next?.value ?? 7;
+    assertEqInt(v, 7, "opt_chain_null");
+
+    var node = new Node(5, null);
+    var v2 = node?.value ?? 0;
+    assertEqInt(v2, 5, "opt_chain_value");
+
+    report();
+}

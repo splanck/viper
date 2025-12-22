@@ -1,0 +1,22 @@
+module RuntimeTest17;
+
+import "./_support";
+
+// EXPECT_OUT: RESULT: ok
+// EXPECT_ARGS: gamma delta
+
+func start() {
+    var argc = Viper.Environment.GetArgumentCount();
+    assertTrue(argc >= 1, "argc");
+    if (argc >= 3) {
+        assertEqStr(Viper.Environment.GetArgument(1), "gamma", "arg1");
+        assertEqStr(Viper.Environment.GetArgument(2), "delta", "arg2");
+    }
+    var cmd = Viper.Environment.GetCommandLine();
+    assertNotEmpty(cmd, "cmd");
+
+    Viper.Time.SleepMs(1);
+    Viper.Time.Clock.Sleep(1);
+
+    report();
+}

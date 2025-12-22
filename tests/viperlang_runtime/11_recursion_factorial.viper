@@ -1,0 +1,18 @@
+module RuntimeTest11;
+
+import "./_support";
+
+// EXPECT_OUT: RESULT: ok
+
+func fact(n: Integer) -> Integer {
+    if (n <= 1) {
+        return 1;
+    }
+    return n * fact(n - 1);
+}
+
+func start() {
+    assertEqInt(fact(5), 120, "fact5");
+    assertEqInt(fact(0), 1, "fact0");
+    report();
+}

@@ -1,0 +1,25 @@
+module RuntimeTest14;
+
+import "./_support";
+
+// EXPECT_OUT: RESULT: ok
+
+entity Counter {
+    expose Integer count;
+
+    expose func init(v: Integer) {
+        count = v;
+    }
+
+    expose func add(n: Integer) -> Integer {
+        count = count + n;
+        return count;
+    }
+}
+
+func start() {
+    var c = new Counter(1);
+    assertEqInt(c.add(2), 3, "add");
+    assertEqInt(c.count, 3, "count");
+    report();
+}

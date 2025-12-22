@@ -1,0 +1,16 @@
+module RuntimeTest09;
+
+import "./_support";
+
+// EXPECT_OUT: RESULT: ok
+// COVER: Viper.Math.Randomize
+// COVER: Viper.Math.Rnd
+
+func start() {
+    Viper.Math.Randomize(123);
+    var a = Viper.Math.Rnd();
+    Viper.Math.Randomize(123);
+    var b = Viper.Math.Rnd();
+    assertApprox(a, b, 0.0000001, "rnd");
+    report();
+}

@@ -1,0 +1,28 @@
+module RuntimeTest12;
+
+import "./_support";
+
+// EXPECT_OUT: RESULT: ok
+
+func start() {
+    var nums = [1, 2, 3, 4, 5, 6];
+    var total = 0;
+    for (var i = 0; i < nums.count(); i = i + 1) {
+        total = total + nums[i];
+    }
+    assertEqInt(total, 21, "sum");
+
+    nums.add(7);
+    nums.removeAt(0);
+    assertEqInt(nums.count(), 6, "count");
+
+    var counts = {"a": 1, "b": 2};
+    counts.set("c", 3);
+    counts.setIfMissing("a", 9);
+    assertEqInt(counts.get("a"), 1, "setIfMissing");
+    assertTrue(counts.has("b"), "has");
+    counts.remove("b");
+    assertEqInt(counts.count(), 2, "map.count");
+
+    report();
+}
