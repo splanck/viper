@@ -1,0 +1,44 @@
+module RuntimeTest05;
+
+import "./_support";
+
+// EXPECT_OUT: RESULT: ok
+
+entity Box {
+    expose Integer value;
+
+    expose func init(v: Integer) {
+        value = v;
+    }
+}
+
+func classify(v: Integer) -> String {
+    var out = "";
+    match v {
+        0 => { out = "zero"; }
+        1 => { out = "one"; }
+        _ => { out = "many"; }
+    }
+    return out;
+}
+
+func start() {
+    var a: Integer? = null;
+    assertEqInt(a ?? 7, 7, "coalesce");
+
+    var b: Integer? = 5;
+    var flag = 0;
+    match b {
+        null => { flag = 0; }
+        _ => { flag = 1; }
+    }
+    assertEqInt(flag, 1, "match_opt");
+
+    assertEqStr(classify(0), "zero", "classify0");
+    assertEqStr(classify(2), "many", "classify2");
+
+    var box = new Box(3);
+    assertEqInt(box.value, 3, "entity_field");
+
+    report();
+}

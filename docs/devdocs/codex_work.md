@@ -10,6 +10,37 @@ Last updated: 2025-12-21
 - Update docs/tests where behavior changed.
 - Keep the tree green (build + tests passing).
 
+## Runtime Sweep Plan (ViperLang + BASIC)
+
+### Goals
+- Exercise every Viper.* runtime class, property, and method.
+- Prefer ViperLang; fall back to BASIC when ViperLang bindings are missing/buggy.
+- Stress test language features and runtime behavior in realistic programs.
+- Record all runtime defects in `bugs/runtime_bugs.md` and all ViperLang defects in `bugs/viperlang.md`.
+- Track coverage in `bugs/runtime_test.md` and update as tests run.
+
+### Plan
+1) **Harness + Coverage**
+   - Build a runner that executes ViperLang and BASIC test programs.
+   - Parse `COVER:` tags in tests to tick `bugs/runtime_test.md`.
+   - Capture stdout/stderr and exit code for report + bug logging.
+
+2) **ViperLang Tests**
+   - Create a suite of ViperLang programs to stress the language and available runtime bindings.
+   - Validate via output checks (no diagnostics/assert runtime in ViperLang).
+   - Log any missing runtime bindings as ViperLang bugs.
+
+3) **BASIC Tests**
+   - Build subsystem-focused BASIC programs to cover runtime classes not reachable from ViperLang.
+   - Use `Viper.Diagnostics.Assert*` for hard failures.
+   - Use real-world mini-programs when possible (file/archive pipeline, CSV/Template formatting, HTTP/TCP/UDP, etc).
+
+4) **Run + Report**
+   - Execute full sweep; update `bugs/runtime_test.md`.
+   - Document all failures with repros.
+   - Produce a comprehensive runtime report.
+   - Run full build + tests to keep tree green.
+
 ## Plan
 
 ### 1) Metrics + Reports
@@ -41,3 +72,5 @@ Last updated: 2025-12-21
 - 2025-12-21: Updated docs for ViperLang reference, viperlib IO/input, and generated-files guidance.
 - 2025-12-21: Full build + test run completed (932 tests).
 - 2025-12-21: Reviewed runtime docs; documented Terminal APIs, keyboard `KEY_UNKNOWN`, and updated runtime README coverage.
+- 2025-12-21: Created runtime test matrix (`bugs/runtime_test.md`) and initialized bug logs (`bugs/runtime_bugs.md`, `bugs/viperlang.md`).
+- 2025-12-21: Logged runtime sweep plan and tracking requirements.

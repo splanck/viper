@@ -1,0 +1,31 @@
+module RuntimeTest02;
+
+import "./_support";
+
+// EXPECT_OUT: RESULT: ok
+// COVER: Viper.String.Concat
+// COVER: Viper.String.Left
+// COVER: Viper.String.Right
+// COVER: Viper.String.Mid
+// COVER: Viper.String.Trim
+// COVER: Viper.String.ToUpper
+// COVER: Viper.String.ToLower
+// COVER: Viper.String.IndexOf
+// COVER: Viper.String.Chr
+// COVER: Viper.String.Asc
+
+func start() {
+    var s = "  AbCd  ";
+    assertEqStr(Viper.String.Trim(s), "AbCd", "trim");
+    assertEqStr(Viper.String.Left("abcd", 2), "ab", "left");
+    assertEqStr(Viper.String.Right("abcd", 2), "cd", "right");
+    assertEqStr(Viper.String.Mid("abcd", 2), "bcd", "mid");
+    assertEqStr(Viper.String.Concat("ab", "cd"), "abcd", "concat");
+    assertEqStr(Viper.String.ToUpper("aB"), "AB", "upper");
+    assertEqStr(Viper.String.ToLower("aB"), "ab", "lower");
+    assertEqInt(Viper.String.IndexOf("abcd", "cd"), 3, "indexof");
+    assertEqStr(Viper.String.Chr(66), "B", "chr");
+    assertEqInt(Viper.String.Asc("A"), 65, "asc");
+
+    report();
+}

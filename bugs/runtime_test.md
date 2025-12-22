@@ -1,0 +1,1139 @@
+# Runtime Test Matrix
+
+This checklist enumerates every Viper.* runtime class, property, and method from `src/il/runtime/generated/RuntimeClasses.inc`.
+Check items off as they are exercised by ViperLang runtime tests.
+
+Total classes: 67
+
+- [ ] `Viper.Bits`
+  - Methods
+    - [ ] `And`
+    - [ ] `Clear`
+    - [ ] `Count`
+    - [ ] `Flip`
+    - [ ] `Get`
+    - [ ] `LeadZ`
+    - [ ] `Not`
+    - [ ] `Or`
+    - [ ] `Rotl`
+    - [ ] `Rotr`
+    - [ ] `Set`
+    - [ ] `Shl`
+    - [ ] `Shr`
+    - [ ] `Swap`
+    - [ ] `Toggle`
+    - [ ] `TrailZ`
+    - [ ] `Ushr`
+    - [ ] `Xor`
+
+- [ ] `Viper.Collections.Bag`
+  - [ ] Constructor: `Viper.Collections.Bag.New`
+  - Properties
+    - [ ] `IsEmpty`
+    - [ ] `Len`
+  - Methods
+    - [ ] `Clear`
+    - [ ] `Common`
+    - [ ] `Diff`
+    - [ ] `Drop`
+    - [ ] `Has`
+    - [ ] `Items`
+    - [ ] `Merge`
+    - [ ] `Put`
+
+- [ ] `Viper.Collections.Bytes`
+  - [ ] Constructor: `Viper.Collections.Bytes.New`
+  - Properties
+    - [ ] `Len`
+  - Methods
+    - [ ] `Clone`
+    - [ ] `Copy`
+    - [ ] `Fill`
+    - [ ] `Find`
+    - [ ] `Get`
+    - [ ] `Set`
+    - [ ] `Slice`
+    - [ ] `ToBase64`
+    - [ ] `ToHex`
+    - [ ] `ToStr`
+
+- [ ] `Viper.Collections.Heap`
+  - [ ] Constructor: `Viper.Collections.Heap.New`
+  - Properties
+    - [ ] `IsEmpty`
+    - [ ] `IsMax`
+    - [ ] `Len`
+  - Methods
+    - [ ] `Clear`
+    - [ ] `Peek`
+    - [ ] `Pop`
+    - [ ] `Push`
+    - [ ] `ToSeq`
+    - [ ] `TryPeek`
+    - [ ] `TryPop`
+
+- [ ] `Viper.Collections.List`
+  - [ ] Constructor: `Viper.Collections.List.New`
+  - Properties
+    - [ ] `Count`
+  - Methods
+    - [ ] `Add`
+    - [ ] `Clear`
+    - [ ] `Find`
+    - [ ] `Has`
+    - [ ] `Insert`
+    - [ ] `Remove`
+    - [ ] `RemoveAt`
+    - [ ] `get_Item`
+    - [ ] `set_Item`
+
+- [ ] `Viper.Collections.Map`
+  - [ ] Constructor: `Viper.Collections.Map.New`
+  - Properties
+    - [ ] `IsEmpty`
+    - [ ] `Len`
+  - Methods
+    - [ ] `Clear`
+    - [ ] `Get`
+    - [ ] `GetOr`
+    - [ ] `Has`
+    - [ ] `Keys`
+    - [ ] `Remove`
+    - [ ] `Set`
+    - [ ] `SetIfMissing`
+    - [ ] `Values`
+
+- [ ] `Viper.Collections.Queue`
+  - [ ] Constructor: `Viper.Collections.Queue.New`
+  - Properties
+    - [ ] `IsEmpty`
+    - [ ] `Len`
+  - Methods
+    - [ ] `Add`
+    - [ ] `Clear`
+    - [ ] `Peek`
+    - [ ] `Take`
+
+- [ ] `Viper.Collections.Ring`
+  - [ ] Constructor: `Viper.Collections.Ring.New`
+  - Properties
+    - [ ] `Cap`
+    - [ ] `IsEmpty`
+    - [ ] `IsFull`
+    - [ ] `Len`
+  - Methods
+    - [ ] `Clear`
+    - [ ] `Get`
+    - [ ] `Peek`
+    - [ ] `Pop`
+    - [ ] `Push`
+
+- [ ] `Viper.Collections.Seq`
+  - [ ] Constructor: `Viper.Collections.Seq.New`
+  - Properties
+    - [ ] `Cap`
+    - [ ] `IsEmpty`
+    - [ ] `Len`
+  - Methods
+    - [ ] `Clear`
+    - [ ] `Clone`
+    - [ ] `Find`
+    - [ ] `First`
+    - [ ] `Get`
+    - [ ] `Has`
+    - [ ] `Insert`
+    - [ ] `Last`
+    - [ ] `Peek`
+    - [ ] `Pop`
+    - [ ] `Push`
+    - [ ] `PushAll`
+    - [ ] `Remove`
+    - [ ] `Reverse`
+    - [ ] `Set`
+    - [ ] `Shuffle`
+    - [ ] `Slice`
+
+- [ ] `Viper.Collections.Stack`
+  - [ ] Constructor: `Viper.Collections.Stack.New`
+  - Properties
+    - [ ] `IsEmpty`
+    - [ ] `Len`
+  - Methods
+    - [ ] `Clear`
+    - [ ] `Peek`
+    - [ ] `Pop`
+    - [ ] `Push`
+
+- [ ] `Viper.Collections.TreeMap`
+  - [ ] Constructor: `Viper.Collections.TreeMap.New`
+  - Properties
+    - [ ] `IsEmpty`
+    - [ ] `Len`
+  - Methods
+    - [ ] `Ceil`
+    - [ ] `Clear`
+    - [ ] `Drop`
+    - [ ] `First`
+    - [ ] `Floor`
+    - [ ] `Get`
+    - [ ] `Has`
+    - [ ] `Keys`
+    - [ ] `Last`
+    - [ ] `Set`
+    - [ ] `Values`
+
+- [ ] `Viper.Convert`
+  - Methods
+    - [ ] `ToDouble`
+    - [ ] `ToInt64`
+    - [ ] `ToString_Double`
+    - [ ] `ToString_Int`
+
+- [ ] `Viper.Crypto.Hash`
+  - Methods
+    - [ ] `CRC32`
+    - [ ] `CRC32Bytes`
+    - [ ] `HmacMD5`
+    - [ ] `HmacMD5Bytes`
+    - [ ] `HmacSHA1`
+    - [ ] `HmacSHA1Bytes`
+    - [ ] `HmacSHA256`
+    - [ ] `HmacSHA256Bytes`
+    - [ ] `MD5`
+    - [ ] `MD5Bytes`
+    - [ ] `SHA1`
+    - [ ] `SHA1Bytes`
+    - [ ] `SHA256`
+    - [ ] `SHA256Bytes`
+
+- [ ] `Viper.Crypto.KeyDerive`
+  - Methods
+    - [ ] `Pbkdf2SHA256`
+    - [ ] `Pbkdf2SHA256Str`
+
+- [ ] `Viper.Crypto.Rand`
+  - Methods
+    - [ ] `Bytes`
+    - [ ] `Int`
+
+- [ ] `Viper.DateTime`
+  - Methods
+    - [ ] `AddDays`
+    - [ ] `AddSeconds`
+    - [ ] `Create`
+    - [ ] `Day`
+    - [ ] `DayOfWeek`
+    - [ ] `Diff`
+    - [ ] `Format`
+    - [ ] `Hour`
+    - [ ] `Minute`
+    - [ ] `Month`
+    - [ ] `Now`
+    - [ ] `NowMs`
+    - [ ] `Second`
+    - [ ] `ToISO`
+    - [ ] `Year`
+
+- [ ] `Viper.Diagnostics.Stopwatch`
+  - [ ] Constructor: `Viper.Diagnostics.Stopwatch.New`
+  - Properties
+    - [ ] `ElapsedMs`
+    - [ ] `ElapsedNs`
+    - [ ] `ElapsedUs`
+    - [ ] `IsRunning`
+  - Methods
+    - [ ] `Reset`
+    - [ ] `Restart`
+    - [ ] `Start`
+    - [ ] `Stop`
+
+- [ ] `Viper.Environment`
+  - Methods
+    - [ ] `EndProgram`
+    - [ ] `GetArgument`
+    - [ ] `GetArgumentCount`
+    - [ ] `GetCommandLine`
+    - [ ] `GetVariable`
+    - [ ] `HasVariable`
+    - [ ] `IsNative`
+    - [ ] `SetVariable`
+
+- [ ] `Viper.Exec`
+  - Methods
+    - [ ] `Capture`
+    - [ ] `CaptureArgs`
+    - [ ] `Run`
+    - [ ] `RunArgs`
+    - [ ] `Shell`
+    - [ ] `ShellCapture`
+
+- [ ] `Viper.Fmt`
+  - Methods
+    - [ ] `Bin`
+    - [ ] `Bool`
+    - [ ] `BoolYN`
+    - [ ] `Hex`
+    - [ ] `HexPad`
+    - [ ] `Int`
+    - [ ] `IntPad`
+    - [ ] `IntRadix`
+    - [ ] `Num`
+    - [ ] `NumFixed`
+    - [ ] `NumPct`
+    - [ ] `NumSci`
+    - [ ] `Oct`
+    - [ ] `Size`
+
+- [ ] `Viper.Graphics.Canvas`
+  - [ ] Constructor: `Viper.Graphics.Canvas.New`
+  - Properties
+    - [ ] `Height`
+    - [ ] `ShouldClose`
+    - [ ] `Width`
+  - Methods
+    - [ ] `Box`
+    - [ ] `Clear`
+    - [ ] `Disc`
+    - [ ] `Flip`
+    - [ ] `Frame`
+    - [ ] `KeyHeld`
+    - [ ] `Line`
+    - [ ] `Plot`
+    - [ ] `Poll`
+    - [ ] `Ring`
+
+- [ ] `Viper.Graphics.Color`
+  - Methods
+    - [ ] `RGB`
+    - [ ] `RGBA`
+
+- [ ] `Viper.Graphics.Pixels`
+  - [ ] Constructor: `Viper.Graphics.Pixels.New`
+  - Properties
+    - [ ] `Height`
+    - [ ] `Width`
+  - Methods
+    - [ ] `Clear`
+    - [ ] `Clone`
+    - [ ] `Copy`
+    - [ ] `Fill`
+    - [ ] `Get`
+    - [ ] `Set`
+    - [ ] `ToBytes`
+
+- [ ] `Viper.IO.Archive`
+  - Properties
+    - [ ] `Count`
+    - [ ] `Names`
+    - [ ] `Path`
+  - Methods
+    - [ ] `Add`
+    - [ ] `AddDir`
+    - [ ] `AddFile`
+    - [ ] `AddStr`
+    - [ ] `Create`
+    - [ ] `Extract`
+    - [ ] `ExtractAll`
+    - [ ] `Finish`
+    - [ ] `FromBytes`
+    - [ ] `Has`
+    - [ ] `Info`
+    - [ ] `IsZip`
+    - [ ] `IsZipBytes`
+    - [ ] `Open`
+    - [ ] `Read`
+    - [ ] `ReadStr`
+
+- [ ] `Viper.IO.BinFile`
+  - [ ] Constructor: `Viper.IO.BinFile.Open`
+  - Properties
+    - [ ] `Eof`
+    - [ ] `Pos`
+    - [ ] `Size`
+  - Methods
+    - [ ] `Close`
+    - [ ] `Flush`
+    - [ ] `Read`
+    - [ ] `ReadByte`
+    - [ ] `Seek`
+    - [ ] `Write`
+    - [ ] `WriteByte`
+
+- [ ] `Viper.IO.Compress`
+  - Methods
+    - [ ] `Deflate`
+    - [ ] `DeflateLvl`
+    - [ ] `DeflateStr`
+    - [ ] `Gunzip`
+    - [ ] `GunzipStr`
+    - [ ] `Gzip`
+    - [ ] `GzipLvl`
+    - [ ] `GzipStr`
+    - [ ] `Inflate`
+    - [ ] `InflateStr`
+
+- [ ] `Viper.IO.Dir`
+  - Methods
+    - [ ] `Current`
+    - [ ] `Dirs`
+    - [ ] `DirsSeq`
+    - [ ] `Entries`
+    - [ ] `Exists`
+    - [ ] `Files`
+    - [ ] `FilesSeq`
+    - [ ] `List`
+    - [ ] `ListSeq`
+    - [ ] `Make`
+    - [ ] `MakeAll`
+    - [ ] `Move`
+    - [ ] `Remove`
+    - [ ] `RemoveAll`
+    - [ ] `SetCurrent`
+
+- [ ] `Viper.IO.File`
+  - Methods
+    - [ ] `Append`
+    - [ ] `AppendLine`
+    - [ ] `Copy`
+    - [ ] `Delete`
+    - [ ] `Exists`
+    - [ ] `Modified`
+    - [ ] `Move`
+    - [ ] `ReadAllBytes`
+    - [ ] `ReadAllLines`
+    - [ ] `ReadAllText`
+    - [ ] `ReadBytes`
+    - [ ] `ReadLines`
+    - [ ] `Size`
+    - [ ] `Touch`
+    - [ ] `WriteAllBytes`
+    - [ ] `WriteAllText`
+    - [ ] `WriteBytes`
+    - [ ] `WriteLines`
+
+- [ ] `Viper.IO.LineReader`
+  - [ ] Constructor: `Viper.IO.LineReader.Open`
+  - Properties
+    - [ ] `Eof`
+  - Methods
+    - [ ] `Close`
+    - [ ] `PeekChar`
+    - [ ] `Read`
+    - [ ] `ReadAll`
+    - [ ] `ReadChar`
+
+- [ ] `Viper.IO.LineWriter`
+  - [ ] Constructor: `Viper.IO.LineWriter.Open`
+  - Properties
+    - [ ] `NewLine`
+  - Methods
+    - [ ] `Close`
+    - [ ] `Flush`
+    - [ ] `Write`
+    - [ ] `WriteChar`
+    - [ ] `WriteLn`
+
+- [ ] `Viper.IO.MemStream`
+  - [ ] Constructor: `Viper.IO.MemStream.New`
+  - Properties
+    - [ ] `Capacity`
+    - [ ] `Len`
+    - [ ] `Pos`
+  - Methods
+    - [ ] `Clear`
+    - [ ] `ReadBytes`
+    - [ ] `ReadF32`
+    - [ ] `ReadF64`
+    - [ ] `ReadI16`
+    - [ ] `ReadI32`
+    - [ ] `ReadI64`
+    - [ ] `ReadI8`
+    - [ ] `ReadStr`
+    - [ ] `ReadU16`
+    - [ ] `ReadU32`
+    - [ ] `ReadU8`
+    - [ ] `Seek`
+    - [ ] `Skip`
+    - [ ] `ToBytes`
+    - [ ] `WriteBytes`
+    - [ ] `WriteF32`
+    - [ ] `WriteF64`
+    - [ ] `WriteI16`
+    - [ ] `WriteI32`
+    - [ ] `WriteI64`
+    - [ ] `WriteI8`
+    - [ ] `WriteStr`
+    - [ ] `WriteU16`
+    - [ ] `WriteU32`
+    - [ ] `WriteU8`
+
+- [ ] `Viper.IO.Path`
+  - Methods
+    - [ ] `Abs`
+    - [ ] `Dir`
+    - [ ] `Ext`
+    - [ ] `IsAbs`
+    - [ ] `Join`
+    - [ ] `Name`
+    - [ ] `Norm`
+    - [ ] `Sep`
+    - [ ] `Stem`
+    - [ ] `WithExt`
+
+- [ ] `Viper.IO.Watcher`
+  - [ ] Constructor: `Viper.IO.Watcher.new`
+  - Properties
+    - [ ] `EVENT_CREATED`
+    - [ ] `EVENT_DELETED`
+    - [ ] `EVENT_MODIFIED`
+    - [ ] `EVENT_NONE`
+    - [ ] `EVENT_RENAMED`
+    - [ ] `IsWatching`
+    - [ ] `Path`
+  - Methods
+    - [ ] `EventPath`
+    - [ ] `EventType`
+    - [ ] `Poll`
+    - [ ] `PollFor`
+    - [ ] `Start`
+    - [ ] `Stop`
+
+- [ ] `Viper.Input.Keyboard`
+  - Properties
+    - [ ] `KEY_0`
+    - [ ] `KEY_1`
+    - [ ] `KEY_2`
+    - [ ] `KEY_3`
+    - [ ] `KEY_4`
+    - [ ] `KEY_5`
+    - [ ] `KEY_6`
+    - [ ] `KEY_7`
+    - [ ] `KEY_8`
+    - [ ] `KEY_9`
+    - [ ] `KEY_A`
+    - [ ] `KEY_ALT`
+    - [ ] `KEY_B`
+    - [ ] `KEY_BACKSLASH`
+    - [ ] `KEY_BACKSPACE`
+    - [ ] `KEY_C`
+    - [ ] `KEY_COMMA`
+    - [ ] `KEY_CTRL`
+    - [ ] `KEY_D`
+    - [ ] `KEY_DELETE`
+    - [ ] `KEY_DOWN`
+    - [ ] `KEY_E`
+    - [ ] `KEY_END`
+    - [ ] `KEY_ENTER`
+    - [ ] `KEY_EQUALS`
+    - [ ] `KEY_ESCAPE`
+    - [ ] `KEY_F`
+    - [ ] `KEY_F1`
+    - [ ] `KEY_F10`
+    - [ ] `KEY_F11`
+    - [ ] `KEY_F12`
+    - [ ] `KEY_F2`
+    - [ ] `KEY_F3`
+    - [ ] `KEY_F4`
+    - [ ] `KEY_F5`
+    - [ ] `KEY_F6`
+    - [ ] `KEY_F7`
+    - [ ] `KEY_F8`
+    - [ ] `KEY_F9`
+    - [ ] `KEY_G`
+    - [ ] `KEY_GRAVE`
+    - [ ] `KEY_H`
+    - [ ] `KEY_HOME`
+    - [ ] `KEY_I`
+    - [ ] `KEY_INSERT`
+    - [ ] `KEY_J`
+    - [ ] `KEY_K`
+    - [ ] `KEY_L`
+    - [ ] `KEY_LALT`
+    - [ ] `KEY_LBRACKET`
+    - [ ] `KEY_LCTRL`
+    - [ ] `KEY_LEFT`
+    - [ ] `KEY_LSHIFT`
+    - [ ] `KEY_M`
+    - [ ] `KEY_MINUS`
+    - [ ] `KEY_N`
+    - [ ] `KEY_NUM0`
+    - [ ] `KEY_NUM1`
+    - [ ] `KEY_NUM2`
+    - [ ] `KEY_NUM3`
+    - [ ] `KEY_NUM4`
+    - [ ] `KEY_NUM5`
+    - [ ] `KEY_NUM6`
+    - [ ] `KEY_NUM7`
+    - [ ] `KEY_NUM8`
+    - [ ] `KEY_NUM9`
+    - [ ] `KEY_NUMADD`
+    - [ ] `KEY_NUMDIV`
+    - [ ] `KEY_NUMDOT`
+    - [ ] `KEY_NUMENTER`
+    - [ ] `KEY_NUMMUL`
+    - [ ] `KEY_NUMSUB`
+    - [ ] `KEY_O`
+    - [ ] `KEY_P`
+    - [ ] `KEY_PAGEDOWN`
+    - [ ] `KEY_PAGEUP`
+    - [ ] `KEY_PERIOD`
+    - [ ] `KEY_Q`
+    - [ ] `KEY_QUOTE`
+    - [ ] `KEY_R`
+    - [ ] `KEY_RALT`
+    - [ ] `KEY_RBRACKET`
+    - [ ] `KEY_RCTRL`
+    - [ ] `KEY_RIGHT`
+    - [ ] `KEY_RSHIFT`
+    - [ ] `KEY_S`
+    - [ ] `KEY_SEMICOLON`
+    - [ ] `KEY_SHIFT`
+    - [ ] `KEY_SLASH`
+    - [ ] `KEY_SPACE`
+    - [ ] `KEY_T`
+    - [ ] `KEY_TAB`
+    - [ ] `KEY_U`
+    - [ ] `KEY_UNKNOWN`
+    - [ ] `KEY_UP`
+    - [ ] `KEY_V`
+    - [ ] `KEY_W`
+    - [ ] `KEY_X`
+    - [ ] `KEY_Y`
+    - [ ] `KEY_Z`
+  - Methods
+    - [ ] `Alt`
+    - [ ] `AnyDown`
+    - [ ] `CapsLock`
+    - [ ] `Ctrl`
+    - [ ] `DisableTextInput`
+    - [ ] `EnableTextInput`
+    - [ ] `GetDown`
+    - [ ] `GetPressed`
+    - [ ] `GetReleased`
+    - [ ] `GetText`
+    - [ ] `IsDown`
+    - [ ] `IsUp`
+    - [ ] `KeyName`
+    - [ ] `Shift`
+    - [ ] `WasPressed`
+    - [ ] `WasReleased`
+
+- [ ] `Viper.Input.Mouse`
+  - Properties
+    - [ ] `BUTTON_LEFT`
+    - [ ] `BUTTON_MIDDLE`
+    - [ ] `BUTTON_RIGHT`
+    - [ ] `BUTTON_X1`
+    - [ ] `BUTTON_X2`
+  - Methods
+    - [ ] `Capture`
+    - [ ] `DeltaX`
+    - [ ] `DeltaY`
+    - [ ] `Hide`
+    - [ ] `IsCaptured`
+    - [ ] `IsDown`
+    - [ ] `IsHidden`
+    - [ ] `IsUp`
+    - [ ] `Left`
+    - [ ] `Middle`
+    - [ ] `Release`
+    - [ ] `Right`
+    - [ ] `SetPos`
+    - [ ] `Show`
+    - [ ] `WasClicked`
+    - [ ] `WasDoubleClicked`
+    - [ ] `WasPressed`
+    - [ ] `WasReleased`
+    - [ ] `WheelX`
+    - [ ] `WheelY`
+    - [ ] `X`
+    - [ ] `Y`
+
+- [ ] `Viper.Input.Pad`
+  - Properties
+    - [ ] `PAD_A`
+    - [ ] `PAD_B`
+    - [ ] `PAD_BACK`
+    - [ ] `PAD_DOWN`
+    - [ ] `PAD_GUIDE`
+    - [ ] `PAD_LB`
+    - [ ] `PAD_LEFT`
+    - [ ] `PAD_LSTICK`
+    - [ ] `PAD_RB`
+    - [ ] `PAD_RIGHT`
+    - [ ] `PAD_RSTICK`
+    - [ ] `PAD_START`
+    - [ ] `PAD_UP`
+    - [ ] `PAD_X`
+    - [ ] `PAD_Y`
+  - Methods
+    - [ ] `Count`
+    - [ ] `GetDeadzone`
+    - [ ] `IsConnected`
+    - [ ] `IsDown`
+    - [ ] `IsUp`
+    - [ ] `LeftTrigger`
+    - [ ] `LeftX`
+    - [ ] `LeftY`
+    - [ ] `Name`
+    - [ ] `RightTrigger`
+    - [ ] `RightX`
+    - [ ] `RightY`
+    - [ ] `SetDeadzone`
+    - [ ] `StopVibration`
+    - [ ] `Vibrate`
+    - [ ] `WasPressed`
+    - [ ] `WasReleased`
+
+- [ ] `Viper.Log`
+  - Properties
+    - [ ] `DEBUG`
+    - [ ] `ERROR`
+    - [ ] `INFO`
+    - [ ] `Level`
+    - [ ] `OFF`
+    - [ ] `WARN`
+  - Methods
+    - [ ] `Debug`
+    - [ ] `Enabled`
+    - [ ] `Error`
+    - [ ] `Info`
+    - [ ] `Warn`
+
+- [ ] `Viper.Machine`
+  - Properties
+    - [ ] `Cores`
+    - [ ] `Endian`
+    - [ ] `Home`
+    - [ ] `Host`
+    - [ ] `MemFree`
+    - [ ] `MemTotal`
+    - [ ] `OS`
+    - [ ] `OSVer`
+    - [ ] `Temp`
+    - [ ] `User`
+
+- [ ] `Viper.Math`
+  - Properties
+    - [ ] `E`
+    - [ ] `Pi`
+    - [ ] `Tau`
+  - Methods
+    - [ ] `Abs`
+    - [ ] `AbsInt`
+    - [ ] `Acos`
+    - [ ] `Asin`
+    - [ ] `Atan`
+    - [ ] `Atan2`
+    - [ ] `Ceil`
+    - [ ] `Clamp`
+    - [ ] `ClampInt`
+    - [ ] `Cos`
+    - [ ] `Cosh`
+    - [ ] `Deg`
+    - [ ] `Exp`
+    - [ ] `FMod`
+    - [ ] `Floor`
+    - [ ] `Hypot`
+    - [ ] `Lerp`
+    - [ ] `Log`
+    - [ ] `Log10`
+    - [ ] `Log2`
+    - [ ] `Max`
+    - [ ] `MaxInt`
+    - [ ] `Min`
+    - [ ] `MinInt`
+    - [ ] `Pow`
+    - [ ] `Rad`
+    - [ ] `Round`
+    - [ ] `Sgn`
+    - [ ] `SgnInt`
+    - [ ] `Sin`
+    - [ ] `Sinh`
+    - [ ] `Sqrt`
+    - [ ] `Tan`
+    - [ ] `Tanh`
+    - [ ] `Trunc`
+    - [ ] `Wrap`
+    - [ ] `WrapInt`
+
+- [ ] `Viper.Network.Dns`
+  - Methods
+    - [ ] `IsIP`
+    - [ ] `IsIPv4`
+    - [ ] `IsIPv6`
+    - [ ] `LocalAddrs`
+    - [ ] `LocalHost`
+    - [ ] `Resolve`
+    - [ ] `Resolve4`
+    - [ ] `Resolve6`
+    - [ ] `ResolveAll`
+    - [ ] `Reverse`
+
+- [ ] `Viper.Network.Http`
+  - Methods
+    - [ ] `Download`
+    - [ ] `Get`
+    - [ ] `GetBytes`
+    - [ ] `Head`
+    - [ ] `Post`
+    - [ ] `PostBytes`
+
+- [ ] `Viper.Network.HttpReq`
+  - Methods
+    - [ ] `New`
+    - [ ] `Send`
+    - [ ] `SetBody`
+    - [ ] `SetBodyStr`
+    - [ ] `SetHeader`
+    - [ ] `SetTimeout`
+
+- [ ] `Viper.Network.HttpRes`
+  - Properties
+    - [ ] `Headers`
+    - [ ] `Status`
+    - [ ] `StatusText`
+  - Methods
+    - [ ] `Body`
+    - [ ] `BodyStr`
+    - [ ] `Header`
+    - [ ] `IsOk`
+
+- [ ] `Viper.Network.Tcp`
+  - Properties
+    - [ ] `Available`
+    - [ ] `Host`
+    - [ ] `IsOpen`
+    - [ ] `LocalPort`
+    - [ ] `Port`
+  - Methods
+    - [ ] `Close`
+    - [ ] `Connect`
+    - [ ] `ConnectFor`
+    - [ ] `Recv`
+    - [ ] `RecvExact`
+    - [ ] `RecvLine`
+    - [ ] `RecvStr`
+    - [ ] `Send`
+    - [ ] `SendAll`
+    - [ ] `SendStr`
+    - [ ] `SetRecvTimeout`
+    - [ ] `SetSendTimeout`
+
+- [ ] `Viper.Network.TcpServer`
+  - Properties
+    - [ ] `Address`
+    - [ ] `IsListening`
+    - [ ] `Port`
+  - Methods
+    - [ ] `Accept`
+    - [ ] `AcceptFor`
+    - [ ] `Close`
+    - [ ] `Listen`
+    - [ ] `ListenAt`
+
+- [ ] `Viper.Network.Udp`
+  - Properties
+    - [ ] `Address`
+    - [ ] `IsBound`
+    - [ ] `Port`
+  - Methods
+    - [ ] `Bind`
+    - [ ] `BindAt`
+    - [ ] `Close`
+    - [ ] `JoinGroup`
+    - [ ] `LeaveGroup`
+    - [ ] `New`
+    - [ ] `Recv`
+    - [ ] `RecvFor`
+    - [ ] `RecvFrom`
+    - [ ] `SendTo`
+    - [ ] `SendToStr`
+    - [ ] `SenderHost`
+    - [ ] `SenderPort`
+    - [ ] `SetBroadcast`
+    - [ ] `SetRecvTimeout`
+
+- [ ] `Viper.Network.Url`
+  - Properties
+    - [ ] `Authority`
+    - [ ] `Fragment`
+    - [ ] `Full`
+    - [ ] `Host`
+    - [ ] `HostPort`
+    - [ ] `Pass`
+    - [ ] `Path`
+    - [ ] `Port`
+    - [ ] `Query`
+    - [ ] `Scheme`
+    - [ ] `User`
+  - Methods
+    - [ ] `Clone`
+    - [ ] `Decode`
+    - [ ] `DecodeQuery`
+    - [ ] `DelQueryParam`
+    - [ ] `Encode`
+    - [ ] `EncodeQuery`
+    - [ ] `GetQueryParam`
+    - [ ] `HasQueryParam`
+    - [ ] `IsValid`
+    - [ ] `New`
+    - [ ] `Parse`
+    - [ ] `QueryMap`
+    - [ ] `Resolve`
+    - [ ] `SetQueryParam`
+
+- [ ] `Viper.Object`
+  - Methods
+    - [ ] `Equals`
+    - [ ] `GetHashCode`
+    - [ ] `ToString`
+
+- [ ] `Viper.Random`
+  - Methods
+    - [ ] `Next`
+    - [ ] `NextInt`
+    - [ ] `Seed`
+
+- [ ] `Viper.String`
+  - [ ] Constructor: `Viper.Strings.FromStr`
+  - Properties
+    - [ ] `IsEmpty`
+    - [ ] `Length`
+  - Methods
+    - [ ] `Asc`
+    - [ ] `Chr`
+    - [ ] `Cmp`
+    - [ ] `CmpNoCase`
+    - [ ] `Concat`
+    - [ ] `Count`
+    - [ ] `EndsWith`
+    - [ ] `Flip`
+    - [ ] `Has`
+    - [ ] `IndexOf`
+    - [ ] `IndexOfFrom`
+    - [ ] `Left`
+    - [ ] `Mid`
+    - [ ] `MidLen`
+    - [ ] `PadLeft`
+    - [ ] `PadRight`
+    - [ ] `Repeat`
+    - [ ] `Replace`
+    - [ ] `Right`
+    - [ ] `Split`
+    - [ ] `StartsWith`
+    - [ ] `Substring`
+    - [ ] `ToLower`
+    - [ ] `ToUpper`
+    - [ ] `Trim`
+    - [ ] `TrimEnd`
+    - [ ] `TrimStart`
+
+- [ ] `Viper.Terminal`
+  - Methods
+    - [ ] `Ask`
+    - [ ] `BeginBatch`
+    - [ ] `Bell`
+    - [ ] `Clear`
+    - [ ] `EndBatch`
+    - [ ] `Flush`
+    - [ ] `GetKey`
+    - [ ] `GetKeyTimeout`
+    - [ ] `InKey`
+    - [ ] `Print`
+    - [ ] `PrintInt`
+    - [ ] `PrintNum`
+    - [ ] `ReadLine`
+    - [ ] `Say`
+    - [ ] `SayBool`
+    - [ ] `SayInt`
+    - [ ] `SayNum`
+    - [ ] `SetAltScreen`
+    - [ ] `SetColor`
+    - [ ] `SetCursorVisible`
+    - [ ] `SetPosition`
+
+- [ ] `Viper.Text.Codec`
+  - Methods
+    - [ ] `Base64Dec`
+    - [ ] `Base64Enc`
+    - [ ] `HexDec`
+    - [ ] `HexEnc`
+    - [ ] `UrlDecode`
+    - [ ] `UrlEncode`
+
+- [ ] `Viper.Text.Csv`
+  - Methods
+    - [ ] `Format`
+    - [ ] `FormatLine`
+    - [ ] `FormatLineWith`
+    - [ ] `FormatWith`
+    - [ ] `Parse`
+    - [ ] `ParseLine`
+    - [ ] `ParseLineWith`
+    - [ ] `ParseWith`
+
+- [ ] `Viper.Text.Guid`
+  - Properties
+    - [ ] `Empty`
+  - Methods
+    - [ ] `FromBytes`
+    - [ ] `IsValid`
+    - [ ] `New`
+    - [ ] `ToBytes`
+
+- [ ] `Viper.Text.Pattern`
+  - Methods
+    - [ ] `Escape`
+    - [ ] `Find`
+    - [ ] `FindAll`
+    - [ ] `FindFrom`
+    - [ ] `FindPos`
+    - [ ] `IsMatch`
+    - [ ] `Replace`
+    - [ ] `ReplaceFirst`
+    - [ ] `Split`
+
+- [ ] `Viper.Text.StringBuilder`
+  - [ ] Constructor: `Viper.Text.StringBuilder.New`
+  - Properties
+    - [ ] `Capacity`
+    - [ ] `Length`
+  - Methods
+    - [ ] `Append`
+    - [ ] `AppendLine`
+    - [ ] `Clear`
+    - [ ] `ToString`
+
+- [ ] `Viper.Text.Template`
+  - Methods
+    - [ ] `Escape`
+    - [ ] `Has`
+    - [ ] `Keys`
+    - [ ] `Render`
+    - [ ] `RenderSeq`
+    - [ ] `RenderWith`
+
+- [ ] `Viper.Threads.Barrier`
+  - [ ] Constructor: `Viper.Threads.Barrier.New`
+  - Properties
+    - [ ] `Parties`
+    - [ ] `Waiting`
+  - Methods
+    - [ ] `Arrive`
+    - [ ] `Reset`
+
+- [ ] `Viper.Threads.Gate`
+  - [ ] Constructor: `Viper.Threads.Gate.New`
+  - Properties
+    - [ ] `Permits`
+  - Methods
+    - [ ] `Enter`
+    - [ ] `Leave`
+    - [ ] `TryEnter`
+    - [ ] `TryEnterFor`
+
+- [ ] `Viper.Threads.Monitor`
+  - Methods
+    - [ ] `Enter`
+    - [ ] `Exit`
+    - [ ] `Pause`
+    - [ ] `PauseAll`
+    - [ ] `TryEnter`
+    - [ ] `TryEnterFor`
+    - [ ] `Wait`
+    - [ ] `WaitFor`
+
+- [ ] `Viper.Threads.RwLock`
+  - [ ] Constructor: `Viper.Threads.RwLock.New`
+  - Properties
+    - [ ] `IsWriteLocked`
+    - [ ] `Readers`
+  - Methods
+    - [ ] `ReadEnter`
+    - [ ] `ReadExit`
+    - [ ] `TryReadEnter`
+    - [ ] `TryWriteEnter`
+    - [ ] `WriteEnter`
+    - [ ] `WriteExit`
+
+- [ ] `Viper.Threads.SafeI64`
+  - [ ] Constructor: `Viper.Threads.SafeI64.New`
+  - Methods
+    - [ ] `Add`
+    - [ ] `CompareExchange`
+    - [ ] `Get`
+    - [ ] `Set`
+
+- [ ] `Viper.Threads.Thread`
+  - Properties
+    - [ ] `Id`
+    - [ ] `IsAlive`
+  - Methods
+    - [ ] `Join`
+    - [ ] `JoinFor`
+    - [ ] `Sleep`
+    - [ ] `Start`
+    - [ ] `TryJoin`
+    - [ ] `Yield`
+
+- [ ] `Viper.Time.Clock`
+  - Methods
+    - [ ] `Sleep`
+    - [ ] `Ticks`
+    - [ ] `TicksUs`
+
+- [ ] `Viper.Time.Countdown`
+  - [ ] Constructor: `Viper.Time.Countdown.New`
+  - Properties
+    - [ ] `Elapsed`
+    - [ ] `Expired`
+    - [ ] `Interval`
+    - [ ] `IsRunning`
+    - [ ] `Remaining`
+  - Methods
+    - [ ] `Reset`
+    - [ ] `Start`
+    - [ ] `Stop`
+    - [ ] `Wait`
+
+- [ ] `Viper.Vec2`
+  - [ ] Constructor: `Viper.Vec2.New`
+  - Properties
+    - [ ] `X`
+    - [ ] `Y`
+  - Methods
+    - [ ] `Add`
+    - [ ] `Angle`
+    - [ ] `Cross`
+    - [ ] `Dist`
+    - [ ] `Div`
+    - [ ] `Dot`
+    - [ ] `Len`
+    - [ ] `LenSq`
+    - [ ] `Lerp`
+    - [ ] `Mul`
+    - [ ] `Neg`
+    - [ ] `Norm`
+    - [ ] `Rotate`
+    - [ ] `Sub`
+
+- [ ] `Viper.Vec3`
+  - [ ] Constructor: `Viper.Vec3.New`
+  - Properties
+    - [ ] `X`
+    - [ ] `Y`
+    - [ ] `Z`
+  - Methods
+    - [ ] `Add`
+    - [ ] `Cross`
+    - [ ] `Dist`
+    - [ ] `Div`
+    - [ ] `Dot`
+    - [ ] `Len`
+    - [ ] `LenSq`
+    - [ ] `Lerp`
+    - [ ] `Mul`
+    - [ ] `Neg`
+    - [ ] `Norm`
+    - [ ] `Sub`

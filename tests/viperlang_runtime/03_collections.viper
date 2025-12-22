@@ -1,0 +1,51 @@
+module RuntimeTest03;
+
+import "./_support";
+
+// EXPECT_OUT: RESULT: ok
+// COVER: Viper.Collections.List.Add
+// COVER: Viper.Collections.List.get_Item
+// COVER: Viper.Collections.List.set_Item
+// COVER: Viper.Collections.List.Count
+// COVER: Viper.Collections.List.RemoveAt
+// COVER: Viper.Collections.List.Clear
+// COVER: Viper.Collections.Map.Set
+// COVER: Viper.Collections.Map.Get
+// COVER: Viper.Collections.Map.GetOr
+// COVER: Viper.Collections.Map.Has
+// COVER: Viper.Collections.Map.Remove
+// COVER: Viper.Collections.Map.SetIfMissing
+// COVER: Viper.Collections.Map.Keys
+// COVER: Viper.Collections.Map.Values
+// COVER: Viper.Collections.Map.Clear
+// COVER: Viper.Collections.Map.Len
+
+func start() {
+    var nums = [1, 2, 3];
+    nums.add(4);
+    nums.set(1, 20);
+    var sum = nums[0] + nums[1] + nums[2] + nums[3];
+    assertEqInt(sum, 28, "sum");
+    nums.get(2);
+    assertEqInt(nums.count(), 4, "count");
+    nums.removeAt(0);
+    assertEqInt(nums.count(), 3, "removeAt");
+    nums.clear();
+    assertEqInt(nums.count(), 0, "clear");
+
+    var m = {"a": 1, "b": 2};
+    m.set("c", 3);
+    assertEqInt(m.get("b"), 2, "get");
+    assertEqInt(m.getOr("z", 9), 9, "getOr");
+    assertTrue(m.has("a"), "has");
+    assertTrue(m.remove("b"), "remove");
+    assertEqInt(m.count(), 2, "count2");
+    m.setIfMissing("a", 7);
+    assertEqInt(m.get("a"), 1, "setIfMissing");
+    m.keys();
+    m.values();
+    m.clear();
+    assertEqInt(m.count(), 0, "clear2");
+
+    report();
+}
