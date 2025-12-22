@@ -229,7 +229,7 @@ All frontends share the **Viper Runtime**, providing a growing set of modules:
 | **Core** | `Box`, `Object`, `String` | Base types and string operations |
 | **Crypto** | `Hash`, `KeyDerive`, `Rand` | CRC32, MD5, SHA1, SHA256, PBKDF2, secure RNG |
 | **Diagnostics** | `Assert`, `Trap` | Debugging and assertions |
-| **Graphics** | `Canvas`, `Color`, `Pixels` | 2D graphics for games and visualization |
+| **Graphics** | `Canvas`, `Color`, `Pixels` | 2D graphics with shapes, curves, text, image transforms, screenshots |
 | **I/O** | `Archive`, `BinFile`, `Compress`, `Dir`, `File`, `LineReader`, `LineWriter`, `MemStream`, `Path`, `Watcher` | File system access and streaming |
 | **Input** | `Keyboard`, `Mouse`, `Pad` | Input devices for games and interactive apps |
 | **Math** | `Bits`, `Math`, `Random`, `Vec2`, `Vec3` | Mathematical functions and vectors |
