@@ -523,6 +523,20 @@ ExprPtr Parser::parsePrimary()
         return v;
     }
 
+    // ADDRESSOF keyword for obtaining function pointers (threading support).
+    // Syntax: ADDRESSOF SubOrFunctionName
+    if (at(TokenKind::KeywordAddressOf))
+    {
+        auto loc = peek().loc;
+        consume(); // ADDRESSOF
+        Token ident = expect(TokenKind::Identifier);
+        auto expr = std::make_unique<AddressOfExpr>();
+        expr->loc = loc;
+        if (ident.kind == TokenKind::Identifier)
+            expr->targetName = ident.lexeme;
+        return expr;
+    }
+
     if (at(TokenKind::KeywordLbound) || at(TokenKind::KeywordUbound))
         return parseBoundIntrinsic(peek().kind);
 

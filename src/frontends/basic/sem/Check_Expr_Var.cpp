@@ -45,6 +45,13 @@ SemanticAnalyzer::Type analyzeVarExpr(SemanticAnalyzer &analyzer, VarExpr &expr)
 {
     using Type = SemanticAnalyzer::Type;
 
+    // Special case: NOTHING keyword represents a null pointer.
+    // It's parsed as VarExpr{"NOTHING"} and lowering emits Value::null().
+    if (expr.name == "NOTHING")
+    {
+        return Type::Unknown; // Null pointer has Unknown type in BASIC semantics
+    }
+
     ExprCheckContext context(analyzer);
     context.resolveAndTrackSymbolRef(expr.name);
 

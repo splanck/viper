@@ -591,6 +591,11 @@ int64_t rt_instr3(int64_t start, rt_string hay, rt_string needle)
     return rt_find(hay, pos, needle);
 }
 
+int64_t rt_str_index_of_from(rt_string hay, int64_t start, rt_string needle)
+{
+    return rt_instr3(start, hay, needle);
+}
+
 /// @brief Trim leading spaces and tabs from a string.
 /// @details Walks the leading whitespace and delegates to @ref rt_substr to
 ///          materialise the trimmed view.

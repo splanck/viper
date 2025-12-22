@@ -459,6 +459,9 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
         foldExpr(expr.value);
     }
 
+    /// @brief ADDRESSOF has no sub-expressions to fold.
+    void visit(AddressOfExpr &) override {}
+
     // MutStmtVisitor overrides ----------------------------------------------
     /// @brief Labels carry no expressions to fold.
     void visit(LabelStmt &) override {}

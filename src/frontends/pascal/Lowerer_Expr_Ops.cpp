@@ -133,6 +133,56 @@ LowerResult Lowerer::lowerBinary(const BinaryExpr &expr)
     LowerResult lhs = lowerExpr(*expr.left);
     LowerResult rhs = lowerExpr(*expr.right);
 
+    // Handle pointer comparisons (ptr vs ptr or ptr vs nil)
+    // Pointers are compared using UCmpEq/UCmpNe which treats them as unsigned i64 values
+    bool isPointer = (lhs.type.kind == Type::Kind::Ptr || rhs.type.kind == Type::Kind::Ptr);
+    if (isPointer)
+    {
+        // For pointer comparison, use PtrCmpEq/PtrCmpNe opcodes
+        // Since those don't exist, we use a store-load trick to convert ptr to i64
+        // or simply use the Value directly since ICmpEq/ICmpNe can handle ptr values
+        // when both operands are consistent.
+        //
+        // Actually, the simpler approach: use Value::constInt(0) for null comparisons
+        // and let the verifier/VM handle ptr vs ptr comparisons.
+        Value lhsVal = lhs.value;
+        Value rhsVal = rhs.value;
+
+        // If comparing to null, replace null with constInt(0) which is semantically equivalent
+        // This avoids type mismatch since both will be treated as integers by ICmpEq/ICmpNe
+        if (lhs.value.kind == Value::Kind::NullPtr)
+            lhsVal = Value::constInt(0);
+        if (rhs.value.kind == Value::Kind::NullPtr)
+            rhsVal = Value::constInt(0);
+
+        // For ptr-to-ptr comparison, we need to convert to i64
+        // Since there's no ptrtoint opcode, use a stack slot
+        auto ptrToInt = [&](Value ptrVal) -> Value
+        {
+            Value slot = emitAlloca(8); // ptr is 8 bytes
+            emitStore(Type(Type::Kind::Ptr), slot, ptrVal);
+            return emitLoad(Type(Type::Kind::I64), slot);
+        };
+
+        if (lhs.type.kind == Type::Kind::Ptr && lhs.value.kind != Value::Kind::NullPtr)
+            lhsVal = ptrToInt(lhs.value);
+        if (rhs.type.kind == Type::Kind::Ptr && rhs.value.kind != Value::Kind::NullPtr)
+            rhsVal = ptrToInt(rhs.value);
+
+        switch (expr.op)
+        {
+            case BinaryExpr::Op::Eq:
+                return {emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), lhsVal, rhsVal),
+                        Type(Type::Kind::I1)};
+            case BinaryExpr::Op::Ne:
+                return {emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1), lhsVal, rhsVal),
+                        Type(Type::Kind::I1)};
+            default:
+                // Other comparisons not supported for pointers
+                break;
+        }
+    }
+
     // Handle string comparisons via runtime call
     bool isString = (lhs.type.kind == Type::Kind::Str || rhs.type.kind == Type::Kind::Str);
     if (isString)

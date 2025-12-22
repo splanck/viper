@@ -853,6 +853,23 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
         result_ = Lowerer::RVal{cond, lowerer_.ilBoolTy()};
     }
 
+    /// @brief Lower ADDRESSOF expression to obtain a function pointer.
+    /// @details Emits IL that produces the address of the named SUB or FUNCTION.
+    ///          The result is an opaque pointer suitable for passing to threading APIs.
+    void visit(const AddressOfExpr &expr) override
+    {
+        lowerer_.curLoc = expr.loc;
+        // Emit a global address reference to the function.
+        // The function name will be resolved by the linker/VM.
+        std::string funcName = expr.targetName;
+        // Use canonical uppercase naming for BASIC procedures
+        for (char &c : funcName)
+            c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        // Note: Value::global() takes the name without '@' prefix - IL printer adds it
+        IlValue ptr = IlValue::global(funcName);
+        result_ = Lowerer::RVal{ptr, IlType(IlType::Kind::Ptr)};
+    }
+
     /// @brief Lower AS expression via RTTI helpers.
     void visit(const AsExpr &expr) override
     {

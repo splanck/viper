@@ -41,6 +41,7 @@ struct MemberAccessExpr;
 struct MethodCallExpr;
 struct IsExpr;
 struct AsExpr;
+struct AddressOfExpr;
 
 struct ExprVisitor;
 struct MutExprVisitor;

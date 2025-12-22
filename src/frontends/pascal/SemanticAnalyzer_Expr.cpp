@@ -1298,9 +1298,25 @@ PasType SemanticAnalyzer::typeOfSetConstructor(SetConstructorExpr &expr)
 
 PasType SemanticAnalyzer::typeOfAddressOf(AddressOfExpr &expr)
 {
-    // v0.1: Address-of operator is not supported
-    error(expr,
-          "address-of operator (@) is not supported in Viper Pascal v0.1; use classes instead");
+    // Support @ProcedureName for threading support
+    // The operand must be a simple name referring to a procedure/function
+    if (expr.operand && expr.operand->kind == ExprKind::Name)
+    {
+        auto &nameExpr = static_cast<NameExpr &>(*expr.operand);
+        const FuncSignature *func = lookupFunction(nameExpr.name);
+        if (func)
+        {
+            // Return a pointer type (used for Thread.Start etc.)
+            return PasType::pointer(PasType::voidType());
+        }
+        // Name exists but is not a procedure/function
+        error(expr, "address-of operator (@) requires a procedure or function name; '" +
+                        nameExpr.name + "' is not a procedure or function");
+        return PasType::unknown();
+    }
+
+    // Operand is not a simple name
+    error(expr, "address-of operator (@) only supports procedure or function names");
     return PasType::unknown();
 }
 

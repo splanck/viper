@@ -399,6 +399,14 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor
         result_ = lhsType;
     }
 
+    /// @brief ADDRESSOF expressions yield a function pointer type (Unknown in BASIC semantics).
+    void visit(AddressOfExpr &) override
+    {
+        // ADDRESSOF produces a function pointer, which is represented as Unknown
+        // in BASIC's type system since it's not a traditional BASIC value type.
+        result_ = SemanticAnalyzer::Type::Unknown;
+    }
+
     /// @brief Retrieve the semantic type computed during visitation.
     [[nodiscard]] SemanticAnalyzer::Type result() const noexcept
     {

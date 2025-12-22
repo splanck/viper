@@ -211,6 +211,7 @@ void SemanticAnalyzer::registerPrimitives()
     types_["double"] = PasType::real();
     types_["boolean"] = PasType::boolean();
     types_["string"] = PasType::string();
+    types_["pointer"] = PasType::pointer(PasType::voidType()); // Generic pointer type
 
     // Register Exception as predefined class type
     types_["exception"] = PasType::classType("Exception");

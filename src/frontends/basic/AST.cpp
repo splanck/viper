@@ -134,6 +134,7 @@ DEFINE_EXPR_ACCEPT(MemberAccessExpr)
 DEFINE_EXPR_ACCEPT(MethodCallExpr)
 DEFINE_EXPR_ACCEPT(IsExpr)
 DEFINE_EXPR_ACCEPT(AsExpr)
+DEFINE_EXPR_ACCEPT(AddressOfExpr)
 
 // ============================================================================
 // Statement Node Accept Implementations

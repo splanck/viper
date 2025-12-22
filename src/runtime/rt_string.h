@@ -152,6 +152,13 @@ extern "C"
     /// @return 1-based match index or 0 when not found.
     int64_t rt_instr3(int64_t start, rt_string hay, rt_string needle);
 
+    /// @brief Viper.String.IndexOfFrom wrapper with receiver-first argument order.
+    /// @param hay Haystack string.
+    /// @param start 1-based starting position.
+    /// @param needle Needle string.
+    /// @return 1-based match index or 0 when not found.
+    int64_t rt_str_index_of_from(rt_string hay, int64_t start, rt_string needle);
+
     /// @brief Find @p needle within @p hay starting at index 1.
     /// @param hay Haystack string.
     /// @param needle Needle string.

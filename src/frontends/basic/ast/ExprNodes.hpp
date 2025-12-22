@@ -55,6 +55,7 @@ struct ExprVisitor
     virtual void visit(const MethodCallExpr &) = 0;
     virtual void visit(const IsExpr &) = 0;
     virtual void visit(const AsExpr &) = 0;
+    virtual void visit(const AddressOfExpr &) = 0;
 };
 
 /// @brief Visitor interface for mutable BASIC expressions.
@@ -79,6 +80,7 @@ struct MutExprVisitor
     virtual void visit(MethodCallExpr &) = 0;
     virtual void visit(IsExpr &) = 0;
     virtual void visit(AsExpr &) = 0;
+    virtual void visit(AddressOfExpr &) = 0;
 };
 
 /// @brief Base class for all BASIC expressions.
@@ -105,6 +107,7 @@ struct Expr
         MethodCall,
         Is,
         As,
+        AddressOf,
     };
 
     /// Source location of the expression in the source file.
@@ -459,6 +462,18 @@ struct AsExpr : Expr
     ExprPtr value;
     /// Dotted type name segments.
     std::vector<std::string> typeName;
+    void accept(ExprVisitor &visitor) const override;
+    void accept(MutExprVisitor &visitor) override;
+};
+
+/// @brief Expression that obtains a function pointer: `ADDRESSOF SubOrFunction`.
+/// Used for threading APIs that require callback functions.
+struct AddressOfExpr : Expr
+{
+    AddressOfExpr() : Expr(Kind::AddressOf) {}
+
+    /// Name of the SUB or FUNCTION whose address is being taken.
+    std::string targetName;
     void accept(ExprVisitor &visitor) const override;
     void accept(MutExprVisitor &visitor) override;
 };

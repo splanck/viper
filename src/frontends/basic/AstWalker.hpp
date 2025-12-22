@@ -283,6 +283,13 @@ template <typename Derived> class BasicAstWalker : public ExprVisitor, public St
         callAfter(expr);
     }
 
+    void visit(const AddressOfExpr &expr) override
+    {
+        callBefore(expr);
+        // ADDRESSOF has no child expressions; the target is just a name string.
+        callAfter(expr);
+    }
+
     // Statement visitors ---------------------------------------------------
 
     void visit(const LabelStmt &stmt) override

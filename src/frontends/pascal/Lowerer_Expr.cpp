@@ -121,6 +121,20 @@ LowerResult Lowerer::lowerExpr(const Expr &expr)
             }
             return {result, Type(Type::Kind::Ptr)};
         }
+        case ExprKind::AddressOf:
+        {
+            // @ProcedureName - get function pointer for procedure/function
+            const auto &addrExpr = static_cast<const AddressOfExpr &>(expr);
+            if (addrExpr.operand && addrExpr.operand->kind == ExprKind::Name)
+            {
+                const auto &nameExpr = static_cast<const NameExpr &>(*addrExpr.operand);
+                // Use original name case - IL function declarations preserve case
+                std::string funcName = nameExpr.name;
+                return {Value::global(funcName), Type(Type::Kind::Ptr)};
+            }
+            // Fallback - should not happen after semantic analysis
+            return {Value::null(), Type(Type::Kind::Ptr)};
+        }
         default:
             // Unsupported expression type - return zero
             return {Value::constInt(0), Type(Type::Kind::I64)};

@@ -355,6 +355,12 @@ class NumericTypeClassifier final : public ExprVisitor
             result_ = NumericType::Long;
     }
 
+    void visit(const AddressOfExpr &) override
+    {
+        // ADDRESSOF yields a pointer, not a numeric type. Default to Long.
+        result_ = NumericType::Long;
+    }
+
   private:
     Lowerer &lowerer_;
     NumericType result_{NumericType::Long};

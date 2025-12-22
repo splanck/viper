@@ -325,6 +325,12 @@ struct AstPrinter::ExprPrinter final : ExprVisitor
         printer.os << ')';
     }
 
+    /// @brief Print an ADDRESSOF expression as (ADDRESSOF <name>).
+    void visit(const AddressOfExpr &expr) override
+    {
+        printer.os << "(ADDRESSOF " << expr.targetName << ')';
+    }
+
   private:
     Printer &printer;
 };

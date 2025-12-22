@@ -730,7 +730,7 @@ RT_FUNC(Asc,            rt_asc,              "Viper.String.Asc",         "i64(st
 RT_FUNC(Chr,            rt_chr,              "Viper.String.Chr",         "str(i64)")
 RT_FUNC(Concat,         rt_concat,           "Viper.String.Concat",      "str(str,str)")
 RT_FUNC(IndexOf,        rt_instr2,           "Viper.String.IndexOf",     "i64(str,str)")
-RT_FUNC(IndexOfFrom,    rt_instr3,           "Viper.String.IndexOfFrom", "i64(str,i64,str)")
+RT_FUNC(IndexOfFrom,    rt_str_index_of_from, "Viper.String.IndexOfFrom", "i64(str,i64,str)")
 RT_FUNC(LCase,          rt_lcase,            "Viper.String.ToLower",     "str(str)")
 RT_FUNC(LTrim,          rt_ltrim,            "Viper.String.TrimStart",   "str(str)")
 RT_FUNC(Left,           rt_left,             "Viper.String.Left",        "str(str,i64)")

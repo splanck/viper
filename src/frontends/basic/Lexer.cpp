@@ -42,10 +42,11 @@ using common::keyword_table::lookupKeywordBinary;
 namespace
 {
 
-constexpr std::array<KeywordEntry<TokenKind>, 103> kKeywordTable{{
+constexpr std::array<KeywordEntry<TokenKind>, 104> kKeywordTable{{
     {"ABS", TokenKind::KeywordAbs},
     {"ABSTRACT", TokenKind::KeywordAbstract},
     {"ADDFILE", TokenKind::KeywordAddfile},
+    {"ADDRESSOF", TokenKind::KeywordAddressOf},
     {"ALTSCREEN", TokenKind::KeywordAltscreen},
     {"AND", TokenKind::KeywordAnd},
     {"ANDALSO", TokenKind::KeywordAndAlso},
