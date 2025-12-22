@@ -819,14 +819,15 @@ LOOP
 - Controller indices 0-3 are valid; invalid indices return 0/false
 - Disconnected controllers return 0/false for all queries (no errors)
 - Vibration intensity may vary by controller model
+- macOS rumble requests are ignored (no HID rumble support)
 
 ### Platform Support
 
-| Platform | API Used               | Notes                                |
-|----------|------------------------|--------------------------------------|
-| Windows  | XInput / DirectInput   | Best Xbox controller support         |
-| Linux    | evdev / /dev/input/js* | Requires controller permissions      |
-| macOS    | IOKit / Game Controller| Supports MFi-certified controllers   |
+| Platform | API Used                    | Notes                                              |
+|----------|-----------------------------|----------------------------------------------------|
+| Windows  | XInput                      | Xbox-compatible controllers; rumble supported      |
+| Linux    | evdev (`/dev/input/event*`) | Requires input permissions; rumble when supported  |
+| macOS    | IOHIDManager (HID)          | Generic HID gamepads; rumble not available         |
 
 ### Integration with Canvas
 
@@ -846,4 +847,3 @@ You don't need to explicitly initialize gamepads - they're ready when you create
 
 - [Graphics](graphics.md) - `Canvas` class for windowing and rendering that drives input polling
 - [Collections](collections.md) - `Seq` type returned by `GetPressed()` and `GetReleased()` methods
-

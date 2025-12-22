@@ -783,6 +783,16 @@ TypeRef entity(const std::string &name, std::vector<TypeRef> typeParams = {});
 /// @details Interface types define abstract contracts.
 TypeRef interface(const std::string &name, std::vector<TypeRef> typeParams = {});
 
+/// @brief Clear the interface implementation registry.
+/// @details Called by the semantic analyzer to avoid cross-module leakage.
+void clearInterfaceImplementations();
+
+/// @brief Record that @p typeName implements @p interfaceName.
+void registerInterfaceImplementation(const std::string &typeName, const std::string &interfaceName);
+
+/// @brief Check whether @p typeName implements @p interfaceName.
+bool implementsInterface(const std::string &typeName, const std::string &interfaceName);
+
 /// @brief Create a type parameter placeholder.
 /// @param name The type parameter name (e.g., "T", "U").
 /// @return A new TypeParam type.

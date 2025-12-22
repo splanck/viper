@@ -18,81 +18,84 @@
 namespace il::frontends::basic::lower::detail
 {
 
-ControlLoweringHelper::ControlLoweringHelper(Lowerer &lowerer) noexcept : lowerer_(lowerer) {}
+ControlLoweringHelper::ControlLoweringHelper(Lowerer::DetailAccess access) noexcept
+    : access_(access)
+{
+}
 
 void ControlLoweringHelper::lowerIf(const IfStmt &stmt)
 {
-    lowerer_.lowerIf(stmt);
+    access_.lowerIf(stmt);
 }
 
 void ControlLoweringHelper::lowerWhile(const WhileStmt &stmt)
 {
-    lowerer_.lowerWhile(stmt);
+    access_.lowerWhile(stmt);
 }
 
 void ControlLoweringHelper::lowerDo(const DoStmt &stmt)
 {
-    lowerer_.lowerDo(stmt);
+    access_.lowerDo(stmt);
 }
 
 void ControlLoweringHelper::lowerFor(const ForStmt &stmt)
 {
-    lowerer_.lowerFor(stmt);
+    access_.lowerFor(stmt);
 }
 
 void ControlLoweringHelper::lowerForEach(const ForEachStmt &stmt)
 {
-    lowerer_.lowerForEach(stmt);
+    access_.lowerForEach(stmt);
 }
 
 void ControlLoweringHelper::lowerSelectCase(const SelectCaseStmt &stmt)
 {
-    lowerer_.lowerSelectCase(stmt);
+    access_.lowerSelectCase(stmt);
 }
 
 void ControlLoweringHelper::lowerNext(const NextStmt &stmt)
 {
-    lowerer_.lowerNext(stmt);
+    access_.lowerNext(stmt);
 }
 
 void ControlLoweringHelper::lowerExit(const ExitStmt &stmt)
 {
-    lowerer_.lowerExit(stmt);
+    access_.lowerExit(stmt);
 }
 
 void ControlLoweringHelper::lowerGoto(const GotoStmt &stmt)
 {
-    lowerer_.lowerGoto(stmt);
+    access_.lowerGoto(stmt);
 }
 
 void ControlLoweringHelper::lowerGosub(const GosubStmt &stmt)
 {
-    lowerer_.lowerGosub(stmt);
+    access_.lowerGosub(stmt);
 }
 
 void ControlLoweringHelper::lowerGosubReturn(const ReturnStmt &stmt)
 {
-    lowerer_.lowerGosubReturn(stmt);
+    access_.lowerGosubReturn(stmt);
 }
 
 void ControlLoweringHelper::lowerOnErrorGoto(const OnErrorGoto &stmt)
 {
-    lowerer_.lowerOnErrorGoto(stmt);
+    access_.lowerOnErrorGoto(stmt);
 }
 
 void ControlLoweringHelper::lowerResume(const Resume &stmt)
 {
-    lowerer_.lowerResume(stmt);
+    access_.lowerResume(stmt);
 }
 
 void ControlLoweringHelper::lowerEnd(const EndStmt &stmt)
 {
-    lowerer_.lowerEnd(stmt);
+    access_.lowerEnd(stmt);
 }
 
 void ControlLoweringHelper::lowerTryCatch(const TryCatchStmt &stmt)
 {
-    lowerer_.lowerTryCatch(stmt);
+    access_.lowerTryCatch(stmt);
 }
 
 } // namespace il::frontends::basic::lower::detail

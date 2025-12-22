@@ -36,6 +36,7 @@ static uint8_t *get_bytes_data(void *bytes)
         int64_t len;
         uint8_t *data;
     };
+
     return ((bytes_impl *)bytes)->data;
 }
 
@@ -102,7 +103,8 @@ static void test_deflate_simple_match()
 
     // Create data with one simple match: "ABCABC" repeated
     // This has exactly one match opportunity: at position 3, match position 0, length 3
-    const char *text = "ABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABC";
+    const char *text =
+        "ABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABC";
     void *original = make_bytes_str(text);
     void *compressed = rt_compress_deflate(original);
     void *decompressed = rt_compress_inflate(compressed);
@@ -123,8 +125,14 @@ static void test_deflate_distance_with_extra_bits()
     // Distance 25-32 require 4 extra bits (dist code 9)
 
     // Test distance 10 (requires 2 extra bits): 10 unique bytes then repeat
-    const char *text = "0123456789" "0123456789" "0123456789" "0123456789"
-                       "0123456789" "0123456789" "0123456789" "0123456789";
+    const char *text = "0123456789"
+                       "0123456789"
+                       "0123456789"
+                       "0123456789"
+                       "0123456789"
+                       "0123456789"
+                       "0123456789"
+                       "0123456789";
     void *original = make_bytes_str(text);
     void *compressed = rt_compress_deflate(original);
     void *decompressed = rt_compress_inflate(compressed);
@@ -141,7 +149,8 @@ static void test_deflate_distance_26()
 
     // Distance 26 requires 3 extra bits (dist code 9, base 25, extra 1)
     // 26 unique bytes then repeat
-    const char *text = "ABCDEFGHIJKLMNOPQRSTUVWXYZ" "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    const char *text = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                       "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
                        "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
     void *original = make_bytes_str(text);
     void *compressed = rt_compress_deflate(original);
@@ -367,8 +376,9 @@ static void test_inflate_known_data()
     printf("Testing Inflate Known Data:\n");
 
     // This is "Hello" compressed with deflate (stored block)
-    // Created by: echo -n "Hello" | python3 -c "import zlib,sys; sys.stdout.buffer.write(zlib.compress(sys.stdin.buffer.read(), 0)[2:-4])"
-    // However, since we use stored blocks for small data, let's just verify round-trip
+    // Created by: echo -n "Hello" | python3 -c "import zlib,sys;
+    // sys.stdout.buffer.write(zlib.compress(sys.stdin.buffer.read(), 0)[2:-4])" However, since we
+    // use stored blocks for small data, let's just verify round-trip
 
     const char *text = "Hello";
     void *original = make_bytes_str(text);

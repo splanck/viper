@@ -103,8 +103,13 @@ static uint8_t *extract_bytes(void *bytes, size_t *out_len)
 /// U2 = PRF(Password, U1)
 /// ...
 /// Uc = PRF(Password, Uc-1)
-static void pbkdf2_sha256(const uint8_t *password, size_t password_len, const uint8_t *salt,
-                          size_t salt_len, uint32_t iterations, uint8_t *out, size_t out_len)
+static void pbkdf2_sha256(const uint8_t *password,
+                          size_t password_len,
+                          const uint8_t *salt,
+                          size_t salt_len,
+                          uint32_t iterations,
+                          uint8_t *out,
+                          size_t out_len)
 {
     // Number of blocks needed
     uint32_t block_count = (uint32_t)((out_len + SHA256_DIGEST_LEN - 1) / SHA256_DIGEST_LEN);
@@ -158,7 +163,9 @@ static void pbkdf2_sha256(const uint8_t *password, size_t password_len, const ui
 }
 
 /// @brief Derive a key using PBKDF2-SHA256.
-void *rt_keyderive_pbkdf2_sha256(rt_string password, void *salt, int64_t iterations,
+void *rt_keyderive_pbkdf2_sha256(rt_string password,
+                                 void *salt,
+                                 int64_t iterations,
                                  int64_t key_len)
 {
     // Validate iterations
@@ -189,8 +196,13 @@ void *rt_keyderive_pbkdf2_sha256(rt_string password, void *salt, int64_t iterati
         rt_trap("PBKDF2: memory allocation failed");
 
     // Derive key
-    pbkdf2_sha256((const uint8_t *)pwd_cstr, pwd_len, salt_data ? salt_data : (const uint8_t *)"",
-                  salt_len, (uint32_t)iterations, derived_key, (size_t)key_len);
+    pbkdf2_sha256((const uint8_t *)pwd_cstr,
+                  pwd_len,
+                  salt_data ? salt_data : (const uint8_t *)"",
+                  salt_len,
+                  (uint32_t)iterations,
+                  derived_key,
+                  (size_t)key_len);
 
     if (salt_data)
         free(salt_data);
@@ -207,7 +219,9 @@ void *rt_keyderive_pbkdf2_sha256(rt_string password, void *salt, int64_t iterati
 }
 
 /// @brief Derive a key using PBKDF2-SHA256 and return as hex string.
-rt_string rt_keyderive_pbkdf2_sha256_str(rt_string password, void *salt, int64_t iterations,
+rt_string rt_keyderive_pbkdf2_sha256_str(rt_string password,
+                                         void *salt,
+                                         int64_t iterations,
                                          int64_t key_len)
 {
     // Validate iterations
@@ -238,8 +252,13 @@ rt_string rt_keyderive_pbkdf2_sha256_str(rt_string password, void *salt, int64_t
         rt_trap("PBKDF2: memory allocation failed");
 
     // Derive key
-    pbkdf2_sha256((const uint8_t *)pwd_cstr, pwd_len, salt_data ? salt_data : (const uint8_t *)"",
-                  salt_len, (uint32_t)iterations, derived_key, (size_t)key_len);
+    pbkdf2_sha256((const uint8_t *)pwd_cstr,
+                  pwd_len,
+                  salt_data ? salt_data : (const uint8_t *)"",
+                  salt_len,
+                  (uint32_t)iterations,
+                  derived_key,
+                  (size_t)key_len);
 
     if (salt_data)
         free(salt_data);

@@ -166,6 +166,49 @@ func start() {
     EXPECT_TRUE(foundAnd);
 }
 
+/// @brief Test ternary conditional expressions lower into branch blocks.
+TEST(ViperLangExpressions, TernaryExpression)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func start() {
+    Boolean flag = true;
+    Integer value = flag ? 10 : 20;
+    Viper.Terminal.SayInt(value);
+}
+)";
+    CompilerInput input{.source = source, .path = "ternary.viper"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+
+    bool foundThen = false;
+    bool foundElse = false;
+    bool foundMerge = false;
+    for (const auto &fn : result.module.functions)
+    {
+        if (fn.name == "main")
+        {
+            for (const auto &block : fn.blocks)
+            {
+                if (block.label.find("ternary_then") != std::string::npos)
+                    foundThen = true;
+                if (block.label.find("ternary_else") != std::string::npos)
+                    foundElse = true;
+                if (block.label.find("ternary_merge") != std::string::npos)
+                    foundMerge = true;
+            }
+        }
+    }
+    EXPECT_TRUE(foundThen);
+    EXPECT_TRUE(foundElse);
+    EXPECT_TRUE(foundMerge);
+}
+
 } // namespace
 
 int main()

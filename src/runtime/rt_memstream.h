@@ -26,6 +26,8 @@
 
 #pragma once
 
+#include "rt_string.h"
+
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -192,12 +194,12 @@ extern "C"
     /// @param obj MemStream object.
     /// @param count Number of bytes to read. Traps if negative or insufficient.
     /// @return New string.
-    void *rt_memstream_read_str(void *obj, int64_t count);
+    rt_string rt_memstream_read_str(void *obj, int64_t count);
 
     /// @brief Write a string to the stream (no length prefix).
     /// @param obj MemStream object.
     /// @param text String to write.
-    void rt_memstream_write_str(void *obj, void *text);
+    void rt_memstream_write_str(void *obj, rt_string text);
 
     //=========================================================================
     // Stream Operations

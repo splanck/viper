@@ -101,8 +101,13 @@ static int64_t parse_index(const char *s, int len)
 //=============================================================================
 
 /// Internal render with configurable delimiters and value lookup
-static rt_string render_internal(const char *tmpl, int tmpl_len, void *values, bool use_seq,
-                                 const char *prefix, int prefix_len, const char *suffix,
+static rt_string render_internal(const char *tmpl,
+                                 int tmpl_len,
+                                 void *values,
+                                 bool use_seq,
+                                 const char *prefix,
+                                 int prefix_len,
+                                 const char *suffix,
                                  int suffix_len)
 {
     // Create string builder for result
@@ -288,8 +293,8 @@ rt_string rt_template_render_with(rt_string tmpl, void *values, rt_string prefix
     if (suffix_len == 0)
         rt_trap("Template.RenderWith: suffix is empty");
 
-    return render_internal(tmpl_str, tmpl_len, values, false, prefix_str, prefix_len, suffix_str,
-                           suffix_len);
+    return render_internal(
+        tmpl_str, tmpl_len, values, false, prefix_str, prefix_len, suffix_str, suffix_len);
 }
 
 bool rt_template_has(rt_string tmpl, rt_string key)

@@ -155,18 +155,15 @@ static void test_find()
 
     // Basic find
     rt_string result = rt_pattern_find(rt_const_cstr("\\d+"), rt_const_cstr("abc123def456"));
-    test_result("Find \\d+ in 'abc123def456' = '123'",
-                strcmp(rt_string_cstr(result), "123") == 0);
+    test_result("Find \\d+ in 'abc123def456' = '123'", strcmp(rt_string_cstr(result), "123") == 0);
 
     // Find word
     result = rt_pattern_find(rt_const_cstr("[a-z]+"), rt_const_cstr("123abc456"));
-    test_result("Find [a-z]+ in '123abc456' = 'abc'",
-                strcmp(rt_string_cstr(result), "abc") == 0);
+    test_result("Find [a-z]+ in '123abc456' = 'abc'", strcmp(rt_string_cstr(result), "abc") == 0);
 
     // No match returns empty
     result = rt_pattern_find(rt_const_cstr("xyz"), rt_const_cstr("hello world"));
-    test_result("Find 'xyz' in 'hello world' = ''",
-                strcmp(rt_string_cstr(result), "") == 0);
+    test_result("Find 'xyz' in 'hello world' = ''", strcmp(rt_string_cstr(result), "") == 0);
 
     // Find at start
     result = rt_pattern_find(rt_const_cstr("^\\w+"), rt_const_cstr("hello world"));
@@ -188,13 +185,11 @@ static void test_find_from()
 
     // Find first occurrence
     rt_string result = rt_pattern_find_from(rt_const_cstr("\\d+"), text, 0);
-    test_result("FindFrom \\d+ at 0 = '123'",
-                strcmp(rt_string_cstr(result), "123") == 0);
+    test_result("FindFrom \\d+ at 0 = '123'", strcmp(rt_string_cstr(result), "123") == 0);
 
     // Find after first occurrence
     result = rt_pattern_find_from(rt_const_cstr("\\d+"), text, 6);
-    test_result("FindFrom \\d+ at 6 = '456'",
-                strcmp(rt_string_cstr(result), "456") == 0);
+    test_result("FindFrom \\d+ at 6 = '456'", strcmp(rt_string_cstr(result), "456") == 0);
 
     // Find from position within match
     result = rt_pattern_find_from(rt_const_cstr("\\d+"), text, 4);
@@ -203,13 +198,11 @@ static void test_find_from()
 
     // Find third occurrence
     result = rt_pattern_find_from(rt_const_cstr("\\d+"), text, 12);
-    test_result("FindFrom \\d+ at 12 = '789'",
-                strcmp(rt_string_cstr(result), "789") == 0);
+    test_result("FindFrom \\d+ at 12 = '789'", strcmp(rt_string_cstr(result), "789") == 0);
 
     // No more matches
     result = rt_pattern_find_from(rt_const_cstr("\\d+"), text, 18);
-    test_result("FindFrom \\d+ at 18 = '' (no match)",
-                strcmp(rt_string_cstr(result), "") == 0);
+    test_result("FindFrom \\d+ at 18 = '' (no match)", strcmp(rt_string_cstr(result), "") == 0);
 
     printf("\n");
 }
@@ -279,26 +272,26 @@ static void test_replace()
     printf("Testing Pattern.Replace:\n");
 
     // Replace all digits
-    rt_string result = rt_pattern_replace(rt_const_cstr("\\d+"), rt_const_cstr("abc123def456"),
-                                          rt_const_cstr("X"));
+    rt_string result = rt_pattern_replace(
+        rt_const_cstr("\\d+"), rt_const_cstr("abc123def456"), rt_const_cstr("X"));
     test_result("Replace \\d+ with X = 'abcXdefX'",
                 strcmp(rt_string_cstr(result), "abcXdefX") == 0);
 
     // Replace all words
-    result = rt_pattern_replace(rt_const_cstr("[a-z]+"), rt_const_cstr("hello123world"),
-                                rt_const_cstr("word"));
+    result = rt_pattern_replace(
+        rt_const_cstr("[a-z]+"), rt_const_cstr("hello123world"), rt_const_cstr("word"));
     test_result("Replace [a-z]+ with 'word' = 'word123word'",
                 strcmp(rt_string_cstr(result), "word123word") == 0);
 
     // No matches = unchanged
-    result = rt_pattern_replace(rt_const_cstr("xyz"), rt_const_cstr("hello world"),
-                                rt_const_cstr("replacement"));
+    result = rt_pattern_replace(
+        rt_const_cstr("xyz"), rt_const_cstr("hello world"), rt_const_cstr("replacement"));
     test_result("Replace 'xyz' (no match) = unchanged",
                 strcmp(rt_string_cstr(result), "hello world") == 0);
 
     // Replace with empty
-    result = rt_pattern_replace(rt_const_cstr("\\s+"), rt_const_cstr("hello world test"),
-                                rt_const_cstr(""));
+    result = rt_pattern_replace(
+        rt_const_cstr("\\s+"), rt_const_cstr("hello world test"), rt_const_cstr(""));
     test_result("Replace \\s+ with '' = 'helloworldtest'",
                 strcmp(rt_string_cstr(result), "helloworldtest") == 0);
 
@@ -314,23 +307,20 @@ static void test_replace_first()
     printf("Testing Pattern.ReplaceFirst:\n");
 
     // Replace first digit sequence only
-    rt_string result = rt_pattern_replace_first(rt_const_cstr("\\d+"),
-                                                rt_const_cstr("abc123def456"),
-                                                rt_const_cstr("X"));
+    rt_string result = rt_pattern_replace_first(
+        rt_const_cstr("\\d+"), rt_const_cstr("abc123def456"), rt_const_cstr("X"));
     test_result("ReplaceFirst \\d+ with X = 'abcXdef456'",
                 strcmp(rt_string_cstr(result), "abcXdef456") == 0);
 
     // Replace first word only
-    result = rt_pattern_replace_first(rt_const_cstr("[a-z]+"),
-                                      rt_const_cstr("hello123world"),
-                                      rt_const_cstr("FIRST"));
+    result = rt_pattern_replace_first(
+        rt_const_cstr("[a-z]+"), rt_const_cstr("hello123world"), rt_const_cstr("FIRST"));
     test_result("ReplaceFirst [a-z]+ with 'FIRST' = 'FIRST123world'",
                 strcmp(rt_string_cstr(result), "FIRST123world") == 0);
 
     // No matches = unchanged
-    result = rt_pattern_replace_first(rt_const_cstr("xyz"),
-                                      rt_const_cstr("hello world"),
-                                      rt_const_cstr("replacement"));
+    result = rt_pattern_replace_first(
+        rt_const_cstr("xyz"), rt_const_cstr("hello world"), rt_const_cstr("replacement"));
     test_result("ReplaceFirst 'xyz' (no match) = unchanged",
                 strcmp(rt_string_cstr(result), "hello world") == 0);
 
@@ -370,8 +360,7 @@ static void test_split()
     // No match returns original as single element
     seq = rt_pattern_split(rt_const_cstr("xyz"), rt_const_cstr("hello world"));
     test_result("Split by 'xyz' (no match) count = 1", rt_seq_len(seq) == 1);
-    test_result("Split 'xyz' [0] = 'hello world'",
-                strcmp(seq_get_str(seq, 0), "hello world") == 0);
+    test_result("Split 'xyz' [0] = 'hello world'", strcmp(seq_get_str(seq, 0), "hello world") == 0);
 
     printf("\n");
 }
@@ -395,8 +384,7 @@ static void test_escape()
 
     result = rt_pattern_escape(rt_const_cstr("[a-z]"));
     // Note: hyphen not escaped since it's only special inside char classes
-    test_result("Escape '[a-z]' = '\\[a-z\\]'",
-                strcmp(rt_string_cstr(result), "\\[a-z\\]") == 0);
+    test_result("Escape '[a-z]' = '\\[a-z\\]'", strcmp(rt_string_cstr(result), "\\[a-z\\]") == 0);
 
     result = rt_pattern_escape(rt_const_cstr("(abc|def)"));
     test_result("Escape '(abc|def)' = '\\(abc\\|def\\)'",
@@ -474,9 +462,9 @@ static void test_edge_cases()
     test_result("Escaped dot \\. matches literal dot",
                 rt_pattern_is_match(rt_const_cstr("hello\\.world"), rt_const_cstr("hello.world")));
 
-    test_result("Escaped dot \\. does not match 'helloxworld'",
-                !rt_pattern_is_match(rt_const_cstr("^hello\\.world$"),
-                                     rt_const_cstr("helloxworld")));
+    test_result(
+        "Escaped dot \\. does not match 'helloxworld'",
+        !rt_pattern_is_match(rt_const_cstr("^hello\\.world$"), rt_const_cstr("helloxworld")));
 
     // Nested groups
     test_result("Nested groups ((ab)+) matches 'abab'",

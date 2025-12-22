@@ -14,8 +14,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt.hpp"
-#include "rt_memstream.h"
 #include "rt_bytes.h"
+#include "rt_memstream.h"
 #include "rt_string.h"
 
 #include <cassert>
@@ -276,8 +276,8 @@ static void test_strings()
     assert(rt_memstream_get_len(ms) == 13);
 
     rt_memstream_set_pos(ms, 0);
-    void *read_str = rt_memstream_read_str(ms, 13);
-    const char *cstr = rt_string_cstr((rt_string)read_str);
+    rt_string read_str = rt_memstream_read_str(ms, 13);
+    const char *cstr = rt_string_cstr(read_str);
     assert(strcmp(cstr, "Hello, World!") == 0);
 
     test_result("ReadStr/WriteStr", true);

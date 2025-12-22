@@ -81,6 +81,77 @@ func start() {
     EXPECT_TRUE(foundCoalesceBlock);
 }
 
+/// @brief Test that optional chaining and optional returns lower correctly.
+TEST(ViperLangOptional, OptionalChainAndReturnWrap)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+entity Person {
+    expose Integer age;
+}
+
+func maybeAge(Boolean flag) -> Integer? {
+    if (flag) {
+        return 7;
+    }
+    return null;
+}
+
+func maybePerson(Boolean flag) -> Person? {
+    if (flag) {
+        return new Person(42);
+    }
+    return null;
+}
+
+func start() {
+    Person? p = maybePerson(true);
+    Integer? age = p?.age;
+    Integer resolved = age ?? 0;
+    Integer? wrapped = maybeAge(true);
+    Viper.Terminal.SayInt(resolved);
+    Viper.Terminal.SayInt(wrapped ?? 0);
+}
+)";
+    CompilerInput input{.source = source, .path = "optional_chain.viper"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    if (!result.succeeded())
+    {
+        std::cerr << "Diagnostics for OptionalChainAndReturnWrap:\n";
+        for (const auto &d : result.diagnostics.diagnostics())
+        {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+
+    EXPECT_TRUE(result.succeeded());
+
+    bool foundBox = false;
+    for (const auto &fn : result.module.functions)
+    {
+        if (fn.name == "maybeAge")
+        {
+            for (const auto &block : fn.blocks)
+            {
+                for (const auto &instr : block.instructions)
+                {
+                    if (instr.op == il::core::Opcode::Call && instr.callee == "Viper.Box.I64")
+                    {
+                        foundBox = true;
+                    }
+                }
+            }
+        }
+    }
+    EXPECT_TRUE(foundBox);
+}
+
 } // namespace
 
 int main()

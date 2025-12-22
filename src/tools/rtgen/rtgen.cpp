@@ -14,7 +14,7 @@
 // Outputs:
 //   - RuntimeNameMap.inc     (canonical Viper.* -> rt_* symbol mapping)
 //   - RuntimeClasses.inc     (OOP class/method/property catalog)
-//   - RuntimeSigs.def        (signature enumerator definitions)
+//   - RuntimeSignatures.inc  (runtime descriptor rows)
 //
 // Key invariants:
 //   - Parses runtime.def line by line
@@ -24,16 +24,19 @@
 //===----------------------------------------------------------------------===//
 
 #include <algorithm>
+#include <cctype>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <map>
 #include <optional>
+#include <regex>
 #include <set>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -81,6 +84,43 @@ struct RuntimeClass
     std::vector<RuntimeMethod> methods; // Methods
 };
 
+struct CSignature
+{
+    std::string returnType;
+    std::vector<std::string> argTypes;
+};
+
+struct DescriptorFields
+{
+    std::string signatureId;
+    std::string spec;
+    std::string handler;
+    std::string lowering;
+    std::string hidden;
+    std::string hiddenCount;
+    std::string trapClass;
+};
+
+struct RowOverride
+{
+    std::optional<DescriptorFields> always;
+    std::optional<DescriptorFields> dual_if;
+    std::optional<DescriptorFields> dual_else;
+};
+
+struct OverrideData
+{
+    std::vector<std::string> order;
+    std::unordered_map<std::string, RowOverride> rows;
+};
+
+enum class DualState
+{
+    None,
+    If,
+    Else,
+};
+
 //===----------------------------------------------------------------------===//
 // Parser State
 //===----------------------------------------------------------------------===//
@@ -119,9 +159,10 @@ struct ParseState
 
 static std::string trim(std::string_view sv)
 {
-    while (!sv.empty() && (sv.front() == ' ' || sv.front() == '\t'))
+    auto is_space = [](char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r'; };
+    while (!sv.empty() && is_space(sv.front()))
         sv.remove_prefix(1);
-    while (!sv.empty() && (sv.back() == ' ' || sv.back() == '\t'))
+    while (!sv.empty() && is_space(sv.back()))
         sv.remove_suffix(1);
     return std::string(sv);
 }
@@ -155,6 +196,54 @@ static std::vector<std::string> split(std::string_view sv, char delim)
     return result;
 }
 
+static std::vector<std::string> splitTopLevel(std::string_view sv, char delim)
+{
+    std::vector<std::string> result;
+    size_t start = 0;
+    bool in_quotes = false;
+    int paren_depth = 0;
+    int angle_depth = 0;
+    int brace_depth = 0;
+    int bracket_depth = 0;
+
+    for (size_t i = 0; i <= sv.size(); ++i)
+    {
+        if (i < sv.size())
+        {
+            if (sv[i] == '"' && (i == 0 || sv[i - 1] != '\\'))
+                in_quotes = !in_quotes;
+            else if (!in_quotes)
+            {
+                if (sv[i] == '(')
+                    paren_depth++;
+                else if (sv[i] == ')')
+                    paren_depth--;
+                else if (sv[i] == '<')
+                    angle_depth++;
+                else if (sv[i] == '>')
+                    angle_depth--;
+                else if (sv[i] == '{')
+                    brace_depth++;
+                else if (sv[i] == '}')
+                    brace_depth--;
+                else if (sv[i] == '[')
+                    bracket_depth++;
+                else if (sv[i] == ']')
+                    bracket_depth--;
+            }
+        }
+
+        if (i == sv.size() || (!in_quotes && paren_depth == 0 && angle_depth == 0 &&
+                               brace_depth == 0 && bracket_depth == 0 && sv[i] == delim))
+        {
+            if (i > start)
+                result.push_back(trim(sv.substr(start, i - start)));
+            start = i + 1;
+        }
+    }
+    return result;
+}
+
 static bool startsWith(std::string_view sv, std::string_view prefix)
 {
     return sv.size() >= prefix.size() && sv.substr(0, prefix.size()) == prefix;
@@ -170,11 +259,40 @@ static std::string_view stripPrefix(std::string_view sv, std::string_view prefix
 // Trim a string_view in place
 static std::string_view trimView(std::string_view sv)
 {
-    while (!sv.empty() && (sv.front() == ' ' || sv.front() == '\t'))
+    auto is_space = [](char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r'; };
+    while (!sv.empty() && is_space(sv.front()))
         sv.remove_prefix(1);
-    while (!sv.empty() && (sv.back() == ' ' || sv.back() == '\t'))
+    while (!sv.empty() && is_space(sv.back()))
         sv.remove_suffix(1);
     return sv;
+}
+
+static std::string stripQuotes(std::string_view sv)
+{
+    std::string s = trim(sv);
+    if (s.size() >= 2 && s.front() == '"' && s.back() == '"')
+        return s.substr(1, s.size() - 2);
+    return s;
+}
+
+static std::string stripParamName(std::string_view sv)
+{
+    std::string param = trim(sv);
+    if (param.empty() || param == "void")
+        return param;
+
+    size_t end = param.size();
+    while (end > 0 && std::isspace(static_cast<unsigned char>(param[end - 1])))
+        --end;
+
+    size_t i = end;
+    while (i > 0 && (std::isalnum(static_cast<unsigned char>(param[i - 1])) || param[i - 1] == '_'))
+        --i;
+
+    if (i == end)
+        return param;
+
+    return trim(param.substr(0, i));
 }
 
 // Extract content between parentheses: "FOO(a, b, c)" -> "a, b, c"
@@ -540,8 +658,352 @@ static ParsedSignature parseSignature(const std::string &sig)
 }
 
 //===----------------------------------------------------------------------===//
+// Runtime signature helpers
+//===----------------------------------------------------------------------===//
+
+static std::vector<std::string> parseRtSigNames(const fs::path &path)
+{
+    std::ifstream in(path);
+    if (!in)
+    {
+        std::cerr << "error: cannot read " << path << "\n";
+        std::exit(1);
+    }
+
+    std::vector<std::string> names;
+    std::string line;
+    while (std::getline(in, line))
+    {
+        std::string_view view = trimView(line);
+        if (!startsWith(view, "SIG"))
+            continue;
+
+        auto parens = extractParens(view, "SIG");
+        if (!parens)
+            continue;
+        auto parts = split(*parens, ',');
+        if (parts.empty())
+            continue;
+        names.push_back(parts[0]);
+    }
+    return names;
+}
+
+static std::vector<std::string> parseRtSigSymbols(const fs::path &path)
+{
+    std::ifstream in(path);
+    if (!in)
+    {
+        std::cerr << "error: cannot read " << path << "\n";
+        std::exit(1);
+    }
+
+    std::string contents((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    const std::string marker = "kRtSigSymbolNames";
+    size_t start = contents.find(marker);
+    if (start == std::string::npos)
+    {
+        return {};
+    }
+
+    start = contents.find('{', start);
+    if (start == std::string::npos)
+        return {};
+    size_t end = contents.find("};", start);
+    if (end == std::string::npos)
+        return {};
+
+    std::string_view block = std::string_view(contents).substr(start + 1, end - start - 1);
+    std::vector<std::string> symbols;
+    std::string current;
+    bool in_quotes = false;
+    for (size_t i = 0; i < block.size(); ++i)
+    {
+        char c = block[i];
+        if (c == '"' && (i == 0 || block[i - 1] != '\\'))
+        {
+            if (in_quotes)
+            {
+                symbols.push_back(current);
+                current.clear();
+            }
+            in_quotes = !in_quotes;
+            continue;
+        }
+        if (in_quotes)
+            current.push_back(c);
+    }
+    return symbols;
+}
+
+static std::unordered_map<std::string, std::string> buildRtSigMap(const fs::path &runtimeDir)
+{
+    const fs::path sigsPath = runtimeDir / "RuntimeSigs.def";
+    const fs::path dataPath = runtimeDir / "RuntimeSignaturesData.hpp";
+    std::vector<std::string> sigNames = parseRtSigNames(sigsPath);
+    std::vector<std::string> sigSymbols = parseRtSigSymbols(dataPath);
+
+    if (sigNames.size() != sigSymbols.size())
+    {
+        std::cerr << "error: RuntimeSigs.def and RuntimeSignaturesData.hpp mismatch\n";
+        std::exit(1);
+    }
+
+    std::unordered_map<std::string, std::string> result;
+    for (size_t i = 0; i < sigNames.size(); ++i)
+    {
+        result[sigSymbols[i]] = "RtSig::" + sigNames[i];
+    }
+    return result;
+}
+
+static std::string buildSigSpecExpr(const std::string &sigId)
+{
+    return "data::kRtSigSpecs[static_cast<std::size_t>(" + sigId + ")]";
+}
+
+static std::string stripComments(const std::string &input)
+{
+    std::string out;
+    out.reserve(input.size());
+    bool in_line = false;
+    bool in_block = false;
+
+    for (size_t i = 0; i < input.size(); ++i)
+    {
+        char c = input[i];
+        char next = (i + 1 < input.size()) ? input[i + 1] : '\0';
+
+        if (in_line)
+        {
+            if (c == '\n')
+            {
+                in_line = false;
+                out.push_back(c);
+            }
+            continue;
+        }
+
+        if (in_block)
+        {
+            if (c == '*' && next == '/')
+            {
+                in_block = false;
+                ++i;
+            }
+            continue;
+        }
+
+        if (c == '/' && next == '/')
+        {
+            in_line = true;
+            ++i;
+            continue;
+        }
+        if (c == '/' && next == '*')
+        {
+            in_block = true;
+            ++i;
+            continue;
+        }
+
+        out.push_back(c);
+    }
+    return out;
+}
+
+static std::string stripPreprocessor(const std::string &input)
+{
+    std::ostringstream out;
+    std::istringstream in(input);
+    std::string line;
+    while (std::getline(in, line))
+    {
+        std::string_view trimmed = trimView(line);
+        if (!trimmed.empty() && trimmed.front() == '#')
+            continue;
+        out << line << '\n';
+    }
+    return out.str();
+}
+
+static std::unordered_map<std::string, CSignature> loadRuntimeCSignatures(
+    const fs::path &runtimeDir)
+{
+    std::unordered_map<std::string, CSignature> result;
+    if (!fs::exists(runtimeDir))
+        return result;
+
+    std::regex proto(R"(([\w\s\*]+?)\s+(rt_[A-Za-z0-9_]+)\s*\(([^;{}]*)\)\s*;)");
+
+    for (const auto &entry : fs::recursive_directory_iterator(runtimeDir))
+    {
+        if (!entry.is_regular_file())
+            continue;
+        const fs::path path = entry.path();
+        if (path.extension() != ".h")
+            continue;
+
+        std::ifstream in(path);
+        if (!in)
+            continue;
+
+        std::string contents((std::istreambuf_iterator<char>(in)),
+                             std::istreambuf_iterator<char>());
+        contents = stripComments(contents);
+        contents = stripPreprocessor(contents);
+
+        for (std::sregex_iterator it(contents.begin(), contents.end(), proto), end; it != end; ++it)
+        {
+            std::string retType = trim((*it)[1].str());
+            std::string funcName = (*it)[2].str();
+            std::string argsStr = (*it)[3].str();
+
+            if (result.find(funcName) != result.end())
+                continue;
+
+            CSignature sig;
+            sig.returnType = retType;
+            std::vector<std::string> args = splitTopLevel(argsStr, ',');
+            for (const auto &arg : args)
+            {
+                std::string type = stripParamName(arg);
+                if (type.empty() || type == "void")
+                    continue;
+                sig.argTypes.push_back(type);
+            }
+
+            result.emplace(funcName, std::move(sig));
+        }
+    }
+
+    return result;
+}
+
+static std::optional<std::pair<std::string, DescriptorFields>> parseDescriptorRowBlock(
+    std::string_view block)
+{
+    size_t open = block.find('{');
+    size_t close = block.rfind('}');
+    if (open == std::string_view::npos || close == std::string_view::npos || close <= open)
+        return std::nullopt;
+
+    std::string_view inner = block.substr(open + 1, close - open - 1);
+    std::vector<std::string> fields = splitTopLevel(inner, ',');
+    if (fields.size() < 8)
+        return std::nullopt;
+
+    DescriptorFields row;
+    std::string name = stripQuotes(fields[0]);
+    row.signatureId = trim(fields[1]);
+    row.spec = trim(fields[2]);
+    row.handler = trim(fields[3]);
+    row.lowering = trim(fields[4]);
+    row.hidden = trim(fields[5]);
+    row.hiddenCount = trim(fields[6]);
+    row.trapClass = trim(fields[7]);
+
+    return std::make_pair(name, row);
+}
+
+static OverrideData loadSignatureOverrides(const fs::path &path)
+{
+    OverrideData data;
+    std::ifstream in(path);
+    if (!in)
+    {
+        std::cerr << "warning: signature overrides not found: " << path << "\n";
+        return data;
+    }
+
+    DualState state = DualState::None;
+    std::size_t rows_seen = 0;
+    std::size_t rows_parsed = 0;
+    std::string line;
+    while (std::getline(in, line))
+    {
+        std::string_view view = trimView(line);
+        if (startsWith(view, "#if") && view.find("VIPER_RUNTIME_NS_DUAL") != std::string_view::npos)
+        {
+            state = DualState::If;
+            continue;
+        }
+        if (startsWith(view, "#else") && state != DualState::None)
+        {
+            state = DualState::Else;
+            continue;
+        }
+        if (startsWith(view, "#endif"))
+        {
+            state = DualState::None;
+            continue;
+        }
+
+        if (line.find("DescriptorRow") == std::string::npos)
+            continue;
+        ++rows_seen;
+
+        std::string block = line;
+        int brace_depth = 0;
+        for (char c : line)
+        {
+            if (c == '{')
+                brace_depth++;
+            else if (c == '}')
+                brace_depth--;
+        }
+
+        while (brace_depth > 0 && std::getline(in, line))
+        {
+            block.append("\n");
+            block.append(line);
+            for (char c : line)
+            {
+                if (c == '{')
+                    brace_depth++;
+                else if (c == '}')
+                    brace_depth--;
+            }
+        }
+
+        auto parsed = parseDescriptorRowBlock(block);
+        if (!parsed)
+            continue;
+        ++rows_parsed;
+
+        const std::string &name = parsed->first;
+        const DescriptorFields &fields = parsed->second;
+
+        if (std::find(data.order.begin(), data.order.end(), name) == data.order.end())
+            data.order.push_back(name);
+
+        RowOverride &row = data.rows[name];
+        if (state == DualState::If)
+            row.dual_if = fields;
+        else if (state == DualState::Else)
+            row.dual_else = fields;
+        else
+            row.always = fields;
+    }
+
+    if (rows_seen > 0 && rows_parsed == 0)
+    {
+        std::cerr << "warning: failed to parse any DescriptorRow blocks from " << path << "\n";
+    }
+
+    return data;
+}
+
+//===----------------------------------------------------------------------===//
 // Code Generation
 //===----------------------------------------------------------------------===//
+
+struct RuntimeEntry
+{
+    std::string name;
+    std::string c_symbol;
+    std::string signature;
+};
 
 static std::string fileHeader(const std::string &filename, const std::string &purpose)
 {
@@ -558,6 +1020,89 @@ static std::string fileHeader(const std::string &filename, const std::string &pu
     out << "//\n";
     out << "//===----------------------------------------------------------------------===//\n\n";
     return out.str();
+}
+
+static std::string buildDirectHandlerExpr(const std::string &c_symbol, const CSignature &sig)
+{
+    std::string args = "&" + c_symbol + ", " + sig.returnType;
+    for (const auto &arg : sig.argTypes)
+    {
+        args += ", " + arg;
+    }
+    return "&DirectHandler<" + args + ">::invoke";
+}
+
+static DescriptorFields buildDefaultDescriptor(
+    const RuntimeEntry &entry,
+    const std::unordered_map<std::string, CSignature> &cSignatures,
+    const std::unordered_map<std::string, std::string> &rtSigMap)
+{
+    DescriptorFields fields;
+
+    auto sigIt = rtSigMap.find(entry.c_symbol);
+    if (sigIt != rtSigMap.end())
+    {
+        fields.signatureId = sigIt->second;
+        fields.spec = buildSigSpecExpr(fields.signatureId);
+    }
+    else
+    {
+        fields.signatureId = "std::nullopt";
+        ParsedSignature parsed = parseSignature(entry.signature);
+        std::string sigStr = ilTypeToSigType(parsed.returnType) + "(";
+        for (size_t i = 0; i < parsed.argTypes.size(); ++i)
+        {
+            if (i > 0)
+                sigStr += ", ";
+            sigStr += ilTypeToSigType(parsed.argTypes[i]);
+        }
+        sigStr += ")";
+        fields.spec = "\"" + sigStr + "\"";
+    }
+
+    auto cSigIt = cSignatures.find(entry.c_symbol);
+    if (cSigIt != cSignatures.end())
+    {
+        fields.handler = buildDirectHandlerExpr(entry.c_symbol, cSigIt->second);
+    }
+    else
+    {
+        ParsedSignature parsed = parseSignature(entry.signature);
+        CSignature fallback;
+        fallback.returnType = ilTypeToCType(parsed.returnType);
+        for (const auto &arg : parsed.argTypes)
+            fallback.argTypes.push_back(ilTypeToCType(arg));
+        fields.handler = buildDirectHandlerExpr(entry.c_symbol, fallback);
+    }
+
+    fields.lowering = "kManualLowering";
+    fields.hidden = "nullptr";
+    fields.hiddenCount = "0";
+    fields.trapClass = "RuntimeTrapClass::None";
+    return fields;
+}
+
+static void emitDescriptorRow(std::ostream &out,
+                              const std::string &name,
+                              const DescriptorFields &fields,
+                              int indent = 4)
+{
+    std::string pad(static_cast<size_t>(indent), ' ');
+    out << pad << "DescriptorRow{\"" << name << "\",\n";
+    out << pad << "              " << fields.signatureId << ",\n";
+    out << pad << "              " << fields.spec << ",\n";
+    out << pad << "              " << fields.handler << ",\n";
+    out << pad << "              " << fields.lowering << ",\n";
+    out << pad << "              " << fields.hidden << ",\n";
+    out << pad << "              " << fields.hiddenCount << ",\n";
+    out << pad << "              " << fields.trapClass << "},\n";
+}
+
+static bool fieldsEqual(const DescriptorFields &a, const DescriptorFields &b)
+{
+    return a.signatureId == b.signatureId && a.spec == b.spec && a.handler == b.handler &&
+           a.lowering == b.lowering && a.hidden == b.hidden && a.hiddenCount == b.hiddenCount &&
+           a.trapClass == b.trapClass;
 }
 
 static void generateNameMap(const ParseState &state, const fs::path &outDir)
@@ -695,9 +1240,16 @@ static void generateClasses(const ParseState &state, const fs::path &outDir)
     std::cout << "  Generated " << outPath << "\n";
 }
 
-static void generateSignatures(const ParseState &state, const fs::path &outDir)
+static void generateSignatures(const ParseState &state,
+                               const fs::path &outDir,
+                               const fs::path &inputPath)
 {
     fs::path outPath = outDir / "RuntimeSignatures.inc";
+    const fs::path runtimeDir = inputPath.parent_path();
+    const fs::path overridesPath = runtimeDir / "generated" / "RuntimeSignatures.inc";
+    OverrideData overrides = loadSignatureOverrides(overridesPath);
+    std::cout << "rtgen: Loaded " << overrides.rows.size() << " signature overrides\n";
+
     std::ofstream out(outPath);
     if (!out)
     {
@@ -708,104 +1260,111 @@ static void generateSignatures(const ParseState &state, const fs::path &outDir)
     out << fileHeader("RuntimeSignatures.inc",
                       "Runtime descriptor rows for all runtime functions.");
 
-    // Track which sections we've started for organization
-    std::string currentSection;
+    const fs::path srcRoot = runtimeDir.parent_path().parent_path();
+    const fs::path runtimeHeaders = srcRoot / "runtime";
+    auto cSignatures = loadRuntimeCSignatures(runtimeHeaders);
+    auto rtSigMap = buildRtSigMap(runtimeDir);
+
+    std::unordered_map<std::string, RuntimeEntry> entries;
+    entries.reserve(state.functions.size() + state.aliases.size());
 
     for (const auto &func : state.functions)
     {
-        // Extract namespace for section comments (e.g., "Viper.Text.Codec" -> "Viper.Text.Codec")
-        std::string ns;
-        size_t lastDot = func.canonical.rfind('.');
-        if (lastDot != std::string::npos)
-        {
-            ns = func.canonical.substr(0, lastDot);
-        }
-
-        // Add section comment when namespace changes
-        if (!ns.empty() && ns != currentSection)
-        {
-            if (!currentSection.empty())
-            {
-                out << "\n";
-            }
-            out << "    // " << ns << "\n";
-            currentSection = ns;
-        }
-
-        // Parse the signature
-        ParsedSignature parsed = parseSignature(func.signature);
-
-        // Build the signature string (e.g., "string(string)")
-        std::string sigStr = ilTypeToSigType(parsed.returnType) + "(";
-        for (size_t i = 0; i < parsed.argTypes.size(); ++i)
-        {
-            if (i > 0)
-                sigStr += ", ";
-            sigStr += ilTypeToSigType(parsed.argTypes[i]);
-        }
-        sigStr += ")";
-
-        // Build the DirectHandler template args
-        // Format: DirectHandler<&c_symbol, ReturnCType, Arg1CType, Arg2CType, ...>
-        std::string handlerArgs = "&" + func.c_symbol + ", " + ilTypeToCType(parsed.returnType);
-        for (const auto &argType : parsed.argTypes)
-        {
-            handlerArgs += ", " + ilTypeToCType(argType);
-        }
-
-        // Emit the DescriptorRow
-        out << "    DescriptorRow{\"" << func.canonical << "\",\n";
-        out << "                  std::nullopt,\n";
-        out << "                  \"" << sigStr << "\",\n";
-        out << "                  &DirectHandler<" << handlerArgs << ">::invoke,\n";
-        out << "                  kManualLowering,\n";
-        out << "                  nullptr,\n";
-        out << "                  0,\n";
-        out << "                  RuntimeTrapClass::None},\n";
+        entries.emplace(func.canonical,
+                        RuntimeEntry{func.canonical, func.c_symbol, func.signature});
+    }
+    for (const auto &alias : state.aliases)
+    {
+        auto it = state.func_by_id.find(alias.target_id);
+        if (it == state.func_by_id.end())
+            continue;
+        const auto &target = state.functions[it->second];
+        entries.emplace(alias.canonical,
+                        RuntimeEntry{alias.canonical, target.c_symbol, target.signature});
     }
 
-    // Emit aliases - they reference the same C symbol as their target
-    if (!state.aliases.empty())
+    std::set<std::string> seen;
+    std::vector<std::string> orderedNames;
+    orderedNames.reserve(entries.size());
+
+    for (const auto &name : overrides.order)
     {
-        out << "\n    // Aliases\n";
-        for (const auto &alias : state.aliases)
+        if (seen.insert(name).second)
+            orderedNames.push_back(name);
+    }
+
+    for (const auto &func : state.functions)
+    {
+        if (seen.insert(func.canonical).second)
+            orderedNames.push_back(func.canonical);
+    }
+
+    for (const auto &alias : state.aliases)
+    {
+        if (seen.insert(alias.canonical).second)
+            orderedNames.push_back(alias.canonical);
+    }
+
+    for (const auto &name : orderedNames)
+    {
+        auto overrideIt = overrides.rows.find(name);
+        if (overrideIt == overrides.rows.end())
         {
-            auto it = state.func_by_id.find(alias.target_id);
-            if (it == state.func_by_id.end())
+            auto entryIt = entries.find(name);
+            if (entryIt == entries.end())
                 continue;
 
-            const auto &target = state.functions[it->second];
+            const RuntimeEntry &entry = entryIt->second;
+            DescriptorFields defaultFields = buildDefaultDescriptor(entry, cSignatures, rtSigMap);
+            emitDescriptorRow(out, name, defaultFields);
+            continue;
+        }
 
-            // Parse the target's signature
-            ParsedSignature parsed = parseSignature(target.signature);
+        const RowOverride &row = overrideIt->second;
+        if (row.always)
+        {
+            emitDescriptorRow(out, name, *row.always);
+            continue;
+        }
 
-            // Build the signature string
-            std::string sigStr = ilTypeToSigType(parsed.returnType) + "(";
-            for (size_t i = 0; i < parsed.argTypes.size(); ++i)
+        const bool hasIf = row.dual_if.has_value();
+        const bool hasElse = row.dual_else.has_value();
+
+        if (hasIf && hasElse)
+        {
+            if (fieldsEqual(*row.dual_if, *row.dual_else))
             {
-                if (i > 0)
-                    sigStr += ", ";
-                sigStr += ilTypeToSigType(parsed.argTypes[i]);
+                emitDescriptorRow(out, name, *row.dual_if);
             }
-            sigStr += ")";
-
-            // Build the DirectHandler template args
-            std::string handlerArgs =
-                "&" + target.c_symbol + ", " + ilTypeToCType(parsed.returnType);
-            for (const auto &argType : parsed.argTypes)
+            else
             {
-                handlerArgs += ", " + ilTypeToCType(argType);
+                out << "#if VIPER_RUNTIME_NS_DUAL\n";
+                emitDescriptorRow(out, name, *row.dual_if);
+                out << "#else\n";
+                emitDescriptorRow(out, name, *row.dual_else);
+                out << "#endif\n";
             }
-
-            // Emit the DescriptorRow for the alias
-            out << "    DescriptorRow{\"" << alias.canonical << "\",\n";
-            out << "                  std::nullopt,\n";
-            out << "                  \"" << sigStr << "\",\n";
-            out << "                  &DirectHandler<" << handlerArgs << ">::invoke,\n";
-            out << "                  kManualLowering,\n";
-            out << "                  nullptr,\n";
-            out << "                  0,\n";
-            out << "                  RuntimeTrapClass::None},\n";
+        }
+        else if (hasIf)
+        {
+            out << "#if VIPER_RUNTIME_NS_DUAL\n";
+            emitDescriptorRow(out, name, *row.dual_if);
+            out << "#endif\n";
+        }
+        else if (hasElse)
+        {
+            out << "#if !VIPER_RUNTIME_NS_DUAL\n";
+            emitDescriptorRow(out, name, *row.dual_else);
+            out << "#endif\n";
+        }
+        else
+        {
+            auto entryIt = entries.find(name);
+            if (entryIt == entries.end())
+                continue;
+            DescriptorFields defaultFields =
+                buildDefaultDescriptor(entryIt->second, cSignatures, rtSigMap);
+            emitDescriptorRow(out, name, defaultFields);
         }
     }
 
@@ -855,9 +1414,7 @@ int main(int argc, char **argv)
     std::cout << "rtgen: Generating output files in " << outputDir << "\n";
     generateNameMap(state, outputDir);
     generateClasses(state, outputDir);
-    // Note: RuntimeSignatures.inc is still manually maintained for now due to
-    // special-case handling (RtSig enums, DUAL conditionals, specific C types).
-    // TODO: Migrate to fully generated RuntimeSignatures.inc
+    generateSignatures(state, outputDir, inputPath);
 
     std::cout << "rtgen: Done\n";
     return 0;

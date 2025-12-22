@@ -10,8 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_internal.h"
 #include "rt_input.h"
+#include "rt_internal.h"
 
 #include <cassert>
 #include <cstdio>

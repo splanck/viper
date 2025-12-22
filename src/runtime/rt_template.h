@@ -54,7 +54,9 @@ extern "C"
     /// @param suffix Placeholder suffix (e.g., "$" or "}}").
     /// @return New string with placeholders replaced.
     /// @note Traps on null template, values, prefix, or suffix.
-    rt_string rt_template_render_with(rt_string tmpl, void *values, rt_string prefix,
+    rt_string rt_template_render_with(rt_string tmpl,
+                                      void *values,
+                                      rt_string prefix,
                                       rt_string suffix);
 
     /// @brief Check if template contains a placeholder for key.

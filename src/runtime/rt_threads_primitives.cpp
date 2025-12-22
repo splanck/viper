@@ -50,10 +50,7 @@ struct GateWaiter
 
 struct GateState
 {
-    explicit GateState(int64_t initial_permits)
-        : permits(initial_permits)
-    {
-    }
+    explicit GateState(int64_t initial_permits) : permits(initial_permits) {}
 
     std::mutex mu;
     int64_t permits = 0;
@@ -94,10 +91,7 @@ static void gate_finalizer(void *obj)
 
 struct BarrierState
 {
-    explicit BarrierState(int64_t parties_)
-        : parties(parties_)
-    {
-    }
+    explicit BarrierState(int64_t parties_) : parties(parties_) {}
 
     std::mutex mu;
     std::condition_variable cv;
@@ -189,449 +183,449 @@ static void rwlock_finalizer(void *obj)
 
 extern "C"
 {
+    // ============================================================================
+    // Viper.Threads.Gate
+    // ============================================================================
 
-// ============================================================================
-// Viper.Threads.Gate
-// ============================================================================
-
-void *rt_gate_new(int64_t permits)
-{
-    if (permits < 0)
+    void *rt_gate_new(int64_t permits)
     {
-        rt_trap("Gate.New: permits cannot be negative");
-        return nullptr;
+        if (permits < 0)
+        {
+            rt_trap("Gate.New: permits cannot be negative");
+            return nullptr;
+        }
+
+        auto *gate = static_cast<RtGate *>(rt_obj_new_i64(/*class_id=*/0, (int64_t)sizeof(RtGate)));
+        if (!gate)
+            rt_trap("Gate.New: alloc failed");
+        if (!gate)
+            return nullptr;
+
+        auto *state = new (std::nothrow) GateState(permits);
+        if (!state)
+        {
+            rt_trap("Gate.New: alloc failed");
+            return nullptr;
+        }
+
+        gate->state = state;
+        rt_obj_set_finalizer(gate, &gate_finalizer);
+        return gate;
     }
 
-    auto *gate = static_cast<RtGate *>(rt_obj_new_i64(/*class_id=*/0, (int64_t)sizeof(RtGate)));
-    if (!gate)
-        rt_trap("Gate.New: alloc failed");
-    if (!gate)
-        return nullptr;
-
-    auto *state = new (std::nothrow) GateState(permits);
-    if (!state)
+    void rt_gate_enter(void *gate)
     {
-        rt_trap("Gate.New: alloc failed");
-        return nullptr;
+        RtGate *g = require_gate(gate, "Gate.Enter: null object");
+        if (!g)
+            return;
+
+        GateState &state = *g->state;
+        std::unique_lock<std::mutex> lock(state.mu);
+
+        if (state.waiters.empty() && state.permits > 0)
+        {
+            --state.permits;
+            return;
+        }
+
+        GateWaiter waiter;
+        state.waiters.push_back(&waiter);
+        while (!waiter.granted)
+        {
+            waiter.cv.wait(lock);
+        }
     }
 
-    gate->state = state;
-    rt_obj_set_finalizer(gate, &gate_finalizer);
-    return gate;
-}
-
-void rt_gate_enter(void *gate)
-{
-    RtGate *g = require_gate(gate, "Gate.Enter: null object");
-    if (!g)
-        return;
-
-    GateState &state = *g->state;
-    std::unique_lock<std::mutex> lock(state.mu);
-
-    if (state.waiters.empty() && state.permits > 0)
+    int8_t rt_gate_try_enter(void *gate)
     {
-        --state.permits;
-        return;
-    }
+        RtGate *g = require_gate(gate, "Gate.TryEnter: null object");
+        if (!g)
+            return 0;
 
-    GateWaiter waiter;
-    state.waiters.push_back(&waiter);
-    while (!waiter.granted)
-    {
-        waiter.cv.wait(lock);
-    }
-}
-
-int8_t rt_gate_try_enter(void *gate)
-{
-    RtGate *g = require_gate(gate, "Gate.TryEnter: null object");
-    if (!g)
-        return 0;
-
-    GateState &state = *g->state;
-    std::unique_lock<std::mutex> lock(state.mu);
-    if (!state.waiters.empty() || state.permits <= 0)
-        return 0;
-    --state.permits;
-    return 1;
-}
-
-int8_t rt_gate_try_enter_for(void *gate, int64_t ms)
-{
-    RtGate *g = require_gate(gate, "Gate.TryEnterFor: null object");
-    if (!g)
-        return 0;
-
-    if (ms < 0)
-        ms = 0;
-
-    GateState &state = *g->state;
-    std::unique_lock<std::mutex> lock(state.mu);
-
-    if (state.waiters.empty() && state.permits > 0)
-    {
+        GateState &state = *g->state;
+        std::unique_lock<std::mutex> lock(state.mu);
+        if (!state.waiters.empty() || state.permits <= 0)
+            return 0;
         --state.permits;
         return 1;
     }
 
-    if (ms == 0)
-        return 0;
-
-    GateWaiter waiter;
-    state.waiters.push_back(&waiter);
-
-    const auto deadline =
-        std::chrono::steady_clock::now() + std::chrono::milliseconds(static_cast<int64_t>(ms));
-
-    while (!waiter.granted)
+    int8_t rt_gate_try_enter_for(void *gate, int64_t ms)
     {
-        if (waiter.cv.wait_until(lock, deadline) == std::cv_status::timeout && !waiter.granted)
-        {
-            auto it = std::find(state.waiters.begin(), state.waiters.end(), &waiter);
-            if (it != state.waiters.end())
-                state.waiters.erase(it);
+        RtGate *g = require_gate(gate, "Gate.TryEnterFor: null object");
+        if (!g)
             return 0;
+
+        if (ms < 0)
+            ms = 0;
+
+        GateState &state = *g->state;
+        std::unique_lock<std::mutex> lock(state.mu);
+
+        if (state.waiters.empty() && state.permits > 0)
+        {
+            --state.permits;
+            return 1;
+        }
+
+        if (ms == 0)
+            return 0;
+
+        GateWaiter waiter;
+        state.waiters.push_back(&waiter);
+
+        const auto deadline =
+            std::chrono::steady_clock::now() + std::chrono::milliseconds(static_cast<int64_t>(ms));
+
+        while (!waiter.granted)
+        {
+            if (waiter.cv.wait_until(lock, deadline) == std::cv_status::timeout && !waiter.granted)
+            {
+                auto it = std::find(state.waiters.begin(), state.waiters.end(), &waiter);
+                if (it != state.waiters.end())
+                    state.waiters.erase(it);
+                return 0;
+            }
+        }
+
+        return 1;
+    }
+
+    void rt_gate_leave(void *gate)
+    {
+        rt_gate_leave_many(gate, 1);
+    }
+
+    void rt_gate_leave_many(void *gate, int64_t count)
+    {
+        RtGate *g = require_gate(gate, "Gate.Leave: null object");
+        if (!g)
+            return;
+
+        if (count < 0)
+        {
+            rt_trap("Gate.Leave: count cannot be negative");
+            return;
+        }
+
+        GateState &state = *g->state;
+        std::unique_lock<std::mutex> lock(state.mu);
+
+        state.permits += count;
+        while (state.permits > 0 && !state.waiters.empty())
+        {
+            GateWaiter *waiter = state.waiters.front();
+            state.waiters.pop_front();
+            --state.permits; // Reserve the permit for the woken waiter.
+            waiter->granted = true;
+            waiter->cv.notify_one();
         }
     }
 
-    return 1;
-}
-
-void rt_gate_leave(void *gate)
-{
-    rt_gate_leave_many(gate, 1);
-}
-
-void rt_gate_leave_many(void *gate, int64_t count)
-{
-    RtGate *g = require_gate(gate, "Gate.Leave: null object");
-    if (!g)
-        return;
-
-    if (count < 0)
+    int64_t rt_gate_get_permits(void *gate)
     {
-        rt_trap("Gate.Leave: count cannot be negative");
-        return;
+        RtGate *g = require_gate(gate, "Gate.get_Permits: null object");
+        if (!g)
+            return 0;
+
+        GateState &state = *g->state;
+        std::unique_lock<std::mutex> lock(state.mu);
+        return state.permits;
     }
 
-    GateState &state = *g->state;
-    std::unique_lock<std::mutex> lock(state.mu);
+    // ============================================================================
+    // Viper.Threads.Barrier
+    // ============================================================================
 
-    state.permits += count;
-    while (state.permits > 0 && !state.waiters.empty())
+    void *rt_barrier_new(int64_t parties)
     {
-        GateWaiter *waiter = state.waiters.front();
-        state.waiters.pop_front();
-        --state.permits; // Reserve the permit for the woken waiter.
-        waiter->granted = true;
-        waiter->cv.notify_one();
-    }
-}
+        if (parties < 1)
+        {
+            rt_trap("Barrier.New: parties must be >= 1");
+            return nullptr;
+        }
 
-int64_t rt_gate_get_permits(void *gate)
-{
-    RtGate *g = require_gate(gate, "Gate.get_Permits: null object");
-    if (!g)
-        return 0;
+        auto *barrier =
+            static_cast<RtBarrier *>(rt_obj_new_i64(/*class_id=*/0, (int64_t)sizeof(RtBarrier)));
+        if (!barrier)
+            rt_trap("Barrier.New: alloc failed");
+        if (!barrier)
+            return nullptr;
 
-    GateState &state = *g->state;
-    std::unique_lock<std::mutex> lock(state.mu);
-    return state.permits;
-}
+        auto *state = new (std::nothrow) BarrierState(parties);
+        if (!state)
+        {
+            rt_trap("Barrier.New: alloc failed");
+            return nullptr;
+        }
 
-// ============================================================================
-// Viper.Threads.Barrier
-// ============================================================================
-
-void *rt_barrier_new(int64_t parties)
-{
-    if (parties < 1)
-    {
-        rt_trap("Barrier.New: parties must be >= 1");
-        return nullptr;
+        barrier->state = state;
+        rt_obj_set_finalizer(barrier, &barrier_finalizer);
+        return barrier;
     }
 
-    auto *barrier =
-        static_cast<RtBarrier *>(rt_obj_new_i64(/*class_id=*/0, (int64_t)sizeof(RtBarrier)));
-    if (!barrier)
-        rt_trap("Barrier.New: alloc failed");
-    if (!barrier)
-        return nullptr;
-
-    auto *state = new (std::nothrow) BarrierState(parties);
-    if (!state)
+    int64_t rt_barrier_arrive(void *barrier)
     {
-        rt_trap("Barrier.New: alloc failed");
-        return nullptr;
-    }
+        RtBarrier *b = require_barrier(barrier, "Barrier.Arrive: null object");
+        if (!b)
+            return 0;
 
-    barrier->state = state;
-    rt_obj_set_finalizer(barrier, &barrier_finalizer);
-    return barrier;
-}
+        BarrierState &state = *b->state;
+        std::unique_lock<std::mutex> lock(state.mu);
 
-int64_t rt_barrier_arrive(void *barrier)
-{
-    RtBarrier *b = require_barrier(barrier, "Barrier.Arrive: null object");
-    if (!b)
-        return 0;
+        const int64_t index = state.waiting;
+        const int64_t gen = state.generation;
+        ++state.waiting;
 
-    BarrierState &state = *b->state;
-    std::unique_lock<std::mutex> lock(state.mu);
+        if (state.waiting == state.parties)
+        {
+            state.waiting = 0;
+            ++state.generation;
+            state.cv.notify_all();
+            return index;
+        }
 
-    const int64_t index = state.waiting;
-    const int64_t gen = state.generation;
-    ++state.waiting;
+        while (state.generation == gen)
+        {
+            state.cv.wait(lock);
+        }
 
-    if (state.waiting == state.parties)
-    {
-        state.waiting = 0;
-        ++state.generation;
-        state.cv.notify_all();
         return index;
     }
 
-    while (state.generation == gen)
+    void rt_barrier_reset(void *barrier)
     {
-        state.cv.wait(lock);
-    }
+        RtBarrier *b = require_barrier(barrier, "Barrier.Reset: null object");
+        if (!b)
+            return;
 
-    return index;
-}
-
-void rt_barrier_reset(void *barrier)
-{
-    RtBarrier *b = require_barrier(barrier, "Barrier.Reset: null object");
-    if (!b)
-        return;
-
-    BarrierState &state = *b->state;
-    std::unique_lock<std::mutex> lock(state.mu);
-    if (state.waiting != 0)
-    {
-        lock.unlock(); // Release lock before trap to avoid deadlock if longjmp is used
-        rt_trap("Barrier.Reset: threads are waiting");
-        return;
-    }
-    ++state.generation;
-}
-
-int64_t rt_barrier_get_parties(void *barrier)
-{
-    RtBarrier *b = require_barrier(barrier, "Barrier.get_Parties: null object");
-    if (!b)
-        return 0;
-
-    BarrierState &state = *b->state;
-    std::unique_lock<std::mutex> lock(state.mu);
-    return state.parties;
-}
-
-int64_t rt_barrier_get_waiting(void *barrier)
-{
-    RtBarrier *b = require_barrier(barrier, "Barrier.get_Waiting: null object");
-    if (!b)
-        return 0;
-
-    BarrierState &state = *b->state;
-    std::unique_lock<std::mutex> lock(state.mu);
-    return state.waiting;
-}
-
-// ============================================================================
-// Viper.Threads.RwLock
-// ============================================================================
-
-void *rt_rwlock_new(void)
-{
-    auto *lock = static_cast<RtRwLock *>(rt_obj_new_i64(/*class_id=*/0, (int64_t)sizeof(RtRwLock)));
-    if (!lock)
-        rt_trap("RwLock.New: alloc failed");
-    if (!lock)
-        return nullptr;
-
-    auto *state = new (std::nothrow) RwLockState();
-    if (!state)
-    {
-        rt_trap("RwLock.New: alloc failed");
-        return nullptr;
-    }
-
-    lock->state = state;
-    rt_obj_set_finalizer(lock, &rwlock_finalizer);
-    return lock;
-}
-
-void rt_rwlock_read_enter(void *lock)
-{
-    RtRwLock *rw = require_rwlock(lock, "RwLock.ReadEnter: null object");
-    if (!rw)
-        return;
-
-    RwLockState &state = *rw->state;
-    std::unique_lock<std::mutex> lk(state.mu);
-    while (state.writer_active || !state.waiting_writers.empty())
-    {
-        state.readers_cv.wait(lk);
-    }
-    ++state.active_readers;
-}
-
-void rt_rwlock_read_exit(void *lock)
-{
-    RtRwLock *rw = require_rwlock(lock, "RwLock.ReadExit: null object");
-    if (!rw)
-        return;
-
-    RwLockState &state = *rw->state;
-    std::unique_lock<std::mutex> lk(state.mu);
-    if (state.active_readers <= 0)
-    {
-        lk.unlock(); // Release lock before trap to avoid deadlock if longjmp is used
-        rt_trap("RwLock.ReadExit: exit without matching enter");
-        return;
-    }
-    --state.active_readers;
-    if (state.active_readers == 0 && !state.writer_active && !state.waiting_writers.empty())
-    {
-        state.waiting_writers.front()->cv.notify_one();
-    }
-}
-
-void rt_rwlock_write_enter(void *lock)
-{
-    RtRwLock *rw = require_rwlock(lock, "RwLock.WriteEnter: null object");
-    if (!rw)
-        return;
-
-    RwLockState &state = *rw->state;
-    const std::thread::id tid = std::this_thread::get_id();
-    std::unique_lock<std::mutex> lk(state.mu);
-
-    if (state.writer_active && state.writer_owner == tid)
-    {
-        ++state.write_recursion;
-        return;
-    }
-
-    RwLockWriterWaiter waiter;
-    state.waiting_writers.push_back(&waiter);
-
-    while (true)
-    {
-        const bool is_front = state.waiting_writers.front() == &waiter;
-        if (is_front && !state.writer_active && state.active_readers == 0)
+        BarrierState &state = *b->state;
+        std::unique_lock<std::mutex> lock(state.mu);
+        if (state.waiting != 0)
         {
-            state.waiting_writers.pop_front();
-            state.writer_active = true;
-            state.writer_owner = tid;
-            state.write_recursion = 1;
+            lock.unlock(); // Release lock before trap to avoid deadlock if longjmp is used
+            rt_trap("Barrier.Reset: threads are waiting");
             return;
         }
-        waiter.cv.wait(lk);
-    }
-}
-
-void rt_rwlock_write_exit(void *lock)
-{
-    RtRwLock *rw = require_rwlock(lock, "RwLock.WriteExit: null object");
-    if (!rw)
-        return;
-
-    RwLockState &state = *rw->state;
-    const std::thread::id tid = std::this_thread::get_id();
-    std::unique_lock<std::mutex> lk(state.mu);
-
-    if (!state.writer_active)
-    {
-        lk.unlock(); // Release lock before trap to avoid deadlock if longjmp is used
-        rt_trap("RwLock.WriteExit: exit without matching enter");
-        return;
-    }
-    if (state.writer_owner != tid)
-    {
-        lk.unlock(); // Release lock before trap to avoid deadlock if longjmp is used
-        rt_trap("RwLock.WriteExit: not owner");
-        return;
+        ++state.generation;
     }
 
-    --state.write_recursion;
-    if (state.write_recursion > 0)
-        return;
-
-    state.writer_active = false;
-    state.writer_owner = std::thread::id();
-
-    if (!state.waiting_writers.empty())
+    int64_t rt_barrier_get_parties(void *barrier)
     {
-        state.waiting_writers.front()->cv.notify_one();
+        RtBarrier *b = require_barrier(barrier, "Barrier.get_Parties: null object");
+        if (!b)
+            return 0;
+
+        BarrierState &state = *b->state;
+        std::unique_lock<std::mutex> lock(state.mu);
+        return state.parties;
     }
-    else
+
+    int64_t rt_barrier_get_waiting(void *barrier)
     {
-        state.readers_cv.notify_all();
+        RtBarrier *b = require_barrier(barrier, "Barrier.get_Waiting: null object");
+        if (!b)
+            return 0;
+
+        BarrierState &state = *b->state;
+        std::unique_lock<std::mutex> lock(state.mu);
+        return state.waiting;
     }
-}
 
-int8_t rt_rwlock_try_read_enter(void *lock)
-{
-    RtRwLock *rw = require_rwlock(lock, "RwLock.TryReadEnter: null object");
-    if (!rw)
-        return 0;
+    // ============================================================================
+    // Viper.Threads.RwLock
+    // ============================================================================
 
-    RwLockState &state = *rw->state;
-    std::unique_lock<std::mutex> lk(state.mu);
-    if (state.writer_active || !state.waiting_writers.empty())
-        return 0;
-    ++state.active_readers;
-    return 1;
-}
-
-int8_t rt_rwlock_try_write_enter(void *lock)
-{
-    RtRwLock *rw = require_rwlock(lock, "RwLock.TryWriteEnter: null object");
-    if (!rw)
-        return 0;
-
-    RwLockState &state = *rw->state;
-    const std::thread::id tid = std::this_thread::get_id();
-    std::unique_lock<std::mutex> lk(state.mu);
-
-    if (state.writer_active && state.writer_owner == tid)
+    void *rt_rwlock_new(void)
     {
-        ++state.write_recursion;
+        auto *lock =
+            static_cast<RtRwLock *>(rt_obj_new_i64(/*class_id=*/0, (int64_t)sizeof(RtRwLock)));
+        if (!lock)
+            rt_trap("RwLock.New: alloc failed");
+        if (!lock)
+            return nullptr;
+
+        auto *state = new (std::nothrow) RwLockState();
+        if (!state)
+        {
+            rt_trap("RwLock.New: alloc failed");
+            return nullptr;
+        }
+
+        lock->state = state;
+        rt_obj_set_finalizer(lock, &rwlock_finalizer);
+        return lock;
+    }
+
+    void rt_rwlock_read_enter(void *lock)
+    {
+        RtRwLock *rw = require_rwlock(lock, "RwLock.ReadEnter: null object");
+        if (!rw)
+            return;
+
+        RwLockState &state = *rw->state;
+        std::unique_lock<std::mutex> lk(state.mu);
+        while (state.writer_active || !state.waiting_writers.empty())
+        {
+            state.readers_cv.wait(lk);
+        }
+        ++state.active_readers;
+    }
+
+    void rt_rwlock_read_exit(void *lock)
+    {
+        RtRwLock *rw = require_rwlock(lock, "RwLock.ReadExit: null object");
+        if (!rw)
+            return;
+
+        RwLockState &state = *rw->state;
+        std::unique_lock<std::mutex> lk(state.mu);
+        if (state.active_readers <= 0)
+        {
+            lk.unlock(); // Release lock before trap to avoid deadlock if longjmp is used
+            rt_trap("RwLock.ReadExit: exit without matching enter");
+            return;
+        }
+        --state.active_readers;
+        if (state.active_readers == 0 && !state.writer_active && !state.waiting_writers.empty())
+        {
+            state.waiting_writers.front()->cv.notify_one();
+        }
+    }
+
+    void rt_rwlock_write_enter(void *lock)
+    {
+        RtRwLock *rw = require_rwlock(lock, "RwLock.WriteEnter: null object");
+        if (!rw)
+            return;
+
+        RwLockState &state = *rw->state;
+        const std::thread::id tid = std::this_thread::get_id();
+        std::unique_lock<std::mutex> lk(state.mu);
+
+        if (state.writer_active && state.writer_owner == tid)
+        {
+            ++state.write_recursion;
+            return;
+        }
+
+        RwLockWriterWaiter waiter;
+        state.waiting_writers.push_back(&waiter);
+
+        while (true)
+        {
+            const bool is_front = state.waiting_writers.front() == &waiter;
+            if (is_front && !state.writer_active && state.active_readers == 0)
+            {
+                state.waiting_writers.pop_front();
+                state.writer_active = true;
+                state.writer_owner = tid;
+                state.write_recursion = 1;
+                return;
+            }
+            waiter.cv.wait(lk);
+        }
+    }
+
+    void rt_rwlock_write_exit(void *lock)
+    {
+        RtRwLock *rw = require_rwlock(lock, "RwLock.WriteExit: null object");
+        if (!rw)
+            return;
+
+        RwLockState &state = *rw->state;
+        const std::thread::id tid = std::this_thread::get_id();
+        std::unique_lock<std::mutex> lk(state.mu);
+
+        if (!state.writer_active)
+        {
+            lk.unlock(); // Release lock before trap to avoid deadlock if longjmp is used
+            rt_trap("RwLock.WriteExit: exit without matching enter");
+            return;
+        }
+        if (state.writer_owner != tid)
+        {
+            lk.unlock(); // Release lock before trap to avoid deadlock if longjmp is used
+            rt_trap("RwLock.WriteExit: not owner");
+            return;
+        }
+
+        --state.write_recursion;
+        if (state.write_recursion > 0)
+            return;
+
+        state.writer_active = false;
+        state.writer_owner = std::thread::id();
+
+        if (!state.waiting_writers.empty())
+        {
+            state.waiting_writers.front()->cv.notify_one();
+        }
+        else
+        {
+            state.readers_cv.notify_all();
+        }
+    }
+
+    int8_t rt_rwlock_try_read_enter(void *lock)
+    {
+        RtRwLock *rw = require_rwlock(lock, "RwLock.TryReadEnter: null object");
+        if (!rw)
+            return 0;
+
+        RwLockState &state = *rw->state;
+        std::unique_lock<std::mutex> lk(state.mu);
+        if (state.writer_active || !state.waiting_writers.empty())
+            return 0;
+        ++state.active_readers;
         return 1;
     }
 
-    if (state.writer_active || state.active_readers > 0 || !state.waiting_writers.empty())
-        return 0;
+    int8_t rt_rwlock_try_write_enter(void *lock)
+    {
+        RtRwLock *rw = require_rwlock(lock, "RwLock.TryWriteEnter: null object");
+        if (!rw)
+            return 0;
 
-    state.writer_active = true;
-    state.writer_owner = tid;
-    state.write_recursion = 1;
-    return 1;
-}
+        RwLockState &state = *rw->state;
+        const std::thread::id tid = std::this_thread::get_id();
+        std::unique_lock<std::mutex> lk(state.mu);
 
-int64_t rt_rwlock_get_readers(void *lock)
-{
-    RtRwLock *rw = require_rwlock(lock, "RwLock.get_Readers: null object");
-    if (!rw)
-        return 0;
+        if (state.writer_active && state.writer_owner == tid)
+        {
+            ++state.write_recursion;
+            return 1;
+        }
 
-    RwLockState &state = *rw->state;
-    std::unique_lock<std::mutex> lk(state.mu);
-    return state.active_readers;
-}
+        if (state.writer_active || state.active_readers > 0 || !state.waiting_writers.empty())
+            return 0;
 
-int8_t rt_rwlock_get_is_write_locked(void *lock)
-{
-    RtRwLock *rw = require_rwlock(lock, "RwLock.get_IsWriteLocked: null object");
-    if (!rw)
-        return 0;
+        state.writer_active = true;
+        state.writer_owner = tid;
+        state.write_recursion = 1;
+        return 1;
+    }
 
-    RwLockState &state = *rw->state;
-    std::unique_lock<std::mutex> lk(state.mu);
-    return state.writer_active ? 1 : 0;
-}
+    int64_t rt_rwlock_get_readers(void *lock)
+    {
+        RtRwLock *rw = require_rwlock(lock, "RwLock.get_Readers: null object");
+        if (!rw)
+            return 0;
+
+        RwLockState &state = *rw->state;
+        std::unique_lock<std::mutex> lk(state.mu);
+        return state.active_readers;
+    }
+
+    int8_t rt_rwlock_get_is_write_locked(void *lock)
+    {
+        RtRwLock *rw = require_rwlock(lock, "RwLock.get_IsWriteLocked: null object");
+        if (!rw)
+            return 0;
+
+        RwLockState &state = *rw->state;
+        std::unique_lock<std::mutex> lk(state.mu);
+        return state.writer_active ? 1 : 0;
+    }
 
 } // extern "C"

@@ -115,9 +115,11 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
 
     // Create function
     currentFunc_ = &builder_->startFunction(mangledName, ilReturnType, params);
+    currentReturnType_ = returnType;
     blockMgr_.bind(builder_.get(), currentFunc_);
     locals_.clear();
     slots_.clear();
+    localTypes_.clear();
 
     // Create entry block with the function's params as block params
     // (required for proper VM argument passing)
@@ -137,6 +139,7 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
         // Create slot and store the parameter value
         createSlot(decl.params[i].name, ilParamType);
         storeToSlot(decl.params[i].name, Value::temp(blockParams[i].id), ilParamType);
+        localTypes_[decl.params[i].name] = paramType;
     }
 
     // Lower function body
@@ -159,6 +162,7 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
     }
 
     currentFunc_ = nullptr;
+    currentReturnType_ = nullptr;
 }
 
 void Lowerer::lowerValueDecl(ValueDecl &decl)

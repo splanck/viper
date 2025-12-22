@@ -169,6 +169,8 @@ var name: String? = null;   // Optional string
 var count: Integer? = 42;   // Optional with value
 ```
 
+Optional values support safe access with `?.` and defaults with `??`.
+
 ### Generic Types
 
 Parameterized types with type arguments:
@@ -178,6 +180,8 @@ List[Integer]           // List of integers
 List[Player]            // List of entity instances
 Map[String, Integer]    // Map from strings to integers
 ```
+
+Map keys are restricted to `String`.
 
 ### Entity Types
 
@@ -282,6 +286,16 @@ variableName        // Variable reference
 condition ? thenValue : elseValue
 ```
 
+### Match Expression
+
+```viper
+var result = match value {
+    0 => "zero";
+    n if n > 0 => "positive";
+    _ => "negative";
+};
+```
+
 ### Field Access
 
 ```viper
@@ -292,14 +306,16 @@ object.method()         // Call method
 ### Optional Chaining
 
 ```viper
-object?.field           // Returns null if object is null
+object?.field           // Null if object is null, otherwise optional field value
+object?.field?.subfield // Chained optional access
 value ?? defaultValue   // Returns defaultValue if value is null
 ```
 
 ### Indexing
 
 ```viper
-list.get(index)         // Access list element
+list[index]             // Access list element
+map["key"]              // Access map value (keys are String)
 ```
 
 ### Function/Method Calls
@@ -421,6 +437,21 @@ for variable in iterable {
     // body
 }
 
+// List iteration
+for item in list {
+    // item is element type
+}
+
+// Map iteration (keys only)
+for key in map {
+    // key is String
+}
+
+// Map iteration with tuple destructuring
+for (key, value) in map {
+    // key is String, value is map value type
+}
+
 // Range iteration
 for i in 0..10 {        // 0 to 9
     // body
@@ -468,6 +499,15 @@ match value {
     _ => { /* default */ }
 }
 ```
+
+Supported patterns:
+
+- `_` wildcard
+- Literals (`0`, `"text"`, `true`, `false`, `null`)
+- Binding identifiers (`x`)
+- Tuple patterns with two elements (`(x, y)`)
+- Constructor patterns (`Point(x, y)`, `Some(value)`, `None`)
+- Guards (`pattern if condition => ...`)
 
 ---
 
@@ -712,6 +752,20 @@ list.get(index);                    // Get element
 list.set(index, value);             // Set element
 list.size();                        // Get count
 list.remove(index);                 // Remove element
+
+// Map operations (keys are String)
+map.set("key", value);              // Set or replace value
+map.put("key", value);              // Alias for set
+map.get("key");                     // Get value (null if missing)
+map.getOr("key", fallback);         // Get or default
+map.setIfMissing("key", value);     // Set only if missing
+map.has("key");                     // Key exists?
+map.containsKey("key");             // Alias for has
+map.remove("key");                  // Remove entry
+map.clear();                        // Remove all entries
+map.keys();                         // Sequence of keys
+map.values();                       // Sequence of values
+map.size();                         // Entry count
 ```
 
 For complete runtime documentation, see **[Runtime Library Reference](viperlib/README.md)**.

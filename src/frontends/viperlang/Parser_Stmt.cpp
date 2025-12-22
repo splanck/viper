@@ -37,7 +37,7 @@ StmtPtr Parser::parseStatement()
 
     // Java-style variable declaration: Type name = expr;
     // Try parsing it speculatively (no heuristics); if it fails, fall back to expression parsing.
-    if (check(TokenKind::Identifier))
+    if (check(TokenKind::Identifier) || check(TokenKind::LParen))
     {
         Speculation speculative(*this);
         if (StmtPtr decl = parseJavaStyleVarDecl())
@@ -141,7 +141,7 @@ StmtPtr Parser::parseVarDecl()
     SourceLoc loc = kwTok.loc;
     bool isFinal = kwTok.kind == TokenKind::KwFinal;
 
-    if (!check(TokenKind::Identifier))
+    if (!checkIdentifierLike())
     {
         error("expected variable name");
         return nullptr;
@@ -184,7 +184,7 @@ StmtPtr Parser::parseJavaStyleVarDecl()
         return nullptr;
 
     // Now we expect a variable name
-    if (!check(TokenKind::Identifier))
+    if (!checkIdentifierLike())
     {
         error("expected variable name after type");
         return nullptr;
@@ -256,42 +256,93 @@ StmtPtr Parser::parseForStmt()
     Token forTok = advance(); // consume 'for'
     SourceLoc loc = forTok.loc;
 
-    if (!expect(TokenKind::LParen, "("))
-        return nullptr;
+    bool hasParen = match(TokenKind::LParen);
 
-    // Check for for-in loop: for (x in collection)
-    if (check(TokenKind::Identifier))
+    // Optional extra parentheses for tuple binding: for ((a, b) in ...)
+    bool hasTupleParen = false;
+    if (hasParen && check(TokenKind::LParen))
     {
-        Token varTok = advance();
-        std::string varName = varTok.text;
+        hasTupleParen = true;
+        advance();
+    }
 
-        if (match(TokenKind::KwIn))
-        {
-            // For-in loop
-            ExprPtr iterable = parseExpression();
-            if (!iterable)
-                return nullptr;
-
-            if (!expect(TokenKind::RParen, ")"))
-                return nullptr;
-
-            StmtPtr body = parseStatement();
-            if (!body)
-                return nullptr;
-
-            return std::make_unique<ForInStmt>(
-                loc, std::move(varName), std::move(iterable), std::move(body));
-        }
-
-        // Not for-in, so we need to parse as regular for
-        // Put back the identifier as part of the init
-        // Actually, we consumed it, so let's just parse as expression starting with ident
-        error("C-style for loops not yet implemented, use for-in");
+    if (!checkIdentifierLike())
+    {
+        error("expected variable name in for loop");
         return nullptr;
     }
 
-    error("expected variable name in for loop");
-    return nullptr;
+    Token varTok = advance();
+    std::string varName = varTok.text;
+
+    TypePtr varType;
+    if (match(TokenKind::Colon))
+    {
+        varType = parseType();
+        if (!varType)
+            return nullptr;
+    }
+
+    bool isTuple = false;
+    std::string secondVar;
+    TypePtr secondType;
+
+    if (match(TokenKind::Comma))
+    {
+        isTuple = true;
+        if (!checkIdentifierLike())
+        {
+            error("expected variable name in tuple binding");
+            return nullptr;
+        }
+        Token secondTok = advance();
+        secondVar = secondTok.text;
+
+        if (match(TokenKind::Colon))
+        {
+            secondType = parseType();
+            if (!secondType)
+                return nullptr;
+        }
+    }
+
+    if (hasTupleParen)
+    {
+        if (!expect(TokenKind::RParen, ")"))
+            return nullptr;
+    }
+
+    if (!expect(TokenKind::KwIn, "in"))
+        return nullptr;
+
+    ExprPtr iterable = parseExpression();
+    if (!iterable)
+        return nullptr;
+
+    if (hasParen)
+    {
+        if (!expect(TokenKind::RParen, ")"))
+            return nullptr;
+    }
+
+    StmtPtr body = parseStatement();
+    if (!body)
+        return nullptr;
+
+    std::unique_ptr<ForInStmt> stmt;
+    if (isTuple)
+    {
+        stmt = std::make_unique<ForInStmt>(
+            loc, std::move(varName), std::move(secondVar), std::move(iterable), std::move(body));
+        stmt->secondVariableType = std::move(secondType);
+    }
+    else
+    {
+        stmt = std::make_unique<ForInStmt>(
+            loc, std::move(varName), std::move(iterable), std::move(body));
+    }
+    stmt->variableType = std::move(varType);
+    return stmt;
 }
 
 StmtPtr Parser::parseReturnStmt()
@@ -358,50 +409,13 @@ StmtPtr Parser::parseMatchStmt()
     {
         MatchArm arm;
 
-        // Parse pattern
-        if (check(TokenKind::Identifier))
+        arm.pattern = parseMatchPattern();
+        if (match(TokenKind::KwIf))
         {
-            // Could be a binding or constructor
-            Token nameTok = advance();
-            std::string name = nameTok.text;
-            if (name == "_")
-            {
-                // Wildcard
-                arm.pattern.kind = MatchArm::Pattern::Kind::Wildcard;
-            }
-            else
-            {
-                // Binding pattern (for now, treat identifiers as bindings)
-                arm.pattern.kind = MatchArm::Pattern::Kind::Binding;
-                arm.pattern.binding = name;
-            }
+            arm.pattern.guard = parseExpression();
+            if (!arm.pattern.guard)
+                return nullptr;
         }
-        else if (check(TokenKind::IntegerLiteral))
-        {
-            // Literal pattern
-            arm.pattern.kind = MatchArm::Pattern::Kind::Literal;
-            arm.pattern.literal = parsePrimary();
-        }
-        else if (check(TokenKind::StringLiteral))
-        {
-            // String literal pattern
-            arm.pattern.kind = MatchArm::Pattern::Kind::Literal;
-            arm.pattern.literal = parsePrimary();
-        }
-        else if (check(TokenKind::KwTrue) || check(TokenKind::KwFalse))
-        {
-            // Boolean literal pattern
-            arm.pattern.kind = MatchArm::Pattern::Kind::Literal;
-            arm.pattern.literal = parsePrimary();
-        }
-        else
-        {
-            error("expected pattern in match arm");
-            return nullptr;
-        }
-
-        // Check for guard: 'where condition'
-        // For now, skip guard parsing
 
         // Expect =>
         if (!expect(TokenKind::FatArrow, "=>"))

@@ -57,9 +57,9 @@ typedef struct heap_entry
 /// ```
 typedef struct rt_pqueue_impl
 {
-    int64_t len;      ///< Number of elements currently in the heap
-    int64_t cap;      ///< Current capacity (allocated slots)
-    int8_t is_max;    ///< 1 for max-heap, 0 for min-heap
+    int64_t len;       ///< Number of elements currently in the heap
+    int64_t cap;       ///< Current capacity (allocated slots)
+    int8_t is_max;     ///< 1 for max-heap, 0 for min-heap
     heap_entry *items; ///< Array of (priority, value) entries
 } rt_pqueue_impl;
 
@@ -315,7 +315,7 @@ void *rt_pqueue_to_seq(void *obj)
     // Pop all elements in priority order and add to Seq
     // We need to work on a copy to avoid destroying the original
     rt_pqueue_impl *copy = (rt_pqueue_impl *)rt_pqueue_new_max(h->is_max);
-    
+
     // Copy all entries
     for (int64_t i = 0; i < h->len; i++)
     {

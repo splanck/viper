@@ -85,17 +85,39 @@ void Lowerer::lowerVarStmt(VarStmt *stmt)
 {
     Value initValue;
     Type ilType;
+    TypeRef varType =
+        stmt->type ? sema_.resolveType(stmt->type.get())
+                   : (stmt->initializer ? sema_.typeOf(stmt->initializer.get()) : types::unknown());
 
     if (stmt->initializer)
     {
         auto result = lowerExpr(stmt->initializer.get());
         initValue = result.value;
         ilType = result.type;
+
+        if (varType && varType->kind == TypeKindSem::Optional)
+        {
+            TypeRef initType = sema_.typeOf(stmt->initializer.get());
+            TypeRef innerType = varType->innerType();
+            if (initType && initType->kind == TypeKindSem::Optional)
+            {
+                ilType = Type(Type::Kind::Ptr);
+            }
+            else if (initType && initType->kind == TypeKindSem::Unit)
+            {
+                initValue = Value::null();
+                ilType = Type(Type::Kind::Ptr);
+            }
+            else if (innerType)
+            {
+                initValue = emitOptionalWrap(initValue, innerType);
+                ilType = Type(Type::Kind::Ptr);
+            }
+        }
     }
     else
     {
         // Default initialization
-        TypeRef varType = stmt->type ? sema_.resolveType(stmt->type.get()) : types::unknown();
         ilType = mapType(varType);
 
         switch (ilType.kind)
@@ -131,6 +153,11 @@ void Lowerer::lowerVarStmt(VarStmt *stmt)
     {
         // Final/immutable variables can use direct SSA values
         defineLocal(stmt->name, initValue);
+    }
+
+    if (varType)
+    {
+        localTypes_[stmt->name] = varType;
     }
 }
 
@@ -261,75 +288,298 @@ void Lowerer::lowerForStmt(ForStmt *stmt)
 
 void Lowerer::lowerForInStmt(ForInStmt *stmt)
 {
+    auto localsBackup = locals_;
+    auto slotsBackup = slots_;
+    auto localTypesBackup = localTypes_;
+
     // For now, only support range iteration
     auto *rangeExpr = dynamic_cast<RangeExpr *>(stmt->iterable.get());
-    if (!rangeExpr)
+    if (rangeExpr)
     {
-        // TODO: Support collection iteration
+        size_t condIdx = createBlock("forin_cond");
+        size_t bodyIdx = createBlock("forin_body");
+        size_t updateIdx = createBlock("forin_update");
+        size_t endIdx = createBlock("forin_end");
+
+        loopStack_.push(endIdx, updateIdx);
+
+        // Lower range bounds
+        auto startResult = lowerExpr(rangeExpr->start.get());
+        auto endResult = lowerExpr(rangeExpr->end.get());
+
+        // Create slot-based loop variable (alloca + initial store)
+        // This enables proper SSA across basic block boundaries
+        createSlot(stmt->variable, Type(Type::Kind::I64));
+        storeToSlot(stmt->variable, startResult.value, Type(Type::Kind::I64));
+        localTypes_[stmt->variable] = types::integer();
+
+        // Also store the end value in a slot so it's available in other blocks
+        std::string endVar = stmt->variable + "_end";
+        createSlot(endVar, Type(Type::Kind::I64));
+        storeToSlot(endVar, endResult.value, Type(Type::Kind::I64));
+
+        // Branch to condition
+        emitBr(condIdx);
+
+        // Condition: i < end (or <= for inclusive)
+        setBlock(condIdx);
+        Value loopVar = loadFromSlot(stmt->variable, Type(Type::Kind::I64));
+        Value endVal = loadFromSlot(endVar, Type(Type::Kind::I64));
+        Value cond;
+        if (rangeExpr->inclusive)
+        {
+            cond = emitBinary(Opcode::SCmpLE, Type(Type::Kind::I1), loopVar, endVal);
+        }
+        else
+        {
+            cond = emitBinary(Opcode::SCmpLT, Type(Type::Kind::I1), loopVar, endVal);
+        }
+        emitCBr(cond, bodyIdx, endIdx);
+
+        // Body
+        setBlock(bodyIdx);
+        lowerStmt(stmt->body.get());
+        if (!isTerminated())
+        {
+            emitBr(updateIdx);
+        }
+
+        // Update: i = i + 1
+        setBlock(updateIdx);
+        Value currentVal = loadFromSlot(stmt->variable, Type(Type::Kind::I64));
+        Opcode addOp = options_.overflowChecks ? Opcode::IAddOvf : Opcode::Add;
+        Value nextVal = emitBinary(addOp, Type(Type::Kind::I64), currentVal, Value::constInt(1));
+        storeToSlot(stmt->variable, nextVal, Type(Type::Kind::I64));
+        emitBr(condIdx);
+
+        loopStack_.pop();
+        setBlock(endIdx);
+
+        // Clean up slots
+        removeSlot(stmt->variable);
+        removeSlot(endVar);
+        locals_ = std::move(localsBackup);
+        slots_ = std::move(slotsBackup);
+        localTypes_ = std::move(localTypesBackup);
         return;
     }
 
-    size_t condIdx = createBlock("forin_cond");
-    size_t bodyIdx = createBlock("forin_body");
-    size_t updateIdx = createBlock("forin_update");
-    size_t endIdx = createBlock("forin_end");
-
-    loopStack_.push(endIdx, updateIdx);
-
-    // Lower range bounds
-    auto startResult = lowerExpr(rangeExpr->start.get());
-    auto endResult = lowerExpr(rangeExpr->end.get());
-
-    // Create slot-based loop variable (alloca + initial store)
-    // This enables proper SSA across basic block boundaries
-    createSlot(stmt->variable, Type(Type::Kind::I64));
-    storeToSlot(stmt->variable, startResult.value, Type(Type::Kind::I64));
-
-    // Also store the end value in a slot so it's available in other blocks
-    std::string endVar = stmt->variable + "_end";
-    createSlot(endVar, Type(Type::Kind::I64));
-    storeToSlot(endVar, endResult.value, Type(Type::Kind::I64));
-
-    // Branch to condition
-    emitBr(condIdx);
-
-    // Condition: i < end (or <= for inclusive)
-    setBlock(condIdx);
-    Value loopVar = loadFromSlot(stmt->variable, Type(Type::Kind::I64));
-    Value endVal = loadFromSlot(endVar, Type(Type::Kind::I64));
-    Value cond;
-    if (rangeExpr->inclusive)
+    TypeRef iterableType = sema_.typeOf(stmt->iterable.get());
+    if (!iterableType)
     {
-        cond = emitBinary(Opcode::SCmpLE, Type(Type::Kind::I1), loopVar, endVal);
-    }
-    else
-    {
-        cond = emitBinary(Opcode::SCmpLT, Type(Type::Kind::I1), loopVar, endVal);
-    }
-    emitCBr(cond, bodyIdx, endIdx);
-
-    // Body
-    setBlock(bodyIdx);
-    lowerStmt(stmt->body.get());
-    if (!isTerminated())
-    {
-        emitBr(updateIdx);
+        locals_ = std::move(localsBackup);
+        slots_ = std::move(slotsBackup);
+        localTypes_ = std::move(localTypesBackup);
+        return;
     }
 
-    // Update: i = i + 1
-    setBlock(updateIdx);
-    Value currentVal = loadFromSlot(stmt->variable, Type(Type::Kind::I64));
-    Opcode addOp = options_.overflowChecks ? Opcode::IAddOvf : Opcode::Add;
-    Value nextVal = emitBinary(addOp, Type(Type::Kind::I64), currentVal, Value::constInt(1));
-    storeToSlot(stmt->variable, nextVal, Type(Type::Kind::I64));
-    emitBr(condIdx);
+    // Tuple destructuring over a tuple value (single iteration)
+    if (stmt->isTuple && iterableType->kind == TypeKindSem::Tuple)
+    {
+        const auto &elements = iterableType->tupleElementTypes();
+        if (elements.size() == 2)
+        {
+            TypeRef firstType = elements[0];
+            TypeRef secondType = elements[1];
+            if (stmt->variableType)
+                firstType = sema_.resolveType(stmt->variableType.get());
+            if (stmt->secondVariableType)
+                secondType = sema_.resolveType(stmt->secondVariableType.get());
 
-    loopStack_.pop();
-    setBlock(endIdx);
+            Type firstIl = mapType(firstType);
+            Type secondIl = mapType(secondType);
 
-    // Clean up slots
-    removeSlot(stmt->variable);
-    removeSlot(endVar);
+            createSlot(stmt->variable, firstIl);
+            createSlot(stmt->secondVariable, secondIl);
+            localTypes_[stmt->variable] = firstType;
+            localTypes_[stmt->secondVariable] = secondType;
+
+            size_t bodyIdx = createBlock("forin_tuple_body");
+            size_t endIdx = createBlock("forin_tuple_end");
+
+            loopStack_.push(endIdx, endIdx);
+            emitBr(bodyIdx);
+            setBlock(bodyIdx);
+
+            PatternValue tupleValue{lowerExpr(stmt->iterable.get()).value, iterableType};
+            PatternValue firstVal = emitTupleElement(tupleValue, 0, firstType);
+            PatternValue secondVal = emitTupleElement(tupleValue, 1, secondType);
+
+            storeToSlot(stmt->variable, firstVal.value, firstIl);
+            storeToSlot(stmt->secondVariable, secondVal.value, secondIl);
+
+            lowerStmt(stmt->body.get());
+            if (!isTerminated())
+            {
+                emitBr(endIdx);
+            }
+
+            loopStack_.pop();
+            setBlock(endIdx);
+        }
+
+        locals_ = std::move(localsBackup);
+        slots_ = std::move(slotsBackup);
+        localTypes_ = std::move(localTypesBackup);
+        return;
+    }
+
+    // Collection iteration (List/Map)
+    if (iterableType->kind == TypeKindSem::List)
+    {
+        TypeRef elemType = iterableType->elementType();
+        if (stmt->variableType)
+            elemType = sema_.resolveType(stmt->variableType.get());
+
+        Type elemIlType = mapType(elemType);
+        createSlot(stmt->variable, elemIlType);
+        localTypes_[stmt->variable] = elemType;
+
+        auto listValue = lowerExpr(stmt->iterable.get());
+
+        std::string indexVar = "__forin_idx_" + std::to_string(nextTempId());
+        std::string lenVar = "__forin_len_" + std::to_string(nextTempId());
+
+        createSlot(indexVar, Type(Type::Kind::I64));
+        createSlot(lenVar, Type(Type::Kind::I64));
+        storeToSlot(indexVar, Value::constInt(0), Type(Type::Kind::I64));
+        Value lenVal = emitCallRet(Type(Type::Kind::I64), kListCount, {listValue.value});
+        storeToSlot(lenVar, lenVal, Type(Type::Kind::I64));
+
+        size_t condIdx = createBlock("forin_list_cond");
+        size_t bodyIdx = createBlock("forin_list_body");
+        size_t updateIdx = createBlock("forin_list_update");
+        size_t endIdx = createBlock("forin_list_end");
+
+        loopStack_.push(endIdx, updateIdx);
+        emitBr(condIdx);
+
+        setBlock(condIdx);
+        Value idxVal = loadFromSlot(indexVar, Type(Type::Kind::I64));
+        Value lenLoaded = loadFromSlot(lenVar, Type(Type::Kind::I64));
+        Value cond = emitBinary(Opcode::SCmpLT, Type(Type::Kind::I1), idxVal, lenLoaded);
+        emitCBr(cond, bodyIdx, endIdx);
+
+        setBlock(bodyIdx);
+        Value boxed = emitCallRet(Type(Type::Kind::Ptr), kListGet, {listValue.value, idxVal});
+        auto elemValue = emitUnbox(boxed, elemIlType);
+        storeToSlot(stmt->variable, elemValue.value, elemIlType);
+        lowerStmt(stmt->body.get());
+        if (!isTerminated())
+        {
+            emitBr(updateIdx);
+        }
+
+        setBlock(updateIdx);
+        Value idxCurrent = loadFromSlot(indexVar, Type(Type::Kind::I64));
+        Opcode addOp = options_.overflowChecks ? Opcode::IAddOvf : Opcode::Add;
+        Value idxNext = emitBinary(addOp, Type(Type::Kind::I64), idxCurrent, Value::constInt(1));
+        storeToSlot(indexVar, idxNext, Type(Type::Kind::I64));
+        emitBr(condIdx);
+
+        loopStack_.pop();
+        setBlock(endIdx);
+
+        removeSlot(stmt->variable);
+        removeSlot(indexVar);
+        removeSlot(lenVar);
+
+        locals_ = std::move(localsBackup);
+        slots_ = std::move(slotsBackup);
+        localTypes_ = std::move(localTypesBackup);
+        return;
+    }
+
+    if (iterableType->kind == TypeKindSem::Map)
+    {
+        TypeRef keyType = iterableType->keyType() ? iterableType->keyType() : types::string();
+        TypeRef valueType =
+            iterableType->valueType() ? iterableType->valueType() : types::unknown();
+        if (stmt->variableType)
+            keyType = sema_.resolveType(stmt->variableType.get());
+        if (stmt->isTuple && stmt->secondVariableType)
+            valueType = sema_.resolveType(stmt->secondVariableType.get());
+
+        Type keyIlType = mapType(keyType);
+        Type valueIlType = mapType(valueType);
+
+        createSlot(stmt->variable, keyIlType);
+        localTypes_[stmt->variable] = keyType;
+
+        if (stmt->isTuple)
+        {
+            createSlot(stmt->secondVariable, valueIlType);
+            localTypes_[stmt->secondVariable] = valueType;
+        }
+
+        auto mapValue = lowerExpr(stmt->iterable.get());
+        Value keysSeq = emitCallRet(Type(Type::Kind::Ptr), kMapKeys, {mapValue.value});
+
+        std::string indexVar = "__forin_idx_" + std::to_string(nextTempId());
+        std::string lenVar = "__forin_len_" + std::to_string(nextTempId());
+
+        createSlot(indexVar, Type(Type::Kind::I64));
+        createSlot(lenVar, Type(Type::Kind::I64));
+        storeToSlot(indexVar, Value::constInt(0), Type(Type::Kind::I64));
+        Value lenVal = emitCallRet(Type(Type::Kind::I64), kSeqLen, {keysSeq});
+        storeToSlot(lenVar, lenVal, Type(Type::Kind::I64));
+
+        size_t condIdx = createBlock("forin_map_cond");
+        size_t bodyIdx = createBlock("forin_map_body");
+        size_t updateIdx = createBlock("forin_map_update");
+        size_t endIdx = createBlock("forin_map_end");
+
+        loopStack_.push(endIdx, updateIdx);
+        emitBr(condIdx);
+
+        setBlock(condIdx);
+        Value idxVal = loadFromSlot(indexVar, Type(Type::Kind::I64));
+        Value lenLoaded = loadFromSlot(lenVar, Type(Type::Kind::I64));
+        Value cond = emitBinary(Opcode::SCmpLT, Type(Type::Kind::I1), idxVal, lenLoaded);
+        emitCBr(cond, bodyIdx, endIdx);
+
+        setBlock(bodyIdx);
+        Value keyVal = emitCallRet(keyIlType, kSeqGet, {keysSeq, idxVal});
+        storeToSlot(stmt->variable, keyVal, keyIlType);
+
+        if (stmt->isTuple)
+        {
+            Value boxed = emitCallRet(Type(Type::Kind::Ptr), kMapGet, {mapValue.value, keyVal});
+            auto unboxed = emitUnbox(boxed, valueIlType);
+            storeToSlot(stmt->secondVariable, unboxed.value, valueIlType);
+        }
+
+        lowerStmt(stmt->body.get());
+        if (!isTerminated())
+        {
+            emitBr(updateIdx);
+        }
+
+        setBlock(updateIdx);
+        Value idxCurrent = loadFromSlot(indexVar, Type(Type::Kind::I64));
+        Opcode addOp = options_.overflowChecks ? Opcode::IAddOvf : Opcode::Add;
+        Value idxNext = emitBinary(addOp, Type(Type::Kind::I64), idxCurrent, Value::constInt(1));
+        storeToSlot(indexVar, idxNext, Type(Type::Kind::I64));
+        emitBr(condIdx);
+
+        loopStack_.pop();
+        setBlock(endIdx);
+
+        removeSlot(stmt->variable);
+        if (stmt->isTuple)
+            removeSlot(stmt->secondVariable);
+        removeSlot(indexVar);
+        removeSlot(lenVar);
+
+        locals_ = std::move(localsBackup);
+        slots_ = std::move(slotsBackup);
+        localTypes_ = std::move(localTypesBackup);
+        return;
+    }
+
+    locals_ = std::move(localsBackup);
+    slots_ = std::move(slotsBackup);
+    localTypes_ = std::move(localTypesBackup);
 }
 
 void Lowerer::lowerReturnStmt(ReturnStmt *stmt)
@@ -337,7 +587,20 @@ void Lowerer::lowerReturnStmt(ReturnStmt *stmt)
     if (stmt->value)
     {
         auto result = lowerExpr(stmt->value.get());
-        emitRet(result.value);
+        Value returnValue = result.value;
+
+        if (currentReturnType_ && currentReturnType_->kind == TypeKindSem::Optional)
+        {
+            TypeRef valueType = sema_.typeOf(stmt->value.get());
+            if (!valueType || valueType->kind != TypeKindSem::Optional)
+            {
+                TypeRef innerType = currentReturnType_->innerType();
+                if (innerType)
+                    returnValue = emitOptionalWrap(result.value, innerType);
+            }
+        }
+
+        emitRet(returnValue);
     }
     else
     {
@@ -390,6 +653,7 @@ void Lowerer::lowerMatchStmt(MatchStmt *stmt)
     std::string scrutineeSlot = "__match_scrutinee";
     createSlot(scrutineeSlot, scrutinee.type);
     storeToSlot(scrutineeSlot, scrutinee.value, scrutinee.type);
+    TypeRef scrutineeType = sema_.typeOf(stmt->scrutinee.get());
 
     // Create end block for the match
     size_t endIdx = createBlock("match_end");
@@ -414,80 +678,35 @@ void Lowerer::lowerMatchStmt(MatchStmt *stmt)
     for (size_t i = 0; i < stmt->arms.size(); ++i)
     {
         const auto &arm = stmt->arms[i];
+        auto localsBackup = locals_;
+        auto slotsBackup = slots_;
+        auto localTypesBackup = localTypes_;
+
+        size_t matchBlock = armBlocks[i];
+        size_t guardBlock = 0;
+        if (arm.pattern.guard)
+        {
+            guardBlock = createBlock("match_guard_" + std::to_string(i));
+            matchBlock = guardBlock;
+        }
 
         // In the current block, test the pattern
         Value scrutineeVal = loadFromSlot(scrutineeSlot, scrutinee.type);
+        PatternValue scrutineeValue{scrutineeVal, scrutineeType};
+        emitPatternTest(arm.pattern, scrutineeValue, matchBlock, nextTestBlocks[i]);
 
-        switch (arm.pattern.kind)
+        if (guardBlock)
         {
-            case MatchArm::Pattern::Kind::Wildcard:
-                // Wildcard always matches - just jump to arm body
-                emitBr(armBlocks[i]);
-                break;
-
-            case MatchArm::Pattern::Kind::Literal:
-            {
-                // Compare scrutinee with literal
-                auto litResult = lowerExpr(arm.pattern.literal.get());
-                Value cond;
-                if (scrutinee.type.kind == Type::Kind::Str)
-                {
-                    // String comparison
-                    cond = emitCallRet(
-                        Type(Type::Kind::I1), kStringEquals, {scrutineeVal, litResult.value});
-                }
-                else
-                {
-                    // Integer comparison
-                    cond = emitBinary(
-                        Opcode::ICmpEq, Type(Type::Kind::I1), scrutineeVal, litResult.value);
-                }
-
-                // If guard is present, check it too
-                if (arm.pattern.guard)
-                {
-                    size_t guardBlock = createBlock("match_guard_" + std::to_string(i));
-                    emitCBr(cond, guardBlock, nextTestBlocks[i]);
-                    setBlock(guardBlock);
-
-                    auto guardResult = lowerExpr(arm.pattern.guard.get());
-                    emitCBr(guardResult.value, armBlocks[i], nextTestBlocks[i]);
-                }
-                else
-                {
-                    emitCBr(cond, armBlocks[i], nextTestBlocks[i]);
-                }
-                break;
-            }
-
-            case MatchArm::Pattern::Kind::Binding:
-            {
-                // Binding pattern - bind the scrutinee to a local variable
-                // and execute the arm (always matches if reached)
-                defineLocal(arm.pattern.binding, scrutineeVal);
-
-                // If guard is present, check it
-                if (arm.pattern.guard)
-                {
-                    auto guardResult = lowerExpr(arm.pattern.guard.get());
-                    emitCBr(guardResult.value, armBlocks[i], nextTestBlocks[i]);
-                }
-                else
-                {
-                    emitBr(armBlocks[i]);
-                }
-                break;
-            }
-
-            case MatchArm::Pattern::Kind::Constructor:
-            case MatchArm::Pattern::Kind::Tuple:
-                // TODO: Implement constructor and tuple patterns
-                emitBr(nextTestBlocks[i]);
-                break;
+            setBlock(guardBlock);
+            emitPatternBindings(arm.pattern, scrutineeValue);
+            auto guardResult = lowerExpr(arm.pattern.guard.get());
+            emitCBr(guardResult.value, armBlocks[i], nextTestBlocks[i]);
         }
 
         // Lower the arm body (arm.body is an expression)
         setBlock(armBlocks[i]);
+        if (!guardBlock)
+            emitPatternBindings(arm.pattern, scrutineeValue);
         if (arm.body)
         {
             // Check if it's a block expression
@@ -511,6 +730,10 @@ void Lowerer::lowerMatchStmt(MatchStmt *stmt)
         {
             emitBr(endIdx);
         }
+
+        locals_ = std::move(localsBackup);
+        slots_ = std::move(slotsBackup);
+        localTypes_ = std::move(localTypesBackup);
 
         // Set up next test block for pattern matching
         if (i + 1 < stmt->arms.size())

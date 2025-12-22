@@ -97,6 +97,7 @@ set(RT_EXEC_SOURCES
 set(RT_GRAPHICS_SOURCES
         rt_graphics.c
         rt_input.c
+        rt_input_pad.c
         rt_vec2.c
         rt_vec3.c
         rt_pixels.c
@@ -111,6 +112,7 @@ set(RT_THREADS_SOURCES
 
 set(RT_NETWORK_SOURCES
         rt_network.c
+        rt_network_http.c
 )
 
 set(RT_PUBLIC_HEADERS
@@ -261,11 +263,18 @@ target_link_libraries(viper_rt_network PUBLIC viper_rt_collections viper_rt_base
 if (WIN32)
     target_link_libraries(viper_rt_network PUBLIC ws2_32)
     target_link_libraries(viper_runtime PUBLIC ws2_32)
+    target_link_libraries(viper_rt_graphics PUBLIC Xinput9_1_0)
+    target_link_libraries(viper_runtime PUBLIC Xinput9_1_0)
 endif ()
 
 if (NOT WIN32)
     target_link_libraries(viper_runtime PUBLIC m)
     target_link_libraries(viper_rt_base PUBLIC m)
+endif ()
+
+if (APPLE)
+    target_link_libraries(viper_rt_graphics PUBLIC "-framework IOKit" "-framework CoreFoundation")
+    target_link_libraries(viper_runtime PUBLIC "-framework IOKit" "-framework CoreFoundation")
 endif ()
 
 target_link_libraries(viper_rt_threads PUBLIC Threads::Threads)

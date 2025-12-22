@@ -101,15 +101,15 @@ static inline int64_t bytes_len(void *obj)
 
 typedef struct zip_entry
 {
-    char *name;               // Entry name (allocated)
-    uint32_t crc32;           // CRC-32 of uncompressed data
-    uint32_t compressed_size; // Size after compression
+    char *name;                 // Entry name (allocated)
+    uint32_t crc32;             // CRC-32 of uncompressed data
+    uint32_t compressed_size;   // Size after compression
     uint32_t uncompressed_size; // Original size
-    uint16_t method;          // Compression method (0 or 8)
-    uint16_t mod_time;        // DOS time
-    uint16_t mod_date;        // DOS date
-    uint32_t local_offset;    // Offset of local header in file
-    bool is_directory;        // True if directory entry
+    uint16_t method;            // Compression method (0 or 8)
+    uint16_t mod_time;          // DOS time
+    uint16_t mod_date;          // DOS date
+    uint32_t local_offset;      // Offset of local header in file
+    bool is_directory;          // True if directory entry
 } zip_entry_t;
 
 //=============================================================================
@@ -118,25 +118,25 @@ typedef struct zip_entry
 
 typedef struct rt_archive
 {
-    rt_string path;           // File path or NULL if from bytes
-    uint8_t *data;            // Archive data (mmap or copy)
-    size_t data_len;          // Length of data
-    bool owns_data;           // True if we allocated data
-    bool is_writing;          // True if opened for writing
-    bool is_finished;         // True if Finish() was called
+    rt_string path;   // File path or NULL if from bytes
+    uint8_t *data;    // Archive data (mmap or copy)
+    size_t data_len;  // Length of data
+    bool owns_data;   // True if we allocated data
+    bool is_writing;  // True if opened for writing
+    bool is_finished; // True if Finish() was called
 
     // For reading
-    zip_entry_t *entries;     // Array of entries
-    int entry_count;          // Number of entries
+    zip_entry_t *entries; // Array of entries
+    int entry_count;      // Number of entries
 
     // For writing
-    int fd;                   // File descriptor for writing
-    uint8_t *write_buf;       // Write buffer
-    size_t write_len;         // Current length
-    size_t write_cap;         // Buffer capacity
+    int fd;                     // File descriptor for writing
+    uint8_t *write_buf;         // Write buffer
+    size_t write_len;           // Current length
+    size_t write_cap;           // Buffer capacity
     zip_entry_t *write_entries; // Entries being written
-    int write_entry_count;    // Number of entries written
-    int write_entry_cap;      // Capacity
+    int write_entry_count;      // Number of entries written
+    int write_entry_cap;        // Capacity
 } rt_archive_t;
 
 //=============================================================================
@@ -188,8 +188,7 @@ static inline uint16_t read_u16(const uint8_t *p)
 
 static inline uint32_t read_u32(const uint8_t *p)
 {
-    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) |
-           ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
 }
 
 static inline void write_u16(uint8_t *p, uint16_t v)
@@ -255,9 +254,8 @@ static bool find_eocd(const uint8_t *data, size_t len, size_t *eocd_offset)
 
     // Search backwards for EOCD signature (handles comments)
     size_t max_comment = 65535;
-    size_t search_len = len < (ZIP_END_RECORD_SIZE + max_comment)
-                            ? len
-                            : (ZIP_END_RECORD_SIZE + max_comment);
+    size_t search_len =
+        len < (ZIP_END_RECORD_SIZE + max_comment) ? len : (ZIP_END_RECORD_SIZE + max_comment);
 
     for (size_t i = ZIP_END_RECORD_SIZE; i <= search_len; i++)
     {
@@ -452,8 +450,8 @@ static void add_write_entry(rt_archive_t *ar, zip_entry_t *e)
     if (ar->write_entry_count >= ar->write_entry_cap)
     {
         int new_cap = ar->write_entry_cap == 0 ? 16 : ar->write_entry_cap * 2;
-        zip_entry_t *new_entries = (zip_entry_t *)realloc(
-            ar->write_entries, new_cap * sizeof(zip_entry_t));
+        zip_entry_t *new_entries =
+            (zip_entry_t *)realloc(ar->write_entries, new_cap * sizeof(zip_entry_t));
         if (!new_entries)
             rt_trap("Archive: memory allocation failed");
         ar->write_entries = new_entries;
@@ -462,43 +460,107 @@ static void add_write_entry(rt_archive_t *ar, zip_entry_t *e)
     ar->write_entries[ar->write_entry_count++] = *e;
 }
 
-/// @brief Normalize entry name (forward slashes, no .., no absolute paths)
-static char *normalize_name(const char *name)
+/// @brief Normalize entry name (forward slashes, no dot segments, no absolute paths).
+typedef enum
 {
+    NAME_OK = 0,
+    NAME_INVALID,
+    NAME_OOM
+} name_result_t;
+
+static name_result_t normalize_name(const char *name, char **out)
+{
+    if (!name || !*name)
+        return NAME_INVALID;
+
+    // Reject absolute paths and drive letters.
+    if (name[0] == '/' || name[0] == '\\')
+        return NAME_INVALID;
+    if (strlen(name) >= 2 && name[1] == ':')
+        return NAME_INVALID;
+
     size_t len = strlen(name);
     char *result = (char *)malloc(len + 1);
     if (!result)
-        return NULL;
+        return NAME_OOM;
 
     size_t j = 0;
-    for (size_t i = 0; i < len; i++)
+    const char *p = name;
+    while (*p)
     {
-        char c = name[i];
-        // Convert backslashes to forward slashes
-        if (c == '\\')
-            c = '/';
-        // Skip absolute path indicators
-        if (i == 0 && c == '/')
-            continue;
-        // Skip drive letters (C:)
-        if (i == 1 && name[0] != '/' && c == ':')
-        {
-            j = 0; // Reset, skip drive letter
-            continue;
-        }
-        result[j++] = c;
-    }
-    result[j] = '\0';
+        while (*p == '/' || *p == '\\')
+            ++p;
+        if (!*p)
+            break;
 
-    // TODO: Could add more validation for .. components
-    return result;
+        const char *seg_start = p;
+        while (*p && *p != '/' && *p != '\\')
+            ++p;
+        size_t seg_len = (size_t)(p - seg_start);
+        if (seg_len == 0)
+            continue;
+
+        if (seg_len == 1 && seg_start[0] == '.')
+            continue;
+        if (seg_len == 2 && seg_start[0] == '.' && seg_start[1] == '.')
+        {
+            free(result);
+            return NAME_INVALID;
+        }
+        if (memchr(seg_start, ':', seg_len))
+        {
+            free(result);
+            return NAME_INVALID;
+        }
+
+        if (j > 0)
+            result[j++] = '/';
+        memcpy(result + j, seg_start, seg_len);
+        j += seg_len;
+    }
+
+    if (j == 0)
+    {
+        free(result);
+        return NAME_INVALID;
+    }
+
+    result[j] = '\0';
+    *out = result;
+    return NAME_OK;
+}
+
+static bool name_ends_with_sep(const char *name)
+{
+    if (!name)
+        return false;
+    size_t len = strlen(name);
+    if (len == 0)
+        return false;
+    return name[len - 1] == '/' || name[len - 1] == '\\';
+}
+
+static char *ensure_trailing_slash(char *name)
+{
+    size_t len = strlen(name);
+    if (len > 0 && name[len - 1] == '/')
+        return name;
+    char *new_name = (char *)realloc(name, len + 2);
+    if (!new_name)
+    {
+        free(name);
+        rt_trap("Archive: memory allocation failed");
+    }
+    new_name[len] = '/';
+    new_name[len + 1] = '\0';
+    return new_name;
 }
 
 /// @brief Get current DOS time/date
 static void get_dos_time(uint16_t *time, uint16_t *date)
 {
     // Use a fixed time for reproducibility (could use actual time)
-    *time = 0; // 00:00:00
+    *time = 0;                        // 00:00:00
     *date = (21 << 9) | (1 << 5) | 1; // 2001-01-01
 }
 
@@ -514,8 +576,8 @@ void *rt_archive_open(rt_string path)
 
     // Open and read file
 #ifdef _WIN32
-    HANDLE h = CreateFileA(cpath, GENERIC_READ, FILE_SHARE_READ, NULL,
-                           OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    HANDLE h = CreateFileA(
+        cpath, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (h == INVALID_HANDLE_VALUE)
         rt_trap("Archive: file not found");
 
@@ -534,8 +596,7 @@ void *rt_archive_open(rt_string path)
     }
 
     DWORD read;
-    if (!ReadFile(h, data, (DWORD)size.QuadPart, &read, NULL) ||
-        read != (DWORD)size.QuadPart)
+    if (!ReadFile(h, data, (DWORD)size.QuadPart, &read, NULL) || read != (DWORD)size.QuadPart)
     {
         free(data);
         CloseHandle(h);
@@ -598,8 +659,8 @@ void *rt_archive_create(rt_string path)
         rt_trap("Archive: invalid path");
 
 #ifdef _WIN32
-    HANDLE h = CreateFileA(cpath, GENERIC_WRITE, 0, NULL,
-                           CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    HANDLE h =
+        CreateFileA(cpath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
     if (h == INVALID_HANDLE_VALUE)
         rt_trap("Archive: failed to create file");
     CloseHandle(h);
@@ -716,8 +777,20 @@ int8_t rt_archive_has(void *obj, rt_string name)
     const char *cname = rt_string_cstr(name);
     if (!cname)
         return 0;
+    const bool wants_dir = name_ends_with_sep(cname);
 
-    return find_entry(ar, cname) != NULL ? 1 : 0;
+    char *norm_name = NULL;
+    name_result_t norm_res = normalize_name(cname, &norm_name);
+    if (norm_res == NAME_OOM)
+        rt_trap("Archive: memory allocation failed");
+    if (norm_res == NAME_INVALID)
+        return 0;
+    if (wants_dir)
+        norm_name = ensure_trailing_slash(norm_name);
+
+    int8_t found = find_entry(ar, norm_name) != NULL ? 1 : 0;
+    free(norm_name);
+    return found;
 }
 
 void *rt_archive_read(void *obj, rt_string name)
@@ -732,7 +805,15 @@ void *rt_archive_read(void *obj, rt_string name)
     if (!cname)
         rt_trap("Archive: NULL entry name");
 
-    zip_entry_t *e = find_entry(ar, cname);
+    char *norm_name = NULL;
+    name_result_t norm_res = normalize_name(cname, &norm_name);
+    if (norm_res == NAME_INVALID)
+        rt_trap("Archive: invalid entry name");
+    if (norm_res == NAME_OOM)
+        rt_trap("Archive: memory allocation failed");
+
+    zip_entry_t *e = find_entry(ar, norm_name);
+    free(norm_name);
     if (!e)
         rt_trap("Archive: entry not found");
 
@@ -754,8 +835,8 @@ void rt_archive_extract(void *obj, rt_string name, rt_string dest_path)
         rt_trap("Archive: invalid destination path");
 
 #ifdef _WIN32
-    HANDLE h = CreateFileA(cpath, GENERIC_WRITE, 0, NULL,
-                           CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    HANDLE h =
+        CreateFileA(cpath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
     if (h == INVALID_HANDLE_VALUE)
         rt_trap("Archive: failed to create destination file");
 
@@ -797,8 +878,15 @@ void rt_archive_extract_all(void *obj, rt_string dest_dir)
     {
         zip_entry_t *e = &ar->entries[i];
 
+        char *norm_name = NULL;
+        name_result_t norm_res = normalize_name(e->name, &norm_name);
+        if (norm_res == NAME_INVALID)
+            rt_trap("Archive: invalid entry name");
+        if (norm_res == NAME_OOM)
+            rt_trap("Archive: memory allocation failed");
+
         // Build full path
-        size_t name_len = strlen(e->name);
+        size_t name_len = strlen(norm_name);
         size_t path_len = dir_len + 1 + name_len;
         char *full_path = (char *)malloc(path_len + 1);
         if (!full_path)
@@ -806,7 +894,7 @@ void rt_archive_extract_all(void *obj, rt_string dest_dir)
 
         memcpy(full_path, cdir, dir_len);
         full_path[dir_len] = PATH_SEP;
-        memcpy(full_path + dir_len + 1, e->name, name_len);
+        memcpy(full_path + dir_len + 1, norm_name, name_len);
         full_path[path_len] = '\0';
 
         // Convert forward slashes to platform separator
@@ -835,12 +923,13 @@ void rt_archive_extract_all(void *obj, rt_string dest_dir)
             }
 
             // Extract file
-            rt_string entry_name = rt_const_cstr(e->name);
+            rt_string entry_name = rt_const_cstr(norm_name);
             rt_string dest = rt_const_cstr(full_path);
             rt_archive_extract(obj, entry_name, dest);
         }
 
         free(full_path);
+        free(norm_name);
     }
 }
 
@@ -855,8 +944,19 @@ void *rt_archive_info(void *obj, rt_string name)
     const char *cname = rt_string_cstr(name);
     if (!cname)
         rt_trap("Archive: NULL entry name");
+    const bool wants_dir = name_ends_with_sep(cname);
 
-    zip_entry_t *e = find_entry(ar, cname);
+    char *norm_name = NULL;
+    name_result_t norm_res = normalize_name(cname, &norm_name);
+    if (norm_res == NAME_INVALID)
+        rt_trap("Archive: invalid entry name");
+    if (norm_res == NAME_OOM)
+        rt_trap("Archive: memory allocation failed");
+    if (wants_dir)
+        norm_name = ensure_trailing_slash(norm_name);
+
+    zip_entry_t *e = find_entry(ar, norm_name);
+    free(norm_name);
     if (!e)
         rt_trap("Archive: entry not found");
 
@@ -912,8 +1012,11 @@ void rt_archive_add(void *obj, rt_string name, void *data)
     if (!cname || *cname == '\0')
         rt_trap("Archive: invalid entry name");
 
-    char *norm_name = normalize_name(cname);
-    if (!norm_name)
+    char *norm_name = NULL;
+    name_result_t norm_res = normalize_name(cname, &norm_name);
+    if (norm_res == NAME_INVALID)
+        rt_trap("Archive: invalid entry name");
+    if (norm_res == NAME_OOM)
         rt_trap("Archive: memory allocation failed");
 
     uint8_t *raw_data = bytes_data(data);
@@ -987,8 +1090,8 @@ void rt_archive_add_file(void *obj, rt_string name, rt_string src_path)
 
     // Read file contents
 #ifdef _WIN32
-    HANDLE h = CreateFileA(cpath, GENERIC_READ, FILE_SHARE_READ, NULL,
-                           OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    HANDLE h = CreateFileA(
+        cpath, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (h == INVALID_HANDLE_VALUE)
         rt_trap("Archive: source file not found");
 
@@ -1044,8 +1147,11 @@ void rt_archive_add_dir(void *obj, rt_string name)
     if (!cname || *cname == '\0')
         rt_trap("Archive: invalid entry name");
 
-    char *norm_name = normalize_name(cname);
-    if (!norm_name)
+    char *norm_name = NULL;
+    name_result_t norm_res = normalize_name(cname, &norm_name);
+    if (norm_res == NAME_INVALID)
+        rt_trap("Archive: invalid entry name");
+    if (norm_res == NAME_OOM)
         rt_trap("Archive: memory allocation failed");
 
     // Ensure name ends with /
@@ -1126,10 +1232,10 @@ void rt_archive_finish(void *obj)
         write_u32(central_header + 20, e->compressed_size);
         write_u32(central_header + 24, e->uncompressed_size);
         write_u16(central_header + 28, (uint16_t)name_len);
-        write_u16(central_header + 30, 0); // Extra field length
-        write_u16(central_header + 32, 0); // Comment length
-        write_u16(central_header + 34, 0); // Disk number start
-        write_u16(central_header + 36, 0); // Internal file attributes
+        write_u16(central_header + 30, 0);                          // Extra field length
+        write_u16(central_header + 32, 0);                          // Comment length
+        write_u16(central_header + 34, 0);                          // Disk number start
+        write_u16(central_header + 36, 0);                          // Internal file attributes
         write_u32(central_header + 38, e->is_directory ? 0x10 : 0); // External attributes
         write_u32(central_header + 42, e->local_offset);
 
@@ -1142,8 +1248,8 @@ void rt_archive_finish(void *obj)
     // Write end of central directory
     uint8_t eocd[ZIP_END_RECORD_SIZE];
     write_u32(eocd, ZIP_END_RECORD_SIG);
-    write_u16(eocd + 4, 0);  // Disk number
-    write_u16(eocd + 6, 0);  // Disk with central directory
+    write_u16(eocd + 4, 0); // Disk number
+    write_u16(eocd + 6, 0); // Disk with central directory
     write_u16(eocd + 8, (uint16_t)ar->write_entry_count);
     write_u16(eocd + 10, (uint16_t)ar->write_entry_count);
     write_u32(eocd + 12, cd_size);
@@ -1155,8 +1261,8 @@ void rt_archive_finish(void *obj)
     // Write to file
     const char *cpath = rt_string_cstr(ar->path);
 #ifdef _WIN32
-    HANDLE h = CreateFileA(cpath, GENERIC_WRITE, 0, NULL,
-                           CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    HANDLE h =
+        CreateFileA(cpath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
     if (h == INVALID_HANDLE_VALUE)
         rt_trap("Archive: failed to write archive file");
 
@@ -1200,8 +1306,8 @@ int8_t rt_archive_is_zip(rt_string path)
         return 0;
 
 #ifdef _WIN32
-    HANDLE h = CreateFileA(cpath, GENERIC_READ, FILE_SHARE_READ, NULL,
-                           OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    HANDLE h = CreateFileA(
+        cpath, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (h == INVALID_HANDLE_VALUE)
         return 0;
 

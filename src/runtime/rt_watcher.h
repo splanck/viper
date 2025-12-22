@@ -12,6 +12,8 @@
 
 #pragma once
 
+#include "rt_string.h"
+
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -19,22 +21,22 @@ extern "C"
 {
 #endif
 
-    // Event type constants
-    #define RT_WATCH_EVENT_NONE     0
-    #define RT_WATCH_EVENT_CREATED  1
-    #define RT_WATCH_EVENT_MODIFIED 2
-    #define RT_WATCH_EVENT_DELETED  3
-    #define RT_WATCH_EVENT_RENAMED  4
+// Event type constants
+#define RT_WATCH_EVENT_NONE 0
+#define RT_WATCH_EVENT_CREATED 1
+#define RT_WATCH_EVENT_MODIFIED 2
+#define RT_WATCH_EVENT_DELETED 3
+#define RT_WATCH_EVENT_RENAMED 4
 
     /// @brief Create a new watcher for the given path.
     /// @param path The file or directory path to watch.
     /// @return Opaque pointer to the new Watcher object.
-    void *rt_watcher_new(const void *path);
+    void *rt_watcher_new(rt_string path);
 
     /// @brief Get the watched path.
     /// @param obj Opaque Watcher object pointer.
     /// @return The path being watched.
-    void *rt_watcher_get_path(void *obj);
+    rt_string rt_watcher_get_path(void *obj);
 
     /// @brief Check if the watcher is actively watching.
     /// @param obj Opaque Watcher object pointer.
@@ -63,7 +65,7 @@ extern "C"
     /// @brief Get the path of the file that triggered the last event.
     /// @param obj Opaque Watcher object pointer.
     /// @return Path of the file, or traps if no event polled yet.
-    void *rt_watcher_event_path(void *obj);
+    rt_string rt_watcher_event_path(void *obj);
 
     /// @brief Get the type of the last polled event.
     /// @param obj Opaque Watcher object pointer.

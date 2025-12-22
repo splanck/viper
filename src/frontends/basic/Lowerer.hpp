@@ -233,12 +233,6 @@ class Lowerer
     friend class lower::detail::ExprTypeScanner;
     friend class lower::detail::RuntimeNeedsScanner;
 
-    // Modular Lowering Helpers - coordinated by Lowerer for specific concerns
-    friend class lower::detail::ExprLoweringHelper;
-    friend class lower::detail::ControlLoweringHelper;
-    friend class lower::detail::OopLoweringHelper;
-    friend class lower::detail::RuntimeLoweringHelper;
-
     // Emission Utilities - IL generation helpers that need private emit* methods
     friend class Emit;               // Wraps emitUnary/emitBinary with location tracking
     friend class TypeCoercionEngine; // Type coercion needs emitUnary/emitBasicLogicalI64
@@ -267,6 +261,221 @@ class Lowerer
     // Re-export types from LowererTypes.hpp for API compatibility
     using RVal = ::il::frontends::basic::RVal;
     using PrintChArgString = ::il::frontends::basic::PrintChArgString;
+
+    // =========================================================================
+    // Detail Access API (Internal)
+    // =========================================================================
+    // Exposes a narrow, explicit surface for modular lowering helpers without
+    // granting them direct friendship to the full Lowerer class.
+    class DetailAccess
+    {
+      public:
+        explicit DetailAccess(Lowerer &lowerer) noexcept : lowerer_(&lowerer) {}
+
+        [[nodiscard]] Lowerer &lowerer() const noexcept
+        {
+            return *lowerer_;
+        }
+
+        [[nodiscard]] RVal lowerVarExpr(const VarExpr &expr)
+        {
+            return lowerer_->lowerVarExpr(expr);
+        }
+
+        [[nodiscard]] RVal lowerUnaryExpr(const UnaryExpr &expr)
+        {
+            return lowerer_->lowerUnaryExpr(expr);
+        }
+
+        [[nodiscard]] RVal lowerBinaryExpr(const BinaryExpr &expr)
+        {
+            return lowerer_->lowerBinaryExpr(expr);
+        }
+
+        [[nodiscard]] RVal lowerUBoundExpr(const UBoundExpr &expr)
+        {
+            return lowerer_->lowerUBoundExpr(expr);
+        }
+
+        void lowerIf(const IfStmt &stmt)
+        {
+            lowerer_->lowerIf(stmt);
+        }
+
+        void lowerWhile(const WhileStmt &stmt)
+        {
+            lowerer_->lowerWhile(stmt);
+        }
+
+        void lowerDo(const DoStmt &stmt)
+        {
+            lowerer_->lowerDo(stmt);
+        }
+
+        void lowerFor(const ForStmt &stmt)
+        {
+            lowerer_->lowerFor(stmt);
+        }
+
+        void lowerForEach(const ForEachStmt &stmt)
+        {
+            lowerer_->lowerForEach(stmt);
+        }
+
+        void lowerSelectCase(const SelectCaseStmt &stmt)
+        {
+            lowerer_->lowerSelectCase(stmt);
+        }
+
+        void lowerNext(const NextStmt &stmt)
+        {
+            lowerer_->lowerNext(stmt);
+        }
+
+        void lowerExit(const ExitStmt &stmt)
+        {
+            lowerer_->lowerExit(stmt);
+        }
+
+        void lowerGoto(const GotoStmt &stmt)
+        {
+            lowerer_->lowerGoto(stmt);
+        }
+
+        void lowerGosub(const GosubStmt &stmt)
+        {
+            lowerer_->lowerGosub(stmt);
+        }
+
+        void lowerGosubReturn(const ReturnStmt &stmt)
+        {
+            lowerer_->lowerGosubReturn(stmt);
+        }
+
+        void lowerOnErrorGoto(const OnErrorGoto &stmt)
+        {
+            lowerer_->lowerOnErrorGoto(stmt);
+        }
+
+        void lowerResume(const Resume &stmt)
+        {
+            lowerer_->lowerResume(stmt);
+        }
+
+        void lowerEnd(const EndStmt &stmt)
+        {
+            lowerer_->lowerEnd(stmt);
+        }
+
+        void lowerTryCatch(const TryCatchStmt &stmt)
+        {
+            lowerer_->lowerTryCatch(stmt);
+        }
+
+        [[nodiscard]] RVal lowerNewExpr(const NewExpr &expr)
+        {
+            return lowerer_->lowerNewExpr(expr);
+        }
+
+        [[nodiscard]] RVal lowerNewExpr(const NewExpr &expr, OopLoweringContext &ctx)
+        {
+            return lowerer_->lowerNewExpr(expr, ctx);
+        }
+
+        [[nodiscard]] RVal lowerMeExpr(const MeExpr &expr)
+        {
+            return lowerer_->lowerMeExpr(expr);
+        }
+
+        [[nodiscard]] RVal lowerMeExpr(const MeExpr &expr, OopLoweringContext &ctx)
+        {
+            return lowerer_->lowerMeExpr(expr, ctx);
+        }
+
+        [[nodiscard]] RVal lowerMemberAccessExpr(const MemberAccessExpr &expr)
+        {
+            return lowerer_->lowerMemberAccessExpr(expr);
+        }
+
+        [[nodiscard]] RVal lowerMemberAccessExpr(const MemberAccessExpr &expr,
+                                                 OopLoweringContext &ctx)
+        {
+            return lowerer_->lowerMemberAccessExpr(expr, ctx);
+        }
+
+        [[nodiscard]] RVal lowerMethodCallExpr(const MethodCallExpr &expr)
+        {
+            return lowerer_->lowerMethodCallExpr(expr);
+        }
+
+        [[nodiscard]] RVal lowerMethodCallExpr(const MethodCallExpr &expr, OopLoweringContext &ctx)
+        {
+            return lowerer_->lowerMethodCallExpr(expr, ctx);
+        }
+
+        void lowerDelete(const DeleteStmt &stmt)
+        {
+            lowerer_->lowerDelete(stmt);
+        }
+
+        void lowerDelete(const DeleteStmt &stmt, OopLoweringContext &ctx)
+        {
+            lowerer_->lowerDelete(stmt, ctx);
+        }
+
+        void scanOOP(const Program &prog)
+        {
+            lowerer_->scanOOP(prog);
+        }
+
+        void emitOopDeclsAndBodies(const Program &prog)
+        {
+            lowerer_->emitOopDeclsAndBodies(prog);
+        }
+
+        void lowerLet(const LetStmt &stmt)
+        {
+            lowerer_->lowerLet(stmt);
+        }
+
+        void lowerConst(const ConstStmt &stmt)
+        {
+            lowerer_->lowerConst(stmt);
+        }
+
+        void lowerStatic(const StaticStmt &stmt)
+        {
+            lowerer_->lowerStatic(stmt);
+        }
+
+        void lowerDim(const DimStmt &stmt)
+        {
+            lowerer_->lowerDim(stmt);
+        }
+
+        void lowerReDim(const ReDimStmt &stmt)
+        {
+            lowerer_->lowerReDim(stmt);
+        }
+
+        void lowerRandomize(const RandomizeStmt &stmt)
+        {
+            lowerer_->lowerRandomize(stmt);
+        }
+
+        void lowerSwap(const SwapStmt &stmt)
+        {
+            lowerer_->lowerSwap(stmt);
+        }
+
+      private:
+        Lowerer *lowerer_;
+    };
+
+    [[nodiscard]] DetailAccess detailAccess() noexcept
+    {
+        return DetailAccess(*this);
+    }
 
     // Friend declarations for I/O helper functions (must appear after RVal definition)
     friend PrintChArgString lowerPrintChArgToString(IoStatementLowerer &self,

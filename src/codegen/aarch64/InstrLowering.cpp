@@ -900,6 +900,19 @@ bool lowerURemChk0(const il::core::Instr &ins,
 // FP Arithmetic (fadd, fsub, fmul, fdiv)
 //===----------------------------------------------------------------------===//
 
+static uint16_t ensureFpr(uint16_t vreg, RegClass &cls, LoweringContext &ctx, MBasicBlock &out)
+{
+    if (cls != RegClass::GPR)
+        return vreg;
+
+    const uint16_t converted = ctx.nextVRegId++;
+    out.instrs.push_back(MInstr{
+        MOpcode::SCvtF,
+        {MOperand::vregOp(RegClass::FPR, converted), MOperand::vregOp(RegClass::GPR, vreg)}});
+    cls = RegClass::FPR;
+    return converted;
+}
+
 bool lowerFpArithmetic(const il::core::Instr &ins,
                        const il::core::BasicBlock &bb,
                        LoweringContext &ctx,
@@ -936,24 +949,8 @@ bool lowerFpArithmetic(const il::core::Instr &ins,
 
     // BUG-007 fix: If operands are GPR (integer constants), convert them to FPR.
     // This handles cases like `fmul %t4, 2` where the literal 2 is an integer.
-    if (lhsCls == RegClass::GPR)
-    {
-        const uint16_t converted = ctx.nextVRegId++;
-        out.instrs.push_back(MInstr{
-            MOpcode::SCvtF,
-            {MOperand::vregOp(RegClass::FPR, converted), MOperand::vregOp(RegClass::GPR, lhs)}});
-        lhs = converted;
-        lhsCls = RegClass::FPR;
-    }
-    if (rhsCls == RegClass::GPR)
-    {
-        const uint16_t converted = ctx.nextVRegId++;
-        out.instrs.push_back(MInstr{
-            MOpcode::SCvtF,
-            {MOperand::vregOp(RegClass::FPR, converted), MOperand::vregOp(RegClass::GPR, rhs)}});
-        rhs = converted;
-        rhsCls = RegClass::FPR;
-    }
+    lhs = ensureFpr(lhs, lhsCls, ctx, out);
+    rhs = ensureFpr(rhs, rhsCls, ctx, out);
 
     const uint16_t dst = ctx.nextVRegId++;
     ctx.tempVReg[*ins.result] = dst;
@@ -1024,22 +1021,8 @@ bool lowerFpCompare(const il::core::Instr &ins,
         return false;
 
     // BUG-007 fix: If operands are GPR (integer constants), convert them to FPR.
-    if (lhsCls == RegClass::GPR)
-    {
-        const uint16_t converted = ctx.nextVRegId++;
-        out.instrs.push_back(MInstr{
-            MOpcode::SCvtF,
-            {MOperand::vregOp(RegClass::FPR, converted), MOperand::vregOp(RegClass::GPR, lhs)}});
-        lhs = converted;
-    }
-    if (rhsCls == RegClass::GPR)
-    {
-        const uint16_t converted = ctx.nextVRegId++;
-        out.instrs.push_back(MInstr{
-            MOpcode::SCvtF,
-            {MOperand::vregOp(RegClass::FPR, converted), MOperand::vregOp(RegClass::GPR, rhs)}});
-        rhs = converted;
-    }
+    lhs = ensureFpr(lhs, lhsCls, ctx, out);
+    rhs = ensureFpr(rhs, rhsCls, ctx, out);
 
     // Emit fcmp
     out.instrs.push_back(

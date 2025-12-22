@@ -35,22 +35,22 @@
 
 typedef enum
 {
-    RE_LITERAL,     // Single character literal
-    RE_DOT,         // . matches any char except newline
-    RE_ANCHOR_START,// ^
-    RE_ANCHOR_END,  // $
-    RE_CLASS,       // Character class [...]
-    RE_GROUP,       // Grouping (...)
-    RE_CONCAT,      // Sequence of nodes
-    RE_ALT,         // Alternation a|b
-    RE_QUANT,       // Quantifier applied to child
+    RE_LITERAL,      // Single character literal
+    RE_DOT,          // . matches any char except newline
+    RE_ANCHOR_START, // ^
+    RE_ANCHOR_END,   // $
+    RE_CLASS,        // Character class [...]
+    RE_GROUP,        // Grouping (...)
+    RE_CONCAT,       // Sequence of nodes
+    RE_ALT,          // Alternation a|b
+    RE_QUANT,        // Quantifier applied to child
 } re_node_type;
 
 typedef enum
 {
-    QUANT_STAR,     // *
-    QUANT_PLUS,     // +
-    QUANT_QUEST,    // ?
+    QUANT_STAR,  // *
+    QUANT_PLUS,  // +
+    QUANT_QUEST, // ?
 } re_quant_type;
 
 /// Character class representation using bit array for ASCII
@@ -65,22 +65,25 @@ typedef struct re_node re_node;
 struct re_node
 {
     re_node_type type;
+
     union
     {
-        char literal;           // RE_LITERAL
-        re_class char_class;    // RE_CLASS
+        char literal;        // RE_LITERAL
+        re_class char_class; // RE_CLASS
+
         struct
         {
             re_node **children;
             int count;
             int capacity;
-        } children;              // RE_CONCAT, RE_ALT, RE_GROUP
+        } children; // RE_CONCAT, RE_ALT, RE_GROUP
+
         struct
         {
             re_node *child;
             re_quant_type qtype;
             bool greedy;
-        } quant;                 // RE_QUANT
+        } quant; // RE_QUANT
     } data;
 };
 
@@ -89,8 +92,8 @@ typedef struct
 {
     char *pattern_str;
     re_node *root;
-    bool anchored_start;  // Pattern starts with ^
-    bool anchored_end;    // Pattern ends with $
+    bool anchored_start; // Pattern starts with ^
+    bool anchored_end;   // Pattern ends with $
 } compiled_pattern;
 
 //=============================================================================
@@ -113,20 +116,20 @@ static void node_free(re_node *n)
 
     switch (n->type)
     {
-    case RE_CONCAT:
-    case RE_ALT:
-    case RE_GROUP:
-        for (int i = 0; i < n->data.children.count; i++)
-        {
-            node_free(n->data.children.children[i]);
-        }
-        free(n->data.children.children);
-        break;
-    case RE_QUANT:
-        node_free(n->data.quant.child);
-        break;
-    default:
-        break;
+        case RE_CONCAT:
+        case RE_ALT:
+        case RE_GROUP:
+            for (int i = 0; i < n->data.children.count; i++)
+            {
+                node_free(n->data.children.children[i]);
+            }
+            free(n->data.children.children);
+            break;
+        case RE_QUANT:
+            node_free(n->data.quant.child);
+            break;
+        default:
+            break;
     }
     free(n);
 }
@@ -136,8 +139,8 @@ static void children_add(re_node *n, re_node *child)
     if (n->data.children.count >= n->data.children.capacity)
     {
         int new_cap = n->data.children.capacity == 0 ? 4 : n->data.children.capacity * 2;
-        re_node **new_children = (re_node **)realloc(n->data.children.children,
-                                                      new_cap * sizeof(re_node *));
+        re_node **new_children =
+            (re_node **)realloc(n->data.children.children, new_cap * sizeof(re_node *));
         if (!new_children)
             rt_trap("Pattern: memory allocation failed");
         n->data.children.children = new_children;
@@ -188,43 +191,43 @@ static void class_add_shorthand(re_class *c, char shorthand)
 {
     switch (shorthand)
     {
-    case 'd': // digits
-        class_add_range(c, '0', '9');
-        break;
-    case 'D': // non-digits
-        class_add_range(c, '0', '9');
-        c->negated = !c->negated;
-        break;
-    case 'w': // word chars
-        class_add_range(c, 'a', 'z');
-        class_add_range(c, 'A', 'Z');
-        class_add_range(c, '0', '9');
-        class_set(c, '_');
-        break;
-    case 'W': // non-word chars
-        class_add_range(c, 'a', 'z');
-        class_add_range(c, 'A', 'Z');
-        class_add_range(c, '0', '9');
-        class_set(c, '_');
-        c->negated = !c->negated;
-        break;
-    case 's': // whitespace
-        class_set(c, ' ');
-        class_set(c, '\t');
-        class_set(c, '\n');
-        class_set(c, '\r');
-        class_set(c, '\f');
-        class_set(c, '\v');
-        break;
-    case 'S': // non-whitespace
-        class_set(c, ' ');
-        class_set(c, '\t');
-        class_set(c, '\n');
-        class_set(c, '\r');
-        class_set(c, '\f');
-        class_set(c, '\v');
-        c->negated = !c->negated;
-        break;
+        case 'd': // digits
+            class_add_range(c, '0', '9');
+            break;
+        case 'D': // non-digits
+            class_add_range(c, '0', '9');
+            c->negated = !c->negated;
+            break;
+        case 'w': // word chars
+            class_add_range(c, 'a', 'z');
+            class_add_range(c, 'A', 'Z');
+            class_add_range(c, '0', '9');
+            class_set(c, '_');
+            break;
+        case 'W': // non-word chars
+            class_add_range(c, 'a', 'z');
+            class_add_range(c, 'A', 'Z');
+            class_add_range(c, '0', '9');
+            class_set(c, '_');
+            c->negated = !c->negated;
+            break;
+        case 's': // whitespace
+            class_set(c, ' ');
+            class_set(c, '\t');
+            class_set(c, '\n');
+            class_set(c, '\r');
+            class_set(c, '\f');
+            class_set(c, '\v');
+            break;
+        case 'S': // non-whitespace
+            class_set(c, ' ');
+            class_set(c, '\t');
+            class_set(c, '\n');
+            class_set(c, '\r');
+            class_set(c, '\f');
+            class_set(c, '\v');
+            c->negated = !c->negated;
+            break;
     }
 }
 
@@ -292,26 +295,26 @@ static re_node *parse_class(parser_state *p)
             char esc = advance(p);
             switch (esc)
             {
-            case 'd':
-            case 'D':
-            case 'w':
-            case 'W':
-            case 's':
-            case 'S':
-                class_add_shorthand(&n->data.char_class, esc);
-                break;
-            case 'n':
-                class_set(&n->data.char_class, '\n');
-                break;
-            case 'r':
-                class_set(&n->data.char_class, '\r');
-                break;
-            case 't':
-                class_set(&n->data.char_class, '\t');
-                break;
-            default:
-                class_set(&n->data.char_class, (unsigned char)esc);
-                break;
+                case 'd':
+                case 'D':
+                case 'w':
+                case 'W':
+                case 's':
+                case 'S':
+                    class_add_shorthand(&n->data.char_class, esc);
+                    break;
+                case 'n':
+                    class_set(&n->data.char_class, '\n');
+                    break;
+                case 'r':
+                    class_set(&n->data.char_class, '\r');
+                    break;
+                case 't':
+                    class_set(&n->data.char_class, '\t');
+                    break;
+                default:
+                    class_set(&n->data.char_class, (unsigned char)esc);
+                    break;
             }
         }
         else if (peek(p) == '-' && p->pos + 1 < p->len && p->src[p->pos + 1] != ']')
@@ -325,15 +328,15 @@ static re_node *parse_class(parser_state *p)
                 // Handle escape in range end
                 switch (end)
                 {
-                case 'n':
-                    end = '\n';
-                    break;
-                case 'r':
-                    end = '\r';
-                    break;
-                case 't':
-                    end = '\t';
-                    break;
+                    case 'n':
+                        end = '\n';
+                        break;
+                    case 'r':
+                        end = '\r';
+                        break;
+                    case 't':
+                        end = '\t';
+                        break;
                 }
             }
             class_add_range(&n->data.char_class, (unsigned char)c, (unsigned char)end);
@@ -368,44 +371,44 @@ static re_node *parse_atom(parser_state *p)
         char esc = advance(p);
         switch (esc)
         {
-        case 'd':
-        case 'D':
-        case 'w':
-        case 'W':
-        case 's':
-        case 'S':
-        {
-            re_node *n = node_new(RE_CLASS);
-            memset(n->data.char_class.bits, 0, sizeof(n->data.char_class.bits));
-            n->data.char_class.negated = false;
-            class_add_shorthand(&n->data.char_class, esc);
-            return n;
-        }
-        case 'n':
-        {
-            re_node *n = node_new(RE_LITERAL);
-            n->data.literal = '\n';
-            return n;
-        }
-        case 'r':
-        {
-            re_node *n = node_new(RE_LITERAL);
-            n->data.literal = '\r';
-            return n;
-        }
-        case 't':
-        {
-            re_node *n = node_new(RE_LITERAL);
-            n->data.literal = '\t';
-            return n;
-        }
-        default:
-        {
-            // Escaped special char or literal
-            re_node *n = node_new(RE_LITERAL);
-            n->data.literal = esc;
-            return n;
-        }
+            case 'd':
+            case 'D':
+            case 'w':
+            case 'W':
+            case 's':
+            case 'S':
+            {
+                re_node *n = node_new(RE_CLASS);
+                memset(n->data.char_class.bits, 0, sizeof(n->data.char_class.bits));
+                n->data.char_class.negated = false;
+                class_add_shorthand(&n->data.char_class, esc);
+                return n;
+            }
+            case 'n':
+            {
+                re_node *n = node_new(RE_LITERAL);
+                n->data.literal = '\n';
+                return n;
+            }
+            case 'r':
+            {
+                re_node *n = node_new(RE_LITERAL);
+                n->data.literal = '\r';
+                return n;
+            }
+            case 't':
+            {
+                re_node *n = node_new(RE_LITERAL);
+                n->data.literal = '\t';
+                return n;
+            }
+            default:
+            {
+                // Escaped special char or literal
+                re_node *n = node_new(RE_LITERAL);
+                n->data.literal = esc;
+                return n;
+            }
         }
     }
     else if (c == '.')
@@ -473,15 +476,15 @@ static re_node *parse_quantified(parser_state *p)
 
         switch (c)
         {
-        case '*':
-            q->data.quant.qtype = QUANT_STAR;
-            break;
-        case '+':
-            q->data.quant.qtype = QUANT_PLUS;
-            break;
-        case '?':
-            q->data.quant.qtype = QUANT_QUEST;
-            break;
+            case '*':
+                q->data.quant.qtype = QUANT_STAR;
+                break;
+            case '+':
+                q->data.quant.qtype = QUANT_PLUS;
+                break;
+            case '?':
+                q->data.quant.qtype = QUANT_QUEST;
+                break;
         }
 
         // Check for non-greedy modifier
@@ -711,92 +714,97 @@ static bool match_node(match_context *ctx, re_node *n, int pos, int *end_pos)
 
     switch (n->type)
     {
-    case RE_LITERAL:
-        if (pos < ctx->text_len && ctx->text[pos] == n->data.literal)
-        {
-            *end_pos = pos + 1;
-            return true;
-        }
-        return false;
-
-    case RE_DOT:
-        if (pos < ctx->text_len && ctx->text[pos] != '\n')
-        {
-            *end_pos = pos + 1;
-            return true;
-        }
-        return false;
-
-    case RE_ANCHOR_START:
-        if (pos == 0)
-        {
-            *end_pos = pos;
-            return true;
-        }
-        return false;
-
-    case RE_ANCHOR_END:
-        if (pos == ctx->text_len)
-        {
-            *end_pos = pos;
-            return true;
-        }
-        return false;
-
-    case RE_CLASS:
-        if (pos < ctx->text_len && class_test(&n->data.char_class, (unsigned char)ctx->text[pos]))
-        {
-            *end_pos = pos + 1;
-            return true;
-        }
-        return false;
-
-    case RE_CONCAT:
-    {
-        int cur_pos = pos;
-        for (int i = 0; i < n->data.children.count; i++)
-        {
-            int child_end;
-            if (!match_node(ctx, n->data.children.children[i], cur_pos, &child_end))
+        case RE_LITERAL:
+            if (pos < ctx->text_len && ctx->text[pos] == n->data.literal)
             {
-                return false;
-            }
-            cur_pos = child_end;
-        }
-        *end_pos = cur_pos;
-        return true;
-    }
-
-    case RE_ALT:
-        for (int i = 0; i < n->data.children.count; i++)
-        {
-            int child_end;
-            if (match_node(ctx, n->data.children.children[i], pos, &child_end))
-            {
-                *end_pos = child_end;
+                *end_pos = pos + 1;
                 return true;
             }
-        }
-        return false;
+            return false;
 
-    case RE_GROUP:
-        if (n->data.children.count > 0)
+        case RE_DOT:
+            if (pos < ctx->text_len && ctx->text[pos] != '\n')
+            {
+                *end_pos = pos + 1;
+                return true;
+            }
+            return false;
+
+        case RE_ANCHOR_START:
+            if (pos == 0)
+            {
+                *end_pos = pos;
+                return true;
+            }
+            return false;
+
+        case RE_ANCHOR_END:
+            if (pos == ctx->text_len)
+            {
+                *end_pos = pos;
+                return true;
+            }
+            return false;
+
+        case RE_CLASS:
+            if (pos < ctx->text_len &&
+                class_test(&n->data.char_class, (unsigned char)ctx->text[pos]))
+            {
+                *end_pos = pos + 1;
+                return true;
+            }
+            return false;
+
+        case RE_CONCAT:
         {
-            return match_node(ctx, n->data.children.children[0], pos, end_pos);
+            int cur_pos = pos;
+            for (int i = 0; i < n->data.children.count; i++)
+            {
+                int child_end;
+                if (!match_node(ctx, n->data.children.children[i], cur_pos, &child_end))
+                {
+                    return false;
+                }
+                cur_pos = child_end;
+            }
+            *end_pos = cur_pos;
+            return true;
         }
-        *end_pos = pos;
-        return true;
 
-    case RE_QUANT:
-        return match_quant(ctx, n, pos, end_pos);
+        case RE_ALT:
+            for (int i = 0; i < n->data.children.count; i++)
+            {
+                int child_end;
+                if (match_node(ctx, n->data.children.children[i], pos, &child_end))
+                {
+                    *end_pos = child_end;
+                    return true;
+                }
+            }
+            return false;
+
+        case RE_GROUP:
+            if (n->data.children.count > 0)
+            {
+                return match_node(ctx, n->data.children.children[0], pos, end_pos);
+            }
+            *end_pos = pos;
+            return true;
+
+        case RE_QUANT:
+            return match_quant(ctx, n, pos, end_pos);
     }
 
     return false;
 }
 
 /// Find a match anywhere in text, returning start and end positions
-static bool find_match(compiled_pattern *cp, const char *text, int text_len, int start_from,
-                       int *match_start, int *match_end)
+static bool find_match(compiled_pattern *cp,
+                       const char *text,
+                       int text_len,
+                       int start_from,
+                       int *match_start,
+                       int *match_end)
 {
     match_context ctx = {text, text_len, 0};
 

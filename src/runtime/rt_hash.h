@@ -119,8 +119,8 @@ extern "C"
     /// @param data Data bytes.
     /// @param data_len Data length.
     /// @param out Output buffer (32 bytes).
-    void rt_hash_hmac_sha256_raw(const uint8_t *key, size_t key_len, const uint8_t *data,
-                                 size_t data_len, uint8_t out[32]);
+    void rt_hash_hmac_sha256_raw(
+        const uint8_t *key, size_t key_len, const uint8_t *data, size_t data_len, uint8_t out[32]);
 
 #ifdef __cplusplus
 }

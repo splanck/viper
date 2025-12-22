@@ -82,12 +82,18 @@ Sema::Sema(il::support::DiagnosticEngine &diag) : diag_(diag)
 {
     scopes_.push_back(std::make_unique<Scope>());
     currentScope_ = scopes_.back().get();
+    types::clearInterfaceImplementations();
     registerBuiltins();
 }
 
 bool Sema::analyze(ModuleDecl &module)
 {
     currentModule_ = &module;
+
+    for (auto &import : module.imports)
+    {
+        analyzeImport(import);
+    }
 
     // First pass: register all top-level declarations
     for (auto &decl : module.declarations)
@@ -121,6 +127,7 @@ bool Sema::analyze(ModuleDecl &module)
             case DeclKind::Value:
             {
                 auto *value = static_cast<ValueDecl *>(decl.get());
+                valueDecls_[value->name] = value;
                 auto valueType = types::value(value->name);
                 typeRegistry_[value->name] = valueType;
 
@@ -135,6 +142,7 @@ bool Sema::analyze(ModuleDecl &module)
             case DeclKind::Entity:
             {
                 auto *entity = static_cast<EntityDecl *>(decl.get());
+                entityDecls_[entity->name] = entity;
                 auto entityType = types::entity(entity->name);
                 typeRegistry_[entity->name] = entityType;
 
@@ -149,6 +157,7 @@ bool Sema::analyze(ModuleDecl &module)
             case DeclKind::Interface:
             {
                 auto *iface = static_cast<InterfaceDecl *>(decl.get());
+                interfaceDecls_[iface->name] = iface;
                 auto ifaceType = types::interface(iface->name);
                 typeRegistry_[iface->name] = ifaceType;
 
@@ -325,8 +334,14 @@ TypeRef Sema::resolveTypeNode(const TypeNode *node)
             }
             if (generic->name == "Map")
             {
-                return types::map(args.size() > 0 ? args[0] : types::unknown(),
-                                  args.size() > 1 ? args[1] : types::unknown());
+                TypeRef keyType = args.size() > 0 ? args[0] : types::unknown();
+                TypeRef valueType = args.size() > 1 ? args[1] : types::unknown();
+                if (keyType && keyType->kind != TypeKindSem::Unknown &&
+                    keyType->kind != TypeKindSem::String)
+                {
+                    error(node->loc, "Map keys must be String");
+                }
+                return types::map(keyType, valueType);
             }
             if (generic->name == "Result")
             {

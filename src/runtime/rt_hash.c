@@ -1116,8 +1116,8 @@ static uint8_t *extract_bytes_data(void *bytes, size_t *out_len)
 }
 
 /// @brief Compute HMAC-MD5 with raw bytes.
-static void hmac_md5_raw(const uint8_t *key, size_t key_len, const uint8_t *data, size_t data_len,
-                         uint8_t out[16])
+static void hmac_md5_raw(
+    const uint8_t *key, size_t key_len, const uint8_t *data, size_t data_len, uint8_t out[16])
 {
     uint8_t k_padded[HMAC_BLOCK_SIZE];
     uint8_t k_ipad[HMAC_BLOCK_SIZE];
@@ -1163,8 +1163,8 @@ static void hmac_md5_raw(const uint8_t *key, size_t key_len, const uint8_t *data
 }
 
 /// @brief Compute HMAC-SHA1 with raw bytes.
-static void hmac_sha1_raw(const uint8_t *key, size_t key_len, const uint8_t *data, size_t data_len,
-                          uint8_t out[20])
+static void hmac_sha1_raw(
+    const uint8_t *key, size_t key_len, const uint8_t *data, size_t data_len, uint8_t out[20])
 {
     uint8_t k_padded[HMAC_BLOCK_SIZE];
     uint8_t k_ipad[HMAC_BLOCK_SIZE];
@@ -1210,8 +1210,8 @@ static void hmac_sha1_raw(const uint8_t *key, size_t key_len, const uint8_t *dat
 }
 
 /// @brief Compute HMAC-SHA256 with raw bytes (exported for PBKDF2).
-void rt_hash_hmac_sha256_raw(const uint8_t *key, size_t key_len, const uint8_t *data,
-                             size_t data_len, uint8_t out[32])
+void rt_hash_hmac_sha256_raw(
+    const uint8_t *key, size_t key_len, const uint8_t *data, size_t data_len, uint8_t out[32])
 {
     uint8_t k_padded[HMAC_BLOCK_SIZE];
     uint8_t k_ipad[HMAC_BLOCK_SIZE];
@@ -1271,8 +1271,11 @@ rt_string rt_hash_hmac_md5(rt_string key, rt_string data)
         data_cstr = "";
 
     uint8_t digest[16];
-    hmac_md5_raw((const uint8_t *)key_cstr, strlen(key_cstr), (const uint8_t *)data_cstr,
-                 strlen(data_cstr), digest);
+    hmac_md5_raw((const uint8_t *)key_cstr,
+                 strlen(key_cstr),
+                 (const uint8_t *)data_cstr,
+                 strlen(data_cstr),
+                 digest);
     return bytes_to_hex_string(digest, 16);
 }
 
@@ -1284,8 +1287,11 @@ rt_string rt_hash_hmac_md5_bytes(void *key, void *data)
     uint8_t *msg_data = extract_bytes_data(data, &data_len);
 
     uint8_t digest[16];
-    hmac_md5_raw(key_data ? key_data : (const uint8_t *)"", key_len,
-                 msg_data ? msg_data : (const uint8_t *)"", data_len, digest);
+    hmac_md5_raw(key_data ? key_data : (const uint8_t *)"",
+                 key_len,
+                 msg_data ? msg_data : (const uint8_t *)"",
+                 data_len,
+                 digest);
 
     if (key_data)
         free(key_data);
@@ -1306,8 +1312,11 @@ rt_string rt_hash_hmac_sha1(rt_string key, rt_string data)
         data_cstr = "";
 
     uint8_t digest[20];
-    hmac_sha1_raw((const uint8_t *)key_cstr, strlen(key_cstr), (const uint8_t *)data_cstr,
-                  strlen(data_cstr), digest);
+    hmac_sha1_raw((const uint8_t *)key_cstr,
+                  strlen(key_cstr),
+                  (const uint8_t *)data_cstr,
+                  strlen(data_cstr),
+                  digest);
     return bytes_to_hex_string(digest, 20);
 }
 
@@ -1319,8 +1328,11 @@ rt_string rt_hash_hmac_sha1_bytes(void *key, void *data)
     uint8_t *msg_data = extract_bytes_data(data, &data_len);
 
     uint8_t digest[20];
-    hmac_sha1_raw(key_data ? key_data : (const uint8_t *)"", key_len,
-                  msg_data ? msg_data : (const uint8_t *)"", data_len, digest);
+    hmac_sha1_raw(key_data ? key_data : (const uint8_t *)"",
+                  key_len,
+                  msg_data ? msg_data : (const uint8_t *)"",
+                  data_len,
+                  digest);
 
     if (key_data)
         free(key_data);
@@ -1341,8 +1353,11 @@ rt_string rt_hash_hmac_sha256(rt_string key, rt_string data)
         data_cstr = "";
 
     uint8_t digest[32];
-    rt_hash_hmac_sha256_raw((const uint8_t *)key_cstr, strlen(key_cstr), (const uint8_t *)data_cstr,
-                            strlen(data_cstr), digest);
+    rt_hash_hmac_sha256_raw((const uint8_t *)key_cstr,
+                            strlen(key_cstr),
+                            (const uint8_t *)data_cstr,
+                            strlen(data_cstr),
+                            digest);
     return bytes_to_hex_string(digest, 32);
 }
 
@@ -1354,8 +1369,11 @@ rt_string rt_hash_hmac_sha256_bytes(void *key, void *data)
     uint8_t *msg_data = extract_bytes_data(data, &data_len);
 
     uint8_t digest[32];
-    rt_hash_hmac_sha256_raw(key_data ? key_data : (const uint8_t *)"", key_len,
-                            msg_data ? msg_data : (const uint8_t *)"", data_len, digest);
+    rt_hash_hmac_sha256_raw(key_data ? key_data : (const uint8_t *)"",
+                            key_len,
+                            msg_data ? msg_data : (const uint8_t *)"",
+                            data_len,
+                            digest);
 
     if (key_data)
         free(key_data);

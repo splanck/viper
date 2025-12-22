@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/LowererTypes.hpp"
 #include "viper/il/Module.hpp"
 
@@ -26,7 +27,6 @@
 namespace il::frontends::basic
 {
 
-class Lowerer;
 struct OopLoweringContext;
 
 namespace lower::detail
@@ -45,7 +45,7 @@ namespace lower::detail
 class ExprLoweringHelper
 {
   public:
-    explicit ExprLoweringHelper(Lowerer &lowerer) noexcept;
+    explicit ExprLoweringHelper(Lowerer::DetailAccess access) noexcept;
 
     /// @brief Lower a variable reference expression.
     [[nodiscard]] RVal lowerVarExpr(const VarExpr &expr);
@@ -78,7 +78,7 @@ class ExprLoweringHelper
     [[nodiscard]] RVal lowerPowBinary(const BinaryExpr &expr, RVal lhs, RVal rhs);
 
   private:
-    Lowerer &lowerer_;
+    Lowerer::DetailAccess access_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -93,7 +93,7 @@ class ExprLoweringHelper
 class ControlLoweringHelper
 {
   public:
-    explicit ControlLoweringHelper(Lowerer &lowerer) noexcept;
+    explicit ControlLoweringHelper(Lowerer::DetailAccess access) noexcept;
 
     /// @brief Lower an IF statement with optional ELSEIF/ELSE branches.
     void lowerIf(const IfStmt &stmt);
@@ -141,7 +141,7 @@ class ControlLoweringHelper
     void lowerTryCatch(const TryCatchStmt &stmt);
 
   private:
-    Lowerer &lowerer_;
+    Lowerer::DetailAccess access_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -156,7 +156,7 @@ class ControlLoweringHelper
 class OopLoweringHelper
 {
   public:
-    explicit OopLoweringHelper(Lowerer &lowerer) noexcept;
+    explicit OopLoweringHelper(Lowerer::DetailAccess access) noexcept;
 
     /// @brief Lower a NEW expression allocating a BASIC object instance.
     [[nodiscard]] RVal lowerNewExpr(const NewExpr &expr);
@@ -185,7 +185,7 @@ class OopLoweringHelper
     void emitOopDeclsAndBodies(const Program &prog);
 
   private:
-    Lowerer &lowerer_;
+    Lowerer::DetailAccess access_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -200,7 +200,7 @@ class OopLoweringHelper
 class RuntimeLoweringHelper
 {
   public:
-    explicit RuntimeLoweringHelper(Lowerer &lowerer) noexcept;
+    explicit RuntimeLoweringHelper(Lowerer::DetailAccess access) noexcept;
 
     /// @brief Lower a LET assignment statement.
     void lowerLet(const LetStmt &stmt);
@@ -224,7 +224,7 @@ class RuntimeLoweringHelper
     void lowerSwap(const SwapStmt &stmt);
 
   private:
-    Lowerer &lowerer_;
+    Lowerer::DetailAccess access_;
 };
 
 } // namespace lower::detail

@@ -42,50 +42,80 @@
 #include "il/runtime/RuntimeSignatures_Handlers.hpp"
 
 #include "rt.hpp"
+#include "rt_archive.h"
 #include "rt_args.h"
+#include "rt_array.h"
 #include "rt_array_f64.h"
 #include "rt_array_i64.h"
 #include "rt_array_obj.h"
+#include "rt_array_str.h"
 #include "rt_bag.h"
 #include "rt_binfile.h"
 #include "rt_bits.h"
 #include "rt_box.h"
 #include "rt_bytes.h"
 #include "rt_codec.h"
+#include "rt_compress.h"
+#include "rt_context.h"
 #include "rt_countdown.h"
 #include "rt_csv.h"
 #include "rt_datetime.h"
+#include "rt_debug.h"
 #include "rt_dir.h"
+#include "rt_error.h"
 #include "rt_exc.h"
 #include "rt_exec.h"
+#include "rt_file.h"
 #include "rt_file_ext.h"
+#include "rt_file_path.h"
 #include "rt_fmt.h"
+#include "rt_format.h"
 #include "rt_fp.h"
 #include "rt_graphics.h"
 #include "rt_guid.h"
 #include "rt_hash.h"
+#include "rt_heap.h"
+#include "rt_input.h"
+#include "rt_int_format.h"
 #include "rt_internal.h"
+#include "rt_keyderive.h"
 #include "rt_linereader.h"
 #include "rt_linewriter.h"
+#include "rt_list.h"
 #include "rt_log.h"
 #include "rt_machine.h"
 #include "rt_map.h"
 #include "rt_math.h"
+#include "rt_memstream.h"
+#include "rt_modvar.h"
+#include "rt_network.h"
+#include "rt_ns_bridge.h"
+#include "rt_numeric.h"
 #include "rt_object.h"
 #include "rt_oop.h"
+#include "rt_output.h"
 #include "rt_parse.h"
 #include "rt_path.h"
 #include "rt_pixels.h"
+#include "rt_pqueue.h"
+#include "rt_printf_compat.h"
 #include "rt_queue.h"
+#include "rt_rand.h"
 #include "rt_random.h"
+#include "rt_regex.h"
 #include "rt_ring.h"
 #include "rt_seq.h"
 #include "rt_stack.h"
 #include "rt_stopwatch.h"
+#include "rt_string.h"
+#include "rt_string_builder.h"
+#include "rt_template.h"
 #include "rt_threads.h"
+#include "rt_trap.h"
 #include "rt_treemap.h"
 #include "rt_vec2.h"
 #include "rt_vec3.h"
+#include "rt_watcher.h"
 #include "viper/runtime/rt.h"
 
 #include <algorithm>
@@ -224,7 +254,7 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-#include "generated/RuntimeSignatures.inc"
+#include "il/runtime/RuntimeSignatures.inc"
     DescriptorRow{"rt_println_i32",
                   std::nullopt,
                   "void(i32)",
@@ -257,27 +287,11 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    // Canonical Viper.Terminal.* dotted names mapping to terminal helpers
-    DescriptorRow{"Viper.Terminal.Clear",
-                  std::nullopt,
-                  "void()",
-                  &DirectHandler<&rt_term_cls, void>::invoke,
-                  featureLowering(RuntimeFeature::TermCls),
-                  nullptr,
-                  0,
-                  RuntimeTrapClass::None},
+    // Legacy terminal helpers for BASIC/Pascal frontends (raw rt_term_* names).
     DescriptorRow{"rt_term_color_i32",
                   std::nullopt,
                   "void(i32,i32)",
                   &DirectHandler<&rt_term_color_i32, void, int32_t, int32_t>::invoke,
-                  featureLowering(RuntimeFeature::TermColor),
-                  nullptr,
-                  0,
-                  RuntimeTrapClass::None},
-    DescriptorRow{"Viper.Terminal.SetColor",
-                  std::nullopt,
-                  "void(i64,i64)",
-                  &DirectHandler<&rt_term_color, void, int64_t, int64_t>::invoke,
                   featureLowering(RuntimeFeature::TermColor),
                   nullptr,
                   0,
@@ -290,26 +304,10 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"Viper.Terminal.SetPosition",
-                  std::nullopt,
-                  "void(i64,i64)",
-                  &DirectHandler<&rt_term_locate, void, int64_t, int64_t>::invoke,
-                  featureLowering(RuntimeFeature::TermLocate),
-                  nullptr,
-                  0,
-                  RuntimeTrapClass::None},
     DescriptorRow{"rt_term_cursor_visible_i32",
                   std::nullopt,
                   "void(i32)",
                   &DirectHandler<&rt_term_cursor_visible_i32, void, int32_t>::invoke,
-                  featureLowering(RuntimeFeature::TermCursor),
-                  nullptr,
-                  0,
-                  RuntimeTrapClass::None},
-    DescriptorRow{"Viper.Terminal.SetCursorVisible",
-                  std::nullopt,
-                  "void(i64)",
-                  &DirectHandler<&rt_term_cursor_visible, void, int64_t>::invoke,
                   featureLowering(RuntimeFeature::TermCursor),
                   nullptr,
                   0,
@@ -322,14 +320,6 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"Viper.Terminal.SetAltScreen",
-                  std::nullopt,
-                  "void(i64)",
-                  &DirectHandler<&rt_term_alt_screen, void, int64_t>::invoke,
-                  featureLowering(RuntimeFeature::TermAltScreen),
-                  nullptr,
-                  0,
-                  RuntimeTrapClass::None},
     DescriptorRow{"rt_bell",
                   std::nullopt,
                   "void()",
@@ -338,51 +328,11 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"Viper.Terminal.Bell",
-                  std::nullopt,
-                  "void()",
-                  &DirectHandler<&rt_bell, void>::invoke,
-                  featureLowering(RuntimeFeature::TermBell),
-                  nullptr,
-                  0,
-                  RuntimeTrapClass::None},
     // Provide dotted name for INKEY$ access through the Viper.Terminal namespace
-    DescriptorRow{"Viper.Terminal.InKey",
-                  std::nullopt,
-                  "string()",
-                  &DirectHandler<&rt_inkey_str, rt_string>::invoke,
-                  featureLowering(RuntimeFeature::InKey),
-                  nullptr,
-                  0,
-                  RuntimeTrapClass::None},
     // Blocking key input - waits for a key press
-    DescriptorRow{"Viper.Terminal.GetKey",
-                  std::nullopt,
-                  "string()",
-                  &DirectHandler<&rt_getkey_str, rt_string>::invoke,
-                  featureLowering(RuntimeFeature::GetKey),
-                  nullptr,
-                  0,
-                  RuntimeTrapClass::None},
     // Blocking key input with timeout (milliseconds)
-    DescriptorRow{"Viper.Terminal.GetKeyTimeout",
-                  std::nullopt,
-                  "str(i64)",
-                  &DirectHandler<&rt_getkey_timeout, rt_string, int64_t>::invoke,
-                  featureLowering(RuntimeFeature::GetKeyTimeout),
-                  nullptr,
-                  0,
-                  RuntimeTrapClass::None},
     // Output buffering for improved terminal rendering performance
     DescriptorRow{"rt_term_begin_batch",
-                  std::nullopt,
-                  "void()",
-                  &DirectHandler<&rt_term_begin_batch, void>::invoke,
-                  featureLowering(RuntimeFeature::TermBeginBatch),
-                  nullptr,
-                  0,
-                  RuntimeTrapClass::None},
-    DescriptorRow{"Viper.Terminal.BeginBatch",
                   std::nullopt,
                   "void()",
                   &DirectHandler<&rt_term_begin_batch, void>::invoke,
@@ -398,14 +348,6 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"Viper.Terminal.EndBatch",
-                  std::nullopt,
-                  "void()",
-                  &DirectHandler<&rt_term_end_batch, void>::invoke,
-                  featureLowering(RuntimeFeature::TermEndBatch),
-                  nullptr,
-                  0,
-                  RuntimeTrapClass::None},
     DescriptorRow{"rt_term_flush",
                   std::nullopt,
                   "void()",
@@ -414,35 +356,11 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"Viper.Terminal.Flush",
-                  std::nullopt,
-                  "void()",
-                  &DirectHandler<&rt_term_flush, void>::invoke,
-                  featureLowering(RuntimeFeature::TermFlush),
-                  nullptr,
-                  0,
-                  RuntimeTrapClass::None},
     // --- Viper.Terminal I/O functions (Say = newline, Print = no newline) ---
-    DescriptorRow{"Viper.Terminal.Say",
-                  std::nullopt,
-                  "void(string)",
-                  &DirectHandler<&rt_term_say, void, rt_string>::invoke,
-                  kManualLowering,
-                  nullptr,
-                  0,
-                  RuntimeTrapClass::None},
     DescriptorRow{"rt_term_say",
                   std::nullopt,
                   "void(string)",
                   &DirectHandler<&rt_term_say, void, rt_string>::invoke,
-                  kManualLowering,
-                  nullptr,
-                  0,
-                  RuntimeTrapClass::None},
-    DescriptorRow{"Viper.Terminal.SayInt",
-                  std::nullopt,
-                  "void(i64)",
-                  &DirectHandler<&rt_term_say_i64, void, int64_t>::invoke,
                   kManualLowering,
                   nullptr,
                   0,
@@ -455,26 +373,10 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"Viper.Terminal.SayNum",
-                  std::nullopt,
-                  "void(f64)",
-                  &DirectHandler<&rt_term_say_f64, void, double>::invoke,
-                  kManualLowering,
-                  nullptr,
-                  0,
-                  RuntimeTrapClass::None},
     DescriptorRow{"rt_term_say_f64",
                   std::nullopt,
                   "void(f64)",
                   &DirectHandler<&rt_term_say_f64, void, double>::invoke,
-                  kManualLowering,
-                  nullptr,
-                  0,
-                  RuntimeTrapClass::None},
-    DescriptorRow{"Viper.Terminal.SayBool",
-                  std::nullopt,
-                  "void(i1)",
-                  &DirectHandler<&rt_term_say_bool, void, int8_t>::invoke,
                   kManualLowering,
                   nullptr,
                   0,
@@ -487,26 +389,10 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"Viper.Terminal.Print",
-                  std::nullopt,
-                  "void(string)",
-                  &DirectHandler<&rt_term_print, void, rt_string>::invoke,
-                  kManualLowering,
-                  nullptr,
-                  0,
-                  RuntimeTrapClass::None},
     DescriptorRow{"rt_term_print",
                   std::nullopt,
                   "void(string)",
                   &DirectHandler<&rt_term_print, void, rt_string>::invoke,
-                  kManualLowering,
-                  nullptr,
-                  0,
-                  RuntimeTrapClass::None},
-    DescriptorRow{"Viper.Terminal.PrintInt",
-                  std::nullopt,
-                  "void(i64)",
-                  &DirectHandler<&rt_term_print_i64, void, int64_t>::invoke,
                   kManualLowering,
                   nullptr,
                   0,
@@ -519,14 +405,6 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"Viper.Terminal.PrintNum",
-                  std::nullopt,
-                  "void(f64)",
-                  &DirectHandler<&rt_term_print_f64, void, double>::invoke,
-                  kManualLowering,
-                  nullptr,
-                  0,
-                  RuntimeTrapClass::None},
     DescriptorRow{"rt_term_print_f64",
                   std::nullopt,
                   "void(f64)",
@@ -535,26 +413,10 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"Viper.Terminal.Ask",
-                  std::nullopt,
-                  "string(string)",
-                  &DirectHandler<&rt_term_ask, rt_string, rt_string>::invoke,
-                  kManualLowering,
-                  nullptr,
-                  0,
-                  RuntimeTrapClass::None},
     DescriptorRow{"rt_term_ask",
                   std::nullopt,
                   "string(string)",
                   &DirectHandler<&rt_term_ask, rt_string, rt_string>::invoke,
-                  kManualLowering,
-                  nullptr,
-                  0,
-                  RuntimeTrapClass::None},
-    DescriptorRow{"Viper.Terminal.ReadLine",
-                  std::nullopt,
-                  "string()",
-                  &DirectHandler<&rt_term_read_line, rt_string>::invoke,
                   kManualLowering,
                   nullptr,
                   0,
@@ -648,15 +510,7 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    // Canonical Viper.Time.* dotted names mapping to time helpers
-    DescriptorRow{"Viper.Time.SleepMs",
-                  std::nullopt,
-                  "void(i64)",
-                  &DirectHandler<&rt_sleep_ms_i64, void, int64_t>::invoke,
-                  kManualLowering,
-                  nullptr,
-                  0,
-                  RuntimeTrapClass::None},
+    // Legacy time helpers (raw rt_* names).
     DescriptorRow{"rt_timer_ms",
                   std::nullopt,
                   "i64()",
@@ -665,15 +519,7 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"Viper.Time.GetTickCount",
-                  std::nullopt,
-                  "i64()",
-                  &DirectHandler<&rt_timer_ms, int64_t>::invoke,
-                  kManualLowering,
-                  nullptr,
-                  0,
-                  RuntimeTrapClass::None},
-    // ViperLang time functions
+    // Legacy ViperLang time alias (not emitted by runtime.def).
     DescriptorRow{"Viper.Time.Clock.Millis",
                   std::nullopt,
                   "i64()",
@@ -1174,23 +1020,7 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_str_eq",
-                  std::nullopt,
-                  "i1(string,string)",
-                  &DirectHandler<&rt_str_eq, int64_t, rt_string, rt_string>::invoke,
-                  featureLowering(RuntimeFeature::StrEq),
-                  nullptr,
-                  0,
-                  RuntimeTrapClass::None},
     // Canonical name for string equality
-    DescriptorRow{"Viper.Strings.Equals",
-                  std::nullopt,
-                  "i1(string,string)",
-                  &DirectHandler<&rt_str_eq, int64_t, rt_string, rt_string>::invoke,
-                  featureLowering(RuntimeFeature::StrEq),
-                  nullptr,
-                  0,
-                  RuntimeTrapClass::None},
     DescriptorRow{"rt_str_lt",
                   std::nullopt,
                   "i1(string,string)",
@@ -1667,14 +1497,6 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
                   0,
                   RuntimeTrapClass::None},
     // --- Graphics runtime helpers (Canvas) ---
-    DescriptorRow{"Viper.Graphics.Canvas.New",
-                  std::nullopt,
-                  "ptr(string,i64,i64)",
-                  &DirectHandler<&rt_canvas_new, void *, rt_string, int64_t, int64_t>::invoke,
-                  kManualLowering,
-                  nullptr,
-                  0,
-                  RuntimeTrapClass::None},
     DescriptorRow{"rt_canvas_new",
                   std::nullopt,
                   "ptr(string,i64,i64)",
@@ -1691,26 +1513,10 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"Viper.Graphics.Canvas.Flip",
-                  std::nullopt,
-                  "void(ptr)",
-                  &DirectHandler<&rt_canvas_flip, void, void *>::invoke,
-                  kManualLowering,
-                  nullptr,
-                  0,
-                  RuntimeTrapClass::None},
     DescriptorRow{"rt_canvas_flip",
                   std::nullopt,
                   "void(ptr)",
                   &DirectHandler<&rt_canvas_flip, void, void *>::invoke,
-                  kManualLowering,
-                  nullptr,
-                  0,
-                  RuntimeTrapClass::None},
-    DescriptorRow{"Viper.Graphics.Canvas.Clear",
-                  std::nullopt,
-                  "void(ptr,i64)",
-                  &DirectHandler<&rt_canvas_clear, void, void *, int64_t>::invoke,
                   kManualLowering,
                   nullptr,
                   0,
@@ -1723,14 +1529,6 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"Viper.Graphics.Canvas.get_Width",
-                  std::nullopt,
-                  "i64(ptr)",
-                  &DirectHandler<&rt_canvas_width, int64_t, void *>::invoke,
-                  kManualLowering,
-                  nullptr,
-                  0,
-                  RuntimeTrapClass::None},
     DescriptorRow{"rt_canvas_width",
                   std::nullopt,
                   "i64(ptr)",
@@ -1739,26 +1537,10 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"Viper.Graphics.Canvas.get_Height",
-                  std::nullopt,
-                  "i64(ptr)",
-                  &DirectHandler<&rt_canvas_height, int64_t, void *>::invoke,
-                  kManualLowering,
-                  nullptr,
-                  0,
-                  RuntimeTrapClass::None},
     DescriptorRow{"rt_canvas_height",
                   std::nullopt,
                   "i64(ptr)",
                   &DirectHandler<&rt_canvas_height, int64_t, void *>::invoke,
-                  kManualLowering,
-                  nullptr,
-                  0,
-                  RuntimeTrapClass::None},
-    DescriptorRow{"Viper.Graphics.Canvas.get_ShouldClose",
-                  std::nullopt,
-                  "i64(ptr)",
-                  &DirectHandler<&rt_canvas_should_close, int64_t, void *>::invoke,
                   kManualLowering,
                   nullptr,
                   0,
@@ -1772,30 +1554,10 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
                   0,
                   RuntimeTrapClass::None},
     DescriptorRow{
-        "Viper.Graphics.Canvas.Line",
-        std::nullopt,
-        "void(ptr,i64,i64,i64,i64,i64)",
-        &DirectHandler<&rt_canvas_line, void, void *, int64_t, int64_t, int64_t, int64_t, int64_t>::
-            invoke,
-        kManualLowering,
-        nullptr,
-        0,
-        RuntimeTrapClass::None},
-    DescriptorRow{
         "rt_canvas_line",
         std::nullopt,
         "void(ptr,i64,i64,i64,i64,i64)",
         &DirectHandler<&rt_canvas_line, void, void *, int64_t, int64_t, int64_t, int64_t, int64_t>::
-            invoke,
-        kManualLowering,
-        nullptr,
-        0,
-        RuntimeTrapClass::None},
-    DescriptorRow{
-        "Viper.Graphics.Canvas.Box",
-        std::nullopt,
-        "void(ptr,i64,i64,i64,i64,i64)",
-        &DirectHandler<&rt_canvas_box, void, void *, int64_t, int64_t, int64_t, int64_t, int64_t>::
             invoke,
         kManualLowering,
         nullptr,
@@ -1811,21 +1573,6 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
         nullptr,
         0,
         RuntimeTrapClass::None},
-    DescriptorRow{"Viper.Graphics.Canvas.Frame",
-                  std::nullopt,
-                  "void(ptr,i64,i64,i64,i64,i64)",
-                  &DirectHandler<&rt_canvas_frame,
-                                 void,
-                                 void *,
-                                 int64_t,
-                                 int64_t,
-                                 int64_t,
-                                 int64_t,
-                                 int64_t>::invoke,
-                  kManualLowering,
-                  nullptr,
-                  0,
-                  RuntimeTrapClass::None},
     DescriptorRow{"rt_canvas_frame",
                   std::nullopt,
                   "void(ptr,i64,i64,i64,i64,i64)",
@@ -1842,28 +1589,10 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
                   0,
                   RuntimeTrapClass::None},
     DescriptorRow{
-        "Viper.Graphics.Canvas.Disc",
-        std::nullopt,
-        "void(ptr,i64,i64,i64,i64)",
-        &DirectHandler<&rt_canvas_disc, void, void *, int64_t, int64_t, int64_t, int64_t>::invoke,
-        kManualLowering,
-        nullptr,
-        0,
-        RuntimeTrapClass::None},
-    DescriptorRow{
         "rt_canvas_disc",
         std::nullopt,
         "void(ptr,i64,i64,i64,i64)",
         &DirectHandler<&rt_canvas_disc, void, void *, int64_t, int64_t, int64_t, int64_t>::invoke,
-        kManualLowering,
-        nullptr,
-        0,
-        RuntimeTrapClass::None},
-    DescriptorRow{
-        "Viper.Graphics.Canvas.Ring",
-        std::nullopt,
-        "void(ptr,i64,i64,i64,i64)",
-        &DirectHandler<&rt_canvas_ring, void, void *, int64_t, int64_t, int64_t, int64_t>::invoke,
         kManualLowering,
         nullptr,
         0,
@@ -1877,14 +1606,6 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
         nullptr,
         0,
         RuntimeTrapClass::None},
-    DescriptorRow{"Viper.Graphics.Canvas.Plot",
-                  std::nullopt,
-                  "void(ptr,i64,i64,i64)",
-                  &DirectHandler<&rt_canvas_plot, void, void *, int64_t, int64_t, int64_t>::invoke,
-                  kManualLowering,
-                  nullptr,
-                  0,
-                  RuntimeTrapClass::None},
     DescriptorRow{"rt_canvas_plot",
                   std::nullopt,
                   "void(ptr,i64,i64,i64)",
@@ -1893,26 +1614,10 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"Viper.Graphics.Canvas.Poll",
-                  std::nullopt,
-                  "i64(ptr)",
-                  &DirectHandler<&rt_canvas_poll, int64_t, void *>::invoke,
-                  kManualLowering,
-                  nullptr,
-                  0,
-                  RuntimeTrapClass::None},
     DescriptorRow{"rt_canvas_poll",
                   std::nullopt,
                   "i64(ptr)",
                   &DirectHandler<&rt_canvas_poll, int64_t, void *>::invoke,
-                  kManualLowering,
-                  nullptr,
-                  0,
-                  RuntimeTrapClass::None},
-    DescriptorRow{"Viper.Graphics.Canvas.KeyHeld",
-                  std::nullopt,
-                  "i64(ptr,i64)",
-                  &DirectHandler<&rt_canvas_key_held, int64_t, void *, int64_t>::invoke,
                   kManualLowering,
                   nullptr,
                   0,
@@ -1926,14 +1631,6 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
                   0,
                   RuntimeTrapClass::None},
     // --- Graphics runtime helpers (Color) ---
-    DescriptorRow{"Viper.Graphics.Color.RGB",
-                  std::nullopt,
-                  "i64(i64,i64,i64)",
-                  &DirectHandler<&rt_color_rgb, int64_t, int64_t, int64_t, int64_t>::invoke,
-                  kManualLowering,
-                  nullptr,
-                  0,
-                  RuntimeTrapClass::None},
     DescriptorRow{"rt_color_rgb",
                   std::nullopt,
                   "i64(i64,i64,i64)",
@@ -1942,15 +1639,6 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{
-        "Viper.Graphics.Color.RGBA",
-        std::nullopt,
-        "i64(i64,i64,i64,i64)",
-        &DirectHandler<&rt_color_rgba, int64_t, int64_t, int64_t, int64_t, int64_t>::invoke,
-        kManualLowering,
-        nullptr,
-        0,
-        RuntimeTrapClass::None},
     DescriptorRow{
         "rt_color_rgba",
         std::nullopt,

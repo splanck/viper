@@ -52,7 +52,12 @@ void Sema::analyzeStmt(Stmt *stmt)
             break;
         case StmtKind::Break:
         case StmtKind::Continue:
-            // TODO: Check if inside loop
+            if (loopDepth_ == 0)
+            {
+                error(stmt->loc,
+                      stmt->kind == StmtKind::Break ? "break used outside of loop"
+                                                    : "continue used outside of loop");
+            }
             break;
         case StmtKind::Guard:
             analyzeGuardStmt(static_cast<GuardStmt *>(stmt));
@@ -133,7 +138,9 @@ void Sema::analyzeWhileStmt(WhileStmt *stmt)
         error(stmt->condition->loc, "Condition must be Boolean");
     }
 
+    loopDepth_++;
     analyzeStmt(stmt->body.get());
+    loopDepth_--;
 }
 
 void Sema::analyzeForStmt(ForStmt *stmt)
@@ -151,7 +158,9 @@ void Sema::analyzeForStmt(ForStmt *stmt)
     }
     if (stmt->update)
         analyzeExpr(stmt->update.get());
+    loopDepth_++;
     analyzeStmt(stmt->body.get());
+    loopDepth_--;
     popScope();
 }
 
@@ -161,27 +170,89 @@ void Sema::analyzeForInStmt(ForInStmt *stmt)
 
     TypeRef iterableType = analyzeExpr(stmt->iterable.get());
 
-    // Determine element type from iterable
+    // Determine element types from iterable
     TypeRef elementType = types::unknown();
+    TypeRef secondType = types::unknown();
+
     if (iterableType->kind == TypeKindSem::List || iterableType->kind == TypeKindSem::Set)
     {
         elementType = iterableType->elementType();
     }
+    else if (iterableType->kind == TypeKindSem::Map)
+    {
+        elementType = iterableType->keyType() ? iterableType->keyType() : types::string();
+        secondType = iterableType->valueType();
+    }
     else if (stmt->iterable && stmt->iterable->kind == ExprKind::Range)
     {
-        // Range produces integers
         elementType = types::integer();
     }
+    else
+    {
+        error(stmt->iterable->loc, "Expression is not iterable");
+    }
 
-    // Define loop variable
+    if (stmt->isTuple)
+    {
+        if (iterableType->kind == TypeKindSem::Map)
+        {
+            // Map iteration binds (key, value)
+        }
+        else if (iterableType->kind == TypeKindSem::Tuple)
+        {
+            const auto &elements = iterableType->tupleElementTypes();
+            if (elements.size() == 2)
+            {
+                elementType = elements[0];
+                secondType = elements[1];
+            }
+        }
+        else
+        {
+            error(stmt->loc, "Tuple binding requires Map or Tuple elements");
+        }
+    }
+
+    if (stmt->variableType)
+    {
+        TypeRef explicitType = resolveTypeNode(stmt->variableType.get());
+        if (elementType && !explicitType->isAssignableFrom(*elementType))
+        {
+            error(stmt->loc, "Loop variable type does not match iterable element type");
+        }
+        elementType = explicitType;
+    }
+
+    if (stmt->isTuple && stmt->secondVariableType)
+    {
+        TypeRef explicitType = resolveTypeNode(stmt->secondVariableType.get());
+        if (secondType && !explicitType->isAssignableFrom(*secondType))
+        {
+            error(stmt->loc, "Loop variable type does not match iterable element type");
+        }
+        secondType = explicitType;
+    }
+
     Symbol sym;
     sym.kind = Symbol::Kind::Variable;
     sym.name = stmt->variable;
     sym.type = elementType ? elementType : types::unknown();
-    sym.isFinal = true; // Loop variable is immutable
+    sym.isFinal = true;
     defineSymbol(stmt->variable, sym);
 
+    if (stmt->isTuple)
+    {
+        Symbol secondSym;
+        secondSym.kind = Symbol::Kind::Variable;
+        secondSym.name = stmt->secondVariable;
+        secondSym.type = secondType ? secondType : types::unknown();
+        secondSym.isFinal = true;
+        defineSymbol(stmt->secondVariable, secondSym);
+    }
+
+    loopDepth_++;
     analyzeStmt(stmt->body.get());
+    loopDepth_--;
     popScope();
 }
 
@@ -214,59 +285,52 @@ void Sema::analyzeGuardStmt(GuardStmt *stmt)
     }
 
     analyzeStmt(stmt->elseBlock.get());
-    // TODO: Check that else block always exits (return, break, continue, trap)
+    if (!stmtAlwaysExits(stmt->elseBlock.get()))
+    {
+        error(stmt->loc, "Guard else block must exit the scope");
+    }
 }
 
 void Sema::analyzeMatchStmt(MatchStmt *stmt)
 {
     TypeRef scrutineeType = analyzeExpr(stmt->scrutinee.get());
 
-    // Track if we have a wildcard or exhaustive pattern coverage
-    bool hasWildcard = false;
-    std::set<int64_t> coveredIntegers;
-    std::set<bool> coveredBooleans;
-
+    MatchCoverage coverage;
     for (auto &arm : stmt->arms)
     {
-        // Analyze the pattern and body
-        const auto &pattern = arm.pattern;
+        std::unordered_map<std::string, TypeRef> bindings;
+        pushScope();
 
-        if (pattern.kind == MatchArm::Pattern::Kind::Wildcard)
+        analyzeMatchPattern(arm.pattern, scrutineeType, coverage, bindings);
+
+        for (const auto &binding : bindings)
         {
-            hasWildcard = true;
+            Symbol sym;
+            sym.kind = Symbol::Kind::Variable;
+            sym.name = binding.first;
+            sym.type = binding.second;
+            sym.isFinal = true;
+            defineSymbol(binding.first, sym);
         }
-        else if (pattern.kind == MatchArm::Pattern::Kind::Binding)
+
+        if (arm.pattern.guard)
         {
-            // A binding without a guard acts as a wildcard
-            if (!pattern.guard)
+            TypeRef guardType = analyzeExpr(arm.pattern.guard.get());
+            if (guardType->kind != TypeKindSem::Boolean)
             {
-                hasWildcard = true;
-            }
-        }
-        else if (pattern.kind == MatchArm::Pattern::Kind::Literal && pattern.literal)
-        {
-            // Track which literals are covered
-            if (pattern.literal->kind == ExprKind::IntLiteral)
-            {
-                coveredIntegers.insert(static_cast<IntLiteralExpr *>(pattern.literal.get())->value);
-            }
-            else if (pattern.literal->kind == ExprKind::BoolLiteral)
-            {
-                coveredBooleans.insert(
-                    static_cast<BoolLiteralExpr *>(pattern.literal.get())->value);
+                error(arm.pattern.guard->loc, "Match guard must be Boolean");
             }
         }
 
         analyzeExpr(arm.body.get());
+        popScope();
     }
 
-    // Check exhaustiveness based on scrutinee type
-    if (!hasWildcard)
+    if (!coverage.hasIrrefutable)
     {
         if (scrutineeType && scrutineeType->kind == TypeKindSem::Boolean)
         {
-            // Boolean must cover both true and false
-            if (coveredBooleans.size() < 2)
+            if (coverage.coveredBooleans.size() < 2)
             {
                 error(stmt->loc,
                       "Non-exhaustive patterns: match on Boolean must cover both true "
@@ -275,21 +339,57 @@ void Sema::analyzeMatchStmt(MatchStmt *stmt)
         }
         else if (scrutineeType && scrutineeType->isIntegral())
         {
-            // Integer types need a wildcard since we can't enumerate all values
             error(stmt->loc,
                   "Non-exhaustive patterns: match on Integer requires a wildcard (_) or "
                   "else case to be exhaustive");
         }
         else if (scrutineeType && scrutineeType->kind == TypeKindSem::Optional)
         {
-            // Optional types need to handle both Some and None cases
-            // For now, just warn that a wildcard is recommended
-            error(stmt->loc,
-                  "Non-exhaustive patterns: match on optional type should use a "
-                  "wildcard (_) or handle all cases");
+            if (!(coverage.coversNull && coverage.coversSome))
+            {
+                error(stmt->loc,
+                      "Non-exhaustive patterns: match on optional type should use a "
+                      "wildcard (_) or handle all cases");
+            }
         }
     }
 }
 
+bool Sema::stmtAlwaysExits(Stmt *stmt)
+{
+    if (!stmt)
+        return false;
+
+    switch (stmt->kind)
+    {
+        case StmtKind::Return:
+        case StmtKind::Break:
+        case StmtKind::Continue:
+            return true;
+
+        case StmtKind::Block:
+        {
+            auto *block = static_cast<BlockStmt *>(stmt);
+            for (auto &inner : block->statements)
+            {
+                if (stmtAlwaysExits(inner.get()))
+                    return true;
+            }
+            return false;
+        }
+
+        case StmtKind::If:
+        {
+            auto *ifStmt = static_cast<IfStmt *>(stmt);
+            if (!ifStmt->elseBranch)
+                return false;
+            return stmtAlwaysExits(ifStmt->thenBranch.get()) &&
+                   stmtAlwaysExits(ifStmt->elseBranch.get());
+        }
+
+        default:
+            return false;
+    }
+}
 
 } // namespace il::frontends::viperlang

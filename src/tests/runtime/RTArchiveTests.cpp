@@ -12,6 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "rt.hpp"
 #include "rt_archive.h"
 #include "rt_box.h"
 #include "rt_bytes.h"
@@ -20,6 +21,7 @@
 #include "rt_string.h"
 
 #include <cassert>
+#include <csetjmp>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -32,6 +34,34 @@
 #else
 #include <unistd.h>
 #endif
+
+namespace
+{
+static jmp_buf g_trap_jmp;
+static const char *g_last_trap = nullptr;
+static bool g_trap_expected = false;
+} // namespace
+
+extern "C" void vm_trap(const char *msg)
+{
+    g_last_trap = msg;
+    if (g_trap_expected)
+        longjmp(g_trap_jmp, 1);
+    rt_abort(msg);
+}
+
+#define EXPECT_TRAP(expr)                                                                          \
+    do                                                                                             \
+    {                                                                                              \
+        g_trap_expected = true;                                                                    \
+        g_last_trap = nullptr;                                                                     \
+        if (setjmp(g_trap_jmp) == 0)                                                               \
+        {                                                                                          \
+            expr;                                                                                  \
+            assert(false && "Expected trap did not occur");                                        \
+        }                                                                                          \
+        g_trap_expected = false;                                                                   \
+    } while (0)
 
 /// @brief Helper to print test result.
 static void test_result(const char *name, bool passed)
@@ -48,6 +78,7 @@ static uint8_t *get_bytes_data(void *bytes)
         int64_t len;
         uint8_t *data;
     };
+
     return ((bytes_impl *)bytes)->data;
 }
 
@@ -236,6 +267,32 @@ static void test_add_directory()
     delete_file(path);
 }
 
+static void test_invalid_entry_names()
+{
+    printf("Testing Invalid Entry Names:\n");
+
+    const char *path = get_temp_path("test_invalid_names.zip");
+    delete_file(path);
+
+    void *ar = rt_archive_create(rt_const_cstr(path));
+    void *content = make_bytes_str("payload");
+
+    EXPECT_TRAP(rt_archive_add(ar, rt_const_cstr("../evil.txt"), content));
+    EXPECT_TRAP(rt_archive_add(ar, rt_const_cstr("..\\evil.txt"), content));
+    EXPECT_TRAP(rt_archive_add(ar, rt_const_cstr("/absolute.txt"), content));
+    EXPECT_TRAP(rt_archive_add(ar, rt_const_cstr("C:\\absolute.txt"), content));
+
+    rt_archive_add(ar, rt_const_cstr("subdir\\file.txt"), content);
+    rt_archive_finish(ar);
+
+    void *ar2 = rt_archive_open(rt_const_cstr(path));
+    test_result("Normalized name found",
+                rt_archive_has(ar2, rt_const_cstr("subdir/file.txt")) == 1);
+    EXPECT_TRAP(rt_archive_read(ar2, rt_const_cstr("../missing.txt")));
+
+    delete_file(path);
+}
+
 //=============================================================================
 // Compression Tests
 //=============================================================================
@@ -294,7 +351,8 @@ static void test_compression_deflate()
     test_result("Compression occurred", compressed_size < orig_size);
 
     printf("    Original: %lld bytes, Compressed: %lld bytes (%.1f%%)\n",
-           (long long)orig_size, (long long)compressed_size,
+           (long long)orig_size,
+           (long long)compressed_size,
            100.0 * compressed_size / orig_size);
 
     // Verify content
@@ -438,7 +496,8 @@ static void test_is_zip()
     // Test IsZip
     test_result("IsZip on ZIP returns true", rt_archive_is_zip(rt_const_cstr(zip_path)) == 1);
     test_result("IsZip on TXT returns false", rt_archive_is_zip(rt_const_cstr(txt_path)) == 0);
-    test_result("IsZip on missing returns false", rt_archive_is_zip(rt_const_cstr("/nonexistent/file.zip")) == 0);
+    test_result("IsZip on missing returns false",
+                rt_archive_is_zip(rt_const_cstr("/nonexistent/file.zip")) == 0);
 
     delete_file(zip_path);
     delete_file(txt_path);
@@ -549,6 +608,8 @@ int main()
     test_add_string();
     printf("\n");
     test_add_directory();
+    printf("\n");
+    test_invalid_entry_names();
     printf("\n");
 
     // Compression tests

@@ -61,7 +61,8 @@ TEST(RuntimeNameMap, AliasesResolveToRegisteredDescriptors)
 
     // Info output (not an error - just documenting the split)
     std::cerr << "Runtime functions with descriptors: " << withDescriptor << "\n";
-    std::cerr << "Runtime functions without descriptors (native-only): " << withoutDescriptor << "\n";
+    std::cerr << "Runtime functions without descriptors (native-only): " << withoutDescriptor
+              << "\n";
 }
 
 int main(int argc, char **argv)

@@ -282,15 +282,49 @@ TypeRef Sema::analyzeTernary(TernaryExpr *expr)
     TypeRef thenType = analyzeExpr(expr->thenExpr.get());
     TypeRef elseType = analyzeExpr(expr->elseExpr.get());
 
-    // TODO: Compute common type
-    if (thenType->equals(*elseType))
-        return thenType;
-    if (thenType->isAssignableFrom(*elseType))
-        return thenType;
-    if (elseType->isAssignableFrom(*thenType))
-        return elseType;
+    TypeRef resultType = commonType(thenType, elseType);
+    if (resultType && resultType->kind != TypeKindSem::Unknown)
+        return resultType;
 
     error(expr->loc, "Incompatible types in ternary expression");
+    return types::unknown();
+}
+
+TypeRef Sema::commonType(TypeRef lhs, TypeRef rhs)
+{
+    if (!lhs && !rhs)
+        return types::unknown();
+    if (!lhs)
+        return rhs;
+    if (!rhs)
+        return lhs;
+    if (lhs->kind == TypeKindSem::Unknown)
+        return rhs;
+    if (rhs->kind == TypeKindSem::Unknown)
+        return lhs;
+
+    if (lhs->kind == TypeKindSem::Optional || rhs->kind == TypeKindSem::Optional)
+    {
+        TypeRef innerL = lhs->kind == TypeKindSem::Optional ? lhs->innerType() : lhs;
+        TypeRef innerR = rhs->kind == TypeKindSem::Optional ? rhs->innerType() : rhs;
+        TypeRef inner = commonType(innerL, innerR);
+        return types::optional(inner ? inner : types::unknown());
+    }
+
+    if (lhs->isNumeric() && rhs->isNumeric())
+    {
+        if (lhs->kind == TypeKindSem::Number || rhs->kind == TypeKindSem::Number)
+            return types::number();
+        if (lhs->kind == TypeKindSem::Integer || rhs->kind == TypeKindSem::Integer)
+            return types::integer();
+        return types::byte();
+    }
+
+    if (lhs->isAssignableFrom(*rhs))
+        return lhs;
+    if (rhs->isAssignableFrom(*lhs))
+        return rhs;
+
     return types::unknown();
 }
 
@@ -371,6 +405,67 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
             }
         }
 
+        // Handle Map methods
+        if (baseType && baseType->kind == TypeKindSem::Map)
+        {
+            for (auto &arg : expr->args)
+            {
+                analyzeExpr(arg.value.get());
+            }
+
+            auto requireStringKey = [&]()
+            {
+                if (expr->args.empty())
+                    return;
+                TypeRef keyType = analyzeExpr(expr->args[0].value.get());
+                if (keyType && keyType->kind != TypeKindSem::String &&
+                    keyType->kind != TypeKindSem::Unknown)
+                {
+                    error(expr->args[0].value->loc, "Map keys must be String");
+                }
+            };
+
+            if (fieldExpr->field == "get" || fieldExpr->field == "getOr")
+            {
+                requireStringKey();
+                return baseType->valueType() ? baseType->valueType() : types::unknown();
+            }
+            if (fieldExpr->field == "set" || fieldExpr->field == "put")
+            {
+                requireStringKey();
+                return types::voidType();
+            }
+            if (fieldExpr->field == "setIfMissing")
+            {
+                requireStringKey();
+                return types::boolean();
+            }
+            if (fieldExpr->field == "containsKey" || fieldExpr->field == "hasKey" ||
+                fieldExpr->field == "has")
+            {
+                requireStringKey();
+                return types::boolean();
+            }
+            if (fieldExpr->field == "remove")
+            {
+                requireStringKey();
+                return types::boolean();
+            }
+            if (fieldExpr->field == "size" || fieldExpr->field == "count" ||
+                fieldExpr->field == "length")
+            {
+                return types::integer();
+            }
+            if (fieldExpr->field == "clear")
+            {
+                return types::voidType();
+            }
+            if (fieldExpr->field == "keys" || fieldExpr->field == "values")
+            {
+                return types::unknown();
+            }
+        }
+
         // Handle String methods
         if (baseType && baseType->kind == TypeKindSem::String)
         {
@@ -442,6 +537,10 @@ TypeRef Sema::analyzeIndex(IndexExpr *expr)
 
     if (baseType->kind == TypeKindSem::Map)
     {
+        if (indexType->kind != TypeKindSem::String)
+        {
+            error(expr->index->loc, "Map keys must be String");
+        }
         return baseType->valueType() ? baseType->valueType() : types::unknown();
     }
 
@@ -504,9 +603,53 @@ TypeRef Sema::analyzeOptionalChain(OptionalChainExpr *expr)
 {
     TypeRef baseType = analyzeExpr(expr->base.get());
 
-    // Result is always optional
-    // TODO: Look up field type
-    return types::optional(types::unknown());
+    if (!baseType || baseType->kind != TypeKindSem::Optional)
+    {
+        error(expr->loc, "Optional chaining requires an optional base value");
+        return types::optional(types::unknown());
+    }
+
+    TypeRef innerType = baseType->innerType();
+    if (!innerType || innerType->kind == TypeKindSem::Unknown)
+    {
+        return types::optional(types::unknown());
+    }
+
+    TypeRef fieldType = types::unknown();
+
+    if (innerType->kind == TypeKindSem::Value || innerType->kind == TypeKindSem::Entity)
+    {
+        std::string memberKey = innerType->name + "." + expr->field;
+        auto fieldIt = fieldTypes_.find(memberKey);
+        if (fieldIt != fieldTypes_.end())
+        {
+            fieldType = fieldIt->second;
+        }
+        else
+        {
+            error(expr->loc,
+                  "Unknown field '" + expr->field + "' on type '" + innerType->name + "'");
+        }
+    }
+    else if (innerType->kind == TypeKindSem::List)
+    {
+        if (expr->field == "count" || expr->field == "size" || expr->field == "length")
+        {
+            fieldType = types::integer();
+        }
+        else
+        {
+            error(expr->loc, "Unknown field '" + expr->field + "' on List");
+        }
+    }
+    else
+    {
+        error(expr->loc, "Optional chaining requires a reference type base");
+    }
+
+    if (fieldType->kind == TypeKindSem::Optional)
+        return fieldType;
+    return types::optional(fieldType);
 }
 
 TypeRef Sema::analyzeCoalesce(CoalesceExpr *expr)
@@ -552,78 +695,253 @@ TypeRef Sema::analyzeRange(RangeExpr *expr)
     return types::list(types::integer());
 }
 
+bool Sema::analyzeMatchPattern(const MatchArm::Pattern &pattern,
+                               TypeRef scrutineeType,
+                               MatchCoverage &coverage,
+                               std::unordered_map<std::string, TypeRef> &bindings)
+{
+    auto bind = [&](const std::string &name, TypeRef type)
+    {
+        if (bindings.find(name) != bindings.end())
+        {
+            error(pattern.literal ? pattern.literal->loc : SourceLoc{},
+                  "Duplicate binding name in pattern: " + name);
+            return;
+        }
+        bindings[name] = type ? type : types::unknown();
+    };
+
+    switch (pattern.kind)
+    {
+        case MatchArm::Pattern::Kind::Wildcard:
+            coverage.hasIrrefutable = true;
+            return true;
+
+        case MatchArm::Pattern::Kind::Binding:
+            if (scrutineeType && scrutineeType->kind == TypeKindSem::Optional &&
+                pattern.binding == "None")
+            {
+                coverage.coversNull = true;
+                return true;
+            }
+
+            bind(pattern.binding, scrutineeType);
+            if (!pattern.guard)
+                coverage.hasIrrefutable = true;
+            return true;
+
+        case MatchArm::Pattern::Kind::Literal:
+        {
+            if (pattern.literal)
+            {
+                TypeRef litType = analyzeExpr(pattern.literal.get());
+                if (scrutineeType && !scrutineeType->isAssignableFrom(*litType))
+                {
+                    error(pattern.literal->loc,
+                          "Pattern literal type '" + litType->toString() +
+                              "' is not compatible with scrutinee type '" +
+                              scrutineeType->toString() + "'");
+                }
+
+                if (pattern.literal->kind == ExprKind::IntLiteral)
+                {
+                    coverage.coveredIntegers.insert(
+                        static_cast<IntLiteralExpr *>(pattern.literal.get())->value);
+                }
+                else if (pattern.literal->kind == ExprKind::BoolLiteral)
+                {
+                    coverage.coveredBooleans.insert(
+                        static_cast<BoolLiteralExpr *>(pattern.literal.get())->value);
+                }
+                else if (pattern.literal->kind == ExprKind::NullLiteral)
+                {
+                    coverage.coversNull = true;
+                }
+            }
+            return true;
+        }
+
+        case MatchArm::Pattern::Kind::Expression:
+            if (pattern.literal)
+            {
+                TypeRef exprType = analyzeExpr(pattern.literal.get());
+                if (exprType->kind != TypeKindSem::Boolean)
+                {
+                    error(pattern.literal->loc, "Match expression patterns must be Boolean");
+                }
+            }
+            return true;
+
+        case MatchArm::Pattern::Kind::Tuple:
+        {
+            if (!scrutineeType || scrutineeType->kind != TypeKindSem::Tuple)
+            {
+                error(pattern.literal ? pattern.literal->loc : SourceLoc{},
+                      "Tuple pattern requires tuple scrutinee");
+                return false;
+            }
+
+            const auto &elements = scrutineeType->tupleElementTypes();
+            if (elements.size() != pattern.subpatterns.size())
+            {
+                error(pattern.literal ? pattern.literal->loc : SourceLoc{},
+                      "Tuple pattern arity mismatch");
+                return false;
+            }
+
+            for (size_t i = 0; i < elements.size(); ++i)
+            {
+                analyzeMatchPattern(pattern.subpatterns[i], elements[i], coverage, bindings);
+            }
+            return true;
+        }
+
+        case MatchArm::Pattern::Kind::Constructor:
+        {
+            if (scrutineeType && scrutineeType->kind == TypeKindSem::Optional)
+            {
+                if (pattern.binding == "Some")
+                {
+                    coverage.coversSome = true;
+                    if (pattern.subpatterns.size() != 1)
+                    {
+                        error(pattern.literal ? pattern.literal->loc : SourceLoc{},
+                              "Some() pattern requires exactly one subpattern");
+                        return false;
+                    }
+                    TypeRef inner = scrutineeType->innerType();
+                    analyzeMatchPattern(pattern.subpatterns[0], inner, coverage, bindings);
+                    return true;
+                }
+                if (pattern.binding == "None")
+                {
+                    coverage.coversNull = true;
+                    if (!pattern.subpatterns.empty())
+                    {
+                        error(pattern.literal ? pattern.literal->loc : SourceLoc{},
+                              "None pattern does not take arguments");
+                        return false;
+                    }
+                    return true;
+                }
+
+                error(pattern.literal ? pattern.literal->loc : SourceLoc{},
+                      "Unknown optional constructor pattern: " + pattern.binding);
+                return false;
+            }
+
+            if (!scrutineeType || (scrutineeType->kind != TypeKindSem::Value &&
+                                   scrutineeType->kind != TypeKindSem::Entity))
+            {
+                error(pattern.literal ? pattern.literal->loc : SourceLoc{},
+                      "Constructor pattern requires value or entity scrutinee");
+                return false;
+            }
+
+            if (pattern.binding != scrutineeType->name)
+            {
+                error(pattern.literal ? pattern.literal->loc : SourceLoc{},
+                      "Constructor pattern '" + pattern.binding +
+                          "' does not match scrutinee type '" + scrutineeType->name + "'");
+                return false;
+            }
+
+            std::vector<TypeRef> fieldTypes;
+            if (scrutineeType->kind == TypeKindSem::Value)
+            {
+                auto it = valueDecls_.find(scrutineeType->name);
+                if (it != valueDecls_.end())
+                {
+                    for (auto &member : it->second->members)
+                    {
+                        if (member->kind == DeclKind::Field)
+                        {
+                            auto *field = static_cast<FieldDecl *>(member.get());
+                            fieldTypes.push_back(field->type ? resolveTypeNode(field->type.get())
+                                                             : types::unknown());
+                        }
+                    }
+                }
+            }
+            else
+            {
+                auto it = entityDecls_.find(scrutineeType->name);
+                if (it != entityDecls_.end())
+                {
+                    for (auto &member : it->second->members)
+                    {
+                        if (member->kind == DeclKind::Field)
+                        {
+                            auto *field = static_cast<FieldDecl *>(member.get());
+                            fieldTypes.push_back(field->type ? resolveTypeNode(field->type.get())
+                                                             : types::unknown());
+                        }
+                    }
+                }
+            }
+
+            if (fieldTypes.size() != pattern.subpatterns.size())
+            {
+                error(pattern.literal ? pattern.literal->loc : SourceLoc{},
+                      "Constructor pattern field arity mismatch");
+                return false;
+            }
+
+            for (size_t i = 0; i < fieldTypes.size(); ++i)
+            {
+                analyzeMatchPattern(pattern.subpatterns[i], fieldTypes[i], coverage, bindings);
+            }
+            return true;
+        }
+    }
+
+    return false;
+}
+
 TypeRef Sema::analyzeMatchExpr(MatchExpr *expr)
 {
     TypeRef scrutineeType = analyzeExpr(expr->scrutinee.get());
 
-    // Track if we have a wildcard or exhaustive pattern coverage
-    bool hasWildcard = false;
-    std::set<int64_t> coveredIntegers;
-    std::set<bool> coveredBooleans;
-
+    MatchCoverage coverage;
     TypeRef resultType = nullptr;
 
     for (auto &arm : expr->arms)
     {
-        // Analyze the pattern
-        const auto &pattern = arm.pattern;
+        std::unordered_map<std::string, TypeRef> bindings;
+        pushScope();
 
-        if (pattern.kind == MatchArm::Pattern::Kind::Wildcard)
+        analyzeMatchPattern(arm.pattern, scrutineeType, coverage, bindings);
+
+        for (const auto &binding : bindings)
         {
-            hasWildcard = true;
+            Symbol sym;
+            sym.kind = Symbol::Kind::Variable;
+            sym.name = binding.first;
+            sym.type = binding.second;
+            sym.isFinal = true;
+            defineSymbol(binding.first, sym);
         }
-        else if (pattern.kind == MatchArm::Pattern::Kind::Binding)
+
+        if (arm.pattern.guard)
         {
-            // A binding without a guard acts as a wildcard
-            if (!pattern.guard)
+            TypeRef guardType = analyzeExpr(arm.pattern.guard.get());
+            if (guardType->kind != TypeKindSem::Boolean)
             {
-                hasWildcard = true;
-            }
-        }
-        else if (pattern.kind == MatchArm::Pattern::Kind::Literal && pattern.literal)
-        {
-            // Track which literals are covered
-            if (pattern.literal->kind == ExprKind::IntLiteral)
-            {
-                coveredIntegers.insert(static_cast<IntLiteralExpr *>(pattern.literal.get())->value);
-            }
-            else if (pattern.literal->kind == ExprKind::BoolLiteral)
-            {
-                coveredBooleans.insert(
-                    static_cast<BoolLiteralExpr *>(pattern.literal.get())->value);
-            }
-        }
-        else if (pattern.kind == MatchArm::Pattern::Kind::Expression && pattern.literal)
-        {
-            // Expression pattern - analyze the expression (should evaluate to boolean)
-            TypeRef exprType = analyzeExpr(pattern.literal.get());
-            if (exprType && exprType->kind != TypeKindSem::Boolean)
-            {
-                // Warn if expression doesn't return boolean
-                // (but still allow it - will be compared against zero at runtime)
+                error(arm.pattern.guard->loc, "Match guard must be Boolean");
             }
         }
 
-        // Analyze the body and track result type
         TypeRef bodyType = analyzeExpr(arm.body.get());
-        if (!resultType)
-        {
-            resultType = bodyType;
-        }
-        else if (bodyType && !resultType->equals(*bodyType))
-        {
-            // Types differ - for now, use the first type
-            // TODO: Find common supertype
-        }
+        resultType = commonType(resultType, bodyType);
+
+        popScope();
     }
 
-    // Check exhaustiveness based on scrutinee type
-    if (!hasWildcard)
+    if (!coverage.hasIrrefutable)
     {
         if (scrutineeType && scrutineeType->kind == TypeKindSem::Boolean)
         {
-            // Boolean must cover both true and false
-            if (coveredBooleans.size() < 2)
+            if (coverage.coveredBooleans.size() < 2)
             {
                 error(expr->loc,
                       "Non-exhaustive patterns: match on Boolean must cover both true "
@@ -632,17 +950,18 @@ TypeRef Sema::analyzeMatchExpr(MatchExpr *expr)
         }
         else if (scrutineeType && scrutineeType->isIntegral())
         {
-            // Integer types need a wildcard since we can't enumerate all values
             error(expr->loc,
                   "Non-exhaustive patterns: match on Integer requires a wildcard (_) or "
                   "else case to be exhaustive");
         }
         else if (scrutineeType && scrutineeType->kind == TypeKindSem::Optional)
         {
-            // Optional types need to handle both Some and None cases
-            error(expr->loc,
-                  "Non-exhaustive patterns: match on optional type should use a "
-                  "wildcard (_) or handle all cases");
+            if (!(coverage.coversNull && coverage.coversSome))
+            {
+                error(expr->loc,
+                      "Non-exhaustive patterns: match on optional type should use a "
+                      "wildcard (_) or handle all cases");
+            }
         }
     }
 
@@ -653,11 +972,12 @@ TypeRef Sema::analyzeNew(NewExpr *expr)
 {
     TypeRef type = resolveTypeNode(expr->type.get());
 
-    // Allow new for entity types and collection types (List, Set, Map)
-    if (type->kind != TypeKindSem::Entity && type->kind != TypeKindSem::List &&
-        type->kind != TypeKindSem::Set && type->kind != TypeKindSem::Map)
+    // Allow new for value/entity types and collection types (List, Set, Map)
+    if (type->kind != TypeKindSem::Value && type->kind != TypeKindSem::Entity &&
+        type->kind != TypeKindSem::List && type->kind != TypeKindSem::Set &&
+        type->kind != TypeKindSem::Map)
     {
-        error(expr->loc, "'new' can only be used with entity or collection types");
+        error(expr->loc, "'new' can only be used with value, entity, or collection types");
     }
 
     // Analyze constructor arguments
@@ -712,14 +1032,7 @@ TypeRef Sema::analyzeListLiteral(ListLiteralExpr *expr)
     for (auto &elem : expr->elements)
     {
         TypeRef elemType = analyzeExpr(elem.get());
-        if (elementType->kind == TypeKindSem::Unknown)
-        {
-            elementType = elemType;
-        }
-        else if (!elementType->equals(*elemType))
-        {
-            // TODO: Find common type
-        }
+        elementType = commonType(elementType, elemType);
     }
 
     return types::list(elementType);
@@ -727,7 +1040,7 @@ TypeRef Sema::analyzeListLiteral(ListLiteralExpr *expr)
 
 TypeRef Sema::analyzeMapLiteral(MapLiteralExpr *expr)
 {
-    TypeRef keyType = types::unknown();
+    TypeRef keyType = types::string();
     TypeRef valueType = types::unknown();
 
     for (auto &entry : expr->entries)
@@ -735,10 +1048,12 @@ TypeRef Sema::analyzeMapLiteral(MapLiteralExpr *expr)
         TypeRef kType = analyzeExpr(entry.key.get());
         TypeRef vType = analyzeExpr(entry.value.get());
 
-        if (keyType->kind == TypeKindSem::Unknown)
-            keyType = kType;
-        if (valueType->kind == TypeKindSem::Unknown)
-            valueType = vType;
+        if (kType->kind != TypeKindSem::String)
+        {
+            error(entry.key->loc, "Map keys must be String");
+        }
+
+        valueType = commonType(valueType, vType);
     }
 
     return types::map(keyType, valueType);

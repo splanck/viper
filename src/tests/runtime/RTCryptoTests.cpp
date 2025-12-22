@@ -116,7 +116,8 @@ static void test_hmac_sha1()
 
         rt_string result = rt_hash_hmac_sha1_bytes(key, data);
         test_result("HMAC-SHA1 Test 1",
-                    strcmp(rt_string_cstr(result), "b617318655057264e28bc0b6fb378c8ef146be00") == 0);
+                    strcmp(rt_string_cstr(result), "b617318655057264e28bc0b6fb378c8ef146be00") ==
+                        0);
     }
 
     // Test 2: key = "Jefe", data = "what do ya want for nothing?"
@@ -127,7 +128,8 @@ static void test_hmac_sha1()
 
         rt_string result = rt_hash_hmac_sha1(key, data);
         test_result("HMAC-SHA1 Test 2",
-                    strcmp(rt_string_cstr(result), "effcdf6ae5eb2fa2d27416d5f184df9c259a7c79") == 0);
+                    strcmp(rt_string_cstr(result), "effcdf6ae5eb2fa2d27416d5f184df9c259a7c79") ==
+                        0);
     }
 
     // Test 3: key = 0xaa repeated 20 times, data = 0xdd repeated 50 times
@@ -143,7 +145,8 @@ static void test_hmac_sha1()
 
         rt_string result = rt_hash_hmac_sha1_bytes(key, data);
         test_result("HMAC-SHA1 Test 3",
-                    strcmp(rt_string_cstr(result), "125d7342b9ac11cd91a39af48aa17b4f63f175d3") == 0);
+                    strcmp(rt_string_cstr(result), "125d7342b9ac11cd91a39af48aa17b4f63f175d3") ==
+                        0);
     }
 
     printf("\n");
@@ -168,7 +171,8 @@ static void test_hmac_sha256()
         rt_string result = rt_hash_hmac_sha256_bytes(key, data);
         test_result("HMAC-SHA256 Test 1",
                     strcmp(rt_string_cstr(result),
-                           "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7") == 0);
+                           "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7") ==
+                        0);
     }
 
     // Test 2: key = "Jefe", data = "what do ya want for nothing?"
@@ -180,7 +184,8 @@ static void test_hmac_sha256()
         rt_string result = rt_hash_hmac_sha256(key, data);
         test_result("HMAC-SHA256 Test 2",
                     strcmp(rt_string_cstr(result),
-                           "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843") == 0);
+                           "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843") ==
+                        0);
     }
 
     // Test 3: key = 0xaa repeated 20 times, data = 0xdd repeated 50 times
@@ -197,7 +202,8 @@ static void test_hmac_sha256()
         rt_string result = rt_hash_hmac_sha256_bytes(key, data);
         test_result("HMAC-SHA256 Test 3",
                     strcmp(rt_string_cstr(result),
-                           "773ea91e36800e46854db8ebd09181a72959098b3ef8c122d9635514ced565fe") == 0);
+                           "773ea91e36800e46854db8ebd09181a72959098b3ef8c122d9635514ced565fe") ==
+                        0);
     }
 
     // Test 4: Long key (longer than block size - gets hashed)
@@ -213,7 +219,8 @@ static void test_hmac_sha256()
         rt_string result = rt_hash_hmac_sha256_bytes(key, data);
         test_result("HMAC-SHA256 Test 4 (long key)",
                     strcmp(rt_string_cstr(result),
-                           "60e431591ee0b67f0d8a26aacbf5b77f8e0bc6213728c5140546040f0ee37f54") == 0);
+                           "60e431591ee0b67f0d8a26aacbf5b77f8e0bc6213728c5140546040f0ee37f54") ==
+                        0);
     }
 
     printf("\n");
@@ -237,7 +244,8 @@ static void test_pbkdf2_sha256()
         rt_string result = rt_keyderive_pbkdf2_sha256_str(password, salt, 1000, 32);
         test_result("PBKDF2-SHA256 password/salt/1000/32",
                     strcmp(rt_string_cstr(result),
-                           "632c2812e46d4604102ba7618e9d6d7d2f8128f6266b4a03264d2a0460b7dcb3") == 0);
+                           "632c2812e46d4604102ba7618e9d6d7d2f8128f6266b4a03264d2a0460b7dcb3") ==
+                        0);
     }
 
     // Test 2: password="passwordPASSWORDpassword",
@@ -248,11 +256,10 @@ static void test_pbkdf2_sha256()
         void *salt = make_bytes_str("saltSALTsaltSALTsaltSALTsaltSALTsalt");
 
         rt_string result = rt_keyderive_pbkdf2_sha256_str(password, salt, 4096, 40);
-        test_result(
-            "PBKDF2-SHA256 long password/salt/4096/40",
-            strcmp(rt_string_cstr(result),
-                   "348c89dbcbd32b2f32d814b8116e84cf2b17347ebc1800181c4e2a1fb8dd53e1c635518c7dac47e9") ==
-                0);
+        test_result("PBKDF2-SHA256 long password/salt/4096/40",
+                    strcmp(rt_string_cstr(result),
+                           "348c89dbcbd32b2f32d814b8116e84cf2b17347ebc1800181c4e2a1fb8dd53e1c635518"
+                           "c7dac47e9") == 0);
     }
 
     // Test 3: Returns Bytes object

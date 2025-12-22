@@ -1,139 +1,242 @@
 # Viper Project - Lines of Code Report
 
-**Generated:** November 25, 2025
-
----
+**Generated:** 2025-12-21
 
 ## Executive Summary
 
-| Metric                 | Value                                          |
-|------------------------|------------------------------------------------|
-| **Total Source Lines** | 215,726                                        |
-| **Total Files**        | 2,469                                          |
-| **Primary Languages**  | C++ (49%), Markdown (14%), BASIC (14%), C (4%) |
-| **Test Coverage**      | 49,395 SLOC (23% of codebase)                  |
+| Metric | Value |
+| ------ | ----- |
+| Total Files | 3118 |
+| Blank Lines | 72673 |
+| Comment Lines | 100266 |
+| Code (SLOC) | 381814 |
 
----
+## By Language (Whole Repo)
 
-## By Language
-
-| Language     |     Files |      Blank |    Comment | Code (SLOC) | % of Total |
-|--------------|----------:|-----------:|-----------:|------------:|-----------:|
-| C++          |       829 |     15,296 |     32,975 |     104,595 |      48.5% |
-| Markdown     |       112 |      9,052 |          3 |      29,529 |      13.7% |
-| Visual Basic |       801 |      5,152 |        887 |      29,435 |      13.6% |
-| C/C++ Header |       348 |      5,481 |     13,921 |      20,479 |       9.5% |
-| C            |        54 |      1,486 |      3,723 |       7,844 |       3.6% |
-| CMake        |        77 |      1,125 |        468 |       6,990 |       3.2% |
-| Viper IL     |       185 |        182 |          7 |       6,279 |       2.9% |
-| YAML         |         6 |         46 |         24 |       2,522 |       1.2% |
-| Other        |        57 |        863 |      1,657 |       8,053 |       3.7% |
-| **TOTAL**    | **2,469** | **38,683** | **53,665** | **215,726** |   **100%** |
-
----
+| Language | Files | Blank | Comment | Code (SLOC) |
+| -------- | ----- | ----- | ------- | ----------- |
+| C++ | 1097 | 29459 | 47235 | 182372 |
+| Markdown | 170 | 17445 | 3 | 50900 |
+| Visual Basic | 858 | 6617 | 1915 | 37265 |
+| C/C++ Header | 486 | 10099 | 28899 | 31768 |
+| C | 105 | 5776 | 19685 | 29831 |
+| .NET IL | 217 | 226 | 7 | 12072 |
+| CMake | 88 | 1445 | 707 | 8979 |
+| Fortran 77 | 5 | 85 | 0 | 8473 |
+| XML | 9 | 0 | 0 | 5838 |
+| Pascal | 24 | 421 | 1224 | 2530 |
+| YAML | 6 | 46 | 24 | 2522 |
+| Text | 16 | 442 | 0 | 2501 |
+| Windows Module Definition | 4 | 224 | 0 | 2380 |
+| PHP | 6 | 84 | 133 | 1824 |
+| JSON | 3 | 0 | 0 | 1064 |
+| Bourne Shell | 20 | 190 | 139 | 1045 |
+| Objective-C | 1 | 111 | 289 | 410 |
+| INI | 2 | 3 | 0 | 21 |
+| PowerShell | 1 | 0 | 6 | 19 |
 
 ## By Subsystem
 
-### Core IL Layer
+| Subsystem | Paths | Files | Blank | Comment | Code (SLOC) |
+| --------- | ----- | ----- | ----- | ------- | ----------- |
+| Core IL | src/il, src/parse, src/pass | 200 | 4161 | 9944 | 33935 |
+| VM | src/vm | 64 | 1690 | 5961 | 14278 |
+| Runtime | src/runtime | 163 | 6566 | 23084 | 29597 |
+| Codegen | src/codegen | 101 | 2117 | 5912 | 15532 |
+| Frontends - BASIC | src/frontends/basic | 271 | 7356 | 18274 | 43346 |
+| Frontends - ViperLang | src/frontends/viperlang | 35 | 2603 | 5847 | 11205 |
+| Frontends - Pascal | src/frontends/pascal | 40 | 2867 | 3401 | 15890 |
+| Frontends - Common | src/frontends/common | 17 | 409 | 948 | 1787 |
+| Tools | src/tools | 40 | 722 | 1481 | 4879 |
+| Support | src/support, src/common | 24 | 298 | 1060 | 1267 |
+| Libs | src/lib | 29 | 2386 | 2980 | 7821 |
+| TUI | src/tui | 107 | 1263 | 3497 | 7100 |
+| Include | include | 16 | 250 | 719 | 718 |
+| Tests | tests, src/tests | 1232 | 16580 | 14817 | 98967 |
+| Docs | docs | 596 | 20195 | 688 | 72373 |
+| Examples | examples | 84 | 511 | 259 | 2974 |
+| Demos | demos | 54 | 1805 | 1164 | 9990 |
+| CMake | cmake, CMakeLists.txt | 8 | 113 | 75 | 786 |
+| Scripts | scripts | 18 | 177 | 142 | 1154 |
 
-| Component    |   Files | Code (SLOC) | Description                              |
-|--------------|--------:|------------:|------------------------------------------|
-| IL Core      |      23 |         934 | IR types, opcodes, modules, functions    |
-| IL Build     |       2 |         288 | IR builder for programmatic construction |
-| IL I/O       |      20 |       3,453 | Text parser/serializer                   |
-| IL Verify    |      48 |       5,114 | Verifier (types, control flow, EH)       |
-| IL Transform |      45 |       5,340 | Optimization passes                      |
-| IL Analysis  |       5 |         496 | CFG, dominators, alias analysis          |
-| IL Runtime   |      17 |       3,342 | Runtime signature metadata               |
-| **IL Total** | **160** |  **18,967** |                                          |
+## Subsystem Language Breakdown
 
-### Execution Layer
+### Core IL
 
-| Component           |   Files | Code (SLOC) | Description                           |
-|---------------------|--------:|------------:|---------------------------------------|
-| Virtual Machine     |      58 |      12,867 | Bytecode interpreter, dispatch, debug |
-| Runtime (C)         |      63 |       5,344 | Strings, arrays, I/O, OOP, memory     |
-| **Execution Total** | **121** |  **18,211** |                                       |
+| Language | Files | Blank | Comment | Code (SLOC) |
+| -------- | ----- | ----- | ------- | ----------- |
+| C++ | 99 | 2704 | 5981 | 20084 |
+| Fortran 77 | 3 | 70 | 0 | 7761 |
+| C/C++ Header | 94 | 1168 | 3963 | 3827 |
+| Windows Module Definition | 3 | 217 | 0 | 2236 |
+| CMake | 1 | 2 | 0 | 27 |
 
-### Frontends
+### VM
 
-| Component          |   Files | Code (SLOC) | Description                                |
-|--------------------|--------:|------------:|--------------------------------------------|
-| BASIC Frontend     |     232 |      39,782 | Lexer, parser, semantic analysis, lowering |
-| **Frontend Total** | **232** |  **39,782** |                                            |
+| Language | Files | Blank | Comment | Code (SLOC) |
+| -------- | ----- | ----- | ------- | ----------- |
+| C++ | 30 | 869 | 3208 | 6168 |
+| C/C++ Header | 27 | 660 | 1839 | 4551 |
+| YAML | 1 | 0 | 0 | 2006 |
+| PHP | 4 | 82 | 89 | 1512 |
+| Fortran 77 | 1 | 0 | 0 | 39 |
+| Pascal | 1 | 79 | 825 | 2 |
 
-### Native Code Generation
+### Runtime
 
-| Component         |  Files | Code (SLOC) | Description                        |
-|-------------------|-------:|------------:|------------------------------------|
-| x86-64 Backend    |     61 |       7,888 | Linear scan regalloc, System V ABI |
-| ARM64 Backend     |     18 |       4,465 | AAPCS64, Apple Silicon support     |
-| Codegen Common    |      2 |          65 | Shared utilities                   |
-| **Codegen Total** | **81** |  **12,418** |                                    |
+| Language | Files | Blank | Comment | Code (SLOC) |
+| -------- | ----- | ----- | ------- | ----------- |
+| C | 86 | 4964 | 17721 | 26578 |
+| C/C++ Header | 75 | 1472 | 5318 | 2256 |
+| C++ | 1 | 102 | 40 | 489 |
+| CMake | 1 | 28 | 5 | 274 |
 
-### Tools & Libraries
+### Codegen
 
-| Component       |   Files | Code (SLOC) | Description                           |
-|-----------------|--------:|------------:|---------------------------------------|
-| CLI Tools       |      26 |       2,362 | vbasic, ilrun, ilc, il-verify, il-dis |
-| Support         |      19 |         648 | Arena, diagnostics, source manager    |
-| TUI             |     106 |       6,768 | Terminal UI library                   |
-| Graphics        |      29 |       7,817 | ViperGFX 2D graphics                  |
-| **Tools Total** | **180** |  **17,595** |                                       |
+| Language | Files | Blank | Comment | Code (SLOC) |
+| -------- | ----- | ----- | ------- | ----------- |
+| C++ | 48 | 1413 | 4098 | 12143 |
+| C/C++ Header | 48 | 691 | 1721 | 2853 |
+| PHP | 2 | 2 | 44 | 312 |
+| Pascal | 1 | 2 | 47 | 128 |
+| CMake | 2 | 9 | 2 | 96 |
 
-### Tests & Documentation
+### Frontends - BASIC
 
-| Component            |     Files | Code (SLOC) | Description                       |
-|----------------------|----------:|------------:|-----------------------------------|
-| Tests                |     1,004 |      49,395 | Unit, golden, e2e tests           |
-| Documentation        |       255 |      28,692 | Markdown docs, examples           |
-| Examples             |        70 |       1,220 | Example programs                  |
-| Demos                |        15 |       2,530 | Demo applications (Frogger, etc.) |
-| **Tests/Docs Total** | **1,344** |  **81,837** |                                   |
+| Language | Files | Blank | Comment | Code (SLOC) |
+| -------- | ----- | ----- | ------- | ----------- |
+| C++ | 155 | 4700 | 12298 | 33316 |
+| C/C++ Header | 113 | 2631 | 5975 | 9051 |
+| Fortran 77 | 1 | 15 | 0 | 673 |
+| CMake | 1 | 3 | 1 | 162 |
+| Windows Module Definition | 1 | 7 | 0 | 144 |
 
----
+### Frontends - ViperLang
 
-## Subsystem Breakdown Chart
+| Language | Files | Blank | Comment | Code (SLOC) |
+| -------- | ----- | ----- | ------- | ----------- |
+| C++ | 18 | 1476 | 1178 | 9465 |
+| C/C++ Header | 16 | 1124 | 4669 | 1708 |
+| CMake | 1 | 3 | 0 | 32 |
 
-```
-BASIC Frontend     ████████████████████████████████████████  39,782 (18.4%)
-Tests              ██████████████████████████████████████████████████  49,395 (22.9%)
-Documentation      ████████████████████████████  28,692 (13.3%)
-IL Layer           ██████████████████  18,967 (8.8%)
-Execution (VM+RT)  ██████████████████  18,211 (8.4%)
-Codegen            ████████████  12,418 (5.8%)
-Tools & Libraries  █████████████████  17,595 (8.2%)
-Other              ███████████████████████████████  30,666 (14.2%)
-```
+### Frontends - Pascal
 
----
+| Language | Files | Blank | Comment | Code (SLOC) |
+| -------- | ----- | ----- | ------- | ----------- |
+| C++ | 29 | 2134 | 2195 | 13733 |
+| C/C++ Header | 10 | 728 | 1204 | 2117 |
+| CMake | 1 | 5 | 2 | 40 |
 
-## Production Code vs Test Code
+### Frontends - Common
 
-| Category        |    SLOC | Percentage |
-|-----------------|--------:|-----------:|
-| Production Code | 166,331 |      77.1% |
-| Test Code       |  49,395 |      22.9% |
+| Language | Files | Blank | Comment | Code (SLOC) |
+| -------- | ----- | ----- | ------- | ----------- |
+| C/C++ Header | 16 | 405 | 934 | 1776 |
+| CMake | 1 | 4 | 14 | 11 |
 
-**Test Ratio:** 1 line of test code per 3.4 lines of production code
+### Tools
 
----
+| Language | Files | Blank | Comment | Code (SLOC) |
+| -------- | ----- | ----- | ------- | ----------- |
+| C++ | 29 | 615 | 1110 | 4558 |
+| C/C++ Header | 10 | 104 | 358 | 316 |
+| CMake | 1 | 3 | 13 | 5 |
 
-## Code Quality Metrics
+### Support
 
-| Metric             | Value                            |
-|--------------------|----------------------------------|
-| Comment Density    | 24.9% (comments / code+comments) |
-| Average File Size  | 87 SLOC                          |
-| Largest Component  | BASIC Frontend (39,782 SLOC)     |
-| Smallest Component | Codegen Common (65 SLOC)         |
+| Language | Files | Blank | Comment | Code (SLOC) |
+| -------- | ----- | ----- | ------- | ----------- |
+| C++ | 10 | 137 | 634 | 710 |
+| C/C++ Header | 13 | 160 | 426 | 543 |
+| CMake | 1 | 1 | 0 | 14 |
 
----
+### Libs
+
+| Language | Files | Blank | Comment | Code (SLOC) |
+| -------- | ----- | ----- | ------- | ----------- |
+| Markdown | 8 | 1442 | 0 | 4343 |
+| C | 12 | 642 | 1842 | 2545 |
+| Objective-C | 1 | 111 | 289 | 410 |
+| C/C++ Header | 5 | 155 | 799 | 394 |
+| CMake | 3 | 36 | 50 | 129 |
+
+### TUI
+
+| Language | Files | Blank | Comment | Code (SLOC) |
+| -------- | ----- | ----- | ------- | ----------- |
+| C++ | 65 | 800 | 2703 | 5743 |
+| C/C++ Header | 36 | 418 | 791 | 1153 |
+| CMake | 3 | 42 | 3 | 168 |
+| INI | 2 | 3 | 0 | 21 |
+| JSON | 1 | 0 | 0 | 15 |
+
+### Include
+
+| Language | Files | Blank | Comment | Code (SLOC) |
+| -------- | ----- | ----- | ------- | ----------- |
+| C/C++ Header | 16 | 250 | 719 | 718 |
+
+### Tests
+
+| Language | Files | Blank | Comment | Code (SLOC) |
+| -------- | ----- | ----- | ------- | ----------- |
+| C++ | 610 | 14491 | 13775 | 75831 |
+| .NET IL | 198 | 105 | 7 | 11535 |
+| CMake | 63 | 1146 | 533 | 6770 |
+| Visual Basic | 331 | 515 | 175 | 3411 |
+| C | 7 | 170 | 122 | 708 |
+| C/C++ Header | 7 | 133 | 183 | 505 |
+| Pascal | 8 | 13 | 18 | 124 |
+| Bourne Shell | 5 | 7 | 4 | 79 |
+| Text | 3 | 0 | 0 | 4 |
+
+### Docs
+
+| Language | Files | Blank | Comment | Code (SLOC) |
+| -------- | ----- | ----- | ------- | ----------- |
+| Markdown | 144 | 15286 | 3 | 44124 |
+| Visual Basic | 439 | 4423 | 667 | 24487 |
+| Text | 10 | 442 | 0 | 2448 |
+| JSON | 2 | 0 | 0 | 1049 |
+| YAML | 1 | 44 | 18 | 265 |
+
+### Examples
+
+| Language | Files | Blank | Comment | Code (SLOC) |
+| -------- | ----- | ----- | ------- | ----------- |
+| Visual Basic | 50 | 312 | 214 | 1966 |
+| .NET IL | 19 | 121 | 0 | 537 |
+| Pascal | 11 | 60 | 30 | 337 |
+| C++ | 3 | 18 | 15 | 132 |
+| Text | 1 | 0 | 0 | 2 |
+
+### Demos
+
+| Language | Files | Blank | Comment | Code (SLOC) |
+| -------- | ----- | ----- | ------- | ----------- |
+| Visual Basic | 39 | 1367 | 859 | 7402 |
+| Pascal | 4 | 272 | 304 | 1972 |
+| Markdown | 9 | 160 | 0 | 578 |
+| Bourne Shell | 1 | 6 | 1 | 28 |
+| Text | 1 | 0 | 0 | 10 |
+
+### CMake
+
+| Language | Files | Blank | Comment | Code (SLOC) |
+| -------- | ----- | ----- | ------- | ----------- |
+| CMake | 8 | 113 | 75 | 786 |
+
+### Scripts
+
+| Language | Files | Blank | Comment | Code (SLOC) |
+| -------- | ----- | ----- | ------- | ----------- |
+| Bourne Shell | 14 | 177 | 134 | 938 |
+| YAML | 2 | 0 | 2 | 160 |
+| Text | 1 | 0 | 0 | 37 |
+| PowerShell | 1 | 0 | 6 | 19 |
 
 ## Notes
 
-- **SLOC** = Source Lines of Code (excludes blank lines and comments)
-- **Visual Basic** entries are Viper BASIC source files (`.bas`)
-- **Viper IL** entries are intermediate language files (`.il`)
-- Generated using `cloc v2.06`
-- Excludes build directories, node_modules, and .git
+- SLOC excludes blank and comment lines.
+- Excluded directories: .git, build, build_asan, build_clean, build_rel, cmake-build-debug, cmake-build-release, cmake-build-relwithdebinfo, cmake-build-minsizerel, cmake-build-default, CMakeFiles, third_party, vendor, node_modules, dist
+- Generated using `cloc`.

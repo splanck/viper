@@ -28,130 +28,130 @@ extern "C"
 {
 #endif
 
-    //=========================================================================
-    // Key Code Constants (GLFW-compatible values)
-    //=========================================================================
+//=========================================================================
+// Key Code Constants (GLFW-compatible values)
+//=========================================================================
 
-    // Unknown key
-    #define VIPER_KEY_UNKNOWN 0
+// Unknown key
+#define VIPER_KEY_UNKNOWN 0
 
-    // Printable ASCII keys (letters and numbers match ASCII)
-    #define VIPER_KEY_SPACE 32
-    #define VIPER_KEY_QUOTE 39      // '
-    #define VIPER_KEY_COMMA 44      // ,
-    #define VIPER_KEY_MINUS 45      // -
-    #define VIPER_KEY_PERIOD 46     // .
-    #define VIPER_KEY_SLASH 47      // /
+// Printable ASCII keys (letters and numbers match ASCII)
+#define VIPER_KEY_SPACE 32
+#define VIPER_KEY_QUOTE 39  // '
+#define VIPER_KEY_COMMA 44  // ,
+#define VIPER_KEY_MINUS 45  // -
+#define VIPER_KEY_PERIOD 46 // .
+#define VIPER_KEY_SLASH 47  // /
 
-    #define VIPER_KEY_0 48
-    #define VIPER_KEY_1 49
-    #define VIPER_KEY_2 50
-    #define VIPER_KEY_3 51
-    #define VIPER_KEY_4 52
-    #define VIPER_KEY_5 53
-    #define VIPER_KEY_6 54
-    #define VIPER_KEY_7 55
-    #define VIPER_KEY_8 56
-    #define VIPER_KEY_9 57
+#define VIPER_KEY_0 48
+#define VIPER_KEY_1 49
+#define VIPER_KEY_2 50
+#define VIPER_KEY_3 51
+#define VIPER_KEY_4 52
+#define VIPER_KEY_5 53
+#define VIPER_KEY_6 54
+#define VIPER_KEY_7 55
+#define VIPER_KEY_8 56
+#define VIPER_KEY_9 57
 
-    #define VIPER_KEY_SEMICOLON 59  // ;
-    #define VIPER_KEY_EQUALS 61     // =
+#define VIPER_KEY_SEMICOLON 59 // ;
+#define VIPER_KEY_EQUALS 61    // =
 
-    #define VIPER_KEY_A 65
-    #define VIPER_KEY_B 66
-    #define VIPER_KEY_C 67
-    #define VIPER_KEY_D 68
-    #define VIPER_KEY_E 69
-    #define VIPER_KEY_F 70
-    #define VIPER_KEY_G 71
-    #define VIPER_KEY_H 72
-    #define VIPER_KEY_I 73
-    #define VIPER_KEY_J 74
-    #define VIPER_KEY_K 75
-    #define VIPER_KEY_L 76
-    #define VIPER_KEY_M 77
-    #define VIPER_KEY_N 78
-    #define VIPER_KEY_O 79
-    #define VIPER_KEY_P 80
-    #define VIPER_KEY_Q 81
-    #define VIPER_KEY_R 82
-    #define VIPER_KEY_S 83
-    #define VIPER_KEY_T 84
-    #define VIPER_KEY_U 85
-    #define VIPER_KEY_V 86
-    #define VIPER_KEY_W 87
-    #define VIPER_KEY_X 88
-    #define VIPER_KEY_Y 89
-    #define VIPER_KEY_Z 90
+#define VIPER_KEY_A 65
+#define VIPER_KEY_B 66
+#define VIPER_KEY_C 67
+#define VIPER_KEY_D 68
+#define VIPER_KEY_E 69
+#define VIPER_KEY_F 70
+#define VIPER_KEY_G 71
+#define VIPER_KEY_H 72
+#define VIPER_KEY_I 73
+#define VIPER_KEY_J 74
+#define VIPER_KEY_K 75
+#define VIPER_KEY_L 76
+#define VIPER_KEY_M 77
+#define VIPER_KEY_N 78
+#define VIPER_KEY_O 79
+#define VIPER_KEY_P 80
+#define VIPER_KEY_Q 81
+#define VIPER_KEY_R 82
+#define VIPER_KEY_S 83
+#define VIPER_KEY_T 84
+#define VIPER_KEY_U 85
+#define VIPER_KEY_V 86
+#define VIPER_KEY_W 87
+#define VIPER_KEY_X 88
+#define VIPER_KEY_Y 89
+#define VIPER_KEY_Z 90
 
-    #define VIPER_KEY_LBRACKET 91   // [
-    #define VIPER_KEY_BACKSLASH 92  // backslash
-    #define VIPER_KEY_RBRACKET 93   // ]
-    #define VIPER_KEY_GRAVE 96      // `
+#define VIPER_KEY_LBRACKET 91  // [
+#define VIPER_KEY_BACKSLASH 92 // backslash
+#define VIPER_KEY_RBRACKET 93  // ]
+#define VIPER_KEY_GRAVE 96     // `
 
-    // Special keys (GLFW-style values >= 256)
-    #define VIPER_KEY_ESCAPE 256
-    #define VIPER_KEY_ENTER 257
-    #define VIPER_KEY_TAB 258
-    #define VIPER_KEY_BACKSPACE 259
-    #define VIPER_KEY_INSERT 260
-    #define VIPER_KEY_DELETE 261
-    #define VIPER_KEY_RIGHT 262
-    #define VIPER_KEY_LEFT 263
-    #define VIPER_KEY_DOWN 264
-    #define VIPER_KEY_UP 265
-    #define VIPER_KEY_PAGEUP 266
-    #define VIPER_KEY_PAGEDOWN 267
-    #define VIPER_KEY_HOME 268
-    #define VIPER_KEY_END 269
+// Special keys (GLFW-style values >= 256)
+#define VIPER_KEY_ESCAPE 256
+#define VIPER_KEY_ENTER 257
+#define VIPER_KEY_TAB 258
+#define VIPER_KEY_BACKSPACE 259
+#define VIPER_KEY_INSERT 260
+#define VIPER_KEY_DELETE 261
+#define VIPER_KEY_RIGHT 262
+#define VIPER_KEY_LEFT 263
+#define VIPER_KEY_DOWN 264
+#define VIPER_KEY_UP 265
+#define VIPER_KEY_PAGEUP 266
+#define VIPER_KEY_PAGEDOWN 267
+#define VIPER_KEY_HOME 268
+#define VIPER_KEY_END 269
 
-    // Function keys
-    #define VIPER_KEY_F1 290
-    #define VIPER_KEY_F2 291
-    #define VIPER_KEY_F3 292
-    #define VIPER_KEY_F4 293
-    #define VIPER_KEY_F5 294
-    #define VIPER_KEY_F6 295
-    #define VIPER_KEY_F7 296
-    #define VIPER_KEY_F8 297
-    #define VIPER_KEY_F9 298
-    #define VIPER_KEY_F10 299
-    #define VIPER_KEY_F11 300
-    #define VIPER_KEY_F12 301
+// Function keys
+#define VIPER_KEY_F1 290
+#define VIPER_KEY_F2 291
+#define VIPER_KEY_F3 292
+#define VIPER_KEY_F4 293
+#define VIPER_KEY_F5 294
+#define VIPER_KEY_F6 295
+#define VIPER_KEY_F7 296
+#define VIPER_KEY_F8 297
+#define VIPER_KEY_F9 298
+#define VIPER_KEY_F10 299
+#define VIPER_KEY_F11 300
+#define VIPER_KEY_F12 301
 
-    // Numpad keys
-    #define VIPER_KEY_NUM0 320
-    #define VIPER_KEY_NUM1 321
-    #define VIPER_KEY_NUM2 322
-    #define VIPER_KEY_NUM3 323
-    #define VIPER_KEY_NUM4 324
-    #define VIPER_KEY_NUM5 325
-    #define VIPER_KEY_NUM6 326
-    #define VIPER_KEY_NUM7 327
-    #define VIPER_KEY_NUM8 328
-    #define VIPER_KEY_NUM9 329
-    #define VIPER_KEY_NUMDOT 330
-    #define VIPER_KEY_NUMDIV 331
-    #define VIPER_KEY_NUMMUL 332
-    #define VIPER_KEY_NUMSUB 333
-    #define VIPER_KEY_NUMADD 334
-    #define VIPER_KEY_NUMENTER 335
+// Numpad keys
+#define VIPER_KEY_NUM0 320
+#define VIPER_KEY_NUM1 321
+#define VIPER_KEY_NUM2 322
+#define VIPER_KEY_NUM3 323
+#define VIPER_KEY_NUM4 324
+#define VIPER_KEY_NUM5 325
+#define VIPER_KEY_NUM6 326
+#define VIPER_KEY_NUM7 327
+#define VIPER_KEY_NUM8 328
+#define VIPER_KEY_NUM9 329
+#define VIPER_KEY_NUMDOT 330
+#define VIPER_KEY_NUMDIV 331
+#define VIPER_KEY_NUMMUL 332
+#define VIPER_KEY_NUMSUB 333
+#define VIPER_KEY_NUMADD 334
+#define VIPER_KEY_NUMENTER 335
 
-    // Modifier keys
-    #define VIPER_KEY_LSHIFT 340
-    #define VIPER_KEY_LCTRL 341
-    #define VIPER_KEY_LALT 342
-    #define VIPER_KEY_RSHIFT 344
-    #define VIPER_KEY_RCTRL 345
-    #define VIPER_KEY_RALT 346
+// Modifier keys
+#define VIPER_KEY_LSHIFT 340
+#define VIPER_KEY_LCTRL 341
+#define VIPER_KEY_LALT 342
+#define VIPER_KEY_RSHIFT 344
+#define VIPER_KEY_RCTRL 345
+#define VIPER_KEY_RALT 346
 
-    // Alias for generic modifier keys
-    #define VIPER_KEY_SHIFT VIPER_KEY_LSHIFT
-    #define VIPER_KEY_CTRL VIPER_KEY_LCTRL
-    #define VIPER_KEY_ALT VIPER_KEY_LALT
+// Alias for generic modifier keys
+#define VIPER_KEY_SHIFT VIPER_KEY_LSHIFT
+#define VIPER_KEY_CTRL VIPER_KEY_LCTRL
+#define VIPER_KEY_ALT VIPER_KEY_LALT
 
-    // Maximum key code we track
-    #define VIPER_KEY_MAX 512
+// Maximum key code we track
+#define VIPER_KEY_MAX 512
 
     //=========================================================================
     // Keyboard State Management
@@ -382,12 +382,12 @@ extern "C"
     // Mouse Button Constants
     //=========================================================================
 
-    #define VIPER_MOUSE_BUTTON_LEFT   0
-    #define VIPER_MOUSE_BUTTON_RIGHT  1
-    #define VIPER_MOUSE_BUTTON_MIDDLE 2
-    #define VIPER_MOUSE_BUTTON_X1     3
-    #define VIPER_MOUSE_BUTTON_X2     4
-    #define VIPER_MOUSE_BUTTON_MAX    5
+#define VIPER_MOUSE_BUTTON_LEFT 0
+#define VIPER_MOUSE_BUTTON_RIGHT 1
+#define VIPER_MOUSE_BUTTON_MIDDLE 2
+#define VIPER_MOUSE_BUTTON_X1 3
+#define VIPER_MOUSE_BUTTON_X2 4
+#define VIPER_MOUSE_BUTTON_MAX 5
 
     //=========================================================================
     // Mouse State Management
@@ -553,25 +553,25 @@ extern "C"
     // Gamepad Button Constants (Standard Gamepad Layout)
     //=========================================================================
 
-    #define VIPER_PAD_A       0   // Xbox A / PlayStation Cross
-    #define VIPER_PAD_B       1   // Xbox B / PlayStation Circle
-    #define VIPER_PAD_X       2   // Xbox X / PlayStation Square
-    #define VIPER_PAD_Y       3   // Xbox Y / PlayStation Triangle
-    #define VIPER_PAD_LB      4   // Left bumper/shoulder
-    #define VIPER_PAD_RB      5   // Right bumper/shoulder
-    #define VIPER_PAD_BACK    6   // Back/Select/Share
-    #define VIPER_PAD_START   7   // Start/Options
-    #define VIPER_PAD_LSTICK  8   // Left stick click
-    #define VIPER_PAD_RSTICK  9   // Right stick click
-    #define VIPER_PAD_UP      10  // D-pad up
-    #define VIPER_PAD_DOWN    11  // D-pad down
-    #define VIPER_PAD_LEFT    12  // D-pad left
-    #define VIPER_PAD_RIGHT   13  // D-pad right
-    #define VIPER_PAD_GUIDE   14  // Xbox button / PlayStation button
-    #define VIPER_PAD_BUTTON_MAX 15
+#define VIPER_PAD_A 0      // Xbox A / PlayStation Cross
+#define VIPER_PAD_B 1      // Xbox B / PlayStation Circle
+#define VIPER_PAD_X 2      // Xbox X / PlayStation Square
+#define VIPER_PAD_Y 3      // Xbox Y / PlayStation Triangle
+#define VIPER_PAD_LB 4     // Left bumper/shoulder
+#define VIPER_PAD_RB 5     // Right bumper/shoulder
+#define VIPER_PAD_BACK 6   // Back/Select/Share
+#define VIPER_PAD_START 7  // Start/Options
+#define VIPER_PAD_LSTICK 8 // Left stick click
+#define VIPER_PAD_RSTICK 9 // Right stick click
+#define VIPER_PAD_UP 10    // D-pad up
+#define VIPER_PAD_DOWN 11  // D-pad down
+#define VIPER_PAD_LEFT 12  // D-pad left
+#define VIPER_PAD_RIGHT 13 // D-pad right
+#define VIPER_PAD_GUIDE 14 // Xbox button / PlayStation button
+#define VIPER_PAD_BUTTON_MAX 15
 
-    // Maximum number of supported controllers
-    #define VIPER_PAD_MAX     4
+// Maximum number of supported controllers
+#define VIPER_PAD_MAX 4
 
     //=========================================================================
     // Gamepad State Management

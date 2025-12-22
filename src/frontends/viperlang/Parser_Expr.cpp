@@ -55,6 +55,129 @@ namespace il::frontends::viperlang
 // Expression Parsing
 //===----------------------------------------------------------------------===//
 
+MatchArm::Pattern Parser::parseMatchPattern()
+{
+    MatchArm::Pattern pattern;
+
+    // Speculatively parse a non-expression pattern and ensure it is followed by
+    // either a guard or the fat arrow, otherwise fall back to expression pattern.
+    {
+        Speculation speculative(*this);
+        MatchArm::Pattern candidate;
+        if (parsePatternCore(candidate) && (check(TokenKind::KwIf) || check(TokenKind::FatArrow)))
+        {
+            speculative.commit();
+            return candidate;
+        }
+    }
+
+    pattern.kind = MatchArm::Pattern::Kind::Expression;
+    pattern.literal = parseExpression();
+    if (!pattern.literal)
+    {
+        error("expected pattern in match arm");
+    }
+    return pattern;
+}
+
+bool Parser::parsePatternCore(MatchArm::Pattern &out)
+{
+    if (check(TokenKind::Identifier))
+    {
+        Token nameTok = advance();
+        std::string name = nameTok.text;
+
+        if (name == "_")
+        {
+            out.kind = MatchArm::Pattern::Kind::Wildcard;
+            return true;
+        }
+
+        if (name == "None")
+        {
+            out.kind = MatchArm::Pattern::Kind::Constructor;
+            out.binding = std::move(name);
+            return true;
+        }
+
+        if (match(TokenKind::LParen))
+        {
+            out.kind = MatchArm::Pattern::Kind::Constructor;
+            out.binding = std::move(name);
+
+            if (!check(TokenKind::RParen))
+            {
+                do
+                {
+                    MatchArm::Pattern subpattern;
+                    if (!parsePatternCore(subpattern))
+                    {
+                        error("expected pattern in constructor pattern");
+                        return false;
+                    }
+                    out.subpatterns.push_back(std::move(subpattern));
+                } while (match(TokenKind::Comma));
+            }
+
+            if (!expect(TokenKind::RParen, ")"))
+                return false;
+
+            return true;
+        }
+
+        out.kind = MatchArm::Pattern::Kind::Binding;
+        out.binding = std::move(name);
+        return true;
+    }
+
+    if (check(TokenKind::IntegerLiteral) || check(TokenKind::StringLiteral) ||
+        check(TokenKind::KwTrue) || check(TokenKind::KwFalse) || check(TokenKind::KwNull))
+    {
+        out.kind = MatchArm::Pattern::Kind::Literal;
+        out.literal = parsePrimary();
+        return out.literal != nullptr;
+    }
+
+    Token lparenTok;
+    if (match(TokenKind::LParen, &lparenTok))
+    {
+        std::vector<MatchArm::Pattern> elements;
+
+        if (!check(TokenKind::RParen))
+        {
+            do
+            {
+                MatchArm::Pattern subpattern;
+                if (!parsePatternCore(subpattern))
+                {
+                    error("expected pattern in tuple pattern");
+                    return false;
+                }
+                elements.push_back(std::move(subpattern));
+            } while (match(TokenKind::Comma));
+        }
+
+        if (!expect(TokenKind::RParen, ")"))
+            return false;
+
+        // Single-element parenthesized pattern is not a tuple pattern.
+        if (elements.size() <= 1)
+            return false;
+
+        if (elements.size() != 2)
+        {
+            error("tuple patterns must have exactly two elements");
+            return false;
+        }
+
+        out.kind = MatchArm::Pattern::Kind::Tuple;
+        out.subpatterns = std::move(elements);
+        return true;
+    }
+
+    return false;
+}
+
 ExprPtr Parser::parseExpression()
 {
     return parseAssignment();
@@ -569,11 +692,44 @@ ExprPtr Parser::parsePostfixFrom(ExprPtr expr)
 
             expr = std::make_unique<AsExpr>(loc, std::move(expr), std::move(type));
         }
-        else if (match(TokenKind::Question, &opTok))
+        else if (check(TokenKind::Question))
         {
             // Try expression: expr? - propagate null/error
             // Note: This is different from optional type T? or ternary a ? b : c
-            SourceLoc loc = opTok.loc;
+            const Token &next = peek(1);
+            bool nextStartsExpr = false;
+            switch (next.kind)
+            {
+                case TokenKind::Identifier:
+                case TokenKind::IntegerLiteral:
+                case TokenKind::NumberLiteral:
+                case TokenKind::StringLiteral:
+                case TokenKind::StringStart:
+                case TokenKind::KwTrue:
+                case TokenKind::KwFalse:
+                case TokenKind::KwNull:
+                case TokenKind::KwSelf:
+                case TokenKind::KwSuper:
+                case TokenKind::KwNew:
+                case TokenKind::KwMatch:
+                case TokenKind::LParen:
+                case TokenKind::LBracket:
+                case TokenKind::LBrace:
+                case TokenKind::Minus:
+                case TokenKind::Bang:
+                case TokenKind::Tilde:
+                case TokenKind::KwValue:
+                    nextStartsExpr = true;
+                    break;
+                default:
+                    break;
+            }
+
+            if (nextStartsExpr)
+                break;
+
+            Token qTok = advance();
+            SourceLoc loc = qTok.loc;
             expr = std::make_unique<TryExpr>(loc, std::move(expr));
         }
         else
@@ -678,16 +834,21 @@ ExprPtr Parser::parsePrimary()
     {
         advance(); // consume 'match'
 
-        // Expect opening paren for scrutinee
-        if (!expect(TokenKind::LParen, "("))
-            return nullptr;
-
-        ExprPtr scrutinee = parseExpression();
-        if (!scrutinee)
-            return nullptr;
-
-        if (!expect(TokenKind::RParen, ")"))
-            return nullptr;
+        ExprPtr scrutinee;
+        if (match(TokenKind::LParen))
+        {
+            scrutinee = parseExpression();
+            if (!scrutinee)
+                return nullptr;
+            if (!expect(TokenKind::RParen, ")"))
+                return nullptr;
+        }
+        else
+        {
+            scrutinee = parseExpression();
+            if (!scrutinee)
+                return nullptr;
+        }
 
         if (!expect(TokenKind::LBrace, "{"))
             return nullptr;
@@ -698,56 +859,47 @@ ExprPtr Parser::parsePrimary()
         {
             MatchArm arm;
 
-            // Parse pattern
-            if (check(TokenKind::Identifier) && peek().text == "_")
+            arm.pattern = parseMatchPattern();
+            if (match(TokenKind::KwIf))
             {
-                // Wildcard pattern: _
-                arm.pattern.kind = MatchArm::Pattern::Kind::Wildcard;
-                advance();
-            }
-            else if (check(TokenKind::IntegerLiteral) && peek(1).kind == TokenKind::FatArrow)
-            {
-                // Simple integer literal pattern
-                arm.pattern.kind = MatchArm::Pattern::Kind::Literal;
-                arm.pattern.literal = std::make_unique<IntLiteralExpr>(peek().loc, peek().intValue);
-                advance();
-            }
-            else if (check(TokenKind::StringLiteral) && peek(1).kind == TokenKind::FatArrow)
-            {
-                // Simple string literal pattern
-                arm.pattern.kind = MatchArm::Pattern::Kind::Literal;
-                arm.pattern.literal =
-                    std::make_unique<StringLiteralExpr>(peek().loc, peek().stringValue);
-                advance();
-            }
-            else if (check(TokenKind::Identifier) && peek(1).kind == TokenKind::FatArrow)
-            {
-                // Simple binding pattern: identifier followed by =>
-                arm.pattern.kind = MatchArm::Pattern::Kind::Binding;
-                arm.pattern.binding = peek().text;
-                advance();
-            }
-            else
-            {
-                // Expression pattern: parse full expression (for guard-style matching)
-                // e.g., match (true) { x > 0 => ..., y == 5 => ... }
-                arm.pattern.kind = MatchArm::Pattern::Kind::Expression;
-                arm.pattern.literal = parseExpression();
-                if (!arm.pattern.literal)
-                {
-                    error("expected pattern in match arm");
+                arm.pattern.guard = parseExpression();
+                if (!arm.pattern.guard)
                     return nullptr;
-                }
             }
 
             // Expect =>
             if (!expect(TokenKind::FatArrow, "=>"))
                 return nullptr;
 
-            // Parse arm body (expression)
-            arm.body = parseExpression();
-            if (!arm.body)
-                return nullptr;
+            // Parse arm body (expression or block expression)
+            if (check(TokenKind::LBrace))
+            {
+                Token lbraceTok = advance(); // consume '{'
+                SourceLoc blockLoc = lbraceTok.loc;
+                std::vector<StmtPtr> statements;
+
+                while (!check(TokenKind::RBrace) && !check(TokenKind::Eof))
+                {
+                    StmtPtr stmt = parseStatement();
+                    if (!stmt)
+                    {
+                        resyncAfterError();
+                        continue;
+                    }
+                    statements.push_back(std::move(stmt));
+                }
+
+                if (!expect(TokenKind::RBrace, "}"))
+                    return nullptr;
+
+                arm.body = std::make_unique<BlockExpr>(blockLoc, std::move(statements), nullptr);
+            }
+            else
+            {
+                arm.body = parseExpression();
+                if (!arm.body)
+                    return nullptr;
+            }
 
             arms.push_back(std::move(arm));
 
@@ -1200,25 +1352,12 @@ std::vector<CallArg> Parser::parseCallArgs()
         CallArg arg;
 
         // Check for named argument: name: value
-        if (check(TokenKind::Identifier))
+        if (checkIdentifierLike() && check(TokenKind::Colon, 1))
         {
-            // Look ahead for colon
             Token nameTok = advance();
-
-            if (match(TokenKind::Colon))
-            {
-                arg.name = nameTok.text;
-                arg.value = parseExpression();
-            }
-            else
-            {
-                // Not a named arg, parse rest of expression starting with this identifier
-                // We already consumed the identifier, so create an IdentExpr for it and
-                // continue parsing from the current token position (which is after the identifier)
-                ExprPtr ident = std::make_unique<IdentExpr>(nameTok.loc, nameTok.text);
-                // Continue parsing using the binary expression parser with our ident as the LHS
-                arg.value = parsePostfixAndBinaryFrom(std::move(ident));
-            }
+            advance(); // consume :
+            arg.name = nameTok.text;
+            arg.value = parseExpression();
         }
         else
         {

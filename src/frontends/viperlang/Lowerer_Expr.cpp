@@ -64,6 +64,8 @@ LowerResult Lowerer::lowerExpr(Expr *expr)
             return lowerBinary(static_cast<BinaryExpr *>(expr));
         case ExprKind::Unary:
             return lowerUnary(static_cast<UnaryExpr *>(expr));
+        case ExprKind::Ternary:
+            return lowerTernary(static_cast<TernaryExpr *>(expr));
         case ExprKind::Call:
             return lowerCall(static_cast<CallExpr *>(expr));
         case ExprKind::Field:
@@ -72,8 +74,12 @@ LowerResult Lowerer::lowerExpr(Expr *expr)
             return lowerNew(static_cast<NewExpr *>(expr));
         case ExprKind::Coalesce:
             return lowerCoalesce(static_cast<CoalesceExpr *>(expr));
+        case ExprKind::OptionalChain:
+            return lowerOptionalChain(static_cast<OptionalChainExpr *>(expr));
         case ExprKind::ListLiteral:
             return lowerListLiteral(static_cast<ListLiteralExpr *>(expr));
+        case ExprKind::MapLiteral:
+            return lowerMapLiteral(static_cast<MapLiteralExpr *>(expr));
         case ExprKind::Index:
             return lowerIndex(static_cast<IndexExpr *>(expr));
         case ExprKind::Try:
@@ -207,16 +213,49 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
     {
         // Evaluate RHS first
         auto right = lowerExpr(expr->right.get());
+        TypeRef rightType = sema_.typeOf(expr->right.get());
 
         // LHS must be an identifier for simple assignment
         if (auto *ident = dynamic_cast<IdentExpr *>(expr->left.get()))
         {
+            TypeRef targetType = nullptr;
+            auto typeIt = localTypes_.find(ident->name);
+            if (typeIt != localTypes_.end())
+            {
+                targetType = typeIt->second;
+            }
+            else
+            {
+                targetType = sema_.typeOf(expr->left.get());
+            }
+
+            Value assignValue = right.value;
+            Type assignType = right.type;
+            if (targetType && targetType->kind == TypeKindSem::Optional)
+            {
+                TypeRef innerType = targetType->innerType();
+                if (rightType && rightType->kind == TypeKindSem::Optional)
+                {
+                    assignType = Type(Type::Kind::Ptr);
+                }
+                else if (rightType && rightType->kind == TypeKindSem::Unit)
+                {
+                    assignValue = Value::null();
+                    assignType = Type(Type::Kind::Ptr);
+                }
+                else if (innerType)
+                {
+                    assignValue = emitOptionalWrap(assignValue, innerType);
+                    assignType = Type(Type::Kind::Ptr);
+                }
+            }
+
             // Check if this is a slot-based variable (e.g., mutable loop variable)
             auto slotIt = slots_.find(ident->name);
             if (slotIt != slots_.end())
             {
                 // Store to slot for mutable variables
-                storeToSlot(ident->name, right.value, right.type);
+                storeToSlot(ident->name, assignValue, assignType);
                 return right;
             }
 
@@ -229,7 +268,24 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
                     Value selfPtr;
                     if (getSelfPtr(selfPtr))
                     {
-                        emitFieldStore(field, selfPtr, right.value);
+                        Value fieldValue = right.value;
+                        if (field->type && field->type->kind == TypeKindSem::Optional)
+                        {
+                            TypeRef innerType = field->type->innerType();
+                            if (rightType && rightType->kind == TypeKindSem::Optional)
+                            {
+                                fieldValue = right.value;
+                            }
+                            else if (rightType && rightType->kind == TypeKindSem::Unit)
+                            {
+                                fieldValue = Value::null();
+                            }
+                            else if (innerType)
+                            {
+                                fieldValue = emitOptionalWrap(right.value, innerType);
+                            }
+                        }
+                        emitFieldStore(field, selfPtr, fieldValue);
                         return right;
                     }
                 }
@@ -244,14 +300,35 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
                     Value selfPtr;
                     if (getSelfPtr(selfPtr))
                     {
-                        emitFieldStore(field, selfPtr, right.value);
+                        Value fieldValue = right.value;
+                        if (field->type && field->type->kind == TypeKindSem::Optional)
+                        {
+                            TypeRef innerType = field->type->innerType();
+                            if (rightType && rightType->kind == TypeKindSem::Optional)
+                            {
+                                fieldValue = right.value;
+                            }
+                            else if (rightType && rightType->kind == TypeKindSem::Unit)
+                            {
+                                fieldValue = Value::null();
+                            }
+                            else if (innerType)
+                            {
+                                fieldValue = emitOptionalWrap(right.value, innerType);
+                            }
+                        }
+                        emitFieldStore(field, selfPtr, fieldValue);
                         return right;
                     }
                 }
             }
 
             // Regular variable assignment
-            defineLocal(ident->name, right.value);
+            defineLocal(ident->name, assignValue);
+            if (targetType)
+            {
+                localTypes_[ident->name] = targetType;
+            }
             return right;
         }
 
@@ -265,9 +342,8 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
             if (baseType && baseType->kind == TypeKindSem::Map)
             {
                 // Map index assignment: map[key] = value
-                Value boxedKey = emitBox(index.value, index.type);
                 Value boxedValue = emitBox(right.value, right.type);
-                emitCall(kMapSet, {base.value, boxedKey, boxedValue});
+                emitCall(kMapSet, {base.value, index.value, boxedValue});
                 return right;
             }
             else
@@ -296,7 +372,24 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
                     const FieldLayout *field = valueIt->second.findField(fieldExpr->field);
                     if (field)
                     {
-                        emitFieldStore(field, base.value, right.value);
+                        Value fieldValue = right.value;
+                        if (field->type && field->type->kind == TypeKindSem::Optional)
+                        {
+                            TypeRef innerType = field->type->innerType();
+                            if (rightType && rightType->kind == TypeKindSem::Optional)
+                            {
+                                fieldValue = right.value;
+                            }
+                            else if (rightType && rightType->kind == TypeKindSem::Unit)
+                            {
+                                fieldValue = Value::null();
+                            }
+                            else if (innerType)
+                            {
+                                fieldValue = emitOptionalWrap(right.value, innerType);
+                            }
+                        }
+                        emitFieldStore(field, base.value, fieldValue);
                         return right;
                     }
                 }
@@ -308,7 +401,24 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
                     const FieldLayout *field = entityIt->second.findField(fieldExpr->field);
                     if (field)
                     {
-                        emitFieldStore(field, base.value, right.value);
+                        Value fieldValue = right.value;
+                        if (field->type && field->type->kind == TypeKindSem::Optional)
+                        {
+                            TypeRef innerType = field->type->innerType();
+                            if (rightType && rightType->kind == TypeKindSem::Optional)
+                            {
+                                fieldValue = right.value;
+                            }
+                            else if (rightType && rightType->kind == TypeKindSem::Unit)
+                            {
+                                fieldValue = Value::null();
+                            }
+                            else if (innerType)
+                            {
+                                fieldValue = emitOptionalWrap(right.value, innerType);
+                            }
+                        }
+                        emitFieldStore(field, base.value, fieldValue);
                         return right;
                     }
                 }
@@ -692,24 +802,17 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                 auto baseResult = lowerExpr(fieldExpr->base.get());
                 std::string methodName = fieldExpr->field;
 
-                // Get type args for boxing
-                TypeRef keyType = baseType->typeArgs.size() > 0 ? baseType->typeArgs[0] : nullptr;
                 TypeRef valueType = baseType->typeArgs.size() > 1 ? baseType->typeArgs[1] : nullptr;
-
-                // Map method names to runtime functions (case-insensitive)
-                const char *runtimeFunc = nullptr;
-                Type returnType = Type(Type::Kind::Void);
 
                 if (equalsIgnoreCase(methodName, "set") || equalsIgnoreCase(methodName, "put"))
                 {
-                    // map.set(key, value) - needs two boxed arguments
+                    // map.set(key, value) - key is string, value is boxed
                     if (expr->args.size() >= 2)
                     {
                         auto keyResult = lowerExpr(expr->args[0].value.get());
                         auto valueResult = lowerExpr(expr->args[1].value.get());
-                        Value boxedKey = emitBox(keyResult.value, keyResult.type);
                         Value boxedValue = emitBox(valueResult.value, valueResult.type);
-                        emitCall(kMapSet, {baseResult.value, boxedKey, boxedValue});
+                        emitCall(kMapSet, {baseResult.value, keyResult.value, boxedValue});
                         return {Value::constInt(0), Type(Type::Kind::Void)};
                     }
                 }
@@ -719,9 +822,28 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                     if (expr->args.size() >= 1)
                     {
                         auto keyResult = lowerExpr(expr->args[0].value.get());
-                        Value boxedKey = emitBox(keyResult.value, keyResult.type);
                         Value boxed = emitCallRet(
-                            Type(Type::Kind::Ptr), kMapGet, {baseResult.value, boxedKey});
+                            Type(Type::Kind::Ptr), kMapGet, {baseResult.value, keyResult.value});
+                        if (valueType)
+                        {
+                            Type ilValueType = mapType(valueType);
+                            return emitUnbox(boxed, ilValueType);
+                        }
+                        return {boxed, Type(Type::Kind::Ptr)};
+                    }
+                }
+                else if (equalsIgnoreCase(methodName, "getOr"))
+                {
+                    // map.getOr(key, defaultValue) - returns boxed value
+                    if (expr->args.size() >= 2)
+                    {
+                        auto keyResult = lowerExpr(expr->args[0].value.get());
+                        auto defaultResult = lowerExpr(expr->args[1].value.get());
+                        Value boxedDefault = emitBox(defaultResult.value, defaultResult.type);
+                        Value boxed =
+                            emitCallRet(Type(Type::Kind::Ptr),
+                                        kMapGetOr,
+                                        {baseResult.value, keyResult.value, boxedDefault});
                         if (valueType)
                         {
                             Type ilValueType = mapType(valueType);
@@ -731,51 +853,63 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                     }
                 }
                 else if (equalsIgnoreCase(methodName, "containsKey") ||
-                         equalsIgnoreCase(methodName, "hasKey"))
+                         equalsIgnoreCase(methodName, "hasKey") ||
+                         equalsIgnoreCase(methodName, "has"))
                 {
-                    runtimeFunc = kMapContainsKey;
-                    returnType = Type(Type::Kind::I64);
+                    if (expr->args.size() >= 1)
+                    {
+                        auto keyResult = lowerExpr(expr->args[0].value.get());
+                        Value result = emitCallRet(Type(Type::Kind::I1),
+                                                   kMapContainsKey,
+                                                   {baseResult.value, keyResult.value});
+                        return {result, Type(Type::Kind::I1)};
+                    }
                 }
                 else if (equalsIgnoreCase(methodName, "size") ||
-                         equalsIgnoreCase(methodName, "count"))
+                         equalsIgnoreCase(methodName, "count") ||
+                         equalsIgnoreCase(methodName, "length"))
                 {
-                    // count() takes no args, just the map
                     Value result =
                         emitCallRet(Type(Type::Kind::I64), kMapCount, {baseResult.value});
                     return {result, Type(Type::Kind::I64)};
                 }
                 else if (equalsIgnoreCase(methodName, "remove"))
                 {
-                    runtimeFunc = kMapRemove;
-                    returnType = Type(Type::Kind::I64);
+                    if (expr->args.size() >= 1)
+                    {
+                        auto keyResult = lowerExpr(expr->args[0].value.get());
+                        Value result = emitCallRet(
+                            Type(Type::Kind::I1), kMapRemove, {baseResult.value, keyResult.value});
+                        return {result, Type(Type::Kind::I1)};
+                    }
+                }
+                else if (equalsIgnoreCase(methodName, "setIfMissing"))
+                {
+                    if (expr->args.size() >= 2)
+                    {
+                        auto keyResult = lowerExpr(expr->args[0].value.get());
+                        auto valueResult = lowerExpr(expr->args[1].value.get());
+                        Value boxedValue = emitBox(valueResult.value, valueResult.type);
+                        Value result = emitCallRet(Type(Type::Kind::I1),
+                                                   kMapSetIfMissing,
+                                                   {baseResult.value, keyResult.value, boxedValue});
+                        return {result, Type(Type::Kind::I1)};
+                    }
                 }
                 else if (equalsIgnoreCase(methodName, "clear"))
                 {
                     emitCall(kMapClear, {baseResult.value});
                     return {Value::constInt(0), Type(Type::Kind::Void)};
                 }
-
-                // Handle methods that need boxed key argument
-                if (runtimeFunc != nullptr)
+                else if (equalsIgnoreCase(methodName, "keys"))
                 {
-                    std::vector<Value> args;
-                    args.push_back(baseResult.value);
-                    for (auto &arg : expr->args)
-                    {
-                        auto result = lowerExpr(arg.value.get());
-                        args.push_back(emitBox(result.value, result.type));
-                    }
-
-                    if (returnType.kind == Type::Kind::Void)
-                    {
-                        emitCall(runtimeFunc, args);
-                        return {Value::constInt(0), Type(Type::Kind::Void)};
-                    }
-                    else
-                    {
-                        Value result = emitCallRet(returnType, runtimeFunc, args);
-                        return {result, returnType};
-                    }
+                    Value seq = emitCallRet(Type(Type::Kind::Ptr), kMapKeys, {baseResult.value});
+                    return {seq, Type(Type::Kind::Ptr)};
+                }
+                else if (equalsIgnoreCase(methodName, "values"))
+                {
+                    Value seq = emitCallRet(Type(Type::Kind::Ptr), kMapValues, {baseResult.value});
+                    return {seq, Type(Type::Kind::Ptr)};
                 }
             }
         }
@@ -891,15 +1025,6 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
         }
     }
 
-    // Lower arguments
-    std::vector<Value> args;
-    args.reserve(expr->args.size());
-    for (auto &arg : expr->args)
-    {
-        auto result = lowerExpr(arg.value.get());
-        args.push_back(result.value);
-    }
-
     // Get callee name and check if it's a function or a variable holding a function pointer
     std::string calleeName;
     bool isIndirectCall = false;
@@ -957,6 +1082,44 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
     // Get return type
     TypeRef returnType = calleeType ? calleeType->returnType() : nullptr;
     Type ilReturnType = returnType ? mapType(returnType) : Type(Type::Kind::Void);
+
+    // Lower arguments (with optional wrapping when needed)
+    std::vector<TypeRef> paramTypes;
+    if (calleeType)
+        paramTypes = calleeType->paramTypes();
+
+    std::vector<Value> args;
+    args.reserve(expr->args.size());
+    for (size_t i = 0; i < expr->args.size(); ++i)
+    {
+        auto &arg = expr->args[i];
+        auto result = lowerExpr(arg.value.get());
+        Value argValue = result.value;
+
+        if (i < paramTypes.size())
+        {
+            TypeRef paramType = paramTypes[i];
+            TypeRef argType = sema_.typeOf(arg.value.get());
+            if (paramType && paramType->kind == TypeKindSem::Optional)
+            {
+                TypeRef innerType = paramType->innerType();
+                if (argType && argType->kind == TypeKindSem::Optional)
+                {
+                    argValue = result.value;
+                }
+                else if (argType && argType->kind == TypeKindSem::Unit)
+                {
+                    argValue = Value::null();
+                }
+                else if (innerType)
+                {
+                    argValue = emitOptionalWrap(result.value, innerType);
+                }
+            }
+        }
+
+        args.push_back(argValue);
+    }
 
     if (isIndirectCall)
     {
@@ -1195,6 +1358,9 @@ LowerResult Lowerer::lowerCoalesce(CoalesceExpr *expr)
     TypeRef leftType = sema_.typeOf(expr->left.get());
     TypeRef resultType = sema_.typeOf(expr);
     Type ilResultType = mapType(resultType);
+    bool expectsOptional = resultType && resultType->kind == TypeKindSem::Optional;
+    TypeRef optionalInner = expectsOptional ? resultType->innerType() : nullptr;
+    TypeRef innerType = resultType;
 
     // For reference types (entities, etc.), check if the pointer is null
     // For value-type optionals, we would need to check the flag field
@@ -1251,10 +1417,16 @@ LowerResult Lowerer::lowerCoalesce(CoalesceExpr *expr)
     // Has value block - store left value and branch to merge
     setBlock(hasValueIdx);
     {
+        Value unwrapped = left.value;
+        if (innerType)
+        {
+            auto innerVal = emitOptionalUnwrap(left.value, innerType);
+            unwrapped = innerVal.value;
+        }
         il::core::Instr storeInstr;
         storeInstr.op = Opcode::Store;
         storeInstr.type = ilResultType;
-        storeInstr.operands = {resultSlot, left.value};
+        storeInstr.operands = {resultSlot, unwrapped};
         blockMgr_.currentBlock()->instructions.push_back(storeInstr);
     }
     emitBr(mergeIdx);
@@ -1284,6 +1456,231 @@ LowerResult Lowerer::lowerCoalesce(CoalesceExpr *expr)
     return {Value::temp(loadId), ilResultType};
 }
 
+LowerResult Lowerer::lowerTernary(TernaryExpr *expr)
+{
+    auto cond = lowerExpr(expr->condition.get());
+    TypeRef resultType = sema_.typeOf(expr);
+    Type ilResultType = mapType(resultType);
+    bool expectsOptional = resultType && resultType->kind == TypeKindSem::Optional;
+    TypeRef optionalInner = expectsOptional ? resultType->innerType() : nullptr;
+
+    // Allocate a stack slot for the result before branching.
+    unsigned allocaId = nextTempId();
+    il::core::Instr allocaInstr;
+    allocaInstr.result = allocaId;
+    allocaInstr.op = Opcode::Alloca;
+    allocaInstr.type = Type(Type::Kind::Ptr);
+    allocaInstr.operands = {Value::constInt(8)};
+    blockMgr_.currentBlock()->instructions.push_back(allocaInstr);
+    Value resultSlot = Value::temp(allocaId);
+
+    size_t thenIdx = createBlock("ternary_then");
+    size_t elseIdx = createBlock("ternary_else");
+    size_t mergeIdx = createBlock("ternary_merge");
+
+    emitCBr(cond.value, thenIdx, elseIdx);
+
+    setBlock(thenIdx);
+    {
+        auto thenResult = lowerExpr(expr->thenExpr.get());
+        Value thenValue = thenResult.value;
+        if (expectsOptional)
+        {
+            TypeRef thenType = sema_.typeOf(expr->thenExpr.get());
+            if (!thenType || thenType->kind != TypeKindSem::Optional)
+            {
+                if (optionalInner)
+                    thenValue = emitOptionalWrap(thenResult.value, optionalInner);
+            }
+        }
+        if (ilResultType.kind != Type::Kind::Void)
+        {
+            il::core::Instr storeInstr;
+            storeInstr.op = Opcode::Store;
+            storeInstr.type = ilResultType;
+            storeInstr.operands = {resultSlot, thenValue};
+            blockMgr_.currentBlock()->instructions.push_back(storeInstr);
+        }
+    }
+    emitBr(mergeIdx);
+
+    setBlock(elseIdx);
+    {
+        auto elseResult = lowerExpr(expr->elseExpr.get());
+        Value elseValue = elseResult.value;
+        if (expectsOptional)
+        {
+            TypeRef elseType = sema_.typeOf(expr->elseExpr.get());
+            if (!elseType || elseType->kind != TypeKindSem::Optional)
+            {
+                if (optionalInner)
+                    elseValue = emitOptionalWrap(elseResult.value, optionalInner);
+            }
+        }
+        if (ilResultType.kind != Type::Kind::Void)
+        {
+            il::core::Instr storeInstr;
+            storeInstr.op = Opcode::Store;
+            storeInstr.type = ilResultType;
+            storeInstr.operands = {resultSlot, elseValue};
+            blockMgr_.currentBlock()->instructions.push_back(storeInstr);
+        }
+    }
+    emitBr(mergeIdx);
+
+    setBlock(mergeIdx);
+    if (ilResultType.kind == Type::Kind::Void)
+        return {Value::constInt(0), Type(Type::Kind::Void)};
+
+    unsigned loadId = nextTempId();
+    il::core::Instr loadInstr;
+    loadInstr.result = loadId;
+    loadInstr.op = Opcode::Load;
+    loadInstr.type = ilResultType;
+    loadInstr.operands = {resultSlot};
+    blockMgr_.currentBlock()->instructions.push_back(loadInstr);
+
+    return {Value::temp(loadId), ilResultType};
+}
+
+LowerResult Lowerer::lowerOptionalChain(OptionalChainExpr *expr)
+{
+    auto base = lowerExpr(expr->base.get());
+    TypeRef baseType = sema_.typeOf(expr->base.get());
+    if (!baseType || baseType->kind != TypeKindSem::Optional)
+    {
+        return {Value::null(), Type(Type::Kind::Ptr)};
+    }
+
+    TypeRef innerType = baseType->innerType();
+    TypeRef fieldType = types::unknown();
+
+    // Allocate a stack slot for the result (optional pointer)
+    unsigned resultSlotId = nextTempId();
+    il::core::Instr resultAlloca;
+    resultAlloca.result = resultSlotId;
+    resultAlloca.op = Opcode::Alloca;
+    resultAlloca.type = Type(Type::Kind::Ptr);
+    resultAlloca.operands = {Value::constInt(8)};
+    blockMgr_.currentBlock()->instructions.push_back(resultAlloca);
+    Value resultSlot = Value::temp(resultSlotId);
+
+    // Compare optional pointer with null
+    unsigned ptrSlotId = nextTempId();
+    il::core::Instr ptrSlotInstr;
+    ptrSlotInstr.result = ptrSlotId;
+    ptrSlotInstr.op = Opcode::Alloca;
+    ptrSlotInstr.type = Type(Type::Kind::Ptr);
+    ptrSlotInstr.operands = {Value::constInt(8)};
+    blockMgr_.currentBlock()->instructions.push_back(ptrSlotInstr);
+    Value ptrSlot = Value::temp(ptrSlotId);
+
+    il::core::Instr storePtrInstr;
+    storePtrInstr.op = Opcode::Store;
+    storePtrInstr.type = Type(Type::Kind::Ptr);
+    storePtrInstr.operands = {ptrSlot, base.value};
+    blockMgr_.currentBlock()->instructions.push_back(storePtrInstr);
+
+    unsigned ptrAsI64Id = nextTempId();
+    il::core::Instr loadAsI64Instr;
+    loadAsI64Instr.result = ptrAsI64Id;
+    loadAsI64Instr.op = Opcode::Load;
+    loadAsI64Instr.type = Type(Type::Kind::I64);
+    loadAsI64Instr.operands = {ptrSlot};
+    blockMgr_.currentBlock()->instructions.push_back(loadAsI64Instr);
+    Value ptrAsI64 = Value::temp(ptrAsI64Id);
+
+    Value isNull = emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), ptrAsI64, Value::constInt(0));
+
+    size_t hasValueIdx = createBlock("optchain_has");
+    size_t isNullIdx = createBlock("optchain_null");
+    size_t mergeIdx = createBlock("optchain_merge");
+    emitCBr(isNull, isNullIdx, hasValueIdx);
+
+    // Null block
+    setBlock(isNullIdx);
+    il::core::Instr storeNull;
+    storeNull.op = Opcode::Store;
+    storeNull.type = Type(Type::Kind::Ptr);
+    storeNull.operands = {resultSlot, Value::null()};
+    blockMgr_.currentBlock()->instructions.push_back(storeNull);
+    emitBr(mergeIdx);
+
+    // Has value block
+    setBlock(hasValueIdx);
+    Value fieldValue = Value::null();
+    if (innerType)
+    {
+        if (innerType->kind == TypeKindSem::Value || innerType->kind == TypeKindSem::Entity)
+        {
+            const std::map<std::string, ValueTypeInfo> &valueTypes = valueTypes_;
+            const std::map<std::string, EntityTypeInfo> &entityTypes = entityTypes_;
+            if (innerType->kind == TypeKindSem::Value)
+            {
+                auto it = valueTypes.find(innerType->name);
+                if (it != valueTypes.end())
+                {
+                    const FieldLayout *field = it->second.findField(expr->field);
+                    if (field)
+                    {
+                        fieldType = field->type;
+                        fieldValue = emitFieldLoad(field, base.value);
+                    }
+                }
+            }
+            else
+            {
+                auto it = entityTypes.find(innerType->name);
+                if (it != entityTypes.end())
+                {
+                    const FieldLayout *field = it->second.findField(expr->field);
+                    if (field)
+                    {
+                        fieldType = field->type;
+                        fieldValue = emitFieldLoad(field, base.value);
+                    }
+                }
+            }
+        }
+        else if (innerType->kind == TypeKindSem::List)
+        {
+            if (expr->field == "count" || expr->field == "size" || expr->field == "length")
+            {
+                fieldType = types::integer();
+                fieldValue = emitCallRet(Type(Type::Kind::I64), kListCount, {base.value});
+            }
+        }
+    }
+
+    Value optionalValue = Value::null();
+    if (fieldType && fieldType->kind == TypeKindSem::Optional)
+    {
+        optionalValue = fieldValue;
+    }
+    else if (fieldType && fieldType->kind != TypeKindSem::Unknown)
+    {
+        optionalValue = emitOptionalWrap(fieldValue, fieldType);
+    }
+
+    il::core::Instr storeVal;
+    storeVal.op = Opcode::Store;
+    storeVal.type = Type(Type::Kind::Ptr);
+    storeVal.operands = {resultSlot, optionalValue};
+    blockMgr_.currentBlock()->instructions.push_back(storeVal);
+    emitBr(mergeIdx);
+
+    setBlock(mergeIdx);
+    unsigned loadId = nextTempId();
+    il::core::Instr loadInstr;
+    loadInstr.result = loadId;
+    loadInstr.op = Opcode::Load;
+    loadInstr.type = Type(Type::Kind::Ptr);
+    loadInstr.operands = {resultSlot};
+    blockMgr_.currentBlock()->instructions.push_back(loadInstr);
+
+    return {Value::temp(loadId), Type(Type::Kind::Ptr)};
+}
+
 LowerResult Lowerer::lowerListLiteral(ListLiteralExpr *expr)
 {
     // Create a new list
@@ -1298,6 +1695,21 @@ LowerResult Lowerer::lowerListLiteral(ListLiteralExpr *expr)
     }
 
     return {list, Type(Type::Kind::Ptr)};
+}
+
+LowerResult Lowerer::lowerMapLiteral(MapLiteralExpr *expr)
+{
+    Value map = emitCallRet(Type(Type::Kind::Ptr), kMapNew, {});
+
+    for (auto &entry : expr->entries)
+    {
+        auto keyResult = lowerExpr(entry.key.get());
+        auto valueResult = lowerExpr(entry.value.get());
+        Value boxedValue = emitBox(valueResult.value, valueResult.type);
+        emitCall(kMapSet, {map, keyResult.value, boxedValue});
+    }
+
+    return {map, Type(Type::Kind::Ptr)};
 }
 
 LowerResult Lowerer::lowerTuple(TupleExpr *expr)
@@ -1401,13 +1813,8 @@ LowerResult Lowerer::lowerIndex(IndexExpr *expr)
     Value boxed;
     if (baseType && baseType->kind == TypeKindSem::Map)
     {
-        // Map index access - key must be boxed first
-        TypeRef keyType = baseType->typeArgs.size() > 0 ? baseType->typeArgs[0] : nullptr;
-        Type keyIlType = keyType ? mapType(keyType) : Type(Type::Kind::Ptr);
-        Value boxedKey = emitBox(index.value, keyIlType);
-
-        // Call Map.get_Item
-        boxed = emitCallRet(Type(Type::Kind::Ptr), kMapGet, {base.value, boxedKey});
+        // Map index access - key is a string
+        boxed = emitCallRet(Type(Type::Kind::Ptr), kMapGet, {base.value, index.value});
     }
     else
     {
@@ -1480,7 +1887,14 @@ LowerResult Lowerer::lowerTry(TryExpr *expr)
     // Has value block - continue with the unwrapped value
     setBlock(hasValueIdx);
 
-    // Return the operand value (it's already unwrapped for simple optionals)
+    // Return the operand value (unwrap optionals when needed)
+    TypeRef operandType = sema_.typeOf(expr->operand.get());
+    if (operandType && operandType->kind == TypeKindSem::Optional)
+    {
+        TypeRef innerType = operandType->innerType();
+        if (innerType)
+            return emitOptionalUnwrap(operand.value, innerType);
+    }
     return operand;
 }
 
@@ -1522,6 +1936,7 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr)
         std::string name;
         Value value;
         Type type;
+        TypeRef semType;
         bool isSlot;
     };
 
@@ -1541,6 +1956,7 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr)
                 // Load from slot to capture by value
                 TypeRef varType = sema_.lookupVarType(cap.name);
                 info.type = varType ? mapType(varType) : Type(Type::Kind::I64);
+                info.semType = varType;
                 info.value = loadFromSlot(cap.name, info.type);
                 info.isSlot = true;
             }
@@ -1552,12 +1968,14 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr)
                     info.value = localIt->second;
                     TypeRef varType = sema_.lookupVarType(cap.name);
                     info.type = varType ? mapType(varType) : Type(Type::Kind::I64);
+                    info.semType = varType;
                 }
                 else
                 {
                     // Not found - might be a global or error
                     info.value = Value::constInt(0);
                     info.type = Type(Type::Kind::I64);
+                    info.semType = types::unknown();
                 }
             }
             captureInfos.push_back(info);
@@ -1565,6 +1983,7 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr)
     }
 
     // Save current function context (use index instead of pointer to handle vector reallocation)
+    TypeRef savedReturnType = currentReturnType_;
     size_t savedFuncIdx = static_cast<size_t>(-1);
     if (currentFunc_)
     {
@@ -1581,11 +2000,14 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr)
     unsigned savedNextBlockId = blockMgr_.nextBlockId();
     auto savedLocals = std::move(locals_);
     auto savedSlots = std::move(slots_);
+    auto savedLocalTypes = std::move(localTypes_);
     locals_.clear();
     slots_.clear();
+    localTypes_.clear();
 
     // Create the lambda function and entry block via IRBuilder so param IDs are assigned.
     currentFunc_ = &builder_->startFunction(lambdaName, ilReturnType, params);
+    currentReturnType_ = returnType;
     definedFunctions_.insert(lambdaName);
 
     blockMgr_.bind(builder_.get(), currentFunc_);
@@ -1617,6 +2039,7 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr)
             // Create a slot for mutable captured variables
             createSlot(info.name, info.type);
             storeToSlot(info.name, capturedVal, info.type);
+            localTypes_[info.name] = info.semType ? info.semType : types::unknown();
 
             // Advance offset by the size of this type
             offset += getILTypeSize(info.type);
@@ -1634,6 +2057,7 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr)
             Type ilParamType = mapType(paramType);
             createSlot(expr->params[i].name, ilParamType);
             storeToSlot(expr->params[i].name, Value::temp(blockParams[paramIdx].id), ilParamType);
+            localTypes_[expr->params[i].name] = paramType;
         }
     }
 
@@ -1669,7 +2093,18 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr)
     {
         if (!blockMgr_.isTerminated())
         {
-            emitRet(bodyResult.value);
+            Value returnValue = bodyResult.value;
+            if (returnType && returnType->kind == TypeKindSem::Optional)
+            {
+                TypeRef bodyType = sema_.typeOf(expr->body.get());
+                if (!bodyType || bodyType->kind != TypeKindSem::Optional)
+                {
+                    TypeRef innerType = returnType->innerType();
+                    if (innerType)
+                        returnValue = emitOptionalWrap(bodyResult.value, innerType);
+                }
+            }
+            emitRet(returnValue);
         }
     }
 
@@ -1687,6 +2122,8 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr)
     }
     locals_ = std::move(savedLocals);
     slots_ = std::move(savedSlots);
+    localTypes_ = std::move(savedLocalTypes);
+    currentReturnType_ = savedReturnType;
 
     // Get the function pointer
     Value funcPtr = Value::global(lambdaName);
@@ -1745,10 +2182,35 @@ LowerResult Lowerer::lowerMethodCall(MethodDecl *method,
     args.reserve(expr->args.size() + 1);
     args.push_back(selfValue); // self is first argument
 
-    for (auto &arg : expr->args)
+    for (size_t i = 0; i < expr->args.size(); ++i)
     {
+        auto &arg = expr->args[i];
         auto result = lowerExpr(arg.value.get());
-        args.push_back(result.value);
+        Value argValue = result.value;
+
+        if (i < method->params.size() && method->params[i].type)
+        {
+            TypeRef paramType = sema_.resolveType(method->params[i].type.get());
+            TypeRef argType = sema_.typeOf(arg.value.get());
+            if (paramType && paramType->kind == TypeKindSem::Optional)
+            {
+                TypeRef innerType = paramType->innerType();
+                if (argType && argType->kind == TypeKindSem::Optional)
+                {
+                    argValue = result.value;
+                }
+                else if (argType && argType->kind == TypeKindSem::Unit)
+                {
+                    argValue = Value::null();
+                }
+                else if (innerType)
+                {
+                    argValue = emitOptionalWrap(result.value, innerType);
+                }
+            }
+        }
+
+        args.push_back(argValue);
     }
 
     // Get method return type
@@ -1789,6 +2251,288 @@ LowerResult Lowerer::lowerBlockExpr(BlockExpr *expr)
     return {Value::constInt(0), Type(Type::Kind::Void)};
 }
 
+Lowerer::PatternValue Lowerer::emitTupleElement(const PatternValue &tuple,
+                                                size_t index,
+                                                TypeRef elemType)
+{
+    Type ilType = mapType(elemType);
+    size_t offset = index * 8;
+    Value elemPtr = tuple.value;
+    if (offset > 0)
+    {
+        elemPtr = emitGEP(tuple.value, static_cast<int64_t>(offset));
+    }
+    Value elemVal = emitLoad(elemPtr, ilType);
+    return {elemVal, elemType};
+}
+
+void Lowerer::emitPatternTest(const MatchArm::Pattern &pattern,
+                              const PatternValue &scrutinee,
+                              size_t successBlock,
+                              size_t failureBlock)
+{
+    switch (pattern.kind)
+    {
+        case MatchArm::Pattern::Kind::Wildcard:
+        case MatchArm::Pattern::Kind::Binding:
+            emitBr(successBlock);
+            return;
+
+        case MatchArm::Pattern::Kind::Literal:
+        {
+            if (!pattern.literal)
+            {
+                emitBr(failureBlock);
+                return;
+            }
+            auto litResult = lowerExpr(pattern.literal.get());
+            Value cond;
+            if (scrutinee.type && scrutinee.type->kind == TypeKindSem::String)
+            {
+                cond = emitCallRet(
+                    Type(Type::Kind::I1), kStringEquals, {scrutinee.value, litResult.value});
+            }
+            else if (scrutinee.type && scrutinee.type->kind == TypeKindSem::Number)
+            {
+                cond = emitBinary(
+                    Opcode::FCmpEQ, Type(Type::Kind::I1), scrutinee.value, litResult.value);
+            }
+            else
+            {
+                cond = emitBinary(
+                    Opcode::ICmpEq, Type(Type::Kind::I1), scrutinee.value, litResult.value);
+            }
+            emitCBr(cond, successBlock, failureBlock);
+            return;
+        }
+
+        case MatchArm::Pattern::Kind::Expression:
+        {
+            if (!pattern.literal)
+            {
+                emitBr(failureBlock);
+                return;
+            }
+            auto exprResult = lowerExpr(pattern.literal.get());
+            Value cond = exprResult.value;
+            if (exprResult.type.kind != Type::Kind::I1)
+            {
+                cond = emitBinary(
+                    Opcode::ICmpNe, Type(Type::Kind::I1), exprResult.value, Value::constInt(0));
+            }
+            emitCBr(cond, successBlock, failureBlock);
+            return;
+        }
+
+        case MatchArm::Pattern::Kind::Tuple:
+        {
+            if (!scrutinee.type || scrutinee.type->kind != TypeKindSem::Tuple)
+            {
+                emitBr(failureBlock);
+                return;
+            }
+
+            const auto &elements = scrutinee.type->tupleElementTypes();
+            if (elements.size() != pattern.subpatterns.size())
+            {
+                emitBr(failureBlock);
+                return;
+            }
+
+            for (size_t i = 0; i < elements.size(); ++i)
+            {
+                size_t nextBlock = (i + 1 < elements.size())
+                                       ? createBlock("match_tuple_" + std::to_string(i))
+                                       : successBlock;
+                PatternValue elemValue = emitTupleElement(scrutinee, i, elements[i]);
+                emitPatternTest(pattern.subpatterns[i], elemValue, nextBlock, failureBlock);
+                if (i + 1 < elements.size())
+                {
+                    setBlock(nextBlock);
+                }
+            }
+            return;
+        }
+
+        case MatchArm::Pattern::Kind::Constructor:
+        {
+            if (scrutinee.type && scrutinee.type->kind == TypeKindSem::Optional)
+            {
+                auto emitPtrCompare = [&](Opcode op) -> Value
+                {
+                    unsigned ptrSlotId = nextTempId();
+                    il::core::Instr ptrSlotInstr;
+                    ptrSlotInstr.result = ptrSlotId;
+                    ptrSlotInstr.op = Opcode::Alloca;
+                    ptrSlotInstr.type = Type(Type::Kind::Ptr);
+                    ptrSlotInstr.operands = {Value::constInt(8)};
+                    blockMgr_.currentBlock()->instructions.push_back(ptrSlotInstr);
+                    Value ptrSlot = Value::temp(ptrSlotId);
+
+                    il::core::Instr storePtrInstr;
+                    storePtrInstr.op = Opcode::Store;
+                    storePtrInstr.type = Type(Type::Kind::Ptr);
+                    storePtrInstr.operands = {ptrSlot, scrutinee.value};
+                    blockMgr_.currentBlock()->instructions.push_back(storePtrInstr);
+
+                    unsigned ptrAsI64Id = nextTempId();
+                    il::core::Instr loadAsI64Instr;
+                    loadAsI64Instr.result = ptrAsI64Id;
+                    loadAsI64Instr.op = Opcode::Load;
+                    loadAsI64Instr.type = Type(Type::Kind::I64);
+                    loadAsI64Instr.operands = {ptrSlot};
+                    blockMgr_.currentBlock()->instructions.push_back(loadAsI64Instr);
+                    Value ptrAsI64 = Value::temp(ptrAsI64Id);
+
+                    return emitBinary(op, Type(Type::Kind::I1), ptrAsI64, Value::constInt(0));
+                };
+
+                if (pattern.binding == "None")
+                {
+                    Value isNull = emitPtrCompare(Opcode::ICmpEq);
+                    emitCBr(isNull, successBlock, failureBlock);
+                    return;
+                }
+
+                if (pattern.binding == "Some")
+                {
+                    if (pattern.subpatterns.empty())
+                    {
+                        emitBr(failureBlock);
+                        return;
+                    }
+                    Value isNotNull = emitPtrCompare(Opcode::ICmpNe);
+                    size_t someBlock = createBlock("match_some");
+                    emitCBr(isNotNull, someBlock, failureBlock);
+                    setBlock(someBlock);
+
+                    TypeRef innerType = scrutinee.type->innerType();
+                    auto innerValue = emitOptionalUnwrap(scrutinee.value, innerType);
+                    PatternValue inner{innerValue.value, innerType};
+                    emitPatternTest(pattern.subpatterns[0], inner, successBlock, failureBlock);
+                    return;
+                }
+
+                emitBr(failureBlock);
+                return;
+            }
+
+            if (!scrutinee.type)
+            {
+                emitBr(failureBlock);
+                return;
+            }
+
+            const std::vector<FieldLayout> *fields = nullptr;
+            if (scrutinee.type->kind == TypeKindSem::Value)
+            {
+                auto it = valueTypes_.find(scrutinee.type->name);
+                if (it != valueTypes_.end())
+                    fields = &it->second.fields;
+            }
+            else if (scrutinee.type->kind == TypeKindSem::Entity)
+            {
+                auto it = entityTypes_.find(scrutinee.type->name);
+                if (it != entityTypes_.end())
+                    fields = &it->second.fields;
+            }
+
+            if (!fields || fields->size() != pattern.subpatterns.size())
+            {
+                emitBr(failureBlock);
+                return;
+            }
+
+            for (size_t i = 0; i < fields->size(); ++i)
+            {
+                const FieldLayout &field = (*fields)[i];
+                PatternValue fieldValue{emitFieldLoad(&field, scrutinee.value), field.type};
+                size_t nextBlock = (i + 1 < fields->size())
+                                       ? createBlock("match_ctor_" + std::to_string(i))
+                                       : successBlock;
+                emitPatternTest(pattern.subpatterns[i], fieldValue, nextBlock, failureBlock);
+                if (i + 1 < fields->size())
+                {
+                    setBlock(nextBlock);
+                }
+            }
+            return;
+        }
+    }
+}
+
+void Lowerer::emitPatternBindings(const MatchArm::Pattern &pattern, const PatternValue &scrutinee)
+{
+    switch (pattern.kind)
+    {
+        case MatchArm::Pattern::Kind::Binding:
+            defineLocal(pattern.binding, scrutinee.value);
+            if (scrutinee.type)
+                localTypes_[pattern.binding] = scrutinee.type;
+            return;
+
+        case MatchArm::Pattern::Kind::Tuple:
+        {
+            if (!scrutinee.type || scrutinee.type->kind != TypeKindSem::Tuple)
+                return;
+            const auto &elements = scrutinee.type->tupleElementTypes();
+            if (elements.size() != pattern.subpatterns.size())
+                return;
+            for (size_t i = 0; i < elements.size(); ++i)
+            {
+                PatternValue elemValue = emitTupleElement(scrutinee, i, elements[i]);
+                emitPatternBindings(pattern.subpatterns[i], elemValue);
+            }
+            return;
+        }
+
+        case MatchArm::Pattern::Kind::Constructor:
+        {
+            if (scrutinee.type && scrutinee.type->kind == TypeKindSem::Optional)
+            {
+                if (pattern.binding != "Some" || pattern.subpatterns.empty())
+                    return;
+                TypeRef innerType = scrutinee.type->innerType();
+                auto innerValue = emitOptionalUnwrap(scrutinee.value, innerType);
+                PatternValue inner{innerValue.value, innerType};
+                emitPatternBindings(pattern.subpatterns[0], inner);
+                return;
+            }
+
+            if (!scrutinee.type)
+                return;
+
+            const std::vector<FieldLayout> *fields = nullptr;
+            if (scrutinee.type->kind == TypeKindSem::Value)
+            {
+                auto it = valueTypes_.find(scrutinee.type->name);
+                if (it != valueTypes_.end())
+                    fields = &it->second.fields;
+            }
+            else if (scrutinee.type->kind == TypeKindSem::Entity)
+            {
+                auto it = entityTypes_.find(scrutinee.type->name);
+                if (it != entityTypes_.end())
+                    fields = &it->second.fields;
+            }
+
+            if (!fields || fields->size() != pattern.subpatterns.size())
+                return;
+
+            for (size_t i = 0; i < fields->size(); ++i)
+            {
+                const FieldLayout &field = (*fields)[i];
+                PatternValue fieldValue{emitFieldLoad(&field, scrutinee.value), field.type};
+                emitPatternBindings(pattern.subpatterns[i], fieldValue);
+            }
+            return;
+        }
+
+        default:
+            return;
+    }
+}
+
 LowerResult Lowerer::lowerMatchExpr(MatchExpr *expr)
 {
     if (expr->arms.empty())
@@ -1801,14 +2545,19 @@ LowerResult Lowerer::lowerMatchExpr(MatchExpr *expr)
     std::string scrutineeSlot = "__match_scrutinee";
     createSlot(scrutineeSlot, scrutinee.type);
     storeToSlot(scrutineeSlot, scrutinee.value, scrutinee.type);
+    TypeRef scrutineeType = sema_.typeOf(expr->scrutinee.get());
 
     // Determine the result type from the first arm body
-    TypeRef resultType = sema_.typeOf(expr->arms[0].body.get());
+    TypeRef resultType = sema_.typeOf(expr);
     Type ilResultType = mapType(resultType);
+    bool expectsOptional = resultType && resultType->kind == TypeKindSem::Optional;
+    TypeRef optionalInner = expectsOptional ? resultType->innerType() : nullptr;
 
     // Create a result slot to store the match result
     std::string resultSlot = "__match_result";
-    createSlot(resultSlot, ilResultType);
+    bool hasResult = ilResultType.kind != Type::Kind::Void;
+    if (hasResult)
+        createSlot(resultSlot, ilResultType);
 
     // Create end block for the match
     size_t endIdx = createBlock("match_end");
@@ -1833,103 +2582,52 @@ LowerResult Lowerer::lowerMatchExpr(MatchExpr *expr)
     for (size_t i = 0; i < expr->arms.size(); ++i)
     {
         const auto &arm = expr->arms[i];
+        auto localsBackup = locals_;
+        auto slotsBackup = slots_;
+        auto localTypesBackup = localTypes_;
+
+        size_t matchBlock = armBlocks[i];
+        size_t guardBlock = 0;
+        if (arm.pattern.guard)
+        {
+            guardBlock = createBlock("match_guard_" + std::to_string(i));
+            matchBlock = guardBlock;
+        }
 
         // In the current block, test the pattern
         Value scrutineeVal = loadFromSlot(scrutineeSlot, scrutinee.type);
+        PatternValue scrutineeValue{scrutineeVal, scrutineeType};
+        emitPatternTest(arm.pattern, scrutineeValue, matchBlock, nextTestBlocks[i]);
 
-        switch (arm.pattern.kind)
+        if (guardBlock)
         {
-            case MatchArm::Pattern::Kind::Wildcard:
-                // Wildcard always matches - just jump to arm body
-                emitBr(armBlocks[i]);
-                break;
-
-            case MatchArm::Pattern::Kind::Literal:
-            {
-                // Compare scrutinee with literal
-                auto litResult = lowerExpr(arm.pattern.literal.get());
-                Value cond;
-                if (scrutinee.type.kind == Type::Kind::Str)
-                {
-                    // String comparison
-                    cond = emitCallRet(
-                        Type(Type::Kind::I1), kStringEquals, {scrutineeVal, litResult.value});
-                }
-                else
-                {
-                    // Integer comparison
-                    cond = emitBinary(
-                        Opcode::ICmpEq, Type(Type::Kind::I1), scrutineeVal, litResult.value);
-                }
-
-                // If guard is present, check it too
-                if (arm.pattern.guard)
-                {
-                    size_t guardBlock = createBlock("match_guard_" + std::to_string(i));
-                    emitCBr(cond, guardBlock, nextTestBlocks[i]);
-                    setBlock(guardBlock);
-
-                    auto guardResult = lowerExpr(arm.pattern.guard.get());
-                    emitCBr(guardResult.value, armBlocks[i], nextTestBlocks[i]);
-                }
-                else
-                {
-                    emitCBr(cond, armBlocks[i], nextTestBlocks[i]);
-                }
-                break;
-            }
-
-            case MatchArm::Pattern::Kind::Binding:
-            {
-                // Binding pattern - bind the scrutinee to a local variable
-                // and execute the arm (always matches if reached)
-                defineLocal(arm.pattern.binding, scrutineeVal);
-
-                // If guard is present, check it
-                if (arm.pattern.guard)
-                {
-                    auto guardResult = lowerExpr(arm.pattern.guard.get());
-                    emitCBr(guardResult.value, armBlocks[i], nextTestBlocks[i]);
-                }
-                else
-                {
-                    emitBr(armBlocks[i]);
-                }
-                break;
-            }
-
-            case MatchArm::Pattern::Kind::Expression:
-            {
-                // Expression pattern - evaluate expression as boolean condition
-                // Used for guard-style matching: match (true) { x > 0 => ... }
-                auto exprResult = lowerExpr(arm.pattern.literal.get());
-                Value cond = exprResult.value;
-
-                // Ensure we have a boolean condition
-                if (exprResult.type.kind != Type::Kind::I1)
-                {
-                    // Compare with zero to get boolean
-                    cond = emitBinary(
-                        Opcode::ICmpNe, Type(Type::Kind::I1), exprResult.value, Value::constInt(0));
-                }
-
-                emitCBr(cond, armBlocks[i], nextTestBlocks[i]);
-                break;
-            }
-
-            case MatchArm::Pattern::Kind::Constructor:
-            case MatchArm::Pattern::Kind::Tuple:
-                // TODO: Implement constructor and tuple patterns
-                emitBr(nextTestBlocks[i]);
-                break;
+            setBlock(guardBlock);
+            emitPatternBindings(arm.pattern, scrutineeValue);
+            auto guardResult = lowerExpr(arm.pattern.guard.get());
+            emitCBr(guardResult.value, armBlocks[i], nextTestBlocks[i]);
         }
 
         // Lower the arm body and store result
         setBlock(armBlocks[i]);
+        if (!guardBlock)
+            emitPatternBindings(arm.pattern, scrutineeValue);
         if (arm.body)
         {
             auto bodyResult = lowerExpr(arm.body.get());
-            storeToSlot(resultSlot, bodyResult.value, ilResultType);
+            if (hasResult)
+            {
+                Value bodyValue = bodyResult.value;
+                if (expectsOptional)
+                {
+                    TypeRef bodyType = sema_.typeOf(arm.body.get());
+                    if (!bodyType || bodyType->kind != TypeKindSem::Optional)
+                    {
+                        if (optionalInner)
+                            bodyValue = emitOptionalWrap(bodyResult.value, optionalInner);
+                    }
+                }
+                storeToSlot(resultSlot, bodyValue, ilResultType);
+            }
         }
 
         // Jump to end after arm body (if not already terminated)
@@ -1937,6 +2635,10 @@ LowerResult Lowerer::lowerMatchExpr(MatchExpr *expr)
         {
             emitBr(endIdx);
         }
+
+        locals_ = std::move(localsBackup);
+        slots_ = std::move(slotsBackup);
+        localTypes_ = std::move(localTypesBackup);
 
         // Set up next test block for pattern matching
         if (i + 1 < expr->arms.size())
@@ -1952,10 +2654,14 @@ LowerResult Lowerer::lowerMatchExpr(MatchExpr *expr)
     setBlock(endIdx);
 
     // Load and return the result
-    Value result = loadFromSlot(resultSlot, ilResultType);
-    removeSlot(resultSlot);
+    if (hasResult)
+    {
+        Value result = loadFromSlot(resultSlot, ilResultType);
+        removeSlot(resultSlot);
+        return {result, ilResultType};
+    }
 
-    return {result, ilResultType};
+    return {Value::constInt(0), Type(Type::Kind::Void)};
 }
 
 

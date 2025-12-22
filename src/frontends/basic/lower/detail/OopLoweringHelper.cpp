@@ -19,66 +19,66 @@
 namespace il::frontends::basic::lower::detail
 {
 
-OopLoweringHelper::OopLoweringHelper(Lowerer &lowerer) noexcept : lowerer_(lowerer) {}
+OopLoweringHelper::OopLoweringHelper(Lowerer::DetailAccess access) noexcept : access_(access) {}
 
 RVal OopLoweringHelper::lowerNewExpr(const NewExpr &expr)
 {
-    return lowerer_.lowerNewExpr(expr);
+    return access_.lowerNewExpr(expr);
 }
 
 RVal OopLoweringHelper::lowerNewExpr(const NewExpr &expr, OopLoweringContext &ctx)
 {
-    return lowerer_.lowerNewExpr(expr, ctx);
+    return access_.lowerNewExpr(expr, ctx);
 }
 
 RVal OopLoweringHelper::lowerMeExpr(const MeExpr &expr)
 {
-    return lowerer_.lowerMeExpr(expr);
+    return access_.lowerMeExpr(expr);
 }
 
 RVal OopLoweringHelper::lowerMeExpr(const MeExpr &expr, OopLoweringContext &ctx)
 {
-    return lowerer_.lowerMeExpr(expr, ctx);
+    return access_.lowerMeExpr(expr, ctx);
 }
 
 RVal OopLoweringHelper::lowerMemberAccessExpr(const MemberAccessExpr &expr)
 {
-    return lowerer_.lowerMemberAccessExpr(expr);
+    return access_.lowerMemberAccessExpr(expr);
 }
 
 RVal OopLoweringHelper::lowerMemberAccessExpr(const MemberAccessExpr &expr, OopLoweringContext &ctx)
 {
-    return lowerer_.lowerMemberAccessExpr(expr, ctx);
+    return access_.lowerMemberAccessExpr(expr, ctx);
 }
 
 RVal OopLoweringHelper::lowerMethodCallExpr(const MethodCallExpr &expr)
 {
-    return lowerer_.lowerMethodCallExpr(expr);
+    return access_.lowerMethodCallExpr(expr);
 }
 
 RVal OopLoweringHelper::lowerMethodCallExpr(const MethodCallExpr &expr, OopLoweringContext &ctx)
 {
-    return lowerer_.lowerMethodCallExpr(expr, ctx);
+    return access_.lowerMethodCallExpr(expr, ctx);
 }
 
 void OopLoweringHelper::lowerDelete(const DeleteStmt &stmt)
 {
-    lowerer_.lowerDelete(stmt);
+    access_.lowerDelete(stmt);
 }
 
 void OopLoweringHelper::lowerDelete(const DeleteStmt &stmt, OopLoweringContext &ctx)
 {
-    lowerer_.lowerDelete(stmt, ctx);
+    access_.lowerDelete(stmt, ctx);
 }
 
 void OopLoweringHelper::scanOOP(const Program &prog)
 {
-    lowerer_.scanOOP(prog);
+    access_.scanOOP(prog);
 }
 
 void OopLoweringHelper::emitOopDeclsAndBodies(const Program &prog)
 {
-    lowerer_.emitOopDeclsAndBodies(prog);
+    access_.emitOopDeclsAndBodies(prog);
 }
 
 } // namespace il::frontends::basic::lower::detail

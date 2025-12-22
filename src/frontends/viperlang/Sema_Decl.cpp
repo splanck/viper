@@ -19,9 +19,15 @@ namespace il::frontends::viperlang
 // Declaration Analysis
 //=============================================================================
 
-void Sema::analyzeImport(ImportDecl & /*decl*/)
+void Sema::analyzeImport(ImportDecl &decl)
 {
-    // TODO: Implement import resolution
+    if (decl.path.empty())
+    {
+        error(decl.loc, "Import path cannot be empty");
+        return;
+    }
+
+    imports_.insert(decl.path);
 }
 
 void Sema::analyzeGlobalVarDecl(GlobalVarDecl &decl)
@@ -67,6 +73,63 @@ void Sema::analyzeValueDecl(ValueDecl &decl)
         {
             analyzeMethodDecl(*static_cast<MethodDecl *>(member.get()), selfType);
         }
+    }
+
+    // Validate interface implementations after members are known
+    for (const auto &ifaceName : decl.interfaces)
+    {
+        auto ifaceIt = interfaceDecls_.find(ifaceName);
+        if (ifaceIt == interfaceDecls_.end())
+        {
+            error(decl.loc, "Unknown interface: " + ifaceName);
+            continue;
+        }
+
+        bool ok = true;
+        InterfaceDecl *iface = ifaceIt->second;
+        for (auto &member : iface->members)
+        {
+            if (member->kind != DeclKind::Method)
+                continue;
+
+            auto *ifaceMethod = static_cast<MethodDecl *>(member.get());
+            std::string ifaceKey = ifaceName + "." + ifaceMethod->name;
+            auto ifaceTypeIt = methodTypes_.find(ifaceKey);
+            if (ifaceTypeIt == methodTypes_.end())
+                continue;
+
+            std::string implKey = decl.name + "." + ifaceMethod->name;
+            auto implIt = methodTypes_.find(implKey);
+            if (implIt == methodTypes_.end())
+            {
+                error(decl.loc,
+                      "Type '" + decl.name + "' does not implement interface method '" + ifaceName +
+                          "." + ifaceMethod->name + "'");
+                ok = false;
+                continue;
+            }
+
+            if (!implIt->second->equals(*ifaceTypeIt->second))
+            {
+                error(decl.loc,
+                      "Method '" + decl.name + "." + ifaceMethod->name +
+                          "' does not match interface '" + ifaceName + "." + ifaceMethod->name +
+                          "' signature");
+                ok = false;
+            }
+
+            auto visIt = memberVisibility_.find(implKey);
+            if (visIt != memberVisibility_.end() && visIt->second != Visibility::Public)
+            {
+                error(decl.loc,
+                      "Method '" + decl.name + "." + ifaceMethod->name +
+                          "' must be public to satisfy interface '" + ifaceName + "'");
+                ok = false;
+            }
+        }
+
+        if (ok)
+            types::registerInterfaceImplementation(decl.name, ifaceName);
     }
 
     popScope();
@@ -194,6 +257,62 @@ void Sema::analyzeEntityDecl(EntityDecl &decl)
         {
             analyzeMethodDecl(*static_cast<MethodDecl *>(member.get()), selfType);
         }
+    }
+
+    for (const auto &ifaceName : decl.interfaces)
+    {
+        auto ifaceIt = interfaceDecls_.find(ifaceName);
+        if (ifaceIt == interfaceDecls_.end())
+        {
+            error(decl.loc, "Unknown interface: " + ifaceName);
+            continue;
+        }
+
+        bool ok = true;
+        InterfaceDecl *iface = ifaceIt->second;
+        for (auto &member : iface->members)
+        {
+            if (member->kind != DeclKind::Method)
+                continue;
+
+            auto *ifaceMethod = static_cast<MethodDecl *>(member.get());
+            std::string ifaceKey = ifaceName + "." + ifaceMethod->name;
+            auto ifaceTypeIt = methodTypes_.find(ifaceKey);
+            if (ifaceTypeIt == methodTypes_.end())
+                continue;
+
+            std::string implKey = decl.name + "." + ifaceMethod->name;
+            auto implIt = methodTypes_.find(implKey);
+            if (implIt == methodTypes_.end())
+            {
+                error(decl.loc,
+                      "Type '" + decl.name + "' does not implement interface method '" + ifaceName +
+                          "." + ifaceMethod->name + "'");
+                ok = false;
+                continue;
+            }
+
+            if (!implIt->second->equals(*ifaceTypeIt->second))
+            {
+                error(decl.loc,
+                      "Method '" + decl.name + "." + ifaceMethod->name +
+                          "' does not match interface '" + ifaceName + "." + ifaceMethod->name +
+                          "' signature");
+                ok = false;
+            }
+
+            auto visIt = memberVisibility_.find(implKey);
+            if (visIt != memberVisibility_.end() && visIt->second != Visibility::Public)
+            {
+                error(decl.loc,
+                      "Method '" + decl.name + "." + ifaceMethod->name +
+                          "' must be public to satisfy interface '" + ifaceName + "'");
+                ok = false;
+            }
+        }
+
+        if (ok)
+            types::registerInterfaceImplementation(decl.name, ifaceName);
     }
 
     popScope();

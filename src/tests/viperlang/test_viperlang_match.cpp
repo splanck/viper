@@ -198,6 +198,75 @@ func start() {
     EXPECT_TRUE(foundScmpGt);
 }
 
+/// @brief Test constructor, tuple, and optional patterns with guards.
+TEST(ViperLangMatch, MatchPatterns)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+value Point {
+    expose Integer x;
+    expose Integer y;
+}
+
+func start() {
+    Point p = new Point(1, 7);
+    (Integer, Integer) t = (1, 2);
+    Integer? maybe = 5;
+
+    Integer fromPoint = match (p) {
+        Point(1, y) => y,
+        _ => 0
+    };
+
+    Integer fromTuple = match (t) {
+        (1, y) => y,
+        _ => 0
+    };
+
+    Integer? fromOpt = match (maybe) {
+        Some(v) if v > 0 => v,
+        None => null,
+        _ => null
+    };
+
+    Integer sum = fromPoint + fromTuple + (fromOpt ?? 0);
+    Viper.Terminal.SayInt(sum);
+}
+)";
+    CompilerInput input{.source = source, .path = "match_patterns.viper"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    if (!result.succeeded())
+    {
+        std::cerr << "Diagnostics for MatchPatterns:\n";
+        for (const auto &d : result.diagnostics.diagnostics())
+        {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+
+    EXPECT_TRUE(result.succeeded());
+
+    bool foundMatchArm = false;
+    for (const auto &fn : result.module.functions)
+    {
+        if (fn.name == "main")
+        {
+            for (const auto &block : fn.blocks)
+            {
+                if (block.label.find("match_arm") != std::string::npos)
+                    foundMatchArm = true;
+            }
+        }
+    }
+    EXPECT_TRUE(foundMatchArm);
+}
+
 } // namespace
 
 int main()

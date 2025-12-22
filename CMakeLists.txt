@@ -39,10 +39,9 @@ include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
 # Runtime namespace transition flag: dual-publish legacy rt_* aliases alongside
-# canonical Viper.* names. Default ON for a smoother migration window.
-# TODO(v0.3.0): Flip default to OFF once all frontends and examples emit
-#               canonical Viper.* names. Users can re-enable legacy aliases via
-#               -DVIPER_RUNTIME_NS_DUAL=ON to load older IL.
+# canonical Viper.* names. Default ON to preserve compatibility while frontends
+# and examples migrate to emitting canonical Viper.* names. Users can re-enable
+# legacy aliases explicitly via -DVIPER_RUNTIME_NS_DUAL=ON when loading older IL.
 option(VIPER_RUNTIME_NS_DUAL "Publish legacy rt_* runtime aliases alongside Viper.*" ON)
 
 # Compute numeric define for headers and C++ sources (1/0)

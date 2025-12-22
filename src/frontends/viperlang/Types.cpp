@@ -37,9 +37,17 @@
 
 #include "frontends/viperlang/Types.hpp"
 #include <sstream>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace il::frontends::viperlang
 {
+
+namespace
+{
+using InterfaceSet = std::unordered_set<std::string>;
+std::unordered_map<std::string, InterfaceSet> g_interface_impls;
+} // namespace
 
 //=============================================================================
 // ViperType Implementation
@@ -105,10 +113,10 @@ bool ViperType::isAssignableFrom(const ViperType &source) const
     if (kind == TypeKindSem::Number && source.kind == TypeKindSem::Byte)
         return true; // Byte -> Number
 
-    // Interface assignment (TODO: check actual implementation)
+    // Interface assignment (requires declared implementation)
     if (kind == TypeKindSem::Interface &&
         (source.kind == TypeKindSem::Entity || source.kind == TypeKindSem::Value))
-        return true; // Needs actual interface checking
+        return types::implementsInterface(source.name, name);
 
     // Generic container assignment: List[Unknown] -> List[T], etc.
     // This handles empty literal inference ([] can be assigned to List[Integer])
@@ -289,6 +297,24 @@ std::string ViperType::toString() const
 
 namespace types
 {
+
+void clearInterfaceImplementations()
+{
+    g_interface_impls.clear();
+}
+
+void registerInterfaceImplementation(const std::string &typeName, const std::string &interfaceName)
+{
+    g_interface_impls[typeName].insert(interfaceName);
+}
+
+bool implementsInterface(const std::string &typeName, const std::string &interfaceName)
+{
+    auto it = g_interface_impls.find(typeName);
+    if (it == g_interface_impls.end())
+        return false;
+    return it->second.find(interfaceName) != it->second.end();
+}
 
 namespace
 {

@@ -391,6 +391,9 @@ class Lowerer
     /// @brief Current function being lowered.
     Function *currentFunc_{nullptr};
 
+    /// @brief Current function return type (semantic).
+    TypeRef currentReturnType_{nullptr};
+
     /// @brief Basic block manager for the current function.
     ::il::frontends::common::BlockManager blockMgr_;
 
@@ -402,6 +405,9 @@ class Lowerer
 
     /// @brief Local variable bindings: name -> SSA value.
     std::map<std::string, Value> locals_;
+
+    /// @brief Local variable types: name -> semantic type.
+    std::map<std::string, TypeRef> localTypes_;
 
     /// @brief Mutable variable slots: name -> slot pointer.
     std::map<std::string, Value> slots_;
@@ -609,6 +615,10 @@ class Lowerer
     /// @return LowerResult with the operation result.
     LowerResult lowerUnary(UnaryExpr *expr);
 
+    /// @brief Lower a ternary conditional expression.
+    /// @return LowerResult with the selected branch value.
+    LowerResult lowerTernary(TernaryExpr *expr);
+
     /// @brief Lower a call expression.
     /// @return LowerResult with the call result.
     LowerResult lowerCall(CallExpr *expr);
@@ -625,9 +635,17 @@ class Lowerer
     /// @return LowerResult with the coalesced value.
     LowerResult lowerCoalesce(CoalesceExpr *expr);
 
+    /// @brief Lower an optional chain expression.
+    /// @return LowerResult with optional result value.
+    LowerResult lowerOptionalChain(OptionalChainExpr *expr);
+
     /// @brief Lower a list literal expression.
     /// @return LowerResult with pointer to new list.
     LowerResult lowerListLiteral(ListLiteralExpr *expr);
+
+    /// @brief Lower a map literal expression.
+    /// @return LowerResult with pointer to new map.
+    LowerResult lowerMapLiteral(MapLiteralExpr *expr);
 
     /// @brief Lower a tuple literal expression.
     /// @return LowerResult with pointer to tuple on stack.
@@ -795,6 +813,18 @@ class Lowerer
     /// Used when retrieving primitives from collections.
     LowerResult emitUnbox(Value boxed, Type expectedType);
 
+    /// @brief Wrap a value in optional storage (box primitives/strings when needed).
+    /// @param val The value to wrap.
+    /// @param innerType The semantic inner type of the optional.
+    /// @return Pointer representing the optional value (null represents None).
+    Value emitOptionalWrap(Value val, TypeRef innerType);
+
+    /// @brief Unwrap an optional value to its inner IL type.
+    /// @param val Pointer representing the optional value.
+    /// @param innerType The semantic inner type of the optional.
+    /// @return The unwrapped value with its type.
+    LowerResult emitOptionalUnwrap(Value val, TypeRef innerType);
+
     /// @}
     //=========================================================================
     /// @name Type Mapping
@@ -862,6 +892,41 @@ class Lowerer
     /// @param result Output parameter for the self pointer value.
     /// @return True if self was found, false otherwise.
     bool getSelfPtr(Value &result);
+
+    /// @}
+    //=========================================================================
+    /// @name Pattern Matching Helpers
+    /// @brief Helpers for lowering match patterns.
+    /// @{
+    //=========================================================================
+
+    struct PatternValue
+    {
+        Value value;
+        TypeRef type;
+    };
+
+    /// @brief Emit control flow to test a pattern against a value.
+    /// @param pattern The pattern to match.
+    /// @param scrutinee The value/type being matched.
+    /// @param successBlock Block to branch to on success.
+    /// @param failureBlock Block to branch to on failure.
+    void emitPatternTest(const MatchArm::Pattern &pattern,
+                         const PatternValue &scrutinee,
+                         size_t successBlock,
+                         size_t failureBlock);
+
+    /// @brief Emit bindings for a matched pattern in the current block.
+    /// @param pattern The pattern to bind.
+    /// @param scrutinee The value/type being matched (assumed to have matched).
+    void emitPatternBindings(const MatchArm::Pattern &pattern, const PatternValue &scrutinee);
+
+    /// @brief Load a tuple element value.
+    /// @param tuple The tuple value/type.
+    /// @param index The element index.
+    /// @param elemType The semantic type for the element.
+    /// @return The element value/type pair.
+    PatternValue emitTupleElement(const PatternValue &tuple, size_t index, TypeRef elemType);
 
     /// @}
     //=========================================================================

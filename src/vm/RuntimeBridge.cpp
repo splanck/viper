@@ -454,6 +454,13 @@ std::string canonicalizeExternName(std::string_view n)
     return out;
 }
 
+static const RuntimeDescriptor *resolveRuntimeDescriptor(std::string_view name,
+                                                         RuntimeDescriptor &localDesc);
+static Slot dispatchRuntimeCall(RuntimeCallContext &ctx,
+                                std::string_view name,
+                                const RuntimeDescriptor &desc,
+                                VM *activeVm);
+
 /// @brief Invoke a runtime helper identified by name on behalf of the VM.
 ///
 /// @details Validates the callee descriptor, checks argument counts, installs
@@ -484,22 +491,7 @@ Slot RuntimeBridge::call(RuntimeCallContext &ctx,
     // Resolve against runtime extern registry first, then built-ins.
     // Use the current context's registry (currently always process-global).
     il::runtime::RuntimeDescriptor localDesc;
-    const il::runtime::RuntimeDescriptor *desc = nullptr;
-    {
-        il::runtime::RuntimeSignature sig;
-        il::runtime::RuntimeHandler handler = nullptr;
-        const ExternDesc *extDesc = resolveExternIn(currentExternRegistry(), name, &sig, &handler);
-        if (extDesc)
-        {
-            localDesc.name = extDesc->name;
-            localDesc.signature = sig;
-            localDesc.handler = handler;
-            localDesc.lowering = {};
-            desc = &localDesc;
-        }
-    }
-    if (!desc)
-        desc = il::runtime::findRuntimeDescriptor(name);
+    const il::runtime::RuntimeDescriptor *desc = resolveRuntimeDescriptor(name, localDesc);
     if (!desc)
     {
         RuntimeBridge::trap(
@@ -513,7 +505,37 @@ Slot RuntimeBridge::call(RuntimeCallContext &ctx,
     ctx.argBegin = args.empty() ? nullptr : const_cast<Slot *>(args.data());
     ctx.argCount = args.size();
 
-    if (auto *vm = VM::activeInstance())
+    VM *activeVm = VM::activeInstance();
+    result = dispatchRuntimeCall(ctx, name, *desc, activeVm);
+
+    return result;
+}
+
+static const RuntimeDescriptor *resolveRuntimeDescriptor(std::string_view name,
+                                                         RuntimeDescriptor &localDesc)
+{
+    il::runtime::RuntimeSignature sig;
+    il::runtime::RuntimeHandler handler = nullptr;
+    const ExternDesc *extDesc =
+        il::vm::resolveExternIn(il::vm::currentExternRegistry(), name, &sig, &handler);
+    if (extDesc)
+    {
+        localDesc.name = extDesc->name;
+        localDesc.signature = sig;
+        localDesc.handler = handler;
+        localDesc.lowering = {};
+        return &localDesc;
+    }
+
+    return il::runtime::findRuntimeDescriptor(name);
+}
+
+static Slot dispatchRuntimeCall(RuntimeCallContext &ctx,
+                                std::string_view name,
+                                const RuntimeDescriptor &desc,
+                                VM *activeVm)
+{
+    if (activeVm)
     {
         FrameInfo frame{};
         std::optional<RtSig> sigId = il::runtime::findRuntimeSignatureId(name);
@@ -522,14 +544,10 @@ Slot RuntimeBridge::call(RuntimeCallContext &ctx,
             thunk = thunkTable()[static_cast<std::size_t>(*sigId)];
         if (!thunk)
             thunk = &genericThunk;
-        result = thunk(*vm, frame, ctx);
-    }
-    else
-    {
-        result = executeDescriptor(*desc, ctx.argBegin, ctx.argCount, ctx);
+        return thunk(*activeVm, frame, ctx);
     }
 
-    return result;
+    return executeDescriptor(desc, ctx.argBegin, ctx.argCount, ctx);
 }
 
 /// @brief Record a runtime trap and escalate it to the VM when applicable.

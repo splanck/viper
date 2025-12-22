@@ -46,16 +46,16 @@
 #define DEFLATE_MIN_LEVEL 1
 #define DEFLATE_MAX_LEVEL 9
 
-#define WINDOW_SIZE 32768      // 32KB sliding window
-#define WINDOW_MASK 0x7FFF     // For wrapping
-#define MAX_MATCH_LEN 258      // Maximum match length
-#define MIN_MATCH_LEN 3        // Minimum match length
-#define MAX_DISTANCE 32768     // Maximum back-reference distance
+#define WINDOW_SIZE 32768  // 32KB sliding window
+#define WINDOW_MASK 0x7FFF // For wrapping
+#define MAX_MATCH_LEN 258  // Maximum match length
+#define MIN_MATCH_LEN 3    // Minimum match length
+#define MAX_DISTANCE 32768 // Maximum back-reference distance
 
-#define MAX_BITS 15            // Maximum Huffman code length
-#define MAX_LIT_CODES 286      // 0-255 literals + 256 end + 257-285 lengths
-#define MAX_DIST_CODES 30      // Distance codes
-#define MAX_CODE_LEN_CODES 19  // Code length alphabet size
+#define MAX_BITS 15           // Maximum Huffman code length
+#define MAX_LIT_CODES 286     // 0-255 literals + 256 end + 257-285 lengths
+#define MAX_DIST_CODES 30     // Distance codes
+#define MAX_CODE_LEN_CODES 19 // Code length alphabet size
 
 // Fixed Huffman code lengths (RFC 1951)
 #define FIXED_LIT_CODES 288
@@ -309,10 +309,10 @@ typedef struct
 
 typedef struct
 {
-    int max_code;               // Maximum code index
-    uint16_t *symbols;          // Symbol lookup by code
-    int table_bits;             // Bits for direct lookup
-    size_t table_size;          // Size of lookup table
+    int max_code;      // Maximum code index
+    uint16_t *symbols; // Symbol lookup by code
+    int table_bits;    // Bits for direct lookup
+    size_t table_size; // Size of lookup table
 } huffman_tree_t;
 
 /// @brief Build Huffman tree from code lengths
@@ -459,25 +459,21 @@ static void init_fixed_trees(void)
 //=============================================================================
 
 // Extra bits for length codes 257-285
-static const int length_extra_bits[29] = {
-    0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2,
-    3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0};
+static const int length_extra_bits[29] = {0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2,
+                                          2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0};
 
 // Base length for length codes 257-285
-static const int length_base[29] = {
-    3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31,
-    35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258};
+static const int length_base[29] = {3,  4,  5,  6,  7,  8,  9,  10, 11,  13,  15,  17,  19,  23, 27,
+                                    31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258};
 
 // Extra bits for distance codes 0-29
-static const int dist_extra_bits[30] = {
-    0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6,
-    7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13};
+static const int dist_extra_bits[30] = {0, 0, 0, 0, 1, 1, 2, 2,  3,  3,  4,  4,  5,  5,  6,
+                                        6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13};
 
 // Base distance for distance codes 0-29
-static const int dist_base[30] = {
-    1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193,
-    257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145,
-    8193, 12289, 16385, 24577};
+static const int dist_base[30] = {1,    2,    3,    4,    5,    7,    9,    13,    17,    25,
+                                  33,   49,   65,   97,   129,  193,  257,  385,   513,   769,
+                                  1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577};
 
 // Code length alphabet order (for dynamic Huffman)
 static const int code_length_order[MAX_CODE_LEN_CODES] = {
@@ -575,8 +571,10 @@ static bool inflate_stored(bit_reader_t *br, output_buffer_t *out)
 }
 
 /// @brief Inflate a Huffman-coded block
-static bool inflate_huffman(bit_reader_t *br, output_buffer_t *out,
-                            huffman_tree_t *lit_tree, huffman_tree_t *dist_tree)
+static bool inflate_huffman(bit_reader_t *br,
+                            output_buffer_t *out,
+                            huffman_tree_t *lit_tree,
+                            huffman_tree_t *dist_tree)
 {
     while (true)
     {
@@ -631,9 +629,9 @@ static bool inflate_huffman(bit_reader_t *br, output_buffer_t *out,
 static bool inflate_dynamic(bit_reader_t *br, output_buffer_t *out)
 {
     // Read header
-    int hlit = br_read(br, 5) + 257;  // Number of literal/length codes
-    int hdist = br_read(br, 5) + 1;   // Number of distance codes
-    int hclen = br_read(br, 4) + 4;   // Number of code length codes
+    int hlit = br_read(br, 5) + 257; // Number of literal/length codes
+    int hdist = br_read(br, 5) + 1;  // Number of distance codes
+    int hclen = br_read(br, 4) + 4;  // Number of code length codes
 
     if (hlit > MAX_LIT_CODES || hdist > MAX_DIST_CODES)
         return false;
@@ -754,18 +752,18 @@ static void *inflate_data(const uint8_t *data, size_t len)
         bool ok = false;
         switch (block_type)
         {
-        case 0: // Stored
-            ok = inflate_stored(&br, &out);
-            break;
-        case 1: // Fixed Huffman
-            ok = inflate_huffman(&br, &out, &fixed_lit_tree, &fixed_dist_tree);
-            break;
-        case 2: // Dynamic Huffman
-            ok = inflate_dynamic(&br, &out);
-            break;
-        default:
-            out_free(&out);
-            rt_trap("Inflate: invalid block type");
+            case 0: // Stored
+                ok = inflate_stored(&br, &out);
+                break;
+            case 1: // Fixed Huffman
+                ok = inflate_huffman(&br, &out, &fixed_lit_tree, &fixed_dist_tree);
+                break;
+            case 2: // Dynamic Huffman
+                ok = inflate_dynamic(&br, &out);
+                break;
+            default:
+                out_free(&out);
+                rt_trap("Inflate: invalid block type");
         }
 
         if (!ok)
@@ -790,9 +788,9 @@ static void *inflate_data(const uint8_t *data, size_t len)
 // Hash table for LZ77 matching
 typedef struct
 {
-    int *head;        // Hash -> position
-    int *prev;        // Chain for same hash
-    int window_pos;   // Current position in window
+    int *head;      // Hash -> position
+    int *prev;      // Chain for same hash
+    int window_pos; // Current position in window
 } lz77_state_t;
 
 #define HASH_BITS 15
@@ -825,8 +823,8 @@ static void lz77_free(lz77_state_t *lz)
 }
 
 /// @brief Find best match at current position
-static int find_match(lz77_state_t *lz, const uint8_t *data, size_t pos, size_t len,
-                      int max_chain, int *match_dist)
+static int find_match(
+    lz77_state_t *lz, const uint8_t *data, size_t pos, size_t len, int max_chain, int *match_dist)
 {
     if (pos + MIN_MATCH_LEN > len)
         return 0;
@@ -904,8 +902,8 @@ static int get_dist_code(int dist)
 }
 
 /// @brief Count frequencies for Huffman code generation
-static void count_frequencies(const uint8_t *data, size_t len, int level,
-                              int *lit_freq, int *dist_freq)
+static void count_frequencies(
+    const uint8_t *data, size_t len, int level, int *lit_freq, int *dist_freq)
 {
     memset(lit_freq, 0, MAX_LIT_CODES * sizeof(int));
     memset(dist_freq, 0, MAX_DIST_CODES * sizeof(int));
@@ -1074,8 +1072,8 @@ static void deflate_stored(bit_writer_t *bw, const uint8_t *data, size_t len)
     if (len == 0)
     {
         // Block header
-        bw_write(bw, 1, 1);  // BFINAL = 1
-        bw_write(bw, 0, 2);  // BTYPE = stored
+        bw_write(bw, 1, 1); // BFINAL = 1
+        bw_write(bw, 0, 2); // BTYPE = stored
 
         // Align to byte
         bw_flush(bw);
@@ -1098,8 +1096,8 @@ static void deflate_stored(bit_writer_t *bw, const uint8_t *data, size_t len)
         bool last = (pos + block_len >= len);
 
         // Block header
-        bw_write(bw, last ? 1 : 0, 1);  // BFINAL
-        bw_write(bw, 0, 2);             // BTYPE = stored
+        bw_write(bw, last ? 1 : 0, 1); // BFINAL
+        bw_write(bw, 0, 2);            // BTYPE = stored
 
         // Align to byte
         bw_flush(bw);
@@ -1130,8 +1128,8 @@ static void deflate_fixed(bit_writer_t *bw, const uint8_t *data, size_t len, int
     int max_chain = 4 << level;
 
     // Block header
-    bw_write(bw, 1, 1);  // BFINAL = 1 (single block)
-    bw_write(bw, 1, 2);  // BTYPE = fixed Huffman
+    bw_write(bw, 1, 1); // BFINAL = 1 (single block)
+    bw_write(bw, 1, 2); // BTYPE = fixed Huffman
 
     // Fixed literal/length codes
     // 0-143: 8 bits, 144-255: 9 bits, 256-279: 7 bits, 280-287: 8 bits
@@ -1269,16 +1267,16 @@ static void *gzip_data(const uint8_t *data, size_t len, int level)
     uint8_t *out = bytes_data(result);
 
     // GZIP header (RFC 1952)
-    out[0] = 0x1F;  // Magic
-    out[1] = 0x8B;  // Magic
-    out[2] = 0x08;  // Compression method (deflate)
-    out[3] = 0x00;  // Flags (none)
-    out[4] = 0x00;  // MTIME (0 = not available)
+    out[0] = 0x1F; // Magic
+    out[1] = 0x8B; // Magic
+    out[2] = 0x08; // Compression method (deflate)
+    out[3] = 0x00; // Flags (none)
+    out[4] = 0x00; // MTIME (0 = not available)
     out[5] = 0x00;
     out[6] = 0x00;
     out[7] = 0x00;
-    out[8] = 0x00;  // XFL (extra flags)
-    out[9] = 0xFF;  // OS (unknown)
+    out[8] = 0x00; // XFL (extra flags)
+    out[9] = 0xFF; // OS (unknown)
 
     // Compressed data
     memcpy(out + 10, deflated_data, deflated_len);
@@ -1352,14 +1350,10 @@ static void *gunzip_data(const uint8_t *data, size_t len)
 
     // Extract trailer
     size_t trailer_pos = len - 8;
-    uint32_t expected_crc = data[trailer_pos] |
-                            (data[trailer_pos + 1] << 8) |
-                            (data[trailer_pos + 2] << 16) |
-                            (data[trailer_pos + 3] << 24);
-    uint32_t expected_size = data[trailer_pos + 4] |
-                             (data[trailer_pos + 5] << 8) |
-                             (data[trailer_pos + 6] << 16) |
-                             (data[trailer_pos + 7] << 24);
+    uint32_t expected_crc = data[trailer_pos] | (data[trailer_pos + 1] << 8) |
+                            (data[trailer_pos + 2] << 16) | (data[trailer_pos + 3] << 24);
+    uint32_t expected_size = data[trailer_pos + 4] | (data[trailer_pos + 5] << 8) |
+                             (data[trailer_pos + 6] << 16) | (data[trailer_pos + 7] << 24);
 
     // Decompress
     size_t compressed_len = trailer_pos - pos;

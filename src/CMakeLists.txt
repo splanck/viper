@@ -13,6 +13,7 @@ set(RTGEN_INPUT "${CMAKE_CURRENT_SOURCE_DIR}/il/runtime/runtime.def")
 set(RTGEN_OUTPUTS
         "${RTGEN_OUTPUT_DIR}/RuntimeNameMap.inc"
         "${RTGEN_OUTPUT_DIR}/RuntimeClasses.inc"
+        "${RTGEN_OUTPUT_DIR}/RuntimeSignatures.inc"
 )
 
 add_custom_command(

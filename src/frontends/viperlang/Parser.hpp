@@ -278,6 +278,22 @@ class Parser
 
     /// @}
     //=========================================================================
+    /// @name Pattern Parsing
+    /// @brief Helpers for match/for-in pattern parsing.
+    /// @{
+    //=========================================================================
+
+    /// @brief Parse a match pattern, falling back to expression patterns.
+    /// @details Uses speculative parsing to distinguish patterns from expressions.
+    MatchArm::Pattern parseMatchPattern();
+
+    /// @brief Parse a non-expression pattern (wildcard, literal, binding, constructor, tuple).
+    /// @param out Pattern to populate.
+    /// @return True if a pattern was parsed, false otherwise.
+    bool parsePatternCore(MatchArm::Pattern &out);
+
+    /// @}
+    //=========================================================================
     /// @name Error Handling
     /// @{
     //=========================================================================

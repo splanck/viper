@@ -239,6 +239,20 @@ LowerResult Lowerer::emitUnbox(Value boxed, Type expectedType)
     }
 }
 
+Lowerer::Value Lowerer::emitOptionalWrap(Value val, TypeRef innerType)
+{
+    Type ilType = mapType(innerType);
+    if (ilType.kind == Type::Kind::Ptr)
+        return val;
+    return emitBox(val, ilType);
+}
+
+LowerResult Lowerer::emitOptionalUnwrap(Value val, TypeRef innerType)
+{
+    Type ilType = mapType(innerType);
+    return emitUnbox(val, ilType);
+}
+
 //=============================================================================
 // Low-Level Instruction Emission
 //=============================================================================

@@ -15,8 +15,8 @@
 
 #include <atomic>
 #include <cassert>
-#include <csetjmp>
 #include <chrono>
+#include <csetjmp>
 #include <cstdint>
 #include <mutex>
 #include <string>
@@ -63,8 +63,8 @@ static void test_gate_traps()
                               std::string::npos);
 
     EXPECT_TRAP(rt_gate_enter(nullptr));
-    assert(g_last_trap && std::string(g_last_trap).find("Gate.Enter: null object") !=
-                              std::string::npos);
+    assert(g_last_trap &&
+           std::string(g_last_trap).find("Gate.Enter: null object") != std::string::npos);
 }
 
 static void test_gate_basic_and_timeout()
@@ -89,12 +89,13 @@ static void test_gate_blocks_and_wakes()
     void *gate = rt_gate_new(0);
     std::atomic<bool> acquired = false;
 
-    std::thread t([&]
-                  {
-                      rt_gate_enter(gate);
-                      acquired.store(true, std::memory_order_release);
-                      rt_gate_leave(gate);
-                  });
+    std::thread t(
+        [&]
+        {
+            rt_gate_enter(gate);
+            acquired.store(true, std::memory_order_release);
+            rt_gate_leave(gate);
+        });
 
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
     assert(acquired.load(std::memory_order_acquire) == false);
@@ -123,11 +124,7 @@ static void test_barrier_basic()
 
     for (int64_t i = 0; i < kParties; ++i)
     {
-        threads.emplace_back(
-            [&, i]
-            {
-                idx[static_cast<size_t>(i)] = rt_barrier_arrive(barrier);
-            });
+        threads.emplace_back([&, i] { idx[static_cast<size_t>(i)] = rt_barrier_arrive(barrier); });
     }
 
     for (auto &t : threads)
@@ -193,26 +190,28 @@ static void test_rwlock_writer_preference()
     std::atomic<bool> writer_release = false;
     std::atomic<bool> reader2_acquired = false;
 
-    std::thread reader1([&]
-                        {
-                            rt_rwlock_read_enter(lock);
-                            reader1_acquired.store(true, std::memory_order_release);
-                            while (!reader1_release.load(std::memory_order_acquire))
-                                std::this_thread::yield();
-                            rt_rwlock_read_exit(lock);
-                        });
+    std::thread reader1(
+        [&]
+        {
+            rt_rwlock_read_enter(lock);
+            reader1_acquired.store(true, std::memory_order_release);
+            while (!reader1_release.load(std::memory_order_acquire))
+                std::this_thread::yield();
+            rt_rwlock_read_exit(lock);
+        });
 
-    std::thread writer([&]
-                       {
-                           while (!reader1_acquired.load(std::memory_order_acquire))
-                               std::this_thread::yield();
-                           writer_started.store(true, std::memory_order_release);
-                           rt_rwlock_write_enter(lock);
-                           writer_acquired.store(true, std::memory_order_release);
-                           while (!writer_release.load(std::memory_order_acquire))
-                               std::this_thread::yield();
-                           rt_rwlock_write_exit(lock);
-                       });
+    std::thread writer(
+        [&]
+        {
+            while (!reader1_acquired.load(std::memory_order_acquire))
+                std::this_thread::yield();
+            writer_started.store(true, std::memory_order_release);
+            rt_rwlock_write_enter(lock);
+            writer_acquired.store(true, std::memory_order_release);
+            while (!writer_release.load(std::memory_order_acquire))
+                std::this_thread::yield();
+            rt_rwlock_write_exit(lock);
+        });
 
     while (!reader1_acquired.load(std::memory_order_acquire))
         std::this_thread::yield();
@@ -222,12 +221,13 @@ static void test_rwlock_writer_preference()
     // Give the writer a moment to enqueue before starting reader2.
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
 
-    std::thread reader2([&]
-                        {
-                            rt_rwlock_read_enter(lock);
-                            reader2_acquired.store(true, std::memory_order_release);
-                            rt_rwlock_read_exit(lock);
-                        });
+    std::thread reader2(
+        [&]
+        {
+            rt_rwlock_read_enter(lock);
+            reader2_acquired.store(true, std::memory_order_release);
+            rt_rwlock_read_exit(lock);
+        });
 
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
     assert(writer_acquired.load(std::memory_order_acquire) == false);
@@ -264,11 +264,12 @@ static void test_rwlock_write_exit_non_owner_traps()
     rt_rwlock_write_enter(lock);
 
     std::atomic<const char *> trap_msg = nullptr;
-    std::thread t([&]
-                  {
-                      EXPECT_TRAP(rt_rwlock_write_exit(lock));
-                      trap_msg.store(g_last_trap, std::memory_order_release);
-                  });
+    std::thread t(
+        [&]
+        {
+            EXPECT_TRAP(rt_rwlock_write_exit(lock));
+            trap_msg.store(g_last_trap, std::memory_order_release);
+        });
     t.join();
 
     const char *msg = trap_msg.load(std::memory_order_acquire);

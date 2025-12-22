@@ -10,10 +10,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_internal.h"
-#include "rt_input.h"
-#include "rt_seq.h"
 #include "rt_box.h"
+#include "rt_input.h"
+#include "rt_internal.h"
+#include "rt_seq.h"
 
 #include <cassert>
 #include <cstdio>

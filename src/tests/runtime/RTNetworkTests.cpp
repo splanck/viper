@@ -18,13 +18,13 @@
 #include "rt_seq.h"
 #include "rt_string.h"
 
+#include <atomic>
 #include <cassert>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <thread>
-#include <chrono>
-#include <atomic>
 
 /// @brief Helper to print test result.
 static void test_result(const char *name, bool passed)
@@ -41,6 +41,7 @@ static uint8_t *get_bytes_data(void *bytes)
         int64_t len;
         uint8_t *data;
     };
+
     return ((bytes_impl *)bytes)->data;
 }
 
@@ -219,8 +220,7 @@ static void test_send_all_recv_exact()
     void *recv_data = rt_tcp_recv_exact(client, data_size);
 
     test_result("RecvExact returns correct size", get_bytes_len(recv_data) == data_size);
-    test_result("RecvExact data matches",
-                memcmp(get_bytes_data(recv_data), ptr, data_size) == 0);
+    test_result("RecvExact data matches", memcmp(get_bytes_data(recv_data), ptr, data_size) == 0);
 
     rt_tcp_close(client);
     server_thread.join();
@@ -238,11 +238,7 @@ static void line_server_thread(int port)
     if (client)
     {
         // Send lines
-        const char *lines[] = {
-            "Line 1\n",
-            "Line 2 with CRLF\r\n",
-            "Last line\n"
-        };
+        const char *lines[] = {"Line 1\n", "Line 2 with CRLF\r\n", "Last line\n"};
 
         for (int i = 0; i < 3; i++)
         {
@@ -360,7 +356,7 @@ static void test_accept_timeout()
 
     // Accept with short timeout - no client connecting
     auto start = std::chrono::steady_clock::now();
-    void *client = rt_tcp_server_accept_for(server, 100);  // 100ms timeout
+    void *client = rt_tcp_server_accept_for(server, 100); // 100ms timeout
     auto end = std::chrono::steady_clock::now();
 
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
@@ -390,7 +386,7 @@ static void test_connect_with_timeout()
 
     // Connect with a long timeout (should succeed quickly)
     rt_string host = rt_const_cstr("127.0.0.1");
-    void *client = rt_tcp_connect_for(host, port, 5000);  // 5 second timeout
+    void *client = rt_tcp_connect_for(host, port, 5000); // 5 second timeout
 
     test_result("ConnectFor succeeds to localhost", client != nullptr);
     test_result("ConnectFor client is open", rt_tcp_is_open(client) == 1);
@@ -500,7 +496,8 @@ static void test_udp_send_recv()
     int64_t recv_len = get_bytes_len(recv_data);
 
     test_result("UDP Recv returns correct length", recv_len == (int64_t)strlen(test_msg));
-    test_result("UDP Recv data matches", memcmp(get_bytes_data(recv_data), test_msg, strlen(test_msg)) == 0);
+    test_result("UDP Recv data matches",
+                memcmp(get_bytes_data(recv_data), test_msg, strlen(test_msg)) == 0);
 
     rt_udp_close(sender);
     rt_udp_close(receiver);
@@ -560,7 +557,8 @@ static void test_udp_recv_from()
     rt_string sender_host = rt_udp_sender_host(receiver);
     int64_t sender_port = rt_udp_sender_port(receiver);
 
-    test_result("UDP SenderHost is 127.0.0.1", strcmp(rt_string_cstr(sender_host), "127.0.0.1") == 0);
+    test_result("UDP SenderHost is 127.0.0.1",
+                strcmp(rt_string_cstr(sender_host), "127.0.0.1") == 0);
     test_result("UDP SenderPort is correct", sender_port == send_port);
 
     rt_udp_close(sender);
@@ -578,7 +576,7 @@ static void test_udp_recv_timeout()
 
     // Receive with short timeout - no data coming
     auto start = std::chrono::steady_clock::now();
-    void *data = rt_udp_recv_for(sock, 1024, 100);  // 100ms timeout
+    void *data = rt_udp_recv_for(sock, 1024, 100); // 100ms timeout
     auto end = std::chrono::steady_clock::now();
 
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
@@ -621,7 +619,7 @@ static void test_udp_set_recv_timeout()
 
     // Try to receive with timeout
     auto start = std::chrono::steady_clock::now();
-    void *data = rt_udp_recv(sock, 1024);  // Should timeout
+    void *data = rt_udp_recv(sock, 1024); // Should timeout
     auto end = std::chrono::steady_clock::now();
 
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
@@ -672,7 +670,8 @@ static void test_dns_is_ipv4()
     test_result("IsIPv4('127.0.0.1') = true", rt_dns_is_ipv4(rt_const_cstr("127.0.0.1")) == 1);
     test_result("IsIPv4('192.168.1.1') = true", rt_dns_is_ipv4(rt_const_cstr("192.168.1.1")) == 1);
     test_result("IsIPv4('0.0.0.0') = true", rt_dns_is_ipv4(rt_const_cstr("0.0.0.0")) == 1);
-    test_result("IsIPv4('255.255.255.255') = true", rt_dns_is_ipv4(rt_const_cstr("255.255.255.255")) == 1);
+    test_result("IsIPv4('255.255.255.255') = true",
+                rt_dns_is_ipv4(rt_const_cstr("255.255.255.255")) == 1);
     test_result("IsIPv4('256.0.0.1') = false", rt_dns_is_ipv4(rt_const_cstr("256.0.0.1")) == 0);
     test_result("IsIPv4('1.2.3') = false", rt_dns_is_ipv4(rt_const_cstr("1.2.3")) == 0);
     test_result("IsIPv4('hello') = false", rt_dns_is_ipv4(rt_const_cstr("hello")) == 0);
@@ -729,7 +728,7 @@ static void test_dns_local_addrs()
     test_result("DNS LocalAddrs has entries", count > 0);
 
     printf("  Found %lld local addresses:\n", (long long)count);
-    for (int64_t i = 0; i < count && i < 5; i++)  // Limit output
+    for (int64_t i = 0; i < count && i < 5; i++) // Limit output
     {
         rt_string addr = (rt_string)rt_seq_get(addrs, i);
         printf("    - %s\n", rt_string_cstr(addr));
@@ -789,8 +788,8 @@ static void http_server_thread(int port, const char *response_body, int response
                 break;
             buf[pos++] = get_bytes_data(data)[0];
             // Look for end of headers
-            if (pos >= 4 && buf[pos - 4] == '\r' && buf[pos - 3] == '\n' &&
-                buf[pos - 2] == '\r' && buf[pos - 1] == '\n')
+            if (pos >= 4 && buf[pos - 4] == '\r' && buf[pos - 3] == '\n' && buf[pos - 2] == '\r' &&
+                buf[pos - 1] == '\n')
             {
                 break;
             }
@@ -798,13 +797,16 @@ static void http_server_thread(int port, const char *response_body, int response
 
         // Build HTTP response
         char response[8192];
-        snprintf(response, sizeof(response),
+        snprintf(response,
+                 sizeof(response),
                  "HTTP/1.1 %d OK\r\n"
                  "Content-Type: text/plain\r\n"
                  "Content-Length: %zu\r\n"
                  "X-Test-Header: test-value\r\n"
                  "\r\n%s",
-                 response_status, strlen(response_body), response_body);
+                 response_status,
+                 strlen(response_body),
+                 response_body);
 
         rt_string resp_str = rt_const_cstr(response);
         rt_tcp_send_str(client, resp_str);
@@ -836,22 +838,21 @@ static void http_chunked_server_thread(int port)
             if (get_bytes_len(data) == 0)
                 break;
             buf[pos++] = get_bytes_data(data)[0];
-            if (pos >= 4 && buf[pos - 4] == '\r' && buf[pos - 3] == '\n' &&
-                buf[pos - 2] == '\r' && buf[pos - 1] == '\n')
+            if (pos >= 4 && buf[pos - 4] == '\r' && buf[pos - 3] == '\n' && buf[pos - 2] == '\r' &&
+                buf[pos - 1] == '\n')
             {
                 break;
             }
         }
 
         // Build chunked HTTP response
-        const char *response =
-            "HTTP/1.1 200 OK\r\n"
-            "Transfer-Encoding: chunked\r\n"
-            "Content-Type: text/plain\r\n"
-            "\r\n"
-            "5\r\nHello\r\n"
-            "6\r\nWorld!\r\n"
-            "0\r\n\r\n";
+        const char *response = "HTTP/1.1 200 OK\r\n"
+                               "Transfer-Encoding: chunked\r\n"
+                               "Content-Type: text/plain\r\n"
+                               "\r\n"
+                               "5\r\nHello\r\n"
+                               "6\r\nWorld!\r\n"
+                               "0\r\n\r\n";
 
         rt_string resp_str = rt_const_cstr(response);
         rt_tcp_send_str(client, resp_str);
@@ -883,8 +884,8 @@ static void http_redirect_server_thread(int port, int target_port)
             if (get_bytes_len(data) == 0)
                 break;
             buf[pos++] = get_bytes_data(data)[0];
-            if (pos >= 4 && buf[pos - 4] == '\r' && buf[pos - 3] == '\n' &&
-                buf[pos - 2] == '\r' && buf[pos - 1] == '\n')
+            if (pos >= 4 && buf[pos - 4] == '\r' && buf[pos - 3] == '\n' && buf[pos - 2] == '\r' &&
+                buf[pos - 1] == '\n')
             {
                 break;
             }
@@ -892,7 +893,8 @@ static void http_redirect_server_thread(int port, int target_port)
 
         // Send 302 redirect
         char response[512];
-        snprintf(response, sizeof(response),
+        snprintf(response,
+                 sizeof(response),
                  "HTTP/1.1 302 Found\r\n"
                  "Location: http://127.0.0.1:%d/final\r\n"
                  "Content-Length: 0\r\n"
@@ -1085,7 +1087,8 @@ static void test_http_req_builder()
     test_result("HttpRes.Headers returns Map", headers != nullptr);
 
     rt_string content_type = rt_http_res_header(res, rt_const_cstr("content-type"));
-    test_result("HttpRes.Header retrieves header", strcmp(rt_string_cstr(content_type), "text/plain") == 0);
+    test_result("HttpRes.Header retrieves header",
+                strcmp(rt_string_cstr(content_type), "text/plain") == 0);
 
     server_thread.join();
 }
@@ -1110,37 +1113,42 @@ static void test_http_redirect()
 
     // Start target server
     std::atomic<bool> target_ready{false};
-    std::thread target_thread([target_port, &target_ready]()
-                              {
-        void *server = rt_tcp_server_listen(target_port);
-        assert(server != nullptr);
-        target_ready = true;
+    std::thread target_thread(
+        [target_port, &target_ready]()
+        {
+            void *server = rt_tcp_server_listen(target_port);
+            assert(server != nullptr);
+            target_ready = true;
 
-        void *client = rt_tcp_server_accept(server);
-        if (client) {
-            // Drain request
-            char buf[4096];
-            int pos = 0;
-            while (pos < (int)sizeof(buf) - 1) {
-                void *data = rt_tcp_recv(client, 1);
-                if (get_bytes_len(data) == 0) break;
-                buf[pos++] = get_bytes_data(data)[0];
-                if (pos >= 4 && buf[pos-4] == '\r' && buf[pos-3] == '\n' &&
-                    buf[pos-2] == '\r' && buf[pos-1] == '\n') {
-                    break;
+            void *client = rt_tcp_server_accept(server);
+            if (client)
+            {
+                // Drain request
+                char buf[4096];
+                int pos = 0;
+                while (pos < (int)sizeof(buf) - 1)
+                {
+                    void *data = rt_tcp_recv(client, 1);
+                    if (get_bytes_len(data) == 0)
+                        break;
+                    buf[pos++] = get_bytes_data(data)[0];
+                    if (pos >= 4 && buf[pos - 4] == '\r' && buf[pos - 3] == '\n' &&
+                        buf[pos - 2] == '\r' && buf[pos - 1] == '\n')
+                    {
+                        break;
+                    }
                 }
+
+                const char *response = "HTTP/1.1 200 OK\r\n"
+                                       "Content-Type: text/plain\r\n"
+                                       "Content-Length: 12\r\n"
+                                       "\r\nFinal target";
+
+                rt_tcp_send_str(client, rt_const_cstr(response));
+                rt_tcp_close(client);
             }
-
-            const char *response =
-                "HTTP/1.1 200 OK\r\n"
-                "Content-Type: text/plain\r\n"
-                "Content-Length: 12\r\n"
-                "\r\nFinal target";
-
-            rt_tcp_send_str(client, rt_const_cstr(response));
-            rt_tcp_close(client);
-        }
-        rt_tcp_server_close(server); });
+            rt_tcp_server_close(server);
+        });
 
     while (!target_ready)
     {
@@ -1168,7 +1176,8 @@ static void test_url_parse_full()
 {
     printf("  test_url_parse_full...\n");
 
-    void *url = rt_url_parse(rt_const_cstr("https://user:pass@example.com:8080/path/to/resource?foo=bar&baz=qux#section"));
+    void *url = rt_url_parse(rt_const_cstr(
+        "https://user:pass@example.com:8080/path/to/resource?foo=bar&baz=qux#section"));
 
     const char *scheme = rt_string_cstr(rt_url_scheme(url));
     const char *user = rt_string_cstr(rt_url_user(url));
@@ -1223,7 +1232,8 @@ static void test_url_new()
     const char *full = rt_string_cstr(rt_url_full(url));
 
     // Port 443 is default for https, so it shouldn't appear
-    test_result("URL built correctly", strcmp(full, "https://api.example.com/v1/users?page=1#top") == 0);
+    test_result("URL built correctly",
+                strcmp(full, "https://api.example.com/v1/users?page=1#top") == 0);
 }
 
 /// @brief Test HostPort with default and non-default ports.
@@ -1250,7 +1260,8 @@ static void test_url_authority()
     void *url = rt_url_parse(rt_const_cstr("ftp://admin:secret@ftp.example.com:21/"));
     const char *auth = rt_string_cstr(rt_url_authority(url));
 
-    test_result("Authority includes user:pass@host:port", strcmp(auth, "admin:secret@ftp.example.com:21") == 0);
+    test_result("Authority includes user:pass@host:port",
+                strcmp(auth, "admin:secret@ftp.example.com:21") == 0);
 }
 
 /// @brief Test query parameter manipulation.
@@ -1261,9 +1272,12 @@ static void test_url_query_params()
     void *url = rt_url_parse(rt_const_cstr("http://example.com/?a=1&b=2"));
 
     // Test HasQueryParam
-    test_result("HasQueryParam returns true for 'a'", rt_url_has_query_param(url, rt_const_cstr("a")) == 1);
-    test_result("HasQueryParam returns true for 'b'", rt_url_has_query_param(url, rt_const_cstr("b")) == 1);
-    test_result("HasQueryParam returns false for 'c'", rt_url_has_query_param(url, rt_const_cstr("c")) == 0);
+    test_result("HasQueryParam returns true for 'a'",
+                rt_url_has_query_param(url, rt_const_cstr("a")) == 1);
+    test_result("HasQueryParam returns true for 'b'",
+                rt_url_has_query_param(url, rt_const_cstr("b")) == 1);
+    test_result("HasQueryParam returns false for 'c'",
+                rt_url_has_query_param(url, rt_const_cstr("c")) == 0);
 
     // Test GetQueryParam
     const char *val_a = rt_string_cstr(rt_url_get_query_param(url, rt_const_cstr("a")));
@@ -1273,11 +1287,13 @@ static void test_url_query_params()
 
     // Test SetQueryParam
     rt_url_set_query_param(url, rt_const_cstr("c"), rt_const_cstr("3"));
-    test_result("SetQueryParam adds new param", rt_url_has_query_param(url, rt_const_cstr("c")) == 1);
+    test_result("SetQueryParam adds new param",
+                rt_url_has_query_param(url, rt_const_cstr("c")) == 1);
 
     // Test DelQueryParam
     rt_url_del_query_param(url, rt_const_cstr("b"));
-    test_result("DelQueryParam removes param", rt_url_has_query_param(url, rt_const_cstr("b")) == 0);
+    test_result("DelQueryParam removes param",
+                rt_url_has_query_param(url, rt_const_cstr("b")) == 0);
 }
 
 /// @brief Test QueryMap.
@@ -1392,7 +1408,8 @@ static void test_url_is_valid()
 
     test_result("Valid http URL", rt_url_is_valid(rt_const_cstr("http://example.com")) == 1);
     test_result("Valid https URL", rt_url_is_valid(rt_const_cstr("https://example.com/path")) == 1);
-    test_result("Valid URL with port", rt_url_is_valid(rt_const_cstr("http://example.com:8080")) == 1);
+    test_result("Valid URL with port",
+                rt_url_is_valid(rt_const_cstr("http://example.com:8080")) == 1);
     test_result("Empty string is invalid", rt_url_is_valid(rt_const_cstr("")) == 0);
 }
 

@@ -10,8 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_internal.h"
 #include "rt_input.h"
+#include "rt_internal.h"
 
 #include <cassert>
 #include <cmath>
@@ -54,32 +54,41 @@ static void test_button_constants()
 static void test_initial_state()
 {
     rt_pad_init();
+    rt_pad_poll();
 
-    // No controllers should be connected initially (stub implementation)
-    assert(rt_pad_count() == 0);
-    assert(rt_pad_is_connected(0) == 0);
-    assert(rt_pad_is_connected(1) == 0);
-    assert(rt_pad_is_connected(2) == 0);
-    assert(rt_pad_is_connected(3) == 0);
+    int64_t count = rt_pad_count();
+    assert(count >= 0 && count <= VIPER_PAD_MAX);
 
     // Invalid indices should return disconnected
     assert(rt_pad_is_connected(-1) == 0);
     assert(rt_pad_is_connected(4) == 0);
     assert(rt_pad_is_connected(999) == 0);
 
-    // Buttons should be up for disconnected controllers
-    assert(rt_pad_is_down(0, VIPER_PAD_A) == 0);
-    assert(rt_pad_is_up(0, VIPER_PAD_A) == 1);
-    assert(rt_pad_was_pressed(0, VIPER_PAD_A) == 0);
-    assert(rt_pad_was_released(0, VIPER_PAD_A) == 0);
-
-    // Analog values should be 0 for disconnected controllers
-    assert(rt_pad_left_x(0) == 0.0);
-    assert(rt_pad_left_y(0) == 0.0);
-    assert(rt_pad_right_x(0) == 0.0);
-    assert(rt_pad_right_y(0) == 0.0);
-    assert(rt_pad_left_trigger(0) == 0.0);
-    assert(rt_pad_right_trigger(0) == 0.0);
+    for (int i = 0; i < VIPER_PAD_MAX; ++i)
+    {
+        if (!rt_pad_is_connected(i))
+        {
+            assert(rt_pad_is_down(i, VIPER_PAD_A) == 0);
+            assert(rt_pad_is_up(i, VIPER_PAD_A) == 1);
+            assert(rt_pad_was_pressed(i, VIPER_PAD_A) == 0);
+            assert(rt_pad_was_released(i, VIPER_PAD_A) == 0);
+            assert(rt_pad_left_x(i) == 0.0);
+            assert(rt_pad_left_y(i) == 0.0);
+            assert(rt_pad_right_x(i) == 0.0);
+            assert(rt_pad_right_y(i) == 0.0);
+            assert(rt_pad_left_trigger(i) == 0.0);
+            assert(rt_pad_right_trigger(i) == 0.0);
+        }
+        else
+        {
+            assert(rt_pad_left_x(i) >= -1.0 && rt_pad_left_x(i) <= 1.0);
+            assert(rt_pad_left_y(i) >= -1.0 && rt_pad_left_y(i) <= 1.0);
+            assert(rt_pad_right_x(i) >= -1.0 && rt_pad_right_x(i) <= 1.0);
+            assert(rt_pad_right_y(i) >= -1.0 && rt_pad_right_y(i) <= 1.0);
+            assert(rt_pad_left_trigger(i) >= 0.0 && rt_pad_left_trigger(i) <= 1.0);
+            assert(rt_pad_right_trigger(i) >= 0.0 && rt_pad_right_trigger(i) <= 1.0);
+        }
+    }
 
     printf("test_initial_state: PASSED\n");
 }

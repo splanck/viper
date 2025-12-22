@@ -70,9 +70,9 @@ func start() {
                     {
                         if (instr.callee == "Viper.Collections.Map.New")
                             foundMapNew = true;
-                        if (instr.callee == "Viper.Collections.Map.set_Item")
+                        if (instr.callee == "Viper.Collections.Map.Set")
                             foundMapSet = true;
-                        if (instr.callee == "Viper.Collections.Map.get_Item")
+                        if (instr.callee == "Viper.Collections.Map.Get")
                             foundMapGet = true;
                     }
                 }
@@ -92,10 +92,10 @@ TEST(ViperLangCollections, MapIndexAccess)
 module Test;
 
 func start() {
-    Map[Integer, String] names = new Map[Integer, String]();
-    names[1] = "One";
-    names[2] = "Two";
-    String name = names[1];
+    Map[String, String] names = new Map[String, String]();
+    names["one"] = "One";
+    names["two"] = "Two";
+    String name = names["one"];
     Viper.Terminal.Say(name);
 }
 )";
@@ -128,9 +128,9 @@ func start() {
                 {
                     if (instr.op == il::core::Opcode::Call)
                     {
-                        if (instr.callee == "Viper.Collections.Map.set_Item")
+                        if (instr.callee == "Viper.Collections.Map.Set")
                             foundMapSet = true;
-                        if (instr.callee == "Viper.Collections.Map.get_Item")
+                        if (instr.callee == "Viper.Collections.Map.Get")
                             foundMapGet = true;
                     }
                 }
@@ -139,6 +139,96 @@ func start() {
     }
     EXPECT_TRUE(foundMapSet);
     EXPECT_TRUE(foundMapGet);
+}
+
+/// @brief Test that Map helpers like getOr and setIfMissing lower correctly.
+TEST(ViperLangCollections, MapHelpers)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func start() {
+    Map[String, Integer] ages = new Map[String, Integer]();
+    Integer initial = ages.getOr("Alice", 0);
+    Boolean inserted = ages.setIfMissing("Alice", 42);
+    Boolean hasAlice = ages.has("Alice");
+    Viper.Terminal.SayInt(initial);
+    Viper.Terminal.SayInt(inserted ? 1 : 0);
+    Viper.Terminal.SayInt(hasAlice ? 1 : 0);
+}
+)";
+    CompilerInput input{.source = source, .path = "map_helpers.viper"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    if (!result.succeeded())
+    {
+        std::cerr << "Diagnostics for MapHelpers:\n";
+        for (const auto &d : result.diagnostics.diagnostics())
+        {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+
+    EXPECT_TRUE(result.succeeded());
+
+    bool foundGetOr = false;
+    bool foundSetIfMissing = false;
+    bool foundHas = false;
+    for (const auto &fn : result.module.functions)
+    {
+        if (fn.name == "main")
+        {
+            for (const auto &block : fn.blocks)
+            {
+                for (const auto &instr : block.instructions)
+                {
+                    if (instr.op == il::core::Opcode::Call)
+                    {
+                        if (instr.callee == "Viper.Collections.Map.GetOr")
+                            foundGetOr = true;
+                        if (instr.callee == "Viper.Collections.Map.SetIfMissing")
+                            foundSetIfMissing = true;
+                        if (instr.callee == "Viper.Collections.Map.Has")
+                            foundHas = true;
+                    }
+                }
+            }
+        }
+    }
+    EXPECT_TRUE(foundGetOr);
+    EXPECT_TRUE(foundSetIfMissing);
+    EXPECT_TRUE(foundHas);
+}
+
+/// @brief Test that Map key types are enforced as String.
+TEST(ViperLangCollections, MapKeyTypeEnforced)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func start() {
+    Map[Integer, String] names = new Map[Integer, String]();
+    names[1] = "One";
+}
+)";
+    CompilerInput input{.source = source, .path = "map_key_type.viper"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_FALSE(result.succeeded());
+    bool foundKeyError = false;
+    for (const auto &d : result.diagnostics.diagnostics())
+    {
+        if (d.message.find("Map keys must be String") != std::string::npos)
+            foundKeyError = true;
+    }
+    EXPECT_TRUE(foundKeyError);
 }
 
 /// @brief Test that empty list type inference works.

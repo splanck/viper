@@ -33,7 +33,7 @@ namespace il::frontends::basic::lower::builtins
 ///            - Higher level code can unconditionally call every registrar
 ///              without guarding for feature availability.
 ///            - Tooling that inspects the registry sees a slot for array
-///              builtins and can surface TODOs accordingly.
+///              builtins and can surface follow-up work accordingly.
 ///            - Future developers have a documented entry point when specialised
 ///              array lowering becomes necessary.
 ///          The body intentionally remains a no-op.

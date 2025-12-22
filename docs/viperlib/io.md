@@ -71,6 +71,15 @@ ZIP archive reader and writer for creating, reading, and extracting ZIP files.
 
 The archive uses DEFLATE compression (method 8) by default for added entries. Small entries or entries that don't compress well use stored mode (method 0). The implementation reads archives with any combination of stored and deflate-compressed entries.
 
+### Entry Name Rules
+
+- Names must be relative (no leading `/` or drive letters)
+- `..` path segments are rejected
+- `.` segments are ignored
+- Backslashes are normalized to `/`
+
+Invalid names trap with `Archive: invalid entry name`.
+
 ### Info Map Keys
 
 | Key              | Type    | Description                           |
@@ -1254,4 +1263,3 @@ watcher.Stop()
 - [Collections](collections.md) - `Bytes` for binary data, `Seq` and `Map` for structured data
 - [Text Processing](text.md) - `Codec` for encoding/decoding, `Csv` for structured text
 - [Network](network.md) - Network I/O with `Tcp`, `Udp`, and HTTP classes
-

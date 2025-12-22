@@ -19,12 +19,12 @@
 #include "rt_watcher.h"
 
 #include <cassert>
+#include <chrono>
 #include <csetjmp>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <thread>
-#include <chrono>
 
 namespace
 {
@@ -144,7 +144,7 @@ static void test_watcher_new()
     assert(rt_watcher_get_is_watching(w) == 0); // Not started yet
 
     // Check path is returned
-    void *watchedPath = rt_watcher_get_path(w);
+    rt_string watchedPath = rt_watcher_get_path(w);
     assert(watchedPath != nullptr);
 
     test_result("Watcher creation", true);

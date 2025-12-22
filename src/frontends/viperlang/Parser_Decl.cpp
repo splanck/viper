@@ -538,6 +538,7 @@ DeclPtr Parser::parseInterfaceDecl()
             auto method = parseMethodDecl();
             if (method)
             {
+                static_cast<MethodDecl *>(method.get())->visibility = Visibility::Public;
                 iface->members.push_back(std::move(method));
             }
         }

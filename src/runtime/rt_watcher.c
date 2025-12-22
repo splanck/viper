@@ -32,14 +32,14 @@
 
 // Platform-specific includes
 #if defined(__linux__)
-#include <sys/inotify.h>
-#include <poll.h>
-#include <unistd.h>
 #include <limits.h>
+#include <poll.h>
+#include <sys/inotify.h>
+#include <unistd.h>
 #elif defined(__APPLE__)
+#include <fcntl.h>
 #include <sys/event.h>
 #include <sys/time.h>
-#include <fcntl.h>
 #include <unistd.h>
 #ifndef O_EVTONLY
 #define O_EVTONLY 0x8000
@@ -61,22 +61,22 @@ static inline void *str_from_cstr(const char *s)
 /// @brief A single queued file system event.
 typedef struct watcher_event
 {
-    int64_t type;       ///< Event type (RT_WATCH_EVENT_*)
-    void *path;         ///< Path of affected file (rt_string)
+    int64_t type; ///< Event type (RT_WATCH_EVENT_*)
+    void *path;   ///< Path of affected file (rt_string)
 } watcher_event;
 
 /// @brief Internal watcher implementation structure.
 typedef struct rt_watcher_impl
 {
-    void *watch_path;       ///< The path being watched (rt_string)
-    int8_t is_watching;     ///< 1 if actively watching
-    int8_t is_directory;    ///< 1 if watching a directory
+    void *watch_path;    ///< The path being watched (rt_string)
+    int8_t is_watching;  ///< 1 if actively watching
+    int8_t is_directory; ///< 1 if watching a directory
 
     // Event queue
     watcher_event events[WATCHER_EVENT_QUEUE_SIZE];
-    int64_t event_head;     ///< Next event to read
-    int64_t event_tail;     ///< Next slot to write
-    int64_t event_count;    ///< Number of queued events
+    int64_t event_head;  ///< Next event to read
+    int64_t event_tail;  ///< Next slot to write
+    int64_t event_count; ///< Number of queued events
 
     // Last polled event
     int64_t last_event_type;
@@ -84,16 +84,16 @@ typedef struct rt_watcher_impl
     int8_t has_last_event;
 
 #if defined(__linux__)
-    int inotify_fd;         ///< inotify file descriptor
-    int watch_descriptor;   ///< Watch descriptor for the path
+    int inotify_fd;       ///< inotify file descriptor
+    int watch_descriptor; ///< Watch descriptor for the path
 #elif defined(__APPLE__)
-    int kqueue_fd;          ///< kqueue file descriptor
-    int watched_fd;         ///< File descriptor of watched path
+    int kqueue_fd;  ///< kqueue file descriptor
+    int watched_fd; ///< File descriptor of watched path
 #elif defined(_WIN32)
-    HANDLE dir_handle;      ///< Directory handle
-    OVERLAPPED overlapped;  ///< Overlapped I/O structure
-    char buffer[4096];      ///< Buffer for change notifications
-    BOOL pending_read;      ///< Whether a read is pending
+    HANDLE dir_handle;     ///< Directory handle
+    OVERLAPPED overlapped; ///< Overlapped I/O structure
+    char buffer[4096];     ///< Buffer for change notifications
+    BOOL pending_read;     ///< Whether a read is pending
 #endif
 } rt_watcher_impl;
 
@@ -260,30 +260,32 @@ static void watcher_read_windows_events(rt_watcher_impl *w)
         int64_t type = RT_WATCH_EVENT_NONE;
         switch (info->Action)
         {
-        case FILE_ACTION_ADDED:
-            type = RT_WATCH_EVENT_CREATED;
-            break;
-        case FILE_ACTION_REMOVED:
-            type = RT_WATCH_EVENT_DELETED;
-            break;
-        case FILE_ACTION_MODIFIED:
-            type = RT_WATCH_EVENT_MODIFIED;
-            break;
-        case FILE_ACTION_RENAMED_OLD_NAME:
-        case FILE_ACTION_RENAMED_NEW_NAME:
-            type = RT_WATCH_EVENT_RENAMED;
-            break;
+            case FILE_ACTION_ADDED:
+                type = RT_WATCH_EVENT_CREATED;
+                break;
+            case FILE_ACTION_REMOVED:
+                type = RT_WATCH_EVENT_DELETED;
+                break;
+            case FILE_ACTION_MODIFIED:
+                type = RT_WATCH_EVENT_MODIFIED;
+                break;
+            case FILE_ACTION_RENAMED_OLD_NAME:
+            case FILE_ACTION_RENAMED_NEW_NAME:
+                type = RT_WATCH_EVENT_RENAMED;
+                break;
         }
 
         if (type != RT_WATCH_EVENT_NONE)
         {
             // Convert wide string to UTF-8
             int name_len = info->FileNameLength / sizeof(WCHAR);
-            int utf8_len = WideCharToMultiByte(CP_UTF8, 0, info->FileName, name_len, NULL, 0, NULL, NULL);
+            int utf8_len =
+                WideCharToMultiByte(CP_UTF8, 0, info->FileName, name_len, NULL, 0, NULL, NULL);
             char *name = malloc(utf8_len + 1);
             if (name)
             {
-                WideCharToMultiByte(CP_UTF8, 0, info->FileName, name_len, name, utf8_len, NULL, NULL);
+                WideCharToMultiByte(
+                    CP_UTF8, 0, info->FileName, name_len, name, utf8_len, NULL, NULL);
                 name[utf8_len] = '\0';
                 watcher_queue_event(w, type, name);
                 free(name);
@@ -296,21 +298,26 @@ static void watcher_read_windows_events(rt_watcher_impl *w)
     }
 
     // Start another read
-    ReadDirectoryChangesW(w->dir_handle, w->buffer, sizeof(w->buffer), FALSE,
+    ReadDirectoryChangesW(w->dir_handle,
+                          w->buffer,
+                          sizeof(w->buffer),
+                          FALSE,
                           FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_DIR_NAME |
-                          FILE_NOTIFY_CHANGE_ATTRIBUTES | FILE_NOTIFY_CHANGE_SIZE |
-                          FILE_NOTIFY_CHANGE_LAST_WRITE | FILE_NOTIFY_CHANGE_CREATION,
-                          NULL, &w->overlapped, NULL);
+                              FILE_NOTIFY_CHANGE_ATTRIBUTES | FILE_NOTIFY_CHANGE_SIZE |
+                              FILE_NOTIFY_CHANGE_LAST_WRITE | FILE_NOTIFY_CHANGE_CREATION,
+                          NULL,
+                          &w->overlapped,
+                          NULL);
     w->pending_read = TRUE;
 }
 #endif
 
-void *rt_watcher_new(const void *path)
+void *rt_watcher_new(rt_string path)
 {
     if (!path)
         rt_trap("Watcher.New: null path");
 
-    const char *cpath = rt_string_cstr((rt_string)path);
+    const char *cpath = rt_string_cstr(path);
     if (!cpath || cpath[0] == '\0')
         rt_trap("Watcher.New: empty path");
 
@@ -347,7 +354,7 @@ void *rt_watcher_new(const void *path)
     return w;
 }
 
-void *rt_watcher_get_path(void *obj)
+rt_string rt_watcher_get_path(void *obj)
 {
     if (!obj)
         return str_from_cstr("");
@@ -406,10 +413,13 @@ void rt_watcher_start(void *obj)
     }
 
     struct kevent change;
-    EV_SET(&change, w->watched_fd, EVFILT_VNODE,
+    EV_SET(&change,
+           w->watched_fd,
+           EVFILT_VNODE,
            EV_ADD | EV_ENABLE | EV_CLEAR,
            NOTE_DELETE | NOTE_WRITE | NOTE_EXTEND | NOTE_ATTRIB | NOTE_RENAME,
-           0, NULL);
+           0,
+           NULL);
 
     if (kevent(w->kqueue_fd, &change, 1, NULL, 0, NULL) < 0)
     {
@@ -424,21 +434,29 @@ void rt_watcher_start(void *obj)
     // For Windows, we need to watch the directory (or parent directory for files)
     const char *watch_dir = w->is_directory ? cpath : "."; // Simplified
 
-    w->dir_handle = CreateFileA(watch_dir, FILE_LIST_DIRECTORY,
+    w->dir_handle = CreateFileA(watch_dir,
+                                FILE_LIST_DIRECTORY,
                                 FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                                NULL, OPEN_EXISTING,
-                                FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED, NULL);
+                                NULL,
+                                OPEN_EXISTING,
+                                FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED,
+                                NULL);
     if (w->dir_handle == INVALID_HANDLE_VALUE)
         rt_trap("Watcher.Start: failed to open directory for watching");
 
     memset(&w->overlapped, 0, sizeof(w->overlapped));
     w->overlapped.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
 
-    BOOL ok = ReadDirectoryChangesW(w->dir_handle, w->buffer, sizeof(w->buffer), FALSE,
+    BOOL ok = ReadDirectoryChangesW(w->dir_handle,
+                                    w->buffer,
+                                    sizeof(w->buffer),
+                                    FALSE,
                                     FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_DIR_NAME |
-                                    FILE_NOTIFY_CHANGE_ATTRIBUTES | FILE_NOTIFY_CHANGE_SIZE |
-                                    FILE_NOTIFY_CHANGE_LAST_WRITE | FILE_NOTIFY_CHANGE_CREATION,
-                                    NULL, &w->overlapped, NULL);
+                                        FILE_NOTIFY_CHANGE_ATTRIBUTES | FILE_NOTIFY_CHANGE_SIZE |
+                                        FILE_NOTIFY_CHANGE_LAST_WRITE | FILE_NOTIFY_CHANGE_CREATION,
+                                    NULL,
+                                    &w->overlapped,
+                                    NULL);
     if (!ok)
     {
         CloseHandle(w->dir_handle);
@@ -541,7 +559,8 @@ int64_t rt_watcher_poll_for(void *obj, int64_t ms)
 #elif defined(_WIN32)
     if (w->pending_read)
     {
-        DWORD wait_result = WaitForSingleObject(w->overlapped.hEvent, ms < 0 ? INFINITE : (DWORD)ms);
+        DWORD wait_result =
+            WaitForSingleObject(w->overlapped.hEvent, ms < 0 ? INFINITE : (DWORD)ms);
         if (wait_result == WAIT_OBJECT_0)
         {
             watcher_read_windows_events(w);
@@ -563,7 +582,7 @@ int64_t rt_watcher_poll_for(void *obj, int64_t ms)
     return RT_WATCH_EVENT_NONE;
 }
 
-void *rt_watcher_event_path(void *obj)
+rt_string rt_watcher_event_path(void *obj)
 {
     if (!obj)
         rt_trap("Watcher.EventPath: null watcher");

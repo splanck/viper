@@ -160,6 +160,66 @@ func start() {
     EXPECT_TRUE(foundAlloca);
 }
 
+/// @brief Test that for-in loops over lists and maps compile.
+TEST(ViperLangControlFlow, ForInCollections)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func start() {
+    List[Integer] numbers = [1, 2, 3];
+    Integer sum = 0;
+    for (n in numbers) {
+        sum = sum + n;
+    }
+
+    Map[String, Integer] ages = new Map[String, Integer]();
+    ages.set("Alice", 30);
+    ages.set("Bob", 25);
+    for ((name, age) in ages) {
+        sum = sum + age;
+    }
+
+    Viper.Terminal.SayInt(sum);
+}
+)";
+    CompilerInput input{.source = source, .path = "forin_collections.viper"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    if (!result.succeeded())
+    {
+        std::cerr << "Diagnostics for ForInCollections:\n";
+        for (const auto &d : result.diagnostics.diagnostics())
+        {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+
+    EXPECT_TRUE(result.succeeded());
+
+    bool foundListLoop = false;
+    bool foundMapLoop = false;
+    for (const auto &fn : result.module.functions)
+    {
+        if (fn.name == "main")
+        {
+            for (const auto &block : fn.blocks)
+            {
+                if (block.label.find("forin_list") != std::string::npos)
+                    foundListLoop = true;
+                if (block.label.find("forin_map") != std::string::npos)
+                    foundMapLoop = true;
+            }
+        }
+    }
+    EXPECT_TRUE(foundListLoop);
+    EXPECT_TRUE(foundMapLoop);
+}
+
 } // namespace
 
 int main()

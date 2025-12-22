@@ -149,9 +149,9 @@ inline constexpr const char *kStringConcat = "Viper.String.Concat";
 inline constexpr const char *kStringEquals = "Viper.Strings.Equals";
 
 /// @brief Get the length of a string in bytes.
-/// @details Signature: Length(str) -> i64
+/// @details Signature: get_Length(str) -> i64
 /// Note: Returns byte count, not character count for multi-byte UTF-8.
-inline constexpr const char *kStringLength = "Viper.String.Length";
+inline constexpr const char *kStringLength = "Viper.String.get_Length";
 
 /// @brief Extract a substring from a string.
 /// @details Signature: Substring(str, i64 start, i64 length) -> str
@@ -159,9 +159,9 @@ inline constexpr const char *kStringLength = "Viper.String.Length";
 inline constexpr const char *kStringSubstring = "Viper.String.Substring";
 
 /// @brief Check if a string contains a substring.
-/// @details Signature: Contains(str haystack, str needle) -> i64
-/// Returns non-zero if needle is found anywhere in haystack.
-inline constexpr const char *kStringContains = "Viper.String.Contains";
+/// @details Signature: Has(str haystack, str needle) -> i1
+/// Returns true if needle is found anywhere in haystack.
+inline constexpr const char *kStringContains = "Viper.String.Has";
 
 /// @brief Check if a string starts with a prefix.
 /// @details Signature: StartsWith(str, str prefix) -> i64
@@ -207,11 +207,6 @@ inline constexpr const char *kStringFromInt = "Viper.Strings.FromInt";
 /// @details Signature: FromDouble(f64) -> str
 /// Uses default formatting with appropriate precision.
 inline constexpr const char *kStringFromNum = "Viper.Strings.FromDouble";
-
-/// @brief Get the character at a specific index in a string.
-/// @details Signature: CharAt(str, i64 index) -> i64
-/// Returns the byte value at the given index. For ASCII, this is the character code.
-inline constexpr const char *kStringCharAt = "Viper.String.CharAt";
 
 /// @}
 
@@ -340,9 +335,9 @@ inline constexpr const char *kListClear = "Viper.Collections.List.Clear";
 inline constexpr const char *kListRemoveAt = "Viper.Collections.List.RemoveAt";
 
 /// @brief Check if a List contains an element.
-/// @details Signature: Contains(ptr list, ptr element) -> i64
-/// Returns non-zero if the element is found (using equality comparison).
-inline constexpr const char *kListContains = "Viper.Collections.List.Contains";
+/// @details Signature: Has(ptr list, ptr element) -> i1
+/// Returns true if the element is found (using equality comparison).
+inline constexpr const char *kListContains = "Viper.Collections.List.Has";
 
 /// @brief Create a new empty Set.
 /// @details Signature: New() -> ptr
@@ -355,34 +350,62 @@ inline constexpr const char *kSetNew = "Viper.Collections.Set.New";
 inline constexpr const char *kMapNew = "Viper.Collections.Map.New";
 
 /// @brief Set a key-value pair in a Map.
-/// @details Signature: set_Item(ptr map, ptr key, ptr value) -> void
+/// @details Signature: Set(ptr map, str key, ptr value) -> void
 /// Inserts or updates the value associated with the key.
-inline constexpr const char *kMapSet = "Viper.Collections.Map.set_Item";
+inline constexpr const char *kMapSet = "Viper.Collections.Map.Set";
 
 /// @brief Get a value from a Map by key.
-/// @details Signature: get_Item(ptr map, ptr key) -> ptr
+/// @details Signature: Get(ptr map, str key) -> ptr
 /// Returns the value associated with the key, or null if not found.
-inline constexpr const char *kMapGet = "Viper.Collections.Map.get_Item";
+inline constexpr const char *kMapGet = "Viper.Collections.Map.Get";
+
+/// @brief Get a value or a default when the key is missing.
+/// @details Signature: GetOr(ptr map, str key, ptr default) -> ptr
+/// Returns the value associated with the key, or the default if missing.
+inline constexpr const char *kMapGetOr = "Viper.Collections.Map.GetOr";
 
 /// @brief Check if a Map contains a key.
-/// @details Signature: ContainsKey(ptr map, ptr key) -> i64
+/// @details Signature: Has(ptr map, str key) -> i1
 /// Returns non-zero if the key exists in the map.
-inline constexpr const char *kMapContainsKey = "Viper.Collections.Map.ContainsKey";
+inline constexpr const char *kMapContainsKey = "Viper.Collections.Map.Has";
 
 /// @brief Get the number of entries in a Map.
-/// @details Signature: Count(ptr map) -> i64
+/// @details Signature: get_Len(ptr map) -> i64
 /// Returns the number of key-value pairs in the map.
-inline constexpr const char *kMapCount = "Viper.Collections.Map.Count";
+inline constexpr const char *kMapCount = "Viper.Collections.Map.get_Len";
 
 /// @brief Remove a key-value pair from a Map.
 /// @details Signature: Remove(ptr map, ptr key) -> i64
 /// Returns non-zero if the key was found and removed.
 inline constexpr const char *kMapRemove = "Viper.Collections.Map.Remove";
 
+/// @brief Set a key-value pair only if missing.
+/// @details Signature: SetIfMissing(ptr map, str key, ptr value) -> i1
+/// Returns non-zero if the key was inserted.
+inline constexpr const char *kMapSetIfMissing = "Viper.Collections.Map.SetIfMissing";
+
 /// @brief Clear all entries from a Map.
 /// @details Signature: Clear(ptr map) -> void
 /// Removes all key-value pairs from the map.
 inline constexpr const char *kMapClear = "Viper.Collections.Map.Clear";
+
+/// @brief Get a Seq of Map keys.
+/// @details Signature: Keys(ptr map) -> ptr
+/// Returns a Seq containing string keys.
+inline constexpr const char *kMapKeys = "Viper.Collections.Map.Keys";
+
+/// @brief Get a Seq of Map values.
+/// @details Signature: Values(ptr map) -> ptr
+/// Returns a Seq containing boxed values.
+inline constexpr const char *kMapValues = "Viper.Collections.Map.Values";
+
+/// @brief Get the number of elements in a Seq.
+/// @details Signature: get_Len(ptr seq) -> i64
+inline constexpr const char *kSeqLen = "Viper.Collections.Seq.get_Len";
+
+/// @brief Get an element from a Seq by index.
+/// @details Signature: Get(ptr seq, i64 index) -> ptr
+inline constexpr const char *kSeqGet = "Viper.Collections.Seq.Get";
 
 /// @}
 

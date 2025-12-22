@@ -94,6 +94,7 @@
 #include <set>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace il::frontends::viperlang
@@ -452,6 +453,28 @@ class Sema
     /// @param stmt The match statement.
     void analyzeMatchStmt(MatchStmt *stmt);
 
+    /// @brief Track coverage details for match exhaustiveness checks.
+    struct MatchCoverage
+    {
+        bool hasIrrefutable = false;
+        bool coversNull = false;
+        bool coversSome = false;
+        std::set<int64_t> coveredIntegers;
+        std::set<bool> coveredBooleans;
+    };
+
+    /// @brief Analyze a match pattern and collect bindings/coverage.
+    bool analyzeMatchPattern(const MatchArm::Pattern &pattern,
+                             TypeRef scrutineeType,
+                             MatchCoverage &coverage,
+                             std::unordered_map<std::string, TypeRef> &bindings);
+
+    /// @brief Compute a common type for two branches.
+    TypeRef commonType(TypeRef lhs, TypeRef rhs);
+
+    /// @brief Determine whether a statement always exits the current scope.
+    bool stmtAlwaysExits(Stmt *stmt);
+
     /// @}
     //=========================================================================
     /// @name Expression Analysis
@@ -693,6 +716,9 @@ class Sema
     /// @details Used to validate return statements.
     TypeRef expectedReturnType_{nullptr};
 
+    /// @brief Current loop nesting depth for break/continue validation.
+    int loopDepth_{0};
+
     /// @brief Owned lexical scope stack (scopes_[0] is global).
     std::vector<std::unique_ptr<Scope>> scopes_;
 
@@ -706,6 +732,15 @@ class Sema
     /// @brief Map from type names to semantic types.
     /// @details Includes both built-in types and user-defined types.
     std::unordered_map<std::string, TypeRef> typeRegistry_;
+
+    /// @brief Value type declarations for pattern analysis.
+    std::unordered_map<std::string, ValueDecl *> valueDecls_;
+
+    /// @brief Entity type declarations for pattern analysis.
+    std::unordered_map<std::string, EntityDecl *> entityDecls_;
+
+    /// @brief Interface declarations for implementation checks.
+    std::unordered_map<std::string, InterfaceDecl *> interfaceDecls_;
 
     /// @brief Map from method signatures to function types.
     /// @details Key format: "TypeName.methodName"
@@ -729,6 +764,9 @@ class Sema
     /// @details Populated for calls to runtime library functions.
     /// Used during lowering to emit correct runtime calls.
     std::unordered_map<const CallExpr *, std::string> runtimeCallees_;
+
+    /// @brief Set of import paths seen in the current module.
+    std::unordered_set<std::string> imports_;
 
     /// @}
 };

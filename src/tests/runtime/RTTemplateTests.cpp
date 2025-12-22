@@ -67,68 +67,57 @@ static void test_render()
 
     rt_string tmpl = rt_const_cstr("Hello {{name}}, you have {{count}} messages.");
     rt_string result = rt_template_render(tmpl, values);
-    test_result("Basic substitution",
-                str_eq(result, "Hello Alice, you have 5 messages."));
+    test_result("Basic substitution", str_eq(result, "Hello Alice, you have 5 messages."));
 
     // Whitespace in placeholder
     tmpl = rt_const_cstr("Hello {{ name }}, welcome!");
     result = rt_template_render(tmpl, values);
-    test_result("Whitespace in placeholder",
-                str_eq(result, "Hello Alice, welcome!"));
+    test_result("Whitespace in placeholder", str_eq(result, "Hello Alice, welcome!"));
 
     // Multiple occurrences of same key
     tmpl = rt_const_cstr("{{name}} meets {{name}}");
     result = rt_template_render(tmpl, values);
-    test_result("Multiple same key",
-                str_eq(result, "Alice meets Alice"));
+    test_result("Multiple same key", str_eq(result, "Alice meets Alice"));
 
     // Missing key left as-is
     tmpl = rt_const_cstr("Hello {{unknown}}!");
     result = rt_template_render(tmpl, values);
-    test_result("Missing key left as-is",
-                str_eq(result, "Hello {{unknown}}!"));
+    test_result("Missing key left as-is", str_eq(result, "Hello {{unknown}}!"));
 
     // Empty template
     tmpl = rt_const_cstr("");
     result = rt_template_render(tmpl, values);
-    test_result("Empty template",
-                str_eq(result, ""));
+    test_result("Empty template", str_eq(result, ""));
 
     // No placeholders
     tmpl = rt_const_cstr("No placeholders here");
     result = rt_template_render(tmpl, values);
-    test_result("No placeholders",
-                str_eq(result, "No placeholders here"));
+    test_result("No placeholders", str_eq(result, "No placeholders here"));
 
     // Empty placeholder key - left as literal
     tmpl = rt_const_cstr("Hello {{}}!");
     result = rt_template_render(tmpl, values);
-    test_result("Empty key left as literal",
-                str_eq(result, "Hello {{}}!"));
+    test_result("Empty key left as literal", str_eq(result, "Hello {{}}!"));
 
     // Unclosed placeholder - left as-is
     tmpl = rt_const_cstr("Hello {{name");
     result = rt_template_render(tmpl, values);
-    test_result("Unclosed placeholder",
-                str_eq(result, "Hello {{name"));
+    test_result("Unclosed placeholder", str_eq(result, "Hello {{name"));
 
     // Adjacent placeholders
     tmpl = rt_const_cstr("{{name}}{{count}}");
     result = rt_template_render(tmpl, values);
-    test_result("Adjacent placeholders",
-                str_eq(result, "Alice5"));
+    test_result("Adjacent placeholders", str_eq(result, "Alice5"));
 
     // Placeholder at start
     tmpl = rt_const_cstr("{{name}} is here");
     result = rt_template_render(tmpl, values);
-    test_result("Placeholder at start",
-                str_eq(result, "Alice is here"));
+    test_result("Placeholder at start", str_eq(result, "Alice is here"));
 
     // Placeholder at end
     tmpl = rt_const_cstr("User: {{name}}");
     result = rt_template_render(tmpl, values);
-    test_result("Placeholder at end",
-                str_eq(result, "User: Alice"));
+    test_result("Placeholder at end", str_eq(result, "User: Alice"));
 
     printf("\n");
 }
@@ -149,32 +138,27 @@ static void test_render_seq()
     // Basic positional substitution
     rt_string tmpl = rt_const_cstr("{{0}} and {{1}} meet {{2}}");
     rt_string result = rt_template_render_seq(tmpl, values);
-    test_result("Positional substitution",
-                str_eq(result, "Alice and Bob meet Charlie"));
+    test_result("Positional substitution", str_eq(result, "Alice and Bob meet Charlie"));
 
     // Same index multiple times
     tmpl = rt_const_cstr("{{0}}, {{0}}, {{0}}!");
     result = rt_template_render_seq(tmpl, values);
-    test_result("Same index multiple times",
-                str_eq(result, "Alice, Alice, Alice!"));
+    test_result("Same index multiple times", str_eq(result, "Alice, Alice, Alice!"));
 
     // Out of range index left as-is
     tmpl = rt_const_cstr("{{0}} and {{99}}");
     result = rt_template_render_seq(tmpl, values);
-    test_result("Out of range left as-is",
-                str_eq(result, "Alice and {{99}}"));
+    test_result("Out of range left as-is", str_eq(result, "Alice and {{99}}"));
 
     // Non-numeric key left as-is
     tmpl = rt_const_cstr("{{abc}} and {{0}}");
     result = rt_template_render_seq(tmpl, values);
-    test_result("Non-numeric key left as-is",
-                str_eq(result, "{{abc}} and Alice"));
+    test_result("Non-numeric key left as-is", str_eq(result, "{{abc}} and Alice"));
 
     // Negative number (not valid index)
     tmpl = rt_const_cstr("{{-1}} and {{0}}");
     result = rt_template_render_seq(tmpl, values);
-    test_result("Negative number left as-is",
-                str_eq(result, "{{-1}} and Alice"));
+    test_result("Negative number left as-is", str_eq(result, "{{-1}} and Alice"));
 
     printf("\n");
 }
@@ -193,31 +177,24 @@ static void test_render_with()
 
     // Dollar sign delimiters
     rt_string tmpl = rt_const_cstr("Hello $name$!");
-    rt_string result = rt_template_render_with(tmpl, values,
-                                               rt_const_cstr("$"), rt_const_cstr("$"));
-    test_result("Dollar delimiters",
-                str_eq(result, "Hello Alice!"));
+    rt_string result =
+        rt_template_render_with(tmpl, values, rt_const_cstr("$"), rt_const_cstr("$"));
+    test_result("Dollar delimiters", str_eq(result, "Hello Alice!"));
 
     // Percent delimiters
     tmpl = rt_const_cstr("Hello %name%!");
-    result = rt_template_render_with(tmpl, values,
-                                     rt_const_cstr("%"), rt_const_cstr("%"));
-    test_result("Percent delimiters",
-                str_eq(result, "Hello Alice!"));
+    result = rt_template_render_with(tmpl, values, rt_const_cstr("%"), rt_const_cstr("%"));
+    test_result("Percent delimiters", str_eq(result, "Hello Alice!"));
 
     // HTML-style delimiters
     tmpl = rt_const_cstr("<%= name %> has <%= count %> items");
-    result = rt_template_render_with(tmpl, values,
-                                     rt_const_cstr("<%="), rt_const_cstr("%>"));
-    test_result("HTML-style delimiters",
-                str_eq(result, "Alice has 5 items"));
+    result = rt_template_render_with(tmpl, values, rt_const_cstr("<%="), rt_const_cstr("%>"));
+    test_result("HTML-style delimiters", str_eq(result, "Alice has 5 items"));
 
     // Single char prefix, multi-char suffix
     tmpl = rt_const_cstr("Hello $name}}!");
-    result = rt_template_render_with(tmpl, values,
-                                     rt_const_cstr("$"), rt_const_cstr("}}"));
-    test_result("Mixed delimiter lengths",
-                str_eq(result, "Hello Alice!"));
+    result = rt_template_render_with(tmpl, values, rt_const_cstr("$"), rt_const_cstr("}}"));
+    test_result("Mixed delimiter lengths", str_eq(result, "Hello Alice!"));
 
     printf("\n");
 }
@@ -232,27 +209,21 @@ static void test_has()
 
     rt_string tmpl = rt_const_cstr("Hello {{name}}, you have {{count}} messages.");
 
-    test_result("Has 'name'",
-                rt_template_has(tmpl, rt_const_cstr("name")));
+    test_result("Has 'name'", rt_template_has(tmpl, rt_const_cstr("name")));
 
-    test_result("Has 'count'",
-                rt_template_has(tmpl, rt_const_cstr("count")));
+    test_result("Has 'count'", rt_template_has(tmpl, rt_const_cstr("count")));
 
-    test_result("Not has 'unknown'",
-                !rt_template_has(tmpl, rt_const_cstr("unknown")));
+    test_result("Not has 'unknown'", !rt_template_has(tmpl, rt_const_cstr("unknown")));
 
-    test_result("Not has empty key",
-                !rt_template_has(tmpl, rt_const_cstr("")));
+    test_result("Not has empty key", !rt_template_has(tmpl, rt_const_cstr("")));
 
     // With whitespace in template
     tmpl = rt_const_cstr("Hello {{ name }}!");
-    test_result("Has with whitespace",
-                rt_template_has(tmpl, rt_const_cstr("name")));
+    test_result("Has with whitespace", rt_template_has(tmpl, rt_const_cstr("name")));
 
     // Empty template
     tmpl = rt_const_cstr("");
-    test_result("Empty template has nothing",
-                !rt_template_has(tmpl, rt_const_cstr("name")));
+    test_result("Empty template has nothing", !rt_template_has(tmpl, rt_const_cstr("name")));
 
     printf("\n");
 }
@@ -310,44 +281,37 @@ static void test_escape()
     // Escape opening braces
     rt_string text = rt_const_cstr("Use {{name}} for placeholders");
     rt_string result = rt_template_escape(text);
-    test_result("Escape {{ and }}",
-                str_eq(result, "Use {{{{name}}}} for placeholders"));
+    test_result("Escape {{ and }}", str_eq(result, "Use {{{{name}}}} for placeholders"));
 
     // No special chars
     text = rt_const_cstr("No braces here");
     result = rt_template_escape(text);
-    test_result("No braces unchanged",
-                str_eq(result, "No braces here"));
+    test_result("No braces unchanged", str_eq(result, "No braces here"));
 
     // Only opening braces
     text = rt_const_cstr("{{");
     result = rt_template_escape(text);
-    test_result("Just {{ escaped",
-                str_eq(result, "{{{{"));
+    test_result("Just {{ escaped", str_eq(result, "{{{{"));
 
     // Only closing braces
     text = rt_const_cstr("}}");
     result = rt_template_escape(text);
-    test_result("Just }} escaped",
-                str_eq(result, "}}}}"));
+    test_result("Just }} escaped", str_eq(result, "}}}}"));
 
     // Mixed single braces (not escaped)
     text = rt_const_cstr("{ } { }");
     result = rt_template_escape(text);
-    test_result("Single braces not escaped",
-                str_eq(result, "{ } { }"));
+    test_result("Single braces not escaped", str_eq(result, "{ } { }"));
 
     // Empty string
     text = rt_const_cstr("");
     result = rt_template_escape(text);
-    test_result("Empty string",
-                str_eq(result, ""));
+    test_result("Empty string", str_eq(result, ""));
 
     // Multiple pairs
     text = rt_const_cstr("{{a}} and {{b}}");
     result = rt_template_escape(text);
-    test_result("Multiple pairs",
-                str_eq(result, "{{{{a}}}} and {{{{b}}}}"));
+    test_result("Multiple pairs", str_eq(result, "{{{{a}}}} and {{{{b}}}}"));
 
     printf("\n");
 }
@@ -366,22 +330,19 @@ static void test_edge_cases()
     // Just a placeholder
     rt_string tmpl = rt_const_cstr("{{x}}");
     rt_string result = rt_template_render(tmpl, values);
-    test_result("Just a placeholder",
-                str_eq(result, "X"));
+    test_result("Just a placeholder", str_eq(result, "X"));
 
     // Empty value
     rt_map_set(values, rt_const_cstr("empty"), rt_box_str(make_str("")));
     tmpl = rt_const_cstr("Hello {{empty}}!");
     result = rt_template_render(tmpl, values);
-    test_result("Empty value",
-                str_eq(result, "Hello !"));
+    test_result("Empty value", str_eq(result, "Hello !"));
 
     // Value with braces
     rt_map_set(values, rt_const_cstr("braces"), rt_box_str(make_str("{{content}}")));
     tmpl = rt_const_cstr("Result: {{braces}}");
     result = rt_template_render(tmpl, values);
-    test_result("Value with braces",
-                str_eq(result, "Result: {{content}}"));
+    test_result("Value with braces", str_eq(result, "Result: {{content}}"));
 
     // Long template
     rt_string_builder sb;
