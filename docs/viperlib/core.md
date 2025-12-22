@@ -7,6 +7,7 @@
 ## Contents
 
 - [Viper.Object](#viperobject)
+- [Viper.Box](#viperbox)
 - [Viper.String](#viperstring)
 
 ---
@@ -48,6 +49,47 @@ PRINT obj1.GetHashCode()
 IF Viper.Object.ReferenceEquals(obj1, obj2) THEN
     PRINT "Same object instance"
 END IF
+```
+
+---
+
+## Viper.Box
+
+Boxing helpers for storing primitive values in generic collections. Boxed values are heap objects with type tags.
+
+**Type:** Static utility class
+
+### Methods
+
+| Method           | Signature           | Description                                        |
+|------------------|---------------------|----------------------------------------------------|
+| `I64(value)`     | `Object(Integer)`   | Box an integer                                     |
+| `F64(value)`     | `Object(Double)`    | Box a double                                       |
+| `I1(value)`      | `Object(Boolean)`   | Box a boolean                                      |
+| `Str(value)`     | `Object(String)`    | Box a string                                       |
+| `ToI64(box)`     | `Integer(Object)`   | Unbox integer (traps on wrong type)                |
+| `ToF64(box)`     | `Double(Object)`    | Unbox double (traps on wrong type)                 |
+| `ToI1(box)`      | `Boolean(Object)`   | Unbox boolean (traps on wrong type)                |
+| `ToStr(box)`     | `String(Object)`    | Unbox string (traps on wrong type)                 |
+| `Type(box)`      | `Integer(Object)`   | Return type tag (0=i64, 1=f64, 2=i1, 3=str)         |
+| `EqI64(box,val)` | `Boolean(Object,Integer)` | Compare boxed value to integer                 |
+| `EqF64(box,val)` | `Boolean(Object,Double)`  | Compare boxed value to double                  |
+| `EqStr(box,val)` | `Boolean(Object,String)`  | Compare boxed value to string                  |
+
+### Notes
+
+- Type tags: 0 = integer, 1 = double, 2 = boolean, 3 = string.
+- Unboxing with the wrong type traps with a runtime diagnostic.
+
+### Example
+
+```basic
+DIM boxed AS OBJECT
+boxed = Viper.Box.I64(42)
+
+PRINT Viper.Box.Type(boxed)         ' Output: 0
+PRINT Viper.Box.ToI64(boxed)        ' Output: 42
+PRINT Viper.Box.EqI64(boxed, 42)    ' Output: true
 ```
 
 ---
@@ -116,9 +158,15 @@ String manipulation class. In Viper, strings are immutable sequences of characte
 
 ### Static Functions (Viper.Strings)
 
-| Function                               | Signature             | Description                              |
-|----------------------------------------|-----------------------|------------------------------------------|
-| `Viper.Strings.Join(separator, items)` | `String(String, Seq)` | Joins sequence of strings with separator |
+| Function                                       | Signature                  | Description                              |
+|------------------------------------------------|----------------------------|------------------------------------------|
+| `Viper.Strings.FromStr(text)`                  | `String(String)`           | Create a runtime string from text        |
+| `Viper.Strings.FromInt(value)`                 | `String(Integer)`          | Convert integer to string                |
+| `Viper.Strings.FromDouble(value)`              | `String(Double)`           | Convert double to string                 |
+| `Viper.Strings.FromDoublePrecise(value)`       | `String(Double)`           | Convert double using precise formatting  |
+| `Viper.Strings.FromSingle(value)`              | `String(Double)`           | Convert single-precision value to string |
+| `Viper.Strings.Equals(a, b)`                   | `Boolean(String, String)`  | Compare two strings for equality         |
+| `Viper.Strings.Join(separator, items)`         | `String(String, Seq)`      | Joins sequence of strings with separator |
 
 **Note:** `Flip()` performs byte-level reversal. It works correctly for ASCII strings but may produce invalid results
 for multi-byte UTF-8 characters.
@@ -176,4 +224,3 @@ PRINT "ABC".CmpNoCase("abc")           ' Output: 0
 - [Text Processing](text.md) - `StringBuilder` for efficient string building, `Pattern` for regex
 - [Utilities](utilities.md) - `Fmt` for string formatting, `Parse` for string parsing
 - [Collections](collections.md) - `Seq` for string lists, `Map` for string-keyed data
-

@@ -221,22 +221,22 @@ entry:
 
 ## Runtime Library
 
-All frontends share the **Viper Runtime**, providing:
+All frontends share the **Viper Runtime**, providing a growing set of modules:
 
 | Module | Classes | Description |
 |--------|---------|-------------|
-| **Collections** | `Bag`, `Bytes`, `List`, `Map`, `Queue`, `Ring`, `Seq`, `Stack`, `TreeMap` | Data structures for any use case |
-| **Core** | `Object`, `String` | Base types and string operations |
-| **Crypto** | `Hash` | CRC32, MD5, SHA1, SHA256 |
-| **Diagnostics** | `Assert` | Debugging and assertions |
+| **Collections** | `Bag`, `Bytes`, `Heap`, `List`, `Map`, `Queue`, `Ring`, `Seq`, `Stack`, `TreeMap` | Data structures for any use case |
+| **Core** | `Box`, `Object`, `String` | Base types and string operations |
+| **Crypto** | `Hash`, `KeyDerive`, `Rand` | CRC32, MD5, SHA1, SHA256, PBKDF2, secure RNG |
+| **Diagnostics** | `Assert`, `Trap` | Debugging and assertions |
 | **Graphics** | `Canvas`, `Color`, `Pixels` | 2D graphics for games and visualization |
 | **I/O** | `Archive`, `BinFile`, `Compress`, `Dir`, `File`, `LineReader`, `LineWriter`, `MemStream`, `Path`, `Watcher` | File system access and streaming |
 | **Input** | `Keyboard`, `Mouse`, `Pad` | Input devices for games and interactive apps |
 | **Math** | `Bits`, `Math`, `Random`, `Vec2`, `Vec3` | Mathematical functions and vectors |
-| **Network** | `Dns`, `Tcp`, `TcpServer`, `Udp` | Networking and sockets |
+| **Network** | `Dns`, `Http`, `HttpReq`, `HttpRes`, `Tcp`, `TcpServer`, `Udp`, `Url` | Networking and sockets |
 | **System** | `Environment`, `Exec`, `Machine`, `Terminal` | System interaction and console I/O |
-| **Text** | `Codec`, `Csv`, `Guid`, `StringBuilder` | String building and text encoding |
-| **Threads** | `Monitor`, `SafeI64`, `Thread` | Concurrent programming primitives |
+| **Text** | `Codec`, `Csv`, `Guid`, `Pattern`, `StringBuilder`, `Template` | String building and text encoding |
+| **Threads** | `Barrier`, `Gate`, `Monitor`, `RwLock`, `SafeI64`, `Thread` | Concurrent programming primitives |
 | **Time** | `Clock`, `Countdown`, `DateTime`, `Stopwatch` | Time utilities and measurement |
 | **Utilities** | `Convert`, `Fmt`, `Log`, `Parse` | Conversion, formatting, parsing, logging |
 

@@ -6,39 +6,52 @@
 
 ## Contents
 
-- [Viper.Diagnostics.Assert](#viperdiagnosticsassert)
+- [Viper.Diagnostics](#viperdiagnostics)
+- [Viper.Diagnostics.Stopwatch](time.md#viperdiagnosticsstopwatch)
 
 ---
 
-## Viper.Diagnostics.Assert
+## Viper.Diagnostics
 
-Runtime assertion helper that terminates execution when a required condition is
-not satisfied.
+Runtime assertion helpers that terminate execution when a condition fails.
 
-**Type:** Static function
+**Type:** Static utility class
 
-### Signature
+### Methods
 
-| Function                   | Signature               | Description                                                       |
-|----------------------------|-------------------------|-------------------------------------------------------------------|
-| `Viper.Diagnostics.Assert` | `Void(Boolean, String)` | Traps when @p condition is false; uses default message when empty |
+| Method        | Signature                          | Description                                                   |
+|---------------|------------------------------------|---------------------------------------------------------------|
+| `Assert`      | `Void(Boolean, String)`            | Trap when condition is false                                  |
+| `AssertEq`    | `Void(Integer, Integer, String)`   | Trap when integers are not equal                              |
+| `AssertNeq`   | `Void(Integer, Integer, String)`   | Trap when integers are equal                                  |
+| `AssertEqNum` | `Void(Double, Double, String)`     | Trap when numbers are not equal (relative epsilon)            |
+| `AssertEqStr` | `Void(String, String, String)`     | Trap when strings are not equal                               |
+| `AssertNull`  | `Void(Object, String)`             | Trap when object is not null                                  |
+| `AssertNotNull` | `Void(Object, String)`           | Trap when object is null                                      |
+| `AssertFail`  | `Void(String)`                     | Unconditionally trap with message                             |
+| `AssertGt`    | `Void(Integer, Integer, String)`   | Trap when `a` is not greater than `b`                         |
+| `AssertLt`    | `Void(Integer, Integer, String)`   | Trap when `a` is not less than `b`                            |
+| `AssertGte`   | `Void(Integer, Integer, String)`   | Trap when `a` is not greater than or equal to `b`             |
+| `AssertLte`   | `Void(Integer, Integer, String)`   | Trap when `a` is not less than or equal to `b`                |
+| `Trap`        | `Void(String)`                     | Unconditionally trap with message                             |
 
 ### Notes
 
-- When `condition` is zero/false, the runtime traps (prints to stderr and exits with status 1).
-- An empty string or `""` message is replaced with `"Assertion failed"` to keep diagnostics informative.
+- An empty message uses a default (e.g., "Assertion failed").
+- Traps print a diagnostic to stderr and terminate the process with exit code 1.
+- `AssertEqNum` uses a relative epsilon for floating-point comparison.
 
 ### Example
 
 ```basic
-DIM count AS INTEGER
-count = 3
+DIM value AS INTEGER
+value = 5
 
-' Passes: execution continues
-Viper.Diagnostics.Assert(count > 0, "count must be positive")
+Viper.Diagnostics.Assert(value > 0, "value must be positive")
+Viper.Diagnostics.AssertEq(value, 5, "value mismatch")
 
-' Fails: terminates with the provided message
-Viper.Diagnostics.Assert(count < 0, "boom")
+' Force a trap
+' Viper.Diagnostics.AssertFail("not implemented")
 ```
 
 ---
@@ -47,4 +60,3 @@ Viper.Diagnostics.Assert(count < 0, "boom")
 
 - [Time & Timing](time.md) - `Stopwatch` for performance measurement
 - [Utilities](utilities.md) - `Log` for runtime diagnostics
-

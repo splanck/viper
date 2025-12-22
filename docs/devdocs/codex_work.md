@@ -1,13 +1,12 @@
 # Codex Work Plan - Viper
 
-Last updated: 2025-12-21
+Last updated: 2025-12-22
 
 ## Objectives
-- Produce a full LOC/SLOC report by subsystem and language.
-- Review C/C++ hotspots and document cleanup/refactor actions.
-- Resolve any TODOs in C/C++ sources (none found in `src/` or `include/`).
-- Fix issues found during the audit (runtime registry, archive directory lookup, ViperLang parsing/typing).
-- Update docs/tests where behavior changed.
+- Complete runtime sweep coverage (ViperLang + BASIC) and update `bugs/runtime_test.md`.
+- Log runtime/ViperLang bugs discovered during the sweep.
+- Refresh runtime docs and root README runtime class list.
+- Regenerate LOC/SLOC and C/C++ hotspot reports.
 - Keep the tree green (build + tests passing).
 
 ## Runtime Sweep Plan (ViperLang + BASIC)
@@ -43,27 +42,33 @@ Last updated: 2025-12-21
 
 ## Plan
 
-### 1) Metrics + Reports
-- [x] Regenerate `docs/devdocs/LOC_REPORT.md` with current `cloc` numbers.
-- [x] Update `docs/devdocs/CODE_HOTSPOTS_REPORT.md` with top C/C++ hotspots and actions.
+### 1) Coverage + Tests
+- [x] Extend runtime checklist with non-class namespaces (Box/Diagnostics/Parse).
+- [x] Add BASIC sweep coverage for Diagnostics/Parse/Box.
+- [ ] Run runtime sweep and update checklist.
 
-### 2) Audit Fixes (C/C++)
-- [x] Runtime registry cleanup: remove duplicate entries, restore `rt_str_eq`, align terminal helpers with manual lowering.
-- [x] Runtime archive directory lookup: normalize trailing slash handling for `Has`/`Info`.
-- [x] ViperLang parser/sema: named-arg lookahead, postfix `?` vs ternary disambiguation, identifier-like decl names, allow `new` on value types.
+### 2) Docs + README
+- [x] Update viperlib core/diagnostics/utilities docs for Box + diagnostics + parse notes.
+- [x] Update root README runtime class list.
 
-### 3) Docs + Tests
-- [x] Update ViperLang reference for optionals, match, indexing, and map key rules.
-- [x] Update viperlib IO/input docs for archive name rules and gamepad backends.
-- [x] Update generated-files guide for `rtgen` workflow.
-- [x] Verify tests cover archive directories and ViperLang optional/match behavior.
+### 3) Metrics + Reports
+- [ ] Regenerate `docs/devdocs/LOC_REPORT.md` with current `cloc` numbers.
+- [ ] Update `docs/devdocs/CODE_HOTSPOTS_REPORT.md` with top C/C++ hotspots and actions.
 
-### 4) Validation
-- [x] `cmake -S . -B build`
-- [x] `cmake --build build -j`
-- [x] `ctest --test-dir build --output-on-failure`
+### 4) Build + Validation
+- [ ] Regenerate runtime registry snapshot with `rtgen`.
+- [ ] `cmake -S . -B build`
+- [ ] `cmake --build build -j`
+- [ ] `ctest --test-dir build --output-on-failure`
+
+### 5) Bugs + Report
+- [ ] Update `bugs/runtime_bugs.md` and `bugs/viperlang.md` with findings.
+- [ ] Provide runtime sweep report and status summary.
 
 ## Progress Log
+- 2025-12-22: Extended runtime test matrix with Box/Diagnostics/Parse sections.
+- 2025-12-22: Added BASIC runtime sweep coverage for Diagnostics and Parse/Box helpers.
+- 2025-12-22: Updated viperlib core/diagnostics/utilities docs and refreshed README runtime class list.
 - 2025-12-21: Regenerated LOC/SLOC report (`docs/devdocs/LOC_REPORT.md`).
 - 2025-12-21: Refreshed hotspot report (`docs/devdocs/CODE_HOTSPOTS_REPORT.md`).
 - 2025-12-21: Fixed runtime registry duplication and terminal lowering alignment.

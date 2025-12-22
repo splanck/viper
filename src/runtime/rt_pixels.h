@@ -79,6 +79,58 @@ extern "C"
     /// @return New Pixels object, or NULL if bytes is insufficient.
     void *rt_pixels_from_bytes(int64_t width, int64_t height, void *bytes);
 
+    //=========================================================================
+    // BMP Image I/O
+    //=========================================================================
+
+    /// @brief Load a BMP image from file.
+    /// @param path File path (runtime string).
+    /// @return New Pixels object, or NULL on failure.
+    /// @note Supports 24-bit uncompressed BMP files.
+    void *rt_pixels_load_bmp(void *path);
+
+    /// @brief Save a Pixels buffer to a BMP file.
+    /// @param pixels Pixels object to save.
+    /// @param path File path (runtime string).
+    /// @return 1 on success, 0 on failure.
+    int64_t rt_pixels_save_bmp(void *pixels, void *path);
+
+    //=========================================================================
+    // Image Transforms
+    //=========================================================================
+
+    /// @brief Flip the image horizontally (mirror left-right).
+    /// @param pixels Pixels object.
+    /// @return New flipped Pixels object.
+    void *rt_pixels_flip_h(void *pixels);
+
+    /// @brief Flip the image vertically (mirror top-bottom).
+    /// @param pixels Pixels object.
+    /// @return New flipped Pixels object.
+    void *rt_pixels_flip_v(void *pixels);
+
+    /// @brief Rotate the image 90 degrees clockwise.
+    /// @param pixels Pixels object.
+    /// @return New rotated Pixels object (width and height swapped).
+    void *rt_pixels_rotate_cw(void *pixels);
+
+    /// @brief Rotate the image 90 degrees counter-clockwise.
+    /// @param pixels Pixels object.
+    /// @return New rotated Pixels object (width and height swapped).
+    void *rt_pixels_rotate_ccw(void *pixels);
+
+    /// @brief Rotate the image 180 degrees.
+    /// @param pixels Pixels object.
+    /// @return New rotated Pixels object.
+    void *rt_pixels_rotate_180(void *pixels);
+
+    /// @brief Scale the image using nearest-neighbor interpolation.
+    /// @param pixels Pixels object.
+    /// @param new_width Target width.
+    /// @param new_height Target height.
+    /// @return New scaled Pixels object.
+    void *rt_pixels_scale(void *pixels, int64_t new_width, int64_t new_height);
+
 #ifdef __cplusplus
 }
 #endif

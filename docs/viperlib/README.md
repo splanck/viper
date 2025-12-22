@@ -14,9 +14,9 @@ implemented in C and exposed through the IL runtime system.
 |---------------------------------|---------------------------------------------------------------------------|
 | [Architecture](architecture.md) | Runtime internals, type reference                                         |
 | [Collections](collections.md)   | `Bag`, `Bytes`, `Heap`, `List`, `Map`, `Queue`, `Ring`, `Seq`, `Stack`, `TreeMap` |
-| [Core Types](core.md)           | `Object`, `String` — foundational types                                   |
+| [Core Types](core.md)           | `Object`, `Box`, `String` — foundational types                             |
 | [Cryptography](crypto.md)       | `Hash`, `KeyDerive`, `Rand`                                               |
-| [Diagnostics](diagnostics.md)   | `Assert`, `Stopwatch`                                                     |
+| [Diagnostics](diagnostics.md)   | `Assert`, `Trap`, `Stopwatch`                                             |
 | [Graphics](graphics.md)         | `Canvas`, `Color`, `Pixels`                                               |
 | [Input](input.md)               | `Keyboard`, `Mouse`, `Pad` — input for games and interactive apps       |
 | [Input/Output](io.md)           | `Archive`, `BinFile`, `Compress`, `Dir`, `File`, `LineReader`, `LineWriter`, `MemStream`, `Path`, `Watcher` |
@@ -37,6 +37,7 @@ implemented in C and exposed through the IL runtime system.
 | Class                                       | Type     | Description                                   |
 |---------------------------------------------|----------|-----------------------------------------------|
 | [`Bits`](math.md#viperbits)                 | Static   | Bit manipulation (shifts, rotates, counting)  |
+| [`Box`](core.md#viperbox)                   | Static   | Boxing helpers for generic collections         |
 | [`Convert`](utilities.md#viperconvert)      | Static   | Type conversion utilities                     |
 | [`DateTime`](time.md#viperdatetime)         | Static   | Date and time operations                      |
 | [`Environment`](system.md#viperenvironment) | Static   | Command-line args and environment             |
@@ -80,7 +81,8 @@ implemented in C and exposed through the IL runtime system.
 
 | Class                                             | Type     | Description        |
 |---------------------------------------------------|----------|--------------------|
-| [`Assert`](diagnostics.md#viperdiagnosticsassert) | Static   | Assertion checking |
+| [`Assert`](diagnostics.md#viperdiagnostics)       | Static   | Assertion checking |
+| [`Trap`](diagnostics.md#viperdiagnostics)         | Static   | Unconditional trap |
 | [`Stopwatch`](time.md#viperdiagnosticsstopwatch)  | Instance | Performance timing |
 
 ### Viper.Graphics

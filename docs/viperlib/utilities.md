@@ -198,6 +198,8 @@ graceful error handling.
     - True: `"true"`, `"yes"`, `"1"`, `"on"`
     - False: `"false"`, `"no"`, `"0"`, `"off"`
 - `IsInt` and `IsNum` accept optional leading `+` or `-`
+- `TryInt`, `TryNum`, and `TryBool` require an output pointer; frontends without pointer/out parameters should use
+  `IntOr`, `NumOr`, `BoolOr`, `IsInt`, or `IsNum` instead.
 - `IntRadix` supports radix 2-36 (digits 0-9, letters a-z)
 - Leading/trailing whitespace is trimmed before parsing
 
@@ -240,4 +242,3 @@ PRINT enabled  ' Output: 1 (true)
 
 - [Core Types](core.md) - `String` manipulation methods
 - [Text Processing](text.md) - `Codec` for encoding, `StringBuilder` for building strings
-

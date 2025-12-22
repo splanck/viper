@@ -95,6 +95,7 @@ set(RT_EXEC_SOURCES
 )
 
 set(RT_GRAPHICS_SOURCES
+        rt_font.c
         rt_graphics.c
         rt_input.c
         rt_input_pad.c
@@ -146,6 +147,7 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_modvar.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_args.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_ns_bridge.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_font.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_graphics.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_input.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_datetime.h

@@ -1,7 +1,8 @@
 # Runtime Test Matrix
 
-This checklist enumerates every Viper.* runtime class, property, and method from `src/il/runtime/generated/RuntimeClasses.inc`.
-Check items off as they are exercised by ViperLang runtime tests.
+This checklist enumerates every Viper.* runtime class, property, and method from `src/il/runtime/generated/RuntimeClasses.inc`,
+plus manually tracked runtime namespaces that are not represented as classes (Viper.Box, Viper.Diagnostics, Viper.Parse).
+Check items off as they are exercised by the runtime sweep tests (ViperLang + BASIC).
 
 Total classes: 67
 
@@ -25,6 +26,21 @@ Total classes: 67
     - [ ] `TrailZ`
     - [ ] `Ushr`
     - [ ] `Xor`
+
+- [ ] `Viper.Box`
+  - Methods
+    - [ ] `I64`
+    - [ ] `F64`
+    - [ ] `I1`
+    - [ ] `Str`
+    - [ ] `ToI64`
+    - [ ] `ToF64`
+    - [ ] `ToI1`
+    - [ ] `ToStr`
+    - [ ] `Type`
+    - [ ] `EqI64`
+    - [ ] `EqF64`
+    - [ ] `EqStr`
 
 - [ ] `Viper.Collections.Bag`
   - [ ] Constructor: `Viper.Collections.Bag.New`
@@ -234,6 +250,22 @@ Total classes: 67
     - [ ] `ToISO`
     - [ ] `Year`
 
+- [ ] `Viper.Diagnostics`
+  - Methods
+    - [ ] `Assert`
+    - [ ] `AssertEq`
+    - [ ] `AssertNeq`
+    - [ ] `AssertEqNum`
+    - [ ] `AssertEqStr`
+    - [ ] `AssertNull`
+    - [ ] `AssertNotNull`
+    - [x] `AssertFail`
+    - [ ] `AssertGt`
+    - [ ] `AssertLt`
+    - [ ] `AssertGte`
+    - [ ] `AssertLte`
+    - [x] `Trap`
+
 - [ ] `Viper.Diagnostics.Stopwatch`
   - [ ] Constructor: `Viper.Diagnostics.Stopwatch.New`
   - Properties
@@ -249,7 +281,7 @@ Total classes: 67
 
 - [ ] `Viper.Environment`
   - Methods
-    - [ ] `EndProgram`
+    - [x] `EndProgram`
     - [ ] `GetArgument`
     - [ ] `GetArgumentCount`
     - [ ] `GetCommandLine`
@@ -889,6 +921,18 @@ Total classes: 67
     - [ ] `GetHashCode`
     - [ ] `ToString`
 
+- [ ] `Viper.Parse`
+  - Methods
+    - [ ] `TryInt`
+    - [ ] `TryNum`
+    - [ ] `TryBool`
+    - [ ] `IntOr`
+    - [ ] `NumOr`
+    - [ ] `BoolOr`
+    - [ ] `IsInt`
+    - [ ] `IsNum`
+    - [ ] `IntRadix`
+
 - [ ] `Viper.Random`
   - Methods
     - [ ] `Next`
@@ -1041,7 +1085,7 @@ Total classes: 67
     - [ ] `PauseAll`
     - [ ] `TryEnter`
     - [ ] `TryEnterFor`
-    - [ ] `Wait`
+    - [x] `Wait`
     - [ ] `WaitFor`
 
 - [ ] `Viper.Threads.RwLock`
@@ -1067,14 +1111,14 @@ Total classes: 67
 
 - [ ] `Viper.Threads.Thread`
   - Properties
-    - [ ] `Id`
-    - [ ] `IsAlive`
+    - [x] `Id`
+    - [x] `IsAlive`
   - Methods
-    - [ ] `Join`
-    - [ ] `JoinFor`
+    - [x] `Join`
+    - [x] `JoinFor`
     - [ ] `Sleep`
-    - [ ] `Start`
-    - [ ] `TryJoin`
+    - [x] `Start`
+    - [x] `TryJoin`
     - [ ] `Yield`
 
 - [ ] `Viper.Time.Clock`

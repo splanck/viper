@@ -16,7 +16,9 @@
 #include "rt_bytes.h"
 #include "rt_internal.h"
 #include "rt_object.h"
+#include "rt_string.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -314,4 +316,452 @@ void *rt_pixels_from_bytes(int64_t width, int64_t height, void *bytes)
     }
 
     return p;
+}
+
+//=============================================================================
+// BMP Image I/O
+//=============================================================================
+
+// BMP file format structures (packed)
+#pragma pack(push, 1)
+typedef struct bmp_file_header
+{
+    uint8_t magic[2];     // 'B', 'M'
+    uint32_t file_size;   // Total file size
+    uint16_t reserved1;   // 0
+    uint16_t reserved2;   // 0
+    uint32_t data_offset; // Offset to pixel data
+} bmp_file_header;
+
+typedef struct bmp_info_header
+{
+    uint32_t header_size;     // 40 for BITMAPINFOHEADER
+    int32_t width;            // Image width
+    int32_t height;           // Image height (positive = bottom-up)
+    uint16_t planes;          // 1
+    uint16_t bit_count;       // Bits per pixel (24 for RGB)
+    uint32_t compression;     // 0 = BI_RGB (uncompressed)
+    uint32_t image_size;      // Can be 0 for uncompressed
+    int32_t x_pels_per_meter; // Horizontal resolution
+    int32_t y_pels_per_meter; // Vertical resolution
+    uint32_t colors_used;     // 0 = default
+    uint32_t colors_important; // 0 = all
+} bmp_info_header;
+#pragma pack(pop)
+
+void *rt_pixels_load_bmp(void *path)
+{
+    if (!path)
+        return NULL;
+
+    const char *filepath = rt_string_cstr((rt_string)path);
+    if (!filepath)
+        return NULL;
+
+    FILE *f = fopen(filepath, "rb");
+    if (!f)
+        return NULL;
+
+    // Read file header
+    bmp_file_header file_hdr;
+    if (fread(&file_hdr, sizeof(file_hdr), 1, f) != 1)
+    {
+        fclose(f);
+        return NULL;
+    }
+
+    // Check magic
+    if (file_hdr.magic[0] != 'B' || file_hdr.magic[1] != 'M')
+    {
+        fclose(f);
+        return NULL;
+    }
+
+    // Read info header
+    bmp_info_header info_hdr;
+    if (fread(&info_hdr, sizeof(info_hdr), 1, f) != 1)
+    {
+        fclose(f);
+        return NULL;
+    }
+
+    // Only support 24-bit uncompressed
+    if (info_hdr.bit_count != 24 || info_hdr.compression != 0)
+    {
+        fclose(f);
+        return NULL;
+    }
+
+    int32_t width = info_hdr.width;
+    int32_t height = info_hdr.height;
+    int bottom_up = 1;
+
+    // Handle negative height (top-down)
+    if (height < 0)
+    {
+        height = -height;
+        bottom_up = 0;
+    }
+
+    if (width <= 0 || height <= 0)
+    {
+        fclose(f);
+        return NULL;
+    }
+
+    // Calculate row padding (rows must be 4-byte aligned)
+    int row_size = ((width * 3 + 3) / 4) * 4;
+
+    // Allocate row buffer
+    uint8_t *row_buf = (uint8_t *)malloc((size_t)row_size);
+    if (!row_buf)
+    {
+        fclose(f);
+        return NULL;
+    }
+
+    // Create pixels
+    rt_pixels_impl *pixels = pixels_alloc(width, height);
+    if (!pixels)
+    {
+        free(row_buf);
+        fclose(f);
+        return NULL;
+    }
+
+    // Seek to pixel data
+    if (fseek(f, (long)file_hdr.data_offset, SEEK_SET) != 0)
+    {
+        free(row_buf);
+        fclose(f);
+        return NULL;
+    }
+
+    // Read pixel data
+    for (int32_t y = 0; y < height; y++)
+    {
+        if (fread(row_buf, 1, (size_t)row_size, f) != (size_t)row_size)
+        {
+            free(row_buf);
+            fclose(f);
+            return NULL;
+        }
+
+        // Determine destination row (bottom-up reverses row order)
+        int32_t dst_y = bottom_up ? (height - 1 - y) : y;
+        uint32_t *dst_row = pixels->data + dst_y * width;
+
+        // Convert BGR to RGBA
+        for (int32_t x = 0; x < width; x++)
+        {
+            uint8_t b = row_buf[x * 3 + 0];
+            uint8_t g = row_buf[x * 3 + 1];
+            uint8_t r = row_buf[x * 3 + 2];
+            // Pack as 0xRRGGBBAA (alpha = 255 for opaque)
+            dst_row[x] = ((uint32_t)r << 24) | ((uint32_t)g << 16) | ((uint32_t)b << 8) | 0xFF;
+        }
+    }
+
+    free(row_buf);
+    fclose(f);
+    return pixels;
+}
+
+int64_t rt_pixels_save_bmp(void *pixels, void *path)
+{
+    if (!pixels || !path)
+        return 0;
+
+    rt_pixels_impl *p = (rt_pixels_impl *)pixels;
+    const char *filepath = rt_string_cstr((rt_string)path);
+    if (!filepath)
+        return 0;
+
+    if (p->width <= 0 || p->height <= 0 || p->width > INT32_MAX || p->height > INT32_MAX)
+        return 0;
+
+    int32_t width = (int32_t)p->width;
+    int32_t height = (int32_t)p->height;
+
+    // Calculate row padding
+    int row_size = ((width * 3 + 3) / 4) * 4;
+    int padding = row_size - width * 3;
+
+    // Calculate file size
+    uint32_t data_size = (uint32_t)row_size * (uint32_t)height;
+    uint32_t file_size = 54 + data_size; // 14 + 40 + data
+
+    FILE *f = fopen(filepath, "wb");
+    if (!f)
+        return 0;
+
+    // Write file header
+    bmp_file_header file_hdr = {
+        .magic = {'B', 'M'},
+        .file_size = file_size,
+        .reserved1 = 0,
+        .reserved2 = 0,
+        .data_offset = 54,
+    };
+    if (fwrite(&file_hdr, sizeof(file_hdr), 1, f) != 1)
+    {
+        fclose(f);
+        return 0;
+    }
+
+    // Write info header
+    bmp_info_header info_hdr = {
+        .header_size = 40,
+        .width = width,
+        .height = height, // Positive = bottom-up
+        .planes = 1,
+        .bit_count = 24,
+        .compression = 0,
+        .image_size = data_size,
+        .x_pels_per_meter = 2835, // ~72 DPI
+        .y_pels_per_meter = 2835,
+        .colors_used = 0,
+        .colors_important = 0,
+    };
+    if (fwrite(&info_hdr, sizeof(info_hdr), 1, f) != 1)
+    {
+        fclose(f);
+        return 0;
+    }
+
+    // Allocate row buffer
+    uint8_t *row_buf = (uint8_t *)calloc(1, (size_t)row_size);
+    if (!row_buf)
+    {
+        fclose(f);
+        return 0;
+    }
+
+    // Write pixel data (bottom-up)
+    for (int32_t y = height - 1; y >= 0; y--)
+    {
+        uint32_t *src_row = p->data + y * width;
+
+        // Convert RGBA to BGR
+        for (int32_t x = 0; x < width; x++)
+        {
+            uint32_t pixel = src_row[x];
+            // Pixel format is 0xRRGGBBAA
+            row_buf[x * 3 + 0] = (uint8_t)((pixel >> 8) & 0xFF);  // B
+            row_buf[x * 3 + 1] = (uint8_t)((pixel >> 16) & 0xFF); // G
+            row_buf[x * 3 + 2] = (uint8_t)((pixel >> 24) & 0xFF); // R
+        }
+
+        // Zero padding bytes
+        for (int i = 0; i < padding; i++)
+            row_buf[width * 3 + i] = 0;
+
+        if (fwrite(row_buf, 1, (size_t)row_size, f) != (size_t)row_size)
+        {
+            free(row_buf);
+            fclose(f);
+            return 0;
+        }
+    }
+
+    free(row_buf);
+    fclose(f);
+    return 1;
+}
+
+//=============================================================================
+// Image Transforms
+//=============================================================================
+
+void *rt_pixels_flip_h(void *pixels)
+{
+    if (!pixels)
+    {
+        rt_trap("Pixels.FlipH: null pixels");
+        return NULL;
+    }
+
+    rt_pixels_impl *p = (rt_pixels_impl *)pixels;
+    rt_pixels_impl *result = pixels_alloc(p->width, p->height);
+    if (!result)
+        return NULL;
+
+    // Mirror each row: src[x] -> dst[width-1-x]
+    for (int64_t y = 0; y < p->height; y++)
+    {
+        uint32_t *src_row = p->data + y * p->width;
+        uint32_t *dst_row = result->data + y * p->width;
+        for (int64_t x = 0; x < p->width; x++)
+        {
+            dst_row[p->width - 1 - x] = src_row[x];
+        }
+    }
+
+    return result;
+}
+
+void *rt_pixels_flip_v(void *pixels)
+{
+    if (!pixels)
+    {
+        rt_trap("Pixels.FlipV: null pixels");
+        return NULL;
+    }
+
+    rt_pixels_impl *p = (rt_pixels_impl *)pixels;
+    rt_pixels_impl *result = pixels_alloc(p->width, p->height);
+    if (!result)
+        return NULL;
+
+    // Mirror rows: src[y] -> dst[height-1-y]
+    for (int64_t y = 0; y < p->height; y++)
+    {
+        uint32_t *src_row = p->data + y * p->width;
+        uint32_t *dst_row = result->data + (p->height - 1 - y) * p->width;
+        memcpy(dst_row, src_row, (size_t)p->width * sizeof(uint32_t));
+    }
+
+    return result;
+}
+
+void *rt_pixels_rotate_cw(void *pixels)
+{
+    if (!pixels)
+    {
+        rt_trap("Pixels.RotateCW: null pixels");
+        return NULL;
+    }
+
+    rt_pixels_impl *p = (rt_pixels_impl *)pixels;
+
+    // New dimensions: width becomes height, height becomes width
+    int64_t new_width = p->height;
+    int64_t new_height = p->width;
+
+    rt_pixels_impl *result = pixels_alloc(new_width, new_height);
+    if (!result)
+        return NULL;
+
+    // Rotate 90 CW: src[x,y] -> dst[height-1-y, x]
+    // In terms of new coords: dst[x',y'] = src[y', width-1-x']
+    for (int64_t y = 0; y < p->height; y++)
+    {
+        for (int64_t x = 0; x < p->width; x++)
+        {
+            uint32_t pixel = p->data[y * p->width + x];
+            // New position: (height-1-y, x) in new coordinate system
+            int64_t new_x = p->height - 1 - y;
+            int64_t new_y = x;
+            result->data[new_y * new_width + new_x] = pixel;
+        }
+    }
+
+    return result;
+}
+
+void *rt_pixels_rotate_ccw(void *pixels)
+{
+    if (!pixels)
+    {
+        rt_trap("Pixels.RotateCCW: null pixels");
+        return NULL;
+    }
+
+    rt_pixels_impl *p = (rt_pixels_impl *)pixels;
+
+    // New dimensions: width becomes height, height becomes width
+    int64_t new_width = p->height;
+    int64_t new_height = p->width;
+
+    rt_pixels_impl *result = pixels_alloc(new_width, new_height);
+    if (!result)
+        return NULL;
+
+    // Rotate 90 CCW: src[x,y] -> dst[y, width-1-x]
+    for (int64_t y = 0; y < p->height; y++)
+    {
+        for (int64_t x = 0; x < p->width; x++)
+        {
+            uint32_t pixel = p->data[y * p->width + x];
+            // New position: (y, width-1-x) in new coordinate system
+            int64_t new_x = y;
+            int64_t new_y = p->width - 1 - x;
+            result->data[new_y * new_width + new_x] = pixel;
+        }
+    }
+
+    return result;
+}
+
+void *rt_pixels_rotate_180(void *pixels)
+{
+    if (!pixels)
+    {
+        rt_trap("Pixels.Rotate180: null pixels");
+        return NULL;
+    }
+
+    rt_pixels_impl *p = (rt_pixels_impl *)pixels;
+    rt_pixels_impl *result = pixels_alloc(p->width, p->height);
+    if (!result)
+        return NULL;
+
+    // Rotate 180: src[x,y] -> dst[width-1-x, height-1-y]
+    int64_t total = p->width * p->height;
+    for (int64_t i = 0; i < total; i++)
+    {
+        result->data[total - 1 - i] = p->data[i];
+    }
+
+    return result;
+}
+
+void *rt_pixels_scale(void *pixels, int64_t new_width, int64_t new_height)
+{
+    if (!pixels)
+    {
+        rt_trap("Pixels.Scale: null pixels");
+        return NULL;
+    }
+
+    if (new_width <= 0)
+        new_width = 1;
+    if (new_height <= 0)
+        new_height = 1;
+
+    rt_pixels_impl *p = (rt_pixels_impl *)pixels;
+
+    // Handle empty source
+    if (p->width <= 0 || p->height <= 0)
+    {
+        return pixels_alloc(new_width, new_height);
+    }
+
+    rt_pixels_impl *result = pixels_alloc(new_width, new_height);
+    if (!result)
+        return NULL;
+
+    // Nearest-neighbor scaling
+    for (int64_t y = 0; y < new_height; y++)
+    {
+        // Map destination y to source y
+        int64_t src_y = (y * p->height) / new_height;
+        if (src_y >= p->height)
+            src_y = p->height - 1;
+
+        uint32_t *src_row = p->data + src_y * p->width;
+        uint32_t *dst_row = result->data + y * new_width;
+
+        for (int64_t x = 0; x < new_width; x++)
+        {
+            // Map destination x to source x
+            int64_t src_x = (x * p->width) / new_width;
+            if (src_x >= p->width)
+                src_x = p->width - 1;
+
+            dst_row[x] = src_row[src_x];
+        }
+    }
+
+    return result;
 }

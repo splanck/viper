@@ -580,6 +580,10 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_pixels PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_pixels test_rt_pixels)
 
+    viper_add_test(test_rt_canvas_ext ${VIPER_TESTS_DIR}/runtime/RTCanvasExtTests.cpp)
+    target_link_libraries(test_rt_canvas_ext PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_canvas_ext test_rt_canvas_ext)
+
     viper_add_test(test_rt_keyboard ${VIPER_TESTS_DIR}/runtime/RTKeyboardTests.cpp)
     target_link_libraries(test_rt_keyboard PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_keyboard test_rt_keyboard)
