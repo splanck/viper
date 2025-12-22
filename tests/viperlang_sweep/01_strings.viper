@@ -1,0 +1,158 @@
+module TestStrings;
+
+import "./_support";
+
+// Comprehensive string operations tests
+// Tests functions now aligned between sema and runtime
+
+func start() {
+    Viper.Terminal.Say("=== String Operations Tests ===");
+
+    testBasicOps();
+    testTrimOps();
+    testCaseOps();
+    testSearchOps();
+    testSubstringOps();
+    testCharOps();
+    testReplaceOps();
+    testSplitOps();
+    testFlipOps();
+    testEdgeCases();
+
+    report();
+}
+
+func testBasicOps() {
+    // Concat
+    assertEqStr(Viper.String.Concat("Hello", " World"), "Hello World", "concat basic");
+    assertEqStr(Viper.String.Concat("", "test"), "test", "concat empty left");
+    assertEqStr(Viper.String.Concat("test", ""), "test", "concat empty right");
+    assertEqStr(Viper.String.Concat("", ""), "", "concat both empty");
+
+    // Length
+    assertEqInt(Viper.String.Length("hello"), 5, "length basic");
+    assertEqInt(Viper.String.Length(""), 0, "length empty");
+    assertEqInt(Viper.String.Length("a"), 1, "length single");
+
+    // Repeat
+    assertEqStr(Viper.String.Repeat("ab", 3), "ababab", "repeat basic");
+    assertEqStr(Viper.String.Repeat("x", 0), "", "repeat zero");
+    assertEqStr(Viper.String.Repeat("x", 1), "x", "repeat one");
+    assertEqStr(Viper.String.Repeat("", 5), "", "repeat empty");
+}
+
+func testTrimOps() {
+    assertEqStr(Viper.String.Trim("  hello  "), "hello", "trim both");
+    assertEqStr(Viper.String.Trim("hello"), "hello", "trim none");
+    assertEqStr(Viper.String.Trim("   "), "", "trim all spaces");
+    assertEqStr(Viper.String.Trim(""), "", "trim empty");
+
+    // TrimStart/TrimEnd (fixed from TrimLeft/TrimRight)
+    assertEqStr(Viper.String.TrimStart("  hello"), "hello", "trimstart");
+    assertEqStr(Viper.String.TrimEnd("hello  "), "hello", "trimend");
+}
+
+func testCaseOps() {
+    assertEqStr(Viper.String.ToUpper("hello"), "HELLO", "upper basic");
+    assertEqStr(Viper.String.ToLower("HELLO"), "hello", "lower basic");
+    assertEqStr(Viper.String.ToUpper("HeLLo"), "HELLO", "upper mixed");
+    assertEqStr(Viper.String.ToLower("HeLLo"), "hello", "lower mixed");
+    assertEqStr(Viper.String.ToUpper(""), "", "upper empty");
+    assertEqStr(Viper.String.ToLower(""), "", "lower empty");
+    assertEqStr(Viper.String.ToUpper("123"), "123", "upper digits");
+}
+
+func testSearchOps() {
+    // IndexOf (1-based, 0 = not found)
+    assertEqInt(Viper.String.IndexOf("hello", "l"), 3, "indexof found");
+    assertEqInt(Viper.String.IndexOf("hello", "z"), 0, "indexof not found");
+    assertEqInt(Viper.String.IndexOf("hello", ""), 1, "indexof empty needle");
+    assertEqInt(Viper.String.IndexOf("", "a"), 0, "indexof empty haystack");
+    assertEqInt(Viper.String.IndexOf("hello", "lo"), 4, "indexof substring");
+
+    // StartsWith/EndsWith
+    assertTrue(Viper.String.StartsWith("hello", "hel"), "startswith true");
+    assertFalse(Viper.String.StartsWith("hello", "ell"), "startswith false");
+    assertTrue(Viper.String.EndsWith("hello", "llo"), "endswith true");
+    assertFalse(Viper.String.EndsWith("hello", "hel"), "endswith false");
+    assertTrue(Viper.String.StartsWith("hello", ""), "startswith empty");
+    assertTrue(Viper.String.EndsWith("hello", ""), "endswith empty");
+
+    // Has (fixed from Contains)
+    assertTrue(Viper.String.Has("hello", "ell"), "has found");
+    assertFalse(Viper.String.Has("hello", "xyz"), "has not found");
+    assertTrue(Viper.String.Has("hello", ""), "has empty");
+}
+
+func testSubstringOps() {
+    // Left
+    assertEqStr(Viper.String.Left("hello", 3), "hel", "left basic");
+    assertEqStr(Viper.String.Left("hello", 0), "", "left zero");
+    assertEqStr(Viper.String.Left("hello", 10), "hello", "left overflow");
+
+    // Right
+    assertEqStr(Viper.String.Right("hello", 3), "llo", "right basic");
+    assertEqStr(Viper.String.Right("hello", 0), "", "right zero");
+    assertEqStr(Viper.String.Right("hello", 10), "hello", "right overflow");
+
+    // Mid (1-based start)
+    assertEqStr(Viper.String.Mid("hello", 2), "ello", "mid from 2");
+    assertEqStr(Viper.String.Mid("hello", 1), "hello", "mid from 1");
+    assertEqStr(Viper.String.Mid("hello", 5), "o", "mid from 5");
+
+    // Substring (0-based start, length)
+    assertEqStr(Viper.String.Substring("hello", 1, 3), "ell", "substring basic");
+    assertEqStr(Viper.String.Substring("hello", 0, 5), "hello", "substring full");
+}
+
+func testCharOps() {
+    // Chr (char from code)
+    assertEqStr(Viper.String.Chr(65), "A", "chr A");
+    assertEqStr(Viper.String.Chr(97), "a", "chr a");
+    assertEqStr(Viper.String.Chr(48), "0", "chr 0");
+
+    // Asc (code from char)
+    assertEqInt(Viper.String.Asc("A"), 65, "asc A");
+    assertEqInt(Viper.String.Asc("a"), 97, "asc a");
+    assertEqInt(Viper.String.Asc("0"), 48, "asc 0");
+}
+
+func testReplaceOps() {
+    assertEqStr(Viper.String.Replace("hello", "l", "L"), "heLLo", "replace basic");
+    assertEqStr(Viper.String.Replace("hello", "ll", "LL"), "heLLo", "replace pair");
+    assertEqStr(Viper.String.Replace("hello", "z", "Z"), "hello", "replace not found");
+    assertEqStr(Viper.String.Replace("aaa", "a", "b"), "bbb", "replace all");
+}
+
+func testSplitOps() {
+    // Split returns Seq - use Viper.Collections.Seq.get_Len to get count
+    var parts = Viper.String.Split("a,b,c", ",");
+    assertEqInt(Viper.Collections.Seq.get_Len(parts), 3, "split count");
+
+    // Split with no delimiter
+    var noSplit = Viper.String.Split("abc", ",");
+    assertEqInt(Viper.Collections.Seq.get_Len(noSplit), 1, "split no match count");
+
+    // Split empty string
+    var emptySplit = Viper.String.Split("", ",");
+    assertEqInt(Viper.Collections.Seq.get_Len(emptySplit), 1, "split empty count");
+}
+
+func testFlipOps() {
+    // Flip (fixed from Reverse)
+    assertEqStr(Viper.String.Flip("hello"), "olleh", "flip basic");
+    assertEqStr(Viper.String.Flip(""), "", "flip empty");
+    assertEqStr(Viper.String.Flip("a"), "a", "flip single");
+    assertEqStr(Viper.String.Flip("ab"), "ba", "flip two");
+}
+
+func testEdgeCases() {
+    // Very long string
+    var long = Viper.String.Repeat("x", 10000);
+    assertEqInt(Viper.String.Length(long), 10000, "long string length");
+
+    // Cmp (fixed from Compare)
+    assertEqInt(Viper.String.Cmp("a", "b"), -1, "cmp less");
+    assertEqInt(Viper.String.Cmp("b", "a"), 1, "cmp greater");
+    assertEqInt(Viper.String.Cmp("a", "a"), 0, "cmp equal");
+}

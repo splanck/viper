@@ -128,8 +128,8 @@ void SemanticAnalyzer::ProcedureScope::noteVarTypeMutation(const std::string &na
 ///
 /// @param name Variable whose object class is being updated.
 /// @param previous Prior class name if one was present.
-void SemanticAnalyzer::ProcedureScope::noteObjectClassMutation(
-    const std::string &name, std::optional<std::string> previous)
+void SemanticAnalyzer::ProcedureScope::noteObjectClassMutation(const std::string &name,
+                                                               std::optional<std::string> previous)
 {
     if (!trackedObjectClasses_.insert(name).second)
         return;

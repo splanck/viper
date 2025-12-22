@@ -208,6 +208,17 @@ LowerResult Lowerer::lowerIdent(IdentExpr *expr)
         return {val, ilType};
     }
 
+    // Check for global mutable variables (module-level var declarations)
+    auto globalIt = globalVariables_.find(expr->name);
+    if (globalIt != globalVariables_.end())
+    {
+        TypeRef type = globalIt->second;
+        Type ilType = mapType(type);
+        Value addr = getGlobalVarAddr(expr->name, type);
+        Value loaded = emitLoad(addr, ilType);
+        return {loaded, ilType};
+    }
+
     // Unknown identifier
     return {Value::constInt(0), Type(Type::Kind::I64)};
 }
@@ -327,6 +338,35 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
                         return right;
                     }
                 }
+            }
+
+            // Check for global variable assignment
+            auto globalIt = globalVariables_.find(ident->name);
+            if (globalIt != globalVariables_.end())
+            {
+                TypeRef globalType = globalIt->second;
+                Type ilType = mapType(globalType);
+                Value addr = getGlobalVarAddr(ident->name, globalType);
+
+                Value storeValue = assignValue;
+                if (globalType && globalType->kind == TypeKindSem::Optional)
+                {
+                    TypeRef innerType = globalType->innerType();
+                    if (rightType && rightType->kind == TypeKindSem::Optional)
+                    {
+                        storeValue = assignValue;
+                    }
+                    else if (rightType && rightType->kind == TypeKindSem::Unit)
+                    {
+                        storeValue = Value::null();
+                    }
+                    else if (innerType)
+                    {
+                        storeValue = emitOptionalWrap(assignValue, innerType);
+                    }
+                }
+                emitStore(addr, storeValue, ilType);
+                return right;
             }
 
             // Regular variable assignment
@@ -1046,8 +1086,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                     }
                     case TypeKindSem::Boolean:
                     {
-                        Value strVal =
-                            emitCallRet(Type(Type::Kind::Str), kFmtBool, {arg.value});
+                        Value strVal = emitCallRet(Type(Type::Kind::Str), kFmtBool, {arg.value});
                         return {strVal, Type(Type::Kind::Str)};
                     }
                     default:
@@ -1057,8 +1096,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
 
             if (arg.type.kind == Type::Kind::Ptr)
             {
-                Value strVal =
-                    emitCallRet(Type(Type::Kind::Str), kObjectToString, {arg.value});
+                Value strVal = emitCallRet(Type(Type::Kind::Str), kObjectToString, {arg.value});
                 return {strVal, Type(Type::Kind::Str)};
             }
 

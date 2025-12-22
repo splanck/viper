@@ -917,6 +917,526 @@ The semantic analyzer doesn't track generic type parameters on collection instan
 
 ---
 
+## Bugs Found During Frogger OOP Stress Test (December 2025)
+
+### 38. Module-Level Mutable Variables Not Properly Lowered
+**Status**: FIXED (December 2025)
+**Severity**: CRITICAL - Blocks most non-trivial applications
+**Description**: Module-level mutable variables (not constants) are not properly resolved when accessed. They come through as literal 0 instead of loading from global storage.
+
+**Reproduction**:
+```viper
+module Test;
+
+var running: Boolean;
+var ESC: String;
+
+func initGame() {
+    running = true;
+    ESC = Viper.String.Chr(27);
+}
+
+func start() {
+    initGame();
+    while running {  // ERROR: 'running' resolves to 0, not the actual variable
+        // ...
+    }
+    Viper.Terminal.Print(ESC);  // ERROR: call arg type mismatch: expects str but got i64
+}
+```
+
+**Observed IL Output**:
+```il
+while_cond_0:
+  cbr 0, while_body_1, while_end_2  ; Using literal 0 instead of loading 'running'
+
+; String concat with ESC:
+  %t0 = call 0 %t0  ; Passing 0 instead of string value
+  ; Error: call arg type mismatch: @Viper.String.Concat parameter 0 expects str but got i64
+```
+
+**Root Cause Analysis**:
+
+The issue is a **fundamental architectural gap** in the lowerer - there is no mechanism to store, track, or load module-level mutable variables.
+
+1. **No storage for global mutable variables** (`Lowerer.hpp:439-443`):
+   - Only `globalConstants_` map exists
+   - No `globalVariables_` or `globalMutableVars_` map
+
+2. **`lowerGlobalVarDecl()` only processes constants** (`Lowerer_Decl.cpp:52-92`):
+   - Only handles literal initializers (int, float, bool, string literals)
+   - Never checks `decl.isFinal` flag to distinguish mutable from constant
+   - Comment at lines 90-91: "For non-literal initializers, we would need runtime initialization which is not yet supported. For now, skip these."
+   - Mutable variables are silently ignored
+
+3. **`lowerIdent()` defaults to returning 0** (`Lowerer_Expr.cpp:129-213`):
+   - Checks `slots_` (function-local mutable vars) - not found
+   - Checks `locals_` (function-local immutables) - not found
+   - Checks `globalConstants_` (module-level constants) - not found
+   - **Falls through to line 212**: `return {Value::constInt(0), Type(Type::Kind::I64)};`
+
+4. **`GlobalVarDecl::isFinal` flag exists but is ignored** (`AST_Decl.hpp:282`):
+   - The AST distinguishes `final x = 100;` from `var x: Integer;`
+   - But the lowerer never checks this flag
+
+**Fix Required**:
+1. Add `globalVariables_` map to track mutable variable storage locations
+2. Update `lowerGlobalVarDecl()` to allocate global storage for mutable variables
+3. Update `lowerIdent()` to load from global storage for mutable variables
+4. Handle initialization in module init or runtime startup
+
+**Workaround**: Move mutable state into entity fields and access via entity instance.
+
+```viper
+entity GameState {
+    expose Boolean running;
+    expose func init() { running = true; }
+}
+
+var game: GameState;  // Entity pointer at module level
+
+func start() {
+    game = new GameState();
+    game.init();
+    while game.running {  // Works - accesses entity field
+        // ...
+    }
+}
+```
+
+**Note**: Even the entity pointer `game` at module level has issues - when passed to methods it comes through as 0. See Bug #39.
+
+---
+
+### 39. Module-Level Entity Variables Passed as 0 to Methods
+**Status**: FIXED (December 2025)
+**Severity**: CRITICAL - Related to Bug #38
+**Description**: When a module-level entity variable is used, its pointer value is passed as literal 0 to method calls and field accesses.
+
+**Reproduction**:
+```viper
+module Test;
+
+entity GameState {
+    expose Boolean running;
+    expose func stop() { running = false; }
+}
+
+var game: GameState;
+
+func start() {
+    game = new GameState();
+    game.stop();  // ERROR: passes 0 instead of game pointer
+}
+```
+
+**Observed IL Output**:
+```il
+  call @GameState.stop(0)  ; Passing 0 instead of game pointer
+
+  %t1 = gep 0, 16         ; GEP on literal 0 instead of game pointer
+  %t2 = load i1, %t1      ; Will crash or read garbage
+```
+
+**Root Cause Analysis**:
+
+Same root cause as Bug #38. The entity pointer variable `game` is a module-level mutable variable (entity type, but still a pointer stored at module level). When `lowerIdent("game")` is called:
+
+1. Not in `slots_` (not function-local)
+2. Not in `locals_` (not function-local)
+3. Not in `globalConstants_` (entity pointers can't be constants)
+4. Falls through to return `Value::constInt(0)`
+
+The `0` is then used as:
+- The implicit `self` parameter in method calls: `call @GameState.stop(0)`
+- The base pointer for field access: `gep 0, 16` (offset 16 from address 0)
+
+**Fix Required**: Same as Bug #38 - implement proper global mutable variable storage and loading.
+
+---
+
+### 40. `Viper.Collections.Seq` Type Mismatch with Entity Instances
+**Status**: DEFERRED - Use `List[T]` instead (recommended approach)
+**Severity**: LOW - Workaround available
+**Description**: When using `Viper.Collections.Seq.Push()` with entity instances, the compiler reports "Type mismatch: expected ?, got Ptr". Similarly, `Seq.Get()` returns `Ptr` which cannot be assigned to typed variables.
+
+**Reproduction**:
+```viper
+entity Vehicle {
+    expose Integer speed;
+}
+
+var vehicles;
+
+func init() {
+    vehicles = Viper.Collections.Seq.New();
+    var v = new Vehicle();
+    Viper.Collections.Seq.Push(vehicles, v);  // ERROR: Type mismatch: expected ?, got Ptr
+}
+
+func update() {
+    var v: Vehicle = Viper.Collections.Seq.Get(vehicles, 0);  // ERROR: expected Vehicle, got Ptr
+    v.speed = 10;  // Would fail anyway
+}
+```
+
+**Root Cause Analysis**:
+
+Seq is **not a first-class collection type** in the semantic analyzer, unlike List/Map/Set which were fixed in Bug #37.
+
+1. **Seq is not in TypeKindSem enum** (`Types.hpp:122-287`):
+   - `List` has `TypeKindSem::List` (line 193)
+   - `Map` has `TypeKindSem::Map` (line 198)
+   - `Set` has `TypeKindSem::Set` (line 203)
+   - **Seq has NO enum value** - treated as opaque `Ptr`
+
+2. **No special type inference for Seq methods** (`Sema_Expr.cpp:357-580`):
+   - Lines 385-435: List methods get special handling to return element type
+   - Lines 438-496: Map methods get special handling
+   - Lines 498-527: Set methods get special handling
+   - **NO Seq handling exists**
+
+3. **Runtime function signatures are hardcoded to Ptr** (`Sema.cpp:777-783`):
+   ```cpp
+   runtimeFunctions_["Viper.Collections.Seq.Get"] = types::ptr();  // Always returns Ptr
+   runtimeFunctions_["Viper.Collections.Seq.Pop"] = types::ptr();  // Always returns Ptr
+   ```
+
+4. **Comparison with List** (which works after Bug #37 fix):
+   - `List[Vehicle]` stores element type in the generic parameter
+   - `analyzeCall()` extracts element type and returns it for `.get()`
+   - Seq has no way to capture or propagate element type
+
+**Fix Required**:
+1. Add `TypeKindSem::Seq` to the type system (or treat as synonym for List)
+2. Add Seq method handling in `analyzeCall()` similar to List
+3. Or: Deprecate Seq in favor of List[T] which already works
+
+**Workaround**: Use typed `List[EntityType]` instead, which has proper generic type inference (fixed in Bug #37):
+
+```viper
+var vehicles: List[Vehicle];
+
+func init() {
+    vehicles = [];
+    var v = new Vehicle();
+    vehicles.add(v);  // Works
+}
+
+func update() {
+    var v = vehicles.get(0);  // v is properly typed as Vehicle
+    v.speed = 10;  // Works
+}
+```
+
+**Resolution**: Using `List[T]` is the recommended approach. The `List[T]` generic collection provides proper type inference and is the idiomatic way to work with typed collections in ViperLang. Seq is maintained for low-level untyped use cases but is not recommended for general use.
+
+---
+
+### 41. `class` Keyword Not Supported
+**Status**: CLOSED - By Design
+**Severity**: N/A - Documentation issue
+**Description**: The `class` keyword is not recognized by the parser. Only `entity` keyword works for defining object types.
+
+**Reproduction**:
+```viper
+class GameState {  // ERROR: expected declaration
+    var score: int;
+}
+```
+
+**Root Cause Analysis**:
+
+This is **intentional language design**, not a missing feature.
+
+1. **`class` is NOT defined as a keyword token** (`Token.hpp:73-178`):
+   - No `KwClass` token kind exists
+   - The keyword enum defines `KwEntity`, `KwInterface`, `KwValue` but not `KwClass`
+
+2. **`class` is NOT in the keyword lookup table** (`Lexer.cpp:240-274`):
+   - The table contains exactly 33 keywords
+   - `"class"` is not among them
+   - When encountered, it's treated as a regular identifier
+
+3. **Language specification uses `entity`** (`docs/viperlang-reference.md`):
+   - Line 188: "Reference types defined with the `entity` keyword"
+   - Line 836: Grammar shows `entityDecl ::= "entity" IDENT ...`
+   - Reserved words list (lines 804-812) includes `entity` but NOT `class`
+
+4. **Intentional terminology distinction**:
+   - ViperLang uses `entity` for reference types (heap-allocated with identity)
+   - ViperLang uses `value` for value types (stack-allocated with copy semantics)
+   - This is distinct from Java/C# which use `class` for reference types
+
+**Resolution**: Use `entity` instead of `class`:
+```viper
+entity GameState {
+    expose Integer score;
+}
+```
+
+**Note**: The `entity` keyword uses different field syntax (`expose Type name;`) compared to what `class` might suggest (`var name: Type;`).
+
+---
+
+### 42. Boolean Operators `and`, `or`, `not` Cause Parse Errors
+**Status**: FIXED (December 2025)
+**Severity**: HIGH - Blocks natural boolean expressions
+**Description**: The boolean operators `and`, `or`, and `not` cause parse errors when used in expressions.
+
+**Reproduction**:
+```viper
+// All of these fail:
+if state == 1 or state == 2 { }        // ERROR: expected ;, got identifier
+if x > 0 and y > 0 { }                  // ERROR: expected ;, got identifier
+if not finished { }                      // ERROR: parse error
+var inverted = not flag;                 // ERROR: parse error
+```
+
+**Root Cause Analysis**:
+
+The word-form boolean operators are **completely missing** from the lexer and parser.
+
+1. **No keyword tokens defined** (`Token.hpp:73-178`):
+   - No `KwAnd` token kind
+   - No `KwOr` token kind
+   - No `KwNot` token kind
+   - These words are treated as regular identifiers
+
+2. **Not in keyword lookup table** (`Lexer.cpp:240-274`):
+   - The table contains exactly 33 keywords
+   - `"and"`, `"or"`, `"not"` are NOT among them
+   - When the lexer encounters `and`, it returns `TokenKind::Identifier` with value "and"
+
+3. **Parser only handles symbolic operators** (`Parser_Expr.cpp:276-313`):
+   ```cpp
+   // parseAndExpr() - line 276-290
+   case TokenKind::AmpAmp:  // Only checks for && symbol
+       advance();
+       // ...
+
+   // parseOrExpr() - line 293-313
+   case TokenKind::PipePipe:  // Only checks for || symbol
+       advance();
+       // ...
+   ```
+   - No check for `TokenKind::Identifier` with text "and"/"or"
+   - No `parseNotExpr()` or unary `not` handling
+
+4. **Unary NOT pattern** (`Parser_Expr.cpp:176-193`):
+   ```cpp
+   case TokenKind::Bang:  // Only handles ! symbol
+       advance();
+       auto operand = parseUnaryExpr();
+       return std::make_unique<UnaryExpr>(...);
+   ```
+   - No case for `KwNot` or identifier "not"
+
+**Fix Required**:
+1. Add `KwAnd`, `KwOr`, `KwNot` to `TokenKind` enum in `Token.hpp`
+2. Add `{"and", KwAnd}`, `{"or", KwOr}`, `{"not", KwNot}` to keyword table in `Lexer.cpp`
+3. Update `parseAndExpr()` to also check `TokenKind::KwAnd`
+4. Update `parseOrExpr()` to also check `TokenKind::KwOr`
+5. Update `parseUnaryExpr()` to handle `TokenKind::KwNot`
+
+**Workaround**: Use nested if statements or `== false` pattern:
+```viper
+// Instead of: if state == 1 or state == 2
+if state == 1 {
+    // handle
+} else {
+    if state == 2 {
+        // handle
+    }
+}
+
+// Instead of: if x > 0 and y > 0
+if x > 0 {
+    if y > 0 {
+        // handle
+    }
+}
+
+// Instead of: if not finished
+if finished == false {
+    // handle
+}
+
+// Instead of: var inverted = not flag
+var inverted = flag == false;  // But this gives Boolean, not assignable
+// Better: just inline the check
+if flag == false {
+    // handle inverted case
+}
+```
+
+**Note**: Bug #24 fixed `&&` and `||` for IL generation, but the word-form operators `and`/`or`/`not` don't parse at all.
+
+---
+
+### 43. Return Type Colon Syntax Not Supported in Entity Methods
+**Status**: FIXED (December 2025)
+**Severity**: MEDIUM
+**Description**: The colon-style return type syntax `func name(): Type` doesn't work in entity/class context. Only arrow syntax `func name() -> Type` works.
+
+**Reproduction**:
+```viper
+entity Frog {
+    expose func getScore(): int {  // ERROR: expected function body
+        return 0;
+    }
+}
+```
+
+**Root Cause Analysis**:
+
+The parser **only recognizes arrow syntax** for return types in both functions and methods.
+
+1. **`parseFunctionDecl()` only checks for Arrow** (`Parser_Decl.cpp:151-200`):
+   ```cpp
+   // Around lines 175-185:
+   TypePtr returnType;
+   if (match(TokenKind::Arrow)) {  // Only checks for ->
+       returnType = parseType();
+   } else {
+       returnType = std::make_unique<NamedType>("Void", loc);
+   }
+   ```
+   - No `match(TokenKind::Colon)` alternative
+   - If not arrow, assumes void return type
+
+2. **`parseMethodDecl()` has same pattern** (`Parser_Decl.cpp:667-711`):
+   ```cpp
+   // Around lines 690-700:
+   TypePtr returnType;
+   if (match(TokenKind::Arrow)) {  // Only checks for ->
+       returnType = parseType();
+   } else {
+       returnType = std::make_unique<NamedType>("Void", loc);
+   }
+   ```
+   - Identical behavior - arrow only
+   - Colon is not recognized as return type delimiter
+
+3. **Colon syntax ambiguity**:
+   - `func foo(): Type` uses colon after closing paren
+   - `func foo(x: Type)` uses colon for parameter types
+   - Parser would need context to distinguish these uses
+   - Arrow `->` is unambiguous and preferred
+
+4. **Consistency check**: Other declarations like variable types do use colon:
+   ```viper
+   var x: Integer;  // Colon works here
+   func foo(x: Integer): Integer { }  // Colon for param works, NOT for return
+   ```
+
+**Fix Required**:
+1. Add `|| match(TokenKind::Colon)` after arrow check in `parseFunctionDecl()`
+2. Add same to `parseMethodDecl()`
+3. Optionally: Add warning that arrow syntax is preferred
+
+**Workaround**: Use arrow syntax:
+```viper
+entity Frog {
+    expose func getScore() -> Integer {  // Works
+        return 0;
+    }
+}
+```
+
+---
+
+### 44. Qualified Type Names in Entity Fields Cause Parse Errors
+**Status**: FIXED (December 2025)
+**Severity**: HIGH - Blocks multi-module OOP patterns
+**Description**: When using qualified type names (e.g., `Module.Type`) for entity field types, various parse errors occur.
+
+**Reproduction**:
+```viper
+// In frog.viper
+module Frog;
+import "./vec2";
+
+entity Frog {
+    expose Vec2.Vec2 position;  // ERROR: various parse errors
+}
+```
+
+**Root Cause Analysis**:
+
+The type parser **doesn't handle qualified names** (dot-separated identifiers).
+
+1. **`parseBaseType()` returns immediately after first identifier** (`Parser_Type.cpp:37-105`):
+   ```cpp
+   TypePtr Parser::parseBaseType()
+   {
+       if (check(TokenKind::Identifier))
+       {
+           Token nameTok = advance();
+           std::string name = nameTok.text;
+
+           // Check for generic type: List[T], Map[K,V]
+           if (check(TokenKind::LBracket)) {
+               // ... handles List[T]
+           }
+
+           // Returns immediately - NO dot handling
+           return std::make_unique<NamedType>(name, nameTok.location);
+       }
+       // ...
+   }
+   ```
+   - After consuming `Vec2`, returns immediately
+   - Never checks for `.` to continue parsing `Vec2.Vec2`
+   - The `.Vec2` is left unparsed, causing subsequent parse errors
+
+2. **Field declaration parses type first** (`Parser_Decl.cpp`):
+   ```cpp
+   // In parseFieldDecl():
+   auto type = parseType();  // Only gets "Vec2", not "Vec2.Vec2"
+   // Next token is "." which is unexpected
+   ```
+   - After type parse, expects field name
+   - Instead finds `.` which is invalid at that position
+
+3. **Contrast with expression parsing** (`Parser_Expr.cpp`):
+   - Member access `obj.field` works because expression parser handles dots
+   - But type names are parsed differently than expressions
+   - Type parser has no dot-chain logic
+
+4. **Import resolution doesn't help**:
+   - Imports make types available but don't change how names are parsed
+   - `import "./vec2"` brings `Vec2` entity into scope
+   - But parser still can't parse `Vec2.Vec2` as a single type name
+
+**Fix Required**:
+1. Update `parseBaseType()` to check for `TokenKind::Dot` after identifier
+2. If dot found, continue consuming `identifier.identifier.identifier...`
+3. Build qualified name string: `"Vec2.Vec2"` or store as path components
+4. Update `NamedType` AST node to support qualified names, or add `QualifiedType` node
+
+**Alternative Fix**:
+- Require imports to use `as` for aliasing: `import "./vec2" as V`
+- Then use `V.Vec2` which might already work as a member access expression
+
+**Workaround**: Keep all related types in the same module, or use unqualified types with careful import ordering.
+
+---
+
+## Summary of Frogger Stress Test Bugs
+
+| Bug | Severity | Description | Workaround |
+|-----|----------|-------------|------------|
+| #38 | CRITICAL | Module-level mutable variables resolve to 0 | Use entity fields |
+| #39 | CRITICAL | Module-level entity pointers passed as 0 | Pass as function parameters |
+| #40 | HIGH | Seq doesn't work with entities | Use `List[Type]` instead |
+| #41 | MEDIUM | `class` keyword not supported | Use `entity` |
+| #42 | HIGH | `and`/`or`/`not` don't parse | Use nested `if` or `== false` |
+| #43 | MEDIUM | Colon return type syntax fails | Use `-> Type` arrow syntax |
+| #44 | HIGH | Qualified type names in fields fail | Single-module design |
+
+---
+
 ## Notes
 
 This file will be updated as more bugs are discovered during game development.

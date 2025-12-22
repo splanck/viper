@@ -5,11 +5,12 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: frontends/basic/ScopeTracker.hpp
-// Purpose: Re-exports common ScopeTracker for BASIC frontend compatibility.
-//
-// NOTE: This file re-exports the common ScopeTracker for backwards
-//       compatibility. New code should use frontends/common/ScopeTracker.hpp.
+/// @file
+/// @brief BASIC-frontend alias for the shared scope tracker.
+/// @details This header preserves a legacy include path by re-exporting the
+///          common `ScopeTracker` used across frontends. New code should include
+///          `frontends/common/ScopeTracker.hpp` directly to make dependencies
+///          explicit and reduce alias indirection.
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -19,7 +20,10 @@
 namespace il::frontends::basic
 {
 
-// Re-export common ScopeTracker for backwards compatibility
+/// @brief Backward-compatible alias for the shared scope tracker.
+/// @details The aliased type tracks scope nesting and symbol visibility during
+///          semantic analysis and lowering. Prefer the common namespace in new
+///          code to avoid duplicating frontend-specific entry points.
 using ScopeTracker = ::il::frontends::common::ScopeTracker;
 
 } // namespace il::frontends::basic

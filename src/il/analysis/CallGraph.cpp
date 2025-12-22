@@ -5,7 +5,14 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements a tiny direct-call graph helper for inlining heuristics.
+/// @file
+/// @brief Implements direct-call graph construction for inlining heuristics.
+/// @details Scans each function's blocks and instructions, records edges for
+///          direct `call` instructions with resolved callee names, and
+///          accumulates per-callee call counts. The graph is intentionally
+///          lightweight: it does not model indirect calls, call-site metadata,
+///          or recursion analysis, and it preserves duplicates in the edge list
+///          so callers can reason about call-site multiplicity.
 //
 //===----------------------------------------------------------------------===//
 
@@ -19,6 +26,14 @@
 namespace viper::analysis
 {
 
+/// @brief Build a direct-call graph for an IL module.
+/// @details Walks every block and instruction in each function; when it finds a
+///          direct call (`Opcode::Call` with a non-empty callee name) it appends
+///          the callee to the caller's edge list and increments the callee's
+///          call count. Indirect calls or unresolved callees are skipped, and
+///          repeated call sites are kept as duplicate entries in the edge list.
+/// @param module Module to scan; the IL is not modified.
+/// @return Call graph populated with edges and call counts for direct calls only.
 CallGraph buildCallGraph(il::core::Module &module)
 {
     CallGraph cg;

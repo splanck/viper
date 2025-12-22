@@ -11,6 +11,11 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// @file
+/// @brief VM-aware runtime helpers for Viper.Threads.
+/// @details Implements the Thread.Start bridge so Viper threads can invoke
+///          IL entry functions directly when running inside the VM.
+
 #include "vm/RuntimeBridge.hpp"
 
 #include "il/core/Module.hpp"
@@ -32,6 +37,9 @@ namespace
 using il::runtime::signatures::make_signature;
 using il::runtime::signatures::SigParam;
 
+/// @brief Payload passed to the thread entry trampoline.
+/// @details Captures the module, program state, entry function, and user arg
+///          so a new VM can be created and invoked on the target function.
 struct VmThreadStartPayload
 {
     const il::core::Module *module = nullptr;
@@ -40,6 +48,11 @@ struct VmThreadStartPayload
     void *arg = nullptr;
 };
 
+/// @brief Thread entry trampoline for VM-backed Thread.Start.
+/// @details Validates the payload, creates a new VM bound to the same program
+///          state, and invokes the entry function. Any unexpected exception
+///          aborts the runtime to avoid silent thread failures.
+/// @param raw Opaque pointer to a @ref VmThreadStartPayload.
 extern "C" void vm_thread_entry_trampoline(void *raw)
 {
     VmThreadStartPayload *payload = static_cast<VmThreadStartPayload *>(raw);
@@ -72,6 +85,12 @@ extern "C" void vm_thread_entry_trampoline(void *raw)
     delete payload;
 }
 
+/// @brief Resolve a function pointer into a module function.
+/// @details The runtime passes a raw function pointer; this helper verifies it
+///          matches one of the module's function objects before use.
+/// @param module Module containing candidate functions.
+/// @param entry Raw pointer supplied by the runtime.
+/// @return Pointer to the matching function, or nullptr if invalid.
 static const il::core::Function *resolveEntryFunction(const il::core::Module &module, void *entry)
 {
     if (!entry)
@@ -85,6 +104,11 @@ static const il::core::Function *resolveEntryFunction(const il::core::Module &mo
     return nullptr;
 }
 
+/// @brief Validate the signature of a thread entry function.
+/// @details Thread entry functions must return void and accept either zero
+///          parameters or a single pointer parameter. Violations trap with a
+///          diagnostic message.
+/// @param fn Function to validate.
 static void validateEntrySignature(const il::core::Function &fn)
 {
     using Kind = il::core::Type::Kind;
@@ -97,6 +121,13 @@ static void validateEntrySignature(const il::core::Function &fn)
     rt_trap("Thread.Start: invalid entry signature");
 }
 
+/// @brief Runtime bridge handler for Viper.Threads.Thread.Start.
+/// @details When running inside a VM, this handler validates the entry function
+///          pointer, constructs a thread payload, and spawns a native thread
+///          that executes the IL entry via the trampoline. Outside the VM it
+///          forwards directly to @ref rt_thread_start.
+/// @param args Argument array provided by the runtime bridge.
+/// @param result Optional out-parameter to receive the thread handle.
 static void threads_thread_start_handler(void **args, void *result)
 {
     void *entry = nullptr;
@@ -136,6 +167,9 @@ static void threads_thread_start_handler(void **args, void *result)
 
 } // namespace
 
+/// @brief Register VM-aware thread externals with the runtime bridge.
+/// @details Installs the `Viper.Threads.Thread.Start` handler so Thread.Start
+///          uses the VM trampoline when invoked from managed code.
 void registerThreadsRuntimeExternals()
 {
     ExternDesc ext;

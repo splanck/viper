@@ -13,11 +13,21 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// @file
+/// @brief Centralized helpers for formatting VM diagnostic strings.
+/// @details Builds descriptive error messages for runtime bridge and verifier
+///          failures. All helpers are cold-path and allocate strings on demand.
+
 #include "vm/DiagFormat.hpp"
 
 namespace il::vm::diag
 {
 
+/// @brief Format a message for an unsupported runtime kind.
+/// @details Produces: "runtime bridge does not support <op> kind '<kind>'".
+/// @param operation Operation name being performed.
+/// @param kind IL type kind that is unsupported.
+/// @return Newly constructed diagnostic string.
 std::string formatUnsupportedKind(std::string_view operation, il::core::Type::Kind kind)
 {
     // Pre-allocate buffer to avoid reallocation
@@ -33,6 +43,10 @@ std::string formatUnsupportedKind(std::string_view operation, il::core::Type::Ki
     return result;
 }
 
+/// @brief Format a message for an unknown runtime helper.
+/// @details Produces: "attempted to call unknown runtime helper '<name>'".
+/// @param name Runtime helper name supplied by the caller.
+/// @return Newly constructed diagnostic string.
 std::string formatUnknownRuntimeHelper(std::string_view name)
 {
     // Format: "attempted to call unknown runtime helper '<name>'"
@@ -44,6 +58,13 @@ std::string formatUnknownRuntimeHelper(std::string_view name)
     return result;
 }
 
+/// @brief Format an argument count mismatch message.
+/// @details Produces: "argument count mismatch for function <name>: expected N
+///          argument(s), received M".
+/// @param functionName Name of the function being called.
+/// @param expected Expected argument count.
+/// @param received Observed argument count.
+/// @return Newly constructed diagnostic string.
 std::string formatArgumentCountMismatch(std::string_view functionName,
                                         std::size_t expected,
                                         std::size_t received)
@@ -61,6 +82,14 @@ std::string formatArgumentCountMismatch(std::string_view functionName,
     return result;
 }
 
+/// @brief Format a branch argument mismatch message.
+/// @details Produces: "branch argument count mismatch targeting '<target>'
+///          [from '<source>']: expected N, got M".
+/// @param targetLabel Target block label.
+/// @param sourceLabel Source block label, if known.
+/// @param expected Expected argument count.
+/// @param provided Provided argument count.
+/// @return Newly constructed diagnostic string.
 std::string formatBranchArgMismatch(std::string_view targetLabel,
                                     std::string_view sourceLabel,
                                     std::size_t expected,

@@ -1,0 +1,261 @@
+module TestCollections;
+
+import "./_support";
+
+// Comprehensive collections tests
+// Tests Seq, Map, Bag, Stack, Queue, Ring, Heap, TreeMap, Bytes, List
+
+func start() {
+    Viper.Terminal.Say("=== Collections Tests ===");
+
+    testSeq();
+    testMap();
+    testBag();
+    testStack();
+    testQueue();
+    testRing();
+    testHeap();
+    testTreeMap();
+    testBytes();
+    testList();
+
+    report();
+}
+
+func testSeq() {
+    // Create and basic ops
+    var s = Viper.Collections.Seq.New();
+    assertEqInt(Viper.Collections.Seq.get_Len(s), 0, "seq new empty");
+
+    // Push elements (fixed from Add)
+    Viper.Collections.Seq.Push(s, "first");
+    Viper.Collections.Seq.Push(s, "second");
+    Viper.Collections.Seq.Push(s, "third");
+    assertEqInt(Viper.Collections.Seq.get_Len(s), 3, "seq push len");
+
+    // Pop
+    var popped = Viper.Collections.Seq.Pop(s);
+    assertEqInt(Viper.Collections.Seq.get_Len(s), 2, "seq pop len");
+
+    // Clear
+    Viper.Collections.Seq.Clear(s);
+    assertEqInt(Viper.Collections.Seq.get_Len(s), 0, "seq clear");
+}
+
+func testMap() {
+    var m = Viper.Collections.Map.New();
+    assertEqInt(Viper.Collections.Map.get_Len(m), 0, "map new empty");
+
+    // Set/Get (values must be objects, using strings)
+    Viper.Collections.Map.Set(m, "a", "val1");
+    Viper.Collections.Map.Set(m, "b", "val2");
+    assertEqInt(Viper.Collections.Map.get_Len(m), 2, "map set len");
+
+    // Has
+    assertTrue(Viper.Collections.Map.Has(m, "a"), "map has existing");
+    assertFalse(Viper.Collections.Map.Has(m, "z"), "map has missing");
+
+    // Remove
+    assertTrue(Viper.Collections.Map.Remove(m, "a"), "map remove existing");
+    assertFalse(Viper.Collections.Map.Has(m, "a"), "map remove confirmed");
+    assertEqInt(Viper.Collections.Map.get_Len(m), 1, "map remove len");
+
+    // SetIfMissing
+    assertTrue(Viper.Collections.Map.SetIfMissing(m, "c", "val3"), "map setifmissing new");
+    assertFalse(Viper.Collections.Map.SetIfMissing(m, "b", "val99"), "map setifmissing existing");
+
+    // Clear
+    Viper.Collections.Map.Clear(m);
+    assertEqInt(Viper.Collections.Map.get_Len(m), 0, "map clear");
+}
+
+func testBag() {
+    var b = Viper.Collections.Bag.New();
+    assertEqInt(Viper.Collections.Bag.get_Len(b), 0, "bag new empty");
+
+    // Put/Has
+    assertTrue(Viper.Collections.Bag.Put(b, "x"), "bag put new");
+    assertFalse(Viper.Collections.Bag.Put(b, "x"), "bag put duplicate");
+    assertTrue(Viper.Collections.Bag.Has(b, "x"), "bag has");
+    assertEqInt(Viper.Collections.Bag.get_Len(b), 1, "bag put len");
+
+    // Add more
+    Viper.Collections.Bag.Put(b, "y");
+    Viper.Collections.Bag.Put(b, "z");
+    assertEqInt(Viper.Collections.Bag.get_Len(b), 3, "bag multi len");
+
+    // Drop
+    assertTrue(Viper.Collections.Bag.Drop(b, "y"), "bag drop existing");
+    assertFalse(Viper.Collections.Bag.Drop(b, "missing"), "bag drop missing");
+    assertEqInt(Viper.Collections.Bag.get_Len(b), 2, "bag drop len");
+
+    // Clear
+    Viper.Collections.Bag.Clear(b);
+    assertEqInt(Viper.Collections.Bag.get_Len(b), 0, "bag clear");
+}
+
+func testStack() {
+    var st = Viper.Collections.Stack.New();
+    assertEqInt(Viper.Collections.Stack.get_Len(st), 0, "stack new empty");
+
+    // Push/Pop LIFO (values must be objects)
+    Viper.Collections.Stack.Push(st, "first");
+    Viper.Collections.Stack.Push(st, "second");
+    Viper.Collections.Stack.Push(st, "third");
+    assertEqInt(Viper.Collections.Stack.get_Len(st), 3, "stack push len");
+
+    var top = Viper.Collections.Stack.Pop(st);
+    assertEqInt(Viper.Collections.Stack.get_Len(st), 2, "stack pop len");
+
+    // Clear
+    Viper.Collections.Stack.Clear(st);
+    assertEqInt(Viper.Collections.Stack.get_Len(st), 0, "stack clear");
+}
+
+func testQueue() {
+    var q = Viper.Collections.Queue.New();
+    assertEqInt(Viper.Collections.Queue.get_Len(q), 0, "queue new empty");
+
+    // Add/Take FIFO
+    Viper.Collections.Queue.Add(q, "first");
+    Viper.Collections.Queue.Add(q, "second");
+    assertEqInt(Viper.Collections.Queue.get_Len(q), 2, "queue add len");
+
+    var taken = Viper.Collections.Queue.Take(q);
+    assertEqInt(Viper.Collections.Queue.get_Len(q), 1, "queue take len");
+
+    // Clear
+    Viper.Collections.Queue.Clear(q);
+    assertEqInt(Viper.Collections.Queue.get_Len(q), 0, "queue clear");
+}
+
+func testRing() {
+    // Ring buffer with fixed capacity
+    var r = Viper.Collections.Ring.New(3);
+    assertEqInt(Viper.Collections.Ring.get_Len(r), 0, "ring new empty");
+
+    // Push elements (values must be objects)
+    Viper.Collections.Ring.Push(r, "a");
+    Viper.Collections.Ring.Push(r, "b");
+    assertEqInt(Viper.Collections.Ring.get_Len(r), 2, "ring push len");
+
+    // Pop
+    var popped = Viper.Collections.Ring.Pop(r);
+    assertEqInt(Viper.Collections.Ring.get_Len(r), 1, "ring pop len");
+
+    // Clear
+    Viper.Collections.Ring.Clear(r);
+    assertEqInt(Viper.Collections.Ring.get_Len(r), 0, "ring clear");
+}
+
+func testHeap() {
+    // Min heap by default
+    var h = Viper.Collections.Heap.New();
+    assertEqInt(Viper.Collections.Heap.get_Len(h), 0, "heap new empty");
+
+    // Push (priority, value)
+    Viper.Collections.Heap.Push(h, 30, "thirty");
+    Viper.Collections.Heap.Push(h, 10, "ten");
+    Viper.Collections.Heap.Push(h, 20, "twenty");
+    assertEqInt(Viper.Collections.Heap.get_Len(h), 3, "heap push len");
+
+    // Pop (min heap - should get smallest priority)
+    var popped = Viper.Collections.Heap.Pop(h);
+    assertEqInt(Viper.Collections.Heap.get_Len(h), 2, "heap pop len");
+
+    // Clear
+    Viper.Collections.Heap.Clear(h);
+    assertEqInt(Viper.Collections.Heap.get_Len(h), 0, "heap clear");
+}
+
+func testTreeMap() {
+    var tm = Viper.Collections.TreeMap.New();
+    assertEqInt(Viper.Collections.TreeMap.get_Len(tm), 0, "treemap new empty");
+
+    // Set/Has (values must be objects)
+    Viper.Collections.TreeMap.Set(tm, "b", "two");
+    Viper.Collections.TreeMap.Set(tm, "a", "one");
+    Viper.Collections.TreeMap.Set(tm, "c", "three");
+    assertEqInt(Viper.Collections.TreeMap.get_Len(tm), 3, "treemap set len");
+    assertTrue(Viper.Collections.TreeMap.Has(tm, "a"), "treemap has");
+
+    // Drop (fixed from Remove)
+    assertTrue(Viper.Collections.TreeMap.Drop(tm, "b"), "treemap drop");
+    assertEqInt(Viper.Collections.TreeMap.get_Len(tm), 2, "treemap drop len");
+
+    // Clear
+    Viper.Collections.TreeMap.Clear(tm);
+    assertEqInt(Viper.Collections.TreeMap.get_Len(tm), 0, "treemap clear");
+}
+
+func testBytes() {
+    // Create byte buffer
+    var b = Viper.Collections.Bytes.New(10);
+    assertEqInt(Viper.Collections.Bytes.get_Len(b), 10, "bytes new len");
+
+    // Set/Get
+    Viper.Collections.Bytes.Set(b, 0, 65);
+    Viper.Collections.Bytes.Set(b, 1, 66);
+    assertEqInt(Viper.Collections.Bytes.Get(b, 0), 65, "bytes get");
+
+    // Fill
+    Viper.Collections.Bytes.Fill(b, 0);
+    assertEqInt(Viper.Collections.Bytes.Get(b, 0), 0, "bytes fill");
+
+    // FromStr/ToStr
+    var strBytes = Viper.Collections.Bytes.FromStr("Hello");
+    assertEqInt(Viper.Collections.Bytes.get_Len(strBytes), 5, "bytes fromstr len");
+    assertEqStr(Viper.Collections.Bytes.ToStr(strBytes), "Hello", "bytes tostr");
+
+    // Hex encoding
+    Viper.Collections.Bytes.Set(strBytes, 0, 72);  // 'H'
+    var hexStr = Viper.Collections.Bytes.ToHex(strBytes);
+    assertNotEmpty(hexStr, "bytes tohex");
+
+    // Base64 encoding
+    var b64Str = Viper.Collections.Bytes.ToBase64(strBytes);
+    assertNotEmpty(b64Str, "bytes tobase64");
+
+    // Clone
+    var cloned = Viper.Collections.Bytes.Clone(strBytes);
+    assertEqInt(Viper.Collections.Bytes.get_Len(cloned), 5, "bytes clone len");
+
+    // Find
+    var smallBuf = Viper.Collections.Bytes.FromStr("abcabc");
+    assertGt(Viper.Collections.Bytes.Find(smallBuf, 98), -1, "bytes find");  // 98 = 'b'
+}
+
+func testList() {
+    var lst = Viper.Collections.List.New();
+    assertEqInt(Viper.Collections.List.get_Count(lst), 0, "list new empty");
+
+    // Add
+    Viper.Collections.List.Add(lst, "a");
+    Viper.Collections.List.Add(lst, "b");
+    Viper.Collections.List.Add(lst, "c");
+    assertEqInt(Viper.Collections.List.get_Count(lst), 3, "list add count");
+
+    // Has
+    assertTrue(Viper.Collections.List.Has(lst, "b"), "list has");
+    assertFalse(Viper.Collections.List.Has(lst, "z"), "list has not");
+
+    // Find
+    assertEqInt(Viper.Collections.List.Find(lst, "b"), 1, "list find");
+    assertEqInt(Viper.Collections.List.Find(lst, "z"), -1, "list find not");
+
+    // Insert
+    Viper.Collections.List.Insert(lst, 1, "x");
+    assertEqInt(Viper.Collections.List.get_Count(lst), 4, "list insert count");
+
+    // RemoveAt
+    Viper.Collections.List.RemoveAt(lst, 1);
+    assertEqInt(Viper.Collections.List.get_Count(lst), 3, "list removeat count");
+
+    // Remove
+    assertTrue(Viper.Collections.List.Remove(lst, "a"), "list remove");
+    assertEqInt(Viper.Collections.List.get_Count(lst), 2, "list remove count");
+
+    // Clear
+    Viper.Collections.List.Clear(lst);
+    assertEqInt(Viper.Collections.List.get_Count(lst), 0, "list clear");
+}

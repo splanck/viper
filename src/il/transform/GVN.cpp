@@ -15,6 +15,13 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// @file
+/// @brief Implements Global Value Numbering with redundant load elimination.
+/// @details Performs value numbering along dominator-tree paths to replace
+///          redundant pure computations, and memoizes load results when alias
+///          analysis proves they are still valid. The traversal is preorder so
+///          only dominating information is visible in each block.
+
 #include "il/transform/GVN.hpp"
 
 #include "il/transform/AnalysisManager.hpp"
@@ -54,6 +61,10 @@ using il::transform::ValueHash;
 using il::transform::ValueKey;
 using il::transform::ValueKeyHash;
 
+/// @brief Key describing a load by pointer, type, and (optional) byte size.
+/// @details Used to memoize load results for redundant load elimination. The
+///          size field is optional because some types may not map to a known
+///          size; in that case the key still differentiates by pointer+type.
 struct LoadKey
 {
     Value ptr;
@@ -67,6 +78,9 @@ struct LoadKey
     }
 };
 
+/// @brief Hash functor for @ref LoadKey.
+/// @details Combines the pointer hash, type kind, and size (when present) to
+///          produce a stable hash for unordered maps.
 struct LoadKeyHash
 {
     size_t operator()(const LoadKey &k) const noexcept
@@ -79,12 +93,29 @@ struct LoadKeyHash
     }
 };
 
+/// @brief Per-path state threaded through the dominator-tree traversal.
+/// @details Contains value-numbering expressions and memoized loads visible on
+///          the current dominating path. State is copied when recursing into
+///          children to preserve path sensitivity.
 struct State
 {
     std::unordered_map<ValueKey, Value, ValueKeyHash> exprs;
     std::unordered_map<LoadKey, Value, LoadKeyHash> loads;
 };
 
+/// @brief Visit a basic block and apply GVN/RLE transformations.
+/// @details Walks instructions in order, eliminating redundant loads and pure
+///          expressions. Load elimination uses exact key matches first, then
+///          falls back to MustAlias checks. Stores and impure calls invalidate
+///          load memoization conservatively. After processing the block, the
+///          function recurses into dominator children, passing a copy of the
+///          current state so only dominating facts are visible.
+/// @param F Function being optimized.
+/// @param B Current basic block in dominator traversal.
+/// @param DT Dominator tree for the function.
+/// @param AA Alias analysis used for load/store reasoning.
+/// @param state Current value/load memoization state (copied per child).
+/// @param changed Output flag set true if any instruction is removed.
 void visitBlock(Function &F,
                 BasicBlock *B,
                 const viper::analysis::DomTree &DT,
@@ -213,11 +244,22 @@ void visitBlock(Function &F,
 
 } // namespace
 
+/// @brief Return the unique identifier for the GVN pass.
+/// @details Used by the pass registry and pipeline definitions.
+/// @return The canonical pass id string "gvn".
 std::string_view GVN::id() const
 {
     return "gvn";
 }
 
+/// @brief Execute GVN over a function.
+/// @details Initializes analysis dependencies (CFG, dominators, alias analysis),
+///          then walks the dominator tree from the entry block. If no changes
+///          are made, all analyses are preserved; otherwise a conservative
+///          invalidation is returned.
+/// @param function Function to optimize.
+/// @param analysis Analysis manager used to query required analyses.
+/// @return Preserved analysis set after the transformation.
 PreservedAnalyses GVN::run(Function &function, AnalysisManager &analysis)
 {
     // Query required analyses
@@ -243,6 +285,10 @@ PreservedAnalyses GVN::run(Function &function, AnalysisManager &analysis)
     return p;
 }
 
+/// @brief Register the GVN pass in the pass registry.
+/// @details Associates the "gvn" identifier with a factory that constructs
+///          a new @ref GVN instance.
+/// @param registry Pass registry to update.
 void registerGVNPass(PassRegistry &registry)
 {
     registry.registerFunctionPass("gvn", []() { return std::make_unique<GVN>(); });

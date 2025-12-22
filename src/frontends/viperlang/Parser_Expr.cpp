@@ -280,7 +280,7 @@ ExprPtr Parser::parseLogicalOr()
         return nullptr;
 
     Token opTok;
-    while (match(TokenKind::PipePipe, &opTok))
+    while (match(TokenKind::PipePipe, &opTok) || match(TokenKind::KwOr, &opTok))
     {
         SourceLoc loc = opTok.loc;
         ExprPtr right = parseLogicalAnd();
@@ -300,7 +300,7 @@ ExprPtr Parser::parseLogicalAnd()
         return nullptr;
 
     Token opTok;
-    while (match(TokenKind::AmpAmp, &opTok))
+    while (match(TokenKind::AmpAmp, &opTok) || match(TokenKind::KwAnd, &opTok))
     {
         SourceLoc loc = opTok.loc;
         ExprPtr right = parseEquality();
@@ -437,7 +437,8 @@ ExprPtr Parser::parseMultiplicative()
 
 ExprPtr Parser::parseUnary()
 {
-    if (check(TokenKind::Minus) || check(TokenKind::Bang) || check(TokenKind::Tilde))
+    if (check(TokenKind::Minus) || check(TokenKind::Bang) || check(TokenKind::Tilde) ||
+        check(TokenKind::KwNot))
     {
         Token opTok = advance();
         UnaryOp op;
@@ -447,6 +448,7 @@ ExprPtr Parser::parseUnary()
                 op = UnaryOp::Neg;
                 break;
             case TokenKind::Bang:
+            case TokenKind::KwNot:
                 op = UnaryOp::Not;
                 break;
             case TokenKind::Tilde:
@@ -585,7 +587,7 @@ ExprPtr Parser::parseBinaryFrom(ExprPtr expr)
     }
     // Parse logical and
     Token opTok;
-    while (match(TokenKind::AmpAmp, &opTok))
+    while (match(TokenKind::AmpAmp, &opTok) || match(TokenKind::KwAnd, &opTok))
     {
         SourceLoc loc = opTok.loc;
         ExprPtr right = parseEquality();
@@ -594,7 +596,7 @@ ExprPtr Parser::parseBinaryFrom(ExprPtr expr)
         expr = std::make_unique<BinaryExpr>(loc, BinaryOp::And, std::move(expr), std::move(right));
     }
     // Parse logical or
-    while (match(TokenKind::PipePipe, &opTok))
+    while (match(TokenKind::PipePipe, &opTok) || match(TokenKind::KwOr, &opTok))
     {
         SourceLoc loc = opTok.loc;
         ExprPtr right = parseLogicalAnd();

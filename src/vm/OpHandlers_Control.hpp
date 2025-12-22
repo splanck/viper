@@ -13,6 +13,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// @file
+/// @brief Control-flow opcode handlers and switch dispatch helpers for the VM.
+/// @details Declares handlers for branching, calls, returns, traps, and
+///          exception-handling opcodes. Inline helpers build efficient switch
+///          dispatch tables and cache them in the execution state.
+
 #pragma once
 
 #include "vm/OpHandlerAccess.hpp"
@@ -38,8 +44,12 @@
 
 namespace il::vm::detail::control
 {
+/// @brief Execution state alias used by control handlers.
 using ExecState = VMAccess::ExecState;
 
+/// @brief Metadata extracted from a switch instruction.
+/// @details Captures distinct case values, their successor indices, and the
+///          default target index so the VM can build efficient dispatch tables.
 struct SwitchMeta
 {
     const void *key = nullptr;
@@ -50,6 +60,11 @@ struct SwitchMeta
 
 namespace inline_impl
 {
+/// @brief Extract switch case metadata from an instruction.
+/// @details Builds a list of distinct case values and their successor indices.
+///          Duplicate case values are ignored to preserve deterministic behavior.
+/// @param in switch.i32 instruction to analyze.
+/// @return Populated SwitchMeta describing cases and default index.
 inline SwitchMeta collectSwitchMeta(const il::core::Instr &in)
 {
     assert(in.op == il::core::Opcode::SwitchI32 && "expected switch.i32 instruction");
@@ -82,6 +97,13 @@ inline SwitchMeta collectSwitchMeta(const il::core::Instr &in)
     return meta;
 }
 
+/// @brief Lookup a switch target in a dense jump table.
+/// @details Converts the selector into an offset from the base value and returns
+///          the target index when in range; otherwise returns @p defIdx.
+/// @param table Dense jump table.
+/// @param sel Switch selector value.
+/// @param defIdx Default successor index.
+/// @return Target successor index, or @p defIdx if out of range.
 inline int32_t lookupDense(const viper::vm::DenseJumpTable &table, int32_t sel, int32_t defIdx)
 {
     const int64_t offset = static_cast<int64_t>(sel) - static_cast<int64_t>(table.base);
@@ -91,6 +113,13 @@ inline int32_t lookupDense(const viper::vm::DenseJumpTable &table, int32_t sel, 
     return (target < 0) ? defIdx : target;
 }
 
+/// @brief Lookup a switch target in a sorted case table.
+/// @details Performs binary search over the sorted case values and returns the
+///          corresponding target index, or @p defIdx when not found.
+/// @param cases Sorted case table.
+/// @param sel Switch selector value.
+/// @param defIdx Default successor index.
+/// @return Target successor index, or @p defIdx if no match.
 inline int32_t lookupSorted(const viper::vm::SortedCases &cases, int32_t sel, int32_t defIdx)
 {
     auto it = std::lower_bound(cases.keys.begin(), cases.keys.end(), sel);
@@ -100,12 +129,26 @@ inline int32_t lookupSorted(const viper::vm::SortedCases &cases, int32_t sel, in
     return cases.targetIdx[idx];
 }
 
+/// @brief Lookup a switch target in a hashed case table.
+/// @details Uses an unordered map to retrieve the target index in expected
+///          constant time. Returns @p defIdx when no entry is present.
+/// @param cases Hashed case table.
+/// @param sel Switch selector value.
+/// @param defIdx Default successor index.
+/// @return Target successor index, or @p defIdx if no match.
 inline int32_t lookupHashed(const viper::vm::HashedCases &cases, int32_t sel, int32_t defIdx)
 {
     auto it = cases.map.find(sel);
     return (it == cases.map.end()) ? defIdx : it->second;
 }
 
+/// @brief Choose a switch backend strategy based on case density.
+/// @details Uses tunables (possibly overridden by environment variables) to
+///          decide between dense tables, sorted tables, hashed tables, or a
+///          linear fallback. The heuristic favors dense tables for compact
+///          ranges and hashes for sparse large ranges.
+/// @param meta Switch metadata containing case values.
+/// @return Selected backend kind.
 inline viper::vm::SwitchCacheEntry::Kind chooseBackend(const SwitchMeta &meta)
 {
     if (meta.values.empty())
@@ -166,6 +209,11 @@ inline viper::vm::SwitchCacheEntry::Kind chooseBackend(const SwitchMeta &meta)
     return viper::vm::SwitchCacheEntry::Sorted;
 }
 
+/// @brief Build a dense jump table from switch metadata.
+/// @details Allocates a contiguous target array covering [min, max] and fills
+///          entries with successor indices or -1 for missing values.
+/// @param meta Switch metadata containing case values and successor indices.
+/// @return Dense jump table representation.
 inline viper::vm::DenseJumpTable buildDense(const SwitchMeta &meta)
 {
     viper::vm::DenseJumpTable table;
@@ -181,6 +229,11 @@ inline viper::vm::DenseJumpTable buildDense(const SwitchMeta &meta)
     return table;
 }
 
+/// @brief Build a hashed case table from switch metadata.
+/// @details Inserts each distinct case value into an unordered map for fast
+///          lookup when the selector range is sparse.
+/// @param meta Switch metadata containing case values and successor indices.
+/// @return Hashed case representation.
 inline viper::vm::HashedCases buildHashed(const SwitchMeta &meta)
 {
     viper::vm::HashedCases hashed;
@@ -190,6 +243,11 @@ inline viper::vm::HashedCases buildHashed(const SwitchMeta &meta)
     return hashed;
 }
 
+/// @brief Build a sorted case table from switch metadata.
+/// @details Orders case values and aligns them with successor indices so binary
+///          search can be used during dispatch.
+/// @param meta Switch metadata containing case values and successor indices.
+/// @return Sorted case representation.
 inline viper::vm::SortedCases buildSorted(const SwitchMeta &meta)
 {
     std::vector<size_t> order(meta.values.size());
@@ -208,6 +266,13 @@ inline viper::vm::SortedCases buildSorted(const SwitchMeta &meta)
     return sorted;
 }
 
+/// @brief Retrieve or construct a cached switch dispatch entry.
+/// @details Looks up cached metadata by instruction address. If absent, it
+///          builds the preferred backend according to the global switch mode
+///          and inserts the entry into the cache.
+/// @param cache Switch cache stored in the execution state.
+/// @param in switch.i32 instruction to cache.
+/// @return Reference to the cached entry for @p in.
 inline viper::vm::SwitchCacheEntry &getOrBuildSwitchCache(viper::vm::SwitchCache &cache,
                                                           const il::core::Instr &in)
 {
@@ -269,6 +334,17 @@ inline viper::vm::SwitchCacheEntry &getOrBuildSwitchCache(viper::vm::SwitchCache
 }
 } // namespace inline_impl
 
+/// @brief Branch to a successor label by index.
+/// @details Resolves the target block, marshals branch arguments into the new
+///          frame state, and updates the current block and instruction pointer.
+/// @param vm Active VM instance.
+/// @param fr Current execution frame.
+/// @param in Branch instruction being executed.
+/// @param idx Index into @p in.labels identifying the target.
+/// @param blocks Block map for the current function.
+/// @param bb In/out current basic block pointer.
+/// @param ip In/out instruction pointer within @p bb.
+/// @return Execution result indicating jump or trap status.
 VM::ExecResult branchToTarget(VM &vm,
                               Frame &fr,
                               const il::core::Instr &in,
@@ -277,6 +353,16 @@ VM::ExecResult branchToTarget(VM &vm,
                               const il::core::BasicBlock *&bb,
                               size_t &ip);
 
+/// @brief Inline unconditional branch handler for fast dispatch.
+/// @details Delegates to @ref branchToTarget with the first label as the target.
+/// @param vm Active VM instance.
+/// @param state Optional execution state (unused).
+/// @param fr Current execution frame.
+/// @param in Instruction being executed.
+/// @param blocks Block map for the current function.
+/// @param bb In/out current basic block pointer.
+/// @param ip In/out instruction pointer within @p bb.
+/// @return Execution result indicating jump or trap status.
 inline VM::ExecResult handleBrImpl(VM &vm,
                                    ExecState *state,
                                    Frame &fr,
@@ -289,6 +375,17 @@ inline VM::ExecResult handleBrImpl(VM &vm,
     return branchToTarget(vm, fr, in, 0, blocks, bb, ip);
 }
 
+/// @brief Inline conditional branch handler for fast dispatch.
+/// @details Evaluates the condition operand and branches to label 0 when true
+///          or label 1 when false.
+/// @param vm Active VM instance.
+/// @param state Optional execution state (unused).
+/// @param fr Current execution frame.
+/// @param in Instruction being executed.
+/// @param blocks Block map for the current function.
+/// @param bb In/out current basic block pointer.
+/// @param ip In/out instruction pointer within @p bb.
+/// @return Execution result indicating jump or trap status.
 inline VM::ExecResult handleCBrImpl(VM &vm,
                                     ExecState *state,
                                     Frame &fr,
@@ -303,6 +400,18 @@ inline VM::ExecResult handleCBrImpl(VM &vm,
     return branchToTarget(vm, fr, in, targetIdx, blocks, bb, ip);
 }
 
+/// @brief Inline switch.i32 handler for fast dispatch.
+/// @details Evaluates the scrutinee and chooses a successor using a cached
+///          backend (dense, sorted, hashed, or linear). Traps if the selected
+///          target index is out of range.
+/// @param vm Active VM instance.
+/// @param state Optional execution state containing a switch cache.
+/// @param fr Current execution frame.
+/// @param in Instruction being executed.
+/// @param blocks Block map for the current function.
+/// @param bb In/out current basic block pointer.
+/// @param ip In/out instruction pointer within @p bb.
+/// @return Execution result indicating jump or trap status.
 inline VM::ExecResult handleSwitchI32Impl(VM &vm,
                                           ExecState *state,
                                           Frame &fr,
@@ -409,6 +518,16 @@ inline VM::ExecResult handleSwitchI32Impl(VM &vm,
     return result;
 }
 
+/// @brief Execute a switch.i32 instruction.
+/// @details Resolves the target block based on the scrutinee and dispatch
+///          policy, then updates the VM control-flow state.
+/// @param vm Active VM instance.
+/// @param fr Current execution frame.
+/// @param in Instruction being executed.
+/// @param blocks Block map for the current function.
+/// @param bb In/out current basic block pointer.
+/// @param ip In/out instruction pointer within @p bb.
+/// @return Execution result indicating jump or trap status.
 VM::ExecResult handleSwitchI32(VM &vm,
                                Frame &fr,
                                const il::core::Instr &in,
@@ -416,6 +535,16 @@ VM::ExecResult handleSwitchI32(VM &vm,
                                const il::core::BasicBlock *&bb,
                                size_t &ip);
 
+/// @brief Execute an unconditional branch (br).
+/// @details Transfers control to the target block and forwards branch
+///          arguments to the destination block parameters.
+/// @param vm Active VM instance.
+/// @param fr Current execution frame.
+/// @param in Instruction being executed.
+/// @param blocks Block map for the current function.
+/// @param bb In/out current basic block pointer.
+/// @param ip In/out instruction pointer within @p bb.
+/// @return Execution result indicating jump or trap status.
 VM::ExecResult handleBr(VM &vm,
                         Frame &fr,
                         const il::core::Instr &in,
@@ -423,6 +552,16 @@ VM::ExecResult handleBr(VM &vm,
                         const il::core::BasicBlock *&bb,
                         size_t &ip);
 
+/// @brief Execute a conditional branch (cbr).
+/// @details Evaluates the condition and branches to the true or false target,
+///          forwarding the corresponding argument list.
+/// @param vm Active VM instance.
+/// @param fr Current execution frame.
+/// @param in Instruction being executed.
+/// @param blocks Block map for the current function.
+/// @param bb In/out current basic block pointer.
+/// @param ip In/out instruction pointer within @p bb.
+/// @return Execution result indicating jump or trap status.
 VM::ExecResult handleCBr(VM &vm,
                          Frame &fr,
                          const il::core::Instr &in,
@@ -430,6 +569,16 @@ VM::ExecResult handleCBr(VM &vm,
                          const il::core::BasicBlock *&bb,
                          size_t &ip);
 
+/// @brief Execute a return instruction (ret).
+/// @details Populates the VM return value (if any) and marks the frame as
+///          completed so the caller can resume.
+/// @param vm Active VM instance.
+/// @param fr Current execution frame.
+/// @param in Instruction being executed.
+/// @param blocks Block map for the current function.
+/// @param bb In/out current basic block pointer.
+/// @param ip In/out instruction pointer within @p bb.
+/// @return Execution result indicating return or trap status.
 VM::ExecResult handleRet(VM &vm,
                          Frame &fr,
                          const il::core::Instr &in,
@@ -437,6 +586,16 @@ VM::ExecResult handleRet(VM &vm,
                          const il::core::BasicBlock *&bb,
                          size_t &ip);
 
+/// @brief Execute a direct call instruction (call).
+/// @details Resolves the callee, marshals arguments, and transfers control to
+///          the target function, handling runtime externs as needed.
+/// @param vm Active VM instance.
+/// @param fr Current execution frame.
+/// @param in Instruction being executed.
+/// @param blocks Block map for the current function.
+/// @param bb In/out current basic block pointer.
+/// @param ip In/out instruction pointer within @p bb.
+/// @return Execution result indicating call, return, or trap status.
 VM::ExecResult handleCall(VM &vm,
                           Frame &fr,
                           const il::core::Instr &in,
@@ -444,6 +603,16 @@ VM::ExecResult handleCall(VM &vm,
                           const il::core::BasicBlock *&bb,
                           size_t &ip);
 
+/// @brief Execute an indirect call instruction (call.indirect).
+/// @details Resolves the callee pointer at runtime, marshals arguments, and
+///          transfers control to the target function.
+/// @param vm Active VM instance.
+/// @param fr Current execution frame.
+/// @param in Instruction being executed.
+/// @param blocks Block map for the current function.
+/// @param bb In/out current basic block pointer.
+/// @param ip In/out instruction pointer within @p bb.
+/// @return Execution result indicating call, return, or trap status.
 VM::ExecResult handleCallIndirect(VM &vm,
                                   Frame &fr,
                                   const il::core::Instr &in,
@@ -451,6 +620,15 @@ VM::ExecResult handleCallIndirect(VM &vm,
                                   const il::core::BasicBlock *&bb,
                                   size_t &ip);
 
+/// @brief Retrieve the current error object (err.get).
+/// @details Reads the VM's active error slot and writes it to the destination.
+/// @param vm Active VM instance.
+/// @param fr Current execution frame.
+/// @param in Instruction being executed.
+/// @param blocks Block map for the current function.
+/// @param bb In/out current basic block pointer.
+/// @param ip In/out instruction pointer within @p bb.
+/// @return Execution result indicating continue or trap status.
 VM::ExecResult handleErrGet(VM &vm,
                             Frame &fr,
                             const il::core::Instr &in,
@@ -458,6 +636,16 @@ VM::ExecResult handleErrGet(VM &vm,
                             const il::core::BasicBlock *&bb,
                             size_t &ip);
 
+/// @brief Enter an exception handler region (eh.entry).
+/// @details Pushes a handler record so subsequent errors can be caught by the
+///          current function's handler blocks.
+/// @param vm Active VM instance.
+/// @param fr Current execution frame.
+/// @param in Instruction being executed.
+/// @param blocks Block map for the current function.
+/// @param bb In/out current basic block pointer.
+/// @param ip In/out instruction pointer within @p bb.
+/// @return Execution result indicating continue or trap status.
 VM::ExecResult handleEhEntry(VM &vm,
                              Frame &fr,
                              const il::core::Instr &in,
@@ -465,6 +653,15 @@ VM::ExecResult handleEhEntry(VM &vm,
                              const il::core::BasicBlock *&bb,
                              size_t &ip);
 
+/// @brief Push a new exception handler (eh.push).
+/// @details Adds a handler to the EH stack for nested try regions.
+/// @param vm Active VM instance.
+/// @param fr Current execution frame.
+/// @param in Instruction being executed.
+/// @param blocks Block map for the current function.
+/// @param bb In/out current basic block pointer.
+/// @param ip In/out instruction pointer within @p bb.
+/// @return Execution result indicating continue or trap status.
 VM::ExecResult handleEhPush(VM &vm,
                             Frame &fr,
                             const il::core::Instr &in,
@@ -472,6 +669,15 @@ VM::ExecResult handleEhPush(VM &vm,
                             const il::core::BasicBlock *&bb,
                             size_t &ip);
 
+/// @brief Pop the most recent exception handler (eh.pop).
+/// @details Removes the top handler from the EH stack.
+/// @param vm Active VM instance.
+/// @param fr Current execution frame.
+/// @param in Instruction being executed.
+/// @param blocks Block map for the current function.
+/// @param bb In/out current basic block pointer.
+/// @param ip In/out instruction pointer within @p bb.
+/// @return Execution result indicating continue or trap status.
 VM::ExecResult handleEhPop(VM &vm,
                            Frame &fr,
                            const il::core::Instr &in,
@@ -479,6 +685,16 @@ VM::ExecResult handleEhPop(VM &vm,
                            const il::core::BasicBlock *&bb,
                            size_t &ip);
 
+/// @brief Resume exception handling within the current handler (resume.same).
+/// @details Transfers control to the current handler continuation without
+///          unwinding to an outer handler.
+/// @param vm Active VM instance.
+/// @param fr Current execution frame.
+/// @param in Instruction being executed.
+/// @param blocks Block map for the current function.
+/// @param bb In/out current basic block pointer.
+/// @param ip In/out instruction pointer within @p bb.
+/// @return Execution result indicating jump or trap status.
 VM::ExecResult handleResumeSame(VM &vm,
                                 Frame &fr,
                                 const il::core::Instr &in,
@@ -486,6 +702,15 @@ VM::ExecResult handleResumeSame(VM &vm,
                                 const il::core::BasicBlock *&bb,
                                 size_t &ip);
 
+/// @brief Resume exception handling at the next enclosing handler (resume.next).
+/// @details Pops the current handler and transfers control to the next one.
+/// @param vm Active VM instance.
+/// @param fr Current execution frame.
+/// @param in Instruction being executed.
+/// @param blocks Block map for the current function.
+/// @param bb In/out current basic block pointer.
+/// @param ip In/out instruction pointer within @p bb.
+/// @return Execution result indicating jump or trap status.
 VM::ExecResult handleResumeNext(VM &vm,
                                 Frame &fr,
                                 const il::core::Instr &in,
@@ -493,6 +718,16 @@ VM::ExecResult handleResumeNext(VM &vm,
                                 const il::core::BasicBlock *&bb,
                                 size_t &ip);
 
+/// @brief Resume exception handling at a specific handler label (resume.label).
+/// @details Transfers control to the handler identified by the instruction's
+///          label operand, preserving the active error payload.
+/// @param vm Active VM instance.
+/// @param fr Current execution frame.
+/// @param in Instruction being executed.
+/// @param blocks Block map for the current function.
+/// @param bb In/out current basic block pointer.
+/// @param ip In/out instruction pointer within @p bb.
+/// @return Execution result indicating jump or trap status.
 VM::ExecResult handleResumeLabel(VM &vm,
                                  Frame &fr,
                                  const il::core::Instr &in,
@@ -500,6 +735,15 @@ VM::ExecResult handleResumeLabel(VM &vm,
                                  const il::core::BasicBlock *&bb,
                                  size_t &ip);
 
+/// @brief Trap with a specific trap kind (trap.kind).
+/// @details Emits a runtime trap using the provided kind and optional message.
+/// @param vm Active VM instance.
+/// @param fr Current execution frame.
+/// @param in Instruction being executed.
+/// @param blocks Block map for the current function.
+/// @param bb In/out current basic block pointer.
+/// @param ip In/out instruction pointer within @p bb.
+/// @return Execution result indicating trap status.
 VM::ExecResult handleTrapKind(VM &vm,
                               Frame &fr,
                               const il::core::Instr &in,
@@ -507,6 +751,15 @@ VM::ExecResult handleTrapKind(VM &vm,
                               const il::core::BasicBlock *&bb,
                               size_t &ip);
 
+/// @brief Trap using the current error payload (trap.err).
+/// @details Emits a trap based on the VM's active error slot.
+/// @param vm Active VM instance.
+/// @param fr Current execution frame.
+/// @param in Instruction being executed.
+/// @param blocks Block map for the current function.
+/// @param bb In/out current basic block pointer.
+/// @param ip In/out instruction pointer within @p bb.
+/// @return Execution result indicating trap status.
 VM::ExecResult handleTrapErr(VM &vm,
                              Frame &fr,
                              const il::core::Instr &in,
@@ -514,6 +767,16 @@ VM::ExecResult handleTrapErr(VM &vm,
                              const il::core::BasicBlock *&bb,
                              size_t &ip);
 
+/// @brief Trap with a default or constant message (trap).
+/// @details Emits a runtime trap with the instruction's message operand or a
+///          default string when none is provided.
+/// @param vm Active VM instance.
+/// @param fr Current execution frame.
+/// @param in Instruction being executed.
+/// @param blocks Block map for the current function.
+/// @param bb In/out current basic block pointer.
+/// @param ip In/out instruction pointer within @p bb.
+/// @return Execution result indicating trap status.
 VM::ExecResult handleTrap(VM &vm,
                           Frame &fr,
                           const il::core::Instr &in,

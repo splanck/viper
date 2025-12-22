@@ -13,8 +13,17 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// @file
+/// @brief Compile-time configuration knobs for the VM subsystem.
+/// @details Defines build-time feature toggles and dispatch hook macros used
+///          by the interpreter. These macros are intentionally lightweight so
+///          they are optimized away when not enabled.
+
 #pragma once
 
+/// @brief Indicates whether threaded dispatch is supported by this build.
+/// @details Threaded dispatch requires GCC/Clang labels-as-values support in
+///          addition to the `VIPER_VM_THREADED` build flag.
 #if defined(VIPER_VM_THREADED) && (defined(__GNUC__) || defined(__clang__))
 #define VIPER_THREADING_SUPPORTED 1
 #else
@@ -29,6 +38,9 @@
 // They default to empty do-while blocks so the optimizer removes them entirely
 // when not overridden by the build or embedding application.
 // -----------------------------------------------------------------------------
+/// @brief Hook executed immediately before each instruction dispatch.
+/// @details Override this macro to inject profiling or instrumentation. The
+///          default definition is a no-op.
 #ifndef VIPER_VM_DISPATCH_BEFORE
 #define VIPER_VM_DISPATCH_BEFORE(ST, OPCODE)                                                       \
     do                                                                                             \
@@ -39,6 +51,9 @@
 // NOTE: VIPER_VM_DISPATCH_AFTER is optimized for the common case where polling
 // is disabled (interruptEveryN == 0). The pollTick increment only occurs when
 // polling is active, avoiding wasted cycles on every instruction dispatch.
+/// @brief Hook executed immediately after each instruction dispatch.
+/// @details The default implementation performs periodic polling when enabled
+///          via the runtime config. Override to inject custom instrumentation.
 #ifndef VIPER_VM_DISPATCH_AFTER
 #define VIPER_VM_DISPATCH_AFTER(ST, OPCODE)                                                        \
     do                                                                                             \
@@ -61,6 +76,9 @@
 // Tail-call optimisation toggle
 // -----------------------------------------------------------------------------
 // Tail-call is enabled by default; can be overridden via -D or env handled at runtime.
+/// @brief Compile-time toggle for tail-call optimization.
+/// @details When set to 0, tail-call reuse of frames is disabled even if the
+///          VM otherwise supports it.
 #ifndef VIPER_VM_TAILCALL
 #define VIPER_VM_TAILCALL 1
 #endif
@@ -68,6 +86,9 @@
 // -----------------------------------------------------------------------------
 // Opcode execution counters (compile-time + runtime toggle)
 // -----------------------------------------------------------------------------
+/// @brief Compile-time toggle for opcode execution counters.
+/// @details When enabled, `VIPER_VM_DISPATCH_BEFORE` increments per-opcode
+///          counters if the runtime config requests it.
 #ifndef VIPER_VM_OPCOUNTS
 #define VIPER_VM_OPCOUNTS 1
 #endif

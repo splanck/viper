@@ -847,7 +847,8 @@ void *rt_tcp_server_listen_at(rt_string address, int64_t port)
     }
 
     // Create server object
-    rt_tcp_server_t *server = (rt_tcp_server_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_tcp_server_t));
+    rt_tcp_server_t *server =
+        (rt_tcp_server_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_tcp_server_t));
     if (!server)
     {
         CLOSE_SOCKET(sock);

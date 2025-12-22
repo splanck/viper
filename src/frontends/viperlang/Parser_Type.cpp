@@ -36,12 +36,25 @@ TypePtr Parser::parseType()
 
 TypePtr Parser::parseBaseType()
 {
-    // Named type
+    // Named type (possibly qualified: Module.Type or Module.SubModule.Type)
     if (check(TokenKind::Identifier))
     {
         Token nameTok = advance();
         SourceLoc loc = nameTok.loc;
         std::string name = nameTok.text;
+
+        // Handle qualified type names: Module.Type, Viper.Collections.List, etc.
+        while (match(TokenKind::Dot))
+        {
+            if (!check(TokenKind::Identifier))
+            {
+                error("expected identifier after '.' in qualified type name");
+                return nullptr;
+            }
+            Token nextTok = advance();
+            name += ".";
+            name += nextTok.text;
+        }
 
         // Check for generic parameters
         if (match(TokenKind::LBracket))

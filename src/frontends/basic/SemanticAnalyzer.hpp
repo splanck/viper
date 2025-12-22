@@ -357,8 +357,7 @@ class SemanticAnalyzer
 
         void noteSymbolInserted(const std::string &name);
         void noteVarTypeMutation(const std::string &name, std::optional<Type> previous);
-        void noteObjectClassMutation(const std::string &name,
-                                     std::optional<std::string> previous);
+        void noteObjectClassMutation(const std::string &name, std::optional<std::string> previous);
         void noteArrayMutation(const std::string &name, std::optional<ArrayMetadata> previous);
         void noteChannelMutation(long long channel, bool previouslyOpen);
         void noteLabelInserted(int label);
@@ -370,6 +369,7 @@ class SemanticAnalyzer
             std::string name;
             std::optional<Type> previous;
         };
+
         struct ObjectClassDelta
         {
             std::string name;

@@ -18,6 +18,11 @@
 //   - docs/codemap.md
 //   - src/il/runtime/classes/RuntimeClasses.inc
 
+/// @file
+/// @brief Builds the runtime class catalog from declarative .inc data.
+/// @details Expands the RuntimeClasses.inc table into concrete descriptors used
+///          by the IL runtime for class, property, and method metadata.
+
 #include "il/runtime/classes/RuntimeClasses.hpp"
 
 #include <utility>
@@ -61,6 +66,11 @@ namespace
                                                      (_methods)});
 } // namespace
 
+/// @brief Return the process-wide runtime class catalog.
+/// @details Builds the catalog once using a function-local static initialized
+///          from RuntimeClasses.inc. The returned vector is immutable and
+///          safe to share across threads.
+/// @return Reference to the runtime class catalog.
 const std::vector<RuntimeClass> &runtimeClassCatalog()
 {
     static const std::vector<RuntimeClass> catalog_init = []

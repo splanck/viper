@@ -13,6 +13,11 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// @file
+/// @brief Aggregates opcode handler declarations for VM dispatch.
+/// @details Re-exports handler entry points from control, memory, integer, and
+///          floating categories, and exposes the unified opcode handler table.
+
 #pragma once
 
 #include "vm/OpHandlerAccess.hpp"
@@ -112,6 +117,11 @@ using floating::handleFptosi;
 using floating::handleFSub;
 using floating::handleSitofp;
 
+/// @brief Return the table mapping opcodes to handler functions.
+/// @details The table is constructed once and reused by the dispatcher to
+///          avoid per-instruction lookup overhead. It exposes handlers from
+///          the various category headers included above.
+/// @return Reference to the immutable opcode handler table.
 const VM::OpcodeHandlerTable &getOpcodeHandlers();
 
 } // namespace il::vm::detail

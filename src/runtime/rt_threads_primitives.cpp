@@ -21,6 +21,11 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// @file
+/// @brief Cross-platform implementations for Gate, Barrier, and RwLock.
+/// @details Provides FIFO-fair gates, reusable barriers, and writer-preferred
+///          reader-writer locks used by Viper.Threads.* runtime APIs.
+
 #include "rt_threads.h"
 
 #include "rt.hpp"
@@ -42,12 +47,17 @@ namespace
 // Viper.Threads.Gate
 // ============================================================================
 
+/// @brief Per-thread waiter state for gate acquisition.
+/// @details Each waiting thread owns a condition variable and a granted flag
+///          that is set when a permit is reserved for it.
 struct GateWaiter
 {
     std::condition_variable cv;
     bool granted = false;
 };
 
+/// @brief Shared gate state implementing a FIFO semaphore.
+/// @details Tracks permit count and a queue of waiters to ensure fairness.
 struct GateState
 {
     explicit GateState(int64_t initial_permits) : permits(initial_permits) {}
@@ -57,11 +67,19 @@ struct GateState
     std::deque<GateWaiter *> waiters;
 };
 
+/// @brief Runtime object wrapper storing gate state.
+/// @details The RtGate object is managed by the runtime heap and owns a pointer
+///          to the heap-allocated GateState.
 struct RtGate
 {
     GateState *state = nullptr;
 };
 
+/// @brief Validate a gate object pointer and return its typed wrapper.
+/// @details Traps with a descriptive message if the gate is null or invalid.
+/// @param gate Opaque gate pointer passed from the runtime.
+/// @param what Error string to use when trapping on NULL.
+/// @return Valid RtGate pointer, or nullptr if validation fails.
 static RtGate *require_gate(void *gate, const char *what)
 {
     if (!gate)
@@ -78,6 +96,9 @@ static RtGate *require_gate(void *gate, const char *what)
     return g;
 }
 
+/// @brief Finalizer invoked when a gate object is collected.
+/// @details Releases the heap-allocated GateState and clears the pointer.
+/// @param obj Runtime object pointer to finalize.
 static void gate_finalizer(void *obj)
 {
     auto *gate = static_cast<RtGate *>(obj);
@@ -89,6 +110,8 @@ static void gate_finalizer(void *obj)
 // Viper.Threads.Barrier
 // ============================================================================
 
+/// @brief Shared barrier state for coordinating fixed parties.
+/// @details Tracks arrival count and generation so the barrier can be reused.
 struct BarrierState
 {
     explicit BarrierState(int64_t parties_) : parties(parties_) {}
@@ -100,11 +123,19 @@ struct BarrierState
     int64_t generation = 0;
 };
 
+/// @brief Runtime object wrapper storing barrier state.
+/// @details The RtBarrier object is managed by the runtime heap and owns a
+///          pointer to the heap-allocated BarrierState.
 struct RtBarrier
 {
     BarrierState *state = nullptr;
 };
 
+/// @brief Validate a barrier object pointer and return its typed wrapper.
+/// @details Traps with a descriptive message if the barrier is null or invalid.
+/// @param barrier Opaque barrier pointer passed from the runtime.
+/// @param what Error string to use when trapping on NULL.
+/// @return Valid RtBarrier pointer, or nullptr if validation fails.
 static RtBarrier *require_barrier(void *barrier, const char *what)
 {
     if (!barrier)
@@ -121,6 +152,9 @@ static RtBarrier *require_barrier(void *barrier, const char *what)
     return b;
 }
 
+/// @brief Finalizer invoked when a barrier object is collected.
+/// @details Releases the heap-allocated BarrierState and clears the pointer.
+/// @param obj Runtime object pointer to finalize.
 static void barrier_finalizer(void *obj)
 {
     auto *barrier = static_cast<RtBarrier *>(obj);
@@ -132,11 +166,16 @@ static void barrier_finalizer(void *obj)
 // Viper.Threads.RwLock
 // ============================================================================
 
+/// @brief Writer wait node for the reader-writer lock.
+/// @details Writers enqueue in FIFO order and are signaled individually.
 struct RwLockWriterWaiter
 {
     std::condition_variable cv;
 };
 
+/// @brief Shared reader-writer lock state with writer preference.
+/// @details Tracks active readers, writer ownership, recursion depth, and a
+///          FIFO queue of waiting writers.
 struct RwLockState
 {
     std::mutex mu;
@@ -151,11 +190,19 @@ struct RwLockState
     std::deque<RwLockWriterWaiter *> waiting_writers;
 };
 
+/// @brief Runtime object wrapper storing reader-writer lock state.
+/// @details The RtRwLock object is managed by the runtime heap and owns a
+///          pointer to the heap-allocated RwLockState.
 struct RtRwLock
 {
     RwLockState *state = nullptr;
 };
 
+/// @brief Validate a reader-writer lock pointer and return its typed wrapper.
+/// @details Traps with a descriptive message if the lock is null or invalid.
+/// @param lock Opaque lock pointer passed from the runtime.
+/// @param what Error string to use when trapping on NULL.
+/// @return Valid RtRwLock pointer, or nullptr if validation fails.
 static RtRwLock *require_rwlock(void *lock, const char *what)
 {
     if (!lock)
@@ -172,6 +219,9 @@ static RtRwLock *require_rwlock(void *lock, const char *what)
     return rw;
 }
 
+/// @brief Finalizer invoked when a reader-writer lock object is collected.
+/// @details Releases the heap-allocated RwLockState and clears the pointer.
+/// @param obj Runtime object pointer to finalize.
 static void rwlock_finalizer(void *obj)
 {
     auto *rw = static_cast<RtRwLock *>(obj);
@@ -187,6 +237,11 @@ extern "C"
     // Viper.Threads.Gate
     // ============================================================================
 
+    /// @brief Create a new gate (counting semaphore) with initial permits.
+    /// @details Permits must be non-negative; otherwise the runtime traps.
+    ///          The returned object owns an internal GateState.
+    /// @param permits Initial permit count.
+    /// @return Opaque gate object, or NULL on allocation failure.
     void *rt_gate_new(int64_t permits)
     {
         if (permits < 0)
@@ -213,6 +268,11 @@ extern "C"
         return gate;
     }
 
+    /// @brief Enter the gate, blocking until a permit is available.
+    /// @details If permits are available and no waiters exist, this function
+    ///          consumes a permit and returns immediately. Otherwise it queues
+    ///          the caller and waits until a permit is granted in FIFO order.
+    /// @param gate Opaque gate object pointer.
     void rt_gate_enter(void *gate)
     {
         RtGate *g = require_gate(gate, "Gate.Enter: null object");
@@ -236,6 +296,10 @@ extern "C"
         }
     }
 
+    /// @brief Attempt to enter the gate without blocking.
+    /// @details Succeeds only if there are no waiters and at least one permit.
+    /// @param gate Opaque gate object pointer.
+    /// @return 1 if a permit was acquired, 0 otherwise.
     int8_t rt_gate_try_enter(void *gate)
     {
         RtGate *g = require_gate(gate, "Gate.TryEnter: null object");
@@ -250,6 +314,12 @@ extern "C"
         return 1;
     }
 
+    /// @brief Attempt to enter the gate with a timeout.
+    /// @details Waits up to @p ms milliseconds for a permit to be granted. A
+    ///          timeout removes the waiter from the queue before returning.
+    /// @param gate Opaque gate object pointer.
+    /// @param ms Timeout in milliseconds (negative treated as zero).
+    /// @return 1 if a permit was acquired, 0 on timeout.
     int8_t rt_gate_try_enter_for(void *gate, int64_t ms)
     {
         RtGate *g = require_gate(gate, "Gate.TryEnterFor: null object");
@@ -291,11 +361,19 @@ extern "C"
         return 1;
     }
 
+    /// @brief Release a single permit back to the gate.
+    /// @details Equivalent to @ref rt_gate_leave_many with a count of one.
+    /// @param gate Opaque gate object pointer.
     void rt_gate_leave(void *gate)
     {
         rt_gate_leave_many(gate, 1);
     }
 
+    /// @brief Release multiple permits back to the gate.
+    /// @details Increments the permit count and wakes queued waiters in FIFO
+    ///          order, reserving a permit for each woken thread.
+    /// @param gate Opaque gate object pointer.
+    /// @param count Number of permits to release (must be non-negative).
     void rt_gate_leave_many(void *gate, int64_t count)
     {
         RtGate *g = require_gate(gate, "Gate.Leave: null object");
@@ -322,6 +400,10 @@ extern "C"
         }
     }
 
+    /// @brief Query the current permit count.
+    /// @details Returned under the gate's lock to ensure a consistent snapshot.
+    /// @param gate Opaque gate object pointer.
+    /// @return Current number of available permits.
     int64_t rt_gate_get_permits(void *gate)
     {
         RtGate *g = require_gate(gate, "Gate.get_Permits: null object");
@@ -337,6 +419,11 @@ extern "C"
     // Viper.Threads.Barrier
     // ============================================================================
 
+    /// @brief Create a new reusable barrier.
+    /// @details The barrier releases when @p parties threads have arrived. The
+    ///          party count must be at least one.
+    /// @param parties Number of participating threads.
+    /// @return Opaque barrier object, or NULL on allocation failure.
     void *rt_barrier_new(int64_t parties)
     {
         if (parties < 1)
@@ -364,6 +451,12 @@ extern "C"
         return barrier;
     }
 
+    /// @brief Arrive at the barrier and wait for all parties.
+    /// @details Returns the arrival index for this generation (0-based). The
+    ///          last arriving thread releases all waiters and advances the
+    ///          generation so the barrier can be reused.
+    /// @param barrier Opaque barrier object pointer.
+    /// @return Arrival index in the current generation.
     int64_t rt_barrier_arrive(void *barrier)
     {
         RtBarrier *b = require_barrier(barrier, "Barrier.Arrive: null object");
@@ -393,6 +486,10 @@ extern "C"
         return index;
     }
 
+    /// @brief Reset the barrier to a new generation.
+    /// @details Traps if any threads are currently waiting at the barrier to
+    ///          avoid leaving them stranded.
+    /// @param barrier Opaque barrier object pointer.
     void rt_barrier_reset(void *barrier)
     {
         RtBarrier *b = require_barrier(barrier, "Barrier.Reset: null object");
@@ -410,6 +507,9 @@ extern "C"
         ++state.generation;
     }
 
+    /// @brief Get the configured party count for the barrier.
+    /// @param barrier Opaque barrier object pointer.
+    /// @return Number of parties required to release the barrier.
     int64_t rt_barrier_get_parties(void *barrier)
     {
         RtBarrier *b = require_barrier(barrier, "Barrier.get_Parties: null object");
@@ -421,6 +521,9 @@ extern "C"
         return state.parties;
     }
 
+    /// @brief Get the number of parties currently waiting.
+    /// @param barrier Opaque barrier object pointer.
+    /// @return Count of threads waiting in the current generation.
     int64_t rt_barrier_get_waiting(void *barrier)
     {
         RtBarrier *b = require_barrier(barrier, "Barrier.get_Waiting: null object");
@@ -436,6 +539,9 @@ extern "C"
     // Viper.Threads.RwLock
     // ============================================================================
 
+    /// @brief Create a new reader-writer lock instance.
+    /// @details The lock is writer-preferred to prevent writer starvation.
+    /// @return Opaque reader-writer lock object, or NULL on failure.
     void *rt_rwlock_new(void)
     {
         auto *lock =
@@ -457,6 +563,10 @@ extern "C"
         return lock;
     }
 
+    /// @brief Acquire the lock in shared (reader) mode.
+    /// @details Blocks while a writer is active or waiting to preserve writer
+    ///          preference. Multiple readers may enter concurrently.
+    /// @param lock Opaque reader-writer lock object pointer.
     void rt_rwlock_read_enter(void *lock)
     {
         RtRwLock *rw = require_rwlock(lock, "RwLock.ReadEnter: null object");
@@ -472,6 +582,9 @@ extern "C"
         ++state.active_readers;
     }
 
+    /// @brief Release a previously acquired read lock.
+    /// @details Traps if no matching read lock is held.
+    /// @param lock Opaque reader-writer lock object pointer.
     void rt_rwlock_read_exit(void *lock)
     {
         RtRwLock *rw = require_rwlock(lock, "RwLock.ReadExit: null object");
@@ -493,6 +606,11 @@ extern "C"
         }
     }
 
+    /// @brief Acquire the lock in exclusive (writer) mode.
+    /// @details Blocks until no readers or writers are active. If the calling
+    ///          thread already owns the write lock, the recursion count is
+    ///          incremented and the function returns immediately.
+    /// @param lock Opaque reader-writer lock object pointer.
     void rt_rwlock_write_enter(void *lock)
     {
         RtRwLock *rw = require_rwlock(lock, "RwLock.WriteEnter: null object");
@@ -527,6 +645,11 @@ extern "C"
         }
     }
 
+    /// @brief Release a previously acquired write lock.
+    /// @details Traps if the caller is not the owner or if no write lock is
+    ///          held. Writer recursion is decremented and the lock is released
+    ///          when the recursion count reaches zero.
+    /// @param lock Opaque reader-writer lock object pointer.
     void rt_rwlock_write_exit(void *lock)
     {
         RtRwLock *rw = require_rwlock(lock, "RwLock.WriteExit: null object");
@@ -567,6 +690,10 @@ extern "C"
         }
     }
 
+    /// @brief Attempt to acquire a read lock without blocking.
+    /// @details Succeeds only if no writer is active and no writers are waiting.
+    /// @param lock Opaque reader-writer lock object pointer.
+    /// @return 1 if acquired, 0 otherwise.
     int8_t rt_rwlock_try_read_enter(void *lock)
     {
         RtRwLock *rw = require_rwlock(lock, "RwLock.TryReadEnter: null object");
@@ -581,6 +708,12 @@ extern "C"
         return 1;
     }
 
+    /// @brief Attempt to acquire a write lock without blocking.
+    /// @details Succeeds only if no readers or writers are active. If the
+    ///          caller already owns the write lock, recursion is incremented
+    ///          and the call succeeds.
+    /// @param lock Opaque reader-writer lock object pointer.
+    /// @return 1 if acquired, 0 otherwise.
     int8_t rt_rwlock_try_write_enter(void *lock)
     {
         RtRwLock *rw = require_rwlock(lock, "RwLock.TryWriteEnter: null object");
@@ -606,6 +739,10 @@ extern "C"
         return 1;
     }
 
+    /// @brief Query the number of active readers.
+    /// @details Returned under the lock for a consistent snapshot.
+    /// @param lock Opaque reader-writer lock object pointer.
+    /// @return Number of active reader holders.
     int64_t rt_rwlock_get_readers(void *lock)
     {
         RtRwLock *rw = require_rwlock(lock, "RwLock.get_Readers: null object");
@@ -617,6 +754,10 @@ extern "C"
         return state.active_readers;
     }
 
+    /// @brief Check whether a writer currently holds the lock.
+    /// @details Returned under the lock for a consistent snapshot.
+    /// @param lock Opaque reader-writer lock object pointer.
+    /// @return 1 if a writer is active, 0 otherwise.
     int8_t rt_rwlock_get_is_write_locked(void *lock)
     {
         RtRwLock *rw = require_rwlock(lock, "RwLock.get_IsWriteLocked: null object");

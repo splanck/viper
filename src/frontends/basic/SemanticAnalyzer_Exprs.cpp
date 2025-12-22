@@ -163,8 +163,8 @@ namespace il::frontends::basic
 {
 
 using semantic_analyzer_detail::astToSemanticType;
-using semantic_analyzer_detail::levenshtein;
 using semantic_analyzer_detail::isRuntimeNamespaceChain;
+using semantic_analyzer_detail::levenshtein;
 using semantic_analyzer_detail::resolveRuntimePropertyType;
 using semantic_analyzer_detail::semanticTypeName;
 using semantic_analyzer_detail::toLowerQualified;

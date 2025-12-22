@@ -175,8 +175,8 @@ DeclPtr Parser::parseFunctionDecl()
     if (!expect(TokenKind::RParen, ")"))
         return nullptr;
 
-    // Return type
-    if (match(TokenKind::Arrow))
+    // Return type (supports both -> Type and : Type syntax)
+    if (match(TokenKind::Arrow) || match(TokenKind::Colon))
     {
         func->returnType = parseType();
         if (!func->returnType)
@@ -689,8 +689,8 @@ DeclPtr Parser::parseMethodDecl()
     if (!expect(TokenKind::RParen, ")"))
         return nullptr;
 
-    // Return type
-    if (match(TokenKind::Arrow))
+    // Return type (supports both -> Type and : Type syntax)
+    if (match(TokenKind::Arrow) || match(TokenKind::Colon))
     {
         method->returnType = parseType();
     }

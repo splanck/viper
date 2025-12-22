@@ -113,13 +113,13 @@ struct ArgvView
 ///          so the rest of the pipeline can focus on lowering and emission.
 struct Options
 {
-    std::string input_il;                    ///< Input IL path provided on the CLI.
-    std::optional<std::string> output_s;     ///< Explicit assembly output path when -S is used.
-    std::optional<std::string> output_o;     ///< Optional object/executable output path (-o).
-    bool emit_asm = false;                   ///< True when -S requests assembly emission.
-    bool run_native = false;                 ///< True when -run-native requests execution.
-    bool dump_mir_before_ra = false;         ///< Emit MIR before register allocation to stderr.
-    bool dump_mir_after_ra = false;          ///< Emit MIR after register allocation to stderr.
+    std::string input_il;                ///< Input IL path provided on the CLI.
+    std::optional<std::string> output_s; ///< Explicit assembly output path when -S is used.
+    std::optional<std::string> output_o; ///< Optional object/executable output path (-o).
+    bool emit_asm = false;               ///< True when -S requests assembly emission.
+    bool run_native = false;             ///< True when -run-native requests execution.
+    bool dump_mir_before_ra = false;     ///< Emit MIR before register allocation to stderr.
+    bool dump_mir_after_ra = false;      ///< Emit MIR after register allocation to stderr.
 };
 
 /// @brief Parse argv-style arguments into a structured @ref Options instance.

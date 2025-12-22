@@ -61,4 +61,39 @@ function(viper_add_viperlang_tests)
     viper_add_test(test_viperlang_imports ${_VIPER_VIPERLANG_DIR}/test_viperlang_imports.cpp)
     target_link_libraries(test_viperlang_imports PRIVATE ${VIPER_VIPERLANG_LIBS})
     viper_add_ctest(test_viperlang_imports test_viperlang_imports)
+
+    # Bug fix tests (Bugs #38-44)
+    viper_add_test(test_viperlang_bugfixes ${_VIPER_VIPERLANG_DIR}/test_viperlang_bugfixes.cpp)
+    target_link_libraries(test_viperlang_bugfixes PRIVATE ${VIPER_VIPERLANG_LIBS})
+    viper_add_ctest(test_viperlang_bugfixes test_viperlang_bugfixes)
+
+    # Literal expression tests
+    viper_add_test(test_viperlang_literals ${_VIPER_VIPERLANG_DIR}/test_viperlang_literals.cpp)
+    target_link_libraries(test_viperlang_literals PRIVATE ${VIPER_VIPERLANG_LIBS})
+    viper_add_ctest(test_viperlang_literals test_viperlang_literals)
+
+    # Operator tests
+    viper_add_test(test_viperlang_operators ${_VIPER_VIPERLANG_DIR}/test_viperlang_operators.cpp)
+    target_link_libraries(test_viperlang_operators PRIVATE ${VIPER_VIPERLANG_LIBS})
+    viper_add_ctest(test_viperlang_operators test_viperlang_operators)
+
+    # Entity/OOP tests
+    viper_add_test(test_viperlang_entities ${_VIPER_VIPERLANG_DIR}/test_viperlang_entities.cpp)
+    target_link_libraries(test_viperlang_entities PRIVATE ${VIPER_VIPERLANG_LIBS})
+    viper_add_ctest(test_viperlang_entities test_viperlang_entities)
+
+    # Function tests
+    viper_add_test(test_viperlang_functions ${_VIPER_VIPERLANG_DIR}/test_viperlang_functions.cpp)
+    target_link_libraries(test_viperlang_functions PRIVATE ${VIPER_VIPERLANG_LIBS})
+    viper_add_ctest(test_viperlang_functions test_viperlang_functions)
+
+    # Statement tests
+    viper_add_test(test_viperlang_statements ${_VIPER_VIPERLANG_DIR}/test_viperlang_statements.cpp)
+    target_link_libraries(test_viperlang_statements PRIVATE ${VIPER_VIPERLANG_LIBS})
+    viper_add_ctest(test_viperlang_statements test_viperlang_statements)
+
+    # Value type tests
+    viper_add_test(test_viperlang_value_types ${_VIPER_VIPERLANG_DIR}/test_viperlang_value_types.cpp)
+    target_link_libraries(test_viperlang_value_types PRIVATE ${VIPER_VIPERLANG_LIBS})
+    viper_add_ctest(test_viperlang_value_types test_viperlang_value_types)
 endfunction()

@@ -292,9 +292,7 @@ Lowerer::SlotType Lowerer::getSlotType(std::string_view name) const
     SlotType info;
     AstType astTy = inferVariableTypeForLowering(*this, name);
     auto isGenericObject = [](std::string_view cls)
-    {
-        return string_utils::iequals(cls, "object");
-    };
+    { return string_utils::iequals(cls, "object"); };
 
     const auto *sym = findSymbol(name);
 

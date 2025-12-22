@@ -54,8 +54,8 @@ namespace
 ///          load instructions can be compared against loop stores safely.
 struct StoreSite
 {
-    Value ptr;                      ///< Pointer operand written by a store.
-    std::optional<unsigned> size;   ///< Size in bytes of the store, if known.
+    Value ptr;                    ///< Pointer operand written by a store.
+    std::optional<unsigned> size; ///< Size in bytes of the store, if known.
 };
 
 /// @brief Determine whether an instruction can be hoisted out of the loop.

@@ -365,6 +365,29 @@ enum class TokenKind
     /// @}
 
     //=========================================================================
+    /// @name Boolean Operator Keywords
+    /// @brief Word-form boolean operators (alternative to &&, ||, !).
+    /// @{
+    //=========================================================================
+
+    /// @brief Logical AND keyword.
+    /// @details Alternative to `&&` operator.
+    /// Syntax: `if a and b { ... }`
+    KwAnd,
+
+    /// @brief Logical OR keyword.
+    /// @details Alternative to `||` operator.
+    /// Syntax: `if a or b { ... }`
+    KwOr,
+
+    /// @brief Logical NOT keyword.
+    /// @details Alternative to `!` operator.
+    /// Syntax: `if not condition { ... }`
+    KwNot,
+
+    /// @}
+
+    //=========================================================================
     /// @name Arithmetic Operators
     /// @brief Operators for mathematical computations.
     /// @{

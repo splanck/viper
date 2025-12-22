@@ -13,6 +13,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// @file
+/// @brief Memory-related opcode handlers for the VM dispatcher.
+/// @details Declares handlers for loads, stores, allocations, and address
+///          computations. Inline helpers perform type-aware loads/stores using
+///          memcpy to avoid undefined behavior from misaligned accesses.
+
 #pragma once
 
 #include "vm/OpHandlerAccess.hpp"
@@ -34,10 +40,17 @@
 
 namespace il::vm::detail::memory
 {
+/// @brief Execution state alias used by memory handlers.
 using ExecState = VMAccess::ExecState;
 
 namespace inline_impl
 {
+/// @brief Return the minimum alignment required for a given IL type kind.
+/// @details The VM validates alignment before performing memory operations so
+///          misaligned accesses can trap deterministically. The alignment is
+///          based on the host representation of the IL type.
+/// @param kind IL type kind to query.
+/// @return Required alignment in bytes.
 inline size_t minimumAlignmentFor(il::core::Type::Kind kind)
 {
     switch (kind)
@@ -64,6 +77,11 @@ inline size_t minimumAlignmentFor(il::core::Type::Kind kind)
     return 1U;
 }
 
+/// @brief Return the byte size for a given IL type kind.
+/// @details Used by watch hooks and load/store helpers to determine the number
+///          of bytes affected by an operation. Void returns zero.
+/// @param kind IL type kind to query.
+/// @return Size in bytes for the type, or 0 for void.
 inline size_t sizeOfKind(il::core::Type::Kind kind)
 {
     switch (kind)
@@ -92,6 +110,13 @@ inline size_t sizeOfKind(il::core::Type::Kind kind)
     return 0;
 }
 
+/// @brief Load a typed slot from an arbitrary pointer.
+/// @details Uses memcpy to safely read from potentially unaligned addresses,
+///          then widens the value into a VM Slot representation. For strings
+///          and pointers, the raw value is copied without ownership changes.
+/// @param kind IL type kind describing the value at @p ptr.
+/// @param ptr Pointer to the source memory.
+/// @return Slot containing the loaded value.
 inline Slot loadSlotFromPtr(il::core::Type::Kind kind, void *ptr)
 {
     Slot out{};
@@ -161,6 +186,13 @@ inline Slot loadSlotFromPtr(il::core::Type::Kind kind, void *ptr)
     return out;
 }
 
+/// @brief Store a VM slot into memory with type-aware conversion.
+/// @details Uses memcpy to safely write to potentially unaligned addresses.
+///          For strings, the helper releases the existing value, retains the
+///          incoming string, and writes the retained handle to memory.
+/// @param kind IL type kind describing the value at @p ptr.
+/// @param ptr Destination memory pointer.
+/// @param value Slot value to store.
 inline void storeSlotToPtr(il::core::Type::Kind kind, void *ptr, const Slot &value)
 {
     switch (kind)
@@ -225,6 +257,19 @@ inline void storeSlotToPtr(il::core::Type::Kind kind, void *ptr, const Slot &val
 }
 } // namespace inline_impl
 
+/// @brief Inline load handler for VM dispatch.
+/// @details Evaluates the pointer operand, checks alignment, traps on null or
+///          misaligned access, then loads the value and stores it into the
+///          destination slot. This implementation is used by fast dispatch
+///          paths that avoid extra indirection.
+/// @param vm Active VM instance.
+/// @param state Optional execution state for debug hooks.
+/// @param fr Current execution frame.
+/// @param in Instruction being executed.
+/// @param blocks Block map for the current function.
+/// @param bb In/out current basic block pointer.
+/// @param ip In/out instruction pointer within @p bb.
+/// @return Execution result indicating continue, trap, or control transfer.
 inline VM::ExecResult handleLoadImpl(VM &vm,
                                      ExecState *state,
                                      Frame &fr,
@@ -273,6 +318,18 @@ inline VM::ExecResult handleLoadImpl(VM &vm,
     return {};
 }
 
+/// @brief Inline store handler for VM dispatch.
+/// @details Evaluates pointer/value operands, checks alignment, traps on null or
+///          misaligned access, then writes the value using type-aware semantics.
+///          Memory and variable watch hooks are invoked when enabled.
+/// @param vm Active VM instance.
+/// @param state Optional execution state for debug hooks.
+/// @param fr Current execution frame.
+/// @param in Instruction being executed.
+/// @param blocks Block map for the current function.
+/// @param bb In/out current basic block pointer.
+/// @param ip In/out instruction pointer within @p bb.
+/// @return Execution result indicating continue, trap, or control transfer.
 inline VM::ExecResult handleStoreImpl(VM &vm,
                                       ExecState *state,
                                       Frame &fr,
@@ -354,6 +411,16 @@ inline VM::ExecResult handleStoreImpl(VM &vm,
     return {};
 }
 
+/// @brief Allocate stack memory for an alloca instruction.
+/// @details Reserves space in the current frame's stack region according to
+///          the instruction's size operand and alignment rules.
+/// @param vm Active VM instance.
+/// @param fr Current execution frame.
+/// @param in Instruction being executed.
+/// @param blocks Block map for the current function.
+/// @param bb In/out current basic block pointer.
+/// @param ip In/out instruction pointer within @p bb.
+/// @return Execution result indicating continue, trap, or control transfer.
 VM::ExecResult handleAlloca(VM &vm,
                             Frame &fr,
                             const il::core::Instr &in,
@@ -361,6 +428,16 @@ VM::ExecResult handleAlloca(VM &vm,
                             const il::core::BasicBlock *&bb,
                             size_t &ip);
 
+/// @brief Execute a load instruction (Load).
+/// @details Fetches a value from memory, with null and alignment checks, and
+///          writes it to the destination slot using IL type semantics.
+/// @param vm Active VM instance.
+/// @param fr Current execution frame.
+/// @param in Instruction being executed.
+/// @param blocks Block map for the current function.
+/// @param bb In/out current basic block pointer.
+/// @param ip In/out instruction pointer within @p bb.
+/// @return Execution result indicating continue, trap, or control transfer.
 VM::ExecResult handleLoad(VM &vm,
                           Frame &fr,
                           const il::core::Instr &in,
@@ -368,6 +445,16 @@ VM::ExecResult handleLoad(VM &vm,
                           const il::core::BasicBlock *&bb,
                           size_t &ip);
 
+/// @brief Execute a store instruction (Store).
+/// @details Stores a value to memory with null and alignment checks, and
+///          invokes memory/variable watch hooks when enabled.
+/// @param vm Active VM instance.
+/// @param fr Current execution frame.
+/// @param in Instruction being executed.
+/// @param blocks Block map for the current function.
+/// @param bb In/out current basic block pointer.
+/// @param ip In/out instruction pointer within @p bb.
+/// @return Execution result indicating continue, trap, or control transfer.
 VM::ExecResult handleStore(VM &vm,
                            Frame &fr,
                            const il::core::Instr &in,
@@ -375,6 +462,16 @@ VM::ExecResult handleStore(VM &vm,
                            const il::core::BasicBlock *&bb,
                            size_t &ip);
 
+/// @brief Execute a getelementptr-style address computation (GEP).
+/// @details Computes an address by applying byte offsets to a base pointer,
+///          following IL pointer arithmetic rules.
+/// @param vm Active VM instance.
+/// @param fr Current execution frame.
+/// @param in Instruction being executed.
+/// @param blocks Block map for the current function.
+/// @param bb In/out current basic block pointer.
+/// @param ip In/out instruction pointer within @p bb.
+/// @return Execution result indicating continue, trap, or control transfer.
 VM::ExecResult handleGEP(VM &vm,
                          Frame &fr,
                          const il::core::Instr &in,
@@ -382,6 +479,15 @@ VM::ExecResult handleGEP(VM &vm,
                          const il::core::BasicBlock *&bb,
                          size_t &ip);
 
+/// @brief Take the address of a stack slot or symbol (AddrOf).
+/// @details Produces a pointer value for use by later load/store operations.
+/// @param vm Active VM instance.
+/// @param fr Current execution frame.
+/// @param in Instruction being executed.
+/// @param blocks Block map for the current function.
+/// @param bb In/out current basic block pointer.
+/// @param ip In/out instruction pointer within @p bb.
+/// @return Execution result indicating continue, trap, or control transfer.
 VM::ExecResult handleAddrOf(VM &vm,
                             Frame &fr,
                             const il::core::Instr &in,
@@ -389,6 +495,16 @@ VM::ExecResult handleAddrOf(VM &vm,
                             const il::core::BasicBlock *&bb,
                             size_t &ip);
 
+/// @brief Materialize a constant string handle (ConstStr).
+/// @details Converts a string literal operand into a runtime string handle and
+///          stores it in the destination slot with proper retain semantics.
+/// @param vm Active VM instance.
+/// @param fr Current execution frame.
+/// @param in Instruction being executed.
+/// @param blocks Block map for the current function.
+/// @param bb In/out current basic block pointer.
+/// @param ip In/out instruction pointer within @p bb.
+/// @return Execution result indicating continue, trap, or control transfer.
 VM::ExecResult handleConstStr(VM &vm,
                               Frame &fr,
                               const il::core::Instr &in,
@@ -396,6 +512,16 @@ VM::ExecResult handleConstStr(VM &vm,
                               const il::core::BasicBlock *&bb,
                               size_t &ip);
 
+/// @brief Materialize a global address (GAddr).
+/// @details Resolves the address of a global symbol and stores it into the
+///          destination slot as a pointer value.
+/// @param vm Active VM instance.
+/// @param fr Current execution frame.
+/// @param in Instruction being executed.
+/// @param blocks Block map for the current function.
+/// @param bb In/out current basic block pointer.
+/// @param ip In/out instruction pointer within @p bb.
+/// @return Execution result indicating continue, trap, or control transfer.
 VM::ExecResult handleGAddr(VM &vm,
                            Frame &fr,
                            const il::core::Instr &in,
@@ -403,6 +529,15 @@ VM::ExecResult handleGAddr(VM &vm,
                            const il::core::BasicBlock *&bb,
                            size_t &ip);
 
+/// @brief Materialize a null pointer constant (ConstNull).
+/// @details Produces a null pointer value and stores it in the destination slot.
+/// @param vm Active VM instance.
+/// @param fr Current execution frame.
+/// @param in Instruction being executed.
+/// @param blocks Block map for the current function.
+/// @param bb In/out current basic block pointer.
+/// @param ip In/out instruction pointer within @p bb.
+/// @return Execution result indicating continue, trap, or control transfer.
 VM::ExecResult handleConstNull(VM &vm,
                                Frame &fr,
                                const il::core::Instr &in,

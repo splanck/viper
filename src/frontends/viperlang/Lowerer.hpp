@@ -442,6 +442,12 @@ class Lowerer
     /// resolution to replace constant references with their values.
     std::map<std::string, Value> globalConstants_;
 
+    /// @brief Global mutable variable types: name -> semantic type.
+    /// @details Stores the types of module-level mutable variables
+    /// (e.g., `var running: Boolean;`). Used for generating runtime
+    /// storage access calls.
+    std::map<std::string, TypeRef> globalVariables_;
+
     /// @}
     //=========================================================================
     /// @name Block Management
@@ -965,6 +971,17 @@ class Lowerer
     /// @param b Second string.
     /// @return True if equal ignoring case.
     static bool equalsIgnoreCase(const std::string &a, const std::string &b);
+
+    /// @brief Get the runtime helper name for module variable address lookup.
+    /// @param kind The IL type kind.
+    /// @return Runtime function name (e.g., "rt_modvar_addr_i64").
+    std::string getModvarAddrHelper(Type::Kind kind);
+
+    /// @brief Get the address of a global variable using runtime storage.
+    /// @param name The variable name.
+    /// @param type The semantic type.
+    /// @return Pointer value to the variable storage.
+    Value getGlobalVarAddr(const std::string &name, TypeRef type);
 
     /// @}
 };

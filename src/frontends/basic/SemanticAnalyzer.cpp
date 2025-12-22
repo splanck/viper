@@ -117,8 +117,7 @@ std::optional<SemanticAnalyzer::Type> SemanticAnalyzer::lookupVarType(const std:
 ///
 /// @param name Variable name after scope resolution.
 /// @return Qualified class name when known; std::nullopt otherwise.
-std::optional<std::string> SemanticAnalyzer::lookupObjectClassQName(
-    const std::string &name) const
+std::optional<std::string> SemanticAnalyzer::lookupObjectClassQName(const std::string &name) const
 {
     if (auto it = objectClassTypes_.find(name); it != objectClassTypes_.end())
         return it->second;

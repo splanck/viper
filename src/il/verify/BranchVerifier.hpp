@@ -5,28 +5,17 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares validation helpers for branch and return terminator
-// instructions used by the IL verifier. These functions ensure that control
-// flow transfer instructions maintain structural invariants required by the
-// IL specification.
-//
-// The verifier must ensure that branch instructions (br, cbr, switch_i32)
-// correctly reference valid basic block targets with properly typed arguments
-// that match the target block's parameter signature. Similarly, return
-// instructions must produce values matching the function's declared return
-// type.
-//
-// Key Responsibilities:
-// - Verify unconditional branches provide correct arguments for target blocks
-// - Validate conditional branches have boolean conditions and matching branches
-// - Ensure switch_i32 has i32 scrutinee with valid case/default targets
-// - Confirm return instructions match function signature (void or typed value)
-//
-// Design Notes:
-// All verification functions follow the Expected-based error reporting pattern,
-// accepting a TypeInference context to resolve operand types and record results.
-// The functions are stateless and operate purely on the provided verifier state
-// without maintaining any internal caches or ownership of IL structures.
+/// @file
+/// @brief Declares verification helpers for branch and return terminators.
+/// @details These helpers enforce IL control-flow invariants for terminator
+///          instructions (`br`, `cbr`, `switch.i32`, and `ret`). They verify that
+///          branch labels resolve to valid blocks, that branch argument counts
+///          and types align with the target block's parameter signature, and
+///          that return instructions match the enclosing function's declared
+///          return type. The helpers are stateless and use Expected-based
+///          diagnostics together with @ref TypeInference to resolve operand
+///          types. They operate only on caller-owned IL structures and do not
+///          maintain internal caches.
 //
 //===----------------------------------------------------------------------===//
 
@@ -48,24 +37,71 @@ namespace il::verify
 {
 class TypeInference;
 
+/// @brief Verify an unconditional branch terminator against the target signature.
+/// @details Confirms the `br` instruction has no operands and exactly one label.
+///          When the label resolves in @p blockMap, validates that the branch
+///          argument list matches the target block's parameter count and types
+///          using @p types. Missing labels are ignored here so other verifier
+///          components can report unresolved-target diagnostics.
+/// @param fn Function currently being verified.
+/// @param bb Block containing the branch terminator.
+/// @param instr Branch instruction to validate.
+/// @param blockMap Mapping from labels to target blocks.
+/// @param types Type inference context used to compare operand types.
+/// @return Expected success or a diagnostic describing the mismatch.
 [[nodiscard]] il::support::Expected<void> verifyBr_E(const il::core::Function &fn,
                                                      const il::core::BasicBlock &bb,
                                                      const il::core::Instr &instr,
                                                      const BlockMap &blockMap,
                                                      TypeInference &types);
 
+/// @brief Verify a conditional branch terminator and its edge payloads.
+/// @details Requires exactly one i1 condition operand and two successor labels.
+///          For each label that resolves in @p blockMap, checks that the branch
+///          argument list aligns with the target block's parameter count and
+///          types. Any structural mismatch (operand/label count or condition
+///          type) yields a diagnostic tied to @p instr.
+/// @param fn Function currently being verified.
+/// @param bb Block containing the conditional branch.
+/// @param instr Conditional branch instruction under validation.
+/// @param blockMap Mapping from labels to target blocks.
+/// @param types Type inference context used to compare operand types.
+/// @return Expected success or a diagnostic describing the mismatch.
 [[nodiscard]] il::support::Expected<void> verifyCBr_E(const il::core::Function &fn,
                                                       const il::core::BasicBlock &bb,
                                                       const il::core::Instr &instr,
                                                       const BlockMap &blockMap,
                                                       TypeInference &types);
 
+/// @brief Verify a `switch.i32` terminator and all of its case/default edges.
+/// @details Ensures a scrutinee operand exists and is i32, a default label is
+///          present, branch argument bundles match the number of labels, and
+///          the operand list aligns with the number of cases. Each case value
+///          must be a unique 32-bit integer constant. For every resolved target
+///          label, the branch arguments are checked against the block's
+///          parameter signature using @p types.
+/// @param fn Function currently being verified.
+/// @param bb Block containing the switch terminator.
+/// @param instr switch.i32 instruction whose structure is examined.
+/// @param blockMap Mapping from labels to target blocks.
+/// @param types Type inference context used to compare operand types.
+/// @return Expected success or a diagnostic describing the mismatch.
 [[nodiscard]] il::support::Expected<void> verifySwitchI32_E(const il::core::Function &fn,
                                                             const il::core::BasicBlock &bb,
                                                             const il::core::Instr &instr,
                                                             const BlockMap &blockMap,
                                                             TypeInference &types);
 
+/// @brief Verify a `ret` terminator against the function signature.
+/// @details For void functions, ensures the return instruction carries no
+///          operands. For non-void functions, requires exactly one operand and
+///          checks that its inferred type matches the function's declared
+///          return type. Any mismatch returns a diagnostic tied to @p instr.
+/// @param fn Function currently being verified.
+/// @param bb Block containing the return instruction.
+/// @param instr Return instruction to validate.
+/// @param types Type inference context used to resolve operand types.
+/// @return Expected success or a diagnostic describing the mismatch.
 [[nodiscard]] il::support::Expected<void> verifyRet_E(const il::core::Function &fn,
                                                       const il::core::BasicBlock &bb,
                                                       const il::core::Instr &instr,

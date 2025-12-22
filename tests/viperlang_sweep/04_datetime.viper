@@ -1,0 +1,77 @@
+module TestDateTime;
+
+import "./_support";
+
+// DateTime tests
+// Note: Some functions have sema/runtime mismatches (see bugs VL-014+)
+
+func start() {
+    Viper.Terminal.Say("=== DateTime Tests ===");
+
+    testNow();
+    testCreate();
+    testComponents();
+    testArithmetic();
+    testFormat();
+
+    report();
+}
+
+func testNow() {
+    // Now should return a reasonable timestamp (after Jan 1, 2020)
+    var now = Viper.DateTime.Now();
+    // 2020-01-01 00:00:00 UTC = 1577836800
+    assertGt(now, 1577836800, "now after 2020");
+}
+
+func testCreate() {
+    // Create a specific date: 2024-06-15 12:30:45
+    var dt = Viper.DateTime.Create(2024, 6, 15, 12, 30, 45);
+    assertGt(dt, 0, "create valid");
+
+    // Verify components match
+    assertEqInt(Viper.DateTime.Year(dt), 2024, "create year");
+    assertEqInt(Viper.DateTime.Month(dt), 6, "create month");
+    assertEqInt(Viper.DateTime.Day(dt), 15, "create day");
+    assertEqInt(Viper.DateTime.Hour(dt), 12, "create hour");
+    assertEqInt(Viper.DateTime.Minute(dt), 30, "create minute");
+    assertEqInt(Viper.DateTime.Second(dt), 45, "create second");
+}
+
+func testComponents() {
+    // Use a known timestamp: 2024-01-01 00:00:00 UTC = 1704067200
+    // Note: Component functions use local time, so results vary by timezone
+    var dt = Viper.DateTime.Create(2024, 1, 1, 0, 0, 0);
+
+    // DayOfWeek (0=Sunday, 1=Monday, etc.)
+    var dow = Viper.DateTime.DayOfWeek(dt);
+    assertGte(dow, 0, "dayofweek min");
+    assertLt(dow, 7, "dayofweek max");
+}
+
+func testArithmetic() {
+    var dt = Viper.DateTime.Create(2024, 1, 15, 12, 0, 0);
+
+    // AddDays
+    var plus10 = Viper.DateTime.AddDays(dt, 10);
+    assertEqInt(Viper.DateTime.Day(plus10), 25, "adddays forward");
+
+    var minus5 = Viper.DateTime.AddDays(dt, -5);
+    assertEqInt(Viper.DateTime.Day(minus5), 10, "adddays backward");
+
+    // AddSeconds
+    var plus3600 = Viper.DateTime.AddSeconds(dt, 3600);
+    assertEqInt(Viper.DateTime.Hour(plus3600), 13, "addseconds hour");
+}
+
+func testFormat() {
+    var dt = Viper.DateTime.Create(2024, 6, 15, 14, 30, 0);
+
+    // Format with pattern
+    var formatted = Viper.DateTime.Format(dt, "%Y-%m-%d");
+    assertEqStr(formatted, "2024-06-15", "format ymd");
+
+    // Format time
+    var timeStr = Viper.DateTime.Format(dt, "%H:%M");
+    assertEqStr(timeStr, "14:30", "format hm");
+}

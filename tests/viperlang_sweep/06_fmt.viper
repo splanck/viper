@@ -1,0 +1,57 @@
+module TestFmt;
+
+import "./_support";
+
+// Fmt (formatting) tests
+
+func start() {
+    Viper.Terminal.Say("=== Fmt Tests ===");
+
+    testInt();
+    testNum();
+    testBool();
+    testRadix();
+    testSize();
+
+    report();
+}
+
+func testInt() {
+    assertEqStr(Viper.Fmt.Int(42), "42", "int positive");
+    assertEqStr(Viper.Fmt.Int(-7), "-7", "int negative");
+    assertEqStr(Viper.Fmt.Int(0), "0", "int zero");
+}
+
+func testNum() {
+    assertEqStr(Viper.Fmt.Num(3.14), "3.14", "num pi");
+    assertEqStr(Viper.Fmt.Num(0.0), "0", "num zero");
+    assertEqStr(Viper.Fmt.Num(-1.5), "-1.5", "num negative");
+}
+
+func testBool() {
+    assertEqStr(Viper.Fmt.Bool(true), "true", "bool true");
+    assertEqStr(Viper.Fmt.Bool(false), "false", "bool false");
+}
+
+func testRadix() {
+    // Hex
+    assertEqStr(Viper.Fmt.Hex(255), "ff", "hex ff");
+    assertEqStr(Viper.Fmt.Hex(16), "10", "hex 10");
+    assertEqStr(Viper.Fmt.Hex(0), "0", "hex zero");
+
+    // Octal
+    assertEqStr(Viper.Fmt.Oct(8), "10", "oct 8");
+    assertEqStr(Viper.Fmt.Oct(64), "100", "oct 64");
+
+    // Binary
+    assertEqStr(Viper.Fmt.Bin(5), "101", "bin 5");
+    assertEqStr(Viper.Fmt.Bin(8), "1000", "bin 8");
+}
+
+func testSize() {
+    // Size formatting
+    assertEqStr(Viper.Fmt.Size(0), "0 B", "size zero");
+    assertEqStr(Viper.Fmt.Size(512), "512 B", "size bytes");
+    assertEqStr(Viper.Fmt.Size(1024), "1.0 KB", "size kb");
+    assertEqStr(Viper.Fmt.Size(1048576), "1.0 MB", "size mb");
+}

@@ -1310,8 +1310,9 @@ PasType SemanticAnalyzer::typeOfAddressOf(AddressOfExpr &expr)
             return PasType::pointer(PasType::voidType());
         }
         // Name exists but is not a procedure/function
-        error(expr, "address-of operator (@) requires a procedure or function name; '" +
-                        nameExpr.name + "' is not a procedure or function");
+        error(expr,
+              "address-of operator (@) requires a procedure or function name; '" + nameExpr.name +
+                  "' is not a procedure or function");
         return PasType::unknown();
     }
 

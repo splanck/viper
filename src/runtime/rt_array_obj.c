@@ -11,6 +11,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// @file
+/// @brief Implements dynamic arrays of object references for the runtime.
+/// @details Each element is a runtime-managed object pointer. The array owns
+///          references to its elements and is responsible for retaining on
+///          insertion and releasing on overwrite or teardown.
+
 #include "rt_array_obj.h"
 
 #include "rt_heap.h"
@@ -21,11 +27,19 @@
 #include <stdlib.h>
 #include <string.h>
 
+/// @brief Return the heap header associated with an object array payload.
+/// @details The payload pointer is the first element of the array; the header
+///          is stored immediately before it in the heap allocation.
+/// @param payload Array payload pointer (element 0) or NULL.
+/// @return Heap header pointer, or NULL if @p payload is NULL.
 static rt_heap_hdr_t *rt_arr_obj_hdr(void **payload)
 {
     return payload ? rt_heap_hdr((void *)payload) : NULL;
 }
 
+/// @brief Assert that a heap header describes an object array.
+/// @details Verifies allocation kind and element kind to catch misuse early.
+/// @param hdr Heap header to validate (must be non-NULL).
 static void rt_arr_obj_assert_header(rt_heap_hdr_t *hdr)
 {
     assert(hdr);
@@ -34,6 +48,11 @@ static void rt_arr_obj_assert_header(rt_heap_hdr_t *hdr)
     assert(hdr->elem_kind == RT_ELEM_NONE);
 }
 
+/// @brief Allocate a new object array with logical length @p len.
+/// @details The payload is zero-initialized so all elements start as NULL.
+///          The returned pointer is the payload (element 0), not the header.
+/// @param len Number of elements to allocate.
+/// @return Payload pointer for the new array, or NULL on allocation failure.
 void **rt_arr_obj_new(size_t len)
 {
     void **arr = (void **)rt_heap_alloc(RT_HEAP_ARRAY, RT_ELEM_NONE, sizeof(void *), len, len);
@@ -42,6 +61,10 @@ void **rt_arr_obj_new(size_t len)
     return arr;
 }
 
+/// @brief Return the logical length of the object array.
+/// @details A NULL array is treated as length zero for convenience.
+/// @param arr Object array payload pointer (may be NULL).
+/// @return Number of elements in the array, or 0 if @p arr is NULL.
 size_t rt_arr_obj_len(void **arr)
 {
     if (!arr)
@@ -51,6 +74,13 @@ size_t rt_arr_obj_len(void **arr)
     return hdr->len;
 }
 
+/// @brief Retrieve an element and retain it for the caller.
+/// @details The returned object reference is retained so the caller owns a
+///          reference independent of subsequent array mutations. The function
+///          asserts that @p arr is non-NULL and @p idx is in range.
+/// @param arr Object array payload pointer (must be non-NULL).
+/// @param idx Element index to read.
+/// @return Retained object pointer (may be NULL if the slot is empty).
 void *rt_arr_obj_get(void **arr, size_t idx)
 {
     assert(arr != NULL);
@@ -62,6 +92,14 @@ void *rt_arr_obj_get(void **arr, size_t idx)
     return p;
 }
 
+/// @brief Store an object reference at the specified index.
+/// @details Retains the new object before overwriting the slot so self-assignment
+///          is safe. Releases the previous object reference and frees it if its
+///          reference count drops to zero. The function asserts that @p arr is
+///          non-NULL and @p idx is in range.
+/// @param arr Object array payload pointer (must be non-NULL).
+/// @param idx Element index to update.
+/// @param obj Object reference to store (may be NULL).
 void rt_arr_obj_put(void **arr, size_t idx, void *obj)
 {
     assert(arr != NULL);
@@ -81,6 +119,14 @@ void rt_arr_obj_put(void **arr, size_t idx, void *obj)
     }
 }
 
+/// @brief Resize an object array to the requested length.
+/// @details When growing, new elements are zero-initialized. When shrinking,
+///          the logical length is reduced without releasing truncated elements,
+///          so callers should release or clear elements explicitly if required.
+///          The array may move in memory due to reallocation.
+/// @param arr Existing array payload pointer (may be NULL).
+/// @param len New logical length.
+/// @return Payload pointer for the resized array, or NULL on failure.
 void **rt_arr_obj_resize(void **arr, size_t len)
 {
     if (!arr)
@@ -114,6 +160,10 @@ void **rt_arr_obj_resize(void **arr, size_t len)
     return payload;
 }
 
+/// @brief Release all elements and the array itself.
+/// @details Each non-NULL element is released and freed when its reference count
+///          drops to zero. The array payload is then released via the heap API.
+/// @param arr Object array payload pointer (may be NULL).
 void rt_arr_obj_release(void **arr)
 {
     if (!arr)

@@ -16,6 +16,14 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// @file
+/// @brief Implements induction variable simplification and strength reduction.
+/// @details Detects simple counted loops with a single latch and rewrites
+///          address computations of the form `base + i * stride` into a loop-
+///          carried temporary that is incremented each iteration. The pass is
+///          conservative and only applies when structural and dataflow checks
+///          prove the transformation is safe.
+
 #include "il/transform/IndVarSimplify.hpp"
 
 #include "il/transform/AnalysisManager.hpp"
@@ -47,11 +55,25 @@ namespace il::transform
 
 namespace
 {
+/// @brief Find a basic block by label within a function.
+/// @details Delegates to the shared IL utility and returns nullptr when the
+///          label is not present.
+/// @param function Function containing the blocks.
+/// @param label Label to search for.
+/// @return Pointer to the matching block, or nullptr if not found.
 BasicBlock *findBlock(Function &function, const std::string &label)
 {
     return viper::il::findBlock(function, label);
 }
 
+/// @brief Locate the unique loop preheader that jumps to the loop header.
+/// @details Scans blocks outside the loop for a terminator that targets the
+///          header. If multiple distinct predecessors are found, returns
+///          nullptr to avoid unsafe hoisting.
+/// @param function Function containing the loop.
+/// @param loop Loop metadata describing membership.
+/// @param header Loop header block.
+/// @return Pointer to the unique preheader block, or nullptr if ambiguous.
 BasicBlock *findPreheader(Function &function, const Loop &loop, BasicBlock &header)
 {
     BasicBlock *preheader = nullptr;
@@ -82,6 +104,11 @@ BasicBlock *findPreheader(Function &function, const Loop &loop, BasicBlock &head
 }
 
 // Find instruction in a block by result temp id.
+/// @brief Find an instruction that defines the given temporary id.
+/// @details Performs a linear scan over the block's instruction list.
+/// @param B Block to scan.
+/// @param tempId Temporary id to locate.
+/// @return Pointer to the defining instruction, or nullptr if not found.
 Instr *findInstrByResult(BasicBlock &B, unsigned tempId)
 {
     for (auto &I : B.instructions)
@@ -93,6 +120,12 @@ Instr *findInstrByResult(BasicBlock &B, unsigned tempId)
 }
 
 // Count uses of a temp across a function (cheap scan, conservative).
+/// @brief Count uses of a temporary across a function.
+/// @details Scans operands and branch argument lists to approximate use count.
+///          This is used as a conservative single-use check during matching.
+/// @param F Function to scan.
+/// @param tempId Temporary id to count.
+/// @return Number of occurrences of @p tempId.
 size_t countTempUses(Function &F, unsigned tempId)
 {
     size_t uses = 0;
@@ -113,6 +146,12 @@ size_t countTempUses(Function &F, unsigned tempId)
 }
 
 // Return index of a target label in a terminator's labels list.
+/// @brief Locate a label within a terminator's successor list.
+/// @details Returns the index so the corresponding branch argument list can be
+///          accessed. If the label is not present, returns std::nullopt.
+/// @param term Terminator instruction to inspect.
+/// @param target Label to locate in @p term.labels.
+/// @return Index of the label, or std::nullopt if not found.
 std::optional<size_t> labelIndex(const Instr &term, const std::string &target)
 {
     for (size_t i = 0; i < term.labels.size(); ++i)
@@ -121,14 +160,27 @@ std::optional<size_t> labelIndex(const Instr &term, const std::string &target)
     return std::nullopt;
 }
 
+/// @brief Description of a simple loop induction variable.
+/// @details Captures which header parameter is the induction variable, the
+///          constant step per iteration, and the latch parameter id that feeds
+///          the backedge update.
 struct IndVar
 {
-    size_t headerParamIndex{}; // index into header.params
-    int step{};                // +C or -C
-    unsigned latchParamId{};   // temp id of corresponding latch param
+    size_t headerParamIndex{}; ///< Index into header.params for the IV.
+    int step{};                ///< Step per iteration (+C or -C).
+    unsigned latchParamId{};   ///< Temp id of the corresponding latch param.
 };
 
 // Try to recognize a simple i' = i +/- C update on the backedge L->H.
+/// @brief Detect a simple linear induction variable on the latch backedge.
+/// @details Matches updates of the form `i' = i +/- C` where `i` is a latch
+///          parameter and `C` is a constant. The function also verifies that
+///          the latch parameter maps back to a header parameter via the header
+///          -> latch branch arguments so the variable is truly loop-carried.
+/// @param F Function containing the loop.
+/// @param H Loop header block.
+/// @param L Loop latch block.
+/// @return IndVar description on success; std::nullopt if no match.
 std::optional<IndVar> detectIndVar(Function &F, BasicBlock &H, BasicBlock &L)
 {
     if (!L.terminated || L.instructions.empty())
@@ -231,14 +283,25 @@ std::optional<IndVar> detectIndVar(Function &F, BasicBlock &H, BasicBlock &L)
 
 // Try to find `addr = base + (i * stride)` in header H using header param i.
 // Returns <addrAddId, stride, baseValue, mulId> when matched.
+/// @brief Matched address expression in the loop header.
+/// @details Captures the add instruction result, the constant stride, the base
+///          value, and the multiply result id so it can be validated and removed.
 struct AddrExpr
 {
-    unsigned addrId{};
-    long long stride{};
-    Value base;
-    unsigned mulId{}; // result temp id of the mul, used to ensure single-use
+    unsigned addrId{};  ///< Temp id of the `base + i * stride` add result.
+    long long stride{}; ///< Constant stride used in the multiply.
+    Value base;         ///< Base value added to the scaled induction variable.
+    unsigned mulId{};   ///< Temp id of the multiply result (for single-use checks).
 };
 
+/// @brief Find `base + (i * stride)` in the loop header.
+/// @details Searches for an add whose one operand is a multiply of the header
+///          induction variable by a constant. The multiply must be single-use
+///          to allow safe removal after rewriting.
+/// @param F Function containing the loop.
+/// @param H Loop header block to scan.
+/// @param indVarId Temp id of the induction variable header parameter.
+/// @return Address expression match on success; std::nullopt if no match.
 std::optional<AddrExpr> findAddrExpr(Function &F, BasicBlock &H, unsigned indVarId)
 {
     for (size_t idx = 0; idx < H.instructions.size(); ++idx)
@@ -321,11 +384,29 @@ std::optional<AddrExpr> findAddrExpr(Function &F, BasicBlock &H, unsigned indVar
 
 } // namespace
 
+/// @brief Return the unique identifier for the IndVarSimplify pass.
+/// @details Used by the pass registry and pipeline definitions.
+/// @return The canonical pass id string "indvars".
 std::string_view IndVarSimplify::id() const
 {
     return "indvars";
 }
 
+/// @brief Execute induction variable simplification on a function.
+/// @details For each well-formed loop with a single latch, the pass:
+///          1) Detects a simple induction variable update on the backedge.
+///          2) Finds an address expression `base + i * stride` in the header.
+///          3) Adds a loop-carried address parameter and computes its initial
+///             value in the preheader.
+///          4) Increments the address in the latch and threads it through the
+///             backedge arguments.
+///          5) Replaces uses of the original address computation and removes
+///             the now-dead add/mul instructions.
+///          The transformation is conservative and skips loops that do not meet
+///          structural requirements or single-use guarantees.
+/// @param function Function to optimize in place.
+/// @param analysis Analysis manager supplying loop and dominance info.
+/// @return Preserved analysis set; conservative invalidation on change.
 PreservedAnalyses IndVarSimplify::run(Function &function, AnalysisManager &analysis)
 {
     // Analyses
@@ -483,6 +564,10 @@ PreservedAnalyses IndVarSimplify::run(Function &function, AnalysisManager &analy
     return p;
 }
 
+/// @brief Register the IndVarSimplify pass with the pass registry.
+/// @details Associates the "indvars" identifier with a factory that constructs
+///          a new @ref IndVarSimplify instance.
+/// @param registry Pass registry to update.
 void registerIndVarSimplifyPass(PassRegistry &registry)
 {
     registry.registerFunctionPass("indvars", []() { return std::make_unique<IndVarSimplify>(); });

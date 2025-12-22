@@ -341,10 +341,7 @@ void rt_canvas_text(void *canvas_ptr, int64_t x, int64_t y, rt_string text, int6
             {
                 if (bits & (0x80 >> col_idx))
                 {
-                    vgfx_pset(canvas->gfx_win,
-                              (int32_t)(cx + col_idx),
-                              (int32_t)(y + row),
-                              col);
+                    vgfx_pset(canvas->gfx_win, (int32_t)(cx + col_idx), (int32_t)(y + row), col);
                 }
             }
         }
@@ -660,6 +657,7 @@ static int64_t min64(int64_t a, int64_t b)
 {
     return a < b ? a : b;
 }
+
 static int64_t max64(int64_t a, int64_t b)
 {
     return a > b ? a : b;
@@ -737,24 +735,45 @@ void rt_canvas_round_box(
     }
 
     // Draw the center rectangle
-    vgfx_fill_rect(canvas->gfx_win, (int32_t)(x + radius), (int32_t)y, (int32_t)(w - 2 * radius),
-                   (int32_t)h, col);
+    vgfx_fill_rect(canvas->gfx_win,
+                   (int32_t)(x + radius),
+                   (int32_t)y,
+                   (int32_t)(w - 2 * radius),
+                   (int32_t)h,
+                   col);
 
     // Draw left and right rectangles
-    vgfx_fill_rect(canvas->gfx_win, (int32_t)x, (int32_t)(y + radius), (int32_t)radius,
-                   (int32_t)(h - 2 * radius), col);
-    vgfx_fill_rect(canvas->gfx_win, (int32_t)(x + w - radius), (int32_t)(y + radius), (int32_t)radius,
-                   (int32_t)(h - 2 * radius), col);
+    vgfx_fill_rect(canvas->gfx_win,
+                   (int32_t)x,
+                   (int32_t)(y + radius),
+                   (int32_t)radius,
+                   (int32_t)(h - 2 * radius),
+                   col);
+    vgfx_fill_rect(canvas->gfx_win,
+                   (int32_t)(x + w - radius),
+                   (int32_t)(y + radius),
+                   (int32_t)radius,
+                   (int32_t)(h - 2 * radius),
+                   col);
 
     // Draw four corner filled circles
-    vgfx_fill_circle(canvas->gfx_win, (int32_t)(x + radius), (int32_t)(y + radius), (int32_t)radius,
+    vgfx_fill_circle(
+        canvas->gfx_win, (int32_t)(x + radius), (int32_t)(y + radius), (int32_t)radius, col);
+    vgfx_fill_circle(canvas->gfx_win,
+                     (int32_t)(x + w - radius - 1),
+                     (int32_t)(y + radius),
+                     (int32_t)radius,
                      col);
-    vgfx_fill_circle(canvas->gfx_win, (int32_t)(x + w - radius - 1), (int32_t)(y + radius),
-                     (int32_t)radius, col);
-    vgfx_fill_circle(canvas->gfx_win, (int32_t)(x + radius), (int32_t)(y + h - radius - 1),
-                     (int32_t)radius, col);
-    vgfx_fill_circle(canvas->gfx_win, (int32_t)(x + w - radius - 1), (int32_t)(y + h - radius - 1),
-                     (int32_t)radius, col);
+    vgfx_fill_circle(canvas->gfx_win,
+                     (int32_t)(x + radius),
+                     (int32_t)(y + h - radius - 1),
+                     (int32_t)radius,
+                     col);
+    vgfx_fill_circle(canvas->gfx_win,
+                     (int32_t)(x + w - radius - 1),
+                     (int32_t)(y + h - radius - 1),
+                     (int32_t)radius,
+                     col);
 }
 
 void rt_canvas_round_frame(
@@ -780,34 +799,68 @@ void rt_canvas_round_frame(
     {
         // Draw regular rectangle outline
         vgfx_line(canvas->gfx_win, (int32_t)x, (int32_t)y, (int32_t)(x + w - 1), (int32_t)y, col);
-        vgfx_line(canvas->gfx_win, (int32_t)x, (int32_t)(y + h - 1), (int32_t)(x + w - 1),
-                  (int32_t)(y + h - 1), col);
+        vgfx_line(canvas->gfx_win,
+                  (int32_t)x,
+                  (int32_t)(y + h - 1),
+                  (int32_t)(x + w - 1),
+                  (int32_t)(y + h - 1),
+                  col);
         vgfx_line(canvas->gfx_win, (int32_t)x, (int32_t)y, (int32_t)x, (int32_t)(y + h - 1), col);
-        vgfx_line(canvas->gfx_win, (int32_t)(x + w - 1), (int32_t)y, (int32_t)(x + w - 1),
-                  (int32_t)(y + h - 1), col);
+        vgfx_line(canvas->gfx_win,
+                  (int32_t)(x + w - 1),
+                  (int32_t)y,
+                  (int32_t)(x + w - 1),
+                  (int32_t)(y + h - 1),
+                  col);
         return;
     }
 
     // Draw horizontal lines (top and bottom, excluding corners)
-    vgfx_line(canvas->gfx_win, (int32_t)(x + radius), (int32_t)y, (int32_t)(x + w - radius - 1),
-              (int32_t)y, col);
-    vgfx_line(canvas->gfx_win, (int32_t)(x + radius), (int32_t)(y + h - 1),
-              (int32_t)(x + w - radius - 1), (int32_t)(y + h - 1), col);
+    vgfx_line(canvas->gfx_win,
+              (int32_t)(x + radius),
+              (int32_t)y,
+              (int32_t)(x + w - radius - 1),
+              (int32_t)y,
+              col);
+    vgfx_line(canvas->gfx_win,
+              (int32_t)(x + radius),
+              (int32_t)(y + h - 1),
+              (int32_t)(x + w - radius - 1),
+              (int32_t)(y + h - 1),
+              col);
 
     // Draw vertical lines (left and right, excluding corners)
-    vgfx_line(canvas->gfx_win, (int32_t)x, (int32_t)(y + radius), (int32_t)x,
-              (int32_t)(y + h - radius - 1), col);
-    vgfx_line(canvas->gfx_win, (int32_t)(x + w - 1), (int32_t)(y + radius), (int32_t)(x + w - 1),
-              (int32_t)(y + h - radius - 1), col);
+    vgfx_line(canvas->gfx_win,
+              (int32_t)x,
+              (int32_t)(y + radius),
+              (int32_t)x,
+              (int32_t)(y + h - radius - 1),
+              col);
+    vgfx_line(canvas->gfx_win,
+              (int32_t)(x + w - 1),
+              (int32_t)(y + radius),
+              (int32_t)(x + w - 1),
+              (int32_t)(y + h - radius - 1),
+              col);
 
     // Draw corner arcs using circle algorithm
-    vgfx_circle(canvas->gfx_win, (int32_t)(x + radius), (int32_t)(y + radius), (int32_t)radius, col);
-    vgfx_circle(canvas->gfx_win, (int32_t)(x + w - radius - 1), (int32_t)(y + radius), (int32_t)radius,
+    vgfx_circle(
+        canvas->gfx_win, (int32_t)(x + radius), (int32_t)(y + radius), (int32_t)radius, col);
+    vgfx_circle(canvas->gfx_win,
+                (int32_t)(x + w - radius - 1),
+                (int32_t)(y + radius),
+                (int32_t)radius,
                 col);
-    vgfx_circle(canvas->gfx_win, (int32_t)(x + radius), (int32_t)(y + h - radius - 1), (int32_t)radius,
+    vgfx_circle(canvas->gfx_win,
+                (int32_t)(x + radius),
+                (int32_t)(y + h - radius - 1),
+                (int32_t)radius,
                 col);
-    vgfx_circle(canvas->gfx_win, (int32_t)(x + w - radius - 1), (int32_t)(y + h - radius - 1),
-                (int32_t)radius, col);
+    vgfx_circle(canvas->gfx_win,
+                (int32_t)(x + w - radius - 1),
+                (int32_t)(y + h - radius - 1),
+                (int32_t)radius,
+                col);
 }
 
 void rt_canvas_flood_fill(void *canvas_ptr, int64_t start_x, int64_t start_y, int64_t color)
@@ -1059,10 +1112,18 @@ void rt_canvas_ellipse(
     while (px < py)
     {
         // Draw horizontal scanlines
-        vgfx_line(canvas->gfx_win, (int32_t)(cx - x), (int32_t)(cy + y), (int32_t)(cx + x),
-                  (int32_t)(cy + y), col);
-        vgfx_line(canvas->gfx_win, (int32_t)(cx - x), (int32_t)(cy - y), (int32_t)(cx + x),
-                  (int32_t)(cy - y), col);
+        vgfx_line(canvas->gfx_win,
+                  (int32_t)(cx - x),
+                  (int32_t)(cy + y),
+                  (int32_t)(cx + x),
+                  (int32_t)(cy + y),
+                  col);
+        vgfx_line(canvas->gfx_win,
+                  (int32_t)(cx - x),
+                  (int32_t)(cy - y),
+                  (int32_t)(cx + x),
+                  (int32_t)(cy - y),
+                  col);
 
         x++;
         px += two_ry2;
@@ -1080,10 +1141,18 @@ void rt_canvas_ellipse(
     p = ry2 * (x * x + x) + rx2 * (y - 1) * (y - 1) - rx2 * ry2 + ry2 / 4;
     while (y >= 0)
     {
-        vgfx_line(canvas->gfx_win, (int32_t)(cx - x), (int32_t)(cy + y), (int32_t)(cx + x),
-                  (int32_t)(cy + y), col);
-        vgfx_line(canvas->gfx_win, (int32_t)(cx - x), (int32_t)(cy - y), (int32_t)(cx + x),
-                  (int32_t)(cy - y), col);
+        vgfx_line(canvas->gfx_win,
+                  (int32_t)(cx - x),
+                  (int32_t)(cy + y),
+                  (int32_t)(cx + x),
+                  (int32_t)(cy + y),
+                  col);
+        vgfx_line(canvas->gfx_win,
+                  (int32_t)(cx - x),
+                  (int32_t)(cy - y),
+                  (int32_t)(cx + x),
+                  (int32_t)(cy - y),
+                  col);
 
         y--;
         py -= two_rx2;
@@ -1192,8 +1261,8 @@ static int64_t sin_deg_fp(int64_t deg)
 
     // Simple lookup approximation with linear interpolation
     // sin values * 1024 for 0, 30, 45, 60, 90 degrees
-    static const int64_t sin_table[13] = {0,   176,  342,  500,  643,  766,  866,
-                                          940, 985,  1004, 992,  951,  883};
+    static const int64_t sin_table[13] = {
+        0, 176, 342, 500, 643, 766, 866, 940, 985, 1004, 992, 951, 883};
     static const int64_t angles[13] = {0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120};
 
     int64_t sign = 1;
@@ -1480,8 +1549,12 @@ void rt_canvas_polygon(void *canvas_ptr, void *points_ptr, int64_t count, int64_
         // Fill between pairs of intersections
         for (int64_t i = 0; i + 1 < num_intersections; i += 2)
         {
-            vgfx_line(canvas->gfx_win, (int32_t)intersections[i], (int32_t)y,
-                      (int32_t)intersections[i + 1], (int32_t)y, col);
+            vgfx_line(canvas->gfx_win,
+                      (int32_t)intersections[i],
+                      (int32_t)y,
+                      (int32_t)intersections[i + 1],
+                      (int32_t)y,
+                      col);
         }
     }
 }
@@ -1713,8 +1786,7 @@ void rt_canvas_text(void *canvas, int64_t x, int64_t y, rt_string text, int64_t 
     (void)color;
 }
 
-void rt_canvas_text_bg(
-    void *canvas, int64_t x, int64_t y, rt_string text, int64_t fg, int64_t bg)
+void rt_canvas_text_bg(void *canvas, int64_t x, int64_t y, rt_string text, int64_t fg, int64_t bg)
 {
     (void)canvas;
     (void)x;
@@ -1770,13 +1842,8 @@ void rt_canvas_blit_alpha(void *canvas, int64_t x, int64_t y, void *pixels)
     (void)pixels;
 }
 
-void rt_canvas_thick_line(void *canvas,
-                          int64_t x1,
-                          int64_t y1,
-                          int64_t x2,
-                          int64_t y2,
-                          int64_t thickness,
-                          int64_t color)
+void rt_canvas_thick_line(
+    void *canvas, int64_t x1, int64_t y1, int64_t x2, int64_t y2, int64_t thickness, int64_t color)
 {
     (void)canvas;
     (void)x1;
@@ -1857,8 +1924,7 @@ void rt_canvas_triangle_frame(void *canvas,
     (void)color;
 }
 
-void rt_canvas_ellipse(
-    void *canvas, int64_t cx, int64_t cy, int64_t rx, int64_t ry, int64_t color)
+void rt_canvas_ellipse(void *canvas, int64_t cx, int64_t cy, int64_t rx, int64_t ry, int64_t color)
 {
     (void)canvas;
     (void)cx;

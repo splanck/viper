@@ -565,7 +565,8 @@ static std::string mapToCanonicalRuntime(std::string_view name)
     if (auto sigId = findRuntimeSignatureId(desc->name))
     {
         const bool callerCanonical = name.find('.') != std::string_view::npos;
-        const RuntimeDescriptor *callerDesc = (callerCanonical && desc->name == name) ? desc : nullptr;
+        const RuntimeDescriptor *callerDesc =
+            (callerCanonical && desc->name == name) ? desc : nullptr;
         const RuntimeDescriptor *stringsPreferred = nullptr;
         const RuntimeDescriptor *terminalPreferred = nullptr;
         const RuntimeDescriptor *firstCanonical = nullptr;

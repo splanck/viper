@@ -5,11 +5,12 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/frontends/basic/ILTypeUtils.cpp
-// Purpose: Implementation of type conversion utilities for BASIC-to-IL lowering
-// Key invariants: Canonical mapping from BASIC AST types to IL core types
-// Ownership/Lifetime: Non-owning utilities; stateless conversions
-// Links: docs/codemap.md
+/// @file
+/// @brief Implements BASIC-to-IL type conversion helpers.
+/// @details Provides small, stateless utilities that map BASIC AST types to IL
+///          core types and compute ABI-relevant sizes for field storage. The
+///          mappings are canonical and shared across the lowering pipeline to
+///          keep type reasoning consistent.
 //
 //===----------------------------------------------------------------------===//
 
@@ -22,6 +23,12 @@
 namespace il::frontends::basic::type_conv
 {
 
+/// @brief Convert a BASIC AST scalar type to an IL core type.
+/// @details Returns the canonical IL kind used by the lowering pipeline for the
+///          given BASIC type. The mapping is total; unknown cases fall back to
+///          I64 to keep lowering resilient.
+/// @param ty BASIC AST type enumerator.
+/// @return Corresponding IL core type.
 il::core::Type astToIlType(::il::frontends::basic::Type ty) noexcept
 {
     using IlType = il::core::Type;
@@ -39,6 +46,12 @@ il::core::Type astToIlType(::il::frontends::basic::Type ty) noexcept
     return IlType(IlType::Kind::I64);
 }
 
+/// @brief Return the storage size for a BASIC field type.
+/// @details Reports the byte size used when laying out fields for the BASIC
+///          frontend. Strings are represented as pointers, floating-point values
+///          as 64-bit, booleans as 1 byte, and integers as 8 bytes.
+/// @param type BASIC field type.
+/// @return Size in bytes for the type's storage representation.
 std::size_t getFieldSize(::il::frontends::basic::Type type) noexcept
 {
     constexpr std::size_t kPointerSize = sizeof(void *);

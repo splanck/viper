@@ -14,6 +14,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// @file
+/// @brief Implements formatting helpers for the Viper.Fmt runtime namespace.
+/// @details Provides conversions from numeric and boolean values to runtime
+///          strings. Functions are defensive: invalid inputs or formatting
+///          failures yield empty strings rather than trapping.
+
 #include "rt_fmt.h"
 #include "rt_internal.h"
 
@@ -29,10 +35,21 @@ extern "C"
 #endif
 
 // Buffer size for most formatting operations
+/// @brief Default temporary buffer size for formatting operations.
+/// @details Chosen to accommodate typical numeric formats without heap
+///          allocation while keeping stack usage predictable.
 #define FMT_BUFFER_SIZE 128
 // Buffer size for binary formatting (64 bits + null)
+/// @brief Buffer size for binary formatting of 64-bit values.
+/// @details Holds 64 digits plus a NUL terminator.
 #define FMT_BIN_BUFFER_SIZE 65
 
+    /// @brief Format a signed 64-bit integer in decimal.
+    /// @details Uses `snprintf` with the C locale and returns an empty string
+    ///          on formatting failure or truncation. The result owns its bytes
+    ///          and must be released by the caller.
+    /// @param value Integer value to format.
+    /// @return Newly allocated runtime string with decimal text.
     rt_string rt_fmt_int(int64_t value)
     {
         char buffer[FMT_BUFFER_SIZE];
@@ -42,6 +59,14 @@ extern "C"
         return rt_string_from_bytes(buffer, (size_t)len);
     }
 
+    /// @brief Format a signed integer using a specified radix (base 2-36).
+    /// @details Radix values outside 2-36 return an empty string. For radix 10,
+    ///          negative values are emitted with a leading '-' and INT64_MIN is
+    ///          handled safely. For non-decimal radices, the value is treated
+    ///          as unsigned so the bit pattern is preserved.
+    /// @param value Integer to format.
+    /// @param radix Base to use (2-36).
+    /// @return Newly allocated string containing the formatted number.
     rt_string rt_fmt_int_radix(int64_t value, int64_t radix)
     {
         // Validate radix
@@ -88,6 +113,16 @@ extern "C"
         return rt_string_from_bytes(p, len);
     }
 
+    /// @brief Format an integer with a minimum width and pad character.
+    /// @details The output is left-padded to @p width using the first character
+    ///          of @p pad_char (defaulting to space if empty). When padding with
+    ///          '0' and the value is negative, the sign is emitted before the
+    ///          zeros to match typical numeric formatting conventions. Width is
+    ///          clamped to the internal buffer size to avoid overflow.
+    /// @param value Integer to format.
+    /// @param width Minimum output width in characters.
+    /// @param pad_char Runtime string containing the pad character.
+    /// @return Newly allocated string containing the padded number.
     rt_string rt_fmt_int_pad(int64_t value, int64_t width, rt_string pad_char)
     {
         // Get the pad character (default to space)
@@ -135,6 +170,12 @@ extern "C"
         return rt_string_from_bytes(buffer, pos);
     }
 
+    /// @brief Format a floating-point number with default precision.
+    /// @details Uses `%g` formatting to produce a compact representation. NaN
+    ///          and infinity are mapped to "NaN", "Infinity", or "-Infinity".
+    ///          Formatting failures return an empty string.
+    /// @param value Floating-point value to format.
+    /// @return Newly allocated runtime string for the formatted number.
     rt_string rt_fmt_num(double value)
     {
         // Handle special cases
@@ -151,6 +192,12 @@ extern "C"
         return rt_string_from_bytes(buffer, (size_t)len);
     }
 
+    /// @brief Format a floating-point number with fixed decimal places.
+    /// @details Decimal places are clamped to [0, 20] to keep buffer usage
+    ///          bounded. NaN and infinity are mapped to their textual forms.
+    /// @param value Floating-point value to format.
+    /// @param decimals Requested number of fractional digits.
+    /// @return Newly allocated runtime string for the formatted number.
     rt_string rt_fmt_num_fixed(double value, int64_t decimals)
     {
         // Handle special cases
@@ -173,6 +220,12 @@ extern "C"
         return rt_string_from_bytes(buffer, (size_t)len);
     }
 
+    /// @brief Format a floating-point number in scientific notation.
+    /// @details Decimal places are clamped to [0, 20]. NaN and infinity are
+    ///          mapped to their textual forms. Uses `%e` for exponent output.
+    /// @param value Floating-point value to format.
+    /// @param decimals Requested number of fractional digits.
+    /// @return Newly allocated runtime string in scientific notation.
     rt_string rt_fmt_num_sci(double value, int64_t decimals)
     {
         // Handle special cases
@@ -195,6 +248,13 @@ extern "C"
         return rt_string_from_bytes(buffer, (size_t)len);
     }
 
+    /// @brief Format a floating-point number as a percentage.
+    /// @details Multiplies the input by 100, formats with fixed decimals, and
+    ///          appends a '%' suffix. NaN and infinity are mapped to textual
+    ///          forms that include the suffix.
+    /// @param value Input value where 1.0 means 100%.
+    /// @param decimals Number of fractional digits to emit.
+    /// @return Newly allocated runtime string with percent formatting.
     rt_string rt_fmt_num_pct(double value, int64_t decimals)
     {
         // Handle special cases
@@ -218,16 +278,34 @@ extern "C"
         return rt_string_from_bytes(buffer, (size_t)len);
     }
 
+    /// @brief Format a boolean as lowercase "true"/"false".
+    /// @details This mirrors the canonical Viper boolean spelling used in
+    ///          diagnostics and string conversions.
+    /// @param value Boolean value to format.
+    /// @return Newly allocated runtime string with "true" or "false".
     rt_string rt_fmt_bool(bool value)
     {
         return value ? rt_string_from_bytes("true", 4) : rt_string_from_bytes("false", 5);
     }
 
+    /// @brief Format a boolean as "Yes"/"No".
+    /// @details Provides a user-friendly, title-cased representation for
+    ///          boolean values in UI-facing contexts.
+    /// @param value Boolean value to format.
+    /// @return Newly allocated runtime string with "Yes" or "No".
     rt_string rt_fmt_bool_yn(bool value)
     {
         return value ? rt_string_from_bytes("Yes", 3) : rt_string_from_bytes("No", 2);
     }
 
+    /// @brief Format a byte count into a human-readable size string.
+    /// @details Converts the absolute byte count into units of 1024, selecting
+    ///          the largest unit where the magnitude remains >= 1. For bytes,
+    ///          the output is an integer (e.g., "512 B"); for larger units, one
+    ///          decimal place is emitted (e.g., "1.5 MB"). Negative sizes keep
+    ///          a leading '-' sign.
+    /// @param bytes Byte count to format.
+    /// @return Newly allocated runtime string with size and unit suffix.
     rt_string rt_fmt_size(int64_t bytes)
     {
         static const char *units[] = {"B", "KB", "MB", "GB", "TB", "PB", "EB"};
@@ -266,12 +344,8 @@ extern "C"
         else
         {
             // Units >= KB always show one decimal digit (e.g., 1.0 KB).
-            len = snprintf(buffer,
-                           sizeof(buffer),
-                           "%s%.1f %s",
-                           negative ? "-" : "",
-                           size,
-                           units[unit_idx]);
+            len = snprintf(
+                buffer, sizeof(buffer), "%s%.1f %s", negative ? "-" : "", size, units[unit_idx]);
         }
 
         if (len < 0 || (size_t)len >= sizeof(buffer))
@@ -279,6 +353,11 @@ extern "C"
         return rt_string_from_bytes(buffer, (size_t)len);
     }
 
+    /// @brief Format an integer as lowercase hexadecimal.
+    /// @details Treats the input as unsigned so the full 64-bit pattern is
+    ///          preserved, then formats without a "0x" prefix.
+    /// @param value Integer value to format.
+    /// @return Newly allocated runtime string with hex digits.
     rt_string rt_fmt_hex(int64_t value)
     {
         char buffer[FMT_BUFFER_SIZE];
@@ -288,6 +367,12 @@ extern "C"
         return rt_string_from_bytes(buffer, (size_t)len);
     }
 
+    /// @brief Format an integer as zero-padded hexadecimal.
+    /// @details The width is clamped to [1, 16] to match 64-bit output size.
+    ///          Padding uses '0' and no prefix is emitted.
+    /// @param value Integer value to format.
+    /// @param width Minimum width in hex digits.
+    /// @return Newly allocated runtime string with padded hex digits.
     rt_string rt_fmt_hex_pad(int64_t value, int64_t width)
     {
         if (width <= 0)
@@ -302,6 +387,11 @@ extern "C"
         return rt_string_from_bytes(buffer, (size_t)len);
     }
 
+    /// @brief Format an integer as a binary string.
+    /// @details Treats the input as unsigned and emits a minimal-length binary
+    ///          representation without any prefix. Zero is returned as "0".
+    /// @param value Integer value to format.
+    /// @return Newly allocated runtime string containing binary digits.
     rt_string rt_fmt_bin(int64_t value)
     {
         // Handle zero specially
@@ -324,6 +414,11 @@ extern "C"
         return rt_string_from_bytes(p, len);
     }
 
+    /// @brief Format an integer as lowercase octal.
+    /// @details Treats the input as unsigned and emits an octal string without
+    ///          any prefix.
+    /// @param value Integer value to format.
+    /// @return Newly allocated runtime string containing octal digits.
     rt_string rt_fmt_oct(int64_t value)
     {
         char buffer[FMT_BUFFER_SIZE];

@@ -136,6 +136,12 @@ const char *tokenKindToString(TokenKind kind)
             return "false";
         case TokenKind::KwNull:
             return "null";
+        case TokenKind::KwAnd:
+            return "and";
+        case TokenKind::KwOr:
+            return "or";
+        case TokenKind::KwNot:
+            return "not";
 
         // Operators
         case TokenKind::Plus:
@@ -220,7 +226,7 @@ const char *tokenKindToString(TokenKind kind)
 
 bool Token::isKeyword() const
 {
-    return kind >= TokenKind::KwValue && kind <= TokenKind::KwNull;
+    return kind >= TokenKind::KwValue && kind <= TokenKind::KwNot;
 }
 
 //===----------------------------------------------------------------------===//
@@ -236,8 +242,9 @@ struct KeywordEntry
     TokenKind kind;
 };
 
-// Sorted for binary search (33 keywords)
-constexpr std::array<KeywordEntry, 33> kKeywordTable = {{
+// Sorted for binary search (36 keywords)
+constexpr std::array<KeywordEntry, 36> kKeywordTable = {{
+    {"and", TokenKind::KwAnd},
     {"as", TokenKind::KwAs},
     {"break", TokenKind::KwBreak},
     {"continue", TokenKind::KwContinue},
@@ -261,7 +268,9 @@ constexpr std::array<KeywordEntry, 33> kKeywordTable = {{
     {"match", TokenKind::KwMatch},
     {"module", TokenKind::KwModule},
     {"new", TokenKind::KwNew},
+    {"not", TokenKind::KwNot},
     {"null", TokenKind::KwNull},
+    {"or", TokenKind::KwOr},
     {"override", TokenKind::KwOverride},
     {"return", TokenKind::KwReturn},
     {"self", TokenKind::KwSelf},

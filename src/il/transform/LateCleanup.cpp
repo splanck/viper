@@ -12,6 +12,13 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// @file
+/// @brief Implements the LateCleanup pass for the IL optimization pipeline.
+/// @details Runs SimplifyCFG and DCE in a bounded fixpoint to clean up
+///          unreachable blocks and dead instructions that accumulate late in
+///          the pipeline. The pass records optional statistics about size
+///          changes across iterations.
+
 #include "il/transform/LateCleanup.hpp"
 
 #include "il/transform/DCE.hpp"
@@ -28,6 +35,11 @@ namespace il::transform
 
 namespace
 {
+/// @brief Count the total number of instructions in a module.
+/// @details Sums instruction counts across all functions and blocks to provide
+///          a coarse size metric for fixpoint detection.
+/// @param module Module to inspect.
+/// @return Total instruction count.
 std::size_t countInstructions(const Module &module)
 {
     std::size_t total = 0;
@@ -37,6 +49,11 @@ std::size_t countInstructions(const Module &module)
     return total;
 }
 
+/// @brief Count the total number of basic blocks in a module.
+/// @details Sums the block counts across all functions to provide a second
+///          fixpoint metric alongside instruction count.
+/// @param module Module to inspect.
+/// @return Total basic block count.
 std::size_t countBlocks(const Module &module)
 {
     std::size_t total = 0;
@@ -46,11 +63,22 @@ std::size_t countBlocks(const Module &module)
 }
 } // namespace
 
+/// @brief Return the unique identifier for the LateCleanup pass.
+/// @details Used by the pass registry and pipeline definitions.
+/// @return The canonical pass id string "late-cleanup".
 std::string_view LateCleanup::id() const
 {
     return "late-cleanup";
 }
 
+/// @brief Execute the late cleanup pass on a module.
+/// @details Iteratively runs SimplifyCFG on each function and then DCE on the
+///          whole module until no size changes are observed or a small iteration
+///          budget is exhausted. Optional stats record instruction/block counts
+///          before and after each iteration.
+/// @param module Module to optimize in place.
+/// @param analysis Analysis manager for CFG simplification requirements.
+/// @return Preserved analysis set; conservative invalidation on change.
 PreservedAnalyses LateCleanup::run(Module &module, AnalysisManager &analysis)
 {
     bool changedAny = false;
@@ -119,6 +147,10 @@ PreservedAnalyses LateCleanup::run(Module &module, AnalysisManager &analysis)
     return PreservedAnalyses::none();
 }
 
+/// @brief Register the LateCleanup pass with the pass registry.
+/// @details Associates the "late-cleanup" identifier with a module-level
+///          callback that constructs and runs the pass.
+/// @param registry Pass registry to update.
 void registerLateCleanupPass(PassRegistry &registry)
 {
     registry.registerModulePass("late-cleanup",

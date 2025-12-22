@@ -49,46 +49,97 @@ void Lowerer::lowerDecl(Decl *decl)
     }
 }
 
+std::string Lowerer::getModvarAddrHelper(Type::Kind kind)
+{
+    switch (kind)
+    {
+        case Type::Kind::I64:
+            return "rt_modvar_addr_i64";
+        case Type::Kind::F64:
+            return "rt_modvar_addr_f64";
+        case Type::Kind::I1:
+            return "rt_modvar_addr_i1";
+        case Type::Kind::Str:
+            return "rt_modvar_addr_str";
+        case Type::Kind::Ptr:
+        default:
+            return "rt_modvar_addr_ptr";
+    }
+}
+
+Lowerer::Value Lowerer::getGlobalVarAddr(const std::string &name, TypeRef type)
+{
+    std::string globalName = getStringGlobal(name);
+    Value nameStr = emitConstStr(globalName);
+
+    Type ilType = mapType(type);
+    std::string helper = getModvarAddrHelper(ilType.kind);
+    usedExterns_.insert(helper);
+
+    Value addr = emitCallRet(Type(Type::Kind::Ptr), helper, {nameStr});
+    return addr;
+}
+
 void Lowerer::lowerGlobalVarDecl(GlobalVarDecl &decl)
 {
-    // Only handle constants with literal initializers
-    // These are lowered to compile-time constant values
-    if (!decl.initializer)
-        return;
-
-    Expr *init = decl.initializer.get();
-
-    // Handle integer literals
-    if (auto *intLit = dynamic_cast<IntLiteralExpr *>(init))
+    // Resolve the type
+    TypeRef type = decl.type ? sema_.resolveType(decl.type.get()) : nullptr;
+    if (!type && decl.initializer)
     {
-        globalConstants_[decl.name] = Value::constInt(intLit->value);
-        return;
+        type = sema_.typeOf(decl.initializer.get());
     }
 
-    // Handle number (float) literals
-    if (auto *numLit = dynamic_cast<NumberLiteralExpr *>(init))
+    // Try to inline literal initializers as constants
+    // This applies to both final declarations and Java-style declarations
+    // (e.g., "Integer GAME_WIDTH = 70;" is treated as a constant)
+    if (decl.initializer)
     {
-        globalConstants_[decl.name] = Value::constFloat(numLit->value);
-        return;
+        Expr *init = decl.initializer.get();
+        bool inlinedAsConstant = false;
+
+        // Handle integer literals
+        if (auto *intLit = dynamic_cast<IntLiteralExpr *>(init))
+        {
+            globalConstants_[decl.name] = Value::constInt(intLit->value);
+            inlinedAsConstant = true;
+        }
+        // Handle number (float) literals
+        else if (auto *numLit = dynamic_cast<NumberLiteralExpr *>(init))
+        {
+            globalConstants_[decl.name] = Value::constFloat(numLit->value);
+            inlinedAsConstant = true;
+        }
+        // Handle boolean literals
+        else if (auto *boolLit = dynamic_cast<BoolLiteralExpr *>(init))
+        {
+            globalConstants_[decl.name] = Value::constBool(boolLit->value);
+            inlinedAsConstant = true;
+        }
+        // Handle string literals
+        else if (auto *strLit = dynamic_cast<StringLiteralExpr *>(init))
+        {
+            std::string label = stringTable_.intern(strLit->value);
+            globalConstants_[decl.name] = Value::constStr(label);
+            inlinedAsConstant = true;
+        }
+
+        if (inlinedAsConstant)
+        {
+            // For mutable variables with literal initializers, also register
+            // them for runtime storage so they can be reassigned
+            if (!decl.isFinal && type)
+            {
+                globalVariables_[decl.name] = type;
+            }
+            return;
+        }
     }
 
-    // Handle boolean literals
-    if (auto *boolLit = dynamic_cast<BoolLiteralExpr *>(init))
+    // For mutable variables without literal initializers, register for runtime storage
+    if (!decl.isFinal && type)
     {
-        globalConstants_[decl.name] = Value::constBool(boolLit->value);
-        return;
+        globalVariables_[decl.name] = type;
     }
-
-    // Handle string literals
-    if (auto *strLit = dynamic_cast<StringLiteralExpr *>(init))
-    {
-        std::string label = stringTable_.intern(strLit->value);
-        globalConstants_[decl.name] = Value::constStr(label);
-        return;
-    }
-
-    // For non-literal initializers, we would need runtime initialization
-    // which is not yet supported. For now, skip these.
 }
 
 void Lowerer::lowerFunctionDecl(FunctionDecl &decl)

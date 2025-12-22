@@ -12,10 +12,20 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// @file
+/// @brief Embedded 8x8 bitmap font data and accessors.
+/// @details Supplies a fixed monospace font for runtime text rendering. Glyphs
+///          cover ASCII 32-126 inclusive, with a zero glyph returned for out-
+///          of-range characters.
+
 #include "rt_font.h"
 
 // 8x8 bitmap font data for ASCII 32-126
 // Each character is 8 bytes (8 rows), each byte is one row (8 pixels, MSB left)
+/// @brief Bitmap glyph table for printable ASCII characters.
+/// @details The table is indexed by (codepoint - 32). Each glyph consists of
+///          8 rows of 8 pixels, with the most significant bit as the leftmost
+///          pixel in each row.
 static const uint8_t font_data[95][8] = {
     // 32: Space
     {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
@@ -210,8 +220,15 @@ static const uint8_t font_data[95][8] = {
 };
 
 // Empty glyph for characters outside ASCII 32-126
+/// @brief Fallback glyph for unsupported characters.
+/// @details Returns an 8x8 block of zero pixels.
 static const uint8_t empty_glyph[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 
+/// @brief Retrieve the bitmap glyph for a character.
+/// @details Returns a pointer to the glyph data for printable ASCII characters
+///          (32-126). Characters outside that range return @ref empty_glyph.
+/// @param c ASCII character code.
+/// @return Pointer to 8 bytes of glyph data.
 const uint8_t *rt_font_get_glyph(int c)
 {
     if (c >= 32 && c <= 126)
@@ -219,11 +236,17 @@ const uint8_t *rt_font_get_glyph(int c)
     return empty_glyph;
 }
 
+/// @brief Return the width of a font glyph in pixels.
+/// @details The font is fixed-width and always 8 pixels wide.
+/// @return Glyph width in pixels (8).
 int rt_font_char_width(void)
 {
     return 8;
 }
 
+/// @brief Return the height of a font glyph in pixels.
+/// @details The font is fixed-height and always 8 pixels tall.
+/// @return Glyph height in pixels (8).
 int rt_font_char_height(void)
 {
     return 8;

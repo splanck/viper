@@ -40,10 +40,10 @@ namespace
 ///          shared CLI options and any extra program arguments.
 struct FrontViperlangConfig
 {
-    bool emitIl{false};                 ///< True when `-emit-il` is requested.
-    bool run{false};                    ///< True when `-run` is requested.
-    std::string sourcePath;             ///< Path to the input `.viper` source.
-    ilc::SharedCliOptions shared;       ///< Shared CLI settings (trace, steps, IO).
+    bool emitIl{false};                   ///< True when `-emit-il` is requested.
+    bool run{false};                      ///< True when `-run` is requested.
+    std::string sourcePath;               ///< Path to the input `.viper` source.
+    ilc::SharedCliOptions shared;         ///< Shared CLI settings (trace, steps, IO).
     std::vector<std::string> programArgs; ///< Extra arguments forwarded to the program.
 };
 

@@ -324,6 +324,7 @@ void *rt_pixels_from_bytes(int64_t width, int64_t height, void *bytes)
 
 // BMP file format structures (packed)
 #pragma pack(push, 1)
+
 typedef struct bmp_file_header
 {
     uint8_t magic[2];     // 'B', 'M'
@@ -335,18 +336,19 @@ typedef struct bmp_file_header
 
 typedef struct bmp_info_header
 {
-    uint32_t header_size;     // 40 for BITMAPINFOHEADER
-    int32_t width;            // Image width
-    int32_t height;           // Image height (positive = bottom-up)
-    uint16_t planes;          // 1
-    uint16_t bit_count;       // Bits per pixel (24 for RGB)
-    uint32_t compression;     // 0 = BI_RGB (uncompressed)
-    uint32_t image_size;      // Can be 0 for uncompressed
-    int32_t x_pels_per_meter; // Horizontal resolution
-    int32_t y_pels_per_meter; // Vertical resolution
-    uint32_t colors_used;     // 0 = default
+    uint32_t header_size;      // 40 for BITMAPINFOHEADER
+    int32_t width;             // Image width
+    int32_t height;            // Image height (positive = bottom-up)
+    uint16_t planes;           // 1
+    uint16_t bit_count;        // Bits per pixel (24 for RGB)
+    uint32_t compression;      // 0 = BI_RGB (uncompressed)
+    uint32_t image_size;       // Can be 0 for uncompressed
+    int32_t x_pels_per_meter;  // Horizontal resolution
+    int32_t y_pels_per_meter;  // Vertical resolution
+    uint32_t colors_used;      // 0 = default
     uint32_t colors_important; // 0 = all
 } bmp_info_header;
+
 #pragma pack(pop)
 
 void *rt_pixels_load_bmp(void *path)

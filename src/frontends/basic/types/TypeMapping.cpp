@@ -5,11 +5,12 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: frontends/basic/types/TypeMapping.cpp
-// Purpose: Map IL core types to BASIC frontend scalar types for proc signatures.
-// Key invariants: Only scalar types are supported (i64, f64, str, i1). Others are skipped.
-// Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+/// @file
+/// @brief Implements IL-to-BASIC type mapping for procedure signatures.
+/// @details Converts IL core scalar types to the BASIC frontend's scalar type
+///          system when building or validating procedure signatures. Non-scalar
+///          IL kinds and unsupported types return `std::nullopt` to signal that
+///          no BASIC equivalent exists.
 //
 //===----------------------------------------------------------------------===//
 
@@ -18,6 +19,13 @@
 namespace il::frontends::basic::types
 {
 
+/// @brief Map an IL core type to a BASIC scalar type.
+/// @details Supports integer, floating-point, string, boolean, and pointer
+///          kinds. Pointers are treated as integer handles for signature
+///          compatibility, while void returns `std::nullopt` to signal SUB-like
+///          procedures. Unsupported kinds return `std::nullopt`.
+/// @param ilType IL core type to map.
+/// @return BASIC scalar type when supported; otherwise `std::nullopt`.
 std::optional<Type> mapIlToBasic(const il::core::Type &ilType)
 {
     using K = il::core::Type::Kind;

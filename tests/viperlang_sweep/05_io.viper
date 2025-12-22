@@ -1,0 +1,123 @@
+module TestIO;
+
+import "./_support";
+
+// IO tests for File, Dir, and Path operations
+// All functions now aligned between sema and runtime
+
+func start() {
+    Viper.Terminal.Say("=== IO Tests ===");
+
+    testPath();
+    testDir();
+    testFileOps();
+
+    report();
+}
+
+func testPath() {
+    // Join paths
+    var joined = Viper.IO.Path.Join("/home/user", "documents");
+    assertNotEmpty(joined, "path join");
+
+    // Dir (fixed from GetDir)
+    var dir = Viper.IO.Path.Dir("/home/user/file.txt");
+    assertEqStr(dir, "/home/user", "path dir");
+
+    // Name (fixed from GetName)
+    var name = Viper.IO.Path.Name("/home/user/file.txt");
+    assertEqStr(name, "file.txt", "path name");
+
+    // Ext (fixed from GetExt)
+    var ext = Viper.IO.Path.Ext("/home/user/file.txt");
+    assertEqStr(ext, ".txt", "path ext");
+
+    // Stem (fixed from GetBase)
+    var stem = Viper.IO.Path.Stem("/home/user/file.txt");
+    assertEqStr(stem, "file", "path stem");
+
+    // Multiple extensions
+    var ext2 = Viper.IO.Path.Ext("/home/user/archive.tar.gz");
+    assertEqStr(ext2, ".gz", "path ext multi");
+
+    // No extension
+    var noExt = Viper.IO.Path.Ext("/home/user/README");
+    assertEqStr(noExt, "", "path ext none");
+
+    // Norm (fixed from Normalize)
+    var normalized = Viper.IO.Path.Norm("/home/user/../user/./docs");
+    assertNotEmpty(normalized, "path norm");
+
+    // Abs (fixed from Absolute)
+    var absolute = Viper.IO.Path.Abs("relative/path");
+    assertNotEmpty(absolute, "path abs");
+
+    // IsAbs
+    assertTrue(Viper.IO.Path.IsAbs("/absolute/path"), "path isabs true");
+    assertFalse(Viper.IO.Path.IsAbs("relative/path"), "path isabs false");
+
+    // Sep
+    var sep = Viper.IO.Path.Sep();
+    assertNotEmpty(sep, "path sep");
+
+    // WithExt
+    var withExt = Viper.IO.Path.WithExt("/home/user/file.txt", ".md");
+    assertEqStr(Viper.IO.Path.Ext(withExt), ".md", "path withext");
+}
+
+func testDir() {
+    // Current (fixed from GetCurrent)
+    var cwd = Viper.IO.Dir.Current();
+    assertNotEmpty(cwd, "dir current");
+
+    // Exists
+    assertTrue(Viper.IO.Dir.Exists("/tmp"), "dir exists tmp");
+    assertFalse(Viper.IO.Dir.Exists("/nonexistent_xyz_12345"), "dir not exists");
+
+    // Make/Remove (fixed from Create/Delete)
+    var testDir = "/tmp/viper_test_dir_12345";
+    Viper.IO.Dir.Make(testDir);
+    assertTrue(Viper.IO.Dir.Exists(testDir), "dir make");
+    Viper.IO.Dir.Remove(testDir);
+    assertFalse(Viper.IO.Dir.Exists(testDir), "dir remove");
+}
+
+func testFileOps() {
+    var testPath = "/tmp/viper_test_file.txt";
+
+    // Write file
+    Viper.IO.File.WriteAllText(testPath, "Hello, Viper!");
+
+    // Exists
+    assertTrue(Viper.IO.File.Exists(testPath), "file exists after write");
+
+    // Read back
+    var content = Viper.IO.File.ReadAllText(testPath);
+    assertEqStr(content, "Hello, Viper!", "file read content");
+
+    // Size
+    var size = Viper.IO.File.Size(testPath);
+    assertEqInt(size, 13, "file size");
+
+    // Append (fixed from AppendText)
+    Viper.IO.File.Append(testPath, " More text.");
+    var appended = Viper.IO.File.ReadAllText(testPath);
+    assertEqStr(appended, "Hello, Viper! More text.", "file append");
+
+    // Modified (fixed from GetModTime)
+    var modTime = Viper.IO.File.Modified(testPath);
+    assertGt(modTime, 0, "file modified time");
+
+    // Delete (now returns void)
+    Viper.IO.File.Delete(testPath);
+    assertFalse(Viper.IO.File.Exists(testPath), "file not exists after delete");
+
+    // Copy/Move tests
+    var src = "/tmp/viper_copy_src.txt";
+    var dst = "/tmp/viper_copy_dst.txt";
+    Viper.IO.File.WriteAllText(src, "copy test");
+    Viper.IO.File.Copy(src, dst);  // Now returns void
+    assertTrue(Viper.IO.File.Exists(dst), "file copy");
+    Viper.IO.File.Delete(src);
+    Viper.IO.File.Delete(dst);
+}

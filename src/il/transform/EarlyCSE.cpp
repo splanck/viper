@@ -12,6 +12,13 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// @file
+/// @brief Implements a lightweight within-block common subexpression elimination pass.
+/// @details Scans each basic block independently, building a map from
+///          normalized expression keys to their dominating result values. When
+///          a repeated pure expression is encountered, all uses are replaced
+///          with the original result and the redundant instruction is removed.
+
 #include "il/transform/EarlyCSE.hpp"
 
 #include "il/transform/ValueKey.hpp"
@@ -30,6 +37,13 @@ namespace
 {
 } // namespace
 
+/// @brief Run early common subexpression elimination on a function.
+/// @details Processes each basic block independently to avoid cross-block
+///          analysis. The pass only folds instructions that pass
+///          @ref makeValueKey (side-effect free, non-trapping, and
+///          non-memory). Operand normalization handles commutative opcodes.
+/// @param F Function to optimize in place.
+/// @return True if any redundant instruction was removed; false otherwise.
 bool runEarlyCSE(Function &F)
 {
     bool changed = false;

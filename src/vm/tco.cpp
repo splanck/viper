@@ -23,6 +23,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// @file
+/// @brief Tail-call optimization support for VM execution frames.
+/// @details Reuses the current frame for eligible tail calls to reduce stack
+///          growth. The transformation is gated by compile-time flags and
+///          preserves exception-handling state across the call.
+
 #include "vm/tco.hpp"
 
 #include "il/core/BasicBlock.hpp"
@@ -39,6 +45,16 @@
 namespace il::vm
 {
 
+/// @brief Attempt to perform a tail call by reusing the current frame.
+/// @details When enabled, this function rewrites the active execution state to
+///          execute @p callee in place of the current function. It rebuilds the
+///          block map, resizes the register file, reinitializes parameters, and
+///          preserves EH/resume state. The call is rejected when the callee is
+///          null, has no entry block, or the argument count does not match.
+/// @param vm Active VM instance.
+/// @param callee Function to tail-call (must be non-NULL).
+/// @param args Arguments to seed into the callee's entry parameters.
+/// @return True if the tail call was performed; false if not eligible.
 bool tryTailCall(VM &vm, const il::core::Function *callee, std::span<const Slot> args)
 {
 #if !defined(VIPER_VM_TAILCALL) || !VIPER_VM_TAILCALL

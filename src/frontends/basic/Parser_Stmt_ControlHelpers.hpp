@@ -5,11 +5,13 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: frontends/basic/Parser_Stmt_ControlHelpers.hpp
-// Purpose: Provides shared helper utilities for BASIC control-flow statement parsing.
-// Key invariants: Helpers maintain parser sequencing state consistency when collecting
-// Ownership/Lifetime: Helpers operate on Parser-owned StatementSequencer instances
-// Links: docs/codemap.md
+/// @file
+/// @brief Shared helper utilities for BASIC control-flow parsing.
+/// @details Defines small inline helpers used by the parser to handle control
+///          flow constructs (IF/ELSEIF, SELECT CASE, etc.). The helpers maintain
+///          consistency of the statement sequencer state, normalize optional
+///          line labels between branches, and build statement lists with correct
+///          source locations.
 //
 //===----------------------------------------------------------------------===//
 
@@ -25,6 +27,14 @@
 namespace il::frontends::basic
 {
 
+/// @brief Consume an optional line label after a line break.
+/// @details If a line break is present, advances the sequencer past it and then
+///          checks for an optional numeric label or named label (identifier +
+///          colon). Labels are only consumed when the following token matches
+///          one of the @p followerKinds, preserving labels that belong to other
+///          constructs. Any consumed label is recorded for later diagnostics.
+/// @param ctx Statement sequencer to advance past line breaks.
+/// @param followerKinds Token kinds that may legally follow the optional label.
 inline void Parser::skipOptionalLineLabelAfterBreak(StatementSequencer &ctx,
                                                     std::initializer_list<TokenKind> followerKinds)
 {
@@ -70,6 +80,13 @@ inline void Parser::skipOptionalLineLabelAfterBreak(StatementSequencer &ctx,
     }
 }
 
+/// @brief Parse a single IF/ELSEIF branch body statement.
+/// @details Skips optional labels after a line break, parses the following
+///          statement, and normalizes the statement's line metadata to the
+///          branch header line for consistency.
+/// @param line Source line number associated with the IF/ELSEIF header.
+/// @param ctx Statement sequencer used for line-break handling.
+/// @return Parsed statement node, or null when no statement is present.
 inline StmtPtr Parser::parseIfBranchBody(int line, StatementSequencer &ctx)
 {
     skipOptionalLineLabelAfterBreak(ctx);
@@ -82,6 +99,14 @@ inline StmtPtr Parser::parseIfBranchBody(int line, StatementSequencer &ctx)
 namespace parser_helpers
 {
 
+/// @brief Build a StmtList node from a sequence of branch statements.
+/// @details Returns null for empty branches; otherwise constructs a StmtList,
+///          assigns its line, and chooses a source location based on the first
+///          non-null statement (falling back to @p defaultLoc when needed).
+/// @param line Line number used for the list node.
+/// @param defaultLoc Fallback source location when no child has one.
+/// @param stmts Statement nodes collected for the branch.
+/// @return StmtList node or null if the branch is empty.
 inline StmtPtr buildBranchList(int line,
                                il::support::SourceLoc defaultLoc,
                                std::vector<StmtPtr> &&stmts)
@@ -104,6 +129,14 @@ inline StmtPtr buildBranchList(int line,
     return list;
 }
 
+/// @brief Collect branch statements using a terminator predicate.
+/// @details Delegates to @ref StatementSequencer::collectStatements to gather
+///          statements until a terminator is encountered, then returns the
+///          collected vector for further processing by the parser.
+/// @param ctx Statement sequencer driving statement collection.
+/// @param predicate Terminator predicate that decides when to stop.
+/// @param consumer Callback invoked when a terminator is consumed.
+/// @return Vector of collected statements for the branch.
 inline std::vector<StmtPtr> collectBranchStatements(
     StatementSequencer &ctx,
     const StatementSequencer::TerminatorPredicate &predicate,

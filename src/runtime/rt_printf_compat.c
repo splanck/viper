@@ -11,11 +11,24 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// @file
+/// @brief Default implementations for printf-compatible runtime wrappers.
+/// @details The symbols are marked weak so test harnesses can provide stronger
+///          overrides without modifying production code.
+
 #include "rt_printf_compat.h"
 
 #include <stdarg.h>
 #include <stdio.h>
 
+/// @brief snprintf-compatible formatting wrapper with weak linkage.
+/// @details Forwards to `vsnprintf` using a varargs interface. Marked weak so
+///          tests may interpose custom formatting behavior or capture output.
+/// @param str Destination buffer.
+/// @param size Size of the destination buffer in bytes.
+/// @param fmt printf-style format string.
+/// @return Number of characters that would have been written (excluding NUL),
+///         or a negative value on encoding error, mirroring `vsnprintf`.
 __attribute__((weak)) int rt_snprintf(char *str, size_t size, const char *fmt, ...)
 {
     va_list ap;

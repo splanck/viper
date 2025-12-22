@@ -1,611 +1,748 @@
-// ============================================================================
-// Frogger - Main Game
-// ============================================================================
-// Classic Frogger arcade game implemented in ViperLang.
-// Features:
-// - Roads with cars and trucks
-// - River with logs and turtles to ride
-// - 5 homes to fill at the top
-// - Lives system and scoring
-// - High score tracking
-// ============================================================================
-
 module Main;
 
-import "config";
-import "terminal";
-import "frog";
-import "vehicle";
-import "platform";
-import "home";
-import "scores";
+// Frogger - Classic Arcade Game
 
-// Game state
+// ============================================
+// CONFIGURATION
+// ============================================
+var GAME_WIDTH = 70;
+var GAME_HEIGHT = 24;
+var HOME_ROW = 2;
+var RIVER_START = 4;
+var RIVER_END = 8;
+var MEDIAN_ROW = 10;
+var ROAD_START = 12;
+var ROAD_END = 16;
+var START_ROW = 18;
+var INITIAL_LIVES = 3;
+var TICK_MS = 100;
+
+// ============================================
+// FROG - Player Character
+// ============================================
+entity Frog {
+    expose Integer col;
+    expose Integer row;
+    expose Integer startCol;
+    expose Integer startRow;
+    expose Integer lives;
+    expose Boolean alive;
+    expose Integer score;
+    expose Boolean onPlatform;
+    expose Integer platformVel;
+
+    expose func init(r: Integer, c: Integer) {
+        row = r;
+        col = c;
+        startRow = r;
+        startCol = c;
+        lives = INITIAL_LIVES;
+        alive = true;
+        score = 0;
+        onPlatform = false;
+        platformVel = 0;
+    }
+
+    expose func moveUp() {
+        if row > 1 {
+            row = row - 1;
+            score = score + 10;
+        }
+    }
+
+    expose func moveDown() {
+        if row < GAME_HEIGHT {
+            row = row + 1;
+        }
+    }
+
+    expose func moveLeft() {
+        if col > 1 {
+            col = col - 1;
+        }
+    }
+
+    expose func moveRight() {
+        if col < GAME_WIDTH {
+            col = col + 1;
+        }
+    }
+
+    expose func die() {
+        lives = lives - 1;
+        if lives <= 0 {
+            alive = false;
+        } else {
+            self.reset();
+        }
+    }
+
+    expose func reset() {
+        row = startRow;
+        col = startCol;
+        onPlatform = false;
+        platformVel = 0;
+    }
+
+    expose func addScore(pts: Integer) {
+        score = score + pts;
+    }
+
+    expose func updatePlatform() {
+        if onPlatform {
+            col = col + platformVel;
+            if col < 1 { col = 1; }
+            if col > GAME_WIDTH { col = GAME_WIDTH; }
+        }
+    }
+}
+
+// ============================================
+// VEHICLE - Cars/Trucks on Road
+// ============================================
+entity Vehicle {
+    expose Integer col;
+    expose Integer row;
+    expose Integer speed;
+    expose Integer dir;
+    expose Integer width;
+    expose String sym;
+
+    expose func init(r: Integer, c: Integer, spd: Integer, d: Integer, w: Integer, s: String) {
+        row = r;
+        col = c;
+        speed = spd;
+        dir = d;
+        width = w;
+        sym = s;
+    }
+
+    expose func move() {
+        col = col + (speed * dir);
+        if col > GAME_WIDTH + 5 {
+            col = 1 - width;
+        }
+        if col < (0 - width) {
+            col = GAME_WIDTH + 5;
+        }
+    }
+
+    expose func checkCollision(frogRow: Integer, frogCol: Integer) -> Boolean {
+        if frogRow != row {
+            return false;
+        }
+        var i = 0;
+        while i < width {
+            if frogCol == col + i {
+                return true;
+            }
+            i = i + 1;
+        }
+        return false;
+    }
+}
+
+// ============================================
+// PLATFORM - Logs/Turtles in River
+// ============================================
+entity Platform {
+    expose Integer col;
+    expose Integer row;
+    expose Integer speed;
+    expose Integer dir;
+    expose Integer width;
+    expose String sym;
+    expose Boolean diving;
+    expose Integer diveTimer;
+
+    expose func init(r: Integer, c: Integer, spd: Integer, d: Integer, w: Integer, s: String) {
+        row = r;
+        col = c;
+        speed = spd;
+        dir = d;
+        width = w;
+        sym = s;
+        diving = false;
+        diveTimer = 0;
+    }
+
+    expose func move() {
+        col = col + (speed * dir);
+        if col > GAME_WIDTH + 5 {
+            col = 1 - width;
+        }
+        if col < (0 - width) {
+            col = GAME_WIDTH + 5;
+        }
+        // Turtle diving
+        if sym == "O" {
+            diveTimer = diveTimer + 1;
+            if diveTimer > 30 {
+                if diving {
+                    diving = false;
+                } else {
+                    diving = true;
+                }
+                diveTimer = 0;
+            }
+        }
+    }
+
+    expose func checkOnPlatform(frogRow: Integer, frogCol: Integer) -> Boolean {
+        if frogRow != row {
+            return false;
+        }
+        if diving {
+            return false;
+        }
+        var i = 0;
+        while i < width {
+            if frogCol == col + i {
+                return true;
+            }
+            i = i + 1;
+        }
+        return false;
+    }
+
+    expose func getVelocity() -> Integer {
+        return speed * dir;
+    }
+}
+
+// ============================================
+// HOME - Goal Slots
+// ============================================
+entity Home {
+    expose Integer col;
+    expose Boolean filled;
+
+    expose func init(c: Integer) {
+        col = c;
+        filled = false;
+    }
+
+    expose func fill() {
+        filled = true;
+    }
+
+    expose func inRange(frogCol: Integer) -> Boolean {
+        if frogCol >= col - 1 {
+            if frogCol <= col + 1 {
+                return true;
+            }
+        }
+        return false;
+    }
+}
+
+// ============================================
+// ANSI RENDERING
+// ============================================
+var ESC: String;
+
+func initRenderer() {
+    ESC = Viper.String.Chr(27);
+}
+
+func clear() {
+    Viper.Terminal.Print(Viper.String.Concat(ESC, "[2J"));
+    Viper.Terminal.Print(Viper.String.Concat(ESC, "[H"));
+}
+
+func moveTo(r: Integer, c: Integer) {
+    var seq = Viper.String.Concat(ESC, "[");
+    seq = Viper.String.Concat(seq, Viper.Fmt.Int(r));
+    seq = Viper.String.Concat(seq, ";");
+    seq = Viper.String.Concat(seq, Viper.Fmt.Int(c));
+    seq = Viper.String.Concat(seq, "H");
+    Viper.Terminal.Print(seq);
+}
+
+func setColor(fg: Integer) {
+    var seq = Viper.String.Concat(ESC, "[");
+    seq = Viper.String.Concat(seq, Viper.Fmt.Int(30 + fg));
+    seq = Viper.String.Concat(seq, "m");
+    Viper.Terminal.Print(seq);
+}
+
+func resetColor() {
+    Viper.Terminal.Print(Viper.String.Concat(ESC, "[0m"));
+}
+
+func hideCursor() {
+    Viper.Terminal.Print(Viper.String.Concat(ESC, "[?25l"));
+}
+
+func showCursor() {
+    Viper.Terminal.Print(Viper.String.Concat(ESC, "[?25h"));
+}
+
+func drawAt(r: Integer, c: Integer, color: Integer, text: String) {
+    moveTo(r, c);
+    setColor(color);
+    Viper.Terminal.Print(text);
+    resetColor();
+}
+
+func drawLine(r: Integer, startC: Integer, endC: Integer, color: Integer, ch: String) {
+    var c = startC;
+    while c <= endC {
+        drawAt(r, c, color, ch);
+        c = c + 1;
+    }
+}
+
+// ============================================
+// GAME STATE Entity
+// ============================================
+entity GameState {
+    expose Integer homesFilled;
+    expose Boolean running;
+    expose Boolean paused;
+
+    expose func init() {
+        homesFilled = 0;
+        running = true;
+        paused = false;
+    }
+
+    expose func stop() {
+        running = false;
+    }
+
+    expose func togglePause() {
+        if paused {
+            paused = false;
+        } else {
+            paused = true;
+        }
+    }
+
+    expose func filledHome() {
+        homesFilled = homesFilled + 1;
+    }
+}
+
 var frog: Frog;
 var vehicles: List[Vehicle];
 var platforms: List[Platform];
 var homes: List[Home];
-var scoreManager: HighScoreManager;
-
-var score: Integer;
-var level: Integer;
-var gameRunning: Boolean;
-var homesFilledCount: Integer;
-
-// ============================================================================
-// Game Initialization
-// ============================================================================
+var game: GameState;
 
 func initGame() {
-    score = 0;
-    level = 1;
-    gameRunning = true;
-    homesFilledCount = 0;
+    initRenderer();
 
-    // Create frog at start position
-    frog = new Frog(START_ROW, 35);
+    // Create game state
+    game = new GameState();
+    game.init();
 
-    // Create 5 homes at top
-    homes = [];
-    var h0 = new Home(8);
-    var h1 = new Home(20);
-    var h2 = new Home(32);
-    var h3 = new Home(44);
-    var h4 = new Home(56);
-    homes.add(h0);
-    homes.add(h1);
-    homes.add(h2);
-    homes.add(h3);
-    homes.add(h4);
+    // Create frog
+    frog = new Frog();
+    frog.init(START_ROW, 35);
 
-    // Create road vehicles
+    // Create vehicles using typed List
     vehicles = [];
-    createVehicles();
-
-    // Create river platforms
-    platforms = [];
-    createPlatforms();
-}
-
-func createVehicles() {
-    // Lane 1 (row 12): Cars going right
-    var v0 = new Vehicle(12, 5, 1, 1, "=", 4);
-    var v1 = new Vehicle(12, 35, 1, 1, "=", 4);
-    vehicles.add(v0);
+    var v1 = new Vehicle(); v1.init(12, 5, 1, 1, 4, "=");
+    var v2 = new Vehicle(); v2.init(12, 35, 1, 1, 4, "=");
+    var v3 = new Vehicle(); v3.init(13, 15, 1, 0-1, 6, "#");
+    var v4 = new Vehicle(); v4.init(13, 50, 1, 0-1, 6, "#");
+    var v5 = new Vehicle(); v5.init(14, 10, 2, 1, 4, "=");
+    var v6 = new Vehicle(); v6.init(14, 45, 2, 1, 4, "=");
+    var v7 = new Vehicle(); v7.init(15, 20, 1, 0-1, 6, "#");
+    var v8 = new Vehicle(); v8.init(16, 8, 2, 1, 4, "=");
+    var v9 = new Vehicle(); v9.init(16, 40, 2, 1, 4, "=");
     vehicles.add(v1);
-
-    // Lane 2 (row 13): Trucks going left
-    var v2 = new Vehicle(13, 15, 1, 0 - 1, "#", 6);
-    var v3 = new Vehicle(13, 50, 1, 0 - 1, "#", 6);
     vehicles.add(v2);
     vehicles.add(v3);
-
-    // Lane 3 (row 14): Fast cars going right
-    var v4 = new Vehicle(14, 10, 2, 1, "=", 4);
-    var v5 = new Vehicle(14, 45, 2, 1, "=", 4);
     vehicles.add(v4);
     vehicles.add(v5);
-
-    // Lane 4 (row 15): Trucks going left
-    var v6 = new Vehicle(15, 20, 1, 0 - 1, "#", 6);
-    var v7 = new Vehicle(15, 55, 1, 0 - 1, "#", 6);
     vehicles.add(v6);
     vehicles.add(v7);
-
-    // Lane 5 (row 16): Fast cars going right
-    var v8 = new Vehicle(16, 8, 2, 1, "=", 4);
-    var v9 = new Vehicle(16, 40, 2, 1, "=", 4);
-    var v10 = new Vehicle(16, 60, 2, 1, "=", 4);
     vehicles.add(v8);
     vehicles.add(v9);
-    vehicles.add(v10);
-}
 
-func createPlatforms() {
-    // Row 1 (row 4): Logs going right
-    var p0 = new Platform(4, 5, 1, 1, "=", 8);
-    var p1 = new Platform(4, 35, 1, 1, "=", 8);
-    var p2 = new Platform(4, 60, 1, 1, "=", 6);
-    platforms.add(p0);
+    // Create platforms using typed List
+    platforms = [];
+    var p1 = new Platform(); p1.init(4, 5, 1, 1, 10, "=");
+    var p2 = new Platform(); p2.init(4, 40, 1, 1, 10, "=");
+    var p3 = new Platform(); p3.init(5, 15, 1, 0-1, 5, "O");
+    var p4 = new Platform(); p4.init(5, 45, 1, 0-1, 5, "O");
+    var p5 = new Platform(); p5.init(6, 10, 1, 1, 8, "=");
+    var p6 = new Platform(); p6.init(6, 45, 1, 1, 8, "=");
+    var p7 = new Platform(); p7.init(7, 20, 1, 0-1, 4, "O");
+    var p8 = new Platform(); p8.init(7, 55, 1, 0-1, 4, "O");
+    var p9 = new Platform(); p9.init(8, 12, 2, 1, 7, "=");
+    var p10 = new Platform(); p10.init(8, 48, 2, 1, 7, "=");
     platforms.add(p1);
     platforms.add(p2);
-
-    // Row 2 (row 5): Turtles going left
-    var p3 = new Platform(5, 15, 1, 0 - 1, "O", 5);
-    var p4 = new Platform(5, 40, 1, 0 - 1, "O", 5);
-    var p5 = new Platform(5, 65, 1, 0 - 1, "O", 4);
     platforms.add(p3);
     platforms.add(p4);
     platforms.add(p5);
-
-    // Row 3 (row 6): Long logs going right
-    var p6 = new Platform(6, 10, 1, 1, "=", 12);
-    var p7 = new Platform(6, 45, 1, 1, "=", 10);
     platforms.add(p6);
     platforms.add(p7);
-
-    // Row 4 (row 7): Turtles going left
-    var p8 = new Platform(7, 20, 1, 0 - 1, "O", 4);
-    var p9 = new Platform(7, 45, 1, 0 - 1, "O", 4);
-    var p10 = new Platform(7, 65, 1, 0 - 1, "O", 3);
     platforms.add(p8);
     platforms.add(p9);
     platforms.add(p10);
 
-    // Row 5 (row 8): Fast logs going right
-    var p11 = new Platform(8, 12, 2, 1, "=", 7);
-    var p12 = new Platform(8, 48, 2, 1, "=", 7);
-    platforms.add(p11);
-    platforms.add(p12);
+    // Create homes using typed List
+    homes = [];
+    var h1 = new Home(); h1.init(8);
+    var h2 = new Home(); h2.init(20);
+    var h3 = new Home(); h3.init(32);
+    var h4 = new Home(); h4.init(44);
+    var h5 = new Home(); h5.init(56);
+    homes.add(h1);
+    homes.add(h2);
+    homes.add(h3);
+    homes.add(h4);
+    homes.add(h5);
 }
 
-// ============================================================================
-// Game Rendering
-// ============================================================================
-
-func drawBoard() {
-    beginFrame();
-
-    // Draw title and status bar
-    printColorAt(1, 2, COLOR_WHITE, "Lives:");
-    printAt(1, 8, Viper.Convert.IntToStr(frog.getLives()));
-    printColorCentered(1, COLOR_CYAN, "*** CLASSIC FROGGER ***");
-    printColorAt(1, 55, COLOR_YELLOW, "Score:");
-    printAt(1, 62, Viper.Convert.IntToStr(score));
-
-    // Draw homes row (water background)
-    drawHLine(HOME_ROW, 1, GAME_WIDTH, COLOR_BLUE, "~");
-
-    // Draw each home slot
-    for i in 0..homes.size() {
-        var home = homes.get(i);
-        drawHome(home);
-    }
-
-    // Clear gap row between homes and river
-    drawHLine(3, 1, GAME_WIDTH, COLOR_WHITE, " ");
-
-    // Draw river section (water)
-    for row in RIVER_START..=RIVER_END {
-        drawHLine(row, 1, GAME_WIDTH, COLOR_BLUE, "~");
-    }
-
-    // Draw river platforms (logs and turtles)
-    for i in 0..platforms.size() {
-        var plat = platforms.get(i);
-        drawPlatform(plat);
-    }
-
-    // Clear gap row between river and median
-    drawHLine(9, 1, GAME_WIDTH, COLOR_WHITE, " ");
-
-    // Draw median (safe zone)
-    drawHLine(MEDIAN_ROW, 1, GAME_WIDTH, COLOR_GREEN, "-");
-    printColorAt(MEDIAN_ROW, 28, COLOR_GREEN, "SAFE ZONE");
-
-    // Clear gap row between median and road
-    drawHLine(11, 1, GAME_WIDTH, COLOR_WHITE, " ");
-
-    // Draw road section
-    for row in ROAD_START..=ROAD_END {
-        drawHLine(row, 1, GAME_WIDTH, COLOR_WHITE, ".");
-    }
-
-    // Draw vehicles
-    for i in 0..vehicles.size() {
-        var veh = vehicles.get(i);
-        drawVehicle(veh);
-    }
-
-    // Clear gap row between road and start
-    drawHLine(17, 1, GAME_WIDTH, COLOR_WHITE, " ");
-
-    // Draw start area
-    drawHLine(START_ROW, 1, GAME_WIDTH, COLOR_GREEN, "-");
-    printColorAt(START_ROW, 30, COLOR_GREEN, "START");
-
-    // Draw frog
-    printColorAt(frog.getRow(), frog.getCol(), COLOR_GREEN, frog.getSymbol());
-
-    // Draw instructions
-    printAt(20, 1, "WASD=Move  P=Pause  Q=Quit  Goal: Fill all 5 homes!");
-
-    endFrame();
-}
-
-func drawHome(home: Home) {
-    var c = home.getCol();
-    if home.isFilled() {
-        printColorAt(HOME_ROW, c - 1, COLOR_GREEN, "[");
-        printColorAt(HOME_ROW, c, COLOR_GREEN, "F");
-        printColorAt(HOME_ROW, c + 1, COLOR_GREEN, "]");
-    } else {
-        printColorAt(HOME_ROW, c - 1, COLOR_WHITE, "[");
-        printColorAt(HOME_ROW, c, COLOR_WHITE, " ");
-        printColorAt(HOME_ROW, c + 1, COLOR_WHITE, "]");
+// ============================================
+// UPDATE LOGIC
+// ============================================
+func updateVehicles() {
+    var i = 0;
+    var count = vehicles.size();
+    while i < count {
+        var v = vehicles.get(i);
+        v.move();
+        i = i + 1;
     }
 }
 
-func drawVehicle(veh: Vehicle) {
-    var r = veh.getRow();
-    var c = veh.getCol();
-    var w = veh.getWidth();
-    var sym = veh.getSymbol();
-
-    for i in 0..w {
-        var drawCol = c + i;
-        if drawCol >= 1 && drawCol <= GAME_WIDTH {
-            printColorAt(r, drawCol, COLOR_RED, sym);
-        }
+func updatePlatforms() {
+    var i = 0;
+    var count = platforms.size();
+    while i < count {
+        var p = platforms.get(i);
+        p.move();
+        i = i + 1;
     }
 }
 
-func drawPlatform(plat: Platform) {
-    var r = plat.getRow();
-    var c = plat.getCol();
-    var w = plat.getWidth();
-    var sym = plat.getSymbol();
-    var color = COLOR_YELLOW;
-    if plat.getIsTurtle() {
-        color = COLOR_GREEN;
-    }
-
-    for i in 0..w {
-        var drawCol = c + i;
-        if drawCol >= 1 && drawCol <= GAME_WIDTH {
-            printColorAt(r, drawCol, color, sym);
-        }
-    }
-}
-
-// ============================================================================
-// Game Logic
-// ============================================================================
-
-func isInRiver(row: Integer) -> Boolean {
-    return row >= RIVER_START && row <= RIVER_END;
-}
-
-func updateGame() {
-    var frogRow = frog.getRow();
-    var frogCol = frog.getCol();
-
-    // Move all vehicles
-    for i in 0..vehicles.size() {
-        var veh = vehicles.get(i);
-        veh.move();
-    }
-
-    // Move all platforms
-    for i in 0..platforms.size() {
-        var plat = platforms.get(i);
-        plat.move();
-    }
-
-    // Check if frog is in river
-    if isInRiver(frogRow) {
-        var onPlatform = false;
-
-        // Check each platform
-        for i in 0..platforms.size() {
-            var plat = platforms.get(i);
-            if plat.checkOnPlatform(frogRow, frogCol) {
-                onPlatform = true;
-                frog.setOnPlatform(plat.getMovementSpeed());
-                frog.updateOnPlatform();
-                break;
-            }
-        }
-
-        // If not on platform, frog drowns
-        if !onPlatform {
-            frog.die();
-            frog.clearPlatform();
-            if frog.isAlive() {
-                printColorCentered(12, COLOR_RED, "SPLASH!");
-                endFrame();
-                sleep(DEATH_DELAY_MS);
-            }
-            return;
-        }
-    } else {
-        frog.clearPlatform();
-    }
-
-    // Check road collisions
-    if frogRow >= ROAD_START && frogRow <= ROAD_END {
-        for i in 0..vehicles.size() {
-            var veh = vehicles.get(i);
-            if veh.checkCollision(frogRow, frogCol) {
-                frog.die();
-                if frog.isAlive() {
-                    printColorCentered(12, COLOR_RED, "SPLAT!");
-                    endFrame();
-                    sleep(DEATH_DELAY_MS);
+func checkVehicleCollision() -> Boolean {
+    var i = 0;
+    var count = vehicles.size();
+    var frogRow = frog.row;
+    var frogCol = frog.col;
+    while i < count {
+        var v = vehicles.get(i);
+        if frogRow == v.row {
+            var j = 0;
+            while j < v.width {
+                if frogCol == v.col + j {
+                    return true;
                 }
-                return;
+                j = j + 1;
             }
         }
+        i = i + 1;
     }
+    return false;
+}
 
-    // Check if frog reached home row
-    if frogRow == HOME_ROW {
-        var foundHome = false;
-
-        for i in 0..homes.size() {
-            var home = homes.get(i);
-            if home.checkReached(frogCol) {
-                if !home.isFilled() {
-                    home.fill();
-                    homesFilledCount = homesFilledCount + 1;
-                    score = score + SCORE_HOME;
-                    foundHome = true;
-
-                    // Check win condition
-                    if homesFilledCount == 5 {
-                        gameRunning = false;
-                    } else {
-                        frog.reset();
-                        printColorCentered(12, COLOR_GREEN, "HOME SAFE! +200");
-                        endFrame();
-                        sleep(HOME_DELAY_MS);
+func checkOnPlatform() -> Integer {
+    var i = 0;
+    var count = platforms.size();
+    var frogRow = frog.row;
+    var frogCol = frog.col;
+    while i < count {
+        var p = platforms.get(i);
+        if frogRow == p.row {
+            if p.diving == false {
+                var j = 0;
+                while j < p.width {
+                    if frogCol == p.col + j {
+                        return p.speed * p.dir;
                     }
-                } else {
-                    // Home already filled
-                    frog.die();
+                    j = j + 1;
                 }
-                break;
             }
         }
+        i = i + 1;
+    }
+    return 999;  // Not on platform (sentinel)
+}
 
-        // Didn't land in a home slot
-        if !foundHome {
-            frog.die();
+func checkHomeReached() -> Boolean {
+    var i = 0;
+    var count = homes.size();
+    var frogCol = frog.col;
+    while i < count {
+        var h = homes.get(i);
+        // Check if frog is in home range
+        if frogCol >= h.col - 1 {
+            if frogCol <= h.col + 1 {
+                if h.filled == false {
+                    h.fill();
+                    game.filledHome();
+                    frog.addScore(200);
+                    frog.reset();
+                    return true;
+                } else {
+                    frog.die();
+                    return false;
+                }
+            }
+        }
+        i = i + 1;
+    }
+    // Not in any home slot - die
+    frog.die();
+    return false;
+}
+
+func update() {
+    if game.paused {
+        return;
+    }
+
+    updateVehicles();
+    updatePlatforms();
+
+    var frogRow = frog.row;
+    var frogCol = frog.col;
+
+    // Check river
+    if frogRow >= RIVER_START {
+        if frogRow <= RIVER_END {
+            var vel = checkOnPlatform();
+            if vel == 999 {
+                // Not on platform - drown
+                frog.die();
+                if frog.alive {
+                    drawAt(12, 28, 1, "SPLASH!");
+                    Viper.Time.SleepMs(800);
+                }
+            } else {
+                frog.onPlatform = true;
+                frog.platformVel = vel;
+                frog.updatePlatform();
+            }
         }
     }
 
-    // Check if frog went off screen
-    if frogCol < 1 || frogCol > GAME_WIDTH {
+    // Check road
+    if frogRow >= ROAD_START {
+        if frogRow <= ROAD_END {
+            if checkVehicleCollision() {
+                frog.die();
+                if frog.alive {
+                    drawAt(12, 28, 1, "SPLAT!");
+                    Viper.Time.SleepMs(800);
+                }
+            }
+        }
+    }
+
+    // Check home row
+    if frogRow == HOME_ROW {
+        checkHomeReached();
+    }
+
+    // Check win
+    if game.homesFilled >= 5 {
+        game.stop();
+    }
+
+    // Check death
+    if frog.alive == false {
+        game.stop();
+    }
+
+    // Off screen
+    if frogCol < 1 {
+        frog.die();
+    }
+    if frogCol > GAME_WIDTH {
         frog.die();
     }
 }
 
-func handleInput() {
-    var key = getKey();
+// ============================================
+// RENDERING
+// ============================================
+func drawGame() {
+    // Header
+    drawAt(1, 2, 7, "Lives:");
+    drawAt(1, 8, 2, Viper.Fmt.Int(frog.lives));
+    drawAt(1, 25, 6, "*** FROGGER ***");
+    drawAt(1, 50, 3, "Score:");
+    drawAt(1, 57, 7, Viper.Fmt.Int(frog.score));
 
-    if Viper.String.Length(key) > 0 {
-        var ch = key.ToUpper();
+    // Home row
+    drawLine(HOME_ROW, 1, GAME_WIDTH, 4, "~");
 
-        if ch == "W" {
-            var bonus = frog.moveUp();
-            score = score + bonus;
-        } else if ch == "S" {
-            frog.moveDown();
-        } else if ch == "A" {
-            frog.moveLeft();
-        } else if ch == "D" {
-            frog.moveRight();
-        } else if ch == "Q" {
-            gameRunning = false;
-        } else if ch == "P" {
-            handlePause();
+    // Draw homes
+    var i = 0;
+    while i < 5 {
+        var h = homes.get(i);
+        if h.filled {
+            drawAt(HOME_ROW, h.col - 1, 2, "[F]");
+        } else {
+            drawAt(HOME_ROW, h.col - 1, 7, "[ ]");
         }
+        i = i + 1;
     }
-}
 
-func handlePause() {
-    printColorCentered(12, COLOR_YELLOW, "*** PAUSED ***");
-    printColorCentered(13, COLOR_WHITE, "Press P to resume");
-    endFrame();
+    // River
+    var row = RIVER_START;
+    while row <= RIVER_END {
+        drawLine(row, 1, GAME_WIDTH, 4, "~");
+        row = row + 1;
+    }
 
-    while true {
-        var key = getKey();
-        if Viper.String.Length(key) > 0 {
-            var ch = key.ToUpper();
-            if ch == "P" {
-                break;
+    // Platforms
+    i = 0;
+    var pcount = platforms.size();
+    while i < pcount {
+        var p = platforms.get(i);
+        var color = 3;  // Yellow for logs
+        if p.sym == "O" {
+            color = 2;  // Green for turtles
+        }
+        if p.diving {
+            color = 4;  // Blue for diving
+        }
+        var j = 0;
+        while j < p.width {
+            var drawCol = p.col + j;
+            if drawCol >= 1 {
+                if drawCol <= GAME_WIDTH {
+                    drawAt(p.row, drawCol, color, p.sym);
+                }
             }
+            j = j + 1;
         }
-        sleep(INPUT_DELAY_MS);
+        i = i + 1;
+    }
+
+    // Median
+    drawLine(MEDIAN_ROW, 1, GAME_WIDTH, 2, "-");
+    drawAt(MEDIAN_ROW, 28, 7, "SAFE ZONE");
+
+    // Road
+    row = ROAD_START;
+    while row <= ROAD_END {
+        drawLine(row, 1, GAME_WIDTH, 7, ".");
+        row = row + 1;
+    }
+
+    // Vehicles
+    i = 0;
+    var vcount = vehicles.size();
+    while i < vcount {
+        var v = vehicles.get(i);
+        var j = 0;
+        while j < v.width {
+            var drawCol = v.col + j;
+            if drawCol >= 1 {
+                if drawCol <= GAME_WIDTH {
+                    drawAt(v.row, drawCol, 1, v.sym);
+                }
+            }
+            j = j + 1;
+        }
+        i = i + 1;
+    }
+
+    // Start zone
+    drawLine(START_ROW, 1, GAME_WIDTH, 2, "-");
+    drawAt(START_ROW, 30, 7, "START");
+
+    // Frog
+    drawAt(frog.row, frog.col, 2, "@");
+
+    // Instructions
+    drawAt(20, 2, 7, "WASD=Move  P=Pause  Q=Quit  Goal: Fill all 5 homes!");
+
+    // Pause overlay
+    if game.paused {
+        drawAt(12, 28, 3, "*** PAUSED ***");
+        drawAt(13, 23, 7, "Press P to resume");
     }
 }
 
-// ============================================================================
-// Game Loop
-// ============================================================================
+// ============================================
+// INPUT
+// ============================================
+func handleInput() {
+    var key = Viper.Terminal.InKey();
+    var keyLen = Viper.String.Length(key);
 
-func gameLoop() {
-    clearScreen();
+    if keyLen > 0 {
+        if key == "w" {
+            frog.moveUp();
+        }
+        if key == "W" {
+            frog.moveUp();
+        }
+        if key == "s" {
+            frog.moveDown();
+        }
+        if key == "S" {
+            frog.moveDown();
+        }
+        if key == "a" {
+            frog.moveLeft();
+        }
+        if key == "A" {
+            frog.moveLeft();
+        }
+        if key == "d" {
+            frog.moveRight();
+        }
+        if key == "D" {
+            frog.moveRight();
+        }
+        if key == "p" {
+            game.togglePause();
+        }
+        if key == "P" {
+            game.togglePause();
+        }
+        if key == "q" {
+            game.stop();
+        }
+        if key == "Q" {
+            game.stop();
+        }
+    }
+}
+
+// ============================================
+// MAIN
+// ============================================
+func start() {
+    Viper.Terminal.Say("Starting Frogger...");
+
+    initGame();
+
+    clear();
     hideCursor();
 
-    while gameRunning && frog.isAlive() {
-        drawBoard();
+    while game.running {
+        drawGame();
         handleInput();
-        updateGame();
-        sleep(GAME_TICK_MS);
+        if game.paused == false {
+            update();
+        }
+        Viper.Time.SleepMs(TICK_MS);
     }
+
+    showCursor();
+    clear();
 
     // Game over screen
-    clearScreen();
-    showCursor();
-
-    Viper.Terminal.Say("");
-
-    if homesFilledCount == 5 {
-        Viper.Terminal.Say("============================================");
-        Viper.Terminal.Say("      * CONGRATULATIONS! YOU WIN! *        ");
-        Viper.Terminal.Say("============================================");
-        Viper.Terminal.Say("");
-        Viper.Terminal.Say("  You successfully filled all 5 homes!");
-    } else if !frog.isAlive() {
-        Viper.Terminal.Say("============================================");
-        Viper.Terminal.Say("           G A M E   O V E R               ");
-        Viper.Terminal.Say("============================================");
+    if game.homesFilled >= 5 {
+        Viper.Terminal.Say("*** CONGRATULATIONS! YOU WIN! ***");
     } else {
-        Viper.Terminal.Say("  Thanks for playing!");
+        Viper.Terminal.Say("*** GAME OVER ***");
     }
-
+    Viper.Terminal.Say(Viper.String.Concat("Final Score: ", Viper.Fmt.Int(frog.score)));
+    Viper.Terminal.Say(Viper.String.Concat("Homes Filled: ", Viper.Fmt.Int(game.homesFilled)));
     Viper.Terminal.Say("");
-    Viper.Terminal.Print("  Final Score: ");
-    Viper.Terminal.SayInt(score);
-    Viper.Terminal.Print("  Homes Filled: ");
-    Viper.Terminal.PrintInt(homesFilledCount);
-    Viper.Terminal.Say(" / 5");
-    Viper.Terminal.Say("");
-
-    // Check for high score
-    if scoreManager.isHighScore(score) && score > 0 {
-        var playerName = getPlayerName();
-        scoreManager.addScore(playerName, score);
-        scoreManager.save();
-        Viper.Terminal.Say("");
-        Viper.Terminal.Say("  Your score has been added to the high score list!");
-    }
-
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("  Press any key to return to menu...");
-    waitForKey();
-}
-
-// ============================================================================
-// Main Menu
-// ============================================================================
-
-func showMainMenu() {
-    var choice = 1;
-
-    while true {
-        clearScreen();
-        Viper.Terminal.Say("");
-        Viper.Terminal.Say("============================================");
-        Viper.Terminal.Say("");
-        Viper.Terminal.Say("   FFFFF  RRRR    OOO    GGGG   GGGG  EEEEE  RRRR ");
-        Viper.Terminal.Say("   F      R   R  O   O  G      G      E      R   R");
-        Viper.Terminal.Say("   FFF    RRRR   O   O  G  GG  G  GG  EEE    RRRR ");
-        Viper.Terminal.Say("   F      R  R   O   O  G   G  G   G  E      R  R ");
-        Viper.Terminal.Say("   F      R   R   OOO    GGGG   GGGG  EEEEE  R   R");
-        Viper.Terminal.Say("");
-        Viper.Terminal.Say("              Classic Arcade Action!             ");
-        Viper.Terminal.Say("============================================");
-        Viper.Terminal.Say("");
-
-        // Menu options
-        if choice == 1 {
-            Viper.Terminal.Say("                > START GAME");
-        } else {
-            Viper.Terminal.Say("                  START GAME");
-        }
-
-        if choice == 2 {
-            Viper.Terminal.Say("                > HIGH SCORES");
-        } else {
-            Viper.Terminal.Say("                  HIGH SCORES");
-        }
-
-        if choice == 3 {
-            Viper.Terminal.Say("                > INSTRUCTIONS");
-        } else {
-            Viper.Terminal.Say("                  INSTRUCTIONS");
-        }
-
-        if choice == 4 {
-            Viper.Terminal.Say("                > QUIT");
-        } else {
-            Viper.Terminal.Say("                  QUIT");
-        }
-
-        Viper.Terminal.Say("");
-        Viper.Terminal.Say("         Use W/S to navigate, ENTER to select");
-
-        var key = getKey();
-        if Viper.String.Length(key) > 0 {
-            var ch = key.ToUpper();
-            var code = key.CharAt(0);
-
-            if ch == "W" {
-                choice = choice - 1;
-                if choice < 1 {
-                    choice = 4;
-                }
-            } else if ch == "S" {
-                choice = choice + 1;
-                if choice > 4 {
-                    choice = 1;
-                }
-            } else if code == 13 || code == 10 {
-                // Enter pressed
-                sleep(MENU_DELAY_MS);
-
-                if choice == 1 {
-                    initGame();
-                    gameLoop();
-                    sleep(MENU_DELAY_MS);
-                } else if choice == 2 {
-                    scoreManager.display();
-                    waitForKey();
-                    sleep(MENU_DELAY_MS);
-                } else if choice == 3 {
-                    showInstructions();
-                    sleep(MENU_DELAY_MS);
-                } else if choice == 4 {
-                    break;
-                }
-            }
-        }
-
-        sleep(INPUT_DELAY_MS);
-    }
-}
-
-func showInstructions() {
-    clearScreen();
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("============================================");
-    Viper.Terminal.Say("              HOW TO PLAY                   ");
-    Viper.Terminal.Say("============================================");
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("  OBJECTIVE:");
-    Viper.Terminal.Say("  Guide your frog safely across the road and river");
-    Viper.Terminal.Say("  to fill all 5 homes at the top of the screen.");
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("  CONTROLS:");
-    Viper.Terminal.Say("    W - Move Up");
-    Viper.Terminal.Say("    S - Move Down");
-    Viper.Terminal.Say("    A - Move Left");
-    Viper.Terminal.Say("    D - Move Right");
-    Viper.Terminal.Say("    P - Pause Game");
-    Viper.Terminal.Say("    Q - Quit to Menu");
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("  GAMEPLAY:");
-    Viper.Terminal.Say("  - Avoid cars and trucks on the road");
-    Viper.Terminal.Say("  - Jump on logs and turtles in the river");
-    Viper.Terminal.Say("  - You drown if you fall in the water!");
-    Viper.Terminal.Say("  - Land in the home slots [ ] at the top");
-    Viper.Terminal.Say("  - Each home filled = +200 points");
-    Viper.Terminal.Say("  - You have 3 lives - use them wisely!");
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("  Press any key to return to menu...");
-    waitForKey();
-}
-
-// ============================================================================
-// Entry Point
-// ============================================================================
-
-func start() {
-    // Initialize color constants
-    initColors();
-
-    // Initialize high score manager
-    scoreManager = new HighScoreManager();
-    scoreManager.load();
-
-    // Show main menu
-    showMainMenu();
-
-    // Cleanup
-    clearScreen();
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("Thanks for playing CLASSIC FROGGER!");
-    Viper.Terminal.Say("");
+    Viper.Terminal.Say("Thanks for playing Frogger!");
 }

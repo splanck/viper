@@ -774,7 +774,7 @@ void Sema::initRuntimeFunctions()
     runtimeFunctions_["Viper.Collections.Stack.Peek"] = types::ptr();
     runtimeFunctions_["Viper.Collections.Stack.Pop"] = types::ptr();
     runtimeFunctions_["Viper.Collections.Stack.Push"] = types::voidType();
-    runtimeFunctions_["Viper.Collections.Seq.Add"] = types::voidType();
+    runtimeFunctions_["Viper.Collections.Seq.Push"] = types::voidType(); // VL-012: was Add
     runtimeFunctions_["Viper.Collections.Seq.Clear"] = types::voidType();
     runtimeFunctions_["Viper.Collections.Seq.Get"] = types::ptr();
     runtimeFunctions_["Viper.Collections.Seq.get_Len"] = types::integer();
@@ -793,7 +793,7 @@ void Sema::initRuntimeFunctions()
     runtimeFunctions_["Viper.Collections.TreeMap.Keys"] = types::ptr();
     runtimeFunctions_["Viper.Collections.TreeMap.get_Len"] = types::integer();
     runtimeFunctions_["Viper.Collections.TreeMap.New"] = types::ptr();
-    runtimeFunctions_["Viper.Collections.TreeMap.Remove"] = types::boolean();
+    runtimeFunctions_["Viper.Collections.TreeMap.Drop"] = types::boolean(); // VL-013: was Remove
     runtimeFunctions_["Viper.Collections.TreeMap.Set"] = types::voidType();
 
     // =========================================================================
@@ -923,48 +923,51 @@ void Sema::initRuntimeFunctions()
     runtimeFunctions_["Viper.Input.Pad.IsDown"] = types::boolean();
 
     // =========================================================================
-    // IO - FILE
+    // IO - FILE (VL-017 fixes: align names and return types with runtime)
     // =========================================================================
     runtimeFunctions_["Viper.IO.File.Exists"] = types::boolean();
     runtimeFunctions_["Viper.IO.File.Size"] = types::integer();
-    runtimeFunctions_["Viper.IO.File.Delete"] = types::boolean();
-    runtimeFunctions_["Viper.IO.File.Copy"] = types::boolean();
-    runtimeFunctions_["Viper.IO.File.Move"] = types::boolean();
+    runtimeFunctions_["Viper.IO.File.Delete"] = types::voidType(); // VL-017: was boolean
+    runtimeFunctions_["Viper.IO.File.Copy"] = types::voidType();   // VL-017: was boolean
+    runtimeFunctions_["Viper.IO.File.Move"] = types::voidType();   // VL-017: was boolean
     runtimeFunctions_["Viper.IO.File.ReadAllText"] = types::string();
     runtimeFunctions_["Viper.IO.File.WriteAllText"] = types::voidType();
     runtimeFunctions_["Viper.IO.File.ReadAllBytes"] = types::ptr();
     runtimeFunctions_["Viper.IO.File.WriteAllBytes"] = types::voidType();
-    runtimeFunctions_["Viper.IO.File.AppendText"] = types::voidType();
-    runtimeFunctions_["Viper.IO.File.GetModTime"] = types::integer();
-    runtimeFunctions_["Viper.IO.File.SetModTime"] = types::voidType();
+    runtimeFunctions_["Viper.IO.File.Append"] = types::voidType();  // VL-017: was AppendText
+    runtimeFunctions_["Viper.IO.File.Modified"] = types::integer(); // VL-017: was GetModTime
+    runtimeFunctions_["Viper.IO.File.Touch"] = types::voidType();
 
     // =========================================================================
-    // IO - DIR
+    // IO - DIR (VL-016 fixes: align names with runtime)
     // =========================================================================
-    runtimeFunctions_["Viper.IO.Dir.Create"] = types::boolean();
-    runtimeFunctions_["Viper.IO.Dir.Delete"] = types::boolean();
+    runtimeFunctions_["Viper.IO.Dir.Make"] = types::voidType(); // VL-016: was Create
+    runtimeFunctions_["Viper.IO.Dir.MakeAll"] = types::voidType();
+    runtimeFunctions_["Viper.IO.Dir.Remove"] = types::voidType(); // VL-016: was Delete
+    runtimeFunctions_["Viper.IO.Dir.RemoveAll"] = types::voidType();
     runtimeFunctions_["Viper.IO.Dir.Exists"] = types::boolean();
     runtimeFunctions_["Viper.IO.Dir.List"] = types::ptr();
+    runtimeFunctions_["Viper.IO.Dir.ListSeq"] = types::ptr();
     runtimeFunctions_["Viper.IO.Dir.Files"] = types::ptr();
+    runtimeFunctions_["Viper.IO.Dir.FilesSeq"] = types::ptr();
     runtimeFunctions_["Viper.IO.Dir.Dirs"] = types::ptr();
-    runtimeFunctions_["Viper.IO.Dir.GetCurrent"] = types::string();
+    runtimeFunctions_["Viper.IO.Dir.DirsSeq"] = types::ptr();
+    runtimeFunctions_["Viper.IO.Dir.Current"] = types::string(); // VL-016: was GetCurrent
     runtimeFunctions_["Viper.IO.Dir.SetCurrent"] = types::voidType();
-    runtimeFunctions_["Viper.IO.Dir.GetHome"] = types::string();
-    runtimeFunctions_["Viper.IO.Dir.GetTemp"] = types::string();
 
     // =========================================================================
-    // IO - PATH
+    // IO - PATH (VL-014, VL-015 fixes: align names with runtime)
     // =========================================================================
     runtimeFunctions_["Viper.IO.Path.Join"] = types::string();
-    runtimeFunctions_["Viper.IO.Path.GetDir"] = types::string();
-    runtimeFunctions_["Viper.IO.Path.GetName"] = types::string();
-    runtimeFunctions_["Viper.IO.Path.GetExt"] = types::string();
-    runtimeFunctions_["Viper.IO.Path.GetBase"] = types::string();
-    runtimeFunctions_["Viper.IO.Path.Exists"] = types::boolean();
-    runtimeFunctions_["Viper.IO.Path.IsFile"] = types::boolean();
-    runtimeFunctions_["Viper.IO.Path.IsDir"] = types::boolean();
-    runtimeFunctions_["Viper.IO.Path.Normalize"] = types::string();
-    runtimeFunctions_["Viper.IO.Path.Absolute"] = types::string();
+    runtimeFunctions_["Viper.IO.Path.Dir"] = types::string();  // VL-014: was GetDir
+    runtimeFunctions_["Viper.IO.Path.Name"] = types::string(); // VL-014: was GetName
+    runtimeFunctions_["Viper.IO.Path.Ext"] = types::string();  // VL-014: was GetExt
+    runtimeFunctions_["Viper.IO.Path.Stem"] = types::string(); // VL-014: was GetBase
+    runtimeFunctions_["Viper.IO.Path.Norm"] = types::string(); // VL-014: was Normalize
+    runtimeFunctions_["Viper.IO.Path.Abs"] = types::string();  // VL-014: was Absolute
+    runtimeFunctions_["Viper.IO.Path.IsAbs"] = types::boolean();
+    runtimeFunctions_["Viper.IO.Path.Sep"] = types::string();
+    runtimeFunctions_["Viper.IO.Path.WithExt"] = types::string();
 
     // =========================================================================
     // IO - BINFILE, LINEREADER, LINEWRITER
@@ -1109,33 +1112,29 @@ void Sema::initRuntimeFunctions()
     // =========================================================================
     runtimeFunctions_["Viper.String.Concat"] = types::string();
     runtimeFunctions_["Viper.String.Length"] = types::integer();
-    runtimeFunctions_["Viper.String.CharAt"] = types::string();
     runtimeFunctions_["Viper.String.Substring"] = types::string();
     runtimeFunctions_["Viper.String.Left"] = types::string();
     runtimeFunctions_["Viper.String.Right"] = types::string();
     runtimeFunctions_["Viper.String.Mid"] = types::string();
     runtimeFunctions_["Viper.String.IndexOf"] = types::integer();
-    runtimeFunctions_["Viper.String.LastIndexOf"] = types::integer();
-    runtimeFunctions_["Viper.String.Contains"] = types::boolean();
+    runtimeFunctions_["Viper.String.IndexOfFrom"] = types::integer();
+    runtimeFunctions_["Viper.String.Has"] = types::boolean(); // VL-002: was Contains
     runtimeFunctions_["Viper.String.StartsWith"] = types::boolean();
     runtimeFunctions_["Viper.String.EndsWith"] = types::boolean();
     runtimeFunctions_["Viper.String.ToUpper"] = types::string();
     runtimeFunctions_["Viper.String.ToLower"] = types::string();
     runtimeFunctions_["Viper.String.Trim"] = types::string();
-    runtimeFunctions_["Viper.String.TrimLeft"] = types::string();
-    runtimeFunctions_["Viper.String.TrimRight"] = types::string();
+    runtimeFunctions_["Viper.String.TrimStart"] = types::string(); // VL-003: was TrimLeft
+    runtimeFunctions_["Viper.String.TrimEnd"] = types::string();   // VL-003: was TrimRight
     runtimeFunctions_["Viper.String.Replace"] = types::string();
-    runtimeFunctions_["Viper.String.ReplaceAll"] = types::string();
     runtimeFunctions_["Viper.String.Split"] = types::ptr();
-    runtimeFunctions_["Viper.String.Join"] = types::string();
     runtimeFunctions_["Viper.String.Repeat"] = types::string();
-    runtimeFunctions_["Viper.String.Reverse"] = types::string();
+    runtimeFunctions_["Viper.String.Flip"] = types::string(); // VL-005: was Reverse
     runtimeFunctions_["Viper.String.Chr"] = types::string();
     runtimeFunctions_["Viper.String.Asc"] = types::integer();
-    runtimeFunctions_["Viper.String.Format"] = types::string();
-    runtimeFunctions_["Viper.String.IsEmpty"] = types::boolean();
-    runtimeFunctions_["Viper.String.IsBlank"] = types::boolean();
-    runtimeFunctions_["Viper.String.Compare"] = types::integer();
+    runtimeFunctions_["Viper.String.get_IsEmpty"] = types::boolean(); // VL-011: was IsEmpty
+    runtimeFunctions_["Viper.String.Cmp"] = types::integer();         // VL-007: was Compare
+    runtimeFunctions_["Viper.Strings.Join"] = types::string(); // VL-010: was Viper.String.Join
     runtimeFunctions_["Viper.Strings.Equals"] = types::boolean();
     runtimeFunctions_["Viper.Strings.Compare"] = types::integer();
 
