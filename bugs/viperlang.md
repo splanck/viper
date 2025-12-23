@@ -134,6 +134,24 @@ This log captures ViperLang language defects found during the runtime sweep.
     - `File.SetModTime` → runtime has no equivalent
   - **Fix**: Align return types and names between sema and runtime.
 
+- **ID**: VL-018
+  - **Area**: sema (Runtime Function Registry)
+  - **Summary**: `Viper.Convert` numeric parsing names are mismatched between sema and runtime.
+  - **Root Cause**:
+    - `src/frontends/viperlang/Sema.cpp:1265-1267` registers `Viper.Convert.StrToInt/StrToNum/StrToBool`
+    - `src/il/runtime/runtime.def:1008-1010` exposes `Viper.Convert.ToDouble/ToInt64` (no `StrTo*` entry)
+  - **Notes**: Calling `StrToInt/StrToNum` fails with `unknown callee` at IL/runtime, while calling `ToInt64/ToDouble` fails in sema as undefined.
+  - **Fix**: Add runtime aliases for `StrTo*` or update sema to use `ToInt64/ToDouble` (and add `ToBool` if desired).
+
+- **ID**: VL-019
+  - **Area**: sema (Runtime Function Registry)
+  - **Summary**: `Viper.Parse` API names are out of sync with the runtime.
+  - **Root Cause**:
+    - `src/frontends/viperlang/Sema.cpp:1092-1096` registers `Viper.Parse.Int/Num/Bool/TryInt/TryNum`
+    - `src/il/runtime/runtime.def:1006-1026` exposes `Viper.Parse.Int64/Double/TryBool/IntOr/NumOr/BoolOr/IsInt/IsNum/IntRadix`
+  - **Notes**: Many documented `Viper.Parse` helpers cannot be called from ViperLang because sema does not register them.
+  - **Fix**: Align sema with runtime names and add missing bindings for `TryBool`, `IntOr`, `NumOr`, `BoolOr`, `IsInt`, `IsNum`, and `IntRadix`.
+
 ---
 
 ## Closed/Fixed

@@ -1,0 +1,109 @@
+module SqlMain;
+
+import "./sql_engine";
+
+func printBanner() {
+    Viper.Terminal.Say("ViperSQL - embedded demo database");
+    Viper.Terminal.Say("Type HELP for commands. Use semicolons for multi-line statements.");
+}
+
+func printUsage() {
+    Viper.Terminal.Say("Usage:");
+    Viper.Terminal.Say("  viper demos/viperlang/sql/main.viper [--db path] [--file script.sql]");
+    Viper.Terminal.Say("Notes:");
+    Viper.Terminal.Say("  --db sets the database directory (default: demos/viperlang/sql/db)");
+    Viper.Terminal.Say("  --file executes a SQL script, then exits");
+    Viper.Terminal.Say("  VIPER_SQL_DB and VIPER_SQL_SCRIPT env vars are also supported");
+}
+
+func runScript(engine: SqlEngine, scriptPath: String) {
+    if !Viper.IO.File.Exists(scriptPath) {
+        Viper.Terminal.Say(Viper.String.Concat("error: file not found: ", scriptPath));
+        return;
+    }
+    String content = Viper.IO.File.ReadAllText(scriptPath);
+    engine.exec(content);
+}
+
+func repl(engine: SqlEngine) {
+    String buffer = "";
+    while engine.running {
+        if buffer == "" {
+            Viper.Terminal.Print("sql> ");
+        } else {
+            Viper.Terminal.Print("...> ");
+        }
+        String line = Viper.Terminal.ReadLine();
+        if line == "" {
+            if buffer != "" {
+                engine.exec(buffer);
+                buffer = "";
+            }
+            continue;
+        }
+        if buffer == "" {
+            buffer = line;
+        } else {
+            buffer = Viper.String.Concat(Viper.String.Concat(buffer, "\n"), line);
+        }
+        if Viper.String.IndexOf(line, ";") >= 0 {
+            engine.exec(buffer);
+            buffer = "";
+        }
+    }
+}
+
+func start() {
+    String dbPath = "demos/viperlang/sql/db";
+    String scriptPath = "";
+    Integer argc = Viper.Environment.GetArgumentCount();
+    Integer i = 0;
+    while i < argc {
+        String arg = Viper.Environment.GetArgument(i);
+        if arg == "--help" || arg == "-h" {
+            printUsage();
+            return;
+        }
+        if arg == "--db" && i + 1 < argc {
+            dbPath = Viper.Environment.GetArgument(i + 1);
+            i = i + 2;
+            continue;
+        }
+        if (arg == "--file" || arg == "-f") && i + 1 < argc {
+            scriptPath = Viper.Environment.GetArgument(i + 1);
+            i = i + 2;
+            continue;
+        }
+        if scriptPath == "" && !Viper.String.StartsWith(arg, "-") {
+            if dbPath == "demos/viperlang/sql/db" {
+                dbPath = arg;
+            } else {
+                scriptPath = arg;
+            }
+        }
+        i = i + 1;
+    }
+    if dbPath == "demos/viperlang/sql/db" {
+        String envDb = Viper.Environment.GetVariable("VIPER_SQL_DB");
+        if envDb != "" { dbPath = envDb; }
+    }
+    if scriptPath == "" {
+        String envScript = Viper.Environment.GetVariable("VIPER_SQL_SCRIPT");
+        if envScript != "" { scriptPath = envScript; }
+    }
+
+    var engine = new SqlEngine();
+    engine.init(dbPath);
+    if engine.lastError != "" {
+        engine.reportError();
+        return;
+    }
+
+    if scriptPath != "" {
+        runScript(engine, scriptPath);
+        return;
+    }
+
+    printBanner();
+    repl(engine);
+}

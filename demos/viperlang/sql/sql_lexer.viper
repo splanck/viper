@@ -1,0 +1,231 @@
+module SqlLexer;
+
+import "./sql_types";
+
+Integer TOK_EOF = 0;
+Integer TOK_IDENT = 1;
+Integer TOK_NUMBER = 2;
+Integer TOK_STRING = 3;
+Integer TOK_SYMBOL = 4;
+
+entity Token {
+    expose Integer kind;
+    expose String text;
+    expose Integer pos;
+
+    expose func init(k: Integer, t: String, p: Integer) {
+        kind = k;
+        text = t;
+        pos = p;
+    }
+}
+
+func charAt(text: String, idx: Integer) -> String {
+    return Viper.String.Substring(text, idx, 1);
+}
+
+func isDigit(c: String) -> Boolean {
+    Integer code = Viper.String.Asc(c);
+    return code >= 48 && code <= 57;
+}
+
+func isAlpha(c: String) -> Boolean {
+    Integer code = Viper.String.Asc(c);
+    if code >= 65 && code <= 90 { return true; }
+    if code >= 97 && code <= 122 { return true; }
+    return c == "_";
+}
+
+func isIdentChar(c: String) -> Boolean {
+    return isAlpha(c) || isDigit(c);
+}
+
+entity Lexer {
+    expose String input;
+    expose Integer pos;
+    expose Integer length;
+    expose List[Token] tokens;
+
+    expose func init(text: String) {
+        input = text;
+        pos = 0;
+        length = Viper.String.Length(text);
+        tokens = [];
+    }
+
+    expose func atEnd() -> Boolean {
+        return pos >= length;
+    }
+
+    expose func peek() -> String {
+        if pos >= length { return ""; }
+        return charAt(input, pos);
+    }
+
+    expose func peekNext() -> String {
+        if pos + 1 >= length { return ""; }
+        return charAt(input, pos + 1);
+    }
+
+    expose func advance() -> String {
+        if pos >= length { return ""; }
+        String c = charAt(input, pos);
+        pos = pos + 1;
+        return c;
+    }
+
+    expose func addToken(k: Integer, text: String, startPos: Integer) {
+        var t = new Token();
+        t.init(k, text, startPos);
+        tokens.add(t);
+    }
+
+    expose func skipWhitespace() {
+        while not atEnd() {
+            String c = peek();
+            if c == " " || c == "\t" || c == "\n" || c == "\r" {
+                advance();
+                continue;
+            }
+            break;
+        }
+    }
+
+    expose func skipComment() -> Boolean {
+        if peek() == "-" && peekNext() == "-" {
+            while not atEnd() && peek() != "\n" {
+                advance();
+            }
+            return true;
+        }
+        if peek() == "/" && peekNext() == "/" {
+            while not atEnd() && peek() != "\n" {
+                advance();
+            }
+            return true;
+        }
+        if peek() == "/" && peekNext() == "*" {
+            advance();
+            advance();
+            while not atEnd() {
+                if peek() == "*" && peekNext() == "/" {
+                    advance();
+                    advance();
+                    return true;
+                }
+                advance();
+            }
+            return true;
+        }
+        return false;
+    }
+
+    expose func readNumber(startPos: Integer) {
+        Integer start = startPos;
+        Boolean seenDot = false;
+        while not atEnd() {
+            String c = peek();
+            if c == "." && !seenDot {
+                seenDot = true;
+                advance();
+                continue;
+            }
+            if isDigit(c) {
+                advance();
+                continue;
+            }
+            break;
+        }
+        String text = Viper.String.Substring(input, start, pos - start);
+        addToken(TOK_NUMBER, text, start);
+    }
+
+    expose func readIdent(startPos: Integer) {
+        Integer start = startPos;
+        while not atEnd() && isIdentChar(peek()) {
+            advance();
+        }
+        String text = Viper.String.Substring(input, start, pos - start);
+        addToken(TOK_IDENT, text, start);
+    }
+
+    expose func readString(startPos: Integer, quote: String) {
+        Integer start = startPos;
+        String result = "";
+        while not atEnd() {
+            String c = advance();
+            if c == quote {
+                addToken(TOK_STRING, result, start);
+                return;
+            }
+            if c == "\\" {
+                if atEnd() { break; }
+                String esc = advance();
+                if esc == "n" { result = Viper.String.Concat(result, "\n"); continue; }
+                if esc == "r" { result = Viper.String.Concat(result, "\r"); continue; }
+                if esc == "t" { result = Viper.String.Concat(result, "\t"); continue; }
+                if esc == "\\" { result = Viper.String.Concat(result, "\\"); continue; }
+                if esc == "\"" { result = Viper.String.Concat(result, "\""); continue; }
+                if esc == "'" { result = Viper.String.Concat(result, "'"); continue; }
+                result = Viper.String.Concat(result, esc);
+                continue;
+            }
+            result = Viper.String.Concat(result, c);
+        }
+        addToken(TOK_STRING, result, start);
+    }
+
+    expose func readSymbol(startPos: Integer) {
+        String c = advance();
+        String next = peek();
+        String text = c;
+        if c == "<" && (next == "=" || next == ">") {
+            text = Viper.String.Concat(c, advance());
+        } else if c == ">" && next == "=" {
+            text = Viper.String.Concat(c, advance());
+        } else if c == "!" && next == "=" {
+            text = Viper.String.Concat(c, advance());
+        } else if c == "=" && next == "=" {
+            text = Viper.String.Concat(c, advance());
+        } else if c == "|" && next == "|" {
+            text = Viper.String.Concat(c, advance());
+        }
+        addToken(TOK_SYMBOL, text, startPos);
+    }
+
+    expose func run() -> List[Token] {
+        while not atEnd() {
+            skipWhitespace();
+            if atEnd() { break; }
+            if skipComment() {
+                continue;
+            }
+            Integer startPos = pos;
+            String c = peek();
+            if isDigit(c) {
+                advance();
+                readNumber(startPos);
+                continue;
+            }
+            if isAlpha(c) {
+                advance();
+                readIdent(startPos);
+                continue;
+            }
+            if c == "\"" || c == "'" {
+                advance();
+                readString(startPos, c);
+                continue;
+            }
+            readSymbol(startPos);
+        }
+        addToken(TOK_EOF, "", pos);
+        return tokens;
+    }
+}
+
+func lex(input: String) -> List[Token] {
+    var l = new Lexer();
+    l.init(input);
+    return l.run();
+}

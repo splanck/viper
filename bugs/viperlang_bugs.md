@@ -1437,6 +1437,189 @@ The type parser **doesn't handle qualified names** (dot-separated identifiers).
 
 ---
 
+## Bugs Found During Limits Sweep
+
+### 45. Frogger Demo Fails IL Verification
+**Status**: OPEN
+**Severity**: CRITICAL
+**Area**: Lowering / IL verification
+**Description**: Running the Frogger demo fails IL verification with an operand type mismatch.
+
+**Reproduction**:
+```sh
+./build/src/tools/viper/viper demos/viperlang/frogger/main.viper
+```
+
+**Error**:
+```
+error: checkOnPlatform:if_then_3: %35 = icmp_eq %t34 false: operand type mismatch: operand 0 must be i64
+```
+
+**Notes**:
+- Failure occurs in `Platform.checkOnPlatform` (`demos/viperlang/frogger/main.viper:191`).
+- Appears to be a boolean compare lowering issue (i1 vs i64).
+
+**Workaround**: None (demo does not run).
+
+---
+
+### 46. Deep Recursion Crashes (No Trap)
+**Status**: OPEN
+**Severity**: HIGH
+**Area**: VM runtime
+**Description**: Deep recursion causes a crash (signal -11) instead of a clean trap.
+
+**Reproduction**:
+```viper
+module Test;
+func dive(Integer n) -> Integer {
+    if n <= 0 { return 0; }
+    return 1 + dive(n - 1);
+}
+func start() {
+    Integer v = dive(3500); // 3400 ok, 3500 crashes
+    Viper.Terminal.SayInt(v);
+}
+```
+
+**Observed**:
+- 3400 frames ok
+- 3500 frames crashes with signal -11 (no trap message)
+
+**Workaround**: Rewrite to iterative loops or reduce recursion depth.
+
+---
+
+### 47. Map Inserts Trigger Stack Overflow Around 9k Entries
+**Status**: OPEN
+**Severity**: HIGH
+**Area**: Runtime collections
+**Description**: Inserting ~9000 entries into `Map[String, Integer]` traps with stack overflow in alloca.
+
+**Reproduction**:
+```viper
+module Test;
+func start() {
+    Map[String, Integer] items = new Map[String, Integer]();
+    Integer i = 0;
+    while i < 9000 {
+        String key = Viper.Fmt.Int(i);
+        items.set(key, i);
+        i = i + 1;
+    }
+    Viper.Terminal.SayInt(items.count());
+}
+```
+
+**Error**:
+```
+Trap @main:while_body_1#2: Overflow (code=0): stack overflow in alloca
+```
+
+**Notes**:
+- 8000 entries succeed; 9000 fails.
+- Likely due to per-iteration stack allocation during string formatting.
+
+**Workaround**: Limit map size or avoid per-iteration string formatting in tight loops.
+
+---
+
+### 48. Boolean Equality Comparisons Emit Invalid IL
+**Status**: OPEN
+**Severity**: HIGH
+**Area**: Lowering / operators
+**Description**: Comparing booleans with `==` or `!=` fails during lowering with an operand type mismatch.
+
+**Reproduction**:
+```viper
+module Test;
+func start() {
+    Boolean b = false;
+    if b == false {
+        Viper.Terminal.Say("no");
+    }
+}
+```
+
+**Error**:
+```
+error: main:entry_0: %2 = icmp_eq %t1 false: operand type mismatch: operand 0 must be i64
+```
+
+**Notes**:
+- `if !b { ... }` works as a workaround.
+
+---
+
+### 49. Optional Null Comparisons Fail (`== null` / `!= null`)
+**Status**: OPEN
+**Severity**: HIGH
+**Area**: Lowering / optionals
+**Description**: Optional values compared to `null` using `==` or `!=` emit invalid IL.
+
+**Reproduction**:
+```viper
+module Test;
+entity Foo { expose func init() { } }
+func start() {
+    Foo? opt = null;
+    if opt == null { Viper.Terminal.Say("null"); }
+}
+```
+
+**Error**:
+```
+error: main:entry_0: %2 = icmp_eq %t1 null: operand type mismatch: operand 0 must be i64
+```
+
+**Notes**:
+- No reliable workaround found; `??` can supply defaults but does not allow null checks.
+
+---
+
+### 50. Integer-to-Number Assignment Produces Garbage Values
+**Status**: OPEN
+**Severity**: HIGH
+**Area**: Sema / Lowering (numeric conversions)
+**Description**: Assigning an `Integer` to a `Number` appears to bit-cast the integer bits to a float instead of converting the value.
+
+**Reproduction**:
+```viper
+module Test;
+func start() {
+    Number n = 5;
+    Viper.Terminal.Say(Viper.Fmt.Num(n));
+}
+```
+
+**Actual**:
+```
+2.47033e-323
+```
+
+**Notes**:
+- Mixed arithmetic like `1.0 * 5` fails with a type mismatch, so implicit conversion is inconsistent.
+
+---
+
+### 51. Compiler Hangs Compiling `demos/viperlang/sql/sql_engine.viper`
+**Status**: OPEN
+**Severity**: CRITICAL
+**Area**: Compiler performance / frontend
+**Description**: The compiler hangs (no output) when compiling the SQL demo engine or its `main.viper` wrapper.
+
+**Reproduction**:
+```
+./build/src/tools/viper/viper demos/viperlang/sql/sql_engine.viper
+./build/src/tools/viper/viper demos/viperlang/sql/main.viper --emit-il -o /tmp/sql.il
+```
+
+**Notes**:
+- Both commands stalled for >2 minutes in testing.
+- Other large demos (e.g., `demos/viperlang/centipede/main.viper`) compile quickly.
+
+---
+
 ## Notes
 
 This file will be updated as more bugs are discovered during game development.

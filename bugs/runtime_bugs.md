@@ -99,6 +99,22 @@ This log captures runtime defects found during the ViperLang runtime sweep.
     2. Change `String.Length()` to return codepoint count
     3. Add `String.CharLen()` for codepoint count (keep Length as bytes)
 
+- **ID**: RT-019
+  - **Component**: Viper.Collections.Map
+  - **Summary**: `Map.Keys()` traps with `InvalidOperation: null indirect callee`.
+  - **Repro**: `/tmp/map_keys.viper`
+  - **Expected**: Returns a sequence of keys.
+  - **Actual**: Trap: `InvalidOperation (code=0): null indirect callee`.
+  - **Root Cause**: Unknown. `Viper.Collections.Map.Keys` is present in `runtime.def`, but the method call resolves to a null callee at runtime.
+  - **Notes**: Minimal repro:
+    ```viper
+    module Test;
+    func start() {
+        var m = {"a": 1, "b": 2};
+        m.keys();
+    }
+    ```
+
 ---
 
 ## Closed/Fixed
