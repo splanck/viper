@@ -1166,6 +1166,22 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
 
     if (auto *ident = dynamic_cast<IdentExpr *>(expr->callee.get()))
     {
+        // Check for implicit method call (calling method without 'self.' prefix)
+        // inside an entity. If the identifier matches a method of the current entity,
+        // treat this as self.methodName(...).
+        if (currentEntityType_)
+        {
+            if (auto *method = currentEntityType_->findMethod(ident->name))
+            {
+                // Get self pointer and call the method on self
+                Value selfPtr;
+                if (getSelfPtr(selfPtr))
+                {
+                    return lowerMethodCall(method, currentEntityType_->name, selfPtr, expr);
+                }
+            }
+        }
+
         // Check if this is a variable holding a function pointer (not a defined function)
         if (definedFunctions_.find(mangleFunctionName(ident->name)) == definedFunctions_.end())
         {

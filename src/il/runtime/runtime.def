@@ -752,6 +752,7 @@ RT_FUNC(ObjToString,        rt_obj_to_string,        "Viper.Object.ToString",   
 RT_FUNC(RandomNext,    rt_rnd,           "Viper.Random.Next",    "f64()")
 RT_FUNC(RandomNextInt, rt_rand_int,      "Viper.Random.NextInt", "i64(i64)")
 RT_FUNC(RandomSeed,    rt_randomize_i64, "Viper.Random.Seed",    "void(i64)")
+// Note: Viper.Math.Randomize is already defined in RuntimeSignatures.cpp
 
 //=============================================================================
 // STRING FUNCTIONS
@@ -1009,6 +1010,9 @@ RT_FUNC(ToInt,       rt_to_int,       "Viper.Convert.ToInt",    "i64(str)")
 RT_FUNC(ToInt64,     rt_to_int,       "Viper.Convert.ToInt64",  "i64(str)")
 RT_FUNC(ToStringInt, rt_int_to_str,   "Viper.Convert.ToString_Int", "str(i64)")
 RT_FUNC(ToStringDbl, rt_f64_to_str,   "Viper.Convert.ToString_Double", "str(f64)")
+RT_FUNC(NumToInt,      rt_f64_to_i64,   "Viper.Convert.NumToInt", "i64(f64)")
+RT_FUNC(ConvIntToStr,  rt_int_to_str,   "Viper.Convert.IntToStr", "str(i64)")
+RT_FUNC(ConvNumToStr,  rt_f64_to_str,   "Viper.Convert.NumToStr", "str(f64)")
 
 // Safe parsing functions (return success/failure, use defaults)
 RT_FUNC(ParseTryInt,   rt_parse_try_int,   "Viper.Parse.TryInt",   "i1(str,ptr)")

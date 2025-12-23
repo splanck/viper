@@ -37,17 +37,22 @@ extern "C" void vm_trap(const char *msg)
 
 int main()
 {
-    std::string input(1500, 'x');
-    int fds[2];
-    assert(pipe(fds) == 0);
-    (void)write(fds[1], input.data(), input.size());
-    close(fds[1]);
-    dup2(fds[0], 0);
-    close(fds[0]);
+    // Create a temporary file with test input instead of using a pipe
+    // This avoids stdin redirection issues across platforms
+    char tmpname[] = "/tmp/viper_input_test_XXXXXX";
+    int tmpfd = mkstemp(tmpname);
+    assert(tmpfd >= 0);
 
-    // Clear any buffered state and error flags on stdin
-    clearerr(stdin);
-    fflush(stdin);
+    std::string input(1500, 'x');
+    (void)write(tmpfd, input.data(), input.size());
+    close(tmpfd);
+
+    // Redirect stdin to the temp file
+    FILE *new_stdin = freopen(tmpname, "r", stdin);
+    assert(new_stdin != nullptr);
+
+    // Clean up temp file (it remains open via stdin)
+    unlink(tmpname);
 
     rt_string s = rt_input_line();
     assert(!s);

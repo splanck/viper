@@ -1265,6 +1265,7 @@ void Sema::initRuntimeFunctions()
     runtimeFunctions_["Viper.Convert.StrToInt"] = types::integer();
     runtimeFunctions_["Viper.Convert.StrToNum"] = types::number();
     runtimeFunctions_["Viper.Convert.StrToBool"] = types::boolean();
+    runtimeFunctions_["Viper.Convert.NumToInt"] = types::integer();
 }
 
 } // namespace il::frontends::viperlang

@@ -211,6 +211,21 @@ extern "C"
         return trunc(x);
     }
 
+    /// @brief Convert a double to a 64-bit signed integer by truncating toward zero.
+    /// @details Provides a direct conversion from floating-point to integer,
+    ///          suitable for ViperLang's Number to Integer conversion.
+    ///          Non-finite values (NaN, Inf) are clamped to 0.
+    /// @param x Input double.
+    /// @return Truncated value as 64-bit signed integer.
+    long long rt_f64_to_i64(double x)
+    {
+        if (!isfinite(x))
+        {
+            return 0;
+        }
+        return (long long)trunc(x);
+    }
+
     /// @brief Round a double to a specified number of digits using banker's rounding.
     /// @details Applies nearest-even rounding with optional scaling so callers
     ///          can request decimal precision.  Extremely large magnitude digit

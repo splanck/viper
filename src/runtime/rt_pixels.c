@@ -567,6 +567,7 @@ int64_t rt_pixels_save_bmp(void *pixels, void *path)
     }
 
     free(row_buf);
+    fflush(f);
     fclose(f);
     return 1;
 }

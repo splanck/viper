@@ -241,7 +241,7 @@ void Sema::analyzeEntityDecl(EntityDecl &decl)
 
     pushScope();
 
-    // Analyze fields
+    // Analyze fields first (adds them to scope)
     for (auto &member : decl.members)
     {
         if (member->kind == DeclKind::Field)
@@ -250,7 +250,33 @@ void Sema::analyzeEntityDecl(EntityDecl &decl)
         }
     }
 
-    // Analyze methods
+    // Pre-define method symbols in scope so they can be called without 'self.'
+    // This allows methods to call each other by bare name within the entity.
+    for (auto &member : decl.members)
+    {
+        if (member->kind == DeclKind::Method)
+        {
+            auto *method = static_cast<MethodDecl *>(member.get());
+            TypeRef returnType =
+                method->returnType ? resolveTypeNode(method->returnType.get()) : types::voidType();
+            std::vector<TypeRef> paramTypes;
+            for (const auto &param : method->params)
+            {
+                TypeRef paramType =
+                    param.type ? resolveTypeNode(param.type.get()) : types::unknown();
+                paramTypes.push_back(paramType);
+            }
+            Symbol sym;
+            sym.kind = Symbol::Kind::Method;
+            sym.name = method->name;
+            sym.type = types::function(paramTypes, returnType);
+            sym.isFinal = true;
+            sym.decl = method;
+            defineSymbol(method->name, sym);
+        }
+    }
+
+    // Analyze methods (now they can reference each other by bare name)
     for (auto &member : decl.members)
     {
         if (member->kind == DeclKind::Method)

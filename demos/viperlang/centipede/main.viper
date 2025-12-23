@@ -1,0 +1,1467 @@
+//=============================================================================
+//
+//  CENTIPEDE - A ViperLang Showpiece
+//  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//  A complete arcade game demonstrating ViperLang's capabilities:
+//  - Entity-based OOP with methods and fields
+//  - Module-level state management
+//  - Complex game logic with collision detection
+//  - Animated menus and visual effects
+//  - High score system
+//
+//  Controls: WASD/Arrows = Move, SPACE = Fire, Q = Quit
+//
+//  BUGS FOUND: See BUGS.md for ViperLang issues discovered during development
+//
+//=============================================================================
+
+module Centipede;
+
+//=============================================================================
+// CONFIGURATION CONSTANTS
+//=============================================================================
+
+// Field dimensions
+Integer FIELD_WIDTH = 40;
+Integer FIELD_HEIGHT = 24;
+Integer FIELD_TOP = 3;
+Integer FIELD_LEFT = 20;
+Integer PLAYER_ZONE = 5;
+
+// Game balance
+Integer MAX_SEGMENTS = 12;
+Integer MAX_HIGH_SCORES = 10;
+
+// Scoring
+Integer POINTS_SEGMENT = 10;
+Integer POINTS_SPIDER = 100;
+Integer POINTS_FLEA = 200;
+Integer POINTS_MUSHROOM = 1;
+Integer POINTS_LEVEL_BONUS = 500;
+
+// Colors (ANSI 16-color palette)
+Integer COLOR_BLACK = 0;
+Integer COLOR_RED = 1;
+Integer COLOR_GREEN = 2;
+Integer COLOR_YELLOW = 3;
+Integer COLOR_BLUE = 4;
+Integer COLOR_MAGENTA = 5;
+Integer COLOR_CYAN = 6;
+Integer COLOR_WHITE = 7;
+Integer COLOR_GRAY = 8;
+Integer COLOR_BRIGHT_RED = 9;
+Integer COLOR_BRIGHT_GREEN = 10;
+Integer COLOR_BRIGHT_YELLOW = 11;
+Integer COLOR_BRIGHT_BLUE = 12;
+Integer COLOR_BRIGHT_MAGENTA = 13;
+Integer COLOR_BRIGHT_CYAN = 14;
+Integer COLOR_BRIGHT_WHITE = 15;
+
+//=============================================================================
+// UTILITY FUNCTIONS
+//=============================================================================
+
+// Pseudo-random number generator state (Linear Congruential Generator)
+var randSeed: Integer = 12345;
+
+// Random integer from 0 to max-1 using integer-only LCG
+func randInt(maxVal: Integer) -> Integer {
+    // LCG parameters (from Numerical Recipes)
+    randSeed = randSeed * 1103515245 + 12345;
+    // Keep positive
+    if randSeed < 0 {
+        randSeed = 0 - randSeed;
+    }
+    // Scale to range
+    if maxVal <= 0 {
+        return 0;
+    }
+    return (randSeed / 100) % maxVal;
+}
+
+func absInt(n: Integer) -> Integer {
+    if n < 0 {
+        return -n;
+    }
+    return n;
+}
+
+func minInt(a: Integer, b: Integer) -> Integer {
+    if a < b {
+        return a;
+    }
+    return b;
+}
+
+func maxInt(a: Integer, b: Integer) -> Integer {
+    if a > b {
+        return a;
+    }
+    return b;
+}
+
+//=============================================================================
+// PARTICLE SYSTEM - Visual Effects
+//=============================================================================
+
+entity Particle {
+    expose Integer x;
+    expose Integer y;
+    expose Integer dx;
+    expose Integer dy;
+    expose Integer life;
+    expose Integer color;
+    expose String char;
+    expose Boolean active;
+
+    expose func init(px: Integer, py: Integer, pchar: String, pcolor: Integer) {
+        x = px;
+        y = py;
+        dx = randInt(3) - 1;
+        dy = randInt(3) - 1;
+        life = 5 + randInt(5);
+        color = pcolor;
+        char = pchar;
+        active = true;
+    }
+
+    expose func update() {
+        if not active {
+            return;
+        }
+        life = life - 1;
+        if life <= 0 {
+            active = false;
+            return;
+        }
+        x = x + dx;
+        y = y + dy;
+        if randInt(3) == 0 {
+            dx = randInt(3) - 1;
+            dy = randInt(3) - 1;
+        }
+    }
+
+    expose func draw() {
+        if not active {
+            return;
+        }
+        if x >= 0 and x < FIELD_WIDTH and y >= 0 and y < FIELD_HEIGHT {
+            Viper.Terminal.SetPosition(FIELD_TOP + y, FIELD_LEFT + x);
+            Viper.Terminal.SetColor(color, COLOR_BLACK);
+            Viper.Terminal.Print(char);
+        }
+    }
+}
+
+entity ParticleSystem {
+    expose List[Particle] particles;
+
+    expose func init() {
+        particles = [];
+    }
+
+    expose func spawnOne(x: Integer, y: Integer, char: String, color: Integer) {
+        var p = new Particle();
+        p.init(x, y, char, color);
+        particles.add(p);
+    }
+
+    expose func spawnExplosion(x: Integer, y: Integer) {
+        var i = 0;
+        while i < 3 {
+            self.spawnOne(x, y, "*", COLOR_BRIGHT_YELLOW);
+            i = i + 1;
+        }
+        i = 0;
+        while i < 2 {
+            self.spawnOne(x, y, "+", COLOR_YELLOW);
+            i = i + 1;
+        }
+    }
+
+    expose func spawnBigExplosion(x: Integer, y: Integer) {
+        var i = 0;
+        while i < 5 {
+            self.spawnOne(x, y, "*", COLOR_BRIGHT_WHITE);
+            i = i + 1;
+        }
+        i = 0;
+        while i < 4 {
+            self.spawnOne(x, y, "#", COLOR_BRIGHT_YELLOW);
+            i = i + 1;
+        }
+        i = 0;
+        while i < 3 {
+            self.spawnOne(x, y, "o", COLOR_BRIGHT_RED);
+            i = i + 1;
+        }
+    }
+
+    expose func update() {
+        var newList: List[Particle] = [];
+        for p in particles {
+            p.update();
+            if p.active {
+                newList.add(p);
+            }
+        }
+        particles = newList;
+    }
+
+    expose func draw() {
+        for p in particles {
+            p.draw();
+        }
+    }
+
+    expose func clear() {
+        particles = [];
+    }
+}
+
+//=============================================================================
+// GAME FIELD - Mushroom Grid
+//=============================================================================
+
+entity GameField {
+    expose List[Integer] mushrooms;
+    expose Integer mushroomCount;
+
+    expose func init() {
+        mushrooms = [];
+        var size = FIELD_WIDTH * FIELD_HEIGHT;
+        var i = 0;
+        while i < size {
+            mushrooms.add(0);
+            i = i + 1;
+        }
+        mushroomCount = 0;
+    }
+
+    expose func getMushroom(x: Integer, y: Integer) -> Integer {
+        if x < 0 or x >= FIELD_WIDTH or y < 0 or y >= FIELD_HEIGHT {
+            return 0;
+        }
+        var idx = y * FIELD_WIDTH + x;
+        return mushrooms.get(idx);
+    }
+
+    expose func setMushroom(x: Integer, y: Integer, health: Integer) {
+        if x < 0 or x >= FIELD_WIDTH or y < 0 or y >= FIELD_HEIGHT {
+            return;
+        }
+        var idx = y * FIELD_WIDTH + x;
+        var oldHealth = mushrooms.get(idx);
+        mushrooms.set(idx, health);
+
+        if oldHealth == 0 and health > 0 {
+            mushroomCount = mushroomCount + 1;
+        }
+        if oldHealth > 0 and health == 0 {
+            mushroomCount = mushroomCount - 1;
+        }
+    }
+
+    expose func damageMushroom(x: Integer, y: Integer) -> Boolean {
+        var health = self.getMushroom(x, y);
+        if health > 0 {
+            health = health - 1;
+            self.setMushroom(x, y, health);
+            return health == 0;
+        }
+        return false;
+    }
+
+    expose func generateMushrooms(level: Integer) {
+        var count = 20 + level * 5;
+        if count > 60 {
+            count = 60;
+        }
+        var placed = 0;
+        var attempts = 0;
+        while placed < count and attempts < 500 {
+            var x = randInt(FIELD_WIDTH);
+            var y = randInt(FIELD_HEIGHT - PLAYER_ZONE - 2);
+            if self.getMushroom(x, y) == 0 {
+                self.setMushroom(x, y, 4);
+                placed = placed + 1;
+            }
+            attempts = attempts + 1;
+        }
+    }
+
+    expose func drawMushroom(x: Integer, y: Integer) {
+        var health = self.getMushroom(x, y);
+        var screenX = FIELD_LEFT + x;
+        var screenY = FIELD_TOP + y;
+        Viper.Terminal.SetPosition(screenY, screenX);
+
+        if health == 0 {
+            Viper.Terminal.SetColor(COLOR_BLACK, COLOR_BLACK);
+            Viper.Terminal.Print(" ");
+        }
+        if health == 4 {
+            Viper.Terminal.SetColor(COLOR_BRIGHT_GREEN, COLOR_BLACK);
+            Viper.Terminal.Print("@");
+        }
+        if health == 3 {
+            Viper.Terminal.SetColor(COLOR_GREEN, COLOR_BLACK);
+            Viper.Terminal.Print("@");
+        }
+        if health == 2 {
+            Viper.Terminal.SetColor(COLOR_CYAN, COLOR_BLACK);
+            Viper.Terminal.Print("o");
+        }
+        if health == 1 {
+            Viper.Terminal.SetColor(COLOR_GRAY, COLOR_BLACK);
+            Viper.Terminal.Print(".");
+        }
+    }
+
+    expose func drawField() {
+        // Draw borders
+        Viper.Terminal.SetColor(COLOR_GRAY, COLOR_BLACK);
+        var y = FIELD_TOP - 1;
+        while y <= FIELD_TOP + FIELD_HEIGHT {
+            Viper.Terminal.SetPosition(y, FIELD_LEFT - 1);
+            Viper.Terminal.Print("|");
+            Viper.Terminal.SetPosition(y, FIELD_LEFT + FIELD_WIDTH);
+            Viper.Terminal.Print("|");
+            y = y + 1;
+        }
+
+        // Draw all mushrooms
+        y = 0;
+        while y < FIELD_HEIGHT {
+            var x = 0;
+            while x < FIELD_WIDTH {
+                self.drawMushroom(x, y);
+                x = x + 1;
+            }
+            y = y + 1;
+        }
+    }
+
+    expose func clearPosition(x: Integer, y: Integer) {
+        var health = self.getMushroom(x, y);
+        if health > 0 {
+            self.drawMushroom(x, y);
+        } else {
+            Viper.Terminal.SetPosition(FIELD_TOP + y, FIELD_LEFT + x);
+            Viper.Terminal.SetColor(COLOR_BLACK, COLOR_BLACK);
+            Viper.Terminal.Print(" ");
+        }
+    }
+}
+
+//=============================================================================
+// PLAYER - Ship and Bullet
+//=============================================================================
+
+entity Player {
+    expose Integer x;
+    expose Integer y;
+    expose Integer lives;
+    expose Integer score;
+    expose Integer bulletX;
+    expose Integer bulletY;
+    expose Boolean bulletActive;
+    expose Boolean invincible;
+    expose Integer invincibleTimer;
+
+    expose func init() {
+        x = FIELD_WIDTH / 2;
+        y = FIELD_HEIGHT - 2;
+        lives = 3;
+        score = 0;
+        bulletActive = false;
+        invincible = false;
+        invincibleTimer = 0;
+    }
+
+    expose func reset() {
+        x = FIELD_WIDTH / 2;
+        y = FIELD_HEIGHT - 2;
+        bulletActive = false;
+        invincible = true;
+        invincibleTimer = 30;
+    }
+
+    expose func moveLeft() {
+        if x > 0 {
+            x = x - 1;
+        }
+    }
+
+    expose func moveRight() {
+        if x < FIELD_WIDTH - 1 {
+            x = x + 1;
+        }
+    }
+
+    expose func moveUp() {
+        if y > FIELD_HEIGHT - PLAYER_ZONE {
+            y = y - 1;
+        }
+    }
+
+    expose func moveDown() {
+        if y < FIELD_HEIGHT - 1 {
+            y = y + 1;
+        }
+    }
+
+    expose func fire() {
+        if not bulletActive {
+            bulletX = x;
+            bulletY = y - 1;
+            bulletActive = true;
+        }
+    }
+
+    expose func updateBullet() -> Boolean {
+        if bulletActive {
+            bulletY = bulletY - 1;
+            if bulletY < 0 {
+                bulletActive = false;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    expose func addScore(points: Integer) {
+        score = score + points;
+    }
+
+    expose func loseLife() -> Boolean {
+        if invincible {
+            return false;
+        }
+        lives = lives - 1;
+        if lives <= 0 {
+            return true;
+        }
+        self.reset();
+        return false;
+    }
+
+    expose func update() {
+        if invincible {
+            invincibleTimer = invincibleTimer - 1;
+            if invincibleTimer <= 0 {
+                invincible = false;
+            }
+        }
+    }
+
+    expose func draw() {
+        var screenX = FIELD_LEFT + x;
+        var screenY = FIELD_TOP + y;
+        Viper.Terminal.SetPosition(screenY, screenX);
+
+        if invincible and invincibleTimer % 4 < 2 {
+            Viper.Terminal.SetColor(COLOR_GRAY, COLOR_BLACK);
+        } else {
+            Viper.Terminal.SetColor(COLOR_BRIGHT_WHITE, COLOR_BLACK);
+        }
+        Viper.Terminal.Print("A");
+    }
+
+    expose func drawBullet() {
+        if bulletActive {
+            Viper.Terminal.SetPosition(FIELD_TOP + bulletY, FIELD_LEFT + bulletX);
+            Viper.Terminal.SetColor(COLOR_BRIGHT_YELLOW, COLOR_BLACK);
+            Viper.Terminal.Print("|");
+        }
+    }
+
+    expose func drawHUD() {
+        Viper.Terminal.SetPosition(1, FIELD_LEFT);
+        Viper.Terminal.SetColor(COLOR_BRIGHT_CYAN, COLOR_BLACK);
+        Viper.Terminal.Print("SCORE: ");
+        Viper.Terminal.SetColor(COLOR_BRIGHT_WHITE, COLOR_BLACK);
+        Viper.Terminal.Print(Viper.Fmt.Int(score));
+        Viper.Terminal.Print("     ");
+
+        Viper.Terminal.SetPosition(1, FIELD_LEFT + 22);
+        Viper.Terminal.SetColor(COLOR_BRIGHT_RED, COLOR_BLACK);
+        Viper.Terminal.Print("LIVES: ");
+        Viper.Terminal.SetColor(COLOR_BRIGHT_WHITE, COLOR_BLACK);
+        var i = 0;
+        while i < lives {
+            Viper.Terminal.Print("A ");
+            i = i + 1;
+        }
+        Viper.Terminal.Print("   ");
+    }
+}
+
+//=============================================================================
+// CENTIPEDE - The Main Enemy
+//=============================================================================
+
+entity Segment {
+    expose Integer x;
+    expose Integer y;
+    expose Integer dirX;
+    expose Boolean active;
+    expose Boolean isHead;
+
+    expose func init(sx: Integer, sy: Integer, head: Boolean) {
+        x = sx;
+        y = sy;
+        dirX = 1;
+        active = true;
+        isHead = head;
+    }
+}
+
+entity TheCentipede {
+    expose List[Segment] segments;
+    expose Integer moveTimer;
+    expose Integer speed;
+
+    expose func init(level: Integer, startX: Integer) {
+        segments = [];
+        var length = 8 + level;
+        if length > MAX_SEGMENTS {
+            length = MAX_SEGMENTS;
+        }
+        speed = 4 - level / 3;
+        if speed < 1 {
+            speed = 1;
+        }
+        moveTimer = 0;
+
+        var i = 0;
+        while i < length {
+            var seg = new Segment();
+            seg.init(startX - i, 0, i == 0);
+            segments.add(seg);
+            i = i + 1;
+        }
+    }
+
+    expose func activeCount() -> Integer {
+        var count = 0;
+        for seg in segments {
+            if seg.active {
+                count = count + 1;
+            }
+        }
+        return count;
+    }
+
+    expose func move(field: GameField) -> Boolean {
+        moveTimer = moveTimer + 1;
+        if moveTimer < speed {
+            return false;
+        }
+        moveTimer = 0;
+        var reachedBottom = false;
+
+        for seg in segments {
+            if seg.active {
+                var newX = seg.x + seg.dirX;
+                var blocked = false;
+
+                if newX < 0 or newX >= FIELD_WIDTH {
+                    blocked = true;
+                }
+                if not blocked and field.getMushroom(newX, seg.y) > 0 {
+                    blocked = true;
+                }
+
+                if blocked {
+                    seg.y = seg.y + 1;
+                    seg.dirX = -seg.dirX;
+                    if seg.y >= FIELD_HEIGHT {
+                        reachedBottom = true;
+                    }
+                } else {
+                    seg.x = newX;
+                }
+            }
+        }
+        return reachedBottom;
+    }
+
+    expose func segmentAt(px: Integer, py: Integer) -> Integer {
+        var i = 0;
+        for seg in segments {
+            if seg.active and seg.x == px and seg.y == py {
+                return i;
+            }
+            i = i + 1;
+        }
+        return -1;
+    }
+
+    expose func killSegment(index: Integer, field: GameField) -> Integer {
+        if index >= 0 and index < segments.size() {
+            var seg = segments.get(index);
+            if seg.active {
+                seg.active = false;
+                field.setMushroom(seg.x, seg.y, 4);
+                if index + 1 < segments.size() {
+                    var nextSeg = segments.get(index + 1);
+                    nextSeg.isHead = true;
+                }
+                return POINTS_SEGMENT;
+            }
+        }
+        return 0;
+    }
+
+    expose func draw() {
+        for seg in segments {
+            if seg.active {
+                Viper.Terminal.SetPosition(FIELD_TOP + seg.y, FIELD_LEFT + seg.x);
+                if seg.isHead {
+                    Viper.Terminal.SetColor(COLOR_BRIGHT_RED, COLOR_BLACK);
+                    Viper.Terminal.Print("O");
+                } else {
+                    Viper.Terminal.SetColor(COLOR_BRIGHT_GREEN, COLOR_BLACK);
+                    Viper.Terminal.Print("o");
+                }
+            }
+        }
+    }
+
+    expose func clear(field: GameField) {
+        for seg in segments {
+            if seg.active {
+                field.clearPosition(seg.x, seg.y);
+            }
+        }
+    }
+}
+
+//=============================================================================
+// SPIDER - Erratic Enemy
+//=============================================================================
+
+entity Spider {
+    expose Integer x;
+    expose Integer y;
+    expose Integer dirX;
+    expose Integer dirY;
+    expose Boolean active;
+    expose Integer moveTimer;
+    expose Integer animFrame;
+
+    expose func spawn() {
+        y = FIELD_HEIGHT - randInt(PLAYER_ZONE) - 1;
+        if randInt(2) == 0 {
+            x = 0;
+            dirX = 1;
+        } else {
+            x = FIELD_WIDTH - 1;
+            dirX = -1;
+        }
+        dirY = 1;
+        if randInt(2) == 0 {
+            dirY = -1;
+        }
+        active = true;
+        moveTimer = 0;
+        animFrame = 0;
+    }
+
+    expose func move(field: GameField) {
+        if not active {
+            return;
+        }
+        moveTimer = moveTimer + 1;
+        if moveTimer < 2 {
+            return;
+        }
+        moveTimer = 0;
+        animFrame = animFrame + 1;
+
+        x = x + dirX;
+        if randInt(3) == 0 {
+            y = y + dirY;
+        }
+        if randInt(5) == 0 {
+            dirY = -dirY;
+        }
+
+        if y < FIELD_HEIGHT - PLAYER_ZONE {
+            y = FIELD_HEIGHT - PLAYER_ZONE;
+            dirY = 1;
+        }
+        if y >= FIELD_HEIGHT {
+            y = FIELD_HEIGHT - 1;
+            dirY = -1;
+        }
+
+        if x < 0 or x >= FIELD_WIDTH {
+            active = false;
+        }
+
+        if active and field.getMushroom(x, y) > 0 {
+            field.setMushroom(x, y, 0);
+        }
+    }
+
+    expose func isAt(px: Integer, py: Integer) -> Boolean {
+        return active and x == px and y == py;
+    }
+
+    expose func kill() {
+        active = false;
+    }
+
+    expose func draw() {
+        if active {
+            Viper.Terminal.SetPosition(FIELD_TOP + y, FIELD_LEFT + x);
+            Viper.Terminal.SetColor(COLOR_BRIGHT_MAGENTA, COLOR_BLACK);
+            if animFrame % 4 < 2 {
+                Viper.Terminal.Print("X");
+            } else {
+                Viper.Terminal.Print("x");
+            }
+        }
+    }
+
+    expose func clear(field: GameField) {
+        if active {
+            field.clearPosition(x, y);
+        }
+    }
+}
+
+//=============================================================================
+// FLEA - Drops Down Creating Mushrooms
+//=============================================================================
+
+entity Flea {
+    expose Integer x;
+    expose Integer y;
+    expose Boolean active;
+    expose Integer moveTimer;
+    expose Integer health;
+
+    expose func spawn() {
+        x = randInt(FIELD_WIDTH);
+        y = 0;
+        active = true;
+        moveTimer = 0;
+        health = 2;
+    }
+
+    expose func move(field: GameField) {
+        if not active {
+            return;
+        }
+        moveTimer = moveTimer + 1;
+        if moveTimer < 1 {
+            return;
+        }
+        moveTimer = 0;
+
+        y = y + 1;
+        if y >= FIELD_HEIGHT {
+            active = false;
+            return;
+        }
+
+        if randInt(3) == 0 and field.getMushroom(x, y) == 0 {
+            field.setMushroom(x, y, 4);
+        }
+    }
+
+    expose func isAt(px: Integer, py: Integer) -> Boolean {
+        return active and x == px and y == py;
+    }
+
+    expose func hit() -> Boolean {
+        health = health - 1;
+        if health <= 0 {
+            active = false;
+            return true;
+        }
+        return false;
+    }
+
+    expose func draw() {
+        if active {
+            Viper.Terminal.SetPosition(FIELD_TOP + y, FIELD_LEFT + x);
+            Viper.Terminal.SetColor(COLOR_BRIGHT_CYAN, COLOR_BLACK);
+            Viper.Terminal.Print("Y");
+        }
+    }
+
+    expose func clear(field: GameField) {
+        if active {
+            field.clearPosition(x, y);
+        }
+    }
+}
+
+//=============================================================================
+// SCOREBOARD - High Score System
+//=============================================================================
+
+entity ScoreEntry {
+    expose String name;
+    expose Integer score;
+
+    expose func init(n: String, s: Integer) {
+        name = n;
+        score = s;
+    }
+}
+
+entity Scoreboard {
+    expose List[ScoreEntry] entries;
+
+    expose func init() {
+        entries = [];
+        self.addEntry("ACE", 10000);
+        self.addEntry("PRO", 8000);
+        self.addEntry("VET", 6000);
+        self.addEntry("HOT", 4000);
+        self.addEntry("NEW", 2000);
+        self.addEntry("BAS", 1000);
+        self.addEntry("VIP", 500);
+        self.addEntry("TRY", 250);
+        self.addEntry("...", 100);
+        self.addEntry("...", 50);
+    }
+
+    expose func addEntry(n: String, s: Integer) {
+        var entry = new ScoreEntry();
+        entry.init(n, s);
+        entries.add(entry);
+    }
+
+    expose func isHighScore(score: Integer) -> Boolean {
+        if entries.size() < MAX_HIGH_SCORES {
+            return true;
+        }
+        var last = entries.get(entries.size() - 1);
+        return score > last.score;
+    }
+
+    expose func addScore(name: String, score: Integer) {
+        var insertPos = entries.size();
+        var i = 0;
+        while i < entries.size() {
+            var entry = entries.get(i);
+            if score > entry.score {
+                insertPos = i;
+                i = entries.size();
+            }
+            i = i + 1;
+        }
+
+        var newEntry = new ScoreEntry();
+        newEntry.init(name, score);
+
+        var newList: List[ScoreEntry] = [];
+        i = 0;
+        while i < entries.size() {
+            if i == insertPos {
+                newList.add(newEntry);
+            }
+            newList.add(entries.get(i));
+            i = i + 1;
+        }
+        if insertPos >= entries.size() {
+            newList.add(newEntry);
+        }
+
+        entries = [];
+        i = 0;
+        while i < newList.size() and i < MAX_HIGH_SCORES {
+            entries.add(newList.get(i));
+            i = i + 1;
+        }
+    }
+
+    expose func draw(startRow: Integer) {
+        Viper.Terminal.SetColor(COLOR_BRIGHT_YELLOW, COLOR_BLACK);
+        Viper.Terminal.SetPosition(startRow, 18);
+        Viper.Terminal.Print("+======================+");
+        Viper.Terminal.SetPosition(startRow + 1, 18);
+        Viper.Terminal.Print("|   ");
+        Viper.Terminal.SetColor(COLOR_BRIGHT_WHITE, COLOR_BLACK);
+        Viper.Terminal.Print("HIGH  SCORES");
+        Viper.Terminal.SetColor(COLOR_BRIGHT_YELLOW, COLOR_BLACK);
+        Viper.Terminal.Print("     |");
+        Viper.Terminal.SetPosition(startRow + 2, 18);
+        Viper.Terminal.Print("+======================+");
+
+        Viper.Terminal.SetColor(COLOR_BRIGHT_CYAN, COLOR_BLACK);
+        Viper.Terminal.SetPosition(startRow + 4, 15);
+        Viper.Terminal.Print("RANK    NAME          SCORE");
+        Viper.Terminal.SetPosition(startRow + 5, 15);
+        Viper.Terminal.SetColor(COLOR_GRAY, COLOR_BLACK);
+        Viper.Terminal.Print("----    ----          -----");
+
+        var i = 0;
+        while i < entries.size() {
+            var entry = entries.get(i);
+            var row = startRow + 7 + i;
+
+            if i == 0 {
+                Viper.Terminal.SetColor(COLOR_BRIGHT_YELLOW, COLOR_BLACK);
+            }
+            if i == 1 {
+                Viper.Terminal.SetColor(COLOR_BRIGHT_WHITE, COLOR_BLACK);
+            }
+            if i == 2 {
+                Viper.Terminal.SetColor(COLOR_YELLOW, COLOR_BLACK);
+            }
+            if i > 2 {
+                Viper.Terminal.SetColor(COLOR_WHITE, COLOR_BLACK);
+            }
+
+            Viper.Terminal.SetPosition(row, 15);
+            if i < 9 {
+                Viper.Terminal.Print(" ");
+            }
+            Viper.Terminal.Print(Viper.Fmt.Int(i + 1));
+            Viper.Terminal.Print(".     ");
+            Viper.Terminal.Print(entry.name);
+            Viper.Terminal.Print("          ");
+            Viper.Terminal.Print(Viper.Fmt.Int(entry.score));
+            Viper.Terminal.Print("     ");
+
+            i = i + 1;
+        }
+    }
+}
+
+//=============================================================================
+// GAME STATE (Module-Level Variables)
+//=============================================================================
+
+var theField: GameField;
+var thePlayer: Player;
+var theCentipede: TheCentipede;
+var theSpider: Spider;
+var theFlea: Flea;
+var theScoreboard: Scoreboard;
+var particles: ParticleSystem;
+
+var currentLevel: Integer;
+var gameRunning: Boolean;
+var spiderSpawnTimer: Integer;
+var fleaSpawnTimer: Integer;
+var frameCount: Integer;
+
+//=============================================================================
+// MENU SYSTEM
+//=============================================================================
+
+func drawTitle() {
+    Viper.Terminal.SetColor(COLOR_BRIGHT_GREEN, COLOR_BLACK);
+    Viper.Terminal.SetPosition(4, 20);
+    Viper.Terminal.Print("+================================+");
+    Viper.Terminal.SetPosition(5, 20);
+    Viper.Terminal.Print("|                                |");
+    Viper.Terminal.SetPosition(6, 20);
+    Viper.Terminal.Print("|");
+    Viper.Terminal.SetColor(COLOR_BRIGHT_CYAN, COLOR_BLACK);
+    Viper.Terminal.Print("      C E N T I P E D E       ");
+    Viper.Terminal.SetColor(COLOR_BRIGHT_GREEN, COLOR_BLACK);
+    Viper.Terminal.Print("|");
+    Viper.Terminal.SetPosition(7, 20);
+    Viper.Terminal.Print("|                                |");
+    Viper.Terminal.SetPosition(8, 20);
+    Viper.Terminal.Print("+================================+");
+}
+
+func drawCentipedeArt(row: Integer, frame: Integer) {
+    Viper.Terminal.SetPosition(row, 28);
+    Viper.Terminal.SetColor(COLOR_BRIGHT_RED, COLOR_BLACK);
+    if frame % 2 == 0 {
+        Viper.Terminal.Print("O");
+    } else {
+        Viper.Terminal.Print("o");
+    }
+    Viper.Terminal.SetColor(COLOR_BRIGHT_GREEN, COLOR_BLACK);
+
+    var i = 0;
+    while i < 10 {
+        if (frame + i) % 2 == 0 {
+            Viper.Terminal.Print("o");
+        } else {
+            Viper.Terminal.Print("O");
+        }
+        i = i + 1;
+    }
+
+    Viper.Terminal.SetPosition(row + 1, 28);
+    Viper.Terminal.SetColor(COLOR_GREEN, COLOR_BLACK);
+    i = 0;
+    while i < 11 {
+        if (frame + i) % 2 == 0 {
+            Viper.Terminal.Print("/");
+        } else {
+            Viper.Terminal.Print("\\");
+        }
+        i = i + 1;
+    }
+}
+
+func showMainMenu() {
+    var animFrame = 0;
+    var running = true;
+
+    while running {
+        Viper.Terminal.Clear();
+        drawTitle();
+        drawCentipedeArt(11, animFrame);
+
+        Viper.Terminal.SetColor(COLOR_BRIGHT_YELLOW, COLOR_BLACK);
+        Viper.Terminal.SetPosition(14, 25);
+        Viper.Terminal.Print("+------------------+");
+        Viper.Terminal.SetPosition(15, 25);
+        Viper.Terminal.Print("|                  |");
+        Viper.Terminal.SetPosition(16, 25);
+        Viper.Terminal.Print("|  ");
+        Viper.Terminal.SetColor(COLOR_BRIGHT_WHITE, COLOR_BLACK);
+        Viper.Terminal.Print("[1]");
+        Viper.Terminal.SetColor(COLOR_BRIGHT_GREEN, COLOR_BLACK);
+        Viper.Terminal.Print(" NEW GAME   ");
+        Viper.Terminal.SetColor(COLOR_BRIGHT_YELLOW, COLOR_BLACK);
+        Viper.Terminal.Print("|");
+
+        Viper.Terminal.SetPosition(17, 25);
+        Viper.Terminal.Print("|                  |");
+        Viper.Terminal.SetPosition(18, 25);
+        Viper.Terminal.Print("|  ");
+        Viper.Terminal.SetColor(COLOR_BRIGHT_WHITE, COLOR_BLACK);
+        Viper.Terminal.Print("[2]");
+        Viper.Terminal.SetColor(COLOR_BRIGHT_CYAN, COLOR_BLACK);
+        Viper.Terminal.Print(" HOW TO PLAY");
+        Viper.Terminal.SetColor(COLOR_BRIGHT_YELLOW, COLOR_BLACK);
+        Viper.Terminal.Print(" |");
+
+        Viper.Terminal.SetPosition(19, 25);
+        Viper.Terminal.Print("|                  |");
+        Viper.Terminal.SetPosition(20, 25);
+        Viper.Terminal.Print("|  ");
+        Viper.Terminal.SetColor(COLOR_BRIGHT_WHITE, COLOR_BLACK);
+        Viper.Terminal.Print("[3]");
+        Viper.Terminal.SetColor(COLOR_BRIGHT_MAGENTA, COLOR_BLACK);
+        Viper.Terminal.Print(" HIGH SCORES");
+        Viper.Terminal.SetColor(COLOR_BRIGHT_YELLOW, COLOR_BLACK);
+        Viper.Terminal.Print(" |");
+
+        Viper.Terminal.SetPosition(21, 25);
+        Viper.Terminal.Print("|                  |");
+        Viper.Terminal.SetPosition(22, 25);
+        Viper.Terminal.Print("|  ");
+        Viper.Terminal.SetColor(COLOR_BRIGHT_WHITE, COLOR_BLACK);
+        Viper.Terminal.Print("[Q]");
+        Viper.Terminal.SetColor(COLOR_RED, COLOR_BLACK);
+        Viper.Terminal.Print(" QUIT       ");
+        Viper.Terminal.SetColor(COLOR_BRIGHT_YELLOW, COLOR_BLACK);
+        Viper.Terminal.Print("|");
+
+        Viper.Terminal.SetPosition(23, 25);
+        Viper.Terminal.Print("|                  |");
+        Viper.Terminal.SetPosition(24, 25);
+        Viper.Terminal.Print("+------------------+");
+
+        Viper.Terminal.SetColor(COLOR_GRAY, COLOR_BLACK);
+        Viper.Terminal.SetPosition(27, 22);
+        Viper.Terminal.Print("A ViperLang Showpiece - 2024");
+
+        var key = Viper.Terminal.InKey();
+        if key == "1" {
+            running = false;
+            playGame();
+        }
+        if key == "2" {
+            showInstructions();
+        }
+        if key == "3" {
+            showHighScores();
+        }
+        if key == "q" or key == "Q" {
+            running = false;
+        }
+
+        animFrame = animFrame + 1;
+        Viper.Time.SleepMs(100);
+    }
+}
+
+func showInstructions() {
+    Viper.Terminal.Clear();
+
+    Viper.Terminal.SetColor(COLOR_BRIGHT_CYAN, COLOR_BLACK);
+    Viper.Terminal.SetPosition(2, 25);
+    Viper.Terminal.Print("=== HOW TO PLAY ===");
+
+    Viper.Terminal.SetColor(COLOR_BRIGHT_YELLOW, COLOR_BLACK);
+    Viper.Terminal.SetPosition(5, 10);
+    Viper.Terminal.Print("CONTROLS:");
+    Viper.Terminal.SetColor(COLOR_WHITE, COLOR_BLACK);
+    Viper.Terminal.SetPosition(7, 12);
+    Viper.Terminal.Print("W / Up Arrow    - Move up");
+    Viper.Terminal.SetPosition(8, 12);
+    Viper.Terminal.Print("S / Down Arrow  - Move down");
+    Viper.Terminal.SetPosition(9, 12);
+    Viper.Terminal.Print("A / Left Arrow  - Move left");
+    Viper.Terminal.SetPosition(10, 12);
+    Viper.Terminal.Print("D / Right Arrow - Move right");
+    Viper.Terminal.SetPosition(11, 12);
+    Viper.Terminal.Print("SPACE           - Fire bullet");
+    Viper.Terminal.SetPosition(12, 12);
+    Viper.Terminal.Print("Q               - Quit to menu");
+
+    Viper.Terminal.SetColor(COLOR_BRIGHT_YELLOW, COLOR_BLACK);
+    Viper.Terminal.SetPosition(15, 10);
+    Viper.Terminal.Print("ENEMIES:");
+
+    Viper.Terminal.SetPosition(17, 12);
+    Viper.Terminal.SetColor(COLOR_BRIGHT_RED, COLOR_BLACK);
+    Viper.Terminal.Print("O");
+    Viper.Terminal.SetColor(COLOR_BRIGHT_GREEN, COLOR_BLACK);
+    Viper.Terminal.Print("oooo");
+    Viper.Terminal.SetColor(COLOR_WHITE, COLOR_BLACK);
+    Viper.Terminal.Print("  Centipede - 10 pts/segment");
+
+    Viper.Terminal.SetPosition(18, 12);
+    Viper.Terminal.SetColor(COLOR_BRIGHT_MAGENTA, COLOR_BLACK);
+    Viper.Terminal.Print("X");
+    Viper.Terminal.SetColor(COLOR_WHITE, COLOR_BLACK);
+    Viper.Terminal.Print("      Spider - 100 pts");
+
+    Viper.Terminal.SetPosition(19, 12);
+    Viper.Terminal.SetColor(COLOR_BRIGHT_CYAN, COLOR_BLACK);
+    Viper.Terminal.Print("Y");
+    Viper.Terminal.SetColor(COLOR_WHITE, COLOR_BLACK);
+    Viper.Terminal.Print("      Flea - 200 pts");
+
+    Viper.Terminal.SetColor(COLOR_BRIGHT_YELLOW, COLOR_BLACK);
+    Viper.Terminal.SetPosition(22, 10);
+    Viper.Terminal.Print("OBJECTIVE:");
+    Viper.Terminal.SetColor(COLOR_WHITE, COLOR_BLACK);
+    Viper.Terminal.SetPosition(24, 12);
+    Viper.Terminal.Print("Destroy the centipede to advance!");
+
+    Viper.Terminal.SetColor(COLOR_BRIGHT_RED, COLOR_BLACK);
+    Viper.Terminal.SetPosition(27, 20);
+    Viper.Terminal.Print("Press any key to return...");
+
+    Viper.Terminal.GetKey();
+}
+
+func showHighScores() {
+    Viper.Terminal.Clear();
+    theScoreboard.draw(3);
+
+    Viper.Terminal.SetColor(COLOR_BRIGHT_RED, COLOR_BLACK);
+    Viper.Terminal.SetPosition(22, 18);
+    Viper.Terminal.Print("Press any key to return...");
+
+    Viper.Terminal.GetKey();
+}
+
+//=============================================================================
+// GAME INITIALIZATION
+//=============================================================================
+
+func initLevel(level: Integer) {
+    theField = new GameField();
+    theField.init();
+    theField.generateMushrooms(level);
+
+    theCentipede = new TheCentipede();
+    theCentipede.init(level, FIELD_WIDTH / 2);
+
+    theSpider = new Spider();
+    theSpider.active = false;
+    spiderSpawnTimer = 100 + randInt(50);
+
+    theFlea = new Flea();
+    theFlea.active = false;
+    fleaSpawnTimer = 200 + randInt(100);
+
+    particles = new ParticleSystem();
+    particles.init();
+
+    currentLevel = level;
+    frameCount = 0;
+}
+
+func drawGameScreen() {
+    Viper.Terminal.Clear();
+    thePlayer.drawHUD();
+    theField.drawField();
+
+    Viper.Terminal.SetPosition(1, FIELD_LEFT + 38);
+    Viper.Terminal.SetColor(COLOR_BRIGHT_YELLOW, COLOR_BLACK);
+    Viper.Terminal.Print("LVL:");
+    Viper.Terminal.SetColor(COLOR_BRIGHT_WHITE, COLOR_BLACK);
+    Viper.Terminal.Print(Viper.Fmt.Int(currentLevel));
+}
+
+//=============================================================================
+// GAME OVER / LEVEL COMPLETE
+//=============================================================================
+
+func showGameOver() {
+    var i = 0;
+    while i < 3 {
+        Viper.Terminal.SetPosition(12, FIELD_LEFT + 8);
+        Viper.Terminal.SetColor(COLOR_BRIGHT_RED, COLOR_BLACK);
+        Viper.Terminal.Print("   *** GAME OVER ***   ");
+        Viper.Time.SleepMs(200);
+        Viper.Terminal.SetPosition(12, FIELD_LEFT + 8);
+        Viper.Terminal.SetColor(COLOR_RED, COLOR_BLACK);
+        Viper.Terminal.Print("   *** GAME OVER ***   ");
+        Viper.Time.SleepMs(200);
+        i = i + 1;
+    }
+
+    Viper.Terminal.SetPosition(14, FIELD_LEFT + 8);
+    Viper.Terminal.SetColor(COLOR_BRIGHT_CYAN, COLOR_BLACK);
+    Viper.Terminal.Print("Final Score: ");
+    Viper.Terminal.SetColor(COLOR_BRIGHT_WHITE, COLOR_BLACK);
+    Viper.Terminal.Print(Viper.Fmt.Int(thePlayer.score));
+
+    if theScoreboard.isHighScore(thePlayer.score) {
+        Viper.Terminal.SetPosition(16, FIELD_LEFT + 5);
+        Viper.Terminal.SetColor(COLOR_BRIGHT_YELLOW, COLOR_BLACK);
+        Viper.Terminal.Print("*** NEW HIGH SCORE! ***");
+
+        Viper.Terminal.SetPosition(18, FIELD_LEFT + 5);
+        Viper.Terminal.SetColor(COLOR_WHITE, COLOR_BLACK);
+        Viper.Terminal.Print("Enter initials: ");
+
+        var name = Viper.Terminal.ReadLine();
+        if Viper.String.Length(name) == 0 {
+            name = "???";
+        }
+        theScoreboard.addScore(name, thePlayer.score);
+    }
+
+    Viper.Terminal.SetPosition(20, FIELD_LEFT + 5);
+    Viper.Terminal.SetColor(COLOR_GRAY, COLOR_BLACK);
+    Viper.Terminal.Print("Press any key...");
+    Viper.Terminal.GetKey();
+}
+
+func showLevelComplete() {
+    var i = 0;
+    while i < 5 {
+        particles.spawnExplosion(randInt(FIELD_WIDTH), randInt(FIELD_HEIGHT));
+        i = i + 1;
+    }
+
+    i = 0;
+    while i < 20 {
+        particles.update();
+        particles.draw();
+        Viper.Time.SleepMs(50);
+        i = i + 1;
+    }
+
+    Viper.Terminal.SetPosition(12, FIELD_LEFT + 6);
+    Viper.Terminal.SetColor(COLOR_BRIGHT_GREEN, COLOR_BLACK);
+    Viper.Terminal.Print("*** LEVEL COMPLETE ***");
+
+    var bonus = POINTS_LEVEL_BONUS * currentLevel;
+    thePlayer.addScore(bonus);
+
+    Viper.Terminal.SetPosition(14, FIELD_LEFT + 8);
+    Viper.Terminal.SetColor(COLOR_BRIGHT_YELLOW, COLOR_BLACK);
+    Viper.Terminal.Print("Bonus: +");
+    Viper.Terminal.Print(Viper.Fmt.Int(bonus));
+    Viper.Terminal.Print(" pts");
+
+    Viper.Time.SleepMs(1500);
+}
+
+//=============================================================================
+// MAIN GAME LOOP
+//=============================================================================
+
+func playGame() {
+    thePlayer = new Player();
+    thePlayer.init();
+    initLevel(1);
+    drawGameScreen();
+    gameRunning = true;
+
+    while gameRunning {
+        var key = Viper.Terminal.InKey();
+        var oldX = thePlayer.x;
+        var oldY = thePlayer.y;
+
+        if key == "w" or key == "W" {
+            thePlayer.moveUp();
+        }
+        if key == "s" or key == "S" {
+            thePlayer.moveDown();
+        }
+        if key == "a" or key == "A" {
+            thePlayer.moveLeft();
+        }
+        if key == "d" or key == "D" {
+            thePlayer.moveRight();
+        }
+        if key == " " {
+            thePlayer.fire();
+        }
+        if key == "q" or key == "Q" {
+            gameRunning = false;
+        }
+
+        if oldX != thePlayer.x or oldY != thePlayer.y {
+            theField.clearPosition(oldX, oldY);
+        }
+
+        thePlayer.update();
+
+        if thePlayer.bulletActive {
+            theField.clearPosition(thePlayer.bulletX, thePlayer.bulletY);
+            thePlayer.updateBullet();
+
+            if thePlayer.bulletActive {
+                if theField.getMushroom(thePlayer.bulletX, thePlayer.bulletY) > 0 {
+                    if theField.damageMushroom(thePlayer.bulletX, thePlayer.bulletY) {
+                        thePlayer.addScore(POINTS_MUSHROOM);
+                    }
+                    theField.drawMushroom(thePlayer.bulletX, thePlayer.bulletY);
+                    thePlayer.bulletActive = false;
+                    thePlayer.drawHUD();
+                }
+
+                if thePlayer.bulletActive {
+                    var hitSeg = theCentipede.segmentAt(thePlayer.bulletX, thePlayer.bulletY);
+                    if hitSeg >= 0 {
+                        var points = theCentipede.killSegment(hitSeg, theField);
+                        thePlayer.addScore(points);
+                        particles.spawnExplosion(thePlayer.bulletX, thePlayer.bulletY);
+                        thePlayer.bulletActive = false;
+                        thePlayer.drawHUD();
+                        theField.drawMushroom(thePlayer.bulletX, thePlayer.bulletY);
+                    }
+                }
+
+                if thePlayer.bulletActive and theSpider.isAt(thePlayer.bulletX, thePlayer.bulletY) {
+                    theSpider.kill();
+                    thePlayer.addScore(POINTS_SPIDER);
+                    particles.spawnBigExplosion(thePlayer.bulletX, thePlayer.bulletY);
+                    thePlayer.bulletActive = false;
+                    thePlayer.drawHUD();
+                }
+
+                if thePlayer.bulletActive and theFlea.isAt(thePlayer.bulletX, thePlayer.bulletY) {
+                    if theFlea.hit() {
+                        thePlayer.addScore(POINTS_FLEA);
+                        particles.spawnExplosion(thePlayer.bulletX, thePlayer.bulletY);
+                    }
+                    thePlayer.bulletActive = false;
+                    thePlayer.drawHUD();
+                }
+
+                if thePlayer.bulletActive {
+                    thePlayer.drawBullet();
+                }
+            }
+        }
+
+        theCentipede.clear(theField);
+        if theCentipede.move(theField) {
+            if thePlayer.loseLife() {
+                showGameOver();
+                gameRunning = false;
+            } else {
+                theCentipede.init(currentLevel, FIELD_WIDTH / 2);
+                thePlayer.drawHUD();
+            }
+        }
+        theCentipede.draw();
+
+        if theCentipede.segmentAt(thePlayer.x, thePlayer.y) >= 0 {
+            if thePlayer.loseLife() {
+                showGameOver();
+                gameRunning = false;
+            } else {
+                theCentipede.init(currentLevel, FIELD_WIDTH / 2);
+                particles.spawnBigExplosion(thePlayer.x, thePlayer.y);
+                thePlayer.drawHUD();
+            }
+        }
+
+        spiderSpawnTimer = spiderSpawnTimer - 1;
+        if not theSpider.active and spiderSpawnTimer <= 0 {
+            theSpider.spawn();
+            spiderSpawnTimer = 150 + randInt(100);
+        }
+
+        if theSpider.active {
+            theSpider.clear(theField);
+            theSpider.move(theField);
+
+            if theSpider.isAt(thePlayer.x, thePlayer.y) {
+                if thePlayer.loseLife() {
+                    showGameOver();
+                    gameRunning = false;
+                } else {
+                    theSpider.kill();
+                    particles.spawnBigExplosion(thePlayer.x, thePlayer.y);
+                    thePlayer.drawHUD();
+                }
+            }
+            theSpider.draw();
+        }
+
+        fleaSpawnTimer = fleaSpawnTimer - 1;
+        if not theFlea.active and fleaSpawnTimer <= 0 and theField.mushroomCount < 20 {
+            theFlea.spawn();
+            fleaSpawnTimer = 200 + randInt(100);
+        }
+
+        if theFlea.active {
+            theFlea.clear(theField);
+            theFlea.move(theField);
+            theFlea.draw();
+        }
+
+        particles.update();
+        particles.draw();
+
+        if theCentipede.activeCount() == 0 {
+            showLevelComplete();
+            currentLevel = currentLevel + 1;
+            initLevel(currentLevel);
+            drawGameScreen();
+        }
+
+        thePlayer.draw();
+
+        frameCount = frameCount + 1;
+        Viper.Time.SleepMs(30);
+    }
+}
+
+//=============================================================================
+// ENTRY POINT
+//=============================================================================
+
+func start() {
+    theScoreboard = new Scoreboard();
+    theScoreboard.init();
+
+    showMainMenu();
+
+    Viper.Terminal.Clear();
+    Viper.Terminal.SetPosition(1, 1);
+    Viper.Terminal.SetColor(COLOR_BRIGHT_GREEN, COLOR_BLACK);
+    Viper.Terminal.Say("Thanks for playing CENTIPEDE!");
+    Viper.Terminal.SetColor(COLOR_WHITE, COLOR_BLACK);
+}

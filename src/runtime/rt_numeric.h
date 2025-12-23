@@ -76,6 +76,11 @@ extern "C"
     /// @return Truncated value as DOUBLE.
     double rt_fix_trunc(double x);
 
+    /// @brief Convert DOUBLE to i64 by truncating toward zero.
+    /// @param x Input floating-point value.
+    /// @return Truncated value as 64-bit signed integer.
+    long long rt_f64_to_i64(double x);
+
     /// @brief Round @p x to @p ndigits decimal places using banker's rounding.
     /// @param x Input value.
     /// @param ndigits Number of digits after the decimal point (negative for tens, hundreds, ...).
