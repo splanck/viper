@@ -56,6 +56,7 @@
 #include "vm/OpHandlerAccess.hpp"
 #include "vm/OpHandlers.hpp"
 #include "vm/RuntimeBridge.hpp"
+#include "vm/VMConstants.hpp"
 #include "vm/VMContext.hpp"
 
 #include "rt_context.h"
@@ -623,6 +624,17 @@ Slot VM::execFunction(const Function &fn, const std::vector<Slot> &args)
     ActiveVMGuard guard(this);
     lastTrap = {};
     trapToken = {};
+
+    // Check for stack overflow before pushing a new frame
+    if (execStack.size() >= kMaxRecursionDepth)
+    {
+        RuntimeBridge::trap(TrapKind::RuntimeError,
+                            "stack overflow: maximum recursion depth exceeded",
+                            {},
+                            fn.name,
+                            "");
+    }
+
     auto st = prepareExecution(fn, args);
     st.callSiteBlock = currentContext.block;
     st.callSiteIp = currentContext.hasInstruction ? currentContext.instructionIndex : 0;

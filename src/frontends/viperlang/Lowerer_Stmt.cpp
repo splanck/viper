@@ -95,6 +95,14 @@ void Lowerer::lowerVarStmt(VarStmt *stmt)
         initValue = result.value;
         ilType = result.type;
 
+        // Handle integer-to-number conversion when declaring Number with Integer initializer
+        if (varType && varType->kind == TypeKindSem::Number && ilType.kind == Type::Kind::I64)
+        {
+            // Convert i64 to f64 using sitofp
+            initValue = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), initValue);
+            ilType = Type(Type::Kind::F64);
+        }
+
         if (varType && varType->kind == TypeKindSem::Optional)
         {
             TypeRef initType = sema_.typeOf(stmt->initializer.get());

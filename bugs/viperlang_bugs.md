@@ -1440,53 +1440,26 @@ The type parser **doesn't handle qualified names** (dot-separated identifiers).
 ## Bugs Found During Limits Sweep
 
 ### 45. Frogger Demo Fails IL Verification
-**Status**: OPEN
+**Status**: FIXED (December 2025)
 **Severity**: CRITICAL
 **Area**: Lowering / IL verification
 **Description**: Running the Frogger demo fails IL verification with an operand type mismatch.
 
-**Reproduction**:
-```sh
-./build/src/tools/viper/viper demos/viperlang/frogger/main.viper
-```
+**Root Cause**: Boolean equality comparisons (`b == false`) were emitting `ICmpEq` with i1 operands, but `ICmpEq` expects i64 operands.
 
-**Error**:
-```
-error: checkOnPlatform:if_then_3: %35 = icmp_eq %t34 false: operand type mismatch: operand 0 must be i64
-```
-
-**Notes**:
-- Failure occurs in `Platform.checkOnPlatform` (`demos/viperlang/frogger/main.viper:191`).
-- Appears to be a boolean compare lowering issue (i1 vs i64).
-
-**Workaround**: None (demo does not run).
+**Resolution**: Updated `Lowerer_Expr.cpp` to zero-extend i1 operands to i64 before emitting ICmpEq/ICmpNe for boolean comparisons, and to convert null pointers to constInt(0) for null comparisons.
 
 ---
 
 ### 46. Deep Recursion Crashes (No Trap)
-**Status**: OPEN
+**Status**: FIXED (December 2025)
 **Severity**: HIGH
 **Area**: VM runtime
 **Description**: Deep recursion causes a crash (signal -11) instead of a clean trap.
 
-**Reproduction**:
-```viper
-module Test;
-func dive(Integer n) -> Integer {
-    if n <= 0 { return 0; }
-    return 1 + dive(n - 1);
-}
-func start() {
-    Integer v = dive(3500); // 3400 ok, 3500 crashes
-    Viper.Terminal.SayInt(v);
-}
-```
+**Root Cause**: The VM had no stack depth guard. When recursion exceeded the native stack limit, it crashed with SIGSEGV.
 
-**Observed**:
-- 3400 frames ok
-- 3500 frames crashes with signal -11 (no trap message)
-
-**Workaround**: Rewrite to iterative loops or reduce recursion depth.
+**Resolution**: Added stack depth check in `VM::execFunction()` that traps with "stack overflow: maximum recursion depth exceeded" when the execution stack exceeds `kMaxRecursionDepth` (1000 frames). Now deep recursion produces a clean trap message instead of a crash.
 
 ---
 
@@ -1525,80 +1498,38 @@ Trap @main:while_body_1#2: Overflow (code=0): stack overflow in alloca
 ---
 
 ### 48. Boolean Equality Comparisons Emit Invalid IL
-**Status**: OPEN
+**Status**: FIXED (December 2025)
 **Severity**: HIGH
 **Area**: Lowering / operators
 **Description**: Comparing booleans with `==` or `!=` fails during lowering with an operand type mismatch.
 
-**Reproduction**:
-```viper
-module Test;
-func start() {
-    Boolean b = false;
-    if b == false {
-        Viper.Terminal.Say("no");
-    }
-}
-```
+**Root Cause**: Same as Bug #45. `ICmpEq`/`ICmpNe` expect i64 operands but boolean comparisons were passing i1 values.
 
-**Error**:
-```
-error: main:entry_0: %2 = icmp_eq %t1 false: operand type mismatch: operand 0 must be i64
-```
-
-**Notes**:
-- `if !b { ... }` works as a workaround.
+**Resolution**: Fixed together with Bug #45 in `Lowerer_Expr.cpp`. Boolean operands are now zero-extended to i64 before comparison.
 
 ---
 
 ### 49. Optional Null Comparisons Fail (`== null` / `!= null`)
-**Status**: OPEN
+**Status**: FIXED (December 2025)
 **Severity**: HIGH
 **Area**: Lowering / optionals
 **Description**: Optional values compared to `null` using `==` or `!=` emit invalid IL.
 
-**Reproduction**:
-```viper
-module Test;
-entity Foo { expose func init() { } }
-func start() {
-    Foo? opt = null;
-    if opt == null { Viper.Terminal.Say("null"); }
-}
-```
+**Root Cause**: Same as Bug #45. Null values were passed as-is to `ICmpEq`/`ICmpNe` which expect i64 operands.
 
-**Error**:
-```
-error: main:entry_0: %2 = icmp_eq %t1 null: operand type mismatch: operand 0 must be i64
-```
-
-**Notes**:
-- No reliable workaround found; `??` can supply defaults but does not allow null checks.
+**Resolution**: Fixed together with Bug #45 in `Lowerer_Expr.cpp`. Null pointers are now converted to `Value::constInt(0)` before comparison, and non-null pointer operands are converted to i64 via alloca/store/load.
 
 ---
 
 ### 50. Integer-to-Number Assignment Produces Garbage Values
-**Status**: OPEN
+**Status**: FIXED (December 2025)
 **Severity**: HIGH
 **Area**: Sema / Lowering (numeric conversions)
 **Description**: Assigning an `Integer` to a `Number` appears to bit-cast the integer bits to a float instead of converting the value.
 
-**Reproduction**:
-```viper
-module Test;
-func start() {
-    Number n = 5;
-    Viper.Terminal.Say(Viper.Fmt.Num(n));
-}
-```
+**Root Cause**: In `lowerVarStmt()`, when a `Number` variable was initialized with an integer literal, the i64 value was stored directly without conversion to f64. The bit pattern of integer 5 (0x0000000000000005) was reinterpreted as a float, producing garbage.
 
-**Actual**:
-```
-2.47033e-323
-```
-
-**Notes**:
-- Mixed arithmetic like `1.0 * 5` fails with a type mismatch, so implicit conversion is inconsistent.
+**Resolution**: Added type coercion in `Lowerer_Stmt.cpp` that emits a `sitofp` instruction to convert i64 to f64 when assigning an integer to a Number variable.
 
 ---
 

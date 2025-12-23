@@ -566,8 +566,67 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
                     emitCallRet(Type(Type::Kind::I1), kStringEquals, {left.value, right.value});
                 return {result, Type(Type::Kind::I1)};
             }
-            op = isFloat ? Opcode::FCmpEQ : Opcode::ICmpEq;
-            resultType = Type(Type::Kind::I1);
+            if (isFloat)
+            {
+                op = Opcode::FCmpEQ;
+                resultType = Type(Type::Kind::I1);
+            }
+            else
+            {
+                // ICmpEq expects i64 operands - extend i1 or convert null/ptr if needed
+                Value lhsExt = left.value;
+                Value rhsExt = right.value;
+
+                // Handle null pointers - convert to 0
+                if (left.value.kind == Value::Kind::NullPtr)
+                {
+                    lhsExt = Value::constInt(0);
+                }
+                else if (left.type.kind == Type::Kind::I1)
+                {
+                    lhsExt = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), left.value);
+                }
+                else if (left.type.kind == Type::Kind::Ptr)
+                {
+                    // Convert pointer to i64 via alloca/store/load
+                    unsigned slotId = nextTempId();
+                    il::core::Instr slotInstr;
+                    slotInstr.result = slotId;
+                    slotInstr.op = Opcode::Alloca;
+                    slotInstr.type = Type(Type::Kind::Ptr);
+                    slotInstr.operands = {Value::constInt(8)};
+                    blockMgr_.currentBlock()->instructions.push_back(slotInstr);
+                    Value slot = Value::temp(slotId);
+                    emitStore(slot, left.value, Type(Type::Kind::Ptr));
+                    lhsExt = emitLoad(slot, Type(Type::Kind::I64));
+                }
+
+                if (right.value.kind == Value::Kind::NullPtr)
+                {
+                    rhsExt = Value::constInt(0);
+                }
+                else if (right.type.kind == Type::Kind::I1)
+                {
+                    rhsExt = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), right.value);
+                }
+                else if (right.type.kind == Type::Kind::Ptr)
+                {
+                    // Convert pointer to i64 via alloca/store/load
+                    unsigned slotId = nextTempId();
+                    il::core::Instr slotInstr;
+                    slotInstr.result = slotId;
+                    slotInstr.op = Opcode::Alloca;
+                    slotInstr.type = Type(Type::Kind::Ptr);
+                    slotInstr.operands = {Value::constInt(8)};
+                    blockMgr_.currentBlock()->instructions.push_back(slotInstr);
+                    Value slot = Value::temp(slotId);
+                    emitStore(slot, right.value, Type(Type::Kind::Ptr));
+                    rhsExt = emitLoad(slot, Type(Type::Kind::I64));
+                }
+
+                Value result = emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), lhsExt, rhsExt);
+                return {result, Type(Type::Kind::I1)};
+            }
             break;
         case BinaryOp::Ne:
             if (leftType && leftType->kind == TypeKindSem::String)
@@ -583,8 +642,67 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
                     emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), extResult, Value::constInt(0));
                 return {result, Type(Type::Kind::I1)};
             }
-            op = isFloat ? Opcode::FCmpNE : Opcode::ICmpNe;
-            resultType = Type(Type::Kind::I1);
+            if (isFloat)
+            {
+                op = Opcode::FCmpNE;
+                resultType = Type(Type::Kind::I1);
+            }
+            else
+            {
+                // ICmpNe expects i64 operands - extend i1 or convert null/ptr if needed
+                Value lhsExt = left.value;
+                Value rhsExt = right.value;
+
+                // Handle null pointers - convert to 0
+                if (left.value.kind == Value::Kind::NullPtr)
+                {
+                    lhsExt = Value::constInt(0);
+                }
+                else if (left.type.kind == Type::Kind::I1)
+                {
+                    lhsExt = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), left.value);
+                }
+                else if (left.type.kind == Type::Kind::Ptr)
+                {
+                    // Convert pointer to i64 via alloca/store/load
+                    unsigned slotId = nextTempId();
+                    il::core::Instr slotInstr;
+                    slotInstr.result = slotId;
+                    slotInstr.op = Opcode::Alloca;
+                    slotInstr.type = Type(Type::Kind::Ptr);
+                    slotInstr.operands = {Value::constInt(8)};
+                    blockMgr_.currentBlock()->instructions.push_back(slotInstr);
+                    Value slot = Value::temp(slotId);
+                    emitStore(slot, left.value, Type(Type::Kind::Ptr));
+                    lhsExt = emitLoad(slot, Type(Type::Kind::I64));
+                }
+
+                if (right.value.kind == Value::Kind::NullPtr)
+                {
+                    rhsExt = Value::constInt(0);
+                }
+                else if (right.type.kind == Type::Kind::I1)
+                {
+                    rhsExt = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), right.value);
+                }
+                else if (right.type.kind == Type::Kind::Ptr)
+                {
+                    // Convert pointer to i64 via alloca/store/load
+                    unsigned slotId = nextTempId();
+                    il::core::Instr slotInstr;
+                    slotInstr.result = slotId;
+                    slotInstr.op = Opcode::Alloca;
+                    slotInstr.type = Type(Type::Kind::Ptr);
+                    slotInstr.operands = {Value::constInt(8)};
+                    blockMgr_.currentBlock()->instructions.push_back(slotInstr);
+                    Value slot = Value::temp(slotId);
+                    emitStore(slot, right.value, Type(Type::Kind::Ptr));
+                    rhsExt = emitLoad(slot, Type(Type::Kind::I64));
+                }
+
+                Value result = emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1), lhsExt, rhsExt);
+                return {result, Type(Type::Kind::I1)};
+            }
             break;
         case BinaryOp::Lt:
             op = isFloat ? Opcode::FCmpLT : Opcode::SCmpLT;
