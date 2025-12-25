@@ -167,12 +167,12 @@ void lowerCall(MBasicBlock &block,
     // Pre-scan to determine total bytes of stack-based arguments for this call.
     std::size_t preGprUsed = 0;
     std::size_t preXmmUsed = 0;
-    std::size_t preStackBytes = 0;
+    std::size_t preStackBytes = target.shadowSpace; // Windows requires 32-byte shadow space
     for (const auto &argScan : plan.args)
     {
         if (argScan.kind == CallArg::GPR)
         {
-            if (preGprUsed < kMaxGPRArgs)
+            if (preGprUsed < target.maxGPRArgs)
             {
                 ++preGprUsed;
             }
@@ -183,7 +183,7 @@ void lowerCall(MBasicBlock &block,
         }
         else // XMM
         {
-            if (preXmmUsed < kMaxXMMArgs)
+            if (preXmmUsed < target.maxXMMArgs)
             {
                 ++preXmmUsed;
             }
@@ -198,7 +198,7 @@ void lowerCall(MBasicBlock &block,
     // stack is 16-byte aligned at the call boundary by inserting a dynamic
     // padding subtraction before writing stack slots and restoring it after the
     // call. The padding accounts for the return address pushed by CALL.
-    const int32_t padBytes = static_cast<int32_t>((16 - ((preStackBytes + 8) % 16)) % 16);
+    const int32_t padBytes = static_cast<int32_t>((16 - (preStackBytes % 16)) % 16);
     if (padBytes != 0)
     {
         insertInstr(MInstr::make(MOpcode::ADDri,
@@ -208,7 +208,7 @@ void lowerCall(MBasicBlock &block,
 
     std::size_t gprUsed = 0;
     std::size_t xmmUsed = 0;
-    std::size_t stackBytes = 0;
+    std::size_t stackBytes = target.shadowSpace; // Stack args start after shadow space
 
     for (const auto &arg : plan.args)
     {
@@ -219,7 +219,7 @@ void lowerCall(MBasicBlock &block,
         {
             case CallArg::GPR:
             {
-                if (gprUsed < kMaxGPRArgs)
+                if (gprUsed < target.maxGPRArgs)
                 {
                     const PhysReg destReg = target.intArgOrder[gprUsed++];
                     if (arg.isImm)
@@ -274,7 +274,7 @@ void lowerCall(MBasicBlock &block,
             }
             case CallArg::XMM:
             {
-                if (xmmUsed < kMaxXMMArgs)
+                if (xmmUsed < target.maxXMMArgs)
                 {
                     const PhysReg destReg = target.f64ArgOrder[xmmUsed++];
                     if (arg.isImm)
@@ -324,7 +324,8 @@ void lowerCall(MBasicBlock &block,
         std::max(frame.outgoingArgArea, static_cast<int>(roundUpSize(stackBytes, kSlotSizeBytes)));
 
     // SysV AMD64 varargs: %al must carry the number of XMM registers used.
-    if (plan.isVarArg)
+    // Windows x64 does not require this - varargs just use the standard integer registers.
+    if (plan.isVarArg && target.shadowSpace == 0)
     {
         const Operand rax = makePhysOperand(RegClass::GPR, PhysReg::RAX);
         insertInstr(

@@ -85,17 +85,36 @@ inline constexpr int kSlotSizeBytes = 8;
 ///          frame lowering and call lowering to enforce alignment.
 inline constexpr int kStackAlignment = 16;
 
-/// \brief Maximum number of integer/pointer arguments passed in registers.
+/// \brief Maximum number of integer/pointer arguments passed in registers (SysV).
 /// \details The SysV AMD64 ABI allows up to 6 integer arguments in registers
 ///          (RDI, RSI, RDX, RCX, R8, R9). Additional arguments go on the stack.
-inline constexpr std::size_t kMaxGPRArgs = 6;
+inline constexpr std::size_t kMaxGPRArgsSysV = 6;
 
-/// \brief Maximum number of floating-point arguments passed in registers.
+/// \brief Maximum number of floating-point arguments passed in registers (SysV).
 /// \details The SysV AMD64 ABI allows up to 8 floating-point arguments in
 ///          XMM registers (XMM0-XMM7). Additional arguments go on the stack.
-inline constexpr std::size_t kMaxXMMArgs = 8;
+inline constexpr std::size_t kMaxXMMArgsSysV = 8;
 
-/// \brief Captures the architectural contract for the SysV AMD64 ABI.
+/// \brief Maximum number of integer/pointer arguments passed in registers (Windows).
+/// \details The Windows x64 ABI allows up to 4 integer arguments in registers
+///          (RCX, RDX, R8, R9). Additional arguments go on the stack.
+inline constexpr std::size_t kMaxGPRArgsWin64 = 4;
+
+/// \brief Maximum number of floating-point arguments passed in registers (Windows).
+/// \details The Windows x64 ABI allows up to 4 floating-point arguments in
+///          XMM registers (XMM0-XMM3). Additional arguments go on the stack.
+inline constexpr std::size_t kMaxXMMArgsWin64 = 4;
+
+/// \brief Platform-appropriate max GPR args.
+#if defined(_WIN32)
+inline constexpr std::size_t kMaxGPRArgs = kMaxGPRArgsWin64;
+inline constexpr std::size_t kMaxXMMArgs = kMaxXMMArgsWin64;
+#else
+inline constexpr std::size_t kMaxGPRArgs = kMaxGPRArgsSysV;
+inline constexpr std::size_t kMaxXMMArgs = kMaxXMMArgsSysV;
+#endif
+
+/// \brief Captures the architectural contract for an x86-64 ABI.
 /// \invariant Vectors are populated once during singleton creation and remain constant.
 struct TargetInfo
 {
@@ -120,10 +139,23 @@ struct TargetInfo
     /// \brief Whether the ABI specifies a red zone.
     /// Phase A: do not rely on red zone.
     bool hasRedZone{true};
+    /// \brief Maximum integer arguments in registers.
+    std::size_t maxGPRArgs{6};
+    /// \brief Maximum floating-point arguments in registers.
+    std::size_t maxXMMArgs{8};
+    /// \brief Shadow space required before call (Windows only).
+    std::size_t shadowSpace{0};
 };
 
 /// \brief Returns the singleton SysV target description.
 [[nodiscard]] TargetInfo &sysvTarget() noexcept;
+
+/// \brief Returns the singleton Windows x64 target description.
+[[nodiscard]] TargetInfo &win64Target() noexcept;
+
+/// \brief Returns the platform-appropriate target description.
+/// \details On Windows returns win64Target(), otherwise returns sysvTarget().
+[[nodiscard]] TargetInfo &hostTarget() noexcept;
 
 /// \brief Determines if a physical register belongs to the general-purpose class.
 [[nodiscard]] bool isGPR(PhysReg reg) noexcept;

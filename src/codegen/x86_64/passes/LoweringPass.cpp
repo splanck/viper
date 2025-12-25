@@ -26,6 +26,7 @@
 
 #include "codegen/x86_64/Unsupported.hpp"
 #include "common/IntegerHelpers.hpp"
+#include "il/core/Global.hpp"
 
 #include <optional>
 #include <unordered_map>
@@ -53,6 +54,7 @@ class ModuleAdapter
     /// @brief Convert an IL module to the backend adapter representation.
     ILModule adapt(const il::core::Module &module)
     {
+        currentModule_ = &module;
         ILModule result{};
         result.funcs.reserve(module.functions.size());
 
@@ -61,6 +63,7 @@ class ModuleAdapter
             result.funcs.push_back(adaptFunction(func));
         }
 
+        currentModule_ = nullptr;
         return result;
     }
 
@@ -70,6 +73,22 @@ class ModuleAdapter
 
     /// @brief Current function being adapted (for return type access).
     const il::core::Function *currentFunc_{nullptr};
+
+    /// @brief Current module being adapted (for global lookup).
+    const il::core::Module *currentModule_{nullptr};
+
+    /// @brief Look up a global by name.
+    const il::core::Global *findGlobal(const std::string &name) const
+    {
+        if (!currentModule_)
+            return nullptr;
+        for (const auto &g : currentModule_->globals)
+        {
+            if (g.name == name)
+                return &g;
+        }
+        return nullptr;
+    }
 
     //-------------------------------------------------------------------------
     // Type Conversion
@@ -114,6 +133,14 @@ class ModuleAdapter
         label.label = std::move(name);
         label.id = -1;
         return label;
+    }
+
+    /// @brief Construct an adapter value representing a local block label.
+    /// @details Prefixes the label with ".L" to make it assembly-local, avoiding
+    ///          symbol collisions between functions.
+    static ILValue makeBlockLabelValue(const std::string &funcName, std::string name)
+    {
+        return makeLabelValue(".L_" + funcName + "_" + name);
     }
 
     /// @brief Create an immediate adapter value storing a condition code.
@@ -346,14 +373,17 @@ class ModuleAdapter
             // Arithmetic operations
             case il::core::Opcode::Add:
             case il::core::Opcode::FAdd:
+            case il::core::Opcode::IAddOvf:
                 adaptBinaryArithmetic(instr, out, "add");
                 break;
             case il::core::Opcode::Sub:
             case il::core::Opcode::FSub:
+            case il::core::Opcode::ISubOvf:
                 adaptBinaryArithmetic(instr, out, "sub");
                 break;
             case il::core::Opcode::Mul:
             case il::core::Opcode::FMul:
+            case il::core::Opcode::IMulOvf:
                 adaptBinaryArithmetic(instr, out, "mul");
                 break;
             case il::core::Opcode::FDiv:
@@ -456,10 +486,16 @@ class ModuleAdapter
                 adaptTrunc(instr, out);
                 break;
             case il::core::Opcode::CastSiToFp:
+            case il::core::Opcode::Sitofp:
                 adaptSiToFp(instr, out);
                 break;
             case il::core::Opcode::CastFpToSiRteChk:
+            case il::core::Opcode::Fptosi:
                 adaptFpToSi(instr, out);
+                break;
+            case il::core::Opcode::CastSiNarrowChk:
+            case il::core::Opcode::CastUiNarrowChk:
+                adaptNarrowCast(instr, out);
                 break;
 
             // Control flow
@@ -474,6 +510,24 @@ class ModuleAdapter
                 break;
             case il::core::Opcode::Trap:
                 out.opcode = "trap";
+                break;
+            case il::core::Opcode::TrapFromErr:
+                out.opcode = "trap";
+                // TrapFromErr takes an error code, but for now we just trap
+                convertOperands(instr, {ILValue::Kind::I64}, out);
+                break;
+
+            // String operations
+            case il::core::Opcode::ConstStr:
+                adaptConstStr(instr, out);
+                break;
+
+            // Memory allocation
+            case il::core::Opcode::Alloca:
+                adaptAlloca(instr, out);
+                break;
+            case il::core::Opcode::GEP:
+                adaptGEP(instr, out);
                 break;
 
             default:
@@ -560,7 +614,14 @@ class ModuleAdapter
         }
         else if (instr.result)
         {
-            reportUnsupported("void call returning SSA id in Phase A lowering");
+            // Some IL files have call instructions with result SSA ids but type set to void.
+            // This can happen when the IL parser doesn't correctly infer the return type
+            // from extern declarations. In this case, assume PTR as a safe default since
+            // most such calls return pointers (e.g., rt_get_class_vtable).
+            // The VM handles this correctly, so we should too.
+            out.resultId = static_cast<int>(*instr.result);
+            out.resultKind = ILValue::Kind::PTR;
+            valueKinds_[*instr.result] = ILValue::Kind::PTR;
         }
         out.opcode = "call";
         out.ops.push_back(makeLabelValue(instr.callee));
@@ -621,6 +682,24 @@ class ModuleAdapter
         }
     }
 
+    /// @brief Adapt alloca instruction for stack allocation.
+    void adaptAlloca(const il::core::Instr &instr, ILInstr &out)
+    {
+        setFixedResultKind(out, instr, ILValue::Kind::PTR);
+        out.opcode = "alloca";
+        // Operand 0 is the size in bytes
+        convertOperands(instr, {ILValue::Kind::I64}, out);
+    }
+
+    /// @brief Adapt GEP (get element pointer) instruction.
+    void adaptGEP(const il::core::Instr &instr, ILInstr &out)
+    {
+        setFixedResultKind(out, instr, ILValue::Kind::PTR);
+        out.opcode = "gep";
+        // Operand 0 is the base pointer, operand 1 is the byte offset
+        convertOperands(instr, {ILValue::Kind::PTR, ILValue::Kind::I64}, out);
+    }
+
     //-------------------------------------------------------------------------
     // Cast Operation Adapters
     //-------------------------------------------------------------------------
@@ -653,6 +732,17 @@ class ModuleAdapter
         convertOperands(instr, {ILValue::Kind::F64}, out);
     }
 
+    /// @brief Adapt narrowing cast (i64 -> i32 etc).
+    void adaptNarrowCast(const il::core::Instr &instr, ILInstr &out)
+    {
+        // For now, treat narrow cast as just passing through the lower bits
+        // (same as trunc behavior). The checked variant would need to verify
+        // the value fits in the smaller type.
+        setResultKind(out, instr, instr.type);
+        out.opcode = "trunc";
+        convertOperands(instr, {ILValue::Kind::I64}, out);
+    }
+
     //-------------------------------------------------------------------------
     // Control Flow Adapters
     //-------------------------------------------------------------------------
@@ -675,7 +765,7 @@ class ModuleAdapter
         out.opcode = "br";
         if (!instr.labels.empty())
         {
-            out.ops.push_back(makeLabelValue(instr.labels.front()));
+            out.ops.push_back(makeBlockLabelValue(currentFunc_->name, instr.labels.front()));
         }
         addTerminatorEdges(instr, block);
     }
@@ -690,9 +780,47 @@ class ModuleAdapter
         out.ops.push_back(convertValue(instr.operands.front(), ILValue::Kind::I1));
         for (const auto &label : instr.labels)
         {
-            out.ops.push_back(makeLabelValue(label));
+            out.ops.push_back(makeBlockLabelValue(currentFunc_->name, label));
         }
         addTerminatorEdges(instr, block);
+    }
+
+    //-------------------------------------------------------------------------
+    // String Operation Adapters
+    //-------------------------------------------------------------------------
+
+    /// @brief Adapt const_str instruction to produce a string value.
+    void adaptConstStr(const il::core::Instr &instr, ILInstr &out)
+    {
+        setFixedResultKind(out, instr, ILValue::Kind::STR);
+        out.opcode = "const_str";
+
+        // The operand is a GlobalAddr pointing to the global string constant
+        if (instr.operands.empty())
+        {
+            reportUnsupported("const_str missing operand");
+        }
+
+        const auto &op = instr.operands.front();
+        if (op.kind != il::core::Value::Kind::GlobalAddr)
+        {
+            reportUnsupported("const_str with non-global operand");
+        }
+
+        // Look up the global to get the actual string content
+        const il::core::Global *global = findGlobal(op.str);
+        if (!global)
+        {
+            reportUnsupported("const_str references unknown global: " + op.str);
+        }
+
+        // Create an ILValue with the string content
+        ILValue strValue{};
+        strValue.kind = ILValue::Kind::STR;
+        strValue.str = global->init;
+        strValue.strLen = static_cast<std::uint64_t>(global->init.size());
+        strValue.id = -1;
+        out.ops.push_back(strValue);
     }
 
     /// @brief Add terminator edges for branch instructions.

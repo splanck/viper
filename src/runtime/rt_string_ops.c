@@ -199,6 +199,16 @@ rt_string rt_string_from_bytes(const char *bytes, size_t len)
     return s;
 }
 
+/// @brief Create a runtime string from a string literal.
+/// @details Wrapper for rt_str_from_bytes for x86_64 codegen.
+/// @param bytes Pointer to the literal data.
+/// @param len Number of bytes in the literal.
+/// @return Runtime string containing the literal data.
+rt_string rt_str_from_lit(const char *bytes, size_t len)
+{
+    return rt_string_from_bytes(bytes, len);
+}
+
 int rt_string_is_handle(void *p)
 {
     if (!p)

@@ -347,29 +347,40 @@ Operand LowerILToMIR::makeOperandForValue(MBasicBlock &block, const ILValue &val
             assert(literalLen <=
                    static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max()));
 
+            // LEA string address into temp vreg
             const Operand ripOperand = makeRipLabelOperand(label);
             const VReg ptrTmp = makeTempVReg(RegClass::GPR);
             const Operand ptrTmpOp = makeVRegOperand(ptrTmp.cls, ptrTmp.id);
             block.append(MInstr::make(MOpcode::LEA,
                                       std::vector<Operand>{cloneOperand(ptrTmpOp), ripOperand}));
 
-            const Operand ptrArg =
-                makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(target_->intArgOrder[0]));
-            const Operand lenArg =
-                makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(target_->intArgOrder[1]));
+            // Create a CallLoweringPlan for rt_str_from_lit(ptr, len)
+            // This ensures the call goes through the proper argument lowering mechanism
+            CallLoweringPlan plan{};
+            plan.calleeLabel = "rt_str_from_lit";
 
-            block.append(
-                MInstr::make(MOpcode::MOVrr,
-                             std::vector<Operand>{cloneOperand(ptrArg), cloneOperand(ptrTmpOp)}));
+            // First arg: ptr vreg
+            CallArg ptrArg{};
+            ptrArg.kind = CallArg::GPR;
+            ptrArg.vreg = ptrTmp.id;
+            ptrArg.isImm = false;
+            plan.args.push_back(ptrArg);
 
-            const auto lenImm = static_cast<int64_t>(literalLen);
-            block.append(
-                MInstr::make(MOpcode::MOVri,
-                             std::vector<Operand>{cloneOperand(lenArg), makeImmOperand(lenImm)}));
+            // Second arg: length immediate
+            CallArg lenArg{};
+            lenArg.kind = CallArg::GPR;
+            lenArg.isImm = true;
+            lenArg.imm = static_cast<int64_t>(literalLen);
+            plan.args.push_back(lenArg);
 
+            // Record the plan so lowerPendingCalls will set up args properly
+            callPlans_.push_back(std::move(plan));
+
+            // Emit the CALL (argument setup will be inserted by lowerPendingCalls)
             const Operand callTarget = x64::makeLabelOperand(std::string{"rt_str_from_lit"});
             block.append(MInstr::make(MOpcode::CALL, std::vector<Operand>{callTarget}));
 
+            // Move result from return register to temp vreg
             const VReg result = makeTempVReg(RegClass::GPR);
             const Operand resultOp = makeVRegOperand(result.cls, result.id);
             const Operand retReg =
@@ -446,7 +457,7 @@ MFunction LowerILToMIR::lower(const ILFunction &func)
         info.paramVRegs.reserve(ilBlock.paramIds.size());
 
         MBasicBlock block{};
-        block.label = ilBlock.name;
+        block.label = ".L_" + func.name + "_" + ilBlock.name;
 
         info.paramVRegs.reserve(ilBlock.paramIds.size());
         for (std::size_t p = 0; p < ilBlock.paramIds.size() && p < ilBlock.paramKinds.size(); ++p)

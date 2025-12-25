@@ -49,6 +49,29 @@
 namespace
 {
 #if defined(_WIN32)
+/// @brief Check if an argument needs quoting for cmd.exe.
+/// @details Returns true when the argument contains whitespace, quotes, or other
+///          characters that require escaping in the Windows command shell.
+///          Also returns true for forward slashes in paths, which cmd.exe may
+///          interpret as option markers.
+/// @param arg Argument to check.
+/// @return True if quoting is necessary.
+bool needs_quoting(const std::string &arg)
+{
+    if (arg.empty())
+        return true;
+
+    for (const char ch : arg)
+    {
+        if (ch == ' ' || ch == '\t' || ch == '"' || ch == '&' || ch == '|' || ch == '<' ||
+            ch == '>' || ch == '^' || ch == '(' || ch == ')' || ch == '/')
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 /// @brief Quote a single argument for safe consumption by the Windows command shell.
 ///
 /// @details Windows applies bespoke parsing rules for backslashes that precede
@@ -56,12 +79,19 @@ namespace
 ///          before emitting a literal quote so that the CRT reconstructs the
 ///          original argument byte-for-byte.  All other characters pass through
 ///          unchanged, and the argument is wrapped in double quotes to preserve
-///          embedded whitespace.
+///          embedded whitespace.  For simple arguments without special characters,
+///          no quoting is applied to avoid cmd.exe parsing issues.
 ///
 /// @param arg Individual argv element to quote.
 /// @return Quoted argument ready for concatenation into a command string.
 std::string quote_windows_argument(const std::string &arg)
 {
+    // For simple arguments, don't quote to avoid cmd.exe parsing complexity
+    if (!needs_quoting(arg))
+    {
+        return arg;
+    }
+
     std::string quoted;
     quoted.reserve(arg.size() + 2);
     quoted.push_back('"');

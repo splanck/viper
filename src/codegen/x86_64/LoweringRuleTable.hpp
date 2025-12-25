@@ -60,6 +60,10 @@ void emitFPToSI(const ILInstr &instr, MIRBuilder &builder);
 void emitEhPush(const ILInstr &instr, MIRBuilder &builder);
 void emitEhPop(const ILInstr &instr, MIRBuilder &builder);
 void emitEhEntry(const ILInstr &instr, MIRBuilder &builder);
+void emitTrap(const ILInstr &instr, MIRBuilder &builder);
+void emitConstStr(const ILInstr &instr, MIRBuilder &builder);
+void emitAlloca(const ILInstr &instr, MIRBuilder &builder);
+void emitGEP(const ILInstr &instr, MIRBuilder &builder);
 
 enum class RuleFlags : std::uint8_t
 {
@@ -110,7 +114,7 @@ struct RuleSpec
     const char *name{nullptr};
 };
 
-inline constexpr auto kLoweringRuleTable = std::array<RuleSpec, 35>{
+inline constexpr auto kLoweringRuleTable = std::array<RuleSpec, 39>{
     RuleSpec{"add",
              OperandShape{2U,
                           2U,
@@ -476,6 +480,50 @@ inline constexpr auto kLoweringRuleTable = std::array<RuleSpec, 35>{
              "eh.push"},
     RuleSpec{"eh.pop", OperandShape{0U, 0U, 0U, {}}, RuleFlags::None, &emitEhPop, "eh.pop"},
     RuleSpec{"eh.entry", OperandShape{0U, 0U, 0U, {}}, RuleFlags::None, &emitEhEntry, "eh.entry"},
+    RuleSpec{"trap",
+             OperandShape{0U,
+                          1U,
+                          1U,
+                          {OperandKindPattern::Value,
+                           OperandKindPattern::Any,
+                           OperandKindPattern::Any,
+                           OperandKindPattern::Any}},
+             RuleFlags::None,
+             &emitTrap,
+             "trap"},
+    RuleSpec{"const_str",
+             OperandShape{1U,
+                          1U,
+                          1U,
+                          {OperandKindPattern::Value,
+                           OperandKindPattern::Any,
+                           OperandKindPattern::Any,
+                           OperandKindPattern::Any}},
+             RuleFlags::None,
+             &emitConstStr,
+             "const_str"},
+    RuleSpec{"alloca",
+             OperandShape{1U,
+                          1U,
+                          1U,
+                          {OperandKindPattern::Immediate,
+                           OperandKindPattern::Any,
+                           OperandKindPattern::Any,
+                           OperandKindPattern::Any}},
+             RuleFlags::None,
+             &emitAlloca,
+             "alloca"},
+    RuleSpec{"gep",
+             OperandShape{2U,
+                          2U,
+                          2U,
+                          {OperandKindPattern::Value,
+                           OperandKindPattern::Value,
+                           OperandKindPattern::Any,
+                           OperandKindPattern::Any}},
+             RuleFlags::None,
+             &emitGEP,
+             "gep"},
 };
 
 } // namespace lowering

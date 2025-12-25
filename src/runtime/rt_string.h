@@ -102,6 +102,12 @@ extern "C"
     /// @return Newly allocated runtime string containing the copied bytes.
     rt_string rt_string_from_bytes(const char *bytes, size_t len);
 
+    /// @brief Create a runtime string from a string literal.
+    /// @param bytes Pointer to the literal data.
+    /// @param len Number of bytes in the literal.
+    /// @return Runtime string containing the literal data.
+    rt_string rt_str_from_lit(const char *bytes, size_t len);
+
     /// @brief Return the number of bytes stored in @p s (excluding the terminator).
     /// @param s String to measure; NULL returns 0.
     /// @return Length in bytes.

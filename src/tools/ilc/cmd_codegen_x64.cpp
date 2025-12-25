@@ -175,18 +175,26 @@ int handleCompile(const ArgvView &args)
         return 1;
     }
 
-    viper::codegen::x64::CodegenPipeline pipeline(*parsed.opts);
-    const PipelineResult result = pipeline.run();
+    try
+    {
+        viper::codegen::x64::CodegenPipeline pipeline(*parsed.opts);
+        const PipelineResult result = pipeline.run();
 
-    if (!result.stdout_text.empty())
-    {
-        std::cout << result.stdout_text;
+        if (!result.stdout_text.empty())
+        {
+            std::cout << result.stdout_text;
+        }
+        if (!result.stderr_text.empty())
+        {
+            std::cerr << result.stderr_text;
+        }
+        return result.exit_code;
     }
-    if (!result.stderr_text.empty())
+    catch (const std::exception &e)
     {
-        std::cerr << result.stderr_text;
+        std::cerr << "error: " << e.what() << '\n';
+        return 2;
     }
-    return result.exit_code;
 }
 
 using Handler = int (*)(const ArgvView &);

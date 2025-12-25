@@ -107,6 +107,7 @@ class AsmEmitter
                                                    const TargetInfo &target);
     [[nodiscard]] static std::string formatReg(const OpReg &reg, const TargetInfo &target);
     [[nodiscard]] static std::string formatReg8(const OpReg &reg, const TargetInfo &target);
+    [[nodiscard]] static std::string formatReg32(const OpReg &reg, const TargetInfo &target);
     [[nodiscard]] static std::string formatImm(const OpImm &imm);
     [[nodiscard]] static std::string formatMem(const OpMem &mem, const TargetInfo &target);
     [[nodiscard]] static std::string formatLabel(const OpLabel &label);

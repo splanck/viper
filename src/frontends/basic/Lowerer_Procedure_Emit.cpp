@@ -146,6 +146,14 @@ void ProcedureLowering::emitProcedureIL(LoweringContext &ctx)
     {
         lowerer.curLoc = {};
         config.emitEmptyBody();
+        // Remove any empty blocks (e.g., the exit block created by skeleton that's now unreachable)
+        if (ctx.function)
+        {
+            auto &blocks = ctx.function->blocks;
+            blocks.erase(std::remove_if(blocks.begin(), blocks.end(),
+                                        [](const auto &bb) { return bb.instructions.empty(); }),
+                         blocks.end());
+        }
         procCtx.blockNames().resetNamer();
         return;
     }

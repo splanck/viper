@@ -139,7 +139,7 @@ template <typename... Ts> struct Overload : Ts...
 
 template <typename... Ts> Overload(Ts...) -> Overload<Ts...>;
 
-enum : std::uint8_t
+enum : std::uint16_t
 {
     kFmtDirect = 1U << 0U,
     kFmtShift = 1U << 1U,
@@ -149,6 +149,7 @@ enum : std::uint8_t
     kFmtJump = 1U << 5U,
     kFmtCond = 1U << 6U,
     kFmtSetcc = 1U << 7U,
+    kFmtReg32 = 1U << 8U,
 };
 
 struct OpFmt
@@ -156,7 +157,7 @@ struct OpFmt
     MOpcode opc;
     const char *mnemonic;
     std::uint8_t operandCount;
-    std::uint8_t flags;
+    std::uint16_t flags;
 };
 
 // Include the generated OpFmt table
@@ -406,7 +407,7 @@ void AsmEmitter::emitFunction(std::ostream &os,
                               const TargetInfo &target) const
 {
     os << ".text\n";
-    const std::string linkName = viper::common::MangleLink(func.name);
+    const std::string linkName = asmfmt::format_label(viper::common::MangleLink(func.name));
     os << ".globl " << linkName << "\n";
     os << linkName << ":\n";
 
@@ -470,7 +471,7 @@ void AsmEmitter::emitBlock(std::ostream &os, const MBasicBlock &block, const Tar
 {
     if (!block.label.empty())
     {
-        os << block.label << ":\n";
+        os << asmfmt::format_label(block.label) << ":\n";
     }
     for (const auto &instr : block.instructions)
     {
@@ -501,7 +502,7 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
             os << "# <invalid label>\n";
             return;
         }
-        os << label->name << ":\n";
+        os << asmfmt::format_label(label->name) << ":\n";
         return;
     }
 
@@ -600,6 +601,24 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
         return;
     }
 
+    if ((flags & kFmtReg32) != 0U)
+    {
+        if (operands.size() < 2)
+        {
+            os << " #<missing>\n";
+            return;
+        }
+        const auto *dest = std::get_if<OpReg>(&operands[0]);
+        const auto *src = std::get_if<OpReg>(&operands[1]);
+        if (!dest || !src)
+        {
+            os << " #<invalid>\n";
+            return;
+        }
+        os << ' ' << formatReg32(*src, target) << ", " << formatReg32(*dest, target) << '\n';
+        return;
+    }
+
     if ((flags & kFmtCall) != 0U)
     {
         if (operands.empty())
@@ -694,7 +713,15 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
         os << suffix << ' ';
         if (dest)
         {
-            os << formatOperand(*dest, target) << '\n';
+            // SETcc requires 8-bit destination register
+            if (const auto *reg = std::get_if<OpReg>(dest))
+            {
+                os << formatReg8(*reg, target) << '\n';
+            }
+            else
+            {
+                os << formatOperand(*dest, target) << '\n';
+            }
         }
         else
         {
@@ -866,6 +893,55 @@ std::string AsmEmitter::formatReg8(const OpReg &reg, const TargetInfo &target)
             return "%r14b";
         case PhysReg::R15:
             return "%r15b";
+        default:
+            return formatReg(reg, target);
+    }
+}
+
+std::string AsmEmitter::formatReg32(const OpReg &reg, const TargetInfo &target)
+{
+    if (!reg.isPhys)
+    {
+        std::ostringstream os;
+        os << "%v" << static_cast<unsigned>(reg.idOrPhys) << ".d";
+        return os.str();
+    }
+
+    const auto phys = static_cast<PhysReg>(reg.idOrPhys);
+    switch (phys)
+    {
+        case PhysReg::RAX:
+            return "%eax";
+        case PhysReg::RBX:
+            return "%ebx";
+        case PhysReg::RCX:
+            return "%ecx";
+        case PhysReg::RDX:
+            return "%edx";
+        case PhysReg::RSI:
+            return "%esi";
+        case PhysReg::RDI:
+            return "%edi";
+        case PhysReg::RBP:
+            return "%ebp";
+        case PhysReg::RSP:
+            return "%esp";
+        case PhysReg::R8:
+            return "%r8d";
+        case PhysReg::R9:
+            return "%r9d";
+        case PhysReg::R10:
+            return "%r10d";
+        case PhysReg::R11:
+            return "%r11d";
+        case PhysReg::R12:
+            return "%r12d";
+        case PhysReg::R13:
+            return "%r13d";
+        case PhysReg::R14:
+            return "%r14d";
+        case PhysReg::R15:
+            return "%r15d";
         default:
             return formatReg(reg, target);
     }

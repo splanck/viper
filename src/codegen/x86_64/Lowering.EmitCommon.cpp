@@ -632,7 +632,12 @@ void EmitCommon::emitStore(const ILInstr &instr)
     }
     else
     {
-        builder().append(MInstr::make(MOpcode::MOVri, std::vector<Operand>{mem, value}));
+        // For immediate-to-memory stores, we must go through a temp register
+        // because x86-64 can't move a 64-bit immediate directly to memory.
+        const VReg tmp = builder().makeTempVReg(RegClass::GPR);
+        const Operand tmpOp = makeVRegOperand(tmp.cls, tmp.id);
+        builder().append(MInstr::make(MOpcode::MOVri, std::vector<Operand>{tmpOp, value}));
+        builder().append(MInstr::make(MOpcode::MOVrm, std::vector<Operand>{mem, tmpOp}));
     }
 }
 

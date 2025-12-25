@@ -197,7 +197,7 @@ CodegenResult emitModuleImpl(const std::vector<ILFunction> &functions,
         errorStream << warning;
     }
 
-    const TargetInfo &target = sysvTarget();
+    const TargetInfo &target = hostTarget();
     AsmEmitter::RoDataPool roData{};
     LowerILToMIR lowering{target, roData};
     AsmEmitter emitter{roData};

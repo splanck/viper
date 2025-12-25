@@ -67,8 +67,15 @@ namespace
 
 [[nodiscard]] bool containsExpectedInstructions(const std::string &asmText)
 {
+#if defined(_WIN32)
+    // Windows x64 ABI: first two integer args in RCX, RDX
+    constexpr std::string_view kPatterns[] = {
+        ".globl add", "movq %rcx, %rax", "addq %rdx, %rax", "ret"};
+#else
+    // SysV ABI: first two integer args in RDI, RSI
     constexpr std::string_view kPatterns[] = {
         ".globl add", "movq %rdi, %rax", "addq %rsi, %rax", "ret"};
+#endif
 
     for (const std::string_view pattern : kPatterns)
     {

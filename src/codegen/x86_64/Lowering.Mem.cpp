@@ -23,6 +23,7 @@
 #include "CallLowering.hpp"
 #include "LowerILToMIR.hpp"
 #include "Lowering.EmitCommon.hpp"
+#include "OperandUtils.hpp"
 
 #include "il/runtime/RuntimeSignatures.hpp"
 
@@ -183,6 +184,132 @@ void emitLoadAuto(const ILInstr &instr, MIRBuilder &builder)
 void emitStore(const ILInstr &instr, MIRBuilder &builder)
 {
     EmitCommon(builder).emitStore(instr);
+}
+
+/// @brief Lower a const_str instruction to produce a runtime string handle.
+/// @details Emits a call to rt_str_from_lit with the string literal data,
+///          storing the result in the destination vreg.
+/// @param instr IL const_str instruction with string operand.
+/// @param builder MIR construction context.
+void emitConstStr(const ILInstr &instr, MIRBuilder &builder)
+{
+    if (instr.ops.empty() || instr.resultId < 0)
+    {
+        return;
+    }
+
+    // The operand contains the string literal data
+    const auto &strVal = instr.ops.front();
+
+    // Reserve the result vreg
+    const VReg destReg = builder.ensureVReg(instr.resultId, instr.resultKind);
+    const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
+
+    // Materialize the string using the MIRBuilder's STR handling
+    // This emits LEA + CALL rt_str_from_lit and returns the result
+    const Operand strOp = builder.makeOperandForValue(strVal, RegClass::GPR);
+
+    // Copy the materialized result to the destination vreg
+    builder.append(MInstr::make(MOpcode::MOVrr, std::vector<Operand>{dest, strOp}));
+}
+
+/// @brief Lower an alloca instruction to allocate stack space.
+/// @details Allocates a stack slot and produces the address in the result vreg.
+///          The actual frame offset is assigned during FrameLowering pass.
+/// @param instr IL alloca instruction with size operand.
+/// @param builder MIR construction context.
+void emitAlloca(const ILInstr &instr, MIRBuilder &builder)
+{
+    if (instr.resultId < 0)
+    {
+        return;
+    }
+
+    // Reserve the result vreg for the pointer
+    const VReg destReg = builder.ensureVReg(instr.resultId, instr.resultKind);
+    const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
+
+    // Get the allocation size (used for frame layout calculation)
+    const int64_t size = instr.ops.empty() ? 8 : instr.ops[0].i64;
+
+    // Use a placeholder negative offset that FrameLowering will resolve.
+    // The slot index is derived from the result SSA id to ensure uniqueness.
+    const int32_t placeholderOffset = -static_cast<int32_t>((instr.resultId + 1) * 8);
+    (void)size; // Size is used by frame builder, not needed here
+
+    // LEA dest, [rbp + offset]
+    const OpReg rbpBase = makePhysBase(PhysReg::RBP);
+    const Operand mem = makeMemOperand(rbpBase, placeholderOffset);
+    builder.append(MInstr::make(MOpcode::LEA, std::vector<Operand>{dest, mem}));
+}
+
+/// @brief Lower a GEP (get element pointer) instruction.
+/// @details Computes base + offset and stores the result pointer.
+/// @param instr IL GEP instruction with base and offset operands.
+/// @param builder MIR construction context.
+void emitGEP(const ILInstr &instr, MIRBuilder &builder)
+{
+    if (instr.resultId < 0 || instr.ops.size() < 2)
+    {
+        return;
+    }
+
+    // Reserve the result vreg for the pointer
+    const VReg destReg = builder.ensureVReg(instr.resultId, instr.resultKind);
+    const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
+
+    // Get the base pointer
+    const Operand baseOp = builder.makeOperandForValue(instr.ops[0], RegClass::GPR);
+    const auto *baseReg = std::get_if<OpReg>(&baseOp);
+
+    // Get the offset
+    const auto &offsetVal = instr.ops[1];
+
+    if (baseReg && builder.isImmediate(offsetVal))
+    {
+        // Base is a register, offset is immediate -> use LEA [base + imm]
+        const int32_t offset = static_cast<int32_t>(offsetVal.i64);
+        const Operand mem = makeMemOperand(*baseReg, offset);
+        builder.append(MInstr::make(MOpcode::LEA, std::vector<Operand>{dest, mem}));
+    }
+    else if (baseReg)
+    {
+        // Both base and offset are registers -> use LEA [base + index*1]
+        const Operand offsetOp = builder.makeOperandForValue(offsetVal, RegClass::GPR);
+        const auto *offsetReg = std::get_if<OpReg>(&offsetOp);
+        if (offsetReg)
+        {
+            const Operand mem = makeMemOperand(*baseReg, *offsetReg, 1, 0);
+            builder.append(MInstr::make(MOpcode::LEA, std::vector<Operand>{dest, mem}));
+        }
+        else
+        {
+            // Fallback: copy base to dest, then add offset
+            builder.append(MInstr::make(MOpcode::MOVrr, std::vector<Operand>{dest, baseOp}));
+            builder.append(MInstr::make(MOpcode::ADDrr, std::vector<Operand>{dest, offsetOp}));
+        }
+    }
+    else
+    {
+        // Base is not a register - materialize it first
+        const VReg tmpReg = builder.makeTempVReg(RegClass::GPR);
+        const Operand tmp = makeVRegOperand(tmpReg.cls, tmpReg.id);
+        builder.append(MInstr::make(MOpcode::MOVrr, std::vector<Operand>{tmp, baseOp}));
+
+        if (builder.isImmediate(offsetVal))
+        {
+            const int32_t offset = static_cast<int32_t>(offsetVal.i64);
+            const auto tmpBaseReg = std::get<OpReg>(tmp);
+            const Operand mem = makeMemOperand(tmpBaseReg, offset);
+            builder.append(MInstr::make(MOpcode::LEA, std::vector<Operand>{dest, mem}));
+        }
+        else
+        {
+            const Operand offsetOp = builder.makeOperandForValue(offsetVal, RegClass::GPR);
+            builder.append(MInstr::make(MOpcode::MOVrr, std::vector<Operand>{dest, tmp}));
+            builder.append(MInstr::make(MOpcode::ADDrr, std::vector<Operand>{dest, offsetOp}));
+        }
+    }
 }
 
 } // namespace viper::codegen::x64::lowering

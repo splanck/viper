@@ -99,10 +99,97 @@ TargetInfo makeSysVTarget()
     info.f64ReturnReg = PhysReg::XMM0;
     info.stackAlignment = 16U;
     info.hasRedZone = true; // Phase A: do not rely on red zone.
+    info.maxGPRArgs = kMaxGPRArgsSysV;
+    info.maxXMMArgs = kMaxXMMArgsSysV;
+    info.shadowSpace = 0;
+    return info;
+}
+
+/// @brief Construct the Windows x64 target description for the backend.
+///
+/// @details Populates the @ref TargetInfo structure with register save
+///          conventions, argument passing order, return registers, and stack
+///          alignment information according to the Microsoft x64 ABI.
+///
+/// @return Fully initialised Windows x64 target descriptor.
+TargetInfo makeWin64Target()
+{
+    TargetInfo info{};
+    // Windows x64: RAX, RCX, RDX, R8, R9, R10, R11 are caller-saved (volatile)
+    info.callerSavedGPR = {
+        PhysReg::RAX,
+        PhysReg::RCX,
+        PhysReg::RDX,
+        PhysReg::R8,
+        PhysReg::R9,
+        PhysReg::R10,
+        PhysReg::R11,
+    };
+    // Windows x64: RBX, RBP, RDI, RSI, R12-R15 are callee-saved (non-volatile)
+    info.calleeSavedGPR = {
+        PhysReg::RBX,
+        PhysReg::RBP,
+        PhysReg::RDI,
+        PhysReg::RSI,
+        PhysReg::R12,
+        PhysReg::R13,
+        PhysReg::R14,
+        PhysReg::R15,
+    };
+    // Windows x64: XMM0-XMM5 are caller-saved (volatile)
+    info.callerSavedXMM = {
+        PhysReg::XMM0,
+        PhysReg::XMM1,
+        PhysReg::XMM2,
+        PhysReg::XMM3,
+        PhysReg::XMM4,
+        PhysReg::XMM5,
+    };
+    // Windows x64: XMM6-XMM15 are callee-saved (non-volatile)
+    info.calleeSavedXMM = {
+        PhysReg::XMM6,
+        PhysReg::XMM7,
+        PhysReg::XMM8,
+        PhysReg::XMM9,
+        PhysReg::XMM10,
+        PhysReg::XMM11,
+        PhysReg::XMM12,
+        PhysReg::XMM13,
+        PhysReg::XMM14,
+        PhysReg::XMM15,
+    };
+    // Windows x64: RCX, RDX, R8, R9 for first 4 integer args
+    info.intArgOrder = {
+        PhysReg::RCX,
+        PhysReg::RDX,
+        PhysReg::R8,
+        PhysReg::R9,
+        PhysReg::RAX, // unused padding (only 4 args in regs)
+        PhysReg::RAX, // unused padding
+    };
+    // Windows x64: XMM0-XMM3 for first 4 float args
+    info.f64ArgOrder = {
+        PhysReg::XMM0,
+        PhysReg::XMM1,
+        PhysReg::XMM2,
+        PhysReg::XMM3,
+        PhysReg::XMM0, // unused padding (only 4 args in regs)
+        PhysReg::XMM0, // unused padding
+        PhysReg::XMM0, // unused padding
+        PhysReg::XMM0, // unused padding
+    };
+    info.intReturnReg = PhysReg::RAX;
+    info.f64ReturnReg = PhysReg::XMM0;
+    info.stackAlignment = 16U;
+    info.hasRedZone = false; // Windows x64 has no red zone
+    info.maxGPRArgs = kMaxGPRArgsWin64;
+    info.maxXMMArgs = kMaxXMMArgsWin64;
+    info.shadowSpace = 32; // 32-byte shadow space required
     return info;
 }
 
 TargetInfo sysvTargetInstance = makeSysVTarget();
+TargetInfo win64TargetInstance = makeWin64Target();
 
 } // namespace
 
@@ -117,6 +204,31 @@ TargetInfo sysvTargetInstance = makeSysVTarget();
 TargetInfo &sysvTarget() noexcept
 {
     return sysvTargetInstance;
+}
+
+/// @brief Retrieve the Windows x64 target description.
+///
+/// @details Returns a reference to the statically initialised singleton created
+///          by @ref makeWin64Target().
+///
+/// @return Reference to the global Windows x64 target descriptor.
+TargetInfo &win64Target() noexcept
+{
+    return win64TargetInstance;
+}
+
+/// @brief Retrieve the platform-appropriate target description.
+///
+/// @details Returns win64Target() on Windows, sysvTarget() on other platforms.
+///
+/// @return Reference to the appropriate target descriptor for the host.
+TargetInfo &hostTarget() noexcept
+{
+#if defined(_WIN32)
+    return win64TargetInstance;
+#else
+    return sysvTargetInstance;
+#endif
 }
 
 /// @brief Test whether a physical register is part of the general-purpose set.

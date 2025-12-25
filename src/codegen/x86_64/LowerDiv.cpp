@@ -139,7 +139,8 @@ constexpr std::string_view kTrapLabel{".Ltrap_div0"};
 /// @param fn Machine IR function being rewritten in place.
 void lowerSignedDivRem(MFunction &fn)
 {
-    const std::string trapLabel{std::string{kTrapLabel}};
+    // Make trap label unique per function to avoid conflicts when assembling
+    const std::string trapLabel = ".Ltrap_div0_" + fn.name;
     std::optional<std::size_t> trapIndex{};
     unsigned sequenceId{0U};
 

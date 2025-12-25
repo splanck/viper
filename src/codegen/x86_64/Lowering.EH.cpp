@@ -15,6 +15,7 @@
 #include "LoweringRuleTable.hpp"
 
 #include "LowerILToMIR.hpp"
+#include "MachineIR.hpp"
 
 namespace viper::codegen::x64::lowering
 {
@@ -34,6 +35,12 @@ void emitEhEntry(const ILInstr &, MIRBuilder &)
 {
     // Phase A: no-op. The handler block is already materialised as a MIR block
     // with a label; an extra in-block label is not required for emission.
+}
+
+void emitTrap(const ILInstr &, MIRBuilder &builder)
+{
+    // Emit x86 UD2 (undefined instruction) to signal an unrecoverable error.
+    builder.append(MInstr::make(MOpcode::UD2));
 }
 
 } // namespace viper::codegen::x64::lowering

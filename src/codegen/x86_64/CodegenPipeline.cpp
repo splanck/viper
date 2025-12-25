@@ -49,6 +49,15 @@ namespace viper::codegen::x64
 namespace
 {
 
+/// @brief Platform-specific C compiler command.
+/// @details On Windows, `cc` isn't available, so we use `clang` instead.
+///          On Unix-like systems, `cc` is typically a symlink to the default compiler.
+#if defined(_WIN32)
+constexpr const char *kCcCommand = "clang";
+#else
+constexpr const char *kCcCommand = "cc";
+#endif
+
 /// @brief Convert platform-specific process status codes to POSIX-style exits.
 /// @details Handles negative launch failures, Windows return values, and
 ///          Unix wait statuses so pipeline users receive consistent exit
@@ -100,6 +109,7 @@ std::filesystem::path deriveAssemblyPath(const CodegenPipeline::Options &opts)
 /// @brief Determine the executable output path based on user input.
 /// @details Strips the IL extension when present and ensures the result has
 ///          a filename component so the linker output is predictable.
+///          On Windows, adds the .exe extension.
 /// @param opts Pipeline configuration describing the IL input.
 /// @return Filesystem path for the linked executable.
 std::filesystem::path deriveExecutablePath(const CodegenPipeline::Options &opts)
@@ -107,13 +117,24 @@ std::filesystem::path deriveExecutablePath(const CodegenPipeline::Options &opts)
     std::filesystem::path exe = std::filesystem::path(opts.input_il_path);
     if (exe.empty())
     {
+#if defined(_WIN32)
+        return std::filesystem::path("a.exe");
+#else
         return std::filesystem::path("a.out");
+#endif
     }
     exe.replace_extension("");
     if (exe.filename().empty() || exe.filename() == ".")
     {
+#if defined(_WIN32)
+        return exe.parent_path() / "a.exe";
+#else
         return exe.parent_path() / "a.out";
+#endif
     }
+#if defined(_WIN32)
+    exe.replace_extension(".exe");
+#endif
     return exe;
 }
 
@@ -144,6 +165,18 @@ bool writeAssemblyFile(const std::filesystem::path &path,
     return true;
 }
 
+/// @brief Convert a path to use native separators on the current platform.
+/// @details On Windows, forward slashes in paths can confuse cmd.exe when
+///          passed through run_process. This helper ensures backslashes are used.
+/// @param path Original path to normalize.
+/// @return String with platform-native path separators.
+std::string toNativePath(const std::filesystem::path &path)
+{
+    std::filesystem::path native = path;
+    native.make_preferred();
+    return native.string();
+}
+
 /// @brief Assemble emitted assembly into an object file.
 /// @details Invokes the system C compiler with the `-c` flag so the pipeline
 ///          can stop after producing a relocatable object when no executable is
@@ -158,7 +191,8 @@ int invokeAssembler(const std::filesystem::path &asmPath,
                     std::ostream &out,
                     std::ostream &err)
 {
-    const RunResult assemble = run_process({"cc", "-c", asmPath.string(), "-o", objPath.string()});
+    const RunResult assemble =
+        run_process({kCcCommand, "-c", toNativePath(asmPath), "-o", toNativePath(objPath)});
     if (assemble.exit_code == -1)
     {
         err << "error: failed to launch system assembler command\n";
@@ -179,7 +213,7 @@ int invokeAssembler(const std::filesystem::path &asmPath,
     const int exitCode = normaliseStatus(assemble.exit_code);
     if (exitCode != 0)
     {
-        err << "error: cc (assemble) exited with status " << exitCode << "\n";
+        err << "error: " << kCcCommand << " (assemble) exited with status " << exitCode << "\n";
     }
     return exitCode;
 }
@@ -197,8 +231,82 @@ int invokeLinker(const std::filesystem::path &asmPath,
                  std::ostream &out,
                  std::ostream &err)
 {
+    // Common enum for both Windows and Unix
+    enum class RtComponent
+    {
+        Base,
+        Arrays,
+        Oop,
+        Collections,
+        Text,
+        IoFs,
+        Exec,
+        Threads,
+        Graphics,
+    };
+
 #if defined(_WIN32)
-    const RunResult link = run_process({"cc", asmPath.string(), "-o", exePath.string()});
+    // Windows: Simple approach - find build dir and link all runtime libraries
+    auto fileExists = [](const std::filesystem::path &path) -> bool
+    {
+        std::error_code ec;
+        return std::filesystem::exists(path, ec);
+    };
+
+    auto findBuildDir = [&]() -> std::optional<std::filesystem::path>
+    {
+        std::error_code ec;
+        std::filesystem::path cur = std::filesystem::current_path(ec);
+        if (ec)
+            return std::nullopt;
+        const std::size_t maxDepth = 10;
+        for (std::size_t i = 0; i < maxDepth && !cur.empty(); ++i)
+        {
+            const std::filesystem::path cmake_cache = cur / "build" / "CMakeCache.txt";
+            if (std::filesystem::exists(cmake_cache, ec))
+                return cur / "build";
+            const std::filesystem::path parent = cur.parent_path();
+            if (parent == cur)
+                break;
+            cur = parent;
+        }
+        return std::nullopt;
+    };
+
+    const std::optional<std::filesystem::path> buildDirOpt = findBuildDir();
+    const std::filesystem::path buildDir = buildDirOpt.value_or(std::filesystem::path{});
+
+    auto runtimeArchivePath = [&](std::string_view libBaseName) -> std::filesystem::path
+    {
+        if (!buildDir.empty())
+            return buildDir / "src/runtime" / (std::string(libBaseName) + ".lib");
+        return std::filesystem::path("src/runtime") / (std::string(libBaseName) + ".lib");
+    };
+
+    std::vector<std::string> cmd = {kCcCommand, toNativePath(asmPath)};
+
+    // Link all runtime libraries that exist (simpler than symbol detection)
+    const std::vector<std::string_view> rtLibs = {
+        "viper_rt_graphics", "viper_rt_exec", "viper_rt_io_fs",
+        "viper_rt_text", "viper_rt_collections", "viper_rt_arrays",
+        "viper_rt_threads", "viper_rt_oop", "viper_rt_base"
+    };
+    for (const auto &lib : rtLibs)
+    {
+        const std::filesystem::path path = runtimeArchivePath(lib);
+        if (fileExists(path))
+            cmd.push_back(toNativePath(path));
+    }
+
+    // Add Windows CRT and system libraries
+    cmd.push_back("-lmsvcrt");
+    cmd.push_back("-lucrt");
+    cmd.push_back("-lvcruntime");
+
+    cmd.push_back("-o");
+    cmd.push_back(toNativePath(exePath));
+
+    const RunResult link = run_process(cmd);
 #else
     auto fileExists = [](const std::filesystem::path &path) -> bool
     {
@@ -276,19 +384,6 @@ int invokeLinker(const std::filesystem::path &asmPath,
             i = j;
         }
         return symbols;
-    };
-
-    enum class RtComponent
-    {
-        Base,
-        Arrays,
-        Oop,
-        Collections,
-        Text,
-        IoFs,
-        Exec,
-        Threads,
-        Graphics,
     };
 
     auto needsComponentForSymbol = [](std::string_view sym) -> std::optional<RtComponent>
@@ -457,7 +552,7 @@ int invokeLinker(const std::filesystem::path &asmPath,
         }
     }
 
-    std::vector<std::string> cmd = {"cc", asmPath.string()};
+    std::vector<std::string> cmd = {kCcCommand, asmPath.string()};
     auto appendArchiveIf = [&](std::string_view name)
     {
         const std::filesystem::path path = runtimeArchivePath(name);
@@ -532,7 +627,7 @@ int invokeLinker(const std::filesystem::path &asmPath,
     const int exitCode = normaliseStatus(link.exit_code);
     if (exitCode != 0)
     {
-        err << "error: cc exited with status " << exitCode << "\n";
+        err << "error: " << kCcCommand << " exited with status " << exitCode << "\n";
     }
     return exitCode;
 }
@@ -547,7 +642,7 @@ int invokeLinker(const std::filesystem::path &asmPath,
 /// @return Normalised process exit code (-1 when the process could not be started).
 int runExecutable(const std::filesystem::path &exePath, std::ostream &out, std::ostream &err)
 {
-    const RunResult run = run_process({exePath.string()});
+    const RunResult run = run_process({toNativePath(exePath)});
     if (run.exit_code == -1)
     {
         err << "error: failed to execute '" << exePath.string() << "'\n";
