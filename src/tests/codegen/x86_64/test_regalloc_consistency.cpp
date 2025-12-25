@@ -135,7 +135,7 @@ int main()
                     pressureBlock.end(),
                     [](const MInstr &instr)
                     {
-                        return instr.opcode == MOpcode::MOVrr && instr.operands.size() == 2 &&
+                        return instr.opcode == MOpcode::MOVrm && instr.operands.size() == 2 &&
                                std::holds_alternative<OpMem>(instr.operands[0]);
                     });
     if (!hasSpillStore)

@@ -582,7 +582,7 @@ void EmitCommon::emitLoad(const ILInstr &instr, RegClass cls)
 
     if (cls == RegClass::GPR)
     {
-        builder().append(MInstr::make(MOpcode::MOVrr, std::vector<Operand>{clone(dest), mem}));
+        builder().append(MInstr::make(MOpcode::MOVmr, std::vector<Operand>{clone(dest), mem}));
     }
     else
     {
@@ -627,7 +627,7 @@ void EmitCommon::emitStore(const ILInstr &instr)
         }
         else
         {
-            builder().append(MInstr::make(MOpcode::MOVrr, std::vector<Operand>{mem, value}));
+            builder().append(MInstr::make(MOpcode::MOVrm, std::vector<Operand>{mem, value}));
         }
     }
     else

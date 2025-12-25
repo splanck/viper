@@ -318,7 +318,7 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, const Fra
     prologue.reserve(4 + frame.usedCalleeSaved.size());
 
     prologue.push_back(MInstr::make(MOpcode::ADDri, {rspOperand, makeImmOperand(-kSlotSizeBytes)}));
-    prologue.push_back(MInstr::make(MOpcode::MOVrr, {makeMemOperand(rspBase, 0), rbpOperand}));
+    prologue.push_back(MInstr::make(MOpcode::MOVrm, {makeMemOperand(rspBase, 0), rbpOperand}));
     prologue.push_back(MInstr::make(MOpcode::MOVrr, {rbpOperand, rspOperand}));
 
     if (frame.frameSize > 0)
@@ -333,7 +333,7 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, const Fra
         assert(isGPR(reg) && "Phase A expects only GPR callee-saved registers");
         const int offset = calleeSavedOffset(idx);
         prologue.push_back(
-            MInstr::make(MOpcode::MOVrr,
+            MInstr::make(MOpcode::MOVrm,
                          {makeMemOperand(rbpBase, offset), makePhysOperand(RegClass::GPR, reg)}));
     }
 
@@ -358,12 +358,12 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, const Fra
         assert(isGPR(reg) && "Phase A expects only GPR callee-saved registers");
         const int offset = calleeSavedOffset(idx - 1);
         epilogue.push_back(
-            MInstr::make(MOpcode::MOVrr,
+            MInstr::make(MOpcode::MOVmr,
                          {makePhysOperand(RegClass::GPR, reg), makeMemOperand(rbpBase, offset)}));
     }
 
     epilogue.push_back(MInstr::make(MOpcode::MOVrr, {rspOperand, rbpOperand}));
-    epilogue.push_back(MInstr::make(MOpcode::MOVrr, {rbpOperand, makeMemOperand(rspBase, 0)}));
+    epilogue.push_back(MInstr::make(MOpcode::MOVmr, {rbpOperand, makeMemOperand(rspBase, 0)}));
     epilogue.push_back(MInstr::make(MOpcode::ADDri, {rspOperand, makeImmOperand(kSlotSizeBytes)}));
 
     for (auto &block : func.blocks)

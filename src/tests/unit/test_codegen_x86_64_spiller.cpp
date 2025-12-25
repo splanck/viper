@@ -43,7 +43,7 @@ TEST(Spiller, EmitsLoadStore)
     Spiller spiller{};
     SpillPlan plan{true, 3};
     auto load = spiller.makeLoad(RegClass::GPR, PhysReg::RAX, plan);
-    EXPECT_EQ(load.opcode, MOpcode::MOVrr);
+    EXPECT_EQ(load.opcode, MOpcode::MOVmr);
     ASSERT_EQ(load.operands.size(), 2U);
     const auto *dst = std::get_if<OpReg>(&load.operands[0]);
     ASSERT_NE(dst, nullptr);
@@ -51,7 +51,7 @@ TEST(Spiller, EmitsLoadStore)
     EXPECT_EQ(dst->idOrPhys, static_cast<uint16_t>(PhysReg::RAX));
 
     auto store = spiller.makeStore(RegClass::GPR, plan, PhysReg::RDI);
-    EXPECT_EQ(store.opcode, MOpcode::MOVrr);
+    EXPECT_EQ(store.opcode, MOpcode::MOVrm);
     ASSERT_EQ(store.operands.size(), 2U);
     const auto *src = std::get_if<OpReg>(&store.operands[1]);
     ASSERT_NE(src, nullptr);
@@ -79,7 +79,7 @@ TEST(Spiller, SpillsActiveValue)
     EXPECT_EQ(spiller.gprSlots(), 1);
     EXPECT_TRUE(pool.end() != std::find(pool.begin(), pool.end(), PhysReg::RAX));
     EXPECT_TRUE(prefix.size() == 1U);
-    EXPECT_EQ(prefix.front().opcode, MOpcode::MOVrr);
+    EXPECT_EQ(prefix.front().opcode, MOpcode::MOVrm);
     EXPECT_TRUE(result.vregToPhys.empty());
 }
 

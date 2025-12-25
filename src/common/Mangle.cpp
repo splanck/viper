@@ -31,18 +31,17 @@ namespace viper::common
 {
 
 /// @brief Convert a dotted qualified name into a safe linker symbol.
-/// @details The transformation lowercases all ASCII letters, prefixes the
-///          result with '@', and replaces dots with underscores so nested names
-///          are preserved in a flat namespace. Any non-alphanumeric characters
-///          (other than underscore) are mapped to '_' to keep output strictly
-///          ASCII and deterministic across hosts.
+/// @details The transformation lowercases all ASCII letters and replaces dots
+///          with underscores so nested names are preserved in a flat namespace.
+///          Any non-alphanumeric characters (other than underscore) are mapped
+///          to '_' to keep output strictly ASCII and deterministic across hosts.
+///          No prefix is added to maintain compatibility across platforms.
 /// @param qualified Qualified name such as "A.B.Func" or "Klass.__ctor".
 /// @return Mangled ASCII symbol safe to pass to the native toolchain.
 std::string MangleLink(std::string_view qualified)
 {
     std::string out;
-    out.reserve(qualified.size() + 1);
-    out.push_back('@');
+    out.reserve(qualified.size());
     for (unsigned char ch : qualified)
     {
         if (ch == '.')

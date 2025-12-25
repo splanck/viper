@@ -15,6 +15,34 @@
       ]
     },
     {
+      "opcode": "MOVrm",
+      "mnemonic": "movq",
+      "form": "MemReg",
+      "order": "M_R",
+      "pattern": [
+        "Mem",
+        "Reg"
+      ],
+      "flags": [
+        "RequiresModRM",
+        "REXW"
+      ]
+    },
+    {
+      "opcode": "MOVmr",
+      "mnemonic": "movq",
+      "form": "RegMem",
+      "order": "R_M",
+      "pattern": [
+        "Reg",
+        "Mem"
+      ],
+      "flags": [
+        "RequiresModRM",
+        "REXW"
+      ]
+    },
+    {
       "opcode": "MOVri",
       "mnemonic": "movq",
       "form": "RegImm",
