@@ -27,6 +27,8 @@
 #include <string>
 #ifdef _WIN32
 #include "tests/common/PosixCompat.h"
+#else
+#include <unistd.h>
 #endif
 
 using namespace il::frontends::basic;
