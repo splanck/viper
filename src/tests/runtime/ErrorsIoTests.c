@@ -23,7 +23,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
+#include "tests/common/PosixCompat.h"
 
 static void ensure_missing_open_sets_file_not_found(void)
 {

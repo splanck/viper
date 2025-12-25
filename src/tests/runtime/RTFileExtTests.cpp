@@ -25,15 +25,13 @@
 #include <cstring>
 #include <ctime>
 
+#include "tests/common/PosixCompat.h"
 #ifdef _WIN32
 #include <direct.h>
-#include <process.h>
 #define mkdir_p(path) _mkdir(path)
 #define rmdir_p(path) _rmdir(path)
-#define getpid _getpid
 #else
 #include <sys/stat.h>
-#include <unistd.h>
 #define mkdir_p(path) mkdir(path, 0755)
 #define rmdir_p(path) rmdir(path)
 #endif

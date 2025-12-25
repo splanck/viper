@@ -12,6 +12,7 @@
 
 #include "rt_internal.h"
 #include "rt_vec2.h"
+#include "tests/common/PosixCompat.h"
 
 #include <cassert>
 #include <cmath>

@@ -16,6 +16,17 @@
 #include "rt.hpp"
 
 #include <cassert>
+#include <cstdio>
+
+#ifdef _WIN32
+// This test requires PTY support which is not available on Windows
+int main()
+{
+    printf("Test skipped: PTY not available on Windows\n");
+    return 0;
+}
+#else
+// POSIX-only implementation
 #include <fcntl.h>
 #include <poll.h>
 #include <string>
@@ -28,8 +39,6 @@
 #include <pty.h>
 #elif defined(__APPLE__)
 #include <util.h>
-#else
-#error "openpty is required for RTTermColorTests"
 #endif
 
 namespace
@@ -136,3 +145,4 @@ int main()
 
     return 0;
 }
+#endif // !_WIN32

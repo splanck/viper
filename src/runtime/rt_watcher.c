@@ -23,6 +23,7 @@
 #include "rt_watcher.h"
 #include "rt_internal.h"
 #include "rt_object.h"
+#include "rt_platform.h"
 #include "rt_string.h"
 
 #include <stdlib.h>

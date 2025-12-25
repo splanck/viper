@@ -19,7 +19,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <unistd.h>
+#include "tests/common/PosixCompat.h"
 
 extern "C" void vm_trap(const char *msg)
 {

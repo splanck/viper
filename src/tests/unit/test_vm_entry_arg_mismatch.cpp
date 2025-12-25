@@ -21,8 +21,8 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include <sys/wait.h>
-#include <unistd.h>
+#include "tests/common/WaitCompat.hpp"
+#include "tests/common/PosixCompat.h"
 #include <vector>
 
 using namespace il::core;

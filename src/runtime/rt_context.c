@@ -102,6 +102,7 @@
 
 #include "rt_context.h"
 #include "rt_internal.h"
+#include "rt_platform.h"
 #include "rt_string.h"
 #include <assert.h>
 #include <stdlib.h>
@@ -118,7 +119,7 @@ void rt_args_state_cleanup(RtContext *ctx);
 /// afterward. When NULL, runtime functions fall back to the legacy context.
 ///
 /// @note Thread-local storage ensures thread safety without locking.
-_Thread_local RtContext *g_rt_context = NULL;
+RT_THREAD_LOCAL RtContext *g_rt_context = NULL;
 
 /// @brief Global legacy context for backward compatibility.
 ///

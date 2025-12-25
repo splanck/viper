@@ -25,8 +25,8 @@
 #if !defined(_WIN32)
 #include <string>
 #include <sys/types.h>
-#include <sys/wait.h>
-#include <unistd.h>
+#include "tests/common/WaitCompat.hpp"
+#include "tests/common/PosixCompat.h"
 #endif
 
 static void expect_zero_range(int32_t *arr, size_t start, size_t end)

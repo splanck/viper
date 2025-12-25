@@ -16,7 +16,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
-#include <unistd.h>
+#include "tests/common/PosixCompat.h"
 
 using namespace il::frontends::viperlang;
 using namespace il::support;

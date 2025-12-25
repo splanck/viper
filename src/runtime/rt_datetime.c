@@ -74,12 +74,13 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_datetime.h"
+#include "rt_platform.h"
 
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
 
-#ifdef __APPLE__
+#if RT_PLATFORM_MACOS
 #include <sys/time.h>
 #endif
 
@@ -149,7 +150,9 @@ int64_t rt_datetime_now(void)
 /// @see rt_stopwatch.c For monotonic elapsed time measurement
 int64_t rt_datetime_now_ms(void)
 {
-#ifdef __APPLE__
+#if RT_PLATFORM_WINDOWS
+    return rt_windows_time_ms();
+#elif RT_PLATFORM_MACOS
     struct timeval tv;
     gettimeofday(&tv, NULL);
     return (int64_t)tv.tv_sec * 1000 + (int64_t)tv.tv_usec / 1000;

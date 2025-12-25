@@ -19,6 +19,7 @@
 #include "il/internal/io/InstrParser.hpp"
 #include "il/internal/io/TypeParser.hpp"
 
+#include <array>
 #include <cstdint>
 #include <sstream>
 #include <unordered_set>

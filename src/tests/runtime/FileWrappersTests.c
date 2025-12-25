@@ -14,7 +14,7 @@
 
 #include <assert.h>
 #include <sys/stat.h>
-#include <unistd.h>
+#include "tests/common/PosixCompat.h"
 
 /// @brief Entry point for validating basic file wrapper behaviours.
 int main(void)

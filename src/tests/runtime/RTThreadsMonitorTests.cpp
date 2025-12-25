@@ -28,9 +28,9 @@ int main()
 
 #include <atomic>
 #include <mutex>
-#include <sys/wait.h>
+#include "tests/common/WaitCompat.hpp"
 #include <thread>
-#include <unistd.h>
+#include "tests/common/PosixCompat.h"
 #include <vector>
 
 static std::string capture(void (*fn)())

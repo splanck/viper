@@ -32,7 +32,7 @@
 #define rmdir _rmdir
 #define unlink _unlink
 #else
-#include <unistd.h>
+#include "tests/common/PosixCompat.h"
 #endif
 
 namespace

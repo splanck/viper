@@ -34,8 +34,8 @@
 #include <sstream>
 #include <string>
 #include <string_view>
-#include <sys/wait.h>
-#include <unistd.h>
+#include "tests/common/WaitCompat.hpp"
+#include "tests/common/PosixCompat.h"
 #include <vector>
 
 using il::core::BasicBlock;
@@ -363,6 +363,28 @@ std::string describeFailure(std::string_view pipeline, const GeneratedProgram &p
     return oss.str();
 }
 
+#ifdef _WIN32
+// Windows version: run directly without process isolation
+ExecResult runModuleIsolated(const il::core::Module &module)
+{
+    ExecResult result{};
+    try
+    {
+        viper::tests::VmFixture fixture;
+        il::core::Module copy = module;
+        result.value = fixture.run(copy);
+        result.exitCode = 0;
+        result.trapped = false;
+    }
+    catch (...)
+    {
+        result.exitCode = 1;
+        result.trapped = true;
+    }
+    return result;
+}
+#else
+// POSIX version: run in isolated subprocess to catch crashes
 ExecResult runModuleIsolated(const il::core::Module &module)
 {
     ExecResult result{};
@@ -424,6 +446,7 @@ ExecResult runModuleIsolated(const il::core::Module &module)
     }
     return result;
 }
+#endif
 
 bool verifyModule(il::core::Module &module, std::string &diagOut)
 {

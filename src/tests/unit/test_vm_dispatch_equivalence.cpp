@@ -23,6 +23,10 @@
 #include "il/core/Value.hpp"
 #include "vm/VM.hpp"
 
+#include <cstdlib>
+#ifdef _WIN32
+#include "tests/common/PosixCompat.h"
+#endif
 #include <cassert>
 #include <cstdlib>
 

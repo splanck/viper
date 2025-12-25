@@ -107,6 +107,10 @@ if(MSVC)
   # MSVC-specific defines for secure CRT
   add_compile_definitions(_CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_WARNINGS)
 else()
+  # Windows with non-MSVC compiler (e.g., Clang)
+  if(WIN32)
+    add_compile_definitions(_CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_WARNINGS)
+  endif()
   # GCC/Clang compiler flags
   list(APPEND IL_COMPILE_FLAGS -Wall -Wextra -Wpedantic)
 

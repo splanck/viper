@@ -37,10 +37,17 @@
 #include <string.h>
 
 #ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <windows.h>
 // Use BCrypt on Windows Vista+ (available in all modern Windows)
 #include <bcrypt.h>
 #pragma comment(lib, "bcrypt.lib")
+// NT_SUCCESS is defined in ntdef.h but we provide it here to avoid dependency
+#ifndef NT_SUCCESS
+#define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
+#endif
 #else
 #include <errno.h>
 #include <fcntl.h>

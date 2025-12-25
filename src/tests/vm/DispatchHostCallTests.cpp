@@ -20,6 +20,9 @@
 #include <cassert>
 #include <cstdlib>
 #include <optional>
+#ifdef _WIN32
+#include "tests/common/PosixCompat.h"
+#endif
 
 using namespace il::core;
 

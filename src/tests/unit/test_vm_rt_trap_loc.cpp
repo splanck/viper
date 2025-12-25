@@ -18,8 +18,8 @@
 #include "vm/VM.hpp"
 #include <cassert>
 #include <string>
-#include <sys/wait.h>
-#include <unistd.h>
+#include "tests/common/WaitCompat.hpp"
+#include "tests/common/PosixCompat.h"
 
 namespace
 {

@@ -22,8 +22,8 @@
 #include <cstdint>
 #include <limits>
 #include <string>
-#include <sys/wait.h>
-#include <unistd.h>
+#include "tests/common/WaitCompat.hpp"
+#include "tests/common/PosixCompat.h"
 #include <utility>
 
 using namespace il::core;

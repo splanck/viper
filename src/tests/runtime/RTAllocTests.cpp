@@ -15,9 +15,10 @@
 
 #include "rt.hpp"
 #include <cassert>
+#include <cstdio>
 #include <string>
-#include <sys/wait.h>
-#include <unistd.h>
+#include "tests/common/WaitCompat.hpp"
+#include "tests/common/PosixCompat.h"
 
 static std::string capture(void (*fn)())
 {

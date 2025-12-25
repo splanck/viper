@@ -132,7 +132,7 @@ void viper::tui::text::PieceTable::forEachSegment(std::size_t pos, std::size_t l
         }
 
         std::size_t start_in_piece = pos > idx ? pos - idx : 0U;
-        std::size_t take = std::min(it->length - start_in_piece, len);
+        std::size_t take = (std::min)(it->length - start_in_piece, len);
         const std::string &buf = it->buf == BufferKind::Add ? add_ : original_;
         std::string_view view(buf.data() + it->start + start_in_piece, take);
         if (!std::invoke(std::forward<Fn>(fn), view))

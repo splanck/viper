@@ -19,6 +19,8 @@
 #include "rt_seq.h"
 #include "rt_string.h"
 
+#include "rt_platform.h"
+
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -26,9 +28,11 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#if !RT_PLATFORM_WINDOWS
 #include <unistd.h>
+#endif
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
 #include <io.h>
 #include <sys/utime.h>
 #define utime _utime

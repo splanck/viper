@@ -25,8 +25,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <string>
-#include <sys/wait.h>
-#include <unistd.h>
+#include "tests/common/WaitCompat.hpp"
+#include "tests/common/PosixCompat.h"
 
 namespace
 {

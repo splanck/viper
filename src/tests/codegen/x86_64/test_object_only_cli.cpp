@@ -25,7 +25,7 @@
 #include <system_error>
 
 #if !defined(_WIN32)
-#include <sys/wait.h>
+#include "tests/common/WaitCompat.hpp"
 #endif
 
 namespace

@@ -15,9 +15,19 @@
 
 #include "rt.hpp"
 #include <cassert>
+#include <cstdio>
 #include <cstring>
 #include <string>
-#include <unistd.h>
+#include "tests/common/PosixCompat.h"
+
+#ifdef _WIN32
+// This test requires overriding realloc which doesn't work with Windows DLL CRT
+int main()
+{
+    printf("Test skipped: Cannot override CRT functions on Windows DLL\n");
+    return 0;
+}
+#else
 
 static const char *g_msg = nullptr;
 
@@ -59,3 +69,4 @@ int main()
     assert(g_msg && std::strcmp(g_msg, "out of memory") == 0);
     return 0;
 }
+#endif // !_WIN32

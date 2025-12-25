@@ -132,7 +132,7 @@ class AnalysisManager
         {
             std::shared_lock<std::shared_mutex> lock(mutex_);
             assert(moduleAnalyses_ && "no module analyses registered");
-            auto it = moduleAnalyses_->find(id);
+            [[maybe_unused]] auto it = moduleAnalyses_->find(id);
             assert(it != moduleAnalyses_->end() && "unknown module analysis");
             auto cacheIt = moduleCache_.find(id);
             if (cacheIt != moduleCache_.end() && cacheIt->second.has_value())
@@ -173,7 +173,7 @@ class AnalysisManager
         {
             std::shared_lock<std::shared_mutex> lock(mutex_);
             assert(functionAnalyses_ && "no function analyses registered");
-            auto it = functionAnalyses_->find(id);
+            [[maybe_unused]] auto it = functionAnalyses_->find(id);
 #ifndef NDEBUG
             if (it == functionAnalyses_->end())
             {

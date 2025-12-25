@@ -17,6 +17,7 @@
 ///          overrides without modifying production code.
 
 #include "rt_printf_compat.h"
+#include "rt_platform.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -29,7 +30,7 @@
 /// @param fmt printf-style format string.
 /// @return Number of characters that would have been written (excluding NUL),
 ///         or a negative value on encoding error, mirroring `vsnprintf`.
-__attribute__((weak)) int rt_snprintf(char *str, size_t size, const char *fmt, ...)
+RT_WEAK int rt_snprintf(char *str, size_t size, const char *fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);

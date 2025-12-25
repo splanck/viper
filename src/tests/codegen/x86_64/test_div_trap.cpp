@@ -28,7 +28,7 @@
 #include <system_error>
 
 #ifndef _WIN32
-#include <sys/wait.h>
+#include "tests/common/WaitCompat.hpp"
 #endif
 
 namespace viper::codegen::x64

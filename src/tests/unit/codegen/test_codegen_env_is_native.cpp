@@ -92,7 +92,8 @@ TEST(EnvironmentIsNative, NativeArm64ReportsTrueWhenAvailable)
         ofs << kIlSource;
     }
 
-    const char *argv[] = {ilPath.c_str(), "-run-native"};
+    const std::string ilPathStr = ilPath.string();
+    const char *argv[] = {ilPathStr.c_str(), "-run-native"};
     const int rc = cmd_codegen_arm64(2, const_cast<char **>(argv));
     EXPECT_EQ(rc & 0xFF, 1);
 }

@@ -28,6 +28,7 @@
 
 namespace il::vm
 {
+
 /// @brief Private implementation that owns the actual VM instance.
 /// @details The façade pattern keeps the public @ref Runner interface header
 ///          light by hiding the heavy VM headers behind a unique_ptr.  The Impl
@@ -396,3 +397,9 @@ int64_t runModule(const il::core::Module &module, RunConfig config)
 }
 
 } // namespace il::vm
+
+// On Windows with static libraries, the linker may not include object files that
+// don't have unresolved symbols from previously seen objects. Including VMInit.cpp
+// here ensures the VM constructor and static initializers are always compiled into
+// the same translation unit as Runner, avoiding the need for WHOLEARCHIVE linking.
+#include "VMInit.cpp"

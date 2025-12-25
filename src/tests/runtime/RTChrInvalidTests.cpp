@@ -15,12 +15,17 @@
 
 #include "rt.hpp"
 #include <cassert>
+#include <cstdio>
 #include <string>
-#include <sys/wait.h>
-#include <unistd.h>
+#include "tests/common/WaitCompat.hpp"
+#include "tests/common/PosixCompat.h"
 
 int main()
 {
+#ifdef VIPER_NO_FORK
+    printf("Test skipped: fork() not available on Windows\n");
+    return 0;
+#endif
     int fds[2];
     assert(pipe(fds) == 0);
     pid_t pid = fork();

@@ -20,8 +20,8 @@
 #include <cassert>
 #include <cstring>
 #include <string>
-#include <sys/wait.h>
-#include <unistd.h>
+#include "tests/common/WaitCompat.hpp"
+#include "tests/common/PosixCompat.h"
 
 using il::runtime::signatures::make_signature;
 using il::runtime::signatures::SigParam;

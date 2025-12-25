@@ -10,7 +10,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
-#include <sys/wait.h>
+#include "tests/common/WaitCompat.hpp"
 #include <vector>
 
 struct RunResult
@@ -43,8 +43,9 @@ static RunResult run_process(const std::vector<std::string> &args)
     }
 
     // Redirect output to temp files
-    std::string outFile = "/tmp/test_out_" + std::to_string(rand()) + ".txt";
-    std::string errFile = "/tmp/test_err_" + std::to_string(rand()) + ".txt";
+    auto tmpDir = std::filesystem::temp_directory_path();
+    std::string outFile = (tmpDir / ("test_out_" + std::to_string(rand()) + ".txt")).string();
+    std::string errFile = (tmpDir / ("test_err_" + std::to_string(rand()) + ".txt")).string();
     cmd += " >" + outFile + " 2>" + errFile;
 
     // Run command

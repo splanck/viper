@@ -112,7 +112,8 @@ namespace il::frontends::basic::string_utils
     while (start != end && std::isspace(static_cast<unsigned char>(*(end - 1))))
         --end;
 
-    return std::string_view(start, std::distance(start, end));
+    auto len = static_cast<std::size_t>(std::distance(start, end));
+    return len > 0 ? std::string_view(&*start, len) : std::string_view{};
 }
 
 } // namespace il::frontends::basic::string_utils

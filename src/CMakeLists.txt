@@ -230,7 +230,7 @@ add_library(il_vm STATIC
         vm/DispatchStrategy.cpp
         vm/tco.cpp
         vm/debug/VM_DebugUtils.cpp
-        vm/VMInit.cpp
+        # VMInit.cpp is included directly in Runner.cpp to avoid Windows static lib linking issues
         vm/VMContext.cpp
         vm/ThreadsRuntime.cpp
         vm/debug/VMDebug.cpp
@@ -267,6 +267,7 @@ target_link_libraries(il_vm
         viper_runtime
         PRIVATE
         viper_support)
+
 
 # Enable tail-call optimisation across the VM by default.
 option(IL_VM_ENABLE_TAILCALL "Enable VM tail-call optimization by default" ON)

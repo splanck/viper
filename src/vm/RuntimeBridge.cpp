@@ -284,13 +284,13 @@ static void handleGenericTrap(TrapCtx &ctx)
 /// context in a thread-local pointer via `RuntimeBridge::call`; this hook relays
 /// the trap through `RuntimeBridge::trap` so diagnostics carry function, block,
 /// and source information.
-#if defined(__GNUC__)
+#if defined(_WIN32)
+// On Windows, vm_trap is provided by viper_runtime.lib via alternatename.
+// Tests can define their own vm_trap to override the default.
+// We don't define vm_trap here to avoid duplicate symbol errors with lld-link.
+#elif defined(__GNUC__) || defined(__clang__)
 /// @brief Weak hook allowing embedders to override VM trap behaviour.
 extern "C" __attribute__((weak)) void vm_trap(const char *msg)
-#else
-/// @brief Default implementation that records traps on the active context.
-extern "C" void vm_trap(const char *msg)
-#endif
 {
     const auto *ctx = il::vm::RuntimeBridge::activeContext();
     const char *trapMsg = msg ? msg : "trap";
@@ -304,6 +304,23 @@ extern "C" void vm_trap(const char *msg)
         std::fprintf(stderr, "%s\n", trapMsg);
     std::_Exit(1);
 }
+#else
+/// @brief Default implementation that records traps on the active context.
+extern "C" void vm_trap(const char *msg)
+{
+    const auto *ctx = il::vm::RuntimeBridge::activeContext();
+    const char *trapMsg = msg ? msg : "trap";
+    if (ctx)
+    {
+        il::vm::RuntimeBridge::trap(
+            TrapKind::DomainError, trapMsg, ctx->loc, ctx->function, ctx->block);
+        return;
+    }
+    if (trapMsg && *trapMsg)
+        std::fprintf(stderr, "%s\n", trapMsg);
+    std::_Exit(1);
+}
+#endif
 
 namespace il::vm
 {

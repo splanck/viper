@@ -39,6 +39,14 @@
 #include <sstream>
 #include <string>
 
+#ifdef _WIN32
+// Windows doesn't have setenv, use _putenv_s instead
+inline int setenv(const char *name, const char *value, int /*overwrite*/)
+{
+    return _putenv_s(name, value);
+}
+#endif
+
 using namespace il;
 using namespace il::frontends::basic;
 using namespace il::support;

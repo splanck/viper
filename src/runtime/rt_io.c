@@ -32,6 +32,8 @@
 #include "rt_output.h"
 #include "rt_string_builder.h"
 
+#include "rt_platform.h"
+
 #include <assert.h>
 #include <ctype.h>
 #include <errno.h>
@@ -42,7 +44,9 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#if !RT_PLATFORM_WINDOWS
 #include <unistd.h>
+#endif
 
 /// @brief Terminate the runtime immediately due to a fatal condition.
 /// @details Prints @p msg to stderr when provided, otherwise emits the generic
@@ -66,10 +70,27 @@ void rt_abort(const char *msg)
 ///          process with the provided diagnostic message.
 /// @param msg Optional message describing the trap condition.
 /// @return This function does not return.
-__attribute__((weak)) void vm_trap(const char *msg)
+#if RT_PLATFORM_WINDOWS
+// On Windows, define vm_trap with alternatename fallback.
+// Tests can define their own vm_trap to override this.
+// The alternatename directive provides the fallback when vm_trap is not
+// explicitly defined by the application.
+void vm_trap_default(const char *msg)
 {
     rt_abort(msg);
 }
+// Forward declare vm_trap - resolved via alternatename or by test/app definition
+extern void vm_trap(const char *msg);
+#if defined(_MSC_VER) || defined(__clang__)
+#pragma comment(linker, "/alternatename:vm_trap=vm_trap_default")
+#endif
+#else
+// On Unix, use weak linkage attribute for override capability
+RT_WEAK void vm_trap(const char *msg)
+{
+    rt_abort(msg);
+}
+#endif
 
 /// @brief Raise a runtime trap using the currently configured trap handler.
 /// @details Simply forwards the message to @ref vm_trap so that tools or

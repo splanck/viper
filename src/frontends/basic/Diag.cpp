@@ -17,6 +17,8 @@
 #include "frontends/basic/Diag.hpp"
 #include "frontends/basic/IdentifierUtil.hpp"
 
+#include <algorithm>
+
 namespace il::frontends::basic::diagx
 {
 

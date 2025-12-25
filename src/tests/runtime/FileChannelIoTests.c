@@ -17,7 +17,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/types.h>
-#include <unistd.h>
+#include "tests/common/PosixCompat.h"
 
 /// @brief End-to-end checks for channel open/read/write/close workflows.
 int main(void)

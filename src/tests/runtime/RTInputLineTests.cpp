@@ -18,7 +18,7 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
-#include <unistd.h>
+#include "tests/common/PosixCompat.h"
 
 static rt_string read_line(const std::string &data)
 {

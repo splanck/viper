@@ -12,6 +12,7 @@
 
 #include "rt_countdown.h"
 #include "rt_internal.h"
+#include "tests/common/PosixCompat.h"
 
 #include <cassert>
 #include <cstdint>

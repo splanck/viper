@@ -11,7 +11,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
-#include <sys/wait.h>
+#include "tests/common/WaitCompat.hpp"
 #include <vector>
 
 struct RunResult
@@ -34,8 +34,9 @@ static RunResult run_process(const std::vector<std::string> &args)
         else
             cmd += arg;
     }
-    std::string outFile = "/tmp/arm64_demo_out_" + std::to_string(rand()) + ".txt";
-    std::string errFile = "/tmp/arm64_demo_err_" + std::to_string(rand()) + ".txt";
+    auto tmpDir = std::filesystem::temp_directory_path();
+    std::string outFile = (tmpDir / ("arm64_demo_out_" + std::to_string(rand()) + ".txt")).string();
+    std::string errFile = (tmpDir / ("arm64_demo_err_" + std::to_string(rand()) + ".txt")).string();
     cmd += " >" + outFile + " 2>" + errFile;
     result.exit_code = std::system(cmd.c_str());
     if (result.exit_code != -1)

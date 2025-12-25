@@ -21,7 +21,7 @@
 
 namespace il::core
 {
-class Module;
+struct Module;
 } // namespace il::core
 
 namespace il::api::v2

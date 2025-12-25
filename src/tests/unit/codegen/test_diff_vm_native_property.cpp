@@ -42,7 +42,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
-#include <unistd.h>
+#include "tests/common/PosixCompat.h"
 
 using namespace viper::tests;
 using namespace viper::tools::ilc;

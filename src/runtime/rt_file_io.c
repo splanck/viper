@@ -81,8 +81,7 @@ typedef SSIZE_T ssize_t;
 #ifndef EINTR
 #define EINTR 0 // Windows doesn't have EINTR; reads/writes don't get interrupted
 #endif
-// off_t and mode_t for Windows
-typedef __int64 off_t;
+// mode_t for Windows (off_t is defined in sys/types.h as _off_t)
 typedef unsigned short mode_t;
 #else
 // POSIX systems

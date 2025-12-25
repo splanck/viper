@@ -352,7 +352,8 @@ Value lowerAsc(LowerCtx &ctx, ArrayRef<Value> args)
     return ctx.emitCallRet(Type(Type::Kind::I64), "rt_asc", callArgs, ctx.call().loc);
 }
 
-constexpr std::array<BuiltinSpec, 13> kStringBuiltins = {{{"LEN", 1, 1, &lowerLen},
+// Note: not constexpr because std::string is not constexpr in MSVC's STL
+const std::array<BuiltinSpec, 13> kStringBuiltins = {{{"LEN", 1, 1, &lowerLen},
                                                           {"MID$", 2, 3, &lowerMid},
                                                           {"LEFT$", 2, 2, &lowerLeft},
                                                           {"RIGHT$", 2, 2, &lowerRight},
