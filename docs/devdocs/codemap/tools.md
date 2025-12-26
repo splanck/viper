@@ -12,6 +12,22 @@ Command-line tools (`src/tools/`) for the Viper toolchain.
 | `usage.hpp/cpp`  | Help text and usage information        |
 | `ilc_compat.cpp` | Compatibility shim for ilc integration |
 
+### vpascal (`vpascal/`)
+
+| File             | Purpose                                 |
+|------------------|-----------------------------------------|
+| `main.cpp`       | Pascal interpreter/compiler entry point |
+| `usage.hpp/cpp`  | Help text and usage information         |
+| `ilc_compat.cpp` | Compatibility shim for ilc integration  |
+
+### viper (`viper/`)
+
+| File             | Purpose                                    |
+|------------------|--------------------------------------------|
+| `main.cpp`       | ViperLang interpreter/compiler entry point |
+| `usage.hpp/cpp`  | Help text and usage information            |
+| `ilc_compat.cpp` | Compatibility shim for ilc integration     |
+
 ### ilrun (`ilrun/`)
 
 | File             | Purpose                                |
@@ -45,6 +61,12 @@ Command-line tools (`src/tools/`) for the Viper toolchain.
 | `cmd_il_opt.cpp`            | IL optimization subcommand          |
 | `cmd_codegen_x64.hpp/cpp`   | x86-64 codegen subcommand           |
 | `cmd_codegen_arm64.hpp/cpp` | ARM64 codegen subcommand            |
+
+### rtgen (`rtgen/`)
+
+| File        | Purpose                                             |
+|-------------|-----------------------------------------------------|
+| `rtgen.cpp` | Runtime signature generator from runtime.def + headers |
 
 ## Debugging Tools
 

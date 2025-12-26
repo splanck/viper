@@ -1,7 +1,7 @@
 ---
 status: active
 audience: developers
-last-verified: 2025-11-18
+last-verified: 2025-12-26
 ---
 
 # C++ Project Overview
@@ -12,8 +12,8 @@ be treated as the source of truth for directory roles and public entry points.
 Status notes:
 
 - VM is the primary execution target used for development and testing.
-- Native backends are experimental: AArch64 has been validated by running a full Frogger demo on Apple Silicon; x86_64
-  is implemented but has not yet been tested on real x86 hardware.
+- Native backends: AArch64 validated on Apple Silicon (full Frogger demo); x86_64 validated on Windows with
+  full codegen test suite passing.
 
 ---
 
@@ -74,7 +74,7 @@ Public headers are under `include/viper/...`:
 
 ## Notes
 
-- IL version: see `src/buildmeta/IL_VERSION` (current: 0.1.2)
+- IL version: see `src/buildmeta/IL_VERSION` (current: 0.1.3)
 - Keep layering strict: frontends do not depend on VM/codegen; VM does not include codegen; codegen depends only on IL
   core/verify/support
 - See also: `/devdocs/architecture.md` for a deeper architectural discussion

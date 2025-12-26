@@ -89,7 +89,7 @@ Viper is in **early development**. All components are functional but incomplete:
 | Viper IL | Stable core; instruction set still expanding |
 | Virtual Machine | Functional with multiple dispatch strategies |
 | AArch64 Backend | Validated on Apple Silicon; actively developed |
-| x86-64 Backend | Implemented but not validated on real hardware |
+| x86-64 Backend | Validated on Windows; System V and Windows x64 ABI support |
 | Runtime Libraries | Expanding: core types, collections, I/O, text, math, graphics, input, networking, system, diagnostics, utilities, crypto, time, threads |
 | IL Optimizer | Basic passes implemented; more planned |
 | Debugger/IDE | Early work; not yet usable |

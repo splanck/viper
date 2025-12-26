@@ -10,6 +10,8 @@ Text parsing and serialization (`src/il/io/`) for IL modules.
 | `ParserState.cpp`              | Mutable parser context constructor                   |
 | `ParserUtil.cpp`               | Lexical helpers: trim, tokenize, parse literals      |
 | `FunctionParser.cpp`           | Function body parsing: headers, blocks, instructions |
+| `FunctionParser_Body.cpp`      | Function body block and instruction parsing          |
+| `FunctionParser_Prototype.cpp` | Function prototype/signature parsing                 |
 | `InstrParser.cpp`              | Individual instruction line parsing                  |
 | `ModuleParser.cpp`             | Module-level directives: il, extern, global, func    |
 | `TypeParser.cpp`               | Type mnemonic to Type object translation             |

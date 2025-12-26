@@ -17,6 +17,7 @@ IL verifier (`src/il/verify/`) enforcing spec compliance.
 | `FunctionVerifier.hpp/cpp`   | Per-function verification coordinator     |
 | `ControlFlowChecker.hpp/cpp` | Block structure and terminator validation |
 | `BranchVerifier.hpp/cpp`     | Branch successor and argument validation  |
+| `BlockMap.hpp`               | Block name to index mapping utilities     |
 
 ## Instruction Checking
 

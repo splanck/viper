@@ -24,6 +24,15 @@ Optimization passes (`src/il/transform/`) for IL programs.
 | `GVN.hpp/cpp`       | Global value numbering with load elimination   |
 | `Inline.hpp/cpp`    | Function inlining with enhanced cost model     |
 
+## Utility Passes
+
+| File                  | Purpose                                      |
+|-----------------------|----------------------------------------------|
+| `CheckOpt.hpp/cpp`    | Optimization verification and checking       |
+| `LateCleanup.hpp/cpp` | Late-stage cleanup transformations           |
+| `CallEffects.hpp`     | Call effect analysis utilities               |
+| `ValueKey.hpp/cpp`    | Value keying for CSE and GVN                 |
+
 ## Loop Passes
 
 | File                     | Purpose                                                |

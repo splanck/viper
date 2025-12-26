@@ -4,12 +4,15 @@ Runtime signature metadata (`src/il/runtime/`) for C ABI helpers.
 
 ## Signature Registry
 
-| File                             | Purpose                                                  |
-|----------------------------------|----------------------------------------------------------|
-| `RuntimeSignatures.hpp/cpp`      | Main registry mapping helper names to IL signatures      |
-| `RuntimeSignatureParser.hpp/cpp` | Parse compact ABI signature spellings                    |
-| `RuntimeSignaturesData.hpp`      | Static data bundles for signature catalog                |
-| `HelperEffects.hpp`              | Effect tags for runtime helpers (side-effects, aliasing) |
+| File                                 | Purpose                                                  |
+|--------------------------------------|----------------------------------------------------------|
+| `RuntimeSignatures.hpp/cpp`          | Main registry mapping helper names to IL signatures      |
+| `RuntimeSignatureParser.hpp/cpp`     | Parse compact ABI signature spellings                    |
+| `RuntimeSignaturesData.hpp`          | Static data bundles for signature catalog                |
+| `RuntimeSignatures_Handlers.hpp/cpp` | Runtime signature handler implementations                |
+| `HelperEffects.hpp`                  | Effect tags for runtime helpers (side-effects, aliasing) |
+| `RuntimeClassNames.hpp`              | Canonical runtime class name constants                   |
+| `RuntimeNameMap.hpp`                 | Name to runtime function mapping                         |
 
 ## Runtime Classes (`classes/`)
 

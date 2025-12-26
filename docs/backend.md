@@ -1,7 +1,7 @@
 ---
 status: active
 audience: developers
-last-updated: 2025-11-13
+last-updated: 2025-12-26
 ---
 
 # Viper Backend — Native Code Generation
@@ -12,9 +12,9 @@ and source code organization.
 
 > Status
 >
-> - AArch64: The native backend has been validated end‑to‑end on Apple Silicon by running a full “Frogger” demo.
-> - x86_64: The backend is implemented (Phase A bring‑up) but has not been tested on actual x86_64 hardware yet. Treat
-    it as experimental/unvalidated.
+> - AArch64: The native backend has been validated end‑to‑end on Apple Silicon by running a full "Frogger" demo.
+> - x86_64: The backend is implemented with both System V (Linux/macOS) and Windows x64 ABI support. Validated on
+    Windows with all codegen tests passing.
 
 ---
 
@@ -52,7 +52,7 @@ Source → Frontend → IL → Backend → Assembly → Executable
 | Feature           | Description                                              |
 |-------------------|----------------------------------------------------------|
 | **Target**        | x86-64 (AMD64) architecture                              |
-| **ABI**           | System V AMD64 calling convention                        |
+| **ABI**           | System V AMD64 (Linux/macOS) and Windows x64             |
 | **Output**        | AT&T syntax assembly (GAS-compatible)                    |
 | **Strategy**      | SSA-based with linear scan register allocation           |
 | **Pipeline**      | Multi-pass: Lowering → Selection → Allocation → Emission |
@@ -758,9 +758,12 @@ class RoDataPool {
 
 ## Calling Convention
 
+The backend supports both **System V AMD64** (Linux/macOS) and **Windows x64** calling conventions.
+The appropriate ABI is selected automatically based on the host platform.
+
 ### System V AMD64 ABI
 
-The backend implements the **System V AMD64 calling convention**:
+Used on Linux, macOS, and other Unix-like systems:
 
 **Integer/Pointer Arguments:**
 
@@ -793,6 +796,40 @@ The backend implements the **System V AMD64 calling convention**:
 
 - **Caller-saved**: `RAX`, `RCX`, `RDX`, `RSI`, `RDI`, `R8`-`R11`, `XMM0`-`XMM15`
 - **Callee-saved**: `RBX`, `RBP`, `R12`-`R15`
+
+### Windows x64 ABI
+
+Used on Windows:
+
+**Integer/Pointer Arguments:**
+
+1. `RCX`
+2. `RDX`
+3. `R8`
+4. `R9`
+5. Stack (right-to-left)
+
+**Floating-Point Arguments:**
+
+1. `XMM0`
+2. `XMM1`
+3. `XMM2`
+4. `XMM3`
+5. Stack
+
+**Return Values:**
+
+- Integer/pointer: `RAX`
+- Floating-point: `XMM0`
+
+**Caller/Callee-Saved:**
+
+- **Caller-saved**: `RAX`, `RCX`, `RDX`, `R8`-`R11`, `XMM0`-`XMM5`
+- **Callee-saved**: `RBX`, `RBP`, `RDI`, `RSI`, `R12`-`R15`, `XMM6`-`XMM15`
+
+**Shadow Space:**
+
+Windows x64 requires 32 bytes of shadow space before each call for register argument spilling.
 
 ### Call Lowering
 
@@ -1056,7 +1093,6 @@ src/codegen/
 - Profile-guided optimization (PGO)
 - Code size optimization
 - Advanced peephole passes
-- Multiple ABI support (Windows, etc.)
 
 ---
 

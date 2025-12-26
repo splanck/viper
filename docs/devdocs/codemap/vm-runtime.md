@@ -18,6 +18,7 @@ The Virtual Machine (`src/vm/`) interprets Viper IL with configurable dispatch s
 | File                       | Purpose                                               |
 |----------------------------|-------------------------------------------------------|
 | `DispatchStrategy.hpp/cpp` | Dispatch strategy selection (switch, table, threaded) |
+| `DispatchMacros.hpp`       | Dispatch macro definitions for handler generation     |
 | `OpHandlers.hpp/cpp`       | Opcode handler table construction and accessor        |
 | `OpHandlerUtils.hpp/cpp`   | Shared helpers: `storeResult`, slot manipulation      |
 | `OpHandlerAccess.hpp`      | Restricted access layer for slot read/write           |
@@ -59,7 +60,16 @@ The Virtual Machine (`src/vm/`) interprets Viper IL with configurable dispatch s
 | `Marshal.hpp/cpp`       | Slot to C ABI type marshalling             |
 | `err_bridge.hpp/cpp`    | Runtime error to VM diagnostic adapter     |
 | `Trap.hpp/cpp`          | Trap kinds and reporting                   |
+| `TrapInvariants.hpp`    | Trap invariant checking utilities          |
 | `tco.hpp/cpp`           | Tail call optimization support             |
+| `DiagFormat.hpp/cpp`    | Diagnostic message formatting              |
+| `ViperStringHandle.hpp` | String handle type for runtime interop     |
+
+## Threading
+
+| File                | Purpose                                        |
+|---------------------|------------------------------------------------|
+| `ThreadsRuntime.cpp`| Runtime threading support and synchronization  |
 
 ## Debug Infrastructure (`debug/`)
 

@@ -130,10 +130,10 @@ ctest --test-dir build -R runtime
 
 ### Source of Truth
 
-| File                                | Purpose                       |
-|-------------------------------------|-------------------------------|
-| `tools/spec/x86_64_encodings.json`  | x86-64 instruction encodings  |
-| `tools/spec/aarch64_encodings.json` | AArch64 instruction encodings |
+| File                               | Purpose                       |
+|------------------------------------|-------------------------------|
+| `docs/spec/x86_64_encodings.json`  | x86-64 instruction encodings  |
+| `docs/spec/aarch64_encodings.json` | AArch64 instruction encodings |
 
 ### Generated Files
 
@@ -181,9 +181,9 @@ macro-based** for fast iteration.
 
 ### Source of Truth
 
-| File                                        | Purpose                                |
-|---------------------------------------------|----------------------------------------|
-| `src/il/runtime/classes/RuntimeClasses.inc` | Macro-based runtime class declarations |
+| File                                          | Purpose                                |
+|-----------------------------------------------|----------------------------------------|
+| `src/il/runtime/generated/RuntimeClasses.inc` | Macro-based runtime class declarations |
 
 This file defines runtime class descriptors (String, Array, Object, etc.) using macros. It can be replaced by a
 YAML-driven generator in the future.

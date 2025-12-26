@@ -9,6 +9,7 @@ The BASIC frontend (`src/frontends/basic/`) compiles Viper BASIC source to IL.
 | `BasicCompiler.hpp/cpp`       | Main compiler pipeline: parse → fold → analyze → lower |
 | `Options.hpp/cpp`             | Compiler options and configuration                     |
 | `BasicTypes.hpp`              | BASIC type definitions and mappings                    |
+| `BasicSymbolQuery.hpp/cpp`    | Symbol lookup and query utilities                      |
 | `BasicDiagnosticMessages.hpp` | Diagnostic message templates                           |
 | `DiagnosticCodes.hpp`         | Error and warning code definitions                     |
 | `DiagnosticEmitter.hpp/cpp`   | Diagnostic output and formatting                       |
@@ -34,6 +35,15 @@ The BASIC frontend (`src/frontends/basic/`) compiles Viper BASIC source to IL.
 | `Parser_Stmt_OOP.cpp`            | OOP construct parsing                     |
 | `Parser_Stmt_Runtime.cpp`        | Runtime statement parsing                 |
 | `Parser_Token.hpp/cpp`           | Token handling utilities                  |
+
+## Symbol Tables
+
+| File                            | Purpose                                   |
+|---------------------------------|-------------------------------------------|
+| `SymbolTable.hpp/cpp`           | Variable and procedure symbol table       |
+| `StringTable.hpp/cpp`           | String literal interning table            |
+| `ProcedureSymbolTracker.hpp/cpp`| Procedure symbol tracking                 |
+| `ProcRegistry.hpp/cpp`          | Procedure registration and lookup         |
 
 ## AST (`ast/`)
 
@@ -147,6 +157,16 @@ The BASIC frontend (`src/frontends/basic/`) compiles Viper BASIC source to IL.
 | `lower/BuiltinCommon.hpp/cpp` | Common builtin lowering      |
 | `lower/common/*.cpp`          | Common lowering utilities    |
 | `lower/builtins/*.cpp`        | Builtin-specific lowering    |
+
+## Lowering Detail (`lower/detail/`)
+
+| File                           | Purpose                        |
+|--------------------------------|--------------------------------|
+| `LowererDetail.hpp`            | Internal lowerer declarations  |
+| `ControlLoweringHelper.cpp`    | Control flow lowering helpers  |
+| `ExprLoweringHelper.cpp`       | Expression lowering helpers    |
+| `OopLoweringHelper.cpp`        | OOP lowering helpers           |
+| `RuntimeLoweringHelper.cpp`    | Runtime call lowering helpers  |
 
 ## Statement Lowering
 
