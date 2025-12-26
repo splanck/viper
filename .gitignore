@@ -17,10 +17,10 @@ ipch/
 Thumbs.db
 
 # --- CMake / Ninja / Make build artifacts ---
-/build/
-/build*/
-/build-*/
-/build_*/
+build/
+build*/
+build-*/
+build_*/
 cmake-build*/
 cmake-build-*/
 CMakeFiles/
@@ -94,11 +94,11 @@ lcov.info
 ~*
 
 # --- Project-specific test/run outputs (if created) ---
-tests/**/output/
-tests/**/out/
-build/test-out/
-/*.il
-/*.s
+**/tests/**/output/
+**/tests/**/out/
+**/build/test-out/
+*.il
+*.s
 
 # --- Code mapping / analysis temp files ---
 .all_code_files.txt
@@ -116,3 +116,8 @@ __pycache__/
 *.pyc
 *.pyo
 *.egg-info/
+
+# --- OS project artifacts ---
+*.img
+*.iso
+*.bin

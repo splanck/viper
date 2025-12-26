@@ -1,0 +1,24 @@
+# macOS
+.DS_Store
+._*
+
+# Build directories
+build/
+cmake-build-*/
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+
+# Compiled objects
+*.o
+*.obj
+*.elf
+
+# Disk images (generated)
+disk.img
+
+# Tools (compiled)
+tools/mkfs.viperfs

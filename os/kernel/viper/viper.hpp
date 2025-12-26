@@ -1,0 +1,268 @@
+#pragma once
+
+/**
+ * @file viper.hpp
+ * @brief Viper process model and management API.
+ *
+ * @details
+ * A "Viper" is ViperOS' in-kernel representation of a user-space process.
+ * Each Viper owns:
+ * - An AArch64 EL0 address space (page tables + ASID).
+ * - A capability table used to authorize access to kernel objects.
+ * - A set of tasks/threads that execute within the process.
+ *
+ * The viper subsystem currently targets early bring-up and assumes a simple
+ * global implementation:
+ * - A fixed-size process table is used instead of dynamic allocation.
+ * - The "current Viper" pointer is global (not per-CPU).
+ * - Many resource limits and lifecycle transitions are tracked but not yet
+ *   fully enforced.
+ *
+ * The API in this header is used by the loader, scheduler and syscall layer to
+ * create processes, switch the current process context, and query/debug state.
+ */
+
+#include "../cap/table.hpp"
+#include "../include/types.hpp"
+
+// Forward declarations
+namespace task
+{
+struct Task;
+}
+
+namespace viper
+{
+
+/**
+ * @brief Lifecycle state of a Viper process.
+ *
+ * @details
+ * The state machine is intentionally minimal at this stage:
+ * - @ref Invalid: unused table slot; not a valid process.
+ * - @ref Creating: slot reserved and being initialized.
+ * - @ref Running: fully constructed and eligible to run tasks.
+ * - @ref Exiting: process is shutting down (future use).
+ * - @ref Zombie: exited but still present for parent inspection (future use).
+ */
+enum class ViperState : u32
+{
+    Invalid = 0,
+    Creating,
+    Running,
+    Exiting,
+    Zombie,
+};
+
+/**
+ * @brief In-kernel representation of a user-space process.
+ *
+ * @details
+ * A Viper aggregates the process-wide state required to run user-mode code:
+ * address-space identity, capability authority, process hierarchy, and basic
+ * accounting (heap break and memory usage).
+ *
+ * Most fields are managed by the viper subsystem and are not intended to be
+ * manipulated directly by unrelated subsystems. The structure is stored in a
+ * fixed-size table; pointers to a Viper remain valid until @ref destroy marks
+ * the slot invalid.
+ */
+struct Viper
+{
+    // Identity
+    u64 id;        /**< Monotonically increasing process identifier. */
+    char name[32]; /**< Human-readable name (NUL-terminated, 31 chars max). */
+
+    // Address space
+    u64 ttbr0; /**< Physical address of the user TTBR0 root page table. */
+    u16 asid;  /**< Address Space ID (ASID) used for TLB tagging. */
+
+    // Capabilities
+    cap::Table *cap_table; /**< Process capability table (owned by this Viper). */
+
+    // Tasks belonging to this Viper
+    task::Task *task_list; /**< Linked list of tasks/threads in the process. */
+    u32 task_count;        /**< Number of tasks currently associated with this Viper. */
+
+    // Process tree
+    Viper *parent;       /**< Parent process, or `nullptr` for the root process. */
+    Viper *first_child;  /**< Head of the singly-linked child list. */
+    Viper *next_sibling; /**< Next child in the parent's list. */
+
+    // State
+    ViperState state; /**< Current lifecycle state. */
+    i32 exit_code;    /**< Exit status for zombie collection (future use). */
+
+    // Heap tracking
+    u64 heap_start; /**< Base virtual address for the user heap region. */
+    u64 heap_break; /**< Current program break (end of the heap). */
+
+    // Resource limits
+    u64 memory_used;  /**< Approximate memory usage accounting (bytes). */
+    u64 memory_limit; /**< Configured memory limit for this process (bytes). */
+
+    // Global list linkage
+    Viper *next_all; /**< Next Viper in the global doubly-linked list. */
+    Viper *prev_all; /**< Previous Viper in the global doubly-linked list. */
+};
+
+/**
+ * @brief User address space layout constants.
+ *
+ * @details
+ * ViperOS uses a simple fixed virtual layout for user processes (EL0). The
+ * lower 2 GiB of virtual space are reserved for kernel identity mappings during
+ * bring-up (implemented with large 1 GiB blocks). User space begins at 2 GiB to
+ * avoid collisions with those block mappings.
+ *
+ * The layout values are used by the loader when choosing where to place PIE
+ * binaries, heap/stack regions, and when defining default process limits.
+ */
+namespace layout
+{
+// Code segment at 2GB (outside kernel's 1GB block region)
+constexpr u64 USER_CODE_BASE = 0x0000'0000'8000'0000ULL; // 2GB
+
+// Data segment at 3GB
+constexpr u64 USER_DATA_BASE = 0x0000'0000'C000'0000ULL; // 3GB
+
+// Heap starts at 4GB
+constexpr u64 USER_HEAP_BASE = 0x0000'0001'0000'0000ULL; // 4GB
+
+// Stack at top of user space (grows down)
+constexpr u64 USER_STACK_TOP = 0x0000'7FFF'FFFF'0000ULL; // ~128TB
+constexpr u64 USER_STACK_SIZE = 1 * 1024 * 1024;         // 1MB default stack
+} // namespace layout
+
+// Default limits
+/** @brief Default per-process memory limit used during bring-up. */
+constexpr u64 DEFAULT_MEMORY_LIMIT = 64 * 1024 * 1024; // 64MB
+/** @brief Default capability handle limit (not yet enforced everywhere). */
+constexpr u32 DEFAULT_HANDLE_LIMIT = 1024;
+/** @brief Maximum number of concurrently allocated Viper processes. */
+constexpr u32 MAX_VIPERS = 64;
+
+// Viper management functions
+/**
+ * @brief Initialize the viper subsystem.
+ *
+ * @details
+ * Clears the global process table, resets process IDs, and initializes the ASID
+ * allocator used by @ref AddressSpace. This must be called before creating any
+ * processes.
+ *
+ * This routine is intended to run during early kernel initialization before
+ * user processes are launched.
+ */
+void init();
+
+/**
+ * @brief Create a new Viper (user-space process).
+ *
+ * @details
+ * Allocates a slot from the fixed-size process table and initializes the
+ * process-wide resources:
+ * - A fresh user address space (new page tables + ASID).
+ * - A capability table used for handle-based access control.
+ * - Parent/child linkage in the process hierarchy.
+ *
+ * The returned pointer is stable until @ref destroy is called on the process.
+ *
+ * @param parent Parent process, or `nullptr` to create a root process.
+ * @param name Human-readable process name for diagnostics.
+ * @return Newly created Viper on success, or `nullptr` if the table is full or
+ *         resources could not be allocated.
+ */
+Viper *create(Viper *parent, const char *name);
+
+/**
+ * @brief Destroy a Viper and release its process-wide resources.
+ *
+ * @details
+ * Tears down the process address space and capability table, unlinks the
+ * process from global and parent lists, and marks the slot as invalid.
+ *
+ * Task cleanup is not fully implemented yet; callers should ensure no runnable
+ * tasks remain for the process before destroying it.
+ *
+ * @param v Process to destroy.
+ */
+void destroy(Viper *v);
+
+/**
+ * @brief Get the current process.
+ *
+ * @details
+ * Returns the viper subsystem's notion of the "current" process. During early
+ * bring-up this is stored in a single global pointer; future versions should
+ * store this per-CPU and/or per-task.
+ *
+ * @return Current Viper pointer, or `nullptr` if none is set.
+ */
+Viper *current();
+
+/**
+ * @brief Set the current process.
+ *
+ * @details
+ * Updates the global "current Viper" pointer. This does not automatically
+ * perform an address-space switch; users should call
+ * @ref get_address_space and @ref switch_address_space as appropriate.
+ *
+ * @param v Process to mark as current (may be `nullptr`).
+ */
+void set_current(Viper *v);
+
+/**
+ * @brief Find a process by its numeric ID.
+ *
+ * @details
+ * Searches the global list of active processes. Invalid table slots are not
+ * returned.
+ *
+ * @param id Process identifier.
+ * @return Pointer to the matching Viper, or `nullptr` if not found.
+ */
+Viper *find(u64 id);
+
+// Debug
+/**
+ * @brief Print a human-readable summary of a Viper to the serial console.
+ *
+ * @details
+ * This routine is intended for diagnostics and debugging. It prints the
+ * process name, ID, state, address-space identifiers, and basic accounting
+ * information.
+ *
+ * @param v Process to print, or `nullptr` to print a placeholder.
+ */
+void print_info(Viper *v);
+
+/**
+ * @brief Get the capability table of the current process.
+ *
+ * @details
+ * Convenience wrapper that returns `current()->cap_table`. If no current
+ * process is set, returns `nullptr`.
+ *
+ * @return Pointer to the current process's capability table, or `nullptr`.
+ */
+cap::Table *current_cap_table();
+
+// Get address space for a Viper
+class AddressSpace;
+
+/**
+ * @brief Get the AddressSpace object for a process.
+ *
+ * @details
+ * The viper subsystem stores AddressSpace objects in a parallel array indexed
+ * by the process slot. This accessor resolves the given Viper pointer back to
+ * its table index and returns a pointer to the corresponding AddressSpace.
+ *
+ * @param v Process whose address space should be returned.
+ * @return AddressSpace pointer on success, or `nullptr` if `v` is invalid.
+ */
+AddressSpace *get_address_space(Viper *v);
+
+} // namespace viper

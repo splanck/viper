@@ -1,0 +1,2905 @@
+/**
+ * @file vinit.cpp
+ * @brief ViperOS init process (`vinit`) with a minimal built-in shell.
+ *
+ * @details
+ * `vinit` is intended to be the first user-space process started by the kernel.
+ * In the current bring-up environment it provides:
+ * - A basic interactive command loop (shell) for debugging and demos.
+ * - Simple utilities to exercise syscalls (filesystem, memory info, task list,
+ *   networking, and TLS).
+ *
+ * The code is intentionally freestanding and self-contained: it does not rely
+ * on a hosted C/C++ runtime or libc. Instead it uses the thin syscall wrappers
+ * in `user/syscall.hpp` and provides minimal helpers for strings and memory
+ * movement where needed.
+ *
+ * Design notes:
+ * - The shell is "Amiga-inspired" (commands like `Dir`, `List`, `Assign`).
+ * - Line editing is implemented directly using ANSI escape sequences and a
+ *   small in-memory history ring.
+ * - Error handling is best-effort and focuses on providing useful feedback
+ *   during OS bring-up rather than strict POSIX behavior.
+ */
+
+#include "../syscall.hpp"
+
+/** @name Small string helpers
+ *  @brief Minimal string primitives for a freestanding environment.
+ *  @{
+ */
+
+/**
+ * @brief Compute the length of a NUL-terminated string.
+ *
+ * @details
+ * This is a minimal replacement for `strlen(3)` and performs a linear scan
+ * until the first `\\0` byte is found.
+ *
+ * @param s Pointer to a NUL-terminated string.
+ * @return Number of bytes before the terminating NUL.
+ */
+usize strlen(const char *s)
+{
+    usize len = 0;
+    while (s[len])
+        len++;
+    return len;
+}
+
+/**
+ * @brief Compare two strings for exact equality.
+ *
+ * @details
+ * Performs a byte-wise comparison and returns true only if both strings have
+ * identical content and terminate at the same time.
+ *
+ * @param a First NUL-terminated string.
+ * @param b Second NUL-terminated string.
+ * @return True if both strings are identical.
+ */
+bool streq(const char *a, const char *b)
+{
+    while (*a && *b)
+    {
+        if (*a != *b)
+            return false;
+        a++;
+        b++;
+    }
+    return *a == *b;
+}
+
+/**
+ * @brief Test whether a string starts with a given prefix (case-sensitive).
+ *
+ * @details
+ * Returns true if `prefix` is empty or if every character of `prefix` matches
+ * the corresponding character in `s`.
+ *
+ * @param s NUL-terminated input string.
+ * @param prefix NUL-terminated prefix to match.
+ * @return True if `s` begins with `prefix`.
+ */
+bool strstart(const char *s, const char *prefix)
+{
+    while (*prefix)
+    {
+        if (*s != *prefix)
+            return false;
+        s++;
+        prefix++;
+    }
+    return true;
+}
+
+/** @} */
+
+/** @name Console output helpers
+ *  @brief Thin wrappers around the syscall console/debug APIs.
+ *  @{
+ */
+
+/**
+ * @brief Write a NUL-terminated string to the debug console.
+ *
+ * @details
+ * This uses the kernel debug print syscall. The string is written exactly as
+ * provided; callers are responsible for including any desired newline
+ * characters.
+ *
+ * @param s NUL-terminated string to print.
+ */
+void puts(const char *s)
+{
+    sys::print(s);
+}
+
+/**
+ * @brief Write a single character to the console.
+ *
+ * @details
+ * This uses the kernel character output syscall. It is used heavily by the
+ * line editor to emit ANSI escape sequences and backspaces.
+ *
+ * @param c Character to print.
+ */
+void putchar(char c)
+{
+    sys::putchar(c);
+}
+
+/**
+ * @brief Print a signed integer in decimal.
+ *
+ * @details
+ * Converts the number to ASCII in a small stack buffer and prints it using
+ * @ref puts. No trailing newline is added.
+ *
+ * @param n Number to print.
+ */
+void put_num(i64 n)
+{
+    char buf[32];
+    char *p = buf + 31;
+    *p = '\0';
+
+    bool neg = false;
+    if (n < 0)
+    {
+        neg = true;
+        n = -n;
+    }
+
+    do
+    {
+        *--p = '0' + (n % 10);
+        n /= 10;
+    } while (n > 0);
+
+    if (neg)
+        *--p = '-';
+
+    puts(p);
+}
+
+/**
+ * @brief Print a 32-bit integer in hexadecimal with `0x` prefix.
+ *
+ * @details
+ * This helper is primarily used for displaying handle values and rights masks
+ * while debugging the capability system. Output uses lowercase digits.
+ *
+ * @param n Value to print.
+ */
+void put_hex(u32 n)
+{
+    puts("0x");
+    char buf[16];
+    char *p = buf + 15;
+    *p = '\0';
+
+    do
+    {
+        int digit = n & 0xF;
+        *--p = (digit < 10) ? ('0' + digit) : ('a' + digit - 10);
+        n >>= 4;
+    } while (n > 0);
+
+    puts(p);
+}
+
+/** @} */
+
+/** @name Minimal memory routines
+ *  @brief Small freestanding replacements for common libc primitives.
+ *  @{
+ */
+
+/**
+ * @brief Copy bytes from `src` to `dst` (non-overlapping).
+ *
+ * @details
+ * This is a simple byte loop intended for small buffers. If the source and
+ * destination ranges overlap, behavior is the same as a naive byte copy and is
+ * not guaranteed to match `memmove(3)` semantics.
+ *
+ * @param dst Destination pointer.
+ * @param src Source pointer.
+ * @param n Number of bytes to copy.
+ * @return `dst`.
+ */
+void *memcpy(void *dst, const void *src, usize n)
+{
+    char *d = static_cast<char *>(dst);
+    const char *s = static_cast<const char *>(src);
+    while (n--)
+        *d++ = *s++;
+    return dst;
+}
+
+/**
+ * @brief Copy bytes from `src` to `dst`, handling overlap safely.
+ *
+ * @details
+ * If the ranges overlap and `dst` is above `src`, the copy proceeds backwards
+ * to avoid clobbering bytes that have not yet been copied.
+ *
+ * @param dst Destination pointer.
+ * @param src Source pointer.
+ * @param n Number of bytes to move.
+ * @return `dst`.
+ */
+void *memmove(void *dst, const void *src, usize n)
+{
+    char *d = static_cast<char *>(dst);
+    const char *s = static_cast<const char *>(src);
+    if (d < s)
+    {
+        while (n--)
+            *d++ = *s++;
+    }
+    else if (d > s)
+    {
+        d += n;
+        s += n;
+        while (n--)
+            *--d = *--s;
+    }
+    return dst;
+}
+
+/** @} */
+
+/**
+ * @brief Redraw the portion of the input line from `pos` to the end.
+ *
+ * @details
+ * The line editor maintains an input buffer plus a cursor index. When the user
+ * inserts or deletes characters in the middle of the line, the terminal needs
+ * to be updated to reflect the new tail of the buffer.
+ *
+ * This helper:
+ * 1. Prints the characters from `pos` to `len`.
+ * 2. Prints a trailing space to erase a leftover character when shrinking.
+ * 3. Emits backspaces to return the cursor to the logical `pos`.
+ *
+ * @param buf Input buffer.
+ * @param len Current buffer length.
+ * @param pos Cursor position within the buffer.
+ */
+static void redraw_line_from(const char *buf, usize len, usize pos)
+{
+    // Print characters from pos to end
+    for (usize i = pos; i < len; i++)
+    {
+        putchar(buf[i]);
+    }
+    // Clear one extra char in case we deleted
+    putchar(' ');
+    // Move cursor back to current position
+    for (usize i = len + 1; i > pos; i--)
+    {
+        putchar('\b');
+    }
+}
+
+/**
+ * @brief Move the terminal cursor left by `n` columns.
+ *
+ * @details
+ * Emits the ANSI escape sequence `ESC[D` `n` times. This is used by the line
+ * editor to reposition the cursor for insert/delete operations.
+ *
+ * @param n Number of columns to move left.
+ */
+static void cursor_left(usize n)
+{
+    while (n--)
+    {
+        puts("\033[D");
+    }
+}
+
+/**
+ * @brief Move the terminal cursor right by `n` columns.
+ *
+ * @details
+ * Emits the ANSI escape sequence `ESC[C` `n` times.
+ *
+ * @param n Number of columns to move right.
+ */
+static void cursor_right(usize n)
+{
+    while (n--)
+    {
+        puts("\033[C");
+    }
+}
+
+/** @name Command history
+ *  @brief Simple in-memory history ring used by the line editor.
+ *  @{
+ */
+
+/** @brief Maximum number of commands stored in history. */
+constexpr usize HISTORY_SIZE = 16;
+/** @brief Maximum length of each stored history line, including the terminating NUL. */
+constexpr usize HISTORY_LINE_LEN = 256;
+/** @brief Circular history buffer storing the last @ref HISTORY_SIZE lines. */
+static char history[HISTORY_SIZE][HISTORY_LINE_LEN];
+/** @brief Total number of commands ever recorded (monotonic counter). */
+static usize history_count = 0;
+/** @brief Current index used when navigating history with up/down arrows. */
+static usize history_index = 0;
+
+/**
+ * @brief Append a line to the history ring.
+ *
+ * @details
+ * - Empty lines are ignored.
+ * - If the new line matches the most recent entry, it is not duplicated.
+ * - When the ring is full, the oldest entry is overwritten.
+ *
+ * @param line NUL-terminated command line to store.
+ */
+static void history_add(const char *line)
+{
+    if (strlen(line) == 0)
+        return;
+
+    // Don't add duplicates of the last command
+    if (history_count > 0)
+    {
+        usize last = (history_count - 1) % HISTORY_SIZE;
+        if (streq(history[last], line))
+            return;
+    }
+
+    // Copy to history buffer
+    usize idx = history_count % HISTORY_SIZE;
+    usize i = 0;
+    for (; line[i] && i < HISTORY_LINE_LEN - 1; i++)
+    {
+        history[idx][i] = line[i];
+    }
+    history[idx][i] = '\0';
+    history_count++;
+}
+
+/**
+ * @brief Get a history entry by absolute index.
+ *
+ * @details
+ * `history_count` is a monotonic counter. This function treats `index` as an
+ * absolute position in that count (0-based) and maps it into the circular
+ * storage. Entries older than the ring capacity are considered unavailable.
+ *
+ * @param index Absolute command index (0-based).
+ * @return Pointer to the stored line, or `nullptr` if the entry is not available.
+ */
+static const char *history_get(usize index)
+{
+    if (index >= history_count)
+        return nullptr;
+    // Calculate actual index in circular buffer
+    usize first = (history_count > HISTORY_SIZE) ? (history_count - HISTORY_SIZE) : 0;
+    if (index < first)
+        return nullptr;
+    return history[index % HISTORY_SIZE];
+}
+
+/**
+ * @brief Replace the current editable line buffer with new content.
+ *
+ * @details
+ * This is used for history navigation and tab completion. It performs both the
+ * terminal update (clearing/redrawing the line) and the buffer update:
+ * - Moves the cursor back to the beginning of the current line.
+ * - Overwrites the displayed characters with spaces.
+ * - Copies `newline` into `buf` and prints it.
+ * - Updates `len` and `pos` to the end of the new line.
+ *
+ * @param buf Editable line buffer to update.
+ * @param len In/out pointer to current line length.
+ * @param pos In/out pointer to current cursor position.
+ * @param newline NUL-terminated replacement line content.
+ */
+static void replace_line(char *buf, usize *len, usize *pos, const char *newline)
+{
+    // Move cursor to start
+    cursor_left(*pos);
+    // Clear the line
+    for (usize i = 0; i < *len; i++)
+        putchar(' ');
+    cursor_left(*len);
+    // Copy new line
+    *len = 0;
+    *pos = 0;
+    for (usize i = 0; newline[i] && i < 255; i++)
+    {
+        buf[i] = newline[i];
+        putchar(newline[i]);
+        (*len)++;
+        (*pos)++;
+    }
+    buf[*len] = '\0';
+}
+
+/** @} */
+
+/** @name Shell return codes
+ *  @brief Amiga-style numeric return codes used for user feedback.
+ *  @{
+ */
+
+/**
+ * @brief Return codes used by shell commands.
+ *
+ * @details
+ * These values mirror the classic AmigaDOS convention where non-zero return
+ * codes are grouped by severity.
+ */
+enum ReturnCode
+{
+    RC_OK = 0,     /**< Success. */
+    RC_WARN = 5,   /**< Non-fatal issue; command produced a warning. */
+    RC_ERROR = 10, /**< Command failed due to an error. */
+    RC_FAIL = 20,  /**< Severe failure; the requested operation could not proceed. */
+};
+
+/** @brief Return code from the last executed command. */
+static int last_rc = RC_OK;
+/** @brief Optional human-readable explanation for the last error. */
+static const char *last_error = nullptr;
+/** @} */
+
+/**
+ * @brief Current directory string shown in the shell prompt.
+ *
+ * @details
+ * This is currently a cosmetic prompt prefix. The bring-up filesystem API in
+ * `vinit` primarily uses absolute paths or assign-prefixed paths.
+ */
+static char current_dir[256] = "SYS:";
+
+/**
+ * @brief Built-in command names used for tab completion.
+ *
+ * @details
+ * Tab completion in the line editor is intentionally simple: it completes only
+ * the first word (the command name) and does not attempt to complete paths.
+ */
+static const char *commands[] = {"Assign",  "Avail", "Caps", "Cls",      "Copy",    "Date",
+                                 "Delete",  "Dir",   "Echo", "EndShell", "Fetch",   "Help",
+                                 "History", "Info",  "List", "MakeDir",  "Path",    "Rename",
+                                 "Status",  "Time",  "Type", "Uptime",   "Version", "Why"};
+static const usize num_commands = sizeof(commands) / sizeof(commands[0]);
+
+/**
+ * @brief Compute the length of the common prefix of two strings.
+ *
+ * @details
+ * Used by tab completion to extend the input buffer to the longest shared
+ * prefix among multiple matches.
+ *
+ * @param a First NUL-terminated string.
+ * @param b Second NUL-terminated string.
+ * @return Number of leading characters that are equal in both strings.
+ */
+static usize common_prefix(const char *a, const char *b)
+{
+    usize i = 0;
+    while (a[i] && b[i] && a[i] == b[i])
+        i++;
+    return i;
+}
+
+/**
+ * @brief Read an input line from the console with basic line editing.
+ *
+ * @details
+ * Provides a small interactive editor suitable for a serial console:
+ * - Printable characters are inserted at the current cursor position.
+ * - Backspace deletes the character before the cursor.
+ * - Left/Right arrows move the cursor.
+ * - Home/End jump to start/end of the line.
+ * - Delete removes the character at the cursor.
+ * - Up/Down arrows navigate the in-memory command history.
+ * - Tab performs simple command-name completion based on @ref commands.
+ * - Ctrl+C cancels input and returns an empty line.
+ * - Ctrl+U clears the whole line; Ctrl+K clears from cursor to end.
+ *
+ * The function stops when the user presses Enter or the buffer is full. The
+ * resulting buffer is always NUL-terminated.
+ *
+ * @param buf Destination buffer to receive the line.
+ * @param maxlen Size of `buf` in bytes (including space for the NUL terminator).
+ * @return Number of characters stored in `buf` (excluding the terminating NUL).
+ */
+usize readline(char *buf, usize maxlen)
+{
+    usize len = 0; // Total length of input
+    usize pos = 0; // Cursor position
+
+    // Save current line for history navigation
+    static char saved_line[256];
+    saved_line[0] = '\0';
+    history_index = history_count; // Start at end (current input)
+
+    while (len < maxlen - 1)
+    {
+        char c = sys::getchar();
+
+        // Handle escape sequences
+        if (c == '\033')
+        {
+            char c2 = sys::getchar();
+            if (c2 == '[')
+            {
+                char c3 = sys::getchar();
+                switch (c3)
+                {
+                    case 'A': // Up arrow - previous history
+                        if (history_index > 0)
+                        {
+                            // Save current line if we're starting navigation
+                            if (history_index == history_count && len > 0)
+                            {
+                                for (usize i = 0; i <= len; i++)
+                                    saved_line[i] = buf[i];
+                            }
+                            history_index--;
+                            usize first =
+                                (history_count > HISTORY_SIZE) ? (history_count - HISTORY_SIZE) : 0;
+                            if (history_index >= first)
+                            {
+                                const char *hist = history_get(history_index);
+                                if (hist)
+                                    replace_line(buf, &len, &pos, hist);
+                            }
+                        }
+                        break;
+                    case 'B': // Down arrow - next history
+                        if (history_index < history_count)
+                        {
+                            history_index++;
+                            if (history_index == history_count)
+                            {
+                                // Restore saved line
+                                replace_line(buf, &len, &pos, saved_line);
+                            }
+                            else
+                            {
+                                const char *hist = history_get(history_index);
+                                if (hist)
+                                    replace_line(buf, &len, &pos, hist);
+                            }
+                        }
+                        break;
+                    case 'C': // Right arrow
+                        if (pos < len)
+                        {
+                            cursor_right(1);
+                            pos++;
+                        }
+                        break;
+                    case 'D': // Left arrow
+                        if (pos > 0)
+                        {
+                            cursor_left(1);
+                            pos--;
+                        }
+                        break;
+                    case 'H': // Home
+                        cursor_left(pos);
+                        pos = 0;
+                        break;
+                    case 'F': // End
+                        cursor_right(len - pos);
+                        pos = len;
+                        break;
+                    case '3':               // Delete key (followed by ~)
+                        c = sys::getchar(); // consume '~'
+                        if (pos < len)
+                        {
+                            memmove(buf + pos, buf + pos + 1, len - pos);
+                            len--;
+                            redraw_line_from(buf, len, pos);
+                        }
+                        break;
+                    case '5':           // Page Up (ignore)
+                    case '6':           // Page Down (ignore)
+                        sys::getchar(); // consume '~'
+                        break;
+                }
+                continue;
+            }
+            // Unknown escape sequence, ignore
+            continue;
+        }
+
+        if (c == '\r' || c == '\n')
+        {
+            putchar('\r');
+            putchar('\n');
+            break;
+        }
+
+        if (c == 127 || c == '\b')
+        { // Backspace
+            if (pos > 0)
+            {
+                pos--;
+                memmove(buf + pos, buf + pos + 1, len - pos);
+                len--;
+                putchar('\b');
+                redraw_line_from(buf, len, pos);
+            }
+            continue;
+        }
+
+        if (c == 3)
+        { // Ctrl+C
+            puts("^C\n");
+            len = 0;
+            pos = 0;
+            break;
+        }
+
+        if (c == 1)
+        { // Ctrl+A (Home)
+            cursor_left(pos);
+            pos = 0;
+            continue;
+        }
+
+        if (c == 5)
+        { // Ctrl+E (End)
+            cursor_right(len - pos);
+            pos = len;
+            continue;
+        }
+
+        if (c == 21)
+        { // Ctrl+U (kill line)
+            cursor_left(pos);
+            for (usize i = 0; i < len; i++)
+                putchar(' ');
+            cursor_left(len);
+            len = 0;
+            pos = 0;
+            continue;
+        }
+
+        if (c == 11)
+        { // Ctrl+K (kill to end)
+            for (usize i = pos; i < len; i++)
+                putchar(' ');
+            cursor_left(len - pos);
+            len = pos;
+            continue;
+        }
+
+        if (c == '\t')
+        { // Tab completion
+            buf[len] = '\0';
+            // Only complete if at start of line (command completion)
+            // Find matching commands
+            const char *first_match = nullptr;
+            usize match_count = 0;
+            usize prefix_len = 0;
+
+            for (usize i = 0; i < num_commands; i++)
+            {
+                if (strstart(commands[i], buf))
+                {
+                    if (match_count == 0)
+                    {
+                        first_match = commands[i];
+                        prefix_len = strlen(commands[i]);
+                    }
+                    else
+                    {
+                        // Find common prefix with previous matches
+                        prefix_len = common_prefix(first_match, commands[i]);
+                        if (prefix_len < len)
+                            prefix_len = len;
+                    }
+                    match_count++;
+                }
+            }
+
+            if (match_count == 1)
+            {
+                // Single match - complete it
+                replace_line(buf, &len, &pos, first_match);
+            }
+            else if (match_count > 1)
+            {
+                // Multiple matches - complete common prefix and show options
+                if (prefix_len > len)
+                {
+                    // Extend to common prefix
+                    for (usize i = len; i < prefix_len; i++)
+                    {
+                        buf[i] = first_match[i];
+                        putchar(first_match[i]);
+                    }
+                    len = prefix_len;
+                    pos = len;
+                    buf[len] = '\0';
+                }
+                else
+                {
+                    // Show all matches
+                    puts("\n");
+                    for (usize i = 0; i < num_commands; i++)
+                    {
+                        if (strstart(commands[i], buf))
+                        {
+                            puts(commands[i]);
+                            puts("  ");
+                        }
+                    }
+                    puts("\n");
+                    puts(current_dir);
+                    puts("> ");
+                    for (usize i = 0; i < len; i++)
+                        putchar(buf[i]);
+                    pos = len;
+                }
+            }
+            continue;
+        }
+
+        if (c >= 32 && c < 127)
+        { // Printable
+            if (len >= maxlen - 1)
+                continue;
+            // Insert at cursor position
+            memmove(buf + pos + 1, buf + pos, len - pos);
+            buf[pos] = c;
+            len++;
+            // Print char and rest of line
+            putchar(c);
+            pos++;
+            if (pos < len)
+            {
+                redraw_line_from(buf, len, pos);
+            }
+        }
+    }
+
+    buf[len] = '\0';
+    return len;
+}
+
+/**
+ * @brief Compare two strings for equality (ASCII case-insensitive).
+ *
+ * @details
+ * This helper performs a simple ASCII-only case fold for characters A–Z by
+ * converting them to a–z. It does not perform locale-aware or Unicode-aware
+ * case mapping.
+ *
+ * @param a First NUL-terminated string.
+ * @param b Second NUL-terminated string.
+ * @return True if the strings are equal when compared case-insensitively.
+ */
+bool strcaseeq(const char *a, const char *b)
+{
+    while (*a && *b)
+    {
+        char ca = (*a >= 'A' && *a <= 'Z') ? (*a + 32) : *a;
+        char cb = (*b >= 'A' && *b <= 'Z') ? (*b + 32) : *b;
+        if (ca != cb)
+            return false;
+        a++;
+        b++;
+    }
+    return *a == *b;
+}
+
+/**
+ * @brief Test whether `s` starts with `prefix` (ASCII case-insensitive).
+ *
+ * @details
+ * Like @ref strcaseeq, this is ASCII-only and intended for matching shell
+ * commands regardless of capitalization.
+ *
+ * @param s NUL-terminated input string.
+ * @param prefix NUL-terminated prefix string.
+ * @return True if `s` begins with `prefix` (case-insensitive).
+ */
+bool strcasestart(const char *s, const char *prefix)
+{
+    while (*prefix)
+    {
+        char cs = (*s >= 'A' && *s <= 'Z') ? (*s + 32) : *s;
+        char cp = (*prefix >= 'A' && *prefix <= 'Z') ? (*prefix + 32) : *prefix;
+        if (cs != cp)
+            return false;
+        s++;
+        prefix++;
+    }
+    return true;
+}
+
+/** @name Built-in shell commands
+ *  @brief Command handlers invoked by the main shell loop.
+ *
+ *  @details
+ *  Each `cmd_*` function implements one shell command. Commands typically
+ *  update @ref last_rc and @ref last_error to support the `Why` command.
+ *  @{
+ */
+
+/**
+ * @brief Print the built-in help text.
+ *
+ * @details
+ * Displays available commands, expected arguments, and a short reminder of the
+ * line editing keys supported by @ref readline.
+ */
+void cmd_help()
+{
+    puts("\nViperOS Shell Commands:\n\n");
+    puts("  Dir [path]     - Brief directory listing\n");
+    puts("  List [path]    - Detailed directory listing\n");
+    puts("  Type <file>    - Display file contents\n");
+    puts("  Copy           - Copy files\n");
+    puts("  Delete         - Delete files/directories\n");
+    puts("  MakeDir        - Create directory\n");
+    puts("  Rename         - Rename files\n");
+    puts("  Cls            - Clear screen\n");
+    puts("  Echo [text]    - Print text\n");
+    puts("  Fetch <host>   - Fetch webpage (HTTP/HTTPS)\n");
+    puts("  Version        - Show system version\n");
+    puts("  Uptime         - Show system uptime\n");
+    puts("  Avail          - Show memory availability\n");
+    puts("  Status         - Show running tasks\n");
+    puts("  Caps [handle]  - Show capabilities (derive/revoke test)\n");
+    puts("  Date           - Show current date\n");
+    puts("  Time           - Show current time\n");
+    puts("  Assign         - Manage logical devices\n");
+    puts("  Path           - Manage command path\n");
+    puts("  History        - Show command history\n");
+    puts("  Why            - Explain last error\n");
+    puts("  Help           - Show this help\n");
+    puts("  EndShell       - Exit shell\n");
+    puts("\nReturn Codes: OK=0, WARN=5, ERROR=10, FAIL=20\n");
+    puts("\nLine Editing:\n");
+    puts("  Left/Right     - Move cursor\n");
+    puts("  Up/Down        - History navigation\n");
+    puts("  Home/End       - Jump to start/end\n");
+    puts("  Tab            - Command completion\n");
+    puts("  Ctrl+U         - Clear line\n");
+    puts("  Ctrl+K         - Kill to end\n");
+    puts("\n");
+}
+
+/**
+ * @brief Print the current command history buffer.
+ *
+ * @details
+ * Iterates over the history ring and prints commands in chronological order
+ * (oldest available to newest). This is primarily useful for debugging the
+ * line editor and for user convenience.
+ */
+void cmd_history()
+{
+    usize first = (history_count > HISTORY_SIZE) ? (history_count - HISTORY_SIZE) : 0;
+    for (usize i = first; i < history_count; i++)
+    {
+        puts("  ");
+        put_num(static_cast<i64>(i + 1));
+        puts("  ");
+        puts(history_get(i));
+        puts("\n");
+    }
+}
+
+/**
+ * @brief Clear the screen using ANSI escape sequences.
+ *
+ * @details
+ * Sends `ESC[2J` (clear screen) and `ESC[H` (home cursor) to the console.
+ * This assumes the console understands a basic ANSI/VT100 subset.
+ */
+void cmd_cls()
+{
+    // ANSI escape sequence to clear screen
+    puts("\033[2J\033[H");
+    last_rc = RC_OK;
+}
+
+/**
+ * @brief Echo the provided arguments back to the console.
+ *
+ * @details
+ * If `args` is null, prints only a newline. This is a minimal diagnostic
+ * command useful for testing console output and line parsing.
+ *
+ * @param args Pointer to the argument substring (may be null).
+ */
+void cmd_echo(const char *args)
+{
+    if (args)
+    {
+        puts(args);
+    }
+    puts("\n");
+    last_rc = RC_OK;
+}
+
+/**
+ * @brief Print the ViperOS version banner.
+ *
+ * @details
+ * This command prints a static version string and platform identifier. It does
+ * not currently query the kernel for build information; it is updated manually
+ * as part of bring-up.
+ */
+void cmd_version()
+{
+    puts("ViperOS 0.2.0 (December 2025)\n");
+    puts("Platform: AArch64\n");
+    last_rc = RC_OK;
+}
+
+/**
+ * @brief Display the system uptime in human-readable form.
+ *
+ * @details
+ * Calls the `SYS_UPTIME` syscall (via @ref sys::uptime) to get a monotonic tick
+ * count, interprets it as milliseconds, and prints a days/hours/minutes/seconds
+ * breakdown. If the kernel changes the unit of `SYS_UPTIME`, this output would
+ * need to be updated accordingly.
+ */
+void cmd_uptime()
+{
+    u64 ms = sys::uptime();
+    u64 secs = ms / 1000;
+    u64 mins = secs / 60;
+    u64 hours = mins / 60;
+    u64 days = hours / 24;
+
+    puts("Uptime: ");
+    if (days > 0)
+    {
+        put_num(static_cast<i64>(days));
+        puts(" day");
+        if (days != 1)
+            puts("s");
+        puts(", ");
+    }
+    if (hours > 0 || days > 0)
+    {
+        put_num(static_cast<i64>(hours % 24));
+        puts(" hour");
+        if ((hours % 24) != 1)
+            puts("s");
+        puts(", ");
+    }
+    put_num(static_cast<i64>(mins % 60));
+    puts(" minute");
+    if ((mins % 60) != 1)
+        puts("s");
+    puts(", ");
+    put_num(static_cast<i64>(secs % 60));
+    puts(" second");
+    if ((secs % 60) != 1)
+        puts("s");
+    puts("\n");
+    last_rc = RC_OK;
+}
+
+/**
+ * @brief Explain the most recent command error.
+ *
+ * @details
+ * The shell stores a "last return code" and optional string explanation after
+ * each command. `Why` prints those values in a user-friendly form to help
+ * diagnose failures.
+ */
+void cmd_why()
+{
+    if (last_rc == RC_OK)
+    {
+        puts("No error.\n");
+    }
+    else
+    {
+        puts("Last return code: ");
+        put_num(last_rc);
+        if (last_error)
+        {
+            puts(" - ");
+            puts(last_error);
+        }
+        puts("\n");
+    }
+}
+
+/**
+ * @brief Show physical memory availability information.
+ *
+ * @details
+ * Calls `SYS_MEM_INFO` and prints a table similar to AmigaOS `Avail`. The
+ * kernel provides page and byte counts; this command formats them into KiB for
+ * readability and also prints page-level statistics.
+ */
+void cmd_avail()
+{
+    MemInfo info;
+    if (sys::mem_info(&info) != 0)
+    {
+        puts("AVAIL: Failed to get memory info\n");
+        last_rc = RC_ERROR;
+        last_error = "Memory info syscall failed";
+        return;
+    }
+
+    puts("\nType      Available         In-Use          Total\n");
+    puts("-------  ----------     ----------     ----------\n");
+
+    // Display memory in KB for readability
+    u64 free_kb = info.free_bytes / 1024;
+    u64 used_kb = info.used_bytes / 1024;
+    u64 total_kb = info.total_bytes / 1024;
+
+    puts("chip     ");
+
+    // Free KB (right-aligned in 10 chars)
+    char buf[16];
+    int pos = 0;
+    u64 n = free_kb;
+    do
+    {
+        buf[pos++] = '0' + (n % 10);
+        n /= 10;
+    } while (n > 0);
+    for (int i = pos; i < 10; i++)
+        putchar(' ');
+    while (pos > 0)
+        putchar(buf[--pos]);
+    puts(" K   ");
+
+    // Used KB
+    n = used_kb;
+    pos = 0;
+    do
+    {
+        buf[pos++] = '0' + (n % 10);
+        n /= 10;
+    } while (n > 0);
+    for (int i = pos; i < 10; i++)
+        putchar(' ');
+    while (pos > 0)
+        putchar(buf[--pos]);
+    puts(" K   ");
+
+    // Total KB
+    n = total_kb;
+    pos = 0;
+    do
+    {
+        buf[pos++] = '0' + (n % 10);
+        n /= 10;
+    } while (n > 0);
+    for (int i = pos; i < 10; i++)
+        putchar(' ');
+    while (pos > 0)
+        putchar(buf[--pos]);
+    puts(" K\n");
+
+    puts("\n");
+
+    // Show page info
+    puts("Memory: ");
+    put_num(static_cast<i64>(info.free_pages));
+    puts(" pages free (");
+    put_num(static_cast<i64>(info.total_pages));
+    puts(" total, ");
+    put_num(static_cast<i64>(info.page_size));
+    puts(" bytes/page)\n");
+
+    last_rc = RC_OK;
+}
+
+/**
+ * @brief Display a snapshot of running tasks/processes.
+ *
+ * @details
+ * Calls `SYS_TASK_LIST` to request an array of @ref TaskInfo entries and then
+ * prints a small status table including task ID, state, priority, name, and
+ * some flags.
+ *
+ * Depending on kernel maturity, `SYS_TASK_LIST` may be unimplemented; in that
+ * case this command will report failure.
+ */
+void cmd_status()
+{
+    TaskInfo tasks[16];
+    i32 count = sys::task_list(tasks, 16);
+
+    if (count < 0)
+    {
+        puts("STATUS: Failed to get task list\n");
+        last_rc = RC_ERROR;
+        last_error = "Task list syscall failed";
+        return;
+    }
+
+    puts("\nProcess Status:\n\n");
+    puts("  ID  State     Pri  Name\n");
+    puts("  --  --------  ---  --------------------------------\n");
+
+    for (i32 i = 0; i < count; i++)
+    {
+        TaskInfo &t = tasks[i];
+
+        // ID (right-aligned, 3 chars)
+        puts("  ");
+        if (t.id < 10)
+            puts(" ");
+        if (t.id < 100)
+            puts(" ");
+        put_num(t.id);
+        puts("  ");
+
+        // State
+        switch (t.state)
+        {
+            case TASK_STATE_READY:
+                puts("Ready   ");
+                break;
+            case TASK_STATE_RUNNING:
+                puts("Running ");
+                break;
+            case TASK_STATE_BLOCKED:
+                puts("Blocked ");
+                break;
+            case TASK_STATE_EXITED:
+                puts("Exited  ");
+                break;
+            default:
+                puts("Unknown ");
+                break;
+        }
+        puts("  ");
+
+        // Priority (right-aligned, 3 chars)
+        if (t.priority < 10)
+            puts(" ");
+        if (t.priority < 100)
+            puts(" ");
+        put_num(t.priority);
+        puts("  ");
+
+        // Name
+        puts(t.name);
+
+        // Flags
+        if (t.flags & TASK_FLAG_IDLE)
+        {
+            puts(" [idle]");
+        }
+        if (t.flags & TASK_FLAG_KERNEL)
+        {
+            puts(" [kernel]");
+        }
+
+        puts("\n");
+    }
+
+    puts("\n");
+    put_num(count);
+    puts(" task");
+    if (count != 1)
+        puts("s");
+    puts(" total\n");
+
+    last_rc = RC_OK;
+}
+
+/**
+ * @brief Display capability table information and run small capability demos.
+ *
+ * @details
+ * Without arguments, `Caps` enumerates the current process capability table
+ * using `SYS_CAP_LIST` and prints each entry's handle value, kind, rights, and
+ * generation.
+ *
+ * With an optional handle argument (e.g., `Caps 0x1234`), the command also:
+ * - Queries the specific handle using `SYS_CAP_QUERY`.
+ * - Attempts to derive a read-only handle as a demonstration.
+ * - Revokes the derived handle and verifies that it is invalidated.
+ *
+ * Depending on kernel maturity, the capability syscalls may be unimplemented.
+ * In that case the command reports failure.
+ *
+ * @param args Optional argument substring containing a handle value in hex.
+ */
+void cmd_caps(const char *args)
+{
+    // Get capability count first
+    i32 count = sys::cap_list(nullptr, 0);
+    if (count < 0)
+    {
+        puts("CAPS: Failed to get capability list\n");
+        last_rc = RC_ERROR;
+        last_error = "Capability list syscall failed";
+        return;
+    }
+
+    if (count == 0)
+    {
+        puts("No capabilities registered.\n");
+        last_rc = RC_OK;
+        return;
+    }
+
+    // Get actual entries
+    CapListEntry caps[32];
+    i32 actual = sys::cap_list(caps, 32);
+
+    if (actual < 0)
+    {
+        puts("CAPS: Failed to list capabilities\n");
+        last_rc = RC_ERROR;
+        last_error = "Capability list syscall failed";
+        return;
+    }
+
+    puts("\nCapability Table:\n\n");
+    puts("  Handle   Kind        Rights       Gen\n");
+    puts("  ------   ---------   ---------    ---\n");
+
+    for (i32 i = 0; i < actual; i++)
+    {
+        CapListEntry &c = caps[i];
+
+        // Handle (hex)
+        puts("  ");
+        put_hex(c.handle);
+        puts("  ");
+
+        // Kind name (left-aligned, 10 chars)
+        const char *kind_name = sys::cap_kind_name(c.kind);
+        puts(kind_name);
+        usize klen = strlen(kind_name);
+        while (klen < 10)
+        {
+            putchar(' ');
+            klen++;
+        }
+        puts("  ");
+
+        // Rights string
+        char rights_buf[16];
+        sys::cap_rights_str(c.rights, rights_buf, sizeof(rights_buf));
+        puts(rights_buf);
+        puts("    ");
+
+        // Generation
+        put_num(c.generation);
+
+        puts("\n");
+    }
+
+    puts("\n");
+    put_num(actual);
+    puts(" capabilit");
+    if (actual != 1)
+        puts("ies");
+    else
+        puts("y");
+    puts(" total\n");
+
+    // If args provided, try to query/derive specific handle
+    if (args && *args != '\0')
+    {
+        // Parse handle number
+        u32 handle = 0;
+        const char *p = args;
+
+        // Skip "0x" prefix if present
+        if (p[0] == '0' && (p[1] == 'x' || p[1] == 'X'))
+        {
+            p += 2;
+        }
+
+        // Parse hex number
+        while (*p)
+        {
+            char c = *p;
+            if (c >= '0' && c <= '9')
+            {
+                handle = handle * 16 + (c - '0');
+            }
+            else if (c >= 'a' && c <= 'f')
+            {
+                handle = handle * 16 + (c - 'a' + 10);
+            }
+            else if (c >= 'A' && c <= 'F')
+            {
+                handle = handle * 16 + (c - 'A' + 10);
+            }
+            else
+            {
+                break;
+            }
+            p++;
+        }
+
+        puts("\nQuerying handle ");
+        put_hex(handle);
+        puts(":\n");
+
+        CapInfo info;
+        i32 result = sys::cap_query(handle, &info);
+        if (result < 0)
+        {
+            puts("  Error: Invalid or revoked handle\n");
+        }
+        else
+        {
+            puts("  Kind: ");
+            puts(sys::cap_kind_name(info.kind));
+            puts("\n  Rights: ");
+            char rbuf[16];
+            sys::cap_rights_str(info.rights, rbuf, sizeof(rbuf));
+            puts(rbuf);
+            puts(" (0x");
+            put_hex(info.rights);
+            puts(")\n  Generation: ");
+            put_num(info.generation);
+            puts("\n");
+
+            // Try to derive a read-only handle as a demo
+            puts("\n  Testing derive (read-only)... ");
+            i32 derived = sys::cap_derive(handle, CAP_RIGHT_READ);
+            if (derived < 0)
+            {
+                puts("Failed (no DERIVE right or error)\n");
+            }
+            else
+            {
+                puts("Success! New handle: ");
+                put_hex(static_cast<u32>(derived));
+                puts("\n");
+
+                // Query the derived handle
+                CapInfo derived_info;
+                if (sys::cap_query(static_cast<u32>(derived), &derived_info) == 0)
+                {
+                    puts("  Derived rights: ");
+                    char dbuf[16];
+                    sys::cap_rights_str(derived_info.rights, dbuf, sizeof(dbuf));
+                    puts(dbuf);
+                    puts("\n");
+                }
+
+                // Revoke it to demonstrate revocation
+                puts("  Revoking derived handle... ");
+                if (sys::cap_revoke(static_cast<u32>(derived)) == 0)
+                {
+                    puts("Success!\n");
+
+                    // Verify it's gone
+                    puts("  Verifying revocation... ");
+                    if (sys::cap_query(static_cast<u32>(derived), &derived_info) < 0)
+                    {
+                        puts("Handle correctly invalidated.\n");
+                    }
+                    else
+                    {
+                        puts("Warning: Handle still valid?\n");
+                    }
+                }
+                else
+                {
+                    puts("Failed!\n");
+                }
+            }
+        }
+    }
+
+    last_rc = RC_OK;
+}
+
+/**
+ * @brief Display the current date (placeholder).
+ *
+ * @details
+ * The kernel does not yet provide a wall-clock time syscall. This command
+ * exists as a placeholder and prints a message to that effect.
+ */
+void cmd_date()
+{
+    // TODO: Implement when date/time syscall is available
+    puts("DATE: Date/time not yet available\n");
+    last_rc = RC_OK;
+}
+
+/**
+ * @brief Display the current time (placeholder).
+ *
+ * @details
+ * Like @ref cmd_date, this is a placeholder until a proper time-of-day API is
+ * available.
+ */
+void cmd_time()
+{
+    // TODO: Implement when date/time syscall is available
+    puts("TIME: Date/time not yet available\n");
+    last_rc = RC_OK;
+}
+
+/**
+ * @brief List or manage logical device assigns.
+ *
+ * @details
+ * With no arguments, `Assign` lists all assign mappings provided by the kernel
+ * using `SYS_ASSIGN_LIST`.
+ *
+ * The argument-parsing and mutation (`Assign NAME: DIR`) are currently
+ * unimplemented in `vinit`; the command prints usage and returns a warning in
+ * that case.
+ *
+ * @param args Optional argument substring.
+ */
+void cmd_assign(const char *args)
+{
+    if (!args || *args == '\0')
+    {
+        // List all assigns using real syscall
+        sys::AssignInfo assigns[16];
+        usize count = 0;
+
+        i32 result = sys::assign_list(assigns, 16, &count);
+        if (result < 0)
+        {
+            puts("Assign: failed to list assigns\n");
+            last_rc = RC_ERROR;
+            return;
+        }
+
+        puts("Current assigns:\n");
+        puts("  Name         Handle     Kind        Rights     Flags\n");
+        puts("  -----------  ---------  ----------  ---------  ------\n");
+
+        for (usize i = 0; i < count; i++)
+        {
+            // Name (left-aligned, 11 chars)
+            puts("  ");
+            puts(assigns[i].name);
+            puts(":");
+            usize namelen = strlen(assigns[i].name) + 1;
+            while (namelen < 11)
+            {
+                putchar(' ');
+                namelen++;
+            }
+            puts("  ");
+
+            // Handle
+            put_hex(assigns[i].handle);
+            puts("   ");
+
+            // Query capability info
+            CapInfo cap_info;
+            if (sys::cap_query(assigns[i].handle, &cap_info) == 0)
+            {
+                // Kind
+                const char *kind = sys::cap_kind_name(cap_info.kind);
+                puts(kind);
+                usize klen = strlen(kind);
+                while (klen < 10)
+                {
+                    putchar(' ');
+                    klen++;
+                }
+                puts("  ");
+
+                // Rights
+                char rights[16];
+                sys::cap_rights_str(cap_info.rights, rights, sizeof(rights));
+                puts(rights);
+                puts("  ");
+            }
+            else
+            {
+                puts("(invalid)   ");
+                puts("---------  ");
+            }
+
+            // Flags
+            if (assigns[i].flags & sys::ASSIGN_SYSTEM)
+            {
+                puts("SYS");
+            }
+            if (assigns[i].flags & sys::ASSIGN_MULTI)
+            {
+                if (assigns[i].flags & sys::ASSIGN_SYSTEM)
+                    puts(",");
+                puts("MULTI");
+            }
+            if (assigns[i].flags == 0)
+            {
+                puts("-");
+            }
+            puts("\n");
+        }
+
+        if (count == 0)
+        {
+            puts("  (no assigns defined)\n");
+        }
+
+        puts("\n");
+        put_num(static_cast<i64>(count));
+        puts(" assign");
+        if (count != 1)
+            puts("s");
+        puts(" defined\n");
+
+        last_rc = RC_OK;
+    }
+    else
+    {
+        // Parse: NAME: handle or just NAME:
+        // For now just show usage
+        puts("Usage: Assign           - List all assigns\n");
+        puts("       Assign NAME: DIR - Set assign (not yet implemented)\n");
+        last_rc = RC_WARN;
+    }
+}
+
+/**
+ * @brief Resolve and inspect an assign-prefixed path.
+ *
+ * @details
+ * With no arguments, prints the current prompt path (currently a static `SYS:`).
+ *
+ * With an argument, uses `SYS_ASSIGN_RESOLVE` to resolve an assign-prefixed
+ * path (e.g., `SYS:certs/roots.der`) into a capability handle and prints:
+ * - The resolved handle value.
+ * - The capability kind and rights (via `SYS_CAP_QUERY`).
+ * - For file handles: file size and a small text preview.
+ * - For directory handles: the number of entries encountered by enumeration.
+ *
+ * The command closes the resolved handle before returning.
+ *
+ * @param args Path string to resolve (may be null/empty).
+ */
+void cmd_path(const char *args)
+{
+    if (!args || *args == '\0')
+    {
+        // Show current directory
+        puts("Current path: SYS:\n");
+        last_rc = RC_OK;
+    }
+    else
+    {
+        // Resolve the given path using assign syscall
+        u32 handle = 0;
+        i32 result = sys::assign_resolve(args, &handle);
+        if (result < 0)
+        {
+            puts("Path: cannot resolve \"");
+            puts(args);
+            puts("\" - not found or invalid assign\n");
+            last_rc = RC_ERROR;
+            return;
+        }
+
+        puts("Path \"");
+        puts(args);
+        puts("\"\n");
+        puts("  Handle: ");
+        put_hex(handle);
+        puts("\n");
+
+        // Query capability info
+        CapInfo cap_info;
+        if (sys::cap_query(handle, &cap_info) == 0)
+        {
+            puts("  Kind:   ");
+            puts(sys::cap_kind_name(cap_info.kind));
+            puts("\n");
+
+            puts("  Rights: ");
+            char rights[16];
+            sys::cap_rights_str(cap_info.rights, rights, sizeof(rights));
+            puts(rights);
+            puts("\n");
+
+            // If it's a file, show size and first bytes
+            if (cap_info.kind == CAP_KIND_FILE)
+            {
+                // Seek to end to get size
+                i64 size = sys::io_seek(handle, 0, sys::SEEK_END);
+                if (size >= 0)
+                {
+                    puts("  Size:   ");
+                    put_num(size);
+                    puts(" bytes\n");
+
+                    // Seek back to start and read first bytes
+                    sys::io_seek(handle, 0, sys::SEEK_SET);
+                    char preview[65];
+                    i64 bytes = sys::io_read(handle, preview, 64);
+                    if (bytes > 0)
+                    {
+                        preview[bytes] = '\0';
+                        // Show first line or truncate
+                        puts("  Preview: \"");
+                        for (i64 i = 0; i < bytes && i < 40; i++)
+                        {
+                            char c = preview[i];
+                            if (c == '\n' || c == '\r')
+                                break;
+                            if (c >= 32 && c < 127)
+                            {
+                                putchar(c);
+                            }
+                            else
+                            {
+                                putchar('.');
+                            }
+                        }
+                        puts("...\"\n");
+                    }
+                }
+            }
+
+            // If it's a directory, show entry count
+            if (cap_info.kind == CAP_KIND_DIRECTORY)
+            {
+                sys::FsDirEnt entry;
+                int count = 0;
+                while (sys::fs_read_dir(handle, &entry) > 0)
+                {
+                    count++;
+                }
+                puts("  Entries: ");
+                put_num(count);
+                puts("\n");
+            }
+        }
+
+        // Close the handle
+        sys::fs_close(handle);
+        last_rc = RC_OK;
+    }
+}
+
+/**
+ * @brief `Dir` command: brief directory listing (Amiga-style).
+ *
+ * @details
+ * Opens the directory at `path` using the path-based file descriptor API and
+ * calls `SYS_READDIR` once to fetch a packed list of directory entries.
+ *
+ * The output format is intentionally simple: entries are printed in a fixed
+ * three-column layout and directories are suffixed with `/`.
+ *
+ * @param path Directory path. If null/empty, defaults to `/`.
+ */
+void cmd_dir(const char *path)
+{
+    // Default to current directory
+    if (!path || *path == '\0')
+    {
+        path = "/";
+    }
+
+    i32 fd = sys::open(path, sys::O_RDONLY);
+    if (fd < 0)
+    {
+        puts("Dir: cannot open \"");
+        puts(path);
+        puts("\"\n");
+        last_rc = RC_ERROR;
+        last_error = "Directory not found";
+        return;
+    }
+
+    // Buffer for directory entries
+    u8 buf[2048];
+    i64 bytes = sys::readdir(fd, buf, sizeof(buf));
+
+    if (bytes < 0)
+    {
+        puts("Dir: not a directory\n");
+        sys::close(fd);
+        last_rc = RC_ERROR;
+        last_error = "Not a directory";
+        return;
+    }
+
+    // Count entries and display in Amiga style (3 columns)
+    usize offset = 0;
+    usize count = 0;
+    usize col = 0;
+
+    while (offset < static_cast<usize>(bytes))
+    {
+        sys::DirEnt *ent = reinterpret_cast<sys::DirEnt *>(buf + offset);
+
+        // Print name (directories get special treatment)
+        if (ent->type == 2)
+        {
+            puts("  ");
+            puts(ent->name);
+            puts("/");
+            // Pad to 20 chars
+            usize namelen = strlen(ent->name) + 1;
+            while (namelen < 18)
+            {
+                putchar(' ');
+                namelen++;
+            }
+        }
+        else
+        {
+            puts("  ");
+            puts(ent->name);
+            usize namelen = strlen(ent->name);
+            while (namelen < 18)
+            {
+                putchar(' ');
+                namelen++;
+            }
+        }
+
+        col++;
+        if (col >= 3)
+        {
+            puts("\n");
+            col = 0;
+        }
+
+        count++;
+        offset += ent->reclen;
+    }
+
+    if (col > 0)
+        puts("\n");
+
+    put_num(static_cast<i64>(count));
+    puts(" entries\n");
+
+    sys::close(fd);
+    last_rc = RC_OK;
+}
+
+/**
+ * @brief `List` command: detailed directory listing (Amiga-style).
+ *
+ * @details
+ * Similar to @ref cmd_dir, but prints one entry per line with a wider name
+ * column and a very small "flags" placeholder. The current implementation
+ * reads directory entries in one syscall and does not paginate.
+ *
+ * @param path Directory path. If null/empty, defaults to `/`.
+ */
+void cmd_list(const char *path)
+{
+    // Default to current directory
+    if (!path || *path == '\0')
+    {
+        path = "/";
+    }
+
+    i32 fd = sys::open(path, sys::O_RDONLY);
+    if (fd < 0)
+    {
+        puts("List: cannot open \"");
+        puts(path);
+        puts("\"\n");
+        last_rc = RC_ERROR;
+        last_error = "Directory not found";
+        return;
+    }
+
+    // Buffer for directory entries
+    u8 buf[2048];
+    i64 bytes = sys::readdir(fd, buf, sizeof(buf));
+
+    if (bytes < 0)
+    {
+        puts("List: not a directory\n");
+        sys::close(fd);
+        last_rc = RC_ERROR;
+        last_error = "Not a directory";
+        return;
+    }
+
+    puts("Directory \"");
+    puts(path);
+    puts("\"\n\n");
+
+    // Iterate through entries
+    usize offset = 0;
+    usize file_count = 0;
+    usize dir_count = 0;
+
+    while (offset < static_cast<usize>(bytes))
+    {
+        sys::DirEnt *ent = reinterpret_cast<sys::DirEnt *>(buf + offset);
+
+        // Print name with padding
+        puts(ent->name);
+        usize namelen = strlen(ent->name);
+        while (namelen < 32)
+        {
+            putchar(' ');
+            namelen++;
+        }
+
+        // Print type and flags
+        if (ent->type == 2)
+        {
+            puts("  <dir>    rwed");
+            dir_count++;
+        }
+        else
+        {
+            puts("           rwed");
+            file_count++;
+        }
+        puts("\n");
+
+        offset += ent->reclen;
+    }
+
+    puts("\n");
+    put_num(static_cast<i64>(file_count));
+    puts(" file");
+    if (file_count != 1)
+        puts("s");
+    puts(", ");
+    put_num(static_cast<i64>(dir_count));
+    puts(" director");
+    if (dir_count != 1)
+        puts("ies");
+    else
+        puts("y");
+    puts("\n");
+
+    sys::close(fd);
+    last_rc = RC_OK;
+}
+
+/**
+ * @brief `Type` command: display file contents (Amiga-style `cat`).
+ *
+ * @details
+ * Opens the file at `path` read-only and streams its contents to the console.
+ * Output is raw: binary bytes may be printed as-is and could contain escape
+ * sequences.
+ *
+ * @param path File path to display. Must be non-null and non-empty.
+ */
+void cmd_type(const char *path)
+{
+    if (!path || *path == '\0')
+    {
+        puts("Type: missing file argument\n");
+        last_rc = RC_ERROR;
+        last_error = "Missing filename";
+        return;
+    }
+
+    i32 fd = sys::open(path, sys::O_RDONLY);
+    if (fd < 0)
+    {
+        puts("Type: cannot open \"");
+        puts(path);
+        puts("\"\n");
+        last_rc = RC_ERROR;
+        last_error = "File not found";
+        return;
+    }
+
+    // Read and print file contents
+    char buf[512];
+    while (true)
+    {
+        i64 bytes = sys::read(fd, buf, sizeof(buf) - 1);
+        if (bytes <= 0)
+            break;
+
+        buf[bytes] = '\0';
+        puts(buf);
+    }
+
+    sys::close(fd);
+    last_rc = RC_OK;
+}
+
+/**
+ * @brief `Copy` command: copy a file from one path to another.
+ *
+ * @details
+ * This is a simple file copy implementation intended for bring-up:
+ * - Parses two path arguments, optionally accepting the keyword `TO`.
+ * - Opens the source read-only and destination write/create.
+ * - Copies data in fixed-size chunks.
+ * - On failure, attempts to delete the partially created destination.
+ *
+ * It does not currently preserve timestamps, permissions, or copy directories.
+ *
+ * @param args Argument substring containing `source` and `dest`.
+ */
+void cmd_copy(const char *args)
+{
+    if (!args || *args == '\0')
+    {
+        puts("Copy: missing arguments\n");
+        puts("Usage: Copy <source> <dest>\n");
+        puts("       Copy <source> TO <dest>\n");
+        last_rc = RC_ERROR;
+        last_error = "Missing arguments";
+        return;
+    }
+
+    // Parse: source dest  or  source TO dest
+    const char *p = args;
+    while (*p && *p != ' ')
+        p++;
+
+    if (*p != ' ')
+    {
+        puts("Copy: missing destination\n");
+        puts("Usage: Copy <source> <dest>\n");
+        last_rc = RC_ERROR;
+        last_error = "Missing destination";
+        return;
+    }
+
+    // Copy source path
+    char src_path[256];
+    usize src_len = p - args;
+    if (src_len >= 256)
+        src_len = 255;
+    for (usize i = 0; i < src_len; i++)
+    {
+        src_path[i] = args[i];
+    }
+    src_path[src_len] = '\0';
+
+    // Skip spaces
+    while (*p == ' ')
+        p++;
+
+    // Skip optional "TO" keyword (case insensitive)
+    if ((p[0] == 'T' || p[0] == 't') && (p[1] == 'O' || p[1] == 'o') && p[2] == ' ')
+    {
+        p += 3;
+        while (*p == ' ')
+            p++;
+    }
+
+    if (*p == '\0')
+    {
+        puts("Copy: missing destination\n");
+        last_rc = RC_ERROR;
+        last_error = "Missing destination";
+        return;
+    }
+
+    const char *dst_path = p;
+
+    // Open source file for reading
+    i32 src_fd = sys::open(src_path, sys::O_RDONLY);
+    if (src_fd < 0)
+    {
+        puts("Copy: cannot open source \"");
+        puts(src_path);
+        puts("\"\n");
+        last_rc = RC_ERROR;
+        last_error = "Cannot open source file";
+        return;
+    }
+
+    // Get source file size for progress
+    sys::Stat st;
+    if (sys::fstat(src_fd, &st) < 0)
+    {
+        puts("Copy: cannot stat source file\n");
+        sys::close(src_fd);
+        last_rc = RC_ERROR;
+        last_error = "Cannot stat source";
+        return;
+    }
+
+    // Open/create destination file
+    i32 dst_fd = sys::open(dst_path, sys::O_WRONLY | sys::O_CREAT);
+    if (dst_fd < 0)
+    {
+        puts("Copy: cannot create destination \"");
+        puts(dst_path);
+        puts("\"\n");
+        sys::close(src_fd);
+        last_rc = RC_ERROR;
+        last_error = "Cannot create destination";
+        return;
+    }
+
+    // Copy data in chunks
+    char buf[512];
+    u64 total_copied = 0;
+    bool error = false;
+
+    while (true)
+    {
+        i64 bytes_read = sys::read(src_fd, buf, sizeof(buf));
+        if (bytes_read < 0)
+        {
+            puts("Copy: read error\n");
+            error = true;
+            break;
+        }
+        if (bytes_read == 0)
+        {
+            break; // EOF
+        }
+
+        // Write all read data (handle partial writes)
+        u64 written = 0;
+        while (written < static_cast<u64>(bytes_read))
+        {
+            i64 w = sys::write(dst_fd, buf + written, bytes_read - written);
+            if (w < 0)
+            {
+                puts("Copy: write error\n");
+                error = true;
+                break;
+            }
+            if (w == 0)
+            {
+                puts("Copy: write returned 0 (disk full?)\n");
+                error = true;
+                break;
+            }
+            written += w;
+        }
+
+        if (error)
+            break;
+        total_copied += written;
+    }
+
+    sys::close(src_fd);
+    sys::close(dst_fd);
+
+    if (error)
+    {
+        // Try to clean up partial copy
+        sys::unlink(dst_path);
+        last_rc = RC_ERROR;
+        last_error = "Copy failed";
+        return;
+    }
+
+    puts("Copied ");
+    put_num(static_cast<i64>(total_copied));
+    puts(" bytes: ");
+    puts(src_path);
+    puts(" -> ");
+    puts(dst_path);
+    puts("\n");
+    last_rc = RC_OK;
+}
+
+/**
+ * @brief `Delete` command: delete a file or directory.
+ *
+ * @details
+ * Attempts to delete the path in two steps:
+ * 1. Call `SYS_UNLINK` (file deletion).
+ * 2. If that fails, call `SYS_RMDIR` (directory removal).
+ *
+ * This matches typical shell ergonomics where users want a single command that
+ * works for both files and (empty) directories. It does not recursively delete
+ * non-empty directories.
+ *
+ * @param args Path to delete.
+ */
+void cmd_delete(const char *args)
+{
+    if (!args || *args == '\0')
+    {
+        puts("Delete: missing file argument\n");
+        puts("Usage: Delete <file>\n");
+        last_rc = RC_ERROR;
+        last_error = "Missing filename";
+        return;
+    }
+
+    // Try unlink first (for files)
+    i32 result = sys::unlink(args);
+    if (result == 0)
+    {
+        puts("Deleted: ");
+        puts(args);
+        puts("\n");
+        last_rc = RC_OK;
+        return;
+    }
+
+    // Try rmdir (for directories)
+    result = sys::rmdir(args);
+    if (result == 0)
+    {
+        puts("Deleted directory: ");
+        puts(args);
+        puts("\n");
+        last_rc = RC_OK;
+        return;
+    }
+
+    puts("Delete: cannot delete \"");
+    puts(args);
+    puts("\"\n");
+    last_rc = RC_ERROR;
+    last_error = "Delete failed";
+}
+
+/**
+ * @brief `MakeDir` command: create a directory.
+ *
+ * @details
+ * Calls `SYS_MKDIR` on the provided argument and prints a confirmation message.
+ *
+ * @param args Directory path to create.
+ */
+void cmd_makedir(const char *args)
+{
+    if (!args || *args == '\0')
+    {
+        puts("MakeDir: missing directory name\n");
+        puts("Usage: MakeDir <dirname>\n");
+        last_rc = RC_ERROR;
+        last_error = "Missing directory name";
+        return;
+    }
+
+    i32 result = sys::mkdir(args);
+    if (result == 0)
+    {
+        puts("Created directory: ");
+        puts(args);
+        puts("\n");
+        last_rc = RC_OK;
+    }
+    else
+    {
+        puts("MakeDir: cannot create \"");
+        puts(args);
+        puts("\"\n");
+        last_rc = RC_ERROR;
+        last_error = "Directory creation failed";
+    }
+}
+
+/**
+ * @brief `Rename` command: rename or move a filesystem entry.
+ *
+ * @details
+ * Parses two whitespace-separated paths and calls `SYS_RENAME`. This command is
+ * intentionally simple and does not currently support quoting/escaping spaces.
+ *
+ * @param args Argument substring containing `<old> <new>`.
+ */
+void cmd_rename(const char *args)
+{
+    if (!args || *args == '\0')
+    {
+        puts("Rename: missing arguments\n");
+        puts("Usage: Rename <old> <new>\n");
+        last_rc = RC_ERROR;
+        last_error = "Missing arguments";
+        return;
+    }
+
+    // Parse: old_name new_name
+    // Find first space to split arguments
+    const char *p = args;
+    while (*p && *p != ' ')
+        p++;
+
+    if (*p != ' ')
+    {
+        puts("Rename: missing new name\n");
+        puts("Usage: Rename <old> <new>\n");
+        last_rc = RC_ERROR;
+        last_error = "Missing new name";
+        return;
+    }
+
+    // Copy old name
+    char old_name[256];
+    usize old_len = p - args;
+    if (old_len >= 256)
+        old_len = 255;
+    for (usize i = 0; i < old_len; i++)
+    {
+        old_name[i] = args[i];
+    }
+    old_name[old_len] = '\0';
+
+    // Skip spaces
+    while (*p == ' ')
+        p++;
+
+    if (*p == '\0')
+    {
+        puts("Rename: missing new name\n");
+        last_rc = RC_ERROR;
+        last_error = "Missing new name";
+        return;
+    }
+
+    const char *new_name = p;
+
+    i32 result = sys::rename(old_name, new_name);
+    if (result == 0)
+    {
+        puts("Renamed: ");
+        puts(old_name);
+        puts(" -> ");
+        puts(new_name);
+        puts("\n");
+        last_rc = RC_OK;
+    }
+    else
+    {
+        puts("Rename: cannot rename \"");
+        puts(old_name);
+        puts("\" to \"");
+        puts(new_name);
+        puts("\"\n");
+        last_rc = RC_ERROR;
+        last_error = "Rename failed";
+    }
+}
+
+/**
+ * @brief Parsed URL components used by the `Fetch` command.
+ *
+ * @details
+ * This is a deliberately small parser for HTTP/HTTPS demo code. It supports:
+ * - Optional `http://` or `https://` schemes.
+ * - Optional `:port` suffix.
+ * - Optional `/path` component (defaults to `/`).
+ *
+ * It does not support query strings, fragments, IPv6 literals, or username/
+ * password syntax.
+ */
+struct ParsedUrl
+{
+    char host[128]; /**< Hostname (NUL-terminated, truncated if needed). */
+    u16 port;       /**< Port number (defaults to 80/443 based on scheme). */
+    char path[256]; /**< Path portion beginning with `/` (defaults to `/`). */
+    bool is_https;  /**< True when `https://` is selected. */
+};
+
+/**
+ * @brief Parse a URL string into host/port/path fields.
+ *
+ * @details
+ * Populates `out` with defaults and then parses:
+ * - Scheme (`http://` or `https://`) to set default port and TLS mode.
+ * - Hostname until `/` or `:` delimiter.
+ * - Optional port following `:`.
+ * - Optional path following `/`.
+ *
+ * @param url Input URL string (may be scheme-less for HTTP).
+ * @param out Output structure to fill.
+ * @return True if parsing produced a non-empty hostname; false otherwise.
+ */
+bool parse_url(const char *url, ParsedUrl *out)
+{
+    out->host[0] = '\0';
+    out->port = 80;
+    out->path[0] = '/';
+    out->path[1] = '\0';
+    out->is_https = false;
+
+    const char *p = url;
+
+    // Check for https://
+    if (strstart(p, "https://"))
+    {
+        out->is_https = true;
+        out->port = 443;
+        p += 8;
+    }
+    else if (strstart(p, "http://"))
+    {
+        p += 7;
+    }
+
+    // Parse host
+    usize host_len = 0;
+    while (*p && *p != '/' && *p != ':' && host_len < 127)
+    {
+        out->host[host_len++] = *p++;
+    }
+    out->host[host_len] = '\0';
+
+    if (host_len == 0)
+        return false;
+
+    // Parse port if present
+    if (*p == ':')
+    {
+        p++;
+        u16 port = 0;
+        while (*p >= '0' && *p <= '9')
+        {
+            port = port * 10 + (*p - '0');
+            p++;
+        }
+        if (port > 0)
+            out->port = port;
+    }
+
+    // Parse path
+    if (*p == '/')
+    {
+        usize path_len = 0;
+        while (*p && path_len < 255)
+        {
+            out->path[path_len++] = *p++;
+        }
+        out->path[path_len] = '\0';
+    }
+
+    return true;
+}
+
+/**
+ * @brief `Fetch` command: perform a simple HTTP/HTTPS GET request.
+ *
+ * @details
+ * This is a demo command intended to exercise the kernel networking stack:
+ * - Resolves the hostname using `SYS_DNS_RESOLVE`.
+ * - Creates and connects a TCP socket to the remote host.
+ * - For HTTPS: creates a TLS session and performs a handshake.
+ * - Sends a minimal HTTP/1.0 GET request and prints the response to console.
+ *
+ * TLS certificate verification is currently disabled in `vinit` for bring-up;
+ * the command still prints negotiated TLS version/cipher information when
+ * available.
+ *
+ * @param url URL or hostname to fetch. If no scheme is provided, HTTP is used.
+ */
+void cmd_fetch(const char *url)
+{
+    if (!url || *url == '\0')
+    {
+        puts("Fetch: usage: Fetch <url>\n");
+        puts("  Examples:\n");
+        puts("    Fetch example.com\n");
+        puts("    Fetch http://example.com/page\n");
+        puts("    Fetch https://example.com\n");
+        last_rc = RC_ERROR;
+        last_error = "Missing URL";
+        return;
+    }
+
+    // Parse URL
+    ParsedUrl parsed;
+
+    // If no protocol specified, treat as hostname
+    if (!strstart(url, "http://") && !strstart(url, "https://"))
+    {
+        // Simple hostname - use HTTP
+        usize i = 0;
+        while (url[i] && url[i] != '/' && i < 127)
+        {
+            parsed.host[i] = url[i];
+            i++;
+        }
+        parsed.host[i] = '\0';
+        parsed.port = 80;
+        parsed.path[0] = '/';
+        parsed.path[1] = '\0';
+        parsed.is_https = false;
+    }
+    else
+    {
+        if (!parse_url(url, &parsed))
+        {
+            puts("Fetch: invalid URL\n");
+            last_rc = RC_ERROR;
+            last_error = "Invalid URL";
+            return;
+        }
+    }
+
+    puts("Resolving ");
+    puts(parsed.host);
+    puts("...\n");
+
+    // Resolve hostname
+    u32 ip = 0;
+    if (sys::dns_resolve(parsed.host, &ip) != 0)
+    {
+        puts("Fetch: DNS resolution failed\n");
+        last_rc = RC_ERROR;
+        last_error = "DNS resolution failed";
+        return;
+    }
+
+    puts("Connecting to ");
+    put_num((ip >> 24) & 0xFF);
+    putchar('.');
+    put_num((ip >> 16) & 0xFF);
+    putchar('.');
+    put_num((ip >> 8) & 0xFF);
+    putchar('.');
+    put_num(ip & 0xFF);
+    putchar(':');
+    put_num(parsed.port);
+    if (parsed.is_https)
+    {
+        puts(" (HTTPS)");
+    }
+    puts("...\n");
+
+    // Create socket
+    i32 sock = sys::socket_create();
+    if (sock < 0)
+    {
+        puts("Fetch: failed to create socket\n");
+        last_rc = RC_FAIL;
+        last_error = "Socket creation failed";
+        return;
+    }
+
+    // Connect
+    if (sys::socket_connect(sock, ip, parsed.port) != 0)
+    {
+        puts("Fetch: connection failed\n");
+        sys::socket_close(sock);
+        last_rc = RC_ERROR;
+        last_error = "Connection failed";
+        return;
+    }
+
+    puts("Connected!");
+
+    // For HTTPS, perform TLS handshake
+    i32 tls_session = -1;
+    if (parsed.is_https)
+    {
+        puts(" Starting TLS handshake...\n");
+
+        // Pass false for verify - certificate verification not yet implemented
+        tls_session = sys::tls_create(sock, parsed.host, false);
+        if (tls_session < 0)
+        {
+            puts("Fetch: TLS session creation failed\n");
+            sys::socket_close(sock);
+            last_rc = RC_ERROR;
+            last_error = "TLS creation failed";
+            return;
+        }
+
+        if (sys::tls_handshake(tls_session) != 0)
+        {
+            puts("Fetch: TLS handshake failed\n");
+            sys::tls_close(tls_session);
+            sys::socket_close(sock);
+            last_rc = RC_ERROR;
+            last_error = "TLS handshake failed";
+            return;
+        }
+
+        puts("TLS handshake complete. ");
+    }
+
+    puts(" Sending request...\n");
+
+    // Build HTTP request
+    char request[512];
+    usize pos = 0;
+
+    // GET path HTTP/1.0
+    const char *get = "GET ";
+    while (*get)
+        request[pos++] = *get++;
+    const char *path = parsed.path;
+    while (*path && pos < 400)
+        request[pos++] = *path++;
+    const char *proto = " HTTP/1.0\r\nHost: ";
+    while (*proto)
+        request[pos++] = *proto++;
+    const char *host = parsed.host;
+    while (*host && pos < 450)
+        request[pos++] = *host++;
+    const char *tail = "\r\nUser-Agent: ViperOS/0.2\r\nConnection: close\r\n\r\n";
+    while (*tail)
+        request[pos++] = *tail++;
+    request[pos] = '\0';
+
+    // Send request (TLS or plain)
+    i64 sent;
+    if (parsed.is_https)
+    {
+        sent = sys::tls_send(tls_session, request, pos);
+    }
+    else
+    {
+        sent = sys::socket_send(sock, request, pos);
+    }
+
+    if (sent <= 0)
+    {
+        puts("Fetch: send failed\n");
+        if (parsed.is_https)
+            sys::tls_close(tls_session);
+        sys::socket_close(sock);
+        last_rc = RC_ERROR;
+        last_error = "Send failed";
+        return;
+    }
+
+    puts("Request sent, receiving response...\n\n");
+
+    // Receive response
+    char buf[512];
+    usize total = 0;
+    for (int tries = 0; tries < 100; tries++)
+    {
+        i64 n;
+        if (parsed.is_https)
+        {
+            n = sys::tls_recv(tls_session, buf, sizeof(buf) - 1);
+        }
+        else
+        {
+            n = sys::socket_recv(sock, buf, sizeof(buf) - 1);
+        }
+
+        if (n > 0)
+        {
+            buf[n] = '\0';
+            puts(buf);
+            total += n;
+        }
+        else if (total > 0)
+        {
+            break; // Got some data, done
+        }
+        // Small delay to allow more data
+        for (int i = 0; i < 100000; i++)
+        {
+            asm volatile("" ::: "memory");
+        }
+    }
+
+    puts("\n\n[Received ");
+    put_num(static_cast<i64>(total));
+    puts(" bytes");
+    if (parsed.is_https)
+    {
+        puts(", encrypted");
+    }
+    puts("]\n");
+
+    // Show TLS session info for HTTPS connections
+    if (parsed.is_https)
+    {
+        TLSInfo tls_info_data;
+        if (sys::tls_info(tls_session, &tls_info_data) == 0)
+        {
+            puts("[TLS Info] ");
+
+            // Protocol version
+            if (tls_info_data.protocol_version == TLS_VERSION_1_3)
+            {
+                puts("TLS 1.3");
+            }
+            else if (tls_info_data.protocol_version == TLS_VERSION_1_2)
+            {
+                puts("TLS 1.2");
+            }
+            else
+            {
+                puts("TLS ?");
+            }
+
+            // Cipher suite
+            puts(", Cipher: ");
+            if (tls_info_data.cipher_suite == TLS_CIPHER_CHACHA20_POLY1305_SHA256)
+            {
+                puts("CHACHA20-POLY1305");
+            }
+            else if (tls_info_data.cipher_suite == TLS_CIPHER_AES_128_GCM_SHA256)
+            {
+                puts("AES-128-GCM");
+            }
+            else if (tls_info_data.cipher_suite == TLS_CIPHER_AES_256_GCM_SHA384)
+            {
+                puts("AES-256-GCM");
+            }
+            else
+            {
+                puts("0x");
+                put_hex(tls_info_data.cipher_suite);
+            }
+
+            // Verified status
+            puts(", Verified: ");
+            puts(tls_info_data.verified ? "NO (NOVERIFY)" : "YES");
+
+            puts("\n");
+        }
+
+        sys::tls_close(tls_session);
+    }
+    sys::socket_close(sock);
+    last_rc = RC_OK;
+}
+
+/** @} */
+
+/**
+ * @brief Return the argument substring following a command name.
+ *
+ * @details
+ * Given an input line and the length of the command token, this helper:
+ * - Skips the command portion.
+ * - Skips one or more spaces.
+ * - Returns a pointer to the first non-space character.
+ *
+ * If the line contains no characters beyond the command token (or only
+ * whitespace), the function returns `nullptr`.
+ *
+ * @param line Full input line (NUL-terminated).
+ * @param cmd_len Length of the command token in bytes.
+ * @return Pointer into `line` where arguments begin, or `nullptr` if none.
+ */
+const char *get_args(const char *line, usize cmd_len)
+{
+    if (strlen(line) <= cmd_len)
+        return nullptr;
+    const char *args = line + cmd_len;
+    while (*args == ' ')
+        args++;
+    if (*args == '\0')
+        return nullptr;
+    return args;
+}
+
+/**
+ * @brief Main interactive shell loop.
+ *
+ * @details
+ * Repeatedly:
+ * 1. Prints an Amiga-style prompt.
+ * 2. Reads a line with editing support via @ref readline.
+ * 3. Records the line into the history ring.
+ * 4. Dispatches to a matching `cmd_*` handler (case-insensitive).
+ *
+ * The loop terminates when the user enters `EndShell` (or common aliases such
+ * as `exit`/`quit`).
+ */
+void shell_loop()
+{
+    char line[256];
+
+    puts("\n========================================\n");
+    puts("        ViperOS 0.2.0 Shell\n");
+    puts("========================================\n");
+    puts("Type 'Help' for available commands.\n\n");
+
+    while (true)
+    {
+        // Amiga-style prompt: device:path>
+        puts(current_dir);
+        puts("> ");
+
+        usize len = readline(line, sizeof(line));
+
+        if (len == 0)
+            continue;
+
+        // Add to history
+        history_add(line);
+
+        // Parse and execute command (case-insensitive)
+        // Help
+        if (strcaseeq(line, "help") || strcaseeq(line, "?"))
+        {
+            cmd_help();
+        }
+        // Cls (clear screen)
+        else if (strcaseeq(line, "cls") || strcaseeq(line, "clear"))
+        {
+            cmd_cls();
+        }
+        // Echo
+        else if (strcasestart(line, "echo ") || strcaseeq(line, "echo"))
+        {
+            cmd_echo(get_args(line, 5));
+        }
+        // Version (was uname)
+        else if (strcaseeq(line, "version"))
+        {
+            cmd_version();
+        }
+        // Uptime
+        else if (strcaseeq(line, "uptime"))
+        {
+            cmd_uptime();
+        }
+        // History
+        else if (strcaseeq(line, "history"))
+        {
+            cmd_history();
+        }
+        // Why (explain last error)
+        else if (strcaseeq(line, "why"))
+        {
+            cmd_why();
+        }
+        // Avail (memory)
+        else if (strcaseeq(line, "avail"))
+        {
+            cmd_avail();
+        }
+        // Status (processes)
+        else if (strcaseeq(line, "status"))
+        {
+            cmd_status();
+        }
+        // Caps (capabilities)
+        else if (strcaseeq(line, "caps") || strcasestart(line, "caps "))
+        {
+            cmd_caps(get_args(line, 5));
+        }
+        // Date
+        else if (strcaseeq(line, "date"))
+        {
+            cmd_date();
+        }
+        // Time
+        else if (strcaseeq(line, "time"))
+        {
+            cmd_time();
+        }
+        // Assign
+        else if (strcasestart(line, "assign ") || strcaseeq(line, "assign"))
+        {
+            cmd_assign(get_args(line, 7));
+        }
+        // Path
+        else if (strcasestart(line, "path ") || strcaseeq(line, "path"))
+        {
+            cmd_path(get_args(line, 5));
+        }
+        // Dir (brief listing)
+        else if (strcaseeq(line, "dir") || strcasestart(line, "dir "))
+        {
+            cmd_dir(get_args(line, 4));
+        }
+        // List (detailed listing)
+        else if (strcaseeq(line, "list") || strcasestart(line, "list "))
+        {
+            cmd_list(get_args(line, 5));
+        }
+        // Type (was cat)
+        else if (strcasestart(line, "type "))
+        {
+            cmd_type(get_args(line, 5));
+        }
+        else if (strcaseeq(line, "type"))
+        {
+            puts("Type: missing file argument\n");
+            last_rc = RC_ERROR;
+        }
+        // Copy
+        else if (strcasestart(line, "copy ") || strcaseeq(line, "copy"))
+        {
+            cmd_copy(get_args(line, 5));
+        }
+        // Delete
+        else if (strcasestart(line, "delete ") || strcaseeq(line, "delete"))
+        {
+            cmd_delete(get_args(line, 7));
+        }
+        // MakeDir
+        else if (strcasestart(line, "makedir ") || strcaseeq(line, "makedir"))
+        {
+            cmd_makedir(get_args(line, 8));
+        }
+        // Rename
+        else if (strcasestart(line, "rename ") || strcaseeq(line, "rename"))
+        {
+            cmd_rename(get_args(line, 7));
+        }
+        // Fetch
+        else if (strcasestart(line, "fetch "))
+        {
+            cmd_fetch(get_args(line, 6));
+        }
+        else if (strcaseeq(line, "fetch"))
+        {
+            puts("Fetch: usage: Fetch <hostname>\n");
+            last_rc = RC_ERROR;
+        }
+        // EndShell (was exit/quit)
+        else if (strcaseeq(line, "endshell") || strcaseeq(line, "exit") || strcaseeq(line, "quit"))
+        {
+            puts("Goodbye!\n");
+            break;
+        }
+        // Legacy command aliases for compatibility
+        else if (strcaseeq(line, "ls") || strcasestart(line, "ls "))
+        {
+            puts("Note: Use 'Dir' or 'List' instead of 'ls'\n");
+            cmd_dir(get_args(line, 3));
+        }
+        else if (strcasestart(line, "cat "))
+        {
+            puts("Note: Use 'Type' instead of 'cat'\n");
+            cmd_type(get_args(line, 4));
+        }
+        else if (strcaseeq(line, "uname"))
+        {
+            puts("Note: Use 'Version' instead of 'uname'\n");
+            cmd_version();
+        }
+        else
+        {
+            puts("Unknown command: ");
+            puts(line);
+            puts("\nType 'Help' for available commands.\n");
+            last_rc = RC_WARN;
+            last_error = "Unknown command";
+        }
+    }
+}
+
+/**
+ * @brief User-space entry point for the init process.
+ *
+ * @details
+ * The kernel loads `vinit` as the first user-space program and transfers
+ * control to `_start`. This function prints a small banner, shows a bring-up
+ * "assigns" message (currently informational), and then runs the interactive
+ * shell loop.
+ *
+ * When the shell exits, the process terminates via @ref sys::exit.
+ */
+extern "C" void _start()
+{
+    puts("========================================\n");
+    puts("  ViperOS 0.2.0 - Init Process\n");
+    puts("========================================\n\n");
+
+    puts("[vinit] Starting ViperOS...\n");
+    puts("[vinit] Loaded from SYS:viper\\vinit.vpr\n");
+    puts("[vinit] Setting up assigns...\n");
+    puts("  SYS: = D0:\\\n");
+    puts("  C:   = SYS:c\n");
+    puts("  S:   = SYS:s\n");
+    puts("  T:   = SYS:t\n");
+
+    // Run the shell
+    shell_loop();
+
+    puts("[vinit] EndShell - Shutting down.\n");
+    sys::exit(0);
+}

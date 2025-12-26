@@ -1,0 +1,202 @@
+#include "table.hpp"
+#include "../console/serial.hpp"
+#include "../mm/kheap.hpp"
+
+/**
+ * @file table.cpp
+ * @brief Capability table implementation.
+ *
+ * @details
+ * The capability table uses an array of entries allocated from the kernel heap.
+ * A singly-linked free list is stored in the `Entry::object` field while a slot
+ * is unused (Kind::Invalid). This avoids additional metadata allocations.
+ *
+ * Stale handle detection is implemented by an 8-bit generation counter stored
+ * in each entry and encoded into the public handle. When a slot is removed, the
+ * generation is incremented so older handles can no longer resolve.
+ */
+namespace cap
+{
+
+/** @copydoc cap::Table::init */
+bool Table::init(usize capacity)
+{
+    entries_ = static_cast<Entry *>(kheap::kzalloc(capacity * sizeof(Entry)));
+    if (!entries_)
+    {
+        serial::puts("[cap] ERROR: Failed to allocate capability table\n");
+        return false;
+    }
+
+    capacity_ = capacity;
+    count_ = 0;
+
+    // Build free list using object pointer as next index
+    // Use 0xFFFFFFFF to mark end of free list
+    for (usize i = 0; i < capacity - 1; i++)
+    {
+        entries_[i].object = reinterpret_cast<void *>(i + 1);
+        entries_[i].kind = Kind::Invalid;
+        entries_[i].generation = 0;
+    }
+    entries_[capacity - 1].object = reinterpret_cast<void *>(0xFFFFFFFFUL);
+    entries_[capacity - 1].kind = Kind::Invalid;
+    entries_[capacity - 1].generation = 0;
+    free_head_ = 0;
+
+    serial::puts("[cap] Created capability table with ");
+    serial::put_dec(capacity);
+    serial::puts(" slots\n");
+
+    return true;
+}
+
+/** @copydoc cap::Table::destroy */
+void Table::destroy()
+{
+    if (entries_)
+    {
+        kheap::kfree(entries_);
+        entries_ = nullptr;
+    }
+    capacity_ = 0;
+    count_ = 0;
+    free_head_ = 0;
+}
+
+/** @copydoc cap::Table::insert */
+Handle Table::insert(void *object, Kind kind, Rights rights)
+{
+    if (free_head_ == 0xFFFFFFFF)
+    {
+        serial::puts("[cap] ERROR: Capability table full\n");
+        return HANDLE_INVALID;
+    }
+
+    u32 index = free_head_;
+    Entry &e = entries_[index];
+
+    // Advance free list
+    free_head_ = static_cast<u32>(reinterpret_cast<uintptr>(e.object));
+
+    // Fill entry
+    e.object = object;
+    e.kind = kind;
+    e.rights = static_cast<u32>(rights);
+    // Generation already set from previous use (or 0 initially)
+
+    count_++;
+
+    return make_handle(index, e.generation);
+}
+
+/** @copydoc cap::Table::get */
+Entry *Table::get(Handle h)
+{
+    if (h == HANDLE_INVALID)
+        return nullptr;
+
+    u32 index = handle_index(h);
+    u8 gen = handle_gen(h);
+
+    if (index >= capacity_)
+        return nullptr;
+
+    Entry &e = entries_[index];
+    if (e.kind == Kind::Invalid)
+        return nullptr;
+    if (e.generation != gen)
+        return nullptr;
+
+    return &e;
+}
+
+/** @copydoc cap::Table::get_checked */
+Entry *Table::get_checked(Handle h, Kind expected_kind)
+{
+    Entry *e = get(h);
+    if (!e)
+        return nullptr;
+    if (e->kind != expected_kind)
+        return nullptr;
+    return e;
+}
+
+/** @copydoc cap::Table::get_with_rights */
+Entry *Table::get_with_rights(Handle h, Kind kind, Rights required)
+{
+    Entry *e = get_checked(h, kind);
+    if (!e)
+        return nullptr;
+    if (!has_rights(e->rights, required))
+    {
+        return nullptr;
+    }
+    return e;
+}
+
+/** @copydoc cap::Table::remove */
+void Table::remove(Handle h)
+{
+    if (h == HANDLE_INVALID)
+        return;
+
+    u32 index = handle_index(h);
+    if (index >= capacity_)
+        return;
+
+    Entry &e = entries_[index];
+    if (e.kind == Kind::Invalid)
+        return;
+
+    // Increment generation for next use (detects use-after-free)
+    e.generation++;
+    e.kind = Kind::Invalid;
+    e.rights = 0;
+
+    // Add to free list
+    e.object = reinterpret_cast<void *>(static_cast<uintptr>(free_head_));
+    free_head_ = index;
+
+    count_--;
+}
+
+/** @copydoc cap::Table::derive */
+Handle Table::derive(Handle h, Rights new_rights)
+{
+    Entry *e = get(h);
+    if (!e)
+    {
+        return HANDLE_INVALID;
+    }
+
+    // Must have DERIVE right on original handle
+    if (!has_rights(e->rights, CAP_DERIVE))
+    {
+        return HANDLE_INVALID;
+    }
+
+    // New rights cannot exceed original rights
+    u32 allowed = e->rights & static_cast<u32>(new_rights);
+
+    // Create new handle pointing to same object
+    return insert(e->object, e->kind, static_cast<Rights>(allowed));
+}
+
+/** @copydoc cap::Table::entry_at */
+Entry *Table::entry_at(usize index)
+{
+    if (index >= capacity_)
+        return nullptr;
+    return &entries_[index];
+}
+
+/** @copydoc cap::Table::generation_at */
+u8 Table::generation_at(usize index) const
+{
+    if (index >= capacity_)
+        return 0;
+    return entries_[index].generation;
+}
+
+} // namespace cap
