@@ -40,6 +40,10 @@ namespace
             return "MOVrr";
         case MOpcode::MOVri:
             return "MOVri";
+        case MOpcode::MOVrm:
+            return "MOVrm";
+        case MOpcode::MOVmr:
+            return "MOVmr";
         case MOpcode::CMOVNErr:
             return "CMOVNErr";
         case MOpcode::LEA:
