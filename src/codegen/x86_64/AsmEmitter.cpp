@@ -197,6 +197,12 @@ template <typename Out> void emitOperand(const Operand &operand, Out &out, const
                             asmfmt::MemAddr addr{};
                             addr.base = encodeRegister(mem.base);
                             addr.disp = mem.disp;
+                            if (mem.hasIndex)
+                            {
+                                addr.index = encodeRegister(mem.index);
+                                addr.scale = mem.scale;
+                                addr.has_index = true;
+                            }
                             out << asmfmt::format_mem(addr);
                         },
                         [&](const OpLabel &label) { out << asmfmt::format_label(label.name); },

@@ -208,6 +208,7 @@ std::optional<Operand> EmitCommon::tryMakeIndexedMem(const ILInstr &addrProducer
     }
 
     uint8_t scale = 1;
+    OpReg actualIdx = *idxReg;
     for (std::size_t i = defIdx; i > 0; --i)
     {
         const auto &mi = blk.instructions[i - 1];
@@ -221,6 +222,23 @@ std::optional<Operand> EmitCommon::tryMakeIndexedMem(const ILInstr &addrProducer
                 if (sh >= 0 && sh <= 3)
                 {
                     scale = static_cast<uint8_t>(1U << sh);
+                    // Now trace back to find the original index before the SHL
+                    // SHL is destructive, so we need to find the MOV that defined the SHL dest
+                    for (std::size_t j = i - 1; j > 0; --j)
+                    {
+                        const auto &mj = blk.instructions[j - 1];
+                        if (mj.opcode == MOpcode::MOVrr && mj.operands.size() >= 2)
+                        {
+                            const auto *movDst = std::get_if<OpReg>(&mj.operands[0]);
+                            const auto *movSrc = std::get_if<OpReg>(&mj.operands[1]);
+                            if (movDst && movSrc && !movDst->isPhys &&
+                                movDst->idOrPhys == idxReg->idOrPhys)
+                            {
+                                actualIdx = *movSrc;
+                                break;
+                            }
+                        }
+                    }
                 }
                 break;
             }
@@ -233,7 +251,7 @@ std::optional<Operand> EmitCommon::tryMakeIndexedMem(const ILInstr &addrProducer
         disp = static_cast<int32_t>(addrProducer.ops[1].i64);
     }
 
-    return makeMemOperand(baseReg, *idxReg, scale, disp);
+    return makeMemOperand(baseReg, actualIdx, scale, disp);
 }
 
 /// @brief Ensure an operand is materialised in a general-purpose register.

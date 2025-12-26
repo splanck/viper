@@ -302,7 +302,10 @@ bool lowerGprSelect(MBasicBlock &block, std::size_t index)
 
     auto beginIt = block.instructions.begin() + static_cast<std::ptrdiff_t>(index);
     block.instructions.erase(beginIt, beginIt + 3);
-    block.instructions.insert(beginIt, replacement.begin(), replacement.end());
+    // Recalculate insert position since erase invalidates iterators
+    block.instructions.insert(block.instructions.begin() + static_cast<std::ptrdiff_t>(index),
+                              replacement.begin(),
+                              replacement.end());
     return true;
 }
 
@@ -459,6 +462,9 @@ void ISel::lowerArithmetic(MFunction &func) const
     // After normalising arithmetic, fold trivial address computations into
     // users to reduce register pressure and improve addressing modes.
     foldLeaIntoMem(func);
+
+    // Fold SHL+ADD patterns into SIB addressing modes for load/store.
+    foldSibAddressing(func);
 }
 
 /// @brief Lower compare and branch constructs to legal encodings.
@@ -532,6 +538,229 @@ void ISel::lowerSelect(MFunction &func) const
             if (instr.opcode == MOpcode::SETcc)
             {
                 ensureMovzxAfterSetcc(block, idx);
+            }
+        }
+    }
+}
+
+/// \brief Fold SHL+ADD sequences into SIB addressing modes.
+/// \details Matches patterns where a shift by 1, 2, or 3 (scale 2, 4, 8) is added
+///          to a base pointer, and the result is used as a memory base. Transforms
+///          into disp(base, index, scale) addressing to reduce instruction count.
+void ISel::foldSibAddressing(MFunction &func) const
+{
+    (void)target_;
+
+    struct ShlInfo
+    {
+        std::size_t defIdx{0};
+        uint16_t srcVreg{0};
+        uint8_t scale{1}; // 2, 4, or 8
+    };
+
+    struct AddInfo
+    {
+        std::size_t defIdx{0};
+        uint16_t baseVreg{0};
+        uint16_t shiftedVreg{0};
+    };
+
+    for (auto &block : func.blocks)
+    {
+        std::unordered_map<uint16_t, ShlInfo> shlDefs;  // result vreg -> info
+        std::unordered_map<uint16_t, AddInfo> addDefs;  // result vreg -> info
+        std::unordered_map<uint16_t, std::size_t> useCount;
+
+        // First pass: record SHL and ADD definitions, count uses
+        for (std::size_t idx = 0; idx < block.instructions.size(); ++idx)
+        {
+            const auto &instr = block.instructions[idx];
+
+            // Record SHLri with shift 1, 2, or 3 (scale 2, 4, 8)
+            if (instr.opcode == MOpcode::SHLri && instr.operands.size() >= 2)
+            {
+                const auto *dst = asReg(instr.operands[0]);
+                const auto *shiftAmt = asImm(instr.operands[1]);
+                if (dst && !dst->isPhys && dst->cls == RegClass::GPR && shiftAmt)
+                {
+                    const int64_t shift = shiftAmt->val;
+                    if (shift >= 1 && shift <= 3)
+                    {
+                        ShlInfo info{};
+                        info.defIdx = idx;
+                        info.srcVreg = dst->idOrPhys; // SHL is destructive, src == dst
+                        info.scale = static_cast<uint8_t>(1 << shift);
+                        shlDefs[dst->idOrPhys] = info;
+                    }
+                }
+            }
+
+            // Record ADDrr where one operand might be from SHL
+            if (instr.opcode == MOpcode::ADDrr && instr.operands.size() >= 2)
+            {
+                const auto *dst = asReg(instr.operands[0]);
+                const auto *src = asReg(instr.operands[1]);
+                if (dst && src && !dst->isPhys && !src->isPhys &&
+                    dst->cls == RegClass::GPR && src->cls == RegClass::GPR)
+                {
+                    // Check if src is from a SHL - then dst is base + shifted
+                    if (shlDefs.count(src->idOrPhys))
+                    {
+                        AddInfo info{};
+                        info.defIdx = idx;
+                        info.baseVreg = dst->idOrPhys;
+                        info.shiftedVreg = src->idOrPhys;
+                        addDefs[dst->idOrPhys] = info;
+                    }
+                }
+            }
+
+            // Count all vreg uses
+            for (const auto &op : instr.operands)
+            {
+                if (const auto *r = asReg(op))
+                {
+                    if (!r->isPhys)
+                    {
+                        ++useCount[r->idOrPhys];
+                    }
+                }
+                else if (const auto *mem = std::get_if<OpMem>(&op))
+                {
+                    if (!mem->base.isPhys)
+                    {
+                        ++useCount[mem->base.idOrPhys];
+                    }
+                    if (mem->hasIndex && !mem->index.isPhys)
+                    {
+                        ++useCount[mem->index.idOrPhys];
+                    }
+                }
+            }
+        }
+
+        // Second pass: find memory operands using ADD results and transform
+        std::vector<std::size_t> toErase;
+        for (std::size_t idx = 0; idx < block.instructions.size(); ++idx)
+        {
+            auto &instr = block.instructions[idx];
+
+            for (auto &op : instr.operands)
+            {
+                auto *mem = std::get_if<OpMem>(&op);
+                if (!mem || mem->hasIndex)
+                {
+                    continue; // Skip if not memory or already has index
+                }
+
+                if (mem->base.isPhys)
+                {
+                    continue;
+                }
+
+                const uint16_t baseId = mem->base.idOrPhys;
+                auto addIt = addDefs.find(baseId);
+                if (addIt == addDefs.end())
+                {
+                    continue;
+                }
+
+                const AddInfo &addInfo = addIt->second;
+                auto shlIt = shlDefs.find(addInfo.shiftedVreg);
+                if (shlIt == shlDefs.end())
+                {
+                    continue;
+                }
+
+                const ShlInfo &shlInfo = shlIt->second;
+
+                // Check that the ADD and SHL results are single-use
+                auto addUseIt = useCount.find(addInfo.baseVreg);
+                auto shlUseIt = useCount.find(addInfo.shiftedVreg);
+                if (addUseIt == useCount.end() || shlUseIt == useCount.end())
+                {
+                    continue;
+                }
+                if (addUseIt->second != 1 || shlUseIt->second != 1)
+                {
+                    continue; // Multiple uses - can't fold
+                }
+
+                // We need to find the original index register before the SHL
+                // Look for MOVrr that defined the SHL source
+                uint16_t indexVreg = shlInfo.srcVreg;
+                for (std::size_t i = 0; i < shlInfo.defIdx; ++i)
+                {
+                    const auto &prev = block.instructions[i];
+                    if (prev.opcode == MOpcode::MOVrr && prev.operands.size() >= 2)
+                    {
+                        const auto *movDst = asReg(prev.operands[0]);
+                        const auto *movSrc = asReg(prev.operands[1]);
+                        if (movDst && movSrc && !movDst->isPhys && !movSrc->isPhys &&
+                            movDst->idOrPhys == shlInfo.srcVreg)
+                        {
+                            indexVreg = movSrc->idOrPhys;
+                            toErase.push_back(i); // Mark MOV for removal
+                            break;
+                        }
+                    }
+                }
+
+                // Transform: mem(base+shifted) -> mem(base, index, scale)
+                // The base register needs to be the original base before ADD
+                // Find MOVrr that copies base to the ADD destination
+                uint16_t realBaseVreg = addInfo.baseVreg;
+                for (std::size_t i = 0; i < addInfo.defIdx; ++i)
+                {
+                    const auto &prev = block.instructions[i];
+                    if (prev.opcode == MOpcode::MOVrr && prev.operands.size() >= 2)
+                    {
+                        const auto *movDst = asReg(prev.operands[0]);
+                        const auto *movSrc = asReg(prev.operands[1]);
+                        if (movDst && movSrc && !movDst->isPhys &&
+                            movDst->idOrPhys == addInfo.baseVreg)
+                        {
+                            if (!movSrc->isPhys)
+                            {
+                                realBaseVreg = movSrc->idOrPhys;
+                            }
+                            else
+                            {
+                                // Base is a physical register - use it directly
+                                mem->base = *movSrc;
+                            }
+                            toErase.push_back(i);
+                            break;
+                        }
+                    }
+                }
+
+                // Update memory operand with SIB addressing
+                if (!mem->base.isPhys)
+                {
+                    mem->base.idOrPhys = realBaseVreg;
+                }
+                mem->index.isPhys = false;
+                mem->index.cls = RegClass::GPR;
+                mem->index.idOrPhys = indexVreg;
+                mem->scale = shlInfo.scale;
+                mem->hasIndex = true;
+
+                // Mark SHL and ADD for removal
+                toErase.push_back(shlInfo.defIdx);
+                toErase.push_back(addInfo.defIdx);
+            }
+        }
+
+        // Erase marked instructions in reverse order
+        std::sort(toErase.begin(), toErase.end(), std::greater<std::size_t>());
+        toErase.erase(std::unique(toErase.begin(), toErase.end()), toErase.end());
+        for (std::size_t eraseIdx : toErase)
+        {
+            if (eraseIdx < block.instructions.size())
+            {
+                block.instructions.erase(block.instructions.begin() +
+                                         static_cast<std::ptrdiff_t>(eraseIdx));
             }
         }
     }

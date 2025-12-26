@@ -47,6 +47,9 @@ class ISel
 
     // Scans blocks and folds LEA bases into mem operands when the temp has a single use.
     void foldLeaIntoMem(MFunction &func) const;
+
+    // Folds SHL+ADD into SIB addressing modes in memory operands.
+    void foldSibAddressing(MFunction &func) const;
 };
 
 } // namespace viper::codegen::x64
