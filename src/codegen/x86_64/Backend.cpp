@@ -105,20 +105,15 @@ void lowerPendingCalls(MFunction &func,
             {
                 break;
             }
-
+            const std::size_t beforeSize = block.instructions.size();
             lowerCall(block, instrIndex, plans[planIndex], target, frame);
+            const std::size_t afterSize = block.instructions.size();
+            const std::size_t inserted = afterSize - beforeSize;
             ++planIndex;
 
-            ++instrIndex;
-            while (instrIndex < block.instructions.size() &&
-                   block.instructions[instrIndex].opcode != MOpcode::CALL)
-            {
-                ++instrIndex;
-            }
-            if (instrIndex < block.instructions.size())
-            {
-                ++instrIndex;
-            }
+            // The CALL instruction we just processed is now at position (instrIndex + inserted).
+            // Skip past it to continue searching for the next CALL.
+            instrIndex += inserted + 1;
         }
     }
 

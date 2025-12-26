@@ -102,10 +102,21 @@ template <std::size_t N>
 
 [[nodiscard]] bool verifyProbeAssembly(const std::string &asmText)
 {
+#ifdef _WIN32
+    // Windows x64 ABI: first 4 integer args in RCX, RDX, R8, R9
+    // first 4 float args in XMM0-XMM3, rest on stack
+    constexpr std::array<std::string_view, 4> kGprPatterns{
+        ", %rcx", ", %rdx", ", %r8", ", %r9"};
+    constexpr std::array<std::string_view, 4> kXmmPatterns{
+        ", %xmm0", ", %xmm1", ", %xmm2", ", %xmm3"};
+#else
+    // SysV ABI: first 6 integer args in RDI, RSI, RDX, RCX, R8, R9
+    // first 8 float args in XMM0-XMM7
     constexpr std::array<std::string_view, 6> kGprPatterns{
         ", %rdi", ", %rsi", ", %rdx", ", %rcx", ", %r8", ", %r9"};
     constexpr std::array<std::string_view, 6> kXmmPatterns{
         ", %xmm0", ", %xmm1", ", %xmm2", ", %xmm3", ", %xmm4", ", %xmm5"};
+#endif
     constexpr std::array<std::string_view, 1> kAlignmentPattern{"addq $-8, %rsp"};
 
     return asmText.find("callq rt_probe_echo") != std::string::npos &&

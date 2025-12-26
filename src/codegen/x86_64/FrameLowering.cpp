@@ -330,11 +330,20 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, const Fra
     for (std::size_t idx = 0; idx < frame.usedCalleeSaved.size(); ++idx)
     {
         const auto reg = frame.usedCalleeSaved[idx];
-        assert(isGPR(reg) && "Phase A expects only GPR callee-saved registers");
         const int offset = calleeSavedOffset(idx);
-        prologue.push_back(
-            MInstr::make(MOpcode::MOVrm,
-                         {makeMemOperand(rbpBase, offset), makePhysOperand(RegClass::GPR, reg)}));
+        if (isGPR(reg))
+        {
+            prologue.push_back(
+                MInstr::make(MOpcode::MOVrm,
+                             {makeMemOperand(rbpBase, offset), makePhysOperand(RegClass::GPR, reg)}));
+        }
+        else
+        {
+            // XMM callee-saved register: use MOVSD to save 64-bit value
+            prologue.push_back(
+                MInstr::make(MOpcode::MOVSDrm,
+                             {makeMemOperand(rbpBase, offset), makePhysOperand(RegClass::XMM, reg)}));
+        }
     }
 
     auto &entry = func.blocks.front();
@@ -355,11 +364,20 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, const Fra
     for (std::size_t idx = frame.usedCalleeSaved.size(); idx > 0; --idx)
     {
         const auto reg = frame.usedCalleeSaved[idx - 1];
-        assert(isGPR(reg) && "Phase A expects only GPR callee-saved registers");
         const int offset = calleeSavedOffset(idx - 1);
-        epilogue.push_back(
-            MInstr::make(MOpcode::MOVmr,
-                         {makePhysOperand(RegClass::GPR, reg), makeMemOperand(rbpBase, offset)}));
+        if (isGPR(reg))
+        {
+            epilogue.push_back(
+                MInstr::make(MOpcode::MOVmr,
+                             {makePhysOperand(RegClass::GPR, reg), makeMemOperand(rbpBase, offset)}));
+        }
+        else
+        {
+            // XMM callee-saved register: use MOVSD to restore 64-bit value
+            epilogue.push_back(
+                MInstr::make(MOpcode::MOVSDmr,
+                             {makePhysOperand(RegClass::XMM, reg), makeMemOperand(rbpBase, offset)}));
+        }
     }
 
     epilogue.push_back(MInstr::make(MOpcode::MOVrr, {rspOperand, rbpOperand}));

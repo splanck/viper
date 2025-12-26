@@ -101,7 +101,7 @@ AllocationResult LinearScanAllocator::run()
     for (auto &block : func_.blocks)
     {
         processBlock(block, coalescer);
-        releaseActiveForBlock();
+        releaseActiveForBlock(block);
     }
     result_.spillSlotsGPR = spiller_.gprSlots();
     result_.spillSlotsXMM = spiller_.xmmSlots();
@@ -275,10 +275,79 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
         if (instr.opcode == MOpcode::PX_COPY)
         {
             coalescer.lower(instr, rewritten);
+            ++currentInstrIdx_;
             continue;
         }
 
+        // Before processing operands, check if this instruction writes to a physical
+        // register. This handles two cases:
+        // 1. Call argument setup (MOVrr/MOVri to arg registers): reserve the register
+        //    so spill reloads don't clobber it before the CALL.
+        // 2. Any write to a physical register: if a vreg is currently assigned to that
+        //    register and is still live, spill it to avoid corruption.
         std::vector<MInstr> prefix{};
+        if ((instr.opcode == MOpcode::MOVrr || instr.opcode == MOpcode::MOVri ||
+             instr.opcode == MOpcode::LEA) &&
+            !instr.operands.empty())
+        {
+            if (const auto *destReg = std::get_if<OpReg>(&instr.operands[0]))
+            {
+                if (destReg->isPhys)
+                {
+                    const PhysReg physDest = static_cast<PhysReg>(destReg->idOrPhys);
+
+                    // For MOVrr, check if source is the same vreg assigned to dest.
+                    // If so, no spill is needed (we're copying a value to its own register).
+                    uint16_t srcVreg = std::numeric_limits<uint16_t>::max();
+                    if (instr.opcode == MOpcode::MOVrr && instr.operands.size() > 1)
+                    {
+                        if (const auto *srcReg = std::get_if<OpReg>(&instr.operands[1]))
+                        {
+                            if (!srcReg->isPhys)
+                            {
+                                srcVreg = srcReg->idOrPhys;
+                            }
+                        }
+                    }
+
+                    // Check if any vreg is currently assigned to this physical register
+                    // and spill it before we clobber the register.
+                    for (auto vreg : activeGPR_)
+                    {
+                        auto it = states_.find(vreg);
+                        if (it != states_.end() && it->second.hasPhys && it->second.phys == physDest)
+                        {
+                            // Skip spill if source vreg == vreg in dest register (no-op move)
+                            if (vreg == srcVreg)
+                            {
+                                break;
+                            }
+
+                            auto &state = it->second;
+                            // Only spill if the value is still needed (live past this point)
+                            const auto *interval = intervals_.lookup(vreg);
+                            if (interval && interval->end > currentInstrIdx_)
+                            {
+                                spiller_.ensureSpillSlot(RegClass::GPR, state.spill);
+                                state.spill.needsSpill = true;
+                                prefix.push_back(
+                                    spiller_.makeStore(RegClass::GPR, state.spill, state.phys));
+                            }
+                            releaseRegister(state.phys, RegClass::GPR);
+                            state.hasPhys = false;
+                            removeActive(RegClass::GPR, vreg);
+                            break; // Only one vreg can be in a physical register
+                        }
+                    }
+
+                    // Reserve argument registers for call setup
+                    if (isArgumentRegister(physDest))
+                    {
+                        reserveForCall(physDest);
+                    }
+                }
+            }
+        }
         std::vector<MInstr> suffix{};
         std::vector<ScratchRelease> scratch{};
         MInstr current = instr;
@@ -287,6 +356,92 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
         for (std::size_t idx = 0; idx < current.operands.size(); ++idx)
         {
             handleOperand(current.operands[idx], roles[idx], prefix, suffix, scratch);
+        }
+
+        // Handle CALL: values in caller-saved registers are clobbered
+        // Spill them BEFORE the call and mark for reload on next use
+        if (instr.opcode == MOpcode::CALL)
+        {
+            auto isCallerSaved = [this](PhysReg reg, RegClass cls)
+            {
+                const auto &regs =
+                    cls == RegClass::GPR ? target_.callerSavedGPR : target_.callerSavedXMM;
+                return std::find(regs.begin(), regs.end(), reg) != regs.end();
+            };
+
+            // Collect vregs to spill (can't modify active list while iterating)
+            std::vector<uint16_t> gprToSpill{};
+            std::vector<uint16_t> xmmToSpill{};
+
+            // Process GPR values - spill before call
+            for (auto vreg : activeGPR_)
+            {
+                auto it = states_.find(vreg);
+                if (it == states_.end() || !it->second.hasPhys)
+                {
+                    continue;
+                }
+                auto &state = it->second;
+                if (!isCallerSaved(state.phys, RegClass::GPR))
+                {
+                    continue;
+                }
+                // Check if this value is used after the call
+                const auto *interval = intervals_.lookup(vreg);
+                if (!interval || interval->end <= currentInstrIdx_ + 1)
+                {
+                    continue;
+                }
+                gprToSpill.push_back(vreg);
+            }
+
+            // Process XMM values - spill before call
+            for (auto vreg : activeXMM_)
+            {
+                auto it = states_.find(vreg);
+                if (it == states_.end() || !it->second.hasPhys)
+                {
+                    continue;
+                }
+                auto &state = it->second;
+                if (!isCallerSaved(state.phys, RegClass::XMM))
+                {
+                    continue;
+                }
+                const auto *interval = intervals_.lookup(vreg);
+                if (!interval || interval->end <= currentInstrIdx_ + 1)
+                {
+                    continue;
+                }
+                xmmToSpill.push_back(vreg);
+            }
+
+            // Now spill the collected values
+            for (auto vreg : gprToSpill)
+            {
+                auto &state = states_[vreg];
+                spiller_.ensureSpillSlot(RegClass::GPR, state.spill);
+                state.spill.needsSpill = true;
+                prefix.push_back(spiller_.makeStore(RegClass::GPR, state.spill, state.phys));
+                releaseRegister(state.phys, RegClass::GPR);
+                state.hasPhys = false;
+                removeActive(RegClass::GPR, vreg);
+            }
+
+            for (auto vreg : xmmToSpill)
+            {
+                auto &state = states_[vreg];
+                spiller_.ensureSpillSlot(RegClass::XMM, state.spill);
+                state.spill.needsSpill = true;
+                prefix.push_back(spiller_.makeStore(RegClass::XMM, state.spill, state.phys));
+                releaseRegister(state.phys, RegClass::XMM);
+                state.hasPhys = false;
+                removeActive(RegClass::XMM, vreg);
+            }
+
+            // Release the argument registers that were reserved during call setup
+            // back to the pool now that the call is complete.
+            releaseCallReserved();
         }
 
         for (auto &pre : prefix)
@@ -302,38 +457,110 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
         {
             releaseRegister(rel.phys, rel.cls);
         }
+
+        ++currentInstrIdx_;
     }
 
     block.instructions = std::move(rewritten);
 }
 
-/// @brief Release all registers that do not live beyond the current block.
-/// @details Called after rewriting a block to return physical registers to the
-///          free pools while marking allocation states as no longer owning a
-///          register.  Both GPR and XMM active lists are cleared.
-void LinearScanAllocator::releaseActiveForBlock()
+/// @brief Release or spill registers at block boundaries.
+/// @details Called after rewriting a block. Values whose live intervals end
+///          before the current instruction have their registers released.
+///          Values that are live across block boundaries are spilled to memory
+///          so that successor blocks can reload them. This ensures cross-block
+///          liveness is handled correctly without relying on registers persisting.
+/// @param block The block that was just processed, to which spills are inserted.
+void LinearScanAllocator::releaseActiveForBlock(MBasicBlock &block)
 {
+    // Helper to check if an instruction is a terminator
+    auto isTerminator = [](MOpcode opc)
+    {
+        return opc == MOpcode::JMP || opc == MOpcode::JCC || opc == MOpcode::RET;
+    };
+
+    // Find insertion point - before the terminator if present
+    std::size_t insertPos = block.instructions.size();
+    if (!block.instructions.empty() && isTerminator(block.instructions.back().opcode))
+    {
+        insertPos = block.instructions.size() - 1;
+        // Check if there are two terminators (JCC followed by JMP)
+        if (insertPos > 0 && isTerminator(block.instructions[insertPos - 1].opcode))
+        {
+            insertPos--;
+        }
+    }
+
+    std::vector<MInstr> spills{};
+
+    // Process GPR values
     for (auto vreg : activeGPR_)
     {
         auto it = states_.find(vreg);
-        if (it != states_.end() && it->second.hasPhys)
+        if (it == states_.end() || !it->second.hasPhys)
         {
-            releaseRegister(it->second.phys, RegClass::GPR);
-            it->second.hasPhys = false;
+            continue;
         }
+
+        const auto *interval = intervals_.lookup(vreg);
+        if (interval && interval->end > currentInstrIdx_)
+        {
+            // Value is live across block boundary - spill it so successor blocks
+            // can reload it. This is essential for cross-block correctness.
+            auto &state = it->second;
+            if (!state.spill.needsSpill)
+            {
+                state.spill.needsSpill = true;
+            }
+            spiller_.ensureSpillSlot(RegClass::GPR, state.spill);
+
+            // Emit a store to the spill slot
+            spills.push_back(spiller_.makeStore(RegClass::GPR, state.spill, state.phys));
+        }
+
+        // Release the register
+        releaseRegister(it->second.phys, RegClass::GPR);
+        it->second.hasPhys = false;
     }
     activeGPR_.clear();
 
+    // Process XMM values
     for (auto vreg : activeXMM_)
     {
         auto it = states_.find(vreg);
-        if (it != states_.end() && it->second.hasPhys)
+        if (it == states_.end() || !it->second.hasPhys)
         {
-            releaseRegister(it->second.phys, RegClass::XMM);
-            it->second.hasPhys = false;
+            continue;
         }
+
+        const auto *interval = intervals_.lookup(vreg);
+        if (interval && interval->end > currentInstrIdx_)
+        {
+            // Value is live across block boundary - spill it
+            auto &state = it->second;
+            if (!state.spill.needsSpill)
+            {
+                state.spill.needsSpill = true;
+            }
+            spiller_.ensureSpillSlot(RegClass::XMM, state.spill);
+
+            // Emit a store to the spill slot
+            spills.push_back(spiller_.makeStore(RegClass::XMM, state.spill, state.phys));
+        }
+
+        // Release the register
+        releaseRegister(it->second.phys, RegClass::XMM);
+        it->second.hasPhys = false;
     }
     activeXMM_.clear();
+
+    // Insert spills before the terminator(s)
+    if (!spills.empty())
+    {
+        block.instructions.insert(block.instructions.begin() + static_cast<long>(insertPos),
+                                  std::make_move_iterator(spills.begin()),
+                                  std::make_move_iterator(spills.end()));
+    }
 }
 
 /// @brief Determine whether operands are read, written, or both.
@@ -445,9 +672,15 @@ std::vector<LinearScanAllocator::OperandRole> LinearScanAllocator::classifyOpera
             }
             break;
         case MOpcode::SETcc:
+            // SETcc has operands: (condCode:Imm, dest:RegOrMem)
+            // The condition code is read-only, the destination is write-only
             if (!roles.empty())
             {
-                roles[0] = OperandRole{false, true};
+                roles[0] = OperandRole{true, false}; // condition code is read
+            }
+            if (roles.size() > 1)
+            {
+                roles[1] = OperandRole{false, true}; // destination is write
             }
             break;
         case MOpcode::MOVZXrr32:
@@ -570,6 +803,57 @@ MInstr LinearScanAllocator::makeMove(RegClass cls, PhysReg dst, PhysReg src) con
         return MInstr::make(MOpcode::MOVrr, {makePhysOperand(cls, dst), makePhysOperand(cls, src)});
     }
     return MInstr::make(MOpcode::MOVSDrr, {makePhysOperand(cls, dst), makePhysOperand(cls, src)});
+}
+
+/// @brief Check if a physical register is an argument register for the current ABI.
+/// @details Used to detect when call argument registers are being set so they can be
+///          reserved and not used for spill reloads during call setup.
+/// @param reg Physical register to check.
+/// @return @c true if @p reg is an argument-passing register.
+bool LinearScanAllocator::isArgumentRegister(PhysReg reg) const
+{
+    for (std::size_t i = 0; i < target_.maxGPRArgs && i < target_.intArgOrder.size(); ++i)
+    {
+        if (target_.intArgOrder[i] == reg)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+/// @brief Reserve an argument register during call setup.
+/// @details Removes the register from the free pool and records it so it can be
+///          released after the CALL instruction is processed. This prevents spill
+///          reloads from clobbering argument values during call setup.
+/// @param reg Physical register to reserve.
+void LinearScanAllocator::reserveForCall(PhysReg reg)
+{
+    // Check if already reserved
+    if (std::find(reservedForCall_.begin(), reservedForCall_.end(), reg) != reservedForCall_.end())
+    {
+        return;
+    }
+    // Remove from free pool
+    auto &pool = poolFor(RegClass::GPR);
+    auto it = std::find(pool.begin(), pool.end(), reg);
+    if (it != pool.end())
+    {
+        pool.erase(it);
+        reservedForCall_.push_back(reg);
+    }
+}
+
+/// @brief Release all reserved argument registers back to the pool.
+/// @details Called after a CALL instruction is processed to make argument
+///          registers available for subsequent allocations.
+void LinearScanAllocator::releaseCallReserved()
+{
+    for (auto reg : reservedForCall_)
+    {
+        poolFor(RegClass::GPR).push_back(reg);
+    }
+    reservedForCall_.clear();
 }
 
 } // namespace viper::codegen::x64::ra

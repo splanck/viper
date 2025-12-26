@@ -222,6 +222,7 @@ void LowerILToMIR::resetFunctionState()
     valueToVReg_.clear();
     blockInfo_.clear();
     callPlans_.clear();
+    entryParamToPhysReg_.clear();
 }
 
 /// @brief Map an IL value kind to a machine register class for the target.
@@ -305,6 +306,12 @@ Operand LowerILToMIR::makeOperandForValue(MBasicBlock &block, const ILValue &val
 
     if (!isImmediate(value))
     {
+        // Check if this is an entry block parameter - if so, return the physical register directly
+        const auto physIt = entryParamToPhysReg_.find(value.id);
+        if (physIt != entryParamToPhysReg_.end())
+        {
+            return physIt->second;
+        }
         const VReg vreg = ensureVReg(value.id, value.kind);
         return makeVRegOperand(vreg.cls, vreg.id);
     }
@@ -324,7 +331,7 @@ Operand LowerILToMIR::makeOperandForValue(MBasicBlock &block, const ILValue &val
             const VReg temp = makeTempVReg(RegClass::XMM);
             Operand tempOperand = makeVRegOperand(temp.cls, temp.id);
             const Operand ripOperand = makeRipLabelOperand(label);
-            block.append(MInstr::make(MOpcode::MOVSDrm,
+            block.append(MInstr::make(MOpcode::MOVSDmr,
                                       std::vector<Operand>{cloneOperand(tempOperand), ripOperand}));
             return tempOperand;
         }
@@ -477,14 +484,116 @@ MFunction LowerILToMIR::lower(const ILFunction &func)
     const auto &rules = viper_get_lowering_rules();
     (void)rules; // keep static initialisation local to this TU.
 
+    // Build a map from entry block parameter IDs to their ABI physical registers
+    // or stack offsets for stack-passed parameters
+    struct StackParam
+    {
+        int paramId;
+        int32_t offset;
+        ILValue::Kind kind;
+    };
+    std::unordered_map<int, Operand> entryParamToPhysReg{};
+    std::vector<StackParam> stackParams{};
+    if (!func.blocks.empty() && !func.blocks[0].paramIds.empty())
+    {
+        const auto &entryParams = func.blocks[0];
+        std::size_t gprArgIdx = 0;
+        std::size_t xmmArgIdx = 0;
+        std::size_t stackArgIdx = 0;
+        for (std::size_t p = 0;
+             p < entryParams.paramIds.size() && p < entryParams.paramKinds.size();
+             ++p)
+        {
+            const int paramId = entryParams.paramIds[p];
+            const auto kind = entryParams.paramKinds[p];
+            if (paramId < 0)
+            {
+                continue;
+            }
+            const RegClass cls = regClassFor(kind);
+            if (cls == RegClass::XMM)
+            {
+                if (xmmArgIdx < target_->maxXMMArgs)
+                {
+                    const PhysReg argReg = target_->f64ArgOrder[xmmArgIdx++];
+                    entryParamToPhysReg[paramId] =
+                        makePhysRegOperand(RegClass::XMM, static_cast<uint16_t>(argReg));
+                }
+                else
+                {
+                    // Stack-passed XMM argument
+                    // On Windows x64: [RBP + 48 + stackArgIdx*8] after standard prologue
+                    // (16 for old RBP + ret addr, 32 for shadow space)
+                    const int32_t offset = 48 + static_cast<int32_t>(stackArgIdx * 8);
+                    stackParams.push_back({paramId, offset, kind});
+                    ++stackArgIdx;
+                }
+            }
+            else
+            {
+                if (gprArgIdx < target_->maxGPRArgs)
+                {
+                    const PhysReg argReg = target_->intArgOrder[gprArgIdx++];
+                    entryParamToPhysReg[paramId] =
+                        makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(argReg));
+                }
+                else
+                {
+                    // Stack-passed GPR argument
+                    // On Windows x64: [RBP + 48 + stackArgIdx*8] after standard prologue
+                    const int32_t offset = 48 + static_cast<int32_t>(stackArgIdx * 8);
+                    stackParams.push_back({paramId, offset, kind});
+                    ++stackArgIdx;
+                }
+            }
+        }
+    }
+    entryParamToPhysReg_ = std::move(entryParamToPhysReg);
+
+    // Emit loads for stack-passed parameters at the start of the entry block
+    if (!stackParams.empty() && !result.blocks.empty())
+    {
+        auto &entryBlock = result.blocks[0];
+        for (const auto &sp : stackParams)
+        {
+            // Create a vreg for this parameter and emit a load from stack
+            const VReg vreg = ensureVReg(sp.paramId, sp.kind);
+            const Operand dest = makeVRegOperand(vreg.cls, vreg.id);
+            const Operand src = makeMemOperand(
+                makePhysBase(PhysReg::RBP), sp.offset);
+            // Emit MOVmr to load from stack into vreg
+            if (vreg.cls == RegClass::XMM)
+            {
+                entryBlock.instructions.push_back(
+                    MInstr::make(MOpcode::MOVSDmr, {dest, src}));
+            }
+            else
+            {
+                entryBlock.instructions.push_back(
+                    MInstr::make(MOpcode::MOVmr, {dest, src}));
+            }
+        }
+    }
+
     for (std::size_t idx = 0; idx < func.blocks.size(); ++idx)
     {
         const auto &ilBlock = func.blocks[idx];
         auto &mirBlock = result.blocks[idx];
         MIRBuilder builder{*this, mirBlock};
 
-        for (const auto &instr : ilBlock.instrs)
+        for (std::size_t instrIdx = 0; instrIdx < ilBlock.instrs.size(); ++instrIdx)
         {
+            const auto &instr = ilBlock.instrs[instrIdx];
+
+            // Detect terminator instructions and emit edge copies BEFORE the terminator.
+            // This ensures block arguments are passed correctly before the branch.
+            const bool isTerminator = instr.opcode == "br" || instr.opcode == "cbr" ||
+                                      instr.opcode == "ret" || instr.opcode == "switch_i32";
+            if (isTerminator)
+            {
+                emitEdgeCopies(ilBlock, mirBlock);
+            }
+
             const LoweringRule *rule = viper_select_rule(instr);
             if (!rule)
             {
@@ -493,8 +602,6 @@ MFunction LowerILToMIR::lower(const ILFunction &func)
             }
             rule->emit(instr, builder);
         }
-
-        emitEdgeCopies(ilBlock, mirBlock);
     }
 
     return result;

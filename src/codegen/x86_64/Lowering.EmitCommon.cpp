@@ -101,8 +101,22 @@ Operand EmitCommon::materialise(Operand operand, RegClass cls)
 
     if (std::holds_alternative<OpImm>(operand))
     {
-        builder().append(
-            MInstr::make(MOpcode::MOVri, std::vector<Operand>{clone(tmpOp), clone(operand)}));
+        if (cls == RegClass::XMM)
+        {
+            // XMM registers cannot be loaded directly from immediates.
+            // Move the immediate to a GPR first, then convert to floating-point.
+            const VReg gprTmp = builder().makeTempVReg(RegClass::GPR);
+            const Operand gprOp = makeVRegOperand(gprTmp.cls, gprTmp.id);
+            builder().append(
+                MInstr::make(MOpcode::MOVri, std::vector<Operand>{clone(gprOp), clone(operand)}));
+            builder().append(
+                MInstr::make(MOpcode::CVTSI2SD, std::vector<Operand>{clone(tmpOp), clone(gprOp)}));
+        }
+        else
+        {
+            builder().append(
+                MInstr::make(MOpcode::MOVri, std::vector<Operand>{clone(tmpOp), clone(operand)}));
+        }
     }
     else if (std::holds_alternative<OpLabel>(operand) ||
              std::holds_alternative<OpRipLabel>(operand))
@@ -260,11 +274,31 @@ void EmitCommon::emitBinary(
 
     if (std::holds_alternative<OpImm>(lhs))
     {
-        builder().append(MInstr::make(MOpcode::MOVri, std::vector<Operand>{clone(dest), lhs}));
+        if (cls == RegClass::XMM)
+        {
+            // XMM registers cannot be loaded directly from immediates.
+            // Move the immediate to a GPR first, then convert to floating-point.
+            const VReg gprTmp = builder().makeTempVReg(RegClass::GPR);
+            const Operand gprOp = makeVRegOperand(gprTmp.cls, gprTmp.id);
+            builder().append(MInstr::make(MOpcode::MOVri, std::vector<Operand>{clone(gprOp), lhs}));
+            builder().append(
+                MInstr::make(MOpcode::CVTSI2SD, std::vector<Operand>{clone(dest), clone(gprOp)}));
+        }
+        else
+        {
+            builder().append(MInstr::make(MOpcode::MOVri, std::vector<Operand>{clone(dest), lhs}));
+        }
     }
     else
     {
-        builder().append(MInstr::make(MOpcode::MOVrr, std::vector<Operand>{clone(dest), lhs}));
+        if (cls == RegClass::XMM)
+        {
+            builder().append(MInstr::make(MOpcode::MOVSDrr, std::vector<Operand>{clone(dest), lhs}));
+        }
+        else
+        {
+            builder().append(MInstr::make(MOpcode::MOVrr, std::vector<Operand>{clone(dest), lhs}));
+        }
     }
 
     const bool canUseImm = [&]()
@@ -380,8 +414,18 @@ void EmitCommon::emitCmp(const ILInstr &instr, RegClass cls, int defaultCond)
         }
     }
 
-    const Operand lhs = builder().makeOperandForValue(instr.ops[0], cls);
+    Operand lhs = builder().makeOperandForValue(instr.ops[0], cls);
     const Operand rhs = builder().makeOperandForValue(instr.ops[1], cls);
+
+    // x86 CMP requires the first operand to be a register, not an immediate.
+    // If LHS is an immediate, materialize it to a temporary register first.
+    if (std::holds_alternative<OpImm>(lhs))
+    {
+        const VReg tmp = builder().makeTempVReg(RegClass::GPR);
+        const Operand tmpOp = makeVRegOperand(tmp.cls, tmp.id);
+        builder().append(MInstr::make(MOpcode::MOVri, std::vector<Operand>{tmpOp, lhs}));
+        lhs = tmpOp;
+    }
 
     const MOpcode cmpOpc = cls == RegClass::XMM ? MOpcode::UCOMIS : MOpcode::CMPrr;
     builder().append(MInstr::make(cmpOpc, std::vector<Operand>{clone(lhs), rhs}));
@@ -596,6 +640,8 @@ void EmitCommon::emitLoad(const ILInstr &instr, RegClass cls)
 ///          an integer, floating-point, register, or immediate.  The helper
 ///          therefore abstracts the heterogeneity of IL store operands.
 /// @param instr IL store instruction.
+/// @note IL store format is: store type, addr, value
+///       So ops[0] is the address and ops[1] is the value to store.
 void EmitCommon::emitStore(const ILInstr &instr)
 {
     if (instr.ops.size() < 2)
@@ -603,9 +649,12 @@ void EmitCommon::emitStore(const ILInstr &instr)
         return;
     }
 
+    // IL store format: store type, addr, value
+    // ops[0] = address (Ptr type)
+    // ops[1] = value to store (InstrType)
+    Operand baseOp = builder().makeOperandForValue(instr.ops[0], RegClass::GPR);
     const Operand value =
-        builder().makeOperandForValue(instr.ops[0], builder().regClassFor(instr.ops[0].kind));
-    Operand baseOp = builder().makeOperandForValue(instr.ops[1], RegClass::GPR);
+        builder().makeOperandForValue(instr.ops[1], builder().regClassFor(instr.ops[1].kind));
     const auto *baseReg = std::get_if<OpReg>(&baseOp);
     if (!baseReg)
     {
@@ -661,7 +710,23 @@ void EmitCommon::emitCast(const ILInstr &instr, MOpcode opc, RegClass dstCls, Re
     const VReg destReg = builder().ensureVReg(instr.resultId, instr.resultKind);
     const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
 
-    if (opc == MOpcode::MOVrr || std::holds_alternative<OpImm>(src))
+    if (std::holds_alternative<OpImm>(src))
+    {
+        if (destReg.cls == RegClass::XMM)
+        {
+            // For XMM destination with immediate source, we need to go through a GPR.
+            // First move the immediate to a GPR temp, then apply the conversion opcode.
+            const VReg gprTmp = builder().makeTempVReg(RegClass::GPR);
+            const Operand gprOp = makeVRegOperand(gprTmp.cls, gprTmp.id);
+            builder().append(MInstr::make(MOpcode::MOVri, std::vector<Operand>{clone(gprOp), src}));
+            builder().append(MInstr::make(opc, std::vector<Operand>{clone(dest), clone(gprOp)}));
+        }
+        else
+        {
+            builder().append(MInstr::make(MOpcode::MOVri, std::vector<Operand>{clone(dest), src}));
+        }
+    }
+    else if (opc == MOpcode::MOVrr)
     {
         builder().append(MInstr::make(MOpcode::MOVrr, std::vector<Operand>{clone(dest), src}));
     }

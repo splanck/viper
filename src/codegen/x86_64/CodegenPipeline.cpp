@@ -749,7 +749,19 @@ PipelineResult CodegenPipeline::run()
         // Maintain parity with previous behaviour by always keeping the file around for linking.
     }
 
-    const bool wantsObjectOnly = !opts_.output_obj_path.empty() && !opts_.run_native;
+    // Check if -o path looks like an executable (ends with .exe or has no extension)
+    // vs an object file (ends with .o or .obj)
+    auto looksLikeObjectFile = [](const std::string &path) -> bool
+    {
+        const std::size_t dotPos = path.rfind('.');
+        if (dotPos == std::string::npos)
+            return false; // No extension - treat as executable
+        const std::string ext = path.substr(dotPos);
+        return ext == ".o" || ext == ".obj";
+    };
+
+    const bool wantsObjectOnly =
+        !opts_.output_obj_path.empty() && !opts_.run_native && looksLikeObjectFile(opts_.output_obj_path);
     if (wantsObjectOnly)
     {
         const std::filesystem::path objPath(opts_.output_obj_path);
@@ -767,7 +779,9 @@ PipelineResult CodegenPipeline::run()
         return result;
     }
 
-    const bool needsExecutable = opts_.run_native || opts_.output_obj_path.empty();
+    // Link to executable if: running native, no output path specified, or output looks like .exe
+    const bool needsExecutable =
+        opts_.run_native || opts_.output_obj_path.empty() || !looksLikeObjectFile(opts_.output_obj_path);
     if (!needsExecutable)
     {
         result.exit_code = 0;

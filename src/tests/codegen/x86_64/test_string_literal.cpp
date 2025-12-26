@@ -95,17 +95,24 @@ namespace
     }
 
     bool hasLenMove = false;
-    std::size_t rsiPos = asmText.find("%rsi");
-    while (rsiPos != std::string::npos)
+#ifdef _WIN32
+    // Windows x64 ABI: length in RDX (second arg)
+    const char *lenReg = "%rdx";
+#else
+    // SysV ABI: length in RSI (second arg)
+    const char *lenReg = "%rsi";
+#endif
+    std::size_t regPos = asmText.find(lenReg);
+    while (regPos != std::string::npos)
     {
-        const std::string_view line = lineContaining(asmText, rsiPos);
+        const std::string_view line = lineContaining(asmText, regPos);
         if (line.find("mov") != std::string::npos &&
             (line.find("$13") != std::string::npos || line.find("$0xd") != std::string::npos))
         {
             hasLenMove = true;
             break;
         }
-        rsiPos = asmText.find("%rsi", rsiPos + 4);
+        regPos = asmText.find(lenReg, regPos + 4);
     }
     if (!hasLenMove)
     {

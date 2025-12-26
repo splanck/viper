@@ -36,7 +36,8 @@
 void rt_randomize_u64(uint64_t seed)
 {
     RtContext *ctx = rt_get_current_context();
-    assert(ctx && "rt_randomize_u64 called without active RtContext");
+    if (!ctx)
+        ctx = rt_legacy_context();
     ctx->rng_state = seed;
 }
 
@@ -47,7 +48,8 @@ void rt_randomize_u64(uint64_t seed)
 void rt_randomize_i64(long long seed)
 {
     RtContext *ctx = rt_get_current_context();
-    assert(ctx && "rt_randomize_i64 called without active RtContext");
+    if (!ctx)
+        ctx = rt_legacy_context();
     ctx->rng_state = (uint64_t)seed;
 }
 
@@ -60,7 +62,8 @@ void rt_randomize_i64(long long seed)
 double rt_rnd(void)
 {
     RtContext *ctx = rt_get_current_context();
-    assert(ctx && "rt_rnd called without active RtContext");
+    if (!ctx)
+        ctx = rt_legacy_context();
     ctx->rng_state = ctx->rng_state * 6364136223846793005ULL + 1ULL;
     uint64_t x = (ctx->rng_state >> 11) & ((1ULL << 53) - 1);
     return (double)x * (1.0 / 9007199254740992.0);
@@ -75,7 +78,8 @@ long long rt_rand_int(long long max)
     if (max <= 0)
         return 0;
     RtContext *ctx = rt_get_current_context();
-    assert(ctx && "rt_rand_int called without active RtContext");
+    if (!ctx)
+        ctx = rt_legacy_context();
     ctx->rng_state = ctx->rng_state * 6364136223846793005ULL + 1ULL;
     // Use unsigned modulo to avoid bias issues with negative numbers
     uint64_t umax = (uint64_t)max;

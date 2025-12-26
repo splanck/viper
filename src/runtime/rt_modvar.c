@@ -114,7 +114,8 @@ static RtModvarEntry *mv_find_or_create(RtContext *ctx,
 static void *mv_addr(rt_string name, mv_kind_t kind, size_t size)
 {
     RtContext *ctx = rt_get_current_context();
-    assert(ctx && "mv_addr called without active RtContext");
+    if (!ctx)
+        ctx = rt_legacy_context();
 
     const char *c = rt_string_cstr(name);
     if (!c)

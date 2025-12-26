@@ -85,6 +85,8 @@ class LinearScanAllocator
     std::vector<PhysReg> freeXMM_{};
     std::vector<uint16_t> activeGPR_{};
     std::vector<uint16_t> activeXMM_{};
+    std::size_t currentInstrIdx_{0}; ///< Current instruction index for liveness checks.
+    std::vector<PhysReg> reservedForCall_{}; ///< Arg registers reserved during call setup.
 
     /// @brief Populate the free-register pools from the target description.
     /// @details Queries the @ref TargetInfo to enumerate allocatable registers for each class
@@ -138,10 +140,11 @@ class LinearScanAllocator
     ///          cooperates with the coalescer to apply PX_COPY eliminations.
     void processBlock(MBasicBlock &block, Coalescer &coalescer);
 
-    /// @brief Release any registers whose live intervals end at the current block boundary.
-    /// @details Clears the active sets after a block finishes so registers are returned to the
-    ///          free pools before processing the next block.
-    void releaseActiveForBlock();
+    /// @brief Release or spill registers at block boundaries.
+    /// @details Clears the active sets after a block finishes. Values that are live across
+    ///          block boundaries are spilled so successor blocks can reload them.
+    /// @param block The block that was just processed, to which spills are appended.
+    void releaseActiveForBlock(MBasicBlock &block);
 
     /// @brief Classify each operand of an instruction as a use, def, or both.
     /// @details Produces a parallel vector describing operand roles so subsequent handling can
@@ -172,6 +175,15 @@ class LinearScanAllocator
     /// @details Used when spilling or resolving PX_COPY nodes; the helper populates opcode and
     ///          operand fields according to the register class being moved.
     [[nodiscard]] MInstr makeMove(RegClass cls, PhysReg dst, PhysReg src) const;
+
+    /// @brief Check if a physical register is an argument register for the current ABI.
+    [[nodiscard]] bool isArgumentRegister(PhysReg reg) const;
+
+    /// @brief Reserve an argument register during call setup to prevent spill reloads from using it.
+    void reserveForCall(PhysReg reg);
+
+    /// @brief Release all reserved argument registers back to the pool after a CALL.
+    void releaseCallReserved();
 };
 
 } // namespace viper::codegen::x64::ra

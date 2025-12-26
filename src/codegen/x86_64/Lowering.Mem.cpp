@@ -88,9 +88,11 @@ void emitCall(const ILInstr &instr, MIRBuilder &builder)
         plan.args.push_back(arg);
     }
 
-    if (instr.resultId >= 0)
+    VReg resultVReg{};
+    bool hasResult = (instr.resultId >= 0);
+    if (hasResult)
     {
-        (void)builder.ensureVReg(instr.resultId, instr.resultKind);
+        resultVReg = builder.ensureVReg(instr.resultId, instr.resultKind);
         if (instr.resultKind == ILValue::Kind::F64)
         {
             plan.returnsF64 = true;
@@ -100,6 +102,28 @@ void emitCall(const ILInstr &instr, MIRBuilder &builder)
     builder.recordCallPlan(std::move(plan));
     builder.append(
         MInstr::make(MOpcode::CALL, std::vector<Operand>{builder.makeLabelOperand(instr.ops[0])}));
+
+    // Emit MOV to capture return value from ABI return register to result virtual register
+    if (hasResult)
+    {
+        const Operand resultOp = makeVRegOperand(resultVReg.cls, resultVReg.id);
+        if (instr.resultKind == ILValue::Kind::F64)
+        {
+            // Float return in XMM0
+            const Operand retReg = makePhysRegOperand(
+                RegClass::XMM, static_cast<uint16_t>(builder.target().f64ReturnReg));
+            builder.append(
+                MInstr::make(MOpcode::MOVSDrr, std::vector<Operand>{resultOp, retReg}));
+        }
+        else
+        {
+            // Integer/pointer return in RAX
+            const Operand retReg = makePhysRegOperand(
+                RegClass::GPR, static_cast<uint16_t>(builder.target().intReturnReg));
+            builder.append(
+                MInstr::make(MOpcode::MOVrr, std::vector<Operand>{resultOp, retReg}));
+        }
+    }
 }
 
 /// @brief Lower an IL call.indirect instruction into the backend call plan.
@@ -147,9 +171,11 @@ void emitCallIndirect(const ILInstr &instr, MIRBuilder &builder)
         plan.args.push_back(arg);
     }
 
-    if (instr.resultId >= 0)
+    VReg resultVReg{};
+    bool hasResult = (instr.resultId >= 0);
+    if (hasResult)
     {
-        (void)builder.ensureVReg(instr.resultId, instr.resultKind);
+        resultVReg = builder.ensureVReg(instr.resultId, instr.resultKind);
         if (instr.resultKind == ILValue::Kind::F64)
         {
             plan.returnsF64 = true;
@@ -160,6 +186,28 @@ void emitCallIndirect(const ILInstr &instr, MIRBuilder &builder)
     // Use GPR as preferred class when materialising the callee pointer.
     const Operand calleeOp = builder.makeOperandForValue(instr.ops[0], RegClass::GPR);
     builder.append(MInstr::make(MOpcode::CALL, std::vector<Operand>{calleeOp}));
+
+    // Emit MOV to capture return value from ABI return register to result virtual register
+    if (hasResult)
+    {
+        const Operand resultOp = makeVRegOperand(resultVReg.cls, resultVReg.id);
+        if (instr.resultKind == ILValue::Kind::F64)
+        {
+            // Float return in XMM0
+            const Operand retReg = makePhysRegOperand(
+                RegClass::XMM, static_cast<uint16_t>(builder.target().f64ReturnReg));
+            builder.append(
+                MInstr::make(MOpcode::MOVSDrr, std::vector<Operand>{resultOp, retReg}));
+        }
+        else
+        {
+            // Integer/pointer return in RAX
+            const Operand retReg = makePhysRegOperand(
+                RegClass::GPR, static_cast<uint16_t>(builder.target().intReturnReg));
+            builder.append(
+                MInstr::make(MOpcode::MOVrr, std::vector<Operand>{resultOp, retReg}));
+        }
+    }
 }
 
 /// @brief Lower an automatic storage load instruction.

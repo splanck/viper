@@ -151,6 +151,8 @@ class LowerILToMIR
     std::unordered_map<std::string, BlockInfo> blockInfo_{};
     std::vector<CallLoweringPlan> callPlans_{};
     AsmEmitter::RoDataPool *roDataPool_{nullptr};
+    /// \brief Maps entry block parameter IDs to their ABI physical registers.
+    std::unordered_map<int, Operand> entryParamToPhysReg_{};
 
     void resetFunctionState();
     [[nodiscard]] static RegClass regClassFor(ILValue::Kind kind) noexcept;

@@ -142,12 +142,15 @@ void Spiller::spillValue(RegClass cls,
 /// @details Spill slots live at negative offsets from @c %rbp in units of eight
 ///          bytes.  The helper computes the byte displacement for @p slot and
 ///          returns a Machine operand that can be consumed by loads and stores.
+///          We offset spill slots by 1000 to avoid collision with alloca
+///          placeholders which use -(resultId + 1) * 8.
 /// @param slot Zero-based slot index to reference.
 /// @return Memory operand pointing to the spill slot.
 Operand Spiller::makeFrameOperand(int slot) const
 {
     const auto base = makePhysReg(RegClass::GPR, static_cast<uint16_t>(PhysReg::RBP));
-    const int32_t offset = -static_cast<int32_t>((slot + 1) * 8);
+    // Offset by 1000 slots to avoid collision with alloca placeholders
+    const int32_t offset = -static_cast<int32_t>((slot + 1000 + 1) * 8);
     return makeMemOperand(base, offset);
 }
 

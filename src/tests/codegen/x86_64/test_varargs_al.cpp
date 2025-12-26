@@ -87,6 +87,11 @@ static std::string buildAsmWithCallee(const char *callee)
 
 int main()
 {
+#ifdef _WIN32
+    // Windows x64 ABI doesn't use %al for varargs XMM count.
+    // This test is SysV ABI specific.
+    return 0;
+#endif
     {
         const auto text = buildAsmWithCallee("rt_snprintf");
         const auto callPos = text.find("call");

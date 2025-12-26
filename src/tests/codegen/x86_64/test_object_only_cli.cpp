@@ -39,6 +39,42 @@ constexpr const char kIlcExecutable[] = "ilc";
 
 [[nodiscard]] std::string quoteForShell(const std::filesystem::path &path)
 {
+#if defined(_WIN32)
+    // On Windows, use native backslash separators
+    std::filesystem::path native = path;
+    native.make_preferred();
+    const std::string pathStr = native.string();
+
+    // Only quote if the path contains spaces or special characters
+    bool needsQuoting = false;
+    for (const char ch : pathStr)
+    {
+        if (ch == ' ' || ch == '\t' || ch == '&' || ch == '|' || ch == '<' ||
+            ch == '>' || ch == '^' || ch == '(' || ch == ')' || ch == '"')
+        {
+            needsQuoting = true;
+            break;
+        }
+    }
+
+    if (!needsQuoting)
+    {
+        return pathStr;
+    }
+
+    std::string quoted = "\"";
+    for (const char ch : pathStr)
+    {
+        if (ch == '"')
+        {
+            quoted.push_back('\\');
+        }
+        quoted.push_back(ch);
+    }
+    quoted.push_back('"');
+    return quoted;
+#else
+    // On Unix, always quote and escape backslashes and double quotes
     std::string quoted = "\"";
     for (const char ch : path.string())
     {
@@ -50,6 +86,7 @@ constexpr const char kIlcExecutable[] = "ilc";
     }
     quoted.push_back('"');
     return quoted;
+#endif
 }
 
 [[nodiscard]] int decodeExitCode(int rawStatus)

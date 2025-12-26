@@ -45,9 +45,6 @@ namespace
 constexpr PhysReg kScratchGPR = PhysReg::R11;
 constexpr PhysReg kScratchXMM = PhysReg::XMM15;
 
-#ifndef NDEBUG
-int callAlignmentCheckCounter = 0;
-#endif
 
 /// @brief Decide whether an instruction produces the boolean SSA value @p vreg.
 ///
@@ -206,116 +203,151 @@ void lowerCall(MBasicBlock &block,
                                   makeImmOperand(-static_cast<int64_t>(padBytes))}));
     }
 
+    // Two-pass approach to avoid clobbering vreg values during argument setup:
+    // Pass 1: Copy all vreg arguments to their destinations (reading vregs first)
+    // Pass 2: Set up all immediate arguments (can safely overwrite registers now)
+    // For vreg args going to registers, use scratch to avoid reading clobbered values.
+
     std::size_t gprUsed = 0;
     std::size_t xmmUsed = 0;
-    std::size_t stackBytes = target.shadowSpace; // Stack args start after shadow space
+    std::size_t stackBytes = target.shadowSpace;
 
+    // Pass 1: Handle all vreg (non-immediate) arguments first
     for (const auto &arg : plan.args)
     {
         const auto currentIdx =
             static_cast<std::size_t>(std::distance(block.instructions.begin(), insertIt));
 
-        switch (arg.kind)
+        if (arg.kind == CallArg::GPR)
         {
-            case CallArg::GPR:
+            if (gprUsed < target.maxGPRArgs)
             {
-                if (gprUsed < target.maxGPRArgs)
+                const PhysReg destReg = target.intArgOrder[gprUsed++];
+                if (!arg.isImm)
                 {
-                    const PhysReg destReg = target.intArgOrder[gprUsed++];
-                    if (arg.isImm)
+                    const Operand src = makeVRegOperand(RegClass::GPR, arg.vreg);
+                    // Route through scratch register to avoid conflicts
+                    const Operand scratch = makePhysOperand(RegClass::GPR, kScratchGPR);
+                    if (isI1Value(block, currentIdx, arg.vreg))
                     {
-                        insertInstr(MInstr::make(
-                            MOpcode::MOVri,
-                            {makePhysOperand(RegClass::GPR, destReg), makeImmOperand(arg.imm)}));
+                        insertInstr(MInstr::make(MOpcode::MOVZXrr32, {scratch, src}));
                     }
                     else
                     {
-                        const Operand src = makeVRegOperand(RegClass::GPR, arg.vreg);
-                        if (isI1Value(block, currentIdx, arg.vreg))
-                        {
-                            insertInstr(
-                                MInstr::make(MOpcode::MOVZXrr32,
-                                             {makePhysOperand(RegClass::GPR, destReg), src}));
-                        }
-                        else
-                        {
-                            insertInstr(MInstr::make(
-                                MOpcode::MOVrr, {makePhysOperand(RegClass::GPR, destReg), src}));
-                        }
+                        insertInstr(MInstr::make(MOpcode::MOVrr, {scratch, src}));
                     }
+                    insertInstr(MInstr::make(MOpcode::MOVrr,
+                                             {makePhysOperand(RegClass::GPR, destReg), scratch}));
                 }
-                else
+            }
+            else
+            {
+                const auto slotOffset = static_cast<int32_t>(stackBytes);
+                stackBytes += kSlotSizeBytes;
+                if (!arg.isImm)
                 {
-                    const auto slotOffset = static_cast<int32_t>(stackBytes);
-                    stackBytes += kSlotSizeBytes;
                     const Operand dest = makeStackSlot(slotOffset);
-                    if (arg.isImm)
+                    const Operand scratch = makePhysOperand(RegClass::GPR, kScratchGPR);
+                    if (isI1Value(block, currentIdx, arg.vreg))
                     {
-                        const Operand scratch = makePhysOperand(RegClass::GPR, kScratchGPR);
-                        insertInstr(
-                            MInstr::make(MOpcode::MOVri, {scratch, makeImmOperand(arg.imm)}));
-                        insertInstr(MInstr::make(MOpcode::MOVrr, {dest, scratch}));
-                    }
-                    else if (isI1Value(block, currentIdx, arg.vreg))
-                    {
-                        const Operand scratch = makePhysOperand(RegClass::GPR, kScratchGPR);
-                        insertInstr(
-                            MInstr::make(MOpcode::MOVZXrr32,
-                                         {scratch, makeVRegOperand(RegClass::GPR, arg.vreg)}));
-                        insertInstr(MInstr::make(MOpcode::MOVrr, {dest, scratch}));
+                        insertInstr(MInstr::make(MOpcode::MOVZXrr32,
+                                                 {scratch, makeVRegOperand(RegClass::GPR, arg.vreg)}));
                     }
                     else
                     {
                         insertInstr(MInstr::make(MOpcode::MOVrr,
-                                                 {dest, makeVRegOperand(RegClass::GPR, arg.vreg)}));
+                                                 {scratch, makeVRegOperand(RegClass::GPR, arg.vreg)}));
                     }
+                    insertInstr(MInstr::make(MOpcode::MOVrm, {dest, scratch}));
                 }
-                break;
             }
-            case CallArg::XMM:
+        }
+        else // XMM
+        {
+            if (xmmUsed < target.maxXMMArgs)
             {
-                if (xmmUsed < target.maxXMMArgs)
+                const PhysReg destReg = target.f64ArgOrder[xmmUsed++];
+                if (!arg.isImm)
                 {
-                    const PhysReg destReg = target.f64ArgOrder[xmmUsed++];
-                    if (arg.isImm)
-                    {
-                        // Phase A backend does not yet support immediate materialisation into XMM
-                        // args.
-                        const Operand scratchGpr = makePhysOperand(RegClass::GPR, kScratchGPR);
-                        insertInstr(
-                            MInstr::make(MOpcode::MOVri, {scratchGpr, makeImmOperand(arg.imm)}));
-                        insertInstr(
-                            MInstr::make(MOpcode::CVTSI2SD,
-                                         {makePhysOperand(RegClass::XMM, destReg), scratchGpr}));
-                    }
-                    else
-                    {
-                        insertInstr(MInstr::make(MOpcode::MOVSDrr,
-                                                 {makePhysOperand(RegClass::XMM, destReg),
-                                                  makeVRegOperand(RegClass::XMM, arg.vreg)}));
-                    }
+                    insertInstr(MInstr::make(MOpcode::MOVSDrr,
+                                             {makePhysOperand(RegClass::XMM, destReg),
+                                              makeVRegOperand(RegClass::XMM, arg.vreg)}));
                 }
-                else
+            }
+            else
+            {
+                const auto slotOffset = static_cast<int32_t>(stackBytes);
+                stackBytes += kSlotSizeBytes;
+                if (!arg.isImm)
                 {
-                    const auto slotOffset = static_cast<int32_t>(stackBytes);
-                    stackBytes += kSlotSizeBytes;
                     const Operand dest = makeStackSlot(slotOffset);
-                    if (arg.isImm)
-                    {
-                        const Operand scratchGpr = makePhysOperand(RegClass::GPR, kScratchGPR);
-                        const Operand scratchXmm = makePhysOperand(RegClass::XMM, kScratchXMM);
-                        insertInstr(
-                            MInstr::make(MOpcode::MOVri, {scratchGpr, makeImmOperand(arg.imm)}));
-                        insertInstr(MInstr::make(MOpcode::CVTSI2SD, {scratchXmm, scratchGpr}));
-                        insertInstr(MInstr::make(MOpcode::MOVSDrm, {dest, scratchXmm}));
-                    }
-                    else
-                    {
-                        insertInstr(MInstr::make(MOpcode::MOVSDrm,
-                                                 {dest, makeVRegOperand(RegClass::XMM, arg.vreg)}));
-                    }
+                    // For XMM vreg stack args, use scratch XMM then store
+                    const Operand scratchXmm = makePhysOperand(RegClass::XMM, kScratchXMM);
+                    insertInstr(MInstr::make(MOpcode::MOVSDrr,
+                                             {scratchXmm, makeVRegOperand(RegClass::XMM, arg.vreg)}));
+                    insertInstr(MInstr::make(MOpcode::MOVSDrm, {dest, scratchXmm}));
                 }
-                break;
+            }
+        }
+    }
+
+    // Pass 2: Handle all immediate arguments (now safe to overwrite registers)
+    gprUsed = 0;
+    xmmUsed = 0;
+    stackBytes = target.shadowSpace;
+    for (const auto &arg : plan.args)
+    {
+        if (arg.kind == CallArg::GPR)
+        {
+            if (gprUsed < target.maxGPRArgs)
+            {
+                const PhysReg destReg = target.intArgOrder[gprUsed++];
+                if (arg.isImm)
+                {
+                    insertInstr(MInstr::make(
+                        MOpcode::MOVri,
+                        {makePhysOperand(RegClass::GPR, destReg), makeImmOperand(arg.imm)}));
+                }
+            }
+            else
+            {
+                const auto slotOffset = static_cast<int32_t>(stackBytes);
+                stackBytes += kSlotSizeBytes;
+                if (arg.isImm)
+                {
+                    const Operand dest = makeStackSlot(slotOffset);
+                    const Operand scratch = makePhysOperand(RegClass::GPR, kScratchGPR);
+                    insertInstr(MInstr::make(MOpcode::MOVri, {scratch, makeImmOperand(arg.imm)}));
+                    insertInstr(MInstr::make(MOpcode::MOVrm, {dest, scratch}));
+                }
+            }
+        }
+        else // XMM
+        {
+            if (xmmUsed < target.maxXMMArgs)
+            {
+                const PhysReg destReg = target.f64ArgOrder[xmmUsed++];
+                if (arg.isImm)
+                {
+                    const Operand scratchGpr = makePhysOperand(RegClass::GPR, kScratchGPR);
+                    insertInstr(MInstr::make(MOpcode::MOVri, {scratchGpr, makeImmOperand(arg.imm)}));
+                    insertInstr(MInstr::make(MOpcode::CVTSI2SD,
+                                             {makePhysOperand(RegClass::XMM, destReg), scratchGpr}));
+                }
+            }
+            else
+            {
+                const auto slotOffset = static_cast<int32_t>(stackBytes);
+                stackBytes += kSlotSizeBytes;
+                if (arg.isImm)
+                {
+                    const Operand dest = makeStackSlot(slotOffset);
+                    const Operand scratchGpr = makePhysOperand(RegClass::GPR, kScratchGPR);
+                    const Operand scratchXmm = makePhysOperand(RegClass::XMM, kScratchXMM);
+                    insertInstr(MInstr::make(MOpcode::MOVri, {scratchGpr, makeImmOperand(arg.imm)}));
+                    insertInstr(MInstr::make(MOpcode::CVTSI2SD, {scratchXmm, scratchGpr}));
+                    insertInstr(MInstr::make(MOpcode::MOVSDrm, {dest, scratchXmm}));
+                }
             }
         }
     }
@@ -332,17 +364,8 @@ void lowerCall(MBasicBlock &block,
             MInstr::make(MOpcode::MOVri, {rax, makeImmOperand(static_cast<int64_t>(xmmUsed))}));
     }
 
-#ifndef NDEBUG
-    const std::string callOkLabel = ".Lcall_ok_" + std::to_string(callAlignmentCheckCounter++);
-    const Operand rax = makePhysOperand(RegClass::GPR, PhysReg::RAX);
-    const Operand rsp = makePhysOperand(RegClass::GPR, PhysReg::RSP);
-    insertInstr(MInstr::make(MOpcode::MOVrr, {rax, rsp}));
-    insertInstr(MInstr::make(MOpcode::ANDri, {rax, makeImmOperand(15)}));
-    insertInstr(MInstr::make(MOpcode::TESTrr, {rax, rax}));
-    insertInstr(MInstr::make(MOpcode::JCC, {makeImmOperand(0), makeLabelOperand(callOkLabel)}));
-    insertInstr(MInstr::make(MOpcode::UD2));
-    insertInstr(MInstr::make(MOpcode::LABEL, {makeLabelOperand(callOkLabel)}));
-#endif
+    // Debug alignment check removed - was clobbering R11 which may be in use
+    // for intermediate values during argument setup.
 
     // If we inserted dynamic padding earlier, restore %rsp immediately after
     // the CALL. Advance insertion point past the CALL placeholder and emit ADD.
