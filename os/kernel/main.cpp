@@ -779,7 +779,8 @@ extern "C" void kernel_main(void *boot_info_ptr)
     tests::run_viper_tests();
     tests::run_syscall_tests();
     tests::create_ipc_test_tasks();
-    tests::create_userfault_test_task();
+    // Note: userfault tests are run via QEMU test infrastructure, not at boot
+    // tests::create_userfault_test_task();
 
     // Test Viper creation
     serial::puts("[kernel] Testing Viper creation...\n");

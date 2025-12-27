@@ -1767,6 +1767,9 @@ static SyscallResult sys_debug_print(u64 a0, u64, u64, u64, u64, u64)
 
 static SyscallResult sys_getchar(u64, u64, u64, u64, u64, u64)
 {
+    // Poll input devices to move characters from virtio-input to console buffer
+    console::poll_input();
+
     int c = console::getchar();
     if (c < 0)
     {
@@ -1778,7 +1781,11 @@ static SyscallResult sys_getchar(u64, u64, u64, u64, u64, u64)
 static SyscallResult sys_putchar(u64 a0, u64, u64, u64, u64, u64)
 {
     char c = static_cast<char>(a0);
-    serial::putc(static_cast<char>(c));
+    serial::putc(c);
+    if (gcon::is_available())
+    {
+        gcon::putc(c);
+    }
     return SyscallResult::ok();
 }
 
