@@ -365,6 +365,7 @@ void rx_segment(const Ipv4Addr &src, const void *data, usize len)
             if (tcp_flags & flags::RST)
             {
                 sock->state = TcpState::CLOSED;
+                sock->unacked_len = 0; // Clear retransmit state
                 break;
             }
 
@@ -373,6 +374,7 @@ void rx_segment(const Ipv4Addr &src, const void *data, usize len)
                 sock->rcv_nxt = seq + payload_len + 1;
                 send_segment(sock, flags::ACK, nullptr, 0);
                 sock->state = TcpState::CLOSE_WAIT;
+                sock->unacked_len = 0; // Clear retransmit state
             }
             else
             {
@@ -394,10 +396,29 @@ void rx_segment(const Ipv4Addr &src, const void *data, usize len)
                     sock->rcv_nxt += copy_len;
                 }
 
-                // Send ACK if needed
-                if ((tcp_flags & flags::ACK) || payload_len > 0)
+                // Handle ACK - update snd_una and clear retransmit state if data acked
+                if (tcp_flags & flags::ACK)
                 {
+                    // Check if this ACK acknowledges our unacked data
+                    if (sock->unacked_len > 0)
+                    {
+                        u32 unacked_end = sock->unacked_seq + sock->unacked_len;
+                        // ACK number is the next expected sequence number
+                        // If ack >= unacked_end, all our data was acknowledged
+                        if (ack >= unacked_end || ack < sock->unacked_seq)
+                        {
+                            // Data acknowledged, clear retransmit state
+                            sock->unacked_len = 0;
+                            sock->rto = TcpSocket::RTO_INITIAL; // Reset RTO
+                            sock->retransmit_count = 0;
+                        }
+                    }
                     sock->snd_una = ack;
+                }
+
+                // Send ACK if we received data
+                if (payload_len > 0)
+                {
                     send_segment(sock, flags::ACK, nullptr, 0);
                 }
             }
@@ -465,6 +486,12 @@ i32 socket_create()
             sockets[i].rx_head = sockets[i].rx_tail = 0;
             sockets[i].tx_len = 0;
             sockets[i].rcv_wnd = TcpSocket::RX_BUFFER_SIZE;
+            // Initialize retransmit state
+            sockets[i].unacked_len = 0;
+            sockets[i].unacked_seq = 0;
+            sockets[i].retransmit_time = 0;
+            sockets[i].rto = TcpSocket::RTO_INITIAL;
+            sockets[i].retransmit_count = 0;
             return static_cast<i32>(i);
         }
     }
@@ -658,14 +685,31 @@ i32 socket_send(i32 sock, const void *data, usize len)
         while (!segment_sent && timer::get_ticks() - retry_start < 2000)
         {
             tcp_lock.acquire();
+
+            // Save data for retransmission before sending
+            s->unacked_seq = s->snd_nxt;
+            if (chunk <= TcpSocket::UNACKED_BUFFER_SIZE)
+            {
+                for (usize i = 0; i < chunk; i++)
+                {
+                    s->unacked_data[i] = p[sent + i];
+                }
+                s->unacked_len = chunk;
+            }
+
             bool result = send_segment(s, flags::ACK | flags::PSH, p + sent, chunk);
-            tcp_lock.release();
 
             if (result)
             {
+                // Set retransmit timer
+                s->retransmit_time = timer::get_ticks() + s->rto;
+                s->retransmit_count = 0;
                 segment_sent = true;
             }
-            else
+
+            tcp_lock.release();
+
+            if (!segment_sent)
             {
                 // Wait for ARP resolution
                 for (int i = 0; i < 100; i++)
@@ -681,20 +725,38 @@ i32 socket_send(i32 sock, const void *data, usize len)
         }
         sent += chunk;
 
-        // Wait for ACK (simplified - in production would use retransmit queue)
+        // Wait for ACK (with retransmit support)
         u64 start = timer::get_ticks();
-        while (timer::get_ticks() - start < 1000)
+        while (timer::get_ticks() - start < 5000) // Extended timeout for retransmits
         {
             network_poll();
 
             tcp_lock.acquire();
             bool ack_received = s->snd_una >= s->snd_nxt;
+            if (ack_received)
+            {
+                // Clear retransmit state on ACK
+                s->unacked_len = 0;
+                s->rto = TcpSocket::RTO_INITIAL; // Reset RTO on success
+            }
             tcp_lock.release();
 
             if (ack_received)
             {
                 break; // ACK received
             }
+
+            // Check if we've exceeded max retries
+            tcp_lock.acquire();
+            bool give_up = s->retransmit_count >= TcpSocket::RETRANSMIT_MAX;
+            tcp_lock.release();
+
+            if (give_up)
+            {
+                // Connection failed
+                return sent > 0 ? static_cast<i32>(sent) : -1;
+            }
+
             asm volatile("wfi");
         }
     }
@@ -833,6 +895,99 @@ usize socket_available(i32 sock)
         return 0;
     }
     return s->rx_tail - s->rx_head;
+}
+
+/**
+ * @brief Retransmit unacked data for a socket.
+ *
+ * @details
+ * Internal helper that resends the buffered unacked data using the original
+ * sequence number. Updates the retransmit timer with exponential backoff.
+ *
+ * @param sock Socket to retransmit for.
+ */
+static void retransmit_segment(TcpSocket *sock)
+{
+    if (sock->unacked_len == 0)
+    {
+        return;
+    }
+
+    // Save current snd_nxt and restore sequence number for retransmit
+    u32 saved_snd_nxt = sock->snd_nxt;
+    sock->snd_nxt = sock->unacked_seq;
+
+    // Retransmit the data
+    send_segment(sock, flags::ACK | flags::PSH, sock->unacked_data, sock->unacked_len);
+
+    // Restore snd_nxt to where it should be (after the retransmitted data)
+    // send_segment already advanced it by unacked_len, which is correct
+    // But we need to make sure we're at saved_snd_nxt (the original next seq)
+    sock->snd_nxt = saved_snd_nxt;
+
+    // Apply exponential backoff
+    sock->rto *= 2;
+    if (sock->rto > TcpSocket::RTO_MAX)
+    {
+        sock->rto = TcpSocket::RTO_MAX;
+    }
+
+    // Set next retransmit time
+    sock->retransmit_time = timer::get_ticks() + sock->rto;
+    sock->retransmit_count++;
+
+    serial::puts("[tcp] Retransmit #");
+    serial::put_dec(sock->retransmit_count);
+    serial::puts(" for port ");
+    serial::put_dec(sock->local_port);
+    serial::puts(", RTO=");
+    serial::put_dec(sock->rto);
+    serial::puts("ms\n");
+}
+
+/** @copydoc net::tcp::check_retransmit */
+void check_retransmit()
+{
+    if (!initialized)
+    {
+        return;
+    }
+
+    u64 now = timer::get_ticks();
+
+    SpinlockGuard guard(tcp_lock);
+
+    for (usize i = 0; i < MAX_TCP_SOCKETS; i++)
+    {
+        TcpSocket *s = &sockets[i];
+
+        // Only check established sockets with unacked data
+        if (!s->in_use || s->state != TcpState::ESTABLISHED)
+        {
+            continue;
+        }
+
+        if (s->unacked_len == 0)
+        {
+            continue; // No unacked data
+        }
+
+        // Check if retransmit timer expired
+        if (now >= s->retransmit_time)
+        {
+            if (s->retransmit_count >= TcpSocket::RETRANSMIT_MAX)
+            {
+                // Too many retries, give up and close connection
+                serial::puts("[tcp] Max retransmits exceeded, closing connection\n");
+                s->state = TcpState::CLOSED;
+                s->unacked_len = 0;
+            }
+            else
+            {
+                retransmit_segment(s);
+            }
+        }
+    }
 }
 
 } // namespace tcp

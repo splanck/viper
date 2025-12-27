@@ -76,6 +76,9 @@ void network_poll()
         // Process Ethernet frame
         eth::rx_frame(rx_buffer, len);
     }
+
+    // Check for TCP retransmissions
+    tcp::check_retransmit();
 }
 
 } // namespace net

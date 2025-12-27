@@ -24,6 +24,7 @@ set(KERNEL_SOURCES
         mm/pmm.cpp
         mm/vmm.cpp
         mm/kheap.cpp
+        mm/slab.cpp
         mm/fault.cpp
         sched/task.cpp
         sched/context.S

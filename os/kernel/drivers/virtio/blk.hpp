@@ -18,7 +18,7 @@
  * - `virtio::BlkDevice`, a driver that supports blocking reads/writes and a
  *   flush operation.
  *
- * The current implementation uses polling to wait for request completion.
+ * The driver uses interrupt-driven I/O with polling fallback for robustness.
  */
 namespace virtio
 {
@@ -192,11 +192,36 @@ class BlkDevice : public Device
         return readonly_;
     }
 
+    /**
+     * @brief Handle block device interrupt.
+     *
+     * @details
+     * Called from the IRQ handler. Acknowledges the interrupt and
+     * signals completion to any waiting requests.
+     */
+    void handle_interrupt();
+
+    /**
+     * @brief Get the device index for IRQ calculation.
+     *
+     * @return Device index in the virtio MMIO range.
+     */
+    u32 device_index() const
+    {
+        return device_index_;
+    }
+
   private:
     Virtqueue vq_;
     u64 capacity_{0};
     u32 sector_size_{512};
     bool readonly_{false};
+    u32 device_index_{0}; // Index for IRQ calculation
+
+    // Interrupt-driven I/O state
+    volatile bool io_complete_{false};    // Set by IRQ handler
+    volatile i32 completed_desc_{-1};     // Descriptor completed by IRQ
+    u32 irq_num_{0};                      // Assigned IRQ number
 
     // Pre-allocated request buffer
     static constexpr usize MAX_PENDING = 8;

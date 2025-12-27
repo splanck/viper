@@ -49,6 +49,7 @@
 #include "loader/loader.hpp"
 #include "mm/kheap.hpp"
 #include "mm/pmm.hpp"
+#include "mm/slab.hpp"
 #include "mm/vmm.hpp"
 #include "net/dns/dns.hpp"
 #include "net/http/http.hpp"
@@ -261,12 +262,17 @@ extern "C" void kernel_main(void *boot_info_ptr)
     serial::put_hex(reinterpret_cast<u64>(test2));
     serial::puts("\n");
 
+    // Initialize slab allocator
+    slab::init();
+    slab::init_object_caches();
+
     // Update graphics console with memory info
     if (gcon::is_available())
     {
         gcon::puts("  [OK] Physical memory manager initialized\n");
         gcon::puts("  [OK] Virtual memory manager initialized\n");
         gcon::puts("  [OK] Kernel heap initialized\n");
+        gcon::puts("  [OK] Slab allocator initialized\n");
     }
 
     // Initialize exceptions and interrupts

@@ -1,4 +1,5 @@
 #include "blk.hpp"
+#include "../../arch/aarch64/gic.hpp"
 #include "../../console/serial.hpp"
 #include "../../mm/pmm.hpp"
 
@@ -7,9 +8,9 @@
  * @brief Virtio block device driver implementation.
  *
  * @details
- * Implements a simple polling-based virtio-blk driver suitable for QEMU
- * bring-up. Requests are submitted via a single virtqueue and the driver polls
- * the used ring for completion.
+ * Implements an interrupt-driven virtio-blk driver with polling fallback.
+ * Requests are submitted via a single virtqueue. The driver waits for
+ * completion via interrupt, falling back to polling on timeout.
  *
  * The driver assumes buffers are identity-mapped so it can compute physical
  * addresses directly using `pmm::virt_to_phys`.
@@ -24,6 +25,24 @@ namespace virtio
 // Global block device instance
 static BlkDevice g_blk_device;
 static bool g_blk_initialized = false;
+
+// QEMU virt machine virtio IRQ base (SPI interrupts start at 32, virtio at 0x30)
+constexpr u32 VIRTIO_IRQ_BASE = 0x30; // IRQ 48 for first virtio device
+
+/**
+ * @brief IRQ handler for virtio-blk interrupts.
+ *
+ * @details
+ * Called by the GIC when a virtio-blk interrupt fires. Delegates to the
+ * device's handle_interrupt() method.
+ */
+static void blk_irq_handler()
+{
+    if (g_blk_initialized)
+    {
+        g_blk_device.handle_interrupt();
+    }
+}
 
 /** @copydoc virtio::blk_device */
 BlkDevice *blk_device()
@@ -42,6 +61,10 @@ bool BlkDevice::init()
         return false;
     }
 
+    // Calculate device index for IRQ (device base - 0x0a000000) / 0x200
+    device_index_ = static_cast<u32>((base - 0x0a000000) / 0x200);
+    irq_num_ = VIRTIO_IRQ_BASE + device_index_;
+
     // Initialize base device
     if (!Device::init(base))
     {
@@ -51,7 +74,9 @@ bool BlkDevice::init()
 
     serial::puts("[virtio-blk] Initializing block device at ");
     serial::put_hex(base);
-    serial::puts("\n");
+    serial::puts(" (IRQ ");
+    serial::put_dec(irq_num_);
+    serial::puts(")\n");
 
     // Reset device
     reset();
@@ -124,8 +149,41 @@ bool BlkDevice::init()
     // Device is ready
     add_status(status::DRIVER_OK);
 
-    serial::puts("[virtio-blk] Driver initialized\n");
+    // Register IRQ handler
+    gic::register_handler(irq_num_, blk_irq_handler);
+    gic::enable_irq(irq_num_);
+
+    serial::puts("[virtio-blk] Driver initialized (interrupt-driven)\n");
     return true;
+}
+
+/**
+ * @brief Handle virtio-blk interrupt.
+ *
+ * @details
+ * Acknowledges the interrupt, checks the used ring for completions,
+ * and signals the waiting request.
+ */
+void BlkDevice::handle_interrupt()
+{
+    // Read and acknowledge interrupt status
+    u32 isr = read_isr();
+    if (isr & 0x1) // Used buffer notification
+    {
+        ack_interrupt(0x1);
+
+        // Check for completed requests
+        i32 completed = vq_.poll_used();
+        if (completed >= 0)
+        {
+            completed_desc_ = completed;
+            io_complete_ = true;
+        }
+    }
+    if (isr & 0x2) // Configuration change
+    {
+        ack_interrupt(0x2);
+    }
 }
 
 /** @copydoc virtio::BlkDevice::do_request */
@@ -203,6 +261,10 @@ i32 BlkDevice::do_request(u32 type, u64 sector, u32 count, void *buf)
     // Descriptor 2: Status (device writes)
     vq_.set_desc(desc2, status_phys, 1, desc_flags::WRITE);
 
+    // Clear completion state before submitting
+    io_complete_ = false;
+    completed_desc_ = -1;
+
     // Memory barrier before submitting
     asm volatile("dsb sy" ::: "memory");
 
@@ -210,18 +272,39 @@ i32 BlkDevice::do_request(u32 type, u64 sector, u32 count, void *buf)
     vq_.submit(desc0);
     vq_.kick();
 
-    // Wait for completion (polling with timeout)
+    // Wait for completion: interrupt-driven with polling fallback
     bool got_completion = false;
-    for (u32 i = 0; i < 10000000; i++)
+    constexpr u32 INTERRUPT_TIMEOUT = 100000;  // Iterations to wait for interrupt
+    constexpr u32 POLL_TIMEOUT = 10000000;     // Total polling iterations (fallback)
+
+    // First, try to wait for interrupt
+    for (u32 i = 0; i < INTERRUPT_TIMEOUT; i++)
     {
-        i32 completed = vq_.poll_used();
-        if (completed == desc0)
+        // Check if interrupt signaled completion
+        if (io_complete_ && completed_desc_ == desc0)
         {
             got_completion = true;
             break;
         }
-        // Yield CPU while waiting
-        asm volatile("yield" ::: "memory");
+
+        // Wait for interrupt (low power)
+        asm volatile("wfi" ::: "memory");
+    }
+
+    // Fallback to polling if interrupt didn't fire
+    if (!got_completion)
+    {
+        for (u32 i = 0; i < POLL_TIMEOUT; i++)
+        {
+            i32 completed = vq_.poll_used();
+            if (completed == desc0)
+            {
+                got_completion = true;
+                break;
+            }
+            // Yield CPU while polling
+            asm volatile("yield" ::: "memory");
+        }
     }
 
     if (!got_completion)
@@ -326,15 +409,41 @@ i32 BlkDevice::flush()
     vq_.chain_desc(desc0, desc1);
     vq_.set_desc(desc1, status_phys, 1, desc_flags::WRITE);
 
+    // Clear completion state before submitting
+    io_complete_ = false;
+    completed_desc_ = -1;
+
     vq_.submit(desc0);
     vq_.kick();
 
-    while (true)
+    // Wait for completion: interrupt-driven with polling fallback
+    bool got_completion = false;
+    constexpr u32 INTERRUPT_TIMEOUT = 100000;
+
+    // First, try to wait for interrupt
+    for (u32 i = 0; i < INTERRUPT_TIMEOUT; i++)
     {
-        i32 completed = vq_.poll_used();
-        if (completed == desc0)
+        if (io_complete_ && completed_desc_ == desc0)
+        {
+            got_completion = true;
             break;
-        asm volatile("yield" ::: "memory");
+        }
+        asm volatile("wfi" ::: "memory");
+    }
+
+    // Fallback to polling
+    if (!got_completion)
+    {
+        while (true)
+        {
+            i32 completed = vq_.poll_used();
+            if (completed == desc0)
+            {
+                got_completion = true;
+                break;
+            }
+            asm volatile("yield" ::: "memory");
+        }
     }
 
     vq_.free_desc(desc0);

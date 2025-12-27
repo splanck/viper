@@ -142,6 +142,9 @@ void timer_irq_handler()
         serial::puts("s\n");
     }
 
+    // Update cursor blink (ticks are in milliseconds)
+    gcon::update_cursor_blink(ticks);
+
     // Poll for input events
     input::poll();
 

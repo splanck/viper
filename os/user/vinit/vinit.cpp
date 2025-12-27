@@ -2704,6 +2704,9 @@ void shell_loop()
     puts("========================================\n");
     puts("Type 'Help' for available commands.\n\n");
 
+    // Enable cursor visibility via ANSI escape sequence
+    puts("\x1B[?25h");
+
     while (true)
     {
         // Amiga-style prompt: device:path>

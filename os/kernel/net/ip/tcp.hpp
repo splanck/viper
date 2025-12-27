@@ -126,6 +126,20 @@ struct TcpSocket
     u8 tx_buffer[TX_BUFFER_SIZE];
     usize tx_len; // Bytes waiting to send
 
+    // Retransmission state
+    static constexpr usize UNACKED_BUFFER_SIZE = 1460; // MSS
+    u8 unacked_data[UNACKED_BUFFER_SIZE];              // Copy of sent but unacked data
+    usize unacked_len;                                 // Length of unacked data
+    u32 unacked_seq;                                   // Sequence number of unacked data
+    u64 retransmit_time;                               // Timestamp when to retransmit (ms)
+    u32 rto;                                           // Retransmission timeout (ms)
+    u8 retransmit_count;                               // Number of retries attempted
+
+    // Retransmit constants
+    static constexpr u32 RTO_INITIAL = 1000;  // Initial RTO: 1 second
+    static constexpr u32 RTO_MAX = 60000;     // Max RTO: 60 seconds
+    static constexpr u8 RETRANSMIT_MAX = 5;   // Max retries before giving up
+
     // Timeout tracking
     u64 last_activity;
 };
@@ -291,6 +305,19 @@ bool socket_connected(i32 sock);
  * @return Number of buffered bytes, or 0 if socket is invalid/not in use.
  */
 usize socket_available(i32 sock);
+
+/**
+ * @brief Check for and handle TCP retransmissions.
+ *
+ * @details
+ * Iterates through all active TCP sockets and retransmits unacknowledged
+ * data when the retransmission timer expires. Uses exponential backoff
+ * (doubling RTO on each retry, up to RTO_MAX). Gives up after RETRANSMIT_MAX
+ * attempts and closes the connection.
+ *
+ * This function should be called periodically from network_poll().
+ */
+void check_retransmit();
 
 } // namespace tcp
 } // namespace net

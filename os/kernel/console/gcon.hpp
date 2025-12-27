@@ -144,4 +144,41 @@ void set_cursor(u32 x, u32 y);
  */
 void get_size(u32 &cols, u32 &rows);
 
+/**
+ * @brief Show the text cursor at the current position.
+ *
+ * @details
+ * Makes the cursor visible and starts the blink cycle. The cursor is drawn
+ * as a block that XORs the underlying pixels, making it visible on any
+ * background.
+ */
+void show_cursor();
+
+/**
+ * @brief Hide the text cursor.
+ *
+ * @details
+ * Erases the cursor from the screen and disables blinking. The cursor
+ * position is preserved.
+ */
+void hide_cursor();
+
+/**
+ * @brief Check if the cursor is currently visible.
+ *
+ * @return `true` if the cursor is visible, otherwise `false`.
+ */
+bool is_cursor_visible();
+
+/**
+ * @brief Update cursor blink state (called from timer interrupt).
+ *
+ * @details
+ * Should be called periodically (e.g., every timer tick) to update the
+ * cursor blink animation. The cursor toggles visibility every 500ms.
+ *
+ * @param current_time_ms Current time in milliseconds.
+ */
+void update_cursor_blink(u64 current_time_ms);
+
 } // namespace gcon

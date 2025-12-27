@@ -17,6 +17,7 @@
 #include "viperfs.hpp"
 #include "../../console/serial.hpp"
 #include "../../mm/kheap.hpp"
+#include "../../mm/slab.hpp"
 #include "../cache.hpp"
 
 namespace fs::viperfs
@@ -163,8 +164,17 @@ Inode *ViperFS::read_inode(u64 ino)
         return nullptr;
     }
 
-    // Allocate and copy inode
-    Inode *inode = static_cast<Inode *>(kheap::kmalloc(sizeof(Inode)));
+    // Allocate inode from slab cache (falls back to heap if cache unavailable)
+    Inode *inode = nullptr;
+    slab::SlabCache *cache_ptr = slab::inode_cache();
+    if (cache_ptr)
+    {
+        inode = static_cast<Inode *>(slab::alloc(cache_ptr));
+    }
+    else
+    {
+        inode = static_cast<Inode *>(kheap::kmalloc(sizeof(Inode)));
+    }
     if (!inode)
     {
         cache().release(block);
@@ -183,7 +193,16 @@ void ViperFS::release_inode(Inode *inode)
 {
     if (inode)
     {
-        kheap::kfree(inode);
+        // Free to slab cache if available, otherwise heap
+        slab::SlabCache *cache_ptr = slab::inode_cache();
+        if (cache_ptr)
+        {
+            slab::free(cache_ptr, inode);
+        }
+        else
+        {
+            kheap::kfree(inode);
+        }
     }
 }
 

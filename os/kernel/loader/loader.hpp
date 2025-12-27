@@ -100,4 +100,50 @@ LoadResult load_elf_from_blob(viper::Viper *v, const void *data, usize size);
  */
 LoadResult load_elf_from_disk(viper::Viper *v, const char *path);
 
+/**
+ * @brief Result of spawning a new process.
+ */
+struct SpawnResult
+{
+    bool success;        /**< Whether spawn completed successfully. */
+    viper::Viper *viper; /**< The newly created process (nullptr on failure). */
+    u64 task_id;         /**< The task ID of the main thread (0 on failure). */
+};
+
+/**
+ * @brief Spawn a new process from an ELF file on disk.
+ *
+ * @details
+ * Creates a complete new process by:
+ * 1. Creating a new Viper (process) with its own address space
+ * 2. Loading the ELF binary from the filesystem
+ * 3. Setting up the user stack
+ * 4. Creating a user task with the ELF entry point
+ * 5. Enqueueing the task in the scheduler
+ *
+ * The process starts executing immediately when the scheduler selects it.
+ *
+ * @param path Filesystem path to the ELF executable.
+ * @param name Human-readable process name (for debugging).
+ * @param parent Parent process (for process hierarchy), or nullptr.
+ * @return SpawnResult with success status and process/task info.
+ */
+SpawnResult spawn_process(const char *path, const char *name, viper::Viper *parent = nullptr);
+
+/**
+ * @brief Spawn a new process from an in-memory ELF blob.
+ *
+ * @details
+ * Same as spawn_process(path, name) but loads from memory instead of disk.
+ * Useful for embedded binaries or network-loaded programs.
+ *
+ * @param elf_data Pointer to the ELF image in memory.
+ * @param elf_size Size of the ELF image.
+ * @param name Human-readable process name.
+ * @param parent Parent process, or nullptr.
+ * @return SpawnResult with success status and process/task info.
+ */
+SpawnResult spawn_process_from_blob(const void *elf_data, usize elf_size,
+                                    const char *name, viper::Viper *parent = nullptr);
+
 } // namespace loader

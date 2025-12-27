@@ -44,6 +44,7 @@
 #include "../kobj/dir.hpp"
 #include "../kobj/file.hpp"
 #include "../lib/spinlock.hpp"
+#include "../loader/loader.hpp"
 #include "../mm/pmm.hpp"
 #include "../net/dns/dns.hpp"
 #include "../net/ip/tcp.hpp"
@@ -1026,6 +1027,61 @@ static i64 sys_task_get_priority(u32 task_id)
     }
 
     return static_cast<i64>(task::get_priority(t));
+}
+
+/**
+ * @brief Implementation of `SYS_TASK_SPAWN` - spawn a new process.
+ *
+ * @details
+ * Spawns a new process from an ELF file on the filesystem. The new process
+ * runs independently with its own address space and is scheduled concurrently.
+ *
+ * @param path User pointer to NUL-terminated path to ELF executable.
+ * @param name User pointer to NUL-terminated process name (for debugging).
+ * @param out_pid Output: process ID of the new process.
+ * @param out_tid Output: task ID of the main thread.
+ * @return 0 on success, negative error code on failure.
+ */
+static i64 sys_task_spawn(const char *path, const char *name, u64 &out_pid, u64 &out_tid)
+{
+    // Validate path string
+    i64 path_len = validate_user_string(path, fs::vfs::MAX_PATH);
+    if (path_len < 0)
+    {
+        return error::VERR_INVALID_ARG;
+    }
+
+    // Validate name string (optional, use path basename if null)
+    const char *proc_name = name;
+    if (name)
+    {
+        i64 name_len = validate_user_string(name, 32);
+        if (name_len < 0)
+        {
+            return error::VERR_INVALID_ARG;
+        }
+    }
+    else
+    {
+        // Use path as name if no name provided
+        proc_name = path;
+    }
+
+    // Get current process as parent
+    viper::Viper *parent = viper::current();
+
+    // Spawn the process
+    loader::SpawnResult result = loader::spawn_process(path, proc_name, parent);
+
+    if (!result.success)
+    {
+        return error::VERR_IO;
+    }
+
+    out_pid = result.viper->id;
+    out_tid = result.task_id;
+
+    return error::VOK;
 }
 
 // Time/poll syscalls
@@ -2019,6 +2075,17 @@ void dispatch(exceptions::ExceptionFrame *frame)
         case SYS_TASK_GET_PRIORITY:
             SYSCALL_RESULT(sys_task_get_priority(static_cast<u32>(arg0)));
             break;
+
+        case SYS_TASK_SPAWN:
+        {
+            u64 out_pid = 0, out_tid = 0;
+            verr = sys_task_spawn(reinterpret_cast<const char *>(arg0),
+                                  reinterpret_cast<const char *>(arg1),
+                                  out_pid, out_tid);
+            res0 = out_pid;
+            res1 = out_tid;
+            break;
+        }
 
         // Capability syscalls (0x70-0x73)
         case SYS_CAP_DERIVE:

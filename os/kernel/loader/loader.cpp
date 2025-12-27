@@ -19,6 +19,8 @@
 #include "../fs/vfs/vfs.hpp"
 #include "../mm/kheap.hpp"
 #include "../mm/pmm.hpp"
+#include "../sched/scheduler.hpp"
+#include "../sched/task.hpp"
 #include "../viper/address_space.hpp"
 #include "elf.hpp"
 
@@ -262,6 +264,179 @@ LoadResult load_elf_from_disk(viper::Viper *v, const char *path)
     kheap::kfree(buf);
 
     return result;
+}
+
+/**
+ * @brief Internal helper to set up user stack for a new process.
+ *
+ * @param as The address space.
+ * @return Stack top address, or 0 on failure.
+ */
+static u64 setup_user_stack(viper::AddressSpace *as)
+{
+    // Allocate and map stack pages
+    u64 stack_base = viper::layout::USER_STACK_TOP - viper::layout::USER_STACK_SIZE;
+    u64 stack_size = viper::layout::USER_STACK_SIZE;
+
+    u64 mapped = as->alloc_map(stack_base, stack_size,
+                               viper::prot::READ | viper::prot::WRITE);
+    if (mapped == 0)
+    {
+        serial::puts("[loader] Failed to map user stack\n");
+        return 0;
+    }
+
+    // Zero the stack
+    u64 phys = as->translate(stack_base);
+    if (phys != 0)
+    {
+        u8 *stack_mem = reinterpret_cast<u8 *>(phys);
+        for (usize i = 0; i < stack_size; i++)
+        {
+            stack_mem[i] = 0;
+        }
+    }
+
+    serial::puts("[loader] User stack mapped at ");
+    serial::put_hex(stack_base);
+    serial::puts(" - ");
+    serial::put_hex(viper::layout::USER_STACK_TOP);
+    serial::puts("\n");
+
+    // Return stack top (stack grows down)
+    return viper::layout::USER_STACK_TOP;
+}
+
+/**
+ * @brief Internal helper to complete process spawn after ELF is loaded.
+ */
+static SpawnResult complete_spawn(viper::Viper *v, const LoadResult &load_result, const char *name)
+{
+    SpawnResult result = {false, nullptr, 0};
+
+    if (!load_result.success)
+    {
+        serial::puts("[loader] ELF load failed, destroying process\n");
+        viper::destroy(v);
+        return result;
+    }
+
+    // Get address space
+    viper::AddressSpace *as = viper::get_address_space(v);
+    if (!as)
+    {
+        serial::puts("[loader] No address space for process\n");
+        viper::destroy(v);
+        return result;
+    }
+
+    // Set up user stack
+    u64 stack_top = setup_user_stack(as);
+    if (stack_top == 0)
+    {
+        viper::destroy(v);
+        return result;
+    }
+
+    // Update heap tracking
+    v->heap_start = load_result.brk;
+    v->heap_break = load_result.brk;
+
+    // Create user task
+    task::Task *t = task::create_user_task(name, v, load_result.entry_point, stack_top);
+    if (!t)
+    {
+        serial::puts("[loader] Failed to create user task\n");
+        viper::destroy(v);
+        return result;
+    }
+
+    // Link task to viper
+    t->viper = reinterpret_cast<task::ViperProcess *>(v);
+    v->task_list = t;
+    v->task_count = 1;
+
+    // Enqueue task for scheduling
+    scheduler::enqueue(t);
+
+    serial::puts("[loader] Process '");
+    serial::puts(name);
+    serial::puts("' spawned: pid=");
+    serial::put_dec(v->id);
+    serial::puts(", tid=");
+    serial::put_dec(t->id);
+    serial::puts(", entry=");
+    serial::put_hex(load_result.entry_point);
+    serial::puts("\n");
+
+    result.success = true;
+    result.viper = v;
+    result.task_id = t->id;
+
+    return result;
+}
+
+/** @copydoc loader::spawn_process */
+SpawnResult spawn_process(const char *path, const char *name, viper::Viper *parent)
+{
+    SpawnResult result = {false, nullptr, 0};
+
+    if (!path || !name)
+    {
+        serial::puts("[loader] spawn_process: invalid parameters\n");
+        return result;
+    }
+
+    serial::puts("[loader] Spawning process '");
+    serial::puts(name);
+    serial::puts("' from ");
+    serial::puts(path);
+    serial::puts("\n");
+
+    // Create new process
+    viper::Viper *v = viper::create(parent, name);
+    if (!v)
+    {
+        serial::puts("[loader] Failed to create Viper process\n");
+        return result;
+    }
+
+    // Load ELF from disk
+    LoadResult load_result = load_elf_from_disk(v, path);
+
+    return complete_spawn(v, load_result, name);
+}
+
+/** @copydoc loader::spawn_process_from_blob */
+SpawnResult spawn_process_from_blob(const void *elf_data, usize elf_size,
+                                    const char *name, viper::Viper *parent)
+{
+    SpawnResult result = {false, nullptr, 0};
+
+    if (!elf_data || elf_size == 0 || !name)
+    {
+        serial::puts("[loader] spawn_process_from_blob: invalid parameters\n");
+        return result;
+    }
+
+    serial::puts("[loader] Spawning process '");
+    serial::puts(name);
+    serial::puts("' from blob (");
+    serial::put_dec(elf_size);
+    serial::puts(" bytes)\n");
+
+    // Create new process
+    viper::Viper *v = viper::create(parent, name);
+    if (!v)
+    {
+        serial::puts("[loader] Failed to create Viper process\n");
+        return result;
+    }
+
+    // Load ELF from memory
+    LoadResult load_result = load_elf(v, elf_data, elf_size);
+
+    return complete_spawn(v, load_result, name);
 }
 
 } // namespace loader
