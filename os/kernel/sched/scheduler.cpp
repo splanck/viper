@@ -4,48 +4,95 @@
 
 /**
  * @file scheduler.cpp
- * @brief Simple FIFO scheduler implementation.
+ * @brief Priority-based scheduler implementation.
  *
  * @details
- * This scheduler maintains a FIFO ready queue of runnable tasks and performs
+ * This scheduler maintains 8 priority queues (0=highest, 7=lowest) and performs
  * context switches using the assembly `context_switch` routine.
+ *
+ * Priority mapping:
+ * - Task priority 0-31   -> Queue 0 (highest)
+ * - Task priority 32-63  -> Queue 1
+ * - Task priority 64-95  -> Queue 2
+ * - Task priority 96-127 -> Queue 3
+ * - Task priority 128-159 -> Queue 4 (default tasks)
+ * - Task priority 160-191 -> Queue 5
+ * - Task priority 192-223 -> Queue 6
+ * - Task priority 224-255 -> Queue 7 (idle task)
  *
  * Time slicing:
  * - Each task is given a fixed number of timer ticks (`TIME_SLICE_DEFAULT`).
  * - The timer interrupt decrements the counter and `preempt()` triggers a
  *   reschedule when it reaches zero.
- *
- * This design is intentionally minimal and appropriate for bring-up. It does
- * not yet implement priorities, fairness across CPUs, or sophisticated
- * blocking/wakeup mechanisms beyond cooperative yielding.
+ * - Tasks are preempted only by higher-priority tasks or when their slice expires.
  */
 namespace scheduler
 {
 
 namespace
 {
-// Ready queue (simple FIFO linked list)
-task::Task *ready_head = nullptr;
-task::Task *ready_tail = nullptr;
+/**
+ * @brief Per-priority ready queue.
+ */
+struct PriorityQueue
+{
+    task::Task *head;
+    task::Task *tail;
+};
+
+// 8 priority queues (0=highest, 7=lowest)
+PriorityQueue priority_queues[task::NUM_PRIORITY_QUEUES];
 
 // Statistics
 u64 context_switch_count = 0;
 
 // Scheduler running flag
 bool running = false;
+
+/**
+ * @brief Map a task priority (0-255) to a queue index (0-7).
+ *
+ * @param priority Task priority value.
+ * @return Queue index (0=highest priority, 7=lowest).
+ */
+inline u8 priority_to_queue(u8 priority)
+{
+    return priority / task::PRIORITIES_PER_QUEUE;
+}
+
+/**
+ * @brief Check if any tasks are ready in any queue.
+ *
+ * @return true if at least one task is ready.
+ */
+bool any_ready()
+{
+    for (u8 i = 0; i < task::NUM_PRIORITY_QUEUES; i++)
+    {
+        if (priority_queues[i].head)
+            return true;
+    }
+    return false;
+}
+
 } // namespace
 
 /** @copydoc scheduler::init */
 void init()
 {
-    serial::puts("[sched] Initializing scheduler\n");
+    serial::puts("[sched] Initializing priority scheduler\n");
 
-    ready_head = nullptr;
-    ready_tail = nullptr;
+    // Initialize all priority queues
+    for (u8 i = 0; i < task::NUM_PRIORITY_QUEUES; i++)
+    {
+        priority_queues[i].head = nullptr;
+        priority_queues[i].tail = nullptr;
+    }
+
     context_switch_count = 0;
     running = false;
 
-    serial::puts("[sched] Scheduler initialized\n");
+    serial::puts("[sched] Priority scheduler initialized (8 queues)\n");
 }
 
 /** @copydoc scheduler::enqueue */
@@ -54,18 +101,23 @@ void enqueue(task::Task *t)
     if (!t)
         return;
 
-    t->next = nullptr;
-    t->prev = ready_tail;
+    // Determine which priority queue this task belongs to
+    u8 queue_idx = priority_to_queue(t->priority);
+    PriorityQueue &queue = priority_queues[queue_idx];
 
-    if (ready_tail)
+    // Add to tail of the appropriate queue (FIFO within priority level)
+    t->next = nullptr;
+    t->prev = queue.tail;
+
+    if (queue.tail)
     {
-        ready_tail->next = t;
+        queue.tail->next = t;
     }
     else
     {
-        ready_head = t;
+        queue.head = t;
     }
-    ready_tail = t;
+    queue.tail = t;
 
     t->state = task::TaskState::Ready;
 }
@@ -73,25 +125,33 @@ void enqueue(task::Task *t)
 /** @copydoc scheduler::dequeue */
 task::Task *dequeue()
 {
-    if (!ready_head)
-        return nullptr;
-
-    task::Task *t = ready_head;
-    ready_head = t->next;
-
-    if (ready_head)
+    // Check queues from highest priority (0) to lowest (7)
+    for (u8 i = 0; i < task::NUM_PRIORITY_QUEUES; i++)
     {
-        ready_head->prev = nullptr;
-    }
-    else
-    {
-        ready_tail = nullptr;
+        PriorityQueue &queue = priority_queues[i];
+
+        if (queue.head)
+        {
+            task::Task *t = queue.head;
+            queue.head = t->next;
+
+            if (queue.head)
+            {
+                queue.head->prev = nullptr;
+            }
+            else
+            {
+                queue.tail = nullptr;
+            }
+
+            t->next = nullptr;
+            t->prev = nullptr;
+
+            return t;
+        }
     }
 
-    t->next = nullptr;
-    t->prev = nullptr;
-
-    return t;
+    return nullptr;
 }
 
 /** @copydoc scheduler::schedule */
@@ -183,11 +243,23 @@ void tick()
     // Don't preempt idle task if something else is ready
     if (current->flags & task::TASK_FLAG_IDLE)
     {
-        if (ready_head)
+        if (any_ready())
         {
             schedule();
         }
         return;
+    }
+
+    // Check if a higher-priority task became ready
+    u8 current_queue = priority_to_queue(current->priority);
+    for (u8 i = 0; i < current_queue; i++)
+    {
+        if (priority_queues[i].head)
+        {
+            // Higher priority task is ready - preempt immediately
+            schedule();
+            return;
+        }
     }
 
     // Decrement time slice

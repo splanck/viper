@@ -51,6 +51,18 @@ constexpr u32 TASK_FLAG_IDLE = 1 << 1;
 /** @brief Task runs in user mode (EL0). */
 constexpr u32 TASK_FLAG_USER = 1 << 2;
 
+// Priority constants
+/** @brief Highest priority (most urgent). */
+constexpr u8 PRIORITY_HIGHEST = 0;
+/** @brief Default priority for normal tasks. */
+constexpr u8 PRIORITY_DEFAULT = 128;
+/** @brief Lowest priority (idle task). */
+constexpr u8 PRIORITY_LOWEST = 255;
+/** @brief Number of priority queues in the scheduler. */
+constexpr u8 NUM_PRIORITY_QUEUES = 8;
+/** @brief Tasks per queue (256 priority levels / 8 queues). */
+constexpr u8 PRIORITIES_PER_QUEUE = 32;
+
 } // namespace task
 
 // Include shared TaskInfo struct after defining flags (avoids macro conflict)
@@ -161,7 +173,7 @@ struct Task
     u8 *kernel_stack_top; // Kernel stack top (initial SP)
 
     u32 time_slice; // Remaining time slice ticks
-    u32 priority;   // Priority (lower = higher priority)
+    u8 priority;    // Priority (0=highest, 255=lowest, default 128)
 
     Task *next; // Next task in queue (ready/wait queue)
     Task *prev; // Previous task in queue
@@ -243,6 +255,28 @@ void exit(i32 code);
  * waiting for events.
  */
 void yield();
+
+/**
+ * @brief Set the priority of a task.
+ *
+ * @details
+ * Updates the task's priority. If the task is currently in a ready queue,
+ * it will be moved to the appropriate priority queue on the next schedule.
+ * Priority 0 is highest, 255 is lowest. Default is 128.
+ *
+ * @param t Task to modify.
+ * @param priority New priority value (0-255).
+ * @return 0 on success, -1 on error.
+ */
+i32 set_priority(Task *t, u8 priority);
+
+/**
+ * @brief Get the priority of a task.
+ *
+ * @param t Task to query.
+ * @return Priority value (0-255), or 255 if task is null.
+ */
+u8 get_priority(Task *t);
 
 /**
  * @brief Look up a task by its numeric ID.

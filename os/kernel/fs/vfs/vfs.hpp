@@ -356,12 +356,35 @@ i32 rename(const char *old_path, const char *new_path);
  * @brief Get the current process file descriptor table.
  *
  * @details
- * Currently returns a global FD table. Future versions should return the table
- * belonging to the current task/process.
+ * Returns the FD table for the current user process if one is active,
+ * otherwise returns the kernel's global FD table for backward compatibility.
  *
- * @return Pointer to FD table.
+ * @return Pointer to the appropriate FD table.
  */
 FDTable *current_fdt();
+
+/**
+ * @brief Get the kernel's global file descriptor table.
+ *
+ * @details
+ * Returns the global FD table used for kernel-mode file operations when no
+ * user process context is available. This is primarily for backward
+ * compatibility and early boot operations.
+ *
+ * @return Pointer to the kernel FD table.
+ */
+FDTable *kernel_fdt();
+
+/**
+ * @brief Close all open file descriptors in a table.
+ *
+ * @details
+ * Used during process cleanup to release all open file descriptors.
+ * Does not free the table itself, only marks all entries as unused.
+ *
+ * @param fdt File descriptor table to clean up.
+ */
+void close_all_fds(FDTable *fdt);
 
 // Path resolution: given path, get inode number (0 if not found)
 /**

@@ -20,3 +20,7 @@ add_subdirectory(kernel)
 # Build userspace programs
 add_subdirectory(user)
 
+# Testing
+enable_testing()
+add_subdirectory(tests)
+

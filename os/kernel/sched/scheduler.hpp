@@ -4,15 +4,24 @@
 
 /**
  * @file scheduler.hpp
- * @brief Cooperative scheduler interface.
+ * @brief Priority-based preemptive scheduler interface.
  *
  * @details
  * The scheduler is responsible for selecting which runnable task should
  * execute next and for performing context switches between tasks.
  *
- * The current scheduler implementation is a simple FIFO ready queue with a
- * time-slice counter used for preemption checks. It is intended for early
- * kernel bring-up and demonstration rather than production-grade scheduling.
+ * The scheduler maintains 8 priority queues:
+ * - Queue 0: Priorities 0-31 (highest priority)
+ * - Queue 1: Priorities 32-63
+ * - Queue 2: Priorities 64-95
+ * - Queue 3: Priorities 96-127
+ * - Queue 4: Priorities 128-159 (default tasks)
+ * - Queue 5: Priorities 160-191
+ * - Queue 6: Priorities 192-223
+ * - Queue 7: Priorities 224-255 (idle task)
+ *
+ * Within each priority level, tasks are scheduled FIFO with time-slice
+ * preemption. Higher-priority tasks always preempt lower-priority ones.
  */
 namespace scheduler
 {
@@ -27,23 +36,24 @@ namespace scheduler
 void init();
 
 /**
- * @brief Add a task to the ready queue.
+ * @brief Add a task to the appropriate priority queue.
  *
  * @details
- * Inserts the task at the tail of the FIFO queue and marks it Ready. The task
- * must not already be present in the queue.
+ * Inserts the task at the tail of its priority queue (based on task->priority)
+ * and marks it Ready. Within each priority level, tasks are scheduled FIFO.
  *
  * @param t Task to enqueue.
  */
 void enqueue(task::Task *t);
 
 /**
- * @brief Remove and return the next task from the ready queue.
+ * @brief Remove and return the highest-priority ready task.
  *
  * @details
- * Dequeues from the head of the FIFO queue.
+ * Checks priority queues from highest (0) to lowest (7) and returns the
+ * first task found. Within a priority level, returns the oldest task (FIFO).
  *
- * @return Next task, or `nullptr` if no task is ready.
+ * @return Next task to run, or `nullptr` if all queues are empty.
  */
 task::Task *dequeue();
 

@@ -16,6 +16,7 @@
 
 #include "viper.hpp"
 #include "../console/serial.hpp"
+#include "../fs/vfs/vfs.hpp"
 #include "../mm/pmm.hpp"
 #include "../sched/task.hpp"
 #include "address_space.hpp"
@@ -35,6 +36,9 @@ static AddressSpace address_spaces[MAX_VIPERS];
 // Per-Viper capability tables
 static cap::Table cap_tables[MAX_VIPERS];
 
+// Per-Viper file descriptor tables
+static fs::vfs::FDTable fd_tables[MAX_VIPERS];
+
 /** @copydoc viper::init */
 void init()
 {
@@ -52,6 +56,7 @@ void init()
         vipers[i].ttbr0 = 0;
         vipers[i].asid = 0;
         vipers[i].cap_table = nullptr;
+        vipers[i].fd_table = nullptr;
         vipers[i].task_list = nullptr;
         vipers[i].task_count = 0;
         vipers[i].parent = nullptr;
@@ -196,6 +201,11 @@ Viper *create(Viper *parent, const char *name)
     }
     v->cap_table = &ct;
 
+    // Initialize file descriptor table
+    fs::vfs::FDTable &fdt = fd_tables[idx];
+    fdt.init();
+    v->fd_table = &fdt;
+
     // Add to global list
     v->next_all = all_vipers_head;
     v->prev_all = nullptr;
@@ -236,6 +246,10 @@ void destroy(Viper *v)
     int idx = viper_index(v);
     if (idx >= 0)
     {
+        // Close all open file descriptors
+        fs::vfs::close_all_fds(&fd_tables[idx]);
+        v->fd_table = nullptr;
+
         // Destroy address space
         address_spaces[idx].destroy();
 

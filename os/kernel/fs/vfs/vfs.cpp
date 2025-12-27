@@ -18,26 +18,55 @@
 #include "vfs.hpp"
 #include "../../console/serial.hpp"
 #include "../../lib/str.hpp"
+#include "../../viper/viper.hpp"
 #include "../viperfs/viperfs.hpp"
 
 namespace fs::vfs
 {
 
-// Global FD table for now (will be per-process later)
-static FDTable g_fdt;
+// Global FD table for kernel-mode operations and backward compatibility
+static FDTable g_kernel_fdt;
 
 /** @copydoc fs::vfs::init */
 void init()
 {
-    g_fdt.init();
+    g_kernel_fdt.init();
     serial::puts("[vfs] VFS initialized\n");
+}
+
+/** @copydoc fs::vfs::kernel_fdt */
+FDTable *kernel_fdt()
+{
+    return &g_kernel_fdt;
 }
 
 /** @copydoc fs::vfs::current_fdt */
 FDTable *current_fdt()
 {
-    // TODO: Return per-process FD table
-    return &g_fdt;
+    // Get current process's FD table if available
+    viper::Viper *v = viper::current();
+    if (v && v->fd_table)
+    {
+        return v->fd_table;
+    }
+
+    // Fall back to kernel FD table for compatibility
+    return &g_kernel_fdt;
+}
+
+/** @copydoc fs::vfs::close_all_fds */
+void close_all_fds(FDTable *fdt)
+{
+    if (!fdt)
+        return;
+
+    for (usize i = 0; i < MAX_FDS; i++)
+    {
+        if (fdt->fds[i].in_use)
+        {
+            fdt->free(static_cast<i32>(i));
+        }
+    }
 }
 
 // Use lib::strlen for string length operations

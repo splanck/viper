@@ -40,6 +40,10 @@
 #define SYS_TASK_JOIN 0x04
 /** @brief Enumerate tasks into a caller-provided buffer (reserved for future use). */
 #define SYS_TASK_LIST 0x05
+/** @brief Set the priority of a task (0=highest, 255=lowest). */
+#define SYS_TASK_SET_PRIORITY 0x06
+/** @brief Get the priority of a task. */
+#define SYS_TASK_GET_PRIORITY 0x07
 /** @} */
 
 /** @name Channel IPC Syscalls (0x10 - 0x1F)

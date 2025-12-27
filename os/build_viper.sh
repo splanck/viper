@@ -1,10 +1,10 @@
 #!/bin/bash
 # ViperOS Complete Build and Run Script
 # Usage: ./build_viper.sh [options]
-#   --clean     Clean build directory first
 #   --serial    Run in serial-only mode (no graphics)
 #   --debug     Enable GDB debugging (wait on port 1234)
 #   --no-net    Disable networking
+#   --test      Run tests before launching QEMU
 #   --help      Show this help
 
 set -e
@@ -14,11 +14,11 @@ BUILD_DIR="$SCRIPT_DIR/build"
 TOOLS_DIR="$SCRIPT_DIR/tools"
 
 # Default options
-CLEAN=false
 MODE="graphics"
 DEBUG=false
 NETWORK=true
 MEMORY="128M"
+RUN_TESTS=false
 
 # Colors for output
 RED='\033[0;31m'
@@ -57,27 +57,23 @@ show_help() {
     echo "Usage: $0 [options]"
     echo ""
     echo "Options:"
-    echo "  --clean     Clean build directory before building"
     echo "  --serial    Run in serial-only mode (no graphics window)"
     echo "  --debug     Enable GDB debugging (QEMU waits on port 1234)"
     echo "  --no-net    Disable networking"
+    echo "  --test      Run tests before launching QEMU"
     echo "  --memory N  Set memory size (default: 128M)"
     echo "  --help      Show this help message"
     echo ""
     echo "Examples:"
-    echo "  $0                    # Build and run with graphics"
-    echo "  $0 --serial           # Build and run in terminal only"
-    echo "  $0 --clean --serial   # Clean build, run in terminal"
+    echo "  $0                    # Clean build and run with graphics"
+    echo "  $0 --serial           # Clean build and run in terminal only"
+    echo "  $0 --test             # Clean build, run tests, then launch QEMU"
     echo ""
 }
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --clean)
-            CLEAN=true
-            shift
-            ;;
         --serial)
             MODE="serial"
             shift
@@ -88,6 +84,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --no-net)
             NETWORK=false
+            shift
+            ;;
+        --test)
+            RUN_TESTS=true
             shift
             ;;
         --memory)
@@ -129,22 +129,18 @@ if ! command -v aarch64-elf-gcc &> /dev/null && ! command -v aarch64-none-elf-gc
     echo "Make sure aarch64-elf-gcc or aarch64-none-elf-gcc is available"
 fi
 
-# Clean if requested
-if [[ "$CLEAN" == true ]]; then
-    print_step "Cleaning build directory..."
-    rm -rf "$BUILD_DIR"
-    print_success "Clean complete"
-fi
+# Always do a clean build
+print_step "Cleaning build directory..."
+rm -rf "$BUILD_DIR"
+print_success "Clean complete"
 
-# Configure CMake if needed
-if [[ ! -f "$BUILD_DIR/Makefile" ]] && [[ ! -f "$BUILD_DIR/build.ninja" ]]; then
-    print_step "Configuring CMake..."
-    cmake -B "$BUILD_DIR" -S "$SCRIPT_DIR" \
-        -DCMAKE_TOOLCHAIN_FILE="$SCRIPT_DIR/cmake/aarch64-toolchain.cmake" \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-    print_success "Configuration complete"
-fi
+# Configure CMake
+print_step "Configuring CMake..."
+cmake -B "$BUILD_DIR" -S "$SCRIPT_DIR" \
+    -DCMAKE_TOOLCHAIN_FILE="$SCRIPT_DIR/cmake/aarch64-toolchain.cmake" \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+print_success "Configuration complete"
 
 # Build
 print_step "Building ViperOS..."
@@ -200,6 +196,17 @@ if [[ -x "$TOOLS_DIR/mkfs.viperfs" ]]; then
     print_success "Disk image created"
 else
     print_warning "mkfs.viperfs not found, using existing disk image"
+fi
+
+# Run tests (after disk image is created so tests can use it)
+if [[ "$RUN_TESTS" == true ]]; then
+    print_step "Running tests..."
+    if ctest --test-dir "$BUILD_DIR" --output-on-failure; then
+        print_success "All tests passed"
+    else
+        print_error "Some tests failed!"
+        exit 1
+    fi
 fi
 
 # Build QEMU command

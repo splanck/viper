@@ -31,6 +31,11 @@ namespace task
 struct Task;
 }
 
+namespace fs::vfs
+{
+struct FDTable;
+}
+
 namespace viper
 {
 
@@ -79,6 +84,9 @@ struct Viper
 
     // Capabilities
     cap::Table *cap_table; /**< Process capability table (owned by this Viper). */
+
+    // File descriptors
+    fs::vfs::FDTable *fd_table; /**< Per-process file descriptor table. */
 
     // Tasks belonging to this Viper
     task::Task *task_list; /**< Linked list of tasks/threads in the process. */

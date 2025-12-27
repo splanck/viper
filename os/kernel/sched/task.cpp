@@ -173,7 +173,7 @@ void init()
     idle_task->state = TaskState::Ready;
     idle_task->flags = TASK_FLAG_KERNEL | TASK_FLAG_IDLE;
     idle_task->time_slice = TIME_SLICE_DEFAULT;
-    idle_task->priority = 255; // Lowest priority
+    idle_task->priority = PRIORITY_LOWEST; // Lowest priority
     idle_task->next = nullptr;
     idle_task->prev = nullptr;
     idle_task->kernel_stack = allocate_kernel_stack();
@@ -235,7 +235,7 @@ Task *create(const char *name, TaskEntry entry, void *arg, u32 flags)
     t->state = TaskState::Ready;
     t->flags = flags | TASK_FLAG_KERNEL; // All tasks are kernel tasks for now
     t->time_slice = TIME_SLICE_DEFAULT;
-    t->priority = 128; // Default priority
+    t->priority = PRIORITY_DEFAULT;
     t->next = nullptr;
     t->prev = nullptr;
     t->wait_channel = nullptr;
@@ -357,7 +357,7 @@ Task *create_user_task(const char *name, void *viper_ptr, u64 entry, u64 stack)
     t->state = TaskState::Ready;
     t->flags = TASK_FLAG_USER; // User task, not kernel
     t->time_slice = TIME_SLICE_DEFAULT;
-    t->priority = 128; // Default priority
+    t->priority = PRIORITY_DEFAULT;
     t->next = nullptr;
     t->prev = nullptr;
     t->wait_channel = nullptr;
@@ -445,6 +445,28 @@ void exit(i32 code)
 void yield()
 {
     scheduler::schedule();
+}
+
+/** @copydoc task::set_priority */
+i32 set_priority(Task *t, u8 priority)
+{
+    if (!t)
+        return -1;
+
+    // Don't allow changing idle task priority
+    if (t->flags & TASK_FLAG_IDLE)
+        return -1;
+
+    t->priority = priority;
+    return 0;
+}
+
+/** @copydoc task::get_priority */
+u8 get_priority(Task *t)
+{
+    if (!t)
+        return PRIORITY_LOWEST;
+    return t->priority;
 }
 
 /** @copydoc task::get_by_id */

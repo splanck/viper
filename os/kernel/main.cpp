@@ -742,6 +742,13 @@ extern "C" void kernel_main(void *boot_info_ptr)
     serial::puts("\n[kernel] Initializing Viper subsystem...\n");
     viper::init();
 
+    // Run kernel subsystem tests BEFORE loading user processes
+    // (Tests must complete before any user tasks are enqueued to avoid
+    // scheduler yields during tests switching to user tasks)
+    tests::run_storage_tests();
+    tests::run_viper_tests();
+    tests::create_ipc_test_tasks();
+
     // Test Viper creation
     serial::puts("[kernel] Testing Viper creation...\n");
     viper::Viper *test_viper = viper::create(nullptr, "test_viper");
@@ -940,13 +947,6 @@ extern "C" void kernel_main(void *boot_info_ptr)
     if (gcon::is_available())
     {
         gcon::puts("  [OK] Viper subsystem initialized\n");
-    }
-
-    // Create ping-pong IPC test tasks
-    tests::create_ipc_test_tasks();
-
-    if (gcon::is_available())
-    {
         gcon::puts("  [OK] Task subsystem initialized\n");
         gcon::puts("  [OK] Scheduler initialized\n");
         gcon::puts("  [OK] Channel subsystem initialized\n");

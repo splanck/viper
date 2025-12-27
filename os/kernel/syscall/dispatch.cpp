@@ -22,20 +22,27 @@
  * are in consistent registers x1-x3.
  */
 #include "dispatch.hpp"
+#include "../../include/viperos/cap_info.hpp"
 #include "../../include/viperos/fs_types.hpp"
 #include "../../include/viperos/mem_info.hpp"
 #include "../arch/aarch64/timer.hpp"
 #include "../assign/assign.hpp"
+#include "../cap/handle.hpp"
+#include "../cap/rights.hpp"
+#include "../cap/table.hpp"
 #include "../console/gcon.hpp"
 #include "../console/serial.hpp"
 #include "../drivers/virtio/input.hpp"
 #include "../fs/vfs/vfs.hpp"
+#include "../fs/viperfs/viperfs.hpp"
 #include "../include/error.hpp"
 #include "../include/syscall_nums.hpp"
 #include "../input/input.hpp"
 #include "../ipc/channel.hpp"
 #include "../ipc/poll.hpp"
 #include "../ipc/pollset.hpp"
+#include "../kobj/dir.hpp"
+#include "../kobj/file.hpp"
 #include "../lib/spinlock.hpp"
 #include "../mm/pmm.hpp"
 #include "../net/dns/dns.hpp"
@@ -44,6 +51,7 @@
 #include "../net/tls/tls.hpp"
 #include "../sched/scheduler.hpp"
 #include "../sched/task.hpp"
+#include "../viper/viper.hpp"
 
 namespace syscall
 {
@@ -240,33 +248,67 @@ static i64 sys_debug_print(const char *msg)
     return error::VOK;
 }
 
-// Channel syscalls (non-blocking per ARM64 spec - only PollWait blocks)
+// =============================================================================
+// Channel syscalls (capability-aware with legacy fallback)
+// =============================================================================
+
 /**
  * @brief Implementation of `SYS_CHANNEL_CREATE`.
  *
  * @details
- * Allocates a new channel IPC object and returns its identifier/handle.
+ * Allocates a new channel IPC object. If a capability table exists, creates
+ * handles for both endpoints (send/recv). Otherwise falls back to legacy
+ * ID-based API.
  *
- * @return Non-negative channel ID on success, or negative error code.
+ * @param out_send Output for send handle (via res0).
+ * @param out_recv Output for recv handle (via res1).
+ * @return VOK on success with handles in out params, or negative error code.
  */
-static i64 sys_channel_create()
+static i64 sys_channel_create_cap(u64 &out_send, u64 &out_recv)
 {
-    return channel::create();
+    cap::Table *ct = viper::current_cap_table();
+    if (!ct)
+    {
+        // Legacy: no capability table, use ID-based API
+        i64 result = channel::create();
+        if (result < 0)
+        {
+            return result;
+        }
+        out_send = static_cast<u64>(result);
+        out_recv = static_cast<u64>(result); // Same ID for legacy
+        return error::VOK;
+    }
+
+    // Create the channel with both endpoint handles
+    channel::ChannelPair pair;
+    i64 result = channel::create(&pair);
+    if (result < 0)
+    {
+        return result;
+    }
+
+    out_send = static_cast<u64>(pair.send_handle);
+    out_recv = static_cast<u64>(pair.recv_handle);
+    return error::VOK;
 }
 
 /**
- * @brief Implementation of `SYS_CHANNEL_SEND` (non-blocking).
+ * @brief Implementation of `SYS_CHANNEL_SEND` (capability-aware, non-blocking).
  *
  * @details
- * Attempts to enqueue a message into the channel without blocking. If the
- * channel is full, returns @ref error::VERR_WOULD_BLOCK instead of sleeping.
+ * Attempts to enqueue a message into the channel. If capability table exists,
+ * looks up the handle and validates CAP_WRITE rights. Supports handle transfer.
  *
- * @param channel_id Channel identifier.
+ * @param ch_handle Channel handle or ID.
  * @param data Pointer to message bytes.
  * @param size Length of the message in bytes.
+ * @param handles Optional handles to transfer.
+ * @param handle_count Number of handles to transfer.
  * @return Result code.
  */
-static i64 sys_channel_send(u32 channel_id, const void *data, u32 size)
+static i64 sys_channel_send_cap(cap::Handle ch_handle, const void *data, u32 size,
+                                const cap::Handle *handles, u32 handle_count)
 {
     // Validate user pointer
     if (!validate_user_read(data, size, size == 0))
@@ -274,23 +316,40 @@ static i64 sys_channel_send(u32 channel_id, const void *data, u32 size)
         return error::VERR_INVALID_ARG;
     }
 
-    // Non-blocking: returns VERR_WOULD_BLOCK if channel buffer is full
-    return channel::try_send(channel_id, data, size);
+    cap::Table *ct = viper::current_cap_table();
+    if (!ct)
+    {
+        // Legacy: no capability table, use ID directly (no handle transfer)
+        return channel::try_send(ch_handle, data, size);
+    }
+
+    // Look up the channel handle (requires CAP_WRITE for send endpoint)
+    cap::Entry *entry = ct->get_with_rights(ch_handle, cap::Kind::Channel, cap::CAP_WRITE);
+    if (!entry)
+    {
+        return error::VERR_INVALID_HANDLE;
+    }
+
+    channel::Channel *ch = static_cast<channel::Channel *>(entry->object);
+    return channel::try_send(ch, data, size, handles, handle_count);
 }
 
 /**
- * @brief Implementation of `SYS_CHANNEL_RECV` (non-blocking).
+ * @brief Implementation of `SYS_CHANNEL_RECV` (capability-aware, non-blocking).
  *
  * @details
- * Attempts to dequeue a message without blocking. If no message is available,
- * returns @ref error::VERR_WOULD_BLOCK.
+ * Attempts to dequeue a message. If capability table exists, looks up handle
+ * and validates CAP_READ rights. Supports receiving transferred handles.
  *
- * @param channel_id Channel identifier.
+ * @param ch_handle Channel handle or ID.
  * @param buffer Destination buffer for message bytes.
  * @param buffer_size Size of the destination buffer.
- * @return Result code or byte count depending on channel implementation.
+ * @param out_handles Optional buffer for received handles.
+ * @param out_handle_count Output count of received handles.
+ * @return Message size or error code.
  */
-static i64 sys_channel_recv(u32 channel_id, void *buffer, u32 buffer_size)
+static i64 sys_channel_recv_cap(cap::Handle ch_handle, void *buffer, u32 buffer_size,
+                                cap::Handle *out_handles, u32 *out_handle_count)
 {
     // Validate user pointer
     if (!validate_user_write(buffer, buffer_size, buffer_size == 0))
@@ -298,23 +357,675 @@ static i64 sys_channel_recv(u32 channel_id, void *buffer, u32 buffer_size)
         return error::VERR_INVALID_ARG;
     }
 
-    // Non-blocking: returns VERR_WOULD_BLOCK if no messages available
-    return channel::try_recv(channel_id, buffer, buffer_size);
+    cap::Table *ct = viper::current_cap_table();
+    if (!ct)
+    {
+        // Legacy: no capability table, use ID directly (no handle transfer)
+        return channel::try_recv(ch_handle, buffer, buffer_size);
+    }
+
+    // Look up the channel handle (requires CAP_READ for recv endpoint)
+    cap::Entry *entry = ct->get_with_rights(ch_handle, cap::Kind::Channel, cap::CAP_READ);
+    if (!entry)
+    {
+        return error::VERR_INVALID_HANDLE;
+    }
+
+    channel::Channel *ch = static_cast<channel::Channel *>(entry->object);
+    return channel::try_recv(ch, buffer, buffer_size, out_handles, out_handle_count);
 }
 
 /**
- * @brief Implementation of `SYS_CHANNEL_CLOSE`.
+ * @brief Implementation of `SYS_CHANNEL_CLOSE` (capability-aware).
  *
  * @details
- * Closes the calling task's reference to the channel. The underlying channel
- * object may be destroyed when all references are closed.
+ * Closes the channel endpoint. If capability table exists, removes the handle
+ * from the table and decrements the channel reference count.
  *
- * @param channel_id Channel identifier.
+ * @param ch_handle Channel handle or ID.
  * @return Result code.
  */
-static i64 sys_channel_close(u32 channel_id)
+static i64 sys_channel_close_cap(cap::Handle ch_handle)
 {
-    return channel::close(channel_id);
+    cap::Table *ct = viper::current_cap_table();
+    if (!ct)
+    {
+        // Legacy: no capability table, use ID directly
+        return channel::close(ch_handle);
+    }
+
+    // Look up the channel handle
+    cap::Entry *entry = ct->get_checked(ch_handle, cap::Kind::Channel);
+    if (!entry)
+    {
+        return error::VERR_INVALID_HANDLE;
+    }
+
+    channel::Channel *ch = static_cast<channel::Channel *>(entry->object);
+
+    // Determine if this is send or recv endpoint based on rights
+    bool is_send = cap::has_rights(entry->rights, cap::CAP_WRITE);
+
+    // Close the endpoint (decrements ref count)
+    i64 result = channel::close_endpoint(ch, is_send);
+
+    // Remove from cap_table
+    ct->remove(ch_handle);
+
+    return result;
+}
+
+// =============================================================================
+// Poll syscalls (capability-aware with legacy fallback)
+// =============================================================================
+
+/**
+ * @brief Implementation of `SYS_POLL_CREATE` (capability-aware).
+ */
+static i64 sys_poll_create_cap(u64 &out_handle)
+{
+    cap::Table *ct = viper::current_cap_table();
+    if (!ct)
+    {
+        // Legacy: no capability table, use ID-based API
+        i64 result = pollset::create();
+        if (result >= 0)
+        {
+            out_handle = static_cast<u64>(result);
+            return error::VOK;
+        }
+        return result;
+    }
+
+    // Create the pollset
+    i64 result = pollset::create();
+    if (result < 0)
+    {
+        return result;
+    }
+
+    // Get the pollset pointer and insert into cap_table
+    pollset::PollSet *ps = pollset::get(static_cast<u32>(result));
+    if (!ps)
+    {
+        return error::VERR_NOT_FOUND;
+    }
+
+    cap::Handle h = ct->insert(ps, cap::Kind::Poll, cap::CAP_READ | cap::CAP_WRITE);
+    if (h == cap::HANDLE_INVALID)
+    {
+        pollset::destroy(static_cast<u32>(result));
+        return error::VERR_OUT_OF_MEMORY;
+    }
+
+    out_handle = static_cast<u64>(h);
+    return error::VOK;
+}
+
+/**
+ * @brief Implementation of `SYS_POLL_ADD` (capability-aware).
+ */
+static i64 sys_poll_add_cap(cap::Handle poll_handle, u32 target_handle, u32 mask)
+{
+    cap::Table *ct = viper::current_cap_table();
+    if (!ct)
+    {
+        // Legacy: no capability table, use ID directly
+        return pollset::add(poll_handle, target_handle, mask);
+    }
+
+    // Look up the pollset handle
+    cap::Entry *entry = ct->get_with_rights(poll_handle, cap::Kind::Poll, cap::CAP_WRITE);
+    if (!entry)
+    {
+        return error::VERR_INVALID_HANDLE;
+    }
+
+    pollset::PollSet *ps = static_cast<pollset::PollSet *>(entry->object);
+    return pollset::add(ps->id, target_handle, mask);
+}
+
+/**
+ * @brief Implementation of `SYS_POLL_REMOVE` (capability-aware).
+ */
+static i64 sys_poll_remove_cap(cap::Handle poll_handle, u32 target_handle)
+{
+    cap::Table *ct = viper::current_cap_table();
+    if (!ct)
+    {
+        // Legacy: no capability table, use ID directly
+        return pollset::remove(poll_handle, target_handle);
+    }
+
+    // Look up the pollset handle
+    cap::Entry *entry = ct->get_with_rights(poll_handle, cap::Kind::Poll, cap::CAP_WRITE);
+    if (!entry)
+    {
+        return error::VERR_INVALID_HANDLE;
+    }
+
+    pollset::PollSet *ps = static_cast<pollset::PollSet *>(entry->object);
+    return pollset::remove(ps->id, target_handle);
+}
+
+/**
+ * @brief Implementation of `SYS_POLL_WAIT` (capability-aware).
+ */
+static i64 sys_poll_wait_cap(cap::Handle poll_handle, poll::PollEvent *out_events,
+                             u32 max_events, i64 timeout_ms)
+{
+    cap::Table *ct = viper::current_cap_table();
+    if (!ct)
+    {
+        // Legacy: no capability table, use ID directly
+        return pollset::wait(poll_handle, out_events, max_events, timeout_ms);
+    }
+
+    // Look up the pollset handle
+    cap::Entry *entry = ct->get_with_rights(poll_handle, cap::Kind::Poll, cap::CAP_READ);
+    if (!entry)
+    {
+        return error::VERR_INVALID_HANDLE;
+    }
+
+    pollset::PollSet *ps = static_cast<pollset::PollSet *>(entry->object);
+    return pollset::wait(ps->id, out_events, max_events, timeout_ms);
+}
+
+// =============================================================================
+// Capability syscalls (0x70-0x73)
+// =============================================================================
+
+/**
+ * @brief Implementation of `SYS_CAP_DERIVE` - derive handle with reduced rights.
+ */
+static i64 sys_cap_derive(cap::Handle parent_handle, cap::Rights new_rights, u64 &out_handle)
+{
+    cap::Table *ct = viper::current_cap_table();
+    if (!ct)
+    {
+        return error::VERR_NOT_SUPPORTED;
+    }
+
+    cap::Handle derived = ct->derive(parent_handle, new_rights);
+    if (derived == cap::HANDLE_INVALID)
+    {
+        return error::VERR_PERMISSION;
+    }
+
+    out_handle = static_cast<u64>(derived);
+    return error::VOK;
+}
+
+/**
+ * @brief Implementation of `SYS_CAP_REVOKE` - revoke/remove a handle.
+ */
+static i64 sys_cap_revoke(cap::Handle handle)
+{
+    cap::Table *ct = viper::current_cap_table();
+    if (!ct)
+    {
+        return error::VERR_NOT_SUPPORTED;
+    }
+
+    cap::Entry *entry = ct->get(handle);
+    if (!entry)
+    {
+        return error::VERR_INVALID_HANDLE;
+    }
+
+    ct->remove(handle);
+    return error::VOK;
+}
+
+/**
+ * @brief Implementation of `SYS_CAP_QUERY` - query handle info.
+ */
+static i64 sys_cap_query(cap::Handle handle, CapInfo *info_out)
+{
+    cap::Table *ct = viper::current_cap_table();
+    if (!ct)
+    {
+        return error::VERR_NOT_SUPPORTED;
+    }
+
+    if (!validate_user_write(info_out, sizeof(CapInfo)))
+    {
+        return error::VERR_INVALID_ARG;
+    }
+
+    cap::Entry *entry = ct->get(handle);
+    if (!entry)
+    {
+        return error::VERR_INVALID_HANDLE;
+    }
+
+    info_out->handle = handle;
+    info_out->kind = static_cast<unsigned short>(entry->kind);
+    info_out->generation = entry->generation;
+    info_out->_reserved = 0;
+    info_out->rights = entry->rights;
+
+    return error::VOK;
+}
+
+/**
+ * @brief Implementation of `SYS_CAP_LIST` - list all capabilities.
+ */
+static i64 sys_cap_list(CapListEntry *buffer, u32 max_count, u64 &out_count)
+{
+    cap::Table *ct = viper::current_cap_table();
+    if (!ct)
+    {
+        return error::VERR_NOT_SUPPORTED;
+    }
+
+    if (!buffer || max_count == 0)
+    {
+        // Return count only
+        out_count = static_cast<u64>(ct->count());
+        return error::VOK;
+    }
+
+    if (!validate_user_write(buffer, max_count * sizeof(CapListEntry)))
+    {
+        return error::VERR_INVALID_ARG;
+    }
+
+    // Enumerate valid entries
+    u32 count = 0;
+    usize capacity = ct->capacity();
+
+    for (usize idx = 0; idx < capacity && count < max_count; idx++)
+    {
+        cap::Entry *entry = ct->entry_at(idx);
+        if (entry && entry->kind != cap::Kind::Invalid)
+        {
+            cap::Handle h = cap::make_handle(static_cast<u32>(idx), entry->generation);
+            buffer[count].handle = h;
+            buffer[count].kind = static_cast<unsigned short>(entry->kind);
+            buffer[count].generation = entry->generation;
+            buffer[count]._reserved = 0;
+            buffer[count].rights = entry->rights;
+            count++;
+        }
+    }
+
+    out_count = static_cast<u64>(count);
+    return error::VOK;
+}
+
+// =============================================================================
+// Handle-based Filesystem syscalls (0x80-0x87)
+// =============================================================================
+
+/**
+ * @brief Implementation of `SYS_FS_OPEN_ROOT` - get handle to root directory.
+ */
+static i64 sys_fs_open_root(u64 &out_handle)
+{
+    cap::Table *ct = viper::current_cap_table();
+    if (!ct)
+    {
+        return error::VERR_NOT_SUPPORTED;
+    }
+
+    // Create directory object for root
+    kobj::DirObject *dir = kobj::DirObject::create(fs::viperfs::ROOT_INODE);
+    if (!dir)
+    {
+        return error::VERR_NOT_FOUND;
+    }
+
+    // Insert into cap_table with read/traverse rights
+    cap::Rights rights = cap::CAP_READ | cap::CAP_TRAVERSE;
+    cap::Handle h = ct->insert(dir, cap::Kind::Directory, rights);
+    if (h == cap::HANDLE_INVALID)
+    {
+        delete dir;
+        return error::VERR_OUT_OF_MEMORY;
+    }
+
+    out_handle = static_cast<u64>(h);
+    return error::VOK;
+}
+
+/**
+ * @brief Implementation of `SYS_FS_OPEN` - open file/dir relative to dir handle.
+ */
+static i64 sys_fs_open(cap::Handle dir_h, const char *name, usize name_len, u32 flags,
+                       u64 &out_handle)
+{
+    cap::Table *ct = viper::current_cap_table();
+    if (!ct)
+    {
+        return error::VERR_NOT_SUPPORTED;
+    }
+
+    if (!validate_user_read(name, name_len) || name_len == 0)
+    {
+        return error::VERR_INVALID_ARG;
+    }
+
+    // Look up the directory handle
+    cap::Entry *entry = ct->get_checked(dir_h, cap::Kind::Directory);
+    if (!entry)
+    {
+        return error::VERR_INVALID_HANDLE;
+    }
+
+    kobj::DirObject *dir = static_cast<kobj::DirObject *>(entry->object);
+
+    // Lookup the child entry
+    u64 child_inode;
+    u8 child_type;
+    if (!dir->lookup(name, name_len, &child_inode, &child_type))
+    {
+        return error::VERR_NOT_FOUND;
+    }
+
+    // Determine if it's a file or directory
+    if (child_type == fs::viperfs::file_type::DIR)
+    {
+        // Create directory object
+        kobj::DirObject *child_dir = kobj::DirObject::create(child_inode);
+        if (!child_dir)
+        {
+            return error::VERR_OUT_OF_MEMORY;
+        }
+
+        cap::Rights rights = cap::CAP_READ | cap::CAP_TRAVERSE;
+        cap::Handle h = ct->insert(child_dir, cap::Kind::Directory, rights);
+        if (h == cap::HANDLE_INVALID)
+        {
+            delete child_dir;
+            return error::VERR_OUT_OF_MEMORY;
+        }
+
+        out_handle = static_cast<u64>(h);
+    }
+    else
+    {
+        // Create file object
+        kobj::FileObject *file = kobj::FileObject::create(child_inode, flags);
+        if (!file)
+        {
+            return error::VERR_OUT_OF_MEMORY;
+        }
+
+        // Determine rights based on open flags
+        u32 access = flags & 0x3;
+        cap::Rights rights = cap::CAP_NONE;
+        if (access == kobj::file_flags::O_RDONLY || access == kobj::file_flags::O_RDWR)
+        {
+            rights = rights | cap::CAP_READ;
+        }
+        if (access == kobj::file_flags::O_WRONLY || access == kobj::file_flags::O_RDWR)
+        {
+            rights = rights | cap::CAP_WRITE;
+        }
+
+        cap::Handle h = ct->insert(file, cap::Kind::File, rights);
+        if (h == cap::HANDLE_INVALID)
+        {
+            delete file;
+            return error::VERR_OUT_OF_MEMORY;
+        }
+
+        out_handle = static_cast<u64>(h);
+    }
+    return error::VOK;
+}
+
+/**
+ * @brief Implementation of `SYS_IO_READ` - read from file handle.
+ */
+static i64 sys_io_read(cap::Handle file_h, void *buffer, usize len)
+{
+    cap::Table *ct = viper::current_cap_table();
+    if (!ct)
+    {
+        return error::VERR_NOT_SUPPORTED;
+    }
+
+    if (!validate_user_write(buffer, len))
+    {
+        return error::VERR_INVALID_ARG;
+    }
+
+    // Look up the file handle (requires CAP_READ)
+    cap::Entry *entry = ct->get_with_rights(file_h, cap::Kind::File, cap::CAP_READ);
+    if (!entry)
+    {
+        return error::VERR_INVALID_HANDLE;
+    }
+
+    kobj::FileObject *file = static_cast<kobj::FileObject *>(entry->object);
+    return file->read(buffer, len);
+}
+
+/**
+ * @brief Implementation of `SYS_IO_WRITE` - write to file handle.
+ */
+static i64 sys_io_write(cap::Handle file_h, const void *buffer, usize len)
+{
+    cap::Table *ct = viper::current_cap_table();
+    if (!ct)
+    {
+        return error::VERR_NOT_SUPPORTED;
+    }
+
+    if (!validate_user_read(buffer, len))
+    {
+        return error::VERR_INVALID_ARG;
+    }
+
+    // Look up the file handle (requires CAP_WRITE)
+    cap::Entry *entry = ct->get_with_rights(file_h, cap::Kind::File, cap::CAP_WRITE);
+    if (!entry)
+    {
+        return error::VERR_INVALID_HANDLE;
+    }
+
+    kobj::FileObject *file = static_cast<kobj::FileObject *>(entry->object);
+    return file->write(buffer, len);
+}
+
+/**
+ * @brief Implementation of `SYS_IO_SEEK` - seek within file handle.
+ */
+static i64 sys_io_seek(cap::Handle file_h, i64 offset, i32 whence)
+{
+    cap::Table *ct = viper::current_cap_table();
+    if (!ct)
+    {
+        return error::VERR_NOT_SUPPORTED;
+    }
+
+    // Look up the file handle (no special rights needed for seek)
+    cap::Entry *entry = ct->get_checked(file_h, cap::Kind::File);
+    if (!entry)
+    {
+        return error::VERR_INVALID_HANDLE;
+    }
+
+    kobj::FileObject *file = static_cast<kobj::FileObject *>(entry->object);
+    return file->seek(offset, whence);
+}
+
+/**
+ * @brief Implementation of `SYS_FS_READ_DIR` - read next directory entry.
+ */
+static i64 sys_fs_read_dir(cap::Handle dir_h, kobj::FsDirEnt *out_ent)
+{
+    cap::Table *ct = viper::current_cap_table();
+    if (!ct)
+    {
+        return error::VERR_NOT_SUPPORTED;
+    }
+
+    if (!validate_user_write(out_ent, sizeof(kobj::FsDirEnt)))
+    {
+        return error::VERR_INVALID_ARG;
+    }
+
+    // Look up the directory handle (requires CAP_READ)
+    cap::Entry *entry = ct->get_with_rights(dir_h, cap::Kind::Directory, cap::CAP_READ);
+    if (!entry)
+    {
+        return error::VERR_INVALID_HANDLE;
+    }
+
+    kobj::DirObject *dir = static_cast<kobj::DirObject *>(entry->object);
+    bool has_more = dir->read_next(out_ent);
+    return has_more ? 1 : 0;
+}
+
+/**
+ * @brief Implementation of `SYS_FS_CLOSE` - close file or directory handle.
+ */
+static i64 sys_fs_close(cap::Handle h)
+{
+    cap::Table *ct = viper::current_cap_table();
+    if (!ct)
+    {
+        return error::VERR_NOT_SUPPORTED;
+    }
+
+    // Look up the handle (could be File or Directory)
+    cap::Entry *entry = ct->get(h);
+    if (!entry)
+    {
+        return error::VERR_INVALID_HANDLE;
+    }
+
+    // Check that it's a file or directory
+    if (entry->kind != cap::Kind::File && entry->kind != cap::Kind::Directory)
+    {
+        return error::VERR_INVALID_HANDLE;
+    }
+
+    // Release the object
+    kobj::Object *obj = static_cast<kobj::Object *>(entry->object);
+    kobj::release(obj);
+
+    // Remove from cap_table
+    ct->remove(h);
+
+    return error::VOK;
+}
+
+/**
+ * @brief Implementation of `SYS_FS_REWIND_DIR` - reset directory enumeration.
+ */
+static i64 sys_fs_rewind_dir(cap::Handle dir_h)
+{
+    cap::Table *ct = viper::current_cap_table();
+    if (!ct)
+    {
+        return error::VERR_NOT_SUPPORTED;
+    }
+
+    // Look up the directory handle
+    cap::Entry *entry = ct->get_checked(dir_h, cap::Kind::Directory);
+    if (!entry)
+    {
+        return error::VERR_INVALID_HANDLE;
+    }
+
+    kobj::DirObject *dir = static_cast<kobj::DirObject *>(entry->object);
+    dir->rewind();
+    return error::VOK;
+}
+
+// =============================================================================
+// Task syscalls
+// =============================================================================
+
+/**
+ * @brief Implementation of `SYS_TASK_LIST` - enumerate running tasks.
+ */
+static i64 sys_task_list(TaskInfo *buffer, u32 max_count)
+{
+    if (!validate_user_write(buffer, max_count * sizeof(TaskInfo)))
+    {
+        return error::VERR_INVALID_ARG;
+    }
+    return static_cast<i64>(task::list_tasks(buffer, max_count));
+}
+
+/**
+ * @brief Implementation of `SYS_TASK_SET_PRIORITY` - set task priority.
+ *
+ * @details
+ * User processes can only lower their own priority (increase the numeric value).
+ * They cannot raise their priority above the default (128) unless they started
+ * with a higher priority. This prevents priority inversion attacks.
+ *
+ * @param task_id Task ID to modify (0 = current task).
+ * @param priority New priority (0=highest, 255=lowest).
+ * @return 0 on success, negative error code on failure.
+ */
+static i64 sys_task_set_priority(u32 task_id, u8 priority)
+{
+    task::Task *t = nullptr;
+
+    if (task_id == 0)
+    {
+        // Modify current task
+        t = task::current();
+    }
+    else
+    {
+        // Modify specific task (only allowed for own process's tasks in future)
+        t = task::get_by_id(task_id);
+    }
+
+    if (!t)
+    {
+        return error::VERR_NOT_FOUND;
+    }
+
+    // User tasks can only lower priority (increase numeric value)
+    // This prevents priority escalation attacks
+    if (t->flags & task::TASK_FLAG_USER)
+    {
+        // User tasks cannot set priority above default (128)
+        if (priority < task::PRIORITY_DEFAULT)
+        {
+            priority = task::PRIORITY_DEFAULT;
+        }
+    }
+
+    i32 result = task::set_priority(t, priority);
+    return result == 0 ? error::VOK : error::VERR_INVALID_ARG;
+}
+
+/**
+ * @brief Implementation of `SYS_TASK_GET_PRIORITY` - get task priority.
+ *
+ * @param task_id Task ID to query (0 = current task).
+ * @return Priority value (0-255), or negative error code.
+ */
+static i64 sys_task_get_priority(u32 task_id)
+{
+    task::Task *t = nullptr;
+
+    if (task_id == 0)
+    {
+        t = task::current();
+    }
+    else
+    {
+        t = task::get_by_id(task_id);
+    }
+
+    if (!t)
+    {
+        return error::VERR_NOT_FOUND;
+    }
+
+    return static_cast<i64>(task::get_priority(t));
 }
 
 // Time/poll syscalls
@@ -986,45 +1697,52 @@ void dispatch(exceptions::ExceptionFrame *frame)
             SYSCALL_VOID(sys_debug_print(reinterpret_cast<const char *>(arg0)));
             break;
 
-        // Channel syscalls
+        // Channel syscalls (capability-aware)
         case SYS_CHANNEL_CREATE:
-            SYSCALL_RESULT(sys_channel_create());
+            verr = sys_channel_create_cap(res0, res1);
             break;
 
         case SYS_CHANNEL_SEND:
-            SYSCALL_RESULT(sys_channel_send(static_cast<u32>(arg0),
-                                            reinterpret_cast<const void *>(arg1),
-                                            static_cast<u32>(arg2)));
+            SYSCALL_RESULT(sys_channel_send_cap(static_cast<cap::Handle>(arg0),
+                                                reinterpret_cast<const void *>(arg1),
+                                                static_cast<u32>(arg2),
+                                                reinterpret_cast<const cap::Handle *>(arg3),
+                                                static_cast<u32>(arg4)));
             break;
 
         case SYS_CHANNEL_RECV:
-            SYSCALL_RESULT(sys_channel_recv(
-                static_cast<u32>(arg0), reinterpret_cast<void *>(arg1), static_cast<u32>(arg2)));
+            SYSCALL_RESULT(sys_channel_recv_cap(static_cast<cap::Handle>(arg0),
+                                                reinterpret_cast<void *>(arg1),
+                                                static_cast<u32>(arg2),
+                                                reinterpret_cast<cap::Handle *>(arg3),
+                                                reinterpret_cast<u32 *>(arg4)));
             break;
 
         case SYS_CHANNEL_CLOSE:
-            SYSCALL_VOID(sys_channel_close(static_cast<u32>(arg0)));
+            SYSCALL_VOID(sys_channel_close_cap(static_cast<cap::Handle>(arg0)));
             break;
 
-        // Poll syscalls
+        // Poll syscalls (capability-aware)
         case SYS_POLL_CREATE:
-            SYSCALL_RESULT(pollset::create());
+            verr = sys_poll_create_cap(res0);
             break;
 
         case SYS_POLL_ADD:
-            SYSCALL_VOID(pollset::add(
-                static_cast<u32>(arg0), static_cast<u32>(arg1), static_cast<u32>(arg2)));
+            SYSCALL_VOID(sys_poll_add_cap(static_cast<cap::Handle>(arg0),
+                                          static_cast<u32>(arg1),
+                                          static_cast<u32>(arg2)));
             break;
 
         case SYS_POLL_REMOVE:
-            SYSCALL_VOID(pollset::remove(static_cast<u32>(arg0), static_cast<u32>(arg1)));
+            SYSCALL_VOID(sys_poll_remove_cap(static_cast<cap::Handle>(arg0),
+                                             static_cast<u32>(arg1)));
             break;
 
         case SYS_POLL_WAIT:
-            SYSCALL_RESULT(pollset::wait(static_cast<u32>(arg0),
-                                         reinterpret_cast<poll::PollEvent *>(arg1),
-                                         static_cast<u32>(arg2),
-                                         static_cast<i64>(arg3)));
+            SYSCALL_RESULT(sys_poll_wait_cap(static_cast<cap::Handle>(arg0),
+                                             reinterpret_cast<poll::PollEvent *>(arg1),
+                                             static_cast<u32>(arg2),
+                                             static_cast<i64>(arg3)));
             break;
 
         // Time syscalls
@@ -1285,6 +2003,87 @@ void dispatch(exceptions::ExceptionFrame *frame)
         // System Info syscalls (v0.2.0)
         case SYS_MEM_INFO:
             SYSCALL_VOID(sys_mem_info(reinterpret_cast<MemInfo *>(arg0)));
+            break;
+
+        // Task syscalls
+        case SYS_TASK_LIST:
+            SYSCALL_RESULT(sys_task_list(reinterpret_cast<TaskInfo *>(arg0),
+                                         static_cast<u32>(arg1)));
+            break;
+
+        case SYS_TASK_SET_PRIORITY:
+            SYSCALL_VOID(sys_task_set_priority(static_cast<u32>(arg0),
+                                               static_cast<u8>(arg1)));
+            break;
+
+        case SYS_TASK_GET_PRIORITY:
+            SYSCALL_RESULT(sys_task_get_priority(static_cast<u32>(arg0)));
+            break;
+
+        // Capability syscalls (0x70-0x73)
+        case SYS_CAP_DERIVE:
+            verr = sys_cap_derive(static_cast<cap::Handle>(arg0),
+                                  static_cast<cap::Rights>(arg1),
+                                  res0);
+            break;
+
+        case SYS_CAP_REVOKE:
+            SYSCALL_VOID(sys_cap_revoke(static_cast<cap::Handle>(arg0)));
+            break;
+
+        case SYS_CAP_QUERY:
+            SYSCALL_VOID(sys_cap_query(static_cast<cap::Handle>(arg0),
+                                       reinterpret_cast<CapInfo *>(arg1)));
+            break;
+
+        case SYS_CAP_LIST:
+            verr = sys_cap_list(reinterpret_cast<CapListEntry *>(arg0),
+                                static_cast<u32>(arg1),
+                                res0);
+            break;
+
+        // Handle-based Filesystem syscalls (0x80-0x87)
+        case SYS_FS_OPEN_ROOT:
+            verr = sys_fs_open_root(res0);
+            break;
+
+        case SYS_FS_OPEN:
+            verr = sys_fs_open(static_cast<cap::Handle>(arg0),
+                               reinterpret_cast<const char *>(arg1),
+                               static_cast<usize>(arg2),
+                               static_cast<u32>(arg3),
+                               res0);
+            break;
+
+        case SYS_IO_READ:
+            SYSCALL_RESULT(sys_io_read(static_cast<cap::Handle>(arg0),
+                                       reinterpret_cast<void *>(arg1),
+                                       static_cast<usize>(arg2)));
+            break;
+
+        case SYS_IO_WRITE:
+            SYSCALL_RESULT(sys_io_write(static_cast<cap::Handle>(arg0),
+                                        reinterpret_cast<const void *>(arg1),
+                                        static_cast<usize>(arg2)));
+            break;
+
+        case SYS_IO_SEEK:
+            SYSCALL_RESULT(sys_io_seek(static_cast<cap::Handle>(arg0),
+                                       static_cast<i64>(arg1),
+                                       static_cast<i32>(arg2)));
+            break;
+
+        case SYS_FS_READ_DIR:
+            SYSCALL_RESULT(sys_fs_read_dir(static_cast<cap::Handle>(arg0),
+                                           reinterpret_cast<kobj::FsDirEnt *>(arg1)));
+            break;
+
+        case SYS_FS_CLOSE:
+            SYSCALL_VOID(sys_fs_close(static_cast<cap::Handle>(arg0)));
+            break;
+
+        case SYS_FS_REWIND_DIR:
+            SYSCALL_VOID(sys_fs_rewind_dir(static_cast<cap::Handle>(arg0)));
             break;
 
         default:

@@ -24,6 +24,7 @@ set(KERNEL_SOURCES
         mm/pmm.cpp
         mm/vmm.cpp
         mm/kheap.cpp
+        mm/fault.cpp
         sched/task.cpp
         sched/context.S
         sched/scheduler.cpp
@@ -64,6 +65,8 @@ set(KERNEL_SOURCES
         assign/assign.cpp
         # Tests
         tests/ipc_tests.cpp
+        tests/storage_tests.cpp
+        tests/viper_tests.cpp
         # TLS/Crypto (v0.2.0)
         net/tls/tls.cpp
         net/tls/record.cpp
