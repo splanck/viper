@@ -34,9 +34,23 @@ namespace kheap
 
 namespace
 {
-// Block header structure
+// Debug configuration
+#ifdef KHEAP_DEBUG
+constexpr bool DEBUG_MODE = true;
+#else
+constexpr bool DEBUG_MODE = false;
+#endif
+
+// Magic numbers for block validation
+constexpr u32 BLOCK_MAGIC_ALLOC = 0xCAFEBABE; // Allocated block
+constexpr u32 BLOCK_MAGIC_FREE = 0xDEADBEEF;  // Freed block
+constexpr u32 BLOCK_MAGIC_POISON = 0xFEEDFACE; // Poisoned (double-free attempt)
+
+// Block header structure with magic number for validation
 struct BlockHeader
 {
+    u32 magic;          // Magic number for corruption detection
+    u32 _pad;           // Padding for alignment
     u64 size_and_flags; // Size in bytes (including header), bit 0 = in_use
 
     bool is_free() const
@@ -47,11 +61,28 @@ struct BlockHeader
     void set_free()
     {
         size_and_flags &= ~1ULL;
+        magic = BLOCK_MAGIC_FREE;
     }
 
     void set_used()
     {
         size_and_flags |= 1;
+        magic = BLOCK_MAGIC_ALLOC;
+    }
+
+    bool is_valid() const
+    {
+        return magic == BLOCK_MAGIC_ALLOC || magic == BLOCK_MAGIC_FREE;
+    }
+
+    bool is_poisoned() const
+    {
+        return magic == BLOCK_MAGIC_POISON;
+    }
+
+    void poison()
+    {
+        magic = BLOCK_MAGIC_POISON;
     }
 
     u64 size() const
@@ -148,6 +179,8 @@ bool expand_heap(u64 needed)
 
         // Create a free block for the new space
         FreeBlock *new_block = reinterpret_cast<FreeBlock *>(new_pages);
+        new_block->header.magic = BLOCK_MAGIC_FREE;
+        new_block->header._pad = 0;
         new_block->header.size_and_flags = expansion_size; // Free (bit 0 = 0)
         new_block->next = free_list;
         free_list = new_block;
@@ -169,6 +202,8 @@ bool expand_heap(u64 needed)
 
         // Add as a new free block
         FreeBlock *new_block = reinterpret_cast<FreeBlock *>(new_pages);
+        new_block->header.magic = BLOCK_MAGIC_FREE;
+        new_block->header._pad = 0;
         new_block->header.size_and_flags = expansion_size;
         new_block->next = free_list;
         free_list = new_block;
@@ -245,6 +280,8 @@ void init()
 
     // Initialize with one big free block
     FreeBlock *initial_block = reinterpret_cast<FreeBlock *>(heap_start);
+    initial_block->header.magic = BLOCK_MAGIC_FREE;
+    initial_block->header._pad = 0;
     initial_block->header.size_and_flags = heap_size; // Free (bit 0 = 0)
     initial_block->next = nullptr;
 
@@ -335,6 +372,8 @@ void *kmalloc(u64 size)
         // Create new free block from remainder
         FreeBlock *remainder =
             reinterpret_cast<FreeBlock *>(reinterpret_cast<u8 *>(best) + required);
+        remainder->header.magic = BLOCK_MAGIC_FREE;
+        remainder->header._pad = 0;
         remainder->header.size_and_flags = remaining; // Free
         add_to_free_list(remainder);
         total_free += remaining;
@@ -414,18 +453,77 @@ void kfree(void *ptr)
 
     SpinlockGuard guard(heap_lock);
 
+    // Bounds check: verify pointer is within heap range
+    u64 addr = reinterpret_cast<u64>(ptr);
+    if (addr < heap_start + HEADER_SIZE || addr >= heap_end)
+    {
+        serial::puts("[kheap] ERROR: kfree() on invalid pointer ");
+        serial::put_hex(addr);
+        serial::puts(" (outside heap range ");
+        serial::put_hex(heap_start);
+        serial::puts(" - ");
+        serial::put_hex(heap_end);
+        serial::puts(")\n");
+        return;
+    }
+
     BlockHeader *header = ptr_to_header(ptr);
 
-    // Sanity check
-    if (header->is_free())
+    // Alignment check
+    if ((reinterpret_cast<u64>(header) % ALIGNMENT) != 0)
     {
-        serial::puts("[kheap] WARNING: Double free detected at ");
-        serial::put_hex(reinterpret_cast<u64>(ptr));
+        serial::puts("[kheap] ERROR: kfree() on misaligned pointer ");
+        serial::put_hex(addr);
         serial::puts("\n");
         return;
     }
 
+    // Check for corrupted magic number
+    if (!header->is_valid())
+    {
+        if (header->is_poisoned())
+        {
+            serial::puts("[kheap] ERROR: Triple-free or use-after-free at ");
+            serial::put_hex(addr);
+            serial::puts(" (block was already poisoned)\n");
+        }
+        else
+        {
+            serial::puts("[kheap] ERROR: Heap corruption at ");
+            serial::put_hex(addr);
+            serial::puts(" (invalid magic 0x");
+            serial::put_hex(header->magic);
+            serial::puts(")\n");
+        }
+        return;
+    }
+
+    // Double-free check
+    if (header->is_free())
+    {
+        serial::puts("[kheap] ERROR: Double-free detected at ");
+        serial::put_hex(addr);
+        serial::puts(" (size=");
+        serial::put_dec(header->size());
+        serial::puts(")\n");
+        // Poison the block to detect future double-frees
+        header->poison();
+        return;
+    }
+
     u64 block_size = header->size();
+
+    // Size sanity check
+    if (block_size < MIN_BLOCK_SIZE || block_size > heap_size)
+    {
+        serial::puts("[kheap] ERROR: Invalid block size ");
+        serial::put_dec(block_size);
+        serial::puts(" at ");
+        serial::put_hex(addr);
+        serial::puts("\n");
+        return;
+    }
+
     total_allocated -= block_size;
     total_free += block_size;
 

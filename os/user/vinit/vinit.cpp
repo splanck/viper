@@ -859,6 +859,7 @@ void cmd_help()
     puts("  Uptime         - Show system uptime\n");
     puts("  Avail          - Show memory availability\n");
     puts("  Status         - Show running tasks\n");
+    puts("  Run <path>     - Execute program\n");
     puts("  Caps [handle]  - Show capabilities (derive/revoke test)\n");
     puts("  Date           - Show current date\n");
     puts("  Time           - Show current time\n");
@@ -1201,6 +1202,69 @@ void cmd_status()
         puts("s");
     puts(" total\n");
 
+    last_rc = RC_OK;
+}
+
+/**
+ * @brief `Run` command: spawn and execute a program from the filesystem.
+ *
+ * @details
+ * Uses the `SYS_TASK_SPAWN` syscall to load and execute an ELF binary from
+ * the specified path. The spawned process runs concurrently with vinit.
+ *
+ * @param path Path to the ELF executable to run.
+ */
+void cmd_run(const char *path)
+{
+    if (!path || *path == '\0')
+    {
+        puts("Run: missing program path\n");
+        last_rc = RC_ERROR;
+        last_error = "No path specified";
+        return;
+    }
+
+    u64 pid = 0;
+    u64 tid = 0;
+    i64 err = sys::spawn(path, nullptr, &pid, &tid);
+
+    if (err < 0)
+    {
+        puts("Run: failed to spawn \"");
+        puts(path);
+        puts("\" (error ");
+        put_num(err);
+        puts(")\n");
+        last_rc = RC_FAIL;
+        last_error = "Spawn failed";
+        return;
+    }
+
+    puts("Started process ");
+    put_num(static_cast<i64>(pid));
+    puts(" (task ");
+    put_num(static_cast<i64>(tid));
+    puts(")\n");
+
+    // Wait for the child process to exit
+    i32 status = 0;
+    i64 exited_pid = sys::waitpid(pid, &status);
+
+    if (exited_pid < 0)
+    {
+        puts("Run: wait failed (error ");
+        put_num(exited_pid);
+        puts(")\n");
+        last_rc = RC_FAIL;
+        last_error = "Wait failed";
+        return;
+    }
+
+    puts("Process ");
+    put_num(exited_pid);
+    puts(" exited with status ");
+    put_num(static_cast<i64>(status));
+    puts("\n");
     last_rc = RC_OK;
 }
 
@@ -2766,6 +2830,16 @@ void shell_loop()
         else if (strcaseeq(line, "status"))
         {
             cmd_status();
+        }
+        // Run (spawn program)
+        else if (strcasestart(line, "run "))
+        {
+            cmd_run(get_args(line, 4));
+        }
+        else if (strcaseeq(line, "run"))
+        {
+            puts("Run: missing program path\n");
+            last_rc = RC_ERROR;
         }
         // Caps (capabilities)
         else if (strcaseeq(line, "caps") || strcasestart(line, "caps "))

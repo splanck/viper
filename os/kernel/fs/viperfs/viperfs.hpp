@@ -207,6 +207,35 @@ class ViperFS
      */
     u64 create_dir(Inode *dir, const char *name, usize name_len);
 
+    /**
+     * @brief Create a symbolic link in a directory.
+     *
+     * @details
+     * Creates a symlink inode that points to `target` and adds an entry
+     * in `dir`. The target path is stored in the inode's data blocks.
+     *
+     * @param dir Parent directory inode.
+     * @param name Symlink name.
+     * @param name_len Length of symlink name.
+     * @param target Target path string.
+     * @param target_len Length of target path.
+     * @return New inode number on success, or 0 on failure.
+     */
+    u64 create_symlink(Inode *dir, const char *name, usize name_len, const char *target, usize target_len);
+
+    /**
+     * @brief Read the target of a symbolic link.
+     *
+     * @details
+     * Reads the target path from the symlink inode's data.
+     *
+     * @param inode Symlink inode.
+     * @param buf Buffer to receive target path.
+     * @param buf_len Maximum bytes to read.
+     * @return Number of bytes read, or negative on error.
+     */
+    i64 read_symlink(Inode *inode, char *buf, usize buf_len);
+
     // Delete operations
     // Unlink a file from directory. Frees inode and blocks if no more links.
     /**

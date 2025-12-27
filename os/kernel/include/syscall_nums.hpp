@@ -39,6 +39,9 @@ enum Number : u64
     TASK_LIST = SYS_TASK_LIST,
     TASK_SET_PRIORITY = SYS_TASK_SET_PRIORITY,
     TASK_GET_PRIORITY = SYS_TASK_GET_PRIORITY,
+    WAIT = SYS_WAIT,
+    WAITPID = SYS_WAITPID,
+    SBRK = SYS_SBRK,
 
     // Channel IPC (0x10 - 0x1F)
     CHANNEL_CREATE = SYS_CHANNEL_CREATE,
@@ -66,6 +69,8 @@ enum Number : u64
     LSEEK = SYS_LSEEK,
     STAT = SYS_STAT,
     FSTAT = SYS_FSTAT,
+    DUP = SYS_DUP,
+    DUP2 = SYS_DUP2,
 
     // Network/Socket (0x50 - 0x5F)
     SOCKET_CREATE = SYS_SOCKET_CREATE,
@@ -81,6 +86,8 @@ enum Number : u64
     RMDIR = SYS_RMDIR,
     UNLINK = SYS_UNLINK,
     RENAME = SYS_RENAME,
+    SYMLINK = SYS_SYMLINK,
+    READLINK = SYS_READLINK,
 
     // Assign system (0xC0 - 0xCF) - v0.2.0
     ASSIGN_SET = SYS_ASSIGN_SET,
@@ -99,6 +106,7 @@ enum Number : u64
 
     // System Info (0xE0 - 0xEF) - v0.2.0
     MEM_INFO = SYS_MEM_INFO,
+    NET_STATS = SYS_NET_STATS,
 
     // Debug (0xF0 - 0xFF)
     DEBUG_PRINT = SYS_DEBUG_PRINT,

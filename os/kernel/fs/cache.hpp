@@ -30,6 +30,9 @@ constexpr usize BLOCK_SIZE = 4096;
 /** @brief Number of cached blocks in the global block cache. */
 constexpr usize CACHE_BLOCKS = 64; // 256KB cache
 
+/** @brief Number of blocks to prefetch on sequential reads. */
+constexpr usize READ_AHEAD_BLOCKS = 4;
+
 /**
  * @brief One cached block of filesystem data.
  *
@@ -161,7 +164,37 @@ class BlockCache
         return misses_;
     }
 
+    /** @brief Number of read-ahead blocks loaded. */
+    u64 readahead_count() const
+    {
+        return readahead_count_;
+    }
+
   private:
+    /**
+     * @brief Prefetch upcoming blocks in the background.
+     *
+     * @details
+     * Called after a cache miss when sequential access is detected.
+     * Loads the next READ_AHEAD_BLOCKS blocks into the cache if they
+     * are not already present. This is done without incrementing refcount
+     * so the blocks can be evicted if needed.
+     *
+     * @param block_num Starting block number for read-ahead.
+     */
+    void read_ahead(u64 block_num);
+
+    /**
+     * @brief Load a block into cache without incrementing refcount.
+     *
+     * @details
+     * Used by read_ahead to prefetch blocks. Must be called with
+     * cache_lock held.
+     *
+     * @param block_num Block number to load.
+     * @return true if block was loaded or already cached.
+     */
+    bool prefetch_block(u64 block_num);
     CacheBlock blocks_[CACHE_BLOCKS];
 
     // LRU list (head = most recently used)
@@ -175,6 +208,10 @@ class BlockCache
     // Statistics
     u64 hits_{0};
     u64 misses_{0};
+    u64 readahead_count_{0};
+
+    // Sequential access tracking
+    u64 last_block_{0};
 
     // Internal helpers
     /** @brief Hash a block number into the lookup table index. */

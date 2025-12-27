@@ -43,6 +43,24 @@ constexpr u32 MAX_TIMERS = 32;
 static Timer timers[MAX_TIMERS];
 static u32 next_timer_id = 1;
 
+/**
+ * @brief Wait queue entry for event notification.
+ *
+ * @details
+ * Records a task waiting on a specific handle for specific events.
+ */
+struct WaitEntry
+{
+    task::Task *task;  // Waiting task
+    u32 handle;        // Handle being waited on
+    EventType events;  // Events being waited for
+    bool active;       // Entry is in use
+};
+
+// Wait queue table
+constexpr u32 MAX_WAIT_ENTRIES = 32;
+static WaitEntry wait_queue[MAX_WAIT_ENTRIES];
+
 /** @copydoc poll::init */
 void init()
 {
@@ -53,6 +71,12 @@ void init()
         timers[i].id = 0;
         timers[i].active = false;
         timers[i].waiter = nullptr;
+    }
+
+    for (u32 i = 0; i < MAX_WAIT_ENTRIES; i++)
+    {
+        wait_queue[i].task = nullptr;
+        wait_queue[i].active = false;
     }
 
     serial::puts("[poll] Poll subsystem initialized\n");
@@ -298,6 +322,69 @@ void check_timers()
             timers[i].waiter = nullptr;
             waiter->state = task::TaskState::Ready;
             scheduler::enqueue(waiter);
+        }
+    }
+}
+
+/** @copydoc poll::register_wait */
+void register_wait(u32 handle, EventType events)
+{
+    task::Task *current = task::current();
+    if (!current)
+        return;
+
+    // Find an empty slot
+    for (u32 i = 0; i < MAX_WAIT_ENTRIES; i++)
+    {
+        if (!wait_queue[i].active)
+        {
+            wait_queue[i].task = current;
+            wait_queue[i].handle = handle;
+            wait_queue[i].events = events;
+            wait_queue[i].active = true;
+            return;
+        }
+    }
+}
+
+/** @copydoc poll::notify_handle */
+void notify_handle(u32 handle, EventType events)
+{
+    for (u32 i = 0; i < MAX_WAIT_ENTRIES; i++)
+    {
+        if (wait_queue[i].active && wait_queue[i].handle == handle)
+        {
+            // Check if any requested events match
+            if (has_event(wait_queue[i].events, events))
+            {
+                task::Task *waiter = wait_queue[i].task;
+                wait_queue[i].active = false;
+                wait_queue[i].task = nullptr;
+
+                // Wake the task
+                if (waiter && waiter->state == task::TaskState::Blocked)
+                {
+                    waiter->state = task::TaskState::Ready;
+                    scheduler::enqueue(waiter);
+                }
+            }
+        }
+    }
+}
+
+/** @copydoc poll::unregister_wait */
+void unregister_wait()
+{
+    task::Task *current = task::current();
+    if (!current)
+        return;
+
+    for (u32 i = 0; i < MAX_WAIT_ENTRIES; i++)
+    {
+        if (wait_queue[i].active && wait_queue[i].task == current)
+        {
+            wait_queue[i].active = false;
+            wait_queue[i].task = nullptr;
         }
     }
 }

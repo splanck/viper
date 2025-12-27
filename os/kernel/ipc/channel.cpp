@@ -5,6 +5,7 @@
 #include "../lib/spinlock.hpp"
 #include "../sched/scheduler.hpp"
 #include "../viper/viper.hpp"
+#include "poll.hpp"
 
 /**
  * @file channel.cpp
@@ -523,6 +524,10 @@ i64 send(u32 channel_id, const void *data, u32 size)
             // Space available - send the message
             copy_message_to_buffer(ch, data, size);
             wake_blocked_receiver(ch);
+
+            // Notify poll waiters that channel has data
+            poll::notify_handle(channel_id, poll::EventType::CHANNEL_READ);
+
             channel_lock.release();
             return error::VOK;
         }
@@ -600,6 +605,10 @@ i64 recv(u32 channel_id, void *buffer, u32 buffer_size)
             // Message available - receive it
             u32 actual_size = copy_message_from_buffer(ch, buffer, buffer_size);
             wake_blocked_sender(ch);
+
+            // Notify poll waiters that channel has space
+            poll::notify_handle(channel_id, poll::EventType::CHANNEL_WRITE);
+
             channel_lock.release();
             return static_cast<i64>(actual_size);
         }

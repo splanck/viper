@@ -120,12 +120,58 @@ static u16 tcp_checksum(const Ipv4Addr &src,
 }
 
 /**
+ * @brief Parse TCP options and extract MSS value.
+ *
+ * @details
+ * Scans TCP options looking for MSS option (kind=2). If found, returns
+ * the MSS value. Otherwise returns 0.
+ *
+ * @param options Pointer to TCP options (after 20-byte header).
+ * @param options_len Length of options in bytes.
+ * @return MSS value if found, or 0 if not present.
+ */
+static u16 parse_mss_option(const u8 *options, usize options_len)
+{
+    usize i = 0;
+    while (i < options_len)
+    {
+        u8 kind = options[i];
+        if (kind == option::END)
+        {
+            break;
+        }
+        if (kind == option::NOP)
+        {
+            i++;
+            continue;
+        }
+        if (i + 1 >= options_len)
+        {
+            break;
+        }
+        u8 len = options[i + 1];
+        if (len < 2 || i + len > options_len)
+        {
+            break;
+        }
+        if (kind == option::MSS && len == option::MSS_LEN && i + 4 <= options_len)
+        {
+            // MSS is big-endian
+            return (static_cast<u16>(options[i + 2]) << 8) | options[i + 3];
+        }
+        i += len;
+    }
+    return 0;
+}
+
+/**
  * @brief Send a TCP segment for a socket.
  *
  * @details
- * Constructs a minimal TCP header (no options), copies payload bytes (if any),
- * computes checksum, and transmits the segment via IPv4. Sequence number
- * tracking is updated according to flags and payload length.
+ * Constructs a TCP header, optionally includes MSS option for SYN packets,
+ * copies payload bytes (if any), computes checksum, and transmits the segment
+ * via IPv4. Sequence number tracking is updated according to flags and payload
+ * length.
  *
  * @param sock Socket control block (must have remote_ip/ports populated).
  * @param tcp_flags TCP flags to set on the segment (e.g., SYN, ACK, FIN).
@@ -135,23 +181,37 @@ static u16 tcp_checksum(const Ipv4Addr &src,
  */
 static bool send_segment(TcpSocket *sock, u8 tcp_flags, const void *data, usize len)
 {
-    static u8 packet[TCP_HEADER_MIN + 1460] __attribute__((aligned(4)));
+    static u8 packet[TCP_HEADER_MSS + DEFAULT_MSS] __attribute__((aligned(4)));
     TcpHeader *tcp = reinterpret_cast<TcpHeader *>(packet);
+
+    // Determine header size (include MSS option for SYN packets)
+    bool include_mss = (tcp_flags & flags::SYN) != 0;
+    usize header_len = include_mss ? TCP_HEADER_MSS : TCP_HEADER_MIN;
 
     tcp->src_port = htons(sock->local_port);
     tcp->dst_port = htons(sock->remote_port);
     tcp->seq_num = htonl(sock->snd_nxt);
     tcp->ack_num = htonl(sock->rcv_nxt);
-    tcp->data_offset = (TCP_HEADER_MIN / 4) << 4; // No options
+    tcp->data_offset = static_cast<u8>((header_len / 4) << 4);
     tcp->flags = tcp_flags;
     tcp->window = htons(sock->rcv_wnd);
     tcp->checksum = 0;
     tcp->urgent_ptr = 0;
 
+    // Add MSS option for SYN packets
+    if (include_mss)
+    {
+        u8 *opts = packet + TCP_HEADER_MIN;
+        opts[0] = option::MSS;          // Kind
+        opts[1] = option::MSS_LEN;      // Length
+        opts[2] = (DEFAULT_MSS >> 8);   // MSS high byte
+        opts[3] = (DEFAULT_MSS & 0xFF); // MSS low byte
+    }
+
     // Copy data if any
     if (data && len > 0)
     {
-        u8 *payload = packet + TCP_HEADER_MIN;
+        u8 *payload = packet + header_len;
         const u8 *src = static_cast<const u8 *>(data);
         for (usize i = 0; i < len; i++)
         {
@@ -161,7 +221,7 @@ static bool send_segment(TcpSocket *sock, u8 tcp_flags, const void *data, usize 
 
     // Calculate checksum
     Ipv4Addr our_ip = netif().ip();
-    tcp->checksum = htons(tcp_checksum(our_ip, sock->remote_ip, packet, TCP_HEADER_MIN + len));
+    tcp->checksum = htons(tcp_checksum(our_ip, sock->remote_ip, packet, header_len + len));
 
     // Update sequence number
     if (tcp_flags & (flags::SYN | flags::FIN))
@@ -170,7 +230,7 @@ static bool send_segment(TcpSocket *sock, u8 tcp_flags, const void *data, usize 
     }
     sock->snd_nxt += len;
 
-    return ip::tx_packet(sock->remote_ip, ip::protocol::TCP, packet, TCP_HEADER_MIN + len);
+    return ip::tx_packet(sock->remote_ip, ip::protocol::TCP, packet, header_len + len);
 }
 
 /**
@@ -327,6 +387,19 @@ void rx_segment(const Ipv4Addr &src, const void *data, usize len)
                 sock->rcv_wnd = TcpSocket::RX_BUFFER_SIZE;
                 sock->rx_head = sock->rx_tail = 0;
 
+                // Parse MSS option from SYN
+                sock->mss = DEFAULT_MSS;
+                if (data_offset > TCP_HEADER_MIN)
+                {
+                    const u8 *opt_ptr = static_cast<const u8 *>(data) + TCP_HEADER_MIN;
+                    u16 peer_mss = parse_mss_option(opt_ptr, data_offset - TCP_HEADER_MIN);
+                    if (peer_mss > 0)
+                    {
+                        // Use the smaller of peer's MSS and our default
+                        sock->mss = peer_mss < DEFAULT_MSS ? peer_mss : DEFAULT_MSS;
+                    }
+                }
+
                 // Send SYN+ACK
                 send_segment(sock, flags::SYN | flags::ACK, nullptr, 0);
                 sock->state = TcpState::SYN_RECEIVED;
@@ -340,14 +413,35 @@ void rx_segment(const Ipv4Addr &src, const void *data, usize len)
                 sock->rcv_nxt = seq + 1;
                 sock->snd_una = ack;
 
+                // Parse MSS option from SYN+ACK
+                if (data_offset > TCP_HEADER_MIN)
+                {
+                    const u8 *opt_ptr = static_cast<const u8 *>(data) + TCP_HEADER_MIN;
+                    u16 peer_mss = parse_mss_option(opt_ptr, data_offset - TCP_HEADER_MIN);
+                    if (peer_mss > 0)
+                    {
+                        // Use the smaller of peer's MSS and our default
+                        sock->mss = peer_mss < sock->mss ? peer_mss : sock->mss;
+                    }
+                }
+
                 // Send ACK
                 send_segment(sock, flags::ACK, nullptr, 0);
                 sock->state = TcpState::ESTABLISHED;
             }
             else if (tcp_flags & flags::SYN)
             {
-                // Simultaneous open (rare)
+                // Simultaneous open (rare) - parse MSS
                 sock->rcv_nxt = seq + 1;
+                if (data_offset > TCP_HEADER_MIN)
+                {
+                    const u8 *opt_ptr = static_cast<const u8 *>(data) + TCP_HEADER_MIN;
+                    u16 peer_mss = parse_mss_option(opt_ptr, data_offset - TCP_HEADER_MIN);
+                    if (peer_mss > 0)
+                    {
+                        sock->mss = peer_mss < sock->mss ? peer_mss : sock->mss;
+                    }
+                }
                 send_segment(sock, flags::SYN | flags::ACK, nullptr, 0);
                 sock->state = TcpState::SYN_RECEIVED;
             }
@@ -486,6 +580,7 @@ i32 socket_create()
             sockets[i].rx_head = sockets[i].rx_tail = 0;
             sockets[i].tx_len = 0;
             sockets[i].rcv_wnd = TcpSocket::RX_BUFFER_SIZE;
+            sockets[i].mss = DEFAULT_MSS; // Will be negotiated during handshake
             // Initialize retransmit state
             sockets[i].unacked_len = 0;
             sockets[i].unacked_seq = 0;
@@ -668,16 +763,16 @@ i32 socket_send(i32 sock, const void *data, usize len)
         }
     }
 
-    // Send data in segments
+    // Send data in segments using negotiated MSS
     const u8 *p = static_cast<const u8 *>(data);
     usize sent = 0;
-    constexpr usize MSS = 1460; // Maximum segment size
+    usize mss = s->mss; // Use negotiated MSS
 
     while (sent < len)
     {
         usize chunk = len - sent;
-        if (chunk > MSS)
-            chunk = MSS;
+        if (chunk > mss)
+            chunk = mss;
 
         // Retry send with ARP resolution
         bool segment_sent = false;
@@ -988,6 +1083,38 @@ void check_retransmit()
             }
         }
     }
+}
+
+u32 get_active_count()
+{
+    u32 count = 0;
+    for (usize i = 0; i < MAX_TCP_SOCKETS; i++)
+    {
+        if (sockets[i].in_use)
+        {
+            TcpState state = sockets[i].state;
+            if (state == TcpState::ESTABLISHED || state == TcpState::SYN_SENT ||
+                state == TcpState::SYN_RECEIVED || state == TcpState::FIN_WAIT_1 ||
+                state == TcpState::FIN_WAIT_2 || state == TcpState::CLOSE_WAIT)
+            {
+                count++;
+            }
+        }
+    }
+    return count;
+}
+
+u32 get_listen_count()
+{
+    u32 count = 0;
+    for (usize i = 0; i < MAX_TCP_SOCKETS; i++)
+    {
+        if (sockets[i].in_use && sockets[i].state == TcpState::LISTEN)
+        {
+            count++;
+        }
+    }
+    return count;
 }
 
 } // namespace tcp

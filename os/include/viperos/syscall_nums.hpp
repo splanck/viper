@@ -44,6 +44,12 @@
 #define SYS_TASK_SET_PRIORITY 0x06
 /** @brief Get the priority of a task. */
 #define SYS_TASK_GET_PRIORITY 0x07
+/** @brief Wait for any child process to exit. */
+#define SYS_WAIT 0x08
+/** @brief Wait for a specific child process to exit. */
+#define SYS_WAITPID 0x09
+/** @brief Adjust process heap break (sbrk). */
+#define SYS_SBRK 0x0A
 /** @} */
 
 /** @name Channel IPC Syscalls (0x10 - 0x1F)
@@ -112,6 +118,10 @@
 #define SYS_STAT 0x45
 /** @brief Stat an open file descriptor and fill a stat structure. */
 #define SYS_FSTAT 0x46
+/** @brief Duplicate a file descriptor to lowest available slot. */
+#define SYS_DUP 0x47
+/** @brief Duplicate a file descriptor to a specific slot. */
+#define SYS_DUP2 0x48
 /** @} */
 
 /** @name Networking Syscalls (0x50 - 0x5F)
@@ -148,6 +158,10 @@
 #define SYS_UNLINK 0x63
 /** @brief Rename/move a path. */
 #define SYS_RENAME 0x64
+/** @brief Create a symbolic link. */
+#define SYS_SYMLINK 0x65
+/** @brief Read symbolic link target. */
+#define SYS_READLINK 0x66
 /** @} */
 
 /** @name Capability Syscalls (0x70 - 0x7F)
@@ -236,6 +250,8 @@
  */
 /** @brief Fill a @ref MemInfo structure with physical memory statistics. */
 #define SYS_MEM_INFO 0xE0
+/** @brief Fill a NetStats structure with network statistics. */
+#define SYS_NET_STATS 0xE1
 /** @} */
 
 /** @name Debug / Console Syscalls (0xF0 - 0xFF)

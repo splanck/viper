@@ -181,6 +181,9 @@ void init()
     idle_task->trap_frame = nullptr;
     idle_task->wait_channel = nullptr;
     idle_task->exit_code = 0;
+    idle_task->cpu_ticks = 0;
+    idle_task->switch_count = 0;
+    idle_task->parent_id = 0;
     idle_task->viper = nullptr;
     idle_task->user_entry = 0;
     idle_task->user_stack = 0;
@@ -241,6 +244,9 @@ Task *create(const char *name, TaskEntry entry, void *arg, u32 flags)
     t->wait_channel = nullptr;
     t->exit_code = 0;
     t->trap_frame = nullptr;
+    t->cpu_ticks = 0;
+    t->switch_count = 0;
+    t->parent_id = current_task ? current_task->id : 0;
 
     // Set up initial context
     // The stack grows downward, so we start at the top
@@ -363,6 +369,9 @@ Task *create_user_task(const char *name, void *viper_ptr, u64 entry, u64 stack)
     t->wait_channel = nullptr;
     t->exit_code = 0;
     t->trap_frame = nullptr;
+    t->cpu_ticks = 0;
+    t->switch_count = 0;
+    t->parent_id = current_task ? current_task->id : 0;
 
     // Set up user task fields
     t->viper = reinterpret_cast<struct ViperProcess *>(viper_ptr);
@@ -426,6 +435,13 @@ void exit(i32 code)
     serial::puts("' exiting with code ");
     serial::put_dec(code);
     serial::puts("\n");
+
+    // If this is a user task with an associated viper process, exit the process
+    // This marks it as a zombie and wakes any waiting parent
+    if (t->viper)
+    {
+        ::viper::exit(code);
+    }
 
     t->exit_code = code;
     t->state = TaskState::Exited;
@@ -546,13 +562,19 @@ u32 list_tasks(TaskInfo *buffer, u32 max_count)
         info.state = static_cast<u8>(TaskState::Running);
         info.flags = TASK_FLAG_USER;
         info.priority = 128;
-        info._reserved = 0;
+        info._pad0 = 0;
 
         for (usize j = 0; j < 31 && curr_viper->name[j]; j++)
         {
             info.name[j] = curr_viper->name[j];
         }
         info.name[31] = '\0';
+
+        // Extended fields (not tracked for legacy vipers)
+        info.cpu_ticks = 0;
+        info.switch_count = 0;
+        info.parent_id = 0;
+        info.exit_code = 0;
 
         count++;
     }
@@ -576,7 +598,7 @@ u32 list_tasks(TaskInfo *buffer, u32 max_count)
             }
             info.flags = static_cast<u8>(t.flags);
             info.priority = static_cast<u8>(t.priority);
-            info._reserved = 0;
+            info._pad0 = 0;
 
             // Copy name
             for (usize j = 0; j < 31 && t.name[j]; j++)
@@ -584,6 +606,12 @@ u32 list_tasks(TaskInfo *buffer, u32 max_count)
                 info.name[j] = t.name[j];
             }
             info.name[31] = '\0';
+
+            // Extended fields
+            info.cpu_ticks = t.cpu_ticks;
+            info.switch_count = t.switch_count;
+            info.parent_id = t.parent_id;
+            info.exit_code = t.exit_code;
 
             count++;
         }

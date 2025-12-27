@@ -30,6 +30,7 @@
 #include "../cap/handle.hpp"
 #include "../cap/rights.hpp"
 #include "../cap/table.hpp"
+#include "../console/console.hpp"
 #include "../console/gcon.hpp"
 #include "../console/serial.hpp"
 #include "../drivers/virtio/input.hpp"
@@ -1030,6 +1031,55 @@ static i64 sys_task_get_priority(u32 task_id)
 }
 
 /**
+ * @brief Implementation of `SYS_WAIT` - wait for any child process.
+ *
+ * @param status_out Output pointer for child exit status.
+ * @return Process ID of reaped child, or negative error code.
+ */
+static i64 sys_wait(i32 *status_out)
+{
+    return viper::wait(-1, status_out);
+}
+
+/**
+ * @brief Implementation of `SYS_WAITPID` - wait for specific child process.
+ *
+ * @param pid Process ID to wait for (-1 for any child).
+ * @param status_out Output pointer for child exit status.
+ * @return Process ID of reaped child, or negative error code.
+ */
+static i64 sys_waitpid(i64 pid, i32 *status_out)
+{
+    return viper::wait(pid, status_out);
+}
+
+/**
+ * @brief Implementation of `SYS_SBRK` - adjust process heap break.
+ *
+ * @param increment Amount to adjust heap break by (can be negative).
+ * @return Previous heap break on success, or -1 on error.
+ */
+static i64 sys_sbrk(i64 increment)
+{
+    viper::Viper *v = viper::current();
+    if (!v)
+        return -1;
+
+    u64 old_break = v->heap_break;
+    u64 new_break = old_break + increment;
+
+    // Don't allow shrinking below heap start
+    if (new_break < v->heap_start)
+        return -1;
+
+    // For now, just update the break without actually mapping pages
+    // A full implementation would allocate/deallocate pages as needed
+    v->heap_break = new_break;
+
+    return static_cast<i64>(old_break);
+}
+
+/**
  * @brief Implementation of `SYS_TASK_SPAWN` - spawn a new process.
  *
  * @details
@@ -1864,6 +1914,14 @@ void dispatch(exceptions::ExceptionFrame *frame)
                 fs::vfs::fstat(static_cast<i32>(arg0), reinterpret_cast<fs::vfs::Stat *>(arg1)));
             break;
 
+        case SYS_DUP:
+            SYSCALL_RESULT(fs::vfs::dup(static_cast<i32>(arg0)));
+            break;
+
+        case SYS_DUP2:
+            SYSCALL_RESULT(fs::vfs::dup2(static_cast<i32>(arg0), static_cast<i32>(arg1)));
+            break;
+
         // Directory syscalls
         case SYS_READDIR:
             SYSCALL_RESULT(fs::vfs::getdents(
@@ -1920,6 +1978,35 @@ void dispatch(exceptions::ExceptionFrame *frame)
             break;
         }
 
+        case SYS_SYMLINK:
+        {
+            const char *target = reinterpret_cast<const char *>(arg0);
+            const char *linkpath = reinterpret_cast<const char *>(arg1);
+            if (validate_user_string(target, viper::MAX_PATH) < 0 ||
+                validate_user_string(linkpath, viper::MAX_PATH) < 0)
+            {
+                verr = error::VERR_INVALID_ARG;
+                break;
+            }
+            SYSCALL_VOID(fs::vfs::symlink(target, linkpath));
+            break;
+        }
+
+        case SYS_READLINK:
+        {
+            const char *path = reinterpret_cast<const char *>(arg0);
+            char *buf = reinterpret_cast<char *>(arg1);
+            usize bufsiz = static_cast<usize>(arg2);
+            if (validate_user_string(path, viper::MAX_PATH) < 0 ||
+                !validate_user_write(buf, bufsiz))
+            {
+                verr = error::VERR_INVALID_ARG;
+                break;
+            }
+            SYSCALL_RESULT(fs::vfs::readlink(path, buf, bufsiz));
+            break;
+        }
+
         // Socket syscalls
         case SYS_SOCKET_CREATE:
             SYSCALL_RESULT(sys_socket_create());
@@ -1954,25 +2041,18 @@ void dispatch(exceptions::ExceptionFrame *frame)
         case SYS_GETCHAR:
             while (true)
             {
-                // Check virtio-keyboard first
-                if (virtio::keyboard)
-                {
-                    input::poll();
-                    i32 c = input::getchar();
-                    if (c >= 0)
-                    {
-                        verr = error::VOK;
-                        res0 = static_cast<u64>(c);
-                        break;
-                    }
-                }
-                // Check serial
-                if (serial::has_char())
+                // Poll input sources into the unified buffer
+                console::poll_input();
+
+                // Check if character is available
+                i32 c = console::getchar();
+                if (c >= 0)
                 {
                     verr = error::VOK;
-                    res0 = static_cast<u64>(static_cast<u8>(serial::getc()));
+                    res0 = static_cast<u64>(c);
                     break;
                 }
+
                 // Yield to let other things run
                 asm volatile("wfe");
             }
@@ -2061,6 +2141,18 @@ void dispatch(exceptions::ExceptionFrame *frame)
             SYSCALL_VOID(sys_mem_info(reinterpret_cast<MemInfo *>(arg0)));
             break;
 
+        case SYS_NET_STATS:
+        {
+            NetStats *stats = reinterpret_cast<NetStats *>(arg0);
+            if (!validate_user_write(stats, sizeof(NetStats)))
+            {
+                verr = error::VERR_INVALID_ARG;
+                break;
+            }
+            net::get_stats(stats);
+            break;
+        }
+
         // Task syscalls
         case SYS_TASK_LIST:
             SYSCALL_RESULT(sys_task_list(reinterpret_cast<TaskInfo *>(arg0),
@@ -2086,6 +2178,19 @@ void dispatch(exceptions::ExceptionFrame *frame)
             res1 = out_tid;
             break;
         }
+
+        case SYS_WAIT:
+            SYSCALL_RESULT(sys_wait(reinterpret_cast<i32 *>(arg0)));
+            break;
+
+        case SYS_WAITPID:
+            SYSCALL_RESULT(sys_waitpid(static_cast<i64>(arg0),
+                                       reinterpret_cast<i32 *>(arg1)));
+            break;
+
+        case SYS_SBRK:
+            SYSCALL_RESULT(sys_sbrk(static_cast<i64>(arg0)));
+            break;
 
         // Capability syscalls (0x70-0x73)
         case SYS_CAP_DERIVE:

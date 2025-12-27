@@ -947,6 +947,90 @@ u64 ViperFS::create_dir(Inode *dir, const char *name, usize name_len)
     return ino;
 }
 
+/** @copydoc fs::viperfs::ViperFS::create_symlink */
+u64 ViperFS::create_symlink(Inode *dir, const char *name, usize name_len, const char *target, usize target_len)
+{
+    if (!mounted_ || !dir || !name || !target)
+        return 0;
+    if (!is_directory(dir))
+        return 0;
+    if (target_len == 0 || target_len > BLOCK_SIZE)
+        return 0;
+
+    // Check if name already exists
+    if (lookup(dir, name, name_len) != 0)
+    {
+        serial::puts("[viperfs] Entry already exists\n");
+        return 0;
+    }
+
+    // Allocate inode
+    u64 ino = alloc_inode();
+    if (ino == 0)
+    {
+        serial::puts("[viperfs] No free inodes\n");
+        return 0;
+    }
+
+    // Initialize inode
+    Inode new_inode = {};
+    new_inode.inode_num = ino;
+    new_inode.mode = mode::TYPE_LINK | mode::PERM_READ | mode::PERM_WRITE;
+    new_inode.size = target_len;
+    new_inode.blocks = 0;
+
+    // Write inode first
+    if (!write_inode(&new_inode))
+    {
+        free_inode(ino);
+        return 0;
+    }
+
+    // Read back and write the target path to symlink data
+    Inode *inode = read_inode(ino);
+    if (!inode)
+    {
+        free_inode(ino);
+        return 0;
+    }
+
+    i64 written = write_data(inode, 0, target, target_len);
+    release_inode(inode);
+
+    if (written != static_cast<i64>(target_len))
+    {
+        free_inode(ino);
+        return 0;
+    }
+
+    // Add directory entry to parent
+    if (!add_dir_entry(dir, ino, name, name_len, file_type::LINK))
+    {
+        free_inode(ino);
+        return 0;
+    }
+
+    // Update parent directory inode
+    write_inode(dir);
+
+    return ino;
+}
+
+/** @copydoc fs::viperfs::ViperFS::read_symlink */
+i64 ViperFS::read_symlink(Inode *inode, char *buf, usize buf_len)
+{
+    if (!mounted_ || !inode || !buf)
+        return -1;
+    if (!is_symlink(inode))
+        return -1;
+
+    usize read_len = buf_len;
+    if (read_len > inode->size)
+        read_len = inode->size;
+
+    return read_data(inode, 0, buf, read_len);
+}
+
 // Remove a directory entry by name
 // Sets *out_ino to the inode number of the removed entry
 /** @copydoc fs::viperfs::ViperFS::remove_dir_entry */

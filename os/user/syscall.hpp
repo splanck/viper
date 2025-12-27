@@ -290,6 +290,71 @@ inline SyscallResult syscall4(u64 num, u64 arg0, u64 arg1, u64 arg2, u64 arg3)
     __builtin_unreachable();
 }
 
+/**
+ * @brief Spawn a new process from an ELF file.
+ *
+ * @details
+ * Creates a new process by loading an ELF executable from the filesystem.
+ * The new process runs in its own address space and is scheduled concurrently.
+ *
+ * @param path Filesystem path to the ELF executable.
+ * @param name Human-readable process name (optional, uses path basename if null).
+ * @param out_pid Output: Process ID of the spawned process (optional).
+ * @param out_tid Output: Task ID of the spawned process's main thread (optional).
+ * @return 0 on success, negative error code on failure.
+ */
+inline i64 spawn(const char *path, const char *name = nullptr,
+                 u64 *out_pid = nullptr, u64 *out_tid = nullptr)
+{
+    SyscallResult r = syscall2(SYS_TASK_SPAWN,
+                               reinterpret_cast<u64>(path),
+                               reinterpret_cast<u64>(name));
+    if (r.error == 0)
+    {
+        if (out_pid)
+            *out_pid = r.val0;
+        if (out_tid)
+            *out_tid = r.val1;
+    }
+    return r.error;
+}
+
+/**
+ * @brief Wait for any child process to exit.
+ *
+ * @details
+ * Blocks until a child process exits and returns its exit status.
+ *
+ * @param status Output: Exit status of the child (optional).
+ * @return Process ID of the exited child on success, negative error on failure.
+ */
+inline i64 wait(i32 *status = nullptr)
+{
+    SyscallResult r = syscall1(SYS_WAIT, reinterpret_cast<u64>(status));
+    if (r.error == 0)
+    {
+        return static_cast<i64>(r.val0); // Return PID
+    }
+    return r.error;
+}
+
+/**
+ * @brief Wait for a specific child process to exit.
+ *
+ * @param pid Process ID to wait for.
+ * @param status Output: Exit status of the child (optional).
+ * @return Process ID of the exited child on success, negative error on failure.
+ */
+inline i64 waitpid(u64 pid, i32 *status = nullptr)
+{
+    SyscallResult r = syscall2(SYS_WAITPID, pid, reinterpret_cast<u64>(status));
+    if (r.error == 0)
+    {
+        return static_cast<i64>(r.val0);
+    }
+    return r.error;
+}
+
 /** @} */
 
 /**

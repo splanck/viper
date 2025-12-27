@@ -205,6 +205,51 @@ SyscallResult syscall4(u64 num, u64 arg0, u64 arg1, u64 arg2, u64 arg3);
 
 ---
 
+### 3. Minimal libc (`libc/`)
+
+**Status:** Basic C library implementation
+
+A freestanding C library providing essential functions for user-space programs.
+
+**Implemented Headers:**
+
+**`<stdio.h>` - Standard I/O:**
+| Function | Description |
+|----------|-------------|
+| `printf(fmt, ...)` | Formatted output (limited format specifiers) |
+| `puts(s)` | Print string with newline |
+| `putchar(c)` | Print character |
+| `getchar()` | Read character |
+
+**`<string.h>` - String Operations:**
+| Function | Description |
+|----------|-------------|
+| `strlen(s)` | String length |
+| `strcpy(dst, src)` | Copy string |
+| `strncpy(dst, src, n)` | Copy limited string |
+| `strcmp(a, b)` | Compare strings |
+| `strncmp(a, b, n)` | Compare limited |
+| `strchr(s, c)` | Find character |
+| `strrchr(s, c)` | Find last character |
+| `memcpy(dst, src, n)` | Copy memory |
+| `memmove(dst, src, n)` | Copy overlapping |
+| `memset(dst, c, n)` | Fill memory |
+| `memcmp(a, b, n)` | Compare memory |
+
+**`<stdlib.h>` - Utilities:**
+| Function | Description |
+|----------|-------------|
+| `exit(code)` | Terminate program |
+| `abs(n)` | Absolute value |
+| `atoi(s)` | String to integer |
+| `malloc(size)` | (Placeholder - not implemented) |
+| `free(ptr)` | (Placeholder - not implemented) |
+
+**Build:**
+The libc is compiled as a static library (`libviperlibc.a`) that can be linked with user programs.
+
+---
+
 ## Shared ABI Headers (`include/viperos/`)
 
 User and kernel share type definitions:
@@ -283,6 +328,9 @@ User space is tested via:
 |------|-------|-------------|
 | `vinit/vinit.cpp` | ~2,905 | Init process + shell |
 | `syscall.hpp` | ~1,567 | Syscall wrappers |
+| `libc/src/stdio.c` | ~350 | Standard I/O |
+| `libc/src/string.c` | ~200 | String operations |
+| `libc/src/stdlib.c` | ~100 | Standard library |
 
 ---
 
@@ -292,7 +340,7 @@ User space is tested via:
 - Program loading from filesystem
 - Shared libraries
 - Environment variables
-- Standard C library (libc)
+- Heap allocator (malloc/free)
 - Signal handling
 - Job control (bg/fg)
 - Pipes between commands
@@ -304,7 +352,7 @@ User space is tested via:
 ## Priority Recommendations
 
 1. **High:** Add ELF loader to spawn programs from filesystem
-2. **High:** Implement basic libc for user programs
+2. **High:** Implement user-space malloc/free
 3. **Medium:** Add shell scripting support
 4. **Medium:** Implement pipes for command chaining
 5. **Low:** Add job control (background processes)

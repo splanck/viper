@@ -80,6 +80,12 @@ struct TaskInfo
     unsigned char state;     /**< Task state (`TASK_STATE_*`). */
     unsigned char flags;     /**< Task flags (`TASK_FLAG_*`). */
     unsigned char priority;  /**< Scheduler priority (0–255, lower is higher). */
-    unsigned char _reserved; /**< Reserved/padding for alignment; set to 0. */
+    unsigned char _pad0;     /**< Padding for alignment. */
     char name[32];           /**< NUL-terminated task name for display. */
+
+    /* Extended fields (v2) */
+    unsigned long long cpu_ticks;    /**< Total CPU ticks consumed. */
+    unsigned long long switch_count; /**< Number of times scheduled. */
+    unsigned int parent_id;          /**< Parent task ID (0 for root tasks). */
+    int exit_code;                   /**< Exit code (valid if state == EXITED). */
 };

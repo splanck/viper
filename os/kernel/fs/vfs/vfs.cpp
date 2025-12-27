@@ -269,6 +269,66 @@ i32 open(const char *path, u32 oflags)
     return fd;
 }
 
+/** @copydoc fs::vfs::dup */
+i32 dup(i32 oldfd)
+{
+    FDTable *fdt = current_fdt();
+    if (!fdt)
+        return -1;
+
+    FileDesc *old_desc = fdt->get(oldfd);
+    if (!old_desc)
+        return -1;
+
+    // Find lowest available fd
+    i32 newfd = fdt->alloc();
+    if (newfd < 0)
+        return -1;
+
+    // Copy the fd entry
+    FileDesc *new_desc = fdt->get(newfd);
+    new_desc->inode_num = old_desc->inode_num;
+    new_desc->offset = old_desc->offset;
+    new_desc->flags = old_desc->flags;
+
+    return newfd;
+}
+
+/** @copydoc fs::vfs::dup2 */
+i32 dup2(i32 oldfd, i32 newfd)
+{
+    FDTable *fdt = current_fdt();
+    if (!fdt)
+        return -1;
+
+    // Validate oldfd
+    FileDesc *old_desc = fdt->get(oldfd);
+    if (!old_desc)
+        return -1;
+
+    // Validate newfd range
+    if (newfd < 0 || static_cast<usize>(newfd) >= MAX_FDS)
+        return -1;
+
+    // If same fd, just return it
+    if (oldfd == newfd)
+        return newfd;
+
+    // Close newfd if it's open
+    if (fdt->fds[newfd].in_use)
+    {
+        fdt->free(newfd);
+    }
+
+    // Mark newfd as in use and copy
+    fdt->fds[newfd].in_use = true;
+    fdt->fds[newfd].inode_num = old_desc->inode_num;
+    fdt->fds[newfd].offset = old_desc->offset;
+    fdt->fds[newfd].flags = old_desc->flags;
+
+    return newfd;
+}
+
 /** @copydoc fs::vfs::close */
 i32 close(i32 fd)
 {
@@ -639,6 +699,60 @@ i32 unlink(const char *path)
 
     viperfs::viperfs().sync();
     return 0;
+}
+
+/** @copydoc fs::vfs::symlink */
+i32 symlink(const char *target, const char *linkpath)
+{
+    if (!target || !linkpath || !viperfs::viperfs().is_mounted())
+        return -1;
+
+    // Get parent directory and name for the linkpath
+    u64 parent_ino;
+    const char *name;
+    usize name_len;
+    if (!resolve_parent(linkpath, &parent_ino, &name, &name_len))
+    {
+        return -1;
+    }
+
+    viperfs::Inode *parent = viperfs::viperfs().read_inode(parent_ino);
+    if (!parent)
+        return -1;
+
+    // Calculate target length
+    usize target_len = 0;
+    while (target[target_len])
+        target_len++;
+
+    u64 ino = viperfs::viperfs().create_symlink(parent, name, name_len, target, target_len);
+    viperfs::viperfs().release_inode(parent);
+
+    if (ino == 0)
+        return -1;
+
+    viperfs::viperfs().sync();
+    return 0;
+}
+
+/** @copydoc fs::vfs::readlink */
+i64 readlink(const char *path, char *buf, usize bufsiz)
+{
+    if (!path || !buf || bufsiz == 0 || !viperfs::viperfs().is_mounted())
+        return -1;
+
+    u64 ino = resolve_path(path);
+    if (ino == 0)
+        return -1;
+
+    viperfs::Inode *inode = viperfs::viperfs().read_inode(ino);
+    if (!inode)
+        return -1;
+
+    i64 result = viperfs::viperfs().read_symlink(inode, buf, bufsiz);
+    viperfs::viperfs().release_inode(inode);
+
+    return result;
 }
 
 /** @copydoc fs::vfs::rename */

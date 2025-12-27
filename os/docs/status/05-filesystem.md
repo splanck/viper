@@ -25,6 +25,8 @@ The filesystem subsystem provides a virtual filesystem (VFS) layer, the ViperFS 
 - Automatic sync before eviction
 - Spinlock protection for thread safety
 - Cache statistics (hits/misses)
+- Sequential read-ahead prefetching (up to 4 blocks)
+- Automatic detection of sequential access patterns
 
 **Block Size:** 4096 bytes (matches ViperFS block size)
 
@@ -62,14 +64,12 @@ The filesystem subsystem provides a virtual filesystem (VFS) layer, the ViperFS 
 | `invalidate(block_num)` | Invalidate cached block |
 
 **Not Implemented:**
-- Read-ahead prefetching
 - Async I/O
 - Per-file caching
 - Memory-pressure callbacks
 - Background writeback thread
 
 **Recommendations:**
-- Add read-ahead for sequential access patterns
 - Implement background writeback for better latency
 - Add adaptive cache sizing based on memory pressure
 
@@ -95,6 +95,9 @@ The filesystem subsystem provides a virtual filesystem (VFS) layer, the ViperFS 
   - Remove empty directory
   - Rename/move entries
   - List entries (readdir callback)
+- Symbolic link operations:
+  - Create symlink (target stored in data blocks)
+  - Read symlink target
 - Inode lifecycle:
   - Read inode (heap-allocated copy)
   - Write inode back to disk
@@ -162,18 +165,15 @@ Blocks M+1-end: Data blocks
 | name[] | variable | Entry name (not NUL-terminated) |
 
 **Not Implemented:**
-- Symbolic links (type defined but not functional)
 - Hard links / link count
 - Permissions enforcement
 - Timestamps update
 - Triple indirect blocks
 - Extended attributes
 - Journal/transaction logging
-- Fsck / filesystem check
 
 **Recommendations:**
 - Add journaling for crash consistency
-- Implement symbolic link support
 - Add proper timestamp updates
 - Consider extent-based allocation for large files
 
@@ -199,6 +199,10 @@ Blocks M+1-end: Data blocks
   - `lseek(fd, offset, whence)`
   - `stat(path, st)` / `fstat(fd, st)`
   - `getdents(fd, buf, len)`
+  - `dup(oldfd)` / `dup2(oldfd, newfd)`
+- Symbolic link operations:
+  - `symlink(target, linkpath)`
+  - `readlink(path, buf, size)`
 - Directory operations:
   - `mkdir(path)`
   - `rmdir(path)`
@@ -241,19 +245,18 @@ Blocks M+1-end: Data blocks
 **Not Implemented:**
 - Per-process FD tables (currently global)
 - File descriptor inheritance
-- Duplicate FDs (dup/dup2)
 - File locking (flock)
 - Truncate (ftruncate)
 - Access mode checking (everything readable/writable)
 - File system mounting (single filesystem only)
-- Symlink resolution
+- Symlink resolution in path traversal
 - Relative paths (current working directory)
 
 **Recommendations:**
 - Implement per-process FD tables
-- Add dup/dup2 for I/O redirection
 - Add file locking primitives
 - Implement proper O_TRUNC support
+- Add symlink resolution in path traversal
 
 ---
 
@@ -362,7 +365,5 @@ The filesystem is tested via:
 
 1. **High:** Add per-process FD tables for proper process isolation
 2. **High:** Implement journaling for crash consistency
-3. **Medium:** Add read-ahead for sequential access performance
-4. **Medium:** Support dup/dup2 for shell I/O redirection
-5. **Low:** Add symbolic link support
-6. **Low:** Implement background writeback thread
+3. **Medium:** Add symlink resolution in path traversal
+4. **Low:** Implement background writeback thread

@@ -125,6 +125,53 @@ The kernel TLS stack uses this bundle for:
 
 ---
 
+### 3. fsck.viperfs (`fsck.viperfs.cpp`)
+
+**Status:** Complete filesystem consistency checker
+
+A host-side utility that validates ViperFS filesystem images for consistency errors.
+
+**Usage:**
+```
+fsck.viperfs <image>
+```
+
+**Checks Performed:**
+- Superblock magic number and version validation
+- Block size and layout verification
+- Block bitmap consistency (allocated vs referenced)
+- Inode table validation
+- Directory structure traversal
+- Orphan inode detection
+- Cycle detection in directory tree
+- File size vs allocated blocks consistency
+
+**Output:**
+```
+[fsck] ViperFS Filesystem Check
+[fsck] Checking disk.img (16777216 bytes)
+[fsck] Superblock OK (version 1, block size 4096)
+[fsck] Total blocks: 4096, Bitmap blocks: 1, Inode blocks: 16
+[fsck] Scanning inodes...
+[fsck] Found 3 allocated inodes
+[fsck] Traversing directory tree...
+[fsck] Visited 3 inodes via directory tree
+[fsck] Filesystem check complete
+[fsck] 0 errors found
+```
+
+**Error Detection:**
+| Error | Description |
+|-------|-------------|
+| Bad magic | Superblock corrupted |
+| Block bitmap mismatch | Allocated but unreferenced blocks |
+| Orphan inodes | Allocated inodes not in any directory |
+| Directory cycles | Circular directory references |
+| Size mismatch | File size doesn't match block count |
+| Bad block references | Block pointers outside valid range |
+
+---
+
 ## Build Process
 
 These tools are built automatically by `build_viper.sh`:
@@ -159,13 +206,13 @@ fi
 |------|-------|-------------|
 | `mkfs.viperfs.cpp` | ~1,070 | Filesystem image builder |
 | `gen_roots_der.cpp` | ~264 | CA bundle generator |
+| `fsck.viperfs.cpp` | ~400 | Filesystem consistency checker |
 
 ---
 
 ## Priority Recommendations
 
 1. **Medium:** Add double indirect block support for larger files
-2. **Medium:** Add filesystem verification/fsck tool
-3. **Low:** Add image inspection/dump tool
-4. **Low:** Support multiple directories per directory inode
-5. **Low:** Add certificate bundle update script from Mozilla CA list
+2. **Low:** Add image inspection/dump tool
+3. **Low:** Support multiple directories per directory inode
+4. **Low:** Add certificate bundle update script from Mozilla CA list

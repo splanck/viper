@@ -99,7 +99,10 @@ struct Viper
 
     // State
     ViperState state; /**< Current lifecycle state. */
-    i32 exit_code;    /**< Exit status for zombie collection (future use). */
+    i32 exit_code;    /**< Exit status for zombie collection. */
+
+    // Wait queue for parent waiting on children
+    task::Task *wait_queue; /**< List of tasks waiting on this process's children. */
 
     // Heap tracking
     u64 heap_start; /**< Base virtual address for the user heap region. */
@@ -232,6 +235,37 @@ void set_current(Viper *v);
  * @return Pointer to the matching Viper, or `nullptr` if not found.
  */
 Viper *find(u64 id);
+
+/**
+ * @brief Exit the current process with an exit code.
+ *
+ * @details
+ * Sets the process state to ZOMBIE, stores the exit code, wakes any waiting
+ * parent, and reparents children to init (viper ID 1).
+ *
+ * @param code Exit status code.
+ */
+void exit(i32 code);
+
+/**
+ * @brief Wait for a child process to exit.
+ *
+ * @details
+ * If child_id is -1, waits for any child. If a matching ZOMBIE child exists,
+ * reaps it immediately. Otherwise blocks the caller until a child exits.
+ *
+ * @param child_id Process ID to wait for, or -1 for any child.
+ * @param status Output: exit status of the reaped child.
+ * @return Process ID of reaped child on success, negative error on failure.
+ */
+i64 wait(i64 child_id, i32 *status);
+
+/**
+ * @brief Reap a zombie child process and free its resources.
+ *
+ * @param child The zombie child to reap.
+ */
+void reap(Viper *child);
 
 // Debug
 /**

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../../include/viperos/net_stats.hpp"
+
 namespace net
 {
 
@@ -40,5 +42,16 @@ void network_init();
  * quickly.
  */
 void network_poll();
+
+/**
+ * @brief Get current network statistics.
+ *
+ * @details
+ * Fills the provided NetStats structure with cumulative counters from all
+ * network protocol layers.
+ *
+ * @param stats Output structure to fill.
+ */
+void get_stats(NetStats *stats);
 
 } // namespace net

@@ -196,6 +196,7 @@ Sender:                         Receiver:
 - Owner task tracking
 - Capability-based channel lookup
 - Console input pseudo-handle support
+- Event notification (wake on event)
 - Test function for validation
 
 **PollSet Structure:**
@@ -239,12 +240,11 @@ The `wait()` implementation:
 **Not Implemented:**
 - Per-task poll set isolation
 - Poll set inheritance
-- Event notification (currently polling)
 - epoll-style level/edge modes
 
 **Recommendations:**
-- Implement proper event notification instead of polling
 - Add per-task poll set limits
+- Add edge-triggered mode for efficiency
 
 ---
 

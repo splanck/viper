@@ -158,6 +158,10 @@ if [[ ! -f "$BUILD_DIR/vinit.elf" ]]; then
     exit 1
 fi
 
+if [[ ! -f "$BUILD_DIR/hello.elf" ]]; then
+    print_warning "hello.elf not found at $BUILD_DIR/hello.elf (spawn test program)"
+fi
+
 # Build tools if needed
 print_step "Building tools..."
 if [[ ! -x "$TOOLS_DIR/mkfs.viperfs" ]] || [[ "$TOOLS_DIR/mkfs.viperfs.cpp" -nt "$TOOLS_DIR/mkfs.viperfs" ]]; then
@@ -188,6 +192,10 @@ if [[ -x "$TOOLS_DIR/mkfs.viperfs" ]]; then
         --mkdir SYS
         --mkdir SYS/certs
     )
+    # Add hello.elf test program if it was built
+    if [[ -f "$BUILD_DIR/hello.elf" ]]; then
+        MKFS_ARGS+=("$BUILD_DIR/hello.elf")
+    fi
     # Add roots.der if it was generated
     if [[ -f "$BUILD_DIR/roots.der" ]]; then
         MKFS_ARGS+=(--add "$BUILD_DIR/roots.der:SYS/certs/roots.der")

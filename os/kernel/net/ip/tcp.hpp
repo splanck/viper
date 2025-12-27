@@ -53,6 +53,23 @@ struct TcpHeader
 /** @brief Minimum TCP header size in bytes (no options). */
 constexpr usize TCP_HEADER_MIN = 20;
 
+/** @brief TCP header size with MSS option (4 bytes aligned). */
+constexpr usize TCP_HEADER_MSS = 24;
+
+/**
+ * @brief TCP option kinds used in option parsing/generation.
+ */
+namespace option
+{
+constexpr u8 END = 0;        ///< End of option list
+constexpr u8 NOP = 1;        ///< No operation (padding)
+constexpr u8 MSS = 2;        ///< Maximum Segment Size
+constexpr u8 MSS_LEN = 4;    ///< MSS option length
+} // namespace option
+
+/** @brief Default MSS for Ethernet (MTU 1500 - IP header - TCP header). */
+constexpr u16 DEFAULT_MSS = 1460;
+
 /**
  * @brief TCP flag bit values used in the header.
  *
@@ -114,6 +131,7 @@ struct TcpSocket
     u32 rcv_nxt; // Receive next
     u16 snd_wnd; // Send window
     u16 rcv_wnd; // Receive window
+    u16 mss;     // Negotiated Maximum Segment Size
 
     // Receive buffer
     static constexpr usize RX_BUFFER_SIZE = 4096;
@@ -318,6 +336,20 @@ usize socket_available(i32 sock);
  * This function should be called periodically from network_poll().
  */
 void check_retransmit();
+
+/**
+ * @brief Get count of active TCP connections.
+ *
+ * @return Number of sockets in ESTABLISHED or similar active states.
+ */
+u32 get_active_count();
+
+/**
+ * @brief Get count of listening TCP sockets.
+ *
+ * @return Number of sockets in LISTEN state.
+ */
+u32 get_listen_count();
 
 } // namespace tcp
 } // namespace net

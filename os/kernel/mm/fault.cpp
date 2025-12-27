@@ -255,24 +255,105 @@ static void log_fault(const FaultInfo &info, const char *task_name)
  */
 [[noreturn]] static void kernel_panic(const FaultInfo &info)
 {
-    serial::puts("\n!!! KERNEL PANIC: Unhandled page fault in kernel mode !!!\n");
-    serial::puts("Type: ");
+    // Disable interrupts to prevent further issues
+    asm volatile("msr daifset, #0xf");
+
+    serial::puts("\n");
+    serial::puts("================================================================================\n");
+    serial::puts("                           !!! KERNEL PANIC !!!                                \n");
+    serial::puts("================================================================================\n");
+    serial::puts("\n");
+
+    // Fault type and address
+    serial::puts("Fault Type: ");
     serial::puts(fault_type_name(info.type));
-    serial::puts(" at address ");
+    serial::puts("\n");
+    serial::puts("Fault Addr: 0x");
     serial::put_hex(info.fault_addr);
     serial::puts("\n");
+    serial::puts("Fault PC:   0x");
+    serial::put_hex(info.pc);
+    serial::puts("\n");
+    serial::puts("Access:     ");
+    serial::puts(info.is_write ? "WRITE" : "READ");
+    serial::puts("\n\n");
+
+    // Current task info
+    task::Task *current = task::current();
+    serial::puts("Current Task:\n");
+    if (current)
+    {
+        serial::puts("  ID:       ");
+        serial::put_dec(current->id);
+        serial::puts("\n");
+        serial::puts("  Name:     ");
+        serial::puts(current->name);
+        serial::puts("\n");
+        serial::puts("  Flags:    0x");
+        serial::put_hex(current->flags);
+        serial::puts("\n");
+    }
+    else
+    {
+        serial::puts("  (none)\n");
+    }
+    serial::puts("\n");
+
+    // Stack pointer hint
+    u64 sp;
+    asm volatile("mov %0, sp" : "=r"(sp));
+    serial::puts("Stack Ptr:  0x");
+    serial::put_hex(sp);
+    serial::puts("\n");
+
+    // Approximate backtrace (frame pointer chain)
+    serial::puts("\nBacktrace (frame pointer chain):\n");
+    u64 *fp;
+    asm volatile("mov %0, x29" : "=r"(fp));
+    for (int i = 0; i < 10 && fp != nullptr; i++)
+    {
+        u64 ret_addr = fp[1];
+        u64 next_fp = fp[0];
+        if (ret_addr == 0)
+            break;
+
+        serial::puts("  [");
+        serial::put_dec(i);
+        serial::puts("] 0x");
+        serial::put_hex(ret_addr);
+        serial::puts("\n");
+
+        // Validate next frame pointer
+        if (next_fp == 0 || next_fp <= reinterpret_cast<u64>(fp))
+            break;
+        fp = reinterpret_cast<u64 *>(next_fp);
+    }
+
+    serial::puts("\n");
+    serial::puts("================================================================================\n");
+    serial::puts("                           System halted.                                      \n");
+    serial::puts("================================================================================\n");
 
     if (gcon::is_available())
     {
         gcon::set_colors(gcon::colors::VIPER_RED, gcon::colors::BLACK);
-        gcon::puts("\n\n  !!! KERNEL PANIC !!!\n");
+        gcon::puts("\n\n  !!! KERNEL PANIC !!!\n\n");
+        gcon::set_colors(gcon::colors::VIPER_WHITE, gcon::colors::BLACK);
         gcon::puts("  ");
         gcon::puts(fault_type_name(info.type));
-        gcon::puts(" in kernel mode\n");
-        gcon::set_colors(gcon::colors::VIPER_WHITE, gcon::colors::BLACK);
+        gcon::puts(" at 0x");
+        // Simple hex output for gcon
+        u64 addr = info.fault_addr;
+        for (int i = 60; i >= 0; i -= 4)
+        {
+            int digit = (addr >> i) & 0xF;
+            gcon::putc(digit < 10 ? '0' + digit : 'a' + digit - 10);
+        }
+        gcon::puts("\n\n");
+        gcon::puts("  See serial console for details.\n");
+        gcon::puts("  System halted.\n");
     }
 
-    serial::puts("\nSystem halted.\n");
     for (;;)
     {
         asm volatile("wfi");

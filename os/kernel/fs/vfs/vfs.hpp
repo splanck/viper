@@ -159,6 +159,32 @@ void init();
  */
 i32 open(const char *path, u32 flags);
 /**
+ * @brief Duplicate a file descriptor to lowest available slot.
+ *
+ * @details
+ * Creates a copy of the file descriptor entry at `oldfd` in the lowest
+ * available slot. Both descriptors share the same inode and offset.
+ *
+ * @param oldfd File descriptor to duplicate.
+ * @return New file descriptor on success, or -1 on error.
+ */
+i32 dup(i32 oldfd);
+
+/**
+ * @brief Duplicate a file descriptor to a specific slot.
+ *
+ * @details
+ * Creates a copy of the file descriptor entry at `oldfd` in slot `newfd`.
+ * If `newfd` is already open, it is closed first. Both descriptors share
+ * the same inode and offset.
+ *
+ * @param oldfd File descriptor to duplicate.
+ * @param newfd Target file descriptor slot.
+ * @return `newfd` on success, or -1 on error.
+ */
+i32 dup2(i32 oldfd, i32 newfd);
+
+/**
  * @brief Close an open file descriptor.
  *
  * @details
@@ -331,6 +357,33 @@ i32 rmdir(const char *path);
  * @return 0 on success, or -1 on error.
  */
 i32 unlink(const char *path);
+
+/**
+ * @brief Create a symbolic link.
+ *
+ * @details
+ * Creates a new symbolic link at `linkpath` that points to `target`.
+ *
+ * @param target Path that the symlink points to.
+ * @param linkpath Path where the symlink is created.
+ * @return 0 on success, or -1 on error.
+ */
+i32 symlink(const char *target, const char *linkpath);
+
+/**
+ * @brief Read the target of a symbolic link.
+ *
+ * @details
+ * Reads the target path from the symbolic link at `path` into `buf`.
+ * The result is NOT null-terminated.
+ *
+ * @param path Path to the symbolic link.
+ * @param buf Buffer to receive target path.
+ * @param bufsiz Maximum bytes to read.
+ * @return Number of bytes placed in buf, or -1 on error.
+ */
+i64 readlink(const char *path, char *buf, usize bufsiz);
+
 /**
  * @brief Rename or move a filesystem entry.
  *

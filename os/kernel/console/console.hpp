@@ -4,20 +4,85 @@
 
 /**
  * @file console.hpp
- * @brief Simple kernel console printing helpers.
+ * @brief Kernel console I/O with buffered input.
  *
  * @details
- * The `console` namespace provides a tiny, dependency-light printing interface
- * used throughout the kernel. At present it is a thin wrapper over the serial
- * console backend, but keeping a separate façade makes it easier to later route
- * output to multiple devices (serial, graphics console, log buffer) without
- * rewriting call sites.
+ * The `console` namespace provides a unified console interface that:
+ * - Routes output to serial and graphics console backends.
+ * - Provides a buffered input path that merges keyboard and serial input.
+ * - Supports canonical mode line editing (backspace, line buffering).
  *
- * The functions here are intentionally synchronous and formatting is limited
- * to integers and strings to keep early-boot and panic usage safe.
+ * The input buffer is a ring buffer that accumulates characters from both
+ * the virtio keyboard (via the input subsystem) and the serial UART. This
+ * allows characters to be queued between polls and provides a consistent
+ * interface regardless of input source.
  */
 namespace console
 {
+
+/** @brief Size of the console input ring buffer. */
+constexpr usize INPUT_BUFFER_SIZE = 1024;
+
+/** @brief Size of the canonical mode line buffer. */
+constexpr usize LINE_BUFFER_SIZE = 256;
+
+/**
+ * @brief Initialize the console input buffer.
+ *
+ * @details
+ * Resets the input ring buffer and line buffer state. Call once during
+ * kernel initialization after serial and input subsystems are ready.
+ */
+void init_input();
+
+/**
+ * @brief Poll input sources and buffer any available characters.
+ *
+ * @details
+ * Checks both the virtio keyboard (via input::poll/getchar) and the serial
+ * UART for available characters and pushes them into the console input
+ * ring buffer. Should be called periodically (e.g., from timer interrupt).
+ */
+void poll_input();
+
+/**
+ * @brief Check if a character is available in the input buffer.
+ *
+ * @return `true` if at least one character can be read without blocking.
+ */
+bool has_input();
+
+/**
+ * @brief Read one character from the input buffer (non-blocking).
+ *
+ * @return Character value (0-255) or -1 if no character is available.
+ */
+i32 getchar();
+
+/**
+ * @brief Get the number of characters available in the input buffer.
+ *
+ * @return Number of buffered characters ready to read.
+ */
+usize input_available();
+
+/**
+ * @brief Read a line with canonical mode editing.
+ *
+ * @details
+ * Reads characters into a line buffer with support for:
+ * - Backspace: delete previous character
+ * - Enter: complete the line
+ * - Ctrl+C: cancel and return empty line
+ * - Ctrl+D: EOF (returns -1)
+ *
+ * Characters are echoed to the console as they are typed.
+ *
+ * @param buf Output buffer for the line.
+ * @param maxlen Maximum line length (including NUL terminator).
+ * @return Number of characters read (not including NUL), or -1 on EOF.
+ */
+i32 readline(char *buf, usize maxlen);
 
 /**
  * @brief Print a NUL-terminated string to the kernel console.

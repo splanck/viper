@@ -209,4 +209,38 @@ void check_timers();
  */
 void test_poll();
 
+/**
+ * @brief Register current task as waiting on a handle for specific events.
+ *
+ * @details
+ * Adds the calling task to the wait queue for the specified handle.
+ * When notify_handle is called for this handle with matching events,
+ * the task will be woken.
+ *
+ * @param handle Handle to wait on (channel ID, timer ID, etc.).
+ * @param events Event mask to wait for.
+ */
+void register_wait(u32 handle, EventType events);
+
+/**
+ * @brief Notify waiters that events are ready on a handle.
+ *
+ * @details
+ * Wakes any tasks that are waiting on the specified handle for the
+ * given events. This is called by event sources (channels, timers)
+ * when state changes occur.
+ *
+ * @param handle Handle that has events ready.
+ * @param events Event mask of ready events.
+ */
+void notify_handle(u32 handle, EventType events);
+
+/**
+ * @brief Remove current task from all wait queues.
+ *
+ * @details
+ * Called when a task is done waiting (either due to event or timeout).
+ */
+void unregister_wait();
+
 } // namespace poll

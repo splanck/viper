@@ -252,6 +252,83 @@ bool BlockCache::write_block(u64 block_num, const void *buf)
     return blk->write_sectors(sector, count, buf) == 0;
 }
 
+/**
+ * @brief Prefetch a block into cache without incrementing refcount.
+ *
+ * @details
+ * Internal helper for read-ahead. Loads a block if not already cached.
+ * The block is added to the cache but with refcount 0 so it can be evicted
+ * if needed before being accessed.
+ *
+ * Must be called WITH cache_lock held.
+ */
+bool BlockCache::prefetch_block(u64 block_num)
+{
+    // Check if already cached
+    CacheBlock *block = find(block_num);
+    if (block)
+    {
+        return true; // Already in cache
+    }
+
+    // Get a free block
+    block = evict();
+    if (!block)
+    {
+        return false; // No space
+    }
+
+    // Load from disk
+    if (!read_block(block_num, block->data))
+    {
+        return false;
+    }
+
+    // Set up the block with refcount 0 (prefetched, not accessed yet)
+    block->block_num = block_num;
+    block->valid = true;
+    block->dirty = false;
+    block->refcount = 0; // Not referenced - can be evicted if needed
+
+    // Add to hash
+    insert_hash(block);
+
+    // Add to LRU (at tail since it's prefetched, not actively used)
+    remove_from_lru(block);
+    // Insert after head but before tail (middle priority)
+    if (lru_head_ && lru_head_->lru_next)
+    {
+        CacheBlock *second = lru_head_->lru_next;
+        block->lru_prev = lru_head_;
+        block->lru_next = second;
+        lru_head_->lru_next = block;
+        second->lru_prev = block;
+    }
+    else
+    {
+        add_to_lru_head(block);
+    }
+
+    readahead_count_++;
+    return true;
+}
+
+/**
+ * @brief Trigger read-ahead for sequential access patterns.
+ *
+ * @details
+ * Prefetches the next READ_AHEAD_BLOCKS blocks after the given block.
+ * Must be called WITH cache_lock held.
+ */
+void BlockCache::read_ahead(u64 block_num)
+{
+    for (usize i = 1; i <= READ_AHEAD_BLOCKS; i++)
+    {
+        u64 ahead_block = block_num + i;
+        prefetch_block(ahead_block);
+    }
+}
+
 /** @copydoc fs::BlockCache::get */
 CacheBlock *BlockCache::get(u64 block_num)
 {
@@ -265,6 +342,7 @@ CacheBlock *BlockCache::get(u64 block_num)
         hits_++;
         block->refcount++;
         touch(block);
+        last_block_ = block_num;
         return block;
     }
 
@@ -299,6 +377,15 @@ CacheBlock *BlockCache::get(u64 block_num)
 
     // Move to LRU head
     touch(block);
+
+    // Detect sequential access and trigger read-ahead
+    bool is_sequential = (block_num == last_block_ + 1);
+    last_block_ = block_num;
+
+    if (is_sequential)
+    {
+        read_ahead(block_num);
+    }
 
     return block;
 }

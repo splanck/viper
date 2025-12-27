@@ -1,5 +1,7 @@
 #include "scheduler.hpp"
 #include "../console/serial.hpp"
+#include "../viper/address_space.hpp"
+#include "../viper/viper.hpp"
 #include "task.hpp"
 
 /**
@@ -185,6 +187,10 @@ void schedule()
     // Put current task back in ready queue if it's still runnable
     if (current && current->state == task::TaskState::Running)
     {
+        // Account for CPU time used (consumed time slice)
+        u64 ticks_used = task::TIME_SLICE_DEFAULT - current->time_slice;
+        current->cpu_ticks += ticks_used;
+
         current->state = task::TaskState::Ready;
         enqueue(current);
     }
@@ -192,6 +198,7 @@ void schedule()
     // Switch to next task
     next->state = task::TaskState::Running;
     next->time_slice = task::TIME_SLICE_DEFAULT;
+    next->switch_count++;
 
     context_switch_count++;
 
@@ -215,6 +222,14 @@ void schedule()
     // Update current task pointer
     task::Task *old = current;
     task::set_current(next);
+
+    // Switch address space if the next task is a user task with a different viper
+    if (next->viper)
+    {
+        viper::Viper *v = reinterpret_cast<viper::Viper *>(next->viper);
+        viper::switch_address_space(v->ttbr0, v->asid);
+        viper::set_current(v);
+    }
 
     // Perform context switch
     if (old)

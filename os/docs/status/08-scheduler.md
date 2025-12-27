@@ -35,7 +35,8 @@ The scheduler subsystem provides task management and context switching for both 
 | Ready | 1 | Runnable, in queue |
 | Running | 2 | Currently executing |
 | Blocked | 3 | Waiting on event |
-| Exited | 4 | Terminated |
+| Zombie | 4 | Exited, waiting for parent wait() |
+| Exited | 5 | Terminated and reaped |
 
 **Task Flags:**
 | Flag | Value | Description |
@@ -61,6 +62,10 @@ The scheduler subsystem provides task management and context switching for both 
 | viper | ViperProcess* | User process |
 | user_entry | u64 | User entry point |
 | user_stack | u64 | User stack pointer |
+| cpu_ticks | u64 | Total CPU ticks consumed |
+| switch_count | u64 | Number of times scheduled |
+| parent_id | u32 | Parent task ID |
+| exit_code | i32 | Exit status (for zombies) |
 
 **TaskContext (Saved Registers):**
 ```
@@ -89,10 +94,11 @@ The scheduler subsystem provides task management and context switching for both 
 | `create_user_task(name, viper, entry, stack)` | Create user task |
 | `current()` | Get current task |
 | `set_current(t)` | Set current task |
-| `exit(code)` | Terminate task |
+| `exit(code)` | Terminate task (becomes zombie) |
+| `wait(status)` | Wait for child task exit |
 | `yield()` | Yield CPU |
 | `get_by_id(id)` | Lookup by ID |
-| `list_tasks(buf, max)` | Enumerate tasks |
+| `list_tasks(buf, max)` | Enumerate tasks with stats |
 
 ---
 
@@ -107,6 +113,8 @@ The scheduler subsystem provides task management and context switching for both 
 - Context switch via assembly routine
 - Idle task fallback when queue empty
 - Context switch counter (statistics)
+- Per-task CPU tick tracking
+- Per-task context switch counting
 - Interrupt masking during critical sections
 
 **Ready Queue:**

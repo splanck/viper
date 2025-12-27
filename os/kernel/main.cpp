@@ -26,6 +26,7 @@
 #include "assign/assign.hpp"
 #include "boot/bootinfo.hpp"
 #include "cap/table.hpp"
+#include "console/console.hpp"
 #include "console/gcon.hpp"
 #include "console/serial.hpp"
 #include "drivers/fwcfg.hpp"
@@ -344,6 +345,9 @@ extern "C" void kernel_main(void *boot_info_ptr)
 
     // Initialize input subsystem (Phase 5)
     input::init();
+
+    // Initialize console input buffer
+    console::init_input();
 
     // Initialize virtio-net driver (Phase 6)
     virtio::net_init();

@@ -31,6 +31,9 @@ namespace net
 // Receive buffer (aligned for struct access)
 static u8 rx_buffer[2048] __attribute__((aligned(4)));
 
+// Global network statistics
+NetStats g_stats = {};
+
 /** @copydoc net::network_init */
 void network_init()
 {
@@ -79,6 +82,20 @@ void network_poll()
 
     // Check for TCP retransmissions
     tcp::check_retransmit();
+}
+
+/** @copydoc net::get_stats */
+void get_stats(NetStats *stats)
+{
+    if (!stats)
+        return;
+
+    // Copy the global stats
+    *stats = g_stats;
+
+    // Get TCP connection counts
+    stats->tcp_active_conns = tcp::get_active_count();
+    stats->tcp_listen_sockets = tcp::get_listen_count();
 }
 
 } // namespace net

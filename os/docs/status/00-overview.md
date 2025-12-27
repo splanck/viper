@@ -227,20 +227,17 @@ os/
 
 ### Networking
 - IPv6
-- TCP options (MSS, window scaling)
+- TCP window scaling
 - Out-of-order reassembly
 - Congestion control
 - TLS server mode / ECDSA
 
 ### Filesystem
 - Journaling
-- Symlinks
 - Hard links
 - File locking
-- Per-process FD tables
 
 ### User Space
-- libc implementation
 - Dynamic linking
 - Multiple programs
 - Shell scripting
@@ -250,6 +247,20 @@ os/
 
 ## Version History
 
-- **December 2025**: Initial documentation of complete implementation status
+- **December 2025 (v0.2.1)**: Major feature additions
+  - Process lifecycle: wait/exit/zombie handling
+  - File descriptors: dup/dup2 support
+  - TCP MSS option negotiation and retransmission
+  - Block cache read-ahead
+  - Symbolic link support (create/read)
+  - Event notification for poll sets
+  - Basic libc implementation (stdio, string, stdlib)
+  - Enhanced heap allocator with double-free detection
+  - Task list with CPU statistics
+  - Network statistics syscall
+  - Improved kernel panic output with stack traces
+  - Console input buffer with line editing
+  - Filesystem check tool (fsck.viperfs)
+- **December 2025 (v0.2.0)**: Initial documentation of complete implementation status
 - System is functional for QEMU bring-up and networking demos
 - All core subsystems implemented for single-core QEMU virt machine

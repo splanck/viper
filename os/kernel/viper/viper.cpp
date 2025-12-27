@@ -17,7 +17,9 @@
 #include "viper.hpp"
 #include "../console/serial.hpp"
 #include "../fs/vfs/vfs.hpp"
+#include "../include/error.hpp"
 #include "../mm/pmm.hpp"
+#include "../sched/scheduler.hpp"
 #include "../sched/task.hpp"
 #include "address_space.hpp"
 
@@ -63,6 +65,7 @@ void init()
         vipers[i].first_child = nullptr;
         vipers[i].next_sibling = nullptr;
         vipers[i].exit_code = 0;
+        vipers[i].wait_queue = nullptr;
         vipers[i].heap_start = layout::USER_HEAP_BASE;
         vipers[i].heap_break = layout::USER_HEAP_BASE;
         vipers[i].memory_used = 0;
@@ -393,6 +396,125 @@ AddressSpace *get_address_space(Viper *v)
     if (idx < 0 || idx >= static_cast<int>(MAX_VIPERS))
         return nullptr;
     return &address_spaces[idx];
+}
+
+/** @copydoc viper::exit */
+void exit(i32 code)
+{
+    Viper *v = current();
+    if (!v)
+        return;
+
+    serial::puts("[viper] Process '");
+    serial::puts(v->name);
+    serial::puts("' exiting with code ");
+    serial::put_dec(code);
+    serial::puts("\n");
+
+    // Store exit code and transition to ZOMBIE
+    v->exit_code = code;
+    v->state = ViperState::Zombie;
+
+    // Reparent children to init (viper ID 1)
+    Viper *init = find(1);
+    Viper *child = v->first_child;
+    while (child)
+    {
+        Viper *next = child->next_sibling;
+        child->parent = init;
+        if (init)
+        {
+            child->next_sibling = init->first_child;
+            init->first_child = child;
+        }
+        child = next;
+    }
+    v->first_child = nullptr;
+
+    // Wake parent if waiting
+    if (v->parent && v->parent->wait_queue)
+    {
+        task::Task *waiter = v->parent->wait_queue;
+        v->parent->wait_queue = nullptr;
+        waiter->state = task::TaskState::Ready;
+        scheduler::enqueue(waiter);
+    }
+
+    // Mark all tasks in this process as exited
+    // The current task will be cleaned up by scheduler
+}
+
+/** @copydoc viper::wait */
+i64 wait(i64 child_id, i32 *status)
+{
+    Viper *v = current();
+    if (!v)
+        return error::VERR_NOT_SUPPORTED;
+
+    while (true)
+    {
+        // Look for a matching zombie child
+        for (Viper *child = v->first_child; child; child = child->next_sibling)
+        {
+            if (child->state == ViperState::Zombie)
+            {
+                if (child_id == -1 || static_cast<u64>(child_id) == child->id)
+                {
+                    // Found a zombie to reap
+                    i64 pid = static_cast<i64>(child->id);
+                    if (status)
+                        *status = child->exit_code;
+                    reap(child);
+                    return pid;
+                }
+            }
+        }
+
+        // Check if we have any children at all
+        if (!v->first_child)
+        {
+            return error::VERR_NOT_FOUND;
+        }
+
+        // No zombie found - block and wait
+        task::Task *t = task::current();
+        if (!t)
+            return error::VERR_NOT_SUPPORTED;
+
+        t->state = task::TaskState::Blocked;
+        v->wait_queue = t;
+        task::yield();
+
+        // When woken, loop to check again
+    }
+}
+
+/** @copydoc viper::reap */
+void reap(Viper *child)
+{
+    if (!child || child->state != ViperState::Zombie)
+        return;
+
+    serial::puts("[viper] Reaping zombie '");
+    serial::puts(child->name);
+    serial::puts("'\n");
+
+    // Remove from parent's child list
+    if (child->parent)
+    {
+        Viper **pp = &child->parent->first_child;
+        while (*pp && *pp != child)
+        {
+            pp = &(*pp)->next_sibling;
+        }
+        if (*pp == child)
+        {
+            *pp = child->next_sibling;
+        }
+    }
+
+    // Now fully destroy the process
+    destroy(child);
 }
 
 } // namespace viper

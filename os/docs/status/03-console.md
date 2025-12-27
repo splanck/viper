@@ -50,7 +50,6 @@ The console subsystem provides text output capabilities through both a serial UA
 
 **Recommendations:**
 - Add interrupt-driven receive for better responsiveness
-- Implement ring buffer for input
 - Add output buffering to reduce polling overhead
 
 ---
@@ -145,9 +144,36 @@ The console subsystem provides text output capabilities through both a serial UA
 
 ### 4. Console Abstraction (`console.cpp`, `console.hpp`)
 
-**Status:** Unified console interface (optional layer)
+**Status:** Unified console interface with buffered input
 
-**Purpose:** Provides a single interface that outputs to both serial and graphics console simultaneously.
+**Purpose:** Provides a single interface for console I/O:
+- Output routing to both serial and graphics console
+- Unified input buffer merging keyboard and serial input
+- Canonical mode line editing
+
+**Implemented:**
+- 1KB ring buffer for input characters
+- Merged input from virtio-keyboard and serial UART
+- Non-blocking character retrieval
+- Line editing with:
+  - Backspace/Delete handling
+  - Ctrl+C (cancel line)
+  - Ctrl+D (EOF)
+  - Ctrl+U (clear line)
+- Automatic echo to both consoles
+
+**API:**
+| Function | Description |
+|----------|-------------|
+| `init_input()` | Initialize input buffer |
+| `poll_input()` | Poll keyboard and serial for input |
+| `has_input()` | Check if character available |
+| `getchar()` | Get one character (non-blocking) |
+| `input_available()` | Get count of buffered characters |
+| `readline(buf, max)` | Read line with editing |
+| `print(s)` | Print string |
+| `print_dec(v)` | Print decimal number |
+| `print_hex(v)` | Print hex number |
 
 ---
 

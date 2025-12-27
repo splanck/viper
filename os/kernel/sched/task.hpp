@@ -181,6 +181,11 @@ struct Task
     void *wait_channel; // What we're waiting on (for debugging)
     i32 exit_code;      // Exit code when task exits
 
+    // Statistics
+    u64 cpu_ticks;    // Total CPU ticks consumed
+    u64 switch_count; // Number of times scheduled
+    u32 parent_id;    // Parent task ID (0 for root tasks)
+
     // User task fields
     struct ViperProcess *viper; // Associated viper (for user tasks) - opaque pointer
     u64 user_entry;             // User-mode entry point

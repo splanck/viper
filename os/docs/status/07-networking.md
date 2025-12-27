@@ -153,7 +153,11 @@ The networking subsystem provides a complete TCP/IP stack including Ethernet fra
 - Sequence number tracking
 - ACK generation
 - FIN/RST handling
-- Basic retransmission (polling-based)
+- MSS option negotiation (send and receive)
+- Retransmission with exponential backoff
+- Unacknowledged data tracking (1460 bytes)
+- Configurable RTO (1-60 seconds)
+- Connection statistics (active count, listen count)
 - Simplified window management
 
 **TCP States:**
@@ -203,7 +207,8 @@ CLOSED ────────────────────────�
 | `socket_available(sock)` | Bytes in rx buffer |
 
 **Not Implemented:**
-- TCP options (MSS, window scaling, timestamps)
+- TCP window scaling option
+- TCP timestamps option
 - Out-of-order segment reassembly
 - Proper congestion control
 - TIME_WAIT timer (2MSL)
@@ -458,11 +463,9 @@ The network stack uses a polled model:
 
 ## Priority Recommendations
 
-1. **High:** Add proper TCP retransmission with timers
-2. **High:** Implement TCP congestion control
-3. **Medium:** Add out-of-order segment reassembly
-4. **Medium:** Support TCP options (MSS negotiation)
-5. **Medium:** Add interrupt-driven packet receive
-6. **Low:** IP fragmentation/reassembly
-7. **Low:** IPv6 support
-8. **Low:** TLS session resumption
+1. **High:** Implement TCP congestion control
+2. **Medium:** Add out-of-order segment reassembly
+3. **Medium:** Add interrupt-driven packet receive
+4. **Low:** IP fragmentation/reassembly
+5. **Low:** IPv6 support
+6. **Low:** TLS session resumption

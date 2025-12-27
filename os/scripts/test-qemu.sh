@@ -540,6 +540,39 @@ test_path_command() {
     fi
 }
 
+test_run_command() {
+    log_test "RUN command spawns hello.elf"
+
+    send_command "Run /hello.elf"
+    sleep 2
+
+    local output
+    output=$(cat "$SERIAL_OUTPUT")
+
+    # Check for output from spawned process
+    if echo "$output" | grep -q "Hello from spawned process"; then
+        pass "RUN spawned hello.elf successfully"
+        return 0
+    elif echo "$output" | grep -q "Started process"; then
+        # Process started but may not have printed yet
+        sleep 1
+        output=$(cat "$SERIAL_OUTPUT")
+        if echo "$output" | grep -q "Hello from spawned process"; then
+            pass "RUN spawned hello.elf successfully"
+            return 0
+        else
+            fail "RUN started process but hello output not found" "Hello from spawned process" "process started but no output"
+            return 1
+        fi
+    elif echo "$output" | grep -qi "failed to spawn"; then
+        fail "RUN failed to spawn hello.elf" "successful spawn" "spawn failed"
+        return 1
+    else
+        fail "RUN command unexpected result" "Hello from spawned process" "$(echo "$output" | tail -10)"
+        return 1
+    fi
+}
+
 # ============================================================================
 # Main Test Runner
 # ============================================================================
@@ -571,6 +604,7 @@ run_tests() {
     test_uptime_command
     test_avail_command
     test_path_command
+    test_run_command
     test_https_fetch
 
     # Exit shell gracefully

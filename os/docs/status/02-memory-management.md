@@ -122,10 +122,18 @@ The memory management subsystem provides physical page allocation, virtual memor
 - Zero-fill allocation (`kzalloc`)
 - Reallocation (`krealloc`)
 - Heap statistics and debugging dump
-- Double-free detection
+- Enhanced debug mode with:
+  - Magic number validation (CAFEBABE for allocated, DEADBEEF for freed)
+  - Double-free detection with detailed reporting
+  - Bounds checking (pointer within heap range)
+  - Alignment validation (16-byte boundaries)
+  - Block poisoning on double-free (FEEDFACE pattern)
+  - Use-after-free detection via poison patterns
 
 **Block Header Structure:**
 ```
++----------------+
+| magic          |  <- 4-byte magic number for validation
 +----------------+
 | size | in_use  |  <- 8-byte header (size includes header, bit 0 = in_use)
 +----------------+
@@ -159,13 +167,11 @@ The memory management subsystem provides physical page allocation, virtual memor
 - Memory pools for specific subsystems
 - Memory pressure callbacks
 - Memory leak detection
-- Heap corruption detection beyond double-free
 - Per-CPU caches for reduced contention
 
 **Recommendations:**
 - Add slab allocator for frequent small allocations (task structs, inodes, etc.)
 - Implement memory pressure notification
-- Add red zones for corruption detection in debug builds
 - Consider per-CPU free lists for scalability
 
 ---
