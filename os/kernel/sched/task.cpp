@@ -188,6 +188,10 @@ void init()
     idle_task->user_entry = 0;
     idle_task->user_stack = 0;
 
+    // Initialize CWD to root
+    idle_task->cwd[0] = '/';
+    idle_task->cwd[1] = '\0';
+
     // Set up idle task context to run idle_task_fn
     u64 *stack_ptr = reinterpret_cast<u64 *>(idle_task->kernel_stack_top);
     stack_ptr -= 2;
@@ -292,6 +296,17 @@ Task *create(const char *name, TaskEntry entry, void *arg, u32 flags)
     t->user_entry = 0;
     t->user_stack = 0;
 
+    // Initialize CWD - inherit from parent if exists, otherwise root
+    if (current_task && current_task->cwd[0])
+    {
+        strcpy_safe(t->cwd, current_task->cwd, sizeof(t->cwd));
+    }
+    else
+    {
+        t->cwd[0] = '/';
+        t->cwd[1] = '\0';
+    }
+
     return t;
 }
 
@@ -377,6 +392,17 @@ Task *create_user_task(const char *name, void *viper_ptr, u64 entry, u64 stack)
     t->viper = reinterpret_cast<struct ViperProcess *>(viper_ptr);
     t->user_entry = entry;
     t->user_stack = stack;
+
+    // Initialize CWD - inherit from parent if exists, otherwise root
+    if (current_task && current_task->cwd[0])
+    {
+        strcpy_safe(t->cwd, current_task->cwd, sizeof(t->cwd));
+    }
+    else
+    {
+        t->cwd[0] = '/';
+        t->cwd[1] = '\0';
+    }
 
     // Set up initial context to call user_task_entry_trampoline
     u64 *stack_ptr = reinterpret_cast<u64 *>(t->kernel_stack_top);

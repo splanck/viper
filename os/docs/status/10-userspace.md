@@ -1,12 +1,12 @@
 # User Space
 
-**Status:** Functional init process with interactive shell
+**Status:** Complete with libc, C++ runtime, and interactive shell
 **Location:** `user/`
-**SLOC:** ~4,472
+**SLOC:** ~6,500
 
 ## Overview
 
-User space consists of the `vinit` init process and a header-only syscall wrapper library. `vinit` is loaded from the disk image as the first user-space process and provides an Amiga-inspired interactive shell for debugging and demonstration.
+User space consists of the `vinit` init process, a complete freestanding C library (`libc`), C++ standard library headers, and syscall wrappers. `vinit` is loaded from the disk image as the first user-space process and provides an Amiga-inspired interactive shell for debugging and demonstration. The libc enables portable POSIX-like application development without external dependencies.
 
 ---
 
@@ -39,6 +39,8 @@ User space consists of the `vinit` init process and a header-only syscall wrappe
 | Command | Description |
 |---------|-------------|
 | Help | Show available commands |
+| chdir \<path\> | Change current directory |
+| cwd | Print current working directory |
 | Dir [path] | Brief directory listing |
 | List [path] | Detailed directory listing |
 | Type \<file\> | Display file contents |
@@ -47,6 +49,7 @@ User space consists of the `vinit` init process and a header-only syscall wrappe
 | MakeDir \<dir\> | Create directory |
 | Rename \<old\> \<new\> | Rename files |
 | Fetch \<url\> | HTTP/HTTPS GET request |
+| Run \<program\> | Execute user program |
 | Cls | Clear screen (ANSI) |
 | Echo [text] | Print text |
 | Version | Show OS version |
@@ -210,60 +213,178 @@ SyscallResult syscall4(u64 num, u64 arg0, u64 arg1, u64 arg2, u64 arg3);
 
 ---
 
-### 3. Minimal libc (`libc/`)
+### 3. Complete Freestanding libc (`libc/`)
 
-**Status:** Basic C library implementation
+**Status:** Full C standard library for freestanding environment
 
-A freestanding C library providing essential functions for user-space programs.
+A complete freestanding C library providing POSIX-like functionality for user-space programs. All functions work without external dependencies.
 
 **Implemented Headers:**
 
 **`<stdio.h>` - Standard I/O:**
 | Function | Description |
 |----------|-------------|
-| `printf(fmt, ...)` | Formatted output (limited format specifiers) |
+| `printf(fmt, ...)` | Formatted output to stdout |
+| `fprintf(stream, fmt, ...)` | Formatted output to stream |
+| `sprintf(str, fmt, ...)` | Formatted output to string |
+| `snprintf(str, n, fmt, ...)` | Safe formatted output |
+| `vprintf`, `vfprintf`, `vsprintf`, `vsnprintf` | Variadic versions |
+| `sscanf(str, fmt, ...)` | Parse formatted input |
 | `puts(s)` | Print string with newline |
-| `putchar(c)` | Print character |
-| `getchar()` | Read character |
+| `fputs(s, stream)` | Print string to stream |
+| `putchar(c)` / `fputc(c, stream)` | Print character |
+| `getchar()` / `fgetc(stream)` | Read character |
+| `fgets(s, n, stream)` | Read line |
+| `ferror(stream)` / `feof(stream)` | Error/EOF check |
+| `clearerr(stream)` | Clear error state |
+| `fflush(stream)` | Flush output |
+
+**Format specifiers:** `%d`, `%i`, `%u`, `%x`, `%X`, `%p`, `%s`, `%c`, `%%`, `%ld`, `%lu`, `%lx`, `%lld`, `%llu`
 
 **`<string.h>` - String Operations:**
 | Function | Description |
 |----------|-------------|
-| `strlen(s)` | String length |
-| `strcpy(dst, src)` | Copy string |
-| `strncpy(dst, src, n)` | Copy limited string |
-| `strcmp(a, b)` | Compare strings |
-| `strncmp(a, b, n)` | Compare limited |
-| `strchr(s, c)` | Find character |
-| `strrchr(s, c)` | Find last character |
-| `memcpy(dst, src, n)` | Copy memory |
-| `memmove(dst, src, n)` | Copy overlapping |
-| `memset(dst, c, n)` | Fill memory |
-| `memcmp(a, b, n)` | Compare memory |
+| `strlen(s)` / `strnlen(s, n)` | String length |
+| `strcpy` / `strncpy` / `strlcpy` | Copy string |
+| `strcat` / `strncat` / `strlcat` | Concatenate string |
+| `strcmp` / `strncmp` | Compare strings |
+| `strcasecmp` / `strncasecmp` | Case-insensitive compare |
+| `strchr` / `strrchr` | Find character |
+| `strstr` | Find substring |
+| `strpbrk` | Find any of characters |
+| `strspn` / `strcspn` | Span of characters |
+| `strtok_r` | Tokenize string (reentrant) |
+| `strdup` / `strndup` | Duplicate string |
+| `memcpy` / `memmove` | Copy memory |
+| `memset` / `memchr` / `memcmp` | Memory operations |
 
 **`<stdlib.h>` - Utilities:**
 | Function | Description |
 |----------|-------------|
-| `exit(code)` | Terminate program |
-| `abs(n)` | Absolute value |
-| `atoi(s)` | String to integer |
-| `malloc(size)` | Allocate heap memory (via sbrk) |
-| `free(ptr)` | Free heap memory |
-| `calloc(n, size)` | Allocate zeroed memory |
-| `realloc(ptr, size)` | Resize allocation |
+| `malloc(size)` / `free(ptr)` | Heap allocation |
+| `calloc(n, size)` / `realloc(ptr, size)` | Extended allocation |
+| `exit(code)` / `abort()` | Process termination |
+| `atoi` / `atol` / `atoll` | String to integer |
+| `strtol` / `strtoul` | String to long with base |
+| `strtoll` / `strtoull` | String to long long |
+| `abs` / `labs` / `llabs` | Absolute value |
+| `div` / `ldiv` / `lldiv` | Integer division |
+| `qsort(base, n, size, cmp)` | Quicksort (insertion sort) |
+| `bsearch(key, base, n, size, cmp)` | Binary search |
+| `rand()` / `srand(seed)` | Random numbers (LCG) |
+
+**`<ctype.h>` - Character Classification:**
+| Function | Description |
+|----------|-------------|
+| `isalnum` / `isalpha` | Alphanumeric/alphabetic |
+| `isdigit` / `isxdigit` | Decimal/hex digit |
+| `islower` / `isupper` | Case check |
+| `isspace` / `isblank` | Whitespace |
+| `isprint` / `isgraph` | Printable |
+| `iscntrl` / `ispunct` | Control/punctuation |
+| `tolower` / `toupper` | Case conversion |
+
+**`<time.h>` - Time Functions:**
+| Function | Description |
+|----------|-------------|
+| `clock()` | CPU time (ms since boot) |
+| `time(tloc)` | Current time (seconds) |
+| `difftime(t1, t0)` | Time difference |
+| `nanosleep(req, rem)` | High-precision sleep |
+| `gmtime(t)` / `localtime(t)` | Break down time |
+| `mktime(tm)` | Construct time |
+| `strftime(s, max, fmt, tm)` | Format time string |
+
+**`<unistd.h>` - POSIX Functions:**
+| Function | Description |
+|----------|-------------|
+| `read` / `write` / `close` | File I/O |
+| `lseek(fd, off, whence)` | Seek position |
+| `dup` / `dup2` | Duplicate file descriptor |
+| `getpid()` / `getppid()` | Process IDs |
+| `sleep(sec)` / `usleep(usec)` | Sleep |
+| `getcwd(buf, size)` | Get working directory |
+| `chdir(path)` | Change directory |
+| `isatty(fd)` | Terminal check |
+| `sysconf(name)` | System configuration |
+| `sbrk(increment)` | Adjust program break |
+
+**`<errno.h>` - Error Handling:**
+- Thread-local `errno` variable
+- All standard POSIX error codes (ENOENT, EINVAL, ENOMEM, etc.)
+- Network error codes (ECONNREFUSED, ETIMEDOUT, etc.)
+
+**Additional Headers:**
+| Header | Contents |
+|--------|----------|
+| `<stddef.h>` | size_t, ptrdiff_t, NULL, offsetof |
+| `<stdbool.h>` | bool, true, false |
+| `<limits.h>` | INT_MAX, LONG_MAX, PATH_MAX, etc. |
+| `<assert.h>` | assert() macro, static_assert |
 
 **Heap Implementation:**
-The user-space heap uses a simple free-list allocator backed by the `sbrk` syscall:
-
 | Component | Description |
 |-----------|-------------|
 | `sbrk(increment)` | Syscall to adjust program break |
-| Allocator | First-fit free-list with coalescing |
+| Allocator | First-fit free-list |
 | Alignment | 16-byte aligned allocations |
-| Initial heap | Grows on demand via sbrk |
+| Block header | size, next pointer, free flag |
+
+---
+
+### 4. C++ Standard Library (`libc/include/c++/`)
+
+**Status:** Freestanding C++ library headers
+
+**`<type_traits>` - Type Traits:**
+| Trait | Description |
+|-------|-------------|
+| `integral_constant`, `true_type`, `false_type` | Constants |
+| `is_void`, `is_null_pointer`, `is_integral`, `is_floating_point` | Type checks |
+| `is_array`, `is_pointer`, `is_reference`, `is_const`, `is_volatile` | Type properties |
+| `is_same<T, U>` | Type comparison |
+| `remove_const`, `remove_volatile`, `remove_cv` | Remove qualifiers |
+| `remove_reference`, `remove_pointer` | Remove modifiers |
+| `add_const`, `add_pointer`, `add_lvalue_reference` | Add modifiers |
+| `conditional<B, T, F>` | Conditional type |
+| `enable_if<B, T>` | SFINAE helper |
+| `decay<T>` | Decay transformation |
+
+**`<utility>` - Utilities:**
+| Function/Type | Description |
+|---------------|-------------|
+| `std::move(t)` | Cast to rvalue |
+| `std::forward<T>(t)` | Perfect forwarding |
+| `std::swap(a, b)` | Swap values |
+| `std::exchange(obj, new_val)` | Replace and return old |
+| `std::pair<T1, T2>` | Pair container |
+| `std::make_pair(a, b)` | Create pair |
+| `integer_sequence`, `index_sequence` | Compile-time sequences |
+
+**`<new>` - Dynamic Memory:**
+| Function | Description |
+|----------|-------------|
+| `operator new` / `operator delete` | Allocation operators |
+| `operator new[]` / `operator delete[]` | Array versions |
+| Placement new | Construct at address |
+| `std::nothrow` | Non-throwing allocation |
+| `std::launder(p)` | Pointer optimization barrier |
+
+**`<initializer_list>` - Brace Initialization:**
+| Member | Description |
+|--------|-------------|
+| `std::initializer_list<T>` | Brace-init container |
+| `begin()` / `end()` | Iterator access |
+| `size()` | Element count |
+
+**`<cstddef>` / `<cstdint>` - C++ Wrappers:**
+- `std::size_t`, `std::ptrdiff_t`, `std::nullptr_t`
+- `std::byte` (C++17) with bitwise operators
+- `std::int8_t` through `std::int64_t`
+- `std::uint8_t` through `std::uint64_t`
 
 **Build:**
-The libc is compiled as a static library (`libviperlibc.a`) that can be linked with user programs.
+The libc is compiled as a static library (`libviperlibc.a`). User programs are automatically linked via the `add_user_program()` CMake function.
 
 ---
 
@@ -343,17 +464,22 @@ User space is tested via:
 
 | File | Lines | Description |
 |------|-------|-------------|
-| `vinit/vinit.cpp` | ~2,905 | Init process + shell |
-| `syscall.hpp` | ~1,567 | Syscall wrappers |
-| `libc/src/stdio.c` | ~350 | Standard I/O |
-| `libc/src/string.c` | ~200 | String operations |
-| `libc/src/stdlib.c` | ~100 | Standard library |
+| `vinit/vinit.cpp` | ~2,950 | Init process + shell |
+| `syscall.hpp` | ~1,567 | Low-level syscall wrappers |
+| `libc/src/stdio.c` | ~450 | Standard I/O with FILE |
+| `libc/src/string.c` | ~400 | String operations |
+| `libc/src/stdlib.c` | ~460 | Standard library |
+| `libc/src/ctype.c` | ~80 | Character classification |
+| `libc/src/unistd.c` | ~125 | POSIX functions |
+| `libc/src/time.c` | ~150 | Time functions |
+| `libc/src/errno.c` | ~25 | Error handling |
+| `libc/src/new.cpp` | ~85 | C++ new/delete |
+| `libc/include/c++/*` | ~800 | C++ headers |
 
 ---
 
 ## Not Implemented
 
-- Multiple user programs (hello.elf exists, more could be added)
 - Shared libraries / dynamic linking
 - Environment variables
 - Signal handling
@@ -361,14 +487,17 @@ User space is tested via:
 - Pipes between commands
 - Shell scripting
 - Command aliases
+- Floating-point support in libc (kernel uses -mgeneral-regs-only)
+- Thread-safe errno (currently per-process only)
+- Full locale support
 
 ---
 
 ## Priority Recommendations
 
-1. **High:** Add more user-space programs / applications
-2. **High:** Add shell scripting support
-3. **Medium:** Implement pipes for command chaining
-4. **Medium:** Add environment variable support
+1. **High:** Add shell scripting support
+2. **High:** Implement pipes for command chaining
+3. **Medium:** Add environment variable support
+4. **Medium:** Add more user-space applications
 5. **Low:** Add job control (background processes)
 6. **Low:** Implement shared library support

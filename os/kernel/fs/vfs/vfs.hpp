@@ -452,4 +452,35 @@ void close_all_fds(FDTable *fdt);
  */
 u64 resolve_path(const char *path);
 
+/**
+ * @brief Normalize a path, resolving "." and ".." components.
+ *
+ * @details
+ * If the path is relative (doesn't start with '/'), it is combined with the
+ * provided CWD. The function then processes the path to:
+ * - Remove "." components
+ * - Resolve ".." by removing the previous component
+ * - Collapse consecutive slashes
+ * - Ensure result starts with '/'
+ *
+ * @param path Input path string.
+ * @param cwd Current working directory (used if path is relative).
+ * @param out Output buffer for normalized path.
+ * @param out_size Size of output buffer.
+ * @return true on success, false if path is invalid or buffer too small.
+ */
+bool normalize_path(const char *path, const char *cwd, char *out, usize out_size);
+
+/**
+ * @brief Resolve a path (potentially relative) to an inode number.
+ *
+ * @details
+ * Like resolve_path, but handles relative paths by combining with the current
+ * task's CWD first.
+ *
+ * @param path NUL-terminated path string (absolute or relative).
+ * @return Inode number on success, or 0 if not found.
+ */
+u64 resolve_path_cwd(const char *path);
+
 } // namespace fs::vfs

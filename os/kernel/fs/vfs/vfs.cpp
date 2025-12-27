@@ -16,8 +16,10 @@
  * rich error codes; syscall wrappers translate these as needed during bring-up.
  */
 #include "vfs.hpp"
+#include "../../console/console.hpp"
 #include "../../console/serial.hpp"
 #include "../../lib/str.hpp"
+#include "../../sched/task.hpp"
 #include "../../viper/viper.hpp"
 #include "../viperfs/viperfs.hpp"
 
@@ -353,7 +355,25 @@ i64 read(i32 fd, void *buf, usize len)
 
     FileDesc *desc = fdt->get(fd);
     if (!desc)
+    {
+        // Special handling for stdin - read from console
+        if (fd == 0)
+        {
+            char *s = static_cast<char *>(buf);
+            usize count = 0;
+            while (count < len)
+            {
+                i32 c = console::getchar();
+                if (c < 0)
+                    break; // No more input available
+                s[count++] = static_cast<char>(c);
+                if (c == '\n')
+                    break; // Line complete
+            }
+            return static_cast<i64>(count);
+        }
         return -1;
+    }
 
     // Check read permission
     u32 access = desc->flags & 0x3;
@@ -383,7 +403,23 @@ i64 write(i32 fd, const void *buf, usize len)
 
     FileDesc *desc = fdt->get(fd);
     if (!desc)
+    {
+        // Special handling for stdout/stderr - write to console
+        if (fd == 1 || fd == 2)
+        {
+            const char *s = static_cast<const char *>(buf);
+            for (usize i = 0; i < len; i++)
+            {
+                serial::putc(s[i]);
+            }
+            return static_cast<i64>(len);
+        }
+        // Debug: log failed write attempts
+        serial::puts("[vfs] write: invalid fd ");
+        serial::put_dec(fd);
+        serial::puts("\n");
         return -1;
+    }
 
     // Check write permission
     u32 access = desc->flags & 0x3;
@@ -812,6 +848,154 @@ i32 rename(const char *old_path, const char *new_path)
 
     viperfs::viperfs().sync();
     return 0;
+}
+
+/** @copydoc fs::vfs::normalize_path */
+bool normalize_path(const char *path, const char *cwd, char *out, usize out_size)
+{
+    if (!path || !out || out_size < 2)
+        return false;
+
+    // Buffer to build the combined path
+    char combined[MAX_PATH];
+    usize pos = 0;
+
+    // If path is relative, start with CWD
+    if (path[0] != '/')
+    {
+        if (cwd && cwd[0])
+        {
+            // Copy CWD
+            for (usize i = 0; cwd[i] && pos < MAX_PATH - 1; i++)
+            {
+                combined[pos++] = cwd[i];
+            }
+            // Ensure there's a slash between CWD and path
+            if (pos > 0 && combined[pos - 1] != '/' && pos < MAX_PATH - 1)
+            {
+                combined[pos++] = '/';
+            }
+        }
+        else
+        {
+            // No CWD, treat as root
+            combined[pos++] = '/';
+        }
+    }
+
+    // Append the input path
+    for (usize i = 0; path[i] && pos < MAX_PATH - 1; i++)
+    {
+        combined[pos++] = path[i];
+    }
+    combined[pos] = '\0';
+
+    // Now normalize the combined path
+    // We process components and build the result
+    char *src = combined;
+    usize out_pos = 0;
+
+    // Start with root slash
+    if (out_size > 0)
+    {
+        out[out_pos++] = '/';
+    }
+
+    // Track component start positions for handling ".."
+    usize component_starts[64]; // Stack of component start positions
+    usize stack_depth = 0;
+
+    while (*src)
+    {
+        // Skip leading slashes
+        while (*src == '/')
+            src++;
+        if (*src == '\0')
+            break;
+
+        // Find end of component
+        const char *comp_start = src;
+        while (*src && *src != '/')
+            src++;
+        usize comp_len = src - comp_start;
+
+        // Handle "." - skip it
+        if (comp_len == 1 && comp_start[0] == '.')
+        {
+            continue;
+        }
+
+        // Handle ".." - go up one directory
+        if (comp_len == 2 && comp_start[0] == '.' && comp_start[1] == '.')
+        {
+            if (stack_depth > 0)
+            {
+                // Pop the last component
+                stack_depth--;
+                out_pos = component_starts[stack_depth];
+            }
+            // If at root, stay at root
+            continue;
+        }
+
+        // Regular component - add it
+        if (out_pos + comp_len + 1 >= out_size)
+        {
+            return false; // Buffer too small
+        }
+
+        // Record where this component starts (after the slash)
+        if (stack_depth < 64)
+        {
+            component_starts[stack_depth++] = out_pos;
+        }
+
+        // Copy component
+        for (usize i = 0; i < comp_len; i++)
+        {
+            out[out_pos++] = comp_start[i];
+        }
+        out[out_pos++] = '/';
+    }
+
+    // Remove trailing slash (unless root)
+    if (out_pos > 1 && out[out_pos - 1] == '/')
+    {
+        out_pos--;
+    }
+
+    out[out_pos] = '\0';
+    return true;
+}
+
+/** @copydoc fs::vfs::resolve_path_cwd */
+u64 resolve_path_cwd(const char *path)
+{
+    if (!path)
+        return 0;
+
+    // If already absolute, use regular resolve
+    if (path[0] == '/')
+    {
+        return resolve_path(path);
+    }
+
+    // Get current task's CWD
+    const char *cwd = "/";
+    task::Task *t = task::current();
+    if (t && t->cwd[0])
+    {
+        cwd = t->cwd;
+    }
+
+    // Normalize the path
+    char normalized[MAX_PATH];
+    if (!normalize_path(path, cwd, normalized, sizeof(normalized)))
+    {
+        return 0;
+    }
+
+    return resolve_path(normalized);
 }
 
 } // namespace fs::vfs

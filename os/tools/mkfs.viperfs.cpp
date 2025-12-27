@@ -1062,9 +1062,39 @@ int main(int argc, char **argv)
         inode_table_blocks = 4;
     u64 bitmap_start = 1;
     u64 inode_table_start = bitmap_start + bitmap_blocks;
+    u64 data_start = inode_table_start + inode_table_blocks;
+
+    // Count actual free blocks from bitmap
+    u64 used_blocks = 0;
+    for (u64 i = 0; i < img.total_blocks; i++)
+    {
+        if (img.bitmap[i / 8] & (1 << (i % 8)))
+        {
+            used_blocks++;
+        }
+    }
+    u64 actual_free_blocks = img.total_blocks - used_blocks;
+
+    // Update superblock with correct free_blocks count
+    Superblock sb = {};
+    sb.magic = VIPERFS_MAGIC;
+    sb.version = VIPERFS_VERSION;
+    sb.block_size = BLOCK_SIZE;
+    sb.total_blocks = img.total_blocks;
+    sb.free_blocks = actual_free_blocks;
+    sb.inode_count = inode_table_blocks * INODES_PER_BLOCK;
+    sb.root_inode = ROOT_INODE;
+    sb.bitmap_start = bitmap_start;
+    sb.bitmap_blocks = bitmap_blocks;
+    sb.inode_table_start = inode_table_start;
+    sb.inode_table_blocks = inode_table_blocks;
+    sb.data_start = data_start;
+    strncpy(sb.label, "ViperOS", sizeof(sb.label) - 1);
+    img.write_block(0, &sb);
 
     img.finalize(bitmap_start, inode_table_start);
 
-    printf("Created %s (%lu MB)\n", image_path, size_mb);
+    printf("Created %s (%lu MB, %lu blocks used, %lu free)\n",
+           image_path, size_mb, used_blocks, actual_free_blocks);
     return 0;
 }

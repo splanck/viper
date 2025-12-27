@@ -66,6 +66,7 @@ The scheduler subsystem provides task management and context switching for both 
 | switch_count | u64 | Number of times scheduled |
 | parent_id | u32 | Parent task ID |
 | exit_code | i32 | Exit status (for zombies) |
+| cwd[256] | char | Current working directory |
 
 **TaskContext (Saved Registers):**
 ```

@@ -31,6 +31,7 @@ set(KERNEL_SOURCES
         sched/context.S
         sched/scheduler.cpp
         syscall/dispatch.cpp
+        syscall/table.cpp
         ipc/channel.cpp
         ipc/poll.cpp
         ipc/pollset.cpp
@@ -70,6 +71,8 @@ set(KERNEL_SOURCES
         tests/ipc_tests.cpp
         tests/storage_tests.cpp
         tests/viper_tests.cpp
+        tests/syscall_tests.cpp
+        tests/userfault_tests.cpp
         # TLS/Crypto (v0.2.0)
         net/tls/tls.cpp
         net/tls/record.cpp

@@ -321,6 +321,12 @@ Block N+3:    Transaction 2 descriptor + data
 | namelen | Name length |
 | name[256] | Entry name |
 
+**Current Working Directory Support:**
+- Per-process CWD stored in task structure (256-byte path)
+- `getcwd()` / `chdir()` syscalls (SYS_GETCWD=0x67, SYS_CHDIR=0x68)
+- Path normalization handles `.`, `..`, consecutive slashes
+- Relative path resolution via `resolve_path_cwd()`
+
 **Not Implemented:**
 - Per-process FD tables (currently global)
 - File descriptor inheritance
@@ -329,7 +335,6 @@ Block N+3:    Transaction 2 descriptor + data
 - Access mode checking (everything readable/writable)
 - File system mounting (single filesystem only)
 - Symlink resolution in path traversal
-- Relative paths (current working directory)
 
 **Recommendations:**
 - Implement per-process FD tables

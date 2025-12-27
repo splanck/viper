@@ -696,32 +696,43 @@ extern "C" void kernel_main(void *boot_info_ptr)
                 viper::assign::init();
                 viper::assign::debug_dump();
 
-                // Test assign path resolution
-                serial::puts("[kernel] Testing assign path resolution...\n");
+                // Test assign inode resolution (using get_inode, not resolve_path
+                // since resolve_path requires a Viper context with cap table)
+                serial::puts("[kernel] Testing assign inode resolution...\n");
 
-                // Test 1: SYS: (base directory)
-                cap::Handle h1 = viper::assign::resolve_path("SYS:");
-                serial::puts("  SYS: -> inode ");
-                serial::put_dec(static_cast<i64>(h1));
-                serial::puts(h1 != cap::HANDLE_INVALID ? " OK\n" : " FAIL\n");
+                // Test 1: SYS assign exists and points to root
+                u64 sys_inode = viper::assign::get_inode("SYS");
+                serial::puts("  SYS -> inode ");
+                serial::put_dec(sys_inode);
+                serial::puts(sys_inode != 0 ? " OK\n" : " FAIL\n");
 
-                // Test 2: SYS:vinit.elf (file in root)
-                cap::Handle h2 = viper::assign::resolve_path("SYS:vinit.elf");
-                serial::puts("  SYS:vinit.elf -> inode ");
-                serial::put_dec(static_cast<i64>(h2));
-                serial::puts(h2 != cap::HANDLE_INVALID ? " OK\n" : " FAIL\n");
+                // Test 2: D0 assign exists
+                u64 d0_inode = viper::assign::get_inode("D0");
+                serial::puts("  D0 -> inode ");
+                serial::put_dec(d0_inode);
+                serial::puts(d0_inode != 0 ? " OK\n" : " FAIL\n");
 
-                // Test 3: D0:\vinit.elf (backslash separator)
-                cap::Handle h3 = viper::assign::resolve_path("D0:\\vinit.elf");
-                serial::puts("  D0:\\vinit.elf -> inode ");
-                serial::put_dec(static_cast<i64>(h3));
-                serial::puts(h3 != cap::HANDLE_INVALID ? " OK\n" : " FAIL\n");
+                // Test 3: Verify vinit.elf exists via VFS
+                i32 vinit_fd = fs::vfs::open("/vinit.elf", fs::vfs::flags::O_RDONLY);
+                serial::puts("  /vinit.elf -> ");
+                if (vinit_fd >= 0)
+                {
+                    serial::puts("fd ");
+                    serial::put_dec(vinit_fd);
+                    serial::puts(" OK\n");
+                    fs::vfs::close(vinit_fd);
+                }
+                else
+                {
+                    serial::puts("FAIL (not found)\n");
+                }
 
-                // Test 4: SYS:nonexistent (should fail)
-                cap::Handle h4 = viper::assign::resolve_path("SYS:nonexistent");
-                serial::puts("  SYS:nonexistent -> ");
-                serial::puts(h4 == cap::HANDLE_INVALID ? "INVALID (expected)\n"
-                                                       : "FAIL (should be invalid)\n");
+                // Test 4: Nonexistent assign should return 0
+                u64 bad_inode = viper::assign::get_inode("NONEXISTENT");
+                serial::puts("  NONEXISTENT -> ");
+                serial::puts(bad_inode == 0 ? "0 (expected)\n" : "FAIL\n");
+
+                // Note: resolve_path() is tested in user-space where Viper context exists
             }
         }
         else
@@ -756,8 +767,19 @@ extern "C" void kernel_main(void *boot_info_ptr)
     // (Tests must complete before any user tasks are enqueued to avoid
     // scheduler yields during tests switching to user tasks)
     tests::run_storage_tests();
+
+    // Sync filesystem after storage tests to ensure all changes
+    // (including unlinked inodes) are persisted to disk
+    if (fs::viperfs::viperfs().is_mounted())
+    {
+        fs::viperfs::viperfs().sync();
+        serial::puts("[kernel] Filesystem synced after storage tests\n");
+    }
+
     tests::run_viper_tests();
+    tests::run_syscall_tests();
     tests::create_ipc_test_tasks();
+    tests::create_userfault_test_task();
 
     // Test Viper creation
     serial::puts("[kernel] Testing Viper creation...\n");
@@ -1005,6 +1027,36 @@ extern "C" void kernel_main(void *boot_info_ptr)
                 {
                     serial::puts("[kernel] vinit task created, will run under scheduler\n");
                     scheduler::enqueue(vinit_task);
+
+                    // Test: Spawn user programs to verify console output
+                    serial::puts("[kernel] Testing user programs...\n");
+
+                    // Spawn fsinfo.elf
+                    loader::SpawnResult fsinfo_spawn = loader::spawn_process("/fsinfo.elf", "fsinfo", test_viper);
+                    if (fsinfo_spawn.success)
+                    {
+                        serial::puts("[kernel] fsinfo.elf spawned (tid=");
+                        serial::put_dec(fsinfo_spawn.task_id);
+                        serial::puts(")\n");
+                    }
+
+                    // Spawn sysinfo.elf
+                    loader::SpawnResult sysinfo_spawn = loader::spawn_process("/sysinfo.elf", "sysinfo", test_viper);
+                    if (sysinfo_spawn.success)
+                    {
+                        serial::puts("[kernel] sysinfo.elf spawned (tid=");
+                        serial::put_dec(sysinfo_spawn.task_id);
+                        serial::puts(")\n");
+                    }
+
+                    // Spawn netstat.elf
+                    loader::SpawnResult netstat_spawn = loader::spawn_process("/netstat.elf", "netstat", test_viper);
+                    if (netstat_spawn.success)
+                    {
+                        serial::puts("[kernel] netstat.elf spawned (tid=");
+                        serial::put_dec(netstat_spawn.task_id);
+                        serial::puts(")\n");
+                    }
                 }
                 else
                 {

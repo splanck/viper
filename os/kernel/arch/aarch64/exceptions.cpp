@@ -23,6 +23,7 @@
 #include "../../mm/fault.hpp"
 #include "../../sched/scheduler.hpp"
 #include "../../sched/task.hpp"
+#include "../../viper/viper.hpp"
 
 // Forward declaration for GIC handler
 namespace gic
@@ -42,32 +43,50 @@ void dispatch(exceptions::ExceptionFrame *frame);
  * @details
  * Called when a user-mode task triggers a fatal exception (data abort,
  * instruction abort, etc.). Instead of panicking the kernel, this function:
- * 1. Logs the fault details for debugging
+ * 1. Logs the fault details in USERFAULT format for debugging
  * 2. Terminates just the faulting task with exit code -1
  * 3. Schedules the next runnable task
  *
  * This allows the system to continue running even when a user process crashes.
  *
  * @param frame Exception frame with saved registers.
- * @param reason Human-readable description of the fault type.
+ * @param reason Human-readable description of the fault type (kind).
  */
 static void terminate_faulting_task(exceptions::ExceptionFrame *frame, const char *reason)
 {
     // Get current task info for logging
     task::Task *current = task::current();
+    u32 tid = current ? current->id : 0;
+    u32 pid = tid; // In single-threaded model, pid == tid
     const char *task_name = current ? current->name : "<unknown>";
 
-    // Log the fault
-    serial::puts("\n[fault] Task '");
-    serial::puts(task_name);
-    serial::puts("' terminated: ");
+    // If this is a user task with viper, use viper's id as pid
+    if (current && current->viper)
+    {
+        // The viper field is an opaque pointer to viper::Viper
+        auto *v = reinterpret_cast<viper::Viper *>(current->viper);
+        pid = static_cast<u32>(v->id);
+    }
+
+    // Log in USERFAULT format: USERFAULT pid=<id> tid=<id> pc=0x... far=0x... esr=0x... kind=<...>
+    serial::puts("USERFAULT pid=");
+    serial::put_dec(pid);
+    serial::puts(" tid=");
+    serial::put_dec(tid);
+    serial::puts(" pc=");
+    serial::put_hex(frame->elr);
+    serial::puts(" far=");
+    serial::put_hex(frame->far);
+    serial::puts(" esr=");
+    serial::put_hex(frame->esr);
+    serial::puts(" kind=");
     serial::puts(reason);
     serial::puts("\n");
-    serial::puts("[fault] FAR: ");
-    serial::put_hex(frame->far);
-    serial::puts(" PC: ");
-    serial::put_hex(frame->elr);
-    serial::puts("\n");
+
+    // Also log task name for clarity
+    serial::puts("[fault] Task '");
+    serial::puts(task_name);
+    serial::puts("' terminated\n");
 
     // Display on graphics console if available
     if (gcon::is_available())
@@ -366,24 +385,46 @@ extern "C"
         // PC alignment fault from user space
         if (ec == exceptions::ec::PC_ALIGN)
         {
-            terminate_faulting_task(frame, "PC alignment fault");
+            terminate_faulting_task(frame, "pc_alignment");
             return; // Never reached
         }
 
         // SP alignment fault from user space
         if (ec == exceptions::ec::SP_ALIGN)
         {
-            terminate_faulting_task(frame, "SP alignment fault");
+            terminate_faulting_task(frame, "sp_alignment");
+            return; // Never reached
+        }
+
+        // Illegal instruction / unknown instruction from user space
+        // EC=0x00 is used for instructions that can't be decoded
+        if (ec == exceptions::ec::UNKNOWN)
+        {
+            terminate_faulting_task(frame, "illegal_instruction");
+            return; // Never reached
+        }
+
+        // Illegal execution state (e.g., PSTATE.IL set)
+        if (ec == exceptions::ec::ILLEGAL_STATE)
+        {
+            terminate_faulting_task(frame, "illegal_state");
+            return; // Never reached
+        }
+
+        // BRK instruction (breakpoint) from user space
+        if (ec == exceptions::ec::BRK_A64)
+        {
+            terminate_faulting_task(frame, "breakpoint");
             return; // Never reached
         }
 
         // Other user-mode exception - terminate with generic message
-        serial::puts("[fault] Unknown user exception EC=");
+        serial::puts("[fault] Unknown user exception EC=0x");
         serial::put_hex(ec);
         serial::puts(" (");
         serial::puts(exceptions::exception_class_name(ec));
         serial::puts(")\n");
-        terminate_faulting_task(frame, "unknown exception");
+        terminate_faulting_task(frame, "unknown");
     }
 
     /** @copydoc handle_el0_irq */

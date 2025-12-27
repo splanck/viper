@@ -66,9 +66,11 @@ enum Code : i64
     VERR_POLL_FULL = -400, // Poll set is full
 
     // I/O errors (-500 to -599)
-    VERR_IO = -500,          // I/O error
-    VERR_NO_RESOURCE = -501, // No resource available (e.g., no free slots)
-    VERR_CONNECTION = -502,  // Connection error
+    VERR_IO = -500,              // I/O error
+    VERR_NO_RESOURCE = -501,     // No resource available (e.g., no free slots)
+    VERR_CONNECTION = -502,      // Connection error
+    VERR_BUFFER_TOO_SMALL = -503, // Buffer too small
+    VERR_NOT_DIR = -504,         // Not a directory
 };
 
 /**

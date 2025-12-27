@@ -1,12 +1,12 @@
 # ViperOS Implementation Status
 
-**Version:** December 2025 (v0.2.2)
+**Version:** December 2025 (v0.2.3)
 **Target:** AArch64 (ARM64) on QEMU virt machine
-**Total SLOC:** ~31,000
+**Total SLOC:** ~35,000
 
 ## Executive Summary
 
-ViperOS is a capability-based microkernel operating system targeting AArch64. The current implementation provides a functional kernel with full virtual memory support (demand paging, VMA tracking), a complete TCP/IP stack with TLS 1.3 and congestion control, a crash-consistent journaling filesystem, and an interactive shell with user-space heap support. The system is designed for QEMU's `virt` machine but is structured for future hardware portability.
+ViperOS is a capability-based microkernel operating system targeting AArch64. The current implementation provides a functional kernel with full virtual memory support (demand paging, VMA tracking), a complete TCP/IP stack with TLS 1.3 and congestion control, a crash-consistent journaling filesystem, and an interactive shell with user-space heap support. A complete minimal libc and C++ standard library support enables portable user-space application development. The system is designed for QEMU's `virt` machine but is structured for future hardware portability.
 
 ---
 
@@ -16,15 +16,15 @@ ViperOS is a capability-based microkernel operating system targeting AArch64. Th
 |-----------|------|--------|
 | Architecture (AArch64) | ~1,700 | Complete for QEMU |
 | Memory Management | ~900 | Functional |
-| Console (Serial/Graphics) | ~1,900 | Complete |
+| Console (Serial/Graphics) | ~2,000 | Complete |
 | Drivers (VirtIO/fw_cfg) | ~4,100 | Complete for QEMU |
-| Filesystem (VFS/ViperFS) | ~3,400 | Functional |
+| Filesystem (VFS/ViperFS) | ~3,600 | Complete |
 | IPC (Channels/Poll) | ~2,100 | Complete |
 | Networking (TCP/IP/TLS) | ~14,700 | Complete |
-| Scheduler/Tasks | ~1,400 | Functional |
+| Scheduler/Tasks | ~1,500 | Functional |
 | Viper/Capabilities | ~2,100 | Functional |
-| User Space | ~4,500 | Functional |
-| Tools | ~1,300 | Complete |
+| User Space (libc/C++) | ~6,500 | Complete |
+| Tools | ~1,800 | Complete |
 
 ---
 
@@ -124,15 +124,48 @@ ViperOS is a capability-based microkernel operating system targeting AArch64. Th
 
 ---
 
-## Recent Implementations (v0.2.2)
+## Recent Implementations (v0.2.3)
 
 ### Completed in This Release
-1. **Demand Paging with VMA Tracking** - Full page fault handling with VMA list per process
-2. **User-Space Heap (sbrk/malloc)** - Working malloc/free via sbrk syscall
-3. **Interrupt-Driven VirtIO Network** - RX wait queues with GIC interrupt registration
-4. **Filesystem Journaling** - Write-ahead logging for crash-consistent metadata
-5. **TCP Congestion Control (RFC 5681)** - Slow start, congestion avoidance, fast retransmit
-6. **TCP Out-of-Order Reassembly** - 8-segment OOO queue for packet reordering
+1. **Complete Freestanding libc** - Full C standard library for user-space programs
+   - `<stdio.h>`: printf, fprintf, sprintf, snprintf, sscanf, fputs, fgets, FILE abstraction
+   - `<string.h>`: All standard string operations including strstr, strtok_r, strdup
+   - `<stdlib.h>`: malloc/free, atoi/atol, strtol/strtoul, qsort, bsearch, rand/srand
+   - `<ctype.h>`: All character classification functions
+   - `<time.h>`: clock, time, nanosleep, strftime, gmtime
+   - `<unistd.h>`: getpid, usleep, getcwd, chdir, isatty, sysconf
+   - `<errno.h>`: Thread-local errno with POSIX error codes
+   - `<limits.h>`, `<stddef.h>`, `<stdbool.h>`, `<assert.h>`
+
+2. **C++ Standard Library Support** - Freestanding C++ headers
+   - `<type_traits>`: is_same, remove_const, enable_if, decay, conditional
+   - `<utility>`: std::move, std::forward, std::swap, std::pair
+   - `<new>`: Placement new, operator new/delete
+   - `<initializer_list>`: Brace-init support
+   - `<cstddef>`, `<cstdint>`: C++ wrappers
+
+3. **Per-Process Current Working Directory** - Full CWD support
+   - Per-task CWD storage (256-byte path per process)
+   - SYS_GETCWD/SYS_CHDIR syscalls
+   - Path normalization (handles `.`, `..`, relative paths)
+   - Shell chdir and cwd commands
+
+4. **Graphics Console Green Border** - 20px decorative border with 8px inner padding
+   - Smooth scrolling respects border region
+   - ANSI-style visual enhancement
+
+5. **Build System Improvements** - Simplified user program creation
+   - `add_user_program()` CMake function
+   - Automatic libc linking and include paths
+   - C++ runtime support (new/delete operators)
+
+### Previous Release (v0.2.2)
+- Demand Paging with VMA Tracking
+- User-Space Heap (sbrk/malloc)
+- Interrupt-Driven VirtIO Network
+- Filesystem Journaling
+- TCP Congestion Control (RFC 5681)
+- TCP Out-of-Order Reassembly
 
 ### Priority Development Roadmap
 
@@ -145,10 +178,10 @@ ViperOS is a capability-based microkernel operating system targeting AArch64. Th
 1. IPv6 support
 2. VirtIO-GPU for hardware acceleration
 3. TLS session resumption
-4. More user-space programs
+4. Pipes between processes
 
 ### Low Priority
-1. Shared libraries
+1. Shared libraries / dynamic linking
 2. Real-time scheduling class
 3. ECDSA certificate verification
 
@@ -202,18 +235,23 @@ cd os
 os/
 ├── kernel/
 │   ├── arch/aarch64/     # Boot, MMU, GIC, timer, exceptions
-│   ├── mm/               # PMM, VMM, heap
+│   ├── mm/               # PMM, VMM, heap, slab allocator
 │   ├── console/          # Serial, graphics console, font
 │   ├── drivers/          # VirtIO, fw_cfg, ramfb
-│   ├── fs/               # VFS, ViperFS, cache
+│   ├── fs/               # VFS, ViperFS, cache, journal
 │   ├── ipc/              # Channels, poll, pollset
 │   ├── net/              # TCP/IP, TLS, DNS, HTTP
 │   ├── sched/            # Tasks, scheduler
 │   ├── viper/            # Process model, address spaces
 │   └── cap/              # Capability tables, rights
 ├── user/
-│   ├── vinit/            # Init process
-│   └── syscall.hpp       # Syscall wrappers
+│   ├── vinit/            # Init process + shell
+│   ├── hello/            # Test program
+│   ├── libc/             # Freestanding C library
+│   │   ├── include/      # C headers (stdio.h, string.h, etc.)
+│   │   │   └── c++/      # C++ headers (type_traits, utility, etc.)
+│   │   └── src/          # Implementation files
+│   └── syscall.hpp       # Low-level syscall wrappers
 ├── include/viperos/      # Shared kernel/user ABI headers
 ├── tools/                # Host-side build tools
 ├── docs/status/          # This documentation
@@ -231,6 +269,7 @@ os/
 - Power management
 - Real-time scheduling class
 - Kernel modules
+- Priority-based scheduling (currently FIFO)
 
 ### Networking
 - IPv6
@@ -242,16 +281,26 @@ os/
 - Hard links
 - File locking
 - Extended attributes
+- Mount points (single FS only)
 
 ### User Space
 - Dynamic linking / shared libraries
-- Multiple user programs (beyond hello.elf)
 - Shell scripting
 - Pipes between commands
+- Environment variables
+- Signal handling
 
 ---
 
 ## Version History
+
+- **December 2025 (v0.2.3)**: Complete libc and C++ support
+  - **Complete Freestanding libc**: stdio, string, stdlib, ctype, time, unistd, errno, limits, stddef, stdbool, assert
+  - **C++ Standard Library**: type_traits, utility, new, initializer_list, cstddef, cstdint
+  - **Per-Process CWD**: getcwd/chdir syscalls, path normalization, shell chdir/cwd commands
+  - **Graphics Console Border**: 20px green decorative border with 8px padding
+  - **Build System**: add_user_program() helper, automatic libc linking
+  - **New libc functions**: sscanf, fputs, fputc, fgets, fgetc, strstr, strpbrk, strdup, strtok_r, qsort, bsearch, rand/srand, getpid, usleep, nanosleep, clock
 
 - **December 2025 (v0.2.2)**: Production-readiness features
   - **Demand Paging**: VMA list per process, page fault handling for heap/stack

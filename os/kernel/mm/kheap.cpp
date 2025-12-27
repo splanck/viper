@@ -121,6 +121,16 @@ constexpr u64 HEADER_SIZE = sizeof(BlockHeader);
 constexpr u64 ALIGNMENT = 16;
 constexpr u64 MAX_HEAP_SIZE = 64 * 1024 * 1024; // 64 MB max
 
+// Heap region tracking for non-contiguous allocations
+struct HeapRegion
+{
+    u64 start;
+    u64 end;
+};
+constexpr usize MAX_HEAP_REGIONS = 16;
+HeapRegion heap_regions[MAX_HEAP_REGIONS];
+usize heap_region_count = 0;
+
 // Heap state
 u64 heap_start = 0;
 u64 heap_end = 0;
@@ -132,6 +142,37 @@ u64 free_block_count = 0;
 
 // Spinlock for thread safety
 Spinlock heap_lock;
+
+/**
+ * @brief Check if an address falls within any heap region.
+ */
+bool is_in_heap(u64 addr)
+{
+    for (usize i = 0; i < heap_region_count; i++)
+    {
+        if (addr >= heap_regions[i].start && addr < heap_regions[i].end)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * @brief Add a new heap region to the tracking array.
+ */
+bool add_heap_region(u64 start, u64 end)
+{
+    if (heap_region_count >= MAX_HEAP_REGIONS)
+    {
+        serial::puts("[kheap] ERROR: Too many heap regions\n");
+        return false;
+    }
+    heap_regions[heap_region_count].start = start;
+    heap_regions[heap_region_count].end = end;
+    heap_region_count++;
+    return true;
+}
 
 /**
  * @brief Align a value up to the next multiple of ALIGNMENT.
@@ -169,13 +210,20 @@ bool expand_heap(u64 needed)
         return false;
     }
 
+    u64 expansion_size = pages_needed * pmm::PAGE_SIZE;
+
     // Check if contiguous with existing heap
     if (new_pages == heap_end)
     {
-        // Contiguous - extend the last free block or create new one
-        u64 expansion_size = pages_needed * pmm::PAGE_SIZE;
+        // Contiguous - extend the last region
         heap_end += expansion_size;
         heap_size += expansion_size;
+
+        // Update the last heap region's end
+        if (heap_region_count > 0)
+        {
+            heap_regions[heap_region_count - 1].end = heap_end;
+        }
 
         // Create a free block for the new space
         FreeBlock *new_block = reinterpret_cast<FreeBlock *>(new_pages);
@@ -192,12 +240,21 @@ bool expand_heap(u64 needed)
     else
     {
         // Non-contiguous - create new heap region
-        // This is inefficient but keeps things simple
-        serial::puts("[kheap] WARNING: Non-contiguous heap expansion at ");
+        serial::puts("[kheap] Non-contiguous heap expansion at ");
         serial::put_hex(new_pages);
-        serial::puts("\n");
+        serial::puts(" (");
+        serial::put_dec(expansion_size / 1024);
+        serial::puts(" KB)\n");
 
-        u64 expansion_size = pages_needed * pmm::PAGE_SIZE;
+        // Register this as a new heap region
+        if (!add_heap_region(new_pages, new_pages + expansion_size))
+        {
+            // Failed to add region - free the pages
+            // Note: We don't have a pmm::free_pages yet, so just warn
+            serial::puts("[kheap] ERROR: Failed to track heap region\n");
+            return false;
+        }
+
         heap_size += expansion_size;
 
         // Add as a new free block
@@ -277,6 +334,9 @@ void init()
     heap_start = first_page;
     heap_end = first_page + initial_pages * pmm::PAGE_SIZE;
     heap_size = initial_pages * pmm::PAGE_SIZE;
+
+    // Register the initial heap region
+    add_heap_region(heap_start, heap_end);
 
     // Initialize with one big free block
     FreeBlock *initial_block = reinterpret_cast<FreeBlock *>(heap_start);
@@ -453,17 +513,13 @@ void kfree(void *ptr)
 
     SpinlockGuard guard(heap_lock);
 
-    // Bounds check: verify pointer is within heap range
+    // Bounds check: verify pointer is within any heap region
     u64 addr = reinterpret_cast<u64>(ptr);
-    if (addr < heap_start + HEADER_SIZE || addr >= heap_end)
+    if (!is_in_heap(addr))
     {
         serial::puts("[kheap] ERROR: kfree() on invalid pointer ");
         serial::put_hex(addr);
-        serial::puts(" (outside heap range ");
-        serial::put_hex(heap_start);
-        serial::puts(" - ");
-        serial::put_hex(heap_end);
-        serial::puts(")\n");
+        serial::puts(" (outside all heap regions)\n");
         return;
     }
 
@@ -565,11 +621,19 @@ void dump()
     SpinlockGuard guard(heap_lock);
 
     serial::puts("[kheap] Heap dump:\n");
-    serial::puts("  Range: ");
-    serial::put_hex(heap_start);
-    serial::puts(" - ");
-    serial::put_hex(heap_end);
+    serial::puts("  Regions: ");
+    serial::put_dec(heap_region_count);
     serial::puts("\n");
+    for (usize i = 0; i < heap_region_count; i++)
+    {
+        serial::puts("    [");
+        serial::put_dec(i);
+        serial::puts("] ");
+        serial::put_hex(heap_regions[i].start);
+        serial::puts(" - ");
+        serial::put_hex(heap_regions[i].end);
+        serial::puts("\n");
+    }
     serial::puts("  Total size: ");
     serial::put_dec(heap_size / 1024);
     serial::puts(" KB\n");

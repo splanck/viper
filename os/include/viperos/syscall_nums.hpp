@@ -162,6 +162,10 @@
 #define SYS_SYMLINK 0x65
 /** @brief Read symbolic link target. */
 #define SYS_READLINK 0x66
+/** @brief Get current working directory. */
+#define SYS_GETCWD 0x67
+/** @brief Change current working directory. */
+#define SYS_CHDIR 0x68
 /** @} */
 
 /** @name Capability Syscalls (0x70 - 0x7F)

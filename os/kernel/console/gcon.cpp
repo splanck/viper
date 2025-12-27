@@ -34,6 +34,12 @@ u32 rows = 0;
 u32 fg_color = colors::VIPER_GREEN;
 u32 bg_color = colors::VIPER_DARK_BROWN;
 
+// Border constants
+constexpr u32 BORDER_WIDTH = 20;  // 20-pixel thick border
+constexpr u32 BORDER_PADDING = 8; // 8-pixel padding inside border
+constexpr u32 TEXT_INSET = BORDER_WIDTH + BORDER_PADDING; // Total 28-pixel inset
+constexpr u32 BORDER_COLOR = 0xFF00AA00; // VIPER_GREEN for border
+
 // Default colors for reset
 u32 default_fg = colors::VIPER_GREEN;
 u32 default_bg = colors::VIPER_DARK_BROWN;
@@ -97,6 +103,73 @@ constexpr u32 ansi_bright_colors[8] = {
     0xFFFFFFFF  // 7: Bright White
 };
 
+/**
+ * @brief Fill a rectangle with a solid color.
+ *
+ * @details
+ * Efficiently fills a rectangular region of the framebuffer with the
+ * specified color. Used for drawing borders and clearing regions.
+ *
+ * @param x X coordinate of top-left corner (pixels).
+ * @param y Y coordinate of top-left corner (pixels).
+ * @param width Width of rectangle (pixels).
+ * @param height Height of rectangle (pixels).
+ * @param color Fill color (32-bit ARGB).
+ */
+void fill_rect(u32 x, u32 y, u32 width, u32 height, u32 color)
+{
+    const auto &fb = ramfb::get_info();
+    u32 *framebuffer = ramfb::get_framebuffer();
+    u32 stride = fb.pitch / 4;
+
+    // Clamp to framebuffer bounds
+    u32 x_end = x + width;
+    u32 y_end = y + height;
+    if (x_end > fb.width)
+        x_end = fb.width;
+    if (y_end > fb.height)
+        y_end = fb.height;
+
+    for (u32 py = y; py < y_end; py++)
+    {
+        for (u32 px = x; px < x_end; px++)
+        {
+            framebuffer[py * stride + px] = color;
+        }
+    }
+}
+
+/**
+ * @brief Draw the green border around the console.
+ *
+ * @details
+ * Draws a 4-pixel thick green border around the entire framebuffer
+ * and fills the inner area (padding region) with the background color.
+ * The text area is inset by 8 pixels (4px border + 4px padding) on all sides.
+ */
+void draw_border()
+{
+    const auto &fb = ramfb::get_info();
+
+    // Draw top border
+    fill_rect(0, 0, fb.width, BORDER_WIDTH, BORDER_COLOR);
+
+    // Draw bottom border
+    fill_rect(0, fb.height - BORDER_WIDTH, fb.width, BORDER_WIDTH, BORDER_COLOR);
+
+    // Draw left border
+    fill_rect(0, 0, BORDER_WIDTH, fb.height, BORDER_COLOR);
+
+    // Draw right border
+    fill_rect(fb.width - BORDER_WIDTH, 0, BORDER_WIDTH, fb.height, BORDER_COLOR);
+
+    // Fill inner padding area with background color
+    // This clears the area between border and text
+    fill_rect(BORDER_WIDTH, BORDER_WIDTH,
+              fb.width - 2 * BORDER_WIDTH, fb.height - 2 * BORDER_WIDTH,
+              bg_color);
+}
+
 // Draw a single character at position (cx, cy) in character cells
 /**
  * @brief Render one glyph into the framebuffer at the given cell location.
@@ -117,8 +190,9 @@ constexpr u32 ansi_bright_colors[8] = {
 void draw_char(u32 cx, u32 cy, char c)
 {
     const u8 *glyph = font::get_glyph(c);
-    u32 px = cx * font::WIDTH;
-    u32 py = cy * font::HEIGHT;
+    // Add TEXT_INSET offset to account for border + padding
+    u32 px = TEXT_INSET + cx * font::WIDTH;
+    u32 py = TEXT_INSET + cy * font::HEIGHT;
 
     // Render with fractional scaling (SCALE_NUM / SCALE_DEN)
     for (u32 row = 0; row < font::BASE_HEIGHT; row++)
@@ -162,8 +236,9 @@ void xor_cursor()
     const auto &fb = ramfb::get_info();
     u32 stride = fb.pitch / 4;
 
-    u32 px = cursor_x * font::WIDTH;
-    u32 py = cursor_y * font::HEIGHT;
+    // Add TEXT_INSET offset to account for border + padding
+    u32 px = TEXT_INSET + cursor_x * font::WIDTH;
+    u32 py = TEXT_INSET + cursor_y * font::HEIGHT;
 
     // XOR a block at the cursor position (bottom portion for underline-style,
     // or full block - we'll use full block)
@@ -230,19 +305,25 @@ void scroll()
     u32 line_height = font::HEIGHT;
     u32 stride = fb.pitch / 4;
 
-    // Move all lines up by one text line
-    for (u32 y = 0; y < fb.height - line_height; y++)
+    // Calculate the inner text area bounds (excluding border + padding)
+    u32 inner_x_start = TEXT_INSET;
+    u32 inner_x_end = fb.width - TEXT_INSET;
+    u32 inner_y_start = TEXT_INSET;
+    u32 inner_y_end = fb.height - TEXT_INSET;
+
+    // Move all lines up by one text line (within inner area only)
+    for (u32 y = inner_y_start; y < inner_y_end - line_height; y++)
     {
-        for (u32 x = 0; x < fb.width; x++)
+        for (u32 x = inner_x_start; x < inner_x_end; x++)
         {
             framebuffer[y * stride + x] = framebuffer[(y + line_height) * stride + x];
         }
     }
 
-    // Clear the bottom line
-    for (u32 y = fb.height - line_height; y < fb.height; y++)
+    // Clear the bottom line (within inner area only)
+    for (u32 y = inner_y_end - line_height; y < inner_y_end; y++)
     {
-        for (u32 x = 0; x < fb.width; x++)
+        for (u32 x = inner_x_start; x < inner_x_end; x++)
         {
             framebuffer[y * stride + x] = bg_color;
         }
@@ -310,22 +391,26 @@ void clear_to_end_of_screen()
     u32 *framebuffer = ramfb::get_framebuffer();
     u32 stride = fb.pitch / 4;
 
-    // Clear rest of current line
-    u32 px_start = cursor_x * font::WIDTH;
-    u32 py_start = cursor_y * font::HEIGHT;
-    for (u32 y = py_start; y < py_start + font::HEIGHT && y < fb.height; y++)
+    // Calculate inner area bounds
+    u32 inner_x_end = fb.width - TEXT_INSET;
+    u32 inner_y_end = fb.height - TEXT_INSET;
+
+    // Clear rest of current line (with TEXT_INSET offset)
+    u32 px_start = TEXT_INSET + cursor_x * font::WIDTH;
+    u32 py_start = TEXT_INSET + cursor_y * font::HEIGHT;
+    for (u32 y = py_start; y < py_start + font::HEIGHT && y < inner_y_end; y++)
     {
-        for (u32 x = px_start; x < fb.width; x++)
+        for (u32 x = px_start; x < inner_x_end; x++)
         {
             framebuffer[y * stride + x] = bg_color;
         }
     }
 
-    // Clear all lines below
-    u32 py_next = (cursor_y + 1) * font::HEIGHT;
-    for (u32 y = py_next; y < fb.height; y++)
+    // Clear all lines below (within inner area)
+    u32 py_next = TEXT_INSET + (cursor_y + 1) * font::HEIGHT;
+    for (u32 y = py_next; y < inner_y_end; y++)
     {
-        for (u32 x = 0; x < fb.width; x++)
+        for (u32 x = TEXT_INSET; x < inner_x_end; x++)
         {
             framebuffer[y * stride + x] = bg_color;
         }
@@ -341,12 +426,17 @@ void clear_to_end_of_line()
     u32 *framebuffer = ramfb::get_framebuffer();
     u32 stride = fb.pitch / 4;
 
-    u32 px_start = cursor_x * font::WIDTH;
-    u32 py_start = cursor_y * font::HEIGHT;
+    // Calculate inner area bounds
+    u32 inner_x_end = fb.width - TEXT_INSET;
+    u32 inner_y_end = fb.height - TEXT_INSET;
 
-    for (u32 y = py_start; y < py_start + font::HEIGHT && y < fb.height; y++)
+    // Add TEXT_INSET offset for cursor position
+    u32 px_start = TEXT_INSET + cursor_x * font::WIDTH;
+    u32 py_start = TEXT_INSET + cursor_y * font::HEIGHT;
+
+    for (u32 y = py_start; y < py_start + font::HEIGHT && y < inner_y_end; y++)
     {
-        for (u32 x = px_start; x < fb.width; x++)
+        for (u32 x = px_start; x < inner_x_end; x++)
         {
             framebuffer[y * stride + x] = bg_color;
         }
@@ -499,8 +589,11 @@ void handle_csi(char final)
             }
             else if (p1 == 2 || p1 == 3)
             {
-                // Clear entire screen
-                ramfb::clear(bg_color);
+                // Clear entire screen (preserve border)
+                const auto &fb_info = ramfb::get_info();
+                fill_rect(TEXT_INSET, TEXT_INSET,
+                          fb_info.width - 2 * TEXT_INSET, fb_info.height - 2 * TEXT_INSET,
+                          bg_color);
                 cursor_x = 0;
                 cursor_y = 0;
             }
@@ -680,9 +773,10 @@ bool init()
 
     const auto &fb = ramfb::get_info();
 
-    // Calculate console dimensions
-    cols = fb.width / font::WIDTH;
-    rows = fb.height / font::HEIGHT;
+    // Calculate console dimensions accounting for border + padding (16px total reduction)
+    // Text area is inset by TEXT_INSET (8px) on all sides
+    cols = (fb.width - 2 * TEXT_INSET) / font::WIDTH;
+    rows = (fb.height - 2 * TEXT_INSET) / font::HEIGHT;
 
     // Set default colors
     fg_color = colors::VIPER_GREEN;
@@ -690,8 +784,8 @@ bool init()
     default_fg = colors::VIPER_GREEN;
     default_bg = colors::VIPER_DARK_BROWN;
 
-    // Clear screen
-    ramfb::clear(bg_color);
+    // Draw border and fill inner area with background color
+    draw_border();
 
     // Reset cursor
     cursor_x = 0;
@@ -785,7 +879,12 @@ void clear()
     // Cursor will be erased by the clear operation
     cursor_drawn = false;
 
-    ramfb::clear(bg_color);
+    // Only clear the inner text area, preserving the border
+    const auto &fb = ramfb::get_info();
+    fill_rect(TEXT_INSET, TEXT_INSET,
+              fb.width - 2 * TEXT_INSET, fb.height - 2 * TEXT_INSET,
+              bg_color);
+
     cursor_x = 0;
     cursor_y = 0;
 

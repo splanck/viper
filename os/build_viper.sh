@@ -196,6 +196,25 @@ if [[ -x "$TOOLS_DIR/mkfs.viperfs" ]]; then
     if [[ -f "$BUILD_DIR/hello.elf" ]]; then
         MKFS_ARGS+=("$BUILD_DIR/hello.elf")
     fi
+    # Add fsinfo utility if it was built
+    if [[ -f "$BUILD_DIR/fsinfo.elf" ]]; then
+        MKFS_ARGS+=("$BUILD_DIR/fsinfo.elf")
+    fi
+    # Add netstat utility if it was built
+    if [[ -f "$BUILD_DIR/netstat.elf" ]]; then
+        MKFS_ARGS+=("$BUILD_DIR/netstat.elf")
+    fi
+    # Add sysinfo utility if it was built
+    if [[ -f "$BUILD_DIR/sysinfo.elf" ]]; then
+        MKFS_ARGS+=("$BUILD_DIR/sysinfo.elf")
+    fi
+    # Add faulttest programs for user fault recovery testing
+    if [[ -f "$BUILD_DIR/faulttest_null.elf" ]]; then
+        MKFS_ARGS+=("$BUILD_DIR/faulttest_null.elf")
+    fi
+    if [[ -f "$BUILD_DIR/faulttest_illegal.elf" ]]; then
+        MKFS_ARGS+=("$BUILD_DIR/faulttest_illegal.elf")
+    fi
     # Add roots.der if it was generated
     if [[ -f "$BUILD_DIR/roots.der" ]]; then
         MKFS_ARGS+=(--add "$BUILD_DIR/roots.der:SYS/certs/roots.der")

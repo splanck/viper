@@ -190,6 +190,9 @@ struct Task
     struct ViperProcess *viper; // Associated viper (for user tasks) - opaque pointer
     u64 user_entry;             // User-mode entry point
     u64 user_stack;             // User-mode stack pointer
+
+    // Current working directory (256 bytes max path)
+    char cwd[256];
 };
 
 /**

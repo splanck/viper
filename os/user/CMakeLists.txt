@@ -23,14 +23,36 @@ set(USER_LINK_OPTIONS
 # Build the libc first
 add_subdirectory(libc)
 
+# Helper function to create user programs with libc
+function(add_user_program name)
+    add_executable(${name}.elf ${ARGN})
+    target_compile_options(${name}.elf PRIVATE ${USER_COMPILE_OPTIONS})
+    target_link_options(${name}.elf PRIVATE ${USER_LINK_OPTIONS})
+    target_include_directories(${name}.elf PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/libc/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/libc/include/c++
+    )
+    target_link_libraries(${name}.elf PRIVATE viperlibc)
+endfunction()
+
 # vinit - init process
-add_executable(vinit.elf vinit/vinit.cpp)
-target_compile_options(vinit.elf PRIVATE ${USER_COMPILE_OPTIONS})
-target_link_options(vinit.elf PRIVATE ${USER_LINK_OPTIONS})
-target_include_directories(vinit.elf PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+add_user_program(vinit vinit/vinit.cpp)
 
 # hello - simple test program for spawn testing
-add_executable(hello.elf hello/hello.cpp)
-target_compile_options(hello.elf PRIVATE ${USER_COMPILE_OPTIONS})
-target_link_options(hello.elf PRIVATE ${USER_LINK_OPTIONS})
-target_include_directories(hello.elf PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+add_user_program(hello hello/hello.cpp)
+
+# fsinfo - filesystem information utility
+add_user_program(fsinfo fsinfo/fsinfo.cpp)
+
+# netstat - network statistics utility
+add_user_program(netstat netstat/netstat.cpp)
+
+# sysinfo - system information and runtime test utility
+add_user_program(sysinfo sysinfo/sysinfo.cpp)
+
+# faulttest_null - tests null pointer dereference handling
+add_user_program(faulttest_null faulttest/faulttest_null.cpp)
+
+# faulttest_illegal - tests illegal instruction handling
+add_user_program(faulttest_illegal faulttest/faulttest_illegal.cpp)

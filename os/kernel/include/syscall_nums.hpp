@@ -88,6 +88,8 @@ enum Number : u64
     RENAME = SYS_RENAME,
     SYMLINK = SYS_SYMLINK,
     READLINK = SYS_READLINK,
+    GETCWD = SYS_GETCWD,
+    CHDIR = SYS_CHDIR,
 
     // Assign system (0xC0 - 0xCF) - v0.2.0
     ASSIGN_SET = SYS_ASSIGN_SET,

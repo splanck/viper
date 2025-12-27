@@ -1,0 +1,86 @@
+#ifndef _LIBCPP_CSTDDEF
+#define _LIBCPP_CSTDDEF
+
+#include "../stddef.h"
+
+namespace std {
+
+using ::size_t;
+using ::ptrdiff_t;
+using ::max_align_t;
+
+/* nullptr_t */
+using nullptr_t = decltype(nullptr);
+
+/* byte (C++17) */
+enum class byte : unsigned char {};
+
+/* byte operations */
+template <class IntType>
+constexpr byte& operator<<=(byte& b, IntType shift) noexcept
+{
+    return b = byte(static_cast<unsigned char>(b) << shift);
+}
+
+template <class IntType>
+constexpr byte operator<<(byte b, IntType shift) noexcept
+{
+    return byte(static_cast<unsigned char>(b) << shift);
+}
+
+template <class IntType>
+constexpr byte& operator>>=(byte& b, IntType shift) noexcept
+{
+    return b = byte(static_cast<unsigned char>(b) >> shift);
+}
+
+template <class IntType>
+constexpr byte operator>>(byte b, IntType shift) noexcept
+{
+    return byte(static_cast<unsigned char>(b) >> shift);
+}
+
+constexpr byte operator|(byte lhs, byte rhs) noexcept
+{
+    return byte(static_cast<unsigned char>(lhs) | static_cast<unsigned char>(rhs));
+}
+
+constexpr byte& operator|=(byte& lhs, byte rhs) noexcept
+{
+    return lhs = lhs | rhs;
+}
+
+constexpr byte operator&(byte lhs, byte rhs) noexcept
+{
+    return byte(static_cast<unsigned char>(lhs) & static_cast<unsigned char>(rhs));
+}
+
+constexpr byte& operator&=(byte& lhs, byte rhs) noexcept
+{
+    return lhs = lhs & rhs;
+}
+
+constexpr byte operator^(byte lhs, byte rhs) noexcept
+{
+    return byte(static_cast<unsigned char>(lhs) ^ static_cast<unsigned char>(rhs));
+}
+
+constexpr byte& operator^=(byte& lhs, byte rhs) noexcept
+{
+    return lhs = lhs ^ rhs;
+}
+
+constexpr byte operator~(byte b) noexcept
+{
+    return byte(~static_cast<unsigned char>(b));
+}
+
+template <class IntType>
+constexpr IntType to_integer(byte b) noexcept
+{
+    return static_cast<IntType>(b);
+}
+
+} /* namespace std */
+
+#endif /* _LIBCPP_CSTDDEF */

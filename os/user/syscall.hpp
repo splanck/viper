@@ -76,7 +76,17 @@ namespace sys
  *
  * @details
  * Re-exported from shared fs_types.hpp for convenience in the sys namespace.
+ * We undef any existing macros to avoid conflicts with libc headers.
  */
+#ifdef SEEK_SET
+#undef SEEK_SET
+#endif
+#ifdef SEEK_CUR
+#undef SEEK_CUR
+#endif
+#ifdef SEEK_END
+#undef SEEK_END
+#endif
 constexpr i32 SEEK_SET = viper::seek_whence::SET;
 constexpr i32 SEEK_CUR = viper::seek_whence::CUR;
 constexpr i32 SEEK_END = viper::seek_whence::END;
@@ -795,6 +805,41 @@ inline i32 unlink(const char *path)
 inline i32 rename(const char *old_path, const char *new_path)
 {
     auto r = syscall2(SYS_RENAME, reinterpret_cast<u64>(old_path), reinterpret_cast<u64>(new_path));
+    return static_cast<i32>(r.error);
+}
+
+/**
+ * @brief Get the current working directory.
+ *
+ * @details
+ * Retrieves the absolute path of the current working directory for the calling
+ * process. The path is always an absolute path starting with '/'.
+ *
+ * @param buf Buffer to receive the path.
+ * @param size Size of the buffer in bytes.
+ * @return Length of the path on success (not including terminating NUL),
+ *         or negative error code on failure.
+ */
+inline i64 getcwd(char *buf, usize size)
+{
+    auto r = syscall2(SYS_GETCWD, reinterpret_cast<u64>(buf), size);
+    return r.ok() ? static_cast<i64>(r.val0) : r.error;
+}
+
+/**
+ * @brief Change the current working directory.
+ *
+ * @details
+ * Changes the current working directory to the specified path. The path can be
+ * absolute or relative to the current working directory. The kernel normalizes
+ * the path, resolving "." and ".." components.
+ *
+ * @param path Path to the new working directory.
+ * @return `0` on success, or negative error code on failure.
+ */
+inline i32 chdir(const char *path)
+{
+    auto r = syscall1(SYS_CHDIR, reinterpret_cast<u64>(path));
     return static_cast<i32>(r.error);
 }
 

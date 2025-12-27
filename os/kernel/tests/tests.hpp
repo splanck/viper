@@ -41,4 +41,29 @@ void run_viper_tests();
  */
 void create_ipc_test_tasks();
 
+/**
+ * @brief Run syscall dispatch tests.
+ *
+ * @details
+ * Tests the table-driven syscall dispatch mechanism:
+ * 1. Valid syscall (task_yield) returns success
+ * 2. Invalid syscall number returns VERR_NOT_SUPPORTED
+ * 3. Invalid pointer returns VERR_INVALID_ARG
+ */
+void run_syscall_tests();
+
+/**
+ * @brief Create user fault test task.
+ *
+ * @details
+ * Creates a kernel task that tests user-mode fault recovery:
+ * 1. Spawns faulttest_null.elf which dereferences NULL
+ * 2. Spawns faulttest_illegal.elf which executes undefined instruction
+ * 3. Verifies kernel continues running after each fault
+ * 4. Checks that faulted processes exit with code -1
+ *
+ * The task runs under the scheduler since it uses viper::wait().
+ */
+void create_userfault_test_task();
+
 } // namespace tests

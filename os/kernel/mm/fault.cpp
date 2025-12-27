@@ -449,7 +449,43 @@ void handle_page_fault(exceptions::ExceptionFrame *frame, bool is_instruction)
         }
     }
 
-    // Fault could not be handled - terminate the task
+    // Fault could not be handled - terminate the task with USERFAULT log
+    task::Task *curr = task::current();
+    u32 tid = curr ? curr->id : 0;
+    u32 pid = tid;
+
+    // If user task has viper, use viper's id as pid
+    if (curr && curr->viper)
+    {
+        // The viper field is an opaque pointer to viper::Viper
+        auto *v = reinterpret_cast<viper::Viper *>(curr->viper);
+        pid = static_cast<u32>(v->id);
+    }
+
+    // Determine fault kind based on type
+    const char *kind = "page_fault";
+    if (info.type == FaultType::TRANSLATION)
+        kind = "translation_fault";
+    else if (info.type == FaultType::PERMISSION)
+        kind = "permission_fault";
+    else if (info.type == FaultType::ALIGNMENT)
+        kind = "alignment_fault";
+
+    // Log in USERFAULT format
+    serial::puts("USERFAULT pid=");
+    serial::put_dec(pid);
+    serial::puts(" tid=");
+    serial::put_dec(tid);
+    serial::puts(" pc=");
+    serial::put_hex(info.pc);
+    serial::puts(" far=");
+    serial::put_hex(info.fault_addr);
+    serial::puts(" esr=");
+    serial::put_hex(info.esr);
+    serial::puts(" kind=");
+    serial::puts(kind);
+    serial::puts("\n");
+
     serial::puts("[page_fault] Terminating user task\n");
     task::exit(-1);
 

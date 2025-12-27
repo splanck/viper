@@ -56,12 +56,13 @@ The console subsystem provides text output capabilities through both a serial UA
 
 ### 2. Graphics Console (`gcon.cpp`, `gcon.hpp`)
 
-**Status:** Fully functional text mode console
+**Status:** Fully functional text mode console with decorative border
 
 **Implemented:**
 - Text rendering to framebuffer (via ramfb driver)
 - 8x16 base font with 1.5x scaling (12x24 effective)
-- 85x32 character grid at 1024x768
+- 80x29 character grid at 1024x768 (with border)
+- **Decorative green border** (20px outer, 8px inner padding)
 - Foreground/background color control
 - Terminal control characters:
   - `\n` - Newline with scroll
@@ -69,9 +70,9 @@ The console subsystem provides text output capabilities through both a serial UA
   - `\t` - Tab (8-column alignment)
   - `\b` - Backspace
 - Automatic line wrapping
-- Smooth scrolling (pixel copy)
+- Smooth scrolling (pixel copy, respects border region)
 - Cursor position tracking
-- Screen clear
+- Screen clear (preserves border)
 
 **API:**
 | Function | Description |

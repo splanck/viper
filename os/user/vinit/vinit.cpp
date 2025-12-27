@@ -108,9 +108,12 @@ bool strstart(const char *s, const char *prefix)
  * provided; callers are responsible for including any desired newline
  * characters.
  *
+ * This is named `print_str` to avoid conflict with libc's `print_str()` which
+ * adds a newline per POSIX.
+ *
  * @param s NUL-terminated string to print.
  */
-void puts(const char *s)
+void print_str(const char *s)
 {
     sys::print(s);
 }
@@ -122,9 +125,11 @@ void puts(const char *s)
  * This uses the kernel character output syscall. It is used heavily by the
  * line editor to emit ANSI escape sequences and backspaces.
  *
+ * This is named `print_char` to avoid conflict with libc's `print_char()`.
+ *
  * @param c Character to print.
  */
-void putchar(char c)
+void print_char(char c)
 {
     sys::putchar(c);
 }
@@ -160,7 +165,7 @@ void put_num(i64 n)
     if (neg)
         *--p = '-';
 
-    puts(p);
+    print_str(p);
 }
 
 /**
@@ -174,7 +179,7 @@ void put_num(i64 n)
  */
 void put_hex(u32 n)
 {
-    puts("0x");
+    print_str("0x");
     char buf[16];
     char *p = buf + 15;
     *p = '\0';
@@ -186,7 +191,7 @@ void put_hex(u32 n)
         n >>= 4;
     } while (n > 0);
 
-    puts(p);
+    print_str(p);
 }
 
 /** @} */
@@ -273,14 +278,14 @@ static void redraw_line_from(const char *buf, usize len, usize pos)
     // Print characters from pos to end
     for (usize i = pos; i < len; i++)
     {
-        putchar(buf[i]);
+        print_char(buf[i]);
     }
     // Clear one extra char in case we deleted
-    putchar(' ');
+    print_char(' ');
     // Move cursor back to current position
     for (usize i = len + 1; i > pos; i--)
     {
-        putchar('\b');
+        print_char('\b');
     }
 }
 
@@ -297,7 +302,7 @@ static void cursor_left(usize n)
 {
     while (n--)
     {
-        puts("\033[D");
+        print_str("\033[D");
     }
 }
 
@@ -313,7 +318,7 @@ static void cursor_right(usize n)
 {
     while (n--)
     {
-        puts("\033[C");
+        print_str("\033[C");
     }
 }
 
@@ -411,7 +416,7 @@ static void replace_line(char *buf, usize *len, usize *pos, const char *newline)
     cursor_left(*pos);
     // Clear the line
     for (usize i = 0; i < *len; i++)
-        putchar(' ');
+        print_char(' ');
     cursor_left(*len);
     // Copy new line
     *len = 0;
@@ -419,7 +424,7 @@ static void replace_line(char *buf, usize *len, usize *pos, const char *newline)
     for (usize i = 0; newline[i] && i < 255; i++)
     {
         buf[i] = newline[i];
-        putchar(newline[i]);
+        print_char(newline[i]);
         (*len)++;
         (*pos)++;
     }
@@ -458,10 +463,24 @@ static const char *last_error = nullptr;
  * @brief Current directory string shown in the shell prompt.
  *
  * @details
- * This is currently a cosmetic prompt prefix. The bring-up filesystem API in
- * `vinit` primarily uses absolute paths or assign-prefixed paths.
+ * This is updated by the CD command via getcwd() syscall.
  */
-static char current_dir[256] = "SYS:";
+static char current_dir[256] = "/";
+
+/**
+ * @brief Refresh the current_dir from the kernel's CWD.
+ *
+ * @details
+ * Calls getcwd() to get the actual current working directory from the kernel.
+ */
+static void refresh_current_dir()
+{
+    if (sys::getcwd(current_dir, sizeof(current_dir)) < 0)
+    {
+        current_dir[0] = '/';
+        current_dir[1] = '\0';
+    }
+}
 
 /**
  * @brief Built-in command names used for tab completion.
@@ -470,10 +489,11 @@ static char current_dir[256] = "SYS:";
  * Tab completion in the line editor is intentionally simple: it completes only
  * the first word (the command name) and does not attempt to complete paths.
  */
-static const char *commands[] = {"Assign",  "Avail", "Caps", "Cls",      "Copy",    "Date",
-                                 "Delete",  "Dir",   "Echo", "EndShell", "Fetch",   "Help",
-                                 "History", "Info",  "List", "MakeDir",  "Path",    "Rename",
-                                 "Status",  "Time",  "Type", "Uptime",   "Version", "Why"};
+static const char *commands[] = {"Assign",  "Avail", "Caps", "chdir",    "Cls",     "Copy",
+                                 "cwd",     "Date",  "Delete","Dir",     "Echo",    "EndShell",
+                                 "Fetch",   "Help",  "History","Info",   "List",    "MakeDir",
+                                 "Path",    "Rename","Run",  "Status",   "Time",    "Type",
+                                 "Uptime",  "Version","Why"};
 static const usize num_commands = sizeof(commands) / sizeof(commands[0]);
 
 /**
@@ -621,8 +641,8 @@ usize readline(char *buf, usize maxlen)
 
         if (c == '\r' || c == '\n')
         {
-            putchar('\r');
-            putchar('\n');
+            print_char('\r');
+            print_char('\n');
             break;
         }
 
@@ -633,7 +653,7 @@ usize readline(char *buf, usize maxlen)
                 pos--;
                 memmove(buf + pos, buf + pos + 1, len - pos);
                 len--;
-                putchar('\b');
+                print_char('\b');
                 redraw_line_from(buf, len, pos);
             }
             continue;
@@ -641,7 +661,7 @@ usize readline(char *buf, usize maxlen)
 
         if (c == 3)
         { // Ctrl+C
-            puts("^C\n");
+            print_str("^C\n");
             len = 0;
             pos = 0;
             break;
@@ -665,7 +685,7 @@ usize readline(char *buf, usize maxlen)
         { // Ctrl+U (kill line)
             cursor_left(pos);
             for (usize i = 0; i < len; i++)
-                putchar(' ');
+                print_char(' ');
             cursor_left(len);
             len = 0;
             pos = 0;
@@ -675,7 +695,7 @@ usize readline(char *buf, usize maxlen)
         if (c == 11)
         { // Ctrl+K (kill to end)
             for (usize i = pos; i < len; i++)
-                putchar(' ');
+                print_char(' ');
             cursor_left(len - pos);
             len = pos;
             continue;
@@ -724,7 +744,7 @@ usize readline(char *buf, usize maxlen)
                     for (usize i = len; i < prefix_len; i++)
                     {
                         buf[i] = first_match[i];
-                        putchar(first_match[i]);
+                        print_char(first_match[i]);
                     }
                     len = prefix_len;
                     pos = len;
@@ -733,20 +753,20 @@ usize readline(char *buf, usize maxlen)
                 else
                 {
                     // Show all matches
-                    puts("\n");
+                    print_str("\n");
                     for (usize i = 0; i < num_commands; i++)
                     {
                         if (strstart(commands[i], buf))
                         {
-                            puts(commands[i]);
-                            puts("  ");
+                            print_str(commands[i]);
+                            print_str("  ");
                         }
                     }
-                    puts("\n");
-                    puts(current_dir);
-                    puts("> ");
+                    print_str("\n");
+                    print_str(current_dir);
+                    print_str("> ");
                     for (usize i = 0; i < len; i++)
-                        putchar(buf[i]);
+                        print_char(buf[i]);
                     pos = len;
                 }
             }
@@ -762,7 +782,7 @@ usize readline(char *buf, usize maxlen)
             buf[pos] = c;
             len++;
             // Print char and rest of line
-            putchar(c);
+            print_char(c);
             pos++;
             if (pos < len)
             {
@@ -844,40 +864,42 @@ bool strcasestart(const char *s, const char *prefix)
  */
 void cmd_help()
 {
-    puts("\nViperOS Shell Commands:\n\n");
-    puts("  Dir [path]     - Brief directory listing\n");
-    puts("  List [path]    - Detailed directory listing\n");
-    puts("  Type <file>    - Display file contents\n");
-    puts("  Copy           - Copy files\n");
-    puts("  Delete         - Delete files/directories\n");
-    puts("  MakeDir        - Create directory\n");
-    puts("  Rename         - Rename files\n");
-    puts("  Cls            - Clear screen\n");
-    puts("  Echo [text]    - Print text\n");
-    puts("  Fetch <host>   - Fetch webpage (HTTP/HTTPS)\n");
-    puts("  Version        - Show system version\n");
-    puts("  Uptime         - Show system uptime\n");
-    puts("  Avail          - Show memory availability\n");
-    puts("  Status         - Show running tasks\n");
-    puts("  Run <path>     - Execute program\n");
-    puts("  Caps [handle]  - Show capabilities (derive/revoke test)\n");
-    puts("  Date           - Show current date\n");
-    puts("  Time           - Show current time\n");
-    puts("  Assign         - Manage logical devices\n");
-    puts("  Path           - Manage command path\n");
-    puts("  History        - Show command history\n");
-    puts("  Why            - Explain last error\n");
-    puts("  Help           - Show this help\n");
-    puts("  EndShell       - Exit shell\n");
-    puts("\nReturn Codes: OK=0, WARN=5, ERROR=10, FAIL=20\n");
-    puts("\nLine Editing:\n");
-    puts("  Left/Right     - Move cursor\n");
-    puts("  Up/Down        - History navigation\n");
-    puts("  Home/End       - Jump to start/end\n");
-    puts("  Tab            - Command completion\n");
-    puts("  Ctrl+U         - Clear line\n");
-    puts("  Ctrl+K         - Kill to end\n");
-    puts("\n");
+    print_str("\nViperOS Shell Commands:\n\n");
+    print_str("  chdir [path]   - Change directory (default: /)\n");
+    print_str("  cwd            - Print current working directory\n");
+    print_str("  Dir [path]     - Brief directory listing\n");
+    print_str("  List [path]    - Detailed directory listing\n");
+    print_str("  Type <file>    - Display file contents\n");
+    print_str("  Copy           - Copy files\n");
+    print_str("  Delete         - Delete files/directories\n");
+    print_str("  MakeDir        - Create directory\n");
+    print_str("  Rename         - Rename files\n");
+    print_str("  Cls            - Clear screen\n");
+    print_str("  Echo [text]    - Print text\n");
+    print_str("  Fetch <host>   - Fetch webpage (HTTP/HTTPS)\n");
+    print_str("  Version        - Show system version\n");
+    print_str("  Uptime         - Show system uptime\n");
+    print_str("  Avail          - Show memory availability\n");
+    print_str("  Status         - Show running tasks\n");
+    print_str("  Run <path>     - Execute program\n");
+    print_str("  Caps [handle]  - Show capabilities (derive/revoke test)\n");
+    print_str("  Date           - Show current date\n");
+    print_str("  Time           - Show current time\n");
+    print_str("  Assign         - Manage logical devices\n");
+    print_str("  Path           - Manage command path\n");
+    print_str("  History        - Show command history\n");
+    print_str("  Why            - Explain last error\n");
+    print_str("  Help           - Show this help\n");
+    print_str("  EndShell       - Exit shell\n");
+    print_str("\nReturn Codes: OK=0, WARN=5, ERROR=10, FAIL=20\n");
+    print_str("\nLine Editing:\n");
+    print_str("  Left/Right     - Move cursor\n");
+    print_str("  Up/Down        - History navigation\n");
+    print_str("  Home/End       - Jump to start/end\n");
+    print_str("  Tab            - Command completion\n");
+    print_str("  Ctrl+U         - Clear line\n");
+    print_str("  Ctrl+K         - Kill to end\n");
+    print_str("\n");
 }
 
 /**
@@ -893,11 +915,11 @@ void cmd_history()
     usize first = (history_count > HISTORY_SIZE) ? (history_count - HISTORY_SIZE) : 0;
     for (usize i = first; i < history_count; i++)
     {
-        puts("  ");
+        print_str("  ");
         put_num(static_cast<i64>(i + 1));
-        puts("  ");
-        puts(history_get(i));
-        puts("\n");
+        print_str("  ");
+        print_str(history_get(i));
+        print_str("\n");
     }
 }
 
@@ -911,7 +933,7 @@ void cmd_history()
 void cmd_cls()
 {
     // ANSI escape sequence to clear screen
-    puts("\033[2J\033[H");
+    print_str("\033[2J\033[H");
     last_rc = RC_OK;
 }
 
@@ -928,9 +950,9 @@ void cmd_echo(const char *args)
 {
     if (args)
     {
-        puts(args);
+        print_str(args);
     }
-    puts("\n");
+    print_str("\n");
     last_rc = RC_OK;
 }
 
@@ -944,8 +966,8 @@ void cmd_echo(const char *args)
  */
 void cmd_version()
 {
-    puts("ViperOS 0.2.0 (December 2025)\n");
-    puts("Platform: AArch64\n");
+    print_str("ViperOS 0.2.0 (December 2025)\n");
+    print_str("Platform: AArch64\n");
     last_rc = RC_OK;
 }
 
@@ -966,33 +988,33 @@ void cmd_uptime()
     u64 hours = mins / 60;
     u64 days = hours / 24;
 
-    puts("Uptime: ");
+    print_str("Uptime: ");
     if (days > 0)
     {
         put_num(static_cast<i64>(days));
-        puts(" day");
+        print_str(" day");
         if (days != 1)
-            puts("s");
-        puts(", ");
+            print_str("s");
+        print_str(", ");
     }
     if (hours > 0 || days > 0)
     {
         put_num(static_cast<i64>(hours % 24));
-        puts(" hour");
+        print_str(" hour");
         if ((hours % 24) != 1)
-            puts("s");
-        puts(", ");
+            print_str("s");
+        print_str(", ");
     }
     put_num(static_cast<i64>(mins % 60));
-    puts(" minute");
+    print_str(" minute");
     if ((mins % 60) != 1)
-        puts("s");
-    puts(", ");
+        print_str("s");
+    print_str(", ");
     put_num(static_cast<i64>(secs % 60));
-    puts(" second");
+    print_str(" second");
     if ((secs % 60) != 1)
-        puts("s");
-    puts("\n");
+        print_str("s");
+    print_str("\n");
     last_rc = RC_OK;
 }
 
@@ -1008,19 +1030,74 @@ void cmd_why()
 {
     if (last_rc == RC_OK)
     {
-        puts("No error.\n");
+        print_str("No error.\n");
     }
     else
     {
-        puts("Last return code: ");
+        print_str("Last return code: ");
         put_num(last_rc);
         if (last_error)
         {
-            puts(" - ");
-            puts(last_error);
+            print_str(" - ");
+            print_str(last_error);
         }
-        puts("\n");
+        print_str("\n");
     }
+}
+
+/**
+ * @brief Change the current working directory.
+ *
+ * @details
+ * If no path is given, changes to the root directory.
+ * Supports both absolute and relative paths.
+ *
+ * @param args Path argument (may be null for root).
+ */
+void cmd_cd(const char *args)
+{
+    const char *path = "/";
+    if (args && args[0])
+    {
+        path = args;
+    }
+
+    i32 result = sys::chdir(path);
+    if (result < 0)
+    {
+        print_str("CD: ");
+        print_str(path);
+        print_str(": No such directory\n");
+        last_rc = RC_ERROR;
+        last_error = "Directory not found";
+        return;
+    }
+
+    // Refresh the current_dir from the kernel
+    refresh_current_dir();
+    last_rc = RC_OK;
+}
+
+/**
+ * @brief Print the current working directory.
+ *
+ * @details
+ * Gets the CWD from the kernel and prints it.
+ */
+void cmd_pwd()
+{
+    char buf[256];
+    i64 len = sys::getcwd(buf, sizeof(buf));
+    if (len < 0)
+    {
+        print_str("PWD: Failed to get current directory\n");
+        last_rc = RC_ERROR;
+        last_error = "getcwd failed";
+        return;
+    }
+    print_str(buf);
+    print_str("\n");
+    last_rc = RC_OK;
 }
 
 /**
@@ -1036,21 +1113,21 @@ void cmd_avail()
     MemInfo info;
     if (sys::mem_info(&info) != 0)
     {
-        puts("AVAIL: Failed to get memory info\n");
+        print_str("AVAIL: Failed to get memory info\n");
         last_rc = RC_ERROR;
         last_error = "Memory info syscall failed";
         return;
     }
 
-    puts("\nType      Available         In-Use          Total\n");
-    puts("-------  ----------     ----------     ----------\n");
+    print_str("\nType      Available         In-Use          Total\n");
+    print_str("-------  ----------     ----------     ----------\n");
 
     // Display memory in KB for readability
     u64 free_kb = info.free_bytes / 1024;
     u64 used_kb = info.used_bytes / 1024;
     u64 total_kb = info.total_bytes / 1024;
 
-    puts("chip     ");
+    print_str("chip     ");
 
     // Free KB (right-aligned in 10 chars)
     char buf[16];
@@ -1062,10 +1139,10 @@ void cmd_avail()
         n /= 10;
     } while (n > 0);
     for (int i = pos; i < 10; i++)
-        putchar(' ');
+        print_char(' ');
     while (pos > 0)
-        putchar(buf[--pos]);
-    puts(" K   ");
+        print_char(buf[--pos]);
+    print_str(" K   ");
 
     // Used KB
     n = used_kb;
@@ -1076,10 +1153,10 @@ void cmd_avail()
         n /= 10;
     } while (n > 0);
     for (int i = pos; i < 10; i++)
-        putchar(' ');
+        print_char(' ');
     while (pos > 0)
-        putchar(buf[--pos]);
-    puts(" K   ");
+        print_char(buf[--pos]);
+    print_str(" K   ");
 
     // Total KB
     n = total_kb;
@@ -1090,21 +1167,21 @@ void cmd_avail()
         n /= 10;
     } while (n > 0);
     for (int i = pos; i < 10; i++)
-        putchar(' ');
+        print_char(' ');
     while (pos > 0)
-        putchar(buf[--pos]);
-    puts(" K\n");
+        print_char(buf[--pos]);
+    print_str(" K\n");
 
-    puts("\n");
+    print_str("\n");
 
     // Show page info
-    puts("Memory: ");
+    print_str("Memory: ");
     put_num(static_cast<i64>(info.free_pages));
-    puts(" pages free (");
+    print_str(" pages free (");
     put_num(static_cast<i64>(info.total_pages));
-    puts(" total, ");
+    print_str(" total, ");
     put_num(static_cast<i64>(info.page_size));
-    puts(" bytes/page)\n");
+    print_str(" bytes/page)\n");
 
     last_rc = RC_OK;
 }
@@ -1127,80 +1204,80 @@ void cmd_status()
 
     if (count < 0)
     {
-        puts("STATUS: Failed to get task list\n");
+        print_str("STATUS: Failed to get task list\n");
         last_rc = RC_ERROR;
         last_error = "Task list syscall failed";
         return;
     }
 
-    puts("\nProcess Status:\n\n");
-    puts("  ID  State     Pri  Name\n");
-    puts("  --  --------  ---  --------------------------------\n");
+    print_str("\nProcess Status:\n\n");
+    print_str("  ID  State     Pri  Name\n");
+    print_str("  --  --------  ---  --------------------------------\n");
 
     for (i32 i = 0; i < count; i++)
     {
         TaskInfo &t = tasks[i];
 
         // ID (right-aligned, 3 chars)
-        puts("  ");
+        print_str("  ");
         if (t.id < 10)
-            puts(" ");
+            print_str(" ");
         if (t.id < 100)
-            puts(" ");
+            print_str(" ");
         put_num(t.id);
-        puts("  ");
+        print_str("  ");
 
         // State
         switch (t.state)
         {
             case TASK_STATE_READY:
-                puts("Ready   ");
+                print_str("Ready   ");
                 break;
             case TASK_STATE_RUNNING:
-                puts("Running ");
+                print_str("Running ");
                 break;
             case TASK_STATE_BLOCKED:
-                puts("Blocked ");
+                print_str("Blocked ");
                 break;
             case TASK_STATE_EXITED:
-                puts("Exited  ");
+                print_str("Exited  ");
                 break;
             default:
-                puts("Unknown ");
+                print_str("Unknown ");
                 break;
         }
-        puts("  ");
+        print_str("  ");
 
         // Priority (right-aligned, 3 chars)
         if (t.priority < 10)
-            puts(" ");
+            print_str(" ");
         if (t.priority < 100)
-            puts(" ");
+            print_str(" ");
         put_num(t.priority);
-        puts("  ");
+        print_str("  ");
 
         // Name
-        puts(t.name);
+        print_str(t.name);
 
         // Flags
         if (t.flags & TASK_FLAG_IDLE)
         {
-            puts(" [idle]");
+            print_str(" [idle]");
         }
         if (t.flags & TASK_FLAG_KERNEL)
         {
-            puts(" [kernel]");
+            print_str(" [kernel]");
         }
 
-        puts("\n");
+        print_str("\n");
     }
 
-    puts("\n");
+    print_str("\n");
     put_num(count);
-    puts(" task");
+    print_str(" task");
     if (count != 1)
-        puts("s");
-    puts(" total\n");
+        print_str("s");
+    print_str(" total\n");
 
     last_rc = RC_OK;
 }
@@ -1218,7 +1295,7 @@ void cmd_run(const char *path)
 {
     if (!path || *path == '\0')
     {
-        puts("Run: missing program path\n");
+        print_str("Run: missing program path\n");
         last_rc = RC_ERROR;
         last_error = "No path specified";
         return;
@@ -1230,21 +1307,21 @@ void cmd_run(const char *path)
 
     if (err < 0)
     {
-        puts("Run: failed to spawn \"");
-        puts(path);
-        puts("\" (error ");
+        print_str("Run: failed to spawn \"");
+        print_str(path);
+        print_str("\" (error ");
         put_num(err);
-        puts(")\n");
+        print_str(")\n");
         last_rc = RC_FAIL;
         last_error = "Spawn failed";
         return;
     }
 
-    puts("Started process ");
+    print_str("Started process ");
     put_num(static_cast<i64>(pid));
-    puts(" (task ");
+    print_str(" (task ");
     put_num(static_cast<i64>(tid));
-    puts(")\n");
+    print_str(")\n");
 
     // Wait for the child process to exit
     i32 status = 0;
@@ -1252,19 +1329,19 @@ void cmd_run(const char *path)
 
     if (exited_pid < 0)
     {
-        puts("Run: wait failed (error ");
+        print_str("Run: wait failed (error ");
         put_num(exited_pid);
-        puts(")\n");
+        print_str(")\n");
         last_rc = RC_FAIL;
         last_error = "Wait failed";
         return;
     }
 
-    puts("Process ");
+    print_str("Process ");
     put_num(exited_pid);
-    puts(" exited with status ");
+    print_str(" exited with status ");
     put_num(static_cast<i64>(status));
-    puts("\n");
+    print_str("\n");
     last_rc = RC_OK;
 }
 
@@ -1292,7 +1369,7 @@ void cmd_caps(const char *args)
     i32 count = sys::cap_list(nullptr, 0);
     if (count < 0)
     {
-        puts("CAPS: Failed to get capability list\n");
+        print_str("CAPS: Failed to get capability list\n");
         last_rc = RC_ERROR;
         last_error = "Capability list syscall failed";
         return;
@@ -1300,7 +1377,7 @@ void cmd_caps(const char *args)
 
     if (count == 0)
     {
-        puts("No capabilities registered.\n");
+        print_str("No capabilities registered.\n");
         last_rc = RC_OK;
         return;
     }
@@ -1311,56 +1388,56 @@ void cmd_caps(const char *args)
 
     if (actual < 0)
     {
-        puts("CAPS: Failed to list capabilities\n");
+        print_str("CAPS: Failed to list capabilities\n");
         last_rc = RC_ERROR;
         last_error = "Capability list syscall failed";
         return;
     }
 
-    puts("\nCapability Table:\n\n");
-    puts("  Handle   Kind        Rights       Gen\n");
-    puts("  ------   ---------   ---------    ---\n");
+    print_str("\nCapability Table:\n\n");
+    print_str("  Handle   Kind        Rights       Gen\n");
+    print_str("  ------   ---------   ---------    ---\n");
 
     for (i32 i = 0; i < actual; i++)
     {
         CapListEntry &c = caps[i];
 
         // Handle (hex)
-        puts("  ");
+        print_str("  ");
         put_hex(c.handle);
-        puts("  ");
+        print_str("  ");
 
         // Kind name (left-aligned, 10 chars)
         const char *kind_name = sys::cap_kind_name(c.kind);
-        puts(kind_name);
+        print_str(kind_name);
         usize klen = strlen(kind_name);
         while (klen < 10)
         {
-            putchar(' ');
+            print_char(' ');
             klen++;
         }
-        puts("  ");
+        print_str("  ");
 
         // Rights string
         char rights_buf[16];
         sys::cap_rights_str(c.rights, rights_buf, sizeof(rights_buf));
-        puts(rights_buf);
-        puts("    ");
+        print_str(rights_buf);
+        print_str("    ");
 
         // Generation
         put_num(c.generation);
 
-        puts("\n");
+        print_str("\n");
     }
 
-    puts("\n");
+    print_str("\n");
     put_num(actual);
-    puts(" capabilit");
+    print_str(" capabilit");
     if (actual != 1)
-        puts("ies");
+        print_str("ies");
     else
-        puts("y");
-    puts(" total\n");
+        print_str("y");
+    print_str(" total\n");
 
     // If args provided, try to query/derive specific handle
     if (args && *args != '\0')
@@ -1398,74 +1475,74 @@ void cmd_caps(const char *args)
             p++;
         }
 
-        puts("\nQuerying handle ");
+        print_str("\nQuerying handle ");
         put_hex(handle);
-        puts(":\n");
+        print_str(":\n");
 
         CapInfo info;
         i32 result = sys::cap_query(handle, &info);
         if (result < 0)
         {
-            puts("  Error: Invalid or revoked handle\n");
+            print_str("  Error: Invalid or revoked handle\n");
         }
         else
         {
-            puts("  Kind: ");
-            puts(sys::cap_kind_name(info.kind));
-            puts("\n  Rights: ");
+            print_str("  Kind: ");
+            print_str(sys::cap_kind_name(info.kind));
+            print_str("\n  Rights: ");
             char rbuf[16];
             sys::cap_rights_str(info.rights, rbuf, sizeof(rbuf));
-            puts(rbuf);
-            puts(" (0x");
+            print_str(rbuf);
+            print_str(" (0x");
             put_hex(info.rights);
-            puts(")\n  Generation: ");
+            print_str(")\n  Generation: ");
             put_num(info.generation);
-            puts("\n");
+            print_str("\n");
 
             // Try to derive a read-only handle as a demo
-            puts("\n  Testing derive (read-only)... ");
+            print_str("\n  Testing derive (read-only)... ");
             i32 derived = sys::cap_derive(handle, CAP_RIGHT_READ);
             if (derived < 0)
             {
-                puts("Failed (no DERIVE right or error)\n");
+                print_str("Failed (no DERIVE right or error)\n");
             }
             else
             {
-                puts("Success! New handle: ");
+                print_str("Success! New handle: ");
                 put_hex(static_cast<u32>(derived));
-                puts("\n");
+                print_str("\n");
 
                 // Query the derived handle
                 CapInfo derived_info;
                 if (sys::cap_query(static_cast<u32>(derived), &derived_info) == 0)
                 {
-                    puts("  Derived rights: ");
+                    print_str("  Derived rights: ");
                     char dbuf[16];
                     sys::cap_rights_str(derived_info.rights, dbuf, sizeof(dbuf));
-                    puts(dbuf);
-                    puts("\n");
+                    print_str(dbuf);
+                    print_str("\n");
                 }
 
                 // Revoke it to demonstrate revocation
-                puts("  Revoking derived handle... ");
+                print_str("  Revoking derived handle... ");
                 if (sys::cap_revoke(static_cast<u32>(derived)) == 0)
                 {
-                    puts("Success!\n");
+                    print_str("Success!\n");
 
                     // Verify it's gone
-                    puts("  Verifying revocation... ");
+                    print_str("  Verifying revocation... ");
                     if (sys::cap_query(static_cast<u32>(derived), &derived_info) < 0)
                     {
-                        puts("Handle correctly invalidated.\n");
+                        print_str("Handle correctly invalidated.\n");
                     }
                     else
                     {
-                        puts("Warning: Handle still valid?\n");
+                        print_str("Warning: Handle still valid?\n");
                     }
                 }
                 else
                 {
-                    puts("Failed!\n");
+                    print_str("Failed!\n");
                 }
             }
         }
@@ -1484,7 +1561,7 @@ void cmd_caps(const char *args)
 void cmd_date()
 {
     // TODO: Implement when date/time syscall is available
-    puts("DATE: Date/time not yet available\n");
+    print_str("DATE: Date/time not yet available\n");
     last_rc = RC_OK;
 }
 
@@ -1498,7 +1575,7 @@ void cmd_date()
 void cmd_time()
 {
     // TODO: Implement when date/time syscall is available
-    puts("TIME: Date/time not yet available\n");
+    print_str("TIME: Date/time not yet available\n");
     last_rc = RC_OK;
 }
 
@@ -1526,32 +1603,32 @@ void cmd_assign(const char *args)
         i32 result = sys::assign_list(assigns, 16, &count);
         if (result < 0)
         {
-            puts("Assign: failed to list assigns\n");
+            print_str("Assign: failed to list assigns\n");
             last_rc = RC_ERROR;
             return;
         }
 
-        puts("Current assigns:\n");
-        puts("  Name         Handle     Kind        Rights     Flags\n");
-        puts("  -----------  ---------  ----------  ---------  ------\n");
+        print_str("Current assigns:\n");
+        print_str("  Name         Handle     Kind        Rights     Flags\n");
+        print_str("  -----------  ---------  ----------  ---------  ------\n");
 
         for (usize i = 0; i < count; i++)
         {
             // Name (left-aligned, 11 chars)
-            puts("  ");
-            puts(assigns[i].name);
-            puts(":");
+            print_str("  ");
+            print_str(assigns[i].name);
+            print_str(":");
             usize namelen = strlen(assigns[i].name) + 1;
             while (namelen < 11)
             {
-                putchar(' ');
+                print_char(' ');
                 namelen++;
             }
-            puts("  ");
+            print_str("  ");
 
             // Handle
             put_hex(assigns[i].handle);
-            puts("   ");
+            print_str("   ");
 
             // Query capability info
             CapInfo cap_info;
@@ -1559,56 +1636,56 @@ void cmd_assign(const char *args)
             {
                 // Kind
                 const char *kind = sys::cap_kind_name(cap_info.kind);
-                puts(kind);
+                print_str(kind);
                 usize klen = strlen(kind);
                 while (klen < 10)
                 {
-                    putchar(' ');
+                    print_char(' ');
                     klen++;
                 }
-                puts("  ");
+                print_str("  ");
 
                 // Rights
                 char rights[16];
                 sys::cap_rights_str(cap_info.rights, rights, sizeof(rights));
-                puts(rights);
-                puts("  ");
+                print_str(rights);
+                print_str("  ");
             }
             else
             {
-                puts("(invalid)   ");
-                puts("---------  ");
+                print_str("(invalid)   ");
+                print_str("---------  ");
             }
 
             // Flags
             if (assigns[i].flags & sys::ASSIGN_SYSTEM)
             {
-                puts("SYS");
+                print_str("SYS");
             }
             if (assigns[i].flags & sys::ASSIGN_MULTI)
             {
                 if (assigns[i].flags & sys::ASSIGN_SYSTEM)
-                    puts(",");
-                puts("MULTI");
+                    print_str(",");
+                print_str("MULTI");
             }
             if (assigns[i].flags == 0)
             {
-                puts("-");
+                print_str("-");
             }
-            puts("\n");
+            print_str("\n");
         }
 
         if (count == 0)
         {
-            puts("  (no assigns defined)\n");
+            print_str("  (no assigns defined)\n");
         }
 
-        puts("\n");
+        print_str("\n");
         put_num(static_cast<i64>(count));
-        puts(" assign");
+        print_str(" assign");
         if (count != 1)
-            puts("s");
-        puts(" defined\n");
+            print_str("s");
+        print_str(" defined\n");
 
         last_rc = RC_OK;
     }
@@ -1616,8 +1693,8 @@ void cmd_assign(const char *args)
     {
         // Parse: NAME: handle or just NAME:
         // For now just show usage
-        puts("Usage: Assign           - List all assigns\n");
-        puts("       Assign NAME: DIR - Set assign (not yet implemented)\n");
+        print_str("Usage: Assign           - List all assigns\n");
+        print_str("       Assign NAME: DIR - Set assign (not yet implemented)\n");
         last_rc = RC_WARN;
     }
 }
@@ -1644,7 +1721,7 @@ void cmd_path(const char *args)
     if (!args || *args == '\0')
     {
         // Show current directory
-        puts("Current path: SYS:\n");
+        print_str("Current path: SYS:\n");
         last_rc = RC_OK;
     }
     else
@@ -1654,33 +1731,33 @@ void cmd_path(const char *args)
         i32 result = sys::assign_resolve(args, &handle);
         if (result < 0)
         {
-            puts("Path: cannot resolve \"");
-            puts(args);
-            puts("\" - not found or invalid assign\n");
+            print_str("Path: cannot resolve \"");
+            print_str(args);
+            print_str("\" - not found or invalid assign\n");
             last_rc = RC_ERROR;
             return;
         }
 
-        puts("Path \"");
-        puts(args);
-        puts("\"\n");
-        puts("  Handle: ");
+        print_str("Path \"");
+        print_str(args);
+        print_str("\"\n");
+        print_str("  Handle: ");
         put_hex(handle);
-        puts("\n");
+        print_str("\n");
 
         // Query capability info
         CapInfo cap_info;
         if (sys::cap_query(handle, &cap_info) == 0)
         {
-            puts("  Kind:   ");
-            puts(sys::cap_kind_name(cap_info.kind));
-            puts("\n");
+            print_str("  Kind:   ");
+            print_str(sys::cap_kind_name(cap_info.kind));
+            print_str("\n");
 
-            puts("  Rights: ");
+            print_str("  Rights: ");
             char rights[16];
             sys::cap_rights_str(cap_info.rights, rights, sizeof(rights));
-            puts(rights);
-            puts("\n");
+            print_str(rights);
+            print_str("\n");
 
             // If it's a file, show size and first bytes
             if (cap_info.kind == CAP_KIND_FILE)
@@ -1689,9 +1766,9 @@ void cmd_path(const char *args)
                 i64 size = sys::io_seek(handle, 0, sys::SEEK_END);
                 if (size >= 0)
                 {
-                    puts("  Size:   ");
+                    print_str("  Size:   ");
                     put_num(size);
-                    puts(" bytes\n");
+                    print_str(" bytes\n");
 
                     // Seek back to start and read first bytes
                     sys::io_seek(handle, 0, sys::SEEK_SET);
@@ -1701,7 +1778,7 @@ void cmd_path(const char *args)
                     {
                         preview[bytes] = '\0';
                         // Show first line or truncate
-                        puts("  Preview: \"");
+                        print_str("  Preview: \"");
                         for (i64 i = 0; i < bytes && i < 40; i++)
                         {
                             char c = preview[i];
@@ -1709,14 +1786,14 @@ void cmd_path(const char *args)
                                 break;
                             if (c >= 32 && c < 127)
                             {
-                                putchar(c);
+                                print_char(c);
                             }
                             else
                             {
-                                putchar('.');
+                                print_char('.');
                             }
                         }
-                        puts("...\"\n");
+                        print_str("...\"\n");
                     }
                 }
             }
@@ -1730,9 +1807,9 @@ void cmd_path(const char *args)
                 {
                     count++;
                 }
-                puts("  Entries: ");
+                print_str("  Entries: ");
                 put_num(count);
-                puts("\n");
+                print_str("\n");
             }
         }
 
@@ -1759,15 +1836,15 @@ void cmd_dir(const char *path)
     // Default to current directory
     if (!path || *path == '\0')
     {
-        path = "/";
+        path = current_dir;
     }
 
     i32 fd = sys::open(path, sys::O_RDONLY);
     if (fd < 0)
     {
-        puts("Dir: cannot open \"");
-        puts(path);
-        puts("\"\n");
+        print_str("Dir: cannot open \"");
+        print_str(path);
+        print_str("\"\n");
         last_rc = RC_ERROR;
         last_error = "Directory not found";
         return;
@@ -1779,7 +1856,7 @@ void cmd_dir(const char *path)
 
     if (bytes < 0)
     {
-        puts("Dir: not a directory\n");
+        print_str("Dir: not a directory\n");
         sys::close(fd);
         last_rc = RC_ERROR;
         last_error = "Not a directory";
@@ -1798,25 +1875,25 @@ void cmd_dir(const char *path)
         // Print name (directories get special treatment)
         if (ent->type == 2)
         {
-            puts("  ");
-            puts(ent->name);
-            puts("/");
+            print_str("  ");
+            print_str(ent->name);
+            print_str("/");
             // Pad to 20 chars
             usize namelen = strlen(ent->name) + 1;
             while (namelen < 18)
             {
-                putchar(' ');
+                print_char(' ');
                 namelen++;
             }
         }
         else
         {
-            puts("  ");
-            puts(ent->name);
+            print_str("  ");
+            print_str(ent->name);
             usize namelen = strlen(ent->name);
             while (namelen < 18)
             {
-                putchar(' ');
+                print_char(' ');
                 namelen++;
             }
         }
@@ -1824,7 +1901,7 @@ void cmd_dir(const char *path)
         col++;
         if (col >= 3)
         {
-            puts("\n");
+            print_str("\n");
             col = 0;
         }
 
@@ -1833,10 +1910,10 @@ void cmd_dir(const char *path)
     }
 
     if (col > 0)
-        puts("\n");
+        print_str("\n");
 
     put_num(static_cast<i64>(count));
-    puts(" entries\n");
+    print_str(" entries\n");
 
     sys::close(fd);
     last_rc = RC_OK;
@@ -1857,15 +1934,15 @@ void cmd_list(const char *path)
     // Default to current directory
     if (!path || *path == '\0')
     {
-        path = "/";
+        path = current_dir;
     }
 
     i32 fd = sys::open(path, sys::O_RDONLY);
     if (fd < 0)
     {
-        puts("List: cannot open \"");
-        puts(path);
-        puts("\"\n");
+        print_str("List: cannot open \"");
+        print_str(path);
+        print_str("\"\n");
         last_rc = RC_ERROR;
         last_error = "Directory not found";
         return;
@@ -1877,16 +1954,16 @@ void cmd_list(const char *path)
 
     if (bytes < 0)
     {
-        puts("List: not a directory\n");
+        print_str("List: not a directory\n");
         sys::close(fd);
         last_rc = RC_ERROR;
         last_error = "Not a directory";
         return;
     }
 
-    puts("Directory \"");
-    puts(path);
-    puts("\"\n\n");
+    print_str("Directory \"");
+    print_str(path);
+    print_str("\"\n\n");
 
     // Iterate through entries
     usize offset = 0;
@@ -1898,43 +1975,43 @@ void cmd_list(const char *path)
         sys::DirEnt *ent = reinterpret_cast<sys::DirEnt *>(buf + offset);
 
         // Print name with padding
-        puts(ent->name);
+        print_str(ent->name);
         usize namelen = strlen(ent->name);
         while (namelen < 32)
         {
-            putchar(' ');
+            print_char(' ');
             namelen++;
         }
 
         // Print type and flags
         if (ent->type == 2)
         {
-            puts("  <dir>    rwed");
+            print_str("  <dir>    rwed");
             dir_count++;
         }
         else
         {
-            puts("           rwed");
+            print_str("           rwed");
             file_count++;
         }
-        puts("\n");
+        print_str("\n");
 
         offset += ent->reclen;
     }
 
-    puts("\n");
+    print_str("\n");
     put_num(static_cast<i64>(file_count));
-    puts(" file");
+    print_str(" file");
     if (file_count != 1)
-        puts("s");
-    puts(", ");
+        print_str("s");
+    print_str(", ");
     put_num(static_cast<i64>(dir_count));
-    puts(" director");
+    print_str(" director");
     if (dir_count != 1)
-        puts("ies");
+        print_str("ies");
     else
-        puts("y");
-    puts("\n");
+        print_str("y");
+    print_str("\n");
 
     sys::close(fd);
     last_rc = RC_OK;
@@ -1954,7 +2031,7 @@ void cmd_type(const char *path)
 {
     if (!path || *path == '\0')
     {
-        puts("Type: missing file argument\n");
+        print_str("Type: missing file argument\n");
         last_rc = RC_ERROR;
         last_error = "Missing filename";
         return;
@@ -1963,9 +2040,9 @@ void cmd_type(const char *path)
     i32 fd = sys::open(path, sys::O_RDONLY);
     if (fd < 0)
     {
-        puts("Type: cannot open \"");
-        puts(path);
-        puts("\"\n");
+        print_str("Type: cannot open \"");
+        print_str(path);
+        print_str("\"\n");
         last_rc = RC_ERROR;
         last_error = "File not found";
         return;
@@ -1980,8 +2057,11 @@ void cmd_type(const char *path)
             break;
 
         buf[bytes] = '\0';
-        puts(buf);
+        print_str(buf);
     }
+
+    // Ensure output ends with a newline for clean prompt display
+    print_str("\n");
 
     sys::close(fd);
     last_rc = RC_OK;
@@ -2005,9 +2085,9 @@ void cmd_copy(const char *args)
 {
     if (!args || *args == '\0')
     {
-        puts("Copy: missing arguments\n");
-        puts("Usage: Copy <source> <dest>\n");
-        puts("       Copy <source> TO <dest>\n");
+        print_str("Copy: missing arguments\n");
+        print_str("Usage: Copy <source> <dest>\n");
+        print_str("       Copy <source> TO <dest>\n");
         last_rc = RC_ERROR;
         last_error = "Missing arguments";
         return;
@@ -2020,8 +2100,8 @@ void cmd_copy(const char *args)
 
     if (*p != ' ')
     {
-        puts("Copy: missing destination\n");
-        puts("Usage: Copy <source> <dest>\n");
+        print_str("Copy: missing destination\n");
+        print_str("Usage: Copy <source> <dest>\n");
         last_rc = RC_ERROR;
         last_error = "Missing destination";
         return;
@@ -2052,7 +2132,7 @@ void cmd_copy(const char *args)
 
     if (*p == '\0')
     {
-        puts("Copy: missing destination\n");
+        print_str("Copy: missing destination\n");
         last_rc = RC_ERROR;
         last_error = "Missing destination";
         return;
@@ -2064,9 +2144,9 @@ void cmd_copy(const char *args)
     i32 src_fd = sys::open(src_path, sys::O_RDONLY);
     if (src_fd < 0)
     {
-        puts("Copy: cannot open source \"");
-        puts(src_path);
-        puts("\"\n");
+        print_str("Copy: cannot open source \"");
+        print_str(src_path);
+        print_str("\"\n");
         last_rc = RC_ERROR;
         last_error = "Cannot open source file";
         return;
@@ -2076,7 +2156,7 @@ void cmd_copy(const char *args)
     sys::Stat st;
     if (sys::fstat(src_fd, &st) < 0)
     {
-        puts("Copy: cannot stat source file\n");
+        print_str("Copy: cannot stat source file\n");
         sys::close(src_fd);
         last_rc = RC_ERROR;
         last_error = "Cannot stat source";
@@ -2087,9 +2167,9 @@ void cmd_copy(const char *args)
     i32 dst_fd = sys::open(dst_path, sys::O_WRONLY | sys::O_CREAT);
     if (dst_fd < 0)
     {
-        puts("Copy: cannot create destination \"");
-        puts(dst_path);
-        puts("\"\n");
+        print_str("Copy: cannot create destination \"");
+        print_str(dst_path);
+        print_str("\"\n");
         sys::close(src_fd);
         last_rc = RC_ERROR;
         last_error = "Cannot create destination";
@@ -2106,7 +2186,7 @@ void cmd_copy(const char *args)
         i64 bytes_read = sys::read(src_fd, buf, sizeof(buf));
         if (bytes_read < 0)
         {
-            puts("Copy: read error\n");
+            print_str("Copy: read error\n");
             error = true;
             break;
         }
@@ -2122,13 +2202,13 @@ void cmd_copy(const char *args)
             i64 w = sys::write(dst_fd, buf + written, bytes_read - written);
             if (w < 0)
             {
-                puts("Copy: write error\n");
+                print_str("Copy: write error\n");
                 error = true;
                 break;
             }
             if (w == 0)
             {
-                puts("Copy: write returned 0 (disk full?)\n");
+                print_str("Copy: write returned 0 (disk full?)\n");
                 error = true;
                 break;
             }
@@ -2152,13 +2232,13 @@ void cmd_copy(const char *args)
         return;
     }
 
-    puts("Copied ");
+    print_str("Copied ");
     put_num(static_cast<i64>(total_copied));
-    puts(" bytes: ");
-    puts(src_path);
-    puts(" -> ");
-    puts(dst_path);
-    puts("\n");
+    print_str(" bytes: ");
+    print_str(src_path);
+    print_str(" -> ");
+    print_str(dst_path);
+    print_str("\n");
     last_rc = RC_OK;
 }
 
@@ -2180,8 +2260,8 @@ void cmd_delete(const char *args)
 {
     if (!args || *args == '\0')
     {
-        puts("Delete: missing file argument\n");
-        puts("Usage: Delete <file>\n");
+        print_str("Delete: missing file argument\n");
+        print_str("Usage: Delete <file>\n");
         last_rc = RC_ERROR;
         last_error = "Missing filename";
         return;
@@ -2191,9 +2271,9 @@ void cmd_delete(const char *args)
     i32 result = sys::unlink(args);
     if (result == 0)
     {
-        puts("Deleted: ");
-        puts(args);
-        puts("\n");
+        print_str("Deleted: ");
+        print_str(args);
+        print_str("\n");
         last_rc = RC_OK;
         return;
     }
@@ -2202,16 +2282,16 @@ void cmd_delete(const char *args)
     result = sys::rmdir(args);
     if (result == 0)
     {
-        puts("Deleted directory: ");
-        puts(args);
-        puts("\n");
+        print_str("Deleted directory: ");
+        print_str(args);
+        print_str("\n");
         last_rc = RC_OK;
         return;
     }
 
-    puts("Delete: cannot delete \"");
-    puts(args);
-    puts("\"\n");
+    print_str("Delete: cannot delete \"");
+    print_str(args);
+    print_str("\"\n");
     last_rc = RC_ERROR;
     last_error = "Delete failed";
 }
@@ -2228,8 +2308,8 @@ void cmd_makedir(const char *args)
 {
     if (!args || *args == '\0')
     {
-        puts("MakeDir: missing directory name\n");
-        puts("Usage: MakeDir <dirname>\n");
+        print_str("MakeDir: missing directory name\n");
+        print_str("Usage: MakeDir <dirname>\n");
         last_rc = RC_ERROR;
         last_error = "Missing directory name";
         return;
@@ -2238,16 +2318,16 @@ void cmd_makedir(const char *args)
     i32 result = sys::mkdir(args);
     if (result == 0)
     {
-        puts("Created directory: ");
-        puts(args);
-        puts("\n");
+        print_str("Created directory: ");
+        print_str(args);
+        print_str("\n");
         last_rc = RC_OK;
     }
     else
     {
-        puts("MakeDir: cannot create \"");
-        puts(args);
-        puts("\"\n");
+        print_str("MakeDir: cannot create \"");
+        print_str(args);
+        print_str("\"\n");
         last_rc = RC_ERROR;
         last_error = "Directory creation failed";
     }
@@ -2266,8 +2346,8 @@ void cmd_rename(const char *args)
 {
     if (!args || *args == '\0')
     {
-        puts("Rename: missing arguments\n");
-        puts("Usage: Rename <old> <new>\n");
+        print_str("Rename: missing arguments\n");
+        print_str("Usage: Rename <old> <new>\n");
         last_rc = RC_ERROR;
         last_error = "Missing arguments";
         return;
@@ -2281,8 +2361,8 @@ void cmd_rename(const char *args)
 
     if (*p != ' ')
     {
-        puts("Rename: missing new name\n");
-        puts("Usage: Rename <old> <new>\n");
+        print_str("Rename: missing new name\n");
+        print_str("Usage: Rename <old> <new>\n");
         last_rc = RC_ERROR;
         last_error = "Missing new name";
         return;
@@ -2305,7 +2385,7 @@ void cmd_rename(const char *args)
 
     if (*p == '\0')
     {
-        puts("Rename: missing new name\n");
+        print_str("Rename: missing new name\n");
         last_rc = RC_ERROR;
         last_error = "Missing new name";
         return;
@@ -2316,20 +2396,20 @@ void cmd_rename(const char *args)
     i32 result = sys::rename(old_name, new_name);
     if (result == 0)
     {
-        puts("Renamed: ");
-        puts(old_name);
-        puts(" -> ");
-        puts(new_name);
-        puts("\n");
+        print_str("Renamed: ");
+        print_str(old_name);
+        print_str(" -> ");
+        print_str(new_name);
+        print_str("\n");
         last_rc = RC_OK;
     }
     else
     {
-        puts("Rename: cannot rename \"");
-        puts(old_name);
-        puts("\" to \"");
-        puts(new_name);
-        puts("\"\n");
+        print_str("Rename: cannot rename \"");
+        print_str(old_name);
+        print_str("\" to \"");
+        print_str(new_name);
+        print_str("\"\n");
         last_rc = RC_ERROR;
         last_error = "Rename failed";
     }
@@ -2450,11 +2530,11 @@ void cmd_fetch(const char *url)
 {
     if (!url || *url == '\0')
     {
-        puts("Fetch: usage: Fetch <url>\n");
-        puts("  Examples:\n");
-        puts("    Fetch example.com\n");
-        puts("    Fetch http://example.com/page\n");
-        puts("    Fetch https://example.com\n");
+        print_str("Fetch: usage: Fetch <url>\n");
+        print_str("  Examples:\n");
+        print_str("    Fetch example.com\n");
+        print_str("    Fetch http://example.com/page\n");
+        print_str("    Fetch https://example.com\n");
         last_rc = RC_ERROR;
         last_error = "Missing URL";
         return;
@@ -2483,48 +2563,48 @@ void cmd_fetch(const char *url)
     {
         if (!parse_url(url, &parsed))
         {
-            puts("Fetch: invalid URL\n");
+            print_str("Fetch: invalid URL\n");
             last_rc = RC_ERROR;
             last_error = "Invalid URL";
             return;
         }
     }
 
-    puts("Resolving ");
-    puts(parsed.host);
-    puts("...\n");
+    print_str("Resolving ");
+    print_str(parsed.host);
+    print_str("...\n");
 
     // Resolve hostname
     u32 ip = 0;
     if (sys::dns_resolve(parsed.host, &ip) != 0)
     {
-        puts("Fetch: DNS resolution failed\n");
+        print_str("Fetch: DNS resolution failed\n");
         last_rc = RC_ERROR;
         last_error = "DNS resolution failed";
         return;
     }
 
-    puts("Connecting to ");
+    print_str("Connecting to ");
     put_num((ip >> 24) & 0xFF);
-    putchar('.');
+    print_char('.');
     put_num((ip >> 16) & 0xFF);
-    putchar('.');
+    print_char('.');
     put_num((ip >> 8) & 0xFF);
-    putchar('.');
+    print_char('.');
     put_num(ip & 0xFF);
-    putchar(':');
+    print_char(':');
     put_num(parsed.port);
     if (parsed.is_https)
     {
-        puts(" (HTTPS)");
+        print_str(" (HTTPS)");
     }
-    puts("...\n");
+    print_str("...\n");
 
     // Create socket
     i32 sock = sys::socket_create();
     if (sock < 0)
     {
-        puts("Fetch: failed to create socket\n");
+        print_str("Fetch: failed to create socket\n");
         last_rc = RC_FAIL;
         last_error = "Socket creation failed";
         return;
@@ -2533,26 +2613,26 @@ void cmd_fetch(const char *url)
     // Connect
     if (sys::socket_connect(sock, ip, parsed.port) != 0)
     {
-        puts("Fetch: connection failed\n");
+        print_str("Fetch: connection failed\n");
         sys::socket_close(sock);
         last_rc = RC_ERROR;
         last_error = "Connection failed";
         return;
     }
 
-    puts("Connected!");
+    print_str("Connected!");
 
     // For HTTPS, perform TLS handshake
     i32 tls_session = -1;
     if (parsed.is_https)
     {
-        puts(" Starting TLS handshake...\n");
+        print_str(" Starting TLS handshake...\n");
 
         // Pass false for verify - certificate verification not yet implemented
         tls_session = sys::tls_create(sock, parsed.host, false);
         if (tls_session < 0)
         {
-            puts("Fetch: TLS session creation failed\n");
+            print_str("Fetch: TLS session creation failed\n");
             sys::socket_close(sock);
             last_rc = RC_ERROR;
             last_error = "TLS creation failed";
@@ -2561,7 +2641,7 @@ void cmd_fetch(const char *url)
 
         if (sys::tls_handshake(tls_session) != 0)
         {
-            puts("Fetch: TLS handshake failed\n");
+            print_str("Fetch: TLS handshake failed\n");
             sys::tls_close(tls_session);
             sys::socket_close(sock);
             last_rc = RC_ERROR;
@@ -2569,10 +2649,10 @@ void cmd_fetch(const char *url)
             return;
         }
 
-        puts("TLS handshake complete. ");
+        print_str("TLS handshake complete. ");
     }
 
-    puts(" Sending request...\n");
+    print_str(" Sending request...\n");
 
     // Build HTTP request
     char request[512];
@@ -2609,7 +2689,7 @@ void cmd_fetch(const char *url)
 
     if (sent <= 0)
     {
-        puts("Fetch: send failed\n");
+        print_str("Fetch: send failed\n");
         if (parsed.is_https)
             sys::tls_close(tls_session);
         sys::socket_close(sock);
@@ -2618,7 +2698,7 @@ void cmd_fetch(const char *url)
         return;
     }
 
-    puts("Request sent, receiving response...\n\n");
+    print_str("Request sent, receiving response...\n\n");
 
     // Receive response
     char buf[512];
@@ -2638,7 +2718,7 @@ void cmd_fetch(const char *url)
         if (n > 0)
         {
             buf[n] = '\0';
-            puts(buf);
+            print_str(buf);
             total += n;
         }
         else if (total > 0)
@@ -2652,14 +2732,14 @@ void cmd_fetch(const char *url)
         }
     }
 
-    puts("\n\n[Received ");
+    print_str("\n\n[Received ");
     put_num(static_cast<i64>(total));
-    puts(" bytes");
+    print_str(" bytes");
     if (parsed.is_https)
     {
-        puts(", encrypted");
+        print_str(", encrypted");
     }
-    puts("]\n");
+    print_str("]\n");
 
     // Show TLS session info for HTTPS connections
     if (parsed.is_https)
@@ -2667,47 +2747,47 @@ void cmd_fetch(const char *url)
         TLSInfo tls_info_data;
         if (sys::tls_info(tls_session, &tls_info_data) == 0)
         {
-            puts("[TLS Info] ");
+            print_str("[TLS Info] ");
 
             // Protocol version
             if (tls_info_data.protocol_version == TLS_VERSION_1_3)
             {
-                puts("TLS 1.3");
+                print_str("TLS 1.3");
             }
             else if (tls_info_data.protocol_version == TLS_VERSION_1_2)
             {
-                puts("TLS 1.2");
+                print_str("TLS 1.2");
             }
             else
             {
-                puts("TLS ?");
+                print_str("TLS ?");
             }
 
             // Cipher suite
-            puts(", Cipher: ");
+            print_str(", Cipher: ");
             if (tls_info_data.cipher_suite == TLS_CIPHER_CHACHA20_POLY1305_SHA256)
             {
-                puts("CHACHA20-POLY1305");
+                print_str("CHACHA20-POLY1305");
             }
             else if (tls_info_data.cipher_suite == TLS_CIPHER_AES_128_GCM_SHA256)
             {
-                puts("AES-128-GCM");
+                print_str("AES-128-GCM");
             }
             else if (tls_info_data.cipher_suite == TLS_CIPHER_AES_256_GCM_SHA384)
             {
-                puts("AES-256-GCM");
+                print_str("AES-256-GCM");
             }
             else
             {
-                puts("0x");
+                print_str("0x");
                 put_hex(tls_info_data.cipher_suite);
             }
 
             // Verified status
-            puts(", Verified: ");
-            puts(tls_info_data.verified ? "NO (NOVERIFY)" : "YES");
+            print_str(", Verified: ");
+            print_str(tls_info_data.verified ? "NO (NOVERIFY)" : "YES");
 
-            puts("\n");
+            print_str("\n");
         }
 
         sys::tls_close(tls_session);
@@ -2763,19 +2843,30 @@ void shell_loop()
 {
     char line[256];
 
-    puts("\n========================================\n");
-    puts("        ViperOS 0.2.0 Shell\n");
-    puts("========================================\n");
-    puts("Type 'Help' for available commands.\n\n");
+    print_str("\n========================================\n");
+    print_str("        ViperOS 0.2.0 Shell\n");
+    print_str("========================================\n");
+    print_str("Type 'Help' for available commands.\n\n");
 
     // Enable cursor visibility via ANSI escape sequence
-    puts("\x1B[?25h");
+    print_str("\x1B[?25h");
+
+    // Initialize current_dir from kernel's CWD
+    refresh_current_dir();
 
     while (true)
     {
-        // Amiga-style prompt: device:path>
-        puts(current_dir);
-        puts("> ");
+        // Amiga-style prompt: SYS: for root, or path>
+        if (current_dir[0] == '/' && current_dir[1] == '\0')
+        {
+            print_str("SYS:");
+        }
+        else
+        {
+            print_str("SYS:");
+            print_str(current_dir);
+        }
+        print_str("> ");
 
         usize len = readline(line, sizeof(line));
 
@@ -2821,6 +2912,16 @@ void shell_loop()
         {
             cmd_why();
         }
+        // chdir (change directory)
+        else if (strcaseeq(line, "chdir") || strcasestart(line, "chdir "))
+        {
+            cmd_cd(get_args(line, 6));
+        }
+        // cwd (current working directory)
+        else if (strcaseeq(line, "cwd"))
+        {
+            cmd_pwd();
+        }
         // Avail (memory)
         else if (strcaseeq(line, "avail"))
         {
@@ -2838,7 +2939,7 @@ void shell_loop()
         }
         else if (strcaseeq(line, "run"))
         {
-            puts("Run: missing program path\n");
+            print_str("Run: missing program path\n");
             last_rc = RC_ERROR;
         }
         // Caps (capabilities)
@@ -2883,7 +2984,7 @@ void shell_loop()
         }
         else if (strcaseeq(line, "type"))
         {
-            puts("Type: missing file argument\n");
+            print_str("Type: missing file argument\n");
             last_rc = RC_ERROR;
         }
         // Copy
@@ -2913,36 +3014,36 @@ void shell_loop()
         }
         else if (strcaseeq(line, "fetch"))
         {
-            puts("Fetch: usage: Fetch <hostname>\n");
+            print_str("Fetch: usage: Fetch <hostname>\n");
             last_rc = RC_ERROR;
         }
         // EndShell (was exit/quit)
         else if (strcaseeq(line, "endshell") || strcaseeq(line, "exit") || strcaseeq(line, "quit"))
         {
-            puts("Goodbye!\n");
+            print_str("Goodbye!\n");
             break;
         }
         // Legacy command aliases for compatibility
         else if (strcaseeq(line, "ls") || strcasestart(line, "ls "))
         {
-            puts("Note: Use 'Dir' or 'List' instead of 'ls'\n");
+            print_str("Note: Use 'Dir' or 'List' instead of 'ls'\n");
             cmd_dir(get_args(line, 3));
         }
         else if (strcasestart(line, "cat "))
         {
-            puts("Note: Use 'Type' instead of 'cat'\n");
+            print_str("Note: Use 'Type' instead of 'cat'\n");
             cmd_type(get_args(line, 4));
         }
         else if (strcaseeq(line, "uname"))
         {
-            puts("Note: Use 'Version' instead of 'uname'\n");
+            print_str("Note: Use 'Version' instead of 'uname'\n");
             cmd_version();
         }
         else
         {
-            puts("Unknown command: ");
-            puts(line);
-            puts("\nType 'Help' for available commands.\n");
+            print_str("Unknown command: ");
+            print_str(line);
+            print_str("\nType 'Help' for available commands.\n");
             last_rc = RC_WARN;
             last_error = "Unknown command";
         }
@@ -2974,25 +3075,25 @@ static void *vinit_sbrk(long increment)
 // Quick malloc test at startup
 static void test_malloc_at_startup()
 {
-    puts("[vinit] Testing malloc/sbrk...\n");
+    print_str("[vinit] Testing malloc/sbrk...\n");
 
     // Get initial break
     void *brk = vinit_sbrk(0);
-    puts("[vinit]   Initial heap: ");
+    print_str("[vinit]   Initial heap: ");
     put_hex(reinterpret_cast<u64>(brk));
-    puts("\n");
+    print_str("\n");
 
     // Allocate 1KB
     void *ptr = vinit_sbrk(1024);
     if (ptr == reinterpret_cast<void *>(-1))
     {
-        puts("[vinit]   ERROR: sbrk(1024) failed!\n");
+        print_str("[vinit]   ERROR: sbrk(1024) failed!\n");
         return;
     }
 
-    puts("[vinit]   Allocated 1KB at: ");
+    print_str("[vinit]   Allocated 1KB at: ");
     put_hex(reinterpret_cast<u64>(ptr));
-    puts("\n");
+    print_str("\n");
 
     // Write to it
     char *cptr = static_cast<char *>(ptr);
@@ -3014,28 +3115,28 @@ static void test_malloc_at_startup()
 
     if (ok)
     {
-        puts("[vinit]   Memory R/W test PASSED\n");
+        print_str("[vinit]   Memory R/W test PASSED\n");
     }
     else
     {
-        puts("[vinit]   ERROR: Memory verification FAILED!\n");
+        print_str("[vinit]   ERROR: Memory verification FAILED!\n");
     }
 }
 
 extern "C" void _start()
 {
-    puts("========================================\n");
-    puts("  ViperOS 0.2.0 - Init Process\n");
-    puts("========================================\n\n");
+    print_str("========================================\n");
+    print_str("  ViperOS 0.2.0 - Init Process\n");
+    print_str("========================================\n\n");
 
-    puts("[vinit] Starting ViperOS...\n");
-    puts("[vinit] Loaded from SYS:viper\\vinit.vpr\n");
-    puts("[vinit] Setting up assigns...\n");
-    puts("  SYS: = D0:\\\n");
-    puts("  C:   = SYS:c\n");
-    puts("  S:   = SYS:s\n");
-    puts("  T:   = SYS:t\n");
-    puts("\n");
+    print_str("[vinit] Starting ViperOS...\n");
+    print_str("[vinit] Loaded from SYS:viper\\vinit.vpr\n");
+    print_str("[vinit] Setting up assigns...\n");
+    print_str("  SYS: = D0:\\\n");
+    print_str("  C:   = SYS:c\n");
+    print_str("  S:   = SYS:s\n");
+    print_str("  T:   = SYS:t\n");
+    print_str("\n");
 
     // Run startup malloc test
     test_malloc_at_startup();
@@ -3043,6 +3144,6 @@ extern "C" void _start()
     // Run the shell
     shell_loop();
 
-    puts("[vinit] EndShell - Shutting down.\n");
+    print_str("[vinit] EndShell - Shutting down.\n");
     sys::exit(0);
 }

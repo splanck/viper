@@ -1,8 +1,20 @@
 # ViperOS Tests CMakeLists.txt
 #
 # Test categories:
-# 1. Build verification - check that artifacts are built correctly
-# 2. QEMU boot tests - run code in emulator and verify output
+# 1. Host tests - native C tests that run on the build machine
+# 2. Build verification - check that artifacts are built correctly
+# 3. QEMU integration tests - boot OS in emulator and verify output
+#
+# Usage:
+#   cmake -S . -B build && cmake --build build && ctest --test-dir build -V
+#
+# Adding new tests:
+#   Host test:  add_host_test(test_name source.c)
+#   QEMU test:  add_qemu_test(test_name --expect "pattern" [options])
+
+# =============================================================================
+# Configuration
+# =============================================================================
 
 # Find QEMU
 find_program(QEMU_AARCH64
@@ -21,43 +33,155 @@ else()
     set(VIPEROS_HAS_QEMU FALSE)
 endif()
 
-# -----------------------------------------------------------------------------
-# Build Verification Tests
-# -----------------------------------------------------------------------------
+# Test runner script location
+set(QEMU_TEST_RUNNER "${CMAKE_CURRENT_SOURCE_DIR}/tools/run_qemu_test.sh")
 
-# Test that kernel.elf is a valid AArch64 ELF
+# Log directory for test output
+set(TEST_LOG_DIR "${CMAKE_BINARY_DIR}/test-logs")
+file(MAKE_DIRECTORY ${TEST_LOG_DIR})
+
+# =============================================================================
+# Helper Functions
+# =============================================================================
+
+# add_host_test(name source.c [source2.c ...])
+#   Adds a host-side unit test compiled with the HOST compiler (not cross-compiler)
+#   This works around cross-compilation by invoking the native cc directly
+function(add_host_test name)
+    # Get source files with full paths
+    set(_sources "")
+    foreach(_src ${ARGN})
+        if(IS_ABSOLUTE ${_src})
+            list(APPEND _sources ${_src})
+        else()
+            list(APPEND _sources ${CMAKE_CURRENT_SOURCE_DIR}/${_src})
+        endif()
+    endforeach()
+
+    # Output executable location
+    set(_output ${CMAKE_BINARY_DIR}/${name})
+
+    # Build with host compiler (cc) at build time
+    # Using add_custom_command/target to invoke native compiler
+    add_custom_command(
+        OUTPUT ${_output}
+        COMMAND cc -std=c17 -Wall -Wextra -O2
+                -I${CMAKE_CURRENT_SOURCE_DIR}/host
+                ${_sources}
+                -o ${_output}
+        DEPENDS ${_sources}
+        COMMENT "Building host test: ${name}"
+        VERBATIM
+    )
+
+    add_custom_target(${name} ALL DEPENDS ${_output})
+
+    # Register with CTest
+    add_test(
+        NAME host_${name}
+        COMMAND ${_output}
+    )
+    set_tests_properties(host_${name} PROPERTIES
+        LABELS "host"
+    )
+endfunction()
+
+# add_qemu_test(name [options])
+#   Adds a QEMU integration test
+#   Options are passed to run_qemu_test.sh
+#   Common options:
+#     --expect <pattern>   Pattern that must appear (required, repeatable)
+#     --forbid <pattern>   Pattern that must NOT appear (repeatable)
+#     --timeout <secs>     Timeout in seconds (default: 30)
+#     --disk               Use disk image (adds build/disk.img)
+function(add_qemu_test name)
+    if(NOT VIPEROS_HAS_QEMU)
+        return()
+    endif()
+
+    # Parse arguments to check for --disk flag
+    set(_has_disk FALSE)
+    set(_args ${ARGN})
+    list(FIND _args "--disk" _disk_idx)
+    if(NOT _disk_idx EQUAL -1)
+        set(_has_disk TRUE)
+        list(REMOVE_AT _args ${_disk_idx})
+    endif()
+
+    # Build command
+    set(_cmd
+        ${QEMU_TEST_RUNNER}
+        --qemu ${QEMU_AARCH64}
+        --kernel ${CMAKE_BINARY_DIR}/kernel.elf
+        --name ${name}
+        --log-dir ${TEST_LOG_DIR}
+    )
+
+    if(_has_disk)
+        list(APPEND _cmd --disk ${CMAKE_BINARY_DIR}/disk.img)
+    endif()
+
+    # Append remaining args
+    list(APPEND _cmd ${_args})
+
+    add_test(
+        NAME qemu_${name}
+        COMMAND ${_cmd}
+    )
+    set_tests_properties(qemu_${name} PROPERTIES
+        LABELS "qemu"
+        TIMEOUT 90
+    )
+endfunction()
+
+# =============================================================================
+# Host Unit Tests
+# =============================================================================
+
+# Sanity test - verifies test framework works
+add_host_test(test_sanity host/test_sanity.c)
+
+# Syscall table invariant tests (Python-based static analysis)
+find_package(Python3 QUIET)
+if(Python3_FOUND)
+    add_test(
+        NAME host_syscall_table_invariants
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/host/test_syscall_table.py
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+    set_tests_properties(host_syscall_table_invariants PROPERTIES
+        LABELS "host;syscall"
+    )
+endif()
+
+# =============================================================================
+# Build Verification Tests
+# =============================================================================
+
+# Test that kernel.elf exists
 add_test(
     NAME build_kernel_elf_valid
-    COMMAND ${CMAKE_COMMAND} -E env
-        test -f ${CMAKE_BINARY_DIR}/kernel.elf
+    COMMAND test -f ${CMAKE_BINARY_DIR}/kernel.elf
 )
-set_tests_properties(build_kernel_elf_valid PROPERTIES
-    LABELS "build"
-)
+set_tests_properties(build_kernel_elf_valid PROPERTIES LABELS "build")
 
 # Test that vinit.elf exists
 add_test(
     NAME build_vinit_elf_valid
-    COMMAND ${CMAKE_COMMAND} -E env
-        test -f ${CMAKE_BINARY_DIR}/vinit.elf
+    COMMAND test -f ${CMAKE_BINARY_DIR}/vinit.elf
 )
-set_tests_properties(build_vinit_elf_valid PROPERTIES
-    LABELS "build"
-)
+set_tests_properties(build_vinit_elf_valid PROPERTIES LABELS "build")
 
 # Test that BOOTAA64.EFI exists
 add_test(
     NAME build_bootloader_valid
-    COMMAND ${CMAKE_COMMAND} -E env
-        test -f ${CMAKE_BINARY_DIR}/BOOTAA64.EFI
+    COMMAND test -f ${CMAKE_BINARY_DIR}/BOOTAA64.EFI
 )
-set_tests_properties(build_bootloader_valid PROPERTIES
-    LABELS "build"
-)
+set_tests_properties(build_bootloader_valid PROPERTIES LABELS "build")
 
-# -----------------------------------------------------------------------------
-# Toolchain Boot Test
-# -----------------------------------------------------------------------------
+# =============================================================================
+# Toolchain Verification Test
+# =============================================================================
 
 # Build the toolchain test (minimal freestanding C++ that runs in QEMU)
 add_executable(toolchain-test.elf
@@ -82,161 +206,147 @@ target_link_options(toolchain-test.elf PRIVATE
     -T ${CMAKE_CURRENT_SOURCE_DIR}/boot/toolchain-test.ld
 )
 
-# -----------------------------------------------------------------------------
-# QEMU Tests (only if QEMU is available)
-# -----------------------------------------------------------------------------
+# =============================================================================
+# QEMU Integration Tests
+# =============================================================================
 
 if(VIPEROS_HAS_QEMU)
-    # Create test runner script
-    file(WRITE ${CMAKE_BINARY_DIR}/run_qemu_test.sh
-"#!/bin/bash
-# QEMU test runner - runs kernel and checks for expected output
-KERNEL=\"\$1\"
-EXPECTED=\"\$2\"
-TIMEOUT=5
-
-OUTPUT=\$(timeout \${TIMEOUT}s ${QEMU_AARCH64} \\
-    -machine virt \\
-    -cpu cortex-a72 \\
-    -m 64M \\
-    -nographic \\
-    -kernel \"\${KERNEL}\" \\
-    -serial mon:stdio \\
-    2>&1)
-
-if echo \"\${OUTPUT}\" | grep -q \"\${EXPECTED}\"; then
-    echo \"PASS: Found expected output\"
-    exit 0
-else
-    echo \"FAIL: Expected '\${EXPECTED}' not found in output:\"
-    echo \"\${OUTPUT}\"
-    exit 1
-fi
-")
-    file(CHMOD ${CMAKE_BINARY_DIR}/run_qemu_test.sh
-        PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
+    # Make test runner executable
+    execute_process(
+        COMMAND chmod +x ${QEMU_TEST_RUNNER}
     )
 
-    # Toolchain test - verify cross-compilation works
+    # --- Toolchain test ---
+    # Verifies cross-compilation works by running minimal code
     add_test(
-        NAME qemu_toolchain_test
-        COMMAND ${CMAKE_BINARY_DIR}/run_qemu_test.sh
-            ${CMAKE_BINARY_DIR}/toolchain-test.elf
-            "Toolchain works!"
+        NAME qemu_toolchain
+        COMMAND ${QEMU_TEST_RUNNER}
+            --qemu ${QEMU_AARCH64}
+            --kernel ${CMAKE_BINARY_DIR}/toolchain-test.elf
+            --name toolchain
+            --log-dir ${TEST_LOG_DIR}
+            --timeout 10
+            --memory 64M
+            --expect "Toolchain works!"
     )
-    set_tests_properties(qemu_toolchain_test PROPERTIES
-        LABELS "qemu;integration"
-        TIMEOUT 10
-    )
-
-    # Kernel boot test - verify kernel starts and prints banner
-    add_test(
-        NAME qemu_kernel_boot
-        COMMAND ${CMAKE_BINARY_DIR}/run_qemu_test.sh
-            ${CMAKE_BINARY_DIR}/kernel.elf
-            "ViperOS"
-    )
-    set_tests_properties(qemu_kernel_boot PROPERTIES
-        LABELS "qemu;integration"
-        TIMEOUT 15
+    set_tests_properties(qemu_toolchain PROPERTIES
+        LABELS "qemu;toolchain"
+        TIMEOUT 30
     )
 
-    # -----------------------------------------------------------------------------
-    # Kernel Subsystem Tests (run inside QEMU)
-    # -----------------------------------------------------------------------------
-
-    # Create extended test runner with longer timeout for full test suites
-    file(WRITE ${CMAKE_BINARY_DIR}/run_qemu_kernel_tests.sh
-"#!/bin/bash
-# QEMU kernel test runner - runs kernel with disk and checks for test results
-KERNEL=\"\$1\"
-EXPECTED=\"\$2\"
-TIMEOUT=30
-BUILD_DIR=\"\$(dirname \"\${KERNEL}\")\"
-DISK_IMG=\"\${BUILD_DIR}/disk.img\"
-
-# Build QEMU command
-QEMU_OPTS=(
-    -machine virt
-    -cpu cortex-a72
-    -m 128M
-    -nographic
-    -kernel \"\${KERNEL}\"
-    -serial mon:stdio
-    -device virtio-rng-device
-)
-
-# Add disk if it exists
-if [[ -f \"\${DISK_IMG}\" ]]; then
-    QEMU_OPTS+=(
-        -drive \"file=\${DISK_IMG},if=none,format=raw,id=disk0\"
-        -device virtio-blk-device,drive=disk0
-    )
-fi
-
-OUTPUT=\$(timeout \${TIMEOUT}s ${QEMU_AARCH64} \"\${QEMU_OPTS[@]}\" 2>&1)
-
-if echo \"\${OUTPUT}\" | grep -q \"\${EXPECTED}\"; then
-    echo \"PASS: Found expected output: \${EXPECTED}\"
-    # Also print test summary if available
-    echo \"\${OUTPUT}\" | grep -E '\\[TEST\\]|\\[RESULT\\]|\\[SUITE\\]|Passed:|Failed:'
-    exit 0
-else
-    echo \"FAIL: Expected '\${EXPECTED}' not found in output\"
-    echo \"=== Full output ===\"
-    echo \"\${OUTPUT}\"
-    exit 1
-fi
-")
-    file(CHMOD ${CMAKE_BINARY_DIR}/run_qemu_kernel_tests.sh
-        PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
+    # --- Boot smoke test ---
+    # Verifies kernel boots and prints banner
+    add_qemu_test(boot_smoke
+        --timeout 15
+        --expect "ViperOS"
+        --expect "AArch64"
     )
 
-    # Storage subsystem tests (assigns, VFS, ViperFS)
-    add_test(
-        NAME qemu_storage_tests
-        COMMAND ${CMAKE_BINARY_DIR}/run_qemu_kernel_tests.sh
-            ${CMAKE_BINARY_DIR}/kernel.elf
-            "ALL STORAGE TESTS PASSED"
-    )
-    set_tests_properties(qemu_storage_tests PROPERTIES
-        LABELS "qemu;kernel;storage"
-        TIMEOUT 60
+    # --- Memory initialization test ---
+    add_qemu_test(memory_init
+        --timeout 20
+        --expect "\\[pmm\\].*physical memory"
+        --expect "\\[vmm\\].*VMM initialized"
+        --expect "\\[kheap\\].*kernel heap"
     )
 
-    # Viper subsystem tests (channels, poll, capabilities)
-    add_test(
-        NAME qemu_viper_tests
-        COMMAND ${CMAKE_BINARY_DIR}/run_qemu_kernel_tests.sh
-            ${CMAKE_BINARY_DIR}/kernel.elf
-            "ALL VIPER TESTS PASSED"
+    # --- Storage subsystem tests ---
+    add_qemu_test(storage_tests
+        --disk
+        --timeout 45
+        --expect "ALL STORAGE TESTS PASSED"
+        --forbid "FAILED"
     )
-    set_tests_properties(qemu_viper_tests PROPERTIES
-        LABELS "qemu;kernel;viper"
-        TIMEOUT 60
-    )
+    set_tests_properties(qemu_storage_tests PROPERTIES LABELS "qemu;kernel;storage")
 
-    # IPC ping-pong test
-    add_test(
-        NAME qemu_ipc_pingpong
-        COMMAND ${CMAKE_BINARY_DIR}/run_qemu_kernel_tests.sh
-            ${CMAKE_BINARY_DIR}/kernel.elf
-            "Ping task done"
+    # --- Viper subsystem tests ---
+    add_qemu_test(viper_tests
+        --disk
+        --timeout 45
+        --expect "ALL VIPER TESTS PASSED"
+        --forbid "FAILED"
     )
-    set_tests_properties(qemu_ipc_pingpong PROPERTIES
-        LABELS "qemu;kernel;ipc"
-        TIMEOUT 60
-    )
+    set_tests_properties(qemu_viper_tests PROPERTIES LABELS "qemu;kernel;viper")
 
-    # Scheduler test - verify scheduler starts
-    add_test(
-        NAME qemu_scheduler_start
-        COMMAND ${CMAKE_BINARY_DIR}/run_qemu_kernel_tests.sh
-            ${CMAKE_BINARY_DIR}/kernel.elf
-            "Starting scheduler"
+    # --- Syscall dispatch tests ---
+    add_qemu_test(syscall_dispatch
+        --disk
+        --timeout 45
+        --expect "ALL SYSCALL TESTS PASSED"
+        --forbid "FAILED"
     )
-    set_tests_properties(qemu_scheduler_start PROPERTIES
-        LABELS "qemu;kernel;scheduler"
-        TIMEOUT 60
+    set_tests_properties(qemu_syscall_dispatch PROPERTIES LABELS "qemu;kernel;syscall")
+
+    # --- IPC ping-pong test ---
+    add_qemu_test(ipc_pingpong
+        --disk
+        --timeout 45
+        --expect "Ping task done"
     )
+    set_tests_properties(qemu_ipc_pingpong PROPERTIES LABELS "qemu;kernel;ipc")
+
+    # --- Scheduler test ---
+    add_qemu_test(scheduler
+        --disk
+        --timeout 45
+        --expect "Starting scheduler"
+        --expect "First task:"
+    )
+    set_tests_properties(qemu_scheduler PROPERTIES LABELS "qemu;kernel;scheduler")
+
+    # --- User fault tests ---
+    # Tests that user-mode faults terminate only the faulting process
+    # Note: null deref causes permission_fault (page 0 is mapped with no perms)
+    add_qemu_test(userfault_tests
+        --disk
+        --timeout 90
+        --expect "ALL USERFAULT TESTS PASSED"
+        --expect "USERFAULT.*kind=permission_fault"
+        --expect "USERFAULT.*kind=illegal_instruction"
+        --expect "Kernel still alive after null deref test"
+        --expect "Kernel still alive after illegal insn test"
+        --forbid "KERNEL PANIC"
+        --forbid "USERFAULT TESTS FAILED"
+    )
+    set_tests_properties(qemu_userfault_tests PROPERTIES LABELS "qemu;kernel;userfault")
+
+    # --- Network initialization test ---
+    add_qemu_test(network_init
+        --disk
+        --timeout 45
+        --expect "Network stack initialized"
+        --expect "virtio-net.*initialized"
+    )
+    set_tests_properties(qemu_network_init PROPERTIES LABELS "qemu;kernel;network")
+
+    # --- User space test (vinit starts) ---
+    # NOTE: This test is currently disabled - vinit is not yet on the disk image
+    # Uncomment when userspace init is implemented:
+    # add_qemu_test(userspace_init
+    #     --disk
+    #     --timeout 60
+    #     --expect "vinit.*entering user mode\\|user task 'vinit'"
+    #     --expect "ViperOS.*Shell"
+    # )
+    # set_tests_properties(qemu_userspace_init PROPERTIES LABELS "qemu;kernel;userspace")
+
 endif()
+
+# =============================================================================
+# Summary
+# =============================================================================
+
+message(STATUS "")
+message(STATUS "ViperOS Test Configuration:")
+message(STATUS "  Host tests:      enabled")
+message(STATUS "  Build tests:     enabled")
+message(STATUS "  QEMU tests:      ${VIPEROS_HAS_QEMU}")
+if(VIPEROS_HAS_QEMU)
+    message(STATUS "  QEMU path:       ${QEMU_AARCH64}")
+endif()
+message(STATUS "  Test logs:       ${TEST_LOG_DIR}")
+message(STATUS "")
+message(STATUS "Run tests with: ctest --test-dir build -V")
+message(STATUS "Run host only:  ctest --test-dir build -L host")
+message(STATUS "Run QEMU only:  ctest --test-dir build -L qemu")
+message(STATUS "")
