@@ -68,6 +68,102 @@ struct Superblock
 
 static_assert(sizeof(Superblock) == 4096, "Superblock must be 4096 bytes");
 
+// ============================================================================
+// Journal Structures
+// ============================================================================
+
+/** @brief Journal magic number for header validation. */
+constexpr u32 JOURNAL_MAGIC = 0x4A524E4C; // "JRNL"
+
+/** @brief Maximum number of blocks in a single transaction. */
+constexpr u32 MAX_JOURNAL_BLOCKS = 32;
+
+/** @brief Size of journal in blocks (16 blocks = 64KB by default). */
+constexpr u64 JOURNAL_BLOCKS = 16;
+
+/**
+ * @brief Transaction state in journal.
+ */
+namespace txn_state
+{
+constexpr u8 TXN_INVALID = 0;   // Invalid/unused entry
+constexpr u8 TXN_ACTIVE = 1;   // Transaction in progress
+constexpr u8 TXN_COMMITTED = 2; // Transaction committed (needs replay)
+constexpr u8 TXN_COMPLETE = 3;  // Transaction completed (can be discarded)
+} // namespace txn_state
+
+/**
+ * @brief Journal header stored at the first journal block.
+ *
+ * @details
+ * Contains metadata about the journal state and the location of the
+ * first valid transaction. Updated atomically when transactions complete.
+ */
+struct JournalHeader
+{
+    u32 magic;           // JOURNAL_MAGIC
+    u32 version;         // Journal format version (1)
+    u64 sequence;        // Current transaction sequence number
+    u64 start_block;     // First block of journal data area
+    u64 num_blocks;      // Total blocks in journal data area
+    u64 head;            // Head of journal (oldest valid transaction)
+    u64 tail;            // Tail of journal (next write position)
+    u8 _reserved[4048];  // Padding to 4096 bytes (4096 - 48 = 4048)
+};
+
+static_assert(sizeof(JournalHeader) == 4096, "JournalHeader must be 4096 bytes");
+
+/**
+ * @brief Individual block record in a transaction.
+ *
+ * @details
+ * Records the original block number that was modified. The actual block
+ * data follows this record.
+ */
+struct JournalBlockRecord
+{
+    u64 block_num;  // Original block number on disk
+    u64 checksum;   // Simple checksum of block data
+};
+
+/**
+ * @brief Transaction descriptor stored at the start of each transaction.
+ *
+ * @details
+ * A transaction consists of:
+ * 1. This transaction descriptor
+ * 2. Array of JournalBlockRecord entries
+ * 3. The actual block data for each record
+ * 4. A commit record (magic number) at the end
+ */
+struct JournalTransaction
+{
+    u32 magic;           // JOURNAL_MAGIC
+    u8 state;            // txn_state value
+    u8 num_blocks;       // Number of blocks in this transaction
+    u16 _padding;
+    u64 sequence;        // Transaction sequence number
+    u64 timestamp;       // Transaction timestamp
+    JournalBlockRecord blocks[MAX_JOURNAL_BLOCKS]; // Block records (32 * 16 = 512 bytes)
+    u8 _reserved[3560];  // Padding to 4096 bytes (4096 - 4 - 1 - 1 - 2 - 8 - 8 - 512 = 3560)
+};
+
+static_assert(sizeof(JournalTransaction) == 4096, "JournalTransaction must be 4096 bytes");
+
+/**
+ * @brief Commit record marking the end of a valid transaction.
+ */
+struct JournalCommit
+{
+    u32 magic;       // JOURNAL_MAGIC
+    u64 sequence;    // Must match transaction sequence
+    u32 checksum;    // Checksum of entire transaction
+    u8 _reserved[4076]; // Padding to 4096 bytes
+};
+
+static_assert(sizeof(JournalCommit) == 4096, "JournalCommit must be 4096 bytes");
+
+// ============================================================================
 // Inode mode bits
 /**
  * @brief Inode mode/type and permission bits.

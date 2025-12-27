@@ -24,6 +24,7 @@
 
 #include "../cap/table.hpp"
 #include "../include/types.hpp"
+#include "../mm/vma.hpp"
 
 // Forward declarations
 namespace task
@@ -107,6 +108,10 @@ struct Viper
     // Heap tracking
     u64 heap_start; /**< Base virtual address for the user heap region. */
     u64 heap_break; /**< Current program break (end of the heap). */
+    u64 heap_max;   /**< Maximum heap address (heap_start + 64MB by default). */
+
+    // Virtual memory areas for demand paging
+    mm::VmaList vma_list; /**< VMA tracking for this process's address space. */
 
     // Resource limits
     u64 memory_used;  /**< Approximate memory usage accounting (bytes). */
@@ -259,6 +264,20 @@ void exit(i32 code);
  * @return Process ID of reaped child on success, negative error on failure.
  */
 i64 wait(i64 child_id, i32 *status);
+
+/**
+ * @brief Adjust the heap break for a process (sbrk implementation).
+ *
+ * @details
+ * If increment == 0, returns current heap_break.
+ * If increment > 0, allocates and maps new pages, extends heap_break.
+ * If increment < 0, unmaps pages and shrinks heap_break.
+ *
+ * @param v Process whose heap to adjust.
+ * @param increment Amount to adjust heap break by (can be negative).
+ * @return Previous heap break on success, negative error code on failure.
+ */
+i64 do_sbrk(Viper *v, i64 increment);
 
 /**
  * @brief Reap a zombie child process and free its resources.

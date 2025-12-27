@@ -2960,6 +2960,68 @@ void shell_loop()
  *
  * When the shell exits, the process terminates via @ref sys::exit.
  */
+// Simple sbrk wrapper for startup malloc test
+static void *vinit_sbrk(long increment)
+{
+    sys::SyscallResult r = sys::syscall1(0x0A, static_cast<u64>(increment));
+    if (r.error < 0)
+    {
+        return reinterpret_cast<void *>(-1);
+    }
+    return reinterpret_cast<void *>(r.val0);
+}
+
+// Quick malloc test at startup
+static void test_malloc_at_startup()
+{
+    puts("[vinit] Testing malloc/sbrk...\n");
+
+    // Get initial break
+    void *brk = vinit_sbrk(0);
+    puts("[vinit]   Initial heap: ");
+    put_hex(reinterpret_cast<u64>(brk));
+    puts("\n");
+
+    // Allocate 1KB
+    void *ptr = vinit_sbrk(1024);
+    if (ptr == reinterpret_cast<void *>(-1))
+    {
+        puts("[vinit]   ERROR: sbrk(1024) failed!\n");
+        return;
+    }
+
+    puts("[vinit]   Allocated 1KB at: ");
+    put_hex(reinterpret_cast<u64>(ptr));
+    puts("\n");
+
+    // Write to it
+    char *cptr = static_cast<char *>(ptr);
+    for (int i = 0; i < 1024; i++)
+    {
+        cptr[i] = static_cast<char>(i & 0xFF);
+    }
+
+    // Verify
+    bool ok = true;
+    for (int i = 0; i < 1024; i++)
+    {
+        if (cptr[i] != static_cast<char>(i & 0xFF))
+        {
+            ok = false;
+            break;
+        }
+    }
+
+    if (ok)
+    {
+        puts("[vinit]   Memory R/W test PASSED\n");
+    }
+    else
+    {
+        puts("[vinit]   ERROR: Memory verification FAILED!\n");
+    }
+}
+
 extern "C" void _start()
 {
     puts("========================================\n");
@@ -2973,6 +3035,10 @@ extern "C" void _start()
     puts("  C:   = SYS:c\n");
     puts("  S:   = SYS:s\n");
     puts("  T:   = SYS:t\n");
+    puts("\n");
+
+    // Run startup malloc test
+    test_malloc_at_startup();
 
     // Run the shell
     shell_loop();

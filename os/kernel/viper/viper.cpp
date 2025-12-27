@@ -68,6 +68,7 @@ void init()
         vipers[i].wait_queue = nullptr;
         vipers[i].heap_start = layout::USER_HEAP_BASE;
         vipers[i].heap_break = layout::USER_HEAP_BASE;
+        vipers[i].heap_max = layout::USER_HEAP_BASE + (64 * 1024 * 1024); // 64MB heap limit
         vipers[i].memory_used = 0;
         vipers[i].memory_limit = DEFAULT_MEMORY_LIMIT;
         vipers[i].next_all = nullptr;
@@ -183,6 +184,20 @@ Viper *create(Viper *parent, const char *name)
     // Initialize heap
     v->heap_start = layout::USER_HEAP_BASE;
     v->heap_break = layout::USER_HEAP_BASE;
+    v->heap_max = layout::USER_HEAP_BASE + (64 * 1024 * 1024); // 64MB heap limit
+
+    // Initialize VMA list
+    v->vma_list.init();
+
+    // Add initial VMAs for heap and stack regions
+    // Heap VMA (will grow as sbrk is called)
+    v->vma_list.add(layout::USER_HEAP_BASE, v->heap_max,
+                    mm::vma_prot::READ | mm::vma_prot::WRITE, mm::VmaType::ANONYMOUS);
+
+    // Stack VMA (grows downward from USER_STACK_TOP)
+    u64 stack_bottom = layout::USER_STACK_TOP - layout::USER_STACK_SIZE;
+    v->vma_list.add(stack_bottom, layout::USER_STACK_TOP,
+                    mm::vma_prot::READ | mm::vma_prot::WRITE, mm::VmaType::STACK);
 
     // Initialize resource tracking
     v->memory_used = 0;
@@ -515,6 +530,111 @@ void reap(Viper *child)
 
     // Now fully destroy the process
     destroy(child);
+}
+
+/** @copydoc viper::do_sbrk */
+i64 do_sbrk(Viper *v, i64 increment)
+{
+    if (!v)
+        return -1;
+
+    u64 old_break = v->heap_break;
+
+    // If increment is 0, just return current break
+    if (increment == 0)
+    {
+        return static_cast<i64>(old_break);
+    }
+
+    u64 new_break;
+    if (increment > 0)
+    {
+        new_break = old_break + static_cast<u64>(increment);
+    }
+    else
+    {
+        // increment is negative
+        u64 decrement = static_cast<u64>(-increment);
+        if (decrement > old_break - v->heap_start)
+        {
+            // Would shrink below heap_start
+            return error::VERR_INVALID_ARG;
+        }
+        new_break = old_break - decrement;
+    }
+
+    // Check heap limit
+    if (new_break > v->heap_max)
+    {
+        serial::puts("[viper] sbrk: heap limit exceeded\n");
+        return error::VERR_OUT_OF_MEMORY;
+    }
+
+    // Get the process address space
+    AddressSpace *as = get_address_space(v);
+    if (!as)
+    {
+        return error::VERR_NOT_SUPPORTED;
+    }
+
+    if (increment > 0)
+    {
+        // Allocate and map new pages
+        u64 old_page = pmm::page_align_up(old_break);
+        u64 new_page = pmm::page_align_up(new_break);
+
+        for (u64 addr = old_page; addr < new_page; addr += pmm::PAGE_SIZE)
+        {
+            // Allocate physical page
+            u64 phys = pmm::alloc_page();
+            if (phys == 0)
+            {
+                serial::puts("[viper] sbrk: out of physical memory\n");
+                // TODO: unmap pages we already mapped
+                return error::VERR_OUT_OF_MEMORY;
+            }
+
+            // Zero the page
+            void *page_ptr = pmm::phys_to_virt(phys);
+            for (usize i = 0; i < pmm::PAGE_SIZE; i++)
+            {
+                static_cast<u8 *>(page_ptr)[i] = 0;
+            }
+
+            // Map into user address space with RW permissions
+            if (!as->map(addr, phys, pmm::PAGE_SIZE, prot::RW))
+            {
+                serial::puts("[viper] sbrk: failed to map page\n");
+                pmm::free_page(phys);
+                return error::VERR_OUT_OF_MEMORY;
+            }
+        }
+
+        v->memory_used += static_cast<u64>(increment);
+    }
+    else
+    {
+        // Shrinking: unmap pages
+        u64 old_page = pmm::page_align_up(old_break);
+        u64 new_page = pmm::page_align_up(new_break);
+
+        for (u64 addr = new_page; addr < old_page; addr += pmm::PAGE_SIZE)
+        {
+            // Translate to get physical address
+            u64 phys = as->translate(addr);
+            if (phys != 0)
+            {
+                // Unmap and free
+                as->unmap(addr, pmm::PAGE_SIZE);
+                pmm::free_page(phys);
+            }
+        }
+
+        v->memory_used -= static_cast<u64>(-increment);
+    }
+
+    v->heap_break = new_break;
+    return static_cast<i64>(old_break);
 }
 
 } // namespace viper

@@ -888,6 +888,82 @@ extern "C" void kernel_main(void *boot_info_ptr)
             }
         }
 
+        // Test sbrk syscall
+        serial::puts("[kernel] Testing sbrk...\n");
+        {
+            u64 initial_break = test_viper->heap_break;
+            serial::puts("[kernel]   Initial heap break: ");
+            serial::put_hex(initial_break);
+            serial::puts("\n");
+
+            // Test sbrk(0) - should return current break
+            i64 result = viper::do_sbrk(test_viper, 0);
+            if (result == static_cast<i64>(initial_break))
+            {
+                serial::puts("[kernel]   sbrk(0) returned correct break\n");
+            }
+            else
+            {
+                serial::puts("[kernel]   ERROR: sbrk(0) returned wrong value\n");
+            }
+
+            // Test allocating 4KB (one page)
+            result = viper::do_sbrk(test_viper, 4096);
+            if (result == static_cast<i64>(initial_break))
+            {
+                serial::puts("[kernel]   sbrk(4096) returned old break\n");
+                serial::puts("[kernel]   New heap break: ");
+                serial::put_hex(test_viper->heap_break);
+                serial::puts("\n");
+
+                // Verify page was actually mapped by getting address space
+                viper::AddressSpace *as = viper::get_address_space(test_viper);
+                if (as)
+                {
+                    u64 phys = as->translate(initial_break);
+                    if (phys != 0)
+                    {
+                        serial::puts("[kernel]   Heap page mapped to phys: ");
+                        serial::put_hex(phys);
+                        serial::puts("\n");
+
+                        // Write and read to verify it works
+                        u32 *ptr = static_cast<u32 *>(pmm::phys_to_virt(phys));
+                        ptr[0] = 0xCAFEBABE;
+                        if (ptr[0] == 0xCAFEBABE)
+                        {
+                            serial::puts("[kernel]   Heap memory R/W test PASSED\n");
+                        }
+                        else
+                        {
+                            serial::puts("[kernel]   ERROR: Heap memory R/W test FAILED\n");
+                        }
+                    }
+                    else
+                    {
+                        serial::puts("[kernel]   ERROR: Heap page not mapped!\n");
+                    }
+                }
+            }
+            else
+            {
+                serial::puts("[kernel]   ERROR: sbrk(4096) failed with ");
+                serial::put_dec(result);
+                serial::puts("\n");
+            }
+
+            // Allocate more to cross page boundary
+            result = viper::do_sbrk(test_viper, 8192);
+            if (result > 0)
+            {
+                serial::puts("[kernel]   sbrk(8192) succeeded, new break: ");
+                serial::put_hex(test_viper->heap_break);
+                serial::puts("\n");
+            }
+
+            serial::puts("[kernel] sbrk test complete\n");
+        }
+
         // Load vinit from disk
         serial::puts("[kernel] Loading vinit from disk...\n");
 

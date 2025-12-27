@@ -1,6 +1,7 @@
 #include "poll.hpp"
 #include "../arch/aarch64/timer.hpp"
 #include "../console/serial.hpp"
+#include "../drivers/virtio/net.hpp"
 #include "../sched/scheduler.hpp"
 #include "../sched/task.hpp"
 #include "channel.hpp"
@@ -281,6 +282,17 @@ i64 poll(PollEvent *events, u32 count, i64 timeout_ms)
                 if (timer_expired(handle))
                 {
                     events[i].triggered = events[i].triggered | EventType::TIMER;
+                    ready_count++;
+                }
+            }
+
+            // Check for network RX readiness
+            if (has_event(requested, EventType::NETWORK_RX))
+            {
+                virtio::NetDevice *net = virtio::net_device();
+                if (net && net->has_rx_data())
+                {
+                    events[i].triggered = events[i].triggered | EventType::NETWORK_RX;
                     ready_count++;
                 }
             }

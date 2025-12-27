@@ -101,6 +101,17 @@ constexpr u16 LINK_UP = 1;
 constexpr u16 ANNOUNCE = 2;
 } // namespace net_status
 
+} // namespace virtio
+
+// Forward declaration for task wait list (must be at global scope)
+namespace task
+{
+struct Task;
+}
+
+namespace virtio
+{
+
 // Network device driver
 /**
  * @brief Virtio network device driver instance.
@@ -111,13 +122,17 @@ constexpr u16 ANNOUNCE = 2;
  * - A pool of receive buffers posted to the RX queue.
  * - A small ring of "received packet" pointers into RX buffers for consumers.
  * - A single header buffer used for TX header.
+ * - IRQ-based receive notification with wait queue.
  *
- * Reception is polling-driven via @ref poll_rx and @ref receive. Transmission
- * waits for completion by polling the used ring.
+ * Reception is interrupt-driven: the device triggers an IRQ when packets
+ * arrive, and waiting tasks are woken via @ref rx_waiters_.
  */
 class NetDevice : public Device
 {
   public:
+    // Maximum waiters for RX
+    static constexpr usize MAX_RX_WAITERS = 8;
+
     // Initialize the network device
     /**
      * @brief Initialize the virtio-net device.
@@ -182,6 +197,53 @@ class NetDevice : public Device
     // Check if link is up
     /** @brief Return whether the link is considered up. */
     bool link_up() const;
+
+    // IRQ-based reception
+
+    /**
+     * @brief Handle RX interrupt from the device.
+     *
+     * @details
+     * Called from the GIC IRQ handler when the virtio-net device signals
+     * an interrupt. Processes received packets and wakes any waiting tasks.
+     */
+    void rx_irq_handler();
+
+    /**
+     * @brief Register a task to wait for RX data.
+     *
+     * @details
+     * Adds the specified task to the RX wait queue. When data arrives
+     * (via interrupt), waiting tasks will be woken.
+     *
+     * @param t Task to register as waiting.
+     * @return true if successfully registered, false if wait queue is full.
+     */
+    bool register_rx_waiter(task::Task *t);
+
+    /**
+     * @brief Remove a task from the RX wait queue.
+     *
+     * @param t Task to remove.
+     */
+    void unregister_rx_waiter(task::Task *t);
+
+    /**
+     * @brief Check if there are received packets available.
+     *
+     * @return true if data is ready to be read.
+     */
+    bool has_rx_data() const;
+
+    /**
+     * @brief Get the IRQ number for this device.
+     *
+     * @return IRQ number assigned to this device.
+     */
+    u32 irq() const
+    {
+        return irq_;
+    }
 
     // Statistics
     u64 tx_packets() const
@@ -261,11 +323,20 @@ class NetDevice : public Device
     u64 tx_dropped_{0};
     u64 rx_dropped_{0};
 
+    // IRQ number for this device
+    u32 irq_{0};
+
+    // RX waiters (tasks waiting for data)
+    task::Task *rx_waiters_[MAX_RX_WAITERS];
+    usize rx_waiter_count_{0};
+
     // Internal methods
     /** @brief Submit an RX buffer to the device. */
     void queue_rx_buffer(usize idx);
     /** @brief Refill RX queue with any buffers that are no longer in use. */
     void refill_rx_buffers();
+    /** @brief Wake all tasks waiting for RX data. */
+    void wake_rx_waiters();
 };
 
 // Global network device initialization and access

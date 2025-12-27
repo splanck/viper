@@ -179,7 +179,12 @@ build_viperos() {
         fi
 
         # Create disk image
-        "$PROJECT_DIR/tools/mkfs.viperfs" "$BUILD_DIR/disk.img" 8 "$BUILD_DIR/vinit.elf" >/dev/null 2>&1 || {
+        # Create disk image with vinit.elf and hello.elf
+        local mkfs_args=("$BUILD_DIR/disk.img" 8 "$BUILD_DIR/vinit.elf")
+        if [[ -f "$BUILD_DIR/hello.elf" ]]; then
+            mkfs_args+=("$BUILD_DIR/hello.elf")
+        fi
+        "$PROJECT_DIR/tools/mkfs.viperfs" "${mkfs_args[@]}" >/dev/null 2>&1 || {
             echo -e "${RED}[ERROR]${NC} Failed to create disk image"
             return 1
         }
@@ -541,34 +546,48 @@ test_path_command() {
 }
 
 test_run_command() {
-    log_test "RUN command spawns hello.elf"
+    log_test "RUN command spawns hello.elf (malloc test)"
 
     send_command "Run /hello.elf"
-    sleep 2
+    sleep 5  # Give time for malloc tests to complete
 
     local output
     output=$(cat "$SERIAL_OUTPUT")
 
-    # Check for output from spawned process
-    if echo "$output" | grep -q "Hello from spawned process"; then
-        pass "RUN spawned hello.elf successfully"
+    # Check for malloc test output
+    if echo "$output" | grep -q "All tests PASSED"; then
+        pass "RUN spawned hello.elf - malloc tests PASSED"
         return 0
-    elif echo "$output" | grep -q "Started process"; then
-        # Process started but may not have printed yet
-        sleep 1
-        output=$(cat "$SERIAL_OUTPUT")
-        if echo "$output" | grep -q "Hello from spawned process"; then
-            pass "RUN spawned hello.elf successfully"
-            return 0
-        else
-            fail "RUN started process but hello output not found" "Hello from spawned process" "process started but no output"
+    elif echo "$output" | grep -q "\[malloc_test\]"; then
+        # Check if tests are running
+        if echo "$output" | grep -qi "FAILED"; then
+            fail "RUN: malloc test FAILED" "All tests PASSED" "$(echo "$output" | grep -i FAILED | tail -1)"
             return 1
+        else
+            # Tests running, wait a bit more
+            sleep 3
+            output=$(cat "$SERIAL_OUTPUT")
+            if echo "$output" | grep -q "All tests PASSED"; then
+                pass "RUN spawned hello.elf - malloc tests PASSED"
+                return 0
+            else
+                fail "RUN: malloc test incomplete" "All tests PASSED" "tests running but not completed"
+                return 1
+            fi
         fi
+    elif echo "$output" | grep -q "Started process"; then
+        # Legacy hello output or waiting for output
+        if echo "$output" | grep -q "Hello from spawned process"; then
+            pass "RUN spawned hello.elf successfully (legacy output)"
+            return 0
+        fi
+        fail "RUN started process but output not found" "malloc test output" "process started but no test output"
+        return 1
     elif echo "$output" | grep -qi "failed to spawn"; then
         fail "RUN failed to spawn hello.elf" "successful spawn" "spawn failed"
         return 1
     else
-        fail "RUN command unexpected result" "Hello from spawned process" "$(echo "$output" | tail -10)"
+        fail "RUN command unexpected result" "malloc_test output" "$(echo "$output" | tail -10)"
         return 1
     fi
 }

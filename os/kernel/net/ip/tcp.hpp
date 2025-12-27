@@ -160,6 +160,38 @@ struct TcpSocket
 
     // Timeout tracking
     u64 last_activity;
+
+    // Congestion control (RFC 5681)
+    u32 cwnd;     // Congestion window (bytes)
+    u32 ssthresh; // Slow start threshold (bytes)
+    u32 dup_acks; // Duplicate ACK count (for fast retransmit)
+
+    // RTT estimation (RFC 6298)
+    u32 srtt;   // Smoothed RTT (microseconds * 8)
+    u32 rttvar; // RTT variance (microseconds * 4)
+    bool rtt_measured; // Have we measured an RTT sample?
+
+    // Flight size tracking
+    u32 bytes_in_flight; // Unacknowledged bytes currently in network
+
+    // Congestion control constants
+    static constexpr u32 INITIAL_CWND_SEGMENTS = 10; // IW = 10 segments (RFC 6928)
+    static constexpr u32 MIN_SSTHRESH = 2 * 1460;    // Min ssthresh = 2 * MSS
+    static constexpr u32 DUP_ACK_THRESHOLD = 3;      // Fast retransmit threshold
+
+    // Out-of-order segment queue for reassembly
+    static constexpr usize OOO_MAX_SEGMENTS = 8;     // Max out-of-order segments to buffer
+    static constexpr usize OOO_SEGMENT_SIZE = 1460;  // Max size per OOO segment
+
+    struct OooSegment
+    {
+        u32 seq;                    // Sequence number of segment
+        u16 len;                    // Length of segment data
+        bool valid;                 // Segment is valid
+        u8 data[OOO_SEGMENT_SIZE];  // Segment data
+    };
+
+    OooSegment ooo_queue[OOO_MAX_SEGMENTS]; // Out-of-order segment queue
 };
 
 /** @brief Maximum number of concurrently allocated TCP sockets. */

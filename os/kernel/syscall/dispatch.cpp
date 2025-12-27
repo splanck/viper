@@ -1057,7 +1057,7 @@ static i64 sys_waitpid(i64 pid, i32 *status_out)
  * @brief Implementation of `SYS_SBRK` - adjust process heap break.
  *
  * @param increment Amount to adjust heap break by (can be negative).
- * @return Previous heap break on success, or -1 on error.
+ * @return Previous heap break on success, or negative error code on failure.
  */
 static i64 sys_sbrk(i64 increment)
 {
@@ -1065,18 +1065,7 @@ static i64 sys_sbrk(i64 increment)
     if (!v)
         return -1;
 
-    u64 old_break = v->heap_break;
-    u64 new_break = old_break + increment;
-
-    // Don't allow shrinking below heap start
-    if (new_break < v->heap_start)
-        return -1;
-
-    // For now, just update the break without actually mapping pages
-    // A full implementation would allocate/deallocate pages as needed
-    v->heap_break = new_break;
-
-    return static_cast<i64>(old_break);
+    return viper::do_sbrk(v, increment);
 }
 
 /**

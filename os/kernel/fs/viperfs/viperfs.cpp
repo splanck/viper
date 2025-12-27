@@ -19,6 +19,7 @@
 #include "../../mm/kheap.hpp"
 #include "../../mm/slab.hpp"
 #include "../cache.hpp"
+#include "journal.hpp"
 
 namespace fs::viperfs
 {
@@ -120,6 +121,27 @@ bool ViperFS::mount()
     serial::put_dec(sb_.root_inode);
     serial::puts("\n");
 
+    // Initialize journal (located after data blocks)
+    // Use the last JOURNAL_BLOCKS blocks of the filesystem for journaling
+    u64 journal_start = sb_.total_blocks - JOURNAL_BLOCKS;
+    if (journal_start > sb_.data_start)
+    {
+        if (journal_init(journal_start, JOURNAL_BLOCKS))
+        {
+            // Replay any committed transactions from previous crash
+            journal().replay();
+            serial::puts("[viperfs] Journaling enabled\n");
+        }
+        else
+        {
+            serial::puts("[viperfs] Warning: journaling disabled\n");
+        }
+    }
+    else
+    {
+        serial::puts("[viperfs] Filesystem too small for journaling\n");
+    }
+
     return true;
 }
 
@@ -129,7 +151,11 @@ void ViperFS::unmount()
     if (!mounted_)
         return;
 
-    // Sync cache
+    // Sync journal and cache
+    if (journal().is_enabled())
+    {
+        journal().sync();
+    }
     cache().sync();
 
     mounted_ = false;
@@ -813,11 +839,20 @@ u64 ViperFS::create_file(Inode *dir, const char *name, usize name_len)
         return 0;
     }
 
+    // Begin journaled transaction
+    Transaction *txn = nullptr;
+    if (journal().is_enabled())
+    {
+        txn = journal().begin();
+    }
+
     // Allocate inode
     u64 ino = alloc_inode();
     if (ino == 0)
     {
         serial::puts("[viperfs] No free inodes\n");
+        if (txn)
+            journal().abort(txn);
         return 0;
     }
 
@@ -828,10 +863,24 @@ u64 ViperFS::create_file(Inode *dir, const char *name, usize name_len)
     new_inode.size = 0;
     new_inode.blocks = 0;
 
+    // Log inode block before modification
+    if (txn)
+    {
+        u64 inode_blk = inode_block(ino);
+        CacheBlock *blk = cache().get(inode_blk);
+        if (blk)
+        {
+            journal().log_block(txn, inode_blk, blk->data);
+            cache().release(blk);
+        }
+    }
+
     // Write inode to disk
     if (!write_inode(&new_inode))
     {
         free_inode(ino);
+        if (txn)
+            journal().abort(txn);
         return 0;
     }
 
@@ -839,11 +888,22 @@ u64 ViperFS::create_file(Inode *dir, const char *name, usize name_len)
     if (!add_dir_entry(dir, ino, name, name_len, file_type::FILE))
     {
         free_inode(ino);
+        if (txn)
+            journal().abort(txn);
         return 0;
     }
 
     // Update directory inode
     write_inode(dir);
+
+    // Commit the transaction
+    if (txn)
+    {
+        if (!journal().commit(txn))
+        {
+            serial::puts("[viperfs] Warning: journal commit failed\n");
+        }
+    }
 
     return ino;
 }

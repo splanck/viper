@@ -203,6 +203,11 @@ SyscallResult syscall4(u64 num, u64 arg0, u64 arg1, u64 arg2, u64 arg3);
 | `uptime()` | SYS_UPTIME | Get tick count |
 | `mem_info(info)` | SYS_MEM_INFO | Get memory stats |
 
+**Memory Management:**
+| Wrapper | Syscall | Description |
+|---------|---------|-------------|
+| `sbrk(increment)` | SYS_SBRK | Adjust program break |
+
 ---
 
 ### 3. Minimal libc (`libc/`)
@@ -242,8 +247,20 @@ A freestanding C library providing essential functions for user-space programs.
 | `exit(code)` | Terminate program |
 | `abs(n)` | Absolute value |
 | `atoi(s)` | String to integer |
-| `malloc(size)` | (Placeholder - not implemented) |
-| `free(ptr)` | (Placeholder - not implemented) |
+| `malloc(size)` | Allocate heap memory (via sbrk) |
+| `free(ptr)` | Free heap memory |
+| `calloc(n, size)` | Allocate zeroed memory |
+| `realloc(ptr, size)` | Resize allocation |
+
+**Heap Implementation:**
+The user-space heap uses a simple free-list allocator backed by the `sbrk` syscall:
+
+| Component | Description |
+|-----------|-------------|
+| `sbrk(increment)` | Syscall to adjust program break |
+| Allocator | First-fit free-list with coalescing |
+| Alignment | 16-byte aligned allocations |
+| Initial heap | Grows on demand via sbrk |
 
 **Build:**
 The libc is compiled as a static library (`libviperlibc.a`) that can be linked with user programs.
@@ -336,11 +353,9 @@ User space is tested via:
 
 ## Not Implemented
 
-- Multiple user programs (only vinit)
-- Program loading from filesystem
-- Shared libraries
+- Multiple user programs (hello.elf exists, more could be added)
+- Shared libraries / dynamic linking
 - Environment variables
-- Heap allocator (malloc/free)
 - Signal handling
 - Job control (bg/fg)
 - Pipes between commands
@@ -351,9 +366,9 @@ User space is tested via:
 
 ## Priority Recommendations
 
-1. **High:** Add ELF loader to spawn programs from filesystem
-2. **High:** Implement user-space malloc/free
-3. **Medium:** Add shell scripting support
-4. **Medium:** Implement pipes for command chaining
+1. **High:** Add more user-space programs / applications
+2. **High:** Add shell scripting support
+3. **Medium:** Implement pipes for command chaining
+4. **Medium:** Add environment variable support
 5. **Low:** Add job control (background processes)
 6. **Low:** Implement shared library support

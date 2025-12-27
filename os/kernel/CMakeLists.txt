@@ -26,6 +26,7 @@ set(KERNEL_SOURCES
         mm/kheap.cpp
         mm/slab.cpp
         mm/fault.cpp
+        mm/vma.cpp
         sched/task.cpp
         sched/context.S
         sched/scheduler.cpp
@@ -61,6 +62,7 @@ set(KERNEL_SOURCES
         net/http/http.cpp
         fs/cache.cpp
         fs/viperfs/viperfs.cpp
+        fs/viperfs/journal.cpp
         fs/vfs/vfs.cpp
         # Assign system (v0.2.0)
         assign/assign.cpp

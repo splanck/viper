@@ -1,12 +1,12 @@
 # ViperOS Implementation Status
 
-**Version:** December 2025
+**Version:** December 2025 (v0.2.2)
 **Target:** AArch64 (ARM64) on QEMU virt machine
-**Total SLOC:** ~29,300
+**Total SLOC:** ~31,000
 
 ## Executive Summary
 
-ViperOS is a capability-based microkernel operating system targeting AArch64. The current implementation provides a functional kernel with user-space process support, a complete TCP/IP stack with TLS 1.3, and an interactive shell. The system is designed for QEMU's `virt` machine but is structured for future hardware portability.
+ViperOS is a capability-based microkernel operating system targeting AArch64. The current implementation provides a functional kernel with full virtual memory support (demand paging, VMA tracking), a complete TCP/IP stack with TLS 1.3 and congestion control, a crash-consistent journaling filesystem, and an interactive shell with user-space heap support. The system is designed for QEMU's `virt` machine but is structured for future hardware portability.
 
 ---
 
@@ -124,25 +124,33 @@ ViperOS is a capability-based microkernel operating system targeting AArch64. Th
 
 ---
 
-## Priority Development Roadmap
+## Recent Implementations (v0.2.2)
+
+### Completed in This Release
+1. **Demand Paging with VMA Tracking** - Full page fault handling with VMA list per process
+2. **User-Space Heap (sbrk/malloc)** - Working malloc/free via sbrk syscall
+3. **Interrupt-Driven VirtIO Network** - RX wait queues with GIC interrupt registration
+4. **Filesystem Journaling** - Write-ahead logging for crash-consistent metadata
+5. **TCP Congestion Control (RFC 5681)** - Slow start, congestion avoidance, fast retransmit
+6. **TCP Out-of-Order Reassembly** - 8-segment OOO queue for packet reordering
+
+### Priority Development Roadmap
 
 ### High Priority
-1. Page fault handling for demand paging
-2. Priority-based scheduler
-3. Per-process file descriptor tables
-4. Interrupt-driven I/O
+1. Priority-based scheduler (currently FIFO)
+2. Multicore (SMP) support
+3. Shell scripting support
 
 ### Medium Priority
-1. ELF loader for spawning programs
-2. Proper TCP retransmission/congestion control
-3. Journaling for filesystem crash consistency
-4. Multicore (SMP) support
-
-### Low Priority
 1. IPv6 support
 2. VirtIO-GPU for hardware acceleration
 3. TLS session resumption
-4. Shared libraries
+4. More user-space programs
+
+### Low Priority
+1. Shared libraries
+2. Real-time scheduling class
+3. ECDSA certificate verification
 
 ---
 
@@ -217,35 +225,42 @@ os/
 ## What's Missing (Not Yet Implemented)
 
 ### Kernel
-- Page fault handling / demand paging
 - Signal delivery
 - Process groups / sessions
 - SMP / multicore
 - Power management
-- Real-time scheduling
+- Real-time scheduling class
 - Kernel modules
 
 ### Networking
 - IPv6
 - TCP window scaling
-- Out-of-order reassembly
-- Congestion control
 - TLS server mode / ECDSA
+- TLS session resumption
 
 ### Filesystem
-- Journaling
 - Hard links
 - File locking
+- Extended attributes
 
 ### User Space
-- Dynamic linking
-- Multiple programs
+- Dynamic linking / shared libraries
+- Multiple user programs (beyond hello.elf)
 - Shell scripting
-- Pipes
+- Pipes between commands
 
 ---
 
 ## Version History
+
+- **December 2025 (v0.2.2)**: Production-readiness features
+  - **Demand Paging**: VMA list per process, page fault handling for heap/stack
+  - **User-Space Heap**: sbrk syscall, working malloc/free in userspace
+  - **Interrupt-Driven Network**: VirtIO-net IRQ handling, RX wait queues
+  - **Filesystem Journaling**: Write-ahead log, transaction commit/replay for crash recovery
+  - **TCP Congestion Control**: RFC 5681 slow start, congestion avoidance, fast retransmit
+  - **TCP Out-of-Order Reassembly**: 8-segment OOO queue with delivery on sequence match
+  - **Slab Allocator**: Kernel memory allocator for fixed-size objects
 
 - **December 2025 (v0.2.1)**: Major feature additions
   - Process lifecycle: wait/exit/zombie handling
@@ -261,6 +276,7 @@ os/
   - Improved kernel panic output with stack traces
   - Console input buffer with line editing
   - Filesystem check tool (fsck.viperfs)
-- **December 2025 (v0.2.0)**: Initial documentation of complete implementation status
-- System is functional for QEMU bring-up and networking demos
-- All core subsystems implemented for single-core QEMU virt machine
+
+- **December 2025 (v0.2.0)**: Initial documentation
+  - System functional for QEMU bring-up and networking demos
+  - All core subsystems implemented for single-core QEMU virt machine

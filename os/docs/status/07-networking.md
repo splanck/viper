@@ -1,12 +1,12 @@
 # Networking Subsystem
 
-**Status:** Full TCP/IP stack with TLS 1.3 and HTTP
+**Status:** Production-ready TCP/IP stack with TLS 1.3, congestion control, and interrupt-driven I/O
 **Location:** `kernel/net/`
-**SLOC:** ~14,700
+**SLOC:** ~15,500
 
 ## Overview
 
-The networking subsystem provides a complete TCP/IP stack including Ethernet framing, ARP, IPv4, ICMP, UDP, TCP, DNS resolution, TLS 1.3, and HTTP client. It's designed for polled operation on top of the virtio-net device driver.
+The networking subsystem provides a complete TCP/IP stack including Ethernet framing, ARP, IPv4, ICMP, UDP, TCP with RFC 5681 congestion control and out-of-order reassembly, DNS resolution, TLS 1.3, and HTTP client. The implementation supports interrupt-driven packet reception via GIC-registered IRQs for efficient blocking I/O.
 
 ---
 
@@ -141,7 +141,7 @@ The networking subsystem provides a complete TCP/IP stack including Ethernet fra
 
 ### 6. TCP (`ip/tcp.cpp`, `tcp.hpp`)
 
-**Status:** Functional client/server implementation
+**Status:** Production-ready with congestion control and OOO reassembly
 
 **Implemented:**
 - TCP socket table (16 sockets)
@@ -158,7 +158,20 @@ The networking subsystem provides a complete TCP/IP stack including Ethernet fra
 - Unacknowledged data tracking (1460 bytes)
 - Configurable RTO (1-60 seconds)
 - Connection statistics (active count, listen count)
-- Simplified window management
+- **RFC 5681 Congestion Control:**
+  - Slow start (cwnd < ssthresh)
+  - Congestion avoidance (cwnd >= ssthresh)
+  - Fast retransmit on 3 duplicate ACKs
+  - Fast recovery with cwnd inflation
+  - ssthresh adjustment on loss
+- **Out-of-Order Reassembly:**
+  - 8-segment OOO queue per socket
+  - Segment buffering by sequence number
+  - Automatic delivery when gaps fill
+  - Duplicate segment detection
+- **Interrupt-Driven Receive:**
+  - Blocking socket_recv with task wait queue
+  - IRQ-triggered wakeup on packet arrival
 
 **TCP States:**
 ```
@@ -191,6 +204,26 @@ CLOSED ────────────────────────�
 | rcv_nxt | Receive next expected |
 | rx_buffer[4096] | Receive ring buffer |
 | tx_buffer[4096] | Transmit buffer |
+| cwnd | Congestion window (bytes) |
+| ssthresh | Slow start threshold |
+| dup_acks | Duplicate ACK counter |
+| ooo_queue[8] | Out-of-order segment queue |
+
+**Congestion Control (RFC 5681):**
+| Phase | cwnd Update | Trigger |
+|-------|-------------|---------|
+| Slow Start | cwnd += MSS per ACK | cwnd < ssthresh |
+| Congestion Avoidance | cwnd += MSS*MSS/cwnd | cwnd >= ssthresh |
+| Fast Retransmit | retransmit + fast recovery | 3 dup ACKs |
+| Timeout | cwnd = MSS, ssthresh = cwnd/2 | RTO expiry |
+
+**Out-of-Order Queue:**
+| Field | Description |
+|-------|-------------|
+| seq | Sequence number of segment |
+| len | Segment data length |
+| valid | Slot in use |
+| data[1460] | Segment payload |
 
 **Socket API:**
 | Function | Description |
@@ -201,7 +234,7 @@ CLOSED ────────────────────────�
 | `socket_accept(sock)` | Accept connection |
 | `socket_connect(sock, ip, port)` | Connect to server |
 | `socket_send(sock, data, len)` | Send data |
-| `socket_recv(sock, buf, len)` | Receive data |
+| `socket_recv(sock, buf, len)` | Receive data (blocking) |
 | `socket_close(sock)` | Close socket |
 | `socket_connected(sock)` | Check if connected |
 | `socket_available(sock)` | Bytes in rx buffer |
@@ -209,11 +242,10 @@ CLOSED ────────────────────────�
 **Not Implemented:**
 - TCP window scaling option
 - TCP timestamps option
-- Out-of-order segment reassembly
-- Proper congestion control
 - TIME_WAIT timer (2MSL)
 - Urgent data
 - Keep-alive
+- SACK (Selective Acknowledgment)
 
 ---
 
@@ -429,20 +461,46 @@ This is a substantial subsystem (~8,000 lines) providing:
 
 ---
 
-## Polling Model
+## I/O Model
 
-The network stack uses a polled model:
+The network stack supports both polled and interrupt-driven operation:
 
-1. `network_poll()` called periodically from:
-   - Timer interrupt handler
-   - Blocking TCP operations
-   - DNS resolution wait loops
+### Interrupt-Driven Mode (Default)
+1. VirtIO-net device registers IRQ with GIC (IRQ 48 + device offset)
+2. On packet arrival, GIC triggers interrupt
+3. IRQ handler calls `rx_irq_handler()`:
+   - Process received packets
+   - Wake blocked tasks in RX wait queue
+4. Tasks using `socket_recv()` block until data arrives
 
-2. Poll sequence:
-   - `virtio::net_poll()` - Receive packets from driver
-   - `eth::rx_frame()` - Parse Ethernet, dispatch by ethertype
-   - `ip::rx_packet()` - Parse IPv4, dispatch by protocol
-   - `tcp::rx_segment()` / `udp::rx_datagram()` - Handle transport
+### Polled Mode (Fallback)
+`network_poll()` called from:
+- Timer interrupt handler (background processing)
+- Blocking TCP operations (active waiting)
+- DNS resolution wait loops
+
+### Packet Processing Sequence:
+```
+IRQ/Poll → virtio::net_poll() → eth::rx_frame()
+                                      ↓
+                              ip::rx_packet()
+                                      ↓
+                    ┌─────────────────┴─────────────────┐
+                    ↓                                   ↓
+           tcp::rx_segment()              udp::rx_datagram()
+```
+
+### RX Wait Queue
+| Field | Description |
+|-------|-------------|
+| rx_waiters_[4] | Array of blocked tasks |
+| rx_waiter_count_ | Number of waiting tasks |
+
+Tasks calling `socket_recv()` with no data:
+1. Register in RX wait queue
+2. Set state to Blocked
+3. Yield CPU
+4. IRQ handler wakes when data arrives
 
 ---
 
@@ -463,9 +521,9 @@ The network stack uses a polled model:
 
 ## Priority Recommendations
 
-1. **High:** Implement TCP congestion control
-2. **Medium:** Add out-of-order segment reassembly
-3. **Medium:** Add interrupt-driven packet receive
-4. **Low:** IP fragmentation/reassembly
-5. **Low:** IPv6 support
-6. **Low:** TLS session resumption
+1. **Medium:** Add TCP window scaling for high-bandwidth connections
+2. **Medium:** Implement IP fragmentation/reassembly
+3. **Medium:** Add SACK support for improved loss recovery
+4. **Low:** IPv6 support
+5. **Low:** TLS session resumption
+6. **Low:** TIME_WAIT timer with proper 2MSL delay

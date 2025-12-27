@@ -1,6 +1,9 @@
 #include "net.hpp"
+#include "../../arch/aarch64/gic.hpp"
 #include "../../console/serial.hpp"
 #include "../../mm/pmm.hpp"
+#include "../../sched/scheduler.hpp"
+#include "../../sched/task.hpp"
 
 /**
  * @file net.cpp
@@ -24,6 +27,41 @@ namespace virtio
 // Global network device instance
 static NetDevice g_net_device;
 static bool g_net_initialized = false;
+
+/**
+ * @brief Calculate the IRQ number for a virtio-mmio device.
+ *
+ * @details
+ * On the QEMU virt machine, virtio-mmio devices are assigned SPIs starting
+ * at IRQ 48. Each device slot (0x200 bytes apart) gets the next IRQ.
+ * Base address 0x0a000000 -> IRQ 48, 0x0a000200 -> IRQ 49, etc.
+ *
+ * @param base MMIO base address of the device.
+ * @return IRQ number for the device.
+ */
+static u32 calculate_virtio_irq(u64 base)
+{
+    // QEMU virt: virtio-mmio at 0x0a000000 uses IRQ 48 (SPI 16)
+    // Each device is 0x200 apart, each gets the next IRQ
+    constexpr u64 VIRTIO_BASE = 0x0a000000;
+    constexpr u32 VIRTIO_IRQ_BASE = 48; // SPI 16 = 32 + 16 = 48
+    return VIRTIO_IRQ_BASE + static_cast<u32>((base - VIRTIO_BASE) / 0x200);
+}
+
+/**
+ * @brief Global IRQ handler for the virtio-net device.
+ *
+ * @details
+ * This function is registered with the GIC and called when the virtio-net
+ * device triggers an interrupt. It delegates to the device's rx_irq_handler.
+ */
+static void net_irq_handler()
+{
+    if (g_net_initialized)
+    {
+        g_net_device.rx_irq_handler();
+    }
+}
 
 /** @copydoc virtio::net_device */
 NetDevice *net_device()
@@ -85,6 +123,18 @@ bool NetDevice::init()
     }
     serial::puts("\n");
 
+    // Calculate and store IRQ number
+    irq_ = calculate_virtio_irq(base);
+    serial::puts("[virtio-net] Using IRQ ");
+    serial::put_dec(irq_);
+    serial::puts("\n");
+
+    // Initialize RX waiters
+    for (usize i = 0; i < MAX_RX_WAITERS; i++)
+    {
+        rx_waiters_[i] = nullptr;
+    }
+    rx_waiter_count_ = 0;
 
     // Negotiate features
     // For modern virtio, we must negotiate VERSION_1
@@ -171,7 +221,12 @@ bool NetDevice::init()
     // Device is ready
     add_status(status::DRIVER_OK);
 
-    serial::puts("[virtio-net] Driver initialized\n");
+    // Register IRQ handler with GIC
+    gic::register_handler(irq_, net_irq_handler);
+    gic::set_priority(irq_, 0x80); // Medium priority
+    gic::enable_irq(irq_);
+
+    serial::puts("[virtio-net] Driver initialized with interrupt support\n");
     return true;
 }
 
@@ -426,6 +481,107 @@ bool NetDevice::link_up() const
     // Read status from config if available
     // For QEMU user networking, link is always up
     return true;
+}
+
+/** @copydoc virtio::NetDevice::rx_irq_handler */
+void NetDevice::rx_irq_handler()
+{
+    // Acknowledge the virtio interrupt
+    u32 isr = read_isr();
+    if (isr)
+    {
+        ack_interrupt(isr);
+    }
+
+    // Check if this is a queue interrupt (bit 0)
+    if (!(isr & 0x1))
+    {
+        return; // Not a used buffer interrupt
+    }
+
+    // Process received packets
+    poll_rx();
+
+    // Wake waiting tasks if we have data
+    if (rx_queue_head_ != rx_queue_tail_)
+    {
+        wake_rx_waiters();
+    }
+}
+
+/** @copydoc virtio::NetDevice::register_rx_waiter */
+bool NetDevice::register_rx_waiter(task::Task *t)
+{
+    if (!t)
+        return false;
+
+    // Check if already registered
+    for (usize i = 0; i < rx_waiter_count_; i++)
+    {
+        if (rx_waiters_[i] == t)
+        {
+            return true; // Already registered
+        }
+    }
+
+    // Add to wait list
+    if (rx_waiter_count_ < MAX_RX_WAITERS)
+    {
+        rx_waiters_[rx_waiter_count_++] = t;
+        return true;
+    }
+
+    return false; // Wait queue full
+}
+
+/** @copydoc virtio::NetDevice::unregister_rx_waiter */
+void NetDevice::unregister_rx_waiter(task::Task *t)
+{
+    if (!t)
+        return;
+
+    for (usize i = 0; i < rx_waiter_count_; i++)
+    {
+        if (rx_waiters_[i] == t)
+        {
+            // Remove by shifting remaining entries
+            for (usize j = i; j + 1 < rx_waiter_count_; j++)
+            {
+                rx_waiters_[j] = rx_waiters_[j + 1];
+            }
+            rx_waiter_count_--;
+            rx_waiters_[rx_waiter_count_] = nullptr;
+            return;
+        }
+    }
+}
+
+/** @copydoc virtio::NetDevice::has_rx_data */
+bool NetDevice::has_rx_data() const
+{
+    return rx_queue_head_ != rx_queue_tail_;
+}
+
+/**
+ * @brief Wake all tasks waiting for RX data.
+ *
+ * @details
+ * Called from the IRQ handler when data arrives. Moves all waiting
+ * tasks from Blocked to Ready state and enqueues them for scheduling.
+ */
+void NetDevice::wake_rx_waiters()
+{
+    for (usize i = 0; i < rx_waiter_count_; i++)
+    {
+        task::Task *t = rx_waiters_[i];
+        if (t && t->state == task::TaskState::Blocked)
+        {
+            t->state = task::TaskState::Ready;
+            scheduler::enqueue(t);
+        }
+        rx_waiters_[i] = nullptr;
+    }
+    rx_waiter_count_ = 0;
 }
 
 /** @copydoc virtio::net_init */

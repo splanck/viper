@@ -1,12 +1,12 @@
 # Filesystem Subsystem
 
-**Status:** Fully functional for bring-up
+**Status:** Complete with crash-consistent journaling
 **Location:** `kernel/fs/`
-**SLOC:** ~3,400 (unique files)
+**SLOC:** ~4,200
 
 ## Overview
 
-The filesystem subsystem provides a virtual filesystem (VFS) layer, the ViperFS on-disk filesystem implementation, and a block cache for efficient I/O. The design is intentionally simple to support early development while remaining extensible.
+The filesystem subsystem provides a virtual filesystem (VFS) layer, the ViperFS on-disk filesystem implementation with write-ahead journaling for crash consistency, and a block cache for efficient I/O. The journaling implementation ensures metadata integrity across unexpected power loss or system crashes.
 
 ---
 
@@ -170,12 +170,91 @@ Blocks M+1-end: Data blocks
 - Timestamps update
 - Triple indirect blocks
 - Extended attributes
-- Journal/transaction logging
 
 **Recommendations:**
-- Add journaling for crash consistency
 - Add proper timestamp updates
 - Consider extent-based allocation for large files
+
+---
+
+### 2b. Filesystem Journal (`viperfs/journal.cpp`, `journal.hpp`)
+
+**Status:** Complete write-ahead logging for metadata
+
+**Implemented:**
+- Write-ahead log (WAL) for metadata operations
+- Transaction-based updates (begin/commit/abort)
+- Journal header with sequence tracking
+- Transaction descriptors (block number, operation type)
+- Commit records with checksums
+- Journal replay on mount for crash recovery
+- Automatic journal wrap-around
+
+**Journal Layout:**
+```
+Block N:      JournalHeader (4096 bytes)
+Block N+1:    Transaction 1 descriptor + data
+Block N+2:    Transaction 1 commit record
+Block N+3:    Transaction 2 descriptor + data
+...
+```
+
+**JournalHeader Structure (4096 bytes):**
+| Field | Size | Description |
+|-------|------|-------------|
+| magic | 4 | Journal magic (0x4A524E4C = "JRNL") |
+| version | 4 | Journal format version (1) |
+| sequence | 8 | Current transaction sequence |
+| start_block | 8 | First journal data block |
+| num_blocks | 8 | Total journal blocks |
+| head | 8 | Journal head offset |
+| tail | 8 | Journal tail offset |
+| _reserved | 4048 | Padding to 4096 bytes |
+
+**JournalTransaction Structure (4096 bytes):**
+| Field | Size | Description |
+|-------|------|-------------|
+| magic | 4 | Transaction magic |
+| sequence | 8 | Transaction sequence number |
+| block_count | 4 | Number of blocks in transaction |
+| descriptors[] | variable | Block descriptors |
+| _padding | variable | Padding to 4096 bytes |
+
+**JournalCommit Structure (4096 bytes):**
+| Field | Size | Description |
+|-------|------|-------------|
+| magic | 4 | Commit magic |
+| sequence | 8 | Matching transaction sequence |
+| checksum | 4 | CRC32 of transaction data |
+| _padding | 4080 | Padding to 4096 bytes |
+
+**Transaction Flow:**
+```
+1. journal_begin_transaction(journal)
+2. journal_log_block(journal, block_num, data)  // For each modified block
+3. journal_commit(journal)  // Write commit record
+4. Write actual blocks to their final locations
+5. journal_end_transaction(journal)  // Advance journal tail
+```
+
+**Recovery on Mount:**
+```
+1. Read journal header
+2. Scan from tail to head for complete transactions
+3. For each transaction with valid commit:
+   a. Verify checksum
+   b. Replay logged blocks to final locations
+4. Reset journal head/tail
+5. Continue normal operation
+```
+
+**Journaled Operations:**
+| Operation | Journaled Blocks |
+|-----------|------------------|
+| create_file | Inode, parent directory |
+| unlink | Inode, parent directory, bitmap |
+| mkdir | New inode, parent directory |
+| rename | Old parent, new parent, inode |
 
 ---
 
@@ -363,7 +442,7 @@ The filesystem is tested via:
 
 ## Priority Recommendations
 
-1. **High:** Add per-process FD tables for proper process isolation
-2. **High:** Implement journaling for crash consistency
-3. **Medium:** Add symlink resolution in path traversal
-4. **Low:** Implement background writeback thread
+1. **High:** Add symlink resolution in path traversal
+2. **Medium:** Implement background writeback thread
+3. **Medium:** Add hard link support
+4. **Low:** Extend journal to cover data blocks (full journaling mode)

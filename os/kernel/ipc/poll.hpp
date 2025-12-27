@@ -35,6 +35,15 @@ constexpr u32 MAX_POLL_EVENTS = 16;
 constexpr u32 HANDLE_CONSOLE_INPUT = 0xFFFF0001;
 
 /**
+ * @brief Special pseudo-handle representing network receive readiness.
+ *
+ * @details
+ * When a poll entry uses this handle and includes @ref EventType::NETWORK_RX,
+ * the poll logic checks if the network device has received data available.
+ */
+constexpr u32 HANDLE_NETWORK_RX = 0xFFFF0002;
+
+/**
  * @brief Bitmask of event types that can be requested/triggered by polling.
  *
  * @details
@@ -49,6 +58,7 @@ enum class EventType : u32
     CHANNEL_WRITE = (1 << 1), // Channel has space to write
     TIMER = (1 << 2),         // Timer expired
     CONSOLE_INPUT = (1 << 3), // Console has input ready
+    NETWORK_RX = (1 << 4),    // Network has received data available
 };
 
 /**

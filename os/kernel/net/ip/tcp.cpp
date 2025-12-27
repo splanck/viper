@@ -16,8 +16,10 @@
 #include "tcp.hpp"
 #include "../../arch/aarch64/timer.hpp"
 #include "../../console/serial.hpp"
+#include "../../drivers/virtio/net.hpp"
 #include "../../drivers/virtio/rng.hpp"
 #include "../../lib/spinlock.hpp"
+#include "../../sched/task.hpp"
 #include "../netif.hpp"
 #include "../network.hpp"
 #include "ipv4.hpp"
@@ -33,6 +35,110 @@ static Spinlock tcp_lock;
 // Socket table
 static TcpSocket sockets[MAX_TCP_SOCKETS];
 static bool initialized = false;
+
+// Forward declarations for congestion control
+static void on_congestion_event(TcpSocket *sock);
+static void on_ack_received(TcpSocket *sock, u32 bytes_acked);
+
+/**
+ * @brief Store an out-of-order segment for later reassembly.
+ *
+ * @param sock Socket receiving the segment.
+ * @param seq Sequence number of the segment.
+ * @param data Segment data.
+ * @param len Length of segment data.
+ * @return true if stored, false if queue is full.
+ */
+static bool ooo_store(TcpSocket *sock, u32 seq, const u8 *data, usize len)
+{
+    // Check if segment already exists
+    for (usize i = 0; i < TcpSocket::OOO_MAX_SEGMENTS; i++)
+    {
+        if (sock->ooo_queue[i].valid && sock->ooo_queue[i].seq == seq)
+        {
+            return true; // Already stored
+        }
+    }
+
+    // Find empty slot
+    for (usize i = 0; i < TcpSocket::OOO_MAX_SEGMENTS; i++)
+    {
+        if (!sock->ooo_queue[i].valid)
+        {
+            sock->ooo_queue[i].seq = seq;
+            sock->ooo_queue[i].len = static_cast<u16>(len > TcpSocket::OOO_SEGMENT_SIZE
+                                                          ? TcpSocket::OOO_SEGMENT_SIZE
+                                                          : len);
+            sock->ooo_queue[i].valid = true;
+            for (usize j = 0; j < sock->ooo_queue[i].len; j++)
+            {
+                sock->ooo_queue[i].data[j] = data[j];
+            }
+            serial::puts("[tcp] OOO: stored seq ");
+            serial::put_dec(seq);
+            serial::puts(" len ");
+            serial::put_dec(len);
+            serial::puts("\n");
+            return true;
+        }
+    }
+
+    serial::puts("[tcp] OOO queue full, dropping segment\n");
+    return false;
+}
+
+/**
+ * @brief Check OOO queue and deliver any segments that are now in order.
+ *
+ * @param sock Socket to check.
+ * @return Number of bytes delivered from OOO queue.
+ */
+static usize ooo_deliver(TcpSocket *sock)
+{
+    usize total_delivered = 0;
+    bool found;
+
+    do
+    {
+        found = false;
+
+        // Find segment matching rcv_nxt
+        for (usize i = 0; i < TcpSocket::OOO_MAX_SEGMENTS; i++)
+        {
+            if (sock->ooo_queue[i].valid && sock->ooo_queue[i].seq == sock->rcv_nxt)
+            {
+                // Found in-order segment, deliver to RX buffer
+                u16 len = sock->ooo_queue[i].len;
+                usize avail = TcpSocket::RX_BUFFER_SIZE - (sock->rx_tail - sock->rx_head);
+
+                if (avail >= len)
+                {
+                    for (u16 j = 0; j < len; j++)
+                    {
+                        sock->rx_buffer[sock->rx_tail % TcpSocket::RX_BUFFER_SIZE] =
+                            sock->ooo_queue[i].data[j];
+                        sock->rx_tail++;
+                    }
+                    sock->rcv_nxt += len;
+                    total_delivered += len;
+
+                    serial::puts("[tcp] OOO: delivered seq ");
+                    serial::put_dec(sock->ooo_queue[i].seq);
+                    serial::puts(" len ");
+                    serial::put_dec(len);
+                    serial::puts("\n");
+                }
+
+                // Mark slot as free
+                sock->ooo_queue[i].valid = false;
+                found = true;
+                break; // Restart search
+            }
+        }
+    } while (found);
+
+    return total_delivered;
+}
 
 /**
  * @brief Generate a random initial sequence number (ISN).
@@ -472,27 +578,47 @@ void rx_segment(const Ipv4Addr &src, const void *data, usize len)
             }
             else
             {
-                // Handle incoming data
-                if (payload_len > 0 && seq == sock->rcv_nxt)
+                // Handle incoming data with out-of-order reassembly
+                if (payload_len > 0)
                 {
-                    // In-order data, copy to buffer
-                    usize avail = TcpSocket::RX_BUFFER_SIZE -
-                                  ((sock->rx_tail - sock->rx_head) % TcpSocket::RX_BUFFER_SIZE);
-                    if (avail == 0)
-                        avail = TcpSocket::RX_BUFFER_SIZE;
-                    usize copy_len = payload_len < avail ? payload_len : avail;
-
-                    for (usize i = 0; i < copy_len; i++)
+                    if (seq == sock->rcv_nxt)
                     {
-                        sock->rx_buffer[sock->rx_tail % TcpSocket::RX_BUFFER_SIZE] = payload[i];
-                        sock->rx_tail++;
+                        // In-order data, copy to buffer
+                        usize avail = TcpSocket::RX_BUFFER_SIZE -
+                                      ((sock->rx_tail - sock->rx_head) % TcpSocket::RX_BUFFER_SIZE);
+                        if (avail == 0)
+                            avail = TcpSocket::RX_BUFFER_SIZE;
+                        usize copy_len = payload_len < avail ? payload_len : avail;
+
+                        for (usize i = 0; i < copy_len; i++)
+                        {
+                            sock->rx_buffer[sock->rx_tail % TcpSocket::RX_BUFFER_SIZE] = payload[i];
+                            sock->rx_tail++;
+                        }
+                        sock->rcv_nxt += copy_len;
+
+                        // Check OOO queue for segments that are now in order
+                        ooo_deliver(sock);
                     }
-                    sock->rcv_nxt += copy_len;
+                    else if (seq > sock->rcv_nxt)
+                    {
+                        // Out-of-order segment - buffer it for later reassembly
+                        ooo_store(sock, seq, payload, payload_len);
+                    }
+                    // else: seq < rcv_nxt means duplicate/old data, ignore
                 }
 
                 // Handle ACK - update snd_una and clear retransmit state if data acked
                 if (tcp_flags & flags::ACK)
                 {
+                    // Calculate how many new bytes were acknowledged
+                    u32 old_una = sock->snd_una;
+                    u32 bytes_acked = 0;
+                    if (ack > old_una)
+                    {
+                        bytes_acked = ack - old_una;
+                    }
+
                     // Check if this ACK acknowledges our unacked data
                     if (sock->unacked_len > 0)
                     {
@@ -508,6 +634,9 @@ void rx_segment(const Ipv4Addr &src, const void *data, usize len)
                         }
                     }
                     sock->snd_una = ack;
+
+                    // Update congestion window based on ACK
+                    on_ack_received(sock, bytes_acked);
                 }
 
                 // Send ACK if we received data
@@ -587,6 +716,20 @@ i32 socket_create()
             sockets[i].retransmit_time = 0;
             sockets[i].rto = TcpSocket::RTO_INITIAL;
             sockets[i].retransmit_count = 0;
+            // Initialize congestion control (RFC 5681)
+            sockets[i].cwnd = TcpSocket::INITIAL_CWND_SEGMENTS * DEFAULT_MSS;
+            sockets[i].ssthresh = 65535; // Initial ssthresh (arbitrarily high)
+            sockets[i].dup_acks = 0;
+            sockets[i].srtt = 0;
+            sockets[i].rttvar = 0;
+            sockets[i].rtt_measured = false;
+            sockets[i].bytes_in_flight = 0;
+            // Initialize out-of-order queue
+            for (usize j = 0; j < TcpSocket::OOO_MAX_SEGMENTS; j++)
+            {
+                sockets[i].ooo_queue[j].valid = false;
+                sockets[i].ooo_queue[j].len = 0;
+            }
             return static_cast<i32>(i);
         }
     }
@@ -876,37 +1019,82 @@ i32 socket_recv(i32 sock, void *buffer, usize max_len)
         }
     }
 
-    // Poll for data (without lock)
-    network_poll();
+    // Get current task for blocking
+    task::Task *current = task::current();
+    virtio::NetDevice *net = virtio::net_device();
 
-    SpinlockGuard guard(tcp_lock);
+    // Retry loop - wait for data with interrupt-driven wakeup
+    u64 start = timer::get_ticks();
+    constexpr u64 RECV_TIMEOUT_MS = 30000; // 30 second timeout
 
-    // Check for closed connection
-    if (s->state == TcpState::CLOSED || s->state == TcpState::CLOSE_WAIT)
+    while (true)
     {
-        if (s->rx_head == s->rx_tail)
+        // Poll for new packets (processes any queued data)
+        network_poll();
+
+        tcp_lock.acquire();
+
+        // Check for closed connection
+        if (s->state == TcpState::CLOSED || s->state == TcpState::CLOSE_WAIT)
         {
-            return -1; // Connection closed and no more data
+            if (s->rx_head == s->rx_tail)
+            {
+                tcp_lock.release();
+                return -1; // Connection closed and no more data
+            }
+        }
+
+        // Check for available data
+        usize avail = (s->rx_tail - s->rx_head);
+        if (avail > 0)
+        {
+            // Copy available data
+            usize copy_len = avail < max_len ? avail : max_len;
+            u8 *dst = static_cast<u8 *>(buffer);
+
+            for (usize i = 0; i < copy_len; i++)
+            {
+                dst[i] = s->rx_buffer[s->rx_head % TcpSocket::RX_BUFFER_SIZE];
+                s->rx_head++;
+            }
+
+            tcp_lock.release();
+
+            // Unregister from wait queue
+            if (net && current)
+            {
+                net->unregister_rx_waiter(current);
+            }
+
+            return static_cast<i32>(copy_len);
+        }
+
+        tcp_lock.release();
+
+        // Check timeout
+        if (timer::get_ticks() - start > RECV_TIMEOUT_MS)
+        {
+            if (net && current)
+            {
+                net->unregister_rx_waiter(current);
+            }
+            return 0; // Timeout, no data
+        }
+
+        // No data available - block waiting for network interrupt
+        if (net && current)
+        {
+            // Register as waiter and block
+            net->register_rx_waiter(current);
+            current->state = task::TaskState::Blocked;
+            task::yield();
+        }
+        else
+        {
+            // No interrupt support - just yield
+            asm volatile("wfi");
         }
     }
-
-    // Copy available data
-    usize avail = (s->rx_tail - s->rx_head);
-    if (avail == 0)
-    {
-        return 0; // No data
-    }
-
-    usize copy_len = avail < max_len ? avail : max_len;
-    u8 *dst = static_cast<u8 *>(buffer);
-
-    for (usize i = 0; i < copy_len; i++)
-    {
-        dst[i] = s->rx_buffer[s->rx_head % TcpSocket::RX_BUFFER_SIZE];
-        s->rx_head++;
-    }
-
-    return static_cast<i32>(copy_len);
 }
 
 /** @copydoc net::tcp::socket_close */
@@ -993,6 +1181,108 @@ usize socket_available(i32 sock)
 }
 
 /**
+ * @brief Handle congestion event (timeout or loss detection).
+ *
+ * @details
+ * Per RFC 5681, on timeout:
+ * - ssthresh = max(FlightSize/2, 2*SMSS)
+ * - cwnd = 1 segment (loss window)
+ *
+ * @param sock Socket experiencing congestion.
+ */
+static void on_congestion_event(TcpSocket *sock)
+{
+    // Set ssthresh to half of flight size, minimum 2 segments
+    u32 flight_size = sock->bytes_in_flight > 0 ? sock->bytes_in_flight : sock->cwnd;
+    sock->ssthresh = flight_size / 2;
+    if (sock->ssthresh < TcpSocket::MIN_SSTHRESH)
+    {
+        sock->ssthresh = TcpSocket::MIN_SSTHRESH;
+    }
+
+    // On timeout, cwnd = 1 segment (enter slow start)
+    sock->cwnd = sock->mss;
+
+    serial::puts("[tcp] Congestion: ssthresh=");
+    serial::put_dec(sock->ssthresh);
+    serial::puts(" cwnd=");
+    serial::put_dec(sock->cwnd);
+    serial::puts("\n");
+}
+
+/**
+ * @brief Process a new ACK and update congestion window.
+ *
+ * @details
+ * RFC 5681 congestion avoidance:
+ * - Slow start (cwnd < ssthresh): cwnd += MSS per ACK
+ * - Congestion avoidance (cwnd >= ssthresh): cwnd += MSS*MSS/cwnd per ACK
+ *
+ * @param sock Socket receiving the ACK.
+ * @param bytes_acked Number of new bytes acknowledged.
+ */
+static void on_ack_received(TcpSocket *sock, u32 bytes_acked)
+{
+    if (bytes_acked == 0)
+    {
+        // Duplicate ACK
+        sock->dup_acks++;
+
+        if (sock->dup_acks == TcpSocket::DUP_ACK_THRESHOLD)
+        {
+            // Fast retransmit (RFC 5681 Section 3.2)
+            serial::puts("[tcp] Fast retransmit triggered\n");
+
+            // Set ssthresh to half of cwnd
+            sock->ssthresh = sock->cwnd / 2;
+            if (sock->ssthresh < TcpSocket::MIN_SSTHRESH)
+            {
+                sock->ssthresh = TcpSocket::MIN_SSTHRESH;
+            }
+
+            // Enter fast recovery: cwnd = ssthresh + 3*MSS
+            sock->cwnd = sock->ssthresh + 3 * sock->mss;
+        }
+        else if (sock->dup_acks > TcpSocket::DUP_ACK_THRESHOLD)
+        {
+            // Fast recovery: inflate cwnd by MSS for each additional dup ACK
+            sock->cwnd += sock->mss;
+        }
+        return;
+    }
+
+    // New data acknowledged - exit fast recovery if we were in it
+    sock->dup_acks = 0;
+
+    // Update flight size
+    if (sock->bytes_in_flight >= bytes_acked)
+    {
+        sock->bytes_in_flight -= bytes_acked;
+    }
+    else
+    {
+        sock->bytes_in_flight = 0;
+    }
+
+    // Congestion window update
+    if (sock->cwnd < sock->ssthresh)
+    {
+        // Slow start: increase cwnd by bytes_acked (up to MSS per ACK)
+        u32 increase = bytes_acked > sock->mss ? sock->mss : bytes_acked;
+        sock->cwnd += increase;
+    }
+    else
+    {
+        // Congestion avoidance: increase cwnd by ~1 segment per RTT
+        // Approximation: cwnd += MSS * MSS / cwnd per ACK
+        u32 increase = (sock->mss * sock->mss) / sock->cwnd;
+        if (increase == 0)
+            increase = 1;
+        sock->cwnd += increase;
+    }
+}
+
+/**
  * @brief Retransmit unacked data for a socket.
  *
  * @details
@@ -1007,6 +1297,9 @@ static void retransmit_segment(TcpSocket *sock)
     {
         return;
     }
+
+    // Congestion event on timeout
+    on_congestion_event(sock);
 
     // Save current snd_nxt and restore sequence number for retransmit
     u32 saved_snd_nxt = sock->snd_nxt;

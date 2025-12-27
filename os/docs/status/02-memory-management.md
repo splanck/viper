@@ -1,12 +1,12 @@
 # Memory Management Subsystem
 
-**Status:** Functional with room for optimization
+**Status:** Complete with demand paging and VMA tracking
 **Location:** `kernel/mm/`
-**SLOC:** ~912
+**SLOC:** ~1,400
 
 ## Overview
 
-The memory management subsystem provides physical page allocation, virtual memory mapping, and kernel heap services. It is designed for simplicity during bring-up, with a path to more sophisticated features.
+The memory management subsystem provides physical page allocation, virtual memory mapping, kernel heap services, and demand paging with VMA tracking. The implementation supports full virtual memory for user processes with automatic page allocation on fault.
 
 ## Components
 
@@ -85,26 +85,107 @@ The memory management subsystem provides physical page allocation, virtual memor
 | PXN | bit 53 | Privileged execute never |
 
 **Not Implemented:**
-- Page fault handling
-- Demand paging
 - Copy-on-write
 - Shared memory mappings
-- Guard pages
 - Memory-mapped files
 - Large page (2MB, 1GB) mapping creation
-- ASID management for address space switching
 - Page table deallocation on unmap
 
 **Known Limitations:**
-- No rollback if page table allocation fails mid-walk
 - Intermediate tables not freed when mappings removed
 - Identity mapping assumed (no kernel higher-half)
 
 **Recommendations:**
-- Implement page fault handler for demand paging
 - Add page table garbage collection
 - Support large page mapping for performance
-- Implement proper ASID management for context switches
+- Implement copy-on-write for fork()
+
+---
+
+### 4. Virtual Memory Areas (`vma.cpp`, `vma.hpp`)
+
+**Status:** Complete VMA tracking for demand paging
+
+**Implemented:**
+- Per-process VMA list (linked list, sorted by address)
+- VMA types: Anonymous, Stack, Heap, File-backed
+- Protection flags (read, write, execute)
+- VMA lookup by address (`vma_find`)
+- VMA insertion with sorted order maintenance
+- Stack growth detection (guard page distance check)
+- Automatic stack VMA extension on fault
+
+**VMA Structure:**
+| Field | Type | Description |
+|-------|------|-------------|
+| start | u64 | Start address (page-aligned) |
+| end | u64 | End address (exclusive) |
+| prot | u32 | Protection flags |
+| type | VmaType | Backing type (ANONYMOUS, STACK, etc.) |
+| file_inode | u64 | Inode for file-backed mappings |
+| file_offset | u64 | File offset |
+| next | Vma* | Next VMA in list |
+
+**VMA Types:**
+| Type | Description |
+|------|-------------|
+| ANONYMOUS | Zero-filled on demand |
+| STACK | User stack (grows down) |
+| HEAP | User heap (sbrk region) |
+| FILE | File-backed mapping |
+
+**Protection Flags (vma_prot):**
+| Flag | Value | Description |
+|------|-------|-------------|
+| READ | 0x1 | Readable |
+| WRITE | 0x2 | Writable |
+| EXEC | 0x4 | Executable |
+
+---
+
+### 5. Page Fault Handler (`fault.cpp`, `fault.hpp`)
+
+**Status:** Complete demand paging implementation
+
+**Implemented:**
+- AArch64 data abort and instruction abort handling
+- ESR parsing (fault status code, write/read, level)
+- Fault classification (translation, permission, alignment, etc.)
+- User-mode demand fault handling
+- VMA lookup and validation
+- Physical page allocation for valid faults
+- Page table mapping with correct permissions
+- Stack growth detection and automatic extension
+- Kernel panic on unrecoverable kernel faults
+- Detailed fault logging to serial console
+
+**Fault Types:**
+| Type | Description | Handling |
+|------|-------------|----------|
+| TRANSLATION | Page not mapped | Demand paging if valid VMA |
+| PERMISSION | Access denied | Terminate task |
+| ALIGNMENT | Misaligned access | Terminate task |
+| ADDRESS_SIZE | Invalid address bits | Terminate task |
+
+**Demand Paging Flow:**
+```
+1. Page fault occurs (data abort at EL0)
+2. Parse ESR to get fault type and address
+3. Look up VMA containing faulting address
+4. If no VMA: terminate task (SIGSEGV equivalent)
+5. If VMA found and type is TRANSLATION:
+   a. Allocate physical page from PMM
+   b. Zero-fill page (anonymous) or load from file
+   c. Map page in process address space
+   d. Resume execution
+6. For stack VMA: check if within growth limit, extend if needed
+```
+
+**Handled Scenarios:**
+- Heap access before sbrk extends region
+- Stack growth into guard area
+- First access to anonymous memory
+- Access to uninitialized data segment
 
 ---
 
@@ -271,9 +352,9 @@ void kheap::get_stats(&total, &used, &free, &blocks);
 
 ## Priority Recommendations
 
-1. **High:** Implement page fault handler for demand paging
-2. **High:** Add slab allocator for common kernel objects
-3. **Medium:** Support multiple memory regions from device tree
-4. **Medium:** Implement proper ASID management
-5. **Low:** Add memory pressure callbacks
-6. **Low:** Per-CPU heap caches for scalability
+1. **High:** Add copy-on-write for efficient fork()
+2. **Medium:** Support multiple memory regions from device tree
+3. **Medium:** Implement mmap() for file-backed mappings
+4. **Low:** Add memory pressure callbacks
+5. **Low:** Per-CPU heap caches for scalability
+6. **Low:** Large page support (2MB, 1GB)

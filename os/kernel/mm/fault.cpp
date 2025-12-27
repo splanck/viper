@@ -40,6 +40,10 @@
 #include "../console/serial.hpp"
 #include "../sched/scheduler.hpp"
 #include "../sched/task.hpp"
+#include "../viper/address_space.hpp"
+#include "../viper/viper.hpp"
+#include "pmm.hpp"
+#include "vma.hpp"
 
 namespace mm
 {
@@ -377,24 +381,8 @@ void handle_page_fault(exceptions::ExceptionFrame *frame, bool is_instruction)
     // Log the fault
     log_fault(info, task_name);
 
-    // TODO: Future demand paging implementation
-    // =========================================
-    // For TRANSLATION faults in user space:
-    //   1. Check if address is in a valid VMA (virtual memory area)
-    //   2. If valid, allocate a physical page and map it
-    //   3. Return to retry the faulting instruction
-    //
-    // For PERMISSION faults (potential copy-on-write):
-    //   1. Check if page is marked COW
-    //   2. If COW, copy the page and update mapping to writable
-    //   3. Return to retry the faulting instruction
-    //
-    // For faults near stack:
-    //   1. Check if address is in stack growth region
-    //   2. If so, extend the stack and map new pages
-    //   3. Return to retry the faulting instruction
-
-    // For now, all faults are fatal
+    // Demand paging implementation
+    // =============================
 
     if (!is_user)
     {
@@ -402,10 +390,67 @@ void handle_page_fault(exceptions::ExceptionFrame *frame, bool is_instruction)
         kernel_panic(info);
     }
 
-    // User fault - terminate the task gracefully
-    serial::puts("[page_fault] Terminating user task\n");
+    // Get the current process for VMA checking
+    viper::Viper *proc = viper::current();
+    if (!proc)
+    {
+        serial::puts("[page_fault] No current process, terminating\n");
+        task::exit(-1);
+        for (;;)
+            asm volatile("wfi");
+    }
 
-    // Terminate the task
+    // Only handle translation faults with demand paging
+    if (info.type == FaultType::TRANSLATION)
+    {
+        // Define the map callback for demand paging
+        viper::AddressSpace *as = viper::get_address_space(proc);
+        if (as)
+        {
+            // Lambda to map a page in the current address space
+            auto map_fn = [](u64 virt, u64 phys, u32 prot) -> bool
+            {
+                viper::Viper *v = viper::current();
+                if (!v)
+                    return false;
+                viper::AddressSpace *addr_space = viper::get_address_space(v);
+                if (!addr_space)
+                    return false;
+
+                // Convert VMA prot to address space prot
+                u32 as_prot = 0;
+                if (prot & vma_prot::READ)
+                    as_prot |= viper::prot::READ;
+                if (prot & vma_prot::WRITE)
+                    as_prot |= viper::prot::WRITE;
+                if (prot & vma_prot::EXEC)
+                    as_prot |= viper::prot::EXEC;
+
+                return addr_space->map(virt, phys, 4096, as_prot);
+            };
+
+            FaultResult result = handle_demand_fault(&proc->vma_list, info.fault_addr, info.is_write, map_fn);
+
+            switch (result)
+            {
+                case FaultResult::HANDLED:
+                case FaultResult::STACK_GROW:
+                    serial::puts("[page_fault] Demand fault handled, resuming\n");
+                    return; // Resume execution
+
+                case FaultResult::ERROR:
+                    serial::puts("[page_fault] Demand fault error, terminating\n");
+                    break;
+
+                case FaultResult::UNHANDLED:
+                    serial::puts("[page_fault] Address not in valid VMA\n");
+                    break;
+            }
+        }
+    }
+
+    // Fault could not be handled - terminate the task
+    serial::puts("[page_fault] Terminating user task\n");
     task::exit(-1);
 
     // Should never reach here

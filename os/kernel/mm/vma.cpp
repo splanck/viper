@@ -1,0 +1,378 @@
+/**
+ * @file vma.cpp
+ * @brief Virtual Memory Area (VMA) tracking implementation.
+ *
+ * @details
+ * Implements the VMA list manager and demand paging fault handler.
+ * VMAs describe valid regions of a process's address space, allowing
+ * the page fault handler to allocate pages on demand.
+ */
+
+#include "vma.hpp"
+#include "../console/serial.hpp"
+#include "pmm.hpp"
+
+namespace mm
+{
+
+void VmaList::init()
+{
+    for (usize i = 0; i < MAX_VMAS; i++)
+    {
+        used_[i] = false;
+        pool_[i].next = nullptr;
+    }
+    head_ = nullptr;
+    count_ = 0;
+}
+
+Vma *VmaList::alloc_vma()
+{
+    for (usize i = 0; i < MAX_VMAS; i++)
+    {
+        if (!used_[i])
+        {
+            used_[i] = true;
+            count_++;
+            return &pool_[i];
+        }
+    }
+    serial::puts("[vma] ERROR: VMA pool exhausted\n");
+    return nullptr;
+}
+
+void VmaList::free_vma(Vma *vma)
+{
+    if (!vma)
+        return;
+
+    for (usize i = 0; i < MAX_VMAS; i++)
+    {
+        if (&pool_[i] == vma)
+        {
+            used_[i] = false;
+            count_--;
+            return;
+        }
+    }
+}
+
+void VmaList::insert_sorted(Vma *vma)
+{
+    if (!head_ || vma->start < head_->start)
+    {
+        // Insert at head
+        vma->next = head_;
+        head_ = vma;
+        return;
+    }
+
+    // Find insertion point
+    Vma *prev = head_;
+    while (prev->next && prev->next->start < vma->start)
+    {
+        prev = prev->next;
+    }
+
+    vma->next = prev->next;
+    prev->next = vma;
+}
+
+Vma *VmaList::find(u64 addr)
+{
+    Vma *vma = head_;
+    while (vma)
+    {
+        if (vma->contains(addr))
+        {
+            return vma;
+        }
+        // Optimization: if we've passed the address, stop searching
+        if (vma->start > addr)
+        {
+            break;
+        }
+        vma = vma->next;
+    }
+    return nullptr;
+}
+
+const Vma *VmaList::find(u64 addr) const
+{
+    const Vma *vma = head_;
+    while (vma)
+    {
+        if (vma->contains(addr))
+        {
+            return vma;
+        }
+        if (vma->start > addr)
+        {
+            break;
+        }
+        vma = vma->next;
+    }
+    return nullptr;
+}
+
+Vma *VmaList::add(u64 start, u64 end, u32 prot, VmaType type)
+{
+    // Validate alignment
+    if ((start & 0xFFF) != 0 || (end & 0xFFF) != 0)
+    {
+        serial::puts("[vma] ERROR: Addresses must be page-aligned\n");
+        return nullptr;
+    }
+
+    if (start >= end)
+    {
+        serial::puts("[vma] ERROR: Invalid VMA range\n");
+        return nullptr;
+    }
+
+    // Check for overlaps (simplified - just check if start is in an existing VMA)
+    if (find(start) != nullptr)
+    {
+        serial::puts("[vma] ERROR: VMA overlaps existing region\n");
+        return nullptr;
+    }
+
+    Vma *vma = alloc_vma();
+    if (!vma)
+    {
+        return nullptr;
+    }
+
+    vma->start = start;
+    vma->end = end;
+    vma->prot = prot;
+    vma->type = type;
+    vma->file_inode = 0;
+    vma->file_offset = 0;
+    vma->next = nullptr;
+
+    insert_sorted(vma);
+
+    return vma;
+}
+
+Vma *VmaList::add_file(u64 start, u64 end, u32 prot, u64 inode, u64 offset)
+{
+    Vma *vma = add(start, end, prot, VmaType::FILE);
+    if (vma)
+    {
+        vma->file_inode = inode;
+        vma->file_offset = offset;
+    }
+    return vma;
+}
+
+bool VmaList::remove(Vma *target)
+{
+    if (!head_ || !target)
+    {
+        return false;
+    }
+
+    if (head_ == target)
+    {
+        head_ = target->next;
+        free_vma(target);
+        return true;
+    }
+
+    Vma *prev = head_;
+    while (prev->next && prev->next != target)
+    {
+        prev = prev->next;
+    }
+
+    if (prev->next == target)
+    {
+        prev->next = target->next;
+        free_vma(target);
+        return true;
+    }
+
+    return false;
+}
+
+void VmaList::remove_range(u64 start, u64 end)
+{
+    Vma *vma = head_;
+    Vma *prev = nullptr;
+
+    while (vma)
+    {
+        // Check if VMA overlaps with range
+        bool overlaps = !(vma->end <= start || vma->start >= end);
+
+        if (overlaps)
+        {
+            Vma *next = vma->next;
+
+            if (prev)
+            {
+                prev->next = next;
+            }
+            else
+            {
+                head_ = next;
+            }
+
+            free_vma(vma);
+            vma = next;
+        }
+        else
+        {
+            prev = vma;
+            vma = vma->next;
+        }
+    }
+}
+
+void VmaList::clear()
+{
+    head_ = nullptr;
+    for (usize i = 0; i < MAX_VMAS; i++)
+    {
+        used_[i] = false;
+    }
+    count_ = 0;
+}
+
+/**
+ * @brief Handle a demand page fault by allocating and mapping a page.
+ */
+FaultResult handle_demand_fault(VmaList *vma_list, u64 fault_addr, bool is_write,
+                                bool (*map_callback)(u64 virt, u64 phys, u32 prot))
+{
+    if (!vma_list || !map_callback)
+    {
+        return FaultResult::UNHANDLED;
+    }
+
+    // Page-align the fault address
+    u64 page_addr = fault_addr & ~0xFFFULL;
+
+    // Find the VMA containing this address
+    Vma *vma = vma_list->find(fault_addr);
+    if (!vma)
+    {
+        // Check if this is a potential stack growth
+        // Stack grows downward, so check if address is just below a stack VMA
+        Vma *v = vma_list->head();
+        while (v)
+        {
+            if (v->type == VmaType::STACK)
+            {
+                // Stack growth: allow faults within one page of the stack bottom
+                if (fault_addr >= v->start - 4096 && fault_addr < v->start)
+                {
+                    serial::puts("[vma] Growing stack from ");
+                    serial::put_hex(v->start);
+                    serial::puts(" to ");
+                    serial::put_hex(page_addr);
+                    serial::puts("\n");
+
+                    // Extend the VMA
+                    v->start = page_addr;
+
+                    // Allocate and map the new stack page
+                    u64 phys = pmm::alloc_page();
+                    if (phys == 0)
+                    {
+                        serial::puts("[vma] ERROR: Failed to allocate stack page\n");
+                        return FaultResult::ERROR;
+                    }
+
+                    // Zero the page
+                    u8 *ptr = reinterpret_cast<u8 *>(phys);
+                    for (usize i = 0; i < 4096; i++)
+                    {
+                        ptr[i] = 0;
+                    }
+
+                    if (!map_callback(page_addr, phys, v->prot))
+                    {
+                        pmm::free_page(phys);
+                        return FaultResult::ERROR;
+                    }
+
+                    return FaultResult::STACK_GROW;
+                }
+            }
+            v = v->next;
+        }
+
+        return FaultResult::UNHANDLED;
+    }
+
+    // Check access permissions
+    if (vma->type == VmaType::GUARD)
+    {
+        serial::puts("[vma] Access to guard page\n");
+        return FaultResult::UNHANDLED;
+    }
+
+    if (is_write && !(vma->prot & vma_prot::WRITE))
+    {
+        serial::puts("[vma] Write to read-only region\n");
+        return FaultResult::UNHANDLED;
+    }
+
+    // Allocate a physical page
+    u64 phys = pmm::alloc_page();
+    if (phys == 0)
+    {
+        serial::puts("[vma] ERROR: Failed to allocate page\n");
+        return FaultResult::ERROR;
+    }
+
+    // Initialize the page based on VMA type
+    u8 *ptr = reinterpret_cast<u8 *>(phys);
+
+    switch (vma->type)
+    {
+        case VmaType::ANONYMOUS:
+        case VmaType::STACK:
+            // Zero-fill anonymous and stack pages
+            for (usize i = 0; i < 4096; i++)
+            {
+                ptr[i] = 0;
+            }
+            break;
+
+        case VmaType::FILE:
+            // TODO: Read from file
+            // For now, zero-fill file-backed pages too
+            for (usize i = 0; i < 4096; i++)
+            {
+                ptr[i] = 0;
+            }
+            break;
+
+        case VmaType::GUARD:
+            // Should not reach here
+            pmm::free_page(phys);
+            return FaultResult::UNHANDLED;
+    }
+
+    // Map the page
+    if (!map_callback(page_addr, phys, vma->prot))
+    {
+        pmm::free_page(phys);
+        serial::puts("[vma] ERROR: Failed to map page\n");
+        return FaultResult::ERROR;
+    }
+
+    serial::puts("[vma] Demand paged ");
+    serial::put_hex(page_addr);
+    serial::puts(" -> ");
+    serial::put_hex(phys);
+    serial::puts("\n");
+
+    return FaultResult::HANDLED;
+}
+
+} // namespace mm
