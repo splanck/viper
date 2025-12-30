@@ -2,7 +2,7 @@
 
 **Status:** Functional for QEMU virt platform
 **Location:** `kernel/drivers/`
-**SLOC:** ~3,400
+**SLOC:** ~6,000
 
 ## Overview
 

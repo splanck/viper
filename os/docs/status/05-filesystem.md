@@ -2,7 +2,7 @@
 
 **Status:** Complete with crash-consistent journaling and inode caching
 **Location:** `kernel/fs/`
-**SLOC:** ~3,700
+**SLOC:** ~6,400
 
 ## Overview
 

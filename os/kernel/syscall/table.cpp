@@ -18,6 +18,7 @@
 #include "../../include/viperos/mem_info.hpp"
 #include "../../include/viperos/net_stats.hpp"
 #include "../../include/viperos/task_info.hpp"
+#include "../arch/aarch64/gic.hpp"
 #include "../arch/aarch64/timer.hpp"
 #include "../assign/assign.hpp"
 #include "../cap/handle.hpp"
@@ -38,6 +39,7 @@
 #include "../kobj/channel.hpp"
 #include "../kobj/dir.hpp"
 #include "../kobj/file.hpp"
+#include "../kobj/shm.hpp"
 #include "../lib/spinlock.hpp"
 #include "../loader/loader.hpp"
 #include "../mm/pmm.hpp"
@@ -2370,6 +2372,921 @@ static SyscallResult sys_get_args(u64 a0, u64 a1, u64, u64, u64, u64)
 }
 
 // =============================================================================
+// Device Management (0x100-0x10F) - Microkernel support
+// =============================================================================
+
+/**
+ * @brief IRQ ownership and wait state for user-space drivers.
+ *
+ * @details
+ * Each IRQ can be registered to at most one user-space task.
+ * When an IRQ fires, the kernel wakes any waiting task.
+ */
+struct IrqState
+{
+    u32 owner_task_id;       ///< Task ID that owns this IRQ (0 = unowned)
+    u32 owner_viper_id;      ///< Viper ID that owns this IRQ
+    sched::WaitQueue waiters; ///< Tasks waiting for this IRQ
+    bool pending;            ///< IRQ fired but not yet delivered
+    bool enabled;            ///< Whether IRQ delivery is enabled
+    Spinlock lock;           ///< Per-IRQ lock
+};
+
+/// IRQ state table for user-space accessible IRQs (32-255)
+static IrqState irq_states[gic::MAX_IRQS];
+static bool irq_states_initialized = false;
+
+/// Initialize IRQ states (called lazily)
+static void init_irq_states()
+{
+    if (irq_states_initialized)
+        return;
+
+    for (u32 i = 0; i < gic::MAX_IRQS; i++)
+    {
+        irq_states[i].owner_task_id = 0;
+        irq_states[i].owner_viper_id = 0;
+        sched::wait_init(&irq_states[i].waiters);
+        irq_states[i].pending = false;
+        irq_states[i].enabled = false;
+    }
+    irq_states_initialized = true;
+}
+
+/// GIC handler for user-space IRQs - sets pending and wakes waiters
+/// Note: This will be registered with the GIC when implementing full IRQ forwarding
+[[maybe_unused]] static void user_irq_handler(u32 irq)
+{
+    if (irq >= gic::MAX_IRQS)
+        return;
+
+    IrqState *state = &irq_states[irq];
+    SpinlockGuard guard(state->lock);
+
+    state->pending = true;
+    sched::wait_wake_one(&state->waiters);
+}
+
+/// Known device MMIO regions (QEMU virt machine)
+struct DeviceMmioRegion
+{
+    const char *name;
+    u64 phys_base;
+    u64 size;
+    u32 irq;
+};
+
+static const DeviceMmioRegion known_devices[] = {
+    {"uart0", 0x09000000, 0x1000, 33},
+    {"rtc", 0x09010000, 0x1000, 34},
+    {"gpio", 0x09030000, 0x1000, 35},
+    {"virtio0", 0x0a000000, 0x200, 48},
+    {"virtio1", 0x0a000200, 0x200, 49},
+    {"virtio2", 0x0a000400, 0x200, 50},
+    {"virtio3", 0x0a000600, 0x200, 51},
+    {"virtio4", 0x0a000800, 0x200, 52},
+    {"virtio5", 0x0a000a00, 0x200, 53},
+    {"virtio6", 0x0a000c00, 0x200, 54},
+    {"virtio7", 0x0a000e00, 0x200, 55},
+};
+static constexpr u32 KNOWN_DEVICE_COUNT = sizeof(known_devices) / sizeof(known_devices[0]);
+
+/**
+ * @brief Map device MMIO region into user address space.
+ *
+ * @param a0 Device physical address
+ * @param a1 Size of region to map
+ * @param a2 User virtual address to map at (0 = kernel chooses)
+ * @return Virtual address on success, negative error on failure
+ */
+static SyscallResult sys_map_device(u64 a0, u64 a1, u64 a2, u64, u64, u64)
+{
+    u64 phys_addr = a0;
+    u64 size = a1;
+    u64 user_virt = a2;
+
+    // Validate size
+    if (size == 0 || size > 16 * 1024 * 1024)
+    {
+        return SyscallResult::err(error::VERR_INVALID_ARG);
+    }
+
+    // Check capability
+    viper::Viper *v = viper::current();
+    if (!v || !v->cap_table)
+    {
+        return SyscallResult::err(error::VERR_NOT_FOUND);
+    }
+
+    // Require CAP_DEVICE_ACCESS
+    // For now, check if the process has any entry with device access rights
+    // In a full implementation, we'd have a device capability handle
+    bool has_device_access = false;
+    for (usize i = 0; i < v->cap_table->capacity(); i++)
+    {
+        cap::Entry *e = v->cap_table->entry_at(i);
+        if (e && e->kind != cap::Kind::Invalid && cap::has_rights(e->rights, cap::CAP_DEVICE_ACCESS))
+        {
+            has_device_access = true;
+            break;
+        }
+    }
+
+    // Also allow init process (viper ID 1) and kernel tasks
+    if (v->id <= 2)
+    {
+        has_device_access = true;
+    }
+
+    if (!has_device_access)
+    {
+        return SyscallResult::err(error::VERR_PERMISSION);
+    }
+
+    // Verify this is a known device region (security check)
+    bool valid_device = false;
+    for (u32 i = 0; i < KNOWN_DEVICE_COUNT; i++)
+    {
+        if (phys_addr >= known_devices[i].phys_base &&
+            phys_addr + size <= known_devices[i].phys_base + known_devices[i].size)
+        {
+            valid_device = true;
+            break;
+        }
+    }
+
+    if (!valid_device)
+    {
+        return SyscallResult::err(error::VERR_PERMISSION);
+    }
+
+    // Get address space
+    viper::AddressSpace *as = viper::get_address_space(v);
+    if (!as)
+    {
+        return SyscallResult::err(error::VERR_NOT_FOUND);
+    }
+
+    // Choose virtual address if not specified
+    if (user_virt == 0)
+    {
+        // Use a fixed region for device mappings (0x1_0000_0000 to 0x1_1000_0000)
+        user_virt = 0x100000000ULL + (phys_addr & 0x0FFFFFFFULL);
+    }
+
+    // Align addresses
+    u64 phys_aligned = pmm::page_align_down(phys_addr);
+    u64 virt_aligned = pmm::page_align_down(user_virt);
+    u64 size_aligned = pmm::page_align_up(size + (phys_addr - phys_aligned));
+
+    // Map as device memory (non-cacheable)
+    // Use device memory attributes and user-accessible
+    if (!as->map(virt_aligned, phys_aligned, size_aligned, viper::prot::RW))
+    {
+        return SyscallResult::err(error::VERR_OUT_OF_MEMORY);
+    }
+
+    // Return the actual virtual address (including offset)
+    return SyscallResult::ok(virt_aligned + (phys_addr - phys_aligned));
+}
+
+/**
+ * @brief Register to receive a specific IRQ.
+ *
+ * @param a0 IRQ number
+ * @return 0 on success, negative error on failure
+ */
+static SyscallResult sys_irq_register(u64 a0, u64, u64, u64, u64, u64)
+{
+    u32 irq = static_cast<u32>(a0);
+
+    // Validate IRQ number (only allow SPIs, 32-255)
+    if (irq < 32 || irq >= gic::MAX_IRQS)
+    {
+        return SyscallResult::err(error::VERR_INVALID_ARG);
+    }
+
+    // Check capability
+    viper::Viper *v = viper::current();
+    task::Task *t = task::current();
+    if (!v || !t)
+    {
+        return SyscallResult::err(error::VERR_NOT_FOUND);
+    }
+
+    // Require CAP_IRQ_ACCESS
+    bool has_irq_access = false;
+    if (v->cap_table)
+    {
+        for (usize i = 0; i < v->cap_table->capacity(); i++)
+        {
+            cap::Entry *e = v->cap_table->entry_at(i);
+            if (e && e->kind != cap::Kind::Invalid && cap::has_rights(e->rights, cap::CAP_IRQ_ACCESS))
+            {
+                has_irq_access = true;
+                break;
+            }
+        }
+    }
+    if (v->id <= 2)
+    {
+        has_irq_access = true;
+    }
+
+    if (!has_irq_access)
+    {
+        return SyscallResult::err(error::VERR_PERMISSION);
+    }
+
+    init_irq_states();
+
+    IrqState *state = &irq_states[irq];
+    SpinlockGuard guard(state->lock);
+
+    // Check if already owned
+    if (state->owner_task_id != 0)
+    {
+        return SyscallResult::err(error::VERR_BUSY);
+    }
+
+    // Register ownership
+    state->owner_task_id = t->id;
+    state->owner_viper_id = v->id;
+    state->pending = false;
+    state->enabled = true;
+
+    // Enable the IRQ in the GIC
+    gic::enable_irq(irq);
+
+    return SyscallResult::ok();
+}
+
+/**
+ * @brief Wait for a registered IRQ to fire.
+ *
+ * @param a0 IRQ number
+ * @param a1 Timeout in milliseconds (0 = no timeout)
+ * @return 0 on success, negative error on failure
+ */
+static SyscallResult sys_irq_wait(u64 a0, u64 a1, u64, u64, u64, u64)
+{
+    u32 irq = static_cast<u32>(a0);
+    u64 timeout_ms = a1;
+    (void)timeout_ms; // TODO: implement timeout
+
+    if (irq < 32 || irq >= gic::MAX_IRQS)
+    {
+        return SyscallResult::err(error::VERR_INVALID_ARG);
+    }
+
+    task::Task *t = task::current();
+    viper::Viper *v = viper::current();
+    if (!t || !v)
+    {
+        return SyscallResult::err(error::VERR_NOT_FOUND);
+    }
+
+    init_irq_states();
+
+    IrqState *state = &irq_states[irq];
+
+    // Check ownership
+    {
+        SpinlockGuard guard(state->lock);
+        if (state->owner_task_id != t->id)
+        {
+            return SyscallResult::err(error::VERR_PERMISSION);
+        }
+
+        // If already pending, consume it immediately
+        if (state->pending)
+        {
+            state->pending = false;
+            return SyscallResult::ok();
+        }
+
+        // Add to wait queue
+        sched::wait_enqueue(&state->waiters, t);
+    }
+
+    // Yield to let other tasks run while we wait
+    task::yield();
+
+    // After waking, check if IRQ fired
+    {
+        SpinlockGuard guard(state->lock);
+        if (state->pending)
+        {
+            state->pending = false;
+            return SyscallResult::ok();
+        }
+    }
+
+    // Woken for some other reason (signal, timeout, etc.)
+    return SyscallResult::ok();
+}
+
+/**
+ * @brief Acknowledge an IRQ after handling.
+ *
+ * @param a0 IRQ number
+ * @return 0 on success, negative error on failure
+ */
+static SyscallResult sys_irq_ack(u64 a0, u64, u64, u64, u64, u64)
+{
+    u32 irq = static_cast<u32>(a0);
+
+    if (irq < 32 || irq >= gic::MAX_IRQS)
+    {
+        return SyscallResult::err(error::VERR_INVALID_ARG);
+    }
+
+    task::Task *t = task::current();
+    if (!t)
+    {
+        return SyscallResult::err(error::VERR_NOT_FOUND);
+    }
+
+    init_irq_states();
+
+    IrqState *state = &irq_states[irq];
+    SpinlockGuard guard(state->lock);
+
+    if (state->owner_task_id != t->id)
+    {
+        return SyscallResult::err(error::VERR_PERMISSION);
+    }
+
+    // Re-enable the IRQ
+    gic::enable_irq(irq);
+
+    return SyscallResult::ok();
+}
+
+/**
+ * @brief Unregister from an IRQ.
+ *
+ * @param a0 IRQ number
+ * @return 0 on success, negative error on failure
+ */
+static SyscallResult sys_irq_unregister(u64 a0, u64, u64, u64, u64, u64)
+{
+    u32 irq = static_cast<u32>(a0);
+
+    if (irq < 32 || irq >= gic::MAX_IRQS)
+    {
+        return SyscallResult::err(error::VERR_INVALID_ARG);
+    }
+
+    task::Task *t = task::current();
+    if (!t)
+    {
+        return SyscallResult::err(error::VERR_NOT_FOUND);
+    }
+
+    init_irq_states();
+
+    IrqState *state = &irq_states[irq];
+    SpinlockGuard guard(state->lock);
+
+    if (state->owner_task_id != t->id)
+    {
+        return SyscallResult::err(error::VERR_PERMISSION);
+    }
+
+    // Disable the IRQ
+    gic::disable_irq(irq);
+
+    // Clear ownership
+    state->owner_task_id = 0;
+    state->owner_viper_id = 0;
+    state->pending = false;
+    state->enabled = false;
+
+    // Wake any remaining waiters
+    sched::wait_wake_all(&state->waiters);
+
+    return SyscallResult::ok();
+}
+
+/// Tracking for DMA buffer allocations
+struct DmaAllocation
+{
+    u64 phys_addr;
+    u64 virt_addr;
+    u64 size;
+    u32 owner_viper_id;
+    bool in_use;
+};
+
+static constexpr u32 MAX_DMA_ALLOCATIONS = 64;
+static DmaAllocation dma_allocations[MAX_DMA_ALLOCATIONS];
+static Spinlock dma_lock;
+static bool dma_initialized = false;
+
+static void init_dma_allocations()
+{
+    if (dma_initialized)
+        return;
+    for (u32 i = 0; i < MAX_DMA_ALLOCATIONS; i++)
+    {
+        dma_allocations[i].in_use = false;
+    }
+    dma_initialized = true;
+}
+
+/**
+ * @brief Allocate a physically contiguous DMA buffer.
+ *
+ * @param a0 Size of buffer in bytes
+ * @param a1 Pointer to receive physical address
+ * @return Virtual address on success, negative error on failure
+ */
+static SyscallResult sys_dma_alloc(u64 a0, u64 a1, u64, u64, u64, u64)
+{
+    u64 size = a0;
+    u64 *phys_out = reinterpret_cast<u64 *>(a1);
+
+    if (size == 0 || size > 16 * 1024 * 1024)
+    {
+        return SyscallResult::err(error::VERR_INVALID_ARG);
+    }
+
+    if (phys_out && !validate_user_write(phys_out, sizeof(u64)))
+    {
+        return SyscallResult::err(error::VERR_INVALID_ARG);
+    }
+
+    viper::Viper *v = viper::current();
+    if (!v)
+    {
+        return SyscallResult::err(error::VERR_NOT_FOUND);
+    }
+
+    // Check CAP_DMA_ACCESS
+    bool has_dma_access = false;
+    if (v->cap_table)
+    {
+        for (usize i = 0; i < v->cap_table->capacity(); i++)
+        {
+            cap::Entry *e = v->cap_table->entry_at(i);
+            if (e && e->kind != cap::Kind::Invalid && cap::has_rights(e->rights, cap::CAP_DMA_ACCESS))
+            {
+                has_dma_access = true;
+                break;
+            }
+        }
+    }
+    if (v->id <= 2)
+    {
+        has_dma_access = true;
+    }
+
+    if (!has_dma_access)
+    {
+        return SyscallResult::err(error::VERR_PERMISSION);
+    }
+
+    init_dma_allocations();
+
+    // Allocate physical pages
+    u64 num_pages = (size + pmm::PAGE_SIZE - 1) / pmm::PAGE_SIZE;
+    u64 phys_addr = pmm::alloc_pages(num_pages);
+    if (phys_addr == 0)
+    {
+        return SyscallResult::err(error::VERR_OUT_OF_MEMORY);
+    }
+
+    // Get address space
+    viper::AddressSpace *as = viper::get_address_space(v);
+    if (!as)
+    {
+        pmm::free_pages(phys_addr, num_pages);
+        return SyscallResult::err(error::VERR_NOT_FOUND);
+    }
+
+    // Map into user space at a fixed DMA region (0x2_0000_0000+)
+    u64 virt_addr = 0x200000000ULL;
+
+    // Find a free slot and virtual address
+    SpinlockGuard guard(dma_lock);
+    u32 slot = MAX_DMA_ALLOCATIONS;
+    for (u32 i = 0; i < MAX_DMA_ALLOCATIONS; i++)
+    {
+        if (!dma_allocations[i].in_use)
+        {
+            slot = i;
+            break;
+        }
+        // Track highest used address to avoid overlap
+        if (dma_allocations[i].virt_addr + dma_allocations[i].size > virt_addr)
+        {
+            virt_addr = pmm::page_align_up(dma_allocations[i].virt_addr + dma_allocations[i].size);
+        }
+    }
+
+    if (slot == MAX_DMA_ALLOCATIONS)
+    {
+        pmm::free_pages(phys_addr, num_pages);
+        return SyscallResult::err(error::VERR_NO_RESOURCE);
+    }
+
+    // Map the pages
+    if (!as->map(virt_addr, phys_addr, num_pages * pmm::PAGE_SIZE, viper::prot::RW))
+    {
+        pmm::free_pages(phys_addr, num_pages);
+        return SyscallResult::err(error::VERR_OUT_OF_MEMORY);
+    }
+
+    // Record allocation
+    dma_allocations[slot].phys_addr = phys_addr;
+    dma_allocations[slot].virt_addr = virt_addr;
+    dma_allocations[slot].size = num_pages * pmm::PAGE_SIZE;
+    dma_allocations[slot].owner_viper_id = v->id;
+    dma_allocations[slot].in_use = true;
+
+    // Return physical address if requested
+    if (phys_out)
+    {
+        *phys_out = phys_addr;
+    }
+
+    return SyscallResult::ok(virt_addr);
+}
+
+/**
+ * @brief Free a DMA buffer.
+ *
+ * @param a0 Virtual address of buffer
+ * @return 0 on success, negative error on failure
+ */
+static SyscallResult sys_dma_free(u64 a0, u64, u64, u64, u64, u64)
+{
+    u64 virt_addr = a0;
+
+    viper::Viper *v = viper::current();
+    if (!v)
+    {
+        return SyscallResult::err(error::VERR_NOT_FOUND);
+    }
+
+    init_dma_allocations();
+
+    SpinlockGuard guard(dma_lock);
+
+    // Find the allocation
+    u32 slot = MAX_DMA_ALLOCATIONS;
+    for (u32 i = 0; i < MAX_DMA_ALLOCATIONS; i++)
+    {
+        if (dma_allocations[i].in_use &&
+            dma_allocations[i].virt_addr == virt_addr &&
+            dma_allocations[i].owner_viper_id == v->id)
+        {
+            slot = i;
+            break;
+        }
+    }
+
+    if (slot == MAX_DMA_ALLOCATIONS)
+    {
+        return SyscallResult::err(error::VERR_NOT_FOUND);
+    }
+
+    // Unmap from address space
+    viper::AddressSpace *as = viper::get_address_space(v);
+    if (as)
+    {
+        as->unmap(virt_addr, dma_allocations[slot].size);
+    }
+
+    // Free physical pages
+    u64 num_pages = dma_allocations[slot].size / pmm::PAGE_SIZE;
+    pmm::free_pages(dma_allocations[slot].phys_addr, num_pages);
+
+    // Clear allocation
+    dma_allocations[slot].in_use = false;
+
+    return SyscallResult::ok();
+}
+
+/**
+ * @brief Translate virtual address to physical address.
+ *
+ * @param a0 Virtual address
+ * @return Physical address on success, negative error on failure
+ */
+static SyscallResult sys_virt_to_phys(u64 a0, u64, u64, u64, u64, u64)
+{
+    u64 virt_addr = a0;
+
+    viper::Viper *v = viper::current();
+    if (!v)
+    {
+        return SyscallResult::err(error::VERR_NOT_FOUND);
+    }
+
+    // Check CAP_DMA_ACCESS (needed for physical address translation)
+    bool has_dma_access = false;
+    if (v->cap_table)
+    {
+        for (usize i = 0; i < v->cap_table->capacity(); i++)
+        {
+            cap::Entry *e = v->cap_table->entry_at(i);
+            if (e && e->kind != cap::Kind::Invalid && cap::has_rights(e->rights, cap::CAP_DMA_ACCESS))
+            {
+                has_dma_access = true;
+                break;
+            }
+        }
+    }
+    if (v->id <= 2)
+    {
+        has_dma_access = true;
+    }
+
+    if (!has_dma_access)
+    {
+        return SyscallResult::err(error::VERR_PERMISSION);
+    }
+
+    // Get address space and translate
+    viper::AddressSpace *as = viper::get_address_space(v);
+    if (!as)
+    {
+        return SyscallResult::err(error::VERR_NOT_FOUND);
+    }
+
+    u64 phys_addr = as->translate(virt_addr);
+    if (phys_addr == 0)
+    {
+        return SyscallResult::err(error::VERR_NOT_FOUND);
+    }
+
+    return SyscallResult::ok(phys_addr);
+}
+
+/**
+ * @brief Enumerate available devices.
+ *
+ * @param a0 Pointer to DeviceInfo array
+ * @param a1 Maximum number of entries
+ * @return Number of devices on success, negative error on failure
+ */
+static SyscallResult sys_device_enum(u64 a0, u64 a1, u64, u64, u64, u64)
+{
+    struct DeviceEnumInfo
+    {
+        char name[32];
+        u64 phys_addr;
+        u64 size;
+        u32 irq;
+        u32 flags;
+    };
+
+    DeviceEnumInfo *devices = reinterpret_cast<DeviceEnumInfo *>(a0);
+    u32 max_count = static_cast<u32>(a1);
+
+    if (max_count > 0 && !validate_user_write(devices, max_count * sizeof(DeviceEnumInfo)))
+    {
+        return SyscallResult::err(error::VERR_INVALID_ARG);
+    }
+
+    // If devices is null, just return count
+    if (!devices)
+    {
+        return SyscallResult::ok(KNOWN_DEVICE_COUNT);
+    }
+
+    // Copy devices to user buffer
+    u32 count = 0;
+    for (u32 i = 0; i < KNOWN_DEVICE_COUNT && count < max_count; i++)
+    {
+        // Copy name
+        const char *src = known_devices[i].name;
+        usize j = 0;
+        while (j < 31 && src[j])
+        {
+            devices[count].name[j] = src[j];
+            j++;
+        }
+        devices[count].name[j] = '\0';
+
+        devices[count].phys_addr = known_devices[i].phys_base;
+        devices[count].size = known_devices[i].size;
+        devices[count].irq = known_devices[i].irq;
+        devices[count].flags = 1; // Available
+        count++;
+    }
+
+    return SyscallResult::ok(count);
+}
+
+// =============================================================================
+// Shared Memory Syscalls
+// =============================================================================
+
+/**
+ * @brief Create a shared memory object.
+ *
+ * @param a0 Size of shared memory in bytes
+ * @return Handle on success (in res0), negative error on failure
+ */
+static SyscallResult sys_shm_create(u64 a0, u64, u64, u64, u64, u64)
+{
+    u64 size = a0;
+
+    if (size == 0 || size > 64 * 1024 * 1024) // Max 64MB
+    {
+        return SyscallResult::err(error::VERR_INVALID_ARG);
+    }
+
+    viper::Viper *v = viper::current();
+    if (!v || !v->cap_table)
+    {
+        return SyscallResult::err(error::VERR_NOT_FOUND);
+    }
+
+    // Create the shared memory object
+    kobj::SharedMemory *shm = kobj::SharedMemory::create(size);
+    if (!shm)
+    {
+        return SyscallResult::err(error::VERR_OUT_OF_MEMORY);
+    }
+
+    // Map into creator's address space
+    viper::AddressSpace *as = viper::get_address_space(v);
+    if (!as)
+    {
+        delete shm;
+        return SyscallResult::err(error::VERR_NOT_FOUND);
+    }
+
+    // Find free virtual address for the mapping
+    // Use a simple approach: start from a fixed base and check VMAs
+    u64 virt_base = 0x7000000000ULL; // Start searching from 448GB
+    u64 virt_addr = 0;
+    u64 aligned_size = pmm::page_align_up(size);
+
+    // Simple search - in a real implementation, would check VMA list
+    for (u64 try_addr = virt_base; try_addr < 0x8000000000ULL; try_addr += aligned_size)
+    {
+        // Check if address range is free by trying to translate
+        // If translation returns 0, the address is likely unmapped
+        if (as->translate(try_addr) == 0)
+        {
+            virt_addr = try_addr;
+            break;
+        }
+    }
+
+    if (virt_addr == 0)
+    {
+        delete shm;
+        return SyscallResult::err(error::VERR_OUT_OF_MEMORY);
+    }
+
+    // Map the physical memory into the address space
+    if (!as->map(virt_addr, shm->phys_addr(), aligned_size, viper::prot::RW))
+    {
+        delete shm;
+        return SyscallResult::err(error::VERR_OUT_OF_MEMORY);
+    }
+
+    shm->set_creator_virt(virt_addr);
+
+    // Insert into capability table
+    cap::Handle handle = v->cap_table->insert(shm, cap::Kind::SharedMemory,
+                                               cap::CAP_READ | cap::CAP_WRITE | cap::CAP_TRANSFER);
+    if (handle == cap::HANDLE_INVALID)
+    {
+        as->unmap(virt_addr, aligned_size);
+        delete shm;
+        return SyscallResult::err(error::VERR_OUT_OF_MEMORY);
+    }
+
+    // Return handle and virtual address
+    SyscallResult result;
+    result.verr = 0;
+    result.res0 = handle;
+    result.res1 = virt_addr;
+    result.res2 = shm->size();
+    return result;
+}
+
+/**
+ * @brief Map a shared memory object into the calling process's address space.
+ *
+ * @param a0 Handle to shared memory object
+ * @return Virtual address on success (in res0), negative error on failure
+ */
+static SyscallResult sys_shm_map(u64 a0, u64, u64, u64, u64, u64)
+{
+    cap::Handle handle = static_cast<cap::Handle>(a0);
+
+    viper::Viper *v = viper::current();
+    if (!v || !v->cap_table)
+    {
+        return SyscallResult::err(error::VERR_NOT_FOUND);
+    }
+
+    // Look up the handle
+    cap::Entry *entry = v->cap_table->get_checked(handle, cap::Kind::SharedMemory);
+    if (!entry)
+    {
+        return SyscallResult::err(error::VERR_INVALID_HANDLE);
+    }
+
+    // Check read permission
+    if (!cap::has_rights(entry->rights, cap::CAP_READ))
+    {
+        return SyscallResult::err(error::VERR_PERMISSION);
+    }
+
+    kobj::SharedMemory *shm = static_cast<kobj::SharedMemory *>(entry->object);
+    if (!shm)
+    {
+        return SyscallResult::err(error::VERR_NOT_FOUND);
+    }
+
+    // Get the address space
+    viper::AddressSpace *as = viper::get_address_space(v);
+    if (!as)
+    {
+        return SyscallResult::err(error::VERR_NOT_FOUND);
+    }
+
+    // Find a free virtual address
+    u64 virt_base = 0x7000000000ULL;
+    u64 virt_addr = 0;
+    u64 aligned_size = shm->size();
+
+    for (u64 try_addr = virt_base; try_addr < 0x8000000000ULL; try_addr += aligned_size)
+    {
+        if (as->translate(try_addr) == 0)
+        {
+            virt_addr = try_addr;
+            break;
+        }
+    }
+
+    if (virt_addr == 0)
+    {
+        return SyscallResult::err(error::VERR_OUT_OF_MEMORY);
+    }
+
+    // Determine protection based on rights
+    u32 prot = viper::prot::READ;
+    if (cap::has_rights(entry->rights, cap::CAP_WRITE))
+    {
+        prot |= viper::prot::WRITE;
+    }
+
+    // Map the physical memory
+    if (!as->map(virt_addr, shm->phys_addr(), aligned_size, prot))
+    {
+        return SyscallResult::err(error::VERR_OUT_OF_MEMORY);
+    }
+
+    // Increment reference count
+    shm->ref();
+
+    SyscallResult result;
+    result.verr = 0;
+    result.res0 = virt_addr;
+    result.res1 = shm->size();
+    return result;
+}
+
+/**
+ * @brief Unmap a shared memory region from the calling process's address space.
+ *
+ * @param a0 Virtual address of mapped region
+ * @return 0 on success, negative error on failure
+ */
+static SyscallResult sys_shm_unmap(u64 a0, u64, u64, u64, u64, u64)
+{
+    u64 virt_addr = a0;
+
+    viper::Viper *v = viper::current();
+    if (!v)
+    {
+        return SyscallResult::err(error::VERR_NOT_FOUND);
+    }
+
+    viper::AddressSpace *as = viper::get_address_space(v);
+    if (!as)
+    {
+        return SyscallResult::err(error::VERR_NOT_FOUND);
+    }
+
+    // For now, just unmap a page - a full implementation would track
+    // shared memory mappings and unmap the entire region
+    as->unmap(virt_addr, pmm::PAGE_SIZE);
+
+    return SyscallResult::ok();
+}
+
+// =============================================================================
 // Syscall Dispatch Table
 // =============================================================================
 
@@ -2498,6 +3415,20 @@ static const SyscallEntry syscall_table[] = {
     {SYS_GETCHAR, sys_getchar, "getchar", 0},
     {SYS_PUTCHAR, sys_putchar, "putchar", 1},
     {SYS_UPTIME, sys_uptime, "uptime", 0},
+
+    // Device Management (0x100-0x10F) - Microkernel support
+    {SYS_MAP_DEVICE, sys_map_device, "map_device", 3},
+    {SYS_IRQ_REGISTER, sys_irq_register, "irq_register", 1},
+    {SYS_IRQ_WAIT, sys_irq_wait, "irq_wait", 2},
+    {SYS_IRQ_ACK, sys_irq_ack, "irq_ack", 1},
+    {SYS_DMA_ALLOC, sys_dma_alloc, "dma_alloc", 2},
+    {SYS_DMA_FREE, sys_dma_free, "dma_free", 1},
+    {SYS_VIRT_TO_PHYS, sys_virt_to_phys, "virt_to_phys", 1},
+    {SYS_DEVICE_ENUM, sys_device_enum, "device_enum", 2},
+    {SYS_IRQ_UNREGISTER, sys_irq_unregister, "irq_unregister", 1},
+    {SYS_SHM_CREATE, sys_shm_create, "shm_create", 1},
+    {SYS_SHM_MAP, sys_shm_map, "shm_map", 1},
+    {SYS_SHM_UNMAP, sys_shm_unmap, "shm_unmap", 1},
 };
 
 static constexpr usize SYSCALL_TABLE_SIZE = sizeof(syscall_table) / sizeof(syscall_table[0]);

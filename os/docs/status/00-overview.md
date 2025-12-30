@@ -1,8 +1,8 @@
 # ViperOS Implementation Status
 
-**Version:** December 2025 (v0.2.5)
+**Version:** December 2025 (v0.2.6)
 **Target:** AArch64 (ARM64) on QEMU virt machine
-**Total SLOC:** ~43,000
+**Total SLOC:** ~93,000
 
 ## Executive Summary
 
@@ -14,18 +14,17 @@ ViperOS is a capability-based microkernel operating system targeting AArch64. Th
 
 | Component | SLOC | Status |
 |-----------|------|--------|
-| Architecture (AArch64) | ~1,800 | Complete for QEMU (GICv2/v3, PSCI, hi-res timer) |
-| Memory Management | ~3,100 | Complete (PMM, VMM, slab, buddy, COW, VMA) |
-| Console (Serial/Graphics) | ~2,500 | Complete |
-| Drivers (VirtIO/fw_cfg) | ~3,400 | Complete for QEMU (blk, net, gpu, rng, input) |
-| Filesystem (VFS/ViperFS) | ~3,700 | Complete (journal, inode cache, block cache) |
-| IPC (Channels/Poll) | ~1,400 | Complete |
-| Networking (TCP/IP/TLS) | ~8,200 | Complete |
-| Scheduler/Tasks | ~1,500 | Complete (wait queues, priorities, signals) |
-| Viper/Capabilities | ~1,100 | Complete (VMA, address spaces) |
-| Syscalls/Kernel Objects | ~5,800 | Complete (73 syscalls) |
-| User Space (libc/C++) | ~7,300 | Complete |
-| Tools | ~1,500 | Complete |
+| Architecture (AArch64) | ~3,500 | Complete for QEMU (GICv2/v3, PSCI, hi-res timer) |
+| Memory Management | ~5,300 | Complete (PMM, VMM, slab, buddy, COW, VMA) |
+| Console (Serial/Graphics) | ~3,500 | Complete |
+| Drivers (VirtIO/fw_cfg) | ~6,000 | Complete for QEMU (blk, net, gpu, rng, input) |
+| Filesystem (VFS/ViperFS) | ~6,400 | Complete (journal, inode cache, block cache) |
+| IPC (Channels/Poll) | ~2,500 | Complete |
+| Networking (TCP/IP/TLS) | ~14,600 | Complete |
+| Scheduler/Tasks | ~2,900 | Complete (wait queues, priorities, signals) |
+| Viper/Capabilities | ~2,900 | Complete (VMA, address spaces) |
+| User Space (libc/C++) | ~28,300 | Complete (55 C sources, 66 C++ headers) |
+| Tools | ~2,200 | Complete |
 
 ---
 
@@ -318,6 +317,14 @@ os/
 ---
 
 ## Version History
+
+- **December 2025 (v0.2.6)**: Comprehensive libc expansion and build fixes
+  - **Expanded libc**: 55 source files totaling ~16,200 lines
+  - **C++ Standard Library**: 66 header-only implementations (~25,000 lines)
+  - **New C Headers**: sys/sem.h, sys/msg.h, sys/time.h, semaphore.h, langinfo.h, fmtmsg.h, aio.h, mqueue.h, regex.h, ndbm.h, utmpx.h, netinet/tcp.h, cpio.h, tar.h
+  - **New C++ Headers**: stop_token, latch, barrier, semaphore, source_location, numbers, concepts, bit, charconv, shared_mutex, future, filesystem
+  - **Build Fixes**: Fixed ~27 build errors (-Werror compliance), type definitions, assembly constraints
+  - **POSIX Compliance**: System V IPC, POSIX semaphores, async I/O, regex, message queues
 
 - **December 2025 (v0.2.5)**: Clang toolchain and architecture improvements
   - **Clang Toolchain**: New aarch64-clang-toolchain.cmake, build_viper.sh defaults to Clang

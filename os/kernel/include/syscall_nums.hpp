@@ -134,6 +134,17 @@ enum Number : u64
     GETCHAR = SYS_GETCHAR,
     PUTCHAR = SYS_PUTCHAR,
     UPTIME = SYS_UPTIME,
+
+    // Device Management (0x100 - 0x10F) - Microkernel support
+    MAP_DEVICE = SYS_MAP_DEVICE,
+    IRQ_REGISTER = SYS_IRQ_REGISTER,
+    IRQ_WAIT = SYS_IRQ_WAIT,
+    IRQ_ACK = SYS_IRQ_ACK,
+    DMA_ALLOC = SYS_DMA_ALLOC,
+    DMA_FREE = SYS_DMA_FREE,
+    VIRT_TO_PHYS = SYS_VIRT_TO_PHYS,
+    DEVICE_ENUM = SYS_DEVICE_ENUM,
+    IRQ_UNREGISTER = SYS_IRQ_UNREGISTER,
 };
 
 } // namespace syscall

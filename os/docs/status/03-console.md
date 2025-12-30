@@ -2,7 +2,7 @@
 
 **Status:** Fully functional for both serial and graphics output
 **Location:** `kernel/console/`
-**SLOC:** ~2,500
+**SLOC:** ~3,500
 
 ## Overview
 

@@ -2,7 +2,7 @@
 
 **Status:** Complete user-space process execution with VMA tracking
 **Location:** `kernel/viper/`, `kernel/cap/`
-**SLOC:** ~1,100
+**SLOC:** ~2,900
 
 ## Overview
 

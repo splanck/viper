@@ -2,7 +2,7 @@
 
 **Status:** Functional host-side utilities and cross-compilation toolchains
 **Location:** `tools/`, `cmake/`
-**SLOC:** ~1,500
+**SLOC:** ~2,200
 
 ## Overview
 

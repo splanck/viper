@@ -49,6 +49,8 @@ enum class Kind : u16
     Directory = 22,
     Surface = 23,
     Input = 24,
+    // Memory objects
+    SharedMemory = 25,
 };
 
 /// Sentinel value indicating no parent (root capability)

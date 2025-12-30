@@ -49,6 +49,7 @@ set(KERNEL_SOURCES
         kobj/channel.cpp
         kobj/file.cpp
         kobj/dir.cpp
+        kobj/shm.cpp
         loader/elf.cpp
         loader/loader.cpp
         drivers/virtio/virtio.cpp

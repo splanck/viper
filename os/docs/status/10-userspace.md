@@ -2,7 +2,7 @@
 
 **Status:** Complete with comprehensive libc, C++ STL headers, and interactive shell
 **Location:** `user/`
-**SLOC:** ~32,000
+**SLOC:** ~28,300 (16,200 libc sources + 6,500 C headers + 25,000 C++ headers + 2,300 vinit + 3,800 test programs)
 
 ## Overview
 
@@ -1949,64 +1949,126 @@ User space is tested via:
 
 ## Files
 
+### libc Source Files (55 files, ~16,200 lines)
+
 | File | Lines | Description |
 |------|-------|-------------|
-| `vinit/vinit.cpp` | ~3,324 | Init process + shell |
+| `libc/src/stdio.c` | 1,225 | Standard I/O with FILE pool and buffering |
+| `libc/src/wchar.c` | 960 | Wide character functions |
+| `libc/src/stdlib.c` | 862 | Standard library with strtod, itoa |
+| `libc/src/math.c` | 714 | Complete math library |
+| `libc/src/search.c` | 612 | Hash table and binary tree search |
+| `libc/src/netdb.c` | 567 | Network database functions |
+| `libc/src/string.c` | 563 | String operations with strerror, strtok |
+| `libc/src/iconv.c` | 485 | Character set conversion |
+| `libc/src/socket.c` | 444 | BSD socket functions |
+| `libc/src/spawn.c` | 434 | POSIX spawn (stubs) |
+| `libc/src/pthread.c` | 431 | POSIX threads stubs |
+| `libc/src/monetary.c` | 426 | Monetary formatting |
+| `libc/src/wordexp.c` | 412 | Word expansion |
+| `libc/src/glob.c` | 395 | Filename globbing |
+| `libc/src/mqueue.c` | 379 | POSIX message queues |
+| `libc/src/regex.c` | 351 | POSIX regular expressions |
+| `libc/src/unistd.c` | 346 | POSIX functions with fork, access, symlink |
+| `libc/src/msg.c` | 342 | System V message queues |
+| `libc/src/getopt.c` | 334 | Command-line option parsing |
+| `libc/src/grp.c` | 331 | Group file access |
+| `libc/src/sem.c` | 331 | System V semaphores |
+| `libc/src/ftw.c` | 329 | File tree walk |
+| `libc/src/ndbm.c` | 281 | Database functions |
+| `libc/src/fenv.c` | 277 | Floating-point environment |
+| `libc/src/semaphore.c` | 269 | POSIX semaphores |
+| `libc/src/resource.c` | 241 | Resource limits |
+| `libc/src/aio.c` | 236 | Asynchronous I/O (sync fallback) |
+| `libc/src/pwd.c` | 228 | Password file access |
+| `libc/src/time.c` | 221 | Time functions with clock_gettime |
+| `libc/src/fnmatch.c` | 207 | Filename pattern matching |
+| `libc/src/signal.c` | 204 | Signal handling |
+| `libc/src/mman.c` | 188 | Memory mapping |
+| `libc/src/inttypes.c` | 186 | Integer format functions |
+| `libc/src/stat.c` | 185 | File status and fcntl operations |
+| `libc/src/syslog.c` | 174 | System logging |
+| `libc/src/termios.c` | 172 | Terminal control |
+| `libc/src/fmtmsg.c` | 167 | Message display |
+| `libc/src/dirent.c` | 155 | Directory operations |
+| `libc/src/sched.c` | 153 | Process scheduling |
+| `libc/src/utmpx.c` | 143 | User accounting |
+| `libc/src/wait.c` | 132 | Process wait functions |
+| `libc/src/poll.c` | 127 | I/O multiplexing |
+| `libc/src/nl_types.c` | 127 | Message catalogs (stubs) |
+| `libc/src/libgen.c` | 123 | Path manipulation (basename, dirname) |
+| `libc/src/locale.c` | 109 | Localization |
+| `libc/src/syscall.S` | 108 | AArch64 syscall entry |
+| `libc/src/new.cpp` | 98 | C++ new/delete |
+| `libc/src/setjmp.S` | 89 | Non-local jumps (AArch64 asm) |
+| `libc/src/ctype.c` | 79 | Character classification |
+| `libc/src/langinfo.c` | 71 | Locale information |
+| `libc/src/shm.c` | 69 | Shared memory (stubs) |
+| `libc/src/utsname.c` | 58 | System identification |
+| `libc/src/ipc.c` | 41 | IPC key generation |
+| `libc/src/setjmp.c` | 30 | setjmp/longjmp wrappers |
+| `libc/src/errno.c` | 23 | Error handling |
+
+### C++ Headers (66 files, ~25,000 lines)
+
+| File | Lines | Description |
+|------|-------|-------------|
+| `map` | 998 | Sorted associative container |
+| `filesystem` | 954 | C++17 filesystem library |
+| `string` | 959 | Dynamic string container |
+| `memory` | 860 | Smart pointers and allocators |
+| `deque` | 847 | Double-ended queue |
+| `unordered_map` | 832 | Hash-based map |
+| `future` | 813 | Async result and promises |
+| `regex` | 805 | Regular expression library |
+| `set` | 783 | Sorted set container |
+| `list` | 772 | Doubly-linked list |
+| `unordered_set` | 767 | Hash-based set |
+| `complex` | 746 | Complex numbers |
+| `forward_list` | 744 | Singly-linked list |
+| `limits` | 633 | Numeric limits traits |
+| `vector` | 632 | Dynamic array container |
+| `atomic` | 627 | Atomic operations |
+| `chrono` | 563 | Time utilities |
+| `algorithm` | 562 | Generic algorithms |
+| `functional` | 561 | Function objects |
+| `tuple` | 570 | Heterogeneous collection |
+| `variant` | 536 | Type-safe union |
+| `type_traits` | 506 | Type traits library |
+| `string_view` | 471 | Non-owning string reference |
+| `numeric` | 463 | Numeric operations |
+| `iterator` | 459 | Iterator utilities |
+| `mutex` | 455 | Mutual exclusion |
+| `bitset` | 396 | Fixed-size bit array |
+| `charconv` | 363 | Character conversion (C++17) |
+| `array` | 341 | Fixed-size array |
+| `stop_token` | 323 | Cooperative cancellation (C++20) |
+| `queue` | 297 | Queue adaptor |
+| `any` | 294 | Type-safe any |
+| `concepts` | 256 | Concepts library (C++20) |
+| `shared_mutex` | 251 | Shared mutex |
+| `span` | 233 | Non-owning contiguous view |
+| `bit` | 217 | Bit manipulation (C++20) |
+| `cmath` | 206 | C math wrappers |
+| `thread` | 202 | Thread support |
+| `ratio` | 190 | Compile-time ratios |
+| `exception` | 186 | Exception handling |
+| `condition_variable` | 179 | Condition variables |
+| `numbers` | 128 | Math constants (C++20) |
+| `stack` | 128 | Stack adaptor |
+| `barrier` | 125 | Thread barrier (C++20) |
+| `semaphore` | 123 | Semaphores (C++20) |
+| `latch` | 90 | Single-use barrier (C++20) |
+| `source_location` | 86 | Source location (C++20) |
+| `new` | 73 | Dynamic memory |
+| `initializer_list` | 55 | Brace initialization |
+
+### User Programs
+
+| File | Lines | Description |
+|------|-------|-------------|
+| `vinit/vinit.cpp` | ~2,279 | Init process + shell (total across all vinit files) |
 | `syscall.hpp` | ~1,677 | Low-level syscall wrappers |
-| `libc/src/stdio.c` | ~800 | Standard I/O with FILE pool and buffering |
-| `libc/src/string.c` | ~500 | String operations with strerror, strtok |
-| `libc/src/stdlib.c` | ~750 | Standard library with strtod, itoa |
-| `libc/src/ctype.c` | ~79 | Character classification |
-| `libc/src/unistd.c` | ~350 | POSIX functions with fork, access, symlink |
-| `libc/src/time.c` | ~220 | Time functions with clock_gettime |
-| `libc/src/math.c` | ~900 | Complete math library |
-| `libc/src/dirent.c` | ~140 | Directory operations |
-| `libc/src/termios.c` | ~180 | Terminal control |
-| `libc/src/pthread.c` | ~350 | POSIX threads stubs |
-| `libc/src/errno.c` | ~23 | Error handling |
-| `libc/src/signal.c` | ~205 | Signal handling |
-| `libc/src/stat.c` | ~170 | File status and fcntl operations |
-| `libc/src/inttypes.c` | ~170 | Integer format functions |
-| `libc/src/setjmp.S` | ~80 | Non-local jumps (AArch64 asm) |
-| `libc/src/wait.c` | ~100 | Process wait functions |
-| `libc/src/poll.c` | ~120 | I/O multiplexing |
-| `libc/src/socket.c` | ~350 | BSD socket functions |
-| `libc/src/netdb.c` | ~500 | Network database functions |
-| `libc/src/locale.c` | ~100 | Localization |
-| `libc/src/wchar.c` | ~550 | Wide character functions |
-| `libc/src/mman.c` | ~200 | Memory mapping |
-| `libc/src/utsname.c` | ~50 | System identification |
-| `libc/src/fenv.c` | ~200 | Floating-point environment |
-| `libc/src/resource.c` | ~200 | Resource limits |
-| `libc/src/syslog.c` | ~150 | System logging |
-| `libc/src/fnmatch.c` | ~200 | Filename pattern matching |
-| `libc/src/getopt.c` | ~200 | Command-line option parsing |
-| `libc/src/pwd.c` | ~200 | Password file access |
-| `libc/src/grp.c` | ~300 | Group file access |
-| `libc/src/libgen.c` | ~100 | Path manipulation (basename, dirname) |
-| `libc/src/search.c` | ~400 | Hash table and binary tree search |
-| `libc/src/glob.c` | ~250 | Filename globbing |
-| `libc/src/ftw.c` | ~200 | File tree walk |
-| `libc/src/spawn.c` | ~450 | POSIX spawn (stubs) |
-| `libc/src/sched.c` | ~160 | Process scheduling |
-| `libc/src/wordexp.c` | ~300 | Word expansion |
-| `libc/src/ipc.c` | ~50 | IPC key generation |
-| `libc/src/shm.c` | ~70 | Shared memory (stubs) |
-| `libc/src/monetary.c` | ~250 | Monetary formatting |
-| `libc/src/iconv.c` | ~400 | Character set conversion |
-| `libc/src/nl_types.c` | ~100 | Message catalogs (stubs) |
-| `libc/src/sem.c` | ~250 | System V semaphores |
-| `libc/src/msg.c` | ~200 | System V message queues |
-| `libc/src/semaphore.c` | ~180 | POSIX semaphores |
-| `libc/src/langinfo.c` | ~80 | Locale information |
-| `libc/src/fmtmsg.c` | ~130 | Message display |
-| `libc/src/aio.c` | ~180 | Asynchronous I/O (sync fallback) |
-| `libc/src/mqueue.c` | ~280 | POSIX message queues |
-| `libc/src/regex.c` | ~350 | POSIX regular expressions |
-| `libc/src/ndbm.c` | ~200 | Database functions |
-| `libc/src/utmpx.c` | ~150 | User accounting |
-| `libc/src/new.cpp` | ~98 | C++ new/delete |
-| `libc/include/c++/*` | ~20,000 | C++ headers (type_traits, algorithm, functional, iterator, memory, array, string_view, optional, vector, string, tuple, map, set, deque, list, ratio, chrono, bitset, queue, stack, forward_list, unordered_map, unordered_set, any, variant, span, exception, stdexcept, numeric, mutex, condition_variable, atomic, thread, complex, valarray, regex, shared_mutex, future, filesystem, stop_token, latch, barrier, semaphore, source_location, numbers, concepts, bit, charconv, etc.) |
 | `hello/hello.cpp` | ~294 | Hello world test program |
 | `sysinfo/sysinfo.cpp` | ~392 | System info utility |
 

@@ -285,6 +285,18 @@ inline SyscallResult syscall4(u64 num, u64 arg0, u64 arg1, u64 arg2, u64 arg3)
  */
 
 /**
+ * @brief Yield the CPU to other runnable tasks.
+ *
+ * @details
+ * This is a voluntary preemption point. The kernel will run the scheduler
+ * and may resume this task immediately if no other tasks are runnable.
+ */
+inline void yield()
+{
+    (void)syscall0(SYS_TASK_YIELD);
+}
+
+/**
  * @brief Terminate the calling task/process with an exit code.
  *
  * @details
@@ -515,6 +527,105 @@ inline i32 poll_wait(u32 poll_id, PollEvent *events, u32 max_events, i64 timeout
                       static_cast<u64>(max_events),
                       static_cast<u64>(timeout_ms));
     return r.ok() ? static_cast<i32>(r.val0) : static_cast<i32>(r.error);
+}
+
+/** @} */
+
+/**
+ * @name Channel IPC
+ * @brief Non-blocking message passing primitives for inter-process communication.
+ * @{
+ */
+
+/**
+ * @brief Create a new IPC channel.
+ *
+ * @details
+ * Creates a bidirectional communication channel. Returns a SyscallResult
+ * containing the channel handle in val0 on success.
+ *
+ * @return SyscallResult with channel handle in val0 on success.
+ */
+inline SyscallResult channel_create()
+{
+    return syscall0(SYS_CHANNEL_CREATE);
+}
+
+/**
+ * @brief Send a message on a channel.
+ *
+ * @details
+ * Sends a message consisting of data bytes and optional capability handles
+ * to the other end of the channel. This is non-blocking; if the channel
+ * buffer is full, returns VERR_WOULD_BLOCK.
+ *
+ * @param channel Channel handle.
+ * @param data Pointer to message data.
+ * @param len Length of message data in bytes.
+ * @param handles Array of capability handles to transfer (optional).
+ * @param handle_count Number of handles to transfer.
+ * @return 0 on success, negative error code on failure.
+ */
+inline i64 channel_send(i32 channel, const void *data, usize len,
+                        const u32 *handles = nullptr, u32 handle_count = 0)
+{
+    // Pack handles pointer and count into args
+    auto r = syscall4(SYS_CHANNEL_SEND,
+                      static_cast<u64>(channel),
+                      reinterpret_cast<u64>(data),
+                      len,
+                      (static_cast<u64>(handle_count) << 32) |
+                          reinterpret_cast<u64>(handles));
+    return r.error;
+}
+
+/**
+ * @brief Receive a message from a channel.
+ *
+ * @details
+ * Receives a message from the channel. This is non-blocking; if no message
+ * is available, returns VERR_WOULD_BLOCK.
+ *
+ * @param channel Channel handle.
+ * @param buf Buffer to receive message data.
+ * @param buf_len Size of the buffer.
+ * @param handles Array to receive transferred handles (optional).
+ * @param handle_count Input: max handles; Output: actual handles received.
+ * @return Number of bytes received on success, negative error code on failure.
+ */
+inline i64 channel_recv(i32 channel, void *buf, usize buf_len,
+                        u32 *handles = nullptr, u32 *handle_count = nullptr)
+{
+    u32 max_handles = handle_count ? *handle_count : 0;
+    auto r = syscall4(SYS_CHANNEL_RECV,
+                      static_cast<u64>(channel),
+                      reinterpret_cast<u64>(buf),
+                      buf_len,
+                      (static_cast<u64>(max_handles) << 32) |
+                          reinterpret_cast<u64>(handles));
+    if (r.ok())
+    {
+        if (handle_count)
+            *handle_count = static_cast<u32>(r.val1);
+        return static_cast<i64>(r.val0);
+    }
+    return r.error;
+}
+
+/**
+ * @brief Close a channel handle.
+ *
+ * @details
+ * Releases the channel handle. If both ends of a channel are closed,
+ * the channel is destroyed.
+ *
+ * @param channel Channel handle.
+ * @return 0 on success, negative error code on failure.
+ */
+inline i32 channel_close(i32 channel)
+{
+    auto r = syscall1(SYS_CHANNEL_CLOSE, static_cast<u64>(channel));
+    return static_cast<i32>(r.error);
 }
 
 /** @} */
@@ -1692,6 +1803,110 @@ inline i32 fs_open_path(const char *path, u32 flags)
     }
 
     return static_cast<i32>(current_handle);
+}
+
+/** @} */
+
+/**
+ * @name Shared Memory
+ * @brief Shared memory for inter-process data transfer.
+ * @{
+ */
+
+/**
+ * @brief Result of shm_create syscall.
+ */
+struct ShmCreateResult
+{
+    i64 error;     /**< Error code (0 on success). */
+    u32 handle;    /**< Shared memory handle. */
+    u64 virt_addr; /**< Virtual address of mapped region. */
+    u64 size;      /**< Size of the region. */
+};
+
+/**
+ * @brief Create a shared memory region.
+ *
+ * @details
+ * Creates a shared memory region of the specified size, maps it into the
+ * calling process's address space, and returns a handle that can be
+ * transferred to other processes via IPC.
+ *
+ * @param size Size of the shared memory region in bytes.
+ * @return ShmCreateResult with handle, virtual address, and size on success.
+ */
+inline ShmCreateResult shm_create(u64 size)
+{
+    auto r = syscall1(SYS_SHM_CREATE, size);
+    ShmCreateResult result;
+    result.error = r.error;
+    if (r.ok())
+    {
+        result.handle = static_cast<u32>(r.val0);
+        result.virt_addr = r.val1;
+        result.size = r.val2;
+    }
+    else
+    {
+        result.handle = 0;
+        result.virt_addr = 0;
+        result.size = 0;
+    }
+    return result;
+}
+
+/**
+ * @brief Result of shm_map syscall.
+ */
+struct ShmMapResult
+{
+    i64 error;     /**< Error code (0 on success). */
+    u64 virt_addr; /**< Virtual address of mapped region. */
+    u64 size;      /**< Size of the region. */
+};
+
+/**
+ * @brief Map a shared memory region into the calling process's address space.
+ *
+ * @details
+ * Maps a shared memory region (received via IPC) into the calling process's
+ * address space. The handle must be a valid SharedMemory capability.
+ *
+ * @param handle Shared memory handle.
+ * @return ShmMapResult with virtual address and size on success.
+ */
+inline ShmMapResult shm_map(u32 handle)
+{
+    auto r = syscall1(SYS_SHM_MAP, static_cast<u64>(handle));
+    ShmMapResult result;
+    result.error = r.error;
+    if (r.ok())
+    {
+        result.virt_addr = r.val0;
+        result.size = r.val1;
+    }
+    else
+    {
+        result.virt_addr = 0;
+        result.size = 0;
+    }
+    return result;
+}
+
+/**
+ * @brief Unmap a shared memory region from the calling process's address space.
+ *
+ * @details
+ * Unmaps a previously mapped shared memory region. The virtual address must
+ * have been returned by shm_create or shm_map.
+ *
+ * @param virt_addr Virtual address of the mapped region.
+ * @return 0 on success, negative error code on failure.
+ */
+inline i32 shm_unmap(u64 virt_addr)
+{
+    auto r = syscall1(SYS_SHM_UNMAP, virt_addr);
+    return static_cast<i32>(r.error);
 }
 
 /** @} */

@@ -23,6 +23,12 @@ set(USER_LINK_OPTIONS
 # Build the libc first
 add_subdirectory(libc)
 
+# Build the virtio library for user-space drivers
+add_subdirectory(libvirtio)
+
+# Build the microkernel servers
+add_subdirectory(servers)
+
 # Helper function to create user programs with libc
 function(add_user_program name)
     add_executable(${name}.elf ${ARGN})

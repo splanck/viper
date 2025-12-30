@@ -2,7 +2,7 @@
 
 **Status:** Complete cooperative/preemptive scheduler with wait queues, priorities, and signals
 **Location:** `kernel/sched/`
-**SLOC:** ~1,500
+**SLOC:** ~2,900
 
 ## Overview
 

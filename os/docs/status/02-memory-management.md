@@ -2,7 +2,7 @@
 
 **Status:** Complete with demand paging, COW, buddy allocator, and slab allocator
 **Location:** `kernel/mm/`
-**SLOC:** ~3,100
+**SLOC:** ~5,300
 
 ## Overview
 

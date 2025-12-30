@@ -2,7 +2,7 @@
 
 **Status:** Complete for QEMU virt platform
 **Location:** `kernel/arch/aarch64/`
-**SLOC:** ~1,800
+**SLOC:** ~3,500
 
 ## Overview
 

@@ -317,3 +317,36 @@
 /** @brief Return the kernel uptime tick count. */
 #define SYS_UPTIME 0xF3
 /** @} */
+
+/** @name Device Management Syscalls (0x100 - 0x10F)
+ *  @details
+ *  Microkernel device access primitives. These allow user-space drivers to
+ *  map device MMIO, register for IRQs, and allocate DMA buffers.
+ *  Requires CAP_DEVICE_ACCESS capability.
+ *  @{
+ */
+/** @brief Map device MMIO region into user address space. */
+#define SYS_MAP_DEVICE 0x100
+/** @brief Register to receive a specific IRQ. */
+#define SYS_IRQ_REGISTER 0x101
+/** @brief Wait for a registered IRQ to fire. */
+#define SYS_IRQ_WAIT 0x102
+/** @brief Acknowledge an IRQ after handling. */
+#define SYS_IRQ_ACK 0x103
+/** @brief Allocate physically contiguous DMA buffer. */
+#define SYS_DMA_ALLOC 0x104
+/** @brief Free a DMA buffer. */
+#define SYS_DMA_FREE 0x105
+/** @brief Translate virtual address to physical (for DMA programming). */
+#define SYS_VIRT_TO_PHYS 0x106
+/** @brief Enumerate available devices. */
+#define SYS_DEVICE_ENUM 0x107
+/** @brief Unregister from an IRQ. */
+#define SYS_IRQ_UNREGISTER 0x108
+/** @brief Create a shared memory object. */
+#define SYS_SHM_CREATE 0x109
+/** @brief Map a shared memory object into address space. */
+#define SYS_SHM_MAP 0x10A
+/** @brief Unmap a shared memory object. */
+#define SYS_SHM_UNMAP 0x10B
+/** @} */

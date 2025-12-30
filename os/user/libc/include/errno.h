@@ -59,6 +59,7 @@ extern int *__errno_location(void);
 #define ENOSTR 60       /* Device not a stream */
 #define EPROTO 71       /* Protocol error */
 #define EOVERFLOW 75    /* Value too large for data type */
+#define EILSEQ 84       /* Illegal byte sequence */
 
 /* Network error codes */
 #define ENOTSOCK 88         /* Socket operation on non-socket */
@@ -89,6 +90,7 @@ extern int *__errno_location(void);
 #define EHOSTUNREACH 113    /* No route to host */
 #define EALREADY 114        /* Operation already in progress */
 #define EINPROGRESS 115     /* Operation now in progress */
+#define ECANCELED 125       /* Operation canceled */
 
 #ifdef __cplusplus
 }
