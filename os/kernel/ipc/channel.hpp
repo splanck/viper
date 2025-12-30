@@ -32,8 +32,10 @@ namespace channel
 constexpr u32 MAX_MSG_SIZE = 256;
 /** @brief Maximum number of channels that can exist at once. */
 constexpr u32 MAX_CHANNELS = 64;
-/** @brief Maximum number of queued messages per channel. */
-constexpr u32 MAX_PENDING = 16;
+/** @brief Default number of queued messages per channel. */
+constexpr u32 DEFAULT_PENDING = 16;
+/** @brief Maximum configurable pending message capacity. */
+constexpr u32 MAX_PENDING = 64;
 /** @brief Maximum number of handles that can be transferred in one message. */
 constexpr u32 MAX_HANDLES_PER_MSG = 4;
 
@@ -87,17 +89,19 @@ enum class ChannelState : u32
  * - Read/write indices and a count of queued messages.
  * - Optional pointers to blocked sender and receiver tasks.
  * - Reference counts for send and recv endpoints.
+ * - Configurable capacity (1 to MAX_PENDING messages).
  */
 struct Channel
 {
     u32 id;
     ChannelState state;
 
-    // Circular buffer for messages
+    // Circular buffer for messages (MAX_PENDING slots, capacity limits usage)
     Message buffer[MAX_PENDING];
     u32 read_idx;
     u32 write_idx;
     u32 count;
+    u32 capacity; // Effective capacity (1 to MAX_PENDING)
 
     // Wait queues for blocked tasks (supports multiple waiters)
     sched::WaitQueue send_waiters; // Tasks blocked on send (buffer full)
@@ -135,17 +139,39 @@ void init();
  * - A recv handle with CAP_READ | CAP_TRANSFER | CAP_DERIVE rights
  *
  * @param out_pair Output structure to receive both handles.
+ * @param capacity Number of pending messages (1 to MAX_PENDING, default DEFAULT_PENDING).
  * @return @ref error::VOK on success, or negative error code.
  */
-i64 create(ChannelPair *out_pair);
+i64 create(ChannelPair *out_pair, u32 capacity = DEFAULT_PENDING);
 
 /**
  * @brief Legacy create for backward compatibility - returns channel ID.
  *
  * @deprecated Use create(ChannelPair*) for proper endpoint separation.
+ * @param capacity Number of pending messages (1 to MAX_PENDING, default DEFAULT_PENDING).
  * @return Non-negative channel ID on success, or negative error code.
  */
-i64 create();
+i64 create(u32 capacity = DEFAULT_PENDING);
+
+/**
+ * @brief Get the capacity of a channel.
+ *
+ * @param ch Pointer to channel object.
+ * @return Channel capacity, or 0 if invalid.
+ */
+u32 get_capacity(Channel *ch);
+
+/**
+ * @brief Set the capacity of a channel.
+ *
+ * @details
+ * Capacity can only be increased, not decreased below the current message count.
+ *
+ * @param ch Pointer to channel object.
+ * @param new_capacity New capacity (1 to MAX_PENDING).
+ * @return @ref error::VOK on success, or negative error code.
+ */
+i64 set_capacity(Channel *ch, u32 new_capacity);
 
 /**
  * @brief Send a message with optional handle transfer (non-blocking).

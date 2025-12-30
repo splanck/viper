@@ -36,8 +36,16 @@ function(add_user_program name)
     target_link_libraries(${name}.elf PRIVATE viperlibc)
 endfunction()
 
-# vinit - init process
-add_user_program(vinit vinit/vinit.cpp)
+# vinit - init process (multi-file)
+add_user_program(vinit
+    vinit/vinit.cpp
+    vinit/io.cpp
+    vinit/readline.cpp
+    vinit/cmd_system.cpp
+    vinit/cmd_fs.cpp
+    vinit/cmd_misc.cpp
+    vinit/shell.cpp
+)
 
 # hello - simple test program for spawn testing
 add_user_program(hello hello/hello.cpp)

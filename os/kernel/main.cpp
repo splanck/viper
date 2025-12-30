@@ -694,6 +694,10 @@ extern "C" void kernel_main(void *boot_info_ptr)
                 // Initialize Assign system (v0.2.0)
                 serial::puts("[kernel] Initializing Assign system...\n");
                 viper::assign::init();
+
+                // Set up standard Amiga-style assigns (C:, S:, L:, T:, CERTS:)
+                viper::assign::setup_standard_assigns();
+
                 viper::assign::debug_dump();
 
                 // Test assign inode resolution (using get_inode, not resolve_path

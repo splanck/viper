@@ -192,45 +192,55 @@ else
     print_warning "gen_roots_der not found, skipping certificate bundle"
 fi
 
-# Create/update disk image with directory structure
+# Create/update disk image with Amiga-style directory structure
+# Layout:
+#   / (root = SYS: = D0:)
+#   ├── vinit.elf           # Init process (loaded by kernel)
+#   ├── c/                   # Commands directory (C:)
+#   │   ├── hello.elf
+#   │   ├── fsinfo.elf
+#   │   └── ...
+#   ├── certs/               # Certificate store
+#   │   └── roots.der
+#   ├── s/                   # Startup-sequence scripts (S:)
+#   ├── l/                   # Shared libraries (L:)
+#   └── t/                   # Temporary files (T:)
 print_step "Creating disk image..."
 if [[ -x "$TOOLS_DIR/mkfs.viperfs" ]]; then
     MKFS_ARGS=(
         "$BUILD_DIR/disk.img" 8
         "$BUILD_DIR/vinit.elf"
-        --mkdir SYS
-        --mkdir SYS/certs
+        --mkdir c
+        --mkdir s
+        --mkdir l
+        --mkdir t
+        --mkdir certs
     )
-    # Add hello.elf test program if it was built
+    # Add command utilities to c/ directory (keep .elf extension)
     if [[ -f "$BUILD_DIR/hello.elf" ]]; then
-        MKFS_ARGS+=("$BUILD_DIR/hello.elf")
+        MKFS_ARGS+=(--add "$BUILD_DIR/hello.elf:c/hello.elf")
     fi
-    # Add fsinfo utility if it was built
     if [[ -f "$BUILD_DIR/fsinfo.elf" ]]; then
-        MKFS_ARGS+=("$BUILD_DIR/fsinfo.elf")
+        MKFS_ARGS+=(--add "$BUILD_DIR/fsinfo.elf:c/fsinfo.elf")
     fi
-    # Add netstat utility if it was built
     if [[ -f "$BUILD_DIR/netstat.elf" ]]; then
-        MKFS_ARGS+=("$BUILD_DIR/netstat.elf")
+        MKFS_ARGS+=(--add "$BUILD_DIR/netstat.elf:c/netstat.elf")
     fi
-    # Add sysinfo utility if it was built
     if [[ -f "$BUILD_DIR/sysinfo.elf" ]]; then
-        MKFS_ARGS+=("$BUILD_DIR/sysinfo.elf")
+        MKFS_ARGS+=(--add "$BUILD_DIR/sysinfo.elf:c/sysinfo.elf")
     fi
-    # Add faulttest programs for user fault recovery testing
     if [[ -f "$BUILD_DIR/faulttest_null.elf" ]]; then
-        MKFS_ARGS+=("$BUILD_DIR/faulttest_null.elf")
+        MKFS_ARGS+=(--add "$BUILD_DIR/faulttest_null.elf:c/faulttest_null.elf")
     fi
     if [[ -f "$BUILD_DIR/faulttest_illegal.elf" ]]; then
-        MKFS_ARGS+=("$BUILD_DIR/faulttest_illegal.elf")
+        MKFS_ARGS+=(--add "$BUILD_DIR/faulttest_illegal.elf:c/faulttest_illegal.elf")
     fi
-    # Add mathtest for math library testing
     if [[ -f "$BUILD_DIR/mathtest.elf" ]]; then
-        MKFS_ARGS+=("$BUILD_DIR/mathtest.elf")
+        MKFS_ARGS+=(--add "$BUILD_DIR/mathtest.elf:c/mathtest.elf")
     fi
-    # Add roots.der if it was generated
+    # Add roots.der to certs directory
     if [[ -f "$BUILD_DIR/roots.der" ]]; then
-        MKFS_ARGS+=(--add "$BUILD_DIR/roots.der:SYS/certs/roots.der")
+        MKFS_ARGS+=(--add "$BUILD_DIR/roots.der:certs/roots.der")
     fi
     "$TOOLS_DIR/mkfs.viperfs" "${MKFS_ARGS[@]}"
     print_success "Disk image created"

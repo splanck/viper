@@ -62,6 +62,16 @@ enum class EventType : u32
 };
 
 /**
+ * @brief Polling mode flags for entries.
+ */
+enum class PollFlags : u32
+{
+    NONE = 0,
+    EDGE_TRIGGERED = (1 << 0), // Only report edge transitions, not level
+    ONESHOT = (1 << 1),        // Auto-remove after first trigger
+};
+
+/**
  * @brief Combine two event masks with bitwise OR.
  *
  * @param a First mask.
@@ -95,6 +105,22 @@ inline EventType operator&(EventType a, EventType b)
 inline bool has_event(EventType events, EventType check)
 {
     return (static_cast<u32>(events) & static_cast<u32>(check)) != 0;
+}
+
+/**
+ * @brief Combine two poll flags with bitwise OR.
+ */
+inline PollFlags operator|(PollFlags a, PollFlags b)
+{
+    return static_cast<PollFlags>(static_cast<u32>(a) | static_cast<u32>(b));
+}
+
+/**
+ * @brief Test whether poll flags contain a particular flag.
+ */
+inline bool has_flag(PollFlags flags, PollFlags check)
+{
+    return (static_cast<u32>(flags) & static_cast<u32>(check)) != 0;
 }
 
 // Poll event structure - input and output for poll operations

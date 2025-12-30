@@ -105,6 +105,7 @@ constexpr u32 O_RDONLY = viper::open_flags::O_RDONLY;
 constexpr u32 O_WRONLY = viper::open_flags::O_WRONLY;
 constexpr u32 O_RDWR = viper::open_flags::O_RDWR;
 constexpr u32 O_CREAT = viper::open_flags::O_CREAT;
+constexpr u32 O_TRUNC = viper::open_flags::O_TRUNC;
 
 /**
  * @brief Flags describing an assign entry.

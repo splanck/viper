@@ -22,6 +22,7 @@
 #include "../console/console.hpp"
 #include "../fs/viperfs/format.hpp"
 #include "../fs/viperfs/viperfs.hpp"
+#include "../fs/vfs/vfs.hpp"
 #include "../kobj/dir.hpp"
 #include "../kobj/file.hpp"
 #include "../lib/str.hpp"
@@ -138,6 +139,51 @@ void init()
     console::print("\n");
 
     console::print("[assign] Assign system initialized\n");
+}
+
+/** @copydoc viper::assign::setup_standard_assigns */
+void setup_standard_assigns()
+{
+    console::print("[assign] Setting up standard Amiga-style assigns...\n");
+
+    // Standard directory mappings (lowercase on disk, uppercase assign names)
+    struct StandardAssign
+    {
+        const char *name; // Assign name (e.g., "C")
+        const char *path; // Filesystem path (e.g., "/c")
+    };
+
+    static const StandardAssign standard_assigns[] = {
+        {"C", "/c"},     // Commands directory
+        {"S", "/s"},     // Startup-sequence scripts
+        {"L", "/l"},     // Shared libraries
+        {"T", "/t"},     // Temporary files
+        {"CERTS", "/certs"}, // Certificate store
+    };
+
+    for (const auto &sa : standard_assigns)
+    {
+        u64 ino = fs::vfs::resolve_path(sa.path);
+        if (ino != 0)
+        {
+            set(sa.name, ino, ASSIGN_SYSTEM);
+            console::print("[assign] ");
+            console::print(sa.name);
+            console::print(":  -> ");
+            console::print(sa.path);
+            console::print(" (inode ");
+            console::print_dec(static_cast<i64>(ino));
+            console::print(")\n");
+        }
+        else
+        {
+            console::print("[assign] ");
+            console::print(sa.name);
+            console::print(": skipped (");
+            console::print(sa.path);
+            console::print(" not found)\n");
+        }
+    }
 }
 
 // Set an assign

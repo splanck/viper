@@ -32,9 +32,11 @@ constexpr u32 MAX_ENTRIES_PER_SET = 16;
  */
 struct PollEntry
 {
-    u32 handle;           // Channel ID or timer handle
-    poll::EventType mask; // Events to watch for
-    bool active;          // Entry is in use
+    u32 handle;            // Channel ID or timer handle
+    poll::EventType mask;  // Events to watch for
+    poll::PollFlags flags; // Polling mode flags (edge-triggered, oneshot)
+    poll::EventType last_state; // Previous state for edge detection
+    bool active;           // Entry is in use
 };
 
 /**
@@ -83,9 +85,22 @@ i64 create();
  * @param poll_id Poll set ID.
  * @param handle Handle to watch (channel ID, timer ID, or special pseudo-handle).
  * @param mask Event mask bits to watch for.
+ * @param flags Polling mode flags (edge-triggered, oneshot).
  * @return Result code.
  */
-i64 add(u32 poll_id, u32 handle, u32 mask);
+i64 add(u32 poll_id, u32 handle, u32 mask, poll::PollFlags flags = poll::PollFlags::NONE);
+
+/**
+ * @brief Check if a poll set is owned by the current task.
+ *
+ * @details
+ * Returns true if the poll set was created by the current task.
+ * Used for per-task isolation.
+ *
+ * @param poll_id Poll set ID.
+ * @return true if owned by current task, false otherwise.
+ */
+bool is_owner(u32 poll_id);
 
 /**
  * @brief Remove a watched handle from a poll set.

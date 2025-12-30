@@ -214,7 +214,8 @@ i32 open(const char *path, u32 oflags)
     if (!fdt)
         return -1;
 
-    u64 ino = resolve_path(path);
+    // Use resolve_path_cwd to support relative paths
+    u64 ino = resolve_path_cwd(path);
 
     // Handle O_CREAT
     if (ino == 0 && (oflags & flags::O_CREAT))
@@ -493,7 +494,7 @@ i32 stat(const char *path, Stat *st)
     if (!path || !st)
         return -1;
 
-    u64 ino = resolve_path(path);
+    u64 ino = resolve_path_cwd(path);
     if (ino == 0)
         return -1;
 
@@ -656,8 +657,8 @@ i32 mkdir(const char *path)
     if (!path || !viperfs::viperfs().is_mounted())
         return -1;
 
-    // Check if already exists
-    u64 existing = resolve_path(path);
+    // Check if already exists (use CWD-relative resolution)
+    u64 existing = resolve_path_cwd(path);
     if (existing != 0)
         return -1; // Already exists
 
@@ -782,7 +783,7 @@ i64 readlink(const char *path, char *buf, usize bufsiz)
     if (!path || !buf || bufsiz == 0 || !viperfs::viperfs().is_mounted())
         return -1;
 
-    u64 ino = resolve_path(path);
+    u64 ino = resolve_path_cwd(path);
     if (ino == 0)
         return -1;
 

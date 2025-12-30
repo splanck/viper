@@ -1,8 +1,8 @@
 # IPC Subsystem
 
-**Status:** Fully functional message-passing with capability transfer
+**Status:** Complete with event-driven waiting, edge-triggered mode, and per-task isolation
 **Location:** `kernel/ipc/`
-**SLOC:** ~2,143
+**SLOC:** ~2,400
 
 ## Overview
 
@@ -18,7 +18,8 @@ The IPC subsystem provides inter-process communication through message-passing c
 
 **Implemented:**
 - Fixed-size channel table (64 channels)
-- Circular message buffer (16 messages × 256 bytes)
+- **Configurable capacity** (1-64 messages per channel, default 16)
+- Circular message buffer (up to 64 × 256 bytes)
 - Bidirectional message passing
 - Separate send/recv endpoints with reference counting
 - Capability handle transfer (up to 4 handles per message)
@@ -27,6 +28,7 @@ The IPC subsystem provides inter-process communication through message-passing c
 - Send/recv blocked task queues
 - Channel close with blocked task wakeup
 - Spinlock protection for thread safety
+- `get_capacity()` / `set_capacity()` for runtime adjustment
 
 **Channel Structure:**
 ```
@@ -74,7 +76,7 @@ The IPC subsystem provides inter-process communication through message-passing c
 **API:**
 | Function | Description |
 |----------|-------------|
-| `create(ChannelPair*)` | Create channel, get endpoints |
+| `create(ChannelPair*, capacity)` | Create channel with custom capacity |
 | `try_send(ch, data, size, handles, count)` | Non-blocking send |
 | `try_recv(ch, buf, size, handles, count)` | Non-blocking recv |
 | `send(id, data, size)` | Blocking send (legacy) |
@@ -82,6 +84,8 @@ The IPC subsystem provides inter-process communication through message-passing c
 | `close_endpoint(ch, is_send)` | Close one endpoint |
 | `has_message(ch)` | Check if data available |
 | `has_space(ch)` | Check if buffer has space |
+| `get_capacity(ch)` | Get channel capacity |
+| `set_capacity(ch, new_cap)` | Adjust capacity (cannot go below count) |
 
 **Handle Transfer Flow:**
 ```
@@ -99,12 +103,10 @@ Sender:                         Receiver:
 - Multicast channels
 - Channel priority
 - Message ordering guarantees across channels
-- Per-channel memory limits
 - Credential passing (uid/gid)
 - Zero-copy transfer for large messages
 
 **Recommendations:**
-- Add channel capacity configuration
 - Implement priority-based message ordering
 - Add large message support (shared memory)
 
@@ -112,15 +114,19 @@ Sender:                         Receiver:
 
 ### 2. Poll (`poll.cpp`, `poll.hpp`)
 
-**Status:** Complete with timer support
+**Status:** Complete with event-driven notification
 
 **Implemented:**
 - Event-based polling for multiple handles
 - Timer table (32 timers)
-- Event types: channel read/write, timer, console input
+- Event types: channel read/write, timer, console input, network RX
 - Timeout support (blocking, non-blocking, infinite)
 - Sleep implementation via timers
 - Periodic timer check from scheduler tick
+- **Event notification system:**
+  - `register_wait(handle, events)` - Register for wakeup
+  - `notify_handle(handle, events)` - Wake waiting tasks
+  - `unregister_wait()` - Remove task from wait queues
 - Test function for validation
 
 **Event Types (bitmask):**
@@ -131,6 +137,14 @@ Sender:                         Receiver:
 | CHANNEL_WRITE | 2 | Channel has space |
 | TIMER | 4 | Timer expired |
 | CONSOLE_INPUT | 8 | Console has input |
+| NETWORK_RX | 16 | Network has data |
+
+**Poll Flags (bitmask):**
+| Flag | Value | Description |
+|------|-------|-------------|
+| NONE | 0 | Level-triggered (default) |
+| EDGE_TRIGGERED | 1 | Report only transitions |
+| ONESHOT | 2 | Auto-remove after trigger |
 
 **PollEvent Structure:**
 | Field | Description |
@@ -171,32 +185,33 @@ Sender:                         Receiver:
 | < 0 | Wait indefinitely |
 
 **Not Implemented:**
-- Edge-triggered events
-- One-shot events (auto-remove)
 - Event coalescing
 - Per-event timeout
 - Signal interruption
 
 **Recommendations:**
-- Add edge-triggered mode for efficiency
-- Implement level/edge selection per entry
+- Add event coalescing for high-throughput scenarios
 
 ---
 
 ### 3. Poll Sets (`pollset.cpp`, `pollset.hpp`)
 
-**Status:** Complete for user-space polling
+**Status:** Complete with per-task isolation and edge-triggered mode
 
 **Implemented:**
 - Fixed-size poll set table (16 sets)
 - Fixed-size entry array per set (16 entries)
 - Create/destroy poll sets
-- Add/remove/update watched handles
-- Blocking wait with timeout
+- Add/remove/update watched handles with flags
+- **Event-driven waiting** (blocks on channels, polls pseudo-handles)
+- **Per-task isolation** (only owner can access poll set)
+- **Edge-triggered mode** (only report transitions, not levels)
+- **Oneshot mode** (auto-remove entry after trigger)
 - Owner task tracking
 - Capability-based channel lookup
 - Console input pseudo-handle support
-- Event notification (wake on event)
+- Event notification via `register_wait`/`notify_handle`
+- Spinlock protection for thread safety
 - Test function for validation
 
 **PollSet Structure:**
@@ -213,16 +228,19 @@ Sender:                         Receiver:
 |-------|-------------|
 | handle | Channel/timer/pseudo handle |
 | mask | Event types to watch |
+| flags | Polling mode (edge-triggered, oneshot) |
+| last_state | Previous state for edge detection |
 | active | Entry is in use |
 
 **API:**
 | Function | Description |
 |----------|-------------|
 | `create()` | Create poll set |
-| `add(id, handle, mask)` | Add/update entry |
+| `add(id, handle, mask, flags)` | Add/update entry with flags |
 | `remove(id, handle)` | Remove entry |
-| `wait(id, out, max, timeout)` | Wait for events |
+| `wait(id, out, max, timeout)` | Wait for events (event-driven) |
 | `destroy(id)` | Destroy poll set |
+| `is_owner(id)` | Check if current task owns poll set |
 
 **Readiness Checking:**
 The `wait()` implementation:
@@ -238,13 +256,11 @@ The `wait()` implementation:
 - Legacy channel IDs (fallback)
 
 **Not Implemented:**
-- Per-task poll set isolation
-- Poll set inheritance
-- epoll-style level/edge modes
+- Poll set inheritance across fork
+- Per-task poll set limits (currently unlimited creation)
 
 **Recommendations:**
 - Add per-task poll set limits
-- Add edge-triggered mode for efficiency
 
 ---
 
@@ -344,9 +360,8 @@ Tests verify:
 
 ## Priority Recommendations
 
-1. **High:** Implement proper event notification instead of polling
-2. **High:** Add per-task poll set isolation
-3. **Medium:** Support zero-copy for large messages
-4. **Medium:** Add multicast/broadcast channels
-5. **Low:** Add edge-triggered event mode
-6. **Low:** Implement channel priority ordering
+1. **Medium:** Support zero-copy for large messages (shared memory)
+2. **Medium:** Add multicast/broadcast channels
+3. **Low:** Implement channel priority ordering
+4. **Low:** Add per-task poll set creation limits
+5. **Low:** Poll set inheritance across fork

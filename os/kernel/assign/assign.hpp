@@ -126,6 +126,17 @@ enum class AssignError
 void init();
 
 /**
+ * @brief Set up standard Amiga-style directory assigns.
+ *
+ * @details
+ * Called after the filesystem is mounted to create assigns for standard
+ * directories like C: (commands), S: (startup), L: (libs), and T: (temp).
+ * This function looks up the directories by path and creates assigns for
+ * those that exist.
+ */
+void setup_standard_assigns();
+
+/**
  * @brief Create or update an assign mapping.
  *
  * @details

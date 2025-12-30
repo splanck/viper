@@ -45,6 +45,7 @@ void init()
         channels[i].read_idx = 0;
         channels[i].write_idx = 0;
         channels[i].count = 0;
+        channels[i].capacity = DEFAULT_PENDING;
         sched::wait_init(&channels[i].send_waiters);
         sched::wait_init(&channels[i].recv_waiters);
         channels[i].send_refs = 0;
@@ -103,14 +104,18 @@ static Channel *find_channel_by_id_locked(u32 channel_id)
 
 /**
  * @brief Initialize a new channel in a slot.
+ *
+ * @param ch Channel to initialize.
+ * @param capacity Message buffer capacity (1 to MAX_PENDING).
  */
-static void init_channel(Channel *ch)
+static void init_channel(Channel *ch, u32 capacity)
 {
     ch->id = next_channel_id++;
     ch->state = ChannelState::OPEN;
     ch->read_idx = 0;
     ch->write_idx = 0;
     ch->count = 0;
+    ch->capacity = (capacity > 0 && capacity <= MAX_PENDING) ? capacity : DEFAULT_PENDING;
     sched::wait_init(&ch->send_waiters);
     sched::wait_init(&ch->recv_waiters);
     ch->send_refs = 0;
@@ -120,8 +125,8 @@ static void init_channel(Channel *ch)
     ch->owner_id = current ? current->id : 0;
 }
 
-/** @copydoc channel::create(ChannelPair*) */
-i64 create(ChannelPair *out_pair)
+/** @copydoc channel::create(ChannelPair*, u32) */
+i64 create(ChannelPair *out_pair, u32 capacity)
 {
     if (!out_pair)
     {
@@ -144,7 +149,7 @@ i64 create(ChannelPair *out_pair)
         return error::VERR_OUT_OF_MEMORY;
     }
 
-    init_channel(ch);
+    init_channel(ch, capacity);
 
     // Create send handle (CAP_WRITE | CAP_TRANSFER | CAP_DERIVE)
     cap::Rights send_rights = cap::CAP_WRITE | cap::CAP_TRANSFER | cap::CAP_DERIVE;
@@ -183,8 +188,8 @@ i64 create(ChannelPair *out_pair)
     return error::VOK;
 }
 
-/** @copydoc channel::create() - Legacy */
-i64 create()
+/** @copydoc channel::create(u32) - Legacy */
+i64 create(u32 capacity)
 {
     SpinlockGuard guard(channel_lock);
 
@@ -195,15 +200,53 @@ i64 create()
         return error::VERR_OUT_OF_MEMORY;
     }
 
-    init_channel(ch);
+    init_channel(ch, capacity);
     ch->send_refs = 1; // Legacy mode: both refs set
     ch->recv_refs = 1;
 
     serial::puts("[channel] Created channel ");
     serial::put_dec(ch->id);
-    serial::puts(" (legacy)\n");
+    serial::puts(" (legacy, capacity=");
+    serial::put_dec(ch->capacity);
+    serial::puts(")\n");
 
     return static_cast<i64>(ch->id);
+}
+
+/** @copydoc channel::get_capacity */
+u32 get_capacity(Channel *ch)
+{
+    SpinlockGuard guard(channel_lock);
+    if (!ch || ch->state != ChannelState::OPEN)
+    {
+        return 0;
+    }
+    return ch->capacity;
+}
+
+/** @copydoc channel::set_capacity */
+i64 set_capacity(Channel *ch, u32 new_capacity)
+{
+    SpinlockGuard guard(channel_lock);
+
+    if (!ch || ch->state != ChannelState::OPEN)
+    {
+        return error::VERR_INVALID_HANDLE;
+    }
+
+    if (new_capacity == 0 || new_capacity > MAX_PENDING)
+    {
+        return error::VERR_INVALID_ARG;
+    }
+
+    // Cannot reduce below current message count
+    if (new_capacity < ch->count)
+    {
+        return error::VERR_BUSY;
+    }
+
+    ch->capacity = new_capacity;
+    return error::VOK;
 }
 
 /** @copydoc channel::try_send(Channel*, ...) */
@@ -226,7 +269,7 @@ i64 try_send(Channel *ch, const void *data, u32 size, const cap::Handle *handles
         return error::VERR_INVALID_ARG;
     }
 
-    if (ch->count >= MAX_PENDING)
+    if (ch->count >= ch->capacity)
     {
         return error::VERR_WOULD_BLOCK;
     }
@@ -495,7 +538,7 @@ i64 send(u32 channel_id, const void *data, u32 size)
             return error::VERR_CHANNEL_CLOSED;
         }
 
-        if (ch->count < MAX_PENDING)
+        if (ch->count < ch->capacity)
         {
             // Space available - send the message
             copy_message_to_buffer(ch, data, size);
@@ -711,7 +754,7 @@ bool has_space(Channel *ch)
     {
         return false;
     }
-    return ch->count < MAX_PENDING;
+    return ch->count < ch->capacity;
 }
 
 /** @copydoc channel::has_space(u32) */
@@ -719,7 +762,7 @@ bool has_space(u32 channel_id)
 {
     SpinlockGuard guard(channel_lock);
     Channel *ch = find_channel_by_id_locked(channel_id);
-    return ch ? ch->count < MAX_PENDING : false;
+    return ch ? ch->count < ch->capacity : false;
 }
 
 } // namespace channel

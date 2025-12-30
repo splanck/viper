@@ -3,6 +3,7 @@
 #include "../cap/table.hpp"
 #include "../console/serial.hpp"
 #include "../input/input.hpp"
+#include "../lib/spinlock.hpp"
 #include "../sched/scheduler.hpp"
 #include "../sched/task.hpp"
 #include "../viper/viper.hpp"
@@ -14,14 +15,21 @@
  * @brief Implementation of poll set management and waiting.
  *
  * @details
- * Poll sets are stored in a global fixed-size table. Waiting is implemented by
- * repeatedly checking the readiness of each entry and yielding between checks.
+ * Poll sets are stored in a global fixed-size table with spinlock protection.
+ * Waiting uses event-driven notification when possible, falling back to
+ * polling for pseudo-handles like console input.
  *
- * This is intentionally simple for bring-up and can later evolve to a more
- * efficient mechanism using wakeups/notifications from channels and timers.
+ * Features:
+ * - Per-task ownership enforcement
+ * - Edge-triggered mode for efficiency
+ * - Oneshot mode for auto-removal
+ * - Event-driven wakeup via poll::register_wait/notify_handle
  */
 namespace pollset
 {
+
+// Spinlock for poll set table access
+static Spinlock pollset_lock;
 
 // Global poll set table
 static PollSet poll_sets[MAX_POLL_SETS];
@@ -98,13 +106,35 @@ i64 create()
     return static_cast<i64>(ps->id);
 }
 
-/** @copydoc pollset::add */
-i64 add(u32 poll_id, u32 handle, u32 mask)
+/** @copydoc pollset::is_owner */
+bool is_owner(u32 poll_id)
 {
+    SpinlockGuard guard(pollset_lock);
+    PollSet *ps = get(poll_id);
+    if (!ps)
+    {
+        return false;
+    }
+    task::Task *current = task::current();
+    return current && ps->owner_task_id == current->id;
+}
+
+/** @copydoc pollset::add */
+i64 add(u32 poll_id, u32 handle, u32 mask, poll::PollFlags flags)
+{
+    SpinlockGuard guard(pollset_lock);
+
     PollSet *ps = get(poll_id);
     if (!ps)
     {
         return error::VERR_NOT_FOUND;
+    }
+
+    // Enforce per-task isolation
+    task::Task *current = task::current();
+    if (current && ps->owner_task_id != current->id)
+    {
+        return error::VERR_PERMISSION;
     }
 
     // Check if handle already exists
@@ -112,8 +142,9 @@ i64 add(u32 poll_id, u32 handle, u32 mask)
     {
         if (ps->entries[i].active && ps->entries[i].handle == handle)
         {
-            // Update mask for existing entry
+            // Update mask and flags for existing entry
             ps->entries[i].mask = static_cast<poll::EventType>(mask);
+            ps->entries[i].flags = flags;
             return error::VOK;
         }
     }
@@ -125,6 +156,8 @@ i64 add(u32 poll_id, u32 handle, u32 mask)
         {
             ps->entries[i].handle = handle;
             ps->entries[i].mask = static_cast<poll::EventType>(mask);
+            ps->entries[i].flags = flags;
+            ps->entries[i].last_state = poll::EventType::NONE;
             ps->entries[i].active = true;
             ps->entry_count++;
             return error::VOK;
@@ -260,6 +293,37 @@ static poll::EventType check_readiness(u32 handle, poll::EventType mask)
     return triggered;
 }
 
+/**
+ * @brief Check and return triggered events for a poll entry with edge/level support.
+ *
+ * @param entry Poll entry to check.
+ * @return Triggered events (accounting for edge-triggered mode).
+ */
+static poll::EventType check_entry_readiness(PollEntry &entry)
+{
+    poll::EventType current_state = check_readiness(entry.handle, entry.mask);
+
+    // For level-triggered (default), return current state
+    if (!poll::has_flag(entry.flags, poll::PollFlags::EDGE_TRIGGERED))
+    {
+        return current_state;
+    }
+
+    // For edge-triggered, only return events that are newly set
+    poll::EventType triggered = poll::EventType::NONE;
+    u32 current_bits = static_cast<u32>(current_state);
+    u32 last_bits = static_cast<u32>(entry.last_state);
+
+    // Find bits that went from 0 to 1
+    u32 edge_bits = current_bits & ~last_bits;
+    triggered = static_cast<poll::EventType>(edge_bits);
+
+    // Update last state for next check
+    entry.last_state = current_state;
+
+    return triggered;
+}
+
 /** @copydoc pollset::wait */
 i64 wait(u32 poll_id, poll::PollEvent *out_events, u32 max_events, i64 timeout_ms)
 {
@@ -274,16 +338,24 @@ i64 wait(u32 poll_id, poll::PollEvent *out_events, u32 max_events, i64 timeout_m
         return error::VERR_INVALID_ARG;
     }
 
+    // Enforce per-task isolation
+    task::Task *current = task::current();
+    if (current && ps->owner_task_id != current->id)
+    {
+        return error::VERR_PERMISSION;
+    }
+
     u64 deadline = 0;
     if (timeout_ms > 0)
     {
         deadline = poll::time_now_ms() + static_cast<u64>(timeout_ms);
     }
 
-    // Poll loop
+    // Event-driven wait loop
     while (true)
     {
         u32 ready_count = 0;
+        bool has_pseudo_handles = false;
 
         // Check each entry in the poll set
         for (u32 i = 0; i < MAX_ENTRIES_PER_SET && ready_count < max_events; i++)
@@ -291,7 +363,14 @@ i64 wait(u32 poll_id, poll::PollEvent *out_events, u32 max_events, i64 timeout_m
             if (!ps->entries[i].active)
                 continue;
 
-            poll::EventType triggered = check_readiness(ps->entries[i].handle, ps->entries[i].mask);
+            // Track if we have pseudo-handles that need polling
+            if (ps->entries[i].handle == poll::HANDLE_CONSOLE_INPUT ||
+                ps->entries[i].handle == poll::HANDLE_NETWORK_RX)
+            {
+                has_pseudo_handles = true;
+            }
+
+            poll::EventType triggered = check_entry_readiness(ps->entries[i]);
 
             if (triggered != poll::EventType::NONE)
             {
@@ -299,6 +378,13 @@ i64 wait(u32 poll_id, poll::PollEvent *out_events, u32 max_events, i64 timeout_m
                 out_events[ready_count].events = ps->entries[i].mask;
                 out_events[ready_count].triggered = triggered;
                 ready_count++;
+
+                // Handle oneshot mode - deactivate entry after trigger
+                if (poll::has_flag(ps->entries[i].flags, poll::PollFlags::ONESHOT))
+                {
+                    ps->entries[i].active = false;
+                    ps->entry_count--;
+                }
             }
         }
 
@@ -320,8 +406,39 @@ i64 wait(u32 poll_id, poll::PollEvent *out_events, u32 max_events, i64 timeout_m
             return 0;
         }
 
+        // Register for event-driven wakeup on channel handles
+        // (pseudo-handles like CONSOLE_INPUT still need polling)
+        if (!has_pseudo_handles)
+        {
+            // Register waits for all channel handles
+            for (u32 i = 0; i < MAX_ENTRIES_PER_SET; i++)
+            {
+                if (!ps->entries[i].active)
+                    continue;
+
+                u32 handle = ps->entries[i].handle;
+                poll::EventType mask = ps->entries[i].mask;
+
+                // Only register for real handles, not pseudo-handles
+                if (handle != poll::HANDLE_CONSOLE_INPUT &&
+                    handle != poll::HANDLE_NETWORK_RX)
+                {
+                    poll::register_wait(handle, mask);
+                }
+            }
+
+            // Block the task - will be woken by notify_handle
+            if (current)
+            {
+                current->state = task::TaskState::Blocked;
+            }
+        }
+
         // Yield and try again
         task::yield();
+
+        // Unregister waits when we wake up
+        poll::unregister_wait();
     }
 }
 
