@@ -57,7 +57,7 @@ void cmd_dir(const char *path)
         return;
     }
 
-    u8 buf[2048];
+    u8 buf[32768];  // 32KB - holds ~120 directory entries
     i64 bytes = sys::readdir(fd, buf, sizeof(buf));
 
     if (bytes < 0)
@@ -128,7 +128,7 @@ void cmd_list(const char *path)
         return;
     }
 
-    u8 buf[2048];
+    u8 buf[32768];  // 32KB - holds ~120 directory entries
     i64 bytes = sys::readdir(fd, buf, sizeof(buf));
 
     if (bytes < 0)

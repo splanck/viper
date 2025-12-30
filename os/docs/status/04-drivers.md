@@ -2,7 +2,7 @@
 
 **Status:** Functional for QEMU virt platform
 **Location:** `kernel/drivers/`
-**SLOC:** ~4,084
+**SLOC:** ~3,400
 
 ## Overview
 
@@ -58,7 +58,7 @@ The drivers subsystem provides device drivers for VirtIO paravirtual devices, QE
 - Multiple device instances per type
 
 **Recommendations:**
-- Implement VirtIO-GPU for graphics acceleration
+- Add VirtIO-GPU 3D support (virgl) for hardware acceleration
 - Add VirtIO-console for console I/O
 
 ---

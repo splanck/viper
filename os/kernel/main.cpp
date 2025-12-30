@@ -19,6 +19,7 @@
  * run indefinitely and therefore never returns to the boot stub.
  */
 
+#include "arch/aarch64/cpu.hpp"
 #include "arch/aarch64/exceptions.hpp"
 #include "arch/aarch64/gic.hpp"
 #include "arch/aarch64/mmu.hpp"
@@ -284,6 +285,9 @@ extern "C" void kernel_main(void *boot_info_ptr)
 
     // Initialize timer
     timer::init();
+
+    // Initialize CPU subsystem (per-CPU data structures)
+    cpu::init();
 
     // Enable interrupts
     exceptions::enable_interrupts();
@@ -1073,6 +1077,10 @@ extern "C" void kernel_main(void *boot_info_ptr)
     // Print success message
     serial::puts("\nHello from ViperOS!\n");
     serial::puts("Kernel initialization complete.\n");
+
+    // Boot secondary CPUs (they will initialize GIC, timer and enter idle loop)
+    cpu::boot_secondaries();
+
     serial::puts("Starting scheduler...\n");
 
     if (gcon::is_available())

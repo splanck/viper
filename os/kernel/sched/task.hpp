@@ -230,6 +230,17 @@ struct Task
 
     // Current working directory (256 bytes max path)
     char cwd[256];
+
+    // Signal state (for user tasks with signal handlers)
+    struct
+    {
+        u64 handlers[32];      ///< Signal handler addresses (0=SIG_DFL, 1=SIG_IGN)
+        u32 handler_flags[32]; ///< Flags for each handler (SA_*)
+        u32 handler_mask[32];  ///< Mask for each handler
+        u32 blocked;           ///< Blocked signal mask
+        u32 pending;           ///< Pending signals bitmap
+        TrapFrame *saved_frame; ///< Saved trap frame for sigreturn
+    } signals;
 };
 
 /**

@@ -2,6 +2,7 @@
 #include "../arch/aarch64/timer.hpp"
 #include "../console/serial.hpp"
 #include "../drivers/virtio/net.hpp"
+#include "../lib/timerwheel.hpp"
 #include "../sched/scheduler.hpp"
 #include "../sched/task.hpp"
 #include "channel.hpp"
@@ -79,6 +80,9 @@ void init()
         wait_queue[i].task = nullptr;
         wait_queue[i].active = false;
     }
+
+    // Initialize the timer wheel for O(1) timeout management
+    timerwheel::init(timer::get_ticks());
 
     serial::puts("[poll] Poll subsystem initialized\n");
 }
@@ -326,6 +330,10 @@ void check_timers()
 {
     u64 now = time_now_ms();
 
+    // Process the timer wheel (O(1) amortized)
+    timerwheel::tick(now);
+
+    // Also check legacy timers for backward compatibility
     for (u32 i = 0; i < MAX_TIMERS; i++)
     {
         if (timers[i].active && timers[i].waiter && now >= timers[i].expire_time)

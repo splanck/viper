@@ -67,3 +67,9 @@ add_user_program(faulttest_illegal faulttest/faulttest_illegal.cpp)
 
 # mathtest - math library test program
 add_user_program(mathtest mathtest/mathtest.cpp)
+
+# ping - ICMP ping utility
+add_user_program(ping ping/ping.cpp)
+
+# devices - hardware device listing utility
+add_user_program(devices devices/devices.cpp)

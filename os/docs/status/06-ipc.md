@@ -2,7 +2,7 @@
 
 **Status:** Complete with event-driven waiting, edge-triggered mode, and per-task isolation
 **Location:** `kernel/ipc/`
-**SLOC:** ~2,400
+**SLOC:** ~1,400
 
 ## Overview
 

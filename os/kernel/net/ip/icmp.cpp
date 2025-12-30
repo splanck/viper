@@ -11,7 +11,10 @@
 #include "icmp.hpp"
 #include "../../arch/aarch64/timer.hpp"
 #include "../../console/serial.hpp"
+#include "../../sched/scheduler.hpp"
+#include "../../sched/task.hpp"
 #include "../netif.hpp"
+#include "../network.hpp"
 #include "ipv4.hpp"
 
 namespace net
@@ -229,9 +232,11 @@ i32 ping(const Ipv4Addr &dst, u32 timeout_ms)
         if (seq < 0)
         {
             // Wait for ARP resolution, then retry
-            for (int i = 0; i < 100; i++)
+            // Poll network to process ARP replies and yield to scheduler
+            for (int i = 0; i < 10; i++)
             {
-                asm volatile("wfi"); // Let timer tick and poll network
+                network_poll();
+                task::yield();
             }
         }
     }
@@ -244,6 +249,9 @@ i32 ping(const Ipv4Addr &dst, u32 timeout_ms)
     // Wait for reply
     while (timer::get_ticks() - start < timeout_ms)
     {
+        // Poll network to receive ICMP reply
+        network_poll();
+
         i32 result = check_echo_reply(static_cast<u16>(seq));
         if (result >= 0)
         {
@@ -253,8 +261,8 @@ i32 ping(const Ipv4Addr &dst, u32 timeout_ms)
         {
             return -2; // Not found (shouldn't happen)
         }
-        // Yield while waiting
-        asm volatile("wfi");
+        // Yield to scheduler while waiting
+        task::yield();
     }
 
     // Timeout - clean up

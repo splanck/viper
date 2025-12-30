@@ -180,6 +180,7 @@ fi
 QEMU_OPTS=(
     -machine virt
     -cpu cortex-a72
+    -smp 4
     -m "$MEMORY"
     -nographic
     -kernel "$KERNEL"

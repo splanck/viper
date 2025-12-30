@@ -2,7 +2,7 @@
 
 **Status:** Complete user-space process execution with VMA tracking
 **Location:** `kernel/viper/`, `kernel/cap/`
-**SLOC:** ~2,665
+**SLOC:** ~1,100
 
 ## Overview
 
@@ -54,6 +54,9 @@ The Viper subsystem provides ViperOS's user-space process abstraction. Each "Vip
 | next_sibling | Viper* | Sibling link |
 | state | ViperState | Lifecycle state |
 | exit_code | i32 | Exit status |
+| pgid | u64 | Process group ID |
+| sid | u64 | Session ID |
+| is_session_leader | bool | Session leader flag |
 | heap_start | u64 | Heap base address |
 | heap_break | u64 | Current break |
 | memory_used | u64 | Usage accounting |
@@ -67,11 +70,16 @@ The Viper subsystem provides ViperOS's user-space process abstraction. Each "Vip
 | `init()` | Initialize subsystem |
 | `create(parent, name)` | Create process |
 | `destroy(v)` | Destroy process |
-| `current()` | Get current process |
-| `set_current(v)` | Set current process |
+| `current()` | Get current process (per-CPU aware) |
+| `set_current(v)` | Set current process (per-CPU) |
 | `find(id)` | Find by ID |
+| `fork()` | Fork current process with COW |
 | `get_address_space(v)` | Get AddressSpace |
 | `current_cap_table()` | Get current cap table |
+| `getpgid(pid)` | Get process group ID |
+| `setpgid(pid, pgid)` | Set process group ID |
+| `getsid(pid)` | Get session ID |
+| `setsid()` | Create new session |
 
 **Constants:**
 - `MAX_VIPERS`: 64 processes
@@ -164,6 +172,7 @@ The Viper subsystem provides ViperOS's user-space process abstraction. Each "Vip
 |-------|------|-------------|
 | object | void* | Kernel object pointer |
 | rights | u32 | Rights bitmask |
+| parent_index | u32 | Parent capability index (for revocation propagation) |
 | kind | Kind | Object type tag |
 | generation | u8 | Stale handle detection |
 
@@ -193,8 +202,9 @@ The Viper subsystem provides ViperOS's user-space process abstraction. Each "Vip
 | `get(h)` | Lookup entry |
 | `get_checked(h, kind)` | Lookup with type check |
 | `get_with_rights(h, kind, rights)` | Lookup with auth |
-| `remove(h)` | Free handle |
-| `derive(h, new_rights)` | Create derived handle |
+| `remove(h)` | Free handle (no propagation) |
+| `revoke(h)` | Revoke handle and all derived handles |
+| `derive(h, new_rights)` | Create derived handle with parent tracking |
 
 ---
 
@@ -315,6 +325,18 @@ Capability syscalls:
 | cap_query | 0x72 | Query capability info |
 | cap_list | 0x73 | List all capabilities |
 
+Process syscalls:
+
+| Syscall | Number | Description |
+|---------|--------|-------------|
+| fork | 0x0B | Fork process with COW |
+| getpid | 0xA0 | Get process ID |
+| getppid | 0xA1 | Get parent process ID |
+| getpgid | 0xA2 | Get process group ID |
+| setpgid | 0xA3 | Set process group ID |
+| getsid | 0xA4 | Get session ID |
+| setsid | 0xA5 | Create new session |
+
 Handle-based file syscalls:
 
 | Syscall | Number | Description |
@@ -347,7 +369,14 @@ Handle-based file syscalls:
 
 ## Priority Recommendations
 
-1. **High:** Add per-CPU current process for SMP
-2. **Medium:** Implement process groups/sessions
-3. **Medium:** Add capability revocation propagation
-4. **Low:** Add fork() syscall using COW
+1. ~~**High:** Add per-CPU current process for SMP~~ ✅ **Completed** - Per-CPU current_viper in CpuData
+2. ~~**Medium:** Implement process groups/sessions~~ ✅ **Completed** - pgid, sid, is_session_leader fields + syscalls
+3. ~~**Medium:** Add capability revocation propagation~~ ✅ **Completed** - parent_index tracking + recursive revoke()
+4. ~~**Low:** Add fork() syscall using COW~~ ✅ **Completed** - SYS_FORK syscall (0x0B)
+
+## Recent Additions
+
+- **Per-CPU current process**: CpuData now has current_viper field for SMP support
+- **Process groups/sessions**: Added pgid, sid, is_session_leader fields; syscalls getpid, getppid, getpgid, setpgid, getsid, setsid (0xA0-0xA5)
+- **Capability revocation propagation**: Entry now has parent_index field; revoke() recursively invalidates derived handles
+- **Fork syscall**: SYS_FORK (0x0B) creates child process with COW page sharing

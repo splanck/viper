@@ -79,6 +79,7 @@ struct Viper
     // Identity
     u64 id;        /**< Monotonically increasing process identifier. */
     char name[32]; /**< Human-readable name (NUL-terminated, 31 chars max). */
+    char args[256]; /**< Command-line arguments (NUL-terminated). */
 
     // Address space
     u64 ttbr0; /**< Physical address of the user TTBR0 root page table. */
@@ -102,6 +103,11 @@ struct Viper
     // State
     ViperState state; /**< Current lifecycle state. */
     i32 exit_code;    /**< Exit status for zombie collection. */
+
+    // Process groups and sessions (POSIX job control)
+    u64 pgid;              /**< Process group ID (0 means use own pid). */
+    u64 sid;               /**< Session ID (0 means use own pid). */
+    bool is_session_leader; /**< True if this process created its session. */
 
     // Wait queue for parent waiting on children
     sched::WaitQueue child_waiters; /**< Tasks waiting for this process's children to exit. */
@@ -338,5 +344,43 @@ class AddressSpace;
  * @return AddressSpace pointer on success, or `nullptr` if `v` is invalid.
  */
 AddressSpace *get_address_space(Viper *v);
+
+// Process group and session management
+
+/**
+ * @brief Get the process group ID of a process.
+ *
+ * @param pid Process ID to query, or 0 for current process.
+ * @return Process group ID on success, negative error on failure.
+ */
+i64 getpgid(u64 pid);
+
+/**
+ * @brief Set the process group ID of a process.
+ *
+ * @param pid Process ID to modify, or 0 for current process.
+ * @param pgid New process group ID, or 0 to use the target process's PID.
+ * @return 0 on success, negative error on failure.
+ */
+i64 setpgid(u64 pid, u64 pgid);
+
+/**
+ * @brief Get the session ID of a process.
+ *
+ * @param pid Process ID to query, or 0 for current process.
+ * @return Session ID on success, negative error on failure.
+ */
+i64 getsid(u64 pid);
+
+/**
+ * @brief Create a new session with the calling process as leader.
+ *
+ * @details
+ * The calling process becomes the session leader and the process group leader
+ * of a new process group. The process must not already be a process group leader.
+ *
+ * @return New session ID on success, negative error on failure.
+ */
+i64 setsid();
 
 } // namespace viper

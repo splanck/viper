@@ -280,6 +280,24 @@ void init()
     serial::puts("[timer] Timer started (1000 Hz, high-resolution enabled)\n");
 }
 
+/** @copydoc timer::init_secondary */
+void init_secondary()
+{
+    // Note: frequency, interval, and conversion factors are already set by boot CPU
+    // The timer handler is already registered globally
+
+    // Enable timer interrupt for this CPU (PPI - per-CPU)
+    gic::set_priority(TIMER_IRQ, 0x80);
+    gic::enable_irq(TIMER_IRQ);
+
+    // Set initial compare value
+    u64 current = read_cntpct();
+    write_cntp_cval(current + interval);
+
+    // Enable the timer (bit 0 = enable, bit 1 = mask output)
+    write_cntp_ctl(1);
+}
+
 /** @copydoc timer::get_ticks */
 u64 get_ticks()
 {

@@ -42,6 +42,7 @@ enum Number : u64
     WAIT = SYS_WAIT,
     WAITPID = SYS_WAITPID,
     SBRK = SYS_SBRK,
+    FORK = SYS_FORK,
 
     // Channel IPC (0x10 - 0x1F)
     CHANNEL_CREATE = SYS_CHANNEL_CREATE,
@@ -91,6 +92,22 @@ enum Number : u64
     GETCWD = SYS_GETCWD,
     CHDIR = SYS_CHDIR,
 
+    // Signal (0x90 - 0x9F)
+    SIGACTION = SYS_SIGACTION,
+    SIGPROCMASK = SYS_SIGPROCMASK,
+    SIGRETURN = SYS_SIGRETURN,
+    KILL = SYS_KILL,
+    SIGPENDING = SYS_SIGPENDING,
+
+    // Process groups/sessions (0xA0 - 0xAF)
+    GETPID = SYS_GETPID,
+    GETPPID = SYS_GETPPID,
+    GETPGID = SYS_GETPGID,
+    SETPGID = SYS_SETPGID,
+    GETSID = SYS_GETSID,
+    SETSID = SYS_SETSID,
+    GET_ARGS = SYS_GET_ARGS,
+
     // Assign system (0xC0 - 0xCF) - v0.2.0
     ASSIGN_SET = SYS_ASSIGN_SET,
     ASSIGN_GET = SYS_ASSIGN_GET,
@@ -109,6 +126,8 @@ enum Number : u64
     // System Info (0xE0 - 0xEF) - v0.2.0
     MEM_INFO = SYS_MEM_INFO,
     NET_STATS = SYS_NET_STATS,
+    PING = SYS_PING,
+    DEVICE_LIST = SYS_DEVICE_LIST,
 
     // Debug (0xF0 - 0xFF)
     DEBUG_PRINT = SYS_DEBUG_PRINT,

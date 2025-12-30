@@ -1,4 +1,5 @@
 #include "serial.hpp"
+#include "../lib/spinlock.hpp"
 
 /**
  * @file serial.cpp
@@ -15,9 +16,13 @@
  * - Minimal dependencies: safe during early boot and panic handling.
  * - Predictable behavior: polling-based I/O with no dynamic allocation.
  * - Terminal-friendly output: newline normalization to CRLF.
+ * - SMP-safe: spinlock protects multi-character output operations.
  */
 namespace serial
 {
+
+// Spinlock for serializing output (prevents interleaved output from multiple CPUs)
+static Spinlock serial_lock;
 
 // PL011 UART registers for QEMU virt machine
 // Physical address: 0x09000000
@@ -102,8 +107,8 @@ i32 getc_nonblock()
     return static_cast<i32>(reg(UART_DR) & 0xFF);
 }
 
-/** @copydoc serial::puts */
-void puts(const char *s)
+// Internal puts without lock (caller must hold serial_lock)
+static void puts_unlocked(const char *s)
 {
     while (*s)
     {
@@ -115,9 +120,18 @@ void puts(const char *s)
     }
 }
 
+/** @copydoc serial::puts */
+void puts(const char *s)
+{
+    SpinlockGuard guard(serial_lock);
+    puts_unlocked(s);
+}
+
 /** @copydoc serial::put_hex */
 void put_hex(u64 value)
 {
+    SpinlockGuard guard(serial_lock);
+
     static const char hex[] = "0123456789abcdef";
     char buf[17];
     int i = 16;
@@ -129,13 +143,15 @@ void put_hex(u64 value)
         value >>= 4;
     } while (value && i > 0);
 
-    puts("0x");
-    puts(&buf[i]);
+    puts_unlocked("0x");
+    puts_unlocked(&buf[i]);
 }
 
 /** @copydoc serial::put_dec */
 void put_dec(i64 value)
 {
+    SpinlockGuard guard(serial_lock);
+
     if (value < 0)
     {
         putc('-');
@@ -152,7 +168,7 @@ void put_dec(i64 value)
         value /= 10;
     } while (value && i > 0);
 
-    puts(&buf[i]);
+    puts_unlocked(&buf[i]);
 }
 
 } // namespace serial

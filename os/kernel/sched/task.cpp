@@ -229,6 +229,17 @@ void init()
     idle_task->cwd[0] = '/';
     idle_task->cwd[1] = '\0';
 
+    // Initialize signal state (idle task doesn't use signals, but initialize anyway)
+    for (int i = 0; i < 32; i++)
+    {
+        idle_task->signals.handlers[i] = 0; // SIG_DFL
+        idle_task->signals.handler_flags[i] = 0;
+        idle_task->signals.handler_mask[i] = 0;
+    }
+    idle_task->signals.blocked = 0;
+    idle_task->signals.pending = 0;
+    idle_task->signals.saved_frame = nullptr;
+
     // Set up idle task context to run idle_task_fn
     u64 *stack_ptr = reinterpret_cast<u64 *>(idle_task->kernel_stack_top);
     stack_ptr -= 2;
@@ -344,6 +355,17 @@ Task *create(const char *name, TaskEntry entry, void *arg, u32 flags)
         t->cwd[1] = '\0';
     }
 
+    // Initialize signal state (kernel tasks don't typically use signals)
+    for (int i = 0; i < 32; i++)
+    {
+        t->signals.handlers[i] = 0; // SIG_DFL
+        t->signals.handler_flags[i] = 0;
+        t->signals.handler_mask[i] = 0;
+    }
+    t->signals.blocked = 0;
+    t->signals.pending = 0;
+    t->signals.saved_frame = nullptr;
+
     return t;
 }
 
@@ -440,6 +462,17 @@ Task *create_user_task(const char *name, void *viper_ptr, u64 entry, u64 stack)
         t->cwd[0] = '/';
         t->cwd[1] = '\0';
     }
+
+    // Initialize signal state for user task
+    for (int i = 0; i < 32; i++)
+    {
+        t->signals.handlers[i] = 0; // SIG_DFL
+        t->signals.handler_flags[i] = 0;
+        t->signals.handler_mask[i] = 0;
+    }
+    t->signals.blocked = 0;
+    t->signals.pending = 0;
+    t->signals.saved_frame = nullptr;
 
     // Set up initial context to call user_task_entry_trampoline
     u64 *stack_ptr = reinterpret_cast<u64 *>(t->kernel_stack_top);

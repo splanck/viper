@@ -124,7 +124,40 @@ i32 send_signal(task::Task *t, i32 signum)
     serial::put_dec(t->id);
     serial::puts(")\n");
 
-    // Get default action
+    // Check for user handler
+    u64 handler = t->signals.handlers[signum];
+
+    // SIGKILL and SIGSTOP cannot be caught or ignored
+    if (signum == sig::SIGKILL || signum == sig::SIGSTOP)
+    {
+        // Immediate termination for SIGKILL
+        if (signum == sig::SIGKILL)
+        {
+            return task::kill(t->id, signum);
+        }
+        // SIGSTOP - not fully implemented
+        return 0;
+    }
+
+    // SIG_IGN - ignore the signal
+    if (handler == 1)
+    {
+        return 0;
+    }
+
+    // If there's a user handler (not SIG_DFL), set pending and wake if blocked
+    if (handler > 1)
+    {
+        t->signals.pending |= (1u << signum);
+        // If task is blocked, wake it to deliver the signal
+        if (t->state == task::TaskState::Blocked)
+        {
+            task::wakeup(t);
+        }
+        return 0;
+    }
+
+    // SIG_DFL (handler == 0) - use default action
     char action = default_action(signum);
 
     switch (action)
@@ -216,18 +249,88 @@ void deliver_fault_signal(i32 signum, const FaultInfo *info)
     task::exit(-(128 + signum)); // Exit code follows shell convention
 }
 
-bool has_pending(task::Task *task)
+bool has_pending(task::Task *t)
 {
-    // No pending signal infrastructure yet
-    (void)task;
-    return false;
+    if (!t)
+        return false;
+    // Check if any pending signals are not blocked
+    return (t->signals.pending & ~t->signals.blocked) != 0;
 }
 
 void process_pending()
 {
-    // No pending signal infrastructure yet
-    // In a full implementation, this would check for pending signals
-    // and either call user handlers or apply default actions
+    task::Task *t = task::current();
+    if (!t)
+        return;
+
+    // Get the set of deliverable signals (pending & ~blocked)
+    u32 deliverable = t->signals.pending & ~t->signals.blocked;
+    if (deliverable == 0)
+        return;
+
+    // Find the lowest numbered pending signal
+    i32 signum = 0;
+    for (i32 i = 1; i < sig::NSIG; i++)
+    {
+        if (deliverable & (1u << i))
+        {
+            signum = i;
+            break;
+        }
+    }
+
+    if (signum == 0)
+        return;
+
+    // Clear this signal from pending
+    t->signals.pending &= ~(1u << signum);
+
+    u64 handler = t->signals.handlers[signum];
+
+    // SIG_DFL (0) - apply default action
+    if (handler == 0)
+    {
+        char action = default_action(signum);
+        if (action == 'T')
+        {
+            serial::puts("[signal] Delivering ");
+            serial::puts(signal_name(signum));
+            serial::puts(" (default: terminate) to '");
+            serial::puts(t->name);
+            serial::puts("'\n");
+            task::exit(-(128 + signum));
+        }
+        // Ignore 'I', 'S', 'C' for now
+        return;
+    }
+
+    // SIG_IGN (1) - ignore
+    if (handler == 1)
+    {
+        return;
+    }
+
+    // User signal handler (handler > 1)
+    // In a full implementation, we would:
+    // 1. Save the current trap frame to t->signals.saved_frame
+    // 2. Set up a signal trampoline on the user stack
+    // 3. Modify the trap frame to jump to the handler
+    // 4. When handler calls sigreturn, restore the saved frame
+    //
+    // For now, log that we would call the handler and apply default action
+
+    serial::puts("[signal] Would call user handler at 0x");
+    serial::put_hex(handler);
+    serial::puts(" for ");
+    serial::puts(signal_name(signum));
+    serial::puts(" - user handlers not yet implemented, using default action\n");
+
+    // Apply default action since we can't call user handlers yet
+    char action = default_action(signum);
+    if (action == 'T')
+    {
+        task::exit(-(128 + signum));
+    }
 }
 
 } // namespace signal

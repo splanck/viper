@@ -2,7 +2,7 @@
 
 **Version:** December 2025 (v0.2.5)
 **Target:** AArch64 (ARM64) on QEMU virt machine
-**Total SLOC:** ~66,000
+**Total SLOC:** ~43,000
 
 ## Executive Summary
 
@@ -14,17 +14,18 @@ ViperOS is a capability-based microkernel operating system targeting AArch64. Th
 
 | Component | SLOC | Status |
 |-----------|------|--------|
-| Architecture (AArch64) | ~3,000 | Complete for QEMU (GICv2/v3, PSCI, hi-res timer) |
-| Memory Management | ~3,200 | Complete (PMM, VMM, slab, buddy, COW, VMA) |
-| Console (Serial/Graphics) | ~2,000 | Complete |
-| Drivers (VirtIO/fw_cfg) | ~4,100 | Complete for QEMU |
-| Filesystem (VFS/ViperFS) | ~5,500 | Complete (journal, inode cache, block cache) |
-| IPC (Channels/Poll) | ~2,100 | Complete |
-| Networking (TCP/IP/TLS) | ~15,500 | Complete |
-| Scheduler/Tasks | ~2,500 | Complete (wait queues, priorities) |
-| Viper/Capabilities | ~3,500 | Complete (VMA, address spaces) |
-| User Space (libc/C++) | ~9,000 | Complete |
-| Tools | ~1,800 | Complete |
+| Architecture (AArch64) | ~1,800 | Complete for QEMU (GICv2/v3, PSCI, hi-res timer) |
+| Memory Management | ~3,100 | Complete (PMM, VMM, slab, buddy, COW, VMA) |
+| Console (Serial/Graphics) | ~2,500 | Complete |
+| Drivers (VirtIO/fw_cfg) | ~3,400 | Complete for QEMU (blk, net, gpu, rng, input) |
+| Filesystem (VFS/ViperFS) | ~3,700 | Complete (journal, inode cache, block cache) |
+| IPC (Channels/Poll) | ~1,400 | Complete |
+| Networking (TCP/IP/TLS) | ~8,200 | Complete |
+| Scheduler/Tasks | ~1,500 | Complete (wait queues, priorities, signals) |
+| Viper/Capabilities | ~1,100 | Complete (VMA, address spaces) |
+| Syscalls/Kernel Objects | ~5,800 | Complete (73 syscalls) |
+| User Space (libc/C++) | ~7,300 | Complete |
+| Tools | ~1,500 | Complete |
 
 ---
 
@@ -35,7 +36,7 @@ ViperOS is a capability-based microkernel operating system targeting AArch64. Th
 | [01-architecture.md](01-architecture.md) | AArch64 boot, MMU, GIC, timer, exceptions, syscalls |
 | [02-memory-management.md](02-memory-management.md) | PMM, VMM, slab, buddy, COW, VMA, kernel heap |
 | [03-console.md](03-console.md) | Serial UART, graphics console, fonts |
-| [04-drivers.md](04-drivers.md) | VirtIO (blk, net, rng, input), fw_cfg, ramfb |
+| [04-drivers.md](04-drivers.md) | VirtIO (blk, net, gpu, rng, input), fw_cfg, ramfb |
 | [05-filesystem.md](05-filesystem.md) | VFS, ViperFS, block cache, inode cache, journal |
 | [06-ipc.md](06-ipc.md) | Channels, poll, poll sets |
 | [07-networking.md](07-networking.md) | Ethernet, ARP, IPv4, TCP, UDP, DNS, TLS, HTTP |
@@ -79,8 +80,8 @@ ViperOS is a capability-based microkernel operating system targeting AArch64. Th
 │  └───────────────┘ └───────────────┘ └───────────────┘         │
 │  ┌─────────────────────────────────────────────────────────────┐│
 │  │                        Drivers                               ││
-│  │  VirtIO-blk │ VirtIO-net │ VirtIO-rng │ VirtIO-input        ││
-│  │  fw_cfg     │ ramfb                                         ││
+│  │  VirtIO-blk │ VirtIO-net │ VirtIO-gpu │ VirtIO-rng          ││
+│  │  VirtIO-input │ fw_cfg   │ ramfb                            ││
 │  └─────────────────────────────────────────────────────────────┘│
 │  ┌─────────────────────────────────────────────────────────────┐│
 │  │                     Architecture                             ││
@@ -199,7 +200,7 @@ ViperOS is a capability-based microkernel operating system targeting AArch64. Th
 
 ### Medium Priority
 1. IPv6 support
-2. VirtIO-GPU for hardware acceleration
+2. VirtIO-GPU 3D support (virgl) - 2D implemented
 3. TLS session resumption
 4. Pipes between processes
 
@@ -249,7 +250,7 @@ cd os
 - Machine: `virt`
 - CPU: `cortex-a72`
 - RAM: 128MB (default)
-- Devices: virtio-blk, virtio-net, virtio-rng, virtio-keyboard/mouse, ramfb
+- Devices: virtio-blk, virtio-net, virtio-gpu, virtio-rng, virtio-keyboard/mouse, ramfb
 
 ---
 

@@ -325,6 +325,13 @@ extern "C"
         {
             // Route to centralized syscall dispatcher
             syscall::dispatch(frame);
+
+            // Check for pending signals before returning to user mode
+            task::Task *t = task::current();
+            if (t && (t->signals.pending & ~t->signals.blocked))
+            {
+                signal::process_pending();
+            }
             return;
         }
 

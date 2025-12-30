@@ -11,6 +11,7 @@
 #include "cpu.hpp"
 #include "../../console/serial.hpp"
 #include "gic.hpp"
+#include "timer.hpp"
 
 // Suppress warnings for PSCI constants that document the full API
 #pragma GCC diagnostic push
@@ -50,7 +51,11 @@ constexpr i64 ON_PENDING = -5;
 constexpr i64 INTERNAL_FAILURE = -6;
 
 /**
- * @brief Invoke a PSCI function via SMC.
+ * @brief Invoke a PSCI function via HVC.
+ *
+ * @details
+ * QEMU virt machine with direct kernel boot (-kernel) uses HVC as the
+ * PSCI conduit when running at EL1. SMC would require EL3 firmware.
  *
  * @param fn PSCI function ID
  * @param arg0-arg2 Arguments
@@ -63,7 +68,9 @@ inline i64 call(u64 fn, u64 arg0 = 0, u64 arg1 = 0, u64 arg2 = 0)
     register u64 x2 asm("x2") = arg1;
     register u64 x3 asm("x3") = arg2;
 
-    asm volatile("smc #0"
+    // Use HVC (Hypervisor Call) for PSCI - QEMU virt machine uses this
+    // when booted with -kernel (direct kernel boot without EL3 firmware)
+    asm volatile("hvc #0"
                  : "+r"(x0), "+r"(x1), "+r"(x2), "+r"(x3)
                  :
                  : "x4", "x5", "x6", "x7", "x8", "x9", "x10", "x11", "x12",
@@ -103,6 +110,7 @@ void init()
     cpu_data[0].stack_top = reinterpret_cast<u64>(&cpu_stacks[0][CPU_STACK_SIZE]);
     cpu_data[0].idle_ticks = 0;
     cpu_data[0].current_task = nullptr;
+    cpu_data[0].current_viper = nullptr;
 
     // Initialize other CPU data as offline
     for (u32 i = 1; i < MAX_CPUS; i++)
@@ -112,6 +120,7 @@ void init()
         cpu_data[i].stack_top = reinterpret_cast<u64>(&cpu_stacks[i][CPU_STACK_SIZE]);
         cpu_data[i].idle_ticks = 0;
         cpu_data[i].current_task = nullptr;
+        cpu_data[i].current_viper = nullptr;
     }
 
     num_cpus_online = 1;
@@ -225,18 +234,32 @@ extern "C" void secondary_main(u32 cpu_id)
     serial::put_dec(cpu_id);
     serial::puts(" online\n");
 
-    // Initialize per-CPU timer (each CPU has its own timer)
-    // For now, secondary CPUs just enter idle loop
-    // In a full implementation, they would:
-    // 1. Set up their own timer
-    // 2. Enable interrupts
-    // 3. Enter the scheduler's idle loop
+    // Initialize per-CPU GIC interface
+    serial::puts("[cpu] CPU ");
+    serial::put_dec(cpu_id);
+    serial::puts(" initializing GIC\n");
+    gic::init_cpu();
+
+    // Initialize per-CPU timer (each CPU has its own timer via PPI)
+    serial::puts("[cpu] CPU ");
+    serial::put_dec(cpu_id);
+    serial::puts(" initializing timer\n");
+    timer::init_secondary();
+
+    // Enable interrupts
+    serial::puts("[cpu] CPU ");
+    serial::put_dec(cpu_id);
+    serial::puts(" enabling interrupts\n");
+    asm volatile("msr daifclr, #2"); // Unmask IRQ
 
     serial::puts("[cpu] CPU ");
     serial::put_dec(cpu_id);
-    serial::puts(" entering idle\n");
+    serial::puts(" entering idle loop\n");
 
-    // Idle loop - wait for IPIs
+    // Idle loop - wait for interrupts (timer will fire periodically)
+    // In a full SMP implementation, this would enter the scheduler
+    // For now, secondary CPUs handle interrupts but don't participate
+    // in task scheduling (requires per-CPU current_task tracking)
     for (;;)
     {
         asm volatile("wfi");

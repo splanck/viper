@@ -10,8 +10,9 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BUILD_DIR="$SCRIPT_DIR/build"
-TOOLS_DIR="$SCRIPT_DIR/tools"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+BUILD_DIR="$PROJECT_DIR/build"
+TOOLS_DIR="$PROJECT_DIR/tools"
 
 # Default options
 MODE="graphics"
@@ -145,8 +146,8 @@ print_success "Clean complete"
 
 # Configure CMake with Clang toolchain
 print_step "Configuring CMake (Clang)..."
-cmake -B "$BUILD_DIR" -S "$SCRIPT_DIR" \
-    -DCMAKE_TOOLCHAIN_FILE="$SCRIPT_DIR/cmake/aarch64-clang-toolchain.cmake" \
+cmake -B "$BUILD_DIR" -S "$PROJECT_DIR" \
+    -DCMAKE_TOOLCHAIN_FILE="$PROJECT_DIR/cmake/aarch64-clang-toolchain.cmake" \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 print_success "Configuration complete"
@@ -237,6 +238,12 @@ if [[ -x "$TOOLS_DIR/mkfs.viperfs" ]]; then
     fi
     if [[ -f "$BUILD_DIR/mathtest.elf" ]]; then
         MKFS_ARGS+=(--add "$BUILD_DIR/mathtest.elf:c/mathtest.elf")
+    fi
+    if [[ -f "$BUILD_DIR/ping.elf" ]]; then
+        MKFS_ARGS+=(--add "$BUILD_DIR/ping.elf:c/ping.elf")
+    fi
+    if [[ -f "$BUILD_DIR/devices.elf" ]]; then
+        MKFS_ARGS+=(--add "$BUILD_DIR/devices.elf:c/devices.elf")
     fi
     # Add roots.der to certs directory
     if [[ -f "$BUILD_DIR/roots.der" ]]; then

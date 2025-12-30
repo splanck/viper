@@ -29,11 +29,12 @@ constexpr u64 CPU_STACK_SIZE = 16384;
  */
 struct CpuData
 {
-    u32 id;             ///< CPU ID (0 = boot CPU)
-    u32 online;         ///< 1 if CPU is online and running
-    u64 stack_top;      ///< Top of this CPU's kernel stack
-    u64 idle_ticks;     ///< Ticks spent in idle
-    void *current_task; ///< Current running task on this CPU
+    u32 id;              ///< CPU ID (0 = boot CPU)
+    u32 online;          ///< 1 if CPU is online and running
+    u64 stack_top;       ///< Top of this CPU's kernel stack
+    u64 idle_ticks;      ///< Ticks spent in idle
+    void *current_task;  ///< Current running task on this CPU
+    void *current_viper; ///< Current viper process on this CPU
 };
 
 /**

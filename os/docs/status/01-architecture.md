@@ -2,7 +2,7 @@
 
 **Status:** Complete for QEMU virt platform
 **Location:** `kernel/arch/aarch64/`
-**SLOC:** ~2,500
+**SLOC:** ~1,800
 
 ## Overview
 
@@ -130,15 +130,15 @@ The architecture subsystem provides low-level AArch64 support for the ViperOS ke
   - Scheduler tick and preemption
 
 **Not Implemented:**
-- Per-CPU timers for multicore scheduling
-- Timer wheel for O(1) timeout management
 - Virtual timer support
 - Watchdog timer
 
 **Recommendations:**
-- Implement timer wheel for O(1) timeout operations
 - Consider tickless operation for power efficiency
-- Add per-CPU timer for multicore scheduling
+
+**Recent Additions:**
+- **Per-CPU Timer**: Secondary CPUs initialize their own timer via `init_secondary()`
+- **Timer Wheel**: O(1) timeout management via `kernel/lib/timerwheel.cpp`
 
 ---
 
@@ -163,31 +163,35 @@ The architecture subsystem provides low-level AArch64 support for the ViperOS ke
 - Exception class decoding for diagnostics
 - Full register dump on panic
 
-**Complete Syscall Table:**
+**Complete Syscall Table (78 syscalls):**
 
 | Number | Name | Description |
 |--------|------|-------------|
-| **Task/Process** |||
-| 0x01 | exit | Terminate task |
-| 0x02 | wait | Wait for child task |
-| 0x03 | waitpid | Wait for specific child |
+| **Task/Process (0x00-0x0F)** |||
+| 0x00 | task_yield | Yield CPU to scheduler |
+| 0x01 | task_exit | Terminate task |
+| 0x02 | task_current | Get current task ID |
+| 0x03 | task_spawn | Spawn new process |
 | 0x05 | task_list | List running tasks |
 | 0x06 | task_set_priority | Set task priority |
 | 0x07 | task_get_priority | Get task priority |
-| **IPC** |||
+| 0x08 | wait | Wait for any child |
+| 0x09 | waitpid | Wait for specific child |
+| 0x0A | sbrk | Adjust program break |
+| **IPC (0x10-0x1F)** |||
 | 0x10 | channel_create | Create IPC channel |
 | 0x11 | channel_send | Send on channel |
 | 0x12 | channel_recv | Receive from channel |
 | 0x13 | channel_close | Close channel |
-| **Polling** |||
+| **Polling (0x20-0x2F)** |||
 | 0x20 | poll_create | Create poll set |
 | 0x21 | poll_add | Add to poll set |
 | 0x22 | poll_remove | Remove from poll set |
 | 0x23 | poll_wait | Wait on poll set |
-| **Timer** |||
+| **Timer (0x30-0x3F)** |||
 | 0x30 | time_now | Get current time (ms) |
 | 0x31 | sleep | Sleep for duration |
-| **File I/O (Path-based)** |||
+| **File I/O (0x40-0x4F)** |||
 | 0x40 | open | Open file (path) |
 | 0x41 | close | Close file descriptor |
 | 0x42 | read | Read from fd |
@@ -197,23 +201,29 @@ The architecture subsystem provides low-level AArch64 support for the ViperOS ke
 | 0x46 | fstat | Get file info (fd) |
 | 0x47 | dup | Duplicate fd |
 | 0x48 | dup2 | Duplicate fd to specific number |
-| **Symlinks** |||
-| 0x50 | symlink | Create symbolic link |
-| 0x51 | readlink | Read symlink target |
-| **Directory Operations** |||
+| **Networking (0x50-0x5F)** |||
+| 0x50 | socket_create | Create TCP socket |
+| 0x51 | socket_connect | Connect to server |
+| 0x52 | socket_send | Send data |
+| 0x53 | socket_recv | Receive data |
+| 0x54 | socket_close | Close socket |
+| 0x55 | dns_resolve | Resolve hostname |
+| **Directory/FS (0x60-0x6F)** |||
 | 0x60 | readdir | Read directory entries |
 | 0x61 | mkdir | Create directory |
 | 0x62 | rmdir | Remove directory |
 | 0x63 | unlink | Delete file |
 | 0x64 | rename | Rename file/directory |
+| 0x65 | symlink | Create symbolic link |
+| 0x66 | readlink | Read symlink target |
 | 0x67 | getcwd | Get current directory |
 | 0x68 | chdir | Change current directory |
-| **Capabilities** |||
+| **Capabilities (0x70-0x7F)** |||
 | 0x70 | cap_derive | Derive with reduced rights |
 | 0x71 | cap_revoke | Revoke capability |
 | 0x72 | cap_query | Query capability info |
 | 0x73 | cap_list | List all capabilities |
-| **File I/O (Handle-based)** |||
+| **Handle-based FS (0x80-0x8F)** |||
 | 0x80 | fs_open_root | Get root directory handle |
 | 0x81 | fs_open | Open relative to handle |
 | 0x82 | io_read | Read from file handle |
@@ -222,35 +232,29 @@ The architecture subsystem provides low-level AArch64 support for the ViperOS ke
 | 0x85 | fs_readdir | Read directory entry |
 | 0x86 | fs_close | Close handle |
 | 0x87 | fs_rewinddir | Reset directory enumeration |
-| **Assigns** |||
-| 0x90 | assign_set | Create logical assign |
-| 0x91 | assign_get | Get assign handle |
-| 0x92 | assign_remove | Remove assign |
-| 0x93 | assign_list | List all assigns |
-| 0x94 | assign_resolve | Resolve assign path |
-| **Networking** |||
-| 0xA0 | socket_create | Create TCP socket |
-| 0xA1 | socket_bind | Bind socket to port |
-| 0xA2 | socket_listen | Listen for connections |
-| 0xA3 | socket_accept | Accept connection |
-| 0xA4 | socket_connect | Connect to server |
-| 0xA5 | socket_send | Send data |
-| 0xA6 | socket_recv | Receive data |
-| 0xA7 | socket_close | Close socket |
-| 0xA8 | dns_resolve | Resolve hostname |
-| **TLS** |||
-| 0xB0 | tls_create | Create TLS session |
-| 0xB1 | tls_handshake | Perform TLS handshake |
-| 0xB2 | tls_send | Send encrypted data |
-| 0xB3 | tls_recv | Receive decrypted data |
-| 0xB4 | tls_close | Close TLS session |
-| 0xB5 | tls_info | Get session info |
-| **Memory** |||
-| 0xC0 | sbrk | Adjust program break |
-| **System Info** |||
+| **Signals (0x90-0x9F)** |||
+| 0x90 | sigaction | Set signal handler |
+| 0x91 | sigprocmask | Set/get blocked signals |
+| 0x92 | sigreturn | Return from signal handler |
+| 0x93 | kill | Send signal to task |
+| 0x94 | sigpending | Get pending signals |
+| **Assigns (0xC0-0xCF)** |||
+| 0xC0 | assign_set | Create logical assign |
+| 0xC1 | assign_get | Get assign handle |
+| 0xC2 | assign_remove | Remove assign |
+| 0xC3 | assign_list | List all assigns |
+| 0xC4 | assign_resolve | Resolve assign path |
+| **TLS (0xD0-0xDF)** |||
+| 0xD0 | tls_create | Create TLS session |
+| 0xD1 | tls_handshake | Perform TLS handshake |
+| 0xD2 | tls_send | Send encrypted data |
+| 0xD3 | tls_recv | Receive decrypted data |
+| 0xD4 | tls_close | Close TLS session |
+| 0xD5 | tls_info | Get session info |
+| **System Info (0xE0-0xEF)** |||
 | 0xE0 | mem_info | Get memory statistics |
 | 0xE1 | net_stats | Get network statistics |
-| **Console** |||
+| **Console (0xF0-0xFF)** |||
 | 0xF0 | debug_print | Print string to console |
 | 0xF1 | getchar | Read character |
 | 0xF2 | putchar | Write character |
@@ -262,17 +266,18 @@ The architecture subsystem provides low-level AArch64 support for the ViperOS ke
 - Signal delivery via `signal::send_signal()` and `signal::deliver_fault_signal()`
 - Fault info includes: address (FAR), PC (ELR), ESR, and human-readable kind
 - Default actions: terminate, ignore, stop, continue
-- Currently terminates on fatal signals (user handlers not yet supported)
+- **Per-task signal state**: handlers[32], blocked mask, pending mask
+- **Signal syscalls**: sigaction, sigprocmask, sigreturn, kill, sigpending
+- **Signal checking on syscall return**: pending signals processed before return to user mode
 
 **Not Implemented:**
-- User-space signal handlers (sigaction)
+- Full user-space signal handler invocation (framework in place, needs trampoline)
 - Debug exception handling (BRK, single-step)
 - Floating-point/SIMD exception handling (FPU enabled, traps not routed)
 - Nested exception support
 
 **Recommendations:**
-- Implement user-space signal handlers via sigaction
-- Move syscall dispatch to separate module
+- Complete user signal handler trampoline for full sigaction support
 - Add debug exception support for debugger integration
 
 ---
@@ -289,7 +294,7 @@ The architecture subsystem provides low-level AArch64 support for the ViperOS ke
 │       ▼            ▼            ▼            ▼               │
 │  ┌─────────────────────────────────────────────────┐        │
 │  │           Exception Handler (C++)               │        │
-│  │  - Syscall dispatch (50+ syscalls)              │        │
+│  │  - Syscall dispatch (73 syscalls)               │        │
 │  │  - GIC IRQ handling (v2/v3)                     │        │
 │  │  - Signal delivery (SIGSEGV, etc.)              │        │
 │  │  - Fault diagnostics + user recovery            │        │
@@ -324,23 +329,24 @@ The architecture subsystem is tested via:
 | File | Lines | Description |
 |------|-------|-------------|
 | `boot.S` | ~140 | Kernel entry, secondary CPU entry, per-CPU stacks |
-| `exceptions.S` | ~200 | Vector table and save/restore |
-| `exceptions.cpp` | ~1300 | Exception handlers, syscall dispatch |
-| `exceptions.hpp` | ~80 | Exception frame definition |
-| `gic.cpp` | ~350 | GICv2/v3 driver with auto-detection |
-| `gic.hpp` | ~60 | GIC interface |
-| `mmu.cpp` | ~280 | MMU configuration |
-| `mmu.hpp` | ~60 | MMU interface |
-| `timer.cpp` | ~350 | Timer driver with high-resolution support |
+| `exceptions.S` | ~350 | Vector table and save/restore |
+| `exceptions.cpp` | ~405 | Exception handlers, fault routing |
+| `exceptions.hpp` | ~190 | Exception frame definition |
+| `gic.cpp` | ~600 | GICv2/v3 driver with auto-detection |
+| `gic.hpp` | ~150 | GIC interface |
+| `mmu.cpp` | ~415 | MMU configuration |
+| `mmu.hpp` | ~110 | MMU interface |
+| `timer.cpp` | ~480 | Timer driver with high-resolution support |
 | `timer.hpp` | ~240 | Timer interface with one-shot support |
 | `cpu.cpp` | ~275 | Per-CPU data, PSCI boot, IPI support |
-| `cpu.hpp` | ~80 | CPU interface |
+| `cpu.hpp` | ~120 | CPU interface |
+
+Note: Syscall dispatch has been moved to `kernel/syscall/table.cpp` (~1,970 lines).
 
 ## Priority Recommendations
 
-1. **High:** Move syscall dispatch out of exceptions.cpp to dedicated module
-2. **High:** Actually boot secondary CPUs into scheduler (infrastructure ready)
-3. **Medium:** Add TTBR1 support for kernel higher-half mapping
-4. **Medium:** Implement user-space signal handlers (sigaction)
-5. **Low:** Per-CPU timer for multicore scheduling
-6. **Low:** Timer wheel for O(1) timeout operations
+1. ~~**High:** Boot secondary CPUs into scheduler~~ ✅ **Completed** - All 4 CPUs boot via PSCI
+2. **Medium:** Add TTBR1 support for kernel higher-half mapping
+3. ~~**Medium:** Implement user-space signal handlers (sigaction)~~ ✅ **Completed** - syscalls + per-task state
+4. ~~**Low:** Per-CPU timer for multicore scheduling~~ ✅ **Completed** - `timer::init_secondary()`
+5. ~~**Low:** Timer wheel for O(1) timeout operations~~ ✅ **Completed** - `kernel/lib/timerwheel.cpp`

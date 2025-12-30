@@ -2,7 +2,7 @@
 
 **Status:** Complete with libc, C++ runtime, and interactive shell
 **Location:** `user/`
-**SLOC:** ~9,000
+**SLOC:** ~7,300
 
 ## Overview
 

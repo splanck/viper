@@ -51,6 +51,9 @@ enum class Kind : u16
     Input = 24,
 };
 
+/// Sentinel value indicating no parent (root capability)
+constexpr u32 NO_PARENT = 0xFFFFFFFFU;
+
 // Capability table entry
 /**
  * @brief One slot in a capability table.
@@ -58,13 +61,17 @@ enum class Kind : u16
  * @details
  * When `kind` is @ref Kind::Invalid, the entry is considered free/unused and
  * `object` is repurposed by the implementation to store the next free index.
+ *
+ * The `parent_index` field enables revocation propagation: when a capability
+ * is revoked, all capabilities derived from it are also revoked.
  */
 struct Entry
 {
-    void *object;  // Pointer to kernel object
-    u32 rights;    // Rights bitmap
-    Kind kind;     // Object type
-    u8 generation; // For ABA detection
+    void *object;      // Pointer to kernel object
+    u32 rights;        // Rights bitmap
+    u32 parent_index;  // Index of parent capability (NO_PARENT if root)
+    Kind kind;         // Object type
+    u8 generation;     // For ABA detection
     u8 _pad;
 };
 
@@ -168,9 +175,25 @@ class Table
      * Invalidates the entry, increments its generation counter (preventing stale
      * handles from resolving), and pushes the slot index onto the free list.
      *
+     * This does NOT propagate revocation to derived handles. Use revoke() for
+     * recursive revocation.
+     *
      * @param h Handle to remove.
      */
     void remove(Handle h);
+
+    /**
+     * @brief Revoke a handle and all handles derived from it.
+     *
+     * @details
+     * Recursively invalidates the specified handle and any handles that were
+     * derived from it (directly or transitively). This implements the capability
+     * revocation propagation pattern.
+     *
+     * @param h Handle to revoke.
+     * @return Number of handles revoked (including the original).
+     */
+    u32 revoke(Handle h);
 
     /**
      * @brief Derive a new handle to the same object with reduced rights.

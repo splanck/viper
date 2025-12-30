@@ -15,6 +15,7 @@
  */
 
 #include "viper.hpp"
+#include "../arch/aarch64/cpu.hpp"
 #include "../console/serial.hpp"
 #include "../fs/vfs/vfs.hpp"
 #include "../include/error.hpp"
@@ -65,6 +66,9 @@ void init()
         vipers[i].first_child = nullptr;
         vipers[i].next_sibling = nullptr;
         vipers[i].exit_code = 0;
+        vipers[i].pgid = 0;
+        vipers[i].sid = 0;
+        vipers[i].is_session_leader = false;
         sched::wait_init(&vipers[i].child_waiters);
         vipers[i].heap_start = layout::USER_HEAP_BASE;
         vipers[i].heap_break = layout::USER_HEAP_BASE;
@@ -215,6 +219,23 @@ Viper *create(Viper *parent, const char *name)
     sched::wait_init(&v->child_waiters);
     v->exit_code = 0;
 
+    // Initialize process groups and sessions
+    // By default, new processes inherit parent's pgid/sid
+    // If no parent (init process), use own pid
+    if (parent)
+    {
+        v->pgid = parent->pgid;
+        v->sid = parent->sid;
+        v->is_session_leader = false;
+    }
+    else
+    {
+        // Root process starts its own session/group
+        v->pgid = v->id;
+        v->sid = v->id;
+        v->is_session_leader = true;
+    }
+
     // Initialize capability table
     cap::Table &ct = cap_tables[idx];
     if (!ct.init())
@@ -328,13 +349,26 @@ Viper *current()
     {
         return reinterpret_cast<Viper *>(t->viper);
     }
-    // Fall back to global current_viper for compatibility
+    // Fall back to per-CPU current_viper
+    cpu::CpuData *cpu = cpu::current();
+    if (cpu && cpu->current_viper)
+    {
+        return reinterpret_cast<Viper *>(cpu->current_viper);
+    }
+    // Last resort: global (for early boot before per-CPU is set up)
     return current_viper;
 }
 
 /** @copydoc viper::set_current */
 void set_current(Viper *v)
 {
+    // Update per-CPU current viper
+    cpu::CpuData *cpu = cpu::current();
+    if (cpu)
+    {
+        cpu->current_viper = v;
+    }
+    // Also keep global for backward compatibility during boot
     current_viper = v;
 }
 
@@ -712,6 +746,113 @@ i64 do_sbrk(Viper *v, i64 increment)
 
     v->heap_break = new_break;
     return static_cast<i64>(old_break);
+}
+
+/** @copydoc viper::getpgid */
+i64 getpgid(u64 pid)
+{
+    Viper *v;
+    if (pid == 0)
+    {
+        v = current();
+    }
+    else
+    {
+        v = find(pid);
+    }
+
+    if (!v)
+    {
+        return error::VERR_NOT_FOUND;
+    }
+
+    return static_cast<i64>(v->pgid);
+}
+
+/** @copydoc viper::setpgid */
+i64 setpgid(u64 pid, u64 pgid)
+{
+    Viper *v;
+    if (pid == 0)
+    {
+        v = current();
+    }
+    else
+    {
+        v = find(pid);
+    }
+
+    if (!v)
+    {
+        return error::VERR_NOT_FOUND;
+    }
+
+    // Can't change process group of a session leader
+    if (v->is_session_leader)
+    {
+        return error::VERR_PERMISSION;
+    }
+
+    // If pgid is 0, use the target process's pid
+    if (pgid == 0)
+    {
+        pgid = v->id;
+    }
+
+    // Must be in the same session
+    // Find the target process group leader
+    Viper *pgl = find(pgid);
+    if (pgl && pgl->sid != v->sid)
+    {
+        return error::VERR_PERMISSION;
+    }
+
+    v->pgid = pgid;
+    return 0;
+}
+
+/** @copydoc viper::getsid */
+i64 getsid(u64 pid)
+{
+    Viper *v;
+    if (pid == 0)
+    {
+        v = current();
+    }
+    else
+    {
+        v = find(pid);
+    }
+
+    if (!v)
+    {
+        return error::VERR_NOT_FOUND;
+    }
+
+    return static_cast<i64>(v->sid);
+}
+
+/** @copydoc viper::setsid */
+i64 setsid()
+{
+    Viper *v = current();
+    if (!v)
+    {
+        return error::VERR_NOT_SUPPORTED;
+    }
+
+    // Cannot create session if already a process group leader
+    if (v->pgid == v->id)
+    {
+        return error::VERR_PERMISSION;
+    }
+
+    // Create new session with self as leader
+    v->sid = v->id;
+    v->pgid = v->id;
+    v->is_session_leader = true;
+
+    return static_cast<i64>(v->sid);
 }
 
 } // namespace viper

@@ -312,14 +312,17 @@ inline SyscallResult syscall4(u64 num, u64 arg0, u64 arg1, u64 arg2, u64 arg3)
  * @param name Human-readable process name (optional, uses path basename if null).
  * @param out_pid Output: Process ID of the spawned process (optional).
  * @param out_tid Output: Task ID of the spawned process's main thread (optional).
+ * @param args Command-line arguments to pass to the new process (optional).
  * @return 0 on success, negative error code on failure.
  */
 inline i64 spawn(const char *path, const char *name = nullptr,
-                 u64 *out_pid = nullptr, u64 *out_tid = nullptr)
+                 u64 *out_pid = nullptr, u64 *out_tid = nullptr,
+                 const char *args = nullptr)
 {
-    SyscallResult r = syscall2(SYS_TASK_SPAWN,
+    SyscallResult r = syscall3(SYS_TASK_SPAWN,
                                reinterpret_cast<u64>(path),
-                               reinterpret_cast<u64>(name));
+                               reinterpret_cast<u64>(name),
+                               reinterpret_cast<u64>(args));
     if (r.error == 0)
     {
         if (out_pid)
@@ -328,6 +331,24 @@ inline i64 spawn(const char *path, const char *name = nullptr,
             *out_tid = r.val1;
     }
     return r.error;
+}
+
+/**
+ * @brief Get command-line arguments for the current process.
+ *
+ * @details
+ * Retrieves the arguments string that was passed when the process was spawned.
+ *
+ * @param buf Buffer to receive the arguments.
+ * @param bufsize Size of the buffer.
+ * @return Length of arguments (not including NUL) on success, negative error on failure.
+ */
+inline i64 get_args(char *buf, usize bufsize)
+{
+    SyscallResult r = syscall2(SYS_GET_ARGS,
+                               reinterpret_cast<u64>(buf),
+                               static_cast<u64>(bufsize));
+    return r.ok() ? static_cast<i64>(r.val0) : r.error;
 }
 
 /**

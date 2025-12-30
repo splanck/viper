@@ -52,6 +52,16 @@ using TimerCallback = void (*)(void *context);
 void init();
 
 /**
+ * @brief Initialize timer for a secondary CPU.
+ *
+ * @details
+ * Called by secondary CPUs after gic::init_cpu(). Enables the timer interrupt
+ * for this CPU and starts the timer. Uses the frequency and interval already
+ * computed by init() on the boot CPU.
+ */
+void init_secondary();
+
+/**
  * @brief Get the current tick count.
  *
  * @details

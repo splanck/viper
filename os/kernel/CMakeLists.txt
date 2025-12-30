@@ -31,6 +31,7 @@ set(KERNEL_SOURCES
         mm/fault.cpp
         mm/vma.cpp
         mm/cow.cpp
+        lib/timerwheel.cpp
         sched/task.cpp
         sched/context.S
         sched/scheduler.cpp

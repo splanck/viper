@@ -2,7 +2,7 @@
 
 **Status:** Production-ready TCP/IP stack with TLS 1.3, congestion control, and interrupt-driven I/O
 **Location:** `kernel/net/`
-**SLOC:** ~15,500
+**SLOC:** ~8,200
 
 ## Overview
 

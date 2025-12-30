@@ -68,6 +68,79 @@ struct FaultInfo
 };
 
 /**
+ * @brief Signal handler type (user-space function pointer).
+ */
+using SignalHandler = u64;
+
+/// Special signal handler values
+constexpr SignalHandler SIG_DFL = 0; ///< Default action
+constexpr SignalHandler SIG_IGN = 1; ///< Ignore signal
+
+/// Signal action flags
+namespace sa_flags
+{
+constexpr u32 SA_RESTART = (1 << 0);   ///< Restart interrupted syscalls
+constexpr u32 SA_SIGINFO = (1 << 1);   ///< Use sa_sigaction instead of sa_handler
+constexpr u32 SA_NODEFER = (1 << 2);   ///< Don't block signal during handler
+constexpr u32 SA_RESETHAND = (1 << 3); ///< Reset to SIG_DFL after handling
+constexpr u32 SA_ONSTACK = (1 << 4);   ///< Use alternate signal stack
+} // namespace sa_flags
+
+/**
+ * @brief Signal action structure (sigaction).
+ */
+struct SigAction
+{
+    SignalHandler handler; ///< Signal handler function address (or SIG_DFL/SIG_IGN)
+    u32 flags;             ///< Signal action flags (SA_*)
+    u32 mask;              ///< Signals to block during handler
+};
+
+/**
+ * @brief Per-task signal state.
+ */
+struct SignalState
+{
+    SigAction actions[sig::NSIG]; ///< Signal handlers for each signal
+    u32 blocked;                   ///< Blocked signal mask
+    u32 pending;                   ///< Pending signals bitmap
+
+    /// Initialize with default actions
+    void init()
+    {
+        for (int i = 0; i < sig::NSIG; i++)
+        {
+            actions[i].handler = SIG_DFL;
+            actions[i].flags = 0;
+            actions[i].mask = 0;
+        }
+        blocked = 0;
+        pending = 0;
+    }
+
+    /// Check if a signal is pending and not blocked
+    bool has_deliverable() const
+    {
+        return (pending & ~blocked) != 0;
+    }
+
+    /// Get the next deliverable signal (0 if none)
+    i32 next_signal() const
+    {
+        u32 deliverable = pending & ~blocked;
+        if (deliverable == 0)
+            return 0;
+        // Find lowest set bit
+        for (i32 i = 1; i < sig::NSIG; i++)
+        {
+            if (deliverable & (1u << i))
+                return i;
+        }
+        return 0;
+    }
+};
+
+/**
  * @brief Get the default action for a signal.
  *
  * @param signum Signal number.

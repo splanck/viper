@@ -42,10 +42,12 @@
 #include "../loader/loader.hpp"
 #include "../mm/pmm.hpp"
 #include "../net/dns/dns.hpp"
+#include "../net/ip/icmp.hpp"
 #include "../net/ip/tcp.hpp"
 #include "../net/network.hpp"
 #include "../net/tls/tls.hpp"
 #include "../sched/scheduler.hpp"
+#include "../sched/signal.hpp"
 #include "../sched/task.hpp"
 #include "../viper/address_space.hpp"
 #include "../viper/viper.hpp"
@@ -247,16 +249,21 @@ static SyscallResult sys_task_current(u64, u64, u64, u64, u64, u64)
     return SyscallResult::ok(static_cast<u64>(t->id));
 }
 
-static SyscallResult sys_task_spawn(u64 a0, u64 a1, u64, u64, u64, u64)
+static SyscallResult sys_task_spawn(u64 a0, u64 a1, u64 a2, u64, u64, u64)
 {
     const char *path = reinterpret_cast<const char *>(a0);
     const char *name = reinterpret_cast<const char *>(a1);
+    const char *args = reinterpret_cast<const char *>(a2);
 
     if (validate_user_string(path, viper::MAX_PATH) < 0)
     {
         return SyscallResult::err(error::VERR_INVALID_ARG);
     }
     if (name && validate_user_string(name, 64) < 0)
+    {
+        return SyscallResult::err(error::VERR_INVALID_ARG);
+    }
+    if (args && validate_user_string(args, 256) < 0)
     {
         return SyscallResult::err(error::VERR_INVALID_ARG);
     }
@@ -277,6 +284,22 @@ static SyscallResult sys_task_spawn(u64 a0, u64 a1, u64, u64, u64, u64)
     if (!result.success)
     {
         return SyscallResult::err(error::VERR_IO);
+    }
+
+    // Copy args to the new process if provided
+    if (args && result.viper)
+    {
+        usize i = 0;
+        while (i < 255 && args[i])
+        {
+            result.viper->args[i] = args[i];
+            i++;
+        }
+        result.viper->args[i] = '\0';
+    }
+    else if (result.viper)
+    {
+        result.viper->args[0] = '\0';
     }
 
     return SyscallResult::ok(static_cast<u64>(result.viper->id), static_cast<u64>(result.task_id));
@@ -375,6 +398,55 @@ static SyscallResult sys_waitpid(u64 a0, u64 a1, u64, u64, u64, u64)
         return SyscallResult::err(result);
     }
     return SyscallResult::ok(static_cast<u64>(result));
+}
+
+static SyscallResult sys_fork(u64, u64, u64, u64, u64, u64)
+{
+    // Fork creates a child process with copy-on-write semantics
+    viper::Viper *child = viper::fork();
+    if (!child)
+    {
+        return SyscallResult::err(error::VERR_OUT_OF_MEMORY);
+    }
+
+    // Create a task for the child process
+    // The child task will return 0 from fork, parent returns child pid
+    task::Task *parent_task = task::current();
+    if (!parent_task)
+    {
+        return SyscallResult::err(error::VERR_NOT_FOUND);
+    }
+
+    // Create child task that starts at same instruction as parent
+    task::Task *child_task = task::create_user_task(
+        child->name, child, parent_task->user_entry, parent_task->user_stack);
+    if (!child_task)
+    {
+        viper::destroy(child);
+        return SyscallResult::err(error::VERR_OUT_OF_MEMORY);
+    }
+
+    // Copy parent's trap frame to child for register state
+    if (parent_task->trap_frame && child_task->trap_frame)
+    {
+        // Copy all registers from parent
+        for (int i = 0; i < 31; i++)
+        {
+            child_task->trap_frame->x[i] = parent_task->trap_frame->x[i];
+        }
+        child_task->trap_frame->sp = parent_task->trap_frame->sp;
+        child_task->trap_frame->elr = parent_task->trap_frame->elr;
+        child_task->trap_frame->spsr = parent_task->trap_frame->spsr;
+
+        // Child returns 0 from fork
+        child_task->trap_frame->x[0] = 0;
+    }
+
+    // Enqueue child task to run
+    scheduler::enqueue(child_task);
+
+    // Parent returns child's process ID
+    return SyscallResult::ok(child->id);
 }
 
 static SyscallResult sys_sbrk(u64 a0, u64, u64, u64, u64, u64)
@@ -1163,15 +1235,16 @@ static SyscallResult sys_cap_revoke(u64 a0, u64, u64, u64, u64, u64)
         return SyscallResult::err(error::VERR_NOT_FOUND);
     }
 
-    // Check if handle is valid before removing
+    // Check if handle is valid before revoking
     cap::Entry *entry = table->get(handle);
     if (!entry)
     {
         return SyscallResult::err(error::VERR_INVALID_HANDLE);
     }
 
-    table->remove(handle);
-    return SyscallResult::ok();
+    // Revoke with propagation - also revokes all derived handles
+    u32 revoked = table->revoke(handle);
+    return SyscallResult::ok(static_cast<u64>(revoked));
 }
 
 static SyscallResult sys_cap_query(u64 a0, u64 a1, u64, u64, u64, u64)
@@ -1752,6 +1825,113 @@ static SyscallResult sys_net_stats(u64 a0, u64, u64, u64, u64, u64)
     return SyscallResult::ok();
 }
 
+/**
+ * @brief Send ICMP ping and return RTT.
+ *
+ * @param a0 IPv4 address (network byte order, big-endian)
+ * @param a1 Timeout in milliseconds
+ * @return RTT in milliseconds on success, negative error on failure
+ */
+static SyscallResult sys_ping(u64 a0, u64 a1, u64, u64, u64, u64)
+{
+    u32 ip_be = static_cast<u32>(a0);
+    u32 timeout_ms = static_cast<u32>(a1);
+
+    if (timeout_ms == 0)
+        timeout_ms = 5000; // Default 5 second timeout
+
+    // Convert from big-endian to our Ipv4Addr format
+    net::Ipv4Addr dst;
+    dst.bytes[0] = (ip_be >> 24) & 0xFF;
+    dst.bytes[1] = (ip_be >> 16) & 0xFF;
+    dst.bytes[2] = (ip_be >> 8) & 0xFF;
+    dst.bytes[3] = ip_be & 0xFF;
+
+    i32 rtt = net::icmp::ping(dst, timeout_ms);
+    if (rtt < 0)
+    {
+        return SyscallResult::err(rtt);
+    }
+    return SyscallResult::ok(static_cast<u64>(rtt));
+}
+
+/**
+ * @brief List detected hardware devices.
+ *
+ * @param a0 Pointer to DeviceInfo array
+ * @param a1 Maximum number of entries
+ * @return Number of devices on success, negative error on failure
+ */
+static SyscallResult sys_device_list(u64 a0, u64 a1, u64, u64, u64, u64)
+{
+    struct DeviceInfo
+    {
+        char name[32];
+        char type[16];
+        u32 flags;
+        u32 irq;
+    };
+
+    // Helper to copy a string into a fixed-size buffer
+    auto copy_str = [](char *dst, const char *src, usize max) {
+        usize i = 0;
+        while (i < max - 1 && src[i])
+        {
+            dst[i] = src[i];
+            i++;
+        }
+        dst[i] = '\0';
+    };
+
+    DeviceInfo *devices = reinterpret_cast<DeviceInfo *>(a0);
+    u32 max_count = static_cast<u32>(a1);
+
+    if (max_count > 0 && !validate_user_write(devices, max_count * sizeof(DeviceInfo)))
+    {
+        return SyscallResult::err(error::VERR_INVALID_ARG);
+    }
+
+    // Device table - static list of known devices
+    struct DeviceEntry
+    {
+        const char *name;
+        const char *type;
+        u32 flags;
+        u32 irq;
+    };
+
+    static const DeviceEntry device_table[] = {
+        {"cpu0", "cpu", 1, 0},
+        {"timer0", "timer", 1, 30},
+        {"gic0", "intc", 1, 0},
+        {"uart0", "serial", 1, 33},
+        {"virtio-blk0", "block", 1, 48},
+        {"virtio-net0", "network", 1, 49},
+        {"virtio-rng0", "rng", 1, 50},
+    };
+
+    constexpr u32 total_devices = sizeof(device_table) / sizeof(device_table[0]);
+
+    // If devices is null, just return count
+    if (!devices)
+    {
+        return SyscallResult::ok(total_devices);
+    }
+
+    // Copy devices to user buffer
+    u32 count = 0;
+    for (u32 i = 0; i < total_devices && count < max_count; i++)
+    {
+        copy_str(devices[count].name, device_table[i].name, sizeof(devices[count].name));
+        copy_str(devices[count].type, device_table[i].type, sizeof(devices[count].type));
+        devices[count].flags = device_table[i].flags;
+        devices[count].irq = device_table[i].irq;
+        count++;
+    }
+
+    return SyscallResult::ok(count);
+}
+
 // --- Debug/Console (0xF0-0xFF) ---
 
 static SyscallResult sys_debug_print(u64 a0, u64, u64, u64, u64, u64)
@@ -1800,6 +1980,395 @@ static SyscallResult sys_uptime(u64, u64, u64, u64, u64, u64)
     return SyscallResult::ok(timer::get_ms());
 }
 
+// --- Signal (0x90-0x9F) ---
+
+/**
+ * @brief Set signal action for a given signal.
+ *
+ * @param a0 Signal number
+ * @param a1 Pointer to new SigAction structure (or null)
+ * @param a2 Pointer to old SigAction structure to store previous (or null)
+ * @return 0 on success, error code on failure
+ */
+static SyscallResult sys_sigaction(u64 a0, u64 a1, u64 a2, u64, u64, u64)
+{
+    i32 signum = static_cast<i32>(a0);
+    const signal::SigAction *act = reinterpret_cast<const signal::SigAction *>(a1);
+    signal::SigAction *oldact = reinterpret_cast<signal::SigAction *>(a2);
+
+    // Validate signal number
+    if (signum <= 0 || signum >= signal::sig::NSIG)
+    {
+        return SyscallResult::err(error::VERR_INVALID_ARG);
+    }
+
+    // SIGKILL and SIGSTOP cannot be caught or ignored
+    if (signum == signal::sig::SIGKILL || signum == signal::sig::SIGSTOP)
+    {
+        return SyscallResult::err(error::VERR_INVALID_ARG);
+    }
+
+    // Validate user pointers
+    if (act && !validate_user_read(act, sizeof(signal::SigAction)))
+    {
+        return SyscallResult::err(error::VERR_INVALID_ARG);
+    }
+    if (oldact && !validate_user_write(oldact, sizeof(signal::SigAction)))
+    {
+        return SyscallResult::err(error::VERR_INVALID_ARG);
+    }
+
+    task::Task *t = task::current();
+    if (!t)
+    {
+        return SyscallResult::err(error::VERR_NOT_FOUND);
+    }
+
+    // Store old action if requested
+    if (oldact)
+    {
+        oldact->handler = t->signals.handlers[signum];
+        oldact->flags = t->signals.handler_flags[signum];
+        oldact->mask = t->signals.handler_mask[signum];
+    }
+
+    // Set new action if provided
+    if (act)
+    {
+        t->signals.handlers[signum] = act->handler;
+        t->signals.handler_flags[signum] = act->flags;
+        t->signals.handler_mask[signum] = act->mask;
+    }
+
+    return SyscallResult::ok();
+}
+
+/**
+ * @brief Set or get the blocked signal mask.
+ *
+ * @param a0 How: 0=SIG_BLOCK, 1=SIG_UNBLOCK, 2=SIG_SETMASK
+ * @param a1 Pointer to new mask (or null)
+ * @param a2 Pointer to old mask storage (or null)
+ * @return 0 on success, error code on failure
+ */
+static SyscallResult sys_sigprocmask(u64 a0, u64 a1, u64 a2, u64, u64, u64)
+{
+    i32 how = static_cast<i32>(a0);
+    const u32 *set = reinterpret_cast<const u32 *>(a1);
+    u32 *oldset = reinterpret_cast<u32 *>(a2);
+
+    // Validate user pointers
+    if (set && !validate_user_read(set, sizeof(u32)))
+    {
+        return SyscallResult::err(error::VERR_INVALID_ARG);
+    }
+    if (oldset && !validate_user_write(oldset, sizeof(u32)))
+    {
+        return SyscallResult::err(error::VERR_INVALID_ARG);
+    }
+
+    task::Task *t = task::current();
+    if (!t)
+    {
+        return SyscallResult::err(error::VERR_NOT_FOUND);
+    }
+
+    // Store old mask if requested
+    if (oldset)
+    {
+        *oldset = t->signals.blocked;
+    }
+
+    // Apply new mask if provided
+    if (set)
+    {
+        u32 new_mask = *set;
+
+        // Cannot block SIGKILL or SIGSTOP
+        new_mask &= ~((1u << signal::sig::SIGKILL) | (1u << signal::sig::SIGSTOP));
+
+        switch (how)
+        {
+            case 0: // SIG_BLOCK - add signals to blocked set
+                t->signals.blocked |= new_mask;
+                break;
+            case 1: // SIG_UNBLOCK - remove signals from blocked set
+                t->signals.blocked &= ~new_mask;
+                break;
+            case 2: // SIG_SETMASK - set blocked set to new mask
+                t->signals.blocked = new_mask;
+                break;
+            default:
+                return SyscallResult::err(error::VERR_INVALID_ARG);
+        }
+    }
+
+    return SyscallResult::ok();
+}
+
+/**
+ * @brief Return from signal handler, restoring original context.
+ *
+ * @details
+ * This syscall is called by the signal trampoline after a signal handler
+ * returns. It restores the original trap frame and resumes execution.
+ *
+ * @return Does not return normally
+ */
+static SyscallResult sys_sigreturn(u64, u64, u64, u64, u64, u64)
+{
+    task::Task *t = task::current();
+    if (!t)
+    {
+        return SyscallResult::err(error::VERR_NOT_FOUND);
+    }
+
+    // Check if we have a saved frame from signal delivery
+    if (!t->signals.saved_frame)
+    {
+        serial::puts("[signal] sigreturn with no saved frame\n");
+        return SyscallResult::err(error::VERR_INVALID_ARG);
+    }
+
+    // Restore the original context
+    // This would typically be done by copying saved_frame back to the
+    // exception frame, but that requires access to the current frame.
+    // For now, just clear the saved frame pointer.
+
+    serial::puts("[signal] sigreturn - restoring context\n");
+    t->signals.saved_frame = nullptr;
+
+    // In a full implementation, we would restore the saved trap frame
+    // and return to user mode via eret. For now, this is a placeholder.
+    return SyscallResult::ok();
+}
+
+/**
+ * @brief Send a signal to a process/task.
+ *
+ * @param a0 Process ID (or task ID)
+ * @param a1 Signal number
+ * @return 0 on success, error code on failure
+ */
+static SyscallResult sys_kill(u64 a0, u64 a1, u64, u64, u64, u64)
+{
+    i64 pid = static_cast<i64>(a0);
+    i32 signum = static_cast<i32>(a1);
+
+    // Validate signal number
+    if (signum <= 0 || signum >= signal::sig::NSIG)
+    {
+        return SyscallResult::err(error::VERR_INVALID_ARG);
+    }
+
+    // Special cases for pid
+    if (pid == 0)
+    {
+        // Send to all processes in caller's process group (not implemented)
+        return SyscallResult::err(error::VERR_NOT_SUPPORTED);
+    }
+    else if (pid == -1)
+    {
+        // Send to all processes (not implemented)
+        return SyscallResult::err(error::VERR_NOT_SUPPORTED);
+    }
+    else if (pid < -1)
+    {
+        // Send to process group (not implemented)
+        return SyscallResult::err(error::VERR_NOT_SUPPORTED);
+    }
+
+    // Find target task
+    task::Task *target = task::get_by_id(static_cast<u32>(pid));
+    if (!target)
+    {
+        return SyscallResult::err(error::VERR_NOT_FOUND);
+    }
+
+    // Send the signal
+    i32 result = signal::send_signal(target, signum);
+    if (result < 0)
+    {
+        return SyscallResult::err(error::VERR_PERMISSION);
+    }
+
+    return SyscallResult::ok();
+}
+
+/**
+ * @brief Get the set of pending signals.
+ *
+ * @param a0 Pointer to output mask
+ * @return 0 on success, error code on failure
+ */
+static SyscallResult sys_sigpending(u64 a0, u64, u64, u64, u64, u64)
+{
+    u32 *set = reinterpret_cast<u32 *>(a0);
+
+    if (!validate_user_write(set, sizeof(u32)))
+    {
+        return SyscallResult::err(error::VERR_INVALID_ARG);
+    }
+
+    task::Task *t = task::current();
+    if (!t)
+    {
+        return SyscallResult::err(error::VERR_NOT_FOUND);
+    }
+
+    *set = t->signals.pending;
+    return SyscallResult::ok();
+}
+
+// --- Process Groups/Sessions (0xA0-0xAF) ---
+
+/**
+ * @brief Get the process ID of the calling process.
+ *
+ * @return Process ID
+ */
+static SyscallResult sys_getpid(u64, u64, u64, u64, u64, u64)
+{
+    viper::Viper *v = viper::current();
+    if (!v)
+    {
+        return SyscallResult::err(error::VERR_NOT_FOUND);
+    }
+    return SyscallResult::ok(v->id);
+}
+
+/**
+ * @brief Get the parent process ID of the calling process.
+ *
+ * @return Parent process ID, or 0 if no parent
+ */
+static SyscallResult sys_getppid(u64, u64, u64, u64, u64, u64)
+{
+    viper::Viper *v = viper::current();
+    if (!v)
+    {
+        return SyscallResult::err(error::VERR_NOT_FOUND);
+    }
+    if (!v->parent)
+    {
+        return SyscallResult::ok(0);
+    }
+    return SyscallResult::ok(v->parent->id);
+}
+
+/**
+ * @brief Get the process group ID of a process.
+ *
+ * @param a0 Process ID to query (0 for current process)
+ * @return Process group ID
+ */
+static SyscallResult sys_getpgid(u64 a0, u64, u64, u64, u64, u64)
+{
+    u64 pid = a0;
+    i64 result = viper::getpgid(pid);
+    if (result < 0)
+    {
+        return SyscallResult::err(result);
+    }
+    return SyscallResult::ok(static_cast<u64>(result));
+}
+
+/**
+ * @brief Set the process group ID of a process.
+ *
+ * @param a0 Process ID to modify (0 for current process)
+ * @param a1 New process group ID (0 to use target's PID)
+ * @return 0 on success
+ */
+static SyscallResult sys_setpgid(u64 a0, u64 a1, u64, u64, u64, u64)
+{
+    u64 pid = a0;
+    u64 pgid = a1;
+    i64 result = viper::setpgid(pid, pgid);
+    if (result < 0)
+    {
+        return SyscallResult::err(result);
+    }
+    return SyscallResult::ok();
+}
+
+/**
+ * @brief Get the session ID of a process.
+ *
+ * @param a0 Process ID to query (0 for current process)
+ * @return Session ID
+ */
+static SyscallResult sys_getsid(u64 a0, u64, u64, u64, u64, u64)
+{
+    u64 pid = a0;
+    i64 result = viper::getsid(pid);
+    if (result < 0)
+    {
+        return SyscallResult::err(result);
+    }
+    return SyscallResult::ok(static_cast<u64>(result));
+}
+
+/**
+ * @brief Create a new session with the calling process as leader.
+ *
+ * @return New session ID on success
+ */
+static SyscallResult sys_setsid(u64, u64, u64, u64, u64, u64)
+{
+    i64 result = viper::setsid();
+    if (result < 0)
+    {
+        return SyscallResult::err(result);
+    }
+    return SyscallResult::ok(static_cast<u64>(result));
+}
+
+/**
+ * @brief Get command-line arguments for the current process.
+ *
+ * @param a0 Buffer to receive the arguments string
+ * @param a1 Buffer size
+ * @return Length of args on success (not including NUL), negative error on failure
+ */
+static SyscallResult sys_get_args(u64 a0, u64 a1, u64, u64, u64, u64)
+{
+    char *buf = reinterpret_cast<char *>(a0);
+    usize bufsize = static_cast<usize>(a1);
+
+    if (bufsize > 0 && !validate_user_write(buf, bufsize))
+    {
+        return SyscallResult::err(error::VERR_INVALID_ARG);
+    }
+
+    viper::Viper *v = viper::current();
+    if (!v)
+    {
+        return SyscallResult::err(error::VERR_NOT_FOUND);
+    }
+
+    // Calculate length of args
+    usize len = 0;
+    while (len < 255 && v->args[len])
+        len++;
+
+    // If just querying length (null buffer or zero size)
+    if (!buf || bufsize == 0)
+    {
+        return SyscallResult::ok(len);
+    }
+
+    // Copy args to buffer
+    usize copy_len = (len < bufsize - 1) ? len : bufsize - 1;
+    for (usize i = 0; i < copy_len; i++)
+    {
+        buf[i] = v->args[i];
+    }
+    buf[copy_len] = '\0';
+
+    return SyscallResult::ok(len);
+}
+
 // =============================================================================
 // Syscall Dispatch Table
 // =============================================================================
@@ -1816,13 +2385,14 @@ static const SyscallEntry syscall_table[] = {
     {SYS_TASK_YIELD, sys_task_yield, "task_yield", 0},
     {SYS_TASK_EXIT, sys_task_exit, "task_exit", 1},
     {SYS_TASK_CURRENT, sys_task_current, "task_current", 0},
-    {SYS_TASK_SPAWN, sys_task_spawn, "task_spawn", 2},
+    {SYS_TASK_SPAWN, sys_task_spawn, "task_spawn", 3},
     {SYS_TASK_LIST, sys_task_list, "task_list", 2},
     {SYS_TASK_SET_PRIORITY, sys_task_set_priority, "task_set_priority", 2},
     {SYS_TASK_GET_PRIORITY, sys_task_get_priority, "task_get_priority", 1},
     {SYS_WAIT, sys_wait, "wait", 1},
     {SYS_WAITPID, sys_waitpid, "waitpid", 2},
     {SYS_SBRK, sys_sbrk, "sbrk", 1},
+    {SYS_FORK, sys_fork, "fork", 0},
 
     // Channel IPC (0x10-0x1F)
     {SYS_CHANNEL_CREATE, sys_channel_create, "channel_create", 0},
@@ -1886,6 +2456,22 @@ static const SyscallEntry syscall_table[] = {
     {SYS_FS_CLOSE, sys_fs_close, "fs_close", 1},
     {SYS_FS_REWIND_DIR, sys_fs_rewind_dir, "fs_rewind_dir", 1},
 
+    // Signal (0x90-0x9F)
+    {SYS_SIGACTION, sys_sigaction, "sigaction", 3},
+    {SYS_SIGPROCMASK, sys_sigprocmask, "sigprocmask", 3},
+    {SYS_SIGRETURN, sys_sigreturn, "sigreturn", 0},
+    {SYS_KILL, sys_kill, "kill", 2},
+    {SYS_SIGPENDING, sys_sigpending, "sigpending", 1},
+
+    // Process Groups/Sessions (0xA0-0xAF)
+    {SYS_GETPID, sys_getpid, "getpid", 0},
+    {SYS_GETPPID, sys_getppid, "getppid", 0},
+    {SYS_GETPGID, sys_getpgid, "getpgid", 1},
+    {SYS_SETPGID, sys_setpgid, "setpgid", 2},
+    {SYS_GETSID, sys_getsid, "getsid", 1},
+    {SYS_SETSID, sys_setsid, "setsid", 0},
+    {SYS_GET_ARGS, sys_get_args, "get_args", 2},
+
     // Assign (0xC0-0xCF)
     {SYS_ASSIGN_SET, sys_assign_set, "assign_set", 2},
     {SYS_ASSIGN_GET, sys_assign_get, "assign_get", 3},
@@ -1904,6 +2490,8 @@ static const SyscallEntry syscall_table[] = {
     // System Info (0xE0-0xEF)
     {SYS_MEM_INFO, sys_mem_info, "mem_info", 1},
     {SYS_NET_STATS, sys_net_stats, "net_stats", 1},
+    {SYS_PING, sys_ping, "ping", 2},
+    {SYS_DEVICE_LIST, sys_device_list, "device_list", 2},
 
     // Debug/Console (0xF0-0xFF)
     {SYS_DEBUG_PRINT, sys_debug_print, "debug_print", 1},

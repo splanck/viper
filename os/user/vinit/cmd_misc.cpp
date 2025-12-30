@@ -4,9 +4,9 @@
  */
 #include "vinit.hpp"
 
-void cmd_run(const char *path)
+void cmd_run(const char *cmdline)
 {
-    if (!path || *path == '\0')
+    if (!cmdline || *cmdline == '\0')
     {
         print_str("Run: missing program path\n");
         last_rc = RC_ERROR;
@@ -14,9 +14,35 @@ void cmd_run(const char *path)
         return;
     }
 
+    // Parse the command line: first word is path, rest are args
+    char path_buf[256];
+    char args_buf[256];
+    usize path_len = 0;
+    usize args_len = 0;
+
+    // Skip leading spaces
+    const char *p = cmdline;
+    while (*p == ' ') p++;
+
+    // Extract path (first word)
+    while (*p && *p != ' ' && path_len < 255)
+        path_buf[path_len++] = *p++;
+    path_buf[path_len] = '\0';
+
+    // Skip spaces between path and args
+    while (*p == ' ') p++;
+
+    // Rest is args
+    while (*p && args_len < 255)
+        args_buf[args_len++] = *p++;
+    args_buf[args_len] = '\0';
+
+    const char *path = path_buf;
+    const char *args = args_len > 0 ? args_buf : nullptr;
+
     u64 pid = 0;
     u64 tid = 0;
-    i64 err = sys::spawn(path, nullptr, &pid, &tid);
+    i64 err = sys::spawn(path, nullptr, &pid, &tid, args);
 
     // If not found and not an absolute/relative path, try C: directory
     if (err < 0 && path[0] != '/' && !strstart(path, "./") && !strstart(path, "../"))
@@ -31,13 +57,13 @@ void cmd_run(const char *path)
         search_path[i++] = '/';
 
         // Copy the command name
-        const char *p = path;
-        while (*p && i < 250)
-            search_path[i++] = *p++;
+        const char *q = path;
+        while (*q && i < 250)
+            search_path[i++] = *q++;
         search_path[i] = '\0';
 
         // Try with the name as-is first
-        err = sys::spawn(search_path, nullptr, &pid, &tid);
+        err = sys::spawn(search_path, nullptr, &pid, &tid, args);
 
         // If still not found and doesn't end in .elf, try adding .elf
         if (err < 0)
@@ -52,7 +78,7 @@ void cmd_run(const char *path)
                     search_path[len++] = 'l';
                     search_path[len++] = 'f';
                     search_path[len] = '\0';
-                    err = sys::spawn(search_path, nullptr, &pid, &tid);
+                    err = sys::spawn(search_path, nullptr, &pid, &tid, args);
                 }
             }
         }

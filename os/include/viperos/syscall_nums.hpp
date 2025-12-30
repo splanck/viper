@@ -50,6 +50,8 @@
 #define SYS_WAITPID 0x09
 /** @brief Adjust process heap break (sbrk). */
 #define SYS_SBRK 0x0A
+/** @brief Fork the current process (copy-on-write). */
+#define SYS_FORK 0x0B
 /** @} */
 
 /** @name Channel IPC Syscalls (0x10 - 0x1F)
@@ -185,6 +187,44 @@
 #define SYS_CAP_LIST 0x73
 /** @} */
 
+/** @name Signal Syscalls (0x90 - 0x9F)
+ *  @details
+ *  POSIX-like signal handling for user-space tasks.
+ *  @{
+ */
+/** @brief Set signal action (handler, mask, flags). */
+#define SYS_SIGACTION 0x90
+/** @brief Set/get blocked signal mask. */
+#define SYS_SIGPROCMASK 0x91
+/** @brief Return from signal handler (restores original context). */
+#define SYS_SIGRETURN 0x92
+/** @brief Send signal to a task/process. */
+#define SYS_KILL 0x93
+/** @brief Get pending signals. */
+#define SYS_SIGPENDING 0x94
+/** @} */
+
+/** @name Process Group/Session Syscalls (0xA0 - 0xAF)
+ *  @details
+ *  POSIX-like process groups and sessions for job control.
+ *  @{
+ */
+/** @brief Get process ID of calling process. */
+#define SYS_GETPID 0xA0
+/** @brief Get parent process ID of calling process. */
+#define SYS_GETPPID 0xA1
+/** @brief Get process group ID of a process. */
+#define SYS_GETPGID 0xA2
+/** @brief Set process group ID of a process. */
+#define SYS_SETPGID 0xA3
+/** @brief Get session ID of a process. */
+#define SYS_GETSID 0xA4
+/** @brief Create a new session with calling process as leader. */
+#define SYS_SETSID 0xA5
+/** @brief Get command-line arguments for the current process. */
+#define SYS_GET_ARGS 0xA6
+/** @} */
+
 /** @name Handle-based Filesystem Syscalls (0x80 - 0x8F)
  *  @details
  *  Object-capability filesystem API that operates on directory/file handles
@@ -256,6 +296,10 @@
 #define SYS_MEM_INFO 0xE0
 /** @brief Fill a NetStats structure with network statistics. */
 #define SYS_NET_STATS 0xE1
+/** @brief Send ICMP ping and get RTT (args: ip_addr, timeout_ms). */
+#define SYS_PING 0xE2
+/** @brief List detected hardware devices into a DeviceInfo array. */
+#define SYS_DEVICE_LIST 0xE3
 /** @} */
 
 /** @name Debug / Console Syscalls (0xF0 - 0xFF)

@@ -2,7 +2,7 @@
 
 **Status:** Fully functional for both serial and graphics output
 **Location:** `kernel/console/`
-**SLOC:** ~1,893
+**SLOC:** ~2,500
 
 ## Overview
 
@@ -232,14 +232,14 @@ The console subsystem is tested via:
 
 | File | Lines | Description |
 |------|-------|-------------|
-| `serial.cpp` | ~160 | PL011 UART driver |
-| `serial.hpp` | ~50 | Serial interface |
-| `gcon.cpp` | ~300 | Graphics console |
-| `gcon.hpp` | ~70 | Graphics console interface |
-| `font.cpp` | ~1200 | Bitmap font data |
-| `font.hpp` | ~50 | Font metrics and API |
-| `console.cpp` | ~50 | Unified console |
-| `console.hpp` | ~30 | Console interface |
+| `serial.cpp` | ~89 | PL011 UART driver |
+| `serial.hpp` | ~13 | Serial interface |
+| `gcon.cpp` | ~648 | Graphics console |
+| `gcon.hpp` | ~27 | Graphics console interface |
+| `font.cpp` | ~1550 | Bitmap font data |
+| `font.hpp` | ~12 | Font metrics and API |
+| `console.cpp` | ~147 | Unified console with input buffer |
+| `console.hpp` | ~16 | Console interface |
 
 ---
 

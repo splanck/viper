@@ -1,8 +1,8 @@
 # Scheduler and Task Management
 
-**Status:** Complete cooperative/preemptive scheduler with wait queues
+**Status:** Complete cooperative/preemptive scheduler with wait queues, priorities, and signals
 **Location:** `kernel/sched/`
-**SLOC:** ~2,400
+**SLOC:** ~1,500
 
 ## Overview
 
@@ -67,6 +67,12 @@ The scheduler subsystem provides task management and context switching for both 
 | parent_id | u32 | Parent task ID |
 | exit_code | i32 | Exit status (for zombies) |
 | cwd[256] | char | Current working directory |
+| signals.handlers[32] | u64 | Signal handler addresses |
+| signals.handler_flags[32] | u32 | Handler flags (SA_*) |
+| signals.handler_mask[32] | u32 | Handler signal masks |
+| signals.blocked | u32 | Blocked signal mask |
+| signals.pending | u32 | Pending signals bitmap |
+| signals.saved_frame | TrapFrame* | Saved frame for sigreturn |
 
 **TaskContext (Saved Registers):**
 ```
@@ -368,7 +374,13 @@ The scheduler is tested via:
 ## Priority Recommendations
 
 1. **High:** Add priority-based scheduling
-2. **High:** Implement multiprocessor support (SMP)
+2. ~~**High:** Implement multiprocessor support (SMP)~~ ✅ **Completed** - 4 CPUs boot via PSCI
 3. **Medium:** Implement proper TIME_WAIT cleanup
 4. **Low:** Add real-time scheduling class
 5. **Low:** Per-CPU run queues for scalability
+
+## Recent Additions
+
+- **Per-task signal state**: handlers, masks, pending signals for POSIX signal support
+- **SMP boot**: Secondary CPUs boot via PSCI and initialize GIC/timer
+- **Timer wheel**: O(1) timeout management integrated with poll subsystem

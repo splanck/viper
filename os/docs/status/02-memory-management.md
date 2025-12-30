@@ -2,7 +2,7 @@
 
 **Status:** Complete with demand paging, COW, buddy allocator, and slab allocator
 **Location:** `kernel/mm/`
-**SLOC:** ~3,200
+**SLOC:** ~3,100
 
 ## Overview
 
@@ -451,22 +451,22 @@ The memory management subsystem is tested via:
 
 | File | Lines | Description |
 |------|-------|-------------|
-| `pmm.cpp` | ~300 | Physical page allocator (bitmap) |
-| `pmm.hpp` | ~60 | PMM interface |
-| `buddy.cpp` | ~350 | Buddy allocator |
-| `buddy.hpp` | ~80 | Buddy interface |
-| `slab.cpp` | ~400 | Slab allocator |
-| `slab.hpp` | ~120 | Slab interface |
-| `vmm.cpp` | ~350 | Virtual memory manager |
-| `vmm.hpp` | ~100 | VMM interface and PTE flags |
-| `vma.cpp` | ~250 | Virtual memory areas |
-| `vma.hpp` | ~80 | VMA interface |
-| `fault.cpp` | ~350 | Page fault handler |
-| `fault.hpp` | ~60 | Fault interface |
-| `cow.cpp` | ~200 | Copy-on-write manager |
-| `cow.hpp` | ~80 | COW interface |
-| `kheap.cpp` | ~540 | Kernel heap allocator |
-| `kheap.hpp` | ~50 | Heap interface |
+| `pmm.cpp` | ~305 | Physical page allocator (bitmap) |
+| `pmm.hpp` | ~31 | PMM interface |
+| `buddy.cpp` | ~258 | Buddy allocator |
+| `buddy.hpp` | ~87 | Buddy interface |
+| `slab.cpp` | ~334 | Slab allocator |
+| `slab.hpp` | ~35 | Slab interface |
+| `vmm.cpp` | ~272 | Virtual memory manager |
+| `vmm.hpp` | ~53 | VMM interface and PTE flags |
+| `vma.cpp` | ~296 | Virtual memory areas |
+| `vma.hpp` | ~85 | VMA interface |
+| `fault.cpp` | ~462 | Page fault handler |
+| `fault.hpp` | ~32 | Fault interface |
+| `cow.cpp` | ~145 | Copy-on-write manager |
+| `cow.hpp` | ~67 | COW interface |
+| `kheap.cpp` | ~517 | Kernel heap allocator |
+| `kheap.hpp` | ~86 | Heap interface |
 
 ---
 
