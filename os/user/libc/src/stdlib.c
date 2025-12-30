@@ -624,3 +624,239 @@ int putenv(char *string)
 
     return setenv(name, eq + 1, 1);
 }
+
+/*
+ * Floating-point string conversion
+ */
+
+/* Helper: check if character is whitespace */
+static int is_space(char c)
+{
+    return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f';
+}
+
+double strtod(const char *nptr, char **endptr)
+{
+    const char *s = nptr;
+    double result = 0.0;
+    int sign = 1;
+    int exp_sign = 1;
+    int exponent = 0;
+    int has_digits = 0;
+
+    /* Skip leading whitespace */
+    while (is_space(*s))
+        s++;
+
+    /* Handle sign */
+    if (*s == '-')
+    {
+        sign = -1;
+        s++;
+    }
+    else if (*s == '+')
+    {
+        s++;
+    }
+
+    /* Handle special values */
+    if ((s[0] == 'i' || s[0] == 'I') &&
+        (s[1] == 'n' || s[1] == 'N') &&
+        (s[2] == 'f' || s[2] == 'F'))
+    {
+        s += 3;
+        if ((s[0] == 'i' || s[0] == 'I') &&
+            (s[1] == 'n' || s[1] == 'N') &&
+            (s[2] == 'i' || s[2] == 'I') &&
+            (s[3] == 't' || s[3] == 'T') &&
+            (s[4] == 'y' || s[4] == 'Y'))
+        {
+            s += 5;
+        }
+        if (endptr)
+            *endptr = (char *)s;
+        return sign > 0 ? __builtin_inf() : -__builtin_inf();
+    }
+
+    if ((s[0] == 'n' || s[0] == 'N') &&
+        (s[1] == 'a' || s[1] == 'A') &&
+        (s[2] == 'n' || s[2] == 'N'))
+    {
+        s += 3;
+        if (endptr)
+            *endptr = (char *)s;
+        return __builtin_nan("");
+    }
+
+    /* Parse integer part */
+    while (*s >= '0' && *s <= '9')
+    {
+        result = result * 10.0 + (*s - '0');
+        s++;
+        has_digits = 1;
+    }
+
+    /* Parse fractional part */
+    if (*s == '.')
+    {
+        s++;
+        double fraction = 0.1;
+        while (*s >= '0' && *s <= '9')
+        {
+            result += (*s - '0') * fraction;
+            fraction *= 0.1;
+            s++;
+            has_digits = 1;
+        }
+    }
+
+    /* Parse exponent */
+    if (has_digits && (*s == 'e' || *s == 'E'))
+    {
+        s++;
+        if (*s == '-')
+        {
+            exp_sign = -1;
+            s++;
+        }
+        else if (*s == '+')
+        {
+            s++;
+        }
+
+        while (*s >= '0' && *s <= '9')
+        {
+            exponent = exponent * 10 + (*s - '0');
+            s++;
+        }
+
+        /* Apply exponent */
+        double exp_mult = 1.0;
+        while (exponent > 0)
+        {
+            exp_mult *= 10.0;
+            exponent--;
+        }
+        if (exp_sign > 0)
+            result *= exp_mult;
+        else
+            result /= exp_mult;
+    }
+
+    if (endptr)
+        *endptr = has_digits ? (char *)s : (char *)nptr;
+
+    return sign * result;
+}
+
+float strtof(const char *nptr, char **endptr)
+{
+    return (float)strtod(nptr, endptr);
+}
+
+/*
+ * Note: In freestanding environment without compiler-rt, long double
+ * operations require runtime support (__extenddftf2) we don't have.
+ * This implementation uses a union to avoid the compiler generating
+ * a call to the soft-float conversion routine.
+ */
+long double strtold(const char *nptr, char **endptr)
+{
+    /* Parse as double - same precision we'll output */
+    double result = strtod(nptr, endptr);
+    /*
+     * Avoid implicit double->long double conversion.
+     * On AArch64 without compiler-rt, we simply store the double
+     * value in the low 64 bits of the long double return register.
+     * This is imprecise but avoids missing symbol errors.
+     */
+    union {
+        double d;
+        long double ld;
+    } u = {0};
+    u.d = result;
+    return u.ld;
+}
+
+double atof(const char *nptr)
+{
+    return strtod(nptr, (char **)0);
+}
+
+/*
+ * Integer to string conversion
+ */
+
+static char *unsigned_to_str(unsigned long value, char *str, int base, int is_negative)
+{
+    static const char digits[] = "0123456789abcdefghijklmnopqrstuvwxyz";
+    char *p = str;
+    char *start;
+
+    if (base < 2 || base > 36)
+    {
+        *p = '\0';
+        return str;
+    }
+
+    /* Handle zero */
+    if (value == 0 && !is_negative)
+    {
+        *p++ = '0';
+        *p = '\0';
+        return str;
+    }
+
+    /* Build string in reverse */
+    start = p;
+    if (is_negative)
+        p++; /* Reserve space for sign */
+
+    char *digit_start = p;
+    while (value > 0)
+    {
+        *p++ = digits[value % base];
+        value /= base;
+    }
+    *p = '\0';
+
+    /* Reverse the digits */
+    char *end = p - 1;
+    while (digit_start < end)
+    {
+        char tmp = *digit_start;
+        *digit_start = *end;
+        *end = tmp;
+        digit_start++;
+        end--;
+    }
+
+    /* Add sign if needed */
+    if (is_negative)
+        *start = '-';
+
+    return str;
+}
+
+char *itoa(int value, char *str, int base)
+{
+    if (value < 0 && base == 10)
+    {
+        return unsigned_to_str((unsigned long)(-(long)value), str, base, 1);
+    }
+    return unsigned_to_str((unsigned long)(unsigned int)value, str, base, 0);
+}
+
+char *ltoa(long value, char *str, int base)
+{
+    if (value < 0 && base == 10)
+    {
+        return unsigned_to_str((unsigned long)(-value), str, base, 1);
+    }
+    return unsigned_to_str((unsigned long)value, str, base, 0);
+}
+
+char *ultoa(unsigned long value, char *str, int base)
+{
+    return unsigned_to_str(value, str, base, 0);
+}

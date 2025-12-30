@@ -1,0 +1,9 @@
+#ifndef _LIBCPP_CERRNO
+#define _LIBCPP_CERRNO
+
+#include "../errno.h"
+
+/* errno is a macro, not a function, so it's available globally */
+/* All error macros from errno.h are available */
+
+#endif /* _LIBCPP_CERRNO */

@@ -1,0 +1,128 @@
+// -*- C++ -*-
+// ViperOS C++ Standard Library - stack
+// Container adapter providing LIFO stack functionality
+
+#ifndef _VIPER_STACK
+#define _VIPER_STACK
+
+#include "deque"
+
+namespace std {
+
+// =============================================================================
+// stack - LIFO stack adapter
+// =============================================================================
+
+template<typename T, typename Container = deque<T>>
+class stack {
+public:
+    using container_type  = Container;
+    using value_type      = typename Container::value_type;
+    using size_type       = typename Container::size_type;
+    using reference       = typename Container::reference;
+    using const_reference = typename Container::const_reference;
+
+protected:
+    Container c;
+
+public:
+    // Constructors
+    stack() : c() {}
+
+    explicit stack(const Container& cont) : c(cont) {}
+
+    explicit stack(Container&& cont) : c(std::move(cont)) {}
+
+    stack(const stack& other) : c(other.c) {}
+
+    stack(stack&& other) noexcept : c(std::move(other.c)) {}
+
+    template<typename InputIt>
+    stack(InputIt first, InputIt last) : c(first, last) {}
+
+    // Assignment
+    stack& operator=(const stack& other) {
+        c = other.c;
+        return *this;
+    }
+
+    stack& operator=(stack&& other) noexcept {
+        c = std::move(other.c);
+        return *this;
+    }
+
+    // Element access
+    reference top() { return c.back(); }
+    const_reference top() const { return c.back(); }
+
+    // Capacity
+    bool empty() const { return c.empty(); }
+    size_type size() const { return c.size(); }
+
+    // Modifiers
+    void push(const value_type& value) { c.push_back(value); }
+    void push(value_type&& value) { c.push_back(std::move(value)); }
+
+    template<typename... Args>
+    decltype(auto) emplace(Args&&... args) {
+        return c.emplace_back(std::forward<Args>(args)...);
+    }
+
+    void pop() { c.pop_back(); }
+
+    void swap(stack& other) noexcept {
+        using std::swap;
+        swap(c, other.c);
+    }
+
+    // Friend declarations for comparison operators
+    template<typename T2, typename C2>
+    friend bool operator==(const stack<T2, C2>&, const stack<T2, C2>&);
+
+    template<typename T2, typename C2>
+    friend bool operator<(const stack<T2, C2>&, const stack<T2, C2>&);
+};
+
+// Comparison operators
+template<typename T, typename Container>
+bool operator==(const stack<T, Container>& lhs, const stack<T, Container>& rhs) {
+    return lhs.c == rhs.c;
+}
+
+template<typename T, typename Container>
+bool operator!=(const stack<T, Container>& lhs, const stack<T, Container>& rhs) {
+    return !(lhs == rhs);
+}
+
+template<typename T, typename Container>
+bool operator<(const stack<T, Container>& lhs, const stack<T, Container>& rhs) {
+    return lhs.c < rhs.c;
+}
+
+template<typename T, typename Container>
+bool operator<=(const stack<T, Container>& lhs, const stack<T, Container>& rhs) {
+    return !(rhs < lhs);
+}
+
+template<typename T, typename Container>
+bool operator>(const stack<T, Container>& lhs, const stack<T, Container>& rhs) {
+    return rhs < lhs;
+}
+
+template<typename T, typename Container>
+bool operator>=(const stack<T, Container>& lhs, const stack<T, Container>& rhs) {
+    return !(lhs < rhs);
+}
+
+template<typename T, typename Container>
+void swap(stack<T, Container>& lhs, stack<T, Container>& rhs) noexcept {
+    lhs.swap(rhs);
+}
+
+// Deduction guides (C++17)
+template<typename Container>
+stack(Container) -> stack<typename Container::value_type, Container>;
+
+} // namespace std
+
+#endif // _VIPER_STACK

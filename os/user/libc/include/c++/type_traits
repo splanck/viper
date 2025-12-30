@@ -335,6 +335,172 @@ public:
 template <class T>
 using decay_t = typename decay<T>::type;
 
+/* is_function - simplified check */
+template <class T>
+struct is_function : integral_constant<bool, !is_const<const T>::value && !is_reference<T>::value> {};
+
+template <class T>
+inline constexpr bool is_function_v = is_function<T>::value;
+
+/* void_t */
+template <class...>
+using void_t = void;
+
+/* invoke_result - simplified implementation for callables */
+namespace detail {
+    template <class T>
+    struct type_identity { using type = T; };
+
+    template <class T>
+    auto try_add_pointer(int) -> type_identity<typename remove_reference<T>::type*>;
+    template <class T>
+    auto try_add_pointer(...) -> type_identity<T>;
+
+    template <class F, class... Args>
+    auto invoke_impl(F&& f, Args&&... args)
+        -> decltype(static_cast<F&&>(f)(static_cast<Args&&>(args)...));
+}
+
+template <class F, class... Args>
+struct invoke_result {
+    using type = decltype(detail::invoke_impl(
+        static_cast<F>(*(F*)nullptr),
+        static_cast<Args>(*(Args*)nullptr)...
+    ));
+};
+
+template <class F, class... Args>
+using invoke_result_t = typename invoke_result<F, Args...>::type;
+
+/* is_invocable - check if F can be invoked with Args */
+template <class F, class... Args>
+struct is_invocable : false_type {};
+
+template <class F, class... Args>
+inline constexpr bool is_invocable_v = is_invocable<F, Args...>::value;
+
+/* common_type - simplified */
+template <class... T>
+struct common_type;
+
+template <class T>
+struct common_type<T> {
+    using type = decay_t<T>;
+};
+
+template <class T, class U>
+struct common_type<T, U> {
+    using type = decay_t<decltype(true ? static_cast<T>(*(T*)nullptr) : static_cast<U>(*(U*)nullptr))>;
+};
+
+template <class T, class U, class... V>
+struct common_type<T, U, V...> {
+    using type = typename common_type<typename common_type<T, U>::type, V...>::type;
+};
+
+template <class... T>
+using common_type_t = typename common_type<T...>::type;
+
+/* is_convertible - simplified */
+namespace detail {
+    template <class From, class To>
+    auto test_convertible(int) -> decltype(
+        static_cast<void>(static_cast<To>(static_cast<From>(*(From*)nullptr))),
+        true_type{}
+    );
+    template <class, class>
+    auto test_convertible(...) -> false_type;
+}
+
+template <class From, class To>
+struct is_convertible : decltype(detail::test_convertible<From, To>(0)) {};
+
+template <class From, class To>
+inline constexpr bool is_convertible_v = is_convertible<From, To>::value;
+
+/* is_constructible - simplified */
+template <class T, class... Args>
+struct is_constructible : false_type {};
+
+template <class T>
+struct is_constructible<T> : true_type {};
+
+template <class T>
+struct is_default_constructible : is_constructible<T> {};
+
+template <class T>
+struct is_copy_constructible : is_constructible<T, const T&> {};
+
+template <class T>
+struct is_move_constructible : is_constructible<T, T&&> {};
+
+template <class T>
+inline constexpr bool is_default_constructible_v = is_default_constructible<T>::value;
+template <class T>
+inline constexpr bool is_copy_constructible_v = is_copy_constructible<T>::value;
+template <class T>
+inline constexpr bool is_move_constructible_v = is_move_constructible<T>::value;
+
+/* is_assignable */
+template <class T, class U>
+struct is_assignable : false_type {};
+
+template <class T>
+struct is_copy_assignable : is_assignable<T&, const T&> {};
+
+template <class T>
+struct is_move_assignable : is_assignable<T&, T&&> {};
+
+template <class T>
+inline constexpr bool is_copy_assignable_v = is_copy_assignable<T>::value;
+template <class T>
+inline constexpr bool is_move_assignable_v = is_move_assignable<T>::value;
+
+/* extent - array dimension */
+template <class T, unsigned N = 0>
+struct extent : integral_constant<unsigned long, 0> {};
+
+template <class T>
+struct extent<T[], 0> : integral_constant<unsigned long, 0> {};
+
+template <class T, unsigned N>
+struct extent<T[], N> : extent<T, N-1> {};
+
+template <class T, unsigned long I>
+struct extent<T[I], 0> : integral_constant<unsigned long, I> {};
+
+template <class T, unsigned long I, unsigned N>
+struct extent<T[I], N> : extent<T, N-1> {};
+
+template <class T, unsigned N = 0>
+inline constexpr unsigned long extent_v = extent<T, N>::value;
+
+/* remove_extent */
+template <class T>
+struct remove_extent { using type = T; };
+
+template <class T>
+struct remove_extent<T[]> { using type = T; };
+
+template <class T, unsigned long N>
+struct remove_extent<T[N]> { using type = T; };
+
+template <class T>
+using remove_extent_t = typename remove_extent<T>::type;
+
+/* remove_all_extents */
+template <class T>
+struct remove_all_extents { using type = T; };
+
+template <class T>
+struct remove_all_extents<T[]> { using type = typename remove_all_extents<T>::type; };
+
+template <class T, unsigned long N>
+struct remove_all_extents<T[N]> { using type = typename remove_all_extents<T>::type; };
+
+template <class T>
+using remove_all_extents_t = typename remove_all_extents<T>::type;
+
 } /* namespace std */
 
 #endif /* _LIBCPP_TYPE_TRAITS */

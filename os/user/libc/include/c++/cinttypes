@@ -1,0 +1,19 @@
+#ifndef _LIBCPP_CINTTYPES
+#define _LIBCPP_CINTTYPES
+
+#include "../inttypes.h"
+
+namespace std {
+
+using ::imaxdiv_t;
+using ::intmax_t;
+using ::uintmax_t;
+
+using ::imaxabs;
+using ::imaxdiv;
+using ::strtoimax;
+using ::strtoumax;
+
+} /* namespace std */
+
+#endif /* _LIBCPP_CINTTYPES */

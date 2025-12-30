@@ -56,6 +56,22 @@ char *strtok_r(char *str, const char *delim, char **saveptr);
 char *strdup(const char *s);
 char *strndup(const char *s, size_t n);
 
+/* Error string */
+char *strerror(int errnum);
+
+/* Thread-unsafe tokenizer (convenience wrapper) */
+char *strtok(char *str, const char *delim);
+
+/* Memory search (reverse and substring) */
+void *memrchr(const void *s, int c, size_t n);
+void *memmem(const void *haystack, size_t haystacklen, const void *needle, size_t needlelen);
+
+/* String reverse (extension) */
+char *strrev(char *str);
+
+/* String error length */
+size_t strerrorlen_s(int errnum);
+
 #ifdef __cplusplus
 }
 #endif

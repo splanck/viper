@@ -1,0 +1,9 @@
+#ifndef _LIBCPP_CLIMITS
+#define _LIBCPP_CLIMITS
+
+#include "../limits.h"
+
+/* All macros from limits.h are available in the global namespace */
+/* C++ just wraps the header for convenience */
+
+#endif /* _LIBCPP_CLIMITS */

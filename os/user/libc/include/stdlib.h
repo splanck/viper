@@ -31,7 +31,7 @@ void abort(void);
 int atexit(void (*function)(void));
 void _Exit(int status);  /* Exit without cleanup */
 
-/* String conversion */
+/* String conversion - integers */
 int atoi(const char *nptr);
 long atol(const char *nptr);
 long long atoll(const char *nptr);
@@ -39,6 +39,17 @@ long strtol(const char *nptr, char **endptr, int base);
 unsigned long strtoul(const char *nptr, char **endptr, int base);
 long long strtoll(const char *nptr, char **endptr, int base);
 unsigned long long strtoull(const char *nptr, char **endptr, int base);
+
+/* String conversion - floating point */
+double strtod(const char *nptr, char **endptr);
+float strtof(const char *nptr, char **endptr);
+long double strtold(const char *nptr, char **endptr);
+double atof(const char *nptr);
+
+/* Integer to string (non-standard but common) */
+char *itoa(int value, char *str, int base);
+char *ltoa(long value, char *str, int base);
+char *ultoa(unsigned long value, char *str, int base);
 
 /* Integer math */
 int abs(int n);

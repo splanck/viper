@@ -1,0 +1,251 @@
+// -*- C++ -*-
+/*
+ * ViperOS C++ Standard Library - shared_mutex
+ * Shared/exclusive locking primitives
+ */
+
+#ifndef _VIPER_SHARED_MUTEX
+#define _VIPER_SHARED_MUTEX
+
+#include "mutex"
+#include "chrono"
+
+namespace std {
+
+/*
+ * ===========================================================================
+ * shared_mutex - Reader-writer mutex
+ *
+ * ViperOS stub implementation - single-threaded environment.
+ * ===========================================================================
+ */
+
+class shared_mutex {
+public:
+    shared_mutex() noexcept : exclusive_(false), shared_count_(0) {}
+    ~shared_mutex() = default;
+
+    shared_mutex(const shared_mutex&) = delete;
+    shared_mutex& operator=(const shared_mutex&) = delete;
+
+    // Exclusive locking
+    void lock() {
+        exclusive_ = true;
+    }
+
+    bool try_lock() {
+        if (exclusive_ || shared_count_ > 0) return false;
+        exclusive_ = true;
+        return true;
+    }
+
+    void unlock() {
+        exclusive_ = false;
+    }
+
+    // Shared locking
+    void lock_shared() {
+        ++shared_count_;
+    }
+
+    bool try_lock_shared() {
+        if (exclusive_) return false;
+        ++shared_count_;
+        return true;
+    }
+
+    void unlock_shared() {
+        if (shared_count_ > 0) --shared_count_;
+    }
+
+private:
+    bool exclusive_;
+    unsigned int shared_count_;
+};
+
+/*
+ * ===========================================================================
+ * shared_timed_mutex - Reader-writer mutex with timed operations
+ * ===========================================================================
+ */
+
+class shared_timed_mutex {
+public:
+    shared_timed_mutex() noexcept : exclusive_(false), shared_count_(0) {}
+    ~shared_timed_mutex() = default;
+
+    shared_timed_mutex(const shared_timed_mutex&) = delete;
+    shared_timed_mutex& operator=(const shared_timed_mutex&) = delete;
+
+    // Exclusive locking
+    void lock() {
+        exclusive_ = true;
+    }
+
+    bool try_lock() {
+        if (exclusive_ || shared_count_ > 0) return false;
+        exclusive_ = true;
+        return true;
+    }
+
+    template<class Rep, class Period>
+    bool try_lock_for(const chrono::duration<Rep, Period>&) {
+        return try_lock();
+    }
+
+    template<class Clock, class Duration>
+    bool try_lock_until(const chrono::time_point<Clock, Duration>&) {
+        return try_lock();
+    }
+
+    void unlock() {
+        exclusive_ = false;
+    }
+
+    // Shared locking
+    void lock_shared() {
+        ++shared_count_;
+    }
+
+    bool try_lock_shared() {
+        if (exclusive_) return false;
+        ++shared_count_;
+        return true;
+    }
+
+    template<class Rep, class Period>
+    bool try_lock_shared_for(const chrono::duration<Rep, Period>&) {
+        return try_lock_shared();
+    }
+
+    template<class Clock, class Duration>
+    bool try_lock_shared_until(const chrono::time_point<Clock, Duration>&) {
+        return try_lock_shared();
+    }
+
+    void unlock_shared() {
+        if (shared_count_ > 0) --shared_count_;
+    }
+
+private:
+    bool exclusive_;
+    unsigned int shared_count_;
+};
+
+/*
+ * ===========================================================================
+ * shared_lock - RAII wrapper for shared locking
+ * ===========================================================================
+ */
+
+template<class Mutex>
+class shared_lock {
+public:
+    using mutex_type = Mutex;
+
+    shared_lock() noexcept : mutex_(nullptr), owns_(false) {}
+
+    explicit shared_lock(mutex_type& m) : mutex_(&m), owns_(false) {
+        mutex_->lock_shared();
+        owns_ = true;
+    }
+
+    shared_lock(mutex_type& m, defer_lock_t) noexcept
+        : mutex_(&m), owns_(false) {}
+
+    shared_lock(mutex_type& m, try_to_lock_t)
+        : mutex_(&m), owns_(mutex_->try_lock_shared()) {}
+
+    shared_lock(mutex_type& m, adopt_lock_t)
+        : mutex_(&m), owns_(true) {}
+
+    template<class Rep, class Period>
+    shared_lock(mutex_type& m, const chrono::duration<Rep, Period>& timeout)
+        : mutex_(&m), owns_(mutex_->try_lock_shared_for(timeout)) {}
+
+    template<class Clock, class Duration>
+    shared_lock(mutex_type& m, const chrono::time_point<Clock, Duration>& deadline)
+        : mutex_(&m), owns_(mutex_->try_lock_shared_until(deadline)) {}
+
+    ~shared_lock() {
+        if (owns_) mutex_->unlock_shared();
+    }
+
+    shared_lock(const shared_lock&) = delete;
+    shared_lock& operator=(const shared_lock&) = delete;
+
+    shared_lock(shared_lock&& other) noexcept
+        : mutex_(other.mutex_), owns_(other.owns_) {
+        other.mutex_ = nullptr;
+        other.owns_ = false;
+    }
+
+    shared_lock& operator=(shared_lock&& other) noexcept {
+        if (owns_) mutex_->unlock_shared();
+        mutex_ = other.mutex_;
+        owns_ = other.owns_;
+        other.mutex_ = nullptr;
+        other.owns_ = false;
+        return *this;
+    }
+
+    void lock() {
+        mutex_->lock_shared();
+        owns_ = true;
+    }
+
+    bool try_lock() {
+        owns_ = mutex_->try_lock_shared();
+        return owns_;
+    }
+
+    template<class Rep, class Period>
+    bool try_lock_for(const chrono::duration<Rep, Period>& timeout) {
+        owns_ = mutex_->try_lock_shared_for(timeout);
+        return owns_;
+    }
+
+    template<class Clock, class Duration>
+    bool try_lock_until(const chrono::time_point<Clock, Duration>& deadline) {
+        owns_ = mutex_->try_lock_shared_until(deadline);
+        return owns_;
+    }
+
+    void unlock() {
+        mutex_->unlock_shared();
+        owns_ = false;
+    }
+
+    void swap(shared_lock& other) noexcept {
+        Mutex* tmp_m = mutex_;
+        bool tmp_o = owns_;
+        mutex_ = other.mutex_;
+        owns_ = other.owns_;
+        other.mutex_ = tmp_m;
+        other.owns_ = tmp_o;
+    }
+
+    mutex_type* release() noexcept {
+        mutex_type* m = mutex_;
+        mutex_ = nullptr;
+        owns_ = false;
+        return m;
+    }
+
+    mutex_type* mutex() const noexcept { return mutex_; }
+    bool owns_lock() const noexcept { return owns_; }
+    explicit operator bool() const noexcept { return owns_; }
+
+private:
+    mutex_type* mutex_;
+    bool owns_;
+};
+
+template<class Mutex>
+void swap(shared_lock<Mutex>& a, shared_lock<Mutex>& b) noexcept {
+    a.swap(b);
+}
+
+} // namespace std
+
+#endif // _VIPER_SHARED_MUTEX

@@ -1,0 +1,81 @@
+#ifndef _LIBCPP_CSTDIO
+#define _LIBCPP_CSTDIO
+
+#include "../stdio.h"
+
+namespace std {
+
+/* Types */
+using ::FILE;
+using ::fpos_t;
+using ::size_t;
+
+/* Standard streams */
+using ::stdin;
+using ::stdout;
+using ::stderr;
+
+/* File operations */
+using ::fopen;
+using ::freopen;
+using ::fclose;
+using ::fflush;
+using ::remove;
+using ::rename;
+using ::tmpfile;
+using ::tmpnam;
+
+/* File descriptor operations */
+using ::fdopen;
+using ::fileno;
+
+/* Formatted I/O */
+using ::printf;
+using ::fprintf;
+using ::sprintf;
+using ::snprintf;
+using ::vprintf;
+using ::vfprintf;
+using ::vsprintf;
+using ::vsnprintf;
+using ::scanf;
+using ::fscanf;
+using ::sscanf;
+
+/* Character I/O */
+using ::fgetc;
+using ::fgets;
+using ::fputc;
+using ::fputs;
+using ::getc;
+using ::getchar;
+using ::gets;
+using ::putc;
+using ::putchar;
+using ::puts;
+using ::ungetc;
+
+/* Direct I/O */
+using ::fread;
+using ::fwrite;
+
+/* File positioning */
+using ::fseek;
+using ::ftell;
+using ::rewind;
+using ::fgetpos;
+using ::fsetpos;
+
+/* Error handling */
+using ::clearerr;
+using ::feof;
+using ::ferror;
+using ::perror;
+
+/* Line reading */
+using ::getline;
+using ::getdelim;
+
+} /* namespace std */
+
+#endif /* _LIBCPP_CSTDIO */

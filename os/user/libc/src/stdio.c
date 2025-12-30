@@ -604,6 +604,431 @@ static int skip_whitespace(const char **str)
     return count;
 }
 
+/* Forward declarations for syscalls */
+extern long __syscall1(long num, long arg0);
+extern long __syscall2(long num, long arg0, long arg1);
+extern long __syscall3(long num, long arg0, long arg1, long arg2);
+#define SYS_OPEN 0x40
+#define SYS_CLOSE 0x41
+#define SYS_LSEEK 0x44
+#define SYS_UNLINK 0x63
+#define SYS_RENAME 0x64
+
+/* File open flags */
+#define O_RDONLY  0x0001
+#define O_WRONLY  0x0002
+#define O_RDWR    0x0003
+#define O_CREAT   0x0100
+#define O_TRUNC   0x0200
+#define O_APPEND  0x0400
+
+/* Pool of FILE structures */
+#define FILE_POOL_SIZE 20
+static struct _FILE file_pool[FILE_POOL_SIZE];
+static int file_pool_init = 0;
+
+static void init_file_pool(void)
+{
+    if (file_pool_init)
+        return;
+    for (int i = 0; i < FILE_POOL_SIZE; i++)
+    {
+        file_pool[i].fd = -1;
+    }
+    file_pool_init = 1;
+}
+
+static struct _FILE *alloc_file(void)
+{
+    init_file_pool();
+    for (int i = 0; i < FILE_POOL_SIZE; i++)
+    {
+        if (file_pool[i].fd == -1)
+        {
+            return &file_pool[i];
+        }
+    }
+    return (struct _FILE *)0;
+}
+
+static int parse_mode(const char *mode)
+{
+    int flags = 0;
+    int has_plus = 0;
+
+    /* Check for '+' anywhere in mode string */
+    for (const char *p = mode; *p; p++)
+    {
+        if (*p == '+')
+            has_plus = 1;
+    }
+
+    switch (mode[0])
+    {
+        case 'r':
+            flags = has_plus ? O_RDWR : O_RDONLY;
+            break;
+        case 'w':
+            flags = (has_plus ? O_RDWR : O_WRONLY) | O_CREAT | O_TRUNC;
+            break;
+        case 'a':
+            flags = (has_plus ? O_RDWR : O_WRONLY) | O_CREAT | O_APPEND;
+            break;
+        default:
+            return -1;
+    }
+    return flags;
+}
+
+FILE *fopen(const char *pathname, const char *mode)
+{
+    if (!pathname || !mode)
+        return (FILE *)0;
+
+    int flags = parse_mode(mode);
+    if (flags < 0)
+        return (FILE *)0;
+
+    int fd = (int)__syscall2(SYS_OPEN, (long)pathname, flags);
+    if (fd < 0)
+        return (FILE *)0;
+
+    struct _FILE *f = alloc_file();
+    if (!f)
+    {
+        __syscall1(SYS_CLOSE, fd);
+        return (FILE *)0;
+    }
+
+    f->fd = fd;
+    f->error = 0;
+    f->eof = 0;
+    f->buf_mode = _IOFBF;
+    f->buf = (char *)0;
+    f->buf_size = 0;
+    f->buf_pos = 0;
+    f->buf_owned = 0;
+
+    return f;
+}
+
+FILE *fdopen(int fd, const char *mode)
+{
+    if (fd < 0 || !mode)
+        return (FILE *)0;
+
+    struct _FILE *f = alloc_file();
+    if (!f)
+        return (FILE *)0;
+
+    f->fd = fd;
+    f->error = 0;
+    f->eof = 0;
+    f->buf_mode = _IOFBF;
+    f->buf = (char *)0;
+    f->buf_size = 0;
+    f->buf_pos = 0;
+    f->buf_owned = 0;
+
+    (void)mode; /* Mode is for compatibility */
+    return f;
+}
+
+FILE *freopen(const char *pathname, const char *mode, FILE *stream)
+{
+    if (!stream)
+        return (FILE *)0;
+
+    /* Close existing file */
+    fflush(stream);
+    if (stream->fd >= 0 && stream != stdin && stream != stdout && stream != stderr)
+    {
+        __syscall1(SYS_CLOSE, stream->fd);
+    }
+
+    if (!pathname)
+    {
+        /* Just change mode - not fully supported */
+        return stream;
+    }
+
+    int flags = parse_mode(mode);
+    if (flags < 0)
+        return (FILE *)0;
+
+    int fd = (int)__syscall2(SYS_OPEN, (long)pathname, flags);
+    if (fd < 0)
+        return (FILE *)0;
+
+    stream->fd = fd;
+    stream->error = 0;
+    stream->eof = 0;
+    stream->buf_pos = 0;
+
+    return stream;
+}
+
+int fclose(FILE *stream)
+{
+    if (!stream)
+        return EOF;
+
+    fflush(stream);
+
+    int result = 0;
+    if (stream->fd >= 0 && stream != stdin && stream != stdout && stream != stderr)
+    {
+        result = (int)__syscall1(SYS_CLOSE, stream->fd);
+        stream->fd = -1;
+    }
+
+    return (result < 0) ? EOF : 0;
+}
+
+int fileno(FILE *stream)
+{
+    if (!stream)
+        return -1;
+    return stream->fd;
+}
+
+size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream)
+{
+    if (!stream || !ptr || size == 0 || nmemb == 0)
+        return 0;
+
+    size_t total = size * nmemb;
+    ssize_t bytes_read = read(stream->fd, ptr, total);
+
+    if (bytes_read < 0)
+    {
+        stream->error = 1;
+        return 0;
+    }
+    if (bytes_read == 0)
+    {
+        stream->eof = 1;
+        return 0;
+    }
+
+    return (size_t)bytes_read / size;
+}
+
+size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream)
+{
+    if (!stream || !ptr || size == 0 || nmemb == 0)
+        return 0;
+
+    size_t total = size * nmemb;
+    ssize_t bytes_written = write(stream->fd, ptr, total);
+
+    if (bytes_written < 0)
+    {
+        stream->error = 1;
+        return 0;
+    }
+
+    return (size_t)bytes_written / size;
+}
+
+int fseek(FILE *stream, long offset, int whence)
+{
+    if (!stream)
+        return -1;
+
+    fflush(stream);
+    long result = __syscall3(SYS_LSEEK, stream->fd, offset, whence);
+    if (result < 0)
+        return -1;
+
+    stream->eof = 0;
+    return 0;
+}
+
+long ftell(FILE *stream)
+{
+    if (!stream)
+        return -1L;
+
+    fflush(stream);
+    return __syscall3(SYS_LSEEK, stream->fd, 0, SEEK_CUR);
+}
+
+void rewind(FILE *stream)
+{
+    if (stream)
+    {
+        fseek(stream, 0L, SEEK_SET);
+        stream->error = 0;
+    }
+}
+
+int fgetpos(FILE *stream, fpos_t *pos)
+{
+    if (!stream || !pos)
+        return -1;
+
+    long p = ftell(stream);
+    if (p < 0)
+        return -1;
+
+    *pos = p;
+    return 0;
+}
+
+int fsetpos(FILE *stream, const fpos_t *pos)
+{
+    if (!stream || !pos)
+        return -1;
+
+    return fseek(stream, *pos, SEEK_SET);
+}
+
+/* Unget buffer - one character per stream */
+static int ungetc_buf[FILE_POOL_SIZE + 3] = {EOF, EOF, EOF}; /* +3 for stdin/stdout/stderr */
+
+static int get_stream_index(FILE *stream)
+{
+    if (stream == stdin) return 0;
+    if (stream == stdout) return 1;
+    if (stream == stderr) return 2;
+    for (int i = 0; i < FILE_POOL_SIZE; i++)
+    {
+        if (stream == &file_pool[i])
+            return i + 3;
+    }
+    return -1;
+}
+
+int ungetc(int c, FILE *stream)
+{
+    if (!stream || c == EOF)
+        return EOF;
+
+    int idx = get_stream_index(stream);
+    if (idx < 0)
+        return EOF;
+
+    if (ungetc_buf[idx] != EOF)
+        return EOF; /* Already have an unget char */
+
+    ungetc_buf[idx] = c;
+    stream->eof = 0;
+    return c;
+}
+
+/* Need to include string.h for strerror */
+extern char *strerror(int errnum);
+extern int *__errno_location(void);
+#define errno (*__errno_location())
+
+void perror(const char *s)
+{
+    if (s && *s)
+    {
+        fputs(s, stderr);
+        fputs(": ", stderr);
+    }
+    fputs(strerror(errno), stderr);
+    fputc('\n', stderr);
+}
+
+int remove(const char *pathname)
+{
+    if (!pathname)
+        return -1;
+    return (int)__syscall1(SYS_UNLINK, (long)pathname);
+}
+
+int rename_file(const char *oldpath, const char *newpath)
+{
+    if (!oldpath || !newpath)
+        return -1;
+    return (int)__syscall2(SYS_RENAME, (long)oldpath, (long)newpath);
+}
+
+/* Temporary file name generation */
+static unsigned int tmpnam_counter = 0;
+
+char *tmpnam(char *s)
+{
+    static char tmpbuf[L_tmpnam];
+    char *buf = s ? s : tmpbuf;
+
+    /* Generate name like /tmp/tmpXXXXXX */
+    const char *prefix = "/tmp/tmp";
+    char *p = buf;
+    while (*prefix)
+        *p++ = *prefix++;
+
+    unsigned int n = tmpnam_counter++;
+    for (int i = 0; i < 6; i++)
+    {
+        *p++ = 'A' + (n % 26);
+        n /= 26;
+    }
+    *p = '\0';
+
+    return buf;
+}
+
+FILE *tmpfile(void)
+{
+    char name[L_tmpnam];
+    tmpnam(name);
+    return fopen(name, "w+");
+}
+
+/* getline/getdelim implementation */
+extern void *malloc(size_t size);
+extern void *realloc(void *ptr, size_t size);
+
+ssize_t getdelim(char **lineptr, size_t *n, int delim, FILE *stream)
+{
+    if (!lineptr || !n || !stream)
+        return -1;
+
+    if (*lineptr == (char *)0 || *n == 0)
+    {
+        *n = 128;
+        *lineptr = (char *)malloc(*n);
+        if (!*lineptr)
+            return -1;
+    }
+
+    size_t pos = 0;
+    int c;
+
+    while ((c = fgetc(stream)) != EOF)
+    {
+        /* Ensure space for char + null terminator */
+        if (pos + 2 > *n)
+        {
+            size_t new_size = *n * 2;
+            char *new_ptr = (char *)realloc(*lineptr, new_size);
+            if (!new_ptr)
+                return -1;
+            *lineptr = new_ptr;
+            *n = new_size;
+        }
+
+        (*lineptr)[pos++] = (char)c;
+        if (c == delim)
+            break;
+    }
+
+    if (pos == 0 && c == EOF)
+        return -1;
+
+    (*lineptr)[pos] = '\0';
+    return (ssize_t)pos;
+}
+
+ssize_t getline(char **lineptr, size_t *n, FILE *stream)
+{
+    return getdelim(lineptr, n, '\n', stream);
+}
+
 int sscanf(const char *str, const char *format, ...)
 {
     va_list ap;

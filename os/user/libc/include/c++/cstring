@@ -1,0 +1,53 @@
+#ifndef _LIBCPP_CSTRING
+#define _LIBCPP_CSTRING
+
+#include "../string.h"
+
+namespace std {
+
+/* Memory functions */
+using ::memcpy;
+using ::memmove;
+using ::memset;
+using ::memcmp;
+using ::memchr;
+using ::memrchr;
+using ::memmem;
+
+/* String copy/concatenation */
+using ::strcpy;
+using ::strncpy;
+using ::strcat;
+using ::strncat;
+
+/* String comparison */
+using ::strcmp;
+using ::strncmp;
+using ::strcoll;
+
+/* String search */
+using ::strchr;
+using ::strrchr;
+using ::strstr;
+using ::strpbrk;
+using ::strspn;
+using ::strcspn;
+using ::strtok;
+
+/* String length */
+using ::strlen;
+using ::strnlen;
+
+/* Error string */
+using ::strerror;
+
+/* String duplication */
+using ::strdup;
+using ::strndup;
+
+/* String reverse */
+using ::strrev;
+
+} /* namespace std */
+
+#endif /* _LIBCPP_CSTRING */

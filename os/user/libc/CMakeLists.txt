@@ -13,6 +13,48 @@ set(LIBC_C_SOURCES
     src/dirent.c
     src/termios.c
     src/pthread.c
+    src/signal.c
+    src/stat.c
+    src/inttypes.c
+    src/setjmp.c
+    src/setjmp.S
+    src/wait.c
+    src/poll.c
+    src/socket.c
+    src/netdb.c
+    src/locale.c
+    src/wchar.c
+    src/mman.c
+    src/utsname.c
+    src/fenv.c
+    src/resource.c
+    src/syslog.c
+    src/fnmatch.c
+    src/getopt.c
+    src/pwd.c
+    src/grp.c
+    src/libgen.c
+    src/search.c
+    src/glob.c
+    src/ftw.c
+    src/spawn.c
+    src/sched.c
+    src/wordexp.c
+    src/ipc.c
+    src/shm.c
+    src/monetary.c
+    src/iconv.c
+    src/nl_types.c
+    src/sem.c
+    src/msg.c
+    src/semaphore.c
+    src/langinfo.c
+    src/fmtmsg.c
+    src/aio.c
+    src/mqueue.c
+    src/regex.c
+    src/ndbm.c
+    src/utmpx.c
     src/syscall.S
 )
 

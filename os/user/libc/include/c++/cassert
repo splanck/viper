@@ -1,0 +1,8 @@
+#ifndef _LIBCPP_CASSERT
+#define _LIBCPP_CASSERT
+
+#include "../assert.h"
+
+/* assert is a macro, so it's available globally */
+
+#endif /* _LIBCPP_CASSERT */

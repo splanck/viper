@@ -1,0 +1,463 @@
+// -*- C++ -*-
+// ViperOS C++ Standard Library - numeric
+// Numeric algorithms
+
+#ifndef _VIPER_NUMERIC
+#define _VIPER_NUMERIC
+
+#include "type_traits"
+#include "utility"
+#include "functional"
+#include "iterator"
+#include "limits"
+
+namespace std {
+
+// =============================================================================
+// iota - Fill range with incrementing values
+// =============================================================================
+
+template<typename ForwardIt, typename T>
+void iota(ForwardIt first, ForwardIt last, T value) {
+    while (first != last) {
+        *first++ = value;
+        ++value;
+    }
+}
+
+// =============================================================================
+// accumulate - Sum of elements
+// =============================================================================
+
+template<typename InputIt, typename T>
+T accumulate(InputIt first, InputIt last, T init) {
+    while (first != last) {
+        init = std::move(init) + *first;
+        ++first;
+    }
+    return init;
+}
+
+template<typename InputIt, typename T, typename BinaryOp>
+T accumulate(InputIt first, InputIt last, T init, BinaryOp op) {
+    while (first != last) {
+        init = op(std::move(init), *first);
+        ++first;
+    }
+    return init;
+}
+
+// =============================================================================
+// reduce - Parallel-friendly accumulate (C++17)
+// =============================================================================
+
+template<typename InputIt>
+typename iterator_traits<InputIt>::value_type
+reduce(InputIt first, InputIt last) {
+    using T = typename iterator_traits<InputIt>::value_type;
+    return reduce(first, last, T{}, plus<>());
+}
+
+template<typename InputIt, typename T>
+T reduce(InputIt first, InputIt last, T init) {
+    return reduce(first, last, init, plus<>());
+}
+
+template<typename InputIt, typename T, typename BinaryOp>
+T reduce(InputIt first, InputIt last, T init, BinaryOp op) {
+    while (first != last) {
+        init = op(std::move(init), *first);
+        ++first;
+    }
+    return init;
+}
+
+// =============================================================================
+// inner_product - Dot product
+// =============================================================================
+
+template<typename InputIt1, typename InputIt2, typename T>
+T inner_product(InputIt1 first1, InputIt1 last1, InputIt2 first2, T init) {
+    while (first1 != last1) {
+        init = std::move(init) + *first1 * *first2;
+        ++first1;
+        ++first2;
+    }
+    return init;
+}
+
+template<typename InputIt1, typename InputIt2, typename T,
+         typename BinaryOp1, typename BinaryOp2>
+T inner_product(InputIt1 first1, InputIt1 last1, InputIt2 first2, T init,
+                BinaryOp1 op1, BinaryOp2 op2) {
+    while (first1 != last1) {
+        init = op1(std::move(init), op2(*first1, *first2));
+        ++first1;
+        ++first2;
+    }
+    return init;
+}
+
+// =============================================================================
+// transform_reduce - Combined transform and reduce (C++17)
+// =============================================================================
+
+template<typename InputIt1, typename InputIt2, typename T>
+T transform_reduce(InputIt1 first1, InputIt1 last1, InputIt2 first2, T init) {
+    return transform_reduce(first1, last1, first2, init, plus<>(), multiplies<>());
+}
+
+template<typename InputIt1, typename InputIt2, typename T,
+         typename BinaryOp1, typename BinaryOp2>
+T transform_reduce(InputIt1 first1, InputIt1 last1, InputIt2 first2, T init,
+                   BinaryOp1 reduce_op, BinaryOp2 transform_op) {
+    while (first1 != last1) {
+        init = reduce_op(std::move(init), transform_op(*first1, *first2));
+        ++first1;
+        ++first2;
+    }
+    return init;
+}
+
+template<typename InputIt, typename T, typename BinaryOp, typename UnaryOp>
+T transform_reduce(InputIt first, InputIt last, T init,
+                   BinaryOp reduce_op, UnaryOp transform_op) {
+    while (first != last) {
+        init = reduce_op(std::move(init), transform_op(*first));
+        ++first;
+    }
+    return init;
+}
+
+// =============================================================================
+// partial_sum - Running sum
+// =============================================================================
+
+template<typename InputIt, typename OutputIt>
+OutputIt partial_sum(InputIt first, InputIt last, OutputIt d_first) {
+    if (first == last) return d_first;
+
+    typename iterator_traits<InputIt>::value_type sum = *first;
+    *d_first = sum;
+
+    while (++first != last) {
+        sum = std::move(sum) + *first;
+        *++d_first = sum;
+    }
+
+    return ++d_first;
+}
+
+template<typename InputIt, typename OutputIt, typename BinaryOp>
+OutputIt partial_sum(InputIt first, InputIt last, OutputIt d_first, BinaryOp op) {
+    if (first == last) return d_first;
+
+    typename iterator_traits<InputIt>::value_type sum = *first;
+    *d_first = sum;
+
+    while (++first != last) {
+        sum = op(std::move(sum), *first);
+        *++d_first = sum;
+    }
+
+    return ++d_first;
+}
+
+// =============================================================================
+// inclusive_scan - Running reduction (C++17)
+// =============================================================================
+
+template<typename InputIt, typename OutputIt>
+OutputIt inclusive_scan(InputIt first, InputIt last, OutputIt d_first) {
+    return inclusive_scan(first, last, d_first, plus<>());
+}
+
+template<typename InputIt, typename OutputIt, typename BinaryOp>
+OutputIt inclusive_scan(InputIt first, InputIt last, OutputIt d_first, BinaryOp op) {
+    if (first == last) return d_first;
+
+    typename iterator_traits<InputIt>::value_type sum = *first;
+    *d_first = sum;
+
+    while (++first != last) {
+        sum = op(std::move(sum), *first);
+        *++d_first = sum;
+    }
+
+    return ++d_first;
+}
+
+template<typename InputIt, typename OutputIt, typename BinaryOp, typename T>
+OutputIt inclusive_scan(InputIt first, InputIt last, OutputIt d_first,
+                        BinaryOp op, T init) {
+    while (first != last) {
+        init = op(std::move(init), *first);
+        *d_first++ = init;
+        ++first;
+    }
+    return d_first;
+}
+
+// =============================================================================
+// exclusive_scan - Running reduction excluding current (C++17)
+// =============================================================================
+
+template<typename InputIt, typename OutputIt, typename T>
+OutputIt exclusive_scan(InputIt first, InputIt last, OutputIt d_first, T init) {
+    return exclusive_scan(first, last, d_first, init, plus<>());
+}
+
+template<typename InputIt, typename OutputIt, typename T, typename BinaryOp>
+OutputIt exclusive_scan(InputIt first, InputIt last, OutputIt d_first,
+                        T init, BinaryOp op) {
+    while (first != last) {
+        T temp = init;
+        init = op(std::move(init), *first);
+        *d_first++ = std::move(temp);
+        ++first;
+    }
+    return d_first;
+}
+
+// =============================================================================
+// transform_inclusive_scan / transform_exclusive_scan (C++17)
+// =============================================================================
+
+template<typename InputIt, typename OutputIt, typename BinaryOp, typename UnaryOp>
+OutputIt transform_inclusive_scan(InputIt first, InputIt last, OutputIt d_first,
+                                  BinaryOp binary_op, UnaryOp unary_op) {
+    if (first == last) return d_first;
+
+    auto sum = unary_op(*first);
+    *d_first = sum;
+
+    while (++first != last) {
+        sum = binary_op(std::move(sum), unary_op(*first));
+        *++d_first = sum;
+    }
+
+    return ++d_first;
+}
+
+template<typename InputIt, typename OutputIt, typename BinaryOp, typename UnaryOp, typename T>
+OutputIt transform_inclusive_scan(InputIt first, InputIt last, OutputIt d_first,
+                                  BinaryOp binary_op, UnaryOp unary_op, T init) {
+    while (first != last) {
+        init = binary_op(std::move(init), unary_op(*first));
+        *d_first++ = init;
+        ++first;
+    }
+    return d_first;
+}
+
+template<typename InputIt, typename OutputIt, typename T,
+         typename BinaryOp, typename UnaryOp>
+OutputIt transform_exclusive_scan(InputIt first, InputIt last, OutputIt d_first,
+                                  T init, BinaryOp binary_op, UnaryOp unary_op) {
+    while (first != last) {
+        T temp = init;
+        init = binary_op(std::move(init), unary_op(*first));
+        *d_first++ = std::move(temp);
+        ++first;
+    }
+    return d_first;
+}
+
+// =============================================================================
+// adjacent_difference
+// =============================================================================
+
+template<typename InputIt, typename OutputIt>
+OutputIt adjacent_difference(InputIt first, InputIt last, OutputIt d_first) {
+    if (first == last) return d_first;
+
+    typename iterator_traits<InputIt>::value_type acc = *first;
+    *d_first = acc;
+
+    while (++first != last) {
+        typename iterator_traits<InputIt>::value_type val = *first;
+        *++d_first = val - std::move(acc);
+        acc = std::move(val);
+    }
+
+    return ++d_first;
+}
+
+template<typename InputIt, typename OutputIt, typename BinaryOp>
+OutputIt adjacent_difference(InputIt first, InputIt last, OutputIt d_first,
+                             BinaryOp op) {
+    if (first == last) return d_first;
+
+    typename iterator_traits<InputIt>::value_type acc = *first;
+    *d_first = acc;
+
+    while (++first != last) {
+        typename iterator_traits<InputIt>::value_type val = *first;
+        *++d_first = op(val, std::move(acc));
+        acc = std::move(val);
+    }
+
+    return ++d_first;
+}
+
+// =============================================================================
+// gcd / lcm (C++17)
+// =============================================================================
+
+namespace detail {
+
+template<typename T>
+constexpr T gcd_impl(T a, T b) {
+    while (b != 0) {
+        T t = b;
+        b = a % b;
+        a = t;
+    }
+    return a;
+}
+
+} // namespace detail
+
+template<typename M, typename N>
+constexpr common_type_t<M, N> gcd(M m, N n) {
+    using T = common_type_t<M, N>;
+    T a = m < 0 ? -m : m;
+    T b = n < 0 ? -n : n;
+    return detail::gcd_impl(a, b);
+}
+
+template<typename M, typename N>
+constexpr common_type_t<M, N> lcm(M m, N n) {
+    if (m == 0 || n == 0) return 0;
+    using T = common_type_t<M, N>;
+    T a = m < 0 ? -m : m;
+    T b = n < 0 ? -n : n;
+    return a / gcd(a, b) * b;
+}
+
+// =============================================================================
+// midpoint (C++20)
+// =============================================================================
+
+template<typename T>
+constexpr typename enable_if<is_integral<T>::value, T>::type
+midpoint(T a, T b) noexcept {
+    using U = make_unsigned_t<T>;
+    int sign = 1;
+    U m = a;
+    U M = b;
+    if (a > b) {
+        sign = -1;
+        m = b;
+        M = a;
+    }
+    return a + sign * static_cast<T>((M - m) / 2);
+}
+
+template<typename T>
+constexpr typename enable_if<is_floating_point<T>::value, T>::type
+midpoint(T a, T b) noexcept {
+    return a + (b - a) / 2;
+}
+
+template<typename T>
+constexpr T* midpoint(T* a, T* b) noexcept {
+    return a + (b - a) / 2;
+}
+
+// =============================================================================
+// lerp - Linear interpolation (C++20)
+// =============================================================================
+
+template<typename T>
+constexpr typename enable_if<is_floating_point<T>::value, T>::type
+lerp(T a, T b, T t) noexcept {
+    if ((a <= 0 && b >= 0) || (a >= 0 && b <= 0)) {
+        return t * b + (1 - t) * a;
+    }
+    if (t == 1) return b;
+    const T x = a + t * (b - a);
+    if ((t > 1) == (b > a)) {
+        return b < x ? x : b;
+    }
+    return x < b ? x : b;
+}
+
+// =============================================================================
+// saturation arithmetic (C++26, provided early)
+// =============================================================================
+
+template<typename T>
+constexpr T add_sat(T x, T y) noexcept {
+    static_assert(is_integral<T>::value, "T must be integral");
+    if constexpr (is_signed<T>::value) {
+        if (y > 0 && x > numeric_limits<T>::max() - y)
+            return numeric_limits<T>::max();
+        if (y < 0 && x < numeric_limits<T>::min() - y)
+            return numeric_limits<T>::min();
+    } else {
+        if (x > numeric_limits<T>::max() - y)
+            return numeric_limits<T>::max();
+    }
+    return x + y;
+}
+
+template<typename T>
+constexpr T sub_sat(T x, T y) noexcept {
+    static_assert(is_integral<T>::value, "T must be integral");
+    if constexpr (is_signed<T>::value) {
+        if (y < 0 && x > numeric_limits<T>::max() + y)
+            return numeric_limits<T>::max();
+        if (y > 0 && x < numeric_limits<T>::min() + y)
+            return numeric_limits<T>::min();
+    } else {
+        if (x < y)
+            return 0;
+    }
+    return x - y;
+}
+
+template<typename T>
+constexpr T mul_sat(T x, T y) noexcept {
+    static_assert(is_integral<T>::value, "T must be integral");
+    if (x == 0 || y == 0) return 0;
+
+    if constexpr (is_signed<T>::value) {
+        if ((x > 0 && y > 0) || (x < 0 && y < 0)) {
+            if (x > numeric_limits<T>::max() / y || y > numeric_limits<T>::max() / x)
+                return numeric_limits<T>::max();
+        } else {
+            if (x < numeric_limits<T>::min() / y || y < numeric_limits<T>::min() / x)
+                return numeric_limits<T>::min();
+        }
+    } else {
+        if (x > numeric_limits<T>::max() / y)
+            return numeric_limits<T>::max();
+    }
+    return x * y;
+}
+
+template<typename T>
+constexpr T div_sat(T x, T y) noexcept {
+    static_assert(is_integral<T>::value, "T must be integral");
+    if constexpr (is_signed<T>::value) {
+        if (x == numeric_limits<T>::min() && y == -1)
+            return numeric_limits<T>::max();
+    }
+    return x / y;
+}
+
+template<typename R, typename T>
+constexpr R saturate_cast(T x) noexcept {
+    static_assert(is_integral<T>::value && is_integral<R>::value,
+                  "T and R must be integral");
+    if (x < numeric_limits<R>::min())
+        return numeric_limits<R>::min();
+    if (x > numeric_limits<R>::max())
+        return numeric_limits<R>::max();
+    return static_cast<R>(x);
+}
+
+} // namespace std
+
+#endif // _VIPER_NUMERIC

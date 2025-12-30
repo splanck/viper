@@ -1,0 +1,18 @@
+#ifndef _LIBCPP_CSIGNAL
+#define _LIBCPP_CSIGNAL
+
+#include "../signal.h"
+
+namespace std {
+
+using ::sig_atomic_t;
+using ::sighandler_t;
+
+using ::signal;
+using ::raise;
+
+} /* namespace std */
+
+/* Note: sigaction, sigprocmask, etc. are POSIX extensions, not C standard */
+
+#endif /* _LIBCPP_CSIGNAL */

@@ -1,0 +1,108 @@
+// C++ <cwchar> header for ViperOS
+// C++ wrapper for <wchar.h>
+
+#ifndef _VIPER_CXX_CWCHAR
+#define _VIPER_CXX_CWCHAR
+
+#include "../wchar.h"
+
+namespace std {
+
+using ::mbstate_t;
+using ::wint_t;
+using ::size_t;
+using ::FILE;
+using ::tm;
+
+// Wide character classification
+using ::iswalnum;
+using ::iswalpha;
+using ::iswblank;
+using ::iswcntrl;
+using ::iswdigit;
+using ::iswgraph;
+using ::iswlower;
+using ::iswprint;
+using ::iswpunct;
+using ::iswspace;
+using ::iswupper;
+using ::iswxdigit;
+using ::towlower;
+using ::towupper;
+
+// Wide string functions
+using ::wcscpy;
+using ::wcsncpy;
+using ::wcscat;
+using ::wcsncat;
+using ::wcslen;
+using ::wcscmp;
+using ::wcsncmp;
+using ::wcscoll;
+using ::wcsxfrm;
+using ::wcschr;
+using ::wcsrchr;
+using ::wcscspn;
+using ::wcsspn;
+using ::wcspbrk;
+using ::wcsstr;
+using ::wcstok;
+
+// Wide memory functions
+using ::wmemcpy;
+using ::wmemmove;
+using ::wmemset;
+using ::wmemcmp;
+using ::wmemchr;
+
+// Multibyte/wide conversion
+using ::mbsinit;
+using ::mbrlen;
+using ::mbrtowc;
+using ::wcrtomb;
+using ::mbsrtowcs;
+using ::wcsrtombs;
+using ::mbtowc;
+using ::wctomb;
+using ::mbstowcs;
+using ::wcstombs;
+using ::mblen;
+
+// Wide numeric conversions
+using ::wcstol;
+using ::wcstoul;
+using ::wcstoll;
+using ::wcstoull;
+using ::wcstod;
+using ::wcstof;
+using ::wcstold;
+
+// Wide I/O
+using ::fgetwc;
+using ::getwc;
+using ::getwchar;
+using ::fputwc;
+using ::putwc;
+using ::putwchar;
+using ::fgetws;
+using ::fputws;
+using ::ungetwc;
+using ::fwide;
+
+// Wide formatted I/O
+using ::fwprintf;
+using ::wprintf;
+using ::swprintf;
+using ::fwscanf;
+using ::wscanf;
+using ::swscanf;
+
+// Wide time
+using ::wcsftime;
+
+// Extensions
+using ::wcsdup;
+
+} // namespace std
+
+#endif // _VIPER_CXX_CWCHAR

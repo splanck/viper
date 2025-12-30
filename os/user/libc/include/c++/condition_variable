@@ -1,0 +1,179 @@
+// -*- C++ -*-
+/*
+ * ViperOS C++ Standard Library - condition_variable
+ * Thread synchronization via condition variables
+ */
+
+#ifndef _VIPER_CONDITION_VARIABLE
+#define _VIPER_CONDITION_VARIABLE
+
+#include "mutex"
+#include "chrono"
+
+namespace std {
+
+/*
+ * cv_status - Return status for timed waits
+ */
+enum class cv_status {
+    no_timeout,
+    timeout
+};
+
+/*
+ * condition_variable - Condition variable for mutex synchronization
+ *
+ * ViperOS stub implementation - single-threaded environment.
+ * Wait operations return immediately since no other thread can signal.
+ */
+class condition_variable {
+public:
+    using native_handle_type = void*;
+
+    constexpr condition_variable() noexcept = default;
+    ~condition_variable() = default;
+
+    condition_variable(const condition_variable&) = delete;
+    condition_variable& operator=(const condition_variable&) = delete;
+
+    void notify_one() noexcept {
+        // No-op in single-threaded environment
+    }
+
+    void notify_all() noexcept {
+        // No-op in single-threaded environment
+    }
+
+    void wait(unique_lock<mutex>& lock) {
+        // In single-threaded environment, spurious wakeup
+        // Unlock and re-lock to maintain correct semantics
+        lock.unlock();
+        lock.lock();
+    }
+
+    template<class Predicate>
+    void wait(unique_lock<mutex>& lock, Predicate pred) {
+        while (!pred()) {
+            wait(lock);
+        }
+    }
+
+    template<class Rep, class Period>
+    cv_status wait_for(unique_lock<mutex>& lock,
+                       const chrono::duration<Rep, Period>& rel_time) {
+        (void)rel_time;
+        lock.unlock();
+        lock.lock();
+        return cv_status::timeout;
+    }
+
+    template<class Rep, class Period, class Predicate>
+    bool wait_for(unique_lock<mutex>& lock,
+                  const chrono::duration<Rep, Period>& rel_time,
+                  Predicate pred) {
+        (void)rel_time;
+        return pred();
+    }
+
+    template<class Clock, class Duration>
+    cv_status wait_until(unique_lock<mutex>& lock,
+                         const chrono::time_point<Clock, Duration>& abs_time) {
+        (void)abs_time;
+        lock.unlock();
+        lock.lock();
+        return cv_status::timeout;
+    }
+
+    template<class Clock, class Duration, class Predicate>
+    bool wait_until(unique_lock<mutex>& lock,
+                    const chrono::time_point<Clock, Duration>& abs_time,
+                    Predicate pred) {
+        (void)abs_time;
+        return pred();
+    }
+
+    native_handle_type native_handle() { return nullptr; }
+};
+
+/*
+ * condition_variable_any - Condition variable for any lock type
+ */
+class condition_variable_any {
+public:
+    constexpr condition_variable_any() noexcept = default;
+    ~condition_variable_any() = default;
+
+    condition_variable_any(const condition_variable_any&) = delete;
+    condition_variable_any& operator=(const condition_variable_any&) = delete;
+
+    void notify_one() noexcept {
+        // No-op in single-threaded environment
+    }
+
+    void notify_all() noexcept {
+        // No-op in single-threaded environment
+    }
+
+    template<class Lock>
+    void wait(Lock& lock) {
+        lock.unlock();
+        lock.lock();
+    }
+
+    template<class Lock, class Predicate>
+    void wait(Lock& lock, Predicate pred) {
+        while (!pred()) {
+            wait(lock);
+        }
+    }
+
+    template<class Lock, class Rep, class Period>
+    cv_status wait_for(Lock& lock,
+                       const chrono::duration<Rep, Period>& rel_time) {
+        (void)rel_time;
+        lock.unlock();
+        lock.lock();
+        return cv_status::timeout;
+    }
+
+    template<class Lock, class Rep, class Period, class Predicate>
+    bool wait_for(Lock& lock,
+                  const chrono::duration<Rep, Period>& rel_time,
+                  Predicate pred) {
+        (void)rel_time;
+        return pred();
+    }
+
+    template<class Lock, class Clock, class Duration>
+    cv_status wait_until(Lock& lock,
+                         const chrono::time_point<Clock, Duration>& abs_time) {
+        (void)abs_time;
+        lock.unlock();
+        lock.lock();
+        return cv_status::timeout;
+    }
+
+    template<class Lock, class Clock, class Duration, class Predicate>
+    bool wait_until(Lock& lock,
+                    const chrono::time_point<Clock, Duration>& abs_time,
+                    Predicate pred) {
+        (void)abs_time;
+        return pred();
+    }
+};
+
+/*
+ * notify_all_at_thread_exit - Notify and release lock at thread exit
+ *
+ * In single-threaded environment, just notify immediately.
+ */
+inline void notify_all_at_thread_exit(condition_variable& cond,
+                                       unique_lock<mutex> lk) {
+    (void)cond;
+    (void)lk;
+    // No-op: thread exit will happen immediately after
+}
+
+} // namespace std
+
+#endif // _VIPER_CONDITION_VARIABLE

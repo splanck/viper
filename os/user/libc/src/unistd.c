@@ -120,3 +120,227 @@ long sysconf(int name)
             return -1;
     }
 }
+
+/* Additional syscall numbers */
+#define SYS_STAT 0x45
+#define SYS_MKDIR 0x61
+#define SYS_RMDIR 0x62
+#define SYS_UNLINK 0x63
+#define SYS_RENAME 0x64
+#define SYS_SYMLINK 0x65
+#define SYS_READLINK 0x66
+#define SYS_FORK 0x0B
+#define SYS_GETPGID 0xA2
+#define SYS_SETPGID 0xA3
+#define SYS_SETSID 0xA5
+#define SYS_GETPID 0xA0
+#define SYS_GETPPID 0xA1
+
+int access(const char *pathname, int mode)
+{
+    /* Simple implementation: check if file exists by trying to stat it */
+    /* ViperOS doesn't have full permission model yet */
+    (void)mode;
+    long result = __syscall2(SYS_STAT, (long)pathname, 0);
+    return (result < 0) ? -1 : 0;
+}
+
+int unlink(const char *pathname)
+{
+    return (int)__syscall1(SYS_UNLINK, (long)pathname);
+}
+
+int rmdir(const char *pathname)
+{
+    return (int)__syscall1(SYS_RMDIR, (long)pathname);
+}
+
+int mkdir(const char *pathname, unsigned int mode)
+{
+    (void)mode; /* ViperOS doesn't use mode yet */
+    return (int)__syscall1(SYS_MKDIR, (long)pathname);
+}
+
+int link(const char *oldpath, const char *newpath)
+{
+    /* Hard links not implemented yet */
+    (void)oldpath;
+    (void)newpath;
+    return -1; /* ENOSYS */
+}
+
+int symlink(const char *target, const char *linkpath)
+{
+    return (int)__syscall2(SYS_SYMLINK, (long)target, (long)linkpath);
+}
+
+ssize_t readlink(const char *pathname, char *buf, size_t bufsiz)
+{
+    return __syscall3(SYS_READLINK, (long)pathname, (long)buf, (long)bufsiz);
+}
+
+/* Static hostname buffer */
+static char hostname_buf[256] = "viperos";
+
+int gethostname(char *name, size_t len)
+{
+    if (!name || len == 0)
+        return -1;
+
+    size_t i = 0;
+    while (i < len - 1 && hostname_buf[i])
+    {
+        name[i] = hostname_buf[i];
+        i++;
+    }
+    name[i] = '\0';
+    return 0;
+}
+
+int sethostname(const char *name, size_t len)
+{
+    if (!name)
+        return -1;
+
+    size_t i = 0;
+    while (i < len && i < sizeof(hostname_buf) - 1 && name[i])
+    {
+        hostname_buf[i] = name[i];
+        i++;
+    }
+    hostname_buf[i] = '\0';
+    return 0;
+}
+
+/* User/group IDs - ViperOS is single-user, always return 0 (root) */
+uid_t getuid(void)
+{
+    return 0;
+}
+
+uid_t geteuid(void)
+{
+    return 0;
+}
+
+gid_t getgid(void)
+{
+    return 0;
+}
+
+gid_t getegid(void)
+{
+    return 0;
+}
+
+int setuid(uid_t uid)
+{
+    (void)uid;
+    return 0; /* Always succeeds in single-user system */
+}
+
+int setgid(gid_t gid)
+{
+    (void)gid;
+    return 0;
+}
+
+/* Process group operations */
+pid_t getpgrp(void)
+{
+    return (pid_t)__syscall1(SYS_GETPGID, 0);
+}
+
+int setpgid(pid_t pid, pid_t pgid)
+{
+    return (int)__syscall2(SYS_SETPGID, pid, pgid);
+}
+
+pid_t setsid(void)
+{
+    return (pid_t)__syscall1(SYS_SETSID, 0);
+}
+
+/* Pipe - not implemented yet */
+int pipe(int pipefd[2])
+{
+    (void)pipefd;
+    return -1; /* ENOSYS */
+}
+
+/* Execute functions - stubs for now */
+int execv(const char *pathname, char *const argv[])
+{
+    (void)pathname;
+    (void)argv;
+    return -1; /* ENOSYS */
+}
+
+int execve(const char *pathname, char *const argv[], char *const envp[])
+{
+    (void)pathname;
+    (void)argv;
+    (void)envp;
+    return -1; /* ENOSYS */
+}
+
+int execvp(const char *file, char *const argv[])
+{
+    (void)file;
+    (void)argv;
+    return -1; /* ENOSYS */
+}
+
+/* Fork */
+pid_t fork(void)
+{
+    return (pid_t)__syscall1(SYS_FORK, 0);
+}
+
+/* File operations - stubs */
+int truncate(const char *path, long length)
+{
+    (void)path;
+    (void)length;
+    return -1; /* ENOSYS */
+}
+
+int ftruncate(int fd, long length)
+{
+    (void)fd;
+    (void)length;
+    return -1; /* ENOSYS */
+}
+
+int fsync(int fd)
+{
+    (void)fd;
+    return 0; /* Pretend to succeed */
+}
+
+long pathconf(const char *path, int name)
+{
+    (void)path;
+    (void)name;
+    return -1; /* ENOSYS */
+}
+
+long fpathconf(int fd, int name)
+{
+    (void)fd;
+    (void)name;
+    return -1; /* ENOSYS */
+}
+
+unsigned int alarm(unsigned int seconds)
+{
+    (void)seconds;
+    return 0; /* Not implemented */
+}
+
+int pause(void)
+{
+    /* Block forever - in practice would wait for signal */
+    __syscall1(SYS_SLEEP, 0x7FFFFFFF);
+    return -1;
+}

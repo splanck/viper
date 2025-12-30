@@ -1,0 +1,72 @@
+#ifndef _LIBCPP_CSTDLIB
+#define _LIBCPP_CSTDLIB
+
+#include "../stdlib.h"
+
+namespace std {
+
+/* Memory allocation */
+using ::malloc;
+using ::calloc;
+using ::realloc;
+using ::free;
+
+/* Environment and exit */
+using ::abort;
+using ::exit;
+using ::atexit;
+using ::getenv;
+
+/* String to number conversions */
+using ::atoi;
+using ::atol;
+using ::atoll;
+using ::atof;
+using ::strtol;
+using ::strtoul;
+using ::strtoll;
+using ::strtoull;
+using ::strtod;
+using ::strtof;
+using ::strtold;
+
+/* Number to string conversions */
+using ::itoa;
+using ::ltoa;
+using ::ultoa;
+
+/* Random numbers */
+using ::rand;
+using ::srand;
+
+/* Integer arithmetic */
+using ::abs;
+using ::labs;
+using ::llabs;
+using ::div;
+using ::ldiv;
+using ::lldiv;
+
+/* Searching and sorting */
+using ::bsearch;
+using ::qsort;
+
+/* Types */
+using ::size_t;
+using ::div_t;
+using ::ldiv_t;
+using ::lldiv_t;
+
+} /* namespace std */
+
+/* Additional C++ overloads */
+namespace std {
+
+inline long abs(long n) { return labs(n); }
+inline long long abs(long long n) { return llabs(n); }
+inline ldiv_t div(long n, long d) { return ldiv(n, d); }
+inline lldiv_t div(long long n, long long d) { return lldiv(n, d); }
+
+} /* namespace std */
+
+#endif /* _LIBCPP_CSTDLIB */

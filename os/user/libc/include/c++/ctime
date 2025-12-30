@@ -1,0 +1,36 @@
+#ifndef _LIBCPP_CTIME
+#define _LIBCPP_CTIME
+
+#include "../time.h"
+
+namespace std {
+
+/* Types */
+using ::time_t;
+using ::clock_t;
+using ::tm;
+using ::timespec;
+
+/* Time manipulation */
+using ::clock;
+using ::time;
+using ::difftime;
+using ::mktime;
+
+/* Conversions */
+using ::asctime;
+using ::ctime;
+using ::gmtime;
+using ::localtime;
+using ::strftime;
+
+/* POSIX extensions */
+using ::nanosleep;
+using ::clock_gettime;
+using ::clock_getres;
+using ::clock_settime;
+using ::timespec_get;
+
+} /* namespace std */
+
+#endif /* _LIBCPP_CTIME */

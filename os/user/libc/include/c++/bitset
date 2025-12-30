@@ -1,0 +1,396 @@
+/*
+ * ViperOS C++ Standard Library - bitset
+ * Fixed-size sequence of bits
+ */
+
+#ifndef _LIBCPP_BITSET
+#define _LIBCPP_BITSET
+
+#include "string"
+#include "string_view"
+
+namespace std {
+
+/* bitset class template */
+template <unsigned long N>
+class bitset {
+public:
+    /* Reference to a single bit */
+    class reference {
+        friend class bitset;
+        bitset *bs_;
+        unsigned long pos_;
+
+        reference(bitset& bs, unsigned long pos) : bs_(&bs), pos_(pos) {}
+
+    public:
+        reference& operator=(bool x) noexcept {
+            bs_->set(pos_, x);
+            return *this;
+        }
+
+        reference& operator=(const reference& x) noexcept {
+            bs_->set(pos_, x.bs_->test(x.pos_));
+            return *this;
+        }
+
+        operator bool() const noexcept {
+            return bs_->test(pos_);
+        }
+
+        bool operator~() const noexcept {
+            return !bs_->test(pos_);
+        }
+
+        reference& flip() noexcept {
+            bs_->flip(pos_);
+            return *this;
+        }
+    };
+
+private:
+    static constexpr unsigned long BITS_PER_WORD = sizeof(unsigned long long) * 8;
+    static constexpr unsigned long NUM_WORDS = (N + BITS_PER_WORD - 1) / BITS_PER_WORD;
+    static constexpr unsigned long long LAST_WORD_MASK =
+        (N % BITS_PER_WORD == 0) ? ~0ULL : ((1ULL << (N % BITS_PER_WORD)) - 1);
+
+    unsigned long long data_[NUM_WORDS == 0 ? 1 : NUM_WORDS];
+
+    void sanitize() {
+        if constexpr (N % BITS_PER_WORD != 0) {
+            data_[NUM_WORDS - 1] &= LAST_WORD_MASK;
+        }
+    }
+
+    static constexpr unsigned long word_index(unsigned long pos) {
+        return pos / BITS_PER_WORD;
+    }
+
+    static constexpr unsigned long bit_index(unsigned long pos) {
+        return pos % BITS_PER_WORD;
+    }
+
+public:
+    /* Constructors */
+    constexpr bitset() noexcept : data_{} {}
+
+    constexpr bitset(unsigned long long val) noexcept : data_{} {
+        if constexpr (NUM_WORDS >= 1) {
+            data_[0] = val;
+            sanitize();
+        }
+    }
+
+    template <class CharT, class Traits, class Allocator>
+    explicit bitset(const basic_string<CharT, Traits, Allocator>& str,
+                    typename basic_string<CharT, Traits, Allocator>::size_type pos = 0,
+                    typename basic_string<CharT, Traits, Allocator>::size_type n =
+                        basic_string<CharT, Traits, Allocator>::npos,
+                    CharT zero = CharT('0'),
+                    CharT one = CharT('1'))
+        : data_{} {
+        if (pos > str.size()) {
+            return;  /* Would throw out_of_range */
+        }
+        unsigned long rlen = min(n, str.size() - pos);
+        unsigned long len = min(rlen, N);
+
+        for (unsigned long i = 0; i < len; ++i) {
+            CharT c = str[pos + rlen - 1 - i];
+            if (Traits::eq(c, one)) {
+                set(i);
+            } else if (!Traits::eq(c, zero)) {
+                /* Invalid character - would throw invalid_argument */
+                break;
+            }
+        }
+    }
+
+    template <class CharT>
+    explicit bitset(const CharT* str,
+                    typename basic_string<CharT>::size_type n = basic_string<CharT>::npos,
+                    CharT zero = CharT('0'),
+                    CharT one = CharT('1'))
+        : bitset(n == basic_string<CharT>::npos
+                     ? basic_string<CharT>(str)
+                     : basic_string<CharT>(str, n),
+                 0, n, zero, one) {}
+
+    /* Element access */
+    constexpr bool operator[](unsigned long pos) const {
+        return test(pos);
+    }
+
+    reference operator[](unsigned long pos) {
+        return reference(*this, pos);
+    }
+
+    bool test(unsigned long pos) const {
+        if (pos >= N) return false;  /* Would throw out_of_range */
+        return (data_[word_index(pos)] >> bit_index(pos)) & 1ULL;
+    }
+
+    bool all() const noexcept {
+        if constexpr (N == 0) return true;
+
+        for (unsigned long i = 0; i < NUM_WORDS - 1; ++i) {
+            if (data_[i] != ~0ULL) return false;
+        }
+        return data_[NUM_WORDS - 1] == LAST_WORD_MASK;
+    }
+
+    bool any() const noexcept {
+        for (unsigned long i = 0; i < NUM_WORDS; ++i) {
+            if (data_[i] != 0) return true;
+        }
+        return false;
+    }
+
+    bool none() const noexcept {
+        return !any();
+    }
+
+    unsigned long count() const noexcept {
+        unsigned long result = 0;
+        for (unsigned long i = 0; i < NUM_WORDS; ++i) {
+            /* Popcount - count set bits */
+            unsigned long long x = data_[i];
+            while (x) {
+                result += x & 1;
+                x >>= 1;
+            }
+        }
+        return result;
+    }
+
+    constexpr unsigned long size() const noexcept {
+        return N;
+    }
+
+    /* Modifiers */
+    bitset& operator&=(const bitset& other) noexcept {
+        for (unsigned long i = 0; i < NUM_WORDS; ++i) {
+            data_[i] &= other.data_[i];
+        }
+        return *this;
+    }
+
+    bitset& operator|=(const bitset& other) noexcept {
+        for (unsigned long i = 0; i < NUM_WORDS; ++i) {
+            data_[i] |= other.data_[i];
+        }
+        return *this;
+    }
+
+    bitset& operator^=(const bitset& other) noexcept {
+        for (unsigned long i = 0; i < NUM_WORDS; ++i) {
+            data_[i] ^= other.data_[i];
+        }
+        return *this;
+    }
+
+    bitset operator~() const noexcept {
+        bitset result = *this;
+        result.flip();
+        return result;
+    }
+
+    bitset operator<<(unsigned long pos) const noexcept {
+        bitset result;
+        if (pos >= N) return result;
+
+        unsigned long word_shift = pos / BITS_PER_WORD;
+        unsigned long bit_shift = pos % BITS_PER_WORD;
+
+        if (bit_shift == 0) {
+            for (unsigned long i = NUM_WORDS - 1; i >= word_shift; --i) {
+                result.data_[i] = data_[i - word_shift];
+            }
+        } else {
+            for (unsigned long i = NUM_WORDS - 1; i > word_shift; --i) {
+                result.data_[i] = (data_[i - word_shift] << bit_shift) |
+                                  (data_[i - word_shift - 1] >> (BITS_PER_WORD - bit_shift));
+            }
+            result.data_[word_shift] = data_[0] << bit_shift;
+        }
+        result.sanitize();
+        return result;
+    }
+
+    bitset& operator<<=(unsigned long pos) noexcept {
+        *this = *this << pos;
+        return *this;
+    }
+
+    bitset operator>>(unsigned long pos) const noexcept {
+        bitset result;
+        if (pos >= N) return result;
+
+        unsigned long word_shift = pos / BITS_PER_WORD;
+        unsigned long bit_shift = pos % BITS_PER_WORD;
+
+        if (bit_shift == 0) {
+            for (unsigned long i = 0; i < NUM_WORDS - word_shift; ++i) {
+                result.data_[i] = data_[i + word_shift];
+            }
+        } else {
+            for (unsigned long i = 0; i < NUM_WORDS - word_shift - 1; ++i) {
+                result.data_[i] = (data_[i + word_shift] >> bit_shift) |
+                                  (data_[i + word_shift + 1] << (BITS_PER_WORD - bit_shift));
+            }
+            result.data_[NUM_WORDS - word_shift - 1] = data_[NUM_WORDS - 1] >> bit_shift;
+        }
+        return result;
+    }
+
+    bitset& operator>>=(unsigned long pos) noexcept {
+        *this = *this >> pos;
+        return *this;
+    }
+
+    bitset& set() noexcept {
+        for (unsigned long i = 0; i < NUM_WORDS; ++i) {
+            data_[i] = ~0ULL;
+        }
+        sanitize();
+        return *this;
+    }
+
+    bitset& set(unsigned long pos, bool value = true) {
+        if (pos >= N) return *this;  /* Would throw out_of_range */
+        if (value) {
+            data_[word_index(pos)] |= (1ULL << bit_index(pos));
+        } else {
+            data_[word_index(pos)] &= ~(1ULL << bit_index(pos));
+        }
+        return *this;
+    }
+
+    bitset& reset() noexcept {
+        for (unsigned long i = 0; i < NUM_WORDS; ++i) {
+            data_[i] = 0;
+        }
+        return *this;
+    }
+
+    bitset& reset(unsigned long pos) {
+        return set(pos, false);
+    }
+
+    bitset& flip() noexcept {
+        for (unsigned long i = 0; i < NUM_WORDS; ++i) {
+            data_[i] = ~data_[i];
+        }
+        sanitize();
+        return *this;
+    }
+
+    bitset& flip(unsigned long pos) {
+        if (pos >= N) return *this;  /* Would throw out_of_range */
+        data_[word_index(pos)] ^= (1ULL << bit_index(pos));
+        return *this;
+    }
+
+    /* Conversions */
+    unsigned long to_ulong() const {
+        if constexpr (N == 0) return 0;
+
+        /* Check for overflow */
+        if constexpr (NUM_WORDS > 1) {
+            for (unsigned long i = 1; i < NUM_WORDS; ++i) {
+                if (data_[i] != 0) {
+                    /* Would throw overflow_error */
+                    return static_cast<unsigned long>(data_[0]);
+                }
+            }
+        }
+
+        if (data_[0] > static_cast<unsigned long long>(static_cast<unsigned long>(-1))) {
+            /* Would throw overflow_error */
+        }
+        return static_cast<unsigned long>(data_[0]);
+    }
+
+    unsigned long long to_ullong() const {
+        if constexpr (N == 0) return 0;
+
+        /* Check for overflow */
+        if constexpr (NUM_WORDS > 1) {
+            for (unsigned long i = 1; i < NUM_WORDS; ++i) {
+                if (data_[i] != 0) {
+                    /* Would throw overflow_error */
+                    return data_[0];
+                }
+            }
+        }
+        return data_[0];
+    }
+
+    template <class CharT = char,
+              class Traits = char_traits<CharT>,
+              class Allocator = allocator<CharT>>
+    basic_string<CharT, Traits, Allocator>
+    to_string(CharT zero = CharT('0'), CharT one = CharT('1')) const {
+        basic_string<CharT, Traits, Allocator> result(N, zero);
+        for (unsigned long i = 0; i < N; ++i) {
+            if (test(i)) {
+                result[N - 1 - i] = one;
+            }
+        }
+        return result;
+    }
+};
+
+/* Comparison operators */
+template <unsigned long N>
+bool operator==(const bitset<N>& lhs, const bitset<N>& rhs) noexcept {
+    for (unsigned long i = 0; i < N; ++i) {
+        if (lhs[i] != rhs[i]) return false;
+    }
+    return true;
+}
+
+template <unsigned long N>
+bool operator!=(const bitset<N>& lhs, const bitset<N>& rhs) noexcept {
+    return !(lhs == rhs);
+}
+
+/* Binary operators */
+template <unsigned long N>
+bitset<N> operator&(const bitset<N>& lhs, const bitset<N>& rhs) noexcept {
+    bitset<N> result = lhs;
+    result &= rhs;
+    return result;
+}
+
+template <unsigned long N>
+bitset<N> operator|(const bitset<N>& lhs, const bitset<N>& rhs) noexcept {
+    bitset<N> result = lhs;
+    result |= rhs;
+    return result;
+}
+
+template <unsigned long N>
+bitset<N> operator^(const bitset<N>& lhs, const bitset<N>& rhs) noexcept {
+    bitset<N> result = lhs;
+    result ^= rhs;
+    return result;
+}
+
+/* Hash specialization */
+template <unsigned long N>
+struct hash<bitset<N>> {
+    unsigned long operator()(const bitset<N>& bs) const noexcept {
+        unsigned long h = 0;
+        for (unsigned long i = 0; i < N; ++i) {
+            if (bs[i]) {
+                h ^= i * 2654435761UL;
+            }
+        }
+        return h;
+    }
+};
+
+} // namespace std
+
+#endif /* _LIBCPP_BITSET */

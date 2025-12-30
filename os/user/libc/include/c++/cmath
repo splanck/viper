@@ -1,0 +1,206 @@
+#ifndef _LIBCPP_CMATH
+#define _LIBCPP_CMATH
+
+#include "../math.h"
+
+namespace std {
+
+/* Basic functions */
+using ::fabs;
+using ::fabsf;
+using ::fabsl;
+using ::fmod;
+using ::fmodf;
+using ::fmodl;
+using ::remainder;
+using ::remainderf;
+using ::fma;
+using ::fmaf;
+using ::fmax;
+using ::fmaxf;
+using ::fmin;
+using ::fminf;
+using ::fdim;
+using ::fdimf;
+
+/* Exponential and logarithmic */
+using ::exp;
+using ::expf;
+using ::expl;
+using ::exp2;
+using ::exp2f;
+using ::expm1;
+using ::expm1f;
+using ::log;
+using ::logf;
+using ::logl;
+using ::log10;
+using ::log10f;
+using ::log10l;
+using ::log2;
+using ::log2f;
+using ::log1p;
+using ::log1pf;
+
+/* Power functions */
+using ::pow;
+using ::powf;
+using ::powl;
+using ::sqrt;
+using ::sqrtf;
+using ::sqrtl;
+using ::cbrt;
+using ::cbrtf;
+using ::hypot;
+using ::hypotf;
+
+/* Trigonometric */
+using ::sin;
+using ::sinf;
+using ::sinl;
+using ::cos;
+using ::cosf;
+using ::cosl;
+using ::tan;
+using ::tanf;
+using ::tanl;
+using ::asin;
+using ::asinf;
+using ::asinl;
+using ::acos;
+using ::acosf;
+using ::acosl;
+using ::atan;
+using ::atanf;
+using ::atanl;
+using ::atan2;
+using ::atan2f;
+using ::atan2l;
+
+/* Hyperbolic */
+using ::sinh;
+using ::sinhf;
+using ::sinhl;
+using ::cosh;
+using ::coshf;
+using ::coshl;
+using ::tanh;
+using ::tanhf;
+using ::tanhl;
+using ::asinh;
+using ::asinhf;
+using ::acosh;
+using ::acoshf;
+using ::atanh;
+using ::atanhf;
+
+/* Rounding and remainder */
+using ::ceil;
+using ::ceilf;
+using ::ceill;
+using ::floor;
+using ::floorf;
+using ::floorl;
+using ::trunc;
+using ::truncf;
+using ::truncl;
+using ::round;
+using ::roundf;
+using ::roundl;
+using ::lround;
+using ::lroundf;
+using ::llround;
+using ::llroundf;
+using ::nearbyint;
+using ::nearbyintf;
+using ::rint;
+using ::rintf;
+using ::lrint;
+using ::lrintf;
+using ::llrint;
+using ::llrintf;
+
+/* Floating-point manipulation */
+using ::frexp;
+using ::frexpf;
+using ::ldexp;
+using ::ldexpf;
+using ::modf;
+using ::modff;
+using ::scalbn;
+using ::scalbnf;
+using ::ilogb;
+using ::ilogbf;
+using ::logb;
+using ::logbf;
+using ::copysign;
+using ::copysignf;
+using ::nan;
+using ::nanf;
+
+/* Classification */
+using ::fpclassify;
+using ::isfinite;
+using ::isinf;
+using ::isnan;
+using ::isnormal;
+using ::signbit;
+
+/* Error and gamma */
+using ::erf;
+using ::erff;
+using ::erfc;
+using ::erfcf;
+using ::tgamma;
+using ::tgammaf;
+using ::lgamma;
+using ::lgammaf;
+
+} /* namespace std */
+
+/* C++ function overloads */
+namespace std {
+
+/* Float overloads */
+inline float abs(float x) { return fabsf(x); }
+inline float fabs(float x) { return fabsf(x); }
+inline float ceil(float x) { return ceilf(x); }
+inline float floor(float x) { return floorf(x); }
+inline float trunc(float x) { return truncf(x); }
+inline float round(float x) { return roundf(x); }
+inline float sqrt(float x) { return sqrtf(x); }
+inline float pow(float x, float y) { return powf(x, y); }
+inline float exp(float x) { return expf(x); }
+inline float log(float x) { return logf(x); }
+inline float log10(float x) { return log10f(x); }
+inline float sin(float x) { return sinf(x); }
+inline float cos(float x) { return cosf(x); }
+inline float tan(float x) { return tanf(x); }
+inline float asin(float x) { return asinf(x); }
+inline float acos(float x) { return acosf(x); }
+inline float atan(float x) { return atanf(x); }
+inline float atan2(float y, float x) { return atan2f(y, x); }
+
+/* Long double overloads */
+inline long double abs(long double x) { return fabsl(x); }
+inline long double fabs(long double x) { return fabsl(x); }
+inline long double ceil(long double x) { return ceill(x); }
+inline long double floor(long double x) { return floorl(x); }
+inline long double trunc(long double x) { return truncl(x); }
+inline long double round(long double x) { return roundl(x); }
+inline long double sqrt(long double x) { return sqrtl(x); }
+inline long double pow(long double x, long double y) { return powl(x, y); }
+inline long double exp(long double x) { return expl(x); }
+inline long double log(long double x) { return logl(x); }
+inline long double log10(long double x) { return log10l(x); }
+inline long double sin(long double x) { return sinl(x); }
+inline long double cos(long double x) { return cosl(x); }
+inline long double tan(long double x) { return tanl(x); }
+inline long double asin(long double x) { return asinl(x); }
+inline long double acos(long double x) { return acosl(x); }
+inline long double atan(long double x) { return atanl(x); }
+inline long double atan2(long double y, long double x) { return atan2l(y, x); }
+
+} /* namespace std */
+
+#endif /* _LIBCPP_CMATH */

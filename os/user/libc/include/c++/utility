@@ -175,6 +175,342 @@ using make_index_sequence = make_integer_sequence<unsigned long, N>;
 template <class... T>
 using index_sequence_for = make_index_sequence<sizeof...(T)>;
 
+/* get for pair */
+template <unsigned long I, class T1, class T2>
+constexpr auto& get(pair<T1, T2>& p) noexcept {
+    static_assert(I < 2, "pair index out of bounds");
+    if constexpr (I == 0) return p.first;
+    else return p.second;
+}
+
+template <unsigned long I, class T1, class T2>
+constexpr const auto& get(const pair<T1, T2>& p) noexcept {
+    static_assert(I < 2, "pair index out of bounds");
+    if constexpr (I == 0) return p.first;
+    else return p.second;
+}
+
+template <unsigned long I, class T1, class T2>
+constexpr auto&& get(pair<T1, T2>&& p) noexcept {
+    static_assert(I < 2, "pair index out of bounds");
+    if constexpr (I == 0) return move(p.first);
+    else return move(p.second);
+}
+
+/* tuple_size for pair */
+template <class T1, class T2>
+struct tuple_size<pair<T1, T2>> : integral_constant<unsigned long, 2> {};
+
+/* tuple_element for pair */
+template <unsigned long I, class T1, class T2>
+struct tuple_element<I, pair<T1, T2>> {
+    static_assert(I < 2, "pair index out of bounds");
+    using type = typename conditional<I == 0, T1, T2>::type;
+};
+
+/* in_place_t family */
+struct in_place_t { explicit in_place_t() = default; };
+inline constexpr in_place_t in_place{};
+
+template <class T>
+struct in_place_type_t { explicit in_place_type_t() = default; };
+
+template <class T>
+inline constexpr in_place_type_t<T> in_place_type{};
+
+template <unsigned long I>
+struct in_place_index_t { explicit in_place_index_t() = default; };
+
+template <unsigned long I>
+inline constexpr in_place_index_t<I> in_place_index{};
+
+/* nullopt_t for optional */
+struct nullopt_t {
+    explicit constexpr nullopt_t(int) {}
+};
+inline constexpr nullopt_t nullopt{0};
+
+/* optional - simplified implementation */
+template <class T>
+class optional {
+public:
+    using value_type = T;
+
+private:
+    alignas(T) unsigned char storage_[sizeof(T)];
+    bool has_value_;
+
+    T* ptr() { return reinterpret_cast<T*>(storage_); }
+    const T* ptr() const { return reinterpret_cast<const T*>(storage_); }
+
+    void destroy() {
+        if (has_value_) {
+            ptr()->~T();
+            has_value_ = false;
+        }
+    }
+
+public:
+    /* Constructors */
+    constexpr optional() noexcept : has_value_(false) {}
+    constexpr optional(nullopt_t) noexcept : has_value_(false) {}
+
+    optional(const optional& other) : has_value_(other.has_value_) {
+        if (has_value_) {
+            new (storage_) T(*other.ptr());
+        }
+    }
+
+    optional(optional&& other) noexcept : has_value_(other.has_value_) {
+        if (has_value_) {
+            new (storage_) T(move(*other.ptr()));
+        }
+    }
+
+    template <class U = T>
+    optional(U&& value) : has_value_(true) {
+        new (storage_) T(forward<U>(value));
+    }
+
+    template <class... Args>
+    explicit optional(in_place_t, Args&&... args) : has_value_(true) {
+        new (storage_) T(forward<Args>(args)...);
+    }
+
+    /* Destructor */
+    ~optional() {
+        destroy();
+    }
+
+    /* Assignment */
+    optional& operator=(nullopt_t) noexcept {
+        destroy();
+        return *this;
+    }
+
+    optional& operator=(const optional& other) {
+        if (this != &other) {
+            destroy();
+            has_value_ = other.has_value_;
+            if (has_value_) {
+                new (storage_) T(*other.ptr());
+            }
+        }
+        return *this;
+    }
+
+    optional& operator=(optional&& other) noexcept {
+        if (this != &other) {
+            destroy();
+            has_value_ = other.has_value_;
+            if (has_value_) {
+                new (storage_) T(move(*other.ptr()));
+            }
+        }
+        return *this;
+    }
+
+    template <class U = T>
+    optional& operator=(U&& value) {
+        destroy();
+        has_value_ = true;
+        new (storage_) T(forward<U>(value));
+        return *this;
+    }
+
+    /* Observers */
+    constexpr explicit operator bool() const noexcept {
+        return has_value_;
+    }
+
+    constexpr bool has_value() const noexcept {
+        return has_value_;
+    }
+
+    T& value() & { return *ptr(); }
+    const T& value() const& { return *ptr(); }
+    T&& value() && { return move(*ptr()); }
+    const T&& value() const&& { return move(*ptr()); }
+
+    template <class U>
+    T value_or(U&& default_value) const& {
+        return has_value_ ? *ptr() : static_cast<T>(forward<U>(default_value));
+    }
+
+    template <class U>
+    T value_or(U&& default_value) && {
+        return has_value_ ? move(*ptr()) : static_cast<T>(forward<U>(default_value));
+    }
+
+    T* operator->() { return ptr(); }
+    const T* operator->() const { return ptr(); }
+
+    T& operator*() & { return *ptr(); }
+    const T& operator*() const& { return *ptr(); }
+    T&& operator*() && { return move(*ptr()); }
+    const T&& operator*() const&& { return move(*ptr()); }
+
+    /* Modifiers */
+    void reset() noexcept {
+        destroy();
+    }
+
+    template <class... Args>
+    T& emplace(Args&&... args) {
+        destroy();
+        has_value_ = true;
+        new (storage_) T(forward<Args>(args)...);
+        return *ptr();
+    }
+
+    void swap(optional& other) noexcept {
+        if (has_value_ && other.has_value_) {
+            std::swap(*ptr(), *other.ptr());
+        } else if (has_value_) {
+            new (other.storage_) T(move(*ptr()));
+            ptr()->~T();
+            other.has_value_ = true;
+            has_value_ = false;
+        } else if (other.has_value_) {
+            new (storage_) T(move(*other.ptr()));
+            other.ptr()->~T();
+            has_value_ = true;
+            other.has_value_ = false;
+        }
+    }
+};
+
+/* Comparison operators for optional */
+template <class T, class U>
+constexpr bool operator==(const optional<T>& lhs, const optional<U>& rhs) {
+    if (lhs.has_value() != rhs.has_value()) return false;
+    if (!lhs.has_value()) return true;
+    return *lhs == *rhs;
+}
+
+template <class T, class U>
+constexpr bool operator!=(const optional<T>& lhs, const optional<U>& rhs) {
+    return !(lhs == rhs);
+}
+
+template <class T, class U>
+constexpr bool operator<(const optional<T>& lhs, const optional<U>& rhs) {
+    if (!rhs.has_value()) return false;
+    if (!lhs.has_value()) return true;
+    return *lhs < *rhs;
+}
+
+template <class T, class U>
+constexpr bool operator<=(const optional<T>& lhs, const optional<U>& rhs) {
+    return !(rhs < lhs);
+}
+
+template <class T, class U>
+constexpr bool operator>(const optional<T>& lhs, const optional<U>& rhs) {
+    return rhs < lhs;
+}
+
+template <class T, class U>
+constexpr bool operator>=(const optional<T>& lhs, const optional<U>& rhs) {
+    return !(lhs < rhs);
+}
+
+/* Comparison with nullopt */
+template <class T>
+constexpr bool operator==(const optional<T>& opt, nullopt_t) noexcept {
+    return !opt.has_value();
+}
+
+template <class T>
+constexpr bool operator==(nullopt_t, const optional<T>& opt) noexcept {
+    return !opt.has_value();
+}
+
+template <class T>
+constexpr bool operator!=(const optional<T>& opt, nullopt_t) noexcept {
+    return opt.has_value();
+}
+
+template <class T>
+constexpr bool operator!=(nullopt_t, const optional<T>& opt) noexcept {
+    return opt.has_value();
+}
+
+/* make_optional */
+template <class T>
+constexpr optional<typename decay<T>::type> make_optional(T&& value) {
+    return optional<typename decay<T>::type>(forward<T>(value));
+}
+
+template <class T, class... Args>
+constexpr optional<T> make_optional(Args&&... args) {
+    return optional<T>(in_place, forward<Args>(args)...);
+}
+
+/* swap for optional */
+template <class T>
+void swap(optional<T>& a, optional<T>& b) noexcept {
+    a.swap(b);
+}
+
+/* as_const */
+template <class T>
+constexpr const T& as_const(T& t) noexcept {
+    return t;
+}
+
+template <class T>
+void as_const(const T&&) = delete;
+
+/* to_underlying (C++23) */
+template <class Enum>
+constexpr typename underlying_type<Enum>::type to_underlying(Enum e) noexcept {
+    return static_cast<typename underlying_type<Enum>::type>(e);
+}
+
+/* integer comparison functions (C++20) */
+template <class T, class U>
+constexpr bool cmp_equal(T t, U u) noexcept {
+    if constexpr (is_signed<T>::value == is_signed<U>::value) {
+        return t == u;
+    } else if constexpr (is_signed<T>::value) {
+        return t >= 0 && static_cast<typename make_unsigned<T>::type>(t) == u;
+    } else {
+        return u >= 0 && t == static_cast<typename make_unsigned<U>::type>(u);
+    }
+}
+
+template <class T, class U>
+constexpr bool cmp_not_equal(T t, U u) noexcept {
+    return !cmp_equal(t, u);
+}
+
+template <class T, class U>
+constexpr bool cmp_less(T t, U u) noexcept {
+    if constexpr (is_signed<T>::value == is_signed<U>::value) {
+        return t < u;
+    } else if constexpr (is_signed<T>::value) {
+        return t < 0 || static_cast<typename make_unsigned<T>::type>(t) < u;
+    } else {
+        return u >= 0 && t < static_cast<typename make_unsigned<U>::type>(u);
+    }
+}
+
+template <class T, class U>
+constexpr bool cmp_greater(T t, U u) noexcept {
+    return cmp_less(u, t);
+}
+
+template <class T, class U>
+constexpr bool cmp_less_equal(T t, U u) noexcept {
+    return !cmp_greater(t, u);
+}
+
+template <class T, class U>
+constexpr bool cmp_greater_equal(T t, U u) noexcept {
+    return !cmp_less(t, u);
+}
+
 } /* namespace std */
 
 #endif /* _LIBCPP_UTILITY */
