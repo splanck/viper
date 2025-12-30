@@ -116,6 +116,8 @@ void cmd_run(const char *cmdline)
         print_str("Run: wait failed (error ");
         put_num(exited_pid);
         print_str(")\n");
+        // Restore shell color in case child changed it
+        print_str("\033[33m");
         last_rc = RC_FAIL;
         last_error = "Wait failed";
         return;
@@ -126,6 +128,10 @@ void cmd_run(const char *cmdline)
     print_str(" exited with status ");
     put_num(static_cast<i64>(status));
     print_str("\n");
+
+    // Restore shell text color after child process (in case it changed colors)
+    print_str("\033[33m");
+
     last_rc = RC_OK;
 }
 

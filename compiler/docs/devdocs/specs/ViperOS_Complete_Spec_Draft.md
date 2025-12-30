@@ -652,7 +652,7 @@ SYS:                                    # Boot device (D0:\)
 
 ### 17.2 Logical Device Assigns
 
-ViperOS uses Amiga-style logical device names that map to physical paths:
+ViperOS uses logical device names that map to physical paths:
 
 | Device   | Points To        | Purpose          |
 |----------|------------------|------------------|
@@ -718,7 +718,7 @@ ESP (FAT32, ~64 MB)
 
 ### 18.1 Device-Oriented Hierarchy
 
-ViperOS uses Amiga-style logical devices rather than a single rooted tree. Every path begins with a device name followed
+ViperOS uses logical devices rather than a single rooted tree. Every path begins with a device name followed
 by a colon.
 
 | Device      | Purpose                | Writable  |
@@ -1104,7 +1104,7 @@ All commands return standard codes (accessible via `$RC` variable):
 
 ### 20.9 File Protection Flags
 
-The `Protect` command sets Amiga-style flags:
+The `Protect` command sets permission flags:
 
 | Flag | Meaning                                |
 |------|----------------------------------------|
@@ -1238,7 +1238,7 @@ These commands are built into the shell (not external programs):
 
 ### 21.4 Script Syntax
 
-Scripts use AmigaDOS-style syntax:
+Scripts use the following syntax:
 
 ```
 ; This is a comment
@@ -1909,7 +1909,7 @@ Deliverables:
 
 - ViperFS implementation
 - vinit, vsh from disk
-- AmigaDOS-style commands (Dir, List, Copy, etc.)
+- Retro-style commands (Dir, List, Copy, etc.)
 - Assign and path system
 - Configuration loading
 
@@ -1949,12 +1949,12 @@ Deliverables:
 
 | Question              | Decision                                |
 |-----------------------|-----------------------------------------|
-| Heritage              | **Amiga-inspired** (not UNIX, not DOS)  |
+| Heritage              | **Retro-inspired** (not UNIX, not DOS)  |
 | Boot display          | Graphics-first (framebuffer console)    |
 | Boot splash           | Simple ViperOS logo                     |
 | Console colors        | Green on dark brown                     |
 | Panic colors          | Yellow on green                         |
-| Shell prompt          | `SYS:>` (Amiga-style device:path)       |
+| Shell prompt          | `SYS:>` (device:path format)            |
 | Device naming         | Logical assigns (SYS:, HOME:, C:, etc.) |
 | Physical drives       | D0:, D1:, D2:, ...                      |
 | Path separator        | Backslash `\`                           |
@@ -2042,5 +2042,3 @@ Deliverables:
 | Quit          | Exit with code        |
 
 ---
-
-*"The Amiga never really died. It just needed a new home."*

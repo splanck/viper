@@ -111,7 +111,7 @@ constexpr u32 O_TRUNC = viper::open_flags::O_TRUNC;
  * @brief Flags describing an assign entry.
  *
  * @details
- * Assigns are name → directory mappings used to build Amiga-style logical
+ * Assigns are name → directory mappings used to build logical
  * device paths such as `SYS:certs/roots.der`.
  *
  * The meanings mirror the kernel assign subsystem and are primarily used for

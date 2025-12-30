@@ -79,3 +79,6 @@ add_user_program(ping ping/ping.cpp)
 
 # devices - hardware device listing utility
 add_user_program(devices devices/devices.cpp)
+
+# edit - simple nano-like text editor
+add_user_program(edit edit/edit.cpp)

@@ -1,80 +1,171 @@
 # ViperOS Documentation
 
-This directory contains the complete documentation for ViperOS, a capability-based microkernel operating system for
-AArch64.
+This directory contains the complete documentation for ViperOS, a capability-based operating system for AArch64.
 
-## Index
-
-- [Documentation Index](index.md)
-- [Kernel Narrative Guides](kernel/index.md)
-
-## Contents
-
-### Specification
-
-- [**ViperOS ARM64 Specification**](spec/ViperOS_ARM64_Spec.md) - Complete technical specification (v1.4)
-
-### Implementation Plans
-
-| Phase | Document                                               | Description                   |
-|-------|--------------------------------------------------------|-------------------------------|
-| 1     | [Graphics Boot](plans/phase1-graphics-boot.md)         | Boot to graphical console     |
-| 2     | [Multitasking](plans/phase2-multitasking.md)           | Tasks, scheduler, IPC         |
-| 3     | [User Space](plans/phase3-user-space.md)               | Address spaces, capabilities  |
-| 4     | [Filesystem & Shell](plans/phase4-filesystem-shell.md) | ViperFS, VFS, vsh             |
-| 5     | [Input & Polish](plans/phase5-input-polish.md)         | Keyboard, mouse, line editing |
-| 6     | [Networking](plans/phase6-networking.md)               | TCP/IP, DNS, HTTP             |
-
-### Status & Reports
-
-- [**Progress Tracking**](progress.md) - Detailed implementation checklist
-- [**Implementation Report**](report.md) - Current status, limitations, next steps
+---
 
 ## Quick Links
 
-- **Source Code:** `../kernel/` (kernel), `../user/` (user space)
-- **Build Script:** `../build_viper.sh`
-- **Disk Image:** `../disk.img`
+| Document | Description |
+|----------|-------------|
+| [Shell Commands](shell-commands.md) | Complete shell command reference |
+| [Syscall Reference](syscalls.md) | System call API documentation |
+| [Implementation Status](status/00-overview.md) | Current implementation status |
+
+---
+
+## User Guides
+
+### Getting Started
+
+See the main [README](../README.md) for build instructions and quickstart.
+
+### Shell Usage
+
+The ViperOS shell provides a command-line interface:
+
+- [Shell Commands](shell-commands.md) - All commands with examples
+- Line editing with arrow keys, history, and tab completion
+- Structured return codes (OK/WARN/ERROR/FAIL)
+
+### Writing Programs
+
+User programs are written in C or C++ and link against the ViperOS libc:
+
+- [Syscall Reference](syscalls.md) - Complete syscall documentation
+- See `user/hello/` for a minimal example
+- See `user/edit/` for a more complex example (text editor)
+
+---
+
+## Implementation Status
+
+Detailed documentation of the ViperOS implementation:
+
+| Document | Description |
+|----------|-------------|
+| [00-overview.md](status/00-overview.md) | Executive summary, architecture diagram, statistics |
+| [01-architecture.md](status/01-architecture.md) | AArch64 boot, MMU, GIC, timer, exceptions |
+| [02-memory-management.md](status/02-memory-management.md) | PMM, VMM, slab, buddy, COW, VMA |
+| [03-console.md](status/03-console.md) | Serial UART, graphics console, fonts |
+| [04-drivers.md](status/04-drivers.md) | VirtIO (blk, net, gpu, rng, input), fw_cfg, ramfb |
+| [05-filesystem.md](status/05-filesystem.md) | VFS, ViperFS, block cache, inode cache, journal |
+| [06-ipc.md](status/06-ipc.md) | Channels, poll sets |
+| [07-networking.md](status/07-networking.md) | Ethernet, ARP, IPv4, TCP, UDP, DNS, TLS, HTTP |
+| [08-scheduler.md](status/08-scheduler.md) | Tasks, scheduler, context switch, wait queues |
+| [09-viper-process.md](status/09-viper-process.md) | Process model, address spaces, capabilities |
+| [10-userspace.md](status/10-userspace.md) | vinit shell, syscall wrappers, libc, C++ runtime |
+| [11-tools.md](status/11-tools.md) | mkfs.viperfs, fsck.viperfs, gen_roots_der |
+
+---
+
+## Specifications
+
+| Document | Description |
+|----------|-------------|
+| [ViperOS ARM64 Spec](spec/ViperOS_ARM64_Spec.md) | Technical specification |
+| [ViperOS v0.2.0 Spec](spec/ViperOS_v0.2.0_Specification.md) | v0.2.0 implementation plan |
+
+---
 
 ## Architecture Overview
 
 ```
-ViperOS Architecture
-====================
-
-EL0 (User)     ┌─────────┐  ┌─────────┐  ┌─────────┐
-               │  vinit  │  │   vsh   │  │  apps   │
-               └────┬────┘  └────┬────┘  └────┬────┘
-                    │            │            │
-                    └────────────┼────────────┘
-                                 │ SVC #0 (syscall)
-                    ─────────────┼─────────────
-EL1 (Kernel)                     │
-               ┌─────────────────┴─────────────────┐
-               │          ViperOS Kernel           │
-               │  ┌───────┬───────┬───────┬─────┐  │
-               │  │Sched  │ IPC   │  VFS  │ Net │  │
-               │  └───────┴───────┴───────┴─────┘  │
-               │  ┌───────┬───────┬───────┬─────┐  │
-               │  │ PMM   │ VMM   │ GIC   │Timer│  │
-               │  └───────┴───────┴───────┴─────┘  │
-               └─────────────────┬─────────────────┘
-                                 │
-               ┌─────────────────┴─────────────────┐
-               │         virtio-mmio drivers       │
-               │    (blk, net, input, ramfb)       │
-               └─────────────────┬─────────────────┘
-                                 │
-               ──────────────────┴──────────────────
-Hardware       QEMU virt machine (AArch64)
+┌─────────────────────────────────────────────────────────────────┐
+│                        User Space (EL0)                          │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │  vinit - Interactive shell with networking demos          │  │
+│  │  hello, fsinfo, sysinfo, netstat, ping, edit, ...        │  │
+│  └───────────────────────────────────────────────────────────┘  │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │  libc + C++ Runtime (55 C sources, 66 C++ headers)        │  │
+│  └───────────────────────────────────────────────────────────┘  │
+└─────────────────────────────┬───────────────────────────────────┘
+                              │ SVC #0 (Syscalls)
+┌─────────────────────────────┴───────────────────────────────────┐
+│                        Kernel (EL1)                              │
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │ Viper Process Model                                         ││
+│  │ • Per-process address spaces (TTBR0 + ASID)                ││
+│  │ • Capability tables with rights enforcement                 ││
+│  └─────────────────────────────────────────────────────────────┘│
+│  ┌───────────────┐ ┌───────────────┐ ┌───────────────┐         │
+│  │  Scheduler    │ │     IPC       │ │   Networking  │         │
+│  │  8 priority   │ │  Channels     │ │  TCP/IP/TLS   │         │
+│  │  queues       │ │  Poll sets    │ │  DNS/HTTP     │         │
+│  └───────────────┘ └───────────────┘ └───────────────┘         │
+│  ┌───────────────┐ ┌───────────────┐ ┌───────────────┐         │
+│  │  Filesystem   │ │   Console     │ │    Memory     │         │
+│  │  VFS/ViperFS  │ │  Serial/Gfx   │ │  PMM/VMM/COW  │         │
+│  │  Journal      │ │  ANSI codes   │ │  Buddy/Slab   │         │
+│  └───────────────┘ └───────────────┘ └───────────────┘         │
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │                        Drivers                               ││
+│  │  VirtIO: blk, net, gpu, rng, input  |  PL011  |  ramfb     ││
+│  └─────────────────────────────────────────────────────────────┘│
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │                     Architecture                             ││
+│  │  Boot  |  MMU (4-level)  |  GIC  |  Timer  |  Exceptions    ││
+│  └─────────────────────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────────┘
+                              │
+┌─────────────────────────────┴───────────────────────────────────┐
+│                     QEMU virt Machine                            │
+│  ARM Cortex-A72  |  128MB RAM  |  GICv2  |  VirtIO-MMIO        │
+└─────────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## Key Features
+
+| Feature | Description |
+|---------|-------------|
+| **Capability-Based Security** | Handle-based access control with rights derivation |
+| **Advanced Memory Management** | Demand paging, COW, buddy allocator, slab allocator |
+| **Complete Network Stack** | TCP/IP with congestion control, TLS 1.3, DNS, HTTP |
+| **Crash-Consistent Filesystem** | Write-ahead journaling, inode/block caches |
+| **Retro-Style Design** | Logical assigns, return codes, interactive shell |
+
+---
+
+## Project Statistics
+
+| Component | SLOC | Status |
+|-----------|------|--------|
+| Architecture (AArch64) | ~3,500 | Complete |
+| Memory Management | ~5,300 | Complete |
+| Console | ~3,500 | Complete |
+| Drivers | ~6,000 | Complete |
+| Filesystem | ~6,400 | Complete |
+| IPC | ~2,500 | Complete |
+| Networking | ~14,600 | Complete |
+| Scheduler | ~2,900 | Complete |
+| Viper/Capabilities | ~2,900 | Complete |
+| User Space | ~28,300 | Complete |
+| Tools | ~2,200 | Complete |
+| **Total** | **~93,000** | |
+
+---
 
 ## Color Palette
 
-| Name        | Hex       | RGB           | Usage        |
-|-------------|-----------|---------------|--------------|
-| Viper Green | `#00AA44` | 0, 170, 68    | Primary text |
-| Dark Brown  | `#1A1208` | 26, 18, 8     | Background   |
-| Yellow      | `#FFDD00` | 255, 221, 0   | Warnings     |
-| White       | `#EEEEEE` | 238, 238, 238 | Bright text  |
-| Red         | `#CC3333` | 204, 51, 51   | Errors       |
+| Name | Hex | Usage |
+|------|-----|-------|
+| Viper Green | `#00AA44` | Primary text |
+| Dark Brown | `#1A1208` | Background |
+| Yellow | `#FFDD00` | Warnings |
+| White | `#EEEEEE` | Bright text |
+| Red | `#CC3333` | Errors |
+
+---
+
+## Source Code
+
+| Directory | Description |
+|-----------|-------------|
+| `../kernel/` | Kernel source code |
+| `../user/` | User space programs |
+| `../vboot/` | Bootloader |
+| `../tools/` | Build tools |
+| `../scripts/` | Build scripts |

@@ -276,10 +276,6 @@ bool InputDevice::get_event(InputEvent *event)
         return false;
     }
 
-    serial::puts("[virtio-input] GOT EVENT desc=");
-    serial::put_dec(used_idx);
-    serial::puts("\n");
-
     // Copy event data from the buffer (convert physical to virtual address)
     u32 desc_idx = static_cast<u32>(used_idx);
     u64 buf_phys = events_phys_ + (desc_idx % INPUT_EVENT_BUFFERS) * sizeof(InputEvent);

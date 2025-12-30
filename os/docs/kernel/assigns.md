@@ -1,6 +1,6 @@
 # Assigns (Logical Names Like `SYS:` and `C:`)
 
-ViperOS v0.2.0 introduces an Amiga-inspired Assign system: logical names like `SYS:` map to directories (and potentially
+ViperOS v0.2.0 introduces an Assign system: logical names like `SYS:` map to directories (and potentially
 chains of directories) and become the basis for path resolution outside of Unix-style `/` roots.
 
 This page explains what Assigns are, how they’re stored, and how resolution turns names into capabilities.

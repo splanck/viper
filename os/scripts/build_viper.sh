@@ -193,7 +193,7 @@ else
     print_warning "gen_roots_der not found, skipping certificate bundle"
 fi
 
-# Create/update disk image with Amiga-style directory structure
+# Create/update disk image with standard directory structure
 # Layout:
 #   / (root = SYS: = D0:)
 #   ├── vinit.elf           # Init process (loaded by kernel)
@@ -244,6 +244,9 @@ if [[ -x "$TOOLS_DIR/mkfs.viperfs" ]]; then
     fi
     if [[ -f "$BUILD_DIR/devices.elf" ]]; then
         MKFS_ARGS+=(--add "$BUILD_DIR/devices.elf:c/devices.elf")
+    fi
+    if [[ -f "$BUILD_DIR/edit.elf" ]]; then
+        MKFS_ARGS+=(--add "$BUILD_DIR/edit.elf:c/edit.elf")
     fi
     # Add roots.der to certs directory
     if [[ -f "$BUILD_DIR/roots.der" ]]; then

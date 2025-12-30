@@ -144,7 +144,7 @@ void init()
 /** @copydoc viper::assign::setup_standard_assigns */
 void setup_standard_assigns()
 {
-    console::print("[assign] Setting up standard Amiga-style assigns...\n");
+    console::print("[assign] Setting up standard assigns...\n");
 
     // Standard directory mappings (lowercase on disk, uppercase assign names)
     struct StandardAssign

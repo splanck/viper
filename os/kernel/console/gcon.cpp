@@ -907,6 +907,9 @@ void set_colors(u32 fg, u32 bg)
 {
     fg_color = fg;
     bg_color = bg;
+    // Also update defaults so ANSI reset (\033[0m) restores to these colors
+    default_fg = fg;
+    default_bg = bg;
 }
 
 /** @copydoc gcon::get_cursor */

@@ -1,31 +1,43 @@
 # ViperOS Documentation Index
 
-This index is a map of the documentation under `docs/`, with a focus on narrative walkthroughs of the kernel as it
-exists in `kernel/`.
+Welcome to the ViperOS documentation.
 
-## Kernel (Narrative Guides)
+---
 
-Start here if you want a guided tour of how the kernel boots, initializes subsystems, and serves user space:
+## Getting Started
 
-- [Kernel Components Index](kernel/index.md)
+| Document | Description |
+|----------|-------------|
+| [Main README](../README.md) | Build instructions and quickstart |
+| [Shell Commands](shell-commands.md) | Complete command reference |
+| [Syscall Reference](syscalls.md) | System call API documentation |
+
+---
+
+## Implementation Status
+
+Detailed documentation of the current implementation:
+
+| Document | Description |
+|----------|-------------|
+| [Overview](status/00-overview.md) | Architecture diagram and statistics |
+| [Architecture](status/01-architecture.md) | AArch64 boot, MMU, GIC, timer |
+| [Memory Management](status/02-memory-management.md) | PMM, VMM, slab, buddy, COW |
+| [Console](status/03-console.md) | Serial and graphics console |
+| [Drivers](status/04-drivers.md) | VirtIO and device drivers |
+| [Filesystem](status/05-filesystem.md) | VFS and ViperFS |
+| [IPC](status/06-ipc.md) | Channels and poll sets |
+| [Networking](status/07-networking.md) | TCP/IP, TLS, DNS, HTTP |
+| [Scheduler](status/08-scheduler.md) | Tasks and scheduling |
+| [Process Model](status/09-viper-process.md) | Processes and capabilities |
+| [User Space](status/10-userspace.md) | libc and applications |
+| [Tools](status/11-tools.md) | Build tools |
+
+---
 
 ## Specifications
 
-- [ViperOS ARM64 Specification](spec/ViperOS_ARM64_Spec.md)
-- [ViperOS v0.2.0 Specification](spec/ViperOS_v0.2.0_Specification.md)
-
-## Implementation Plans
-
-- [Phase 1: Graphics Boot](plans/phase1-graphics-boot.md)
-- [Phase 2: Multitasking](plans/phase2-multitasking.md)
-- [Phase 3: User Space](plans/phase3-user-space.md)
-- [Phase 4: Filesystem & Shell](plans/phase4-filesystem-shell.md)
-- [Phase 5: Input & Polish](plans/phase5-input-polish.md)
-- [Phase 6: Networking](plans/phase6-networking.md)
-
-## Status & Reports
-
-- [Progress Tracking](progress.md)
-- [Progress Tracking (v0.2.0)](progress_0.2.0.md)
-- [Implementation Report](report.md)
-
+| Document | Description |
+|----------|-------------|
+| [ARM64 Specification](spec/ViperOS_ARM64_Spec.md) | Technical specification |
+| [v0.2.0 Specification](spec/ViperOS_v0.2.0_Specification.md) | v0.2.0 implementation plan |

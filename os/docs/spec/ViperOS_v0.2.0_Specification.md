@@ -12,15 +12,15 @@
 
 ## Executive Summary
 
-ViperOS v0.2.0 transforms the working prototype into a proper Amiga-inspired platform. This release focuses on four key
+ViperOS v0.2.0 transforms the working prototype into a proper platform. This release focuses on four key
 areas:
 
-1. **Command Naming** — Replace Unix-style commands with Amiga-style names
+1. **Command Naming** — Replace Unix-style commands with retro-style names
 2. **Assigns System** — Implement logical device names (SYS:, C:, HOME:, etc.)
 3. **TLS/HTTPS** — Secure network communication for modern web access
 4. **Expanded Syscalls** — Additional kernel functionality for richer applications
 
-**Target:** A cohesive, Amiga-inspired operating system capable of secure network communication.
+**Target:** A cohesive operating system capable of secure network communication.
 
 ---
 
@@ -41,7 +41,7 @@ areas:
 
 ### 1.1 Command Name Mapping
 
-All commands must use Amiga-style naming. Unix conventions are explicitly rejected.
+All commands must use retro-style naming. Unix conventions are explicitly rejected.
 
 | Current (Wrong) | Correct (v0.2.0) | Purpose                              |
 |-----------------|------------------|--------------------------------------|
@@ -104,7 +104,7 @@ All commands must use Amiga-style naming. Unix conventions are explicitly reject
 
 ### 1.3 Command Output Format
 
-Commands should produce Amiga-style output:
+Commands should produce retro-style output:
 
 **Dir (brief listing):**
 
@@ -141,7 +141,7 @@ Shell "Path C: ADD"
 
 ### 1.4 Return Codes
 
-All commands must use Amiga-style return codes:
+All commands must use standard return codes:
 
 | Code | Name  | Meaning             |
 |------|-------|---------------------|
@@ -1091,7 +1091,7 @@ Executed in order at shell start:
 - Add `Why` command for error explanation
 - Update shell prompt
 
-**Deliverable:** All commands have correct Amiga-style names and output.
+**Deliverable:** All commands have correct retro-style names and output.
 
 ### 7.3 Phase 7B: Assigns System (Weeks 3-4)
 

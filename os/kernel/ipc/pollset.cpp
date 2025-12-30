@@ -1,6 +1,7 @@
 #include "pollset.hpp"
 #include "../cap/rights.hpp"
 #include "../cap/table.hpp"
+#include "../console/console.hpp"
 #include "../console/serial.hpp"
 #include "../input/input.hpp"
 #include "../lib/spinlock.hpp"
@@ -219,7 +220,11 @@ static poll::EventType check_readiness(u32 handle, poll::EventType mask)
         {
             // Poll input devices and check for characters
             input::poll();
-            if (input::has_char() || serial::has_char())
+            // Check all possible input sources:
+            // - input::char_buffer (raw keyboard input not yet drained)
+            // - serial input
+            // - console::input_buffer (already drained from input subsystem)
+            if (input::has_char() || serial::has_char() || console::has_input())
             {
                 triggered = triggered | poll::EventType::CONSOLE_INPUT;
             }

@@ -8,10 +8,15 @@
 extern void paging_enable();
 extern void paging_disable();
 
+// ANSI escape to set shell foreground color (yellow)
+static constexpr const char *SHELL_COLOR = "\033[33m";
+
 void shell_loop()
 {
     char line[256];
 
+    // Set shell text color to yellow
+    print_str(SHELL_COLOR);
     print_str("\n========================================\n");
     print_str("        ViperOS 0.2.0 Shell\n");
     print_str("========================================\n");
@@ -25,7 +30,7 @@ void shell_loop()
 
     while (true)
     {
-        // Amiga-style prompt
+        // Shell prompt
         if (current_dir[0] == '/' && current_dir[1] == '\0')
         {
             print_str("SYS:");
@@ -192,11 +197,6 @@ void shell_loop()
         {
             print_str("Note: Use 'Type' instead of 'cat'\n");
             cmd_type(get_args(cmd_line, 4));
-        }
-        else if (strcaseeq(cmd_line, "uname"))
-        {
-            print_str("Note: Use 'Version' instead of 'uname'\n");
-            cmd_version();
         }
         else
         {

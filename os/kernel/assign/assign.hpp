@@ -126,7 +126,7 @@ enum class AssignError
 void init();
 
 /**
- * @brief Set up standard Amiga-style directory assigns.
+ * @brief Set up standard directory assigns.
  *
  * @details
  * Called after the filesystem is mounted to create assigns for standard

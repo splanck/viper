@@ -52,9 +52,10 @@ ViperOS is a capability-based microkernel operating system targeting AArch64. Th
 ┌─────────────────────────────────────────────────────────────────┐
 │                        User Space (EL0)                          │
 │  ┌───────────────────────────────────────────────────────────┐  │
-│  │  vinit - Amiga-inspired shell with networking demos       │  │
+│  │  vinit - Interactive shell with networking demos          │  │
 │  │  • Line editing, history, tab completion                  │  │
 │  │  • File/directory commands, HTTPS fetch                   │  │
+│  │  • Text editor (edit), system utilities                   │  │
 │  └───────────────────────────────────────────────────────────┘  │
 └─────────────────────────────┬───────────────────────────────────┘
                               │ Syscalls (SVC)
@@ -132,7 +133,7 @@ ViperOS is a capability-based microkernel operating system targeting AArch64. Th
 - File truncation and fsync support
 - Timestamp tracking (atime, mtime, ctime)
 
-### Amiga-Inspired Design
+### Retro-Style Design
 - Logical device assigns (SYS:, etc.)
 - Return codes: OK/WARN/ERROR/FAIL
 - Interactive shell with completion

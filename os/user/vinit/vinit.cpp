@@ -4,7 +4,7 @@
  *
  * @details
  * `vinit` is the first user-space process started by the kernel. It provides
- * an interactive Amiga-style shell for debugging and demos.
+ * an interactive shell for debugging and demos.
  */
 #include "vinit.hpp"
 

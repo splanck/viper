@@ -6,7 +6,7 @@
 
 ## Overview
 
-User space consists of the `vinit` init process, a complete freestanding C library (`libc`), C++ standard library headers, and syscall wrappers. `vinit` is loaded from the disk image as the first user-space process and provides an Amiga-inspired interactive shell for debugging and demonstration. The libc enables portable POSIX-like application development without external dependencies.
+User space consists of the `vinit` init process, a complete freestanding C library (`libc`), C++ standard library headers, and syscall wrappers. `vinit` is loaded from the disk image as the first user-space process and provides an interactive shell for debugging and demonstration. The libc enables portable POSIX-like application development without external dependencies.
 
 ---
 
@@ -18,7 +18,7 @@ User space consists of the `vinit` init process, a complete freestanding C libra
 
 `vinit` is a freestanding user-space program that:
 - Runs as the first user-mode process (started by the kernel)
-- Provides an Amiga-inspired interactive command shell
+- Provides an interactive command shell
 - Exercises kernel syscalls for filesystem, networking, TLS, and capabilities
 - Operates without libc or a hosted C++ runtime
 
@@ -32,7 +32,7 @@ User space consists of the `vinit` init process, a complete freestanding C libra
 | History | 16-entry ring buffer with up/down navigation |
 | Tab Completion | Command-name completion for built-in commands |
 | ANSI Terminal | Escape sequence handling for cursor control |
-| Return Codes | Amiga-style: OK=0, WARN=5, ERROR=10, FAIL=20 |
+| Return Codes | OK=0, WARN=5, ERROR=10, FAIL=20 |
 
 **Built-in Commands:**
 

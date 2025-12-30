@@ -703,7 +703,7 @@ extern "C" void kernel_main(void *boot_info_ptr)
                 serial::puts("[kernel] Initializing Assign system...\n");
                 viper::assign::init();
 
-                // Set up standard Amiga-style assigns (C:, S:, L:, T:, CERTS:)
+                // Set up standard assigns (C:, S:, L:, T:, CERTS:)
                 viper::assign::setup_standard_assigns();
 
                 viper::assign::debug_dump();
