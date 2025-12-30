@@ -75,9 +75,46 @@ namespace task
 /** @brief Size of each kernel stack in bytes. */
 constexpr usize KERNEL_STACK_SIZE = 16 * 1024; // 16KB
 
-// Time slice in timer ticks (10ms at 1000Hz)
-/** @brief Default scheduler time slice in timer ticks. */
+// Time slices in timer ticks (at 1000Hz = 1ms per tick)
+// Higher priority tasks get larger slices for better throughput
+// Lower priority tasks get smaller slices for better responsiveness
+
+/** @brief Default scheduler time slice in timer ticks (10ms). */
 constexpr u32 TIME_SLICE_DEFAULT = 10;
+
+/** @brief Time slice per priority queue (ms per tick at 1000Hz).
+ * Queue 0 (highest): 20ms
+ * Queue 1: 18ms
+ * Queue 2: 15ms
+ * Queue 3: 12ms
+ * Queue 4 (default): 10ms
+ * Queue 5: 8ms
+ * Queue 6: 5ms
+ * Queue 7 (idle): 5ms
+ */
+constexpr u32 TIME_SLICE_BY_QUEUE[NUM_PRIORITY_QUEUES] = {
+    20, // Queue 0 - highest priority (system tasks)
+    18, // Queue 1
+    15, // Queue 2
+    12, // Queue 3
+    10, // Queue 4 - default priority
+    8,  // Queue 5
+    5,  // Queue 6
+    5,  // Queue 7 - lowest priority (idle)
+};
+
+/**
+ * @brief Get time slice for a given priority level.
+ * @param priority Task priority (0-255).
+ * @return Time slice in timer ticks.
+ */
+inline u32 time_slice_for_priority(u8 priority)
+{
+    u8 queue = priority / PRIORITIES_PER_QUEUE;
+    if (queue >= NUM_PRIORITY_QUEUES)
+        queue = NUM_PRIORITY_QUEUES - 1;
+    return TIME_SLICE_BY_QUEUE[queue];
+}
 
 // Maximum tasks
 /** @brief Maximum number of tasks supported by the fixed task table. */
@@ -328,6 +365,63 @@ Task *create_user_task(const char *name, void *viper_ptr, u64 entry, u64 stack);
  * @return Number of tasks written to the buffer.
  */
 u32 list_tasks(TaskInfo *buffer, u32 max_count);
+
+/**
+ * @brief Reap exited tasks and reclaim their resources.
+ *
+ * @details
+ * Scans the task table for Exited tasks and frees their kernel stacks,
+ * marking the task slots as Invalid for reuse. This should be called
+ * periodically to prevent resource exhaustion.
+ *
+ * @return Number of tasks reaped.
+ */
+u32 reap_exited();
+
+/**
+ * @brief Destroy a specific task and reclaim its resources.
+ *
+ * @details
+ * Immediately destroys the task regardless of state. Should only be called
+ * for tasks that are not currently running or in the ready queue.
+ *
+ * @param t Task to destroy.
+ */
+void destroy(Task *t);
+
+// Signal numbers (subset of POSIX signals)
+constexpr i32 SIGKILL = 9;   // Kill signal (cannot be caught)
+constexpr i32 SIGTERM = 15;  // Termination signal
+constexpr i32 SIGSTOP = 19;  // Stop process (cannot be caught)
+constexpr i32 SIGCONT = 18;  // Continue if stopped
+
+/**
+ * @brief Send a signal to a task.
+ *
+ * @details
+ * Sends the specified signal to the target task. Currently supported signals:
+ * - SIGKILL (9): Immediately terminates the task
+ * - SIGTERM (15): Terminates the task (same as SIGKILL for now)
+ * - SIGSTOP (19): Not implemented (returns success)
+ * - SIGCONT (18): Not implemented (returns success)
+ *
+ * @param pid Task ID to signal.
+ * @param signal Signal number.
+ * @return 0 on success, -1 if task not found.
+ */
+i32 kill(u32 pid, i32 signal);
+
+/**
+ * @brief Wake a blocked task.
+ *
+ * @details
+ * If the task is Blocked, sets it to Ready and enqueues it on the scheduler.
+ * This is used when killing blocked tasks or for external wakeup.
+ *
+ * @param t Task to wake.
+ * @return true if task was woken, false if not blocked.
+ */
+bool wakeup(Task *t);
 
 } // namespace task
 

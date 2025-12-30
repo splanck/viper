@@ -1028,36 +1028,6 @@ extern "C" void kernel_main(void *boot_info_ptr)
                 {
                     serial::puts("[kernel] vinit task created, will run under scheduler\n");
                     scheduler::enqueue(vinit_task);
-
-                    // Test: Spawn user programs to verify console output
-                    serial::puts("[kernel] Testing user programs...\n");
-
-                    // Spawn fsinfo.elf
-                    loader::SpawnResult fsinfo_spawn = loader::spawn_process("/fsinfo.elf", "fsinfo", test_viper);
-                    if (fsinfo_spawn.success)
-                    {
-                        serial::puts("[kernel] fsinfo.elf spawned (tid=");
-                        serial::put_dec(fsinfo_spawn.task_id);
-                        serial::puts(")\n");
-                    }
-
-                    // Spawn sysinfo.elf
-                    loader::SpawnResult sysinfo_spawn = loader::spawn_process("/sysinfo.elf", "sysinfo", test_viper);
-                    if (sysinfo_spawn.success)
-                    {
-                        serial::puts("[kernel] sysinfo.elf spawned (tid=");
-                        serial::put_dec(sysinfo_spawn.task_id);
-                        serial::puts(")\n");
-                    }
-
-                    // Spawn netstat.elf
-                    loader::SpawnResult netstat_spawn = loader::spawn_process("/netstat.elf", "netstat", test_viper);
-                    if (netstat_spawn.success)
-                    {
-                        serial::puts("[kernel] netstat.elf spawned (tid=");
-                        serial::put_dec(netstat_spawn.task_id);
-                        serial::puts(")\n");
-                    }
                 }
                 else
                 {

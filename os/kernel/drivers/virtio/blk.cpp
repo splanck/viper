@@ -274,8 +274,8 @@ i32 BlkDevice::do_request(u32 type, u64 sector, u32 count, void *buf)
 
     // Wait for completion: interrupt-driven with polling fallback
     bool got_completion = false;
-    constexpr u32 INTERRUPT_TIMEOUT = 100000;  // Iterations to wait for interrupt
-    constexpr u32 POLL_TIMEOUT = 10000000;     // Total polling iterations (fallback)
+    constexpr u32 INTERRUPT_TIMEOUT = 100000; // Iterations to wait for interrupt
+    constexpr u32 POLL_TIMEOUT = 10000000;    // Total polling iterations (fallback)
 
     // First, try to wait for interrupt
     for (u32 i = 0; i < INTERRUPT_TIMEOUT; i++)

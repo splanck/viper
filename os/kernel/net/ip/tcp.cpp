@@ -66,9 +66,8 @@ static bool ooo_store(TcpSocket *sock, u32 seq, const u8 *data, usize len)
         if (!sock->ooo_queue[i].valid)
         {
             sock->ooo_queue[i].seq = seq;
-            sock->ooo_queue[i].len = static_cast<u16>(len > TcpSocket::OOO_SEGMENT_SIZE
-                                                          ? TcpSocket::OOO_SEGMENT_SIZE
-                                                          : len);
+            sock->ooo_queue[i].len = static_cast<u16>(
+                len > TcpSocket::OOO_SEGMENT_SIZE ? TcpSocket::OOO_SEGMENT_SIZE : len);
             sock->ooo_queue[i].valid = true;
             for (usize j = 0; j < sock->ooo_queue[i].len; j++)
             {

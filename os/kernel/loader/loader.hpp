@@ -143,7 +143,9 @@ SpawnResult spawn_process(const char *path, const char *name, viper::Viper *pare
  * @param parent Parent process, or nullptr.
  * @return SpawnResult with success status and process/task info.
  */
-SpawnResult spawn_process_from_blob(const void *elf_data, usize elf_size,
-                                    const char *name, viper::Viper *parent = nullptr);
+SpawnResult spawn_process_from_blob(const void *elf_data,
+                                    usize elf_size,
+                                    const char *name,
+                                    viper::Viper *parent = nullptr);
 
 } // namespace loader

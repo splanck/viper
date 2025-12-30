@@ -65,7 +65,7 @@ void init()
         vipers[i].first_child = nullptr;
         vipers[i].next_sibling = nullptr;
         vipers[i].exit_code = 0;
-        vipers[i].wait_queue = nullptr;
+        sched::wait_init(&vipers[i].child_waiters);
         vipers[i].heap_start = layout::USER_HEAP_BASE;
         vipers[i].heap_break = layout::USER_HEAP_BASE;
         vipers[i].heap_max = layout::USER_HEAP_BASE + (64 * 1024 * 1024); // 64MB heap limit
@@ -191,13 +191,17 @@ Viper *create(Viper *parent, const char *name)
 
     // Add initial VMAs for heap and stack regions
     // Heap VMA (will grow as sbrk is called)
-    v->vma_list.add(layout::USER_HEAP_BASE, v->heap_max,
-                    mm::vma_prot::READ | mm::vma_prot::WRITE, mm::VmaType::ANONYMOUS);
+    v->vma_list.add(layout::USER_HEAP_BASE,
+                    v->heap_max,
+                    mm::vma_prot::READ | mm::vma_prot::WRITE,
+                    mm::VmaType::ANONYMOUS);
 
     // Stack VMA (grows downward from USER_STACK_TOP)
     u64 stack_bottom = layout::USER_STACK_TOP - layout::USER_STACK_SIZE;
-    v->vma_list.add(stack_bottom, layout::USER_STACK_TOP,
-                    mm::vma_prot::READ | mm::vma_prot::WRITE, mm::VmaType::STACK);
+    v->vma_list.add(stack_bottom,
+                    layout::USER_STACK_TOP,
+                    mm::vma_prot::READ | mm::vma_prot::WRITE,
+                    mm::VmaType::STACK);
 
     // Initialize resource tracking
     v->memory_used = 0;
@@ -206,6 +210,10 @@ Viper *create(Viper *parent, const char *name)
     // No tasks yet
     v->task_list = nullptr;
     v->task_count = 0;
+
+    // Initialize wait queue for waitpid
+    sched::wait_init(&v->child_waiters);
+    v->exit_code = 0;
 
     // Initialize capability table
     cap::Table &ct = cap_tables[idx];
@@ -446,13 +454,10 @@ void exit(i32 code)
     }
     v->first_child = nullptr;
 
-    // Wake parent if waiting
-    if (v->parent && v->parent->wait_queue)
+    // Wake parent if waiting for children to exit
+    if (v->parent)
     {
-        task::Task *waiter = v->parent->wait_queue;
-        v->parent->wait_queue = nullptr;
-        waiter->state = task::TaskState::Ready;
-        scheduler::enqueue(waiter);
+        sched::wait_wake_one(&v->parent->child_waiters);
     }
 
     // Mark all tasks in this process as exited
@@ -496,8 +501,8 @@ i64 wait(i64 child_id, i32 *status)
         if (!t)
             return error::VERR_NOT_SUPPORTED;
 
-        t->state = task::TaskState::Blocked;
-        v->wait_queue = t;
+        // Add to child_waiters queue (sets state to Blocked)
+        sched::wait_enqueue(&v->child_waiters, t);
         task::yield();
 
         // When woken, loop to check again
@@ -530,6 +535,78 @@ void reap(Viper *child)
 
     // Now fully destroy the process
     destroy(child);
+}
+
+/** @copydoc viper::fork */
+Viper *fork()
+{
+    Viper *parent = current();
+    if (!parent)
+    {
+        serial::puts("[viper] fork: no current process\n");
+        return nullptr;
+    }
+
+    serial::puts("[viper] Forking process '");
+    serial::puts(parent->name);
+    serial::puts("'\n");
+
+    // Create child process
+    Viper *child = create(parent, parent->name);
+    if (!child)
+    {
+        serial::puts("[viper] fork: failed to create child process\n");
+        return nullptr;
+    }
+
+    // Get address spaces
+    AddressSpace *parent_as = get_address_space(parent);
+    AddressSpace *child_as = get_address_space(child);
+
+    if (!parent_as || !child_as)
+    {
+        serial::puts("[viper] fork: failed to get address spaces\n");
+        destroy(child);
+        return nullptr;
+    }
+
+    // Clone VMAs from parent to child with COW flag
+    for (mm::Vma *vma = parent->vma_list.head(); vma != nullptr; vma = vma->next)
+    {
+        mm::Vma *child_vma = child->vma_list.add(vma->start, vma->end, vma->prot, vma->type);
+        if (!child_vma)
+        {
+            serial::puts("[viper] fork: failed to copy VMA\n");
+            destroy(child);
+            return nullptr;
+        }
+
+        // Mark both VMAs as COW for anonymous/stack regions
+        if (vma->type == mm::VmaType::ANONYMOUS || vma->type == mm::VmaType::STACK)
+        {
+            vma->flags |= mm::vma_flags::COW;
+            child_vma->flags |= mm::vma_flags::COW;
+        }
+    }
+
+    // Clone address space with COW
+    if (!child_as->clone_cow_from(parent_as))
+    {
+        serial::puts("[viper] fork: failed to clone address space\n");
+        destroy(child);
+        return nullptr;
+    }
+
+    // Copy heap state
+    child->heap_start = parent->heap_start;
+    child->heap_break = parent->heap_break;
+    child->heap_max = parent->heap_max;
+
+    serial::puts("[viper] Fork complete: child id=");
+    serial::put_dec(child->id);
+    serial::puts("\n");
+
+    return child;
 }
 
 /** @copydoc viper::do_sbrk */

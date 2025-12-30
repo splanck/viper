@@ -93,8 +93,8 @@ void run_syscall_tests()
         }
         else
         {
-            test_fail("unknown syscall returns VERR_NOT_SUPPORTED",
-                      error::VERR_NOT_SUPPORTED, result);
+            test_fail(
+                "unknown syscall returns VERR_NOT_SUPPORTED", error::VERR_NOT_SUPPORTED, result);
         }
     }
 
@@ -111,8 +111,7 @@ void run_syscall_tests()
         }
         else
         {
-            test_fail("bad pointer returns VERR_INVALID_ARG",
-                      error::VERR_INVALID_ARG, result);
+            test_fail("bad pointer returns VERR_INVALID_ARG", error::VERR_INVALID_ARG, result);
         }
     }
 

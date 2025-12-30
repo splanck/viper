@@ -1,6 +1,7 @@
 #include "input.hpp"
 #include "../console/serial.hpp"
 #include "../drivers/virtio/input.hpp"
+#include "../lib/spinlock.hpp"
 #include "keycodes.hpp"
 
 /**
@@ -19,6 +20,10 @@
  */
 namespace input
 {
+
+// Spinlock to protect char_buffer from concurrent access
+// (timer interrupt vs syscall context)
+static Spinlock char_lock;
 
 // Event ring buffer
 static Event event_queue[EVENT_QUEUE_SIZE];
@@ -68,14 +73,14 @@ static void push_event(const Event &ev)
 }
 
 /**
- * @brief Push a character byte into the character ring buffer.
+ * @brief Push a character byte into the character ring buffer (unlocked).
  *
  * @details
- * Drops the byte if the buffer is full.
+ * Drops the byte if the buffer is full. Caller must hold char_lock.
  *
  * @param c Character byte to enqueue.
  */
-static void push_char(char c)
+static void push_char_unlocked(char c)
 {
     usize next = (char_tail + 1) % sizeof(char_buffer);
     if (next != char_head)
@@ -85,6 +90,20 @@ static void push_char(char c)
     }
 }
 
+/**
+ * @brief Push a character byte into the character ring buffer.
+ *
+ * @details
+ * Thread-safe version that acquires the spinlock.
+ *
+ * @param c Character byte to enqueue.
+ */
+static void push_char(char c)
+{
+    SpinlockGuard guard(char_lock);
+    push_char_unlocked(c);
+}
+
 // Push an escape sequence for special keys (e.g., "\033[A" for up arrow)
 /**
  * @brief Enqueue an ANSI escape sequence as a series of character bytes.
@@ -92,14 +111,16 @@ static void push_char(char c)
  * @details
  * Used to represent special navigation keys as conventional terminal escape
  * sequences so higher-level console code can interpret them.
+ * The entire sequence is added atomically to prevent interleaving.
  *
  * @param seq NUL-terminated escape sequence string.
  */
 static void push_escape_seq(const char *seq)
 {
+    SpinlockGuard guard(char_lock);
     while (*seq)
     {
-        push_char(*seq++);
+        push_char_unlocked(*seq++);
     }
 }
 
@@ -243,12 +264,14 @@ u8 get_modifiers()
 /** @copydoc input::has_char */
 bool has_char()
 {
+    SpinlockGuard guard(char_lock);
     return char_head != char_tail;
 }
 
 /** @copydoc input::getchar */
 i32 getchar()
 {
+    SpinlockGuard guard(char_lock);
     if (char_head == char_tail)
     {
         return -1;

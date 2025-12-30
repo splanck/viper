@@ -52,10 +52,10 @@ static u32 next_timer_id = 1;
  */
 struct WaitEntry
 {
-    task::Task *task;  // Waiting task
-    u32 handle;        // Handle being waited on
-    EventType events;  // Events being waited for
-    bool active;       // Entry is in use
+    task::Task *task; // Waiting task
+    u32 handle;       // Handle being waited on
+    EventType events; // Events being waited for
+    bool active;      // Entry is in use
 };
 
 // Wait queue table

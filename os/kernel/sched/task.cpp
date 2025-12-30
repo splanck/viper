@@ -6,6 +6,7 @@
 #include "../viper/address_space.hpp"
 #include "../viper/viper.hpp"
 #include "scheduler.hpp"
+#include "wait.hpp"
 
 // External function to enter user mode (from exceptions.S)
 extern "C" [[noreturn]] void enter_user_mode(u64 entry, u64 stack, u64 arg);
@@ -78,8 +79,7 @@ Task *allocate_task()
     return nullptr;
 }
 
-// Allocate kernel stack (simple bump allocator for now)
-// In a real system, this would use the heap
+// Allocate kernel stack (bump allocator with free list for recycling)
 u8 *stack_pool = nullptr;
 usize stack_pool_offset = 0;
 constexpr usize PAGE_SIZE = 4096;
@@ -91,12 +91,20 @@ constexpr usize STACK_POOL_SIZE = STACK_SLOT_SIZE * MAX_TASKS;
 // QEMU virt machine: RAM starts at 0x40000000, kernel at start, FB at +16MB
 constexpr u64 STACK_POOL_BASE = 0x44000000;
 
+// Free stack list for recycling exited task stacks
+struct FreeStackNode
+{
+    FreeStackNode *next;
+};
+FreeStackNode *free_stack_list = nullptr;
+u32 free_stack_count = 0;
+
 /**
  * @brief Allocate a kernel stack from a fixed pre-reserved pool.
  *
  * @details
- * This is a bring-up allocator: it uses a fixed base address and bumps an
- * offset for each stack allocation. Each stack slot includes a 4KB guard
+ * This allocator uses a free list for recycling and falls back to a bump
+ * allocator when the free list is empty. Each stack slot includes a 4KB guard
  * page at the bottom that is unmapped to catch stack overflows.
  *
  * Layout of each stack slot:
@@ -110,6 +118,18 @@ constexpr u64 STACK_POOL_BASE = 0x44000000;
  */
 u8 *allocate_kernel_stack()
 {
+    // First try the free list
+    if (free_stack_list)
+    {
+        FreeStackNode *node = free_stack_list;
+        free_stack_list = node->next;
+        free_stack_count--;
+
+        // Return the stack (node is at the base of usable stack)
+        return reinterpret_cast<u8 *>(node);
+    }
+
+    // Fall back to bump allocator
     // First call: initialize pool location
     if (stack_pool == nullptr)
     {
@@ -135,6 +155,23 @@ u8 *allocate_kernel_stack()
     u8 *usable_stack = slot_base + GUARD_PAGE_SIZE;
 
     return usable_stack;
+}
+
+/**
+ * @brief Free a kernel stack, returning it to the free list for reuse.
+ *
+ * @param stack Pointer to the usable stack base (as returned by allocate_kernel_stack).
+ */
+void free_kernel_stack(u8 *stack)
+{
+    if (!stack)
+        return;
+
+    // Add to free list (use the stack memory itself for the node)
+    FreeStackNode *node = reinterpret_cast<FreeStackNode *>(stack);
+    node->next = free_stack_list;
+    free_stack_list = node;
+    free_stack_count++;
 }
 
 // Idle task function - just loops waiting for interrupts
@@ -644,6 +681,202 @@ u32 list_tasks(TaskInfo *buffer, u32 max_count)
     }
 
     return count;
+}
+
+/**
+ * @brief Reap exited tasks and reclaim their resources.
+ *
+ * @details
+ * Scans the task table for Exited tasks and:
+ * - Frees their kernel stacks
+ * - Marks the task slot as Invalid for reuse
+ *
+ * This should be called periodically (e.g., from the idle task or timer interrupt)
+ * to prevent resource exhaustion from accumulated exited tasks.
+ *
+ * @return Number of tasks reaped.
+ */
+u32 reap_exited()
+{
+    u32 reaped = 0;
+
+    for (u32 i = 0; i < MAX_TASKS; i++)
+    {
+        Task &t = tasks[i];
+
+        // Don't reap idle task
+        if (i == 0)
+            continue;
+
+        // Don't reap current task (shouldn't be exited anyway)
+        if (&t == current_task)
+            continue;
+
+        if (t.state == TaskState::Exited)
+        {
+            serial::puts("[task] Reaping exited task '");
+            serial::puts(t.name);
+            serial::puts("' (id=");
+            serial::put_dec(t.id);
+            serial::puts(")\n");
+
+            // Free kernel stack
+            if (t.kernel_stack)
+            {
+                free_kernel_stack(t.kernel_stack);
+                t.kernel_stack = nullptr;
+                t.kernel_stack_top = nullptr;
+            }
+
+            // Clear task slot
+            t.id = 0;
+            t.state = TaskState::Invalid;
+            t.name[0] = '\0';
+            t.viper = nullptr;
+            t.next = nullptr;
+            t.prev = nullptr;
+
+            reaped++;
+        }
+    }
+
+    return reaped;
+}
+
+/**
+ * @brief Destroy a specific task and reclaim its resources.
+ *
+ * @details
+ * Immediately destroys the task regardless of state. Should only be called
+ * for tasks that are not currently running or in the ready queue.
+ *
+ * @param t Task to destroy.
+ */
+void destroy(Task *t)
+{
+    if (!t)
+        return;
+
+    // Can't destroy current task
+    if (t == current_task)
+    {
+        serial::puts("[task] ERROR: Cannot destroy current task\n");
+        return;
+    }
+
+    // Can't destroy idle task
+    if (t->flags & TASK_FLAG_IDLE)
+    {
+        serial::puts("[task] ERROR: Cannot destroy idle task\n");
+        return;
+    }
+
+    serial::puts("[task] Destroying task '");
+    serial::puts(t->name);
+    serial::puts("' (id=");
+    serial::put_dec(t->id);
+    serial::puts(")\n");
+
+    // Free kernel stack
+    if (t->kernel_stack)
+    {
+        free_kernel_stack(t->kernel_stack);
+        t->kernel_stack = nullptr;
+        t->kernel_stack_top = nullptr;
+    }
+
+    // Clear task slot
+    t->id = 0;
+    t->state = TaskState::Invalid;
+    t->name[0] = '\0';
+    t->viper = nullptr;
+    t->next = nullptr;
+    t->prev = nullptr;
+}
+
+/** @copydoc task::wakeup */
+bool wakeup(Task *t)
+{
+    if (!t)
+        return false;
+
+    if (t->state != TaskState::Blocked)
+        return false;
+
+    // Remove from any wait queue
+    if (t->wait_channel)
+    {
+        // Try to dequeue from the wait queue
+        sched::WaitQueue *wq = reinterpret_cast<sched::WaitQueue *>(t->wait_channel);
+        sched::wait_dequeue(wq, t);
+    }
+
+    // Mark as ready and enqueue
+    t->state = TaskState::Ready;
+    scheduler::enqueue(t);
+
+    return true;
+}
+
+/** @copydoc task::kill */
+i32 kill(u32 pid, i32 signal)
+{
+    Task *t = get_by_id(pid);
+    if (!t)
+    {
+        return -1; // Task not found
+    }
+
+    // Can't kill idle task
+    if (t->flags & TASK_FLAG_IDLE)
+    {
+        serial::puts("[task] Cannot kill idle task\n");
+        return -1;
+    }
+
+    // Handle signals
+    switch (signal)
+    {
+        case SIGKILL:
+        case SIGTERM:
+        {
+            serial::puts("[task] Killing task '");
+            serial::puts(t->name);
+            serial::puts("' (id=");
+            serial::put_dec(pid);
+            serial::puts(") with signal ");
+            serial::put_dec(signal);
+            serial::puts("\n");
+
+            // If blocked, wake it up first
+            if (t->state == TaskState::Blocked)
+            {
+                wakeup(t);
+            }
+
+            // If this is the current task, call exit
+            if (t == current_task)
+            {
+                exit(-signal); // Exit with negative signal as code
+                // exit() never returns
+            }
+
+            // Otherwise, mark as exited
+            t->exit_code = -signal;
+            t->state = TaskState::Exited;
+
+            return 0;
+        }
+
+        case SIGSTOP:
+        case SIGCONT:
+            // Not implemented - return success
+            return 0;
+
+        default:
+            // Unknown signal - treat as SIGTERM
+            return kill(pid, SIGTERM);
+    }
 }
 
 } // namespace task

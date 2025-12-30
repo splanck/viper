@@ -7,19 +7,24 @@
  * builds 4-level translation tables for 4 KiB pages and uses an identity-mapped
  * physical memory view to access page table pages directly.
  *
- * This implementation is intentionally simple for bring-up:
- * - ASID allocation uses a small bitmap without locking.
- * - Page table destruction is incomplete (only the root is freed).
+ * Thread safety:
+ * - ASID allocation is protected by a spinlock for multi-core correctness.
+ * - Page table operations are per-AddressSpace and assumed single-threaded.
  * - Mappings are installed as normal memory with inner-shareable attributes.
  */
 
 #include "address_space.hpp"
 #include "../arch/aarch64/mmu.hpp"
 #include "../console/serial.hpp"
+#include "../lib/spinlock.hpp"
+#include "../mm/cow.hpp"
 #include "../mm/pmm.hpp"
 
 namespace viper
 {
+
+// Spinlock protecting ASID bitmap operations
+static Spinlock asid_lock;
 
 // ASID bitmap (256 ASIDs, 4 x 64-bit words)
 static u64 asid_bitmap[4] = {0, 0, 0, 0};
@@ -28,6 +33,8 @@ static u16 asid_next = 1; // Start at 1, 0 is reserved for kernel
 /** @copydoc viper::asid_init */
 void asid_init()
 {
+    SpinlockGuard guard(asid_lock);
+
     // Clear bitmap - all ASIDs free
     for (int i = 0; i < 4; i++)
     {
@@ -43,6 +50,8 @@ void asid_init()
 /** @copydoc viper::asid_alloc */
 u16 asid_alloc()
 {
+    SpinlockGuard guard(asid_lock);
+
     // Search for a free ASID starting from asid_next
     for (u16 i = 0; i < MAX_ASID; i++)
     {
@@ -71,6 +80,8 @@ void asid_free(u16 asid)
 {
     if (asid == 0 || asid >= MAX_ASID)
         return;
+
+    SpinlockGuard guard(asid_lock);
 
     u32 word = asid / 64;
     u32 bit = asid % 64;
@@ -477,6 +488,153 @@ void tlb_flush_page(u64 virt, u16 asid)
     asm volatile("tlbi   vae1is, %0      \n"
                  "dsb    sy              \n"
                  "isb                    \n" ::"r"(val));
+}
+
+/** @copydoc viper::AddressSpace::clone_cow_from */
+bool AddressSpace::clone_cow_from(AddressSpace *parent)
+{
+    if (!parent || !parent->is_valid() || !is_valid())
+    {
+        serial::puts("[address_space] clone_cow_from: invalid address space\n");
+        return false;
+    }
+
+    serial::puts("[address_space] Cloning address space with COW from ASID=");
+    serial::put_dec(parent->asid_);
+    serial::puts(" to ASID=");
+    serial::put_dec(asid_);
+    serial::puts("\n");
+
+    u64 *parent_l0 = phys_to_virt(parent->root_);
+    u64 *child_l0 = phys_to_virt(root_);
+
+    // Walk parent's page tables and create matching mappings
+    // Skip L0[0] which contains kernel mappings (already set up in init)
+    for (int i0 = 1; i0 < 512; i0++)
+    {
+        if (!(parent_l0[i0] & pte::VALID))
+            continue;
+        if (!(parent_l0[i0] & pte::TABLE))
+            continue; // Skip block mappings
+
+        // Allocate L1 for child
+        u64 *child_l1 = get_or_alloc_table(child_l0, i0);
+        if (!child_l1)
+            return false;
+
+        u64 *parent_l1 = phys_to_virt(parent_l0[i0] & pte::ADDR_MASK);
+
+        for (int i1 = 0; i1 < 512; i1++)
+        {
+            if (!(parent_l1[i1] & pte::VALID))
+                continue;
+            if (!(parent_l1[i1] & pte::TABLE))
+                continue; // Skip 1GB block mappings
+
+            u64 *child_l2 = get_or_alloc_table(child_l1, i1);
+            if (!child_l2)
+                return false;
+
+            u64 *parent_l2 = phys_to_virt(parent_l1[i1] & pte::ADDR_MASK);
+
+            for (int i2 = 0; i2 < 512; i2++)
+            {
+                if (!(parent_l2[i2] & pte::VALID))
+                    continue;
+                if (!(parent_l2[i2] & pte::TABLE))
+                    continue; // Skip 2MB block mappings
+
+                u64 *child_l3 = get_or_alloc_table(child_l2, i2);
+                if (!child_l3)
+                    return false;
+
+                u64 *parent_l3 = phys_to_virt(parent_l2[i2] & pte::ADDR_MASK);
+
+                for (int i3 = 0; i3 < 512; i3++)
+                {
+                    u64 entry = parent_l3[i3];
+                    if (!(entry & pte::VALID))
+                        continue;
+
+                    // Get the physical page being shared
+                    u64 phys_page = entry & pte::ADDR_MASK;
+
+                    // Make the entry read-only for COW
+                    // Set AP_RO bit to make it read-only
+                    u64 cow_entry = entry | pte::AP_RO;
+
+                    // Copy to child
+                    child_l3[i3] = cow_entry;
+
+                    // Also make parent's entry read-only
+                    parent_l3[i3] = cow_entry;
+
+                    // Increment page reference count
+                    mm::cow::cow_manager().inc_ref(phys_page);
+                    mm::cow::cow_manager().mark_cow(phys_page);
+                }
+            }
+        }
+    }
+
+    // Flush TLBs for both address spaces
+    tlb_flush_asid(parent->asid_);
+    tlb_flush_asid(asid_);
+
+    serial::puts("[address_space] COW clone complete\n");
+    return true;
+}
+
+/** @copydoc viper::AddressSpace::make_cow_readonly */
+void AddressSpace::make_cow_readonly()
+{
+    if (!is_valid())
+        return;
+
+    u64 *l0 = phys_to_virt(root_);
+
+    // Walk all user mappings (skip L0[0] which is kernel)
+    for (int i0 = 1; i0 < 512; i0++)
+    {
+        if (!(l0[i0] & pte::VALID))
+            continue;
+        if (!(l0[i0] & pte::TABLE))
+            continue;
+
+        u64 *l1 = phys_to_virt(l0[i0] & pte::ADDR_MASK);
+
+        for (int i1 = 0; i1 < 512; i1++)
+        {
+            if (!(l1[i1] & pte::VALID))
+                continue;
+            if (!(l1[i1] & pte::TABLE))
+                continue;
+
+            u64 *l2 = phys_to_virt(l1[i1] & pte::ADDR_MASK);
+
+            for (int i2 = 0; i2 < 512; i2++)
+            {
+                if (!(l2[i2] & pte::VALID))
+                    continue;
+                if (!(l2[i2] & pte::TABLE))
+                    continue;
+
+                u64 *l3 = phys_to_virt(l2[i2] & pte::ADDR_MASK);
+
+                for (int i3 = 0; i3 < 512; i3++)
+                {
+                    if (l3[i3] & pte::VALID)
+                    {
+                        // Set read-only bit
+                        l3[i3] |= pte::AP_RO;
+                    }
+                }
+            }
+        }
+    }
+
+    // Flush TLB
+    tlb_flush_asid(asid_);
 }
 
 } // namespace viper

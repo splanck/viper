@@ -1008,7 +1008,8 @@ u64 ViperFS::create_dir(Inode *dir, const char *name, usize name_len)
 }
 
 /** @copydoc fs::viperfs::ViperFS::create_symlink */
-u64 ViperFS::create_symlink(Inode *dir, const char *name, usize name_len, const char *target, usize target_len)
+u64 ViperFS::create_symlink(
+    Inode *dir, const char *name, usize name_len, const char *target, usize target_len)
 {
     if (!mounted_ || !dir || !name || !target)
         return 0;

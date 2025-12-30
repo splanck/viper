@@ -102,4 +102,39 @@ void preempt();
  */
 u64 get_context_switches();
 
+/**
+ * @brief Scheduler statistics structure.
+ */
+struct Stats
+{
+    u64 context_switches;          // Total context switches
+    u32 queue_lengths[8];          // Current length of each priority queue
+    u32 total_ready;               // Total tasks in all ready queues
+    u32 blocked_tasks;             // Number of blocked tasks
+    u32 exited_tasks;              // Number of exited (zombie) tasks
+};
+
+/**
+ * @brief Get current scheduler statistics.
+ *
+ * @param stats Output structure to receive statistics.
+ */
+void get_stats(Stats *stats);
+
+/**
+ * @brief Get the length of a specific priority queue.
+ *
+ * @param queue_idx Queue index (0-7).
+ * @return Number of tasks in the queue.
+ */
+u32 get_queue_length(u8 queue_idx);
+
+/**
+ * @brief Dump scheduler statistics to serial console.
+ *
+ * @details
+ * Prints queue lengths, context switch count, and task state summary.
+ */
+void dump_stats();
+
 } // namespace scheduler

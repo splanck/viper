@@ -38,10 +38,12 @@
 #include "fault.hpp"
 #include "../console/gcon.hpp"
 #include "../console/serial.hpp"
+#include "../lib/mem.hpp"
 #include "../sched/scheduler.hpp"
 #include "../sched/task.hpp"
 #include "../viper/address_space.hpp"
 #include "../viper/viper.hpp"
+#include "cow.hpp"
 #include "pmm.hpp"
 #include "vma.hpp"
 
@@ -263,9 +265,12 @@ static void log_fault(const FaultInfo &info, const char *task_name)
     asm volatile("msr daifset, #0xf");
 
     serial::puts("\n");
-    serial::puts("================================================================================\n");
-    serial::puts("                           !!! KERNEL PANIC !!!                                \n");
-    serial::puts("================================================================================\n");
+    serial::puts(
+        "================================================================================\n");
+    serial::puts(
+        "                           !!! KERNEL PANIC !!!                                \n");
+    serial::puts(
+        "================================================================================\n");
     serial::puts("\n");
 
     // Fault type and address
@@ -334,9 +339,12 @@ static void log_fault(const FaultInfo &info, const char *task_name)
     }
 
     serial::puts("\n");
-    serial::puts("================================================================================\n");
-    serial::puts("                           System halted.                                      \n");
-    serial::puts("================================================================================\n");
+    serial::puts(
+        "================================================================================\n");
+    serial::puts(
+        "                           System halted.                                      \n");
+    serial::puts(
+        "================================================================================\n");
 
     if (gcon::is_available())
     {
@@ -362,6 +370,152 @@ static void log_fault(const FaultInfo &info, const char *task_name)
     {
         asm volatile("wfi");
     }
+}
+
+/**
+ * @brief Handle a Copy-on-Write fault.
+ *
+ * @details
+ * Called when a write permission fault occurs on a COW page. If the page has
+ * only one reference (this process), we simply make it writable. If shared,
+ * we allocate a new page, copy the data, and remap.
+ *
+ * @param proc The current process.
+ * @param fault_addr The faulting virtual address.
+ * @return FaultResult indicating how the fault was handled.
+ */
+static FaultResult handle_cow_fault(viper::Viper *proc, u64 fault_addr)
+{
+    // Align to page boundary
+    u64 page_addr = fault_addr & ~0xFFFULL;
+
+    // Find the VMA containing this address
+    Vma *vma = proc->vma_list.find(fault_addr);
+    if (!vma)
+    {
+        serial::puts("[cow] No VMA for address ");
+        serial::put_hex(fault_addr);
+        serial::puts("\n");
+        return FaultResult::UNHANDLED;
+    }
+
+    // Check if this VMA supports writes
+    if (!(vma->prot & vma_prot::WRITE))
+    {
+        serial::puts("[cow] VMA is not writable\n");
+        return FaultResult::UNHANDLED;
+    }
+
+    // Check if this is a COW VMA
+    if (!(vma->flags & vma_flags::COW))
+    {
+        serial::puts("[cow] VMA is not marked COW\n");
+        return FaultResult::UNHANDLED;
+    }
+
+    // Get the address space
+    viper::AddressSpace *as = viper::get_address_space(proc);
+    if (!as)
+    {
+        serial::puts("[cow] No address space\n");
+        return FaultResult::ERROR;
+    }
+
+    // Get the current physical page
+    u64 old_phys = as->translate(page_addr);
+    if (old_phys == 0)
+    {
+        serial::puts("[cow] Page not mapped\n");
+        return FaultResult::UNHANDLED;
+    }
+
+    // Check reference count
+    u16 refcount = cow::cow_manager().get_ref(old_phys);
+
+    serial::puts("[cow] Handling COW fault at ");
+    serial::put_hex(fault_addr);
+    serial::puts(" phys=");
+    serial::put_hex(old_phys);
+    serial::puts(" refs=");
+    serial::put_dec(refcount);
+    serial::puts("\n");
+
+    if (refcount <= 1)
+    {
+        // We're the only owner - just make writable
+        // Unmap and remap with write permission
+        as->unmap(page_addr, pmm::PAGE_SIZE);
+
+        // Convert VMA prot to address space prot
+        u32 as_prot = 0;
+        if (vma->prot & vma_prot::READ)
+            as_prot |= viper::prot::READ;
+        if (vma->prot & vma_prot::WRITE)
+            as_prot |= viper::prot::WRITE;
+        if (vma->prot & vma_prot::EXEC)
+            as_prot |= viper::prot::EXEC;
+
+        if (!as->map(page_addr, old_phys, pmm::PAGE_SIZE, as_prot))
+        {
+            serial::puts("[cow] Failed to remap page as writable\n");
+            return FaultResult::ERROR;
+        }
+
+        // Clear COW flag on the page
+        cow::cow_manager().clear_cow(old_phys);
+
+        serial::puts("[cow] Made page writable (sole owner)\n");
+        return FaultResult::HANDLED;
+    }
+
+    // Multiple owners - must copy the page
+    u64 new_phys = pmm::alloc_page();
+    if (new_phys == 0)
+    {
+        serial::puts("[cow] Out of memory during COW copy\n");
+        return FaultResult::ERROR;
+    }
+
+    // Copy page contents
+    // Note: Using identity mapping - physical address = virtual address for kernel
+    lib::memcpy(
+        reinterpret_cast<void *>(new_phys), reinterpret_cast<void *>(old_phys), pmm::PAGE_SIZE);
+
+    // Unmap old page
+    as->unmap(page_addr, pmm::PAGE_SIZE);
+
+    // Map new page with full permissions
+    u32 as_prot = 0;
+    if (vma->prot & vma_prot::READ)
+        as_prot |= viper::prot::READ;
+    if (vma->prot & vma_prot::WRITE)
+        as_prot |= viper::prot::WRITE;
+    if (vma->prot & vma_prot::EXEC)
+        as_prot |= viper::prot::EXEC;
+
+    if (!as->map(page_addr, new_phys, pmm::PAGE_SIZE, as_prot))
+    {
+        serial::puts("[cow] Failed to map new page\n");
+        pmm::free_page(new_phys);
+        return FaultResult::ERROR;
+    }
+
+    // Decrement old page reference count
+    if (cow::cow_manager().dec_ref(old_phys))
+    {
+        // Refcount reached 0, free the old page
+        pmm::free_page(old_phys);
+        serial::puts("[cow] Freed old page (refcount 0)\n");
+    }
+
+    // Initialize new page with refcount 1
+    cow::cow_manager().inc_ref(new_phys);
+
+    serial::puts("[cow] Copied page, new phys=");
+    serial::put_hex(new_phys);
+    serial::puts("\n");
+
+    return FaultResult::HANDLED;
 }
 
 void handle_page_fault(exceptions::ExceptionFrame *frame, bool is_instruction)
@@ -429,7 +583,8 @@ void handle_page_fault(exceptions::ExceptionFrame *frame, bool is_instruction)
                 return addr_space->map(virt, phys, 4096, as_prot);
             };
 
-            FaultResult result = handle_demand_fault(&proc->vma_list, info.fault_addr, info.is_write, map_fn);
+            FaultResult result =
+                handle_demand_fault(&proc->vma_list, info.fault_addr, info.is_write, map_fn);
 
             switch (result)
             {
@@ -446,6 +601,31 @@ void handle_page_fault(exceptions::ExceptionFrame *frame, bool is_instruction)
                     serial::puts("[page_fault] Address not in valid VMA\n");
                     break;
             }
+        }
+    }
+
+    // Handle permission faults (Copy-on-Write)
+    if (info.type == FaultType::PERMISSION && info.is_write)
+    {
+        FaultResult result = handle_cow_fault(proc, info.fault_addr);
+
+        switch (result)
+        {
+            case FaultResult::HANDLED:
+                serial::puts("[page_fault] COW fault handled, resuming\n");
+                return; // Resume execution
+
+            case FaultResult::ERROR:
+                serial::puts("[page_fault] COW fault error, terminating\n");
+                break;
+
+            case FaultResult::UNHANDLED:
+                serial::puts("[page_fault] Permission fault not COW\n");
+                break;
+
+            case FaultResult::STACK_GROW:
+                // Not expected for COW, but handle it
+                return;
         }
     }
 

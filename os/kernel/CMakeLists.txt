@@ -14,6 +14,7 @@ set(KERNEL_SOURCES
         arch/aarch64/timer.cpp
         arch/aarch64/mmu.cpp
         boot/bootinfo.cpp
+        dtb/fdt.cpp
         main.cpp
         console/serial.cpp
         console/console.cpp
@@ -22,14 +23,17 @@ set(KERNEL_SOURCES
         drivers/fwcfg.cpp
         drivers/ramfb.cpp
         mm/pmm.cpp
+        mm/buddy.cpp
         mm/vmm.cpp
         mm/kheap.cpp
         mm/slab.cpp
         mm/fault.cpp
         mm/vma.cpp
+        mm/cow.cpp
         sched/task.cpp
         sched/context.S
         sched/scheduler.cpp
+        sched/wait.cpp
         syscall/dispatch.cpp
         syscall/table.cpp
         ipc/channel.cpp

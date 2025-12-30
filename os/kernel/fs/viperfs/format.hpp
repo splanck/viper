@@ -87,7 +87,7 @@ constexpr u64 JOURNAL_BLOCKS = 16;
 namespace txn_state
 {
 constexpr u8 TXN_INVALID = 0;   // Invalid/unused entry
-constexpr u8 TXN_ACTIVE = 1;   // Transaction in progress
+constexpr u8 TXN_ACTIVE = 1;    // Transaction in progress
 constexpr u8 TXN_COMMITTED = 2; // Transaction committed (needs replay)
 constexpr u8 TXN_COMPLETE = 3;  // Transaction completed (can be discarded)
 } // namespace txn_state
@@ -101,14 +101,14 @@ constexpr u8 TXN_COMPLETE = 3;  // Transaction completed (can be discarded)
  */
 struct JournalHeader
 {
-    u32 magic;           // JOURNAL_MAGIC
-    u32 version;         // Journal format version (1)
-    u64 sequence;        // Current transaction sequence number
-    u64 start_block;     // First block of journal data area
-    u64 num_blocks;      // Total blocks in journal data area
-    u64 head;            // Head of journal (oldest valid transaction)
-    u64 tail;            // Tail of journal (next write position)
-    u8 _reserved[4048];  // Padding to 4096 bytes (4096 - 48 = 4048)
+    u32 magic;          // JOURNAL_MAGIC
+    u32 version;        // Journal format version (1)
+    u64 sequence;       // Current transaction sequence number
+    u64 start_block;    // First block of journal data area
+    u64 num_blocks;     // Total blocks in journal data area
+    u64 head;           // Head of journal (oldest valid transaction)
+    u64 tail;           // Tail of journal (next write position)
+    u8 _reserved[4048]; // Padding to 4096 bytes (4096 - 48 = 4048)
 };
 
 static_assert(sizeof(JournalHeader) == 4096, "JournalHeader must be 4096 bytes");
@@ -122,8 +122,8 @@ static_assert(sizeof(JournalHeader) == 4096, "JournalHeader must be 4096 bytes")
  */
 struct JournalBlockRecord
 {
-    u64 block_num;  // Original block number on disk
-    u64 checksum;   // Simple checksum of block data
+    u64 block_num; // Original block number on disk
+    u64 checksum;  // Simple checksum of block data
 };
 
 /**
@@ -138,14 +138,14 @@ struct JournalBlockRecord
  */
 struct JournalTransaction
 {
-    u32 magic;           // JOURNAL_MAGIC
-    u8 state;            // txn_state value
-    u8 num_blocks;       // Number of blocks in this transaction
+    u32 magic;     // JOURNAL_MAGIC
+    u8 state;      // txn_state value
+    u8 num_blocks; // Number of blocks in this transaction
     u16 _padding;
-    u64 sequence;        // Transaction sequence number
-    u64 timestamp;       // Transaction timestamp
+    u64 sequence;                                  // Transaction sequence number
+    u64 timestamp;                                 // Transaction timestamp
     JournalBlockRecord blocks[MAX_JOURNAL_BLOCKS]; // Block records (32 * 16 = 512 bytes)
-    u8 _reserved[3560];  // Padding to 4096 bytes (4096 - 4 - 1 - 1 - 2 - 8 - 8 - 512 = 3560)
+    u8 _reserved[3560]; // Padding to 4096 bytes (4096 - 4 - 1 - 1 - 2 - 8 - 8 - 512 = 3560)
 };
 
 static_assert(sizeof(JournalTransaction) == 4096, "JournalTransaction must be 4096 bytes");
@@ -155,9 +155,9 @@ static_assert(sizeof(JournalTransaction) == 4096, "JournalTransaction must be 40
  */
 struct JournalCommit
 {
-    u32 magic;       // JOURNAL_MAGIC
-    u64 sequence;    // Must match transaction sequence
-    u32 checksum;    // Checksum of entire transaction
+    u32 magic;          // JOURNAL_MAGIC
+    u64 sequence;       // Must match transaction sequence
+    u32 checksum;       // Checksum of entire transaction
     u8 _reserved[4076]; // Padding to 4096 bytes
 };
 

@@ -19,6 +19,7 @@
 
 #include "bootinfo.hpp"
 #include "../console/serial.hpp"
+#include "../dtb/fdt.hpp"
 #include "../include/vboot.hpp"
 
 // Linker-provided symbols
@@ -106,15 +107,13 @@ void parse_vboot(const viper::vboot::Info *vboot)
 }
 
 /**
- * @brief Set up conservative defaults for QEMU direct boot (`-kernel`).
+ * @brief Set up boot info from FDT or use conservative defaults.
  *
  * @details
- * When booted via QEMU `-kernel`, the kernel typically receives a DTB
- * pointer in x0. Full DTB parsing is not always available during early
- * bring-up, so this helper uses hardcoded defaults for the QEMU `virt`
- * machine:
- * - Assume RAM begins at `0x40000000`.
- * - Assume 128 MiB of usable RAM.
+ * When booted via QEMU `-kernel`, the kernel receives a DTB pointer in x0.
+ * This function attempts to parse the FDT to extract memory regions. If
+ * parsing fails, it falls back to hardcoded defaults for the QEMU `virt`
+ * machine.
  *
  * The framebuffer is left empty because GOP is not available; a RAM
  * framebuffer (ramfb) may be configured later by a device driver.
@@ -131,22 +130,53 @@ void setup_qemu_defaults(void *dtb)
     // No GOP framebuffer - will use ramfb
     g_boot_info.framebuffer = {};
 
-    // QEMU virt machine defaults
-    // RAM starts at 0x40000000, we assume 128MB for now
-    // The actual size should ideally come from DTB parsing
-    constexpr u64 QEMU_VIRT_RAM_BASE = 0x40000000;
-    constexpr u64 QEMU_VIRT_RAM_SIZE = 128 * 1024 * 1024; // 128 MB
-
-    g_boot_info.memory_region_count = 1;
-    g_boot_info.memory_regions[0].base = QEMU_VIRT_RAM_BASE;
-    g_boot_info.memory_regions[0].size = QEMU_VIRT_RAM_SIZE;
-    g_boot_info.memory_regions[0].type = MemoryType::Usable;
-
-    // Kernel info - we don't know exact values for direct boot
-    // The kernel is loaded at RAM_BASE, size is determined by linker
+    // Kernel info from linker symbols
     g_boot_info.kernel_phys_base = reinterpret_cast<u64>(__kernel_start);
     g_boot_info.kernel_size =
         reinterpret_cast<u64>(__kernel_end) - reinterpret_cast<u64>(__kernel_start);
+
+    // Try to parse memory layout from FDT
+    fdt::MemoryLayout fdt_layout;
+    if (fdt::is_valid(dtb) && fdt::parse_memory(dtb, &fdt_layout))
+    {
+        serial::puts("[bootinfo] Using FDT memory layout\n");
+
+        // Copy memory regions from FDT
+        g_boot_info.memory_region_count = 0;
+        for (u32 i = 0; i < fdt_layout.region_count && i < MAX_MEMORY_REGIONS; i++)
+        {
+            g_boot_info.memory_regions[i].base = fdt_layout.regions[i].base;
+            g_boot_info.memory_regions[i].size = fdt_layout.regions[i].size;
+            g_boot_info.memory_regions[i].type = MemoryType::Usable;
+            g_boot_info.memory_region_count++;
+        }
+
+        // Mark reserved regions
+        for (u32 i = 0; i < fdt_layout.reserved_count; i++)
+        {
+            // Add reserved regions as separate entries if we have room
+            if (g_boot_info.memory_region_count < MAX_MEMORY_REGIONS)
+            {
+                u32 idx = g_boot_info.memory_region_count++;
+                g_boot_info.memory_regions[idx].base = fdt_layout.reserved[i].base;
+                g_boot_info.memory_regions[idx].size = fdt_layout.reserved[i].size;
+                g_boot_info.memory_regions[idx].type = MemoryType::Reserved;
+            }
+        }
+    }
+    else
+    {
+        // Fall back to QEMU virt machine defaults
+        serial::puts("[bootinfo] FDT parse failed, using QEMU defaults\n");
+
+        constexpr u64 QEMU_VIRT_RAM_BASE = 0x40000000;
+        constexpr u64 QEMU_VIRT_RAM_SIZE = 128 * 1024 * 1024; // 128 MB
+
+        g_boot_info.memory_region_count = 1;
+        g_boot_info.memory_regions[0].base = QEMU_VIRT_RAM_BASE;
+        g_boot_info.memory_regions[0].size = QEMU_VIRT_RAM_SIZE;
+        g_boot_info.memory_regions[0].type = MemoryType::Usable;
+    }
 }
 } // namespace
 

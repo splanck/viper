@@ -48,10 +48,10 @@ constexpr usize MAX_CACHES = 16;
  */
 struct Slab
 {
-    Slab *next;           ///< Next slab in the cache's slab list
-    void *free_list;      ///< Head of free object list within this slab
-    u32 in_use;           ///< Number of objects currently allocated
-    u32 total;            ///< Total number of objects in this slab
+    Slab *next;      ///< Next slab in the cache's slab list
+    void *free_list; ///< Head of free object list within this slab
+    u32 in_use;      ///< Number of objects currently allocated
+    u32 total;       ///< Total number of objects in this slab
 };
 
 /**
@@ -63,14 +63,14 @@ struct Slab
  */
 struct SlabCache
 {
-    char name[MAX_CACHE_NAME];  ///< Cache name for debugging
-    u32 object_size;            ///< Size of each object in bytes
-    u32 objects_per_slab;       ///< Number of objects per 4KB slab
-    Slab *slab_list;            ///< List of all slabs in this cache
-    Slab *partial_list;         ///< Slabs with free objects (fast path)
-    u64 alloc_count;            ///< Total allocations (statistics)
-    u64 free_count;             ///< Total frees (statistics)
-    bool active;                ///< Whether this cache slot is in use
+    char name[MAX_CACHE_NAME]; ///< Cache name for debugging
+    u32 object_size;           ///< Size of each object in bytes
+    u32 objects_per_slab;      ///< Number of objects per 4KB slab
+    Slab *slab_list;           ///< List of all slabs in this cache
+    Slab *partial_list;        ///< Slabs with free objects (fast path)
+    u64 alloc_count;           ///< Total allocations (statistics)
+    u64 free_count;            ///< Total frees (statistics)
+    bool active;               ///< Whether this cache slot is in use
 };
 
 /**

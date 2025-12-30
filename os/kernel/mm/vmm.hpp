@@ -60,6 +60,10 @@ constexpr u64 ATTR(u64 idx)
 // Common attribute indices (must match MAIR setup)
 constexpr u64 ATTR_DEVICE = 0; // Device memory
 constexpr u64 ATTR_NORMAL = 1; // Normal cacheable memory
+
+// Block sizes for large page support
+constexpr u64 BLOCK_2MB = 1ULL << 21; // 2MB block (L2 descriptor)
+constexpr u64 BLOCK_1GB = 1ULL << 30; // 1GB block (L1 descriptor)
 } // namespace pte
 
 // Common page flags
@@ -75,6 +79,17 @@ constexpr u64 PAGE_KERNEL_RO = pte::VALID | pte::PAGE | pte::AF | pte::SH_INNER 
 /** @brief Device-memory mapping for MMIO registers. */
 constexpr u64 PAGE_DEVICE = pte::VALID | pte::PAGE | pte::AF | pte::SH_NONE | pte::AP_RW_EL1 |
                             pte::UXN | pte::PXN | pte::ATTR(pte::ATTR_DEVICE);
+
+// 2MB block flags (for L2 block descriptors - bit 1 = 0 for block, not table)
+/** @brief Kernel read/write 2MB block for normal cacheable memory. */
+constexpr u64 BLOCK_KERNEL_RW = pte::VALID | pte::BLOCK | pte::AF | pte::SH_INNER | pte::AP_RW_EL1 |
+                                pte::UXN | pte::ATTR(pte::ATTR_NORMAL);
+/** @brief User read/write 2MB block for normal cacheable memory. */
+constexpr u64 BLOCK_USER_RW = pte::VALID | pte::BLOCK | pte::AF | pte::SH_INNER | pte::AP_RW_ALL |
+                              pte::PXN | pte::ATTR(pte::ATTR_NORMAL);
+/** @brief User read-only 2MB block for normal cacheable memory. */
+constexpr u64 BLOCK_USER_RO = pte::VALID | pte::BLOCK | pte::AF | pte::SH_INNER | pte::AP_RO_ALL |
+                              pte::PXN | pte::ATTR(pte::ATTR_NORMAL);
 
 /**
  * @brief Initialize the virtual memory manager.
@@ -116,6 +131,32 @@ bool map_page(u64 virt, u64 phys, u64 flags);
  * @return `true` if the entire range is mapped, otherwise `false`.
  */
 bool map_range(u64 virt, u64 phys, u64 size, u64 flags);
+
+/**
+ * @brief Map a 2MB block using an L2 block descriptor.
+ *
+ * @details
+ * Installs an L2 block descriptor for efficient mapping of large contiguous
+ * regions. Both virtual and physical addresses must be 2MB-aligned. Uses fewer
+ * TLB entries than equivalent 4KB page mappings.
+ *
+ * @param virt Virtual address (must be 2MB-aligned).
+ * @param phys Physical address (must be 2MB-aligned).
+ * @param flags Block descriptor flags (use BLOCK_* presets).
+ * @return `true` on success, `false` on alignment error or allocation failure.
+ */
+bool map_block_2mb(u64 virt, u64 phys, u64 flags);
+
+/**
+ * @brief Unmap a 2MB block.
+ *
+ * @details
+ * Clears the L2 block descriptor for `virt` and invalidates the TLB.
+ * The address must be 2MB-aligned.
+ *
+ * @param virt Virtual address to unmap (must be 2MB-aligned).
+ */
+void unmap_block_2mb(u64 virt);
 
 /**
  * @brief Unmap a single 4KiB page.

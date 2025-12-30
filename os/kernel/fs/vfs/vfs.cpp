@@ -17,6 +17,7 @@
  */
 #include "vfs.hpp"
 #include "../../console/console.hpp"
+#include "../../console/gcon.hpp"
 #include "../../console/serial.hpp"
 #include "../../lib/str.hpp"
 #include "../../sched/task.hpp"
@@ -411,6 +412,10 @@ i64 write(i32 fd, const void *buf, usize len)
             for (usize i = 0; i < len; i++)
             {
                 serial::putc(s[i]);
+                if (gcon::is_available())
+                {
+                    gcon::putc(s[i]);
+                }
             }
             return static_cast<i64>(len);
         }

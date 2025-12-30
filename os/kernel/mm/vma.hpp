@@ -45,6 +45,16 @@ constexpr u32 EXEC = 4;
 } // namespace vma_prot
 
 /**
+ * @brief VMA flags for COW and sharing.
+ */
+namespace vma_flags
+{
+constexpr u8 NONE = 0;
+constexpr u8 COW = (1 << 0);    ///< This VMA has COW pages
+constexpr u8 SHARED = (1 << 1); ///< Shared mapping (don't COW on fork)
+} // namespace vma_flags
+
+/**
  * @brief Virtual Memory Area descriptor.
  *
  * @details
@@ -53,15 +63,16 @@ constexpr u32 EXEC = 4;
  */
 struct Vma
 {
-    u64 start;        // Start address (page-aligned)
-    u64 end;          // End address (exclusive, page-aligned)
-    u32 prot;         // Protection flags (vma_prot)
-    VmaType type;     // Backing type
-    u8 _padding[3];
+    u64 start;    // Start address (page-aligned)
+    u64 end;      // End address (exclusive, page-aligned)
+    u32 prot;     // Protection flags (vma_prot)
+    VmaType type; // Backing type
+    u8 flags;     // VMA flags (vma_flags)
+    u8 _padding[2];
 
     // For file-backed VMAs
-    u64 file_inode;   // Inode number (0 if anonymous)
-    u64 file_offset;  // Offset within file
+    u64 file_inode;  // Inode number (0 if anonymous)
+    u64 file_offset; // Offset within file
 
     // Linked list
     Vma *next;
@@ -177,7 +188,7 @@ class VmaList
     void clear();
 
   private:
-    Vma pool_[MAX_VMAS]; // Static pool of VMA structures
+    Vma pool_[MAX_VMAS];  // Static pool of VMA structures
     bool used_[MAX_VMAS]; // Which pool entries are in use
     Vma *head_{nullptr};  // Head of sorted linked list
     usize count_{0};      // Number of active VMAs
@@ -203,10 +214,10 @@ class VmaList
  */
 enum class FaultResult
 {
-    HANDLED,      // Fault was handled, resume execution
-    UNHANDLED,    // Fault was not in a VMA, terminate process
-    STACK_GROW,   // Stack was grown, resume execution
-    ERROR,        // Error occurred during handling
+    HANDLED,    // Fault was handled, resume execution
+    UNHANDLED,  // Fault was not in a VMA, terminate process
+    STACK_GROW, // Stack was grown, resume execution
+    ERROR,      // Error occurred during handling
 };
 
 /**
@@ -218,7 +229,9 @@ enum class FaultResult
  * @param map_callback Callback to map a physical page.
  * @return Result indicating how the fault was handled.
  */
-FaultResult handle_demand_fault(VmaList *vma_list, u64 fault_addr, bool is_write,
+FaultResult handle_demand_fault(VmaList *vma_list,
+                                u64 fault_addr,
+                                bool is_write,
                                 bool (*map_callback)(u64 virt, u64 phys, u32 prot));
 
 } // namespace mm

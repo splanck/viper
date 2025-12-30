@@ -175,7 +175,8 @@ static void test_assign_parse_path()
     if (viper::assign::parse_assign("SYS:test/file.txt", assign_name, &remainder))
     {
         // Check assign name is "SYS"
-        bool name_ok = (assign_name[0] == 'S' && assign_name[1] == 'Y' && assign_name[2] == 'S' && assign_name[3] == '\0');
+        bool name_ok = (assign_name[0] == 'S' && assign_name[1] == 'Y' && assign_name[2] == 'S' &&
+                        assign_name[3] == '\0');
         // Check remainder is "test/file.txt"
         bool rem_ok = (remainder != nullptr && remainder[0] == 't');
 

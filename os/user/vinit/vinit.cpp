@@ -113,9 +113,23 @@ bool strstart(const char *s, const char *prefix)
  *
  * @param s NUL-terminated string to print.
  */
+// Forward declarations for paging (defined below)
+static bool g_paging = false;
+static bool g_page_quit = false;
+static int g_page_line = 0;
+constexpr int SCREEN_HEIGHT = 24;
+void paged_print(const char *s);
+
 void print_str(const char *s)
 {
-    sys::print(s);
+    if (g_paging)
+    {
+        paged_print(s);
+    }
+    else
+    {
+        sys::print(s);
+    }
 }
 
 /**
@@ -133,6 +147,141 @@ void print_char(char c)
 {
     sys::putchar(c);
 }
+
+/** @} */
+
+/** @name Paging support
+ *  @brief Output pagination for long command output.
+ *  @{
+ */
+
+/**
+ * @brief Wait for user keypress during paging.
+ *
+ * @details
+ * Displays a prompt and waits for user input:
+ * - Space or Enter: continue to next page
+ * - Q or q: quit paging, suppress remaining output
+ * - Any other key: show one more line
+ *
+ * @return true to continue, false to quit
+ */
+bool page_wait()
+{
+    sys::print("\x1b[7m-- More (Space=page, Enter=line, Q=quit) --\x1b[0m");
+
+    // Wait for a character (blocking getchar)
+    int c = sys::getchar();
+
+    // Clear the prompt
+    sys::print("\r\x1b[K");
+
+    if (c == 'q' || c == 'Q')
+    {
+        g_page_quit = true;
+        return false;
+    }
+    else if (c == ' ')
+    {
+        // Next page
+        g_page_line = 0;
+        return true;
+    }
+    else if (c == '\r' || c == '\n')
+    {
+        // One more line
+        g_page_line = SCREEN_HEIGHT - 1;
+        return true;
+    }
+    else
+    {
+        // Any other key: next page
+        g_page_line = 0;
+        return true;
+    }
+}
+
+/**
+ * @brief Print a string with paging support.
+ *
+ * @param s NUL-terminated string to print.
+ */
+void paged_print(const char *s)
+{
+    if (!g_paging || g_page_quit)
+    {
+        if (!g_page_quit)
+            sys::print(s);
+        return;
+    }
+
+    while (*s)
+    {
+        if (g_page_quit)
+            return;
+
+        sys::putchar(*s);
+
+        if (*s == '\n')
+        {
+            g_page_line++;
+            if (g_page_line >= SCREEN_HEIGHT - 1)
+            {
+                if (!page_wait())
+                    return;
+            }
+        }
+        s++;
+    }
+}
+
+/**
+ * @brief Print a character with paging support.
+ *
+ * @param c Character to print.
+ */
+void paged_putc(char c)
+{
+    if (!g_paging || g_page_quit)
+    {
+        if (!g_page_quit)
+            sys::putchar(c);
+        return;
+    }
+
+    sys::putchar(c);
+
+    if (c == '\n')
+    {
+        g_page_line++;
+        if (g_page_line >= SCREEN_HEIGHT - 1)
+        {
+            page_wait();
+        }
+    }
+}
+
+/**
+ * @brief Start paging mode.
+ */
+void paging_start()
+{
+    g_paging = true;
+    g_page_line = 0;
+    g_page_quit = false;
+}
+
+/**
+ * @brief Stop paging mode.
+ */
+void paging_stop()
+{
+    g_paging = false;
+    g_page_line = 0;
+    g_page_quit = false;
+}
+
+/** @} */
 
 /**
  * @brief Print a signed integer in decimal.
@@ -882,6 +1031,7 @@ void cmd_help()
     print_str("  Avail          - Show memory availability\n");
     print_str("  Status         - Show running tasks\n");
     print_str("  Run <path>     - Execute program\n");
+    print_str("  Read <cmd>     - Run command with paged output\n");
     print_str("  Caps [handle]  - Show capabilities (derive/revoke test)\n");
     print_str("  Date           - Show current date\n");
     print_str("  Time           - Show current time\n");
@@ -2876,165 +3026,184 @@ void shell_loop()
         // Add to history
         history_add(line);
 
+        // Check for "read" prefix to enable paging
+        bool do_paging = false;
+        char *cmd_line = line;
+        if (strcasestart(line, "read "))
+        {
+            do_paging = true;
+            cmd_line = const_cast<char *>(get_args(line, 5));
+            if (!cmd_line || *cmd_line == '\0')
+            {
+                print_str("Read: missing command\n");
+                print_str("Usage: read <command> - run command with paged output\n");
+                last_rc = RC_ERROR;
+                continue;
+            }
+            paging_start();
+        }
+
         // Parse and execute command (case-insensitive)
         // Help
-        if (strcaseeq(line, "help") || strcaseeq(line, "?"))
+        if (strcaseeq(cmd_line, "help") || strcaseeq(cmd_line, "?"))
         {
             cmd_help();
         }
         // Cls (clear screen)
-        else if (strcaseeq(line, "cls") || strcaseeq(line, "clear"))
+        else if (strcaseeq(cmd_line, "cls") || strcaseeq(cmd_line, "clear"))
         {
             cmd_cls();
         }
         // Echo
-        else if (strcasestart(line, "echo ") || strcaseeq(line, "echo"))
+        else if (strcasestart(cmd_line, "echo ") || strcaseeq(cmd_line, "echo"))
         {
-            cmd_echo(get_args(line, 5));
+            cmd_echo(get_args(cmd_line, 5));
         }
         // Version (was uname)
-        else if (strcaseeq(line, "version"))
+        else if (strcaseeq(cmd_line, "version"))
         {
             cmd_version();
         }
         // Uptime
-        else if (strcaseeq(line, "uptime"))
+        else if (strcaseeq(cmd_line, "uptime"))
         {
             cmd_uptime();
         }
         // History
-        else if (strcaseeq(line, "history"))
+        else if (strcaseeq(cmd_line, "history"))
         {
             cmd_history();
         }
         // Why (explain last error)
-        else if (strcaseeq(line, "why"))
+        else if (strcaseeq(cmd_line, "why"))
         {
             cmd_why();
         }
         // chdir (change directory)
-        else if (strcaseeq(line, "chdir") || strcasestart(line, "chdir "))
+        else if (strcaseeq(cmd_line, "chdir") || strcasestart(cmd_line, "chdir "))
         {
-            cmd_cd(get_args(line, 6));
+            cmd_cd(get_args(cmd_line, 6));
         }
         // cwd (current working directory)
-        else if (strcaseeq(line, "cwd"))
+        else if (strcaseeq(cmd_line, "cwd"))
         {
             cmd_pwd();
         }
         // Avail (memory)
-        else if (strcaseeq(line, "avail"))
+        else if (strcaseeq(cmd_line, "avail"))
         {
             cmd_avail();
         }
         // Status (processes)
-        else if (strcaseeq(line, "status"))
+        else if (strcaseeq(cmd_line, "status"))
         {
             cmd_status();
         }
         // Run (spawn program)
-        else if (strcasestart(line, "run "))
+        else if (strcasestart(cmd_line, "run "))
         {
-            cmd_run(get_args(line, 4));
+            cmd_run(get_args(cmd_line, 4));
         }
-        else if (strcaseeq(line, "run"))
+        else if (strcaseeq(cmd_line, "run"))
         {
             print_str("Run: missing program path\n");
             last_rc = RC_ERROR;
         }
         // Caps (capabilities)
-        else if (strcaseeq(line, "caps") || strcasestart(line, "caps "))
+        else if (strcaseeq(cmd_line, "caps") || strcasestart(cmd_line, "caps "))
         {
-            cmd_caps(get_args(line, 5));
+            cmd_caps(get_args(cmd_line, 5));
         }
         // Date
-        else if (strcaseeq(line, "date"))
+        else if (strcaseeq(cmd_line, "date"))
         {
             cmd_date();
         }
         // Time
-        else if (strcaseeq(line, "time"))
+        else if (strcaseeq(cmd_line, "time"))
         {
             cmd_time();
         }
         // Assign
-        else if (strcasestart(line, "assign ") || strcaseeq(line, "assign"))
+        else if (strcasestart(cmd_line, "assign ") || strcaseeq(cmd_line, "assign"))
         {
-            cmd_assign(get_args(line, 7));
+            cmd_assign(get_args(cmd_line, 7));
         }
         // Path
-        else if (strcasestart(line, "path ") || strcaseeq(line, "path"))
+        else if (strcasestart(cmd_line, "path ") || strcaseeq(cmd_line, "path"))
         {
-            cmd_path(get_args(line, 5));
+            cmd_path(get_args(cmd_line, 5));
         }
         // Dir (brief listing)
-        else if (strcaseeq(line, "dir") || strcasestart(line, "dir "))
+        else if (strcaseeq(cmd_line, "dir") || strcasestart(cmd_line, "dir "))
         {
-            cmd_dir(get_args(line, 4));
+            cmd_dir(get_args(cmd_line, 4));
         }
         // List (detailed listing)
-        else if (strcaseeq(line, "list") || strcasestart(line, "list "))
+        else if (strcaseeq(cmd_line, "list") || strcasestart(cmd_line, "list "))
         {
-            cmd_list(get_args(line, 5));
+            cmd_list(get_args(cmd_line, 5));
         }
         // Type (was cat)
-        else if (strcasestart(line, "type "))
+        else if (strcasestart(cmd_line, "type "))
         {
-            cmd_type(get_args(line, 5));
+            cmd_type(get_args(cmd_line, 5));
         }
-        else if (strcaseeq(line, "type"))
+        else if (strcaseeq(cmd_line, "type"))
         {
             print_str("Type: missing file argument\n");
             last_rc = RC_ERROR;
         }
         // Copy
-        else if (strcasestart(line, "copy ") || strcaseeq(line, "copy"))
+        else if (strcasestart(cmd_line, "copy ") || strcaseeq(cmd_line, "copy"))
         {
-            cmd_copy(get_args(line, 5));
+            cmd_copy(get_args(cmd_line, 5));
         }
         // Delete
-        else if (strcasestart(line, "delete ") || strcaseeq(line, "delete"))
+        else if (strcasestart(cmd_line, "delete ") || strcaseeq(cmd_line, "delete"))
         {
-            cmd_delete(get_args(line, 7));
+            cmd_delete(get_args(cmd_line, 7));
         }
         // MakeDir
-        else if (strcasestart(line, "makedir ") || strcaseeq(line, "makedir"))
+        else if (strcasestart(cmd_line, "makedir ") || strcaseeq(cmd_line, "makedir"))
         {
-            cmd_makedir(get_args(line, 8));
+            cmd_makedir(get_args(cmd_line, 8));
         }
         // Rename
-        else if (strcasestart(line, "rename ") || strcaseeq(line, "rename"))
+        else if (strcasestart(cmd_line, "rename ") || strcaseeq(cmd_line, "rename"))
         {
-            cmd_rename(get_args(line, 7));
+            cmd_rename(get_args(cmd_line, 7));
         }
         // Fetch
-        else if (strcasestart(line, "fetch "))
+        else if (strcasestart(cmd_line, "fetch "))
         {
-            cmd_fetch(get_args(line, 6));
+            cmd_fetch(get_args(cmd_line, 6));
         }
-        else if (strcaseeq(line, "fetch"))
+        else if (strcaseeq(cmd_line, "fetch"))
         {
             print_str("Fetch: usage: Fetch <hostname>\n");
             last_rc = RC_ERROR;
         }
         // EndShell (was exit/quit)
-        else if (strcaseeq(line, "endshell") || strcaseeq(line, "exit") || strcaseeq(line, "quit"))
+        else if (strcaseeq(cmd_line, "endshell") || strcaseeq(cmd_line, "exit") || strcaseeq(cmd_line, "quit"))
         {
             print_str("Goodbye!\n");
+            if (do_paging)
+                paging_stop();
             break;
         }
         // Legacy command aliases for compatibility
-        else if (strcaseeq(line, "ls") || strcasestart(line, "ls "))
+        else if (strcaseeq(cmd_line, "ls") || strcasestart(cmd_line, "ls "))
         {
             print_str("Note: Use 'Dir' or 'List' instead of 'ls'\n");
-            cmd_dir(get_args(line, 3));
+            cmd_dir(get_args(cmd_line, 3));
         }
-        else if (strcasestart(line, "cat "))
+        else if (strcasestart(cmd_line, "cat "))
         {
             print_str("Note: Use 'Type' instead of 'cat'\n");
-            cmd_type(get_args(line, 4));
+            cmd_type(get_args(cmd_line, 4));
         }
-        else if (strcaseeq(line, "uname"))
+        else if (strcaseeq(cmd_line, "uname"))
         {
             print_str("Note: Use 'Version' instead of 'uname'\n");
             cmd_version();
@@ -3042,10 +3211,16 @@ void shell_loop()
         else
         {
             print_str("Unknown command: ");
-            print_str(line);
+            print_str(cmd_line);
             print_str("\nType 'Help' for available commands.\n");
             last_rc = RC_WARN;
             last_error = "Unknown command";
+        }
+
+        // Stop paging if it was enabled
+        if (do_paging)
+        {
+            paging_stop();
         }
     }
 }

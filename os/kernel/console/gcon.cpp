@@ -35,20 +35,20 @@ u32 fg_color = colors::VIPER_GREEN;
 u32 bg_color = colors::VIPER_DARK_BROWN;
 
 // Border constants
-constexpr u32 BORDER_WIDTH = 20;  // 20-pixel thick border
-constexpr u32 BORDER_PADDING = 8; // 8-pixel padding inside border
+constexpr u32 BORDER_WIDTH = 20;                          // 20-pixel thick border
+constexpr u32 BORDER_PADDING = 8;                         // 8-pixel padding inside border
 constexpr u32 TEXT_INSET = BORDER_WIDTH + BORDER_PADDING; // Total 28-pixel inset
-constexpr u32 BORDER_COLOR = 0xFF00AA00; // VIPER_GREEN for border
+constexpr u32 BORDER_COLOR = 0xFF00AA00;                  // VIPER_GREEN for border
 
 // Default colors for reset
 u32 default_fg = colors::VIPER_GREEN;
 u32 default_bg = colors::VIPER_DARK_BROWN;
 
 // Cursor state
-bool cursor_visible = false;      // Whether cursor should be shown
-bool cursor_blink_state = false;  // Current blink state (on/off)
-bool cursor_drawn = false;        // Whether cursor is currently drawn on screen
-u64 last_blink_time = 0;          // Last time cursor blink toggled
+bool cursor_visible = false;         // Whether cursor should be shown
+bool cursor_blink_state = false;     // Current blink state (on/off)
+bool cursor_drawn = false;           // Whether cursor is currently drawn on screen
+u64 last_blink_time = 0;             // Last time cursor blink toggled
 constexpr u64 CURSOR_BLINK_MS = 500; // Cursor blink interval in milliseconds
 
 /**
@@ -56,10 +56,10 @@ constexpr u64 CURSOR_BLINK_MS = 500; // Cursor blink interval in milliseconds
  */
 enum class AnsiState
 {
-    NORMAL,  // Normal character output
-    ESC,     // Saw ESC (0x1B)
-    CSI,     // Saw ESC[ (Control Sequence Introducer)
-    PARAM    // Collecting numeric parameters
+    NORMAL, // Normal character output
+    ESC,    // Saw ESC (0x1B)
+    CSI,    // Saw ESC[ (Control Sequence Introducer)
+    PARAM   // Collecting numeric parameters
 };
 
 // ANSI parser state
@@ -165,8 +165,10 @@ void draw_border()
 
     // Fill inner padding area with background color
     // This clears the area between border and text
-    fill_rect(BORDER_WIDTH, BORDER_WIDTH,
-              fb.width - 2 * BORDER_WIDTH, fb.height - 2 * BORDER_WIDTH,
+    fill_rect(BORDER_WIDTH,
+              BORDER_WIDTH,
+              fb.width - 2 * BORDER_WIDTH,
+              fb.height - 2 * BORDER_WIDTH,
               bg_color);
 }
 
@@ -564,6 +566,9 @@ void handle_csi(char final)
     u32 p1 = (ansi_param_count > 0) ? ansi_params[0] : 0;
     u32 p2 = (ansi_param_count > 1) ? ansi_params[1] : 0;
 
+    // Erase cursor before any operation that might move it
+    erase_cursor_if_drawn();
+
     switch (final)
     {
         case 'H': // CUP - Cursor Position
@@ -591,8 +596,10 @@ void handle_csi(char final)
             {
                 // Clear entire screen (preserve border)
                 const auto &fb_info = ramfb::get_info();
-                fill_rect(TEXT_INSET, TEXT_INSET,
-                          fb_info.width - 2 * TEXT_INSET, fb_info.height - 2 * TEXT_INSET,
+                fill_rect(TEXT_INSET,
+                          TEXT_INSET,
+                          fb_info.width - 2 * TEXT_INSET,
+                          fb_info.height - 2 * TEXT_INSET,
                           bg_color);
                 cursor_x = 0;
                 cursor_y = 0;
@@ -620,42 +627,42 @@ void handle_csi(char final)
             break;
 
         case 'A': // CUU - Cursor Up
-            {
-                u32 n = (p1 > 0) ? p1 : 1;
-                if (cursor_y >= n)
-                    cursor_y -= n;
-                else
-                    cursor_y = 0;
-            }
-            break;
+        {
+            u32 n = (p1 > 0) ? p1 : 1;
+            if (cursor_y >= n)
+                cursor_y -= n;
+            else
+                cursor_y = 0;
+        }
+        break;
 
         case 'B': // CUD - Cursor Down
-            {
-                u32 n = (p1 > 0) ? p1 : 1;
-                cursor_y += n;
-                if (cursor_y >= rows)
-                    cursor_y = rows - 1;
-            }
-            break;
+        {
+            u32 n = (p1 > 0) ? p1 : 1;
+            cursor_y += n;
+            if (cursor_y >= rows)
+                cursor_y = rows - 1;
+        }
+        break;
 
         case 'C': // CUF - Cursor Forward
-            {
-                u32 n = (p1 > 0) ? p1 : 1;
-                cursor_x += n;
-                if (cursor_x >= cols)
-                    cursor_x = cols - 1;
-            }
-            break;
+        {
+            u32 n = (p1 > 0) ? p1 : 1;
+            cursor_x += n;
+            if (cursor_x >= cols)
+                cursor_x = cols - 1;
+        }
+        break;
 
         case 'D': // CUB - Cursor Back
-            {
-                u32 n = (p1 > 0) ? p1 : 1;
-                if (cursor_x >= n)
-                    cursor_x -= n;
-                else
-                    cursor_x = 0;
-            }
-            break;
+        {
+            u32 n = (p1 > 0) ? p1 : 1;
+            if (cursor_x >= n)
+                cursor_x -= n;
+            else
+                cursor_x = 0;
+        }
+        break;
 
         case 'h': // SM - Set Mode
             if (ansi_private_mode && p1 == 25)
@@ -683,6 +690,9 @@ void handle_csi(char final)
             // Unknown sequence - ignore
             break;
     }
+
+    // Redraw cursor at new position (if visible)
+    draw_cursor_if_visible();
 }
 
 /**
@@ -836,10 +846,11 @@ void putc(char c)
             } while (cursor_x % 8 != 0 && cursor_x < cols);
             break;
         case '\b':
+            // Backspace only moves cursor left, does NOT erase (VT100 behavior)
+            // Applications that want destructive backspace use "\b \b"
             if (cursor_x > 0)
             {
                 cursor_x--;
-                draw_char(cursor_x, cursor_y, ' ');
             }
             break;
         case '\x1B':
@@ -881,9 +892,8 @@ void clear()
 
     // Only clear the inner text area, preserving the border
     const auto &fb = ramfb::get_info();
-    fill_rect(TEXT_INSET, TEXT_INSET,
-              fb.width - 2 * TEXT_INSET, fb.height - 2 * TEXT_INSET,
-              bg_color);
+    fill_rect(
+        TEXT_INSET, TEXT_INSET, fb.width - 2 * TEXT_INSET, fb.height - 2 * TEXT_INSET, bg_color);
 
     cursor_x = 0;
     cursor_y = 0;

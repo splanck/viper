@@ -61,10 +61,10 @@ constexpr usize TCP_HEADER_MSS = 24;
  */
 namespace option
 {
-constexpr u8 END = 0;        ///< End of option list
-constexpr u8 NOP = 1;        ///< No operation (padding)
-constexpr u8 MSS = 2;        ///< Maximum Segment Size
-constexpr u8 MSS_LEN = 4;    ///< MSS option length
+constexpr u8 END = 0;     ///< End of option list
+constexpr u8 NOP = 1;     ///< No operation (padding)
+constexpr u8 MSS = 2;     ///< Maximum Segment Size
+constexpr u8 MSS_LEN = 4; ///< MSS option length
 } // namespace option
 
 /** @brief Default MSS for Ethernet (MTU 1500 - IP header - TCP header). */
@@ -154,9 +154,9 @@ struct TcpSocket
     u8 retransmit_count;                               // Number of retries attempted
 
     // Retransmit constants
-    static constexpr u32 RTO_INITIAL = 1000;  // Initial RTO: 1 second
-    static constexpr u32 RTO_MAX = 60000;     // Max RTO: 60 seconds
-    static constexpr u8 RETRANSMIT_MAX = 5;   // Max retries before giving up
+    static constexpr u32 RTO_INITIAL = 1000; // Initial RTO: 1 second
+    static constexpr u32 RTO_MAX = 60000;    // Max RTO: 60 seconds
+    static constexpr u8 RETRANSMIT_MAX = 5;  // Max retries before giving up
 
     // Timeout tracking
     u64 last_activity;
@@ -167,8 +167,8 @@ struct TcpSocket
     u32 dup_acks; // Duplicate ACK count (for fast retransmit)
 
     // RTT estimation (RFC 6298)
-    u32 srtt;   // Smoothed RTT (microseconds * 8)
-    u32 rttvar; // RTT variance (microseconds * 4)
+    u32 srtt;          // Smoothed RTT (microseconds * 8)
+    u32 rttvar;        // RTT variance (microseconds * 4)
     bool rtt_measured; // Have we measured an RTT sample?
 
     // Flight size tracking
@@ -180,15 +180,15 @@ struct TcpSocket
     static constexpr u32 DUP_ACK_THRESHOLD = 3;      // Fast retransmit threshold
 
     // Out-of-order segment queue for reassembly
-    static constexpr usize OOO_MAX_SEGMENTS = 8;     // Max out-of-order segments to buffer
-    static constexpr usize OOO_SEGMENT_SIZE = 1460;  // Max size per OOO segment
+    static constexpr usize OOO_MAX_SEGMENTS = 8;    // Max out-of-order segments to buffer
+    static constexpr usize OOO_SEGMENT_SIZE = 1460; // Max size per OOO segment
 
     struct OooSegment
     {
-        u32 seq;                    // Sequence number of segment
-        u16 len;                    // Length of segment data
-        bool valid;                 // Segment is valid
-        u8 data[OOO_SEGMENT_SIZE];  // Segment data
+        u32 seq;                   // Sequence number of segment
+        u16 len;                   // Length of segment data
+        bool valid;                // Segment is valid
+        u8 data[OOO_SEGMENT_SIZE]; // Segment data
     };
 
     OooSegment ooo_queue[OOO_MAX_SEGMENTS]; // Out-of-order segment queue

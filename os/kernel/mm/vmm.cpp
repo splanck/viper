@@ -62,27 +62,73 @@ inline u64 l3_index(u64 va)
 // Physical address mask for table entries
 constexpr u64 PHYS_MASK = 0x0000FFFFFFFFF000ULL;
 
-// Get or allocate next-level table
 /**
- * @brief Retrieve or allocate the next-level page table.
+ * @brief Tracks newly allocated page tables for rollback on failure.
+ *
+ * @details
+ * When mapping a page, we may need to allocate up to 3 intermediate page
+ * tables (L1, L2, L3). If allocation fails partway through, we need to free
+ * any tables we already allocated to avoid memory leaks.
+ */
+struct TableAllocation
+{
+    u64 tables[3]; ///< Physical addresses of allocated tables
+    u32 count;     ///< Number of tables allocated
+
+    TableAllocation() : count(0)
+    {
+        tables[0] = tables[1] = tables[2] = 0;
+    }
+
+    /**
+     * @brief Record a newly allocated table.
+     */
+    void add(u64 table_phys)
+    {
+        if (count < 3)
+        {
+            tables[count++] = table_phys;
+        }
+    }
+
+    /**
+     * @brief Free all recorded tables (rollback).
+     */
+    void rollback()
+    {
+        for (u32 i = 0; i < count; i++)
+        {
+            if (tables[i] != 0)
+            {
+                pmm::free_page(tables[i]);
+            }
+        }
+        count = 0;
+    }
+};
+
+/**
+ * @brief Retrieve or allocate the next-level page table with rollback tracking.
  *
  * @details
  * For a given table level, the entry at `index` either references a valid
  * next-level table (VALID+TABLE) or is empty. When empty, this function
  * allocates a new page from the PMM, zeros it, installs the descriptor, and
- * returns the new table pointer.
+ * returns the new table pointer. Newly allocated tables are recorded in
+ * `allocated` for potential rollback.
  *
  * @param table Current level table.
  * @param index Index into `table`.
+ * @param allocated Tracking structure for newly allocated tables.
  * @return Next-level table pointer, or `nullptr` if allocation fails.
  */
-u64 *get_or_create_table(u64 *table, u64 index)
+u64 *get_or_create_table(u64 *table, u64 index, TableAllocation &allocated)
 {
     u64 entry = table[index];
 
     if (entry & pte::VALID)
     {
-        // Table already exists
+        // Table already exists - no allocation needed
         return reinterpret_cast<u64 *>(entry & PHYS_MASK);
     }
 
@@ -93,6 +139,9 @@ u64 *get_or_create_table(u64 *table, u64 index)
         serial::puts("[vmm] ERROR: Failed to allocate page table!\n");
         return nullptr;
     }
+
+    // Track this allocation for potential rollback
+    allocated.add(new_table);
 
     // Zero the new table
     u64 *ptr = reinterpret_cast<u64 *>(new_table);
@@ -149,26 +198,31 @@ bool map_page(u64 virt, u64 phys, u64 flags)
         return false;
     }
 
-    // Walk/create page tables
-    //
-    // NOTE: If allocation fails at L2 or L3 level, previously-allocated
-    // intermediate tables are not rolled back. This is a known limitation.
-    // In practice, page table allocation failure only occurs when the system
-    // is critically low on memory, at which point leaked page tables are a
-    // minor concern. Full rollback would require tracking which tables were
-    // newly allocated vs already existed, adding significant complexity.
+    // Track newly allocated tables for rollback on failure
+    TableAllocation allocated;
+
+    // Walk/create page tables with rollback support
     u64 *l0 = pgt_root;
-    u64 *l1 = get_or_create_table(l0, l0_index(virt));
+    u64 *l1 = get_or_create_table(l0, l0_index(virt), allocated);
     if (!l1)
+    {
+        allocated.rollback();
         return false;
+    }
 
-    u64 *l2 = get_or_create_table(l1, l1_index(virt));
+    u64 *l2 = get_or_create_table(l1, l1_index(virt), allocated);
     if (!l2)
+    {
+        allocated.rollback();
         return false;
+    }
 
-    u64 *l3 = get_or_create_table(l2, l2_index(virt));
+    u64 *l3 = get_or_create_table(l2, l2_index(virt), allocated);
     if (!l3)
+    {
+        allocated.rollback();
         return false;
+    }
 
     // Install page entry
     u64 idx = l3_index(virt);
@@ -194,6 +248,95 @@ bool map_range(u64 virt, u64 phys, u64 size, u64 flags)
     }
 
     return true;
+}
+
+/** @copydoc vmm::map_block_2mb */
+bool map_block_2mb(u64 virt, u64 phys, u64 flags)
+{
+    if (!pgt_root)
+    {
+        serial::puts("[vmm] ERROR: VMM not initialized!\n");
+        return false;
+    }
+
+    // Alignment checks - both addresses must be 2MB aligned
+    if ((virt & (pte::BLOCK_2MB - 1)) != 0)
+    {
+        serial::puts("[vmm] ERROR: Virtual address not 2MB aligned: ");
+        serial::put_hex(virt);
+        serial::puts("\n");
+        return false;
+    }
+
+    if ((phys & (pte::BLOCK_2MB - 1)) != 0)
+    {
+        serial::puts("[vmm] ERROR: Physical address not 2MB aligned: ");
+        serial::put_hex(phys);
+        serial::puts("\n");
+        return false;
+    }
+
+    // Track newly allocated tables for rollback on failure
+    TableAllocation allocated;
+
+    // Walk/create page tables down to L2 (not L3 - we install block there)
+    u64 *l0 = pgt_root;
+    u64 *l1 = get_or_create_table(l0, l0_index(virt), allocated);
+    if (!l1)
+    {
+        allocated.rollback();
+        return false;
+    }
+
+    u64 *l2 = get_or_create_table(l1, l1_index(virt), allocated);
+    if (!l2)
+    {
+        allocated.rollback();
+        return false;
+    }
+
+    // Install 2MB block descriptor at L2
+    // Note: For a block, bit 1 = 0 (not TABLE), which is already in the flags
+    u64 idx = l2_index(virt);
+    l2[idx] = (phys & ~(pte::BLOCK_2MB - 1)) | flags;
+
+    // Invalidate TLB for this range
+    // For a 2MB block, we need to invalidate all 512 pages within it
+    // Using a range-based invalidation would be more efficient, but
+    // for simplicity we use the full TLB invalidation
+    invalidate_all();
+
+    return true;
+}
+
+/** @copydoc vmm::unmap_block_2mb */
+void unmap_block_2mb(u64 virt)
+{
+    if (!pgt_root)
+        return;
+
+    // Alignment check
+    if ((virt & (pte::BLOCK_2MB - 1)) != 0)
+        return;
+
+    // Walk page tables to L2
+    u64 *l0 = pgt_root;
+    u64 l0e = l0[l0_index(virt)];
+    if (!(l0e & pte::VALID))
+        return;
+
+    u64 *l1 = reinterpret_cast<u64 *>(l0e & PHYS_MASK);
+    u64 l1e = l1[l1_index(virt)];
+    if (!(l1e & pte::VALID))
+        return;
+
+    u64 *l2 = reinterpret_cast<u64 *>(l1e & PHYS_MASK);
+
+    // Clear the L2 entry
+    l2[l2_index(virt)] = 0;
+
+    // Invalidate TLB
+    invalidate_all();
 }
 
 /** @copydoc vmm::unmap_page */

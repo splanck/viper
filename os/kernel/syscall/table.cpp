@@ -47,8 +47,8 @@
 #include "../net/tls/tls.hpp"
 #include "../sched/scheduler.hpp"
 #include "../sched/task.hpp"
-#include "../viper/viper.hpp"
 #include "../viper/address_space.hpp"
+#include "../viper/viper.hpp"
 
 namespace syscall
 {
@@ -920,8 +920,7 @@ static SyscallResult sys_dns_resolve(u64 a0, u64 a1, u64, u64, u64, u64)
     // Convert Ipv4Addr to u32 (big-endian)
     *ip_out = (static_cast<u32>(result_ip.bytes[0]) << 24) |
               (static_cast<u32>(result_ip.bytes[1]) << 16) |
-              (static_cast<u32>(result_ip.bytes[2]) << 8) |
-              static_cast<u32>(result_ip.bytes[3]);
+              (static_cast<u32>(result_ip.bytes[2]) << 8) | static_cast<u32>(result_ip.bytes[3]);
     return SyscallResult::ok();
 }
 
@@ -1253,7 +1252,8 @@ static SyscallResult sys_fs_open_root(u64, u64, u64, u64, u64, u64)
         return SyscallResult::err(error::VERR_OUT_OF_MEMORY);
     }
 
-    cap::Handle h = table->insert(dir, cap::Kind::Directory, cap::CAP_READ | cap::CAP_WRITE | cap::CAP_DERIVE);
+    cap::Handle h =
+        table->insert(dir, cap::Kind::Directory, cap::CAP_READ | cap::CAP_WRITE | cap::CAP_DERIVE);
     if (h == cap::HANDLE_INVALID)
     {
         delete dir;
@@ -1730,6 +1730,12 @@ static SyscallResult sys_mem_info(u64 a0, u64, u64, u64, u64, u64)
     info->free_pages = pmm::get_free_pages();
     info->used_pages = info->total_pages - info->free_pages;
     info->page_size = 4096;
+
+    // Populate byte fields from page counts
+    info->total_bytes = info->total_pages * info->page_size;
+    info->free_bytes = info->free_pages * info->page_size;
+    info->used_bytes = info->used_pages * info->page_size;
+
     return SyscallResult::ok();
 }
 

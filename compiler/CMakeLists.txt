@@ -320,6 +320,23 @@ endif()
 
 if(VIPER_BUILD_TESTING)
   enable_testing()
+
+  # Disable CTest cost data to prevent scheduling issues with CMake 4.x
+  set(CTEST_COST_DATA_FILE "" CACHE FILEPATH "Disable CTest cost data")
+
+  # Exclude slow tests by default (run with: ctest -L slow to include)
+  configure_file(
+    "${CMAKE_SOURCE_DIR}/CTestCustom.cmake.in"
+    "${CMAKE_BINARY_DIR}/CTestCustom.cmake"
+    COPYONLY
+  )
+
+  # Add target to clear test cache (fixes slow parallel test runs)
+  add_custom_target(clean-test-cache
+    COMMAND ${CMAKE_COMMAND} -E rm -rf "${CMAKE_BINARY_DIR}/Testing"
+    COMMENT "Clearing CTest cache to fix parallel scheduling"
+  )
+
   add_test(
     NAME basic_select_case_string
     COMMAND ${CMAKE_SOURCE_DIR}/src/tests/integration/basic/select_case_string.sh

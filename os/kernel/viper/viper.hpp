@@ -25,6 +25,7 @@
 #include "../cap/table.hpp"
 #include "../include/types.hpp"
 #include "../mm/vma.hpp"
+#include "../sched/wait.hpp"
 
 // Forward declarations
 namespace task
@@ -103,7 +104,7 @@ struct Viper
     i32 exit_code;    /**< Exit status for zombie collection. */
 
     // Wait queue for parent waiting on children
-    task::Task *wait_queue; /**< List of tasks waiting on this process's children. */
+    sched::WaitQueue child_waiters; /**< Tasks waiting for this process's children to exit. */
 
     // Heap tracking
     u64 heap_start; /**< Base virtual address for the user heap region. */
@@ -285,6 +286,18 @@ i64 do_sbrk(Viper *v, i64 increment);
  * @param child The zombie child to reap.
  */
 void reap(Viper *child);
+
+/**
+ * @brief Fork the current process using Copy-on-Write.
+ *
+ * @details
+ * Creates a new child process that shares the parent's address space mappings
+ * with copy-on-write semantics. Both processes' pages are marked read-only;
+ * writes trigger a fault that copies the page.
+ *
+ * @return Child process on success, nullptr on failure.
+ */
+Viper *fork();
 
 // Debug
 /**

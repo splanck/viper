@@ -38,11 +38,11 @@ namespace fs::viperfs
  */
 struct Transaction
 {
-    u64 sequence;                           // Transaction sequence number
-    u8 num_blocks;                          // Number of blocks logged so far
-    u64 blocks[MAX_JOURNAL_BLOCKS];         // Block numbers logged
+    u64 sequence;                            // Transaction sequence number
+    u8 num_blocks;                           // Number of blocks logged so far
+    u64 blocks[MAX_JOURNAL_BLOCKS];          // Block numbers logged
     u8 data[MAX_JOURNAL_BLOCKS][BLOCK_SIZE]; // Block data copies
-    bool active;                            // Transaction is active
+    bool active;                             // Transaction is active
 };
 
 /**
@@ -164,11 +164,11 @@ class Journal
     }
 
   private:
-    JournalHeader header_;        // In-memory copy of journal header
-    u64 journal_start_;           // First block of journal area
-    u64 num_blocks_;              // Total journal blocks
-    bool enabled_{false};         // Journal is initialized
-    Transaction current_txn_;     // Current active transaction
+    JournalHeader header_;    // In-memory copy of journal header
+    u64 journal_start_;       // First block of journal area
+    u64 num_blocks_;          // Total journal blocks
+    bool enabled_{false};     // Journal is initialized
+    Transaction current_txn_; // Current active transaction
 
     /**
      * @brief Calculate simple checksum for block data.

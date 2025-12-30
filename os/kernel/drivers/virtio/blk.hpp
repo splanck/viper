@@ -219,9 +219,9 @@ class BlkDevice : public Device
     u32 device_index_{0}; // Index for IRQ calculation
 
     // Interrupt-driven I/O state
-    volatile bool io_complete_{false};    // Set by IRQ handler
-    volatile i32 completed_desc_{-1};     // Descriptor completed by IRQ
-    u32 irq_num_{0};                      // Assigned IRQ number
+    volatile bool io_complete_{false}; // Set by IRQ handler
+    volatile i32 completed_desc_{-1};  // Descriptor completed by IRQ
+    u32 irq_num_{0};                   // Assigned IRQ number
 
     // Pre-allocated request buffer
     static constexpr usize MAX_PENDING = 8;

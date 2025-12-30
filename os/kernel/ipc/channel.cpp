@@ -45,8 +45,8 @@ void init()
         channels[i].read_idx = 0;
         channels[i].write_idx = 0;
         channels[i].count = 0;
-        channels[i].send_blocked = nullptr;
-        channels[i].recv_blocked = nullptr;
+        sched::wait_init(&channels[i].send_waiters);
+        sched::wait_init(&channels[i].recv_waiters);
         channels[i].send_refs = 0;
         channels[i].recv_refs = 0;
         channels[i].owner_id = 0;
@@ -111,8 +111,8 @@ static void init_channel(Channel *ch)
     ch->read_idx = 0;
     ch->write_idx = 0;
     ch->count = 0;
-    ch->send_blocked = nullptr;
-    ch->recv_blocked = nullptr;
+    sched::wait_init(&ch->send_waiters);
+    sched::wait_init(&ch->recv_waiters);
     ch->send_refs = 0;
     ch->recv_refs = 0;
 
@@ -288,14 +288,8 @@ i64 try_send(Channel *ch, const void *data, u32 size, const cap::Handle *handles
     ch->write_idx = (ch->write_idx + 1) % MAX_PENDING;
     ch->count = ch->count + 1;
 
-    // Wake up any blocked receiver
-    if (ch->recv_blocked)
-    {
-        task::Task *waiter = ch->recv_blocked;
-        ch->recv_blocked = nullptr;
-        waiter->state = task::TaskState::Ready;
-        scheduler::enqueue(waiter);
-    }
+    // Wake up one blocked receiver (if any)
+    sched::wait_wake_one(&ch->recv_waiters);
 
     return error::VOK;
 }
@@ -370,14 +364,8 @@ i64 try_recv(
     ch->read_idx = (ch->read_idx + 1) % MAX_PENDING;
     ch->count = ch->count - 1;
 
-    // Wake up any blocked sender
-    if (ch->send_blocked)
-    {
-        task::Task *waiter = ch->send_blocked;
-        ch->send_blocked = nullptr;
-        waiter->state = task::TaskState::Ready;
-        scheduler::enqueue(waiter);
-    }
+    // Wake up one blocked sender (if any)
+    sched::wait_wake_one(&ch->send_waiters);
 
     return static_cast<i64>(actual_size);
 }
@@ -425,13 +413,7 @@ static void copy_message_to_buffer(Channel *ch, const void *data, u32 size)
  */
 static void wake_blocked_receiver(Channel *ch)
 {
-    if (ch->recv_blocked)
-    {
-        task::Task *waiter = ch->recv_blocked;
-        ch->recv_blocked = nullptr;
-        waiter->state = task::TaskState::Ready;
-        scheduler::enqueue(waiter);
-    }
+    sched::wait_wake_one(&ch->recv_waiters);
 }
 
 /**
@@ -440,13 +422,7 @@ static void wake_blocked_receiver(Channel *ch)
  */
 static void wake_blocked_sender(Channel *ch)
 {
-    if (ch->send_blocked)
-    {
-        task::Task *waiter = ch->send_blocked;
-        ch->send_blocked = nullptr;
-        waiter->state = task::TaskState::Ready;
-        scheduler::enqueue(waiter);
-    }
+    sched::wait_wake_one(&ch->send_waiters);
 }
 
 /**
@@ -540,8 +516,8 @@ i64 send(u32 channel_id, const void *data, u32 size)
             return error::VERR_WOULD_BLOCK;
         }
 
-        current->state = task::TaskState::Blocked;
-        ch->send_blocked = current;
+        // Add to send wait queue (sets state to Blocked)
+        sched::wait_enqueue(&ch->send_waiters, current);
         channel_lock.release();
 
         task::yield();
@@ -621,8 +597,8 @@ i64 recv(u32 channel_id, void *buffer, u32 buffer_size)
             return error::VERR_WOULD_BLOCK;
         }
 
-        current->state = task::TaskState::Blocked;
-        ch->recv_blocked = current;
+        // Add to recv wait queue (sets state to Blocked)
+        sched::wait_enqueue(&ch->recv_waiters, current);
         channel_lock.release();
 
         task::yield();
@@ -660,9 +636,9 @@ i64 close_endpoint(Channel *ch, bool is_send)
     {
         ch->state = ChannelState::CLOSED;
 
-        // Wake up any blocked tasks so they can observe the closed state
-        wake_blocked_sender(ch);
-        wake_blocked_receiver(ch);
+        // Wake up ALL blocked tasks so they can observe the closed state
+        sched::wait_wake_all(&ch->send_waiters);
+        sched::wait_wake_all(&ch->recv_waiters);
 
         // Clean up any pending messages with transferred handles
         cleanup_pending_handles(ch);
@@ -691,9 +667,9 @@ i64 close(u32 channel_id)
 
     ch->state = ChannelState::CLOSED;
 
-    // Wake up any blocked tasks so they can observe the closed state
-    wake_blocked_sender(ch);
-    wake_blocked_receiver(ch);
+    // Wake up ALL blocked tasks so they can observe the closed state
+    sched::wait_wake_all(&ch->send_waiters);
+    sched::wait_wake_all(&ch->recv_waiters);
 
     // Clean up any pending messages with transferred handles
     cleanup_pending_handles(ch);

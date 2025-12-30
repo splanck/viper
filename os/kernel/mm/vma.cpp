@@ -244,7 +244,9 @@ void VmaList::clear()
 /**
  * @brief Handle a demand page fault by allocating and mapping a page.
  */
-FaultResult handle_demand_fault(VmaList *vma_list, u64 fault_addr, bool is_write,
+FaultResult handle_demand_fault(VmaList *vma_list,
+                                u64 fault_addr,
+                                bool is_write,
                                 bool (*map_callback)(u64 virt, u64 phys, u32 prot))
 {
     if (!vma_list || !map_callback)

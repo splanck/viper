@@ -262,6 +262,30 @@ class AddressSpace
         return asid_ != ASID_INVALID && root_ != 0;
     }
 
+    /**
+     * @brief Clone mappings from another address space for COW fork.
+     *
+     * @details
+     * Walks the parent's user-space page tables and creates read-only copies
+     * of all mappings in this address space. Both parent and child pages are
+     * marked read-only; the COW fault handler will copy on write.
+     *
+     * Page reference counts must be incremented by the caller for shared pages.
+     *
+     * @param parent Address space to clone from.
+     * @return true on success, false on failure.
+     */
+    bool clone_cow_from(AddressSpace *parent);
+
+    /**
+     * @brief Make all writable user mappings read-only.
+     *
+     * @details
+     * Used during fork to convert parent's writable pages to COW.
+     * Walks all L3 entries and clears the write permission bit.
+     */
+    void make_cow_readonly();
+
   private:
     u64 root_{0}; /**< Physical address of the L0 page table (TTBR0 root). */
     u16 asid_{0}; /**< Address Space ID allocated for this space. */

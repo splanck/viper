@@ -278,8 +278,7 @@ static u64 setup_user_stack(viper::AddressSpace *as)
     u64 stack_base = viper::layout::USER_STACK_TOP - viper::layout::USER_STACK_SIZE;
     u64 stack_size = viper::layout::USER_STACK_SIZE;
 
-    u64 mapped = as->alloc_map(stack_base, stack_size,
-                               viper::prot::READ | viper::prot::WRITE);
+    u64 mapped = as->alloc_map(stack_base, stack_size, viper::prot::READ | viper::prot::WRITE);
     if (mapped == 0)
     {
         serial::puts("[loader] Failed to map user stack\n");
@@ -408,8 +407,10 @@ SpawnResult spawn_process(const char *path, const char *name, viper::Viper *pare
 }
 
 /** @copydoc loader::spawn_process_from_blob */
-SpawnResult spawn_process_from_blob(const void *elf_data, usize elf_size,
-                                    const char *name, viper::Viper *parent)
+SpawnResult spawn_process_from_blob(const void *elf_data,
+                                    usize elf_size,
+                                    const char *name,
+                                    viper::Viper *parent)
 {
     SpawnResult result = {false, nullptr, 0};
 

@@ -221,7 +221,8 @@ class ViperFS
      * @param target_len Length of target path.
      * @return New inode number on success, or 0 on failure.
      */
-    u64 create_symlink(Inode *dir, const char *name, usize name_len, const char *target, usize target_len);
+    u64 create_symlink(
+        Inode *dir, const char *name, usize name_len, const char *target, usize target_len);
 
     /**
      * @brief Read the target of a symbolic link.

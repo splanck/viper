@@ -4,6 +4,7 @@
 #include "../include/error.hpp"
 #include "../include/types.hpp"
 #include "../sched/task.hpp"
+#include "../sched/wait.hpp"
 
 /**
  * @file channel.hpp
@@ -98,9 +99,9 @@ struct Channel
     u32 write_idx;
     u32 count;
 
-    // Blocked tasks
-    task::Task *send_blocked; // Task blocked on send (buffer full)
-    task::Task *recv_blocked; // Task blocked on recv (buffer empty)
+    // Wait queues for blocked tasks (supports multiple waiters)
+    sched::WaitQueue send_waiters; // Tasks blocked on send (buffer full)
+    sched::WaitQueue recv_waiters; // Tasks blocked on recv (buffer empty)
 
     // Reference counts for endpoints
     u32 send_refs; // Number of send endpoint handles

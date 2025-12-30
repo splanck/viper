@@ -92,10 +92,10 @@ using SyscallHandler = SyscallResult (*)(u64 a0, u64 a1, u64 a2, u64 a3, u64 a4,
  */
 struct SyscallEntry
 {
-    u32 number;           ///< Syscall number
+    u32 number;             ///< Syscall number
     SyscallHandler handler; ///< Handler function (null if unimplemented)
-    const char *name;     ///< Syscall name (e.g., "task_yield")
-    u8 argcount;          ///< Number of arguments (0-6)
+    const char *name;       ///< Syscall name (e.g., "task_yield")
+    u8 argcount;            ///< Number of arguments (0-6)
 };
 
 /**

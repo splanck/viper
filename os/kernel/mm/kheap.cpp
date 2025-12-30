@@ -42,8 +42,8 @@ constexpr bool DEBUG_MODE = false;
 #endif
 
 // Magic numbers for block validation
-constexpr u32 BLOCK_MAGIC_ALLOC = 0xCAFEBABE; // Allocated block
-constexpr u32 BLOCK_MAGIC_FREE = 0xDEADBEEF;  // Freed block
+constexpr u32 BLOCK_MAGIC_ALLOC = 0xCAFEBABE;  // Allocated block
+constexpr u32 BLOCK_MAGIC_FREE = 0xDEADBEEF;   // Freed block
 constexpr u32 BLOCK_MAGIC_POISON = 0xFEEDFACE; // Poisoned (double-free attempt)
 
 // Block header structure with magic number for validation
@@ -127,6 +127,7 @@ struct HeapRegion
     u64 start;
     u64 end;
 };
+
 constexpr usize MAX_HEAP_REGIONS = 16;
 HeapRegion heap_regions[MAX_HEAP_REGIONS];
 usize heap_region_count = 0;
