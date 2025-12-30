@@ -167,6 +167,93 @@ class BlkDevice : public Device
      */
     i32 flush();
 
+    // =========================================================================
+    // Async I/O API
+    // =========================================================================
+
+    /** @brief Opaque handle for tracking async requests. */
+    using RequestHandle = i32;
+
+    /** @brief Invalid request handle value. */
+    static constexpr RequestHandle INVALID_HANDLE = -1;
+
+    /**
+     * @brief Callback function type for async I/O completion.
+     *
+     * @param handle The request handle.
+     * @param status 0 on success, negative on error.
+     * @param user_data User-provided context pointer.
+     */
+    using CompletionCallback = void (*)(RequestHandle handle, i32 status, void *user_data);
+
+    /**
+     * @brief Submit an asynchronous read request.
+     *
+     * @details
+     * Submits a read request without blocking. The caller can poll for
+     * completion using is_complete() or wait_complete(), or register
+     * a callback.
+     *
+     * @param sector Starting sector index.
+     * @param count Number of sectors to read.
+     * @param buf Destination buffer (must remain valid until completion).
+     * @param callback Optional completion callback (may be nullptr).
+     * @param user_data User context passed to callback.
+     * @return Request handle on success, INVALID_HANDLE on error.
+     */
+    RequestHandle read_async(u64 sector, u32 count, void *buf,
+                             CompletionCallback callback = nullptr,
+                             void *user_data = nullptr);
+
+    /**
+     * @brief Submit an asynchronous write request.
+     *
+     * @param sector Starting sector index.
+     * @param count Number of sectors to write.
+     * @param buf Source buffer (must remain valid until completion).
+     * @param callback Optional completion callback (may be nullptr).
+     * @param user_data User context passed to callback.
+     * @return Request handle on success, INVALID_HANDLE on error.
+     */
+    RequestHandle write_async(u64 sector, u32 count, const void *buf,
+                              CompletionCallback callback = nullptr,
+                              void *user_data = nullptr);
+
+    /**
+     * @brief Check if an async request has completed.
+     *
+     * @param handle Request handle from read_async/write_async.
+     * @return true if complete, false if still pending.
+     */
+    bool is_complete(RequestHandle handle);
+
+    /**
+     * @brief Get the result of a completed async request.
+     *
+     * @param handle Request handle.
+     * @return 0 on success, negative on error, or -1 if still pending.
+     */
+    i32 get_result(RequestHandle handle);
+
+    /**
+     * @brief Wait for an async request to complete (blocking).
+     *
+     * @param handle Request handle.
+     * @return 0 on success, negative on error.
+     */
+    i32 wait_complete(RequestHandle handle);
+
+    /**
+     * @brief Process completed requests and invoke callbacks.
+     *
+     * @details
+     * Should be called periodically (e.g., from timer interrupt or main loop)
+     * to process completions and invoke registered callbacks.
+     *
+     * @return Number of completions processed.
+     */
+    u32 process_completions();
+
     // Device info
     /** @brief Total number of sectors on the device. */
     u64 capacity() const
@@ -226,15 +313,30 @@ class BlkDevice : public Device
     // Pre-allocated request buffer
     static constexpr usize MAX_PENDING = 8;
 
+    // DMA-accessible request data (packed for device access)
     struct PendingRequest
     {
         BlkReqHeader header;
         u8 status;
-        bool in_use;
+        u8 _pad[3]; // Alignment padding
     } __attribute__((packed));
+
+    // Async request tracking (not DMA-accessible)
+    struct AsyncRequest
+    {
+        bool in_use{false};
+        bool completed{false};
+        i32 result{0};
+        i32 desc_head{-1};       // Head descriptor for this request
+        i32 desc_data{-1};       // Data descriptor
+        i32 desc_status{-1};     // Status descriptor
+        CompletionCallback callback{nullptr};
+        void *user_data{nullptr};
+    };
 
     PendingRequest *requests_{nullptr};
     u64 requests_phys_{0};
+    AsyncRequest async_requests_[MAX_PENDING]{};
 
     // Perform a request
     /**
@@ -251,6 +353,20 @@ class BlkDevice : public Device
      * @return 0 on success, -1 on error.
      */
     i32 do_request(u32 type, u64 sector, u32 count, void *buf);
+
+    /**
+     * @brief Submit an async request (internal helper).
+     *
+     * @param type Request type (IN/OUT).
+     * @param sector Starting sector.
+     * @param count Number of sectors.
+     * @param buf Data buffer.
+     * @param callback Completion callback.
+     * @param user_data User context.
+     * @return Request handle on success, INVALID_HANDLE on error.
+     */
+    RequestHandle submit_async(u32 type, u64 sector, u32 count, void *buf,
+                               CompletionCallback callback, void *user_data);
 };
 
 // Global block device initialization and access

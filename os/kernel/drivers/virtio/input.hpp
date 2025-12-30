@@ -56,6 +56,23 @@ constexpr u16 LED = 0x11; // LED
 constexpr u16 REP = 0x14; // Repeat
 } // namespace ev_type
 
+// Linux LED codes
+/**
+ * @brief Linux LED code constants.
+ *
+ * @details
+ * These values match Linux `LED_*` codes and are used to control keyboard LEDs.
+ */
+namespace led_code
+{
+constexpr u16 NUML = 0x00;    // Num Lock LED
+constexpr u16 CAPSL = 0x01;   // Caps Lock LED
+constexpr u16 SCROLLL = 0x02; // Scroll Lock LED
+constexpr u16 COMPOSE = 0x03; // Compose LED
+constexpr u16 KANA = 0x04;    // Kana LED
+constexpr u16 MAX = 0x0F;     // Maximum LED code
+} // namespace led_code
+
 // virtio-input event structure (matches Linux input_event)
 /**
  * @brief One input event as delivered by virtio-input.
@@ -171,6 +188,29 @@ class InputDevice : public Device
         return is_mouse_;
     }
 
+    /**
+     * @brief Set the state of a keyboard LED.
+     *
+     * @details
+     * Sends an LED event to the device via the status queue. This is used to
+     * control Num Lock, Caps Lock, and Scroll Lock LEDs.
+     *
+     * @param led LED code from led_code namespace.
+     * @param on true to turn on, false to turn off.
+     * @return true on success, false if LED control not supported or failed.
+     */
+    bool set_led(u16 led, bool on);
+
+    /**
+     * @brief Check if the device supports LED control.
+     *
+     * @return true if LEDs can be controlled.
+     */
+    bool has_led_support() const
+    {
+        return has_led_;
+    }
+
   private:
     // Refill the event queue with buffers
     /**
@@ -194,6 +234,11 @@ class InputDevice : public Device
     char name_[128];
     bool is_keyboard_{false};
     bool is_mouse_{false};
+    bool has_led_{false};
+
+    // Status buffer for LED control (single event)
+    InputEvent *status_event_{nullptr};
+    u64 status_event_phys_{0};
 };
 
 // Global input device pointers

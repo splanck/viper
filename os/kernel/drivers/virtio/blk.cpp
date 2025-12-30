@@ -199,7 +199,7 @@ i32 BlkDevice::do_request(u32 type, u64 sector, u32 count, void *buf)
     int req_idx = -1;
     for (usize i = 0; i < MAX_PENDING; i++)
     {
-        if (!requests_[i].in_use)
+        if (!async_requests_[i].in_use)
         {
             req_idx = i;
             break;
@@ -212,7 +212,12 @@ i32 BlkDevice::do_request(u32 type, u64 sector, u32 count, void *buf)
     }
 
     PendingRequest &req = requests_[req_idx];
-    req.in_use = true;
+    AsyncRequest &async = async_requests_[req_idx];
+    async.in_use = true;
+    async.completed = false;
+    async.result = 0;
+    async.callback = nullptr;
+    async.user_data = nullptr;
     req.header.type = type;
     req.header.reserved = 0;
     req.header.sector = sector;
@@ -240,10 +245,15 @@ i32 BlkDevice::do_request(u32 type, u64 sector, u32 count, void *buf)
             vq_.free_desc(desc1);
         if (desc2 >= 0)
             vq_.free_desc(desc2);
-        req.in_use = false;
+        async.in_use = false;
         serial::puts("[virtio-blk] No free descriptors\n");
         return -1;
     }
+
+    // Store descriptor indices for later cleanup
+    async.desc_head = desc0;
+    async.desc_data = desc1;
+    async.desc_status = desc2;
 
     // Descriptor 0: Request header (device reads)
     vq_.set_desc(desc0, header_phys, sizeof(BlkReqHeader), desc_flags::NEXT);
@@ -313,7 +323,7 @@ i32 BlkDevice::do_request(u32 type, u64 sector, u32 count, void *buf)
         vq_.free_desc(desc0);
         vq_.free_desc(desc1);
         vq_.free_desc(desc2);
-        req.in_use = false;
+        async.in_use = false;
         return -1;
     }
 
@@ -324,7 +334,7 @@ i32 BlkDevice::do_request(u32 type, u64 sector, u32 count, void *buf)
 
     // Check status
     u8 status = req.status;
-    req.in_use = false;
+    async.in_use = false;
 
     if (status != blk_status::OK)
     {
@@ -372,7 +382,7 @@ i32 BlkDevice::flush()
     int req_idx = -1;
     for (usize i = 0; i < MAX_PENDING; i++)
     {
-        if (!requests_[i].in_use)
+        if (!async_requests_[i].in_use)
         {
             req_idx = i;
             break;
@@ -382,7 +392,10 @@ i32 BlkDevice::flush()
         return -1;
 
     PendingRequest &req = requests_[req_idx];
-    req.in_use = true;
+    AsyncRequest &async = async_requests_[req_idx];
+    async.in_use = true;
+    async.completed = false;
+    async.callback = nullptr;
     req.header.type = blk_type::FLUSH;
     req.header.reserved = 0;
     req.header.sector = 0;
@@ -401,9 +414,14 @@ i32 BlkDevice::flush()
             vq_.free_desc(desc0);
         if (desc1 >= 0)
             vq_.free_desc(desc1);
-        req.in_use = false;
+        async.in_use = false;
         return -1;
     }
+
+    // Track descriptors
+    async.desc_head = desc0;
+    async.desc_data = -1; // Flush has no data descriptor
+    async.desc_status = desc1;
 
     vq_.set_desc(desc0, header_phys, sizeof(BlkReqHeader), desc_flags::NEXT);
     vq_.chain_desc(desc0, desc1);
@@ -450,9 +468,276 @@ i32 BlkDevice::flush()
     vq_.free_desc(desc1);
 
     u8 status = req.status;
-    req.in_use = false;
+    async.in_use = false;
 
     return (status == blk_status::OK) ? 0 : -1;
+}
+
+// =========================================================================
+// Async I/O Implementation
+// =========================================================================
+
+/** @copydoc virtio::BlkDevice::submit_async */
+BlkDevice::RequestHandle BlkDevice::submit_async(u32 type, u64 sector, u32 count, void *buf,
+                                                  CompletionCallback callback, void *user_data)
+{
+    if (type == blk_type::OUT && readonly_)
+    {
+        serial::puts("[virtio-blk] Write to read-only device\n");
+        return INVALID_HANDLE;
+    }
+
+    // Find a free request slot
+    int req_idx = -1;
+    for (usize i = 0; i < MAX_PENDING; i++)
+    {
+        if (!async_requests_[i].in_use)
+        {
+            req_idx = i;
+            break;
+        }
+    }
+    if (req_idx < 0)
+    {
+        serial::puts("[virtio-blk] No free request slots\n");
+        return INVALID_HANDLE;
+    }
+
+    PendingRequest &req = requests_[req_idx];
+    AsyncRequest &async = async_requests_[req_idx];
+    async.in_use = true;
+    async.completed = false;
+    async.result = 0;
+    async.callback = callback;
+    async.user_data = user_data;
+    req.header.type = type;
+    req.header.reserved = 0;
+    req.header.sector = sector;
+    req.status = 0xFF; // Invalid/pending
+
+    // Calculate physical addresses
+    u64 header_phys = requests_phys_ + req_idx * sizeof(PendingRequest);
+    u64 status_phys = header_phys + OFFSETOF(PendingRequest, status);
+
+    // Get physical address of data buffer
+    u64 buf_phys = pmm::virt_to_phys(buf);
+    u32 buf_len = count * sector_size_;
+
+    // Allocate 3 descriptors for the request chain
+    i32 desc0 = vq_.alloc_desc();
+    i32 desc1 = vq_.alloc_desc();
+    i32 desc2 = vq_.alloc_desc();
+
+    if (desc0 < 0 || desc1 < 0 || desc2 < 0)
+    {
+        if (desc0 >= 0)
+            vq_.free_desc(desc0);
+        if (desc1 >= 0)
+            vq_.free_desc(desc1);
+        if (desc2 >= 0)
+            vq_.free_desc(desc2);
+        async.in_use = false;
+        serial::puts("[virtio-blk] No free descriptors\n");
+        return INVALID_HANDLE;
+    }
+
+    // Store descriptor indices for later cleanup
+    async.desc_head = desc0;
+    async.desc_data = desc1;
+    async.desc_status = desc2;
+
+    // Descriptor 0: Request header (device reads)
+    vq_.set_desc(desc0, header_phys, sizeof(BlkReqHeader), desc_flags::NEXT);
+    vq_.chain_desc(desc0, desc1);
+
+    // Descriptor 1: Data buffer
+    u16 data_flags = desc_flags::NEXT;
+    if (type == blk_type::IN)
+    {
+        data_flags |= desc_flags::WRITE; // Device writes to this buffer
+    }
+    vq_.set_desc(desc1, buf_phys, buf_len, data_flags);
+    vq_.chain_desc(desc1, desc2);
+
+    // Descriptor 2: Status (device writes)
+    vq_.set_desc(desc2, status_phys, 1, desc_flags::WRITE);
+
+    // Memory barrier before submitting
+    asm volatile("dsb sy" ::: "memory");
+
+    // Submit and notify (non-blocking)
+    vq_.submit(desc0);
+    vq_.kick();
+
+    return static_cast<RequestHandle>(req_idx);
+}
+
+/** @copydoc virtio::BlkDevice::read_async */
+BlkDevice::RequestHandle BlkDevice::read_async(u64 sector, u32 count, void *buf,
+                                                CompletionCallback callback, void *user_data)
+{
+    if (!buf || count == 0)
+        return INVALID_HANDLE;
+    if (sector + count > capacity_)
+    {
+        serial::puts("[virtio-blk] Read past end of disk\n");
+        return INVALID_HANDLE;
+    }
+
+    return submit_async(blk_type::IN, sector, count, buf, callback, user_data);
+}
+
+/** @copydoc virtio::BlkDevice::write_async */
+BlkDevice::RequestHandle BlkDevice::write_async(u64 sector, u32 count, const void *buf,
+                                                 CompletionCallback callback, void *user_data)
+{
+    if (!buf || count == 0)
+        return INVALID_HANDLE;
+    if (sector + count > capacity_)
+    {
+        serial::puts("[virtio-blk] Write past end of disk\n");
+        return INVALID_HANDLE;
+    }
+
+    return submit_async(blk_type::OUT, sector, count, const_cast<void *>(buf), callback, user_data);
+}
+
+/** @copydoc virtio::BlkDevice::is_complete */
+bool BlkDevice::is_complete(RequestHandle handle)
+{
+    if (handle < 0 || handle >= static_cast<i32>(MAX_PENDING))
+        return false;
+    if (!async_requests_[handle].in_use)
+        return false;
+
+    return async_requests_[handle].completed;
+}
+
+/** @copydoc virtio::BlkDevice::get_result */
+i32 BlkDevice::get_result(RequestHandle handle)
+{
+    if (handle < 0 || handle >= static_cast<i32>(MAX_PENDING))
+        return -1;
+    if (!async_requests_[handle].in_use)
+        return -1;
+    if (!async_requests_[handle].completed)
+        return -1; // Still pending
+
+    return async_requests_[handle].result;
+}
+
+/** @copydoc virtio::BlkDevice::wait_complete */
+i32 BlkDevice::wait_complete(RequestHandle handle)
+{
+    if (handle < 0 || handle >= static_cast<i32>(MAX_PENDING))
+        return -1;
+    if (!async_requests_[handle].in_use)
+        return -1;
+
+    AsyncRequest &async = async_requests_[handle];
+    PendingRequest &req = requests_[handle];
+
+    // Wait for completion: interrupt-driven with polling fallback
+    constexpr u32 INTERRUPT_TIMEOUT = 100000;
+    constexpr u32 POLL_TIMEOUT = 10000000;
+
+    // First, try to wait for interrupt
+    for (u32 i = 0; i < INTERRUPT_TIMEOUT && !async.completed; i++)
+    {
+        // Check if interrupt handler marked it complete
+        if (io_complete_ && completed_desc_ == async.desc_head)
+        {
+            // Mark this specific request as completed
+            async.completed = true;
+            async.result = (req.status == blk_status::OK) ? 0 : -1;
+            break;
+        }
+        asm volatile("wfi" ::: "memory");
+    }
+
+    // Fallback to polling if not yet completed
+    if (!async.completed)
+    {
+        for (u32 i = 0; i < POLL_TIMEOUT && !async.completed; i++)
+        {
+            i32 completed = vq_.poll_used();
+            if (completed == async.desc_head)
+            {
+                async.completed = true;
+                async.result = (req.status == blk_status::OK) ? 0 : -1;
+                break;
+            }
+            asm volatile("yield" ::: "memory");
+        }
+    }
+
+    if (!async.completed)
+    {
+        serial::puts("[virtio-blk] Async request timed out\n");
+        // Free descriptors
+        vq_.free_desc(async.desc_head);
+        vq_.free_desc(async.desc_data);
+        vq_.free_desc(async.desc_status);
+        async.in_use = false;
+        return -1;
+    }
+
+    // Free descriptors
+    vq_.free_desc(async.desc_head);
+    vq_.free_desc(async.desc_data);
+    vq_.free_desc(async.desc_status);
+
+    i32 result = async.result;
+    async.in_use = false;
+
+    return result;
+}
+
+/** @copydoc virtio::BlkDevice::process_completions */
+u32 BlkDevice::process_completions()
+{
+    u32 processed = 0;
+
+    // Poll the used ring for completions
+    while (true)
+    {
+        i32 completed_desc = vq_.poll_used();
+        if (completed_desc < 0)
+            break;
+
+        // Find which async request this belongs to
+        for (usize i = 0; i < MAX_PENDING; i++)
+        {
+            AsyncRequest &async = async_requests_[i];
+            if (async.in_use && !async.completed && async.desc_head == completed_desc)
+            {
+                PendingRequest &req = requests_[i];
+
+                // Mark as completed
+                async.completed = true;
+                async.result = (req.status == blk_status::OK) ? 0 : -1;
+
+                // Invoke callback if registered
+                if (async.callback)
+                {
+                    async.callback(static_cast<RequestHandle>(i), async.result, async.user_data);
+                }
+
+                // Free descriptors
+                vq_.free_desc(async.desc_head);
+                vq_.free_desc(async.desc_data);
+                vq_.free_desc(async.desc_status);
+
+                // Mark slot as free for reuse
+                async.in_use = false;
+
+                processed++;
+                break;
+            }
+        }
+    }
+
+    return processed;
 }
 
 /** @copydoc virtio::blk_init */

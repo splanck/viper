@@ -138,17 +138,54 @@ bool NetDevice::init()
 
     // Negotiate features
     // For modern virtio, we must negotiate VERSION_1
+    // Also try to negotiate checksum offload features
     u64 required = 0;
     if (!is_legacy())
     {
         required |= features::VERSION_1;
     }
 
-    if (!negotiate_features(required))
+    // Check what features the device offers
+    write32(reg::DEVICE_FEATURES_SEL, 0);
+    u64 device_features = read32(reg::DEVICE_FEATURES);
+
+    // Try to negotiate checksum offload
+    u64 desired = required;
+    if (device_features & net_features::CSUM)
     {
-        serial::puts("[virtio-net] Feature negotiation failed\n");
-        set_status(status::FAILED);
-        return false;
+        desired |= net_features::CSUM;
+    }
+    if (device_features & net_features::GUEST_CSUM)
+    {
+        desired |= net_features::GUEST_CSUM;
+    }
+
+    if (!negotiate_features(desired))
+    {
+        // Try without optional checksum features
+        if (!negotiate_features(required))
+        {
+            serial::puts("[virtio-net] Feature negotiation failed\n");
+            set_status(status::FAILED);
+            return false;
+        }
+    }
+    else
+    {
+        // Check which checksum features were successfully negotiated
+        write32(reg::DRIVER_FEATURES_SEL, 0);
+        u64 negotiated = read32(reg::DRIVER_FEATURES);
+        has_tx_csum_ = (negotiated & net_features::CSUM) != 0;
+        has_rx_csum_ = (negotiated & net_features::GUEST_CSUM) != 0;
+
+        if (has_tx_csum_)
+        {
+            serial::puts("[virtio-net] TX checksum offload enabled\n");
+        }
+        if (has_rx_csum_)
+        {
+            serial::puts("[virtio-net] RX checksum validation enabled\n");
+        }
     }
 
     // Initialize virtqueues
@@ -437,6 +474,129 @@ bool NetDevice::transmit(const void *data, usize len)
     tx_vq_.chain_desc(hdr_desc, data_desc);
 
     // Data descriptor (device reads)
+    tx_vq_.set_desc(data_desc, data_phys, len, 0);
+
+    // Submit and kick
+    tx_vq_.submit(hdr_desc);
+    tx_vq_.kick();
+
+    // Wait for completion (blocking)
+    bool completed = false;
+    for (u32 i = 0; i < 1000000; i++)
+    {
+        i32 used = tx_vq_.poll_used();
+        if (used == hdr_desc)
+        {
+            completed = true;
+            break;
+        }
+        asm volatile("yield" ::: "memory");
+    }
+
+    // Free descriptors
+    tx_vq_.free_desc(hdr_desc);
+    tx_vq_.free_desc(data_desc);
+
+    if (!completed)
+    {
+        tx_dropped_++;
+        return false;
+    }
+
+    tx_packets_++;
+    tx_bytes_ += len;
+
+    return true;
+}
+
+/** @copydoc virtio::NetDevice::transmit_csum */
+bool NetDevice::transmit_csum(const void *data, usize len, u16 csum_start, u16 csum_offset)
+{
+    if (!data || len == 0 || len > 1514)
+    { // Max Ethernet frame
+        return false;
+    }
+
+    // Validate checksum offsets
+    if (csum_start >= len || csum_start + csum_offset + 2 > len)
+    {
+        serial::puts("[virtio-net] Invalid checksum offsets\n");
+        return false;
+    }
+
+    // Allocate descriptors - one for header, one for data
+    i32 hdr_desc = tx_vq_.alloc_desc();
+    i32 data_desc = tx_vq_.alloc_desc();
+
+    if (hdr_desc < 0 || data_desc < 0)
+    {
+        if (hdr_desc >= 0)
+            tx_vq_.free_desc(hdr_desc);
+        if (data_desc >= 0)
+            tx_vq_.free_desc(data_desc);
+        tx_dropped_++;
+        return false;
+    }
+
+    // Prepare virtio-net header with checksum offload request
+    if (has_tx_csum_)
+    {
+        // Hardware checksum offload available
+        tx_header_->flags = net_hdr_flags::NEEDS_CSUM;
+        tx_header_->csum_start = csum_start;
+        tx_header_->csum_offset = csum_offset;
+    }
+    else
+    {
+        // No hardware offload - need software checksum
+        // Calculate checksum in software before transmit
+        tx_header_->flags = 0;
+        tx_header_->csum_start = 0;
+        tx_header_->csum_offset = 0;
+
+        // Calculate and insert checksum
+        const u8 *pkt = reinterpret_cast<const u8 *>(data);
+        u32 sum = 0;
+
+        // Sum 16-bit words from csum_start to end of packet
+        for (usize i = csum_start; i + 1 < len; i += 2)
+        {
+            sum += (static_cast<u32>(pkt[i]) << 8) | pkt[i + 1];
+        }
+        // Handle odd byte
+        if ((len - csum_start) & 1)
+        {
+            sum += static_cast<u32>(pkt[len - 1]) << 8;
+        }
+
+        // Fold 32-bit sum to 16 bits
+        while (sum >> 16)
+        {
+            sum = (sum & 0xFFFF) + (sum >> 16);
+        }
+
+        // One's complement
+        u16 csum = ~static_cast<u16>(sum);
+
+        // Write checksum into packet (need mutable access)
+        u8 *pkt_mut = const_cast<u8 *>(pkt);
+        pkt_mut[csum_start + csum_offset] = static_cast<u8>(csum >> 8);
+        pkt_mut[csum_start + csum_offset + 1] = static_cast<u8>(csum & 0xFF);
+    }
+
+    tx_header_->gso_type = net_gso::NONE;
+    tx_header_->hdr_len = 0;
+    tx_header_->gso_size = 0;
+
+    // Memory barrier
+    asm volatile("dsb sy" ::: "memory");
+
+    // Get physical address of data
+    u64 data_phys = pmm::virt_to_phys(const_cast<void *>(data));
+
+    // Set up descriptor chain
+    tx_vq_.set_desc(hdr_desc, tx_header_phys_, sizeof(NetHeader), desc_flags::NEXT);
+    tx_vq_.chain_desc(hdr_desc, data_desc);
     tx_vq_.set_desc(data_desc, data_phys, len, 0);
 
     // Submit and kick

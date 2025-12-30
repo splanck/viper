@@ -36,7 +36,7 @@ The drivers subsystem provides device drivers for VirtIO paravirtual devices, QE
 | 2 | Block | Implemented |
 | 3 | Console | Not implemented |
 | 4 | RNG | Implemented |
-| 16 | GPU | Not implemented |
+| 16 | GPU | Implemented (2D) |
 | 18 | Input | Implemented |
 
 **MMIO Register Map:**
@@ -55,12 +55,9 @@ The drivers subsystem provides device drivers for VirtIO paravirtual devices, QE
 
 **Not Implemented:**
 - VirtIO-PCI transport
-- VirtIO-MMIO interrupts (polling only)
-- Device-to-driver notifications via interrupts
 - Multiple device instances per type
 
 **Recommendations:**
-- Add interrupt-driven completion for better performance
 - Implement VirtIO-GPU for graphics acceleration
 - Add VirtIO-console for console I/O
 
@@ -105,13 +102,12 @@ The drivers subsystem provides device drivers for VirtIO paravirtual devices, QE
 **Not Implemented:**
 - Indirect descriptor support
 - Event suppression (VIRTIO_F_EVENT_IDX)
-- Interrupt-driven completion
 
 ---
 
 ### 3. VirtIO Block Device (`virtio/blk.cpp`, `blk.hpp`)
 
-**Status:** Fully functional polling-based block driver
+**Status:** Complete with interrupt-driven and async I/O support
 
 **Implemented:**
 - Device discovery and initialization
@@ -122,7 +118,14 @@ The drivers subsystem provides device drivers for VirtIO paravirtual devices, QE
 - Cache flush operation (`flush`)
 - Request header/status management
 - Descriptor chain construction (header → data → status)
-- Polling-based completion with timeout
+- **Interrupt-driven I/O with polling fallback**
+- **Async I/O API with callbacks:**
+  - `read_async(sector, count, buf, callback, user_data)`
+  - `write_async(sector, count, buf, callback, user_data)`
+  - `is_complete(handle)` - Check completion status
+  - `get_result(handle)` - Get operation result
+  - `wait_complete(handle)` - Blocking wait
+  - `process_completions()` - Process callbacks
 - Single global device instance
 
 **Block Request Types:**
@@ -143,17 +146,15 @@ The drivers subsystem provides device drivers for VirtIO paravirtual devices, QE
 - Sector size: 512 bytes
 - Max pending requests: 8
 - Queue size: 128 descriptors
+- IRQ: Registered with GIC for completion notifications
 
 **Not Implemented:**
-- Asynchronous/interrupt-driven I/O
-- Multiple outstanding requests
 - Discard/TRIM operations
 - Write zeroes
 - Multi-queue support
 - SCSI passthrough
 
 **Recommendations:**
-- Add async I/O for improved throughput
 - Implement request batching
 - Add I/O scheduler integration
 
@@ -161,12 +162,12 @@ The drivers subsystem provides device drivers for VirtIO paravirtual devices, QE
 
 ### 4. VirtIO Network Device (`virtio/net.cpp`, `net.hpp`)
 
-**Status:** Complete with interrupt-driven receive
+**Status:** Complete with interrupt-driven receive and checksum offload
 
 **Implemented:**
 - Device discovery and initialization
 - MAC address reading from config space
-- Feature negotiation (VERSION_1 for modern)
+- Feature negotiation (VERSION_1 for modern, CSUM, GUEST_CSUM)
 - RX virtqueue (queue 0) with buffer pool
 - TX virtqueue (queue 1)
 - Packet reception with internal queue
@@ -178,16 +179,21 @@ The drivers subsystem provides device drivers for VirtIO paravirtual devices, QE
 - **Interrupt-driven receive via GIC IRQ**
 - **RX wait queue for blocking receive**
 - **IRQ handler with automatic buffer refill**
+- **TX checksum offload support:**
+  - `transmit_csum(data, len, csum_start, csum_offset)` - Transmit with HW checksum
+  - `has_tx_csum()` - Check if TX offload available
+  - `has_rx_csum()` - Check if RX validation available
+  - Software fallback if hardware offload unavailable
 
 **Network Header:**
 ```cpp
 struct NetHeader {
-    u8 flags;
+    u8 flags;         // NEEDS_CSUM, DATA_VALID
     u8 gso_type;
     u16 hdr_len;
     u16 gso_size;
-    u16 csum_start;
-    u16 csum_offset;
+    u16 csum_start;   // Offset to start checksumming
+    u16 csum_offset;  // Offset to store checksum
 };
 ```
 
@@ -199,7 +205,6 @@ struct NetHeader {
 - IRQ: Registered with GIC for used buffer notifications
 
 **Not Implemented:**
-- Checksum offload
 - GSO/TSO (segmentation offload)
 - Multiqueue
 - Control virtqueue
@@ -207,8 +212,8 @@ struct NetHeader {
 - Mergeable RX buffers
 
 **Recommendations:**
-- Implement checksum offload for performance
 - Add multiqueue for SMP scalability
+- Implement GSO for large packet handling
 
 ---
 
@@ -244,27 +249,97 @@ Primary entropy source for:
 
 ---
 
-### 6. VirtIO Input Device (`virtio/input.cpp`, `input.hpp`)
+### 6. VirtIO GPU Device (`virtio/gpu.cpp`, `gpu.hpp`)
 
-**Status:** Functional keyboard and mouse support
+**Status:** Basic 2D framebuffer support
+
+**Implemented:**
+- Device discovery and initialization
+- Feature negotiation (VERSION_1 for modern)
+- Control virtqueue for commands
+- Cursor virtqueue (optional)
+- Display info enumeration
+- 2D resource creation and management
+- Backing memory attachment
+- Scanout configuration
+- 2D transfer to host
+- Resource flush
+- Resource destruction
+
+**API:**
+| Function | Description |
+|----------|-------------|
+| `init()` | Initialize GPU device |
+| `get_display_info(w, h)` | Get display dimensions |
+| `create_resource_2d(id, w, h, fmt)` | Create framebuffer resource |
+| `attach_backing(id, addr, size)` | Attach memory to resource |
+| `set_scanout(scanout, id, w, h)` | Configure display output |
+| `transfer_to_host_2d(id, x, y, w, h)` | Transfer framebuffer to host |
+| `flush(id, x, y, w, h)` | Flush region to display |
+| `unref_resource(id)` | Destroy resource |
+
+**GPU Command Types:**
+| Command | Value | Description |
+|---------|-------|-------------|
+| GET_DISPLAY_INFO | 0x0100 | Query displays |
+| RESOURCE_CREATE_2D | 0x0101 | Create 2D resource |
+| SET_SCANOUT | 0x0103 | Set display output |
+| RESOURCE_FLUSH | 0x0104 | Flush to display |
+| TRANSFER_TO_HOST_2D | 0x0105 | Transfer framebuffer |
+| RESOURCE_ATTACH_BACKING | 0x0106 | Attach memory |
+
+**Pixel Formats Supported:**
+| Format | Value | Description |
+|--------|-------|-------------|
+| B8G8R8A8_UNORM | 1 | 32-bit BGRA |
+| B8G8R8X8_UNORM | 2 | 32-bit BGRX |
+| R8G8B8A8_UNORM | 67 | 32-bit RGBA |
+| X8B8G8R8_UNORM | 68 | 32-bit XBGR |
+
+**Configuration:**
+- Control queue size: 64 descriptors
+- Cursor queue size: 16 descriptors
+- Command/response buffers: 4KB each
+
+**Not Implemented:**
+- 3D rendering (virgl)
+- EDID parsing
+- Cursor plane operations
+- Multiple scanouts
+- Fence synchronization
+
+**Recommendations:**
+- Add cursor support for mouse pointer
+- Implement 3D virgl for hardware acceleration
+- Add EDID parsing for display detection
+
+---
+
+### 7. VirtIO Input Device (`virtio/input.cpp`, `input.hpp`)
+
+**Status:** Complete with keyboard, mouse, and LED control
 
 **Implemented:**
 - Device discovery and initialization
 - Device name reading from config
-- Event type capability detection (EV_KEY, EV_REL)
+- Event type capability detection (EV_KEY, EV_REL, EV_LED)
 - Automatic keyboard vs. mouse classification
 - Event virtqueue with buffer pool
 - Non-blocking event polling
 - Input event structure (Linux-compatible)
 - Global keyboard and mouse pointers
 - Feature negotiation (VERSION_1 for modern)
+- **LED control via status queue:**
+  - `set_led(led, on)` - Set LED state
+  - `has_led_support()` - Check if LEDs available
+  - Supports Num Lock, Caps Lock, Scroll Lock
 
 **Input Event Structure:**
 ```cpp
 struct InputEvent {
-    u16 type;   // EV_KEY, EV_REL, EV_ABS, etc.
-    u16 code;   // Key code or axis
-    u32 value;  // 1=press, 0=release, or delta
+    u16 type;   // EV_KEY, EV_REL, EV_ABS, EV_LED, etc.
+    u16 code;   // Key code, axis, or LED code
+    u32 value;  // 1=press/on, 0=release/off, or delta
 };
 ```
 
@@ -275,25 +350,33 @@ struct InputEvent {
 | KEY | 0x01 | Key/button press |
 | REL | 0x02 | Relative movement |
 | ABS | 0x03 | Absolute position |
+| LED | 0x11 | LED control |
+
+**LED Codes:**
+| Code | Value | Description |
+|------|-------|-------------|
+| NUML | 0x00 | Num Lock LED |
+| CAPSL | 0x01 | Caps Lock LED |
+| SCROLLL | 0x02 | Scroll Lock LED |
 
 **Configuration:**
 - Event buffer count: 64
 - Event size: 8 bytes
+- Status queue size: 8 (for LED control)
 
 **Not Implemented:**
-- Status queue (LED control)
 - Absolute positioning (touchscreen)
 - Force feedback
 - Multiple keyboards/mice
 - Event coalescing
 
 **Recommendations:**
-- Add LED control for Caps Lock, etc.
 - Implement touchscreen support (EV_ABS)
+- Add force feedback for game controllers
 
 ---
 
-### 7. QEMU fw_cfg (`fwcfg.cpp`, `fwcfg.hpp`)
+### 8. QEMU fw_cfg (`fwcfg.cpp`, `fwcfg.hpp`)
 
 **Status:** Complete interface for firmware configuration
 
@@ -340,7 +423,7 @@ struct InputEvent {
 
 ---
 
-### 8. RAM Framebuffer (`ramfb.cpp`, `ramfb.hpp`)
+### 9. RAM Framebuffer (`ramfb.cpp`, `ramfb.hpp`)
 
 **Status:** Fully functional framebuffer driver
 
@@ -402,14 +485,14 @@ struct RAMFBCfg {
 │  └─────────────┘  └─────────────┘  └─────────────┘          │
 └────────────┬────────────────────────────────────────────────┘
              │
-     ┌───────┴───────┬───────────────┬───────────────┐
-     ▼               ▼               ▼               ▼
-┌─────────┐   ┌─────────┐   ┌─────────┐   ┌─────────┐
-│  Block  │   │   Net   │   │   RNG   │   │  Input  │
-│ Driver  │   │ Driver  │   │ Driver  │   │ Driver  │
-└────┬────┘   └────┬────┘   └────┬────┘   └────┬────┘
-     │             │             │             │
-     ▼             ▼             ▼             ▼
+     ┌───────┴───────┬───────────────┬───────────────┬───────────────┐
+     ▼               ▼               ▼               ▼               ▼
+┌─────────┐   ┌─────────┐   ┌─────────┐   ┌─────────┐   ┌─────────┐
+│  Block  │   │   GPU   │   │   Net   │   │   RNG   │   │  Input  │
+│ Driver  │   │ Driver  │   │ Driver  │   │ Driver  │   │ Driver  │
+└────┬────┘   └────┬────┘   └────┬────┘   └────┬────┘   └────┬────┘
+     │             │             │             │             │
+     ▼             ▼             ▼             ▼             ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                  VirtIO-MMIO Transport                       │
 │            (0x0a000000 - 0x0a004000, 0x200 apart)           │
@@ -473,14 +556,16 @@ The drivers subsystem is tested via:
 | `virtio/virtio.hpp` | ~294 | Core definitions |
 | `virtio/virtqueue.cpp` | ~390 | Vring implementation |
 | `virtio/virtqueue.hpp` | ~299 | Vring structures |
-| `virtio/blk.cpp` | ~358 | Block device driver |
-| `virtio/blk.hpp` | ~237 | Block device interface |
-| `virtio/net.cpp` | ~446 | Network device driver |
-| `virtio/net.hpp` | ~277 | Network device interface |
+| `virtio/blk.cpp` | ~745 | Block device driver |
+| `virtio/blk.hpp` | ~379 | Block device interface |
+| `virtio/gpu.cpp` | ~390 | GPU device driver |
+| `virtio/gpu.hpp` | ~260 | GPU device interface |
+| `virtio/net.cpp` | ~750 | Network device driver |
+| `virtio/net.hpp` | ~395 | Network device interface |
 | `virtio/rng.cpp` | ~189 | RNG device driver |
 | `virtio/rng.hpp` | ~56 | RNG interface |
-| `virtio/input.cpp` | ~324 | Input device driver |
-| `virtio/input.hpp` | ~213 | Input device interface |
+| `virtio/input.cpp` | ~435 | Input device driver |
+| `virtio/input.hpp` | ~256 | Input device interface |
 | `fwcfg.cpp` | ~259 | fw_cfg implementation |
 | `fwcfg.hpp` | ~97 | fw_cfg interface |
 | `ramfb.cpp` | ~234 | RAM framebuffer |
@@ -490,9 +575,12 @@ The drivers subsystem is tested via:
 
 ## Priority Recommendations
 
-1. **High:** Add interrupt-driven I/O for virtio-blk
-2. **High:** Implement async I/O API for better throughput
-3. **Medium:** Add VirtIO-GPU for hardware-accelerated graphics
-4. **Medium:** Add checksum offload for virtio-net
-5. **Low:** Implement VirtIO-console for console I/O
-6. **Low:** Add device tree parsing for dynamic configuration
+1. ~~**High:** Add interrupt-driven I/O for virtio-blk~~ ✓ Implemented
+2. ~~**High:** Implement async I/O API for better throughput~~ ✓ Implemented
+3. ~~**Medium:** Add VirtIO-GPU for hardware-accelerated graphics~~ ✓ Implemented (2D)
+4. ~~**Medium:** Add checksum offload for virtio-net~~ ✓ Implemented
+5. **Medium:** Add VirtIO-GPU 3D support (virgl)
+6. **Low:** Implement VirtIO-console for console I/O
+7. **Low:** Add device tree parsing for dynamic configuration
+8. **Low:** Add GSO/TSO for virtio-net large packet handling
+9. **Low:** Add multiqueue support for SMP scalability

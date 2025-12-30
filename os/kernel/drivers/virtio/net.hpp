@@ -67,6 +67,15 @@ struct NetHeader
     // num_buffers field is NOT present unless MRG_RXBUF is negotiated
 } __attribute__((packed));
 
+// Header flags
+/** @brief Virtio-net header flags for checksum offload. */
+namespace net_hdr_flags
+{
+constexpr u8 NEEDS_CSUM = 1;     // Device should calculate checksum
+constexpr u8 DATA_VALID = 2;    // Checksum is valid (RX)
+constexpr u8 RSC_INFO = 4;      // RSC info available
+} // namespace net_hdr_flags
+
 // GSO types
 /** @brief Virtio-net GSO type values. */
 namespace net_gso
@@ -168,6 +177,21 @@ class NetDevice : public Device
      * @return `true` on success, otherwise `false`.
      */
     bool transmit(const void *data, usize len);
+
+    /**
+     * @brief Transmit an Ethernet frame with checksum offload.
+     *
+     * @details
+     * If checksum offload was negotiated, the device will calculate the checksum.
+     * Otherwise falls back to software checksum calculation before transmit.
+     *
+     * @param data Pointer to Ethernet frame bytes.
+     * @param len Length of frame in bytes.
+     * @param csum_start Offset from start of packet where checksumming begins.
+     * @param csum_offset Offset from csum_start where the checksum should be stored.
+     * @return `true` on success, otherwise `false`.
+     */
+    bool transmit_csum(const void *data, usize len, u16 csum_start, u16 csum_offset);
 
     // Receive a packet (non-blocking)
     // Returns bytes received, 0 if no packet, negative on error
@@ -276,6 +300,26 @@ class NetDevice : public Device
         return rx_dropped_;
     }
 
+    /**
+     * @brief Check if TX checksum offload is available.
+     *
+     * @return true if the device supports TX checksum offload.
+     */
+    bool has_tx_csum() const
+    {
+        return has_tx_csum_;
+    }
+
+    /**
+     * @brief Check if RX checksum validation is available.
+     *
+     * @return true if the device validates checksums on received packets.
+     */
+    bool has_rx_csum() const
+    {
+        return has_rx_csum_;
+    }
+
   private:
     Virtqueue rx_vq_; // Queue 0: receive
     Virtqueue tx_vq_; // Queue 1: transmit
@@ -325,6 +369,10 @@ class NetDevice : public Device
 
     // IRQ number for this device
     u32 irq_{0};
+
+    // Checksum offload capabilities
+    bool has_tx_csum_{false};  // CSUM feature negotiated
+    bool has_rx_csum_{false};  // GUEST_CSUM feature negotiated
 
     // RX waiters (tasks waiting for data)
     task::Task *rx_waiters_[MAX_RX_WAITERS];

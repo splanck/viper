@@ -94,6 +94,14 @@ bool InputDevice::init(u64 base_addr)
     // (mice also have EV_KEY for buttons, but they have EV_REL too)
     is_keyboard_ = (ev_key_size > 0 && !is_mouse_);
 
+    // EV_BITS query for EV_LED (LED support)
+    config[0] = input_config::EV_BITS;
+    config[1] = ev_type::LED;
+    asm volatile("dsb sy" ::: "memory");
+
+    u8 ev_led_size = config[2];
+    has_led_ = (ev_led_size > 0);
+
     if (is_keyboard_)
     {
         serial::puts("[virtio-input] Device is a keyboard\n");
@@ -101,6 +109,10 @@ bool InputDevice::init(u64 base_addr)
     if (is_mouse_)
     {
         serial::puts("[virtio-input] Device is a mouse\n");
+    }
+    if (has_led_)
+    {
+        serial::puts("[virtio-input] Device supports LED control\n");
     }
 
     // For virtio-input, negotiate features
@@ -151,6 +163,43 @@ bool InputDevice::init(u64 base_addr)
     {
         serial::puts("[virtio-input] Failed to init eventq\n");
         return false;
+    }
+
+    // Initialize statusq (queue 1) for LED control if supported
+    if (has_led_)
+    {
+        write32(reg::QUEUE_SEL, 1);
+        u32 status_queue_size = read32(reg::QUEUE_NUM_MAX);
+        if (status_queue_size > 0)
+        {
+            // Use small queue size for status events
+            u32 sq_size = status_queue_size > 8 ? 8 : status_queue_size;
+            if (!statusq_.init(this, 1, sq_size))
+            {
+                serial::puts("[virtio-input] Failed to init statusq (LED control disabled)\n");
+                has_led_ = false;
+            }
+            else
+            {
+                // Allocate status event buffer
+                status_event_phys_ = pmm::alloc_page();
+                if (status_event_phys_ == 0)
+                {
+                    serial::puts("[virtio-input] Failed to allocate status buffer\n");
+                    has_led_ = false;
+                }
+                else
+                {
+                    status_event_ = reinterpret_cast<InputEvent *>(pmm::phys_to_virt(status_event_phys_));
+                    serial::puts("[virtio-input] Status queue initialized for LED control\n");
+                }
+            }
+        }
+        else
+        {
+            serial::puts("[virtio-input] No status queue available\n");
+            has_led_ = false;
+        }
     }
 
     // Allocate physical memory for event buffers
@@ -320,5 +369,66 @@ void input_init()
 
 // Note: Keyboard/mouse event processing is handled by input::poll() in kernel/input/input.cpp
 // which is called from the timer interrupt handler. Do NOT consume events here.
+
+/** @copydoc virtio::InputDevice::set_led */
+bool InputDevice::set_led(u16 led, bool on)
+{
+    if (!has_led_ || !status_event_)
+    {
+        return false;
+    }
+
+    if (led > led_code::MAX)
+    {
+        return false;
+    }
+
+    // Prepare the LED event
+    status_event_->type = ev_type::LED;
+    status_event_->code = led;
+    status_event_->value = on ? 1 : 0;
+
+    // Memory barrier before submitting
+    asm volatile("dsb sy" ::: "memory");
+
+    // Allocate a descriptor
+    i32 desc = statusq_.alloc_desc();
+    if (desc < 0)
+    {
+        serial::puts("[virtio-input] No free status descriptors\n");
+        return false;
+    }
+
+    // Set up descriptor - device reads this buffer
+    statusq_.set_desc(desc, status_event_phys_, sizeof(InputEvent), 0);
+
+    // Submit and kick
+    statusq_.submit(desc);
+    statusq_.kick();
+
+    // Wait for completion (blocking with timeout)
+    bool completed = false;
+    for (u32 i = 0; i < 100000; i++)
+    {
+        i32 used = statusq_.poll_used();
+        if (used == desc)
+        {
+            completed = true;
+            break;
+        }
+        asm volatile("yield" ::: "memory");
+    }
+
+    // Free the descriptor
+    statusq_.free_desc(desc);
+
+    if (!completed)
+    {
+        serial::puts("[virtio-input] LED set timed out\n");
+        return false;
+    }
+
+    return true;
+}
 
 } // namespace virtio

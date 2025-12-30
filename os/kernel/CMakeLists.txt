@@ -53,6 +53,7 @@ set(KERNEL_SOURCES
         drivers/virtio/virtio.cpp
         drivers/virtio/virtqueue.cpp
         drivers/virtio/blk.cpp
+        drivers/virtio/gpu.cpp
         drivers/virtio/input.cpp
         drivers/virtio/net.cpp
         drivers/virtio/rng.cpp

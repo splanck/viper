@@ -32,6 +32,7 @@
 #include "drivers/fwcfg.hpp"
 #include "drivers/ramfb.hpp"
 #include "drivers/virtio/blk.hpp"
+#include "drivers/virtio/gpu.hpp"
 #include "drivers/virtio/input.hpp"
 #include "drivers/virtio/net.hpp"
 #include "drivers/virtio/rng.hpp"
@@ -339,6 +340,9 @@ extern "C" void kernel_main(void *boot_info_ptr)
 
     // Initialize virtio-blk driver
     virtio::blk_init();
+
+    // Initialize virtio-gpu driver
+    virtio::gpu_init();
 
     // Initialize virtio-input driver (Phase 5)
     virtio::input_init();
