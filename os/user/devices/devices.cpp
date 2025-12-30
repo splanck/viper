@@ -10,10 +10,10 @@
  *   devices           - List all detected hardware
  */
 
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
 #include "../syscall.hpp"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 // Device info structure (matches kernel definition)
 struct DeviceInfo
@@ -31,9 +31,8 @@ constexpr u32 DEVICE_FLAG_VIRTUAL = (1 << 1);
 // Device list syscall wrapper
 static i32 get_device_list(DeviceInfo *devices, u32 max_count)
 {
-    auto r = sys::syscall2(SYS_DEVICE_LIST,
-                           reinterpret_cast<u64>(devices),
-                           static_cast<u64>(max_count));
+    auto r =
+        sys::syscall2(SYS_DEVICE_LIST, reinterpret_cast<u64>(devices), static_cast<u64>(max_count));
     if (r.ok())
         return static_cast<i32>(r.val0);
     return static_cast<i32>(r.error);

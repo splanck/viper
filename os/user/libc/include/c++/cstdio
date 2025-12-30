@@ -3,7 +3,8 @@
 
 #include "../stdio.h"
 
-namespace std {
+namespace std
+{
 
 /* Types */
 using ::FILE;
@@ -11,15 +12,15 @@ using ::fpos_t;
 using ::size_t;
 
 /* Standard streams */
+using ::stderr;
 using ::stdin;
 using ::stdout;
-using ::stderr;
 
 /* File operations */
-using ::fopen;
-using ::freopen;
 using ::fclose;
 using ::fflush;
+using ::fopen;
+using ::freopen;
 using ::remove;
 using ::rename;
 using ::tmpfile;
@@ -30,17 +31,17 @@ using ::fdopen;
 using ::fileno;
 
 /* Formatted I/O */
-using ::printf;
 using ::fprintf;
-using ::sprintf;
-using ::snprintf;
-using ::vprintf;
-using ::vfprintf;
-using ::vsprintf;
-using ::vsnprintf;
-using ::scanf;
 using ::fscanf;
+using ::printf;
+using ::scanf;
+using ::snprintf;
+using ::sprintf;
 using ::sscanf;
+using ::vfprintf;
+using ::vprintf;
+using ::vsnprintf;
+using ::vsprintf;
 
 /* Character I/O */
 using ::fgetc;
@@ -60,11 +61,11 @@ using ::fread;
 using ::fwrite;
 
 /* File positioning */
+using ::fgetpos;
 using ::fseek;
+using ::fsetpos;
 using ::ftell;
 using ::rewind;
-using ::fgetpos;
-using ::fsetpos;
 
 /* Error handling */
 using ::clearerr;
@@ -73,8 +74,8 @@ using ::ferror;
 using ::perror;
 
 /* Line reading */
-using ::getline;
 using ::getdelim;
+using ::getline;
 
 } /* namespace std */
 

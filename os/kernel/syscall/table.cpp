@@ -1875,7 +1875,8 @@ static SyscallResult sys_device_list(u64 a0, u64 a1, u64, u64, u64, u64)
     };
 
     // Helper to copy a string into a fixed-size buffer
-    auto copy_str = [](char *dst, const char *src, usize max) {
+    auto copy_str = [](char *dst, const char *src, usize max)
+    {
         usize i = 0;
         while (i < max - 1 && src[i])
         {
@@ -2384,12 +2385,12 @@ static SyscallResult sys_get_args(u64 a0, u64 a1, u64, u64, u64, u64)
  */
 struct IrqState
 {
-    u32 owner_task_id;       ///< Task ID that owns this IRQ (0 = unowned)
-    u32 owner_viper_id;      ///< Viper ID that owns this IRQ
+    u32 owner_task_id;        ///< Task ID that owns this IRQ (0 = unowned)
+    u32 owner_viper_id;       ///< Viper ID that owns this IRQ
     sched::WaitQueue waiters; ///< Tasks waiting for this IRQ
-    bool pending;            ///< IRQ fired but not yet delivered
-    bool enabled;            ///< Whether IRQ delivery is enabled
-    Spinlock lock;           ///< Per-IRQ lock
+    bool pending;             ///< IRQ fired but not yet delivered
+    bool enabled;             ///< Whether IRQ delivery is enabled
+    Spinlock lock;            ///< Per-IRQ lock
 };
 
 /// IRQ state table for user-space accessible IRQs (32-255)
@@ -2485,7 +2486,8 @@ static SyscallResult sys_map_device(u64 a0, u64 a1, u64 a2, u64, u64, u64)
     for (usize i = 0; i < v->cap_table->capacity(); i++)
     {
         cap::Entry *e = v->cap_table->entry_at(i);
-        if (e && e->kind != cap::Kind::Invalid && cap::has_rights(e->rights, cap::CAP_DEVICE_ACCESS))
+        if (e && e->kind != cap::Kind::Invalid &&
+            cap::has_rights(e->rights, cap::CAP_DEVICE_ACCESS))
         {
             has_device_access = true;
             break;
@@ -2581,7 +2583,8 @@ static SyscallResult sys_irq_register(u64 a0, u64, u64, u64, u64, u64)
         for (usize i = 0; i < v->cap_table->capacity(); i++)
         {
             cap::Entry *e = v->cap_table->entry_at(i);
-            if (e && e->kind != cap::Kind::Invalid && cap::has_rights(e->rights, cap::CAP_IRQ_ACCESS))
+            if (e && e->kind != cap::Kind::Invalid &&
+                cap::has_rights(e->rights, cap::CAP_IRQ_ACCESS))
             {
                 has_irq_access = true;
                 break;
@@ -2830,7 +2833,8 @@ static SyscallResult sys_dma_alloc(u64 a0, u64 a1, u64, u64, u64, u64)
         for (usize i = 0; i < v->cap_table->capacity(); i++)
         {
             cap::Entry *e = v->cap_table->entry_at(i);
-            if (e && e->kind != cap::Kind::Invalid && cap::has_rights(e->rights, cap::CAP_DMA_ACCESS))
+            if (e && e->kind != cap::Kind::Invalid &&
+                cap::has_rights(e->rights, cap::CAP_DMA_ACCESS))
             {
                 has_dma_access = true;
                 break;
@@ -2938,8 +2942,7 @@ static SyscallResult sys_dma_free(u64 a0, u64, u64, u64, u64, u64)
     u32 slot = MAX_DMA_ALLOCATIONS;
     for (u32 i = 0; i < MAX_DMA_ALLOCATIONS; i++)
     {
-        if (dma_allocations[i].in_use &&
-            dma_allocations[i].virt_addr == virt_addr &&
+        if (dma_allocations[i].in_use && dma_allocations[i].virt_addr == virt_addr &&
             dma_allocations[i].owner_viper_id == v->id)
         {
             slot = i;
@@ -2992,7 +2995,8 @@ static SyscallResult sys_virt_to_phys(u64 a0, u64, u64, u64, u64, u64)
         for (usize i = 0; i < v->cap_table->capacity(); i++)
         {
             cap::Entry *e = v->cap_table->entry_at(i);
-            if (e && e->kind != cap::Kind::Invalid && cap::has_rights(e->rights, cap::CAP_DMA_ACCESS))
+            if (e && e->kind != cap::Kind::Invalid &&
+                cap::has_rights(e->rights, cap::CAP_DMA_ACCESS))
             {
                 has_dma_access = true;
                 break;
@@ -3155,8 +3159,8 @@ static SyscallResult sys_shm_create(u64 a0, u64, u64, u64, u64, u64)
     shm->set_creator_virt(virt_addr);
 
     // Insert into capability table
-    cap::Handle handle = v->cap_table->insert(shm, cap::Kind::SharedMemory,
-                                               cap::CAP_READ | cap::CAP_WRITE | cap::CAP_TRANSFER);
+    cap::Handle handle = v->cap_table->insert(
+        shm, cap::Kind::SharedMemory, cap::CAP_READ | cap::CAP_WRITE | cap::CAP_TRANSFER);
     if (handle == cap::HANDLE_INVALID)
     {
         as->unmap(virt_addr, aligned_size);

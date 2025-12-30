@@ -122,8 +122,8 @@ int waitid(idtype_t idtype, pid_t id, siginfo_t *infop, int options)
         }
         else if (WIFCONTINUED(wstatus))
         {
-            infop->si_signo = 17; /* SIGCHLD */
-            infop->si_code = 6;   /* CLD_CONTINUED */
+            infop->si_signo = 17;  /* SIGCHLD */
+            infop->si_code = 6;    /* CLD_CONTINUED */
             infop->si_status = 18; /* SIGCONT */
         }
     }

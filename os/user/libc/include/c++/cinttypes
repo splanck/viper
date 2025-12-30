@@ -3,7 +3,8 @@
 
 #include "../inttypes.h"
 
-namespace std {
+namespace std
+{
 
 using ::imaxdiv_t;
 using ::intmax_t;

@@ -90,9 +90,9 @@ class SharedMemory : public Object
     {
     }
 
-    u64 phys_addr_;   // Physical address of the region
-    u64 size_;        // Size in bytes (page-aligned)
-    u64 num_pages_;   // Number of physical pages
+    u64 phys_addr_;    // Physical address of the region
+    u64 size_;         // Size in bytes (page-aligned)
+    u64 num_pages_;    // Number of physical pages
     u64 creator_virt_; // Creator's virtual mapping (0 if unmapped)
 };
 

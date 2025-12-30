@@ -47,6 +47,22 @@ struct Ipv4Header
 /** @brief Minimum IPv4 header size in bytes (IHL = 5). */
 constexpr usize IPV4_HEADER_MIN = 20;
 
+/** @brief Maximum transmission unit (Ethernet payload minus IP header). */
+constexpr usize IP_MTU = 1500;
+
+/** @brief Maximum IP payload that can be transmitted without fragmentation. */
+constexpr usize IP_MAX_PAYLOAD = IP_MTU - IPV4_HEADER_MIN;
+
+/**
+ * @brief IP header flag bits (in flags_fragment field, network byte order).
+ */
+namespace ip_flags
+{
+constexpr u16 MF = 0x2000;          ///< More Fragments flag
+constexpr u16 DF = 0x4000;          ///< Don't Fragment flag
+constexpr u16 OFFSET_MASK = 0x1FFF; ///< Fragment offset mask (13 bits)
+} // namespace ip_flags
+
 /**
  * @brief IPv4 protocol numbers for the payload.
  *
@@ -92,8 +108,8 @@ void rx_packet(const void *data, usize len);
  * - If ARP resolution is pending, an ARP request is sent and this function
  *   returns `false` so the caller can retry later.
  *
- * Fragmentation is not implemented; packets larger than the local buffer may be
- * rejected by the caller layers.
+ * If the payload exceeds the MTU, the packet is fragmented into multiple
+ * IP fragments with appropriate flags and offsets.
  *
  * @param dst Destination IPv4 address.
  * @param protocol Protocol number from @ref protocol.
@@ -102,6 +118,22 @@ void rx_packet(const void *data, usize len);
  * @return `true` if the packet was transmitted, otherwise `false`.
  */
 bool tx_packet(const Ipv4Addr &dst, u8 protocol, const void *payload, usize len);
+
+/**
+ * @brief Check and expire old IP reassembly entries.
+ *
+ * @details
+ * Should be called periodically (e.g., from network_poll) to clean up
+ * incomplete fragment reassembly buffers that have timed out.
+ */
+void check_reassembly_timeout();
+
+/**
+ * @brief Get count of active reassembly entries.
+ *
+ * @return Number of IP datagrams currently being reassembled.
+ */
+u32 get_reassembly_count();
 
 } // namespace ip
 } // namespace net

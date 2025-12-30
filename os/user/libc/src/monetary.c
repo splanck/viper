@@ -4,13 +4,13 @@
  */
 
 #include "../include/monetary.h"
-#include "../include/stdarg.h"
-#include "../include/string.h"
-#include "../include/stdlib.h"
-#include "../include/stdio.h"
-#include "../include/errno.h"
 #include "../include/ctype.h"
+#include "../include/errno.h"
 #include "../include/math.h"
+#include "../include/stdarg.h"
+#include "../include/stdio.h"
+#include "../include/stdlib.h"
+#include "../include/string.h"
 
 /* Default currency symbol */
 #define DEFAULT_CURRENCY "$"
@@ -22,12 +22,19 @@
 /*
  * Helper: Format a single monetary value
  */
-static ssize_t format_monetary(char *buf, size_t maxsize, double value,
-                               int international, int no_symbol,
-                               int left_justify, int paren_negative,
-                               int show_sign, char fill_char,
-                               int no_grouping, int width,
-                               int left_prec, int right_prec)
+static ssize_t format_monetary(char *buf,
+                               size_t maxsize,
+                               double value,
+                               int international,
+                               int no_symbol,
+                               int left_justify,
+                               int paren_negative,
+                               int show_sign,
+                               char fill_char,
+                               int no_grouping,
+                               int width,
+                               int left_prec,
+                               int right_prec)
 {
     if (maxsize == 0)
         return -1;
@@ -323,12 +330,19 @@ ssize_t strfmon(char *s, size_t maxsize, const char *format, ...)
         /* Get the value and format it */
         double value = va_arg(args, double);
 
-        ssize_t written = format_monetary(out, remaining, value,
-                                          international, no_symbol,
-                                          left_justify, paren_negative,
-                                          show_sign, fill_char,
-                                          no_grouping, width,
-                                          left_prec, right_prec);
+        ssize_t written = format_monetary(out,
+                                          remaining,
+                                          value,
+                                          international,
+                                          no_symbol,
+                                          left_justify,
+                                          paren_negative,
+                                          show_sign,
+                                          fill_char,
+                                          no_grouping,
+                                          width,
+                                          left_prec,
+                                          right_prec);
         if (written < 0)
         {
             va_end(args);
@@ -348,8 +362,7 @@ ssize_t strfmon(char *s, size_t maxsize, const char *format, ...)
 /*
  * strfmon_l - Format monetary value with explicit locale
  */
-ssize_t strfmon_l(char *s, size_t maxsize, void *locale,
-                  const char *format, ...)
+ssize_t strfmon_l(char *s, size_t maxsize, void *locale, const char *format, ...)
 {
     (void)locale; /* ViperOS doesn't support locales yet */
 
@@ -406,9 +419,8 @@ ssize_t strfmon_l(char *s, size_t maxsize, void *locale,
         }
 
         double value = va_arg(args, double);
-        ssize_t written = format_monetary(out, remaining, value,
-                                          international, 0, 0, 0, 0,
-                                          ' ', 0, 0, -1, -1);
+        ssize_t written =
+            format_monetary(out, remaining, value, international, 0, 0, 0, 0, ' ', 0, 0, -1, -1);
         if (written < 0)
         {
             va_end(args);

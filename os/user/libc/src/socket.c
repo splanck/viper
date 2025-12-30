@@ -1,7 +1,7 @@
 #include "../include/sys/socket.h"
-#include "../include/netinet/in.h"
 #include "../include/arpa/inet.h"
 #include "../include/errno.h"
+#include "../include/netinet/in.h"
 #include "../include/string.h"
 
 /* Syscall helpers */
@@ -13,18 +13,18 @@ extern long __syscall5(long num, long arg0, long arg1, long arg2, long arg3, lon
 extern long __syscall6(long num, long arg0, long arg1, long arg2, long arg3, long arg4, long arg5);
 
 /* Syscall numbers */
-#define SYS_SOCKET      0xC0
-#define SYS_BIND        0xC1
-#define SYS_LISTEN      0xC2
-#define SYS_ACCEPT      0xC3
-#define SYS_CONNECT     0xC4
-#define SYS_SEND        0xC5
-#define SYS_RECV        0xC6
-#define SYS_SENDTO      0xC7
-#define SYS_RECVFROM    0xC8
-#define SYS_SHUTDOWN    0xC9
-#define SYS_GETSOCKOPT  0xCA
-#define SYS_SETSOCKOPT  0xCB
+#define SYS_SOCKET 0xC0
+#define SYS_BIND 0xC1
+#define SYS_LISTEN 0xC2
+#define SYS_ACCEPT 0xC3
+#define SYS_CONNECT 0xC4
+#define SYS_SEND 0xC5
+#define SYS_RECV 0xC6
+#define SYS_SENDTO 0xC7
+#define SYS_RECVFROM 0xC8
+#define SYS_SHUTDOWN 0xC9
+#define SYS_GETSOCKOPT 0xCA
+#define SYS_SETSOCKOPT 0xCB
 #define SYS_GETSOCKNAME 0xCC
 #define SYS_GETPEERNAME 0xCD
 
@@ -45,9 +45,7 @@ unsigned short ntohs(unsigned short netshort)
 
 unsigned int htonl(unsigned int hostlong)
 {
-    return ((hostlong & 0xff) << 24) |
-           ((hostlong & 0xff00) << 8) |
-           ((hostlong >> 8) & 0xff00) |
+    return ((hostlong & 0xff) << 24) | ((hostlong & 0xff00) << 8) | ((hostlong >> 8) & 0xff00) |
            ((hostlong >> 24) & 0xff);
 }
 
@@ -141,11 +139,14 @@ ssize_t recv(int sockfd, void *buf, size_t len, int flags)
     return result;
 }
 
-ssize_t sendto(int sockfd, const void *buf, size_t len, int flags,
-               const struct sockaddr *dest_addr, socklen_t addrlen)
+ssize_t sendto(int sockfd,
+               const void *buf,
+               size_t len,
+               int flags,
+               const struct sockaddr *dest_addr,
+               socklen_t addrlen)
 {
-    long result = __syscall6(SYS_SENDTO, sockfd, (long)buf, len, flags,
-                             (long)dest_addr, addrlen);
+    long result = __syscall6(SYS_SENDTO, sockfd, (long)buf, len, flags, (long)dest_addr, addrlen);
     if (result < 0)
     {
         errno = (int)(-result);
@@ -154,11 +155,11 @@ ssize_t sendto(int sockfd, const void *buf, size_t len, int flags,
     return result;
 }
 
-ssize_t recvfrom(int sockfd, void *buf, size_t len, int flags,
-                 struct sockaddr *src_addr, socklen_t *addrlen)
+ssize_t recvfrom(
+    int sockfd, void *buf, size_t len, int flags, struct sockaddr *src_addr, socklen_t *addrlen)
 {
-    long result = __syscall6(SYS_RECVFROM, sockfd, (long)buf, len, flags,
-                             (long)src_addr, (long)addrlen);
+    long result =
+        __syscall6(SYS_RECVFROM, sockfd, (long)buf, len, flags, (long)src_addr, (long)addrlen);
     if (result < 0)
     {
         errno = (int)(-result);
@@ -172,8 +173,12 @@ ssize_t sendmsg(int sockfd, const struct msghdr *msg, int flags)
     /* Simplified implementation using send for single iovec */
     if (msg->msg_iovlen == 1)
     {
-        return sendto(sockfd, msg->msg_iov[0].iov_base, msg->msg_iov[0].iov_len,
-                      flags, (struct sockaddr *)msg->msg_name, msg->msg_namelen);
+        return sendto(sockfd,
+                      msg->msg_iov[0].iov_base,
+                      msg->msg_iov[0].iov_len,
+                      flags,
+                      (struct sockaddr *)msg->msg_name,
+                      msg->msg_namelen);
     }
     errno = ENOTSUP;
     return -1;
@@ -184,8 +189,12 @@ ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags)
     /* Simplified implementation using recv for single iovec */
     if (msg->msg_iovlen == 1)
     {
-        return recvfrom(sockfd, msg->msg_iov[0].iov_base, msg->msg_iov[0].iov_len,
-                        flags, (struct sockaddr *)msg->msg_name, &msg->msg_namelen);
+        return recvfrom(sockfd,
+                        msg->msg_iov[0].iov_base,
+                        msg->msg_iov[0].iov_len,
+                        flags,
+                        (struct sockaddr *)msg->msg_name,
+                        &msg->msg_namelen);
     }
     errno = ENOTSUP;
     return -1;
@@ -193,8 +202,7 @@ ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags)
 
 int getsockopt(int sockfd, int level, int optname, void *optval, socklen_t *optlen)
 {
-    long result = __syscall5(SYS_GETSOCKOPT, sockfd, level, optname,
-                             (long)optval, (long)optlen);
+    long result = __syscall5(SYS_GETSOCKOPT, sockfd, level, optname, (long)optval, (long)optlen);
     if (result < 0)
     {
         errno = (int)(-result);
@@ -205,8 +213,7 @@ int getsockopt(int sockfd, int level, int optname, void *optval, socklen_t *optl
 
 int setsockopt(int sockfd, int level, int optname, const void *optval, socklen_t optlen)
 {
-    long result = __syscall5(SYS_SETSOCKOPT, sockfd, level, optname,
-                             (long)optval, optlen);
+    long result = __syscall5(SYS_SETSOCKOPT, sockfd, level, optname, (long)optval, optlen);
     if (result < 0)
     {
         errno = (int)(-result);
@@ -437,8 +444,8 @@ in_addr_t inet_netof(struct in_addr in)
 {
     unsigned int addr = ntohl(in.s_addr);
     if ((addr & 0x80000000) == 0)
-        return (addr >> 24) & 0xff;       /* Class A */
+        return (addr >> 24) & 0xff; /* Class A */
     if ((addr & 0xc0000000) == 0x80000000)
-        return (addr >> 16) & 0xffff;     /* Class B */
-    return (addr >> 8) & 0xffffff;        /* Class C */
+        return (addr >> 16) & 0xffff; /* Class B */
+    return (addr >> 8) & 0xffffff;    /* Class C */
 }

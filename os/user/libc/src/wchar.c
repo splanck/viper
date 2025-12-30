@@ -4,10 +4,10 @@
  */
 
 #include "../include/wchar.h"
-#include "../include/string.h"
-#include "../include/stdlib.h"
 #include "../include/ctype.h"
 #include "../include/errno.h"
+#include "../include/stdlib.h"
+#include "../include/string.h"
 
 /*
  * Wide character classification
@@ -59,8 +59,7 @@ int iswpunct(wint_t wc)
 
 int iswspace(wint_t wc)
 {
-    return wc == ' ' || wc == '\t' || wc == '\n' ||
-           wc == '\r' || wc == '\f' || wc == '\v';
+    return wc == ' ' || wc == '\t' || wc == '\n' || wc == '\r' || wc == '\f' || wc == '\v';
 }
 
 int iswupper(wint_t wc)
@@ -70,9 +69,7 @@ int iswupper(wint_t wc)
 
 int iswxdigit(wint_t wc)
 {
-    return iswdigit(wc) ||
-           (wc >= 'A' && wc <= 'F') ||
-           (wc >= 'a' && wc <= 'f');
+    return iswdigit(wc) || (wc >= 'A' && wc <= 'F') || (wc >= 'a' && wc <= 'f');
 }
 
 wint_t towlower(wint_t wc)

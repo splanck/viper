@@ -425,8 +425,7 @@ i64 wait(u32 poll_id, poll::PollEvent *out_events, u32 max_events, i64 timeout_m
                 poll::EventType mask = ps->entries[i].mask;
 
                 // Only register for real handles, not pseudo-handles
-                if (handle != poll::HANDLE_CONSOLE_INPUT &&
-                    handle != poll::HANDLE_NETWORK_RX)
+                if (handle != poll::HANDLE_CONSOLE_INPUT && handle != poll::HANDLE_NETWORK_RX)
                 {
                     poll::register_wait(handle, mask);
                 }

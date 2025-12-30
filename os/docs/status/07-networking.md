@@ -1,12 +1,12 @@
 # Networking Subsystem
 
-**Status:** Production-ready TCP/IP stack with TLS 1.3, congestion control, and interrupt-driven I/O
+**Status:** Production-ready dual-stack TCP/IP with TLS 1.3, congestion control, and interrupt-driven I/O
 **Location:** `kernel/net/`
-**SLOC:** ~14,600
+**SLOC:** ~16,500
 
 ## Overview
 
-The networking subsystem provides a complete TCP/IP stack including Ethernet framing, ARP, IPv4, ICMP, UDP, TCP with RFC 5681 congestion control and out-of-order reassembly, DNS resolution, TLS 1.3, and HTTP client. The implementation supports interrupt-driven packet reception via GIC-registered IRQs for efficient blocking I/O.
+The networking subsystem provides a complete dual-stack TCP/IP implementation including Ethernet framing, ARP, IPv4 with fragmentation/reassembly, IPv6 with ICMPv6/NDP, ICMP, UDP, TCP with RFC 5681 congestion control, RFC 7323 window scaling, RFC 2018 SACK support, and out-of-order reassembly. Higher-level protocols include DNS resolution, TLS 1.3 with session resumption, and HTTP client. The implementation supports interrupt-driven packet reception via GIC-registered IRQs for efficient blocking I/O.
 
 ---
 
@@ -36,7 +36,7 @@ The networking subsystem provides a complete TCP/IP stack including Ethernet fra
 |-------|----------|
 | 0x0800 | IPv4 |
 | 0x0806 | ARP |
-| 0x86DD | IPv6 (defined, not supported) |
+| 0x86DD | IPv6 |
 
 ---
 
@@ -64,7 +64,7 @@ The networking subsystem provides a complete TCP/IP stack including Ethernet fra
 
 ### 3. IPv4 (`ip/ipv4.cpp`, `ipv4.hpp`)
 
-**Status:** Complete basic IPv4
+**Status:** Complete IPv4 with fragmentation and reassembly
 
 **Implemented:**
 - IPv4 header parsing and validation
@@ -73,6 +73,16 @@ The networking subsystem provides a complete TCP/IP stack including Ethernet fra
 - Packet transmission with ARP resolution
 - TTL handling
 - Destination address filtering
+- **IP Fragmentation:**
+  - Fragment large packets exceeding MTU
+  - Set MF (More Fragments) flag
+  - Compute fragment offset in 8-byte units
+- **IP Reassembly:**
+  - 8 concurrent reassembly buffers
+  - 8KB max datagram size per entry
+  - 30-second timeout (per RFC 791)
+  - Bitmap-based fragment tracking
+  - Automatic timeout cleanup
 
 **IPv4 Header:**
 ```
@@ -89,8 +99,24 @@ The networking subsystem provides a complete TCP/IP stack including Ethernet fra
 └─────────────────────────────────────────────┘
 ```
 
+**IP Flags:**
+| Flag | Value | Description |
+|------|-------|-------------|
+| DF | 0x4000 | Don't Fragment |
+| MF | 0x2000 | More Fragments |
+
+**Reassembly Queue Entry:**
+| Field | Description |
+|-------|-------------|
+| src, dst | Source/dest IP |
+| id | IP identification |
+| protocol | Upper layer protocol |
+| buffer[8192] | Reassembly buffer |
+| received[] | Bitmap of received blocks |
+| total_len | Total datagram length |
+| timestamp | First fragment arrival |
+
 **Not Implemented:**
-- IP fragmentation/reassembly
 - IP options processing
 - Multicast routing
 - IGMP
@@ -116,7 +142,72 @@ The networking subsystem provides a complete TCP/IP stack including Ethernet fra
 
 ---
 
-### 5. UDP (`ip/udp.cpp`, `udp.hpp`)
+### 5. IPv6 (`ip/ipv6.cpp`, `ipv6.hpp`)
+
+**Status:** Basic IPv6 with ICMPv6 and Neighbor Discovery
+
+**Implemented:**
+- IPv6 header parsing (40-byte fixed header)
+- Extension header skipping (Hop-by-Hop, Routing, Destination)
+- Link-local address auto-configuration from MAC (EUI-64)
+- Multicast address support
+- **ICMPv6 (`ip/icmpv6.cpp`, `icmpv6.hpp`):**
+  - Echo Request/Reply (ping6)
+  - Neighbor Solicitation/Advertisement
+  - Router Solicitation/Advertisement
+  - ICMPv6 checksum with pseudo-header
+- **Neighbor Discovery (NDP):**
+  - Neighbor cache (32 entries)
+  - NDP option parsing (Source/Target Link-Layer Address)
+  - Solicited-node multicast
+
+**IPv6 Header:**
+```
+┌────────────────────────────────────────────┐
+│ Version │Traffic Class│    Flow Label      │
+├─────────┴─────────────┴────────────────────┤
+│   Payload Length   │Next Hdr│  Hop Limit   │
+├────────────────────┴────────┴──────────────┤
+│                                            │
+│              Source Address                │
+│              (128 bits)                    │
+│                                            │
+├────────────────────────────────────────────┤
+│                                            │
+│           Destination Address              │
+│              (128 bits)                    │
+│                                            │
+└────────────────────────────────────────────┘
+```
+
+**Ipv6Addr Methods:**
+| Method | Description |
+|--------|-------------|
+| `is_unspecified()` | Check if :: |
+| `is_loopback()` | Check if ::1 |
+| `is_link_local()` | Check if fe80::/10 |
+| `is_multicast()` | Check if ff00::/8 |
+| `link_local_from_mac()` | Generate EUI-64 address |
+| `solicited_node_multicast()` | Get ff02::1:ffXX:XXXX |
+
+**Neighbor Cache Entry:**
+| Field | Description |
+|-------|-------------|
+| ip | IPv6 address |
+| mac | MAC address |
+| timestamp | Last update time |
+| valid | Entry in use |
+| router | Is a router |
+
+**Not Implemented:**
+- Fragment header reassembly
+- Global address via SLAAC
+- TCP/UDP over IPv6
+- DHCPv6
+
+---
+
+### 6. UDP (`ip/udp.cpp`, `udp.hpp`)
 
 **Status:** Complete for DNS support
 
@@ -139,13 +230,14 @@ The networking subsystem provides a complete TCP/IP stack including Ethernet fra
 
 ---
 
-### 6. TCP (`ip/tcp.cpp`, `tcp.hpp`)
+### 7. TCP (`ip/tcp.cpp`, `tcp.hpp`)
 
-**Status:** Production-ready with congestion control and OOO reassembly
+**Status:** Production-ready with congestion control, window scaling, SACK, and OOO reassembly
 
 **Implemented:**
 - TCP socket table (16 sockets)
 - Full state machine (CLOSED through TIME_WAIT)
+- TIME_WAIT 2MSL timer (60 seconds via timer wheel)
 - Active open (connect)
 - Passive open (listen/accept)
 - Data transmission with segmentation
@@ -158,6 +250,16 @@ The networking subsystem provides a complete TCP/IP stack including Ethernet fra
 - Unacknowledged data tracking (1460 bytes)
 - Configurable RTO (1-60 seconds)
 - Connection statistics (active count, listen count)
+- **RFC 7323 Window Scaling:**
+  - WSCALE option in SYN packets
+  - Our scale factor: 7 (128x = 512KB max window)
+  - Peer scale factor tracking
+  - Window field scaling on send/receive
+- **RFC 2018 SACK Support:**
+  - SACK_PERMITTED option in SYN
+  - SACK blocks generation from OOO queue
+  - Up to 4 SACK blocks per ACK
+  - Selective retransmission guidance
 - **RFC 5681 Congestion Control:**
   - Slow start (cwnd < ssthresh)
   - Congestion avoidance (cwnd >= ssthresh)
@@ -240,16 +342,13 @@ CLOSED ────────────────────────�
 | `socket_available(sock)` | Bytes in rx buffer |
 
 **Not Implemented:**
-- TCP window scaling option
 - TCP timestamps option
-- TIME_WAIT timer (2MSL)
 - Urgent data
 - Keep-alive
-- SACK (Selective Acknowledgment)
 
 ---
 
-### 7. DNS (`dns/dns.cpp`, `dns.hpp`)
+### 8. DNS (`dns/dns.cpp`, `dns.hpp`)
 
 **Status:** Complete A record resolver
 
@@ -277,9 +376,9 @@ CLOSED ────────────────────────�
 
 ---
 
-### 8. TLS 1.3 (`tls/`)
+### 9. TLS 1.3 (`tls/`)
 
-**Status:** Complete TLS 1.3 client with certificate verification
+**Status:** Complete TLS 1.3 client with certificate verification and session resumption
 
 This is a substantial subsystem (~8,000 lines) providing:
 
@@ -298,6 +397,13 @@ This is a substantial subsystem (~8,000 lines) providing:
 - CA certificate store (roots.der)
 - SNI (Server Name Indication)
 - close_notify alert
+- **Session Resumption (PSK):**
+  - NewSessionTicket message processing
+  - Session ticket storage (512 bytes max)
+  - Resumption master secret derivation
+  - PSK computation from ticket nonce
+  - Ticket lifetime and age validation
+  - pre_shared_key extension support
 
 **Crypto Components:**
 | Component | Location | Description |
@@ -334,11 +440,16 @@ This is a substantial subsystem (~8,000 lines) providing:
 | Function | Description |
 |----------|-------------|
 | `tls_init(session, sock, config)` | Initialize session |
+| `tls_init_resume(session, sock, config, ticket)` | Initialize with ticket |
 | `tls_handshake(session)` | Perform handshake |
 | `tls_send(session, data, len)` | Send app data |
 | `tls_recv(session, buf, len)` | Receive app data |
 | `tls_close(session)` | Close session |
 | `tls_is_connected(session)` | Check connection |
+| `tls_was_resumed(session)` | Check if resumed |
+| `tls_get_session_ticket(session)` | Get ticket for reuse |
+| `tls_process_post_handshake(session)` | Process NewSessionTicket |
+| `tls_ticket_valid(ticket)` | Check ticket expiration |
 
 **Cipher Suites Supported:**
 - TLS_CHACHA20_POLY1305_SHA256 (0x1303)
@@ -349,13 +460,12 @@ This is a substantial subsystem (~8,000 lines) providing:
 - Server mode
 - ECDSA certificate verification
 - Client certificates
-- Session resumption (PSK)
 - Early data (0-RTT)
 - Renegotiation
 
 ---
 
-### 9. HTTP (`http/http.cpp`, `http.hpp`)
+### 10. HTTP (`http/http.cpp`, `http.hpp`)
 
 **Status:** Complete HTTP/1.0 client
 
@@ -437,10 +547,10 @@ This is a substantial subsystem (~8,000 lines) providing:
                                ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                    Network Layer                             │
-│    ┌─────────────────────┐      ┌─────────────────────┐     │
-│    │        IPv4         │      │        ICMP         │     │
-│    │  (no fragmentation) │      │    (echo/reply)     │     │
-│    └─────────────────────┘      └─────────────────────┘     │
+│  ┌───────────────┐  ┌───────────────┐  ┌────────────────┐   │
+│  │     IPv4      │  │     IPv6      │  │   ICMP/v6      │   │
+│  │  (frag/reasm) │  │  (NDP/SLAAC)  │  │  (echo/reply)  │   │
+│  └───────────────┘  └───────────────┘  └────────────────┘   │
 └──────────────────────────────┬──────────────────────────────┘
                                │
                                ▼
@@ -509,7 +619,7 @@ Tasks calling `socket_recv()` with no data:
 | Directory | Description |
 |-----------|-------------|
 | `eth/` | Ethernet, ARP |
-| `ip/` | IPv4, ICMP, UDP, TCP |
+| `ip/` | IPv4, IPv6, ICMP, ICMPv6, UDP, TCP |
 | `dns/` | DNS resolver |
 | `http/` | HTTP client |
 | `tls/` | TLS 1.3 stack |
@@ -521,9 +631,20 @@ Tasks calling `socket_recv()` with no data:
 
 ## Priority Recommendations
 
-1. **Medium:** Add TCP window scaling for high-bandwidth connections
-2. **Medium:** Implement IP fragmentation/reassembly
-3. **Medium:** Add SACK support for improved loss recovery
-4. **Low:** IPv6 support
-5. **Low:** TLS session resumption
-6. **Low:** TIME_WAIT timer with proper 2MSL delay
+All priority recommendations have been completed:
+
+1. ~~**Medium:** Add TCP window scaling for high-bandwidth connections~~ ✅ **Completed** - RFC 7323 window scaling with scale factor 7 (512KB max)
+2. ~~**Medium:** Implement IP fragmentation/reassembly~~ ✅ **Completed** - 8 reassembly buffers, 8KB max datagram, 30s timeout
+3. ~~**Medium:** Add SACK support for improved loss recovery~~ ✅ **Completed** - RFC 2018 with 4 SACK blocks per ACK
+4. ~~**Low:** IPv6 support~~ ✅ **Completed** - Basic IPv6 with ICMPv6 echo and NDP
+5. ~~**Low:** TLS session resumption~~ ✅ **Completed** - NewSessionTicket processing, PSK derivation
+6. ~~**Low:** TIME_WAIT timer with proper 2MSL delay~~ ✅ **Completed** - 60s timer via timer wheel
+
+### Future Enhancements
+
+- TCP timestamps option (RFC 7323)
+- TCP keep-alive
+- IPv6 global address via SLAAC
+- TCP/UDP over IPv6
+- TLS 0-RTT (early data)
+- HTTPS helper API

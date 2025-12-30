@@ -327,8 +327,10 @@ inline void yield()
  * @param args Command-line arguments to pass to the new process (optional).
  * @return 0 on success, negative error code on failure.
  */
-inline i64 spawn(const char *path, const char *name = nullptr,
-                 u64 *out_pid = nullptr, u64 *out_tid = nullptr,
+inline i64 spawn(const char *path,
+                 const char *name = nullptr,
+                 u64 *out_pid = nullptr,
+                 u64 *out_tid = nullptr,
                  const char *args = nullptr)
 {
     SyscallResult r = syscall3(SYS_TASK_SPAWN,
@@ -357,9 +359,7 @@ inline i64 spawn(const char *path, const char *name = nullptr,
  */
 inline i64 get_args(char *buf, usize bufsize)
 {
-    SyscallResult r = syscall2(SYS_GET_ARGS,
-                               reinterpret_cast<u64>(buf),
-                               static_cast<u64>(bufsize));
+    SyscallResult r = syscall2(SYS_GET_ARGS, reinterpret_cast<u64>(buf), static_cast<u64>(bufsize));
     return r.ok() ? static_cast<i64>(r.val0) : r.error;
 }
 
@@ -566,16 +566,15 @@ inline SyscallResult channel_create()
  * @param handle_count Number of handles to transfer.
  * @return 0 on success, negative error code on failure.
  */
-inline i64 channel_send(i32 channel, const void *data, usize len,
-                        const u32 *handles = nullptr, u32 handle_count = 0)
+inline i64 channel_send(
+    i32 channel, const void *data, usize len, const u32 *handles = nullptr, u32 handle_count = 0)
 {
     // Pack handles pointer and count into args
     auto r = syscall4(SYS_CHANNEL_SEND,
                       static_cast<u64>(channel),
                       reinterpret_cast<u64>(data),
                       len,
-                      (static_cast<u64>(handle_count) << 32) |
-                          reinterpret_cast<u64>(handles));
+                      (static_cast<u64>(handle_count) << 32) | reinterpret_cast<u64>(handles));
     return r.error;
 }
 
@@ -593,16 +592,15 @@ inline i64 channel_send(i32 channel, const void *data, usize len,
  * @param handle_count Input: max handles; Output: actual handles received.
  * @return Number of bytes received on success, negative error code on failure.
  */
-inline i64 channel_recv(i32 channel, void *buf, usize buf_len,
-                        u32 *handles = nullptr, u32 *handle_count = nullptr)
+inline i64 channel_recv(
+    i32 channel, void *buf, usize buf_len, u32 *handles = nullptr, u32 *handle_count = nullptr)
 {
     u32 max_handles = handle_count ? *handle_count : 0;
     auto r = syscall4(SYS_CHANNEL_RECV,
                       static_cast<u64>(channel),
                       reinterpret_cast<u64>(buf),
                       buf_len,
-                      (static_cast<u64>(max_handles) << 32) |
-                          reinterpret_cast<u64>(handles));
+                      (static_cast<u64>(max_handles) << 32) | reinterpret_cast<u64>(handles));
     if (r.ok())
     {
         if (handle_count)

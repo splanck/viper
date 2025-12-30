@@ -343,4 +343,127 @@ inline u16 checksum(const void *data, usize len)
     return ~static_cast<u16>(sum);
 }
 
+/**
+ * @brief IPv6 address (128-bit).
+ *
+ * @details
+ * The address is stored as 16 bytes in network order. The struct is packed
+ * so it can be embedded inside protocol headers without padding.
+ */
+struct Ipv6Addr
+{
+    u8 bytes[16];
+
+    /**
+     * @brief Compare two IPv6 addresses for equality.
+     */
+    bool operator==(const Ipv6Addr &other) const
+    {
+        for (int i = 0; i < 16; i++)
+        {
+            if (bytes[i] != other.bytes[i])
+                return false;
+        }
+        return true;
+    }
+
+    bool operator!=(const Ipv6Addr &other) const
+    {
+        return !(*this == other);
+    }
+
+    /**
+     * @brief Check if this is the unspecified address (::).
+     */
+    bool is_unspecified() const
+    {
+        for (int i = 0; i < 16; i++)
+        {
+            if (bytes[i] != 0)
+                return false;
+        }
+        return true;
+    }
+
+    /**
+     * @brief Check if this is the loopback address (::1).
+     */
+    bool is_loopback() const
+    {
+        for (int i = 0; i < 15; i++)
+        {
+            if (bytes[i] != 0)
+                return false;
+        }
+        return bytes[15] == 1;
+    }
+
+    /**
+     * @brief Check if this is a link-local address (fe80::/10).
+     */
+    bool is_link_local() const
+    {
+        return bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0x80;
+    }
+
+    /**
+     * @brief Check if this is a multicast address (ff00::/8).
+     */
+    bool is_multicast() const
+    {
+        return bytes[0] == 0xff;
+    }
+
+    /**
+     * @brief Get the unspecified address (::).
+     */
+    static Ipv6Addr unspecified()
+    {
+        return {{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}};
+    }
+
+    /**
+     * @brief Get the loopback address (::1).
+     */
+    static Ipv6Addr loopback()
+    {
+        return {{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}};
+    }
+
+    /**
+     * @brief Construct a link-local address from interface identifier.
+     */
+    static Ipv6Addr link_local_from_mac(const MacAddr &mac)
+    {
+        Ipv6Addr addr = {{0xfe, 0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}};
+        // EUI-64: insert ff:fe in middle and flip U/L bit
+        addr.bytes[8] = mac.bytes[0] ^ 0x02; // Flip U/L bit
+        addr.bytes[9] = mac.bytes[1];
+        addr.bytes[10] = mac.bytes[2];
+        addr.bytes[11] = 0xff;
+        addr.bytes[12] = 0xfe;
+        addr.bytes[13] = mac.bytes[3];
+        addr.bytes[14] = mac.bytes[4];
+        addr.bytes[15] = mac.bytes[5];
+        return addr;
+    }
+
+    /**
+     * @brief Get solicited-node multicast address for this address.
+     */
+    Ipv6Addr solicited_node_multicast() const
+    {
+        return {{0xff, 0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01, 0xff, bytes[13], bytes[14], bytes[15]}};
+    }
+} __attribute__((packed));
+
+/**
+ * @brief Copy an IPv6 address byte-by-byte.
+ */
+inline void copy_ipv6(Ipv6Addr &dst, const Ipv6Addr &src)
+{
+    for (int i = 0; i < 16; i++)
+        dst.bytes[i] = src.bytes[i];
+}
+
 } // namespace net

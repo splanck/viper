@@ -8,13 +8,13 @@
 
 /* Current locale name for each category */
 static char *current_locales[LC_MAX + 1] = {
-    "C",  /* LC_ALL */
-    "C",  /* LC_COLLATE */
-    "C",  /* LC_CTYPE */
-    "C",  /* LC_MESSAGES */
-    "C",  /* LC_MONETARY */
-    "C",  /* LC_NUMERIC */
-    "C",  /* LC_TIME */
+    "C", /* LC_ALL */
+    "C", /* LC_COLLATE */
+    "C", /* LC_CTYPE */
+    "C", /* LC_MESSAGES */
+    "C", /* LC_MONETARY */
+    "C", /* LC_NUMERIC */
+    "C", /* LC_TIME */
 };
 
 /* Static lconv structure for C locale */

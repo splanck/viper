@@ -124,10 +124,10 @@ constexpr u8 LINK = 7;
  */
 struct OpenRequest
 {
-    u32 type;            ///< FS_OPEN
-    u32 request_id;      ///< For matching replies
-    u32 flags;           ///< Open flags
-    u16 path_len;        ///< Length of path
+    u32 type;                ///< FS_OPEN
+    u32 request_id;          ///< For matching replies
+    u32 flags;               ///< Open flags
+    u16 path_len;            ///< Length of path
     char path[MAX_PATH_LEN]; ///< Path (not null-terminated)
 };
 
@@ -162,11 +162,11 @@ struct ReadRequest
  */
 struct WriteRequest
 {
-    u32 type;       ///< FS_WRITE
-    u32 request_id; ///< For matching replies
-    u32 file_id;    ///< Server-side file ID
-    u32 count;      ///< Bytes to write
-    i64 offset;     ///< Offset (-1 = use current position)
+    u32 type;                 ///< FS_WRITE
+    u32 request_id;           ///< For matching replies
+    u32 file_id;              ///< Server-side file ID
+    u32 count;                ///< Bytes to write
+    i64 offset;               ///< Offset (-1 = use current position)
     u8 data[MAX_INLINE_DATA]; ///< Inline data for small writes
 };
 
@@ -187,9 +187,9 @@ struct SeekRequest
  */
 struct StatRequest
 {
-    u32 type;            ///< FS_STAT
-    u32 request_id;      ///< For matching replies
-    u16 path_len;        ///< Length of path
+    u32 type;                ///< FS_STAT
+    u32 request_id;          ///< For matching replies
+    u16 path_len;            ///< Length of path
     char path[MAX_PATH_LEN]; ///< Path
 };
 
@@ -220,9 +220,9 @@ struct FsyncRequest
  */
 struct ReaddirRequest
 {
-    u32 type;       ///< FS_READDIR
-    u32 request_id; ///< For matching replies
-    u32 file_id;    ///< Server-side directory file ID
+    u32 type;        ///< FS_READDIR
+    u32 request_id;  ///< For matching replies
+    u32 file_id;     ///< Server-side directory file ID
     u32 max_entries; ///< Max entries to return
 };
 
@@ -231,9 +231,9 @@ struct ReaddirRequest
  */
 struct MkdirRequest
 {
-    u32 type;            ///< FS_MKDIR
-    u32 request_id;      ///< For matching replies
-    u16 path_len;        ///< Length of path
+    u32 type;                ///< FS_MKDIR
+    u32 request_id;          ///< For matching replies
+    u16 path_len;            ///< Length of path
     char path[MAX_PATH_LEN]; ///< Path
 };
 
@@ -242,9 +242,9 @@ struct MkdirRequest
  */
 struct RmdirRequest
 {
-    u32 type;            ///< FS_RMDIR
-    u32 request_id;      ///< For matching replies
-    u16 path_len;        ///< Length of path
+    u32 type;                ///< FS_RMDIR
+    u32 request_id;          ///< For matching replies
+    u16 path_len;            ///< Length of path
     char path[MAX_PATH_LEN]; ///< Path
 };
 
@@ -253,9 +253,9 @@ struct RmdirRequest
  */
 struct UnlinkRequest
 {
-    u32 type;            ///< FS_UNLINK
-    u32 request_id;      ///< For matching replies
-    u16 path_len;        ///< Length of path
+    u32 type;                ///< FS_UNLINK
+    u32 request_id;          ///< For matching replies
+    u16 path_len;            ///< Length of path
     char path[MAX_PATH_LEN]; ///< Path
 };
 
@@ -264,11 +264,11 @@ struct UnlinkRequest
  */
 struct RenameRequest
 {
-    u32 type;            ///< FS_RENAME
-    u32 request_id;      ///< For matching replies
-    u16 old_path_len;    ///< Length of old path
-    u16 new_path_len;    ///< Length of new path
-    char paths[200];     ///< old_path followed by new_path
+    u32 type;         ///< FS_RENAME
+    u32 request_id;   ///< For matching replies
+    u16 old_path_len; ///< Length of old path
+    u16 new_path_len; ///< Length of new path
+    char paths[200];  ///< old_path followed by new_path
 };
 
 // ============================================================================
@@ -305,10 +305,10 @@ struct CloseReply
  */
 struct ReadReply
 {
-    u32 type;       ///< FS_READ_REPLY
-    u32 request_id; ///< Matches request
-    i32 status;     ///< 0 = success, negative = error
-    u32 bytes_read; ///< Bytes actually read
+    u32 type;                 ///< FS_READ_REPLY
+    u32 request_id;           ///< Matches request
+    i32 status;               ///< 0 = success, negative = error
+    u32 bytes_read;           ///< Bytes actually read
     u8 data[MAX_INLINE_DATA]; ///< Inline data for small reads
 };
 
@@ -328,11 +328,11 @@ struct WriteReply
  */
 struct SeekReply
 {
-    u32 type;         ///< FS_SEEK_REPLY
-    u32 request_id;   ///< Matches request
-    i32 status;       ///< 0 = success, negative = error
+    u32 type;       ///< FS_SEEK_REPLY
+    u32 request_id; ///< Matches request
+    i32 status;     ///< 0 = success, negative = error
     u32 _pad;
-    i64 new_offset;   ///< New file position
+    i64 new_offset; ///< New file position
 };
 
 /**
@@ -340,14 +340,14 @@ struct SeekReply
  */
 struct StatInfo
 {
-    u64 inode;       ///< Inode number
-    u64 size;        ///< File size
-    u64 blocks;      ///< Blocks allocated
-    u32 mode;        ///< File mode/type
+    u64 inode;  ///< Inode number
+    u64 size;   ///< File size
+    u64 blocks; ///< Blocks allocated
+    u32 mode;   ///< File mode/type
     u32 _pad;
-    u64 atime;       ///< Access time
-    u64 mtime;       ///< Modification time
-    u64 ctime;       ///< Creation time
+    u64 atime; ///< Access time
+    u64 mtime; ///< Modification time
+    u64 ctime; ///< Creation time
 };
 
 /**
@@ -359,7 +359,7 @@ struct StatReply
     u32 request_id; ///< Matches request
     i32 status;     ///< 0 = success, negative = error
     u32 _pad;
-    StatInfo stat;  ///< File statistics
+    StatInfo stat; ///< File statistics
 };
 
 /**
@@ -371,7 +371,7 @@ struct FstatReply
     u32 request_id; ///< Matches request
     i32 status;     ///< 0 = success, negative = error
     u32 _pad;
-    StatInfo stat;  ///< File statistics
+    StatInfo stat; ///< File statistics
 };
 
 /**
@@ -390,10 +390,10 @@ struct FsyncReply
  */
 struct DirEntryInfo
 {
-    u64 inode;        ///< Inode number
-    u8 type;          ///< File type
-    u8 name_len;      ///< Name length
-    char name[62];    ///< Entry name (not null-terminated)
+    u64 inode;     ///< Inode number
+    u8 type;       ///< File type
+    u8 name_len;   ///< Name length
+    char name[62]; ///< Entry name (not null-terminated)
 };
 
 /**
@@ -401,10 +401,10 @@ struct DirEntryInfo
  */
 struct ReaddirReply
 {
-    u32 type;          ///< FS_READDIR_REPLY
-    u32 request_id;    ///< Matches request
-    i32 status;        ///< 0 = success, negative = error
-    u32 entry_count;   ///< Number of entries returned
+    u32 type;                ///< FS_READDIR_REPLY
+    u32 request_id;          ///< Matches request
+    i32 status;              ///< 0 = success, negative = error
+    u32 entry_count;         ///< Number of entries returned
     DirEntryInfo entries[2]; ///< Directory entries (variable count)
 };
 

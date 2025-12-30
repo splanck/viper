@@ -7,20 +7,25 @@
 
 #include "cstddef"
 
-namespace std {
+namespace std
+{
 
 // =============================================================================
 // exception - Base exception class
 // =============================================================================
 
-class exception {
-public:
+class exception
+{
+  public:
     exception() noexcept {}
-    exception(const exception&) noexcept = default;
-    exception& operator=(const exception&) noexcept = default;
+
+    exception(const exception &) noexcept = default;
+    exception &operator=(const exception &) noexcept = default;
+
     virtual ~exception() noexcept {}
 
-    virtual const char* what() const noexcept {
+    virtual const char *what() const noexcept
+    {
         return "std::exception";
     }
 };
@@ -29,11 +34,13 @@ public:
 // bad_exception - Exception for unexpected exceptions
 // =============================================================================
 
-class bad_exception : public exception {
-public:
+class bad_exception : public exception
+{
+  public:
     bad_exception() noexcept {}
 
-    const char* what() const noexcept override {
+    const char *what() const noexcept override
+    {
         return "std::bad_exception";
     }
 };
@@ -42,14 +49,16 @@ public:
 // nested_exception - Support for nested exceptions
 // =============================================================================
 
-class nested_exception {
-private:
+class nested_exception
+{
+  private:
     exception_ptr nested_;
 
-public:
+  public:
     nested_exception() noexcept;
-    nested_exception(const nested_exception&) noexcept = default;
-    nested_exception& operator=(const nested_exception&) noexcept = default;
+    nested_exception(const nested_exception &) noexcept = default;
+    nested_exception &operator=(const nested_exception &) noexcept = default;
+
     virtual ~nested_exception() noexcept {}
 
     // [[noreturn]] void rethrow_nested() const;
@@ -61,25 +70,27 @@ public:
 // =============================================================================
 
 // exception_ptr - type for holding exceptions
-using exception_ptr = void*;  // Simplified - real impl uses special type
+using exception_ptr = void *; // Simplified - real impl uses special type
 
 // Get current exception
-inline exception_ptr current_exception() noexcept {
-    return nullptr;  // Stub - requires runtime support
+inline exception_ptr current_exception() noexcept
+{
+    return nullptr; // Stub - requires runtime support
 }
 
 // Rethrow exception
-[[noreturn]] inline void rethrow_exception(exception_ptr p) {
+[[noreturn]] inline void rethrow_exception(exception_ptr p)
+{
     (void)p;
     // Would rethrow the exception - requires runtime support
     __builtin_trap();
 }
 
 // Make exception_ptr from exception
-template<typename E>
-exception_ptr make_exception_ptr(E e) noexcept {
+template <typename E> exception_ptr make_exception_ptr(E e) noexcept
+{
     (void)e;
-    return nullptr;  // Stub
+    return nullptr; // Stub
 }
 
 // =============================================================================
@@ -113,15 +124,15 @@ int uncaught_exceptions() noexcept;
 // throw_with_nested / rethrow_if_nested
 // =============================================================================
 
-template<typename T>
-[[noreturn]] void throw_with_nested(T&& t) {
+template <typename T> [[noreturn]] void throw_with_nested(T &&t)
+{
     (void)t;
     // Requires real exception support
     __builtin_trap();
 }
 
-template<typename E>
-void rethrow_if_nested(const E& e) {
+template <typename E> void rethrow_if_nested(const E &e)
+{
     (void)e;
     // Stub - would rethrow nested exception if present
 }
@@ -129,53 +140,65 @@ void rethrow_if_nested(const E& e) {
 } // namespace std
 
 // Default implementations (stubs for freestanding environment)
-namespace std {
+namespace std
+{
 
-namespace detail {
-    inline terminate_handler current_terminate_handler = nullptr;
-    inline unexpected_handler current_unexpected_handler = nullptr;
-    inline int uncaught_exception_count = 0;
-}
+namespace detail
+{
+inline terminate_handler current_terminate_handler = nullptr;
+inline unexpected_handler current_unexpected_handler = nullptr;
+inline int uncaught_exception_count = 0;
+} // namespace detail
 
-inline terminate_handler get_terminate() noexcept {
+inline terminate_handler get_terminate() noexcept
+{
     return detail::current_terminate_handler;
 }
 
-inline terminate_handler set_terminate(terminate_handler f) noexcept {
+inline terminate_handler set_terminate(terminate_handler f) noexcept
+{
     terminate_handler old = detail::current_terminate_handler;
     detail::current_terminate_handler = f;
     return old;
 }
 
-inline unexpected_handler get_unexpected() noexcept {
+inline unexpected_handler get_unexpected() noexcept
+{
     return detail::current_unexpected_handler;
 }
 
-inline unexpected_handler set_unexpected(unexpected_handler f) noexcept {
+inline unexpected_handler set_unexpected(unexpected_handler f) noexcept
+{
     unexpected_handler old = detail::current_unexpected_handler;
     detail::current_unexpected_handler = f;
     return old;
 }
 
-[[noreturn]] inline void terminate() noexcept {
-    if (detail::current_terminate_handler) {
+[[noreturn]] inline void terminate() noexcept
+{
+    if (detail::current_terminate_handler)
+    {
         detail::current_terminate_handler();
     }
     __builtin_trap();
 }
 
-[[noreturn]] inline void unexpected() {
-    if (detail::current_unexpected_handler) {
+[[noreturn]] inline void unexpected()
+{
+    if (detail::current_unexpected_handler)
+    {
         detail::current_unexpected_handler();
     }
     terminate();
 }
 
-inline bool uncaught_exception() noexcept {
+inline bool uncaught_exception() noexcept
+{
     return detail::uncaught_exception_count > 0;
 }
 
-inline int uncaught_exceptions() noexcept {
+inline int uncaught_exceptions() noexcept
+{
     return detail::uncaught_exception_count;
 }
 

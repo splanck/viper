@@ -7,13 +7,13 @@ extern long __syscall2(long num, long arg0, long arg1);
 extern long __syscall3(long num, long arg0, long arg1, long arg2);
 
 /* Syscall numbers */
-#define SYS_OPEN   0x40
-#define SYS_STAT   0x45
-#define SYS_FSTAT  0x46
-#define SYS_MKDIR  0x61
-#define SYS_CHMOD  0x69
+#define SYS_OPEN 0x40
+#define SYS_STAT 0x45
+#define SYS_FSTAT 0x46
+#define SYS_MKDIR 0x61
+#define SYS_CHMOD 0x69
 #define SYS_FCHMOD 0x6A
-#define SYS_MKNOD  0x6B
+#define SYS_MKNOD 0x6B
 #define SYS_MKFIFO 0x6C
 
 /* Current umask value */
@@ -111,7 +111,7 @@ int creat(const char *pathname, mode_t mode)
 
 int fcntl(int fd, int cmd, ...)
 {
-    (void)fd;  /* TODO: use fd when implementing syscalls */
+    (void)fd; /* TODO: use fd when implementing syscalls */
 
     /* Basic fcntl implementation */
     /* Most commands are stubs for now */

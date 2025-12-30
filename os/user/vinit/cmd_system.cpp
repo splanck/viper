@@ -93,23 +93,27 @@ void cmd_uptime()
     {
         put_num(static_cast<i64>(days));
         print_str(" day");
-        if (days != 1) print_str("s");
+        if (days != 1)
+            print_str("s");
         print_str(", ");
     }
     if (hours > 0 || days > 0)
     {
         put_num(static_cast<i64>(hours % 24));
         print_str(" hour");
-        if ((hours % 24) != 1) print_str("s");
+        if ((hours % 24) != 1)
+            print_str("s");
         print_str(", ");
     }
     put_num(static_cast<i64>(mins % 60));
     print_str(" minute");
-    if ((mins % 60) != 1) print_str("s");
+    if ((mins % 60) != 1)
+        print_str("s");
     print_str(", ");
     put_num(static_cast<i64>(secs % 60));
     print_str(" second");
-    if ((secs % 60) != 1) print_str("s");
+    if ((secs % 60) != 1)
+        print_str("s");
     print_str("\n");
     last_rc = RC_OK;
 }
@@ -192,37 +196,54 @@ void cmd_status()
         TaskInfo &t = tasks[i];
 
         print_str("  ");
-        if (t.id < 10) print_str(" ");
-        if (t.id < 100) print_str(" ");
+        if (t.id < 10)
+            print_str(" ");
+        if (t.id < 100)
+            print_str(" ");
         put_num(t.id);
         print_str("  ");
 
         switch (t.state)
         {
-            case TASK_STATE_READY:   print_str("Ready   "); break;
-            case TASK_STATE_RUNNING: print_str("Running "); break;
-            case TASK_STATE_BLOCKED: print_str("Blocked "); break;
-            case TASK_STATE_EXITED:  print_str("Exited  "); break;
-            default:                 print_str("Unknown "); break;
+            case TASK_STATE_READY:
+                print_str("Ready   ");
+                break;
+            case TASK_STATE_RUNNING:
+                print_str("Running ");
+                break;
+            case TASK_STATE_BLOCKED:
+                print_str("Blocked ");
+                break;
+            case TASK_STATE_EXITED:
+                print_str("Exited  ");
+                break;
+            default:
+                print_str("Unknown ");
+                break;
         }
         print_str("  ");
 
-        if (t.priority < 10) print_str(" ");
-        if (t.priority < 100) print_str(" ");
+        if (t.priority < 10)
+            print_str(" ");
+        if (t.priority < 100)
+            print_str(" ");
         put_num(t.priority);
         print_str("  ");
 
         print_str(t.name);
 
-        if (t.flags & TASK_FLAG_IDLE) print_str(" [idle]");
-        if (t.flags & TASK_FLAG_KERNEL) print_str(" [kernel]");
+        if (t.flags & TASK_FLAG_IDLE)
+            print_str(" [idle]");
+        if (t.flags & TASK_FLAG_KERNEL)
+            print_str(" [kernel]");
         print_str("\n");
     }
 
     print_str("\n");
     put_num(count);
     print_str(" task");
-    if (count != 1) print_str("s");
+    if (count != 1)
+        print_str("s");
     print_str(" total\n");
 
     last_rc = RC_OK;
@@ -230,7 +251,7 @@ void cmd_status()
 
 void cmd_caps(const char *args)
 {
-    (void)args;  // Reserved for future filtering
+    (void)args; // Reserved for future filtering
     i32 count = sys::cap_list(nullptr, 0);
     if (count < 0)
     {
@@ -272,7 +293,11 @@ void cmd_caps(const char *args)
         const char *kind_name = sys::cap_kind_name(c.kind);
         print_str(kind_name);
         usize klen = strlen(kind_name);
-        while (klen < 10) { print_char(' '); klen++; }
+        while (klen < 10)
+        {
+            print_char(' ');
+            klen++;
+        }
         print_str("  ");
 
         char rights_buf[16];
@@ -287,7 +312,10 @@ void cmd_caps(const char *args)
     print_str("\n");
     put_num(actual);
     print_str(" capabilit");
-    if (actual != 1) print_str("ies"); else print_str("y");
+    if (actual != 1)
+        print_str("ies");
+    else
+        print_str("y");
     print_str(" total\n");
 
     last_rc = RC_OK;

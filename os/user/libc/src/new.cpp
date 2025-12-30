@@ -22,12 +22,12 @@ std::new_handler std::set_new_handler(std::new_handler new_p) noexcept
 }
 
 /* Regular new */
-void* operator new(std::size_t size)
+void *operator new(std::size_t size)
 {
     if (size == 0)
         size = 1;
 
-    void* ptr = malloc(size);
+    void *ptr = malloc(size);
     while (!ptr)
     {
         std::new_handler handler = std::get_new_handler();
@@ -46,53 +46,53 @@ void* operator new(std::size_t size)
     return ptr;
 }
 
-void* operator new[](std::size_t size)
+void *operator new[](std::size_t size)
 {
     return operator new(size);
 }
 
 /* Nothrow new */
-void* operator new(std::size_t size, const std::nothrow_t&) noexcept
+void *operator new(std::size_t size, const std::nothrow_t &) noexcept
 {
     if (size == 0)
         size = 1;
     return malloc(size);
 }
 
-void* operator new[](std::size_t size, const std::nothrow_t&) noexcept
+void *operator new[](std::size_t size, const std::nothrow_t &) noexcept
 {
     return operator new(size, std::nothrow);
 }
 
 /* Regular delete */
-void operator delete(void* ptr) noexcept
+void operator delete(void *ptr) noexcept
 {
     free(ptr);
 }
 
-void operator delete[](void* ptr) noexcept
+void operator delete[](void *ptr) noexcept
 {
     free(ptr);
 }
 
 /* Sized delete (C++14) */
-void operator delete(void* ptr, std::size_t) noexcept
+void operator delete(void *ptr, std::size_t) noexcept
 {
     free(ptr);
 }
 
-void operator delete[](void* ptr, std::size_t) noexcept
+void operator delete[](void *ptr, std::size_t) noexcept
 {
     free(ptr);
 }
 
 /* Nothrow delete */
-void operator delete(void* ptr, const std::nothrow_t&) noexcept
+void operator delete(void *ptr, const std::nothrow_t &) noexcept
 {
     free(ptr);
 }
 
-void operator delete[](void* ptr, const std::nothrow_t&) noexcept
+void operator delete[](void *ptr, const std::nothrow_t &) noexcept
 {
     free(ptr);
 }

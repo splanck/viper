@@ -6,11 +6,12 @@
 
 #include "../locale.h"
 
-namespace std {
+namespace std
+{
 
 using ::lconv;
-using ::setlocale;
 using ::localeconv;
+using ::setlocale;
 
 } // namespace std
 

@@ -3,9 +3,9 @@
  * Command-line option parsing implementation
  */
 
-#include "../include/unistd.h"
 #include "../include/stdio.h"
 #include "../include/string.h"
+#include "../include/unistd.h"
 
 /* Global getopt state */
 char *optarg = NULL;
@@ -95,8 +95,7 @@ int getopt(int argc, char *const argv[], const char *optstring)
             /* Missing required argument */
             if (opterr && optstring[0] != ':')
             {
-                fprintf(stderr, "%s: option requires an argument -- '%c'\n",
-                        argv[0], c);
+                fprintf(stderr, "%s: option requires an argument -- '%c'\n", argv[0], c);
             }
             return optstring[0] == ':' ? ':' : '?';
         }
@@ -108,8 +107,11 @@ int getopt(int argc, char *const argv[], const char *optstring)
 /*
  * getopt_long - Parse long command-line options
  */
-int getopt_long(int argc, char *const argv[], const char *optstring,
-                const struct option *longopts, int *longindex)
+int getopt_long(int argc,
+                char *const argv[],
+                const char *optstring,
+                const struct option *longopts,
+                int *longindex)
 {
     if (optstring == NULL || argc <= 0)
         return -1;
@@ -180,7 +182,8 @@ int getopt_long(int argc, char *const argv[], const char *optstring,
                             {
                                 fprintf(stderr,
                                         "%s: option '--%s' requires an argument\n",
-                                        argv[0], longopts[i].name);
+                                        argv[0],
+                                        longopts[i].name);
                             }
                             return optstring[0] == ':' ? ':' : '?';
                         }
@@ -193,7 +196,8 @@ int getopt_long(int argc, char *const argv[], const char *optstring,
                     {
                         fprintf(stderr,
                                 "%s: option '--%s' doesn't allow an argument\n",
-                                argv[0], longopts[i].name);
+                                argv[0],
+                                longopts[i].name);
                     }
                     return '?';
                 }
@@ -212,8 +216,8 @@ int getopt_long(int argc, char *const argv[], const char *optstring,
         if (opterr)
         {
             if (name_end)
-                fprintf(stderr, "%s: unrecognized option '--%.*s'\n",
-                        argv[0], (int)name_len, arg + 2);
+                fprintf(
+                    stderr, "%s: unrecognized option '--%.*s'\n", argv[0], (int)name_len, arg + 2);
             else
                 fprintf(stderr, "%s: unrecognized option '%s'\n", argv[0], arg);
         }
@@ -230,8 +234,11 @@ int getopt_long(int argc, char *const argv[], const char *optstring,
 /*
  * getopt_long_only - Parse long options with single dash
  */
-int getopt_long_only(int argc, char *const argv[], const char *optstring,
-                     const struct option *longopts, int *longindex)
+int getopt_long_only(int argc,
+                     char *const argv[],
+                     const char *optstring,
+                     const struct option *longopts,
+                     int *longindex)
 {
     if (optstring == NULL || argc <= 0)
         return -1;
@@ -271,8 +278,7 @@ int getopt_long_only(int argc, char *const argv[], const char *optstring,
     /* Search for matching long option */
     for (int i = 0; longopts && longopts[i].name; i++)
     {
-        if (strncmp(start, longopts[i].name, name_len) == 0 &&
-            longopts[i].name[name_len] == '\0')
+        if (strncmp(start, longopts[i].name, name_len) == 0 && longopts[i].name[name_len] == '\0')
         {
             /* Found match - delegate to getopt_long */
             if (arg[1] != '-')
@@ -301,7 +307,8 @@ int getopt_long_only(int argc, char *const argv[], const char *optstring,
                     {
                         fprintf(stderr,
                                 "%s: option '-%s' requires an argument\n",
-                                argv[0], longopts[i].name);
+                                argv[0],
+                                longopts[i].name);
                     }
                     return optstring[0] == ':' ? ':' : '?';
                 }

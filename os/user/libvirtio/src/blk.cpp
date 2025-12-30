@@ -168,9 +168,12 @@ i32 BlkDevice::do_request(u32 type, u64 sector, u32 count, void *buf)
 
     if (desc0 < 0 || desc1 < 0 || desc2 < 0)
     {
-        if (desc0 >= 0) vq_.free_desc(desc0);
-        if (desc1 >= 0) vq_.free_desc(desc1);
-        if (desc2 >= 0) vq_.free_desc(desc2);
+        if (desc0 >= 0)
+            vq_.free_desc(desc0);
+        if (desc1 >= 0)
+            vq_.free_desc(desc1);
+        if (desc2 >= 0)
+            vq_.free_desc(desc2);
         slot.in_use = false;
         return -1;
     }
@@ -314,8 +317,10 @@ i32 BlkDevice::flush()
 
     if (desc0 < 0 || desc1 < 0)
     {
-        if (desc0 >= 0) vq_.free_desc(desc0);
-        if (desc1 >= 0) vq_.free_desc(desc1);
+        if (desc0 >= 0)
+            vq_.free_desc(desc0);
+        if (desc1 >= 0)
+            vq_.free_desc(desc1);
         slot.in_use = false;
         return -1;
     }

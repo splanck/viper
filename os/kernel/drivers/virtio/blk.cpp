@@ -478,8 +478,8 @@ i32 BlkDevice::flush()
 // =========================================================================
 
 /** @copydoc virtio::BlkDevice::submit_async */
-BlkDevice::RequestHandle BlkDevice::submit_async(u32 type, u64 sector, u32 count, void *buf,
-                                                  CompletionCallback callback, void *user_data)
+BlkDevice::RequestHandle BlkDevice::submit_async(
+    u32 type, u64 sector, u32 count, void *buf, CompletionCallback callback, void *user_data)
 {
     if (type == blk_type::OUT && readonly_)
     {
@@ -573,8 +573,8 @@ BlkDevice::RequestHandle BlkDevice::submit_async(u32 type, u64 sector, u32 count
 }
 
 /** @copydoc virtio::BlkDevice::read_async */
-BlkDevice::RequestHandle BlkDevice::read_async(u64 sector, u32 count, void *buf,
-                                                CompletionCallback callback, void *user_data)
+BlkDevice::RequestHandle BlkDevice::read_async(
+    u64 sector, u32 count, void *buf, CompletionCallback callback, void *user_data)
 {
     if (!buf || count == 0)
         return INVALID_HANDLE;
@@ -588,8 +588,8 @@ BlkDevice::RequestHandle BlkDevice::read_async(u64 sector, u32 count, void *buf,
 }
 
 /** @copydoc virtio::BlkDevice::write_async */
-BlkDevice::RequestHandle BlkDevice::write_async(u64 sector, u32 count, const void *buf,
-                                                 CompletionCallback callback, void *user_data)
+BlkDevice::RequestHandle BlkDevice::write_async(
+    u64 sector, u32 count, const void *buf, CompletionCallback callback, void *user_data)
 {
     if (!buf || count == 0)
         return INVALID_HANDLE;

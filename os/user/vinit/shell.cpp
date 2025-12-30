@@ -181,10 +181,12 @@ void shell_loop()
             print_str("Fetch: usage: Fetch <hostname>\n");
             last_rc = RC_ERROR;
         }
-        else if (strcaseeq(cmd_line, "endshell") || strcaseeq(cmd_line, "exit") || strcaseeq(cmd_line, "quit"))
+        else if (strcaseeq(cmd_line, "endshell") || strcaseeq(cmd_line, "exit") ||
+                 strcaseeq(cmd_line, "quit"))
         {
             print_str("Goodbye!\n");
-            if (do_paging) paging_disable();
+            if (do_paging)
+                paging_disable();
             break;
         }
         // Legacy command aliases

@@ -39,7 +39,10 @@ class BlockCache
 
     BlockCache() : fs_(nullptr) {}
 
-    void init(ViperFS *fs) { fs_ = fs; }
+    void init(ViperFS *fs)
+    {
+        fs_ = fs;
+    }
 
     /**
      * @brief Get a block (from cache or disk).
@@ -91,13 +94,31 @@ class ViperFS
     void unmount();
 
     /** @brief Check if mounted. */
-    bool is_mounted() const { return mounted_; }
+    bool is_mounted() const
+    {
+        return mounted_;
+    }
 
     // Filesystem info
-    const char *label() const { return sb_.label; }
-    u64 total_blocks() const { return sb_.total_blocks; }
-    u64 free_blocks() const { return sb_.free_blocks; }
-    u64 root_inode() const { return sb_.root_inode; }
+    const char *label() const
+    {
+        return sb_.label;
+    }
+
+    u64 total_blocks() const
+    {
+        return sb_.total_blocks;
+    }
+
+    u64 free_blocks() const
+    {
+        return sb_.free_blocks;
+    }
+
+    u64 root_inode() const
+    {
+        return sb_.root_inode;
+    }
 
     // Block I/O (used by cache)
     i32 read_block(u64 block_num, void *buf);
@@ -111,8 +132,8 @@ class ViperFS
     // Directory operations
     u64 lookup(Inode *dir, const char *name, usize name_len);
 
-    using ReaddirCallback = void (*)(const char *name, usize name_len,
-                                     u64 ino, u8 file_type, void *ctx);
+    using ReaddirCallback =
+        void (*)(const char *name, usize name_len, u64 ino, u8 file_type, void *ctx);
     i32 readdir(Inode *dir, u64 offset, ReaddirCallback cb, void *ctx);
 
     // File data operations
@@ -128,8 +149,12 @@ class ViperFS
     bool rmdir(Inode *parent, const char *name, usize name_len);
 
     // Rename
-    bool rename(Inode *old_dir, const char *old_name, usize old_len,
-                Inode *new_dir, const char *new_name, usize new_len);
+    bool rename(Inode *old_dir,
+                const char *old_name,
+                usize old_len,
+                Inode *new_dir,
+                const char *new_name,
+                usize new_len);
 
     // Sync
     void sync();

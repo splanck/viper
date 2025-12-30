@@ -3,13 +3,14 @@
 
 #include "../signal.h"
 
-namespace std {
+namespace std
+{
 
 using ::sig_atomic_t;
 using ::sighandler_t;
 
-using ::signal;
 using ::raise;
+using ::signal;
 
 } /* namespace std */
 

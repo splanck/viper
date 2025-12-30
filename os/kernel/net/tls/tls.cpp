@@ -197,6 +197,11 @@ bool tls_init(TlsSession *session, i32 socket_fd, const TlsConfig *config)
     session->server_cert_exponent_len = 0;
     session->server_cert_data_len = 0;
 
+    // Initialize session resumption fields
+    session->session_ticket.valid = false;
+    session->resumed = false;
+    session->offered_ticket = nullptr;
+
     // Initialize record layer
     record_init(&session->record, socket_fd);
 
@@ -1218,6 +1223,252 @@ bool tls_get_info(TlsSession *session, ::TLSInfo *info)
     else
     {
         info->hostname[0] = '\0';
+    }
+
+    return true;
+}
+
+//=============================================================================
+// Session Resumption Implementation
+//=============================================================================
+
+/**
+ * @brief Derive resumption master secret from the key schedule.
+ */
+static void derive_resumption_master_secret(TlsSession *session)
+{
+    // Get transcript hash after Finished messages
+    u8 transcript_hash[32];
+    crypto::Sha256Context transcript_copy = session->transcript;
+    crypto::sha256_final(&transcript_copy, transcript_hash);
+
+    // res_master = Derive-Secret(master_secret, "res master", transcript_hash)
+    crypto::hkdf_expand_label(session->master_secret,
+                              "res master",
+                              transcript_hash,
+                              32,
+                              session->resumption_master_secret,
+                              32);
+}
+
+/**
+ * @brief Process a NewSessionTicket message.
+ */
+static bool process_new_session_ticket(TlsSession *session, const u8 *data, usize len)
+{
+    if (len < 12)
+    {
+        return false;
+    }
+
+    const u8 *p = data;
+
+    // ticket_lifetime (4 bytes)
+    u32 lifetime = (static_cast<u32>(p[0]) << 24) | (static_cast<u32>(p[1]) << 16) |
+                   (static_cast<u32>(p[2]) << 8) | static_cast<u32>(p[3]);
+    p += 4;
+
+    // ticket_age_add (4 bytes)
+    u32 age_add = (static_cast<u32>(p[0]) << 24) | (static_cast<u32>(p[1]) << 16) |
+                  (static_cast<u32>(p[2]) << 8) | static_cast<u32>(p[3]);
+    p += 4;
+
+    // ticket_nonce (1 byte length + nonce)
+    u8 nonce_len = *p++;
+    if (p + nonce_len > data + len)
+        return false;
+
+    const u8 *nonce = p;
+    p += nonce_len;
+
+    // ticket (2 bytes length + ticket)
+    if (p + 2 > data + len)
+        return false;
+    u16 ticket_len = read_u16_be(p);
+    p += 2;
+
+    if (p + ticket_len > data + len)
+        return false;
+    if (ticket_len > MAX_TICKET_SIZE)
+        return false;
+
+    const u8 *ticket = p;
+    // p += ticket_len;  // Extensions follow but we skip them
+
+    // Store the ticket
+    session->session_ticket.valid = true;
+    session->session_ticket.lifetime = lifetime;
+    session->session_ticket.age_add = age_add;
+    session->session_ticket.nonce_len = nonce_len;
+    for (u8 i = 0; i < nonce_len && i < 8; i++)
+    {
+        session->session_ticket.nonce[i] = nonce[i];
+    }
+    session->session_ticket.ticket_len = ticket_len;
+    for (usize i = 0; i < ticket_len; i++)
+    {
+        session->session_ticket.ticket[i] = ticket[i];
+    }
+
+    // Copy resumption master secret
+    for (int i = 0; i < 32; i++)
+    {
+        session->session_ticket.resumption_master_secret[i] = session->resumption_master_secret[i];
+    }
+
+    session->session_ticket.issue_time = timer::get_ms();
+
+    // Copy hostname
+    if (session->config.hostname)
+    {
+        usize i = 0;
+        while (session->config.hostname[i] && i < sizeof(session->session_ticket.hostname) - 1)
+        {
+            session->session_ticket.hostname[i] = session->config.hostname[i];
+            i++;
+        }
+        session->session_ticket.hostname[i] = '\0';
+    }
+    else
+    {
+        session->session_ticket.hostname[0] = '\0';
+    }
+
+    serial::puts("[tls] Received NewSessionTicket (lifetime=");
+    serial::put_dec(lifetime);
+    serial::puts("s)\n");
+
+    return true;
+}
+
+/** @copydoc viper::tls::tls_init_resume */
+bool tls_init_resume(TlsSession *session,
+                     i32 socket_fd,
+                     const TlsConfig *config,
+                     SessionTicket *ticket)
+{
+    // Standard init
+    if (!tls_init(session, socket_fd, config))
+    {
+        return false;
+    }
+
+    // Store the offered ticket for use in handshake
+    session->offered_ticket = ticket;
+    session->resumed = false;
+
+    return true;
+}
+
+/** @copydoc viper::tls::tls_was_resumed */
+bool tls_was_resumed(TlsSession *session)
+{
+    return session && session->resumed;
+}
+
+/** @copydoc viper::tls::tls_get_session_ticket */
+const SessionTicket *tls_get_session_ticket(TlsSession *session)
+{
+    if (!session || !session->session_ticket.valid)
+    {
+        return nullptr;
+    }
+    return &session->session_ticket;
+}
+
+/** @copydoc viper::tls::tls_process_post_handshake */
+i32 tls_process_post_handshake(TlsSession *session)
+{
+    if (!session || session->state != TlsState::Connected)
+    {
+        return -1;
+    }
+
+    // Derive resumption master secret if not done yet
+    static bool rms_derived = false;
+    if (!rms_derived)
+    {
+        derive_resumption_master_secret(session);
+        rms_derived = true;
+    }
+
+    // Try to receive a record (non-blocking would require socket changes)
+    // For now, we'll process any available handshake messages
+    u8 buffer[4096];
+    ContentType type;
+    i64 len = record_recv(&session->record, &type, buffer, sizeof(buffer));
+
+    if (len <= 0)
+    {
+        return 0;
+    }
+
+    i32 processed = 0;
+
+    if (type == ContentType::Handshake)
+    {
+        usize offset = 0;
+        while (offset + 4 <= static_cast<usize>(len))
+        {
+            HandshakeType msg_type = static_cast<HandshakeType>(buffer[offset]);
+            u32 msg_len = read_u24_be(buffer + offset + 1);
+            offset += 4;
+
+            if (offset + msg_len > static_cast<usize>(len))
+                break;
+
+            if (msg_type == HandshakeType::NewSessionTicket)
+            {
+                if (process_new_session_ticket(session, buffer + offset, msg_len))
+                {
+                    processed++;
+                }
+            }
+
+            offset += msg_len;
+        }
+    }
+
+    return processed;
+}
+
+/** @copydoc viper::tls::tls_compute_resumption_psk */
+void tls_compute_resumption_psk(const SessionTicket *ticket, u8 *psk)
+{
+    if (!ticket || !psk)
+        return;
+
+    // PSK = HKDF-Expand-Label(resumption_master_secret, "resumption", ticket_nonce, 32)
+    crypto::hkdf_expand_label(ticket->resumption_master_secret,
+                              "resumption",
+                              ticket->nonce,
+                              ticket->nonce_len,
+                              psk,
+                              32);
+}
+
+/** @copydoc viper::tls::tls_ticket_valid */
+bool tls_ticket_valid(const SessionTicket *ticket)
+{
+    if (!ticket || !ticket->valid)
+    {
+        return false;
+    }
+
+    // Check expiration
+    u64 now = timer::get_ms();
+    u64 age_ms = now - ticket->issue_time;
+    u64 lifetime_ms = static_cast<u64>(ticket->lifetime) * 1000;
+
+    if (age_ms > lifetime_ms)
+    {
+        return false;
+    }
+
+    // Also check against max lifetime (7 days)
+    if (ticket->lifetime > MAX_TICKET_LIFETIME)
+    {
+        return false;
     }
 
     return true;

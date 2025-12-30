@@ -21,6 +21,7 @@
 #include "http/http.hpp"
 #include "ip/icmp.hpp"
 #include "ip/ipv4.hpp"
+#include "ip/ipv6.hpp"
 #include "ip/tcp.hpp"
 #include "ip/udp.hpp"
 #include "netif.hpp"
@@ -50,6 +51,7 @@ void network_init()
     eth::eth_init();
     arp::arp_init();
     ip::ip_init();
+    ipv6::ipv6_init();
     icmp::icmp_init();
     udp::udp_init();
     tcp::tcp_init();

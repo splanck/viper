@@ -77,8 +77,8 @@ enum class ViperState : u32
 struct Viper
 {
     // Identity
-    u64 id;        /**< Monotonically increasing process identifier. */
-    char name[32]; /**< Human-readable name (NUL-terminated, 31 chars max). */
+    u64 id;         /**< Monotonically increasing process identifier. */
+    char name[32];  /**< Human-readable name (NUL-terminated, 31 chars max). */
     char args[256]; /**< Command-line arguments (NUL-terminated). */
 
     // Address space
@@ -105,8 +105,8 @@ struct Viper
     i32 exit_code;    /**< Exit status for zombie collection. */
 
     // Process groups and sessions (POSIX job control)
-    u64 pgid;              /**< Process group ID (0 means use own pid). */
-    u64 sid;               /**< Session ID (0 means use own pid). */
+    u64 pgid;               /**< Process group ID (0 means use own pid). */
+    u64 sid;                /**< Session ID (0 means use own pid). */
     bool is_session_leader; /**< True if this process created its session. */
 
     // Wait queue for parent waiting on children

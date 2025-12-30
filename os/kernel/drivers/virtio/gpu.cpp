@@ -314,7 +314,8 @@ bool GpuDevice::attach_backing(u32 resource_id, u64 addr, u32 size)
     cmd->nr_entries = 1;
 
     // Copy memory entry after the command header
-    GpuMemEntry *entry = reinterpret_cast<GpuMemEntry *>(cmd_buf_ + sizeof(GpuResourceAttachBacking));
+    GpuMemEntry *entry =
+        reinterpret_cast<GpuMemEntry *>(cmd_buf_ + sizeof(GpuResourceAttachBacking));
     entry->addr = addr;
     entry->length = size;
     entry->padding = 0;

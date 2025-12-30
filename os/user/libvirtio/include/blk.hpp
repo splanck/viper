@@ -107,10 +107,25 @@ class BlkDevice : public Device
     void handle_interrupt();
 
     // Device info
-    u64 capacity() const { return capacity_; }
-    u32 sector_size() const { return sector_size_; }
-    u64 size_bytes() const { return capacity_ * sector_size_; }
-    bool is_readonly() const { return readonly_; }
+    u64 capacity() const
+    {
+        return capacity_;
+    }
+
+    u32 sector_size() const
+    {
+        return sector_size_;
+    }
+
+    u64 size_bytes() const
+    {
+        return capacity_ * sector_size_;
+    }
+
+    bool is_readonly() const
+    {
+        return readonly_;
+    }
 
   private:
     Virtqueue vq_;

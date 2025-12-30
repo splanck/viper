@@ -4,12 +4,13 @@
  */
 
 #include "../include/iconv.h"
+#include "../include/errno.h"
 #include "../include/stdlib.h"
 #include "../include/string.h"
-#include "../include/errno.h"
 
 /* Encoding identifiers */
-enum encoding {
+enum encoding
+{
     ENC_UNKNOWN = 0,
     ENC_ASCII,
     ENC_UTF8,
@@ -21,7 +22,8 @@ enum encoding {
 };
 
 /* Conversion descriptor structure */
-struct iconv_desc {
+struct iconv_desc
+{
     enum encoding from;
     enum encoding to;
 };
@@ -31,17 +33,16 @@ struct iconv_desc {
  */
 static enum encoding parse_encoding(const char *name)
 {
-    if (!name) return ENC_UNKNOWN;
+    if (!name)
+        return ENC_UNKNOWN;
 
     /* Normalize comparison - case insensitive */
     if (strcasecmp(name, "UTF-8") == 0 || strcasecmp(name, "UTF8") == 0)
         return ENC_UTF8;
     if (strcasecmp(name, "ASCII") == 0 || strcasecmp(name, "US-ASCII") == 0)
         return ENC_ASCII;
-    if (strcasecmp(name, "ISO-8859-1") == 0 ||
-        strcasecmp(name, "ISO8859-1") == 0 ||
-        strcasecmp(name, "LATIN1") == 0 ||
-        strcasecmp(name, "LATIN-1") == 0)
+    if (strcasecmp(name, "ISO-8859-1") == 0 || strcasecmp(name, "ISO8859-1") == 0 ||
+        strcasecmp(name, "LATIN1") == 0 || strcasecmp(name, "LATIN-1") == 0)
         return ENC_ISO8859_1;
     if (strcasecmp(name, "UTF-16BE") == 0 || strcasecmp(name, "UTF16BE") == 0)
         return ENC_UTF16BE;
@@ -68,156 +69,187 @@ static int decode_char(enum encoding enc, const char **src, size_t *srclen)
 {
     const unsigned char *p = (const unsigned char *)*src;
 
-    switch (enc) {
-    case ENC_ASCII:
-        if (*srclen < 1) return -1;
-        if (*p > 127) {
-            errno = EILSEQ;
-            return -1;
-        }
-        (*src)++;
-        (*srclen)--;
-        return *p;
-
-    case ENC_UTF8:
-        if (*srclen < 1) return -1;
-        if (*p < 0x80) {
+    switch (enc)
+    {
+        case ENC_ASCII:
+            if (*srclen < 1)
+                return -1;
+            if (*p > 127)
+            {
+                errno = EILSEQ;
+                return -1;
+            }
             (*src)++;
             (*srclen)--;
             return *p;
-        } else if ((*p & 0xE0) == 0xC0) {
-            if (*srclen < 2) {
-                errno = EINVAL;
-                return -1;
-            }
-            if ((p[1] & 0xC0) != 0x80) {
-                errno = EILSEQ;
-                return -1;
-            }
-            int cp = ((p[0] & 0x1F) << 6) | (p[1] & 0x3F);
-            *src += 2;
-            *srclen -= 2;
-            return cp;
-        } else if ((*p & 0xF0) == 0xE0) {
-            if (*srclen < 3) {
-                errno = EINVAL;
-                return -1;
-            }
-            if ((p[1] & 0xC0) != 0x80 || (p[2] & 0xC0) != 0x80) {
-                errno = EILSEQ;
-                return -1;
-            }
-            int cp = ((p[0] & 0x0F) << 12) | ((p[1] & 0x3F) << 6) | (p[2] & 0x3F);
-            *src += 3;
-            *srclen -= 3;
-            return cp;
-        } else if ((*p & 0xF8) == 0xF0) {
-            if (*srclen < 4) {
-                errno = EINVAL;
-                return -1;
-            }
-            if ((p[1] & 0xC0) != 0x80 || (p[2] & 0xC0) != 0x80 ||
-                (p[3] & 0xC0) != 0x80) {
-                errno = EILSEQ;
-                return -1;
-            }
-            int cp = ((p[0] & 0x07) << 18) | ((p[1] & 0x3F) << 12) |
-                     ((p[2] & 0x3F) << 6) | (p[3] & 0x3F);
-            *src += 4;
-            *srclen -= 4;
-            return cp;
-        }
-        errno = EILSEQ;
-        return -1;
 
-    case ENC_ISO8859_1:
-        if (*srclen < 1) return -1;
-        (*src)++;
-        (*srclen)--;
-        return *p; /* ISO-8859-1 maps directly to Unicode */
-
-    case ENC_UTF16BE:
-        if (*srclen < 2) {
-            errno = EINVAL;
-            return -1;
-        }
-        {
-            int cp = (p[0] << 8) | p[1];
-            if (cp >= 0xD800 && cp <= 0xDBFF) {
-                /* Surrogate pair */
-                if (*srclen < 4) {
+        case ENC_UTF8:
+            if (*srclen < 1)
+                return -1;
+            if (*p < 0x80)
+            {
+                (*src)++;
+                (*srclen)--;
+                return *p;
+            }
+            else if ((*p & 0xE0) == 0xC0)
+            {
+                if (*srclen < 2)
+                {
                     errno = EINVAL;
                     return -1;
                 }
-                int low = (p[2] << 8) | p[3];
-                if (low < 0xDC00 || low > 0xDFFF) {
+                if ((p[1] & 0xC0) != 0x80)
+                {
                     errno = EILSEQ;
                     return -1;
                 }
-                cp = 0x10000 + ((cp - 0xD800) << 10) + (low - 0xDC00);
-                *src += 4;
-                *srclen -= 4;
-            } else {
+                int cp = ((p[0] & 0x1F) << 6) | (p[1] & 0x3F);
                 *src += 2;
                 *srclen -= 2;
+                return cp;
             }
-            return cp;
-        }
-
-    case ENC_UTF16LE:
-        if (*srclen < 2) {
-            errno = EINVAL;
-            return -1;
-        }
-        {
-            int cp = p[0] | (p[1] << 8);
-            if (cp >= 0xD800 && cp <= 0xDBFF) {
-                if (*srclen < 4) {
+            else if ((*p & 0xF0) == 0xE0)
+            {
+                if (*srclen < 3)
+                {
                     errno = EINVAL;
                     return -1;
                 }
-                int low = p[2] | (p[3] << 8);
-                if (low < 0xDC00 || low > 0xDFFF) {
+                if ((p[1] & 0xC0) != 0x80 || (p[2] & 0xC0) != 0x80)
+                {
                     errno = EILSEQ;
                     return -1;
                 }
-                cp = 0x10000 + ((cp - 0xD800) << 10) + (low - 0xDC00);
+                int cp = ((p[0] & 0x0F) << 12) | ((p[1] & 0x3F) << 6) | (p[2] & 0x3F);
+                *src += 3;
+                *srclen -= 3;
+                return cp;
+            }
+            else if ((*p & 0xF8) == 0xF0)
+            {
+                if (*srclen < 4)
+                {
+                    errno = EINVAL;
+                    return -1;
+                }
+                if ((p[1] & 0xC0) != 0x80 || (p[2] & 0xC0) != 0x80 || (p[3] & 0xC0) != 0x80)
+                {
+                    errno = EILSEQ;
+                    return -1;
+                }
+                int cp = ((p[0] & 0x07) << 18) | ((p[1] & 0x3F) << 12) | ((p[2] & 0x3F) << 6) |
+                         (p[3] & 0x3F);
                 *src += 4;
                 *srclen -= 4;
-            } else {
-                *src += 2;
-                *srclen -= 2;
+                return cp;
             }
-            return cp;
-        }
+            errno = EILSEQ;
+            return -1;
 
-    case ENC_UTF32BE:
-        if (*srclen < 4) {
+        case ENC_ISO8859_1:
+            if (*srclen < 1)
+                return -1;
+            (*src)++;
+            (*srclen)--;
+            return *p; /* ISO-8859-1 maps directly to Unicode */
+
+        case ENC_UTF16BE:
+            if (*srclen < 2)
+            {
+                errno = EINVAL;
+                return -1;
+            }
+            {
+                int cp = (p[0] << 8) | p[1];
+                if (cp >= 0xD800 && cp <= 0xDBFF)
+                {
+                    /* Surrogate pair */
+                    if (*srclen < 4)
+                    {
+                        errno = EINVAL;
+                        return -1;
+                    }
+                    int low = (p[2] << 8) | p[3];
+                    if (low < 0xDC00 || low > 0xDFFF)
+                    {
+                        errno = EILSEQ;
+                        return -1;
+                    }
+                    cp = 0x10000 + ((cp - 0xD800) << 10) + (low - 0xDC00);
+                    *src += 4;
+                    *srclen -= 4;
+                }
+                else
+                {
+                    *src += 2;
+                    *srclen -= 2;
+                }
+                return cp;
+            }
+
+        case ENC_UTF16LE:
+            if (*srclen < 2)
+            {
+                errno = EINVAL;
+                return -1;
+            }
+            {
+                int cp = p[0] | (p[1] << 8);
+                if (cp >= 0xD800 && cp <= 0xDBFF)
+                {
+                    if (*srclen < 4)
+                    {
+                        errno = EINVAL;
+                        return -1;
+                    }
+                    int low = p[2] | (p[3] << 8);
+                    if (low < 0xDC00 || low > 0xDFFF)
+                    {
+                        errno = EILSEQ;
+                        return -1;
+                    }
+                    cp = 0x10000 + ((cp - 0xD800) << 10) + (low - 0xDC00);
+                    *src += 4;
+                    *srclen -= 4;
+                }
+                else
+                {
+                    *src += 2;
+                    *srclen -= 2;
+                }
+                return cp;
+            }
+
+        case ENC_UTF32BE:
+            if (*srclen < 4)
+            {
+                errno = EINVAL;
+                return -1;
+            }
+            {
+                int cp = (p[0] << 24) | (p[1] << 16) | (p[2] << 8) | p[3];
+                *src += 4;
+                *srclen -= 4;
+                return cp;
+            }
+
+        case ENC_UTF32LE:
+            if (*srclen < 4)
+            {
+                errno = EINVAL;
+                return -1;
+            }
+            {
+                int cp = p[0] | (p[1] << 8) | (p[2] << 16) | (p[3] << 24);
+                *src += 4;
+                *srclen -= 4;
+                return cp;
+            }
+
+        default:
             errno = EINVAL;
             return -1;
-        }
-        {
-            int cp = (p[0] << 24) | (p[1] << 16) | (p[2] << 8) | p[3];
-            *src += 4;
-            *srclen -= 4;
-            return cp;
-        }
-
-    case ENC_UTF32LE:
-        if (*srclen < 4) {
-            errno = EINVAL;
-            return -1;
-        }
-        {
-            int cp = p[0] | (p[1] << 8) | (p[2] << 16) | (p[3] << 24);
-            *src += 4;
-            *srclen -= 4;
-            return cp;
-        }
-
-    default:
-        errno = EINVAL;
-        return -1;
     }
 }
 
@@ -225,29 +257,20 @@ static int decode_char(enum encoding enc, const char **src, size_t *srclen)
  * Helper: Encode one codepoint to output
  * Returns bytes written, or -1 on error
  */
-static int encode_char(enum encoding enc, int codepoint,
-                       char **dst, size_t *dstlen)
+static int encode_char(enum encoding enc, int codepoint, char **dst, size_t *dstlen)
 {
     unsigned char *p = (unsigned char *)*dst;
 
-    switch (enc) {
-    case ENC_ASCII:
-        if (codepoint > 127) {
-            errno = EILSEQ;
-            return -1;
-        }
-        if (*dstlen < 1) {
-            errno = E2BIG;
-            return -1;
-        }
-        *p = (unsigned char)codepoint;
-        (*dst)++;
-        (*dstlen)--;
-        return 1;
-
-    case ENC_UTF8:
-        if (codepoint < 0x80) {
-            if (*dstlen < 1) {
+    switch (enc)
+    {
+        case ENC_ASCII:
+            if (codepoint > 127)
+            {
+                errno = EILSEQ;
+                return -1;
+            }
+            if (*dstlen < 1)
+            {
                 errno = E2BIG;
                 return -1;
             }
@@ -255,142 +278,178 @@ static int encode_char(enum encoding enc, int codepoint,
             (*dst)++;
             (*dstlen)--;
             return 1;
-        } else if (codepoint < 0x800) {
-            if (*dstlen < 2) {
-                errno = E2BIG;
-                return -1;
-            }
-            p[0] = 0xC0 | (codepoint >> 6);
-            p[1] = 0x80 | (codepoint & 0x3F);
-            *dst += 2;
-            *dstlen -= 2;
-            return 2;
-        } else if (codepoint < 0x10000) {
-            if (*dstlen < 3) {
-                errno = E2BIG;
-                return -1;
-            }
-            p[0] = 0xE0 | (codepoint >> 12);
-            p[1] = 0x80 | ((codepoint >> 6) & 0x3F);
-            p[2] = 0x80 | (codepoint & 0x3F);
-            *dst += 3;
-            *dstlen -= 3;
-            return 3;
-        } else if (codepoint < 0x110000) {
-            if (*dstlen < 4) {
-                errno = E2BIG;
-                return -1;
-            }
-            p[0] = 0xF0 | (codepoint >> 18);
-            p[1] = 0x80 | ((codepoint >> 12) & 0x3F);
-            p[2] = 0x80 | ((codepoint >> 6) & 0x3F);
-            p[3] = 0x80 | (codepoint & 0x3F);
-            *dst += 4;
-            *dstlen -= 4;
-            return 4;
-        }
-        errno = EILSEQ;
-        return -1;
 
-    case ENC_ISO8859_1:
-        if (codepoint > 255) {
+        case ENC_UTF8:
+            if (codepoint < 0x80)
+            {
+                if (*dstlen < 1)
+                {
+                    errno = E2BIG;
+                    return -1;
+                }
+                *p = (unsigned char)codepoint;
+                (*dst)++;
+                (*dstlen)--;
+                return 1;
+            }
+            else if (codepoint < 0x800)
+            {
+                if (*dstlen < 2)
+                {
+                    errno = E2BIG;
+                    return -1;
+                }
+                p[0] = 0xC0 | (codepoint >> 6);
+                p[1] = 0x80 | (codepoint & 0x3F);
+                *dst += 2;
+                *dstlen -= 2;
+                return 2;
+            }
+            else if (codepoint < 0x10000)
+            {
+                if (*dstlen < 3)
+                {
+                    errno = E2BIG;
+                    return -1;
+                }
+                p[0] = 0xE0 | (codepoint >> 12);
+                p[1] = 0x80 | ((codepoint >> 6) & 0x3F);
+                p[2] = 0x80 | (codepoint & 0x3F);
+                *dst += 3;
+                *dstlen -= 3;
+                return 3;
+            }
+            else if (codepoint < 0x110000)
+            {
+                if (*dstlen < 4)
+                {
+                    errno = E2BIG;
+                    return -1;
+                }
+                p[0] = 0xF0 | (codepoint >> 18);
+                p[1] = 0x80 | ((codepoint >> 12) & 0x3F);
+                p[2] = 0x80 | ((codepoint >> 6) & 0x3F);
+                p[3] = 0x80 | (codepoint & 0x3F);
+                *dst += 4;
+                *dstlen -= 4;
+                return 4;
+            }
             errno = EILSEQ;
             return -1;
-        }
-        if (*dstlen < 1) {
-            errno = E2BIG;
-            return -1;
-        }
-        *p = (unsigned char)codepoint;
-        (*dst)++;
-        (*dstlen)--;
-        return 1;
 
-    case ENC_UTF16BE:
-        if (codepoint < 0x10000) {
-            if (*dstlen < 2) {
+        case ENC_ISO8859_1:
+            if (codepoint > 255)
+            {
+                errno = EILSEQ;
+                return -1;
+            }
+            if (*dstlen < 1)
+            {
                 errno = E2BIG;
                 return -1;
             }
-            p[0] = (codepoint >> 8) & 0xFF;
-            p[1] = codepoint & 0xFF;
-            *dst += 2;
-            *dstlen -= 2;
-            return 2;
-        } else {
-            if (*dstlen < 4) {
+            *p = (unsigned char)codepoint;
+            (*dst)++;
+            (*dstlen)--;
+            return 1;
+
+        case ENC_UTF16BE:
+            if (codepoint < 0x10000)
+            {
+                if (*dstlen < 2)
+                {
+                    errno = E2BIG;
+                    return -1;
+                }
+                p[0] = (codepoint >> 8) & 0xFF;
+                p[1] = codepoint & 0xFF;
+                *dst += 2;
+                *dstlen -= 2;
+                return 2;
+            }
+            else
+            {
+                if (*dstlen < 4)
+                {
+                    errno = E2BIG;
+                    return -1;
+                }
+                codepoint -= 0x10000;
+                int high = 0xD800 + (codepoint >> 10);
+                int low = 0xDC00 + (codepoint & 0x3FF);
+                p[0] = (high >> 8) & 0xFF;
+                p[1] = high & 0xFF;
+                p[2] = (low >> 8) & 0xFF;
+                p[3] = low & 0xFF;
+                *dst += 4;
+                *dstlen -= 4;
+                return 4;
+            }
+
+        case ENC_UTF16LE:
+            if (codepoint < 0x10000)
+            {
+                if (*dstlen < 2)
+                {
+                    errno = E2BIG;
+                    return -1;
+                }
+                p[0] = codepoint & 0xFF;
+                p[1] = (codepoint >> 8) & 0xFF;
+                *dst += 2;
+                *dstlen -= 2;
+                return 2;
+            }
+            else
+            {
+                if (*dstlen < 4)
+                {
+                    errno = E2BIG;
+                    return -1;
+                }
+                codepoint -= 0x10000;
+                int high = 0xD800 + (codepoint >> 10);
+                int low = 0xDC00 + (codepoint & 0x3FF);
+                p[0] = high & 0xFF;
+                p[1] = (high >> 8) & 0xFF;
+                p[2] = low & 0xFF;
+                p[3] = (low >> 8) & 0xFF;
+                *dst += 4;
+                *dstlen -= 4;
+                return 4;
+            }
+
+        case ENC_UTF32BE:
+            if (*dstlen < 4)
+            {
                 errno = E2BIG;
                 return -1;
             }
-            codepoint -= 0x10000;
-            int high = 0xD800 + (codepoint >> 10);
-            int low = 0xDC00 + (codepoint & 0x3FF);
-            p[0] = (high >> 8) & 0xFF;
-            p[1] = high & 0xFF;
-            p[2] = (low >> 8) & 0xFF;
-            p[3] = low & 0xFF;
+            p[0] = (codepoint >> 24) & 0xFF;
+            p[1] = (codepoint >> 16) & 0xFF;
+            p[2] = (codepoint >> 8) & 0xFF;
+            p[3] = codepoint & 0xFF;
             *dst += 4;
             *dstlen -= 4;
             return 4;
-        }
 
-    case ENC_UTF16LE:
-        if (codepoint < 0x10000) {
-            if (*dstlen < 2) {
+        case ENC_UTF32LE:
+            if (*dstlen < 4)
+            {
                 errno = E2BIG;
                 return -1;
             }
             p[0] = codepoint & 0xFF;
             p[1] = (codepoint >> 8) & 0xFF;
-            *dst += 2;
-            *dstlen -= 2;
-            return 2;
-        } else {
-            if (*dstlen < 4) {
-                errno = E2BIG;
-                return -1;
-            }
-            codepoint -= 0x10000;
-            int high = 0xD800 + (codepoint >> 10);
-            int low = 0xDC00 + (codepoint & 0x3FF);
-            p[0] = high & 0xFF;
-            p[1] = (high >> 8) & 0xFF;
-            p[2] = low & 0xFF;
-            p[3] = (low >> 8) & 0xFF;
+            p[2] = (codepoint >> 16) & 0xFF;
+            p[3] = (codepoint >> 24) & 0xFF;
             *dst += 4;
             *dstlen -= 4;
             return 4;
-        }
 
-    case ENC_UTF32BE:
-        if (*dstlen < 4) {
-            errno = E2BIG;
+        default:
+            errno = EINVAL;
             return -1;
-        }
-        p[0] = (codepoint >> 24) & 0xFF;
-        p[1] = (codepoint >> 16) & 0xFF;
-        p[2] = (codepoint >> 8) & 0xFF;
-        p[3] = codepoint & 0xFF;
-        *dst += 4;
-        *dstlen -= 4;
-        return 4;
-
-    case ENC_UTF32LE:
-        if (*dstlen < 4) {
-            errno = E2BIG;
-            return -1;
-        }
-        p[0] = codepoint & 0xFF;
-        p[1] = (codepoint >> 8) & 0xFF;
-        p[2] = (codepoint >> 16) & 0xFF;
-        p[3] = (codepoint >> 24) & 0xFF;
-        *dst += 4;
-        *dstlen -= 4;
-        return 4;
-
-    default:
-        errno = EINVAL;
-        return -1;
     }
 }
 
@@ -402,13 +461,15 @@ iconv_t iconv_open(const char *tocode, const char *fromcode)
     enum encoding from = parse_encoding(fromcode);
     enum encoding to = parse_encoding(tocode);
 
-    if (from == ENC_UNKNOWN || to == ENC_UNKNOWN) {
+    if (from == ENC_UNKNOWN || to == ENC_UNKNOWN)
+    {
         errno = EINVAL;
         return (iconv_t)-1;
     }
 
     struct iconv_desc *desc = (struct iconv_desc *)malloc(sizeof(*desc));
-    if (!desc) {
+    if (!desc)
+    {
         errno = ENOMEM;
         return (iconv_t)-1;
     }
@@ -422,10 +483,10 @@ iconv_t iconv_open(const char *tocode, const char *fromcode)
 /*
  * iconv - Convert characters
  */
-size_t iconv(iconv_t cd, char **inbuf, size_t *inbytesleft,
-             char **outbuf, size_t *outbytesleft)
+size_t iconv(iconv_t cd, char **inbuf, size_t *inbytesleft, char **outbuf, size_t *outbytesleft)
 {
-    if (cd == (iconv_t)-1) {
+    if (cd == (iconv_t)-1)
+    {
         errno = EBADF;
         return (size_t)-1;
     }
@@ -433,18 +494,21 @@ size_t iconv(iconv_t cd, char **inbuf, size_t *inbytesleft,
     struct iconv_desc *desc = (struct iconv_desc *)cd;
 
     /* Reset state if inbuf is NULL */
-    if (!inbuf || !*inbuf) {
+    if (!inbuf || !*inbuf)
+    {
         return 0;
     }
 
     size_t conversions = 0;
 
-    while (*inbytesleft > 0) {
+    while (*inbytesleft > 0)
+    {
         const char *save_in = *inbuf;
         size_t save_inlen = *inbytesleft;
 
         int codepoint = decode_char(desc->from, (const char **)inbuf, inbytesleft);
-        if (codepoint < 0) {
+        if (codepoint < 0)
+        {
             /* Restore pointers on error */
             *inbuf = (char *)save_in;
             *inbytesleft = save_inlen;
@@ -452,7 +516,8 @@ size_t iconv(iconv_t cd, char **inbuf, size_t *inbytesleft,
         }
 
         int result = encode_char(desc->to, codepoint, outbuf, outbytesleft);
-        if (result < 0) {
+        if (result < 0)
+        {
             /* Restore input pointers on output error */
             *inbuf = (char *)save_in;
             *inbytesleft = save_inlen;
@@ -460,9 +525,12 @@ size_t iconv(iconv_t cd, char **inbuf, size_t *inbytesleft,
         }
 
         /* Check for non-reversible conversion (lossy) */
-        if (desc->to == ENC_ASCII && codepoint > 127) {
+        if (desc->to == ENC_ASCII && codepoint > 127)
+        {
             conversions++;
-        } else if (desc->to == ENC_ISO8859_1 && codepoint > 255) {
+        }
+        else if (desc->to == ENC_ISO8859_1 && codepoint > 255)
+        {
             conversions++;
         }
     }
@@ -475,7 +543,8 @@ size_t iconv(iconv_t cd, char **inbuf, size_t *inbytesleft,
  */
 int iconv_close(iconv_t cd)
 {
-    if (cd == (iconv_t)-1) {
+    if (cd == (iconv_t)-1)
+    {
         errno = EBADF;
         return -1;
     }

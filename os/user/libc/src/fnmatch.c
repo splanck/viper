@@ -53,7 +53,7 @@ static int match_bracket(const char **pattern, int c, int flags)
         /* Handle range */
         if (*p == '-' && *(p + 1) && *(p + 1) != ']')
         {
-            p++;  /* Skip '-' */
+            p++; /* Skip '-' */
             int end = (unsigned char)*p++;
 
             if (end == '\\' && !(flags & FNM_NOESCAPE) && *p)
@@ -84,8 +84,7 @@ static int match_bracket(const char **pattern, int c, int flags)
 }
 
 /* Recursive fnmatch implementation */
-static int fnmatch_internal(const char *pattern, const char *string, int flags,
-                            int at_start)
+static int fnmatch_internal(const char *pattern, const char *string, int flags, int at_start)
 {
     while (*pattern)
     {
@@ -93,94 +92,94 @@ static int fnmatch_internal(const char *pattern, const char *string, int flags,
 
         switch (c)
         {
-        case '?':
-            /* Match any single character */
-            if (*string == '\0')
-                return FNM_NOMATCH;
-            if ((flags & FNM_PATHNAME) && *string == '/')
-                return FNM_NOMATCH;
-            if ((flags & FNM_PERIOD) && *string == '.' && at_start)
-                return FNM_NOMATCH;
-            string++;
-            at_start = 0;
-            break;
-
-        case '*':
-            /* Skip consecutive stars */
-            while (*pattern == '*')
-                pattern++;
-
-            /* Check for leading period restriction */
-            if ((flags & FNM_PERIOD) && *string == '.' && at_start)
-                return FNM_NOMATCH;
-
-            /* Empty pattern after * matches everything */
-            if (*pattern == '\0')
-            {
-                if (flags & FNM_PATHNAME)
-                {
-                    /* Must not match across '/' */
-                    return strchr(string, '/') ? FNM_NOMATCH : 0;
-                }
-                return 0;
-            }
-
-            /* Try matching * against increasing prefixes */
-            while (*string)
-            {
-                if (fnmatch_internal(pattern, string, flags, 0) == 0)
-                    return 0;
-
+            case '?':
+                /* Match any single character */
+                if (*string == '\0')
+                    return FNM_NOMATCH;
                 if ((flags & FNM_PATHNAME) && *string == '/')
-                    break;
+                    return FNM_NOMATCH;
+                if ((flags & FNM_PERIOD) && *string == '.' && at_start)
+                    return FNM_NOMATCH;
+                string++;
+                at_start = 0;
+                break;
+
+            case '*':
+                /* Skip consecutive stars */
+                while (*pattern == '*')
+                    pattern++;
+
+                /* Check for leading period restriction */
+                if ((flags & FNM_PERIOD) && *string == '.' && at_start)
+                    return FNM_NOMATCH;
+
+                /* Empty pattern after * matches everything */
+                if (*pattern == '\0')
+                {
+                    if (flags & FNM_PATHNAME)
+                    {
+                        /* Must not match across '/' */
+                        return strchr(string, '/') ? FNM_NOMATCH : 0;
+                    }
+                    return 0;
+                }
+
+                /* Try matching * against increasing prefixes */
+                while (*string)
+                {
+                    if (fnmatch_internal(pattern, string, flags, 0) == 0)
+                        return 0;
+
+                    if ((flags & FNM_PATHNAME) && *string == '/')
+                        break;
+
+                    string++;
+                }
+                return FNM_NOMATCH;
+
+            case '[':
+                /* Bracket expression */
+                if (*string == '\0')
+                    return FNM_NOMATCH;
+                if ((flags & FNM_PATHNAME) && *string == '/')
+                    return FNM_NOMATCH;
+                if ((flags & FNM_PERIOD) && *string == '.' && at_start)
+                    return FNM_NOMATCH;
+
+                if (!match_bracket(&pattern, (unsigned char)*string, flags))
+                    return FNM_NOMATCH;
 
                 string++;
-            }
-            return FNM_NOMATCH;
-
-        case '[':
-            /* Bracket expression */
-            if (*string == '\0')
-                return FNM_NOMATCH;
-            if ((flags & FNM_PATHNAME) && *string == '/')
-                return FNM_NOMATCH;
-            if ((flags & FNM_PERIOD) && *string == '.' && at_start)
-                return FNM_NOMATCH;
-
-            if (!match_bracket(&pattern, (unsigned char)*string, flags))
-                return FNM_NOMATCH;
-
-            string++;
-            at_start = 0;
-            break;
-
-        case '\\':
-            /* Escape character */
-            if (!(flags & FNM_NOESCAPE))
-            {
-                if (*pattern == '\0')
-                    return FNM_NOMATCH;
-                c = *pattern++;
-            }
-            /* Fall through to literal match */
-            /* fallthrough */
-
-        default:
-            /* Literal match */
-            if (*string == '\0')
-                return FNM_NOMATCH;
-
-            if (fold_case(c, flags) != fold_case((unsigned char)*string, flags))
-                return FNM_NOMATCH;
-
-            /* Track '/' for FNM_PATHNAME and period matching */
-            if (*string == '/')
-                at_start = 1;
-            else
                 at_start = 0;
+                break;
 
-            string++;
-            break;
+            case '\\':
+                /* Escape character */
+                if (!(flags & FNM_NOESCAPE))
+                {
+                    if (*pattern == '\0')
+                        return FNM_NOMATCH;
+                    c = *pattern++;
+                }
+                /* Fall through to literal match */
+                /* fallthrough */
+
+            default:
+                /* Literal match */
+                if (*string == '\0')
+                    return FNM_NOMATCH;
+
+                if (fold_case(c, flags) != fold_case((unsigned char)*string, flags))
+                    return FNM_NOMATCH;
+
+                /* Track '/' for FNM_PATHNAME and period matching */
+                if (*string == '/')
+                    at_start = 1;
+                else
+                    at_start = 0;
+
+                string++;
+                break;
         }
     }
 

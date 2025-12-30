@@ -3,28 +3,35 @@
  * @brief Math library test program for ViperOS
  */
 
-#include <stdio.h>
 #include <math.h>
+#include <stdio.h>
 
 /* Helper to check if two doubles are approximately equal */
 static int approx_equal(double a, double b, double epsilon)
 {
-    if (isnan(a) && isnan(b)) return 1;
-    if (isinf(a) && isinf(b)) return (a > 0) == (b > 0);
+    if (isnan(a) && isnan(b))
+        return 1;
+    if (isinf(a) && isinf(b))
+        return (a > 0) == (b > 0);
     return fabs(a - b) < epsilon;
 }
 
-#define TEST(name, expr, expected, eps) do { \
-    double result = (expr); \
-    double exp = (expected); \
-    if (approx_equal(result, exp, eps)) { \
-        printf("[PASS] %s = %f\n", name, result); \
-        passed++; \
-    } else { \
-        printf("[FAIL] %s = %f (expected %f)\n", name, result, exp); \
-        failed++; \
-    } \
-} while(0)
+#define TEST(name, expr, expected, eps)                                                            \
+    do                                                                                             \
+    {                                                                                              \
+        double result = (expr);                                                                    \
+        double exp = (expected);                                                                   \
+        if (approx_equal(result, exp, eps))                                                        \
+        {                                                                                          \
+            printf("[PASS] %s = %f\n", name, result);                                              \
+            passed++;                                                                              \
+        }                                                                                          \
+        else                                                                                       \
+        {                                                                                          \
+            printf("[FAIL] %s = %f (expected %f)\n", name, result, exp);                           \
+            failed++;                                                                              \
+        }                                                                                          \
+    } while (0)
 
 extern "C" void _start()
 {
@@ -109,6 +116,6 @@ extern "C" void _start()
     printf("\n=== Results: %d passed, %d failed ===\n\n", passed, failed);
 
     /* Exit with failure count as status */
-    asm volatile("mov x0, %0; mov x8, #1; svc #0" :: "r"((long)failed));
+    asm volatile("mov x0, %0; mov x8, #1; svc #0" ::"r"((long)failed));
     __builtin_unreachable();
 }

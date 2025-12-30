@@ -206,7 +206,7 @@ struct SocketSendRequest
     u32 len;        ///< Bytes to send
     u32 flags;      ///< Send flags (0 for now)
     u32 _pad;
-    u8 data[200];   ///< Inline data (if len <= 200)
+    u8 data[200]; ///< Inline data (if len <= 200)
     // For larger sends, handle[0] = shared memory
 };
 
@@ -281,9 +281,9 @@ struct SocketCloseReply
  */
 struct DnsResolveRequest
 {
-    u32 type;          ///< NET_DNS_RESOLVE
-    u32 request_id;    ///< For matching replies
-    u16 hostname_len;  ///< Length of hostname
+    u32 type;           ///< NET_DNS_RESOLVE
+    u32 request_id;     ///< For matching replies
+    u16 hostname_len;   ///< Length of hostname
     char hostname[250]; ///< Hostname to resolve
 };
 
@@ -343,10 +343,10 @@ struct InfoReply
     i32 status;     ///< 0 = success
     u8 mac[6];      ///< MAC address
     u16 _pad;
-    u32 ip;         ///< Local IP (network byte order)
-    u32 netmask;    ///< Netmask
-    u32 gateway;    ///< Gateway
-    u32 dns;        ///< DNS server
+    u32 ip;      ///< Local IP (network byte order)
+    u32 netmask; ///< Netmask
+    u32 gateway; ///< Gateway
+    u32 dns;     ///< DNS server
 };
 
 /**
@@ -363,18 +363,18 @@ struct StatsRequest
  */
 struct StatsReply
 {
-    u32 type;          ///< NET_STATS_REPLY
-    u32 request_id;    ///< Matches request
-    i32 status;        ///< 0 = success
+    u32 type;       ///< NET_STATS_REPLY
+    u32 request_id; ///< Matches request
+    i32 status;     ///< 0 = success
     u32 _pad;
-    u64 tx_packets;    ///< Packets transmitted
-    u64 rx_packets;    ///< Packets received
-    u64 tx_bytes;      ///< Bytes transmitted
-    u64 rx_bytes;      ///< Bytes received
-    u64 tx_dropped;    ///< TX drops
-    u64 rx_dropped;    ///< RX drops
-    u32 tcp_conns;     ///< Active TCP connections
-    u32 udp_sockets;   ///< Active UDP sockets
+    u64 tx_packets;  ///< Packets transmitted
+    u64 rx_packets;  ///< Packets received
+    u64 tx_bytes;    ///< Bytes transmitted
+    u64 rx_bytes;    ///< Bytes received
+    u64 tx_dropped;  ///< TX drops
+    u64 rx_dropped;  ///< RX drops
+    u32 tcp_conns;   ///< Active TCP connections
+    u32 udp_sockets; ///< Active UDP sockets
 };
 
 } // namespace netproto

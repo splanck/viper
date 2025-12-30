@@ -44,8 +44,8 @@ u64 interval = 0; // Ticks per interrupt
 
 // Precomputed conversion factors for high-resolution timing
 // These are set during init() based on actual frequency
-u64 ns_per_tick_q32 = 0;    // Fixed-point (Q32) nanoseconds per tick
-u64 ticks_per_us = 0;       // Ticks per microsecond (for fast conversion)
+u64 ns_per_tick_q32 = 0; // Fixed-point (Q32) nanoseconds per tick
+u64 ticks_per_us = 0;    // Ticks per microsecond (for fast conversion)
 
 // One-shot timer queue entry
 struct OneshotTimer

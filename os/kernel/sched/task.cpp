@@ -96,6 +96,7 @@ struct FreeStackNode
 {
     FreeStackNode *next;
 };
+
 FreeStackNode *free_stack_list = nullptr;
 u32 free_stack_count = 0;
 
@@ -291,6 +292,7 @@ Task *create(const char *name, TaskEntry entry, void *arg, u32 flags)
     t->flags = flags | TASK_FLAG_KERNEL; // All tasks are kernel tasks for now
     t->time_slice = TIME_SLICE_DEFAULT;
     t->priority = PRIORITY_DEFAULT;
+    t->policy = SchedPolicy::SCHED_OTHER; // Default to normal scheduling
     t->next = nullptr;
     t->prev = nullptr;
     t->wait_channel = nullptr;
@@ -438,6 +440,7 @@ Task *create_user_task(const char *name, void *viper_ptr, u64 entry, u64 stack)
     t->flags = TASK_FLAG_USER; // User task, not kernel
     t->time_slice = TIME_SLICE_DEFAULT;
     t->priority = PRIORITY_DEFAULT;
+    t->policy = SchedPolicy::SCHED_OTHER; // Default to normal scheduling
     t->next = nullptr;
     t->prev = nullptr;
     t->wait_channel = nullptr;
@@ -579,6 +582,49 @@ u8 get_priority(Task *t)
     if (!t)
         return PRIORITY_LOWEST;
     return t->priority;
+}
+
+/** @copydoc task::set_policy */
+i32 set_policy(Task *t, SchedPolicy policy)
+{
+    if (!t)
+        return -1;
+
+    // Validate policy
+    if (policy != SchedPolicy::SCHED_OTHER && policy != SchedPolicy::SCHED_FIFO &&
+        policy != SchedPolicy::SCHED_RR)
+    {
+        return -1;
+    }
+
+    t->policy = policy;
+
+    // Adjust time slice based on policy
+    if (policy == SchedPolicy::SCHED_FIFO)
+    {
+        // SCHED_FIFO doesn't use time slicing - set max to indicate "run until yield"
+        t->time_slice = 0xFFFFFFFF;
+    }
+    else if (policy == SchedPolicy::SCHED_RR)
+    {
+        // SCHED_RR uses a fixed RT time slice
+        t->time_slice = RT_TIME_SLICE_DEFAULT;
+    }
+    else
+    {
+        // SCHED_OTHER uses priority-based time slicing
+        t->time_slice = time_slice_for_priority(t->priority);
+    }
+
+    return 0;
+}
+
+/** @copydoc task::get_policy */
+SchedPolicy get_policy(Task *t)
+{
+    if (!t)
+        return SchedPolicy::SCHED_OTHER;
+    return t->policy;
 }
 
 /** @copydoc task::get_by_id */

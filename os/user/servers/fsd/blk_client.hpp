@@ -82,8 +82,7 @@ class BlkClient
         blk::ReadReply reply;
         u32 handles[4];
         u32 handle_count = 4;
-        i64 len = sys::channel_recv(blkd_channel_, &reply, sizeof(reply),
-                                     handles, &handle_count);
+        i64 len = sys::channel_recv(blkd_channel_, &reply, sizeof(reply), handles, &handle_count);
         if (len < 0)
         {
             return static_cast<i32>(len);
@@ -155,8 +154,7 @@ class BlkClient
         blk::WriteReply reply;
         u32 handles[4];
         u32 handle_count = 4;
-        i64 len = sys::channel_recv(blkd_channel_, &reply, sizeof(reply),
-                                     handles, &handle_count);
+        i64 len = sys::channel_recv(blkd_channel_, &reply, sizeof(reply), handles, &handle_count);
 
         // Cleanup shared memory
         sys::shm_unmap(shm_result.virt_addr);
@@ -189,8 +187,7 @@ class BlkClient
         blk::FlushReply reply;
         u32 handles[4];
         u32 handle_count = 4;
-        i64 len = sys::channel_recv(blkd_channel_, &reply, sizeof(reply),
-                                     handles, &handle_count);
+        i64 len = sys::channel_recv(blkd_channel_, &reply, sizeof(reply), handles, &handle_count);
         if (len < 0)
         {
             return static_cast<i32>(len);
@@ -221,8 +218,7 @@ class BlkClient
         blk::InfoReply reply;
         u32 handles[4];
         u32 handle_count = 4;
-        i64 len = sys::channel_recv(blkd_channel_, &reply, sizeof(reply),
-                                     handles, &handle_count);
+        i64 len = sys::channel_recv(blkd_channel_, &reply, sizeof(reply), handles, &handle_count);
         if (len < 0)
         {
             return static_cast<i32>(len);

@@ -1,7 +1,7 @@
 #include "../include/poll.h"
+#include "../include/errno.h"
 #include "../include/sys/select.h"
 #include "../include/time.h"
-#include "../include/errno.h"
 
 /* Syscall helpers */
 extern long __syscall1(long num, long arg0);
@@ -11,7 +11,7 @@ extern long __syscall4(long num, long arg0, long arg1, long arg2, long arg3);
 extern long __syscall5(long num, long arg0, long arg1, long arg2, long arg3, long arg4);
 
 /* Syscall numbers */
-#define SYS_POLL   0xB1
+#define SYS_POLL 0xB1
 #define SYS_SELECT 0xB2
 
 /*
@@ -37,9 +37,7 @@ int poll(struct pollfd *fds, nfds_t nfds, int timeout)
 /*
  * ppoll - poll with precise timeout and signal mask
  */
-int ppoll(struct pollfd *fds, nfds_t nfds,
-          const struct timespec *timeout_ts,
-          const void *sigmask)
+int ppoll(struct pollfd *fds, nfds_t nfds, const struct timespec *timeout_ts, const void *sigmask)
 {
     int timeout_ms;
 
@@ -50,8 +48,7 @@ int ppoll(struct pollfd *fds, nfds_t nfds,
     }
     else
     {
-        timeout_ms = (int)(timeout_ts->tv_sec * 1000 +
-                          timeout_ts->tv_nsec / 1000000);
+        timeout_ms = (int)(timeout_ts->tv_sec * 1000 + timeout_ts->tv_nsec / 1000000);
     }
 
     /* Ignore sigmask - not fully implemented */
@@ -63,8 +60,7 @@ int ppoll(struct pollfd *fds, nfds_t nfds,
 /*
  * select - Synchronous I/O multiplexing
  */
-int select(int nfds, fd_set *readfds, fd_set *writefds,
-           fd_set *exceptfds, struct timeval *timeout)
+int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout)
 {
     long timeout_ms;
 
@@ -84,8 +80,8 @@ int select(int nfds, fd_set *readfds, fd_set *writefds,
         timeout_ms = timeout->tv_sec * 1000 + timeout->tv_usec / 1000;
     }
 
-    long result = __syscall5(SYS_SELECT, nfds, (long)readfds,
-                             (long)writefds, (long)exceptfds, timeout_ms);
+    long result =
+        __syscall5(SYS_SELECT, nfds, (long)readfds, (long)writefds, (long)exceptfds, timeout_ms);
     if (result < 0)
     {
         errno = (int)(-result);
@@ -105,8 +101,11 @@ int select(int nfds, fd_set *readfds, fd_set *writefds,
 /*
  * pselect - select with precise timeout and signal mask
  */
-int pselect(int nfds, fd_set *readfds, fd_set *writefds,
-            fd_set *exceptfds, const struct timespec *timeout,
+int pselect(int nfds,
+            fd_set *readfds,
+            fd_set *writefds,
+            fd_set *exceptfds,
+            const struct timespec *timeout,
             const void *sigmask)
 {
     struct timeval tv;

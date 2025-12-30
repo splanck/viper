@@ -6,30 +6,24 @@
 #include "../include/syslog.h"
 #include "../include/stdio.h"
 #include "../include/string.h"
-#include "../include/unistd.h"
 #include "../include/time.h"
+#include "../include/unistd.h"
 
 /* Syslog state */
 static const char *log_ident = NULL;
 static int log_option = 0;
 static int log_facility = LOG_USER;
-static int log_mask = 0xFF;  /* All priorities enabled by default */
+static int log_mask = 0xFF; /* All priorities enabled by default */
 
 /* Priority names */
 static const char *priority_names[] = {
-    "EMERG", "ALERT", "CRIT", "ERR",
-    "WARNING", "NOTICE", "INFO", "DEBUG"
-};
+    "EMERG", "ALERT", "CRIT", "ERR", "WARNING", "NOTICE", "INFO", "DEBUG"};
 
 /* Facility names - reserved for future use */
 static const char *facility_names[] __attribute__((unused)) = {
-    "kern", "user", "mail", "daemon",
-    "auth", "syslog", "lpr", "news",
-    "uucp", "cron", "authpriv", "ftp",
-    "ntp", "audit", "alert", "clock",
-    "local0", "local1", "local2", "local3",
-    "local4", "local5", "local6", "local7"
-};
+    "kern",   "user",   "mail",     "daemon", "auth",   "syslog", "lpr",    "news",
+    "uucp",   "cron",   "authpriv", "ftp",    "ntp",    "audit",  "alert",  "clock",
+    "local0", "local1", "local2",   "local3", "local4", "local5", "local6", "local7"};
 
 /*
  * openlog - Open connection to system logger
@@ -98,26 +92,32 @@ void vsyslog(int priority, const char *format, va_list ap)
     if (tm)
     {
         static const char *months[] = {
-            "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-            "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
-        };
-        int len = snprintf(p, end - p, "%s %2d %02d:%02d:%02d ",
-                          months[tm->tm_mon], tm->tm_mday,
-                          tm->tm_hour, tm->tm_min, tm->tm_sec);
-        if (len > 0) p += len;
+            "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+        int len = snprintf(p,
+                           end - p,
+                           "%s %2d %02d:%02d:%02d ",
+                           months[tm->tm_mon],
+                           tm->tm_mday,
+                           tm->tm_hour,
+                           tm->tm_min,
+                           tm->tm_sec);
+        if (len > 0)
+            p += len;
     }
 
     /* Add ident if set */
     if (log_ident)
     {
         int len = snprintf(p, end - p, "%s", log_ident);
-        if (len > 0) p += len;
+        if (len > 0)
+            p += len;
 
         /* Add PID if requested */
         if (log_option & LOG_PID)
         {
             len = snprintf(p, end - p, "[%d]", (int)getpid());
-            if (len > 0) p += len;
+            if (len > 0)
+                p += len;
         }
 
         if (p < end)
@@ -130,7 +130,8 @@ void vsyslog(int priority, const char *format, va_list ap)
     if (pri >= 0 && pri <= LOG_DEBUG)
     {
         int len = snprintf(p, end - p, "<%s> ", priority_names[pri]);
-        if (len > 0) p += len;
+        if (len > 0)
+            p += len;
     }
 
     /* Format the message */

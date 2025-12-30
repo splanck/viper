@@ -44,9 +44,9 @@ namespace sched
  */
 struct WaitQueue
 {
-    task::Task *head;  // First waiter (will be woken first)
-    task::Task *tail;  // Last waiter
-    u32 count;         // Number of waiters
+    task::Task *head; // First waiter (will be woken first)
+    task::Task *tail; // Last waiter
+    u32 count;        // Number of waiters
 };
 
 /**
@@ -79,7 +79,7 @@ inline void wait_enqueue(WaitQueue *wq, task::Task *t)
 
     // Set task state to blocked
     t->state = task::TaskState::Blocked;
-    t->wait_channel = wq;  // For debugging
+    t->wait_channel = wq; // For debugging
 
     // Add to tail of wait queue (FIFO)
     t->next = nullptr;

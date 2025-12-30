@@ -264,8 +264,7 @@ u64 ViperFS::lookup(Inode *dir, const char *name, usize name_len)
             if (entry->rec_len == 0)
                 break;
 
-            if (entry->inode != 0 &&
-                entry->name_len == name_len &&
+            if (entry->inode != 0 && entry->name_len == name_len &&
                 memcmp(entry->name, name, name_len) == 0)
             {
                 return entry->inode;
@@ -700,8 +699,7 @@ bool ViperFS::remove_dir_entry(Inode *dir, const char *name, usize name_len, u64
             if (entry->rec_len == 0)
                 break;
 
-            if (entry->inode != 0 &&
-                entry->name_len == name_len &&
+            if (entry->inode != 0 && entry->name_len == name_len &&
                 memcmp(entry->name, name, name_len) == 0)
             {
                 if (out_ino)
@@ -855,9 +853,11 @@ bool ViperFS::rmdir(Inode *parent, const char *name, usize name_len)
 
     // Check if empty (only . and ..)
     i32 count = 0;
-    readdir(dir, 0, [](const char *, usize, u64, u8, void *ctx) {
-        (*static_cast<i32 *>(ctx))++;
-    }, &count);
+    readdir(
+        dir,
+        0,
+        [](const char *, usize, u64, u8, void *ctx) { (*static_cast<i32 *>(ctx))++; },
+        &count);
 
     if (count > 2)
     {
@@ -869,8 +869,12 @@ bool ViperFS::rmdir(Inode *parent, const char *name, usize name_len)
     return unlink_file(parent, name, name_len);
 }
 
-bool ViperFS::rename(Inode *old_dir, const char *old_name, usize old_len,
-                     Inode *new_dir, const char *new_name, usize new_len)
+bool ViperFS::rename(Inode *old_dir,
+                     const char *old_name,
+                     usize old_len,
+                     Inode *new_dir,
+                     const char *new_name,
+                     usize new_len)
 {
     // Look up the old entry
     u64 ino = lookup(old_dir, old_name, old_len);

@@ -71,9 +71,9 @@ struct NetHeader
 /** @brief Virtio-net header flags for checksum offload. */
 namespace net_hdr_flags
 {
-constexpr u8 NEEDS_CSUM = 1;     // Device should calculate checksum
-constexpr u8 DATA_VALID = 2;    // Checksum is valid (RX)
-constexpr u8 RSC_INFO = 4;      // RSC info available
+constexpr u8 NEEDS_CSUM = 1; // Device should calculate checksum
+constexpr u8 DATA_VALID = 2; // Checksum is valid (RX)
+constexpr u8 RSC_INFO = 4;   // RSC info available
 } // namespace net_hdr_flags
 
 // GSO types
@@ -371,8 +371,8 @@ class NetDevice : public Device
     u32 irq_{0};
 
     // Checksum offload capabilities
-    bool has_tx_csum_{false};  // CSUM feature negotiated
-    bool has_rx_csum_{false};  // GUEST_CSUM feature negotiated
+    bool has_tx_csum_{false}; // CSUM feature negotiated
+    bool has_rx_csum_{false}; // GUEST_CSUM feature negotiated
 
     // RX waiters (tasks waiting for data)
     task::Task *rx_waiters_[MAX_RX_WAITERS];

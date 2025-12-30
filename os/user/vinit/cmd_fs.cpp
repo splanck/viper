@@ -57,7 +57,7 @@ void cmd_dir(const char *path)
         return;
     }
 
-    u8 buf[32768];  // 32KB - holds ~120 directory entries
+    u8 buf[32768]; // 32KB - holds ~120 directory entries
     i64 bytes = sys::readdir(fd, buf, sizeof(buf));
 
     if (bytes < 0)
@@ -83,14 +83,22 @@ void cmd_dir(const char *path)
             print_str(ent->name);
             print_str("/");
             usize namelen = strlen(ent->name) + 1;
-            while (namelen < 18) { print_char(' '); namelen++; }
+            while (namelen < 18)
+            {
+                print_char(' ');
+                namelen++;
+            }
         }
         else
         {
             print_str("  ");
             print_str(ent->name);
             usize namelen = strlen(ent->name);
-            while (namelen < 18) { print_char(' '); namelen++; }
+            while (namelen < 18)
+            {
+                print_char(' ');
+                namelen++;
+            }
         }
 
         col++;
@@ -104,7 +112,8 @@ void cmd_dir(const char *path)
         offset += ent->reclen;
     }
 
-    if (col > 0) print_str("\n");
+    if (col > 0)
+        print_str("\n");
     put_num(static_cast<i64>(count));
     print_str(" entries\n");
 
@@ -128,7 +137,7 @@ void cmd_list(const char *path)
         return;
     }
 
-    u8 buf[32768];  // 32KB - holds ~120 directory entries
+    u8 buf[32768]; // 32KB - holds ~120 directory entries
     i64 bytes = sys::readdir(fd, buf, sizeof(buf));
 
     if (bytes < 0)
@@ -154,7 +163,11 @@ void cmd_list(const char *path)
 
         print_str(ent->name);
         usize namelen = strlen(ent->name);
-        while (namelen < 32) { print_char(' '); namelen++; }
+        while (namelen < 32)
+        {
+            print_char(' ');
+            namelen++;
+        }
 
         if (ent->type == 2)
         {
@@ -174,11 +187,15 @@ void cmd_list(const char *path)
     print_str("\n");
     put_num(static_cast<i64>(file_count));
     print_str(" file");
-    if (file_count != 1) print_str("s");
+    if (file_count != 1)
+        print_str("s");
     print_str(", ");
     put_num(static_cast<i64>(dir_count));
     print_str(" director");
-    if (dir_count != 1) print_str("ies"); else print_str("y");
+    if (dir_count != 1)
+        print_str("ies");
+    else
+        print_str("y");
     print_str("\n");
 
     sys::close(fd);
@@ -210,7 +227,8 @@ void cmd_type(const char *path)
     while (true)
     {
         i64 bytes = sys::read(fd, buf, sizeof(buf) - 1);
-        if (bytes <= 0) break;
+        if (bytes <= 0)
+            break;
         buf[bytes] = '\0';
         print_str(buf);
     }
@@ -242,10 +260,12 @@ void cmd_copy(const char *args)
     source[i] = '\0';
 
     // Skip whitespace and optional "TO"
-    while (*p == ' ') p++;
+    while (*p == ' ')
+        p++;
     if (strstart(p, "TO ") || strstart(p, "to "))
         p += 3;
-    while (*p == ' ') p++;
+    while (*p == ' ')
+        p++;
 
     // Get dest
     i = 0;
@@ -287,7 +307,8 @@ void cmd_copy(const char *args)
     while (true)
     {
         i64 bytes = sys::read(src_fd, buf, sizeof(buf));
-        if (bytes <= 0) break;
+        if (bytes <= 0)
+            break;
 
         i64 written = sys::write(dst_fd, buf, bytes);
         if (written != bytes)
@@ -376,10 +397,12 @@ void cmd_rename(const char *args)
         oldname[i++] = *p++;
     oldname[i] = '\0';
 
-    while (*p == ' ') p++;
+    while (*p == ' ')
+        p++;
     if (strstart(p, "AS ") || strstart(p, "as "))
         p += 3;
-    while (*p == ' ') p++;
+    while (*p == ' ')
+        p++;
 
     i = 0;
     while (*p && *p != ' ' && i < 255)

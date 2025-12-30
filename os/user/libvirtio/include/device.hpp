@@ -26,11 +26,11 @@ namespace device
  */
 struct DeviceInfo
 {
-    u64 mmio_base;    ///< MMIO base physical address
-    u64 mmio_size;    ///< MMIO region size
-    u32 device_type;  ///< Device type identifier
-    u32 irq;          ///< IRQ number (0 if none)
-    char name[32];    ///< Device name string
+    u64 mmio_base;   ///< MMIO base physical address
+    u64 mmio_size;   ///< MMIO region size
+    u32 device_type; ///< Device type identifier
+    u32 irq;         ///< IRQ number (0 if none)
+    char name[32];   ///< Device name string
 };
 
 /**
@@ -38,9 +38,9 @@ struct DeviceInfo
  */
 struct DmaBuffer
 {
-    u64 virt_addr;    ///< Virtual address (user-accessible)
-    u64 phys_addr;    ///< Physical address (for DMA programming)
-    u64 size;         ///< Allocated size in bytes
+    u64 virt_addr; ///< Virtual address (user-accessible)
+    u64 phys_addr; ///< Physical address (for DMA programming)
+    u64 size;      ///< Allocated size in bytes
 };
 
 /**
@@ -180,9 +180,7 @@ inline u64 virt_to_phys(u64 virt_addr)
  */
 inline i64 enumerate(DeviceInfo *buf, usize max_entries)
 {
-    auto result = sys::syscall2(SYS_DEVICE_ENUM,
-                                reinterpret_cast<u64>(buf),
-                                max_entries);
+    auto result = sys::syscall2(SYS_DEVICE_ENUM, reinterpret_cast<u64>(buf), max_entries);
     if (result.error != 0)
     {
         return result.error;

@@ -6,10 +6,7 @@
 #include "../include/fenv.h"
 
 /* Default floating-point environment */
-const fenv_t __fe_dfl_env = {
-    .__fpcr = 0,
-    .__fpsr = 0
-};
+const fenv_t __fe_dfl_env = {.__fpcr = 0, .__fpsr = 0};
 
 /* Mask for rounding mode bits in FPCR */
 #define FPCR_RMODE_MASK 0x00C00000
@@ -21,11 +18,16 @@ const fenv_t __fe_dfl_env = {
 static unsigned int except_to_enable(int excepts)
 {
     unsigned int result = 0;
-    if (excepts & FE_INVALID)   result |= (1 << 8);
-    if (excepts & FE_DIVBYZERO) result |= (1 << 9);
-    if (excepts & FE_OVERFLOW)  result |= (1 << 10);
-    if (excepts & FE_UNDERFLOW) result |= (1 << 11);
-    if (excepts & FE_INEXACT)   result |= (1 << 12);
+    if (excepts & FE_INVALID)
+        result |= (1 << 8);
+    if (excepts & FE_DIVBYZERO)
+        result |= (1 << 9);
+    if (excepts & FE_OVERFLOW)
+        result |= (1 << 10);
+    if (excepts & FE_UNDERFLOW)
+        result |= (1 << 11);
+    if (excepts & FE_INEXACT)
+        result |= (1 << 12);
     return result;
 }
 
@@ -33,11 +35,16 @@ static unsigned int except_to_enable(int excepts)
 static int enable_to_except(unsigned int enables)
 {
     int result = 0;
-    if (enables & (1 << 8))  result |= FE_INVALID;
-    if (enables & (1 << 9))  result |= FE_DIVBYZERO;
-    if (enables & (1 << 10)) result |= FE_OVERFLOW;
-    if (enables & (1 << 11)) result |= FE_UNDERFLOW;
-    if (enables & (1 << 12)) result |= FE_INEXACT;
+    if (enables & (1 << 8))
+        result |= FE_INVALID;
+    if (enables & (1 << 9))
+        result |= FE_DIVBYZERO;
+    if (enables & (1 << 10))
+        result |= FE_OVERFLOW;
+    if (enables & (1 << 11))
+        result |= FE_UNDERFLOW;
+    if (enables & (1 << 12))
+        result |= FE_INEXACT;
     return result;
 }
 

@@ -1,26 +1,27 @@
 #include "../include/dirent.h"
-#include "../include/string.h"
 #include "../include/stdlib.h"
+#include "../include/string.h"
 
 /* Syscall helpers */
 extern long __syscall2(long num, long arg0, long arg1);
 extern long __syscall3(long num, long arg0, long arg1, long arg2);
 
 /* Syscall numbers from syscall_nums.hpp */
-#define SYS_OPEN    0x10
-#define SYS_CLOSE   0x13
+#define SYS_OPEN 0x10
+#define SYS_CLOSE 0x13
 #define SYS_READDIR 0x17
 
 /* Open flags */
 #define O_RDONLY 0x0000
 
 /* Internal directory stream structure */
-struct _DIR {
-    int fd;                     /* File descriptor for the directory */
-    char buffer[2048];          /* Buffer for directory entries */
-    int buf_pos;                /* Current position in buffer */
-    int buf_len;                /* Amount of data in buffer */
-    struct dirent entry;        /* Current entry for readdir return */
+struct _DIR
+{
+    int fd;              /* File descriptor for the directory */
+    char buffer[2048];   /* Buffer for directory entries */
+    int buf_pos;         /* Current position in buffer */
+    int buf_len;         /* Amount of data in buffer */
+    struct dirent entry; /* Current entry for readdir return */
 };
 
 /* Maximum number of open directories (static pool) */
@@ -31,8 +32,10 @@ static int dir_pool_used[MAX_DIRS] = {0};
 /* Allocate a DIR from the pool */
 static struct _DIR *alloc_dir(void)
 {
-    for (int i = 0; i < MAX_DIRS; i++) {
-        if (!dir_pool_used[i]) {
+    for (int i = 0; i < MAX_DIRS; i++)
+    {
+        if (!dir_pool_used[i])
+        {
             dir_pool_used[i] = 1;
             return &dir_pool[i];
         }
@@ -43,8 +46,10 @@ static struct _DIR *alloc_dir(void)
 /* Free a DIR back to the pool */
 static void free_dir(struct _DIR *dir)
 {
-    for (int i = 0; i < MAX_DIRS; i++) {
-        if (&dir_pool[i] == dir) {
+    for (int i = 0; i < MAX_DIRS; i++)
+    {
+        if (&dir_pool[i] == dir)
+        {
             dir_pool_used[i] = 0;
             return;
         }
@@ -63,7 +68,8 @@ DIR *opendir(const char *name)
 
     /* Allocate DIR structure */
     struct _DIR *dir = alloc_dir();
-    if (!dir) {
+    if (!dir)
+    {
         __syscall2(SYS_CLOSE, fd, 0);
         return NULL;
     }
@@ -82,9 +88,9 @@ struct dirent *readdir(DIR *dirp)
         return NULL;
 
     /* If buffer is empty or exhausted, read more */
-    if (dirp->buf_pos >= dirp->buf_len) {
-        long result = __syscall3(SYS_READDIR, dirp->fd,
-                                  (long)dirp->buffer, sizeof(dirp->buffer));
+    if (dirp->buf_pos >= dirp->buf_len)
+    {
+        long result = __syscall3(SYS_READDIR, dirp->fd, (long)dirp->buffer, sizeof(dirp->buffer));
         if (result <= 0)
             return NULL;
 

@@ -56,16 +56,35 @@ constexpr usize TCP_HEADER_MIN = 20;
 /** @brief TCP header size with MSS option (4 bytes aligned). */
 constexpr usize TCP_HEADER_MSS = 24;
 
+/** @brief TCP header size with full SYN options (MSS + WSCALE + SACK_PERM + padding). */
+constexpr usize TCP_HEADER_SYN_OPTS = 32; // 20 + 4(MSS) + 4(NOP+WSCALE) + 4(SACK_PERM+NOP+NOP)
+
 /**
  * @brief TCP option kinds used in option parsing/generation.
  */
 namespace option
 {
-constexpr u8 END = 0;     ///< End of option list
-constexpr u8 NOP = 1;     ///< No operation (padding)
-constexpr u8 MSS = 2;     ///< Maximum Segment Size
-constexpr u8 MSS_LEN = 4; ///< MSS option length
+constexpr u8 END = 0;            ///< End of option list
+constexpr u8 NOP = 1;            ///< No operation (padding)
+constexpr u8 MSS = 2;            ///< Maximum Segment Size
+constexpr u8 MSS_LEN = 4;        ///< MSS option length
+constexpr u8 WSCALE = 3;         ///< Window Scale (RFC 7323)
+constexpr u8 WSCALE_LEN = 3;     ///< Window scale option length
+constexpr u8 SACK_PERM = 4;      ///< SACK Permitted (RFC 2018)
+constexpr u8 SACK_PERM_LEN = 2;  ///< SACK permitted option length
+constexpr u8 SACK = 5;           ///< SACK blocks (RFC 2018)
+constexpr u8 TIMESTAMP = 8;      ///< Timestamps (RFC 7323)
+constexpr u8 TIMESTAMP_LEN = 10; ///< Timestamp option length
 } // namespace option
+
+/** @brief Maximum window scale shift (RFC 7323: max 14). */
+constexpr u8 MAX_WSCALE = 14;
+
+/** @brief Our advertised window scale (shift count). */
+constexpr u8 OUR_WSCALE = 7; // 128x scaling = 512KB max window
+
+/** @brief Maximum SACK blocks we track. */
+constexpr usize MAX_SACK_BLOCKS = 4;
 
 /** @brief Default MSS for Ethernet (MTU 1500 - IP header - TCP header). */
 constexpr u16 DEFAULT_MSS = 1460;
@@ -129,9 +148,26 @@ struct TcpSocket
     u32 snd_una; // Send unacknowledged
     u32 snd_nxt; // Send next
     u32 rcv_nxt; // Receive next
-    u16 snd_wnd; // Send window
-    u16 rcv_wnd; // Receive window
+    u16 snd_wnd; // Send window (before scaling)
+    u16 rcv_wnd; // Receive window (before scaling)
     u16 mss;     // Negotiated Maximum Segment Size
+
+    // Window scaling (RFC 7323)
+    u8 snd_wscale;       // Peer's window scale factor (shift count)
+    u8 rcv_wscale;       // Our window scale factor (shift count)
+    bool wscale_enabled; // Window scaling negotiated successfully
+
+    // SACK support (RFC 2018)
+    bool sack_permitted; // SACK was negotiated
+
+    struct SackBlock
+    {
+        u32 left;  // Left edge of SACK block
+        u32 right; // Right edge of SACK block
+    };
+
+    SackBlock sack_blocks[MAX_SACK_BLOCKS]; // Received SACK blocks
+    u8 num_sack_blocks;                     // Number of valid SACK blocks
 
     // Receive buffer
     static constexpr usize RX_BUFFER_SIZE = 4096;
@@ -160,6 +196,9 @@ struct TcpSocket
 
     // Timeout tracking
     u64 last_activity;
+
+    // TIME_WAIT timer ID (0 if not active)
+    u32 time_wait_timer;
 
     // Congestion control (RFC 5681)
     u32 cwnd;     // Congestion window (bytes)

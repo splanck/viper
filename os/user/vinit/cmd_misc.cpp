@@ -22,7 +22,8 @@ void cmd_run(const char *cmdline)
 
     // Skip leading spaces
     const char *p = cmdline;
-    while (*p == ' ') p++;
+    while (*p == ' ')
+        p++;
 
     // Extract path (first word)
     while (*p && *p != ' ' && path_len < 255)
@@ -30,7 +31,8 @@ void cmd_run(const char *cmdline)
     path_buf[path_len] = '\0';
 
     // Skip spaces between path and args
-    while (*p == ' ') p++;
+    while (*p == ' ')
+        p++;
 
     // Rest is args
     while (*p && args_len < 255)
@@ -161,7 +163,11 @@ void cmd_assign(const char *args)
             print_str(assigns[i].name);
             print_str(":");
             usize namelen = strlen(assigns[i].name) + 1;
-            while (namelen < 11) { print_char(' '); namelen++; }
+            while (namelen < 11)
+            {
+                print_char(' ');
+                namelen++;
+            }
             print_str("  ");
 
             put_hex(assigns[i].handle);
@@ -171,7 +177,8 @@ void cmd_assign(const char *args)
                 print_str("SYS");
             if (assigns[i].flags & sys::ASSIGN_MULTI)
             {
-                if (assigns[i].flags & sys::ASSIGN_SYSTEM) print_str(",");
+                if (assigns[i].flags & sys::ASSIGN_SYSTEM)
+                    print_str(",");
                 print_str("MULTI");
             }
             if (assigns[i].flags == 0)
@@ -185,7 +192,8 @@ void cmd_assign(const char *args)
         print_str("\n");
         put_num(static_cast<i64>(count));
         print_str(" assign");
-        if (count != 1) print_str("s");
+        if (count != 1)
+            print_str("s");
         print_str(" defined\n");
 
         last_rc = RC_OK;
@@ -245,7 +253,8 @@ void cmd_path(const char *args)
 }
 
 // URL parsing helper
-struct ParsedUrl {
+struct ParsedUrl
+{
     char host[128];
     char path[256];
     u16 port;
@@ -278,7 +287,8 @@ static bool parse_url(const char *url, ParsedUrl *out)
         out->host[host_len++] = *p++;
     out->host[host_len] = '\0';
 
-    if (host_len == 0) return false;
+    if (host_len == 0)
+        return false;
 
     if (*p == ':')
     {
@@ -289,7 +299,8 @@ static bool parse_url(const char *url, ParsedUrl *out)
             port = port * 10 + (*p - '0');
             p++;
         }
-        if (port > 0) out->port = port;
+        if (port > 0)
+            out->port = port;
     }
 
     if (*p == '/')
@@ -365,7 +376,8 @@ void cmd_fetch(const char *url)
     put_num(ip & 0xFF);
     print_char(':');
     put_num(parsed.port);
-    if (parsed.is_https) print_str(" (HTTPS)");
+    if (parsed.is_https)
+        print_str(" (HTTPS)");
     print_str("...\n");
 
     i32 sock = sys::socket_create();
@@ -417,15 +429,20 @@ void cmd_fetch(const char *url)
     char request[512];
     usize pos = 0;
     const char *get = "GET ";
-    while (*get) request[pos++] = *get++;
+    while (*get)
+        request[pos++] = *get++;
     const char *path = parsed.path;
-    while (*path && pos < 400) request[pos++] = *path++;
+    while (*path && pos < 400)
+        request[pos++] = *path++;
     const char *proto = " HTTP/1.0\r\nHost: ";
-    while (*proto) request[pos++] = *proto++;
+    while (*proto)
+        request[pos++] = *proto++;
     const char *host = parsed.host;
-    while (*host && pos < 450) request[pos++] = *host++;
+    while (*host && pos < 450)
+        request[pos++] = *host++;
     const char *tail = "\r\nUser-Agent: ViperOS/0.2\r\nConnection: close\r\n\r\n";
-    while (*tail) request[pos++] = *tail++;
+    while (*tail)
+        request[pos++] = *tail++;
     request[pos] = '\0';
 
     i64 sent;
@@ -437,7 +454,8 @@ void cmd_fetch(const char *url)
     if (sent <= 0)
     {
         print_str("Fetch: send failed\n");
-        if (parsed.is_https) sys::tls_close(tls_session);
+        if (parsed.is_https)
+            sys::tls_close(tls_session);
         sys::socket_close(sock);
         last_rc = RC_ERROR;
         return;
@@ -472,10 +490,12 @@ void cmd_fetch(const char *url)
     print_str("\n\n[Received ");
     put_num(static_cast<i64>(total));
     print_str(" bytes");
-    if (parsed.is_https) print_str(", encrypted");
+    if (parsed.is_https)
+        print_str(", encrypted");
     print_str("]\n");
 
-    if (parsed.is_https) sys::tls_close(tls_session);
+    if (parsed.is_https)
+        sys::tls_close(tls_session);
     sys::socket_close(sock);
     last_rc = RC_OK;
 }

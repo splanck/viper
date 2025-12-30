@@ -572,9 +572,8 @@ static void insert_char(char c)
         return;
 
     // Shift characters right
-    memmove(&lines[cursor_row][cursor_col + 1],
-            &lines[cursor_row][cursor_col],
-            len - cursor_col + 1);
+    memmove(
+        &lines[cursor_row][cursor_col + 1], &lines[cursor_row][cursor_col], len - cursor_col + 1);
     lines[cursor_row][cursor_col] = c;
     cursor_col++;
     modified = true;
@@ -607,9 +606,8 @@ static void delete_char()
     if (cursor_col < len)
     {
         // Delete character at cursor
-        memmove(&lines[cursor_row][cursor_col],
-                &lines[cursor_row][cursor_col + 1],
-                len - cursor_col);
+        memmove(
+            &lines[cursor_row][cursor_col], &lines[cursor_row][cursor_col + 1], len - cursor_col);
         modified = true;
     }
     else if (cursor_row < line_count - 1)
@@ -763,15 +761,15 @@ static void handle_escape_sequence()
         case 'F':
             move_end();
             break;
-        case '3': // Delete key
+        case '3':           // Delete key
             sys::getchar(); // consume '~'
             delete_char();
             break;
-        case '5': // Page Up
+        case '5':           // Page Up
             sys::getchar(); // consume '~'
             page_up();
             break;
-        case '6': // Page Down
+        case '6':           // Page Down
             sys::getchar(); // consume '~'
             page_down();
             break;

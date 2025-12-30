@@ -12,22 +12,21 @@ extern long __syscall3(long num, long arg0, long arg1, long arg2);
 extern long __syscall6(long num, long arg0, long arg1, long arg2, long arg3, long arg4, long arg5);
 
 /* Syscall numbers */
-#define SYS_MMAP        0xE0
-#define SYS_MUNMAP      0xE1
-#define SYS_MPROTECT    0xE2
-#define SYS_MSYNC       0xE3
-#define SYS_MADVISE     0xE4
-#define SYS_MLOCK       0xE5
-#define SYS_MUNLOCK     0xE6
+#define SYS_MMAP 0xE0
+#define SYS_MUNMAP 0xE1
+#define SYS_MPROTECT 0xE2
+#define SYS_MSYNC 0xE3
+#define SYS_MADVISE 0xE4
+#define SYS_MLOCK 0xE5
+#define SYS_MUNLOCK 0xE6
 
 /*
  * mmap - Map files or devices into memory
  */
-void *mmap(void *addr, size_t length, int prot, int flags,
-           int fd, off_t offset)
+void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
 {
-    long result = __syscall6(SYS_MMAP, (long)addr, (long)length,
-                             (long)prot, (long)flags, (long)fd, (long)offset);
+    long result = __syscall6(
+        SYS_MMAP, (long)addr, (long)length, (long)prot, (long)flags, (long)fd, (long)offset);
     if (result < 0 && result > -4096)
     {
         errno = (int)(-result);

@@ -139,11 +139,30 @@ class Virtqueue
     u32 get_used_len(u32 idx);
 
     // Queue properties
-    u32 size() const { return size_; }
-    u32 num_free() const { return num_free_; }
-    u16 avail_idx() const { return avail_->idx; }
-    u16 used_idx() const { return used_->idx; }
-    u16 last_used() const { return last_used_idx_; }
+    u32 size() const
+    {
+        return size_;
+    }
+
+    u32 num_free() const
+    {
+        return num_free_;
+    }
+
+    u16 avail_idx() const
+    {
+        return avail_->idx;
+    }
+
+    u16 used_idx() const
+    {
+        return used_->idx;
+    }
+
+    u16 last_used() const
+    {
+        return last_used_idx_;
+    }
 
   private:
     Device *dev_{nullptr};

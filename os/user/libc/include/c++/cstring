@@ -3,35 +3,36 @@
 
 #include "../string.h"
 
-namespace std {
+namespace std
+{
 
 /* Memory functions */
-using ::memcpy;
-using ::memmove;
-using ::memset;
-using ::memcmp;
 using ::memchr;
-using ::memrchr;
+using ::memcmp;
+using ::memcpy;
 using ::memmem;
+using ::memmove;
+using ::memrchr;
+using ::memset;
 
 /* String copy/concatenation */
-using ::strcpy;
-using ::strncpy;
 using ::strcat;
+using ::strcpy;
 using ::strncat;
+using ::strncpy;
 
 /* String comparison */
 using ::strcmp;
-using ::strncmp;
 using ::strcoll;
+using ::strncmp;
 
 /* String search */
 using ::strchr;
-using ::strrchr;
-using ::strstr;
-using ::strpbrk;
-using ::strspn;
 using ::strcspn;
+using ::strpbrk;
+using ::strrchr;
+using ::strspn;
+using ::strstr;
 using ::strtok;
 
 /* String length */

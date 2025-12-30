@@ -170,8 +170,7 @@ void hdestroy_r(struct hsearch_data *htab)
 /*
  * hsearch_r - Search reentrant hash table
  */
-int hsearch_r(ENTRY item, ACTION action, ENTRY **retval,
-              struct hsearch_data *htab)
+int hsearch_r(ENTRY item, ACTION action, ENTRY **retval, struct hsearch_data *htab)
 {
     if (!htab || !htab->table || !item.key || !retval)
     {
@@ -236,8 +235,7 @@ typedef struct tree_node
 /*
  * tsearch - Insert element in tree
  */
-void *tsearch(const void *key, void **rootp,
-              int (*compar)(const void *, const void *))
+void *tsearch(const void *key, void **rootp, int (*compar)(const void *, const void *))
 {
     tree_node **node;
     tree_node *new_node;
@@ -285,8 +283,7 @@ void *tsearch(const void *key, void **rootp,
 /*
  * tfind - Find element in tree
  */
-void *tfind(const void *key, void *const *rootp,
-            int (*compar)(const void *, const void *))
+void *tfind(const void *key, void *const *rootp, int (*compar)(const void *, const void *))
 {
     tree_node *const *node;
 
@@ -320,8 +317,7 @@ void *tfind(const void *key, void *const *rootp,
 /*
  * tdelete - Delete element from tree
  */
-void *tdelete(const void *key, void **rootp,
-              int (*compar)(const void *, const void *))
+void *tdelete(const void *key, void **rootp, int (*compar)(const void *, const void *))
 {
     tree_node **node;
     tree_node *parent = NULL;
@@ -393,9 +389,7 @@ void *tdelete(const void *key, void **rootp,
 /*
  * twalk_helper - Recursive tree walk
  */
-static void twalk_helper(const tree_node *node,
-                         void (*action)(const void *, VISIT, int),
-                         int depth)
+static void twalk_helper(const tree_node *node, void (*action)(const void *, VISIT, int), int depth)
 {
     if (!node)
     {
@@ -421,8 +415,7 @@ static void twalk_helper(const tree_node *node,
 /*
  * twalk - Walk tree in-order
  */
-void twalk(const void *root,
-           void (*action)(const void *nodep, VISIT which, int depth))
+void twalk(const void *root, void (*action)(const void *nodep, VISIT which, int depth))
 {
     if (root && action)
     {
@@ -435,7 +428,8 @@ void twalk(const void *root,
  */
 static void twalk_r_helper(const tree_node *node,
                            void (*action)(const void *, VISIT, void *),
-                           void *closure, int depth)
+                           void *closure,
+                           int depth)
 {
     (void)depth;
 
@@ -500,8 +494,10 @@ void tdestroy(void *root, void (*free_node)(void *nodep))
 /*
  * lfind - Linear search
  */
-void *lfind(const void *key, const void *base,
-            size_t *nmemb, size_t size,
+void *lfind(const void *key,
+            const void *base,
+            size_t *nmemb,
+            size_t size,
             int (*compar)(const void *, const void *))
 {
     if (!key || !base || !nmemb || !compar || size == 0)
@@ -525,8 +521,10 @@ void *lfind(const void *key, const void *base,
 /*
  * lsearch - Linear search with insert
  */
-void *lsearch(const void *key, void *base,
-              size_t *nmemb, size_t size,
+void *lsearch(const void *key,
+              void *base,
+              size_t *nmemb,
+              size_t size,
               int (*compar)(const void *, const void *))
 {
     void *found = lfind(key, base, nmemb, size, compar);

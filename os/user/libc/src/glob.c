@@ -4,13 +4,13 @@
  */
 
 #include "../include/glob.h"
+#include "../include/dirent.h"
+#include "../include/errno.h"
+#include "../include/fnmatch.h"
+#include "../include/stdio.h"
 #include "../include/stdlib.h"
 #include "../include/string.h"
-#include "../include/stdio.h"
-#include "../include/dirent.h"
 #include "../include/sys/stat.h"
-#include "../include/fnmatch.h"
-#include "../include/errno.h"
 
 /* Initial path vector size */
 #define INITIAL_PATHV_SIZE 16
@@ -34,8 +34,7 @@ static int glob_add_path(glob_t *pglob, const char *path)
             new_size = needed;
         }
 
-        char **new_pathv = (char **)realloc(pglob->gl_pathv,
-                                            new_size * sizeof(char *));
+        char **new_pathv = (char **)realloc(pglob->gl_pathv, new_size * sizeof(char *));
         if (!new_pathv)
         {
             return GLOB_NOSPACE;
@@ -67,14 +66,14 @@ static int has_magic(const char *pattern)
     {
         switch (*p)
         {
-        case '*':
-        case '?':
-        case '[':
-            return 1;
-        case '\\':
-            if (p[1])
-                p++;
-            break;
+            case '*':
+            case '?':
+            case '[':
+                return 1;
+            case '\\':
+                if (p[1])
+                    p++;
+                break;
         }
     }
     return 0;
@@ -83,8 +82,11 @@ static int has_magic(const char *pattern)
 /*
  * glob_dir - Glob in a specific directory
  */
-static int glob_dir(const char *dirname, const char *pattern, int flags,
-                    int (*errfunc)(const char *, int), glob_t *pglob)
+static int glob_dir(const char *dirname,
+                    const char *pattern,
+                    int flags,
+                    int (*errfunc)(const char *, int),
+                    glob_t *pglob)
 {
     DIR *dir;
     struct dirent *entry;
@@ -124,8 +126,7 @@ static int glob_dir(const char *dirname, const char *pattern, int flags,
         /* Skip . and .. */
         if (entry->d_name[0] == '.')
         {
-            if (entry->d_name[1] == '\0' ||
-                (entry->d_name[1] == '.' && entry->d_name[2] == '\0'))
+            if (entry->d_name[1] == '\0' || (entry->d_name[1] == '.' && entry->d_name[2] == '\0'))
             {
                 continue;
             }
@@ -138,8 +139,7 @@ static int glob_dir(const char *dirname, const char *pattern, int flags,
             char fullpath[1024];
             if (dirname[0])
             {
-                snprintf(fullpath, sizeof(fullpath), "%s/%s",
-                         dirname, entry->d_name);
+                snprintf(fullpath, sizeof(fullpath), "%s/%s", dirname, entry->d_name);
             }
             else
             {
@@ -196,7 +196,8 @@ static int glob_compare(const void *a, const void *b)
 /*
  * glob - Find pathnames matching pattern
  */
-int glob(const char *pattern, int flags,
+int glob(const char *pattern,
+         int flags,
          int (*errfunc)(const char *epath, int eerrno),
          glob_t *pglob)
 {
@@ -359,8 +360,7 @@ int glob(const char *pattern, int flags,
     /* Sort results unless GLOB_NOSORT */
     if (!(flags & GLOB_NOSORT) && pglob->gl_pathc > 1)
     {
-        qsort(pglob->gl_pathv + pglob->gl_offs, pglob->gl_pathc,
-              sizeof(char *), glob_compare);
+        qsort(pglob->gl_pathv + pglob->gl_offs, pglob->gl_pathc, sizeof(char *), glob_compare);
     }
 
     return 0;

@@ -14,8 +14,8 @@
  */
 #pragma once
 
-#include "../../syscall.hpp"
 #include "../../libvirtio/include/net.hpp"
+#include "../../syscall.hpp"
 
 namespace netstack
 {
@@ -40,8 +40,8 @@ struct MacAddr
 
     bool is_broadcast() const
     {
-        return bytes[0] == 0xff && bytes[1] == 0xff && bytes[2] == 0xff &&
-               bytes[3] == 0xff && bytes[4] == 0xff && bytes[5] == 0xff;
+        return bytes[0] == 0xff && bytes[1] == 0xff && bytes[2] == 0xff && bytes[3] == 0xff &&
+               bytes[4] == 0xff && bytes[5] == 0xff;
     }
 
     static MacAddr broadcast()
@@ -260,16 +260,50 @@ class NetIf
   public:
     void init(virtio::NetDevice *dev);
 
-    MacAddr mac() const { return mac_; }
-    Ipv4Addr ip() const { return ip_; }
-    Ipv4Addr netmask() const { return netmask_; }
-    Ipv4Addr gateway() const { return gateway_; }
-    Ipv4Addr dns() const { return dns_; }
+    MacAddr mac() const
+    {
+        return mac_;
+    }
 
-    void set_ip(const Ipv4Addr &ip) { ip_ = ip; }
-    void set_netmask(const Ipv4Addr &mask) { netmask_ = mask; }
-    void set_gateway(const Ipv4Addr &gw) { gateway_ = gw; }
-    void set_dns(const Ipv4Addr &d) { dns_ = d; }
+    Ipv4Addr ip() const
+    {
+        return ip_;
+    }
+
+    Ipv4Addr netmask() const
+    {
+        return netmask_;
+    }
+
+    Ipv4Addr gateway() const
+    {
+        return gateway_;
+    }
+
+    Ipv4Addr dns() const
+    {
+        return dns_;
+    }
+
+    void set_ip(const Ipv4Addr &ip)
+    {
+        ip_ = ip;
+    }
+
+    void set_netmask(const Ipv4Addr &mask)
+    {
+        netmask_ = mask;
+    }
+
+    void set_gateway(const Ipv4Addr &gw)
+    {
+        gateway_ = gw;
+    }
+
+    void set_dns(const Ipv4Addr &d)
+    {
+        dns_ = d;
+    }
 
     bool is_local(const Ipv4Addr &addr) const
     {
@@ -283,7 +317,10 @@ class NetIf
         return gateway_;
     }
 
-    virtio::NetDevice *device() { return dev_; }
+    virtio::NetDevice *device()
+    {
+        return dev_;
+    }
 
   private:
     virtio::NetDevice *dev_{nullptr};
@@ -359,9 +396,9 @@ class TcpConnection
     Ipv4Addr remote_ip;
     u16 remote_port{0};
 
-    u32 snd_una{0};  // Oldest unacknowledged seq
-    u32 snd_nxt{0};  // Next seq to send
-    u32 rcv_nxt{0};  // Next expected seq
+    u32 snd_una{0};    // Oldest unacknowledged seq
+    u32 snd_nxt{0};    // Next seq to send
+    u32 rcv_nxt{0};    // Next expected seq
     u16 rcv_wnd{8192}; // Receive window
 
     // Receive buffer
@@ -378,6 +415,7 @@ class TcpConnection
 
     // Pending accept (for listening sockets)
     static constexpr usize MAX_BACKLOG = 8;
+
     struct PendingConn
     {
         bool valid;
@@ -385,6 +423,7 @@ class TcpConnection
         u16 port;
         u32 seq;
     };
+
     PendingConn backlog[MAX_BACKLOG];
     usize backlog_count{0};
 
@@ -453,13 +492,32 @@ class NetworkStack
     i32 ping(const Ipv4Addr &ip, u32 timeout_ms);
 
     // Network info
-    NetIf *netif() { return &netif_; }
+    NetIf *netif()
+    {
+        return &netif_;
+    }
 
     // Statistics
-    u64 tx_packets() const { return tx_packets_; }
-    u64 rx_packets() const { return rx_packets_; }
-    u64 tx_bytes() const { return tx_bytes_; }
-    u64 rx_bytes() const { return rx_bytes_; }
+    u64 tx_packets() const
+    {
+        return tx_packets_;
+    }
+
+    u64 rx_packets() const
+    {
+        return rx_packets_;
+    }
+
+    u64 tx_bytes() const
+    {
+        return tx_bytes_;
+    }
+
+    u64 rx_bytes() const
+    {
+        return rx_bytes_;
+    }
+
     u32 tcp_conn_count() const;
     u32 udp_sock_count() const;
 
@@ -508,8 +566,8 @@ class NetworkStack
     bool send_frame(const MacAddr &dst, u16 ethertype, const void *data, usize len);
     bool send_ip_packet(const Ipv4Addr &dst, u8 protocol, const void *data, usize len);
     bool send_tcp_segment(TcpConnection *conn, u8 flags, const void *data, usize len);
-    bool send_udp_datagram(const Ipv4Addr &dst, u16 src_port, u16 dst_port,
-                           const void *data, usize len);
+    bool send_udp_datagram(
+        const Ipv4Addr &dst, u16 src_port, u16 dst_port, const void *data, usize len);
 
     // TCP helpers
     TcpConnection *find_tcp_conn(const Ipv4Addr &remote_ip, u16 remote_port, u16 local_port);

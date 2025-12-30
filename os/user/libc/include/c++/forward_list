@@ -5,29 +5,32 @@
 #ifndef _VIPER_FORWARD_LIST
 #define _VIPER_FORWARD_LIST
 
-#include "memory"
-#include "iterator"
 #include "algorithm"
 #include "initializer_list"
+#include "iterator"
 #include "limits"
+#include "memory"
 
-namespace std {
+namespace std
+{
 
-namespace detail {
+namespace detail
+{
 
-template<typename T>
-struct forward_list_node {
+template <typename T> struct forward_list_node
+{
     T value;
-    forward_list_node* next;
+    forward_list_node *next;
 
-    template<typename... Args>
-    forward_list_node(Args&&... args)
-        : value(std::forward<Args>(args)...), next(nullptr) {}
+    template <typename... Args>
+    forward_list_node(Args &&...args) : value(std::forward<Args>(args)...), next(nullptr)
+    {
+    }
 };
 
-template<typename T>
-struct forward_list_node_base {
-    forward_list_node<T>* next;
+template <typename T> struct forward_list_node_base
+{
+    forward_list_node<T> *next;
 
     forward_list_node_base() : next(nullptr) {}
 };
@@ -35,151 +38,186 @@ struct forward_list_node_base {
 } // namespace detail
 
 // Forward list iterator
-template<typename T, bool IsConst>
-class forward_list_iterator {
-public:
+template <typename T, bool IsConst> class forward_list_iterator
+{
+  public:
     using node_type = detail::forward_list_node<T>;
     using iterator_category = forward_iterator_tag;
     using value_type = T;
     using difference_type = ptrdiff_t;
-    using pointer = typename conditional<IsConst, const T*, T*>::type;
-    using reference = typename conditional<IsConst, const T&, T&>::type;
+    using pointer = typename conditional<IsConst, const T *, T *>::type;
+    using reference = typename conditional<IsConst, const T &, T &>::type;
 
-private:
-    node_type* node_;
+  private:
+    node_type *node_;
 
-    template<typename, bool>
-    friend class forward_list_iterator;
+    template <typename, bool> friend class forward_list_iterator;
 
-    template<typename, typename>
-    friend class forward_list;
+    template <typename, typename> friend class forward_list;
 
-public:
+  public:
     forward_list_iterator() : node_(nullptr) {}
-    explicit forward_list_iterator(node_type* node) : node_(node) {}
+
+    explicit forward_list_iterator(node_type *node) : node_(node) {}
 
     // Allow conversion from non-const to const iterator
-    template<bool OtherConst, typename = typename enable_if<!OtherConst && IsConst>::type>
-    forward_list_iterator(const forward_list_iterator<T, OtherConst>& other)
-        : node_(other.node_) {}
+    template <bool OtherConst, typename = typename enable_if<!OtherConst && IsConst>::type>
+    forward_list_iterator(const forward_list_iterator<T, OtherConst> &other) : node_(other.node_)
+    {
+    }
 
-    reference operator*() const { return node_->value; }
-    pointer operator->() const { return &node_->value; }
+    reference operator*() const
+    {
+        return node_->value;
+    }
 
-    forward_list_iterator& operator++() {
+    pointer operator->() const
+    {
+        return &node_->value;
+    }
+
+    forward_list_iterator &operator++()
+    {
         node_ = node_->next;
         return *this;
     }
 
-    forward_list_iterator operator++(int) {
+    forward_list_iterator operator++(int)
+    {
         forward_list_iterator tmp = *this;
         node_ = node_->next;
         return tmp;
     }
 
-    bool operator==(const forward_list_iterator& other) const {
+    bool operator==(const forward_list_iterator &other) const
+    {
         return node_ == other.node_;
     }
 
-    bool operator!=(const forward_list_iterator& other) const {
+    bool operator!=(const forward_list_iterator &other) const
+    {
         return node_ != other.node_;
     }
 
-    node_type* node() const { return node_; }
+    node_type *node() const
+    {
+        return node_;
+    }
 };
 
 // =============================================================================
 // forward_list - Singly-linked list container
 // =============================================================================
 
-template<typename T, typename Allocator = allocator<T>>
-class forward_list {
-public:
-    using value_type      = T;
-    using allocator_type  = Allocator;
-    using size_type       = size_t;
+template <typename T, typename Allocator = allocator<T>> class forward_list
+{
+  public:
+    using value_type = T;
+    using allocator_type = Allocator;
+    using size_type = size_t;
     using difference_type = ptrdiff_t;
-    using reference       = T&;
-    using const_reference = const T&;
-    using pointer         = T*;
-    using const_pointer   = const T*;
-    using iterator        = forward_list_iterator<T, false>;
-    using const_iterator  = forward_list_iterator<T, true>;
+    using reference = T &;
+    using const_reference = const T &;
+    using pointer = T *;
+    using const_pointer = const T *;
+    using iterator = forward_list_iterator<T, false>;
+    using const_iterator = forward_list_iterator<T, true>;
 
-private:
+  private:
     using node_type = detail::forward_list_node<T>;
     using node_alloc_type = typename allocator_traits<Allocator>::template rebind_alloc<node_type>;
 
     detail::forward_list_node_base<T> head_;
     node_alloc_type alloc_;
 
-    node_type* create_node(const T& value) {
-        node_type* node = alloc_.allocate(1);
-        try {
+    node_type *create_node(const T &value)
+    {
+        node_type *node = alloc_.allocate(1);
+        try
+        {
             new (node) node_type(value);
-        } catch (...) {
+        }
+        catch (...)
+        {
             alloc_.deallocate(node, 1);
             throw;
         }
         return node;
     }
 
-    node_type* create_node(T&& value) {
-        node_type* node = alloc_.allocate(1);
-        try {
+    node_type *create_node(T &&value)
+    {
+        node_type *node = alloc_.allocate(1);
+        try
+        {
             new (node) node_type(std::move(value));
-        } catch (...) {
+        }
+        catch (...)
+        {
             alloc_.deallocate(node, 1);
             throw;
         }
         return node;
     }
 
-    template<typename... Args>
-    node_type* create_node_emplace(Args&&... args) {
-        node_type* node = alloc_.allocate(1);
-        try {
+    template <typename... Args> node_type *create_node_emplace(Args &&...args)
+    {
+        node_type *node = alloc_.allocate(1);
+        try
+        {
             new (node) node_type(std::forward<Args>(args)...);
-        } catch (...) {
+        }
+        catch (...)
+        {
             alloc_.deallocate(node, 1);
             throw;
         }
         return node;
     }
 
-    void destroy_node(node_type* node) {
+    void destroy_node(node_type *node)
+    {
         node->~node_type();
         alloc_.deallocate(node, 1);
     }
 
-public:
+  public:
     // Constructors
     forward_list() : head_(), alloc_() {}
 
-    explicit forward_list(const Allocator& alloc) : head_(), alloc_(alloc) {}
+    explicit forward_list(const Allocator &alloc) : head_(), alloc_(alloc) {}
 
-    explicit forward_list(size_type count, const T& value = T(),
-                          const Allocator& alloc = Allocator())
-        : head_(), alloc_(alloc) {
-        for (size_type i = 0; i < count; ++i) {
+    explicit forward_list(size_type count,
+                          const T &value = T(),
+                          const Allocator &alloc = Allocator())
+        : head_(), alloc_(alloc)
+    {
+        for (size_type i = 0; i < count; ++i)
+        {
             push_front(value);
         }
         reverse();
     }
 
-    explicit forward_list(size_type count, const Allocator& alloc = Allocator())
-        : forward_list(count, T(), alloc) {}
+    explicit forward_list(size_type count, const Allocator &alloc = Allocator())
+        : forward_list(count, T(), alloc)
+    {
+    }
 
-    template<typename InputIt, typename = typename enable_if<
-        !is_integral<InputIt>::value>::type>
-    forward_list(InputIt first, InputIt last, const Allocator& alloc = Allocator())
-        : head_(), alloc_(alloc) {
-        node_type* tail = nullptr;
-        while (first != last) {
-            node_type* node = create_node(*first);
-            if (tail) {
+    template <typename InputIt, typename = typename enable_if<!is_integral<InputIt>::value>::type>
+    forward_list(InputIt first, InputIt last, const Allocator &alloc = Allocator())
+        : head_(), alloc_(alloc)
+    {
+        node_type *tail = nullptr;
+        while (first != last)
+        {
+            node_type *node = create_node(*first);
+            if (tail)
+            {
                 tail->next = node;
-            } else {
+            }
+            else
+            {
                 head_.next = node;
             }
             tail = node;
@@ -187,41 +225,51 @@ public:
         }
     }
 
-    forward_list(const forward_list& other)
-        : forward_list(other.begin(), other.end(), other.alloc_) {}
+    forward_list(const forward_list &other) : forward_list(other.begin(), other.end(), other.alloc_)
+    {
+    }
 
-    forward_list(const forward_list& other, const Allocator& alloc)
-        : forward_list(other.begin(), other.end(), alloc) {}
+    forward_list(const forward_list &other, const Allocator &alloc)
+        : forward_list(other.begin(), other.end(), alloc)
+    {
+    }
 
-    forward_list(forward_list&& other) noexcept
-        : head_(), alloc_(std::move(other.alloc_)) {
+    forward_list(forward_list &&other) noexcept : head_(), alloc_(std::move(other.alloc_))
+    {
         head_.next = other.head_.next;
         other.head_.next = nullptr;
     }
 
-    forward_list(forward_list&& other, const Allocator& alloc)
-        : head_(), alloc_(alloc) {
+    forward_list(forward_list &&other, const Allocator &alloc) : head_(), alloc_(alloc)
+    {
         head_.next = other.head_.next;
         other.head_.next = nullptr;
     }
 
-    forward_list(initializer_list<T> init, const Allocator& alloc = Allocator())
-        : forward_list(init.begin(), init.end(), alloc) {}
+    forward_list(initializer_list<T> init, const Allocator &alloc = Allocator())
+        : forward_list(init.begin(), init.end(), alloc)
+    {
+    }
 
-    ~forward_list() {
+    ~forward_list()
+    {
         clear();
     }
 
     // Assignment
-    forward_list& operator=(const forward_list& other) {
-        if (this != &other) {
+    forward_list &operator=(const forward_list &other)
+    {
+        if (this != &other)
+        {
             assign(other.begin(), other.end());
         }
         return *this;
     }
 
-    forward_list& operator=(forward_list&& other) noexcept {
-        if (this != &other) {
+    forward_list &operator=(forward_list &&other) noexcept
+    {
+        if (this != &other)
+        {
             clear();
             head_.next = other.head_.next;
             other.head_.next = nullptr;
@@ -229,29 +277,36 @@ public:
         return *this;
     }
 
-    forward_list& operator=(initializer_list<T> init) {
+    forward_list &operator=(initializer_list<T> init)
+    {
         assign(init);
         return *this;
     }
 
-    void assign(size_type count, const T& value) {
+    void assign(size_type count, const T &value)
+    {
         clear();
-        for (size_type i = 0; i < count; ++i) {
+        for (size_type i = 0; i < count; ++i)
+        {
             push_front(value);
         }
         reverse();
     }
 
-    template<typename InputIt, typename = typename enable_if<
-        !is_integral<InputIt>::value>::type>
-    void assign(InputIt first, InputIt last) {
+    template <typename InputIt, typename = typename enable_if<!is_integral<InputIt>::value>::type>
+    void assign(InputIt first, InputIt last)
+    {
         clear();
-        node_type* tail = nullptr;
-        while (first != last) {
-            node_type* node = create_node(*first);
-            if (tail) {
+        node_type *tail = nullptr;
+        while (first != last)
+        {
+            node_type *node = create_node(*first);
+            if (tail)
+            {
                 tail->next = node;
-            } else {
+            }
+            else
+            {
                 head_.next = node;
             }
             tail = node;
@@ -259,119 +314,172 @@ public:
         }
     }
 
-    void assign(initializer_list<T> init) {
+    void assign(initializer_list<T> init)
+    {
         assign(init.begin(), init.end());
     }
 
     // Allocator
-    allocator_type get_allocator() const { return allocator_type(alloc_); }
+    allocator_type get_allocator() const
+    {
+        return allocator_type(alloc_);
+    }
 
     // Element access
-    reference front() { return head_.next->value; }
-    const_reference front() const { return head_.next->value; }
+    reference front()
+    {
+        return head_.next->value;
+    }
+
+    const_reference front() const
+    {
+        return head_.next->value;
+    }
 
     // Iterators
-    iterator before_begin() noexcept {
-        return iterator(reinterpret_cast<node_type*>(&head_));
+    iterator before_begin() noexcept
+    {
+        return iterator(reinterpret_cast<node_type *>(&head_));
     }
 
-    const_iterator before_begin() const noexcept {
-        return const_iterator(const_cast<node_type*>(
-            reinterpret_cast<const node_type*>(&head_)));
+    const_iterator before_begin() const noexcept
+    {
+        return const_iterator(const_cast<node_type *>(reinterpret_cast<const node_type *>(&head_)));
     }
 
-    const_iterator cbefore_begin() const noexcept { return before_begin(); }
+    const_iterator cbefore_begin() const noexcept
+    {
+        return before_begin();
+    }
 
-    iterator begin() noexcept { return iterator(head_.next); }
-    const_iterator begin() const noexcept { return const_iterator(head_.next); }
-    const_iterator cbegin() const noexcept { return begin(); }
+    iterator begin() noexcept
+    {
+        return iterator(head_.next);
+    }
 
-    iterator end() noexcept { return iterator(nullptr); }
-    const_iterator end() const noexcept { return const_iterator(nullptr); }
-    const_iterator cend() const noexcept { return end(); }
+    const_iterator begin() const noexcept
+    {
+        return const_iterator(head_.next);
+    }
+
+    const_iterator cbegin() const noexcept
+    {
+        return begin();
+    }
+
+    iterator end() noexcept
+    {
+        return iterator(nullptr);
+    }
+
+    const_iterator end() const noexcept
+    {
+        return const_iterator(nullptr);
+    }
+
+    const_iterator cend() const noexcept
+    {
+        return end();
+    }
 
     // Capacity
-    bool empty() const noexcept { return head_.next == nullptr; }
+    bool empty() const noexcept
+    {
+        return head_.next == nullptr;
+    }
 
-    size_type max_size() const noexcept {
+    size_type max_size() const noexcept
+    {
         return numeric_limits<difference_type>::max();
     }
 
     // Modifiers
-    void clear() noexcept {
-        node_type* current = head_.next;
-        while (current) {
-            node_type* next = current->next;
+    void clear() noexcept
+    {
+        node_type *current = head_.next;
+        while (current)
+        {
+            node_type *next = current->next;
             destroy_node(current);
             current = next;
         }
         head_.next = nullptr;
     }
 
-    iterator insert_after(const_iterator pos, const T& value) {
-        node_type* p = const_cast<node_type*>(pos.node());
-        node_type* node = create_node(value);
+    iterator insert_after(const_iterator pos, const T &value)
+    {
+        node_type *p = const_cast<node_type *>(pos.node());
+        node_type *node = create_node(value);
         node->next = p->next;
         p->next = node;
         return iterator(node);
     }
 
-    iterator insert_after(const_iterator pos, T&& value) {
-        node_type* p = const_cast<node_type*>(pos.node());
-        node_type* node = create_node(std::move(value));
+    iterator insert_after(const_iterator pos, T &&value)
+    {
+        node_type *p = const_cast<node_type *>(pos.node());
+        node_type *node = create_node(std::move(value));
         node->next = p->next;
         p->next = node;
         return iterator(node);
     }
 
-    iterator insert_after(const_iterator pos, size_type count, const T& value) {
-        iterator result(const_cast<node_type*>(pos.node()));
-        for (size_type i = 0; i < count; ++i) {
+    iterator insert_after(const_iterator pos, size_type count, const T &value)
+    {
+        iterator result(const_cast<node_type *>(pos.node()));
+        for (size_type i = 0; i < count; ++i)
+        {
             result = insert_after(result, value);
         }
         return result;
     }
 
-    template<typename InputIt, typename = typename enable_if<
-        !is_integral<InputIt>::value>::type>
-    iterator insert_after(const_iterator pos, InputIt first, InputIt last) {
-        iterator result(const_cast<node_type*>(pos.node()));
-        while (first != last) {
+    template <typename InputIt, typename = typename enable_if<!is_integral<InputIt>::value>::type>
+    iterator insert_after(const_iterator pos, InputIt first, InputIt last)
+    {
+        iterator result(const_cast<node_type *>(pos.node()));
+        while (first != last)
+        {
             result = insert_after(result, *first);
             ++first;
         }
         return result;
     }
 
-    iterator insert_after(const_iterator pos, initializer_list<T> init) {
+    iterator insert_after(const_iterator pos, initializer_list<T> init)
+    {
         return insert_after(pos, init.begin(), init.end());
     }
 
-    template<typename... Args>
-    iterator emplace_after(const_iterator pos, Args&&... args) {
-        node_type* p = const_cast<node_type*>(pos.node());
-        node_type* node = create_node_emplace(std::forward<Args>(args)...);
+    template <typename... Args> iterator emplace_after(const_iterator pos, Args &&...args)
+    {
+        node_type *p = const_cast<node_type *>(pos.node());
+        node_type *node = create_node_emplace(std::forward<Args>(args)...);
         node->next = p->next;
         p->next = node;
         return iterator(node);
     }
 
-    iterator erase_after(const_iterator pos) {
-        node_type* p = const_cast<node_type*>(pos.node());
-        node_type* to_delete = p->next;
-        if (to_delete) {
+    iterator erase_after(const_iterator pos)
+    {
+        node_type *p = const_cast<node_type *>(pos.node());
+        node_type *to_delete = p->next;
+        if (to_delete)
+        {
             p->next = to_delete->next;
             destroy_node(to_delete);
         }
         return iterator(p->next);
     }
 
-    iterator erase_after(const_iterator first, const_iterator last) {
-        node_type* p = const_cast<node_type*>(first.node());
-        node_type* end_node = const_cast<node_type*>(last.node());
-        node_type* current = p->next;
-        while (current != end_node) {
-            node_type* next = current->next;
+    iterator erase_after(const_iterator first, const_iterator last)
+    {
+        node_type *p = const_cast<node_type *>(first.node());
+        node_type *end_node = const_cast<node_type *>(last.node());
+        node_type *current = p->next;
+        while (current != end_node)
+        {
+            node_type *next = current->next;
             destroy_node(current);
             current = next;
         }
@@ -379,62 +487,74 @@ public:
         return iterator(end_node);
     }
 
-    void push_front(const T& value) {
-        node_type* node = create_node(value);
+    void push_front(const T &value)
+    {
+        node_type *node = create_node(value);
         node->next = head_.next;
         head_.next = node;
     }
 
-    void push_front(T&& value) {
-        node_type* node = create_node(std::move(value));
+    void push_front(T &&value)
+    {
+        node_type *node = create_node(std::move(value));
         node->next = head_.next;
         head_.next = node;
     }
 
-    template<typename... Args>
-    reference emplace_front(Args&&... args) {
-        node_type* node = create_node_emplace(std::forward<Args>(args)...);
+    template <typename... Args> reference emplace_front(Args &&...args)
+    {
+        node_type *node = create_node_emplace(std::forward<Args>(args)...);
         node->next = head_.next;
         head_.next = node;
         return node->value;
     }
 
-    void pop_front() {
-        node_type* front = head_.next;
-        if (front) {
+    void pop_front()
+    {
+        node_type *front = head_.next;
+        if (front)
+        {
             head_.next = front->next;
             destroy_node(front);
         }
     }
 
-    void resize(size_type count) {
+    void resize(size_type count)
+    {
         resize(count, T());
     }
 
-    void resize(size_type count, const T& value) {
+    void resize(size_type count, const T &value)
+    {
         size_type current_size = 0;
-        node_type* prev = reinterpret_cast<node_type*>(&head_);
-        node_type* current = head_.next;
+        node_type *prev = reinterpret_cast<node_type *>(&head_);
+        node_type *current = head_.next;
 
         // Count existing elements
-        while (current && current_size < count) {
+        while (current && current_size < count)
+        {
             prev = current;
             current = current->next;
             ++current_size;
         }
 
-        if (current_size < count) {
+        if (current_size < count)
+        {
             // Add more elements
-            while (current_size < count) {
-                node_type* node = create_node(value);
+            while (current_size < count)
+            {
+                node_type *node = create_node(value);
                 prev->next = node;
                 prev = node;
                 ++current_size;
             }
-        } else {
+        }
+        else
+        {
             // Remove excess elements
-            while (current) {
-                node_type* next = current->next;
+            while (current)
+            {
+                node_type *next = current->next;
                 destroy_node(current);
                 current = next;
             }
@@ -442,62 +562,75 @@ public:
         }
     }
 
-    void swap(forward_list& other) noexcept {
+    void swap(forward_list &other) noexcept
+    {
         std::swap(head_.next, other.head_.next);
     }
 
     // Operations
-    void merge(forward_list& other) {
+    void merge(forward_list &other)
+    {
         merge(std::move(other), less<T>());
     }
 
-    void merge(forward_list&& other) {
+    void merge(forward_list &&other)
+    {
         merge(std::move(other), less<T>());
     }
 
-    template<typename Compare>
-    void merge(forward_list& other, Compare comp) {
+    template <typename Compare> void merge(forward_list &other, Compare comp)
+    {
         merge(std::move(other), comp);
     }
 
-    template<typename Compare>
-    void merge(forward_list&& other, Compare comp) {
-        if (this == &other) return;
+    template <typename Compare> void merge(forward_list &&other, Compare comp)
+    {
+        if (this == &other)
+            return;
 
-        node_type* prev = reinterpret_cast<node_type*>(&head_);
-        node_type* a = head_.next;
-        node_type* b = other.head_.next;
+        node_type *prev = reinterpret_cast<node_type *>(&head_);
+        node_type *a = head_.next;
+        node_type *b = other.head_.next;
 
-        while (a && b) {
-            if (comp(b->value, a->value)) {
-                node_type* next_b = b->next;
+        while (a && b)
+        {
+            if (comp(b->value, a->value))
+            {
+                node_type *next_b = b->next;
                 prev->next = b;
                 b->next = a;
                 prev = b;
                 b = next_b;
-            } else {
+            }
+            else
+            {
                 prev = a;
                 a = a->next;
             }
         }
 
-        if (b) {
+        if (b)
+        {
             prev->next = b;
         }
 
         other.head_.next = nullptr;
     }
 
-    void splice_after(const_iterator pos, forward_list& other) {
+    void splice_after(const_iterator pos, forward_list &other)
+    {
         splice_after(pos, std::move(other));
     }
 
-    void splice_after(const_iterator pos, forward_list&& other) {
-        if (other.empty()) return;
+    void splice_after(const_iterator pos, forward_list &&other)
+    {
+        if (other.empty())
+            return;
 
-        node_type* p = const_cast<node_type*>(pos.node());
-        node_type* last = other.head_.next;
-        while (last->next) {
+        node_type *p = const_cast<node_type *>(pos.node());
+        node_type *last = other.head_.next;
+        while (last->next)
+        {
             last = last->next;
         }
         last->next = p->next;
@@ -505,66 +638,82 @@ public:
         other.head_.next = nullptr;
     }
 
-    void splice_after(const_iterator pos, forward_list& other, const_iterator it) {
+    void splice_after(const_iterator pos, forward_list &other, const_iterator it)
+    {
         splice_after(pos, std::move(other), it);
     }
 
-    void splice_after(const_iterator pos, forward_list&& other, const_iterator it) {
-        node_type* p = const_cast<node_type*>(pos.node());
-        node_type* prev = const_cast<node_type*>(it.node());
-        node_type* to_move = prev->next;
+    void splice_after(const_iterator pos, forward_list &&other, const_iterator it)
+    {
+        node_type *p = const_cast<node_type *>(pos.node());
+        node_type *prev = const_cast<node_type *>(it.node());
+        node_type *to_move = prev->next;
 
-        if (!to_move) return;
+        if (!to_move)
+            return;
 
         prev->next = to_move->next;
         to_move->next = p->next;
         p->next = to_move;
     }
 
-    void splice_after(const_iterator pos, forward_list& other,
-                      const_iterator first, const_iterator last) {
+    void splice_after(const_iterator pos,
+                      forward_list &other,
+                      const_iterator first,
+                      const_iterator last)
+    {
         splice_after(pos, std::move(other), first, last);
     }
 
-    void splice_after(const_iterator pos, forward_list&& other,
-                      const_iterator first, const_iterator last) {
-        node_type* p = const_cast<node_type*>(pos.node());
-        node_type* before_first = const_cast<node_type*>(first.node());
-        node_type* end_node = const_cast<node_type*>(last.node());
+    void splice_after(const_iterator pos,
+                      forward_list &&other,
+                      const_iterator first,
+                      const_iterator last)
+    {
+        node_type *p = const_cast<node_type *>(pos.node());
+        node_type *before_first = const_cast<node_type *>(first.node());
+        node_type *end_node = const_cast<node_type *>(last.node());
 
-        if (before_first->next == end_node) return;
+        if (before_first->next == end_node)
+            return;
 
         // Find the last node to splice
-        node_type* splice_end = before_first->next;
-        while (splice_end->next != end_node) {
+        node_type *splice_end = before_first->next;
+        while (splice_end->next != end_node)
+        {
             splice_end = splice_end->next;
         }
 
-        node_type* splice_begin = before_first->next;
+        node_type *splice_begin = before_first->next;
         before_first->next = end_node;
 
         splice_end->next = p->next;
         p->next = splice_begin;
     }
 
-    size_type remove(const T& value) {
-        return remove_if([&value](const T& v) { return v == value; });
+    size_type remove(const T &value)
+    {
+        return remove_if([&value](const T &v) { return v == value; });
     }
 
-    template<typename UnaryPredicate>
-    size_type remove_if(UnaryPredicate p) {
+    template <typename UnaryPredicate> size_type remove_if(UnaryPredicate p)
+    {
         size_type count = 0;
-        node_type* prev = reinterpret_cast<node_type*>(&head_);
-        node_type* current = head_.next;
+        node_type *prev = reinterpret_cast<node_type *>(&head_);
+        node_type *current = head_.next;
 
-        while (current) {
-            if (p(current->value)) {
-                node_type* to_delete = current;
+        while (current)
+        {
+            if (p(current->value))
+            {
+                node_type *to_delete = current;
                 prev->next = current->next;
                 current = current->next;
                 destroy_node(to_delete);
                 ++count;
-            } else {
+            }
+            else
+            {
                 prev = current;
                 current = current->next;
             }
@@ -572,12 +721,14 @@ public:
         return count;
     }
 
-    void reverse() noexcept {
-        node_type* prev = nullptr;
-        node_type* current = head_.next;
+    void reverse() noexcept
+    {
+        node_type *prev = nullptr;
+        node_type *current = head_.next;
 
-        while (current) {
-            node_type* next = current->next;
+        while (current)
+        {
+            node_type *next = current->next;
             current->next = prev;
             prev = current;
             current = next;
@@ -586,76 +737,93 @@ public:
         head_.next = prev;
     }
 
-    size_type unique() {
+    size_type unique()
+    {
         return unique(equal_to<T>());
     }
 
-    template<typename BinaryPredicate>
-    size_type unique(BinaryPredicate p) {
-        if (empty()) return 0;
+    template <typename BinaryPredicate> size_type unique(BinaryPredicate p)
+    {
+        if (empty())
+            return 0;
 
         size_type count = 0;
-        node_type* current = head_.next;
+        node_type *current = head_.next;
 
-        while (current && current->next) {
-            if (p(current->value, current->next->value)) {
-                node_type* to_delete = current->next;
+        while (current && current->next)
+        {
+            if (p(current->value, current->next->value))
+            {
+                node_type *to_delete = current->next;
                 current->next = to_delete->next;
                 destroy_node(to_delete);
                 ++count;
-            } else {
+            }
+            else
+            {
                 current = current->next;
             }
         }
         return count;
     }
 
-    void sort() {
+    void sort()
+    {
         sort(less<T>());
     }
 
-    template<typename Compare>
-    void sort(Compare comp) {
+    template <typename Compare> void sort(Compare comp)
+    {
         // Merge sort for singly-linked list
-        if (empty() || !head_.next->next) return;
+        if (empty() || !head_.next->next)
+            return;
 
         // Count elements
         size_type len = 0;
-        for (node_type* n = head_.next; n; n = n->next) ++len;
+        for (node_type *n = head_.next; n; n = n->next)
+            ++len;
 
         // Bottom-up merge sort
-        for (size_type size = 1; size < len; size *= 2) {
-            node_type* prev = reinterpret_cast<node_type*>(&head_);
-            node_type* current = head_.next;
+        for (size_type size = 1; size < len; size *= 2)
+        {
+            node_type *prev = reinterpret_cast<node_type *>(&head_);
+            node_type *current = head_.next;
 
-            while (current) {
+            while (current)
+            {
                 // Get first sublist
-                node_type* left = current;
+                node_type *left = current;
                 size_type left_size = 0;
-                node_type* left_end = current;
-                while (left_end && left_size < size) {
+                node_type *left_end = current;
+                while (left_end && left_size < size)
+                {
                     left_end = left_end->next;
                     ++left_size;
                 }
 
                 // Get second sublist
-                node_type* right = left_end;
+                node_type *right = left_end;
                 size_type right_size = 0;
-                node_type* right_end = right;
-                while (right_end && right_size < size) {
+                node_type *right_end = right;
+                while (right_end && right_size < size)
+                {
                     right_end = right_end->next;
                     ++right_size;
                 }
 
                 // Merge the two sublists
                 size_type l = 0, r = 0;
-                while (l < left_size && r < right_size) {
-                    if (comp(right->value, left->value)) {
+                while (l < left_size && r < right_size)
+                {
+                    if (comp(right->value, left->value))
+                    {
                         prev->next = right;
                         prev = right;
                         right = right->next;
                         ++r;
-                    } else {
+                    }
+                    else
+                    {
                         prev->next = left;
                         prev = left;
                         left = left->next;
@@ -664,13 +832,15 @@ public:
                 }
 
                 // Append remaining elements
-                while (l < left_size) {
+                while (l < left_size)
+                {
                     prev->next = left;
                     prev = left;
                     left = left->next;
                     ++l;
                 }
-                while (r < right_size) {
+                while (r < right_size)
+                {
                     prev->next = right;
                     prev = right;
                     right = right->next;
@@ -685,57 +855,67 @@ public:
 };
 
 // Comparison operators
-template<typename T, typename Alloc>
-bool operator==(const forward_list<T, Alloc>& lhs, const forward_list<T, Alloc>& rhs) {
+template <typename T, typename Alloc>
+bool operator==(const forward_list<T, Alloc> &lhs, const forward_list<T, Alloc> &rhs)
+{
     auto it1 = lhs.begin();
     auto it2 = rhs.begin();
-    while (it1 != lhs.end() && it2 != rhs.end()) {
-        if (*it1 != *it2) return false;
+    while (it1 != lhs.end() && it2 != rhs.end())
+    {
+        if (*it1 != *it2)
+            return false;
         ++it1;
         ++it2;
     }
     return it1 == lhs.end() && it2 == rhs.end();
 }
 
-template<typename T, typename Alloc>
-bool operator!=(const forward_list<T, Alloc>& lhs, const forward_list<T, Alloc>& rhs) {
+template <typename T, typename Alloc>
+bool operator!=(const forward_list<T, Alloc> &lhs, const forward_list<T, Alloc> &rhs)
+{
     return !(lhs == rhs);
 }
 
-template<typename T, typename Alloc>
-bool operator<(const forward_list<T, Alloc>& lhs, const forward_list<T, Alloc>& rhs) {
-    return std::lexicographical_compare(lhs.begin(), lhs.end(),
-                                        rhs.begin(), rhs.end());
+template <typename T, typename Alloc>
+bool operator<(const forward_list<T, Alloc> &lhs, const forward_list<T, Alloc> &rhs)
+{
+    return std::lexicographical_compare(lhs.begin(), lhs.end(), rhs.begin(), rhs.end());
 }
 
-template<typename T, typename Alloc>
-bool operator<=(const forward_list<T, Alloc>& lhs, const forward_list<T, Alloc>& rhs) {
+template <typename T, typename Alloc>
+bool operator<=(const forward_list<T, Alloc> &lhs, const forward_list<T, Alloc> &rhs)
+{
     return !(rhs < lhs);
 }
 
-template<typename T, typename Alloc>
-bool operator>(const forward_list<T, Alloc>& lhs, const forward_list<T, Alloc>& rhs) {
+template <typename T, typename Alloc>
+bool operator>(const forward_list<T, Alloc> &lhs, const forward_list<T, Alloc> &rhs)
+{
     return rhs < lhs;
 }
 
-template<typename T, typename Alloc>
-bool operator>=(const forward_list<T, Alloc>& lhs, const forward_list<T, Alloc>& rhs) {
+template <typename T, typename Alloc>
+bool operator>=(const forward_list<T, Alloc> &lhs, const forward_list<T, Alloc> &rhs)
+{
     return !(lhs < rhs);
 }
 
-template<typename T, typename Alloc>
-void swap(forward_list<T, Alloc>& lhs, forward_list<T, Alloc>& rhs) noexcept {
+template <typename T, typename Alloc>
+void swap(forward_list<T, Alloc> &lhs, forward_list<T, Alloc> &rhs) noexcept
+{
     lhs.swap(rhs);
 }
 
 // C++20 erase functions
-template<typename T, typename Alloc, typename U>
-typename forward_list<T, Alloc>::size_type erase(forward_list<T, Alloc>& c, const U& value) {
+template <typename T, typename Alloc, typename U>
+typename forward_list<T, Alloc>::size_type erase(forward_list<T, Alloc> &c, const U &value)
+{
     return c.remove(value);
 }
 
-template<typename T, typename Alloc, typename Pred>
-typename forward_list<T, Alloc>::size_type erase_if(forward_list<T, Alloc>& c, Pred pred) {
+template <typename T, typename Alloc, typename Pred>
+typename forward_list<T, Alloc>::size_type erase_if(forward_list<T, Alloc> &c, Pred pred)
+{
     return c.remove_if(pred);
 }
 

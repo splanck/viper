@@ -19,6 +19,7 @@
 #include "../../drivers/virtio/net.hpp"
 #include "../../drivers/virtio/rng.hpp"
 #include "../../lib/spinlock.hpp"
+#include "../../lib/timerwheel.hpp"
 #include "../../sched/task.hpp"
 #include "../netif.hpp"
 #include "../network.hpp"
@@ -36,9 +37,80 @@ static Spinlock tcp_lock;
 static TcpSocket sockets[MAX_TCP_SOCKETS];
 static bool initialized = false;
 
+// TIME_WAIT duration: 2 * Maximum Segment Lifetime (2MSL)
+// RFC 793 specifies MSL as 2 minutes, so 2MSL = 4 minutes
+// We use 60 seconds as a practical compromise
+constexpr u64 TIME_WAIT_DURATION_MS = 60000;
+
+/**
+ * @brief Timer callback for TIME_WAIT expiration.
+ *
+ * @details
+ * Called by the timer wheel when 2MSL expires. Transitions the socket
+ * from TIME_WAIT to CLOSED and releases it for reuse.
+ *
+ * @param context Pointer to the socket index (as uintptr_t).
+ */
+static void time_wait_expired(void *context)
+{
+    usize sock_idx = reinterpret_cast<usize>(context);
+    if (sock_idx >= MAX_TCP_SOCKETS)
+        return;
+
+    SpinlockGuard guard(tcp_lock);
+
+    TcpSocket *sock = &sockets[sock_idx];
+    if (!sock->in_use || sock->state != TcpState::TIME_WAIT)
+        return;
+
+    serial::puts("[tcp] TIME_WAIT expired for port ");
+    serial::put_dec(sock->local_port);
+    serial::puts(", releasing socket\n");
+
+    sock->state = TcpState::CLOSED;
+    sock->in_use = false;
+    sock->time_wait_timer = 0;
+}
+
 // Forward declarations for congestion control
 static void on_congestion_event(TcpSocket *sock);
 static void on_ack_received(TcpSocket *sock, u32 bytes_acked);
+
+/**
+ * @brief Enter TIME_WAIT state and schedule cleanup timer.
+ *
+ * @details
+ * Sets the socket to TIME_WAIT state and schedules a timer for 2MSL
+ * duration. When the timer expires, the socket will be cleaned up.
+ *
+ * @param sock Socket entering TIME_WAIT.
+ * @param sock_idx Index of the socket in the socket table.
+ */
+static void enter_time_wait(TcpSocket *sock, usize sock_idx)
+{
+    sock->state = TcpState::TIME_WAIT;
+    sock->unacked_len = 0; // Clear retransmit state
+
+    // Schedule TIME_WAIT timer
+    sock->time_wait_timer = timerwheel::schedule(
+        TIME_WAIT_DURATION_MS, time_wait_expired, reinterpret_cast<void *>(sock_idx));
+
+    if (sock->time_wait_timer == 0)
+    {
+        // Timer scheduling failed - fall back to immediate cleanup
+        serial::puts("[tcp] Warning: TIME_WAIT timer failed, immediate cleanup\n");
+        sock->state = TcpState::CLOSED;
+        sock->in_use = false;
+    }
+    else
+    {
+        serial::puts("[tcp] Entering TIME_WAIT for port ");
+        serial::put_dec(sock->local_port);
+        serial::puts(" (");
+        serial::put_dec(TIME_WAIT_DURATION_MS / 1000);
+        serial::puts("s)\n");
+    }
+}
 
 /**
  * @brief Store an out-of-order segment for later reassembly.
@@ -140,6 +212,99 @@ static usize ooo_deliver(TcpSocket *sock)
 }
 
 /**
+ * @brief Build SACK blocks from the out-of-order queue.
+ *
+ * @details
+ * Scans the OOO queue and constructs SACK blocks representing
+ * received but out-of-order segments. SACK blocks are sorted by
+ * sequence number. Adjacent or overlapping segments are merged.
+ *
+ * @param sock Socket with OOO queue to scan.
+ * @param blocks Output array for SACK blocks (at least MAX_SACK_BLOCKS entries).
+ * @return Number of SACK blocks generated (0 to MAX_SACK_BLOCKS).
+ */
+static u8 build_sack_blocks(TcpSocket *sock, TcpSocket::SackBlock *blocks)
+{
+    // Collect all valid OOO segments
+    struct Segment
+    {
+        u32 left;
+        u32 right;
+    };
+
+    Segment segments[TcpSocket::OOO_MAX_SEGMENTS];
+    usize count = 0;
+
+    for (usize i = 0; i < TcpSocket::OOO_MAX_SEGMENTS; i++)
+    {
+        if (sock->ooo_queue[i].valid)
+        {
+            segments[count].left = sock->ooo_queue[i].seq;
+            segments[count].right = sock->ooo_queue[i].seq + sock->ooo_queue[i].len;
+            count++;
+        }
+    }
+
+    if (count == 0)
+    {
+        return 0;
+    }
+
+    // Simple bubble sort by sequence number
+    for (usize i = 0; i < count - 1; i++)
+    {
+        for (usize j = 0; j < count - i - 1; j++)
+        {
+            if (segments[j].left > segments[j + 1].left)
+            {
+                Segment tmp = segments[j];
+                segments[j] = segments[j + 1];
+                segments[j + 1] = tmp;
+            }
+        }
+    }
+
+    // Merge overlapping/adjacent segments and build SACK blocks
+    u8 num_blocks = 0;
+    u32 cur_left = segments[0].left;
+    u32 cur_right = segments[0].right;
+
+    for (usize i = 1; i < count; i++)
+    {
+        if (segments[i].left <= cur_right)
+        {
+            // Overlapping or adjacent, extend current block
+            if (segments[i].right > cur_right)
+            {
+                cur_right = segments[i].right;
+            }
+        }
+        else
+        {
+            // Gap found, emit current block
+            if (num_blocks < MAX_SACK_BLOCKS)
+            {
+                blocks[num_blocks].left = cur_left;
+                blocks[num_blocks].right = cur_right;
+                num_blocks++;
+            }
+            cur_left = segments[i].left;
+            cur_right = segments[i].right;
+        }
+    }
+
+    // Emit final block
+    if (num_blocks < MAX_SACK_BLOCKS)
+    {
+        blocks[num_blocks].left = cur_left;
+        blocks[num_blocks].right = cur_right;
+        num_blocks++;
+    }
+
+    return num_blocks;
+}
+
+/**
  * @brief Generate a random initial sequence number (ISN).
  *
  * @details
@@ -225,18 +390,41 @@ static u16 tcp_checksum(const Ipv4Addr &src,
 }
 
 /**
- * @brief Parse TCP options and extract MSS value.
+ * @brief Parsed TCP options structure.
+ */
+struct TcpOptions
+{
+    u16 mss;        // MSS value (0 if not present)
+    u8 wscale;      // Window scale (255 if not present)
+    bool sack_perm; // SACK permitted option present
+    bool has_mss;
+    bool has_wscale;
+
+    // SACK blocks from incoming segment
+    TcpSocket::SackBlock sack_blocks[MAX_SACK_BLOCKS];
+    u8 num_sack_blocks;
+};
+
+/**
+ * @brief Parse TCP options from a segment.
  *
  * @details
- * Scans TCP options looking for MSS option (kind=2). If found, returns
- * the MSS value. Otherwise returns 0.
+ * Scans TCP options and extracts MSS, window scale, SACK permitted,
+ * and SACK blocks.
  *
  * @param options Pointer to TCP options (after 20-byte header).
  * @param options_len Length of options in bytes.
- * @return MSS value if found, or 0 if not present.
+ * @param out Output structure for parsed options.
  */
-static u16 parse_mss_option(const u8 *options, usize options_len)
+static void parse_tcp_options(const u8 *options, usize options_len, TcpOptions *out)
 {
+    out->mss = 0;
+    out->wscale = 255;
+    out->sack_perm = false;
+    out->has_mss = false;
+    out->has_wscale = false;
+    out->num_sack_blocks = 0;
+
     usize i = 0;
     while (i < options_len)
     {
@@ -259,14 +447,72 @@ static u16 parse_mss_option(const u8 *options, usize options_len)
         {
             break;
         }
-        if (kind == option::MSS && len == option::MSS_LEN && i + 4 <= options_len)
+
+        switch (kind)
         {
-            // MSS is big-endian
-            return (static_cast<u16>(options[i + 2]) << 8) | options[i + 3];
+            case option::MSS:
+                if (len == option::MSS_LEN && i + 4 <= options_len)
+                {
+                    out->mss = (static_cast<u16>(options[i + 2]) << 8) | options[i + 3];
+                    out->has_mss = true;
+                }
+                break;
+
+            case option::WSCALE:
+                if (len == option::WSCALE_LEN && i + 3 <= options_len)
+                {
+                    out->wscale = options[i + 2];
+                    if (out->wscale > MAX_WSCALE)
+                    {
+                        out->wscale = MAX_WSCALE; // Clamp to max
+                    }
+                    out->has_wscale = true;
+                }
+                break;
+
+            case option::SACK_PERM:
+                if (len == option::SACK_PERM_LEN)
+                {
+                    out->sack_perm = true;
+                }
+                break;
+
+            case option::SACK:
+                // SACK option: kind(1) + len(1) + blocks(8 bytes each)
+                if (len >= 2)
+                {
+                    usize block_bytes = len - 2;
+                    usize num_blocks = block_bytes / 8;
+                    if (num_blocks > MAX_SACK_BLOCKS)
+                    {
+                        num_blocks = MAX_SACK_BLOCKS;
+                    }
+                    for (usize b = 0; b < num_blocks; b++)
+                    {
+                        usize offset = i + 2 + b * 8;
+                        if (offset + 8 <= options_len)
+                        {
+                            out->sack_blocks[b].left =
+                                (static_cast<u32>(options[offset]) << 24) |
+                                (static_cast<u32>(options[offset + 1]) << 16) |
+                                (static_cast<u32>(options[offset + 2]) << 8) | options[offset + 3];
+                            out->sack_blocks[b].right =
+                                (static_cast<u32>(options[offset + 4]) << 24) |
+                                (static_cast<u32>(options[offset + 5]) << 16) |
+                                (static_cast<u32>(options[offset + 6]) << 8) | options[offset + 7];
+                            out->num_sack_blocks++;
+                        }
+                    }
+                }
+                break;
+
+            default:
+                // Unknown option, skip
+                break;
         }
+
         i += len;
     }
-    return 0;
 }
 
 /**
@@ -286,12 +532,12 @@ static u16 parse_mss_option(const u8 *options, usize options_len)
  */
 static bool send_segment(TcpSocket *sock, u8 tcp_flags, const void *data, usize len)
 {
-    static u8 packet[TCP_HEADER_MSS + DEFAULT_MSS] __attribute__((aligned(4)));
+    static u8 packet[TCP_HEADER_SYN_OPTS + DEFAULT_MSS] __attribute__((aligned(4)));
     TcpHeader *tcp = reinterpret_cast<TcpHeader *>(packet);
 
-    // Determine header size (include MSS option for SYN packets)
-    bool include_mss = (tcp_flags & flags::SYN) != 0;
-    usize header_len = include_mss ? TCP_HEADER_MSS : TCP_HEADER_MIN;
+    // Determine header size (include full options for SYN packets)
+    bool is_syn = (tcp_flags & flags::SYN) != 0;
+    usize header_len = is_syn ? TCP_HEADER_SYN_OPTS : TCP_HEADER_MIN;
 
     tcp->src_port = htons(sock->local_port);
     tcp->dst_port = htons(sock->remote_port);
@@ -299,18 +545,37 @@ static bool send_segment(TcpSocket *sock, u8 tcp_flags, const void *data, usize 
     tcp->ack_num = htonl(sock->rcv_nxt);
     tcp->data_offset = static_cast<u8>((header_len / 4) << 4);
     tcp->flags = tcp_flags;
-    tcp->window = htons(sock->rcv_wnd);
+
+    // Advertise scaled window if negotiated, otherwise raw window
+    u16 advertised_window = sock->rcv_wnd;
+    if (sock->wscale_enabled && sock->rcv_wscale > 0)
+    {
+        // Scale down for advertisement (we store unscaled internally)
+        advertised_window = static_cast<u16>(sock->rcv_wnd >> sock->rcv_wscale);
+    }
+    tcp->window = htons(advertised_window);
     tcp->checksum = 0;
     tcp->urgent_ptr = 0;
 
-    // Add MSS option for SYN packets
-    if (include_mss)
+    // Add TCP options for SYN packets: MSS + NOP + WSCALE + SACK_PERM + NOP + NOP
+    if (is_syn)
     {
         u8 *opts = packet + TCP_HEADER_MIN;
-        opts[0] = option::MSS;          // Kind
-        opts[1] = option::MSS_LEN;      // Length
-        opts[2] = (DEFAULT_MSS >> 8);   // MSS high byte
-        opts[3] = (DEFAULT_MSS & 0xFF); // MSS low byte
+        // MSS option (4 bytes)
+        opts[0] = option::MSS;
+        opts[1] = option::MSS_LEN;
+        opts[2] = (DEFAULT_MSS >> 8);
+        opts[3] = (DEFAULT_MSS & 0xFF);
+        // NOP + WSCALE option (4 bytes total)
+        opts[4] = option::NOP;
+        opts[5] = option::WSCALE;
+        opts[6] = option::WSCALE_LEN;
+        opts[7] = OUR_WSCALE; // Our window scale factor
+        // SACK_PERM option + 2 NOPs for padding (4 bytes total)
+        opts[8] = option::SACK_PERM;
+        opts[9] = option::SACK_PERM_LEN;
+        opts[10] = option::NOP;
+        opts[11] = option::NOP;
     }
 
     // Copy data if any
@@ -336,6 +601,93 @@ static bool send_segment(TcpSocket *sock, u8 tcp_flags, const void *data, usize 
     sock->snd_nxt += len;
 
     return ip::tx_packet(sock->remote_ip, ip::protocol::TCP, packet, header_len + len);
+}
+
+/**
+ * @brief Send an ACK with SACK blocks if available.
+ *
+ * @details
+ * Sends an ACK segment. If SACK is negotiated and there are out-of-order
+ * segments buffered, includes SACK option with block information.
+ *
+ * @param sock Socket to send ACK on.
+ * @return `true` if ACK was sent successfully.
+ */
+static bool send_ack_with_sack(TcpSocket *sock)
+{
+    // If SACK not permitted or no OOO segments, send regular ACK
+    if (!sock->sack_permitted)
+    {
+        return send_segment(sock, flags::ACK, nullptr, 0);
+    }
+
+    // Build SACK blocks from OOO queue
+    TcpSocket::SackBlock sack_blocks[MAX_SACK_BLOCKS];
+    u8 num_blocks = build_sack_blocks(sock, sack_blocks);
+
+    if (num_blocks == 0)
+    {
+        return send_segment(sock, flags::ACK, nullptr, 0);
+    }
+
+    // Calculate header size with SACK option
+    // SACK option: kind(1) + len(1) + n*8 bytes for blocks
+    // Pad to 4-byte boundary
+    usize sack_option_len = 2 + (num_blocks * 8);
+    usize options_len = ((sack_option_len + 3) / 4) * 4; // Round up to 4 bytes
+    usize header_len = TCP_HEADER_MIN + options_len;
+
+    static u8 packet[TCP_HEADER_MIN + 40] __attribute__((aligned(4))); // Max 4 SACK blocks
+    TcpHeader *tcp = reinterpret_cast<TcpHeader *>(packet);
+
+    tcp->src_port = htons(sock->local_port);
+    tcp->dst_port = htons(sock->remote_port);
+    tcp->seq_num = htonl(sock->snd_nxt);
+    tcp->ack_num = htonl(sock->rcv_nxt);
+    tcp->data_offset = static_cast<u8>((header_len / 4) << 4);
+    tcp->flags = flags::ACK;
+
+    // Advertise scaled window
+    u16 advertised_window = sock->rcv_wnd;
+    if (sock->wscale_enabled && sock->rcv_wscale > 0)
+    {
+        advertised_window = static_cast<u16>(sock->rcv_wnd >> sock->rcv_wscale);
+    }
+    tcp->window = htons(advertised_window);
+    tcp->checksum = 0;
+    tcp->urgent_ptr = 0;
+
+    // Build SACK option
+    u8 *opts = packet + TCP_HEADER_MIN;
+    opts[0] = option::SACK;
+    opts[1] = static_cast<u8>(sack_option_len);
+
+    for (u8 i = 0; i < num_blocks; i++)
+    {
+        u32 left = htonl(sack_blocks[i].left);
+        u32 right = htonl(sack_blocks[i].right);
+        usize base = 2 + (i * 8);
+        opts[base + 0] = (left >> 24) & 0xFF;
+        opts[base + 1] = (left >> 16) & 0xFF;
+        opts[base + 2] = (left >> 8) & 0xFF;
+        opts[base + 3] = left & 0xFF;
+        opts[base + 4] = (right >> 24) & 0xFF;
+        opts[base + 5] = (right >> 16) & 0xFF;
+        opts[base + 6] = (right >> 8) & 0xFF;
+        opts[base + 7] = right & 0xFF;
+    }
+
+    // Pad with NOPs
+    for (usize i = sack_option_len; i < options_len; i++)
+    {
+        opts[i] = option::NOP;
+    }
+
+    // Calculate checksum
+    Ipv4Addr our_ip = netif().ip();
+    tcp->checksum = htons(tcp_checksum(our_ip, sock->remote_ip, packet, header_len));
+
+    return ip::tx_packet(sock->remote_ip, ip::protocol::TCP, packet, header_len);
 }
 
 /**
@@ -477,6 +829,9 @@ void rx_segment(const Ipv4Addr &src, const void *data, usize len)
 
     sock->last_activity = timer::get_ticks();
 
+    // Compute socket index for timer callbacks
+    usize sock_idx = static_cast<usize>(sock - sockets);
+
     // State machine
     switch (sock->state)
     {
@@ -492,20 +847,38 @@ void rx_segment(const Ipv4Addr &src, const void *data, usize len)
                 sock->rcv_wnd = TcpSocket::RX_BUFFER_SIZE;
                 sock->rx_head = sock->rx_tail = 0;
 
-                // Parse MSS option from SYN
+                // Parse TCP options from SYN
                 sock->mss = DEFAULT_MSS;
+                sock->wscale_enabled = false;
+                sock->snd_wscale = 0;
+                sock->sack_permitted = false;
                 if (data_offset > TCP_HEADER_MIN)
                 {
                     const u8 *opt_ptr = static_cast<const u8 *>(data) + TCP_HEADER_MIN;
-                    u16 peer_mss = parse_mss_option(opt_ptr, data_offset - TCP_HEADER_MIN);
-                    if (peer_mss > 0)
+                    TcpOptions opts;
+                    parse_tcp_options(opt_ptr, data_offset - TCP_HEADER_MIN, &opts);
+
+                    // MSS negotiation
+                    if (opts.has_mss && opts.mss > 0)
                     {
-                        // Use the smaller of peer's MSS and our default
-                        sock->mss = peer_mss < DEFAULT_MSS ? peer_mss : DEFAULT_MSS;
+                        sock->mss = opts.mss < DEFAULT_MSS ? opts.mss : DEFAULT_MSS;
+                    }
+
+                    // Window scaling (RFC 7323): both sides must offer for it to be enabled
+                    if (opts.has_wscale)
+                    {
+                        sock->snd_wscale = opts.wscale < MAX_WSCALE ? opts.wscale : MAX_WSCALE;
+                        sock->wscale_enabled = true;
+                    }
+
+                    // SACK permitted (RFC 2018)
+                    if (opts.sack_perm)
+                    {
+                        sock->sack_permitted = true;
                     }
                 }
 
-                // Send SYN+ACK
+                // Send SYN+ACK (includes our WSCALE and SACK_PERM options)
                 send_segment(sock, flags::SYN | flags::ACK, nullptr, 0);
                 sock->state = TcpState::SYN_RECEIVED;
             }
@@ -518,16 +891,42 @@ void rx_segment(const Ipv4Addr &src, const void *data, usize len)
                 sock->rcv_nxt = seq + 1;
                 sock->snd_una = ack;
 
-                // Parse MSS option from SYN+ACK
+                // Parse TCP options from SYN+ACK
                 if (data_offset > TCP_HEADER_MIN)
                 {
                     const u8 *opt_ptr = static_cast<const u8 *>(data) + TCP_HEADER_MIN;
-                    u16 peer_mss = parse_mss_option(opt_ptr, data_offset - TCP_HEADER_MIN);
-                    if (peer_mss > 0)
+                    TcpOptions opts;
+                    parse_tcp_options(opt_ptr, data_offset - TCP_HEADER_MIN, &opts);
+
+                    // MSS negotiation
+                    if (opts.has_mss && opts.mss > 0)
                     {
-                        // Use the smaller of peer's MSS and our default
-                        sock->mss = peer_mss < sock->mss ? peer_mss : sock->mss;
+                        sock->mss = opts.mss < sock->mss ? opts.mss : sock->mss;
                     }
+
+                    // Window scaling: only enable if peer also offered it
+                    // We already sent our WSCALE in SYN, peer must respond with theirs
+                    if (opts.has_wscale)
+                    {
+                        sock->snd_wscale = opts.wscale < MAX_WSCALE ? opts.wscale : MAX_WSCALE;
+                        sock->wscale_enabled = true;
+                    }
+                    else
+                    {
+                        // Peer didn't offer window scaling, disable it
+                        sock->wscale_enabled = false;
+                        sock->rcv_wscale = 0;
+                    }
+
+                    // SACK permitted: only enable if peer also offered it
+                    sock->sack_permitted = opts.sack_perm;
+                }
+                else
+                {
+                    // No options in SYN+ACK, disable optional features
+                    sock->wscale_enabled = false;
+                    sock->rcv_wscale = 0;
+                    sock->sack_permitted = false;
                 }
 
                 // Send ACK
@@ -536,16 +935,24 @@ void rx_segment(const Ipv4Addr &src, const void *data, usize len)
             }
             else if (tcp_flags & flags::SYN)
             {
-                // Simultaneous open (rare) - parse MSS
+                // Simultaneous open (rare) - parse full options
                 sock->rcv_nxt = seq + 1;
                 if (data_offset > TCP_HEADER_MIN)
                 {
                     const u8 *opt_ptr = static_cast<const u8 *>(data) + TCP_HEADER_MIN;
-                    u16 peer_mss = parse_mss_option(opt_ptr, data_offset - TCP_HEADER_MIN);
-                    if (peer_mss > 0)
+                    TcpOptions opts;
+                    parse_tcp_options(opt_ptr, data_offset - TCP_HEADER_MIN, &opts);
+
+                    if (opts.has_mss && opts.mss > 0)
                     {
-                        sock->mss = peer_mss < sock->mss ? peer_mss : sock->mss;
+                        sock->mss = opts.mss < sock->mss ? opts.mss : sock->mss;
                     }
+                    if (opts.has_wscale)
+                    {
+                        sock->snd_wscale = opts.wscale < MAX_WSCALE ? opts.wscale : MAX_WSCALE;
+                        sock->wscale_enabled = true;
+                    }
+                    sock->sack_permitted = opts.sack_perm;
                 }
                 send_segment(sock, flags::SYN | flags::ACK, nullptr, 0);
                 sock->state = TcpState::SYN_RECEIVED;
@@ -607,9 +1014,40 @@ void rx_segment(const Ipv4Addr &src, const void *data, usize len)
                     // else: seq < rcv_nxt means duplicate/old data, ignore
                 }
 
-                // Handle ACK - update snd_una and clear retransmit state if data acked
+                // Handle ACK - update snd_una, window, and clear retransmit state if data acked
                 if (tcp_flags & flags::ACK)
                 {
+                    // Update send window from peer's advertised window
+                    u16 raw_window = ntohs(tcp->window);
+                    if (sock->wscale_enabled)
+                    {
+                        // Apply window scaling factor
+                        sock->snd_wnd = static_cast<u16>(
+                            (static_cast<u32>(raw_window) << sock->snd_wscale) > 65535
+                                ? 65535
+                                : raw_window << sock->snd_wscale);
+                    }
+                    else
+                    {
+                        sock->snd_wnd = raw_window;
+                    }
+
+                    // Parse SACK blocks from options if SACK is enabled
+                    if (sock->sack_permitted && data_offset > TCP_HEADER_MIN)
+                    {
+                        const u8 *opt_ptr = static_cast<const u8 *>(data) + TCP_HEADER_MIN;
+                        TcpOptions opts;
+                        parse_tcp_options(opt_ptr, data_offset - TCP_HEADER_MIN, &opts);
+
+                        // Store received SACK blocks for selective retransmission
+                        sock->num_sack_blocks = opts.num_sack_blocks;
+                        for (u8 i = 0; i < opts.num_sack_blocks; i++)
+                        {
+                            sock->sack_blocks[i].left = opts.sack_blocks[i].left;
+                            sock->sack_blocks[i].right = opts.sack_blocks[i].right;
+                        }
+                    }
+
                     // Calculate how many new bytes were acknowledged
                     u32 old_una = sock->snd_una;
                     u32 bytes_acked = 0;
@@ -638,10 +1076,10 @@ void rx_segment(const Ipv4Addr &src, const void *data, usize len)
                     on_ack_received(sock, bytes_acked);
                 }
 
-                // Send ACK if we received data
+                // Send ACK if we received data (with SACK blocks if applicable)
                 if (payload_len > 0)
                 {
-                    send_segment(sock, flags::ACK, nullptr, 0);
+                    send_ack_with_sack(sock);
                 }
             }
             break;
@@ -654,7 +1092,7 @@ void rx_segment(const Ipv4Addr &src, const void *data, usize len)
                 {
                     sock->rcv_nxt = seq + 1;
                     send_segment(sock, flags::ACK, nullptr, 0);
-                    sock->state = TcpState::TIME_WAIT;
+                    enter_time_wait(sock, sock_idx);
                 }
                 else
                 {
@@ -668,7 +1106,7 @@ void rx_segment(const Ipv4Addr &src, const void *data, usize len)
             {
                 sock->rcv_nxt = seq + 1;
                 send_segment(sock, flags::ACK, nullptr, 0);
-                sock->state = TcpState::TIME_WAIT;
+                enter_time_wait(sock, sock_idx);
             }
             break;
 
@@ -684,8 +1122,21 @@ void rx_segment(const Ipv4Addr &src, const void *data, usize len)
             break;
 
         case TcpState::TIME_WAIT:
-            // Wait 2*MSL, then close (simplified: immediate close)
-            sock->state = TcpState::CLOSED;
+            // Handle late retransmitted segments during 2MSL wait
+            if (tcp_flags & flags::FIN)
+            {
+                // Peer retransmitted FIN - re-ACK and restart 2MSL timer
+                send_segment(sock, flags::ACK, nullptr, 0);
+
+                // Cancel old timer and schedule new one
+                if (sock->time_wait_timer != 0)
+                {
+                    timerwheel::cancel(sock->time_wait_timer);
+                }
+                sock->time_wait_timer = timerwheel::schedule(
+                    TIME_WAIT_DURATION_MS, time_wait_expired, reinterpret_cast<void *>(sock_idx));
+            }
+            // Other segments are ignored during TIME_WAIT
             break;
 
         default:
@@ -708,13 +1159,27 @@ i32 socket_create()
             sockets[i].rx_head = sockets[i].rx_tail = 0;
             sockets[i].tx_len = 0;
             sockets[i].rcv_wnd = TcpSocket::RX_BUFFER_SIZE;
+            sockets[i].snd_wnd = 0;       // Will be set from peer's advertised window
             sockets[i].mss = DEFAULT_MSS; // Will be negotiated during handshake
+            // Initialize window scaling (RFC 7323)
+            sockets[i].snd_wscale = 0;
+            sockets[i].rcv_wscale = OUR_WSCALE;
+            sockets[i].wscale_enabled = false;
+            // Initialize SACK (RFC 2018)
+            sockets[i].sack_permitted = false;
+            sockets[i].num_sack_blocks = 0;
+            for (usize j = 0; j < MAX_SACK_BLOCKS; j++)
+            {
+                sockets[i].sack_blocks[j].left = 0;
+                sockets[i].sack_blocks[j].right = 0;
+            }
             // Initialize retransmit state
             sockets[i].unacked_len = 0;
             sockets[i].unacked_seq = 0;
             sockets[i].retransmit_time = 0;
             sockets[i].rto = TcpSocket::RTO_INITIAL;
             sockets[i].retransmit_count = 0;
+            sockets[i].time_wait_timer = 0;
             // Initialize congestion control (RFC 5681)
             sockets[i].cwnd = TcpSocket::INITIAL_CWND_SEGMENTS * DEFAULT_MSS;
             sockets[i].ssthresh = 65535; // Initial ssthresh (arbitrarily high)
@@ -1148,8 +1613,22 @@ void socket_close(i32 sock)
     }
 
     SpinlockGuard guard(tcp_lock);
-    s->state = TcpState::CLOSED;
-    s->in_use = false;
+
+    // Cancel TIME_WAIT timer if active
+    if (s->time_wait_timer != 0)
+    {
+        timerwheel::cancel(s->time_wait_timer);
+        s->time_wait_timer = 0;
+    }
+
+    // Don't immediately close if in TIME_WAIT - let the timer handle it
+    // unless we're being explicitly closed (abort)
+    if (s->state != TcpState::TIME_WAIT)
+    {
+        s->state = TcpState::CLOSED;
+        s->in_use = false;
+    }
+    // If in TIME_WAIT, the timer callback will clean up
 }
 
 /** @copydoc net::tcp::socket_connected */

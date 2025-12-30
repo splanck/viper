@@ -24,8 +24,8 @@ namespace virtio
 // VirtIO-GPU feature bits
 namespace gpu_features
 {
-constexpr u64 VIRGL = 1ULL << 0;        // 3D support (virgl)
-constexpr u64 EDID = 1ULL << 1;         // EDID support
+constexpr u64 VIRGL = 1ULL << 0; // 3D support (virgl)
+constexpr u64 EDID = 1ULL << 1;  // EDID support
 constexpr u64 RESOURCE_UUID = 1ULL << 2;
 constexpr u64 RESOURCE_BLOB = 1ULL << 3;
 constexpr u64 CONTEXT_INIT = 1ULL << 4;
@@ -286,12 +286,18 @@ class GpuDevice : public Device
     /**
      * @brief Get number of scanouts (displays).
      */
-    u32 num_scanouts() const { return num_scanouts_; }
+    u32 num_scanouts() const
+    {
+        return num_scanouts_;
+    }
 
     /**
      * @brief Check if device is initialized.
      */
-    bool is_initialized() const { return initialized_; }
+    bool is_initialized() const
+    {
+        return initialized_;
+    }
 
   private:
     Virtqueue controlq_;

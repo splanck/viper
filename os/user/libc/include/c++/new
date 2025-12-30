@@ -3,30 +3,45 @@
 
 #include "cstddef"
 
-namespace std {
+namespace std
+{
 
 /* Exception classes - stubs for freestanding */
-class bad_alloc {
-public:
+class bad_alloc
+{
+  public:
     bad_alloc() noexcept = default;
     virtual ~bad_alloc() noexcept = default;
-    virtual const char* what() const noexcept { return "bad_alloc"; }
+
+    virtual const char *what() const noexcept
+    {
+        return "bad_alloc";
+    }
 };
 
-class bad_array_new_length : public bad_alloc {
-public:
+class bad_array_new_length : public bad_alloc
+{
+  public:
     bad_array_new_length() noexcept = default;
-    virtual const char* what() const noexcept { return "bad_array_new_length"; }
+
+    virtual const char *what() const noexcept
+    {
+        return "bad_array_new_length";
+    }
 };
 
 /* nothrow_t - tag type for nothrow allocation */
-struct nothrow_t {
+struct nothrow_t
+{
     explicit nothrow_t() = default;
 };
+
 extern const nothrow_t nothrow;
 
 /* align_val_t - alignment value type (C++17) */
-enum class align_val_t : size_t {};
+enum class align_val_t : size_t
+{
+};
 
 /* new_handler - function pointer type */
 using new_handler = void (*)();
@@ -35,8 +50,7 @@ new_handler get_new_handler() noexcept;
 new_handler set_new_handler(new_handler new_p) noexcept;
 
 /* launder - pointer optimization barrier (C++17) */
-template <class T>
-[[nodiscard]] constexpr T* launder(T* p) noexcept
+template <class T> [[nodiscard]] constexpr T *launder(T *p) noexcept
 {
     return __builtin_launder(p);
 }
@@ -44,30 +58,32 @@ template <class T>
 } /* namespace std */
 
 /* Placement new */
-[[nodiscard]] inline void* operator new(std::size_t, void* p) noexcept
+[[nodiscard]] inline void *operator new(std::size_t, void *p) noexcept
 {
     return p;
 }
-[[nodiscard]] inline void* operator new[](std::size_t, void* p) noexcept
+
+[[nodiscard]] inline void *operator new[](std::size_t, void *p) noexcept
 {
     return p;
 }
 
 /* Placement delete (no-op, required for symmetry) */
-inline void operator delete(void*, void*) noexcept {}
-inline void operator delete[](void*, void*) noexcept {}
+inline void operator delete(void *, void *) noexcept {}
+
+inline void operator delete[](void *, void *) noexcept {}
 
 /* Regular new/delete - forward declarations (implemented in runtime) */
-[[nodiscard]] void* operator new(std::size_t size);
-[[nodiscard]] void* operator new[](std::size_t size);
-[[nodiscard]] void* operator new(std::size_t size, const std::nothrow_t&) noexcept;
-[[nodiscard]] void* operator new[](std::size_t size, const std::nothrow_t&) noexcept;
+[[nodiscard]] void *operator new(std::size_t size);
+[[nodiscard]] void *operator new[](std::size_t size);
+[[nodiscard]] void *operator new(std::size_t size, const std::nothrow_t &) noexcept;
+[[nodiscard]] void *operator new[](std::size_t size, const std::nothrow_t &) noexcept;
 
-void operator delete(void* ptr) noexcept;
-void operator delete[](void* ptr) noexcept;
-void operator delete(void* ptr, std::size_t size) noexcept;
-void operator delete[](void* ptr, std::size_t size) noexcept;
-void operator delete(void* ptr, const std::nothrow_t&) noexcept;
-void operator delete[](void* ptr, const std::nothrow_t&) noexcept;
+void operator delete(void *ptr) noexcept;
+void operator delete[](void *ptr) noexcept;
+void operator delete(void *ptr, std::size_t size) noexcept;
+void operator delete[](void *ptr, std::size_t size) noexcept;
+void operator delete(void *ptr, const std::nothrow_t &) noexcept;
+void operator delete[](void *ptr, const std::nothrow_t &) noexcept;
 
 #endif /* _LIBCPP_NEW */

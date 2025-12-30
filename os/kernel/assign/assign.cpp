@@ -20,9 +20,9 @@
 #include "../cap/rights.hpp"
 #include "../cap/table.hpp"
 #include "../console/console.hpp"
+#include "../fs/vfs/vfs.hpp"
 #include "../fs/viperfs/format.hpp"
 #include "../fs/viperfs/viperfs.hpp"
-#include "../fs/vfs/vfs.hpp"
 #include "../kobj/dir.hpp"
 #include "../kobj/file.hpp"
 #include "../lib/str.hpp"
@@ -154,10 +154,10 @@ void setup_standard_assigns()
     };
 
     static const StandardAssign standard_assigns[] = {
-        {"C", "/c"},     // Commands directory
-        {"S", "/s"},     // Startup-sequence scripts
-        {"L", "/l"},     // Shared libraries
-        {"T", "/t"},     // Temporary files
+        {"C", "/c"},         // Commands directory
+        {"S", "/s"},         // Startup-sequence scripts
+        {"L", "/l"},         // Shared libraries
+        {"T", "/t"},         // Temporary files
         {"CERTS", "/certs"}, // Certificate store
     };
 

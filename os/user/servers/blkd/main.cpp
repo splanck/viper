@@ -11,10 +11,10 @@
  * - Handles read/write/flush/info requests
  */
 
-#include "blk_protocol.hpp"
 #include "../../libvirtio/include/blk.hpp"
 #include "../../libvirtio/include/device.hpp"
 #include "../../syscall.hpp"
+#include "blk_protocol.hpp"
 
 // Debug output helper
 static void debug_print(const char *msg)
@@ -86,7 +86,7 @@ static bool find_blk_device(u64 *mmio_phys, u32 *irq)
         volatile u32 *mmio = reinterpret_cast<volatile u32 *>(virt);
 
         // Check magic
-        u32 magic = mmio[0]; // MAGIC at offset 0
+        u32 magic = mmio[0];     // MAGIC at offset 0
         if (magic != 0x74726976) // "virt"
         {
             continue;
@@ -156,14 +156,15 @@ static void handle_read(const blk::ReadRequest *req, i32 reply_channel)
     }
 
     // Perform the read into DMA buffer
-    i32 result = g_device.read_sectors(req->sector, req->count,
-                                        reinterpret_cast<void *>(dma_buf.virt_addr));
+    i32 result =
+        g_device.read_sectors(req->sector, req->count, reinterpret_cast<void *>(dma_buf.virt_addr));
 
     if (result == 0)
     {
         // Copy data from DMA buffer to shared memory
         memcpy_bytes(reinterpret_cast<void *>(shm_result.virt_addr),
-                     reinterpret_cast<void *>(dma_buf.virt_addr), size);
+                     reinterpret_cast<void *>(dma_buf.virt_addr),
+                     size);
 
         reply.status = 0;
         reply.bytes_read = static_cast<u32>(size);
@@ -241,11 +242,12 @@ static void handle_write(const blk::WriteRequest *req, i32 reply_channel, u32 sh
 
     // Copy data from shared memory to DMA buffer
     memcpy_bytes(reinterpret_cast<void *>(dma_buf.virt_addr),
-                 reinterpret_cast<void *>(shm_map.virt_addr), size);
+                 reinterpret_cast<void *>(shm_map.virt_addr),
+                 size);
 
     // Perform the write
-    i32 result = g_device.write_sectors(req->sector, req->count,
-                                         reinterpret_cast<void *>(dma_buf.virt_addr));
+    i32 result = g_device.write_sectors(
+        req->sector, req->count, reinterpret_cast<void *>(dma_buf.virt_addr));
 
     if (result == 0)
     {
@@ -326,7 +328,8 @@ static void handle_request(const u8 *msg, usize len, i32 reply_channel, u32 data
         case blk::BLK_WRITE:
             if (len >= sizeof(blk::WriteRequest))
             {
-                handle_write(reinterpret_cast<const blk::WriteRequest *>(msg), reply_channel, data_handle);
+                handle_write(
+                    reinterpret_cast<const blk::WriteRequest *>(msg), reply_channel, data_handle);
             }
             break;
 
@@ -366,8 +369,8 @@ static void server_loop()
         u32 handles[4];
         u32 handle_count = 4;
 
-        i64 len = sys::channel_recv(g_service_channel, msg_buf, sizeof(msg_buf),
-                                     handles, &handle_count);
+        i64 len =
+            sys::channel_recv(g_service_channel, msg_buf, sizeof(msg_buf), handles, &handle_count);
         if (len < 0)
         {
             // Would block or error, yield and retry

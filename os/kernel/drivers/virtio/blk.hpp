@@ -201,7 +201,9 @@ class BlkDevice : public Device
      * @param user_data User context passed to callback.
      * @return Request handle on success, INVALID_HANDLE on error.
      */
-    RequestHandle read_async(u64 sector, u32 count, void *buf,
+    RequestHandle read_async(u64 sector,
+                             u32 count,
+                             void *buf,
                              CompletionCallback callback = nullptr,
                              void *user_data = nullptr);
 
@@ -215,7 +217,9 @@ class BlkDevice : public Device
      * @param user_data User context passed to callback.
      * @return Request handle on success, INVALID_HANDLE on error.
      */
-    RequestHandle write_async(u64 sector, u32 count, const void *buf,
+    RequestHandle write_async(u64 sector,
+                              u32 count,
+                              const void *buf,
                               CompletionCallback callback = nullptr,
                               void *user_data = nullptr);
 
@@ -327,9 +331,9 @@ class BlkDevice : public Device
         bool in_use{false};
         bool completed{false};
         i32 result{0};
-        i32 desc_head{-1};       // Head descriptor for this request
-        i32 desc_data{-1};       // Data descriptor
-        i32 desc_status{-1};     // Status descriptor
+        i32 desc_head{-1};   // Head descriptor for this request
+        i32 desc_data{-1};   // Data descriptor
+        i32 desc_status{-1}; // Status descriptor
         CompletionCallback callback{nullptr};
         void *user_data{nullptr};
     };
@@ -365,8 +369,8 @@ class BlkDevice : public Device
      * @param user_data User context.
      * @return Request handle on success, INVALID_HANDLE on error.
      */
-    RequestHandle submit_async(u32 type, u64 sector, u32 count, void *buf,
-                               CompletionCallback callback, void *user_data);
+    RequestHandle submit_async(
+        u32 type, u64 sector, u32 count, void *buf, CompletionCallback callback, void *user_data);
 };
 
 // Global block device initialization and access

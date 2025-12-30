@@ -32,11 +32,11 @@ constexpr u32 MAX_ENTRIES_PER_SET = 16;
  */
 struct PollEntry
 {
-    u32 handle;            // Channel ID or timer handle
-    poll::EventType mask;  // Events to watch for
-    poll::PollFlags flags; // Polling mode flags (edge-triggered, oneshot)
+    u32 handle;                 // Channel ID or timer handle
+    poll::EventType mask;       // Events to watch for
+    poll::PollFlags flags;      // Polling mode flags (edge-triggered, oneshot)
     poll::EventType last_state; // Previous state for edge detection
-    bool active;           // Entry is in use
+    bool active;                // Entry is in use
 };
 
 /**

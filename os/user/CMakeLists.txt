@@ -35,22 +35,22 @@ function(add_user_program name)
     target_compile_options(${name}.elf PRIVATE ${USER_COMPILE_OPTIONS})
     target_link_options(${name}.elf PRIVATE ${USER_LINK_OPTIONS})
     target_include_directories(${name}.elf PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}
-        ${CMAKE_CURRENT_SOURCE_DIR}/libc/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/libc/include/c++
+            ${CMAKE_CURRENT_SOURCE_DIR}
+            ${CMAKE_CURRENT_SOURCE_DIR}/libc/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/libc/include/c++
     )
     target_link_libraries(${name}.elf PRIVATE viperlibc)
 endfunction()
 
 # vinit - init process (multi-file)
 add_user_program(vinit
-    vinit/vinit.cpp
-    vinit/io.cpp
-    vinit/readline.cpp
-    vinit/cmd_system.cpp
-    vinit/cmd_fs.cpp
-    vinit/cmd_misc.cpp
-    vinit/shell.cpp
+        vinit/vinit.cpp
+        vinit/io.cpp
+        vinit/readline.cpp
+        vinit/cmd_system.cpp
+        vinit/cmd_fs.cpp
+        vinit/cmd_misc.cpp
+        vinit/shell.cpp
 )
 
 # hello - simple test program for spawn testing

@@ -122,11 +122,9 @@ static void replace_line(char *buf, usize *len, usize *pos, const char *newline)
 // =============================================================================
 
 static const char *commands[] = {
-    "Assign",  "Avail",   "Caps",    "chdir",  "Cls",     "Copy",    "cwd",
-    "Date",    "Delete",  "Dir",     "Echo",   "EndShell","Fetch",   "Help",
-    "History", "Info",    "List",    "MakeDir","Path",    "Rename",  "Run",
-    "Status",  "Time",    "Type",    "Uptime", "Version", "Why"
-};
+    "Assign", "Avail",  "Caps",     "chdir",  "Cls",  "Copy",    "cwd",    "Date",    "Delete",
+    "Dir",    "Echo",   "EndShell", "Fetch",  "Help", "History", "Info",   "List",    "MakeDir",
+    "Path",   "Rename", "Run",      "Status", "Time", "Type",    "Uptime", "Version", "Why"};
 static const usize num_commands = sizeof(commands) / sizeof(commands[0]);
 
 static usize common_prefix(const char *a, const char *b)
@@ -172,9 +170,8 @@ usize readline(char *buf, usize maxlen)
                                     saved_line[i] = buf[i];
                             }
                             history_index--;
-                            usize first = (history_count > HISTORY_SIZE)
-                                              ? (history_count - HISTORY_SIZE)
-                                              : 0;
+                            usize first =
+                                (history_count > HISTORY_SIZE) ? (history_count - HISTORY_SIZE) : 0;
                             if (history_index >= first)
                             {
                                 const char *hist = history_get(history_index);
@@ -221,7 +218,7 @@ usize readline(char *buf, usize maxlen)
                         cursor_right(len - pos);
                         pos = len;
                         break;
-                    case '3': // Delete key
+                    case '3':               // Delete key
                         c = sys::getchar(); // consume '~'
                         if (pos < len)
                         {
@@ -230,8 +227,8 @@ usize readline(char *buf, usize maxlen)
                             redraw_line_from(buf, len, pos);
                         }
                         break;
-                    case '5': // Page Up
-                    case '6': // Page Down
+                    case '5':           // Page Up
+                    case '6':           // Page Down
                         sys::getchar(); // consume '~'
                         break;
                 }

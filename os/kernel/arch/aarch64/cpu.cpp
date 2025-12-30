@@ -73,8 +73,21 @@ inline i64 call(u64 fn, u64 arg0 = 0, u64 arg1 = 0, u64 arg2 = 0)
     asm volatile("hvc #0"
                  : "+r"(x0), "+r"(x1), "+r"(x2), "+r"(x3)
                  :
-                 : "x4", "x5", "x6", "x7", "x8", "x9", "x10", "x11", "x12",
-                   "x13", "x14", "x15", "x16", "x17", "memory");
+                 : "x4",
+                   "x5",
+                   "x6",
+                   "x7",
+                   "x8",
+                   "x9",
+                   "x10",
+                   "x11",
+                   "x12",
+                   "x13",
+                   "x14",
+                   "x15",
+                   "x16",
+                   "x17",
+                   "memory");
 
     return static_cast<i64>(x0);
 }

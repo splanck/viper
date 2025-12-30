@@ -107,11 +107,22 @@ u64 get_context_switches();
  */
 struct Stats
 {
-    u64 context_switches;          // Total context switches
-    u32 queue_lengths[8];          // Current length of each priority queue
-    u32 total_ready;               // Total tasks in all ready queues
-    u32 blocked_tasks;             // Number of blocked tasks
-    u32 exited_tasks;              // Number of exited (zombie) tasks
+    u64 context_switches; // Total context switches
+    u32 queue_lengths[8]; // Current length of each priority queue
+    u32 total_ready;      // Total tasks in all ready queues
+    u32 blocked_tasks;    // Number of blocked tasks
+    u32 exited_tasks;     // Number of exited (zombie) tasks
+};
+
+/**
+ * @brief Per-CPU scheduler statistics.
+ */
+struct PerCpuStats
+{
+    u64 context_switches; // Context switches on this CPU
+    u32 queue_length;     // Tasks in this CPU's local queue
+    u32 steals;           // Tasks stolen from other CPUs
+    u32 migrations;       // Tasks migrated to other CPUs
 };
 
 /**
@@ -136,5 +147,41 @@ u32 get_queue_length(u8 queue_idx);
  * Prints queue lengths, context switch count, and task state summary.
  */
 void dump_stats();
+
+/**
+ * @brief Enqueue a task on a specific CPU's run queue.
+ *
+ * @details
+ * Used for task affinity or load balancing. If the target CPU is not
+ * the current CPU, an IPI is sent to trigger rescheduling.
+ *
+ * @param t Task to enqueue.
+ * @param cpu_id Target CPU ID.
+ */
+void enqueue_on_cpu(task::Task *t, u32 cpu_id);
+
+/**
+ * @brief Get per-CPU scheduler statistics.
+ *
+ * @param cpu_id CPU to query.
+ * @param stats Output structure for statistics.
+ */
+void get_percpu_stats(u32 cpu_id, PerCpuStats *stats);
+
+/**
+ * @brief Perform load balancing across CPUs.
+ *
+ * @details
+ * Called periodically to redistribute tasks from overloaded CPUs
+ * to idle or underloaded CPUs. Uses work stealing algorithm.
+ */
+void balance_load();
+
+/**
+ * @brief Initialize per-CPU scheduler state for a secondary CPU.
+ *
+ * @param cpu_id The CPU ID being initialized.
+ */
+void init_cpu(u32 cpu_id);
 
 } // namespace scheduler

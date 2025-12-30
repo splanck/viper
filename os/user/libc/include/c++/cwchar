@@ -6,13 +6,14 @@
 
 #include "../wchar.h"
 
-namespace std {
+namespace std
+{
 
-using ::mbstate_t;
-using ::wint_t;
-using ::size_t;
 using ::FILE;
+using ::mbstate_t;
+using ::size_t;
 using ::tm;
+using ::wint_t;
 
 // Wide character classification
 using ::iswalnum;
@@ -31,71 +32,71 @@ using ::towlower;
 using ::towupper;
 
 // Wide string functions
-using ::wcscpy;
-using ::wcsncpy;
 using ::wcscat;
-using ::wcsncat;
-using ::wcslen;
-using ::wcscmp;
-using ::wcsncmp;
-using ::wcscoll;
-using ::wcsxfrm;
 using ::wcschr;
-using ::wcsrchr;
+using ::wcscmp;
+using ::wcscoll;
+using ::wcscpy;
 using ::wcscspn;
-using ::wcsspn;
+using ::wcslen;
+using ::wcsncat;
+using ::wcsncmp;
+using ::wcsncpy;
 using ::wcspbrk;
+using ::wcsrchr;
+using ::wcsspn;
 using ::wcsstr;
 using ::wcstok;
+using ::wcsxfrm;
 
 // Wide memory functions
+using ::wmemchr;
+using ::wmemcmp;
 using ::wmemcpy;
 using ::wmemmove;
 using ::wmemset;
-using ::wmemcmp;
-using ::wmemchr;
 
 // Multibyte/wide conversion
-using ::mbsinit;
+using ::mblen;
 using ::mbrlen;
 using ::mbrtowc;
-using ::wcrtomb;
+using ::mbsinit;
 using ::mbsrtowcs;
-using ::wcsrtombs;
-using ::mbtowc;
-using ::wctomb;
 using ::mbstowcs;
+using ::mbtowc;
+using ::wcrtomb;
+using ::wcsrtombs;
 using ::wcstombs;
-using ::mblen;
+using ::wctomb;
 
 // Wide numeric conversions
-using ::wcstol;
-using ::wcstoul;
-using ::wcstoll;
-using ::wcstoull;
 using ::wcstod;
 using ::wcstof;
+using ::wcstol;
 using ::wcstold;
+using ::wcstoll;
+using ::wcstoul;
+using ::wcstoull;
 
 // Wide I/O
 using ::fgetwc;
+using ::fgetws;
+using ::fputwc;
+using ::fputws;
+using ::fwide;
 using ::getwc;
 using ::getwchar;
-using ::fputwc;
 using ::putwc;
 using ::putwchar;
-using ::fgetws;
-using ::fputws;
 using ::ungetwc;
-using ::fwide;
 
 // Wide formatted I/O
 using ::fwprintf;
-using ::wprintf;
-using ::swprintf;
 using ::fwscanf;
-using ::wscanf;
+using ::swprintf;
 using ::swscanf;
+using ::wprintf;
+using ::wscanf;
 
 // Wide time
 using ::wcsftime;

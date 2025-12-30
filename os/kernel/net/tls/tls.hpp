@@ -62,8 +62,50 @@ enum class ExtensionType : u16
     ServerName = 0,
     SupportedGroups = 10,
     SignatureAlgorithms = 13,
+    PreSharedKey = 41,
     SupportedVersions = 43,
+    PskKeyExchangeModes = 45,
     KeyShare = 51,
+};
+
+/**
+ * @brief PSK key exchange modes.
+ */
+namespace psk_mode
+{
+constexpr u8 PSK_KE = 0;     ///< PSK-only key exchange
+constexpr u8 PSK_DHE_KE = 1; ///< PSK with (EC)DHE key exchange
+} // namespace psk_mode
+
+/**
+ * @brief Maximum session ticket size.
+ */
+constexpr usize MAX_TICKET_SIZE = 512;
+
+/**
+ * @brief Maximum ticket lifetime (7 days in seconds).
+ */
+constexpr u32 MAX_TICKET_LIFETIME = 604800;
+
+/**
+ * @brief TLS 1.3 session ticket for resumption.
+ *
+ * @details
+ * Stores the ticket value received from a NewSessionTicket message along with
+ * the resumption_master_secret needed to compute the PSK for resumption.
+ */
+struct SessionTicket
+{
+    bool valid;                         ///< Whether this ticket is valid.
+    u32 lifetime;                       ///< Ticket lifetime in seconds.
+    u32 age_add;                        ///< Obfuscated ticket age adder.
+    u8 nonce[8];                        ///< Ticket nonce.
+    u8 nonce_len;                       ///< Nonce length.
+    u8 ticket[MAX_TICKET_SIZE];         ///< Ticket value.
+    usize ticket_len;                   ///< Ticket length.
+    u8 resumption_master_secret[32];    ///< Resumption master secret.
+    u64 issue_time;                     ///< Time ticket was issued (ms since boot).
+    char hostname[128];                 ///< Hostname associated with ticket.
 };
 
 /**
@@ -165,6 +207,12 @@ struct TlsSession
     // Buffer for storing raw certificate data
     u8 server_cert_data[4096];
     usize server_cert_data_len;
+
+    // Session resumption support
+    u8 resumption_master_secret[32]; /**< For deriving PSK for resumption. */
+    SessionTicket session_ticket;     /**< Stored session ticket. */
+    bool resumed;                     /**< True if this session was resumed. */
+    SessionTicket *offered_ticket;    /**< Ticket offered during handshake. */
 };
 
 /**
@@ -294,5 +342,81 @@ namespace viper::tls
  * @return `true` on success, otherwise `false`.
  */
 bool tls_get_info(TlsSession *session, ::TLSInfo *info);
+
+//=============================================================================
+// Session Resumption API
+//=============================================================================
+
+/**
+ * @brief Initialize a TLS session with a stored session ticket for resumption.
+ *
+ * @details
+ * Similar to tls_init, but also configures the session to attempt resumption
+ * using the provided session ticket. The handshake will include a pre_shared_key
+ * extension with the ticket.
+ *
+ * @param session Session structure to initialize.
+ * @param socket_fd Connected TCP socket.
+ * @param config Session configuration.
+ * @param ticket Session ticket from a previous connection.
+ * @return `true` on success, otherwise `false`.
+ */
+bool tls_init_resume(TlsSession *session,
+                     i32 socket_fd,
+                     const TlsConfig *config,
+                     SessionTicket *ticket);
+
+/**
+ * @brief Check if a session was resumed (using PSK).
+ *
+ * @param session TLS session.
+ * @return `true` if the session was resumed, otherwise `false`.
+ */
+bool tls_was_resumed(TlsSession *session);
+
+/**
+ * @brief Get the session ticket for future resumption.
+ *
+ * @details
+ * After a successful handshake, the server may send NewSessionTicket messages.
+ * This function returns the stored ticket if available.
+ *
+ * @param session TLS session.
+ * @return Pointer to session ticket, or nullptr if not available.
+ */
+const SessionTicket *tls_get_session_ticket(TlsSession *session);
+
+/**
+ * @brief Process any pending post-handshake messages (including NewSessionTicket).
+ *
+ * @details
+ * This function should be called after tls_handshake to receive and process
+ * any NewSessionTicket messages the server may send. It's non-blocking and
+ * returns immediately if no messages are available.
+ *
+ * @param session TLS session.
+ * @return Number of messages processed, or -1 on error.
+ */
+i32 tls_process_post_handshake(TlsSession *session);
+
+/**
+ * @brief Compute PSK from session ticket for resumption.
+ *
+ * @details
+ * Derives the PSK value from the resumption_master_secret and ticket nonce
+ * according to the TLS 1.3 key schedule.
+ *
+ * @param ticket Session ticket containing resumption_master_secret.
+ * @param psk Output buffer for PSK (32 bytes).
+ */
+void tls_compute_resumption_psk(const SessionTicket *ticket, u8 *psk);
+
+/**
+ * @brief Check if a session ticket is still valid.
+ *
+ * @param ticket Session ticket to check.
+ * @return `true` if the ticket has not expired, otherwise `false`.
+ */
+bool tls_ticket_valid(const SessionTicket *ticket);
 
 } // namespace viper::tls

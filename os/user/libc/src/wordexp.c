@@ -4,10 +4,10 @@
  */
 
 #include "../include/wordexp.h"
+#include "../include/ctype.h"
+#include "../include/errno.h"
 #include "../include/stdlib.h"
 #include "../include/string.h"
-#include "../include/errno.h"
-#include "../include/ctype.h"
 
 /* Initial allocation size for word list */
 #define INITIAL_WORDS 8
@@ -17,8 +17,8 @@
  */
 static int is_special_char(char c)
 {
-    return c == '|' || c == '&' || c == ';' || c == '<' || c == '>' ||
-           c == '(' || c == ')' || c == '{' || c == '}';
+    return c == '|' || c == '&' || c == ';' || c == '<' || c == '>' || c == '(' || c == ')' ||
+           c == '{' || c == '}';
 }
 
 /*
@@ -30,8 +30,7 @@ static int add_word(wordexp_t *we, const char *word, size_t len, size_t *capacit
     if (we->we_wordc + we->we_offs >= *capacity)
     {
         size_t new_cap = *capacity * 2;
-        char **new_wordv = (char **)realloc(we->we_wordv,
-                                            new_cap * sizeof(char *));
+        char **new_wordv = (char **)realloc(we->we_wordv, new_cap * sizeof(char *));
         if (!new_wordv)
         {
             return WRDE_NOSPACE;
@@ -134,8 +133,7 @@ static char *expand_variable(const char *str, size_t *consumed)
     {
         start = str + 1;
         name_len = 0;
-        while (isalnum((unsigned char)start[name_len]) ||
-               start[name_len] == '_')
+        while (isalnum((unsigned char)start[name_len]) || start[name_len] == '_')
         {
             name_len++;
         }
@@ -375,8 +373,7 @@ int wordexp(const char *words, wordexp_t *pwordexp, int flags)
     /* NULL-terminate the word list */
     if (pwordexp->we_wordc + pwordexp->we_offs >= capacity)
     {
-        char **new_wordv = (char **)realloc(pwordexp->we_wordv,
-                                            (capacity + 1) * sizeof(char *));
+        char **new_wordv = (char **)realloc(pwordexp->we_wordv, (capacity + 1) * sizeof(char *));
         if (!new_wordv)
         {
             wordfree(pwordexp);
@@ -400,8 +397,7 @@ void wordfree(wordexp_t *pwordexp)
     }
 
     /* Free each word (skip the offset slots) */
-    for (size_t i = pwordexp->we_offs;
-         i < pwordexp->we_offs + pwordexp->we_wordc; i++)
+    for (size_t i = pwordexp->we_offs; i < pwordexp->we_offs + pwordexp->we_wordc; i++)
     {
         free(pwordexp->we_wordv[i]);
     }

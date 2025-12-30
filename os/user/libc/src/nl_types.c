@@ -4,15 +4,16 @@
  */
 
 #include "../include/nl_types.h"
-#include "../include/stdlib.h"
-#include "../include/string.h"
 #include "../include/errno.h"
 #include "../include/stdio.h"
+#include "../include/stdlib.h"
+#include "../include/string.h"
 
 /*
  * Message catalog entry
  */
-struct cat_message {
+struct cat_message
+{
     int set_id;
     int msg_id;
     char *message;
@@ -22,7 +23,8 @@ struct cat_message {
 /*
  * Message catalog structure
  */
-struct cat_descriptor {
+struct cat_descriptor
+{
     struct cat_message *messages;
     int refcount;
 };
@@ -38,8 +40,7 @@ nl_catd catopen(const char *name, int flag)
     (void)name;
     (void)flag;
 
-    struct cat_descriptor *desc = (struct cat_descriptor *)
-        malloc(sizeof(struct cat_descriptor));
+    struct cat_descriptor *desc = (struct cat_descriptor *)malloc(sizeof(struct cat_descriptor));
     if (!desc)
     {
         errno = ENOMEM;

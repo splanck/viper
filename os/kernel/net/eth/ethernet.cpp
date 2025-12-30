@@ -11,6 +11,7 @@
 #include "../../console/serial.hpp"
 #include "../../drivers/virtio/net.hpp"
 #include "../ip/ipv4.hpp"
+#include "../ip/ipv6.hpp"
 #include "../netif.hpp"
 #include "arp.hpp"
 
@@ -109,6 +110,9 @@ void rx_frame(const void *frame, usize len)
             break;
         case ethertype::IPV4:
             net::ip::rx_packet(payload, payload_len);
+            break;
+        case ethertype::IPV6:
+            net::ipv6::rx_packet(payload, payload_len);
             break;
         default:
             // Unknown protocol, ignore

@@ -7,21 +7,27 @@
 #define _LIBCPP_MAP
 
 #include "functional"
+#include "initializer_list"
+#include "iterator"
 #include "memory"
 #include "utility"
-#include "iterator"
-#include "initializer_list"
 
-namespace std {
+namespace std
+{
 
 /* Red-black tree node colors */
-namespace detail {
+namespace detail
+{
 
-enum class rb_color { red, black };
+enum class rb_color
+{
+    red,
+    black
+};
 
 /* Red-black tree node */
-template <class Key, class Value>
-struct rb_node {
+template <class Key, class Value> struct rb_node
+{
     pair<const Key, Value> data;
     rb_node *parent;
     rb_node *left;
@@ -29,18 +35,17 @@ struct rb_node {
     rb_color color;
 
     template <class... Args>
-    rb_node(Args&&... args)
-        : data(forward<Args>(args)...)
-        , parent(nullptr)
-        , left(nullptr)
-        , right(nullptr)
-        , color(rb_color::red) {}
+    rb_node(Args &&...args)
+        : data(forward<Args>(args)...), parent(nullptr), left(nullptr), right(nullptr),
+          color(rb_color::red)
+    {
+    }
 };
 
 /* Red-black tree implementation */
-template <class Key, class Value, class Compare, class Allocator>
-class rb_tree {
-public:
+template <class Key, class Value, class Compare, class Allocator> class rb_tree
+{
+  public:
     using key_type = Key;
     using mapped_type = Value;
     using value_type = pair<const Key, Value>;
@@ -49,19 +54,20 @@ public:
     using node_type = rb_node<Key, Value>;
     using size_type = unsigned long;
 
-private:
+  private:
     using node_allocator = typename allocator_traits<Allocator>::template rebind_alloc<node_type>;
 
     node_type *root_;
-    node_type *nil_;  /* Sentinel node */
+    node_type *nil_; /* Sentinel node */
     size_type size_;
     Compare comp_;
     node_allocator alloc_;
 
     /* Create sentinel node */
-    void init_nil() {
+    void init_nil()
+    {
         /* Allocate without constructing pair */
-        nil_ = static_cast<node_type*>(::operator new(sizeof(node_type)));
+        nil_ = static_cast<node_type *>(::operator new(sizeof(node_type)));
         nil_->parent = nil_;
         nil_->left = nil_;
         nil_->right = nil_;
@@ -70,24 +76,32 @@ private:
     }
 
     /* Destroy sentinel */
-    void destroy_nil() {
+    void destroy_nil()
+    {
         ::operator delete(nil_);
         nil_ = nullptr;
     }
 
     /* Left rotation */
-    void rotate_left(node_type *x) {
+    void rotate_left(node_type *x)
+    {
         node_type *y = x->right;
         x->right = y->left;
-        if (y->left != nil_) {
+        if (y->left != nil_)
+        {
             y->left->parent = x;
         }
         y->parent = x->parent;
-        if (x->parent == nil_) {
+        if (x->parent == nil_)
+        {
             root_ = y;
-        } else if (x == x->parent->left) {
+        }
+        else if (x == x->parent->left)
+        {
             x->parent->left = y;
-        } else {
+        }
+        else
+        {
             x->parent->right = y;
         }
         y->left = x;
@@ -95,18 +109,25 @@ private:
     }
 
     /* Right rotation */
-    void rotate_right(node_type *x) {
+    void rotate_right(node_type *x)
+    {
         node_type *y = x->left;
         x->left = y->right;
-        if (y->right != nil_) {
+        if (y->right != nil_)
+        {
             y->right->parent = x;
         }
         y->parent = x->parent;
-        if (x->parent == nil_) {
+        if (x->parent == nil_)
+        {
             root_ = y;
-        } else if (x == x->parent->right) {
+        }
+        else if (x == x->parent->right)
+        {
             x->parent->right = y;
-        } else {
+        }
+        else
+        {
             x->parent->left = y;
         }
         y->right = x;
@@ -114,17 +135,24 @@ private:
     }
 
     /* Fix tree after insertion */
-    void insert_fixup(node_type *z) {
-        while (z->parent->color == rb_color::red) {
-            if (z->parent == z->parent->parent->left) {
+    void insert_fixup(node_type *z)
+    {
+        while (z->parent->color == rb_color::red)
+        {
+            if (z->parent == z->parent->parent->left)
+            {
                 node_type *y = z->parent->parent->right;
-                if (y->color == rb_color::red) {
+                if (y->color == rb_color::red)
+                {
                     z->parent->color = rb_color::black;
                     y->color = rb_color::black;
                     z->parent->parent->color = rb_color::red;
                     z = z->parent->parent;
-                } else {
-                    if (z == z->parent->right) {
+                }
+                else
+                {
+                    if (z == z->parent->right)
+                    {
                         z = z->parent;
                         rotate_left(z);
                     }
@@ -132,15 +160,21 @@ private:
                     z->parent->parent->color = rb_color::red;
                     rotate_right(z->parent->parent);
                 }
-            } else {
+            }
+            else
+            {
                 node_type *y = z->parent->parent->left;
-                if (y->color == rb_color::red) {
+                if (y->color == rb_color::red)
+                {
                     z->parent->color = rb_color::black;
                     y->color = rb_color::black;
                     z->parent->parent->color = rb_color::red;
                     z = z->parent->parent;
-                } else {
-                    if (z == z->parent->left) {
+                }
+                else
+                {
+                    if (z == z->parent->left)
+                    {
                         z = z->parent;
                         rotate_right(z);
                     }
@@ -154,34 +188,47 @@ private:
     }
 
     /* Transplant subtree */
-    void transplant(node_type *u, node_type *v) {
-        if (u->parent == nil_) {
+    void transplant(node_type *u, node_type *v)
+    {
+        if (u->parent == nil_)
+        {
             root_ = v;
-        } else if (u == u->parent->left) {
+        }
+        else if (u == u->parent->left)
+        {
             u->parent->left = v;
-        } else {
+        }
+        else
+        {
             u->parent->right = v;
         }
         v->parent = u->parent;
     }
 
     /* Fix tree after deletion */
-    void delete_fixup(node_type *x) {
-        while (x != root_ && x->color == rb_color::black) {
-            if (x == x->parent->left) {
+    void delete_fixup(node_type *x)
+    {
+        while (x != root_ && x->color == rb_color::black)
+        {
+            if (x == x->parent->left)
+            {
                 node_type *w = x->parent->right;
-                if (w->color == rb_color::red) {
+                if (w->color == rb_color::red)
+                {
                     w->color = rb_color::black;
                     x->parent->color = rb_color::red;
                     rotate_left(x->parent);
                     w = x->parent->right;
                 }
-                if (w->left->color == rb_color::black &&
-                    w->right->color == rb_color::black) {
+                if (w->left->color == rb_color::black && w->right->color == rb_color::black)
+                {
                     w->color = rb_color::red;
                     x = x->parent;
-                } else {
-                    if (w->right->color == rb_color::black) {
+                }
+                else
+                {
+                    if (w->right->color == rb_color::black)
+                    {
                         w->left->color = rb_color::black;
                         w->color = rb_color::red;
                         rotate_right(w);
@@ -193,20 +240,26 @@ private:
                     rotate_left(x->parent);
                     x = root_;
                 }
-            } else {
+            }
+            else
+            {
                 node_type *w = x->parent->left;
-                if (w->color == rb_color::red) {
+                if (w->color == rb_color::red)
+                {
                     w->color = rb_color::black;
                     x->parent->color = rb_color::red;
                     rotate_right(x->parent);
                     w = x->parent->left;
                 }
-                if (w->right->color == rb_color::black &&
-                    w->left->color == rb_color::black) {
+                if (w->right->color == rb_color::black && w->left->color == rb_color::black)
+                {
                     w->color = rb_color::red;
                     x = x->parent;
-                } else {
-                    if (w->left->color == rb_color::black) {
+                }
+                else
+                {
+                    if (w->left->color == rb_color::black)
+                    {
                         w->right->color = rb_color::black;
                         w->color = rb_color::red;
                         rotate_left(w);
@@ -224,24 +277,30 @@ private:
     }
 
     /* Find minimum in subtree */
-    node_type *minimum(node_type *x) const {
-        while (x->left != nil_) {
+    node_type *minimum(node_type *x) const
+    {
+        while (x->left != nil_)
+        {
             x = x->left;
         }
         return x;
     }
 
     /* Find maximum in subtree */
-    node_type *maximum(node_type *x) const {
-        while (x->right != nil_) {
+    node_type *maximum(node_type *x) const
+    {
+        while (x->right != nil_)
+        {
             x = x->right;
         }
         return x;
     }
 
     /* Destroy subtree */
-    void destroy_tree(node_type *node) {
-        if (node != nil_) {
+    void destroy_tree(node_type *node)
+    {
+        if (node != nil_)
+        {
             destroy_tree(node->left);
             destroy_tree(node->right);
             allocator_traits<node_allocator>::destroy(alloc_, node);
@@ -250,8 +309,10 @@ private:
     }
 
     /* Copy subtree */
-    node_type *copy_tree(node_type *src, node_type *src_nil, node_type *parent) {
-        if (src == src_nil) {
+    node_type *copy_tree(node_type *src, node_type *src_nil, node_type *parent)
+    {
+        if (src == src_nil)
+        {
             return nil_;
         }
         node_type *node = allocator_traits<node_allocator>::allocate(alloc_, 1);
@@ -263,45 +324,53 @@ private:
         return node;
     }
 
-public:
-    rb_tree() : root_(nullptr), nil_(nullptr), size_(0), comp_(), alloc_() {
+  public:
+    rb_tree() : root_(nullptr), nil_(nullptr), size_(0), comp_(), alloc_()
+    {
         init_nil();
     }
 
-    explicit rb_tree(const Compare& comp, const Allocator& alloc = Allocator())
-        : root_(nullptr), nil_(nullptr), size_(0), comp_(comp), alloc_(alloc) {
+    explicit rb_tree(const Compare &comp, const Allocator &alloc = Allocator())
+        : root_(nullptr), nil_(nullptr), size_(0), comp_(comp), alloc_(alloc)
+    {
         init_nil();
     }
 
-    rb_tree(const rb_tree& other)
-        : root_(nullptr), nil_(nullptr), size_(0)
-        , comp_(other.comp_), alloc_(other.alloc_) {
+    rb_tree(const rb_tree &other)
+        : root_(nullptr), nil_(nullptr), size_(0), comp_(other.comp_), alloc_(other.alloc_)
+    {
         init_nil();
-        if (other.root_ != other.nil_) {
+        if (other.root_ != other.nil_)
+        {
             root_ = copy_tree(other.root_, other.nil_, nil_);
             size_ = other.size_;
         }
     }
 
-    rb_tree(rb_tree&& other) noexcept
-        : root_(other.root_), nil_(other.nil_), size_(other.size_)
-        , comp_(move(other.comp_)), alloc_(move(other.alloc_)) {
+    rb_tree(rb_tree &&other) noexcept
+        : root_(other.root_), nil_(other.nil_), size_(other.size_), comp_(move(other.comp_)),
+          alloc_(move(other.alloc_))
+    {
         other.root_ = nullptr;
         other.nil_ = nullptr;
         other.size_ = 0;
         other.init_nil();
     }
 
-    ~rb_tree() {
+    ~rb_tree()
+    {
         clear();
         destroy_nil();
     }
 
-    rb_tree& operator=(const rb_tree& other) {
-        if (this != &other) {
+    rb_tree &operator=(const rb_tree &other)
+    {
+        if (this != &other)
+        {
             clear();
             comp_ = other.comp_;
-            if (other.root_ != other.nil_) {
+            if (other.root_ != other.nil_)
+            {
                 root_ = copy_tree(other.root_, other.nil_, nil_);
                 size_ = other.size_;
             }
@@ -309,8 +378,10 @@ public:
         return *this;
     }
 
-    rb_tree& operator=(rb_tree&& other) noexcept {
-        if (this != &other) {
+    rb_tree &operator=(rb_tree &&other) noexcept
+    {
+        if (this != &other)
+        {
             clear();
             destroy_nil();
             root_ = other.root_;
@@ -327,26 +398,34 @@ public:
     }
 
     /* Insert a node */
-    pair<node_type*, bool> insert(const value_type& value) {
+    pair<node_type *, bool> insert(const value_type &value)
+    {
         return insert_impl(value);
     }
 
-    pair<node_type*, bool> insert(value_type&& value) {
+    pair<node_type *, bool> insert(value_type &&value)
+    {
         return insert_impl(move(value));
     }
 
-    template <class P>
-    pair<node_type*, bool> insert_impl(P&& value) {
+    template <class P> pair<node_type *, bool> insert_impl(P &&value)
+    {
         node_type *y = nil_;
         node_type *x = root_;
 
-        while (x != nil_) {
+        while (x != nil_)
+        {
             y = x;
-            if (comp_(value.first, x->data.first)) {
+            if (comp_(value.first, x->data.first))
+            {
                 x = x->left;
-            } else if (comp_(x->data.first, value.first)) {
+            }
+            else if (comp_(x->data.first, value.first))
+            {
                 x = x->right;
-            } else {
+            }
+            else
+            {
                 /* Key already exists */
                 return {x, false};
             }
@@ -359,11 +438,16 @@ public:
         z->right = nil_;
         z->color = rb_color::red;
 
-        if (y == nil_) {
+        if (y == nil_)
+        {
             root_ = z;
-        } else if (comp_(z->data.first, y->data.first)) {
+        }
+        else if (comp_(z->data.first, y->data.first))
+        {
             y->left = z;
-        } else {
+        }
+        else
+        {
             y->right = z;
         }
 
@@ -373,22 +457,29 @@ public:
     }
 
     /* Emplace a node */
-    template <class... Args>
-    pair<node_type*, bool> emplace(Args&&... args) {
+    template <class... Args> pair<node_type *, bool> emplace(Args &&...args)
+    {
         /* Create temporary pair to extract key */
         value_type temp(forward<Args>(args)...);
         return insert(move(temp));
     }
 
     /* Find a node by key */
-    node_type *find(const Key& key) const {
+    node_type *find(const Key &key) const
+    {
         node_type *x = root_;
-        while (x != nil_) {
-            if (comp_(key, x->data.first)) {
+        while (x != nil_)
+        {
+            if (comp_(key, x->data.first))
+            {
                 x = x->left;
-            } else if (comp_(x->data.first, key)) {
+            }
+            else if (comp_(x->data.first, key))
+            {
                 x = x->right;
-            } else {
+            }
+            else
+            {
                 return x;
             }
         }
@@ -396,26 +487,36 @@ public:
     }
 
     /* Erase a node */
-    void erase(node_type *z) {
-        if (z == nil_) return;
+    void erase(node_type *z)
+    {
+        if (z == nil_)
+            return;
 
         node_type *y = z;
         node_type *x;
         rb_color y_original_color = y->color;
 
-        if (z->left == nil_) {
+        if (z->left == nil_)
+        {
             x = z->right;
             transplant(z, z->right);
-        } else if (z->right == nil_) {
+        }
+        else if (z->right == nil_)
+        {
             x = z->left;
             transplant(z, z->left);
-        } else {
+        }
+        else
+        {
             y = minimum(z->right);
             y_original_color = y->color;
             x = y->right;
-            if (y->parent == z) {
+            if (y->parent == z)
+            {
                 x->parent = y;
-            } else {
+            }
+            else
+            {
                 transplant(y, y->right);
                 y->right = z->right;
                 y->right->parent = y;
@@ -430,20 +531,26 @@ public:
         allocator_traits<node_allocator>::deallocate(alloc_, z, 1);
         --size_;
 
-        if (y_original_color == rb_color::black) {
+        if (y_original_color == rb_color::black)
+        {
             delete_fixup(x);
         }
     }
 
     /* Lower bound */
-    node_type *lower_bound(const Key& key) const {
+    node_type *lower_bound(const Key &key) const
+    {
         node_type *x = root_;
         node_type *result = nil_;
-        while (x != nil_) {
-            if (!comp_(x->data.first, key)) {
+        while (x != nil_)
+        {
+            if (!comp_(x->data.first, key))
+            {
                 result = x;
                 x = x->left;
-            } else {
+            }
+            else
+            {
                 x = x->right;
             }
         }
@@ -451,14 +558,19 @@ public:
     }
 
     /* Upper bound */
-    node_type *upper_bound(const Key& key) const {
+    node_type *upper_bound(const Key &key) const
+    {
         node_type *x = root_;
         node_type *result = nil_;
-        while (x != nil_) {
-            if (comp_(key, x->data.first)) {
+        while (x != nil_)
+        {
+            if (comp_(key, x->data.first))
+            {
                 result = x;
                 x = x->left;
-            } else {
+            }
+            else
+            {
                 x = x->right;
             }
         }
@@ -466,26 +578,49 @@ public:
     }
 
     /* Clear all nodes */
-    void clear() {
+    void clear()
+    {
         destroy_tree(root_);
         root_ = nil_;
         size_ = 0;
     }
 
     /* Accessors */
-    size_type size() const { return size_; }
-    bool empty() const { return size_ == 0; }
-    node_type *begin_node() const { return size_ == 0 ? nil_ : minimum(root_); }
-    node_type *end_node() const { return nil_; }
-    node_type *nil_node() const { return nil_; }
+    size_type size() const
+    {
+        return size_;
+    }
+
+    bool empty() const
+    {
+        return size_ == 0;
+    }
+
+    node_type *begin_node() const
+    {
+        return size_ == 0 ? nil_ : minimum(root_);
+    }
+
+    node_type *end_node() const
+    {
+        return nil_;
+    }
+
+    node_type *nil_node() const
+    {
+        return nil_;
+    }
 
     /* Successor */
-    node_type *successor(node_type *x) const {
-        if (x->right != nil_) {
+    node_type *successor(node_type *x) const
+    {
+        if (x->right != nil_)
+        {
             return minimum(x->right);
         }
         node_type *y = x->parent;
-        while (y != nil_ && x == y->right) {
+        while (y != nil_ && x == y->right)
+        {
             x = y;
             y = y->parent;
         }
@@ -493,19 +628,23 @@ public:
     }
 
     /* Predecessor */
-    node_type *predecessor(node_type *x) const {
-        if (x->left != nil_) {
+    node_type *predecessor(node_type *x) const
+    {
+        if (x->left != nil_)
+        {
             return maximum(x->left);
         }
         node_type *y = x->parent;
-        while (y != nil_ && x == y->left) {
+        while (y != nil_ && x == y->left)
+        {
             x = y;
             y = y->parent;
         }
         return y;
     }
 
-    void swap(rb_tree& other) noexcept {
+    void swap(rb_tree &other) noexcept
+    {
         std::swap(root_, other.root_);
         std::swap(nil_, other.nil_);
         std::swap(size_, other.size_);
@@ -513,18 +652,27 @@ public:
         std::swap(alloc_, other.alloc_);
     }
 
-    key_compare key_comp() const { return comp_; }
-    allocator_type get_allocator() const { return allocator_type(alloc_); }
+    key_compare key_comp() const
+    {
+        return comp_;
+    }
+
+    allocator_type get_allocator() const
+    {
+        return allocator_type(alloc_);
+    }
 };
 
 } // namespace detail
 
 /* map class */
-template <class Key, class T,
+template <class Key,
+          class T,
           class Compare = less<Key>,
           class Allocator = allocator<pair<const Key, T>>>
-class map {
-public:
+class map
+{
+  public:
     using key_type = Key;
     using mapped_type = T;
     using value_type = pair<const Key, T>;
@@ -532,131 +680,180 @@ public:
     using difference_type = long;
     using key_compare = Compare;
     using allocator_type = Allocator;
-    using reference = value_type&;
-    using const_reference = const value_type&;
-    using pointer = value_type*;
-    using const_pointer = const value_type*;
+    using reference = value_type &;
+    using const_reference = const value_type &;
+    using pointer = value_type *;
+    using const_pointer = const value_type *;
 
-private:
+  private:
     using tree_type = detail::rb_tree<Key, T, Compare, Allocator>;
     using node_type = typename tree_type::node_type;
 
     tree_type tree_;
 
-public:
+  public:
     /* value_compare class */
-    class value_compare {
+    class value_compare
+    {
         friend class map;
-    protected:
+
+      protected:
         Compare comp;
+
         value_compare(Compare c) : comp(c) {}
-    public:
-        bool operator()(const value_type& lhs, const value_type& rhs) const {
+
+      public:
+        bool operator()(const value_type &lhs, const value_type &rhs) const
+        {
             return comp(lhs.first, rhs.first);
         }
     };
 
     /* Iterator */
-    class iterator {
+    class iterator
+    {
         friend class map;
         node_type *node_;
         const tree_type *tree_;
 
         iterator(node_type *node, const tree_type *tree) : node_(node), tree_(tree) {}
 
-    public:
+      public:
         using iterator_category = bidirectional_iterator_tag;
         using value_type = pair<const Key, T>;
         using difference_type = long;
-        using pointer = value_type*;
-        using reference = value_type&;
+        using pointer = value_type *;
+        using reference = value_type &;
 
         iterator() : node_(nullptr), tree_(nullptr) {}
 
-        reference operator*() const { return node_->data; }
-        pointer operator->() const { return &node_->data; }
+        reference operator*() const
+        {
+            return node_->data;
+        }
 
-        iterator& operator++() {
+        pointer operator->() const
+        {
+            return &node_->data;
+        }
+
+        iterator &operator++()
+        {
             node_ = tree_->successor(node_);
             return *this;
         }
 
-        iterator operator++(int) {
+        iterator operator++(int)
+        {
             iterator tmp = *this;
             ++*this;
             return tmp;
         }
 
-        iterator& operator--() {
-            if (node_ == tree_->nil_node()) {
+        iterator &operator--()
+        {
+            if (node_ == tree_->nil_node())
+            {
                 /* End iterator - go to last element */
                 node_ = tree_->end_node();
-                if (node_ != tree_->nil_node()) {
-                    while (node_->right != tree_->nil_node()) {
+                if (node_ != tree_->nil_node())
+                {
+                    while (node_->right != tree_->nil_node())
+                    {
                         node_ = node_->right;
                     }
                 }
-            } else {
+            }
+            else
+            {
                 node_ = tree_->predecessor(node_);
             }
             return *this;
         }
 
-        iterator operator--(int) {
+        iterator operator--(int)
+        {
             iterator tmp = *this;
             --*this;
             return tmp;
         }
 
-        bool operator==(const iterator& other) const { return node_ == other.node_; }
-        bool operator!=(const iterator& other) const { return node_ != other.node_; }
+        bool operator==(const iterator &other) const
+        {
+            return node_ == other.node_;
+        }
+
+        bool operator!=(const iterator &other) const
+        {
+            return node_ != other.node_;
+        }
     };
 
     /* const_iterator */
-    class const_iterator {
+    class const_iterator
+    {
         friend class map;
         const node_type *node_;
         const tree_type *tree_;
 
         const_iterator(const node_type *node, const tree_type *tree) : node_(node), tree_(tree) {}
 
-    public:
+      public:
         using iterator_category = bidirectional_iterator_tag;
         using value_type = pair<const Key, T>;
         using difference_type = long;
-        using pointer = const value_type*;
-        using reference = const value_type&;
+        using pointer = const value_type *;
+        using reference = const value_type &;
 
         const_iterator() : node_(nullptr), tree_(nullptr) {}
-        const_iterator(const iterator& it) : node_(it.node_), tree_(it.tree_) {}
 
-        reference operator*() const { return node_->data; }
-        pointer operator->() const { return &node_->data; }
+        const_iterator(const iterator &it) : node_(it.node_), tree_(it.tree_) {}
 
-        const_iterator& operator++() {
-            node_ = tree_->successor(const_cast<node_type*>(node_));
+        reference operator*() const
+        {
+            return node_->data;
+        }
+
+        pointer operator->() const
+        {
+            return &node_->data;
+        }
+
+        const_iterator &operator++()
+        {
+            node_ = tree_->successor(const_cast<node_type *>(node_));
             return *this;
         }
 
-        const_iterator operator++(int) {
+        const_iterator operator++(int)
+        {
             const_iterator tmp = *this;
             ++*this;
             return tmp;
         }
 
-        const_iterator& operator--() {
-            node_ = tree_->predecessor(const_cast<node_type*>(node_));
+        const_iterator &operator--()
+        {
+            node_ = tree_->predecessor(const_cast<node_type *>(node_));
             return *this;
         }
 
-        const_iterator operator--(int) {
+        const_iterator operator--(int)
+        {
             const_iterator tmp = *this;
             --*this;
             return tmp;
         }
 
-        bool operator==(const const_iterator& other) const { return node_ == other.node_; }
-        bool operator!=(const const_iterator& other) const { return node_ != other.node_; }
+        bool operator==(const const_iterator &other) const
+        {
+            return node_ == other.node_;
+        }
+
+        bool operator!=(const const_iterator &other) const
+        {
+            return node_ != other.node_;
+        }
     };
 
     using reverse_iterator = std::reverse_iterator<iterator>;
@@ -665,161 +862,243 @@ public:
     /* Constructors */
     map() : tree_() {}
 
-    explicit map(const Compare& comp, const Allocator& alloc = Allocator())
-        : tree_(comp, alloc) {}
+    explicit map(const Compare &comp, const Allocator &alloc = Allocator()) : tree_(comp, alloc) {}
 
-    explicit map(const Allocator& alloc) : tree_(Compare(), alloc) {}
+    explicit map(const Allocator &alloc) : tree_(Compare(), alloc) {}
 
     template <class InputIt>
-    map(InputIt first, InputIt last, const Compare& comp = Compare(),
-        const Allocator& alloc = Allocator())
-        : tree_(comp, alloc) {
-        for (; first != last; ++first) {
+    map(InputIt first,
+        InputIt last,
+        const Compare &comp = Compare(),
+        const Allocator &alloc = Allocator())
+        : tree_(comp, alloc)
+    {
+        for (; first != last; ++first)
+        {
             insert(*first);
         }
     }
 
-    map(const map& other) : tree_(other.tree_) {}
+    map(const map &other) : tree_(other.tree_) {}
 
-    map(map&& other) noexcept : tree_(move(other.tree_)) {}
+    map(map &&other) noexcept : tree_(move(other.tree_)) {}
 
-    map(initializer_list<value_type> init, const Compare& comp = Compare(),
-        const Allocator& alloc = Allocator())
-        : tree_(comp, alloc) {
-        for (const auto& v : init) {
+    map(initializer_list<value_type> init,
+        const Compare &comp = Compare(),
+        const Allocator &alloc = Allocator())
+        : tree_(comp, alloc)
+    {
+        for (const auto &v : init)
+        {
             insert(v);
         }
     }
 
     ~map() = default;
 
-    map& operator=(const map& other) {
+    map &operator=(const map &other)
+    {
         tree_ = other.tree_;
         return *this;
     }
 
-    map& operator=(map&& other) noexcept {
+    map &operator=(map &&other) noexcept
+    {
         tree_ = move(other.tree_);
         return *this;
     }
 
-    map& operator=(initializer_list<value_type> init) {
+    map &operator=(initializer_list<value_type> init)
+    {
         clear();
-        for (const auto& v : init) {
+        for (const auto &v : init)
+        {
             insert(v);
         }
         return *this;
     }
 
-    allocator_type get_allocator() const { return tree_.get_allocator(); }
+    allocator_type get_allocator() const
+    {
+        return tree_.get_allocator();
+    }
 
     /* Element access */
-    T& at(const Key& key) {
+    T &at(const Key &key)
+    {
         auto *node = tree_.find(key);
         /* Note: Would throw out_of_range in standard library */
         return node->data.second;
     }
 
-    const T& at(const Key& key) const {
+    const T &at(const Key &key) const
+    {
         auto *node = tree_.find(key);
         return node->data.second;
     }
 
-    T& operator[](const Key& key) {
+    T &operator[](const Key &key)
+    {
         auto result = tree_.insert(value_type(key, T()));
         return result.first->data.second;
     }
 
-    T& operator[](Key&& key) {
+    T &operator[](Key &&key)
+    {
         auto result = tree_.insert(value_type(move(key), T()));
         return result.first->data.second;
     }
 
     /* Iterators */
-    iterator begin() { return iterator(tree_.begin_node(), &tree_); }
-    const_iterator begin() const { return const_iterator(tree_.begin_node(), &tree_); }
-    const_iterator cbegin() const { return const_iterator(tree_.begin_node(), &tree_); }
+    iterator begin()
+    {
+        return iterator(tree_.begin_node(), &tree_);
+    }
 
-    iterator end() { return iterator(tree_.end_node(), &tree_); }
-    const_iterator end() const { return const_iterator(tree_.end_node(), &tree_); }
-    const_iterator cend() const { return const_iterator(tree_.end_node(), &tree_); }
+    const_iterator begin() const
+    {
+        return const_iterator(tree_.begin_node(), &tree_);
+    }
 
-    reverse_iterator rbegin() { return reverse_iterator(end()); }
-    const_reverse_iterator rbegin() const { return const_reverse_iterator(end()); }
-    const_reverse_iterator crbegin() const { return const_reverse_iterator(cend()); }
+    const_iterator cbegin() const
+    {
+        return const_iterator(tree_.begin_node(), &tree_);
+    }
 
-    reverse_iterator rend() { return reverse_iterator(begin()); }
-    const_reverse_iterator rend() const { return const_reverse_iterator(begin()); }
-    const_reverse_iterator crend() const { return const_reverse_iterator(cbegin()); }
+    iterator end()
+    {
+        return iterator(tree_.end_node(), &tree_);
+    }
+
+    const_iterator end() const
+    {
+        return const_iterator(tree_.end_node(), &tree_);
+    }
+
+    const_iterator cend() const
+    {
+        return const_iterator(tree_.end_node(), &tree_);
+    }
+
+    reverse_iterator rbegin()
+    {
+        return reverse_iterator(end());
+    }
+
+    const_reverse_iterator rbegin() const
+    {
+        return const_reverse_iterator(end());
+    }
+
+    const_reverse_iterator crbegin() const
+    {
+        return const_reverse_iterator(cend());
+    }
+
+    reverse_iterator rend()
+    {
+        return reverse_iterator(begin());
+    }
+
+    const_reverse_iterator rend() const
+    {
+        return const_reverse_iterator(begin());
+    }
+
+    const_reverse_iterator crend() const
+    {
+        return const_reverse_iterator(cbegin());
+    }
 
     /* Capacity */
-    bool empty() const { return tree_.empty(); }
-    size_type size() const { return tree_.size(); }
-    size_type max_size() const { return static_cast<size_type>(-1) / sizeof(node_type); }
+    bool empty() const
+    {
+        return tree_.empty();
+    }
+
+    size_type size() const
+    {
+        return tree_.size();
+    }
+
+    size_type max_size() const
+    {
+        return static_cast<size_type>(-1) / sizeof(node_type);
+    }
 
     /* Modifiers */
-    void clear() { tree_.clear(); }
+    void clear()
+    {
+        tree_.clear();
+    }
 
-    pair<iterator, bool> insert(const value_type& value) {
+    pair<iterator, bool> insert(const value_type &value)
+    {
         auto result = tree_.insert(value);
         return {iterator(result.first, &tree_), result.second};
     }
 
-    pair<iterator, bool> insert(value_type&& value) {
+    pair<iterator, bool> insert(value_type &&value)
+    {
         auto result = tree_.insert(move(value));
         return {iterator(result.first, &tree_), result.second};
     }
 
-    template <class P>
-    pair<iterator, bool> insert(P&& value) {
+    template <class P> pair<iterator, bool> insert(P &&value)
+    {
         return insert(value_type(forward<P>(value)));
     }
 
-    iterator insert(const_iterator hint, const value_type& value) {
+    iterator insert(const_iterator hint, const value_type &value)
+    {
         (void)hint; /* Hint not used in this implementation */
         return insert(value).first;
     }
 
-    template <class InputIt>
-    void insert(InputIt first, InputIt last) {
-        for (; first != last; ++first) {
+    template <class InputIt> void insert(InputIt first, InputIt last)
+    {
+        for (; first != last; ++first)
+        {
             insert(*first);
         }
     }
 
-    void insert(initializer_list<value_type> ilist) {
-        for (const auto& v : ilist) {
+    void insert(initializer_list<value_type> ilist)
+    {
+        for (const auto &v : ilist)
+        {
             insert(v);
         }
     }
 
-    template <class... Args>
-    pair<iterator, bool> emplace(Args&&... args) {
+    template <class... Args> pair<iterator, bool> emplace(Args &&...args)
+    {
         auto result = tree_.emplace(forward<Args>(args)...);
         return {iterator(result.first, &tree_), result.second};
     }
 
-    template <class... Args>
-    iterator emplace_hint(const_iterator hint, Args&&... args) {
+    template <class... Args> iterator emplace_hint(const_iterator hint, Args &&...args)
+    {
         (void)hint;
         return emplace(forward<Args>(args)...).first;
     }
 
-    template <class... Args>
-    pair<iterator, bool> try_emplace(const Key& key, Args&&... args) {
+    template <class... Args> pair<iterator, bool> try_emplace(const Key &key, Args &&...args)
+    {
         auto *node = tree_.find(key);
-        if (node != tree_.nil_node()) {
+        if (node != tree_.nil_node())
+        {
             return {iterator(node, &tree_), false};
         }
-        return emplace(piecewise_construct,
-                       forward_as_tuple(key),
-                       forward_as_tuple(forward<Args>(args)...));
+        return emplace(
+            piecewise_construct, forward_as_tuple(key), forward_as_tuple(forward<Args>(args)...));
     }
 
-    template <class... Args>
-    pair<iterator, bool> try_emplace(Key&& key, Args&&... args) {
+    template <class... Args> pair<iterator, bool> try_emplace(Key &&key, Args &&...args)
+    {
         auto *node = tree_.find(key);
-        if (node != tree_.nil_node()) {
+        if (node != tree_.nil_node())
+        {
             return {iterator(node, &tree_), false};
         }
         return emplace(piecewise_construct,
@@ -827,136 +1106,167 @@ public:
                        forward_as_tuple(forward<Args>(args)...));
     }
 
-    iterator erase(const_iterator pos) {
-        auto *node = const_cast<node_type*>(pos.node_);
+    iterator erase(const_iterator pos)
+    {
+        auto *node = const_cast<node_type *>(pos.node_);
         auto next = iterator(tree_.successor(node), &tree_);
         tree_.erase(node);
         return next;
     }
 
-    iterator erase(const_iterator first, const_iterator last) {
-        while (first != last) {
+    iterator erase(const_iterator first, const_iterator last)
+    {
+        while (first != last)
+        {
             first = erase(first);
         }
-        return iterator(const_cast<node_type*>(first.node_), &tree_);
+        return iterator(const_cast<node_type *>(first.node_), &tree_);
     }
 
-    size_type erase(const Key& key) {
+    size_type erase(const Key &key)
+    {
         auto *node = tree_.find(key);
-        if (node == tree_.nil_node()) {
+        if (node == tree_.nil_node())
+        {
             return 0;
         }
         tree_.erase(node);
         return 1;
     }
 
-    void swap(map& other) noexcept {
+    void swap(map &other) noexcept
+    {
         tree_.swap(other.tree_);
     }
 
     /* Lookup */
-    size_type count(const Key& key) const {
+    size_type count(const Key &key) const
+    {
         return tree_.find(key) != tree_.nil_node() ? 1 : 0;
     }
 
-    iterator find(const Key& key) {
+    iterator find(const Key &key)
+    {
         return iterator(tree_.find(key), &tree_);
     }
 
-    const_iterator find(const Key& key) const {
+    const_iterator find(const Key &key) const
+    {
         return const_iterator(tree_.find(key), &tree_);
     }
 
-    bool contains(const Key& key) const {
+    bool contains(const Key &key) const
+    {
         return tree_.find(key) != tree_.nil_node();
     }
 
-    pair<iterator, iterator> equal_range(const Key& key) {
+    pair<iterator, iterator> equal_range(const Key &key)
+    {
         return {lower_bound(key), upper_bound(key)};
     }
 
-    pair<const_iterator, const_iterator> equal_range(const Key& key) const {
+    pair<const_iterator, const_iterator> equal_range(const Key &key) const
+    {
         return {lower_bound(key), upper_bound(key)};
     }
 
-    iterator lower_bound(const Key& key) {
+    iterator lower_bound(const Key &key)
+    {
         return iterator(tree_.lower_bound(key), &tree_);
     }
 
-    const_iterator lower_bound(const Key& key) const {
+    const_iterator lower_bound(const Key &key) const
+    {
         return const_iterator(tree_.lower_bound(key), &tree_);
     }
 
-    iterator upper_bound(const Key& key) {
+    iterator upper_bound(const Key &key)
+    {
         return iterator(tree_.upper_bound(key), &tree_);
     }
 
-    const_iterator upper_bound(const Key& key) const {
+    const_iterator upper_bound(const Key &key) const
+    {
         return const_iterator(tree_.upper_bound(key), &tree_);
     }
 
     /* Observers */
-    key_compare key_comp() const { return tree_.key_comp(); }
-    value_compare value_comp() const { return value_compare(tree_.key_comp()); }
+    key_compare key_comp() const
+    {
+        return tree_.key_comp();
+    }
+
+    value_compare value_comp() const
+    {
+        return value_compare(tree_.key_comp());
+    }
 };
 
 /* Non-member functions */
 template <class Key, class T, class Compare, class Alloc>
-bool operator==(const map<Key, T, Compare, Alloc>& lhs,
-                const map<Key, T, Compare, Alloc>& rhs) {
-    if (lhs.size() != rhs.size()) return false;
+bool operator==(const map<Key, T, Compare, Alloc> &lhs, const map<Key, T, Compare, Alloc> &rhs)
+{
+    if (lhs.size() != rhs.size())
+        return false;
     auto it1 = lhs.begin();
     auto it2 = rhs.begin();
-    for (; it1 != lhs.end(); ++it1, ++it2) {
-        if (*it1 != *it2) return false;
+    for (; it1 != lhs.end(); ++it1, ++it2)
+    {
+        if (*it1 != *it2)
+            return false;
     }
     return true;
 }
 
 template <class Key, class T, class Compare, class Alloc>
-bool operator!=(const map<Key, T, Compare, Alloc>& lhs,
-                const map<Key, T, Compare, Alloc>& rhs) {
+bool operator!=(const map<Key, T, Compare, Alloc> &lhs, const map<Key, T, Compare, Alloc> &rhs)
+{
     return !(lhs == rhs);
 }
 
 template <class Key, class T, class Compare, class Alloc>
-bool operator<(const map<Key, T, Compare, Alloc>& lhs,
-               const map<Key, T, Compare, Alloc>& rhs) {
+bool operator<(const map<Key, T, Compare, Alloc> &lhs, const map<Key, T, Compare, Alloc> &rhs)
+{
     return lexicographical_compare(lhs.begin(), lhs.end(), rhs.begin(), rhs.end());
 }
 
 template <class Key, class T, class Compare, class Alloc>
-bool operator<=(const map<Key, T, Compare, Alloc>& lhs,
-                const map<Key, T, Compare, Alloc>& rhs) {
+bool operator<=(const map<Key, T, Compare, Alloc> &lhs, const map<Key, T, Compare, Alloc> &rhs)
+{
     return !(rhs < lhs);
 }
 
 template <class Key, class T, class Compare, class Alloc>
-bool operator>(const map<Key, T, Compare, Alloc>& lhs,
-               const map<Key, T, Compare, Alloc>& rhs) {
+bool operator>(const map<Key, T, Compare, Alloc> &lhs, const map<Key, T, Compare, Alloc> &rhs)
+{
     return rhs < lhs;
 }
 
 template <class Key, class T, class Compare, class Alloc>
-bool operator>=(const map<Key, T, Compare, Alloc>& lhs,
-                const map<Key, T, Compare, Alloc>& rhs) {
+bool operator>=(const map<Key, T, Compare, Alloc> &lhs, const map<Key, T, Compare, Alloc> &rhs)
+{
     return !(lhs < rhs);
 }
 
 template <class Key, class T, class Compare, class Alloc>
-void swap(map<Key, T, Compare, Alloc>& lhs, map<Key, T, Compare, Alloc>& rhs) noexcept {
+void swap(map<Key, T, Compare, Alloc> &lhs, map<Key, T, Compare, Alloc> &rhs) noexcept
+{
     lhs.swap(rhs);
 }
 
 /* erase_if (C++20) */
 template <class Key, class T, class Compare, class Alloc, class Pred>
-typename map<Key, T, Compare, Alloc>::size_type
-erase_if(map<Key, T, Compare, Alloc>& c, Pred pred) {
+typename map<Key, T, Compare, Alloc>::size_type erase_if(map<Key, T, Compare, Alloc> &c, Pred pred)
+{
     auto old_size = c.size();
-    for (auto it = c.begin(); it != c.end(); ) {
-        if (pred(*it)) {
+    for (auto it = c.begin(); it != c.end();)
+    {
+        if (pred(*it))
+        {
             it = c.erase(it);
-        } else {
+        }
+        else
+        {
             ++it;
         }
     }
@@ -964,13 +1274,15 @@ erase_if(map<Key, T, Compare, Alloc>& c, Pred pred) {
 }
 
 /* multimap - allows duplicate keys */
-template <class Key, class T,
+template <class Key,
+          class T,
           class Compare = less<Key>,
           class Allocator = allocator<pair<const Key, T>>>
-class multimap {
+class multimap
+{
     /* Similar to map but allows duplicate keys */
     /* Simplified implementation - would need modifications to rb_tree */
-public:
+  public:
     using key_type = Key;
     using mapped_type = T;
     using value_type = pair<const Key, T>;
@@ -982,15 +1294,28 @@ public:
     /* Full implementation would require modifications to the tree */
 
     multimap() = default;
-    explicit multimap(const Compare& comp, const Allocator& alloc = Allocator()) {}
 
-    size_type size() const { return 0; }
-    bool empty() const { return true; }
+    explicit multimap(const Compare &comp, const Allocator &alloc = Allocator()) {}
+
+    size_type size() const
+    {
+        return 0;
+    }
+
+    bool empty() const
+    {
+        return true;
+    }
+
     void clear() {}
 };
 
 /* piecewise_construct for emplace */
-struct piecewise_construct_t { explicit piecewise_construct_t() = default; };
+struct piecewise_construct_t
+{
+    explicit piecewise_construct_t() = default;
+};
+
 inline constexpr piecewise_construct_t piecewise_construct{};
 
 } // namespace std

@@ -69,11 +69,11 @@ constexpr u32 NO_PARENT = 0xFFFFFFFFU;
  */
 struct Entry
 {
-    void *object;      // Pointer to kernel object
-    u32 rights;        // Rights bitmap
-    u32 parent_index;  // Index of parent capability (NO_PARENT if root)
-    Kind kind;         // Object type
-    u8 generation;     // For ABA detection
+    void *object;     // Pointer to kernel object
+    u32 rights;       // Rights bitmap
+    u32 parent_index; // Index of parent capability (NO_PARENT if root)
+    Kind kind;        // Object type
+    u8 generation;    // For ABA detection
     u8 _pad;
 };
 

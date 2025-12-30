@@ -22,16 +22,16 @@ int sched_get_priority_max(int policy)
 {
     switch (policy)
     {
-    case SCHED_FIFO:
-    case SCHED_RR:
-        return 99;
-    case SCHED_OTHER:
-    case SCHED_BATCH:
-    case SCHED_IDLE:
-        return 0;
-    default:
-        errno = EINVAL;
-        return -1;
+        case SCHED_FIFO:
+        case SCHED_RR:
+            return 99;
+        case SCHED_OTHER:
+        case SCHED_BATCH:
+        case SCHED_IDLE:
+            return 0;
+        default:
+            errno = EINVAL;
+            return -1;
     }
 }
 
@@ -42,16 +42,16 @@ int sched_get_priority_min(int policy)
 {
     switch (policy)
     {
-    case SCHED_FIFO:
-    case SCHED_RR:
-        return 1;
-    case SCHED_OTHER:
-    case SCHED_BATCH:
-    case SCHED_IDLE:
-        return 0;
-    default:
-        errno = EINVAL;
-        return -1;
+        case SCHED_FIFO:
+        case SCHED_RR:
+            return 1;
+        case SCHED_OTHER:
+        case SCHED_BATCH:
+        case SCHED_IDLE:
+            return 0;
+        default:
+            errno = EINVAL;
+            return -1;
     }
 }
 
@@ -68,8 +68,7 @@ int sched_getscheduler(pid_t pid)
 /*
  * sched_setscheduler - Set scheduling policy
  */
-int sched_setscheduler(pid_t pid, int policy,
-                       const struct sched_param *param)
+int sched_setscheduler(pid_t pid, int policy, const struct sched_param *param)
 {
     (void)pid;
     (void)policy;

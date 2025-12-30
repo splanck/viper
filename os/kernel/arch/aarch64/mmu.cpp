@@ -318,7 +318,8 @@ void init()
     // Enable TTBR1 if we successfully created the higher-half tables
     u64 tcr_val = tcr::T0SZ_48BIT | tcr::T1SZ_48BIT | tcr::TG0_4KB | tcr::TG1_4KB | tcr::SH0_INNER |
                   tcr::SH1_INNER | tcr::ORGN0_WBWA | tcr::IRGN0_WBWA | tcr::ORGN1_WBWA |
-                  tcr::IRGN1_WBWA | tcr::EPD0_ENABLE | tcr::IPS_40BIT | tcr::A1_TTBR0 | tcr::AS_8BIT;
+                  tcr::IRGN1_WBWA | tcr::EPD0_ENABLE | tcr::IPS_40BIT | tcr::A1_TTBR0 |
+                  tcr::AS_8BIT;
 
     // Keep TTBR1 disabled for now - the kernel still runs at physical addresses
     // The TTBR1 tables are created and ready for when we relocate the kernel

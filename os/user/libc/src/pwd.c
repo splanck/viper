@@ -4,8 +4,8 @@
  */
 
 #include "../include/pwd.h"
-#include "../include/string.h"
 #include "../include/errno.h"
+#include "../include/string.h"
 
 /* Static password entry for non-reentrant functions */
 static struct passwd static_pwd;
@@ -24,8 +24,7 @@ static int pwd_index = 0;
 /*
  * fill_passwd - Fill a passwd structure with default values
  */
-static int fill_passwd(struct passwd *pwd, char *buf, size_t buflen,
-                       uid_t uid, const char *name)
+static int fill_passwd(struct passwd *pwd, char *buf, size_t buflen, uid_t uid, const char *name)
 {
     /* Calculate required buffer size */
     size_t name_len = strlen(name) + 1;
@@ -63,7 +62,7 @@ static int fill_passwd(struct passwd *pwd, char *buf, size_t buflen,
     strcpy(p, default_shell);
 
     pwd->pw_uid = uid;
-    pwd->pw_gid = uid;  /* Same as uid for simplicity */
+    pwd->pw_gid = uid; /* Same as uid for simplicity */
 
     return 0;
 }
@@ -101,8 +100,8 @@ struct passwd *getpwuid(uid_t uid)
 /*
  * getpwnam_r - Get password entry by name (reentrant)
  */
-int getpwnam_r(const char *name, struct passwd *pwd,
-               char *buf, size_t buflen, struct passwd **result)
+int getpwnam_r(
+    const char *name, struct passwd *pwd, char *buf, size_t buflen, struct passwd **result)
 {
     if (!name || !pwd || !buf || !result)
     {
@@ -138,8 +137,7 @@ int getpwnam_r(const char *name, struct passwd *pwd,
 /*
  * getpwuid_r - Get password entry by user ID (reentrant)
  */
-int getpwuid_r(uid_t uid, struct passwd *pwd,
-               char *buf, size_t buflen, struct passwd **result)
+int getpwuid_r(uid_t uid, struct passwd *pwd, char *buf, size_t buflen, struct passwd **result)
 {
     if (!pwd || !buf || !result)
     {
@@ -198,27 +196,25 @@ struct passwd *getpwent(void)
 
     switch (pwd_index)
     {
-    case 0:
-        /* Return root entry */
-        if (fill_passwd(&static_pwd, static_buf, sizeof(static_buf),
-                        0, "root") == 0)
-        {
-            result = &static_pwd;
-        }
-        break;
+        case 0:
+            /* Return root entry */
+            if (fill_passwd(&static_pwd, static_buf, sizeof(static_buf), 0, "root") == 0)
+            {
+                result = &static_pwd;
+            }
+            break;
 
-    case 1:
-        /* Return viper entry */
-        if (fill_passwd(&static_pwd, static_buf, sizeof(static_buf),
-                        1000, "viper") == 0)
-        {
-            result = &static_pwd;
-        }
-        break;
+        case 1:
+            /* Return viper entry */
+            if (fill_passwd(&static_pwd, static_buf, sizeof(static_buf), 1000, "viper") == 0)
+            {
+                result = &static_pwd;
+            }
+            break;
 
-    default:
-        /* No more entries */
-        return NULL;
+        default:
+            /* No more entries */
+            return NULL;
     }
 
     if (result)

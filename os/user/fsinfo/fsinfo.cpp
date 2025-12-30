@@ -11,12 +11,12 @@
  *   fsinfo          - Show information about the root directory
  */
 
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <errno.h>
 #include "../syscall.hpp"
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
 
 // Format file size with appropriate units
 static void format_size(u64 bytes, char *buf, size_t bufsize)

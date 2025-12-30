@@ -12,11 +12,11 @@
  * - Handles socket, DNS, and diagnostic requests
  */
 
+#include "../../libvirtio/include/device.hpp"
+#include "../../libvirtio/include/net.hpp"
+#include "../../syscall.hpp"
 #include "net_protocol.hpp"
 #include "netstack.hpp"
-#include "../../libvirtio/include/net.hpp"
-#include "../../libvirtio/include/device.hpp"
-#include "../../syscall.hpp"
 
 // Debug output helper
 static void debug_print(const char *msg)
@@ -100,7 +100,7 @@ static bool find_net_device(u64 *mmio_phys, u32 *irq)
         volatile u32 *mmio = reinterpret_cast<volatile u32 *>(virt);
 
         // Check magic
-        u32 magic = mmio[0]; // MAGIC at offset 0
+        u32 magic = mmio[0];     // MAGIC at offset 0
         if (magic != 0x74726976) // "virt"
         {
             continue;
@@ -258,7 +258,9 @@ static void handle_socket_accept(const netproto::SocketAcceptRequest *req, i32 r
 /**
  * @brief Handle NET_SOCKET_SEND request.
  */
-static void handle_socket_send(const netproto::SocketSendRequest *req, i32 reply_channel, u32 shm_handle)
+static void handle_socket_send(const netproto::SocketSendRequest *req,
+                               i32 reply_channel,
+                               u32 shm_handle)
 {
     netproto::SocketSendReply reply;
     reply.type = netproto::NET_SOCKET_SEND_REPLY;
@@ -520,7 +522,8 @@ static void handle_request(const u8 *msg, usize len, i32 reply_channel, u32 shm_
             if (len >= sizeof(netproto::SocketSendRequest))
             {
                 handle_socket_send(reinterpret_cast<const netproto::SocketSendRequest *>(msg),
-                                   reply_channel, shm_handle);
+                                   reply_channel,
+                                   shm_handle);
             }
             break;
 
@@ -594,8 +597,8 @@ static void server_loop()
         u32 handles[4];
         u32 handle_count = 4;
 
-        i64 len = sys::channel_recv(g_service_channel, msg_buf, sizeof(msg_buf),
-                                     handles, &handle_count);
+        i64 len =
+            sys::channel_recv(g_service_channel, msg_buf, sizeof(msg_buf), handles, &handle_count);
         if (len < 0)
         {
             // Would block or error, yield and retry
@@ -658,7 +661,8 @@ extern "C" void _start()
     debug_print("[netd] MAC: ");
     for (int i = 0; i < 6; i++)
     {
-        if (i > 0) debug_print(":");
+        if (i > 0)
+            debug_print(":");
         debug_print_hex(mac[i] >> 4);
         char lo = "0123456789abcdef"[mac[i] & 0xF];
         char buf[2] = {lo, '\0'};

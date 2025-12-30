@@ -4,16 +4,16 @@
  */
 
 #include "../include/spawn.h"
+#include "../include/errno.h"
+#include "../include/fcntl.h"
 #include "../include/stdlib.h"
 #include "../include/string.h"
-#include "../include/errno.h"
 #include "../include/unistd.h"
-#include "../include/fcntl.h"
 
 /* Action types */
-#define SPAWN_ACTION_CLOSE  1
-#define SPAWN_ACTION_DUP2   2
-#define SPAWN_ACTION_OPEN   3
+#define SPAWN_ACTION_CLOSE 1
+#define SPAWN_ACTION_DUP2 2
+#define SPAWN_ACTION_OPEN 3
 
 /* ============================================================
  * Spawn attributes functions
@@ -107,8 +107,7 @@ int posix_spawnattr_setpgroup(posix_spawnattr_t *attr, pid_t pgroup)
 /*
  * posix_spawnattr_getsigdefault - Get default signals
  */
-int posix_spawnattr_getsigdefault(const posix_spawnattr_t *attr,
-                                   sigset_t *sigdefault)
+int posix_spawnattr_getsigdefault(const posix_spawnattr_t *attr, sigset_t *sigdefault)
 {
     if (!attr || !sigdefault)
     {
@@ -121,8 +120,7 @@ int posix_spawnattr_getsigdefault(const posix_spawnattr_t *attr,
 /*
  * posix_spawnattr_setsigdefault - Set default signals
  */
-int posix_spawnattr_setsigdefault(posix_spawnattr_t *attr,
-                                   const sigset_t *sigdefault)
+int posix_spawnattr_setsigdefault(posix_spawnattr_t *attr, const sigset_t *sigdefault)
 {
     if (!attr || !sigdefault)
     {
@@ -135,8 +133,7 @@ int posix_spawnattr_setsigdefault(posix_spawnattr_t *attr,
 /*
  * posix_spawnattr_getsigmask - Get signal mask
  */
-int posix_spawnattr_getsigmask(const posix_spawnattr_t *attr,
-                                sigset_t *sigmask)
+int posix_spawnattr_getsigmask(const posix_spawnattr_t *attr, sigset_t *sigmask)
 {
     if (!attr || !sigmask)
     {
@@ -149,8 +146,7 @@ int posix_spawnattr_getsigmask(const posix_spawnattr_t *attr,
 /*
  * posix_spawnattr_setsigmask - Set signal mask
  */
-int posix_spawnattr_setsigmask(posix_spawnattr_t *attr,
-                                const sigset_t *sigmask)
+int posix_spawnattr_setsigmask(posix_spawnattr_t *attr, const sigset_t *sigmask)
 {
     if (!attr || !sigmask)
     {
@@ -189,8 +185,7 @@ int posix_spawnattr_setschedpolicy(posix_spawnattr_t *attr, int policy)
 /*
  * posix_spawnattr_getschedparam - Get scheduling parameters
  */
-int posix_spawnattr_getschedparam(const posix_spawnattr_t *attr,
-                                   struct sched_param *param)
+int posix_spawnattr_getschedparam(const posix_spawnattr_t *attr, struct sched_param *param)
 {
     if (!attr || !param)
     {
@@ -203,8 +198,7 @@ int posix_spawnattr_getschedparam(const posix_spawnattr_t *attr,
 /*
  * posix_spawnattr_setschedparam - Set scheduling parameters
  */
-int posix_spawnattr_setschedparam(posix_spawnattr_t *attr,
-                                   const struct sched_param *param)
+int posix_spawnattr_setschedparam(posix_spawnattr_t *attr, const struct sched_param *param)
 {
     if (!attr || !param)
     {
@@ -285,8 +279,7 @@ static int add_action(posix_spawn_file_actions_t *file_actions)
 /*
  * posix_spawn_file_actions_addclose - Add close action
  */
-int posix_spawn_file_actions_addclose(posix_spawn_file_actions_t *file_actions,
-                                       int fd)
+int posix_spawn_file_actions_addclose(posix_spawn_file_actions_t *file_actions, int fd)
 {
     if (!file_actions || fd < 0)
     {
@@ -309,8 +302,7 @@ int posix_spawn_file_actions_addclose(posix_spawn_file_actions_t *file_actions,
 /*
  * posix_spawn_file_actions_adddup2 - Add dup2 action
  */
-int posix_spawn_file_actions_adddup2(posix_spawn_file_actions_t *file_actions,
-                                      int fd, int newfd)
+int posix_spawn_file_actions_adddup2(posix_spawn_file_actions_t *file_actions, int fd, int newfd)
 {
     if (!file_actions || fd < 0 || newfd < 0)
     {
@@ -334,9 +326,8 @@ int posix_spawn_file_actions_adddup2(posix_spawn_file_actions_t *file_actions,
 /*
  * posix_spawn_file_actions_addopen - Add open action
  */
-int posix_spawn_file_actions_addopen(posix_spawn_file_actions_t *file_actions,
-                                      int fd, const char *path,
-                                      int oflag, mode_t mode)
+int posix_spawn_file_actions_addopen(
+    posix_spawn_file_actions_t *file_actions, int fd, const char *path, int oflag, mode_t mode)
 {
     if (!file_actions || fd < 0 || !path)
     {
@@ -368,8 +359,7 @@ int posix_spawn_file_actions_addopen(posix_spawn_file_actions_t *file_actions,
 /*
  * posix_spawn_file_actions_addchdir_np - Add chdir action (extension)
  */
-int posix_spawn_file_actions_addchdir_np(posix_spawn_file_actions_t *file_actions,
-                                          const char *path)
+int posix_spawn_file_actions_addchdir_np(posix_spawn_file_actions_t *file_actions, const char *path)
 {
     (void)file_actions;
     (void)path;
@@ -380,8 +370,7 @@ int posix_spawn_file_actions_addchdir_np(posix_spawn_file_actions_t *file_action
 /*
  * posix_spawn_file_actions_addfchdir_np - Add fchdir action (extension)
  */
-int posix_spawn_file_actions_addfchdir_np(posix_spawn_file_actions_t *file_actions,
-                                           int fd)
+int posix_spawn_file_actions_addfchdir_np(posix_spawn_file_actions_t *file_actions, int fd)
 {
     (void)file_actions;
     (void)fd;
@@ -398,10 +387,12 @@ int posix_spawn_file_actions_addfchdir_np(posix_spawn_file_actions_t *file_actio
  *
  * ViperOS stub - returns ENOSYS since exec() is not fully implemented.
  */
-int posix_spawn(pid_t *pid, const char *path,
+int posix_spawn(pid_t *pid,
+                const char *path,
                 const posix_spawn_file_actions_t *file_actions,
                 const posix_spawnattr_t *attrp,
-                char *const argv[], char *const envp[])
+                char *const argv[],
+                char *const envp[])
 {
     (void)pid;
     (void)path;
@@ -417,10 +408,12 @@ int posix_spawn(pid_t *pid, const char *path,
 /*
  * posix_spawnp - Spawn a process using PATH search
  */
-int posix_spawnp(pid_t *pid, const char *file,
+int posix_spawnp(pid_t *pid,
+                 const char *file,
                  const posix_spawn_file_actions_t *file_actions,
                  const posix_spawnattr_t *attrp,
-                 char *const argv[], char *const envp[])
+                 char *const argv[],
+                 char *const envp[])
 {
     (void)pid;
     (void)file;

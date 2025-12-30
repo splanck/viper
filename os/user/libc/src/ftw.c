@@ -5,9 +5,9 @@
 
 #include "../include/ftw.h"
 #include "../include/dirent.h"
+#include "../include/errno.h"
 #include "../include/stdlib.h"
 #include "../include/string.h"
-#include "../include/errno.h"
 #include "../include/unistd.h"
 
 /* Maximum path length */
@@ -18,7 +18,8 @@
  */
 static int ftw_walk(const char *path,
                     int (*fn)(const char *, const struct stat *, int),
-                    int nopenfd, int depth)
+                    int nopenfd,
+                    int depth)
 {
     struct stat sb;
     int type;
@@ -77,8 +78,7 @@ static int ftw_walk(const char *path,
         /* Skip . and .. */
         if (entry->d_name[0] == '.')
         {
-            if (entry->d_name[1] == '\0' ||
-                (entry->d_name[1] == '.' && entry->d_name[2] == '\0'))
+            if (entry->d_name[1] == '\0' || (entry->d_name[1] == '.' && entry->d_name[2] == '\0'))
             {
                 continue;
             }
@@ -134,9 +134,11 @@ int ftw(const char *path,
  * nftw_walk - Internal recursive walker for nftw
  */
 static int nftw_walk(const char *path,
-                     int (*fn)(const char *, const struct stat *,
-                               int, struct FTW *),
-                     int nopenfd, int flags, int depth, int base)
+                     int (*fn)(const char *, const struct stat *, int, struct FTW *),
+                     int nopenfd,
+                     int flags,
+                     int depth,
+                     int base)
 {
     struct stat sb;
     int type;
@@ -234,8 +236,7 @@ static int nftw_walk(const char *path,
         /* Skip . and .. */
         if (entry->d_name[0] == '.')
         {
-            if (entry->d_name[1] == '\0' ||
-                (entry->d_name[1] == '.' && entry->d_name[2] == '\0'))
+            if (entry->d_name[1] == '\0' || (entry->d_name[1] == '.' && entry->d_name[2] == '\0'))
             {
                 continue;
             }
@@ -303,9 +304,9 @@ static int nftw_walk(const char *path,
  * nftw - Extended file tree walk
  */
 int nftw(const char *path,
-         int (*fn)(const char *fpath, const struct stat *sb,
-                   int typeflag, struct FTW *ftwbuf),
-         int nopenfd, int flags)
+         int (*fn)(const char *fpath, const struct stat *sb, int typeflag, struct FTW *ftwbuf),
+         int nopenfd,
+         int flags)
 {
     if (!path || !fn)
     {

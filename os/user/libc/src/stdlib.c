@@ -140,7 +140,8 @@ int atexit(void (*function)(void))
 void exit(int status)
 {
     /* Call atexit handlers in reverse order of registration */
-    while (atexit_count > 0) {
+    while (atexit_count > 0)
+    {
         atexit_count--;
         if (atexit_handlers[atexit_count])
             atexit_handlers[atexit_count]();
@@ -444,7 +445,10 @@ void qsort(void *base, size_t nmemb, size_t size, int (*compar)(const void *, co
     }
 }
 
-void *bsearch(const void *key, const void *base, size_t nmemb, size_t size,
+void *bsearch(const void *key,
+              const void *base,
+              size_t nmemb,
+              size_t size,
               int (*compar)(const void *, const void *))
 {
     const unsigned char *arr = (const unsigned char *)base;
@@ -505,7 +509,8 @@ char **environ = environ_ptrs;
 
 static void init_environ(void)
 {
-    if (!env_initialized) {
+    if (!env_initialized)
+    {
         for (int i = 0; i <= ENV_MAX; i++)
             environ_ptrs[i] = NULL;
         env_initialized = 1;
@@ -518,10 +523,11 @@ static int env_find(const char *name)
     while (name[len] && name[len] != '=')
         len++;
 
-    for (int i = 0; i < env_count; i++) {
-        if (environ_ptrs[i] &&
-            strncmp(environ_ptrs[i], name, len) == 0 &&
-            environ_ptrs[i][len] == '=') {
+    for (int i = 0; i < env_count; i++)
+    {
+        if (environ_ptrs[i] && strncmp(environ_ptrs[i], name, len) == 0 &&
+            environ_ptrs[i][len] == '=')
+        {
             return i;
         }
     }
@@ -556,10 +562,13 @@ int setenv(const char *name, const char *value, int overwrite)
     init_environ();
 
     int idx = env_find(name);
-    if (idx >= 0) {
+    if (idx >= 0)
+    {
         if (!overwrite)
             return 0;
-    } else {
+    }
+    else
+    {
         if (env_count >= ENV_MAX)
             return -1;
         idx = env_count++;
@@ -592,10 +601,11 @@ int unsetenv(const char *name)
 
     int idx = env_find(name);
     if (idx < 0)
-        return 0;  /* Not found is not an error */
+        return 0; /* Not found is not an error */
 
     /* Shift remaining entries down */
-    for (int i = idx; i < env_count - 1; i++) {
+    for (int i = idx; i < env_count - 1; i++)
+    {
         memcpy(env_storage[i], env_storage[i + 1], ENV_ENTRY_MAX);
         environ_ptrs[i] = env_storage[i];
     }
@@ -660,15 +670,12 @@ double strtod(const char *nptr, char **endptr)
     }
 
     /* Handle special values */
-    if ((s[0] == 'i' || s[0] == 'I') &&
-        (s[1] == 'n' || s[1] == 'N') &&
+    if ((s[0] == 'i' || s[0] == 'I') && (s[1] == 'n' || s[1] == 'N') &&
         (s[2] == 'f' || s[2] == 'F'))
     {
         s += 3;
-        if ((s[0] == 'i' || s[0] == 'I') &&
-            (s[1] == 'n' || s[1] == 'N') &&
-            (s[2] == 'i' || s[2] == 'I') &&
-            (s[3] == 't' || s[3] == 'T') &&
+        if ((s[0] == 'i' || s[0] == 'I') && (s[1] == 'n' || s[1] == 'N') &&
+            (s[2] == 'i' || s[2] == 'I') && (s[3] == 't' || s[3] == 'T') &&
             (s[4] == 'y' || s[4] == 'Y'))
         {
             s += 5;
@@ -678,8 +685,7 @@ double strtod(const char *nptr, char **endptr)
         return sign > 0 ? __builtin_inf() : -__builtin_inf();
     }
 
-    if ((s[0] == 'n' || s[0] == 'N') &&
-        (s[1] == 'a' || s[1] == 'A') &&
+    if ((s[0] == 'n' || s[0] == 'N') && (s[1] == 'a' || s[1] == 'A') &&
         (s[2] == 'n' || s[2] == 'N'))
     {
         s += 3;
@@ -764,16 +770,19 @@ long double strtold(const char *nptr, char **endptr)
 {
     /* Parse as double - same precision we'll output */
     double result = strtod(nptr, endptr);
+
     /*
      * Avoid implicit double->long double conversion.
      * On AArch64 without compiler-rt, we simply store the double
      * value in the low 64 bits of the long double return register.
      * This is imprecise but avoids missing symbol errors.
      */
-    union {
+    union
+    {
         double d;
         long double ld;
     } u = {0};
+
     u.d = result;
     return u.ld;
 }

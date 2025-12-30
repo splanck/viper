@@ -190,7 +190,8 @@ bool InputDevice::init(u64 base_addr)
                 }
                 else
                 {
-                    status_event_ = reinterpret_cast<InputEvent *>(pmm::phys_to_virt(status_event_phys_));
+                    status_event_ =
+                        reinterpret_cast<InputEvent *>(pmm::phys_to_virt(status_event_phys_));
                     serial::puts("[virtio-input] Status queue initialized for LED control\n");
                 }
             }

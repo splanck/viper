@@ -12,9 +12,9 @@
  * - Handles file/directory operation requests
  */
 
+#include "../../syscall.hpp"
 #include "fs_protocol.hpp"
 #include "viperfs.hpp"
-#include "../../syscall.hpp"
 
 // Debug output helper
 static void debug_print(const char *msg)
@@ -142,8 +142,8 @@ static u64 resolve_path(const char *path, usize len)
 }
 
 // Get parent directory and basename from path
-static bool split_path(const char *path, usize len,
-                       u64 *parent_ino, const char **name, usize *name_len)
+static bool split_path(
+    const char *path, usize len, u64 *parent_ino, const char **name, usize *name_len)
 {
     // Find last slash
     usize last_slash = 0;
@@ -684,8 +684,8 @@ static void server_loop()
         u32 handles[4];
         u32 handle_count = 4;
 
-        i64 len = sys::channel_recv(g_service_channel, msg_buf, sizeof(msg_buf),
-                                     handles, &handle_count);
+        i64 len =
+            sys::channel_recv(g_service_channel, msg_buf, sizeof(msg_buf), handles, &handle_count);
         if (len < 0)
         {
             // Would block or error, yield and retry

@@ -145,12 +145,35 @@ class Device
     u64 read_config64(u32 offset);
 
     // Device info
-    u32 device_id() const { return device_id_; }
-    u64 phys_base() const { return phys_base_; }
-    u64 virt_base() const { return virt_base_; }
-    bool is_legacy() const { return version_ == 1; }
-    u32 version() const { return version_; }
-    u32 irq() const { return irq_; }
+    u32 device_id() const
+    {
+        return device_id_;
+    }
+
+    u64 phys_base() const
+    {
+        return phys_base_;
+    }
+
+    u64 virt_base() const
+    {
+        return virt_base_;
+    }
+
+    bool is_legacy() const
+    {
+        return version_ == 1;
+    }
+
+    u32 version() const
+    {
+        return version_;
+    }
+
+    u32 irq() const
+    {
+        return irq_;
+    }
 
     // Feature negotiation
     bool negotiate_features(u64 required);

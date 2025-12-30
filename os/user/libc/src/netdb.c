@@ -1,9 +1,9 @@
 #include "../include/netdb.h"
-#include "../include/errno.h"
-#include "../include/string.h"
-#include "../include/stdlib.h"
-#include "../include/stdio.h"
 #include "../include/arpa/inet.h"
+#include "../include/errno.h"
+#include "../include/stdio.h"
+#include "../include/stdlib.h"
+#include "../include/string.h"
 
 /* Syscall helpers */
 extern long __syscall2(long num, long arg0, long arg1);
@@ -17,25 +17,25 @@ int h_errno = 0;
 /* Static storage for returned structures */
 static struct hostent static_hostent;
 static char static_hostname[256];
-static char *static_alias_list[1] = { (void *)0 };
+static char *static_alias_list[1] = {(void *)0};
 static char *static_addr_list[2];
 static struct in_addr static_addr;
 
 /* Error messages for getaddrinfo */
 static const char *gai_errmsgs[] = {
-    "Success",                          /* 0 */
-    "Invalid flags",                    /* EAI_BADFLAGS */
-    "Name not known",                   /* EAI_NONAME */
-    "Try again later",                  /* EAI_AGAIN */
-    "Non-recoverable error",            /* EAI_FAIL */
-    "Unknown error 5",                  /* reserved */
-    "Address family not supported",     /* EAI_FAMILY */
-    "Socket type not supported",        /* EAI_SOCKTYPE */
-    "Service not known",                /* EAI_SERVICE */
-    "Unknown error 9",                  /* reserved */
-    "Memory allocation failure",        /* EAI_MEMORY */
-    "System error",                     /* EAI_SYSTEM */
-    "Buffer overflow",                  /* EAI_OVERFLOW */
+    "Success",                      /* 0 */
+    "Invalid flags",                /* EAI_BADFLAGS */
+    "Name not known",               /* EAI_NONAME */
+    "Try again later",              /* EAI_AGAIN */
+    "Non-recoverable error",        /* EAI_FAIL */
+    "Unknown error 5",              /* reserved */
+    "Address family not supported", /* EAI_FAMILY */
+    "Socket type not supported",    /* EAI_SOCKTYPE */
+    "Service not known",            /* EAI_SERVICE */
+    "Unknown error 9",              /* reserved */
+    "Memory allocation failure",    /* EAI_MEMORY */
+    "System error",                 /* EAI_SYSTEM */
+    "Buffer overflow",              /* EAI_OVERFLOW */
 };
 
 /*
@@ -123,13 +123,14 @@ void sethostent(int stayopen)
     (void)stayopen;
 }
 
-void endhostent(void)
-{
-}
+void endhostent(void) {}
 
-int gethostbyname_r(const char *name, struct hostent *ret,
-                    char *buf, size_t buflen,
-                    struct hostent **result, int *h_errnop)
+int gethostbyname_r(const char *name,
+                    struct hostent *ret,
+                    char *buf,
+                    size_t buflen,
+                    struct hostent **result,
+                    int *h_errnop)
 {
     /* Simplified implementation - use gethostbyname and copy */
     struct hostent *he = gethostbyname(name);
@@ -178,27 +179,26 @@ int gethostbyname_r(const char *name, struct hostent *ret,
 }
 
 /* Service lookup - simplified static table */
-static struct {
+static struct
+{
     const char *name;
     int port;
     const char *proto;
-} known_services[] = {
-    { "http", 80, "tcp" },
-    { "https", 443, "tcp" },
-    { "ftp", 21, "tcp" },
-    { "ssh", 22, "tcp" },
-    { "telnet", 23, "tcp" },
-    { "smtp", 25, "tcp" },
-    { "dns", 53, "udp" },
-    { "domain", 53, "udp" },
-    { "ntp", 123, "udp" },
-    { (void *)0, 0, (void *)0 }
-};
+} known_services[] = {{"http", 80, "tcp"},
+                      {"https", 443, "tcp"},
+                      {"ftp", 21, "tcp"},
+                      {"ssh", 22, "tcp"},
+                      {"telnet", 23, "tcp"},
+                      {"smtp", 25, "tcp"},
+                      {"dns", 53, "udp"},
+                      {"domain", 53, "udp"},
+                      {"ntp", 123, "udp"},
+                      {(void *)0, 0, (void *)0}};
 
 static struct servent static_servent;
 static char static_servname[64];
 static char static_proto[16];
-static char *static_serv_aliases[1] = { (void *)0 };
+static char *static_serv_aliases[1] = {(void *)0};
 
 struct servent *getservbyname(const char *name, const char *proto)
 {
@@ -247,25 +247,28 @@ struct servent *getservbyport(int port, const char *proto)
     return (void *)0;
 }
 
-struct servent *getservent(void) { return (void *)0; }
-void setservent(int stayopen) { (void)stayopen; }
-void endservent(void) { }
+struct servent *getservent(void)
+{
+    return (void *)0;
+}
+
+void setservent(int stayopen)
+{
+    (void)stayopen;
+}
+
+void endservent(void) {}
 
 /* Protocol lookup */
-static struct {
+static struct
+{
     const char *name;
     int number;
-} known_protos[] = {
-    { "ip", 0 },
-    { "icmp", 1 },
-    { "tcp", 6 },
-    { "udp", 17 },
-    { (void *)0, 0 }
-};
+} known_protos[] = {{"ip", 0}, {"icmp", 1}, {"tcp", 6}, {"udp", 17}, {(void *)0, 0}};
 
 static struct protoent static_protoent;
 static char static_protoname[32];
-static char *static_proto_aliases[1] = { (void *)0 };
+static char *static_proto_aliases[1] = {(void *)0};
 
 struct protoent *getprotobyname(const char *name)
 {
@@ -299,14 +302,23 @@ struct protoent *getprotobynumber(int proto)
     return (void *)0;
 }
 
-struct protoent *getprotoent(void) { return (void *)0; }
-void setprotoent(int stayopen) { (void)stayopen; }
-void endprotoent(void) { }
+struct protoent *getprotoent(void)
+{
+    return (void *)0;
+}
+
+void setprotoent(int stayopen)
+{
+    (void)stayopen;
+}
+
+void endprotoent(void) {}
 
 /*
  * getaddrinfo - Modern address resolution
  */
-int getaddrinfo(const char *node, const char *service,
+int getaddrinfo(const char *node,
+                const char *service,
                 const struct addrinfo *hints,
                 struct addrinfo **res)
 {
@@ -460,9 +472,13 @@ void freeaddrinfo(struct addrinfo *res)
 /*
  * getnameinfo - Reverse lookup
  */
-int getnameinfo(const struct sockaddr *addr, socklen_t addrlen,
-                char *host, socklen_t hostlen,
-                char *serv, socklen_t servlen, int flags)
+int getnameinfo(const struct sockaddr *addr,
+                socklen_t addrlen,
+                char *host,
+                socklen_t hostlen,
+                char *serv,
+                socklen_t servlen,
+                int flags)
 {
     (void)addrlen;
 
@@ -500,8 +516,7 @@ int getnameinfo(const struct sockaddr *addr, socklen_t addrlen,
         }
         else
         {
-            struct servent *se = getservbyport(sin->sin_port,
-                                               (flags & NI_DGRAM) ? "udp" : "tcp");
+            struct servent *se = getservbyport(sin->sin_port, (flags & NI_DGRAM) ? "udp" : "tcp");
             if (se)
             {
                 strncpy(serv, se->s_name, servlen - 1);

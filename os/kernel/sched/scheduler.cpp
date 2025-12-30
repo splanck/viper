@@ -1,4 +1,5 @@
 #include "scheduler.hpp"
+#include "../arch/aarch64/cpu.hpp"
 #include "../console/serial.hpp"
 #include "../lib/spinlock.hpp"
 #include "../viper/address_space.hpp"
@@ -43,11 +44,31 @@ struct PriorityQueue
     task::Task *tail;
 };
 
-// Scheduler lock - protects all queue operations and state transitions
+/**
+ * @brief Per-CPU scheduler state.
+ *
+ * Each CPU has its own set of priority queues and statistics for
+ * reduced contention in SMP systems.
+ */
+struct PerCpuScheduler
+{
+    PriorityQueue queues[task::NUM_PRIORITY_QUEUES];
+    Spinlock lock;
+    u64 context_switches;
+    u32 total_tasks;
+    u32 steals;
+    u32 migrations;
+    bool initialized;
+};
+
+// Per-CPU scheduler state
+PerCpuScheduler per_cpu_sched[cpu::MAX_CPUS];
+
+// Global scheduler lock - protects global operations and fallback
 // The spinlock automatically disables interrupts to prevent timer races
 Spinlock sched_lock;
 
-// 8 priority queues (0=highest, 7=lowest)
+// 8 priority queues (0=highest, 7=lowest) - used for initial boot and global operations
 PriorityQueue priority_queues[task::NUM_PRIORITY_QUEUES];
 
 // Statistics
@@ -55,6 +76,10 @@ u64 context_switch_count = 0;
 
 // Scheduler running flag
 bool running = false;
+
+// Load balancing interval (ticks)
+constexpr u32 LOAD_BALANCE_INTERVAL = 100;
+u32 load_balance_counter = 0;
 
 /**
  * @brief Map a task priority (0-255) to a queue index (0-7).
@@ -157,6 +182,167 @@ task::Task *dequeue_locked()
     return nullptr;
 }
 
+/**
+ * @brief Enqueue a task on a specific CPU's queue.
+ * @note Caller must hold the per-CPU lock.
+ */
+void enqueue_percpu_locked(task::Task *t, u32 cpu_id)
+{
+    if (!t || cpu_id >= cpu::MAX_CPUS)
+        return;
+
+    if (!per_cpu_sched[cpu_id].initialized)
+    {
+        // Fall back to global queue if per-CPU not initialized
+        enqueue_locked(t);
+        return;
+    }
+
+    // State validation
+    if (t->state != task::TaskState::Ready && t->state != task::TaskState::Running)
+    {
+        return;
+    }
+
+    u8 queue_idx = priority_to_queue(t->priority);
+    PriorityQueue &queue = per_cpu_sched[cpu_id].queues[queue_idx];
+
+    t->next = nullptr;
+    t->prev = queue.tail;
+
+    if (queue.tail)
+    {
+        queue.tail->next = t;
+    }
+    else
+    {
+        queue.head = t;
+    }
+    queue.tail = t;
+
+    t->state = task::TaskState::Ready;
+    per_cpu_sched[cpu_id].total_tasks++;
+}
+
+/**
+ * @brief Dequeue the highest priority task from a specific CPU's queue.
+ * @note Caller must hold the per-CPU lock.
+ */
+task::Task *dequeue_percpu_locked(u32 cpu_id)
+{
+    if (cpu_id >= cpu::MAX_CPUS || !per_cpu_sched[cpu_id].initialized)
+    {
+        return dequeue_locked(); // Fall back to global
+    }
+
+    PerCpuScheduler &sched = per_cpu_sched[cpu_id];
+
+    for (u8 i = 0; i < task::NUM_PRIORITY_QUEUES; i++)
+    {
+        PriorityQueue &queue = sched.queues[i];
+
+        if (queue.head)
+        {
+            task::Task *t = queue.head;
+            queue.head = t->next;
+
+            if (queue.head)
+            {
+                queue.head->prev = nullptr;
+            }
+            else
+            {
+                queue.tail = nullptr;
+            }
+
+            t->next = nullptr;
+            t->prev = nullptr;
+            sched.total_tasks--;
+
+            return t;
+        }
+    }
+
+    return nullptr;
+}
+
+/**
+ * @brief Try to steal a task from another CPU's queue.
+ * @return Stolen task, or nullptr if none available.
+ */
+task::Task *steal_task(u32 current_cpu)
+{
+    // Try each other CPU
+    for (u32 i = 0; i < cpu::MAX_CPUS; i++)
+    {
+        if (i == current_cpu)
+            continue;
+
+        PerCpuScheduler &victim = per_cpu_sched[i];
+        if (!victim.initialized || victim.total_tasks < 2)
+            continue;
+
+        // Try to acquire victim's lock without blocking
+        if (!victim.lock.try_acquire())
+            continue;
+
+        // Steal from the lowest priority queue that has tasks
+        // (don't steal high-priority or RT tasks)
+        for (i8 q = task::NUM_PRIORITY_QUEUES - 1; q >= 4; q--)
+        {
+            PriorityQueue &queue = victim.queues[q];
+            if (queue.tail && queue.tail != queue.head)
+            {
+                // Steal from tail (oldest task in queue)
+                task::Task *stolen = queue.tail;
+                queue.tail = stolen->prev;
+
+                if (queue.tail)
+                {
+                    queue.tail->next = nullptr;
+                }
+                else
+                {
+                    queue.head = nullptr;
+                }
+
+                stolen->next = nullptr;
+                stolen->prev = nullptr;
+                victim.total_tasks--;
+                victim.migrations++;
+
+                victim.lock.release();
+
+                per_cpu_sched[current_cpu].steals++;
+                return stolen;
+            }
+        }
+
+        victim.lock.release();
+    }
+
+    return nullptr;
+}
+
+/**
+ * @brief Check if any tasks are ready on the current CPU.
+ */
+bool any_ready_percpu(u32 cpu_id)
+{
+    if (cpu_id >= cpu::MAX_CPUS || !per_cpu_sched[cpu_id].initialized)
+    {
+        return any_ready_locked();
+    }
+
+    PerCpuScheduler &sched = per_cpu_sched[cpu_id];
+    for (u8 i = 0; i < task::NUM_PRIORITY_QUEUES; i++)
+    {
+        if (sched.queues[i].head)
+            return true;
+    }
+    return false;
+}
+
 } // namespace
 
 /** @copydoc scheduler::init */
@@ -164,17 +350,59 @@ void init()
 {
     serial::puts("[sched] Initializing priority scheduler\n");
 
-    // Initialize all priority queues
+    // Initialize all global priority queues
     for (u8 i = 0; i < task::NUM_PRIORITY_QUEUES; i++)
     {
         priority_queues[i].head = nullptr;
         priority_queues[i].tail = nullptr;
     }
 
+    // Initialize per-CPU scheduler state
+    for (u32 c = 0; c < cpu::MAX_CPUS; c++)
+    {
+        for (u8 i = 0; i < task::NUM_PRIORITY_QUEUES; i++)
+        {
+            per_cpu_sched[c].queues[i].head = nullptr;
+            per_cpu_sched[c].queues[i].tail = nullptr;
+        }
+        per_cpu_sched[c].context_switches = 0;
+        per_cpu_sched[c].total_tasks = 0;
+        per_cpu_sched[c].steals = 0;
+        per_cpu_sched[c].migrations = 0;
+        per_cpu_sched[c].initialized = false;
+    }
+
+    // Initialize boot CPU (CPU 0)
+    per_cpu_sched[0].initialized = true;
+
     context_switch_count = 0;
     running = false;
 
-    serial::puts("[sched] Priority scheduler initialized (8 queues)\n");
+    serial::puts("[sched] Priority scheduler initialized (8 queues, per-CPU support)\n");
+}
+
+/** @copydoc scheduler::init_cpu */
+void init_cpu(u32 cpu_id)
+{
+    if (cpu_id >= cpu::MAX_CPUS)
+        return;
+
+    PerCpuScheduler &sched = per_cpu_sched[cpu_id];
+
+    for (u8 i = 0; i < task::NUM_PRIORITY_QUEUES; i++)
+    {
+        sched.queues[i].head = nullptr;
+        sched.queues[i].tail = nullptr;
+    }
+    sched.context_switches = 0;
+    sched.total_tasks = 0;
+    sched.steals = 0;
+    sched.migrations = 0;
+    sched.initialized = true;
+
+    serial::puts("[sched] CPU ");
+    serial::put_dec(cpu_id);
+    serial::puts(" scheduler initialized\n");
 }
 
 /** @copydoc scheduler::enqueue */
@@ -183,13 +411,41 @@ void enqueue(task::Task *t)
     if (!t)
         return;
 
-    SpinlockGuard guard(sched_lock);
-    enqueue_locked(t);
+    u32 cpu_id = cpu::current_id();
+
+    // Use per-CPU queue if available
+    if (cpu_id < cpu::MAX_CPUS && per_cpu_sched[cpu_id].initialized)
+    {
+        SpinlockGuard guard(per_cpu_sched[cpu_id].lock);
+        enqueue_percpu_locked(t, cpu_id);
+    }
+    else
+    {
+        SpinlockGuard guard(sched_lock);
+        enqueue_locked(t);
+    }
 }
 
 /** @copydoc scheduler::dequeue */
 task::Task *dequeue()
 {
+    u32 cpu_id = cpu::current_id();
+
+    // Try per-CPU queue first
+    if (cpu_id < cpu::MAX_CPUS && per_cpu_sched[cpu_id].initialized)
+    {
+        SpinlockGuard guard(per_cpu_sched[cpu_id].lock);
+        task::Task *t = dequeue_percpu_locked(cpu_id);
+        if (t)
+            return t;
+
+        // Try work stealing from other CPUs
+        t = steal_task(cpu_id);
+        if (t)
+            return t;
+    }
+
+    // Fall back to global queue
     SpinlockGuard guard(sched_lock);
     return dequeue_locked();
 }
@@ -200,11 +456,23 @@ void schedule()
     task::Task *current = task::current();
     task::Task *next = nullptr;
     task::Task *old = nullptr;
+    u32 cpu_id = cpu::current_id();
+
+    // Try per-CPU queue first (with its own lock)
+    if (cpu_id < cpu::MAX_CPUS && per_cpu_sched[cpu_id].initialized)
+    {
+        SpinlockGuard guard(per_cpu_sched[cpu_id].lock);
+        next = dequeue_percpu_locked(cpu_id);
+    }
 
     // Critical section: queue manipulation and state transitions
     sched_lock.acquire();
 
-    next = dequeue_locked();
+    // Fall back to global queue if no per-CPU task found
+    if (!next)
+    {
+        next = dequeue_locked();
+    }
 
     // If no task ready, use idle task (task 0)
     if (!next)
@@ -271,7 +539,24 @@ void schedule()
 
     // Switch to next task
     next->state = task::TaskState::Running;
-    next->time_slice = task::time_slice_for_priority(next->priority);
+
+    // Set time slice based on scheduling policy
+    if (next->policy == task::SchedPolicy::SCHED_FIFO)
+    {
+        // SCHED_FIFO: Infinite time slice (run until yield/block)
+        next->time_slice = 0xFFFFFFFF;
+    }
+    else if (next->policy == task::SchedPolicy::SCHED_RR)
+    {
+        // SCHED_RR: Fixed RT time slice
+        next->time_slice = task::RT_TIME_SLICE_DEFAULT;
+    }
+    else
+    {
+        // SCHED_OTHER: Priority-based time slice
+        next->time_slice = task::time_slice_for_priority(next->priority);
+    }
+
     next->switch_count++;
 
     context_switch_count++;
@@ -333,6 +618,7 @@ void tick()
         return;
 
     bool need_schedule = false;
+    u32 cpu_id = cpu::current_id();
 
     // Quick check for preemption (with lock for queue access)
     {
@@ -341,7 +627,7 @@ void tick()
         // Don't preempt idle task if something else is ready
         if (current->flags & task::TASK_FLAG_IDLE)
         {
-            if (any_ready_locked())
+            if (any_ready_percpu(cpu_id) || any_ready_locked())
             {
                 need_schedule = true;
             }
@@ -350,20 +636,67 @@ void tick()
         {
             // Check if a higher-priority task became ready
             u8 current_queue = priority_to_queue(current->priority);
+            bool current_is_rt = (current->policy == task::SchedPolicy::SCHED_FIFO ||
+                                  current->policy == task::SchedPolicy::SCHED_RR);
+
             for (u8 i = 0; i < current_queue; i++)
             {
-                if (priority_queues[i].head)
+                // Check both per-CPU and global queues for higher priority tasks
+                task::Task *ready = nullptr;
+                if (per_cpu_sched[cpu_id].initialized)
                 {
-                    // Higher priority task is ready - preempt immediately
-                    need_schedule = true;
-                    break;
+                    ready = per_cpu_sched[cpu_id].queues[i].head;
+                }
+                if (!ready)
+                {
+                    ready = priority_queues[i].head;
+                }
+
+                if (ready)
+                {
+                    // Check if the ready task is RT - RT always preempts non-RT
+                    bool ready_is_rt = (ready->policy == task::SchedPolicy::SCHED_FIFO ||
+                                        ready->policy == task::SchedPolicy::SCHED_RR);
+
+                    if (ready_is_rt && !current_is_rt)
+                    {
+                        // RT task preempts non-RT task
+                        need_schedule = true;
+                        break;
+                    }
+                    else if (i < current_queue)
+                    {
+                        // Higher priority task is ready - preempt
+                        need_schedule = true;
+                        break;
+                    }
                 }
             }
 
-            // Decrement time slice
-            if (!need_schedule && current->time_slice > 0)
+            // Handle time slice based on scheduling policy
+            if (!need_schedule)
             {
-                current->time_slice--;
+                if (current->policy == task::SchedPolicy::SCHED_FIFO)
+                {
+                    // SCHED_FIFO: Never preempt on time slice (run until yield/block)
+                    // Don't decrement time_slice
+                }
+                else if (current->policy == task::SchedPolicy::SCHED_RR)
+                {
+                    // SCHED_RR: Round-robin with fixed RT time slice
+                    if (current->time_slice > 0)
+                    {
+                        current->time_slice--;
+                    }
+                }
+                else
+                {
+                    // SCHED_OTHER: Normal time-sharing
+                    if (current->time_slice > 0)
+                    {
+                        current->time_slice--;
+                    }
+                }
             }
         }
     }
@@ -385,6 +718,13 @@ void preempt()
     task::Task *current = task::current();
     if (!current)
         return;
+
+    // SCHED_FIFO tasks are never preempted by time slice expiry
+    // They run until they voluntarily yield or block
+    if (current->policy == task::SchedPolicy::SCHED_FIFO)
+    {
+        return;
+    }
 
     // Check if time slice expired (read atomically)
     // No lock needed - time_slice is only modified by the owning task or tick()
@@ -426,7 +766,21 @@ void preempt()
 
     // Set as current and running
     first->state = task::TaskState::Running;
-    first->time_slice = task::time_slice_for_priority(first->priority);
+
+    // Set time slice based on scheduling policy
+    if (first->policy == task::SchedPolicy::SCHED_FIFO)
+    {
+        first->time_slice = 0xFFFFFFFF;
+    }
+    else if (first->policy == task::SchedPolicy::SCHED_RR)
+    {
+        first->time_slice = task::RT_TIME_SLICE_DEFAULT;
+    }
+    else
+    {
+        first->time_slice = task::time_slice_for_priority(first->priority);
+    }
+
     task::set_current(first);
 
     context_switch_count++;
@@ -546,6 +900,101 @@ void dump_stats()
     serial::puts(", Exited: ");
     serial::put_dec(stats.exited_tasks);
     serial::puts("\n===========================\n");
+}
+
+/** @copydoc scheduler::enqueue_on_cpu */
+void enqueue_on_cpu(task::Task *t, u32 cpu_id)
+{
+    if (!t || cpu_id >= cpu::MAX_CPUS)
+        return;
+
+    u32 current_cpu = cpu::current_id();
+
+    // Use per-CPU lock if the target CPU's scheduler is initialized
+    if (per_cpu_sched[cpu_id].initialized)
+    {
+        SpinlockGuard guard(per_cpu_sched[cpu_id].lock);
+        enqueue_percpu_locked(t, cpu_id);
+    }
+    else
+    {
+        // Fall back to global queue
+        SpinlockGuard guard(sched_lock);
+        enqueue_locked(t);
+    }
+
+    // If enqueuing to a different CPU, send an IPI to trigger reschedule
+    if (cpu_id != current_cpu)
+    {
+        cpu::send_ipi(cpu_id, cpu::ipi::RESCHEDULE);
+    }
+}
+
+/** @copydoc scheduler::get_percpu_stats */
+void get_percpu_stats(u32 cpu_id, PerCpuStats *stats)
+{
+    if (!stats || cpu_id >= cpu::MAX_CPUS)
+        return;
+
+    if (!per_cpu_sched[cpu_id].initialized)
+    {
+        stats->context_switches = 0;
+        stats->queue_length = 0;
+        stats->steals = 0;
+        stats->migrations = 0;
+        return;
+    }
+
+    SpinlockGuard guard(per_cpu_sched[cpu_id].lock);
+    stats->context_switches = per_cpu_sched[cpu_id].context_switches;
+    stats->queue_length = per_cpu_sched[cpu_id].total_tasks;
+    stats->steals = per_cpu_sched[cpu_id].steals;
+    stats->migrations = per_cpu_sched[cpu_id].migrations;
+}
+
+/** @copydoc scheduler::balance_load */
+void balance_load()
+{
+    u32 current_cpu = cpu::current_id();
+
+    // Only run load balancing periodically
+    load_balance_counter++;
+    if (load_balance_counter < LOAD_BALANCE_INTERVAL)
+        return;
+    load_balance_counter = 0;
+
+    // Find the most and least loaded CPUs
+    u32 max_load = 0, min_load = 0xFFFFFFFF;
+    u32 max_cpu = current_cpu, min_cpu = current_cpu;
+
+    for (u32 i = 0; i < cpu::MAX_CPUS; i++)
+    {
+        if (!per_cpu_sched[i].initialized)
+            continue;
+
+        u32 load = per_cpu_sched[i].total_tasks;
+        if (load > max_load)
+        {
+            max_load = load;
+            max_cpu = i;
+        }
+        if (load < min_load)
+        {
+            min_load = load;
+            min_cpu = i;
+        }
+    }
+
+    // Migrate tasks if imbalance is significant (>2 tasks difference)
+    if (max_load > min_load + 2 && max_cpu != min_cpu)
+    {
+        // Try to steal a task from the overloaded CPU
+        task::Task *stolen = steal_task(min_cpu);
+        if (stolen)
+        {
+            enqueue_on_cpu(stolen, min_cpu);
+        }
+    }
 }
 
 } // namespace scheduler

@@ -10,12 +10,13 @@
 #include "atomic"
 #include "type_traits"
 
-namespace std {
+namespace std
+{
 
 // Forward declarations
 class stop_source;
 class stop_token;
-template<class Callback> class stop_callback;
+template <class Callback> class stop_callback;
 
 /*
  * ===========================================================================
@@ -23,7 +24,8 @@ template<class Callback> class stop_callback;
  * ===========================================================================
  */
 
-struct nostopstate_t {
+struct nostopstate_t
+{
     explicit nostopstate_t() = default;
 };
 
@@ -35,28 +37,35 @@ inline constexpr nostopstate_t nostopstate{};
  * ===========================================================================
  */
 
-namespace __detail {
+namespace __detail
+{
 
-struct __stop_state {
+struct __stop_state
+{
     atomic<unsigned> ref_count{1};
     atomic<bool> stop_requested{false};
-    atomic<void*> callback_list{nullptr};
+    atomic<void *> callback_list{nullptr};
 
-    void add_ref() noexcept {
+    void add_ref() noexcept
+    {
         ref_count.fetch_add(1, memory_order_relaxed);
     }
 
-    void release() noexcept {
-        if (ref_count.fetch_sub(1, memory_order_acq_rel) == 1) {
+    void release() noexcept
+    {
+        if (ref_count.fetch_sub(1, memory_order_acq_rel) == 1)
+        {
             delete this;
         }
     }
 
-    bool request_stop() noexcept {
+    bool request_stop() noexcept
+    {
         bool expected = false;
-        if (!stop_requested.compare_exchange_strong(expected, true,
-                memory_order_acq_rel, memory_order_relaxed)) {
-            return false;  // Already stopped
+        if (!stop_requested.compare_exchange_strong(
+                expected, true, memory_order_acq_rel, memory_order_relaxed))
+        {
+            return false; // Already stopped
         }
         // Execute registered callbacks
         // In a real implementation, we'd iterate the callback list
@@ -72,36 +81,49 @@ struct __stop_state {
  * ===========================================================================
  */
 
-class stop_token {
-public:
+class stop_token
+{
+  public:
     // Constructors
     stop_token() noexcept : state_(nullptr) {}
 
-    stop_token(const stop_token& other) noexcept : state_(other.state_) {
-        if (state_) state_->add_ref();
+    stop_token(const stop_token &other) noexcept : state_(other.state_)
+    {
+        if (state_)
+            state_->add_ref();
     }
 
-    stop_token(stop_token&& other) noexcept : state_(other.state_) {
+    stop_token(stop_token &&other) noexcept : state_(other.state_)
+    {
         other.state_ = nullptr;
     }
 
-    ~stop_token() {
-        if (state_) state_->release();
+    ~stop_token()
+    {
+        if (state_)
+            state_->release();
     }
 
     // Assignment
-    stop_token& operator=(const stop_token& other) noexcept {
-        if (this != &other) {
-            if (other.state_) other.state_->add_ref();
-            if (state_) state_->release();
+    stop_token &operator=(const stop_token &other) noexcept
+    {
+        if (this != &other)
+        {
+            if (other.state_)
+                other.state_->add_ref();
+            if (state_)
+                state_->release();
             state_ = other.state_;
         }
         return *this;
     }
 
-    stop_token& operator=(stop_token&& other) noexcept {
-        if (this != &other) {
-            if (state_) state_->release();
+    stop_token &operator=(stop_token &&other) noexcept
+    {
+        if (this != &other)
+        {
+            if (state_)
+                state_->release();
             state_ = other.state_;
             other.state_ = nullptr;
         }
@@ -109,45 +131,50 @@ public:
     }
 
     // Swap
-    void swap(stop_token& other) noexcept {
-        __detail::__stop_state* tmp = state_;
+    void swap(stop_token &other) noexcept
+    {
+        __detail::__stop_state *tmp = state_;
         state_ = other.state_;
         other.state_ = tmp;
     }
 
     // Observers
-    [[nodiscard]] bool stop_requested() const noexcept {
+    [[nodiscard]] bool stop_requested() const noexcept
+    {
         return state_ && state_->stop_requested.load(memory_order_acquire);
     }
 
-    [[nodiscard]] bool stop_possible() const noexcept {
+    [[nodiscard]] bool stop_possible() const noexcept
+    {
         return state_ != nullptr;
     }
 
     // Comparison
-    [[nodiscard]] friend bool operator==(const stop_token& a,
-                                          const stop_token& b) noexcept {
+    [[nodiscard]] friend bool operator==(const stop_token &a, const stop_token &b) noexcept
+    {
         return a.state_ == b.state_;
     }
 
-    [[nodiscard]] friend bool operator!=(const stop_token& a,
-                                          const stop_token& b) noexcept {
+    [[nodiscard]] friend bool operator!=(const stop_token &a, const stop_token &b) noexcept
+    {
         return !(a == b);
     }
 
-private:
+  private:
     friend class stop_source;
-    template<class Callback> friend class stop_callback;
+    template <class Callback> friend class stop_callback;
 
-    explicit stop_token(__detail::__stop_state* state) noexcept
-        : state_(state) {
-        if (state_) state_->add_ref();
+    explicit stop_token(__detail::__stop_state *state) noexcept : state_(state)
+    {
+        if (state_)
+            state_->add_ref();
     }
 
-    __detail::__stop_state* state_;
+    __detail::__stop_state *state_;
 };
 
-inline void swap(stop_token& a, stop_token& b) noexcept {
+inline void swap(stop_token &a, stop_token &b) noexcept
+{
     a.swap(b);
 }
 
@@ -157,38 +184,51 @@ inline void swap(stop_token& a, stop_token& b) noexcept {
  * ===========================================================================
  */
 
-class stop_source {
-public:
+class stop_source
+{
+  public:
     // Constructors
     stop_source() : state_(new __detail::__stop_state()) {}
 
     explicit stop_source(nostopstate_t) noexcept : state_(nullptr) {}
 
-    stop_source(const stop_source& other) noexcept : state_(other.state_) {
-        if (state_) state_->add_ref();
+    stop_source(const stop_source &other) noexcept : state_(other.state_)
+    {
+        if (state_)
+            state_->add_ref();
     }
 
-    stop_source(stop_source&& other) noexcept : state_(other.state_) {
+    stop_source(stop_source &&other) noexcept : state_(other.state_)
+    {
         other.state_ = nullptr;
     }
 
-    ~stop_source() {
-        if (state_) state_->release();
+    ~stop_source()
+    {
+        if (state_)
+            state_->release();
     }
 
     // Assignment
-    stop_source& operator=(const stop_source& other) noexcept {
-        if (this != &other) {
-            if (other.state_) other.state_->add_ref();
-            if (state_) state_->release();
+    stop_source &operator=(const stop_source &other) noexcept
+    {
+        if (this != &other)
+        {
+            if (other.state_)
+                other.state_->add_ref();
+            if (state_)
+                state_->release();
             state_ = other.state_;
         }
         return *this;
     }
 
-    stop_source& operator=(stop_source&& other) noexcept {
-        if (this != &other) {
-            if (state_) state_->release();
+    stop_source &operator=(stop_source &&other) noexcept
+    {
+        if (this != &other)
+        {
+            if (state_)
+                state_->release();
             state_ = other.state_;
             other.state_ = nullptr;
         }
@@ -196,50 +236,57 @@ public:
     }
 
     // Swap
-    void swap(stop_source& other) noexcept {
-        __detail::__stop_state* tmp = state_;
+    void swap(stop_source &other) noexcept
+    {
+        __detail::__stop_state *tmp = state_;
         state_ = other.state_;
         other.state_ = tmp;
     }
 
     // Get associated stop_token
-    [[nodiscard]] stop_token get_token() const noexcept {
+    [[nodiscard]] stop_token get_token() const noexcept
+    {
         return stop_token(state_);
     }
 
     // Observers
-    [[nodiscard]] bool stop_requested() const noexcept {
+    [[nodiscard]] bool stop_requested() const noexcept
+    {
         return state_ && state_->stop_requested.load(memory_order_acquire);
     }
 
-    [[nodiscard]] bool stop_possible() const noexcept {
+    [[nodiscard]] bool stop_possible() const noexcept
+    {
         return state_ != nullptr;
     }
 
     // Request stop
-    bool request_stop() noexcept {
-        if (state_) {
+    bool request_stop() noexcept
+    {
+        if (state_)
+        {
             return state_->request_stop();
         }
         return false;
     }
 
     // Comparison
-    [[nodiscard]] friend bool operator==(const stop_source& a,
-                                          const stop_source& b) noexcept {
+    [[nodiscard]] friend bool operator==(const stop_source &a, const stop_source &b) noexcept
+    {
         return a.state_ == b.state_;
     }
 
-    [[nodiscard]] friend bool operator!=(const stop_source& a,
-                                          const stop_source& b) noexcept {
+    [[nodiscard]] friend bool operator!=(const stop_source &a, const stop_source &b) noexcept
+    {
         return !(a == b);
     }
 
-private:
-    __detail::__stop_state* state_;
+  private:
+    __detail::__stop_state *state_;
 };
 
-inline void swap(stop_source& a, stop_source& b) noexcept {
+inline void swap(stop_source &a, stop_source &b) noexcept
+{
     a.swap(b);
 }
 
@@ -249,20 +296,25 @@ inline void swap(stop_source& a, stop_source& b) noexcept {
  * ===========================================================================
  */
 
-template<class Callback>
-class stop_callback {
-public:
+template <class Callback> class stop_callback
+{
+  public:
     using callback_type = Callback;
 
     // Constructor with stop_token
-    template<class C>
-    explicit stop_callback(const stop_token& st, C&& cb)
-        : token_(st), callback_(static_cast<C&&>(cb)), registered_(false) {
-        if (token_.state_) {
-            if (token_.state_->stop_requested.load(memory_order_acquire)) {
+    template <class C>
+    explicit stop_callback(const stop_token &st, C &&cb)
+        : token_(st), callback_(static_cast<C &&>(cb)), registered_(false)
+    {
+        if (token_.state_)
+        {
+            if (token_.state_->stop_requested.load(memory_order_acquire))
+            {
                 // Already stopped, invoke immediately
                 callback_();
-            } else {
+            }
+            else
+            {
                 // Would register for future notification
                 // Simplified: just mark as registered
                 registered_ = true;
@@ -270,37 +322,42 @@ public:
         }
     }
 
-    template<class C>
-    explicit stop_callback(stop_token&& st, C&& cb)
-        : token_(static_cast<stop_token&&>(st)),
-          callback_(static_cast<C&&>(cb)), registered_(false) {
-        if (token_.state_) {
-            if (token_.state_->stop_requested.load(memory_order_acquire)) {
+    template <class C>
+    explicit stop_callback(stop_token &&st, C &&cb)
+        : token_(static_cast<stop_token &&>(st)), callback_(static_cast<C &&>(cb)),
+          registered_(false)
+    {
+        if (token_.state_)
+        {
+            if (token_.state_->stop_requested.load(memory_order_acquire))
+            {
                 callback_();
-            } else {
+            }
+            else
+            {
                 registered_ = true;
             }
         }
     }
 
-    ~stop_callback() {
+    ~stop_callback()
+    {
         // Would unregister from callback list
     }
 
-    stop_callback(const stop_callback&) = delete;
-    stop_callback& operator=(const stop_callback&) = delete;
-    stop_callback(stop_callback&&) = delete;
-    stop_callback& operator=(stop_callback&&) = delete;
+    stop_callback(const stop_callback &) = delete;
+    stop_callback &operator=(const stop_callback &) = delete;
+    stop_callback(stop_callback &&) = delete;
+    stop_callback &operator=(stop_callback &&) = delete;
 
-private:
+  private:
     stop_token token_;
     Callback callback_;
     bool registered_;
 };
 
 // Deduction guides
-template<class Callback>
-stop_callback(stop_token, Callback) -> stop_callback<Callback>;
+template <class Callback> stop_callback(stop_token, Callback) -> stop_callback<Callback>;
 
 /*
  * ===========================================================================
@@ -309,14 +366,15 @@ stop_callback(stop_token, Callback) -> stop_callback<Callback>;
  */
 
 // Type traits for stoppable tokens
-template<class T>
-struct __is_stoppable_token : false_type {};
+template <class T> struct __is_stoppable_token : false_type
+{
+};
 
-template<>
-struct __is_stoppable_token<stop_token> : true_type {};
+template <> struct __is_stoppable_token<stop_token> : true_type
+{
+};
 
-template<class T>
-inline constexpr bool is_stoppable_token_v = __is_stoppable_token<T>::value;
+template <class T> inline constexpr bool is_stoppable_token_v = __is_stoppable_token<T>::value;
 
 } // namespace std
 

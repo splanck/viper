@@ -1,6 +1,6 @@
 #include "../include/signal.h"
-#include "../include/string.h"
 #include "../include/stdio.h"
+#include "../include/string.h"
 
 /* Syscall helpers */
 extern long __syscall1(long num, long arg0);
@@ -8,46 +8,46 @@ extern long __syscall2(long num, long arg0, long arg1);
 extern long __syscall3(long num, long arg0, long arg1, long arg2);
 
 /* Syscall numbers */
-#define SYS_SIGACTION   0x90
+#define SYS_SIGACTION 0x90
 #define SYS_SIGPROCMASK 0x91
-#define SYS_KILL        0x93
-#define SYS_SIGPENDING  0x94
+#define SYS_KILL 0x93
+#define SYS_SIGPENDING 0x94
 #define SYS_TASK_CURRENT 0x02
 
 /* Signal names for strsignal */
 static const char *signal_names[] = {
     "Unknown signal 0",
-    "Hangup",           /* SIGHUP */
-    "Interrupt",        /* SIGINT */
-    "Quit",             /* SIGQUIT */
-    "Illegal instruction", /* SIGILL */
-    "Trace/breakpoint trap", /* SIGTRAP */
-    "Aborted",          /* SIGABRT */
-    "Bus error",        /* SIGBUS */
+    "Hangup",                   /* SIGHUP */
+    "Interrupt",                /* SIGINT */
+    "Quit",                     /* SIGQUIT */
+    "Illegal instruction",      /* SIGILL */
+    "Trace/breakpoint trap",    /* SIGTRAP */
+    "Aborted",                  /* SIGABRT */
+    "Bus error",                /* SIGBUS */
     "Floating point exception", /* SIGFPE */
-    "Killed",           /* SIGKILL */
-    "User defined signal 1", /* SIGUSR1 */
-    "Segmentation fault", /* SIGSEGV */
-    "User defined signal 2", /* SIGUSR2 */
-    "Broken pipe",      /* SIGPIPE */
-    "Alarm clock",      /* SIGALRM */
-    "Terminated",       /* SIGTERM */
-    "Stack fault",      /* SIGSTKFLT */
-    "Child exited",     /* SIGCHLD */
-    "Continued",        /* SIGCONT */
-    "Stopped (signal)", /* SIGSTOP */
-    "Stopped",          /* SIGTSTP */
-    "Stopped (tty input)", /* SIGTTIN */
-    "Stopped (tty output)", /* SIGTTOU */
-    "Urgent I/O condition", /* SIGURG */
-    "CPU time limit exceeded", /* SIGXCPU */
+    "Killed",                   /* SIGKILL */
+    "User defined signal 1",    /* SIGUSR1 */
+    "Segmentation fault",       /* SIGSEGV */
+    "User defined signal 2",    /* SIGUSR2 */
+    "Broken pipe",              /* SIGPIPE */
+    "Alarm clock",              /* SIGALRM */
+    "Terminated",               /* SIGTERM */
+    "Stack fault",              /* SIGSTKFLT */
+    "Child exited",             /* SIGCHLD */
+    "Continued",                /* SIGCONT */
+    "Stopped (signal)",         /* SIGSTOP */
+    "Stopped",                  /* SIGTSTP */
+    "Stopped (tty input)",      /* SIGTTIN */
+    "Stopped (tty output)",     /* SIGTTOU */
+    "Urgent I/O condition",     /* SIGURG */
+    "CPU time limit exceeded",  /* SIGXCPU */
     "File size limit exceeded", /* SIGXFSZ */
-    "Virtual timer expired", /* SIGVTALRM */
-    "Profiling timer expired", /* SIGPROF */
-    "Window changed",   /* SIGWINCH */
-    "I/O possible",     /* SIGIO */
-    "Power failure",    /* SIGPWR */
-    "Bad system call",  /* SIGSYS */
+    "Virtual timer expired",    /* SIGVTALRM */
+    "Profiling timer expired",  /* SIGPROF */
+    "Window changed",           /* SIGWINCH */
+    "I/O possible",             /* SIGIO */
+    "Power failure",            /* SIGPWR */
+    "Bad system call",          /* SIGSYS */
 };
 
 #define NUM_SIGNAL_NAMES (sizeof(signal_names) / sizeof(signal_names[0]))

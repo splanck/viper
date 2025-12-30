@@ -15,18 +15,19 @@ static struct termios default_termios = {
     .c_oflag = OPOST | ONLCR,
     .c_cflag = CS8 | CREAD | CLOCAL,
     .c_lflag = ISIG | ICANON | ECHO | ECHOE | ECHOK | IEXTEN,
-    .c_cc = {
-        [VINTR]  = 0x03,  /* Ctrl+C */
-        [VQUIT]  = 0x1C,  /* Ctrl+\ */
-        [VERASE] = 0x7F,  /* Backspace */
-        [VKILL]  = 0x15,  /* Ctrl+U */
-        [VEOF]   = 0x04,  /* Ctrl+D */
-        [VTIME]  = 0,
-        [VMIN]   = 1,
-        [VSTART] = 0x11,  /* Ctrl+Q */
-        [VSTOP]  = 0x13,  /* Ctrl+S */
-        [VSUSP]  = 0x1A,  /* Ctrl+Z */
-    },
+    .c_cc =
+        {
+            [VINTR] = 0x03,  /* Ctrl+C */
+            [VQUIT] = 0x1C,  /* Ctrl+\ */
+            [VERASE] = 0x7F, /* Backspace */
+            [VKILL] = 0x15,  /* Ctrl+U */
+            [VEOF] = 0x04,   /* Ctrl+D */
+            [VTIME] = 0,
+            [VMIN] = 1,
+            [VSTART] = 0x11, /* Ctrl+Q */
+            [VSTOP] = 0x13,  /* Ctrl+S */
+            [VSUSP] = 0x1A,  /* Ctrl+Z */
+        },
     .c_ispeed = B9600,
     .c_ospeed = B9600,
 };
@@ -37,7 +38,8 @@ static int termios_initialized = 0;
 
 static void init_termios(void)
 {
-    if (!termios_initialized) {
+    if (!termios_initialized)
+    {
         memcpy(&current_termios, &default_termios, sizeof(struct termios));
         termios_initialized = 1;
     }
@@ -59,7 +61,7 @@ int tcgetattr(int fd, struct termios *termios_p)
 
 int tcsetattr(int fd, int optional_actions, const struct termios *termios_p)
 {
-    (void)optional_actions;  /* We apply immediately regardless */
+    (void)optional_actions; /* We apply immediately regardless */
 
     if (!termios_p)
         return -1;
@@ -140,8 +142,7 @@ void cfmakeraw(struct termios *termios_p)
         return;
 
     /* Turn off all processing */
-    termios_p->c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP |
-                            INLCR | IGNCR | ICRNL | IXON);
+    termios_p->c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL | IXON);
     termios_p->c_oflag &= ~OPOST;
     termios_p->c_lflag &= ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
     termios_p->c_cflag &= ~(CSIZE | PARENB);

@@ -4,8 +4,8 @@
  */
 
 #include "../include/sys/utsname.h"
-#include "../include/string.h"
 #include "../include/errno.h"
+#include "../include/string.h"
 
 /* Syscall helpers */
 extern long __syscall1(long num, long arg0);

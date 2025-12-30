@@ -17,29 +17,34 @@
  *   sysinfo          - Show system information and run tests
  */
 
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include <time.h>
-#include <ctype.h>
-#include <unistd.h>
-#include <errno.h>
-#include <assert.h>
 #include "../syscall.hpp"
+#include <assert.h>
+#include <ctype.h>
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#include <unistd.h>
 
 // Test counters
 static int tests_passed = 0;
 static int tests_failed = 0;
 
-#define TEST(name, cond) do { \
-    if (cond) { \
-        printf("  [PASS] %s\n", name); \
-        tests_passed++; \
-    } else { \
-        printf("  [FAIL] %s\n", name); \
-        tests_failed++; \
-    } \
-} while(0)
+#define TEST(name, cond)                                                                           \
+    do                                                                                             \
+    {                                                                                              \
+        if (cond)                                                                                  \
+        {                                                                                          \
+            printf("  [PASS] %s\n", name);                                                         \
+            tests_passed++;                                                                        \
+        }                                                                                          \
+        else                                                                                       \
+        {                                                                                          \
+            printf("  [FAIL] %s\n", name);                                                         \
+            tests_failed++;                                                                        \
+        }                                                                                          \
+    } while (0)
 
 // Format uptime nicely
 static void format_uptime(u64 ms, char *buf, size_t bufsize)
@@ -51,7 +56,9 @@ static void format_uptime(u64 ms, char *buf, size_t bufsize)
 
     if (days > 0)
     {
-        snprintf(buf, bufsize, "%llud %lluh %llum %llus",
+        snprintf(buf,
+                 bufsize,
+                 "%llud %lluh %llum %llus",
                  (unsigned long long)days,
                  (unsigned long long)(hours % 24),
                  (unsigned long long)(minutes % 60),
@@ -59,14 +66,18 @@ static void format_uptime(u64 ms, char *buf, size_t bufsize)
     }
     else if (hours > 0)
     {
-        snprintf(buf, bufsize, "%lluh %llum %llus",
+        snprintf(buf,
+                 bufsize,
+                 "%lluh %llum %llus",
                  (unsigned long long)hours,
                  (unsigned long long)(minutes % 60),
                  (unsigned long long)(seconds % 60));
     }
     else if (minutes > 0)
     {
-        snprintf(buf, bufsize, "%llum %llus",
+        snprintf(buf,
+                 bufsize,
+                 "%llum %llus",
                  (unsigned long long)minutes,
                  (unsigned long long)(seconds % 60));
     }
@@ -168,7 +179,7 @@ static void test_memory_allocation()
     {
         free(ptrs[i]);
     }
-    TEST("10 frees complete", 1);  // If we get here, frees worked
+    TEST("10 frees complete", 1); // If we get here, frees worked
 
     // Large allocation
     void *big = malloc(4096);
@@ -307,7 +318,9 @@ static void show_system_info()
 
         printf("  Memory Total:  %llu KB\n", (unsigned long long)total_kb);
         printf("  Memory Free:   %llu KB\n", (unsigned long long)free_kb);
-        printf("  Memory Used:   %llu KB (%llu%%)\n", (unsigned long long)used_kb, (unsigned long long)pct_used);
+        printf("  Memory Used:   %llu KB (%llu%%)\n",
+               (unsigned long long)used_kb,
+               (unsigned long long)pct_used);
         printf("  Page Size:     %llu bytes\n", (unsigned long long)mem.page_size);
     }
 }
@@ -334,19 +347,28 @@ static void show_task_info()
         const char *state_str;
         switch (tasks[i].state)
         {
-            case 1: state_str = "Ready"; break;
-            case 2: state_str = "Running"; break;
-            case 3: state_str = "Blocked"; break;
-            case 4: state_str = "Zombie"; break;
-            case 5: state_str = "Exited"; break;
-            default: state_str = "Unknown"; break;
+            case 1:
+                state_str = "Ready";
+                break;
+            case 2:
+                state_str = "Running";
+                break;
+            case 3:
+                state_str = "Blocked";
+                break;
+            case 4:
+                state_str = "Zombie";
+                break;
+            case 5:
+                state_str = "Exited";
+                break;
+            default:
+                state_str = "Unknown";
+                break;
         }
 
-        printf("  %-4u  %-12s  %-8s  %u\n",
-               tasks[i].id,
-               tasks[i].name,
-               state_str,
-               tasks[i].priority);
+        printf(
+            "  %-4u  %-12s  %-8s  %u\n", tasks[i].id, tasks[i].name, state_str, tasks[i].priority);
     }
 
     printf("\n  Total: %d tasks\n", count);

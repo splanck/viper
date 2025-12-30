@@ -138,10 +138,25 @@ class NetDevice : public Device
     bool link_up() const;
 
     // Statistics
-    u64 tx_packets() const { return tx_packets_; }
-    u64 rx_packets() const { return rx_packets_; }
-    u64 tx_bytes() const { return tx_bytes_; }
-    u64 rx_bytes() const { return rx_bytes_; }
+    u64 tx_packets() const
+    {
+        return tx_packets_;
+    }
+
+    u64 rx_packets() const
+    {
+        return rx_packets_;
+    }
+
+    u64 tx_bytes() const
+    {
+        return tx_bytes_;
+    }
+
+    u64 rx_bytes() const
+    {
+        return rx_bytes_;
+    }
 
   private:
     Virtqueue rx_vq_;

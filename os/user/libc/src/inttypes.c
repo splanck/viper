@@ -19,8 +19,8 @@ imaxdiv_t imaxdiv(intmax_t numer, intmax_t denom)
 intmax_t strtoimax(const char *restrict nptr, char **restrict endptr, int base)
 {
     /* Skip whitespace */
-    while (*nptr == ' ' || *nptr == '\t' || *nptr == '\n' ||
-           *nptr == '\r' || *nptr == '\f' || *nptr == '\v')
+    while (*nptr == ' ' || *nptr == '\t' || *nptr == '\n' || *nptr == '\r' || *nptr == '\f' ||
+           *nptr == '\v')
     {
         nptr++;
     }
@@ -107,8 +107,8 @@ intmax_t strtoimax(const char *restrict nptr, char **restrict endptr, int base)
 uintmax_t strtoumax(const char *restrict nptr, char **restrict endptr, int base)
 {
     /* Skip whitespace */
-    while (*nptr == ' ' || *nptr == '\t' || *nptr == '\n' ||
-           *nptr == '\r' || *nptr == '\f' || *nptr == '\v')
+    while (*nptr == ' ' || *nptr == '\t' || *nptr == '\n' || *nptr == '\r' || *nptr == '\f' ||
+           *nptr == '\v')
     {
         nptr++;
     }

@@ -63,6 +63,27 @@ constexpr u8 NUM_PRIORITY_QUEUES = 8;
 /** @brief Tasks per queue (256 priority levels / 8 queues). */
 constexpr u8 PRIORITIES_PER_QUEUE = 32;
 
+/**
+ * @brief Scheduling policy for a task.
+ *
+ * @details
+ * - SCHED_OTHER: Normal time-sharing scheduling (default)
+ * - SCHED_FIFO: Real-time FIFO scheduling (no time slicing)
+ * - SCHED_RR: Real-time round-robin scheduling (time sliced)
+ *
+ * Real-time tasks (SCHED_FIFO/SCHED_RR) always have priority over
+ * SCHED_OTHER tasks regardless of priority level.
+ */
+enum class SchedPolicy : u8
+{
+    SCHED_OTHER = 0, ///< Normal time-sharing (default)
+    SCHED_FIFO = 1,  ///< Real-time FIFO (run until yield/block)
+    SCHED_RR = 2     ///< Real-time round-robin (time sliced)
+};
+
+/** @brief Default real-time time slice in ticks (100ms for SCHED_RR). */
+constexpr u32 RT_TIME_SLICE_DEFAULT = 100;
+
 } // namespace task
 
 // Include shared TaskInfo struct after defining flags (avoids macro conflict)
@@ -209,8 +230,9 @@ struct Task
     u8 *kernel_stack;     // Kernel stack base
     u8 *kernel_stack_top; // Kernel stack top (initial SP)
 
-    u32 time_slice; // Remaining time slice ticks
-    u8 priority;    // Priority (0=highest, 255=lowest, default 128)
+    u32 time_slice;     // Remaining time slice ticks
+    u8 priority;        // Priority (0=highest, 255=lowest, default 128)
+    SchedPolicy policy; // Scheduling policy (SCHED_OTHER, SCHED_FIFO, SCHED_RR)
 
     Task *next; // Next task in queue (ready/wait queue)
     Task *prev; // Previous task in queue
@@ -234,11 +256,11 @@ struct Task
     // Signal state (for user tasks with signal handlers)
     struct
     {
-        u64 handlers[32];      ///< Signal handler addresses (0=SIG_DFL, 1=SIG_IGN)
-        u32 handler_flags[32]; ///< Flags for each handler (SA_*)
-        u32 handler_mask[32];  ///< Mask for each handler
-        u32 blocked;           ///< Blocked signal mask
-        u32 pending;           ///< Pending signals bitmap
+        u64 handlers[32];       ///< Signal handler addresses (0=SIG_DFL, 1=SIG_IGN)
+        u32 handler_flags[32];  ///< Flags for each handler (SA_*)
+        u32 handler_mask[32];   ///< Mask for each handler
+        u32 blocked;            ///< Blocked signal mask
+        u32 pending;            ///< Pending signals bitmap
         TrapFrame *saved_frame; ///< Saved trap frame for sigreturn
     } signals;
 };
@@ -335,6 +357,27 @@ i32 set_priority(Task *t, u8 priority);
 u8 get_priority(Task *t);
 
 /**
+ * @brief Set the scheduling policy of a task.
+ *
+ * @details
+ * Changes the scheduling policy for a task. SCHED_FIFO and SCHED_RR
+ * are real-time policies that always run before SCHED_OTHER tasks.
+ *
+ * @param t Task to modify.
+ * @param policy New scheduling policy.
+ * @return 0 on success, -1 on error.
+ */
+i32 set_policy(Task *t, SchedPolicy policy);
+
+/**
+ * @brief Get the scheduling policy of a task.
+ *
+ * @param t Task to query.
+ * @return Scheduling policy, or SCHED_OTHER if task is null.
+ */
+SchedPolicy get_policy(Task *t);
+
+/**
  * @brief Look up a task by its numeric ID.
  *
  * @param id Task ID.
@@ -401,10 +444,10 @@ u32 reap_exited();
 void destroy(Task *t);
 
 // Signal numbers (subset of POSIX signals)
-constexpr i32 SIGKILL = 9;   // Kill signal (cannot be caught)
-constexpr i32 SIGTERM = 15;  // Termination signal
-constexpr i32 SIGSTOP = 19;  // Stop process (cannot be caught)
-constexpr i32 SIGCONT = 18;  // Continue if stopped
+constexpr i32 SIGKILL = 9;  // Kill signal (cannot be caught)
+constexpr i32 SIGTERM = 15; // Termination signal
+constexpr i32 SIGSTOP = 19; // Stop process (cannot be caught)
+constexpr i32 SIGCONT = 18; // Continue if stopped
 
 /**
  * @brief Send a signal to a task.

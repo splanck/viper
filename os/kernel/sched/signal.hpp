@@ -23,37 +23,37 @@ namespace signal
 /// Signal numbers (POSIX subset)
 namespace sig
 {
-constexpr i32 SIGHUP = 1;    ///< Hangup
-constexpr i32 SIGINT = 2;    ///< Interrupt (Ctrl+C)
-constexpr i32 SIGQUIT = 3;   ///< Quit (Ctrl+\)
-constexpr i32 SIGILL = 4;    ///< Illegal instruction
-constexpr i32 SIGTRAP = 5;   ///< Trace trap
-constexpr i32 SIGABRT = 6;   ///< Abort
-constexpr i32 SIGBUS = 7;    ///< Bus error
-constexpr i32 SIGFPE = 8;    ///< Floating point exception
-constexpr i32 SIGKILL = 9;   ///< Kill (cannot be caught)
-constexpr i32 SIGUSR1 = 10;  ///< User defined signal 1
-constexpr i32 SIGSEGV = 11;  ///< Segmentation violation
-constexpr i32 SIGUSR2 = 12;  ///< User defined signal 2
-constexpr i32 SIGPIPE = 13;  ///< Broken pipe
-constexpr i32 SIGALRM = 14;  ///< Alarm clock
-constexpr i32 SIGTERM = 15;  ///< Termination
-constexpr i32 SIGCHLD = 17;  ///< Child status changed
-constexpr i32 SIGCONT = 18;  ///< Continue if stopped
-constexpr i32 SIGSTOP = 19;  ///< Stop (cannot be caught)
-constexpr i32 SIGTSTP = 20;  ///< Stop from terminal (Ctrl+Z)
-constexpr i32 SIGTTIN = 21;  ///< Background read from tty
-constexpr i32 SIGTTOU = 22;  ///< Background write to tty
-constexpr i32 SIGURG = 23;   ///< Urgent I/O condition
-constexpr i32 SIGXCPU = 24;  ///< CPU time limit exceeded
-constexpr i32 SIGXFSZ = 25;  ///< File size limit exceeded
+constexpr i32 SIGHUP = 1;     ///< Hangup
+constexpr i32 SIGINT = 2;     ///< Interrupt (Ctrl+C)
+constexpr i32 SIGQUIT = 3;    ///< Quit (Ctrl+\)
+constexpr i32 SIGILL = 4;     ///< Illegal instruction
+constexpr i32 SIGTRAP = 5;    ///< Trace trap
+constexpr i32 SIGABRT = 6;    ///< Abort
+constexpr i32 SIGBUS = 7;     ///< Bus error
+constexpr i32 SIGFPE = 8;     ///< Floating point exception
+constexpr i32 SIGKILL = 9;    ///< Kill (cannot be caught)
+constexpr i32 SIGUSR1 = 10;   ///< User defined signal 1
+constexpr i32 SIGSEGV = 11;   ///< Segmentation violation
+constexpr i32 SIGUSR2 = 12;   ///< User defined signal 2
+constexpr i32 SIGPIPE = 13;   ///< Broken pipe
+constexpr i32 SIGALRM = 14;   ///< Alarm clock
+constexpr i32 SIGTERM = 15;   ///< Termination
+constexpr i32 SIGCHLD = 17;   ///< Child status changed
+constexpr i32 SIGCONT = 18;   ///< Continue if stopped
+constexpr i32 SIGSTOP = 19;   ///< Stop (cannot be caught)
+constexpr i32 SIGTSTP = 20;   ///< Stop from terminal (Ctrl+Z)
+constexpr i32 SIGTTIN = 21;   ///< Background read from tty
+constexpr i32 SIGTTOU = 22;   ///< Background write to tty
+constexpr i32 SIGURG = 23;    ///< Urgent I/O condition
+constexpr i32 SIGXCPU = 24;   ///< CPU time limit exceeded
+constexpr i32 SIGXFSZ = 25;   ///< File size limit exceeded
 constexpr i32 SIGVTALRM = 26; ///< Virtual timer expired
-constexpr i32 SIGPROF = 27;  ///< Profiling timer expired
-constexpr i32 SIGWINCH = 28; ///< Window size change
-constexpr i32 SIGIO = 29;    ///< I/O possible
-constexpr i32 SIGSYS = 31;   ///< Bad system call
+constexpr i32 SIGPROF = 27;   ///< Profiling timer expired
+constexpr i32 SIGWINCH = 28;  ///< Window size change
+constexpr i32 SIGIO = 29;     ///< I/O possible
+constexpr i32 SIGSYS = 31;    ///< Bad system call
 
-constexpr i32 NSIG = 32;     ///< Number of signals
+constexpr i32 NSIG = 32; ///< Number of signals
 } // namespace sig
 
 /**
@@ -102,8 +102,8 @@ struct SigAction
 struct SignalState
 {
     SigAction actions[sig::NSIG]; ///< Signal handlers for each signal
-    u32 blocked;                   ///< Blocked signal mask
-    u32 pending;                   ///< Pending signals bitmap
+    u32 blocked;                  ///< Blocked signal mask
+    u32 pending;                  ///< Pending signals bitmap
 
     /// Initialize with default actions
     void init()

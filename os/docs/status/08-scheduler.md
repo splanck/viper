@@ -57,7 +57,8 @@ The scheduler subsystem provides task management and context switching for both 
 | kernel_stack | u8* | Stack base |
 | kernel_stack_top | u8* | Stack top (initial SP) |
 | time_slice | u32 | Remaining ticks |
-| priority | u32 | Priority (lower = higher) |
+| priority | u8 | Priority (0=highest, 255=lowest) |
+| policy | SchedPolicy | SCHED_OTHER, SCHED_FIFO, or SCHED_RR |
 | next/prev | Task* | Queue linkage |
 | viper | ViperProcess* | User process |
 | user_entry | u64 | User entry point |
@@ -106,17 +107,24 @@ The scheduler subsystem provides task management and context switching for both 
 | `yield()` | Yield CPU |
 | `get_by_id(id)` | Lookup by ID |
 | `list_tasks(buf, max)` | Enumerate tasks with stats |
+| `set_priority(t, priority)` | Set task priority (0-255) |
+| `get_priority(t)` | Get task priority |
+| `set_policy(t, policy)` | Set scheduling policy |
+| `get_policy(t)` | Get scheduling policy |
 
 ---
 
 ### 2. Scheduler (`scheduler.cpp`, `scheduler.hpp`)
 
-**Status:** Complete FIFO scheduler with preemption
+**Status:** Complete priority-based scheduler with RT support and per-CPU queues
 
 **Implemented:**
-- FIFO ready queue (doubly-linked list)
-- Time-slice counter (10 ticks = 10ms at 1000Hz)
-- Preemption check on timer tick
+- 8 priority queues (0=highest, 7=lowest)
+- Priority-based preemption (higher priority always preempts)
+- Time-slice counter with priority-based duration
+- Real-time scheduling classes (SCHED_FIFO, SCHED_RR)
+- Per-CPU run queues for SMP scalability
+- Work-stealing load balancer
 - Context switch via assembly routine
 - Idle task fallback when queue empty
 - Context switch counter (statistics)
@@ -124,43 +132,85 @@ The scheduler subsystem provides task management and context switching for both 
 - Per-task context switch counting
 - Interrupt masking during critical sections
 
-**Ready Queue:**
+**Priority Queues:**
 ```
-┌────────┐   ┌────────┐   ┌────────┐
-│ Task A │◄─►│ Task B │◄─►│ Task C │
-└────────┘   └────────┘   └────────┘
-     ▲                          ▲
-   head                       tail
+Queue 0 (priority 0-31):   [RT/High priority tasks]
+Queue 1 (priority 32-63):  [High priority tasks]
+Queue 2 (priority 64-95):  [Above normal tasks]
+Queue 3 (priority 96-127): [Normal tasks]
+Queue 4 (priority 128-159): [Default priority - most tasks]
+Queue 5 (priority 160-191): [Below normal tasks]
+Queue 6 (priority 192-223): [Low priority tasks]
+Queue 7 (priority 224-255): [Idle task]
+```
+
+**Scheduling Policies:**
+| Policy | Description |
+|--------|-------------|
+| SCHED_OTHER | Normal time-sharing (default) |
+| SCHED_FIFO | Real-time FIFO - runs until yield/block |
+| SCHED_RR | Real-time round-robin - time sliced |
+
+RT tasks (SCHED_FIFO/SCHED_RR) always preempt SCHED_OTHER tasks.
+
+**Per-CPU Queues:**
+```
+CPU 0                  CPU 1                  CPU 2                  CPU 3
+┌──────────────┐       ┌──────────────┐       ┌──────────────┐       ┌──────────────┐
+│ Priority Q0  │       │ Priority Q0  │       │ Priority Q0  │       │ Priority Q0  │
+│ Priority Q1  │       │ Priority Q1  │       │ Priority Q1  │       │ Priority Q1  │
+│ ...          │       │ ...          │       │ ...          │       │ ...          │
+│ Priority Q7  │       │ Priority Q7  │       │ Priority Q7  │       │ Priority Q7  │
+└──────────────┘       └──────────────┘       └──────────────┘       └──────────────┘
+        ↑                      ↑                      ↑                      ↑
+        └──────────────────────┴──────────────────────┴──────────────────────┘
+                              Load Balancer (work stealing)
 ```
 
 **Scheduling Algorithm:**
 ```
 schedule():
-  1. Dequeue next task from ready queue
-  2. If queue empty, select idle task
-  3. If same as current, return
-  4. Re-enqueue current task if still runnable
-  5. Set next task as Running
-  6. Reset next task's time slice
-  7. Perform context switch
+  1. Check per-CPU queue (current CPU)
+  2. Dequeue highest priority task
+  3. If empty, try work stealing from other CPUs
+  4. If still empty, select idle task
+  5. If same as current, return
+  6. Re-enqueue current task if still runnable
+  7. Set next task as Running
+  8. Reset time slice based on policy:
+     - SCHED_FIFO: unlimited (runs until yield)
+     - SCHED_RR: fixed RT time slice (100ms)
+     - SCHED_OTHER: priority-based slice
+  9. Perform context switch
 ```
 
-**Time Slice:**
-- Default: 10 ticks (10ms)
-- Decremented on each timer tick
-- Schedule triggered when reaches 0
+**Time Slice by Priority:**
+| Queue | Priority Range | Time Slice |
+|-------|----------------|------------|
+| 0 | 0-31 | 5ms |
+| 1 | 32-63 | 10ms |
+| 2 | 64-95 | 15ms |
+| 3 | 96-127 | 20ms |
+| 4 | 128-159 | 25ms |
+| 5 | 160-191 | 30ms |
+| 6 | 192-223 | 35ms |
+| 7 | 224-255 | 40ms |
 
 **API:**
 | Function | Description |
 |----------|-------------|
 | `init()` | Initialize scheduler |
+| `init_cpu(cpu_id)` | Initialize per-CPU state |
 | `enqueue(t)` | Add task to ready queue |
+| `enqueue_on_cpu(t, cpu_id)` | Add task to specific CPU queue |
 | `dequeue()` | Remove next task |
 | `schedule()` | Select and switch |
 | `tick()` | Timer tick handler |
 | `preempt()` | Preemption check |
 | `start()` | Start scheduling |
+| `balance_load()` | Run load balancer |
 | `get_context_switches()` | Statistics |
+| `get_percpu_stats(cpu_id, stats)` | Per-CPU statistics |
 
 ---
 
@@ -373,11 +423,11 @@ The scheduler is tested via:
 
 ## Priority Recommendations
 
-1. **High:** Add priority-based scheduling
+1. ~~**High:** Add priority-based scheduling~~ ✅ **Completed** - 8 priority queues with priority-based preemption
 2. ~~**High:** Implement multiprocessor support (SMP)~~ ✅ **Completed** - 4 CPUs boot via PSCI
-3. **Medium:** Implement proper TIME_WAIT cleanup
-4. **Low:** Add real-time scheduling class
-5. **Low:** Per-CPU run queues for scalability
+3. ~~**Medium:** Implement proper TIME_WAIT cleanup~~ ✅ **Completed** - 2MSL timer via timer wheel
+4. ~~**Low:** Add real-time scheduling class~~ ✅ **Completed** - SCHED_FIFO and SCHED_RR policies
+5. ~~**Low:** Per-CPU run queues for scalability~~ ✅ **Completed** - Per-CPU queues with load balancing
 
 ## Recent Additions
 

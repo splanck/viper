@@ -1,29 +1,27 @@
 #ifndef _LIBCPP_ALGORITHM
 #define _LIBCPP_ALGORITHM
 
-#include "utility"
 #include "initializer_list"
+#include "utility"
 
-namespace std {
+namespace std
+{
 
 /* min/max */
-template <class T>
-constexpr const T& min(const T& a, const T& b)
+template <class T> constexpr const T &min(const T &a, const T &b)
 {
     return (b < a) ? b : a;
 }
 
-template <class T, class Compare>
-constexpr const T& min(const T& a, const T& b, Compare comp)
+template <class T, class Compare> constexpr const T &min(const T &a, const T &b, Compare comp)
 {
     return comp(b, a) ? b : a;
 }
 
-template <class T>
-constexpr T min(initializer_list<T> ilist)
+template <class T> constexpr T min(initializer_list<T> ilist)
 {
-    const T* result = ilist.begin();
-    for (const T* it = ilist.begin(); it != ilist.end(); ++it)
+    const T *result = ilist.begin();
+    for (const T *it = ilist.begin(); it != ilist.end(); ++it)
     {
         if (*it < *result)
             result = it;
@@ -31,23 +29,20 @@ constexpr T min(initializer_list<T> ilist)
     return *result;
 }
 
-template <class T>
-constexpr const T& max(const T& a, const T& b)
+template <class T> constexpr const T &max(const T &a, const T &b)
 {
     return (a < b) ? b : a;
 }
 
-template <class T, class Compare>
-constexpr const T& max(const T& a, const T& b, Compare comp)
+template <class T, class Compare> constexpr const T &max(const T &a, const T &b, Compare comp)
 {
     return comp(a, b) ? b : a;
 }
 
-template <class T>
-constexpr T max(initializer_list<T> ilist)
+template <class T> constexpr T max(initializer_list<T> ilist)
 {
-    const T* result = ilist.begin();
-    for (const T* it = ilist.begin(); it != ilist.end(); ++it)
+    const T *result = ilist.begin();
+    for (const T *it = ilist.begin(); it != ilist.end(); ++it)
     {
         if (*result < *it)
             result = it;
@@ -56,45 +51,40 @@ constexpr T max(initializer_list<T> ilist)
 }
 
 /* clamp */
-template <class T>
-constexpr const T& clamp(const T& v, const T& lo, const T& hi)
+template <class T> constexpr const T &clamp(const T &v, const T &lo, const T &hi)
 {
     return (v < lo) ? lo : (hi < v) ? hi : v;
 }
 
 /* swap */
-template <class T>
-constexpr void swap(T& a, T& b) noexcept
+template <class T> constexpr void swap(T &a, T &b) noexcept
 {
     T temp = move(a);
     a = move(b);
     b = move(temp);
 }
 
-template <class T, size_t N>
-constexpr void swap(T (&a)[N], T (&b)[N]) noexcept
+template <class T, size_t N> constexpr void swap(T (&a)[N], T (&b)[N]) noexcept
 {
     for (size_t i = 0; i < N; ++i)
         swap(a[i], b[i]);
 }
 
 /* iter_swap */
-template <class ForwardIt1, class ForwardIt2>
-constexpr void iter_swap(ForwardIt1 a, ForwardIt2 b)
+template <class ForwardIt1, class ForwardIt2> constexpr void iter_swap(ForwardIt1 a, ForwardIt2 b)
 {
     swap(*a, *b);
 }
 
 /* fill */
-template <class ForwardIt, class T>
-void fill(ForwardIt first, ForwardIt last, const T& value)
+template <class ForwardIt, class T> void fill(ForwardIt first, ForwardIt last, const T &value)
 {
     for (; first != last; ++first)
         *first = value;
 }
 
 template <class OutputIt, class Size, class T>
-OutputIt fill_n(OutputIt first, Size count, const T& value)
+OutputIt fill_n(OutputIt first, Size count, const T &value)
 {
     for (Size i = 0; i < count; ++i)
         *first++ = value;
@@ -156,8 +146,7 @@ BidirIt2 move_backward(BidirIt1 first, BidirIt1 last, BidirIt2 d_last)
 }
 
 /* find */
-template <class InputIt, class T>
-InputIt find(InputIt first, InputIt last, const T& value)
+template <class InputIt, class T> InputIt find(InputIt first, InputIt last, const T &value)
 {
     for (; first != last; ++first)
     {
@@ -191,8 +180,9 @@ InputIt find_if_not(InputIt first, InputIt last, UnaryPredicate p)
 
 /* count */
 template <class InputIt, class T>
-typename iterator_traits<InputIt>::difference_type
-count(InputIt first, InputIt last, const T& value)
+typename iterator_traits<InputIt>::difference_type count(InputIt first,
+                                                         InputIt last,
+                                                         const T &value)
 {
     typename iterator_traits<InputIt>::difference_type ret = 0;
     for (; first != last; ++first)
@@ -204,8 +194,9 @@ count(InputIt first, InputIt last, const T& value)
 }
 
 template <class InputIt, class UnaryPredicate>
-typename iterator_traits<InputIt>::difference_type
-count_if(InputIt first, InputIt last, UnaryPredicate p)
+typename iterator_traits<InputIt>::difference_type count_if(InputIt first,
+                                                            InputIt last,
+                                                            UnaryPredicate p)
 {
     typename iterator_traits<InputIt>::difference_type ret = 0;
     for (; first != last; ++first)
@@ -268,8 +259,7 @@ bool equal(InputIt1 first1, InputIt1 last1, InputIt2 first2, BinaryPredicate p)
 }
 
 /* reverse */
-template <class BidirIt>
-void reverse(BidirIt first, BidirIt last)
+template <class BidirIt> void reverse(BidirIt first, BidirIt last)
 {
     while ((first != last) && (first != --last))
     {
@@ -279,11 +269,12 @@ void reverse(BidirIt first, BidirIt last)
 }
 
 /* rotate */
-template <class ForwardIt>
-ForwardIt rotate(ForwardIt first, ForwardIt n_first, ForwardIt last)
+template <class ForwardIt> ForwardIt rotate(ForwardIt first, ForwardIt n_first, ForwardIt last)
 {
-    if (first == n_first) return last;
-    if (n_first == last) return first;
+    if (first == n_first)
+        return last;
+    if (n_first == last)
+        return first;
 
     ForwardIt read = n_first;
     ForwardIt write = first;
@@ -310,7 +301,8 @@ OutputIt transform(InputIt first1, InputIt last1, OutputIt d_first, UnaryOperati
 }
 
 template <class InputIt1, class InputIt2, class OutputIt, class BinaryOperation>
-OutputIt transform(InputIt1 first1, InputIt1 last1, InputIt2 first2, OutputIt d_first, BinaryOperation op)
+OutputIt transform(
+    InputIt1 first1, InputIt1 last1, InputIt2 first2, OutputIt d_first, BinaryOperation op)
 {
     while (first1 != last1)
         *d_first++ = op(*first1++, *first2++);
@@ -319,7 +311,7 @@ OutputIt transform(InputIt1 first1, InputIt1 last1, InputIt2 first2, OutputIt d_
 
 /* replace */
 template <class ForwardIt, class T>
-void replace(ForwardIt first, ForwardIt last, const T& old_value, const T& new_value)
+void replace(ForwardIt first, ForwardIt last, const T &old_value, const T &new_value)
 {
     for (; first != last; ++first)
     {
@@ -329,7 +321,7 @@ void replace(ForwardIt first, ForwardIt last, const T& old_value, const T& new_v
 }
 
 template <class ForwardIt, class UnaryPredicate, class T>
-void replace_if(ForwardIt first, ForwardIt last, UnaryPredicate p, const T& new_value)
+void replace_if(ForwardIt first, ForwardIt last, UnaryPredicate p, const T &new_value)
 {
     for (; first != last; ++first)
     {
@@ -340,7 +332,7 @@ void replace_if(ForwardIt first, ForwardIt last, UnaryPredicate p, const T& new_
 
 /* remove */
 template <class ForwardIt, class T>
-ForwardIt remove(ForwardIt first, ForwardIt last, const T& value)
+ForwardIt remove(ForwardIt first, ForwardIt last, const T &value)
 {
     first = find(first, last, value);
     if (first != last)
@@ -370,8 +362,7 @@ ForwardIt remove_if(ForwardIt first, ForwardIt last, UnaryPredicate p)
 }
 
 /* unique */
-template <class ForwardIt>
-ForwardIt unique(ForwardIt first, ForwardIt last)
+template <class ForwardIt> ForwardIt unique(ForwardIt first, ForwardIt last)
 {
     if (first == last)
         return last;
@@ -387,7 +378,7 @@ ForwardIt unique(ForwardIt first, ForwardIt last)
 
 /* lower_bound / upper_bound / binary_search */
 template <class ForwardIt, class T>
-ForwardIt lower_bound(ForwardIt first, ForwardIt last, const T& value)
+ForwardIt lower_bound(ForwardIt first, ForwardIt last, const T &value)
 {
     ForwardIt it;
     typename iterator_traits<ForwardIt>::difference_type count, step;
@@ -412,7 +403,7 @@ ForwardIt lower_bound(ForwardIt first, ForwardIt last, const T& value)
 }
 
 template <class ForwardIt, class T>
-ForwardIt upper_bound(ForwardIt first, ForwardIt last, const T& value)
+ForwardIt upper_bound(ForwardIt first, ForwardIt last, const T &value)
 {
     ForwardIt it;
     typename iterator_traits<ForwardIt>::difference_type count, step;
@@ -437,15 +428,14 @@ ForwardIt upper_bound(ForwardIt first, ForwardIt last, const T& value)
 }
 
 template <class ForwardIt, class T>
-bool binary_search(ForwardIt first, ForwardIt last, const T& value)
+bool binary_search(ForwardIt first, ForwardIt last, const T &value)
 {
     first = lower_bound(first, last, value);
     return (first != last && !(value < *first));
 }
 
 /* sort - simple insertion sort for now */
-template <class RandomIt>
-void sort(RandomIt first, RandomIt last)
+template <class RandomIt> void sort(RandomIt first, RandomIt last)
 {
     for (RandomIt i = first; i != last; ++i)
     {
@@ -454,8 +444,7 @@ void sort(RandomIt first, RandomIt last)
     }
 }
 
-template <class RandomIt, class Compare>
-void sort(RandomIt first, RandomIt last, Compare comp)
+template <class RandomIt, class Compare> void sort(RandomIt first, RandomIt last, Compare comp)
 {
     for (RandomIt i = first; i != last; ++i)
     {
@@ -465,8 +454,7 @@ void sort(RandomIt first, RandomIt last, Compare comp)
 }
 
 /* stable_sort - same as sort for this simple impl */
-template <class RandomIt>
-void stable_sort(RandomIt first, RandomIt last)
+template <class RandomIt> void stable_sort(RandomIt first, RandomIt last)
 {
     sort(first, last);
 }
@@ -478,8 +466,7 @@ void stable_sort(RandomIt first, RandomIt last, Compare comp)
 }
 
 /* is_sorted */
-template <class ForwardIt>
-bool is_sorted(ForwardIt first, ForwardIt last)
+template <class ForwardIt> bool is_sorted(ForwardIt first, ForwardIt last)
 {
     if (first != last)
     {
@@ -495,10 +482,10 @@ bool is_sorted(ForwardIt first, ForwardIt last)
 }
 
 /* min_element / max_element */
-template <class ForwardIt>
-ForwardIt min_element(ForwardIt first, ForwardIt last)
+template <class ForwardIt> ForwardIt min_element(ForwardIt first, ForwardIt last)
 {
-    if (first == last) return last;
+    if (first == last)
+        return last;
     ForwardIt smallest = first;
     while (++first != last)
     {
@@ -508,10 +495,10 @@ ForwardIt min_element(ForwardIt first, ForwardIt last)
     return smallest;
 }
 
-template <class ForwardIt>
-ForwardIt max_element(ForwardIt first, ForwardIt last)
+template <class ForwardIt> ForwardIt max_element(ForwardIt first, ForwardIt last)
 {
-    if (first == last) return last;
+    if (first == last)
+        return last;
     ForwardIt largest = first;
     while (++first != last)
     {
@@ -527,16 +514,17 @@ bool lexicographical_compare(InputIt1 first1, InputIt1 last1, InputIt2 first2, I
 {
     for (; (first1 != last1) && (first2 != last2); ++first1, ++first2)
     {
-        if (*first1 < *first2) return true;
-        if (*first2 < *first1) return false;
+        if (*first1 < *first2)
+            return true;
+        if (*first2 < *first1)
+            return false;
     }
     return (first1 == last1) && (first2 != last2);
 }
 
 /* Helper for algorithms - distance and advance */
 template <class InputIt>
-typename iterator_traits<InputIt>::difference_type
-distance(InputIt first, InputIt last)
+typename iterator_traits<InputIt>::difference_type distance(InputIt first, InputIt last)
 {
     typename iterator_traits<InputIt>::difference_type result = 0;
     while (first != last)
@@ -547,8 +535,7 @@ distance(InputIt first, InputIt last)
     return result;
 }
 
-template <class InputIt, class Distance>
-void advance(InputIt& it, Distance n)
+template <class InputIt, class Distance> void advance(InputIt &it, Distance n)
 {
     while (n > 0)
     {

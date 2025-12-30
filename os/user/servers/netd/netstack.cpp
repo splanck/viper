@@ -17,7 +17,6 @@ static void memcpy_net(void *dst, const void *src, usize n)
         *d++ = *s++;
 }
 
-
 // =============================================================================
 // NetIf Implementation
 // =============================================================================
@@ -441,9 +440,10 @@ void NetworkStack::handle_tcp(const Ipv4Header *ip, const u8 *data, usize len)
                     // Receive data
                     if (seq == conn->rcv_nxt)
                     {
-                        usize space = TcpConnection::RX_BUF_SIZE -
-                                      ((conn->rx_tail - conn->rx_head + TcpConnection::RX_BUF_SIZE) %
-                                       TcpConnection::RX_BUF_SIZE);
+                        usize space =
+                            TcpConnection::RX_BUF_SIZE -
+                            ((conn->rx_tail - conn->rx_head + TcpConnection::RX_BUF_SIZE) %
+                             TcpConnection::RX_BUF_SIZE);
                         if (payload_len <= space)
                         {
                             for (usize i = 0; i < payload_len; i++)
@@ -613,8 +613,8 @@ bool NetworkStack::send_tcp_segment(TcpConnection *conn, u8 flags, const void *d
     return send_ip_packet(conn->remote_ip, IP_PROTO_TCP, segment, sizeof(TcpHeader) + len);
 }
 
-bool NetworkStack::send_udp_datagram(const Ipv4Addr &dst, u16 src_port, u16 dst_port,
-                                     const void *data, usize len)
+bool NetworkStack::send_udp_datagram(
+    const Ipv4Addr &dst, u16 src_port, u16 dst_port, const void *data, usize len)
 {
     u8 datagram[1472];
     if (len + sizeof(UdpHeader) > sizeof(datagram))
@@ -634,7 +634,8 @@ bool NetworkStack::send_udp_datagram(const Ipv4Addr &dst, u16 src_port, u16 dst_
     return send_ip_packet(dst, IP_PROTO_UDP, datagram, sizeof(UdpHeader) + len);
 }
 
-TcpConnection *NetworkStack::find_tcp_conn(const Ipv4Addr &remote_ip, u16 remote_port,
+TcpConnection *NetworkStack::find_tcp_conn(const Ipv4Addr &remote_ip,
+                                           u16 remote_port,
                                            u16 local_port)
 {
     for (usize i = 0; i < MAX_TCP_CONNS; i++)

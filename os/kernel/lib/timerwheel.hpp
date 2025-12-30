@@ -50,7 +50,7 @@ constexpr u64 MAX_TIMEOUT_MS = WHEEL0_SIZE * WHEEL1_SIZE;
  */
 struct TimerEntry
 {
-    u64 expire_time;       ///< Absolute expiration time in ms
+    u64 expire_time;        ///< Absolute expiration time in ms
     TimerCallback callback; ///< Function to call on expiration
     void *context;          ///< User context passed to callback
     u32 id;                 ///< Unique timer ID
@@ -109,7 +109,10 @@ class TimerWheel
     /**
      * @brief Get count of active timers.
      */
-    u32 active_count() const { return active_count_; }
+    u32 active_count() const
+    {
+        return active_count_;
+    }
 
   private:
     /// Add timer to appropriate wheel slot
@@ -135,12 +138,12 @@ class TimerWheel
     // Wheel structures - heads of doubly-linked lists
     TimerEntry *wheel0_[WHEEL0_SIZE]; ///< Level 0: 1ms slots
     TimerEntry *wheel1_[WHEEL1_SIZE]; ///< Level 1: 256ms slots
-    TimerEntry *overflow_;             ///< Timers beyond wheel range
+    TimerEntry *overflow_;            ///< Timers beyond wheel range
 
     // Current wheel positions
-    u64 current_time_;   ///< Current time in ms
-    u32 wheel0_index_;   ///< Current slot in wheel 0
-    u32 wheel1_index_;   ///< Current slot in wheel 1
+    u64 current_time_; ///< Current time in ms
+    u32 wheel0_index_; ///< Current slot in wheel 0
+    u32 wheel1_index_; ///< Current slot in wheel 1
 };
 
 /**

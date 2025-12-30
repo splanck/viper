@@ -4,8 +4,8 @@
  */
 
 #include "../include/grp.h"
-#include "../include/string.h"
 #include "../include/errno.h"
+#include "../include/string.h"
 
 /* Static group entry for non-reentrant functions */
 static struct group static_grp;
@@ -18,12 +18,12 @@ static int grp_index = 0;
 /*
  * fill_group - Fill a group structure with values
  */
-static int fill_group(struct group *grp, char *buf, size_t buflen,
-                      gid_t gid, const char *name, char **members)
+static int fill_group(
+    struct group *grp, char *buf, size_t buflen, gid_t gid, const char *name, char **members)
 {
     /* Calculate required buffer size */
     size_t name_len = strlen(name) + 1;
-    size_t passwd_len = 2;  /* "x\0" */
+    size_t passwd_len = 2; /* "x\0" */
     size_t total = name_len + passwd_len;
 
     if (buflen < total)
@@ -81,8 +81,7 @@ struct group *getgrgid(gid_t gid)
 /*
  * getgrnam_r - Get group entry by name (reentrant)
  */
-int getgrnam_r(const char *name, struct group *grp,
-               char *buf, size_t buflen, struct group **result)
+int getgrnam_r(const char *name, struct group *grp, char *buf, size_t buflen, struct group **result)
 {
     if (!name || !grp || !buf || !result)
     {
@@ -143,8 +142,7 @@ int getgrnam_r(const char *name, struct group *grp,
 /*
  * getgrgid_r - Get group entry by group ID (reentrant)
  */
-int getgrgid_r(gid_t gid, struct group *grp,
-               char *buf, size_t buflen, struct group **result)
+int getgrgid_r(gid_t gid, struct group *grp, char *buf, size_t buflen, struct group **result)
 {
     if (!grp || !buf || !result)
     {
@@ -215,42 +213,43 @@ struct group *getgrent(void)
 
     switch (grp_index)
     {
-    case 0:
-        /* Return root entry */
-        static_members[0] = "root";
-        static_members[1] = NULL;
-        if (fill_group(&static_grp, static_buf, sizeof(static_buf),
-                       0, "root", static_members) == 0)
-        {
-            result = &static_grp;
-        }
-        break;
+        case 0:
+            /* Return root entry */
+            static_members[0] = "root";
+            static_members[1] = NULL;
+            if (fill_group(
+                    &static_grp, static_buf, sizeof(static_buf), 0, "root", static_members) == 0)
+            {
+                result = &static_grp;
+            }
+            break;
 
-    case 1:
-        /* Return users entry */
-        static_members[0] = "viper";
-        static_members[1] = NULL;
-        if (fill_group(&static_grp, static_buf, sizeof(static_buf),
-                       100, "users", static_members) == 0)
-        {
-            result = &static_grp;
-        }
-        break;
+        case 1:
+            /* Return users entry */
+            static_members[0] = "viper";
+            static_members[1] = NULL;
+            if (fill_group(
+                    &static_grp, static_buf, sizeof(static_buf), 100, "users", static_members) == 0)
+            {
+                result = &static_grp;
+            }
+            break;
 
-    case 2:
-        /* Return viper entry */
-        static_members[0] = "viper";
-        static_members[1] = NULL;
-        if (fill_group(&static_grp, static_buf, sizeof(static_buf),
-                       1000, "viper", static_members) == 0)
-        {
-            result = &static_grp;
-        }
-        break;
+        case 2:
+            /* Return viper entry */
+            static_members[0] = "viper";
+            static_members[1] = NULL;
+            if (fill_group(
+                    &static_grp, static_buf, sizeof(static_buf), 1000, "viper", static_members) ==
+                0)
+            {
+                result = &static_grp;
+            }
+            break;
 
-    default:
-        /* No more entries */
-        return NULL;
+        default:
+            /* No more entries */
+            return NULL;
     }
 
     if (result)
@@ -262,8 +261,7 @@ struct group *getgrent(void)
 /*
  * getgrouplist - Get list of groups for a user
  */
-int getgrouplist(const char *user, gid_t group,
-                 gid_t *groups, int *ngroups)
+int getgrouplist(const char *user, gid_t group, gid_t *groups, int *ngroups)
 {
     if (!user || !groups || !ngroups || *ngroups < 1)
     {

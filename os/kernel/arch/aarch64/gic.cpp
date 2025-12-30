@@ -71,7 +71,7 @@ constexpr u32 GICC_EOIR = 0x010; // End of Interrupt
 // RD_base (first 64KB)
 constexpr u32 GICR_CTLR = 0x0000;
 constexpr u32 GICR_IIDR = 0x0004;
-constexpr u32 GICR_TYPER = 0x0008;     // 64-bit
+constexpr u32 GICR_TYPER = 0x0008; // 64-bit
 constexpr u32 GICR_WAKER = 0x0014;
 constexpr u32 GICR_PIDR2 = 0xFFE8;
 // SGI_base (second 64KB, offset 0x10000)
@@ -83,9 +83,9 @@ constexpr u32 GICR_IPRIORITYR = 0x10400;
 // GICD_CTLR bits
 constexpr u32 GICD_CTLR_EnableGrp0 = 1 << 0;
 constexpr u32 GICD_CTLR_EnableGrp1NS = 1 << 1;
-constexpr u32 GICD_CTLR_EnableGrp1A = 1 << 1;  // v3 alias
-constexpr u32 GICD_CTLR_ARE_S = 1 << 4;        // v3: Affinity routing enable (secure)
-constexpr u32 GICD_CTLR_ARE_NS = 1 << 5;       // v3: Affinity routing enable (non-secure)
+constexpr u32 GICD_CTLR_EnableGrp1A = 1 << 1; // v3 alias
+constexpr u32 GICD_CTLR_ARE_S = 1 << 4;       // v3: Affinity routing enable (secure)
+constexpr u32 GICD_CTLR_ARE_NS = 1 << 5;      // v3: Affinity routing enable (non-secure)
 
 // GICR_WAKER bits
 constexpr u32 GICR_WAKER_ProcessorSleep = 1 << 1;
@@ -272,9 +272,9 @@ static void init_v2()
  */
 static void init_cpu_v2()
 {
-    gicc(GICC_PMR) = 0xFF;  // Accept all priorities
-    gicc(GICC_BPR) = 0;     // No priority grouping
-    gicc(GICC_CTLR) = 1;    // Enable CPU interface
+    gicc(GICC_PMR) = 0xFF; // Accept all priorities
+    gicc(GICC_BPR) = 0;    // No priority grouping
+    gicc(GICC_CTLR) = 1;   // Enable CPU interface
 }
 
 /**
@@ -407,10 +407,10 @@ static void init_cpu_v3()
     write_icc_sre_el1(sre);
 
     // Configure ICC registers
-    write_icc_pmr_el1(0xFF);   // Accept all priorities
-    write_icc_bpr1_el1(0);     // No priority grouping
-    write_icc_ctlr_el1(0);     // EOImode = 0 (drop priority and deactivate)
-    write_icc_igrpen1_el1(1);  // Enable group 1 interrupts
+    write_icc_pmr_el1(0xFF);  // Accept all priorities
+    write_icc_bpr1_el1(0);    // No priority grouping
+    write_icc_ctlr_el1(0);    // EOImode = 0 (drop priority and deactivate)
+    write_icc_igrpen1_el1(1); // Enable group 1 interrupts
 
     asm volatile("isb");
 

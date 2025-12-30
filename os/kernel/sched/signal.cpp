@@ -8,8 +8,8 @@
  * signal handlers are not yet implemented.
  */
 #include "signal.hpp"
-#include "../console/serial.hpp"
 #include "../console/gcon.hpp"
+#include "../console/serial.hpp"
 #include "../viper/viper.hpp"
 #include "scheduler.hpp"
 #include "task.hpp"
@@ -74,36 +74,66 @@ const char *signal_name(i32 signum)
 {
     switch (signum)
     {
-        case sig::SIGHUP:    return "SIGHUP";
-        case sig::SIGINT:    return "SIGINT";
-        case sig::SIGQUIT:   return "SIGQUIT";
-        case sig::SIGILL:    return "SIGILL";
-        case sig::SIGTRAP:   return "SIGTRAP";
-        case sig::SIGABRT:   return "SIGABRT";
-        case sig::SIGBUS:    return "SIGBUS";
-        case sig::SIGFPE:    return "SIGFPE";
-        case sig::SIGKILL:   return "SIGKILL";
-        case sig::SIGUSR1:   return "SIGUSR1";
-        case sig::SIGSEGV:   return "SIGSEGV";
-        case sig::SIGUSR2:   return "SIGUSR2";
-        case sig::SIGPIPE:   return "SIGPIPE";
-        case sig::SIGALRM:   return "SIGALRM";
-        case sig::SIGTERM:   return "SIGTERM";
-        case sig::SIGCHLD:   return "SIGCHLD";
-        case sig::SIGCONT:   return "SIGCONT";
-        case sig::SIGSTOP:   return "SIGSTOP";
-        case sig::SIGTSTP:   return "SIGTSTP";
-        case sig::SIGTTIN:   return "SIGTTIN";
-        case sig::SIGTTOU:   return "SIGTTOU";
-        case sig::SIGURG:    return "SIGURG";
-        case sig::SIGXCPU:   return "SIGXCPU";
-        case sig::SIGXFSZ:   return "SIGXFSZ";
-        case sig::SIGVTALRM: return "SIGVTALRM";
-        case sig::SIGPROF:   return "SIGPROF";
-        case sig::SIGWINCH:  return "SIGWINCH";
-        case sig::SIGIO:     return "SIGIO";
-        case sig::SIGSYS:    return "SIGSYS";
-        default:             return "SIG???";
+        case sig::SIGHUP:
+            return "SIGHUP";
+        case sig::SIGINT:
+            return "SIGINT";
+        case sig::SIGQUIT:
+            return "SIGQUIT";
+        case sig::SIGILL:
+            return "SIGILL";
+        case sig::SIGTRAP:
+            return "SIGTRAP";
+        case sig::SIGABRT:
+            return "SIGABRT";
+        case sig::SIGBUS:
+            return "SIGBUS";
+        case sig::SIGFPE:
+            return "SIGFPE";
+        case sig::SIGKILL:
+            return "SIGKILL";
+        case sig::SIGUSR1:
+            return "SIGUSR1";
+        case sig::SIGSEGV:
+            return "SIGSEGV";
+        case sig::SIGUSR2:
+            return "SIGUSR2";
+        case sig::SIGPIPE:
+            return "SIGPIPE";
+        case sig::SIGALRM:
+            return "SIGALRM";
+        case sig::SIGTERM:
+            return "SIGTERM";
+        case sig::SIGCHLD:
+            return "SIGCHLD";
+        case sig::SIGCONT:
+            return "SIGCONT";
+        case sig::SIGSTOP:
+            return "SIGSTOP";
+        case sig::SIGTSTP:
+            return "SIGTSTP";
+        case sig::SIGTTIN:
+            return "SIGTTIN";
+        case sig::SIGTTOU:
+            return "SIGTTOU";
+        case sig::SIGURG:
+            return "SIGURG";
+        case sig::SIGXCPU:
+            return "SIGXCPU";
+        case sig::SIGXFSZ:
+            return "SIGXFSZ";
+        case sig::SIGVTALRM:
+            return "SIGVTALRM";
+        case sig::SIGPROF:
+            return "SIGPROF";
+        case sig::SIGWINCH:
+            return "SIGWINCH";
+        case sig::SIGIO:
+            return "SIGIO";
+        case sig::SIGSYS:
+            return "SIGSYS";
+        default:
+            return "SIG???";
     }
 }
 

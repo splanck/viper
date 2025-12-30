@@ -13,31 +13,31 @@ extern long __syscall3(long num, long arg0, long arg1, long arg2);
 extern long __syscall4(long num, long arg0, long arg1, long arg2, long arg3);
 
 /* Syscall numbers */
-#define SYS_GETRLIMIT   0xF0
-#define SYS_SETRLIMIT   0xF1
-#define SYS_PRLIMIT     0xF2
-#define SYS_GETRUSAGE   0xF3
+#define SYS_GETRLIMIT 0xF0
+#define SYS_SETRLIMIT 0xF1
+#define SYS_PRLIMIT 0xF2
+#define SYS_GETRUSAGE 0xF3
 #define SYS_GETPRIORITY 0xF4
 #define SYS_SETPRIORITY 0xF5
 
 /* Default limits for the system */
 static struct rlimit default_limits[RLIMIT_NLIMITS] = {
-    [RLIMIT_CPU]        = { RLIM_INFINITY, RLIM_INFINITY },
-    [RLIMIT_FSIZE]      = { RLIM_INFINITY, RLIM_INFINITY },
-    [RLIMIT_DATA]       = { RLIM_INFINITY, RLIM_INFINITY },
-    [RLIMIT_STACK]      = { 8 * 1024 * 1024, RLIM_INFINITY }, /* 8MB default */
-    [RLIMIT_CORE]       = { 0, RLIM_INFINITY },
-    [RLIMIT_RSS]        = { RLIM_INFINITY, RLIM_INFINITY },
-    [RLIMIT_NPROC]      = { 1024, 1024 },
-    [RLIMIT_NOFILE]     = { 1024, 4096 },
-    [RLIMIT_MEMLOCK]    = { 64 * 1024, 64 * 1024 },
-    [RLIMIT_AS]         = { RLIM_INFINITY, RLIM_INFINITY },
-    [RLIMIT_LOCKS]      = { RLIM_INFINITY, RLIM_INFINITY },
-    [RLIMIT_SIGPENDING] = { 1024, 1024 },
-    [RLIMIT_MSGQUEUE]   = { 819200, 819200 },
-    [RLIMIT_NICE]       = { 0, 0 },
-    [RLIMIT_RTPRIO]     = { 0, 0 },
-    [RLIMIT_RTTIME]     = { RLIM_INFINITY, RLIM_INFINITY },
+    [RLIMIT_CPU] = {RLIM_INFINITY, RLIM_INFINITY},
+    [RLIMIT_FSIZE] = {RLIM_INFINITY, RLIM_INFINITY},
+    [RLIMIT_DATA] = {RLIM_INFINITY, RLIM_INFINITY},
+    [RLIMIT_STACK] = {8 * 1024 * 1024, RLIM_INFINITY}, /* 8MB default */
+    [RLIMIT_CORE] = {0, RLIM_INFINITY},
+    [RLIMIT_RSS] = {RLIM_INFINITY, RLIM_INFINITY},
+    [RLIMIT_NPROC] = {1024, 1024},
+    [RLIMIT_NOFILE] = {1024, 4096},
+    [RLIMIT_MEMLOCK] = {64 * 1024, 64 * 1024},
+    [RLIMIT_AS] = {RLIM_INFINITY, RLIM_INFINITY},
+    [RLIMIT_LOCKS] = {RLIM_INFINITY, RLIM_INFINITY},
+    [RLIMIT_SIGPENDING] = {1024, 1024},
+    [RLIMIT_MSGQUEUE] = {819200, 819200},
+    [RLIMIT_NICE] = {0, 0},
+    [RLIMIT_RTPRIO] = {0, 0},
+    [RLIMIT_RTTIME] = {RLIM_INFINITY, RLIM_INFINITY},
 };
 
 /*
@@ -116,8 +116,7 @@ int setrlimit(int resource, const struct rlimit *rlim)
 /*
  * prlimit - Get and set resource limits
  */
-int prlimit(pid_t pid, int resource,
-            const struct rlimit *new_limit, struct rlimit *old_limit)
+int prlimit(pid_t pid, int resource, const struct rlimit *new_limit, struct rlimit *old_limit)
 {
     if (resource < 0 || resource >= RLIMIT_NLIMITS)
     {
@@ -126,8 +125,8 @@ int prlimit(pid_t pid, int resource,
     }
 
     /* Try syscall */
-    long result = __syscall4(SYS_PRLIMIT, (long)pid, (long)resource,
-                             (long)new_limit, (long)old_limit);
+    long result =
+        __syscall4(SYS_PRLIMIT, (long)pid, (long)resource, (long)new_limit, (long)old_limit);
     if (result < 0)
     {
         /* Syscall not implemented - handle locally for current process */

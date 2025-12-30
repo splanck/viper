@@ -13,11 +13,11 @@ struct _FILE
     int fd;
     int error;
     int eof;
-    int buf_mode;       /* _IOFBF, _IOLBF, or _IONBF */
-    char *buf;          /* Buffer pointer (NULL if none) */
-    size_t buf_size;    /* Size of buffer */
-    size_t buf_pos;     /* Current position in buffer */
-    int buf_owned;      /* 1 if we allocated the buffer */
+    int buf_mode;    /* _IOFBF, _IOLBF, or _IONBF */
+    char *buf;       /* Buffer pointer (NULL if none) */
+    size_t buf_size; /* Size of buffer */
+    size_t buf_pos;  /* Current position in buffer */
+    int buf_owned;   /* 1 if we allocated the buffer */
 };
 
 /* Default buffers for stdout (line buffered) */
@@ -37,14 +37,14 @@ static int vsnprintf_internal(char *str, size_t size, const char *format, va_lis
 {
     size_t written = 0;
 
-#define PUTC(c)                  \
-    do                           \
-    {                            \
-        if (written < size - 1)  \
-        {                        \
-            str[written] = (c);  \
-        }                        \
-        written++;               \
+#define PUTC(c)                                                                                    \
+    do                                                                                             \
+    {                                                                                              \
+        if (written < size - 1)                                                                    \
+        {                                                                                          \
+            str[written] = (c);                                                                    \
+        }                                                                                          \
+        written++;                                                                                 \
     } while (0)
 
     while (*format && written < size)
@@ -173,12 +173,11 @@ static int vsnprintf_internal(char *str, size_t size, const char *format, va_lis
 
                 if (*format == 'x' || *format == 'X')
                 {
-                    unsigned long long val = is_longlong ? va_arg(ap, unsigned long long)
-                                                         : va_arg(ap, unsigned long);
+                    unsigned long long val =
+                        is_longlong ? va_arg(ap, unsigned long long) : va_arg(ap, unsigned long);
                     char *p = buf + sizeof(buf) - 1;
                     *p = '\0';
-                    const char *digits =
-                        (*format == 'X') ? "0123456789ABCDEF" : "0123456789abcdef";
+                    const char *digits = (*format == 'X') ? "0123456789ABCDEF" : "0123456789abcdef";
                     do
                     {
                         *--p = digits[val & 0xF];
@@ -212,8 +211,8 @@ static int vsnprintf_internal(char *str, size_t size, const char *format, va_lis
                 }
                 else if (*format == 'u')
                 {
-                    unsigned long long val = is_longlong ? va_arg(ap, unsigned long long)
-                                                         : va_arg(ap, unsigned long);
+                    unsigned long long val =
+                        is_longlong ? va_arg(ap, unsigned long long) : va_arg(ap, unsigned long);
                     char *p = buf + sizeof(buf) - 1;
                     *p = '\0';
                     do
@@ -615,12 +614,12 @@ extern long __syscall3(long num, long arg0, long arg1, long arg2);
 #define SYS_RENAME 0x64
 
 /* File open flags */
-#define O_RDONLY  0x0001
-#define O_WRONLY  0x0002
-#define O_RDWR    0x0003
-#define O_CREAT   0x0100
-#define O_TRUNC   0x0200
-#define O_APPEND  0x0400
+#define O_RDONLY 0x0001
+#define O_WRONLY 0x0002
+#define O_RDWR 0x0003
+#define O_CREAT 0x0100
+#define O_TRUNC 0x0200
+#define O_APPEND 0x0400
 
 /* Pool of FILE structures */
 #define FILE_POOL_SIZE 20
@@ -889,9 +888,12 @@ static int ungetc_buf[FILE_POOL_SIZE + 3] = {EOF, EOF, EOF}; /* +3 for stdin/std
 
 static int get_stream_index(FILE *stream)
 {
-    if (stream == stdin) return 0;
-    if (stream == stdout) return 1;
-    if (stream == stderr) return 2;
+    if (stream == stdin)
+        return 0;
+    if (stream == stdout)
+        return 1;
+    if (stream == stderr)
+        return 2;
     for (int i = 0; i < FILE_POOL_SIZE; i++)
     {
         if (stream == &file_pool[i])

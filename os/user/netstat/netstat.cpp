@@ -10,11 +10,11 @@
  *   netstat          - Show network statistics
  */
 
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include "../syscall.hpp"
 #include "../../include/viperos/net_stats.hpp"
+#include "../syscall.hpp"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 // Format bytes with appropriate units
 static void format_bytes(unsigned long long bytes, char *buf, size_t bufsize)
@@ -156,7 +156,9 @@ static void print_summary(const NetStats *stats)
         {
             unsigned long long retrans_pct = (stats->tcp_retransmits * 100) / total_tcp;
             printf("  TCP Retrans:   %llu%% (%llu/%llu)\n",
-                   retrans_pct, stats->tcp_retransmits, total_tcp);
+                   retrans_pct,
+                   stats->tcp_retransmits,
+                   total_tcp);
         }
     }
 }

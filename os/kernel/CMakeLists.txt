@@ -65,7 +65,9 @@ set(KERNEL_SOURCES
         net/eth/ethernet.cpp
         net/eth/arp.cpp
         net/ip/ipv4.cpp
+        net/ip/ipv6.cpp
         net/ip/icmp.cpp
+        net/ip/icmpv6.cpp
         net/ip/udp.cpp
         net/ip/tcp.cpp
         net/dns/dns.cpp

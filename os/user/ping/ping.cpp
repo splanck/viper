@@ -11,10 +11,10 @@
  *   ping <ip>         - Pings the specified IP (via args mechanism when available)
  */
 
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
 #include "../syscall.hpp"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 // Parse IP address from string (e.g., "192.168.1.1")
 static bool parse_ip(const char *str, u32 *ip_out)
@@ -27,7 +27,8 @@ static bool parse_ip(const char *str, u32 *ip_out)
         if (*str >= '0' && *str <= '9')
         {
             octets[octet_idx] = octets[octet_idx] * 10 + (*str - '0');
-            if (octets[octet_idx] > 255) return false;
+            if (octets[octet_idx] > 255)
+                return false;
         }
         else if (*str == '.')
         {
@@ -40,7 +41,8 @@ static bool parse_ip(const char *str, u32 *ip_out)
         str++;
     }
 
-    if (octet_idx != 3) return false;
+    if (octet_idx != 3)
+        return false;
 
     *ip_out = (octets[0] << 24) | (octets[1] << 16) | (octets[2] << 8) | octets[3];
     return true;
@@ -64,8 +66,7 @@ static i32 do_ping(u32 ip, u32 timeout_ms)
 // Print IP address
 static void print_ip(u32 ip)
 {
-    printf("%u.%u.%u.%u", (ip >> 24) & 0xFF, (ip >> 16) & 0xFF,
-           (ip >> 8) & 0xFF, ip & 0xFF);
+    printf("%u.%u.%u.%u", (ip >> 24) & 0xFF, (ip >> 16) & 0xFF, (ip >> 8) & 0xFF, ip & 0xFF);
 }
 
 // Read a line from console (simple implementation)
@@ -149,7 +150,7 @@ extern "C" void _start()
 
     for (int i = 0; i < 4; i++)
     {
-        i32 rtt = do_ping(ip, 5000);  // 5 second timeout
+        i32 rtt = do_ping(ip, 5000); // 5 second timeout
 
         if (rtt >= 0)
         {
@@ -159,8 +160,10 @@ extern "C" void _start()
 
             success_count++;
             total_rtt += rtt;
-            if (rtt < min_rtt) min_rtt = rtt;
-            if (rtt > max_rtt) max_rtt = rtt;
+            if (rtt < min_rtt)
+                min_rtt = rtt;
+            if (rtt > max_rtt)
+                max_rtt = rtt;
         }
         else
         {
@@ -180,12 +183,12 @@ extern "C" void _start()
     print_ip(ip);
     printf(" ping statistics ---\n");
     printf("4 packets transmitted, %d received, %d%% packet loss\n",
-           success_count, ((4 - success_count) * 100) / 4);
+           success_count,
+           ((4 - success_count) * 100) / 4);
 
     if (success_count > 0)
     {
-        printf("rtt min/avg/max = %d/%d/%dms\n",
-               min_rtt, total_rtt / success_count, max_rtt);
+        printf("rtt min/avg/max = %d/%d/%dms\n", min_rtt, total_rtt / success_count, max_rtt);
     }
 
     printf("\n");
