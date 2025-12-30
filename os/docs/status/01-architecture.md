@@ -1,8 +1,8 @@
 # Architecture Subsystem (AArch64)
 
-**Status:** Functional for QEMU virt platform
+**Status:** Complete for QEMU virt platform
 **Location:** `kernel/arch/aarch64/`
-**SLOC:** ~1,700
+**SLOC:** ~2,500
 
 ## Overview
 
@@ -35,7 +35,7 @@ The architecture subsystem provides low-level AArch64 support for the ViperOS ke
 
 ### 2. MMU (`mmu.cpp`, `mmu.hpp`)
 
-**Status:** Basic identity mapping, sufficient for kernel and user space
+**Status:** Complete with 4-level page tables and per-process address spaces
 
 **Implemented:**
 - 4KB page granule configuration
@@ -47,23 +47,21 @@ The architecture subsystem provides low-level AArch64 support for the ViperOS ke
 - Identity mapping of first 2GB using 1GB block descriptors:
   - `0x00000000-0x3FFFFFFF`: Device memory (MMIO region)
   - `0x40000000-0x7FFFFFFF`: Normal memory (RAM on QEMU virt)
-- TTBR0_EL1 configuration for kernel tables
-- TLB invalidation (TLBI vmalle1is)
+- TTBR0_EL1 configuration for user/kernel tables
+- Full 4-level page table management (L0-L3) via VMM
+- Per-process address spaces with ASID isolation
+- TLB invalidation (per-ASID and per-page)
 - Data and instruction cache enablement
+- **Demand Paging**: VMA-based fault handling for heap/stack
+- **Copy-on-Write**: Page sharing with COW fault handling
+- **User Fault Recovery**: Graceful task termination on invalid access
 
 **Not Implemented:**
 - TTBR1_EL1 for kernel higher-half mapping
-- Fine-grained 4KB page mappings (only 1GB blocks used)
-- Demand paging / page fault handling
-- Copy-on-write
-- ASID management beyond basic setup
 - Kernel Address Space Layout Randomization (KASLR)
 
 **Recommendations:**
-- Implement 4KB page table management for finer control
 - Add TTBR1 support for proper kernel/user split
-- Implement demand paging for memory efficiency
-- Add page fault handler for lazy allocation
 - Consider KASLR for security
 
 ---
@@ -135,7 +133,7 @@ The architecture subsystem provides low-level AArch64 support for the ViperOS ke
 
 ### 5. Exceptions (`exceptions.cpp`, `exceptions.hpp`, `exceptions.S`)
 
-**Status:** Comprehensive exception handling with syscall dispatch
+**Status:** Comprehensive exception handling with syscall dispatch and user fault recovery
 
 **Implemented:**
 - Exception vector table installation (VBAR_EL1)
@@ -147,24 +145,38 @@ The architecture subsystem provides low-level AArch64 support for the ViperOS ke
   - SError (system error) with panic
 - User-mode (EL0) exception handling:
   - SVC (syscall) dispatch
-  - Data abort and instruction abort (currently fatal)
+  - **Data/instruction abort with VMA-based demand paging**
+  - **COW fault handling for shared pages**
+  - **Graceful task termination on invalid access**
   - IRQ handling from user mode
 - Exception class decoding for diagnostics
 - Full register dump on panic
 
-**Syscalls Implemented in Exception Handler:**
+**Complete Syscall Table:**
+
 | Number | Name | Description |
 |--------|------|-------------|
+| **Task/Process** |||
 | 0x01 | exit | Terminate task |
+| 0x02 | wait | Wait for child task |
+| 0x03 | waitpid | Wait for specific child |
 | 0x05 | task_list | List running tasks |
+| 0x06 | task_set_priority | Set task priority |
+| 0x07 | task_get_priority | Get task priority |
+| **IPC** |||
 | 0x10 | channel_create | Create IPC channel |
 | 0x11 | channel_send | Send on channel |
 | 0x12 | channel_recv | Receive from channel |
 | 0x13 | channel_close | Close channel |
+| **Polling** |||
 | 0x20 | poll_create | Create poll set |
 | 0x21 | poll_add | Add to poll set |
 | 0x22 | poll_remove | Remove from poll set |
 | 0x23 | poll_wait | Wait on poll set |
+| **Timer** |||
+| 0x30 | time_now | Get current time (ms) |
+| 0x31 | sleep | Sleep for duration |
+| **File I/O (Path-based)** |||
 | 0x40 | open | Open file (path) |
 | 0x41 | close | Close file descriptor |
 | 0x42 | read | Read from fd |
@@ -172,42 +184,77 @@ The architecture subsystem provides low-level AArch64 support for the ViperOS ke
 | 0x44 | lseek | Seek in file |
 | 0x45 | stat | Get file info (path) |
 | 0x46 | fstat | Get file info (fd) |
+| 0x47 | dup | Duplicate fd |
+| 0x48 | dup2 | Duplicate fd to specific number |
+| **Symlinks** |||
+| 0x50 | symlink | Create symbolic link |
+| 0x51 | readlink | Read symlink target |
+| **Directory Operations** |||
 | 0x60 | readdir | Read directory entries |
 | 0x61 | mkdir | Create directory |
 | 0x62 | rmdir | Remove directory |
 | 0x63 | unlink | Delete file |
 | 0x64 | rename | Rename file/directory |
-| 0x70 | cap_derive | Derive capability with reduced rights |
+| 0x67 | getcwd | Get current directory |
+| 0x68 | chdir | Change current directory |
+| **Capabilities** |||
+| 0x70 | cap_derive | Derive with reduced rights |
 | 0x71 | cap_revoke | Revoke capability |
 | 0x72 | cap_query | Query capability info |
 | 0x73 | cap_list | List all capabilities |
+| **File I/O (Handle-based)** |||
 | 0x80 | fs_open_root | Get root directory handle |
-| 0x81 | fs_open | Open relative to dir handle |
+| 0x81 | fs_open | Open relative to handle |
 | 0x82 | io_read | Read from file handle |
 | 0x83 | io_write | Write to file handle |
 | 0x84 | io_seek | Seek in file handle |
 | 0x85 | fs_readdir | Read directory entry |
-| 0x86 | fs_close | Close file/dir handle |
+| 0x86 | fs_close | Close handle |
 | 0x87 | fs_rewinddir | Reset directory enumeration |
+| **Assigns** |||
+| 0x90 | assign_set | Create logical assign |
+| 0x91 | assign_get | Get assign handle |
+| 0x92 | assign_remove | Remove assign |
+| 0x93 | assign_list | List all assigns |
+| 0x94 | assign_resolve | Resolve assign path |
+| **Networking** |||
+| 0xA0 | socket_create | Create TCP socket |
+| 0xA1 | socket_bind | Bind socket to port |
+| 0xA2 | socket_listen | Listen for connections |
+| 0xA3 | socket_accept | Accept connection |
+| 0xA4 | socket_connect | Connect to server |
+| 0xA5 | socket_send | Send data |
+| 0xA6 | socket_recv | Receive data |
+| 0xA7 | socket_close | Close socket |
+| 0xA8 | dns_resolve | Resolve hostname |
+| **TLS** |||
+| 0xB0 | tls_create | Create TLS session |
+| 0xB1 | tls_handshake | Perform TLS handshake |
+| 0xB2 | tls_send | Send encrypted data |
+| 0xB3 | tls_recv | Receive decrypted data |
+| 0xB4 | tls_close | Close TLS session |
+| 0xB5 | tls_info | Get session info |
+| **Memory** |||
+| 0xC0 | sbrk | Adjust program break |
+| **System Info** |||
 | 0xE0 | mem_info | Get memory statistics |
+| 0xE1 | net_stats | Get network statistics |
+| **Console** |||
 | 0xF0 | debug_print | Print string to console |
-| 0xF1 | getchar | Read character (non-blocking) |
+| 0xF1 | getchar | Read character |
 | 0xF2 | putchar | Write character |
 | 0xF3 | uptime | Get system uptime |
 
 **Not Implemented:**
 - Signal delivery to user processes
-- User fault recovery (currently all faults are fatal)
 - Debug exception handling (BRK, single-step)
 - Floating-point/SIMD exception handling
 - Nested exception support
 
 **Recommendations:**
 - Implement signal delivery for SIGSEGV, SIGILL, etc.
-- Add user fault recovery (terminate task instead of halt)
-- Move syscall dispatch to separate module (currently 1300+ lines)
+- Move syscall dispatch to separate module
 - Add debug exception support for debugger integration
-- Consider splitting path-based and handle-based FS syscalls
 
 ---
 
@@ -263,8 +310,8 @@ The architecture subsystem is tested via:
 ## Priority Recommendations
 
 1. **High:** Move syscall dispatch out of exceptions.cpp to dedicated module
-2. **High:** Implement user fault recovery (terminate task, not halt)
-3. **Medium:** Add 4KB page table management for demand paging
-4. **Medium:** Add multicore support (boot secondary CPUs)
+2. **High:** Add multicore support (boot secondary CPUs)
+3. **Medium:** Implement signal delivery for SIGSEGV, SIGILL, etc.
+4. **Medium:** Add TTBR1 support for kernel higher-half mapping
 5. **Low:** GICv3 support for newer platforms
 6. **Low:** High-resolution timers

@@ -1,8 +1,8 @@
 # Viper Process Model and Capabilities
 
-**Status:** Functional user-space process execution
+**Status:** Complete user-space process execution with VMA tracking
 **Location:** `kernel/viper/`, `kernel/cap/`
-**SLOC:** ~2,076
+**SLOC:** ~2,665
 
 ## Overview
 
@@ -22,10 +22,13 @@ The Viper subsystem provides ViperOS's user-space process abstraction. Each "Vip
 - Parent/child process hierarchy
 - Per-process address space (TTBR0 + ASID)
 - Per-process capability table
+- **Per-process VMA list for demand paging**
 - Heap tracking (break pointer)
 - Resource accounting (memory usage)
 - Global process list (for enumeration)
 - Current process pointer
+- **Process wait/exit/zombie lifecycle**
+- **Wait queue for parent waiting on children**
 
 **Process States:**
 | State | Value | Description |
@@ -55,6 +58,8 @@ The Viper subsystem provides ViperOS's user-space process abstraction. Each "Vip
 | heap_break | u64 | Current break |
 | memory_used | u64 | Usage accounting |
 | memory_limit | u64 | Resource limit |
+| vma_list | VmaList | VMA tracking for demand paging |
+| wait_queue | WaitQueue | For waitpid blocking |
 
 **API:**
 | Function | Description |
@@ -77,7 +82,7 @@ The Viper subsystem provides ViperOS's user-space process abstraction. Each "Vip
 
 ### 2. Address Space (`viper/address_space.cpp`, `address_space.hpp`)
 
-**Status:** Complete per-process virtual memory
+**Status:** Complete per-process virtual memory with COW support
 
 **Implemented:**
 - ASID allocator (256 ASIDs, 0 reserved)
@@ -88,6 +93,9 @@ The Viper subsystem provides ViperOS's user-space process abstraction. Each "Vip
 - TLB invalidation per-ASID and per-page
 - TTBR0 switching for address space changes
 - Kernel mapping copy into user tables
+- **Recursive page table cleanup on destroy**
+- **Copy-on-write page table cloning**
+- **Protection flag manipulation for COW**
 
 **Protection Flags:**
 | Flag | Value | Description |
@@ -326,22 +334,20 @@ Handle-based file syscalls:
 
 | File | Lines | Description |
 |------|-------|-------------|
-| `viper/viper.cpp` | ~385 | Process management |
-| `viper/viper.hpp` | ~269 | Process interface |
-| `viper/address_space.cpp` | ~450 | Address space impl |
-| `viper/address_space.hpp` | ~334 | Address space interface |
-| `cap/table.cpp` | ~336 | Capability table |
-| `cap/table.hpp` | ~231 | Table interface |
-| `cap/rights.hpp` | ~105 | Rights definitions |
-| `cap/handle.hpp` | ~74 | Handle encoding |
+| `viper/viper.cpp` | ~717 | Process management + wait/exit |
+| `viper/viper.hpp` | ~342 | Process interface |
+| `viper/address_space.cpp` | ~640 | Address space impl + COW |
+| `viper/address_space.hpp` | ~357 | Address space interface |
+| `cap/table.cpp` | ~202 | Capability table |
+| `cap/table.hpp` | ~230 | Table interface |
+| `cap/rights.hpp` | ~104 | Rights definitions |
+| `cap/handle.hpp` | ~73 | Handle encoding |
 
 ---
 
 ## Priority Recommendations
 
-1. **High:** Complete process cleanup (task termination on destroy)
-2. **High:** Implement proper wait/exit/zombie handling
-3. **Medium:** Add per-CPU current process for SMP
-4. **Medium:** Implement process groups/sessions
-5. **Low:** Add capability revocation propagation
-6. **Low:** Page table reclamation on unmap
+1. **High:** Add per-CPU current process for SMP
+2. **Medium:** Implement process groups/sessions
+3. **Medium:** Add capability revocation propagation
+4. **Low:** Add fork() syscall using COW

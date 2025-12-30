@@ -49,6 +49,7 @@ struct CacheBlock
     u8 data[BLOCK_SIZE];   // Block data
     bool valid;            // Data is valid
     bool dirty;            // Data modified, needs write-back
+    bool pinned;           // Block is pinned (cannot be evicted)
     u32 refcount;          // Reference count
     CacheBlock *lru_prev;  // LRU list previous
     CacheBlock *lru_next;  // LRU list next
@@ -169,6 +170,33 @@ class BlockCache
     {
         return readahead_count_;
     }
+
+    /**
+     * @brief Dump cache statistics to serial console.
+     *
+     * @details
+     * Prints hit/miss counts, hit rate, and current cache utilization.
+     */
+    void dump_stats();
+
+    /**
+     * @brief Pin a block in cache (prevent eviction).
+     *
+     * @details
+     * Pinned blocks remain in cache until explicitly unpinned.
+     * Use for critical metadata like superblock and inode table.
+     *
+     * @param block_num Block number to pin.
+     * @return true if block was pinned successfully.
+     */
+    bool pin(u64 block_num);
+
+    /**
+     * @brief Unpin a previously pinned block.
+     *
+     * @param block_num Block number to unpin.
+     */
+    void unpin(u64 block_num);
 
   private:
     /**

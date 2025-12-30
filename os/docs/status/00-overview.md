@@ -1,12 +1,12 @@
 # ViperOS Implementation Status
 
-**Version:** December 2025 (v0.2.3)
+**Version:** December 2025 (v0.2.4)
 **Target:** AArch64 (ARM64) on QEMU virt machine
-**Total SLOC:** ~35,000
+**Total SLOC:** ~65,000
 
 ## Executive Summary
 
-ViperOS is a capability-based microkernel operating system targeting AArch64. The current implementation provides a functional kernel with full virtual memory support (demand paging, VMA tracking), a complete TCP/IP stack with TLS 1.3 and congestion control, a crash-consistent journaling filesystem, and an interactive shell with user-space heap support. A complete minimal libc and C++ standard library support enables portable user-space application development. The system is designed for QEMU's `virt` machine but is structured for future hardware portability.
+ViperOS is a capability-based microkernel operating system targeting AArch64. The current implementation provides a functional kernel with full virtual memory support (demand paging, VMA tracking, copy-on-write), advanced memory allocators (buddy allocator, slab allocator), a complete TCP/IP stack with TLS 1.3 and congestion control, a crash-consistent journaling filesystem with inode caching and block pinning, and an interactive shell with user-space heap support. A complete minimal libc and C++ standard library support enables portable user-space application development. The system is designed for QEMU's `virt` machine but is structured for future hardware portability.
 
 ---
 
@@ -14,16 +14,16 @@ ViperOS is a capability-based microkernel operating system targeting AArch64. Th
 
 | Component | SLOC | Status |
 |-----------|------|--------|
-| Architecture (AArch64) | ~1,700 | Complete for QEMU |
-| Memory Management | ~900 | Functional |
+| Architecture (AArch64) | ~2,500 | Complete for QEMU |
+| Memory Management | ~3,200 | Complete (PMM, VMM, slab, buddy, COW, VMA) |
 | Console (Serial/Graphics) | ~2,000 | Complete |
 | Drivers (VirtIO/fw_cfg) | ~4,100 | Complete for QEMU |
-| Filesystem (VFS/ViperFS) | ~3,600 | Complete |
+| Filesystem (VFS/ViperFS) | ~5,500 | Complete (journal, inode cache, block cache) |
 | IPC (Channels/Poll) | ~2,100 | Complete |
-| Networking (TCP/IP/TLS) | ~14,700 | Complete |
-| Scheduler/Tasks | ~1,500 | Functional |
-| Viper/Capabilities | ~2,100 | Functional |
-| User Space (libc/C++) | ~6,500 | Complete |
+| Networking (TCP/IP/TLS) | ~15,500 | Complete |
+| Scheduler/Tasks | ~2,500 | Complete (wait queues, priorities) |
+| Viper/Capabilities | ~3,500 | Complete (VMA, address spaces) |
+| User Space (libc/C++) | ~9,000 | Complete |
 | Tools | ~1,800 | Complete |
 
 ---
@@ -32,17 +32,17 @@ ViperOS is a capability-based microkernel operating system targeting AArch64. Th
 
 | Document | Description |
 |----------|-------------|
-| [01-architecture.md](01-architecture.md) | AArch64 boot, MMU, GIC, timer, exceptions |
-| [02-memory-management.md](02-memory-management.md) | PMM, VMM, kernel heap |
+| [01-architecture.md](01-architecture.md) | AArch64 boot, MMU, GIC, timer, exceptions, syscalls |
+| [02-memory-management.md](02-memory-management.md) | PMM, VMM, slab, buddy, COW, VMA, kernel heap |
 | [03-console.md](03-console.md) | Serial UART, graphics console, fonts |
 | [04-drivers.md](04-drivers.md) | VirtIO (blk, net, rng, input), fw_cfg, ramfb |
-| [05-filesystem.md](05-filesystem.md) | VFS, ViperFS, block cache |
+| [05-filesystem.md](05-filesystem.md) | VFS, ViperFS, block cache, inode cache, journal |
 | [06-ipc.md](06-ipc.md) | Channels, poll, poll sets |
 | [07-networking.md](07-networking.md) | Ethernet, ARP, IPv4, TCP, UDP, DNS, TLS, HTTP |
-| [08-scheduler.md](08-scheduler.md) | Tasks, scheduler, context switch |
-| [09-viper-process.md](09-viper-process.md) | Viper processes, address spaces, capabilities |
-| [10-userspace.md](10-userspace.md) | vinit, syscall wrappers, shell |
-| [11-tools.md](11-tools.md) | mkfs.viperfs, gen_roots_der |
+| [08-scheduler.md](08-scheduler.md) | Tasks, scheduler, context switch, wait queues |
+| [09-viper-process.md](09-viper-process.md) | Viper processes, address spaces, VMA, capabilities |
+| [10-userspace.md](10-userspace.md) | vinit, syscall wrappers, libc, C++ runtime |
+| [11-tools.md](11-tools.md) | mkfs.viperfs, fsck.viperfs, gen_roots_der |
 
 ---
 
@@ -110,12 +110,27 @@ ViperOS is a capability-based microkernel operating system targeting AArch64. Th
 - Per-process capability tables
 - IPC handle transfer
 
+### Advanced Memory Management
+- Demand paging with VMA tracking
+- Copy-on-write (COW) page sharing
+- Buddy allocator for O(log n) page allocation
+- Slab allocator for fixed-size kernel objects
+- User fault recovery with graceful task termination
+
 ### Complete Network Stack
 - Ethernet/ARP/IPv4/ICMP
-- TCP with connection state machine
+- TCP with connection state machine and congestion control
 - UDP for DNS queries
 - TLS 1.3 with certificate verification
 - HTTP/1.0 client
+- Interrupt-driven packet reception
+
+### Crash-Consistent Filesystem
+- Write-ahead journaling for metadata
+- Inode cache with LRU eviction
+- Block cache with pinning and read-ahead
+- File truncation and fsync support
+- Timestamp tracking (atime, mtime, ctime)
 
 ### Amiga-Inspired Design
 - Logical device assigns (SYS:, etc.)
@@ -124,48 +139,39 @@ ViperOS is a capability-based microkernel operating system targeting AArch64. Th
 
 ---
 
-## Recent Implementations (v0.2.3)
+## Recent Implementations (v0.2.4)
 
 ### Completed in This Release
-1. **Complete Freestanding libc** - Full C standard library for user-space programs
-   - `<stdio.h>`: printf, fprintf, sprintf, snprintf, sscanf, fputs, fgets, FILE abstraction
-   - `<string.h>`: All standard string operations including strstr, strtok_r, strdup
-   - `<stdlib.h>`: malloc/free, atoi/atol, strtol/strtoul, qsort, bsearch, rand/srand
-   - `<ctype.h>`: All character classification functions
-   - `<time.h>`: clock, time, nanosleep, strftime, gmtime
-   - `<unistd.h>`: getpid, usleep, getcwd, chdir, isatty, sysconf
-   - `<errno.h>`: Thread-local errno with POSIX error codes
-   - `<limits.h>`, `<stddef.h>`, `<stdbool.h>`, `<assert.h>`
+1. **ViperFS Thread Safety** - Complete spinlock protection
+   - Block cache spinlock protection for all operations
+   - Journal transaction lock for concurrent access
+   - Inode cache with spinlock-protected LRU
 
-2. **C++ Standard Library Support** - Freestanding C++ headers
-   - `<type_traits>`: is_same, remove_const, enable_if, decay, conditional
-   - `<utility>`: std::move, std::forward, std::swap, std::pair
-   - `<new>`: Placement new, operator new/delete
-   - `<initializer_list>`: Brace-init support
-   - `<cstddef>`, `<cstdint>`: C++ wrappers
+2. **Enhanced Block Cache** - New features
+   - Block pinning (`pin()`/`unpin()`) for critical metadata
+   - Statistics dumping (`dump_stats()`)
+   - Improved read-ahead for sequential access
 
-3. **Per-Process Current Working Directory** - Full CWD support
-   - Per-task CWD storage (256-byte path per process)
-   - SYS_GETCWD/SYS_CHDIR syscalls
-   - Path normalization (handles `.`, `..`, relative paths)
-   - Shell chdir and cwd commands
+3. **Inode Cache** - New LRU inode cache
+   - 32-entry cache with hash table lookup
+   - Reference counting and dirty tracking
+   - Automatic sync on release
 
-4. **Graphics Console Green Border** - 20px decorative border with 8px inner padding
-   - Smooth scrolling respects border region
-   - ANSI-style visual enhancement
+4. **File Operations** - New capabilities
+   - `truncate()` - shrink/extend files with proper block management
+   - `fsync()` - sync specific file to disk
+   - Timestamp updates (atime on read, mtime on write)
 
-5. **Build System Improvements** - Simplified user program creation
-   - `add_user_program()` CMake function
-   - Automatic libc linking and include paths
-   - C++ runtime support (new/delete operators)
+5. **Journal Improvements** - Enhanced crash recovery
+   - Checksum verification during replay
+   - Commit record and sequence number validation
+   - Better error handling for corrupted transactions
 
-### Previous Release (v0.2.2)
-- Demand Paging with VMA Tracking
-- User-Space Heap (sbrk/malloc)
-- Interrupt-Driven VirtIO Network
-- Filesystem Journaling
-- TCP Congestion Control (RFC 5681)
-- TCP Out-of-Order Reassembly
+### Previous Release (v0.2.3)
+- Complete Freestanding libc (stdio, string, stdlib, ctype, time, unistd, errno)
+- C++ Standard Library Support (type_traits, utility, new, initializer_list)
+- Per-Process Current Working Directory
+- Graphics Console Green Border
 
 ### Priority Development Roadmap
 
@@ -294,6 +300,14 @@ os/
 
 ## Version History
 
+- **December 2025 (v0.2.4)**: Filesystem enhancements and thread safety
+  - **ViperFS Thread Safety**: Block cache, journal, and inode cache spinlock protection
+  - **Inode Cache**: 32-entry LRU cache with hash lookup, refcounting, dirty tracking
+  - **Block Cache Pinning**: pin/unpin for critical metadata, dump_stats()
+  - **File Operations**: truncate(), fsync(), atime/mtime timestamp updates
+  - **Journal Improvements**: Checksum verification, commit record validation
+  - **Documentation**: Comprehensive status document updates and accuracy fixes
+
 - **December 2025 (v0.2.3)**: Complete libc and C++ support
   - **Complete Freestanding libc**: stdio, string, stdlib, ctype, time, unistd, errno, limits, stddef, stdbool, assert
   - **C++ Standard Library**: type_traits, utility, new, initializer_list, cstddef, cstdint
@@ -304,12 +318,14 @@ os/
 
 - **December 2025 (v0.2.2)**: Production-readiness features
   - **Demand Paging**: VMA list per process, page fault handling for heap/stack
+  - **Copy-on-Write**: COW page sharing with reference counting
   - **User-Space Heap**: sbrk syscall, working malloc/free in userspace
   - **Interrupt-Driven Network**: VirtIO-net IRQ handling, RX wait queues
   - **Filesystem Journaling**: Write-ahead log, transaction commit/replay for crash recovery
   - **TCP Congestion Control**: RFC 5681 slow start, congestion avoidance, fast retransmit
   - **TCP Out-of-Order Reassembly**: 8-segment OOO queue with delivery on sequence match
   - **Slab Allocator**: Kernel memory allocator for fixed-size objects
+  - **Buddy Allocator**: O(log n) physical page allocator
 
 - **December 2025 (v0.2.1)**: Major feature additions
   - Process lifecycle: wait/exit/zombie handling

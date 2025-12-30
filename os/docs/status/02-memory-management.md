@@ -1,12 +1,12 @@
 # Memory Management Subsystem
 
-**Status:** Complete with demand paging and VMA tracking
+**Status:** Complete with demand paging, COW, buddy allocator, and slab allocator
 **Location:** `kernel/mm/`
-**SLOC:** ~1,400
+**SLOC:** ~3,200
 
 ## Overview
 
-The memory management subsystem provides physical page allocation, virtual memory mapping, kernel heap services, and demand paging with VMA tracking. The implementation supports full virtual memory for user processes with automatic page allocation on fault.
+The memory management subsystem provides physical page allocation (with both bitmap and buddy allocators), virtual memory mapping, kernel heap services, slab allocation for fixed-size objects, demand paging with VMA tracking, and copy-on-write page sharing. The implementation supports full virtual memory for user processes with automatic page allocation on fault and efficient memory sharing.
 
 ## Components
 
@@ -45,19 +45,102 @@ The memory management subsystem provides physical page allocation, virtual memor
 - Memory zones (DMA, normal, high)
 - Page coloring
 - Memory hotplug
-- Large page (2MB, 1GB) tracking
 
 **Recommendations:**
 - Add memory zone support for device DMA requirements
-- Implement buddy allocator for O(1) allocation
 - Support multiple memory regions from DTB/UEFI
-- Add page reference counting for shared pages
 
 ---
 
-### 2. Virtual Memory Manager (`vmm.cpp`, `vmm.hpp`)
+### 2. Buddy Allocator (`buddy.cpp`, `buddy.hpp`)
 
-**Status:** Basic 4-level page table support
+**Status:** Complete O(log n) page allocator
+
+**Implemented:**
+- Binary buddy allocation algorithm
+- Order-based allocation (2^order pages)
+- Orders 0-9 supported (4KB to 2MB)
+- Block splitting for smaller allocations
+- Block coalescing on free
+- Per-order free lists
+- Split bitmap tracking
+- Spinlock protection for SMP safety
+- Statistics tracking
+
+**API:**
+| Function | Description |
+|----------|-------------|
+| `init(start, end, reserved)` | Initialize allocator |
+| `alloc_pages(order)` | Allocate 2^order pages |
+| `free_pages(addr, order)` | Free 2^order pages |
+| `alloc_page()` | Allocate single page (order 0) |
+| `free_page(addr)` | Free single page |
+| `free_pages_count()` | Get available page count |
+| `total_pages_count()` | Get total managed pages |
+
+**Buddy Algorithm:**
+```
+Allocation:
+1. Find smallest order with free blocks >= requested
+2. If larger order found, split recursively
+3. Mark buddy bit, return block address
+
+Deallocation:
+1. Check if buddy block is free
+2. If free, coalesce and repeat at higher order
+3. Add to appropriate free list
+```
+
+**Performance:**
+- Allocation: O(log n) worst case
+- Deallocation: O(log n) with coalescing
+- No external fragmentation for power-of-2 sizes
+
+---
+
+### 3. Slab Allocator (`slab.cpp`, `slab.hpp`)
+
+**Status:** Complete fixed-size object allocator
+
+**Implemented:**
+- Object caches for common sizes
+- Per-cache slab lists (full, partial, empty)
+- Object freelist within slabs
+- Constructor/destructor callbacks
+- Cache statistics
+- Automatic slab allocation from PMM
+- Spinlock protection
+
+**Standard Caches:**
+| Cache | Object Size | Per Slab |
+|-------|-------------|----------|
+| slab-32 | 32 bytes | 128 |
+| slab-64 | 64 bytes | 64 |
+| slab-128 | 128 bytes | 32 |
+| slab-256 | 256 bytes | 16 |
+| slab-512 | 512 bytes | 8 |
+| slab-1024 | 1024 bytes | 4 |
+| slab-2048 | 2048 bytes | 2 |
+
+**API:**
+| Function | Description |
+|----------|-------------|
+| `slab_cache_create(name, size, ctor, dtor)` | Create object cache |
+| `slab_cache_destroy(cache)` | Destroy cache |
+| `slab_alloc(cache)` | Allocate object |
+| `slab_free(cache, obj)` | Free object |
+| `slab_cache_shrink(cache)` | Release empty slabs |
+
+**Performance:**
+- Allocation: O(1) from partial slab
+- Deallocation: O(1)
+- No internal fragmentation for cached sizes
+
+---
+
+### 4. Virtual Memory Manager (`vmm.cpp`, `vmm.hpp`)
+
+**Status:** Complete 4-level page table support with COW
 
 **Implemented:**
 - 4KB page granule with 4-level tables (L0→L3)
@@ -69,6 +152,7 @@ The memory management subsystem provides physical page allocation, virtual memor
 - Virtual-to-physical translation (`virt_to_phys`)
 - TLB invalidation per-page and global
 - Block descriptor support (1GB, 2MB) in translation
+- **Copy-on-write page marking and fault handling**
 
 **Page Table Entry Flags (`pte::`):**
 | Flag | Value | Description |
@@ -79,14 +163,14 @@ The memory management subsystem provides physical page allocation, virtual memor
 | SH_INNER | bits 8-9 | Inner shareable |
 | AP_RW_EL1 | bits 6-7 | EL1 read/write |
 | AP_RW_EL0 | bits 6-7 | EL0 read/write |
+| AP_RO_EL0 | bits 6-7 | EL0 read-only (for COW) |
 | ATTR_NORMAL | bits 2-4 | Normal memory (MAIR index 1) |
 | ATTR_DEVICE | bits 2-4 | Device memory (MAIR index 0) |
 | UXN | bit 54 | User execute never |
 | PXN | bit 53 | Privileged execute never |
 
 **Not Implemented:**
-- Copy-on-write
-- Shared memory mappings
+- Shared memory mappings (beyond COW)
 - Memory-mapped files
 - Large page (2MB, 1GB) mapping creation
 - Page table deallocation on unmap
@@ -98,11 +182,10 @@ The memory management subsystem provides physical page allocation, virtual memor
 **Recommendations:**
 - Add page table garbage collection
 - Support large page mapping for performance
-- Implement copy-on-write for fork()
 
 ---
 
-### 4. Virtual Memory Areas (`vma.cpp`, `vma.hpp`)
+### 5. Virtual Memory Areas (`vma.cpp`, `vma.hpp`)
 
 **Status:** Complete VMA tracking for demand paging
 
@@ -143,9 +226,9 @@ The memory management subsystem provides physical page allocation, virtual memor
 
 ---
 
-### 5. Page Fault Handler (`fault.cpp`, `fault.hpp`)
+### 6. Page Fault Handler (`fault.cpp`, `fault.hpp`)
 
-**Status:** Complete demand paging implementation
+**Status:** Complete demand paging and COW implementation
 
 **Implemented:**
 - AArch64 data abort and instruction abort handling
@@ -156,14 +239,16 @@ The memory management subsystem provides physical page allocation, virtual memor
 - Physical page allocation for valid faults
 - Page table mapping with correct permissions
 - Stack growth detection and automatic extension
+- **Copy-on-write fault handling**
 - Kernel panic on unrecoverable kernel faults
 - Detailed fault logging to serial console
+- Graceful task termination on unrecoverable user faults
 
 **Fault Types:**
 | Type | Description | Handling |
 |------|-------------|----------|
 | TRANSLATION | Page not mapped | Demand paging if valid VMA |
-| PERMISSION | Access denied | Terminate task |
+| PERMISSION | Write to read-only | COW copy if COW page, else terminate |
 | ALIGNMENT | Misaligned access | Terminate task |
 | ADDRESS_SIZE | Invalid address bits | Terminate task |
 
@@ -181,15 +266,29 @@ The memory management subsystem provides physical page allocation, virtual memor
 6. For stack VMA: check if within growth limit, extend if needed
 ```
 
+**COW Fault Flow:**
+```
+1. Permission fault on write to read-only page
+2. Check if page is marked COW
+3. If COW and refcount == 1: just make writable
+4. If COW and refcount > 1:
+   a. Allocate new physical page
+   b. Copy contents from original
+   c. Map new page with write permission
+   d. Decrement original page refcount
+5. Resume execution
+```
+
 **Handled Scenarios:**
 - Heap access before sbrk extends region
 - Stack growth into guard area
 - First access to anonymous memory
 - Access to uninitialized data segment
+- Write to shared COW page
 
 ---
 
-### 3. Kernel Heap (`kheap.cpp`, `kheap.hpp`)
+### 7. Kernel Heap (`kheap.cpp`, `kheap.hpp`)
 
 **Status:** Fully functional with coalescing
 
@@ -244,16 +343,48 @@ The memory management subsystem provides physical page allocation, virtual memor
 | `dump()` | Print heap state to serial |
 
 **Not Implemented:**
-- Slab allocator for common object sizes
 - Memory pools for specific subsystems
 - Memory pressure callbacks
 - Memory leak detection
 - Per-CPU caches for reduced contention
 
 **Recommendations:**
-- Add slab allocator for frequent small allocations (task structs, inodes, etc.)
 - Implement memory pressure notification
 - Consider per-CPU free lists for scalability
+
+---
+
+### 8. Copy-on-Write (`cow.cpp`, `cow.hpp`)
+
+**Status:** Complete page sharing with reference counting
+
+**Implemented:**
+- Per-page reference counting
+- COW page metadata tracking
+- Reference increment/decrement with atomic safety
+- COW state marking per page
+- Automatic page freeing when refcount reaches zero
+- Integration with page fault handler
+
+**CowManager API:**
+| Method | Description |
+|--------|-------------|
+| `init(max_pages)` | Initialize COW tracking |
+| `inc_ref(phys)` | Increment page refcount |
+| `dec_ref(phys)` | Decrement refcount, returns true if page should be freed |
+| `get_ref(phys)` | Get current refcount |
+| `mark_cow(phys)` | Mark page as COW |
+| `clear_cow(phys)` | Clear COW marking |
+| `is_cow(phys)` | Check if page is COW |
+
+**Memory Overhead:**
+- 4 bytes per physical page (2-byte refcount + 2-byte flags)
+- ~64KB for 128MB RAM (32K pages)
+
+**Use Cases:**
+- Efficient fork() implementation
+- Shared read-only pages between processes
+- Deferred copy semantics
 
 ---
 
@@ -320,10 +451,20 @@ The memory management subsystem is tested via:
 
 | File | Lines | Description |
 |------|-------|-------------|
-| `pmm.cpp` | ~300 | Physical page allocator |
+| `pmm.cpp` | ~300 | Physical page allocator (bitmap) |
 | `pmm.hpp` | ~60 | PMM interface |
-| `vmm.cpp` | ~290 | Virtual memory manager |
-| `vmm.hpp` | ~80 | VMM interface and PTE flags |
+| `buddy.cpp` | ~350 | Buddy allocator |
+| `buddy.hpp` | ~80 | Buddy interface |
+| `slab.cpp` | ~400 | Slab allocator |
+| `slab.hpp` | ~120 | Slab interface |
+| `vmm.cpp` | ~350 | Virtual memory manager |
+| `vmm.hpp` | ~100 | VMM interface and PTE flags |
+| `vma.cpp` | ~250 | Virtual memory areas |
+| `vma.hpp` | ~80 | VMA interface |
+| `fault.cpp` | ~350 | Page fault handler |
+| `fault.hpp` | ~60 | Fault interface |
+| `cow.cpp` | ~200 | Copy-on-write manager |
+| `cow.hpp` | ~80 | COW interface |
 | `kheap.cpp` | ~540 | Kernel heap allocator |
 | `kheap.hpp` | ~50 | Heap interface |
 
@@ -352,9 +493,9 @@ void kheap::get_stats(&total, &used, &free, &blocks);
 
 ## Priority Recommendations
 
-1. **High:** Add copy-on-write for efficient fork()
-2. **Medium:** Support multiple memory regions from device tree
-3. **Medium:** Implement mmap() for file-backed mappings
+1. **High:** Support multiple memory regions from device tree
+2. **Medium:** Implement mmap() for file-backed mappings
+3. **Medium:** Add page table garbage collection
 4. **Low:** Add memory pressure callbacks
 5. **Low:** Per-CPU heap caches for scalability
 6. **Low:** Large page support (2MB, 1GB)

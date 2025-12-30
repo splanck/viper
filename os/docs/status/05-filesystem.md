@@ -1,8 +1,8 @@
 # Filesystem Subsystem
 
-**Status:** Complete with crash-consistent journaling
+**Status:** Complete with crash-consistent journaling and inode caching
 **Location:** `kernel/fs/`
-**SLOC:** ~4,200
+**SLOC:** ~5,500
 
 ## Overview
 
@@ -14,7 +14,7 @@ The filesystem subsystem provides a virtual filesystem (VFS) layer, the ViperFS 
 
 ### 1. Block Cache (`cache.cpp`, `cache.hpp`)
 
-**Status:** Complete LRU cache with write-back
+**Status:** Complete LRU cache with write-back and pinning
 
 **Implemented:**
 - Fixed-size block cache (64 blocks = 256KB)
@@ -24,9 +24,11 @@ The filesystem subsystem provides a virtual filesystem (VFS) layer, the ViperFS 
 - Write-back dirty block handling
 - Automatic sync before eviction
 - Spinlock protection for thread safety
-- Cache statistics (hits/misses)
+- Cache statistics (hits/misses/read-ahead count)
 - Sequential read-ahead prefetching (up to 4 blocks)
 - Automatic detection of sequential access patterns
+- **Block pinning for critical metadata (superblock, inode table)**
+- **Statistics dumping to serial console**
 
 **Block Size:** 4096 bytes (matches ViperFS block size)
 
@@ -50,6 +52,7 @@ The filesystem subsystem provides a virtual filesystem (VFS) layer, the ViperFS 
 | data | u8[4096] | Block data |
 | valid | bool | Data is valid |
 | dirty | bool | Needs write-back |
+| pinned | bool | Cannot be evicted |
 | refcount | u32 | Reference count |
 | lru_prev/next | CacheBlock* | LRU list pointers |
 | hash_next | CacheBlock* | Hash chain pointer |
@@ -62,6 +65,15 @@ The filesystem subsystem provides a virtual filesystem (VFS) layer, the ViperFS 
 | `release(block)` | Release block reference |
 | `sync()` | Write all dirty blocks to disk |
 | `invalidate(block_num)` | Invalidate cached block |
+| `pin(block_num)` | Pin block in cache (prevent eviction) |
+| `unpin(block_num)` | Unpin previously pinned block |
+| `dump_stats()` | Print cache statistics to serial |
+
+**Statistics Tracked:**
+- Cache hits / misses
+- Hit rate percentage
+- Valid / dirty / pinned / in-use counts
+- Read-ahead blocks prefetched
 
 **Not Implemented:**
 - Async I/O
@@ -77,11 +89,12 @@ The filesystem subsystem provides a virtual filesystem (VFS) layer, the ViperFS 
 
 ### 2. ViperFS Filesystem (`viperfs/viperfs.cpp`, `viperfs.hpp`)
 
-**Status:** Fully functional on-disk filesystem
+**Status:** Fully functional on-disk filesystem with inode caching
 
 **Implemented:**
 - Superblock validation (magic: `0x53465056` = "VPFS", version 1)
 - Inode table with 256-byte inodes
+- **Inode cache (32 entries) with LRU eviction and dirty tracking**
 - Block bitmap allocation (first-fit)
 - Directory entries (variable-length, 8-byte aligned)
 - Path resolution via directory walking
@@ -90,6 +103,8 @@ The filesystem subsystem provides a virtual filesystem (VFS) layer, the ViperFS 
   - Write data (auto-allocates blocks)
   - Create file
   - Unlink file
+  - **Truncate file (shrink or extend)**
+  - **fsync (sync file to disk)**
 - Directory operations:
   - Create directory (with `.` and `..`)
   - Remove empty directory
@@ -99,10 +114,14 @@ The filesystem subsystem provides a virtual filesystem (VFS) layer, the ViperFS 
   - Create symlink (target stored in data blocks)
   - Read symlink target
 - Inode lifecycle:
-  - Read inode (heap-allocated copy)
+  - Read inode (via cache or disk)
   - Write inode back to disk
   - Free inode and associated blocks
-- Filesystem sync (superblock + cache)
+- **Timestamp tracking:**
+  - **atime updated on read**
+  - **mtime updated on write**
+  - **ctime updated on metadata changes**
+- Filesystem sync (superblock + inode cache + block cache)
 
 **On-Disk Layout:**
 ```
@@ -167,12 +186,10 @@ Blocks M+1-end: Data blocks
 **Not Implemented:**
 - Hard links / link count
 - Permissions enforcement
-- Timestamps update
 - Triple indirect blocks
 - Extended attributes
 
 **Recommendations:**
-- Add proper timestamp updates
 - Consider extent-based allocation for large files
 
 ---
@@ -255,6 +272,57 @@ Block N+3:    Transaction 2 descriptor + data
 | unlink | Inode, parent directory, bitmap |
 | mkdir | New inode, parent directory |
 | rename | Old parent, new parent, inode |
+
+---
+
+### 2c. Inode Cache (`viperfs.cpp`, `viperfs.hpp`)
+
+**Status:** Complete LRU inode cache with dirty tracking
+
+**Implemented:**
+- 32-entry inode cache with hash table lookup
+- LRU eviction for cold inodes
+- Reference counting to prevent premature eviction
+- Dirty flag tracking for modified inodes
+- Automatic writeback on eviction or sync
+- Spinlock protection for thread safety
+- Per-inode get/release/mark_dirty API
+
+**CachedInode Structure:**
+| Field | Type | Description |
+|-------|------|-------------|
+| inode | Inode | Cached inode data |
+| ino | u64 | Inode number |
+| valid | bool | Entry contains valid data |
+| dirty | bool | Inode modified since read |
+| refcount | u32 | Active references |
+| lru_prev/next | CachedInode* | LRU list pointers |
+| hash_next | CachedInode* | Hash chain pointer |
+
+**API:**
+| Function | Description |
+|----------|-------------|
+| `get(ino)` | Get cached inode, load from disk if needed |
+| `release(ci)` | Release reference to cached inode |
+| `sync(ci)` | Write inode to disk if dirty |
+| `sync_all()` | Write all dirty inodes to disk |
+| `invalidate(ino)` | Remove inode from cache |
+| `mark_dirty(ino)` | Mark specific inode as dirty |
+
+**Cache Configuration:**
+- Cache size: 32 entries (`INODE_CACHE_SIZE`)
+- Hash buckets: 16 (`INODE_HASH_SIZE`)
+- Thread safe via `inode_cache_lock` spinlock
+
+**Cache Flow:**
+```
+1. Request inode via get(ino)
+2. Check hash table for cached entry
+3. If found: increment refcount, move to LRU head, return
+4. If not found: evict LRU if full, load from disk
+5. Caller uses inode, calls release() when done
+6. On release: decrement refcount (may sync if dirty)
+```
 
 ---
 
@@ -433,15 +501,17 @@ The filesystem is tested via:
 
 | File | Lines | Description |
 |------|-------|-------------|
-| `cache.cpp` | ~424 | Block cache implementation |
-| `cache.hpp` | ~221 | Cache interface |
+| `cache.cpp` | ~624 | Block cache implementation |
+| `cache.hpp` | ~286 | Cache interface |
 | `cache_guard.hpp` | ~135 | RAII cache guard |
-| `vfs/vfs.cpp` | ~674 | VFS layer |
-| `vfs/vfs.hpp` | ~379 | VFS interface |
-| `viperfs/viperfs.cpp` | ~1332 | ViperFS driver |
-| `viperfs/viperfs.hpp` | ~352 | ViperFS interface |
-| `viperfs/format.hpp` | ~220 | On-disk format |
+| `vfs/vfs.cpp` | ~1006 | VFS layer |
+| `vfs/vfs.hpp` | ~486 | VFS interface |
+| `viperfs/viperfs.cpp` | ~2029 | ViperFS driver + inode cache |
+| `viperfs/viperfs.hpp` | ~555 | ViperFS and inode cache interface |
+| `viperfs/format.hpp` | ~316 | On-disk format |
 | `viperfs/inode_guard.hpp` | ~122 | RAII inode guard |
+| `viperfs/journal.cpp` | ~584 | Write-ahead journal |
+| `viperfs/journal.hpp` | ~229 | Journal interface |
 
 ---
 

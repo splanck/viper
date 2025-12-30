@@ -15,6 +15,7 @@
  * - Block and inode allocation using a bitmap and inode table scanning.
  */
 #include "viperfs.hpp"
+#include "../../arch/aarch64/timer.hpp"
 #include "../../console/serial.hpp"
 #include "../../mm/kheap.hpp"
 #include "../../mm/slab.hpp"
@@ -27,16 +28,410 @@ namespace fs::viperfs
 // Global instance
 static ViperFS g_viperfs;
 
+// Inode cache spinlock (separate from fs_lock_ to allow concurrent inode access)
+static Spinlock inode_cache_lock;
+
 /** @copydoc fs::viperfs::viperfs */
 ViperFS &viperfs()
 {
     return g_viperfs;
 }
 
-/** @copydoc fs::viperfs::ViperFS::alloc_zeroed_block */
-u64 ViperFS::alloc_zeroed_block()
+// ============================================================================
+// InodeCache Implementation
+// ============================================================================
+
+void InodeCache::init()
 {
-    u64 block_num = alloc_block();
+    for (usize i = 0; i < INODE_CACHE_SIZE; i++)
+    {
+        entries_[i].refcount = 0;
+        entries_[i].valid = false;
+        entries_[i].dirty = false;
+        entries_[i].lru_prev = nullptr;
+        entries_[i].lru_next = nullptr;
+        entries_[i].hash_next = nullptr;
+    }
+
+    for (usize i = 0; i < INODE_HASH_SIZE; i++)
+    {
+        hash_[i] = nullptr;
+    }
+
+    // Initialize LRU list
+    lru_head_ = &entries_[0];
+    lru_tail_ = &entries_[INODE_CACHE_SIZE - 1];
+
+    for (usize i = 0; i < INODE_CACHE_SIZE; i++)
+    {
+        entries_[i].lru_prev = (i > 0) ? &entries_[i - 1] : nullptr;
+        entries_[i].lru_next = (i < INODE_CACHE_SIZE - 1) ? &entries_[i + 1] : nullptr;
+    }
+
+    hits_ = 0;
+    misses_ = 0;
+}
+
+u32 InodeCache::hash_func(u64 ino)
+{
+    return ino % INODE_HASH_SIZE;
+}
+
+CachedInode *InodeCache::find(u64 ino)
+{
+    u32 h = hash_func(ino);
+    CachedInode *ci = hash_[h];
+
+    while (ci)
+    {
+        if (ci->valid && ci->inode.inode_num == ino)
+        {
+            return ci;
+        }
+        ci = ci->hash_next;
+    }
+
+    return nullptr;
+}
+
+void InodeCache::remove_from_lru(CachedInode *ci)
+{
+    if (ci->lru_prev)
+    {
+        ci->lru_prev->lru_next = ci->lru_next;
+    }
+    else
+    {
+        lru_head_ = ci->lru_next;
+    }
+
+    if (ci->lru_next)
+    {
+        ci->lru_next->lru_prev = ci->lru_prev;
+    }
+    else
+    {
+        lru_tail_ = ci->lru_prev;
+    }
+
+    ci->lru_prev = nullptr;
+    ci->lru_next = nullptr;
+}
+
+void InodeCache::add_to_lru_head(CachedInode *ci)
+{
+    ci->lru_prev = nullptr;
+    ci->lru_next = lru_head_;
+
+    if (lru_head_)
+    {
+        lru_head_->lru_prev = ci;
+    }
+    lru_head_ = ci;
+
+    if (!lru_tail_)
+    {
+        lru_tail_ = ci;
+    }
+}
+
+void InodeCache::touch(CachedInode *ci)
+{
+    if (ci == lru_head_)
+    {
+        return;
+    }
+
+    remove_from_lru(ci);
+    add_to_lru_head(ci);
+}
+
+void InodeCache::insert_hash(CachedInode *ci)
+{
+    u32 h = hash_func(ci->inode.inode_num);
+    ci->hash_next = hash_[h];
+    hash_[h] = ci;
+}
+
+void InodeCache::remove_hash(CachedInode *ci)
+{
+    u32 h = hash_func(ci->inode.inode_num);
+    CachedInode **pp = &hash_[h];
+
+    while (*pp)
+    {
+        if (*pp == ci)
+        {
+            *pp = ci->hash_next;
+            ci->hash_next = nullptr;
+            return;
+        }
+        pp = &(*pp)->hash_next;
+    }
+}
+
+CachedInode *InodeCache::evict()
+{
+    CachedInode *ci = lru_tail_;
+
+    while (ci)
+    {
+        if (ci->refcount == 0)
+        {
+            // Write back if dirty
+            if (ci->valid && ci->dirty)
+            {
+                sync(ci);
+            }
+
+            // Remove from hash
+            if (ci->valid)
+            {
+                remove_hash(ci);
+            }
+
+            return ci;
+        }
+        ci = ci->lru_prev;
+    }
+
+    serial::puts("[inode_cache] WARNING: All inodes in use!\n");
+    return nullptr;
+}
+
+bool InodeCache::load_inode(u64 ino, Inode *out)
+{
+    u64 block_num = viperfs().inode_block(ino);
+    u64 offset = viperfs().inode_offset(ino);
+
+    CacheBlock *block = cache().get(block_num);
+    if (!block)
+    {
+        return false;
+    }
+
+    const Inode *disk_inode = reinterpret_cast<const Inode *>(block->data + offset);
+    *out = *disk_inode;
+
+    cache().release(block);
+    return true;
+}
+
+bool InodeCache::store_inode(const Inode *inode)
+{
+    u64 ino = inode->inode_num;
+    u64 block_num = viperfs().inode_block(ino);
+    u64 offset = viperfs().inode_offset(ino);
+
+    CacheBlock *block = cache().get_for_write(block_num);
+    if (!block)
+    {
+        return false;
+    }
+
+    Inode *disk_inode = reinterpret_cast<Inode *>(block->data + offset);
+    *disk_inode = *inode;
+    block->dirty = true;
+
+    cache().release(block);
+    return true;
+}
+
+CachedInode *InodeCache::get(u64 ino)
+{
+    SpinlockGuard guard(inode_cache_lock);
+
+    // Check cache first
+    CachedInode *ci = find(ino);
+
+    if (ci)
+    {
+        hits_++;
+        ci->refcount++;
+        touch(ci);
+        return ci;
+    }
+
+    // Cache miss - need to load
+    misses_++;
+
+    ci = evict();
+    if (!ci)
+    {
+        return nullptr;
+    }
+
+    if (!load_inode(ino, &ci->inode))
+    {
+        serial::puts("[inode_cache] Failed to load inode ");
+        serial::put_dec(ino);
+        serial::puts("\n");
+        return nullptr;
+    }
+
+    ci->valid = true;
+    ci->dirty = false;
+    ci->refcount = 1;
+
+    insert_hash(ci);
+    touch(ci);
+
+    return ci;
+}
+
+void InodeCache::release(CachedInode *ci)
+{
+    if (!ci)
+        return;
+
+    SpinlockGuard guard(inode_cache_lock);
+    if (ci->refcount > 0)
+    {
+        ci->refcount--;
+    }
+}
+
+bool InodeCache::sync(CachedInode *ci)
+{
+    if (!ci || !ci->valid || !ci->dirty)
+    {
+        return true;
+    }
+
+    if (store_inode(&ci->inode))
+    {
+        ci->dirty = false;
+        return true;
+    }
+
+    return false;
+}
+
+void InodeCache::sync_all()
+{
+    SpinlockGuard guard(inode_cache_lock);
+
+    u32 synced = 0;
+    for (usize i = 0; i < INODE_CACHE_SIZE; i++)
+    {
+        if (entries_[i].valid && entries_[i].dirty)
+        {
+            if (sync(&entries_[i]))
+            {
+                synced++;
+            }
+        }
+    }
+
+    if (synced > 0)
+    {
+        serial::puts("[inode_cache] Synced ");
+        serial::put_dec(synced);
+        serial::puts(" inodes\n");
+    }
+}
+
+void InodeCache::invalidate(u64 ino)
+{
+    SpinlockGuard guard(inode_cache_lock);
+
+    CachedInode *ci = find(ino);
+    if (ci)
+    {
+        if (ci->dirty)
+        {
+            sync(ci);
+        }
+        remove_hash(ci);
+        ci->valid = false;
+    }
+}
+
+void InodeCache::dump_stats()
+{
+    SpinlockGuard guard(inode_cache_lock);
+
+    u32 valid_count = 0;
+    u32 dirty_count = 0;
+    u32 in_use_count = 0;
+
+    for (usize i = 0; i < INODE_CACHE_SIZE; i++)
+    {
+        if (entries_[i].valid)
+            valid_count++;
+        if (entries_[i].dirty)
+            dirty_count++;
+        if (entries_[i].refcount > 0)
+            in_use_count++;
+    }
+
+    serial::puts("\n=== Inode Cache Statistics ===\n");
+    serial::puts("Capacity: ");
+    serial::put_dec(INODE_CACHE_SIZE);
+    serial::puts(" inodes\n");
+
+    serial::puts("Valid: ");
+    serial::put_dec(valid_count);
+    serial::puts(", Dirty: ");
+    serial::put_dec(dirty_count);
+    serial::puts(", In-use: ");
+    serial::put_dec(in_use_count);
+    serial::puts("\n");
+
+    serial::puts("Hits: ");
+    serial::put_dec(hits_);
+    serial::puts(", Misses: ");
+    serial::put_dec(misses_);
+
+    u64 total = hits_ + misses_;
+    if (total > 0)
+    {
+        u64 hit_rate = (hits_ * 100) / total;
+        serial::puts(" (");
+        serial::put_dec(hit_rate);
+        serial::puts("% hit rate)\n");
+    }
+    else
+    {
+        serial::puts("\n");
+    }
+
+    serial::puts("==============================\n");
+}
+
+// ============================================================================
+// ViperFS Cached Inode Methods
+// ============================================================================
+
+CachedInode *ViperFS::get_cached_inode(u64 ino)
+{
+    if (!mounted_)
+        return nullptr;
+    return inode_cache_.get(ino);
+}
+
+void ViperFS::release_cached_inode(CachedInode *ci)
+{
+    inode_cache_.release(ci);
+}
+
+void ViperFS::mark_inode_dirty(CachedInode *ci)
+{
+    if (ci)
+    {
+        ci->dirty = true;
+    }
+}
+
+void ViperFS::sync_inodes()
+{
+    inode_cache_.sync_all();
+}
+
+/** @copydoc fs::viperfs::ViperFS::alloc_zeroed_block_unlocked */
+u64 ViperFS::alloc_zeroed_block_unlocked()
+{
+    u64 block_num = alloc_block_unlocked();
     if (block_num == 0)
         return 0;
 
@@ -107,6 +502,9 @@ bool ViperFS::mount()
     sb_ = *sb;
     cache().release(sb_block);
 
+    // Initialize inode cache
+    inode_cache_.init();
+
     mounted_ = true;
 
     serial::puts("[viperfs] Mounted '");
@@ -150,6 +548,9 @@ void ViperFS::unmount()
 {
     if (!mounted_)
         return;
+
+    // Sync inode cache first (before block cache)
+    inode_cache_.sync_all();
 
     // Sync journal and cache
     if (journal().is_enabled())
@@ -343,6 +744,9 @@ i64 ViperFS::read_data(Inode *inode, u64 offset, void *buf, usize len)
         remaining -= to_read;
     }
 
+    // Update access time (note: not written to disk until fsync or unmount)
+    inode->atime = timer::get_ms();
+
     return len;
 }
 
@@ -445,12 +849,13 @@ i32 ViperFS::readdir(Inode *dir, u64 offset, ReaddirCallback cb, void *ctx)
     return count;
 }
 
-// Allocation functions
-/** @copydoc fs::viperfs::ViperFS::alloc_block */
-u64 ViperFS::alloc_block()
+// Allocation functions (internal unlocked versions - caller must hold fs_lock_)
+/** @copydoc fs::viperfs::ViperFS::alloc_block_unlocked */
+u64 ViperFS::alloc_block_unlocked()
 {
     if (!mounted_)
         return 0;
+
     if (sb_.free_blocks == 0)
         return 0;
 
@@ -495,8 +900,8 @@ u64 ViperFS::alloc_block()
     return 0;
 }
 
-/** @copydoc fs::viperfs::ViperFS::free_block */
-void ViperFS::free_block(u64 block_num)
+/** @copydoc fs::viperfs::ViperFS::free_block_unlocked */
+void ViperFS::free_block_unlocked(u64 block_num)
 {
     if (!mounted_)
         return;
@@ -518,8 +923,8 @@ void ViperFS::free_block(u64 block_num)
     sb_.free_blocks++;
 }
 
-/** @copydoc fs::viperfs::ViperFS::alloc_inode */
-u64 ViperFS::alloc_inode()
+/** @copydoc fs::viperfs::ViperFS::alloc_inode_unlocked */
+u64 ViperFS::alloc_inode_unlocked()
 {
     if (!mounted_)
         return 0;
@@ -537,7 +942,10 @@ u64 ViperFS::alloc_inode()
         Inode *inode = reinterpret_cast<Inode *>(block->data + offset);
         if (inode->mode == 0)
         {
-            // Free inode found
+            // Free inode found - mark it as allocated immediately
+            // to prevent races (set a minimal mode that indicates "in use")
+            inode->mode = mode::TYPE_FILE; // Will be overwritten by caller
+            block->dirty = true;
             cache().release(block);
             return ino;
         }
@@ -547,8 +955,8 @@ u64 ViperFS::alloc_inode()
     return 0;
 }
 
-/** @copydoc fs::viperfs::ViperFS::free_inode */
-void ViperFS::free_inode(u64 ino)
+/** @copydoc fs::viperfs::ViperFS::free_inode_unlocked */
+void ViperFS::free_inode_unlocked(u64 ino)
 {
     if (!mounted_)
         return;
@@ -642,7 +1050,7 @@ bool ViperFS::set_block_ptr(Inode *inode, u64 block_idx, u64 block_num)
     {
         if (inode->indirect == 0)
         {
-            inode->indirect = alloc_zeroed_block();
+            inode->indirect = alloc_zeroed_block_unlocked();
             if (inode->indirect == 0)
                 return false;
         }
@@ -655,7 +1063,7 @@ bool ViperFS::set_block_ptr(Inode *inode, u64 block_idx, u64 block_num)
     {
         if (inode->double_indirect == 0)
         {
-            inode->double_indirect = alloc_zeroed_block();
+            inode->double_indirect = alloc_zeroed_block_unlocked();
             if (inode->double_indirect == 0)
                 return false;
         }
@@ -666,7 +1074,7 @@ bool ViperFS::set_block_ptr(Inode *inode, u64 block_idx, u64 block_num)
         u64 l1_block = read_indirect(inode->double_indirect, l1_idx);
         if (l1_block == 0)
         {
-            l1_block = alloc_zeroed_block();
+            l1_block = alloc_zeroed_block_unlocked();
             if (l1_block == 0)
                 return false;
             write_indirect(inode->double_indirect, l1_idx, l1_block);
@@ -700,7 +1108,7 @@ i64 ViperFS::write_data(Inode *inode, u64 offset, const void *buf, usize len)
         u64 block_num = get_block_ptr(inode, block_idx);
         if (block_num == 0)
         {
-            block_num = alloc_block();
+            block_num = alloc_block_unlocked();
             if (block_num == 0)
             {
                 serial::puts("[viperfs] Out of blocks\n");
@@ -708,7 +1116,7 @@ i64 ViperFS::write_data(Inode *inode, u64 offset, const void *buf, usize len)
             }
             if (!set_block_ptr(inode, block_idx, block_num))
             {
-                free_block(block_num);
+                free_block_unlocked(block_num);
                 return written > 0 ? static_cast<i64>(written) : -1;
             }
             inode->blocks++;
@@ -736,7 +1144,102 @@ i64 ViperFS::write_data(Inode *inode, u64 offset, const void *buf, usize len)
         inode->size = offset;
     }
 
+    // Update modification time
+    inode->mtime = timer::get_ms();
+
     return static_cast<i64>(written);
+}
+
+/** @copydoc fs::viperfs::ViperFS::truncate */
+bool ViperFS::truncate(Inode *inode, u64 new_size)
+{
+    if (!mounted_ || !inode)
+        return false;
+
+    SpinlockGuard guard(fs_lock_);
+
+    u64 old_size = inode->size;
+
+    if (new_size == old_size)
+    {
+        return true; // Nothing to do
+    }
+
+    if (new_size < old_size)
+    {
+        // Shrinking - free blocks beyond new size
+        u64 new_blocks = (new_size + BLOCK_SIZE - 1) / BLOCK_SIZE;
+        u64 old_blocks = (old_size + BLOCK_SIZE - 1) / BLOCK_SIZE;
+
+        for (u64 block_idx = new_blocks; block_idx < old_blocks; block_idx++)
+        {
+            u64 block_num = get_block_ptr(inode, block_idx);
+            if (block_num != 0)
+            {
+                free_block_unlocked(block_num);
+                set_block_ptr(inode, block_idx, 0);
+                inode->blocks--;
+            }
+        }
+
+        // Zero out partial block if needed
+        if (new_size > 0)
+        {
+            u64 partial_offset = new_size % BLOCK_SIZE;
+            if (partial_offset > 0)
+            {
+                u64 last_block_idx = new_size / BLOCK_SIZE;
+                u64 block_num = get_block_ptr(inode, last_block_idx);
+                if (block_num != 0)
+                {
+                    CacheBlock *block = cache().get_for_write(block_num);
+                    if (block)
+                    {
+                        // Zero from partial_offset to end of block
+                        for (u64 i = partial_offset; i < BLOCK_SIZE; i++)
+                        {
+                            block->data[i] = 0;
+                        }
+                        cache().release(block);
+                    }
+                }
+            }
+        }
+    }
+    // Extending: sparse file - no blocks allocated, just update size
+    // Reads will return zeros for unallocated blocks
+
+    inode->size = new_size;
+    inode->mtime = timer::get_ms();
+    inode->ctime = inode->mtime;
+
+    // Write inode back to disk
+    write_inode(inode);
+
+    return true;
+}
+
+/** @copydoc fs::viperfs::ViperFS::fsync */
+bool ViperFS::fsync(Inode *inode)
+{
+    if (!mounted_ || !inode)
+        return false;
+
+    // Update access time
+    inode->atime = timer::get_ms();
+
+    // Write inode metadata to disk
+    if (!write_inode(inode))
+    {
+        return false;
+    }
+
+    // Sync all dirty blocks for this file
+    // Note: In a more sophisticated implementation, we would track
+    // which blocks belong to this file. For now, sync all dirty blocks.
+    cache().sync();
+
+    return true;
 }
 
 /** @copydoc fs::viperfs::ViperFS::add_dir_entry */
@@ -832,6 +1335,8 @@ u64 ViperFS::create_file(Inode *dir, const char *name, usize name_len)
     if (!is_directory(dir))
         return 0;
 
+    SpinlockGuard guard(fs_lock_);
+
     // Check if name already exists
     if (lookup(dir, name, name_len) != 0)
     {
@@ -847,7 +1352,7 @@ u64 ViperFS::create_file(Inode *dir, const char *name, usize name_len)
     }
 
     // Allocate inode
-    u64 ino = alloc_inode();
+    u64 ino = alloc_inode_unlocked();
     if (ino == 0)
     {
         serial::puts("[viperfs] No free inodes\n");
@@ -862,6 +1367,12 @@ u64 ViperFS::create_file(Inode *dir, const char *name, usize name_len)
     new_inode.mode = mode::TYPE_FILE | mode::PERM_READ | mode::PERM_WRITE;
     new_inode.size = 0;
     new_inode.blocks = 0;
+
+    // Set creation time
+    u64 now = timer::get_ms();
+    new_inode.atime = now;
+    new_inode.mtime = now;
+    new_inode.ctime = now;
 
     // Log inode block before modification
     if (txn)
@@ -878,7 +1389,7 @@ u64 ViperFS::create_file(Inode *dir, const char *name, usize name_len)
     // Write inode to disk
     if (!write_inode(&new_inode))
     {
-        free_inode(ino);
+        free_inode_unlocked(ino);
         if (txn)
             journal().abort(txn);
         return 0;
@@ -887,7 +1398,7 @@ u64 ViperFS::create_file(Inode *dir, const char *name, usize name_len)
     // Add directory entry
     if (!add_dir_entry(dir, ino, name, name_len, file_type::FILE))
     {
-        free_inode(ino);
+        free_inode_unlocked(ino);
         if (txn)
             journal().abort(txn);
         return 0;
@@ -916,6 +1427,8 @@ u64 ViperFS::create_dir(Inode *dir, const char *name, usize name_len)
     if (!is_directory(dir))
         return 0;
 
+    SpinlockGuard guard(fs_lock_);
+
     // Check if name already exists
     if (lookup(dir, name, name_len) != 0)
     {
@@ -924,7 +1437,7 @@ u64 ViperFS::create_dir(Inode *dir, const char *name, usize name_len)
     }
 
     // Allocate inode
-    u64 ino = alloc_inode();
+    u64 ino = alloc_inode_unlocked();
     if (ino == 0)
     {
         serial::puts("[viperfs] No free inodes\n");
@@ -932,10 +1445,10 @@ u64 ViperFS::create_dir(Inode *dir, const char *name, usize name_len)
     }
 
     // Allocate data block for directory entries
-    u64 data_block = alloc_block();
+    u64 data_block = alloc_block_unlocked();
     if (data_block == 0)
     {
-        free_inode(ino);
+        free_inode_unlocked(ino);
         serial::puts("[viperfs] No free blocks\n");
         return 0;
     }
@@ -947,6 +1460,12 @@ u64 ViperFS::create_dir(Inode *dir, const char *name, usize name_len)
     new_inode.size = BLOCK_SIZE;
     new_inode.blocks = 1;
     new_inode.direct[0] = data_block;
+
+    // Set creation time
+    u64 now = timer::get_ms();
+    new_inode.atime = now;
+    new_inode.mtime = now;
+    new_inode.ctime = now;
 
     // Create . and .. entries
     u8 dir_data[BLOCK_SIZE] = {};
@@ -974,8 +1493,8 @@ u64 ViperFS::create_dir(Inode *dir, const char *name, usize name_len)
     CacheBlock *block = cache().get(data_block);
     if (!block)
     {
-        free_block(data_block);
-        free_inode(ino);
+        free_block_unlocked(data_block);
+        free_inode_unlocked(ino);
         return 0;
     }
     for (usize i = 0; i < BLOCK_SIZE; i++)
@@ -988,16 +1507,16 @@ u64 ViperFS::create_dir(Inode *dir, const char *name, usize name_len)
     // Write inode to disk
     if (!write_inode(&new_inode))
     {
-        free_block(data_block);
-        free_inode(ino);
+        free_block_unlocked(data_block);
+        free_inode_unlocked(ino);
         return 0;
     }
 
     // Add directory entry to parent
     if (!add_dir_entry(dir, ino, name, name_len, file_type::DIR))
     {
-        free_block(data_block);
-        free_inode(ino);
+        free_block_unlocked(data_block);
+        free_inode_unlocked(ino);
         return 0;
     }
 
@@ -1018,6 +1537,8 @@ u64 ViperFS::create_symlink(
     if (target_len == 0 || target_len > BLOCK_SIZE)
         return 0;
 
+    SpinlockGuard guard(fs_lock_);
+
     // Check if name already exists
     if (lookup(dir, name, name_len) != 0)
     {
@@ -1026,7 +1547,7 @@ u64 ViperFS::create_symlink(
     }
 
     // Allocate inode
-    u64 ino = alloc_inode();
+    u64 ino = alloc_inode_unlocked();
     if (ino == 0)
     {
         serial::puts("[viperfs] No free inodes\n");
@@ -1040,10 +1561,16 @@ u64 ViperFS::create_symlink(
     new_inode.size = target_len;
     new_inode.blocks = 0;
 
+    // Set creation time
+    u64 now = timer::get_ms();
+    new_inode.atime = now;
+    new_inode.mtime = now;
+    new_inode.ctime = now;
+
     // Write inode first
     if (!write_inode(&new_inode))
     {
-        free_inode(ino);
+        free_inode_unlocked(ino);
         return 0;
     }
 
@@ -1051,7 +1578,7 @@ u64 ViperFS::create_symlink(
     Inode *inode = read_inode(ino);
     if (!inode)
     {
-        free_inode(ino);
+        free_inode_unlocked(ino);
         return 0;
     }
 
@@ -1060,14 +1587,14 @@ u64 ViperFS::create_symlink(
 
     if (written != static_cast<i64>(target_len))
     {
-        free_inode(ino);
+        free_inode_unlocked(ino);
         return 0;
     }
 
     // Add directory entry to parent
     if (!add_dir_entry(dir, ino, name, name_len, file_type::LINK))
     {
-        free_inode(ino);
+        free_inode_unlocked(ino);
         return 0;
     }
 
@@ -1166,7 +1693,7 @@ bool ViperFS::remove_dir_entry(Inode *dir, const char *name, usize name_len, u64
     return false; // Entry not found
 }
 
-// Free all data blocks belonging to an inode
+// Free all data blocks belonging to an inode (caller must hold fs_lock_)
 /** @copydoc fs::viperfs::ViperFS::free_inode_blocks */
 void ViperFS::free_inode_blocks(Inode *inode)
 {
@@ -1180,7 +1707,7 @@ void ViperFS::free_inode_blocks(Inode *inode)
     {
         if (inode->direct[i] != 0)
         {
-            free_block(inode->direct[i]);
+            free_block_unlocked(inode->direct[i]);
             inode->direct[i] = 0;
         }
     }
@@ -1196,12 +1723,12 @@ void ViperFS::free_inode_blocks(Inode *inode)
             {
                 if (ptrs[i] != 0)
                 {
-                    free_block(ptrs[i]);
+                    free_block_unlocked(ptrs[i]);
                 }
             }
             cache().release(block);
         }
-        free_block(inode->indirect);
+        free_block_unlocked(inode->indirect);
         inode->indirect = 0;
     }
 
@@ -1224,17 +1751,17 @@ void ViperFS::free_inode_blocks(Inode *inode)
                         {
                             if (l2_ptrs[j] != 0)
                             {
-                                free_block(l2_ptrs[j]);
+                                free_block_unlocked(l2_ptrs[j]);
                             }
                         }
                         cache().release(l2_block);
                     }
-                    free_block(l1_ptrs[i]);
+                    free_block_unlocked(l1_ptrs[i]);
                 }
             }
             cache().release(l1_block);
         }
-        free_block(inode->double_indirect);
+        free_block_unlocked(inode->double_indirect);
         inode->double_indirect = 0;
     }
 
@@ -1255,6 +1782,8 @@ bool ViperFS::unlink_file(Inode *dir, const char *name, usize name_len)
         return false;
     if (name_len == 2 && name[0] == '.' && name[1] == '.')
         return false;
+
+    SpinlockGuard guard(fs_lock_);
 
     // Find the file's inode
     u64 ino = lookup(dir, name, name_len);
@@ -1289,7 +1818,7 @@ bool ViperFS::unlink_file(Inode *dir, const char *name, usize name_len)
     free_inode_blocks(inode);
 
     // Free the inode
-    free_inode(ino);
+    free_inode_unlocked(ino);
 
     release_inode(inode);
     write_inode(dir);
@@ -1352,6 +1881,8 @@ bool ViperFS::rmdir(Inode *parent, const char *name, usize name_len)
     if (name_len == 2 && name[0] == '.' && name[1] == '.')
         return false;
 
+    SpinlockGuard guard(fs_lock_);
+
     // Find the directory's inode
     u64 ino = lookup(parent, name, name_len);
     if (ino == 0)
@@ -1393,7 +1924,7 @@ bool ViperFS::rmdir(Inode *parent, const char *name, usize name_len)
     free_inode_blocks(dir);
 
     // Free the inode
-    free_inode(ino);
+    free_inode_unlocked(ino);
 
     release_inode(dir);
     write_inode(parent);
@@ -1418,6 +1949,8 @@ bool ViperFS::rename(Inode *old_dir,
         return false;
     if (old_len == 2 && old_name[0] == '.' && old_name[1] == '.')
         return false;
+
+    SpinlockGuard guard(fs_lock_);
 
     // Find source inode
     u64 src_ino = lookup(old_dir, old_name, old_len);

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../../lib/spinlock.hpp"
 #include "../cache.hpp"
 #include "format.hpp"
 
@@ -170,6 +171,11 @@ class Journal
     bool enabled_{false};     // Journal is initialized
     Transaction current_txn_; // Current active transaction
 
+    // Thread safety: protects transaction operations
+    // This lock is held during begin/commit/abort to ensure only one
+    // transaction is active at a time and header updates are atomic
+    mutable Spinlock txn_lock_;
+
     /**
      * @brief Calculate simple checksum for block data.
      */
@@ -199,6 +205,11 @@ class Journal
      * @brief Replay a single transaction.
      */
     bool replay_transaction(u64 journal_pos);
+
+    /**
+     * @brief Abort without acquiring lock (caller must hold txn_lock_).
+     */
+    void abort_unlocked(Transaction *txn);
 };
 
 /**

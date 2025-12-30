@@ -161,7 +161,7 @@ The drivers subsystem provides device drivers for VirtIO paravirtual devices, QE
 
 ### 4. VirtIO Network Device (`virtio/net.cpp`, `net.hpp`)
 
-**Status:** Functional with polling-based RX/TX
+**Status:** Complete with interrupt-driven receive
 
 **Implemented:**
 - Device discovery and initialization
@@ -175,6 +175,9 @@ The drivers subsystem provides device drivers for VirtIO paravirtual devices, QE
 - Statistics tracking (packets/bytes/drops)
 - Link status (assumed always up)
 - RX buffer refilling
+- **Interrupt-driven receive via GIC IRQ**
+- **RX wait queue for blocking receive**
+- **IRQ handler with automatic buffer refill**
 
 **Network Header:**
 ```cpp
@@ -193,6 +196,7 @@ struct NetHeader {
 - RX packet queue: 16 entries
 - TX/RX virtqueue size: 64 descriptors
 - Max Ethernet frame: 1514 bytes
+- IRQ: Registered with GIC for used buffer notifications
 
 **Not Implemented:**
 - Checksum offload
@@ -201,10 +205,8 @@ struct NetHeader {
 - Control virtqueue
 - VLAN support
 - Mergeable RX buffers
-- Interrupt-driven receive
 
 **Recommendations:**
-- Add interrupt support for better latency
 - Implement checksum offload for performance
 - Add multiqueue for SMP scalability
 
@@ -488,7 +490,7 @@ The drivers subsystem is tested via:
 
 ## Priority Recommendations
 
-1. **High:** Add interrupt-driven I/O for virtio-blk and virtio-net
+1. **High:** Add interrupt-driven I/O for virtio-blk
 2. **High:** Implement async I/O API for better throughput
 3. **Medium:** Add VirtIO-GPU for hardware-accelerated graphics
 4. **Medium:** Add checksum offload for virtio-net

@@ -52,6 +52,7 @@ bool BlockCache::init()
         blocks_[i].block_num = 0;
         blocks_[i].valid = false;
         blocks_[i].dirty = false;
+        blocks_[i].pinned = false;
         blocks_[i].refcount = 0;
         blocks_[i].lru_prev = nullptr;
         blocks_[i].lru_next = nullptr;
@@ -195,12 +196,12 @@ void BlockCache::remove_hash(CacheBlock *block)
 /** @copydoc fs::BlockCache::evict */
 CacheBlock *BlockCache::evict()
 {
-    // Find LRU block with refcount 0
+    // Find LRU block with refcount 0 that is not pinned
     CacheBlock *block = lru_tail_;
 
     while (block)
     {
-        if (block->refcount == 0)
+        if (block->refcount == 0 && !block->pinned)
         {
             // Found a candidate
             if (block->valid && block->dirty)
@@ -220,8 +221,8 @@ CacheBlock *BlockCache::evict()
         block = block->lru_prev;
     }
 
-    // All blocks are in use
-    serial::puts("[cache] WARNING: All cache blocks in use!\n");
+    // All blocks are in use or pinned
+    serial::puts("[cache] WARNING: All cache blocks in use or pinned!\n");
     return nullptr;
 }
 
@@ -505,6 +506,118 @@ void BlockCache::invalidate(u64 block_num)
         }
         remove_hash(block);
         block->valid = false;
+        block->pinned = false;
+    }
+}
+
+/** @copydoc fs::BlockCache::dump_stats */
+void BlockCache::dump_stats()
+{
+    SpinlockGuard guard(cache_lock);
+
+    u32 valid_count = 0;
+    u32 dirty_count = 0;
+    u32 pinned_count = 0;
+    u32 in_use_count = 0;
+
+    for (usize i = 0; i < CACHE_BLOCKS; i++)
+    {
+        if (blocks_[i].valid)
+            valid_count++;
+        if (blocks_[i].dirty)
+            dirty_count++;
+        if (blocks_[i].pinned)
+            pinned_count++;
+        if (blocks_[i].refcount > 0)
+            in_use_count++;
+    }
+
+    serial::puts("\n=== Block Cache Statistics ===\n");
+    serial::puts("Capacity: ");
+    serial::put_dec(CACHE_BLOCKS);
+    serial::puts(" blocks (");
+    serial::put_dec(CACHE_BLOCKS * BLOCK_SIZE / 1024);
+    serial::puts(" KB)\n");
+
+    serial::puts("Valid: ");
+    serial::put_dec(valid_count);
+    serial::puts(", Dirty: ");
+    serial::put_dec(dirty_count);
+    serial::puts(", Pinned: ");
+    serial::put_dec(pinned_count);
+    serial::puts(", In-use: ");
+    serial::put_dec(in_use_count);
+    serial::puts("\n");
+
+    serial::puts("Hits: ");
+    serial::put_dec(hits_);
+    serial::puts(", Misses: ");
+    serial::put_dec(misses_);
+
+    u64 total = hits_ + misses_;
+    if (total > 0)
+    {
+        u64 hit_rate = (hits_ * 100) / total;
+        serial::puts(" (");
+        serial::put_dec(hit_rate);
+        serial::puts("% hit rate)\n");
+    }
+    else
+    {
+        serial::puts("\n");
+    }
+
+    serial::puts("Read-ahead: ");
+    serial::put_dec(readahead_count_);
+    serial::puts(" blocks prefetched\n");
+    serial::puts("==============================\n");
+}
+
+/** @copydoc fs::BlockCache::pin */
+bool BlockCache::pin(u64 block_num)
+{
+    SpinlockGuard guard(cache_lock);
+
+    // First try to find in cache
+    CacheBlock *block = find(block_num);
+
+    if (!block)
+    {
+        // Need to load from disk
+        block = evict();
+        if (!block)
+        {
+            serial::puts("[cache] Failed to pin block - no space\n");
+            return false;
+        }
+
+        if (!read_block(block_num, block->data))
+        {
+            serial::puts("[cache] Failed to read block for pinning\n");
+            return false;
+        }
+
+        block->block_num = block_num;
+        block->valid = true;
+        block->dirty = false;
+        block->refcount = 0;
+        insert_hash(block);
+        touch(block);
+    }
+
+    block->pinned = true;
+    return true;
+}
+
+/** @copydoc fs::BlockCache::unpin */
+void BlockCache::unpin(u64 block_num)
+{
+    SpinlockGuard guard(cache_lock);
+
+    CacheBlock *block = find(block_num);
+    if (block)
+    {
+        block->pinned = false;
     }
 }
 

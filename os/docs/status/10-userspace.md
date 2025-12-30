@@ -2,7 +2,7 @@
 
 **Status:** Complete with libc, C++ runtime, and interactive shell
 **Location:** `user/`
-**SLOC:** ~6,500
+**SLOC:** ~9,000
 
 ## Overview
 
@@ -464,17 +464,19 @@ User space is tested via:
 
 | File | Lines | Description |
 |------|-------|-------------|
-| `vinit/vinit.cpp` | ~2,950 | Init process + shell |
-| `syscall.hpp` | ~1,567 | Low-level syscall wrappers |
-| `libc/src/stdio.c` | ~450 | Standard I/O with FILE |
-| `libc/src/string.c` | ~400 | String operations |
-| `libc/src/stdlib.c` | ~460 | Standard library |
-| `libc/src/ctype.c` | ~80 | Character classification |
-| `libc/src/unistd.c` | ~125 | POSIX functions |
-| `libc/src/time.c` | ~150 | Time functions |
-| `libc/src/errno.c` | ~25 | Error handling |
-| `libc/src/new.cpp` | ~85 | C++ new/delete |
-| `libc/include/c++/*` | ~800 | C++ headers |
+| `vinit/vinit.cpp` | ~3,324 | Init process + shell |
+| `syscall.hpp` | ~1,677 | Low-level syscall wrappers |
+| `libc/src/stdio.c` | ~683 | Standard I/O with FILE |
+| `libc/src/string.c` | ~410 | String operations |
+| `libc/src/stdlib.c` | ~455 | Standard library |
+| `libc/src/ctype.c` | ~79 | Character classification |
+| `libc/src/unistd.c` | ~122 | POSIX functions |
+| `libc/src/time.c` | ~171 | Time functions |
+| `libc/src/errno.c` | ~23 | Error handling |
+| `libc/src/new.cpp` | ~98 | C++ new/delete |
+| `libc/include/c++/*` | ~811 | C++ headers |
+| `hello/hello.cpp` | ~294 | Hello world test program |
+| `sysinfo/sysinfo.cpp` | ~392 | System info utility |
 
 ---
 

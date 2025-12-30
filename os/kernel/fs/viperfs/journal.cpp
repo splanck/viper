@@ -153,6 +153,8 @@ bool Journal::replay()
     // Scan journal for committed but not completed transactions
     u64 pos = header_.head;
     u64 replayed = 0;
+    u64 skipped = 0;
+    u64 last_seq = 0;
 
     while (pos != header_.tail && pos < header_.num_blocks)
     {
@@ -160,14 +162,44 @@ bool Journal::replay()
         CacheBlock *block = cache().get(block_num);
         if (!block)
         {
+            serial::puts("[journal] Failed to read transaction descriptor\n");
             break;
         }
 
         const JournalTransaction *txn = reinterpret_cast<const JournalTransaction *>(block->data);
 
-        // Check if this is a valid transaction
-        if (txn->magic != JOURNAL_MAGIC || txn->state == txn_state::TXN_INVALID)
+        // Validate transaction header
+        if (txn->magic != JOURNAL_MAGIC)
         {
+            serial::puts("[journal] Invalid transaction magic at pos ");
+            serial::put_dec(pos);
+            serial::puts("\n");
+            cache().release(block);
+            break;
+        }
+
+        if (txn->state == txn_state::TXN_INVALID)
+        {
+            cache().release(block);
+            break;
+        }
+
+        // Validate sequence number is monotonically increasing
+        if (replayed > 0 && txn->sequence <= last_seq)
+        {
+            serial::puts("[journal] WARNING: Out-of-order sequence ");
+            serial::put_dec(txn->sequence);
+            serial::puts(" (expected > ");
+            serial::put_dec(last_seq);
+            serial::puts(")\n");
+        }
+
+        // Validate block count
+        if (txn->num_blocks > MAX_JOURNAL_BLOCKS)
+        {
+            serial::puts("[journal] Invalid block count ");
+            serial::put_dec(txn->num_blocks);
+            serial::puts("\n");
             cache().release(block);
             break;
         }
@@ -175,12 +207,85 @@ bool Journal::replay()
         // Only replay committed transactions
         if (txn->state == txn_state::TXN_COMMITTED)
         {
+            // Verify commit record exists and matches
+            u64 commit_block_num = block_num + 1 + txn->num_blocks;
+            CacheBlock *commit_block = cache().get(commit_block_num);
+            bool commit_valid = false;
+
+            if (commit_block)
+            {
+                const JournalCommit *commit =
+                    reinterpret_cast<const JournalCommit *>(commit_block->data);
+                if (commit->magic == JOURNAL_MAGIC && commit->sequence == txn->sequence)
+                {
+                    commit_valid = true;
+                }
+                else
+                {
+                    serial::puts("[journal] Commit record invalid for seq=");
+                    serial::put_dec(txn->sequence);
+                    serial::puts("\n");
+                }
+                cache().release(commit_block);
+            }
+
+            if (!commit_valid)
+            {
+                serial::puts("[journal] Skipping transaction without valid commit\n");
+                pos += txn->num_blocks + 2;
+                cache().release(block);
+                skipped++;
+                continue;
+            }
+
             serial::puts("[journal] Replaying transaction seq=");
             serial::put_dec(txn->sequence);
-            serial::puts("\n");
+            serial::puts(" (");
+            serial::put_dec(txn->num_blocks);
+            serial::puts(" blocks)\n");
 
-            // Replay each block in the transaction
-            for (u8 i = 0; i < txn->num_blocks && i < MAX_JOURNAL_BLOCKS; i++)
+            bool txn_valid = true;
+
+            // Verify checksums before applying
+            for (u8 i = 0; i < txn->num_blocks && txn_valid; i++)
+            {
+                u64 data_block = block_num + 1 + i;
+                CacheBlock *src = cache().get(data_block);
+                if (!src)
+                {
+                    serial::puts("[journal] Failed to read data block ");
+                    serial::put_dec(i);
+                    serial::puts("\n");
+                    txn_valid = false;
+                    break;
+                }
+
+                // Verify checksum
+                u64 computed = checksum(src->data, BLOCK_SIZE);
+                u64 expected = txn->blocks[i].checksum;
+                if (computed != expected)
+                {
+                    serial::puts("[journal] Checksum mismatch for block ");
+                    serial::put_dec(i);
+                    serial::puts(" (dest=");
+                    serial::put_hex(txn->blocks[i].block_num);
+                    serial::puts(")\n");
+                    txn_valid = false;
+                }
+                cache().release(src);
+            }
+
+            if (!txn_valid)
+            {
+                serial::puts("[journal] Skipping corrupted transaction\n");
+                pos += txn->num_blocks + 2;
+                cache().release(block);
+                skipped++;
+                continue;
+            }
+
+            // All checksums valid - apply the transaction
+            for (u8 i = 0; i < txn->num_blocks; i++)
             {
                 u64 data_block = block_num + 1 + i;
                 u64 dest_block = txn->blocks[i].block_num;
@@ -209,6 +314,7 @@ bool Journal::replay()
                 cache().release(dst);
             }
 
+            last_seq = txn->sequence;
             replayed++;
         }
 
@@ -218,11 +324,13 @@ bool Journal::replay()
         cache().release(block);
     }
 
-    if (replayed > 0)
+    if (replayed > 0 || skipped > 0)
     {
-        serial::puts("[journal] Replayed ");
+        serial::puts("[journal] Replay complete: ");
         serial::put_dec(replayed);
-        serial::puts(" transaction(s)\n");
+        serial::puts(" applied, ");
+        serial::put_dec(skipped);
+        serial::puts(" skipped\n");
 
         // Sync replayed data
         cache().sync();
@@ -245,6 +353,8 @@ Transaction *Journal::begin()
     if (!enabled_)
         return nullptr;
 
+    SpinlockGuard guard(txn_lock_);
+
     if (current_txn_.active)
     {
         serial::puts("[journal] Transaction already active\n");
@@ -262,6 +372,8 @@ bool Journal::log_block(Transaction *txn, u64 block_num, const void *data)
 {
     if (!txn || !txn->active)
         return false;
+
+    SpinlockGuard guard(txn_lock_);
 
     if (txn->num_blocks >= MAX_JOURNAL_BLOCKS)
     {
@@ -400,6 +512,8 @@ bool Journal::commit(Transaction *txn)
     if (!txn || !txn->active)
         return false;
 
+    SpinlockGuard guard(txn_lock_);
+
     if (txn->num_blocks == 0)
     {
         // Empty transaction - just close it
@@ -413,7 +527,7 @@ bool Journal::commit(Transaction *txn)
     if (!write_transaction(txn, &journal_pos))
     {
         serial::puts("[journal] Failed to write transaction\n");
-        abort(txn);
+        abort_unlocked(txn);
         return false;
     }
 
@@ -421,7 +535,7 @@ bool Journal::commit(Transaction *txn)
     if (!write_commit(txn, journal_pos))
     {
         serial::puts("[journal] Failed to write commit\n");
-        abort(txn);
+        abort_unlocked(txn);
         return false;
     }
 
@@ -433,7 +547,7 @@ bool Journal::commit(Transaction *txn)
     return true;
 }
 
-void Journal::abort(Transaction *txn)
+void Journal::abort_unlocked(Transaction *txn)
 {
     if (txn)
     {
@@ -442,11 +556,18 @@ void Journal::abort(Transaction *txn)
     }
 }
 
+void Journal::abort(Transaction *txn)
+{
+    SpinlockGuard guard(txn_lock_);
+    abort_unlocked(txn);
+}
+
 bool Journal::complete(Transaction *txn)
 {
     // Mark transaction as complete (can be reclaimed)
     // In this simple implementation, we don't track completion separately
     // The journal is reset when it fills up
+    SpinlockGuard guard(txn_lock_);
     (void)txn;
     return true;
 }
@@ -455,6 +576,7 @@ void Journal::sync()
 {
     if (enabled_)
     {
+        SpinlockGuard guard(txn_lock_);
         write_header();
     }
 }

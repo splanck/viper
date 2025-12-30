@@ -1,10 +1,117 @@
 #pragma once
 
+#include "../../lib/spinlock.hpp"
 #include "../cache.hpp"
 #include "format.hpp"
 
 namespace fs::viperfs
 {
+
+// ============================================================================
+// Inode Cache
+// ============================================================================
+
+/** @brief Number of inodes to cache. */
+constexpr usize INODE_CACHE_SIZE = 32;
+
+/** @brief Hash table size for inode lookup. */
+constexpr usize INODE_HASH_SIZE = 16;
+
+/**
+ * @brief Cached inode entry with reference counting.
+ *
+ * @details
+ * Wraps an on-disk Inode with caching metadata including reference count,
+ * dirty flag, and LRU/hash chain pointers.
+ */
+struct CachedInode
+{
+    Inode inode;            // Copy of on-disk inode
+    u32 refcount;           // Reference count
+    bool valid;             // Entry is valid
+    bool dirty;             // Inode modified, needs write-back
+    CachedInode *lru_prev;  // LRU list previous
+    CachedInode *lru_next;  // LRU list next
+    CachedInode *hash_next; // Hash chain next
+};
+
+/**
+ * @brief LRU inode cache with reference counting.
+ *
+ * @details
+ * Caches recently accessed inodes to reduce disk I/O and provide
+ * consistent inode views across multiple references.
+ */
+class InodeCache
+{
+  public:
+    /**
+     * @brief Initialize the inode cache.
+     */
+    void init();
+
+    /**
+     * @brief Get an inode from cache or load from disk.
+     *
+     * @param ino Inode number.
+     * @return Pointer to cached inode, or nullptr on failure.
+     */
+    CachedInode *get(u64 ino);
+
+    /**
+     * @brief Release a cached inode reference.
+     *
+     * @param ci Cached inode pointer.
+     */
+    void release(CachedInode *ci);
+
+    /**
+     * @brief Write a dirty inode back to disk.
+     *
+     * @param ci Cached inode to sync.
+     * @return true on success.
+     */
+    bool sync(CachedInode *ci);
+
+    /**
+     * @brief Sync all dirty inodes to disk.
+     */
+    void sync_all();
+
+    /**
+     * @brief Invalidate a cached inode (remove from cache).
+     *
+     * @param ino Inode number to invalidate.
+     */
+    void invalidate(u64 ino);
+
+    /**
+     * @brief Dump cache statistics.
+     */
+    void dump_stats();
+
+  private:
+    CachedInode entries_[INODE_CACHE_SIZE];
+    CachedInode *hash_[INODE_HASH_SIZE];
+    CachedInode *lru_head_;
+    CachedInode *lru_tail_;
+
+    u64 hits_;
+    u64 misses_;
+
+    u32 hash_func(u64 ino);
+    CachedInode *find(u64 ino);
+    CachedInode *evict();
+    void touch(CachedInode *ci);
+    void remove_from_lru(CachedInode *ci);
+    void add_to_lru_head(CachedInode *ci);
+    void insert_hash(CachedInode *ci);
+    void remove_hash(CachedInode *ci);
+
+    // Disk I/O helpers (use ViperFS methods)
+    bool load_inode(u64 ino, Inode *out);
+    bool store_inode(const Inode *inode);
+};
 
 /**
  * @file viperfs.hpp
@@ -237,6 +344,32 @@ class ViperFS
      */
     i64 read_symlink(Inode *inode, char *buf, usize buf_len);
 
+    // File size operations
+    /**
+     * @brief Truncate or extend a file to a specified size.
+     *
+     * @details
+     * If the new size is smaller, frees any blocks beyond the new end.
+     * If the new size is larger, the file is extended (sparse - reads return zeros).
+     *
+     * @param inode File inode.
+     * @param new_size Target file size in bytes.
+     * @return true on success, false on failure.
+     */
+    bool truncate(Inode *inode, u64 new_size);
+
+    /**
+     * @brief Sync a specific inode to disk.
+     *
+     * @details
+     * Writes the inode metadata back to disk. For complete file sync,
+     * the caller should also call cache sync.
+     *
+     * @param inode Inode to sync.
+     * @return true on success.
+     */
+    bool fsync(Inode *inode);
+
     // Delete operations
     // Unlink a file from directory. Frees inode and blocks if no more links.
     /**
@@ -295,6 +428,38 @@ class ViperFS
      */
     bool write_inode(Inode *inode);
 
+    // Cached inode operations
+    /**
+     * @brief Get a cached inode by number.
+     *
+     * @details
+     * Returns a reference-counted cached inode. Caller must call
+     * release_cached_inode() when done.
+     *
+     * @param ino Inode number.
+     * @return Pointer to cached inode, or nullptr on failure.
+     */
+    CachedInode *get_cached_inode(u64 ino);
+
+    /**
+     * @brief Release a cached inode reference.
+     *
+     * @param ci Cached inode pointer.
+     */
+    void release_cached_inode(CachedInode *ci);
+
+    /**
+     * @brief Mark a cached inode as dirty.
+     *
+     * @param ci Cached inode pointer.
+     */
+    void mark_inode_dirty(CachedInode *ci);
+
+    /**
+     * @brief Sync all cached inodes to disk.
+     */
+    void sync_inodes();
+
     // Sync filesystem (write dirty blocks)
     /**
      * @brief Sync filesystem metadata and dirty blocks to disk.
@@ -305,18 +470,25 @@ class ViperFS
      */
     void sync();
 
+    // Inode block helpers (public for InodeCache access)
+    /** @brief Compute the inode-table block containing an inode number. */
+    u64 inode_block(u64 ino);
+
+    /** @brief Compute the byte offset within an inode-table block for an inode number. */
+    u64 inode_offset(u64 ino);
+
   private:
-    // Allocation
-    /** @brief Allocate a free data block and mark it used in the bitmap. */
-    u64 alloc_block();
-    /** @brief Allocate and zero-initialize a new block. */
-    u64 alloc_zeroed_block();
-    /** @brief Mark a data block free in the bitmap. */
-    void free_block(u64 block_num);
-    /** @brief Allocate a free inode number. */
-    u64 alloc_inode();
-    /** @brief Mark an inode free in the inode table. */
-    void free_inode(u64 ino);
+    // Allocation - internal unlocked versions (caller must hold fs_lock_)
+    /** @brief Allocate a free data block and mark it used in the bitmap (unlocked). */
+    u64 alloc_block_unlocked();
+    /** @brief Allocate and zero-initialize a new block (unlocked). */
+    u64 alloc_zeroed_block_unlocked();
+    /** @brief Mark a data block free in the bitmap (unlocked). */
+    void free_block_unlocked(u64 block_num);
+    /** @brief Allocate a free inode number (unlocked). */
+    u64 alloc_inode_unlocked();
+    /** @brief Mark an inode free in the inode table (unlocked). */
+    void free_inode_unlocked(u64 ino);
 
     // Add directory entry
     /** @brief Add a directory entry to a directory inode. */
@@ -342,14 +514,15 @@ class ViperFS
 
     Superblock sb_;
     bool mounted_{false};
+    InodeCache inode_cache_; // Inode cache instance
 
-    // Get block number for inode
-    /** @brief Compute the inode-table block containing an inode number. */
-    u64 inode_block(u64 ino);
-
-    // Get offset within block for inode
-    /** @brief Compute the byte offset within an inode-table block for an inode number. */
-    u64 inode_offset(u64 ino);
+    // Thread safety: protects all filesystem metadata operations
+    // This lock is held during:
+    // - Block allocation/deallocation (bitmap updates)
+    // - Inode allocation/deallocation
+    // - Superblock updates (free_blocks counter)
+    // - Directory modifications (add/remove entries)
+    mutable Spinlock fs_lock_;
 
     // Get block pointer for a file block index
     /** @brief Resolve a file block index to a data block number (direct/indirect). */

@@ -1,8 +1,8 @@
 # Scheduler and Task Management
 
-**Status:** Functional cooperative/preemptive scheduler
+**Status:** Complete cooperative/preemptive scheduler with wait queues
 **Location:** `kernel/sched/`
-**SLOC:** ~1,377
+**SLOC:** ~2,400
 
 ## Overview
 
@@ -204,6 +204,62 @@ bl task::exit
 
 ---
 
+### 4. Wait Queues (`wait.cpp`, `wait.hpp`)
+
+**Status:** Complete blocking/waking mechanism
+
+**Implemented:**
+- FIFO wait queue for blocked tasks
+- Task enqueue with automatic state change to Blocked
+- Task dequeue (abort without waking)
+- Wake one (FIFO order)
+- Wake all
+- Queue count and empty check
+- Per-task wait channel tracking for debugging
+
+**WaitQueue Structure:**
+| Field | Type | Description |
+|-------|------|-------------|
+| head | Task* | First waiter (woken first) |
+| tail | Task* | Last waiter |
+| count | u32 | Number of waiters |
+
+**API:**
+| Function | Description |
+|----------|-------------|
+| `wait_init(wq)` | Initialize wait queue |
+| `wait_enqueue(wq, t)` | Add task to queue, set Blocked |
+| `wait_dequeue(wq, t)` | Remove task without waking |
+| `wait_wake_one(wq)` | Wake first waiter |
+| `wait_wake_all(wq)` | Wake all waiters |
+| `wait_empty(wq)` | Check if queue empty |
+| `wait_count(wq)` | Get waiter count |
+
+**Wait Queue Usage Pattern:**
+```cpp
+WaitQueue wq;
+wait_init(&wq);
+
+// To block:
+wait_enqueue(&wq, task::current());
+if (condition_not_met) {
+    scheduler::schedule();  // Task is now blocked
+} else {
+    wait_dequeue(&wq, task::current());  // Abort, don't sleep
+}
+
+// To wake (from another context):
+wait_wake_one(&wq);   // Wake first waiter
+wait_wake_all(&wq);   // Wake all waiters
+```
+
+**Users:**
+- VirtIO-net RX (packet arrival wakes receiver)
+- Sleep syscall (timer expiry wakes sleeper)
+- IPC channel blocking receive
+
+---
+
 ## Architecture
 
 ```
@@ -299,11 +355,13 @@ The scheduler is tested via:
 
 | File | Lines | Description |
 |------|-------|-------------|
-| `task.cpp` | ~574 | Task management |
-| `task.hpp` | ~319 | Task structures |
-| `scheduler.cpp` | ~278 | FIFO scheduler |
-| `scheduler.hpp` | ~96 | Scheduler interface |
-| `context.S` | ~115 | Context switch asm |
+| `task.cpp` | ~882 | Task management |
+| `task.hpp` | ~454 | Task structures |
+| `scheduler.cpp` | ~551 | FIFO scheduler |
+| `scheduler.hpp` | ~140 | Scheduler interface |
+| `wait.cpp` | ~69 | Wait queue implementation |
+| `wait.hpp` | ~197 | Wait queue interface |
+| `context.S` | ~114 | Context switch asm |
 
 ---
 
@@ -311,7 +369,6 @@ The scheduler is tested via:
 
 1. **High:** Add priority-based scheduling
 2. **High:** Implement multiprocessor support (SMP)
-3. **Medium:** Add wait queues for blocking
-4. **Medium:** Implement proper TIME_WAIT cleanup
-5. **Low:** Add real-time scheduling class
-6. **Low:** Per-CPU run queues for scalability
+3. **Medium:** Implement proper TIME_WAIT cleanup
+4. **Low:** Add real-time scheduling class
+5. **Low:** Per-CPU run queues for scalability
