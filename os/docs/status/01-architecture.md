@@ -12,23 +12,23 @@ The architecture subsystem provides low-level AArch64 support for the ViperOS ke
 
 ### 1. Boot (`boot.S`)
 
-**Status:** Complete for QEMU direct boot
+**Status:** Complete with multicore support
 
 **Implemented:**
 - Entry point `_start` for kernel boot
-- Stack setup (16KB kernel stack)
+- Stack setup (16KB kernel stack for boot CPU)
 - BSS section zeroing
 - Jump to `kernel_main` C++ entry point
 - EL1 execution assumed (QEMU `-kernel` mode)
+- **FPU/SIMD Access**: CPACR_EL1.FPEN enabled for EL1 and EL0 (required for Clang-generated code)
+- **Secondary CPU Entry**: `secondary_entry` for PSCI-booted CPUs
+- **Per-CPU Stacks**: 16KB stack per CPU (4 CPUs supported)
+- **Alignment Check Disabled**: Allows unaligned access for network structures
 
 **Not Implemented:**
 - EL2/EL3 to EL1 transition (relies on QEMU or bootloader)
-- Multicore boot (only CPU0 supported)
-- Secondary CPU wake-up via PSCI
 
 **Recommendations:**
-- Add multicore support with per-CPU stacks
-- Implement PSCI calls for secondary CPU startup
 - Add EL2→EL1 transition for hypervisor-hosted scenarios
 
 ---
@@ -68,30 +68,33 @@ The architecture subsystem provides low-level AArch64 support for the ViperOS ke
 
 ### 3. GIC - Generic Interrupt Controller (`gic.cpp`, `gic.hpp`)
 
-**Status:** Fully functional GICv2 implementation
+**Status:** Complete with GICv2/GICv3 dual support
 
 **Implemented:**
+- **Automatic Version Detection**: Reads GICD_PIDR2 to detect GICv2 or GICv3
 - GIC Distributor (GICD) initialization at `0x08000000`
-- GIC CPU Interface (GICC) initialization at `0x08010000`
+- **GICv2 Support:**
+  - CPU Interface (GICC) at `0x08010000`
+  - Memory-mapped IAR/EOIR for interrupt handling
+- **GICv3 Support:**
+  - Redistributor (GICR) at `0x080A0000` (per-CPU, 128KB each)
+  - System register interface (ICC_* registers)
+  - Affinity-based interrupt routing
+  - Redistributor wake-up sequence
 - Interrupt enable/disable per IRQ
 - Priority configuration (default 0xA0)
-- All SPIs targeted to CPU0
 - Level-triggered interrupt configuration
 - IRQ handler registration (callback-based)
 - IRQ acknowledgment and EOI (End of Interrupt)
 - Spurious interrupt detection (IRQ 1020+)
+- **SGI Support**: Software Generated Interrupts for IPI (via GICD_SGIR)
 
 **Not Implemented:**
-- GICv3 support (needed for newer hardware)
-- SGI (Software Generated Interrupts) for IPI
-- Multicore interrupt distribution
 - Interrupt priority preemption
 - FIQ handling (currently unused)
 - MSI (Message Signaled Interrupts)
 
 **Recommendations:**
-- Add GICv3 support for modern ARM platforms
-- Implement SGIs for inter-processor interrupts
 - Add proper FIQ support or document that it's unused
 - Consider interrupt priority tuning for real-time use cases
 
@@ -99,17 +102,27 @@ The architecture subsystem provides low-level AArch64 support for the ViperOS ke
 
 ### 4. Timer (`timer.cpp`, `timer.hpp`)
 
-**Status:** Fully functional, 1000 Hz tick rate
+**Status:** Complete with high-resolution support
 
 **Implemented:**
 - ARM architected timer (EL1 physical timer)
-- 1000 Hz tick rate (1ms resolution)
+- 1000 Hz tick rate (1ms resolution) for scheduling
 - Timer frequency detection via CNTFRQ_EL0
 - Compare value programming (CNTP_CVAL_EL0)
 - Timer control (CNTP_CTL_EL0)
 - Global tick counter
-- Millisecond and nanosecond time queries
-- Blocking delay function (`delay_ms`)
+- **High-Resolution Time Functions:**
+  - `now()` - Raw counter timestamp (16ns resolution on QEMU)
+  - `get_ns()` / `get_us()` / `get_ms()` - Precise time since boot
+  - `ticks_to_ns()` / `ns_to_ticks()` - Conversion with 128-bit precision
+- **High-Resolution Delays:**
+  - `delay_ns()` / `delay_us()` - Busy-wait for short delays
+  - `delay_ms()` - WFI-based for power efficiency
+  - `wait_until()` - Wait for specific timestamp
+- **One-Shot Timer Support:**
+  - `schedule_oneshot()` - Schedule callback at deadline
+  - `cancel_oneshot()` - Cancel scheduled timer
+  - `deadline_ns()` / `deadline_us()` / `deadline_ms()` - Deadline helpers
 - Per-tick callbacks:
   - Input polling
   - Network polling
@@ -117,15 +130,13 @@ The architecture subsystem provides low-level AArch64 support for the ViperOS ke
   - Scheduler tick and preemption
 
 **Not Implemented:**
-- High-resolution timers (beyond 1ms)
-- Per-CPU timers for multicore
-- Timer wheel for efficient timeout management
+- Per-CPU timers for multicore scheduling
+- Timer wheel for O(1) timeout management
 - Virtual timer support
 - Watchdog timer
 
 **Recommendations:**
 - Implement timer wheel for O(1) timeout operations
-- Add high-resolution timer support
 - Consider tickless operation for power efficiency
 - Add per-CPU timer for multicore scheduling
 
@@ -245,14 +256,22 @@ The architecture subsystem provides low-level AArch64 support for the ViperOS ke
 | 0xF2 | putchar | Write character |
 | 0xF3 | uptime | Get system uptime |
 
+**Signal Delivery (Implemented):**
+- POSIX-like signal numbers (SIGHUP through SIGSYS)
+- Hardware fault signals: SIGSEGV, SIGBUS, SIGILL, SIGFPE
+- Signal delivery via `signal::send_signal()` and `signal::deliver_fault_signal()`
+- Fault info includes: address (FAR), PC (ELR), ESR, and human-readable kind
+- Default actions: terminate, ignore, stop, continue
+- Currently terminates on fatal signals (user handlers not yet supported)
+
 **Not Implemented:**
-- Signal delivery to user processes
+- User-space signal handlers (sigaction)
 - Debug exception handling (BRK, single-step)
-- Floating-point/SIMD exception handling
+- Floating-point/SIMD exception handling (FPU enabled, traps not routed)
 - Nested exception support
 
 **Recommendations:**
-- Implement signal delivery for SIGSEGV, SIGILL, etc.
+- Implement user-space signal handlers via sigaction
 - Move syscall dispatch to separate module
 - Add debug exception support for debugger integration
 
@@ -270,9 +289,10 @@ The architecture subsystem provides low-level AArch64 support for the ViperOS ke
 │       ▼            ▼            ▼            ▼               │
 │  ┌─────────────────────────────────────────────────┐        │
 │  │           Exception Handler (C++)               │        │
-│  │  - Syscall dispatch                             │        │
-│  │  - GIC IRQ handling                             │        │
-│  │  - Fault diagnostics                            │        │
+│  │  - Syscall dispatch (50+ syscalls)              │        │
+│  │  - GIC IRQ handling (v2/v3)                     │        │
+│  │  - Signal delivery (SIGSEGV, etc.)              │        │
+│  │  - Fault diagnostics + user recovery            │        │
 │  └─────────────────────────────────────────────────┘        │
 └─────────────────────────────────────────────────────────────┘
                               │
@@ -280,9 +300,16 @@ The architecture subsystem provides low-level AArch64 support for the ViperOS ke
         ▼                     ▼                     ▼
    ┌─────────┐          ┌─────────┐          ┌─────────┐
    │   MMU   │          │   GIC   │          │  Timer  │
-   │ Identity│          │  GICv2  │          │ 1000 Hz │
-   │ Mapping │          │  IRQ    │          │  Tick   │
+   │ 4-level │          │ v2/v3   │          │ Hi-Res  │
+   │ ASID    │          │ SGI/IPI │          │ 16ns    │
    └─────────┘          └─────────┘          └─────────┘
+        │
+        ▼
+   ┌─────────┐
+   │   CPU   │
+   │ PSCI    │
+   │ 4-core  │
+   └─────────┘
 ```
 
 ## Testing
@@ -296,22 +323,24 @@ The architecture subsystem is tested via:
 
 | File | Lines | Description |
 |------|-------|-------------|
-| `boot.S` | ~50 | Kernel entry point |
+| `boot.S` | ~140 | Kernel entry, secondary CPU entry, per-CPU stacks |
 | `exceptions.S` | ~200 | Vector table and save/restore |
 | `exceptions.cpp` | ~1300 | Exception handlers, syscall dispatch |
 | `exceptions.hpp` | ~80 | Exception frame definition |
-| `gic.cpp` | ~215 | GICv2 driver |
-| `gic.hpp` | ~50 | GIC interface |
+| `gic.cpp` | ~350 | GICv2/v3 driver with auto-detection |
+| `gic.hpp` | ~60 | GIC interface |
 | `mmu.cpp` | ~280 | MMU configuration |
 | `mmu.hpp` | ~60 | MMU interface |
-| `timer.cpp` | ~230 | Timer driver |
-| `timer.hpp` | ~50 | Timer interface |
+| `timer.cpp` | ~350 | Timer driver with high-resolution support |
+| `timer.hpp` | ~240 | Timer interface with one-shot support |
+| `cpu.cpp` | ~275 | Per-CPU data, PSCI boot, IPI support |
+| `cpu.hpp` | ~80 | CPU interface |
 
 ## Priority Recommendations
 
 1. **High:** Move syscall dispatch out of exceptions.cpp to dedicated module
-2. **High:** Add multicore support (boot secondary CPUs)
-3. **Medium:** Implement signal delivery for SIGSEGV, SIGILL, etc.
-4. **Medium:** Add TTBR1 support for kernel higher-half mapping
-5. **Low:** GICv3 support for newer platforms
-6. **Low:** High-resolution timers
+2. **High:** Actually boot secondary CPUs into scheduler (infrastructure ready)
+3. **Medium:** Add TTBR1 support for kernel higher-half mapping
+4. **Medium:** Implement user-space signal handlers (sigaction)
+5. **Low:** Per-CPU timer for multicore scheduling
+6. **Low:** Timer wheel for O(1) timeout operations

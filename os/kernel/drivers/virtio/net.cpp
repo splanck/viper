@@ -288,9 +288,6 @@ void NetDevice::poll_rx()
         ack_interrupt(isr);
     }
 
-    static u32 poll_count = 0;
-    poll_count++;
-
     bool got_packet = false;
 
     while (true)

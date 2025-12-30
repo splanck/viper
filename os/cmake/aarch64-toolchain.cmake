@@ -13,10 +13,11 @@ set(CMAKE_AR aarch64-elf-ar)
 set(CMAKE_RANLIB aarch64-elf-ranlib)
 
 # Common flags for freestanding environment
+# Note: -mgeneral-regs-only is NOT set here - only kernel should use it
+# Userspace needs FPU access for math library
 set(COMMON_FLAGS "-ffreestanding -nostdlib -mcpu=cortex-a72")
 set(COMMON_FLAGS "${COMMON_FLAGS} -Wall -Wextra -Werror")
 set(COMMON_FLAGS "${COMMON_FLAGS} -fno-stack-protector")
-set(COMMON_FLAGS "${COMMON_FLAGS} -mgeneral-regs-only")
 set(COMMON_FLAGS "${COMMON_FLAGS} -mstrict-align")
 set(COMMON_FLAGS "${COMMON_FLAGS} -fno-pie -no-pie")
 

@@ -160,7 +160,7 @@ class NetIf
 
   private:
     MacAddr mac_;
-    u8 pad_[2]; // Padding to align ip_ to 4-byte boundary
+    [[maybe_unused]] u8 pad_[2]; // Padding to align ip_ to 4-byte boundary
     Ipv4Addr ip_;
     Ipv4Addr netmask_;
     Ipv4Addr gateway_;

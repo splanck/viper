@@ -22,6 +22,7 @@
 #include "../../console/serial.hpp"
 #include "../../mm/fault.hpp"
 #include "../../sched/scheduler.hpp"
+#include "../../sched/signal.hpp"
 #include "../../sched/task.hpp"
 #include "../../viper/viper.hpp"
 
@@ -38,74 +39,33 @@ void dispatch(exceptions::ExceptionFrame *frame);
 }
 
 /**
- * @brief Terminate a user task that caused a fatal fault.
+ * @brief Deliver a signal to the current task for a hardware fault.
  *
  * @details
  * Called when a user-mode task triggers a fatal exception (data abort,
- * instruction abort, etc.). Instead of panicking the kernel, this function:
- * 1. Logs the fault details in USERFAULT format for debugging
- * 2. Terminates just the faulting task with exit code -1
- * 3. Schedules the next runnable task
+ * instruction abort, etc.). Instead of panicking the kernel, this function
+ * delivers the appropriate signal to the task, which will terminate it
+ * (since user signal handlers aren't implemented yet).
  *
  * This allows the system to continue running even when a user process crashes.
  *
  * @param frame Exception frame with saved registers.
+ * @param signum Signal number to deliver (SIGSEGV, SIGILL, etc.).
  * @param reason Human-readable description of the fault type (kind).
  */
-static void terminate_faulting_task(exceptions::ExceptionFrame *frame, const char *reason)
+static void deliver_fault_to_task(exceptions::ExceptionFrame *frame, i32 signum, const char *reason)
 {
-    // Get current task info for logging
-    task::Task *current = task::current();
-    u32 tid = current ? current->id : 0;
-    u32 pid = tid; // In single-threaded model, pid == tid
-    const char *task_name = current ? current->name : "<unknown>";
+    signal::FaultInfo info;
+    info.fault_addr = frame->far;
+    info.fault_pc = frame->elr;
+    info.fault_esr = static_cast<u32>(frame->esr);
+    info.kind = reason;
 
-    // If this is a user task with viper, use viper's id as pid
-    if (current && current->viper)
-    {
-        // The viper field is an opaque pointer to viper::Viper
-        auto *v = reinterpret_cast<viper::Viper *>(current->viper);
-        pid = static_cast<u32>(v->id);
-    }
+    signal::deliver_fault_signal(signum, &info);
 
-    // Log in USERFAULT format: USERFAULT pid=<id> tid=<id> pc=0x... far=0x... esr=0x... kind=<...>
-    serial::puts("USERFAULT pid=");
-    serial::put_dec(pid);
-    serial::puts(" tid=");
-    serial::put_dec(tid);
-    serial::puts(" pc=");
-    serial::put_hex(frame->elr);
-    serial::puts(" far=");
-    serial::put_hex(frame->far);
-    serial::puts(" esr=");
-    serial::put_hex(frame->esr);
-    serial::puts(" kind=");
-    serial::puts(reason);
-    serial::puts("\n");
-
-    // Also log task name for clarity
-    serial::puts("[fault] Task '");
-    serial::puts(task_name);
-    serial::puts("' terminated\n");
-
-    // Display on graphics console if available
-    if (gcon::is_available())
-    {
-        gcon::set_colors(gcon::colors::VIPER_YELLOW, gcon::colors::BLACK);
-        gcon::puts("\n[fault] Task '");
-        gcon::puts(task_name);
-        gcon::puts("' crashed: ");
-        gcon::puts(reason);
-        gcon::puts("\n");
-        gcon::set_colors(gcon::colors::VIPER_WHITE, gcon::colors::BLACK);
-    }
-
-    // Terminate the task - this marks it as Exited and removes from run queue
-    // task::exit() will call scheduler::schedule() internally
-    task::exit(-1);
-
-    // Should never reach here - task::exit() doesn't return
-    serial::puts("[fault] PANIC: task::exit returned!\n");
+    // deliver_fault_signal calls task::exit() and doesn't return
+    // But just in case:
+    serial::puts("[fault] PANIC: signal delivery returned!\n");
     for (;;)
         asm volatile("wfi");
 }
@@ -382,49 +342,49 @@ extern "C"
             return; // Never reached - handler terminates task or panics
         }
 
-        // PC alignment fault from user space
+        // PC alignment fault from user space -> SIGBUS
         if (ec == exceptions::ec::PC_ALIGN)
         {
-            terminate_faulting_task(frame, "pc_alignment");
+            deliver_fault_to_task(frame, signal::sig::SIGBUS, "pc_alignment");
             return; // Never reached
         }
 
-        // SP alignment fault from user space
+        // SP alignment fault from user space -> SIGBUS
         if (ec == exceptions::ec::SP_ALIGN)
         {
-            terminate_faulting_task(frame, "sp_alignment");
+            deliver_fault_to_task(frame, signal::sig::SIGBUS, "sp_alignment");
             return; // Never reached
         }
 
-        // Illegal instruction / unknown instruction from user space
+        // Illegal instruction / unknown instruction from user space -> SIGILL
         // EC=0x00 is used for instructions that can't be decoded
         if (ec == exceptions::ec::UNKNOWN)
         {
-            terminate_faulting_task(frame, "illegal_instruction");
+            deliver_fault_to_task(frame, signal::sig::SIGILL, "illegal_instruction");
             return; // Never reached
         }
 
-        // Illegal execution state (e.g., PSTATE.IL set)
+        // Illegal execution state (e.g., PSTATE.IL set) -> SIGILL
         if (ec == exceptions::ec::ILLEGAL_STATE)
         {
-            terminate_faulting_task(frame, "illegal_state");
+            deliver_fault_to_task(frame, signal::sig::SIGILL, "illegal_state");
             return; // Never reached
         }
 
-        // BRK instruction (breakpoint) from user space
+        // BRK instruction (breakpoint) from user space -> SIGTRAP
         if (ec == exceptions::ec::BRK_A64)
         {
-            terminate_faulting_task(frame, "breakpoint");
+            deliver_fault_to_task(frame, signal::sig::SIGTRAP, "breakpoint");
             return; // Never reached
         }
 
-        // Other user-mode exception - terminate with generic message
+        // Other user-mode exception - terminate with SIGILL
         serial::puts("[fault] Unknown user exception EC=0x");
         serial::put_hex(ec);
         serial::puts(" (");
         serial::puts(exceptions::exception_class_name(ec));
         serial::puts(")\n");
-        terminate_faulting_task(frame, "unknown");
+        deliver_fault_to_task(frame, signal::sig::SIGILL, "unknown");
     }
 
     /** @copydoc handle_el0_irq */
@@ -438,8 +398,8 @@ extern "C"
     /** @copydoc handle_el0_serror */
     void handle_el0_serror(exceptions::ExceptionFrame *frame)
     {
-        // User-mode SError - terminate the faulting task instead of panicking
-        terminate_faulting_task(frame, "system error (SError)");
+        // User-mode SError - deliver SIGBUS instead of panicking
+        deliver_fault_to_task(frame, signal::sig::SIGBUS, "system_error");
     }
 
 } // extern "C"

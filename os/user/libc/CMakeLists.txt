@@ -9,6 +9,10 @@ set(LIBC_C_SOURCES
     src/unistd.c
     src/errno.c
     src/time.c
+    src/math.c
+    src/dirent.c
+    src/termios.c
+    src/pthread.c
     src/syscall.S
 )
 

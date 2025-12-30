@@ -51,6 +51,56 @@ int nanosleep(const struct timespec *req, struct timespec *rem)
     return 0;
 }
 
+int clock_gettime(clockid_t clk_id, struct timespec *tp)
+{
+    if (!tp)
+        return -1;
+
+    /* Both CLOCK_REALTIME and CLOCK_MONOTONIC return uptime for now */
+    /* (ViperOS doesn't have a real-time clock) */
+    if (clk_id != CLOCK_REALTIME && clk_id != CLOCK_MONOTONIC)
+        return -1;
+
+    /* Get time in milliseconds since boot */
+    long ms = __syscall1(SYS_TIME_NOW, 0);
+
+    tp->tv_sec = ms / 1000;
+    tp->tv_nsec = (ms % 1000) * 1000000L;
+
+    return 0;
+}
+
+int clock_getres(clockid_t clk_id, struct timespec *res)
+{
+    if (clk_id != CLOCK_REALTIME && clk_id != CLOCK_MONOTONIC)
+        return -1;
+
+    if (res)
+    {
+        /* Resolution is 1 millisecond */
+        res->tv_sec = 0;
+        res->tv_nsec = 1000000L;
+    }
+
+    return 0;
+}
+
+int gettimeofday(struct timeval *tv, void *tz)
+{
+    (void)tz; /* Timezone not supported */
+
+    if (!tv)
+        return -1;
+
+    /* Get time in milliseconds since boot */
+    long ms = __syscall1(SYS_TIME_NOW, 0);
+
+    tv->tv_sec = ms / 1000;
+    tv->tv_usec = (ms % 1000) * 1000L;
+
+    return 0;
+}
+
 /* Static storage for gmtime/localtime results */
 static struct tm _tm_result;
 

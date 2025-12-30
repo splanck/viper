@@ -1,8 +1,8 @@
 # ViperOS Implementation Status
 
-**Version:** December 2025 (v0.2.4)
+**Version:** December 2025 (v0.2.5)
 **Target:** AArch64 (ARM64) on QEMU virt machine
-**Total SLOC:** ~65,000
+**Total SLOC:** ~66,000
 
 ## Executive Summary
 
@@ -14,7 +14,7 @@ ViperOS is a capability-based microkernel operating system targeting AArch64. Th
 
 | Component | SLOC | Status |
 |-----------|------|--------|
-| Architecture (AArch64) | ~2,500 | Complete for QEMU |
+| Architecture (AArch64) | ~3,000 | Complete for QEMU (GICv2/v3, PSCI, hi-res timer) |
 | Memory Management | ~3,200 | Complete (PMM, VMM, slab, buddy, COW, VMA) |
 | Console (Serial/Graphics) | ~2,000 | Complete |
 | Drivers (VirtIO/fw_cfg) | ~4,100 | Complete for QEMU |
@@ -139,33 +139,50 @@ ViperOS is a capability-based microkernel operating system targeting AArch64. Th
 
 ---
 
-## Recent Implementations (v0.2.4)
+## Recent Implementations (v0.2.5)
 
 ### Completed in This Release
-1. **ViperFS Thread Safety** - Complete spinlock protection
-   - Block cache spinlock protection for all operations
-   - Journal transaction lock for concurrent access
-   - Inode cache with spinlock-protected LRU
+1. **Clang Toolchain Support** - Alternative to GCC
+   - New `aarch64-clang-toolchain.cmake` for cross-compilation
+   - Uses `aarch64-none-elf` target triple
+   - Compatible with GNU binutils (ld, ar, objcopy)
+   - build_viper.sh defaults to Clang
 
-2. **Enhanced Block Cache** - New features
-   - Block pinning (`pin()`/`unpin()`) for critical metadata
-   - Statistics dumping (`dump_stats()`)
-   - Improved read-ahead for sequential access
+2. **FPU/SIMD Enablement** - Required for Clang
+   - CPACR_EL1.FPEN enabled for EL1 and EL0 in boot.S
+   - Allows SIMD instructions Clang generates for memory operations
+   - Enabled for both primary and secondary CPUs
 
-3. **Inode Cache** - New LRU inode cache
-   - 32-entry cache with hash table lookup
-   - Reference counting and dirty tracking
-   - Automatic sync on release
+3. **Multicore Infrastructure (PSCI)** - Ready for SMP
+   - Per-CPU data structures and stacks (4 CPUs, 16KB each)
+   - PSCI CPU_ON implementation for secondary boot
+   - Secondary CPU entry point in boot.S
+   - IPI support via GIC SGIs
 
-4. **File Operations** - New capabilities
-   - `truncate()` - shrink/extend files with proper block management
-   - `fsync()` - sync specific file to disk
-   - Timestamp updates (atime on read, mtime on write)
+4. **GICv3 Support** - Dual GIC version support
+   - Automatic version detection via GICD_PIDR2
+   - GICv3 redistributor initialization
+   - System register interface (ICC_*)
+   - Affinity-based interrupt routing
 
-5. **Journal Improvements** - Enhanced crash recovery
-   - Checksum verification during replay
-   - Commit record and sequence number validation
-   - Better error handling for corrupted transactions
+5. **High-Resolution Timers** - Nanosecond precision
+   - `now()` - Raw counter timestamp (16ns resolution)
+   - `delay_ns()` / `delay_us()` - Precise short delays
+   - `schedule_oneshot()` - Deadline-based callbacks
+   - 128-bit arithmetic for overflow-free conversions
+
+6. **Signal Delivery Infrastructure**
+   - POSIX signal numbers (SIGHUP through SIGSYS)
+   - Hardware fault signals (SIGSEGV, SIGBUS, SIGILL, SIGFPE)
+   - Fault info with address, PC, ESR, and kind
+   - Currently terminates on fatal signals
+
+### Previous Release (v0.2.4)
+- **ViperFS Thread Safety**: Block cache, journal, and inode cache spinlock protection
+- **Inode Cache**: 32-entry LRU cache with hash lookup, refcounting, dirty tracking
+- **Block Cache Pinning**: pin/unpin for critical metadata, dump_stats()
+- **File Operations**: truncate(), fsync(), atime/mtime timestamp updates
+- **Journal Improvements**: Checksum verification, commit record validation
 
 ### Previous Release (v0.2.3)
 - Complete Freestanding libc (stdio, string, stdlib, ctype, time, unistd, errno)
@@ -214,7 +231,8 @@ cd os && ./build_viper.sh --test
 ## Building and Running
 
 ### Prerequisites
-- AArch64 cross-compiler (aarch64-elf-gcc)
+- Clang with AArch64 support (default) or aarch64-elf-gcc
+- AArch64 GNU binutils (aarch64-elf-ld, aarch64-elf-ar, aarch64-elf-objcopy)
 - QEMU with aarch64 support
 - CMake 3.16+
 - C++17 compiler for host tools
@@ -269,9 +287,9 @@ os/
 ## What's Missing (Not Yet Implemented)
 
 ### Kernel
-- Signal delivery
+- User-space signal handlers (sigaction) - infrastructure ready
 - Process groups / sessions
-- SMP / multicore
+- SMP scheduler integration - infrastructure ready, CPUs idle
 - Power management
 - Real-time scheduling class
 - Kernel modules
@@ -299,6 +317,14 @@ os/
 ---
 
 ## Version History
+
+- **December 2025 (v0.2.5)**: Clang toolchain and architecture improvements
+  - **Clang Toolchain**: New aarch64-clang-toolchain.cmake, build_viper.sh defaults to Clang
+  - **FPU/SIMD**: CPACR_EL1.FPEN enabled in boot.S for Clang-generated SIMD code
+  - **Multicore Infrastructure**: PSCI CPU_ON, per-CPU stacks, IPI via SGI
+  - **GICv3 Support**: Dual GICv2/v3 with auto-detection
+  - **High-Resolution Timers**: Nanosecond precision, one-shot callbacks
+  - **Signal Delivery**: POSIX signals with fault info (handlers not yet supported)
 
 - **December 2025 (v0.2.4)**: Filesystem enhancements and thread safety
   - **ViperFS Thread Safety**: Block cache, journal, and inode cache spinlock protection

@@ -123,11 +123,43 @@ void *realloc(void *ptr, size_t size)
     return new_ptr;
 }
 
+/* atexit handlers */
+#define ATEXIT_MAX 32
+static void (*atexit_handlers[ATEXIT_MAX])(void);
+static int atexit_count = 0;
+
+int atexit(void (*function)(void))
+{
+    if (atexit_count >= ATEXIT_MAX || !function)
+        return -1;
+
+    atexit_handlers[atexit_count++] = function;
+    return 0;
+}
+
 void exit(int status)
 {
+    /* Call atexit handlers in reverse order of registration */
+    while (atexit_count > 0) {
+        atexit_count--;
+        if (atexit_handlers[atexit_count])
+            atexit_handlers[atexit_count]();
+    }
+
+    /* Flush stdio buffers */
+    /* (Note: fflush(NULL) would flush all streams if we had proper stdio) */
+
     __syscall1(SYS_TASK_EXIT, status);
     while (1)
         ; /* Should never reach here */
+}
+
+void _Exit(int status)
+{
+    /* Exit immediately without cleanup */
+    __syscall1(SYS_TASK_EXIT, status);
+    while (1)
+        ;
 }
 
 void abort(void)
@@ -452,4 +484,143 @@ int rand(void)
 void srand(unsigned int seed)
 {
     rand_seed = seed;
+}
+
+/*
+ * Environment variables
+ *
+ * Simple implementation using a static array.
+ * Each entry is "NAME=value" format.
+ */
+#define ENV_MAX 64
+#define ENV_ENTRY_MAX 256
+
+static char env_storage[ENV_MAX][ENV_ENTRY_MAX];
+static char *environ_ptrs[ENV_MAX + 1];
+static int env_count = 0;
+static int env_initialized = 0;
+
+/* Global environ pointer (required by POSIX) */
+char **environ = environ_ptrs;
+
+static void init_environ(void)
+{
+    if (!env_initialized) {
+        for (int i = 0; i <= ENV_MAX; i++)
+            environ_ptrs[i] = NULL;
+        env_initialized = 1;
+    }
+}
+
+static int env_find(const char *name)
+{
+    size_t len = 0;
+    while (name[len] && name[len] != '=')
+        len++;
+
+    for (int i = 0; i < env_count; i++) {
+        if (environ_ptrs[i] &&
+            strncmp(environ_ptrs[i], name, len) == 0 &&
+            environ_ptrs[i][len] == '=') {
+            return i;
+        }
+    }
+    return -1;
+}
+
+char *getenv(const char *name)
+{
+    if (!name)
+        return NULL;
+
+    init_environ();
+
+    int idx = env_find(name);
+    if (idx < 0)
+        return NULL;
+
+    /* Return pointer to the value part (after '=') */
+    char *p = environ_ptrs[idx];
+    while (*p && *p != '=')
+        p++;
+    if (*p == '=')
+        p++;
+    return p;
+}
+
+int setenv(const char *name, const char *value, int overwrite)
+{
+    if (!name || !*name || strchr(name, '='))
+        return -1;
+
+    init_environ();
+
+    int idx = env_find(name);
+    if (idx >= 0) {
+        if (!overwrite)
+            return 0;
+    } else {
+        if (env_count >= ENV_MAX)
+            return -1;
+        idx = env_count++;
+    }
+
+    /* Build "NAME=value" string */
+    size_t name_len = strlen(name);
+    size_t value_len = value ? strlen(value) : 0;
+    if (name_len + 1 + value_len + 1 > ENV_ENTRY_MAX)
+        return -1;
+
+    char *entry = env_storage[idx];
+    memcpy(entry, name, name_len);
+    entry[name_len] = '=';
+    if (value)
+        memcpy(entry + name_len + 1, value, value_len + 1);
+    else
+        entry[name_len + 1] = '\0';
+
+    environ_ptrs[idx] = entry;
+    return 0;
+}
+
+int unsetenv(const char *name)
+{
+    if (!name || !*name || strchr(name, '='))
+        return -1;
+
+    init_environ();
+
+    int idx = env_find(name);
+    if (idx < 0)
+        return 0;  /* Not found is not an error */
+
+    /* Shift remaining entries down */
+    for (int i = idx; i < env_count - 1; i++) {
+        memcpy(env_storage[i], env_storage[i + 1], ENV_ENTRY_MAX);
+        environ_ptrs[i] = env_storage[i];
+    }
+    env_count--;
+    environ_ptrs[env_count] = NULL;
+
+    return 0;
+}
+
+int putenv(char *string)
+{
+    if (!string)
+        return -1;
+
+    char *eq = strchr(string, '=');
+    if (!eq)
+        return -1;
+
+    /* Extract name */
+    size_t name_len = eq - string;
+    char name[256];
+    if (name_len >= sizeof(name))
+        return -1;
+    memcpy(name, string, name_len);
+    name[name_len] = '\0';
+
+    return setenv(name, eq + 1, 1);
 }

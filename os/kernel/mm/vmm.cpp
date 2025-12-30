@@ -2,6 +2,10 @@
 #include "../console/serial.hpp"
 #include "pmm.hpp"
 
+// Suppress warnings for address layout constants
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-const-variable"
+
 /**
  * @file vmm.cpp
  * @brief AArch64 page table construction and mapping routines.
@@ -432,3 +436,5 @@ void invalidate_all()
 }
 
 } // namespace vmm
+
+#pragma GCC diagnostic pop

@@ -28,6 +28,8 @@ void *realloc(void *ptr, size_t size);
 /* Process control */
 void exit(int status);
 void abort(void);
+int atexit(void (*function)(void));
+void _Exit(int status);  /* Exit without cleanup */
 
 /* String conversion */
 int atoi(const char *nptr);
@@ -74,6 +76,12 @@ void *bsearch(const void *key, const void *base, size_t nmemb, size_t size,
 /* Random number generation */
 int rand(void);
 void srand(unsigned int seed);
+
+/* Environment variables */
+char *getenv(const char *name);
+int setenv(const char *name, const char *value, int overwrite);
+int unsetenv(const char *name);
+int putenv(char *string);
 
 #ifdef __cplusplus
 }

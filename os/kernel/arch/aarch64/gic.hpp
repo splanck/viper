@@ -8,22 +8,35 @@
  *
  * @details
  * The Generic Interrupt Controller routes hardware interrupts to the CPU and
- * provides prioritization and masking controls. On the QEMU `virt` machine this
- * kernel targets GICv2 and accesses the Distributor (GICD) and CPU Interface
- * (GICC) through memory-mapped registers.
+ * provides prioritization and masking controls. This implementation supports
+ * both GICv2 and GICv3:
  *
- * This header exposes a small set of operations needed for early kernel bring-up:
- * - Initialize the controller.
- * - Enable/disable specific IRQs.
- * - Set IRQ priority.
- * - Register simple per-IRQ handler callbacks.
- * - Acknowledge and end interrupts during exception handling.
+ * ## GICv2 (Legacy)
+ * - Distributor (GICD) for global interrupt configuration
+ * - CPU Interface (GICC) via memory-mapped registers
+ * - Target-list based interrupt routing
  *
- * More advanced features (multiple CPUs, SGIs, affinity routing, GICv3 system
- * registers) can be layered on later.
+ * ## GICv3 (Modern)
+ * - Distributor (GICD) with affinity routing extensions
+ * - Redistributor (GICR) per-CPU for SGI/PPI configuration
+ * - CPU Interface via ICC_* system registers
+ * - Affinity-based interrupt routing
+ *
+ * Version detection is automatic: the init function probes for GICv3 GICR
+ * and falls back to GICv2 if not found.
+ *
+ * On QEMU virt, GICv3 is available with `-M virt,gic-version=3`.
  */
 namespace gic
 {
+
+/// GIC version detected during initialization
+enum class Version
+{
+    UNKNOWN = 0,
+    V2 = 2,
+    V3 = 3
+};
 
 /**
  * @brief Function pointer type for IRQ handlers registered with the GIC layer.
@@ -114,5 +127,22 @@ void handle_irq();
  * @param irq Interrupt ID / raw IAR value depending on usage.
  */
 void eoi(u32 irq);
+
+/**
+ * @brief Get the detected GIC version.
+ *
+ * @return GIC version (V2, V3, or UNKNOWN if not initialized).
+ */
+Version get_version();
+
+/**
+ * @brief Initialize the current CPU's GIC interface.
+ *
+ * @details
+ * For secondary CPUs, call this instead of init() to set up the per-CPU
+ * interface (GICC for v2, GICR+ICC for v3) without reinitializing the
+ * global distributor.
+ */
+void init_cpu();
 
 } // namespace gic

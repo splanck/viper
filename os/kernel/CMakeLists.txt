@@ -13,6 +13,7 @@ set(KERNEL_SOURCES
         arch/aarch64/gic.cpp
         arch/aarch64/timer.cpp
         arch/aarch64/mmu.cpp
+        arch/aarch64/cpu.cpp
         boot/bootinfo.cpp
         dtb/fdt.cpp
         main.cpp
@@ -34,6 +35,7 @@ set(KERNEL_SOURCES
         sched/context.S
         sched/scheduler.cpp
         sched/wait.cpp
+        sched/signal.cpp
         syscall/dispatch.cpp
         syscall/table.cpp
         ipc/channel.cpp
@@ -112,6 +114,7 @@ target_compile_options(kernel.elf PRIVATE
         -fno-use-cxa-atexit
         -mcpu=cortex-a72
         -mstrict-align
+        -mgeneral-regs-only   # Kernel must not use FPU (no saving FP state on context switch)
         -Wall
         -Wextra
 )

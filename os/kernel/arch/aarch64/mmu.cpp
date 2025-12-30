@@ -2,6 +2,10 @@
 #include "../../console/serial.hpp"
 #include "../../mm/pmm.hpp"
 
+// Suppress warnings for TCR/PTE constants that document the full register format
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-const-variable"
+
 /**
  * @file mmu.cpp
  * @brief AArch64 MMU bring-up and kernel identity mapping tables.
@@ -59,8 +63,9 @@ constexpr u64 IRGN1_WBWA = 0b01ULL << 24;
 // EPD0: TTBR0 translation disable = 0 (enable)
 constexpr u64 EPD0_ENABLE = 0ULL << 7;
 
-// EPD1: TTBR1 translation disable (disable TTBR1 for now)
+// EPD1: TTBR1 translation disable
 constexpr u64 EPD1_DISABLE = 1ULL << 23;
+constexpr u64 EPD1_ENABLE = 0ULL << 23;
 
 // IPS: Intermediate Physical Address Size (40 bits = 1TB)
 constexpr u64 IPS_40BIT = 0b010ULL << 32;
@@ -101,7 +106,9 @@ constexpr u64 PXN = 0ULL << 53;        // Privileged execute allowed
 } // namespace pte
 
 static bool initialized = false;
-static u64 kernel_ttbr0 = 0; // Root of kernel page tables
+static bool ttbr1_enabled = false;
+static u64 kernel_ttbr0 = 0; // Root of kernel page tables (identity-mapped)
+static u64 kernel_ttbr1 = 0; // Root of kernel higher-half tables
 
 // Create kernel page tables with identity mapping
 // Maps 0x00000000-0x80000000 (first 2GB) using 1GB blocks
@@ -188,6 +195,89 @@ static bool create_kernel_page_tables()
     return true;
 }
 
+/**
+ * @brief Build the kernel's higher-half translation tables for TTBR1.
+ *
+ * @details
+ * Creates page tables mapping physical memory to the kernel virtual address
+ * range (starting at KERNEL_VIRT_BASE = 0xFFFF_0000_0000_0000).
+ *
+ * The mapping is:
+ * - Physical 0x00000000-0x3FFFFFFF → Virtual 0xFFFF_0000_0000_0000-0xFFFF_0000_3FFF_FFFF (device)
+ * - Physical 0x40000000-0x7FFFFFFF → Virtual 0xFFFF_0000_4000_0000-0xFFFF_0000_7FFF_FFFF (normal)
+ *
+ * This allows the kernel to access memory via high addresses while user space
+ * uses the lower half through TTBR0.
+ *
+ * @return `true` on success, `false` if page-table allocation fails.
+ */
+static bool create_kernel_ttbr1_tables()
+{
+    serial::puts("[mmu] Creating kernel higher-half page tables (TTBR1)...\n");
+
+    // Allocate L0 table (one page)
+    u64 l0_phys = pmm::alloc_page();
+    if (l0_phys == 0)
+    {
+        serial::puts("[mmu] ERROR: Failed to allocate TTBR1 L0 table\n");
+        return false;
+    }
+
+    // Zero the L0 table
+    u64 *l0 = reinterpret_cast<u64 *>(l0_phys);
+    for (int i = 0; i < 512; i++)
+    {
+        l0[i] = 0;
+    }
+
+    // Allocate L1 table for first 512GB virtual (entry 0 of L0)
+    // Virtual 0xFFFF_0000_0000_0000 uses L0[0] since bits [47:39] = 0
+    u64 l1_phys = pmm::alloc_page();
+    if (l1_phys == 0)
+    {
+        serial::puts("[mmu] ERROR: Failed to allocate TTBR1 L1 table\n");
+        pmm::free_page(l0_phys);
+        return false;
+    }
+
+    // Zero the L1 table
+    u64 *l1 = reinterpret_cast<u64 *>(l1_phys);
+    for (int i = 0; i < 512; i++)
+    {
+        l1[i] = 0;
+    }
+
+    // Install L1 table in L0[0]
+    l0[0] = l1_phys | pte::VALID | pte::TABLE;
+
+    // Map first 2GB using 1GB block entries in L1
+    // These map physical addresses to KERNEL_VIRT_BASE + phys
+    //
+    // L1[0]: Physical 0x00000000 -> Virtual 0xFFFF_0000_0000_0000 (device memory)
+    // L1[1]: Physical 0x40000000 -> Virtual 0xFFFF_0000_4000_0000 (normal memory)
+
+    // Entry 0: Device memory for low MMIO region
+    l1[0] = 0x00000000ULL | pte::VALID | pte::BLOCK | pte::AF | pte::SH_INNER | pte::AP_RW_EL1 |
+            pte::ATTR_DEVICE | pte::UXN;
+
+    // Entry 1: Normal memory for RAM
+    l1[1] = 0x40000000ULL | pte::VALID | pte::BLOCK | pte::AF | pte::SH_INNER | pte::AP_RW_EL1 |
+            pte::ATTR_NORMAL | pte::UXN;
+
+    serial::puts("[mmu] TTBR1 L0 table at: ");
+    serial::put_hex(l0_phys);
+    serial::puts("\n");
+
+    serial::puts("[mmu] TTBR1 L1 table at: ");
+    serial::put_hex(l1_phys);
+    serial::puts("\n");
+
+    serial::puts("[mmu] TTBR1 mapping: phys 0x0->0x7FFFFFFF at virt 0xFFFF_0000_0000_0000\n");
+
+    kernel_ttbr1 = l0_phys;
+    return true;
+}
+
 /** @copydoc mmu::init */
 void init()
 {
@@ -209,6 +299,13 @@ void init()
         return;
     }
 
+    // Create TTBR1 page tables for kernel higher-half
+    if (!create_kernel_ttbr1_tables())
+    {
+        serial::puts("[mmu] WARNING: Failed to create TTBR1 tables, continuing with TTBR0 only\n");
+        // Continue without TTBR1 - kernel will work with identity mapping only
+    }
+
     // Configure MAIR_EL1 for memory attributes
     u64 mair_val = mair::ATTR0_DEVICE | mair::ATTR1_NORMAL | mair::ATTR2_NC;
     asm volatile("msr mair_el1, %0" ::"r"(mair_val) : "memory");
@@ -217,12 +314,25 @@ void init()
     serial::put_hex(mair_val);
     serial::puts("\n");
 
-    // Configure TCR_EL1 for TTBR0 only (disable TTBR1 for now)
+    // Configure TCR_EL1 for both TTBR0 and TTBR1
+    // Enable TTBR1 if we successfully created the higher-half tables
     u64 tcr_val = tcr::T0SZ_48BIT | tcr::T1SZ_48BIT | tcr::TG0_4KB | tcr::TG1_4KB | tcr::SH0_INNER |
                   tcr::SH1_INNER | tcr::ORGN0_WBWA | tcr::IRGN0_WBWA | tcr::ORGN1_WBWA |
-                  tcr::IRGN1_WBWA | tcr::EPD0_ENABLE |
-                  tcr::EPD1_DISABLE | // Disable TTBR1 to avoid issues
-                  tcr::IPS_40BIT | tcr::A1_TTBR0 | tcr::AS_8BIT;
+                  tcr::IRGN1_WBWA | tcr::EPD0_ENABLE | tcr::IPS_40BIT | tcr::A1_TTBR0 | tcr::AS_8BIT;
+
+    // Keep TTBR1 disabled for now - the kernel still runs at physical addresses
+    // The TTBR1 tables are created and ready for when we relocate the kernel
+    // to high addresses, but enabling translations now would cause faults
+    // since the kernel code/data aren't at high addresses yet.
+    tcr_val |= tcr::EPD1_DISABLE;
+    if (kernel_ttbr1 != 0)
+    {
+        serial::puts("[mmu] TTBR1 tables ready (translations disabled until kernel relocation)\n");
+    }
+    else
+    {
+        serial::puts("[mmu] TTBR1 disabled in TCR\n");
+    }
 
     asm volatile("msr tcr_el1, %0" ::"r"(tcr_val) : "memory");
     asm volatile("isb");
@@ -231,13 +341,26 @@ void init()
     serial::put_hex(tcr_val);
     serial::puts("\n");
 
-    // Set TTBR0 to kernel page tables
+    // Set TTBR0 to kernel page tables (identity-mapped)
     asm volatile("msr ttbr0_el1, %0" ::"r"(kernel_ttbr0) : "memory");
     asm volatile("isb");
 
     serial::puts("[mmu] TTBR0_EL1 set to: ");
     serial::put_hex(kernel_ttbr0);
     serial::puts("\n");
+
+    // Set TTBR1 to kernel higher-half tables if available
+    if (kernel_ttbr1 != 0)
+    {
+        asm volatile("msr ttbr1_el1, %0" ::"r"(kernel_ttbr1) : "memory");
+        asm volatile("isb");
+
+        serial::puts("[mmu] TTBR1_EL1 set to: ");
+        serial::put_hex(kernel_ttbr1);
+        serial::puts("\n");
+
+        ttbr1_enabled = true;
+    }
 
     // Invalidate TLBs
     asm volatile("tlbi vmalle1is");
@@ -270,10 +393,24 @@ u64 get_kernel_ttbr0()
     return kernel_ttbr0;
 }
 
+/** @copydoc mmu::get_kernel_ttbr1 */
+u64 get_kernel_ttbr1()
+{
+    return kernel_ttbr1;
+}
+
 /** @copydoc mmu::is_user_space_enabled */
 bool is_user_space_enabled()
 {
     return initialized;
 }
 
+/** @copydoc mmu::is_ttbr1_enabled */
+bool is_ttbr1_enabled()
+{
+    return ttbr1_enabled;
+}
+
 } // namespace mmu
+
+#pragma GCC diagnostic pop

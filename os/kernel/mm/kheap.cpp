@@ -3,6 +3,10 @@
 #include "../lib/spinlock.hpp"
 #include "pmm.hpp"
 
+// Suppress warning for DEBUG_MODE which is set by preprocessor
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-const-variable"
+
 /**
  * @file kheap.cpp
  * @brief Free-list kernel heap implementation with coalescing.
@@ -700,3 +704,5 @@ void operator delete[](void *ptr, size_t) noexcept
 {
     kheap::kfree(ptr);
 }
+
+#pragma GCC diagnostic pop

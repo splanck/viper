@@ -40,6 +40,7 @@
 #include "../console/serial.hpp"
 #include "../lib/mem.hpp"
 #include "../sched/scheduler.hpp"
+#include "../sched/signal.hpp"
 #include "../sched/task.hpp"
 #include "../viper/address_space.hpp"
 #include "../viper/viper.hpp"
@@ -548,8 +549,14 @@ void handle_page_fault(exceptions::ExceptionFrame *frame, bool is_instruction)
     viper::Viper *proc = viper::current();
     if (!proc)
     {
-        serial::puts("[page_fault] No current process, terminating\n");
-        task::exit(-1);
+        serial::puts("[page_fault] No current process, delivering SIGSEGV\n");
+        signal::FaultInfo sig_info;
+        sig_info.fault_addr = info.fault_addr;
+        sig_info.fault_pc = info.pc;
+        sig_info.fault_esr = static_cast<u32>(info.esr);
+        sig_info.kind = "no_process";
+        signal::deliver_fault_signal(signal::sig::SIGSEGV, &sig_info);
+        // deliver_fault_signal doesn't return, but just in case:
         for (;;)
             asm volatile("wfi");
     }
@@ -629,19 +636,7 @@ void handle_page_fault(exceptions::ExceptionFrame *frame, bool is_instruction)
         }
     }
 
-    // Fault could not be handled - terminate the task with USERFAULT log
-    task::Task *curr = task::current();
-    u32 tid = curr ? curr->id : 0;
-    u32 pid = tid;
-
-    // If user task has viper, use viper's id as pid
-    if (curr && curr->viper)
-    {
-        // The viper field is an opaque pointer to viper::Viper
-        auto *v = reinterpret_cast<viper::Viper *>(curr->viper);
-        pid = static_cast<u32>(v->id);
-    }
-
+    // Fault could not be handled - deliver SIGSEGV to the task
     // Determine fault kind based on type
     const char *kind = "page_fault";
     if (info.type == FaultType::TRANSLATION)
@@ -651,26 +646,18 @@ void handle_page_fault(exceptions::ExceptionFrame *frame, bool is_instruction)
     else if (info.type == FaultType::ALIGNMENT)
         kind = "alignment_fault";
 
-    // Log in USERFAULT format
-    serial::puts("USERFAULT pid=");
-    serial::put_dec(pid);
-    serial::puts(" tid=");
-    serial::put_dec(tid);
-    serial::puts(" pc=");
-    serial::put_hex(info.pc);
-    serial::puts(" far=");
-    serial::put_hex(info.fault_addr);
-    serial::puts(" esr=");
-    serial::put_hex(info.esr);
-    serial::puts(" kind=");
-    serial::puts(kind);
-    serial::puts("\n");
+    // Build fault info for signal delivery
+    signal::FaultInfo sig_info;
+    sig_info.fault_addr = info.fault_addr;
+    sig_info.fault_pc = info.pc;
+    sig_info.fault_esr = static_cast<u32>(info.esr);
+    sig_info.kind = kind;
 
-    serial::puts("[page_fault] Terminating user task\n");
-    task::exit(-1);
+    // Deliver SIGSEGV - this will terminate the task and log USERFAULT
+    signal::deliver_fault_signal(signal::sig::SIGSEGV, &sig_info);
 
-    // Should never reach here
-    serial::puts("[page_fault] PANIC: task::exit returned!\n");
+    // Should never reach here - deliver_fault_signal calls task::exit()
+    serial::puts("[page_fault] PANIC: signal delivery returned!\n");
     for (;;)
     {
         asm volatile("wfi");

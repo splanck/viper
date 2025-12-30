@@ -18,7 +18,7 @@ namespace viper::crypto
 using fe = i64[10];
 
 // Field constants
-static const fe fe_zero = {0};
+[[maybe_unused]] static const fe fe_zero = {0};
 static const fe fe_one = {1, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
 // The base point (generator) - u coordinate = 9

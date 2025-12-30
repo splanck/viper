@@ -1,6 +1,10 @@
 #include "fwcfg.hpp"
 #include "../console/serial.hpp"
 
+// Suppress warnings for DMA control constants that document the full interface
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-const-variable"
+
 /**
  * @file fwcfg.cpp
  * @brief QEMU fw_cfg MMIO and DMA access implementation.
@@ -257,3 +261,5 @@ u32 find_file(const char *name, u16 *selector)
 }
 
 } // namespace fwcfg
+
+#pragma GCC diagnostic pop

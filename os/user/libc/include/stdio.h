@@ -16,6 +16,14 @@ typedef unsigned long size_t;
 
 #define EOF (-1)
 
+/* Buffering modes for setvbuf */
+#define _IOFBF 0    /* Full buffering */
+#define _IOLBF 1    /* Line buffering */
+#define _IONBF 2    /* No buffering */
+
+/* Default buffer size */
+#define BUFSIZ 512
+
 /* Minimal FILE abstraction for freestanding environment */
 typedef struct _FILE FILE;
 
@@ -70,6 +78,11 @@ int feof(FILE *stream);
 
 /* Flushing */
 int fflush(FILE *stream);
+
+/* Buffering control */
+int setvbuf(FILE *stream, char *buf, int mode, size_t size);
+void setbuf(FILE *stream, char *buf);
+void setlinebuf(FILE *stream);
 
 #ifdef __cplusplus
 }

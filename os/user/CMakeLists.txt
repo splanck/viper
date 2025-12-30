@@ -56,3 +56,6 @@ add_user_program(faulttest_null faulttest/faulttest_null.cpp)
 
 # faulttest_illegal - tests illegal instruction handling
 add_user_program(faulttest_illegal faulttest/faulttest_illegal.cpp)
+
+# mathtest - math library test program
+add_user_program(mathtest mathtest/mathtest.cpp)

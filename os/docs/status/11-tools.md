@@ -1,12 +1,12 @@
 # Build Tools
 
-**Status:** Functional host-side utilities
-**Location:** `tools/`
-**SLOC:** ~1,334
+**Status:** Functional host-side utilities and cross-compilation toolchains
+**Location:** `tools/`, `cmake/`
+**SLOC:** ~1,400
 
 ## Overview
 
-The tools directory contains host-side utilities for building ViperOS disk images. These are compiled for the development machine (macOS/Linux) and generate artifacts used by the kernel at boot time.
+The tools directory contains host-side utilities for building ViperOS disk images, and the cmake directory contains cross-compilation toolchain files. These are compiled for the development machine (macOS/Linux) and generate artifacts used by the kernel at boot time.
 
 ---
 
@@ -172,6 +172,61 @@ fsck.viperfs <image>
 
 ---
 
+## Cross-Compilation Toolchains
+
+### Clang Toolchain (`cmake/aarch64-clang-toolchain.cmake`)
+
+**Status:** Default toolchain (v0.2.5+)
+
+The Clang toolchain provides cross-compilation support using LLVM's Clang compiler with GNU binutils for linking.
+
+**Configuration:**
+- **Target Triple:** `aarch64-none-elf`
+- **Compilers:** clang, clang++
+- **Linker:** aarch64-elf-ld (GNU ld via `--ld-path`)
+- **Archiver:** aarch64-elf-ar
+
+**Key Features:**
+- Uses `find_program()` for portable tool discovery
+- Automatic target triple for all compilation units
+- Compatible with macOS (Apple Clang or Homebrew LLVM)
+- Compatible with Linux (system Clang)
+- Generates SIMD instructions for memory operations (requires FPU enable in kernel)
+
+**Compiler Flags:**
+```
+-ffreestanding -nostdlib -mcpu=cortex-a72
+-Wall -Wextra -Werror
+-fno-stack-protector -mstrict-align -fno-pie
+-fno-exceptions -fno-rtti (C++ only)
+-fno-threadsafe-statics -fno-use-cxa-atexit (C++ only)
+```
+
+**Requirements:**
+- macOS: `brew install llvm aarch64-elf-binutils`
+- Linux: `apt install clang lld` (or use system Clang)
+
+---
+
+### GCC Toolchain (`cmake/aarch64-toolchain.cmake`)
+
+**Status:** Alternative/legacy toolchain
+
+The GCC toolchain uses the aarch64-elf-gcc cross-compiler.
+
+**Configuration:**
+- **Compiler:** aarch64-elf-gcc, aarch64-elf-g++
+- **Linker:** aarch64-elf-ld
+- **Standard:** C11, C++17
+
+**Requirements:**
+- macOS: `brew install aarch64-elf-gcc`
+- Linux: `apt install gcc-aarch64-linux-gnu`
+
+**Note:** GCC generates fewer SIMD instructions than Clang, but both produce compatible binaries.
+
+---
+
 ## Build Process
 
 These tools are built automatically by `build_viper.sh`:
@@ -204,9 +259,11 @@ fi
 
 | File | Lines | Description |
 |------|-------|-------------|
-| `mkfs.viperfs.cpp` | ~1,070 | Filesystem image builder |
-| `gen_roots_der.cpp` | ~264 | CA bundle generator |
-| `fsck.viperfs.cpp` | ~400 | Filesystem consistency checker |
+| `tools/mkfs.viperfs.cpp` | ~1,070 | Filesystem image builder |
+| `tools/gen_roots_der.cpp` | ~264 | CA bundle generator |
+| `tools/fsck.viperfs.cpp` | ~400 | Filesystem consistency checker |
+| `cmake/aarch64-clang-toolchain.cmake` | ~62 | Clang cross-compilation (default) |
+| `cmake/aarch64-toolchain.cmake` | ~50 | GCC cross-compilation (legacy) |
 
 ---
 

@@ -13,12 +13,20 @@ struct _FILE
     int fd;
     int error;
     int eof;
+    int buf_mode;       /* _IOFBF, _IOLBF, or _IONBF */
+    char *buf;          /* Buffer pointer (NULL if none) */
+    size_t buf_size;    /* Size of buffer */
+    size_t buf_pos;     /* Current position in buffer */
+    int buf_owned;      /* 1 if we allocated the buffer */
 };
 
+/* Default buffers for stdout (line buffered) */
+static char _stdout_buf[BUFSIZ];
+
 /* Static FILE objects for standard streams */
-static struct _FILE _stdin_file = {0, 0, 0};
-static struct _FILE _stdout_file = {1, 0, 0};
-static struct _FILE _stderr_file = {2, 0, 0};
+static struct _FILE _stdin_file = {0, 0, 0, _IONBF, NULL, 0, 0, 0};
+static struct _FILE _stdout_file = {1, 0, 0, _IOLBF, _stdout_buf, BUFSIZ, 0, 0};
+static struct _FILE _stderr_file = {2, 0, 0, _IONBF, NULL, 0, 0, 0};
 
 /* Standard stream pointers */
 FILE *stdin = &_stdin_file;
@@ -378,8 +386,8 @@ int fprintf(FILE *stream, const char *format, ...)
     return result;
 }
 
-/* Character I/O with FILE */
-int fputc(int c, FILE *stream)
+/* Helper to flush and write a character */
+static int fputc_unbuffered(int c, FILE *stream)
 {
     char ch = (char)c;
     long result = write(stream->fd, &ch, 1);
@@ -388,6 +396,41 @@ int fputc(int c, FILE *stream)
         stream->error = 1;
         return EOF;
     }
+    return (unsigned char)c;
+}
+
+/* Character I/O with FILE */
+int fputc(int c, FILE *stream)
+{
+    /* No buffering or no buffer - write directly */
+    if (stream->buf_mode == _IONBF || stream->buf == NULL)
+    {
+        return fputc_unbuffered(c, stream);
+    }
+
+    /* Add to buffer */
+    stream->buf[stream->buf_pos++] = (char)c;
+
+    /* Check if we need to flush */
+    int should_flush = 0;
+
+    if (stream->buf_pos >= stream->buf_size)
+    {
+        /* Buffer full */
+        should_flush = 1;
+    }
+    else if (stream->buf_mode == _IOLBF && c == '\n')
+    {
+        /* Line buffered and got newline */
+        should_flush = 1;
+    }
+
+    if (should_flush)
+    {
+        if (fflush(stream) == EOF)
+            return EOF;
+    }
+
     return (unsigned char)c;
 }
 
@@ -470,9 +513,83 @@ int feof(FILE *stream)
 
 int fflush(FILE *stream)
 {
-    (void)stream;
-    /* No buffering in this simple implementation */
+    if (stream == NULL)
+    {
+        /* Flush all streams - just stdout for now */
+        fflush(stdout);
+        return 0;
+    }
+
+    /* If there's buffered data, write it out */
+    if (stream->buf && stream->buf_pos > 0)
+    {
+        long result = write(stream->fd, stream->buf, stream->buf_pos);
+        if (result < 0)
+        {
+            stream->error = 1;
+            return EOF;
+        }
+        stream->buf_pos = 0;
+    }
     return 0;
+}
+
+/* Buffering control */
+int setvbuf(FILE *stream, char *buf, int mode, size_t size)
+{
+    /* Flush any existing buffer first */
+    fflush(stream);
+
+    /* Validate mode */
+    if (mode != _IOFBF && mode != _IOLBF && mode != _IONBF)
+        return -1;
+
+    /* If we owned the old buffer, we would free it here (but we don't malloc) */
+    stream->buf_owned = 0;
+
+    if (mode == _IONBF)
+    {
+        /* No buffering */
+        stream->buf = NULL;
+        stream->buf_size = 0;
+        stream->buf_pos = 0;
+    }
+    else
+    {
+        if (buf != NULL)
+        {
+            /* Use provided buffer */
+            stream->buf = buf;
+            stream->buf_size = size;
+            stream->buf_owned = 0;
+        }
+        else if (size > 0)
+        {
+            /* Caller wants us to allocate, but we can't in freestanding */
+            /* Fall back to unbuffered */
+            stream->buf = NULL;
+            stream->buf_size = 0;
+            mode = _IONBF;
+        }
+        stream->buf_pos = 0;
+    }
+
+    stream->buf_mode = mode;
+    return 0;
+}
+
+void setbuf(FILE *stream, char *buf)
+{
+    if (buf != NULL)
+        setvbuf(stream, buf, _IOFBF, BUFSIZ);
+    else
+        setvbuf(stream, NULL, _IONBF, 0);
+}
+
+void setlinebuf(FILE *stream)
+{
+    /* Line buffering with default buffer */
+    setvbuf(stream, NULL, _IOLBF, 0);
 }
 
 /* Simple sscanf implementation */

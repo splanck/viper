@@ -238,6 +238,11 @@ A complete freestanding C library providing POSIX-like functionality for user-sp
 | `ferror(stream)` / `feof(stream)` | Error/EOF check |
 | `clearerr(stream)` | Clear error state |
 | `fflush(stream)` | Flush output |
+| `setvbuf(stream, buf, mode, size)` | Set buffering mode |
+| `setbuf(stream, buf)` | Set buffer |
+| `setlinebuf(stream)` | Set line buffering |
+
+**Buffering modes:** `_IOFBF` (full), `_IOLBF` (line), `_IONBF` (none)
 
 **Format specifiers:** `%d`, `%i`, `%u`, `%x`, `%X`, `%p`, `%s`, `%c`, `%%`, `%ld`, `%lu`, `%lx`, `%lld`, `%llu`
 
@@ -263,7 +268,12 @@ A complete freestanding C library providing POSIX-like functionality for user-sp
 |----------|-------------|
 | `malloc(size)` / `free(ptr)` | Heap allocation |
 | `calloc(n, size)` / `realloc(ptr, size)` | Extended allocation |
-| `exit(code)` / `abort()` | Process termination |
+| `exit(code)` / `abort()` / `_Exit()` | Process termination |
+| `atexit(func)` | Register exit handler |
+| `getenv(name)` | Get environment variable |
+| `setenv(name, value, overwrite)` | Set environment variable |
+| `unsetenv(name)` | Remove environment variable |
+| `putenv(string)` | Add to environment |
 | `atoi` / `atol` / `atoll` | String to integer |
 | `strtol` / `strtoul` | String to long with base |
 | `strtoll` / `strtoull` | String to long long |
@@ -291,9 +301,14 @@ A complete freestanding C library providing POSIX-like functionality for user-sp
 | `time(tloc)` | Current time (seconds) |
 | `difftime(t1, t0)` | Time difference |
 | `nanosleep(req, rem)` | High-precision sleep |
+| `clock_gettime(clk_id, tp)` | POSIX clock access |
+| `clock_getres(clk_id, res)` | Clock resolution |
+| `gettimeofday(tv, tz)` | BSD time function |
 | `gmtime(t)` / `localtime(t)` | Break down time |
 | `mktime(tm)` | Construct time |
 | `strftime(s, max, fmt, tm)` | Format time string |
+
+**Clock IDs:** `CLOCK_REALTIME`, `CLOCK_MONOTONIC`
 
 **`<unistd.h>` - POSIX Functions:**
 | Function | Description |
@@ -313,6 +328,63 @@ A complete freestanding C library providing POSIX-like functionality for user-sp
 - Thread-local `errno` variable
 - All standard POSIX error codes (ENOENT, EINVAL, ENOMEM, etc.)
 - Network error codes (ECONNREFUSED, ETIMEDOUT, etc.)
+
+**`<math.h>` - Math Functions:**
+| Function | Description |
+|----------|-------------|
+| `sin`, `cos`, `tan` | Trigonometric functions |
+| `asin`, `acos`, `atan`, `atan2` | Inverse trigonometric |
+| `sinh`, `cosh`, `tanh` | Hyperbolic functions |
+| `asinh`, `acosh`, `atanh` | Inverse hyperbolic |
+| `exp`, `exp2`, `expm1` | Exponential functions |
+| `log`, `log2`, `log10`, `log1p` | Logarithmic functions |
+| `pow`, `sqrt`, `cbrt`, `hypot` | Power functions |
+| `fabs`, `fmod`, `remainder` | Basic operations |
+| `floor`, `ceil`, `round`, `trunc` | Rounding |
+| `fmax`, `fmin`, `fdim` | Min/max/difference |
+| `copysign`, `nan`, `ldexp`, `frexp` | Manipulation |
+| `erf`, `erfc`, `tgamma`, `lgamma` | Special functions |
+
+**Constants:** `M_PI`, `M_E`, `M_SQRT2`, `M_LN2`, `INFINITY`, `NAN`
+**Macros:** `isnan()`, `isinf()`, `isfinite()`, `fpclassify()`
+
+**`<dirent.h>` - Directory Operations:**
+| Function | Description |
+|----------|-------------|
+| `opendir(path)` | Open directory stream |
+| `readdir(dirp)` | Read next entry |
+| `closedir(dirp)` | Close directory |
+| `rewinddir(dirp)` | Reset to beginning |
+| `dirfd(dirp)` | Get underlying fd |
+
+**Types:** `DIR`, `struct dirent` (d_ino, d_type, d_name)
+
+**`<termios.h>` - Terminal Control:**
+| Function | Description |
+|----------|-------------|
+| `tcgetattr(fd, termios)` | Get terminal attributes |
+| `tcsetattr(fd, action, termios)` | Set terminal attributes |
+| `cfmakeraw(termios)` | Configure raw mode |
+| `cfgetispeed`, `cfgetospeed` | Get baud rate |
+| `cfsetispeed`, `cfsetospeed` | Set baud rate |
+| `isatty(fd)` | Check if terminal |
+| `ttyname(fd)` | Get terminal name |
+
+**Modes:** `ICANON`, `ECHO`, `ISIG`, `OPOST`, etc.
+
+**`<pthread.h>` - POSIX Threads (Stubs):**
+| Function | Description |
+|----------|-------------|
+| `pthread_create` | Create thread (returns ENOSYS) |
+| `pthread_join`, `pthread_exit` | Thread lifecycle |
+| `pthread_self`, `pthread_equal` | Thread identity |
+| `pthread_mutex_init/lock/unlock/destroy` | Mutex operations |
+| `pthread_cond_init/wait/signal/broadcast` | Condition variables |
+| `pthread_rwlock_*` | Read-write locks |
+| `pthread_once` | One-time initialization |
+| `pthread_key_create/getspecific/setspecific` | Thread-local storage |
+
+**Note:** Single-threaded stubs; mutexes work, thread creation returns ENOSYS.
 
 **Additional Headers:**
 | Header | Contents |
@@ -466,12 +538,16 @@ User space is tested via:
 |------|-------|-------------|
 | `vinit/vinit.cpp` | ~3,324 | Init process + shell |
 | `syscall.hpp` | ~1,677 | Low-level syscall wrappers |
-| `libc/src/stdio.c` | ~683 | Standard I/O with FILE |
+| `libc/src/stdio.c` | ~560 | Standard I/O with FILE and buffering |
 | `libc/src/string.c` | ~410 | String operations |
-| `libc/src/stdlib.c` | ~455 | Standard library |
+| `libc/src/stdlib.c` | ~625 | Standard library with env vars |
 | `libc/src/ctype.c` | ~79 | Character classification |
 | `libc/src/unistd.c` | ~122 | POSIX functions |
-| `libc/src/time.c` | ~171 | Time functions |
+| `libc/src/time.c` | ~220 | Time functions with clock_gettime |
+| `libc/src/math.c` | ~900 | Complete math library |
+| `libc/src/dirent.c` | ~140 | Directory operations |
+| `libc/src/termios.c` | ~180 | Terminal control |
+| `libc/src/pthread.c` | ~350 | POSIX threads stubs |
 | `libc/src/errno.c` | ~23 | Error handling |
 | `libc/src/new.cpp` | ~98 | C++ new/delete |
 | `libc/include/c++/*` | ~811 | C++ headers |
@@ -483,15 +559,14 @@ User space is tested via:
 ## Not Implemented
 
 - Shared libraries / dynamic linking
-- Environment variables
 - Signal handling
 - Job control (bg/fg)
 - Pipes between commands
 - Shell scripting
 - Command aliases
-- Floating-point support in libc (kernel uses -mgeneral-regs-only)
 - Thread-safe errno (currently per-process only)
 - Full locale support
+- Real multi-threading (pthreads are stubs)
 
 ---
 
@@ -499,7 +574,7 @@ User space is tested via:
 
 1. **High:** Add shell scripting support
 2. **High:** Implement pipes for command chaining
-3. **Medium:** Add environment variable support
-4. **Medium:** Add more user-space applications
+3. **Medium:** Add more user-space applications
+4. **Medium:** Implement real multi-threading in kernel
 5. **Low:** Add job control (background processes)
 6. **Low:** Implement shared library support

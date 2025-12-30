@@ -44,6 +44,12 @@ struct tm {
 /* CLOCKS_PER_SEC - number of clock() ticks per second */
 #define CLOCKS_PER_SEC 1000
 
+/* Clock IDs for clock_gettime/clock_settime */
+#define CLOCK_REALTIME  0
+#define CLOCK_MONOTONIC 1
+
+typedef int clockid_t;
+
 /* NULL */
 #ifndef NULL
 #define NULL ((void *)0)
@@ -56,6 +62,13 @@ long difftime(time_t time1, time_t time0);
 
 /* Sleep functions */
 int nanosleep(const struct timespec *req, struct timespec *rem);
+
+/* POSIX clock functions */
+int clock_gettime(clockid_t clk_id, struct timespec *tp);
+int clock_getres(clockid_t clk_id, struct timespec *res);
+
+/* BSD time function */
+int gettimeofday(struct timeval *tv, void *tz);
 
 /* Time conversion (stubs) */
 struct tm *gmtime(const time_t *timep);

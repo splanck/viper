@@ -123,21 +123,30 @@ else
 fi
 print_success "Found QEMU: $QEMU"
 
-# Check for cross-compiler
-if ! command -v aarch64-elf-gcc &> /dev/null && ! command -v aarch64-none-elf-gcc &> /dev/null; then
-    print_warning "AArch64 cross-compiler not in PATH"
-    echo "Make sure aarch64-elf-gcc or aarch64-none-elf-gcc is available"
+# Check for Clang and cross-linker
+if ! command -v clang &> /dev/null; then
+    print_error "Clang not found!"
+    echo "Install with: brew install llvm (macOS) or apt install clang (Linux)"
+    exit 1
 fi
+print_success "Found Clang: $(clang --version | head -1)"
+
+if ! command -v aarch64-elf-ld &> /dev/null; then
+    print_error "AArch64 cross-linker not found!"
+    echo "Install with: brew install aarch64-elf-binutils (macOS)"
+    exit 1
+fi
+print_success "Found cross-linker: $(which aarch64-elf-ld)"
 
 # Always do a clean build
 print_step "Cleaning build directory..."
 rm -rf "$BUILD_DIR"
 print_success "Clean complete"
 
-# Configure CMake
-print_step "Configuring CMake..."
+# Configure CMake with Clang toolchain
+print_step "Configuring CMake (Clang)..."
 cmake -B "$BUILD_DIR" -S "$SCRIPT_DIR" \
-    -DCMAKE_TOOLCHAIN_FILE="$SCRIPT_DIR/cmake/aarch64-toolchain.cmake" \
+    -DCMAKE_TOOLCHAIN_FILE="$SCRIPT_DIR/cmake/aarch64-clang-toolchain.cmake" \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 print_success "Configuration complete"
@@ -214,6 +223,10 @@ if [[ -x "$TOOLS_DIR/mkfs.viperfs" ]]; then
     fi
     if [[ -f "$BUILD_DIR/faulttest_illegal.elf" ]]; then
         MKFS_ARGS+=("$BUILD_DIR/faulttest_illegal.elf")
+    fi
+    # Add mathtest for math library testing
+    if [[ -f "$BUILD_DIR/mathtest.elf" ]]; then
+        MKFS_ARGS+=("$BUILD_DIR/mathtest.elf")
     fi
     # Add roots.der if it was generated
     if [[ -f "$BUILD_DIR/roots.der" ]]; then
