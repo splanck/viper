@@ -563,10 +563,12 @@ inline i32 poll_wait(u32 poll_id, PollEvent *events, u32 max_events, i64 timeout
  * @brief Create a new IPC channel.
  *
  * @details
- * Creates a bidirectional communication channel. Returns a SyscallResult
- * containing the channel handle in val0 on success.
+ * Creates a bidirectional communication channel and returns two capability
+ * handles:
+ * - `val0`: send endpoint handle (CAP_WRITE)
+ * - `val1`: recv endpoint handle (CAP_READ)
  *
- * @return SyscallResult with channel handle in val0 on success.
+ * @return SyscallResult with endpoint handles in `val0`/`val1` on success.
  */
 inline SyscallResult channel_create()
 {

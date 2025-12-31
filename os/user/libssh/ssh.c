@@ -189,7 +189,11 @@ int ssh_set_verbose(ssh_session_t *session, int verbose)
 {
     if (!session)
         return SSH_ERROR;
-    session->verbose = verbose ? 1 : 0;
+    if (verbose < 0)
+        verbose = 0;
+    if (verbose > 2)
+        verbose = 2;
+    session->verbose = verbose;
     return SSH_OK;
 }
 
@@ -310,7 +314,7 @@ int ssh_packet_send(ssh_session_t *session,
     /* Encrypt if needed */
     if (session->encrypted)
     {
-        if (session->verbose)
+        if (session->verbose >= 2)
         {
             printf("[ssh] TX encrypted: seq=%u len=%u msg=%u\n",
                    session->seq_out,
@@ -340,7 +344,7 @@ int ssh_packet_send(ssh_session_t *session,
                             mac_data,
                             4 + packet_len,
                             packet + packet_len);
-            if (session->verbose)
+            if (session->verbose >= 2)
             {
                 printf("[ssh] TX MAC[0..7]: %02x %02x %02x %02x %02x %02x %02x %02x\n",
                        packet[packet_len],
@@ -367,7 +371,7 @@ int ssh_packet_send(ssh_session_t *session,
         /* Encrypt full packet AFTER computing MAC (including packet length) */
         ssh_aes_ctr_process(&session->cipher_out, packet, packet, 4 + packet_length);
 
-        if (session->verbose)
+        if (session->verbose >= 2)
         {
             printf("[ssh] TX cipher[0..7]: %02x %02x %02x %02x %02x %02x %02x %02x\n",
                    packet[0],
@@ -932,7 +936,7 @@ static int ssh_kex_curve25519(ssh_session_t *session)
     uint8_t H[32];
     ssh_sha256(hash_input, hash_pos, H);
 
-    if (session->verbose)
+    if (session->verbose >= 2)
     {
         printf("[ssh] H[0..7]: %02x %02x %02x %02x %02x %02x %02x %02x\n",
                H[0],
@@ -1026,7 +1030,7 @@ int ssh_kex_derive_keys(
 
     /* K as mpint */
     base_len = ssh_buf_write_mpint(hash_input, K, K_len);
-    if (session->verbose)
+    if (session->verbose >= 2)
     {
         printf("[ssh] derive_keys: K_mpint_len=%lu\n", (unsigned long)base_len);
     }
@@ -1110,11 +1114,14 @@ int ssh_kex_process(ssh_session_t *session)
 
     /* Activate encryption */
     uint32_t key_len = (session->cipher_c2s == SSH_CIPHER_AES256_CTR) ? 32 : 16;
-    if (session->verbose)
+    if (session->verbose >= 1)
     {
         printf("[ssh] Activating encryption: cipher=%s key_len=%u\n",
                key_len == 32 ? "aes256-ctr" : "aes128-ctr",
                key_len);
+    }
+    if (session->verbose >= 2)
+    {
         printf("[ssh] IV_c2s[0..7]: %02x %02x %02x %02x %02x %02x %02x %02x\n",
                session->keys.iv_c2s[0],
                session->keys.iv_c2s[1],
@@ -1158,7 +1165,7 @@ int ssh_kex_process(ssh_session_t *session)
     session->mac_in.mac_len = session->mac_in.key_len;
     memcpy(session->mac_in.key, session->keys.mac_s2c, session->mac_in.key_len);
 
-    if (session->verbose)
+    if (session->verbose >= 1)
     {
         printf("[ssh] MAC algo: %s\n",
                session->mac_c2s == SSH_MAC_HMAC_SHA256 ? "hmac-sha2-256" : "hmac-sha1");

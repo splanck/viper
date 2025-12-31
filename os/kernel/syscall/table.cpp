@@ -30,6 +30,7 @@
 #include "../drivers/virtio/input.hpp"
 #include "../fs/vfs/vfs.hpp"
 #include "../fs/viperfs/viperfs.hpp"
+#include "../include/config.hpp"
 #include "../include/error.hpp"
 #include "../include/syscall_nums.hpp"
 #include "../input/input.hpp"
@@ -60,10 +61,6 @@ namespace syscall
 // =============================================================================
 // Configuration
 // =============================================================================
-
-#ifndef CONFIG_NET_SYSCALL_DEBUG
-#define CONFIG_NET_SYSCALL_DEBUG 0
-#endif
 
 #ifdef CONFIG_SYSCALL_TRACE
 static bool g_tracing_enabled = false;
@@ -222,10 +219,12 @@ i64 validate_user_string(const char *str, usize max_len)
 // TLS Session State (from dispatch.cpp)
 // =============================================================================
 
+#if VIPER_KERNEL_ENABLE_TLS
 static constexpr int MAX_TLS_SESSIONS = 16;
 static viper::tls::TlsSession tls_sessions[MAX_TLS_SESSIONS];
 static bool tls_session_active[MAX_TLS_SESSIONS] = {false};
 static kernel::Spinlock tls_lock;
+#endif
 
 // =============================================================================
 // Syscall Handler Implementations
@@ -1030,6 +1029,7 @@ static SyscallResult sys_dup2(u64 a0, u64 a1, u64, u64, u64, u64)
 
 // --- Networking (0x50-0x5F) ---
 
+#if VIPER_KERNEL_ENABLE_NET
 static SyscallResult sys_socket_create(u64, u64, u64, u64, u64, u64)
 {
     viper::Viper *v = viper::current();
@@ -1065,7 +1065,7 @@ static SyscallResult sys_socket_connect(u64 a0, u64 a1, u64 a2, u64, u64, u64)
     ip.bytes[2] = (ip_raw >> 8) & 0xFF;
     ip.bytes[3] = ip_raw & 0xFF;
 
-#if CONFIG_NET_SYSCALL_DEBUG
+#if VIPER_KERNEL_DEBUG_NET_SYSCALL
     serial::puts("[syscall] socket_connect: sock=");
     serial::put_dec(sock);
     serial::puts(" ip=");
@@ -1082,7 +1082,7 @@ static SyscallResult sys_socket_connect(u64 a0, u64 a1, u64 a2, u64, u64, u64)
 #endif
 
     bool result = net::tcp::socket_connect(sock, ip, port);
-#if CONFIG_NET_SYSCALL_DEBUG
+#if VIPER_KERNEL_DEBUG_NET_SYSCALL
     serial::puts("[syscall] socket_connect: result=");
     serial::puts(result ? "true" : "false");
     serial::putc('\n');
@@ -1107,7 +1107,7 @@ static SyscallResult sys_socket_send(u64 a0, u64 a1, u64 a2, u64, u64, u64)
         return SyscallResult::err(error::VERR_INVALID_HANDLE);
     }
 
-#if CONFIG_NET_SYSCALL_DEBUG
+#if VIPER_KERNEL_DEBUG_NET_SYSCALL
     serial::puts("[syscall] socket_send: sock=");
     serial::put_dec(sock);
     serial::puts(" len=");
@@ -1121,7 +1121,7 @@ static SyscallResult sys_socket_send(u64 a0, u64 a1, u64 a2, u64, u64, u64)
     }
 
     i64 result = net::tcp::socket_send(sock, buf, len);
-#if CONFIG_NET_SYSCALL_DEBUG
+#if VIPER_KERNEL_DEBUG_NET_SYSCALL
     serial::puts("[syscall] socket_send: result=");
     serial::put_dec(result);
     serial::putc('\n');
@@ -1146,7 +1146,7 @@ static SyscallResult sys_socket_recv(u64 a0, u64 a1, u64 a2, u64, u64, u64)
         return SyscallResult::err(error::VERR_INVALID_HANDLE);
     }
 
-#if CONFIG_NET_SYSCALL_DEBUG
+#if VIPER_KERNEL_DEBUG_NET_SYSCALL
     serial::puts("[syscall] socket_recv: sock=");
     serial::put_dec(sock);
     serial::puts(" len=");
@@ -1160,7 +1160,7 @@ static SyscallResult sys_socket_recv(u64 a0, u64 a1, u64 a2, u64, u64, u64)
     }
 
     i64 result = net::tcp::socket_recv(sock, buf, len);
-#if CONFIG_NET_SYSCALL_DEBUG
+#if VIPER_KERNEL_DEBUG_NET_SYSCALL
     serial::puts("[syscall] socket_recv: result=");
     serial::put_dec(result);
     serial::putc('\n');
@@ -1210,6 +1210,37 @@ static SyscallResult sys_dns_resolve(u64 a0, u64 a1, u64, u64, u64, u64)
               (static_cast<u32>(result_ip.bytes[3]) << 24);
     return SyscallResult::ok();
 }
+#else
+static SyscallResult sys_socket_create(u64, u64, u64, u64, u64, u64)
+{
+    return SyscallResult::err(error::VERR_NOT_SUPPORTED);
+}
+
+static SyscallResult sys_socket_connect(u64, u64, u64, u64, u64, u64)
+{
+    return SyscallResult::err(error::VERR_NOT_SUPPORTED);
+}
+
+static SyscallResult sys_socket_send(u64, u64, u64, u64, u64, u64)
+{
+    return SyscallResult::err(error::VERR_NOT_SUPPORTED);
+}
+
+static SyscallResult sys_socket_recv(u64, u64, u64, u64, u64, u64)
+{
+    return SyscallResult::err(error::VERR_NOT_SUPPORTED);
+}
+
+static SyscallResult sys_socket_close(u64, u64, u64, u64, u64, u64)
+{
+    return SyscallResult::err(error::VERR_NOT_SUPPORTED);
+}
+
+static SyscallResult sys_dns_resolve(u64, u64, u64, u64, u64, u64)
+{
+    return SyscallResult::err(error::VERR_NOT_SUPPORTED);
+}
+#endif
 
 // --- Directory/FS (0x60-0x6F) ---
 
@@ -1873,6 +1904,7 @@ static SyscallResult sys_assign_resolve(u64 a0, u64 a1, u64, u64, u64, u64)
 
 // --- TLS (0xD0-0xDF) ---
 
+#if VIPER_KERNEL_ENABLE_TLS
 static SyscallResult sys_tls_create(u64 a0, u64, u64, u64, u64, u64)
 {
     i32 socket_fd = static_cast<i32>(a0);
@@ -2010,6 +2042,37 @@ static SyscallResult sys_tls_info(u64 a0, u64 a1, u64, u64, u64, u64)
     }
     return SyscallResult::err(error::VERR_IO);
 }
+#else
+static SyscallResult sys_tls_create(u64, u64, u64, u64, u64, u64)
+{
+    return SyscallResult::err(error::VERR_NOT_SUPPORTED);
+}
+
+static SyscallResult sys_tls_handshake(u64, u64, u64, u64, u64, u64)
+{
+    return SyscallResult::err(error::VERR_NOT_SUPPORTED);
+}
+
+static SyscallResult sys_tls_send(u64, u64, u64, u64, u64, u64)
+{
+    return SyscallResult::err(error::VERR_NOT_SUPPORTED);
+}
+
+static SyscallResult sys_tls_recv(u64, u64, u64, u64, u64, u64)
+{
+    return SyscallResult::err(error::VERR_NOT_SUPPORTED);
+}
+
+static SyscallResult sys_tls_close(u64, u64, u64, u64, u64, u64)
+{
+    return SyscallResult::err(error::VERR_NOT_SUPPORTED);
+}
+
+static SyscallResult sys_tls_info(u64, u64, u64, u64, u64, u64)
+{
+    return SyscallResult::err(error::VERR_NOT_SUPPORTED);
+}
+#endif
 
 // --- System Info (0xE0-0xEF) ---
 
@@ -2035,6 +2098,7 @@ static SyscallResult sys_mem_info(u64 a0, u64, u64, u64, u64, u64)
     return SyscallResult::ok();
 }
 
+#if VIPER_KERNEL_ENABLE_NET
 static SyscallResult sys_net_stats(u64 a0, u64, u64, u64, u64, u64)
 {
     NetStats *stats = reinterpret_cast<NetStats *>(a0);
@@ -2077,6 +2141,17 @@ static SyscallResult sys_ping(u64 a0, u64 a1, u64, u64, u64, u64)
     }
     return SyscallResult::ok(static_cast<u64>(rtt));
 }
+#else
+static SyscallResult sys_net_stats(u64, u64, u64, u64, u64, u64)
+{
+    return SyscallResult::err(error::VERR_NOT_SUPPORTED);
+}
+
+static SyscallResult sys_ping(u64, u64, u64, u64, u64, u64)
+{
+    return SyscallResult::err(error::VERR_NOT_SUPPORTED);
+}
+#endif
 
 /**
  * @brief List detected hardware devices.

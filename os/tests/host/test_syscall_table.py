@@ -7,6 +7,7 @@ Tests:
 2. No NULL handlers
 3. Non-empty names
 4. argcount <= 6
+5. Microkernel-critical syscall ABI is stable
 """
 
 import re
@@ -124,6 +125,62 @@ def test_argcount_valid(entries):
 
     return passed, failed
 
+def test_microkernel_critical_abi(entries):
+    """Test that microkernel-critical syscalls exist with expected argcounts."""
+    passed = 0
+    failed = 0
+
+    required = {
+        # Task / loader
+        "SYS_TASK_SPAWN": 3,
+
+        # IPC core
+        "SYS_CHANNEL_CREATE": 0,
+        "SYS_CHANNEL_SEND": 5,
+        "SYS_CHANNEL_RECV": 5,
+
+        # Event mux
+        "SYS_POLL_CREATE": 0,
+        "SYS_POLL_ADD": 3,
+        "SYS_POLL_WAIT": 4,
+
+        # Device + SHM (microkernel)
+        "SYS_MAP_DEVICE": 3,
+        "SYS_IRQ_REGISTER": 1,
+        "SYS_IRQ_WAIT": 2,
+        "SYS_IRQ_ACK": 1,
+        "SYS_IRQ_UNREGISTER": 1,
+        "SYS_DMA_ALLOC": 2,
+        "SYS_DMA_FREE": 1,
+        "SYS_VIRT_TO_PHYS": 1,
+        "SYS_DEVICE_ENUM": 2,
+        "SYS_SHM_CREATE": 1,
+        "SYS_SHM_MAP": 1,
+        "SYS_SHM_UNMAP": 1,
+    }
+
+    by_const = {e["syscall_const"]: e for e in entries}
+
+    print("\n[Microkernel-critical ABI]")
+    for const, expected_argc in required.items():
+        entry = by_const.get(const)
+        if entry is None:
+            print(f"  [FAIL] Missing syscall entry for {const}")
+            failed += 1
+            continue
+        if entry["argcount"] != expected_argc:
+            print(
+                f"  [FAIL] {const} argcount is {entry['argcount']} (expected {expected_argc})"
+            )
+            failed += 1
+            continue
+        passed += 1
+
+    if failed == 0:
+        print(f"  [PASS] All {passed} microkernel-critical syscall argcounts match")
+
+    return passed, failed
+
 def main():
     print("=== Syscall Table Invariant Tests ===")
 
@@ -153,6 +210,10 @@ def main():
     total_failed += f
 
     p, f = test_argcount_valid(entries)
+    total_passed += p
+    total_failed += f
+
+    p, f = test_microkernel_critical_abi(entries)
     total_passed += p
     total_failed += f
 

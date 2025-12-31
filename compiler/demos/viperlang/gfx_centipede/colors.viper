@@ -1,0 +1,92 @@
+// colors.viper - Color palette for Centipede (Atari-inspired)
+module colors;
+
+// Background colors
+final BLACK = 0;
+final DARK_GREEN = 2236962;        // RGB(34, 34, 34) - very dark
+
+// Player colors
+final PLAYER_BODY = 16777215;      // White
+final PLAYER_CANNON = 11184810;    // Light gray
+
+// Centipede colors (gradient for visual interest)
+final CENTIPEDE_HEAD = 16711680;   // Red
+final CENTIPEDE_BODY_1 = 16744448; // Orange-red
+final CENTIPEDE_BODY_2 = 16776960; // Yellow
+final CENTIPEDE_BODY_3 = 65280;    // Green
+final CENTIPEDE_EYES = 16777215;   // White
+
+// Mushroom colors (4 damage states)
+final MUSHROOM_FULL = 65280;       // Green
+final MUSHROOM_75 = 8388352;       // Darker green
+final MUSHROOM_50 = 4210688;       // Even darker
+final MUSHROOM_25 = 2105344;       // Very dark green
+final MUSHROOM_POISONED = 16711935; // Magenta (when hit by scorpion)
+
+// Spider colors
+final SPIDER_BODY = 16711680;      // Red
+final SPIDER_LEGS = 11141120;      // Dark red
+
+// Flea colors
+final FLEA_BODY = 16776960;        // Yellow
+final FLEA_SPOTS = 8421504;        // Gray
+
+// Scorpion colors
+final SCORPION_BODY = 16744192;    // Orange
+final SCORPION_TAIL = 11141120;    // Dark orange
+
+// Bullet colors
+final BULLET = 16777215;           // White
+
+// UI colors
+final UI_TEXT = 16777215;          // White
+final UI_SCORE = 16776960;         // Yellow
+final UI_LIVES = 65280;            // Green
+final UI_GAMEOVER = 16711680;      // Red
+final UI_TITLE = 65535;            // Cyan
+
+// Special effects
+final EXPLOSION_1 = 16777215;      // White
+final EXPLOSION_2 = 16776960;      // Yellow
+final EXPLOSION_3 = 16744448;      // Orange
+
+// Helper function to create colors
+func RGB(r: Integer, g: Integer, b: Integer) -> Integer {
+    return Viper.Graphics.Color.RGB(r, g, b);
+}
+
+func RGBA(r: Integer, g: Integer, b: Integer, a: Integer) -> Integer {
+    return Viper.Graphics.Color.RGBA(r, g, b, a);
+}
+
+// Palette for centipede segments (cycles through these)
+func getSegmentColor(index: Integer) -> Integer {
+    var mod = index % 4;
+    if (mod == 0) {
+        return CENTIPEDE_BODY_1;
+    }
+    if (mod == 1) {
+        return CENTIPEDE_BODY_2;
+    }
+    if (mod == 2) {
+        return CENTIPEDE_BODY_3;
+    }
+    return CENTIPEDE_BODY_1;
+}
+
+// Get mushroom color based on hits remaining
+func getMushroomColor(hits: Integer, poisoned: Boolean) -> Integer {
+    if (poisoned) {
+        return MUSHROOM_POISONED;
+    }
+    if (hits >= 4) {
+        return MUSHROOM_FULL;
+    }
+    if (hits == 3) {
+        return MUSHROOM_75;
+    }
+    if (hits == 2) {
+        return MUSHROOM_50;
+    }
+    return MUSHROOM_25;
+}

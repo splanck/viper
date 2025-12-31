@@ -13,6 +13,7 @@
 #   --qemu <path>      Path to qemu-system-aarch64 (auto-detected if not set)
 #   --kernel <path>    Path to kernel ELF (required)
 #   --disk <path>      Path to disk image (optional)
+#   --microkernel-devices  Attach dedicated microkernel devices if present
 #   --timeout <secs>   Timeout in seconds (default: 30)
 #   --expect <regex>   Pattern that must appear (can specify multiple)
 #   --forbid <regex>   Pattern that must NOT appear (can specify multiple)
@@ -33,6 +34,7 @@ set -o pipefail
 QEMU=""
 KERNEL=""
 DISK=""
+MICROKERNEL_DEVICES=0
 TIMEOUT=30
 MEMORY="128M"
 TEST_NAME="qemu_test"
@@ -63,6 +65,7 @@ usage() {
     echo "  --qemu <path>      Path to qemu-system-aarch64"
     echo "  --kernel <path>    Path to kernel ELF (required)"
     echo "  --disk <path>      Path to disk image"
+    echo "  --microkernel-devices  Attach dedicated microkernel devices if present"
     echo "  --timeout <secs>   Timeout in seconds (default: 30)"
     echo "  --expect <regex>   Pattern that must appear (repeatable)"
     echo "  --forbid <regex>   Pattern that must NOT appear (repeatable)"
@@ -107,6 +110,10 @@ while [[ $# -gt 0 ]]; do
         --disk)
             DISK="$2"
             shift 2
+            ;;
+        --microkernel-devices)
+            MICROKERNEL_DEVICES=1
+            shift
             ;;
         --timeout)
             TIMEOUT="$2"
@@ -202,6 +209,28 @@ QEMU_OPTS+=(
     -netdev user,id=net0
     -device virtio-net-device,netdev=net0
 )
+
+# Optional dedicated devices for user-space microkernel servers (blkd/fsd/netd).
+if [[ $MICROKERNEL_DEVICES -eq 1 ]]; then
+    build_dir="$(dirname "$KERNEL")"
+
+    microkernel_img="${build_dir}/microkernel.img"
+    if [[ -f "$microkernel_img" ]]; then
+        QEMU_OPTS+=(
+            -drive "file=$microkernel_img,if=none,format=raw,id=disk1"
+            -device virtio-blk-device,drive=disk1
+        )
+    fi
+
+    # Match the dev provisioning behavior in scripts/build_viper.sh: only add a
+    # second NIC when the netd server is present.
+    if [[ -f "${build_dir}/netd.elf" ]]; then
+        QEMU_OPTS+=(
+            -netdev user,id=net1
+            -device virtio-net-device,netdev=net1
+        )
+    fi
+fi
 
 # Create log directory
 mkdir -p "$LOG_DIR"

@@ -1,13 +1,10 @@
 #include "net.hpp"
 #include "../../arch/aarch64/gic.hpp"
 #include "../../console/serial.hpp"
+#include "../../include/config.hpp"
 #include "../../mm/pmm.hpp"
 #include "../../sched/scheduler.hpp"
 #include "../../sched/task.hpp"
-
-#ifndef CONFIG_VIRTIO_NET_IRQ_DEBUG
-#define CONFIG_VIRTIO_NET_IRQ_DEBUG 0
-#endif
 
 /**
  * @file net.cpp
@@ -661,7 +658,7 @@ void NetDevice::rx_irq_handler()
 {
     // Acknowledge the virtio interrupt
     u32 isr = read_isr();
-#if CONFIG_VIRTIO_NET_IRQ_DEBUG
+#if VIPER_KERNEL_DEBUG_VIRTIO_NET_IRQ
     serial::puts("[virtio-net] IRQ: isr=");
     serial::put_hex(isr);
     serial::puts(" waiters=");

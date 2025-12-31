@@ -42,6 +42,7 @@
 #include "fs/vfs/vfs.hpp"
 #include "fs/viperfs/viperfs.hpp"
 #include "include/syscall.hpp"
+#include "include/config.hpp"
 #include "include/vboot.hpp"
 #include "input/input.hpp"
 #include "ipc/channel.hpp"
@@ -129,6 +130,17 @@ extern "C" void kernel_main(void *boot_info_ptr)
     serial::puts("\n");
     serial::puts("=========================================\n");
     serial::puts("  ViperOS v0.2.0 - AArch64\n");
+    serial::puts("  Mode: ");
+#if VIPER_MICROKERNEL_MODE
+    serial::puts("MICROKERNEL (bring-up)\n");
+#else
+    serial::puts("HYBRID\n");
+#endif
+    serial::puts("  Kernel services: net=");
+    serial::put_dec(static_cast<u64>(VIPER_KERNEL_ENABLE_NET));
+    serial::puts(" tls=");
+    serial::put_dec(static_cast<u64>(VIPER_KERNEL_ENABLE_TLS));
+    serial::puts("\n");
     serial::puts("=========================================\n");
     serial::puts("\n");
 
@@ -357,6 +369,7 @@ extern "C" void kernel_main(void *boot_info_ptr)
     // Initialize console input buffer
     console::init_input();
 
+#if VIPER_KERNEL_ENABLE_NET
     // Initialize virtio-net driver (Phase 6)
     virtio::net_init();
 
@@ -417,6 +430,9 @@ extern "C" void kernel_main(void *boot_info_ptr)
             serial::puts("[kernel] DNS resolution failed\n");
         }
     }
+#else
+    serial::puts("[kernel] Kernel networking disabled (VIPER_KERNEL_ENABLE_NET=0)\n");
+#endif
 
     if (virtio::blk_device())
     {

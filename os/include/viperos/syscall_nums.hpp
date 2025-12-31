@@ -9,13 +9,12 @@
  * Both the kernel syscall dispatcher and user-space wrappers include this file
  * to ensure they agree on the ABI contract.
  *
- * AArch64 calling convention used by ViperOS:
+ * AArch64 calling convention used by ViperOS (see `include/viperos/syscall_abi.hpp`):
  * - The syscall number is placed in register x8.
  * - Up to six arguments are placed in x0-x5.
- * - The primary return value is read from x0.
- *
- * Most syscalls return `0` or another non-negative value on success, and a
- * negative kernel error code on failure.
+ * - Return values are:
+ *   - x0: `VError` (0 = success, negative = error)
+ *   - x1-x3: result values on success (syscall-specific)
  *
  * The identifiers are grouped into ranges by subsystem to keep the table
  * readable and to leave room for future expansion.
@@ -34,7 +33,7 @@
 #define SYS_TASK_EXIT 0x01
 /** @brief Return the calling task's ID. */
 #define SYS_TASK_CURRENT 0x02
-/** @brief Spawn a new user task/process (reserved for future use). */
+/** @brief Spawn a new user process from an ELF file. */
 #define SYS_TASK_SPAWN 0x03
 /** @brief Join/wait for another task to exit (reserved for future use). */
 #define SYS_TASK_JOIN 0x04
@@ -60,7 +59,7 @@
  *  immediately, they return `VERR_WOULD_BLOCK` rather than sleeping.
  *  @{
  */
-/** @brief Create a new IPC channel and return its handle/ID. */
+/** @brief Create a new IPC channel and return send+recv endpoint handles. */
 #define SYS_CHANNEL_CREATE 0x10
 /** @brief Send a message on a channel. */
 #define SYS_CHANNEL_SEND 0x11

@@ -1,0 +1,667 @@
+// game.viper - Core game logic for Centipede
+module game;
+
+import "./config";
+
+// Screen height for Y-flip (Y=0 is at bottom in this graphics system)
+final SCREEN_H = 640;
+
+// Helper to flip Y coordinate
+func flipY(y: Integer) -> Integer {
+    return SCREEN_H - y;
+}
+
+// Color constants (inlined to avoid module access issues)
+// RGB format: R*65536 + G*256 + B
+final COLOR_BLACK = 32;  // Dark blue for testing
+final COLOR_PLAYER = 16777215;
+final COLOR_PLAYER_GUN = 11184810;
+final COLOR_BULLET = 16777215;
+final COLOR_CENTIPEDE_HEAD = 16711680;
+final COLOR_CENTIPEDE_BODY1 = 16744448;
+final COLOR_CENTIPEDE_BODY2 = 16776960;
+final COLOR_CENTIPEDE_BODY3 = 65280;
+final COLOR_CENTIPEDE_EYES = 16777215;
+final COLOR_MUSHROOM = 65280;
+final COLOR_MUSHROOM_75 = 8388352;
+final COLOR_MUSHROOM_50 = 4210688;
+final COLOR_MUSHROOM_25 = 2105344;
+final COLOR_SPIDER = 16711680;
+final COLOR_SPIDER_LEGS = 11141120;
+final COLOR_UI_TEXT = 16777215;
+final COLOR_UI_SCORE = 16776960;
+final COLOR_UI_LIVES = 65280;
+final COLOR_UI_GAMEOVER = 16711680;
+final COLOR_EXPLOSION1 = 16777215;
+final COLOR_EXPLOSION2 = 16776960;
+final COLOR_EXPLOSION3 = 16744448;
+final COLOR_GRID_LINE = 3355443;
+final COLOR_OVERLAY = 1118481;
+
+// Game state
+var score = 0;
+var highScore = 0;
+var lives = 3;
+var level = 1;
+var gameOver = false;
+var paused = false;
+var frameCount = 0;
+
+// Player state
+var playerX = 240;
+var playerY = 600;
+var playerDead = false;
+var playerRespawnTimer = 0;
+
+// Bullet state (single bullet at a time)
+var bulletActive = false;
+var bulletX = 0;
+var bulletY = 0;
+var spaceWasHeld = false;
+
+// Centipede segments (max 20 segments)
+final MAX_SEGMENTS = 20;
+var segmentCount = 0;
+var segX: List[Integer] = [];
+var segY: List[Integer] = [];
+var segDir: List[Integer] = [];
+var segHead: List[Integer] = [];  // 1 = head, 0 = body
+
+// Mushroom grid
+final GRID_SIZE = 1200;
+var mushrooms: List[Integer] = [];
+var mushroomPoisoned: List[Integer] = [];  // 0 = not poisoned, 1 = poisoned
+
+// Spider state
+var spiderActive = false;
+var spiderX = 0;
+var spiderY = 0;
+var spiderDirX = 1;
+var spiderDirY = 1;
+var spiderTimer = 0;
+
+// Movement timing
+var centipedeTimer = 0;
+var centipedeMoveDelay = 1;
+
+// Key codes (VGFX key codes)
+final KEY_RIGHT = 259;
+final KEY_LEFT = 258;
+final KEY_UP = 260;
+final KEY_DOWN = 261;
+final KEY_SPACE = 32;   // ASCII space
+final KEY_ESC = 27;     // ASCII escape
+final KEY_P = 112;      // ASCII 'p'
+
+// Helper to get segment color
+func getSegmentColor(index: Integer) -> Integer {
+    var mod = index % 4;
+    if (mod == 0) {
+        return COLOR_CENTIPEDE_BODY1;
+    }
+    if (mod == 1) {
+        return COLOR_CENTIPEDE_BODY2;
+    }
+    if (mod == 2) {
+        return COLOR_CENTIPEDE_BODY3;
+    }
+    return COLOR_CENTIPEDE_BODY1;
+}
+
+// Helper for mushroom color
+func getMushroomColor(hits: Integer) -> Integer {
+    if (hits >= 4) {
+        return COLOR_MUSHROOM;
+    }
+    if (hits == 3) {
+        return COLOR_MUSHROOM_75;
+    }
+    if (hits == 2) {
+        return COLOR_MUSHROOM_50;
+    }
+    return COLOR_MUSHROOM_25;
+}
+
+// Initialize game
+func initGame() {
+    score = 0;
+    lives = config.INITIAL_LIVES;
+    level = 1;
+    gameOver = false;
+    paused = false;
+    frameCount = 0;
+    centipedeMoveDelay = 1;
+
+    initPlayer();
+    initMushrooms();
+    initCentipede();
+    spiderActive = false;
+    spiderTimer = config.SPIDER_SPAWN_INTERVAL;
+}
+
+func initPlayer() {
+    playerX = config.SCREEN_WIDTH / 2;
+    playerY = config.SCREEN_HEIGHT - 40;
+    playerDead = false;
+    playerRespawnTimer = 0;
+    bulletActive = false;
+    spaceWasHeld = false;
+}
+
+func initMushrooms() {
+    mushrooms = [];
+    mushroomPoisoned = [];
+
+    var i = 0;
+    while (i < GRID_SIZE) {
+        mushrooms.add(0);
+        mushroomPoisoned.add(0);
+        i = i + 1;
+    }
+
+    var row = 2;
+    while (row < 34) {
+        var col = 0;
+        while (col < config.GRID_COLS) {
+            var chance = Viper.Random.NextInt(100);
+            if (chance < config.MUSHROOM_DENSITY) {
+                var idx = row * config.GRID_COLS + col;
+                mushrooms[idx] = config.MUSHROOM_HITS;
+            }
+            col = col + 1;
+        }
+        row = row + 1;
+    }
+}
+
+func initCentipede() {
+    segX = [];
+    segY = [];
+    segDir = [];
+    segHead = [];
+    segmentCount = config.CENTIPEDE_INITIAL_LENGTH;
+
+    var i = 0;
+    while (i < segmentCount) {
+        segX.add(config.SCREEN_WIDTH - 20 - i * config.CELL_SIZE);
+        segY.add(config.CELL_SIZE);
+        segDir.add(-1);
+        if (i == 0) {
+            segHead.add(1);
+        } else {
+            segHead.add(0);
+        }
+        i = i + 1;
+    }
+}
+
+func getMushroomHits(col: Integer, row: Integer) -> Integer {
+    if (col < 0 || col >= config.GRID_COLS || row < 0 || row >= config.GRID_ROWS) {
+        return 0;
+    }
+    var idx = row * config.GRID_COLS + col;
+    return mushrooms[idx];
+}
+
+func setMushroomHits(col: Integer, row: Integer, hits: Integer) {
+    if (col < 0 || col >= config.GRID_COLS || row < 0 || row >= config.GRID_ROWS) {
+        return;
+    }
+    var idx = row * config.GRID_COLS + col;
+    mushrooms[idx] = hits;
+}
+
+func updatePlayer(canvas: Viper.Graphics.Canvas) {
+    if (playerDead) {
+        playerRespawnTimer = playerRespawnTimer - 1;
+        if (playerRespawnTimer <= 0) {
+            if (lives > 0) {
+                initPlayer();
+            } else {
+                gameOver = true;
+            }
+        }
+        return;
+    }
+
+    // Movement - compare KeyHeld result with 0
+    if (canvas.KeyHeld(KEY_RIGHT) != 0) {
+        playerX = playerX + config.PLAYER_SPEED;
+        if (playerX > config.SCREEN_WIDTH - config.PLAYER_WIDTH) {
+            playerX = config.SCREEN_WIDTH - config.PLAYER_WIDTH;
+        }
+    }
+    if (canvas.KeyHeld(KEY_LEFT) != 0) {
+        playerX = playerX - config.PLAYER_SPEED;
+        if (playerX < 0) {
+            playerX = 0;
+        }
+    }
+    if (canvas.KeyHeld(KEY_UP) != 0) {
+        playerY = playerY - config.PLAYER_SPEED;
+        if (playerY < config.PLAYER_ZONE_TOP) {
+            playerY = config.PLAYER_ZONE_TOP;
+        }
+    }
+    if (canvas.KeyHeld(KEY_DOWN) != 0) {
+        playerY = playerY + config.PLAYER_SPEED;
+        if (playerY > config.SCREEN_HEIGHT - config.PLAYER_HEIGHT) {
+            playerY = config.SCREEN_HEIGHT - config.PLAYER_HEIGHT;
+        }
+    }
+
+    // Shooting - auto-fire when holding space
+    if (canvas.KeyHeld(KEY_SPACE) != 0 && bulletActive == false) {
+        bulletActive = true;
+        bulletX = playerX + config.PLAYER_WIDTH / 2 - 1;
+        bulletY = playerY - config.BULLET_HEIGHT;
+    }
+}
+
+func updateBullet() {
+    if (bulletActive == false) {
+        return;
+    }
+
+    var oldY = bulletY;
+    bulletY = bulletY - config.BULLET_SPEED;
+
+    if (bulletY < 0) {
+        bulletActive = false;
+        return;
+    }
+
+    // Check all cells the bullet passes through (fixes tunneling)
+    var col = bulletX / config.CELL_SIZE;
+    var startRow = bulletY / config.CELL_SIZE;
+    var endRow = oldY / config.CELL_SIZE;
+
+    var checkRow = startRow;
+    while (checkRow <= endRow) {
+        var hits = getMushroomHits(col, checkRow);
+        if (hits > 0) {
+            hits = hits - 1;
+            setMushroomHits(col, checkRow, hits);
+            if (hits == 0) {
+                score = score + config.SCORE_MUSHROOM;
+            }
+            bulletActive = false;
+            return;
+        }
+        checkRow = checkRow + 1;
+    }
+
+    // Check centipede collision using bounding box
+    var i = 0;
+    while (i < segmentCount) {
+        var segTop = segY[i];
+        var segBot = segY[i] + config.SEGMENT_SIZE;
+        // Bullet passed through this Y range?
+        if (bulletY < segBot && oldY > segTop) {
+            var dx = bulletX - segX[i];
+            if (dx > -config.SEGMENT_SIZE && dx < config.SEGMENT_SIZE) {
+                hitCentipedeSegment(i);
+                bulletActive = false;
+                return;
+            }
+        }
+        i = i + 1;
+    }
+
+    // Check spider collision
+    if (spiderActive) {
+        var spiderTop = spiderY;
+        var spiderBot = spiderY + config.SPIDER_SIZE;
+        if (bulletY < spiderBot && oldY > spiderTop) {
+            var dx = bulletX - spiderX;
+            if (dx > -config.SPIDER_SIZE && dx < config.SPIDER_SIZE) {
+                var dist = playerY - spiderY;
+                if (dist < 50) {
+                    score = score + config.SCORE_SPIDER_CLOSE;
+                } else if (dist < 100) {
+                    score = score + config.SCORE_SPIDER_MED;
+                } else {
+                    score = score + config.SCORE_SPIDER_FAR;
+                }
+                spiderActive = false;
+                bulletActive = false;
+                return;
+            }
+        }
+    }
+}
+
+func hitCentipedeSegment(idx: Integer) {
+    if (segHead[idx] == 1) {
+        score = score + config.SCORE_CENTIPEDE_HEAD;
+    } else {
+        score = score + config.SCORE_CENTIPEDE_BODY;
+    }
+
+    var col = segX[idx] / config.CELL_SIZE;
+    var row = segY[idx] / config.CELL_SIZE;
+    if (col >= 0 && col < config.GRID_COLS && row >= 0 && row < config.GRID_ROWS) {
+        setMushroomHits(col, row, config.MUSHROOM_HITS);
+    }
+
+    if (idx < segmentCount - 1) {
+        segHead[idx + 1] = 1;
+    }
+
+    var i = idx;
+    while (i < segmentCount - 1) {
+        segX[i] = segX[i + 1];
+        segY[i] = segY[i + 1];
+        segDir[i] = segDir[i + 1];
+        segHead[i] = segHead[i + 1];
+        i = i + 1;
+    }
+    segmentCount = segmentCount - 1;
+
+    if (segmentCount == 0) {
+        level = level + 1;
+        initCentipede();
+        if (centipedeMoveDelay > 1) {
+            centipedeMoveDelay = centipedeMoveDelay - 1;
+        }
+    }
+}
+
+func updateCentipede() {
+    centipedeTimer = centipedeTimer + 1;
+    if (centipedeTimer < centipedeMoveDelay) {
+        return;
+    }
+    centipedeTimer = 0;
+
+    var i = 0;
+    while (i < segmentCount) {
+        var x = segX[i];
+        var y = segY[i];
+        var dir = segDir[i];
+
+        var nextX = x + dir * config.CELL_SIZE;
+        var needTurn = false;
+
+        if (nextX < 0 || nextX >= config.SCREEN_WIDTH - config.SEGMENT_SIZE) {
+            needTurn = true;
+        }
+
+        if (needTurn == false) {
+            var col = nextX / config.CELL_SIZE;
+            var row = y / config.CELL_SIZE;
+            if (getMushroomHits(col, row) > 0) {
+                needTurn = true;
+            }
+        }
+
+        if (needTurn) {
+            // Move down (or up if at bottom)
+            if (y >= config.SCREEN_HEIGHT - config.CELL_SIZE * 2) {
+                // At bottom - move back up
+                segY[i] = y - config.CELL_SIZE;
+                if (segY[i] < 0) {
+                    segY[i] = 0;
+                }
+            } else {
+                // Normal - move down
+                segY[i] = y + config.CELL_SIZE;
+            }
+            segDir[i] = -dir;
+        } else {
+            segX[i] = nextX;
+        }
+
+        if (playerDead == false) {
+            var dx = segX[i] - playerX;
+            var dy = segY[i] - playerY;
+            if (dx > -config.SEGMENT_SIZE && dx < config.PLAYER_WIDTH &&
+                dy > -config.SEGMENT_SIZE && dy < config.PLAYER_HEIGHT) {
+                killPlayer();
+            }
+        }
+
+        i = i + 1;
+    }
+}
+
+func updateSpider() {
+    if (spiderActive == false) {
+        spiderTimer = spiderTimer - 1;
+        if (spiderTimer <= 0) {
+            spiderActive = true;
+            spiderTimer = config.SPIDER_SPAWN_INTERVAL;
+
+            if (Viper.Random.NextInt(2) == 0) {
+                spiderX = 0;
+                spiderDirX = 1;
+            } else {
+                spiderX = config.SCREEN_WIDTH - config.SPIDER_SIZE;
+                spiderDirX = -1;
+            }
+            spiderY = config.PLAYER_ZONE_TOP + Viper.Random.NextInt(80);
+            spiderDirY = 1;
+        }
+        return;
+    }
+
+    spiderX = spiderX + spiderDirX * config.SPIDER_SPEED;
+    spiderY = spiderY + spiderDirY * 2;
+
+    if (spiderY < config.PLAYER_ZONE_TOP) {
+        spiderY = config.PLAYER_ZONE_TOP;
+        spiderDirY = 1;
+    }
+    if (spiderY > config.SCREEN_HEIGHT - config.SPIDER_SIZE) {
+        spiderY = config.SCREEN_HEIGHT - config.SPIDER_SIZE;
+        spiderDirY = -1;
+    }
+
+    if (Viper.Random.NextInt(20) == 0) {
+        spiderDirY = -spiderDirY;
+    }
+
+    if (spiderX < -config.SPIDER_SIZE || spiderX > config.SCREEN_WIDTH) {
+        spiderActive = false;
+    }
+
+    var col = (spiderX + config.SPIDER_SIZE / 2) / config.CELL_SIZE;
+    var row = (spiderY + config.SPIDER_SIZE / 2) / config.CELL_SIZE;
+    if (getMushroomHits(col, row) > 0) {
+        setMushroomHits(col, row, 0);
+    }
+
+    if (playerDead == false) {
+        var dx = spiderX - playerX;
+        var dy = spiderY - playerY;
+        if (dx > -config.SPIDER_SIZE && dx < config.PLAYER_WIDTH &&
+            dy > -config.SPIDER_SIZE && dy < config.PLAYER_HEIGHT) {
+            killPlayer();
+        }
+    }
+}
+
+func killPlayer() {
+    playerDead = true;
+    lives = lives - 1;
+    playerRespawnTimer = 120;
+    bulletActive = false;
+}
+
+func drawPlayer(canvas: Viper.Graphics.Canvas) {
+    if (playerDead) {
+        if (playerRespawnTimer > 90) {
+            canvas.Disc(playerX + 6, flipY(playerY + 7), 15, COLOR_EXPLOSION1);
+        } else if (playerRespawnTimer > 60) {
+            canvas.Ring(playerX + 6, flipY(playerY + 7), 20, COLOR_EXPLOSION2);
+        } else if (playerRespawnTimer > 30) {
+            canvas.Ring(playerX + 6, flipY(playerY + 7), 25, COLOR_EXPLOSION3);
+        }
+        return;
+    }
+
+    // Draw player ship
+    var py = flipY(playerY + 7);
+    // Body - a circle
+    canvas.Disc(playerX + 6, py, 8, COLOR_PLAYER);
+    // Gun barrel - Box takes (x, y, width, height, color)
+    canvas.Box(playerX + 4, py + 8, 4, 6, COLOR_PLAYER_GUN);
+}
+
+func drawBullet(canvas: Viper.Graphics.Canvas) {
+    if (bulletActive == false) {
+        return;
+    }
+    // Box takes (x, y, width, height, color)
+    canvas.Box(bulletX, flipY(bulletY + config.BULLET_HEIGHT), config.BULLET_WIDTH, config.BULLET_HEIGHT, COLOR_BULLET);
+}
+
+func drawMushrooms(canvas: Viper.Graphics.Canvas) {
+    var row = 0;
+    while (row < config.GRID_ROWS) {
+        var col = 0;
+        while (col < config.GRID_COLS) {
+            var idx = row * config.GRID_COLS + col;
+            var hits = mushrooms[idx];
+            if (hits > 0) {
+                var x = col * config.CELL_SIZE + 1;
+                var y = row * config.CELL_SIZE + 1;
+                var color = getMushroomColor(hits);
+                // Mushroom cap (disc) and stem (box)
+                canvas.Disc(x + 7, flipY(y + 5), 7, color);
+                // Box takes (x, y, width, height, color)
+                canvas.Box(x + 4, flipY(y + 14), 6, 8, color);
+            }
+            col = col + 1;
+        }
+        row = row + 1;
+    }
+}
+
+func drawCentipede(canvas: Viper.Graphics.Canvas) {
+    var i = 0;
+    while (i < segmentCount) {
+        var x = segX[i];
+        var y = segY[i];
+
+        if (segHead[i] == 1) {
+            canvas.Disc(x + 7, flipY(y + 7), 8, COLOR_CENTIPEDE_HEAD);
+            canvas.Disc(x + 4, flipY(y + 4), 2, COLOR_CENTIPEDE_EYES);
+            canvas.Disc(x + 10, flipY(y + 4), 2, COLOR_CENTIPEDE_EYES);
+            if (segDir[i] > 0) {
+                canvas.Line(x + 12, flipY(y + 2), x + 16, flipY(y - 2), COLOR_CENTIPEDE_HEAD);
+                canvas.Line(x + 12, flipY(y + 4), x + 16, flipY(y + 2), COLOR_CENTIPEDE_HEAD);
+            } else {
+                canvas.Line(x + 2, flipY(y + 2), x - 2, flipY(y - 2), COLOR_CENTIPEDE_HEAD);
+                canvas.Line(x + 2, flipY(y + 4), x - 2, flipY(y + 2), COLOR_CENTIPEDE_HEAD);
+            }
+        } else {
+            var color = getSegmentColor(i);
+            canvas.Disc(x + 7, flipY(y + 7), 7, color);
+            canvas.Line(x + 2, flipY(y + 12), x - 1, flipY(y + 15), color);
+            canvas.Line(x + 12, flipY(y + 12), x + 15, flipY(y + 15), color);
+        }
+
+        i = i + 1;
+    }
+}
+
+func drawSpider(canvas: Viper.Graphics.Canvas) {
+    if (spiderActive == false) {
+        return;
+    }
+
+    canvas.Disc(spiderX + 7, flipY(spiderY + 7), 6, COLOR_SPIDER);
+
+    var legOffset = (frameCount / 5) % 2;
+    if (legOffset == 0) {
+        canvas.Line(spiderX + 3, flipY(spiderY + 5), spiderX - 3, flipY(spiderY), COLOR_SPIDER_LEGS);
+        canvas.Line(spiderX + 11, flipY(spiderY + 5), spiderX + 17, flipY(spiderY), COLOR_SPIDER_LEGS);
+        canvas.Line(spiderX + 3, flipY(spiderY + 9), spiderX - 3, flipY(spiderY + 14), COLOR_SPIDER_LEGS);
+        canvas.Line(spiderX + 11, flipY(spiderY + 9), spiderX + 17, flipY(spiderY + 14), COLOR_SPIDER_LEGS);
+    } else {
+        canvas.Line(spiderX + 3, flipY(spiderY + 5), spiderX - 3, flipY(spiderY + 3), COLOR_SPIDER_LEGS);
+        canvas.Line(spiderX + 11, flipY(spiderY + 5), spiderX + 17, flipY(spiderY + 3), COLOR_SPIDER_LEGS);
+        canvas.Line(spiderX + 3, flipY(spiderY + 9), spiderX - 3, flipY(spiderY + 11), COLOR_SPIDER_LEGS);
+        canvas.Line(spiderX + 11, flipY(spiderY + 9), spiderX + 17, flipY(spiderY + 11), COLOR_SPIDER_LEGS);
+    }
+}
+
+func drawUI(canvas: Viper.Graphics.Canvas) {
+    canvas.Text(10, flipY(20), "SCORE: " + score, COLOR_UI_SCORE);
+    canvas.Text(200, flipY(20), "LEVEL: " + level, COLOR_UI_TEXT);
+
+    var lifeX = config.SCREEN_WIDTH - 80;
+    var i = 0;
+    while (i < lives) {
+        // Box takes (x, y, width, height, color)
+        canvas.Box(lifeX + i * 18, flipY(17), 12, 12, COLOR_UI_LIVES);
+        i = i + 1;
+    }
+
+    canvas.Line(0, flipY(config.PLAYER_ZONE_TOP - 1), config.SCREEN_WIDTH, flipY(config.PLAYER_ZONE_TOP - 1), COLOR_GRID_LINE);
+}
+
+func drawGameOver(canvas: Viper.Graphics.Canvas) {
+    // Box takes (x, y, width, height, color)
+    canvas.Box(100, flipY(350), 280, 100, COLOR_OVERLAY);
+    canvas.Frame(100, flipY(350), 280, 100, COLOR_UI_GAMEOVER);
+    canvas.Text(160, flipY(285), "GAME OVER", COLOR_UI_GAMEOVER);
+    canvas.Text(145, flipY(315), "FINAL SCORE: " + score, COLOR_UI_SCORE);
+    canvas.Text(130, flipY(345), "PRESS SPACE TO RESTART", COLOR_UI_TEXT);
+}
+
+func drawPaused(canvas: Viper.Graphics.Canvas) {
+    // Box takes (x, y, width, height, color)
+    canvas.Box(160, flipY(330), 160, 40, COLOR_OVERLAY);
+    canvas.Frame(160, flipY(330), 160, 40, COLOR_UI_TEXT);
+    canvas.Text(200, flipY(317), "PAUSED", COLOR_UI_TEXT);
+}
+
+func update(canvas: Viper.Graphics.Canvas) {
+    frameCount = frameCount + 1;
+
+    if (gameOver) {
+        if (canvas.KeyHeld(KEY_SPACE) != 0) {
+            initGame();
+        }
+        return;
+    }
+
+    if (paused) {
+        return;
+    }
+
+    updatePlayer(canvas);
+    updateBullet();
+    updateCentipede();
+    updateSpider();
+}
+
+func draw(canvas: Viper.Graphics.Canvas) {
+    // Clear screen to black - Box takes (x, y, width, height, color)
+    canvas.Box(0, 0, config.SCREEN_WIDTH, config.SCREEN_HEIGHT, 0);
+
+    drawMushrooms(canvas);
+    drawCentipede(canvas);
+    drawSpider(canvas);
+    drawBullet(canvas);
+    drawPlayer(canvas);
+    drawUI(canvas);
+
+    if (gameOver) {
+        drawGameOver(canvas);
+    } else if (paused) {
+        drawPaused(canvas);
+    }
+
+    canvas.Flip();
+}
+
+func togglePause() {
+    if (paused) {
+        paused = false;
+    } else {
+        paused = true;
+    }
+}

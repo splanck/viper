@@ -27,6 +27,9 @@ Build and run ViperOS:
 
 # Or run in serial-only mode (no graphics window)
 ./scripts/build_viper.sh --serial
+
+# Build + run tests, but don't launch QEMU
+./scripts/build_viper.sh --test --no-run
 ```
 
 The build script automatically:

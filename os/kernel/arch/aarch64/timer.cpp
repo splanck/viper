@@ -1,6 +1,7 @@
 #include "timer.hpp"
 #include "../../console/gcon.hpp"
 #include "../../console/serial.hpp"
+#include "../../include/config.hpp"
 #include "../../input/input.hpp"
 #include "../../ipc/poll.hpp"
 #include "../../net/network.hpp"
@@ -210,7 +211,9 @@ void timer_irq_handler(u32)
     input::poll();
 
     // Poll for network packets
+#if VIPER_KERNEL_ENABLE_NET
     net::network_poll();
+#endif
 
     // Check for expired timers (poll/sleep)
     poll::check_timers();

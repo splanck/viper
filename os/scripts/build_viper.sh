@@ -5,6 +5,7 @@
 #   --debug     Enable GDB debugging (wait on port 1234)
 #   --no-net    Disable networking
 #   --test      Run tests before launching QEMU
+#   --no-run    Do not launch QEMU (build/test only)
 #   --help      Show this help
 
 set -e
@@ -20,6 +21,7 @@ DEBUG=false
 NETWORK=true
 MEMORY="128M"
 RUN_TESTS=false
+RUN_QEMU=true
 
 # Colors for output
 RED='\033[0;31m'
@@ -62,6 +64,7 @@ show_help() {
     echo "  --debug     Enable GDB debugging (QEMU waits on port 1234)"
     echo "  --no-net    Disable networking"
     echo "  --test      Run tests before launching QEMU"
+    echo "  --no-run    Do not launch QEMU (build/test only)"
     echo "  --memory N  Set memory size (default: 128M)"
     echo "  --help      Show this help message"
     echo ""
@@ -89,6 +92,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --test)
             RUN_TESTS=true
+            shift
+            ;;
+        --no-run)
+            RUN_QEMU=false
             shift
             ;;
         --memory)
@@ -290,6 +297,12 @@ if [[ "$RUN_TESTS" == true ]]; then
         print_error "Some tests failed!"
         exit 1
     fi
+fi
+
+# Exit early if we're only building/testing.
+if [[ "$RUN_QEMU" == false ]]; then
+    print_success "Build complete (QEMU launch skipped)"
+    exit 0
 fi
 
 # Build QEMU command

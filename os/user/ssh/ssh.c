@@ -110,7 +110,7 @@ static void usage(const char *prog)
     fprintf(stderr, "  -p port      Connect to specified port (default 22)\n");
     fprintf(stderr, "  -i identity  Use identity file for public key authentication\n");
     fprintf(stderr, "  -l user      Login as specified user\n");
-    fprintf(stderr, "  -v           Verbose mode\n");
+    fprintf(stderr, "  -v, -vv      Verbose mode (use -vv for packet-level tracing)\n");
 }
 
 int main(int argc, char *argv[])
@@ -138,7 +138,7 @@ int main(int argc, char *argv[])
                 username = optarg;
                 break;
             case 'v':
-                verbose = 1;
+                verbose++;
                 break;
             case 'h':
             default:

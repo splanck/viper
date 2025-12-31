@@ -18,16 +18,13 @@
 #include "../../console/serial.hpp"
 #include "../../drivers/virtio/net.hpp"
 #include "../../drivers/virtio/rng.hpp"
+#include "../../include/config.hpp"
 #include "../../lib/spinlock.hpp"
 #include "../../lib/timerwheel.hpp"
 #include "../../sched/task.hpp"
 #include "../netif.hpp"
 #include "../network.hpp"
 #include "ipv4.hpp"
-
-#ifndef CONFIG_TCP_DEBUG
-#define CONFIG_TCP_DEBUG 0
-#endif
 
 namespace net
 {
@@ -67,7 +64,7 @@ static void time_wait_expired(void *context)
     if (!sock->in_use || sock->state != TcpState::TIME_WAIT)
         return;
 
-#if CONFIG_TCP_DEBUG
+#if VIPER_KERNEL_DEBUG_TCP
     serial::puts("[tcp] TIME_WAIT expired for port ");
     serial::put_dec(sock->local_port);
     serial::puts(", releasing socket\n");
@@ -105,7 +102,7 @@ static void enter_time_wait(TcpSocket *sock, usize sock_idx)
     if (sock->time_wait_timer == 0)
     {
         // Timer scheduling failed - fall back to immediate cleanup
-#if CONFIG_TCP_DEBUG
+#if VIPER_KERNEL_DEBUG_TCP
         serial::puts("[tcp] Warning: TIME_WAIT timer failed, immediate cleanup\n");
 #endif
         sock->state = TcpState::CLOSED;
@@ -114,7 +111,7 @@ static void enter_time_wait(TcpSocket *sock, usize sock_idx)
     }
     else
     {
-#if CONFIG_TCP_DEBUG
+#if VIPER_KERNEL_DEBUG_TCP
         serial::puts("[tcp] Entering TIME_WAIT for port ");
         serial::put_dec(sock->local_port);
         serial::puts(" (");
@@ -157,7 +154,7 @@ static bool ooo_store(TcpSocket *sock, u32 seq, const u8 *data, usize len)
             {
                 sock->ooo_queue[i].data[j] = data[j];
             }
-#if CONFIG_TCP_DEBUG
+#if VIPER_KERNEL_DEBUG_TCP
             serial::puts("[tcp] OOO: stored seq ");
             serial::put_dec(seq);
             serial::puts(" len ");
@@ -168,7 +165,7 @@ static bool ooo_store(TcpSocket *sock, u32 seq, const u8 *data, usize len)
         }
     }
 
-#if CONFIG_TCP_DEBUG
+#if VIPER_KERNEL_DEBUG_TCP
     serial::puts("[tcp] OOO queue full, dropping segment\n");
 #endif
     return false;
@@ -209,7 +206,7 @@ static usize ooo_deliver(TcpSocket *sock)
                     sock->rcv_nxt += len;
                     total_delivered += len;
 
-#if CONFIG_TCP_DEBUG
+#if VIPER_KERNEL_DEBUG_TCP
                     serial::puts("[tcp] OOO: delivered seq ");
                     serial::put_dec(sock->ooo_queue[i].seq);
                     serial::puts(" len ");
@@ -754,7 +751,7 @@ void tcp_init()
         sockets[i].owner_viper_id = 0;
     }
     initialized = true;
-#if CONFIG_TCP_DEBUG
+#if VIPER_KERNEL_DEBUG_TCP
     serial::puts("[tcp] TCP layer initialized\n");
 #endif
 }
@@ -793,7 +790,7 @@ void rx_segment(const Ipv4Addr &src, const void *data, usize len)
     const u8 *payload = static_cast<const u8 *>(data) + data_offset;
 
     // Debug: show incoming segment
-#if CONFIG_TCP_DEBUG
+#if VIPER_KERNEL_DEBUG_TCP
     serial::puts("[tcp] RX ");
     serial::put_dec(src_port);
     serial::puts("->");
@@ -877,7 +874,7 @@ void rx_segment(const Ipv4Addr &src, const void *data, usize len)
     // Compute socket index for timer callbacks
     usize sock_idx = static_cast<usize>(sock - sockets);
 
-#if CONFIG_TCP_DEBUG
+#if VIPER_KERNEL_DEBUG_TCP
     serial::puts("[tcp] sock[");
     serial::put_dec(sock_idx);
     serial::puts("] state=");
@@ -1023,7 +1020,7 @@ void rx_segment(const Ipv4Addr &src, const void *data, usize len)
         case TcpState::ESTABLISHED:
             if (tcp_flags & flags::RST)
             {
-#if CONFIG_TCP_DEBUG
+#if VIPER_KERNEL_DEBUG_TCP
                 serial::puts("[tcp] ESTABLISHED: received RST, closing\n");
 #endif
                 sock->state = TcpState::CLOSED;
@@ -1033,7 +1030,7 @@ void rx_segment(const Ipv4Addr &src, const void *data, usize len)
 
             if (tcp_flags & flags::FIN)
             {
-#if CONFIG_TCP_DEBUG
+#if VIPER_KERNEL_DEBUG_TCP
                 serial::puts("[tcp] ESTABLISHED: received FIN, transitioning to CLOSE_WAIT\n");
 #endif
                 sock->rcv_nxt = seq + payload_len + 1;
@@ -1046,7 +1043,7 @@ void rx_segment(const Ipv4Addr &src, const void *data, usize len)
                 // Handle incoming data with out-of-order reassembly
                 if (payload_len > 0)
                 {
-#if CONFIG_TCP_DEBUG
+#if VIPER_KERNEL_DEBUG_TCP
                     serial::puts("[tcp] DATA: seq=");
                     serial::put_hex(seq);
                     serial::puts(" rcv_nxt=");
@@ -1071,7 +1068,7 @@ void rx_segment(const Ipv4Addr &src, const void *data, usize len)
                         }
                         sock->rcv_nxt += copy_len;
 
-#if CONFIG_TCP_DEBUG
+#if VIPER_KERNEL_DEBUG_TCP
                         serial::puts(" -> copied ");
                         serial::put_dec(copy_len);
                         serial::puts(" bytes\n");
@@ -1083,14 +1080,14 @@ void rx_segment(const Ipv4Addr &src, const void *data, usize len)
                     else if (seq > sock->rcv_nxt)
                     {
                         // Out-of-order segment - buffer it for later reassembly
-#if CONFIG_TCP_DEBUG
+#if VIPER_KERNEL_DEBUG_TCP
                         serial::puts(" -> OOO, buffering\n");
 #endif
                         ooo_store(sock, seq, payload, payload_len);
                     }
                     else
                     {
-#if CONFIG_TCP_DEBUG
+#if VIPER_KERNEL_DEBUG_TCP
                         serial::puts(" -> OLD, ignoring\n");
 #endif
                     }
@@ -1646,7 +1643,7 @@ i32 socket_recv(i32 sock, void *buffer, usize max_len)
         {
             if (s->rx_head == s->rx_tail)
             {
-#if CONFIG_TCP_DEBUG
+#if VIPER_KERNEL_DEBUG_TCP
                 serial::puts("[tcp] socket_recv: connection closed, state=");
                 serial::put_dec(static_cast<int>(s->state));
                 serial::puts(" rx empty\n");
@@ -1699,7 +1696,7 @@ i32 socket_recv(i32 sock, void *buffer, usize max_len)
             // Register as waiter and block
             // IMPORTANT: Set Blocked state BEFORE registering to avoid race with
             // wake_rx_waiters() which checks the state before waking
-#if CONFIG_TCP_DEBUG
+#if VIPER_KERNEL_DEBUG_TCP
             serial::puts("[tcp] socket_recv: blocking, rx_head=");
             serial::put_dec(s->rx_head);
             serial::puts(" rx_tail=");
@@ -1720,14 +1717,14 @@ i32 socket_recv(i32 sock, void *buffer, usize max_len)
                 // Data arrived while we were registering - unblock and continue
                 current->state = task::TaskState::Ready;
                 net->unregister_rx_waiter(current);
-#if CONFIG_TCP_DEBUG
+#if VIPER_KERNEL_DEBUG_TCP
                 serial::puts("[tcp] socket_recv: data arrived during registration\n");
 #endif
                 continue;
             }
 
             task::yield();
-#if CONFIG_TCP_DEBUG
+#if VIPER_KERNEL_DEBUG_TCP
             serial::puts("[tcp] socket_recv: woke up\n");
 #endif
         }
@@ -1862,7 +1859,7 @@ static void on_congestion_event(TcpSocket *sock)
     // On timeout, cwnd = 1 segment (enter slow start)
     sock->cwnd = sock->mss;
 
-#if CONFIG_TCP_DEBUG
+#if VIPER_KERNEL_DEBUG_TCP
     serial::puts("[tcp] Congestion: ssthresh=");
     serial::put_dec(sock->ssthresh);
     serial::puts(" cwnd=");
@@ -1892,7 +1889,7 @@ static void on_ack_received(TcpSocket *sock, u32 bytes_acked)
         if (sock->dup_acks == TcpSocket::DUP_ACK_THRESHOLD)
         {
             // Fast retransmit (RFC 5681 Section 3.2)
-#if CONFIG_TCP_DEBUG
+#if VIPER_KERNEL_DEBUG_TCP
             serial::puts("[tcp] Fast retransmit triggered\n");
 #endif
 
@@ -1987,7 +1984,7 @@ static void retransmit_segment(TcpSocket *sock)
     sock->retransmit_time = timer::get_ticks() + sock->rto;
     sock->retransmit_count++;
 
-#if CONFIG_TCP_DEBUG
+#if VIPER_KERNEL_DEBUG_TCP
     serial::puts("[tcp] Retransmit #");
     serial::put_dec(sock->retransmit_count);
     serial::puts(" for port ");
@@ -2031,7 +2028,7 @@ void check_retransmit()
             if (s->retransmit_count >= TcpSocket::RETRANSMIT_MAX)
             {
                 // Too many retries, give up and close connection
-#if CONFIG_TCP_DEBUG
+#if VIPER_KERNEL_DEBUG_TCP
                 serial::puts("[tcp] Max retransmits exceeded, closing connection\n");
 #endif
                 s->state = TcpState::CLOSED;

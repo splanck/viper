@@ -33,21 +33,32 @@ asm volatile("svc #0" : "=r"(r0) : "r"(x8) : "memory");
 
 ## Error Codes
 
+ViperOS syscalls return a `VError` in `x0`:
+- `0` on success
+- negative values on failure
+
+The canonical list of error codes lives in `include/viperos/syscall_abi.hpp`. Common codes:
+
 | Code | Name | Description |
 |------|------|-------------|
 | 0 | VERR_OK | Success |
 | -1 | VERR_UNKNOWN | Unknown error |
 | -2 | VERR_INVALID_ARG | Invalid argument |
-| -3 | VERR_NOT_FOUND | Resource not found |
-| -4 | VERR_NO_MEMORY | Out of memory |
-| -5 | VERR_PERMISSION | Permission denied |
-| -6 | VERR_WOULD_BLOCK | Operation would block |
+| -3 | VERR_OUT_OF_MEMORY | Out of memory |
+| -4 | VERR_NOT_FOUND | Resource not found |
+| -5 | VERR_ALREADY_EXISTS | Resource already exists |
+| -6 | VERR_PERMISSION | Permission denied |
 | -7 | VERR_NOT_SUPPORTED | Operation not supported |
 | -8 | VERR_BUSY | Resource busy |
-| -9 | VERR_EXISTS | Resource already exists |
-| -10 | VERR_IO | I/O error |
-| -11 | VERR_TIMEOUT | Operation timed out |
-| -12 | VERR_INTERRUPTED | Operation interrupted |
+| -9 | VERR_TIMEOUT | Operation timed out |
+| -100 | VERR_INVALID_HANDLE | Invalid handle |
+| -300 | VERR_WOULD_BLOCK | Operation would block (non-blocking APIs) |
+| -301 | VERR_CHANNEL_CLOSED | Channel closed |
+| -302 | VERR_MSG_TOO_LARGE | Message too large |
+| -400 | VERR_POLL_FULL | Poll set full |
+| -500 | VERR_IO | I/O error |
+| -501 | VERR_NO_RESOURCE | No resource available |
+| -502 | VERR_CONNECTION | Connection error |
 
 ---
 
@@ -130,17 +141,18 @@ Spawn a new user process from an ELF file.
 
 **Arguments:**
 - x0: Path to ELF file (const char*)
-- x1: Parent directory handle or 0 for current (u32)
-- x2: Output process ID (u64*)
-- x3: Output task ID (u64*)
-- x4: Arguments string (const char*) or nullptr
+- x1: Display name (const char*) or 0 (kernel uses the path)
+- x2: Arguments string (const char*) or 0
 
-**Returns:** 0 on success, negative on error
+**Returns:**
+- x0: VError (0 on success)
+- x1: Process ID (u64) on success
+- x2: Task ID (u64) on success
 
 **Example:**
 ```cpp
 u64 pid, tid;
-i64 err = sys::spawn("/c/hello.elf", 0, &pid, &tid, "arg1 arg2");
+i64 err = sys::spawn("/c/hello.elf", nullptr, &pid, &tid, "arg1 arg2");
 ```
 
 ---
@@ -172,7 +184,7 @@ Wait for a specific child process to exit.
 - x1: Output exit status (i32*)
 
 **Returns:**
-- x1: PID of exited child (or negative error)
+- x1: PID of exited child (u64)
 
 **Example:**
 ```cpp
@@ -208,11 +220,14 @@ Create a new IPC channel.
 **Arguments:** None
 
 **Returns:**
-- x1: Channel handle (u32)
+- x1: Send endpoint handle (u32)
+- x2: Recv endpoint handle (u32)
 
 **Example:**
 ```cpp
-u32 ch = sys::channel_create();
+auto ch = sys::channel_create();
+u32 send_handle = static_cast<u32>(ch.val0);
+u32 recv_handle = static_cast<u32>(ch.val1);
 ```
 
 ---
@@ -225,13 +240,15 @@ Send a message on a channel.
 - x0: Channel handle (u32)
 - x1: Message buffer (const void*)
 - x2: Message length (usize, max 256 bytes)
+- x3: Handles to transfer (const u32*) or 0
+- x4: Handle count (u32, max 4)
 
-**Returns:** 0 on success, VERR_WOULD_BLOCK if channel full
+**Returns:** `x0 = 0` on success, `x0 = VERR_WOULD_BLOCK` if channel is full
 
 **Example:**
 ```cpp
 const char* msg = "hello";
-i64 err = sys::channel_send(ch, msg, 6);
+i64 err = sys::channel_send(send_handle, msg, 6);
 ```
 
 ---
@@ -244,14 +261,21 @@ Receive a message from a channel.
 - x0: Channel handle (u32)
 - x1: Buffer to receive into (void*)
 - x2: Buffer size (usize)
+- x3: Output handle array (u32*) or 0
+- x4: In/out handle count (u32*) or 0
+  - Input: maximum handles the output array can hold
+  - Output: number of handles transferred
 
 **Returns:**
-- x1: Number of bytes received
+- x1: Number of bytes received (u64)
+- x2: Number of handles transferred (u32)
 
 **Example:**
 ```cpp
 char buf[256];
-i64 len = sys::channel_recv(ch, buf, sizeof(buf));
+u32 handles[4];
+u32 handle_count = 4;
+i64 len = sys::channel_recv(recv_handle, buf, sizeof(buf), handles, &handle_count);
 ```
 
 ---
@@ -293,16 +317,30 @@ Add a handle to a poll set.
 
 ---
 
+### SYS_POLL_REMOVE (0x22)
+
+Remove a handle from a poll set.
+
+**Arguments:**
+- x0: Poll set handle (u32)
+- x1: Handle to remove (u32)
+
+**Returns:** 0 on success
+
+---
+
 ### SYS_POLL_WAIT (0x23)
 
 Wait for events in a poll set.
 
 **Arguments:**
 - x0: Poll set handle (u32)
-- x1: Timeout in milliseconds (i64, -1 = infinite)
+- x1: Output PollEvent array (PollEvent*)
+- x2: Maximum events to write (u32)
+- x3: Timeout in milliseconds (i64, -1 = infinite)
 
 **Returns:**
-- x1: Triggered event mask (u32)
+- x1: Number of PollEvent records written (i64, may be 0)
 
 ---
 
@@ -351,7 +389,7 @@ Open a file by path.
   - O_TRUNC (0x200): Truncate to zero
 
 **Returns:**
-- x1: File descriptor (i32, negative on error)
+- x1: File descriptor (i32) on success
 
 **Example:**
 ```cpp
@@ -785,7 +823,7 @@ Send ICMP ping and measure RTT.
 - x1: Timeout in milliseconds (u32)
 
 **Returns:**
-- x1: Round-trip time in milliseconds (or negative on timeout)
+- x1: Round-trip time in milliseconds (u64) on success
 
 ---
 
@@ -809,10 +847,10 @@ Read a character from console.
 **Arguments:** None
 
 **Returns:**
-- x1: Character (i32, or VERR_WOULD_BLOCK if none available)
+- x0: VError (0 on success, `VERR_WOULD_BLOCK` if none available)
+- x1: Character (i32) on success
 
 ---
-
 ### SYS_PUTCHAR (0xF2)
 
 Write a character to console.
@@ -834,6 +872,157 @@ Get system uptime.
 - x1: Milliseconds since boot (u64)
 
 ---
+
+## Device Management + Shared Memory (0x100-0x10F)
+
+These syscalls are used by user-space drivers and microkernel servers.
+
+> Note: The security model is currently in flux. Some device syscalls are gated by a temporary
+> “allow init descendants” bring-up policy in the kernel. See `os/bugs/microkernel.md`.
+
+### SYS_MAP_DEVICE (0x100)
+
+Map a device MMIO region into the calling process's address space.
+
+**Arguments:**
+- x0: Device physical address (u64)
+- x1: Size of region to map (u64)
+- x2: User virtual address hint (u64, 0 = kernel chooses)
+
+**Returns:**
+- x1: Virtual address of mapped region (u64) on success
+
+---
+
+### SYS_IRQ_REGISTER (0x101)
+
+Register to receive a specific IRQ.
+
+**Arguments:**
+- x0: IRQ number (u32, SPIs typically 32-255)
+
+**Returns:** 0 on success
+
+---
+
+### SYS_IRQ_WAIT (0x102)
+
+Wait for a registered IRQ to fire.
+
+**Arguments:**
+- x0: IRQ number (u32)
+- x1: Timeout in milliseconds (u64, currently TODO in kernel)
+
+**Returns:** 0 on success
+
+---
+
+### SYS_IRQ_ACK (0x103)
+
+Acknowledge an IRQ after handling (re-enables the IRQ).
+
+**Arguments:**
+- x0: IRQ number (u32)
+
+**Returns:** 0 on success
+
+---
+
+### SYS_DMA_ALLOC (0x104)
+
+Allocate a physically contiguous DMA buffer.
+
+**Arguments:**
+- x0: Size in bytes (u64)
+- x1: Output pointer for physical address (u64*)
+
+**Returns:**
+- x1: Virtual address of mapped buffer (u64) on success
+
+---
+
+### SYS_DMA_FREE (0x105)
+
+Free a DMA buffer.
+
+**Arguments:**
+- x0: Virtual address returned by `SYS_DMA_ALLOC` (u64)
+
+**Returns:** 0 on success
+
+---
+
+### SYS_VIRT_TO_PHYS (0x106)
+
+Translate a user virtual address to a physical address (for DMA programming).
+
+**Arguments:**
+- x0: Virtual address (u64)
+
+**Returns:**
+- x1: Physical address (u64) on success
+
+---
+
+### SYS_DEVICE_ENUM (0x107)
+
+Enumerate known device MMIO regions for the platform.
+
+**Arguments:**
+- x0: Output array pointer (DeviceInfo*) or 0
+- x1: Max entries (u32)
+
+**Returns:**
+- x1: Number of devices (u64)
+
+---
+
+### SYS_IRQ_UNREGISTER (0x108)
+
+Unregister from an IRQ and release ownership.
+
+**Arguments:**
+- x0: IRQ number (u32)
+
+**Returns:** 0 on success
+
+---
+
+### SYS_SHM_CREATE (0x109)
+
+Create a shared memory object, map it into the creator, and return a transferable handle.
+
+**Arguments:**
+- x0: Size in bytes (u64)
+
+**Returns:**
+- x1: Shared memory handle (u32)
+- x2: Virtual address where it was mapped (u64)
+- x3: Size in bytes (u64)
+
+---
+
+### SYS_SHM_MAP (0x10A)
+
+Map a shared memory object into the calling process.
+
+**Arguments:**
+- x0: Shared memory handle (u32)
+
+**Returns:**
+- x1: Virtual address where it was mapped (u64)
+- x2: Size in bytes (u64)
+
+---
+
+### SYS_SHM_UNMAP (0x10B)
+
+Unmap a previously mapped shared memory region.
+
+**Arguments:**
+- x0: Virtual address of mapping (u64)
+
+**Returns:** 0 on success
 
 ## Using Syscalls in C++
 
