@@ -96,16 +96,16 @@ constexpr u32 MAX_TICKET_LIFETIME = 604800;
  */
 struct SessionTicket
 {
-    bool valid;                         ///< Whether this ticket is valid.
-    u32 lifetime;                       ///< Ticket lifetime in seconds.
-    u32 age_add;                        ///< Obfuscated ticket age adder.
-    u8 nonce[8];                        ///< Ticket nonce.
-    u8 nonce_len;                       ///< Nonce length.
-    u8 ticket[MAX_TICKET_SIZE];         ///< Ticket value.
-    usize ticket_len;                   ///< Ticket length.
-    u8 resumption_master_secret[32];    ///< Resumption master secret.
-    u64 issue_time;                     ///< Time ticket was issued (ms since boot).
-    char hostname[128];                 ///< Hostname associated with ticket.
+    bool valid;                      ///< Whether this ticket is valid.
+    u32 lifetime;                    ///< Ticket lifetime in seconds.
+    u32 age_add;                     ///< Obfuscated ticket age adder.
+    u8 nonce[8];                     ///< Ticket nonce.
+    u8 nonce_len;                    ///< Nonce length.
+    u8 ticket[MAX_TICKET_SIZE];      ///< Ticket value.
+    usize ticket_len;                ///< Ticket length.
+    u8 resumption_master_secret[32]; ///< Resumption master secret.
+    u64 issue_time;                  ///< Time ticket was issued (ms since boot).
+    char hostname[128];              ///< Hostname associated with ticket.
 };
 
 /**
@@ -210,9 +210,9 @@ struct TlsSession
 
     // Session resumption support
     u8 resumption_master_secret[32]; /**< For deriving PSK for resumption. */
-    SessionTicket session_ticket;     /**< Stored session ticket. */
-    bool resumed;                     /**< True if this session was resumed. */
-    SessionTicket *offered_ticket;    /**< Ticket offered during handshake. */
+    SessionTicket session_ticket;    /**< Stored session ticket. */
+    bool resumed;                    /**< True if this session was resumed. */
+    SessionTicket *offered_ticket;   /**< Ticket offered during handshake. */
 };
 
 /**

@@ -5,6 +5,10 @@
 #include "../../sched/scheduler.hpp"
 #include "../../sched/task.hpp"
 
+#ifndef CONFIG_VIRTIO_NET_IRQ_DEBUG
+#define CONFIG_VIRTIO_NET_IRQ_DEBUG 0
+#endif
+
 /**
  * @file net.cpp
  * @brief Virtio-net driver implementation.
@@ -657,11 +661,13 @@ void NetDevice::rx_irq_handler()
 {
     // Acknowledge the virtio interrupt
     u32 isr = read_isr();
+#if CONFIG_VIRTIO_NET_IRQ_DEBUG
     serial::puts("[virtio-net] IRQ: isr=");
     serial::put_hex(isr);
     serial::puts(" waiters=");
     serial::put_dec(rx_waiter_count_);
     serial::puts("\n");
+#endif
 
     if (isr)
     {

@@ -1,0 +1,221 @@
+module starfield;
+
+// ============================================================================
+// STARFIELD.VIPER - 3D Starfield Animation
+// ============================================================================
+// Classic "warp speed" starfield effect where stars fly toward the viewer.
+// Uses perspective projection to simulate 3D depth.
+// ============================================================================
+
+import "./colors";
+
+// Star entity representing a single star in 3D space
+entity Star {
+    expose Number x;
+    expose Number y;
+    expose Number z;
+    expose Number speed;
+    expose Integer color;
+
+    expose func init(maxZ: Number) {
+        reset(maxZ);
+    }
+
+    expose func reset(maxZ: Number) {
+        x = (Viper.Random.Next() - 0.5) * 2000.0;
+        y = (Viper.Random.Next() - 0.5) * 2000.0;
+        z = Viper.Random.Next() * maxZ;
+        speed = 0.5 + Viper.Random.Next() * 1.5;
+        var brightness = 180 + Viper.Random.NextInt(76);
+        var blueTint = Viper.Random.NextInt(40);
+        color = Viper.Graphics.Color.RGB(brightness - blueTint, brightness - blueTint, brightness);
+    }
+
+    expose func update(deltaZ: Number, maxZ: Number) {
+        z = z - deltaZ * speed;
+        if z <= 1.0 {
+            reset(maxZ);
+            z = maxZ;
+        }
+    }
+
+    expose func getScreenX(centerX: Integer, fov: Number) -> Integer {
+        if z <= 0.0 {
+            return -1;
+        }
+        return centerX + Viper.Math.Floor((x * fov) / z);
+    }
+
+    expose func getScreenY(centerY: Integer, fov: Number) -> Integer {
+        if z <= 0.0 {
+            return -1;
+        }
+        return centerY + Viper.Math.Floor((y * fov) / z);
+    }
+
+    expose func getSize(maxZ: Number) -> Integer {
+        var size = Viper.Math.Floor(4.0 * (1.0 - z / maxZ));
+        if size < 1 {
+            size = 1;
+        }
+        return size;
+    }
+
+    expose func getBrightness(maxZ: Number) -> Number {
+        return 1.0 - (z / maxZ) * 0.7;
+    }
+}
+
+// Starfield manager
+entity Starfield {
+    expose List[Star] stars;
+    expose Integer numStars;
+    expose Number maxDepth;
+    expose Number speed;
+    expose Number fov;
+    expose Boolean warpMode;
+
+    expose func init(count: Integer) {
+        numStars = count;
+        maxDepth = 1000.0;
+        speed = 8.0;
+        fov = 256.0;
+        warpMode = false;
+
+        stars = [];
+        var i = 0;
+        while i < numStars {
+            var star = new Star();
+            star.init(maxDepth);
+            star.z = (i * maxDepth) / numStars;
+            stars.add(star);
+            i = i + 1;
+        }
+    }
+
+    expose func update() {
+        var effectiveSpeed = speed;
+        if warpMode {
+            effectiveSpeed = speed * 3.0;
+        }
+
+        var i = 0;
+        while i < stars.count() {
+            var star = stars.get(i);
+            star.update(effectiveSpeed, maxDepth);
+            i = i + 1;
+        }
+    }
+
+    expose func draw(canvas: Viper.Graphics.Canvas, width: Integer, height: Integer) {
+        var centerX = width / 2;
+        var centerY = height / 2;
+
+        var i = 0;
+        while i < stars.count() {
+            var star = stars.get(i);
+
+            var sx = star.getScreenX(centerX, fov);
+            var sy = star.getScreenY(centerY, fov);
+
+            if sx >= 0 and sx < width and sy >= 0 and sy < height {
+                var size = star.getSize(maxDepth);
+                var brightness = star.getBrightness(maxDepth);
+                var drawColor = colors.fadeColor(star.color, brightness);
+
+                if warpMode {
+                    var oldZ = star.z + speed * 3.0 * star.speed;
+                    if oldZ < maxDepth {
+                        var oldSx = centerX + Viper.Math.Floor((star.x * fov) / oldZ);
+                        var oldSy = centerY + Viper.Math.Floor((star.y * fov) / oldZ);
+                        canvas.Line(oldSx, oldSy, sx, sy, drawColor);
+                    }
+                }
+
+                if size <= 1 {
+                    canvas.Plot(sx, sy, drawColor);
+                } else if size == 2 {
+                    canvas.Plot(sx, sy, drawColor);
+                    canvas.Plot(sx + 1, sy, drawColor);
+                    canvas.Plot(sx, sy + 1, drawColor);
+                    canvas.Plot(sx + 1, sy + 1, drawColor);
+                } else {
+                    canvas.Disc(sx, sy, size, drawColor);
+                }
+            }
+            i = i + 1;
+        }
+    }
+
+    expose func toggleWarp() {
+        warpMode = not warpMode;
+    }
+}
+
+// Run the starfield demo
+func run(canvas: Viper.Graphics.Canvas) {
+    var width = canvas.Width;
+    var height = canvas.Height;
+
+    colors.initColors();
+
+    var field = new Starfield();
+    field.init(500);
+
+    var running = true;
+    var frameCount = 0;
+    var warpDebounce = 0;
+
+    while running {
+        canvas.Poll();
+
+        if canvas.ShouldClose != 0 {
+            running = false;
+        }
+
+        if canvas.KeyHeld(27) != 0 {
+            running = false;
+        }
+        if canvas.KeyHeld(81) != 0 {
+            running = false;
+        }
+
+        if canvas.KeyHeld(32) != 0 and warpDebounce == 0 {
+            field.toggleWarp();
+            warpDebounce = 15;
+        }
+        if warpDebounce > 0 {
+            warpDebounce = warpDebounce - 1;
+        }
+
+        if canvas.KeyHeld(265) != 0 {
+            field.speed = field.speed + 0.2;
+            if field.speed > 30.0 {
+                field.speed = 30.0;
+            }
+        }
+        if canvas.KeyHeld(264) != 0 {
+            field.speed = field.speed - 0.2;
+            if field.speed < 1.0 {
+                field.speed = 1.0;
+            }
+        }
+
+        canvas.Clear(colors.BLACK);
+
+        field.update();
+        field.draw(canvas, width, height);
+
+        canvas.Text(10, 10, "STARFIELD DEMO", colors.WHITE);
+        canvas.Text(10, 25, "UP/DOWN: Speed | SPACE: Warp | ESC: Exit", colors.GRAY);
+
+        if field.warpMode {
+            canvas.Text(10, 45, "** WARP ENGAGED **", colors.CYAN);
+        }
+
+        canvas.Flip();
+        frameCount = frameCount + 1;
+
+        Viper.Time.SleepMs(16);
+    }
+}

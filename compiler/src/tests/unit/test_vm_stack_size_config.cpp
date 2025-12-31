@@ -16,12 +16,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "il/build/IRBuilder.hpp"
+#include "tests/common/PosixCompat.h"
+#include "tests/common/WaitCompat.hpp"
 #include "viper/vm/VM.hpp"
 #include <cassert>
 #include <cstdlib>
 #include <string>
-#include "tests/common/WaitCompat.hpp"
-#include "tests/common/PosixCompat.h"
 
 /// Build a simple module that allocates 'bytes' on the stack and returns 0.
 static il::core::Module buildAllocaModule(int64_t bytes)

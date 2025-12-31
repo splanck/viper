@@ -150,7 +150,8 @@ void ProcedureLowering::emitProcedureIL(LoweringContext &ctx)
         if (ctx.function)
         {
             auto &blocks = ctx.function->blocks;
-            blocks.erase(std::remove_if(blocks.begin(), blocks.end(),
+            blocks.erase(std::remove_if(blocks.begin(),
+                                        blocks.end(),
                                         [](const auto &bb) { return bb.instructions.empty(); }),
                          blocks.end());
         }

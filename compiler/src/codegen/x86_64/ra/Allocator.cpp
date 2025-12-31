@@ -315,7 +315,8 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
                     for (auto vreg : activeGPR_)
                     {
                         auto it = states_.find(vreg);
-                        if (it != states_.end() && it->second.hasPhys && it->second.phys == physDest)
+                        if (it != states_.end() && it->second.hasPhys &&
+                            it->second.phys == physDest)
                         {
                             // Skip spill if source vreg == vreg in dest register (no-op move)
                             if (vreg == srcVreg)
@@ -475,9 +476,7 @@ void LinearScanAllocator::releaseActiveForBlock(MBasicBlock &block)
 {
     // Helper to check if an instruction is a terminator
     auto isTerminator = [](MOpcode opc)
-    {
-        return opc == MOpcode::JMP || opc == MOpcode::JCC || opc == MOpcode::RET;
-    };
+    { return opc == MOpcode::JMP || opc == MOpcode::JCC || opc == MOpcode::RET; };
 
     // Find insertion point - before the terminator if present
     std::size_t insertPos = block.instructions.size();

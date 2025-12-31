@@ -799,6 +799,13 @@ bool implementsInterface(const std::string &typeName, const std::string &interfa
 /// @details Used for uninstantiated generic type parameters.
 TypeRef typeParam(const std::string &name);
 
+/// @brief Create a runtime class type (pointer type with a name).
+/// @param name The full runtime class name (e.g., "Viper.Graphics.Canvas").
+/// @return A new pointer type that carries the class name.
+/// @details Used for runtime classes where we need to track the type name
+/// for method call resolution.
+TypeRef runtimeClass(const std::string &name);
+
 /// @}
 
 } // namespace types

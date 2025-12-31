@@ -475,6 +475,13 @@ TypeRef typeParam(const std::string &name)
     return std::make_shared<ViperType>(TypeKindSem::TypeParam, name);
 }
 
+TypeRef runtimeClass(const std::string &name)
+{
+    // Create a Ptr type with the runtime class name
+    // This allows us to track the class name for method resolution
+    return std::make_shared<ViperType>(TypeKindSem::Ptr, name);
+}
+
 } // namespace types
 
 //=============================================================================

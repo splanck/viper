@@ -34,6 +34,7 @@
 #include "tests/TestHarness.hpp"
 #include "tools/ilc/cmd_codegen_arm64.hpp"
 
+#include "tests/common/PosixCompat.h"
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
@@ -42,7 +43,6 @@
 #include <iostream>
 #include <sstream>
 #include <string>
-#include "tests/common/PosixCompat.h"
 
 using namespace viper::tests;
 using namespace viper::tools::ilc;

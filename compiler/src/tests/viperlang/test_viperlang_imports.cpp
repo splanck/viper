@@ -13,10 +13,10 @@
 #include "support/source_manager.hpp"
 #include "tests/TestHarness.hpp"
 
+#include "tests/common/PosixCompat.h"
 #include <filesystem>
 #include <fstream>
 #include <string>
-#include "tests/common/PosixCompat.h"
 
 using namespace il::frontends::viperlang;
 using namespace il::support;

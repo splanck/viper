@@ -61,8 +61,8 @@ extern "C" void vm_trap(const char *msg)
 #define rmdir_p(path) _rmdir(path)
 #define getpid _getpid
 #else
-#include <sys/stat.h>
 #include "tests/common/PosixCompat.h"
+#include <sys/stat.h>
 #define mkdir_p(path) mkdir(path, 0755)
 #define rmdir_p(path) rmdir(path)
 #endif

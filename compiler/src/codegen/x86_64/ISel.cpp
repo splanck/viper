@@ -567,8 +567,8 @@ void ISel::foldSibAddressing(MFunction &func) const
 
     for (auto &block : func.blocks)
     {
-        std::unordered_map<uint16_t, ShlInfo> shlDefs;  // result vreg -> info
-        std::unordered_map<uint16_t, AddInfo> addDefs;  // result vreg -> info
+        std::unordered_map<uint16_t, ShlInfo> shlDefs; // result vreg -> info
+        std::unordered_map<uint16_t, AddInfo> addDefs; // result vreg -> info
         std::unordered_map<uint16_t, std::size_t> useCount;
 
         // First pass: record SHL and ADD definitions, count uses
@@ -600,8 +600,8 @@ void ISel::foldSibAddressing(MFunction &func) const
             {
                 const auto *dst = asReg(instr.operands[0]);
                 const auto *src = asReg(instr.operands[1]);
-                if (dst && src && !dst->isPhys && !src->isPhys &&
-                    dst->cls == RegClass::GPR && src->cls == RegClass::GPR)
+                if (dst && src && !dst->isPhys && !src->isPhys && dst->cls == RegClass::GPR &&
+                    src->cls == RegClass::GPR)
                 {
                     // Check if src is from a SHL - then dst is base + shifted
                     if (shlDefs.count(src->idOrPhys))

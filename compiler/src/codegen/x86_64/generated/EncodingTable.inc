@@ -299,4 +299,3 @@ static constexpr std::array<EncodingRow, 46> kEncodingTable = {{
      makePattern(OperandKind::Mem, OperandKind::Reg, OperandKind::None),
      EncodingFlag::RequiresModRM},
 }};
-

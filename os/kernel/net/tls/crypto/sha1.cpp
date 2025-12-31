@@ -16,20 +16,14 @@ namespace viper::crypto
 {
 
 // SHA-1 initial hash values
-static const u32 H_INIT[5] = {
-    0x67452301,
-    0xefcdab89,
-    0x98badcfe,
-    0x10325476,
-    0xc3d2e1f0
-};
+static const u32 H_INIT[5] = {0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476, 0xc3d2e1f0};
 
 // SHA-1 round constants
 static const u32 K[4] = {
-    0x5a827999,  // rounds 0-19
-    0x6ed9eba1,  // rounds 20-39
-    0x8f1bbcdc,  // rounds 40-59
-    0xca62c1d6   // rounds 60-79
+    0x5a827999, // rounds 0-19
+    0x6ed9eba1, // rounds 20-39
+    0x8f1bbcdc, // rounds 40-59
+    0xca62c1d6  // rounds 60-79
 };
 
 /**
@@ -86,10 +80,8 @@ static void sha1_transform(u32 state[5], const u8 block[64])
     // Prepare message schedule (first 16 words from block)
     for (int i = 0; i < 16; i++)
     {
-        W[i] = (static_cast<u32>(block[i * 4]) << 24) |
-               (static_cast<u32>(block[i * 4 + 1]) << 16) |
-               (static_cast<u32>(block[i * 4 + 2]) << 8) |
-               static_cast<u32>(block[i * 4 + 3]);
+        W[i] = (static_cast<u32>(block[i * 4]) << 24) | (static_cast<u32>(block[i * 4 + 1]) << 16) |
+               (static_cast<u32>(block[i * 4 + 2]) << 8) | static_cast<u32>(block[i * 4 + 3]);
     }
 
     // Extend message schedule (words 16-79)

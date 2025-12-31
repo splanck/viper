@@ -453,7 +453,8 @@ struct Ipv6Addr
      */
     Ipv6Addr solicited_node_multicast() const
     {
-        return {{0xff, 0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01, 0xff, bytes[13], bytes[14], bytes[15]}};
+        return {
+            {0xff, 0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01, 0xff, bytes[13], bytes[14], bytes[15]}};
     }
 } __attribute__((packed));
 

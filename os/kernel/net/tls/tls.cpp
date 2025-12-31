@@ -1439,12 +1439,8 @@ void tls_compute_resumption_psk(const SessionTicket *ticket, u8 *psk)
         return;
 
     // PSK = HKDF-Expand-Label(resumption_master_secret, "resumption", ticket_nonce, 32)
-    crypto::hkdf_expand_label(ticket->resumption_master_secret,
-                              "resumption",
-                              ticket->nonce,
-                              ticket->nonce_len,
-                              psk,
-                              32);
+    crypto::hkdf_expand_label(
+        ticket->resumption_master_secret, "resumption", ticket->nonce, ticket->nonce_len, psk, 32);
 }
 
 /** @copydoc viper::tls::tls_ticket_valid */

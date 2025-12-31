@@ -15,10 +15,10 @@
 
 #include "viper/runtime/rt.h"
 
+#include "tests/common/PosixCompat.h"
+#include "tests/common/WaitCompat.hpp"
 #include <cassert>
 #include <string>
-#include "tests/common/WaitCompat.hpp"
-#include "tests/common/PosixCompat.h"
 
 namespace
 {

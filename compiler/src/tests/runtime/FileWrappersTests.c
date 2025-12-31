@@ -12,9 +12,9 @@
 // Links: docs/codemap.md
 #include "viper/runtime/rt.h"
 
+#include "tests/common/PosixCompat.h"
 #include <assert.h>
 #include <sys/stat.h>
-#include "tests/common/PosixCompat.h"
 
 /// @brief Entry point for validating basic file wrapper behaviours.
 int main(void)

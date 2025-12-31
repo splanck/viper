@@ -645,6 +645,16 @@ void Sema::initRuntimeFunctions()
     // This registers all 1002 Viper.* namespace functions with their return types
 
     // =========================================================================
+    // RUNTIME CLASSES (from runtime.def RT_CLASS_BEGIN entries)
+    // =========================================================================
+    // Register runtime classes as named ptr types so they can be used in
+    // type annotations (e.g., "canvas: Viper.Graphics.Canvas") and for
+    // method call resolution.
+    typeRegistry_["Viper.Graphics.Canvas"] = types::runtimeClass("Viper.Graphics.Canvas");
+    typeRegistry_["Viper.Graphics.Color"] = types::runtimeClass("Viper.Graphics.Color");
+    typeRegistry_["Viper.Graphics.Pixels"] = types::runtimeClass("Viper.Graphics.Pixels");
+
+    // =========================================================================
     // BITS
     // =========================================================================
     runtimeFunctions_["Viper.Bits.And"] = types::integer();
@@ -882,20 +892,37 @@ void Sema::initRuntimeFunctions()
     runtimeFunctions_["Viper.Fmt.Size"] = types::string();
 
     // =========================================================================
-    // GRAPHICS
+    // GRAPHICS - CANVAS
     // =========================================================================
-    runtimeFunctions_["Viper.Graphics.Canvas.New"] = types::ptr();
+    runtimeFunctions_["Viper.Graphics.Canvas.New"] = types::runtimeClass("Viper.Graphics.Canvas");
     runtimeFunctions_["Viper.Graphics.Canvas.Clear"] = types::voidType();
     runtimeFunctions_["Viper.Graphics.Canvas.Plot"] = types::voidType();
     runtimeFunctions_["Viper.Graphics.Canvas.Line"] = types::voidType();
     runtimeFunctions_["Viper.Graphics.Canvas.Box"] = types::voidType();
-    runtimeFunctions_["Viper.Graphics.Canvas.BoxFill"] = types::voidType();
-    runtimeFunctions_["Viper.Graphics.Canvas.Circle"] = types::voidType();
-    runtimeFunctions_["Viper.Graphics.Canvas.CircleFill"] = types::voidType();
+    runtimeFunctions_["Viper.Graphics.Canvas.Frame"] = types::voidType();
+    runtimeFunctions_["Viper.Graphics.Canvas.Disc"] = types::voidType();
+    runtimeFunctions_["Viper.Graphics.Canvas.Ring"] = types::voidType();
     runtimeFunctions_["Viper.Graphics.Canvas.Text"] = types::voidType();
+    runtimeFunctions_["Viper.Graphics.Canvas.TextBg"] = types::voidType();
+    runtimeFunctions_["Viper.Graphics.Canvas.Poll"] = types::integer();
+    runtimeFunctions_["Viper.Graphics.Canvas.Flip"] = types::voidType();
+    runtimeFunctions_["Viper.Graphics.Canvas.KeyHeld"] = types::integer();
     runtimeFunctions_["Viper.Graphics.Canvas.GetPixel"] = types::integer();
     runtimeFunctions_["Viper.Graphics.Canvas.get_Width"] = types::integer();
     runtimeFunctions_["Viper.Graphics.Canvas.get_Height"] = types::integer();
+    runtimeFunctions_["Viper.Graphics.Canvas.get_ShouldClose"] = types::integer();
+    runtimeFunctions_["Viper.Graphics.Canvas.ThickLine"] = types::voidType();
+    runtimeFunctions_["Viper.Graphics.Canvas.RoundBox"] = types::voidType();
+    runtimeFunctions_["Viper.Graphics.Canvas.RoundFrame"] = types::voidType();
+    runtimeFunctions_["Viper.Graphics.Canvas.Blit"] = types::voidType();
+    runtimeFunctions_["Viper.Graphics.Canvas.BlitRegion"] = types::voidType();
+    runtimeFunctions_["Viper.Graphics.Canvas.BlitAlpha"] = types::voidType();
+    runtimeFunctions_["Viper.Graphics.Canvas.Triangle"] = types::voidType();
+    runtimeFunctions_["Viper.Graphics.Canvas.TriangleFrame"] = types::voidType();
+    runtimeFunctions_["Viper.Graphics.Canvas.Ellipse"] = types::voidType();
+    runtimeFunctions_["Viper.Graphics.Canvas.EllipseFrame"] = types::voidType();
+    runtimeFunctions_["Viper.Graphics.Canvas.FloodFill"] = types::voidType();
+    runtimeFunctions_["Viper.Graphics.Canvas.SaveBmp"] = types::integer();
     runtimeFunctions_["Viper.Graphics.Color.RGB"] = types::integer();
     runtimeFunctions_["Viper.Graphics.Color.RGBA"] = types::integer();
     runtimeFunctions_["Viper.Graphics.Color.Red"] = types::integer();
@@ -903,12 +930,22 @@ void Sema::initRuntimeFunctions()
     runtimeFunctions_["Viper.Graphics.Color.Blue"] = types::integer();
     runtimeFunctions_["Viper.Graphics.Color.Alpha"] = types::integer();
     runtimeFunctions_["Viper.Graphics.Color.Blend"] = types::integer();
-    runtimeFunctions_["Viper.Graphics.Pixels.New"] = types::ptr();
-    runtimeFunctions_["Viper.Graphics.Pixels.Load"] = types::ptr();
+    runtimeFunctions_["Viper.Graphics.Pixels.New"] = types::runtimeClass("Viper.Graphics.Pixels");
+    runtimeFunctions_["Viper.Graphics.Pixels.LoadBmp"] =
+        types::runtimeClass("Viper.Graphics.Pixels");
     runtimeFunctions_["Viper.Graphics.Pixels.Get"] = types::integer();
     runtimeFunctions_["Viper.Graphics.Pixels.Set"] = types::voidType();
     runtimeFunctions_["Viper.Graphics.Pixels.get_Width"] = types::integer();
     runtimeFunctions_["Viper.Graphics.Pixels.get_Height"] = types::integer();
+    runtimeFunctions_["Viper.Graphics.Pixels.Clear"] = types::voidType();
+    runtimeFunctions_["Viper.Graphics.Pixels.Clone"] = types::runtimeClass("Viper.Graphics.Pixels");
+    runtimeFunctions_["Viper.Graphics.Pixels.Copy"] = types::voidType();
+    runtimeFunctions_["Viper.Graphics.Pixels.Fill"] = types::voidType();
+    runtimeFunctions_["Viper.Graphics.Pixels.ToBytes"] = types::ptr();
+    runtimeFunctions_["Viper.Graphics.Pixels.SaveBmp"] = types::integer();
+    runtimeFunctions_["Viper.Graphics.Pixels.FlipH"] = types::runtimeClass("Viper.Graphics.Pixels");
+    runtimeFunctions_["Viper.Graphics.Pixels.FlipV"] = types::runtimeClass("Viper.Graphics.Pixels");
+    runtimeFunctions_["Viper.Graphics.Pixels.Scale"] = types::runtimeClass("Viper.Graphics.Pixels");
 
     // =========================================================================
     // INPUT

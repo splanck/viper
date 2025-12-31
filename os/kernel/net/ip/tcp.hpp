@@ -143,6 +143,7 @@ struct TcpSocket
     u16 remote_port;
     Ipv4Addr remote_ip;
     bool in_use;
+    u32 owner_viper_id; // 0 = kernel/unowned
 
     // Sequence numbers
     u32 snd_una; // Send unacknowledged
@@ -273,6 +274,51 @@ void rx_segment(const Ipv4Addr &src, const void *data, usize len);
  * @return Socket index on success, or -1 if none are available.
  */
 i32 socket_create();
+
+/**
+ * @brief Allocate a TCP socket owned by a specific Viper.
+ *
+ * @details
+ * User-space sockets are global in the TCP stack; this owner tag is used to:
+ * - Scope poll readiness (HANDLE_NETWORK_RX) to the current process.
+ * - Enforce basic cross-process isolation in socket syscalls.
+ *
+ * Kernel callers should continue to use @ref socket_create (owner ID = 0).
+ *
+ * @param owner_viper_id Owning Viper ID.
+ * @return Socket index on success, or -1 if none are available.
+ */
+i32 socket_create(u32 owner_viper_id);
+
+/**
+ * @brief Check whether a socket is owned by the given Viper.
+ *
+ * @param sock Socket index.
+ * @param owner_viper_id Expected owner Viper ID.
+ * @return `true` if the socket is valid, in-use, and owned by the Viper.
+ */
+bool socket_owned_by(i32 sock, u32 owner_viper_id);
+
+/**
+ * @brief Check if any socket owned by a Viper has receive data available.
+ *
+ * @param owner_viper_id Owning Viper ID.
+ * @return `true` if any owned socket has buffered RX data.
+ */
+bool any_socket_ready(u32 owner_viper_id);
+
+/**
+ * @brief Force-close all sockets owned by a Viper.
+ *
+ * @details
+ * Used for cleanup on process exit to avoid leaked sockets keeping the global
+ * HANDLE_NETWORK_RX pseudo-handle permanently "ready" for other processes.
+ *
+ * This is a best-effort cleanup and does not attempt a graceful FIN teardown.
+ *
+ * @param owner_viper_id Owning Viper ID.
+ */
+void close_all_owned(u32 owner_viper_id);
 
 /**
  * @brief Bind a TCP socket to a local port.

@@ -14,11 +14,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt.hpp"
+#include "tests/common/PosixCompat.h"
+#include "tests/common/WaitCompat.hpp"
 #include <cassert>
 #include <stdint.h>
 #include <string>
-#include "tests/common/WaitCompat.hpp"
-#include "tests/common/PosixCompat.h"
 
 #if SIZE_MAX < INT64_MAX
 

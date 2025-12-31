@@ -16,14 +16,14 @@
 #include "il/build/IRBuilder.hpp"
 #include "vm/VM.hpp"
 
+#include "tests/common/PosixCompat.h"
+#include "tests/common/WaitCompat.hpp"
 #include <array>
 #include <cassert>
 #include <cmath>
 #include <cstdint>
 #include <limits>
 #include <string>
-#include "tests/common/WaitCompat.hpp"
-#include "tests/common/PosixCompat.h"
 #include <utility>
 
 using namespace il::core;

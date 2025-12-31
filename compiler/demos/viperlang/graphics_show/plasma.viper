@@ -1,0 +1,302 @@
+module plasma;
+
+// ============================================================================
+// PLASMA.VIPER - Classic Plasma Effect
+// ============================================================================
+// Creates a colorful animated plasma effect using sine wave combinations.
+// This is a classic demoscene effect from the 90s.
+// Uses a lookup table for fast sine calculation.
+// ============================================================================
+
+import "./colors";
+
+// Precomputed sine table (256 entries, values 0-255)
+var sinTable: List[Integer];
+var PI: Number;
+
+func initSinTable() {
+    PI = 3.14159265358979;
+    sinTable = [];
+
+    var i = 0;
+    while i < 256 {
+        var angle = (i * 2.0 * PI) / 256.0;
+        var s = Viper.Math.Sin(angle);
+        var value = Viper.Math.Floor((s + 1.0) * 127.5);
+        sinTable.add(value);
+        i = i + 1;
+    }
+}
+
+func fastSin(x: Integer) -> Integer {
+    var idx = x;
+    while idx < 0 {
+        idx = idx + 256;
+    }
+    while idx >= 256 {
+        idx = idx - 256;
+    }
+    return sinTable.get(idx);
+}
+
+// Plasma renderer using a pixel buffer for speed
+entity PlasmaRenderer {
+    expose Viper.Graphics.Pixels buffer;
+    expose List[Integer] palette;
+    expose Integer time;
+    expose Integer width;
+    expose Integer height;
+    expose Integer mode;  // Different plasma patterns
+
+    expose func init(w: Integer, h: Integer) {
+        width = w;
+        height = h;
+        time = 0;
+        mode = 0;
+
+        buffer = new Viper.Graphics.Pixels(width, height);
+        generatePalette();
+    }
+
+    expose func generatePalette() {
+        palette = [];
+
+        // Create a 256-color palette with smooth gradients
+        var i = 0;
+        while i < 256 {
+            var r: Integer;
+            var g: Integer;
+            var b: Integer;
+
+            // Cycle through colors based on index
+            var phase = i;
+
+            // Use sine waves for smooth color transitions
+            r = Viper.Math.Floor(127.5 + 127.5 * Viper.Math.Sin((phase * 2.0 * PI) / 256.0));
+            g = Viper.Math.Floor(127.5 + 127.5 * Viper.Math.Sin((phase * 2.0 * PI) / 256.0 + PI * 2.0 / 3.0));
+            b = Viper.Math.Floor(127.5 + 127.5 * Viper.Math.Sin((phase * 2.0 * PI) / 256.0 + PI * 4.0 / 3.0));
+
+            var color = Viper.Graphics.Color.RGB(r, g, b);
+            palette.add(color);
+            i = i + 1;
+        }
+    }
+
+    expose func generateFirePalette() {
+        palette = [];
+
+        var i = 0;
+        while i < 256 {
+            var r: Integer;
+            var g: Integer;
+            var b: Integer;
+
+            if i < 64 {
+                r = i * 4;
+                g = 0;
+                b = 0;
+            } else if i < 128 {
+                r = 255;
+                g = (i - 64) * 4;
+                b = 0;
+            } else if i < 192 {
+                r = 255;
+                g = 255;
+                b = (i - 128) * 4;
+            } else {
+                r = 255;
+                g = 255;
+                b = 255;
+            }
+
+            var color = Viper.Graphics.Color.RGB(r, g, b);
+            palette.add(color);
+            i = i + 1;
+        }
+    }
+
+    expose func generateOceanPalette() {
+        palette = [];
+
+        var i = 0;
+        while i < 256 {
+            var r: Integer;
+            var g: Integer;
+            var b: Integer;
+
+            // Blue-green ocean colors
+            r = 0;
+            g = Viper.Math.Floor(64.0 + 64.0 * Viper.Math.Sin((i * 2.0 * PI) / 128.0));
+            b = Viper.Math.Floor(128.0 + 127.0 * Viper.Math.Sin((i * 2.0 * PI) / 256.0));
+
+            var color = Viper.Graphics.Color.RGB(r, g, b);
+            palette.add(color);
+            i = i + 1;
+        }
+    }
+
+    expose func update() {
+        time = time + 1;
+
+        var y = 0;
+        while y < height {
+            var x = 0;
+            while x < width {
+                var value: Integer;
+
+                if mode == 0 {
+                    // Classic plasma
+                    var v1 = fastSin(x + time);
+                    var v2 = fastSin(y + time / 2);
+                    var v3 = fastSin((x + y + time) / 2);
+                    var v4 = fastSin(Viper.Math.Floor(Viper.Math.Sqrt(x * x + y * y) + time));
+                    value = (v1 + v2 + v3 + v4) / 4;
+                } else if mode == 1 {
+                    // Circular ripples
+                    var cx = width / 2;
+                    var cy = height / 2;
+                    var dx = x - cx;
+                    var dy = y - cy;
+                    var dist = Viper.Math.Sqrt(dx * dx + dy * dy);
+                    value = fastSin(Viper.Math.Floor(dist * 2.0 - time * 3));
+                } else if mode == 2 {
+                    // Diamond pattern
+                    var dx = x - width / 2;
+                    var dy = y - height / 2;
+                    if dx < 0 { dx = 0 - dx; }
+                    if dy < 0 { dy = 0 - dy; }
+                    value = fastSin((dx + dy + time) * 2);
+                } else {
+                    // Interference pattern
+                    var cx1 = width / 4;
+                    var cy1 = height / 4;
+                    var cx2 = (width * 3) / 4;
+                    var cy2 = (height * 3) / 4;
+
+                    var dx1 = x - cx1;
+                    var dy1 = y - cy1;
+                    var dx2 = x - cx2;
+                    var dy2 = y - cy2;
+
+                    var d1 = Viper.Math.Sqrt(dx1 * dx1 + dy1 * dy1);
+                    var d2 = Viper.Math.Sqrt(dx2 * dx2 + dy2 * dy2);
+
+                    var v1 = fastSin(Viper.Math.Floor(d1 - time * 2));
+                    var v2 = fastSin(Viper.Math.Floor(d2 + time * 2));
+                    value = (v1 + v2) / 2;
+                }
+
+                // Clamp value
+                if value < 0 { value = 0; }
+                if value > 255 { value = 255; }
+
+                var color = palette.get(value);
+                buffer.Set(x, y, color);
+
+                x = x + 1;
+            }
+            y = y + 1;
+        }
+    }
+
+    expose func draw(canvas: Viper.Graphics.Canvas) {
+        canvas.Blit(0, 0, buffer);
+    }
+
+    expose func nextMode() {
+        mode = mode + 1;
+        if mode > 3 {
+            mode = 0;
+        }
+    }
+
+    expose func nextPalette() {
+        var currentPal = (time / 300) - ((time / 300) / 3) * 3;
+        if currentPal == 0 {
+            generatePalette();
+        } else if currentPal == 1 {
+            generateFirePalette();
+        } else {
+            generateOceanPalette();
+        }
+    }
+}
+
+// Run the plasma demo
+func run(canvas: Viper.Graphics.Canvas) {
+    var width = canvas.Width;
+    var height = canvas.Height;
+
+    colors.initColors();
+    initSinTable();
+
+    // Create plasma renderer at lower resolution for performance
+    var scale = 2;
+    var plasma = new PlasmaRenderer();
+    plasma.init(width / scale, height / scale);
+
+    var running = true;
+    var paletteTimer = 0;
+
+    while running {
+        canvas.Poll();
+
+        if canvas.ShouldClose != 0 {
+            running = false;
+        }
+
+        // ESC or Q to exit
+        if canvas.KeyHeld(27) != 0 {
+            running = false;
+        }
+        if canvas.KeyHeld(81) != 0 {
+            running = false;
+        }
+
+        // SPACE changes pattern
+        if canvas.KeyHeld(32) != 0 {
+            if paletteTimer == 0 {
+                plasma.nextMode();
+                paletteTimer = 15;
+            }
+        }
+
+        // P changes palette
+        if canvas.KeyHeld(80) != 0 {
+            if paletteTimer == 0 {
+                plasma.nextPalette();
+                paletteTimer = 15;
+            }
+        }
+
+        if paletteTimer > 0 {
+            paletteTimer = paletteTimer - 1;
+        }
+
+        // Update plasma
+        plasma.update();
+
+        // Draw scaled plasma
+        // Since we can't easily scale, we'll blit at position and let it clip
+        // For a proper demo, we'd need a scaled blit or render at full res
+        canvas.Clear(colors.BLACK);
+
+        // Draw the low-res plasma multiple times to fill screen (simple scaling)
+        var ty = 0;
+        while ty < height {
+            var tx = 0;
+            while tx < width {
+                canvas.Blit(tx, ty, plasma.buffer);
+                tx = tx + plasma.width;
+            }
+            ty = ty + plasma.height;
+        }
+
+        // Instructions overlay
+        canvas.TextBg(10, 10, "PLASMA DEMO", colors.WHITE, colors.BLACK);
+        canvas.TextBg(10, 28, "SPACE: Pattern | P: Palette | ESC: Exit", colors.GRAY, colors.BLACK);
+
+        canvas.Flip();
+        Viper.Time.SleepMs(16);
+    }
+}

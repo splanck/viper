@@ -179,8 +179,7 @@ void handle_neighbor_solicitation(const Ipv6Addr &src, const NeighborSolicitatio
 
         if (opt_type == ndp_option::SOURCE_LINK_ADDR && opt_size >= LLA_OPTION_SIZE)
         {
-            const LinkLayerAddrOption *lla =
-                reinterpret_cast<const LinkLayerAddrOption *>(options);
+            const LinkLayerAddrOption *lla = reinterpret_cast<const LinkLayerAddrOption *>(options);
             copy_mac(src_mac, lla->addr);
         }
 
@@ -227,7 +226,9 @@ void handle_neighbor_solicitation(const Ipv6Addr &src, const NeighborSolicitatio
 /**
  * @brief Handle Neighbor Advertisement.
  */
-void handle_neighbor_advertisement(const Ipv6Addr & /*src*/, const NeighborAdvertisement *na, usize len)
+void handle_neighbor_advertisement(const Ipv6Addr & /*src*/,
+                                   const NeighborAdvertisement *na,
+                                   usize len)
 {
     g_na_received++;
 
@@ -247,8 +248,7 @@ void handle_neighbor_advertisement(const Ipv6Addr & /*src*/, const NeighborAdver
 
         if (opt_type == ndp_option::TARGET_LINK_ADDR && opt_size >= LLA_OPTION_SIZE)
         {
-            const LinkLayerAddrOption *lla =
-                reinterpret_cast<const LinkLayerAddrOption *>(options);
+            const LinkLayerAddrOption *lla = reinterpret_cast<const LinkLayerAddrOption *>(options);
             copy_mac(target_mac, lla->addr);
         }
 
@@ -268,9 +268,7 @@ void handle_neighbor_advertisement(const Ipv6Addr & /*src*/, const NeighborAdver
 /**
  * @brief Handle Router Advertisement.
  */
-void handle_router_advertisement(const Ipv6Addr &src,
-                                 const RouterAdvertisement *ra,
-                                 usize len)
+void handle_router_advertisement(const Ipv6Addr &src, const RouterAdvertisement *ra, usize len)
 {
     serial::puts("[icmpv6] Router Advertisement from ");
     // Print source (link-local)
@@ -294,8 +292,7 @@ void handle_router_advertisement(const Ipv6Addr &src,
 
         if (opt_type == ndp_option::SOURCE_LINK_ADDR && opt_size >= LLA_OPTION_SIZE)
         {
-            const LinkLayerAddrOption *lla =
-                reinterpret_cast<const LinkLayerAddrOption *>(options);
+            const LinkLayerAddrOption *lla = reinterpret_cast<const LinkLayerAddrOption *>(options);
             update_neighbor(src, lla->addr, true);
         }
 

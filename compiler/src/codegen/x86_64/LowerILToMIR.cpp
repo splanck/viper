@@ -492,6 +492,7 @@ MFunction LowerILToMIR::lower(const ILFunction &func)
         int32_t offset;
         ILValue::Kind kind;
     };
+
     std::unordered_map<int, Operand> entryParamToPhysReg{};
     std::vector<StackParam> stackParams{};
     if (!func.blocks.empty() && !func.blocks[0].paramIds.empty())
@@ -559,18 +560,15 @@ MFunction LowerILToMIR::lower(const ILFunction &func)
             // Create a vreg for this parameter and emit a load from stack
             const VReg vreg = ensureVReg(sp.paramId, sp.kind);
             const Operand dest = makeVRegOperand(vreg.cls, vreg.id);
-            const Operand src = makeMemOperand(
-                makePhysBase(PhysReg::RBP), sp.offset);
+            const Operand src = makeMemOperand(makePhysBase(PhysReg::RBP), sp.offset);
             // Emit MOVmr to load from stack into vreg
             if (vreg.cls == RegClass::XMM)
             {
-                entryBlock.instructions.push_back(
-                    MInstr::make(MOpcode::MOVSDmr, {dest, src}));
+                entryBlock.instructions.push_back(MInstr::make(MOpcode::MOVSDmr, {dest, src}));
             }
             else
             {
-                entryBlock.instructions.push_back(
-                    MInstr::make(MOpcode::MOVmr, {dest, src}));
+                entryBlock.instructions.push_back(MInstr::make(MOpcode::MOVmr, {dest, src}));
             }
         }
     }

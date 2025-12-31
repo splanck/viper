@@ -35,6 +35,7 @@
 
 #ifdef _WIN32
 #include <stdlib.h>
+
 // Windows doesn't have setenv, use _putenv_s instead
 inline int setenv(const char *name, const char *value, int /*overwrite*/)
 {

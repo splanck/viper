@@ -19,8 +19,9 @@ namespace viper::crypto
 
 /** @name RSA key size limits */
 ///@{
-constexpr usize RSA_MAX_KEY_BYTES = 512;  // 4096 bits max
-constexpr usize RSA_MIN_KEY_BYTES = 128;  // 1024 bits min
+constexpr usize RSA_MAX_KEY_BYTES = 512; // 4096 bits max
+constexpr usize RSA_MIN_KEY_BYTES = 128; // 1024 bits min
+
 ///@}
 
 /**
@@ -28,10 +29,10 @@ constexpr usize RSA_MIN_KEY_BYTES = 128;  // 1024 bits min
  */
 struct RsaPublicKey
 {
-    u8 modulus[RSA_MAX_KEY_BYTES];      ///< RSA modulus n (big-endian)
-    usize modulus_len;                   ///< Length of modulus in bytes
-    u8 exponent[8];                      ///< Public exponent e (typically 65537)
-    usize exponent_len;                  ///< Length of exponent in bytes
+    u8 modulus[RSA_MAX_KEY_BYTES]; ///< RSA modulus n (big-endian)
+    usize modulus_len;             ///< Length of modulus in bytes
+    u8 exponent[8];                ///< Public exponent e (typically 65537)
+    usize exponent_len;            ///< Length of exponent in bytes
 };
 
 /**
@@ -43,11 +44,11 @@ struct RsaPublicKey
  */
 struct RsaPrivateKey
 {
-    u8 modulus[RSA_MAX_KEY_BYTES];       ///< RSA modulus n (big-endian)
-    usize modulus_len;                    ///< Length of modulus in bytes
-    u8 public_exponent[8];               ///< Public exponent e
+    u8 modulus[RSA_MAX_KEY_BYTES]; ///< RSA modulus n (big-endian)
+    usize modulus_len;             ///< Length of modulus in bytes
+    u8 public_exponent[8];         ///< Public exponent e
     usize public_exponent_len;
-    u8 private_exponent[RSA_MAX_KEY_BYTES];  ///< Private exponent d
+    u8 private_exponent[RSA_MAX_KEY_BYTES]; ///< Private exponent d
     usize private_exponent_len;
 };
 
@@ -65,11 +66,8 @@ struct RsaPrivateKey
  * @param sig_len Output: actual signature length.
  * @return true on success, false on error.
  */
-bool rsa_sign_sha256(const RsaPrivateKey *key,
-                     const void *data,
-                     usize data_len,
-                     u8 *signature,
-                     usize *sig_len);
+bool rsa_sign_sha256(
+    const RsaPrivateKey *key, const void *data, usize data_len, u8 *signature, usize *sig_len);
 
 /**
  * @brief Sign a pre-computed hash using RSA PKCS#1 v1.5.
@@ -95,11 +93,8 @@ bool rsa_sign_hash_sha256(const RsaPrivateKey *key,
  * @param sig_len Length of signature.
  * @return true if signature is valid, false otherwise.
  */
-bool rsa_verify_sha256(const RsaPublicKey *key,
-                       const void *data,
-                       usize data_len,
-                       const u8 *signature,
-                       usize sig_len);
+bool rsa_verify_sha256(
+    const RsaPublicKey *key, const void *data, usize data_len, const u8 *signature, usize sig_len);
 
 /**
  * @brief Parse an SSH RSA public key blob.

@@ -18,12 +18,12 @@
 #include "vm/OpHandlers_Control.hpp"
 #include "vm/VMContext.hpp"
 
+#include "tests/common/PosixCompat.h"
+#include "tests/common/WaitCompat.hpp"
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
 #include <string>
-#include "tests/common/WaitCompat.hpp"
-#include "tests/common/PosixCompat.h"
 
 using namespace il::core;
 

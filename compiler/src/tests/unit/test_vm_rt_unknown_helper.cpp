@@ -14,12 +14,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "il/build/IRBuilder.hpp"
+#include "tests/common/PosixCompat.h"
+#include "tests/common/WaitCompat.hpp"
 #include "vm/VM.hpp"
 #include <cassert>
 #include <optional>
 #include <string>
-#include "tests/common/WaitCompat.hpp"
-#include "tests/common/PosixCompat.h"
 
 int main()
 {

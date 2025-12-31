@@ -15,17 +15,17 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
-#include <windows.h>
+#include <direct.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <io.h>
 #include <process.h>
-#include <direct.h>
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <errno.h>
+#include <stdio.h> // For printf in skip macro
 #include <stdlib.h>
 #include <string.h>
-#include <stdio.h>  // For printf in skip macro
-#include <time.h>   // For struct timespec (defined in UCRT)
+#include <sys/stat.h>
+#include <time.h> // For struct timespec (defined in UCRT)
+#include <windows.h>
 
 // Standard file descriptors
 #ifndef STDIN_FILENO
@@ -74,19 +74,71 @@ static inline int nanosleep(const struct timespec *req, struct timespec *rem)
 // wrapper functions instead for C++, and macros for C.
 #ifdef __cplusplus
 // C++ inline wrappers that don't conflict with member functions
-static inline int posix_close(int fd) { return _close(fd); }
-static inline int posix_read(int fd, void *buf, unsigned int count) { return _read(fd, buf, count); }
-static inline int posix_write(int fd, const void *buf, unsigned int count) { return _write(fd, buf, count); }
-static inline int posix_unlink(const char *path) { return _unlink(path); }
-static inline int posix_rmdir(const char *path) { return _rmdir(path); }
-static inline char* posix_getcwd(char *buf, int size) { return _getcwd(buf, size); }
-static inline int posix_chdir(const char *path) { return _chdir(path); }
-static inline int posix_access(const char *path, int mode) { return _access(path, mode); }
-static inline int posix_isatty(int fd) { return _isatty(fd); }
-static inline int posix_fileno(FILE *stream) { return _fileno(stream); }
-static inline int posix_dup(int fd) { return _dup(fd); }
-static inline int posix_dup2(int fd1, int fd2) { return _dup2(fd1, fd2); }
-static inline int posix_getpid() { return _getpid(); }
+static inline int posix_close(int fd)
+{
+    return _close(fd);
+}
+
+static inline int posix_read(int fd, void *buf, unsigned int count)
+{
+    return _read(fd, buf, count);
+}
+
+static inline int posix_write(int fd, const void *buf, unsigned int count)
+{
+    return _write(fd, buf, count);
+}
+
+static inline int posix_unlink(const char *path)
+{
+    return _unlink(path);
+}
+
+static inline int posix_rmdir(const char *path)
+{
+    return _rmdir(path);
+}
+
+static inline char *posix_getcwd(char *buf, int size)
+{
+    return _getcwd(buf, size);
+}
+
+static inline int posix_chdir(const char *path)
+{
+    return _chdir(path);
+}
+
+static inline int posix_access(const char *path, int mode)
+{
+    return _access(path, mode);
+}
+
+static inline int posix_isatty(int fd)
+{
+    return _isatty(fd);
+}
+
+static inline int posix_fileno(FILE *stream)
+{
+    return _fileno(stream);
+}
+
+static inline int posix_dup(int fd)
+{
+    return _dup(fd);
+}
+
+static inline int posix_dup2(int fd1, int fd2)
+{
+    return _dup2(fd1, fd2);
+}
+
+static inline int posix_getpid()
+{
+    return _getpid();
+}
+
 // Only define macros for functions that don't conflict with C++ (no common member function names)
 // Note: NOT defining 'pipe' as a macro because it conflicts with std::pair initialization syntax
 #define unlink _unlink
@@ -97,10 +149,18 @@ static inline int posix_getpid() { return _getpid(); }
 #define isatty _isatty
 #define fileno _fileno
 #define getpid _getpid
-static inline int posix_pipe(int fds[2]) { return _pipe(fds, 4096, _O_BINARY); }
+
+static inline int posix_pipe(int fds[2])
+{
+    return _pipe(fds, 4096, _O_BINARY);
+}
+
 // Standalone pipe function for C++ (don't use macro to avoid std::pair conflicts)
 #ifndef pipe
-static inline int pipe(int fds[2]) { return _pipe(fds, 4096, _O_BINARY); }
+static inline int pipe(int fds[2])
+{
+    return _pipe(fds, 4096, _O_BINARY);
+}
 #endif
 
 // setenv/unsetenv replacements for Windows
@@ -160,7 +220,9 @@ static inline int mkstemp(char *tpl)
     if (_mktemp_s(tpl, strlen(tpl) + 1) != 0)
         return -1;
     int fd = -1;
-    if (_sopen_s(&fd, tpl, _O_CREAT | _O_EXCL | _O_RDWR | _O_BINARY, _SH_DENYNO, _S_IREAD | _S_IWRITE) != 0)
+    if (_sopen_s(
+            &fd, tpl, _O_CREAT | _O_EXCL | _O_RDWR | _O_BINARY, _SH_DENYNO, _S_IREAD | _S_IWRITE) !=
+        0)
         return -1;
     return fd;
 }
@@ -174,17 +236,25 @@ typedef int pid_t;
 // fork() doesn't exist on Windows - tests using fork should skip
 // Use SKIP_TEST_NO_FORK() at the start of main() for fork-based tests
 #define VIPER_NO_FORK 1
-#define SKIP_TEST_NO_FORK() do { \
-    printf("Test skipped: fork() not available on Windows\n"); \
-    return 0; \
-} while(0)
+#define SKIP_TEST_NO_FORK()                                                                        \
+    do                                                                                             \
+    {                                                                                              \
+        printf("Test skipped: fork() not available on Windows\n");                                 \
+        return 0;                                                                                  \
+    } while (0)
 
 // Stub for fork (always returns error to force skip path)
-static inline pid_t fork(void) { return -1; }
+static inline pid_t fork(void)
+{
+    return -1;
+}
 
 // Stub for waitpid (no-op on Windows)
-static inline pid_t waitpid(pid_t pid, int *status, int options) {
-    (void)pid; (void)status; (void)options;
+static inline pid_t waitpid(pid_t pid, int *status, int options)
+{
+    (void)pid;
+    (void)status;
+    (void)options;
     return -1;
 }
 
@@ -195,7 +265,10 @@ static inline pid_t waitpid(pid_t pid, int *status, int options) {
 // POSIX systems
 #include <unistd.h>
 #define VIPER_NO_FORK 0
-#define SKIP_TEST_NO_FORK() do { } while(0)
+#define SKIP_TEST_NO_FORK()                                                                        \
+    do                                                                                             \
+    {                                                                                              \
+    } while (0)
 #endif
 
 #endif // VIPER_TESTS_POSIX_COMPAT_H

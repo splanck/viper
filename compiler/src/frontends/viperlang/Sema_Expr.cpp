@@ -547,6 +547,29 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
                 return types::boolean();
             }
         }
+
+        // Handle runtime class method calls (e.g., canvas.Poll(), canvas.Clear())
+        // Runtime classes have names starting with "Viper." and are registered in typeRegistry_
+        if (baseType && baseType->name.find("Viper.") == 0)
+        {
+            // Construct full method name: ClassName.MethodName
+            std::string fullMethodName = baseType->name + "." + fieldExpr->field;
+
+            // Check if it's a known runtime function
+            auto it = runtimeFunctions_.find(fullMethodName);
+            if (it != runtimeFunctions_.end())
+            {
+                // Analyze arguments
+                for (auto &arg : expr->args)
+                {
+                    analyzeExpr(arg.value.get());
+                }
+                // Store the resolved runtime call info
+                // Mark this as a method call by prefixing with the base expression
+                runtimeCallees_[expr] = fullMethodName;
+                return it->second;
+            }
+        }
     }
 
     TypeRef calleeType = analyzeExpr(expr->callee.get());

@@ -244,10 +244,7 @@ bool resolve_neighbor(const Ipv6Addr &ip, MacAddr *mac);
  * @param len Message length.
  * @return Checksum value.
  */
-u16 compute_checksum(const Ipv6Addr &src,
-                     const Ipv6Addr &dst,
-                     const void *data,
-                     usize len);
+u16 compute_checksum(const Ipv6Addr &src, const Ipv6Addr &dst, const void *data, usize len);
 
 /**
  * @brief Get count of entries in neighbor cache.

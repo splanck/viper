@@ -15,11 +15,11 @@
 #include "rt_pixels.h"
 #include "rt_string.h"
 
+#include "tests/common/PosixCompat.h"
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include "tests/common/PosixCompat.h"
 
 extern "C" void vm_trap(const char *msg)
 {

@@ -156,14 +156,14 @@ void aes_128_ctr_init(AesCtrState *state, const u8 key[AES_128_KEY_SIZE], const 
 {
     aes_key_expand_128(key, &state->key);
     lib::memcpy(state->counter, iv, 16);
-    state->keystream_pos = 16;  // Force keystream generation on first use
+    state->keystream_pos = 16; // Force keystream generation on first use
 }
 
 void aes_256_ctr_init(AesCtrState *state, const u8 key[AES_256_KEY_SIZE], const u8 iv[16])
 {
     aes_key_expand_256(key, &state->key);
     lib::memcpy(state->counter, iv, 16);
-    state->keystream_pos = 16;  // Force keystream generation on first use
+    state->keystream_pos = 16; // Force keystream generation on first use
 }
 
 void aes_ctr_process(AesCtrState *state, const u8 *in, u8 *out, usize len)
@@ -183,22 +183,16 @@ void aes_ctr_process(AesCtrState *state, const u8 *in, u8 *out, usize len)
     }
 }
 
-void aes_128_ctr_crypt(const u8 key[AES_128_KEY_SIZE],
-                       const u8 iv[16],
-                       const u8 *in,
-                       u8 *out,
-                       usize len)
+void aes_128_ctr_crypt(
+    const u8 key[AES_128_KEY_SIZE], const u8 iv[16], const u8 *in, u8 *out, usize len)
 {
     AesCtrState state;
     aes_128_ctr_init(&state, key, iv);
     aes_ctr_process(&state, in, out, len);
 }
 
-void aes_256_ctr_crypt(const u8 key[AES_256_KEY_SIZE],
-                       const u8 iv[16],
-                       const u8 *in,
-                       u8 *out,
-                       usize len)
+void aes_256_ctr_crypt(
+    const u8 key[AES_256_KEY_SIZE], const u8 iv[16], const u8 *in, u8 *out, usize len)
 {
     AesCtrState state;
     aes_256_ctr_init(&state, key, iv);

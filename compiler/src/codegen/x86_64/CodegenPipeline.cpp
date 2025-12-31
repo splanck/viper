@@ -286,11 +286,15 @@ int invokeLinker(const std::filesystem::path &asmPath,
     std::vector<std::string> cmd = {kCcCommand, toNativePath(asmPath)};
 
     // Link all runtime libraries that exist (simpler than symbol detection)
-    const std::vector<std::string_view> rtLibs = {
-        "viper_rt_graphics", "viper_rt_exec", "viper_rt_io_fs",
-        "viper_rt_text", "viper_rt_collections", "viper_rt_arrays",
-        "viper_rt_threads", "viper_rt_oop", "viper_rt_base"
-    };
+    const std::vector<std::string_view> rtLibs = {"viper_rt_graphics",
+                                                  "viper_rt_exec",
+                                                  "viper_rt_io_fs",
+                                                  "viper_rt_text",
+                                                  "viper_rt_collections",
+                                                  "viper_rt_arrays",
+                                                  "viper_rt_threads",
+                                                  "viper_rt_oop",
+                                                  "viper_rt_base"};
     for (const auto &lib : rtLibs)
     {
         const std::filesystem::path path = runtimeArchivePath(lib);
@@ -760,8 +764,8 @@ PipelineResult CodegenPipeline::run()
         return ext == ".o" || ext == ".obj";
     };
 
-    const bool wantsObjectOnly =
-        !opts_.output_obj_path.empty() && !opts_.run_native && looksLikeObjectFile(opts_.output_obj_path);
+    const bool wantsObjectOnly = !opts_.output_obj_path.empty() && !opts_.run_native &&
+                                 looksLikeObjectFile(opts_.output_obj_path);
     if (wantsObjectOnly)
     {
         const std::filesystem::path objPath(opts_.output_obj_path);
@@ -780,8 +784,8 @@ PipelineResult CodegenPipeline::run()
     }
 
     // Link to executable if: running native, no output path specified, or output looks like .exe
-    const bool needsExecutable =
-        opts_.run_native || opts_.output_obj_path.empty() || !looksLikeObjectFile(opts_.output_obj_path);
+    const bool needsExecutable = opts_.run_native || opts_.output_obj_path.empty() ||
+                                 !looksLikeObjectFile(opts_.output_obj_path);
     if (!needsExecutable)
     {
         result.exit_code = 0;

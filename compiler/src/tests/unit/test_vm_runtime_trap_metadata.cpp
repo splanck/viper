@@ -21,12 +21,12 @@
 
 #include "VMTestHook.hpp"
 
+#include "tests/common/PosixCompat.h"
+#include "tests/common/WaitCompat.hpp"
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
 #include <string>
-#include "tests/common/WaitCompat.hpp"
-#include "tests/common/PosixCompat.h"
 
 namespace
 {

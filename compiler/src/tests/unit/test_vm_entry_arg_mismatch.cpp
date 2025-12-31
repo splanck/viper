@@ -17,12 +17,12 @@
 #include "il/build/IRBuilder.hpp"
 #include "vm/VM.hpp"
 
+#include "tests/common/PosixCompat.h"
+#include "tests/common/WaitCompat.hpp"
 #include <cassert>
 #include <optional>
 #include <string>
 #include <string_view>
-#include "tests/common/WaitCompat.hpp"
-#include "tests/common/PosixCompat.h"
 #include <vector>
 
 using namespace il::core;

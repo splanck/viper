@@ -26,10 +26,10 @@ int main()
 
 #else
 
-#include <atomic>
-#include "tests/common/WaitCompat.hpp"
-#include <thread>
 #include "tests/common/PosixCompat.h"
+#include "tests/common/WaitCompat.hpp"
+#include <atomic>
+#include <thread>
 #include <vector>
 
 static std::string capture(void (*fn)())

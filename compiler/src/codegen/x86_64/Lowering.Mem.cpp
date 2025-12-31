@@ -112,16 +112,14 @@ void emitCall(const ILInstr &instr, MIRBuilder &builder)
             // Float return in XMM0
             const Operand retReg = makePhysRegOperand(
                 RegClass::XMM, static_cast<uint16_t>(builder.target().f64ReturnReg));
-            builder.append(
-                MInstr::make(MOpcode::MOVSDrr, std::vector<Operand>{resultOp, retReg}));
+            builder.append(MInstr::make(MOpcode::MOVSDrr, std::vector<Operand>{resultOp, retReg}));
         }
         else
         {
             // Integer/pointer return in RAX
             const Operand retReg = makePhysRegOperand(
                 RegClass::GPR, static_cast<uint16_t>(builder.target().intReturnReg));
-            builder.append(
-                MInstr::make(MOpcode::MOVrr, std::vector<Operand>{resultOp, retReg}));
+            builder.append(MInstr::make(MOpcode::MOVrr, std::vector<Operand>{resultOp, retReg}));
         }
     }
 }
@@ -196,16 +194,14 @@ void emitCallIndirect(const ILInstr &instr, MIRBuilder &builder)
             // Float return in XMM0
             const Operand retReg = makePhysRegOperand(
                 RegClass::XMM, static_cast<uint16_t>(builder.target().f64ReturnReg));
-            builder.append(
-                MInstr::make(MOpcode::MOVSDrr, std::vector<Operand>{resultOp, retReg}));
+            builder.append(MInstr::make(MOpcode::MOVSDrr, std::vector<Operand>{resultOp, retReg}));
         }
         else
         {
             // Integer/pointer return in RAX
             const Operand retReg = makePhysRegOperand(
                 RegClass::GPR, static_cast<uint16_t>(builder.target().intReturnReg));
-            builder.append(
-                MInstr::make(MOpcode::MOVrr, std::vector<Operand>{resultOp, retReg}));
+            builder.append(MInstr::make(MOpcode::MOVrr, std::vector<Operand>{resultOp, retReg}));
         }
     }
 }

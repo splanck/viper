@@ -1,0 +1,280 @@
+module bouncing;
+
+// ============================================================================
+// BOUNCING.VIPER - Bouncing Balls Physics Demo
+// ============================================================================
+// Demonstrates physics simulation with bouncing balls.
+// Features gravity, elasticity, and ball-to-ball collisions.
+// ============================================================================
+
+import "./colors";
+
+// Ball entity with physics
+entity Ball {
+    expose Number x;
+    expose Number y;
+    expose Number vx;
+    expose Number vy;
+    expose Integer radius;
+    expose Integer color;
+    expose Number mass;
+
+    expose func init(px: Number, py: Number, r: Integer, c: Integer) {
+        x = px;
+        y = py;
+        vx = (Viper.Random.Next() - 0.5) * 8.0;
+        vy = (Viper.Random.Next() - 0.5) * 8.0;
+        radius = r;
+        color = c;
+        mass = r * r;
+    }
+
+    expose func update(gravity: Number, screenWidth: Integer, screenHeight: Integer) {
+        vy = vy + gravity;
+        x = x + vx;
+        y = y + vy;
+
+        if x - radius < 0 {
+            x = radius;
+            vx = vx * -0.9;
+        }
+        if x + radius > screenWidth {
+            x = screenWidth - radius;
+            vx = vx * -0.9;
+        }
+        if y - radius < 0 {
+            y = radius;
+            vy = vy * -0.9;
+        }
+        if y + radius > screenHeight {
+            y = screenHeight - radius;
+            vy = vy * -0.9;
+        }
+    }
+
+    expose func draw(canvas: Viper.Graphics.Canvas) {
+        var px = Viper.Math.Floor(x);
+        var py = Viper.Math.Floor(y);
+
+        canvas.Disc(px, py, radius, color);
+
+        var highlight = colors.brighten(color, 80);
+        var hlX = px - radius / 3;
+        var hlY = py - radius / 3;
+        var hlR = radius / 4;
+        if hlR < 2 {
+            hlR = 2;
+        }
+        canvas.Disc(hlX, hlY, hlR, highlight);
+
+        var outline = colors.darken(color, 40);
+        canvas.Ring(px, py, radius, outline);
+    }
+
+    expose func distanceTo(other: Ball) -> Number {
+        var dx = x - other.x;
+        var dy = y - other.y;
+        return Viper.Math.Sqrt(dx * dx + dy * dy);
+    }
+
+    expose func collidesWith(other: Ball) -> Boolean {
+        var dist = distanceTo(other);
+        return dist < (radius + other.radius);
+    }
+
+    expose func resolveCollision(other: Ball) {
+        var dx = other.x - x;
+        var dy = other.y - y;
+        var dist = Viper.Math.Sqrt(dx * dx + dy * dy);
+
+        if dist == 0.0 {
+            return;
+        }
+
+        var nx = dx / dist;
+        var ny = dy / dist;
+
+        var dvx = vx - other.vx;
+        var dvy = vy - other.vy;
+
+        var dvn = dvx * nx + dvy * ny;
+
+        if dvn > 0.0 {
+            return;
+        }
+
+        var e = 0.9;
+        var j = (0.0 - (1.0 + e) * dvn) / (1.0 / mass + 1.0 / other.mass);
+
+        vx = vx + (j / mass) * nx;
+        vy = vy + (j / mass) * ny;
+        other.vx = other.vx - (j / other.mass) * nx;
+        other.vy = other.vy - (j / other.mass) * ny;
+
+        var overlap = (radius + other.radius) - dist;
+        if overlap > 0.0 {
+            var sepX = (overlap / 2.0 + 1.0) * nx;
+            var sepY = (overlap / 2.0 + 1.0) * ny;
+            x = x - sepX;
+            y = y - sepY;
+            other.x = other.x + sepX;
+            other.y = other.y + sepY;
+        }
+    }
+}
+
+// Ball manager
+entity BallManager {
+    expose List[Ball] balls;
+    expose Number gravity;
+
+    expose func init() {
+        balls = [];
+        gravity = 0.3;
+    }
+
+    expose func addBall(px: Number, py: Number) {
+        var radius = 15 + Viper.Random.NextInt(25);
+        var color = colors.rainbowPhase(Viper.Random.NextInt(360));
+
+        var ball = new Ball();
+        ball.init(px, py, radius, color);
+        balls.add(ball);
+    }
+
+    expose func addRandomBalls(count: Integer, screenWidth: Integer, screenHeight: Integer) {
+        var i = 0;
+        while i < count {
+            var px = 50 + Viper.Random.NextInt(screenWidth - 100);
+            var py = 50 + Viper.Random.NextInt(screenHeight / 2);
+            addBall(px, py);
+            i = i + 1;
+        }
+    }
+
+    expose func update(screenWidth: Integer, screenHeight: Integer) {
+        var i = 0;
+        while i < balls.count() {
+            var ball = balls.get(i);
+            ball.update(gravity, screenWidth, screenHeight);
+            i = i + 1;
+        }
+
+        i = 0;
+        while i < balls.count() {
+            var j = i + 1;
+            while j < balls.count() {
+                var ball1 = balls.get(i);
+                var ball2 = balls.get(j);
+
+                if ball1.collidesWith(ball2) {
+                    ball1.resolveCollision(ball2);
+                }
+                j = j + 1;
+            }
+            i = i + 1;
+        }
+    }
+
+    expose func draw(canvas: Viper.Graphics.Canvas) {
+        var i = 0;
+        while i < balls.count() {
+            var ball = balls.get(i);
+            ball.draw(canvas);
+            i = i + 1;
+        }
+    }
+
+    expose func clear() {
+        balls.clear();
+    }
+
+    expose func getCount() -> Integer {
+        return balls.count();
+    }
+}
+
+// Run the bouncing demo
+func run(canvas: Viper.Graphics.Canvas) {
+    var width = canvas.Width;
+    var height = canvas.Height;
+
+    colors.initColors();
+
+    var manager = new BallManager();
+    manager.init();
+    manager.addRandomBalls(8, width, height);
+
+    var running = true;
+    var spawnTimer = 0;
+
+    while running {
+        canvas.Poll();
+
+        if canvas.ShouldClose != 0 {
+            running = false;
+        }
+
+        if canvas.KeyHeld(27) != 0 {
+            running = false;
+        }
+        if canvas.KeyHeld(81) != 0 {
+            running = false;
+        }
+
+        if canvas.KeyHeld(32) != 0 and spawnTimer == 0 {
+            var px = 100 + Viper.Random.NextInt(width - 200);
+            var py = 50 + Viper.Random.NextInt(100);
+            manager.addBall(px, py);
+            spawnTimer = 10;
+        }
+
+        if canvas.KeyHeld(265) != 0 {
+            manager.gravity = manager.gravity + 0.02;
+            if manager.gravity > 1.0 {
+                manager.gravity = 1.0;
+            }
+        }
+        if canvas.KeyHeld(264) != 0 {
+            manager.gravity = manager.gravity - 0.02;
+            if manager.gravity < 0.0 {
+                manager.gravity = 0.0;
+            }
+        }
+
+        if canvas.KeyHeld(67) != 0 {
+            manager.clear();
+        }
+
+        if canvas.KeyHeld(82) != 0 and spawnTimer == 0 {
+            manager.clear();
+            manager.addRandomBalls(8, width, height);
+            spawnTimer = 30;
+        }
+
+        if spawnTimer > 0 {
+            spawnTimer = spawnTimer - 1;
+        }
+
+        manager.update(width, height);
+
+        canvas.Clear(Viper.Graphics.Color.RGB(20, 20, 30));
+
+        canvas.Box(0, height - 5, width, 5, Viper.Graphics.Color.RGB(60, 60, 80));
+
+        manager.draw(canvas);
+
+        canvas.TextBg(10, 10, "BOUNCING BALLS", colors.WHITE, colors.BLACK);
+
+        var countStr = "Balls: " + Viper.Fmt.Int(manager.getCount());
+        canvas.TextBg(10, 28, countStr, colors.GRAY, colors.BLACK);
+
+        var gravStr = "Gravity: " + Viper.Fmt.Num(manager.gravity);
+        canvas.TextBg(10, 46, gravStr, colors.GRAY, colors.BLACK);
+
+        canvas.TextBg(10, height - 30, "SPACE: Add | UP/DOWN: Gravity | C: Clear | R: Reset | ESC: Exit", colors.DARK_GRAY, colors.BLACK);
+
+        canvas.Flip();
+        Viper.Time.SleepMs(16);
+    }
+}

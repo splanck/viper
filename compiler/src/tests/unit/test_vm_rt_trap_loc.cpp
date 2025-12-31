@@ -15,11 +15,11 @@
 
 #include "il/build/IRBuilder.hpp"
 #include "support/source_location.hpp"
+#include "tests/common/PosixCompat.h"
+#include "tests/common/WaitCompat.hpp"
 #include "vm/VM.hpp"
 #include <cassert>
 #include <string>
-#include "tests/common/WaitCompat.hpp"
-#include "tests/common/PosixCompat.h"
 
 namespace
 {

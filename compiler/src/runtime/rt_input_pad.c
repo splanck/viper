@@ -868,8 +868,8 @@ static void platform_pad_vibrate(int64_t index, double left, double right)
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
-#include <windows.h>
 #include <Xinput.h>
+#include <windows.h>
 
 static void platform_pad_poll(void)
 {

@@ -610,9 +610,9 @@ function(viper_add_runtime_tests)
 
     viper_add_test(test_rt_term_color ${VIPER_TESTS_DIR}/runtime/RTTermColorTests.cpp)
     target_link_libraries(test_rt_term_color PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-    if(APPLE)
+    if (APPLE)
         target_link_libraries(test_rt_term_color PRIVATE util)
-    endif()
+    endif ()
     viper_add_ctest(test_rt_term_color test_rt_term_color)
 
     viper_add_test(test_rt_trim_case ${VIPER_TESTS_DIR}/runtime/RTTrimCaseTests.cpp)

@@ -85,7 +85,7 @@ class LinearScanAllocator
     std::vector<PhysReg> freeXMM_{};
     std::vector<uint16_t> activeGPR_{};
     std::vector<uint16_t> activeXMM_{};
-    std::size_t currentInstrIdx_{0}; ///< Current instruction index for liveness checks.
+    std::size_t currentInstrIdx_{0};         ///< Current instruction index for liveness checks.
     std::vector<PhysReg> reservedForCall_{}; ///< Arg registers reserved during call setup.
 
     /// @brief Populate the free-register pools from the target description.
@@ -179,7 +179,8 @@ class LinearScanAllocator
     /// @brief Check if a physical register is an argument register for the current ABI.
     [[nodiscard]] bool isArgumentRegister(PhysReg reg) const;
 
-    /// @brief Reserve an argument register during call setup to prevent spill reloads from using it.
+    /// @brief Reserve an argument register during call setup to prevent spill reloads from using
+    /// it.
     void reserveForCall(PhysReg reg);
 
     /// @brief Release all reserved argument registers back to the pool after a CALL.

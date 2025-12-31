@@ -15,12 +15,12 @@
 
 #include "rt.hpp"
 
+#include "tests/common/PosixCompat.h"
+#include "tests/common/WaitCompat.hpp"
 #include <cassert>
 #include <cstdio>
 #include <stdint.h>
 #include <string>
-#include "tests/common/WaitCompat.hpp"
-#include "tests/common/PosixCompat.h"
 
 static std::string capture(void (*fn)())
 {

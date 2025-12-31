@@ -77,14 +77,16 @@ enum AssignFlags : u32
 struct AssignEntry
 {
     char name[MAX_ASSIGN_NAME + 1]; /**< Assign name (without colon). */
+
     union
     {
-        u64 dir_inode;    /**< Inode number of the directory (for directory assigns). */
-        u32 channel_id;   /**< Global channel ID (for service assigns with ASSIGN_SERVICE). */
+        u64 dir_inode;  /**< Inode number of the directory (for directory assigns). */
+        u32 channel_id; /**< Global channel ID (for service assigns with ASSIGN_SERVICE). */
     };
-    u32 flags;                      /**< Bitmask of @ref AssignFlags. */
-    AssignEntry *next;              /**< Next directory in a multi-assign chain. */
-    bool active;                    /**< Whether this table entry is in use. */
+
+    u32 flags;         /**< Bitmask of @ref AssignFlags. */
+    AssignEntry *next; /**< Next directory in a multi-assign chain. */
+    bool active;       /**< Whether this table entry is in use. */
 };
 
 /**

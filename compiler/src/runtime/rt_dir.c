@@ -165,7 +165,7 @@ int64_t rt_dir_exists(rt_string path)
     return (st.st_mode & _S_IFDIR) != 0;
 #elif defined(__viperos__)
     // TODO: ViperOS - check S_ISDIR equivalent
-    return (st.st_mode & 0040000) != 0;  // S_IFDIR = 0040000
+    return (st.st_mode & 0040000) != 0; // S_IFDIR = 0040000
 #else
     return S_ISDIR(st.st_mode);
 #endif

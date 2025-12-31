@@ -15,6 +15,7 @@
 
 #include "viper/runtime/rt.h"
 
+#include "tests/common/PosixCompat.h"
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -23,7 +24,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "tests/common/PosixCompat.h"
 
 static void ensure_missing_open_sets_file_not_found(void)
 {

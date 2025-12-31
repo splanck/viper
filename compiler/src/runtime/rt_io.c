@@ -79,6 +79,7 @@ void vm_trap_default(const char *msg)
 {
     rt_abort(msg);
 }
+
 // Forward declare vm_trap - resolved via alternatename or by test/app definition
 extern void vm_trap(const char *msg);
 #if defined(_MSC_VER) || defined(__clang__)

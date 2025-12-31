@@ -1,0 +1,239 @@
+module matrix;
+
+// ============================================================================
+// MATRIX.VIPER - Matrix Digital Rain Effect
+// ============================================================================
+// Recreates the iconic "digital rain" effect from The Matrix.
+// ============================================================================
+
+import "./colors";
+
+var CHARS: List[String];
+
+func initChars() {
+    CHARS = [];
+    CHARS.add("0");
+    CHARS.add("1");
+    CHARS.add("2");
+    CHARS.add("3");
+    CHARS.add("4");
+    CHARS.add("5");
+    CHARS.add("6");
+    CHARS.add("7");
+    CHARS.add("8");
+    CHARS.add("9");
+    CHARS.add("A");
+    CHARS.add("B");
+    CHARS.add("C");
+    CHARS.add("D");
+    CHARS.add("E");
+    CHARS.add("F");
+}
+
+func getRandomChar() -> String {
+    var idx = Viper.Random.NextInt(CHARS.count());
+    return CHARS.get(idx);
+}
+
+// A single character cell
+entity MatrixChar {
+    expose String char;
+    expose Integer brightness;
+
+    expose func init() {
+        char = getRandomChar();
+        brightness = 0;
+    }
+
+    expose func randomize() {
+        char = getRandomChar();
+    }
+}
+
+// A falling column
+entity MatrixColumn {
+    expose List[MatrixChar] chars;
+    expose Integer headY;
+    expose Integer length;
+    expose Integer speed;
+    expose Integer frameCounter;
+    expose Integer colHeight;
+
+    expose func init(height: Integer) {
+        colHeight = height;
+        chars = [];
+        var i = 0;
+        while i < height {
+            var mc = new MatrixChar();
+            mc.init();
+            chars.add(mc);
+            i = i + 1;
+        }
+        reset();
+    }
+
+    expose func reset() {
+        headY = 0 - Viper.Random.NextInt(colHeight);
+        length = 8 + Viper.Random.NextInt(20);
+        speed = 1 + Viper.Random.NextInt(3);
+        frameCounter = 0;
+    }
+
+    expose func update() {
+        frameCounter = frameCounter + 1;
+        if frameCounter >= speed {
+            frameCounter = 0;
+            headY = headY + 1;
+
+            if headY - length > colHeight {
+                reset();
+            }
+        }
+
+        var i = 0;
+        while i < chars.count() {
+            var mc = chars.get(i);
+            var distFromHead = headY - i;
+
+            if distFromHead < 0 {
+                mc.brightness = 0;
+            } else if distFromHead == 0 {
+                mc.brightness = 255;
+                mc.randomize();
+            } else if distFromHead <= length {
+                var fade = 1.0 - (distFromHead / (length + 1));
+                mc.brightness = Viper.Math.Floor(200.0 * fade);
+            } else {
+                mc.brightness = mc.brightness - 30;
+                if mc.brightness < 0 {
+                    mc.brightness = 0;
+                }
+            }
+
+            if mc.brightness > 50 {
+                if Viper.Random.NextInt(100) < 5 {
+                    mc.randomize();
+                }
+            }
+
+            i = i + 1;
+        }
+    }
+
+    expose func draw(canvas: Viper.Graphics.Canvas, x: Integer, charHeight: Integer) {
+        var i = 0;
+        while i < chars.count() {
+            var mc = chars.get(i);
+            if mc.brightness > 0 {
+                var y = i * charHeight;
+                var color: Integer;
+
+                if headY == i {
+                    color = Viper.Graphics.Color.RGB(255, 255, 255);
+                } else {
+                    var g = mc.brightness;
+                    var r = g / 4;
+                    color = Viper.Graphics.Color.RGB(r, g, r / 2);
+                }
+
+                canvas.Text(x, y, mc.char, color);
+            }
+            i = i + 1;
+        }
+    }
+}
+
+// Matrix rain manager
+entity MatrixRain {
+    expose List[MatrixColumn] columns;
+    expose Integer numColumns;
+    expose Integer charWidth;
+    expose Integer charHeight;
+    expose Integer charsPerColumn;
+
+    expose func init(screenWidth: Integer, screenHeight: Integer) {
+        charWidth = 10;
+        charHeight = 14;
+        numColumns = screenWidth / charWidth;
+        charsPerColumn = (screenHeight / charHeight) + 2;
+
+        columns = [];
+        var i = 0;
+        while i < numColumns {
+            var col = new MatrixColumn();
+            col.init(charsPerColumn);
+            col.headY = 0 - Viper.Random.NextInt(charsPerColumn * 2);
+            columns.add(col);
+            i = i + 1;
+        }
+    }
+
+    expose func update() {
+        var i = 0;
+        while i < columns.count() {
+            var col = columns.get(i);
+            col.update();
+            i = i + 1;
+        }
+    }
+
+    expose func draw(canvas: Viper.Graphics.Canvas) {
+        var i = 0;
+        while i < columns.count() {
+            var col = columns.get(i);
+            var x = i * charWidth;
+            col.draw(canvas, x, charHeight);
+            i = i + 1;
+        }
+    }
+}
+
+// Run the matrix demo
+func run(canvas: Viper.Graphics.Canvas) {
+    var width = canvas.Width;
+    var height = canvas.Height;
+
+    colors.initColors();
+    initChars();
+
+    var rain = new MatrixRain();
+    rain.init(width, height);
+
+    var running = true;
+    var showTitle = true;
+    var titleTimer = 120;
+
+    while running {
+        canvas.Poll();
+
+        if canvas.ShouldClose != 0 {
+            running = false;
+        }
+
+        if canvas.KeyHeld(27) != 0 {
+            running = false;
+        }
+        if canvas.KeyHeld(81) != 0 {
+            running = false;
+        }
+
+        canvas.Clear(colors.BLACK);
+
+        rain.update();
+        rain.draw(canvas);
+
+        if showTitle {
+            var titleColor = Viper.Graphics.Color.RGB(0, 200, 0);
+            canvas.TextBg(width / 2 - 80, height / 2 - 20, "THE MATRIX", titleColor, colors.BLACK);
+            canvas.TextBg(width / 2 - 100, height / 2 + 10, "Press ESC to exit", Viper.Graphics.Color.RGB(0, 150, 0), colors.BLACK);
+
+            titleTimer = titleTimer - 1;
+            if titleTimer <= 0 {
+                showTitle = false;
+            }
+        }
+
+        canvas.Flip();
+        Viper.Time.SleepMs(33);
+    }
+}

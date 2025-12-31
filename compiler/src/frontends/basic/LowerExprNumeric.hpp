@@ -82,9 +82,9 @@ struct NumericExprLowering
     ///          IL type should be used for arithmetic and result values.
     struct NumericOpConfig
     {
-        bool isFloat{false};              ///< True when operands are treated as float.
-        il::core::Type arithmeticType{};  ///< IL type used for arithmetic operations.
-        il::core::Type resultType{};      ///< IL type of the final result.
+        bool isFloat{false};             ///< True when operands are treated as float.
+        il::core::Type arithmeticType{}; ///< IL type used for arithmetic operations.
+        il::core::Type resultType{};     ///< IL type of the final result.
     };
 
     /// @brief Selected opcode and result metadata for numeric operations.

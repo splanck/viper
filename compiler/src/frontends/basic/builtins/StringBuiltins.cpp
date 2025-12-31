@@ -354,18 +354,18 @@ Value lowerAsc(LowerCtx &ctx, ArrayRef<Value> args)
 
 // Note: not constexpr because std::string is not constexpr in MSVC's STL
 const std::array<BuiltinSpec, 13> kStringBuiltins = {{{"LEN", 1, 1, &lowerLen},
-                                                          {"MID$", 2, 3, &lowerMid},
-                                                          {"LEFT$", 2, 2, &lowerLeft},
-                                                          {"RIGHT$", 2, 2, &lowerRight},
-                                                          {"STR$", 1, 1, &lowerStr},
-                                                          {"INSTR", 2, 3, &lowerInstr},
-                                                          {"LTRIM$", 1, 1, &lowerLTrim},
-                                                          {"RTRIM$", 1, 1, &lowerRTrim},
-                                                          {"TRIM$", 1, 1, &lowerTrimBoth},
-                                                          {"UCASE$", 1, 1, &lowerUcase},
-                                                          {"LCASE$", 1, 1, &lowerLcase},
-                                                          {"CHR$", 1, 1, &lowerChr},
-                                                          {"ASC", 1, 1, &lowerAsc}}};
+                                                      {"MID$", 2, 3, &lowerMid},
+                                                      {"LEFT$", 2, 2, &lowerLeft},
+                                                      {"RIGHT$", 2, 2, &lowerRight},
+                                                      {"STR$", 1, 1, &lowerStr},
+                                                      {"INSTR", 2, 3, &lowerInstr},
+                                                      {"LTRIM$", 1, 1, &lowerLTrim},
+                                                      {"RTRIM$", 1, 1, &lowerRTrim},
+                                                      {"TRIM$", 1, 1, &lowerTrimBoth},
+                                                      {"UCASE$", 1, 1, &lowerUcase},
+                                                      {"LCASE$", 1, 1, &lowerLcase},
+                                                      {"CHR$", 1, 1, &lowerChr},
+                                                      {"ASC", 1, 1, &lowerAsc}}};
 
 } // namespace
 

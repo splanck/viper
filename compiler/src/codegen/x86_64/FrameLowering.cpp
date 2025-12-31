@@ -333,16 +333,16 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, const Fra
         const int offset = calleeSavedOffset(idx);
         if (isGPR(reg))
         {
-            prologue.push_back(
-                MInstr::make(MOpcode::MOVrm,
-                             {makeMemOperand(rbpBase, offset), makePhysOperand(RegClass::GPR, reg)}));
+            prologue.push_back(MInstr::make(
+                MOpcode::MOVrm,
+                {makeMemOperand(rbpBase, offset), makePhysOperand(RegClass::GPR, reg)}));
         }
         else
         {
             // XMM callee-saved register: use MOVSD to save 64-bit value
-            prologue.push_back(
-                MInstr::make(MOpcode::MOVSDrm,
-                             {makeMemOperand(rbpBase, offset), makePhysOperand(RegClass::XMM, reg)}));
+            prologue.push_back(MInstr::make(
+                MOpcode::MOVSDrm,
+                {makeMemOperand(rbpBase, offset), makePhysOperand(RegClass::XMM, reg)}));
         }
     }
 
@@ -367,16 +367,16 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, const Fra
         const int offset = calleeSavedOffset(idx - 1);
         if (isGPR(reg))
         {
-            epilogue.push_back(
-                MInstr::make(MOpcode::MOVmr,
-                             {makePhysOperand(RegClass::GPR, reg), makeMemOperand(rbpBase, offset)}));
+            epilogue.push_back(MInstr::make(
+                MOpcode::MOVmr,
+                {makePhysOperand(RegClass::GPR, reg), makeMemOperand(rbpBase, offset)}));
         }
         else
         {
             // XMM callee-saved register: use MOVSD to restore 64-bit value
-            epilogue.push_back(
-                MInstr::make(MOpcode::MOVSDmr,
-                             {makePhysOperand(RegClass::XMM, reg), makeMemOperand(rbpBase, offset)}));
+            epilogue.push_back(MInstr::make(
+                MOpcode::MOVSDmr,
+                {makePhysOperand(RegClass::XMM, reg), makeMemOperand(rbpBase, offset)}));
         }
     }
 

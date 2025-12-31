@@ -52,13 +52,13 @@ constexpr usize IPV6_MAX_PAYLOAD = IPV6_MTU - IPV6_HEADER_SIZE;
  */
 namespace next_header
 {
-constexpr u8 HOP_BY_HOP = 0;   ///< Hop-by-Hop Options
-constexpr u8 TCP = 6;          ///< TCP
-constexpr u8 UDP = 17;         ///< UDP
-constexpr u8 ROUTING = 43;     ///< Routing Header
-constexpr u8 FRAGMENT = 44;    ///< Fragment Header
-constexpr u8 ICMPV6 = 58;      ///< ICMPv6
-constexpr u8 NO_NEXT = 59;     ///< No Next Header
+constexpr u8 HOP_BY_HOP = 0;    ///< Hop-by-Hop Options
+constexpr u8 TCP = 6;           ///< TCP
+constexpr u8 UDP = 17;          ///< UDP
+constexpr u8 ROUTING = 43;      ///< Routing Header
+constexpr u8 FRAGMENT = 44;     ///< Fragment Header
+constexpr u8 ICMPV6 = 58;       ///< ICMPv6
+constexpr u8 NO_NEXT = 59;      ///< No Next Header
 constexpr u8 DEST_OPTIONS = 60; ///< Destination Options
 } // namespace next_header
 
@@ -67,10 +67,10 @@ constexpr u8 DEST_OPTIONS = 60; ///< Destination Options
  */
 struct FragmentHeader
 {
-    u8 next_header;      // Next header after reassembly
-    u8 reserved;         // Reserved (must be 0)
-    u16 frag_offset_mf;  // Fragment offset (13 bits) + Reserved (2) + M flag (1)
-    u32 identification;  // Identification
+    u8 next_header;     // Next header after reassembly
+    u8 reserved;        // Reserved (must be 0)
+    u16 frag_offset_mf; // Fragment offset (13 bits) + Reserved (2) + M flag (1)
+    u32 identification; // Identification
 } __attribute__((packed));
 
 constexpr usize FRAGMENT_HEADER_SIZE = 8;
@@ -104,9 +104,8 @@ inline u32 get_flow_label(u32 vtf)
  */
 inline u32 make_version_tc_flow(u8 version, u8 tc, u32 flow)
 {
-    u32 vtf = (static_cast<u32>(version) << 28) |
-              (static_cast<u32>(tc) << 20) |
-              (flow & 0x000fffff);
+    u32 vtf =
+        (static_cast<u32>(version) << 28) | (static_cast<u32>(tc) << 20) | (flow & 0x000fffff);
     return htonl(vtf);
 }
 

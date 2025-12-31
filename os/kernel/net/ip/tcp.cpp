@@ -25,6 +25,10 @@
 #include "../network.hpp"
 #include "ipv4.hpp"
 
+#ifndef CONFIG_TCP_DEBUG
+#define CONFIG_TCP_DEBUG 0
+#endif
+
 namespace net
 {
 namespace tcp
@@ -63,12 +67,15 @@ static void time_wait_expired(void *context)
     if (!sock->in_use || sock->state != TcpState::TIME_WAIT)
         return;
 
+#if CONFIG_TCP_DEBUG
     serial::puts("[tcp] TIME_WAIT expired for port ");
     serial::put_dec(sock->local_port);
     serial::puts(", releasing socket\n");
+#endif
 
     sock->state = TcpState::CLOSED;
     sock->in_use = false;
+    sock->owner_viper_id = 0;
     sock->time_wait_timer = 0;
 }
 
@@ -98,17 +105,22 @@ static void enter_time_wait(TcpSocket *sock, usize sock_idx)
     if (sock->time_wait_timer == 0)
     {
         // Timer scheduling failed - fall back to immediate cleanup
+#if CONFIG_TCP_DEBUG
         serial::puts("[tcp] Warning: TIME_WAIT timer failed, immediate cleanup\n");
+#endif
         sock->state = TcpState::CLOSED;
         sock->in_use = false;
+        sock->owner_viper_id = 0;
     }
     else
     {
+#if CONFIG_TCP_DEBUG
         serial::puts("[tcp] Entering TIME_WAIT for port ");
         serial::put_dec(sock->local_port);
         serial::puts(" (");
         serial::put_dec(TIME_WAIT_DURATION_MS / 1000);
         serial::puts("s)\n");
+#endif
     }
 }
 
@@ -145,16 +157,20 @@ static bool ooo_store(TcpSocket *sock, u32 seq, const u8 *data, usize len)
             {
                 sock->ooo_queue[i].data[j] = data[j];
             }
+#if CONFIG_TCP_DEBUG
             serial::puts("[tcp] OOO: stored seq ");
             serial::put_dec(seq);
             serial::puts(" len ");
             serial::put_dec(len);
             serial::puts("\n");
+#endif
             return true;
         }
     }
 
+#if CONFIG_TCP_DEBUG
     serial::puts("[tcp] OOO queue full, dropping segment\n");
+#endif
     return false;
 }
 
@@ -193,11 +209,13 @@ static usize ooo_deliver(TcpSocket *sock)
                     sock->rcv_nxt += len;
                     total_delivered += len;
 
+#if CONFIG_TCP_DEBUG
                     serial::puts("[tcp] OOO: delivered seq ");
                     serial::put_dec(sock->ooo_queue[i].seq);
                     serial::puts(" len ");
                     serial::put_dec(len);
                     serial::puts("\n");
+#endif
                 }
 
                 // Mark slot as free
@@ -733,9 +751,12 @@ void tcp_init()
     {
         sockets[i].in_use = false;
         sockets[i].state = TcpState::CLOSED;
+        sockets[i].owner_viper_id = 0;
     }
     initialized = true;
+#if CONFIG_TCP_DEBUG
     serial::puts("[tcp] TCP layer initialized\n");
+#endif
 }
 
 /** @copydoc net::tcp::rx_segment */
@@ -772,6 +793,7 @@ void rx_segment(const Ipv4Addr &src, const void *data, usize len)
     const u8 *payload = static_cast<const u8 *>(data) + data_offset;
 
     // Debug: show incoming segment
+#if CONFIG_TCP_DEBUG
     serial::puts("[tcp] RX ");
     serial::put_dec(src_port);
     serial::puts("->");
@@ -781,12 +803,18 @@ void rx_segment(const Ipv4Addr &src, const void *data, usize len)
     serial::puts(" len=");
     serial::put_dec(payload_len);
     serial::puts(" flags=");
-    if (tcp_flags & flags::SYN) serial::puts("S");
-    if (tcp_flags & flags::ACK) serial::puts("A");
-    if (tcp_flags & flags::FIN) serial::puts("F");
-    if (tcp_flags & flags::RST) serial::puts("R");
-    if (tcp_flags & flags::PSH) serial::puts("P");
+    if (tcp_flags & flags::SYN)
+        serial::puts("S");
+    if (tcp_flags & flags::ACK)
+        serial::puts("A");
+    if (tcp_flags & flags::FIN)
+        serial::puts("F");
+    if (tcp_flags & flags::RST)
+        serial::puts("R");
+    if (tcp_flags & flags::PSH)
+        serial::puts("P");
     serial::puts("\n");
+#endif
 
     SpinlockGuard guard(tcp_lock);
 
@@ -849,11 +877,13 @@ void rx_segment(const Ipv4Addr &src, const void *data, usize len)
     // Compute socket index for timer callbacks
     usize sock_idx = static_cast<usize>(sock - sockets);
 
+#if CONFIG_TCP_DEBUG
     serial::puts("[tcp] sock[");
     serial::put_dec(sock_idx);
     serial::puts("] state=");
     serial::put_dec(static_cast<int>(sock->state));
     serial::puts("\n");
+#endif
 
     // State machine
     switch (sock->state)
@@ -993,7 +1023,9 @@ void rx_segment(const Ipv4Addr &src, const void *data, usize len)
         case TcpState::ESTABLISHED:
             if (tcp_flags & flags::RST)
             {
+#if CONFIG_TCP_DEBUG
                 serial::puts("[tcp] ESTABLISHED: received RST, closing\n");
+#endif
                 sock->state = TcpState::CLOSED;
                 sock->unacked_len = 0; // Clear retransmit state
                 break;
@@ -1001,7 +1033,9 @@ void rx_segment(const Ipv4Addr &src, const void *data, usize len)
 
             if (tcp_flags & flags::FIN)
             {
+#if CONFIG_TCP_DEBUG
                 serial::puts("[tcp] ESTABLISHED: received FIN, transitioning to CLOSE_WAIT\n");
+#endif
                 sock->rcv_nxt = seq + payload_len + 1;
                 send_segment(sock, flags::ACK, nullptr, 0);
                 sock->state = TcpState::CLOSE_WAIT;
@@ -1012,12 +1046,14 @@ void rx_segment(const Ipv4Addr &src, const void *data, usize len)
                 // Handle incoming data with out-of-order reassembly
                 if (payload_len > 0)
                 {
+#if CONFIG_TCP_DEBUG
                     serial::puts("[tcp] DATA: seq=");
                     serial::put_hex(seq);
                     serial::puts(" rcv_nxt=");
                     serial::put_hex(sock->rcv_nxt);
                     serial::puts(" len=");
                     serial::put_dec(payload_len);
+#endif
 
                     if (seq == sock->rcv_nxt)
                     {
@@ -1035,9 +1071,11 @@ void rx_segment(const Ipv4Addr &src, const void *data, usize len)
                         }
                         sock->rcv_nxt += copy_len;
 
+#if CONFIG_TCP_DEBUG
                         serial::puts(" -> copied ");
                         serial::put_dec(copy_len);
                         serial::puts(" bytes\n");
+#endif
 
                         // Check OOO queue for segments that are now in order
                         ooo_deliver(sock);
@@ -1045,12 +1083,16 @@ void rx_segment(const Ipv4Addr &src, const void *data, usize len)
                     else if (seq > sock->rcv_nxt)
                     {
                         // Out-of-order segment - buffer it for later reassembly
+#if CONFIG_TCP_DEBUG
                         serial::puts(" -> OOO, buffering\n");
+#endif
                         ooo_store(sock, seq, payload, payload_len);
                     }
                     else
                     {
+#if CONFIG_TCP_DEBUG
                         serial::puts(" -> OLD, ignoring\n");
+#endif
                     }
                 }
 
@@ -1187,6 +1229,11 @@ void rx_segment(const Ipv4Addr &src, const void *data, usize len)
 /** @copydoc net::tcp::socket_create */
 i32 socket_create()
 {
+    return socket_create(0);
+}
+
+i32 socket_create(u32 owner_viper_id)
+{
     SpinlockGuard guard(tcp_lock);
     for (usize i = 0; i < MAX_TCP_SOCKETS; i++)
     {
@@ -1198,6 +1245,7 @@ i32 socket_create()
             sockets[i].remote_port = 0;
             sockets[i].rx_head = sockets[i].rx_tail = 0;
             sockets[i].tx_len = 0;
+            sockets[i].owner_viper_id = owner_viper_id;
             sockets[i].rcv_wnd = TcpSocket::RX_BUFFER_SIZE;
             sockets[i].snd_wnd = 0;       // Will be set from peer's advertised window
             sockets[i].mss = DEFAULT_MSS; // Will be negotiated during handshake
@@ -1238,6 +1286,61 @@ i32 socket_create()
         }
     }
     return -1;
+}
+
+bool socket_owned_by(i32 sock, u32 owner_viper_id)
+{
+    if (sock < 0 || sock >= static_cast<i32>(MAX_TCP_SOCKETS))
+    {
+        return false;
+    }
+    SpinlockGuard guard(tcp_lock);
+    TcpSocket *s = &sockets[sock];
+    return s->in_use && s->owner_viper_id == owner_viper_id;
+}
+
+bool any_socket_ready(u32 owner_viper_id)
+{
+    SpinlockGuard guard(tcp_lock);
+    for (usize i = 0; i < MAX_TCP_SOCKETS; i++)
+    {
+        TcpSocket *s = &sockets[i];
+        if (!s->in_use || s->owner_viper_id != owner_viper_id)
+        {
+            continue;
+        }
+        if (s->rx_tail != s->rx_head)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+void close_all_owned(u32 owner_viper_id)
+{
+    SpinlockGuard guard(tcp_lock);
+    for (usize i = 0; i < MAX_TCP_SOCKETS; i++)
+    {
+        TcpSocket *s = &sockets[i];
+        if (!s->in_use || s->owner_viper_id != owner_viper_id)
+        {
+            continue;
+        }
+
+        if (s->time_wait_timer != 0)
+        {
+            timerwheel::cancel(s->time_wait_timer);
+            s->time_wait_timer = 0;
+        }
+
+        s->state = TcpState::CLOSED;
+        s->in_use = false;
+        s->owner_viper_id = 0;
+        s->rx_head = s->rx_tail = 0;
+        s->tx_len = 0;
+        s->unacked_len = 0;
+    }
 }
 
 /** @copydoc net::tcp::socket_bind */
@@ -1543,9 +1646,11 @@ i32 socket_recv(i32 sock, void *buffer, usize max_len)
         {
             if (s->rx_head == s->rx_tail)
             {
+#if CONFIG_TCP_DEBUG
                 serial::puts("[tcp] socket_recv: connection closed, state=");
                 serial::put_dec(static_cast<int>(s->state));
                 serial::puts(" rx empty\n");
+#endif
                 tcp_lock.release();
                 return -1; // Connection closed and no more data
             }
@@ -1594,11 +1699,13 @@ i32 socket_recv(i32 sock, void *buffer, usize max_len)
             // Register as waiter and block
             // IMPORTANT: Set Blocked state BEFORE registering to avoid race with
             // wake_rx_waiters() which checks the state before waking
+#if CONFIG_TCP_DEBUG
             serial::puts("[tcp] socket_recv: blocking, rx_head=");
             serial::put_dec(s->rx_head);
             serial::puts(" rx_tail=");
             serial::put_dec(s->rx_tail);
             serial::puts("\n");
+#endif
             current->state = task::TaskState::Blocked;
             net->register_rx_waiter(current);
 
@@ -1613,12 +1720,16 @@ i32 socket_recv(i32 sock, void *buffer, usize max_len)
                 // Data arrived while we were registering - unblock and continue
                 current->state = task::TaskState::Ready;
                 net->unregister_rx_waiter(current);
+#if CONFIG_TCP_DEBUG
                 serial::puts("[tcp] socket_recv: data arrived during registration\n");
+#endif
                 continue;
             }
 
             task::yield();
+#if CONFIG_TCP_DEBUG
             serial::puts("[tcp] socket_recv: woke up\n");
+#endif
         }
         else
         {
@@ -1682,7 +1793,9 @@ void socket_close(i32 sock)
     SpinlockGuard guard(tcp_lock);
 
     // Cancel TIME_WAIT timer if active
-    if (s->time_wait_timer != 0)
+    // NOTE: If we are currently in TIME_WAIT, keep the timer so it can
+    // release the socket later. Canceling it would leak the socket.
+    if (s->time_wait_timer != 0 && s->state != TcpState::TIME_WAIT)
     {
         timerwheel::cancel(s->time_wait_timer);
         s->time_wait_timer = 0;
@@ -1694,6 +1807,7 @@ void socket_close(i32 sock)
     {
         s->state = TcpState::CLOSED;
         s->in_use = false;
+        s->owner_viper_id = 0;
     }
     // If in TIME_WAIT, the timer callback will clean up
 }
@@ -1748,11 +1862,13 @@ static void on_congestion_event(TcpSocket *sock)
     // On timeout, cwnd = 1 segment (enter slow start)
     sock->cwnd = sock->mss;
 
+#if CONFIG_TCP_DEBUG
     serial::puts("[tcp] Congestion: ssthresh=");
     serial::put_dec(sock->ssthresh);
     serial::puts(" cwnd=");
     serial::put_dec(sock->cwnd);
     serial::puts("\n");
+#endif
 }
 
 /**
@@ -1776,7 +1892,9 @@ static void on_ack_received(TcpSocket *sock, u32 bytes_acked)
         if (sock->dup_acks == TcpSocket::DUP_ACK_THRESHOLD)
         {
             // Fast retransmit (RFC 5681 Section 3.2)
+#if CONFIG_TCP_DEBUG
             serial::puts("[tcp] Fast retransmit triggered\n");
+#endif
 
             // Set ssthresh to half of cwnd
             sock->ssthresh = sock->cwnd / 2;
@@ -1869,6 +1987,7 @@ static void retransmit_segment(TcpSocket *sock)
     sock->retransmit_time = timer::get_ticks() + sock->rto;
     sock->retransmit_count++;
 
+#if CONFIG_TCP_DEBUG
     serial::puts("[tcp] Retransmit #");
     serial::put_dec(sock->retransmit_count);
     serial::puts(" for port ");
@@ -1876,6 +1995,7 @@ static void retransmit_segment(TcpSocket *sock)
     serial::puts(", RTO=");
     serial::put_dec(sock->rto);
     serial::puts("ms\n");
+#endif
 }
 
 /** @copydoc net::tcp::check_retransmit */
@@ -1911,7 +2031,9 @@ void check_retransmit()
             if (s->retransmit_count >= TcpSocket::RETRANSMIT_MAX)
             {
                 // Too many retries, give up and close connection
+#if CONFIG_TCP_DEBUG
                 serial::puts("[tcp] Max retransmits exceeded, closing connection\n");
+#endif
                 s->state = TcpState::CLOSED;
                 s->unacked_len = 0;
             }

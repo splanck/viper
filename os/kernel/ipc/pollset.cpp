@@ -4,9 +4,9 @@
 #include "../console/console.hpp"
 #include "../console/serial.hpp"
 #include "../input/input.hpp"
+#include "../lib/spinlock.hpp"
 #include "../net/ip/tcp.hpp"
 #include "../net/network.hpp"
-#include "../lib/spinlock.hpp"
 #include "../sched/scheduler.hpp"
 #include "../sched/task.hpp"
 #include "../viper/viper.hpp"
@@ -242,17 +242,14 @@ static poll::EventType check_readiness(u32 handle, poll::EventType mask)
             // Drive the network stack so socket RX buffers are up to date.
             net::network_poll();
 
-            // This pseudo-handle is global (not per-socket): report ready if any TCP socket
-            // has buffered data available to read.
-            bool any_ready = false;
-            for (usize i = 0; i < net::tcp::MAX_TCP_SOCKETS; i++)
+            // This pseudo-handle is scoped to the current Viper: report ready if any socket
+            // owned by this process has buffered RX data available.
+            u32 owner_id = 0;
+            if (viper::Viper *v = viper::current())
             {
-                if (net::tcp::socket_available(static_cast<i32>(i)) > 0)
-                {
-                    any_ready = true;
-                    break;
-                }
+                owner_id = v->id;
             }
+            bool any_ready = net::tcp::any_socket_ready(owner_id);
 
             if (any_ready)
             {

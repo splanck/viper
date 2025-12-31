@@ -20,8 +20,8 @@
 
 #pragma once
 
-#include <stdint.h>
 #include <stddef.h>
+#include <stdint.h>
 
 //===----------------------------------------------------------------------===//
 // Platform Detection
@@ -108,7 +108,8 @@
 #define __ATOMIC_SEQ_CST 5
 
 // Atomic load (32-bit)
-static inline int rt_atomic_load_i32(const volatile int *ptr, int order) {
+static inline int rt_atomic_load_i32(const volatile int *ptr, int order)
+{
     (void)order;
     int value = *ptr;
     _ReadWriteBarrier();
@@ -116,7 +117,8 @@ static inline int rt_atomic_load_i32(const volatile int *ptr, int order) {
 }
 
 // Atomic store (32-bit)
-static inline void rt_atomic_store_i32(volatile int *ptr, int value, int order) {
+static inline void rt_atomic_store_i32(volatile int *ptr, int value, int order)
+{
     (void)order;
     _ReadWriteBarrier();
     *ptr = value;
@@ -124,17 +126,21 @@ static inline void rt_atomic_store_i32(volatile int *ptr, int value, int order) 
 }
 
 // Atomic exchange (32-bit)
-static inline int rt_atomic_exchange_i32(volatile int *ptr, int value, int order) {
+static inline int rt_atomic_exchange_i32(volatile int *ptr, int value, int order)
+{
     (void)order;
     return _InterlockedExchange((volatile long *)ptr, value);
 }
 
 // Atomic compare-exchange (32-bit)
-static inline int rt_atomic_compare_exchange_i32(volatile int *ptr, int *expected, int desired, int success_order, int fail_order) {
+static inline int rt_atomic_compare_exchange_i32(
+    volatile int *ptr, int *expected, int desired, int success_order, int fail_order)
+{
     (void)success_order;
     (void)fail_order;
     int old = _InterlockedCompareExchange((volatile long *)ptr, desired, *expected);
-    if (old == *expected) {
+    if (old == *expected)
+    {
         return 1;
     }
     *expected = old;
@@ -142,19 +148,22 @@ static inline int rt_atomic_compare_exchange_i32(volatile int *ptr, int *expecte
 }
 
 // Atomic fetch-add (32-bit)
-static inline int rt_atomic_fetch_add_i32(volatile int *ptr, int value, int order) {
+static inline int rt_atomic_fetch_add_i32(volatile int *ptr, int value, int order)
+{
     (void)order;
     return _InterlockedExchangeAdd((volatile long *)ptr, value);
 }
 
 // Atomic fetch-sub (32-bit)
-static inline int rt_atomic_fetch_sub_i32(volatile int *ptr, int value, int order) {
+static inline int rt_atomic_fetch_sub_i32(volatile int *ptr, int value, int order)
+{
     (void)order;
     return _InterlockedExchangeAdd((volatile long *)ptr, -value);
 }
 
 // Atomic load (64-bit)
-static inline int64_t rt_atomic_load_i64(const volatile int64_t *ptr, int order) {
+static inline int64_t rt_atomic_load_i64(const volatile int64_t *ptr, int order)
+{
     (void)order;
 #if defined(_M_X64) || defined(_M_ARM64)
     int64_t value = *ptr;
@@ -167,7 +176,8 @@ static inline int64_t rt_atomic_load_i64(const volatile int64_t *ptr, int order)
 }
 
 // Atomic store (64-bit)
-static inline void rt_atomic_store_i64(volatile int64_t *ptr, int64_t value, int order) {
+static inline void rt_atomic_store_i64(volatile int64_t *ptr, int64_t value, int order)
+{
     (void)order;
 #if defined(_M_X64) || defined(_M_ARM64)
     _ReadWriteBarrier();
@@ -179,68 +189,68 @@ static inline void rt_atomic_store_i64(volatile int64_t *ptr, int64_t value, int
 }
 
 // Atomic fetch-add (64-bit)
-static inline int64_t rt_atomic_fetch_add_i64(volatile int64_t *ptr, int64_t value, int order) {
+static inline int64_t rt_atomic_fetch_add_i64(volatile int64_t *ptr, int64_t value, int order)
+{
     (void)order;
     return _InterlockedExchangeAdd64((volatile long long *)ptr, value);
 }
 
 // Atomic fetch-sub (64-bit)
-static inline int64_t rt_atomic_fetch_sub_i64(volatile int64_t *ptr, int64_t value, int order) {
+static inline int64_t rt_atomic_fetch_sub_i64(volatile int64_t *ptr, int64_t value, int order)
+{
     (void)order;
     return _InterlockedExchangeAdd64((volatile long long *)ptr, -value);
 }
 
 // Map GCC-style atomic builtins to our functions
-#define __atomic_load_n(ptr, order) \
-    _Generic((ptr), \
-        volatile int *: rt_atomic_load_i32, \
-        const volatile int *: rt_atomic_load_i32, \
-        int *: rt_atomic_load_i32, \
-        const int *: rt_atomic_load_i32, \
-        volatile int64_t *: rt_atomic_load_i64, \
-        const volatile int64_t *: rt_atomic_load_i64, \
-        int64_t *: rt_atomic_load_i64, \
-        const int64_t *: rt_atomic_load_i64 \
-    )((ptr), (order))
+#define __atomic_load_n(ptr, order)                                                                \
+    _Generic((ptr),                                                                                \
+        volatile int *: rt_atomic_load_i32,                                                        \
+        const volatile int *: rt_atomic_load_i32,                                                  \
+        int *: rt_atomic_load_i32,                                                                 \
+        const int *: rt_atomic_load_i32,                                                           \
+        volatile int64_t *: rt_atomic_load_i64,                                                    \
+        const volatile int64_t *: rt_atomic_load_i64,                                              \
+        int64_t *: rt_atomic_load_i64,                                                             \
+        const int64_t *: rt_atomic_load_i64)((ptr), (order))
 
-#define __atomic_store_n(ptr, val, order) \
-    _Generic((ptr), \
-        volatile int *: rt_atomic_store_i32, \
-        int *: rt_atomic_store_i32, \
-        volatile int64_t *: rt_atomic_store_i64, \
-        int64_t *: rt_atomic_store_i64 \
-    )((ptr), (val), (order))
+#define __atomic_store_n(ptr, val, order)                                                          \
+    _Generic((ptr),                                                                                \
+        volatile int *: rt_atomic_store_i32,                                                       \
+        int *: rt_atomic_store_i32,                                                                \
+        volatile int64_t *: rt_atomic_store_i64,                                                   \
+        int64_t *: rt_atomic_store_i64)((ptr), (val), (order))
 
-#define __atomic_exchange_n(ptr, val, order) \
+#define __atomic_exchange_n(ptr, val, order)                                                       \
     rt_atomic_exchange_i32((volatile int *)(ptr), (val), (order))
 
-#define __atomic_compare_exchange_n(ptr, expected, desired, weak, success, fail) \
+#define __atomic_compare_exchange_n(ptr, expected, desired, weak, success, fail)                   \
     rt_atomic_compare_exchange_i32((volatile int *)(ptr), (expected), (desired), (success), (fail))
 
-#define __atomic_fetch_add(ptr, val, order) \
-    _Generic((ptr), \
-        volatile int *: rt_atomic_fetch_add_i32, \
-        int *: rt_atomic_fetch_add_i32, \
-        volatile int64_t *: rt_atomic_fetch_add_i64, \
-        int64_t *: rt_atomic_fetch_add_i64 \
-    )((ptr), (val), (order))
+#define __atomic_fetch_add(ptr, val, order)                                                        \
+    _Generic((ptr),                                                                                \
+        volatile int *: rt_atomic_fetch_add_i32,                                                   \
+        int *: rt_atomic_fetch_add_i32,                                                            \
+        volatile int64_t *: rt_atomic_fetch_add_i64,                                               \
+        int64_t *: rt_atomic_fetch_add_i64)((ptr), (val), (order))
 
-#define __atomic_fetch_sub(ptr, val, order) \
-    _Generic((ptr), \
-        volatile int *: rt_atomic_fetch_sub_i32, \
-        int *: rt_atomic_fetch_sub_i32, \
-        volatile int64_t *: rt_atomic_fetch_sub_i64, \
-        int64_t *: rt_atomic_fetch_sub_i64 \
-    )((ptr), (val), (order))
+#define __atomic_fetch_sub(ptr, val, order)                                                        \
+    _Generic((ptr),                                                                                \
+        volatile int *: rt_atomic_fetch_sub_i32,                                                   \
+        int *: rt_atomic_fetch_sub_i32,                                                            \
+        volatile int64_t *: rt_atomic_fetch_sub_i64,                                               \
+        int64_t *: rt_atomic_fetch_sub_i64)((ptr), (val), (order))
 
 // Atomic test-and-set (spinlock primitive)
-static inline int rt_atomic_test_and_set(volatile int *ptr, int order) {
+static inline int rt_atomic_test_and_set(volatile int *ptr, int order)
+{
     (void)order;
     return _InterlockedExchange((volatile long *)ptr, 1) != 0;
 }
 
 // Atomic clear (spinlock release)
-static inline void rt_atomic_clear(volatile int *ptr, int order) {
+static inline void rt_atomic_clear(volatile int *ptr, int order)
+{
     (void)order;
     _ReadWriteBarrier();
     *ptr = 0;
@@ -270,10 +280,10 @@ static inline void rt_atomic_clear(volatile int *ptr, int order) {
 #undef Type
 #endif
 
-#include <windows.h>
-#include <io.h>
 #include <direct.h>
+#include <io.h>
 #include <process.h>
+#include <windows.h>
 
 // POSIX-like type definitions
 #ifndef _SSIZE_T_DEFINED
@@ -340,7 +350,8 @@ typedef int ssize_t;
 #define RT_PATH_SEPARATOR_STR "\\"
 
 // High-resolution time for Windows
-static inline int64_t rt_windows_time_ms(void) {
+static inline int64_t rt_windows_time_ms(void)
+{
     FILETIME ft;
     GetSystemTimeAsFileTime(&ft);
     // Convert 100-nanosecond intervals since 1601 to milliseconds since Unix epoch
@@ -350,7 +361,8 @@ static inline int64_t rt_windows_time_ms(void) {
     return (int64_t)(time / 10000);
 }
 
-static inline int64_t rt_windows_time_us(void) {
+static inline int64_t rt_windows_time_us(void)
+{
     FILETIME ft;
     GetSystemTimeAsFileTime(&ft);
     uint64_t time = ((uint64_t)ft.dwHighDateTime << 32) | ft.dwLowDateTime;
@@ -358,8 +370,10 @@ static inline int64_t rt_windows_time_us(void) {
     return (int64_t)(time / 10);
 }
 
-static inline void rt_windows_sleep_ms(int64_t ms) {
-    if (ms > 0) Sleep((DWORD)ms);
+static inline void rt_windows_sleep_ms(int64_t ms)
+{
+    if (ms > 0)
+        Sleep((DWORD)ms);
 }
 
 #elif RT_PLATFORM_VIPEROS
@@ -373,8 +387,8 @@ static inline void rt_windows_sleep_ms(int64_t ms) {
 
 #else // POSIX systems (macOS, Linux)
 
-#include <unistd.h>
 #include <sys/time.h>
+#include <unistd.h>
 
 #define RT_PATH_SEPARATOR '/'
 #define RT_PATH_SEPARATOR_STR "/"

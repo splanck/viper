@@ -23,10 +23,10 @@
 #include <cstdio>
 #include <cstdlib>
 #if !defined(_WIN32)
+#include "tests/common/PosixCompat.h"
+#include "tests/common/WaitCompat.hpp"
 #include <string>
 #include <sys/types.h>
-#include "tests/common/WaitCompat.hpp"
-#include "tests/common/PosixCompat.h"
 #endif
 
 static void expect_zero_range(int32_t *arr, size_t start, size_t end)

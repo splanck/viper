@@ -24,7 +24,7 @@ namespace viper::crypto
 /** @name Ed25519 parameter sizes */
 ///@{
 constexpr usize ED25519_PUBLIC_KEY_SIZE = 32;
-constexpr usize ED25519_SECRET_KEY_SIZE = 64;  // seed (32) + public key (32)
+constexpr usize ED25519_SECRET_KEY_SIZE = 64; // seed (32) + public key (32)
 constexpr usize ED25519_SEED_SIZE = 32;
 constexpr usize ED25519_SIGNATURE_SIZE = 64;
 ///@}
@@ -41,8 +41,8 @@ constexpr usize ED25519_SIGNATURE_SIZE = 64;
  * @param secret_key Output 64-byte secret key (seed || public_key).
  */
 void ed25519_keypair_from_seed(const u8 seed[ED25519_SEED_SIZE],
-                                u8 public_key[ED25519_PUBLIC_KEY_SIZE],
-                                u8 secret_key[ED25519_SECRET_KEY_SIZE]);
+                               u8 public_key[ED25519_PUBLIC_KEY_SIZE],
+                               u8 secret_key[ED25519_SECRET_KEY_SIZE]);
 
 /**
  * @brief Generate an Ed25519 key pair using random seed.
@@ -91,6 +91,6 @@ bool ed25519_verify(const void *message,
  * @param public_key Output 32-byte public key.
  */
 void ed25519_public_key_from_secret(const u8 secret_key[ED25519_SECRET_KEY_SIZE],
-                                     u8 public_key[ED25519_PUBLIC_KEY_SIZE]);
+                                    u8 public_key[ED25519_PUBLIC_KEY_SIZE]);
 
 } // namespace viper::crypto

@@ -101,7 +101,8 @@ class Channel : public Object
     bool has_message() const;
 
   private:
-    Channel(u32 channel_id, u8 endpoints) : Object(KIND), channel_id_(channel_id), endpoints_(endpoints)
+    Channel(u32 channel_id, u8 endpoints)
+        : Object(KIND), channel_id_(channel_id), endpoints_(endpoints)
     {
     }
 

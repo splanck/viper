@@ -17,11 +17,11 @@
 #include "vm/RuntimeBridge.hpp"
 #include "vm/VM.hpp"
 
+#include "tests/common/PosixCompat.h"
+#include "tests/common/WaitCompat.hpp"
 #include <cassert>
 #include <cstring>
 #include <string>
-#include "tests/common/WaitCompat.hpp"
-#include "tests/common/PosixCompat.h"
 
 using il::runtime::signatures::make_signature;
 using il::runtime::signatures::SigParam;

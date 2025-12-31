@@ -1117,13 +1117,28 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
         }
     }
 
-    // Check if this is a resolved runtime call (e.g., Viper.Terminal.Say)
+    // Check if this is a resolved runtime call (e.g., Viper.Terminal.Say or canvas.Clear)
     std::string runtimeCallee = sema_.runtimeCallee(expr);
     if (!runtimeCallee.empty())
     {
-        // Lower arguments
         std::vector<Value> args;
-        args.reserve(expr->args.size());
+
+        // Check if this is a method call on a runtime class object (e.g., canvas.Clear())
+        // If the callee is a FieldExpr, we need to pass the object as the first argument
+        if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->callee.get()))
+        {
+            // Check if base type is a runtime class
+            TypeRef baseType = sema_.typeOf(fieldExpr->base.get());
+            if (baseType && baseType->name.find("Viper.") == 0)
+            {
+                // Lower the base expression to get the object pointer
+                auto baseResult = lowerExpr(fieldExpr->base.get());
+                args.push_back(baseResult.value);
+            }
+        }
+
+        // Lower remaining arguments
+        args.reserve(args.size() + expr->args.size());
         for (auto &arg : expr->args)
         {
             auto result = lowerExpr(arg.value.get());

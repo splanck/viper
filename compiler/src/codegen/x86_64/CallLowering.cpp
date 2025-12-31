@@ -45,7 +45,6 @@ namespace
 constexpr PhysReg kScratchGPR = PhysReg::R11;
 constexpr PhysReg kScratchXMM = PhysReg::XMM15;
 
-
 /// @brief Decide whether an instruction produces the boolean SSA value @p vreg.
 ///
 /// @details Walks the instruction's leading operand to see if it writes the
@@ -250,13 +249,14 @@ void lowerCall(MBasicBlock &block,
                     const Operand scratch = makePhysOperand(RegClass::GPR, kScratchGPR);
                     if (isI1Value(block, currentIdx, arg.vreg))
                     {
-                        insertInstr(MInstr::make(MOpcode::MOVZXrr32,
-                                                 {scratch, makeVRegOperand(RegClass::GPR, arg.vreg)}));
+                        insertInstr(
+                            MInstr::make(MOpcode::MOVZXrr32,
+                                         {scratch, makeVRegOperand(RegClass::GPR, arg.vreg)}));
                     }
                     else
                     {
-                        insertInstr(MInstr::make(MOpcode::MOVrr,
-                                                 {scratch, makeVRegOperand(RegClass::GPR, arg.vreg)}));
+                        insertInstr(MInstr::make(
+                            MOpcode::MOVrr, {scratch, makeVRegOperand(RegClass::GPR, arg.vreg)}));
                     }
                     insertInstr(MInstr::make(MOpcode::MOVrm, {dest, scratch}));
                 }
@@ -283,8 +283,8 @@ void lowerCall(MBasicBlock &block,
                     const Operand dest = makeStackSlot(slotOffset);
                     // For XMM vreg stack args, use scratch XMM then store
                     const Operand scratchXmm = makePhysOperand(RegClass::XMM, kScratchXMM);
-                    insertInstr(MInstr::make(MOpcode::MOVSDrr,
-                                             {scratchXmm, makeVRegOperand(RegClass::XMM, arg.vreg)}));
+                    insertInstr(MInstr::make(
+                        MOpcode::MOVSDrr, {scratchXmm, makeVRegOperand(RegClass::XMM, arg.vreg)}));
                     insertInstr(MInstr::make(MOpcode::MOVSDrm, {dest, scratchXmm}));
                 }
             }
@@ -330,9 +330,10 @@ void lowerCall(MBasicBlock &block,
                 if (arg.isImm)
                 {
                     const Operand scratchGpr = makePhysOperand(RegClass::GPR, kScratchGPR);
-                    insertInstr(MInstr::make(MOpcode::MOVri, {scratchGpr, makeImmOperand(arg.imm)}));
-                    insertInstr(MInstr::make(MOpcode::CVTSI2SD,
-                                             {makePhysOperand(RegClass::XMM, destReg), scratchGpr}));
+                    insertInstr(
+                        MInstr::make(MOpcode::MOVri, {scratchGpr, makeImmOperand(arg.imm)}));
+                    insertInstr(MInstr::make(
+                        MOpcode::CVTSI2SD, {makePhysOperand(RegClass::XMM, destReg), scratchGpr}));
                 }
             }
             else
@@ -344,7 +345,8 @@ void lowerCall(MBasicBlock &block,
                     const Operand dest = makeStackSlot(slotOffset);
                     const Operand scratchGpr = makePhysOperand(RegClass::GPR, kScratchGPR);
                     const Operand scratchXmm = makePhysOperand(RegClass::XMM, kScratchXMM);
-                    insertInstr(MInstr::make(MOpcode::MOVri, {scratchGpr, makeImmOperand(arg.imm)}));
+                    insertInstr(
+                        MInstr::make(MOpcode::MOVri, {scratchGpr, makeImmOperand(arg.imm)}));
                     insertInstr(MInstr::make(MOpcode::CVTSI2SD, {scratchXmm, scratchGpr}));
                     insertInstr(MInstr::make(MOpcode::MOVSDrm, {dest, scratchXmm}));
                 }

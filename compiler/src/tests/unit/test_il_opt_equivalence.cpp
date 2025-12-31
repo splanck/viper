@@ -25,6 +25,8 @@
 #include "il/verify/Verifier.hpp"
 #include "support/diag_expected.hpp"
 #include "tests/TestHarness.hpp"
+#include "tests/common/PosixCompat.h"
+#include "tests/common/WaitCompat.hpp"
 #include <algorithm>
 #include <array>
 #include <cstdint>
@@ -34,8 +36,6 @@
 #include <sstream>
 #include <string>
 #include <string_view>
-#include "tests/common/WaitCompat.hpp"
-#include "tests/common/PosixCompat.h"
 #include <vector>
 
 using il::core::BasicBlock;

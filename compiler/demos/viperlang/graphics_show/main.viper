@@ -1,0 +1,355 @@
+module main;
+
+// ============================================================================
+// GRAPHICS SHOW - Main Menu and Entry Point
+// ============================================================================
+// A collection of graphical demos showcasing Viperlang and the Viper.Graphics
+// framework. Select demos from the menu or run them individually.
+// ============================================================================
+
+import "./colors";
+import "./starfield";
+import "./matrix";
+import "./plasma";
+import "./particles";
+import "./bouncing";
+import "./snake";
+import "./fireworks";
+import "./sierpinski";
+
+// Menu item structure
+entity MenuItem {
+    expose String name;
+    expose String description;
+    expose Integer index;
+
+    expose func init(n: String, desc: String, idx: Integer) {
+        name = n;
+        description = desc;
+        index = idx;
+    }
+}
+
+// Animated background stars for menu
+entity MenuStar {
+    expose Number x;
+    expose Number y;
+    expose Number speed;
+    expose Integer brightness;
+
+    expose func init(screenWidth: Integer, screenHeight: Integer) {
+        x = Viper.Random.Next() * screenWidth;
+        y = Viper.Random.Next() * screenHeight;
+        speed = 0.5 + Viper.Random.Next() * 2.0;
+        brightness = 50 + Viper.Random.NextInt(200);
+    }
+
+    expose func update(screenWidth: Integer) {
+        x = x + speed;
+        if x > screenWidth {
+            x = 0;
+        }
+    }
+
+    expose func draw(canvas: Viper.Graphics.Canvas) {
+        var color = Viper.Graphics.Color.RGB(brightness, brightness, brightness);
+        canvas.Plot(Viper.Math.Floor(x), Viper.Math.Floor(y), color);
+    }
+}
+
+// Main menu system
+entity Menu {
+    expose List[MenuItem] items;
+    expose Integer selected;
+    expose List[MenuStar] stars;
+    expose Integer titlePhase;
+    expose Boolean visible;
+
+    expose func init(screenWidth: Integer, screenHeight: Integer) {
+        items = [];
+        selected = 0;
+        titlePhase = 0;
+        visible = true;
+
+        // Add menu items
+        addItem("Starfield", "3D warp speed starfield effect");
+        addItem("Matrix Rain", "Digital rain from The Matrix");
+        addItem("Plasma", "Classic demoscene plasma effect");
+        addItem("Particles", "Physics-based particle fountain");
+        addItem("Bouncing Balls", "Bouncing balls with collision");
+        addItem("Snake", "Classic snake arcade game");
+        addItem("Fireworks", "Fireworks display animation");
+        addItem("Fractals", "Sierpinski, Mandelbrot, and Tree");
+        addItem("Exit", "Exit the Graphics Show");
+
+        // Create background stars
+        stars = [];
+        var i = 0;
+        while i < 100 {
+            var star = new MenuStar();
+            star.init(screenWidth, screenHeight);
+            stars.add(star);
+            i = i + 1;
+        }
+    }
+
+    expose func addItem(name: String, desc: String) {
+        var item = new MenuItem();
+        item.init(name, desc, items.count());
+        items.add(item);
+    }
+
+    expose func moveUp() {
+        selected = selected - 1;
+        if selected < 0 {
+            selected = items.count() - 1;
+        }
+    }
+
+    expose func moveDown() {
+        selected = selected + 1;
+        if selected >= items.count() {
+            selected = 0;
+        }
+    }
+
+    expose func getSelected() -> Integer {
+        return selected;
+    }
+
+    expose func update(screenWidth: Integer) {
+        titlePhase = titlePhase + 1;
+
+        // Update stars
+        var i = 0;
+        while i < stars.count() {
+            var star = stars.get(i);
+            star.update(screenWidth);
+            i = i + 1;
+        }
+    }
+
+    expose func draw(canvas: Viper.Graphics.Canvas, width: Integer, height: Integer) {
+        if not visible {
+            return;
+        }
+
+        // Draw background stars
+        var i = 0;
+        while i < stars.count() {
+            var star = stars.get(i);
+            star.draw(canvas);
+            i = i + 1;
+        }
+
+        // Draw title with rainbow effect
+        var titleY = 60;
+        var title = "GRAPHICS SHOW";
+        var titleX = (width - Viper.String.Length(title) * 8) / 2;
+
+        // Draw each character with rainbow color
+        var charIdx = 0;
+        while charIdx < Viper.String.Length(title) {
+            var hue = (charIdx * 30 + titlePhase * 3) - ((charIdx * 30 + titlePhase * 3) / 360) * 360;
+            var charColor = colors.rainbowPhase(hue);
+
+            // Get single character
+            var ch = Viper.String.Mid(title, charIdx + 1);
+            ch = Viper.String.Left(ch, 1);
+            if Viper.String.Length(ch) > 0 {
+                canvas.Text(titleX + charIdx * 12, titleY, ch, charColor);
+            }
+            charIdx = charIdx + 1;
+        }
+
+        // Draw subtitle
+        var subtitle = "A Viperlang Graphics Framework Demo";
+        var subX = (width - Viper.String.Length(subtitle) * 8) / 2;
+        canvas.Text(subX, titleY + 30, subtitle, Viper.Graphics.Color.RGB(150, 150, 150));
+
+        // Draw menu items
+        var menuY = 150;
+        var menuItemHeight = 35;
+
+        i = 0;
+        while i < items.count() {
+            var item = items.get(i);
+            var itemY = menuY + i * menuItemHeight;
+            var itemX = width / 2 - 100;
+
+            if i == selected {
+                // Selected item - draw highlight box
+                var boxColor = Viper.Graphics.Color.RGB(40, 60, 100);
+                canvas.RoundBox(itemX - 20, itemY - 5, 240, 28, 5, boxColor);
+
+                // Draw selection indicator
+                var indicatorColor = colors.rainbowPhase((titlePhase * 5) - ((titlePhase * 5) / 360) * 360);
+                canvas.Text(itemX - 15, itemY, ">", indicatorColor);
+
+                // Draw item name in bright color
+                canvas.Text(itemX, itemY, item.name, colors.WHITE);
+            } else {
+                // Unselected item
+                canvas.Text(itemX, itemY, item.name, Viper.Graphics.Color.RGB(120, 120, 120));
+            }
+
+            i = i + 1;
+        }
+
+        // Draw description for selected item
+        var selectedItem = items.get(selected);
+        var descY = menuY + items.count() * menuItemHeight + 30;
+        var descX = (width - Viper.String.Length(selectedItem.description) * 8) / 2;
+        canvas.Text(descX, descY, selectedItem.description, Viper.Graphics.Color.RGB(100, 150, 200));
+
+        // Draw instructions
+        var instructions = "UP/DOWN: Select | ENTER: Run Demo | ESC: Exit";
+        var instX = (width - Viper.String.Length(instructions) * 8) / 2;
+        canvas.Text(instX, height - 40, instructions, Viper.Graphics.Color.RGB(80, 80, 80));
+
+        // Draw version/credits
+        canvas.Text(10, height - 20, "Viper Graphics Framework v1.0", Viper.Graphics.Color.RGB(60, 60, 60));
+    }
+}
+
+// Run a specific demo
+func runDemo(demoIndex: Integer, canvas: Viper.Graphics.Canvas) {
+    if demoIndex == 0 {
+        starfield.run(canvas);
+    } else if demoIndex == 1 {
+        matrix.run(canvas);
+    } else if demoIndex == 2 {
+        plasma.run(canvas);
+    } else if demoIndex == 3 {
+        particles.run(canvas);
+    } else if demoIndex == 4 {
+        bouncing.run(canvas);
+    } else if demoIndex == 5 {
+        snake.run(canvas);
+    } else if demoIndex == 6 {
+        fireworks.run(canvas);
+    } else if demoIndex == 7 {
+        sierpinski.run(canvas);
+    }
+}
+
+// Main entry point
+func start() {
+    // Initialize colors first
+    colors.initColors();
+
+    // Create canvas
+    var width = 800;
+    var height = 600;
+    var canvas = new Viper.Graphics.Canvas("Graphics Show", width, height);
+
+    // Create menu
+    var menu = new Menu();
+    menu.init(width, height);
+
+    var running = true;
+    var keyDelay = 0;
+
+    while running {
+        canvas.Poll();
+
+        if canvas.ShouldClose != 0 {
+            running = false;
+        }
+
+        // Handle input with debouncing
+        if keyDelay > 0 {
+            keyDelay = keyDelay - 1;
+        }
+
+        // ESC to exit
+        if canvas.KeyHeld(27) != 0 {
+            running = false;
+        }
+
+        // Up arrow
+        if canvas.KeyHeld(265) != 0 {
+            if keyDelay == 0 {
+                menu.moveUp();
+                keyDelay = 10;
+            }
+        }
+
+        // Down arrow
+        if canvas.KeyHeld(264) != 0 {
+            if keyDelay == 0 {
+                menu.moveDown();
+                keyDelay = 10;
+            }
+        }
+
+        // Enter to select
+        if canvas.KeyHeld(257) != 0 {
+            if keyDelay == 0 {
+                var selected = menu.getSelected();
+
+                if selected == 8 {
+                    // Exit option
+                    running = false;
+                } else {
+                    // Run selected demo
+                    menu.visible = false;
+                    runDemo(selected, canvas);
+                    menu.visible = true;
+
+                    // Clear any lingering key states
+                    canvas.Poll();
+                    keyDelay = 30;
+                }
+            }
+        }
+
+        // Space also selects
+        if canvas.KeyHeld(32) != 0 {
+            if keyDelay == 0 {
+                var selected = menu.getSelected();
+
+                if selected == 8 {
+                    running = false;
+                } else {
+                    menu.visible = false;
+                    runDemo(selected, canvas);
+                    menu.visible = true;
+                    canvas.Poll();
+                    keyDelay = 30;
+                }
+            }
+        }
+
+        // Number keys for quick access (1-8)
+        var numKey = 0;
+        if canvas.KeyHeld(49) != 0 { numKey = 1; }  // 1
+        if canvas.KeyHeld(50) != 0 { numKey = 2; }  // 2
+        if canvas.KeyHeld(51) != 0 { numKey = 3; }  // 3
+        if canvas.KeyHeld(52) != 0 { numKey = 4; }  // 4
+        if canvas.KeyHeld(53) != 0 { numKey = 5; }  // 5
+        if canvas.KeyHeld(54) != 0 { numKey = 6; }  // 6
+        if canvas.KeyHeld(55) != 0 { numKey = 7; }  // 7
+        if canvas.KeyHeld(56) != 0 { numKey = 8; }  // 8
+
+        if numKey > 0 {
+            if keyDelay == 0 {
+                menu.visible = false;
+                runDemo(numKey - 1, canvas);
+                menu.visible = true;
+                canvas.Poll();
+                keyDelay = 30;
+            }
+        }
+
+        // Update menu animation
+        menu.update(width);
+
+        // Clear and draw
+        canvas.Clear(Viper.Graphics.Color.RGB(10, 15, 25));
+        menu.draw(canvas, width, height);
+
+        canvas.Flip();
+        Viper.Time.SleepMs(16);
+    }
+}

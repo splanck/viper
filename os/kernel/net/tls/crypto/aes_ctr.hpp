@@ -15,7 +15,7 @@
  */
 
 #include "../../../include/types.hpp"
-#include "aes_gcm.hpp"  // Reuse AesKey structure and key expansion
+#include "aes_gcm.hpp" // Reuse AesKey structure and key expansion
 
 namespace viper::tls::crypto
 {
@@ -29,10 +29,10 @@ namespace viper::tls::crypto
  */
 struct AesCtrState
 {
-    AesKey key;           ///< Expanded AES key
-    u8 counter[16];       ///< Current counter block (big-endian)
-    u8 keystream[16];     ///< Current keystream block
-    usize keystream_pos;  ///< Position within keystream (0-15)
+    AesKey key;          ///< Expanded AES key
+    u8 counter[16];      ///< Current counter block (big-endian)
+    u8 keystream[16];    ///< Current keystream block
+    usize keystream_pos; ///< Position within keystream (0-15)
 };
 
 /**
@@ -76,11 +76,8 @@ void aes_ctr_process(AesCtrState *state, const u8 *in, u8 *out, usize len);
  * @param out Output buffer (same size as input).
  * @param len Number of bytes to process.
  */
-void aes_128_ctr_crypt(const u8 key[AES_128_KEY_SIZE],
-                       const u8 iv[16],
-                       const u8 *in,
-                       u8 *out,
-                       usize len);
+void aes_128_ctr_crypt(
+    const u8 key[AES_128_KEY_SIZE], const u8 iv[16], const u8 *in, u8 *out, usize len);
 
 /**
  * @brief One-shot AES-256-CTR encryption/decryption.
@@ -91,11 +88,8 @@ void aes_128_ctr_crypt(const u8 key[AES_128_KEY_SIZE],
  * @param out Output buffer (same size as input).
  * @param len Number of bytes to process.
  */
-void aes_256_ctr_crypt(const u8 key[AES_256_KEY_SIZE],
-                       const u8 iv[16],
-                       const u8 *in,
-                       u8 *out,
-                       usize len);
+void aes_256_ctr_crypt(
+    const u8 key[AES_256_KEY_SIZE], const u8 iv[16], const u8 *in, u8 *out, usize len);
 
 /**
  * @brief Increment a 128-bit counter in big-endian format.

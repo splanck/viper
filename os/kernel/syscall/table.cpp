@@ -61,6 +61,10 @@ namespace syscall
 // Configuration
 // =============================================================================
 
+#ifndef CONFIG_NET_SYSCALL_DEBUG
+#define CONFIG_NET_SYSCALL_DEBUG 0
+#endif
+
 #ifdef CONFIG_SYSCALL_TRACE
 static bool g_tracing_enabled = false;
 
@@ -551,8 +555,10 @@ static SyscallResult sys_channel_create(u64, u64, u64, u64, u64, u64)
     }
 
     // Create distinct kobj::Channel wrappers for each endpoint without changing refcounts.
-    kobj::Channel *send_ep = kobj::Channel::adopt(static_cast<u32>(channel_id), kobj::Channel::ENDPOINT_SEND);
-    kobj::Channel *recv_ep = kobj::Channel::adopt(static_cast<u32>(channel_id), kobj::Channel::ENDPOINT_RECV);
+    kobj::Channel *send_ep =
+        kobj::Channel::adopt(static_cast<u32>(channel_id), kobj::Channel::ENDPOINT_SEND);
+    kobj::Channel *recv_ep =
+        kobj::Channel::adopt(static_cast<u32>(channel_id), kobj::Channel::ENDPOINT_RECV);
     if (!send_ep || !recv_ep)
     {
         delete send_ep;
@@ -562,8 +568,8 @@ static SyscallResult sys_channel_create(u64, u64, u64, u64, u64, u64)
     }
 
     // Insert send endpoint handle.
-    cap::Handle send_handle =
-        table->insert(send_ep, cap::Kind::Channel, cap::CAP_WRITE | cap::CAP_TRANSFER | cap::CAP_DERIVE);
+    cap::Handle send_handle = table->insert(
+        send_ep, cap::Kind::Channel, cap::CAP_WRITE | cap::CAP_TRANSFER | cap::CAP_DERIVE);
     if (send_handle == cap::HANDLE_INVALID)
     {
         delete send_ep;
@@ -572,8 +578,8 @@ static SyscallResult sys_channel_create(u64, u64, u64, u64, u64, u64)
     }
 
     // Insert recv endpoint handle.
-    cap::Handle recv_handle =
-        table->insert(recv_ep, cap::Kind::Channel, cap::CAP_READ | cap::CAP_TRANSFER | cap::CAP_DERIVE);
+    cap::Handle recv_handle = table->insert(
+        recv_ep, cap::Kind::Channel, cap::CAP_READ | cap::CAP_TRANSFER | cap::CAP_DERIVE);
     if (recv_handle == cap::HANDLE_INVALID)
     {
         table->remove(send_handle);
@@ -1026,7 +1032,13 @@ static SyscallResult sys_dup2(u64 a0, u64 a1, u64, u64, u64, u64)
 
 static SyscallResult sys_socket_create(u64, u64, u64, u64, u64, u64)
 {
-    i64 result = net::tcp::socket_create();
+    viper::Viper *v = viper::current();
+    if (!v)
+    {
+        return SyscallResult::err(error::VERR_NOT_FOUND);
+    }
+
+    i64 result = net::tcp::socket_create(static_cast<u32>(v->id));
     if (result < 0)
     {
         return SyscallResult::err(result);
@@ -1040,6 +1052,12 @@ static SyscallResult sys_socket_connect(u64 a0, u64 a1, u64 a2, u64, u64, u64)
     u32 ip_raw = static_cast<u32>(a1);
     u16 port = static_cast<u16>(a2);
 
+    viper::Viper *v = viper::current();
+    if (!v || !net::tcp::socket_owned_by(sock, static_cast<u32>(v->id)))
+    {
+        return SyscallResult::err(error::VERR_INVALID_HANDLE);
+    }
+
     // Convert u32 IP to Ipv4Addr
     net::Ipv4Addr ip;
     ip.bytes[0] = (ip_raw >> 24) & 0xFF;
@@ -1047,6 +1065,7 @@ static SyscallResult sys_socket_connect(u64 a0, u64 a1, u64 a2, u64, u64, u64)
     ip.bytes[2] = (ip_raw >> 8) & 0xFF;
     ip.bytes[3] = ip_raw & 0xFF;
 
+#if CONFIG_NET_SYSCALL_DEBUG
     serial::puts("[syscall] socket_connect: sock=");
     serial::put_dec(sock);
     serial::puts(" ip=");
@@ -1060,11 +1079,14 @@ static SyscallResult sys_socket_connect(u64 a0, u64 a1, u64 a2, u64, u64, u64)
     serial::puts(" port=");
     serial::put_dec(port);
     serial::putc('\n');
+#endif
 
     bool result = net::tcp::socket_connect(sock, ip, port);
+#if CONFIG_NET_SYSCALL_DEBUG
     serial::puts("[syscall] socket_connect: result=");
     serial::puts(result ? "true" : "false");
     serial::putc('\n');
+#endif
 
     if (!result)
     {
@@ -1079,11 +1101,19 @@ static SyscallResult sys_socket_send(u64 a0, u64 a1, u64 a2, u64, u64, u64)
     const void *buf = reinterpret_cast<const void *>(a1);
     usize len = static_cast<usize>(a2);
 
+    viper::Viper *v = viper::current();
+    if (!v || !net::tcp::socket_owned_by(sock, static_cast<u32>(v->id)))
+    {
+        return SyscallResult::err(error::VERR_INVALID_HANDLE);
+    }
+
+#if CONFIG_NET_SYSCALL_DEBUG
     serial::puts("[syscall] socket_send: sock=");
     serial::put_dec(sock);
     serial::puts(" len=");
     serial::put_dec(len);
     serial::putc('\n');
+#endif
 
     if (!validate_user_read(buf, len))
     {
@@ -1091,9 +1121,11 @@ static SyscallResult sys_socket_send(u64 a0, u64 a1, u64 a2, u64, u64, u64)
     }
 
     i64 result = net::tcp::socket_send(sock, buf, len);
+#if CONFIG_NET_SYSCALL_DEBUG
     serial::puts("[syscall] socket_send: result=");
     serial::put_dec(result);
     serial::putc('\n');
+#endif
 
     if (result < 0)
     {
@@ -1108,11 +1140,19 @@ static SyscallResult sys_socket_recv(u64 a0, u64 a1, u64 a2, u64, u64, u64)
     void *buf = reinterpret_cast<void *>(a1);
     usize len = static_cast<usize>(a2);
 
+    viper::Viper *v = viper::current();
+    if (!v || !net::tcp::socket_owned_by(sock, static_cast<u32>(v->id)))
+    {
+        return SyscallResult::err(error::VERR_INVALID_HANDLE);
+    }
+
+#if CONFIG_NET_SYSCALL_DEBUG
     serial::puts("[syscall] socket_recv: sock=");
     serial::put_dec(sock);
     serial::puts(" len=");
     serial::put_dec(len);
     serial::putc('\n');
+#endif
 
     if (!validate_user_write(buf, len))
     {
@@ -1120,9 +1160,11 @@ static SyscallResult sys_socket_recv(u64 a0, u64 a1, u64 a2, u64, u64, u64)
     }
 
     i64 result = net::tcp::socket_recv(sock, buf, len);
+#if CONFIG_NET_SYSCALL_DEBUG
     serial::puts("[syscall] socket_recv: result=");
     serial::put_dec(result);
     serial::putc('\n');
+#endif
 
     if (result < 0)
     {
@@ -1134,6 +1176,13 @@ static SyscallResult sys_socket_recv(u64 a0, u64 a1, u64 a2, u64, u64, u64)
 static SyscallResult sys_socket_close(u64 a0, u64, u64, u64, u64, u64)
 {
     i32 sock = static_cast<i32>(a0);
+
+    viper::Viper *v = viper::current();
+    if (!v || !net::tcp::socket_owned_by(sock, static_cast<u32>(v->id)))
+    {
+        return SyscallResult::err(error::VERR_INVALID_HANDLE);
+    }
+
     net::tcp::socket_close(sock);
     return SyscallResult::ok();
 }
@@ -1156,8 +1205,7 @@ static SyscallResult sys_dns_resolve(u64 a0, u64 a1, u64, u64, u64, u64)
 
     // Convert Ipv4Addr to u32 in network byte order (for struct in_addr.s_addr)
     // On little-endian, s_addr stores bytes[0] in lowest address = lowest bits
-    *ip_out = static_cast<u32>(result_ip.bytes[0]) |
-              (static_cast<u32>(result_ip.bytes[1]) << 8) |
+    *ip_out = static_cast<u32>(result_ip.bytes[0]) | (static_cast<u32>(result_ip.bytes[1]) << 8) |
               (static_cast<u32>(result_ip.bytes[2]) << 16) |
               (static_cast<u32>(result_ip.bytes[3]) << 24);
     return SyscallResult::ok();
@@ -2627,40 +2675,23 @@ struct DeviceMmioRegion
 };
 
 static const DeviceMmioRegion known_devices[] = {
-    {"uart0", 0x09000000, 0x1000, 33},
-    {"rtc", 0x09010000, 0x1000, 34},
-    {"gpio", 0x09030000, 0x1000, 35},
-    {"virtio0", 0x0a000000, 0x200, 48},
-    {"virtio1", 0x0a000200, 0x200, 49},
-    {"virtio2", 0x0a000400, 0x200, 50},
-    {"virtio3", 0x0a000600, 0x200, 51},
-    {"virtio4", 0x0a000800, 0x200, 52},
-    {"virtio5", 0x0a000a00, 0x200, 53},
-    {"virtio6", 0x0a000c00, 0x200, 54},
-    {"virtio7", 0x0a000e00, 0x200, 55},
-    {"virtio8", 0x0a001000, 0x200, 56},
-    {"virtio9", 0x0a001200, 0x200, 57},
-    {"virtio10", 0x0a001400, 0x200, 58},
-    {"virtio11", 0x0a001600, 0x200, 59},
-    {"virtio12", 0x0a001800, 0x200, 60},
-    {"virtio13", 0x0a001a00, 0x200, 61},
-    {"virtio14", 0x0a001c00, 0x200, 62},
-    {"virtio15", 0x0a001e00, 0x200, 63},
-    {"virtio16", 0x0a002000, 0x200, 64},
-    {"virtio17", 0x0a002200, 0x200, 65},
-    {"virtio18", 0x0a002400, 0x200, 66},
-    {"virtio19", 0x0a002600, 0x200, 67},
-    {"virtio20", 0x0a002800, 0x200, 68},
-    {"virtio21", 0x0a002a00, 0x200, 69},
-    {"virtio22", 0x0a002c00, 0x200, 70},
-    {"virtio23", 0x0a002e00, 0x200, 71},
-    {"virtio24", 0x0a003000, 0x200, 72},
-    {"virtio25", 0x0a003200, 0x200, 73},
-    {"virtio26", 0x0a003400, 0x200, 74},
-    {"virtio27", 0x0a003600, 0x200, 75},
-    {"virtio28", 0x0a003800, 0x200, 76},
-    {"virtio29", 0x0a003a00, 0x200, 77},
-    {"virtio30", 0x0a003c00, 0x200, 78},
+    {"uart0", 0x09000000, 0x1000, 33},   {"rtc", 0x09010000, 0x1000, 34},
+    {"gpio", 0x09030000, 0x1000, 35},    {"virtio0", 0x0a000000, 0x200, 48},
+    {"virtio1", 0x0a000200, 0x200, 49},  {"virtio2", 0x0a000400, 0x200, 50},
+    {"virtio3", 0x0a000600, 0x200, 51},  {"virtio4", 0x0a000800, 0x200, 52},
+    {"virtio5", 0x0a000a00, 0x200, 53},  {"virtio6", 0x0a000c00, 0x200, 54},
+    {"virtio7", 0x0a000e00, 0x200, 55},  {"virtio8", 0x0a001000, 0x200, 56},
+    {"virtio9", 0x0a001200, 0x200, 57},  {"virtio10", 0x0a001400, 0x200, 58},
+    {"virtio11", 0x0a001600, 0x200, 59}, {"virtio12", 0x0a001800, 0x200, 60},
+    {"virtio13", 0x0a001a00, 0x200, 61}, {"virtio14", 0x0a001c00, 0x200, 62},
+    {"virtio15", 0x0a001e00, 0x200, 63}, {"virtio16", 0x0a002000, 0x200, 64},
+    {"virtio17", 0x0a002200, 0x200, 65}, {"virtio18", 0x0a002400, 0x200, 66},
+    {"virtio19", 0x0a002600, 0x200, 67}, {"virtio20", 0x0a002800, 0x200, 68},
+    {"virtio21", 0x0a002a00, 0x200, 69}, {"virtio22", 0x0a002c00, 0x200, 70},
+    {"virtio23", 0x0a002e00, 0x200, 71}, {"virtio24", 0x0a003000, 0x200, 72},
+    {"virtio25", 0x0a003200, 0x200, 73}, {"virtio26", 0x0a003400, 0x200, 74},
+    {"virtio27", 0x0a003600, 0x200, 75}, {"virtio28", 0x0a003800, 0x200, 76},
+    {"virtio29", 0x0a003a00, 0x200, 77}, {"virtio30", 0x0a003c00, 0x200, 78},
     {"virtio31", 0x0a003e00, 0x200, 79},
 };
 static constexpr u32 KNOWN_DEVICE_COUNT = sizeof(known_devices) / sizeof(known_devices[0]);

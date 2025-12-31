@@ -40,8 +40,8 @@ static inline long syscall2(long num, long a0, long a1)
     __asm__ volatile("svc #0" : "+r"(x0), "+r"(x1) : "r"(x8) : "memory");
     /* x0 = error code, x1 = result. Return result if success, else error */
     if (x0 != 0)
-        return x0;  /* Return negative error code */
-    return x1;      /* Return result */
+        return x0; /* Return negative error code */
+    return x1;     /* Return result */
 }
 
 /**
@@ -49,7 +49,8 @@ static inline long syscall2(long num, long a0, long a1)
  */
 static void clear_bss(void)
 {
-    for (char *p = __bss_start; p < __bss_end; p++) {
+    for (char *p = __bss_start; p < __bss_end; p++)
+    {
         *p = 0;
     }
 }
@@ -73,7 +74,8 @@ static int parse_args(void)
 
     /* Get args from kernel */
     long result = syscall2(SYS_GET_ARGS, (long)g_args_buf, ARGS_BUF_SIZE - 1);
-    if (result <= 0) {
+    if (result <= 0)
+    {
         /* No args or error */
         g_argv[argc] = (char *)0;
         return argc;
@@ -85,7 +87,8 @@ static int parse_args(void)
     /* Parse args - split on spaces */
     char *p = g_args_buf;
 
-    while (*p && argc < MAX_ARGS) {
+    while (*p && argc < MAX_ARGS)
+    {
         /* Skip leading spaces */
         while (*p == ' ')
             p++;
@@ -101,7 +104,8 @@ static int parse_args(void)
             p++;
 
         /* Null-terminate this argument */
-        if (*p) {
+        if (*p)
+        {
             *p++ = '\0';
         }
     }
@@ -133,5 +137,6 @@ void _start(void)
     _exit(ret);
 
     /* Should never reach here */
-    for (;;);
+    for (;;)
+        ;
 }

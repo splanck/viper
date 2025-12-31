@@ -7,6 +7,10 @@
 #include "../../sched/scheduler.hpp"
 #include "gic.hpp"
 
+#ifndef CONFIG_TIMER_HEARTBEAT
+#define CONFIG_TIMER_HEARTBEAT 0
+#endif
+
 // Suppress warnings for timer register read helpers that may not be used yet
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-function"
@@ -190,12 +194,14 @@ void timer_irq_handler(u32)
     write_cntp_cval(current + interval);
 
     // Debug output every second
+#if CONFIG_TIMER_HEARTBEAT
     if (ticks % 1000 == 0)
     {
         serial::puts("[timer] ");
         serial::put_dec(ticks / 1000);
         serial::puts("s\n");
     }
+#endif
 
     // Update cursor blink (ticks are in milliseconds)
     gcon::update_cursor_blink(ticks);

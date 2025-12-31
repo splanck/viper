@@ -12,12 +12,12 @@
 // Links: docs/codemap.md
 #include "viper/runtime/rt.h"
 
+#include "tests/common/PosixCompat.h"
 #include <assert.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/types.h>
-#include "tests/common/PosixCompat.h"
 
 /// @brief End-to-end checks for channel open/read/write/close workflows.
 int main(void)

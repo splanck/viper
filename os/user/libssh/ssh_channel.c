@@ -5,11 +5,11 @@
 
 #include "include/ssh.h"
 #include "ssh_internal.h"
+#include <poll.h>
 #include <stdlib.h>
 #include <string.h>
-#include <poll.h>
 
-#define CHANNEL_WINDOW_SIZE (2 * 1024 * 1024)  /* 2MB window */
+#define CHANNEL_WINDOW_SIZE (2 * 1024 * 1024) /* 2MB window */
 #define CHANNEL_MAX_PACKET 32768
 #define CHANNEL_BUFFER_SIZE (64 * 1024)
 
@@ -19,23 +19,28 @@
 
 ssh_channel_t *ssh_channel_new(ssh_session_t *session)
 {
-    if (!session || session->state != SSH_STATE_AUTHENTICATED) {
+    if (!session || session->state != SSH_STATE_AUTHENTICATED)
+    {
         return NULL;
     }
 
     /* Find free slot */
     int slot = -1;
-    for (int i = 0; i < SSH_MAX_CHANNELS; i++) {
-        if (session->channels[i] == NULL) {
+    for (int i = 0; i < SSH_MAX_CHANNELS; i++)
+    {
+        if (session->channels[i] == NULL)
+        {
             slot = i;
             break;
         }
     }
 
-    if (slot < 0) return NULL;
+    if (slot < 0)
+        return NULL;
 
     ssh_channel_t *channel = calloc(1, sizeof(ssh_channel_t));
-    if (!channel) return NULL;
+    if (!channel)
+        return NULL;
 
     channel->session = session;
     channel->local_channel = session->next_channel_id++;
@@ -47,7 +52,8 @@ ssh_channel_t *ssh_channel_new(ssh_session_t *session)
     /* Allocate read buffers */
     channel->read_buf = malloc(CHANNEL_BUFFER_SIZE);
     channel->ext_buf = malloc(CHANNEL_BUFFER_SIZE);
-    if (!channel->read_buf || !channel->ext_buf) {
+    if (!channel->read_buf || !channel->ext_buf)
+    {
         free(channel->read_buf);
         free(channel->ext_buf);
         free(channel);
@@ -62,12 +68,16 @@ ssh_channel_t *ssh_channel_new(ssh_session_t *session)
 
 void ssh_channel_free(ssh_channel_t *channel)
 {
-    if (!channel) return;
+    if (!channel)
+        return;
 
     /* Remove from session */
-    if (channel->session) {
-        for (int i = 0; i < SSH_MAX_CHANNELS; i++) {
-            if (channel->session->channels[i] == channel) {
+    if (channel->session)
+    {
+        for (int i = 0; i < SSH_MAX_CHANNELS; i++)
+        {
+            if (channel->session->channels[i] == channel)
+            {
                 channel->session->channels[i] = NULL;
                 break;
             }
@@ -81,9 +91,10 @@ void ssh_channel_free(ssh_channel_t *channel)
 
 static ssh_channel_t *ssh_channel_find(ssh_session_t *session, uint32_t local_id)
 {
-    for (int i = 0; i < SSH_MAX_CHANNELS; i++) {
-        if (session->channels[i] &&
-            session->channels[i]->local_channel == local_id) {
+    for (int i = 0; i < SSH_MAX_CHANNELS; i++)
+    {
+        if (session->channels[i] && session->channels[i]->local_channel == local_id)
+        {
             return session->channels[i];
         }
     }
@@ -91,17 +102,23 @@ static ssh_channel_t *ssh_channel_find(ssh_session_t *session, uint32_t local_id
 }
 
 /* Process incoming channel messages */
-static int ssh_channel_process_message(ssh_session_t *session, uint8_t msg_type,
-                                        const uint8_t *payload, size_t len)
+static int ssh_channel_process_message(ssh_session_t *session,
+                                       uint8_t msg_type,
+                                       const uint8_t *payload,
+                                       size_t len)
 {
-    if (len < 4) return SSH_PROTOCOL_ERROR;
+    if (len < 4)
+        return SSH_PROTOCOL_ERROR;
 
     uint32_t channel_id = ssh_buf_read_u32(payload);
     ssh_channel_t *channel = ssh_channel_find(session, channel_id);
 
-    switch (msg_type) {
-        case SSH_MSG_CHANNEL_OPEN_CONFIRMATION: {
-            if (!channel || len < 16) return SSH_PROTOCOL_ERROR;
+    switch (msg_type)
+    {
+        case SSH_MSG_CHANNEL_OPEN_CONFIRMATION:
+        {
+            if (!channel || len < 16)
+                return SSH_PROTOCOL_ERROR;
             channel->remote_channel = ssh_buf_read_u32(payload + 4);
             channel->remote_window = ssh_buf_read_u32(payload + 8);
             channel->remote_maxpacket = ssh_buf_read_u32(payload + 12);
@@ -109,35 +126,44 @@ static int ssh_channel_process_message(ssh_session_t *session, uint8_t msg_type,
             return SSH_OK;
         }
 
-        case SSH_MSG_CHANNEL_OPEN_FAILURE: {
-            if (!channel || len < 8) return SSH_PROTOCOL_ERROR;
+        case SSH_MSG_CHANNEL_OPEN_FAILURE:
+        {
+            if (!channel || len < 8)
+                return SSH_PROTOCOL_ERROR;
             channel->state = SSH_CHANSTATE_CLOSED;
             return SSH_CHANNEL_CLOSED;
         }
 
-        case SSH_MSG_CHANNEL_WINDOW_ADJUST: {
-            if (!channel || len < 8) return SSH_PROTOCOL_ERROR;
+        case SSH_MSG_CHANNEL_WINDOW_ADJUST:
+        {
+            if (!channel || len < 8)
+                return SSH_PROTOCOL_ERROR;
             uint32_t bytes = ssh_buf_read_u32(payload + 4);
             channel->remote_window += bytes;
             return SSH_OK;
         }
 
-        case SSH_MSG_CHANNEL_DATA: {
-            if (!channel || len < 8) return SSH_PROTOCOL_ERROR;
+        case SSH_MSG_CHANNEL_DATA:
+        {
+            if (!channel || len < 8)
+                return SSH_PROTOCOL_ERROR;
             uint32_t data_len = ssh_buf_read_u32(payload + 4);
-            if (8 + data_len > len) return SSH_PROTOCOL_ERROR;
+            if (8 + data_len > len)
+                return SSH_PROTOCOL_ERROR;
 
             /* Copy to read buffer */
             size_t space = channel->read_buf_size - channel->read_buf_len;
             size_t copy = (data_len < space) ? data_len : space;
-            if (copy > 0) {
+            if (copy > 0)
+            {
                 memcpy(channel->read_buf + channel->read_buf_len, payload + 8, copy);
                 channel->read_buf_len += copy;
             }
 
             /* Adjust window */
             channel->local_window -= data_len;
-            if (channel->local_window < CHANNEL_WINDOW_SIZE / 2) {
+            if (channel->local_window < CHANNEL_WINDOW_SIZE / 2)
+            {
                 uint8_t adjust[8];
                 ssh_buf_write_u32(adjust, channel->remote_channel);
                 ssh_buf_write_u32(adjust + 4, CHANNEL_WINDOW_SIZE - channel->local_window);
@@ -147,17 +173,22 @@ static int ssh_channel_process_message(ssh_session_t *session, uint8_t msg_type,
             return SSH_OK;
         }
 
-        case SSH_MSG_CHANNEL_EXTENDED_DATA: {
-            if (!channel || len < 12) return SSH_PROTOCOL_ERROR;
+        case SSH_MSG_CHANNEL_EXTENDED_DATA:
+        {
+            if (!channel || len < 12)
+                return SSH_PROTOCOL_ERROR;
             uint32_t data_type = ssh_buf_read_u32(payload + 4);
             uint32_t data_len = ssh_buf_read_u32(payload + 8);
-            if (12 + data_len > len) return SSH_PROTOCOL_ERROR;
+            if (12 + data_len > len)
+                return SSH_PROTOCOL_ERROR;
 
             /* Only handle stderr (type 1) */
-            if (data_type == 1) {
+            if (data_type == 1)
+            {
                 size_t space = channel->ext_buf_size - channel->ext_buf_len;
                 size_t copy = (data_len < space) ? data_len : space;
-                if (copy > 0) {
+                if (copy > 0)
+                {
                     memcpy(channel->ext_buf + channel->ext_buf_len, payload + 12, copy);
                     channel->ext_buf_len += copy;
                 }
@@ -167,18 +198,23 @@ static int ssh_channel_process_message(ssh_session_t *session, uint8_t msg_type,
             return SSH_OK;
         }
 
-        case SSH_MSG_CHANNEL_EOF: {
-            if (channel) {
+        case SSH_MSG_CHANNEL_EOF:
+        {
+            if (channel)
+            {
                 channel->eof_received = true;
             }
             return SSH_OK;
         }
 
-        case SSH_MSG_CHANNEL_CLOSE: {
-            if (channel) {
+        case SSH_MSG_CHANNEL_CLOSE:
+        {
+            if (channel)
+            {
                 channel->state = SSH_CHANSTATE_CLOSED;
                 /* Send close back if we haven't already */
-                if (!channel->eof_sent) {
+                if (!channel->eof_sent)
+                {
                     uint8_t close_msg[4];
                     ssh_buf_write_u32(close_msg, channel->remote_channel);
                     ssh_packet_send(session, SSH_MSG_CHANNEL_CLOSE, close_msg, 4);
@@ -187,14 +223,19 @@ static int ssh_channel_process_message(ssh_session_t *session, uint8_t msg_type,
             return SSH_OK;
         }
 
-        case SSH_MSG_CHANNEL_REQUEST: {
-            if (!channel || len < 5) return SSH_PROTOCOL_ERROR;
+        case SSH_MSG_CHANNEL_REQUEST:
+        {
+            if (!channel || len < 5)
+                return SSH_PROTOCOL_ERROR;
             uint32_t req_len = ssh_buf_read_u32(payload + 4);
-            if (8 + req_len > len) return SSH_PROTOCOL_ERROR;
+            if (8 + req_len > len)
+                return SSH_PROTOCOL_ERROR;
 
             /* Check for exit-status */
-            if (req_len == 11 && memcmp(payload + 8, "exit-status", 11) == 0) {
-                if (len >= 8 + 11 + 1 + 4) {
+            if (req_len == 11 && memcmp(payload + 8, "exit-status", 11) == 0)
+            {
+                if (len >= 8 + 11 + 1 + 4)
+                {
                     channel->exit_status = ssh_buf_read_u32(payload + 8 + 11 + 1);
                     channel->exit_status_set = true;
                 }
@@ -220,13 +261,17 @@ static int ssh_channel_wait_open(ssh_channel_t *channel)
     uint8_t msg_type;
     int rc;
 
-    while (channel->state == SSH_CHANSTATE_OPENING) {
+    while (channel->state == SSH_CHANSTATE_OPENING)
+    {
         rc = ssh_packet_recv(session, &msg_type, payload, &payload_len);
-        if (rc < 0) return rc;
+        if (rc < 0)
+            return rc;
 
-        if (msg_type >= SSH_MSG_CHANNEL_OPEN && msg_type <= SSH_MSG_CHANNEL_FAILURE) {
+        if (msg_type >= SSH_MSG_CHANNEL_OPEN && msg_type <= SSH_MSG_CHANNEL_FAILURE)
+        {
             rc = ssh_channel_process_message(session, msg_type, payload, payload_len);
-            if (rc < 0 && rc != SSH_CHANNEL_CLOSED) return rc;
+            if (rc < 0 && rc != SSH_CHANNEL_CLOSED)
+                return rc;
         }
     }
 
@@ -235,7 +280,8 @@ static int ssh_channel_wait_open(ssh_channel_t *channel)
 
 int ssh_channel_open_session(ssh_channel_t *channel)
 {
-    if (!channel || !channel->session) return SSH_ERROR;
+    if (!channel || !channel->session)
+        return SSH_ERROR;
 
     uint8_t payload[256];
     size_t pos = 0;
@@ -262,15 +308,20 @@ int ssh_channel_open_session(ssh_channel_t *channel)
     channel->state = SSH_CHANSTATE_OPENING;
 
     int rc = ssh_packet_send(channel->session, SSH_MSG_CHANNEL_OPEN, payload, pos);
-    if (rc < 0) return rc;
+    if (rc < 0)
+        return rc;
 
     return ssh_channel_wait_open(channel);
 }
 
-static int ssh_channel_request(ssh_channel_t *channel, const char *request,
-                               const uint8_t *data, size_t data_len, int want_reply)
+static int ssh_channel_request(ssh_channel_t *channel,
+                               const char *request,
+                               const uint8_t *data,
+                               size_t data_len,
+                               int want_reply)
 {
-    if (!channel || channel->state != SSH_CHANSTATE_OPEN) return SSH_ERROR;
+    if (!channel || channel->state != SSH_CHANSTATE_OPEN)
+        return SSH_ERROR;
 
     uint8_t payload[1024];
     size_t pos = 0;
@@ -289,33 +340,41 @@ static int ssh_channel_request(ssh_channel_t *channel, const char *request,
     payload[pos++] = want_reply ? 1 : 0;
 
     /* request-specific data */
-    if (data && data_len > 0) {
+    if (data && data_len > 0)
+    {
         memcpy(payload + pos, data, data_len);
         pos += data_len;
     }
 
     int rc = ssh_packet_send(channel->session, SSH_MSG_CHANNEL_REQUEST, payload, pos);
-    if (rc < 0) return rc;
+    if (rc < 0)
+        return rc;
 
-    if (want_reply) {
+    if (want_reply)
+    {
         /* Wait for success/failure */
         uint8_t response[256];
         size_t response_len;
         uint8_t msg_type;
 
-        while (1) {
+        while (1)
+        {
             rc = ssh_packet_recv(channel->session, &msg_type, response, &response_len);
-            if (rc < 0) return rc;
+            if (rc < 0)
+                return rc;
 
-            if (msg_type == SSH_MSG_CHANNEL_SUCCESS) {
+            if (msg_type == SSH_MSG_CHANNEL_SUCCESS)
+            {
                 return SSH_OK;
             }
-            if (msg_type == SSH_MSG_CHANNEL_FAILURE) {
+            if (msg_type == SSH_MSG_CHANNEL_FAILURE)
+            {
                 return SSH_ERROR;
             }
 
             /* Process other channel messages */
-            if (msg_type >= SSH_MSG_CHANNEL_OPEN && msg_type <= SSH_MSG_CHANNEL_FAILURE) {
+            if (msg_type >= SSH_MSG_CHANNEL_OPEN && msg_type <= SSH_MSG_CHANNEL_FAILURE)
+            {
                 ssh_channel_process_message(channel->session, msg_type, response, response_len);
             }
         }
@@ -324,8 +383,7 @@ static int ssh_channel_request(ssh_channel_t *channel, const char *request,
     return SSH_OK;
 }
 
-int ssh_channel_request_pty(ssh_channel_t *channel, const char *term,
-                            int cols, int rows)
+int ssh_channel_request_pty(ssh_channel_t *channel, const char *term, int cols, int rows)
 {
     uint8_t data[256];
     size_t pos = 0;
@@ -354,7 +412,7 @@ int ssh_channel_request_pty(ssh_channel_t *channel, const char *term,
 
     /* terminal modes (empty) */
     ssh_buf_write_u32(data + pos, 1);
-    data[pos + 4] = 0;  /* TTY_OP_END */
+    data[pos + 4] = 0; /* TTY_OP_END */
     pos += 5;
 
     return ssh_channel_request(channel, "pty-req", data, pos, 1);
@@ -393,7 +451,8 @@ int ssh_channel_request_subsystem(ssh_channel_t *channel, const char *subsystem)
 
 ssize_t ssh_channel_write(ssh_channel_t *channel, const void *data, size_t len)
 {
-    if (!channel || channel->state != SSH_CHANSTATE_OPEN || !data) {
+    if (!channel || channel->state != SSH_CHANSTATE_OPEN || !data)
+    {
         return SSH_ERROR;
     }
 
@@ -401,30 +460,37 @@ ssize_t ssh_channel_write(ssh_channel_t *channel, const void *data, size_t len)
     size_t remaining = len;
     size_t total_sent = 0;
 
-    while (remaining > 0) {
+    while (remaining > 0)
+    {
         /* Wait for window space */
-        while (channel->remote_window == 0 && channel->state == SSH_CHANSTATE_OPEN) {
+        while (channel->remote_window == 0 && channel->state == SSH_CHANSTATE_OPEN)
+        {
             /* Need to read and process incoming packets */
             uint8_t payload[SSH_MAX_PAYLOAD_SIZE];
             size_t payload_len;
             uint8_t msg_type;
 
             int rc = ssh_packet_recv(channel->session, &msg_type, payload, &payload_len);
-            if (rc < 0) return rc;
+            if (rc < 0)
+                return rc;
 
-            if (msg_type >= SSH_MSG_CHANNEL_OPEN && msg_type <= SSH_MSG_CHANNEL_FAILURE) {
+            if (msg_type >= SSH_MSG_CHANNEL_OPEN && msg_type <= SSH_MSG_CHANNEL_FAILURE)
+            {
                 ssh_channel_process_message(channel->session, msg_type, payload, payload_len);
             }
         }
 
-        if (channel->state != SSH_CHANSTATE_OPEN) {
+        if (channel->state != SSH_CHANSTATE_OPEN)
+        {
             return total_sent > 0 ? (ssize_t)total_sent : SSH_CHANNEL_CLOSED;
         }
 
         /* Send data packet */
         size_t chunk = remaining;
-        if (chunk > channel->remote_window) chunk = channel->remote_window;
-        if (chunk > channel->remote_maxpacket) chunk = channel->remote_maxpacket;
+        if (chunk > channel->remote_window)
+            chunk = channel->remote_window;
+        if (chunk > channel->remote_maxpacket)
+            chunk = channel->remote_maxpacket;
 
         uint8_t pkt[SSH_MAX_PAYLOAD_SIZE];
         ssh_buf_write_u32(pkt, channel->remote_channel);
@@ -432,7 +498,8 @@ ssize_t ssh_channel_write(ssh_channel_t *channel, const void *data, size_t len)
         memcpy(pkt + 8, ptr, chunk);
 
         int rc = ssh_packet_send(channel->session, SSH_MSG_CHANNEL_DATA, pkt, 8 + chunk);
-        if (rc < 0) return rc;
+        if (rc < 0)
+            return rc;
 
         channel->remote_window -= chunk;
         ptr += chunk;
@@ -445,19 +512,23 @@ ssize_t ssh_channel_write(ssh_channel_t *channel, const void *data, size_t len)
 
 ssize_t ssh_channel_read(ssh_channel_t *channel, void *buffer, size_t len, int *is_stderr)
 {
-    if (!channel || !buffer) return SSH_ERROR;
+    if (!channel || !buffer)
+        return SSH_ERROR;
 
-    if (is_stderr) *is_stderr = 0;
+    if (is_stderr)
+        *is_stderr = 0;
 
     /* First check buffers */
-    if (channel->read_buf_len > channel->read_buf_pos) {
+    if (channel->read_buf_len > channel->read_buf_pos)
+    {
         size_t avail = channel->read_buf_len - channel->read_buf_pos;
         size_t copy = (avail < len) ? avail : len;
         memcpy(buffer, channel->read_buf + channel->read_buf_pos, copy);
         channel->read_buf_pos += copy;
 
         /* Reset buffer if fully consumed */
-        if (channel->read_buf_pos >= channel->read_buf_len) {
+        if (channel->read_buf_pos >= channel->read_buf_len)
+        {
             channel->read_buf_pos = 0;
             channel->read_buf_len = 0;
         }
@@ -465,22 +536,26 @@ ssize_t ssh_channel_read(ssh_channel_t *channel, void *buffer, size_t len, int *
     }
 
     /* Check stderr buffer */
-    if (channel->ext_buf_len > channel->ext_buf_pos) {
+    if (channel->ext_buf_len > channel->ext_buf_pos)
+    {
         size_t avail = channel->ext_buf_len - channel->ext_buf_pos;
         size_t copy = (avail < len) ? avail : len;
         memcpy(buffer, channel->ext_buf + channel->ext_buf_pos, copy);
         channel->ext_buf_pos += copy;
 
-        if (channel->ext_buf_pos >= channel->ext_buf_len) {
+        if (channel->ext_buf_pos >= channel->ext_buf_len)
+        {
             channel->ext_buf_pos = 0;
             channel->ext_buf_len = 0;
         }
-        if (is_stderr) *is_stderr = 1;
+        if (is_stderr)
+            *is_stderr = 1;
         return copy;
     }
 
     /* Check for EOF */
-    if (channel->eof_received || channel->state == SSH_CHANSTATE_CLOSED) {
+    if (channel->eof_received || channel->state == SSH_CHANSTATE_CLOSED)
+    {
         return 0;
     }
 
@@ -490,18 +565,22 @@ ssize_t ssh_channel_read(ssh_channel_t *channel, void *buffer, size_t len, int *
     uint8_t msg_type;
 
     int rc = ssh_packet_recv(channel->session, &msg_type, payload, &payload_len);
-    if (rc < 0) return rc;
+    if (rc < 0)
+        return rc;
 
-    if (msg_type >= SSH_MSG_CHANNEL_OPEN && msg_type <= SSH_MSG_CHANNEL_FAILURE) {
+    if (msg_type >= SSH_MSG_CHANNEL_OPEN && msg_type <= SSH_MSG_CHANNEL_FAILURE)
+    {
         ssh_channel_process_message(channel->session, msg_type, payload, payload_len);
     }
 
     /* Try again with potentially filled buffer */
-    if (channel->read_buf_len > 0 || channel->ext_buf_len > 0) {
+    if (channel->read_buf_len > 0 || channel->ext_buf_len > 0)
+    {
         return ssh_channel_read(channel, buffer, len, is_stderr);
     }
 
-    if (channel->eof_received || channel->state == SSH_CHANSTATE_CLOSED) {
+    if (channel->eof_received || channel->state == SSH_CHANSTATE_CLOSED)
+    {
         return 0;
     }
 
@@ -510,7 +589,8 @@ ssize_t ssh_channel_read(ssh_channel_t *channel, void *buffer, size_t len, int *
 
 int ssh_channel_send_eof(ssh_channel_t *channel)
 {
-    if (!channel || channel->state != SSH_CHANSTATE_OPEN || channel->eof_sent) {
+    if (!channel || channel->state != SSH_CHANSTATE_OPEN || channel->eof_sent)
+    {
         return SSH_ERROR;
     }
 
@@ -518,7 +598,8 @@ int ssh_channel_send_eof(ssh_channel_t *channel)
     ssh_buf_write_u32(payload, channel->remote_channel);
 
     int rc = ssh_packet_send(channel->session, SSH_MSG_CHANNEL_EOF, payload, 4);
-    if (rc >= 0) {
+    if (rc >= 0)
+    {
         channel->eof_sent = true;
     }
     return rc;
@@ -526,13 +607,16 @@ int ssh_channel_send_eof(ssh_channel_t *channel)
 
 int ssh_channel_close(ssh_channel_t *channel)
 {
-    if (!channel) return SSH_ERROR;
+    if (!channel)
+        return SSH_ERROR;
 
-    if (channel->state == SSH_CHANSTATE_OPEN && !channel->eof_sent) {
+    if (channel->state == SSH_CHANSTATE_OPEN && !channel->eof_sent)
+    {
         ssh_channel_send_eof(channel);
     }
 
-    if (channel->state != SSH_CHANSTATE_CLOSED) {
+    if (channel->state != SSH_CHANSTATE_CLOSED)
+    {
         uint8_t payload[4];
         ssh_buf_write_u32(payload, channel->remote_channel);
         ssh_packet_send(channel->session, SSH_MSG_CHANNEL_CLOSE, payload, 4);
@@ -554,7 +638,8 @@ int ssh_channel_is_eof(ssh_channel_t *channel)
 
 int ssh_channel_get_exit_status(ssh_channel_t *channel)
 {
-    if (!channel || !channel->exit_status_set) return -1;
+    if (!channel || !channel->exit_status_set)
+        return -1;
     return channel->exit_status;
 }
 
@@ -567,9 +652,9 @@ int ssh_channel_change_pty_size(ssh_channel_t *channel, int cols, int rows)
     pos += 4;
     ssh_buf_write_u32(data + pos, rows);
     pos += 4;
-    ssh_buf_write_u32(data + pos, 0);  /* width pixels */
+    ssh_buf_write_u32(data + pos, 0); /* width pixels */
     pos += 4;
-    ssh_buf_write_u32(data + pos, 0);  /* height pixels */
+    ssh_buf_write_u32(data + pos, 0); /* height pixels */
     pos += 4;
 
     return ssh_channel_request(channel, "window-change", data, pos, 0);
@@ -577,15 +662,18 @@ int ssh_channel_change_pty_size(ssh_channel_t *channel, int cols, int rows)
 
 int ssh_channel_poll(ssh_channel_t *channel, int timeout_ms)
 {
-    if (!channel) return SSH_ERROR;
+    if (!channel)
+        return SSH_ERROR;
 
     /* Check if data already in buffer */
     if (channel->read_buf_len > channel->read_buf_pos ||
-        channel->ext_buf_len > channel->ext_buf_pos) {
+        channel->ext_buf_len > channel->ext_buf_pos)
+    {
         return 1;
     }
 
-    if (channel->eof_received || channel->state == SSH_CHANSTATE_CLOSED) {
+    if (channel->eof_received || channel->state == SSH_CHANSTATE_CLOSED)
+    {
         return 0;
     }
 
@@ -596,8 +684,10 @@ int ssh_channel_poll(ssh_channel_t *channel, int timeout_ms)
     pfd.revents = 0;
 
     int rc = poll(&pfd, 1, timeout_ms);
-    if (rc < 0) return SSH_ERROR;
-    if (rc == 0) return 0;  /* Timeout */
+    if (rc < 0)
+        return SSH_ERROR;
+    if (rc == 0)
+        return 0; /* Timeout */
 
     /* Data available - process it */
     uint8_t payload[SSH_MAX_PAYLOAD_SIZE];
@@ -605,15 +695,18 @@ int ssh_channel_poll(ssh_channel_t *channel, int timeout_ms)
     uint8_t msg_type;
 
     rc = ssh_packet_recv(channel->session, &msg_type, payload, &payload_len);
-    if (rc < 0) return rc;
+    if (rc < 0)
+        return rc;
 
-    if (msg_type >= SSH_MSG_CHANNEL_OPEN && msg_type <= SSH_MSG_CHANNEL_FAILURE) {
+    if (msg_type >= SSH_MSG_CHANNEL_OPEN && msg_type <= SSH_MSG_CHANNEL_FAILURE)
+    {
         ssh_channel_process_message(channel->session, msg_type, payload, payload_len);
     }
 
     /* Check again */
     if (channel->read_buf_len > channel->read_buf_pos ||
-        channel->ext_buf_len > channel->ext_buf_pos) {
+        channel->ext_buf_len > channel->ext_buf_pos)
+    {
         return 1;
     }
 

@@ -14,11 +14,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt.hpp"
+#include "tests/common/PosixCompat.h"
 #include <cassert>
 #include <cstdio>
 #include <cstring>
 #include <string>
-#include "tests/common/PosixCompat.h"
 
 #ifdef _WIN32
 // This test requires overriding realloc which doesn't work with Windows DLL CRT

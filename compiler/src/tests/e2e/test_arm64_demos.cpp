@@ -5,12 +5,12 @@
 // Purpose: End-to-end tests for ARM64 code generation with demo programs
 //===----------------------------------------------------------------------===//
 #include "tests/TestHarness.hpp"
+#include "tests/common/WaitCompat.hpp"
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
-#include "tests/common/WaitCompat.hpp"
 #include <vector>
 
 struct RunResult

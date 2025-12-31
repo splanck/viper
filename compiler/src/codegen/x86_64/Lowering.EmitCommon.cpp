@@ -311,7 +311,8 @@ void EmitCommon::emitBinary(
     {
         if (cls == RegClass::XMM)
         {
-            builder().append(MInstr::make(MOpcode::MOVSDrr, std::vector<Operand>{clone(dest), lhs}));
+            builder().append(
+                MInstr::make(MOpcode::MOVSDrr, std::vector<Operand>{clone(dest), lhs}));
         }
         else
         {

@@ -49,8 +49,8 @@ constexpr const char kIlcExecutable[] = "ilc";
     bool needsQuoting = false;
     for (const char ch : pathStr)
     {
-        if (ch == ' ' || ch == '\t' || ch == '&' || ch == '|' || ch == '<' ||
-            ch == '>' || ch == '^' || ch == '(' || ch == ')' || ch == '"')
+        if (ch == ' ' || ch == '\t' || ch == '&' || ch == '|' || ch == '<' || ch == '>' ||
+            ch == '^' || ch == '(' || ch == ')' || ch == '"')
         {
             needsQuoting = true;
             break;
