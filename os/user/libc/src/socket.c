@@ -5,6 +5,7 @@
 #include "../include/string.h"
 
 /* Syscall helpers */
+extern long __syscall0(long num);
 extern long __syscall1(long num, long arg0);
 extern long __syscall2(long num, long arg0, long arg1);
 extern long __syscall3(long num, long arg0, long arg1, long arg2);
@@ -12,21 +13,13 @@ extern long __syscall4(long num, long arg0, long arg1, long arg2, long arg3);
 extern long __syscall5(long num, long arg0, long arg1, long arg2, long arg3, long arg4);
 extern long __syscall6(long num, long arg0, long arg1, long arg2, long arg3, long arg4, long arg5);
 
-/* Syscall numbers */
-#define SYS_SOCKET 0xC0
-#define SYS_BIND 0xC1
-#define SYS_LISTEN 0xC2
-#define SYS_ACCEPT 0xC3
-#define SYS_CONNECT 0xC4
-#define SYS_SEND 0xC5
-#define SYS_RECV 0xC6
-#define SYS_SENDTO 0xC7
-#define SYS_RECVFROM 0xC8
-#define SYS_SHUTDOWN 0xC9
-#define SYS_GETSOCKOPT 0xCA
-#define SYS_SETSOCKOPT 0xCB
-#define SYS_GETSOCKNAME 0xCC
-#define SYS_GETPEERNAME 0xCD
+/* Syscall numbers - must match kernel's syscall_nums.hpp */
+#define SYS_SOCKET_CREATE 0x50
+#define SYS_SOCKET_CONNECT 0x51
+#define SYS_SOCKET_SEND 0x52
+#define SYS_SOCKET_RECV 0x53
+#define SYS_SOCKET_CLOSE 0x54
+#define SYS_DNS_RESOLVE 0x55
 
 /* IPv6 address constants */
 const struct in6_addr in6addr_any = IN6ADDR_ANY_INIT;
@@ -57,7 +50,15 @@ unsigned int ntohl(unsigned int netlong)
 /* Socket functions */
 int socket(int domain, int type, int protocol)
 {
-    long result = __syscall3(SYS_SOCKET, domain, type, protocol);
+    /* ViperOS kernel only supports TCP sockets for now */
+    (void)domain;
+    (void)protocol;
+    if (type != SOCK_STREAM)
+    {
+        errno = EPROTONOSUPPORT;
+        return -1;
+    }
+    long result = __syscall0(SYS_SOCKET_CREATE);
     if (result < 0)
     {
         errno = (int)(-result);
@@ -68,47 +69,57 @@ int socket(int domain, int type, int protocol)
 
 int bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
 {
-    long result = __syscall3(SYS_BIND, sockfd, (long)addr, addrlen);
-    if (result < 0)
-    {
-        errno = (int)(-result);
-        return -1;
-    }
-    return 0;
+    /* ViperOS kernel doesn't have bind - sockets connect directly */
+    (void)sockfd;
+    (void)addr;
+    (void)addrlen;
+    errno = ENOSYS;
+    return -1;
 }
 
 int listen(int sockfd, int backlog)
 {
-    long result = __syscall2(SYS_LISTEN, sockfd, backlog);
-    if (result < 0)
-    {
-        errno = (int)(-result);
-        return -1;
-    }
-    return 0;
+    /* ViperOS kernel doesn't have listen - no server sockets yet */
+    (void)sockfd;
+    (void)backlog;
+    errno = ENOSYS;
+    return -1;
 }
 
 int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen)
 {
-    long result = __syscall3(SYS_ACCEPT, sockfd, (long)addr, (long)addrlen);
-    if (result < 0)
-    {
-        errno = (int)(-result);
-        return -1;
-    }
-    return (int)result;
+    /* ViperOS kernel doesn't have accept - no server sockets yet */
+    (void)sockfd;
+    (void)addr;
+    (void)addrlen;
+    errno = ENOSYS;
+    return -1;
 }
 
 int accept4(int sockfd, struct sockaddr *addr, socklen_t *addrlen, int flags)
 {
-    /* Not fully implemented - ignore flags for now */
     (void)flags;
     return accept(sockfd, addr, addrlen);
 }
 
 int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
 {
-    long result = __syscall3(SYS_CONNECT, sockfd, (long)addr, addrlen);
+    /* ViperOS kernel expects: sock, ip (u32), port (u16) */
+    if (addrlen < sizeof(struct sockaddr_in))
+    {
+        errno = EINVAL;
+        return -1;
+    }
+    const struct sockaddr_in *sin = (const struct sockaddr_in *)addr;
+    if (sin->sin_family != AF_INET)
+    {
+        errno = EAFNOSUPPORT;
+        return -1;
+    }
+    /* sin_addr.s_addr is already in network byte order, kernel expects host order */
+    unsigned int ip = ntohl(sin->sin_addr.s_addr);
+    unsigned short port = ntohs(sin->sin_port);
+    long result = __syscall3(SYS_SOCKET_CONNECT, sockfd, ip, port);
     if (result < 0)
     {
         errno = (int)(-result);
@@ -119,7 +130,8 @@ int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
 
 ssize_t send(int sockfd, const void *buf, size_t len, int flags)
 {
-    long result = __syscall4(SYS_SEND, sockfd, (long)buf, len, flags);
+    (void)flags; /* ViperOS doesn't use flags */
+    long result = __syscall3(SYS_SOCKET_SEND, sockfd, (long)buf, len);
     if (result < 0)
     {
         errno = (int)(-result);
@@ -130,7 +142,8 @@ ssize_t send(int sockfd, const void *buf, size_t len, int flags)
 
 ssize_t recv(int sockfd, void *buf, size_t len, int flags)
 {
-    long result = __syscall4(SYS_RECV, sockfd, (long)buf, len, flags);
+    (void)flags; /* ViperOS doesn't use flags */
+    long result = __syscall3(SYS_SOCKET_RECV, sockfd, (long)buf, len);
     if (result < 0)
     {
         errno = (int)(-result);
@@ -146,26 +159,29 @@ ssize_t sendto(int sockfd,
                const struct sockaddr *dest_addr,
                socklen_t addrlen)
 {
-    long result = __syscall6(SYS_SENDTO, sockfd, (long)buf, len, flags, (long)dest_addr, addrlen);
-    if (result < 0)
+    /* For connected sockets, just use send */
+    if (dest_addr == (void *)0)
     {
-        errno = (int)(-result);
-        return -1;
+        return send(sockfd, buf, len, flags);
     }
-    return result;
+    /* UDP sendto not supported */
+    (void)addrlen;
+    errno = ENOSYS;
+    return -1;
 }
 
 ssize_t recvfrom(
     int sockfd, void *buf, size_t len, int flags, struct sockaddr *src_addr, socklen_t *addrlen)
 {
-    long result =
-        __syscall6(SYS_RECVFROM, sockfd, (long)buf, len, flags, (long)src_addr, (long)addrlen);
-    if (result < 0)
+    /* For connected sockets, just use recv */
+    if (src_addr == (void *)0)
     {
-        errno = (int)(-result);
-        return -1;
+        return recv(sockfd, buf, len, flags);
     }
-    return result;
+    /* UDP recvfrom not supported */
+    (void)addrlen;
+    errno = ENOSYS;
+    return -1;
 }
 
 ssize_t sendmsg(int sockfd, const struct msghdr *msg, int flags)
@@ -202,51 +218,51 @@ ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags)
 
 int getsockopt(int sockfd, int level, int optname, void *optval, socklen_t *optlen)
 {
-    long result = __syscall5(SYS_GETSOCKOPT, sockfd, level, optname, (long)optval, (long)optlen);
-    if (result < 0)
-    {
-        errno = (int)(-result);
-        return -1;
-    }
-    return 0;
+    /* ViperOS doesn't support socket options yet - return success for common cases */
+    (void)sockfd;
+    (void)level;
+    (void)optname;
+    (void)optval;
+    (void)optlen;
+    return 0; /* Pretend success */
 }
 
 int setsockopt(int sockfd, int level, int optname, const void *optval, socklen_t optlen)
 {
-    long result = __syscall5(SYS_SETSOCKOPT, sockfd, level, optname, (long)optval, optlen);
-    if (result < 0)
-    {
-        errno = (int)(-result);
-        return -1;
-    }
-    return 0;
+    /* ViperOS doesn't support socket options yet - return success for common cases */
+    (void)sockfd;
+    (void)level;
+    (void)optname;
+    (void)optval;
+    (void)optlen;
+    return 0; /* Pretend success */
 }
 
 int getsockname(int sockfd, struct sockaddr *addr, socklen_t *addrlen)
 {
-    long result = __syscall3(SYS_GETSOCKNAME, sockfd, (long)addr, (long)addrlen);
-    if (result < 0)
-    {
-        errno = (int)(-result);
-        return -1;
-    }
-    return 0;
+    /* Not implemented */
+    (void)sockfd;
+    (void)addr;
+    (void)addrlen;
+    errno = ENOSYS;
+    return -1;
 }
 
 int getpeername(int sockfd, struct sockaddr *addr, socklen_t *addrlen)
 {
-    long result = __syscall3(SYS_GETPEERNAME, sockfd, (long)addr, (long)addrlen);
-    if (result < 0)
-    {
-        errno = (int)(-result);
-        return -1;
-    }
-    return 0;
+    /* Not implemented */
+    (void)sockfd;
+    (void)addr;
+    (void)addrlen;
+    errno = ENOSYS;
+    return -1;
 }
 
 int shutdown(int sockfd, int how)
 {
-    long result = __syscall2(SYS_SHUTDOWN, sockfd, how);
+    /* Just close the socket */
+    (void)how;
+    long result = __syscall1(SYS_SOCKET_CLOSE, sockfd);
     if (result < 0)
     {
         errno = (int)(-result);

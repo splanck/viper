@@ -771,6 +771,23 @@ void rx_segment(const Ipv4Addr &src, const void *data, usize len)
     usize payload_len = len - data_offset;
     const u8 *payload = static_cast<const u8 *>(data) + data_offset;
 
+    // Debug: show incoming segment
+    serial::puts("[tcp] RX ");
+    serial::put_dec(src_port);
+    serial::puts("->");
+    serial::put_dec(dst_port);
+    serial::puts(" seq=");
+    serial::put_hex(seq);
+    serial::puts(" len=");
+    serial::put_dec(payload_len);
+    serial::puts(" flags=");
+    if (tcp_flags & flags::SYN) serial::puts("S");
+    if (tcp_flags & flags::ACK) serial::puts("A");
+    if (tcp_flags & flags::FIN) serial::puts("F");
+    if (tcp_flags & flags::RST) serial::puts("R");
+    if (tcp_flags & flags::PSH) serial::puts("P");
+    serial::puts("\n");
+
     SpinlockGuard guard(tcp_lock);
 
     // Find matching socket
@@ -831,6 +848,12 @@ void rx_segment(const Ipv4Addr &src, const void *data, usize len)
 
     // Compute socket index for timer callbacks
     usize sock_idx = static_cast<usize>(sock - sockets);
+
+    serial::puts("[tcp] sock[");
+    serial::put_dec(sock_idx);
+    serial::puts("] state=");
+    serial::put_dec(static_cast<int>(sock->state));
+    serial::puts("\n");
 
     // State machine
     switch (sock->state)
@@ -970,6 +993,7 @@ void rx_segment(const Ipv4Addr &src, const void *data, usize len)
         case TcpState::ESTABLISHED:
             if (tcp_flags & flags::RST)
             {
+                serial::puts("[tcp] ESTABLISHED: received RST, closing\n");
                 sock->state = TcpState::CLOSED;
                 sock->unacked_len = 0; // Clear retransmit state
                 break;
@@ -977,6 +1001,7 @@ void rx_segment(const Ipv4Addr &src, const void *data, usize len)
 
             if (tcp_flags & flags::FIN)
             {
+                serial::puts("[tcp] ESTABLISHED: received FIN, transitioning to CLOSE_WAIT\n");
                 sock->rcv_nxt = seq + payload_len + 1;
                 send_segment(sock, flags::ACK, nullptr, 0);
                 sock->state = TcpState::CLOSE_WAIT;
@@ -987,6 +1012,13 @@ void rx_segment(const Ipv4Addr &src, const void *data, usize len)
                 // Handle incoming data with out-of-order reassembly
                 if (payload_len > 0)
                 {
+                    serial::puts("[tcp] DATA: seq=");
+                    serial::put_hex(seq);
+                    serial::puts(" rcv_nxt=");
+                    serial::put_hex(sock->rcv_nxt);
+                    serial::puts(" len=");
+                    serial::put_dec(payload_len);
+
                     if (seq == sock->rcv_nxt)
                     {
                         // In-order data, copy to buffer
@@ -1003,15 +1035,23 @@ void rx_segment(const Ipv4Addr &src, const void *data, usize len)
                         }
                         sock->rcv_nxt += copy_len;
 
+                        serial::puts(" -> copied ");
+                        serial::put_dec(copy_len);
+                        serial::puts(" bytes\n");
+
                         // Check OOO queue for segments that are now in order
                         ooo_deliver(sock);
                     }
                     else if (seq > sock->rcv_nxt)
                     {
                         // Out-of-order segment - buffer it for later reassembly
+                        serial::puts(" -> OOO, buffering\n");
                         ooo_store(sock, seq, payload, payload_len);
                     }
-                    // else: seq < rcv_nxt means duplicate/old data, ignore
+                    else
+                    {
+                        serial::puts(" -> OLD, ignoring\n");
+                    }
                 }
 
                 // Handle ACK - update snd_una, window, and clear retransmit state if data acked
@@ -1503,6 +1543,9 @@ i32 socket_recv(i32 sock, void *buffer, usize max_len)
         {
             if (s->rx_head == s->rx_tail)
             {
+                serial::puts("[tcp] socket_recv: connection closed, state=");
+                serial::put_dec(static_cast<int>(s->state));
+                serial::puts(" rx empty\n");
                 tcp_lock.release();
                 return -1; // Connection closed and no more data
             }
@@ -1549,9 +1592,33 @@ i32 socket_recv(i32 sock, void *buffer, usize max_len)
         if (net && current)
         {
             // Register as waiter and block
-            net->register_rx_waiter(current);
+            // IMPORTANT: Set Blocked state BEFORE registering to avoid race with
+            // wake_rx_waiters() which checks the state before waking
+            serial::puts("[tcp] socket_recv: blocking, rx_head=");
+            serial::put_dec(s->rx_head);
+            serial::puts(" rx_tail=");
+            serial::put_dec(s->rx_tail);
+            serial::puts("\n");
             current->state = task::TaskState::Blocked;
+            net->register_rx_waiter(current);
+
+            // Re-check for data after registering (handles race where data arrived
+            // between our first check and registering as waiter)
+            tcp_lock.acquire();
+            usize recheck_avail = (s->rx_tail - s->rx_head);
+            tcp_lock.release();
+
+            if (recheck_avail > 0)
+            {
+                // Data arrived while we were registering - unblock and continue
+                current->state = task::TaskState::Ready;
+                net->unregister_rx_waiter(current);
+                serial::puts("[tcp] socket_recv: data arrived during registration\n");
+                continue;
+            }
+
             task::yield();
+            serial::puts("[tcp] socket_recv: woke up\n");
         }
         else
         {

@@ -15,6 +15,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <netdb.h>
 #include <errno.h>
 
 /*=============================================================================
@@ -269,10 +270,15 @@ int ssh_packet_send(ssh_session_t *session, uint8_t msg_type,
 
     /* Encrypt if needed */
     if (session->encrypted) {
-        /* Encrypt payload (skip first 4 bytes which are packet length) */
-        ssh_aes_ctr_process(&session->cipher_out, packet + 4, packet + 4, packet_length);
+        /* Debug: show what we're sending */
+        printf("[ssh] TX encrypted: seq=%u len=%u msg=%u\n",
+               session->seq_out, (unsigned)packet_len, msg_type);
+        printf("[ssh] TX plain[0..7]: %02x %02x %02x %02x %02x %02x %02x %02x\n",
+               packet[0], packet[1], packet[2], packet[3],
+               packet[4], packet[5], packet[6], packet[7]);
 
-        /* Calculate MAC */
+        /* Calculate MAC BEFORE encryption (SSH uses encrypt-and-MAC) */
+        /* MAC is computed over: sequence_number || unencrypted_packet */
         uint8_t mac_data[4 + SSH_MAX_PACKET_SIZE];
         ssh_buf_write_u32(mac_data, session->seq_out);
         memcpy(mac_data + 4, packet, packet_len);
@@ -280,12 +286,22 @@ int ssh_packet_send(ssh_session_t *session, uint8_t msg_type,
         if (session->mac_out.algo == SSH_MAC_HMAC_SHA256) {
             ssh_hmac_sha256(session->mac_out.key, session->mac_out.key_len,
                            mac_data, 4 + packet_len, packet + packet_len);
+            printf("[ssh] TX MAC[0..7]: %02x %02x %02x %02x %02x %02x %02x %02x\n",
+                   packet[packet_len], packet[packet_len+1], packet[packet_len+2], packet[packet_len+3],
+                   packet[packet_len+4], packet[packet_len+5], packet[packet_len+6], packet[packet_len+7]);
             packet_len += 32;
         } else if (session->mac_out.algo == SSH_MAC_HMAC_SHA1) {
             ssh_hmac_sha1(session->mac_out.key, session->mac_out.key_len,
                          mac_data, 4 + packet_len, packet + packet_len);
             packet_len += 20;
         }
+
+        /* Encrypt full packet AFTER computing MAC (including packet length) */
+        ssh_aes_ctr_process(&session->cipher_out, packet, packet, 4 + packet_length);
+
+        printf("[ssh] TX cipher[0..7]: %02x %02x %02x %02x %02x %02x %02x %02x\n",
+               packet[0], packet[1], packet[2], packet[3],
+               packet[4], packet[5], packet[6], packet[7]);
     }
 
     session->seq_out++;
@@ -320,25 +336,23 @@ int ssh_packet_recv(ssh_session_t *session, uint8_t *msg_type,
     rc = ssh_socket_recv(session, packet + 4, packet_length);
     if (rc < 0) return rc;
 
-    /* Decrypt packet body */
+    /* Decrypt packet body and verify MAC */
     if (session->encrypted) {
+        /* Decrypt the body */
         ssh_aes_ctr_process(&session->cipher_in, packet + 4, packet + 4, packet_length);
 
-        /* Read and verify MAC */
+        /* Read MAC from wire */
         uint8_t mac_received[32];
         uint32_t mac_len = (session->mac_in.algo == SSH_MAC_HMAC_SHA256) ? 32 : 20;
         rc = ssh_socket_recv(session, mac_received, mac_len);
         if (rc < 0) return rc;
 
-        /* Calculate expected MAC */
+        /* Calculate expected MAC on the decrypted (unencrypted) packet */
+        /* MAC = HMAC(key, sequence_number || unencrypted_packet) */
         uint8_t mac_data[4 + SSH_MAX_PACKET_SIZE];
         uint8_t mac_expected[32];
         ssh_buf_write_u32(mac_data, session->seq_in);
-        /* Need to re-encrypt for MAC calculation - use original encrypted data */
-        memcpy(mac_data + 4, header, 4);
-
-        /* For simplicity, we assume MAC was on encrypted data before decryption */
-        /* This is a simplification - real implementation should save encrypted packet */
+        memcpy(mac_data + 4, packet, 4 + packet_length);  /* Full decrypted packet */
 
         if (session->mac_in.algo == SSH_MAC_HMAC_SHA256) {
             ssh_hmac_sha256(session->mac_in.key, session->mac_in.key_len,
@@ -348,7 +362,11 @@ int ssh_packet_recv(ssh_session_t *session, uint8_t *msg_type,
                          mac_data, 4 + 4 + packet_length, mac_expected);
         }
 
-        /* Note: MAC verification simplified for this implementation */
+        /* Verify MAC */
+        if (memcmp(mac_received, mac_expected, mac_len) != 0) {
+            ssh_set_error(session, "MAC verification failed");
+            return SSH_PROTOCOL_ERROR;
+        }
     }
 
     session->seq_in++;
@@ -681,6 +699,25 @@ static int ssh_kex_curve25519(ssh_session_t *session)
     /* Compute shared secret */
     ssh_x25519(session->kex_secret, Q_S, session->kex_shared);
 
+    /*
+     * RFC 8731 §3.1: X25519 produces a 32-byte little-endian string X. SSH
+     * then reinterprets those octets as an unsigned fixed-length integer in
+     * network byte order for mpint (K) encoding. Our mpint writer consumes
+     * big-endian octets, so we keep the bytes as-is and let mpint encoding do
+     * the reinterpretation.
+     */
+    int all_zero = 1;
+    for (size_t i = 0; i < 32; i++) {
+        if (session->kex_shared[i] != 0) {
+            all_zero = 0;
+            break;
+        }
+    }
+    if (all_zero) {
+        ssh_set_error(session, "key exchange failed (all-zero shared secret)");
+        return SSH_PROTOCOL_ERROR;
+    }
+
     /* Parse signature */
     if (pos + 4 > reply_len) return SSH_PROTOCOL_ERROR;
     uint32_t sig_len = ssh_buf_read_u32(reply + pos);
@@ -737,6 +774,14 @@ static int ssh_kex_curve25519(ssh_session_t *session)
     /* Compute H */
     uint8_t H[32];
     ssh_sha256(hash_input, hash_pos, H);
+
+    printf("[ssh] H[0..7]: %02x %02x %02x %02x %02x %02x %02x %02x\n",
+           H[0], H[1], H[2], H[3], H[4], H[5], H[6], H[7]);
+    printf("[ssh] K[0..7]: %02x %02x %02x %02x %02x %02x %02x %02x\n",
+           session->kex_shared[0], session->kex_shared[1],
+           session->kex_shared[2], session->kex_shared[3],
+           session->kex_shared[4], session->kex_shared[5],
+           session->kex_shared[6], session->kex_shared[7]);
 
     /* Verify host key signature */
     /* Parse signature blob */
@@ -797,6 +842,7 @@ int ssh_kex_derive_keys(ssh_session_t *session, const uint8_t *K, size_t K_len,
 
     /* K as mpint */
     base_len = ssh_buf_write_mpint(hash_input, K, K_len);
+    printf("[ssh] derive_keys: K_mpint_len=%lu\n", (unsigned long)base_len);
 
     /* H */
     memcpy(hash_input + base_len, H, H_len);
@@ -868,6 +914,24 @@ int ssh_kex_process(ssh_session_t *session)
 
     /* Activate encryption */
     uint32_t key_len = (session->cipher_c2s == SSH_CIPHER_AES256_CTR) ? 32 : 16;
+    printf("[ssh] Activating encryption: cipher=%s key_len=%u\n",
+           key_len == 32 ? "aes256-ctr" : "aes128-ctr", key_len);
+    printf("[ssh] IV_c2s[0..7]: %02x %02x %02x %02x %02x %02x %02x %02x\n",
+           session->keys.iv_c2s[0], session->keys.iv_c2s[1],
+           session->keys.iv_c2s[2], session->keys.iv_c2s[3],
+           session->keys.iv_c2s[4], session->keys.iv_c2s[5],
+           session->keys.iv_c2s[6], session->keys.iv_c2s[7]);
+    printf("[ssh] Key_c2s[0..7]: %02x %02x %02x %02x %02x %02x %02x %02x\n",
+           session->keys.key_c2s[0], session->keys.key_c2s[1],
+           session->keys.key_c2s[2], session->keys.key_c2s[3],
+           session->keys.key_c2s[4], session->keys.key_c2s[5],
+           session->keys.key_c2s[6], session->keys.key_c2s[7]);
+    printf("[ssh] MAC_c2s[0..7]: %02x %02x %02x %02x %02x %02x %02x %02x\n",
+           session->keys.mac_c2s[0], session->keys.mac_c2s[1],
+           session->keys.mac_c2s[2], session->keys.mac_c2s[3],
+           session->keys.mac_c2s[4], session->keys.mac_c2s[5],
+           session->keys.mac_c2s[6], session->keys.mac_c2s[7]);
+
     ssh_aes_ctr_init(&session->cipher_out, session->keys.key_c2s, key_len, session->keys.iv_c2s);
     ssh_aes_ctr_init(&session->cipher_in, session->keys.key_s2c, key_len, session->keys.iv_s2c);
 
@@ -881,6 +945,9 @@ int ssh_kex_process(ssh_session_t *session)
     session->mac_in.key_len = (session->mac_s2c == SSH_MAC_HMAC_SHA256) ? 32 : 20;
     session->mac_in.mac_len = session->mac_in.key_len;
     memcpy(session->mac_in.key, session->keys.mac_s2c, session->mac_in.key_len);
+
+    printf("[ssh] MAC algo: %s\n",
+           session->mac_c2s == SSH_MAC_HMAC_SHA256 ? "hmac-sha2-256" : "hmac-sha1");
 
     session->encrypted = true;
 
@@ -914,13 +981,17 @@ int ssh_connect(ssh_session_t *session)
     addr.sin_family = AF_INET;
     addr.sin_port = htons(session->port);
 
-    /* Simple IP address parsing (DNS resolution would need getaddrinfo) */
+    /* Try IP address first, then DNS resolution */
     if (inet_pton(AF_INET, session->hostname, &addr.sin_addr) <= 0) {
-        /* Try as hostname - for now just fail */
-        ssh_set_error(session, "hostname resolution not implemented, use IP address");
-        close(session->socket_fd);
-        session->socket_fd = -1;
-        return SSH_ERROR;
+        /* Not a numeric IP, try DNS resolution */
+        struct hostent *he = gethostbyname(session->hostname);
+        if (!he || he->h_addrtype != AF_INET || !he->h_addr_list[0]) {
+            ssh_set_error(session, "hostname resolution failed for '%s'", session->hostname);
+            close(session->socket_fd);
+            session->socket_fd = -1;
+            return SSH_ERROR;
+        }
+        memcpy(&addr.sin_addr, he->h_addr_list[0], sizeof(addr.sin_addr));
     }
 
     rc = connect(session->socket_fd, (struct sockaddr *)&addr, sizeof(addr));

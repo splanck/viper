@@ -4,6 +4,8 @@
 #include "../console/console.hpp"
 #include "../console/serial.hpp"
 #include "../input/input.hpp"
+#include "../net/ip/tcp.hpp"
+#include "../net/network.hpp"
 #include "../lib/spinlock.hpp"
 #include "../sched/scheduler.hpp"
 #include "../sched/task.hpp"
@@ -227,6 +229,34 @@ static poll::EventType check_readiness(u32 handle, poll::EventType mask)
             if (input::has_char() || serial::has_char() || console::has_input())
             {
                 triggered = triggered | poll::EventType::CONSOLE_INPUT;
+            }
+        }
+        return triggered;
+    }
+
+    // Check network receive readiness (special pseudo-handle)
+    if (handle == poll::HANDLE_NETWORK_RX)
+    {
+        if (poll::has_event(mask, poll::EventType::NETWORK_RX))
+        {
+            // Drive the network stack so socket RX buffers are up to date.
+            net::network_poll();
+
+            // This pseudo-handle is global (not per-socket): report ready if any TCP socket
+            // has buffered data available to read.
+            bool any_ready = false;
+            for (usize i = 0; i < net::tcp::MAX_TCP_SOCKETS; i++)
+            {
+                if (net::tcp::socket_available(static_cast<i32>(i)) > 0)
+                {
+                    any_ready = true;
+                    break;
+                }
+            }
+
+            if (any_ready)
+            {
+                triggered = triggered | poll::EventType::NETWORK_RX;
             }
         }
         return triggered;

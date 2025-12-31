@@ -135,6 +135,8 @@ typedef struct {
     uint32_t key_len;
     /* AES state for CTR mode */
     uint8_t aes_state[480];  /* Expanded AES key state */
+    uint8_t keystream[16];   /* Current keystream block */
+    uint32_t keystream_pos;  /* Position within current keystream block */
 } ssh_cipher_ctx_t;
 
 /* MAC context */

@@ -48,12 +48,15 @@ constexpr u64 CTRL_MAC_ADDR = 1ULL << 23;
 } // namespace net_features
 
 // virtio-net header (prepended to every packet)
-// Without MRG_RXBUF feature, header is 10 bytes
-// With MRG_RXBUF feature, header is 12 bytes (adds num_buffers)
+// Legacy mode (without VERSION_1): 10 bytes
+// Modern mode (with VERSION_1): 12 bytes (requires num_buffers field)
+// With MRG_RXBUF feature: 12 bytes (num_buffers is used for receive)
 /**
  * @brief Virtio-net packet header placed before every frame buffer.
  *
  * @details
+ * When VIRTIO_F_VERSION_1 is negotiated (modern virtio), the header is always
+ * 12 bytes - the num_buffers field is required even without MRG_RXBUF.
  * The driver zeroes this header for basic transmission without offloads.
  */
 struct NetHeader
@@ -64,8 +67,12 @@ struct NetHeader
     u16 gso_size;
     u16 csum_start;
     u16 csum_offset;
-    // num_buffers field is NOT present unless MRG_RXBUF is negotiated
+    u16 num_buffers; // Required when VERSION_1 is negotiated
 } __attribute__((packed));
+
+// Header sizes for different modes
+constexpr usize NET_HEADER_LEGACY = 10; // Without num_buffers
+constexpr usize NET_HEADER_MODERN = 12; // With num_buffers (VERSION_1)
 
 // Header flags
 /** @brief Virtio-net header flags for checksum offload. */
@@ -260,6 +267,15 @@ class NetDevice : public Device
     bool has_rx_data() const;
 
     /**
+     * @brief Wake all tasks waiting for RX data.
+     *
+     * @details
+     * Called from the IRQ handler and from network_poll() when data arrives.
+     * Moves all waiting tasks from Blocked to Ready state.
+     */
+    void wake_rx_waiters();
+
+    /**
      * @brief Get the IRQ number for this device.
      *
      * @return IRQ number assigned to this device.
@@ -267,6 +283,19 @@ class NetDevice : public Device
     u32 irq() const
     {
         return irq_;
+    }
+
+    /**
+     * @brief Get the virtio-net header size for this device.
+     *
+     * @details
+     * Returns 10 bytes for legacy mode, 12 bytes for modern mode (VERSION_1).
+     *
+     * @return Header size in bytes.
+     */
+    usize header_size() const
+    {
+        return is_legacy() ? NET_HEADER_LEGACY : NET_HEADER_MODERN;
     }
 
     // Statistics
@@ -383,8 +412,6 @@ class NetDevice : public Device
     void queue_rx_buffer(usize idx);
     /** @brief Refill RX queue with any buffers that are no longer in use. */
     void refill_rx_buffers();
-    /** @brief Wake all tasks waiting for RX data. */
-    void wake_rx_waiters();
 };
 
 // Global network device initialization and access

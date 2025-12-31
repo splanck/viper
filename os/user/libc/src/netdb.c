@@ -8,8 +8,8 @@
 /* Syscall helpers */
 extern long __syscall2(long num, long arg0, long arg1);
 
-/* Syscall number for DNS resolve */
-#define SYS_DNS_RESOLVE 0xD0
+/* Syscall number for DNS resolve - must match kernel's syscall_nums.hpp */
+#define SYS_DNS_RESOLVE 0x55
 
 /* Thread-local h_errno */
 int h_errno = 0;

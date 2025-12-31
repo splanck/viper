@@ -89,7 +89,9 @@ bool NetDevice::init()
 
     serial::puts("[virtio-net] Initializing network device at 0x");
     serial::put_hex(base);
-    serial::puts("\n");
+    serial::puts(" (");
+    serial::puts(is_legacy() ? "legacy" : "modern");
+    serial::puts(" mode)\n");
 
     // Reset device
     reset();
@@ -245,18 +247,18 @@ bool NetDevice::init()
         rx_queue_[i].valid = false;
     }
 
-    // Queue RX buffers
+    // Queue RX buffers (submit to available ring, but don't kick yet)
     for (usize i = 0; i < RX_BUFFER_COUNT; i++)
     {
         rx_buffers_[i].in_use = false;
         queue_rx_buffer(i);
     }
 
-    // Kick RX queue to notify device we're ready to receive
-    rx_vq_.kick();
-
-    // Device is ready
+    // Device is ready - MUST be set before kicking queue
     add_status(status::DRIVER_OK);
+
+    // Now kick RX queue to notify device we're ready to receive
+    rx_vq_.kick();
 
     // Register IRQ handler with GIC
     gic::register_handler(irq_, net_irq_handler);
@@ -331,7 +333,9 @@ void NetDevice::poll_rx()
     {
         i32 desc = rx_vq_.poll_used();
         if (desc < 0)
+        {
             break;
+        }
 
         got_packet = true;
 
@@ -359,14 +363,15 @@ void NetDevice::poll_rx()
         rx_vq_.free_desc(desc);
         rx_buffers_[buf_idx].in_use = false;
 
-        // Skip virtio-net header
-        if (len <= sizeof(NetHeader))
+        // Skip virtio-net header (size depends on legacy vs modern mode)
+        usize hdr_size = header_size();
+        if (len <= hdr_size)
         {
             continue;
         }
 
-        u8 *data = rx_buffers_[buf_idx].data + sizeof(NetHeader);
-        u16 pkt_len = len - sizeof(NetHeader);
+        u8 *data = rx_buffers_[buf_idx].data + hdr_size;
+        u16 pkt_len = len - hdr_size;
 
         // Add to received queue if space available
         usize next_tail = (rx_queue_tail_ + 1) % RX_QUEUE_SIZE;
@@ -460,6 +465,7 @@ bool NetDevice::transmit(const void *data, usize len)
     tx_header_->gso_size = 0;
     tx_header_->csum_start = 0;
     tx_header_->csum_offset = 0;
+    tx_header_->num_buffers = 0; // Required for VERSION_1
 
     // Memory barrier
     asm volatile("dsb sy" ::: "memory");
@@ -469,8 +475,8 @@ bool NetDevice::transmit(const void *data, usize len)
     u64 data_phys = pmm::virt_to_phys(const_cast<void *>(data));
 
     // Set up descriptor chain
-    // Header descriptor (device reads)
-    tx_vq_.set_desc(hdr_desc, tx_header_phys_, sizeof(NetHeader), desc_flags::NEXT);
+    // Header descriptor (device reads) - size depends on legacy vs modern mode
+    tx_vq_.set_desc(hdr_desc, tx_header_phys_, header_size(), desc_flags::NEXT);
     tx_vq_.chain_desc(hdr_desc, data_desc);
 
     // Data descriptor (device reads)
@@ -538,6 +544,12 @@ bool NetDevice::transmit_csum(const void *data, usize len, u16 csum_start, u16 c
         return false;
     }
 
+    // Common header fields
+    tx_header_->gso_type = net_gso::NONE;
+    tx_header_->hdr_len = 0;
+    tx_header_->gso_size = 0;
+    tx_header_->num_buffers = 0; // Required for VERSION_1
+
     // Prepare virtio-net header with checksum offload request
     if (has_tx_csum_)
     {
@@ -594,8 +606,8 @@ bool NetDevice::transmit_csum(const void *data, usize len, u16 csum_start, u16 c
     // Get physical address of data
     u64 data_phys = pmm::virt_to_phys(const_cast<void *>(data));
 
-    // Set up descriptor chain
-    tx_vq_.set_desc(hdr_desc, tx_header_phys_, sizeof(NetHeader), desc_flags::NEXT);
+    // Set up descriptor chain - header size depends on legacy vs modern mode
+    tx_vq_.set_desc(hdr_desc, tx_header_phys_, header_size(), desc_flags::NEXT);
     tx_vq_.chain_desc(hdr_desc, data_desc);
     tx_vq_.set_desc(data_desc, data_phys, len, 0);
 
@@ -645,6 +657,12 @@ void NetDevice::rx_irq_handler()
 {
     // Acknowledge the virtio interrupt
     u32 isr = read_isr();
+    serial::puts("[virtio-net] IRQ: isr=");
+    serial::put_hex(isr);
+    serial::puts(" waiters=");
+    serial::put_dec(rx_waiter_count_);
+    serial::puts("\n");
+
     if (isr)
     {
         ack_interrupt(isr);
@@ -659,11 +677,9 @@ void NetDevice::rx_irq_handler()
     // Process received packets
     poll_rx();
 
-    // Wake waiting tasks if we have data
-    if (rx_queue_head_ != rx_queue_tail_)
-    {
-        wake_rx_waiters();
-    }
+    // Always wake waiting tasks after processing packets
+    // Data may have been added to TCP socket buffers even if raw queue is empty
+    wake_rx_waiters();
 }
 
 /** @copydoc virtio::NetDevice::register_rx_waiter */

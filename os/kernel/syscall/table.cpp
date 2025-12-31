@@ -922,7 +922,25 @@ static SyscallResult sys_socket_connect(u64 a0, u64 a1, u64 a2, u64, u64, u64)
     ip.bytes[2] = (ip_raw >> 8) & 0xFF;
     ip.bytes[3] = ip_raw & 0xFF;
 
+    serial::puts("[syscall] socket_connect: sock=");
+    serial::put_dec(sock);
+    serial::puts(" ip=");
+    serial::put_dec(ip.bytes[0]);
+    serial::putc('.');
+    serial::put_dec(ip.bytes[1]);
+    serial::putc('.');
+    serial::put_dec(ip.bytes[2]);
+    serial::putc('.');
+    serial::put_dec(ip.bytes[3]);
+    serial::puts(" port=");
+    serial::put_dec(port);
+    serial::putc('\n');
+
     bool result = net::tcp::socket_connect(sock, ip, port);
+    serial::puts("[syscall] socket_connect: result=");
+    serial::puts(result ? "true" : "false");
+    serial::putc('\n');
+
     if (!result)
     {
         return SyscallResult::err(error::VERR_CONNECTION);
@@ -936,12 +954,22 @@ static SyscallResult sys_socket_send(u64 a0, u64 a1, u64 a2, u64, u64, u64)
     const void *buf = reinterpret_cast<const void *>(a1);
     usize len = static_cast<usize>(a2);
 
+    serial::puts("[syscall] socket_send: sock=");
+    serial::put_dec(sock);
+    serial::puts(" len=");
+    serial::put_dec(len);
+    serial::putc('\n');
+
     if (!validate_user_read(buf, len))
     {
         return SyscallResult::err(error::VERR_INVALID_ARG);
     }
 
     i64 result = net::tcp::socket_send(sock, buf, len);
+    serial::puts("[syscall] socket_send: result=");
+    serial::put_dec(result);
+    serial::putc('\n');
+
     if (result < 0)
     {
         return SyscallResult::err(result);
@@ -955,12 +983,22 @@ static SyscallResult sys_socket_recv(u64 a0, u64 a1, u64 a2, u64, u64, u64)
     void *buf = reinterpret_cast<void *>(a1);
     usize len = static_cast<usize>(a2);
 
+    serial::puts("[syscall] socket_recv: sock=");
+    serial::put_dec(sock);
+    serial::puts(" len=");
+    serial::put_dec(len);
+    serial::putc('\n');
+
     if (!validate_user_write(buf, len))
     {
         return SyscallResult::err(error::VERR_INVALID_ARG);
     }
 
     i64 result = net::tcp::socket_recv(sock, buf, len);
+    serial::puts("[syscall] socket_recv: result=");
+    serial::put_dec(result);
+    serial::putc('\n');
+
     if (result < 0)
     {
         return SyscallResult::err(result);
@@ -991,10 +1029,12 @@ static SyscallResult sys_dns_resolve(u64 a0, u64 a1, u64, u64, u64, u64)
         return SyscallResult::err(error::VERR_NOT_FOUND);
     }
 
-    // Convert Ipv4Addr to u32 (big-endian)
-    *ip_out = (static_cast<u32>(result_ip.bytes[0]) << 24) |
-              (static_cast<u32>(result_ip.bytes[1]) << 16) |
-              (static_cast<u32>(result_ip.bytes[2]) << 8) | static_cast<u32>(result_ip.bytes[3]);
+    // Convert Ipv4Addr to u32 in network byte order (for struct in_addr.s_addr)
+    // On little-endian, s_addr stores bytes[0] in lowest address = lowest bits
+    *ip_out = static_cast<u32>(result_ip.bytes[0]) |
+              (static_cast<u32>(result_ip.bytes[1]) << 8) |
+              (static_cast<u32>(result_ip.bytes[2]) << 16) |
+              (static_cast<u32>(result_ip.bytes[3]) << 24);
     return SyscallResult::ok();
 }
 

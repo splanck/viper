@@ -141,6 +141,9 @@ endfunction()
 # Sanity test - verifies test framework works
 add_host_test(test_sanity host/test_sanity.c)
 
+# Crypto known-answer tests for user/libssh primitives
+add_host_test(test_ssh_crypto host/test_ssh_crypto.c ../user/libssh/ssh_crypto.c)
+
 # Syscall table invariant tests (Python-based static analysis)
 find_package(Python3 QUIET)
 if(Python3_FOUND)

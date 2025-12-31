@@ -70,6 +70,7 @@ void network_poll()
     }
 
     // Poll for received packets
+    bool received_any = false;
     while (true)
     {
         i32 len = virtio::net_device()->receive(rx_buffer, sizeof(rx_buffer));
@@ -78,8 +79,18 @@ void network_poll()
             break;
         }
 
+        received_any = true;
+
         // Process Ethernet frame
         eth::rx_frame(rx_buffer, len);
+    }
+
+    // Wake any tasks waiting for network data (handles timer-based polling path)
+    // The IRQ handler also wakes waiters, but when polling from the timer we need
+    // to do it here since the IRQ path may not be taken.
+    if (received_any)
+    {
+        virtio::net_device()->wake_rx_waiters();
     }
 
     // Check for TCP retransmissions

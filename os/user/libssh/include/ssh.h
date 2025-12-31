@@ -17,6 +17,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <unistd.h> /* ssize_t */
 
 #ifdef __cplusplus
 extern "C" {

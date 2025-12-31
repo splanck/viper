@@ -127,6 +127,9 @@ static void sha256_update(sha256_ctx *ctx, const void *data, size_t len)
 
 static void sha256_final(sha256_ctx *ctx, uint8_t digest[32])
 {
+    /* Save original message length before padding updates ctx->count */
+    uint64_t bits = ctx->count;
+
     uint8_t pad[64];
     size_t idx = (ctx->count / 8) % 64;
     size_t padlen = (idx < 56) ? (56 - idx) : (120 - idx);
@@ -136,7 +139,6 @@ static void sha256_final(sha256_ctx *ctx, uint8_t digest[32])
     sha256_update(ctx, pad, padlen);
 
     /* Append length */
-    uint64_t bits = ctx->count;
     pad[0] = (bits >> 56) & 0xFF; pad[1] = (bits >> 48) & 0xFF;
     pad[2] = (bits >> 40) & 0xFF; pad[3] = (bits >> 32) & 0xFF;
     pad[4] = (bits >> 24) & 0xFF; pad[5] = (bits >> 16) & 0xFF;
@@ -465,6 +467,7 @@ void ssh_aes_ctr_init(ssh_cipher_ctx_t *ctx, const uint8_t *key,
     memcpy(ctx->key, key, key_len);
     memcpy(ctx->iv, iv, 16);
     ctx->block_size = 16;
+    ctx->keystream_pos = 16;  /* Force generation of first keystream block */
 
     /* Expand key */
     aes_key *aes = (aes_key *)ctx->aes_state;
@@ -475,17 +478,18 @@ void ssh_aes_ctr_process(ssh_cipher_ctx_t *ctx, const uint8_t *in,
                          uint8_t *out, size_t len)
 {
     aes_key *aes = (aes_key *)ctx->aes_state;
-    uint8_t keystream[16];
 
     for (size_t i = 0; i < len; i++) {
-        if (i % 16 == 0) {
-            aes_encrypt_block(aes, ctx->iv, keystream);
+        /* Generate new keystream block if needed */
+        if (ctx->keystream_pos >= 16) {
+            aes_encrypt_block(aes, ctx->iv, ctx->keystream);
             /* Increment counter */
             for (int j = 15; j >= 0; j--) {
                 if (++ctx->iv[j] != 0) break;
             }
+            ctx->keystream_pos = 0;
         }
-        out[i] = in[i] ^ keystream[i % 16];
+        out[i] = in[i] ^ ctx->keystream[ctx->keystream_pos++];
     }
 }
 
@@ -520,35 +524,81 @@ static void fe_mul(fe h, const fe f, const fe g)
     int64_t g0 = g[0], g1 = g[1], g2 = g[2], g3 = g[3], g4 = g[4];
     int64_t g5 = g[5], g6 = g[6], g7 = g[7], g8 = g[8], g9 = g[9];
 
-    int64_t g1_19 = 19 * g1, g2_19 = 19 * g2, g3_19 = 19 * g3;
-    int64_t g4_19 = 19 * g4, g5_19 = 19 * g5, g6_19 = 19 * g6;
-    int64_t g7_19 = 19 * g7, g8_19 = 19 * g8, g9_19 = 19 * g9;
+    int64_t g1_19 = 19 * g1;
+    int64_t g2_19 = 19 * g2;
+    int64_t g3_19 = 19 * g3;
+    int64_t g4_19 = 19 * g4;
+    int64_t g5_19 = 19 * g5;
+    int64_t g6_19 = 19 * g6;
+    int64_t g7_19 = 19 * g7;
+    int64_t g8_19 = 19 * g8;
+    int64_t g9_19 = 19 * g9;
 
-    int64_t h0 = f0*g0 + f1*g9_19 + f2*g8_19 + f3*g7_19 + f4*g6_19 + f5*g5_19 + f6*g4_19 + f7*g3_19 + f8*g2_19 + f9*g1_19;
-    int64_t h1 = f0*g1 + f1*g0 + f2*g9_19 + f3*g8_19 + f4*g7_19 + f5*g6_19 + f6*g5_19 + f7*g4_19 + f8*g3_19 + f9*g2_19;
-    int64_t h2 = f0*g2 + f1*g1 + f2*g0 + f3*g9_19 + f4*g8_19 + f5*g7_19 + f6*g6_19 + f7*g5_19 + f8*g4_19 + f9*g3_19;
-    int64_t h3 = f0*g3 + f1*g2 + f2*g1 + f3*g0 + f4*g9_19 + f5*g8_19 + f6*g7_19 + f7*g6_19 + f8*g5_19 + f9*g4_19;
-    int64_t h4 = f0*g4 + f1*g3 + f2*g2 + f3*g1 + f4*g0 + f5*g9_19 + f6*g8_19 + f7*g7_19 + f8*g6_19 + f9*g5_19;
-    int64_t h5 = f0*g5 + f1*g4 + f2*g3 + f3*g2 + f4*g1 + f5*g0 + f6*g9_19 + f7*g8_19 + f8*g7_19 + f9*g6_19;
-    int64_t h6 = f0*g6 + f1*g5 + f2*g4 + f3*g3 + f4*g2 + f5*g1 + f6*g0 + f7*g9_19 + f8*g8_19 + f9*g7_19;
-    int64_t h7 = f0*g7 + f1*g6 + f2*g5 + f3*g4 + f4*g3 + f5*g2 + f6*g1 + f7*g0 + f8*g9_19 + f9*g8_19;
-    int64_t h8 = f0*g8 + f1*g7 + f2*g6 + f3*g5 + f4*g4 + f5*g3 + f6*g2 + f7*g1 + f8*g0 + f9*g9_19;
-    int64_t h9 = f0*g9 + f1*g8 + f2*g7 + f3*g6 + f4*g5 + f5*g4 + f6*g3 + f7*g2 + f8*g1 + f9*g0;
+    int64_t f1_2 = 2 * f1;
+    int64_t f3_2 = 2 * f3;
+    int64_t f5_2 = 2 * f5;
+    int64_t f7_2 = 2 * f7;
+    int64_t f9_2 = 2 * f9;
 
-    /* Carry and reduce */
-    int64_t carry;
-    carry = h0 >> 26; h1 += carry; h0 -= carry << 26;
-    carry = h4 >> 26; h5 += carry; h4 -= carry << 26;
-    carry = h1 >> 25; h2 += carry; h1 -= carry << 25;
-    carry = h5 >> 25; h6 += carry; h5 -= carry << 25;
-    carry = h2 >> 26; h3 += carry; h2 -= carry << 26;
-    carry = h6 >> 26; h7 += carry; h6 -= carry << 26;
-    carry = h3 >> 25; h4 += carry; h3 -= carry << 25;
-    carry = h7 >> 25; h8 += carry; h7 -= carry << 25;
-    carry = h4 >> 26; h5 += carry; h4 -= carry << 26;
-    carry = h8 >> 26; h9 += carry; h8 -= carry << 26;
-    carry = h9 >> 25; h0 += 19 * carry; h9 -= carry << 25;
-    carry = h0 >> 26; h1 += carry; h0 -= carry << 26;
+    int64_t h0 = f0 * g0 + f1_2 * g9_19 + f2 * g8_19 + f3_2 * g7_19 + f4 * g6_19 + f5_2 * g5_19 +
+                 f6 * g4_19 + f7_2 * g3_19 + f8 * g2_19 + f9_2 * g1_19;
+    int64_t h1 = f0 * g1 + f1 * g0 + f2 * g9_19 + f3 * g8_19 + f4 * g7_19 + f5 * g6_19 + f6 * g5_19 +
+                 f7 * g4_19 + f8 * g3_19 + f9 * g2_19;
+    int64_t h2 = f0 * g2 + f1_2 * g1 + f2 * g0 + f3_2 * g9_19 + f4 * g8_19 + f5_2 * g7_19 + f6 * g6_19 +
+                 f7_2 * g5_19 + f8 * g4_19 + f9_2 * g3_19;
+    int64_t h3 = f0 * g3 + f1 * g2 + f2 * g1 + f3 * g0 + f4 * g9_19 + f5 * g8_19 + f6 * g7_19 +
+                 f7 * g6_19 + f8 * g5_19 + f9 * g4_19;
+    int64_t h4 = f0 * g4 + f1_2 * g3 + f2 * g2 + f3_2 * g1 + f4 * g0 + f5_2 * g9_19 + f6 * g8_19 +
+                 f7_2 * g7_19 + f8 * g6_19 + f9_2 * g5_19;
+    int64_t h5 = f0 * g5 + f1 * g4 + f2 * g3 + f3 * g2 + f4 * g1 + f5 * g0 + f6 * g9_19 + f7 * g8_19 +
+                 f8 * g7_19 + f9 * g6_19;
+    int64_t h6 = f0 * g6 + f1_2 * g5 + f2 * g4 + f3_2 * g3 + f4 * g2 + f5_2 * g1 + f6 * g0 +
+                 f7_2 * g9_19 + f8 * g8_19 + f9_2 * g7_19;
+    int64_t h7 = f0 * g7 + f1 * g6 + f2 * g5 + f3 * g4 + f4 * g3 + f5 * g2 + f6 * g1 + f7 * g0 +
+                 f8 * g9_19 + f9 * g8_19;
+    int64_t h8 = f0 * g8 + f1_2 * g7 + f2 * g6 + f3_2 * g5 + f4 * g4 + f5_2 * g3 + f6 * g2 + f7_2 * g1 +
+                 f8 * g0 + f9_2 * g9_19;
+    int64_t h9 = f0 * g9 + f1 * g8 + f2 * g7 + f3 * g6 + f4 * g5 + f5 * g4 + f6 * g3 + f7 * g2 +
+                 f8 * g1 + f9 * g0;
+
+    /* Carry */
+    int64_t c;
+    c = (h0 + (1 << 25)) >> 26;
+    h1 += c;
+    h0 -= c << 26;
+    c = (h4 + (1 << 25)) >> 26;
+    h5 += c;
+    h4 -= c << 26;
+    c = (h1 + (1 << 24)) >> 25;
+    h2 += c;
+    h1 -= c << 25;
+    c = (h5 + (1 << 24)) >> 25;
+    h6 += c;
+    h5 -= c << 25;
+    c = (h2 + (1 << 25)) >> 26;
+    h3 += c;
+    h2 -= c << 26;
+    c = (h6 + (1 << 25)) >> 26;
+    h7 += c;
+    h6 -= c << 26;
+    c = (h3 + (1 << 24)) >> 25;
+    h4 += c;
+    h3 -= c << 25;
+    c = (h7 + (1 << 24)) >> 25;
+    h8 += c;
+    h7 -= c << 25;
+    c = (h4 + (1 << 25)) >> 26;
+    h5 += c;
+    h4 -= c << 26;
+    c = (h8 + (1 << 25)) >> 26;
+    h9 += c;
+    h8 -= c << 26;
+    c = (h9 + (1 << 24)) >> 25;
+    h0 += c * 19;
+    h9 -= c << 25;
+    c = (h0 + (1 << 25)) >> 26;
+    h1 += c;
+    h0 -= c << 26;
 
     h[0] = h0; h[1] = h1; h[2] = h2; h[3] = h3; h[4] = h4;
     h[5] = h5; h[6] = h6; h[7] = h7; h[8] = h8; h[9] = h9;
@@ -595,44 +645,84 @@ static void fe_invert(fe out, const fe z)
 
 static void fe_from_bytes(fe h, const uint8_t s[32])
 {
-    h[0] = (int64_t)(s[0]) | ((int64_t)(s[1]) << 8) | ((int64_t)(s[2]) << 16) | ((int64_t)(s[3] & 0x03) << 24);
-    h[1] = ((int64_t)(s[3]) >> 2) | ((int64_t)(s[4]) << 6) | ((int64_t)(s[5]) << 14) | ((int64_t)(s[6] & 0x07) << 22);
-    h[2] = ((int64_t)(s[6]) >> 3) | ((int64_t)(s[7]) << 5) | ((int64_t)(s[8]) << 13) | ((int64_t)(s[9] & 0x1f) << 21);
-    h[3] = ((int64_t)(s[9]) >> 5) | ((int64_t)(s[10]) << 3) | ((int64_t)(s[11]) << 11) | ((int64_t)(s[12] & 0x3f) << 19);
-    h[4] = ((int64_t)(s[12]) >> 6) | ((int64_t)(s[13]) << 2) | ((int64_t)(s[14]) << 10) | ((int64_t)(s[15] & 0x01) << 18);
-    h[5] = ((int64_t)(s[15]) >> 1) | ((int64_t)(s[16]) << 7) | ((int64_t)(s[17]) << 15) | ((int64_t)(s[18] & 0x07) << 23);
-    h[6] = ((int64_t)(s[18]) >> 3) | ((int64_t)(s[19]) << 5) | ((int64_t)(s[20]) << 13) | ((int64_t)(s[21] & 0x0f) << 21);
-    h[7] = ((int64_t)(s[21]) >> 4) | ((int64_t)(s[22]) << 4) | ((int64_t)(s[23]) << 12) | ((int64_t)(s[24] & 0x3f) << 20);
-    h[8] = ((int64_t)(s[24]) >> 6) | ((int64_t)(s[25]) << 2) | ((int64_t)(s[26]) << 10) | ((int64_t)(s[27]) << 18);
-    h[9] = ((int64_t)(s[28]) | ((int64_t)(s[29]) << 8) | ((int64_t)(s[30]) << 16) | ((int64_t)(s[31] & 0x7f) << 24));
+    /* RFC 7748 little-endian decode into 25.5-bit limbs (26/25 alternating) */
+    h[0] = ((int64_t)s[0] | ((int64_t)s[1] << 8) | ((int64_t)s[2] << 16) | (((int64_t)s[3] & 0x03) << 24)) & 0x3ffffff;
+    h[1] = (((int64_t)s[3] >> 2) | ((int64_t)s[4] << 6) | ((int64_t)s[5] << 14) | (((int64_t)s[6] & 0x07) << 22)) & 0x1ffffff;
+    h[2] = (((int64_t)s[6] >> 3) | ((int64_t)s[7] << 5) | ((int64_t)s[8] << 13) | (((int64_t)s[9] & 0x1f) << 21)) & 0x3ffffff;
+    h[3] = (((int64_t)s[9] >> 5) | ((int64_t)s[10] << 3) | ((int64_t)s[11] << 11) | (((int64_t)s[12] & 0x3f) << 19)) & 0x1ffffff;
+    h[4] = (((int64_t)s[12] >> 6) | ((int64_t)s[13] << 2) | ((int64_t)s[14] << 10) | ((int64_t)s[15] << 18)) & 0x3ffffff;
+    h[5] = ((int64_t)s[16] | ((int64_t)s[17] << 8) | ((int64_t)s[18] << 16) | (((int64_t)s[19] & 0x01) << 24)) & 0x1ffffff;
+    h[6] = (((int64_t)s[19] >> 1) | ((int64_t)s[20] << 7) | ((int64_t)s[21] << 15) | (((int64_t)s[22] & 0x07) << 23)) & 0x3ffffff;
+    h[7] = (((int64_t)s[22] >> 3) | ((int64_t)s[23] << 5) | ((int64_t)s[24] << 13) | (((int64_t)s[25] & 0x0f) << 21)) & 0x1ffffff;
+    h[8] = (((int64_t)s[25] >> 4) | ((int64_t)s[26] << 4) | ((int64_t)s[27] << 12) | (((int64_t)s[28] & 0x3f) << 20)) & 0x3ffffff;
+    h[9] = (((int64_t)s[28] >> 6) | ((int64_t)s[29] << 2) | ((int64_t)s[30] << 10) | ((int64_t)s[31] << 18)) & 0x1ffffff;
 }
 
 static void fe_to_bytes(uint8_t s[32], const fe h)
 {
-    int64_t t[10];
-    for (int i = 0; i < 10; i++) t[i] = h[i];
+    int64_t h0 = h[0], h1 = h[1], h2 = h[2], h3 = h[3], h4 = h[4];
+    int64_t h5 = h[5], h6 = h[6], h7 = h[7], h8 = h[8], h9 = h[9];
 
-    /* Reduce */
-    int64_t carry;
-    carry = t[9] >> 25; t[0] += 19 * carry; t[9] -= carry << 25;
-    for (int i = 0; i < 9; i++) {
-        carry = t[i] >> ((i & 1) ? 25 : 26);
-        t[i+1] += carry;
-        t[i] -= carry << ((i & 1) ? 25 : 26);
-    }
-    carry = t[9] >> 25; t[0] += 19 * carry; t[9] -= carry << 25;
-    carry = t[0] >> 26; t[1] += carry; t[0] -= carry << 26;
+    /* Reduce mod p = 2^255 - 19 */
+    int64_t q = (19 * h9 + (1LL << 24)) >> 25;
+    q = (h0 + q) >> 26;
+    q = (h1 + q) >> 25;
+    q = (h2 + q) >> 26;
+    q = (h3 + q) >> 25;
+    q = (h4 + q) >> 26;
+    q = (h5 + q) >> 25;
+    q = (h6 + q) >> 26;
+    q = (h7 + q) >> 25;
+    q = (h8 + q) >> 26;
+    q = (h9 + q) >> 25;
 
-    s[0] = t[0] & 0xFF; s[1] = (t[0] >> 8) & 0xFF; s[2] = (t[0] >> 16) & 0xFF; s[3] = ((t[0] >> 24) | (t[1] << 2)) & 0xFF;
-    s[4] = (t[1] >> 6) & 0xFF; s[5] = (t[1] >> 14) & 0xFF; s[6] = ((t[1] >> 22) | (t[2] << 3)) & 0xFF;
-    s[7] = (t[2] >> 5) & 0xFF; s[8] = (t[2] >> 13) & 0xFF; s[9] = ((t[2] >> 21) | (t[3] << 5)) & 0xFF;
-    s[10] = (t[3] >> 3) & 0xFF; s[11] = (t[3] >> 11) & 0xFF; s[12] = ((t[3] >> 19) | (t[4] << 6)) & 0xFF;
-    s[13] = (t[4] >> 2) & 0xFF; s[14] = (t[4] >> 10) & 0xFF; s[15] = (t[4] >> 18) & 0xFF;
-    s[16] = t[5] & 0xFF; s[17] = (t[5] >> 8) & 0xFF; s[18] = (t[5] >> 16) & 0xFF; s[19] = ((t[5] >> 24) | (t[6] << 1)) & 0xFF;
-    s[20] = (t[6] >> 7) & 0xFF; s[21] = (t[6] >> 15) & 0xFF; s[22] = ((t[6] >> 23) | (t[7] << 3)) & 0xFF;
-    s[23] = (t[7] >> 5) & 0xFF; s[24] = (t[7] >> 13) & 0xFF; s[25] = ((t[7] >> 21) | (t[8] << 4)) & 0xFF;
-    s[26] = (t[8] >> 4) & 0xFF; s[27] = (t[8] >> 12) & 0xFF; s[28] = ((t[8] >> 20) | (t[9] << 6)) & 0xFF;
-    s[29] = (t[9] >> 2) & 0xFF; s[30] = (t[9] >> 10) & 0xFF; s[31] = (t[9] >> 18) & 0xFF;
+    h0 += 19 * q;
+
+    /* Carry */
+    int64_t c = h0 >> 26; h1 += c; h0 -= c << 26;
+    c = h1 >> 25; h2 += c; h1 -= c << 25;
+    c = h2 >> 26; h3 += c; h2 -= c << 26;
+    c = h3 >> 25; h4 += c; h3 -= c << 25;
+    c = h4 >> 26; h5 += c; h4 -= c << 26;
+    c = h5 >> 25; h6 += c; h5 -= c << 25;
+    c = h6 >> 26; h7 += c; h6 -= c << 26;
+    c = h7 >> 25; h8 += c; h7 -= c << 25;
+    c = h8 >> 26; h9 += c; h8 -= c << 26;
+    c = h9 >> 25; h9 -= c << 25;
+
+    /* Output little-endian */
+    s[0] = (uint8_t)h0;
+    s[1] = (uint8_t)(h0 >> 8);
+    s[2] = (uint8_t)(h0 >> 16);
+    s[3] = (uint8_t)((h0 >> 24) | (h1 << 2));
+    s[4] = (uint8_t)(h1 >> 6);
+    s[5] = (uint8_t)(h1 >> 14);
+    s[6] = (uint8_t)((h1 >> 22) | (h2 << 3));
+    s[7] = (uint8_t)(h2 >> 5);
+    s[8] = (uint8_t)(h2 >> 13);
+    s[9] = (uint8_t)((h2 >> 21) | (h3 << 5));
+    s[10] = (uint8_t)(h3 >> 3);
+    s[11] = (uint8_t)(h3 >> 11);
+    s[12] = (uint8_t)((h3 >> 19) | (h4 << 6));
+    s[13] = (uint8_t)(h4 >> 2);
+    s[14] = (uint8_t)(h4 >> 10);
+    s[15] = (uint8_t)(h4 >> 18);
+    s[16] = (uint8_t)h5;
+    s[17] = (uint8_t)(h5 >> 8);
+    s[18] = (uint8_t)(h5 >> 16);
+    s[19] = (uint8_t)((h5 >> 24) | (h6 << 1));
+    s[20] = (uint8_t)(h6 >> 7);
+    s[21] = (uint8_t)(h6 >> 15);
+    s[22] = (uint8_t)((h6 >> 23) | (h7 << 3));
+    s[23] = (uint8_t)(h7 >> 5);
+    s[24] = (uint8_t)(h7 >> 13);
+    s[25] = (uint8_t)((h7 >> 21) | (h8 << 4));
+    s[26] = (uint8_t)(h8 >> 4);
+    s[27] = (uint8_t)(h8 >> 12);
+    s[28] = (uint8_t)((h8 >> 20) | (h9 << 6));
+    s[29] = (uint8_t)(h9 >> 2);
+    s[30] = (uint8_t)(h9 >> 10);
+    s[31] = (uint8_t)(h9 >> 18);
 }
 
 static void x25519_scalarmult(uint8_t out[32], const uint8_t scalar[32], const uint8_t point[32])
@@ -673,7 +763,7 @@ static void x25519_scalarmult(uint8_t out[32], const uint8_t scalar[32], const u
         fe_add(x3, z3, z2);
         fe_sub(z2, z3, z2);
         fe_mul(x2, tmp1, tmp0);
-        fe_sub(tmp1, tmp1, tmp0);
+        fe_sub(tmp1, tmp1, tmp0); /* E = AA - BB */
         fe_sq(z2, z2);
         fe fe_121666 = {121666, 0, 0, 0, 0, 0, 0, 0, 0, 0};
         fe_mul(z3, tmp1, fe_121666);

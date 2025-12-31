@@ -363,13 +363,29 @@ i64 read(i32 fd, void *buf, usize len)
         {
             char *s = static_cast<char *>(buf);
             usize count = 0;
+            if (len == 0)
+            {
+                return 0;
+            }
+
+            // Block until at least one character is available.
+            while (!console::has_input())
+            {
+                console::poll_input();
+                task::yield();
+            }
+
             while (count < len)
             {
+                console::poll_input();
                 i32 c = console::getchar();
                 if (c < 0)
                     break; // No more input available
-                s[count++] = static_cast<char>(c);
-                if (c == '\n')
+                char ch = static_cast<char>(c);
+                if (ch == '\r')
+                    ch = '\n';
+                s[count++] = ch;
+                if (ch == '\n')
                     break; // Line complete
             }
             return static_cast<i64>(count);
