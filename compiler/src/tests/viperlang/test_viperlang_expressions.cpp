@@ -69,8 +69,9 @@ TEST(ViperLangExpressions, ModuleLevelConstants)
     const std::string source = R"(
 module Test;
 
-Integer GAME_WIDTH = 70;
-Integer PLAYER_START = 35;
+// Use 'final' for compile-time constants that should be inlined
+final GAME_WIDTH = 70;
+final PLAYER_START = 35;
 
 func start() {
     // Constants should resolve to their actual values, not 0

@@ -482,6 +482,13 @@ TypeRef runtimeClass(const std::string &name)
     return std::make_shared<ViperType>(TypeKindSem::Ptr, name);
 }
 
+TypeRef module(const std::string &name)
+{
+    // Create a Module type with the module name
+    // This allows qualified access like moduleName.symbol
+    return std::make_shared<ViperType>(TypeKindSem::Module, name);
+}
+
 } // namespace types
 
 //=============================================================================

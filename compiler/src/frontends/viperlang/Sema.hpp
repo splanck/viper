@@ -130,6 +130,7 @@ struct Symbol
         Method,    ///< Method in a type declaration
         Field,     ///< Field in a type declaration
         Type,      ///< Type declaration (value, entity, interface)
+        Module,    ///< Imported module namespace
     };
 
     /// @brief The symbol kind.
@@ -772,6 +773,11 @@ class Sema
 
     /// @brief Set of import paths seen in the current module.
     std::unordered_set<std::string> imports_;
+
+    /// @brief Map from imported module names to their exported symbols.
+    /// @details When `import "./colors"` is processed, "colors" maps to
+    /// the symbols defined in colors.viper. Used for qualified access.
+    std::unordered_map<std::string, std::unordered_map<std::string, Symbol>> moduleExports_;
 
     /// @}
 };

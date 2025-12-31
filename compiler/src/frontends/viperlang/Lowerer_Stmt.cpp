@@ -597,6 +597,25 @@ void Lowerer::lowerReturnStmt(ReturnStmt *stmt)
         auto result = lowerExpr(stmt->value.get());
         Value returnValue = result.value;
 
+        // Handle Number -> Integer implicit conversion for return statements
+        // This allows returning Viper.Math.Floor() etc. from Integer-returning functions
+        if (currentReturnType_ && currentReturnType_->kind == TypeKindSem::Integer)
+        {
+            TypeRef valueType = sema_.typeOf(stmt->value.get());
+            if (valueType && valueType->kind == TypeKindSem::Number)
+            {
+                // Emit cast.fp_to_si.rte.chk to convert f64 -> i64 (rounds-to-nearest-even, overflow-checked)
+                unsigned convId = nextTempId();
+                il::core::Instr convInstr;
+                convInstr.result = convId;
+                convInstr.op = Opcode::CastFpToSiRteChk;
+                convInstr.type = Type(Type::Kind::I64);
+                convInstr.operands = {returnValue};
+                blockMgr_.currentBlock()->instructions.push_back(convInstr);
+                returnValue = Value::temp(convId);
+            }
+        }
+
         if (currentReturnType_ && currentReturnType_->kind == TypeKindSem::Optional)
         {
             TypeRef valueType = sema_.typeOf(stmt->value.get());

@@ -635,6 +635,20 @@ TypeRef Sema::analyzeField(FieldExpr *expr)
 {
     TypeRef baseType = analyzeExpr(expr->base.get());
 
+    // Handle module-qualified access (e.g., colors.initColors)
+    if (baseType && baseType->kind == TypeKindSem::Module)
+    {
+        // Look up the symbol in global scope (imported symbols are merged)
+        Symbol *sym = lookupSymbol(expr->field);
+        if (sym)
+        {
+            return sym->type;
+        }
+        // If not found in global scope, report error
+        error(expr->loc, "Module '" + baseType->name + "' has no exported symbol '" + expr->field + "'");
+        return types::unknown();
+    }
+
     // Check if this is a field or method access on a value or entity type
     if (baseType && (baseType->kind == TypeKindSem::Value || baseType->kind == TypeKindSem::Entity))
     {
@@ -1056,9 +1070,21 @@ TypeRef Sema::analyzeNew(NewExpr *expr)
     TypeRef type = resolveTypeNode(expr->type.get());
 
     // Allow new for value/entity types and collection types (List, Set, Map)
-    if (type->kind != TypeKindSem::Value && type->kind != TypeKindSem::Entity &&
-        type->kind != TypeKindSem::List && type->kind != TypeKindSem::Set &&
-        type->kind != TypeKindSem::Map)
+    bool allowed = type->kind == TypeKindSem::Value || type->kind == TypeKindSem::Entity ||
+                   type->kind == TypeKindSem::List || type->kind == TypeKindSem::Set ||
+                   type->kind == TypeKindSem::Map;
+
+    // Also allow new for runtime classes that have a .New constructor
+    if (!allowed && type->kind == TypeKindSem::Ptr && !type->name.empty())
+    {
+        std::string ctorName = type->name + ".New";
+        if (runtimeFunctions_.find(ctorName) != runtimeFunctions_.end())
+        {
+            allowed = true;
+        }
+    }
+
+    if (!allowed)
     {
         error(expr->loc, "'new' can only be used with value, entity, or collection types");
     }

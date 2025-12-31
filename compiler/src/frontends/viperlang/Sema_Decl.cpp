@@ -28,6 +28,45 @@ void Sema::analyzeImport(ImportDecl &decl)
     }
 
     imports_.insert(decl.path);
+
+    // Extract module name from import path
+    // For "./colors" or "../utils/colors", extract "colors"
+    // For "colors", use "colors"
+    std::string moduleName;
+    if (!decl.alias.empty())
+    {
+        // Use alias if provided: import "./colors" as c;
+        moduleName = decl.alias;
+    }
+    else
+    {
+        // Extract filename without extension from path
+        std::string path = decl.path;
+        // Remove directory components
+        auto lastSlash = path.rfind('/');
+        if (lastSlash != std::string::npos)
+        {
+            path = path.substr(lastSlash + 1);
+        }
+        // Remove .viper extension if present
+        auto extPos = path.rfind(".viper");
+        if (extPos != std::string::npos)
+        {
+            path = path.substr(0, extPos);
+        }
+        moduleName = path;
+    }
+
+    // Register the module name as a Module symbol for qualified access
+    if (!moduleName.empty())
+    {
+        Symbol sym;
+        sym.kind = Symbol::Kind::Module;
+        sym.name = moduleName;
+        sym.type = types::module(moduleName);
+        sym.isFinal = true;
+        defineSymbol(moduleName, sym);
+    }
 }
 
 void Sema::analyzeGlobalVarDecl(GlobalVarDecl &decl)

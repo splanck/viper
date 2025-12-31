@@ -283,6 +283,11 @@ enum class TypeKindSem
     /// type or function. Replaced with concrete types during instantiation.
     TypeParam,
 
+    /// @brief Imported module namespace.
+    /// @details Represents an imported module that can be used to access
+    /// its exported symbols via dot notation (e.g., `colors.initColors()`).
+    Module,
+
     /// @}
 };
 
@@ -805,6 +810,12 @@ TypeRef typeParam(const std::string &name);
 /// @details Used for runtime classes where we need to track the type name
 /// for method call resolution.
 TypeRef runtimeClass(const std::string &name);
+
+/// @brief Create a module namespace type.
+/// @param name The module name (e.g., "colors").
+/// @return A new module type for accessing imported symbols.
+/// @details Used for imported modules to enable qualified access like `colors.func()`.
+TypeRef module(const std::string &name);
 
 /// @}
 

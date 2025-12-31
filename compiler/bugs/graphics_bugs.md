@@ -29,172 +29,166 @@ typeRegistry_["Viper.Graphics.Pixels"] = types::ptr();
 
 ---
 
-## BUG-002: Module Import System Not Implemented
+## BUG-002: Module Import System Not Implemented (FIXED)
 
-**Status:** Open
+**Status:** Fixed in this session
+**Files:** `src/frontends/viperlang/Sema_Decl.cpp`, `src/frontends/viperlang/Sema_Expr.cpp`, `src/frontends/viperlang/Lowerer_Expr.cpp`, `src/frontends/viperlang/Types.hpp`, `src/frontends/viperlang/Types.cpp`, `src/frontends/viperlang/Sema.hpp`
 **Severity:** Critical
-**File:** `src/frontends/viperlang/Sema_Decl.cpp` lines 22-31
 
 ### Description
-The module import system is essentially a stub. The `analyzeImport()` function only adds the import path to an internal set - it does NOT:
-1. Load the imported module file
-2. Parse the imported module
-3. Analyze the imported module
-4. Make the imported module's symbols accessible
+Module-qualified access (e.g., `colors.initColors()`) was not implemented. The import resolver was already functional, but the semantic analyzer and lowerer didn't support accessing imported symbols via module prefix.
 
 ### Root Cause
-```cpp
-void Sema::analyzeImport(ImportDecl &decl)
-{
-    if (decl.path.empty())
-    {
-        error(decl.loc, "Import path cannot be empty");
-        return;
-    }
-    imports_.insert(decl.path);  // <-- Just stores path, does nothing else!
-}
-```
+1. The `analyzeImport()` function only stored import paths but didn't register module names as symbols
+2. The semantic analyzer didn't handle field access on Module types
+3. The lowerer didn't handle module-qualified function calls
 
-### Reproduction
+### Fix Applied
+1. Added `TypeKindSem::Module` type kind for imported module namespaces
+2. Added `Symbol::Kind::Module` for module symbols
+3. Modified `analyzeImport()` to extract module name from import path and register it as a Module symbol
+4. Modified `analyzeField()` to handle field access on Module types (looking up symbols in global scope)
+5. Modified `lowerCall()` to handle module-qualified function calls
+6. Modified `lowerField()` to handle module-qualified variable/constant access
+
+### Now Works
 ```viper
 // colors.viper
 module colors;
-var BLACK: Integer;
-func initColors() { BLACK = 0; }
+func initColors() { /* ... */ }
 
 // main.viper
 import "./colors";
-func start() {
-    colors.initColors();  // Error: Undefined identifier: colors
+func main() {
+    colors.initColors();  // Works: module-qualified call
+    initColors();         // Also works: direct access (merged into scope)
 }
 ```
 
-### Error Message
-```
-error[V3000]: Undefined identifier: colors
-```
-
-### Required Fix
-Implement a proper module loader that:
-1. Resolves the import path relative to the current file
-2. Parses the imported file
-3. Recursively analyzes the imported module
-4. Registers the module's public symbols in a namespace accessible via the module name prefix
-5. Handles circular imports gracefully
+### Features Supported
+- Module-qualified function calls: `utils.myFunc()`
+- Module-qualified constant access: `utils.MY_CONST`
+- Module-qualified variable access: `utils.myVar`
+- Direct (unqualified) access: `myFunc()`, `MY_CONST`, `myVar`
+- Circular import detection (handled by ImportResolver)
+- Relative import paths: `import "./subdir/module"`
 
 ---
 
-## BUG-003: Cannot Use `new` on Runtime Classes
+## BUG-003: Cannot Use `new` on Runtime Classes (FIXED)
 
-**Status:** Open
+**Status:** Fixed in this session
+**Files:** `src/frontends/viperlang/Sema_Expr.cpp`, `src/frontends/viperlang/Lowerer_Expr.cpp`
 **Severity:** Critical
 
 ### Description
-The `new` keyword cannot be used with runtime classes like `Viper.Graphics.Canvas` or `Viper.Graphics.Pixels`, even though they have `.New` constructors defined in `runtime.def`.
+The `new` keyword could not be used with runtime classes like `Viper.Graphics.Canvas` or `Viper.Graphics.Pixels`, even though they have `.New` constructors defined in `runtime.def`.
 
-### Reproduction
+### Error Message (before fix)
+```
+error[V3000]: 'new' can only be used with value, entity, or collection types
+```
+
+### Fix Applied
+1. Modified `analyzeNew()` in Sema_Expr.cpp to check if the type is a Ptr with a `.New` constructor registered
+2. Modified `lowerNew()` in Lowerer_Expr.cpp to call the `.New` constructor for runtime class types
+
+### Now Works
 ```viper
 var canvas = new Viper.Graphics.Canvas("Title", 800, 600);
 var pixels = new Viper.Graphics.Pixels(100, 100);
 ```
 
-### Error Message
-```
-error[V3000]: 'new' can only be used with value, entity, or collection types
-```
-
-### Expected Behavior
-`new` should work with any type that has a `.New` constructor registered in the runtime.
-
-### Workaround
-Call the `.New` constructor function directly instead of using the `new` keyword:
-```viper
-// Instead of: var canvas = new Viper.Graphics.Canvas("Title", 800, 600);
-// Use:
-var canvas = Viper.Graphics.Canvas.New("Title", 800, 600);
-var pixels = Viper.Graphics.Pixels.New(100, 100);
-```
-This compiles and works correctly.
-
 ---
 
-## BUG-004: Type Mismatch in Return Value Contexts
+## BUG-004: Type Mismatch in Return Value Contexts (FIXED)
 
-**Status:** Open
+**Status:** Fixed in this session
+**Files:** `src/frontends/viperlang/Sema_Stmt.cpp`, `src/frontends/viperlang/Lowerer_Stmt.cpp`
 **Severity:** Medium
 
 ### Description
-When a function returns `Number` but the return value involves operations that produce `Integer`, type mismatches occur.
+When a function returns `Integer` but the return value is `Number` (e.g., from `Viper.Math.Floor`), type mismatches occurred.
 
-### Reproduction
-```viper
-entity Star {
-    expose Number z;
-
-    expose func getScreenX(centerX: Integer, fov: Number) -> Integer {
-        if z <= 0.0 { return -1; }
-        // Error: Type mismatch: expected Integer, got Number
-        return centerX + Viper.Math.Floor((x * fov) / z);
-    }
-}
-```
-
-### Error Messages
+### Error Message (before fix)
 ```
 error[V3000]: Type mismatch: expected Integer, got Number
 ```
 
-### Analysis
-`Viper.Math.Floor()` returns `Number` (f64) but an `Integer` (i64) is expected. The issue is that `Floor` should return `Integer`, or there should be automatic coercion.
+### Fix Applied
+1. Modified `analyzeReturnStmt()` in Sema_Stmt.cpp to allow implicit Number→Integer narrowing in return statements
+2. Modified `lowerReturnStmt()` in Lowerer_Stmt.cpp to emit `cast.fp_to_si.rte.chk` for the actual f64→i64 conversion
 
----
-
-## BUG-005: Invalid Operands for Arithmetic with Mixed Entity Fields
-
-**Status:** Open
-**Severity:** Medium
-
-### Description
-Arithmetic operations between entity fields of different types or between entity fields and literals sometimes fail.
-
-### Reproduction
+### Now Works
 ```viper
-var fade = 1.0 - (i * 0.4) / segments.count();
+func toInt(x: Number) -> Integer {
+    return Viper.Math.Floor(x);  // Implicitly converts Number to Integer
+}
 ```
-
-### Error Message
-```
-error[V3000]: Invalid operands for arithmetic operation
-```
-
-### Analysis
-The issue appears to be related to type inference when mixing `Number` literals, `Integer` variables, and method call results in expressions.
 
 ---
 
-## BUG-006: Floor Function Returns Number Instead of Integer
+## BUG-005: Invalid Operands for Arithmetic with Mixed Entity Fields (FIXED)
 
-**Status:** Open
+**Status:** Fixed in this session
+**File:** `src/frontends/viperlang/Lowerer_Expr.cpp`
 **Severity:** Medium
-**File:** `src/frontends/viperlang/Sema.cpp` line ~1080
 
 ### Description
-`Viper.Math.Floor()` is registered as returning `Number` but it should logically return `Integer` since its purpose is to convert a floating-point to its integer floor.
+Arithmetic operations between Integer and Number operands failed at IL verification because integer operations were used with float operands.
 
-### Current Registration
-```cpp
-runtimeFunctions_["Viper.Math.Floor"] = types::number();
+### Error Message (before fix)
+```
+error: testBug005:entry_0: %3 = imul.ovf %t2 0.4: operand type mismatch: operand 1 must be i64
 ```
 
-### Suggested Fix
-```cpp
-runtimeFunctions_["Viper.Math.Floor"] = types::integer();
+### Root Cause
+The `lowerBinary()` function only checked the left operand's type to determine if float operations should be used. When the left operand was Integer and right was Number (e.g., `i * 0.4`), integer multiply was incorrectly used.
+
+### Fix Applied
+Modified `lowerBinary()` in Lowerer_Expr.cpp to:
+1. Check both operand types for Number
+2. If either is Number, use float operations (fmul, fdiv, fsub, fadd)
+3. Emit `sitofp` to convert Integer operand to f64 before the operation
+
+### Now Works
+```viper
+var i = 5;
+var count = 10;
+var fade = 1.0 - (i * 0.4) / count;  // Properly uses float arithmetic
 ```
 
-### Related Functions
-- `Viper.Math.Ceil` - should also return Integer
-- `Viper.Math.Round` - should also return Integer
-- `Viper.Math.Trunc` - should also return Integer
+---
+
+## BUG-006: Floor Function Returns Number Instead of Integer (BY DESIGN)
+
+**Status:** By Design (with workaround via BUG-004 fix)
+**Severity:** Low
+**File:** `src/il/runtime/runtime.def`
+
+### Description
+`Viper.Math.Floor()` returns `Number` (f64) rather than `Integer` (i64). This is by design because the underlying IL runtime function is typed as `f64(f64)`.
+
+### Why Not Changed
+Changing Floor to return Integer would cause IL type mismatches since the actual runtime implementation returns f64. The proper solution was implemented via BUG-004: implicit Number→Integer conversion in return statements.
+
+### Current Behavior
+```viper
+var floored = Viper.Math.Floor(3.7);  // floored is Number (3.0)
+```
+
+### Workaround (now automatic for returns)
+Thanks to BUG-004 fix, returning Floor from Integer-returning functions now works:
+```viper
+func toInt(x: Number) -> Integer {
+    return Viper.Math.Floor(x);  // Automatic conversion
+}
+```
+
+For explicit conversions, use `Viper.Convert.NumToInt`:
+```viper
+var intVal = Viper.Convert.NumToInt(Viper.Math.Floor(3.7));
+```
 
 ---
 
@@ -221,20 +215,61 @@ Three issues:
 
 ---
 
+## BUG-008: Mutable Global Variables Not Working (FIXED)
+
+**Status:** Fixed
+**Files:** `src/frontends/viperlang/Lowerer_Decl.cpp`, `src/frontends/viperlang/Lowerer.hpp`
+**Severity:** Critical
+
+### Description
+Mutable global variables with literal initializers (e.g., `var counter = 0;`) were being treated as compile-time constants. Functions couldn't read the updated value or write to the variable.
+
+### Root Cause
+Two issues:
+1. Variables with literal initializers were added to BOTH `globalConstants_` and `globalVariables_`
+2. During identifier resolution, `globalConstants_` was checked first, so the constant value was always returned instead of loading from runtime storage
+3. Initial values were not being stored to runtime storage at module initialization
+
+### Fix Applied
+1. Modified `lowerGlobalVarDecl` to only add `final` declarations to `globalConstants_`
+2. Added `globalInitializers_` map to track literal initializer values for mutable variables
+3. Added initialization code at start of `main()` to store initial values to runtime storage
+4. Special handling for string literals (use `emitConstStr` to get actual address)
+
+### Now Works
+```viper
+var counter = 0;  // Mutable global with literal initializer
+
+func increment() {
+    counter = counter + 1;  // Properly reads and writes runtime storage
+}
+
+func main() {
+    increment();
+    increment();
+    Viper.Terminal.Say("Counter: " + counter);  // Correctly prints "Counter: 2"
+}
+```
+
+---
+
 ## Recommendations
 
-### Priority 1 (Blocking)
-1. Fix BUG-002 (Module imports) - Required for multi-file projects
+### All Critical Bugs Fixed!
+All bugs discovered during graphics demo development have been fixed.
 
-### Priority 2 (Important)
-2. Fix BUG-006 (Floor return type) - Causes cascading type errors
-3. Fix BUG-004 and BUG-005 - Type coercion improvements
+### Completed Fixes (This Session)
+- ✅ BUG-001: Runtime classes registered as types
+- ✅ BUG-002: Module imports with qualified access (`colors.func()`)
+- ✅ BUG-003: `new` keyword works on runtime classes
+- ✅ BUG-004: Implicit Number→Integer conversion in return statements
+- ✅ BUG-005: Mixed-type arithmetic with Integer/Number operands
+- ✅ BUG-006: Clarified as by-design with workaround via BUG-004
+- ✅ BUG-007: Runtime class method calls resolved
+- ✅ BUG-008: Mutable global variables with literal initializers
 
-### Alternative Approach
-If imports cannot be fixed quickly, consider:
-1. Creating a "prelude" system that auto-imports common utilities
-2. Supporting inline function definitions in entity bodies
-3. Adding explicit type conversion functions (e.g., `toInteger()`, `toNumber()`)
+### Known Limitations
+None - all discovered bugs have been fixed.
 
 ---
 

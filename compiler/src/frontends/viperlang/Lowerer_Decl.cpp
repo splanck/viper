@@ -89,10 +89,9 @@ void Lowerer::lowerGlobalVarDecl(GlobalVarDecl &decl)
         type = sema_.typeOf(decl.initializer.get());
     }
 
-    // Try to inline literal initializers as constants
-    // This applies to both final declarations and Java-style declarations
-    // (e.g., "Integer GAME_WIDTH = 70;" is treated as a constant)
-    if (decl.initializer)
+    // Try to inline literal initializers as constants (only for final declarations)
+    // Mutable variables must use runtime storage even with literal initializers
+    if (decl.isFinal && decl.initializer)
     {
         Expr *init = decl.initializer.get();
         bool inlinedAsConstant = false;
@@ -125,20 +124,42 @@ void Lowerer::lowerGlobalVarDecl(GlobalVarDecl &decl)
 
         if (inlinedAsConstant)
         {
-            // For mutable variables with literal initializers, also register
-            // them for runtime storage so they can be reassigned
-            if (!decl.isFinal && type)
-            {
-                globalVariables_[decl.name] = type;
-            }
             return;
         }
     }
 
-    // For mutable variables without literal initializers, register for runtime storage
+    // For mutable variables, register for runtime storage
     if (!decl.isFinal && type)
     {
         globalVariables_[decl.name] = type;
+
+        // Store literal initializer values for module init
+        if (decl.initializer)
+        {
+            Expr *init = decl.initializer.get();
+
+            // Handle integer literals
+            if (auto *intLit = dynamic_cast<IntLiteralExpr *>(init))
+            {
+                globalInitializers_[decl.name] = Value::constInt(intLit->value);
+            }
+            // Handle number (float) literals
+            else if (auto *numLit = dynamic_cast<NumberLiteralExpr *>(init))
+            {
+                globalInitializers_[decl.name] = Value::constFloat(numLit->value);
+            }
+            // Handle boolean literals
+            else if (auto *boolLit = dynamic_cast<BoolLiteralExpr *>(init))
+            {
+                globalInitializers_[decl.name] = Value::constBool(boolLit->value);
+            }
+            // Handle string literals
+            else if (auto *strLit = dynamic_cast<StringLiteralExpr *>(init))
+            {
+                std::string label = stringTable_.intern(strLit->value);
+                globalInitializers_[decl.name] = Value::constStr(label);
+            }
+        }
     }
 }
 
@@ -191,6 +212,33 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
         createSlot(decl.params[i].name, ilParamType);
         storeToSlot(decl.params[i].name, Value::temp(blockParams[i].id), ilParamType);
         localTypes_[decl.params[i].name] = paramType;
+    }
+
+    // Emit global variable initializations at start of main()
+    if (decl.name == "main" && !globalInitializers_.empty())
+    {
+        for (const auto &[name, initValue] : globalInitializers_)
+        {
+            auto typeIt = globalVariables_.find(name);
+            if (typeIt == globalVariables_.end())
+                continue;
+
+            TypeRef varType = typeIt->second;
+            Type ilType = mapType(varType);
+
+            // Get address of global variable
+            Value addr = getGlobalVarAddr(name, varType);
+
+            // Handle string values specially - need to emit conststr to get address
+            Value valueToStore = initValue;
+            if (ilType.kind == Type::Kind::Str && initValue.kind == Value::Kind::ConstStr)
+            {
+                valueToStore = emitConstStr(initValue.str);
+            }
+
+            // Store the initial value
+            emitStore(addr, valueToStore, ilType);
+        }
     }
 
     // Lower function body

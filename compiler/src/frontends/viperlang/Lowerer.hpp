@@ -448,6 +448,11 @@ class Lowerer
     /// storage access calls.
     std::map<std::string, TypeRef> globalVariables_;
 
+    /// @brief Initial values for mutable global variables with literal initializers.
+    /// @details Stores literal initializer values that need to be stored to
+    /// runtime storage during module initialization (e.g., `var counter = 10;`).
+    std::map<std::string, Value> globalInitializers_;
+
     /// @}
     //=========================================================================
     /// @name Block Management

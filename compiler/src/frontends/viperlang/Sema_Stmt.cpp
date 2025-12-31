@@ -263,7 +263,14 @@ void Sema::analyzeReturnStmt(ReturnStmt *stmt)
         TypeRef valueType = analyzeExpr(stmt->value.get());
         if (expectedReturnType_ && !expectedReturnType_->isAssignableFrom(*valueType))
         {
-            errorTypeMismatch(stmt->value->loc, expectedReturnType_, valueType);
+            // Allow implicit Number -> Integer conversion in return statements
+            // This enables returning Floor/Ceil/Round/Trunc results from Integer functions
+            bool allowedNarrowing = (expectedReturnType_->kind == TypeKindSem::Integer &&
+                                     valueType->kind == TypeKindSem::Number);
+            if (!allowedNarrowing)
+            {
+                errorTypeMismatch(stmt->value->loc, expectedReturnType_, valueType);
+            }
         }
     }
     else

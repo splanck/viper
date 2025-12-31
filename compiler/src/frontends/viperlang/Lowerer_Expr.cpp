@@ -478,10 +478,42 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
     auto right = lowerExpr(expr->right.get());
 
     TypeRef leftType = sema_.typeOf(expr->left.get());
-    bool isFloat = leftType && leftType->kind == TypeKindSem::Number;
+    TypeRef rightType = sema_.typeOf(expr->right.get());
+
+    bool leftIsFloat = leftType && leftType->kind == TypeKindSem::Number;
+    bool rightIsFloat = rightType && rightType->kind == TypeKindSem::Number;
+    bool isFloat = leftIsFloat || rightIsFloat;
+
+    // Handle mixed-type arithmetic: promote integer operand to float
+    if (isFloat && !leftIsFloat && leftType && leftType->isIntegral())
+    {
+        // Left is integer, right is float - convert left to float
+        unsigned convId = nextTempId();
+        il::core::Instr convInstr;
+        convInstr.result = convId;
+        convInstr.op = Opcode::Sitofp;
+        convInstr.type = Type(Type::Kind::F64);
+        convInstr.operands = {left.value};
+        blockMgr_.currentBlock()->instructions.push_back(convInstr);
+        left.value = Value::temp(convId);
+        left.type = Type(Type::Kind::F64);
+    }
+    else if (isFloat && !rightIsFloat && rightType && rightType->isIntegral())
+    {
+        // Right is integer, left is float - convert right to float
+        unsigned convId = nextTempId();
+        il::core::Instr convInstr;
+        convInstr.result = convId;
+        convInstr.op = Opcode::Sitofp;
+        convInstr.type = Type(Type::Kind::F64);
+        convInstr.operands = {right.value};
+        blockMgr_.currentBlock()->instructions.push_back(convInstr);
+        right.value = Value::temp(convId);
+        right.type = Type(Type::Kind::F64);
+    }
 
     Opcode op;
-    Type resultType = left.type;
+    Type resultType = isFloat ? Type(Type::Kind::F64) : left.type;
 
     switch (expr->op)
     {
@@ -876,6 +908,37 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                 {
                     auto baseResult = lowerExpr(fieldExpr->base.get());
                     return lowerMethodCall(method, typeName, baseResult.value, expr);
+                }
+            }
+
+            // Handle module-qualified function calls (e.g., colors.initColors())
+            // When the base is a Module type, treat the field as a direct function call
+            if (baseType->kind == TypeKindSem::Module)
+            {
+                // Lower as a simple function call to the field name
+                std::string funcName = fieldExpr->field;
+
+                // Lower arguments
+                std::vector<Value> args;
+                for (auto &arg : expr->args)
+                {
+                    auto result = lowerExpr(arg.value.get());
+                    args.push_back(result.value);
+                }
+
+                // Get return type from expression
+                TypeRef exprType = sema_.typeOf(expr);
+                Type ilReturnType = exprType ? mapType(exprType) : Type(Type::Kind::Void);
+
+                if (ilReturnType.kind == Type::Kind::Void)
+                {
+                    emitCall(funcName, args);
+                    return {Value::constInt(0), Type(Type::Kind::Void)};
+                }
+                else
+                {
+                    Value result = emitCallRet(ilReturnType, funcName, args);
+                    return {result, ilReturnType};
                 }
             }
 
@@ -1469,15 +1532,63 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
 
 LowerResult Lowerer::lowerField(FieldExpr *expr)
 {
-    // Lower the base expression
-    auto base = lowerExpr(expr->base.get());
-
-    // Get the type of the base expression
+    // Get the type of the base expression first (before lowering)
     TypeRef baseType = sema_.typeOf(expr->base.get());
     if (!baseType)
     {
         return {Value::constInt(0), Type(Type::Kind::I64)};
     }
+
+    // Handle module-qualified identifier access (e.g., colors.BLACK)
+    // The module is just a namespace - we load the symbol directly
+    if (baseType->kind == TypeKindSem::Module)
+    {
+        // Look up the symbol as a global variable or function
+        std::string symbolName = expr->field;
+
+        // Check for global constants first (compile-time constants)
+        auto constIt = globalConstants_.find(symbolName);
+        if (constIt != globalConstants_.end())
+        {
+            const Value &val = constIt->second;
+            Type ilType;
+            switch (val.kind)
+            {
+                case Value::Kind::ConstFloat:
+                    ilType = Type(Type::Kind::F64);
+                    break;
+                case Value::Kind::ConstStr:
+                {
+                    Value loaded = emitConstStr(val.str);
+                    return {loaded, Type(Type::Kind::Str)};
+                }
+                case Value::Kind::ConstInt:
+                    ilType = val.isBool ? Type(Type::Kind::I1) : Type(Type::Kind::I64);
+                    break;
+                default:
+                    ilType = Type(Type::Kind::I64);
+                    break;
+            }
+            return {val, ilType};
+        }
+
+        // Check for global mutable variables
+        auto globalIt = globalVariables_.find(symbolName);
+        if (globalIt != globalVariables_.end())
+        {
+            TypeRef varType = globalIt->second;
+            Type ilType = mapType(varType);
+            Value addr = getGlobalVarAddr(symbolName, varType);
+            Value loaded = emitLoad(addr, ilType);
+            return {loaded, ilType};
+        }
+
+        // For function references, return a placeholder (call handling is separate)
+        return {Value::constInt(0), Type(Type::Kind::Ptr)};
+    }
+
+    // Lower the base expression
+    auto base = lowerExpr(expr->base.get());
 
     // Check if base is a value type
     std::string typeName = baseType->name;
@@ -1575,6 +1686,24 @@ LowerResult Lowerer::lowerNew(NewExpr *expr)
     {
         Value map = emitCallRet(Type(Type::Kind::Ptr), kMapNew, {});
         return {map, Type(Type::Kind::Ptr)};
+    }
+
+    // Handle runtime class types (Ptr types with names like "Viper.Graphics.Canvas")
+    if (type->kind == TypeKindSem::Ptr && !type->name.empty())
+    {
+        std::string ctorName = type->name + ".New";
+
+        // Lower arguments
+        std::vector<Value> argValues;
+        for (auto &arg : expr->args)
+        {
+            auto result = lowerExpr(arg.value.get());
+            argValues.push_back(result.value);
+        }
+
+        // Call the runtime constructor
+        Value result = emitCallRet(Type(Type::Kind::Ptr), ctorName, argValues);
+        return {result, Type(Type::Kind::Ptr)};
     }
 
     // Find the entity type info
