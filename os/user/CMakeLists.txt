@@ -29,6 +29,9 @@ add_subdirectory(libvirtio)
 # Build the microkernel servers
 add_subdirectory(servers)
 
+# Build the SSH library
+add_subdirectory(libssh)
+
 # Helper function to create user programs with libc
 function(add_user_program name)
     add_executable(${name}.elf ${ARGN})
@@ -82,3 +85,23 @@ add_user_program(devices devices/devices.cpp)
 
 # edit - simple nano-like text editor
 add_user_program(edit edit/edit.cpp)
+
+# Helper function for SSH-enabled programs
+function(add_ssh_program name)
+    add_executable(${name}.elf ${ARGN})
+    target_compile_options(${name}.elf PRIVATE ${USER_COMPILE_OPTIONS})
+    target_link_options(${name}.elf PRIVATE ${USER_LINK_OPTIONS})
+    target_include_directories(${name}.elf PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}
+            ${CMAKE_CURRENT_SOURCE_DIR}/libc/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/libc/include/c++
+            ${CMAKE_CURRENT_SOURCE_DIR}/libssh/include
+    )
+    target_link_libraries(${name}.elf PRIVATE viperssh viperlibc)
+endfunction()
+
+# ssh - SSH client
+add_ssh_program(ssh ssh/ssh.c)
+
+# sftp - SFTP client
+add_ssh_program(sftp sftp/sftp.c)

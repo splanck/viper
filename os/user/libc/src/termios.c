@@ -153,12 +153,6 @@ void cfmakeraw(struct termios *termios_p)
     termios_p->c_cc[VTIME] = 0;
 }
 
-int isatty(int fd)
-{
-    /* stdin, stdout, stderr are TTYs */
-    return (fd >= 0 && fd <= 2) ? 1 : 0;
-}
-
 /* Static buffer for ttyname */
 static char ttyname_buf[16];
 

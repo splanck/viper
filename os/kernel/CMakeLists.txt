@@ -98,6 +98,11 @@ set(KERNEL_SOURCES
         net/tls/crypto/sha256.cpp
         net/tls/crypto/sha384.cpp
         net/tls/crypto/x25519.cpp
+        # SSH Crypto additions
+        net/tls/crypto/sha1.cpp
+        net/tls/crypto/aes_ctr.cpp
+        net/tls/crypto/ed25519.cpp
+        net/tls/crypto/rsa.cpp
 )
 
 # Create kernel executable

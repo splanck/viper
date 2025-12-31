@@ -163,6 +163,14 @@ void _Exit(int status)
         ;
 }
 
+void _exit(int status)
+{
+    /* POSIX _exit - exit immediately without cleanup */
+    __syscall1(SYS_TASK_EXIT, status);
+    while (1)
+        ;
+}
+
 void abort(void)
 {
     exit(134); /* SIGABRT-like exit code */

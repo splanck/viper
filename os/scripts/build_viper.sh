@@ -248,6 +248,12 @@ if [[ -x "$TOOLS_DIR/mkfs.viperfs" ]]; then
     if [[ -f "$BUILD_DIR/edit.elf" ]]; then
         MKFS_ARGS+=(--add "$BUILD_DIR/edit.elf:c/edit.elf")
     fi
+    if [[ -f "$BUILD_DIR/ssh.elf" ]]; then
+        MKFS_ARGS+=(--add "$BUILD_DIR/ssh.elf:c/ssh.elf")
+    fi
+    if [[ -f "$BUILD_DIR/sftp.elf" ]]; then
+        MKFS_ARGS+=(--add "$BUILD_DIR/sftp.elf:c/sftp.elf")
+    fi
     # Add roots.der to certs directory
     if [[ -f "$BUILD_DIR/roots.der" ]]; then
         MKFS_ARGS+=(--add "$BUILD_DIR/roots.der:certs/roots.der")

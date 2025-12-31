@@ -155,12 +155,6 @@ int rmdir(const char *pathname)
     return (int)__syscall1(SYS_RMDIR, (long)pathname);
 }
 
-int mkdir(const char *pathname, unsigned int mode)
-{
-    (void)mode; /* ViperOS doesn't use mode yet */
-    return (int)__syscall1(SYS_MKDIR, (long)pathname);
-}
-
 int link(const char *oldpath, const char *newpath)
 {
     /* Hard links not implemented yet */

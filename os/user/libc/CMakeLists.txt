@@ -2,6 +2,7 @@
 # Provides basic C runtime functions for user-space programs
 
 set(LIBC_C_SOURCES
+        src/crt0.c
         src/string.c
         src/stdlib.c
         src/stdio.c
@@ -74,6 +75,7 @@ target_include_directories(viperlibc PUBLIC
 # Freestanding compilation - no standard library dependencies
 target_compile_options(viperlibc PRIVATE
         -ffreestanding
+        -nostdinc
         -fno-builtin
         -nostdlib
         -Wall
