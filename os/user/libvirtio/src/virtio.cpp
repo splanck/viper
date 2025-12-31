@@ -278,7 +278,7 @@ void init()
     for (i64 i = 0; i < count && num_devices < MAX_DEVICES; i++)
     {
         // Check if this is a virtio device (in the virtio MMIO range)
-        u64 addr = dev_infos[i].mmio_base;
+        u64 addr = dev_infos[i].phys_addr;
         if (addr >= 0x0a000000 && addr < 0x0a004000)
         {
             // Try to probe it

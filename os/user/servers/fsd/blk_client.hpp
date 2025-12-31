@@ -60,6 +60,11 @@ class BlkClient
      */
     i32 read_block(u64 block_num, void *buf)
     {
+        if (blkd_channel_ < 0)
+        {
+            return -1;
+        }
+
         // Convert block to sectors (BLOCK_SIZE / 512 = 8 sectors per block)
         u64 sector = block_num * (BLOCK_SIZE / 512);
         u32 count = BLOCK_SIZE / 512;
@@ -71,10 +76,22 @@ class BlkClient
         req.count = count;
         req._pad = 0;
 
+        // Create reply channel
+        auto ch_result = sys::channel_create();
+        if (ch_result.error != 0)
+        {
+            return static_cast<i32>(ch_result.error);
+        }
+        i32 reply_send = static_cast<i32>(ch_result.val0);
+        i32 reply_recv = static_cast<i32>(ch_result.val1);
+
         // Send request
-        i64 err = sys::channel_send(blkd_channel_, &req, sizeof(req), nullptr, 0);
+        u32 send_handles[1] = {static_cast<u32>(reply_send)};
+        i64 err = sys::channel_send(blkd_channel_, &req, sizeof(req), send_handles, 1);
         if (err != 0)
         {
+            sys::channel_close(reply_send);
+            sys::channel_close(reply_recv);
             return static_cast<i32>(err);
         }
 
@@ -82,11 +99,23 @@ class BlkClient
         blk::ReadReply reply;
         u32 handles[4];
         u32 handle_count = 4;
-        i64 len = sys::channel_recv(blkd_channel_, &reply, sizeof(reply), handles, &handle_count);
-        if (len < 0)
+        while (true)
         {
-            return static_cast<i32>(len);
+            i64 len = sys::channel_recv(reply_recv, &reply, sizeof(reply), handles, &handle_count);
+            if (len == VERR_WOULD_BLOCK)
+            {
+                sys::yield();
+                continue;
+            }
+            if (len < 0)
+            {
+                sys::channel_close(reply_recv);
+                return static_cast<i32>(len);
+            }
+            break;
         }
+
+        sys::channel_close(reply_recv);
 
         if (reply.status != 0)
         {
@@ -120,6 +149,11 @@ class BlkClient
      */
     i32 write_block(u64 block_num, const void *buf)
     {
+        if (blkd_channel_ < 0)
+        {
+            return -1;
+        }
+
         // Create shared memory for the write data
         auto shm_result = sys::shm_create(BLOCK_SIZE);
         if (shm_result.error != 0)
@@ -141,28 +175,51 @@ class BlkClient
         req.count = count;
         req._pad = 0;
 
+        // Create reply channel
+        auto ch_result = sys::channel_create();
+        if (ch_result.error != 0)
+        {
+            sys::shm_unmap(shm_result.virt_addr);
+            return static_cast<i32>(ch_result.error);
+        }
+        i32 reply_send = static_cast<i32>(ch_result.val0);
+        i32 reply_recv = static_cast<i32>(ch_result.val1);
+
         // Send request with shared memory handle
-        u32 send_handles[1] = {shm_result.handle};
-        i64 err = sys::channel_send(blkd_channel_, &req, sizeof(req), send_handles, 1);
+        u32 send_handles[2] = {static_cast<u32>(reply_send), shm_result.handle};
+        i64 err = sys::channel_send(blkd_channel_, &req, sizeof(req), send_handles, 2);
         if (err != 0)
         {
+            sys::channel_close(reply_send);
+            sys::channel_close(reply_recv);
             sys::shm_unmap(shm_result.virt_addr);
             return static_cast<i32>(err);
         }
+
+        // Done with local mapping; handle was transferred to the server.
+        sys::shm_unmap(shm_result.virt_addr);
 
         // Wait for reply
         blk::WriteReply reply;
         u32 handles[4];
         u32 handle_count = 4;
-        i64 len = sys::channel_recv(blkd_channel_, &reply, sizeof(reply), handles, &handle_count);
-
-        // Cleanup shared memory
-        sys::shm_unmap(shm_result.virt_addr);
-
-        if (len < 0)
+        while (true)
         {
-            return static_cast<i32>(len);
+            i64 len = sys::channel_recv(reply_recv, &reply, sizeof(reply), handles, &handle_count);
+            if (len == VERR_WOULD_BLOCK)
+            {
+                sys::yield();
+                continue;
+            }
+            if (len < 0)
+            {
+                sys::channel_close(reply_recv);
+                return static_cast<i32>(len);
+            }
+            break;
         }
+
+        sys::channel_close(reply_recv);
 
         return reply.status;
     }
@@ -174,24 +231,53 @@ class BlkClient
      */
     i32 flush()
     {
+        if (blkd_channel_ < 0)
+        {
+            return -1;
+        }
+
         blk::FlushRequest req;
         req.type = blk::BLK_FLUSH;
         req.request_id = next_request_id_++;
 
-        i64 err = sys::channel_send(blkd_channel_, &req, sizeof(req), nullptr, 0);
+        // Create reply channel
+        auto ch_result = sys::channel_create();
+        if (ch_result.error != 0)
+        {
+            return static_cast<i32>(ch_result.error);
+        }
+        i32 reply_send = static_cast<i32>(ch_result.val0);
+        i32 reply_recv = static_cast<i32>(ch_result.val1);
+
+        u32 send_handles[1] = {static_cast<u32>(reply_send)};
+        i64 err = sys::channel_send(blkd_channel_, &req, sizeof(req), send_handles, 1);
         if (err != 0)
         {
+            sys::channel_close(reply_send);
+            sys::channel_close(reply_recv);
             return static_cast<i32>(err);
         }
 
         blk::FlushReply reply;
         u32 handles[4];
         u32 handle_count = 4;
-        i64 len = sys::channel_recv(blkd_channel_, &reply, sizeof(reply), handles, &handle_count);
-        if (len < 0)
+        while (true)
         {
-            return static_cast<i32>(len);
+            i64 len = sys::channel_recv(reply_recv, &reply, sizeof(reply), handles, &handle_count);
+            if (len == VERR_WOULD_BLOCK)
+            {
+                sys::yield();
+                continue;
+            }
+            if (len < 0)
+            {
+                sys::channel_close(reply_recv);
+                return static_cast<i32>(len);
+            }
+            break;
         }
+
+        sys::channel_close(reply_recv);
 
         return reply.status;
     }
@@ -205,24 +291,53 @@ class BlkClient
      */
     i32 get_info(u64 *total_sectors, u32 *sector_size)
     {
+        if (blkd_channel_ < 0)
+        {
+            return -1;
+        }
+
         blk::InfoRequest req;
         req.type = blk::BLK_INFO;
         req.request_id = next_request_id_++;
 
-        i64 err = sys::channel_send(blkd_channel_, &req, sizeof(req), nullptr, 0);
+        // Create reply channel
+        auto ch_result = sys::channel_create();
+        if (ch_result.error != 0)
+        {
+            return static_cast<i32>(ch_result.error);
+        }
+        i32 reply_send = static_cast<i32>(ch_result.val0);
+        i32 reply_recv = static_cast<i32>(ch_result.val1);
+
+        u32 send_handles[1] = {static_cast<u32>(reply_send)};
+        i64 err = sys::channel_send(blkd_channel_, &req, sizeof(req), send_handles, 1);
         if (err != 0)
         {
+            sys::channel_close(reply_send);
+            sys::channel_close(reply_recv);
             return static_cast<i32>(err);
         }
 
         blk::InfoReply reply;
         u32 handles[4];
         u32 handle_count = 4;
-        i64 len = sys::channel_recv(blkd_channel_, &reply, sizeof(reply), handles, &handle_count);
-        if (len < 0)
+        while (true)
         {
-            return static_cast<i32>(len);
+            i64 len = sys::channel_recv(reply_recv, &reply, sizeof(reply), handles, &handle_count);
+            if (len == VERR_WOULD_BLOCK)
+            {
+                sys::yield();
+                continue;
+            }
+            if (len < 0)
+            {
+                sys::channel_close(reply_recv);
+                return static_cast<i32>(len);
+            }
+            break;
         }
+
+        sys::channel_close(reply_recv);
 
         if (reply.status == 0)
         {

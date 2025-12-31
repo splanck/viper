@@ -23,6 +23,8 @@
 #include "../fs/vfs/vfs.hpp"
 #include "../fs/viperfs/format.hpp"
 #include "../fs/viperfs/viperfs.hpp"
+#include "../ipc/channel.hpp"
+#include "../kobj/channel.hpp"
 #include "../kobj/dir.hpp"
 #include "../kobj/file.hpp"
 #include "../lib/str.hpp"
@@ -236,7 +238,7 @@ AssignError set(const char *name, u64 dir_inode, u32 flags)
 
 // Set an assign from a directory handle
 /** @copydoc viper::assign::set_from_handle */
-AssignError set_from_handle(const char *name, Handle dir_handle, u32 flags)
+AssignError set_from_handle(const char *name, Handle handle, u32 flags)
 {
     // Look up the handle in the current viper's cap_table
     cap::Table *ct = viper::current_cap_table();
@@ -245,17 +247,145 @@ AssignError set_from_handle(const char *name, Handle dir_handle, u32 flags)
         return AssignError::InvalidHandle;
     }
 
-    cap::Entry *entry = ct->get_checked(dir_handle, cap::Kind::Directory);
-    if (!entry)
+    // Try as directory first
+    cap::Entry *entry = ct->get_checked(handle, cap::Kind::Directory);
+    if (entry)
+    {
+        // Get the DirObject and extract its inode
+        kobj::DirObject *dir = static_cast<kobj::DirObject *>(entry->object);
+        u64 inode = dir->inode_num();
+        return set(name, inode, flags);
+    }
+
+    // Try as channel (for service registration)
+    entry = ct->get_checked(handle, cap::Kind::Channel);
+    if (entry)
+    {
+        return set_channel(name, handle, flags);
+    }
+
+    return AssignError::InvalidHandle;
+}
+
+// Set an assign from a channel handle (for services)
+/** @copydoc viper::assign::set_channel */
+AssignError set_channel(const char *name, Handle channel_handle, u32 flags)
+{
+    // Validate the channel handle and get the Channel object
+    cap::Table *ct = viper::current_cap_table();
+    if (!ct)
     {
         return AssignError::InvalidHandle;
     }
 
-    // Get the DirObject and extract its inode
-    kobj::DirObject *dir = static_cast<kobj::DirObject *>(entry->object);
-    u64 inode = dir->inode_num();
+    cap::Entry *cap_entry = ct->get_checked(channel_handle, cap::Kind::Channel);
+    if (!cap_entry)
+    {
+        return AssignError::InvalidHandle;
+    }
 
-    return set(name, inode, flags);
+    // Get the kobj::Channel wrapper and extract the low-level channel ID
+    kobj::Channel *ch = static_cast<kobj::Channel *>(cap_entry->object);
+    if (!ch)
+    {
+        return AssignError::InvalidHandle;
+    }
+    u32 ch_id = ch->id();
+
+    if (!name || name[0] == '\0')
+    {
+        return AssignError::InvalidName;
+    }
+
+    usize name_len = lib::strlen(name);
+    if (name_len > MAX_ASSIGN_NAME)
+    {
+        return AssignError::InvalidName;
+    }
+
+    // Check if already exists
+    AssignEntry *assign = find_assign(name);
+    if (assign)
+    {
+        // Cannot modify system assigns
+        if (assign->flags & ASSIGN_SYSTEM)
+        {
+            return AssignError::ReadOnly;
+        }
+        // Update existing - store channel ID
+        assign->channel_id = ch_id;
+        assign->flags = flags | ASSIGN_SERVICE;
+        return AssignError::OK;
+    }
+
+    // Find free slot
+    assign = find_free_slot();
+    if (!assign)
+    {
+        return AssignError::TableFull;
+    }
+
+    // Create new entry with channel ID
+    lib::strncpy(assign->name, name, MAX_ASSIGN_NAME + 1);
+    assign->channel_id = ch_id;
+    assign->flags = flags | ASSIGN_SERVICE;
+    assign->next = nullptr;
+    assign->active = true;
+    assign_count++;
+
+    // The kobj::Channel wrapper's refcount keeps the low-level channel alive
+    // as long as the service's handle exists
+
+    console::print("[assign] Registered service ");
+    console::print(name);
+    console::print(": channel_id=");
+    console::print_dec(static_cast<i64>(ch_id));
+    console::print("\n");
+
+    return AssignError::OK;
+}
+
+// Get channel handle for a service assign
+/** @copydoc viper::assign::get_channel */
+Handle get_channel(const char *name)
+{
+    AssignEntry *entry = find_assign(name);
+    if (!entry)
+    {
+        return cap::HANDLE_INVALID;
+    }
+
+    // Must be a service assign
+    if (!(entry->flags & ASSIGN_SERVICE))
+    {
+        return cap::HANDLE_INVALID;
+    }
+
+    // Create a new kobj::Channel wrapper for the send side
+    // This will verify the channel exists and increment ref count
+    kobj::Channel *ch = kobj::Channel::wrap(entry->channel_id, true);
+    if (!ch)
+    {
+        return cap::HANDLE_INVALID;
+    }
+
+    // Create a new send endpoint in the caller's cap_table
+    cap::Table *ct = viper::current_cap_table();
+    if (!ct)
+    {
+        delete ch;
+        return cap::HANDLE_INVALID;
+    }
+
+    // Insert the new send handle
+    cap::Rights rights = cap::CAP_WRITE | cap::CAP_TRANSFER;
+    cap::Handle h = ct->insert(ch, cap::Kind::Channel, rights);
+    if (h == cap::HANDLE_INVALID)
+    {
+        delete ch;
+    }
+
+    return h;
 }
 
 // Add to multi-directory assign

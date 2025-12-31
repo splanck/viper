@@ -96,7 +96,8 @@ struct FDTable
      */
     i32 alloc()
     {
-        for (usize i = 0; i < MAX_FDS; i++)
+        // Reserve 0/1/2 for conventional stdin/stdout/stderr.
+        for (usize i = 3; i < MAX_FDS; i++)
         {
             if (!fds[i].in_use)
             {

@@ -58,6 +58,7 @@ enum AssignFlags : u32
     ASSIGN_SYSTEM = (1 << 0),   /**< System assign (read-only, e.g., SYS:, D0:). */
     ASSIGN_DEFERRED = (1 << 1), /**< Deferred resolution (path-based; reserved for future). */
     ASSIGN_MULTI = (1 << 2),    /**< Multi-directory assign (search path / chained entries). */
+    ASSIGN_SERVICE = (1 << 3),  /**< Service assign (stores channel handle, e.g., BLKD:, NETD:). */
 };
 
 /**
@@ -76,7 +77,11 @@ enum AssignFlags : u32
 struct AssignEntry
 {
     char name[MAX_ASSIGN_NAME + 1]; /**< Assign name (without colon). */
-    u64 dir_inode;                  /**< Inode number of the directory. */
+    union
+    {
+        u64 dir_inode;    /**< Inode number of the directory (for directory assigns). */
+        u32 channel_id;   /**< Global channel ID (for service assigns with ASSIGN_SERVICE). */
+    };
     u32 flags;                      /**< Bitmask of @ref AssignFlags. */
     AssignEntry *next;              /**< Next directory in a multi-assign chain. */
     bool active;                    /**< Whether this table entry is in use. */
@@ -167,6 +172,33 @@ AssignError set(const char *name, u64 dir_inode, u32 flags = ASSIGN_NONE);
  * @return An @ref AssignError describing success/failure.
  */
 AssignError set_from_handle(const char *name, Handle dir_handle, u32 flags = ASSIGN_NONE);
+
+/**
+ * @brief Create or update a service assign mapping from a channel handle.
+ *
+ * @details
+ * Stores a channel handle for service discovery. Services register themselves
+ * using this function so clients can find them via assign_get(). The
+ * ASSIGN_SERVICE flag is automatically set.
+ *
+ * @param name Assign name without a colon (e.g., "BLKD", "NETD", "FSD").
+ * @param channel_handle Channel capability handle for the service.
+ * @param flags Additional flags (ASSIGN_SERVICE is added automatically).
+ * @return An @ref AssignError describing success/failure.
+ */
+AssignError set_channel(const char *name, Handle channel_handle, u32 flags = ASSIGN_NONE);
+
+/**
+ * @brief Get the channel handle for a service assign.
+ *
+ * @details
+ * Looks up a service assign and returns the channel handle. Returns
+ * HANDLE_INVALID if the assign doesn't exist or is not a service assign.
+ *
+ * @param name Assign name without a colon.
+ * @return Channel handle, or HANDLE_INVALID if not found or not a service.
+ */
+Handle get_channel(const char *name);
 
 /**
  * @brief Add a directory to a multi-directory assign.

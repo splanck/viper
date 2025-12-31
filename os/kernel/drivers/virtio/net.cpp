@@ -55,7 +55,7 @@ static u32 calculate_virtio_irq(u64 base)
  * This function is registered with the GIC and called when the virtio-net
  * device triggers an interrupt. It delegates to the device's rx_irq_handler.
  */
-static void net_irq_handler()
+static void net_irq_handler(u32)
 {
     if (g_net_initialized)
     {

@@ -22,11 +22,56 @@ Channel *Channel::create()
         return nullptr;
     }
 
-    Channel *ch = new Channel(static_cast<u32>(result));
+    // Legacy channel creation starts with both endpoints owned by the creator.
+    Channel *ch = new Channel(static_cast<u32>(result), ENDPOINT_BOTH);
 
     serial::puts("[kobj::channel] Created channel object for ID ");
     serial::put_dec(ch->channel_id_);
     serial::puts("\n");
+
+    return ch;
+}
+
+/** @copydoc kobj::Channel::adopt */
+Channel *Channel::adopt(u32 channel_id, u8 endpoints)
+{
+    // Verify the channel exists.
+    channel::Channel *low_ch = channel::get(channel_id);
+    if (!low_ch)
+    {
+        return nullptr;
+    }
+
+    return new Channel(channel_id, endpoints);
+}
+
+/** @copydoc kobj::Channel::wrap */
+Channel *Channel::wrap(u32 channel_id, bool is_send)
+{
+    // Verify the channel exists
+    channel::Channel *low_ch = channel::get(channel_id);
+    if (!low_ch)
+    {
+        return nullptr;
+    }
+
+    // Create wrapper and increment appropriate reference count
+    Channel *ch = new Channel(channel_id, is_send ? ENDPOINT_SEND : ENDPOINT_RECV);
+
+    if (is_send)
+    {
+        low_ch->send_refs++;
+    }
+    else
+    {
+        low_ch->recv_refs++;
+    }
+
+    serial::puts("[kobj::channel] Wrapped channel ID ");
+    serial::put_dec(channel_id);
+    serial::puts(" as ");
+    serial::puts(is_send ? "send" : "recv");
+    serial::puts(" endpoint\n");
 
     return ch;
 }
@@ -36,8 +81,19 @@ Channel::~Channel()
 {
     if (channel_id_ != 0)
     {
-        channel::close(channel_id_);
-        serial::puts("[kobj::channel] Closed channel ");
+        channel::Channel *low_ch = channel::get(channel_id_);
+        if (low_ch)
+        {
+            if (endpoints_ & ENDPOINT_SEND)
+            {
+                channel::close_endpoint(low_ch, true);
+            }
+            if (endpoints_ & ENDPOINT_RECV)
+            {
+                channel::close_endpoint(low_ch, false);
+            }
+        }
+        serial::puts("[kobj::channel] Closed channel endpoints for channel ");
         serial::put_dec(channel_id_);
         serial::puts("\n");
     }

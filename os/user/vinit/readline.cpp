@@ -239,6 +239,17 @@ usize readline(char *buf, usize maxlen)
 
         if (c == '\r' || c == '\n')
         {
+            // Many serial terminals send CRLF for Enter. If we broke on CR,
+            // opportunistically consume a following LF so it doesn't leak into
+            // the next foreground program (e.g., password prompts).
+            if (c == '\r')
+            {
+                i32 next = sys::try_getchar();
+                if (next == '\n')
+                {
+                    // consumed
+                }
+            }
             print_char('\r');
             print_char('\n');
             break;

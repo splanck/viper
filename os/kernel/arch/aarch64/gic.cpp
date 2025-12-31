@@ -511,6 +511,12 @@ void register_handler(u32 irq, IrqHandler handler)
     }
 }
 
+/** @copydoc gic::has_handler */
+bool has_handler(u32 irq)
+{
+    return irq < MAX_IRQS && handlers[irq] != nullptr;
+}
+
 /** @copydoc gic::handle_irq */
 void handle_irq()
 {
@@ -550,7 +556,7 @@ void handle_irq()
     // Call handler if registered
     if (irq < MAX_IRQS && handlers[irq])
     {
-        handlers[irq]();
+        handlers[irq](irq);
     }
     else
     {

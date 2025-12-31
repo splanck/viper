@@ -276,6 +276,28 @@ inline SyscallResult syscall4(u64 num, u64 arg0, u64 arg1, u64 arg2, u64 arg3)
     return {r0, r1, r2, r3};
 }
 
+/**
+ * @brief Invoke a syscall with five arguments.
+ */
+inline SyscallResult syscall5(u64 num, u64 arg0, u64 arg1, u64 arg2, u64 arg3, u64 arg4)
+{
+    register u64 x8 asm("x8") = num;
+    register u64 a0 asm("x0") = arg0;
+    register u64 a1 asm("x1") = arg1;
+    register u64 a2 asm("x2") = arg2;
+    register u64 a3 asm("x3") = arg3;
+    register u64 a4 asm("x4") = arg4;
+    register i64 r0 asm("x0");
+    register u64 r1 asm("x1");
+    register u64 r2 asm("x2");
+    register u64 r3 asm("x3");
+    asm volatile("svc #0"
+                 : "=r"(r0), "=r"(r1), "=r"(r2), "=r"(r3)
+                 : "r"(x8), "0"(a0), "1"(a1), "2"(a2), "3"(a3), "r"(a4)
+                 : "memory");
+    return {r0, r1, r2, r3};
+}
+
 /** @} */
 
 /**
@@ -569,12 +591,12 @@ inline SyscallResult channel_create()
 inline i64 channel_send(
     i32 channel, const void *data, usize len, const u32 *handles = nullptr, u32 handle_count = 0)
 {
-    // Pack handles pointer and count into args
-    auto r = syscall4(SYS_CHANNEL_SEND,
+    auto r = syscall5(SYS_CHANNEL_SEND,
                       static_cast<u64>(channel),
                       reinterpret_cast<u64>(data),
                       len,
-                      (static_cast<u64>(handle_count) << 32) | reinterpret_cast<u64>(handles));
+                      reinterpret_cast<u64>(handles),
+                      static_cast<u64>(handle_count));
     return r.error;
 }
 
@@ -595,12 +617,12 @@ inline i64 channel_send(
 inline i64 channel_recv(
     i32 channel, void *buf, usize buf_len, u32 *handles = nullptr, u32 *handle_count = nullptr)
 {
-    u32 max_handles = handle_count ? *handle_count : 0;
-    auto r = syscall4(SYS_CHANNEL_RECV,
+    auto r = syscall5(SYS_CHANNEL_RECV,
                       static_cast<u64>(channel),
                       reinterpret_cast<u64>(buf),
                       buf_len,
-                      (static_cast<u64>(max_handles) << 32) | reinterpret_cast<u64>(handles));
+                      reinterpret_cast<u64>(handles),
+                      reinterpret_cast<u64>(handle_count));
     if (r.ok())
     {
         if (handle_count)
@@ -1297,8 +1319,10 @@ inline i32 task_list(::TaskInfo *buffer, u32 max_count)
  */
 inline i32 assign_set(const char *name, u32 dir_handle)
 {
-    auto r = syscall3(
-        SYS_ASSIGN_SET, reinterpret_cast<u64>(name), strlen(name), static_cast<u64>(dir_handle));
+    auto r = syscall3(SYS_ASSIGN_SET,
+                      reinterpret_cast<u64>(name),
+                      static_cast<u64>(dir_handle),
+                      static_cast<u64>(ASSIGN_NONE));
     return static_cast<i32>(r.error);
 }
 
@@ -1311,11 +1335,16 @@ inline i32 assign_set(const char *name, u32 dir_handle)
  */
 inline i32 assign_get(const char *name, u32 *out_handle)
 {
-    auto r = syscall3(SYS_ASSIGN_GET,
-                      reinterpret_cast<u64>(name),
-                      strlen(name),
-                      reinterpret_cast<u64>(out_handle));
-    return static_cast<i32>(r.error);
+    auto r = syscall1(SYS_ASSIGN_GET, reinterpret_cast<u64>(name));
+    if (!r.ok())
+    {
+        return static_cast<i32>(r.error);
+    }
+    if (out_handle)
+    {
+        *out_handle = static_cast<u32>(r.val0);
+    }
+    return 0;
 }
 
 /**
@@ -1326,7 +1355,7 @@ inline i32 assign_get(const char *name, u32 *out_handle)
  */
 inline i32 assign_remove(const char *name)
 {
-    auto r = syscall2(SYS_ASSIGN_REMOVE, reinterpret_cast<u64>(name), strlen(name));
+    auto r = syscall1(SYS_ASSIGN_REMOVE, reinterpret_cast<u64>(name));
     return static_cast<i32>(r.error);
 }
 
@@ -1344,11 +1373,16 @@ inline i32 assign_remove(const char *name)
  */
 inline i32 assign_list(AssignInfo *buf, u32 max, usize *out_count)
 {
-    auto r = syscall3(SYS_ASSIGN_LIST,
-                      reinterpret_cast<u64>(buf),
-                      static_cast<u64>(max),
-                      reinterpret_cast<u64>(out_count));
-    return static_cast<i32>(r.error);
+    auto r = syscall2(SYS_ASSIGN_LIST, reinterpret_cast<u64>(buf), static_cast<u64>(max));
+    if (!r.ok())
+    {
+        return static_cast<i32>(r.error);
+    }
+    if (out_count)
+    {
+        *out_count = static_cast<usize>(r.val0);
+    }
+    return 0;
 }
 
 /**
@@ -1367,11 +1401,16 @@ inline i32 assign_list(AssignInfo *buf, u32 max, usize *out_count)
  */
 inline i32 assign_resolve(const char *path, u32 *out_handle)
 {
-    auto r = syscall3(SYS_ASSIGN_RESOLVE,
-                      reinterpret_cast<u64>(path),
-                      strlen(path),
-                      reinterpret_cast<u64>(out_handle));
-    return static_cast<i32>(r.error);
+    auto r = syscall2(SYS_ASSIGN_RESOLVE, reinterpret_cast<u64>(path), 0);
+    if (!r.ok())
+    {
+        return static_cast<i32>(r.error);
+    }
+    if (out_handle)
+    {
+        *out_handle = static_cast<u32>(r.val0);
+    }
+    return 0;
 }
 
 /** @} */

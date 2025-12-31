@@ -181,7 +181,7 @@ void check_oneshot_timers()
  * Because this runs in interrupt context, work done here should remain
  * bounded and non-blocking.
  */
-void timer_irq_handler()
+void timer_irq_handler(u32)
 {
     ticks = ticks + 1;
 

@@ -254,12 +254,29 @@ if [[ -x "$TOOLS_DIR/mkfs.viperfs" ]]; then
     if [[ -f "$BUILD_DIR/sftp.elf" ]]; then
         MKFS_ARGS+=(--add "$BUILD_DIR/sftp.elf:c/sftp.elf")
     fi
+    # Add microkernel server ELFs to c/
+    if [[ -f "$BUILD_DIR/blkd.elf" ]]; then
+        MKFS_ARGS+=(--add "$BUILD_DIR/blkd.elf:c/blkd.elf")
+    fi
+    if [[ -f "$BUILD_DIR/netd.elf" ]]; then
+        MKFS_ARGS+=(--add "$BUILD_DIR/netd.elf:c/netd.elf")
+    fi
+    if [[ -f "$BUILD_DIR/fsd.elf" ]]; then
+        MKFS_ARGS+=(--add "$BUILD_DIR/fsd.elf:c/fsd.elf")
+    fi
     # Add roots.der to certs directory
     if [[ -f "$BUILD_DIR/roots.der" ]]; then
         MKFS_ARGS+=(--add "$BUILD_DIR/roots.der:certs/roots.der")
     fi
     "$TOOLS_DIR/mkfs.viperfs" "${MKFS_ARGS[@]}"
     print_success "Disk image created"
+
+    # Create a dedicated disk image for user-space microkernel servers (blkd/fsd)
+    # so they don't contend with the kernel's virtio-blk device.
+    if [[ -f "$BUILD_DIR/blkd.elf" || -f "$BUILD_DIR/fsd.elf" ]]; then
+        cp -f "$BUILD_DIR/disk.img" "$BUILD_DIR/microkernel.img"
+        print_success "Microkernel disk image created"
+    fi
 else
     print_warning "mkfs.viperfs not found, using existing disk image"
 fi
@@ -295,6 +312,15 @@ if [[ -f "$BUILD_DIR/disk.img" ]]; then
     echo "  Disk: $BUILD_DIR/disk.img"
 fi
 
+# Dedicated microkernel block device (for user-space blkd/fsd)
+if [[ -f "$BUILD_DIR/microkernel.img" ]]; then
+    QEMU_OPTS+=(
+        -drive "file=$BUILD_DIR/microkernel.img,if=none,format=raw,id=disk1"
+        -device virtio-blk-device,drive=disk1
+    )
+    echo "  Microkernel Disk: $BUILD_DIR/microkernel.img"
+fi
+
 # RNG device (entropy source for TLS)
 QEMU_OPTS+=(-device virtio-rng-device)
 echo "  RNG: virtio-rng (hardware entropy)"
@@ -306,6 +332,15 @@ if [[ "$NETWORK" == true ]]; then
         -device virtio-net-device,netdev=net0
     )
     echo "  Network: virtio-net (10.0.2.15)"
+
+    # Dedicated microkernel NIC (for user-space netd)
+    if [[ -f "$BUILD_DIR/netd.elf" ]]; then
+        QEMU_OPTS+=(
+            -netdev user,id=net1
+            -device virtio-net-device,netdev=net1
+        )
+        echo "  Microkernel Network: virtio-net (net1)"
+    fi
 fi
 
 # Display options

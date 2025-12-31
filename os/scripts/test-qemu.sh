@@ -179,15 +179,26 @@ build_viperos() {
         fi
 
         # Create disk image
-        # Create disk image with vinit.elf and hello.elf
+        # Create disk image with vinit.elf, user programs, and microkernel servers
         local mkfs_args=("$BUILD_DIR/disk.img" 8 "$BUILD_DIR/vinit.elf")
         if [[ -f "$BUILD_DIR/hello.elf" ]]; then
             mkfs_args+=("$BUILD_DIR/hello.elf")
         fi
+        # Add microkernel server ELFs
+        for server in blkd.elf netd.elf fsd.elf; do
+            if [[ -f "$BUILD_DIR/$server" ]]; then
+                mkfs_args+=("$BUILD_DIR/$server")
+            fi
+        done
         "$PROJECT_DIR/tools/mkfs.viperfs" "${mkfs_args[@]}" >/dev/null 2>&1 || {
             echo -e "${RED}[ERROR]${NC} Failed to create disk image"
             return 1
         }
+
+        # Create dedicated disk for user-space microkernel servers
+        if [[ -f "$BUILD_DIR/blkd.elf" || -f "$BUILD_DIR/fsd.elf" ]]; then
+            cp -f "$BUILD_DIR/disk.img" "$BUILD_DIR/microkernel.img"
+        fi
     fi
 
     echo -e "${GREEN}[BUILD]${NC} Build complete"
@@ -224,19 +235,35 @@ start_qemu() {
 
     # Start QEMU in background
     # Use -nographic for pure serial I/O
-    "$qemu" \
-        -machine virt \
-        -cpu cortex-a72 \
-        -m 128M \
-        -kernel "$BUILD_DIR/kernel.elf" \
-        -drive "file=$BUILD_DIR/disk.img,if=none,format=raw,id=disk0" \
-        -device virtio-blk-device,drive=disk0 \
-        -device virtio-rng-device \
-        -netdev user,id=net0 \
-        -device virtio-net-device,netdev=net0 \
-        -nographic \
-        -no-reboot \
-        < "$FIFO_IN" > "$SERIAL_OUTPUT" 2>&1 &
+    local qemu_opts=(
+        -machine virt
+        -cpu cortex-a72
+        -m 128M
+        -kernel "$BUILD_DIR/kernel.elf"
+        -drive "file=$BUILD_DIR/disk.img,if=none,format=raw,id=disk0"
+        -device virtio-blk-device,drive=disk0
+        -device virtio-rng-device
+        -netdev user,id=net0
+        -device virtio-net-device,netdev=net0
+        -nographic
+        -no-reboot
+    )
+
+    # Add dedicated microkernel devices if available
+    if [[ -f "$BUILD_DIR/microkernel.img" ]]; then
+        qemu_opts+=(
+            -drive "file=$BUILD_DIR/microkernel.img,if=none,format=raw,id=disk1"
+            -device virtio-blk-device,drive=disk1
+        )
+    fi
+    if [[ -f "$BUILD_DIR/netd.elf" ]]; then
+        qemu_opts+=(
+            -netdev user,id=net1
+            -device virtio-net-device,netdev=net1
+        )
+    fi
+
+    "$qemu" "${qemu_opts[@]}" < "$FIFO_IN" > "$SERIAL_OUTPUT" 2>&1 &
 
     QEMU_PID=$!
     log "QEMU started with PID: $QEMU_PID"

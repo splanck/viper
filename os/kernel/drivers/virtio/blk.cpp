@@ -36,7 +36,7 @@ constexpr u32 VIRTIO_IRQ_BASE = 0x30; // IRQ 48 for first virtio device
  * Called by the GIC when a virtio-blk interrupt fires. Delegates to the
  * device's handle_interrupt() method.
  */
-static void blk_irq_handler()
+static void blk_irq_handler(u32)
 {
     if (g_blk_initialized)
     {

@@ -543,23 +543,46 @@ static SyscallResult sys_channel_create(u64, u64, u64, u64, u64, u64)
         return SyscallResult::err(error::VERR_NOT_FOUND);
     }
 
-    // Create channel object (internally creates low-level channel)
-    kobj::Channel *ch = kobj::Channel::create();
-    if (!ch)
+    // Create a new legacy channel ID (send_refs=1, recv_refs=1).
+    i64 channel_id = channel::create();
+    if (channel_id < 0)
     {
+        return SyscallResult::err(channel_id);
+    }
+
+    // Create distinct kobj::Channel wrappers for each endpoint without changing refcounts.
+    kobj::Channel *send_ep = kobj::Channel::adopt(static_cast<u32>(channel_id), kobj::Channel::ENDPOINT_SEND);
+    kobj::Channel *recv_ep = kobj::Channel::adopt(static_cast<u32>(channel_id), kobj::Channel::ENDPOINT_RECV);
+    if (!send_ep || !recv_ep)
+    {
+        delete send_ep;
+        delete recv_ep;
+        (void)channel::close(static_cast<u32>(channel_id));
         return SyscallResult::err(error::VERR_OUT_OF_MEMORY);
     }
 
-    // Insert into capability table with read/write/derive rights
-    cap::Handle handle = table->insert(ch, cap::Kind::Channel, cap::CAP_RW | cap::CAP_DERIVE);
-
-    if (handle == cap::HANDLE_INVALID)
+    // Insert send endpoint handle.
+    cap::Handle send_handle =
+        table->insert(send_ep, cap::Kind::Channel, cap::CAP_WRITE | cap::CAP_TRANSFER | cap::CAP_DERIVE);
+    if (send_handle == cap::HANDLE_INVALID)
     {
-        delete ch;
+        delete send_ep;
+        delete recv_ep;
         return SyscallResult::err(error::VERR_OUT_OF_MEMORY);
     }
 
-    return SyscallResult::ok(static_cast<u64>(handle));
+    // Insert recv endpoint handle.
+    cap::Handle recv_handle =
+        table->insert(recv_ep, cap::Kind::Channel, cap::CAP_READ | cap::CAP_TRANSFER | cap::CAP_DERIVE);
+    if (recv_handle == cap::HANDLE_INVALID)
+    {
+        table->remove(send_handle);
+        delete send_ep;
+        delete recv_ep;
+        return SyscallResult::err(error::VERR_OUT_OF_MEMORY);
+    }
+
+    return SyscallResult::ok(static_cast<u64>(send_handle), static_cast<u64>(recv_handle));
 }
 
 static SyscallResult sys_channel_send(u64 a0, u64 a1, u64 a2, u64 a3, u64 a4, u64)
@@ -571,6 +594,10 @@ static SyscallResult sys_channel_send(u64 a0, u64 a1, u64 a2, u64 a3, u64 a4, u6
     u32 handle_count = static_cast<u32>(a4);
 
     if (!validate_user_read(data, size))
+    {
+        return SyscallResult::err(error::VERR_INVALID_ARG);
+    }
+    if (handle_count > channel::MAX_HANDLES_PER_MSG)
     {
         return SyscallResult::err(error::VERR_INVALID_ARG);
     }
@@ -592,9 +619,13 @@ static SyscallResult sys_channel_send(u64 a0, u64 a1, u64 a2, u64 a3, u64 a4, u6
     }
 
     kobj::Channel *ch = static_cast<kobj::Channel *>(entry->object);
-    i64 result = channel::send(ch->id(), data, size);
+    channel::Channel *low_ch = channel::get(ch->id());
+    if (!low_ch)
+    {
+        return SyscallResult::err(error::VERR_INVALID_HANDLE);
+    }
 
-    // TODO: Handle transfer handles
+    i64 result = channel::try_send(low_ch, data, size, handles, handle_count);
 
     if (result < 0)
     {
@@ -616,6 +647,26 @@ static SyscallResult sys_channel_recv(u64 a0, u64 a1, u64 a2, u64 a3, u64 a4, u6
         return SyscallResult::err(error::VERR_INVALID_ARG);
     }
 
+    u32 max_handles = 0;
+    if (handle_count)
+    {
+        if (!validate_user_read(handle_count, sizeof(u32)) ||
+            !validate_user_write(handle_count, sizeof(u32)))
+        {
+            return SyscallResult::err(error::VERR_INVALID_ARG);
+        }
+        max_handles = *handle_count;
+    }
+    if (max_handles > channel::MAX_HANDLES_PER_MSG)
+    {
+        max_handles = channel::MAX_HANDLES_PER_MSG;
+    }
+    if (max_handles > 0 && handles &&
+        !validate_user_write(handles, max_handles * sizeof(cap::Handle)))
+    {
+        return SyscallResult::err(error::VERR_INVALID_ARG);
+    }
+
     cap::Table *table = get_current_cap_table();
     if (!table)
     {
@@ -629,20 +680,39 @@ static SyscallResult sys_channel_recv(u64 a0, u64 a1, u64 a2, u64 a3, u64 a4, u6
     }
 
     kobj::Channel *ch = static_cast<kobj::Channel *>(entry->object);
-    i64 result = channel::recv(ch->id(), data, size);
-
-    // Zero out handles for now
-    (void)handles;
-    if (handle_count && validate_user_write(handle_count, sizeof(u32)))
+    channel::Channel *low_ch = channel::get(ch->id());
+    if (!low_ch)
     {
-        *handle_count = 0;
+        return SyscallResult::err(error::VERR_INVALID_HANDLE);
     }
+
+    cap::Handle tmp_handles[channel::MAX_HANDLES_PER_MSG];
+    u32 tmp_handle_count = 0;
+    i64 result = channel::try_recv(low_ch, data, size, tmp_handles, &tmp_handle_count);
 
     if (result < 0)
     {
         return SyscallResult::err(result);
     }
-    return SyscallResult::ok(static_cast<u64>(result));
+
+    if (handle_count)
+    {
+        *handle_count = tmp_handle_count;
+    }
+    u32 copy_count = tmp_handle_count;
+    if (copy_count > max_handles)
+    {
+        copy_count = max_handles;
+    }
+    if (handles && copy_count > 0)
+    {
+        for (u32 i = 0; i < copy_count; i++)
+        {
+            handles[i] = tmp_handles[i];
+        }
+    }
+
+    return SyscallResult::ok(static_cast<u64>(result), static_cast<u64>(tmp_handle_count));
 }
 
 static SyscallResult sys_channel_close(u64 a0, u64, u64, u64, u64, u64)
@@ -777,6 +847,13 @@ static SyscallResult sys_open(u64 a0, u64 a1, u64, u64, u64, u64)
 static SyscallResult sys_close(u64 a0, u64, u64, u64, u64, u64)
 {
     i32 fd = static_cast<i32>(a0);
+
+    // stdin/stdout/stderr are pseudo-FDs backed by the console.
+    if (fd >= 0 && fd <= 2)
+    {
+        return SyscallResult::ok();
+    }
+
     i64 result = fs::vfs::close(fd);
     if (result < 0)
     {
@@ -791,9 +868,37 @@ static SyscallResult sys_read(u64 a0, u64 a1, u64 a2, u64, u64, u64)
     void *buf = reinterpret_cast<void *>(a1);
     usize count = static_cast<usize>(a2);
 
+    if (count == 0)
+    {
+        return SyscallResult::ok(0);
+    }
+
     if (!validate_user_write(buf, count))
     {
         return SyscallResult::err(error::VERR_INVALID_ARG);
+    }
+
+    // stdin: read from console input (blocking until at least 1 byte).
+    if (fd == 0)
+    {
+        char *out = reinterpret_cast<char *>(buf);
+        usize n = 0;
+        while (n < count)
+        {
+            console::poll_input();
+            i32 c = console::getchar();
+            if (c < 0)
+            {
+                if (n > 0)
+                {
+                    break;
+                }
+                task::yield();
+                continue;
+            }
+            out[n++] = static_cast<char>(c);
+        }
+        return SyscallResult::ok(static_cast<u64>(n));
     }
 
     i64 result = fs::vfs::read(fd, buf, count);
@@ -810,9 +915,29 @@ static SyscallResult sys_write(u64 a0, u64 a1, u64 a2, u64, u64, u64)
     const void *buf = reinterpret_cast<const void *>(a1);
     usize count = static_cast<usize>(a2);
 
+    if (count == 0)
+    {
+        return SyscallResult::ok(0);
+    }
+
     if (!validate_user_read(buf, count))
     {
         return SyscallResult::err(error::VERR_INVALID_ARG);
+    }
+
+    // stdout/stderr: write to console output.
+    if (fd == 1 || fd == 2)
+    {
+        const char *p = reinterpret_cast<const char *>(buf);
+        for (usize i = 0; i < count; i++)
+        {
+            serial::putc(p[i]);
+            if (gcon::is_available())
+            {
+                gcon::putc(p[i]);
+            }
+        }
+        return SyscallResult::ok(static_cast<u64>(count));
     }
 
     i64 result = fs::vfs::write(fd, buf, count);
@@ -1633,6 +1758,14 @@ static SyscallResult sys_assign_get(u64 a0, u64, u64, u64, u64, u64)
         return SyscallResult::err(error::VERR_INVALID_ARG);
     }
 
+    // First check if it's a service assign (creates new send endpoint)
+    cap::Handle channel = viper::assign::get_channel(name);
+    if (channel != cap::HANDLE_INVALID)
+    {
+        return SyscallResult::ok(static_cast<u64>(channel));
+    }
+
+    // Not a service - try as directory assign
     cap::Handle handle = viper::assign::get(name);
     if (handle == cap::HANDLE_INVALID)
     {
@@ -2454,16 +2587,32 @@ static void init_irq_states()
     irq_states_initialized = true;
 }
 
-/// GIC handler for user-space IRQs - sets pending and wakes waiters
-/// Note: This will be registered with the GIC when implementing full IRQ forwarding
-[[maybe_unused]] static void user_irq_handler(u32 irq)
+/// GIC handler for user-space IRQs - sets pending and wakes waiters.
+static void user_irq_handler(u32 irq)
 {
     if (irq >= gic::MAX_IRQS)
         return;
 
+    // If nobody registered this IRQ yet, mask it to prevent interrupt storms.
+    if (!irq_states_initialized)
+    {
+        gic::disable_irq(irq);
+        return;
+    }
+
     IrqState *state = &irq_states[irq];
     SpinlockGuard guard(state->lock);
 
+    if (state->owner_task_id == 0)
+    {
+        gic::disable_irq(irq);
+        state->enabled = false;
+        return;
+    }
+
+    // Mask the IRQ until the owner explicitly acknowledges it via SYS_IRQ_ACK.
+    gic::disable_irq(irq);
+    state->enabled = false;
     state->pending = true;
     sched::wait_wake_one(&state->waiters);
 }
@@ -2489,8 +2638,47 @@ static const DeviceMmioRegion known_devices[] = {
     {"virtio5", 0x0a000a00, 0x200, 53},
     {"virtio6", 0x0a000c00, 0x200, 54},
     {"virtio7", 0x0a000e00, 0x200, 55},
+    {"virtio8", 0x0a001000, 0x200, 56},
+    {"virtio9", 0x0a001200, 0x200, 57},
+    {"virtio10", 0x0a001400, 0x200, 58},
+    {"virtio11", 0x0a001600, 0x200, 59},
+    {"virtio12", 0x0a001800, 0x200, 60},
+    {"virtio13", 0x0a001a00, 0x200, 61},
+    {"virtio14", 0x0a001c00, 0x200, 62},
+    {"virtio15", 0x0a001e00, 0x200, 63},
+    {"virtio16", 0x0a002000, 0x200, 64},
+    {"virtio17", 0x0a002200, 0x200, 65},
+    {"virtio18", 0x0a002400, 0x200, 66},
+    {"virtio19", 0x0a002600, 0x200, 67},
+    {"virtio20", 0x0a002800, 0x200, 68},
+    {"virtio21", 0x0a002a00, 0x200, 69},
+    {"virtio22", 0x0a002c00, 0x200, 70},
+    {"virtio23", 0x0a002e00, 0x200, 71},
+    {"virtio24", 0x0a003000, 0x200, 72},
+    {"virtio25", 0x0a003200, 0x200, 73},
+    {"virtio26", 0x0a003400, 0x200, 74},
+    {"virtio27", 0x0a003600, 0x200, 75},
+    {"virtio28", 0x0a003800, 0x200, 76},
+    {"virtio29", 0x0a003a00, 0x200, 77},
+    {"virtio30", 0x0a003c00, 0x200, 78},
+    {"virtio31", 0x0a003e00, 0x200, 79},
 };
 static constexpr u32 KNOWN_DEVICE_COUNT = sizeof(known_devices) / sizeof(known_devices[0]);
+
+static bool device_syscalls_allowed(viper::Viper *v)
+{
+    // Temporary policy for bring-up: allow init (Viper ID 1) and its descendants.
+    // Proper device capabilities will replace this.
+    while (v)
+    {
+        if (v->id == 1)
+        {
+            return true;
+        }
+        v = v->parent;
+    }
+    return false;
+}
 
 /**
  * @brief Map device MMIO region into user address space.
@@ -2534,8 +2722,8 @@ static SyscallResult sys_map_device(u64 a0, u64 a1, u64 a2, u64, u64, u64)
         }
     }
 
-    // Also allow init process (viper ID 1) and kernel tasks
-    if (v->id <= 2)
+    // Also allow init process and its descendants (bring-up policy)
+    if (device_syscalls_allowed(v))
     {
         has_device_access = true;
     }
@@ -2631,7 +2819,7 @@ static SyscallResult sys_irq_register(u64 a0, u64, u64, u64, u64, u64)
             }
         }
     }
-    if (v->id <= 2)
+    if (device_syscalls_allowed(v))
     {
         has_irq_access = true;
     }
@@ -2646,6 +2834,12 @@ static SyscallResult sys_irq_register(u64 a0, u64, u64, u64, u64, u64)
     IrqState *state = &irq_states[irq];
     SpinlockGuard guard(state->lock);
 
+    // Don't allow userspace to steal IRQs already owned by kernel drivers.
+    if (gic::has_handler(irq))
+    {
+        return SyscallResult::err(error::VERR_BUSY);
+    }
+
     // Check if already owned
     if (state->owner_task_id != 0)
     {
@@ -2658,7 +2852,8 @@ static SyscallResult sys_irq_register(u64 a0, u64, u64, u64, u64, u64)
     state->pending = false;
     state->enabled = true;
 
-    // Enable the IRQ in the GIC
+    // Register handler and enable the IRQ in the GIC.
+    gic::register_handler(irq, user_irq_handler);
     gic::enable_irq(irq);
 
     return SyscallResult::ok();
@@ -2761,6 +2956,7 @@ static SyscallResult sys_irq_ack(u64 a0, u64, u64, u64, u64, u64)
     }
 
     // Re-enable the IRQ
+    state->enabled = true;
     gic::enable_irq(irq);
 
     return SyscallResult::ok();
@@ -2799,6 +2995,7 @@ static SyscallResult sys_irq_unregister(u64 a0, u64, u64, u64, u64, u64)
 
     // Disable the IRQ
     gic::disable_irq(irq);
+    gic::register_handler(irq, nullptr);
 
     // Clear ownership
     state->owner_task_id = 0;
@@ -2881,7 +3078,7 @@ static SyscallResult sys_dma_alloc(u64 a0, u64 a1, u64, u64, u64, u64)
             }
         }
     }
-    if (v->id <= 2)
+    if (device_syscalls_allowed(v))
     {
         has_dma_access = true;
     }
@@ -3043,7 +3240,7 @@ static SyscallResult sys_virt_to_phys(u64 a0, u64, u64, u64, u64, u64)
             }
         }
     }
-    if (v->id <= 2)
+    if (device_syscalls_allowed(v))
     {
         has_dma_access = true;
     }

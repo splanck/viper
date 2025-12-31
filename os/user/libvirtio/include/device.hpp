@@ -26,11 +26,11 @@ namespace device
  */
 struct DeviceInfo
 {
-    u64 mmio_base;   ///< MMIO base physical address
-    u64 mmio_size;   ///< MMIO region size
-    u32 device_type; ///< Device type identifier
-    u32 irq;         ///< IRQ number (0 if none)
-    char name[32];   ///< Device name string
+    char name[32]; ///< Device name string
+    u64 phys_addr; ///< MMIO base physical address
+    u64 size;      ///< MMIO region size
+    u32 irq;       ///< IRQ number (0 if none)
+    u32 flags;     ///< Kernel-provided flags
 };
 
 /**
@@ -54,7 +54,7 @@ struct DmaBuffer
  */
 inline u64 map_device(u64 phys_addr, u64 size)
 {
-    auto result = sys::syscall2(SYS_MAP_DEVICE, phys_addr, size);
+    auto result = sys::syscall3(SYS_MAP_DEVICE, phys_addr, size, 0);
     if (result.error != 0)
     {
         return 0;
@@ -130,13 +130,14 @@ inline i64 irq_unregister(u32 irq)
  */
 inline i64 dma_alloc(u64 size, DmaBuffer *buf)
 {
-    auto result = sys::syscall1(SYS_DMA_ALLOC, size);
+    u64 phys_addr = 0;
+    auto result = sys::syscall2(SYS_DMA_ALLOC, size, reinterpret_cast<u64>(&phys_addr));
     if (result.error != 0)
     {
         return result.error;
     }
     buf->virt_addr = result.val0;
-    buf->phys_addr = result.val1;
+    buf->phys_addr = phys_addr;
     buf->size = size;
     return 0;
 }

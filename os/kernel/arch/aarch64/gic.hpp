@@ -46,7 +46,7 @@ enum class Version
  * handler). Implementations should avoid blocking operations and should be
  * careful about what locks or subsystems they touch.
  */
-using IrqHandler = void (*)();
+using IrqHandler = void (*)(u32 irq);
 
 /** @brief Maximum IRQ number supported by the simple handler table. */
 constexpr u32 MAX_IRQS = 256;
@@ -101,6 +101,14 @@ void set_priority(u32 irq, u8 priority);
  * @param handler Callback function to invoke when the IRQ is signaled.
  */
 void register_handler(u32 irq, IrqHandler handler);
+
+/**
+ * @brief Check whether an IRQ handler is registered.
+ *
+ * @param irq Interrupt ID to query.
+ * @return true if a handler is registered, false otherwise.
+ */
+bool has_handler(u32 irq);
 
 /**
  * @brief Top-level IRQ dispatch routine called from the IRQ exception handler.

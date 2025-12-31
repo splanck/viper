@@ -749,7 +749,11 @@ extern "C" void _start()
         debug_print("[fsd] Failed to create channel\n");
         sys::exit(1);
     }
-    g_service_channel = static_cast<i32>(result.val0);
+    i32 send_ep = static_cast<i32>(result.val0);
+    i32 recv_ep = static_cast<i32>(result.val1);
+    // Server only needs the receive endpoint.
+    sys::channel_close(send_ep);
+    g_service_channel = recv_ep;
 
     debug_print("[fsd] Service channel created: ");
     debug_print_dec(static_cast<u64>(g_service_channel));
