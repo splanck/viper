@@ -1,6 +1,8 @@
 #include "../include/unistd.h"
+#include "../include/termios.h"
 
 /* Syscall helpers - defined in syscall.S */
+extern long __syscall0(long num);
 extern long __syscall1(long num, long arg0);
 extern long __syscall2(long num, long arg0, long arg1);
 extern long __syscall3(long num, long arg0, long arg1, long arg2);
@@ -19,9 +21,172 @@ extern long __syscall3(long num, long arg0, long arg1, long arg2);
 #define SYS_DUP2 0x48
 #define SYS_GETCWD 0x67
 #define SYS_CHDIR 0x68
+#define SYS_GETCHAR 0xF1
 
 ssize_t read(int fd, void *buf, size_t count)
 {
+    if (count == 0)
+        return 0;
+
+    /* stdin: implement minimal TTY line discipline in libc using termios. */
+    if (fd == STDIN_FILENO)
+    {
+        static char line_buf[1024];
+        static size_t line_len = 0;
+        static size_t line_pos = 0;
+
+        struct termios t;
+        if (tcgetattr(STDIN_FILENO, &t) != 0)
+        {
+            return __syscall3(SYS_READ, fd, (long)buf, (long)count);
+        }
+
+        const int is_canon = (t.c_lflag & ICANON) != 0;
+        const int do_echo = (t.c_lflag & ECHO) != 0;
+        const int map_crnl = (t.c_iflag & ICRNL) != 0;
+
+        const unsigned char v_eof = t.c_cc[VEOF];
+        const unsigned char v_erase = t.c_cc[VERASE];
+        const unsigned char v_kill = t.c_cc[VKILL];
+
+        /* If canonical mode, fill a cooked line buffer (supports erase/kill + echo). */
+        if (is_canon)
+        {
+            if (line_pos >= line_len)
+            {
+                line_len = 0;
+                line_pos = 0;
+
+                while (line_len < sizeof(line_buf) - 1)
+                {
+                    unsigned char c = 0;
+                    long n = __syscall3(SYS_READ, STDIN_FILENO, (long)&c, 1);
+                    if (n < 0)
+                        return n;
+                    if (n == 0)
+                    {
+                        return 0;
+                    }
+
+                    if (map_crnl && c == '\r')
+                        c = '\n';
+
+                    if (c == v_eof)
+                    {
+                        if (line_len == 0)
+                        {
+                            return 0;
+                        }
+                        break;
+                    }
+
+                    if (c == v_erase || c == '\b')
+                    {
+                        if (line_len > 0)
+                        {
+                            line_len--;
+                            if (do_echo)
+                            {
+                                const char bs[] = {'\b', ' ', '\b'};
+                                (void)__syscall3(SYS_WRITE, STDOUT_FILENO, (long)bs, 3);
+                            }
+                        }
+                        continue;
+                    }
+
+                    if (c == v_kill)
+                    {
+                        if (do_echo)
+                        {
+                            while (line_len > 0)
+                            {
+                                line_len--;
+                                const char bs[] = {'\b', ' ', '\b'};
+                                (void)__syscall3(SYS_WRITE, STDOUT_FILENO, (long)bs, 3);
+                            }
+                        }
+                        else
+                        {
+                            line_len = 0;
+                        }
+                        continue;
+                    }
+
+                    if (c == '\n')
+                    {
+                        line_buf[line_len++] = (char)c;
+                        if (do_echo)
+                        {
+                            const char nl[] = {'\r', '\n'};
+                            (void)__syscall3(SYS_WRITE, STDOUT_FILENO, (long)nl, 2);
+                        }
+                        break;
+                    }
+
+                    line_buf[line_len++] = (char)c;
+                    if (do_echo)
+                    {
+                        (void)__syscall3(SYS_WRITE, STDOUT_FILENO, (long)&c, 1);
+                    }
+                }
+            }
+
+            size_t avail = line_len - line_pos;
+            size_t to_copy = (count < avail) ? count : avail;
+            char *out = (char *)buf;
+            for (size_t i = 0; i < to_copy; i++)
+            {
+                out[i] = line_buf[line_pos + i];
+            }
+            line_pos += to_copy;
+            return (ssize_t)to_copy;
+        }
+
+        /* Non-canonical mode: return available bytes immediately if VMIN==0. */
+        if (t.c_cc[VMIN] == 0)
+        {
+            unsigned char *out = (unsigned char *)buf;
+            size_t nread = 0;
+
+            /* If VTIME is non-zero, block until at least 1 byte arrives (ignore timeout). */
+            if (t.c_cc[VTIME] != 0 && nread < count)
+            {
+                unsigned char c = 0;
+                long n = __syscall3(SYS_READ, STDIN_FILENO, (long)&c, 1);
+                if (n < 0)
+                    return n;
+                if (n == 0)
+                    return 0;
+                if (map_crnl && c == '\r')
+                    c = '\n';
+                out[nread++] = c;
+                if (do_echo)
+                {
+                    (void)__syscall3(SYS_WRITE, STDOUT_FILENO, (long)&c, 1);
+                }
+            }
+
+            while (nread < count)
+            {
+                long rc = __syscall0(SYS_GETCHAR);
+                if (rc < 0)
+                    break;
+
+                unsigned char c = (unsigned char)rc;
+                if (map_crnl && c == '\r')
+                    c = '\n';
+                out[nread++] = c;
+
+                if (do_echo)
+                {
+                    (void)__syscall3(SYS_WRITE, STDOUT_FILENO, (long)&c, 1);
+                }
+            }
+
+            return (ssize_t)nread;
+        }
+    }
+
     return __syscall3(SYS_READ, fd, (long)buf, (long)count);
 }
 

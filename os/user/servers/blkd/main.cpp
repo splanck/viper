@@ -60,6 +60,38 @@ static i32 g_service_channel = -1;
 // QEMU virt machine VirtIO IRQ base
 constexpr u32 VIRTIO_IRQ_BASE = 48;
 
+static void recv_bootstrap_caps()
+{
+    // If this process was spawned by vinit, handle 0 is expected to be a
+    // bootstrap channel recv endpoint used for initial capability delegation.
+    constexpr i32 BOOTSTRAP_RECV = 0;
+
+    u8 dummy[1];
+    u32 handles[4];
+    u32 handle_count = 4;
+
+    // Wait briefly for vinit to send initial caps; otherwise fall back to the
+    // legacy bring-up policy (kernel-side) until strict mode is enabled.
+    for (u32 i = 0; i < 2000; i++)
+    {
+        handle_count = 4;
+        i64 n = sys::channel_recv(BOOTSTRAP_RECV, dummy, sizeof(dummy), handles, &handle_count);
+        if (n >= 0)
+        {
+            sys::channel_close(BOOTSTRAP_RECV);
+            return;
+        }
+        if (n == VERR_WOULD_BLOCK)
+        {
+            sys::yield();
+            continue;
+        }
+
+        // Invalid handle or other error => no bootstrap channel.
+        return;
+    }
+}
+
 /**
  * @brief Find VirtIO-blk device in the system.
  *
@@ -156,6 +188,8 @@ static void handle_read(const blk::ReadRequest *req, i32 reply_channel)
     device::DmaBuffer dma_buf;
     if (device::dma_alloc(size, &dma_buf) != 0)
     {
+        sys::shm_unmap(shm_result.virt_addr);
+        sys::shm_close(shm_result.handle);
         reply.status = -3; // VERR_OUT_OF_MEMORY
         reply.bytes_read = 0;
         sys::channel_send(reply_channel, &reply, sizeof(reply), nullptr, 0);
@@ -176,14 +210,24 @@ static void handle_read(const blk::ReadRequest *req, i32 reply_channel)
         reply.status = 0;
         reply.bytes_read = static_cast<u32>(size);
 
+        // Done with local mapping; the handle is transferred to the client.
+        sys::shm_unmap(shm_result.virt_addr);
+
         // Send reply with shared memory handle
         u32 handles[1] = {shm_result.handle};
-        sys::channel_send(reply_channel, &reply, sizeof(reply), handles, 1);
+        i64 send_err = sys::channel_send(reply_channel, &reply, sizeof(reply), handles, 1);
+        if (send_err != 0)
+        {
+            // Transfer did not occur; we still own the handle.
+            sys::shm_close(shm_result.handle);
+        }
     }
     else
     {
         reply.status = -500; // VERR_IO
         reply.bytes_read = 0;
+        sys::shm_unmap(shm_result.virt_addr);
+        sys::shm_close(shm_result.handle);
         sys::channel_send(reply_channel, &reply, sizeof(reply), nullptr, 0);
     }
 
@@ -235,6 +279,15 @@ static void handle_write(const blk::WriteRequest *req, i32 reply_channel, u32 sh
     }
 
     u64 size = req->count * blk::SECTOR_SIZE;
+    if (shm_map.size < size)
+    {
+        debug_print("[blkd] Shared memory too small for write\n");
+        sys::shm_unmap(shm_map.virt_addr);
+        reply.status = -1; // VERR_INVALID_ARG
+        reply.bytes_written = 0;
+        sys::channel_send(reply_channel, &reply, sizeof(reply), nullptr, 0);
+        return;
+    }
 
     // Allocate DMA buffer for the write
     device::DmaBuffer dma_buf;
@@ -402,6 +455,19 @@ static void server_loop()
 
         // Close the reply channel
         sys::channel_close(reply_channel);
+
+        // Close any additional transferred handles (e.g., write data SHM).
+        for (u32 i = 1; i < handle_count; i++)
+        {
+            if (handles[i] == 0)
+                continue;
+            i32 close_err = sys::shm_close(handles[i]);
+            if (close_err != 0)
+            {
+                // Best-effort fallback: at least drop the handle to avoid cap table exhaustion.
+                (void)sys::cap_revoke(handles[i]);
+            }
+        }
     }
 }
 
@@ -411,6 +477,7 @@ static void server_loop()
 extern "C" void _start()
 {
     debug_print("[blkd] Block device server starting\n");
+    recv_bootstrap_caps();
 
     // Find VirtIO-blk device
     u64 mmio_phys = 0;

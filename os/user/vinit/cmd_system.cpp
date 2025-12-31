@@ -24,6 +24,7 @@ void cmd_help()
     print_str("  Avail          - Show memory availability\n");
     print_str("  Status         - Show running tasks\n");
     print_str("  Run <path>     - Execute program\n");
+    print_str("  RunFSD <path>  - Execute program via fsd (spawn from SHM)\n");
     print_str("  Caps [handle]  - Show capabilities\n");
     print_str("  Date           - Show current date\n");
     print_str("  Time           - Show current time\n");

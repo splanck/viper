@@ -6,10 +6,10 @@
 extern long __syscall2(long num, long arg0, long arg1);
 extern long __syscall3(long num, long arg0, long arg1, long arg2);
 
-/* Syscall numbers from syscall_nums.hpp */
-#define SYS_OPEN 0x10
-#define SYS_CLOSE 0x13
-#define SYS_READDIR 0x17
+/* Syscall numbers from include/viperos/syscall_nums.hpp */
+#define SYS_OPEN 0x40
+#define SYS_CLOSE 0x41
+#define SYS_READDIR 0x60
 
 /* Open flags */
 #define O_RDONLY 0x0000

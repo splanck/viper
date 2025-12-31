@@ -346,6 +346,7 @@ inline void yield()
  * @param name Human-readable process name (optional, uses path basename if null).
  * @param out_pid Output: Process ID of the spawned process (optional).
  * @param out_tid Output: Task ID of the spawned process's main thread (optional).
+ * @param out_bootstrap_send Output: Bootstrap channel send endpoint handle (optional).
  * @param args Command-line arguments to pass to the new process (optional).
  * @return 0 on success, negative error code on failure.
  */
@@ -353,7 +354,8 @@ inline i64 spawn(const char *path,
                  const char *name = nullptr,
                  u64 *out_pid = nullptr,
                  u64 *out_tid = nullptr,
-                 const char *args = nullptr)
+                 const char *args = nullptr,
+                 u32 *out_bootstrap_send = nullptr)
 {
     SyscallResult r = syscall3(SYS_TASK_SPAWN,
                                reinterpret_cast<u64>(path),
@@ -365,6 +367,55 @@ inline i64 spawn(const char *path,
             *out_pid = r.val0;
         if (out_tid)
             *out_tid = r.val1;
+        if (out_bootstrap_send)
+            *out_bootstrap_send = static_cast<u32>(r.val2);
+    }
+    return r.error;
+}
+
+/**
+ * @brief Spawn a new process from an ELF image stored in shared memory.
+ *
+ * @details
+ * Loads an ELF executable from a SharedMemory object (created via
+ * `SYS_SHM_CREATE` or received via IPC) and spawns it as a new process.
+ *
+ * This is intended to decouple process spawning from the kernel filesystem so
+ * user-space services (like fsd) can provide executables.
+ *
+ * @param shm_handle SharedMemory handle containing the ELF image.
+ * @param offset Byte offset within the shared memory region.
+ * @param length Length of the ELF image in bytes.
+ * @param name Human-readable process name (optional).
+ * @param out_pid Output: Process ID of the spawned process (optional).
+ * @param out_tid Output: Task ID of the spawned process's main thread (optional).
+ * @param args Command-line arguments to pass to the new process (optional).
+ * @param out_bootstrap_send Output: Bootstrap channel send endpoint handle (optional).
+ * @return 0 on success, negative error code on failure.
+ */
+inline i64 spawn_shm(u32 shm_handle,
+                     u64 offset,
+                     u64 length,
+                     const char *name = nullptr,
+                     u64 *out_pid = nullptr,
+                     u64 *out_tid = nullptr,
+                     const char *args = nullptr,
+                     u32 *out_bootstrap_send = nullptr)
+{
+    SyscallResult r = syscall5(SYS_TASK_SPAWN_SHM,
+                               static_cast<u64>(shm_handle),
+                               offset,
+                               length,
+                               reinterpret_cast<u64>(name),
+                               reinterpret_cast<u64>(args));
+    if (r.error == 0)
+    {
+        if (out_pid)
+            *out_pid = r.val0;
+        if (out_tid)
+            *out_tid = r.val1;
+        if (out_bootstrap_send)
+            *out_bootstrap_send = static_cast<u32>(r.val2);
     }
     return r.error;
 }
@@ -1541,6 +1592,10 @@ inline const char *cap_kind_name(u16 kind)
             return "Surface";
         case CAP_KIND_INPUT:
             return "Input";
+        case CAP_KIND_SHARED_MEMORY:
+            return "SharedMemory";
+        case CAP_KIND_DEVICE:
+            return "Device";
         default:
             return "Unknown";
     }
@@ -1945,6 +2000,22 @@ inline ShmMapResult shm_map(u32 handle)
 inline i32 shm_unmap(u64 virt_addr)
 {
     auto r = syscall1(SYS_SHM_UNMAP, virt_addr);
+    return static_cast<i32>(r.error);
+}
+
+/**
+ * @brief Close/release a shared memory handle.
+ *
+ * @details
+ * Removes the SharedMemory capability from the calling process. The underlying
+ * object is freed when all handles and mappings are released.
+ *
+ * @param handle Shared memory handle.
+ * @return 0 on success, negative error code on failure.
+ */
+inline i32 shm_close(u32 handle)
+{
+    auto r = syscall1(SYS_SHM_CLOSE, static_cast<u64>(handle));
     return static_cast<i32>(r.error);
 }
 

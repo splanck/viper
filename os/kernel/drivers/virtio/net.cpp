@@ -2,6 +2,7 @@
 #include "../../arch/aarch64/gic.hpp"
 #include "../../console/serial.hpp"
 #include "../../include/config.hpp"
+#include "../../lib/log.hpp"
 #include "../../mm/pmm.hpp"
 #include "../../sched/scheduler.hpp"
 #include "../../sched/task.hpp"
@@ -659,11 +660,14 @@ void NetDevice::rx_irq_handler()
     // Acknowledge the virtio interrupt
     u32 isr = read_isr();
 #if VIPER_KERNEL_DEBUG_VIRTIO_NET_IRQ
-    serial::puts("[virtio-net] IRQ: isr=");
-    serial::put_hex(isr);
-    serial::puts(" waiters=");
-    serial::put_dec(rx_waiter_count_);
-    serial::puts("\n");
+    if (log::get_level() == log::Level::Debug)
+    {
+        serial::puts("[virtio-net] IRQ: isr=");
+        serial::put_hex(isr);
+        serial::puts(" waiters=");
+        serial::put_dec(rx_waiter_count_);
+        serial::puts("\n");
+    }
 #endif
 
     if (isr)

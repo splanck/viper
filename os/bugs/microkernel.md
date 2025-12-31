@@ -24,7 +24,36 @@ This section is updated as phases are implemented.
   - Added a static ABI guardrail for microkernel-critical syscalls: `tests/host/test_syscall_table.py`
   - Added `scripts/build_viper.sh --no-run` to support build/test without launching QEMU
   - Reduced SSH packet-level debug spam to require `ssh -vv` (verbose levels): `user/libssh/ssh.c`, `user/ssh/ssh.c`
+  - Fixed interactive console ergonomics (TTY echo/backspace) and further reduced debug spam in interactive apps:
+    - libc stdin line discipline (termios-driven echo + erase/kill handling): `user/libc/src/unistd.c`, `user/libc/src/stdio.c`
+    - Net syscall/TCP/virtio IRQ debug logs require kernel log level `Debug` even when compiled in: `kernel/syscall/table.cpp`, `kernel/net/ip/tcp.cpp`, `kernel/drivers/virtio/net.cpp`
   - Validated end-to-end via `scripts/build_viper.sh --test --no-run` (all tests passing)
+- **2025-12-31 — Phase 1 (Bootstrap cap delegation + device syscall enforcement):** Implemented spawn-time bootstrap channel and required device capabilities for microkernel device syscalls.
+  - `SYS_TASK_SPAWN` now returns a parent bootstrap send endpoint handle in `x3` for capability delegation: `kernel/syscall/table.cpp`, `user/syscall.hpp`, `docs/syscalls.md`
+  - Added `cap::Kind::Device` and bootstrapped a root device capability for init (`vinit`) only: `kernel/cap/table.hpp`, `kernel/viper/viper.cpp`, `include/viperos/cap_info.hpp`
+  - `vinit` now delegates a derived, transferable device capability to `blkd`/`netd`/`fsd` over the bootstrap channel: `user/vinit/vinit.cpp`
+  - Servers accept delegated caps from the bootstrap recv endpoint (handle `0`): `user/servers/blkd/main.cpp`, `user/servers/netd/main.cpp`, `user/servers/fsd/main.cpp`
+  - Enforced capability checks for `SYS_MAP_DEVICE`, `SYS_IRQ_REGISTER`, `SYS_DMA_ALLOC`, `SYS_VIRT_TO_PHYS`: `kernel/syscall/table.cpp`
+  - Note: the current `Device` capability is coarse-grained (“root device”) and does not yet encode per-device MMIO/IRQ/DMA limits (syscalls still validate against `known_devices[]`).
+  - Validated via `scripts/build_viper.sh --test --no-run` (all tests passing)
+- **2025-12-31 — Phase 2 (blkd hardening: SHM lifecycle + robustness):** Made shared-memory transfers safe for long-running microkernel IO and tightened block driver behavior.
+  - Added `SYS_SHM_CLOSE` and documented it: `include/viperos/syscall_nums.hpp`, `kernel/syscall/table.cpp`, `user/syscall.hpp`, `docs/syscalls.md`
+  - Fixed `SYS_SHM_UNMAP` to unmap full regions and release mapping references (tracked per-process mappings): `kernel/syscall/table.cpp`
+  - Prevented capability-table exhaustion by explicitly closing transferred SHM handles in `blkd`, `netd`, and `fsd`’s block client: `user/servers/blkd/main.cpp`, `user/servers/netd/main.cpp`, `user/servers/fsd/blk_client.hpp`
+  - Added request hygiene in `blkd` (size checks + cleanup on failure) and bounded virtio-blk flush polling (avoid infinite hangs): `user/servers/blkd/main.cpp`, `user/libvirtio/src/blk.cpp`
+  - Validated via `scripts/build_viper.sh --test --no-run` (all tests passing)
+- **2025-12-31 — Phase 3 (fsd client scaffolding):** Started building the user-space client plumbing needed for libc→fsd filesystem forwarding.
+  - Added a reusable `fsd` IPC client library (open/read/write/close/seek; inline-only replies for now): `user/libfsclient/include/fsclient.hpp`, `user/libfsclient/src/fsclient.cpp`, `user/libfsclient/CMakeLists.txt`, `user/CMakeLists.txt`
+  - Fixed `opendir()` syscall numbers to match the current ABI (was calling the wrong syscall IDs): `user/libc/src/dirent.c`
+  - Validated via `scripts/build_viper.sh --test --no-run` (all tests passing)
+- **2025-12-31 — Phase 4 (spawn decoupling: Stage 1):** Added a capability-based “spawn from memory” path to reduce kernel FS coupling.
+  - Added `SYS_TASK_SPAWN_SHM` (0x0C) to spawn an ELF image from a `SharedMemory` handle (returns PID/TID + bootstrap channel): `include/viperos/syscall_nums.hpp`, `kernel/syscall/table.cpp`, `user/syscall.hpp`, `docs/syscalls.md`
+  - Validated via `scripts/build_viper.sh --test --no-run` (all tests passing)
+- **2025-12-31 — Phase 4 (spawn decoupling: Stage 2):** Exercised `SYS_TASK_SPAWN_SHM` end-to-end by loading executables via `fsd`.
+  - Added `RunFSD` shell command to read an ELF via `fsd` and spawn via SHM: `user/vinit/cmd_misc.cpp`, `user/vinit/shell.cpp`, `user/vinit/readline.cpp`, `user/vinit/cmd_system.cpp`, `user/vinit/vinit.hpp`
+  - Linked `vinit.elf` with `viperfsclient` and ensured fsd client connections are closed (avoid handle leaks): `user/CMakeLists.txt`, `user/libfsclient/include/fsclient.hpp`
+  - Fixed a bootstrap channel handle leak in `Run` (always close unused `SYS_TASK_SPAWN` bootstrap send endpoint): `user/vinit/cmd_misc.cpp`
+  - Validated via `scripts/build_viper.sh --test --no-run` (all tests passing)
 
 ---
 

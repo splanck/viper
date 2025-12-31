@@ -31,13 +31,14 @@ static void *vinit_sbrk(long increment)
  *
  * @param path Path to the server executable.
  * @param name Display name for logging.
+ * @param out_bootstrap_send Output: parent bootstrap channel send handle (optional).
  * @return PID on success, negative error code on failure.
  */
-static i64 spawn_server(const char *path, const char *name)
+static i64 spawn_server(const char *path, const char *name, u32 *out_bootstrap_send = nullptr)
 {
     u64 pid = 0;
     u64 tid = 0;
-    i64 err = sys::spawn(path, nullptr, &pid, &tid, nullptr);
+    i64 err = sys::spawn(path, nullptr, &pid, &tid, nullptr, out_bootstrap_send);
 
     if (err < 0)
     {
@@ -56,6 +57,74 @@ static i64 spawn_server(const char *path, const char *name)
     print_str(")\n");
 
     return static_cast<i64>(pid);
+}
+
+static bool find_device_root_cap(u32 *out_handle)
+{
+    if (!out_handle)
+        return false;
+
+    CapListEntry entries[32];
+    i32 n = sys::cap_list(entries, 32);
+    if (n < 0)
+    {
+        return false;
+    }
+
+    for (i32 i = 0; i < n; i++)
+    {
+        if (entries[i].kind == CAP_KIND_DEVICE)
+        {
+            *out_handle = entries[i].handle;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static void send_server_device_caps(u32 bootstrap_send, u32 device_root)
+{
+    if (bootstrap_send == 0xFFFFFFFFu)
+        return;
+
+    // Derive a transferable device capability for the server.
+    u32 rights = CAP_RIGHT_DEVICE_ACCESS | CAP_RIGHT_IRQ_ACCESS | CAP_RIGHT_DMA_ACCESS |
+                 CAP_RIGHT_TRANSFER;
+    i32 derived = sys::cap_derive(device_root, rights);
+    if (derived < 0)
+    {
+        return;
+    }
+
+    u32 handle_to_send = static_cast<u32>(derived);
+    u8 dummy = 0;
+    bool sent = false;
+    for (u32 i = 0; i < 2000; i++)
+    {
+        i64 err =
+            sys::channel_send(static_cast<i32>(bootstrap_send), &dummy, 1, &handle_to_send, 1);
+        if (err == 0)
+        {
+            sent = true;
+            break;
+        }
+        if (err == VERR_WOULD_BLOCK)
+        {
+            sys::yield();
+            continue;
+        }
+        break;
+    }
+
+    // Always close the bootstrap send endpoint; the child owns the recv endpoint.
+    sys::channel_close(static_cast<i32>(bootstrap_send));
+
+    // If we failed to send, revoke the derived cap so we don't leak it in vinit.
+    if (!sent)
+    {
+        sys::cap_revoke(handle_to_send);
+    }
 }
 
 /**
@@ -126,10 +195,18 @@ static void start_servers()
     bool netd_ready = false;
     bool fsd_ready = false;
 
+    u32 device_root = 0xFFFFFFFFu;
+    bool have_device_root = find_device_root_cap(&device_root);
+
     // Start block device server first (fsd depends on it)
     if (have_blkd)
     {
-        i64 blkd_pid = spawn_server("/c/blkd.elf", "blkd");
+        u32 bootstrap_send = 0xFFFFFFFFu;
+        i64 blkd_pid = spawn_server("/c/blkd.elf", "blkd", &bootstrap_send);
+        if (have_device_root)
+        {
+            send_server_device_caps(bootstrap_send, device_root);
+        }
         if (blkd_pid > 0 && wait_for_service("BLKD", 1000))
         {
             print_str("[vinit] BLKD: ready\n");
@@ -141,7 +218,12 @@ static void start_servers()
     // Start network server (independent of block device)
     if (have_netd)
     {
-        i64 netd_pid = spawn_server("/c/netd.elf", "netd");
+        u32 bootstrap_send = 0xFFFFFFFFu;
+        i64 netd_pid = spawn_server("/c/netd.elf", "netd", &bootstrap_send);
+        if (have_device_root)
+        {
+            send_server_device_caps(bootstrap_send, device_root);
+        }
         if (netd_pid > 0 && wait_for_service("NETD", 1000))
         {
             print_str("[vinit] NETD: ready\n");
@@ -153,7 +235,12 @@ static void start_servers()
     // Start filesystem server (needs blkd)
     if (have_fsd && blkd_ready)
     {
-        i64 fsd_pid = spawn_server("/c/fsd.elf", "fsd");
+        u32 bootstrap_send = 0xFFFFFFFFu;
+        i64 fsd_pid = spawn_server("/c/fsd.elf", "fsd", &bootstrap_send);
+        if (have_device_root)
+        {
+            send_server_device_caps(bootstrap_send, device_root);
+        }
         if (fsd_pid > 0 && wait_for_service("FSD", 1000))
         {
             print_str("[vinit] FSD: ready\n");

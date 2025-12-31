@@ -51,6 +51,8 @@
 #define SYS_SBRK 0x0A
 /** @brief Fork the current process (copy-on-write). */
 #define SYS_FORK 0x0B
+/** @brief Spawn a new user process from a SharedMemory region containing an ELF image. */
+#define SYS_TASK_SPAWN_SHM 0x0C
 /** @} */
 
 /** @name Channel IPC Syscalls (0x10 - 0x1F)
@@ -348,4 +350,6 @@
 #define SYS_SHM_MAP 0x10A
 /** @brief Unmap a shared memory object. */
 #define SYS_SHM_UNMAP 0x10B
+/** @brief Close/release a shared memory handle. */
+#define SYS_SHM_CLOSE 0x10C
 /** @} */

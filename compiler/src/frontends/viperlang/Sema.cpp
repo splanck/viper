@@ -653,6 +653,10 @@ void Sema::initRuntimeFunctions()
     typeRegistry_["Viper.Graphics.Canvas"] = types::runtimeClass("Viper.Graphics.Canvas");
     typeRegistry_["Viper.Graphics.Color"] = types::runtimeClass("Viper.Graphics.Color");
     typeRegistry_["Viper.Graphics.Pixels"] = types::runtimeClass("Viper.Graphics.Pixels");
+    typeRegistry_["Viper.Sound.Audio"] = types::runtimeClass("Viper.Sound.Audio");
+    typeRegistry_["Viper.Sound.Sound"] = types::runtimeClass("Viper.Sound.Sound");
+    typeRegistry_["Viper.Sound.Voice"] = types::runtimeClass("Viper.Sound.Voice");
+    typeRegistry_["Viper.Sound.Music"] = types::runtimeClass("Viper.Sound.Music");
 
     // =========================================================================
     // BITS
@@ -946,6 +950,50 @@ void Sema::initRuntimeFunctions()
     runtimeFunctions_["Viper.Graphics.Pixels.FlipH"] = types::runtimeClass("Viper.Graphics.Pixels");
     runtimeFunctions_["Viper.Graphics.Pixels.FlipV"] = types::runtimeClass("Viper.Graphics.Pixels");
     runtimeFunctions_["Viper.Graphics.Pixels.Scale"] = types::runtimeClass("Viper.Graphics.Pixels");
+
+    // =========================================================================
+    // SOUND - AUDIO SYSTEM
+    // =========================================================================
+    runtimeFunctions_["Viper.Sound.Audio.Init"] = types::integer();
+    runtimeFunctions_["Viper.Sound.Audio.Shutdown"] = types::voidType();
+    runtimeFunctions_["Viper.Sound.Audio.SetMasterVolume"] = types::voidType();
+    runtimeFunctions_["Viper.Sound.Audio.GetMasterVolume"] = types::integer();
+    runtimeFunctions_["Viper.Sound.Audio.PauseAll"] = types::voidType();
+    runtimeFunctions_["Viper.Sound.Audio.ResumeAll"] = types::voidType();
+    runtimeFunctions_["Viper.Sound.Audio.StopAllSounds"] = types::voidType();
+
+    // =========================================================================
+    // SOUND - SOUND EFFECTS
+    // =========================================================================
+    runtimeFunctions_["Viper.Sound.Sound.Load"] = types::runtimeClass("Viper.Sound.Sound");
+    runtimeFunctions_["Viper.Sound.Sound.Free"] = types::voidType();
+    runtimeFunctions_["Viper.Sound.Sound.Play"] = types::integer();
+    runtimeFunctions_["Viper.Sound.Sound.PlayEx"] = types::integer();
+    runtimeFunctions_["Viper.Sound.Sound.PlayLoop"] = types::integer();
+
+    // =========================================================================
+    // SOUND - VOICE CONTROL
+    // =========================================================================
+    runtimeFunctions_["Viper.Sound.Voice.Stop"] = types::voidType();
+    runtimeFunctions_["Viper.Sound.Voice.SetVolume"] = types::voidType();
+    runtimeFunctions_["Viper.Sound.Voice.SetPan"] = types::voidType();
+    runtimeFunctions_["Viper.Sound.Voice.IsPlaying"] = types::integer();
+
+    // =========================================================================
+    // SOUND - MUSIC STREAMING
+    // =========================================================================
+    runtimeFunctions_["Viper.Sound.Music.Load"] = types::runtimeClass("Viper.Sound.Music");
+    runtimeFunctions_["Viper.Sound.Music.Free"] = types::voidType();
+    runtimeFunctions_["Viper.Sound.Music.Play"] = types::voidType();
+    runtimeFunctions_["Viper.Sound.Music.Stop"] = types::voidType();
+    runtimeFunctions_["Viper.Sound.Music.Pause"] = types::voidType();
+    runtimeFunctions_["Viper.Sound.Music.Resume"] = types::voidType();
+    runtimeFunctions_["Viper.Sound.Music.SetVolume"] = types::voidType();
+    runtimeFunctions_["Viper.Sound.Music.get_Volume"] = types::integer();
+    runtimeFunctions_["Viper.Sound.Music.IsPlaying"] = types::integer();
+    runtimeFunctions_["Viper.Sound.Music.Seek"] = types::voidType();
+    runtimeFunctions_["Viper.Sound.Music.get_Position"] = types::integer();
+    runtimeFunctions_["Viper.Sound.Music.get_Duration"] = types::integer();
 
     // =========================================================================
     // INPUT

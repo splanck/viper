@@ -337,10 +337,11 @@ int putchar(int c)
 
 int getchar(void)
 {
-    long result = __syscall1(SYS_GETCHAR, 0);
-    if (result < 0)
+    unsigned char c = 0;
+    long n = read(STDIN_FILENO, &c, 1);
+    if (n <= 0)
         return EOF;
-    return (int)result;
+    return (int)c;
 }
 
 /* Variadic versions */

@@ -110,6 +110,15 @@ void shell_loop()
         {
             cmd_status();
         }
+        else if (strcasestart(cmd_line, "runfsd "))
+        {
+            cmd_run_fsd(get_args(cmd_line, 7));
+        }
+        else if (strcaseeq(cmd_line, "runfsd"))
+        {
+            print_str("RunFSD: missing program path\n");
+            last_rc = RC_ERROR;
+        }
         else if (strcasestart(cmd_line, "run "))
         {
             cmd_run(get_args(cmd_line, 4));

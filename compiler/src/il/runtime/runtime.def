@@ -488,6 +488,54 @@ RT_FUNC(PixelsRotate180, rt_pixels_rotate_180, "Viper.Graphics.Pixels.Rotate180"
 RT_FUNC(PixelsScale,     rt_pixels_scale,      "Viper.Graphics.Pixels.Scale",     "obj(obj,i64,i64)")
 
 //=============================================================================
+// SOUND - AUDIO SYSTEM
+//=============================================================================
+
+RT_FUNC(AudioInit,             rt_audio_init,             "Viper.Sound.Audio.Init",             "i64()")
+RT_FUNC(AudioShutdown,         rt_audio_shutdown,         "Viper.Sound.Audio.Shutdown",         "void()")
+RT_FUNC(AudioSetMasterVolume,  rt_audio_set_master_volume, "Viper.Sound.Audio.SetMasterVolume", "void(i64)")
+RT_FUNC(AudioGetMasterVolume,  rt_audio_get_master_volume, "Viper.Sound.Audio.GetMasterVolume", "i64()")
+RT_FUNC(AudioPauseAll,         rt_audio_pause_all,        "Viper.Sound.Audio.PauseAll",         "void()")
+RT_FUNC(AudioResumeAll,        rt_audio_resume_all,       "Viper.Sound.Audio.ResumeAll",        "void()")
+RT_FUNC(AudioStopAllSounds,    rt_audio_stop_all_sounds,  "Viper.Sound.Audio.StopAllSounds",    "void()")
+
+//=============================================================================
+// SOUND - SOUND EFFECTS
+//=============================================================================
+
+RT_FUNC(SoundLoad,     rt_sound_load,      "Viper.Sound.Sound.Load",     "obj(str)")
+RT_FUNC(SoundFree,     rt_sound_free,      "Viper.Sound.Sound.Free",     "void(obj)")
+RT_FUNC(SoundPlay,     rt_sound_play,      "Viper.Sound.Sound.Play",     "i64(obj)")
+RT_FUNC(SoundPlayEx,   rt_sound_play_ex,   "Viper.Sound.Sound.PlayEx",   "i64(obj,i64,i64)")
+RT_FUNC(SoundPlayLoop, rt_sound_play_loop, "Viper.Sound.Sound.PlayLoop", "i64(obj,i64,i64)")
+
+//=============================================================================
+// SOUND - VOICE CONTROL
+//=============================================================================
+
+RT_FUNC(VoiceStop,      rt_voice_stop,       "Viper.Sound.Voice.Stop",      "void(i64)")
+RT_FUNC(VoiceSetVolume, rt_voice_set_volume, "Viper.Sound.Voice.SetVolume", "void(i64,i64)")
+RT_FUNC(VoiceSetPan,    rt_voice_set_pan,    "Viper.Sound.Voice.SetPan",    "void(i64,i64)")
+RT_FUNC(VoiceIsPlaying, rt_voice_is_playing, "Viper.Sound.Voice.IsPlaying", "i64(i64)")
+
+//=============================================================================
+// SOUND - MUSIC STREAMING
+//=============================================================================
+
+RT_FUNC(MusicLoad,        rt_music_load,         "Viper.Sound.Music.Load",        "obj(str)")
+RT_FUNC(MusicFree,        rt_music_free,         "Viper.Sound.Music.Free",        "void(obj)")
+RT_FUNC(MusicPlay,        rt_music_play,         "Viper.Sound.Music.Play",        "void(obj,i64)")
+RT_FUNC(MusicStop,        rt_music_stop,         "Viper.Sound.Music.Stop",        "void(obj)")
+RT_FUNC(MusicPause,       rt_music_pause,        "Viper.Sound.Music.Pause",       "void(obj)")
+RT_FUNC(MusicResume,      rt_music_resume,       "Viper.Sound.Music.Resume",      "void(obj)")
+RT_FUNC(MusicSetVolume,   rt_music_set_volume,   "Viper.Sound.Music.SetVolume",   "void(obj,i64)")
+RT_FUNC(MusicGetVolume,   rt_music_get_volume,   "Viper.Sound.Music.get_Volume",  "i64(obj)")
+RT_FUNC(MusicIsPlaying,   rt_music_is_playing,   "Viper.Sound.Music.IsPlaying",   "i64(obj)")
+RT_FUNC(MusicSeek,        rt_music_seek,         "Viper.Sound.Music.Seek",        "void(obj,i64)")
+RT_FUNC(MusicGetPosition, rt_music_get_position, "Viper.Sound.Music.get_Position", "i64(obj)")
+RT_FUNC(MusicGetDuration, rt_music_get_duration, "Viper.Sound.Music.get_Duration", "i64(obj)")
+
+//=============================================================================
 // IO - DIRECTORY
 //=============================================================================
 
@@ -1742,6 +1790,45 @@ RT_CLASS_BEGIN("Viper.Graphics.Pixels", Pixels, "obj", PixelsNew)
     RT_METHOD("RotateCCW", "obj()", PixelsRotateCCW)
     RT_METHOD("Rotate180", "obj()", PixelsRotate180)
     RT_METHOD("Scale", "obj(i64,i64)", PixelsScale)
+RT_CLASS_END()
+
+// Viper.Sound.Audio - audio system control (static class)
+RT_CLASS_BEGIN("Viper.Sound.Audio", Audio, "obj", none)
+    RT_METHOD("Init", "i64()", AudioInit)
+    RT_METHOD("Shutdown", "void()", AudioShutdown)
+    RT_METHOD("SetMasterVolume", "void(i64)", AudioSetMasterVolume)
+    RT_METHOD("GetMasterVolume", "i64()", AudioGetMasterVolume)
+    RT_METHOD("PauseAll", "void()", AudioPauseAll)
+    RT_METHOD("ResumeAll", "void()", AudioResumeAll)
+    RT_METHOD("StopAllSounds", "void()", AudioStopAllSounds)
+RT_CLASS_END()
+
+// Viper.Sound.Sound - sound effect playback
+RT_CLASS_BEGIN("Viper.Sound.Sound", Sound, "obj", SoundLoad)
+    RT_METHOD("Play", "i64()", SoundPlay)
+    RT_METHOD("PlayEx", "i64(i64,i64)", SoundPlayEx)
+    RT_METHOD("PlayLoop", "i64(i64,i64)", SoundPlayLoop)
+RT_CLASS_END()
+
+// Viper.Sound.Voice - voice control for playing sounds (static class)
+RT_CLASS_BEGIN("Viper.Sound.Voice", Voice, "obj", none)
+    RT_METHOD("Stop", "void(i64)", VoiceStop)
+    RT_METHOD("SetVolume", "void(i64,i64)", VoiceSetVolume)
+    RT_METHOD("SetPan", "void(i64,i64)", VoiceSetPan)
+    RT_METHOD("IsPlaying", "i64(i64)", VoiceIsPlaying)
+RT_CLASS_END()
+
+// Viper.Sound.Music - music streaming playback
+RT_CLASS_BEGIN("Viper.Sound.Music", Music, "obj", MusicLoad)
+    RT_PROP("Volume", "i64", MusicGetVolume, MusicSetVolume)
+    RT_PROP("Position", "i64", MusicGetPosition, none)
+    RT_PROP("Duration", "i64", MusicGetDuration, none)
+    RT_METHOD("Play", "void(i64)", MusicPlay)
+    RT_METHOD("Stop", "void()", MusicStop)
+    RT_METHOD("Pause", "void()", MusicPause)
+    RT_METHOD("Resume", "void()", MusicResume)
+    RT_METHOD("IsPlaying", "i64()", MusicIsPlaying)
+    RT_METHOD("Seek", "void(i64)", MusicSeek)
 RT_CLASS_END()
 
 // Viper.Input.Keyboard - keyboard input handling (static class)

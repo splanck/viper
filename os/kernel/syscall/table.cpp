@@ -41,6 +41,7 @@
 #include "../kobj/dir.hpp"
 #include "../kobj/file.hpp"
 #include "../kobj/shm.hpp"
+#include "../lib/log.hpp"
 #include "../lib/spinlock.hpp"
 #include "../loader/loader.hpp"
 #include "../mm/pmm.hpp"
@@ -291,6 +292,51 @@ static SyscallResult sys_task_spawn(u64 a0, u64 a1, u64 a2, u64, u64, u64)
         return SyscallResult::err(error::VERR_IO);
     }
 
+    // Create a parent->child bootstrap channel for capability delegation.
+    // The child receives the recv endpoint as its first capability handle (expected to be 0).
+    cap::Handle bootstrap_send = cap::HANDLE_INVALID;
+    if (parent_viper && parent_viper->cap_table && result.viper && result.viper->cap_table)
+    {
+        i64 channel_id = channel::create();
+        if (channel_id >= 0)
+        {
+            kobj::Channel *send_ep =
+                kobj::Channel::adopt(static_cast<u32>(channel_id), kobj::Channel::ENDPOINT_SEND);
+            kobj::Channel *recv_ep =
+                kobj::Channel::adopt(static_cast<u32>(channel_id), kobj::Channel::ENDPOINT_RECV);
+
+            if (send_ep && recv_ep)
+            {
+                // Insert child recv endpoint first so it lands in slot 0.
+                cap::Handle child_recv = result.viper->cap_table->insert(
+                    recv_ep, cap::Kind::Channel, cap::CAP_READ | cap::CAP_TRANSFER);
+                if (child_recv != cap::HANDLE_INVALID)
+                {
+                    bootstrap_send = parent_viper->cap_table->insert(
+                        send_ep, cap::Kind::Channel, cap::CAP_WRITE | cap::CAP_TRANSFER);
+                    if (bootstrap_send == cap::HANDLE_INVALID)
+                    {
+                        // Roll back child insertion and delete endpoints (closes underlying channel).
+                        result.viper->cap_table->remove(child_recv);
+                        delete send_ep;
+                        delete recv_ep;
+                    }
+                }
+                else
+                {
+                    delete send_ep;
+                    delete recv_ep;
+                }
+            }
+            else
+            {
+                delete send_ep;
+                delete recv_ep;
+                (void)channel::close(static_cast<u32>(channel_id));
+            }
+        }
+    }
+
     // Copy args to the new process if provided
     if (args && result.viper)
     {
@@ -307,7 +353,136 @@ static SyscallResult sys_task_spawn(u64 a0, u64 a1, u64 a2, u64, u64, u64)
         result.viper->args[0] = '\0';
     }
 
-    return SyscallResult::ok(static_cast<u64>(result.viper->id), static_cast<u64>(result.task_id));
+    return SyscallResult::ok(static_cast<u64>(result.viper->id),
+                             static_cast<u64>(result.task_id),
+                             static_cast<u64>(bootstrap_send));
+}
+
+static SyscallResult sys_task_spawn_shm(u64 a0, u64 a1, u64 a2, u64 a3, u64 a4, u64)
+{
+    cap::Handle shm_handle = static_cast<cap::Handle>(a0);
+    u64 offset = a1;
+    u64 length = a2;
+    const char *name = reinterpret_cast<const char *>(a3);
+    const char *args = reinterpret_cast<const char *>(a4);
+
+    if (name && validate_user_string(name, 64) < 0)
+    {
+        return SyscallResult::err(error::VERR_INVALID_ARG);
+    }
+    if (args && validate_user_string(args, 256) < 0)
+    {
+        return SyscallResult::err(error::VERR_INVALID_ARG);
+    }
+
+    task::Task *current_task = task::current();
+    viper::Viper *parent_viper = nullptr;
+    if (current_task && current_task->viper)
+    {
+        parent_viper = reinterpret_cast<viper::Viper *>(current_task->viper);
+    }
+
+    viper::Viper *v = viper::current();
+    if (!v || !v->cap_table)
+    {
+        return SyscallResult::err(error::VERR_NOT_FOUND);
+    }
+
+    cap::Entry *entry = v->cap_table->get_checked(shm_handle, cap::Kind::SharedMemory);
+    if (!entry)
+    {
+        return SyscallResult::err(error::VERR_INVALID_HANDLE);
+    }
+    if (!cap::has_rights(entry->rights, cap::CAP_READ))
+    {
+        return SyscallResult::err(error::VERR_PERMISSION);
+    }
+
+    kobj::SharedMemory *shm = static_cast<kobj::SharedMemory *>(entry->object);
+    if (!shm)
+    {
+        return SyscallResult::err(error::VERR_NOT_FOUND);
+    }
+
+    if (length == 0 || offset > shm->size() || offset + length > shm->size() || offset + length < offset)
+    {
+        return SyscallResult::err(error::VERR_INVALID_ARG);
+    }
+
+    const char *display_name = name ? name : "shm_spawn";
+    const void *elf_data = pmm::phys_to_virt(shm->phys_addr() + offset);
+
+    loader::SpawnResult result =
+        loader::spawn_process_from_blob(elf_data, static_cast<usize>(length), display_name, parent_viper);
+    if (!result.success)
+    {
+        return SyscallResult::err(error::VERR_IO);
+    }
+
+    // Create a parent->child bootstrap channel for capability delegation.
+    // The child receives the recv endpoint as its first capability handle (expected to be 0).
+    cap::Handle bootstrap_send = cap::HANDLE_INVALID;
+    if (parent_viper && parent_viper->cap_table && result.viper && result.viper->cap_table)
+    {
+        i64 channel_id = channel::create();
+        if (channel_id >= 0)
+        {
+            kobj::Channel *send_ep =
+                kobj::Channel::adopt(static_cast<u32>(channel_id), kobj::Channel::ENDPOINT_SEND);
+            kobj::Channel *recv_ep =
+                kobj::Channel::adopt(static_cast<u32>(channel_id), kobj::Channel::ENDPOINT_RECV);
+
+            if (send_ep && recv_ep)
+            {
+                // Insert child recv endpoint first so it lands in slot 0.
+                cap::Handle child_recv = result.viper->cap_table->insert(
+                    recv_ep, cap::Kind::Channel, cap::CAP_READ | cap::CAP_TRANSFER);
+                if (child_recv != cap::HANDLE_INVALID)
+                {
+                    bootstrap_send = parent_viper->cap_table->insert(
+                        send_ep, cap::Kind::Channel, cap::CAP_WRITE | cap::CAP_TRANSFER);
+                    if (bootstrap_send == cap::HANDLE_INVALID)
+                    {
+                        // Roll back child insertion and delete endpoints (closes underlying channel).
+                        result.viper->cap_table->remove(child_recv);
+                        delete send_ep;
+                        delete recv_ep;
+                    }
+                }
+                else
+                {
+                    delete send_ep;
+                    delete recv_ep;
+                }
+            }
+            else
+            {
+                delete send_ep;
+                delete recv_ep;
+                (void)channel::close(static_cast<u32>(channel_id));
+            }
+        }
+    }
+
+    // Copy args to the new process if provided
+    if (args && result.viper)
+    {
+        usize i = 0;
+        while (i < 255 && args[i])
+        {
+            result.viper->args[i] = args[i];
+            i++;
+        }
+        result.viper->args[i] = '\0';
+    }
+    else if (result.viper)
+    {
+        result.viper->args[0] = '\0';
+    }
+
+    return SyscallResult::ok(static_cast<u64>(result.viper->id),
+                             static_cast<u64>(result.task_id),
+                             static_cast<u64>(bootstrap_send));
 }
 
 static SyscallResult sys_task_list(u64 a0, u64 a1, u64, u64, u64, u64)
@@ -1066,26 +1241,32 @@ static SyscallResult sys_socket_connect(u64 a0, u64 a1, u64 a2, u64, u64, u64)
     ip.bytes[3] = ip_raw & 0xFF;
 
 #if VIPER_KERNEL_DEBUG_NET_SYSCALL
-    serial::puts("[syscall] socket_connect: sock=");
-    serial::put_dec(sock);
-    serial::puts(" ip=");
-    serial::put_dec(ip.bytes[0]);
-    serial::putc('.');
-    serial::put_dec(ip.bytes[1]);
-    serial::putc('.');
-    serial::put_dec(ip.bytes[2]);
-    serial::putc('.');
-    serial::put_dec(ip.bytes[3]);
-    serial::puts(" port=");
-    serial::put_dec(port);
-    serial::putc('\n');
+    if (log::get_level() == log::Level::Debug)
+    {
+        serial::puts("[syscall] socket_connect: sock=");
+        serial::put_dec(sock);
+        serial::puts(" ip=");
+        serial::put_dec(ip.bytes[0]);
+        serial::putc('.');
+        serial::put_dec(ip.bytes[1]);
+        serial::putc('.');
+        serial::put_dec(ip.bytes[2]);
+        serial::putc('.');
+        serial::put_dec(ip.bytes[3]);
+        serial::puts(" port=");
+        serial::put_dec(port);
+        serial::putc('\n');
+    }
 #endif
 
     bool result = net::tcp::socket_connect(sock, ip, port);
 #if VIPER_KERNEL_DEBUG_NET_SYSCALL
-    serial::puts("[syscall] socket_connect: result=");
-    serial::puts(result ? "true" : "false");
-    serial::putc('\n');
+    if (log::get_level() == log::Level::Debug)
+    {
+        serial::puts("[syscall] socket_connect: result=");
+        serial::puts(result ? "true" : "false");
+        serial::putc('\n');
+    }
 #endif
 
     if (!result)
@@ -1108,11 +1289,14 @@ static SyscallResult sys_socket_send(u64 a0, u64 a1, u64 a2, u64, u64, u64)
     }
 
 #if VIPER_KERNEL_DEBUG_NET_SYSCALL
-    serial::puts("[syscall] socket_send: sock=");
-    serial::put_dec(sock);
-    serial::puts(" len=");
-    serial::put_dec(len);
-    serial::putc('\n');
+    if (log::get_level() == log::Level::Debug)
+    {
+        serial::puts("[syscall] socket_send: sock=");
+        serial::put_dec(sock);
+        serial::puts(" len=");
+        serial::put_dec(len);
+        serial::putc('\n');
+    }
 #endif
 
     if (!validate_user_read(buf, len))
@@ -1122,9 +1306,12 @@ static SyscallResult sys_socket_send(u64 a0, u64 a1, u64 a2, u64, u64, u64)
 
     i64 result = net::tcp::socket_send(sock, buf, len);
 #if VIPER_KERNEL_DEBUG_NET_SYSCALL
-    serial::puts("[syscall] socket_send: result=");
-    serial::put_dec(result);
-    serial::putc('\n');
+    if (log::get_level() == log::Level::Debug)
+    {
+        serial::puts("[syscall] socket_send: result=");
+        serial::put_dec(result);
+        serial::putc('\n');
+    }
 #endif
 
     if (result < 0)
@@ -1147,11 +1334,14 @@ static SyscallResult sys_socket_recv(u64 a0, u64 a1, u64 a2, u64, u64, u64)
     }
 
 #if VIPER_KERNEL_DEBUG_NET_SYSCALL
-    serial::puts("[syscall] socket_recv: sock=");
-    serial::put_dec(sock);
-    serial::puts(" len=");
-    serial::put_dec(len);
-    serial::putc('\n');
+    if (log::get_level() == log::Level::Debug)
+    {
+        serial::puts("[syscall] socket_recv: sock=");
+        serial::put_dec(sock);
+        serial::puts(" len=");
+        serial::put_dec(len);
+        serial::putc('\n');
+    }
 #endif
 
     if (!validate_user_write(buf, len))
@@ -1161,9 +1351,12 @@ static SyscallResult sys_socket_recv(u64 a0, u64 a1, u64 a2, u64, u64, u64)
 
     i64 result = net::tcp::socket_recv(sock, buf, len);
 #if VIPER_KERNEL_DEBUG_NET_SYSCALL
-    serial::puts("[syscall] socket_recv: result=");
-    serial::put_dec(result);
-    serial::putc('\n');
+    if (log::get_level() == log::Level::Debug)
+    {
+        serial::puts("[syscall] socket_recv: result=");
+        serial::put_dec(result);
+        serial::putc('\n');
+    }
 #endif
 
     if (result < 0)
@@ -2771,18 +2964,22 @@ static const DeviceMmioRegion known_devices[] = {
 };
 static constexpr u32 KNOWN_DEVICE_COUNT = sizeof(known_devices) / sizeof(known_devices[0]);
 
-static bool device_syscalls_allowed(viper::Viper *v)
+static bool has_device_cap(viper::Viper *v, cap::Rights required)
 {
-    // Temporary policy for bring-up: allow init (Viper ID 1) and its descendants.
-    // Proper device capabilities will replace this.
-    while (v)
+    if (!v || !v->cap_table)
+        return false;
+
+    for (usize i = 0; i < v->cap_table->capacity(); i++)
     {
-        if (v->id == 1)
-        {
+        cap::Entry *e = v->cap_table->entry_at(i);
+        if (!e || e->kind == cap::Kind::Invalid)
+            continue;
+        if (e->kind != cap::Kind::Device)
+            continue;
+        if (cap::has_rights(e->rights, required))
             return true;
-        }
-        v = v->parent;
     }
+
     return false;
 }
 
@@ -2814,27 +3011,7 @@ static SyscallResult sys_map_device(u64 a0, u64 a1, u64 a2, u64, u64, u64)
     }
 
     // Require CAP_DEVICE_ACCESS
-    // For now, check if the process has any entry with device access rights
-    // In a full implementation, we'd have a device capability handle
-    bool has_device_access = false;
-    for (usize i = 0; i < v->cap_table->capacity(); i++)
-    {
-        cap::Entry *e = v->cap_table->entry_at(i);
-        if (e && e->kind != cap::Kind::Invalid &&
-            cap::has_rights(e->rights, cap::CAP_DEVICE_ACCESS))
-        {
-            has_device_access = true;
-            break;
-        }
-    }
-
-    // Also allow init process and its descendants (bring-up policy)
-    if (device_syscalls_allowed(v))
-    {
-        has_device_access = true;
-    }
-
-    if (!has_device_access)
+    if (!has_device_cap(v, cap::CAP_DEVICE_ACCESS))
     {
         return SyscallResult::err(error::VERR_PERMISSION);
     }
@@ -2911,26 +3088,7 @@ static SyscallResult sys_irq_register(u64 a0, u64, u64, u64, u64, u64)
     }
 
     // Require CAP_IRQ_ACCESS
-    bool has_irq_access = false;
-    if (v->cap_table)
-    {
-        for (usize i = 0; i < v->cap_table->capacity(); i++)
-        {
-            cap::Entry *e = v->cap_table->entry_at(i);
-            if (e && e->kind != cap::Kind::Invalid &&
-                cap::has_rights(e->rights, cap::CAP_IRQ_ACCESS))
-            {
-                has_irq_access = true;
-                break;
-            }
-        }
-    }
-    if (device_syscalls_allowed(v))
-    {
-        has_irq_access = true;
-    }
-
-    if (!has_irq_access)
+    if (!has_device_cap(v, cap::CAP_IRQ_ACCESS))
     {
         return SyscallResult::err(error::VERR_PERMISSION);
     }
@@ -3170,26 +3328,7 @@ static SyscallResult sys_dma_alloc(u64 a0, u64 a1, u64, u64, u64, u64)
     }
 
     // Check CAP_DMA_ACCESS
-    bool has_dma_access = false;
-    if (v->cap_table)
-    {
-        for (usize i = 0; i < v->cap_table->capacity(); i++)
-        {
-            cap::Entry *e = v->cap_table->entry_at(i);
-            if (e && e->kind != cap::Kind::Invalid &&
-                cap::has_rights(e->rights, cap::CAP_DMA_ACCESS))
-            {
-                has_dma_access = true;
-                break;
-            }
-        }
-    }
-    if (device_syscalls_allowed(v))
-    {
-        has_dma_access = true;
-    }
-
-    if (!has_dma_access)
+    if (!has_device_cap(v, cap::CAP_DMA_ACCESS))
     {
         return SyscallResult::err(error::VERR_PERMISSION);
     }
@@ -3332,26 +3471,7 @@ static SyscallResult sys_virt_to_phys(u64 a0, u64, u64, u64, u64, u64)
     }
 
     // Check CAP_DMA_ACCESS (needed for physical address translation)
-    bool has_dma_access = false;
-    if (v->cap_table)
-    {
-        for (usize i = 0; i < v->cap_table->capacity(); i++)
-        {
-            cap::Entry *e = v->cap_table->entry_at(i);
-            if (e && e->kind != cap::Kind::Invalid &&
-                cap::has_rights(e->rights, cap::CAP_DMA_ACCESS))
-            {
-                has_dma_access = true;
-                break;
-            }
-        }
-    }
-    if (device_syscalls_allowed(v))
-    {
-        has_dma_access = true;
-    }
-
-    if (!has_dma_access)
+    if (!has_device_cap(v, cap::CAP_DMA_ACCESS))
     {
         return SyscallResult::err(error::VERR_PERMISSION);
     }
@@ -3432,6 +3552,97 @@ static SyscallResult sys_device_enum(u64 a0, u64 a1, u64, u64, u64, u64)
 // Shared Memory Syscalls
 // =============================================================================
 
+/// Track active SHM mappings so SYS_SHM_UNMAP can unmap full regions and release refs.
+struct ShmMapping
+{
+    u32 owner_viper_id;
+    u64 virt_addr;
+    u64 size;
+    kobj::SharedMemory *shm;
+    bool in_use;
+};
+
+static constexpr u32 MAX_SHM_MAPPINGS = 256;
+static ShmMapping shm_mappings[MAX_SHM_MAPPINGS];
+static Spinlock shm_lock;
+static bool shm_mappings_initialized = false;
+
+static void init_shm_mappings()
+{
+    if (shm_mappings_initialized)
+        return;
+    for (u32 i = 0; i < MAX_SHM_MAPPINGS; i++)
+    {
+        shm_mappings[i].in_use = false;
+        shm_mappings[i].owner_viper_id = 0;
+        shm_mappings[i].virt_addr = 0;
+        shm_mappings[i].size = 0;
+        shm_mappings[i].shm = nullptr;
+    }
+    shm_mappings_initialized = true;
+}
+
+static bool track_shm_mapping(u32 viper_id, u64 virt_addr, u64 size, kobj::SharedMemory *shm)
+{
+    init_shm_mappings();
+    SpinlockGuard guard(shm_lock);
+
+    // Refuse duplicates.
+    for (u32 i = 0; i < MAX_SHM_MAPPINGS; i++)
+    {
+        if (shm_mappings[i].in_use && shm_mappings[i].owner_viper_id == viper_id &&
+            shm_mappings[i].virt_addr == virt_addr)
+        {
+            return false;
+        }
+    }
+
+    for (u32 i = 0; i < MAX_SHM_MAPPINGS; i++)
+    {
+        if (!shm_mappings[i].in_use)
+        {
+            shm_mappings[i].in_use = true;
+            shm_mappings[i].owner_viper_id = viper_id;
+            shm_mappings[i].virt_addr = virt_addr;
+            shm_mappings[i].size = size;
+            shm_mappings[i].shm = shm;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static bool untrack_shm_mapping(u32 viper_id, u64 virt_addr, u64 *out_size, kobj::SharedMemory **out_shm)
+{
+    init_shm_mappings();
+    SpinlockGuard guard(shm_lock);
+
+    for (u32 i = 0; i < MAX_SHM_MAPPINGS; i++)
+    {
+        if (!shm_mappings[i].in_use)
+            continue;
+        if (shm_mappings[i].owner_viper_id != viper_id)
+            continue;
+        if (shm_mappings[i].virt_addr != virt_addr)
+            continue;
+
+        if (out_size)
+            *out_size = shm_mappings[i].size;
+        if (out_shm)
+            *out_shm = shm_mappings[i].shm;
+
+        shm_mappings[i].in_use = false;
+        shm_mappings[i].owner_viper_id = 0;
+        shm_mappings[i].virt_addr = 0;
+        shm_mappings[i].size = 0;
+        shm_mappings[i].shm = nullptr;
+        return true;
+    }
+
+    return false;
+}
+
 /**
  * @brief Create a shared memory object.
  *
@@ -3510,6 +3721,17 @@ static SyscallResult sys_shm_create(u64 a0, u64, u64, u64, u64, u64)
         delete shm;
         return SyscallResult::err(error::VERR_OUT_OF_MEMORY);
     }
+
+    // Track the mapping and count it as a reference so the object stays alive even if the handle
+    // is transferred away to another process.
+    if (!track_shm_mapping(v->id, virt_addr, aligned_size, shm))
+    {
+        v->cap_table->remove(handle);
+        as->unmap(virt_addr, aligned_size);
+        delete shm;
+        return SyscallResult::err(error::VERR_NO_RESOURCE);
+    }
+    shm->ref(); // mapping ref
 
     // Return handle and virtual address
     SyscallResult result;
@@ -3594,7 +3816,13 @@ static SyscallResult sys_shm_map(u64 a0, u64, u64, u64, u64, u64)
         return SyscallResult::err(error::VERR_OUT_OF_MEMORY);
     }
 
-    // Increment reference count
+    if (!track_shm_mapping(v->id, virt_addr, aligned_size, shm))
+    {
+        as->unmap(virt_addr, aligned_size);
+        return SyscallResult::err(error::VERR_NO_RESOURCE);
+    }
+
+    // Increment reference count for the new mapping.
     shm->ref();
 
     SyscallResult result;
@@ -3626,10 +3854,48 @@ static SyscallResult sys_shm_unmap(u64 a0, u64, u64, u64, u64, u64)
         return SyscallResult::err(error::VERR_NOT_FOUND);
     }
 
-    // For now, just unmap a page - a full implementation would track
-    // shared memory mappings and unmap the entire region
-    as->unmap(virt_addr, pmm::PAGE_SIZE);
+    u64 size = 0;
+    kobj::SharedMemory *shm = nullptr;
+    if (!untrack_shm_mapping(v->id, virt_addr, &size, &shm) || size == 0 || !shm)
+    {
+        return SyscallResult::err(error::VERR_NOT_FOUND);
+    }
 
+    as->unmap(virt_addr, size);
+    kobj::release(shm);
+
+    return SyscallResult::ok();
+}
+
+/**
+ * @brief Close/release a shared memory handle.
+ *
+ * @details
+ * Removes the SharedMemory capability from the calling process. The underlying object is freed
+ * when all handles and mappings are released.
+ *
+ * @param a0 SharedMemory handle
+ * @return 0 on success, negative error on failure
+ */
+static SyscallResult sys_shm_close(u64 a0, u64, u64, u64, u64, u64)
+{
+    cap::Handle handle = static_cast<cap::Handle>(a0);
+
+    viper::Viper *v = viper::current();
+    if (!v || !v->cap_table)
+    {
+        return SyscallResult::err(error::VERR_NOT_FOUND);
+    }
+
+    cap::Entry *entry = v->cap_table->get_checked(handle, cap::Kind::SharedMemory);
+    if (!entry)
+    {
+        return SyscallResult::err(error::VERR_INVALID_HANDLE);
+    }
+
+    kobj::SharedMemory *shm = static_cast<kobj::SharedMemory *>(entry->object);
+    v->cap_table->remove(handle);
+    kobj::release(shm);
     return SyscallResult::ok();
 }
 
@@ -3657,6 +3923,7 @@ static const SyscallEntry syscall_table[] = {
     {SYS_WAITPID, sys_waitpid, "waitpid", 2},
     {SYS_SBRK, sys_sbrk, "sbrk", 1},
     {SYS_FORK, sys_fork, "fork", 0},
+    {SYS_TASK_SPAWN_SHM, sys_task_spawn_shm, "task_spawn_shm", 5},
 
     // Channel IPC (0x10-0x1F)
     {SYS_CHANNEL_CREATE, sys_channel_create, "channel_create", 0},
@@ -3776,6 +4043,7 @@ static const SyscallEntry syscall_table[] = {
     {SYS_SHM_CREATE, sys_shm_create, "shm_create", 1},
     {SYS_SHM_MAP, sys_shm_map, "shm_map", 1},
     {SYS_SHM_UNMAP, sys_shm_unmap, "shm_unmap", 1},
+    {SYS_SHM_CLOSE, sys_shm_close, "shm_close", 1},
 };
 
 static constexpr usize SYSCALL_TABLE_SIZE = sizeof(syscall_table) / sizeof(syscall_table[0]);

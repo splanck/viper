@@ -104,6 +104,10 @@ set(RT_GRAPHICS_SOURCES
         rt_pixels.c
 )
 
+set(RT_AUDIO_SOURCES
+        rt_audio.c
+)
+
 set(RT_THREADS_SOURCES
         rt_monitor.c
         rt_safe_i64.c
@@ -156,6 +160,7 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_path.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_dir.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_pixels.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_audio.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_threads.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_network.h
 )
@@ -170,6 +175,7 @@ add_library(viper_rt_text_obj OBJECT ${RT_TEXT_SOURCES})
 add_library(viper_rt_io_fs_obj OBJECT ${RT_IO_FS_SOURCES})
 add_library(viper_rt_exec_obj OBJECT ${RT_EXEC_SOURCES})
 add_library(viper_rt_graphics_obj OBJECT ${RT_GRAPHICS_SOURCES})
+add_library(viper_rt_audio_obj OBJECT ${RT_AUDIO_SOURCES})
 add_library(viper_rt_threads_obj OBJECT ${RT_THREADS_SOURCES})
 add_library(viper_rt_network_obj OBJECT ${RT_NETWORK_SOURCES})
 
@@ -181,6 +187,7 @@ add_library(viper_rt_text STATIC $<TARGET_OBJECTS:viper_rt_text_obj>)
 add_library(viper_rt_io_fs STATIC $<TARGET_OBJECTS:viper_rt_io_fs_obj>)
 add_library(viper_rt_exec STATIC $<TARGET_OBJECTS:viper_rt_exec_obj>)
 add_library(viper_rt_graphics STATIC $<TARGET_OBJECTS:viper_rt_graphics_obj>)
+add_library(viper_rt_audio STATIC $<TARGET_OBJECTS:viper_rt_audio_obj>)
 add_library(viper_rt_threads STATIC $<TARGET_OBJECTS:viper_rt_threads_obj>)
 add_library(viper_rt_network STATIC $<TARGET_OBJECTS:viper_rt_network_obj>)
 
@@ -193,6 +200,7 @@ add_library(viper_runtime STATIC
         $<TARGET_OBJECTS:viper_rt_io_fs_obj>
         $<TARGET_OBJECTS:viper_rt_exec_obj>
         $<TARGET_OBJECTS:viper_rt_graphics_obj>
+        $<TARGET_OBJECTS:viper_rt_audio_obj>
         $<TARGET_OBJECTS:viper_rt_threads_obj>
         $<TARGET_OBJECTS:viper_rt_network_obj>
 )
@@ -206,6 +214,7 @@ set(VIPER_RUNTIME_COMPONENT_OBJECT_LIBS
         viper_rt_io_fs_obj
         viper_rt_exec_obj
         viper_rt_graphics_obj
+        viper_rt_audio_obj
         viper_rt_threads_obj
         viper_rt_network_obj
 )
@@ -219,6 +228,7 @@ set(VIPER_RUNTIME_COMPONENT_LIBS
         viper_rt_io_fs
         viper_rt_exec
         viper_rt_graphics
+        viper_rt_audio
         viper_rt_threads
         viper_rt_network
         viper_runtime
@@ -306,4 +316,19 @@ if (VIPER_ENABLE_GRAPHICS AND TARGET vipergfx)
     target_link_libraries(viper_runtime PUBLIC vipergfx)
 else ()
     message(STATUS "viper_runtime: Graphics support disabled (vipergfx not available)")
+endif ()
+
+# Audio support (optional, enabled by default)
+option(VIPER_ENABLE_AUDIO "Enable ViperAUD audio support" ON)
+
+if (VIPER_ENABLE_AUDIO AND TARGET viperaud)
+    message(STATUS "viper_runtime: Audio support enabled")
+    target_compile_definitions(viper_rt_audio_obj PRIVATE VIPER_ENABLE_AUDIO)
+    target_include_directories(viper_rt_audio_obj PRIVATE
+            ${PROJECT_SOURCE_DIR}/src/lib/audio/include
+    )
+    target_link_libraries(viper_rt_audio PUBLIC viperaud)
+    target_link_libraries(viper_runtime PUBLIC viperaud)
+else ()
+    message(STATUS "viper_runtime: Audio support disabled (viperaud not available)")
 endif ()

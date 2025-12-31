@@ -341,6 +341,7 @@ i32 BlkDevice::flush()
 
     // Wait for completion
     bool got_completion = false;
+    constexpr u32 POLL_TIMEOUT_ITERS = 10000000;
     for (u32 i = 0; i < 100; i++)
     {
         i64 err = device::irq_wait(irq_num_, 100);
@@ -360,7 +361,7 @@ i32 BlkDevice::flush()
     // Fallback to polling
     if (!got_completion)
     {
-        while (true)
+        for (u32 i = 0; i < POLL_TIMEOUT_ITERS; i++)
         {
             i32 completed = vq_.poll_used();
             if (completed == desc0)
@@ -370,6 +371,14 @@ i32 BlkDevice::flush()
             }
             asm volatile("yield" ::: "memory");
         }
+    }
+
+    if (!got_completion)
+    {
+        vq_.free_desc(desc0);
+        vq_.free_desc(desc1);
+        slot.in_use = false;
+        return -1;
     }
 
     vq_.free_desc(desc0);

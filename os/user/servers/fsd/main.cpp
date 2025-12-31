@@ -45,6 +45,34 @@ static viperfs::BlkClient g_blk_client;
 static viperfs::ViperFS g_viperfs;
 static i32 g_service_channel = -1;
 
+static void recv_bootstrap_caps()
+{
+    // If this process was spawned by vinit, handle 0 is expected to be a
+    // bootstrap channel recv endpoint used for initial capability delegation.
+    constexpr i32 BOOTSTRAP_RECV = 0;
+
+    u8 dummy[1];
+    u32 handles[4];
+    u32 handle_count = 4;
+
+    for (u32 i = 0; i < 2000; i++)
+    {
+        handle_count = 4;
+        i64 n = sys::channel_recv(BOOTSTRAP_RECV, dummy, sizeof(dummy), handles, &handle_count);
+        if (n >= 0)
+        {
+            sys::channel_close(BOOTSTRAP_RECV);
+            return;
+        }
+        if (n == VERR_WOULD_BLOCK)
+        {
+            sys::yield();
+            continue;
+        }
+        return;
+    }
+}
+
 // File descriptor table for this server
 // Maps client file_ids to internal file state
 struct OpenFile
@@ -716,6 +744,7 @@ static void server_loop()
 extern "C" void _start()
 {
     debug_print("[fsd] Filesystem server starting\n");
+    recv_bootstrap_caps();
 
     // Connect to block device server
     debug_print("[fsd] Connecting to blkd...\n");

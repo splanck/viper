@@ -43,6 +43,8 @@
 #define CAP_KIND_DIRECTORY 22 /**< Directory object (handle-based filesystem API). */
 #define CAP_KIND_SURFACE 23   /**< Graphics surface/framebuffer object. */
 #define CAP_KIND_INPUT 24     /**< Input device/stream object. */
+#define CAP_KIND_SHARED_MEMORY 25 /**< Shared memory object. */
+#define CAP_KIND_DEVICE 26        /**< Device capability (microkernel). */
 /** @} */
 
 /** @name Capability Rights
@@ -69,6 +71,13 @@
 #define CAP_RIGHT_DERIVE (1 << 6)   /**< Derive a new handle with reduced rights. */
 #define CAP_RIGHT_TRANSFER (1 << 7) /**< Transfer/duplicate handle to another party. */
 #define CAP_RIGHT_SPAWN (1 << 8)    /**< Spawn tasks/processes using this handle/context. */
+
+/** @brief Allow mapping device MMIO regions via `SYS_MAP_DEVICE`. */
+#define CAP_RIGHT_DEVICE_ACCESS (1 << 10)
+/** @brief Allow registering/waiting/acking IRQs via `SYS_IRQ_*`. */
+#define CAP_RIGHT_IRQ_ACCESS (1 << 11)
+/** @brief Allow allocating/using DMA buffers via `SYS_DMA_*` and `SYS_VIRT_TO_PHYS`. */
+#define CAP_RIGHT_DMA_ACCESS (1 << 12)
 
 /** @} */
 

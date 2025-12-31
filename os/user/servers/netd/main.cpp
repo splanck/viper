@@ -74,6 +74,34 @@ static i32 g_service_channel = -1;
 // QEMU virt machine VirtIO IRQ base
 constexpr u32 VIRTIO_IRQ_BASE = 48;
 
+static void recv_bootstrap_caps()
+{
+    // If this process was spawned by vinit, handle 0 is expected to be a
+    // bootstrap channel recv endpoint used for initial capability delegation.
+    constexpr i32 BOOTSTRAP_RECV = 0;
+
+    u8 dummy[1];
+    u32 handles[4];
+    u32 handle_count = 4;
+
+    for (u32 i = 0; i < 2000; i++)
+    {
+        handle_count = 4;
+        i64 n = sys::channel_recv(BOOTSTRAP_RECV, dummy, sizeof(dummy), handles, &handle_count);
+        if (n >= 0)
+        {
+            sys::channel_close(BOOTSTRAP_RECV);
+            return;
+        }
+        if (n == VERR_WOULD_BLOCK)
+        {
+            sys::yield();
+            continue;
+        }
+        return;
+    }
+}
+
 /**
  * @brief Find VirtIO-net device in the system.
  *
@@ -630,6 +658,19 @@ static void server_loop()
 
         // Close the reply channel
         sys::channel_close(reply_channel);
+
+        // Close any additional transferred handles (e.g., send payload SHM).
+        for (u32 i = 1; i < handle_count; i++)
+        {
+            if (handles[i] == 0)
+                continue;
+            i32 close_err = sys::shm_close(handles[i]);
+            if (close_err != 0)
+            {
+                // Best-effort fallback: at least drop the handle to avoid cap table exhaustion.
+                (void)sys::cap_revoke(handles[i]);
+            }
+        }
     }
 }
 
@@ -639,6 +680,7 @@ static void server_loop()
 extern "C" void _start()
 {
     debug_print("[netd] Network server starting\n");
+    recv_bootstrap_caps();
 
     // Find VirtIO-net device
     u64 mmio_phys = 0;

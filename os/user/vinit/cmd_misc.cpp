@@ -4,6 +4,8 @@
  */
 #include "vinit.hpp"
 
+#include "fsclient.hpp"
+
 void cmd_run(const char *cmdline)
 {
     if (!cmdline || *cmdline == '\0')
@@ -44,7 +46,8 @@ void cmd_run(const char *cmdline)
 
     u64 pid = 0;
     u64 tid = 0;
-    i64 err = sys::spawn(path, nullptr, &pid, &tid, args);
+    u32 bootstrap_send = 0xFFFFFFFFu;
+    i64 err = sys::spawn(path, nullptr, &pid, &tid, args, &bootstrap_send);
 
     // If not found and not an absolute/relative path, try C: directory
     if (err < 0 && path[0] != '/' && !strstart(path, "./") && !strstart(path, "../"))
@@ -65,7 +68,8 @@ void cmd_run(const char *cmdline)
         search_path[i] = '\0';
 
         // Try with the name as-is first
-        err = sys::spawn(search_path, nullptr, &pid, &tid, args);
+        bootstrap_send = 0xFFFFFFFFu;
+        err = sys::spawn(search_path, nullptr, &pid, &tid, args, &bootstrap_send);
 
         // If still not found and doesn't end in .elf, try adding .elf
         if (err < 0)
@@ -80,7 +84,8 @@ void cmd_run(const char *cmdline)
                     search_path[len++] = 'l';
                     search_path[len++] = 'f';
                     search_path[len] = '\0';
-                    err = sys::spawn(search_path, nullptr, &pid, &tid, args);
+                    bootstrap_send = 0xFFFFFFFFu;
+                    err = sys::spawn(search_path, nullptr, &pid, &tid, args, &bootstrap_send);
                 }
             }
         }
@@ -101,6 +106,14 @@ void cmd_run(const char *cmdline)
         last_rc = RC_FAIL;
         last_error = "Spawn failed";
         return;
+    }
+
+    // Unless the caller explicitly wants to delegate capabilities, close the
+    // bootstrap send endpoint returned by SYS_TASK_SPAWN to avoid leaking
+    // channel handles for each spawned process.
+    if (bootstrap_send != 0xFFFFFFFFu)
+    {
+        sys::channel_close(static_cast<i32>(bootstrap_send));
     }
 
     print_str("Started process ");
@@ -134,6 +147,197 @@ void cmd_run(const char *cmdline)
     // Restore shell text color after child process (in case it changed colors)
     print_str("\033[33m");
 
+    last_rc = RC_OK;
+}
+
+void cmd_run_fsd(const char *cmdline)
+{
+    if (!cmdline || *cmdline == '\0')
+    {
+        print_str("RunFSD: missing program path\n");
+        last_rc = RC_ERROR;
+        last_error = "No path specified";
+        return;
+    }
+
+    // Parse the command line: first word is path, rest are args
+    char path_buf[256];
+    char args_buf[256];
+    usize path_len = 0;
+    usize args_len = 0;
+
+    const char *p = cmdline;
+    while (*p == ' ')
+        p++;
+
+    while (*p && *p != ' ' && path_len < 255)
+        path_buf[path_len++] = *p++;
+    path_buf[path_len] = '\0';
+
+    while (*p == ' ')
+        p++;
+
+    while (*p && args_len < 255)
+        args_buf[args_len++] = *p++;
+    args_buf[args_len] = '\0';
+
+    const char *path = path_buf;
+    const char *args = args_len > 0 ? args_buf : nullptr;
+
+    fsclient::Client fs;
+    u32 file_id = 0;
+    i32 ferr = fs.open(path, 0 /* O_RDONLY */, &file_id);
+
+    // If not found and not an absolute/relative path, try /c/ like Run does.
+    if (ferr < 0 && path[0] != '/' && !strstart(path, "./") && !strstart(path, "../"))
+    {
+        char search_path[256];
+        usize i = 0;
+        search_path[i++] = '/';
+        search_path[i++] = 'c';
+        search_path[i++] = '/';
+
+        const char *q = path;
+        while (*q && i < 250)
+            search_path[i++] = *q++;
+        search_path[i] = '\0';
+
+        ferr = fs.open(search_path, 0 /* O_RDONLY */, &file_id);
+        if (ferr < 0)
+        {
+            usize len = i;
+            if (len < 4 || !streq(search_path + len - 4, ".elf"))
+            {
+                if (len + 4 < 255)
+                {
+                    search_path[len++] = '.';
+                    search_path[len++] = 'e';
+                    search_path[len++] = 'l';
+                    search_path[len++] = 'f';
+                    search_path[len] = '\0';
+                    ferr = fs.open(search_path, 0 /* O_RDONLY */, &file_id);
+                }
+            }
+        }
+
+        if (ferr >= 0)
+        {
+            path = search_path;
+        }
+    }
+
+    if (ferr < 0)
+    {
+        print_str("RunFSD: failed to open \"");
+        print_str(path);
+        print_str("\" (error ");
+        put_num(ferr);
+        print_str(")\n");
+        last_rc = RC_FAIL;
+        last_error = "FSD open failed";
+        return;
+    }
+
+    u64 size = 0;
+    i32 serr = fs.file_size(file_id, &size);
+    if (serr < 0 || size == 0 || size > 0xFFFFFFFFull)
+    {
+        (void)fs.close(file_id);
+        print_str("RunFSD: failed to stat executable (error ");
+        put_num(serr);
+        print_str(")\n");
+        last_rc = RC_FAIL;
+        last_error = "FSD stat failed";
+        return;
+    }
+
+    auto shm = sys::shm_create(size);
+    if (shm.error < 0)
+    {
+        (void)fs.close(file_id);
+        print_str("RunFSD: failed to allocate SHM (error ");
+        put_num(shm.error);
+        print_str(")\n");
+        last_rc = RC_FAIL;
+        last_error = "SHM create failed";
+        return;
+    }
+
+    u8 *dst = reinterpret_cast<u8 *>(shm.virt_addr);
+    i64 nread = fs.read(file_id, dst, static_cast<u32>(size));
+    (void)fs.close(file_id);
+
+    if (nread < 0 || static_cast<u64>(nread) != size)
+    {
+        (void)sys::shm_unmap(shm.virt_addr);
+        (void)sys::shm_close(shm.handle);
+        print_str("RunFSD: failed to read executable (error ");
+        put_num(nread);
+        print_str(")\n");
+        last_rc = RC_FAIL;
+        last_error = "FSD read failed";
+        return;
+    }
+
+    u64 pid = 0;
+    u64 tid = 0;
+    u32 bootstrap_send = 0xFFFFFFFFu;
+    i64 err = sys::spawn_shm(shm.handle,
+                             0,
+                             size,
+                             path /* name */,
+                             &pid,
+                             &tid,
+                             args,
+                             &bootstrap_send);
+
+    (void)sys::shm_unmap(shm.virt_addr);
+    (void)sys::shm_close(shm.handle);
+
+    if (err < 0)
+    {
+        print_str("RunFSD: failed to spawn \"");
+        print_str(path);
+        print_str("\" (error ");
+        put_num(err);
+        print_str(")\n");
+        last_rc = RC_FAIL;
+        last_error = "Spawn failed";
+        return;
+    }
+
+    if (bootstrap_send != 0xFFFFFFFFu)
+    {
+        sys::channel_close(static_cast<i32>(bootstrap_send));
+    }
+
+    print_str("Started process ");
+    put_num(static_cast<i64>(pid));
+    print_str(" (task ");
+    put_num(static_cast<i64>(tid));
+    print_str(")\n");
+
+    i32 status = 0;
+    i64 exited_pid = sys::waitpid(pid, &status);
+
+    if (exited_pid < 0)
+    {
+        print_str("RunFSD: wait failed (error ");
+        put_num(exited_pid);
+        print_str(")\n");
+        print_str("\033[33m");
+        last_rc = RC_FAIL;
+        last_error = "Wait failed";
+        return;
+    }
+
+    print_str("Process ");
+    put_num(exited_pid);
+    print_str(" exited with status ");
+    put_num(static_cast<i64>(status));
+    print_str("\n");
+
+    print_str("\033[33m");
     last_rc = RC_OK;
 }
 

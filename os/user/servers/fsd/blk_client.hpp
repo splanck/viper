@@ -125,8 +125,10 @@ class BlkClient
         // Check if we received a shared memory handle
         if (handle_count >= 1 && handles[0] != 0)
         {
+            u32 shm_handle = handles[0];
+
             // Map the shared memory
-            auto shm_map = sys::shm_map(handles[0]);
+            auto shm_map = sys::shm_map(shm_handle);
             if (shm_map.error == 0)
             {
                 // Copy data from shared memory to user buffer
@@ -135,6 +137,9 @@ class BlkClient
                 // Unmap shared memory
                 sys::shm_unmap(shm_map.virt_addr);
             }
+
+            // Release the transferred SHM handle (prevents cap table exhaustion).
+            sys::shm_close(shm_handle);
         }
 
         return 0;

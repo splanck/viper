@@ -96,6 +96,7 @@ void cmd_rename(const char *args);
 
 // Misc commands
 void cmd_run(const char *path);
+void cmd_run_fsd(const char *path);
 void cmd_assign(const char *args);
 void cmd_path(const char *args);
 void cmd_fetch(const char *url);

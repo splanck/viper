@@ -148,12 +148,32 @@ Spawn a new user process from an ELF file.
 - x0: VError (0 on success)
 - x1: Process ID (u64) on success
 - x2: Task ID (u64) on success
+- x3: Bootstrap channel send endpoint handle (u32) on success (may be `0xFFFFFFFF` if unavailable)
 
 **Example:**
 ```cpp
 u64 pid, tid;
 i64 err = sys::spawn("/c/hello.elf", nullptr, &pid, &tid, "arg1 arg2");
 ```
+
+---
+
+### SYS_TASK_SPAWN_SHM (0x0C)
+
+Spawn a new user process from an ELF image stored in a shared memory object.
+
+**Arguments:**
+- x0: Shared memory handle (u32)
+- x1: Byte offset within the shared memory object (u64)
+- x2: ELF image length in bytes (u64)
+- x3: Display name (const char*) or 0 (kernel uses a default)
+- x4: Arguments string (const char*) or 0
+
+**Returns:**
+- x0: VError (0 on success)
+- x1: Process ID (u64) on success
+- x2: Task ID (u64) on success
+- x3: Bootstrap channel send endpoint handle (u32) on success (may be `0xFFFFFFFF` if unavailable)
 
 ---
 
@@ -1021,6 +1041,17 @@ Unmap a previously mapped shared memory region.
 
 **Arguments:**
 - x0: Virtual address of mapping (u64)
+
+**Returns:** 0 on success
+
+---
+
+### SYS_SHM_CLOSE (0x10C)
+
+Close/release a shared memory handle.
+
+**Arguments:**
+- x0: Shared memory handle (u32)
 
 **Returns:** 0 on success
 

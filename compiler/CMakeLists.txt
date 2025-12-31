@@ -350,6 +350,11 @@ endif()
 add_subdirectory(src/lib/graphics)
 viper_assert_no_directory_link_libraries("src/lib/graphics" "src/lib/graphics")
 
+# ---- ViperAUD library ----
+# (Must be added before runtime so rt_audio can link to it)
+add_subdirectory(src/lib/audio)
+viper_assert_no_directory_link_libraries("src/lib/audio" "src/lib/audio")
+
 add_subdirectory(${CMAKE_SOURCE_DIR}/src/runtime)
 viper_assert_no_directory_link_libraries("src/runtime" "src/runtime")
 

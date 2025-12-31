@@ -32,6 +32,9 @@ add_subdirectory(servers)
 # Build the SSH library
 add_subdirectory(libssh)
 
+# Build the filesystem client library
+add_subdirectory(libfsclient)
+
 # Helper function to create user programs with libc
 function(add_user_program name)
     add_executable(${name}.elf ${ARGN})
@@ -55,6 +58,7 @@ add_user_program(vinit
         vinit/cmd_misc.cpp
         vinit/shell.cpp
 )
+target_link_libraries(vinit.elf PRIVATE viperfsclient)
 
 # hello - simple test program for spawn testing
 add_user_program(hello hello/hello.cpp)

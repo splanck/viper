@@ -249,6 +249,20 @@ Viper *create(Viper *parent, const char *name)
     }
     v->cap_table = &ct;
 
+    // Bootstrap device capabilities for the init process only.
+    //
+    // Microkernel user-space drivers (blkd/netd/fsd) are expected to receive
+    // delegated device capabilities from vinit via IPC, but vinit itself needs
+    // an initial "root" device capability to start that delegation chain.
+    if (!parent)
+    {
+        static u32 device_root_token = 0;
+        (void)ct.insert(&device_root_token,
+                        cap::Kind::Device,
+                        cap::CAP_DEVICE_ACCESS | cap::CAP_IRQ_ACCESS | cap::CAP_DMA_ACCESS |
+                            cap::CAP_TRANSFER | cap::CAP_DERIVE);
+    }
+
     // Initialize file descriptor table
     fs::vfs::FDTable &fdt = fd_tables[idx];
     fdt.init();
