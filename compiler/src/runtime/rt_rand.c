@@ -48,6 +48,9 @@
 #ifndef NT_SUCCESS
 #define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
 #endif
+#elif defined(__viperos__)
+// TODO: ViperOS - include random number headers when available
+// ViperOS has VirtIO-RNG and syscall for random bytes
 #else
 #include <errno.h>
 #include <fcntl.h>
@@ -67,6 +70,11 @@ static int secure_random_fill(uint8_t *buf, size_t len)
     // Use BCryptGenRandom on Windows
     NTSTATUS status = BCryptGenRandom(NULL, buf, (ULONG)len, BCRYPT_USE_SYSTEM_PREFERRED_RNG);
     return NT_SUCCESS(status) ? 0 : -1;
+#elif defined(__viperos__)
+    // TODO: ViperOS - implement using VirtIO-RNG or getrandom syscall
+    (void)buf;
+    (void)len;
+    return -1;
 #else
     // Use /dev/urandom on Unix-like systems
     int fd = open("/dev/urandom", O_RDONLY);

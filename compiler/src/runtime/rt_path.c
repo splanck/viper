@@ -88,6 +88,10 @@
 #define getcwd _getcwd
 #define PATH_SEP '\\'
 #define PATH_SEP_STR "\\"
+#elif defined(__viperos__)
+// TODO: ViperOS - include path utilities when available
+#define PATH_SEP '/'
+#define PATH_SEP_STR "/"
 #else
 #include <unistd.h>
 #define PATH_SEP '/'

@@ -45,6 +45,12 @@
 #define RT_PLATFORM_LINUX 0
 #endif
 
+#if defined(__viperos__)
+#define RT_PLATFORM_VIPEROS 1
+#else
+#define RT_PLATFORM_VIPEROS 0
+#endif
+
 //===----------------------------------------------------------------------===//
 // Compiler Detection
 //===----------------------------------------------------------------------===//
@@ -356,9 +362,17 @@ static inline void rt_windows_sleep_ms(int64_t ms) {
     if (ms > 0) Sleep((DWORD)ms);
 }
 
-#else // !RT_PLATFORM_WINDOWS
+#elif RT_PLATFORM_VIPEROS
 
-// POSIX systems
+// ViperOS platform
+// TODO: ViperOS - include appropriate system headers
+// TODO: ViperOS - may need custom implementations for some functions
+
+#define RT_PATH_SEPARATOR '/'
+#define RT_PATH_SEPARATOR_STR "/"
+
+#else // POSIX systems (macOS, Linux)
+
 #include <unistd.h>
 #include <sys/time.h>
 

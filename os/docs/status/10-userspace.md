@@ -1,8 +1,8 @@
 # User Space
 
-**Status:** Complete with comprehensive libc, C++ STL headers, and interactive shell
+**Status:** Complete with comprehensive libc, C++ STL headers, SSH/SFTP, and interactive shell
 **Location:** `user/`
-**SLOC:** ~28,300 (16,200 libc sources + 6,500 C headers + 25,000 C++ headers + 2,300 vinit + 3,800 test programs)
+**SLOC:** ~35,000 (16,200 libc + 6,500 C headers + 25,000 C++ headers + 4,300 libssh + 2,300 vinit + 3,800 programs)
 
 ## Overview
 
@@ -2071,6 +2071,56 @@ User space is tested via:
 | `syscall.hpp` | ~1,677 | Low-level syscall wrappers |
 | `hello/hello.cpp` | ~294 | Hello world test program |
 | `sysinfo/sysinfo.cpp` | ~392 | System info utility |
+| `ping/ping.cpp` | ~200 | ICMP ping utility |
+| `fsinfo/fsinfo.cpp` | ~150 | Filesystem info utility |
+| `netstat/netstat.cpp` | ~150 | Network statistics utility |
+| `devices/devices.cpp` | ~180 | Hardware device listing |
+| `mathtest/mathtest.cpp` | ~250 | Math library tests |
+| `edit/edit.cpp` | ~500 | Nano-like text editor |
+| `ssh/ssh.c` | ~400 | SSH-2 client |
+| `sftp/sftp.c` | ~800 | Interactive SFTP client |
+
+### SSH/SFTP Clients
+
+**libssh** (`user/libssh/`) provides SSH-2 protocol support:
+
+| File | Lines | Description |
+|------|-------|-------------|
+| `ssh.c` | ~900 | SSH transport layer |
+| `ssh_auth.c` | ~500 | Password/public key authentication |
+| `ssh_channel.c` | ~600 | Channel management (PTY, shell, exec) |
+| `ssh_crypto.c` | ~1,500 | User-space crypto primitives |
+| `sftp.c` | ~800 | SFTP v3 protocol |
+
+**SSH Client** (`ssh.elf`):
+```
+Usage: ssh [-p port] [-i identity] [-l user] user@host [command]
+```
+
+Features:
+- Interactive shell mode with PTY
+- Remote command execution
+- Ed25519 and RSA public key authentication
+- Password authentication fallback
+- OpenSSH private key format support
+
+**SFTP Client** (`sftp.elf`):
+```
+Usage: sftp [-p port] user@host
+```
+
+Interactive commands:
+- `ls [path]` - List directory
+- `cd <path>` - Change remote directory
+- `pwd` - Print remote directory
+- `get <remote> [local]` - Download file
+- `put <local> [remote]` - Upload file
+- `mkdir <path>` - Create directory
+- `rmdir <path>` - Remove directory
+- `rm <path>` - Remove file
+- `rename <old> <new>` - Rename file
+- `chmod <mode> <path>` - Change permissions
+- `stat <path>` - Show file info
 
 ---
 

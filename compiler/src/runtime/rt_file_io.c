@@ -78,6 +78,18 @@ typedef SSIZE_T ssize_t;
 #ifndef EAGAIN
 #define EAGAIN EIO
 #endif
+#elif defined(__viperos__)
+// TODO: ViperOS - include file I/O headers when available
+// ViperOS has POSIX-like file I/O syscalls
+#include <sys/stat.h>
+#include <sys/types.h>
+typedef long ssize_t;
+#define S_IRUSR 0400
+#define S_IWUSR 0200
+#define S_IRGRP 0040
+#define S_IWGRP 0020
+#define S_IROTH 0004
+#define S_IWOTH 0002
 #ifndef EINTR
 #define EINTR 0 // Windows doesn't have EINTR; reads/writes don't get interrupted
 #endif

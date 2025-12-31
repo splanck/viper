@@ -11,7 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 // Define feature test macros before any includes
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(__viperos__)
 #ifndef _POSIX_C_SOURCE
 #define _POSIX_C_SOURCE 200809L
 #endif
@@ -31,6 +31,8 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#elif defined(__viperos__)
+// TODO: ViperOS - include system info headers when available
 #else
 #include <pwd.h>
 #include <sys/types.h>
@@ -68,6 +70,8 @@ rt_string rt_machine_os(void)
     return make_str("macos");
 #elif defined(__linux__)
     return make_str("linux");
+#elif defined(__viperos__)
+    return make_str("viperos");
 #else
     return make_str("unknown");
 #endif
@@ -147,6 +151,10 @@ rt_string rt_machine_os_ver(void)
         return make_str(uts.release);
     }
     return make_str("unknown");
+
+#elif defined(__viperos__)
+    // TODO: ViperOS - implement version query syscall
+    return make_str("0.2.7");
 
 #else
     struct utsname uts;

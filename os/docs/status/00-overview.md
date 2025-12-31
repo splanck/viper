@@ -1,8 +1,8 @@
 # ViperOS Implementation Status
 
-**Version:** December 2025 (v0.2.6)
+**Version:** December 2025 (v0.2.7)
 **Target:** AArch64 (ARM64) on QEMU virt machine
-**Total SLOC:** ~93,000
+**Total SLOC:** ~100,000
 
 ## Executive Summary
 
@@ -21,9 +21,10 @@ ViperOS is a capability-based microkernel operating system targeting AArch64. Th
 | Filesystem (VFS/ViperFS) | ~6,400 | Complete (journal, inode cache, block cache) |
 | IPC (Channels/Poll) | ~2,500 | Complete |
 | Networking (TCP/IP/TLS) | ~14,600 | Complete |
+| SSH/Crypto (TLS, SSH) | ~8,000 | Complete (TLS 1.3, SSH-2, SFTP v3) |
 | Scheduler/Tasks | ~2,900 | Complete (wait queues, priorities, signals) |
 | Viper/Capabilities | ~2,900 | Complete (VMA, address spaces) |
-| User Space (libc/C++) | ~28,300 | Complete (55 C sources, 66 C++ headers) |
+| User Space (libc/C++/SSH) | ~35,000 | Complete (55+ C sources, 66 C++ headers) |
 | Tools | ~2,200 | Complete |
 
 ---
@@ -41,8 +42,11 @@ ViperOS is a capability-based microkernel operating system targeting AArch64. Th
 | [07-networking.md](07-networking.md) | Ethernet, ARP, IPv4, TCP, UDP, DNS, TLS, HTTP |
 | [08-scheduler.md](08-scheduler.md) | Tasks, scheduler, context switch, wait queues |
 | [09-viper-process.md](09-viper-process.md) | Viper processes, address spaces, VMA, capabilities |
-| [10-userspace.md](10-userspace.md) | vinit, syscall wrappers, libc, C++ runtime |
+| [10-userspace.md](10-userspace.md) | vinit, syscall wrappers, libc, C++ runtime, SSH/SFTP |
 | [11-tools.md](11-tools.md) | mkfs.viperfs, fsck.viperfs, gen_roots_der |
+| [12-crypto.md](12-crypto.md) | TLS 1.3, SSH crypto, hash functions, encryption |
+| [13-servers.md](13-servers.md) | Microkernel servers (fsd, blkd, netd), libvirtio |
+| [14-summary.md](14-summary.md) | Implementation summary and development roadmap |
 
 ---
 
@@ -318,6 +322,18 @@ os/
 ---
 
 ## Version History
+
+- **December 2025 (v0.2.7)**: SSH/SFTP client implementation
+  - **SSH Library (libssh)**: Complete SSH-2 protocol implementation
+    - Transport layer with curve25519-sha256 key exchange
+    - Password and public key authentication (Ed25519, RSA)
+    - OpenSSH private key format parsing
+    - Channel management with PTY, shell, exec, subsystem
+    - SFTP v3 protocol implementation
+  - **Crypto Primitives**: SHA-1, AES-CTR, Ed25519 signatures, RSA signing
+  - **User Programs**: ssh.elf (169KB), sftp.elf (188KB)
+  - **libc Additions**: stdint.h, stdarg.h, crt0.c (C runtime startup), _exit()
+  - **Build System**: libssh CMakeLists.txt, add_ssh_program() helper
 
 - **December 2025 (v0.2.6)**: Comprehensive libc expansion and build fixes
   - **Expanded libc**: 55 source files totaling ~16,200 lines

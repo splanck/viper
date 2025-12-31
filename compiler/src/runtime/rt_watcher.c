@@ -47,6 +47,9 @@
 #endif
 #elif defined(_WIN32)
 #include <windows.h>
+#elif defined(__viperos__)
+// TODO: ViperOS - file system watching not yet implemented
+// Would need kernel support for file change notifications
 #else
 // Stub platform
 #endif

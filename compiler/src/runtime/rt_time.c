@@ -166,6 +166,29 @@ int64_t rt_clock_ticks_us(void)
     return us;
 }
 
+#elif defined(__viperos__)
+
+// ViperOS time implementation
+// TODO: ViperOS - implement using ViperOS syscalls (sys_clock_gettime or similar)
+
+void rt_sleep_ms(int32_t ms)
+{
+    // TODO: ViperOS - implement sleep using nanosleep syscall
+    (void)ms;
+}
+
+int64_t rt_timer_ms(void)
+{
+    // TODO: ViperOS - implement using monotonic clock syscall
+    return 0;
+}
+
+int64_t rt_clock_ticks_us(void)
+{
+    // TODO: ViperOS - implement using monotonic clock syscall with microsecond precision
+    return 0;
+}
+
 #else
 #include <errno.h>
 #include <time.h>

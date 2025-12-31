@@ -99,6 +99,8 @@
 #include <windows.h>
 #define popen _popen
 #define pclose _pclose
+#elif defined(__viperos__)
+// TODO: ViperOS - include process control headers when available
 #else
 #include <errno.h>
 #include <spawn.h>
@@ -153,7 +155,28 @@ static char *read_pipe_output(FILE *fp, size_t *out_len)
     return buf;
 }
 
-#ifndef _WIN32
+#if defined(__viperos__)
+
+// ViperOS process execution stubs
+// TODO: ViperOS - implement process execution using task_spawn syscall
+
+static int64_t exec_spawn(const char *program, void *args)
+{
+    // TODO: ViperOS - implement using task_spawn or similar syscall
+    (void)program;
+    (void)args;
+    return -1;
+}
+
+static rt_string exec_capture_spawn(const char *program, void *args)
+{
+    // TODO: ViperOS - implement process capture
+    (void)program;
+    (void)args;
+    return rt_string_from_bytes("", 0);
+}
+
+#elif !defined(_WIN32)
 
 /// @brief Build argv array from program and Seq of arguments.
 /// Caller must free the returned array (but not individual strings).
@@ -768,6 +791,10 @@ int64_t rt_exec_shell(rt_string command)
     // On Windows, system() uses cmd.exe
     int result = system(cmd_str);
     return (int64_t)result;
+#elif defined(__viperos__)
+    // TODO: ViperOS - implement shell execution
+    (void)cmd_str;
+    return -1;
 #else
     // On POSIX, system() uses /bin/sh -c
     int result = system(cmd_str);
