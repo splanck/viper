@@ -385,6 +385,20 @@ enum class TcpState
     TIME_WAIT
 };
 
+/**
+ * @brief Minimal socket status flags for readiness queries.
+ *
+ * @details
+ * These are intentionally aligned with the netd IPC protocol's
+ * netproto::SocketStatusFlags so callers can forward them directly.
+ */
+enum SocketStatusFlags : u32
+{
+    SOCK_READABLE = (1u << 0),
+    SOCK_WRITABLE = (1u << 1),
+    SOCK_EOF = (1u << 2),
+};
+
 class TcpConnection
 {
   public:
@@ -484,6 +498,10 @@ class NetworkStack
     i32 socket_send(u32 sock_id, const void *data, usize len);
     i32 socket_recv(u32 sock_id, void *buf, usize max_len);
     i32 socket_close(u32 sock_id);
+
+    // Socket readiness / status
+    i32 socket_status(u32 sock_id, u32 *out_flags, u32 *out_rx_available) const;
+    bool any_socket_readable() const;
 
     // DNS
     i32 dns_resolve(const char *hostname, Ipv4Addr *out);

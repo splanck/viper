@@ -66,6 +66,28 @@ This section is updated as phases are implemented.
   - Added `netd_smoke.elf` (run automatically when `NETD` is ready) and a new QEMU test `qemu_netd_smoke`: `user/fstest/netd_smoke.cpp`, `user/vinit/vinit.cpp`, `user/CMakeLists.txt`, `scripts/build_viper.sh`, `tests/CMakeLists.txt`
   - Refreshed user-facing docs for the microkernel bring-up path and `RunFSD`: `README.md`, `docs/README.md`, `docs/shell-commands.md`, `docs/index.md`, `docs/syscalls.md`, `docs/microkernel_plan.md`
   - Validated via `scripts/build_viper.sh --test --no-run` (20/20 tests passing)
+- **2025-12-31 — Phase 5 (libc→netd integration):** Wired libc socket/DNS APIs to prefer `netd` when available, with kernel fallback.
+  - Added `libnetclient` library for netd IPC client operations (socket create/connect/send/recv/close/status, DNS resolve, event subscription): `user/libnetclient/include/netclient.hpp`, `user/libnetclient/src/netclient.cpp`, `user/libnetclient/CMakeLists.txt`
+  - Added libc→netd backend bridge with blocking recv semantics and event channel integration: `user/libc/src/netd_backend.cpp`
+  - Extended libc socket functions to select backend (kernel vs netd) based on availability: `user/libc/src/socket.c`
+  - Extended libc poll to query netd socket status and wait on netd event channels: `user/libc/src/poll.c`
+  - Extended libc DNS (`gethostbyname`/`getaddrinfo`) to prefer netd DNS with kernel fallback: `user/libc/src/netdb.c`
+  - Added `NET_SOCKET_STATUS` and `NET_SUBSCRIBE_EVENTS` protocol messages to netd: `user/servers/netd/net_protocol.hpp`, `user/servers/netd/main.cpp`
+  - Added socket status queries and event notification in netd network stack: `user/servers/netd/netstack.cpp`, `user/servers/netd/netstack.hpp`
+  - Linked libc with `vipernetclient`: `user/libc/CMakeLists.txt`, `user/CMakeLists.txt`
+  - Note: SSH/SFTP now work via netd when the second virtio-net device is available; kernel networking remains as fallback.
+- **2025-12-31 — Phase 5 (networking bug fixes):** Fixed libc→netd fallback and netd TCP connect reliability.
+  - Fixed DNS resolution to fall back to kernel when netd DNS fails: `user/libc/src/netdb.c`
+  - Fixed socket creation to fall back to kernel when netd fails: `user/libc/src/socket.c`
+  - Fixed connect to fall back to kernel socket when netd connect times out: `user/libc/src/socket.c`
+  - Fixed TCP SYN retry logic in netd when ARP resolution is pending: `user/servers/netd/netstack.cpp`
+- **2026-01-01 — Phase 5 (SSH stdin fix):** Fixed SSH interactive mode blocking on network reads, preventing stdin input.
+  - Root cause: `__viper_netd_socket_recv` blocked indefinitely on netd event channel when waiting for data, ignoring console input.
+  - Made netd socket recv non-blocking: returns `VERR_WOULD_BLOCK` immediately instead of waiting: `user/libc/src/netd_backend.cpp`
+  - Added libc recv() EAGAIN conversion for POSIX compatibility: `user/libc/src/socket.c`
+  - Updated libssh to handle EAGAIN: returns `SSH_AGAIN` when no data available, allowing caller to poll() for other events: `user/libssh/ssh.c`
+  - Improved SSH client poll loop to use 100ms timeout and single-read-per-iteration to ensure stdin is regularly checked: `user/ssh/ssh.c`
+  - Validated via `ctest --test-dir build` (20/20 tests passing)
 
 ---
 

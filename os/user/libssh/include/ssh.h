@@ -178,6 +178,18 @@ extern "C"
      */
     int ssh_set_verbose(ssh_session_t *session, int verbose);
 
+    /**
+     * @brief Get the underlying socket file descriptor for a session.
+     *
+     * @details
+     * This is primarily intended for integrating with poll/select loops in
+     * user-space clients.
+     *
+     * @param session SSH session.
+     * @return Socket fd (>= 0) on success, or -1 if unavailable.
+     */
+    int ssh_get_socket_fd(ssh_session_t *session);
+
     /*=============================================================================
      * Authentication
      *===========================================================================*/

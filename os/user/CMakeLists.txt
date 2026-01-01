@@ -35,6 +35,9 @@ add_subdirectory(libssh)
 # Build the filesystem client library
 add_subdirectory(libfsclient)
 
+# Build the network client library
+add_subdirectory(libnetclient)
+
 # Helper function to create user programs with libc
 function(add_user_program name)
     add_executable(${name}.elf ${ARGN})

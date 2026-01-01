@@ -28,6 +28,7 @@ enum MsgType : u32
     NET_SOCKET_RECV = 7,
     NET_SOCKET_CLOSE = 8,
     NET_SOCKET_SHUTDOWN = 9,
+    NET_SOCKET_STATUS = 10,
 
     // DNS
     NET_DNS_RESOLVE = 20,
@@ -36,6 +37,7 @@ enum MsgType : u32
     NET_PING = 40,
     NET_STATS = 41,
     NET_INFO = 42,
+    NET_SUBSCRIBE_EVENTS = 43,
 
     // Replies (server -> client)
     NET_SOCKET_CREATE_REPLY = 0x81,
@@ -47,10 +49,22 @@ enum MsgType : u32
     NET_SOCKET_RECV_REPLY = 0x87,
     NET_SOCKET_CLOSE_REPLY = 0x88,
     NET_SOCKET_SHUTDOWN_REPLY = 0x89,
+    NET_SOCKET_STATUS_REPLY = 0x8A,
     NET_DNS_RESOLVE_REPLY = 0xA0,
     NET_PING_REPLY = 0xC0,
     NET_STATS_REPLY = 0xC1,
     NET_INFO_REPLY = 0xC2,
+    NET_SUBSCRIBE_EVENTS_REPLY = 0xC3,
+};
+
+/**
+ * @brief Socket status flags (NET_SOCKET_STATUS).
+ */
+enum SocketStatusFlags : u32
+{
+    NET_SOCK_READABLE = (1u << 0),
+    NET_SOCK_WRITABLE = (1u << 1),
+    NET_SOCK_EOF = (1u << 2),
 };
 
 /**
@@ -272,6 +286,30 @@ struct SocketCloseReply
     u32 _pad;
 };
 
+/**
+ * @brief NET_SOCKET_STATUS request.
+ */
+struct SocketStatusRequest
+{
+    u32 type;       ///< NET_SOCKET_STATUS
+    u32 request_id; ///< For matching replies
+    u32 socket_id;  ///< Socket to query
+    u32 _pad;
+};
+
+/**
+ * @brief NET_SOCKET_STATUS reply.
+ */
+struct SocketStatusReply
+{
+    u32 type;           ///< NET_SOCKET_STATUS_REPLY
+    u32 request_id;     ///< Matches request
+    i32 status;         ///< 0 = success, negative = error
+    u32 flags;          ///< SocketStatusFlags
+    u32 rx_available;   ///< Bytes currently readable without blocking
+    u32 _pad;
+};
+
 // =============================================================================
 // DNS Operations
 // =============================================================================
@@ -375,6 +413,33 @@ struct StatsReply
     u64 rx_dropped;  ///< RX drops
     u32 tcp_conns;   ///< Active TCP connections
     u32 udp_sockets; ///< Active UDP sockets
+};
+
+// =============================================================================
+// Event subscription
+// =============================================================================
+
+/**
+ * @brief NET_SUBSCRIBE_EVENTS request.
+ *
+ * Transfers a single Channel send endpoint handle (handles[0]) that netd will
+ * use to send readiness notifications to the client.
+ */
+struct SubscribeEventsRequest
+{
+    u32 type;       ///< NET_SUBSCRIBE_EVENTS
+    u32 request_id; ///< For matching replies
+};
+
+/**
+ * @brief NET_SUBSCRIBE_EVENTS reply.
+ */
+struct SubscribeEventsReply
+{
+    u32 type;       ///< NET_SUBSCRIBE_EVENTS_REPLY
+    u32 request_id; ///< Matches request
+    i32 status;     ///< 0 = success, negative = error
+    u32 _pad;
 };
 
 } // namespace netproto

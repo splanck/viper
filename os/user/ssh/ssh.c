@@ -9,6 +9,7 @@
  */
 
 #include <errno.h>
+#include <poll.h>
 #include <ssh.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -16,29 +17,6 @@
 #include <string.h>
 #include <termios.h>
 #include <unistd.h>
-
-/* Syscall helpers (libc syscall.S) */
-extern long __syscall0(long num);
-extern long __syscall3(long num, long arg0, long arg1, long arg2);
-extern long __syscall4(long num, long arg0, long arg1, long arg2, long arg3);
-
-/* Syscall numbers from include/viperos/syscall_nums.hpp */
-#define SYS_POLL_CREATE 0x20
-#define SYS_POLL_ADD 0x21
-#define SYS_POLL_WAIT 0x23
-
-/* Poll pseudo-handles / event bits (match kernel/ipc/poll.hpp) */
-#define VIPER_HANDLE_CONSOLE_INPUT 0xFFFF0001u
-#define VIPER_HANDLE_NETWORK_RX 0xFFFF0002u
-#define VIPER_POLL_CONSOLE_INPUT (1u << 3)
-#define VIPER_POLL_NETWORK_RX (1u << 4)
-
-struct viper_poll_event
-{
-    uint32_t handle;
-    uint32_t events;
-    uint32_t triggered;
-};
 
 /* Terminal state */
 static struct termios orig_termios;
@@ -437,73 +415,60 @@ int main(int argc, char *argv[])
 
     /* Main loop */
     char buf[64 * 1024];
-    long poll_set = __syscall0(SYS_POLL_CREATE);
-    if (poll_set >= 0)
+    int sockfd = ssh_get_socket_fd(session);
+    if (sockfd < 0)
     {
-        (void)__syscall3(SYS_POLL_ADD,
-                         poll_set,
-                         (long)VIPER_HANDLE_CONSOLE_INPUT,
-                         (long)VIPER_POLL_CONSOLE_INPUT);
-        (void)__syscall3(
-            SYS_POLL_ADD, poll_set, (long)VIPER_HANDLE_NETWORK_RX, (long)VIPER_POLL_NETWORK_RX);
+        fprintf(stderr, "Failed to get session socket fd\n");
+        goto done;
     }
 
     while (ssh_channel_is_open(channel) && !ssh_channel_is_eof(channel))
     {
-        /* Fallback path if poll isn't available yet */
-        if (poll_set < 0)
+        struct pollfd pfds[2];
+        pfds[0].fd = STDIN_FILENO;
+        pfds[0].events = POLLIN;
+        pfds[0].revents = 0;
+        pfds[1].fd = sockfd;
+        pfds[1].events = POLLIN;
+        pfds[1].revents = 0;
+
+        /* Use a timeout to ensure we regularly check both stdin and socket,
+         * even if one is more active than the other. */
+        int pr = poll(pfds, 2, 100);
+        if (pr < 0)
+        {
+            continue;
+        }
+
+        if (pfds[0].revents & POLLIN)
         {
             ssize_t nread = read(STDIN_FILENO, buf, sizeof(buf));
             if (nread > 0)
             {
                 ssh_channel_write(channel, buf, nread);
             }
-            continue;
         }
 
-        struct viper_poll_event events[2];
-        long ready = __syscall4(SYS_POLL_WAIT, poll_set, (long)events, 2, -1);
-        if (ready < 0)
+        if (pfds[1].revents & (POLLIN | POLLERR | POLLHUP))
         {
-            continue;
-        }
-
-        for (long i = 0; i < ready; i++)
-        {
-            if (events[i].handle == VIPER_HANDLE_CONSOLE_INPUT &&
-                (events[i].triggered & VIPER_POLL_CONSOLE_INPUT))
+            /* Read one chunk of data per poll iteration.
+             * ssh_channel_read may block inside recv(), so we avoid
+             * looping to ensure stdin gets checked regularly. */
+            int is_stderr;
+            ssize_t nread = ssh_channel_read(channel, buf, sizeof(buf), &is_stderr);
+            if (nread > 0)
             {
-                ssize_t nread = read(STDIN_FILENO, buf, sizeof(buf));
-                if (nread > 0)
+                if (is_stderr)
                 {
-                    ssh_channel_write(channel, buf, nread);
+                    write(STDERR_FILENO, buf, nread);
                 }
-                continue;
+                else
+                {
+                    write(STDOUT_FILENO, buf, nread);
+                }
             }
-
-            if (events[i].handle == VIPER_HANDLE_NETWORK_RX &&
-                (events[i].triggered & VIPER_POLL_NETWORK_RX))
+            else if (nread != SSH_AGAIN)
             {
-                int is_stderr;
-                ssize_t nread = ssh_channel_read(channel, buf, sizeof(buf), &is_stderr);
-                if (nread > 0)
-                {
-                    if (is_stderr)
-                    {
-                        write(STDERR_FILENO, buf, nread);
-                    }
-                    else
-                    {
-                        write(STDOUT_FILENO, buf, nread);
-                    }
-                    continue;
-                }
-
-                if (nread == SSH_AGAIN)
-                {
-                    continue;
-                }
-
                 /* EOF or error */
                 goto done;
             }

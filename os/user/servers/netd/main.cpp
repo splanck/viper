@@ -70,6 +70,8 @@ static void debug_print_ip(u32 ip)
 static virtio::NetDevice g_device;
 static netstack::NetworkStack g_stack;
 static i32 g_service_channel = -1;
+static i32 g_event_channel_send = -1;
+static bool g_event_rx_signaled = false;
 
 // QEMU virt machine VirtIO IRQ base
 constexpr u32 VIRTIO_IRQ_BASE = 48;
@@ -163,6 +165,40 @@ static void memcpy_bytes(void *dst, const void *src, usize n)
         *d++ = *s++;
 }
 
+static void maybe_notify_rx()
+{
+    if (g_event_channel_send < 0)
+    {
+        return;
+    }
+
+    bool any_readable = g_stack.any_socket_readable();
+    if (!any_readable)
+    {
+        g_event_rx_signaled = false;
+        return;
+    }
+
+    if (g_event_rx_signaled)
+    {
+        return;
+    }
+
+    u8 one = 1;
+    i64 rc = sys::channel_send(g_event_channel_send, &one, sizeof(one), nullptr, 0);
+    if (rc == 0 || rc == VERR_WOULD_BLOCK)
+    {
+        // If it would block, the channel is full and therefore already readable.
+        g_event_rx_signaled = true;
+        return;
+    }
+
+    // Event channel became invalid; stop trying to use it.
+    (void)sys::channel_close(g_event_channel_send);
+    g_event_channel_send = -1;
+    g_event_rx_signaled = false;
+}
+
 // =============================================================================
 // Request Handlers
 // =============================================================================
@@ -188,7 +224,7 @@ static void handle_socket_create(const netproto::SocketCreateRequest *req, i32 r
     }
     else
     {
-        reply.status = -22; // EINVAL
+        reply.status = VERR_NOT_SUPPORTED;
         reply.socket_id = 0;
         sys::channel_send(reply_channel, &reply, sizeof(reply), nullptr, 0);
         return;
@@ -316,7 +352,7 @@ static void handle_socket_send(const netproto::SocketSendRequest *req,
         auto shm_result = sys::shm_map(shm_handle);
         if (shm_result.error != 0)
         {
-            reply.status = -14; // EFAULT
+            reply.status = static_cast<i32>(shm_result.error);
             reply.bytes_sent = 0;
             sys::channel_send(reply_channel, &reply, sizeof(reply), nullptr, 0);
             return;
@@ -326,7 +362,7 @@ static void handle_socket_send(const netproto::SocketSendRequest *req,
     }
     else
     {
-        reply.status = -22; // EINVAL
+        reply.status = VERR_INVALID_ARG;
         reply.bytes_sent = 0;
         sys::channel_send(reply_channel, &reply, sizeof(reply), nullptr, 0);
         return;
@@ -383,6 +419,63 @@ static void handle_socket_recv(const netproto::SocketRecvRequest *req, i32 reply
     }
 
     sys::channel_send(reply_channel, &reply, sizeof(reply), nullptr, 0);
+}
+
+static void handle_socket_status(const netproto::SocketStatusRequest *req, i32 reply_channel)
+{
+    netproto::SocketStatusReply reply = {};
+    reply.type = netproto::NET_SOCKET_STATUS_REPLY;
+    reply.request_id = req->request_id;
+
+    u32 flags = 0;
+    u32 rx_avail = 0;
+    i32 rc = g_stack.socket_status(req->socket_id, &flags, &rx_avail);
+    if (rc != 0)
+    {
+        reply.status = rc;
+        reply.flags = 0;
+        reply.rx_available = 0;
+    }
+    else
+    {
+        reply.status = 0;
+        reply.flags = flags;
+        reply.rx_available = rx_avail;
+    }
+
+    sys::channel_send(reply_channel, &reply, sizeof(reply), nullptr, 0);
+}
+
+static u32 handle_subscribe_events(const netproto::SubscribeEventsRequest *req,
+                                  i32 reply_channel,
+                                  const u32 *handles,
+                                  u32 handle_count)
+{
+    netproto::SubscribeEventsReply reply = {};
+    reply.type = netproto::NET_SUBSCRIBE_EVENTS_REPLY;
+    reply.request_id = req->request_id;
+
+    if (!handles || handle_count < 1 || handles[0] == 0)
+    {
+        reply.status = VERR_INVALID_ARG;
+        sys::channel_send(reply_channel, &reply, sizeof(reply), nullptr, 0);
+        return 0;
+    }
+
+    // Replace any existing subscriber.
+    if (g_event_channel_send >= 0)
+    {
+        (void)sys::channel_close(g_event_channel_send);
+    }
+
+    g_event_channel_send = static_cast<i32>(handles[0]);
+    g_event_rx_signaled = false;
+
+    reply.status = 0;
+    sys::channel_send(reply_channel, &reply, sizeof(reply), nullptr, 0);
+
+    // Keep handles[0] (the transferred event channel send endpoint).
+    return 1u << 0;
 }
 
 /**
@@ -502,11 +595,15 @@ static void handle_stats(const netproto::StatsRequest *req, i32 reply_channel)
 /**
  * @brief Handle incoming request.
  */
-static void handle_request(const u8 *msg, usize len, i32 reply_channel, u32 shm_handle)
+static u32 handle_request(const u8 *msg,
+                          usize len,
+                          i32 reply_channel,
+                          const u32 *handles,
+                          u32 handle_count)
 {
     if (len < 4)
     {
-        return;
+        return 0;
     }
 
     u32 type = *reinterpret_cast<const u32 *>(msg);
@@ -556,6 +653,7 @@ static void handle_request(const u8 *msg, usize len, i32 reply_channel, u32 shm_
         case netproto::NET_SOCKET_SEND:
             if (len >= sizeof(netproto::SocketSendRequest))
             {
+                u32 shm_handle = (handles && handle_count >= 1) ? handles[0] : 0;
                 handle_socket_send(reinterpret_cast<const netproto::SocketSendRequest *>(msg),
                                    reply_channel,
                                    shm_handle);
@@ -575,6 +673,14 @@ static void handle_request(const u8 *msg, usize len, i32 reply_channel, u32 shm_
             {
                 handle_socket_close(reinterpret_cast<const netproto::SocketCloseRequest *>(msg),
                                     reply_channel);
+            }
+            break;
+
+        case netproto::NET_SOCKET_STATUS:
+            if (len >= sizeof(netproto::SocketStatusRequest))
+            {
+                handle_socket_status(reinterpret_cast<const netproto::SocketStatusRequest *>(msg),
+                                     reply_channel);
             }
             break;
 
@@ -607,12 +713,25 @@ static void handle_request(const u8 *msg, usize len, i32 reply_channel, u32 shm_
             }
             break;
 
+        case netproto::NET_SUBSCRIBE_EVENTS:
+            if (len >= sizeof(netproto::SubscribeEventsRequest))
+            {
+                return handle_subscribe_events(
+                    reinterpret_cast<const netproto::SubscribeEventsRequest *>(msg),
+                    reply_channel,
+                    handles,
+                    handle_count);
+            }
+            break;
+
         default:
             debug_print("[netd] Unknown request type: ");
             debug_print_dec(type);
             debug_print("\n");
             break;
     }
+
+    return 0;
 }
 
 /**
@@ -626,6 +745,7 @@ static void server_loop()
     {
         // Poll for incoming packets
         g_stack.poll();
+        maybe_notify_rx();
 
         // Receive IPC message (non-blocking)
         u8 msg_buf[512];
@@ -649,26 +769,32 @@ static void server_loop()
         }
 
         i32 reply_channel = static_cast<i32>(handles[0]);
-
-        // Second handle (if present) is data handle for sends
-        u32 shm_handle = (handle_count >= 2) ? handles[1] : 0;
+        const u32 *extra_handles = (handle_count >= 2) ? &handles[1] : nullptr;
+        u32 extra_count = (handle_count >= 2) ? (handle_count - 1) : 0;
 
         // Handle the request
-        handle_request(msg_buf, static_cast<usize>(len), reply_channel, shm_handle);
+        u32 keep_mask = handle_request(msg_buf,
+                                       static_cast<usize>(len),
+                                       reply_channel,
+                                       extra_handles,
+                                       extra_count);
 
         // Close the reply channel
         sys::channel_close(reply_channel);
 
         // Close any additional transferred handles (e.g., send payload SHM).
-        for (u32 i = 1; i < handle_count; i++)
+        for (u32 i = 0; i < extra_count; i++)
         {
-            if (handles[i] == 0)
+            if (!extra_handles || extra_handles[i] == 0)
                 continue;
-            i32 close_err = sys::shm_close(handles[i]);
+            if (keep_mask & (1u << i))
+                continue;
+
+            i32 close_err = sys::shm_close(extra_handles[i]);
             if (close_err != 0)
             {
                 // Best-effort fallback: at least drop the handle to avoid cap table exhaustion.
-                (void)sys::cap_revoke(handles[i]);
+                (void)sys::cap_revoke(extra_handles[i]);
             }
         }
     }

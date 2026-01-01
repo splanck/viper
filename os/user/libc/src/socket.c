@@ -21,6 +21,14 @@ extern long __syscall6(long num, long arg0, long arg1, long arg2, long arg3, lon
 #define SYS_SOCKET_CLOSE 0x54
 #define SYS_DNS_RESOLVE 0x55
 
+/* netd backend helpers (libc netd_backend.cpp) */
+extern int __viper_netd_is_available(void);
+extern int __viper_netd_socket_create(int domain, int type, int protocol, int *out_socket_id);
+extern int __viper_netd_socket_connect(int socket_id, unsigned int ip_be, unsigned short port_be);
+extern long __viper_netd_socket_send(int socket_id, const void *buf, unsigned long len);
+extern long __viper_netd_socket_recv(int socket_id, void *buf, unsigned long len);
+extern int __viper_netd_socket_close(int socket_id);
+
 // -----------------------------------------------------------------------------
 // libc socket FD virtualization
 //
@@ -37,6 +45,7 @@ typedef enum
 {
     VIPER_SOCKET_BACKEND_NONE = 0,
     VIPER_SOCKET_BACKEND_KERNEL = 1,
+    VIPER_SOCKET_BACKEND_NETD = 2,
 } viper_socket_backend_t;
 
 typedef struct
@@ -121,6 +130,21 @@ static void viper_sock_release_obj(int obj)
     g_sock_objs[obj].refs = 0;
 }
 
+static int viper_sock_fd_to_obj(int fd)
+{
+    return viper_sock_get_obj_index_for_fd(fd);
+}
+
+static void viper_sock_update_obj(int obj, viper_socket_backend_t backend, int socket_id)
+{
+    if (obj < 0 || obj >= VIPER_SOCKET_MAX_FDS)
+        return;
+    if (!g_sock_objs[obj].in_use)
+        return;
+    g_sock_objs[obj].backend = backend;
+    g_sock_objs[obj].socket_id = socket_id;
+}
+
 static int viper_sock_alloc_fd_slot(int obj)
 {
     if (obj < 0 || obj >= VIPER_SOCKET_MAX_FDS)
@@ -185,7 +209,13 @@ static int viper_sock_close_obj(viper_socket_obj_t *obj)
         return 0;
     }
 
-    return -ENOSYS;
+    if (obj->backend == VIPER_SOCKET_BACKEND_NETD)
+    {
+        int rc = __viper_netd_socket_close(obj->socket_id);
+        return (rc == 0) ? 0 : rc;
+    }
+
+    return -EBADF;
 }
 
 static int viper_sock_close_fd(int fd)
@@ -260,6 +290,19 @@ int __viper_socket_is_fd(int fd)
     return viper_sock_get_obj_for_fd(fd) ? 1 : 0;
 }
 
+// Exposed for other libc modules (e.g., poll.c) to query backend + id.
+int __viper_socket_get_backend(int fd, int *out_backend, int *out_socket_id)
+{
+    viper_socket_obj_t *obj = viper_sock_get_obj_for_fd(fd);
+    if (!obj)
+        return -EBADF;
+    if (out_backend)
+        *out_backend = (int)obj->backend;
+    if (out_socket_id)
+        *out_socket_id = obj->socket_id;
+    return 0;
+}
+
 int __viper_socket_close(int fd)
 {
     return viper_sock_close_fd(fd);
@@ -275,15 +318,14 @@ int __viper_socket_dup2(int oldfd, int newfd)
     return viper_sock_dup2_fd(oldfd, newfd);
 }
 
-static int viper_sock_translate_fd(int fd, int *out_socket_id)
+static int viper_sock_translate_fd(int fd, viper_socket_backend_t *out_backend, int *out_socket_id)
 {
     viper_socket_obj_t *obj = viper_sock_get_obj_for_fd(fd);
     if (!obj)
         return -EBADF;
 
-    if (obj->backend != VIPER_SOCKET_BACKEND_KERNEL)
-        return -ENOSYS;
-
+    if (out_backend)
+        *out_backend = obj->backend;
     *out_socket_id = obj->socket_id;
     return 0;
 }
@@ -317,26 +359,50 @@ unsigned int ntohl(unsigned int netlong)
 /* Socket functions */
 int socket(int domain, int type, int protocol)
 {
-    /* ViperOS kernel only supports TCP sockets for now */
-    (void)domain;
-    (void)protocol;
-    if (type != SOCK_STREAM)
+    // Prefer netd when available; fall back to kernel sockets on failure.
+    int use_netd = (__viper_netd_is_available() == 1);
+
+    int sock_id = -1;
+    viper_socket_backend_t backend = VIPER_SOCKET_BACKEND_KERNEL;
+    if (use_netd)
     {
-        errno = EPROTONOSUPPORT;
-        return -1;
+        backend = VIPER_SOCKET_BACKEND_NETD;
+        int rc = __viper_netd_socket_create(domain, type, protocol, &sock_id);
+        if (rc != 0)
+        {
+            // Fall back to kernel sockets if netd fails
+            use_netd = 0;
+        }
     }
 
-    long sock_id = __syscall0(SYS_SOCKET_CREATE);
-    if (sock_id < 0)
+    if (!use_netd)
     {
-        errno = (int)(-sock_id);
-        return -1;
+        /* Kernel sockets: TCP only (bring-up API). */
+        (void)domain;
+        (void)protocol;
+        if (type != SOCK_STREAM)
+        {
+            errno = EPROTONOSUPPORT;
+            return -1;
+        }
+
+        long kid = __syscall0(SYS_SOCKET_CREATE);
+        if (kid < 0)
+        {
+            errno = (int)(-kid);
+            return -1;
+        }
+        sock_id = (int)kid;
+        backend = VIPER_SOCKET_BACKEND_KERNEL;
     }
 
-    int obj = viper_sock_alloc_obj(VIPER_SOCKET_BACKEND_KERNEL, (int)sock_id);
+    int obj = viper_sock_alloc_obj(backend, sock_id);
     if (obj < 0)
     {
-        (void)__syscall1(SYS_SOCKET_CLOSE, (int)sock_id);
+        if (backend == VIPER_SOCKET_BACKEND_KERNEL)
+            (void)__syscall1(SYS_SOCKET_CLOSE, sock_id);
+        else
+            (void)__viper_netd_socket_close(sock_id);
         errno = -obj;
         return -1;
     }
@@ -344,7 +410,10 @@ int socket(int domain, int type, int protocol)
     int fd = viper_sock_alloc_fd_slot(obj);
     if (fd < 0)
     {
-        (void)__syscall1(SYS_SOCKET_CLOSE, (int)sock_id);
+        if (backend == VIPER_SOCKET_BACKEND_KERNEL)
+            (void)__syscall1(SYS_SOCKET_CLOSE, sock_id);
+        else
+            (void)__viper_netd_socket_close(sock_id);
         viper_sock_release_obj(obj);
         errno = -fd;
         return -1;
@@ -391,7 +460,8 @@ int accept4(int sockfd, struct sockaddr *addr, socklen_t *addrlen, int flags)
 int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
 {
     int sock_id = -1;
-    int trc = viper_sock_translate_fd(sockfd, &sock_id);
+    viper_socket_backend_t backend = VIPER_SOCKET_BACKEND_NONE;
+    int trc = viper_sock_translate_fd(sockfd, &backend, &sock_id);
     if (trc < 0)
     {
         errno = -trc;
@@ -410,7 +480,42 @@ int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
         errno = EAFNOSUPPORT;
         return -1;
     }
-    /* sin_addr.s_addr is already in network byte order, kernel expects host order */
+
+    if (backend == VIPER_SOCKET_BACKEND_NETD)
+    {
+        // netd protocol expects ip/port in network byte order.
+        int rc = __viper_netd_socket_connect(sock_id, sin->sin_addr.s_addr, sin->sin_port);
+        if (rc != 0)
+        {
+            // netd connect failed - try falling back to kernel socket.
+            // Close the netd socket and create a new kernel socket.
+            (void)__viper_netd_socket_close(sock_id);
+
+            long kid = __syscall0(SYS_SOCKET_CREATE);
+            if (kid < 0)
+            {
+                errno = (int)(-rc); // Use original netd error
+                return -1;
+            }
+
+            // Update the socket object to use kernel backend
+            int obj = viper_sock_fd_to_obj(sockfd);
+            if (obj >= 0)
+            {
+                viper_sock_update_obj(obj, VIPER_SOCKET_BACKEND_KERNEL, (int)kid);
+            }
+            sock_id = (int)kid;
+            backend = VIPER_SOCKET_BACKEND_KERNEL;
+
+            // Fall through to kernel connect
+        }
+        else
+        {
+            return 0;
+        }
+    }
+
+    /* Kernel socket syscalls expect host-order ip/port. */
     unsigned int ip = ntohl(sin->sin_addr.s_addr);
     unsigned short port = ntohs(sin->sin_port);
     long result = __syscall3(SYS_SOCKET_CONNECT, sock_id, ip, port);
@@ -426,14 +531,23 @@ ssize_t send(int sockfd, const void *buf, size_t len, int flags)
 {
     (void)flags; /* ViperOS doesn't use flags */
     int sock_id = -1;
-    int trc = viper_sock_translate_fd(sockfd, &sock_id);
+    viper_socket_backend_t backend = VIPER_SOCKET_BACKEND_NONE;
+    int trc = viper_sock_translate_fd(sockfd, &backend, &sock_id);
     if (trc < 0)
     {
         errno = -trc;
         return -1;
     }
 
-    long result = __syscall3(SYS_SOCKET_SEND, sock_id, (long)buf, len);
+    long result;
+    if (backend == VIPER_SOCKET_BACKEND_NETD)
+    {
+        result = __viper_netd_socket_send(sock_id, buf, len);
+    }
+    else
+    {
+        result = __syscall3(SYS_SOCKET_SEND, sock_id, (long)buf, len);
+    }
     if (result < 0)
     {
         errno = (int)(-result);
@@ -446,17 +560,34 @@ ssize_t recv(int sockfd, void *buf, size_t len, int flags)
 {
     (void)flags; /* ViperOS doesn't use flags */
     int sock_id = -1;
-    int trc = viper_sock_translate_fd(sockfd, &sock_id);
+    viper_socket_backend_t backend = VIPER_SOCKET_BACKEND_NONE;
+    int trc = viper_sock_translate_fd(sockfd, &backend, &sock_id);
     if (trc < 0)
     {
         errno = -trc;
         return -1;
     }
 
-    long result = __syscall3(SYS_SOCKET_RECV, sock_id, (long)buf, len);
+    long result;
+    if (backend == VIPER_SOCKET_BACKEND_NETD)
+    {
+        result = __viper_netd_socket_recv(sock_id, buf, len);
+    }
+    else
+    {
+        result = __syscall3(SYS_SOCKET_RECV, sock_id, (long)buf, len);
+    }
     if (result < 0)
     {
-        errno = (int)(-result);
+        /* Convert VERR_WOULD_BLOCK (-300) to EAGAIN for POSIX compatibility */
+        if (result == -300)
+        {
+            errno = EAGAIN;
+        }
+        else
+        {
+            errno = (int)(-result);
+        }
         return -1;
     }
     return result;

@@ -697,6 +697,7 @@ i32 NetworkStack::socket_create(u16 type)
                 return static_cast<i32>(i);
             }
         }
+        return VERR_NO_RESOURCE;
     }
     else if (type == 2) // SOCK_DGRAM (UDP)
     {
@@ -711,18 +712,19 @@ i32 NetworkStack::socket_create(u16 type)
                 return static_cast<i32>(i + MAX_TCP_CONNS);
             }
         }
+        return VERR_NO_RESOURCE;
     }
-    return -1;
+    return VERR_NOT_SUPPORTED;
 }
 
 i32 NetworkStack::socket_connect(u32 sock_id, const Ipv4Addr &ip, u16 port)
 {
     if (sock_id >= MAX_TCP_CONNS)
-        return -1;
+        return VERR_INVALID_HANDLE;
 
     TcpConnection *conn = &tcp_conns_[sock_id];
     if (!conn->in_use || conn->state != TcpState::CLOSED)
-        return -1;
+        return VERR_INVALID_HANDLE;
 
     conn->remote_ip = ip;
     conn->remote_port = port;
@@ -733,21 +735,32 @@ i32 NetworkStack::socket_connect(u32 sock_id, const Ipv4Addr &ip, u16 port)
     conn->snd_nxt = conn->snd_una;
     conn->rcv_nxt = 0;
 
-    // Send SYN
+    // Send SYN (may fail if ARP not resolved yet)
     conn->state = TcpState::SYN_SENT;
-    send_tcp_segment(conn, TCP_SYN, nullptr, 0);
+    bool syn_sent = send_tcp_segment(conn, TCP_SYN, nullptr, 0);
 
-    // Poll for SYN-ACK
-    for (int i = 0; i < 100; i++)
+    // Poll for SYN-ACK, retrying SYN if it wasn't sent (ARP resolution needed)
+    int syn_retries = 0;
+    for (int i = 0; i < 200; i++)
     {
         poll();
         if (conn->state == TcpState::ESTABLISHED)
             return 0;
+
+        // Retry SYN if it wasn't sent (ARP may have resolved now)
+        if (!syn_sent && syn_retries < 5)
+        {
+            // Reset snd_nxt to resend SYN with same sequence number
+            conn->snd_nxt = conn->snd_una;
+            syn_sent = send_tcp_segment(conn, TCP_SYN, nullptr, 0);
+            syn_retries++;
+        }
+
         sys::yield();
     }
 
     conn->state = TcpState::CLOSED;
-    return -2; // Timeout
+    return VERR_TIMEOUT;
 }
 
 i32 NetworkStack::socket_bind(u32 sock_id, u16 port)
@@ -756,7 +769,7 @@ i32 NetworkStack::socket_bind(u32 sock_id, u16 port)
     {
         TcpConnection *conn = &tcp_conns_[sock_id];
         if (!conn->in_use)
-            return -1;
+            return VERR_INVALID_HANDLE;
         conn->local_port = port;
         return 0;
     }
@@ -764,22 +777,22 @@ i32 NetworkStack::socket_bind(u32 sock_id, u16 port)
     {
         UdpSocket *sock = &udp_sockets_[sock_id - MAX_TCP_CONNS];
         if (!sock->in_use)
-            return -1;
+            return VERR_INVALID_HANDLE;
         sock->local_port = port;
         return 0;
     }
-    return -1;
+    return VERR_INVALID_HANDLE;
 }
 
 i32 NetworkStack::socket_listen(u32 sock_id, u32 backlog)
 {
     (void)backlog;
     if (sock_id >= MAX_TCP_CONNS)
-        return -1;
+        return VERR_INVALID_HANDLE;
 
     TcpConnection *conn = &tcp_conns_[sock_id];
     if (!conn->in_use || conn->local_port == 0)
-        return -1;
+        return VERR_INVALID_HANDLE;
 
     conn->state = TcpState::LISTEN;
     conn->backlog_count = 0;
@@ -789,15 +802,15 @@ i32 NetworkStack::socket_listen(u32 sock_id, u32 backlog)
 i32 NetworkStack::socket_accept(u32 sock_id, Ipv4Addr *remote_ip, u16 *remote_port)
 {
     if (sock_id >= MAX_TCP_CONNS)
-        return -1;
+        return VERR_INVALID_HANDLE;
 
     TcpConnection *listener = &tcp_conns_[sock_id];
     if (!listener->in_use || listener->state != TcpState::LISTEN)
-        return -1;
+        return VERR_INVALID_HANDLE;
 
     // Check for pending connection
     if (listener->backlog_count == 0)
-        return -2; // Would block
+        return VERR_WOULD_BLOCK;
 
     // Get pending connection
     auto &pending = listener->backlog[0];
@@ -805,7 +818,7 @@ i32 NetworkStack::socket_accept(u32 sock_id, Ipv4Addr *remote_ip, u16 *remote_po
     // Find free connection slot
     i32 new_sock = socket_create(1);
     if (new_sock < 0)
-        return -3;
+        return new_sock;
 
     TcpConnection *conn = &tcp_conns_[new_sock];
     conn->remote_ip = pending.ip;
@@ -849,7 +862,7 @@ i32 NetworkStack::socket_send(u32 sock_id, const void *data, usize len)
     {
         TcpConnection *conn = &tcp_conns_[sock_id];
         if (!conn->in_use || conn->state != TcpState::ESTABLISHED)
-            return -1;
+            return VERR_CONNECTION;
 
         // Send data in segments
         const u8 *ptr = static_cast<const u8 *>(data);
@@ -867,7 +880,7 @@ i32 NetworkStack::socket_send(u32 sock_id, const void *data, usize len)
 
         return static_cast<i32>(sent);
     }
-    return -1;
+    return VERR_INVALID_HANDLE;
 }
 
 i32 NetworkStack::socket_recv(u32 sock_id, void *buf, usize max_len)
@@ -876,11 +889,16 @@ i32 NetworkStack::socket_recv(u32 sock_id, void *buf, usize max_len)
     {
         TcpConnection *conn = &tcp_conns_[sock_id];
         if (!conn->in_use)
-            return -1;
+            return VERR_INVALID_HANDLE;
 
         usize available = conn->rx_available();
         if (available == 0)
-            return 0;
+        {
+            // Remote FIN: readable-at-EOF.
+            if (conn->state == TcpState::CLOSE_WAIT || conn->state == TcpState::CLOSED)
+                return 0;
+            return VERR_WOULD_BLOCK;
+        }
 
         usize to_read = available;
         if (to_read > max_len)
@@ -898,8 +916,10 @@ i32 NetworkStack::socket_recv(u32 sock_id, void *buf, usize max_len)
     else if (sock_id < MAX_TCP_CONNS + MAX_UDP_SOCKETS)
     {
         UdpSocket *sock = &udp_sockets_[sock_id - MAX_TCP_CONNS];
-        if (!sock->in_use || !sock->has_data)
-            return 0;
+        if (!sock->in_use)
+            return VERR_INVALID_HANDLE;
+        if (!sock->has_data)
+            return VERR_WOULD_BLOCK;
 
         usize to_read = sock->rx_len;
         if (to_read > max_len)
@@ -910,7 +930,7 @@ i32 NetworkStack::socket_recv(u32 sock_id, void *buf, usize max_len)
 
         return static_cast<i32>(to_read);
     }
-    return -1;
+    return VERR_INVALID_HANDLE;
 }
 
 i32 NetworkStack::socket_close(u32 sock_id)
@@ -919,7 +939,7 @@ i32 NetworkStack::socket_close(u32 sock_id)
     {
         TcpConnection *conn = &tcp_conns_[sock_id];
         if (!conn->in_use)
-            return -1;
+            return VERR_INVALID_HANDLE;
 
         if (conn->state == TcpState::ESTABLISHED)
         {
@@ -944,10 +964,104 @@ i32 NetworkStack::socket_close(u32 sock_id)
     else if (sock_id < MAX_TCP_CONNS + MAX_UDP_SOCKETS)
     {
         UdpSocket *sock = &udp_sockets_[sock_id - MAX_TCP_CONNS];
+        if (!sock->in_use)
+            return VERR_INVALID_HANDLE;
         sock->in_use = false;
         return 0;
     }
-    return -1;
+    return VERR_INVALID_HANDLE;
+}
+
+i32 NetworkStack::socket_status(u32 sock_id, u32 *out_flags, u32 *out_rx_available) const
+{
+    if (!out_flags || !out_rx_available)
+    {
+        return VERR_INVALID_ARG;
+    }
+
+    *out_flags = 0;
+    *out_rx_available = 0;
+
+    if (sock_id < MAX_TCP_CONNS)
+    {
+        const TcpConnection *conn = &tcp_conns_[sock_id];
+        if (!conn->in_use)
+        {
+            return VERR_INVALID_HANDLE;
+        }
+
+        usize avail = conn->rx_available();
+        if (avail > 0)
+        {
+            *out_flags |= SOCK_READABLE;
+            if (avail > 0xFFFFFFFFu)
+                avail = 0xFFFFFFFFu;
+            *out_rx_available = static_cast<u32>(avail);
+        }
+
+        if (conn->state == TcpState::ESTABLISHED)
+        {
+            *out_flags |= SOCK_WRITABLE;
+        }
+
+        if ((conn->state == TcpState::CLOSE_WAIT || conn->state == TcpState::CLOSED) && avail == 0)
+        {
+            *out_flags |= SOCK_EOF;
+            *out_flags |= SOCK_READABLE;
+        }
+
+        return 0;
+    }
+
+    if (sock_id < MAX_TCP_CONNS + MAX_UDP_SOCKETS)
+    {
+        const UdpSocket *sock = &udp_sockets_[sock_id - MAX_TCP_CONNS];
+        if (!sock->in_use)
+        {
+            return VERR_INVALID_HANDLE;
+        }
+
+        if (sock->has_data)
+        {
+            *out_flags |= SOCK_READABLE;
+            usize avail = sock->rx_len;
+            if (avail > 0xFFFFFFFFu)
+                avail = 0xFFFFFFFFu;
+            *out_rx_available = static_cast<u32>(avail);
+        }
+
+        // UDP send is always "writable" in this simplified stack.
+        *out_flags |= SOCK_WRITABLE;
+
+        return 0;
+    }
+
+    return VERR_INVALID_HANDLE;
+}
+
+bool NetworkStack::any_socket_readable() const
+{
+    for (usize i = 0; i < MAX_TCP_CONNS; i++)
+    {
+        const TcpConnection *conn = &tcp_conns_[i];
+        if (!conn->in_use)
+            continue;
+        if (conn->rx_available() > 0)
+            return true;
+        if (conn->state == TcpState::CLOSE_WAIT)
+            return true; // readable-at-EOF
+    }
+
+    for (usize i = 0; i < MAX_UDP_SOCKETS; i++)
+    {
+        const UdpSocket *sock = &udp_sockets_[i];
+        if (!sock->in_use)
+            continue;
+        if (sock->has_data)
+            return true;
+    }
+
+    return false;
 }
 
 i32 NetworkStack::dns_resolve(const char *hostname, Ipv4Addr *out)
@@ -1019,7 +1133,7 @@ i32 NetworkStack::dns_resolve(const char *hostname, Ipv4Addr *out)
     }
 
     dns_pending_ = false;
-    return -1; // Timeout
+    return VERR_TIMEOUT;
 }
 
 i32 NetworkStack::ping(const Ipv4Addr &ip, u32 timeout_ms)
@@ -1060,7 +1174,7 @@ i32 NetworkStack::ping(const Ipv4Addr &ip, u32 timeout_ms)
     }
 
     icmp_pending_ = false;
-    return -1; // Timeout
+    return VERR_TIMEOUT;
 }
 
 u32 NetworkStack::tcp_conn_count() const

@@ -197,6 +197,13 @@ int ssh_set_verbose(ssh_session_t *session, int verbose)
     return SSH_OK;
 }
 
+int ssh_get_socket_fd(ssh_session_t *session)
+{
+    if (!session)
+        return -1;
+    return session->socket_fd;
+}
+
 const char *ssh_get_error(ssh_session_t *session)
 {
     if (!session)
@@ -257,6 +264,22 @@ static ssize_t ssh_socket_recv(ssh_session_t *session, void *data, size_t len)
         {
             if (errno == EINTR)
                 continue;
+            /* Non-blocking: return SSH_AGAIN only if no data received yet.
+             * If we've started receiving a packet, we must complete it to avoid
+             * losing partial data and breaking the SSH protocol framing. */
+            if (errno == EAGAIN || errno == EWOULDBLOCK)
+            {
+                if (remaining == len)
+                {
+                    /* No data received at all - tell caller to try again later.
+                     * This allows the SSH client to poll() for other events. */
+                    return SSH_AGAIN;
+                }
+                /* Got partial data - must complete the read. Short sleep to yield. */
+                extern long __syscall1(long, long);
+                __syscall1(0x31 /* SYS_SLEEP */, 1);
+                continue;
+            }
             ssh_set_error(session, "recv failed: %d", errno);
             return SSH_ERROR;
         }
