@@ -136,7 +136,9 @@ extern "C" void kernel_main(void *boot_info_ptr)
 #else
     serial::puts("HYBRID\n");
 #endif
-    serial::puts("  Kernel services: net=");
+    serial::puts("  Kernel services: fs=");
+    serial::put_dec(static_cast<u64>(VIPER_KERNEL_ENABLE_FS));
+    serial::puts(" net=");
     serial::put_dec(static_cast<u64>(VIPER_KERNEL_ENABLE_NET));
     serial::puts(" tls=");
     serial::put_dec(static_cast<u64>(VIPER_KERNEL_ENABLE_TLS));

@@ -9,6 +9,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # -----------------------------------------------------------------------------
 
 option(VIPER_MICROKERNEL_MODE "Identify build as microkernel mode (bring-up)" OFF)
+option(VIPER_KERNEL_ENABLE_FS "Enable in-kernel filesystem (VFS + ViperFS)" ON)
 option(VIPER_KERNEL_ENABLE_NET "Enable in-kernel TCP/IP stack + socket/DNS syscalls" ON)
 option(VIPER_KERNEL_ENABLE_TLS "Enable kernel-managed TLS sessions (SYS_TLS_*)" ON)
 option(VIPER_KERNEL_DEBUG_NET_SYSCALL "Enable verbose socket/DNS syscall logging" OFF)
@@ -122,6 +123,7 @@ add_executable(kernel.elf ${KERNEL_SOURCES})
 # Compile-time config macros (see kernel/include/config.hpp)
 target_compile_definitions(kernel.elf PRIVATE
         VIPER_MICROKERNEL_MODE=$<BOOL:${VIPER_MICROKERNEL_MODE}>
+        VIPER_KERNEL_ENABLE_FS=$<BOOL:${VIPER_KERNEL_ENABLE_FS}>
         VIPER_KERNEL_ENABLE_NET=$<BOOL:${VIPER_KERNEL_ENABLE_NET}>
         VIPER_KERNEL_ENABLE_TLS=$<BOOL:${VIPER_KERNEL_ENABLE_TLS}>
         VIPER_KERNEL_DEBUG_NET_SYSCALL=$<BOOL:${VIPER_KERNEL_DEBUG_NET_SYSCALL}>

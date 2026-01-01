@@ -378,6 +378,17 @@ if(VIPEROS_HAS_QEMU)
 	    )
 	    set_tests_properties(qemu_netd_smoke PROPERTIES LABELS "qemu;userspace;microkernel;network")
 
+	    # --- TLS library smoke test ---
+	    # Tests user-space TLS library API (config, session creation, info queries).
+	    # Does not require network - tests API without actual connections.
+	    add_qemu_test(tls_smoke
+	        --disk
+	        --microkernel-devices
+	        --timeout 180
+	        --expect "TLS smoke test PASSED"
+	    )
+	    set_tests_properties(qemu_tls_smoke PROPERTIES LABELS "qemu;userspace;tls")
+
 	endif()
 
 # =============================================================================

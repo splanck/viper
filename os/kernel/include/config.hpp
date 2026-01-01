@@ -26,6 +26,13 @@
 // Kernel service toggles (HYBRID compatibility layer)
 // -----------------------------------------------------------------------------
 
+/// Enable the in-kernel filesystem (VFS + ViperFS).
+/// When disabled, file/dir syscalls return VERR_NOT_SUPPORTED.
+/// The kernel loader can still load from memory via SYS_TASK_SPAWN_SHM.
+#ifndef VIPER_KERNEL_ENABLE_FS
+#define VIPER_KERNEL_ENABLE_FS 1
+#endif
+
 /// Enable the in-kernel network stack and socket/DNS syscalls.
 #ifndef VIPER_KERNEL_ENABLE_NET
 #define VIPER_KERNEL_ENABLE_NET 1

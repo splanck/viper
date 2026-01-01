@@ -13,6 +13,29 @@
  */
 #include "vinit.hpp"
 
+// =============================================================================
+// Server State Tracking (for crash isolation and restart)
+// =============================================================================
+
+struct ServerInfo
+{
+    const char *name;       // Display name (e.g., "blkd")
+    const char *path;       // Executable path
+    const char *assign;     // Assign name (e.g., "BLKD")
+    i64 pid;                // Process ID (0 = not running)
+    bool available;         // True if server registered successfully
+};
+
+static ServerInfo g_servers[] = {
+    {"blkd", "/c/blkd.elf", "BLKD", 0, false},
+    {"netd", "/c/netd.elf", "NETD", 0, false},
+    {"fsd", "/c/fsd.elf", "FSD", 0, false},
+};
+
+static constexpr usize SERVER_COUNT = sizeof(g_servers) / sizeof(g_servers[0]);
+static u32 g_device_root = 0xFFFFFFFFu;
+static bool g_have_device_root = false;
+
 /**
  * @brief User-space sbrk wrapper for startup malloc test.
  */
@@ -158,6 +181,126 @@ static bool wait_for_service(const char *name, u32 timeout_ms)
 }
 
 /**
+ * @brief Check if a server process is still running.
+ */
+static bool is_server_running(i64 pid)
+{
+    if (pid <= 0)
+        return false;
+
+    TaskInfo tasks[32];
+    i32 count = sys::task_list(tasks, 32);
+    if (count < 0)
+        return false;
+
+    for (i32 i = 0; i < count; i++)
+    {
+        if (tasks[i].id == static_cast<u32>(pid))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * @brief Start a specific server by index.
+ * @return true if server started and registered successfully.
+ */
+static bool start_server_by_index(usize idx)
+{
+    if (idx >= SERVER_COUNT)
+        return false;
+
+    ServerInfo &srv = g_servers[idx];
+
+    // Check if executable exists
+    sys::Stat st;
+    if (sys::stat(srv.path, &st) != 0)
+    {
+        print_str("[vinit] ");
+        print_str(srv.name);
+        print_str(": not found\n");
+        return false;
+    }
+
+    // fsd depends on blkd
+    if (idx == 2 && !g_servers[0].available)
+    {
+        print_str("[vinit] ");
+        print_str(srv.name);
+        print_str(": requires blkd\n");
+        return false;
+    }
+
+    u32 bootstrap_send = 0xFFFFFFFFu;
+    srv.pid = spawn_server(srv.path, srv.name, &bootstrap_send);
+    if (g_have_device_root)
+    {
+        send_server_device_caps(bootstrap_send, g_device_root);
+    }
+
+    if (srv.pid > 0 && wait_for_service(srv.assign, 1000))
+    {
+        print_str("[vinit] ");
+        print_str(srv.assign);
+        print_str(": ready\n");
+        srv.available = true;
+        return true;
+    }
+
+    srv.available = false;
+    return false;
+}
+
+/**
+ * @brief Restart a crashed server.
+ * @param name Server name ("blkd", "netd", "fsd").
+ * @return true on success.
+ */
+bool restart_server(const char *name)
+{
+    for (usize i = 0; i < SERVER_COUNT; i++)
+    {
+        if (streq(g_servers[i].name, name))
+        {
+            g_servers[i].pid = 0;
+            g_servers[i].available = false;
+            return start_server_by_index(i);
+        }
+    }
+    return false;
+}
+
+/**
+ * @brief Get server status for display.
+ */
+void get_server_status(usize idx, const char **name, const char **assign, i64 *pid, bool *running,
+                       bool *available)
+{
+    if (idx >= SERVER_COUNT)
+        return;
+
+    const ServerInfo &srv = g_servers[idx];
+    *name = srv.name;
+    *assign = srv.assign;
+    *pid = srv.pid;
+    *running = is_server_running(srv.pid);
+    *available = srv.available;
+
+    // Update availability if process died
+    if (!*running && srv.available)
+    {
+        g_servers[idx].available = false;
+    }
+}
+
+usize get_server_count()
+{
+    return SERVER_COUNT;
+}
+
+/**
  * @brief Start all microkernel servers (optional).
  *
  * @details
@@ -175,13 +318,19 @@ static bool wait_for_service(const char *name, u32 timeout_ms)
  */
 static void start_servers()
 {
-    // Check if server ELFs exist before attempting to start them
+    // Check if any server ELFs exist
     sys::Stat st;
-    bool have_blkd = (sys::stat("/c/blkd.elf", &st) == 0);
-    bool have_netd = (sys::stat("/c/netd.elf", &st) == 0);
-    bool have_fsd = (sys::stat("/c/fsd.elf", &st) == 0);
+    bool have_any = false;
+    for (usize i = 0; i < SERVER_COUNT; i++)
+    {
+        if (sys::stat(g_servers[i].path, &st) == 0)
+        {
+            have_any = true;
+            break;
+        }
+    }
 
-    if (!have_blkd && !have_netd && !have_fsd)
+    if (!have_any)
     {
         print_str("[vinit] No microkernel servers found, using kernel services\n\n");
         return;
@@ -190,62 +339,17 @@ static void start_servers()
     print_str("[vinit] Starting microkernel servers...\n");
     print_str("[vinit] (Note: servers require dedicated VirtIO devices)\n");
 
+    // Find device root capability and save it for later restarts
+    g_have_device_root = find_device_root_cap(&g_device_root);
+
     u32 registered = 0;
-    bool blkd_ready = false;
-    bool netd_ready = false;
-    bool fsd_ready = false;
 
-    u32 device_root = 0xFFFFFFFFu;
-    bool have_device_root = find_device_root_cap(&device_root);
-
-    // Start block device server first (fsd depends on it)
-    if (have_blkd)
+    // Start servers in order (blkd, netd, fsd)
+    for (usize i = 0; i < SERVER_COUNT; i++)
     {
-        u32 bootstrap_send = 0xFFFFFFFFu;
-        i64 blkd_pid = spawn_server("/c/blkd.elf", "blkd", &bootstrap_send);
-        if (have_device_root)
+        if (start_server_by_index(i))
         {
-            send_server_device_caps(bootstrap_send, device_root);
-        }
-        if (blkd_pid > 0 && wait_for_service("BLKD", 1000))
-        {
-            print_str("[vinit] BLKD: ready\n");
             registered++;
-            blkd_ready = true;
-        }
-    }
-
-    // Start network server (independent of block device)
-    if (have_netd)
-    {
-        u32 bootstrap_send = 0xFFFFFFFFu;
-        i64 netd_pid = spawn_server("/c/netd.elf", "netd", &bootstrap_send);
-        if (have_device_root)
-        {
-            send_server_device_caps(bootstrap_send, device_root);
-        }
-        if (netd_pid > 0 && wait_for_service("NETD", 1000))
-        {
-            print_str("[vinit] NETD: ready\n");
-            registered++;
-            netd_ready = true;
-        }
-    }
-
-    // Start filesystem server (needs blkd)
-    if (have_fsd && blkd_ready)
-    {
-        u32 bootstrap_send = 0xFFFFFFFFu;
-        i64 fsd_pid = spawn_server("/c/fsd.elf", "fsd", &bootstrap_send);
-        if (have_device_root)
-        {
-            send_server_device_caps(bootstrap_send, device_root);
-        }
-        if (fsd_pid > 0 && wait_for_service("FSD", 1000))
-        {
-            print_str("[vinit] FSD: ready\n");
-            registered++;
-            fsd_ready = true;
         }
     }
 
@@ -258,7 +362,7 @@ static void start_servers()
     // When fsd is available, run a small smoke test program that exercises
     // libc file ops routed through fsd (and verifies the kernel VFS can't see
     // the created file).
-    if (fsd_ready)
+    if (g_servers[2].available) // fsd
     {
         sys::Stat st;
         if (sys::stat("/c/fsd_smoke.elf", &st) == 0)
@@ -299,7 +403,7 @@ static void start_servers()
 
     // When netd is available, run a small smoke test program that issues an IPC request
     // to NETD and validates the basic response path.
-    if (netd_ready)
+    if (g_servers[1].available) // netd
     {
         sys::Stat st;
         if (sys::stat("/c/netd_smoke.elf", &st) == 0)
@@ -332,6 +436,45 @@ static void start_servers()
                 i32 status = 0;
                 (void)sys::waitpid(static_cast<i64>(pid), &status);
                 print_str("[vinit] netd_smoke: exit ");
+                put_num(static_cast<i64>(status));
+                print_str("\n\n");
+            }
+        }
+    }
+
+    // Run TLS smoke test if available (tests user-space TLS library API)
+    {
+        sys::Stat st;
+        if (sys::stat("/c/tls_smoke.elf", &st) == 0)
+        {
+            print_str("[vinit] Running tls_smoke...\n");
+
+            u64 pid = 0;
+            u64 tid = 0;
+            u32 bootstrap_send = 0xFFFFFFFFu;
+            i64 err = sys::spawn("/c/tls_smoke.elf",
+                                 "tls_smoke",
+                                 &pid,
+                                 &tid,
+                                 nullptr,
+                                 &bootstrap_send);
+
+            if (bootstrap_send != 0xFFFFFFFFu)
+            {
+                sys::channel_close(static_cast<i32>(bootstrap_send));
+            }
+
+            if (err < 0)
+            {
+                print_str("[vinit] tls_smoke: spawn failed (error ");
+                put_num(err);
+                print_str(")\n\n");
+            }
+            else
+            {
+                i32 status = 0;
+                (void)sys::waitpid(static_cast<i64>(pid), &status);
+                print_str("[vinit] tls_smoke: exit ");
                 put_num(static_cast<i64>(status));
                 print_str("\n\n");
             }

@@ -820,62 +820,16 @@ sftp_dir_t *sftp_opendir(sftp_session_t *sftp, const char *path)
     return dir;
 }
 
-sftp_attributes_t *sftp_readdir(sftp_dir_t *dir)
+/**
+ * @brief Parse a single directory entry from the response buffer.
+ * @param response Response buffer.
+ * @param response_len Total response length.
+ * @param offset Current offset in buffer (updated on success).
+ * @return Parsed attributes or NULL on error.
+ */
+static sftp_attributes_t *parse_dir_entry(const uint8_t *response, size_t response_len, size_t *offset)
 {
-    if (!dir || dir->eof)
-        return NULL;
-
-    sftp_session_t *sftp = dir->sftp;
-
-    uint8_t packet[512];
-    size_t pos = 0;
-
-    ssh_buf_write_u32(packet + pos, sftp->request_id++);
-    pos += 4;
-
-    ssh_buf_write_u32(packet + pos, dir->handle_len);
-    memcpy(packet + pos + 4, dir->handle, dir->handle_len);
-    pos += 4 + dir->handle_len;
-
-    int rc = sftp_send_packet(sftp, SSH_FXP_READDIR, packet, pos);
-    if (rc < 0)
-        return NULL;
-
-    uint8_t type;
-    uint8_t *response = sftp->packet_buf;
-    size_t response_len;
-
-    rc = sftp_recv_packet(sftp, &type, response, &response_len);
-    if (rc < 0)
-        return NULL;
-
-    if (type == SSH_FXP_STATUS)
-    {
-        if (response_len >= 8)
-        {
-            uint32_t status = ssh_buf_read_u32(response + 4);
-            if (status == SFTP_EOF)
-            {
-                dir->eof = true;
-                return NULL;
-            }
-            sftp->error = status;
-        }
-        return NULL;
-    }
-
-    if (type != SSH_FXP_NAME || response_len < 8)
-        return NULL;
-
-    uint32_t count = ssh_buf_read_u32(response + 4);
-    if (count == 0)
-    {
-        dir->eof = true;
-        return NULL;
-    }
-
-    /* Parse first entry */
-    pos = 8;
+    size_t pos = *offset;
 
     /* filename */
     if (pos + 4 > response_len)
@@ -933,9 +887,154 @@ sftp_attributes_t *sftp_readdir(sftp_dir_t *dir)
         attr->mtime = parsed->mtime;
         attr->type = parsed->type;
         free(parsed);
+        pos += consumed;
     }
 
+    *offset = pos;
     return attr;
+}
+
+/**
+ * @brief Free buffered directory entries.
+ */
+static void free_dir_entries(sftp_dir_t *dir)
+{
+    if (dir->entries)
+    {
+        for (int i = 0; i < dir->entry_count; i++)
+        {
+            free(dir->entries[i].name);
+            free(dir->entries[i].longname);
+        }
+        free(dir->entries);
+        dir->entries = NULL;
+    }
+    dir->entry_count = 0;
+    dir->entry_pos = 0;
+}
+
+sftp_attributes_t *sftp_readdir(sftp_dir_t *dir)
+{
+    if (!dir || dir->eof)
+        return NULL;
+
+    /* Return buffered entry if available */
+    if (dir->entries && dir->entry_pos < dir->entry_count)
+    {
+        sftp_attributes_t *src = &dir->entries[dir->entry_pos++];
+        sftp_attributes_t *attr = calloc(1, sizeof(sftp_attributes_t));
+        if (!attr)
+            return NULL;
+
+        /* Copy the entry (caller will free) */
+        if (src->name)
+            attr->name = strdup(src->name);
+        if (src->longname)
+            attr->longname = strdup(src->longname);
+        attr->flags = src->flags;
+        attr->size = src->size;
+        attr->uid = src->uid;
+        attr->gid = src->gid;
+        attr->permissions = src->permissions;
+        attr->atime = src->atime;
+        attr->mtime = src->mtime;
+        attr->type = src->type;
+        return attr;
+    }
+
+    /* Free old entries before fetching new batch */
+    free_dir_entries(dir);
+
+    sftp_session_t *sftp = dir->sftp;
+
+    uint8_t packet[512];
+    size_t pos = 0;
+
+    ssh_buf_write_u32(packet + pos, sftp->request_id++);
+    pos += 4;
+
+    ssh_buf_write_u32(packet + pos, dir->handle_len);
+    memcpy(packet + pos + 4, dir->handle, dir->handle_len);
+    pos += 4 + dir->handle_len;
+
+    int rc = sftp_send_packet(sftp, SSH_FXP_READDIR, packet, pos);
+    if (rc < 0)
+        return NULL;
+
+    uint8_t type;
+    uint8_t *response = sftp->packet_buf;
+    size_t response_len;
+
+    rc = sftp_recv_packet(sftp, &type, response, &response_len);
+    if (rc < 0)
+        return NULL;
+
+    if (type == SSH_FXP_STATUS)
+    {
+        if (response_len >= 8)
+        {
+            uint32_t status = ssh_buf_read_u32(response + 4);
+            if (status == SFTP_EOF)
+            {
+                dir->eof = true;
+                return NULL;
+            }
+            sftp->error = status;
+        }
+        return NULL;
+    }
+
+    if (type != SSH_FXP_NAME || response_len < 8)
+        return NULL;
+
+    uint32_t count = ssh_buf_read_u32(response + 4);
+    if (count == 0)
+    {
+        dir->eof = true;
+        return NULL;
+    }
+
+    /* Allocate buffer for all entries */
+    dir->entries = calloc(count, sizeof(sftp_attributes_t));
+    if (!dir->entries)
+        return NULL;
+
+    /* Parse all entries from response */
+    pos = 8;
+    for (uint32_t i = 0; i < count; i++)
+    {
+        sftp_attributes_t *entry = parse_dir_entry(response, response_len, &pos);
+        if (!entry)
+        {
+            /* Parsing failed - keep what we have */
+            break;
+        }
+        /* Move data into buffer (shallow copy, entry struct is temporary) */
+        dir->entries[dir->entry_count].name = entry->name;
+        dir->entries[dir->entry_count].longname = entry->longname;
+        dir->entries[dir->entry_count].flags = entry->flags;
+        dir->entries[dir->entry_count].size = entry->size;
+        dir->entries[dir->entry_count].uid = entry->uid;
+        dir->entries[dir->entry_count].gid = entry->gid;
+        dir->entries[dir->entry_count].permissions = entry->permissions;
+        dir->entries[dir->entry_count].atime = entry->atime;
+        dir->entries[dir->entry_count].mtime = entry->mtime;
+        dir->entries[dir->entry_count].type = entry->type;
+        dir->entry_count++;
+        /* Free the temporary struct but not its string members (now owned by buffer) */
+        free(entry);
+    }
+
+    if (dir->entry_count == 0)
+    {
+        free(dir->entries);
+        dir->entries = NULL;
+        return NULL;
+    }
+
+    /* Return first entry from newly filled buffer */
+    dir->entry_pos = 0;
+    return sftp_readdir(dir); /* Recurse to use the buffered path */
 }
 
 int sftp_dir_eof(sftp_dir_t *dir)
@@ -966,6 +1065,9 @@ int sftp_closedir(sftp_dir_t *dir)
     uint8_t response[256];
     size_t response_len;
     sftp_recv_packet(sftp, &type, response, &response_len);
+
+    /* Free buffered directory entries */
+    free_dir_entries(dir);
 
     free(dir);
     return SFTP_OK;

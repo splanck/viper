@@ -99,6 +99,17 @@ static void format_mode(uint32_t mode, char *buf)
     buf[10] = '\0';
 }
 
+static int compare_entries(const void *a, const void *b)
+{
+    const sftp_attributes_t *ea = *(const sftp_attributes_t **)a;
+    const sftp_attributes_t *eb = *(const sftp_attributes_t **)b;
+    if (!ea->name)
+        return eb->name ? 1 : 0;
+    if (!eb->name)
+        return -1;
+    return strcmp(ea->name, eb->name);
+}
+
 static void cmd_ls(const char *path)
 {
     const char *dir_path = path ? join_path(g_cwd, path) : g_cwd;
@@ -109,9 +120,41 @@ static void cmd_ls(const char *path)
         return;
     }
 
+    /* Collect all entries for sorting */
+    sftp_attributes_t **entries = NULL;
+    size_t count = 0;
+    size_t capacity = 0;
+
     sftp_attributes_t *attr;
     while ((attr = sftp_readdir(dir)) != NULL)
     {
+        if (count >= capacity)
+        {
+            size_t new_cap = capacity ? capacity * 2 : 64;
+            sftp_attributes_t **new_entries = realloc(entries, new_cap * sizeof(*entries));
+            if (!new_entries)
+            {
+                sftp_attributes_free(attr);
+                break;
+            }
+            entries = new_entries;
+            capacity = new_cap;
+        }
+        entries[count++] = attr;
+    }
+
+    sftp_closedir(dir);
+
+    /* Sort entries alphabetically */
+    if (entries && count > 0)
+    {
+        qsort(entries, count, sizeof(*entries), compare_entries);
+    }
+
+    /* Display sorted entries */
+    for (size_t i = 0; i < count; i++)
+    {
+        attr = entries[i];
         char mode_str[12];
         char size_str[16];
 
@@ -137,7 +180,7 @@ static void cmd_ls(const char *path)
         sftp_attributes_free(attr);
     }
 
-    sftp_closedir(dir);
+    free(entries);
 }
 
 static void cmd_cd(const char *path)
@@ -241,6 +284,8 @@ static void cmd_get(const char *remote, const char *local)
         total += nread;
     }
 
+    /* Sync to ensure data reaches filesystem */
+    fsync(lf);
     close(lf);
     sftp_close(rf);
 

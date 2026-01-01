@@ -1,0 +1,84 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "default",
+      "displayName": "Default (Hybrid Mode)",
+      "description": "Standard build with all kernel services enabled",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "VIPER_MICROKERNEL_MODE": "OFF",
+        "VIPER_KERNEL_ENABLE_FS": "ON",
+        "VIPER_KERNEL_ENABLE_NET": "ON",
+        "VIPER_KERNEL_ENABLE_TLS": "ON"
+      }
+    },
+    {
+      "name": "microkernel",
+      "displayName": "Microkernel Mode",
+      "description": "Microkernel build - kernel services disabled, user-space servers required",
+      "binaryDir": "${sourceDir}/build-microkernel",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "VIPER_MICROKERNEL_MODE": "ON",
+        "VIPER_KERNEL_ENABLE_FS": "ON",
+        "VIPER_KERNEL_ENABLE_NET": "OFF",
+        "VIPER_KERNEL_ENABLE_TLS": "OFF"
+      }
+    },
+    {
+      "name": "debug",
+      "displayName": "Debug Build",
+      "description": "Debug build with verbose logging",
+      "binaryDir": "${sourceDir}/build-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "VIPER_MICROKERNEL_MODE": "OFF",
+        "VIPER_KERNEL_ENABLE_FS": "ON",
+        "VIPER_KERNEL_ENABLE_NET": "ON",
+        "VIPER_KERNEL_ENABLE_TLS": "ON",
+        "VIPER_KERNEL_DEBUG_NET_SYSCALL": "ON",
+        "VIPER_KERNEL_DEBUG_TCP": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "default",
+      "configurePreset": "default"
+    },
+    {
+      "name": "microkernel",
+      "configurePreset": "microkernel"
+    },
+    {
+      "name": "debug",
+      "configurePreset": "debug"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "default",
+      "configurePreset": "default",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "microkernel",
+      "configurePreset": "microkernel",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

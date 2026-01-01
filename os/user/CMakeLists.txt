@@ -38,6 +38,12 @@ add_subdirectory(libfsclient)
 # Build the network client library
 add_subdirectory(libnetclient)
 
+# Build the TLS library
+add_subdirectory(libtls)
+
+# Build the HTTP client library
+add_subdirectory(libhttp)
+
 # Helper function to create user programs with libc
 function(add_user_program name)
     add_executable(${name}.elf ${ARGN})
@@ -98,6 +104,17 @@ add_user_program(fsd_smoke fstest/fsd_smoke.c)
 
 # netd_smoke - validates that NETD responds to IPC requests when present
 add_user_program(netd_smoke fstest/netd_smoke.cpp)
+
+# tls_smoke - validates user-space TLS library
+add_executable(tls_smoke.elf fstest/tls_smoke.c)
+target_compile_options(tls_smoke.elf PRIVATE ${USER_COMPILE_OPTIONS})
+target_link_options(tls_smoke.elf PRIVATE ${USER_LINK_OPTIONS})
+target_include_directories(tls_smoke.elf PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/libc/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/libtls/include
+)
+target_link_libraries(tls_smoke.elf PRIVATE vipertls viperlibc)
 
 # Helper function for SSH-enabled programs
 function(add_ssh_program name)

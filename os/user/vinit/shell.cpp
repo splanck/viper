@@ -110,6 +110,14 @@ void shell_loop()
         {
             cmd_status();
         }
+        else if (strcaseeq(cmd_line, "servers"))
+        {
+            cmd_servers(nullptr);
+        }
+        else if (strcasestart(cmd_line, "servers "))
+        {
+            cmd_servers(get_args(cmd_line, 8));
+        }
         else if (strcasestart(cmd_line, "runfsd "))
         {
             cmd_run_fsd(get_args(cmd_line, 7));

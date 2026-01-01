@@ -333,3 +333,88 @@ void cmd_time()
     print_str("TIME: Date/time not yet available\n");
     last_rc = RC_OK;
 }
+
+void cmd_servers(const char *args)
+{
+    // If argument provided, restart that server
+    if (args && *args)
+    {
+        print_str("Restarting server: ");
+        print_str(args);
+        print_str("...\n");
+
+        if (restart_server(args))
+        {
+            print_str("Server restarted successfully.\n");
+            last_rc = RC_OK;
+        }
+        else
+        {
+            print_str("SERVERS: Failed to restart server\n");
+            last_rc = RC_ERROR;
+            last_error = "Server restart failed";
+        }
+        return;
+    }
+
+    // No arguments - show server status
+    print_str("\nMicrokernel Server Status:\n\n");
+    print_str("  Name   Assign  PID    Running  Available\n");
+    print_str("  -----  ------  -----  -------  ---------\n");
+
+    usize count = get_server_count();
+    for (usize i = 0; i < count; i++)
+    {
+        const char *name = nullptr;
+        const char *assign = nullptr;
+        i64 pid = 0;
+        bool running = false;
+        bool available = false;
+
+        get_server_status(i, &name, &assign, &pid, &running, &available);
+
+        print_str("  ");
+        print_str(name);
+        // Pad to 7 chars
+        usize namelen = strlen(name);
+        for (usize j = namelen; j < 7; j++)
+            print_str(" ");
+
+        print_str(assign);
+        print_str("   ");
+
+        if (pid > 0)
+        {
+            if (pid < 10)
+                print_str("    ");
+            else if (pid < 100)
+                print_str("   ");
+            else if (pid < 1000)
+                print_str("  ");
+            else if (pid < 10000)
+                print_str(" ");
+            put_num(pid);
+        }
+        else
+        {
+            print_str("    -");
+        }
+        print_str("  ");
+
+        if (running)
+            print_str("yes    ");
+        else
+            print_str("no     ");
+        print_str("  ");
+
+        if (available)
+            print_str("yes");
+        else
+            print_str("no");
+
+        print_str("\n");
+    }
+
+    print_str("\nUse 'servers <name>' to restart a crashed server.\n");
+    last_rc = RC_OK;
+}

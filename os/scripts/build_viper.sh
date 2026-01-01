@@ -261,6 +261,9 @@ if [[ -x "$TOOLS_DIR/mkfs.viperfs" ]]; then
     if [[ -f "$BUILD_DIR/netd_smoke.elf" ]]; then
         MKFS_ARGS+=(--add "$BUILD_DIR/netd_smoke.elf:c/netd_smoke.elf")
     fi
+    if [[ -f "$BUILD_DIR/tls_smoke.elf" ]]; then
+        MKFS_ARGS+=(--add "$BUILD_DIR/tls_smoke.elf:c/tls_smoke.elf")
+    fi
     if [[ -f "$BUILD_DIR/ssh.elf" ]]; then
         MKFS_ARGS+=(--add "$BUILD_DIR/ssh.elf:c/ssh.elf")
     fi
@@ -276,6 +279,12 @@ if [[ -x "$TOOLS_DIR/mkfs.viperfs" ]]; then
     fi
     if [[ -f "$BUILD_DIR/fsd.elf" ]]; then
         MKFS_ARGS+=(--add "$BUILD_DIR/fsd.elf:c/fsd.elf")
+    fi
+    if [[ -f "$BUILD_DIR/inputd.elf" ]]; then
+        MKFS_ARGS+=(--add "$BUILD_DIR/inputd.elf:c/inputd.elf")
+    fi
+    if [[ -f "$BUILD_DIR/consoled.elf" ]]; then
+        MKFS_ARGS+=(--add "$BUILD_DIR/consoled.elf:c/consoled.elf")
     fi
     # Add roots.der to certs directory
     if [[ -f "$BUILD_DIR/roots.der" ]]; then
