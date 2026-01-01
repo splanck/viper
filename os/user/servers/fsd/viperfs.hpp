@@ -135,6 +135,13 @@ class ViperFS
     using ReaddirCallback =
         void (*)(const char *name, usize name_len, u64 ino, u8 file_type, void *ctx);
     i32 readdir(Inode *dir, u64 offset, ReaddirCallback cb, void *ctx);
+    i32 readdir_next(Inode *dir,
+                     u64 *inout_offset,
+                     char *name_out,
+                     usize name_out_len,
+                     usize *out_name_len,
+                     u64 *out_ino,
+                     u8 *out_file_type);
 
     // File data operations
     i64 read_data(Inode *inode, u64 offset, void *buf, usize len);

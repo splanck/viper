@@ -3,6 +3,8 @@
 **ViperOS** is a capability-based operating system for AArch64 (ARM64), designed to explore microkernel architecture, capability-based security, and modern OS concepts. It runs on QEMU's `virt` machine and features a complete TCP/IP stack with TLS 1.3, a crash-consistent journaling filesystem, and a retro-style interactive shell.
 
 > **Status:** Functional and actively developed. Suitable for experimentation and learning.
+>
+> **Microkernel status:** Hybrid today (kernel services still exist), with user-space server migration in progress (`blkd`, `fsd`, `netd`). See `bugs/microkernel.md`.
 
 ---
 
@@ -37,6 +39,8 @@ The build script automatically:
 - Builds the kernel and all user programs
 - Creates a ViperFS disk image
 - Launches QEMU
+
+If the microkernel server ELFs are present, the script also provisions dedicated devices (a separate `microkernel.img` and a second virtio-net device) so the user-space servers can claim them without fighting the kernel drivers during bring-up.
 
 **Requirements:**
 - CMake 3.20+
@@ -130,6 +134,10 @@ The ViperOS shell includes these commands:
 │  │  libc + C++ Runtime                                        │  │
 │  │  Syscall wrappers, memory allocator, string functions      │  │
 │  └───────────────────────────────────────────────────────────┘  │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │  Microkernel Servers (bring-up)                            │  │
+│  │  blkd (VirtIO-blk), fsd (ViperFS), netd (VirtIO-net)       │  │
+│  └───────────────────────────────────────────────────────────┘  │
 └─────────────────────────────┬───────────────────────────────────┘
                               │ SVC #0 (Syscalls)
 ┌─────────────────────────────┴───────────────────────────────────┐
@@ -187,6 +195,8 @@ os/
 ├── user/                # User space
 │   ├── vinit/           # Shell and commands
 │   ├── libc/            # C library implementation
+│   ├── servers/         # Microkernel servers (blkd, fsd, netd)
+│   ├── libvirtio/       # User-space VirtIO driver library
 │   ├── edit/            # Text editor
 │   ├── hello/           # Hello world program
 │   ├── fsinfo/          # Filesystem info utility

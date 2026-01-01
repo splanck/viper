@@ -255,6 +255,12 @@ if [[ -x "$TOOLS_DIR/mkfs.viperfs" ]]; then
     if [[ -f "$BUILD_DIR/edit.elf" ]]; then
         MKFS_ARGS+=(--add "$BUILD_DIR/edit.elf:c/edit.elf")
     fi
+    if [[ -f "$BUILD_DIR/fsd_smoke.elf" ]]; then
+        MKFS_ARGS+=(--add "$BUILD_DIR/fsd_smoke.elf:c/fsd_smoke.elf")
+    fi
+    if [[ -f "$BUILD_DIR/netd_smoke.elf" ]]; then
+        MKFS_ARGS+=(--add "$BUILD_DIR/netd_smoke.elf:c/netd_smoke.elf")
+    fi
     if [[ -f "$BUILD_DIR/ssh.elf" ]]; then
         MKFS_ARGS+=(--add "$BUILD_DIR/ssh.elf:c/ssh.elf")
     fi

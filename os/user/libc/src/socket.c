@@ -21,6 +21,273 @@ extern long __syscall6(long num, long arg0, long arg1, long arg2, long arg3, lon
 #define SYS_SOCKET_CLOSE 0x54
 #define SYS_DNS_RESOLVE 0x55
 
+// -----------------------------------------------------------------------------
+// libc socket FD virtualization
+//
+// Kernel TCP sockets are identified by small integer IDs starting at 0, which
+// collides with stdin/stdout/stderr and breaks POSIX-style code that uses
+// close()/poll()/select() on sockets. libc therefore exposes sockets as a
+// separate FD namespace that does not overlap the kernel file descriptor table.
+// -----------------------------------------------------------------------------
+
+#define VIPER_SOCKET_FD_BASE 128
+#define VIPER_SOCKET_MAX_FDS 64
+
+typedef enum
+{
+    VIPER_SOCKET_BACKEND_NONE = 0,
+    VIPER_SOCKET_BACKEND_KERNEL = 1,
+} viper_socket_backend_t;
+
+typedef struct
+{
+    int in_use;
+    viper_socket_backend_t backend;
+    int socket_id;          /* kernel socket id (index in tcp socket table) */
+    unsigned int refs;      /* reference count across duplicated FDs */
+} viper_socket_obj_t;
+
+typedef struct
+{
+    int in_use;
+    unsigned short obj_index;
+} viper_socket_fd_t;
+
+static viper_socket_obj_t g_sock_objs[VIPER_SOCKET_MAX_FDS];
+static viper_socket_fd_t g_sock_fds[VIPER_SOCKET_MAX_FDS];
+
+static int viper_sock_fd_in_range(int fd)
+{
+    return fd >= VIPER_SOCKET_FD_BASE && fd < (VIPER_SOCKET_FD_BASE + VIPER_SOCKET_MAX_FDS);
+}
+
+static int viper_sock_fd_index(int fd)
+{
+    return fd - VIPER_SOCKET_FD_BASE;
+}
+
+static int viper_sock_get_obj_index_for_fd(int fd)
+{
+    if (!viper_sock_fd_in_range(fd))
+        return -1;
+
+    int idx = viper_sock_fd_index(fd);
+    if (idx < 0 || idx >= VIPER_SOCKET_MAX_FDS)
+        return -1;
+
+    if (!g_sock_fds[idx].in_use)
+        return -1;
+
+    int obj = (int)g_sock_fds[idx].obj_index;
+    if (obj < 0 || obj >= VIPER_SOCKET_MAX_FDS)
+        return -1;
+    if (!g_sock_objs[obj].in_use)
+        return -1;
+
+    return obj;
+}
+
+static viper_socket_obj_t *viper_sock_get_obj_for_fd(int fd)
+{
+    int obj = viper_sock_get_obj_index_for_fd(fd);
+    if (obj < 0)
+        return (viper_socket_obj_t *)0;
+    return &g_sock_objs[obj];
+}
+
+static int viper_sock_alloc_obj(viper_socket_backend_t backend, int socket_id)
+{
+    for (int i = 0; i < VIPER_SOCKET_MAX_FDS; i++)
+    {
+        if (!g_sock_objs[i].in_use)
+        {
+            g_sock_objs[i].in_use = 1;
+            g_sock_objs[i].backend = backend;
+            g_sock_objs[i].socket_id = socket_id;
+            g_sock_objs[i].refs = 1;
+            return i;
+        }
+    }
+    return -EMFILE;
+}
+
+static void viper_sock_release_obj(int obj)
+{
+    if (obj < 0 || obj >= VIPER_SOCKET_MAX_FDS)
+        return;
+    g_sock_objs[obj].in_use = 0;
+    g_sock_objs[obj].backend = VIPER_SOCKET_BACKEND_NONE;
+    g_sock_objs[obj].socket_id = -1;
+    g_sock_objs[obj].refs = 0;
+}
+
+static int viper_sock_alloc_fd_slot(int obj)
+{
+    if (obj < 0 || obj >= VIPER_SOCKET_MAX_FDS)
+        return -EINVAL;
+
+    for (int i = 0; i < VIPER_SOCKET_MAX_FDS; i++)
+    {
+        if (!g_sock_fds[i].in_use)
+        {
+            g_sock_fds[i].in_use = 1;
+            g_sock_fds[i].obj_index = (unsigned short)obj;
+            return VIPER_SOCKET_FD_BASE + i;
+        }
+    }
+    return -EMFILE;
+}
+
+static int viper_sock_alloc_specific_fd_slot(int fd, int obj)
+{
+    if (!viper_sock_fd_in_range(fd))
+        return -EINVAL;
+    if (obj < 0 || obj >= VIPER_SOCKET_MAX_FDS)
+        return -EINVAL;
+
+    int idx = viper_sock_fd_index(fd);
+    if (idx < 0 || idx >= VIPER_SOCKET_MAX_FDS)
+        return -EINVAL;
+
+    if (g_sock_fds[idx].in_use)
+        return -EBUSY;
+
+    g_sock_fds[idx].in_use = 1;
+    g_sock_fds[idx].obj_index = (unsigned short)obj;
+    return fd;
+}
+
+static void viper_sock_free_fd_slot(int fd)
+{
+    if (!viper_sock_fd_in_range(fd))
+        return;
+
+    int idx = viper_sock_fd_index(fd);
+    if (idx < 0 || idx >= VIPER_SOCKET_MAX_FDS)
+        return;
+
+    g_sock_fds[idx].in_use = 0;
+    g_sock_fds[idx].obj_index = 0;
+}
+
+static int viper_sock_close_obj(viper_socket_obj_t *obj)
+{
+    if (!obj || !obj->in_use)
+        return -EBADF;
+
+    if (obj->backend == VIPER_SOCKET_BACKEND_KERNEL)
+    {
+        long rc = __syscall1(SYS_SOCKET_CLOSE, obj->socket_id);
+        if (rc < 0)
+        {
+            return (int)rc;
+        }
+        return 0;
+    }
+
+    return -ENOSYS;
+}
+
+static int viper_sock_close_fd(int fd)
+{
+    int obj_index = viper_sock_get_obj_index_for_fd(fd);
+    if (obj_index < 0)
+        return -EBADF;
+
+    viper_socket_obj_t *obj = &g_sock_objs[obj_index];
+
+    viper_sock_free_fd_slot(fd);
+
+    if (obj->refs > 0)
+        obj->refs--;
+
+    if (obj->refs == 0)
+    {
+        (void)viper_sock_close_obj(obj);
+        viper_sock_release_obj(obj_index);
+    }
+
+    return 0;
+}
+
+static int viper_sock_dup_fd(int oldfd)
+{
+    int obj_index = viper_sock_get_obj_index_for_fd(oldfd);
+    if (obj_index < 0)
+        return -EBADF;
+
+    viper_socket_obj_t *obj = &g_sock_objs[obj_index];
+    if (!obj->in_use)
+        return -EBADF;
+
+    int newfd = viper_sock_alloc_fd_slot(obj_index);
+    if (newfd < 0)
+        return newfd;
+
+    obj->refs++;
+    return newfd;
+}
+
+static int viper_sock_dup2_fd(int oldfd, int newfd)
+{
+    if (oldfd == newfd)
+        return newfd;
+
+    int obj_index = viper_sock_get_obj_index_for_fd(oldfd);
+    if (obj_index < 0)
+        return -EBADF;
+
+    if (!viper_sock_fd_in_range(newfd))
+        return -ENOTSUP;
+
+    // If newfd already exists as a socket FD, close it first.
+    if (viper_sock_get_obj_for_fd(newfd) != (viper_socket_obj_t *)0)
+    {
+        (void)viper_sock_close_fd(newfd);
+    }
+
+    int rc = viper_sock_alloc_specific_fd_slot(newfd, obj_index);
+    if (rc < 0)
+        return rc;
+
+    g_sock_objs[obj_index].refs++;
+    return newfd;
+}
+
+// Exposed for other libc modules (e.g., unistd.c, poll.c).
+int __viper_socket_is_fd(int fd)
+{
+    return viper_sock_get_obj_for_fd(fd) ? 1 : 0;
+}
+
+int __viper_socket_close(int fd)
+{
+    return viper_sock_close_fd(fd);
+}
+
+int __viper_socket_dup(int oldfd)
+{
+    return viper_sock_dup_fd(oldfd);
+}
+
+int __viper_socket_dup2(int oldfd, int newfd)
+{
+    return viper_sock_dup2_fd(oldfd, newfd);
+}
+
+static int viper_sock_translate_fd(int fd, int *out_socket_id)
+{
+    viper_socket_obj_t *obj = viper_sock_get_obj_for_fd(fd);
+    if (!obj)
+        return -EBADF;
+
+    if (obj->backend != VIPER_SOCKET_BACKEND_KERNEL)
+        return -ENOSYS;
+
+    *out_socket_id = obj->socket_id;
+    return 0;
+}
+
 /* IPv6 address constants */
 const struct in6_addr in6addr_any = IN6ADDR_ANY_INIT;
 const struct in6_addr in6addr_loopback = IN6ADDR_LOOPBACK_INIT;
@@ -58,13 +325,32 @@ int socket(int domain, int type, int protocol)
         errno = EPROTONOSUPPORT;
         return -1;
     }
-    long result = __syscall0(SYS_SOCKET_CREATE);
-    if (result < 0)
+
+    long sock_id = __syscall0(SYS_SOCKET_CREATE);
+    if (sock_id < 0)
     {
-        errno = (int)(-result);
+        errno = (int)(-sock_id);
         return -1;
     }
-    return (int)result;
+
+    int obj = viper_sock_alloc_obj(VIPER_SOCKET_BACKEND_KERNEL, (int)sock_id);
+    if (obj < 0)
+    {
+        (void)__syscall1(SYS_SOCKET_CLOSE, (int)sock_id);
+        errno = -obj;
+        return -1;
+    }
+
+    int fd = viper_sock_alloc_fd_slot(obj);
+    if (fd < 0)
+    {
+        (void)__syscall1(SYS_SOCKET_CLOSE, (int)sock_id);
+        viper_sock_release_obj(obj);
+        errno = -fd;
+        return -1;
+    }
+
+    return fd;
 }
 
 int bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
@@ -104,6 +390,14 @@ int accept4(int sockfd, struct sockaddr *addr, socklen_t *addrlen, int flags)
 
 int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
 {
+    int sock_id = -1;
+    int trc = viper_sock_translate_fd(sockfd, &sock_id);
+    if (trc < 0)
+    {
+        errno = -trc;
+        return -1;
+    }
+
     /* ViperOS kernel expects: sock, ip (u32), port (u16) */
     if (addrlen < sizeof(struct sockaddr_in))
     {
@@ -119,7 +413,7 @@ int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
     /* sin_addr.s_addr is already in network byte order, kernel expects host order */
     unsigned int ip = ntohl(sin->sin_addr.s_addr);
     unsigned short port = ntohs(sin->sin_port);
-    long result = __syscall3(SYS_SOCKET_CONNECT, sockfd, ip, port);
+    long result = __syscall3(SYS_SOCKET_CONNECT, sock_id, ip, port);
     if (result < 0)
     {
         errno = (int)(-result);
@@ -131,7 +425,15 @@ int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
 ssize_t send(int sockfd, const void *buf, size_t len, int flags)
 {
     (void)flags; /* ViperOS doesn't use flags */
-    long result = __syscall3(SYS_SOCKET_SEND, sockfd, (long)buf, len);
+    int sock_id = -1;
+    int trc = viper_sock_translate_fd(sockfd, &sock_id);
+    if (trc < 0)
+    {
+        errno = -trc;
+        return -1;
+    }
+
+    long result = __syscall3(SYS_SOCKET_SEND, sock_id, (long)buf, len);
     if (result < 0)
     {
         errno = (int)(-result);
@@ -143,7 +445,15 @@ ssize_t send(int sockfd, const void *buf, size_t len, int flags)
 ssize_t recv(int sockfd, void *buf, size_t len, int flags)
 {
     (void)flags; /* ViperOS doesn't use flags */
-    long result = __syscall3(SYS_SOCKET_RECV, sockfd, (long)buf, len);
+    int sock_id = -1;
+    int trc = viper_sock_translate_fd(sockfd, &sock_id);
+    if (trc < 0)
+    {
+        errno = -trc;
+        return -1;
+    }
+
+    long result = __syscall3(SYS_SOCKET_RECV, sock_id, (long)buf, len);
     if (result < 0)
     {
         errno = (int)(-result);
@@ -260,12 +570,11 @@ int getpeername(int sockfd, struct sockaddr *addr, socklen_t *addrlen)
 
 int shutdown(int sockfd, int how)
 {
-    /* Just close the socket */
     (void)how;
-    long result = __syscall1(SYS_SOCKET_CLOSE, sockfd);
-    if (result < 0)
+    int rc = viper_sock_close_fd(sockfd);
+    if (rc < 0)
     {
-        errno = (int)(-result);
+        errno = -rc;
         return -1;
     }
     return 0;

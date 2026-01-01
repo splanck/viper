@@ -538,6 +538,85 @@ static void handle_fstat(const fs::FstatRequest *req, i32 reply_channel)
     sys::channel_send(reply_channel, &reply, sizeof(reply), nullptr, 0);
 }
 
+static void handle_readdir(const fs::ReaddirRequest *req, i32 reply_channel)
+{
+    fs::ReaddirReply reply = {};
+    reply.type = fs::FS_READDIR_REPLY;
+    reply.request_id = req->request_id;
+
+    OpenFile *file = get_file(static_cast<i32>(req->file_id));
+    if (!file)
+    {
+        reply.status = -1;
+        reply.entry_count = 0;
+        sys::channel_send(reply_channel, &reply, sizeof(reply), nullptr, 0);
+        return;
+    }
+
+    viperfs::Inode *inode = g_viperfs.read_inode(file->inode_num);
+    if (!inode || !viperfs::is_directory(inode))
+    {
+        g_viperfs.release_inode(inode);
+        reply.status = -1;
+        reply.entry_count = 0;
+        sys::channel_send(reply_channel, &reply, sizeof(reply), nullptr, 0);
+        return;
+    }
+
+    u32 max_entries = req->max_entries;
+    if (max_entries > 2)
+        max_entries = 2;
+
+    u32 out_count = 0;
+    while (out_count < max_entries)
+    {
+        char name_buf[sizeof(reply.entries[0].name) + 1] = {};
+        usize name_len = 0;
+        u64 ino = 0;
+        u8 type = fs::file_type::UNKNOWN;
+
+        i32 rc = g_viperfs.readdir_next(inode,
+                                        &file->offset,
+                                        name_buf,
+                                        sizeof(name_buf),
+                                        &name_len,
+                                        &ino,
+                                        &type);
+        if (rc < 0)
+        {
+            reply.status = rc;
+            reply.entry_count = out_count;
+            g_viperfs.release_inode(inode);
+            sys::channel_send(reply_channel, &reply, sizeof(reply), nullptr, 0);
+            return;
+        }
+        if (rc == 0)
+        {
+            break; // end of directory
+        }
+
+        if (name_len > sizeof(reply.entries[out_count].name))
+        {
+            name_len = sizeof(reply.entries[out_count].name);
+        }
+
+        reply.entries[out_count].inode = ino;
+        reply.entries[out_count].type = type;
+        reply.entries[out_count].name_len = static_cast<u8>(name_len);
+        for (usize i = 0; i < name_len; i++)
+        {
+            reply.entries[out_count].name[i] = name_buf[i];
+        }
+
+        out_count++;
+    }
+
+    g_viperfs.release_inode(inode);
+    reply.status = 0;
+    reply.entry_count = out_count;
+    sys::channel_send(reply_channel, &reply, sizeof(reply), nullptr, 0);
+}
+
 static void handle_mkdir(const fs::MkdirRequest *req, i32 reply_channel)
 {
     fs::MkdirReply reply;
@@ -631,6 +710,70 @@ static void handle_unlink(const fs::UnlinkRequest *req, i32 reply_channel)
     sys::channel_send(reply_channel, &reply, sizeof(reply), nullptr, 0);
 }
 
+static void handle_rename(const fs::RenameRequest *req, i32 reply_channel)
+{
+    fs::RenameReply reply = {};
+    reply.type = fs::FS_RENAME_REPLY;
+    reply.request_id = req->request_id;
+
+    usize old_len = req->old_path_len;
+    usize new_len = req->new_path_len;
+    if (old_len == 0 || new_len == 0 || old_len + new_len > sizeof(req->paths))
+    {
+        reply.status = -1;
+        sys::channel_send(reply_channel, &reply, sizeof(reply), nullptr, 0);
+        return;
+    }
+
+    const char *old_path = req->paths;
+    const char *new_path = req->paths + old_len;
+
+    u64 old_parent_ino;
+    const char *old_name;
+    usize old_name_len;
+    if (!split_path(old_path, old_len, &old_parent_ino, &old_name, &old_name_len))
+    {
+        reply.status = -1;
+        sys::channel_send(reply_channel, &reply, sizeof(reply), nullptr, 0);
+        return;
+    }
+
+    u64 new_parent_ino;
+    const char *new_name;
+    usize new_name_len;
+    if (!split_path(new_path, new_len, &new_parent_ino, &new_name, &new_name_len))
+    {
+        reply.status = -1;
+        sys::channel_send(reply_channel, &reply, sizeof(reply), nullptr, 0);
+        return;
+    }
+
+    viperfs::Inode *old_parent = g_viperfs.read_inode(old_parent_ino);
+    viperfs::Inode *new_parent = g_viperfs.read_inode(new_parent_ino);
+    if (!old_parent || !new_parent || !viperfs::is_directory(old_parent) ||
+        !viperfs::is_directory(new_parent))
+    {
+        g_viperfs.release_inode(old_parent);
+        g_viperfs.release_inode(new_parent);
+        reply.status = -1;
+        sys::channel_send(reply_channel, &reply, sizeof(reply), nullptr, 0);
+        return;
+    }
+
+    bool ok = g_viperfs.rename(old_parent,
+                               old_name,
+                               old_name_len,
+                               new_parent,
+                               new_name,
+                               new_name_len);
+
+    g_viperfs.release_inode(old_parent);
+    g_viperfs.release_inode(new_parent);
+
+    reply.status = ok ? 0 : -1;
+    sys::channel_send(reply_channel, &reply, sizeof(reply), nullptr, 0);
+}
+
 static void handle_request(const u8 *msg, usize len, i32 reply_channel)
 {
     if (len < 4)
@@ -685,9 +828,19 @@ static void handle_request(const u8 *msg, usize len, i32 reply_channel)
                 handle_rmdir(reinterpret_cast<const fs::RmdirRequest *>(msg), reply_channel);
             break;
 
+        case fs::FS_READDIR:
+            if (len >= sizeof(fs::ReaddirRequest))
+                handle_readdir(reinterpret_cast<const fs::ReaddirRequest *>(msg), reply_channel);
+            break;
+
         case fs::FS_UNLINK:
             if (len >= sizeof(fs::UnlinkRequest))
                 handle_unlink(reinterpret_cast<const fs::UnlinkRequest *>(msg), reply_channel);
+            break;
+
+        case fs::FS_RENAME:
+            if (len >= sizeof(fs::RenameRequest))
+                handle_rename(reinterpret_cast<const fs::RenameRequest *>(msg), reply_channel);
             break;
 
         default:

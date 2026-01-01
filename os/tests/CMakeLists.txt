@@ -356,6 +356,28 @@ if(VIPEROS_HAS_QEMU)
 	    )
 	    set_tests_properties(qemu_microkernel_servers_ready PROPERTIES LABELS "qemu;userspace;microkernel")
 
+	    # --- libc→fsd forwarding smoke test ---
+	    # Runs a small user program after fsd is ready that creates a file via libc
+	    # (expected to be routed to fsd) and confirms the kernel VFS can't see it.
+	    add_qemu_test(libc_fsd_smoke
+	        --disk
+	        --microkernel-devices
+	        --timeout 180
+	        --expect "\\[fsd_smoke\\] OK: libc routed to fsd"
+	    )
+	    set_tests_properties(qemu_libc_fsd_smoke PROPERTIES LABELS "qemu;userspace;microkernel;libc")
+
+	    # --- netd IPC smoke test ---
+	    # Runs a small user program after netd is ready that queries NETD for basic
+	    # interface configuration and prints a success marker.
+	    add_qemu_test(netd_smoke
+	        --disk
+	        --microkernel-devices
+	        --timeout 180
+	        --expect "\\[netd_smoke\\] OK: NETD ip="
+	    )
+	    set_tests_properties(qemu_netd_smoke PROPERTIES LABELS "qemu;userspace;microkernel;network")
+
 	endif()
 
 # =============================================================================

@@ -6,7 +6,7 @@
 **Date:** 2024
 
 > NOTE: This document is kept for historical context and may not match the current tree.
-> The active, code-verified plan and progress tracker is `os/bugs/microkernel.md`.
+> The active, code-verified plan and progress tracker is `../bugs/microkernel.md`.
 
 ---
 

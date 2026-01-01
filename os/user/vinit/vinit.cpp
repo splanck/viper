@@ -249,14 +249,94 @@ static void start_servers()
         }
     }
 
-    (void)netd_ready;
-    (void)fsd_ready;
-
     if (registered == 0)
     {
         print_str("[vinit] Servers unavailable, using kernel services\n");
     }
     print_str("\n");
+
+    // When fsd is available, run a small smoke test program that exercises
+    // libc file ops routed through fsd (and verifies the kernel VFS can't see
+    // the created file).
+    if (fsd_ready)
+    {
+        sys::Stat st;
+        if (sys::stat("/c/fsd_smoke.elf", &st) == 0)
+        {
+            print_str("[vinit] Running fsd_smoke...\n");
+
+            u64 pid = 0;
+            u64 tid = 0;
+            u32 bootstrap_send = 0xFFFFFFFFu;
+            i64 err = sys::spawn("/c/fsd_smoke.elf",
+                                 "fsd_smoke",
+                                 &pid,
+                                 &tid,
+                                 nullptr,
+                                 &bootstrap_send);
+
+            if (bootstrap_send != 0xFFFFFFFFu)
+            {
+                sys::channel_close(static_cast<i32>(bootstrap_send));
+            }
+
+            if (err < 0)
+            {
+                print_str("[vinit] fsd_smoke: spawn failed (error ");
+                put_num(err);
+                print_str(")\n\n");
+            }
+            else
+            {
+                i32 status = 0;
+                (void)sys::waitpid(static_cast<i64>(pid), &status);
+                print_str("[vinit] fsd_smoke: exit ");
+                put_num(static_cast<i64>(status));
+                print_str("\n\n");
+            }
+        }
+    }
+
+    // When netd is available, run a small smoke test program that issues an IPC request
+    // to NETD and validates the basic response path.
+    if (netd_ready)
+    {
+        sys::Stat st;
+        if (sys::stat("/c/netd_smoke.elf", &st) == 0)
+        {
+            print_str("[vinit] Running netd_smoke...\n");
+
+            u64 pid = 0;
+            u64 tid = 0;
+            u32 bootstrap_send = 0xFFFFFFFFu;
+            i64 err = sys::spawn("/c/netd_smoke.elf",
+                                 "netd_smoke",
+                                 &pid,
+                                 &tid,
+                                 nullptr,
+                                 &bootstrap_send);
+
+            if (bootstrap_send != 0xFFFFFFFFu)
+            {
+                sys::channel_close(static_cast<i32>(bootstrap_send));
+            }
+
+            if (err < 0)
+            {
+                print_str("[vinit] netd_smoke: spawn failed (error ");
+                put_num(err);
+                print_str(")\n\n");
+            }
+            else
+            {
+                i32 status = 0;
+                (void)sys::waitpid(static_cast<i64>(pid), &status);
+                print_str("[vinit] netd_smoke: exit ");
+                put_num(static_cast<i64>(status));
+                print_str("\n\n");
+            }
+        }
+    }
 }
 
 /**

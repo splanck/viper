@@ -26,6 +26,16 @@ class Client
     i32 open(const char *path, u32 flags, u32 *out_file_id);
     i32 close(u32 file_id);
 
+    i32 stat(const char *path, sys::Stat *out);
+    i32 fstat(u32 file_id, sys::Stat *out);
+
+    i32 mkdir(const char *path);
+    i32 rmdir(const char *path);
+    i32 unlink(const char *path);
+    i32 rename(const char *old_path, const char *new_path);
+
+    i32 readdir_one(u32 dir_file_id, u64 *out_ino, u8 *out_type, char *name_out, u32 name_cap);
+
     i32 file_size(u32 file_id, u64 *out_size);
 
     i64 read(u32 file_id, void *buf, u32 count);

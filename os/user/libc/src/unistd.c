@@ -6,6 +6,27 @@ extern long __syscall0(long num);
 extern long __syscall1(long num, long arg0);
 extern long __syscall2(long num, long arg0, long arg1);
 extern long __syscall3(long num, long arg0, long arg1, long arg2);
+extern long __syscall5(long num, long arg0, long arg1, long arg2, long arg3, long arg4);
+
+/* libc ↔ fsd bridge */
+extern int __viper_fsd_is_available(void);
+extern int __viper_fsd_is_fd(int fd);
+extern int __viper_fsd_prepare_path(const char *in, char *out, size_t out_cap);
+extern ssize_t __viper_fsd_read(int fd, void *buf, size_t count);
+extern ssize_t __viper_fsd_write(int fd, const void *buf, size_t count);
+extern int __viper_fsd_close(int fd);
+extern long __viper_fsd_lseek(int fd, long offset, int whence);
+extern int __viper_fsd_dup(int oldfd);
+extern int __viper_fsd_dup2(int oldfd, int newfd);
+extern int __viper_fsd_unlink(const char *abs_path);
+extern int __viper_fsd_rmdir(const char *abs_path);
+extern int __viper_fsd_rename(const char *abs_old, const char *abs_new);
+
+/* libc ↔ socket FD bridge */
+extern int __viper_socket_is_fd(int fd);
+extern int __viper_socket_close(int fd);
+extern int __viper_socket_dup(int oldfd);
+extern int __viper_socket_dup2(int oldfd, int newfd);
 
 /* Syscall numbers from viperos/syscall_nums.hpp */
 #define SYS_TASK_CURRENT 0x02
@@ -187,31 +208,76 @@ ssize_t read(int fd, void *buf, size_t count)
         }
     }
 
+    if (__viper_fsd_is_fd(fd))
+    {
+        return __viper_fsd_read(fd, buf, count);
+    }
+
     return __syscall3(SYS_READ, fd, (long)buf, (long)count);
 }
 
 ssize_t write(int fd, const void *buf, size_t count)
 {
+    if (__viper_fsd_is_fd(fd))
+    {
+        return __viper_fsd_write(fd, buf, count);
+    }
     return __syscall3(SYS_WRITE, fd, (long)buf, (long)count);
 }
 
 int close(int fd)
 {
+    if (__viper_fsd_is_fd(fd))
+    {
+        return __viper_fsd_close(fd);
+    }
+    if (__viper_socket_is_fd(fd))
+    {
+        return __viper_socket_close(fd);
+    }
     return (int)__syscall1(SYS_CLOSE, fd);
 }
 
 long lseek(int fd, long offset, int whence)
 {
+    if (__viper_fsd_is_fd(fd))
+    {
+        return __viper_fsd_lseek(fd, offset, whence);
+    }
     return __syscall3(SYS_LSEEK, fd, offset, whence);
 }
 
 int dup(int oldfd)
 {
+    if (__viper_fsd_is_fd(oldfd))
+    {
+        return __viper_fsd_dup(oldfd);
+    }
+    if (__viper_socket_is_fd(oldfd))
+    {
+        return __viper_socket_dup(oldfd);
+    }
     return (int)__syscall1(SYS_DUP, oldfd);
 }
 
 int dup2(int oldfd, int newfd)
 {
+    if (__viper_fsd_is_fd(oldfd))
+    {
+        return __viper_fsd_dup2(oldfd, newfd);
+    }
+    if (__viper_socket_is_fd(oldfd))
+    {
+        return __viper_socket_dup2(oldfd, newfd);
+    }
+    if (__viper_fsd_is_fd(newfd))
+    {
+        return -7; /* VERR_NOT_SUPPORTED */
+    }
+    if (__viper_socket_is_fd(newfd))
+    {
+        return -7; /* VERR_NOT_SUPPORTED */
+    }
     return (int)__syscall2(SYS_DUP2, oldfd, newfd);
 }
 
@@ -312,11 +378,29 @@ int access(const char *pathname, int mode)
 
 int unlink(const char *pathname)
 {
+    if (__viper_fsd_is_available())
+    {
+        char fsd_path[201];
+        int route = __viper_fsd_prepare_path(pathname, fsd_path, sizeof(fsd_path));
+        if (route > 0)
+        {
+            return __viper_fsd_unlink(fsd_path);
+        }
+    }
     return (int)__syscall1(SYS_UNLINK, (long)pathname);
 }
 
 int rmdir(const char *pathname)
 {
+    if (__viper_fsd_is_available())
+    {
+        char fsd_path[201];
+        int route = __viper_fsd_prepare_path(pathname, fsd_path, sizeof(fsd_path));
+        if (route > 0)
+        {
+            return __viper_fsd_rmdir(fsd_path);
+        }
+    }
     return (int)__syscall1(SYS_RMDIR, (long)pathname);
 }
 
@@ -326,6 +410,26 @@ int link(const char *oldpath, const char *newpath)
     (void)oldpath;
     (void)newpath;
     return -1; /* ENOSYS */
+}
+
+int rename(const char *oldpath, const char *newpath)
+{
+    if (!oldpath || !newpath)
+        return -1;
+
+    if (__viper_fsd_is_available())
+    {
+        char old_fsd[201];
+        char new_fsd[201];
+        int r0 = __viper_fsd_prepare_path(oldpath, old_fsd, sizeof(old_fsd));
+        int r1 = __viper_fsd_prepare_path(newpath, new_fsd, sizeof(new_fsd));
+        if (r0 > 0 && r1 > 0)
+        {
+            return __viper_fsd_rename(old_fsd, new_fsd);
+        }
+    }
+
+    return (int)__syscall2(SYS_RENAME, (long)oldpath, (long)newpath);
 }
 
 int symlink(const char *target, const char *linkpath)

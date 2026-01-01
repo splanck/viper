@@ -2,6 +2,8 @@
 
 This directory contains the complete documentation for ViperOS, a capability-based operating system for AArch64.
 
+**Microkernel migration:** The active, code-verified microkernel audit + migration plan (with implementation progress) is `../bugs/microkernel.md`.
+
 ---
 
 ## Quick Links
@@ -11,6 +13,7 @@ This directory contains the complete documentation for ViperOS, a capability-bas
 | [Shell Commands](shell-commands.md) | Complete shell command reference |
 | [Syscall Reference](syscalls.md) | System call API documentation |
 | [Implementation Status](status/00-overview.md) | Current implementation status |
+| [Microkernel Plan](../bugs/microkernel.md) | Microkernel audit, phased migration plan, progress |
 
 ---
 
@@ -79,6 +82,10 @@ Detailed documentation of the ViperOS implementation:
 │  └───────────────────────────────────────────────────────────┘  │
 │  ┌───────────────────────────────────────────────────────────┐  │
 │  │  libc + C++ Runtime (55 C sources, 66 C++ headers)        │  │
+│  └───────────────────────────────────────────────────────────┘  │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │  Microkernel Servers (bring-up)                            │  │
+│  │  blkd (VirtIO-blk), fsd (ViperFS), netd (VirtIO-net)       │  │
 │  └───────────────────────────────────────────────────────────┘  │
 └─────────────────────────────┬───────────────────────────────────┘
                               │ SVC #0 (Syscalls)

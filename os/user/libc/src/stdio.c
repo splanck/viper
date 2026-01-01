@@ -1,6 +1,7 @@
 #include "../include/stdio.h"
 #include "../include/string.h"
 #include "../include/unistd.h"
+#include "../include/fcntl.h"
 
 /* Syscall helpers */
 extern long __syscall1(long num, long arg0);
@@ -604,24 +605,6 @@ static int skip_whitespace(const char **str)
     return count;
 }
 
-/* Forward declarations for syscalls */
-extern long __syscall1(long num, long arg0);
-extern long __syscall2(long num, long arg0, long arg1);
-extern long __syscall3(long num, long arg0, long arg1, long arg2);
-#define SYS_OPEN 0x40
-#define SYS_CLOSE 0x41
-#define SYS_LSEEK 0x44
-#define SYS_UNLINK 0x63
-#define SYS_RENAME 0x64
-
-/* File open flags */
-#define O_RDONLY 0x0001
-#define O_WRONLY 0x0002
-#define O_RDWR 0x0003
-#define O_CREAT 0x0100
-#define O_TRUNC 0x0200
-#define O_APPEND 0x0400
-
 /* Pool of FILE structures */
 #define FILE_POOL_SIZE 20
 static struct _FILE file_pool[FILE_POOL_SIZE];
@@ -689,14 +672,14 @@ FILE *fopen(const char *pathname, const char *mode)
     if (flags < 0)
         return (FILE *)0;
 
-    int fd = (int)__syscall2(SYS_OPEN, (long)pathname, flags);
+    int fd = open(pathname, flags, 0666);
     if (fd < 0)
         return (FILE *)0;
 
     struct _FILE *f = alloc_file();
     if (!f)
     {
-        __syscall1(SYS_CLOSE, fd);
+        close(fd);
         return (FILE *)0;
     }
 
@@ -743,7 +726,7 @@ FILE *freopen(const char *pathname, const char *mode, FILE *stream)
     fflush(stream);
     if (stream->fd >= 0 && stream != stdin && stream != stdout && stream != stderr)
     {
-        __syscall1(SYS_CLOSE, stream->fd);
+        close(stream->fd);
     }
 
     if (!pathname)
@@ -756,7 +739,7 @@ FILE *freopen(const char *pathname, const char *mode, FILE *stream)
     if (flags < 0)
         return (FILE *)0;
 
-    int fd = (int)__syscall2(SYS_OPEN, (long)pathname, flags);
+    int fd = open(pathname, flags, 0666);
     if (fd < 0)
         return (FILE *)0;
 
@@ -778,7 +761,7 @@ int fclose(FILE *stream)
     int result = 0;
     if (stream->fd >= 0 && stream != stdin && stream != stdout && stream != stderr)
     {
-        result = (int)__syscall1(SYS_CLOSE, stream->fd);
+        result = close(stream->fd);
         stream->fd = -1;
     }
 
@@ -837,7 +820,7 @@ int fseek(FILE *stream, long offset, int whence)
         return -1;
 
     fflush(stream);
-    long result = __syscall3(SYS_LSEEK, stream->fd, offset, whence);
+    long result = lseek(stream->fd, offset, whence);
     if (result < 0)
         return -1;
 
@@ -851,7 +834,7 @@ long ftell(FILE *stream)
         return -1L;
 
     fflush(stream);
-    return __syscall3(SYS_LSEEK, stream->fd, 0, SEEK_CUR);
+    return lseek(stream->fd, 0, SEEK_CUR);
 }
 
 void rewind(FILE *stream)
@@ -940,14 +923,14 @@ int remove(const char *pathname)
 {
     if (!pathname)
         return -1;
-    return (int)__syscall1(SYS_UNLINK, (long)pathname);
+    return unlink(pathname);
 }
 
 int rename_file(const char *oldpath, const char *newpath)
 {
     if (!oldpath || !newpath)
         return -1;
-    return (int)__syscall2(SYS_RENAME, (long)oldpath, (long)newpath);
+    return rename(oldpath, newpath);
 }
 
 /* Temporary file name generation */

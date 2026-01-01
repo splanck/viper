@@ -898,7 +898,7 @@ Get system uptime.
 These syscalls are used by user-space drivers and microkernel servers.
 
 > Note: The security model is currently in flux. Some device syscalls are gated by a temporary
-> “allow init descendants” bring-up policy in the kernel. See `os/bugs/microkernel.md`.
+> “allow init descendants” bring-up policy in the kernel. See `../bugs/microkernel.md`.
 
 ### SYS_MAP_DEVICE (0x100)
 

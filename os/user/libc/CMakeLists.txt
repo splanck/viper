@@ -61,6 +61,7 @@ set(LIBC_C_SOURCES
 
 set(LIBC_CXX_SOURCES
         src/new.cpp
+        src/fsd_backend.cpp
 )
 
 # Create static library
@@ -81,6 +82,9 @@ target_compile_options(viperlibc PRIVATE
         -Wall
         -Wextra
 )
+
+# libc uses the user-space fsd client library when available.
+target_link_libraries(viperlibc PUBLIC viperfsclient)
 
 # Set output directory
 set_target_properties(viperlibc PROPERTIES

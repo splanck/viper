@@ -10,7 +10,7 @@ The ViperOS shell (vinit) provides a command-line interface with line editing, c
 |----------|----------|
 | **Files** | `Dir`, `List`, `Type`, `Copy`, `Delete`, `MakeDir`, `Rename` |
 | **Navigation** | `chdir`, `cwd`, `Path`, `Assign` |
-| **Programs** | `Run` |
+| **Programs** | `Run`, `RunFSD` |
 | **System** | `Version`, `Uptime`, `Avail`, `Status`, `Caps`, `Date`, `Time` |
 | **Network** | `Fetch` |
 | **Utility** | `Echo`, `Cls`, `History`, `Why`, `Help` |
@@ -302,6 +302,18 @@ Process 4 exited with status 0
 | `edit` | Text editor (nano-like) |
 | `devices` | List system devices |
 | `mathtest` | Floating-point math tests |
+
+---
+
+### RunFSD
+
+Execute a user program by reading the ELF via `fsd` and spawning it from shared memory.
+
+**Syntax:** `RunFSD <path> [arguments]`
+
+**Notes:**
+- Requires `fsd` to be running (microkernel bring-up path).
+- Useful for running executables stored on the `fsd`-managed disk while spawn is being decoupled from the kernel filesystem.
 
 ---
 

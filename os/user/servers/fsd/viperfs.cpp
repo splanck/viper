@@ -262,7 +262,11 @@ u64 ViperFS::lookup(Inode *dir, const char *name, usize name_len)
             DirEntry *entry = reinterpret_cast<DirEntry *>(block + block_off);
 
             if (entry->rec_len == 0)
+            {
+                // Corrupted directory entry; skip to next block to avoid infinite loop.
+                offset = (block_idx + 1) * BLOCK_SIZE;
                 break;
+            }
 
             if (entry->inode != 0 && entry->name_len == name_len &&
                 memcmp(entry->name, name, name_len) == 0)
@@ -304,7 +308,11 @@ i32 ViperFS::readdir(Inode *dir, u64 offset, ReaddirCallback cb, void *ctx)
             DirEntry *entry = reinterpret_cast<DirEntry *>(block + block_off);
 
             if (entry->rec_len == 0)
+            {
+                // Corrupted directory entry; skip to next block to avoid infinite loop.
+                offset = (block_idx + 1) * BLOCK_SIZE;
                 break;
+            }
 
             if (entry->inode != 0)
             {
@@ -318,6 +326,80 @@ i32 ViperFS::readdir(Inode *dir, u64 offset, ReaddirCallback cb, void *ctx)
     }
 
     return count;
+}
+
+i32 ViperFS::readdir_next(Inode *dir,
+                          u64 *inout_offset,
+                          char *name_out,
+                          usize name_out_len,
+                          usize *out_name_len,
+                          u64 *out_ino,
+                          u8 *out_file_type)
+{
+    if (!dir || !is_directory(dir) || !inout_offset)
+        return -1;
+
+    u64 offset = *inout_offset;
+
+    while (offset < dir->size)
+    {
+        u64 block_idx = offset / BLOCK_SIZE;
+        u64 block_num = get_block_ptr(dir, block_idx);
+        if (block_num == 0)
+        {
+            offset = (block_idx + 1) * BLOCK_SIZE;
+            continue;
+        }
+
+        u8 *block = cache_.get(block_num);
+        if (!block)
+        {
+            *inout_offset = offset;
+            return -1;
+        }
+
+        u64 block_off = offset % BLOCK_SIZE;
+        while (block_off < BLOCK_SIZE && offset < dir->size)
+        {
+            DirEntry *entry = reinterpret_cast<DirEntry *>(block + block_off);
+            if (entry->rec_len == 0)
+            {
+                // Corrupted directory entry; skip to next block.
+                offset = (block_idx + 1) * BLOCK_SIZE;
+                break;
+            }
+
+            u64 next_offset = offset + entry->rec_len;
+
+            if (entry->inode != 0)
+            {
+                if (out_ino)
+                    *out_ino = entry->inode;
+                if (out_file_type)
+                    *out_file_type = entry->file_type;
+                if (out_name_len)
+                    *out_name_len = entry->name_len;
+
+                if (name_out && name_out_len > 0)
+                {
+                    usize to_copy = entry->name_len;
+                    if (to_copy >= name_out_len)
+                        to_copy = name_out_len - 1;
+                    memcpy(name_out, entry->name, to_copy);
+                    name_out[to_copy] = '\0';
+                }
+
+                *inout_offset = next_offset;
+                return 1;
+            }
+
+            block_off += entry->rec_len;
+            offset = next_offset;
+        }
+    }
+
+    *inout_offset = offset;
+    return 0;
 }
 
 i64 ViperFS::read_data(Inode *inode, u64 offset, void *buf, usize len)
@@ -604,7 +686,11 @@ bool ViperFS::add_dir_entry(Inode *dir, u64 ino, const char *name, usize name_le
             DirEntry *entry = reinterpret_cast<DirEntry *>(block + block_off);
 
             if (entry->rec_len == 0)
+            {
+                // Corrupted directory entry; skip to next block to avoid infinite loop.
+                offset = (block_idx + 1) * BLOCK_SIZE;
                 break;
+            }
 
             // Check if this entry has space after it
             u16 real_size = dir_entry_size(entry->name_len);
@@ -697,7 +783,11 @@ bool ViperFS::remove_dir_entry(Inode *dir, const char *name, usize name_len, u64
             DirEntry *entry = reinterpret_cast<DirEntry *>(block + block_off);
 
             if (entry->rec_len == 0)
+            {
+                // Corrupted directory entry; skip to next block to avoid infinite loop.
+                offset = (block_idx + 1) * BLOCK_SIZE;
                 break;
+            }
 
             if (entry->inode != 0 && entry->name_len == name_len &&
                 memcmp(entry->name, name, name_len) == 0)

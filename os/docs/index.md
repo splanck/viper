@@ -11,6 +11,7 @@ Welcome to the ViperOS documentation.
 | [Main README](../README.md) | Build instructions and quickstart |
 | [Shell Commands](shell-commands.md) | Complete command reference |
 | [Syscall Reference](syscalls.md) | System call API documentation |
+| [Microkernel Plan](../bugs/microkernel.md) | Microkernel audit, phased migration plan, progress |
 
 ---
 

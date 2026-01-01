@@ -6,6 +6,15 @@ extern long __syscall1(long num, long arg0);
 extern long __syscall2(long num, long arg0, long arg1);
 extern long __syscall3(long num, long arg0, long arg1, long arg2);
 
+/* libc ↔ fsd bridge */
+extern int __viper_fsd_is_available(void);
+extern int __viper_fsd_is_fd(int fd);
+extern int __viper_fsd_prepare_path(const char *in, char *out, size_t out_cap);
+extern int __viper_fsd_open(const char *abs_path, int flags);
+extern int __viper_fsd_stat(const char *abs_path, struct stat *statbuf);
+extern int __viper_fsd_fstat(int fd, struct stat *statbuf);
+extern int __viper_fsd_mkdir(const char *abs_path);
+
 /* Syscall numbers */
 #define SYS_OPEN 0x40
 #define SYS_STAT 0x45
@@ -23,6 +32,17 @@ int stat(const char *pathname, struct stat *statbuf)
 {
     if (!pathname || !statbuf)
         return -1;
+
+    if (__viper_fsd_is_available())
+    {
+        char fsd_path[201];
+        int route = __viper_fsd_prepare_path(pathname, fsd_path, sizeof(fsd_path));
+        if (route > 0)
+        {
+            return __viper_fsd_stat(fsd_path, statbuf);
+        }
+    }
+
     return (int)__syscall2(SYS_STAT, (long)pathname, (long)statbuf);
 }
 
@@ -30,6 +50,12 @@ int fstat(int fd, struct stat *statbuf)
 {
     if (!statbuf)
         return -1;
+
+    if (__viper_fsd_is_fd(fd))
+    {
+        return __viper_fsd_fstat(fd, statbuf);
+    }
+
     return (int)__syscall2(SYS_FSTAT, fd, (long)statbuf);
 }
 
@@ -58,6 +84,18 @@ int mkdir(const char *pathname, mode_t mode)
         return -1;
     /* Apply umask to mode */
     mode_t effective_mode = mode & ~current_umask;
+
+    if (__viper_fsd_is_available())
+    {
+        char fsd_path[201];
+        int route = __viper_fsd_prepare_path(pathname, fsd_path, sizeof(fsd_path));
+        if (route > 0)
+        {
+            (void)effective_mode; /* fsd currently ignores mode */
+            return __viper_fsd_mkdir(fsd_path);
+        }
+    }
+
     return (int)__syscall2(SYS_MKDIR, (long)pathname, effective_mode);
 }
 
@@ -99,6 +137,17 @@ int open(const char *pathname, int flags, ...)
     if (flags & O_CREAT)
     {
         mode = mode & ~current_umask;
+    }
+
+    if (__viper_fsd_is_available())
+    {
+        char fsd_path[201];
+        int route = __viper_fsd_prepare_path(pathname, fsd_path, sizeof(fsd_path));
+        if (route > 0)
+        {
+            (void)mode; /* fsd currently ignores mode */
+            return __viper_fsd_open(fsd_path, flags);
+        }
     }
 
     return (int)__syscall3(SYS_OPEN, (long)pathname, flags, mode);

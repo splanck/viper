@@ -1,18 +1,18 @@
 #include "../include/dirent.h"
+#include "../include/fcntl.h"
 #include "../include/stdlib.h"
 #include "../include/string.h"
+#include "../include/unistd.h"
 
 /* Syscall helpers */
-extern long __syscall2(long num, long arg0, long arg1);
 extern long __syscall3(long num, long arg0, long arg1, long arg2);
 
 /* Syscall numbers from include/viperos/syscall_nums.hpp */
-#define SYS_OPEN 0x40
-#define SYS_CLOSE 0x41
 #define SYS_READDIR 0x60
 
-/* Open flags */
-#define O_RDONLY 0x0000
+/* libc ↔ fsd bridge */
+extern int __viper_fsd_is_fd(int fd);
+extern int __viper_fsd_readdir(int fd, struct dirent *out_ent);
 
 /* Internal directory stream structure */
 struct _DIR
@@ -62,7 +62,7 @@ DIR *opendir(const char *name)
         return NULL;
 
     /* Open the directory */
-    long fd = __syscall2(SYS_OPEN, (long)name, O_RDONLY);
+    int fd = open(name, O_RDONLY);
     if (fd < 0)
         return NULL;
 
@@ -70,11 +70,11 @@ DIR *opendir(const char *name)
     struct _DIR *dir = alloc_dir();
     if (!dir)
     {
-        __syscall2(SYS_CLOSE, fd, 0);
+        close(fd);
         return NULL;
     }
 
-    dir->fd = (int)fd;
+    dir->fd = fd;
     dir->buf_pos = 0;
     dir->buf_len = 0;
     memset(&dir->entry, 0, sizeof(dir->entry));
@@ -86,6 +86,12 @@ struct dirent *readdir(DIR *dirp)
 {
     if (!dirp)
         return NULL;
+
+    if (__viper_fsd_is_fd(dirp->fd))
+    {
+        int rc = __viper_fsd_readdir(dirp->fd, &dirp->entry);
+        return (rc > 0) ? &dirp->entry : NULL;
+    }
 
     /* If buffer is empty or exhausted, read more */
     if (dirp->buf_pos >= dirp->buf_len)
@@ -136,7 +142,7 @@ int closedir(DIR *dirp)
     if (!dirp)
         return -1;
 
-    long result = __syscall2(SYS_CLOSE, dirp->fd, 0);
+    long result = close(dirp->fd);
     free_dir(dirp);
 
     return (result < 0) ? -1 : 0;
@@ -147,8 +153,12 @@ void rewinddir(DIR *dirp)
     if (!dirp)
         return;
 
-    /* Close and reopen to reset position */
-    /* This is a simple implementation - real systems track the path */
+    if (__viper_fsd_is_fd(dirp->fd))
+    {
+        (void)lseek(dirp->fd, 0, SEEK_SET);
+        return;
+    }
+
     dirp->buf_pos = 0;
     dirp->buf_len = 0;
 }

@@ -54,6 +54,18 @@ This section is updated as phases are implemented.
   - Linked `vinit.elf` with `viperfsclient` and ensured fsd client connections are closed (avoid handle leaks): `user/CMakeLists.txt`, `user/libfsclient/include/fsclient.hpp`
   - Fixed a bootstrap channel handle leak in `Run` (always close unused `SYS_TASK_SPAWN` bootstrap send endpoint): `user/vinit/cmd_misc.cpp`
   - Validated via `scripts/build_viper.sh --test --no-run` (all tests passing)
+- **2026-01-01 — Phase 3 (libc→fsd integration + validation):** Routed libc file/dir APIs through `fsd` when present and added an automated smoke test.
+  - Implemented `FS_READDIR` and `FS_RENAME` in `fsd` with offset-tracking directory iteration: `user/servers/fsd/main.cpp`, `user/servers/fsd/viperfs.hpp`, `user/servers/fsd/viperfs.cpp`
+  - Extended `viperfsclient` with `stat/fstat/mkdir/rmdir/unlink/rename/readdir_one`: `user/libfsclient/include/fsclient.hpp`, `user/libfsclient/src/fsclient.cpp`
+  - Wired libc to prefer `fsd` for file and directory operations (kernel fallback preserved for `/dev` and when `fsd` is unavailable): `user/libc/src/fsd_backend.cpp`, `user/libc/src/unistd.c`, `user/libc/src/stat.c`, `user/libc/src/stdio.c`, `user/libc/src/dirent.c`, `user/libc/include/unistd.h`, `user/libc/CMakeLists.txt`
+  - Added `fsd_smoke.elf` (run automatically when `FSD` is ready) and a new QEMU test `qemu_libc_fsd_smoke`: `user/fstest/fsd_smoke.c`, `user/vinit/vinit.cpp`, `user/CMakeLists.txt`, `scripts/build_viper.sh`, `tests/CMakeLists.txt`
+  - Validated via `scripts/build_viper.sh --test --no-run` (19/19 tests passing)
+- **2026-01-01 — Phase 5 (networking groundwork: socket FDs + poll + netd smoke):** Fixed libc socket/poll plumbing needed before switching the default networking provider to `netd`.
+  - Virtualized libc socket descriptors (kernel socket IDs start at 0 and collide with stdio): `user/libc/src/socket.c`, `user/libc/src/unistd.c`
+  - Replaced bogus `poll()/select()` syscall stubs with a pollset-based implementation using `SYS_POLL_*` and pseudo-handles: `user/libc/src/poll.c`
+  - Added `netd_smoke.elf` (run automatically when `NETD` is ready) and a new QEMU test `qemu_netd_smoke`: `user/fstest/netd_smoke.cpp`, `user/vinit/vinit.cpp`, `user/CMakeLists.txt`, `scripts/build_viper.sh`, `tests/CMakeLists.txt`
+  - Refreshed user-facing docs for the microkernel bring-up path and `RunFSD`: `README.md`, `docs/README.md`, `docs/shell-commands.md`, `docs/index.md`, `docs/syscalls.md`, `docs/microkernel_plan.md`
+  - Validated via `scripts/build_viper.sh --test --no-run` (20/20 tests passing)
 
 ---
 
@@ -383,6 +395,10 @@ This is the hardest coupling in the system today (`SYS_TASK_SPAWN` → kernel lo
 
 **Goal:** User processes use `netd` sockets/DNS instead of kernel sockets and kernel DNS.
 
+0. **Fix socket FD semantics + readiness plumbing**
+   - Kernel TCP sockets are currently identified by small integer IDs starting at 0 (not POSIX FDs); libc must virtualize them so they don’t collide with `stdin/stdout/stderr`.
+   - libc `poll()/select()` must be implemented on top of `SYS_POLL_*` (poll sets) so libssh (`ssh_channel_poll`) and interactive apps can multiplex socket I/O correctly.
+   - This groundwork should be in place before attempting libc→netd forwarding.
 1. **Harden netd + its stack**
    - Validate correctness and completeness of `user/servers/netd/netstack.cpp`.
    - Ensure IRQ-driven RX works reliably (avoid timer polling).

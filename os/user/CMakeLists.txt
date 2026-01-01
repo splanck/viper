@@ -90,6 +90,12 @@ add_user_program(devices devices/devices.cpp)
 # edit - simple nano-like text editor
 add_user_program(edit edit/edit.cpp)
 
+# fsd_smoke - validates libc→fsd routing when fsd is present
+add_user_program(fsd_smoke fstest/fsd_smoke.c)
+
+# netd_smoke - validates that NETD responds to IPC requests when present
+add_user_program(netd_smoke fstest/netd_smoke.cpp)
+
 # Helper function for SSH-enabled programs
 function(add_ssh_program name)
     add_executable(${name}.elf ${ARGN})

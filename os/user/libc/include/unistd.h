@@ -87,6 +87,7 @@ extern "C"
     /* File/directory operations */
     int unlink(const char *pathname);
     int rmdir(const char *pathname);
+    int rename(const char *oldpath, const char *newpath);
     int mkdir(const char *pathname, unsigned int mode);
     int link(const char *oldpath, const char *newpath);
     int symlink(const char *target, const char *linkpath);
