@@ -58,6 +58,8 @@ extern int __viper_fsd_dup(int oldfd);
 extern int __viper_fsd_dup2(int oldfd, int newfd);
 extern int __viper_fsd_unlink(const char *abs_path);
 extern int __viper_fsd_rmdir(const char *abs_path);
+extern int __viper_fsd_chdir(const char *path);
+extern int __viper_fsd_getcwd(char *buf, size_t size);
 extern int __viper_fsd_rename(const char *abs_old, const char *abs_new);
 
 /* libc ↔ socket FD bridge */
@@ -494,6 +496,17 @@ pid_t getppid(void)
  */
 char *getcwd(char *buf, size_t size)
 {
+    /* Try fsd first if available */
+    if (__viper_fsd_is_available())
+    {
+        int result = __viper_fsd_getcwd(buf, size);
+        if (result >= 0)
+        {
+            return buf;
+        }
+    }
+
+    /* Fall back to kernel syscall */
     long result = __syscall2(SYS_GETCWD, (long)buf, (long)size);
     if (result < 0)
     {
@@ -508,12 +521,35 @@ char *getcwd(char *buf, size_t size)
  * @details
  * Changes the current working directory to the specified path.
  * The path can be absolute or relative to the current directory.
+ * Routes to fsd for user paths, kernel for /sys paths.
  *
  * @param path Path to the new working directory.
  * @return 0 on success, -1 on error.
  */
 int chdir(const char *path)
 {
+    if (!path)
+        return -1;
+
+    /* Check if this is a /sys path (kernel VFS) */
+    if (path[0] == '/' && path[1] == 's' && path[2] == 'y' && path[3] == 's' &&
+        (path[4] == '\0' || path[4] == '/'))
+    {
+        return (int)__syscall1(SYS_CHDIR, (long)path);
+    }
+
+    /* Try fsd for user paths */
+    if (__viper_fsd_is_available())
+    {
+        int result = __viper_fsd_chdir(path);
+        if (result == 0)
+        {
+            return 0;
+        }
+        return -1;
+    }
+
+    /* Fall back to kernel syscall */
     return (int)__syscall1(SYS_CHDIR, (long)path);
 }
 

@@ -49,6 +49,10 @@ enum MsgType : u32
     // Filesystem info
     FS_STATFS = 30,
 
+    // Working directory operations
+    FS_CHDIR = 40,
+    FS_GETCWD = 41,
+
     // Replies (server -> client)
     FS_OPEN_REPLY = 0x81,
     FS_CLOSE_REPLY = 0x82,
@@ -69,6 +73,9 @@ enum MsgType : u32
     FS_READLINK_REPLY = 0x95,
 
     FS_STATFS_REPLY = 0x9E,
+
+    FS_CHDIR_REPLY = 0xA8,
+    FS_GETCWD_REPLY = 0xA9,
 };
 
 /**
@@ -450,6 +457,53 @@ struct RenameReply
     u32 request_id; ///< Matches request
     i32 status;     ///< 0 = success, negative = error
     u32 _pad;
+};
+
+// ============================================================================
+// Working Directory Messages
+// ============================================================================
+
+/**
+ * @brief FS_CHDIR request message.
+ */
+struct ChdirRequest
+{
+    u32 type;                ///< FS_CHDIR
+    u32 request_id;          ///< For matching replies
+    u16 path_len;            ///< Length of path
+    char path[MAX_PATH_LEN]; ///< Path
+};
+
+/**
+ * @brief FS_CHDIR reply message.
+ */
+struct ChdirReply
+{
+    u32 type;       ///< FS_CHDIR_REPLY
+    u32 request_id; ///< Matches request
+    i32 status;     ///< 0 = success, negative = error
+    u32 _pad;
+};
+
+/**
+ * @brief FS_GETCWD request message.
+ */
+struct GetcwdRequest
+{
+    u32 type;       ///< FS_GETCWD
+    u32 request_id; ///< For matching replies
+};
+
+/**
+ * @brief FS_GETCWD reply message.
+ */
+struct GetcwdReply
+{
+    u32 type;                ///< FS_GETCWD_REPLY
+    u32 request_id;          ///< Matches request
+    i32 status;              ///< 0 = success, negative = error
+    u16 path_len;            ///< Length of path
+    char path[MAX_PATH_LEN]; ///< Current working directory path
 };
 
 } // namespace fs

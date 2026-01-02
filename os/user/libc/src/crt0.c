@@ -89,6 +89,8 @@ static void clear_bss(void)
  * Splits the args buffer on spaces, handling the format:
  * "arg1 arg2 arg3" -> argv[1]="arg1", argv[2]="arg2", argv[3]="arg3"
  *
+ * Strips any PWD=/path; prefix added by vinit for cwd tracking.
+ *
  * argv[0] is always set to "program".
  *
  * @return argc (number of arguments including program name)
@@ -114,6 +116,27 @@ static int parse_args(void)
 
     /* Parse args - split on spaces */
     char *p = g_args_buf;
+
+    /* Strip PWD=/path; prefix if present (added by vinit for cwd tracking) */
+    if (result > 4 && p[0] == 'P' && p[1] == 'W' && p[2] == 'D' && p[3] == '=')
+    {
+        /* Find the semicolon separator */
+        char *semi = p + 4;
+        while (*semi && *semi != ';')
+            semi++;
+
+        if (*semi == ';')
+        {
+            /* Skip past the PWD prefix */
+            p = semi + 1;
+        }
+        else
+        {
+            /* No semicolon means no actual args, just PWD */
+            g_argv[argc] = (char *)0;
+            return argc;
+        }
+    }
 
     while (*p && argc < MAX_ARGS)
     {

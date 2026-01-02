@@ -673,12 +673,22 @@ void cmd_type(const char *path)
         return;
     }
 
+    // Normalize path (handle relative paths)
+    char normalized[256];
+    if (!normalize_path(path, current_dir, normalized, sizeof(normalized)))
+    {
+        print_str("Type: invalid path\n");
+        last_rc = RC_ERROR;
+        last_error = "Invalid path";
+        return;
+    }
+
     u32 file_id = 0;
-    i32 err = g_fsd.open(path, 0, &file_id); // O_RDONLY = 0
+    i32 err = g_fsd.open(normalized, 0, &file_id); // O_RDONLY = 0
     if (err != 0)
     {
         print_str("Type: cannot open \"");
-        print_str(path);
+        print_str(normalized);
         print_str("\"\n");
         last_rc = RC_ERROR;
         last_error = "File not found";
@@ -750,24 +760,39 @@ void cmd_copy(const char *args)
         return;
     }
 
+    // Normalize paths (handle relative paths)
+    char norm_src[256], norm_dst[256];
+    if (!normalize_path(source, current_dir, norm_src, sizeof(norm_src)))
+    {
+        print_str("Copy: invalid source path\n");
+        last_rc = RC_ERROR;
+        return;
+    }
+    if (!normalize_path(dest, current_dir, norm_dst, sizeof(norm_dst)))
+    {
+        print_str("Copy: invalid destination path\n");
+        last_rc = RC_ERROR;
+        return;
+    }
+
     // fsd open flags: O_RDONLY=0, O_WRONLY=1, O_CREAT=0x40, O_TRUNC=0x200
     u32 src_id = 0;
-    i32 err = g_fsd.open(source, 0, &src_id); // O_RDONLY
+    i32 err = g_fsd.open(norm_src, 0, &src_id); // O_RDONLY
     if (err != 0)
     {
         print_str("Copy: cannot open \"");
-        print_str(source);
+        print_str(norm_src);
         print_str("\"\n");
         last_rc = RC_ERROR;
         return;
     }
 
     u32 dst_id = 0;
-    err = g_fsd.open(dest, 1 | 0x40 | 0x200, &dst_id); // O_WRONLY | O_CREAT | O_TRUNC
+    err = g_fsd.open(norm_dst, 1 | 0x40 | 0x200, &dst_id); // O_WRONLY | O_CREAT | O_TRUNC
     if (err != 0)
     {
         print_str("Copy: cannot create \"");
-        print_str(dest);
+        print_str(norm_dst);
         print_str("\"\n");
         g_fsd.close(src_id);
         last_rc = RC_ERROR;
@@ -823,17 +848,26 @@ void cmd_delete(const char *args)
         return;
     }
 
-    if (g_fsd.unlink(args) != 0)
+    // Normalize path (handle relative paths)
+    char normalized[256];
+    if (!normalize_path(args, current_dir, normalized, sizeof(normalized)))
+    {
+        print_str("Delete: invalid path\n");
+        last_rc = RC_ERROR;
+        return;
+    }
+
+    if (g_fsd.unlink(normalized) != 0)
     {
         print_str("Delete: cannot delete \"");
-        print_str(args);
+        print_str(normalized);
         print_str("\"\n");
         last_rc = RC_ERROR;
         return;
     }
 
     print_str("Deleted \"");
-    print_str(args);
+    print_str(normalized);
     print_str("\"\n");
     last_rc = RC_OK;
 }
@@ -855,17 +889,26 @@ void cmd_makedir(const char *args)
         return;
     }
 
-    if (g_fsd.mkdir(args) != 0)
+    // Normalize path (handle relative paths)
+    char normalized[256];
+    if (!normalize_path(args, current_dir, normalized, sizeof(normalized)))
+    {
+        print_str("MakeDir: invalid path\n");
+        last_rc = RC_ERROR;
+        return;
+    }
+
+    if (g_fsd.mkdir(normalized) != 0)
     {
         print_str("MakeDir: cannot create \"");
-        print_str(args);
+        print_str(normalized);
         print_str("\"\n");
         last_rc = RC_ERROR;
         return;
     }
 
     print_str("Created \"");
-    print_str(args);
+    print_str(normalized);
     print_str("\"\n");
     last_rc = RC_OK;
 }
@@ -915,7 +958,22 @@ void cmd_rename(const char *args)
         return;
     }
 
-    if (g_fsd.rename(oldname, newname) != 0)
+    // Normalize paths (handle relative paths)
+    char norm_old[256], norm_new[256];
+    if (!normalize_path(oldname, current_dir, norm_old, sizeof(norm_old)))
+    {
+        print_str("Rename: invalid source path\n");
+        last_rc = RC_ERROR;
+        return;
+    }
+    if (!normalize_path(newname, current_dir, norm_new, sizeof(norm_new)))
+    {
+        print_str("Rename: invalid destination path\n");
+        last_rc = RC_ERROR;
+        return;
+    }
+
+    if (g_fsd.rename(norm_old, norm_new) != 0)
     {
         print_str("Rename: failed\n");
         last_rc = RC_ERROR;
@@ -923,9 +981,9 @@ void cmd_rename(const char *args)
     }
 
     print_str("Renamed \"");
-    print_str(oldname);
+    print_str(norm_old);
     print_str("\" to \"");
-    print_str(newname);
+    print_str(norm_new);
     print_str("\"\n");
     last_rc = RC_OK;
 }

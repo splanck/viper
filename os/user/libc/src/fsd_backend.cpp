@@ -48,11 +48,57 @@
 #include "../include/sys/stat.h"
 #include "../include/sys/types.h"
 
+// External getenv declaration
+extern "C" char *getenv(const char *name);
+
 namespace
 {
 
 constexpr int FSD_FD_BASE = 64;
 constexpr int FSD_MAX_FDS = 64;
+
+// Per-process current working directory for fsd paths
+static char g_fsd_cwd[256] = "/";
+static bool g_fsd_cwd_initialized = false;
+
+static void init_fsd_cwd()
+{
+    if (g_fsd_cwd_initialized)
+        return;
+    g_fsd_cwd_initialized = true;
+
+    // Try to get PWD from environment first
+    const char *pwd = getenv("PWD");
+    if (pwd && pwd[0] == '/')
+    {
+        usize len = 0;
+        while (pwd[len] && len < sizeof(g_fsd_cwd) - 1)
+            len++;
+        for (usize i = 0; i < len; i++)
+            g_fsd_cwd[i] = pwd[i];
+        g_fsd_cwd[len] = '\0';
+        return;
+    }
+
+    // Try to get PWD from spawn args (format: "PWD=/path;actual_args")
+    char args[256];
+    i64 args_len = sys::get_args(args, sizeof(args));
+    if (args_len > 4 && args[0] == 'P' && args[1] == 'W' && args[2] == 'D' && args[3] == '=')
+    {
+        // Find the semicolon separator or end of string
+        usize i = 4;
+        while (i < static_cast<usize>(args_len) && args[i] != ';' && args[i] != '\0')
+            i++;
+
+        usize pwd_len = i - 4;
+        if (pwd_len > 0 && pwd_len < sizeof(g_fsd_cwd) && args[4] == '/')
+        {
+            for (usize j = 0; j < pwd_len; j++)
+                g_fsd_cwd[j] = args[4 + j];
+            g_fsd_cwd[pwd_len] = '\0';
+        }
+    }
+}
 
 struct FsdObject
 {
@@ -256,15 +302,10 @@ extern "C" int __viper_fsd_prepare_path(const char *in, char *out, size_t out_ca
         return 1;
     }
 
-    // Relative: build absolute using kernel getcwd for now.
-    char cwd[256];
-    i64 cwd_len = sys::getcwd(cwd, sizeof(cwd));
-    if (cwd_len < 0)
-        return 0;
+    // Relative: build absolute using libc-tracked cwd.
+    init_fsd_cwd();
 
-    // cwd is expected to be NUL-terminated; guard regardless.
-    cwd[sizeof(cwd) - 1] = '\0';
-    usize cwd_n = bounded_strlen(cwd, sizeof(cwd) - 1);
+    usize cwd_n = bounded_strlen(g_fsd_cwd, sizeof(g_fsd_cwd) - 1);
     usize rel_n = bounded_strlen(in, fs::MAX_PATH_LEN + 1);
     if (rel_n == 0 || rel_n > fs::MAX_PATH_LEN)
         return 0;
@@ -282,7 +323,7 @@ extern "C" int __viper_fsd_prepare_path(const char *in, char *out, size_t out_ca
         if (cwd_n + 1 > out_cap)
             return VERR_INVALID_ARG;
         for (usize i = 0; i < cwd_n; i++)
-            out[pos++] = cwd[i];
+            out[pos++] = g_fsd_cwd[i];
     }
 
     if (pos == 0 || out[pos - 1] != '/')
@@ -535,4 +576,120 @@ extern "C" int __viper_fsd_readdir(int fd, struct dirent *out_ent)
     out_ent->d_name[n] = '\0';
 
     return 1;
+}
+
+extern "C" int __viper_fsd_chdir(const char *path)
+{
+    if (!path)
+        return VERR_INVALID_ARG;
+
+    init_fsd_cwd();
+
+    // Build absolute path
+    char abs_path[256];
+    if (path[0] == '/')
+    {
+        // Absolute path
+        usize len = bounded_strlen(path, sizeof(abs_path) - 1);
+        for (usize i = 0; i < len; i++)
+            abs_path[i] = path[i];
+        abs_path[len] = '\0';
+    }
+    else
+    {
+        // Relative path - join with current cwd
+        usize cwd_len = bounded_strlen(g_fsd_cwd, sizeof(g_fsd_cwd) - 1);
+        usize path_len = bounded_strlen(path, sizeof(abs_path) - cwd_len - 2);
+        usize pos = 0;
+
+        for (usize i = 0; i < cwd_len; i++)
+            abs_path[pos++] = g_fsd_cwd[i];
+        if (pos == 0 || abs_path[pos - 1] != '/')
+            abs_path[pos++] = '/';
+        for (usize i = 0; i < path_len; i++)
+            abs_path[pos++] = path[i];
+        abs_path[pos] = '\0';
+    }
+
+    // Validate directory exists by trying to open it
+    u32 dir_id = 0;
+    i32 err = g_fsd_client.open(abs_path, 0, &dir_id);
+    if (err != 0)
+        return err;
+    g_fsd_client.close(dir_id);
+
+    // Update the cwd
+    usize len = bounded_strlen(abs_path, sizeof(g_fsd_cwd) - 1);
+    for (usize i = 0; i < len; i++)
+        g_fsd_cwd[i] = abs_path[i];
+    g_fsd_cwd[len] = '\0';
+
+    return 0;
+}
+
+extern "C" int __viper_fsd_getcwd(char *buf, size_t size)
+{
+    if (!buf || size == 0)
+        return VERR_INVALID_ARG;
+
+    init_fsd_cwd();
+
+    usize len = bounded_strlen(g_fsd_cwd, sizeof(g_fsd_cwd) - 1);
+    if (len + 1 > size)
+        return VERR_INVALID_ARG;
+
+    for (usize i = 0; i < len; i++)
+        buf[i] = g_fsd_cwd[i];
+    buf[len] = '\0';
+
+    return static_cast<int>(len);
+}
+
+extern "C" i64 __viper_get_program_args(char *buf, size_t bufsize)
+{
+    if (!buf || bufsize == 0)
+        return VERR_INVALID_ARG;
+
+    // Get raw args from kernel
+    char raw_args[512];
+    i64 len = sys::get_args(raw_args, sizeof(raw_args));
+    if (len <= 0)
+    {
+        buf[0] = '\0';
+        return 0;
+    }
+
+    // Check for PWD= prefix and skip it
+    const char *start = raw_args;
+    if (len > 4 && raw_args[0] == 'P' && raw_args[1] == 'W' && raw_args[2] == 'D' &&
+        raw_args[3] == '=')
+    {
+        // Find the semicolon separator
+        usize i = 4;
+        while (i < static_cast<usize>(len) && raw_args[i] != ';' && raw_args[i] != '\0')
+            i++;
+
+        if (i < static_cast<usize>(len) && raw_args[i] == ';')
+        {
+            // Skip past the semicolon
+            start = raw_args + i + 1;
+            len = len - static_cast<i64>(i) - 1;
+        }
+        else
+        {
+            // No semicolon means no actual args, just PWD
+            buf[0] = '\0';
+            return 0;
+        }
+    }
+
+    // Copy the actual args
+    if (static_cast<usize>(len) >= bufsize)
+        len = static_cast<i64>(bufsize) - 1;
+
+    for (i64 i = 0; i < len; i++)
+        buf[i] = start[i];
+    buf[len] = '\0';
+
+    return len;
 }

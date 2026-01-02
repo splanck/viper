@@ -32,14 +32,48 @@ static bool is_sys_path(const char *path)
 }
 
 /**
+ * @brief Build args string with PWD prefix for spawned processes.
+ * Format: "PWD=/current/dir;original_args" or "PWD=/current/dir" if no args.
+ */
+static void build_spawn_args(const char *args, char *out, usize out_size)
+{
+    usize pos = 0;
+
+    // Add PWD= prefix
+    const char *prefix = "PWD=";
+    while (*prefix && pos < out_size - 1)
+        out[pos++] = *prefix++;
+
+    // Add current directory
+    const char *cwd = current_dir;
+    while (*cwd && pos < out_size - 1)
+        out[pos++] = *cwd++;
+
+    // Add separator and original args if present
+    if (args && *args)
+    {
+        if (pos < out_size - 1)
+            out[pos++] = ';';
+        while (*args && pos < out_size - 1)
+            out[pos++] = *args++;
+    }
+
+    out[pos] = '\0';
+}
+
+/**
  * @brief Run a program from the system disk (/sys) via kernel VFS.
  */
 static void run_via_kernel(const char *path, const char *args)
 {
+    // Build args with PWD prefix
+    char spawn_args[512];
+    build_spawn_args(args, spawn_args, sizeof(spawn_args));
+
     u64 pid = 0;
     u64 tid = 0;
     u32 bootstrap_send = 0xFFFFFFFFu;
-    i64 err = sys::spawn(path, nullptr, &pid, &tid, args, &bootstrap_send);
+    i64 err = sys::spawn(path, nullptr, &pid, &tid, spawn_args, &bootstrap_send);
 
     if (err < 0)
     {
@@ -183,11 +217,15 @@ static void run_via_fsd(const char *path, const char *args)
         return;
     }
 
+    // Build args with PWD prefix
+    char spawn_args[512];
+    build_spawn_args(args, spawn_args, sizeof(spawn_args));
+
     u64 pid = 0;
     u64 tid = 0;
     u32 bootstrap_send = 0xFFFFFFFFu;
     i64 err =
-        sys::spawn_shm(shm.handle, 0, size, path, &pid, &tid, args, &bootstrap_send);
+        sys::spawn_shm(shm.handle, 0, size, path, &pid, &tid, spawn_args, &bootstrap_send);
 
     (void)sys::shm_unmap(shm.virt_addr);
     (void)sys::shm_close(shm.handle);
@@ -433,11 +471,15 @@ void cmd_run_fsd(const char *cmdline)
         return;
     }
 
+    // Build args with PWD prefix
+    char spawn_args[512];
+    build_spawn_args(args, spawn_args, sizeof(spawn_args));
+
     u64 pid = 0;
     u64 tid = 0;
     u32 bootstrap_send = 0xFFFFFFFFu;
     i64 err =
-        sys::spawn_shm(shm.handle, 0, size, path /* name */, &pid, &tid, args, &bootstrap_send);
+        sys::spawn_shm(shm.handle, 0, size, path /* name */, &pid, &tid, spawn_args, &bootstrap_send);
 
     (void)sys::shm_unmap(shm.virt_addr);
     (void)sys::shm_close(shm.handle);
