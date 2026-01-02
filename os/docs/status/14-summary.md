@@ -1,37 +1,49 @@
 # ViperOS Summary and Roadmap
 
-**Version:** 0.2.7 (December 2024)
+**Version:** 0.3.0 (January 2026)
 **Target:** AArch64 (Cortex-A72) on QEMU virt machine
-**Total Lines of Code:** ~100,000
+**Total Lines of Code:** ~109,000
 
 ## Executive Summary
 
-ViperOS is a capability-based microkernel operating system for AArch64 that combines modern kernel design with an Amiga-inspired user experience. The system is fully functional for QEMU bring-up with:
+ViperOS is a **capability-based microkernel** operating system for AArch64. The kernel provides only essential services (scheduling, memory, IPC, device primitives), while higher-level functionality runs in user-space servers communicating via message-passing channels.
 
-- Complete memory management (demand paging, COW, buddy/slab allocators)
-- Preemptive multitasking with 4-core SMP infrastructure
-- Full TCP/IP networking with TLS 1.3 and SSH-2 support
-- Journaling filesystem with block/inode caching
-- Capability-based security model
-- Comprehensive user-space libc and C++ support
-- User-space microkernel servers (partial)
+The system is fully functional for QEMU bring-up with:
+
+- **Microkernel core**: Priority-based scheduler, capability tables, IPC channels
+- **Complete memory management**: Demand paging, COW, buddy/slab allocators
+- **User-space servers**: netd (TCP/IP), fsd (filesystem), blkd (block), consoled, inputd
+- **Full networking**: TCP/IP, TLS 1.3, HTTP, SSH-2/SFTP
+- **Journaling filesystem**: ViperFS with block/inode caching
+- **Capability-based security**: Handle-based access with rights derivation
+- **Comprehensive libc**: POSIX-compatible C library with C++ support
 
 ---
 
 ## Implementation Completeness
 
-### Kernel Core (95% Complete)
+### Microkernel Core (95% Complete)
 
 | Component | Status | Notes |
 |-----------|--------|-------|
 | Boot/Init | 100% | QEMU virt, PSCI multicore |
 | Memory Management | 100% | PMM, VMM, COW, buddy, slab |
-| Process Model (Viper) | 95% | Fork, wait, exit, VMA |
-| Scheduler | 90% | FIFO, priorities, wait queues |
-| IPC Channels | 95% | Send, recv, handles |
-| Capability System | 85% | Tables, rights, derivation |
-| Syscall Interface | 100% | 80+ syscalls |
+| Priority Scheduler | 100% | 8 priority queues, preemption |
+| IPC Channels | 100% | Send, recv, handle transfer |
+| Capability System | 95% | Tables, rights, derivation |
+| Device Primitives | 100% | MAP_DEVICE, IRQ, DMA |
+| Syscall Interface | 100% | 90+ syscalls |
 | Exception Handling | 100% | Faults, IRQ, signals |
+
+### User-Space Servers (95% Complete)
+
+| Server | Status | Notes |
+|--------|--------|-------|
+| netd | 95% | Complete TCP/IP stack |
+| fsd | 95% | Full filesystem operations |
+| blkd | 95% | VirtIO-blk with IRQ |
+| consoled | 90% | Console output |
+| inputd | 90% | Keyboard/mouse input |
 
 ### Drivers (100% Complete for QEMU)
 
@@ -47,12 +59,12 @@ ViperOS is a capability-based microkernel operating system for AArch64 that comb
 | GIC | 100% | v2 and v3 support |
 | Timer | 100% | Nanosecond precision |
 
-### Filesystem (90% Complete)
+### Filesystem (95% Complete)
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| VFS | 85% | Path resolution, FD table |
-| ViperFS | 90% | Journal, caching |
+| VFS | 95% | Path resolution, FD table |
+| ViperFS | 95% | Journal, caching |
 | Block Cache | 100% | LRU, pinning |
 | Inode Cache | 100% | Refcounting |
 | Assigns | 100% | Logical volumes |
@@ -64,15 +76,15 @@ ViperOS is a capability-based microkernel operating system for AArch64 that comb
 | Ethernet | 100% | Frame handling |
 | ARP | 100% | Cache, resolution |
 | IPv4 | 100% | Fragmentation, reassembly |
-| IPv6 | 60% | Basic support |
-| ICMP/ICMPv6 | 100% | Ping, errors |
+| ICMP | 100% | Ping, errors |
 | UDP | 100% | DNS queries |
-| TCP | 90% | Congestion control, SACK |
-| DNS | 90% | A/AAAA records |
-| TLS 1.3 | 85% | Client, certs |
-| HTTP | 80% | GET requests |
+| TCP | 95% | Congestion control, retransmit |
+| DNS | 95% | A records |
+| TLS 1.3 | 90% | Client, certs |
+| HTTP | 90% | GET/POST, chunked |
+| SSH-2 | 85% | Client, SFTP |
 
-### Cryptography (90% Complete)
+### Cryptography (95% Complete)
 
 | Algorithm | Status | Notes |
 |-----------|--------|-------|
@@ -86,169 +98,162 @@ ViperOS is a capability-based microkernel operating system for AArch64 that comb
 | RSA | 90% | Sign/verify |
 | X.509 | 90% | Cert parsing |
 
-### User Space (85% Complete)
+### User Space (90% Complete)
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| libc | 85% | POSIX subset |
-| C++ headers | 80% | STL subset |
+| libc | 90% | 56 source files, POSIX subset |
+| C++ headers | 85% | 66 header files |
+| libnetclient | 95% | netd client |
+| libfsclient | 95% | fsd client |
+| libtls | 90% | TLS 1.3 |
+| libhttp | 90% | HTTP client |
+| libssh | 85% | SSH-2, SFTP |
 | vinit shell | 90% | Commands, history |
-| libssh | 80% | SSH-2, SFTP |
-| ssh/sftp clients | 80% | Interactive |
 | Utilities | 90% | ping, edit, etc. |
-
-### Microkernel Servers (40% Complete)
-
-| Server | Status | Notes |
-|--------|--------|-------|
-| blkd | 40% | Basic ops |
-| fsd | 50% | File ops |
-| netd | 30% | Placeholder |
 
 ---
 
 ## What Works Today
 
-1. **Boot to Shell**: Kernel boots, loads vinit, presents interactive shell
-2. **File Operations**: Create, read, write, delete files and directories
-3. **Networking**: TCP connections, DNS resolution, HTTPS fetches
-4. **TLS**: Secure connections with certificate verification
-5. **SSH**: Connect to remote hosts via SSH-2 protocol
-6. **SFTP**: Transfer files via SFTP
-7. **Process Management**: Fork, exec (limited), wait, exit
+1. **Microkernel Boot**: Kernel starts, servers initialize, shell runs
+2. **IPC Communication**: All user-space servers communicate via channels
+3. **File Operations**: Create, read, write, delete via fsd
+4. **Networking**: TCP/IP via netd, TLS, HTTP, SSH
+5. **Block I/O**: Filesystem backed by blkd with ViperFS
+6. **Console/Input**: Output via consoled, input via inputd
+7. **Process Management**: Fork, wait, exit with capability tables
 8. **Memory**: Dynamic allocation, demand paging, COW
-9. **Multicore**: 4 CPUs boot (limited parallel work)
+9. **Multicore**: 4 CPUs boot (scheduler is single-threaded)
+
+---
+
+## Microkernel Architecture
+
+### Kernel Services (EL1)
+
+- Priority-based scheduler (8 queues)
+- Physical/virtual memory management
+- IPC channels with handle transfer
+- Capability tables (per-process)
+- Device access primitives (MMIO, IRQ, DMA)
+- Exception/interrupt handling
+
+### User-Space Services (EL0)
+
+| Service | Assign | Purpose |
+|---------|--------|---------|
+| netd | NETD: | TCP/IP stack, sockets, DNS |
+| fsd | FSD: | Filesystem operations |
+| blkd | BLKD: | Block device I/O |
+| consoled | CONSOLED: | Console output |
+| inputd | INPUTD: | Keyboard/mouse |
+
+### Build Configuration
+
+```cpp
+#define VIPER_MICROKERNEL_MODE 1    // Microkernel mode
+#define VIPER_KERNEL_ENABLE_FS 1    // Kernel FS for boot
+#define VIPER_KERNEL_ENABLE_NET 0   // Use netd instead
+#define VIPER_KERNEL_ENABLE_TLS 0   // Use libtls instead
+```
 
 ---
 
 ## What's Missing
 
-### High Priority (Blocking Real Use)
+### High Priority
 
-1. **exec() Family**
+1. **SMP Scheduling**
+   - CPUs boot but scheduler is single-threaded
+   - Need: Per-CPU run queues, load balancing
+
+2. **exec() Family**
    - Currently only `task_spawn` exists
-   - Need full exec() for shell command execution
-   - Blocks: Shell pipelines, script execution
+   - Need: Full exec() for shell command execution
 
-2. **pipe() Syscall**
+3. **pipe() Syscall**
    - No inter-process pipes
    - Blocks: Shell pipelines (`ls | grep foo`)
 
-3. **PTY Subsystem**
+4. **PTY Subsystem**
    - No kernel pseudo-terminal support
    - Needed for: Terminal emulation, SSH server
 
-4. **Complete Microkernel Migration**
-   - Drivers still in kernel
-   - Need: IRQ-driven user-space drivers
+5. **Signal Handlers**
+   - Signal infrastructure exists
+   - Need: User handler invocation trampoline
 
-5. **SMP Scheduling**
-   - CPUs boot but limited work distribution
-   - Need: Per-CPU run queues, load balancing
+### Medium Priority
 
-### Medium Priority (Feature Gaps)
-
-6. **IPv6 Improvements**
-   - Basic support exists
-   - Need: Full NDP, SLAAC, DHCPv6
+6. **IPv6**
+   - Not yet implemented
+   - Need: Full NDP, SLAAC
 
 7. **Dynamic Linking**
    - No shared library support
    - Reduces: Memory usage, update flexibility
 
-8. **Real Signals**
-   - Signal infrastructure exists
-   - Need: User handler invocation trampoline
-
-9. **File Locking**
+8. **File Locking**
    - No flock() or fcntl() locking
    - Needed for: Multi-process file access
 
-10. **User/Group Permissions**
-    - Files have no ownership
-    - Need: UID/GID, permission checks
+9. **TLS Improvements**
+   - Session resumption
+   - ECDSA certificates
+   - Server mode
 
-### Low Priority (Nice to Have)
+### Low Priority
 
-11. **Sound System**
-    - No audio support
-    - Would need: VirtIO-sound or USB audio
-
-12. **GUI Toolkit**
-    - VirtIO-GPU exists
-    - Need: Windowing, widgets
-
-13. **USB Support**
-    - No USB stack
-    - Would need: VirtIO-USB or XHCI
-
-14. **Hardware Targets**
-    - Only QEMU virt supported
-    - Would need: Real hardware drivers
+10. **Sound System**
+11. **GUI Toolkit**
+12. **USB Support**
+13. **Real Hardware Targets**
 
 ---
 
-## Development Roadmap
+## Key Metrics
 
-### Phase 1: Core Completion (1-2 months)
+### Code Size
 
-**Goal:** Complete essential missing syscalls
+- Kernel: ~49,000 lines
+- User-space: ~60,000 lines
+- **Total: ~109,000 lines**
 
-| Task | Priority | Effort |
-|------|----------|--------|
-| Implement exec() family | High | Large |
-| Implement pipe() | High | Medium |
-| Implement PTY subsystem | High | Large |
-| Complete signal handlers | Medium | Medium |
-| Add file locking | Medium | Small |
+### Component Breakdown
 
-### Phase 2: Microkernel Migration (2-3 months)
+| Component | SLOC |
+|-----------|------|
+| Architecture | ~3,600 |
+| Memory Management | ~5,400 |
+| Scheduler | ~3,600 |
+| IPC | ~2,500 |
+| Filesystem | ~6,500 |
+| Drivers | ~5,000 |
+| Console | ~3,500 |
+| Capabilities | ~700 |
+| Syscalls | ~2,000 |
+| User Servers | ~8,900 |
+| libc | ~28,000 |
+| Libraries | ~20,000 |
 
-**Goal:** Move drivers to user-space
+### Binary Sizes (Approximate)
 
-| Task | Priority | Effort |
-|------|----------|--------|
-| Complete blkd IRQ handling | High | Medium |
-| Complete fsd operations | High | Medium |
-| VirtIO-net in netd | Medium | Large |
-| Shared memory IPC | Medium | Medium |
-| Request batching | Low | Small |
+- kernel8.elf: ~800KB
+- vinit.elf: ~120KB
+- netd.elf: ~150KB
+- fsd.elf: ~120KB
+- blkd.elf: ~80KB
+- ssh.elf: ~170KB
+- sftp.elf: ~190KB
 
-### Phase 3: SMP & Performance (2-3 months)
+### Performance (QEMU, Single Core)
 
-**Goal:** Efficient multicore operation
-
-| Task | Priority | Effort |
-|------|----------|--------|
-| Per-CPU run queues | High | Large |
-| Load balancing | Medium | Medium |
-| Spinlock optimization | Medium | Small |
-| Per-CPU caches | Low | Medium |
-| Lockless algorithms | Low | Large |
-
-### Phase 4: Networking & Security (1-2 months)
-
-**Goal:** Production networking
-
-| Task | Priority | Effort |
-|------|----------|--------|
-| Complete IPv6 | Medium | Large |
-| TLS session resumption | Medium | Small |
-| ECDSA certificates | Low | Medium |
-| TLS server mode | Low | Large |
-| SSH server | Low | Large |
-
-### Phase 5: User Experience (2-3 months)
-
-**Goal:** Usable system
-
-| Task | Priority | Effort |
-|------|----------|--------|
-| Shell scripting | High | Large |
-| Dynamic linking | Medium | Large |
-| User/group permissions | Medium | Medium |
-| Package manager | Low | Large |
-| GUI toolkit | Low | Very Large |
+- Boot to shell: ~500ms
+- IPC round-trip: ~10-15μs
+- Context switch: ~1-2μs
+- File read (4KB via fsd): ~150μs
+- Socket send (small): ~100μs
 
 ---
 
@@ -259,71 +264,34 @@ ViperOS is a capability-based microkernel operating system for AArch64 that comb
 1. **Capability-Based Security**
    - All resources accessed via handles
    - Rights can only be reduced, not expanded
-   - Enables fine-grained access control
+   - Handle transfer via IPC for delegation
 
 2. **Microkernel Design**
    - Minimal kernel (scheduling, memory, IPC)
-   - Drivers in user-space (in progress)
-   - Better fault isolation
+   - Drivers in user-space (netd, fsd, blkd)
+   - Better fault isolation and security
 
-3. **Amiga-Inspired UX**
+3. **Message-Passing IPC**
+   - Bidirectional channels (256 bytes/msg)
+   - Up to 4 handles per message
+   - Blocking and non-blocking operations
+
+4. **Amiga-Inspired UX**
    - Logical device assigns (SYS:, C:, etc.)
    - Return codes (OK, WARN, ERROR, FAIL)
    - Interactive shell commands
 
-4. **POSIX-ish libc**
+5. **POSIX-ish libc**
    - Familiar API for applications
-   - Not strict POSIX compliance
+   - Routes to appropriate server (netd/fsd)
    - Freestanding implementation
 
-### Open Questions
-
-1. **Networking Location**
-   - Currently in kernel for performance
-   - Could move to user-space with shared memory
-   - Trade-off: IPC overhead vs. isolation
-
-2. **Filesystem Architecture**
-   - VFS + single FS type (ViperFS)
-   - Could support multiple FS types
-   - Need: Mount points, FS plugins
-
-3. **GUI Direction**
-   - Wayland-like compositor?
-   - Custom toolkit?
-   - No clear decision yet
-
 ---
 
-## Key Metrics
-
-### Code Size
-- Kernel: ~25,000 lines
-- Networking: ~16,500 lines
-- Crypto: ~6,000 lines
-- Filesystem: ~6,400 lines
-- User-space: ~35,000 lines
-- **Total: ~100,000 lines**
-
-### Binary Sizes (Approximate)
-- kernel8.elf: ~800KB
-- vinit.elf: ~120KB
-- ssh.elf: ~170KB
-- sftp.elf: ~190KB
-- libviperssh.a: ~250KB
-- libviperlibc.a: ~100KB
-
-### Performance (QEMU, Single Core)
-- Boot to shell: ~500ms
-- HTTPS fetch: ~1-2s (TLS handshake)
-- File read (4KB): ~50μs
-- Context switch: ~10μs
-
----
-
-## Contributing
+## Building and Running
 
 ### Quick Start
+
 ```bash
 cd os
 ./build_viper.sh           # Build and run (graphics)
@@ -332,27 +300,23 @@ cd os
 ./build_viper.sh --test    # Run test suite
 ```
 
-### Code Style
-- C++17 for kernel
-- C11 for libc and user programs
-- 4-space indentation
-- Clang-format with project settings
+### Requirements
 
-### Documentation
-- Keep status docs updated when adding features
-- Add doxygen comments to headers
-- Update CHANGELOG for releases
+- Clang with AArch64 support (or aarch64-elf-gcc)
+- AArch64 GNU binutils
+- QEMU with aarch64 support
+- CMake 3.16+
 
 ---
 
 ## Conclusion
 
-ViperOS is a functional proof-of-concept operating system demonstrating capability-based security, microkernel architecture, and modern kernel design on AArch64. While not production-ready, it provides a solid foundation for further development toward a usable system.
+ViperOS v0.3.0 represents a complete microkernel architecture with user-space servers handling networking, filesystem, block I/O, console, and input. The system demonstrates capability-based security, message-passing IPC, and priority-based scheduling.
 
 The most impactful next steps are:
-1. Complete exec/pipe/PTY for shell functionality
-2. Finish microkernel driver migration
-3. Improve SMP scheduling
-4. Add shell scripting support
+1. **SMP scheduling** for multicore utilization
+2. **exec/pipe/PTY** for full shell functionality
+3. **IPv6** for modern networking
+4. **Signal handlers** for POSIX compatibility
 
-With these additions, ViperOS could become a viable platform for embedded systems, educational use, or specialized applications.
+With these additions, ViperOS would be suitable for embedded systems, educational use, or specialized applications requiring strong isolation guarantees.

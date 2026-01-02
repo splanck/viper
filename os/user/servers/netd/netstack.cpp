@@ -603,7 +603,8 @@ bool NetworkStack::send_tcp_segment(TcpConnection *conn, u8 flags, const void *d
     tcp->ack = htonl(conn->rcv_nxt);
     tcp->data_offset = (5 << 4); // 20 bytes
     tcp->flags = flags;
-    tcp->window = htons(conn->rcv_wnd);
+    // Use dynamic window based on actual buffer space
+    tcp->window = htons(conn->rx_window());
     tcp->checksum = 0;
     tcp->urgent = 0;
 
@@ -722,7 +723,6 @@ i32 NetworkStack::socket_create(u16 type)
                 tcp_conns_[i].snd_una = 0;
                 tcp_conns_[i].snd_nxt = 0;
                 tcp_conns_[i].rcv_nxt = 0;
-                tcp_conns_[i].rcv_wnd = 8192; // Advertised receive window
                 tcp_conns_[i].rx_head = 0;
                 tcp_conns_[i].rx_tail = 0;
                 tcp_conns_[i].tx_head = 0;

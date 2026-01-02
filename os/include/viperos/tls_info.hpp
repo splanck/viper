@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: include/viperos/tls_info.hpp
+// Purpose: TLS session information structure for SYS_TLS_INFO syscall.
+// Key invariants: ABI-stable; cipher IDs match IANA assignments.
+// Ownership/Lifetime: Shared; included by kernel and user-space.
+// Links: kernel/net/tls.hpp, user/libtls
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 /**

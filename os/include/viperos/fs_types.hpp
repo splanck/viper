@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: include/viperos/fs_types.hpp
+// Purpose: Shared filesystem types for user/kernel ABI.
+// Key invariants: ABI-stable; matches kernel VFS structures.
+// Ownership/Lifetime: Shared; included by kernel and user-space.
+// Links: kernel/fs/vfs.hpp
+//
+//===----------------------------------------------------------------------===//
+
 /**
  * @file fs_types.hpp
  * @brief Shared filesystem types for ViperOS kernel and user-space.

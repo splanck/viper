@@ -32,16 +32,16 @@ See [compiler/README.md](compiler/README.md) for full documentation.
 
 ### [os/](os/) — ViperOS
 
-A capability-based operating system for AArch64 (ARM64), featuring modern OS concepts and retro-style design.
+A capability-based microkernel operating system for AArch64 (ARM64), featuring modern OS concepts and retro-style design.
 
 | Component | Description |
 |-----------|-------------|
-| **Architecture** | AArch64 with 4-level MMU, GICv2/v3, ARM timer |
+| **Architecture** | AArch64 microkernel with 4-level MMU, GICv2/v3, ARM timer |
 | **Memory** | Demand paging, copy-on-write, buddy allocator, slab allocator |
-| **Filesystem** | ViperFS with write-ahead journal, block/inode caches |
-| **Networking** | Complete TCP/IP stack with TLS 1.3, DNS, HTTP |
+| **Filesystem** | ViperFS with block/inode caches (user-space fsd server) |
+| **Networking** | TCP/IP stack with TLS 1.3, DNS, HTTP, SSH (user-space netd server) |
 | **Shell** | Interactive shell with line editing |
-| **Security** | Capability-based access control |
+| **Security** | Capability-based access control with handle derivation |
 
 **Quickstart:**
 
@@ -70,15 +70,21 @@ viper/
 │   └── demos/             # Demo applications
 │
 ├── os/                    # ViperOS operating system
-│   ├── kernel/            # Kernel source code
+│   ├── kernel/            # Microkernel source code
 │   │   ├── arch/          # AArch64 architecture
 │   │   ├── mm/            # Memory management
-│   │   ├── fs/            # Filesystem
-│   │   ├── net/           # Networking
-│   │   └── sched/         # Scheduler
-│   ├── user/              # User space programs
+│   │   ├── ipc/           # IPC channels and poll
+│   │   ├── sched/         # Scheduler
+│   │   └── viper/         # Process model
+│   ├── user/              # User space (~60,000 SLOC)
 │   │   ├── vinit/         # Shell
 │   │   ├── libc/          # C library
+│   │   ├── servers/       # Microkernel servers
+│   │   │   ├── netd/      # Network server (TCP/IP)
+│   │   │   ├── fsd/       # Filesystem server
+│   │   │   └── blkd/      # Block device server
+│   │   ├── libtls/        # TLS 1.3 library
+│   │   ├── libssh/        # SSH-2 library
 │   │   └── ...            # Utilities
 │   ├── docs/              # OS documentation
 │   └── scripts/           # Build scripts

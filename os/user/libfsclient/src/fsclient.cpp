@@ -288,6 +288,47 @@ i32 Client::fstat(u32 file_id, sys::Stat *out)
     return 0;
 }
 
+i32 Client::fsync(u32 file_id)
+{
+    i32 err = connect();
+    if (err != 0)
+    {
+        return err;
+    }
+
+    fs::FsyncRequest req = {};
+    req.type = fs::FS_FSYNC;
+    req.request_id = next_request_id_++;
+    req.file_id = file_id;
+
+    auto ch = sys::channel_create();
+    if (!ch.ok())
+    {
+        return static_cast<i32>(ch.error);
+    }
+    i32 reply_send = static_cast<i32>(ch.val0);
+    i32 reply_recv = static_cast<i32>(ch.val1);
+
+    u32 send_handles[1] = {static_cast<u32>(reply_send)};
+    i64 send_err = sys::channel_send(channel_, &req, sizeof(req), send_handles, 1);
+    if (send_err != 0)
+    {
+        sys::channel_close(reply_send);
+        sys::channel_close(reply_recv);
+        return static_cast<i32>(send_err);
+    }
+
+    fs::FsyncReply reply = {};
+    i64 n = recv_reply_blocking(reply_recv, &reply, sizeof(reply));
+    sys::channel_close(reply_recv);
+    if (n < 0)
+    {
+        return static_cast<i32>(n);
+    }
+
+    return reply.status;
+}
+
 i32 Client::mkdir(const char *path)
 {
     i32 err = connect();

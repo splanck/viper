@@ -1,7 +1,41 @@
-/*
- * ViperOS C Library - regex implementation
- * Basic POSIX regular expression support
- * Supports literals, . ? * + and character classes
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/regex.c
+// Purpose: POSIX regular expression functions for ViperOS libc.
+// Key invariants: Compiles to bytecode; recursive matching.
+// Ownership/Lifetime: Library; compiled regex freed via regfree().
+// Links: user/libc/include/regex.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file regex.c
+ * @brief POSIX regular expression functions for ViperOS libc.
+ *
+ * @details
+ * This file implements basic POSIX regular expressions:
+ *
+ * - regcomp: Compile a regular expression
+ * - regexec: Execute a compiled regex against a string
+ * - regfree: Free compiled regex memory
+ * - regerror: Get error message for regex error code
+ *
+ * Supported syntax:
+ * - Literal characters
+ * - . (any character)
+ * - * (zero or more)
+ * - + (one or more, extended only)
+ * - ? (zero or one, extended only)
+ * - [...] and [^...] character classes
+ * - ^ and $ anchors
+ * - () groups (extended only)
+ *
+ * Case-insensitive matching (REG_ICASE) is supported.
  */
 
 #include <ctype.h>

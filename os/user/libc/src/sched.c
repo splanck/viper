@@ -1,6 +1,36 @@
-/*
- * ViperOS libc - sched.c
- * Process scheduling implementation (stubs)
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/sched.c
+// Purpose: Process scheduling functions for ViperOS libc.
+// Key invariants: Single CPU; priority changes not supported.
+// Ownership/Lifetime: Library; stub implementations.
+// Links: user/libc/include/sched.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file sched.c
+ * @brief Process scheduling functions for ViperOS libc.
+ *
+ * @details
+ * This file implements POSIX scheduling functions:
+ *
+ * - sched_yield: Yield processor to other threads
+ * - sched_get_priority_max/min: Get priority range for a policy
+ * - sched_getscheduler/setscheduler: Get/set scheduling policy
+ * - sched_getparam/setparam: Get/set scheduling parameters
+ * - sched_rr_get_interval: Get round-robin time quantum
+ * - sched_getaffinity/setaffinity: Get/set CPU affinity
+ *
+ * ViperOS runs on a single CPU and uses a simple scheduler.
+ * Most scheduling APIs return reasonable defaults but do not
+ * actually change kernel behavior. Policy changes are rejected
+ * with EPERM.
  */
 
 #include "../include/sched.h"

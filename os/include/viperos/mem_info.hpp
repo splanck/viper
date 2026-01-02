@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: include/viperos/mem_info.hpp
+// Purpose: Memory accounting information for SYS_MEM_INFO syscall.
+// Key invariants: ABI-stable; snapshot of global allocator state.
+// Ownership/Lifetime: Shared; included by kernel and user-space.
+// Links: kernel/mem/pmm.hpp
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 /**

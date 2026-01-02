@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: include/viperos/cap_info.hpp
+// Purpose: Capability metadata structures for user/kernel ABI.
+// Key invariants: ABI-stable; mirrors kernel cap::Kind enum values.
+// Ownership/Lifetime: Shared; included by kernel and user-space.
+// Links: kernel/caps/caps.hpp
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 /**

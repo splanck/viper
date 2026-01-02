@@ -1,6 +1,31 @@
-/*
- * ViperOS libc - locale.c
- * Localization functions (minimal C locale only)
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/locale.c
+// Purpose: Localization functions for ViperOS libc.
+// Key invariants: C/POSIX locale only; minimal implementation.
+// Ownership/Lifetime: Library; static locale data.
+// Links: user/libc/include/locale.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file locale.c
+ * @brief Localization functions for ViperOS libc.
+ *
+ * @details
+ * This file provides minimal locale support:
+ *
+ * - setlocale: Set or query current locale (C/POSIX only)
+ * - localeconv: Get numeric formatting conventions
+ *
+ * ViperOS only supports the "C" and "POSIX" locales, which are
+ * identical. International locale support is not implemented.
+ * The lconv structure contains the default C locale values.
  */
 
 #include "../include/locale.h"

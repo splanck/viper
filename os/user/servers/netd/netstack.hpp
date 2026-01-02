@@ -413,10 +413,9 @@ class TcpConnection
     u32 snd_una{0};    // Oldest unacknowledged seq
     u32 snd_nxt{0};    // Next seq to send
     u32 rcv_nxt{0};    // Next expected seq
-    u16 rcv_wnd{8192}; // Receive window
 
-    // Receive buffer
-    static constexpr usize RX_BUF_SIZE = 8192;
+    // Receive buffer - sized to handle SSH/SFTP traffic (32KB)
+    static constexpr usize RX_BUF_SIZE = 32768;
     u8 rx_buf[RX_BUF_SIZE];
     usize rx_head{0};
     usize rx_tail{0};
@@ -446,6 +445,15 @@ class TcpConnection
         if (rx_tail >= rx_head)
             return rx_tail - rx_head;
         return RX_BUF_SIZE - rx_head + rx_tail;
+    }
+
+    // Free space in rx buffer (for TCP window advertisement)
+    u16 rx_window() const
+    {
+        usize used = rx_available();
+        usize free = (RX_BUF_SIZE > used) ? (RX_BUF_SIZE - used - 1) : 0;
+        // Cap at 16-bit max for TCP window field
+        return (free > 65535) ? 65535 : static_cast<u16>(free);
     }
 
     usize tx_available() const

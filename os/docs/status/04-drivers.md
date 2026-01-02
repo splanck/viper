@@ -1,12 +1,26 @@
 # Drivers Subsystem
 
-**Status:** Functional for QEMU virt platform
-**Location:** `kernel/drivers/`
-**SLOC:** ~6,000
+**Status:** Functional for QEMU virt platform (kernel and user-space)
+**Location:** `kernel/drivers/` + user-space servers
+**SLOC:** ~6,000 (kernel) + server-side
 
 ## Overview
 
-The drivers subsystem provides device drivers for VirtIO paravirtual devices, QEMU firmware configuration, and the RAM framebuffer. All drivers are designed for the QEMU `virt` machine and use polling-based I/O suitable for bring-up.
+The drivers subsystem provides device drivers for VirtIO paravirtual devices, QEMU firmware configuration, and the RAM framebuffer.
+
+In microkernel mode, some drivers run in user-space servers:
+- **netd server**: Contains VirtIO-net driver in user-space
+- **blkd server**: Contains VirtIO-blk driver in user-space
+- **inputd server**: Contains VirtIO-input driver in user-space
+
+User-space drivers use kernel device primitives:
+- `SYS_MAP_DEVICE`: Map MMIO regions into user address space
+- `SYS_IRQ_REGISTER`: Register for device interrupts
+- `SYS_IRQ_WAIT`: Wait for interrupt notification
+- `SYS_DMA_ALLOC`: Allocate DMA-capable memory
+- `SYS_VIRT_TO_PHYS`: Get physical address for DMA
+
+The kernel still contains full drivers for boot-time initialization and fallback.
 
 ---
 

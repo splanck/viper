@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: include/viperos/task_info.hpp
+// Purpose: Task metadata structures for SYS_TASK_LIST syscall.
+// Key invariants: ABI-stable; state values mirror kernel task states.
+// Ownership/Lifetime: Shared; included by kernel and user-space.
+// Links: kernel/sched/task.hpp
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 /**

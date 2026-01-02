@@ -1,12 +1,20 @@
 # Architecture Subsystem (AArch64)
 
-**Status:** Complete for QEMU virt platform
+**Status:** Complete for QEMU virt platform (microkernel)
 **Location:** `kernel/arch/aarch64/`
-**SLOC:** ~3,500
+**SLOC:** ~3,600
 
 ## Overview
 
-The architecture subsystem provides low-level AArch64 support for the ViperOS kernel, targeting the QEMU `virt` machine. It handles CPU initialization, memory management unit configuration, interrupt handling, and timer services.
+The architecture subsystem provides low-level AArch64 support for the ViperOS microkernel, targeting the QEMU `virt` machine. In microkernel mode, the kernel provides only essential services while user-space servers handle networking, filesystem, and drivers.
+
+**Build Configuration:**
+- `VIPER_MICROKERNEL_MODE=1` (default)
+- `VIPER_KERNEL_ENABLE_FS=1` (for boot)
+- `VIPER_KERNEL_ENABLE_NET=0` (use netd)
+- `VIPER_KERNEL_ENABLE_TLS=0` (use libtls)
+
+---
 
 ## Components
 
@@ -20,16 +28,13 @@ The architecture subsystem provides low-level AArch64 support for the ViperOS ke
 - BSS section zeroing
 - Jump to `kernel_main` C++ entry point
 - EL1 execution assumed (QEMU `-kernel` mode)
-- **FPU/SIMD Access**: CPACR_EL1.FPEN enabled for EL1 and EL0 (required for Clang-generated code)
+- **FPU/SIMD Access**: CPACR_EL1.FPEN enabled for EL1 and EL0
 - **Secondary CPU Entry**: `secondary_entry` for PSCI-booted CPUs
 - **Per-CPU Stacks**: 16KB stack per CPU (4 CPUs supported)
 - **Alignment Check Disabled**: Allows unaligned access for network structures
 
 **Not Implemented:**
 - EL2/EL3 to EL1 transition (relies on QEMU or bootloader)
-
-**Recommendations:**
-- Add EL2→EL1 transition for hypervisor-hosted scenarios
 
 ---
 
@@ -60,10 +65,6 @@ The architecture subsystem provides low-level AArch64 support for the ViperOS ke
 - TTBR1_EL1 for kernel higher-half mapping
 - Kernel Address Space Layout Randomization (KASLR)
 
-**Recommendations:**
-- Add TTBR1 support for proper kernel/user split
-- Consider KASLR for security
-
 ---
 
 ### 3. GIC - Generic Interrupt Controller (`gic.cpp`, `gic.hpp`)
@@ -87,16 +88,13 @@ The architecture subsystem provides low-level AArch64 support for the ViperOS ke
 - IRQ handler registration (callback-based)
 - IRQ acknowledgment and EOI (End of Interrupt)
 - Spurious interrupt detection (IRQ 1020+)
-- **SGI Support**: Software Generated Interrupts for IPI (via GICD_SGIR)
+- **SGI Support**: Software Generated Interrupts for IPI
+- **User-space IRQ registration**: For microkernel drivers
 
 **Not Implemented:**
 - Interrupt priority preemption
 - FIQ handling (currently unused)
 - MSI (Message Signaled Interrupts)
-
-**Recommendations:**
-- Add proper FIQ support or document that it's unused
-- Consider interrupt priority tuning for real-time use cases
 
 ---
 
@@ -122,29 +120,18 @@ The architecture subsystem provides low-level AArch64 support for the ViperOS ke
 - **One-Shot Timer Support:**
   - `schedule_oneshot()` - Schedule callback at deadline
   - `cancel_oneshot()` - Cancel scheduled timer
-  - `deadline_ns()` / `deadline_us()` / `deadline_ms()` - Deadline helpers
-- Per-tick callbacks:
-  - Input polling
-  - Network polling
-  - Sleep timer expiration checks
-  - Scheduler tick and preemption
+- **Per-CPU Timer**: Secondary CPUs initialize their own timer
+- **Timer Wheel**: O(1) timeout management
 
 **Not Implemented:**
 - Virtual timer support
 - Watchdog timer
 
-**Recommendations:**
-- Consider tickless operation for power efficiency
-
-**Recent Additions:**
-- **Per-CPU Timer**: Secondary CPUs initialize their own timer via `init_secondary()`
-- **Timer Wheel**: O(1) timeout management via `kernel/lib/timerwheel.cpp`
-
 ---
 
 ### 5. Exceptions (`exceptions.cpp`, `exceptions.hpp`, `exceptions.S`)
 
-**Status:** Comprehensive exception handling with syscall dispatch and user fault recovery
+**Status:** Comprehensive exception handling with syscall dispatch
 
 **Implemented:**
 - Exception vector table installation (VBAR_EL1)
@@ -163,11 +150,17 @@ The architecture subsystem provides low-level AArch64 support for the ViperOS ke
 - Exception class decoding for diagnostics
 - Full register dump on panic
 
-**Complete Syscall Table (78 syscalls):**
+---
+
+## Syscall Table (~90 syscalls)
+
+The kernel provides syscalls for microkernel services. Some syscalls are
+conditionally enabled based on build configuration.
+
+### Task/Process (0x00-0x0F)
 
 | Number | Name | Description |
 |--------|------|-------------|
-| **Task/Process (0x00-0x0F)** |||
 | 0x00 | task_yield | Yield CPU to scheduler |
 | 0x01 | task_exit | Terminate task |
 | 0x02 | task_current | Get current task ID |
@@ -178,20 +171,38 @@ The architecture subsystem provides low-level AArch64 support for the ViperOS ke
 | 0x08 | wait | Wait for any child |
 | 0x09 | waitpid | Wait for specific child |
 | 0x0A | sbrk | Adjust program break |
-| **IPC (0x10-0x1F)** |||
+| 0x0B | fork | Fork process |
+| 0x0C | task_spawn_shm | Spawn from SHM |
+
+### IPC Channels (0x10-0x1F)
+
+| Number | Name | Description |
+|--------|------|-------------|
 | 0x10 | channel_create | Create IPC channel |
 | 0x11 | channel_send | Send on channel |
 | 0x12 | channel_recv | Receive from channel |
 | 0x13 | channel_close | Close channel |
-| **Polling (0x20-0x2F)** |||
+
+### Polling (0x20-0x2F)
+
+| Number | Name | Description |
+|--------|------|-------------|
 | 0x20 | poll_create | Create poll set |
 | 0x21 | poll_add | Add to poll set |
 | 0x22 | poll_remove | Remove from poll set |
 | 0x23 | poll_wait | Wait on poll set |
-| **Timer (0x30-0x3F)** |||
+
+### Timer (0x30-0x3F)
+
+| Number | Name | Description |
+|--------|------|-------------|
 | 0x30 | time_now | Get current time (ms) |
 | 0x31 | sleep | Sleep for duration |
-| **File I/O (0x40-0x4F)** |||
+
+### File I/O (0x40-0x4F) - Requires VIPER_KERNEL_ENABLE_FS
+
+| Number | Name | Description |
+|--------|------|-------------|
 | 0x40 | open | Open file (path) |
 | 0x41 | close | Close file descriptor |
 | 0x42 | read | Read from fd |
@@ -201,14 +212,22 @@ The architecture subsystem provides low-level AArch64 support for the ViperOS ke
 | 0x46 | fstat | Get file info (fd) |
 | 0x47 | dup | Duplicate fd |
 | 0x48 | dup2 | Duplicate fd to specific number |
-| **Networking (0x50-0x5F)** |||
+
+### Networking (0x50-0x5F) - Requires VIPER_KERNEL_ENABLE_NET
+
+| Number | Name | Description |
+|--------|------|-------------|
 | 0x50 | socket_create | Create TCP socket |
 | 0x51 | socket_connect | Connect to server |
 | 0x52 | socket_send | Send data |
 | 0x53 | socket_recv | Receive data |
 | 0x54 | socket_close | Close socket |
 | 0x55 | dns_resolve | Resolve hostname |
-| **Directory/FS (0x60-0x6F)** |||
+
+### Directory/FS (0x60-0x6F) - Requires VIPER_KERNEL_ENABLE_FS
+
+| Number | Name | Description |
+|--------|------|-------------|
 | 0x60 | readdir | Read directory entries |
 | 0x61 | mkdir | Create directory |
 | 0x62 | rmdir | Remove directory |
@@ -218,67 +237,128 @@ The architecture subsystem provides low-level AArch64 support for the ViperOS ke
 | 0x66 | readlink | Read symlink target |
 | 0x67 | getcwd | Get current directory |
 | 0x68 | chdir | Change current directory |
-| **Capabilities (0x70-0x7F)** |||
+
+### Capabilities (0x70-0x7F)
+
+| Number | Name | Description |
+|--------|------|-------------|
 | 0x70 | cap_derive | Derive with reduced rights |
 | 0x71 | cap_revoke | Revoke capability |
 | 0x72 | cap_query | Query capability info |
 | 0x73 | cap_list | List all capabilities |
-| **Handle-based FS (0x80-0x8F)** |||
+
+### Handle-based FS (0x80-0x8F)
+
+| Number | Name | Description |
+|--------|------|-------------|
 | 0x80 | fs_open_root | Get root directory handle |
 | 0x81 | fs_open | Open relative to handle |
 | 0x82 | io_read | Read from file handle |
 | 0x83 | io_write | Write to file handle |
 | 0x84 | io_seek | Seek in file handle |
-| 0x85 | fs_readdir | Read directory entry |
+| 0x85 | fs_read_dir | Read directory entry |
 | 0x86 | fs_close | Close handle |
-| 0x87 | fs_rewinddir | Reset directory enumeration |
-| **Signals (0x90-0x9F)** |||
+| 0x87 | fs_rewind_dir | Reset directory enumeration |
+
+### Signals (0x90-0x9F)
+
+| Number | Name | Description |
+|--------|------|-------------|
 | 0x90 | sigaction | Set signal handler |
 | 0x91 | sigprocmask | Set/get blocked signals |
 | 0x92 | sigreturn | Return from signal handler |
 | 0x93 | kill | Send signal to task |
 | 0x94 | sigpending | Get pending signals |
-| **Assigns (0xC0-0xCF)** |||
+
+### Process Info (0xA0-0xAF)
+
+| Number | Name | Description |
+|--------|------|-------------|
+| 0xA0 | getpid | Get process ID |
+| 0xA1 | getppid | Get parent process ID |
+| 0xA2 | getpgid | Get process group |
+| 0xA3 | setpgid | Set process group |
+| 0xA4 | getsid | Get session ID |
+| 0xA5 | setsid | Create new session |
+| 0xA6 | get_args | Get process arguments |
+
+### Assigns (0xC0-0xCF)
+
+| Number | Name | Description |
+|--------|------|-------------|
 | 0xC0 | assign_set | Create logical assign |
 | 0xC1 | assign_get | Get assign handle |
 | 0xC2 | assign_remove | Remove assign |
 | 0xC3 | assign_list | List all assigns |
 | 0xC4 | assign_resolve | Resolve assign path |
-| **TLS (0xD0-0xDF)** |||
+
+### TLS (0xD0-0xDF) - Requires VIPER_KERNEL_ENABLE_TLS
+
+| Number | Name | Description |
+|--------|------|-------------|
 | 0xD0 | tls_create | Create TLS session |
 | 0xD1 | tls_handshake | Perform TLS handshake |
 | 0xD2 | tls_send | Send encrypted data |
 | 0xD3 | tls_recv | Receive decrypted data |
 | 0xD4 | tls_close | Close TLS session |
 | 0xD5 | tls_info | Get session info |
-| **System Info (0xE0-0xEF)** |||
+
+### System Info (0xE0-0xEF)
+
+| Number | Name | Description |
+|--------|------|-------------|
 | 0xE0 | mem_info | Get memory statistics |
 | 0xE1 | net_stats | Get network statistics |
-| **Console (0xF0-0xFF)** |||
+| 0xE2 | ping | ICMP ping |
+| 0xE3 | device_list | List devices |
+
+### Console (0xF0-0xFF)
+
+| Number | Name | Description |
+|--------|------|-------------|
 | 0xF0 | debug_print | Print string to console |
 | 0xF1 | getchar | Read character |
 | 0xF2 | putchar | Write character |
 | 0xF3 | uptime | Get system uptime |
 
-**Signal Delivery (Implemented):**
+### Device Primitives (0x100-0x10F) - Microkernel Mode
+
+| Number | Name | Description |
+|--------|------|-------------|
+| 0x100 | map_device | Map device MMIO region |
+| 0x101 | irq_register | Register for IRQ |
+| 0x102 | irq_wait | Wait for IRQ |
+| 0x103 | irq_ack | Acknowledge IRQ |
+| 0x104 | dma_alloc | Allocate DMA memory |
+| 0x105 | dma_free | Free DMA memory |
+| 0x106 | virt_to_phys | Get physical address |
+| 0x107 | device_enum | Enumerate devices |
+| 0x108 | irq_unregister | Unregister IRQ |
+
+### Shared Memory (0x110-0x11F)
+
+| Number | Name | Description |
+|--------|------|-------------|
+| 0x110 | shm_create | Create shared memory |
+| 0x111 | shm_map | Map shared memory |
+| 0x112 | shm_unmap | Unmap shared memory |
+| 0x113 | shm_close | Close SHM handle |
+
+---
+
+## Signal Delivery
+
+**Implemented:**
 - POSIX-like signal numbers (SIGHUP through SIGSYS)
 - Hardware fault signals: SIGSEGV, SIGBUS, SIGILL, SIGFPE
 - Signal delivery via `signal::send_signal()` and `signal::deliver_fault_signal()`
 - Fault info includes: address (FAR), PC (ELR), ESR, and human-readable kind
 - Default actions: terminate, ignore, stop, continue
-- **Per-task signal state**: handlers[32], blocked mask, pending mask
-- **Signal syscalls**: sigaction, sigprocmask, sigreturn, kill, sigpending
-- **Signal checking on syscall return**: pending signals processed before return to user mode
+- Per-task signal state: handlers[32], blocked mask, pending mask
+- Signal checking on syscall return
 
 **Not Implemented:**
-- Full user-space signal handler invocation (framework in place, needs trampoline)
-- Debug exception handling (BRK, single-step)
-- Floating-point/SIMD exception handling (FPU enabled, traps not routed)
-- Nested exception support
-
-**Recommendations:**
-- Complete user signal handler trampoline for full sigaction support
-- Add debug exception support for debugger integration
+- Full user-space signal handler invocation (needs trampoline)
 
 ---
 
@@ -294,7 +374,7 @@ The architecture subsystem provides low-level AArch64 support for the ViperOS ke
 │       ▼            ▼            ▼            ▼               │
 │  ┌─────────────────────────────────────────────────┐        │
 │  │           Exception Handler (C++)               │        │
-│  │  - Syscall dispatch (73 syscalls)               │        │
+│  │  - Syscall dispatch (~90 syscalls)              │        │
 │  │  - GIC IRQ handling (v2/v3)                     │        │
 │  │  - Signal delivery (SIGSEGV, etc.)              │        │
 │  │  - Fault diagnostics + user recovery            │        │
@@ -317,12 +397,7 @@ The architecture subsystem provides low-level AArch64 support for the ViperOS ke
    └─────────┘
 ```
 
-## Testing
-
-The architecture subsystem is tested via:
-- `qemu_kernel_boot` - Verifies kernel starts and prints banner
-- `qemu_scheduler_start` - Verifies scheduler starts (timer working)
-- All other QEMU tests implicitly test exception handling
+---
 
 ## Files
 
@@ -341,12 +416,12 @@ The architecture subsystem is tested via:
 | `cpu.cpp` | ~275 | Per-CPU data, PSCI boot, IPI support |
 | `cpu.hpp` | ~120 | CPU interface |
 
-Note: Syscall dispatch has been moved to `kernel/syscall/table.cpp` (~1,970 lines).
+Note: Syscall dispatch is in `kernel/syscall/table.cpp` (~4,000 lines).
+
+---
 
 ## Priority Recommendations
 
-1. ~~**High:** Boot secondary CPUs into scheduler~~ ✅ **Completed** - All 4 CPUs boot via PSCI
-2. **Medium:** Add TTBR1 support for kernel higher-half mapping
-3. ~~**Medium:** Implement user-space signal handlers (sigaction)~~ ✅ **Completed** - syscalls + per-task state
-4. ~~**Low:** Per-CPU timer for multicore scheduling~~ ✅ **Completed** - `timer::init_secondary()`
-5. ~~**Low:** Timer wheel for O(1) timeout operations~~ ✅ **Completed** - `kernel/lib/timerwheel.cpp`
+1. **Medium:** Add TTBR1 support for kernel higher-half mapping
+2. **Medium:** Complete user-space signal handlers (sigaction trampoline)
+3. **Low:** Add debug exception support for debugger integration

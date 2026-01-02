@@ -20,6 +20,7 @@
 #include "bootinfo.hpp"
 #include "../console/serial.hpp"
 #include "../dtb/fdt.hpp"
+#include "../include/constants.hpp"
 #include "../include/vboot.hpp"
 
 // Linker-provided symbols
@@ -166,15 +167,12 @@ void setup_qemu_defaults(void *dtb)
     }
     else
     {
-        // Fall back to QEMU virt machine defaults
+        // Fall back to QEMU virt machine defaults (from constants.hpp)
         serial::puts("[bootinfo] FDT parse failed, using QEMU defaults\n");
 
-        constexpr u64 QEMU_VIRT_RAM_BASE = 0x40000000;
-        constexpr u64 QEMU_VIRT_RAM_SIZE = 128 * 1024 * 1024; // 128 MB
-
         g_boot_info.memory_region_count = 1;
-        g_boot_info.memory_regions[0].base = QEMU_VIRT_RAM_BASE;
-        g_boot_info.memory_regions[0].size = QEMU_VIRT_RAM_SIZE;
+        g_boot_info.memory_regions[0].base = kc::mem::RAM_BASE;
+        g_boot_info.memory_regions[0].size = kc::mem::RAM_SIZE;
         g_boot_info.memory_regions[0].type = MemoryType::Usable;
     }
 }

@@ -1,6 +1,36 @@
-/*
- * ViperOS C Library - aio implementation
- * Asynchronous I/O stubs (synchronous fallback)
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/aio.c
+// Purpose: Asynchronous I/O functions for ViperOS libc.
+// Key invariants: Executes synchronously (no true async); immediate completion.
+// Ownership/Lifetime: Library; state stored in aiocb structs.
+// Links: user/libc/include/aio.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file aio.c
+ * @brief Asynchronous I/O functions for ViperOS libc.
+ *
+ * @details
+ * This file implements POSIX asynchronous I/O functions:
+ *
+ * - aio_read/aio_write: Async read/write (sync fallback)
+ * - lio_listio: Process a list of I/O requests
+ * - aio_error/aio_return: Get operation status/result
+ * - aio_cancel: Cancel pending operations
+ * - aio_suspend: Wait for operations to complete
+ * - aio_fsync: Async file synchronization
+ *
+ * ViperOS implements these as synchronous operations. Each aio_*
+ * call completes immediately using pread/pwrite, and the aiocb
+ * state is set to __AIO_COMPLETE. True asynchronous I/O with
+ * worker threads is not implemented.
  */
 
 #include <aio.h>

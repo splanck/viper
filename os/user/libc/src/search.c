@@ -1,6 +1,41 @@
-/*
- * ViperOS libc - search.c
- * Hash and tree search implementation
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/search.c
+// Purpose: Search and data structure functions for ViperOS libc.
+// Key invariants: Hash uses linear probing; BST is unbalanced.
+// Ownership/Lifetime: Library; dynamic allocation for trees/tables.
+// Links: user/libc/include/search.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file search.c
+ * @brief Search and data structure functions for ViperOS libc.
+ *
+ * @details
+ * This file implements POSIX search functions:
+ *
+ * Hash Tables:
+ * - hcreate/hdestroy: Create/destroy global hash table
+ * - hsearch: Search/insert in global hash table
+ * - hcreate_r/hdestroy_r/hsearch_r: Reentrant versions
+ *
+ * Binary Search Trees:
+ * - tsearch/tfind: Insert/find in BST
+ * - tdelete: Delete from BST
+ * - twalk/twalk_r: Walk tree in-order
+ * - tdestroy: Destroy entire tree
+ *
+ * Linear Search:
+ * - lfind/lsearch: Linear search (with optional insert)
+ *
+ * Queues:
+ * - insque/remque: Doubly-linked list operations
  */
 
 #include "../include/search.h"

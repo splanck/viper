@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: include/viperos/net_stats.hpp
+// Purpose: Network statistics structure for SYS_NET_STATS syscall.
+// Key invariants: ABI-stable; counters cumulative since boot.
+// Ownership/Lifetime: Shared; included by kernel and user-space.
+// Links: kernel/net/netstack.hpp
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 /**

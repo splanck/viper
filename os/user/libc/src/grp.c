@@ -1,6 +1,38 @@
-/*
- * ViperOS libc - grp.c
- * Group file access implementation
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/grp.c
+// Purpose: Group database access for ViperOS libc.
+// Key invariants: Single-user system; only root(0), users(100), viper(1000).
+// Ownership/Lifetime: Library; static group entries.
+// Links: user/libc/include/grp.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file grp.c
+ * @brief Group database access for ViperOS libc.
+ *
+ * @details
+ * This file implements POSIX group database functions:
+ *
+ * - getgrnam/getgrnam_r: Get group entry by name
+ * - getgrgid/getgrgid_r: Get group entry by group ID
+ * - getgrent/setgrent/endgrent: Enumerate all group entries
+ * - getgrouplist: Get list of groups for a user
+ * - initgroups: Initialize supplementary group list
+ *
+ * ViperOS has the following built-in groups:
+ * - root (gid 0): Superuser group
+ * - wheel (gid 0): Administrative group (includes root, viper)
+ * - users (gid 100): Standard users group
+ * - viper (gid 1000): Primary group for viper user
+ *
+ * No /etc/group file is read; all data is hardcoded.
  */
 
 #include "../include/grp.h"

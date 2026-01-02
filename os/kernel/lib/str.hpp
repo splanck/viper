@@ -132,4 +132,31 @@ inline char *strncpy(char *dest, const char *src, usize n)
     return dest;
 }
 
+/**
+ * @brief Safely copy a string with length limit.
+ *
+ * @details
+ * Copies up to `max - 1` characters from `src` to `dest`, always NUL-terminating
+ * the result. This is safer than `strncpy` which may not NUL-terminate if `src`
+ * is longer than `n`.
+ *
+ * @param dest Destination buffer (must be at least `max` bytes).
+ * @param src Source NUL-terminated string.
+ * @param max Maximum size of destination buffer including NUL terminator.
+ * @return `dest`.
+ */
+inline char *strcpy_safe(char *dest, const char *src, usize max)
+{
+    if (max == 0)
+        return dest;
+    usize i = 0;
+    while (src[i] && i < max - 1)
+    {
+        dest[i] = src[i];
+        i++;
+    }
+    dest[i] = '\0';
+    return dest;
+}
+
 } // namespace lib

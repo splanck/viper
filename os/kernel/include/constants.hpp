@@ -493,6 +493,81 @@ constexpr i32 SIGSTOP = 19;  // Stop (cannot be caught)
 
 } // namespace signal
 
+// =============================================================================
+// SECTION 15: ANSI ESCAPE SEQUENCES
+// =============================================================================
+namespace ansi {
+
+/// ESC character (0x1B)
+constexpr char ESC = '\033';
+
+/// Control Sequence Introducer (ESC[)
+constexpr const char *CSI = "\033[";
+
+// ----- Cursor Movement -----
+constexpr const char *CURSOR_UP = "\033[A";
+constexpr const char *CURSOR_DOWN = "\033[B";
+constexpr const char *CURSOR_RIGHT = "\033[C";
+constexpr const char *CURSOR_LEFT = "\033[D";
+constexpr const char *CURSOR_HOME = "\033[H";
+constexpr const char *CURSOR_END = "\033[F";
+
+// ----- Cursor Visibility (DECTCEM) -----
+constexpr const char *CURSOR_SHOW = "\033[?25h";
+constexpr const char *CURSOR_HIDE = "\033[?25l";
+
+// ----- Screen/Line Clearing -----
+constexpr const char *CLEAR_SCREEN = "\033[2J";
+constexpr const char *CLEAR_LINE = "\033[K";
+constexpr const char *CLEAR_LINE_FULL = "\033[2K";
+
+// ----- Text Attributes -----
+constexpr const char *RESET = "\033[0m";
+constexpr const char *BOLD = "\033[1m";
+constexpr const char *DIM = "\033[2m";
+constexpr const char *ITALIC = "\033[3m";
+constexpr const char *UNDERLINE = "\033[4m";
+constexpr const char *REVERSE = "\033[7m";
+
+// ----- Foreground Colors (ANSI 16-color) -----
+constexpr const char *FG_BLACK = "\033[30m";
+constexpr const char *FG_RED = "\033[31m";
+constexpr const char *FG_GREEN = "\033[32m";
+constexpr const char *FG_YELLOW = "\033[33m";
+constexpr const char *FG_BLUE = "\033[34m";
+constexpr const char *FG_MAGENTA = "\033[35m";
+constexpr const char *FG_CYAN = "\033[36m";
+constexpr const char *FG_WHITE = "\033[37m";
+constexpr const char *FG_DEFAULT = "\033[39m";
+
+// ----- Bright Foreground Colors -----
+constexpr const char *FG_BRIGHT_BLACK = "\033[90m";
+constexpr const char *FG_BRIGHT_RED = "\033[91m";
+constexpr const char *FG_BRIGHT_GREEN = "\033[92m";
+constexpr const char *FG_BRIGHT_YELLOW = "\033[93m";
+constexpr const char *FG_BRIGHT_BLUE = "\033[94m";
+constexpr const char *FG_BRIGHT_MAGENTA = "\033[95m";
+constexpr const char *FG_BRIGHT_CYAN = "\033[96m";
+constexpr const char *FG_BRIGHT_WHITE = "\033[97m";
+
+// ----- Background Colors -----
+constexpr const char *BG_BLACK = "\033[40m";
+constexpr const char *BG_RED = "\033[41m";
+constexpr const char *BG_GREEN = "\033[42m";
+constexpr const char *BG_YELLOW = "\033[43m";
+constexpr const char *BG_BLUE = "\033[44m";
+constexpr const char *BG_MAGENTA = "\033[45m";
+constexpr const char *BG_CYAN = "\033[46m";
+constexpr const char *BG_WHITE = "\033[47m";
+constexpr const char *BG_DEFAULT = "\033[49m";
+
+// ----- Special Keys (as escape sequences) -----
+constexpr const char *KEY_DELETE = "\033[3~";
+constexpr const char *KEY_PAGE_UP = "\033[5~";
+constexpr const char *KEY_PAGE_DOWN = "\033[6~";
+
+} // namespace ansi
+
 } // namespace kernel::constants
 
 // Convenience namespace alias for shorter access

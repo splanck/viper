@@ -1,6 +1,32 @@
-/*
- * ViperOS libc - shm.c
- * Shared memory implementation (stubs)
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/shm.c
+// Purpose: System V shared memory stubs for ViperOS libc.
+// Key invariants: All functions return ENOSYS (not implemented).
+// Ownership/Lifetime: Library; stub implementations.
+// Links: user/libc/include/sys/shm.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file shm.c
+ * @brief System V shared memory stubs for ViperOS libc.
+ *
+ * @details
+ * This file provides stub implementations for System V shared memory:
+ *
+ * - shmget: Get or create shared memory segment (stub)
+ * - shmat: Attach shared memory segment (stub)
+ * - shmdt: Detach shared memory segment (stub)
+ * - shmctl: Shared memory control operations (stub)
+ *
+ * Shared memory is not yet implemented in ViperOS. All functions
+ * return -1 with errno set to ENOSYS.
  */
 
 #include "../include/sys/shm.h"

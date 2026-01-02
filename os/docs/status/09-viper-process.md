@@ -6,7 +6,13 @@
 
 ## Overview
 
-The Viper subsystem provides ViperOS's user-space process abstraction. Each "Viper" is an in-kernel process representation that owns an address space, a capability table, and a set of tasks. The capability system provides fine-grained access control to kernel objects.
+The Viper subsystem provides ViperOS's user-space process abstraction. In the microkernel architecture, this is a core kernel component that provides:
+
+- Process management (create, fork, wait, exit)
+- Per-process address spaces with demand paging and COW
+- Capability tables for handle-based access control
+
+Each "Viper" is an in-kernel process representation that owns an address space, a capability table, and a set of tasks. The capability system provides fine-grained access control to kernel objects and enables secure delegation between user-space servers.
 
 ---
 

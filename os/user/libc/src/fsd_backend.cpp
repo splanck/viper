@@ -1,4 +1,44 @@
-// libc ↔ fsd bridge (Phase 3): route common libc file/dir ops to fsd when present.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/fsd_backend.cpp
+// Purpose: libc-to-fsd bridge for file and directory operations.
+// Key invariants: FDs 64-127 map to fsd; global client connects on demand.
+// Ownership/Lifetime: Library; global client persists for process lifetime.
+// Links: user/libfsclient, user/servers/fsd
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file fsd_backend.cpp
+ * @brief libc-to-fsd bridge for file and directory operations.
+ *
+ * @details
+ * This file provides the bridge between libc file functions and fsd:
+ *
+ * File Descriptor Management:
+ * - __viper_fsd_is_fd: Check if FD is managed by fsd (64-127)
+ * - __viper_fsd_open: Open file via fsd, returning fsd-managed FD
+ * - __viper_fsd_close: Close fsd-managed FD
+ * - __viper_fsd_dup: Duplicate fsd-managed FD
+ *
+ * File Operations:
+ * - __viper_fsd_read/write: Read/write data
+ * - __viper_fsd_seek: Seek to position
+ * - __viper_fsd_stat/fstat: Get file information
+ * - __viper_fsd_truncate: Truncate file
+ *
+ * Directory Operations:
+ * - __viper_fsd_mkdir/rmdir: Create/remove directories
+ * - __viper_fsd_opendir/readdir/closedir: Directory iteration
+ * - __viper_fsd_unlink/rename: Remove/rename files
+ *
+ * Path prefixes /vfs/ or containing ':' are routed to fsd.
+ */
 
 #include "fsclient.hpp"
 #include "servers/fsd/fs_protocol.hpp"
@@ -430,6 +470,15 @@ extern "C" int __viper_fsd_fstat(int fd, struct stat *statbuf)
 
     fill_posix_stat(statbuf, st);
     return 0;
+}
+
+extern "C" int __viper_fsd_fsync(int fd)
+{
+    FsdObject *obj = get_obj_for_fd(fd);
+    if (!obj)
+        return VERR_INVALID_HANDLE;
+
+    return g_fsd_client.fsync(obj->file_id);
 }
 
 extern "C" int __viper_fsd_mkdir(const char *abs_path)

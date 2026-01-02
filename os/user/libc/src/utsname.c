@@ -1,6 +1,35 @@
-/*
- * ViperOS libc - utsname.c
- * System identification implementation
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/utsname.c
+// Purpose: System identification functions for ViperOS libc.
+// Key invariants: Falls back to static values if syscall unavailable.
+// Ownership/Lifetime: Library; wraps kernel syscall.
+// Links: user/libc/include/sys/utsname.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file utsname.c
+ * @brief System identification functions for ViperOS libc.
+ *
+ * @details
+ * This file implements POSIX system identification:
+ *
+ * - uname: Get system name and information
+ *
+ * The uname() function fills a utsname structure with:
+ * - sysname: Operating system name ("ViperOS")
+ * - nodename: Network node hostname
+ * - release: Operating system release version
+ * - version: Operating system version string
+ * - machine: Hardware architecture ("aarch64")
+ *
+ * If the kernel syscall is not available, static defaults are used.
  */
 
 #include "../include/sys/utsname.h"

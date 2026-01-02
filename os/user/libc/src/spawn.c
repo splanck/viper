@@ -1,6 +1,42 @@
-/*
- * ViperOS libc - spawn.c
- * POSIX spawn implementation (stubs)
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/spawn.c
+// Purpose: POSIX spawn functions for ViperOS libc.
+// Key invariants: Spawn not implemented; returns ENOSYS.
+// Ownership/Lifetime: Library; file actions dynamically allocated.
+// Links: user/libc/include/spawn.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file spawn.c
+ * @brief POSIX spawn functions for ViperOS libc.
+ *
+ * @details
+ * This file implements POSIX spawn attribute and file action functions:
+ *
+ * Spawn Attributes:
+ * - posix_spawnattr_init/destroy: Initialize/destroy attributes
+ * - posix_spawnattr_get/setflags: Get/set spawn flags
+ * - posix_spawnattr_get/setpgroup: Get/set process group
+ * - posix_spawnattr_get/setsigdefault: Get/set default signals
+ * - posix_spawnattr_get/setsigmask: Get/set signal mask
+ * - posix_spawnattr_get/setschedpolicy: Get/set scheduling policy
+ * - posix_spawnattr_get/setschedparam: Get/set scheduling parameters
+ *
+ * File Actions:
+ * - posix_spawn_file_actions_init/destroy: Initialize/destroy actions
+ * - posix_spawn_file_actions_addclose: Add close action
+ * - posix_spawn_file_actions_adddup2: Add dup2 action
+ * - posix_spawn_file_actions_addopen: Add open action
+ *
+ * The actual spawn functions (posix_spawn, posix_spawnp) return ENOSYS
+ * as full process spawning is not yet implemented in ViperOS.
  */
 
 #include "../include/spawn.h"

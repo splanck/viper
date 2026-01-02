@@ -1,42 +1,55 @@
 # Microkernel Servers
 
-**Status:** Partial implementation for user-space drivers
+**Status:** Complete implementation for user-space services
 **Location:** `user/servers/`
-**SLOC:** ~3,500
+**SLOC:** ~8,900
 
 ## Overview
 
-ViperOS follows a microkernel architecture where device drivers and system services run in user-space rather than in the kernel. This provides better fault isolation and security at the cost of some IPC overhead.
+ViperOS follows a microkernel architecture where device drivers and system services run in user-space rather than in the kernel. This provides better fault isolation and security. Five user-space servers are implemented:
 
-Currently, three user-space servers are implemented:
-- **blkd**: Block device server (VirtIO-blk)
-- **fsd**: Filesystem server (ViperFS)
-- **netd**: Network device server (VirtIO-net)
+| Server | Assign | SLOC | Purpose |
+|--------|--------|------|---------|
+| **netd** | NETD: | ~1,500 | TCP/IP network stack |
+| **fsd** | FSD: | ~1,800 | Filesystem operations |
+| **blkd** | BLKD: | ~700 | Block device access |
+| **consoled** | CONSOLED: | ~600 | Console output |
+| **inputd** | INPUTD: | ~1,000 | Keyboard/mouse input |
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      User Applications                       │
-│   (vinit, ssh, sftp, utilities)                             │
-└───────────────────────────┬─────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                      User Applications                           │
+│   (vinit, ssh, sftp, utilities)                                  │
+└───────────────────────────┬─────────────────────────────────────┘
                             │ IPC (Channels)
-            ┌───────────────┼───────────────┐
-            ▼               ▼               ▼
+        ┌───────────────────┼───────────────────┐
+        ▼                   ▼                   ▼
 ┌───────────────┐  ┌───────────────┐  ┌───────────────┐
-│     fsd       │  │     blkd      │  │     netd      │
-│  (filesystem) │  │ (block device)│  │  (network)    │
-│  FSD: assign  │  │  BLKD: assign │  │  NETD: assign │
-└───────┬───────┘  └───────┬───────┘  └───────┬───────┘
-        │                  │                  │
-        └──────────────────┼──────────────────┘
-                           │ Device Syscalls
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│                          Kernel                              │
-│   MAP_DEVICE, IRQ_REGISTER, IRQ_WAIT, DMA_ALLOC, SHM_*      │
-└─────────────────────────────────────────────────────────────┘
+│     netd      │  │     fsd       │  │   consoled    │
+│  TCP/IP stack │  │  Filesystem   │  │  Console I/O  │
+│  NETD: assign │  │  FSD: assign  │  │ CONSOLED:     │
+└───────┬───────┘  └───────┬───────┘  └───────────────┘
+        │                  │
+        │          ┌───────┴───────┐
+        │          ▼               ▼
+        │  ┌───────────────┐  ┌───────────────┐
+        │  │     blkd      │  │    inputd     │
+        │  │  Block device │  │  Keyboard/    │
+        │  │  BLKD: assign │  │  Mouse input  │
+        │  └───────┬───────┘  └───────────────┘
+        │          │
+        └──────────┼──────────────────────────────────┐
+                   │ Device Syscalls                   │
+                   ▼                                   ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                          Kernel                                  │
+│   MAP_DEVICE │ IRQ_REGISTER │ IRQ_WAIT │ DMA_ALLOC │ SHM_*      │
+└─────────────────────────────────────────────────────────────────┘
 ```
+
+---
 
 ## Kernel Device Management Syscalls
 
@@ -53,116 +66,129 @@ The kernel provides syscalls for user-space drivers to access hardware:
 | SYS_VIRT_TO_PHYS | 0x106 | Get physical address for DMA programming |
 | SYS_DEVICE_ENUM | 0x107 | Enumerate available devices |
 | SYS_IRQ_UNREGISTER | 0x108 | Unregister from an IRQ |
-| SYS_SHM_CREATE | 0x109 | Create shared memory object |
-| SYS_SHM_MAP | 0x10A | Map shared memory into address space |
-| SYS_SHM_UNMAP | 0x10B | Unmap shared memory |
 
 ---
 
-## Block Device Server (blkd)
+## Network Server (netd)
 
-**Location:** `user/servers/blkd/`
-**Status:** Partial (~40% complete)
+**Location:** `user/servers/netd/`
+**Status:** Complete
+**Registration:** `sys::assign_set("NETD", channel_handle)`
 
 ### Files
 
 | File | Lines | Description |
 |------|-------|-------------|
-| `main.cpp` | ~300 | Server entry point and main loop |
-| `blk_protocol.hpp` | ~100 | IPC message definitions |
+| `main.cpp` | ~915 | Server entry point and main loop |
+| `net_protocol.hpp` | ~447 | IPC message definitions |
+| `netstack.hpp` | ~596 | TCP/IP stack implementation |
 
-### Features Implemented
+### Features
 
-- VirtIO-blk device discovery and initialization
-- MMIO mapping via MAP_DEVICE syscall
-- Service channel creation
-- Assign registration (BLKD:)
-- Block read operations
-- Block write operations
-- Device info query
+- VirtIO-net device initialization
+- Complete TCP/IP stack (Ethernet, ARP, IPv4, ICMP, TCP, UDP)
+- Socket lifecycle (create, connect, bind, listen, accept, send, recv, close)
+- DNS resolution
+- Ping diagnostics
+- Network statistics
+- Event subscription for async I/O notifications
+- Shared memory transfers for large payloads (> 200 bytes)
+- TCP congestion control (slow start, congestion avoidance)
+- TCP retransmission
 
 ### IPC Protocol
 
 ```cpp
-namespace blk {
+namespace netproto {
     // Request types
-    enum {
-        BLK_READ = 1,
-        BLK_WRITE = 2,
-        BLK_FLUSH = 3,
-        BLK_INFO = 4,
+    enum MsgType : u32 {
+        NET_SOCKET_CREATE = 1,
+        NET_SOCKET_CONNECT = 2,
+        NET_SOCKET_BIND = 3,
+        NET_SOCKET_LISTEN = 4,
+        NET_SOCKET_ACCEPT = 5,
+        NET_SOCKET_SEND = 6,
+        NET_SOCKET_RECV = 7,
+        NET_SOCKET_CLOSE = 8,
+        NET_SOCKET_STATUS = 10,
+        NET_DNS_RESOLVE = 20,
+        NET_PING = 40,
+        NET_STATS = 41,
+        // ... replies are 0x80 + request type
     };
 
-    struct ReadRequest {
-        u32 type;          // BLK_READ
+    struct SocketCreateRequest {
+        u32 type;       // NET_SOCKET_CREATE
         u32 request_id;
-        u64 sector;
-        u32 count;
+        u16 family;     // AF_INET
+        u16 sock_type;  // SOCK_STREAM or SOCK_DGRAM
+        u32 protocol;
     };
 
-    struct ReadReply {
-        u32 type;
+    struct SocketSendRequest {
+        u32 type;       // NET_SOCKET_SEND
         u32 request_id;
-        i32 status;
-        u32 bytes_read;
-        u8 data[512 * 8];  // Up to 8 sectors
+        u32 socket_id;
+        u32 len;
+        u32 flags;
+        u8 data[200];   // Inline for small payloads
+        // For larger sends: handle[0] = shared memory
     };
-
-    // Similar for Write, Flush, Info...
 }
 ```
 
-### Not Implemented
+### Usage Example
 
-- Interrupt-driven I/O (currently polling)
-- Multiple device support
-- Partition table parsing
-- Request queuing and coalescing
-- Error recovery
+```cpp
+// Create socket
+netproto::SocketCreateRequest req{};
+req.type = netproto::NET_SOCKET_CREATE;
+req.family = netproto::AF_INET;
+req.sock_type = netproto::SOCK_STREAM;
+sys::channel_send(netd_channel, &req, sizeof(req), nullptr, 0);
 
-### Recommendations
-
-1. **High Priority**: Add IRQ-driven I/O using IRQ_WAIT syscall
-2. **Medium Priority**: Support multiple block devices
-3. **Low Priority**: Add partition support (GPT/MBR)
+// Receive reply
+netproto::SocketCreateReply reply;
+sys::channel_recv(reply_channel, &reply, sizeof(reply), nullptr, nullptr);
+u32 socket_id = reply.socket_id;
+```
 
 ---
 
 ## Filesystem Server (fsd)
 
 **Location:** `user/servers/fsd/`
-**Status:** Partial (~50% complete)
+**Status:** Complete
+**Registration:** `sys::assign_set("FSD", channel_handle)`
 
 ### Files
 
 | File | Lines | Description |
 |------|-------|-------------|
-| `main.cpp` | ~780 | Server entry point, request handlers |
-| `fs_protocol.hpp` | ~200 | IPC message definitions |
-| `viperfs.hpp` | ~150 | ViperFS client implementation |
-| `viperfs.cpp` | ~400 | ViperFS block I/O layer |
+| `main.cpp` | ~968 | Server entry point, request handlers |
+| `fs_protocol.hpp` | ~455 | IPC message definitions |
+| `viperfs.hpp` | ~199 | ViperFS client implementation |
+| `blk_client.hpp` | ~363 | Client for blkd communication |
+| `format.hpp` | ~163 | ViperFS on-disk format |
 
-### Features Implemented
+### Features
 
-- Connection to blkd via IPC
+- Connects to blkd for block device access
 - ViperFS mounting and initialization
-- Service channel creation
-- Assign registration (FSD:)
-- File open/close operations
-- File read/write operations
-- File seeking
-- Stat/fstat operations
-- Directory creation (mkdir)
-- Directory removal (rmdir)
+- File operations: open, close, read, write, seek
+- Stat/fstat for file metadata
+- Directory operations: readdir, mkdir, rmdir
 - File deletion (unlink)
-- Path resolution
+- File rename
+- Symlink create/read
+- Up to 64 concurrent open files
+- Inode-based access with offset tracking
 
 ### IPC Protocol
 
 ```cpp
 namespace fs {
-    // Request types
-    enum {
+    enum MsgType : u32 {
         FS_OPEN = 1,
         FS_CLOSE = 2,
         FS_READ = 3,
@@ -170,35 +196,28 @@ namespace fs {
         FS_SEEK = 5,
         FS_STAT = 6,
         FS_FSTAT = 7,
-        FS_MKDIR = 8,
-        FS_RMDIR = 9,
-        FS_UNLINK = 10,
-        FS_READDIR = 11,
-        FS_RENAME = 12,
+        FS_FSYNC = 8,
+        FS_READDIR = 10,
+        FS_MKDIR = 11,
+        FS_RMDIR = 12,
+        FS_UNLINK = 13,
+        FS_RENAME = 14,
+        FS_SYMLINK = 20,
+        FS_READLINK = 21,
+        // ... replies are 0x80 + request type
     };
 
     struct OpenRequest {
-        u32 type;
+        u32 type;       // FS_OPEN
         u32 request_id;
-        u32 flags;
+        u32 flags;      // O_RDONLY, O_WRONLY, O_RDWR, O_CREAT, etc.
         u16 path_len;
-        char path[MAX_PATH];
+        char path[200]; // Path (not null-terminated)
     };
-
-    struct OpenReply {
-        u32 type;
-        u32 request_id;
-        i32 status;
-        u32 file_id;
-    };
-
-    // Similar for other operations...
 }
 ```
 
 ### Open File Table
-
-The server maintains per-client file descriptors:
 
 ```cpp
 struct OpenFile {
@@ -208,102 +227,221 @@ struct OpenFile {
     u32 flags;
 };
 
-static OpenFile g_open_files[MAX_OPEN_FILES];  // 64 files
+static OpenFile g_open_files[64];
 ```
 
-### Not Implemented
-
-- Directory enumeration (readdir)
-- File rename
-- Symbolic link operations
-- File permissions/ownership
-- File locking
-- Multiple client support (single global file table)
-- Caching (relies on blkd caching)
-
-### Recommendations
-
-1. **High Priority**: Implement readdir for directory listing
-2. **High Priority**: Per-client file tables
-3. **Medium Priority**: File rename support
-4. **Medium Priority**: Add local caching for performance
-5. **Low Priority**: Extended attributes
-
 ---
 
-## Network Device Server (netd)
+## Block Device Server (blkd)
 
-**Location:** `user/servers/netd/`
-**Status:** Partial (~30% complete)
+**Location:** `user/servers/blkd/`
+**Status:** Complete
+**Registration:** `sys::assign_set("BLKD", channel_handle)`
 
 ### Files
 
 | File | Lines | Description |
 |------|-------|-------------|
-| `main.cpp` | ~200 | Server entry point |
-| `net_protocol.hpp` | ~100 | IPC message definitions |
-
-### Features Implemented
-
-- VirtIO-net device discovery
-- MMIO mapping
-- Service channel creation
-- Assign registration (NETD:)
-- Basic packet receive
-- Basic packet send
-
-### Not Implemented
-
-- Full protocol stack (currently in kernel)
-- TCP/IP handling
-- Socket abstraction
-- Multiple interface support
-- DHCP client
-- Interrupt-driven RX
-
-### Current Architecture Note
-
-The network stack currently runs entirely in the kernel for performance reasons. The netd server is a placeholder for future migration of networking to user-space.
-
-### Recommendations
-
-1. **High Priority**: Complete IRQ-driven packet handling
-2. **Medium Priority**: Move ARP/ICMP to netd
-3. **Low Priority**: Full TCP/IP migration (significant effort)
-
----
-
-## libvirtio - User-Space VirtIO Library
-
-**Location:** `user/libvirtio/`
-**Status:** Partial (~60% complete)
-
-### Files
-
-| File | Lines | Description |
-|------|-------|-------------|
-| `device.cpp` | ~200 | Device discovery and mapping |
-| `device.hpp` | ~50 | Device interface |
-| `blk.cpp` | ~300 | VirtIO-blk driver |
-| `blk.hpp` | ~80 | Block device interface |
-| `queue.cpp` | ~250 | VirtIO queue management |
-| `queue.hpp` | ~100 | Queue interface |
+| `main.cpp` | ~546 | Server entry point and main loop |
+| `blk_protocol.hpp` | ~149 | IPC message definitions |
 
 ### Features
 
-- VirtIO MMIO device detection
-- VirtQueue setup and management
-- Descriptor chain building
-- Device configuration space access
-- Block device read/write
+- VirtIO-blk device discovery and initialization
+- MMIO mapping via MAP_DEVICE syscall
+- IRQ-driven I/O via IRQ_REGISTER/IRQ_WAIT
+- DMA buffer allocation
+- Block read operations (up to 128 sectors per request)
+- Block write operations
+- Flush/sync operations
+- Device info query (sector size, capacity)
 
-### Not Implemented
+### IPC Protocol
 
-- VirtIO-net driver (networking)
-- VirtIO-gpu driver (graphics)
-- VirtIO-rng driver (random)
-- VirtIO-input driver (keyboard/mouse)
-- MSI-X interrupt support
+```cpp
+namespace blk {
+    enum MsgType : u32 {
+        BLK_READ = 1,
+        BLK_WRITE = 2,
+        BLK_FLUSH = 3,
+        BLK_INFO = 4,
+        // Replies: 0x80 + request type
+    };
+
+    struct ReadRequest {
+        u32 type;       // BLK_READ
+        u32 request_id;
+        u64 sector;     // Starting sector
+        u32 count;      // Number of sectors
+    };
+
+    struct ReadReply {
+        u32 type;       // BLK_READ_REPLY
+        u32 request_id;
+        i32 status;     // 0 = success
+        u32 bytes_read;
+        // handle[0] = shared memory with data
+    };
+
+    constexpr u32 MAX_SECTORS_PER_REQUEST = 128;
+    constexpr u32 SECTOR_SIZE = 512;
+}
+```
+
+---
+
+## Console Server (consoled)
+
+**Location:** `user/servers/consoled/`
+**Status:** Complete
+**Registration:** `sys::assign_set("CONSOLED:", channel_handle)`
+
+### Files
+
+| File | Lines | Description |
+|------|-------|-------------|
+| `main.cpp` | ~397 | Server entry point |
+| `console_protocol.hpp` | ~184 | IPC message definitions |
+
+### Features
+
+- Text output to graphics console (ramfb)
+- Cursor position control
+- Color settings (foreground/background ARGB)
+- Screen clearing
+- Show/hide cursor
+- Console dimension query (80x25 default)
+- Tab stops (8-column boundaries)
+- Newline/carriage return/backspace handling
+
+### IPC Protocol
+
+```cpp
+namespace console_protocol {
+    // Message types
+    constexpr uint32_t CON_WRITE = 0x1001;
+    constexpr uint32_t CON_CLEAR = 0x1002;
+    constexpr uint32_t CON_SET_CURSOR = 0x1003;
+    constexpr uint32_t CON_GET_CURSOR = 0x1004;
+    constexpr uint32_t CON_SET_COLORS = 0x1005;
+    constexpr uint32_t CON_GET_SIZE = 0x1006;
+    constexpr uint32_t CON_SHOW_CURSOR = 0x1007;
+    constexpr uint32_t CON_HIDE_CURSOR = 0x1008;
+
+    struct WriteRequest {
+        uint32_t type;   // CON_WRITE
+        uint32_t request_id;
+        uint32_t length;
+        // Followed by text data
+    };
+
+    struct SetColorsRequest {
+        uint32_t type;       // CON_SET_COLORS
+        uint32_t request_id;
+        uint32_t foreground; // ARGB
+        uint32_t background; // ARGB
+    };
+}
+```
+
+---
+
+## Input Server (inputd)
+
+**Location:** `user/servers/inputd/`
+**Status:** Complete
+**Registration:** `sys::assign_set("INPUTD:", channel_handle)`
+
+### Files
+
+| File | Lines | Description |
+|------|-------|-------------|
+| `main.cpp` | ~751 | Server entry point, event processing |
+| `input_protocol.hpp` | ~159 | IPC message definitions |
+| `keycodes.hpp` | ~307 | Linux evdev keycode mappings |
+
+### Features
+
+- VirtIO-input device initialization (keyboard)
+- IRQ-driven event polling
+- ASCII character translation
+- Modifier key tracking (Shift, Ctrl, Alt, Meta, Caps Lock)
+- Character buffer (64 entries)
+- Event queue (64 entries)
+- Escape sequence generation for special keys (arrows, home, end, etc.)
+- Event subscription for async notifications
+- Linux evdev keycode compatibility
+
+### IPC Protocol
+
+```cpp
+namespace input_protocol {
+    enum MsgType : uint32_t {
+        INP_SUBSCRIBE = 1,      // Subscribe to input events
+        INP_UNSUBSCRIBE = 2,    // Unsubscribe
+        INP_GET_CHAR = 10,      // Get translated character
+        INP_GET_EVENT = 11,     // Get raw input event
+        INP_GET_MODIFIERS = 12, // Query modifier state
+        INP_HAS_INPUT = 13,     // Check availability
+        INP_EVENT_NOTIFY = 0x80,// Async notification
+        // Replies: 0x80 + request type
+    };
+
+    // Modifier key bits
+    namespace modifier {
+        constexpr uint8_t SHIFT = 0x01;
+        constexpr uint8_t CTRL = 0x02;
+        constexpr uint8_t ALT = 0x04;
+        constexpr uint8_t META = 0x08;
+        constexpr uint8_t CAPS_LOCK = 0x10;
+    }
+
+    struct InputEvent {
+        EventType type;    // KEY_PRESS, KEY_RELEASE, etc.
+        uint8_t modifiers;
+        uint16_t code;     // Linux evdev keycode
+        int32_t value;     // 1=press, 0=release
+    };
+}
+```
+
+---
+
+## Client Libraries
+
+### libnetclient
+
+**Location:** `user/libnetclient/`
+**Purpose:** Client library for netd communication
+
+```cpp
+// API
+int socket_create(int domain, int type, int protocol);
+int socket_connect(int socket_id, uint32_t ip, uint16_t port);
+ssize_t socket_send(int socket_id, const void *buf, size_t len);
+ssize_t socket_recv(int socket_id, void *buf, size_t len);
+int socket_close(int socket_id);
+int socket_status(int socket_id, uint32_t *flags, uint32_t *rx_avail);
+int dns_resolve(const char *hostname, uint32_t *ip_out);
+```
+
+### libfsclient
+
+**Location:** `user/libfsclient/`
+**Purpose:** Client library for fsd communication
+
+```cpp
+// API
+int fs_open(const char *path, uint32_t flags);
+int fs_close(int file_id);
+ssize_t fs_read(int file_id, void *buf, size_t count);
+ssize_t fs_write(int file_id, const void *buf, size_t count);
+off_t fs_seek(int file_id, off_t offset, int whence);
+int fs_stat(const char *path, struct stat *st);
+int fs_mkdir(const char *path);
+int fs_unlink(const char *path);
+int fs_readdir_one(int dir_id, struct dirent *entry);
+```
 
 ---
 
@@ -311,89 +449,76 @@ The network stack currently runs entirely in the kernel for performance reasons.
 
 For high-performance data transfer between servers, ViperOS supports shared memory:
 
-### Syscalls
-
-```cpp
-// Create shared memory object
-i64 shm_create(u64 size);
-
-// Map shared memory into address space
-i64 shm_map(u32 shm_handle, u64 *addr);
-
-// Unmap shared memory
-i64 shm_unmap(u32 shm_handle);
-```
-
-### Usage Pattern
+### Pattern
 
 ```
-1. Server creates shared memory region (SHM_CREATE)
+1. Server creates shared memory region (SYS_SHM_CREATE)
 2. Server sends handle to client via IPC channel
-3. Client maps shared memory (SHM_MAP)
+3. Client maps shared memory (SYS_SHM_MAP)
 4. Both parties read/write shared region
 5. Synchronization via IPC messages
-6. Cleanup with SHM_UNMAP
+6. Cleanup with SYS_SHM_UNMAP
 ```
 
-This is used for zero-copy data transfer between blkd and fsd.
+### Usage in netd/blkd
+
+- Data > 200 bytes uses shared memory handles
+- Client creates SHM for writes
+- Server creates SHM for reads
+- Handles transferred in IPC message handles array
 
 ---
 
-## Current vs Target Architecture
+## Service Discovery
 
-### Current (Hybrid)
+All servers register using the assign system:
 
-Most functionality remains in the kernel for development convenience:
+```cpp
+// Server-side registration
+u32 service_channel = /* create channel */;
+sys::assign_set("NETD", service_channel);
 
-```
-User Space: vinit, utilities
-            │
-            │ Syscalls (80+ calls)
-            ▼
-Kernel:     VFS, ViperFS, TCP/IP, VirtIO drivers, Block cache
-```
-
-### Target (Microkernel)
-
-Services migrated to user-space:
-
-```
-User Space: Applications
-            │
-            │ IPC (Channels)
-            ▼
-            fsd ←→ blkd ←→ netd
-            │
-            │ Device syscalls only
-            ▼
-Kernel:     Memory, Scheduling, IPC, Capabilities
+// Client-side discovery
+u32 netd_handle;
+i64 result = sys::assign_get("NETD", &netd_handle);
+if (result == 0) {
+    // netd_handle is valid channel to netd
+}
 ```
 
 ---
 
-## Migration Roadmap
+## libc Integration
 
-### Phase 1: Block Device (Current)
-- [x] blkd basic implementation
-- [ ] blkd IRQ-driven I/O
-- [ ] blkd request queuing
+The C library routes standard functions to the appropriate server:
 
-### Phase 2: Filesystem
-- [x] fsd basic implementation
-- [ ] fsd full operation support
-- [ ] fsd per-client isolation
-- [ ] fsd caching layer
+### Socket Functions (via netd)
 
-### Phase 3: Networking
-- [ ] netd packet handling
-- [ ] ARP/ICMP in netd
-- [ ] UDP in netd
-- [ ] TCP in netd (complex)
+```c
+// libc/src/netd_backend.cpp
+int socket(int domain, int type, int protocol);
+int connect(int sockfd, const struct sockaddr *addr, socklen_t len);
+ssize_t send(int sockfd, const void *buf, size_t len, int flags);
+ssize_t recv(int sockfd, void *buf, size_t len, int flags);
+```
 
-### Phase 4: Other Drivers
-- [ ] VirtIO-GPU user-space driver
-- [ ] VirtIO-input user-space driver
-- [ ] VirtIO-RNG user-space driver
+### File Functions (via fsd)
+
+```c
+// libc/src/fsd_backend.cpp
+int open(const char *path, int flags);
+ssize_t read(int fd, void *buf, size_t count);
+ssize_t write(int fd, const void *buf, size_t count);
+int close(int fd);
+```
+
+### FD Routing
+
+```
+FDs 0-63:   Reserved for libc (stdio, kernel handles)
+FDs 64-127: Routed to fsd (file operations)
+Sockets:    Routed to netd (separate namespace)
+```
 
 ---
 
@@ -408,10 +533,12 @@ Each operation requires:
 4. Message copy for reply
 5. Context switch back to client
 
-Mitigation strategies:
-- Shared memory for bulk data
-- Batching requests
-- Asynchronous operations
+### Mitigation Strategies
+
+- Shared memory for bulk data (>200 bytes)
+- Inline data for small transfers
+- Request batching where possible
+- Async event subscriptions
 
 ### Measured Latency (Approximate)
 
@@ -420,10 +547,4 @@ Mitigation strategies:
 | Block read (4KB) | ~50μs | ~150μs |
 | File stat | ~10μs | ~80μs |
 | Directory lookup | ~20μs | ~120μs |
-
-### Recommendations
-
-1. Use shared memory for block data transfer
-2. Implement request batching in fsd
-3. Add client-side caching for metadata
-4. Consider zero-copy buffer management
+| Socket send (small) | ~30μs | ~100μs |

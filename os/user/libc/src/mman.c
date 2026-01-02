@@ -1,6 +1,34 @@
-/*
- * ViperOS libc - mman.c
- * Memory management implementation
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/mman.c
+// Purpose: Memory mapping functions for ViperOS libc.
+// Key invariants: Page-aligned mappings; kernel manages VMAs.
+// Ownership/Lifetime: Library; mappings persist until unmapped.
+// Links: user/libc/include/sys/mman.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file mman.c
+ * @brief Memory mapping functions for ViperOS libc.
+ *
+ * @details
+ * This file implements POSIX memory mapping functions:
+ *
+ * - mmap/munmap: Map/unmap memory regions
+ * - mprotect: Change memory protection
+ * - msync: Synchronize mapped memory with backing store
+ * - madvise/posix_madvise: Advise kernel about memory usage
+ * - mlock/munlock: Lock/unlock memory pages
+ * - shm_open/shm_unlink: Shared memory (not implemented)
+ *
+ * Memory mappings are managed by the kernel's virtual memory system.
+ * All mappings must be page-aligned (4KB on ViperOS).
  */
 
 #include "../include/sys/mman.h"

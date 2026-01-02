@@ -1,3 +1,35 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/wait.c
+// Purpose: Process wait functions for ViperOS libc.
+// Key invariants: Wraps kernel wait4 syscall; fills rusage if provided.
+// Ownership/Lifetime: Library; wraps kernel syscalls.
+// Links: user/libc/include/sys/wait.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file wait.c
+ * @brief Process wait functions for ViperOS libc.
+ *
+ * @details
+ * This file implements POSIX process waiting functions:
+ *
+ * - wait: Wait for any child process to terminate
+ * - waitpid: Wait for specific child process
+ * - wait3: Wait with resource usage (any child)
+ * - wait4: Wait with resource usage (specific child)
+ * - waitid: ID-based wait with siginfo
+ *
+ * The WIFEXITED, WEXITSTATUS, WIFSIGNALED, etc. macros are used to
+ * interpret the status value returned via wstatus.
+ */
+
 #include "../include/sys/wait.h"
 #include "../include/errno.h"
 #include "../include/string.h"

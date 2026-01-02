@@ -1,9 +1,37 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/crt0.c
+// Purpose: C runtime startup code for ViperOS userspace programs.
+// Key invariants: _start clears BSS, parses args, calls main, then _exit.
+// Ownership/Lifetime: Library; linked as program entry point.
+// Links: user/libc/include/stdlib.h (for _exit)
+//
+//===----------------------------------------------------------------------===//
+
 /**
  * @file crt0.c
- * @brief C runtime startup for ViperOS userspace.
+ * @brief C runtime startup code for ViperOS userspace programs.
  *
- * Provides the _start entry point that initializes the runtime
- * and calls main().
+ * @details
+ * This file provides the C runtime startup for all ViperOS programs:
+ *
+ * - _start: Entry point called by the kernel after loading
+ * - clear_bss: Zero-initialize the BSS section
+ * - parse_args: Parse command-line arguments from kernel
+ *
+ * The startup sequence:
+ * 1. Kernel loads program and jumps to _start
+ * 2. _start clears BSS section to zero
+ * 3. parse_args() retrieves argv from kernel via SYS_GET_ARGS
+ * 4. main(argc, argv) is called
+ * 5. _exit() is called with main's return value
+ *
+ * Arguments are stored in static buffers (max 32 args, 512 bytes).
  */
 
 /* Forward declaration of main */

@@ -1,6 +1,41 @@
-/*
- * ViperOS C Library - POSIX semaphore implementation
- * Basic implementation for single-process environment
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/semaphore.c
+// Purpose: POSIX semaphore functions for ViperOS libc.
+// Key invariants: Named semaphores stored globally (16 max); no blocking.
+// Ownership/Lifetime: Library; global named semaphore table.
+// Links: user/libc/include/semaphore.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file semaphore.c
+ * @brief POSIX semaphore functions for ViperOS libc.
+ *
+ * @details
+ * This file implements POSIX semaphore functions:
+ *
+ * Unnamed Semaphores:
+ * - sem_init/sem_destroy: Initialize/destroy unnamed semaphore
+ *
+ * Named Semaphores:
+ * - sem_open: Open or create a named semaphore
+ * - sem_close: Close a named semaphore
+ * - sem_unlink: Remove a named semaphore
+ *
+ * Semaphore Operations:
+ * - sem_wait: Decrement (lock) semaphore
+ * - sem_trywait: Try to decrement semaphore (non-blocking)
+ * - sem_timedwait: Decrement with timeout
+ * - sem_post: Increment (unlock) semaphore
+ * - sem_getvalue: Get current semaphore value
+ *
+ * Single-process implementation: sem_wait returns EAGAIN if would block.
  */
 
 #include <errno.h>

@@ -1,6 +1,34 @@
-/*
- * ViperOS libc - resource.c
- * Resource usage and limits implementation
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/resource.c
+// Purpose: Resource limits and usage functions for ViperOS libc.
+// Key invariants: Default limits stored in static table; syscalls fallback.
+// Ownership/Lifetime: Library; static limit table.
+// Links: user/libc/include/sys/resource.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file resource.c
+ * @brief Resource limits and usage functions for ViperOS libc.
+ *
+ * @details
+ * This file implements POSIX resource management functions:
+ *
+ * - getrlimit/setrlimit: Get/set resource limits
+ * - prlimit: Get and set resource limits atomically
+ * - getrusage: Get resource usage statistics
+ * - getpriority/setpriority: Get/set process priority
+ *
+ * Resource limits are stored in a static table with defaults.
+ * The kernel may override these via syscalls; if syscalls are
+ * not implemented, the library provides reasonable defaults.
+ * Common limits include stack size, open files, and memory.
  */
 
 #include "../include/sys/resource.h"

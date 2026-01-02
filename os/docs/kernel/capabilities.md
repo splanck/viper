@@ -117,11 +117,28 @@ and inserts those into the caller’s capability table.
 This is an example of how “names” are reduced to “capabilities”: after resolution, code should prefer handles over
 paths.
 
+## Capability revocation
+
+Capability revocation is supported through parent tracking:
+
+- Each derived capability stores a `parent_index` pointing to the capability it was derived from
+- When `Table::revoke(h)` is called, it recursively invalidates all capabilities derived from `h`
+- This ensures that revoking a capability also revokes all narrower capabilities created from it
+
+```cpp
+// Example: Revoke a file handle and all derived read-only handles
+cap::Table *table = viper::current_cap_table();
+table->revoke(file_handle);  // Also revokes any read-only derived handles
+```
+
+Key files:
+
+- `kernel/cap/table.cpp`: `revoke()` implementation with recursive traversal
+
 ## Current limitations and next steps
 
-- Not all kernel subsystems are fully “capability-first” yet; some paths still use global tables or raw IDs (especially
+- Not all kernel subsystems are fully "capability-first" yet; some paths still use global tables or raw IDs (especially
   legacy channel APIs).
-- Capability revocation and richer delegation patterns are not implemented yet.
 - Reference management between cap entries and `kobj::Object` lifetimes is still evolving; expect this area to change as
   user space grows.
 

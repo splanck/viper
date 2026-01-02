@@ -1,6 +1,32 @@
-/*
- * ViperOS C Library - fmtmsg implementation
- * Message display functions
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/fmtmsg.c
+// Purpose: Message display functions for ViperOS libc.
+// Key invariants: Outputs to stderr; console output not supported.
+// Ownership/Lifetime: Library; static severity table.
+// Links: user/libc/include/fmtmsg.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file fmtmsg.c
+ * @brief Message display functions for ViperOS libc.
+ *
+ * @details
+ * This file implements X/Open message display functions:
+ *
+ * - fmtmsg: Format and display a message
+ * - addseverity: Add/remove custom severity levels
+ *
+ * Messages are formatted as "label: severity: text" and written
+ * to stderr (if MM_PRINT set). Console output (MM_CONSOLE) is not
+ * supported. Custom severity levels can be added via addseverity()
+ * up to a maximum of 16.
  */
 
 #include <fmtmsg.h>

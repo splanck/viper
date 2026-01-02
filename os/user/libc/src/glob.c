@@ -1,6 +1,35 @@
-/*
- * ViperOS libc - glob.c
- * Filename globbing implementation
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/glob.c
+// Purpose: Pathname pattern matching for ViperOS libc.
+// Key invariants: Expands wildcards via fnmatch; sorted results.
+// Ownership/Lifetime: Library; caller frees via globfree().
+// Links: user/libc/include/glob.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file glob.c
+ * @brief Pathname pattern matching for ViperOS libc.
+ *
+ * @details
+ * This file implements POSIX pathname globbing:
+ *
+ * - glob: Expand a pattern to matching pathnames
+ * - globfree: Free memory allocated by glob
+ *
+ * Supports shell-style wildcards (*, ?, [...]) via fnmatch().
+ * Results are returned in a glob_t structure with an array of
+ * matching pathnames sorted alphabetically.
+ *
+ * Flags: GLOB_APPEND, GLOB_DOOFFS, GLOB_ERR, GLOB_MARK, GLOB_NOCHECK,
+ * GLOB_NOSORT, GLOB_NOESCAPE, GLOB_PERIOD, GLOB_TILDE, GLOB_ONLYDIR.
+ * Directory pattern magic is not fully supported.
  */
 
 #include "../include/glob.h"

@@ -1,6 +1,40 @@
-/*
- * ViperOS libc - wordexp.c
- * Word expansion implementation
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/wordexp.c
+// Purpose: Shell word expansion functions for ViperOS libc.
+// Key invariants: No command substitution; supports ~, $VAR, quotes.
+// Ownership/Lifetime: Library; caller frees via wordfree().
+// Links: user/libc/include/wordexp.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file wordexp.c
+ * @brief Shell word expansion functions for ViperOS libc.
+ *
+ * @details
+ * This file implements POSIX word expansion:
+ *
+ * - wordexp: Perform shell-like word expansion
+ * - wordfree: Free word expansion results
+ *
+ * Supported expansion features:
+ * - Tilde expansion (~, ~/path)
+ * - Variable expansion ($VAR, ${VAR})
+ * - Quote handling (single and double quotes)
+ * - Escape sequences with backslash
+ *
+ * Not supported:
+ * - Command substitution (`cmd` or $(cmd)) - returns WRDE_CMDSUB
+ * - Arithmetic expansion
+ * - Glob/pathname expansion
+ *
+ * Flags: WRDE_APPEND, WRDE_DOOFFS, WRDE_NOCMD, WRDE_UNDEF.
  */
 
 #include "../include/wordexp.h"

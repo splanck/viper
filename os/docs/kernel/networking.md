@@ -1,105 +1,201 @@
-# Networking Stack (Ethernet → TCP, DNS, HTTP, TLS)
+# Networking Stack
 
-ViperOS includes a bring-up networking stack designed to work on QEMU’s `virt` machine with virtio-net:
+ViperOS provides networking through a layered architecture that supports both kernel-mode and microkernel-mode
+operation.
 
-- Ethernet framing and ARP
-- IPv4 + ICMP
-- UDP + TCP
-- DNS resolution
-- HTTP client
-- TLS (for HTTPS)
+## Architecture Modes
 
-This page tells the “packet journey” story and points to the code paths that implement each layer.
+### Microkernel Mode (Default)
 
-## Big picture: polling-driven receive loop
+In microkernel mode (`VIPER_MICROKERNEL_MODE=1`, `VIPER_KERNEL_ENABLE_NET=0`), networking runs entirely in user space:
 
-The entrypoint for network bring-up is `net::network_init()` in `kernel/net/network.cpp`.
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    User Applications                         │
+│           (vinit, ssh, fetch, etc.)                         │
+├─────────────────────────────────────────────────────────────┤
+│    libc          │    libtls      │    libssh              │
+│   socket()       │   TLS 1.3      │   SSH-2 + SFTP         │
+│   connect()      │   X.509        │   Ed25519/RSA          │
+├──────────────────┴────────────────┴─────────────────────────┤
+│                     netd Server                              │
+│   VirtIO-net  │  Ethernet  │  ARP  │  IPv4  │  TCP/UDP     │
+│   ~3,200 SLOC including libnetclient                        │
+├─────────────────────────────────────────────────────────────┤
+│                    Microkernel                               │
+│        IPC channels, device syscalls, shared memory          │
+└─────────────────────────────────────────────────────────────┘
+```
 
-When a virtio-net device exists:
+**Key components:**
 
-1. `netif_init()` sets up interface state (MAC, IP configuration, etc.).
-2. Each protocol layer is initialized in order: Ethernet → ARP → IP → ICMP/UDP/TCP → DNS → HTTP.
+- **netd server** (`user/servers/netd/`): User-space TCP/IP stack with VirtIO-net driver
+- **libtls** (`user/libtls/`): TLS 1.3 client library
+- **libhttp** (`user/libhttp/`): HTTP/1.1 client
+- **libssh** (`user/libssh/`): SSH-2 client with SFTP support
+- **libnetclient** (`user/libnetclient/`): IPC client library for netd
 
-Receiving is driven by polling:
+### Kernel Mode (Optional)
 
-- `net::network_poll()` drains the virtio receive queue into a static buffer and calls `eth::rx_frame(...)` to
-  demultiplex the frame.
-- The timer interrupt handler calls `net::network_poll()` periodically, so incoming traffic is processed “in the
-  background” during bring-up.
+When `VIPER_KERNEL_ENABLE_NET=1`, the full network stack runs in kernel space. This mode is useful for debugging
+and development but is not the default.
+
+Key files (kernel mode):
+
+- `kernel/net/network.*`: Network initialization and polling
+- `kernel/net/eth/*`: Ethernet and ARP
+- `kernel/net/ip/*`: IPv4, ICMP, UDP, TCP
+- `kernel/net/dns/*`: DNS resolver
+- `kernel/net/http/*`: HTTP client
+- `kernel/net/tls/*`: TLS 1.3 (when `VIPER_KERNEL_ENABLE_TLS=1`)
+
+## netd Server Protocol
+
+Applications communicate with netd via IPC channels using a message-based protocol:
+
+### Socket Operations
+
+| Message | Code | Description |
+|---------|------|-------------|
+| `NET_SOCKET_CREATE` | 0x01 | Create TCP/UDP socket |
+| `NET_SOCKET_CONNECT` | 0x02 | Connect to remote host |
+| `NET_SOCKET_BIND` | 0x03 | Bind to local address |
+| `NET_SOCKET_LISTEN` | 0x04 | Listen for connections |
+| `NET_SOCKET_ACCEPT` | 0x05 | Accept incoming connection |
+| `NET_SOCKET_SEND` | 0x06 | Send data |
+| `NET_SOCKET_RECV` | 0x07 | Receive data |
+| `NET_SOCKET_CLOSE` | 0x08 | Close socket |
+| `NET_SOCKET_POLL` | 0x09 | Poll socket for events |
+
+### DNS Operations
+
+| Message | Code | Description |
+|---------|------|-------------|
+| `NET_DNS_RESOLVE` | 0x14 | Resolve hostname to IP |
+
+### Network Information
+
+| Message | Code | Description |
+|---------|------|-------------|
+| `NET_PING` | 0x28 | ICMP echo request |
+| `NET_GET_INFO` | 0x29 | Get interface information |
+
+## Protocol Stack Layers
+
+### Ethernet Layer
+
+- Frame parsing and construction
+- MAC address handling
+- Ethertype dispatch (ARP: 0x0806, IPv4: 0x0800)
+
+### ARP Layer
+
+- Address resolution (IPv4 → MAC)
+- ARP cache with timeout
+- Gratuitous ARP support
+
+### IPv4 Layer
+
+- Packet parsing and validation
+- Header checksum
+- Protocol dispatch (ICMP: 1, TCP: 6, UDP: 17)
+- Fragmentation (receive only)
+
+### ICMP Layer
+
+- Echo request/reply (ping)
+- Destination unreachable handling
+
+### UDP Layer
+
+- Connectionless datagram service
+- Used by DNS resolver
+
+### TCP Layer
+
+- Full connection state machine
+- Sliding window flow control
+- Retransmission with exponential backoff
+- Congestion control (basic)
+
+## libtls: TLS 1.3 Client
+
+The TLS library provides secure connections:
+
+**Supported cipher suites:**
+- TLS_AES_128_GCM_SHA256 (0x1301)
+- TLS_AES_256_GCM_SHA384 (0x1302)
+- TLS_CHACHA20_POLY1305_SHA256 (0x1303)
+
+**Key exchange:**
+- X25519 (Curve25519 ECDH)
+
+**Certificate verification:**
+- X.509 parsing
+- Chain validation
+- Built-in root CA store
 
 Key files:
 
-- `kernel/net/network.hpp`
-- `kernel/net/network.cpp`
-- `kernel/drivers/virtio/net.*`
-- `kernel/arch/aarch64/timer.cpp`
+- `user/libtls/src/tls.c`: TLS state machine
+- `user/libtls/src/crypto.c`: Cryptographic primitives
+- `user/libtls/src/x509.c`: Certificate parsing
 
-## Layer by layer: what happens to an incoming frame?
+## libssh: SSH-2 Client
 
-### 1) Ethernet
+The SSH library provides secure shell and file transfer:
 
-`kernel/net/eth/ethernet.*` parses Ethernet headers and dispatches based on ethertype (e.g. ARP vs IPv4).
+**Supported algorithms:**
 
-### 2) ARP
+| Category | Algorithms |
+|----------|------------|
+| Key Exchange | curve25519-sha256 |
+| Host Key | ssh-ed25519, ssh-rsa |
+| Encryption | aes128-ctr, aes256-ctr |
+| MAC | hmac-sha256, hmac-sha1 |
 
-`kernel/net/eth/arp.*` implements ARP requests/replies to map IPv4 addresses to MAC addresses on the local network
-segment.
-
-This is how the stack learns “what destination MAC do I put on an IPv4 packet to reach X?”.
-
-### 3) IPv4
-
-`kernel/net/ip/ipv4.*` parses IPv4 packets and dispatches to ICMP, UDP, or TCP.
-
-### 4) ICMP (ping)
-
-`kernel/net/ip/icmp.*` provides ping functionality used in `kernel/main.cpp` as a bring-up test (pinging the QEMU SLiRP
-gateway `10.0.2.2`).
-
-### 5) UDP
-
-`kernel/net/ip/udp.*` implements UDP framing and is used by DNS.
-
-### 6) TCP
-
-`kernel/net/ip/tcp.*` implements TCP sockets with a kernel-facing API that the syscall layer exposes to user space.
-
-The syscalls in `kernel/syscall/dispatch.cpp` call into `net::tcp::socket_create/connect/send/...`.
+**Features:**
+- Password and public key authentication
+- Interactive shell sessions
+- Command execution
+- SFTP v3 file transfer
 
 Key files:
 
-- `kernel/net/ip/tcp.hpp`
-- `kernel/net/ip/tcp.cpp`
-- `kernel/syscall/dispatch.cpp`
+- `user/libssh/ssh.c`: Transport layer
+- `user/libssh/ssh_auth.c`: Authentication
+- `user/libssh/ssh_channel.c`: Channel management
+- `user/libssh/sftp.c`: SFTP protocol
 
-## DNS and HTTP: “higher-level client” functionality
+## Device Syscalls for netd
 
-DNS is implemented in `kernel/net/dns/dns.*` and typically uses UDP to query a resolver and parse responses.
+The netd server uses device syscalls to access hardware:
 
-HTTP is implemented in `kernel/net/http/http.*` and uses TCP sockets plus basic request/response parsing.
+| Syscall | Number | Description |
+|---------|--------|-------------|
+| `map_device` | 0x100 | Map VirtIO MMIO into user space |
+| `irq_register` | 0x101 | Register for network IRQ |
+| `irq_wait` | 0x102 | Wait for network interrupt |
+| `irq_ack` | 0x103 | Acknowledge interrupt |
+| `dma_alloc` | 0x104 | Allocate DMA buffer |
+| `virt_to_phys` | 0x106 | Get physical address for DMA |
 
-`kernel/main.cpp` includes a bring-up demo that resolves `example.com` and fetches `/` over HTTP.
+## Network Configuration
 
-## TLS: enabling HTTPS
+Default configuration for QEMU SLiRP networking:
 
-TLS support lives in `kernel/net/tls/*`:
+| Parameter | Value |
+|-----------|-------|
+| IP Address | 10.0.2.15 |
+| Netmask | 255.255.255.0 |
+| Gateway | 10.0.2.2 |
+| DNS Server | 10.0.2.3 |
 
-- record layer handling
-- handshake machinery (bring-up level)
-- crypto primitives as implemented in the kernel tree (and entropy from virtio-rng)
+## Current Limitations
 
-TLS is still an evolving area; expect this code to change as the v0.2.0 goals are implemented and hardened.
-
-Key files:
-
-- `kernel/net/tls/tls.hpp`
-- `kernel/net/tls/tls.cpp`
-- `kernel/drivers/virtio/rng.*`
-
-## Current limitations and next steps
-
-- The stack is polling-driven and largely single-threaded in its receive path.
-- Buffer management is intentionally simple (static receive buffer in `net::network.cpp`).
-- TCP and TLS are bring-up implementations; correctness, retransmission edge cases, and security hardening are ongoing
-  work.
+- IPv6 not implemented
+- TCP window scaling not implemented
+- No DHCP client (static configuration only)
+- Single network interface support
+- No multicast/broadcast beyond ARP
 

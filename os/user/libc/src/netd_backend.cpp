@@ -1,4 +1,42 @@
-// libc ↔ netd bridge (Phase 5): route libc sockets/DNS to netd when present.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/netd_backend.cpp
+// Purpose: libc-to-netd bridge for socket and DNS operations.
+// Key invariants: Global client connects on demand; socket IDs map to netd.
+// Ownership/Lifetime: Library; global client persists for process lifetime.
+// Links: user/libnetclient, user/servers/netd
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file netd_backend.cpp
+ * @brief libc-to-netd bridge for socket and DNS operations.
+ *
+ * @details
+ * This file provides the bridge between libc socket functions and netd:
+ *
+ * Connection Management:
+ * - __viper_netd_is_available: Check if netd is running
+ * - __viper_netd_poll_handle: Get event channel for poll()
+ *
+ * Socket Operations:
+ * - __viper_netd_socket_create: Create socket via netd
+ * - __viper_netd_socket_connect: Connect to remote host
+ * - __viper_netd_socket_send/recv: Send/receive data
+ * - __viper_netd_socket_close: Close socket
+ * - __viper_netd_socket_status: Get socket state for poll()
+ *
+ * DNS Resolution:
+ * - __viper_netd_dns_resolve: Resolve hostname to IP address
+ *
+ * All functions use the libnetclient library to communicate with netd
+ * via IPC channels. Socket IDs are netd-internal identifiers.
+ */
 
 #include "netclient.hpp"
 #include "syscall.hpp"

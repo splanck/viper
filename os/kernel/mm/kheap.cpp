@@ -1,5 +1,6 @@
 #include "kheap.hpp"
 #include "../console/serial.hpp"
+#include "../include/constants.hpp"
 #include "../lib/spinlock.hpp"
 #include "pmm.hpp"
 
@@ -45,10 +46,10 @@ constexpr bool DEBUG_MODE = true;
 constexpr bool DEBUG_MODE = false;
 #endif
 
-// Magic numbers for block validation
-constexpr u32 BLOCK_MAGIC_ALLOC = 0xCAFEBABE;  // Allocated block
-constexpr u32 BLOCK_MAGIC_FREE = 0xDEADBEEF;   // Freed block
-constexpr u32 BLOCK_MAGIC_POISON = 0xFEEDFACE; // Poisoned (double-free attempt)
+// Magic numbers for block validation (from constants.hpp)
+constexpr u32 BLOCK_MAGIC_ALLOC = kc::magic::HEAP_ALLOCATED;
+constexpr u32 BLOCK_MAGIC_FREE = kc::magic::HEAP_FREED;
+constexpr u32 BLOCK_MAGIC_POISON = kc::magic::HEAP_POISONED;
 
 // Block header structure with magic number for validation
 struct BlockHeader

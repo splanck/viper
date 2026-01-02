@@ -1,7 +1,32 @@
-/*
- * ViperOS C Library - langinfo implementation
- * Provides locale-specific information strings
- * Currently uses "C"/"POSIX" locale values
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/langinfo.c
+// Purpose: Locale-specific information strings for ViperOS libc.
+// Key invariants: C/POSIX locale only; static string table.
+// Ownership/Lifetime: Library; static locale strings.
+// Links: user/libc/include/langinfo.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file langinfo.c
+ * @brief Locale-specific information strings for ViperOS libc.
+ *
+ * @details
+ * This file implements POSIX language information functions:
+ *
+ * - nl_langinfo: Get locale-specific information string
+ * - nl_langinfo_l: Get locale-specific information (with locale)
+ *
+ * Returns locale-specific format strings for dates, times,
+ * day/month names, numeric formatting, and yes/no expressions.
+ * ViperOS only supports the C/POSIX locale, so all queries
+ * return hardcoded English strings with UTF-8 encoding.
  */
 
 #include <langinfo.h>

@@ -1,6 +1,31 @@
-/*
- * ViperOS libc - ipc.c
- * Inter-process communication implementation
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/ipc.c
+// Purpose: System V IPC key generation for ViperOS libc.
+// Key invariants: Key derived from file inode, device, and project ID.
+// Ownership/Lifetime: Library; stateless function.
+// Links: user/libc/include/sys/ipc.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file ipc.c
+ * @brief System V IPC key generation for ViperOS libc.
+ *
+ * @details
+ * This file implements System V IPC key generation:
+ *
+ * - ftok: Generate IPC key from pathname and project ID
+ *
+ * The ftok() function generates a key suitable for use with
+ * msgget(), semget(), and shmget(). The key is computed from
+ * the file's inode number, device number, and a project ID.
+ * This ensures different files or project IDs produce unique keys.
  */
 
 #include "../include/sys/ipc.h"

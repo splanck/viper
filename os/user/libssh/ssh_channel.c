@@ -151,6 +151,18 @@ static int ssh_channel_process_message(ssh_session_t *session,
             if (8 + data_len > len)
                 return SSH_PROTOCOL_ERROR;
 
+            /* Compact buffer if there's consumed data at the front */
+            if (channel->read_buf_pos > 0)
+            {
+                size_t remaining = channel->read_buf_len - channel->read_buf_pos;
+                if (remaining > 0)
+                {
+                    memmove(channel->read_buf, channel->read_buf + channel->read_buf_pos, remaining);
+                }
+                channel->read_buf_len = remaining;
+                channel->read_buf_pos = 0;
+            }
+
             /* Copy to read buffer */
             size_t space = channel->read_buf_size - channel->read_buf_len;
             size_t copy = (data_len < space) ? data_len : space;
@@ -185,6 +197,18 @@ static int ssh_channel_process_message(ssh_session_t *session,
             /* Only handle stderr (type 1) */
             if (data_type == 1)
             {
+                /* Compact buffer if there's consumed data at the front */
+                if (channel->ext_buf_pos > 0)
+                {
+                    size_t remaining = channel->ext_buf_len - channel->ext_buf_pos;
+                    if (remaining > 0)
+                    {
+                        memmove(channel->ext_buf, channel->ext_buf + channel->ext_buf_pos, remaining);
+                    }
+                    channel->ext_buf_len = remaining;
+                    channel->ext_buf_pos = 0;
+                }
+
                 size_t space = channel->ext_buf_size - channel->ext_buf_len;
                 size_t copy = (data_len < space) ? data_len : space;
                 if (copy > 0)

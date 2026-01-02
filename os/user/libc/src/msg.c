@@ -1,6 +1,34 @@
-/*
- * ViperOS C Library - System V message queue implementation
- * Basic implementation for single-process environment
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/msg.c
+// Purpose: System V message queue functions for ViperOS libc.
+// Key invariants: In-memory queues (16 max); no blocking support.
+// Ownership/Lifetime: Library; global message queue table.
+// Links: user/libc/include/sys/msg.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file msg.c
+ * @brief System V message queue functions for ViperOS libc.
+ *
+ * @details
+ * This file implements System V message queue functions:
+ *
+ * - msgget: Get or create a message queue
+ * - msgsnd: Send a message to a queue
+ * - msgrcv: Receive a message from a queue
+ * - msgctl: Message queue control operations
+ *
+ * ViperOS provides an in-memory implementation with up to 16
+ * message queues. Messages are stored as linked list nodes.
+ * Blocking operations return EAGAIN/ENOMSG instead of blocking.
+ * Message type filtering (msgtyp parameter) is fully supported.
  */
 
 #include <errno.h>

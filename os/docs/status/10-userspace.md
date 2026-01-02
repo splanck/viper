@@ -2,11 +2,19 @@
 
 **Status:** Complete with comprehensive libc, C++ STL headers, SSH/SFTP, and interactive shell
 **Location:** `user/`
-**SLOC:** ~35,000 (16,200 libc + 6,500 C headers + 25,000 C++ headers + 4,300 libssh + 2,300 vinit + 3,800 programs)
+**SLOC:** ~60,000 (libc + headers + servers + libraries + programs)
 
 ## Overview
 
-User space consists of the `vinit` init process, a complete freestanding C library (`libc`), C++ standard library headers, and syscall wrappers. `vinit` is loaded from the disk image as the first user-space process and provides an interactive shell for debugging and demonstration. The libc enables portable POSIX-like application development without external dependencies.
+User space consists of the `vinit` init process, user-space servers (netd, fsd, blkd, consoled, inputd), a complete freestanding C library (`libc`), networking/crypto libraries, and syscall wrappers.
+
+In the microkernel architecture:
+- **vinit** spawns and manages the user-space servers
+- **libc** routes file operations to fsd, network operations to netd
+- **User-space libraries** (libtls, libhttp, libssh) build on libc sockets
+- Applications use standard POSIX-like APIs
+
+The libc enables portable POSIX-like application development without external dependencies, routing to the appropriate user-space server via IPC.
 
 ---
 

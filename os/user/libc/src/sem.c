@@ -1,6 +1,33 @@
-/*
- * ViperOS C Library - System V semaphore implementation
- * Stub implementation for single-process environment
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/sem.c
+// Purpose: System V semaphore functions for ViperOS libc.
+// Key invariants: In-memory semaphore sets (16 max); no blocking support.
+// Ownership/Lifetime: Library; global semaphore table.
+// Links: user/libc/include/sys/sem.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file sem.c
+ * @brief System V semaphore functions for ViperOS libc.
+ *
+ * @details
+ * This file implements System V semaphore functions:
+ *
+ * - semget: Get or create a semaphore set
+ * - semop/semtimedop: Perform semaphore operations
+ * - semctl: Semaphore control operations (IPC_STAT, IPC_SET, etc.)
+ *
+ * ViperOS provides a single-process implementation with up to 16
+ * semaphore sets, each containing up to 32 semaphores. Blocking
+ * operations (waiting for semaphore value) return EAGAIN instead
+ * of blocking, as true multi-process synchronization is not supported.
  */
 
 #include <errno.h>

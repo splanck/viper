@@ -1,6 +1,34 @@
-/*
- * ViperOS libc - getopt.c
- * Command-line option parsing implementation
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/getopt.c
+// Purpose: Command-line option parsing for ViperOS libc.
+// Key invariants: POSIX getopt semantics; global state variables.
+// Ownership/Lifetime: Library; global state persists across calls.
+// Links: user/libc/include/unistd.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file getopt.c
+ * @brief Command-line option parsing for ViperOS libc.
+ *
+ * @details
+ * This file implements POSIX/GNU-style command-line option parsing:
+ *
+ * - getopt: Parse short options (-a, -b value)
+ * - getopt_long: Parse long options (--help, --file=value)
+ * - getopt_long_only: Long options with single dash (-help)
+ *
+ * Global variables:
+ * - optarg: Points to option argument (if any)
+ * - optind: Index of next argv element to process
+ * - opterr: Print errors to stderr (default 1)
+ * - optopt: Unknown option character
  */
 
 #include "../include/stdio.h"

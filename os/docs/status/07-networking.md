@@ -1,650 +1,465 @@
 # Networking Subsystem
 
-**Status:** Production-ready dual-stack TCP/IP with TLS 1.3, congestion control, and interrupt-driven I/O
-**Location:** `kernel/net/`
-**SLOC:** ~16,500
+**Status:** Complete microkernel networking with user-space TCP/IP stack, TLS 1.3, HTTP, SSH-2
+**Architecture:** User-space server (netd) + client libraries
+**Total SLOC:** ~11,700
 
 ## Overview
 
-The networking subsystem provides a complete dual-stack TCP/IP implementation including Ethernet framing, ARP, IPv4 with fragmentation/reassembly, IPv6 with ICMPv6/NDP, ICMP, UDP, TCP with RFC 5681 congestion control, RFC 7323 window scaling, RFC 2018 SACK support, and out-of-order reassembly. Higher-level protocols include DNS resolution, TLS 1.3 with session resumption, and HTTP client. The implementation supports interrupt-driven packet reception via GIC-registered IRQs for efficient blocking I/O.
+In the ViperOS microkernel architecture, networking is implemented entirely in user-space:
 
----
+1. **netd server** (~3,200 SLOC): User-space TCP/IP stack with VirtIO-net driver
+2. **libtls** (~2,150 SLOC): TLS 1.3 client library
+3. **libhttp** (~560 SLOC): HTTP/1.1 client library
+4. **libssh** (~5,800 SLOC): SSH-2 and SFTP client library
 
-## Protocol Layers
-
-### 1. Ethernet (`eth/ethernet.cpp`, `ethernet.hpp`)
-
-**Status:** Complete Layer 2 framing
-
-**Implemented:**
-- Ethernet II frame construction and transmission
-- Frame reception and validation
-- Ethertype-based demultiplexing (IPv4, ARP)
-- Minimum frame padding (to 60 bytes)
-- Destination MAC filtering (unicast, broadcast, multicast)
-
-**Frame Structure:**
-```
-┌──────────┬──────────┬───────────┬─────────────┐
-│  Dst MAC │  Src MAC │ Ethertype │   Payload   │
-│  6 bytes │  6 bytes │  2 bytes  │ 46-1500 B   │
-└──────────┴──────────┴───────────┴─────────────┘
-```
-
-**Supported Ethertypes:**
-| Value | Protocol |
-|-------|----------|
-| 0x0800 | IPv4 |
-| 0x0806 | ARP |
-| 0x86DD | IPv6 |
-
----
-
-### 2. ARP (`eth/arp.cpp`, `arp.hpp`)
-
-**Status:** Complete IPv4-over-Ethernet ARP
-
-**Implemented:**
-- ARP cache with 32 entries
-- ARP request generation
-- ARP reply processing
-- ARP request handling (reply to queries for our IP)
-- Cache entry timeout (300 seconds)
-- Gateway MAC resolution
-
-**ARP Cache Entry:**
-| Field | Description |
-|-------|-------------|
-| ip | IPv4 address |
-| mac | MAC address |
-| valid | Entry in use |
-| timestamp | Last update time |
-
----
-
-### 3. IPv4 (`ip/ipv4.cpp`, `ipv4.hpp`)
-
-**Status:** Complete IPv4 with fragmentation and reassembly
-
-**Implemented:**
-- IPv4 header parsing and validation
-- Header checksum computation/verification
-- Protocol demultiplexing (ICMP=1, UDP=17, TCP=6)
-- Packet transmission with ARP resolution
-- TTL handling
-- Destination address filtering
-- **IP Fragmentation:**
-  - Fragment large packets exceeding MTU
-  - Set MF (More Fragments) flag
-  - Compute fragment offset in 8-byte units
-- **IP Reassembly:**
-  - 8 concurrent reassembly buffers
-  - 8KB max datagram size per entry
-  - 30-second timeout (per RFC 791)
-  - Bitmap-based fragment tracking
-  - Automatic timeout cleanup
-
-**IPv4 Header:**
-```
-┌────────┬────────┬───────────┬───────────────┐
-│Ver/IHL │TOS/DSCP│Total Len  │Identification │
-├────────┴────────┴───────────┴───────────────┤
-│Flags │ Fragment Offset │ TTL │ Protocol    │
-├────────────────────────┴─────┴──────────────┤
-│        Header Checksum                      │
-├─────────────────────────────────────────────┤
-│              Source IP Address              │
-├─────────────────────────────────────────────┤
-│           Destination IP Address            │
-└─────────────────────────────────────────────┘
-```
-
-**IP Flags:**
-| Flag | Value | Description |
-|------|-------|-------------|
-| DF | 0x4000 | Don't Fragment |
-| MF | 0x2000 | More Fragments |
-
-**Reassembly Queue Entry:**
-| Field | Description |
-|-------|-------------|
-| src, dst | Source/dest IP |
-| id | IP identification |
-| protocol | Upper layer protocol |
-| buffer[8192] | Reassembly buffer |
-| received[] | Bitmap of received blocks |
-| total_len | Total datagram length |
-| timestamp | First fragment arrival |
-
-**Not Implemented:**
-- IP options processing
-- Multicast routing
-- IGMP
-
----
-
-### 4. ICMP (`ip/icmp.cpp`, `icmp.hpp`)
-
-**Status:** Complete echo request/reply
-
-**Implemented:**
-- Echo request (ping) generation
-- Echo reply processing
-- Ping with callback
-- ICMP checksum computation
-- Basic error message handling
-
-**Supported Types:**
-| Type | Description |
-|------|-------------|
-| 0 | Echo Reply |
-| 8 | Echo Request |
-
----
-
-### 5. IPv6 (`ip/ipv6.cpp`, `ipv6.hpp`)
-
-**Status:** Basic IPv6 with ICMPv6 and Neighbor Discovery
-
-**Implemented:**
-- IPv6 header parsing (40-byte fixed header)
-- Extension header skipping (Hop-by-Hop, Routing, Destination)
-- Link-local address auto-configuration from MAC (EUI-64)
-- Multicast address support
-- **ICMPv6 (`ip/icmpv6.cpp`, `icmpv6.hpp`):**
-  - Echo Request/Reply (ping6)
-  - Neighbor Solicitation/Advertisement
-  - Router Solicitation/Advertisement
-  - ICMPv6 checksum with pseudo-header
-- **Neighbor Discovery (NDP):**
-  - Neighbor cache (32 entries)
-  - NDP option parsing (Source/Target Link-Layer Address)
-  - Solicited-node multicast
-
-**IPv6 Header:**
-```
-┌────────────────────────────────────────────┐
-│ Version │Traffic Class│    Flow Label      │
-├─────────┴─────────────┴────────────────────┤
-│   Payload Length   │Next Hdr│  Hop Limit   │
-├────────────────────┴────────┴──────────────┤
-│                                            │
-│              Source Address                │
-│              (128 bits)                    │
-│                                            │
-├────────────────────────────────────────────┤
-│                                            │
-│           Destination Address              │
-│              (128 bits)                    │
-│                                            │
-└────────────────────────────────────────────┘
-```
-
-**Ipv6Addr Methods:**
-| Method | Description |
-|--------|-------------|
-| `is_unspecified()` | Check if :: |
-| `is_loopback()` | Check if ::1 |
-| `is_link_local()` | Check if fe80::/10 |
-| `is_multicast()` | Check if ff00::/8 |
-| `link_local_from_mac()` | Generate EUI-64 address |
-| `solicited_node_multicast()` | Get ff02::1:ffXX:XXXX |
-
-**Neighbor Cache Entry:**
-| Field | Description |
-|-------|-------------|
-| ip | IPv6 address |
-| mac | MAC address |
-| timestamp | Last update time |
-| valid | Entry in use |
-| router | Is a router |
-
-**Not Implemented:**
-- Fragment header reassembly
-- Global address via SLAAC
-- TCP/UDP over IPv6
-- DHCPv6
-
----
-
-### 6. UDP (`ip/udp.cpp`, `udp.hpp`)
-
-**Status:** Complete for DNS support
-
-**Implemented:**
-- UDP socket table (16 sockets)
-- Port binding
-- Datagram send/receive
-- UDP checksum computation
-- Non-blocking receive with polling
-
-**UDP Socket:**
-| Field | Description |
-|-------|-------------|
-| local_port | Bound port |
-| in_use | Socket allocated |
-| rx_buffer | Received datagram buffer |
-| rx_len | Received data length |
-| rx_src_ip | Source IP of last packet |
-| rx_src_port | Source port of last packet |
-
----
-
-### 7. TCP (`ip/tcp.cpp`, `tcp.hpp`)
-
-**Status:** Production-ready with congestion control, window scaling, SACK, and OOO reassembly
-
-**Implemented:**
-- TCP socket table (16 sockets)
-- Full state machine (CLOSED through TIME_WAIT)
-- TIME_WAIT 2MSL timer (60 seconds via timer wheel)
-- Active open (connect)
-- Passive open (listen/accept)
-- Data transmission with segmentation
-- Receive ring buffer (4KB per socket)
-- Sequence number tracking
-- ACK generation
-- FIN/RST handling
-- MSS option negotiation (send and receive)
-- Retransmission with exponential backoff
-- Unacknowledged data tracking (1460 bytes)
-- Configurable RTO (1-60 seconds)
-- Connection statistics (active count, listen count)
-- **RFC 7323 Window Scaling:**
-  - WSCALE option in SYN packets
-  - Our scale factor: 7 (128x = 512KB max window)
-  - Peer scale factor tracking
-  - Window field scaling on send/receive
-- **RFC 2018 SACK Support:**
-  - SACK_PERMITTED option in SYN
-  - SACK blocks generation from OOO queue
-  - Up to 4 SACK blocks per ACK
-  - Selective retransmission guidance
-- **RFC 5681 Congestion Control:**
-  - Slow start (cwnd < ssthresh)
-  - Congestion avoidance (cwnd >= ssthresh)
-  - Fast retransmit on 3 duplicate ACKs
-  - Fast recovery with cwnd inflation
-  - ssthresh adjustment on loss
-- **Out-of-Order Reassembly:**
-  - 8-segment OOO queue per socket
-  - Segment buffering by sequence number
-  - Automatic delivery when gaps fill
-  - Duplicate segment detection
-- **Interrupt-Driven Receive:**
-  - Blocking socket_recv with task wait queue
-  - IRQ-triggered wakeup on packet arrival
-
-**TCP States:**
-```
-CLOSED ─────────────────────────────────────────┐
-   │                                            │
-   ├──► LISTEN (passive open)                   │
-   │       │                                    │
-   │       └──► SYN_RECEIVED ──► ESTABLISHED ◄─┤
-   │                                   │       │
-   ├──► SYN_SENT (active open) ────────┘       │
-   │                                           │
-   │  ESTABLISHED                              │
-   │       │                                   │
-   │       ├──► FIN_WAIT_1 ──► FIN_WAIT_2 ─────┤
-   │       │                                   │
-   │       └──► CLOSE_WAIT ──► LAST_ACK ───────┤
-   │                                           │
-   └───────────────────────────────────────────┘
-```
-
-**TcpSocket Structure:**
-| Field | Description |
-|-------|-------------|
-| state | Current TCP state |
-| local_port | Local port |
-| remote_port | Remote port |
-| remote_ip | Remote IP address |
-| snd_una | Send unacknowledged |
-| snd_nxt | Send next |
-| rcv_nxt | Receive next expected |
-| rx_buffer[4096] | Receive ring buffer |
-| tx_buffer[4096] | Transmit buffer |
-| cwnd | Congestion window (bytes) |
-| ssthresh | Slow start threshold |
-| dup_acks | Duplicate ACK counter |
-| ooo_queue[8] | Out-of-order segment queue |
-
-**Congestion Control (RFC 5681):**
-| Phase | cwnd Update | Trigger |
-|-------|-------------|---------|
-| Slow Start | cwnd += MSS per ACK | cwnd < ssthresh |
-| Congestion Avoidance | cwnd += MSS*MSS/cwnd | cwnd >= ssthresh |
-| Fast Retransmit | retransmit + fast recovery | 3 dup ACKs |
-| Timeout | cwnd = MSS, ssthresh = cwnd/2 | RTO expiry |
-
-**Out-of-Order Queue:**
-| Field | Description |
-|-------|-------------|
-| seq | Sequence number of segment |
-| len | Segment data length |
-| valid | Slot in use |
-| data[1460] | Segment payload |
-
-**Socket API:**
-| Function | Description |
-|----------|-------------|
-| `socket_create()` | Allocate socket |
-| `socket_bind(sock, port)` | Bind to port |
-| `socket_listen(sock)` | Enter listening state |
-| `socket_accept(sock)` | Accept connection |
-| `socket_connect(sock, ip, port)` | Connect to server |
-| `socket_send(sock, data, len)` | Send data |
-| `socket_recv(sock, buf, len)` | Receive data (blocking) |
-| `socket_close(sock)` | Close socket |
-| `socket_connected(sock)` | Check if connected |
-| `socket_available(sock)` | Bytes in rx buffer |
-
-**Not Implemented:**
-- TCP timestamps option
-- Urgent data
-- Keep-alive
-
----
-
-### 8. DNS (`dns/dns.cpp`, `dns.hpp`)
-
-**Status:** Complete A record resolver
-
-**Implemented:**
-- DNS query construction (A records)
-- UDP-based resolution
-- DNS response parsing
-- TTL-based caching (16 entries)
-- QEMU default DNS server (10.0.2.3)
-- Name compression handling
-
-**Cache Entry:**
-| Field | Description |
-|-------|-------------|
-| hostname[64] | Queried hostname |
-| addr | Resolved IPv4 |
-| expires | Expiration timestamp |
-| valid | Entry in use |
-
-**API:**
-| Function | Description |
-|----------|-------------|
-| `dns_init()` | Initialize resolver |
-| `resolve(hostname, result, timeout)` | Resolve A record |
-
----
-
-### 9. TLS 1.3 (`tls/`)
-
-**Status:** Complete TLS 1.3 client with certificate verification and session resumption
-
-This is a substantial subsystem (~8,000 lines) providing:
-
-**Implemented:**
-- TLS 1.3 handshake (client-only)
-- X25519 key exchange
-- ChaCha20-Poly1305 AEAD
-- AES-128-GCM AEAD
-- SHA-256 and SHA-384 hashing
-- HKDF key derivation
-- TLS record layer (framing, encryption)
-- Application data send/receive
-- X.509 certificate parsing (ASN.1/DER)
-- Certificate chain verification
-- RSA signature verification (PKCS#1 v1.5)
-- CA certificate store (roots.der)
-- SNI (Server Name Indication)
-- close_notify alert
-- **Session Resumption (PSK):**
-  - NewSessionTicket message processing
-  - Session ticket storage (512 bytes max)
-  - Resumption master secret derivation
-  - PSK computation from ticket nonce
-  - Ticket lifetime and age validation
-  - pre_shared_key extension support
-
-**Crypto Components:**
-| Component | Location | Description |
-|-----------|----------|-------------|
-| SHA-256 | `crypto/sha256.cpp` | Hash function |
-| SHA-384 | `crypto/sha384.cpp` | Hash function |
-| X25519 | `crypto/x25519.cpp` | Key exchange |
-| ChaCha20-Poly1305 | `crypto/chacha20.cpp` | AEAD cipher |
-| AES-GCM | `crypto/aes_gcm.cpp` | AEAD cipher |
-| HKDF | `crypto/hkdf.cpp` | Key derivation |
-| Random | `crypto/random.cpp` | RNG (virtio-rng) |
-
-**Certificate Handling:**
-| Component | Location | Description |
-|-----------|----------|-------------|
-| ASN.1 | `asn1/asn1.cpp` | DER parser |
-| X.509 | `cert/x509.cpp` | Certificate parsing |
-| CA Store | `cert/ca_store.cpp` | Root CA loading |
-| Verify | `cert/verify.cpp` | Chain verification |
-
-**TlsSession Structure:**
-| Field | Description |
-|-------|-------------|
-| socket_fd | Underlying TCP socket |
-| state | Handshake state |
-| config | SNI, verify settings |
-| client_private_key[32] | X25519 private key |
-| client_public_key[32] | X25519 public key |
-| transcript | SHA-256 handshake hash |
-| handshake_secret[32] | Derived secret |
-| cipher_suite | Negotiated suite |
-
-**TLS API:**
-| Function | Description |
-|----------|-------------|
-| `tls_init(session, sock, config)` | Initialize session |
-| `tls_init_resume(session, sock, config, ticket)` | Initialize with ticket |
-| `tls_handshake(session)` | Perform handshake |
-| `tls_send(session, data, len)` | Send app data |
-| `tls_recv(session, buf, len)` | Receive app data |
-| `tls_close(session)` | Close session |
-| `tls_is_connected(session)` | Check connection |
-| `tls_was_resumed(session)` | Check if resumed |
-| `tls_get_session_ticket(session)` | Get ticket for reuse |
-| `tls_process_post_handshake(session)` | Process NewSessionTicket |
-| `tls_ticket_valid(ticket)` | Check ticket expiration |
-
-**Cipher Suites Supported:**
-- TLS_CHACHA20_POLY1305_SHA256 (0x1303)
-- TLS_AES_128_GCM_SHA256 (0x1301)
-
-**Not Implemented:**
-- TLS 1.2 or earlier
-- Server mode
-- ECDSA certificate verification
-- Client certificates
-- Early data (0-RTT)
-- Renegotiation
-
----
-
-### 10. HTTP (`http/http.cpp`, `http.hpp`)
-
-**Status:** Complete HTTP/1.0 client
-
-**Implemented:**
-- DNS resolution of hostname
-- TCP connection to port 80
-- GET request generation
-- Response parsing (status, headers, body)
-- Content-Type extraction
-- Body buffering (up to 4KB)
-- Timeout handling
-
-**HttpResponse:**
-| Field | Description |
-|-------|-------------|
-| status_code | HTTP status (e.g., 200) |
-| content_type[64] | Content-Type header |
-| content_length | Content-Length value |
-| body[4096] | Response body |
-| body_len | Actual body length |
-| success | Request succeeded |
-| error | Error message |
-
-**API:**
-| Function | Description |
-|----------|-------------|
-| `get(host, path, response, timeout)` | HTTP GET |
-| `fetch(host, path)` | GET and print |
-
-**Not Implemented:**
-- HTTPS (use TLS layer directly)
-- POST/PUT/DELETE
-- Chunked transfer encoding
-- Keep-alive connections
-- Redirects
-- Cookie handling
-
----
-
-## Network Interface (`netif.cpp`, `netif.hpp`)
-
-**Status:** Complete single-interface configuration
-
-**Implemented:**
-- Network interface structure
-- QEMU virt default configuration:
-  - IP: 10.0.2.15
-  - Netmask: 255.255.255.0
-  - Gateway: 10.0.2.2
-  - DNS: 10.0.2.3
-- MAC address from virtio-net
+Applications use standard socket APIs (via libc), which route requests to netd via IPC channels.
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     Application Layer                        │
-│              HTTP Client / HTTPS (via TLS)                   │
-└──────────────────────────────┬──────────────────────────────┘
-                               │
-         ┌─────────────────────┼─────────────────────┐
-         ▼                     ▼                     ▼
-┌─────────────────┐  ┌─────────────────────┐  ┌─────────────┐
-│      DNS        │  │     TLS 1.3         │  │   Direct    │
-│  (UDP port 53)  │  │ (ChaCha20/AES-GCM)  │  │     TCP     │
-└────────┬────────┘  └────────┬────────────┘  └──────┬──────┘
-         │                    │                      │
-         ▼                    ▼                      ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    Transport Layer                           │
-│           ┌───────────────┐    ┌───────────────┐            │
-│           │      TCP      │    │      UDP      │            │
-│           │ (16 sockets)  │    │ (16 sockets)  │            │
-│           └───────────────┘    └───────────────┘            │
-└──────────────────────────────┬──────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    Network Layer                             │
-│  ┌───────────────┐  ┌───────────────┐  ┌────────────────┐   │
-│  │     IPv4      │  │     IPv6      │  │   ICMP/v6      │   │
-│  │  (frag/reasm) │  │  (NDP/SLAAC)  │  │  (echo/reply)  │   │
-│  └───────────────┘  └───────────────┘  └────────────────┘   │
-└──────────────────────────────┬──────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│                      Link Layer                              │
-│    ┌─────────────────────┐      ┌─────────────────────┐     │
-│    │      Ethernet       │      │        ARP          │     │
-│    │   (14-byte header)  │      │   (32-entry cache)  │     │
-│    └─────────────────────┘      └─────────────────────┘     │
-└──────────────────────────────┬──────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│                   VirtIO Network Device                      │
-│                  (virtio-net RX/TX queues)                   │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                       Applications                               │
+│         (ssh, sftp, ping, curl-like tools, etc.)                │
+└────────────────────────────────┬────────────────────────────────┘
+                                 │
+         ┌───────────────────────┼───────────────────────┐
+         ▼                       ▼                       ▼
+┌─────────────────┐  ┌─────────────────────┐  ┌─────────────────┐
+│    libssh       │  │      libhttp        │  │    libtls       │
+│  (SSH-2/SFTP)   │  │  (HTTP/1.1,HTTPS)   │  │   (TLS 1.3)     │
+└────────┬────────┘  └────────┬────────────┘  └────────┬────────┘
+         │                    │                        │
+         └────────────────────┼────────────────────────┘
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    libc (socket API)                             │
+│         socket(), connect(), send(), recv(), etc.               │
+└────────────────────────────────┬────────────────────────────────┘
+                                 │ IPC (channels)
+                                 ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                         netd Server                              │
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │                    User-Space TCP/IP Stack                   ││
+│  │  ┌───────────┐  ┌───────────┐  ┌───────────┐  ┌───────────┐ ││
+│  │  │  TCP (32) │  │  UDP (16) │  │   ICMP    │  │    DNS    │ ││
+│  │  └───────────┘  └───────────┘  └───────────┘  └───────────┘ ││
+│  │  ┌─────────────────────────────────────────────────────────┐ ││
+│  │  │                        IPv4                             │ ││
+│  │  └─────────────────────────────────────────────────────────┘ ││
+│  │  ┌───────────────────────────────┐  ┌───────────────────────┐││
+│  │  │          Ethernet             │  │    ARP (16 entries)  │││
+│  │  └───────────────────────────────┘  └───────────────────────┘││
+│  └─────────────────────────────────────────────────────────────┘│
+│                              │                                   │
+│                    VirtIO-net Driver                            │
+└────────────────────────────────┬────────────────────────────────┘
+                                 │ MAP_DEVICE, IRQ
+                                 ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                        Kernel (EL1)                              │
+│           Device primitives, IRQ routing, memory mapping         │
+└─────────────────────────────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    VirtIO-net Hardware                           │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## I/O Model
+## netd Server
 
-The network stack supports both polled and interrupt-driven operation:
+**Location:** `user/servers/netd/`
+**SLOC:** ~3,200
+**Registration:** `NETD:` (assign system)
 
-### Interrupt-Driven Mode (Default)
-1. VirtIO-net device registers IRQ with GIC (IRQ 48 + device offset)
-2. On packet arrival, GIC triggers interrupt
-3. IRQ handler calls `rx_irq_handler()`:
-   - Process received packets
-   - Wake blocked tasks in RX wait queue
-4. Tasks using `socket_recv()` block until data arrives
+### Components
 
-### Polled Mode (Fallback)
-`network_poll()` called from:
-- Timer interrupt handler (background processing)
-- Blocking TCP operations (active waiting)
-- DNS resolution wait loops
+| File | Lines | Description |
+|------|-------|-------------|
+| `main.cpp` | ~920 | Server entry point, IPC message handling |
+| `netstack.hpp` | ~600 | Network stack structures and API |
+| `netstack.cpp` | ~1,700 | TCP/IP stack implementation |
 
-### Packet Processing Sequence:
-```
-IRQ/Poll → virtio::net_poll() → eth::rx_frame()
-                                      ↓
-                              ip::rx_packet()
-                                      ↓
-                    ┌─────────────────┴─────────────────┐
-                    ↓                                   ↓
-           tcp::rx_segment()              udp::rx_datagram()
-```
+### Initialization Sequence
 
-### RX Wait Queue
-| Field | Description |
+1. Scan VirtIO MMIO range (0x0a000000-0x0a004000) for net device
+2. Skip devices already claimed (status != 0)
+3. Initialize VirtIO-net with IRQ registration
+4. Configure network interface (IP, netmask, gateway, DNS)
+5. Create service channel and register as "NETD:"
+6. Enter server loop processing IPC requests
+
+### Network Interface Configuration
+
+QEMU virt default configuration:
+
+| Parameter | Value |
+|-----------|-------|
+| IP Address | 10.0.2.15 |
+| Netmask | 255.255.255.0 |
+| Gateway | 10.0.2.2 |
+| DNS Server | 10.0.2.3 |
+
+### IPC Protocol
+
+**Namespace:** `netproto`
+**Message Size:** 256 bytes max (channel limit)
+
+#### Socket Operations
+
+| Message Type | Value | Description |
+|--------------|-------|-------------|
+| NET_SOCKET_CREATE | 1 | Create socket (TCP/UDP) |
+| NET_SOCKET_CONNECT | 2 | Connect to remote host |
+| NET_SOCKET_BIND | 3 | Bind to local port |
+| NET_SOCKET_LISTEN | 4 | Listen for connections |
+| NET_SOCKET_ACCEPT | 5 | Accept incoming connection |
+| NET_SOCKET_SEND | 6 | Send data (inline or SHM) |
+| NET_SOCKET_RECV | 7 | Receive data |
+| NET_SOCKET_CLOSE | 8 | Close socket |
+| NET_SOCKET_STATUS | 10 | Query socket readiness |
+
+#### DNS and Diagnostics
+
+| Message Type | Value | Description |
+|--------------|-------|-------------|
+| NET_DNS_RESOLVE | 20 | Resolve hostname to IPv4 |
+| NET_PING | 40 | ICMP echo request |
+| NET_STATS | 41 | Get network statistics |
+| NET_INFO | 42 | Get network configuration |
+| NET_SUBSCRIBE_EVENTS | 43 | Subscribe to socket events |
+
+#### Data Transfer Modes
+
+**Inline Data (≤200 bytes):**
+- Data included directly in message payload
+- Used for most small transfers
+
+**Shared Memory (>200 bytes):**
+- SHM handle transferred with message
+- netd maps SHM, reads/writes, unmaps
+- Efficient for large transfers
+
+---
+
+## Protocol Stack (netd)
+
+### Ethernet Layer
+
+- Frame construction and transmission
+- Ethertype-based demultiplexing (IPv4=0x0800, ARP=0x0806)
+- Minimum frame padding to 60 bytes
+- MAC address filtering
+
+### ARP Layer
+
+- 16-entry ARP cache
+- ARP request generation
+- ARP reply processing
+- Gateway MAC resolution
+
+### IPv4 Layer
+
+- Header parsing and validation
+- Header checksum computation/verification
+- Protocol demultiplexing (ICMP=1, TCP=6, UDP=17)
+- TTL handling
+- Routing via gateway
+
+### ICMP
+
+- Echo request (ping) generation
+- Echo reply processing
+- Ping with timeout callback
+
+### UDP
+
+- 16 socket table
+- Port binding
+- Datagram send/receive
+- UDP checksum computation
+- Used for DNS resolution
+
+### TCP
+
+**Connections:** 32 maximum
+
+**Features:**
+- Full state machine (CLOSED through TIME_WAIT)
+- Active open (connect)
+- Passive open (listen/accept)
+- 8-connection backlog per listening socket
+- Data transmission with segmentation
+- 8KB receive ring buffer per connection
+- 8KB send buffer per connection
+- Sequence number tracking
+- ACK generation
+- FIN/RST handling
+
+**TCP States:**
+
+| State | Description |
 |-------|-------------|
-| rx_waiters_[4] | Array of blocked tasks |
-| rx_waiter_count_ | Number of waiting tasks |
+| CLOSED | No connection |
+| LISTEN | Waiting for SYN |
+| SYN_SENT | SYN sent, awaiting SYN-ACK |
+| SYN_RECEIVED | SYN received, SYN-ACK sent |
+| ESTABLISHED | Data transfer active |
+| FIN_WAIT_1/2 | Active close in progress |
+| CLOSE_WAIT | Remote closed, local pending |
+| CLOSING | Both sides closing |
+| LAST_ACK | Awaiting final ACK |
+| TIME_WAIT | Waiting before reuse |
 
-Tasks calling `socket_recv()` with no data:
-1. Register in RX wait queue
-2. Set state to Blocked
-3. Yield CPU
-4. IRQ handler wakes when data arrives
+### DNS
+
+- A record resolution
+- UDP-based queries to configured DNS server
+- Transaction ID tracking
+- Single pending query at a time
 
 ---
 
-## Files
+## libtls (TLS 1.3)
 
-| Directory | Description |
+**Location:** `user/libtls/`
+**SLOC:** ~2,150
+
+### Features
+
+- TLS 1.3 client (RFC 8446)
+- ChaCha20-Poly1305 AEAD cipher
+- X25519 key exchange
+- SHA-256 hashing
+- Server Name Indication (SNI)
+- Certificate verification (optional)
+
+### Crypto Components
+
+| File | Lines | Description |
+|------|-------|-------------|
+| `crypto.c` | ~1,170 | ChaCha20, Poly1305, X25519, SHA-256 |
+| `tls.c` | ~980 | TLS handshake, record layer |
+
+### API
+
+```c
+/* Create session over existing socket */
+tls_session_t *tls_new(int socket_fd, const tls_config_t *config);
+
+/* Perform TLS 1.3 handshake */
+int tls_handshake(tls_session_t *session);
+
+/* Send/receive encrypted data */
+long tls_send(tls_session_t *session, const void *data, size_t len);
+long tls_recv(tls_session_t *session, void *buffer, size_t len);
+
+/* Close session */
+void tls_close(tls_session_t *session);
+
+/* Convenience: connect + handshake */
+tls_session_t *tls_connect(const char *host, uint16_t port,
+                            const tls_config_t *config);
+```
+
+### Configuration
+
+```c
+typedef struct tls_config {
+    const char *hostname;  /* SNI hostname */
+    int verify_cert;       /* 1 = verify (default), 0 = skip */
+    int timeout_ms;        /* Timeout (0 = default) */
+} tls_config_t;
+```
+
+---
+
+## libhttp (HTTP Client)
+
+**Location:** `user/libhttp/`
+**SLOC:** ~560
+
+### Features
+
+- HTTP/1.1 client
+- HTTPS via libtls
+- GET, POST, PUT, DELETE, HEAD methods
+- Header parsing
+- Chunked transfer encoding
+- Redirect following (configurable)
+- Custom headers
+
+### API
+
+```c
+/* Simple GET request */
+int http_get(const char *url, http_response_t *response);
+
+/* Full request with configuration */
+int http_request(const http_request_t *request, http_response_t *response);
+
+/* Free response resources */
+void http_response_free(http_response_t *response);
+```
+
+### Response Structure
+
+```c
+typedef struct http_response {
+    int status_code;           /* e.g., 200 */
+    char status_text[64];      /* e.g., "OK" */
+    http_header_t headers[32]; /* Response headers */
+    int header_count;
+    char *body;                /* Response body (malloc'd) */
+    size_t body_len;
+    size_t content_length;
+    char content_type[128];
+    int chunked;
+} http_response_t;
+```
+
+---
+
+## libssh (SSH-2/SFTP)
+
+**Location:** `user/libssh/`
+**SLOC:** ~5,800
+
+### Features
+
+- SSH-2 protocol (RFC 4253)
+- Password authentication
+- Public key authentication (Ed25519)
+- Interactive channel
+- SFTP subsystem (RFC 4254)
+
+### Components
+
+| File | Lines | Description |
+|------|-------|-------------|
+| `ssh.c` | ~1,370 | SSH connection, handshake |
+| `ssh_auth.c` | ~860 | Authentication methods |
+| `ssh_channel.c` | ~740 | Channel management |
+| `ssh_crypto.c` | ~1,300 | Crypto (AES-CTR, SHA-1, Ed25519) |
+| `sftp.c` | ~1,500 | SFTP protocol |
+
+### Crypto Algorithms
+
+| Algorithm | Usage |
+|-----------|-------|
+| AES-128-CTR | Bulk encryption |
+| SHA-1 | Legacy hashing |
+| SHA-256 | Key exchange hash |
+| Ed25519 | Host key verification |
+| Curve25519 | Key exchange |
+
+### SFTP Operations
+
+- Directory listing (ls)
+- File download (get)
+- File upload (put)
+- File deletion (rm)
+- Directory creation (mkdir)
+- Directory removal (rmdir)
+- Rename (mv)
+- Stat (file info)
+
+---
+
+## libc Integration
+
+The libc socket functions route to netd via IPC:
+
+**Location:** `user/libc/src/netd_backend.cpp`
+
+### Socket API Mapping
+
+| libc Function | netd Message |
+|---------------|--------------|
+| socket() | NET_SOCKET_CREATE |
+| connect() | NET_SOCKET_CONNECT |
+| bind() | NET_SOCKET_BIND |
+| listen() | NET_SOCKET_LISTEN |
+| accept() | NET_SOCKET_ACCEPT |
+| send()/write() | NET_SOCKET_SEND |
+| recv()/read() | NET_SOCKET_RECV |
+| close() | NET_SOCKET_CLOSE |
+| poll() | NET_SOCKET_STATUS |
+
+### Connection Flow
+
+1. Application calls `socket(AF_INET, SOCK_STREAM, 0)`
+2. libc sends NET_SOCKET_CREATE to netd
+3. netd allocates TcpConnection slot, returns socket ID
+4. libc returns socket ID as file descriptor
+5. Subsequent operations use this socket ID
+
+---
+
+## Statistics
+
+netd tracks and reports:
+
+| Counter | Description |
+|---------|-------------|
+| tx_packets | Packets transmitted |
+| rx_packets | Packets received |
+| tx_bytes | Bytes transmitted |
+| rx_bytes | Bytes received |
+| tcp_conns | Active TCP connections |
+| udp_sockets | Active UDP sockets |
+
+---
+
+## Performance
+
+### Latency (QEMU)
+
+| Operation | Typical Time |
 |-----------|-------------|
-| `eth/` | Ethernet, ARP |
-| `ip/` | IPv4, IPv6, ICMP, ICMPv6, UDP, TCP |
-| `dns/` | DNS resolver |
-| `http/` | HTTP client |
-| `tls/` | TLS 1.3 stack |
-| `tls/crypto/` | Cryptographic primitives |
-| `tls/cert/` | X.509, CA store, verification |
-| `tls/asn1/` | ASN.1/DER parser |
+| Socket create (IPC) | ~50μs |
+| TCP connect (local) | ~1-5ms |
+| DNS resolution | ~10-50ms |
+| TLS handshake | ~50-200ms |
+| Socket send/recv | ~100μs |
+
+### Limitations
+
+| Resource | Limit |
+|----------|-------|
+| TCP connections | 32 |
+| UDP sockets | 16 |
+| ARP cache entries | 16 |
+| Inline message data | 200 bytes |
+| TCP RX buffer | 8KB |
+| TCP TX buffer | 8KB |
+| UDP RX buffer | 4KB |
 
 ---
 
-## Priority Recommendations
+## Not Implemented
 
-All priority recommendations have been completed:
+### High Priority
+- TCP window scaling (RFC 7323)
+- TCP congestion control (RFC 5681)
+- TCP SACK (RFC 2018)
+- IP fragmentation/reassembly
 
-1. ~~**Medium:** Add TCP window scaling for high-bandwidth connections~~ ✅ **Completed** - RFC 7323 window scaling with scale factor 7 (512KB max)
-2. ~~**Medium:** Implement IP fragmentation/reassembly~~ ✅ **Completed** - 8 reassembly buffers, 8KB max datagram, 30s timeout
-3. ~~**Medium:** Add SACK support for improved loss recovery~~ ✅ **Completed** - RFC 2018 with 4 SACK blocks per ACK
-4. ~~**Low:** IPv6 support~~ ✅ **Completed** - Basic IPv6 with ICMPv6 echo and NDP
-5. ~~**Low:** TLS session resumption~~ ✅ **Completed** - NewSessionTicket processing, PSK derivation
-6. ~~**Low:** TIME_WAIT timer with proper 2MSL delay~~ ✅ **Completed** - 60s timer via timer wheel
+### Medium Priority
+- IPv6
+- TCP retransmission with backoff
+- TCP TIME_WAIT with 2MSL
+- Keep-alive
 
-### Future Enhancements
-
-- TCP timestamps option (RFC 7323)
-- TCP keep-alive
-- IPv6 global address via SLAAC
-- TCP/UDP over IPv6
-- TLS 0-RTT (early data)
-- HTTPS helper API
+### Low Priority
+- Raw sockets
+- Multicast
+- DHCP client
+- TLS 1.2 fallback
+- TLS session resumption

@@ -1,6 +1,39 @@
-/*
- * ViperOS libc - iconv.c
- * Character set conversion implementation
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/iconv.c
+// Purpose: Character set conversion functions for ViperOS libc.
+// Key invariants: Converts via Unicode codepoints; supports UTF-8/16/32, ASCII.
+// Ownership/Lifetime: Library; conversion descriptor dynamically allocated.
+// Links: user/libc/include/iconv.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file iconv.c
+ * @brief Character set conversion functions for ViperOS libc.
+ *
+ * @details
+ * This file implements POSIX character set conversion:
+ *
+ * - iconv_open: Open a conversion descriptor
+ * - iconv: Perform character set conversion
+ * - iconv_close: Close a conversion descriptor
+ *
+ * Supported encodings:
+ * - ASCII, US-ASCII
+ * - UTF-8
+ * - ISO-8859-1, LATIN-1
+ * - UTF-16BE, UTF-16LE, UTF-16
+ * - UTF-32BE, UTF-32LE, UTF-32
+ *
+ * Conversion works by decoding source characters to Unicode codepoints,
+ * then encoding them to the target character set. Invalid sequences
+ * set errno to EILSEQ; incomplete sequences set EINVAL.
  */
 
 #include "../include/iconv.h"

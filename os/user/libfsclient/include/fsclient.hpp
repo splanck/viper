@@ -43,6 +43,8 @@ class Client
 
     i64 seek(u32 file_id, i64 offset, i32 whence, i64 *out_new_offset);
 
+    i32 fsync(u32 file_id);
+
   private:
     i32 channel_ = -1;
     u32 next_request_id_ = 1;

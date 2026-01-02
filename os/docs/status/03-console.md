@@ -1,12 +1,18 @@
 # Console Subsystem
 
 **Status:** Fully functional for both serial and graphics output
-**Location:** `kernel/console/`
-**SLOC:** ~3,500
+**Location:** `kernel/console/` + `user/servers/consoled/` + `user/servers/inputd/`
+**SLOC:** ~3,500 (kernel) + ~1,600 (servers)
 
 ## Overview
 
-The console subsystem provides text output capabilities through both a serial UART and a framebuffer-based graphics console. It is designed to work from earliest boot through normal operation.
+The console subsystem provides text output capabilities through both a serial UART and a framebuffer-based graphics console. In the microkernel architecture:
+
+- **Kernel console**: Boot-time output and kernel debug messages
+- **consoled server**: User-space console output server (~600 SLOC)
+- **inputd server**: User-space keyboard/mouse input server (~1,000 SLOC)
+
+The kernel console is always available, while the user-space servers provide IPC-based console access for applications in microkernel mode.
 
 ## Components
 

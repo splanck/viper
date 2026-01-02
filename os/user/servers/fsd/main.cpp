@@ -553,6 +553,26 @@ static void handle_fstat(const fs::FstatRequest *req, i32 reply_channel)
     sys::channel_send(reply_channel, &reply, sizeof(reply), nullptr, 0);
 }
 
+static void handle_fsync(const fs::FsyncRequest *req, i32 reply_channel)
+{
+    fs::FsyncReply reply;
+    reply.type = fs::FS_FSYNC_REPLY;
+    reply.request_id = req->request_id;
+
+    OpenFile *file = get_file(static_cast<i32>(req->file_id));
+    if (!file)
+    {
+        reply.status = -1;
+        sys::channel_send(reply_channel, &reply, sizeof(reply), nullptr, 0);
+        return;
+    }
+
+    // Sync all dirty blocks to disk
+    g_viperfs.sync();
+    reply.status = 0;
+    sys::channel_send(reply_channel, &reply, sizeof(reply), nullptr, 0);
+}
+
 static void handle_readdir(const fs::ReaddirRequest *req, i32 reply_channel)
 {
     fs::ReaddirReply reply = {};
@@ -822,6 +842,11 @@ static void handle_request(const u8 *msg, usize len, i32 reply_channel)
         case fs::FS_FSTAT:
             if (len >= sizeof(fs::FstatRequest))
                 handle_fstat(reinterpret_cast<const fs::FstatRequest *>(msg), reply_channel);
+            break;
+
+        case fs::FS_FSYNC:
+            if (len >= sizeof(fs::FsyncRequest))
+                handle_fsync(reinterpret_cast<const fs::FsyncRequest *>(msg), reply_channel);
             break;
 
         case fs::FS_MKDIR:

@@ -1,3 +1,34 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/signal.c
+// Purpose: Signal handling functions for ViperOS libc.
+// Key invariants: SIGKILL/SIGSTOP cannot be caught; signal mask per-process.
+// Ownership/Lifetime: Library; signal handlers persist until changed.
+// Links: user/libc/include/signal.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file signal.c
+ * @brief Signal handling functions for ViperOS libc.
+ *
+ * @details
+ * This file implements POSIX signal handling:
+ *
+ * - Signal handling: signal, sigaction, raise, kill
+ * - Signal sets: sigemptyset, sigfillset, sigaddset, sigdelset, sigismember
+ * - Signal mask: sigprocmask, sigpending, sigsuspend
+ * - Signal info: strsignal, psignal
+ *
+ * Signals SIGKILL and SIGSTOP cannot be caught or blocked.
+ * Signal handlers are process-wide and persist until explicitly changed.
+ */
+
 #include "../include/signal.h"
 #include "../include/stdio.h"
 #include "../include/string.h"

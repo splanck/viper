@@ -1,6 +1,36 @@
-/*
- * ViperOS C Library - mqueue implementation
- * POSIX message queue implementation
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/mqueue.c
+// Purpose: POSIX message queue functions for ViperOS libc.
+// Key invariants: In-memory queues (16 max); priority-ordered messages.
+// Ownership/Lifetime: Library; global queue table; messages dynamically allocated.
+// Links: user/libc/include/mqueue.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file mqueue.c
+ * @brief POSIX message queue functions for ViperOS libc.
+ *
+ * @details
+ * This file implements POSIX message queue functions:
+ *
+ * - mq_open: Open or create a message queue
+ * - mq_close: Close a message queue descriptor
+ * - mq_unlink: Remove a message queue
+ * - mq_send/mq_timedsend: Send a message to a queue
+ * - mq_receive/mq_timedreceive: Receive a message from a queue
+ * - mq_getattr/mq_setattr: Get/set queue attributes
+ * - mq_notify: Register for message arrival notification (stub)
+ *
+ * Messages are stored in priority order (highest first). Each queue
+ * has configurable maximum message count and message size. Blocking
+ * operations return EAGAIN; true blocking is not implemented.
  */
 
 #include <errno.h>

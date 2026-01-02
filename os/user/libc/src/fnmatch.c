@@ -1,6 +1,37 @@
-/*
- * ViperOS libc - fnmatch.c
- * Filename pattern matching implementation
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/fnmatch.c
+// Purpose: Filename pattern matching for ViperOS libc.
+// Key invariants: POSIX fnmatch semantics; recursive implementation.
+// Ownership/Lifetime: Library; stateless matching.
+// Links: user/libc/include/fnmatch.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file fnmatch.c
+ * @brief Filename pattern matching for ViperOS libc.
+ *
+ * @details
+ * This file implements POSIX filename pattern matching:
+ *
+ * - fnmatch: Match a filename against a shell wildcard pattern
+ *
+ * Supports the following pattern syntax:
+ * - '*': Match zero or more characters
+ * - '?': Match exactly one character
+ * - '[...]': Match one character from a set or range
+ * - '[!...]' or '[^...]': Match one character not in set
+ * - '\\': Escape special characters (unless FNM_NOESCAPE)
+ *
+ * Flags control matching behavior: FNM_PATHNAME (/ handling),
+ * FNM_PERIOD (leading . handling), FNM_NOESCAPE, FNM_CASEFOLD,
+ * and FNM_LEADING_DIR.
  */
 
 #include "../include/fnmatch.h"

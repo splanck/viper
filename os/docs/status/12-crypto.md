@@ -1,12 +1,18 @@
 # Cryptography Subsystem
 
 **Status:** Complete for TLS 1.3 and SSH-2
-**Location:** `kernel/net/tls/crypto/`, `user/libssh/`
+**Location:** `user/libtls/`, `user/libssh/`, `kernel/net/tls/crypto/`
 **SLOC:** ~8,000
 
 ## Overview
 
-ViperOS implements cryptographic primitives for both kernel-space (TLS 1.3) and user-space (SSH-2) protocols. The implementation prioritizes correctness and security over performance, using constant-time algorithms where appropriate.
+ViperOS implements cryptographic primitives for both kernel-space and user-space protocols. In microkernel mode:
+
+- **libtls** (user-space): TLS 1.3 client library for applications
+- **libssh** (user-space): SSH-2 and SFTP client library
+- **Kernel crypto**: Available when `VIPER_KERNEL_ENABLE_TLS=1` (disabled in microkernel mode)
+
+The implementation prioritizes correctness and security over performance, using constant-time algorithms where appropriate.
 
 ## Kernel Crypto (`kernel/net/tls/crypto/`)
 

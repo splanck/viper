@@ -1,5 +1,6 @@
 #include "ramfb.hpp"
 #include "../console/serial.hpp"
+#include "../include/constants.hpp"
 #include "fwcfg.hpp"
 
 /**
@@ -30,8 +31,8 @@ struct RAMFBCfg
     u32 stride; // Bytes per line
 } __attribute__((packed));
 
-// DRM FourCC codes for pixel formats
-constexpr u32 DRM_FORMAT_XRGB8888 = 0x34325258; // "XR24" - 32-bit XRGB
+// DRM FourCC codes for pixel formats (from constants.hpp)
+constexpr u32 DRM_FORMAT_XRGB8888 = kc::magic::DRM_FORMAT_XRGB8888;
 
 // Byte swap helpers (ramfb uses big-endian)
 /**
@@ -51,12 +52,9 @@ static inline u64 cpu_to_be64(u64 v)
     return (static_cast<u64>(cpu_to_be32(v & 0xFFFFFFFF)) << 32) | cpu_to_be32(v >> 32);
 }
 
-// Framebuffer memory - placed at a fixed address after the kernel
-// The kernel is loaded at 0x40000000, so we'll put the framebuffer at 0x41000000
-constexpr uintptr FB_BASE = 0x41000000;
-
-// Maximum framebuffer size (8MB should be enough for 1920x1080x4)
-constexpr u32 FB_MAX_SIZE = 8 * 1024 * 1024;
+// Framebuffer memory (from constants.hpp)
+constexpr uintptr FB_BASE = kc::mem::FB_BASE;
+constexpr u32 FB_MAX_SIZE = kc::mem::FB_SIZE;
 
 // Framebuffer state
 FramebufferInfo fb_info = {0, 0, 0, 0, 0};

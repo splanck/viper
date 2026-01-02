@@ -1,6 +1,42 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/inttypes.c
+// Purpose: Integer type conversion functions for ViperOS libc.
+// Key invariants: Handles intmax_t/uintmax_t conversions.
+// Ownership/Lifetime: Library; stateless functions.
+// Links: user/libc/include/inttypes.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file inttypes.c
+ * @brief Integer type conversion functions for ViperOS libc.
+ *
+ * @details
+ * This file implements C99 integer type functions:
+ *
+ * - imaxabs: Absolute value of intmax_t
+ * - imaxdiv: Division with quotient and remainder
+ * - strtoimax: Parse string to intmax_t
+ * - strtoumax: Parse string to uintmax_t
+ *
+ * These functions operate on maximum-width integer types,
+ * providing portable handling of the largest available integers.
+ */
+
 #include "../include/inttypes.h"
 
-/* Absolute value of maximum-width integer */
+/**
+ * @brief Compute absolute value of a maximum-width integer.
+ *
+ * @param j The integer value.
+ * @return The absolute value of j.
+ */
 intmax_t imaxabs(intmax_t j)
 {
     return (j < 0) ? -j : j;

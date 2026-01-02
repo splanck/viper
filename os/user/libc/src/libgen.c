@@ -1,6 +1,33 @@
-/*
- * ViperOS libc - libgen.c
- * Path name manipulation implementation
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/libgen.c
+// Purpose: Pathname manipulation functions for ViperOS libc.
+// Key invariants: May modify input string; returns static buffers for edge cases.
+// Ownership/Lifetime: Library; static buffers for "." and "/".
+// Links: user/libc/include/libgen.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file libgen.c
+ * @brief Pathname manipulation functions for ViperOS libc.
+ *
+ * @details
+ * This file implements POSIX pathname manipulation:
+ *
+ * - basename: Extract filename portion from a path
+ * - dirname: Extract directory portion from a path
+ *
+ * Both functions may modify the input string by inserting null
+ * terminators. For NULL or empty inputs, static buffers containing
+ * "." are returned. For root paths, "/" is returned.
+ *
+ * Note: The POSIX versions (unlike GNU) may modify the input.
  */
 
 #include "../include/libgen.h"

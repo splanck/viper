@@ -644,7 +644,15 @@ int main(int argc, char *argv[])
     rc = sftp_init(g_sftp);
     if (rc != SFTP_OK)
     {
-        fprintf(stderr, "Failed to initialize SFTP\n");
+        const char *err_msg = "unknown error";
+        switch (rc)
+        {
+            case SFTP_NO_CONNECTION: err_msg = "subsystem request failed"; break;
+            case SFTP_CONNECTION_LOST: err_msg = "connection lost"; break;
+            case SFTP_BAD_MESSAGE: err_msg = "bad message from server"; break;
+            case SFTP_OP_UNSUPPORTED: err_msg = "unsupported SFTP version"; break;
+        }
+        fprintf(stderr, "Failed to initialize SFTP: %s (rc=%d)\n", err_msg, rc);
         sftp_free(g_sftp);
         ssh_disconnect(g_session);
         ssh_free(g_session);

@@ -1,6 +1,35 @@
-/*
- * ViperOS libc - pwd.c
- * Password file access implementation
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/pwd.c
+// Purpose: Password database access for ViperOS libc.
+// Key invariants: Single-user system; only root(0) and viper(1000) users.
+// Ownership/Lifetime: Library; static password entries.
+// Links: user/libc/include/pwd.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file pwd.c
+ * @brief Password database access for ViperOS libc.
+ *
+ * @details
+ * This file implements POSIX password database functions:
+ *
+ * - getpwnam/getpwnam_r: Get password entry by username
+ * - getpwuid/getpwuid_r: Get password entry by user ID
+ * - getpwent/setpwent/endpwent: Enumerate all password entries
+ *
+ * ViperOS is a single-user system with two built-in users:
+ * - root (uid 0): Superuser account
+ * - viper (uid 1000): Default user account
+ *
+ * No /etc/passwd file is read; all data is hardcoded.
+ * Reentrant (_r) versions use caller-provided buffers.
  */
 
 #include "../include/pwd.h"

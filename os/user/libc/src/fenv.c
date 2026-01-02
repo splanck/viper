@@ -1,6 +1,37 @@
-/*
- * ViperOS libc - fenv.c
- * Floating-point environment control implementation (AArch64)
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/fenv.c
+// Purpose: Floating-point environment control for ViperOS libc (AArch64).
+// Key invariants: Direct FPCR/FPSR register access; no emulation.
+// Ownership/Lifetime: Library; stateless register manipulation.
+// Links: user/libc/include/fenv.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file fenv.c
+ * @brief Floating-point environment control for ViperOS libc.
+ *
+ * @details
+ * This file implements C99 floating-point environment functions:
+ *
+ * - feclearexcept/feraiseexcept: Clear/raise FP exceptions
+ * - fegetexceptflag/fesetexceptflag: Get/set exception flags
+ * - fetestexcept: Test exception flags
+ * - fegetround/fesetround: Get/set rounding mode
+ * - fegetenv/fesetenv: Get/set entire FP environment
+ * - feholdexcept: Save env and clear exceptions
+ * - feupdateenv: Restore env and raise saved exceptions
+ * - feenableexcept/fedisableexcept: Enable/disable traps
+ *
+ * Implementation uses AArch64 FPCR (control) and FPSR (status)
+ * registers directly via inline assembly. Rounding modes and
+ * exception flags map to the ARM64 floating-point architecture.
  */
 
 #include "../include/fenv.h"

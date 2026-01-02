@@ -1,4 +1,35 @@
-/* C++ new/delete operators for ViperOS */
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/new.cpp
+// Purpose: C++ memory allocation operators for ViperOS.
+// Key invariants: new calls malloc; delete calls free; abort on OOM.
+// Ownership/Lifetime: Library; wraps C allocator.
+// Links: user/libc/include/c++/new
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file new.cpp
+ * @brief C++ memory allocation operators for ViperOS.
+ *
+ * @details
+ * This file implements C++ dynamic memory allocation operators:
+ *
+ * - operator new/new[]: Allocate memory (throws on failure)
+ * - operator new/new[] nothrow: Allocate memory (returns null)
+ * - operator delete/delete[]: Free memory
+ * - operator delete/delete[] sized: Free with size hint (C++14)
+ * - std::get_new_handler/set_new_handler: Manage OOM handler
+ *
+ * The throwing versions call the new_handler repeatedly on failure.
+ * If no handler is set and allocation fails, abort() is called
+ * (freestanding environment; no std::bad_alloc exceptions).
+ */
 
 #include "../include/c++/new"
 #include "../include/stdlib.h"

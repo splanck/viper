@@ -1,3 +1,40 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/poll.c
+// Purpose: I/O multiplexing functions for ViperOS libc.
+// Key invariants: Maps poll() to kernel poll syscalls; handles socket routing.
+// Ownership/Lifetime: Library; static poll set created on first use.
+// Links: user/libc/include/poll.h, user/libc/include/sys/select.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file poll.c
+ * @brief I/O multiplexing functions for ViperOS libc.
+ *
+ * @details
+ * This file implements POSIX I/O multiplexing:
+ *
+ * - poll: Wait for events on file descriptors
+ * - ppoll: poll with precise timeout and signal mask
+ * - select: BSD-style synchronous I/O multiplexing
+ * - pselect: select with precise timeout and signal mask
+ *
+ * ViperOS poll implementation:
+ * - stdin (fd 0) maps to console input pseudo-handle
+ * - Socket FDs route to kernel or netd based on backend
+ * - Regular file FDs are treated as always ready
+ * - Uses kernel poll syscalls (SYS_POLL_*)
+ *
+ * The poll set is created on first use and handles are added/removed
+ * dynamically based on what the caller requests.
+ */
+
 #include "../include/poll.h"
 #include "../include/errno.h"
 #include "../include/stdlib.h"

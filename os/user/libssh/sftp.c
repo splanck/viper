@@ -104,18 +104,37 @@ static int sftp_send_packet(sftp_session_t *sftp, uint8_t type, const uint8_t *d
     return SFTP_OK;
 }
 
+/* Yield helper - sleep briefly to avoid busy-waiting */
+static inline void sftp_yield(void)
+{
+    extern long __syscall1(long, long);
+    /* Sleep 1ms instead of just yielding - gives network stack time to process */
+    __syscall1(0x31 /* SYS_SLEEP */, 1);
+}
+
 static int sftp_recv_packet(sftp_session_t *sftp, uint8_t *type, uint8_t *data, size_t *len)
 {
     uint8_t header[5];
     size_t total = 0;
     int is_stderr;
 
-    /* Read length and type */
+    /* Read length and type - skip any stderr data */
     while (total < 5)
     {
         ssize_t rc = ssh_channel_read(sftp->channel, header + total, 5 - total, &is_stderr);
+        if (rc == SSH_AGAIN)
+        {
+            /* No data yet, yield briefly */
+            sftp_yield();
+            continue;
+        }
         if (rc <= 0)
             return SFTP_CONNECTION_LOST;
+        if (is_stderr)
+        {
+            /* Discard stderr data - don't add to total */
+            continue;
+        }
         total += rc;
     }
 
@@ -134,8 +153,19 @@ static int sftp_recv_packet(sftp_session_t *sftp, uint8_t *type, uint8_t *data, 
     while (total < data_len)
     {
         ssize_t rc = ssh_channel_read(sftp->channel, data + total, data_len - total, &is_stderr);
+        if (rc == SSH_AGAIN)
+        {
+            /* No data yet, yield briefly */
+            sftp_yield();
+            continue;
+        }
         if (rc <= 0)
             return SFTP_CONNECTION_LOST;
+        if (is_stderr)
+        {
+            /* Discard stderr data - don't add to total */
+            continue;
+        }
         total += rc;
     }
 
@@ -202,7 +232,7 @@ int sftp_init(sftp_session_t *sftp)
     size_t response_len;
 
     rc = sftp_recv_packet(sftp, &type, response, &response_len);
-    if (rc < 0)
+    if (rc != SFTP_OK)
         return rc;
 
     if (type != SSH_FXP_VERSION || response_len < 4)
@@ -301,7 +331,7 @@ sftp_file_t *sftp_open(sftp_session_t *sftp, const char *path, int flags, mode_t
     size_t response_len;
 
     rc = sftp_recv_packet(sftp, &type, response, &response_len);
-    if (rc < 0)
+    if (rc != SFTP_OK)
         return NULL;
 
     /* Skip request ID */
@@ -375,7 +405,7 @@ int sftp_close(sftp_file_t *file)
 
     free(file);
 
-    if (rc < 0)
+    if (rc != SFTP_OK)
         return rc;
 
     if (type == SSH_FXP_STATUS && response_len >= 8)
@@ -429,7 +459,7 @@ ssize_t sftp_read(sftp_file_t *file, void *buffer, size_t count)
     size_t response_len;
 
     rc = sftp_recv_packet(sftp, &type, response, &response_len);
-    if (rc < 0)
+    if (rc != SFTP_OK)
         return rc;
 
     if (type == SSH_FXP_STATUS)
@@ -508,7 +538,7 @@ ssize_t sftp_write(sftp_file_t *file, const void *buffer, size_t count)
     size_t response_len;
 
     rc = sftp_recv_packet(sftp, &type, response, &response_len);
-    if (rc < 0)
+    if (rc != SFTP_OK)
         return rc;
 
     if (type == SSH_FXP_STATUS && response_len >= 8)
@@ -653,7 +683,7 @@ sftp_attributes_t *sftp_stat(sftp_session_t *sftp, const char *path)
     size_t response_len;
 
     rc = sftp_recv_packet(sftp, &type, response, &response_len);
-    if (rc < 0)
+    if (rc != SFTP_OK)
         return NULL;
 
     if (type == SSH_FXP_STATUS)
@@ -699,7 +729,7 @@ sftp_attributes_t *sftp_lstat(sftp_session_t *sftp, const char *path)
     size_t response_len;
 
     rc = sftp_recv_packet(sftp, &type, response, &response_len);
-    if (rc < 0)
+    if (rc != SFTP_OK)
         return NULL;
 
     if (type == SSH_FXP_STATUS)
@@ -743,7 +773,7 @@ sftp_attributes_t *sftp_fstat(sftp_file_t *file)
     size_t response_len;
 
     rc = sftp_recv_packet(sftp, &type, response, &response_len);
-    if (rc < 0)
+    if (rc != SFTP_OK)
         return NULL;
 
     if (type != SSH_FXP_ATTRS)
@@ -790,7 +820,7 @@ sftp_dir_t *sftp_opendir(sftp_session_t *sftp, const char *path)
     size_t response_len;
 
     rc = sftp_recv_packet(sftp, &type, response, &response_len);
-    if (rc < 0)
+    if (rc != SFTP_OK)
         return NULL;
 
     if (type == SSH_FXP_STATUS)
@@ -968,7 +998,7 @@ sftp_attributes_t *sftp_readdir(sftp_dir_t *dir)
     size_t response_len;
 
     rc = sftp_recv_packet(sftp, &type, response, &response_len);
-    if (rc < 0)
+    if (rc != SFTP_OK)
         return NULL;
 
     if (type == SSH_FXP_STATUS)
@@ -1106,7 +1136,7 @@ int sftp_mkdir(sftp_session_t *sftp, const char *path, mode_t mode)
     size_t response_len;
 
     rc = sftp_recv_packet(sftp, &type, response, &response_len);
-    if (rc < 0)
+    if (rc != SFTP_OK)
         return rc;
 
     if (type == SSH_FXP_STATUS && response_len >= 8)
@@ -1142,7 +1172,7 @@ int sftp_rmdir(sftp_session_t *sftp, const char *path)
     size_t response_len;
 
     rc = sftp_recv_packet(sftp, &type, response, &response_len);
-    if (rc < 0)
+    if (rc != SFTP_OK)
         return rc;
 
     if (type == SSH_FXP_STATUS && response_len >= 8)
@@ -1182,7 +1212,7 @@ int sftp_unlink(sftp_session_t *sftp, const char *path)
     size_t response_len;
 
     rc = sftp_recv_packet(sftp, &type, response, &response_len);
-    if (rc < 0)
+    if (rc != SFTP_OK)
         return rc;
 
     if (type == SSH_FXP_STATUS && response_len >= 8)
@@ -1223,7 +1253,7 @@ int sftp_rename(sftp_session_t *sftp, const char *oldpath, const char *newpath)
     size_t response_len;
 
     rc = sftp_recv_packet(sftp, &type, response, &response_len);
-    if (rc < 0)
+    if (rc != SFTP_OK)
         return rc;
 
     if (type == SSH_FXP_STATUS && response_len >= 8)
@@ -1259,7 +1289,7 @@ char *sftp_realpath(sftp_session_t *sftp, const char *path)
     size_t response_len;
 
     rc = sftp_recv_packet(sftp, &type, response, &response_len);
-    if (rc < 0)
+    if (rc != SFTP_OK)
         return NULL;
 
     if (type != SSH_FXP_NAME || response_len < 12)
@@ -1346,7 +1376,7 @@ int sftp_setstat(sftp_session_t *sftp, const char *path, sftp_attributes_t *attr
     size_t response_len;
 
     rc = sftp_recv_packet(sftp, &type, response, &response_len);
-    if (rc < 0)
+    if (rc != SFTP_OK)
         return rc;
 
     if (type == SSH_FXP_STATUS && response_len >= 8)
@@ -1405,7 +1435,7 @@ int sftp_symlink(sftp_session_t *sftp, const char *target, const char *dest)
     size_t response_len;
 
     rc = sftp_recv_packet(sftp, &type, response, &response_len);
-    if (rc < 0)
+    if (rc != SFTP_OK)
         return rc;
 
     if (type == SSH_FXP_STATUS && response_len >= 8)
@@ -1441,7 +1471,7 @@ char *sftp_readlink(sftp_session_t *sftp, const char *path)
     size_t response_len;
 
     rc = sftp_recv_packet(sftp, &type, response, &response_len);
-    if (rc < 0)
+    if (rc != SFTP_OK)
         return NULL;
 
     if (type != SSH_FXP_NAME || response_len < 12)

@@ -104,22 +104,116 @@ Key files:
 - `kernel/arch/aarch64/exceptions.S` (mode switch helpers)
 - `kernel/arch/aarch64/exceptions.cpp` (EL0 exception handlers)
 
-## How process state is found “right now”
+## How process state is found
 
-Many subsystems need “current process” state, like “which capability table should this syscall use?”.
+Many subsystems need "current process" state, like "which capability table should this syscall use?".
 
-The current pattern is:
+The pattern uses per-CPU tracking for SMP support:
 
-- find the current task (`task::current()`)
-- if it has an associated `Task::viper`, use it
-- otherwise fall back to a global “current viper” pointer
+- Each CPU has a `CpuData` structure containing `current_viper`
+- `viper::current()` returns the current Viper for the executing CPU
+- `viper::set_current(v)` updates the per-CPU current Viper during context switches
+- For kernel tasks without an associated Viper, syscalls use explicit capability tables
 
-This is pragmatic for bring-up and kernel test tasks. Over time, you’d typically make the association mandatory for user
-tasks and restrict kernel tasks to explicit “kernel authority”.
+Key files:
 
-## Current limitations and next steps
+- `kernel/arch/aarch64/cpu.hpp`: `CpuData` with `current_viper` field
+- `kernel/viper/viper.cpp`: `current()` and `set_current()` implementations
 
-- Address space destruction is incomplete (page table walking/freeing is TODO).
-- ASID allocation is a simple bitmap with no locking (SMP and preemption concerns later).
-- Task ownership/reaping for Vipers is not complete (“process exit” is still evolving).
+## Copy-on-Write (COW) fork
+
+ViperOS supports efficient process forking with copy-on-write semantics:
+
+### Fork implementation
+
+When `fork()` is called:
+
+1. A new Viper is created with a cloned address space
+2. Page table entries are copied, but physical pages are shared
+3. Both parent and child mappings are marked read-only
+4. When either process writes to a shared page, a page fault triggers COW
+
+### COW page fault handling
+
+The page fault handler in `kernel/mm/fault.cpp`:
+
+1. Detects write faults to COW pages (read-only but writable in VMA)
+2. Allocates a new physical page
+3. Copies the original page content
+4. Updates the faulting process's page table with the new writable page
+5. If reference count drops to 1, the other process can also make its page writable
+
+Key files:
+
+- `kernel/viper/address_space.cpp`: `clone_cow()` for fork
+- `kernel/mm/fault.cpp`: `handle_cow_fault()` implementation
+
+## Process lifecycle: wait/exit/zombie
+
+ViperOS implements full process lifecycle management:
+
+### Exit
+
+When a process calls `exit(code)`:
+
+1. The process state changes to `Exiting`
+2. All tasks in the process are terminated
+3. Resources (file handles, channels) are cleaned up
+4. The process becomes a `Zombie` until reaped
+
+### Wait
+
+Parent processes can wait for children via `waitpid()`:
+
+- Blocks until a child exits (or returns immediately with WNOHANG)
+- Returns the child's exit code
+- Reaps the zombie, freeing the process slot
+
+### Orphan handling
+
+When a parent exits before its children:
+
+- Children are re-parented to the init process (PID 1)
+- Init is responsible for reaping orphaned zombies
+
+Key files:
+
+- `kernel/viper/viper.cpp`: `exit()`, wait queue management
+- `kernel/syscall/process.cpp`: `sys_waitpid()` implementation
+
+## Process groups and sessions
+
+ViperOS supports POSIX-style process groups and sessions:
+
+| Field | Description |
+|-------|-------------|
+| `pgid` | Process group ID |
+| `sid` | Session ID |
+| `is_session_leader` | True if this process created the session |
+
+Syscalls:
+
+| Syscall | Number | Description |
+|---------|--------|-------------|
+| `getpid` | 0xA0 | Get process ID |
+| `getppid` | 0xA1 | Get parent process ID |
+| `getpgid` | 0xA2 | Get process group ID |
+| `setpgid` | 0xA3 | Set process group ID |
+| `getsid` | 0xA4 | Get session ID |
+| `setsid` | 0xA5 | Create new session |
+
+## Address space destruction
+
+Address space cleanup is complete with recursive page table freeing:
+
+- `AddressSpace::destroy()` walks all page table levels
+- Physical pages are freed back to PMM
+- Page table pages themselves are freed
+- ASID is released for reuse
+
+## Current limitations
+
+- ASID allocation uses a simple bitmap (may need generation counters for wrap-around)
+- No swap or memory overcommit
+- Page table sharing between processes not yet optimized
 

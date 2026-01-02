@@ -1,5 +1,6 @@
 #include "fwcfg.hpp"
 #include "../console/serial.hpp"
+#include "../include/constants.hpp"
 
 // Suppress warnings for DMA control constants that document the full interface
 #pragma GCC diagnostic push
@@ -20,9 +21,8 @@
 namespace fwcfg
 {
 
-// QEMU virt machine fw_cfg MMIO addresses
-// For QEMU virt, fw_cfg is at 0x09020000
-constexpr uintptr FWCFG_BASE = 0x09020000;
+// QEMU virt machine fw_cfg MMIO addresses (from constants.hpp)
+constexpr uintptr FWCFG_BASE = kc::hw::FWCFG_BASE;
 
 // Register offsets (MMIO interface)
 constexpr uintptr FWCFG_DATA = 0x00;     // Data register (read/write)
@@ -49,8 +49,8 @@ constexpr u16 FW_CFG_SIGNATURE = 0x0000;
 constexpr u16 FW_CFG_ID = 0x0001;
 constexpr u16 FW_CFG_FILE_DIR = 0x0019;
 
-// Expected signature "QEMU"
-constexpr u32 FWCFG_SIGNATURE_VALUE = 0x554D4551;
+// Expected signature "QEMU" (from constants.hpp)
+constexpr u32 FWCFG_SIGNATURE_VALUE = kc::magic::FWCFG_QEMU;
 
 // File directory entry structure (as stored in fw_cfg)
 struct FWCfgFile

@@ -1,6 +1,44 @@
-/*
- * ViperOS libc - wchar.c
- * Wide character handling implementation
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/wchar.c
+// Purpose: Wide character and multibyte functions for ViperOS libc.
+// Key invariants: UTF-8 encoding; ASCII-only character classification.
+// Ownership/Lifetime: Library; static conversion states.
+// Links: user/libc/include/wchar.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file wchar.c
+ * @brief Wide character and multibyte functions for ViperOS libc.
+ *
+ * @details
+ * This file implements wide character and multibyte conversion:
+ *
+ * Wide Character Classification:
+ * - iswalpha, iswdigit, iswspace, iswupper, iswlower, etc.
+ * - towupper, towlower
+ *
+ * Wide String Functions:
+ * - wcscpy, wcscat, wcslen, wcscmp, wcschr, wcsstr, wcstok, etc.
+ * - wmemcpy, wmemmove, wmemset, wmemcmp, wmemchr
+ *
+ * Multibyte/Wide Conversion (UTF-8):
+ * - mbrtowc, wcrtomb: Restartable conversion
+ * - mbtowc, wctomb: Non-restartable conversion
+ * - mbstowcs, wcstombs: String conversion
+ *
+ * Wide Character I/O:
+ * - fgetwc, fputwc, fgetws, fputws, getwchar, putwchar
+ * - fwprintf, wprintf, swprintf (stubs)
+ *
+ * Wide Numeric Conversion:
+ * - wcstol, wcstoul, wcstod, etc.
  */
 
 #include "../include/wchar.h"

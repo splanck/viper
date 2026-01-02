@@ -1,6 +1,35 @@
-/*
- * ViperOS C Library - utmpx implementation
- * User accounting database stubs
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/utmpx.c
+// Purpose: User accounting database functions for ViperOS libc.
+// Key invariants: In-memory database (16 entries max); no persistent storage.
+// Ownership/Lifetime: Library; static database and entries.
+// Links: user/libc/include/utmpx.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file utmpx.c
+ * @brief User accounting database functions for ViperOS libc.
+ *
+ * @details
+ * This file implements POSIX user accounting database functions:
+ *
+ * - setutxent/endutxent: Open/close the utmpx database
+ * - getutxent: Get next entry from database
+ * - getutxid: Get entry by ID
+ * - getutxline: Get entry by terminal line
+ * - pututxline: Write an entry to the database
+ * - updwtmpx/utmpxname: Stub functions for file operations
+ *
+ * ViperOS uses an in-memory database limited to 16 entries.
+ * No persistent file storage is implemented. The database tracks
+ * login sessions, boot times, and process states.
  */
 
 #include <errno.h>

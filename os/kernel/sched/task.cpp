@@ -3,6 +3,7 @@
 #include "../arch/aarch64/exceptions.hpp"
 #include "../console/serial.hpp"
 #include "../include/constants.hpp"
+#include "../lib/str.hpp"
 #include "../mm/vmm.hpp"
 #include "../viper/address_space.hpp"
 #include "../viper/viper.hpp"
@@ -59,29 +60,6 @@ void init_signal_state(Task *t)
     t->signals.blocked = 0;
     t->signals.pending = 0;
     t->signals.saved_frame = nullptr;
-}
-
-// Simple string copy
-/**
- * @brief Copy a string into a fixed-size buffer with NUL-termination.
- *
- * @details
- * Ensures the destination is always NUL-terminated and never writes more
- * than `max` bytes.
- *
- * @param dst Destination buffer.
- * @param src Source NUL-terminated string.
- * @param max Size of destination buffer in bytes.
- */
-void strcpy_safe(char *dst, const char *src, usize max)
-{
-    usize i = 0;
-    while (src[i] && i < max - 1)
-    {
-        dst[i] = src[i];
-        i++;
-    }
-    dst[i] = '\0';
 }
 
 // Allocate a task slot
@@ -224,7 +202,7 @@ void init()
     // Create idle task (special - uses task slot 0)
     idle_task = &tasks[0];
     idle_task->id = 0;
-    strcpy_safe(idle_task->name, "idle", sizeof(idle_task->name));
+    lib::strcpy_safe(idle_task->name, "idle", sizeof(idle_task->name));
     idle_task->state = TaskState::Ready;
     idle_task->flags = TASK_FLAG_KERNEL | TASK_FLAG_IDLE;
     idle_task->time_slice = TIME_SLICE_DEFAULT;
@@ -296,7 +274,7 @@ Task *create(const char *name, TaskEntry entry, void *arg, u32 flags)
 
     // Initialize task fields
     t->id = next_task_id++;
-    strcpy_safe(t->name, name, sizeof(t->name));
+    lib::strcpy_safe(t->name, name, sizeof(t->name));
     t->state = TaskState::Ready;
     t->flags = flags | TASK_FLAG_KERNEL; // All tasks are kernel tasks for now
     t->time_slice = TIME_SLICE_DEFAULT;
@@ -358,7 +336,7 @@ Task *create(const char *name, TaskEntry entry, void *arg, u32 flags)
     // Initialize CWD - inherit from parent if exists, otherwise root
     if (current_task && current_task->cwd[0])
     {
-        strcpy_safe(t->cwd, current_task->cwd, sizeof(t->cwd));
+        lib::strcpy_safe(t->cwd, current_task->cwd, sizeof(t->cwd));
     }
     else
     {
@@ -436,7 +414,7 @@ Task *create_user_task(const char *name, void *viper_ptr, u64 entry, u64 stack)
 
     // Initialize task fields
     t->id = next_task_id++;
-    strcpy_safe(t->name, name, sizeof(t->name));
+    lib::strcpy_safe(t->name, name, sizeof(t->name));
     t->state = TaskState::Ready;
     t->flags = TASK_FLAG_USER; // User task, not kernel
     t->time_slice = TIME_SLICE_DEFAULT;
@@ -459,7 +437,7 @@ Task *create_user_task(const char *name, void *viper_ptr, u64 entry, u64 stack)
     // Initialize CWD - inherit from parent if exists, otherwise root
     if (current_task && current_task->cwd[0])
     {
-        strcpy_safe(t->cwd, current_task->cwd, sizeof(t->cwd));
+        lib::strcpy_safe(t->cwd, current_task->cwd, sizeof(t->cwd));
     }
     else
     {

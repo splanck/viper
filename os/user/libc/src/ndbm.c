@@ -1,6 +1,36 @@
-/*
- * ViperOS C Library - ndbm implementation
- * Simple in-memory hash table database
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/ndbm.c
+// Purpose: Simple database functions (ndbm) for ViperOS libc.
+// Key invariants: In-memory hash table; no file persistence.
+// Ownership/Lifetime: Library; database freed via dbm_close().
+// Links: user/libc/include/ndbm.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file ndbm.c
+ * @brief Simple database functions (ndbm) for ViperOS libc.
+ *
+ * @details
+ * This file implements POSIX ndbm-style database functions:
+ *
+ * - dbm_open: Open (create) a database
+ * - dbm_close: Close and free a database
+ * - dbm_fetch: Retrieve a value by key
+ * - dbm_store: Store a key-value pair
+ * - dbm_delete: Delete a key
+ * - dbm_firstkey/dbm_nextkey: Iterate over all keys
+ * - dbm_error/dbm_clearerr: Error handling
+ *
+ * ViperOS implements an in-memory hash table with 256 buckets.
+ * No files are created; the "file" parameter to dbm_open is ignored.
+ * Data is lost when the database is closed.
  */
 
 #include <errno.h>

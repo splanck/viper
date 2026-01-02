@@ -1,6 +1,35 @@
-/*
- * ViperOS libc - ftw.c
- * File tree walk implementation
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/ftw.c
+// Purpose: File tree walking functions for ViperOS libc.
+// Key invariants: Recursive directory traversal; caller callback at each node.
+// Ownership/Lifetime: Library; allocates cwd buffer during FTW_CHDIR.
+// Links: user/libc/include/ftw.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file ftw.c
+ * @brief File tree walking functions for ViperOS libc.
+ *
+ * @details
+ * This file implements POSIX file tree walk functions:
+ *
+ * - ftw: Walk a file tree with callback
+ * - nftw: Extended file tree walk with more options
+ *
+ * Both functions recursively traverse a directory tree, calling a
+ * user-provided function for each file and directory encountered.
+ * The nftw() version supports additional flags:
+ * - FTW_DEPTH: Call function for directory after its contents
+ * - FTW_PHYS: Do not follow symlinks (use lstat)
+ * - FTW_CHDIR: Change to each directory during traversal
+ * - FTW_MOUNT: Stay on same filesystem (not implemented)
  */
 
 #include "../include/ftw.h"

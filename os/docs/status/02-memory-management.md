@@ -1,12 +1,14 @@
 # Memory Management Subsystem
 
-**Status:** Complete with demand paging, COW, buddy allocator, and slab allocator
-**Location:** `kernel/mm/`
-**SLOC:** ~5,300
+**Status:** Complete with demand paging, COW, buddy allocator, slab allocator, and shared memory
+**Location:** `kernel/mm/`, `kernel/kobj/shm.*`
+**SLOC:** ~5,550
 
 ## Overview
 
-The memory management subsystem provides physical page allocation (with both bitmap and buddy allocators), virtual memory mapping, kernel heap services, slab allocation for fixed-size objects, demand paging with VMA tracking, and copy-on-write page sharing. The implementation supports full virtual memory for user processes with automatic page allocation on fault and efficient memory sharing.
+The memory management subsystem is a core kernel service in the ViperOS microkernel. It provides physical page allocation, virtual memory mapping, kernel heap services, slab allocation, demand paging, copy-on-write page sharing, and shared memory for IPC.
+
+In microkernel mode, memory management remains in the kernel while user-space servers use shared memory for efficient large data transfers.
 
 ## Components
 
@@ -488,6 +490,52 @@ void kheap::get_stats(&total, &used, &free, &blocks);
 
 **Syscall Access:**
 - `mem_info` (0xE0) - Returns `MemInfo` struct to user space
+
+---
+
+## Shared Memory (Microkernel IPC)
+
+**Location:** `kernel/kobj/shm.cpp`, `kernel/kobj/shm.hpp`
+**SLOC:** ~150
+
+Shared memory provides efficient large data transfer between user-space processes in the microkernel architecture.
+
+### Syscalls
+
+| Syscall | Number | Description |
+|---------|--------|-------------|
+| shm_create | 0x110 | Create shared memory region |
+| shm_map | 0x111 | Map SHM into address space |
+| shm_unmap | 0x112 | Unmap SHM from address space |
+| shm_close | 0x113 | Close SHM handle |
+
+### ShmRegion Structure
+
+| Field | Type | Description |
+|-------|------|-------------|
+| id | u32 | Unique region ID |
+| phys_addr | u64 | Physical memory address |
+| size | u64 | Region size (page-aligned) |
+| refcount | u32 | Reference count |
+
+### Usage Pattern (Server IPC)
+
+```cpp
+// Client: Create SHM for large write
+u32 shm = sys::shm_create(size);
+void *addr = sys::shm_map(shm);
+memcpy(addr, data, size);
+// Send shm handle via channel
+sys::channel_send(server, &msg, sizeof(msg), &shm, 1);
+
+// Server: Receive and map SHM
+u32 client_shm;
+sys::channel_recv(ch, &msg, sizeof(msg), &client_shm, &count);
+void *data = sys::shm_map(client_shm);
+// Process data...
+sys::shm_unmap(client_shm);
+sys::shm_close(client_shm);
+```
 
 ---
 

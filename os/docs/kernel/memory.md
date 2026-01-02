@@ -117,10 +117,32 @@ pages and maps them into a process-visible virtual range.
 That code lives under `kernel/viper/address_space.*` and is covered
 in [Viper Processes and Address Spaces](viper_processes.md).
 
+## Shared Memory for IPC
+
+In microkernel mode, user-space servers communicate via shared memory regions. The kernel provides syscalls for
+creating and mapping shared memory:
+
+| Syscall | Number | Description |
+|---------|--------|-------------|
+| `shm_create` | 0x109 | Create a shared memory region |
+| `shm_map` | 0x10A | Map shared memory into calling process |
+| `shm_unmap` | 0x10B | Unmap shared memory from address space |
+| `shm_close` | 0x10C | Close shared memory handle |
+
+Shared memory is used for:
+
+- **Large data transfers**: Bulk file/network data between servers and applications
+- **Zero-copy I/O**: DMA buffers shared between drivers and applications
+- **Server communication**: High-bandwidth IPC between user-space servers
+
+Key files:
+
+- `kernel/syscall/shm.cpp`: Shared memory syscall implementations
+- `kernel/mm/shm.hpp`: Shared memory region management
+
 ## Current limitations and gotchas
 
 - PMM assumes a single contiguous RAM window (bring-up for QEMU `virt`); it does not yet fully consume UEFI memory maps
   or DTB-derived RAM layouts.
 - `kheap` cannot free memory yet, which can hide leaks during long runs.
-- `AddressSpace::destroy()` currently frees only the root page table (page table teardown is incomplete).
 

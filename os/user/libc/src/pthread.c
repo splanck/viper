@@ -1,9 +1,34 @@
-/*
- * Minimal pthreads implementation for ViperOS
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/pthread.c
+// Purpose: POSIX threads stubs for ViperOS libc.
+// Key invariants: Single-threaded; mutexes work as flags; no real threading.
+// Ownership/Lifetime: Library; TLS keys persist until deleted.
+// Links: user/libc/include/pthread.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file pthread.c
+ * @brief POSIX threads stubs for ViperOS libc.
  *
- * This provides stub implementations for single-threaded programs.
- * Mutexes work as simple flags, condition variables are no-ops,
- * and thread creation returns ENOSYS.
+ * @details
+ * This file provides minimal pthreads compatibility for single-threaded
+ * programs. ViperOS does not currently support multi-threading, so:
+ *
+ * - pthread_create returns ENOSYS
+ * - Mutexes work as simple flags (no contention possible)
+ * - Condition variables are no-ops (would deadlock if used properly)
+ * - Thread-local storage uses a simple static array
+ * - Cancellation is not supported
+ *
+ * This allows programs that use pthreads to compile and run, as long as
+ * they don't actually create multiple threads.
  */
 
 #include "../include/pthread.h"

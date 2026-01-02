@@ -1,3 +1,35 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/netdb.c
+// Purpose: Network database functions for ViperOS libc.
+// Key invariants: DNS via netd; static service/protocol tables.
+// Ownership/Lifetime: Library; static storage for results.
+// Links: user/libc/include/netdb.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file netdb.c
+ * @brief Network database functions for ViperOS libc.
+ *
+ * @details
+ * This file implements network name resolution and service lookup:
+ *
+ * - Host lookup: gethostbyname, gethostbyaddr, getaddrinfo, getnameinfo
+ * - Service lookup: getservbyname, getservbyport
+ * - Protocol lookup: getprotobyname, getprotobynumber
+ * - Error handling: herror, hstrerror, gai_strerror
+ *
+ * DNS resolution is performed via IPC to netd (network daemon).
+ * Service and protocol lookups use static built-in tables for
+ * common services (http, https, ssh, etc.) and protocols (tcp, udp).
+ */
+
 #include "../include/netdb.h"
 #include "../include/arpa/inet.h"
 #include "../include/errno.h"

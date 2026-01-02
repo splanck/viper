@@ -1,13 +1,39 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/termios.c
+// Purpose: Terminal I/O control functions for ViperOS libc.
+// Key invariants: Single terminal (stdin/stdout/stderr); in-process state.
+// Ownership/Lifetime: Library; terminal settings persist until changed.
+// Links: user/libc/include/termios.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file termios.c
+ * @brief Terminal I/O control functions for ViperOS libc.
+ *
+ * @details
+ * This file provides minimal termios compatibility:
+ *
+ * - tcgetattr/tcsetattr: Get/set terminal attributes
+ * - cfgetispeed/cfsetispeed: Get/set input baud rate
+ * - cfgetospeed/cfsetospeed: Get/set output baud rate
+ * - cfmakeraw: Configure raw mode
+ * - tcsendbreak/tcdrain/tcflush/tcflow: Terminal control (no-ops)
+ * - ttyname: Return terminal name
+ *
+ * Terminal settings are stored in-process and apply to stdin/stdout/stderr.
+ * ViperOS doesn't have a full TTY subsystem, so some functions are no-ops.
+ * The settings are used by read() in unistd.c for line discipline.
+ */
+
 #include "../include/termios.h"
 #include "../include/string.h"
-
-/*
- * Minimal termios implementation for ViperOS
- *
- * Since ViperOS doesn't have a full TTY subsystem, this provides
- * a basic implementation that tracks terminal settings for the
- * standard file descriptors (stdin/stdout/stderr).
- */
 
 /* Default terminal settings (cooked mode with echo) */
 static struct termios default_termios = {

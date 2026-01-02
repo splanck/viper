@@ -1,6 +1,8 @@
 #include "slab.hpp"
 #include "../console/serial.hpp"
+#include "../lib/mem.hpp"
 #include "../lib/spinlock.hpp"
+#include "../lib/str.hpp"
 #include "pmm.hpp"
 
 /**
@@ -41,32 +43,6 @@ bool initialized = false;
 
 // Pre-defined caches
 SlabCache *g_inode_cache = nullptr;
-
-/**
- * @brief Copy a string with length limit.
- */
-void strcpy_safe(char *dst, const char *src, usize max)
-{
-    usize i = 0;
-    while (src[i] && i < max - 1)
-    {
-        dst[i] = src[i];
-        i++;
-    }
-    dst[i] = '\0';
-}
-
-/**
- * @brief Zero memory.
- */
-void memzero(void *ptr, usize size)
-{
-    u8 *p = static_cast<u8 *>(ptr);
-    for (usize i = 0; i < size; i++)
-    {
-        p[i] = 0;
-    }
-}
 
 /**
  * @brief Find the slab containing a given object pointer.
@@ -222,7 +198,7 @@ SlabCache *cache_create(const char *name, u32 object_size)
     }
 
     // Initialize cache
-    strcpy_safe(cache->name, name, MAX_CACHE_NAME);
+    lib::strcpy_safe(cache->name, name, MAX_CACHE_NAME);
     cache->object_size = object_size;
     cache->objects_per_slab = objects_per_slab;
     cache->slab_list = nullptr;
@@ -342,7 +318,7 @@ void *zalloc(SlabCache *cache)
     void *obj = alloc(cache);
     if (obj)
     {
-        memzero(obj, cache->object_size);
+        lib::memset(obj, 0, cache->object_size);
     }
     return obj;
 }

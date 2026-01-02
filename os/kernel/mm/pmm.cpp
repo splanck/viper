@@ -1,5 +1,6 @@
 #include "pmm.hpp"
 #include "../console/serial.hpp"
+#include "../include/constants.hpp"
 #include "../lib/spinlock.hpp"
 #include "buddy.hpp"
 
@@ -171,9 +172,9 @@ void init(u64 ram_start, u64 ram_size, u64 kernel_end)
     serial::put_hex(usable_start);
     serial::puts("\n");
 
-    // Also reserve space for framebuffer (8MB at 0x41000000)
-    u64 fb_start = 0x41000000;
-    u64 fb_size = 8 * 1024 * 1024; // 8MB for framebuffer
+    // Also reserve space for framebuffer (from constants.hpp)
+    u64 fb_start = kc::mem::FB_BASE;
+    u64 fb_size = kc::mem::FB_SIZE;
     u64 fb_end = fb_start + fb_size;
 
     // Try to initialize buddy allocator first

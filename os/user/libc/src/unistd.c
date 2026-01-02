@@ -781,10 +781,19 @@ int ftruncate(int fd, long length)
     return -1; /* ENOSYS */
 }
 
+/* fsd backend fsync - implemented in fsd_backend.cpp */
+extern int __viper_fsd_is_fd(int fd);
+extern int __viper_fsd_fsync(int fd);
+
 int fsync(int fd)
 {
-    (void)fd;
-    return 0; /* Pretend to succeed */
+    /* Route fsd-managed file descriptors through the fsd backend */
+    if (__viper_fsd_is_fd(fd))
+    {
+        return __viper_fsd_fsync(fd);
+    }
+    /* For kernel-managed FDs, pretend to succeed (no caching) */
+    return 0;
 }
 
 long pathconf(const char *path, int name)

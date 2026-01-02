@@ -1,6 +1,33 @@
-/*
- * ViperOS libc - nl_types.c
- * Native language support message catalog implementation
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/nl_types.c
+// Purpose: Message catalog functions for ViperOS libc.
+// Key invariants: Empty catalogs; always returns default strings.
+// Ownership/Lifetime: Library; dynamically allocated catalogs.
+// Links: user/libc/include/nl_types.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file nl_types.c
+ * @brief Message catalog functions for ViperOS libc.
+ *
+ * @details
+ * This file implements X/Open message catalog functions:
+ *
+ * - catopen: Open a message catalog
+ * - catgets: Retrieve a message from a catalog
+ * - catclose: Close a message catalog
+ *
+ * ViperOS provides a simplified implementation that creates empty
+ * catalogs. All catgets() calls return the default string since
+ * no actual .cat files are loaded. A full implementation would
+ * parse NLSPATH and load X/Open format message catalog files.
  */
 
 #include "../include/nl_types.h"

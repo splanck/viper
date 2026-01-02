@@ -4,7 +4,7 @@
 
 > **Status:** Functional and actively developed. Suitable for experimentation and learning.
 >
-> **Microkernel status:** Hybrid today (kernel services still exist), with user-space server migration in progress (`blkd`, `fsd`, `netd`). See `bugs/microkernel.md`.
+> **Microkernel status:** User-space servers operational (`netd`, `fsd`, `blkd`, `consoled`, `inputd`). Kernel retains fallback implementations for boot and development. Total: ~109,000 SLOC (kernel ~49K, user ~60K).
 
 ---
 
@@ -56,11 +56,11 @@ ViperOS is a research operating system exploring:
 
 | Concept | Implementation |
 |---------|----------------|
-| **Capability-Based Security** | Handle-based access control with rights derivation |
-| **Microkernel Design** | Minimal kernel with user-space drivers (in progress) |
-| **Modern Memory Management** | Demand paging, copy-on-write, buddy allocator |
-| **Full Network Stack** | TCP/IP, TLS 1.3, DNS, HTTP client |
-| **Crash-Consistent Storage** | Write-ahead journaling filesystem |
+| **Capability-Based Security** | Handle-based access control with rights derivation and revocation |
+| **Microkernel Design** | Minimal kernel with user-space servers (netd, fsd, blkd, consoled, inputd) |
+| **Modern Memory Management** | Demand paging, copy-on-write, shared memory, buddy allocator |
+| **Full Network Stack** | TCP/IP, TLS 1.3, DNS, HTTP, SSH-2/SFTP (user-space) |
+| **Crash-Consistent Storage** | Write-ahead journaling filesystem (user-space fsd) |
 
 ### Why ViperOS?
 
@@ -73,27 +73,29 @@ ViperOS is a research operating system exploring:
 
 ## Features
 
-### Kernel (~65,000 SLOC)
+### Kernel (~49,000 SLOC)
 
 | Component | Features |
 |-----------|----------|
 | **Architecture** | AArch64 boot, 4-level MMU, GICv2/v3, ARM timer, exception handling |
-| **Memory** | PMM bitmap, buddy allocator, slab allocator, demand paging, COW |
-| **Scheduler** | Priority-based FIFO, 10ms time slice, wait queues, signals |
-| **IPC** | Synchronous channels (64 entries, 256-byte messages), poll sets |
-| **Filesystem** | VFS layer, ViperFS with journal, block/inode caches |
-| **Networking** | Ethernet, ARP, IPv4, ICMP, UDP, TCP (with congestion control), DNS, TLS 1.3, HTTP |
+| **Memory** | PMM bitmap, buddy allocator, slab allocator, demand paging, COW, shared memory |
+| **Scheduler** | 8 priority queues, 5-20ms time slices, wait queues, signals, SMP support |
+| **IPC** | Synchronous channels (64 entries, 256-byte messages), poll sets, capability transfer |
+| **Filesystem** | VFS layer, ViperFS with journal, block/inode caches (kernel mode) |
 | **Drivers** | VirtIO (block, network, GPU, RNG, input), PL011 UART, ramfb |
 | **Console** | Serial UART + graphics console with ANSI escape codes |
 
-### User Space (~28,000 SLOC)
+### User Space (~60,000 SLOC)
 
 | Component | Features |
 |-----------|----------|
-| **libc** | POSIX-compatible C library (stdio, string, stdlib, unistd, etc.) |
-| **C++ Headers** | type_traits, utility, memory, vector, map, string, thread, mutex |
+| **libc** | POSIX-compatible C library (stdio, string, stdlib, unistd, socket, poll) |
+| **Servers** | netd (TCP/IP), fsd (filesystem), blkd (block), consoled, inputd |
+| **libtls** | TLS 1.3 client with X.509 certificate verification |
+| **libssh** | SSH-2 client with SFTP, Ed25519/RSA authentication |
+| **libhttp** | HTTP/1.1 client library |
 | **vinit Shell** | Interactive shell with line editing, history, tab completion |
-| **User Programs** | hello, fsinfo, sysinfo, netstat, ping, edit, devices, mathtest |
+| **User Programs** | hello, fsinfo, sysinfo, netstat, ping, edit, devices, ssh, fetch |
 
 ---
 
@@ -107,7 +109,7 @@ The ViperOS shell includes these commands:
 | **Navigation** | `chdir`, `cwd`, `Path`, `Assign` |
 | **Programs** | `Run <program>` |
 | **System** | `Version`, `Uptime`, `Avail`, `Status`, `Caps`, `Date`, `Time` |
-| **Network** | `Fetch <url>` (HTTP/HTTPS) |
+| **Network** | `Fetch <url>` (HTTP/HTTPS), `ssh <user@host>` (SSH-2) |
 | **Utility** | `Echo`, `Cls`, `History`, `Why`, `Help` |
 | **Session** | `EndShell` |
 
@@ -192,17 +194,22 @@ os/
 │   ├── sched/           # Scheduler, tasks, wait queues
 │   ├── syscall/         # System call handlers
 │   └── viper/           # Process model, capabilities
-├── user/                # User space
+├── user/                # User space (~60,000 SLOC)
 │   ├── vinit/           # Shell and commands
 │   ├── libc/            # C library implementation
-│   ├── servers/         # Microkernel servers (blkd, fsd, netd)
+│   ├── servers/         # Microkernel servers
+│   │   ├── netd/        # Network server (TCP/IP stack)
+│   │   ├── fsd/         # Filesystem server (ViperFS)
+│   │   ├── blkd/        # Block device server
+│   │   ├── consoled/    # Console output server
+│   │   └── inputd/      # Keyboard/mouse input server
+│   ├── libtls/          # TLS 1.3 client library
+│   ├── libssh/          # SSH-2 + SFTP client library
+│   ├── libhttp/         # HTTP/1.1 client library
+│   ├── libnetclient/    # IPC client for netd
 │   ├── libvirtio/       # User-space VirtIO driver library
 │   ├── edit/            # Text editor
 │   ├── hello/           # Hello world program
-│   ├── fsinfo/          # Filesystem info utility
-│   ├── sysinfo/         # System info utility
-│   ├── netstat/         # Network statistics
-│   ├── ping/            # ICMP ping utility
 │   └── ...
 ├── vboot/               # Bootloader
 ├── tools/               # Build tools (mkfs.viperfs, etc.)
@@ -343,19 +350,20 @@ ViperOS uses a different design philosophy than Unix:
 
 ## Syscalls
 
-ViperOS provides 50+ system calls organized by category:
+ViperOS provides ~90 system calls organized by category:
 
 | Category | Syscalls |
 |----------|----------|
 | **Task** | yield, exit, sleep, spawn, wait, join, list, priority |
-| **Memory** | alloc, retain, release, get_len, set_len |
+| **Process** | fork, getpid, getppid, getpgid, setpgid, getsid, setsid, waitpid |
+| **Memory** | alloc, retain, release, get_len, set_len, brk |
 | **IPC** | channel_create, send, recv, close, poll |
+| **Shared Memory** | shm_create, shm_map, shm_unmap, shm_close |
 | **Timer** | create, set, cancel, close |
 | **Filesystem** | open, create, read, write, seek, close, stat, readdir, rename, delete, sync |
 | **Network** | socket, bind, connect, listen, accept, send, recv, close |
-| **DNS** | resolve, set_server |
-| **TLS** | create, handshake, send, recv, close |
-| **Capability** | derive, revoke, query |
+| **Device** | map_device, irq_register, irq_wait, irq_ack, dma_alloc, virt_to_phys |
+| **Capability** | derive, revoke, query, list |
 | **Assign** | set, remove, get, list, resolve |
 | **Debug** | print, putchar, getchar, uptime |
 

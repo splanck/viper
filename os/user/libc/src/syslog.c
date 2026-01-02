@@ -1,6 +1,34 @@
-/*
- * ViperOS libc - syslog.c
- * System logging implementation
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/syslog.c
+// Purpose: System logging functions for ViperOS libc.
+// Key invariants: Outputs to stderr; no syslogd daemon.
+// Ownership/Lifetime: Library; static logging state.
+// Links: user/libc/include/syslog.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file syslog.c
+ * @brief System logging functions for ViperOS libc.
+ *
+ * @details
+ * This file implements BSD/POSIX syslog functions:
+ *
+ * - openlog: Configure logging (ident, options, facility)
+ * - closelog: Close logging connection
+ * - syslog/vsyslog: Generate a log message
+ * - setlogmask: Set priority filter mask
+ *
+ * ViperOS does not have a syslogd daemon. All log messages are
+ * formatted with timestamp, priority, and ident, then written
+ * to stderr. The LOG_CONS, LOG_PID, and LOG_PERROR options are
+ * partially supported. Priority filtering via setlogmask works.
  */
 
 #include "../include/syslog.h"

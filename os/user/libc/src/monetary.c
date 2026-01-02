@@ -1,6 +1,41 @@
-/*
- * ViperOS libc - monetary.c
- * Monetary value formatting implementation
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/monetary.c
+// Purpose: Monetary formatting functions for ViperOS libc.
+// Key invariants: C locale only; USD/$ defaults; strfmon format string.
+// Ownership/Lifetime: Library; stateless formatting.
+// Links: user/libc/include/monetary.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file monetary.c
+ * @brief Monetary formatting functions for ViperOS libc.
+ *
+ * @details
+ * This file implements POSIX monetary formatting:
+ *
+ * - strfmon: Format monetary values according to format string
+ * - strfmon_l: Format with explicit locale (locale ignored)
+ *
+ * Format string conversion specifiers:
+ * - %n: National currency format (e.g., "$1,234.56")
+ * - %i: International currency format (e.g., "USD 1,234.56")
+ *
+ * Format flags:
+ * - =f: Fill character (default space)
+ * - ^: No grouping separators
+ * - (: Negative values in parentheses
+ * - +: Show explicit sign
+ * - !: Suppress currency symbol
+ * - -: Left justify
+ *
+ * ViperOS uses C locale defaults: USD, $, comma separators.
  */
 
 #include "../include/monetary.h"
