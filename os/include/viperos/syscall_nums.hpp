@@ -370,3 +370,16 @@
 /** @brief Close/release a shared memory handle. */
 #define SYS_SHM_CLOSE 0x10C
 /** @} */
+
+/** @name GUI/Display Syscalls (0x110 - 0x11F)
+ *  @details
+ *  GUI-related primitives for display servers and input handling.
+ *  @{
+ */
+/** @brief Get current mouse state (position, buttons, deltas). */
+#define SYS_GET_MOUSE_STATE 0x110
+/** @brief Map framebuffer into user address space (returns addr, width, height, stride). */
+#define SYS_MAP_FRAMEBUFFER 0x111
+/** @brief Set mouse cursor bounds (width, height). */
+#define SYS_SET_MOUSE_BOUNDS 0x112
+/** @} */

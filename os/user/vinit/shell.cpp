@@ -98,7 +98,11 @@ void shell_loop()
         {
             cmd_cd(get_args(cmd_line, 6));
         }
-        else if (strcaseeq(cmd_line, "cwd"))
+        else if (strcaseeq(cmd_line, "cd") || strcasestart(cmd_line, "cd "))
+        {
+            cmd_cd(get_args(cmd_line, 3));
+        }
+        else if (strcaseeq(cmd_line, "cwd") || strcaseeq(cmd_line, "pwd"))
         {
             cmd_pwd();
         }

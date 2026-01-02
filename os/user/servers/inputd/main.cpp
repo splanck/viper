@@ -637,6 +637,40 @@ static void handle_request(int32_t client_channel, const uint8_t *data, size_t l
             break;
         }
 
+        case INP_GET_MOUSE:
+        {
+            if (len < sizeof(GetMouseRequest))
+                return;
+            auto *req = reinterpret_cast<const GetMouseRequest *>(data);
+
+            GetMouseReply reply;
+            reply.type = INP_GET_MOUSE_REPLY;
+            reply.request_id = req->request_id;
+
+            // Query kernel for mouse state
+            sys::MouseState state;
+            if (sys::get_mouse_state(&state) == 0)
+            {
+                reply.x = state.x;
+                reply.y = state.y;
+                reply.dx = state.dx;
+                reply.dy = state.dy;
+                reply.buttons = state.buttons;
+            }
+            else
+            {
+                reply.x = 0;
+                reply.y = 0;
+                reply.dx = 0;
+                reply.dy = 0;
+                reply.buttons = 0;
+            }
+            reply._pad[0] = reply._pad[1] = reply._pad[2] = 0;
+
+            sys::channel_send(client_channel, &reply, sizeof(reply), nullptr, 0);
+            break;
+        }
+
         default:
             debug_print("[inputd] Unknown message type: ");
             debug_print_dec(msg_type);

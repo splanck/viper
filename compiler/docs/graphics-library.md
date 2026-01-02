@@ -372,14 +372,23 @@ The build system automatically selects the correct backend:
 
 ## Future Enhancements
 
-### Planned Features (Out of Scope for v1.0)
+### Implemented in Runtime Layer
 
-- **Text rendering** — Bitmap fonts
-- **Image loading** — BMP/PNG support
-- **Sprites** — Sprite management and blitting
+The following features have been implemented in the Viper runtime layer (`Viper.Graphics.*`):
+
+- ✅ **Sprites** — `Viper.Graphics.Sprite` class with animation and collision detection
+- ✅ **Tilemaps** — `Viper.Graphics.Tilemap` class for tile-based game rendering
+- ✅ **Camera** — `Viper.Graphics.Camera` class for 2D viewport management
+- ✅ **Image processing** — Invert, grayscale, tint, blur, bilinear resize
+- ✅ **Color utilities** — HSL conversion, lerp, brighten/darken
+- ✅ **Gradients** — Horizontal and vertical gradient drawing
+
+### Planned Features (Future)
+
+- **Text rendering** — Bitmap fonts at the C API level
+- **Image loading** — PNG support (BMP already implemented)
 - **Palette modes** — 8-bit indexed color
 - **Multiple windows** — Multi-window support
-- **Audio** — Basic sound support
 
 ---
 

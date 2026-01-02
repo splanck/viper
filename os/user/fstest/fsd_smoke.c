@@ -9,14 +9,44 @@ extern long __syscall2(long num, long arg0, long arg1);
 
 #define SYS_OPEN 0x40
 #define SYS_CLOSE 0x41
+#define SYS_CHANNEL_CLOSE 0x13  /* For closing channel handles from assign_get */
+#define SYS_ASSIGN_GET 0xC1     /* From syscall_nums.hpp */
+#define SYS_YIELD 0x03
 
 static void print_result(const char *label, long rc)
 {
     printf("[fsd_smoke] %s: %ld\n", label, rc);
 }
 
+/* Wait for FSD server to be registered (up to ~10 seconds).
+ * Each yield gives up the time slice (~1ms at 1000Hz timer). */
+static int wait_for_fsd(void)
+{
+    for (int i = 0; i < 10000; i++)
+    {
+        /* assign_get syscall: takes name, returns channel handle on success or negative error */
+        long result = __syscall1(SYS_ASSIGN_GET, (long)"FSD");
+        if (result >= 0)
+        {
+            __syscall1(SYS_CHANNEL_CLOSE, result); /* Close the channel handle */
+            return 0;
+        }
+        __syscall1(SYS_YIELD, 0); /* Yield and retry */
+    }
+    return -1;
+}
+
 int main(void)
 {
+    /* Wait for FSD server to be available before running tests.
+     * This is necessary because the smoke test may be spawned before
+     * servers are fully registered (to load ELF before blkd resets device). */
+    if (wait_for_fsd() != 0)
+    {
+        printf("[fsd_smoke] FAIL: FSD server not available\n");
+        return 1;
+    }
+
     const char *path = "/t/libc_fsd_smoke.txt";
     const char *payload = "libc->fsd smoke test\n";
 

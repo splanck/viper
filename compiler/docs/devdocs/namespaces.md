@@ -1030,6 +1030,175 @@ IF key <> "" THEN PRINT "You pressed: "; key
 Terminal.SetCursorVisible(1)        ' Show cursor
 ```
 
+#### Viper.Graphics
+
+The Graphics namespace provides 2D rendering, image manipulation, and game development utilities.
+
+**Viper.Graphics.Canvas** — Window and drawing surface:
+- Ctor: `NEW(STRING title, I64 width, I64 height)`
+- Properties:
+    - `Width -> I64` (read-only) — Canvas width in pixels
+    - `Height -> I64` (read-only) — Canvas height in pixels
+    - `ShouldClose -> I64` (read-only) — 1 if window close requested
+- Methods:
+    - `Clear(I64 color) -> VOID` — Fill with solid color
+    - `Plot(I64 x, I64 y, I64 color) -> VOID` — Set single pixel
+    - `Line(I64 x1, I64 y1, I64 x2, I64 y2, I64 color) -> VOID` — Draw line
+    - `Box(I64 x, I64 y, I64 w, I64 h, I64 color) -> VOID` — Filled rectangle
+    - `Frame(I64 x, I64 y, I64 w, I64 h, I64 color) -> VOID` — Rectangle outline
+    - `Disc(I64 cx, I64 cy, I64 r, I64 color) -> VOID` — Filled circle
+    - `Ring(I64 cx, I64 cy, I64 r, I64 color) -> VOID` — Circle outline
+    - `Text(I64 x, I64 y, STRING text, I64 color) -> VOID` — Draw text
+    - `Blit(I64 x, I64 y, PIXELS src) -> VOID` — Draw pixels (no alpha)
+    - `BlitAlpha(I64 x, I64 y, PIXELS src) -> VOID` — Draw with alpha blending
+    - `BlitRegion(I64 x, I64 y, PIXELS src, I64 sx, I64 sy, I64 sw, I64 sh) -> VOID` — Draw region
+    - `GradientH(I64 x, I64 y, I64 w, I64 h, I64 c1, I64 c2) -> VOID` — Horizontal gradient
+    - `GradientV(I64 x, I64 y, I64 w, I64 h, I64 c1, I64 c2) -> VOID` — Vertical gradient
+    - `Poll() -> I64` — Process events, return event type
+    - `KeyHeld(I64 keycode) -> I64` — Check if key is held down
+    - `Flip() -> VOID` — Present frame and limit FPS
+
+**Viper.Graphics.Color** — Color utilities (static class):
+- Methods (static):
+    - `RGB(I64 r, I64 g, I64 b) -> I64` — Create color from RGB (0-255)
+    - `RGBA(I64 r, I64 g, I64 b, I64 a) -> I64` — Create color with alpha
+    - `FromHSL(I64 h, I64 s, I64 l) -> I64` — Create from HSL (h:0-360, s:0-100, l:0-100)
+    - `GetR(I64 color) -> I64` — Extract red component
+    - `GetG(I64 color) -> I64` — Extract green component
+    - `GetB(I64 color) -> I64` — Extract blue component
+    - `GetA(I64 color) -> I64` — Extract alpha component
+    - `Lerp(I64 c1, I64 c2, I64 t) -> I64` — Linear interpolation (t:0-100)
+    - `Brighten(I64 color, I64 amount) -> I64` — Increase brightness
+    - `Darken(I64 color, I64 amount) -> I64` — Decrease brightness
+
+**Viper.Graphics.Pixels** — Software image buffer:
+- Ctor: `NEW(I64 width, I64 height)`
+- Properties:
+    - `Width -> I64` (read-only) — Image width in pixels
+    - `Height -> I64` (read-only) — Image height in pixels
+- Methods:
+    - `Get(I64 x, I64 y) -> I64` — Get pixel color at position
+    - `Set(I64 x, I64 y, I64 color) -> VOID` — Set pixel color
+    - `Fill(I64 color) -> VOID` — Fill entire image with color
+    - `Clear() -> VOID` — Clear to transparent black
+    - `Copy(I64 dx, I64 dy, PIXELS src, I64 sx, I64 sy, I64 sw, I64 sh) -> VOID` — Copy region
+    - `Clone() -> PIXELS` — Create copy of image
+    - `Scale(I64 w, I64 h) -> PIXELS` — Nearest-neighbor scale
+    - `Resize(I64 w, I64 h) -> PIXELS` — Bilinear interpolation scale
+    - `FlipH() -> PIXELS` — Flip horizontally
+    - `FlipV() -> PIXELS` — Flip vertically
+    - `RotateCW() -> PIXELS` — Rotate 90° clockwise
+    - `RotateCCW() -> PIXELS` — Rotate 90° counter-clockwise
+    - `Rotate180() -> PIXELS` — Rotate 180°
+    - `Invert() -> PIXELS` — Invert RGB colors
+    - `Grayscale() -> PIXELS` — Convert to grayscale
+    - `Tint(I64 color) -> PIXELS` — Apply color tint (multiply blend)
+    - `Blur(I64 radius) -> PIXELS` — Apply box blur (radius 1-10)
+    - `SaveBmp(STRING path) -> I64` — Save as BMP file
+    - `ToBytes() -> BYTES` — Get raw pixel data
+
+**Viper.Graphics.Sprite** — Animated sprite for 2D games:
+- Ctor: `NEW(PIXELS pixels)` — Create sprite from image
+- Properties:
+    - `X -> I64` — X position
+    - `Y -> I64` — Y position
+    - `Width -> I64` (read-only) — Sprite width
+    - `Height -> I64` (read-only) — Sprite height
+    - `ScaleX -> I64` — Horizontal scale (100 = 100%)
+    - `ScaleY -> I64` — Vertical scale (100 = 100%)
+    - `Rotation -> I64` — Rotation in degrees
+    - `Visible -> I64` — Visibility flag (0/1)
+    - `Frame -> I64` — Current animation frame
+    - `FrameCount -> I64` (read-only) — Number of animation frames
+- Methods:
+    - `Draw(CANVAS canvas) -> VOID` — Draw sprite to canvas
+    - `SetOrigin(I64 x, I64 y) -> VOID` — Set rotation/scale origin
+    - `AddFrame(PIXELS pixels) -> VOID` — Add animation frame
+    - `SetFrameDelay(I64 ms) -> VOID` — Set animation delay
+    - `Update() -> VOID` — Advance animation based on time
+    - `Overlaps(SPRITE other) -> I64` — AABB collision check
+    - `Contains(I64 px, I64 py) -> I64` — Point-in-sprite test
+    - `Move(I64 dx, I64 dy) -> VOID` — Move by delta
+
+**Viper.Graphics.Tilemap** — Tile-based map rendering:
+- Ctor: `NEW(I64 width, I64 height, I64 tileWidth, I64 tileHeight)` — Create tilemap (size in tiles)
+- Properties:
+    - `Width -> I64` (read-only) — Map width in tiles
+    - `Height -> I64` (read-only) — Map height in tiles
+    - `TileWidth -> I64` (read-only) — Tile width in pixels
+    - `TileHeight -> I64` (read-only) — Tile height in pixels
+    - `TileCount -> I64` (read-only) — Number of tiles in tileset
+- Methods:
+    - `SetTileset(PIXELS pixels) -> VOID` — Set tileset image
+    - `SetTile(I64 x, I64 y, I64 tileIndex) -> VOID` — Set tile at position
+    - `GetTile(I64 x, I64 y) -> I64` — Get tile at position
+    - `Fill(I64 tileIndex) -> VOID` — Fill all tiles
+    - `Clear() -> VOID` — Clear all tiles to 0
+    - `FillRect(I64 x, I64 y, I64 w, I64 h, I64 tileIndex) -> VOID` — Fill region
+    - `Draw(CANVAS canvas, I64 offsetX, I64 offsetY) -> VOID` — Draw entire map
+    - `DrawRegion(CANVAS c, I64 ox, I64 oy, I64 vx, I64 vy, I64 vw, I64 vh) -> VOID` — Draw visible region
+    - `ToTileX(I64 pixelX) -> I64` — Convert pixel X to tile X
+    - `ToTileY(I64 pixelY) -> I64` — Convert pixel Y to tile Y
+    - `ToPixelX(I64 tileX) -> I64` — Convert tile X to pixel X
+    - `ToPixelY(I64 tileY) -> I64` — Convert tile Y to pixel Y
+
+**Viper.Graphics.Camera** — 2D viewport camera:
+- Ctor: `NEW(I64 viewWidth, I64 viewHeight)` — Create camera with viewport size
+- Properties:
+    - `X -> I64` — Camera world X position
+    - `Y -> I64` — Camera world Y position
+    - `Zoom -> I64` — Zoom level (100 = 100%)
+    - `Rotation -> I64` — Rotation in degrees
+    - `Width -> I64` (read-only) — Viewport width
+    - `Height -> I64` (read-only) — Viewport height
+- Methods:
+    - `Follow(I64 worldX, I64 worldY) -> VOID` — Center on position
+    - `ToScreenX(I64 worldX) -> I64` — Convert world to screen X
+    - `ToScreenY(I64 worldY) -> I64` — Convert world to screen Y
+    - `ToWorldX(I64 screenX) -> I64` — Convert screen to world X
+    - `ToWorldY(I64 screenY) -> I64` — Convert screen to world Y
+    - `Move(I64 dx, I64 dy) -> VOID` — Move by delta
+    - `SetBounds(I64 minX, I64 minY, I64 maxX, I64 maxY) -> VOID` — Constrain camera
+    - `ClearBounds() -> VOID` — Remove constraints
+
+Graphics example - drawing and sprites:
+
+```basic
+' Create a window
+DIM canvas AS Viper.Graphics.Canvas
+canvas = NEW Viper.Graphics.Canvas("My Game", 800, 600)
+
+' Create colors
+DIM red AS INTEGER, blue AS INTEGER
+red = Viper.Graphics.Color.RGB(255, 0, 0)
+blue = Viper.Graphics.Color.RGB(0, 0, 255)
+
+' Create and configure a sprite
+DIM spriteImg AS Viper.Graphics.Pixels
+spriteImg = NEW Viper.Graphics.Pixels(32, 32)
+spriteImg.Fill(red)
+
+DIM player AS Viper.Graphics.Sprite
+player = NEW Viper.Graphics.Sprite(spriteImg)
+player.X = 100
+player.Y = 100
+
+' Game loop
+WHILE canvas.ShouldClose = 0
+    canvas.Poll()
+
+    ' Move with arrow keys
+    IF canvas.KeyHeld(262) THEN player.X = player.X + 2  ' Right
+    IF canvas.KeyHeld(263) THEN player.X = player.X - 2  ' Left
+
+    ' Draw
+    canvas.Clear(blue)
+    player.Draw(canvas)
+    canvas.Flip()
+WEND
+END
+```
+
 ---
 
 ## Future Enhancements (Track B)

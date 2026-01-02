@@ -44,6 +44,9 @@ add_subdirectory(libtls)
 # Build the HTTP client library
 add_subdirectory(libhttp)
 
+# Build the GUI client library
+add_subdirectory(libgui)
+
 # Helper function to create user programs with libc (.prg extension)
 function(add_user_program name)
     add_executable(${name}.prg ${ARGN})
@@ -149,3 +152,20 @@ add_ssh_program(ssh ssh/ssh.c)
 
 # sftp - SFTP client
 add_ssh_program(sftp sftp/sftp.c)
+
+# Helper function for GUI programs (.prg extension)
+function(add_gui_program name)
+    add_executable(${name}.prg ${ARGN})
+    target_compile_options(${name}.prg PRIVATE ${USER_COMPILE_OPTIONS})
+    target_link_options(${name}.prg PRIVATE ${USER_LINK_OPTIONS})
+    target_include_directories(${name}.prg PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}
+            ${CMAKE_CURRENT_SOURCE_DIR}/libc/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/libc/include/c++
+            ${CMAKE_CURRENT_SOURCE_DIR}/libgui/include
+    )
+    target_link_libraries(${name}.prg PRIVATE vipergui viperlibc)
+endfunction()
+
+# hello_gui - GUI test program
+add_gui_program(hello_gui hello_gui/hello_gui.c)

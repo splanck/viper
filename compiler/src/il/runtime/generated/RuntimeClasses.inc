@@ -398,7 +398,15 @@ RUNTIME_CLASS(
         RUNTIME_METHOD("PolygonFrame", "void(ptr,i64,i64)", "Viper.Graphics.Canvas.PolygonFrame"),
         RUNTIME_METHOD("GetPixel", "i64(i64,i64)", "Viper.Graphics.Canvas.GetPixel"),
         RUNTIME_METHOD("CopyRect", "obj(i64,i64,i64,i64)", "Viper.Graphics.Canvas.CopyRect"),
-        RUNTIME_METHOD("SaveBmp", "i64(str)", "Viper.Graphics.Canvas.SaveBmp")))
+        RUNTIME_METHOD("SaveBmp", "i64(str)", "Viper.Graphics.Canvas.SaveBmp"),
+        RUNTIME_METHOD("SetClipRect", "void(i64,i64,i64,i64)", "Viper.Graphics.Canvas.SetClipRect"),
+        RUNTIME_METHOD("ClearClipRect", "void()", "Viper.Graphics.Canvas.ClearClipRect"),
+        RUNTIME_METHOD("SetTitle", "void(str)", "Viper.Graphics.Canvas.SetTitle"),
+        RUNTIME_METHOD("Screenshot", "obj()", "Viper.Graphics.Canvas.Screenshot"),
+        RUNTIME_METHOD("Fullscreen", "void()", "Viper.Graphics.Canvas.Fullscreen"),
+        RUNTIME_METHOD("Windowed", "void()", "Viper.Graphics.Canvas.Windowed"),
+        RUNTIME_METHOD("GradientH", "void(i64,i64,i64,i64,i64,i64)", "Viper.Graphics.Canvas.GradientH"),
+        RUNTIME_METHOD("GradientV", "void(i64,i64,i64,i64,i64,i64)", "Viper.Graphics.Canvas.GradientV")))
 
 RUNTIME_CLASS(
     "Viper.Graphics.Color",
@@ -407,7 +415,18 @@ RUNTIME_CLASS(
     "",
     RUNTIME_PROPS(),
     RUNTIME_METHODS(RUNTIME_METHOD("RGB", "i64(i64,i64,i64)", "Viper.Graphics.Color.RGB"),
-                    RUNTIME_METHOD("RGBA", "i64(i64,i64,i64,i64)", "Viper.Graphics.Color.RGBA")))
+                    RUNTIME_METHOD("RGBA", "i64(i64,i64,i64,i64)", "Viper.Graphics.Color.RGBA"),
+                    RUNTIME_METHOD("FromHSL", "i64(i64,i64,i64)", "Viper.Graphics.Color.FromHSL"),
+                    RUNTIME_METHOD("GetH", "i64(i64)", "Viper.Graphics.Color.GetH"),
+                    RUNTIME_METHOD("GetS", "i64(i64)", "Viper.Graphics.Color.GetS"),
+                    RUNTIME_METHOD("GetL", "i64(i64)", "Viper.Graphics.Color.GetL"),
+                    RUNTIME_METHOD("Lerp", "i64(i64,i64,i64)", "Viper.Graphics.Color.Lerp"),
+                    RUNTIME_METHOD("GetR", "i64(i64)", "Viper.Graphics.Color.GetR"),
+                    RUNTIME_METHOD("GetG", "i64(i64)", "Viper.Graphics.Color.GetG"),
+                    RUNTIME_METHOD("GetB", "i64(i64)", "Viper.Graphics.Color.GetB"),
+                    RUNTIME_METHOD("GetA", "i64(i64)", "Viper.Graphics.Color.GetA"),
+                    RUNTIME_METHOD("Brighten", "i64(i64,i64)", "Viper.Graphics.Color.Brighten"),
+                    RUNTIME_METHOD("Darken", "i64(i64,i64)", "Viper.Graphics.Color.Darken")))
 
 RUNTIME_CLASS(
     "Viper.Graphics.Pixels",
@@ -430,7 +449,85 @@ RUNTIME_CLASS(
         RUNTIME_METHOD("RotateCW", "obj()", "Viper.Graphics.Pixels.RotateCW"),
         RUNTIME_METHOD("RotateCCW", "obj()", "Viper.Graphics.Pixels.RotateCCW"),
         RUNTIME_METHOD("Rotate180", "obj()", "Viper.Graphics.Pixels.Rotate180"),
-        RUNTIME_METHOD("Scale", "obj(i64,i64)", "Viper.Graphics.Pixels.Scale")))
+        RUNTIME_METHOD("Scale", "obj(i64,i64)", "Viper.Graphics.Pixels.Scale"),
+        RUNTIME_METHOD("Invert", "obj()", "Viper.Graphics.Pixels.Invert"),
+        RUNTIME_METHOD("Grayscale", "obj()", "Viper.Graphics.Pixels.Grayscale"),
+        RUNTIME_METHOD("Tint", "obj(i64)", "Viper.Graphics.Pixels.Tint"),
+        RUNTIME_METHOD("Blur", "obj(i64)", "Viper.Graphics.Pixels.Blur"),
+        RUNTIME_METHOD("Resize", "obj(i64,i64)", "Viper.Graphics.Pixels.Resize")))
+
+RUNTIME_CLASS(
+    "Viper.Graphics.Sprite",
+    RTCLS_Sprite,
+    "obj",
+    "Viper.Graphics.Sprite.New",
+    RUNTIME_PROPS(
+        RUNTIME_PROP("X", "i64", "Viper.Graphics.Sprite.get_X", "Viper.Graphics.Sprite.set_X"),
+        RUNTIME_PROP("Y", "i64", "Viper.Graphics.Sprite.get_Y", "Viper.Graphics.Sprite.set_Y"),
+        RUNTIME_PROP("Width", "i64", "Viper.Graphics.Sprite.get_Width", nullptr),
+        RUNTIME_PROP("Height", "i64", "Viper.Graphics.Sprite.get_Height", nullptr),
+        RUNTIME_PROP("ScaleX", "i64", "Viper.Graphics.Sprite.get_ScaleX", "Viper.Graphics.Sprite.set_ScaleX"),
+        RUNTIME_PROP("ScaleY", "i64", "Viper.Graphics.Sprite.get_ScaleY", "Viper.Graphics.Sprite.set_ScaleY"),
+        RUNTIME_PROP("Rotation", "i64", "Viper.Graphics.Sprite.get_Rotation", "Viper.Graphics.Sprite.set_Rotation"),
+        RUNTIME_PROP("Visible", "i64", "Viper.Graphics.Sprite.get_Visible", "Viper.Graphics.Sprite.set_Visible"),
+        RUNTIME_PROP("Frame", "i64", "Viper.Graphics.Sprite.get_Frame", "Viper.Graphics.Sprite.set_Frame"),
+        RUNTIME_PROP("FrameCount", "i64", "Viper.Graphics.Sprite.get_FrameCount", nullptr)),
+    RUNTIME_METHODS(
+        RUNTIME_METHOD("Draw", "void(obj)", "Viper.Graphics.Sprite.Draw"),
+        RUNTIME_METHOD("SetOrigin", "void(i64,i64)", "Viper.Graphics.Sprite.SetOrigin"),
+        RUNTIME_METHOD("AddFrame", "void(obj)", "Viper.Graphics.Sprite.AddFrame"),
+        RUNTIME_METHOD("SetFrameDelay", "void(i64)", "Viper.Graphics.Sprite.SetFrameDelay"),
+        RUNTIME_METHOD("Update", "void()", "Viper.Graphics.Sprite.Update"),
+        RUNTIME_METHOD("Overlaps", "i64(obj)", "Viper.Graphics.Sprite.Overlaps"),
+        RUNTIME_METHOD("Contains", "i64(i64,i64)", "Viper.Graphics.Sprite.Contains"),
+        RUNTIME_METHOD("Move", "void(i64,i64)", "Viper.Graphics.Sprite.Move")))
+
+RUNTIME_CLASS(
+    "Viper.Graphics.Tilemap",
+    RTCLS_Tilemap,
+    "obj",
+    "Viper.Graphics.Tilemap.New",
+    RUNTIME_PROPS(
+        RUNTIME_PROP("Width", "i64", "Viper.Graphics.Tilemap.get_Width", nullptr),
+        RUNTIME_PROP("Height", "i64", "Viper.Graphics.Tilemap.get_Height", nullptr),
+        RUNTIME_PROP("TileWidth", "i64", "Viper.Graphics.Tilemap.get_TileWidth", nullptr),
+        RUNTIME_PROP("TileHeight", "i64", "Viper.Graphics.Tilemap.get_TileHeight", nullptr),
+        RUNTIME_PROP("TileCount", "i64", "Viper.Graphics.Tilemap.get_TileCount", nullptr)),
+    RUNTIME_METHODS(
+        RUNTIME_METHOD("SetTileset", "void(obj)", "Viper.Graphics.Tilemap.SetTileset"),
+        RUNTIME_METHOD("SetTile", "void(i64,i64,i64)", "Viper.Graphics.Tilemap.SetTile"),
+        RUNTIME_METHOD("GetTile", "i64(i64,i64)", "Viper.Graphics.Tilemap.GetTile"),
+        RUNTIME_METHOD("Fill", "void(i64)", "Viper.Graphics.Tilemap.Fill"),
+        RUNTIME_METHOD("Clear", "void()", "Viper.Graphics.Tilemap.Clear"),
+        RUNTIME_METHOD("FillRect", "void(i64,i64,i64,i64,i64)", "Viper.Graphics.Tilemap.FillRect"),
+        RUNTIME_METHOD("Draw", "void(obj,i64,i64)", "Viper.Graphics.Tilemap.Draw"),
+        RUNTIME_METHOD("DrawRegion", "void(obj,i64,i64,i64,i64,i64,i64)", "Viper.Graphics.Tilemap.DrawRegion"),
+        RUNTIME_METHOD("ToTileX", "i64(i64)", "Viper.Graphics.Tilemap.ToTileX"),
+        RUNTIME_METHOD("ToTileY", "i64(i64)", "Viper.Graphics.Tilemap.ToTileY"),
+        RUNTIME_METHOD("ToPixelX", "i64(i64)", "Viper.Graphics.Tilemap.ToPixelX"),
+        RUNTIME_METHOD("ToPixelY", "i64(i64)", "Viper.Graphics.Tilemap.ToPixelY")))
+
+RUNTIME_CLASS(
+    "Viper.Graphics.Camera",
+    RTCLS_Camera,
+    "obj",
+    "Viper.Graphics.Camera.New",
+    RUNTIME_PROPS(
+        RUNTIME_PROP("X", "i64", "Viper.Graphics.Camera.get_X", "Viper.Graphics.Camera.set_X"),
+        RUNTIME_PROP("Y", "i64", "Viper.Graphics.Camera.get_Y", "Viper.Graphics.Camera.set_Y"),
+        RUNTIME_PROP("Zoom", "i64", "Viper.Graphics.Camera.get_Zoom", "Viper.Graphics.Camera.set_Zoom"),
+        RUNTIME_PROP("Rotation", "i64", "Viper.Graphics.Camera.get_Rotation", "Viper.Graphics.Camera.set_Rotation"),
+        RUNTIME_PROP("Width", "i64", "Viper.Graphics.Camera.get_Width", nullptr),
+        RUNTIME_PROP("Height", "i64", "Viper.Graphics.Camera.get_Height", nullptr)),
+    RUNTIME_METHODS(
+        RUNTIME_METHOD("Follow", "void(i64,i64)", "Viper.Graphics.Camera.Follow"),
+        RUNTIME_METHOD("ToScreenX", "i64(i64)", "Viper.Graphics.Camera.ToScreenX"),
+        RUNTIME_METHOD("ToScreenY", "i64(i64)", "Viper.Graphics.Camera.ToScreenY"),
+        RUNTIME_METHOD("ToWorldX", "i64(i64)", "Viper.Graphics.Camera.ToWorldX"),
+        RUNTIME_METHOD("ToWorldY", "i64(i64)", "Viper.Graphics.Camera.ToWorldY"),
+        RUNTIME_METHOD("Move", "void(i64,i64)", "Viper.Graphics.Camera.Move"),
+        RUNTIME_METHOD("SetBounds", "void(i64,i64,i64,i64)", "Viper.Graphics.Camera.SetBounds"),
+        RUNTIME_METHOD("ClearBounds", "void()", "Viper.Graphics.Camera.ClearBounds")))
 
 RUNTIME_CLASS(
     "Viper.Input.Keyboard",

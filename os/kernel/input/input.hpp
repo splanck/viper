@@ -142,4 +142,68 @@ i32 getchar();
  */
 bool has_char();
 
+// =============================================================================
+// Mouse Support
+// =============================================================================
+
+/**
+ * @brief Mouse state structure returned by get_mouse_state().
+ *
+ * @details
+ * Tracks absolute cursor position (clamped to screen bounds), accumulated
+ * deltas since last query, and current button state.
+ */
+struct MouseState
+{
+    i32 x;       ///< Absolute X position (clamped to screen bounds)
+    i32 y;       ///< Absolute Y position (clamped to screen bounds)
+    i32 dx;      ///< X movement delta since last query
+    i32 dy;      ///< Y movement delta since last query
+    u8 buttons;  ///< Button bitmask: BIT0=left, BIT1=right, BIT2=middle
+    u8 _pad[3];  ///< Padding for alignment
+};
+
+/**
+ * @brief Get the current mouse state.
+ *
+ * @details
+ * Returns the current mouse position and button state. The delta values
+ * (dx, dy) represent movement since the last call to this function and
+ * are reset after reading.
+ *
+ * @return Current mouse state.
+ */
+MouseState get_mouse_state();
+
+/**
+ * @brief Set the screen bounds for mouse cursor clamping.
+ *
+ * @details
+ * The mouse position will be clamped to [0, width-1] x [0, height-1].
+ * Should be called once during boot after framebuffer initialization.
+ *
+ * @param width Screen width in pixels.
+ * @param height Screen height in pixels.
+ */
+void set_mouse_bounds(u32 width, u32 height);
+
+/**
+ * @brief Get the current mouse position.
+ *
+ * @param x Output: current X coordinate.
+ * @param y Output: current Y coordinate.
+ */
+void get_mouse_position(i32 &x, i32 &y);
+
+/**
+ * @brief Set the mouse cursor position.
+ *
+ * @details
+ * Sets the absolute cursor position, clamped to screen bounds.
+ *
+ * @param x New X coordinate.
+ * @param y New Y coordinate.
+ */
+void set_mouse_position(i32 x, i32 y);
+
 } // namespace input

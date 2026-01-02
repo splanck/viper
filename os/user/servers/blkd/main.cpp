@@ -128,10 +128,16 @@ static bool find_blk_device(u64 *mmio_phys, u32 *irq)
         u32 device_id = mmio[2]; // DEVICE_ID at offset 8
         if (device_id == virtio::device_type::BLK)
         {
-            // Skip devices already configured (e.g., claimed by the kernel)
+            // Check if device is already in use (kernel's block driver)
             u32 status = mmio[virtio::reg::STATUS / 4];
             if (status != 0)
             {
+                // Device is in use by kernel - skip it and look for another one.
+                // The build system creates two virtio-blk devices: one for kernel,
+                // one for blkd. We need to find the unused one.
+                debug_print("[blkd] Skipping in-use device at ");
+                debug_print_hex(addr);
+                debug_print("\n");
                 continue;
             }
 

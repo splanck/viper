@@ -25,6 +25,7 @@ enum MsgType : uint32_t
     INP_GET_EVENT = 11,     // Get raw input event (non-blocking)
     INP_GET_MODIFIERS = 12, // Query current modifier state
     INP_HAS_INPUT = 13,     // Check if input is available
+    INP_GET_MOUSE = 14,     // Get current mouse state
 
     // Async notifications (server -> client)
     INP_EVENT_NOTIFY = 0x80, // Async event notification
@@ -35,6 +36,7 @@ enum MsgType : uint32_t
     INP_GET_EVENT_REPLY = 0x8B,
     INP_GET_MODIFIERS_REPLY = 0x8C,
     INP_HAS_INPUT_REPLY = 0x8D,
+    INP_GET_MOUSE_REPLY = 0x8E,
 };
 
 // Input event types
@@ -154,6 +156,26 @@ struct EventNotify
 {
     uint32_t type; // INP_EVENT_NOTIFY
     InputEvent event;
+};
+
+// Request: Get mouse state
+struct GetMouseRequest
+{
+    uint32_t type; // INP_GET_MOUSE
+    uint32_t request_id;
+};
+
+// Reply: Mouse state
+struct GetMouseReply
+{
+    uint32_t type; // INP_GET_MOUSE_REPLY
+    uint32_t request_id;
+    int32_t x;         // Current X position
+    int32_t y;         // Current Y position
+    int32_t dx;        // X delta since last query
+    int32_t dy;        // Y delta since last query
+    uint8_t buttons;   // Button bitmask (bit0=left, bit1=right, bit2=middle)
+    uint8_t _pad[3];
 };
 
 } // namespace input_protocol

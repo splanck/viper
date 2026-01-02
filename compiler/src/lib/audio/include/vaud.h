@@ -34,6 +34,7 @@
 #pragma once
 
 #include "vaud_config.h"
+#include <stddef.h>
 #include <stdint.h>
 
 #ifdef __cplusplus

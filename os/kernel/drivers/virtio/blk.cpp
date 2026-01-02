@@ -17,13 +17,66 @@ namespace kc = kernel::constants;
  *
  * The driver assumes buffers are identity-mapped so it can compute physical
  * addresses directly using `pmm::virt_to_phys`.
+ *
+ * Two-disk architecture: The kernel uses the SYSTEM disk (2MB) for /sys,
+ * while the larger USER disk (8MB) is handled by userspace blkd.
  */
 
 // Freestanding offsetof
 #define OFFSETOF(type, member) __builtin_offsetof(type, member)
 
+// Expected capacity for system disk (2MB = 4096 sectors)
+constexpr u64 SYSTEM_DISK_SECTORS = 4096;
+
 namespace virtio
 {
+
+/**
+ * @brief Probe a block device's capacity without claiming it.
+ *
+ * @param base MMIO base address of the device.
+ * @return Capacity in sectors, or 0 if not a valid block device.
+ */
+static u64 probe_blk_capacity(u64 base)
+{
+    volatile u32 *mmio = reinterpret_cast<volatile u32 *>(base);
+
+    // Check magic
+    u32 magic = mmio[reg::MAGIC / 4];
+    if (magic != MAGIC_VALUE)
+        return 0;
+
+    // Check it's a block device
+    u32 dev_id = mmio[reg::DEVICE_ID / 4];
+    if (dev_id != device_type::BLK)
+        return 0;
+
+    // Read capacity from config space (offset 0x100)
+    volatile u32 *config = reinterpret_cast<volatile u32 *>(base + reg::CONFIG);
+    u32 cap_lo = config[0];
+    u32 cap_hi = config[1];
+    return (static_cast<u64>(cap_hi) << 32) | cap_lo;
+}
+
+/**
+ * @brief Find a block device with specific capacity.
+ *
+ * @param expected_sectors Expected capacity in sectors.
+ * @return MMIO base address of matching device, or 0 if not found.
+ */
+static u64 find_blk_by_capacity(u64 expected_sectors)
+{
+    // Scan virtio MMIO range for block devices
+    for (u64 addr = 0x0a000000; addr < 0x0a004000; addr += 0x200)
+    {
+        u64 capacity = probe_blk_capacity(addr);
+        if (capacity == expected_sectors)
+        {
+            return addr;
+        }
+    }
+    return 0;
+}
 
 // Global block device instance
 static BlkDevice g_blk_device;
@@ -56,8 +109,15 @@ BlkDevice *blk_device()
 /** @copydoc virtio::BlkDevice::init */
 bool BlkDevice::init()
 {
-    // Find virtio-blk device
-    u64 base = find_device(device_type::BLK);
+    // Two-disk architecture: find the SYSTEM disk (2MB = 4096 sectors)
+    // The larger USER disk (8MB) is handled by userspace blkd
+    u64 base = find_blk_by_capacity(SYSTEM_DISK_SECTORS);
+    if (!base)
+    {
+        // Fallback: try any block device (for single-disk setups)
+        serial::puts("[virtio-blk] System disk (2MB) not found, trying first available\n");
+        base = find_device(device_type::BLK);
+    }
     if (!base)
     {
         serial::puts("[virtio-blk] No block device found\n");

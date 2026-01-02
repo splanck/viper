@@ -1,6 +1,27 @@
 # CODEMAP: Graphics Library
 
-Cross-platform software 2D graphics library (`src/lib/graphics/`).
+Cross-platform software 2D graphics library (`src/lib/graphics/`) and Viper runtime graphics classes (`src/runtime/rt_*.c`).
+
+## Runtime Classes (`src/runtime/`)
+
+The Viper.Graphics.* namespace is implemented by these C runtime files:
+
+| File             | Purpose                                                                   |
+|------------------|---------------------------------------------------------------------------|
+| `rt_graphics.h`  | Canvas and Color class declarations                                       |
+| `rt_graphics.c`  | Canvas drawing, Color utilities (RGB, HSL, lerp, brighten/darken)         |
+| `rt_pixels.h`    | Pixels class declaration                                                  |
+| `rt_pixels.c`    | Software image buffer, image processing (invert, grayscale, blur, resize) |
+| `rt_sprite.h`    | Sprite class declaration                                                  |
+| `rt_sprite.c`    | Animated sprite with animation, scaling, collision detection              |
+| `rt_tilemap.h`   | Tilemap class declaration                                                 |
+| `rt_tilemap.c`   | Tile-based map rendering with tileset support                             |
+| `rt_camera.h`    | Camera class declaration                                                  |
+| `rt_camera.c`    | 2D viewport camera with zoom, bounds, coordinate transforms               |
+
+## Low-Level C Library
+
+The underlying ViperGFX library provides platform-specific window management and drawing.
 
 ## Public API (`include/`)
 

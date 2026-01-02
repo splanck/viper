@@ -405,7 +405,12 @@ int vfprintf(FILE *stream, const char *format, va_list ap)
     int result = vsnprintf_internal(buf, sizeof(buf), format, ap);
     if (result > 0)
     {
-        write(stream->fd, buf, result);
+        long written = write(stream->fd, buf, result);
+        if (written < 0 || written != result)
+        {
+            stream->error = 1;
+            return -1;
+        }
     }
     return result;
 }

@@ -3,6 +3,7 @@
  * @brief Filesystem shell commands for vinit.
  *
  * Uses fsclient to route all file operations through fsd (microkernel path).
+ * Two-disk architecture: /sys paths go to kernel VFS, other paths to fsd.
  */
 #include "vinit.hpp"
 
@@ -11,10 +12,159 @@
 // Global fsclient instance for all filesystem operations
 static fsclient::Client g_fsd;
 
-// Check if fsd is available and connected
+// =============================================================================
+// Path Helpers for Two-Disk Architecture
+// =============================================================================
+
+/**
+ * @brief Check if path is exactly "/sys" or starts with "/sys/".
+ */
+static bool is_sys_path(const char *path)
+{
+    if (!path || path[0] != '/')
+        return false;
+    if (path[1] == 's' && path[2] == 'y' && path[3] == 's')
+    {
+        // /sys or /sys/...
+        return path[4] == '\0' || path[4] == '/';
+    }
+    return false;
+}
+
+/**
+ * @brief Check if path is the root directory "/".
+ */
+static bool is_root_path(const char *path)
+{
+    return path && path[0] == '/' && path[1] == '\0';
+}
+
+/**
+ * @brief Normalize a path, resolving . and .. components.
+ * @param path Input path (absolute or relative).
+ * @param cwd Current working directory (used for relative paths).
+ * @param out Output buffer for normalized path.
+ * @param out_size Size of output buffer.
+ * @return true on success.
+ */
+static bool normalize_path(const char *path, const char *cwd, char *out, usize out_size)
+{
+    if (!path || !out || out_size < 2)
+        return false;
+
+    // Start with cwd for relative paths
+    char buf[512];
+    usize pos = 0;
+
+    if (path[0] == '/')
+    {
+        // Absolute path
+        buf[pos++] = '/';
+        path++;
+    }
+    else
+    {
+        // Relative path - start from cwd
+        for (usize i = 0; cwd[i] && pos < sizeof(buf) - 1; i++)
+        {
+            buf[pos++] = cwd[i];
+        }
+        if (pos > 0 && buf[pos - 1] != '/')
+        {
+            buf[pos++] = '/';
+        }
+    }
+
+    // Process path components
+    while (*path && pos < sizeof(buf) - 1)
+    {
+        // Skip leading slashes
+        while (*path == '/')
+            path++;
+        if (*path == '\0')
+            break;
+
+        // Find end of component
+        const char *start = path;
+        while (*path && *path != '/')
+            path++;
+        usize len = path - start;
+
+        if (len == 1 && start[0] == '.')
+        {
+            // "." - skip
+            continue;
+        }
+        else if (len == 2 && start[0] == '.' && start[1] == '.')
+        {
+            // ".." - go up one level
+            if (pos > 1)
+            {
+                pos--; // Remove trailing slash
+                while (pos > 1 && buf[pos - 1] != '/')
+                    pos--;
+            }
+        }
+        else
+        {
+            // Normal component
+            for (usize i = 0; i < len && pos < sizeof(buf) - 1; i++)
+            {
+                buf[pos++] = start[i];
+            }
+            if (pos < sizeof(buf) - 1)
+            {
+                buf[pos++] = '/';
+            }
+        }
+    }
+
+    // Remove trailing slash unless root
+    if (pos > 1 && buf[pos - 1] == '/')
+        pos--;
+    buf[pos] = '\0';
+
+    // Copy to output
+    for (usize i = 0; i <= pos && i < out_size; i++)
+    {
+        out[i] = buf[i];
+    }
+    out[out_size - 1] = '\0';
+    return true;
+}
+
+/**
+ * @brief Check if fsd is available and connected.
+ *
+ * Two-disk architecture: First checks if fsd registered at startup,
+ * then tries to connect. In system-only mode (no user disk), this
+ * will always fail.
+ */
 static bool fsd_available()
 {
+    // Quick check if fsd never started
+    if (!is_fsd_available())
+        return false;
+
+    // Try to connect (may fail if fsd crashed)
     return g_fsd.connect() == 0;
+}
+
+/**
+ * @brief Print fsd unavailable error with two-disk hint.
+ */
+static void print_fsd_unavailable(const char *cmd)
+{
+    print_str(cmd);
+    print_str(": filesystem not available");
+    if (!is_fsd_available())
+    {
+        print_str(" (user disk offline)\n");
+    }
+    else
+    {
+        print_str("\n");
+    }
 }
 
 void cmd_cd(const char *args)
@@ -23,35 +173,164 @@ void cmd_cd(const char *args)
     if (args && args[0])
         path = args;
 
-    i32 result = sys::chdir(path);
-    if (result < 0)
+    // Normalize the path first
+    char normalized[256];
+    if (!normalize_path(path, current_dir, normalized, sizeof(normalized)))
     {
-        print_str("CD: ");
-        print_str(path);
-        print_str(": No such directory\n");
+        print_str("CD: invalid path\n");
         last_rc = RC_ERROR;
-        last_error = "Directory not found";
+        last_error = "Invalid path";
         return;
     }
 
-    refresh_current_dir();
+    // Two-disk architecture: route by path
+    if (is_sys_path(normalized))
+    {
+        // /sys paths - use kernel chdir
+        i32 result = sys::chdir(normalized);
+        if (result < 0)
+        {
+            print_str("CD: ");
+            print_str(normalized);
+            print_str(": No such directory\n");
+            last_rc = RC_ERROR;
+            last_error = "Directory not found";
+            return;
+        }
+        refresh_current_dir();
+    }
+    else if (is_root_path(normalized))
+    {
+        // Root "/" - always valid (shows both sys and user dirs)
+        // Update current_dir directly - kernel doesn't know about unified root
+        current_dir[0] = '/';
+        current_dir[1] = '\0';
+    }
+    else
+    {
+        // User paths - validate via fsd
+        if (!fsd_available())
+        {
+            print_fsd_unavailable("CD");
+            last_rc = RC_ERROR;
+            last_error = "FSD not available";
+            return;
+        }
+
+        // Try to open as directory to verify it exists
+        u32 dir_id = 0;
+        i32 err = g_fsd.open(normalized, 0, &dir_id);
+        if (err != 0)
+        {
+            print_str("CD: ");
+            print_str(normalized);
+            print_str(": No such directory\n");
+            last_rc = RC_ERROR;
+            last_error = "Directory not found";
+            return;
+        }
+        g_fsd.close(dir_id);
+
+        // Update current_dir directly (kernel chdir doesn't know about fsd paths)
+        usize i = 0;
+        while (normalized[i] && i < MAX_PATH_LEN - 1)
+        {
+            current_dir[i] = normalized[i];
+            i++;
+        }
+        current_dir[i] = '\0';
+    }
+
     last_rc = RC_OK;
 }
 
 void cmd_pwd()
 {
-    char buf[256];
-    i64 len = sys::getcwd(buf, sizeof(buf));
-    if (len < 0)
-    {
-        print_str("PWD: Failed to get current directory\n");
-        last_rc = RC_ERROR;
-        last_error = "getcwd failed";
-        return;
-    }
-    print_str(buf);
+    // Two-disk architecture: we track cwd ourselves for user paths
+    print_str(current_dir);
     print_str("\n");
     last_rc = RC_OK;
+}
+
+/**
+ * @brief Print a single directory entry in compact format.
+ */
+static void print_dir_entry(const char *name, bool is_dir, usize *col)
+{
+    if (is_dir)
+    {
+        print_str("  ");
+        print_str(name);
+        print_str("/");
+        usize namelen = strlen(name) + 1;
+        while (namelen < 18)
+        {
+            print_char(' ');
+            namelen++;
+        }
+    }
+    else
+    {
+        print_str("  ");
+        print_str(name);
+        usize namelen = strlen(name);
+        while (namelen < 18)
+        {
+            print_char(' ');
+            namelen++;
+        }
+    }
+
+    (*col)++;
+    if (*col >= 3)
+    {
+        print_str("\n");
+        *col = 0;
+    }
+}
+
+/**
+ * @brief List /sys directory using kernel VFS.
+ */
+static void dir_sys_directory(const char *path, usize *count, usize *col)
+{
+    // Open via kernel VFS
+    i32 fd = sys::open(path, sys::O_RDONLY);
+    if (fd < 0)
+    {
+        print_str("Dir: cannot open \"");
+        print_str(path);
+        print_str("\"\n");
+        return;
+    }
+
+    // Read directory entries using kernel readdir
+    // Use larger buffer to fit all entries (DirEnt is ~268 bytes each)
+    u8 buf[4096];
+    i64 bytes = sys::readdir(fd, buf, sizeof(buf));
+    if (bytes > 0)
+    {
+        usize offset = 0;
+        while (offset < static_cast<usize>(bytes))
+        {
+            sys::DirEnt *ent = reinterpret_cast<sys::DirEnt *>(buf + offset);
+            if (ent->reclen == 0)
+                break;
+
+            // Skip . and ..
+            if (!(ent->name[0] == '.' && (ent->name[1] == '\0' ||
+                                          (ent->name[1] == '.' && ent->name[2] == '\0'))))
+            {
+                bool is_dir = (ent->type == 2);
+                print_dir_entry(ent->name, is_dir, col);
+                (*count)++;
+            }
+
+            offset += ent->reclen;
+        }
+    }
+
+    sys::close(fd);
 }
 
 void cmd_dir(const char *path)
@@ -59,70 +338,100 @@ void cmd_dir(const char *path)
     if (!path || *path == '\0')
         path = current_dir;
 
-    if (!fsd_available())
+    // Normalize the path
+    char normalized[256];
+    if (!normalize_path(path, current_dir, normalized, sizeof(normalized)))
     {
-        print_str("Dir: filesystem not available\n");
+        print_str("Dir: invalid path\n");
         last_rc = RC_ERROR;
-        last_error = "FSD not available";
-        return;
-    }
-
-    u32 dir_id = 0;
-    i32 err = g_fsd.open(path, 0, &dir_id); // O_RDONLY = 0
-    if (err != 0)
-    {
-        print_str("Dir: cannot open \"");
-        print_str(path);
-        print_str("\"\n");
-        last_rc = RC_ERROR;
-        last_error = "Directory not found";
         return;
     }
 
     usize count = 0;
     usize col = 0;
 
-    while (true)
+    // Two-disk architecture: handle different path types
+    if (is_root_path(normalized))
     {
-        u64 ino = 0;
-        u8 type = 0;
-        char name[256];
-        i32 rc = g_fsd.readdir_one(dir_id, &ino, &type, name, sizeof(name));
-        if (rc <= 0)
-            break;
-
-        if (type == 2) // Directory
-        {
-            print_str("  ");
-            print_str(name);
-            print_str("/");
-            usize namelen = strlen(name) + 1;
-            while (namelen < 18)
-            {
-                print_char(' ');
-                namelen++;
-            }
-        }
-        else
-        {
-            print_str("  ");
-            print_str(name);
-            usize namelen = strlen(name);
-            while (namelen < 18)
-            {
-                print_char(' ');
-                namelen++;
-            }
-        }
-
-        col++;
-        if (col >= 3)
-        {
-            print_str("\n");
-            col = 0;
-        }
-
+        // Root "/" - show synthetic /sys plus fsd contents
+        // First, show /sys as virtual directory
+        print_dir_entry("sys", true, &col);
         count++;
+
+        // Then show fsd contents (if available)
+        if (fsd_available())
+        {
+            u32 dir_id = 0;
+            if (g_fsd.open("/", 0, &dir_id) == 0)
+            {
+                while (true)
+                {
+                    u64 ino = 0;
+                    u8 type = 0;
+                    char name[256];
+                    i32 rc = g_fsd.readdir_one(dir_id, &ino, &type, name, sizeof(name));
+                    if (rc <= 0)
+                        break;
+
+                    // Skip . and ..
+                    if (name[0] == '.' && (name[1] == '\0' ||
+                                           (name[1] == '.' && name[2] == '\0')))
+                        continue;
+
+                    print_dir_entry(name, type == 2, &col);
+                    count++;
+                }
+                g_fsd.close(dir_id);
+            }
+        }
+    }
+    else if (is_sys_path(normalized))
+    {
+        // /sys paths - use kernel VFS
+        dir_sys_directory(normalized, &count, &col);
+    }
+    else
+    {
+        // User paths - use fsd
+        if (!fsd_available())
+        {
+            print_fsd_unavailable("Dir");
+            last_rc = RC_ERROR;
+            last_error = "FSD not available";
+            return;
+        }
+
+        u32 dir_id = 0;
+        i32 err = g_fsd.open(normalized, 0, &dir_id);
+        if (err != 0)
+        {
+            print_str("Dir: cannot open \"");
+            print_str(normalized);
+            print_str("\"\n");
+            last_rc = RC_ERROR;
+            last_error = "Directory not found";
+            return;
+        }
+
+        while (true)
+        {
+            u64 ino = 0;
+            u8 type = 0;
+            char name[256];
+            i32 rc = g_fsd.readdir_one(dir_id, &ino, &type, name, sizeof(name));
+            if (rc <= 0)
+                break;
+
+            // Skip . and ..
+            if (name[0] == '.' && (name[1] == '\0' ||
+                                   (name[1] == '.' && name[2] == '\0')))
+                continue;
+
+            print_dir_entry(name, type == 2, &col);
+            count++;
+        }
+
+        g_fsd.close(dir_id);
     }
 
     if (col > 0)
@@ -130,8 +439,89 @@ void cmd_dir(const char *path)
     put_num(static_cast<i64>(count));
     print_str(" entries\n");
 
-    g_fsd.close(dir_id);
     last_rc = RC_OK;
+}
+
+/**
+ * @brief Print a single directory entry in detailed format.
+ */
+static void print_list_entry(const char *name, bool is_dir, bool readonly)
+{
+    print_str(name);
+    usize namelen = strlen(name);
+    while (namelen < 32)
+    {
+        print_char(' ');
+        namelen++;
+    }
+
+    if (is_dir)
+    {
+        print_str("  <dir>    ");
+    }
+    else
+    {
+        print_str("           ");
+    }
+
+    // Permissions: r=read, w=write, e=execute, d=delete
+    // /sys files are read-only
+    if (readonly)
+    {
+        print_str("r--e");
+    }
+    else
+    {
+        print_str("rwed");
+    }
+    print_str("\n");
+}
+
+/**
+ * @brief List /sys directory entries in detailed format.
+ */
+static void list_sys_directory(const char *path, usize *file_count, usize *dir_count)
+{
+    i32 fd = sys::open(path, sys::O_RDONLY);
+    if (fd < 0)
+    {
+        print_str("List: cannot open \"");
+        print_str(path);
+        print_str("\"\n");
+        return;
+    }
+
+    // Use a larger buffer to fit all directory entries
+    // DirEnt is ~268 bytes, sys disk has ~10 entries
+    u8 buf[4096];
+    i64 bytes = sys::readdir(fd, buf, sizeof(buf));
+    if (bytes > 0)
+    {
+        usize offset = 0;
+        while (offset < static_cast<usize>(bytes))
+        {
+            sys::DirEnt *ent = reinterpret_cast<sys::DirEnt *>(buf + offset);
+            if (ent->reclen == 0)
+                break;
+
+            // Skip . and ..
+            if (!(ent->name[0] == '.' && (ent->name[1] == '\0' ||
+                                          (ent->name[1] == '.' && ent->name[2] == '\0'))))
+            {
+                bool is_dir = (ent->type == 2);
+                print_list_entry(ent->name, is_dir, true); // readonly
+
+                if (is_dir)
+                    (*dir_count)++;
+                else
+                    (*file_count)++;
+            }
+
+            offset += ent->reclen;
+        }
+    }
+
+    sys::close(fd);
 }
 
 void cmd_list(const char *path)
@@ -139,61 +529,113 @@ void cmd_list(const char *path)
     if (!path || *path == '\0')
         path = current_dir;
 
-    if (!fsd_available())
+    // Normalize the path
+    char normalized[256];
+    if (!normalize_path(path, current_dir, normalized, sizeof(normalized)))
     {
-        print_str("List: filesystem not available\n");
+        print_str("List: invalid path\n");
         last_rc = RC_ERROR;
-        last_error = "FSD not available";
-        return;
-    }
-
-    u32 dir_id = 0;
-    i32 err = g_fsd.open(path, 0, &dir_id); // O_RDONLY = 0
-    if (err != 0)
-    {
-        print_str("List: cannot open \"");
-        print_str(path);
-        print_str("\"\n");
-        last_rc = RC_ERROR;
-        last_error = "Directory not found";
         return;
     }
 
     print_str("Directory \"");
-    print_str(path);
+    print_str(normalized);
     print_str("\"\n\n");
 
     usize file_count = 0;
     usize dir_count = 0;
 
-    while (true)
+    // Two-disk architecture: handle different path types
+    if (is_root_path(normalized))
     {
-        u64 ino = 0;
-        u8 type = 0;
-        char name[256];
-        i32 rc = g_fsd.readdir_one(dir_id, &ino, &type, name, sizeof(name));
-        if (rc <= 0)
-            break;
+        // Root "/" - show synthetic /sys plus fsd contents
+        print_list_entry("sys", true, true); // readonly system directory
+        dir_count++;
 
-        print_str(name);
-        usize namelen = strlen(name);
-        while (namelen < 32)
+        // Then show fsd contents (if available)
+        if (fsd_available())
         {
-            print_char(' ');
-            namelen++;
+            u32 dir_id = 0;
+            if (g_fsd.open("/", 0, &dir_id) == 0)
+            {
+                while (true)
+                {
+                    u64 ino = 0;
+                    u8 type = 0;
+                    char name[256];
+                    i32 rc = g_fsd.readdir_one(dir_id, &ino, &type, name, sizeof(name));
+                    if (rc <= 0)
+                        break;
+
+                    // Skip . and ..
+                    if (name[0] == '.' && (name[1] == '\0' ||
+                                           (name[1] == '.' && name[2] == '\0')))
+                        continue;
+
+                    bool is_dir = (type == 2);
+                    print_list_entry(name, is_dir, false);
+
+                    if (is_dir)
+                        dir_count++;
+                    else
+                        file_count++;
+                }
+                g_fsd.close(dir_id);
+            }
+        }
+    }
+    else if (is_sys_path(normalized))
+    {
+        // /sys paths - use kernel VFS
+        list_sys_directory(normalized, &file_count, &dir_count);
+    }
+    else
+    {
+        // User paths - use fsd
+        if (!fsd_available())
+        {
+            print_fsd_unavailable("List");
+            last_rc = RC_ERROR;
+            last_error = "FSD not available";
+            return;
         }
 
-        if (type == 2) // Directory
+        u32 dir_id = 0;
+        i32 err = g_fsd.open(normalized, 0, &dir_id);
+        if (err != 0)
         {
-            print_str("  <dir>    rwed");
-            dir_count++;
+            print_str("List: cannot open \"");
+            print_str(normalized);
+            print_str("\"\n");
+            last_rc = RC_ERROR;
+            last_error = "Directory not found";
+            return;
         }
-        else
+
+        while (true)
         {
-            print_str("           rwed");
-            file_count++;
+            u64 ino = 0;
+            u8 type = 0;
+            char name[256];
+            i32 rc = g_fsd.readdir_one(dir_id, &ino, &type, name, sizeof(name));
+            if (rc <= 0)
+                break;
+
+            // Skip . and ..
+            if (name[0] == '.' && (name[1] == '\0' ||
+                                   (name[1] == '.' && name[2] == '\0')))
+                continue;
+
+            bool is_dir = (type == 2);
+            print_list_entry(name, is_dir, false);
+
+            if (is_dir)
+                dir_count++;
+            else
+                file_count++;
         }
-        print_str("\n");
+
+        g_fsd.close(dir_id);
     }
 
     print_str("\n");
@@ -210,7 +652,6 @@ void cmd_list(const char *path)
         print_str("y");
     print_str("\n");
 
-    g_fsd.close(dir_id);
     last_rc = RC_OK;
 }
 
@@ -226,7 +667,7 @@ void cmd_type(const char *path)
 
     if (!fsd_available())
     {
-        print_str("Type: filesystem not available\n");
+        print_fsd_unavailable("Type");
         last_rc = RC_ERROR;
         last_error = "FSD not available";
         return;
@@ -272,7 +713,7 @@ void cmd_copy(const char *args)
 
     if (!fsd_available())
     {
-        print_str("Copy: filesystem not available\n");
+        print_fsd_unavailable("Copy");
         last_rc = RC_ERROR;
         last_error = "FSD not available";
         return;
@@ -376,7 +817,7 @@ void cmd_delete(const char *args)
 
     if (!fsd_available())
     {
-        print_str("Delete: filesystem not available\n");
+        print_fsd_unavailable("Delete");
         last_rc = RC_ERROR;
         last_error = "FSD not available";
         return;
@@ -408,7 +849,7 @@ void cmd_makedir(const char *args)
 
     if (!fsd_available())
     {
-        print_str("MakeDir: filesystem not available\n");
+        print_fsd_unavailable("MakeDir");
         last_rc = RC_ERROR;
         last_error = "FSD not available";
         return;
@@ -441,7 +882,7 @@ void cmd_rename(const char *args)
 
     if (!fsd_available())
     {
-        print_str("Rename: filesystem not available\n");
+        print_fsd_unavailable("Rename");
         last_rc = RC_ERROR;
         last_error = "FSD not available";
         return;

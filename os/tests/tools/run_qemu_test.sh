@@ -211,16 +211,12 @@ QEMU_OPTS+=(
 )
 
 # Optional dedicated devices for user-space microkernel servers (blkd/fsd/netd).
+# Note: We no longer attach a second disk (microkernel.img) because:
+# - With VIPER_KERNEL_ENABLE_BLK=0, the kernel doesn't claim the block device
+# - blkd will claim disk0 (disk.img) directly
+# - This fixes the issue where writes were going to the wrong disk
 if [[ $MICROKERNEL_DEVICES -eq 1 ]]; then
     build_dir="$(dirname "$KERNEL")"
-
-    microkernel_img="${build_dir}/microkernel.img"
-    if [[ -f "$microkernel_img" ]]; then
-        QEMU_OPTS+=(
-            -drive "file=$microkernel_img,if=none,format=raw,id=disk1"
-            -device virtio-blk-device,drive=disk1
-        )
-    fi
 
     # Match the dev provisioning behavior in scripts/build_viper.sh: only add a
     # second NIC when the netd server is present.

@@ -329,6 +329,15 @@ class Sema
         return it != runtimeCallees_.end() ? it->second : "";
     }
 
+    /// @brief Look up the return type of a runtime function by name.
+    /// @param name The runtime function name (e.g., "Viper.Random.NextInt").
+    /// @return The return type, or nullptr if not found.
+    TypeRef runtimeReturnType(const std::string &name) const
+    {
+        auto it = runtimeFunctions_.find(name);
+        return it != runtimeFunctions_.end() ? it->second : nullptr;
+    }
+
     /// @brief Look up the type of a variable by name.
     /// @param name The variable name.
     /// @return The variable's type, or nullptr if not found.

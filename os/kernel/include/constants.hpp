@@ -568,6 +568,40 @@ constexpr const char *KEY_PAGE_DOWN = "\033[6~";
 
 } // namespace ansi
 
+// =============================================================================
+// SECTION 16: SYSTEM MOUNT POINTS
+// =============================================================================
+namespace mount {
+
+/// System disk mount point prefix
+constexpr const char* SYS_PREFIX = "/sys/";
+
+/// Length of system prefix (including trailing slash)
+constexpr usize SYS_PREFIX_LEN = 5;
+
+/// Path to vinit on system disk
+constexpr const char* VINIT_PATH = "/sys/vinit.sys";
+
+/// Path to blkd server on system disk
+constexpr const char* BLKD_PATH = "/sys/blkd.sys";
+
+/// Path to fsd server on system disk
+constexpr const char* FSD_PATH = "/sys/fsd.sys";
+
+/// Path to netd server on system disk
+constexpr const char* NETD_PATH = "/sys/netd.sys";
+
+/// Path to consoled server on system disk
+constexpr const char* CONSOLED_PATH = "/sys/consoled.sys";
+
+/// Path to inputd server on system disk
+constexpr const char* INPUTD_PATH = "/sys/inputd.sys";
+
+/// Path to displayd server on system disk
+constexpr const char* DISPLAYD_PATH = "/sys/displayd.sys";
+
+} // namespace mount
+
 } // namespace kernel::constants
 
 // Convenience namespace alias for shorter access

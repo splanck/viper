@@ -2021,4 +2021,80 @@ inline i32 shm_close(u32 handle)
 
 /** @} */
 
+// =============================================================================
+// GUI/Display Syscalls
+// =============================================================================
+
+/**
+ * @brief Mouse state structure returned by get_mouse_state.
+ */
+struct MouseState
+{
+    i32 x;       ///< Absolute X position
+    i32 y;       ///< Absolute Y position
+    i32 dx;      ///< X movement delta since last query
+    i32 dy;      ///< Y movement delta since last query
+    u8 buttons;  ///< Button bitmask: BIT0=left, BIT1=right, BIT2=middle
+    u8 _pad[3];
+};
+
+/**
+ * @brief Framebuffer info returned by map_framebuffer.
+ */
+struct FramebufferInfo
+{
+    u64 address; ///< Virtual address of framebuffer
+    u32 width;   ///< Width in pixels
+    u32 height;  ///< Height in pixels
+    u32 pitch;   ///< Bytes per row
+    u32 bpp;     ///< Bits per pixel
+};
+
+/**
+ * @brief Get current mouse state from kernel.
+ *
+ * @param state Output pointer for mouse state.
+ * @return 0 on success, negative error on failure.
+ */
+inline i32 get_mouse_state(MouseState *state)
+{
+    auto r = syscall1(SYS_GET_MOUSE_STATE, reinterpret_cast<u64>(state));
+    return static_cast<i32>(r.error);
+}
+
+/**
+ * @brief Map framebuffer into user address space.
+ *
+ * @param info Output pointer for framebuffer info.
+ * @return 0 on success, negative error on failure.
+ */
+inline i32 map_framebuffer(FramebufferInfo *info)
+{
+    auto r = syscall0(SYS_MAP_FRAMEBUFFER);
+    if (r.error != 0)
+    {
+        return static_cast<i32>(r.error);
+    }
+
+    info->address = r.val0;
+    info->width = static_cast<u32>(r.val1 & 0xFFFF);
+    info->height = static_cast<u32>((r.val1 >> 16) & 0xFFFF);
+    info->pitch = static_cast<u32>(r.val2 & 0xFFFFFFFF);
+    info->bpp = static_cast<u32>(r.val2 >> 32);
+    return 0;
+}
+
+/**
+ * @brief Set mouse cursor bounds.
+ *
+ * @param width Screen width in pixels.
+ * @param height Screen height in pixels.
+ * @return 0 on success, negative error on failure.
+ */
+inline i32 set_mouse_bounds(u32 width, u32 height)
+{
+    auto r = syscall2(SYS_SET_MOUSE_BOUNDS, static_cast<u64>(width), static_cast<u64>(height));
+    return static_cast<i32>(r.error);
+}
+
 } // namespace sys

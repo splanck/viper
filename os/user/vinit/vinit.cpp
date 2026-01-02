@@ -41,15 +41,28 @@ struct ServerInfo
     bool available;     // True if server registered successfully
 };
 
+// Two-disk architecture: servers are on system disk (/sys)
+// Essential servers (consoled, inputd) spawn first for shell I/O
+// Storage/network servers may fail if user disk is missing
 static ServerInfo g_servers[] = {
-    {"blkd", "/c/blkd.sys", "BLKD", 0, false},
-    {"netd", "/c/netd.sys", "NETD", 0, false},
-    {"fsd", "/c/fsd.sys", "FSD", 0, false},
+    // Essential (indices 0-1): always spawn, required for shell I/O
+    {"consoled", "/sys/consoled.sys", "CONSOLED", 0, false},
+    {"inputd", "/sys/inputd.sys", "INPUTD", 0, false},
+    // Storage/Network (indices 2-4): may fail if disk1 missing
+    {"blkd", "/sys/blkd.sys", "BLKD", 0, false},
+    {"netd", "/sys/netd.sys", "NETD", 0, false},
+    {"fsd", "/sys/fsd.sys", "FSD", 0, false},
 };
 
 static constexpr usize SERVER_COUNT = sizeof(g_servers) / sizeof(g_servers[0]);
+static constexpr usize BLKD_INDEX = 2;
+static constexpr usize FSD_INDEX = 4;
+
 static u32 g_device_root = 0xFFFFFFFFu;
 static bool g_have_device_root = false;
+
+/// Track whether user filesystem (fsd) is available for user programs
+static bool g_fsd_available = false;
 
 /**
  * @brief User-space sbrk wrapper for startup malloc test.
@@ -240,7 +253,7 @@ static bool start_server_by_index(usize idx)
     }
 
     // fsd depends on blkd
-    if (idx == 2 && !g_servers[0].available)
+    if (idx == FSD_INDEX && !g_servers[BLKD_INDEX].available)
     {
         print_str("[vinit] ");
         print_str(srv.name);
@@ -316,6 +329,19 @@ usize get_server_count()
 }
 
 /**
+ * @brief Check if fsd (user filesystem) is available.
+ *
+ * @details
+ * In the two-disk architecture, fsd provides access to user programs on disk1.
+ * When disk1 is missing or blkd fails, fsd will not be available and the
+ * system runs in "system-only" mode with only /sys paths accessible.
+ */
+bool is_fsd_available()
+{
+    return g_fsd_available;
+}
+
+/**
  * @brief Start all microkernel servers (optional).
  *
  * @details
@@ -325,11 +351,12 @@ usize get_server_count()
  * - netd: Network stack
  * - fsd:  Filesystem
  *
- * NOTE: In the current hybrid microkernel model, the kernel already provides
- * these services directly via syscalls. The user-space servers require
- * dedicated hardware (separate VirtIO devices) to function. When hardware
- * is already claimed by the kernel, servers will fail to start - this is
- * expected and the system falls back to kernel-provided services.
+ * IMPORTANT: Server startup is done in two phases to avoid a race condition:
+ * 1. SPAWN PHASE: Load all server ELFs from disk (uses kernel's block driver)
+ * 2. CAPS PHASE: Send device capabilities to servers (unblocks their device init)
+ *
+ * This ordering ensures the kernel can load all ELFs before blkd resets the
+ * VirtIO block device (which invalidates the kernel's block driver state).
  */
 static void start_servers()
 {
@@ -357,131 +384,140 @@ static void start_servers()
     // Find device root capability and save it for later restarts
     g_have_device_root = find_device_root_cap(&g_device_root);
 
-    u32 registered = 0;
-
-    // Start servers in order (blkd, netd, fsd)
+    // ==========================================================================
+    // PHASE 1: SPAWN ALL SERVERS (loads ELFs while kernel block driver is valid)
+    // ==========================================================================
+    // Store bootstrap send handles - servers wait for caps before initializing devices
+    u32 bootstrap_sends[SERVER_COUNT];
     for (usize i = 0; i < SERVER_COUNT; i++)
     {
-        if (start_server_by_index(i))
+        bootstrap_sends[i] = 0xFFFFFFFFu;
+    }
+
+    for (usize i = 0; i < SERVER_COUNT; i++)
+    {
+        ServerInfo &srv = g_servers[i];
+
+        // Check if executable exists
+        if (sys::stat(srv.path, &st) != 0)
         {
-            registered++;
+            print_str("[vinit] ");
+            print_str(srv.name);
+            print_str(": not found\n");
+            continue;
+        }
+
+        // Spawn the server (this loads the ELF from disk)
+        u64 pid = 0;
+        u64 tid = 0;
+        i64 err = sys::spawn(srv.path, nullptr, &pid, &tid, nullptr, &bootstrap_sends[i]);
+
+        if (err < 0)
+        {
+            print_str("[vinit] Failed to spawn ");
+            print_str(srv.name);
+            print_str(": error ");
+            put_num(err);
+            print_str("\n");
+            continue;
+        }
+
+        srv.pid = static_cast<i64>(pid);
+        print_str("[vinit] Spawned ");
+        print_str(srv.name);
+        print_str(" (pid ");
+        put_num(static_cast<i64>(pid));
+        print_str(")\n");
+    }
+
+    // ==========================================================================
+    // PHASE 2: SEND DEVICE CAPABILITIES (unblocks servers to init their devices)
+    // ==========================================================================
+    // Now that all ELFs are loaded, send device caps to each server.
+    // This unblocks blkd which will then reset the VirtIO block device.
+    for (usize i = 0; i < SERVER_COUNT; i++)
+    {
+        if (bootstrap_sends[i] != 0xFFFFFFFFu && g_have_device_root)
+        {
+            send_server_device_caps(bootstrap_sends[i], g_device_root);
+        }
+        else if (bootstrap_sends[i] != 0xFFFFFFFFu)
+        {
+            // No device root, just close the bootstrap channel
+            sys::channel_close(static_cast<i32>(bootstrap_sends[i]));
         }
     }
 
-    if (registered == 0)
+    // ==========================================================================
+    // PHASE 3: WAIT FOR SERVERS TO REGISTER
+    // ==========================================================================
+    for (usize i = 0; i < SERVER_COUNT; i++)
     {
-        print_str("[vinit] Servers unavailable, using kernel services\n");
+        ServerInfo &srv = g_servers[i];
+        if (srv.pid <= 0)
+            continue;
+
+        // fsd depends on blkd - skip if blkd not available
+        if (i == FSD_INDEX && !g_servers[BLKD_INDEX].available)
+        {
+            print_str("[vinit] ");
+            print_str(srv.name);
+            print_str(": requires blkd\n");
+            continue;
+        }
+
+        if (wait_for_service(srv.assign, 2000))
+        {
+            print_str("[vinit] ");
+            print_str(srv.assign);
+            print_str(": ready\n");
+            srv.available = true;
+
+            // Track fsd availability for graceful degradation
+            if (i == FSD_INDEX)
+            {
+                g_fsd_available = true;
+            }
+        }
+        else
+        {
+            print_str("[vinit] ");
+            print_str(srv.assign);
+            print_str(": timeout waiting for registration\n");
+        }
+    }
+
+    // Two-disk architecture: report boot mode
+    if (g_fsd_available)
+    {
+        print_str("[vinit] User disk available - full functionality\n");
+    }
+    else if (g_servers[BLKD_INDEX].available)
+    {
+        print_str("[vinit] Block device available but fsd failed\n");
+        print_str("[vinit] Running in system-only mode\n");
+    }
+    else
+    {
+        print_str("[vinit] User disk unavailable - system-only mode\n");
+        print_str("[vinit] Note: /c/ commands unavailable, use /sys/ paths\n");
     }
     print_str("\n");
 
-    // When fsd is available, run a small smoke test program that exercises
-    // libc file ops routed through fsd (and verifies the kernel VFS can't see
-    // the created file).
-    if (g_servers[2].available) // fsd
+    // ==========================================================================
+    // PHASE 4: RUN SMOKE TESTS (if fsd available)
+    // ==========================================================================
+    // Two-disk architecture: smoke tests are on user disk (/c/), so they
+    // can only run if fsd is available. Skip them in system-only mode.
+    if (!g_fsd_available)
     {
-        sys::Stat st;
-        if (sys::stat("/c/fsd_smoke.prg", &st) == 0)
-        {
-            print_str("[vinit] Running fsd_smoke...\n");
-
-            u64 pid = 0;
-            u64 tid = 0;
-            u32 bootstrap_send = 0xFFFFFFFFu;
-            i64 err =
-                sys::spawn("/c/fsd_smoke.prg", "fsd_smoke", &pid, &tid, nullptr, &bootstrap_send);
-
-            if (bootstrap_send != 0xFFFFFFFFu)
-            {
-                sys::channel_close(static_cast<i32>(bootstrap_send));
-            }
-
-            if (err < 0)
-            {
-                print_str("[vinit] fsd_smoke: spawn failed (error ");
-                put_num(err);
-                print_str(")\n\n");
-            }
-            else
-            {
-                i32 status = 0;
-                (void)sys::waitpid(static_cast<i64>(pid), &status);
-                print_str("[vinit] fsd_smoke: exit ");
-                put_num(static_cast<i64>(status));
-                print_str("\n\n");
-            }
-        }
+        print_str("[vinit] Skipping smoke tests (user disk unavailable)\n\n");
     }
-
-    // When netd is available, run a small smoke test program that issues an IPC request
-    // to NETD and validates the basic response path.
-    if (g_servers[1].available) // netd
+    else
     {
-        sys::Stat st;
-        if (sys::stat("/c/netd_smoke.prg", &st) == 0)
-        {
-            print_str("[vinit] Running netd_smoke...\n");
-
-            u64 pid = 0;
-            u64 tid = 0;
-            u32 bootstrap_send = 0xFFFFFFFFu;
-            i64 err =
-                sys::spawn("/c/netd_smoke.prg", "netd_smoke", &pid, &tid, nullptr, &bootstrap_send);
-
-            if (bootstrap_send != 0xFFFFFFFFu)
-            {
-                sys::channel_close(static_cast<i32>(bootstrap_send));
-            }
-
-            if (err < 0)
-            {
-                print_str("[vinit] netd_smoke: spawn failed (error ");
-                put_num(err);
-                print_str(")\n\n");
-            }
-            else
-            {
-                i32 status = 0;
-                (void)sys::waitpid(static_cast<i64>(pid), &status);
-                print_str("[vinit] netd_smoke: exit ");
-                put_num(static_cast<i64>(status));
-                print_str("\n\n");
-            }
-        }
-    }
-
-    // Run TLS smoke test if available (tests user-space TLS library API)
-    {
-        sys::Stat st;
-        if (sys::stat("/c/tls_smoke.prg", &st) == 0)
-        {
-            print_str("[vinit] Running tls_smoke...\n");
-
-            u64 pid = 0;
-            u64 tid = 0;
-            u32 bootstrap_send = 0xFFFFFFFFu;
-            i64 err =
-                sys::spawn("/c/tls_smoke.prg", "tls_smoke", &pid, &tid, nullptr, &bootstrap_send);
-
-            if (bootstrap_send != 0xFFFFFFFFu)
-            {
-                sys::channel_close(static_cast<i32>(bootstrap_send));
-            }
-
-            if (err < 0)
-            {
-                print_str("[vinit] tls_smoke: spawn failed (error ");
-                put_num(err);
-                print_str(")\n\n");
-            }
-            else
-            {
-                i32 status = 0;
-                (void)sys::waitpid(static_cast<i64>(pid), &status);
-                print_str("[vinit] tls_smoke: exit ");
-                put_num(static_cast<i64>(status));
-                print_str("\n\n");
-            }
-        }
+        // TODO: Run smoke tests via fsd using spawn_shm
+        // For now, smoke tests must be run manually via 'run /c/xxx_smoke.prg'
+        print_str("[vinit] Smoke tests available via 'run' command\n\n");
     }
 }
 

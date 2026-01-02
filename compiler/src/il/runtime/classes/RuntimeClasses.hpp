@@ -98,6 +98,15 @@ enum class RuntimeTypeId : std::size_t
     RTCLS_Keyboard,
     RTCLS_Mouse,
     RTCLS_Pad,
+    // Audio classes
+    RTCLS_Audio,
+    RTCLS_Sound,
+    RTCLS_Voice,
+    RTCLS_Music,
+    // Graphics classes (extended)
+    RTCLS_Sprite,
+    RTCLS_Tilemap,
+    RTCLS_Camera,
 };
 
 /// @brief Describes a property on a runtime class.

@@ -410,6 +410,123 @@ extern "C"
     /// @return Packed color value (0xAARRGGBB).
     int64_t rt_color_rgba(int64_t r, int64_t g, int64_t b, int64_t a);
 
+    /// @brief Construct a color from HSL components.
+    /// @param h Hue (0-360).
+    /// @param s Saturation (0-100).
+    /// @param l Lightness (0-100).
+    /// @return Packed color value (0x00RRGGBB).
+    int64_t rt_color_from_hsl(int64_t h, int64_t s, int64_t l);
+
+    /// @brief Extract hue from a color.
+    /// @param color Packed color value (0x00RRGGBB).
+    /// @return Hue (0-360).
+    int64_t rt_color_get_h(int64_t color);
+
+    /// @brief Extract saturation from a color.
+    /// @param color Packed color value (0x00RRGGBB).
+    /// @return Saturation (0-100).
+    int64_t rt_color_get_s(int64_t color);
+
+    /// @brief Extract lightness from a color.
+    /// @param color Packed color value (0x00RRGGBB).
+    /// @return Lightness (0-100).
+    int64_t rt_color_get_l(int64_t color);
+
+    /// @brief Linearly interpolate between two colors.
+    /// @param c1 First color (0x00RRGGBB).
+    /// @param c2 Second color (0x00RRGGBB).
+    /// @param t Interpolation factor (0-100, where 0=c1, 100=c2).
+    /// @return Interpolated color.
+    int64_t rt_color_lerp(int64_t c1, int64_t c2, int64_t t);
+
+    /// @brief Extract red component from a color.
+    /// @param color Packed color value (0x00RRGGBB or 0xAARRGGBB).
+    /// @return Red component (0-255).
+    int64_t rt_color_get_r(int64_t color);
+
+    /// @brief Extract green component from a color.
+    /// @param color Packed color value (0x00RRGGBB or 0xAARRGGBB).
+    /// @return Green component (0-255).
+    int64_t rt_color_get_g(int64_t color);
+
+    /// @brief Extract blue component from a color.
+    /// @param color Packed color value (0x00RRGGBB or 0xAARRGGBB).
+    /// @return Blue component (0-255).
+    int64_t rt_color_get_b(int64_t color);
+
+    /// @brief Extract alpha component from a color.
+    /// @param color Packed color value (0xAARRGGBB).
+    /// @return Alpha component (0-255).
+    int64_t rt_color_get_a(int64_t color);
+
+    /// @brief Brighten a color.
+    /// @param color Packed color value (0x00RRGGBB).
+    /// @param amount Amount to brighten (0-100).
+    /// @return Brightened color.
+    int64_t rt_color_brighten(int64_t color, int64_t amount);
+
+    /// @brief Darken a color.
+    /// @param color Packed color value (0x00RRGGBB).
+    /// @param amount Amount to darken (0-100).
+    /// @return Darkened color.
+    int64_t rt_color_darken(int64_t color, int64_t amount);
+
+    //=========================================================================
+    // Canvas Extended Functions
+    //=========================================================================
+
+    /// @brief Set a clipping rectangle for drawing operations.
+    /// @param canvas Canvas handle.
+    /// @param x Left edge X coordinate.
+    /// @param y Top edge Y coordinate.
+    /// @param w Width of clipping region.
+    /// @param h Height of clipping region.
+    void rt_canvas_set_clip_rect(void *canvas, int64_t x, int64_t y, int64_t w, int64_t h);
+
+    /// @brief Clear the clipping rectangle (restore full canvas drawing).
+    /// @param canvas Canvas handle.
+    void rt_canvas_clear_clip_rect(void *canvas);
+
+    /// @brief Set the window title.
+    /// @param canvas Canvas handle.
+    /// @param title New window title.
+    void rt_canvas_set_title(void *canvas, rt_string title);
+
+    /// @brief Capture the canvas contents to a Pixels buffer.
+    /// @param canvas Canvas handle.
+    /// @return New Pixels object containing the canvas contents.
+    void *rt_canvas_screenshot(void *canvas);
+
+    /// @brief Enter fullscreen mode.
+    /// @param canvas Canvas handle.
+    void rt_canvas_fullscreen(void *canvas);
+
+    /// @brief Exit fullscreen mode (return to windowed).
+    /// @param canvas Canvas handle.
+    void rt_canvas_windowed(void *canvas);
+
+    /// @brief Draw a horizontal gradient.
+    /// @param canvas Canvas handle.
+    /// @param x Left edge X coordinate.
+    /// @param y Top edge Y coordinate.
+    /// @param w Width.
+    /// @param h Height.
+    /// @param c1 Left color (0x00RRGGBB).
+    /// @param c2 Right color (0x00RRGGBB).
+    void rt_canvas_gradient_h(
+        void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, int64_t c1, int64_t c2);
+
+    /// @brief Draw a vertical gradient.
+    /// @param canvas Canvas handle.
+    /// @param x Left edge X coordinate.
+    /// @param y Top edge Y coordinate.
+    /// @param w Width.
+    /// @param h Height.
+    /// @param c1 Top color (0x00RRGGBB).
+    /// @param c2 Bottom color (0x00RRGGBB).
+    void rt_canvas_gradient_v(
+        void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, int64_t c1, int64_t c2);
+
 #ifdef __cplusplus
 }
 #endif

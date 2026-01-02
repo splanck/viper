@@ -60,6 +60,13 @@
 #define VIPER_KERNEL_ENABLE_TLS 0
 #endif
 
+/// Enable the in-kernel block device driver (virtio-blk).
+/// The kernel always needs this to load vinit from disk.
+/// After vinit loads blkd, blkd will take over block device management.
+#ifndef VIPER_KERNEL_ENABLE_BLK
+#define VIPER_KERNEL_ENABLE_BLK 1
+#endif
+
 // -----------------------------------------------------------------------------
 // Debug / tracing toggles (keep OFF by default)
 // -----------------------------------------------------------------------------

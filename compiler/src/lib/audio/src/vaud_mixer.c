@@ -29,6 +29,8 @@
 /// @brief Software audio mixer for ViperAUD.
 
 #include "vaud_internal.h"
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 //===----------------------------------------------------------------------===//

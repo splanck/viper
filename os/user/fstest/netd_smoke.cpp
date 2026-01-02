@@ -44,13 +44,33 @@ static i64 recv_reply_blocking(i32 ch, void *buf, usize buf_len)
     }
 }
 
+/* Wait for NETD server to be registered (up to ~10 seconds).
+ * Each yield gives up the time slice (~1ms at 1000Hz timer). */
+static bool wait_for_netd(u32 *handle_out)
+{
+    for (int i = 0; i < 10000; i++)
+    {
+        u32 handle = 0xFFFFFFFFu;
+        i32 err = sys::assign_get("NETD", &handle);
+        if (err == 0 && handle != 0xFFFFFFFFu)
+        {
+            *handle_out = handle;
+            return true;
+        }
+        sys::yield();
+    }
+    return false;
+}
+
 extern "C" void _start()
 {
+    /* Wait for NETD server to be available before running tests.
+     * This is necessary because the smoke test may be spawned before
+     * servers are fully registered (to load ELF before blkd resets device). */
     u32 netd = 0xFFFFFFFFu;
-    i32 err = sys::assign_get("NETD", &netd);
-    if (err != 0 || netd == 0xFFFFFFFFu)
+    if (!wait_for_netd(&netd))
     {
-        printf("[netd_smoke] assign_get NETD failed: %d\n", (int)err);
+        printf("[netd_smoke] FAIL: NETD server not available\n");
         sys::exit(1);
     }
 

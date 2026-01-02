@@ -944,9 +944,26 @@ extern "C" void _start()
     debug_print("[fsd] Filesystem server starting\n");
     recv_bootstrap_caps();
 
-    // Connect to block device server
+    // Connect to block device server with retry
+    // blkd may not be registered yet due to startup race
     debug_print("[fsd] Connecting to blkd...\n");
-    if (!g_blk_client.connect())
+    constexpr u32 MAX_RETRIES = 100;
+    constexpr u32 RETRY_DELAY_YIELDS = 50;
+    bool connected = false;
+    for (u32 retry = 0; retry < MAX_RETRIES; retry++)
+    {
+        if (g_blk_client.connect())
+        {
+            connected = true;
+            break;
+        }
+        // Wait a bit before retrying
+        for (u32 i = 0; i < RETRY_DELAY_YIELDS; i++)
+        {
+            sys::yield();
+        }
+    }
+    if (!connected)
     {
         debug_print("[fsd] Failed to connect to blkd\n");
         sys::exit(1);

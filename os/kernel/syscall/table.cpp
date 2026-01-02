@@ -27,6 +27,7 @@
 #include "../console/console.hpp"
 #include "../console/gcon.hpp"
 #include "../console/serial.hpp"
+#include "../drivers/ramfb.hpp"
 #include "../drivers/virtio/input.hpp"
 #include "../fs/vfs/vfs.hpp"
 #include "../fs/viperfs/viperfs.hpp"
@@ -267,6 +268,14 @@ static SyscallResult sys_task_spawn(u64 a0, u64 a1, u64 a2, u64, u64, u64)
     if (args && validate_user_string(args, 256) < 0)
     {
         return SyscallResult::err(error::VERR_INVALID_ARG);
+    }
+
+    // Two-disk architecture: only /sys/* paths can be loaded via kernel VFS
+    // Other paths should use SYS_TASK_SPAWN_SHM via fsd
+    if (!(path[0] == '/' && path[1] == 's' && path[2] == 'y' &&
+          path[3] == 's' && path[4] == '/'))
+    {
+        return SyscallResult::err(error::VERR_NOT_FOUND);
     }
 
     // Get current task's viper as parent
@@ -3919,6 +3928,120 @@ static SyscallResult sys_shm_close(u64 a0, u64, u64, u64, u64, u64)
 }
 
 // =============================================================================
+// GUI/Display Syscalls (0x110 - 0x11F)
+// =============================================================================
+
+/**
+ * @brief Get current mouse state (position, buttons, deltas).
+ *
+ * @param a0 Pointer to MouseState structure to fill
+ * @return 0 on success, negative error on failure
+ */
+static SyscallResult sys_get_mouse_state(u64 a0, u64, u64, u64, u64, u64)
+{
+    input::MouseState *out = reinterpret_cast<input::MouseState *>(a0);
+
+    if (!validate_user_write(out, sizeof(input::MouseState)))
+    {
+        return SyscallResult::err(error::VERR_INVALID_ARG);
+    }
+
+    *out = input::get_mouse_state();
+    return SyscallResult::ok();
+}
+
+/**
+ * @brief Map framebuffer into user address space.
+ *
+ * @details
+ * Returns the framebuffer virtual address, width, height, and stride.
+ * Only available to processes with appropriate privileges.
+ *
+ * @return res0=virt_addr, res1=(height<<16|width), res2=stride, res3=bpp
+ */
+static SyscallResult sys_map_framebuffer(u64, u64, u64, u64, u64, u64)
+{
+    // Get current viper/address space
+    viper::Viper *v = viper::current();
+    if (!v)
+    {
+        return SyscallResult::err(error::VERR_NOT_FOUND);
+    }
+
+    // Get framebuffer info
+    const ramfb::FramebufferInfo &fb = ramfb::get_info();
+    if (fb.address == 0 || fb.width == 0 || fb.height == 0)
+    {
+        return SyscallResult::err(error::VERR_NOT_FOUND);
+    }
+
+    // Calculate size needed (page-aligned)
+    u64 fb_size = static_cast<u64>(fb.pitch) * fb.height;
+    fb_size = (fb_size + 0xFFF) & ~0xFFFULL;
+
+    // Map framebuffer into user address space
+    viper::AddressSpace *as = viper::get_address_space(v);
+    if (!as)
+    {
+        return SyscallResult::err(error::VERR_NOT_FOUND);
+    }
+
+    // Find a free virtual address range (use 0x6000000000 for framebuffer)
+    u64 virt_base = 0x6000000000ULL;
+    u64 user_virt = 0;
+
+    for (u64 try_addr = virt_base; try_addr < 0x7000000000ULL; try_addr += fb_size)
+    {
+        if (as->translate(try_addr) == 0)
+        {
+            user_virt = try_addr;
+            break;
+        }
+    }
+
+    if (user_virt == 0)
+    {
+        return SyscallResult::err(error::VERR_OUT_OF_MEMORY);
+    }
+
+    // Map the physical framebuffer into user space
+    // Framebuffer is at a fixed physical address (same as virtual in identity-mapped kernel)
+    u64 phys_addr = fb.address;
+    if (!as->map(user_virt, phys_addr, fb_size, viper::prot::RW))
+    {
+        return SyscallResult::err(error::VERR_OUT_OF_MEMORY);
+    }
+
+    SyscallResult result;
+    result.verr = 0;
+    result.res0 = user_virt;
+    result.res1 = (static_cast<u64>(fb.height) << 16) | fb.width;
+    result.res2 = (static_cast<u64>(fb.bpp) << 32) | fb.pitch;  // bpp in high bits, pitch in low
+    return result;
+}
+
+/**
+ * @brief Set mouse cursor bounds.
+ *
+ * @param a0 Screen width in pixels
+ * @param a1 Screen height in pixels
+ * @return 0 on success
+ */
+static SyscallResult sys_set_mouse_bounds(u64 a0, u64 a1, u64, u64, u64, u64)
+{
+    u32 width = static_cast<u32>(a0);
+    u32 height = static_cast<u32>(a1);
+
+    if (width == 0 || height == 0 || width > 8192 || height > 8192)
+    {
+        return SyscallResult::err(error::VERR_INVALID_ARG);
+    }
+
+    input::set_mouse_bounds(width, height);
+    return SyscallResult::ok();
+}
+
+// =============================================================================
 // Syscall Dispatch Table
 // =============================================================================
 
@@ -4064,6 +4187,11 @@ static const SyscallEntry syscall_table[] = {
     {SYS_SHM_MAP, sys_shm_map, "shm_map", 1},
     {SYS_SHM_UNMAP, sys_shm_unmap, "shm_unmap", 1},
     {SYS_SHM_CLOSE, sys_shm_close, "shm_close", 1},
+
+    // GUI/Display (0x110-0x11F)
+    {SYS_GET_MOUSE_STATE, sys_get_mouse_state, "get_mouse_state", 1},
+    {SYS_MAP_FRAMEBUFFER, sys_map_framebuffer, "map_framebuffer", 0},
+    {SYS_SET_MOUSE_BOUNDS, sys_set_mouse_bounds, "set_mouse_bounds", 2},
 };
 
 static constexpr usize SYSCALL_TABLE_SIZE = sizeof(syscall_table) / sizeof(syscall_table[0]);

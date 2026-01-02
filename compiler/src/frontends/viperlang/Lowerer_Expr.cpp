@@ -1208,8 +1208,9 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
             args.push_back(result.value);
         }
 
-        // Get return type from expression
-        TypeRef exprType = sema_.typeOf(expr);
+        // Get return type from runtime function registry
+        // (use runtimeReturnType instead of typeOf to avoid pointer lookup issues)
+        TypeRef exprType = sema_.runtimeReturnType(runtimeCallee);
         Type ilReturnType = exprType ? mapType(exprType) : Type(Type::Kind::Void);
 
         if (ilReturnType.kind == Type::Kind::Void)

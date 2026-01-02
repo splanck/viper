@@ -74,6 +74,41 @@ void close_all_fds(FDTable *fdt)
 
 // Use lib::strlen for string length operations
 
+/**
+ * @brief Check if path is a /sys path and strip the prefix.
+ *
+ * @details
+ * In the two-disk architecture, the kernel VFS only handles /sys paths.
+ * This function checks if a path starts with /sys/ and returns the stripped
+ * path (with leading / preserved) for resolution against the system disk.
+ *
+ * @param path The input path to check.
+ * @param stripped Output: pointer to the path after /sys prefix.
+ * @return true if path starts with /sys/, false otherwise.
+ */
+static bool is_sys_path(const char *path, const char **stripped)
+{
+    if (!path || path[0] != '/')
+        return false;
+
+    // Check for /sys/ prefix (5 chars: /sys/)
+    if (path[1] == 's' && path[2] == 'y' && path[3] == 's' && path[4] == '/')
+    {
+        // Strip /sys, keep the / after it -> /filename becomes /filename on disk
+        *stripped = path + 4;
+        return true;
+    }
+
+    // Check for /sys alone (maps to root of system disk)
+    if (path[1] == 's' && path[2] == 'y' && path[3] == 's' && path[4] == '\0')
+    {
+        *stripped = "/";
+        return true;
+    }
+
+    return false;
+}
+
 // Resolve path to inode number
 /** @copydoc fs::vfs::resolve_path */
 u64 resolve_path(const char *path)
@@ -81,10 +116,21 @@ u64 resolve_path(const char *path)
     if (!path || !viperfs::viperfs().is_mounted())
         return 0;
 
-    // Start from root
+    // Two-disk architecture: kernel VFS only handles /sys/* paths
+    const char *effective_path = nullptr;
+    if (!is_sys_path(path, &effective_path))
+    {
+        // Not a /sys path - userspace handles via fsd
+        return 0;
+    }
+
+    // Start from root of system disk
     viperfs::Inode *current = viperfs::viperfs().read_inode(viperfs::ROOT_INODE);
     if (!current)
         return 0;
+
+    // Use the stripped path (effective_path) for resolution
+    path = effective_path;
 
     // Skip leading slashes
     while (*path == '/')
@@ -136,73 +182,7 @@ u64 resolve_path(const char *path)
     return result;
 }
 
-/**
- * @brief Resolve a path to its parent directory inode and final component name.
- *
- * @details
- * Splits `path` at the final `/` and resolves the parent directory path via
- * @ref resolve_path. The returned `name` pointer refers into the original path
- * string; it is not copied.
- *
- * This helper is used by create/remove/rename operations that need to operate
- * on a parent directory and entry name.
- *
- * @param path Full path string.
- * @param parent_ino Output: parent directory inode number.
- * @param name Output: pointer to the final component name within `path`.
- * @param name_len Output: length of the final component.
- * @return `true` on success, otherwise `false`.
- */
-static bool resolve_parent(const char *path, u64 *parent_ino, const char **name, usize *name_len)
-{
-    if (!path || !parent_ino || !name || !name_len)
-        return false;
-
-    // Skip leading slashes
-    while (*path == '/')
-        path++;
-
-    // Find the last component
-    const char *last_slash = nullptr;
-    const char *p = path;
-    while (*p)
-    {
-        if (*p == '/')
-            last_slash = p;
-        p++;
-    }
-
-    if (!last_slash)
-    {
-        // No slash - file in root
-        *parent_ino = viperfs::ROOT_INODE;
-        *name = path;
-        *name_len = lib::strlen(path);
-        return true;
-    }
-
-    // Get parent path
-    usize parent_len = last_slash - path;
-    char parent_path[MAX_PATH];
-    if (parent_len >= MAX_PATH)
-        return false;
-
-    for (usize i = 0; i < parent_len; i++)
-    {
-        parent_path[i] = path[i];
-    }
-    parent_path[parent_len] = '\0';
-
-    // Resolve parent
-    u64 pino = resolve_path(parent_path);
-    if (pino == 0)
-        return false;
-
-    *parent_ino = pino;
-    *name = last_slash + 1;
-    *name_len = lib::strlen(last_slash + 1);
-    return true;
-}
+// Note: resolve_parent() was removed - no longer needed since kernel VFS is read-only
 
 /** @copydoc fs::vfs::open */
 i32 open(const char *path, u32 oflags)
@@ -213,6 +193,14 @@ i32 open(const char *path, u32 oflags)
     FDTable *fdt = current_fdt();
     if (!fdt)
         return -1;
+
+    // Two-disk architecture: kernel VFS (/sys) is read-only
+    // Reject any write operations upfront
+    if ((oflags & flags::O_WRONLY) || (oflags & flags::O_RDWR) ||
+        (oflags & flags::O_CREAT) || (oflags & flags::O_TRUNC))
+    {
+        return -1; // Read-only filesystem
+    }
 
     // Normalize path with CWD for relative paths
     char abs_path[MAX_PATH];
@@ -243,31 +231,8 @@ i32 open(const char *path, u32 oflags)
     // Use the absolute path for resolution
     u64 ino = resolve_path(abs_path);
 
-    // Handle O_CREAT
-    if (ino == 0 && (oflags & flags::O_CREAT))
-    {
-        u64 parent_ino;
-        const char *name;
-        usize name_len;
-
-        if (!resolve_parent(abs_path, &parent_ino, &name, &name_len))
-        {
-            return -1;
-        }
-
-        viperfs::Inode *parent = viperfs::viperfs().read_inode(parent_ino);
-        if (!parent)
-            return -1;
-
-        ino = viperfs::viperfs().create_file(parent, name, name_len);
-        viperfs::viperfs().release_inode(parent);
-
-        if (ino == 0)
-            return -1;
-    }
-
     if (ino == 0)
-        return -1; // File not found
+        return -1; // File not found (or not a /sys path)
 
     // Allocate file descriptor
     i32 fd = fdt->alloc();
@@ -441,52 +406,25 @@ i64 read(i32 fd, void *buf, usize len)
 /** @copydoc fs::vfs::write */
 i64 write(i32 fd, const void *buf, usize len)
 {
-    FDTable *fdt = current_fdt();
-    if (!fdt)
-        return -1;
-
-    FileDesc *desc = fdt->get(fd);
-    if (!desc)
+    // Special handling for stdout/stderr - write to console
+    // This is always allowed regardless of filesystem state
+    if (fd == 1 || fd == 2)
     {
-        // Special handling for stdout/stderr - write to console
-        if (fd == 1 || fd == 2)
+        const char *s = static_cast<const char *>(buf);
+        for (usize i = 0; i < len; i++)
         {
-            const char *s = static_cast<const char *>(buf);
-            for (usize i = 0; i < len; i++)
+            serial::putc(s[i]);
+            if (gcon::is_available())
             {
-                serial::putc(s[i]);
-                if (gcon::is_available())
-                {
-                    gcon::putc(s[i]);
-                }
+                gcon::putc(s[i]);
             }
-            return static_cast<i64>(len);
         }
-        // Debug: log failed write attempts
-        serial::puts("[vfs] write: invalid fd ");
-        serial::put_dec(fd);
-        serial::puts("\n");
-        return -1;
+        return static_cast<i64>(len);
     }
 
-    // Check write permission
-    u32 access = desc->flags & 0x3;
-    if (access == flags::O_RDONLY)
-        return -1;
-
-    viperfs::Inode *inode = viperfs::viperfs().read_inode(desc->inode_num);
-    if (!inode)
-        return -1;
-
-    i64 bytes = viperfs::viperfs().write_data(inode, desc->offset, buf, len);
-    if (bytes > 0)
-    {
-        desc->offset += bytes;
-        viperfs::viperfs().write_inode(inode);
-    }
-
-    viperfs::viperfs().release_inode(inode);
-    return bytes;
+    // Two-disk architecture: kernel VFS (/sys) is read-only
+    // All file writes are rejected - userspace uses fsd for writable storage
+    return -1;
 }
 
 /** @copydoc fs::vfs::lseek */
@@ -718,127 +656,38 @@ i64 getdents(i32 fd, void *buf, usize len)
 /** @copydoc fs::vfs::mkdir */
 i32 mkdir(const char *path)
 {
-    if (!path || !viperfs::viperfs().is_mounted())
-        return -1;
-
-    // Check if already exists (use CWD-relative resolution)
-    u64 existing = resolve_path_cwd(path);
-    if (existing != 0)
-        return -1; // Already exists
-
-    // Get parent directory and name
-    u64 parent_ino;
-    const char *name;
-    usize name_len;
-    if (!resolve_parent(path, &parent_ino, &name, &name_len))
-    {
-        return -1;
-    }
-
-    viperfs::Inode *parent = viperfs::viperfs().read_inode(parent_ino);
-    if (!parent)
-        return -1;
-
-    u64 new_ino = viperfs::viperfs().create_dir(parent, name, name_len);
-    viperfs::viperfs().release_inode(parent);
-
-    if (new_ino == 0)
-        return -1;
-
-    viperfs::viperfs().sync();
-    return 0;
+    // Two-disk architecture: kernel VFS (/sys) is read-only
+    // Directory creation is rejected - userspace uses fsd for writable storage
+    (void)path;
+    return -1;
 }
 
 /** @copydoc fs::vfs::rmdir */
 i32 rmdir(const char *path)
 {
-    if (!path || !viperfs::viperfs().is_mounted())
-        return -1;
-
-    // Get parent directory and name
-    u64 parent_ino;
-    const char *name;
-    usize name_len;
-    if (!resolve_parent(path, &parent_ino, &name, &name_len))
-    {
-        return -1;
-    }
-
-    viperfs::Inode *parent = viperfs::viperfs().read_inode(parent_ino);
-    if (!parent)
-        return -1;
-
-    bool ok = viperfs::viperfs().rmdir(parent, name, name_len);
-    viperfs::viperfs().release_inode(parent);
-
-    if (!ok)
-        return -1;
-
-    viperfs::viperfs().sync();
-    return 0;
+    // Two-disk architecture: kernel VFS (/sys) is read-only
+    // Directory removal is rejected - userspace uses fsd for writable storage
+    (void)path;
+    return -1;
 }
 
 /** @copydoc fs::vfs::unlink */
 i32 unlink(const char *path)
 {
-    if (!path || !viperfs::viperfs().is_mounted())
-        return -1;
-
-    // Get parent directory and name
-    u64 parent_ino;
-    const char *name;
-    usize name_len;
-    if (!resolve_parent(path, &parent_ino, &name, &name_len))
-    {
-        return -1;
-    }
-
-    viperfs::Inode *parent = viperfs::viperfs().read_inode(parent_ino);
-    if (!parent)
-        return -1;
-
-    bool ok = viperfs::viperfs().unlink_file(parent, name, name_len);
-    viperfs::viperfs().release_inode(parent);
-
-    if (!ok)
-        return -1;
-
-    viperfs::viperfs().sync();
-    return 0;
+    // Two-disk architecture: kernel VFS (/sys) is read-only
+    // File deletion is rejected - userspace uses fsd for writable storage
+    (void)path;
+    return -1;
 }
 
 /** @copydoc fs::vfs::symlink */
 i32 symlink(const char *target, const char *linkpath)
 {
-    if (!target || !linkpath || !viperfs::viperfs().is_mounted())
-        return -1;
-
-    // Get parent directory and name for the linkpath
-    u64 parent_ino;
-    const char *name;
-    usize name_len;
-    if (!resolve_parent(linkpath, &parent_ino, &name, &name_len))
-    {
-        return -1;
-    }
-
-    viperfs::Inode *parent = viperfs::viperfs().read_inode(parent_ino);
-    if (!parent)
-        return -1;
-
-    // Calculate target length
-    usize target_len = 0;
-    while (target[target_len])
-        target_len++;
-
-    u64 ino = viperfs::viperfs().create_symlink(parent, name, name_len, target, target_len);
-    viperfs::viperfs().release_inode(parent);
-
-    if (ino == 0)
-        return -1;
-
-    viperfs::viperfs().sync();
-    return 0;
+    // Two-disk architecture: kernel VFS (/sys) is read-only
+    // Symlink creation is rejected - userspace uses fsd for writable storage
+    (void)target;
+    (void)linkpath;
+    return -1;
 }
 
 /** @copydoc fs::vfs::readlink */
@@ -864,60 +713,11 @@ i64 readlink(const char *path, char *buf, usize bufsiz)
 /** @copydoc fs::vfs::rename */
 i32 rename(const char *old_path, const char *new_path)
 {
-    if (!old_path || !new_path || !viperfs::viperfs().is_mounted())
-        return -1;
-
-    // Get old parent directory and name
-    u64 old_parent_ino;
-    const char *old_name;
-    usize old_name_len;
-    if (!resolve_parent(old_path, &old_parent_ino, &old_name, &old_name_len))
-    {
-        return -1;
-    }
-
-    // Get new parent directory and name
-    u64 new_parent_ino;
-    const char *new_name;
-    usize new_name_len;
-    if (!resolve_parent(new_path, &new_parent_ino, &new_name, &new_name_len))
-    {
-        return -1;
-    }
-
-    viperfs::Inode *old_parent = viperfs::viperfs().read_inode(old_parent_ino);
-    if (!old_parent)
-        return -1;
-
-    viperfs::Inode *new_parent = nullptr;
-    if (old_parent_ino == new_parent_ino)
-    {
-        new_parent = old_parent; // Same directory
-    }
-    else
-    {
-        new_parent = viperfs::viperfs().read_inode(new_parent_ino);
-        if (!new_parent)
-        {
-            viperfs::viperfs().release_inode(old_parent);
-            return -1;
-        }
-    }
-
-    bool ok = viperfs::viperfs().rename(
-        old_parent, old_name, old_name_len, new_parent, new_name, new_name_len);
-
-    if (old_parent != new_parent)
-    {
-        viperfs::viperfs().release_inode(new_parent);
-    }
-    viperfs::viperfs().release_inode(old_parent);
-
-    if (!ok)
-        return -1;
-
-    viperfs::viperfs().sync();
-    return 0;
+    // Two-disk architecture: kernel VFS (/sys) is read-only
+    // File renaming is rejected - userspace uses fsd for writable storage
+    (void)old_path;
+    (void)new_path;
+    return -1;
 }
 
 /** @copydoc fs::vfs::normalize_path */
@@ -1044,28 +844,15 @@ u64 resolve_path_cwd(const char *path)
     if (!path)
         return 0;
 
-    // If already absolute, use regular resolve
-    if (path[0] == '/')
-    {
-        return resolve_path(path);
-    }
-
-    // Get current task's CWD
-    const char *cwd = "/";
-    task::Task *t = task::current();
-    if (t && t->cwd[0])
-    {
-        cwd = t->cwd;
-    }
-
-    // Normalize the path
-    char normalized[MAX_PATH];
-    if (!normalize_path(path, cwd, normalized, sizeof(normalized)))
+    // Two-disk architecture: kernel VFS only handles absolute /sys/* paths
+    // Relative paths cannot access kernel filesystem - userspace handles via fsd
+    if (path[0] != '/')
     {
         return 0;
     }
 
-    return resolve_path(normalized);
+    // Delegate to resolve_path which handles /sys prefix check
+    return resolve_path(path);
 }
 
 } // namespace fs::vfs

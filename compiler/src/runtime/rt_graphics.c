@@ -1662,6 +1662,322 @@ int64_t rt_canvas_save_bmp(void *canvas_ptr, rt_string path)
     return result;
 }
 
+//=============================================================================
+// Extended Color Functions
+//=============================================================================
+
+// Helper: Convert RGB to HSL
+static void rgb_to_hsl(int64_t r, int64_t g, int64_t b, int64_t *h, int64_t *s, int64_t *l)
+{
+    int64_t max_c = (r > g) ? (r > b ? r : b) : (g > b ? g : b);
+    int64_t min_c = (r < g) ? (r < b ? r : b) : (g < b ? g : b);
+    int64_t delta = max_c - min_c;
+
+    *l = (max_c + min_c) * 100 / 510; // Lightness in 0-100
+
+    if (delta == 0)
+    {
+        *h = 0;
+        *s = 0;
+    }
+    else
+    {
+        // Saturation
+        if (*l <= 50)
+            *s = delta * 100 / (max_c + min_c);
+        else
+            *s = delta * 100 / (510 - max_c - min_c);
+
+        // Hue
+        if (max_c == r)
+            *h = ((g - b) * 60 / delta + 360) % 360;
+        else if (max_c == g)
+            *h = (b - r) * 60 / delta + 120;
+        else
+            *h = (r - g) * 60 / delta + 240;
+
+        if (*h < 0)
+            *h += 360;
+    }
+}
+
+// Helper: Hue to RGB conversion for HSL
+static int64_t hue_to_rgb_helper(int64_t p, int64_t q, int64_t t)
+{
+    if (t < 0)
+        t += 360;
+    if (t > 360)
+        t -= 360;
+    if (t < 60)
+        return p + (q - p) * t / 60;
+    if (t < 180)
+        return q;
+    if (t < 240)
+        return p + (q - p) * (240 - t) / 60;
+    return p;
+}
+
+// Helper: Convert HSL to RGB
+static void hsl_to_rgb(int64_t h, int64_t s, int64_t l, int64_t *r, int64_t *g, int64_t *b)
+{
+    if (s == 0)
+    {
+        *r = *g = *b = l * 255 / 100;
+        return;
+    }
+
+    int64_t q = (l < 50) ? (l * (100 + s) / 100) : (l + s - l * s / 100);
+    int64_t p = 2 * l - q;
+
+    *r = hue_to_rgb_helper(p, q, h + 120) * 255 / 100;
+    *g = hue_to_rgb_helper(p, q, h) * 255 / 100;
+    *b = hue_to_rgb_helper(p, q, h - 120) * 255 / 100;
+
+    // Clamp to 0-255
+    if (*r < 0)
+        *r = 0;
+    if (*r > 255)
+        *r = 255;
+    if (*g < 0)
+        *g = 0;
+    if (*g > 255)
+        *g = 255;
+    if (*b < 0)
+        *b = 0;
+    if (*b > 255)
+        *b = 255;
+}
+
+int64_t rt_color_from_hsl(int64_t h, int64_t s, int64_t l)
+{
+    // Clamp inputs
+    h = ((h % 360) + 360) % 360;
+    if (s < 0)
+        s = 0;
+    if (s > 100)
+        s = 100;
+    if (l < 0)
+        l = 0;
+    if (l > 100)
+        l = 100;
+
+    int64_t r, g, b;
+    hsl_to_rgb(h, s, l, &r, &g, &b);
+
+    return ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
+}
+
+int64_t rt_color_get_h(int64_t color)
+{
+    int64_t r = (color >> 16) & 0xFF;
+    int64_t g = (color >> 8) & 0xFF;
+    int64_t b = color & 0xFF;
+    int64_t h, s, l;
+    rgb_to_hsl(r, g, b, &h, &s, &l);
+    return h;
+}
+
+int64_t rt_color_get_s(int64_t color)
+{
+    int64_t r = (color >> 16) & 0xFF;
+    int64_t g = (color >> 8) & 0xFF;
+    int64_t b = color & 0xFF;
+    int64_t h, s, l;
+    rgb_to_hsl(r, g, b, &h, &s, &l);
+    return s;
+}
+
+int64_t rt_color_get_l(int64_t color)
+{
+    int64_t r = (color >> 16) & 0xFF;
+    int64_t g = (color >> 8) & 0xFF;
+    int64_t b = color & 0xFF;
+    int64_t h, s, l;
+    rgb_to_hsl(r, g, b, &h, &s, &l);
+    return l;
+}
+
+int64_t rt_color_lerp(int64_t c1, int64_t c2, int64_t t)
+{
+    if (t < 0)
+        t = 0;
+    if (t > 100)
+        t = 100;
+
+    int64_t r1 = (c1 >> 16) & 0xFF;
+    int64_t g1 = (c1 >> 8) & 0xFF;
+    int64_t b1 = c1 & 0xFF;
+
+    int64_t r2 = (c2 >> 16) & 0xFF;
+    int64_t g2 = (c2 >> 8) & 0xFF;
+    int64_t b2 = c2 & 0xFF;
+
+    int64_t r = r1 + (r2 - r1) * t / 100;
+    int64_t g = g1 + (g2 - g1) * t / 100;
+    int64_t b = b1 + (b2 - b1) * t / 100;
+
+    return ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
+}
+
+int64_t rt_color_get_r(int64_t color)
+{
+    return (color >> 16) & 0xFF;
+}
+
+int64_t rt_color_get_g(int64_t color)
+{
+    return (color >> 8) & 0xFF;
+}
+
+int64_t rt_color_get_b(int64_t color)
+{
+    return color & 0xFF;
+}
+
+int64_t rt_color_get_a(int64_t color)
+{
+    return (color >> 24) & 0xFF;
+}
+
+int64_t rt_color_brighten(int64_t color, int64_t amount)
+{
+    if (amount < 0)
+        amount = 0;
+    if (amount > 100)
+        amount = 100;
+
+    int64_t r = (color >> 16) & 0xFF;
+    int64_t g = (color >> 8) & 0xFF;
+    int64_t b = color & 0xFF;
+
+    // Increase each channel toward 255
+    r = r + (255 - r) * amount / 100;
+    g = g + (255 - g) * amount / 100;
+    b = b + (255 - b) * amount / 100;
+
+    return ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
+}
+
+int64_t rt_color_darken(int64_t color, int64_t amount)
+{
+    if (amount < 0)
+        amount = 0;
+    if (amount > 100)
+        amount = 100;
+
+    int64_t r = (color >> 16) & 0xFF;
+    int64_t g = (color >> 8) & 0xFF;
+    int64_t b = color & 0xFF;
+
+    // Decrease each channel toward 0
+    r = r - r * amount / 100;
+    g = g - g * amount / 100;
+    b = b - b * amount / 100;
+
+    return ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
+}
+
+//=============================================================================
+// Extended Canvas Functions
+//=============================================================================
+
+void rt_canvas_set_clip_rect(void *canvas_ptr, int64_t x, int64_t y, int64_t w, int64_t h)
+{
+    // TODO: Implement clip rect when vgfx adds support
+    (void)canvas_ptr;
+    (void)x;
+    (void)y;
+    (void)w;
+    (void)h;
+}
+
+void rt_canvas_clear_clip_rect(void *canvas_ptr)
+{
+    // TODO: Implement clear clip rect when vgfx adds support
+    (void)canvas_ptr;
+}
+
+void rt_canvas_set_title(void *canvas_ptr, rt_string title)
+{
+    // TODO: Implement set title when vgfx adds support
+    (void)canvas_ptr;
+    (void)title;
+}
+
+void *rt_canvas_screenshot(void *canvas_ptr)
+{
+    if (!canvas_ptr)
+        return NULL;
+
+    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    if (!canvas->gfx_win)
+        return NULL;
+
+    int32_t w, h;
+    if (vgfx_get_size(canvas->gfx_win, &w, &h) != 0)
+        return NULL;
+
+    return rt_canvas_copy_rect(canvas_ptr, 0, 0, w, h);
+}
+
+void rt_canvas_fullscreen(void *canvas_ptr)
+{
+    // TODO: Implement fullscreen when vgfx adds support
+    (void)canvas_ptr;
+}
+
+void rt_canvas_windowed(void *canvas_ptr)
+{
+    // TODO: Implement windowed when vgfx adds support
+    (void)canvas_ptr;
+}
+
+void rt_canvas_gradient_h(
+    void *canvas_ptr, int64_t x, int64_t y, int64_t w, int64_t h, int64_t c1, int64_t c2)
+{
+    if (!canvas_ptr || w <= 0 || h <= 0)
+        return;
+
+    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    if (!canvas->gfx_win)
+        return;
+
+    // Draw gradient by drawing vertical lines with interpolated colors
+    for (int64_t col = 0; col < w; col++)
+    {
+        int64_t color = rt_color_lerp(c1, c2, col * 100 / (w - 1 > 0 ? w - 1 : 1));
+        vgfx_line(canvas->gfx_win,
+                  (int32_t)(x + col),
+                  (int32_t)y,
+                  (int32_t)(x + col),
+                  (int32_t)(y + h - 1),
+                  (vgfx_color_t)color);
+    }
+}
+
+void rt_canvas_gradient_v(
+    void *canvas_ptr, int64_t x, int64_t y, int64_t w, int64_t h, int64_t c1, int64_t c2)
+{
+    if (!canvas_ptr || w <= 0 || h <= 0)
+        return;
+
+    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    if (!canvas->gfx_win)
+        return;
+
+    // Draw gradient by drawing horizontal lines with interpolated colors
+    for (int64_t row = 0; row < h; row++)
+    {
+        int64_t color = rt_color_lerp(c1, c2, row * 100 / (h - 1 > 0 ? h - 1 : 1));
+        vgfx_line(canvas->gfx_win,
+                  (int32_t)x,
+                  (int32_t)(y + row),
+                  (int32_t)(x + w - 1),
+                  (int32_t)(y + row),
+                  (vgfx_color_t)color);
+    }
+}
+
 #else /* !VIPER_ENABLE_GRAPHICS */
 
 /* Stub implementations when graphics library is not available */
@@ -2063,6 +2379,132 @@ int64_t rt_color_rgba(int64_t r, int64_t g, int64_t b, int64_t a)
     uint8_t a8 = (a < 0) ? 0 : (a > 255) ? 255 : (uint8_t)a;
     return (int64_t)(((uint32_t)a8 << 24) | ((uint32_t)r8 << 16) | ((uint32_t)g8 << 8) |
                      (uint32_t)b8);
+}
+
+int64_t rt_color_from_hsl(int64_t h, int64_t s, int64_t l)
+{
+    (void)h;
+    (void)s;
+    (void)l;
+    return 0;
+}
+
+int64_t rt_color_get_h(int64_t color)
+{
+    (void)color;
+    return 0;
+}
+
+int64_t rt_color_get_s(int64_t color)
+{
+    (void)color;
+    return 0;
+}
+
+int64_t rt_color_get_l(int64_t color)
+{
+    (void)color;
+    return 0;
+}
+
+int64_t rt_color_lerp(int64_t c1, int64_t c2, int64_t t)
+{
+    (void)c1;
+    (void)c2;
+    (void)t;
+    return 0;
+}
+
+int64_t rt_color_get_r(int64_t color)
+{
+    return (color >> 16) & 0xFF;
+}
+
+int64_t rt_color_get_g(int64_t color)
+{
+    return (color >> 8) & 0xFF;
+}
+
+int64_t rt_color_get_b(int64_t color)
+{
+    return color & 0xFF;
+}
+
+int64_t rt_color_get_a(int64_t color)
+{
+    return (color >> 24) & 0xFF;
+}
+
+int64_t rt_color_brighten(int64_t color, int64_t amount)
+{
+    (void)color;
+    (void)amount;
+    return 0;
+}
+
+int64_t rt_color_darken(int64_t color, int64_t amount)
+{
+    (void)color;
+    (void)amount;
+    return 0;
+}
+
+void rt_canvas_set_clip_rect(void *canvas, int64_t x, int64_t y, int64_t w, int64_t h)
+{
+    (void)canvas;
+    (void)x;
+    (void)y;
+    (void)w;
+    (void)h;
+}
+
+void rt_canvas_clear_clip_rect(void *canvas)
+{
+    (void)canvas;
+}
+
+void rt_canvas_set_title(void *canvas, rt_string title)
+{
+    (void)canvas;
+    (void)title;
+}
+
+void *rt_canvas_screenshot(void *canvas)
+{
+    (void)canvas;
+    return NULL;
+}
+
+void rt_canvas_fullscreen(void *canvas)
+{
+    (void)canvas;
+}
+
+void rt_canvas_windowed(void *canvas)
+{
+    (void)canvas;
+}
+
+void rt_canvas_gradient_h(void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, int64_t c1, int64_t c2)
+{
+    (void)canvas;
+    (void)x;
+    (void)y;
+    (void)w;
+    (void)h;
+    (void)c1;
+    (void)c2;
+}
+
+void rt_canvas_gradient_v(void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, int64_t c1, int64_t c2)
+{
+    (void)canvas;
+    (void)x;
+    (void)y;
+    (void)w;
+    (void)h;
+    (void)c1;
+    (void)c2;
 }
 
 #endif /* VIPER_ENABLE_GRAPHICS */

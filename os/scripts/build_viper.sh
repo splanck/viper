@@ -19,7 +19,7 @@ TOOLS_DIR="$PROJECT_DIR/tools"
 MODE="graphics"
 DEBUG=false
 NETWORK=true
-MEMORY="128M"
+MEMORY="256M"
 RUN_TESTS=false
 RUN_QEMU=true
 
@@ -65,13 +65,20 @@ show_help() {
     echo "  --no-net    Disable networking"
     echo "  --test      Run tests before launching QEMU"
     echo "  --no-run    Do not launch QEMU (build/test only)"
-    echo "  --memory N  Set memory size (default: 128M)"
+    echo "  --memory N  Set memory size (default: 256M)"
     echo "  --help      Show this help message"
     echo ""
     echo "Examples:"
-    echo "  $0                    # Clean build and run with graphics"
-    echo "  $0 --serial           # Clean build and run in terminal only"
-    echo "  $0 --test             # Clean build, run tests, then launch QEMU"
+    echo "  $0                    # Build and run with GUI desktop"
+    echo "  $0 --serial           # Build and run in terminal only (no GUI)"
+    echo "  $0 --test             # Build, run tests, then launch QEMU"
+    echo "  $0 --no-run           # Build only, don't launch QEMU"
+    echo ""
+    echo "GUI Desktop:"
+    echo "  To start the GUI desktop, run these commands from the shell:"
+    echo "    run /c/inputd.sys      # Start input server (mouse/keyboard)"
+    echo "    run /c/displayd.sys    # Start display server (shows desktop)"
+    echo "    run /c/hello_gui.prg   # Run a test GUI application"
     echo ""
 }
 
@@ -200,108 +207,49 @@ else
     print_warning "gen_roots_der not found, skipping certificate bundle"
 fi
 
-# Create/update disk image with standard directory structure
-# Layout:
-#   / (root = SYS: = D0:)
-#   ├── vinit.sys           # Init process (loaded by kernel)
-#   ├── c/                   # Commands directory (C:)
-#   │   ├── hello.prg
-#   │   ├── fsinfo.prg
-#   │   ├── blkd.sys        # System servers
-#   │   └── ...
-#   ├── certs/               # Certificate store
-#   │   └── roots.der
-#   ├── s/                   # Startup-sequence scripts (S:)
-#   ├── l/                   # Shared libraries (L:)
-#   └── t/                   # Temporary files (T:)
-print_step "Creating disk image..."
-if [[ -x "$TOOLS_DIR/mkfs.viperfs" ]]; then
-    MKFS_ARGS=(
-        "$BUILD_DIR/disk.img" 8
-        "$BUILD_DIR/vinit.sys"
-        --mkdir c
-        --mkdir s
-        --mkdir l
-        --mkdir t
-        --mkdir certs
-    )
-    # Add command utilities to c/ directory (.prg extension for programs)
-    if [[ -f "$BUILD_DIR/hello.prg" ]]; then
-        MKFS_ARGS+=(--add "$BUILD_DIR/hello.prg:c/hello.prg")
-    fi
-    if [[ -f "$BUILD_DIR/fsinfo.prg" ]]; then
-        MKFS_ARGS+=(--add "$BUILD_DIR/fsinfo.prg:c/fsinfo.prg")
-    fi
-    if [[ -f "$BUILD_DIR/netstat.prg" ]]; then
-        MKFS_ARGS+=(--add "$BUILD_DIR/netstat.prg:c/netstat.prg")
-    fi
-    if [[ -f "$BUILD_DIR/sysinfo.prg" ]]; then
-        MKFS_ARGS+=(--add "$BUILD_DIR/sysinfo.prg:c/sysinfo.prg")
-    fi
-    if [[ -f "$BUILD_DIR/faulttest_null.prg" ]]; then
-        MKFS_ARGS+=(--add "$BUILD_DIR/faulttest_null.prg:c/faulttest_null.prg")
-    fi
-    if [[ -f "$BUILD_DIR/faulttest_illegal.prg" ]]; then
-        MKFS_ARGS+=(--add "$BUILD_DIR/faulttest_illegal.prg:c/faulttest_illegal.prg")
-    fi
-    if [[ -f "$BUILD_DIR/mathtest.prg" ]]; then
-        MKFS_ARGS+=(--add "$BUILD_DIR/mathtest.prg:c/mathtest.prg")
-    fi
-    if [[ -f "$BUILD_DIR/ping.prg" ]]; then
-        MKFS_ARGS+=(--add "$BUILD_DIR/ping.prg:c/ping.prg")
-    fi
-    if [[ -f "$BUILD_DIR/devices.prg" ]]; then
-        MKFS_ARGS+=(--add "$BUILD_DIR/devices.prg:c/devices.prg")
-    fi
-    if [[ -f "$BUILD_DIR/edit.prg" ]]; then
-        MKFS_ARGS+=(--add "$BUILD_DIR/edit.prg:c/edit.prg")
-    fi
-    if [[ -f "$BUILD_DIR/fsd_smoke.prg" ]]; then
-        MKFS_ARGS+=(--add "$BUILD_DIR/fsd_smoke.prg:c/fsd_smoke.prg")
-    fi
-    if [[ -f "$BUILD_DIR/netd_smoke.prg" ]]; then
-        MKFS_ARGS+=(--add "$BUILD_DIR/netd_smoke.prg:c/netd_smoke.prg")
-    fi
-    if [[ -f "$BUILD_DIR/tls_smoke.prg" ]]; then
-        MKFS_ARGS+=(--add "$BUILD_DIR/tls_smoke.prg:c/tls_smoke.prg")
-    fi
-    if [[ -f "$BUILD_DIR/ssh.prg" ]]; then
-        MKFS_ARGS+=(--add "$BUILD_DIR/ssh.prg:c/ssh.prg")
-    fi
-    if [[ -f "$BUILD_DIR/sftp.prg" ]]; then
-        MKFS_ARGS+=(--add "$BUILD_DIR/sftp.prg:c/sftp.prg")
-    fi
-    # Add microkernel server binaries to c/ (.sys extension for system servers)
-    if [[ -f "$BUILD_DIR/blkd.sys" ]]; then
-        MKFS_ARGS+=(--add "$BUILD_DIR/blkd.sys:c/blkd.sys")
-    fi
-    if [[ -f "$BUILD_DIR/netd.sys" ]]; then
-        MKFS_ARGS+=(--add "$BUILD_DIR/netd.sys:c/netd.sys")
-    fi
-    if [[ -f "$BUILD_DIR/fsd.sys" ]]; then
-        MKFS_ARGS+=(--add "$BUILD_DIR/fsd.sys:c/fsd.sys")
-    fi
-    if [[ -f "$BUILD_DIR/inputd.sys" ]]; then
-        MKFS_ARGS+=(--add "$BUILD_DIR/inputd.sys:c/inputd.sys")
-    fi
-    if [[ -f "$BUILD_DIR/consoled.sys" ]]; then
-        MKFS_ARGS+=(--add "$BUILD_DIR/consoled.sys:c/consoled.sys")
-    fi
-    # Add roots.der to certs directory
-    if [[ -f "$BUILD_DIR/roots.der" ]]; then
-        MKFS_ARGS+=(--add "$BUILD_DIR/roots.der:certs/roots.der")
-    fi
-    "$TOOLS_DIR/mkfs.viperfs" "${MKFS_ARGS[@]}"
-    print_success "Disk image created"
+# =============================================================================
+# Two-Disk Architecture
+# =============================================================================
+# sys.img (disk0): System disk - kernel access via VirtIO-blk
+#   Contains vinit.sys and all system servers at root level
+# user.img (disk1): User disk - blkd/fsd access
+#   Contains user programs in /c/, certificates in /certs/, etc.
+#
+# This allows the system to boot to a functional shell even if the user
+# disk is missing (graceful degradation to "system-only" mode).
 
-    # Create a dedicated disk image for user-space microkernel servers (blkd/fsd)
-    # so they don't contend with the kernel's virtio-blk device.
-    if [[ -f "$BUILD_DIR/blkd.sys" || -f "$BUILD_DIR/fsd.sys" ]]; then
-        cp -f "$BUILD_DIR/disk.img" "$BUILD_DIR/microkernel.img"
-        print_success "Microkernel disk image created"
-    fi
+print_step "Creating disk images..."
+if [[ -x "$TOOLS_DIR/mkfs.viperfs" ]]; then
+    # -------------------------------------------------------------------------
+    # sys.img - System disk (2MB)
+    # -------------------------------------------------------------------------
+    SYS_ARGS=("$BUILD_DIR/sys.img" 2 "$BUILD_DIR/vinit.sys")
+    for srv in blkd netd fsd consoled inputd displayd; do
+        [[ -f "$BUILD_DIR/${srv}.sys" ]] && SYS_ARGS+=(--add "$BUILD_DIR/${srv}.sys:${srv}.sys")
+    done
+    "$TOOLS_DIR/mkfs.viperfs" "${SYS_ARGS[@]}"
+    print_success "sys.img created (system disk)"
+
+    # -------------------------------------------------------------------------
+    # user.img - User disk (8MB)
+    # -------------------------------------------------------------------------
+    USER_ARGS=("$BUILD_DIR/user.img" 8 --mkdir c --mkdir certs --mkdir s --mkdir t)
+    # Add user programs to /c/
+    for prg in hello fsd_smoke netd_smoke tls_smoke edit sftp ssh ping \
+               fsinfo netstat sysinfo devices mathtest faulttest_null \
+               faulttest_illegal hello_gui; do
+        [[ -f "$BUILD_DIR/${prg}.prg" ]] && USER_ARGS+=(--add "$BUILD_DIR/${prg}.prg:c/${prg}.prg")
+    done
+    # Add certificate bundle
+    [[ -f "$BUILD_DIR/roots.der" ]] && USER_ARGS+=(--add "$BUILD_DIR/roots.der:certs/roots.der")
+    "$TOOLS_DIR/mkfs.viperfs" "${USER_ARGS[@]}"
+    print_success "user.img created (user disk)"
+
+    # Legacy compatibility: disk.img alias for sys.img
+    cp -f "$BUILD_DIR/sys.img" "$BUILD_DIR/disk.img"
+    print_success "disk.img created (legacy alias)"
 else
-    print_warning "mkfs.viperfs not found, using existing disk image"
+    print_warning "mkfs.viperfs not found, using existing disk images"
 fi
 
 # Run tests (after disk image is created so tests can use it)
@@ -332,22 +280,26 @@ QEMU_OPTS=(
     -kernel "$BUILD_DIR/kernel.sys"
 )
 
-# Disk options (use legacy virtio for compatibility)
-if [[ -f "$BUILD_DIR/disk.img" ]]; then
+# Two-disk architecture:
+#   disk0 (sys.img): System disk - kernel access
+#   disk1 (user.img): User disk - blkd/fsd access
+
+# System disk (kernel access via VirtIO-blk)
+if [[ -f "$BUILD_DIR/sys.img" ]]; then
     QEMU_OPTS+=(
-        -drive "file=$BUILD_DIR/disk.img,if=none,format=raw,id=disk0"
+        -drive "file=$BUILD_DIR/sys.img,if=none,format=raw,id=disk0"
         -device virtio-blk-device,drive=disk0
     )
-    echo "  Disk: $BUILD_DIR/disk.img"
+    echo "  System Disk: $BUILD_DIR/sys.img"
 fi
 
-# Dedicated microkernel block device (for user-space blkd/fsd)
-if [[ -f "$BUILD_DIR/microkernel.img" ]]; then
+# User disk (blkd/fsd access via VirtIO-blk)
+if [[ -f "$BUILD_DIR/user.img" ]]; then
     QEMU_OPTS+=(
-        -drive "file=$BUILD_DIR/microkernel.img,if=none,format=raw,id=disk1"
+        -drive "file=$BUILD_DIR/user.img,if=none,format=raw,id=disk1"
         -device virtio-blk-device,drive=disk1
     )
-    echo "  Microkernel Disk: $BUILD_DIR/microkernel.img"
+    echo "  User Disk: $BUILD_DIR/user.img"
 fi
 
 # RNG device (entropy source for TLS)
@@ -386,7 +338,8 @@ case "$MODE" in
             -chardev stdio,id=ser0,mux=on,signal=off
             -serial chardev:ser0
         )
-        echo "  Display: Graphics + Serial"
+        echo "  Display: Graphics mode (ramfb + mouse + keyboard)"
+        echo "  Tip: Run 'run /c/displayd.sys' then 'run /c/hello_gui.prg' to test GUI"
         ;;
 esac
 

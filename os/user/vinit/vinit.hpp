@@ -108,6 +108,10 @@ usize get_server_count();
 void get_server_status(
     usize idx, const char **name, const char **assign, i64 *pid, bool *running, bool *available);
 
+/// Check if fsd (user filesystem) is available.
+/// Returns false in system-only mode when user disk is missing.
+bool is_fsd_available();
+
 // =============================================================================
 // Shell Loop
 // =============================================================================

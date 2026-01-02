@@ -131,6 +131,39 @@ extern "C"
     /// @return New scaled Pixels object.
     void *rt_pixels_scale(void *pixels, int64_t new_width, int64_t new_height);
 
+    //=========================================================================
+    // Image Processing
+    //=========================================================================
+
+    /// @brief Invert all colors in the image.
+    /// @param pixels Pixels object.
+    /// @return New inverted Pixels object.
+    void *rt_pixels_invert(void *pixels);
+
+    /// @brief Convert image to grayscale.
+    /// @param pixels Pixels object.
+    /// @return New grayscale Pixels object.
+    void *rt_pixels_grayscale(void *pixels);
+
+    /// @brief Apply a color tint to the image.
+    /// @param pixels Pixels object.
+    /// @param color Tint color (0x00RRGGBB).
+    /// @return New tinted Pixels object.
+    void *rt_pixels_tint(void *pixels, int64_t color);
+
+    /// @brief Apply a box blur to the image.
+    /// @param pixels Pixels object.
+    /// @param radius Blur radius (1-10).
+    /// @return New blurred Pixels object.
+    void *rt_pixels_blur(void *pixels, int64_t radius);
+
+    /// @brief Scale the image using bilinear interpolation.
+    /// @param pixels Pixels object.
+    /// @param new_width Target width.
+    /// @param new_height Target height.
+    /// @return New scaled Pixels object.
+    void *rt_pixels_resize(void *pixels, int64_t new_width, int64_t new_height);
+
 #ifdef __cplusplus
 }
 #endif

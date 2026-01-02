@@ -102,6 +102,9 @@ set(RT_GRAPHICS_SOURCES
         rt_vec2.c
         rt_vec3.c
         rt_pixels.c
+        rt_sprite.c
+        rt_camera.c
+        rt_tilemap.c
 )
 
 set(RT_AUDIO_SOURCES
@@ -160,6 +163,9 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_path.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_dir.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_pixels.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_sprite.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_camera.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_tilemap.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_audio.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_threads.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_network.h

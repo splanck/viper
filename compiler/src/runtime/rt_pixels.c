@@ -768,3 +768,271 @@ void *rt_pixels_scale(void *pixels, int64_t new_width, int64_t new_height)
 
     return result;
 }
+
+//=============================================================================
+// Image Processing
+//=============================================================================
+
+void *rt_pixels_invert(void *pixels)
+{
+    if (!pixels)
+    {
+        rt_trap("Pixels.Invert: null pixels");
+        return NULL;
+    }
+
+    rt_pixels_impl *p = (rt_pixels_impl *)pixels;
+    rt_pixels_impl *result = pixels_alloc(p->width, p->height);
+    if (!result)
+        return NULL;
+
+    int64_t count = p->width * p->height;
+    for (int64_t i = 0; i < count; i++)
+    {
+        uint32_t px = p->data[i];
+        // Format is 0xAARRGGBB - invert RGB, keep alpha
+        uint8_t a = (px >> 24) & 0xFF;
+        uint8_t r = 255 - ((px >> 16) & 0xFF);
+        uint8_t g = 255 - ((px >> 8) & 0xFF);
+        uint8_t b = 255 - (px & 0xFF);
+        result->data[i] = ((uint32_t)a << 24) | ((uint32_t)r << 16) | ((uint32_t)g << 8) | b;
+    }
+
+    return result;
+}
+
+void *rt_pixels_grayscale(void *pixels)
+{
+    if (!pixels)
+    {
+        rt_trap("Pixels.Grayscale: null pixels");
+        return NULL;
+    }
+
+    rt_pixels_impl *p = (rt_pixels_impl *)pixels;
+    rt_pixels_impl *result = pixels_alloc(p->width, p->height);
+    if (!result)
+        return NULL;
+
+    int64_t count = p->width * p->height;
+    for (int64_t i = 0; i < count; i++)
+    {
+        uint32_t px = p->data[i];
+        // Format is 0xAARRGGBB
+        uint8_t a = (px >> 24) & 0xFF;
+        uint8_t r = (px >> 16) & 0xFF;
+        uint8_t g = (px >> 8) & 0xFF;
+        uint8_t b = px & 0xFF;
+
+        // Standard grayscale formula: 0.299*R + 0.587*G + 0.114*B
+        uint8_t gray = (uint8_t)((r * 77 + g * 150 + b * 29) >> 8);
+        result->data[i] = ((uint32_t)a << 24) | ((uint32_t)gray << 16) | ((uint32_t)gray << 8) | gray;
+    }
+
+    return result;
+}
+
+void *rt_pixels_tint(void *pixels, int64_t color)
+{
+    if (!pixels)
+    {
+        rt_trap("Pixels.Tint: null pixels");
+        return NULL;
+    }
+
+    rt_pixels_impl *p = (rt_pixels_impl *)pixels;
+    rt_pixels_impl *result = pixels_alloc(p->width, p->height);
+    if (!result)
+        return NULL;
+
+    // Extract tint color (0xAARRGGBB format)
+    int64_t tr = (color >> 16) & 0xFF;
+    int64_t tg = (color >> 8) & 0xFF;
+    int64_t tb = color & 0xFF;
+
+    int64_t count = p->width * p->height;
+    for (int64_t i = 0; i < count; i++)
+    {
+        uint32_t px = p->data[i];
+        // Format is 0xAARRGGBB
+        uint8_t a = (px >> 24) & 0xFF;
+        int64_t r = (px >> 16) & 0xFF;
+        int64_t g = (px >> 8) & 0xFF;
+        int64_t b = px & 0xFF;
+
+        // Multiply blend: result = (pixel * tint) / 255
+        r = (r * tr) / 255;
+        g = (g * tg) / 255;
+        b = (b * tb) / 255;
+
+        result->data[i] = ((uint32_t)a << 24) | ((uint32_t)(r & 0xFF) << 16) |
+                          ((uint32_t)(g & 0xFF) << 8) | (b & 0xFF);
+    }
+
+    return result;
+}
+
+void *rt_pixels_blur(void *pixels, int64_t radius)
+{
+    if (!pixels)
+    {
+        rt_trap("Pixels.Blur: null pixels");
+        return NULL;
+    }
+
+    if (radius < 1)
+        radius = 1;
+    if (radius > 10)
+        radius = 10;
+
+    rt_pixels_impl *p = (rt_pixels_impl *)pixels;
+    rt_pixels_impl *result = pixels_alloc(p->width, p->height);
+    if (!result)
+        return NULL;
+
+    int64_t w = p->width;
+    int64_t h = p->height;
+
+    // Simple box blur - format is 0xAARRGGBB
+    for (int64_t y = 0; y < h; y++)
+    {
+        for (int64_t x = 0; x < w; x++)
+        {
+            int64_t sum_r = 0, sum_g = 0, sum_b = 0, sum_a = 0;
+            int64_t count = 0;
+
+            for (int64_t dy = -radius; dy <= radius; dy++)
+            {
+                for (int64_t dx = -radius; dx <= radius; dx++)
+                {
+                    int64_t sx = x + dx;
+                    int64_t sy = y + dy;
+
+                    if (sx >= 0 && sx < w && sy >= 0 && sy < h)
+                    {
+                        uint32_t px = p->data[sy * w + sx];
+                        sum_a += (px >> 24) & 0xFF;
+                        sum_r += (px >> 16) & 0xFF;
+                        sum_g += (px >> 8) & 0xFF;
+                        sum_b += px & 0xFF;
+                        count++;
+                    }
+                }
+            }
+
+            if (count > 0)
+            {
+                uint8_t a = (uint8_t)(sum_a / count);
+                uint8_t r = (uint8_t)(sum_r / count);
+                uint8_t g = (uint8_t)(sum_g / count);
+                uint8_t b = (uint8_t)(sum_b / count);
+                result->data[y * w + x] =
+                    ((uint32_t)a << 24) | ((uint32_t)r << 16) | ((uint32_t)g << 8) | b;
+            }
+        }
+    }
+
+    return result;
+}
+
+void *rt_pixels_resize(void *pixels, int64_t new_width, int64_t new_height)
+{
+    if (!pixels)
+    {
+        rt_trap("Pixels.Resize: null pixels");
+        return NULL;
+    }
+
+    if (new_width <= 0)
+        new_width = 1;
+    if (new_height <= 0)
+        new_height = 1;
+
+    rt_pixels_impl *p = (rt_pixels_impl *)pixels;
+
+    // Handle empty source
+    if (p->width <= 0 || p->height <= 0)
+    {
+        return pixels_alloc(new_width, new_height);
+    }
+
+    rt_pixels_impl *result = pixels_alloc(new_width, new_height);
+    if (!result)
+        return NULL;
+
+    // Bilinear interpolation scaling
+    for (int64_t y = 0; y < new_height; y++)
+    {
+        // Map destination y to source y (with fractional part)
+        int64_t src_y_256 = (y * p->height * 256) / new_height;
+        int64_t src_y = src_y_256 >> 8;
+        int64_t frac_y = src_y_256 & 0xFF;
+
+        if (src_y >= p->height - 1)
+        {
+            src_y = p->height - 2;
+            if (src_y < 0)
+                src_y = 0;
+            frac_y = 255;
+        }
+
+        for (int64_t x = 0; x < new_width; x++)
+        {
+            // Map destination x to source x (with fractional part)
+            int64_t src_x_256 = (x * p->width * 256) / new_width;
+            int64_t src_x = src_x_256 >> 8;
+            int64_t frac_x = src_x_256 & 0xFF;
+
+            if (src_x >= p->width - 1)
+            {
+                src_x = p->width - 2;
+                if (src_x < 0)
+                    src_x = 0;
+                frac_x = 255;
+            }
+
+            // Get four neighboring pixels
+            uint32_t p00 = p->data[src_y * p->width + src_x];
+            uint32_t p10 = p->data[src_y * p->width + src_x + 1];
+            uint32_t p01 = p->data[(src_y + 1) * p->width + src_x];
+            uint32_t p11 = p->data[(src_y + 1) * p->width + src_x + 1];
+
+            // Extract components - format is 0xAARRGGBB
+            int64_t a00 = (p00 >> 24) & 0xFF, r00 = (p00 >> 16) & 0xFF, g00 = (p00 >> 8) & 0xFF,
+                    b00 = p00 & 0xFF;
+            int64_t a10 = (p10 >> 24) & 0xFF, r10 = (p10 >> 16) & 0xFF, g10 = (p10 >> 8) & 0xFF,
+                    b10 = p10 & 0xFF;
+            int64_t a01 = (p01 >> 24) & 0xFF, r01 = (p01 >> 16) & 0xFF, g01 = (p01 >> 8) & 0xFF,
+                    b01 = p01 & 0xFF;
+            int64_t a11 = (p11 >> 24) & 0xFF, r11 = (p11 >> 16) & 0xFF, g11 = (p11 >> 8) & 0xFF,
+                    b11 = p11 & 0xFF;
+
+            // Bilinear interpolation
+            int64_t inv_frac_x = 256 - frac_x;
+            int64_t inv_frac_y = 256 - frac_y;
+
+            int64_t a =
+                (a00 * inv_frac_x * inv_frac_y + a10 * frac_x * inv_frac_y +
+                 a01 * inv_frac_x * frac_y + a11 * frac_x * frac_y) >>
+                16;
+            int64_t r =
+                (r00 * inv_frac_x * inv_frac_y + r10 * frac_x * inv_frac_y +
+                 r01 * inv_frac_x * frac_y + r11 * frac_x * frac_y) >>
+                16;
+            int64_t g =
+                (g00 * inv_frac_x * inv_frac_y + g10 * frac_x * inv_frac_y +
+                 g01 * inv_frac_x * frac_y + g11 * frac_x * frac_y) >>
+                16;
+            int64_t b =
+                (b00 * inv_frac_x * inv_frac_y + b10 * frac_x * inv_frac_y +
+                 b01 * inv_frac_x * frac_y + b11 * frac_x * frac_y) >>
+                16;
+
+            result->data[y * new_width + x] = ((uint32_t)(a & 0xFF) << 24) |
+                                              ((uint32_t)(r & 0xFF) << 16) |
+                                              ((uint32_t)(g & 0xFF) << 8) | (b & 0xFF);
+        }
+    }
+
+    return result;
+}

@@ -41,6 +41,12 @@ static u8 current_modifiers = 0;
 // Caps lock state (toggle)
 static bool caps_lock_on = false;
 
+// Mouse state
+static MouseState g_mouse = {0, 0, 0, 0, 0, {0, 0, 0}};
+static u32 g_screen_width = 1024;   // Default, updated by set_mouse_bounds()
+static u32 g_screen_height = 768;   // Default, updated by set_mouse_bounds()
+static Spinlock mouse_lock;
+
 /** @copydoc input::init */
 void init()
 {
@@ -51,6 +57,14 @@ void init()
     char_tail = 0;
     current_modifiers = 0;
     caps_lock_on = false;
+
+    // Initialize mouse state (center of default screen)
+    g_mouse.x = static_cast<i32>(g_screen_width / 2);
+    g_mouse.y = static_cast<i32>(g_screen_height / 2);
+    g_mouse.dx = 0;
+    g_mouse.dy = 0;
+    g_mouse.buttons = 0;
+
     serial::puts("[input] Input subsystem initialized\n");
 }
 
@@ -226,13 +240,82 @@ void poll()
         }
     }
 
-    // Poll mouse (just consume events for now)
+    // Poll mouse
     if (virtio::mouse)
     {
         virtio::InputEvent vev;
         while (virtio::mouse->get_event(&vev))
         {
-            // Ignore mouse events for now
+            SpinlockGuard guard(mouse_lock);
+
+            if (vev.type == virtio::ev_type::REL)
+            {
+                // Relative movement event
+                constexpr u16 REL_X = 0x00;
+                constexpr u16 REL_Y = 0x01;
+
+                if (vev.code == REL_X)
+                {
+                    i32 delta = static_cast<i32>(vev.value);
+                    g_mouse.dx += delta;
+                    g_mouse.x += delta;
+                    // Clamp to screen bounds
+                    if (g_mouse.x < 0)
+                        g_mouse.x = 0;
+                    if (g_mouse.x >= static_cast<i32>(g_screen_width))
+                        g_mouse.x = static_cast<i32>(g_screen_width) - 1;
+                }
+                else if (vev.code == REL_Y)
+                {
+                    i32 delta = static_cast<i32>(vev.value);
+                    g_mouse.dy += delta;
+                    g_mouse.y += delta;
+                    // Clamp to screen bounds
+                    if (g_mouse.y < 0)
+                        g_mouse.y = 0;
+                    if (g_mouse.y >= static_cast<i32>(g_screen_height))
+                        g_mouse.y = static_cast<i32>(g_screen_height) - 1;
+                }
+
+                // Enqueue mouse move event
+                Event ev;
+                ev.type = EventType::MouseMove;
+                ev.modifiers = current_modifiers;
+                ev.code = 0;
+                ev.value = 0;
+                push_event(ev);
+            }
+            else if (vev.type == virtio::ev_type::KEY)
+            {
+                // Mouse button event (BTN_LEFT=0x110, BTN_RIGHT=0x111, BTN_MIDDLE=0x112)
+                constexpr u16 BTN_LEFT = 0x110;
+                constexpr u16 BTN_RIGHT = 0x111;
+                constexpr u16 BTN_MIDDLE = 0x112;
+
+                u8 button_bit = 0;
+                if (vev.code == BTN_LEFT)
+                    button_bit = 0x01;
+                else if (vev.code == BTN_RIGHT)
+                    button_bit = 0x02;
+                else if (vev.code == BTN_MIDDLE)
+                    button_bit = 0x04;
+
+                if (button_bit != 0)
+                {
+                    if (vev.value != 0)
+                        g_mouse.buttons |= button_bit;
+                    else
+                        g_mouse.buttons &= ~button_bit;
+
+                    // Enqueue mouse button event
+                    Event ev;
+                    ev.type = EventType::MouseButton;
+                    ev.modifiers = current_modifiers;
+                    ev.code = vev.code;
+                    ev.value = static_cast<i32>(vev.value);
+                    push_event(ev);
+                }
+            }
         }
     }
 }
@@ -468,6 +551,66 @@ u8 modifier_bit(u16 code)
         default:
             return 0;
     }
+}
+
+// =============================================================================
+// Mouse API Implementation
+// =============================================================================
+
+/** @copydoc input::get_mouse_state */
+MouseState get_mouse_state()
+{
+    SpinlockGuard guard(mouse_lock);
+    MouseState state = g_mouse;
+    // Reset deltas after reading
+    g_mouse.dx = 0;
+    g_mouse.dy = 0;
+    return state;
+}
+
+/** @copydoc input::set_mouse_bounds */
+void set_mouse_bounds(u32 width, u32 height)
+{
+    SpinlockGuard guard(mouse_lock);
+    g_screen_width = width;
+    g_screen_height = height;
+
+    // Clamp current position to new bounds
+    if (g_mouse.x >= static_cast<i32>(width))
+        g_mouse.x = static_cast<i32>(width) - 1;
+    if (g_mouse.y >= static_cast<i32>(height))
+        g_mouse.y = static_cast<i32>(height) - 1;
+    if (g_mouse.x < 0)
+        g_mouse.x = 0;
+    if (g_mouse.y < 0)
+        g_mouse.y = 0;
+}
+
+/** @copydoc input::get_mouse_position */
+void get_mouse_position(i32 &x, i32 &y)
+{
+    SpinlockGuard guard(mouse_lock);
+    x = g_mouse.x;
+    y = g_mouse.y;
+}
+
+/** @copydoc input::set_mouse_position */
+void set_mouse_position(i32 x, i32 y)
+{
+    SpinlockGuard guard(mouse_lock);
+
+    // Clamp to screen bounds
+    if (x < 0)
+        x = 0;
+    if (x >= static_cast<i32>(g_screen_width))
+        x = static_cast<i32>(g_screen_width) - 1;
+    if (y < 0)
+        y = 0;
+    if (y >= static_cast<i32>(g_screen_height))
+        y = static_cast<i32>(g_screen_height) - 1;
+
+    g_mouse.x = x;
+    g_mouse.y = y;
 }
 
 } // namespace input
