@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: kernel/drivers/ramfb.hpp
+// Purpose: QEMU RAM framebuffer (ramfb) driver interface.
+// Key invariants: Framebuffer at fixed address; configured via fw_cfg.
+// Ownership/Lifetime: Global framebuffer; initialized once.
+// Links: kernel/drivers/ramfb.cpp
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "../include/types.hpp"

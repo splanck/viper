@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: kernel/fs/cache.hpp
+// Purpose: Simple block cache for filesystem I/O.
+// Key invariants: 4KB blocks; LRU eviction; refcount-protected.
+// Ownership/Lifetime: Global singleton; blocks ref-counted.
+// Links: kernel/fs/cache.cpp
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "../include/types.hpp"

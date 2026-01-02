@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/vinit/vinit.cpp
+// Purpose: ViperOS init process entry point and interactive shell.
+// Key invariants: First user-space process; launches microkernel servers.
+// Ownership/Lifetime: Long-running init process.
+// Links: user/vinit/vinit.hpp
+//
+//===----------------------------------------------------------------------===//
+
 /**
  * @file vinit.cpp
  * @brief ViperOS init process entry point.
@@ -19,11 +34,11 @@
 
 struct ServerInfo
 {
-    const char *name;       // Display name (e.g., "blkd")
-    const char *path;       // Executable path
-    const char *assign;     // Assign name (e.g., "BLKD")
-    i64 pid;                // Process ID (0 = not running)
-    bool available;         // True if server registered successfully
+    const char *name;   // Display name (e.g., "blkd")
+    const char *path;   // Executable path
+    const char *assign; // Assign name (e.g., "BLKD")
+    i64 pid;            // Process ID (0 = not running)
+    bool available;     // True if server registered successfully
 };
 
 static ServerInfo g_servers[] = {
@@ -112,8 +127,8 @@ static void send_server_device_caps(u32 bootstrap_send, u32 device_root)
         return;
 
     // Derive a transferable device capability for the server.
-    u32 rights = CAP_RIGHT_DEVICE_ACCESS | CAP_RIGHT_IRQ_ACCESS | CAP_RIGHT_DMA_ACCESS |
-                 CAP_RIGHT_TRANSFER;
+    u32 rights =
+        CAP_RIGHT_DEVICE_ACCESS | CAP_RIGHT_IRQ_ACCESS | CAP_RIGHT_DMA_ACCESS | CAP_RIGHT_TRANSFER;
     i32 derived = sys::cap_derive(device_root, rights);
     if (derived < 0)
     {
@@ -275,8 +290,8 @@ bool restart_server(const char *name)
 /**
  * @brief Get server status for display.
  */
-void get_server_status(usize idx, const char **name, const char **assign, i64 *pid, bool *running,
-                       bool *available)
+void get_server_status(
+    usize idx, const char **name, const char **assign, i64 *pid, bool *running, bool *available)
 {
     if (idx >= SERVER_COUNT)
         return;
@@ -372,12 +387,8 @@ static void start_servers()
             u64 pid = 0;
             u64 tid = 0;
             u32 bootstrap_send = 0xFFFFFFFFu;
-            i64 err = sys::spawn("/c/fsd_smoke.elf",
-                                 "fsd_smoke",
-                                 &pid,
-                                 &tid,
-                                 nullptr,
-                                 &bootstrap_send);
+            i64 err =
+                sys::spawn("/c/fsd_smoke.elf", "fsd_smoke", &pid, &tid, nullptr, &bootstrap_send);
 
             if (bootstrap_send != 0xFFFFFFFFu)
             {
@@ -413,12 +424,8 @@ static void start_servers()
             u64 pid = 0;
             u64 tid = 0;
             u32 bootstrap_send = 0xFFFFFFFFu;
-            i64 err = sys::spawn("/c/netd_smoke.elf",
-                                 "netd_smoke",
-                                 &pid,
-                                 &tid,
-                                 nullptr,
-                                 &bootstrap_send);
+            i64 err =
+                sys::spawn("/c/netd_smoke.elf", "netd_smoke", &pid, &tid, nullptr, &bootstrap_send);
 
             if (bootstrap_send != 0xFFFFFFFFu)
             {
@@ -452,12 +459,8 @@ static void start_servers()
             u64 pid = 0;
             u64 tid = 0;
             u32 bootstrap_send = 0xFFFFFFFFu;
-            i64 err = sys::spawn("/c/tls_smoke.elf",
-                                 "tls_smoke",
-                                 &pid,
-                                 &tid,
-                                 nullptr,
-                                 &bootstrap_send);
+            i64 err =
+                sys::spawn("/c/tls_smoke.elf", "tls_smoke", &pid, &tid, nullptr, &bootstrap_send);
 
             if (bootstrap_send != 0xFFFFFFFFu)
             {

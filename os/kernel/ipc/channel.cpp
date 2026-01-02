@@ -2,6 +2,7 @@
 #include "../cap/rights.hpp"
 #include "../cap/table.hpp"
 #include "../console/serial.hpp"
+#include "../lib/mem.hpp"
 #include "../lib/spinlock.hpp"
 #include "../sched/scheduler.hpp"
 #include "../viper/viper.hpp"
@@ -283,10 +284,7 @@ i64 try_send(Channel *ch, const void *data, u32 size, const cap::Handle *handles
     // Copy data
     if (data && size > 0)
     {
-        for (u32 i = 0; i < size; i++)
-        {
-            msg->data[i] = static_cast<const u8 *>(data)[i];
-        }
+        lib::memcpy(msg->data, data, size);
     }
     msg->size = size;
 
@@ -367,10 +365,7 @@ i64 try_recv(
     }
     if (buffer && copy_size > 0)
     {
-        for (u32 i = 0; i < copy_size; i++)
-        {
-            static_cast<u8 *>(buffer)[i] = msg->data[i];
-        }
+        lib::memcpy(buffer, msg->data, copy_size);
     }
 
     u32 actual_size = msg->size;
@@ -436,10 +431,7 @@ static void copy_message_to_buffer(Channel *ch, const void *data, u32 size)
     Message *msg = &ch->buffer[ch->write_idx];
     if (data && size > 0)
     {
-        for (u32 i = 0; i < size; i++)
-        {
-            msg->data[i] = static_cast<const u8 *>(data)[i];
-        }
+        lib::memcpy(msg->data, data, size);
     }
     msg->size = size;
     task::Task *current_task = task::current();
@@ -584,10 +576,7 @@ static u32 copy_message_from_buffer(Channel *ch, void *buffer, u32 buffer_size)
     }
     if (buffer && copy_size > 0)
     {
-        for (u32 i = 0; i < copy_size; i++)
-        {
-            static_cast<u8 *>(buffer)[i] = msg->data[i];
-        }
+        lib::memcpy(buffer, msg->data, copy_size);
     }
 
     u32 actual_size = msg->size;

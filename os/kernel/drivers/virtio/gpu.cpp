@@ -33,8 +33,8 @@ bool GpuDevice::init()
         return false;
     }
 
-    // Initialize base device
-    if (!Device::init(base))
+    // Use common init sequence (init, reset, legacy page size, acknowledge, driver)
+    if (!basic_init(base))
     {
         serial::puts("[virtio-gpu] Device init failed\n");
         return false;
@@ -45,19 +45,6 @@ bool GpuDevice::init()
     serial::puts(" version=");
     serial::put_dec(version());
     serial::puts(is_legacy() ? " (legacy)\n" : " (modern)\n");
-
-    // Reset device
-    reset();
-
-    // For legacy mode, set guest page size
-    if (is_legacy())
-    {
-        write32(reg::GUEST_PAGE_SIZE, 4096);
-    }
-
-    // Acknowledge device
-    add_status(status::ACKNOWLEDGE);
-    add_status(status::DRIVER);
 
     // Read number of scanouts from config
     num_scanouts_ = read_config32(8); // offset 8 in GpuConfig

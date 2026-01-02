@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libssh/ssh.c
+// Purpose: SSH-2 client implementation for ViperOS.
+// Key invariants: Implements RFC 4253 transport, RFC 4252 auth, RFC 4254 connection.
+// Ownership/Lifetime: Library; per-session state.
+// Links: user/libssh/include/ssh.h
+//
+//===----------------------------------------------------------------------===//
+
 /**
  * @file ssh.c
  * @brief SSH-2 client implementation for ViperOS.

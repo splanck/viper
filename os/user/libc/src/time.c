@@ -1,3 +1,35 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/time.c
+// Purpose: Time and date functions for ViperOS libc.
+// Key invariants: Time measured as milliseconds since boot (no RTC).
+// Ownership/Lifetime: Library; static storage for tm results.
+// Links: user/libc/include/time.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file time.c
+ * @brief Time and date functions for ViperOS libc.
+ *
+ * @details
+ * This file implements standard C time functions:
+ *
+ * - Time retrieval: time, clock, gettimeofday, clock_gettime
+ * - Time conversion: gmtime, localtime, mktime
+ * - Time formatting: strftime
+ * - Sleep functions: nanosleep
+ *
+ * Note: ViperOS currently lacks a real-time clock (RTC), so all time
+ * values represent milliseconds since boot rather than calendar time.
+ * The gmtime/localtime functions provide a simplified approximation.
+ */
+
 #include "../include/time.h"
 
 /* Syscall helpers - defined in syscall.S */
@@ -7,12 +39,32 @@ extern long __syscall1(long num, long arg0);
 #define SYS_TIME_NOW 0x30
 #define SYS_SLEEP 0x31
 
+/**
+ * @brief Get processor time used.
+ *
+ * @details
+ * Returns the time in milliseconds since system boot. In ViperOS,
+ * this is the same as wall-clock time since there's no distinction
+ * between user and system time.
+ *
+ * @return Time in milliseconds since boot (CLOCKS_PER_SEC = 1000).
+ */
 clock_t clock(void)
 {
     /* Returns time in milliseconds since boot */
     return (clock_t)__syscall1(SYS_TIME_NOW, 0);
 }
 
+/**
+ * @brief Get current time in seconds.
+ *
+ * @details
+ * Returns the current time as seconds since boot (not Unix epoch).
+ * If tloc is not NULL, the time is also stored there.
+ *
+ * @param tloc If non-NULL, receives the time value.
+ * @return Current time in seconds since boot.
+ */
 time_t time(time_t *tloc)
 {
     /* ViperOS doesn't have real-time clock yet, return uptime in seconds */
@@ -23,12 +75,36 @@ time_t time(time_t *tloc)
     return t;
 }
 
-/* Note: returns integer difference since ViperOS doesn't support FP in kernel */
+/**
+ * @brief Compute difference between two times.
+ *
+ * @details
+ * Returns the difference in seconds between time1 and time0.
+ * Standard C returns double, but ViperOS returns long to avoid
+ * kernel floating-point dependencies.
+ *
+ * @param time1 Later time value.
+ * @param time0 Earlier time value.
+ * @return Difference (time1 - time0) in seconds.
+ */
 long difftime(time_t time1, time_t time0)
 {
     return (long)(time1 - time0);
 }
 
+/**
+ * @brief High-resolution sleep.
+ *
+ * @details
+ * Suspends execution for the time specified in req. The actual
+ * resolution is milliseconds (any nanosecond component is rounded up).
+ * If rem is non-NULL, any remaining time would be stored there on
+ * interruption (currently always 0 as interruption isn't supported).
+ *
+ * @param req Requested sleep duration.
+ * @param rem If non-NULL, receives remaining time on interruption.
+ * @return 0 on success, -1 on error.
+ */
 int nanosleep(const struct timespec *req, struct timespec *rem)
 {
     if (!req)

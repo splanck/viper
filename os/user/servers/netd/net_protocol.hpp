@@ -302,11 +302,11 @@ struct SocketStatusRequest
  */
 struct SocketStatusReply
 {
-    u32 type;           ///< NET_SOCKET_STATUS_REPLY
-    u32 request_id;     ///< Matches request
-    i32 status;         ///< 0 = success, negative = error
-    u32 flags;          ///< SocketStatusFlags
-    u32 rx_available;   ///< Bytes currently readable without blocking
+    u32 type;         ///< NET_SOCKET_STATUS_REPLY
+    u32 request_id;   ///< Matches request
+    i32 status;       ///< 0 = success, negative = error
+    u32 flags;        ///< SocketStatusFlags
+    u32 rx_available; ///< Bytes currently readable without blocking
     u32 _pad;
 };
 

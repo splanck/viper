@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libhttp/src/http.c
+// Purpose: HTTP client implementation for ViperOS.
+// Key invariants: Supports HTTP/1.1 and HTTPS via user-space TLS.
+// Ownership/Lifetime: Library; stateless functions.
+// Links: user/libhttp/include/http.h
+//
+//===----------------------------------------------------------------------===//
+
 /**
  * @file http.c
  * @brief HTTP client implementation for ViperOS.
@@ -379,21 +394,28 @@ int http_request(const http_request_t *request, http_response_t *response)
             break;
     }
 
-    int len = snprintf(req_buf, sizeof(req_buf), "%s %s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n",
-                       method_str, url.path, url.host);
+    int len = snprintf(req_buf,
+                       sizeof(req_buf),
+                       "%s %s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n",
+                       method_str,
+                       url.path,
+                       url.host);
 
     /* Add custom headers */
     for (int i = 0; i < request->header_count; i++)
     {
-        len += snprintf(req_buf + len, sizeof(req_buf) - len, "%s: %s\r\n", request->headers[i].name,
+        len += snprintf(req_buf + len,
+                        sizeof(req_buf) - len,
+                        "%s: %s\r\n",
+                        request->headers[i].name,
                         request->headers[i].value);
     }
 
     /* Add content length for POST/PUT */
     if (request->body && request->body_len > 0)
     {
-        len += snprintf(req_buf + len, sizeof(req_buf) - len, "Content-Length: %zu\r\n",
-                        request->body_len);
+        len += snprintf(
+            req_buf + len, sizeof(req_buf) - len, "Content-Length: %zu\r\n", request->body_len);
     }
 
     /* End headers */

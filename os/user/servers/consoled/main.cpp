@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/servers/consoled/main.cpp
+// Purpose: Console server (consoled) main entry point.
+// Key invariants: Uses serial output; registered as "CONSOLED:" service.
+// Ownership/Lifetime: Long-running service process.
+// Links: user/servers/consoled/console_protocol.hpp
+//
+//===----------------------------------------------------------------------===//
+
 /**
  * @file main.cpp
  * @brief Console server (consoled) main entry point.
@@ -19,7 +34,10 @@
 using namespace console_protocol;
 
 // Debug output helpers
-static void debug_print(const char *msg) { sys::print(msg); }
+static void debug_print(const char *msg)
+{
+    sys::print(msg);
+}
 
 static void debug_print_dec(uint64_t val)
 {
@@ -349,7 +367,8 @@ extern "C" void _start()
     {
         // Check for client messages
         uint32_t handle_count = 4;
-        int64_t n = sys::channel_recv(g_service_channel, msg_buf, sizeof(msg_buf), handles, &handle_count);
+        int64_t n =
+            sys::channel_recv(g_service_channel, msg_buf, sizeof(msg_buf), handles, &handle_count);
 
         if (n > 0)
         {

@@ -2,6 +2,7 @@
 #include "../../include/viperos/task_info.hpp"
 #include "../arch/aarch64/exceptions.hpp"
 #include "../console/serial.hpp"
+#include "../include/constants.hpp"
 #include "../mm/vmm.hpp"
 #include "../viper/address_space.hpp"
 #include "../viper/viper.hpp"
@@ -37,6 +38,28 @@ Task *current_task = nullptr;
 
 // Idle task (always task 0)
 Task *idle_task = nullptr;
+
+/**
+ * @brief Initialize signal state to default values.
+ *
+ * @details
+ * Sets all signal handlers to SIG_DFL (0), clears all handler flags and masks,
+ * and resets the blocked and pending signal bitmaps.
+ *
+ * @param t Pointer to the task whose signal state should be initialized.
+ */
+void init_signal_state(Task *t)
+{
+    for (int i = 0; i < 32; i++)
+    {
+        t->signals.handlers[i] = 0; // SIG_DFL
+        t->signals.handler_flags[i] = 0;
+        t->signals.handler_mask[i] = 0;
+    }
+    t->signals.blocked = 0;
+    t->signals.pending = 0;
+    t->signals.saved_frame = nullptr;
+}
 
 // Simple string copy
 /**
@@ -82,14 +105,8 @@ Task *allocate_task()
 // Allocate kernel stack (bump allocator with free list for recycling)
 u8 *stack_pool = nullptr;
 usize stack_pool_offset = 0;
-constexpr usize PAGE_SIZE = 4096;
-constexpr usize GUARD_PAGE_SIZE = PAGE_SIZE; // One 4KB guard page per stack
-constexpr usize STACK_SLOT_SIZE = KERNEL_STACK_SIZE + GUARD_PAGE_SIZE;
+constexpr usize STACK_SLOT_SIZE = KERNEL_STACK_SIZE + kc::limits::GUARD_PAGE_SIZE;
 constexpr usize STACK_POOL_SIZE = STACK_SLOT_SIZE * MAX_TASKS;
-
-// Stack pool base address (64MB into RAM, after kernel and framebuffer)
-// QEMU virt machine: RAM starts at 0x40000000, kernel at start, FB at +16MB
-constexpr u64 STACK_POOL_BASE = 0x44000000;
 
 // Free stack list for recycling exited task stacks
 struct FreeStackNode
@@ -134,7 +151,7 @@ u8 *allocate_kernel_stack()
     // First call: initialize pool location
     if (stack_pool == nullptr)
     {
-        stack_pool = reinterpret_cast<u8 *>(STACK_POOL_BASE);
+        stack_pool = reinterpret_cast<u8 *>(kc::mem::STACK_POOL_BASE);
         stack_pool_offset = 0;
     }
 
@@ -153,7 +170,7 @@ u8 *allocate_kernel_stack()
     vmm::unmap_page(guard_page_addr);
 
     // Return pointer to usable stack (after guard page)
-    u8 *usable_stack = slot_base + GUARD_PAGE_SIZE;
+    u8 *usable_stack = slot_base + kc::limits::GUARD_PAGE_SIZE;
 
     return usable_stack;
 }
@@ -231,15 +248,7 @@ void init()
     idle_task->cwd[1] = '\0';
 
     // Initialize signal state (idle task doesn't use signals, but initialize anyway)
-    for (int i = 0; i < 32; i++)
-    {
-        idle_task->signals.handlers[i] = 0; // SIG_DFL
-        idle_task->signals.handler_flags[i] = 0;
-        idle_task->signals.handler_mask[i] = 0;
-    }
-    idle_task->signals.blocked = 0;
-    idle_task->signals.pending = 0;
-    idle_task->signals.saved_frame = nullptr;
+    init_signal_state(idle_task);
 
     // Set up idle task context to run idle_task_fn
     u64 *stack_ptr = reinterpret_cast<u64 *>(idle_task->kernel_stack_top);
@@ -358,15 +367,7 @@ Task *create(const char *name, TaskEntry entry, void *arg, u32 flags)
     }
 
     // Initialize signal state (kernel tasks don't typically use signals)
-    for (int i = 0; i < 32; i++)
-    {
-        t->signals.handlers[i] = 0; // SIG_DFL
-        t->signals.handler_flags[i] = 0;
-        t->signals.handler_mask[i] = 0;
-    }
-    t->signals.blocked = 0;
-    t->signals.pending = 0;
-    t->signals.saved_frame = nullptr;
+    init_signal_state(t);
 
     return t;
 }
@@ -467,15 +468,7 @@ Task *create_user_task(const char *name, void *viper_ptr, u64 entry, u64 stack)
     }
 
     // Initialize signal state for user task
-    for (int i = 0; i < 32; i++)
-    {
-        t->signals.handlers[i] = 0; // SIG_DFL
-        t->signals.handler_flags[i] = 0;
-        t->signals.handler_mask[i] = 0;
-    }
-    t->signals.blocked = 0;
-    t->signals.pending = 0;
-    t->signals.saved_frame = nullptr;
+    init_signal_state(t);
 
     // Set up initial context to call user_task_entry_trampoline
     u64 *stack_ptr = reinterpret_cast<u64 *>(t->kernel_stack_top);

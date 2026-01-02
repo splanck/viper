@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: kernel/mm/vmm.hpp
+// Purpose: Virtual Memory Manager interface for AArch64 page tables.
+// Key invariants: Page mappings require TLB invalidation after update.
+// Ownership/Lifetime: Global singleton; initialized once by kernel_main.
+// Links: kernel/mm/vmm.cpp, kernel/arch/aarch64/mmu.hpp
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "../include/types.hpp"

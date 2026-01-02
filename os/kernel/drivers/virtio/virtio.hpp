@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: kernel/drivers/virtio/virtio.hpp
+// Purpose: Virtio-MMIO core definitions and base device helper.
+// Key invariants: MMIO register offsets match QEMU virt machine spec.
+// Ownership/Lifetime: Device objects live for kernel lifetime.
+// Links: kernel/drivers/virtio/virtio.cpp
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "../../include/types.hpp"
@@ -227,6 +242,26 @@ class Device
     u32 read_isr();
     /** @brief Acknowledge interrupt bits by writing to INTERRUPT_ACK. */
     void ack_interrupt(u32 bits);
+
+    // High-level initialization helper
+    /**
+     * @brief Perform common early initialization steps.
+     *
+     * @details
+     * Combines the following common initialization steps:
+     * 1. init(base_addr) - verify device
+     * 2. reset() - reset to initial state
+     * 3. For legacy devices: set GUEST_PAGE_SIZE to 4096
+     * 4. add_status(ACKNOWLEDGE | DRIVER)
+     *
+     * After calling this, the driver should negotiate features using
+     * negotiate_features(), initialize virtqueues, and finally call
+     * add_status(DRIVER_OK).
+     *
+     * @param base_addr MMIO base address of the device.
+     * @return `true` if initialization succeeded, otherwise `false`.
+     */
+    bool basic_init(u64 base_addr);
 
   protected:
     volatile u32 *mmio_{nullptr};

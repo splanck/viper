@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: kernel/fs/vfs/vfs.hpp
+// Purpose: Virtual File System (VFS) API and per-process file descriptor table.
+// Key invariants: FDs 0-2 reserved for stdio; paths resolved from root.
+// Ownership/Lifetime: FD table per-process; VFS layer is stateless.
+// Links: kernel/fs/vfs/vfs.cpp, kernel/fs/viperfs/viperfs.hpp
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "../../../include/viperos/fs_types.hpp"

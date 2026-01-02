@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: kernel/drivers/virtio/virtqueue.hpp
+// Purpose: Virtqueue (vring) structures and management class.
+// Key invariants: Ring memory contiguous; free list tracks available descriptors.
+// Ownership/Lifetime: Owned by parent virtio device.
+// Links: kernel/drivers/virtio/virtqueue.cpp
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "../../include/types.hpp"

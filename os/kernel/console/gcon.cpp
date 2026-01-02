@@ -1,6 +1,9 @@
 #include "gcon.hpp"
 #include "../drivers/ramfb.hpp"
+#include "../include/constants.hpp"
 #include "font.hpp"
+
+namespace kc = kernel::constants;
 
 /**
  * @file gcon.cpp
@@ -34,22 +37,21 @@ u32 rows = 0;
 u32 fg_color = colors::VIPER_GREEN;
 u32 bg_color = colors::VIPER_DARK_BROWN;
 
-// Border constants
-constexpr u32 BORDER_WIDTH = 20;                          // 20-pixel thick border
-constexpr u32 BORDER_PADDING = 8;                         // 8-pixel padding inside border
-constexpr u32 TEXT_INSET = BORDER_WIDTH + BORDER_PADDING; // Total 28-pixel inset
-constexpr u32 BORDER_COLOR = 0xFF00AA00;                  // VIPER_GREEN for border
+// Border constants (use centralized values)
+constexpr u32 BORDER_WIDTH = kc::display::BORDER_WIDTH;
+constexpr u32 TEXT_INSET = kc::display::TEXT_INSET;
+constexpr u32 BORDER_COLOR = kc::color::VIPER_GREEN;
 
 // Default colors for reset
 u32 default_fg = colors::VIPER_GREEN;
 u32 default_bg = colors::VIPER_DARK_BROWN;
 
 // Cursor state
-bool cursor_visible = false;         // Whether cursor should be shown
-bool cursor_blink_state = false;     // Current blink state (on/off)
-bool cursor_drawn = false;           // Whether cursor is currently drawn on screen
-u64 last_blink_time = 0;             // Last time cursor blink toggled
-constexpr u64 CURSOR_BLINK_MS = 500; // Cursor blink interval in milliseconds
+bool cursor_visible = false;                                   // Whether cursor should be shown
+bool cursor_blink_state = false;                               // Current blink state (on/off)
+bool cursor_drawn = false;                                     // Whether cursor is currently drawn on screen
+u64 last_blink_time = 0;                                       // Last time cursor blink toggled
+constexpr u64 CURSOR_BLINK_MS = kc::display::CURSOR_BLINK_MS;  // Cursor blink interval
 
 /**
  * @brief ANSI escape sequence parser states.
@@ -79,28 +81,28 @@ bool ansi_private_mode = false; // True if CSI sequence started with '?'
  * 0=black, 1=red, 2=green, 3=yellow, 4=blue, 5=magenta, 6=cyan, 7=white
  */
 constexpr u32 ansi_colors[8] = {
-    0xFF000000, // 0: Black
-    0xFFCC3333, // 1: Red
-    0xFF00AA44, // 2: Green
-    0xFFCCAA00, // 3: Yellow
-    0xFF3366CC, // 4: Blue
-    0xFFCC33CC, // 5: Magenta
-    0xFF33CCCC, // 6: Cyan
-    0xFFEEEEEE  // 7: White
+    kc::color::BLACK,   // 0: Black
+    kc::color::RED,     // 1: Red
+    kc::color::GREEN,   // 2: Green
+    kc::color::YELLOW,  // 3: Yellow
+    kc::color::BLUE,    // 4: Blue
+    kc::color::MAGENTA, // 5: Magenta
+    kc::color::CYAN,    // 6: Cyan
+    kc::color::WHITE    // 7: White
 };
 
 /**
  * @brief Bright ANSI color palette (90-97 foreground, 100-107 background).
  */
 constexpr u32 ansi_bright_colors[8] = {
-    0xFF666666, // 0: Bright Black (Gray)
-    0xFFFF6666, // 1: Bright Red
-    0xFF66FF66, // 2: Bright Green
-    0xFFFFFF66, // 3: Bright Yellow
-    0xFF6699FF, // 4: Bright Blue
-    0xFFFF66FF, // 5: Bright Magenta
-    0xFF66FFFF, // 6: Bright Cyan
-    0xFFFFFFFF  // 7: Bright White
+    kc::color::GRAY,           // 0: Bright Black (Gray)
+    kc::color::BRIGHT_RED,     // 1: Bright Red
+    kc::color::BRIGHT_GREEN,   // 2: Bright Green
+    kc::color::BRIGHT_YELLOW,  // 3: Bright Yellow
+    kc::color::BRIGHT_BLUE,    // 4: Bright Blue
+    kc::color::BRIGHT_MAGENTA, // 5: Bright Magenta
+    kc::color::BRIGHT_CYAN,    // 6: Bright Cyan
+    kc::color::BRIGHT_WHITE    // 7: Bright White
 };
 
 /**

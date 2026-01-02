@@ -1,7 +1,7 @@
 #include "../include/poll.h"
 #include "../include/errno.h"
-#include "../include/sys/select.h"
 #include "../include/stdlib.h"
+#include "../include/sys/select.h"
 #include "../include/time.h"
 
 /* Syscall helpers */
@@ -18,7 +18,9 @@ extern int __viper_socket_get_backend(int fd, int *out_backend, int *out_socket_
 
 /* netd backend helpers (libc netd_backend.cpp). */
 extern unsigned int __viper_netd_poll_handle(void);
-extern int __viper_netd_socket_status(int socket_id, unsigned int *out_flags, unsigned int *out_rx_available);
+extern int __viper_netd_socket_status(int socket_id,
+                                      unsigned int *out_flags,
+                                      unsigned int *out_rx_available);
 
 /* Syscall numbers from include/viperos/syscall_nums.hpp */
 #define SYS_SLEEP 0x31
@@ -101,11 +103,8 @@ static long get_poll_set_id(void)
     return poll_set;
 }
 
-static int poll_set_configure(long poll_set,
-                              int want_console,
-                              int want_kernel_net,
-                              int want_netd,
-                              unsigned int netd_handle)
+static int poll_set_configure(
+    long poll_set, int want_console, int want_kernel_net, int want_netd, unsigned int netd_handle)
 {
     static int configured_console = 0;
     static int configured_kernel_net = 0;
@@ -114,7 +113,8 @@ static int poll_set_configure(long poll_set,
 
     if (want_console && !configured_console)
     {
-        long rc = __syscall3(SYS_POLL_ADD, poll_set, (long)VIPER_HANDLE_CONSOLE_INPUT, VIPER_POLL_CONSOLE_INPUT);
+        long rc = __syscall3(
+            SYS_POLL_ADD, poll_set, (long)VIPER_HANDLE_CONSOLE_INPUT, VIPER_POLL_CONSOLE_INPUT);
         if (rc < 0)
             return (int)rc;
         configured_console = 1;
@@ -127,7 +127,8 @@ static int poll_set_configure(long poll_set,
 
     if (want_kernel_net && !configured_kernel_net)
     {
-        long rc = __syscall3(SYS_POLL_ADD, poll_set, (long)VIPER_HANDLE_NETWORK_RX, VIPER_POLL_NETWORK_RX);
+        long rc = __syscall3(
+            SYS_POLL_ADD, poll_set, (long)VIPER_HANDLE_NETWORK_RX, VIPER_POLL_NETWORK_RX);
         if (rc < 0)
             return (int)rc;
         configured_kernel_net = 1;
@@ -146,7 +147,8 @@ static int poll_set_configure(long poll_set,
             {
                 (void)__syscall2(SYS_POLL_REMOVE, poll_set, (long)configured_netd_handle);
             }
-            long rc = __syscall3(SYS_POLL_ADD, poll_set, (long)netd_handle, VIPER_POLL_CHANNEL_READ);
+            long rc =
+                __syscall3(SYS_POLL_ADD, poll_set, (long)netd_handle, VIPER_POLL_CHANNEL_READ);
             if (rc < 0)
                 return (int)rc;
             configured_netd = 1;
@@ -328,7 +330,8 @@ int poll(struct pollfd *fds, nfds_t nfds, int timeout)
             return -1;
         }
 
-        int cfg = poll_set_configure(poll_set, want_console, want_kernel_net, want_netd, netd_handle);
+        int cfg =
+            poll_set_configure(poll_set, want_console, want_kernel_net, want_netd, netd_handle);
         if (cfg < 0)
         {
             errno = -cfg;

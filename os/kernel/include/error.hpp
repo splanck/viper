@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: kernel/include/error.hpp
+// Purpose: Shared kernel error codes and helper predicates.
+// Key invariants: Error codes are negative; success is >= 0.
+// Ownership/Lifetime: Header-only; enum and inline helpers.
+// Links: include/viperos/syscall_abi.hpp (user-space view)
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "types.hpp"
@@ -71,6 +86,14 @@ enum Code : i64
     VERR_CONNECTION = -502,       // Connection error
     VERR_BUFFER_TOO_SMALL = -503, // Buffer too small
     VERR_NOT_DIR = -504,          // Not a directory
+    VERR_IS_DIR = -505,           // Is a directory (can't write to dir)
+    VERR_NOT_EMPTY = -506,        // Directory not empty
+    VERR_NAME_TOO_LONG = -507,    // Filename too long
+    VERR_READ_ONLY = -508,        // Read-only filesystem
+    VERR_NO_SPACE = -509,         // No space left on device
+    VERR_NOT_SYMLINK = -510,      // Not a symbolic link
+    VERR_LOOP = -511,             // Too many symlink levels
+    VERR_EOF = -512,              // End of file/stream
 };
 
 /**

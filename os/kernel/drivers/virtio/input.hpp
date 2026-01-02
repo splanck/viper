@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: kernel/drivers/virtio/input.hpp
+// Purpose: Virtio input device driver (virtio-input).
+// Key invariants: Event queue with receive buffers; non-blocking poll.
+// Ownership/Lifetime: Singleton device; initialized once.
+// Links: kernel/drivers/virtio/input.cpp
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "../../include/types.hpp"

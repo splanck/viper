@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: include/viperos/syscall_nums.hpp
+// Purpose: Shared syscall number assignments (user/kernel ABI).
+// Key invariants: Single source of truth for syscall numbers.
+// Ownership/Lifetime: Header-only; constant definitions.
+// Links: kernel/syscall/table.cpp
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 /**

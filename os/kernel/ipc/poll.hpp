@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: kernel/ipc/poll.hpp
+// Purpose: Polling and timer primitives for cooperative task scheduling.
+// Key invariants: Timers monotonic; poll returns ready count.
+// Ownership/Lifetime: Fixed timer table; managed by poll subsystem.
+// Links: kernel/ipc/poll.cpp
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "../include/error.hpp"

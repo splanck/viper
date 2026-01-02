@@ -1,5 +1,8 @@
 #include "serial.hpp"
+#include "../include/constants.hpp"
 #include "../lib/spinlock.hpp"
+
+namespace kc = kernel::constants;
 
 /**
  * @file serial.cpp
@@ -25,10 +28,9 @@ namespace serial
 static Spinlock serial_lock;
 
 // PL011 UART registers for QEMU virt machine
-// Physical address: 0x09000000
 namespace
 {
-constexpr uintptr UART_BASE = 0x09000000;
+constexpr uintptr UART_BASE = kc::hw::UART_BASE;
 
 // Register offsets
 constexpr uintptr UART_DR = 0x00; // Data Register

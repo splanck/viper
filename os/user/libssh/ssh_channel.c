@@ -584,7 +584,7 @@ ssize_t ssh_channel_read(ssh_channel_t *channel, void *buffer, size_t len, int *
 
     int rc = ssh_packet_recv(channel->session, &msg_type, payload, &payload_len);
     if (rc == SSH_AGAIN)
-        return SSH_AGAIN;  /* No data yet */
+        return SSH_AGAIN; /* No data yet */
     if (rc < 0)
         return rc;
 
@@ -716,7 +716,7 @@ int ssh_channel_poll(ssh_channel_t *channel, int timeout_ms)
 
     rc = ssh_packet_recv(channel->session, &msg_type, payload, &payload_len);
     if (rc == SSH_AGAIN)
-        return 0;  /* No data yet, try again later */
+        return 0; /* No data yet, try again later */
     if (rc < 0)
         return rc;
 

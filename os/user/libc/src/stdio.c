@@ -1,7 +1,39 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/stdio.c
+// Purpose: Standard I/O library implementation for ViperOS.
+// Key invariants: FILE structures backed by file descriptors; buffered I/O.
+// Ownership/Lifetime: Library; FILE objects managed per-stream.
+// Links: user/libc/include/stdio.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file stdio.c
+ * @brief Standard I/O library implementation for ViperOS.
+ *
+ * @details
+ * This file implements the standard I/O functions (printf, fopen, fread, etc.)
+ * for the ViperOS C library. The implementation:
+ *
+ * - Uses syscalls for underlying I/O operations (read, write, open, close)
+ * - Provides buffered I/O with configurable buffering modes (_IOFBF, _IOLBF, _IONBF)
+ * - Supports standard streams (stdin, stdout, stderr)
+ * - Implements printf family with basic format specifiers
+ *
+ * This is a minimal implementation for OS bring-up, not a full POSIX-compliant
+ * stdio. Some features may be incomplete or simplified.
+ */
+
 #include "../include/stdio.h"
+#include "../include/fcntl.h"
 #include "../include/string.h"
 #include "../include/unistd.h"
-#include "../include/fcntl.h"
 
 /* Syscall helpers */
 extern long __syscall1(long num, long arg0);

@@ -1,3 +1,35 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/socket.c
+// Purpose: BSD socket API implementation for ViperOS.
+// Key invariants: Socket FDs start at 128; backends: kernel or netd.
+// Ownership/Lifetime: Library; socket objects ref-counted.
+// Links: user/libc/include/sys/socket.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file socket.c
+ * @brief BSD socket API implementation for ViperOS.
+ *
+ * @details
+ * This file implements the standard BSD socket functions (socket, connect,
+ * send, recv, close, etc.) for the ViperOS C library. Key features:
+ *
+ * - Socket FD virtualization: Socket FDs start at 128 to avoid collision
+ *   with stdio FDs (0-2) and kernel file descriptors.
+ * - Dual backend support: Can use either kernel TCP sockets or the netd
+ *   user-space network daemon, depending on configuration.
+ * - Reference counting: Socket objects are ref-counted for dup() support.
+ *
+ * This is a minimal implementation focused on TCP client sockets.
+ */
+
 #include "../include/sys/socket.h"
 #include "../include/arpa/inet.h"
 #include "../include/errno.h"
@@ -35,8 +67,8 @@ typedef struct
 {
     int in_use;
     viper_socket_backend_t backend;
-    int socket_id;          /* kernel socket id (index in tcp socket table) */
-    unsigned int refs;      /* reference count across duplicated FDs */
+    int socket_id;     /* kernel socket id (index in tcp socket table) */
+    unsigned int refs; /* reference count across duplicated FDs */
 } viper_socket_obj_t;
 
 typedef struct

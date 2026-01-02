@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: kernel/syscall/table.hpp
+// Purpose: Syscall dispatch table definitions.
+// Key invariants: Table indexed by syscall number; -ENOSYS for unknown.
+// Ownership/Lifetime: Static table; entries registered at compile time.
+// Links: kernel/syscall/table.cpp, include/viperos/syscall_nums.hpp
+//
+//===----------------------------------------------------------------------===//
+
 /**
  * @file table.hpp
  * @brief Syscall dispatch table definitions.

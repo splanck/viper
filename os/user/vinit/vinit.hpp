@@ -105,8 +105,8 @@ void cmd_fetch(const char *url);
 void cmd_servers(const char *args);
 bool restart_server(const char *name);
 usize get_server_count();
-void get_server_status(usize idx, const char **name, const char **assign, i64 *pid, bool *running,
-                       bool *available);
+void get_server_status(
+    usize idx, const char **name, const char **assign, i64 *pid, bool *running, bool *available);
 
 // =============================================================================
 // Shell Loop

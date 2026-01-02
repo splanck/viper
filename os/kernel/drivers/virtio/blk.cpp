@@ -1,7 +1,10 @@
 #include "blk.hpp"
 #include "../../arch/aarch64/gic.hpp"
 #include "../../console/serial.hpp"
+#include "../../include/constants.hpp"
 #include "../../mm/pmm.hpp"
+
+namespace kc = kernel::constants;
 
 /**
  * @file blk.cpp
@@ -26,8 +29,8 @@ namespace virtio
 static BlkDevice g_blk_device;
 static bool g_blk_initialized = false;
 
-// QEMU virt machine virtio IRQ base (SPI interrupts start at 32, virtio at 0x30)
-constexpr u32 VIRTIO_IRQ_BASE = 0x30; // IRQ 48 for first virtio device
+// Use centralized VirtIO IRQ base
+constexpr u32 VIRTIO_IRQ_BASE = kernel::constants::hw::VIRTIO_IRQ_BASE;
 
 /**
  * @brief IRQ handler for virtio-blk interrupts.
@@ -61,35 +64,22 @@ bool BlkDevice::init()
         return false;
     }
 
-    // Calculate device index for IRQ (device base - 0x0a000000) / 0x200
-    device_index_ = static_cast<u32>((base - 0x0a000000) / 0x200);
-    irq_num_ = VIRTIO_IRQ_BASE + device_index_;
-
-    // Initialize base device
-    if (!Device::init(base))
+    // Use common init sequence (init, reset, legacy page size, acknowledge, driver)
+    if (!basic_init(base))
     {
         serial::puts("[virtio-blk] Device init failed\n");
         return false;
     }
+
+    // Calculate device index for IRQ (device base - VIRTIO_BASE) / VIRTIO_STRIDE
+    device_index_ = static_cast<u32>((base - kernel::constants::hw::VIRTIO_MMIO_BASE) / kernel::constants::hw::VIRTIO_DEVICE_STRIDE);
+    irq_num_ = VIRTIO_IRQ_BASE + device_index_;
 
     serial::puts("[virtio-blk] Initializing block device at ");
     serial::put_hex(base);
     serial::puts(" (IRQ ");
     serial::put_dec(irq_num_);
     serial::puts(")\n");
-
-    // Reset device
-    reset();
-
-    // For legacy mode, set guest page size
-    if (is_legacy())
-    {
-        write32(reg::GUEST_PAGE_SIZE, 4096);
-    }
-
-    // Acknowledge device
-    add_status(status::ACKNOWLEDGE);
-    add_status(status::DRIVER);
 
     // Read configuration
     capacity_ = read_config64(0); // offset 0: capacity

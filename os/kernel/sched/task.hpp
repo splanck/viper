@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: kernel/sched/task.hpp
+// Purpose: Task structures and task management interface.
+// Key invariants: Task IDs unique; context layout matches context.S.
+// Ownership/Lifetime: Fixed task table; slots reused after reap.
+// Links: kernel/sched/task.cpp, kernel/sched/context.S
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "../include/types.hpp"

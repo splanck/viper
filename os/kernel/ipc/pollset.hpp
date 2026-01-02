@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: kernel/ipc/pollset.hpp
+// Purpose: Poll set abstraction for watching multiple handles.
+// Key invariants: Poll sets isolated per task; entries non-overlapping.
+// Ownership/Lifetime: Fixed poll set table; owner task tracked.
+// Links: kernel/ipc/pollset.cpp
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "../include/error.hpp"

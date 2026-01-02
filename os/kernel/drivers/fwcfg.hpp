@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: kernel/drivers/fwcfg.hpp
+// Purpose: QEMU fw_cfg interface for firmware-provided configuration data.
+// Key invariants: MMIO interface matches QEMU virt machine spec.
+// Ownership/Lifetime: Global interface; initialized once.
+// Links: kernel/drivers/fwcfg.cpp
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "../include/types.hpp"

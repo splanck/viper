@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: kernel/sched/scheduler.hpp
+// Purpose: Priority-based preemptive scheduler interface.
+// Key invariants: 8 priority queues; higher priority always preempts.
+// Ownership/Lifetime: Global singleton; started once, never returns.
+// Links: kernel/sched/scheduler.cpp
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "task.hpp"

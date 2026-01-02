@@ -282,14 +282,8 @@ void cmd_run_fsd(const char *cmdline)
     u64 pid = 0;
     u64 tid = 0;
     u32 bootstrap_send = 0xFFFFFFFFu;
-    i64 err = sys::spawn_shm(shm.handle,
-                             0,
-                             size,
-                             path /* name */,
-                             &pid,
-                             &tid,
-                             args,
-                             &bootstrap_send);
+    i64 err =
+        sys::spawn_shm(shm.handle, 0, size, path /* name */, &pid, &tid, args, &bootstrap_send);
 
     (void)sys::shm_unmap(shm.virt_addr);
     (void)sys::shm_close(shm.handle);

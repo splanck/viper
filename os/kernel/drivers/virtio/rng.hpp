@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: kernel/drivers/virtio/rng.hpp
+// Purpose: Virtio RNG device interface (virtio-rng).
+// Key invariants: Writable buffer filled with random bytes by host.
+// Ownership/Lifetime: Singleton device; provides entropy for TLS/crypto.
+// Links: kernel/drivers/virtio/rng.cpp
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "../../include/types.hpp"

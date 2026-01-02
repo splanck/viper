@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: kernel/ipc/channel.hpp
+// Purpose: In-kernel message-passing channels for IPC with handle transfer.
+// Key invariants: Channels bidirectional; handles transferred atomically.
+// Ownership/Lifetime: Fixed channel table; reference counted endpoints.
+// Links: kernel/ipc/channel.cpp
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "../cap/handle.hpp"

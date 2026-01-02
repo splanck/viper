@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: kernel/include/config.hpp
+// Purpose: Build-time feature toggles for the ViperOS kernel.
+// Key invariants: All macros are 0/1 toggles; overridable via build system.
+// Ownership/Lifetime: Header-only; preprocessor definitions only.
+// Links: docs/os_refactor_plan.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 /**
@@ -12,12 +27,12 @@
  * build system (e.g., `target_compile_definitions`).
  */
 
-// -----------------------------------------------------------------------------
-// Build mode
-// -----------------------------------------------------------------------------
+/* -----------------------------------------------------------------------------
+ * Build mode
+ * -------------------------------------------------------------------------- */
 
-/// When enabled, the kernel identifies itself as "microkernel mode" at boot.
-/// In microkernel mode, kernel services (net, tls) are disabled by default.
+/* When enabled, the kernel identifies itself as "microkernel mode" at boot.
+ * In microkernel mode, kernel services (net, tls) are disabled by default. */
 #ifndef VIPER_MICROKERNEL_MODE
 #define VIPER_MICROKERNEL_MODE 1
 #endif

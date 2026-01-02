@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: kernel/include/types.hpp
+// Purpose: Fundamental fixed-width type aliases for the kernel.
+// Key invariants: Re-exports shared types; adds nullptr for freestanding builds.
+// Ownership/Lifetime: Header-only; no runtime state.
+// Links: include/viperos/types.hpp
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 /**
@@ -12,7 +27,7 @@
  * directly to ensure all kernel-specific definitions are available.
  */
 
-// Include shared types (also used by user-space)
+/* Include shared types (also used by user-space) */
 #include "../../include/viperos/types.hpp"
 
 /**

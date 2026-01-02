@@ -112,6 +112,50 @@ struct TableAllocation
 };
 
 /**
+ * @brief Walk page tables to a specific level (read-only, no allocation).
+ *
+ * @details
+ * Traverses the page table hierarchy from L0 down to the specified target level.
+ * Returns the table pointer at that level if all intermediate entries are valid,
+ * or nullptr if any entry along the path is invalid.
+ *
+ * @param virt Virtual address to walk.
+ * @param target_level Target level: 1=L1, 2=L2, 3=L3.
+ * @return Pointer to the table at target_level, or nullptr if path invalid.
+ */
+u64 *walk_tables_readonly(u64 virt, int target_level)
+{
+    if (!pgt_root || target_level < 1 || target_level > 3)
+        return nullptr;
+
+    // L0 to L1
+    u64 l0e = pgt_root[l0_index(virt)];
+    if (!(l0e & pte::VALID))
+        return nullptr;
+
+    u64 *l1 = reinterpret_cast<u64 *>(l0e & PHYS_MASK);
+    if (target_level == 1)
+        return l1;
+
+    // L1 to L2
+    u64 l1e = l1[l1_index(virt)];
+    if (!(l1e & pte::VALID))
+        return nullptr;
+
+    u64 *l2 = reinterpret_cast<u64 *>(l1e & PHYS_MASK);
+    if (target_level == 2)
+        return l2;
+
+    // L2 to L3
+    u64 l2e = l2[l2_index(virt)];
+    if (!(l2e & pte::VALID))
+        return nullptr;
+
+    u64 *l3 = reinterpret_cast<u64 *>(l2e & PHYS_MASK);
+    return l3;
+}
+
+/**
  * @brief Retrieve or allocate the next-level page table with rollback tracking.
  *
  * @details
@@ -316,25 +360,14 @@ bool map_block_2mb(u64 virt, u64 phys, u64 flags)
 /** @copydoc vmm::unmap_block_2mb */
 void unmap_block_2mb(u64 virt)
 {
-    if (!pgt_root)
-        return;
-
     // Alignment check
     if ((virt & (pte::BLOCK_2MB - 1)) != 0)
         return;
 
     // Walk page tables to L2
-    u64 *l0 = pgt_root;
-    u64 l0e = l0[l0_index(virt)];
-    if (!(l0e & pte::VALID))
+    u64 *l2 = walk_tables_readonly(virt, 2);
+    if (!l2)
         return;
-
-    u64 *l1 = reinterpret_cast<u64 *>(l0e & PHYS_MASK);
-    u64 l1e = l1[l1_index(virt)];
-    if (!(l1e & pte::VALID))
-        return;
-
-    u64 *l2 = reinterpret_cast<u64 *>(l1e & PHYS_MASK);
 
     // Clear the L2 entry
     l2[l2_index(virt)] = 0;
@@ -346,26 +379,10 @@ void unmap_block_2mb(u64 virt)
 /** @copydoc vmm::unmap_page */
 void unmap_page(u64 virt)
 {
-    if (!pgt_root)
+    // Walk page tables to L3
+    u64 *l3 = walk_tables_readonly(virt, 3);
+    if (!l3)
         return;
-
-    // Walk page tables
-    u64 *l0 = pgt_root;
-    u64 l0e = l0[l0_index(virt)];
-    if (!(l0e & pte::VALID))
-        return;
-
-    u64 *l1 = reinterpret_cast<u64 *>(l0e & PHYS_MASK);
-    u64 l1e = l1[l1_index(virt)];
-    if (!(l1e & pte::VALID))
-        return;
-
-    u64 *l2 = reinterpret_cast<u64 *>(l1e & PHYS_MASK);
-    u64 l2e = l2[l2_index(virt)];
-    if (!(l2e & pte::VALID))
-        return;
-
-    u64 *l3 = reinterpret_cast<u64 *>(l2e & PHYS_MASK);
 
     // Clear the entry
     l3[l3_index(virt)] = 0;

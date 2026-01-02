@@ -1,5 +1,50 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/string.c
+// Purpose: String and memory manipulation functions for ViperOS libc.
+// Key invariants: Standard C library semantics; no dependencies.
+// Ownership/Lifetime: Library; all functions are stateless.
+// Links: user/libc/include/string.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file string.c
+ * @brief String and memory manipulation functions for ViperOS libc.
+ *
+ * @details
+ * This file implements standard C string and memory functions including:
+ *
+ * - Memory operations: memcpy, memset, memmove, memcmp, memchr
+ * - String operations: strlen, strcpy, strncpy, strcat, strncat
+ * - String comparison: strcmp, strncmp, strcasecmp, strncasecmp
+ * - String searching: strchr, strrchr, strstr, strpbrk, strspn, strcspn
+ * - Tokenization: strtok, strtok_r
+ * - Other: strerror, strdup, strndup
+ *
+ * All implementations are freestanding (no external dependencies) and
+ * follow standard C library semantics.
+ */
+
 #include "../include/string.h"
 
+/**
+ * @brief Copy memory area.
+ *
+ * @details
+ * Copies n bytes from src to dest. The memory areas must not overlap.
+ * For overlapping memory, use memmove() instead.
+ *
+ * @param dest Destination buffer.
+ * @param src Source buffer.
+ * @param n Number of bytes to copy.
+ * @return Pointer to dest.
+ */
 void *memcpy(void *dest, const void *src, size_t n)
 {
     unsigned char *d = (unsigned char *)dest;

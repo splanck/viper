@@ -134,9 +134,8 @@ constexpr uint8_t CAPS_LOCK = 0x10;
  */
 inline bool is_modifier(uint16_t code)
 {
-    return code == key::LEFT_SHIFT || code == key::RIGHT_SHIFT ||
-           code == key::LEFT_CTRL || code == key::RIGHT_CTRL ||
-           code == key::LEFT_ALT || code == key::RIGHT_ALT ||
+    return code == key::LEFT_SHIFT || code == key::RIGHT_SHIFT || code == key::LEFT_CTRL ||
+           code == key::RIGHT_CTRL || code == key::LEFT_ALT || code == key::RIGHT_ALT ||
            code == key::LEFT_META || code == key::RIGHT_META;
 }
 
@@ -179,32 +178,58 @@ inline char key_to_ascii(uint16_t code, uint8_t modifiers)
 
     // Letters
     char letter = 0;
-    if (code == key::A) letter = 'a';
-    else if (code == key::B) letter = 'b';
-    else if (code == key::C) letter = 'c';
-    else if (code == key::D) letter = 'd';
-    else if (code == key::E) letter = 'e';
-    else if (code == key::F) letter = 'f';
-    else if (code == key::G) letter = 'g';
-    else if (code == key::H) letter = 'h';
-    else if (code == key::I) letter = 'i';
-    else if (code == key::J) letter = 'j';
-    else if (code == key::K) letter = 'k';
-    else if (code == key::L) letter = 'l';
-    else if (code == key::M) letter = 'm';
-    else if (code == key::N) letter = 'n';
-    else if (code == key::O) letter = 'o';
-    else if (code == key::P) letter = 'p';
-    else if (code == key::Q) letter = 'q';
-    else if (code == key::R) letter = 'r';
-    else if (code == key::S) letter = 's';
-    else if (code == key::T) letter = 't';
-    else if (code == key::U) letter = 'u';
-    else if (code == key::V) letter = 'v';
-    else if (code == key::W) letter = 'w';
-    else if (code == key::X) letter = 'x';
-    else if (code == key::Y) letter = 'y';
-    else if (code == key::Z) letter = 'z';
+    if (code == key::A)
+        letter = 'a';
+    else if (code == key::B)
+        letter = 'b';
+    else if (code == key::C)
+        letter = 'c';
+    else if (code == key::D)
+        letter = 'd';
+    else if (code == key::E)
+        letter = 'e';
+    else if (code == key::F)
+        letter = 'f';
+    else if (code == key::G)
+        letter = 'g';
+    else if (code == key::H)
+        letter = 'h';
+    else if (code == key::I)
+        letter = 'i';
+    else if (code == key::J)
+        letter = 'j';
+    else if (code == key::K)
+        letter = 'k';
+    else if (code == key::L)
+        letter = 'l';
+    else if (code == key::M)
+        letter = 'm';
+    else if (code == key::N)
+        letter = 'n';
+    else if (code == key::O)
+        letter = 'o';
+    else if (code == key::P)
+        letter = 'p';
+    else if (code == key::Q)
+        letter = 'q';
+    else if (code == key::R)
+        letter = 'r';
+    else if (code == key::S)
+        letter = 's';
+    else if (code == key::T)
+        letter = 't';
+    else if (code == key::U)
+        letter = 'u';
+    else if (code == key::V)
+        letter = 'v';
+    else if (code == key::W)
+        letter = 'w';
+    else if (code == key::X)
+        letter = 'x';
+    else if (code == key::Y)
+        letter = 'y';
+    else if (code == key::Z)
+        letter = 'z';
 
     if (letter != 0)
     {
@@ -219,36 +244,63 @@ inline char key_to_ascii(uint16_t code, uint8_t modifiers)
     // Numbers and symbols
     switch (code)
     {
-        case key::_1: return shift ? '!' : '1';
-        case key::_2: return shift ? '@' : '2';
-        case key::_3: return shift ? '#' : '3';
-        case key::_4: return shift ? '$' : '4';
-        case key::_5: return shift ? '%' : '5';
-        case key::_6: return shift ? '^' : '6';
-        case key::_7: return shift ? '&' : '7';
-        case key::_8: return shift ? '*' : '8';
-        case key::_9: return shift ? '(' : '9';
-        case key::_0: return shift ? ')' : '0';
+        case key::_1:
+            return shift ? '!' : '1';
+        case key::_2:
+            return shift ? '@' : '2';
+        case key::_3:
+            return shift ? '#' : '3';
+        case key::_4:
+            return shift ? '$' : '4';
+        case key::_5:
+            return shift ? '%' : '5';
+        case key::_6:
+            return shift ? '^' : '6';
+        case key::_7:
+            return shift ? '&' : '7';
+        case key::_8:
+            return shift ? '*' : '8';
+        case key::_9:
+            return shift ? '(' : '9';
+        case key::_0:
+            return shift ? ')' : '0';
 
-        case key::MINUS: return shift ? '_' : '-';
-        case key::EQUAL: return shift ? '+' : '=';
-        case key::LEFT_BRACKET: return shift ? '{' : '[';
-        case key::RIGHT_BRACKET: return shift ? '}' : ']';
-        case key::BACKSLASH: return shift ? '|' : '\\';
-        case key::SEMICOLON: return shift ? ':' : ';';
-        case key::APOSTROPHE: return shift ? '"' : '\'';
-        case key::GRAVE: return shift ? '~' : '`';
-        case key::COMMA: return shift ? '<' : ',';
-        case key::DOT: return shift ? '>' : '.';
-        case key::SLASH: return shift ? '?' : '/';
+        case key::MINUS:
+            return shift ? '_' : '-';
+        case key::EQUAL:
+            return shift ? '+' : '=';
+        case key::LEFT_BRACKET:
+            return shift ? '{' : '[';
+        case key::RIGHT_BRACKET:
+            return shift ? '}' : ']';
+        case key::BACKSLASH:
+            return shift ? '|' : '\\';
+        case key::SEMICOLON:
+            return shift ? ':' : ';';
+        case key::APOSTROPHE:
+            return shift ? '"' : '\'';
+        case key::GRAVE:
+            return shift ? '~' : '`';
+        case key::COMMA:
+            return shift ? '<' : ',';
+        case key::DOT:
+            return shift ? '>' : '.';
+        case key::SLASH:
+            return shift ? '?' : '/';
 
-        case key::SPACE: return ' ';
-        case key::ENTER: return '\n';
-        case key::TAB: return '\t';
-        case key::BACKSPACE: return '\b';
-        case key::ESCAPE: return '\033';
+        case key::SPACE:
+            return ' ';
+        case key::ENTER:
+            return '\n';
+        case key::TAB:
+            return '\t';
+        case key::BACKSPACE:
+            return '\b';
+        case key::ESCAPE:
+            return '\033';
 
-        default: return 0;
+        default:
+            return 0;
     }
 }
 

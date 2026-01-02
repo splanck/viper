@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: kernel/mm/pmm.hpp
+// Purpose: Physical Memory Manager interface (page allocation/freeing).
+// Key invariants: Bitmap tracks page state; 0=free, 1=used.
+// Ownership/Lifetime: Global singleton; initialized once by kernel_main.
+// Links: kernel/mm/pmm.cpp
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "../include/types.hpp"

@@ -93,8 +93,8 @@ int ssh_auth_password(ssh_session_t *session, const char *password)
 
     if (session->verbose >= 1)
     {
-        printf("[ssh] Password auth: user='%s' pass_len=%zu\n",
-               session->username, strlen(password));
+        printf(
+            "[ssh] Password auth: user='%s' pass_len=%zu\n", session->username, strlen(password));
     }
 
     uint8_t payload[1024];

@@ -44,19 +44,12 @@ bool init()
     serial::put_hex(base);
     serial::puts("\n");
 
-    // Initialize device
-    if (!device.init(base))
+    // Use common init sequence (init, reset, legacy page size, acknowledge, driver)
+    if (!device.basic_init(base))
     {
         serial::puts("[virtio-rng] Failed to initialize device\n");
         return false;
     }
-
-    // Reset device
-    device.reset();
-
-    // Acknowledge device
-    device.add_status(status::ACKNOWLEDGE);
-    device.add_status(status::DRIVER);
 
     // For RNG, no special features needed - just accept what device offers
     // Legacy devices don't require FEATURES_OK

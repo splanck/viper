@@ -1,3 +1,36 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/dirent.c
+// Purpose: Directory entry functions for ViperOS libc.
+// Key invariants: Static pool of MAX_DIRS open directories; fsd routing.
+// Ownership/Lifetime: Library; DIR handles from static pool.
+// Links: user/libc/include/dirent.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file dirent.c
+ * @brief Directory entry functions for ViperOS libc.
+ *
+ * @details
+ * This file implements POSIX directory traversal functions:
+ *
+ * - opendir: Open a directory stream
+ * - readdir: Read directory entries
+ * - closedir: Close directory stream
+ * - rewinddir: Reset directory stream position
+ * - dirfd: Get file descriptor for directory
+ *
+ * Directory operations are routed through either the kernel VFS or
+ * the fsd (filesystem daemon) depending on the path. A static pool
+ * of DIR structures is used to avoid dynamic allocation.
+ */
+
 #include "../include/dirent.h"
 #include "../include/fcntl.h"
 #include "../include/stdlib.h"

@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/servers/fsd/main.cpp
+// Purpose: Filesystem server (fsd) main entry point.
+// Key invariants: Uses ViperFS; registered as "FSD:" service.
+// Ownership/Lifetime: Long-running service process.
+// Links: user/servers/fsd/viperfs.hpp, user/servers/fsd/fs_protocol.hpp
+//
+//===----------------------------------------------------------------------===//
+
 /**
  * @file main.cpp
  * @brief Filesystem server (fsd) main entry point.
@@ -575,13 +590,8 @@ static void handle_readdir(const fs::ReaddirRequest *req, i32 reply_channel)
         u64 ino = 0;
         u8 type = fs::file_type::UNKNOWN;
 
-        i32 rc = g_viperfs.readdir_next(inode,
-                                        &file->offset,
-                                        name_buf,
-                                        sizeof(name_buf),
-                                        &name_len,
-                                        &ino,
-                                        &type);
+        i32 rc = g_viperfs.readdir_next(
+            inode, &file->offset, name_buf, sizeof(name_buf), &name_len, &ino, &type);
         if (rc < 0)
         {
             reply.status = rc;
@@ -760,12 +770,8 @@ static void handle_rename(const fs::RenameRequest *req, i32 reply_channel)
         return;
     }
 
-    bool ok = g_viperfs.rename(old_parent,
-                               old_name,
-                               old_name_len,
-                               new_parent,
-                               new_name,
-                               new_name_len);
+    bool ok =
+        g_viperfs.rename(old_parent, old_name, old_name_len, new_parent, new_name, new_name_len);
 
     g_viperfs.release_inode(old_parent);
     g_viperfs.release_inode(new_parent);

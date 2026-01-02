@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: kernel/main.cpp
+// Purpose: Kernel entry point and early initialization sequence.
+// Key invariants: Called once from boot.S; scheduler::start() never returns.
+// Ownership/Lifetime: Stateless; subsystems own their internal state.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
+
 /**
  * @file main.cpp
  * @brief ViperOS kernel entry point and early initialization sequence.
@@ -40,8 +55,9 @@
 #include "fs/cache.hpp"
 #include "fs/vfs/vfs.hpp"
 #include "fs/viperfs/viperfs.hpp"
-#include "include/syscall.hpp"
 #include "include/config.hpp"
+#include "include/constants.hpp"
+#include "include/syscall.hpp"
 #include "include/vboot.hpp"
 #include "input/input.hpp"
 #include "ipc/channel.hpp"
@@ -94,7 +110,246 @@ extern "C"
     }
 }
 
-// Kernel entry point (called from boot.S)
+// =============================================================================
+// SUBSYSTEM INITIALIZATION HELPERS
+// =============================================================================
+
+namespace
+{
+
+/**
+ * @brief Print the boot banner to serial console.
+ */
+void print_boot_banner()
+{
+    serial::puts("\n");
+    serial::puts("=========================================\n");
+    serial::puts("  ViperOS v0.2.0 - AArch64\n");
+    serial::puts("  Mode: ");
+#if VIPER_MICROKERNEL_MODE
+    serial::puts("MICROKERNEL (bring-up)\n");
+#else
+    serial::puts("HYBRID\n");
+#endif
+    serial::puts("  Kernel services: fs=");
+    serial::put_dec(static_cast<u64>(VIPER_KERNEL_ENABLE_FS));
+    serial::puts(" net=");
+    serial::put_dec(static_cast<u64>(VIPER_KERNEL_ENABLE_NET));
+    serial::puts(" tls=");
+    serial::put_dec(static_cast<u64>(VIPER_KERNEL_ENABLE_TLS));
+    serial::puts("\n");
+    serial::puts("=========================================\n");
+    serial::puts("\n");
+}
+
+/**
+ * @brief Initialize memory management subsystems (PMM, VMM, heap, slab).
+ */
+void init_memory_subsystem()
+{
+    serial::puts("\n[kernel] Initializing memory management...\n");
+
+    // Initialize physical memory manager with QEMU virt machine defaults
+    pmm::init(kc::mem::RAM_BASE, kc::mem::RAM_SIZE, reinterpret_cast<u64>(__kernel_end));
+
+    // Initialize virtual memory manager
+    vmm::init();
+
+    // Initialize kernel heap
+    kheap::init();
+
+    // Test allocation
+    serial::puts("[kernel] Testing heap allocation...\n");
+    void *test1 = kheap::kmalloc(1024);
+    void *test2 = kheap::kmalloc(4096);
+    serial::puts("[kernel] Allocated 1KB at ");
+    serial::put_hex(reinterpret_cast<u64>(test1));
+    serial::puts("\n");
+    serial::puts("[kernel] Allocated 4KB at ");
+    serial::put_hex(reinterpret_cast<u64>(test2));
+    serial::puts("\n");
+
+    // Initialize slab allocator
+    slab::init();
+    slab::init_object_caches();
+
+    // Update graphics console with memory info
+    if (gcon::is_available())
+    {
+        gcon::puts("  [OK] Physical memory manager initialized\n");
+        gcon::puts("  [OK] Virtual memory manager initialized\n");
+        gcon::puts("  [OK] Kernel heap initialized\n");
+        gcon::puts("  [OK] Slab allocator initialized\n");
+    }
+}
+
+/**
+ * @brief Initialize exception handlers, GIC, timer, and enable interrupts.
+ */
+void init_interrupts()
+{
+    serial::puts("\n[kernel] Initializing exceptions and interrupts...\n");
+    exceptions::init();
+    gic::init();
+
+    // Initialize timer
+    timer::init();
+
+    // Initialize CPU subsystem (per-CPU data structures)
+    cpu::init();
+
+    // Enable interrupts
+    exceptions::enable_interrupts();
+    serial::puts("[kernel] Interrupts enabled\n");
+
+    // Update graphics console
+    if (gcon::is_available())
+    {
+        gcon::puts("  [OK] Exception handlers installed\n");
+        gcon::puts("  [OK] GIC initialized\n");
+        gcon::puts("  [OK] Timer started (1000 Hz)\n");
+        gcon::puts("  [OK] Interrupts enabled\n");
+        gcon::puts("\n");
+
+        // Show memory stats
+        gcon::set_colors(gcon::colors::VIPER_YELLOW, gcon::colors::VIPER_DARK_BROWN);
+        gcon::puts("  Memory: ");
+        u64 free_mb = (pmm::get_free_pages() * 4) / 1024;
+        if (free_mb >= 100)
+            gcon::putc('0' + (free_mb / 100) % 10);
+        if (free_mb >= 10)
+            gcon::putc('0' + (free_mb / 10) % 10);
+        gcon::putc('0' + free_mb % 10);
+        gcon::puts(" MB free\n");
+    }
+}
+
+/**
+ * @brief Initialize task, scheduler, channel, and poll subsystems.
+ */
+void init_task_subsystem()
+{
+    serial::puts("\n[kernel] Initializing task subsystem...\n");
+    task::init();
+    scheduler::init();
+
+    serial::puts("\n[kernel] Initializing channel subsystem...\n");
+    channel::init();
+
+    serial::puts("\n[kernel] Initializing poll subsystem...\n");
+    poll::init();
+    pollset::init();
+
+    // Test poll functionality
+    poll::test_poll();
+    pollset::test_pollset();
+}
+
+/**
+ * @brief Initialize virtio subsystem and device drivers.
+ */
+void init_virtio_subsystem()
+{
+    serial::puts("\n[kernel] Initializing virtio subsystem...\n");
+    virtio::init();
+
+    // Initialize virtio-rng driver (entropy source for TLS)
+    if (!virtio::rng::init())
+    {
+        serial::puts("[kernel] WARNING: virtio-rng not available (TCP ISN will use fallback)\n");
+    }
+
+    // Initialize virtio-blk driver
+    virtio::blk_init();
+
+    // Initialize virtio-gpu driver
+    virtio::gpu_init();
+
+    // Initialize virtio-input driver
+    virtio::input_init();
+
+    // Initialize input subsystem
+    input::init();
+
+    // Initialize console input buffer
+    console::init_input();
+}
+
+#if VIPER_KERNEL_ENABLE_NET
+/**
+ * @brief Initialize network stack and run connectivity tests.
+ */
+void init_network_subsystem()
+{
+    // Initialize virtio-net driver
+    virtio::net_init();
+
+    // Initialize network stack
+    net::network_init();
+
+    // Give QEMU's network stack time to initialize
+    if (virtio::net_device())
+    {
+        u64 start = timer::get_ticks();
+        while (timer::get_ticks() - start < 500)
+        {
+            net::network_poll();
+            asm volatile("wfi");
+        }
+    }
+
+    // Test ping
+    if (virtio::net_device())
+    {
+        serial::puts("[kernel] Testing ping to gateway (10.0.2.2)...\n");
+        net::Ipv4Addr gateway = {{10, 0, 2, 2}};
+        i32 rtt = net::icmp::ping(gateway, 3000); // 3 second timeout
+        if (rtt >= 0)
+        {
+            serial::puts("[kernel] Ping successful! RTT: ");
+            serial::put_dec(rtt);
+            serial::puts(" ms\n");
+        }
+        else
+        {
+            serial::puts("[kernel] Ping failed (code ");
+            serial::put_dec(-rtt);
+            serial::puts(")\n");
+        }
+
+        // Test DNS resolution
+        serial::puts("[kernel] Testing DNS resolution (example.com)...\n");
+        net::Ipv4Addr resolved_ip;
+        if (net::dns::resolve("example.com", &resolved_ip, 5000))
+        {
+            serial::puts("[kernel] DNS resolved: ");
+            serial::put_dec(resolved_ip.bytes[0]);
+            serial::putc('.');
+            serial::put_dec(resolved_ip.bytes[1]);
+            serial::putc('.');
+            serial::put_dec(resolved_ip.bytes[2]);
+            serial::putc('.');
+            serial::put_dec(resolved_ip.bytes[3]);
+            serial::puts("\n");
+
+            // Test HTTP fetch
+            serial::puts("[kernel] Testing HTTP fetch...\n");
+            net::http::fetch("example.com", "/");
+        }
+        else
+        {
+            serial::puts("[kernel] DNS resolution failed\n");
+        }
+    }
+}
+#endif
+
+} // anonymous namespace
+
+// =============================================================================
+// KERNEL ENTRY POINT
+// =============================================================================
+
 /**
  * @brief Kernel main entry point invoked from the assembly boot stub.
  *
@@ -120,25 +375,8 @@ extern "C" void kernel_main(void *boot_info_ptr)
     // Initialize serial output first
     serial::init();
 
-    // Print boot banner to serial
-    serial::puts("\n");
-    serial::puts("=========================================\n");
-    serial::puts("  ViperOS v0.2.0 - AArch64\n");
-    serial::puts("  Mode: ");
-#if VIPER_MICROKERNEL_MODE
-    serial::puts("MICROKERNEL (bring-up)\n");
-#else
-    serial::puts("HYBRID\n");
-#endif
-    serial::puts("  Kernel services: fs=");
-    serial::put_dec(static_cast<u64>(VIPER_KERNEL_ENABLE_FS));
-    serial::puts(" net=");
-    serial::put_dec(static_cast<u64>(VIPER_KERNEL_ENABLE_NET));
-    serial::puts(" tls=");
-    serial::put_dec(static_cast<u64>(VIPER_KERNEL_ENABLE_TLS));
-    serial::puts("\n");
-    serial::puts("=========================================\n");
-    serial::puts("\n");
+    // Print boot banner
+    print_boot_banner();
 
     // Initialize boot info parser
     boot::init(boot_info_ptr);
@@ -169,8 +407,8 @@ extern "C" void kernel_main(void *boot_info_ptr)
         // Initialize fw_cfg interface for QEMU
         fwcfg::init();
 
-        // Initialize framebuffer via ramfb (1024x768)
-        if (ramfb::init(1024, 768))
+        // Initialize framebuffer via ramfb with default resolution
+        if (ramfb::init(kc::display::DEFAULT_WIDTH, kc::display::DEFAULT_HEIGHT))
         {
             serial::puts("[kernel] Framebuffer initialized (ramfb)\n");
             fb_initialized = true;
@@ -246,186 +484,14 @@ extern "C" void kernel_main(void *boot_info_ptr)
         serial::puts("[kernel] Running in serial-only mode\n");
     }
 
-    // Initialize memory management
-    serial::puts("\n[kernel] Initializing memory management...\n");
-
-    // QEMU virt machine: RAM at 0x40000000, 128MB default
-    constexpr u64 RAM_START = 0x40000000;
-    constexpr u64 RAM_SIZE = 128 * 1024 * 1024; // 128MB
-
-    // Initialize physical memory manager
-    pmm::init(RAM_START, RAM_SIZE, reinterpret_cast<u64>(__kernel_end));
-
-    // Initialize virtual memory manager
-    vmm::init();
-
-    // Initialize kernel heap
-    kheap::init();
-
-    // Test allocation
-    serial::puts("[kernel] Testing heap allocation...\n");
-    void *test1 = kheap::kmalloc(1024);
-    void *test2 = kheap::kmalloc(4096);
-    serial::puts("[kernel] Allocated 1KB at ");
-    serial::put_hex(reinterpret_cast<u64>(test1));
-    serial::puts("\n");
-    serial::puts("[kernel] Allocated 4KB at ");
-    serial::put_hex(reinterpret_cast<u64>(test2));
-    serial::puts("\n");
-
-    // Initialize slab allocator
-    slab::init();
-    slab::init_object_caches();
-
-    // Update graphics console with memory info
-    if (gcon::is_available())
-    {
-        gcon::puts("  [OK] Physical memory manager initialized\n");
-        gcon::puts("  [OK] Virtual memory manager initialized\n");
-        gcon::puts("  [OK] Kernel heap initialized\n");
-        gcon::puts("  [OK] Slab allocator initialized\n");
-    }
-
-    // Initialize exceptions and interrupts
-    serial::puts("\n[kernel] Initializing exceptions and interrupts...\n");
-    exceptions::init();
-    gic::init();
-
-    // Initialize timer
-    timer::init();
-
-    // Initialize CPU subsystem (per-CPU data structures)
-    cpu::init();
-
-    // Enable interrupts
-    exceptions::enable_interrupts();
-    serial::puts("[kernel] Interrupts enabled\n");
-
-    // Update graphics console
-    if (gcon::is_available())
-    {
-        gcon::puts("  [OK] Exception handlers installed\n");
-        gcon::puts("  [OK] GIC initialized\n");
-        gcon::puts("  [OK] Timer started (1000 Hz)\n");
-        gcon::puts("  [OK] Interrupts enabled\n");
-        gcon::puts("\n");
-
-        // Show memory stats
-        gcon::set_colors(gcon::colors::VIPER_YELLOW, gcon::colors::VIPER_DARK_BROWN);
-        gcon::puts("  Memory: ");
-        u64 free_mb = (pmm::get_free_pages() * 4) / 1024;
-        if (free_mb >= 100)
-            gcon::putc('0' + (free_mb / 100) % 10);
-        if (free_mb >= 10)
-            gcon::putc('0' + (free_mb / 10) % 10);
-        gcon::putc('0' + free_mb % 10);
-        gcon::puts(" MB free\n");
-    }
-
-    // Initialize task subsystem
-    serial::puts("\n[kernel] Initializing task subsystem...\n");
-    task::init();
-    scheduler::init();
-
-    // Initialize channel subsystem
-    serial::puts("\n[kernel] Initializing channel subsystem...\n");
-    channel::init();
-
-    // Initialize poll/timer subsystem
-    serial::puts("\n[kernel] Initializing poll subsystem...\n");
-    poll::init();
-    pollset::init();
-
-    // Test poll functionality
-    poll::test_poll();
-    pollset::test_pollset();
-
-    // Initialize virtio subsystem (Phase 4)
-    serial::puts("\n[kernel] Initializing virtio subsystem...\n");
-    virtio::init();
-
-    // Initialize virtio-rng driver (entropy source for TLS)
-    if (!virtio::rng::init())
-    {
-        serial::puts("[kernel] WARNING: virtio-rng not available (TCP ISN will use fallback)\n");
-    }
-
-    // Initialize virtio-blk driver
-    virtio::blk_init();
-
-    // Initialize virtio-gpu driver
-    virtio::gpu_init();
-
-    // Initialize virtio-input driver (Phase 5)
-    virtio::input_init();
-
-    // Initialize input subsystem (Phase 5)
-    input::init();
-
-    // Initialize console input buffer
-    console::init_input();
+    // Initialize core kernel subsystems
+    init_memory_subsystem();
+    init_interrupts();
+    init_task_subsystem();
+    init_virtio_subsystem();
 
 #if VIPER_KERNEL_ENABLE_NET
-    // Initialize virtio-net driver (Phase 6)
-    virtio::net_init();
-
-    // Initialize network stack (Phase 6)
-    net::network_init();
-
-    // Give QEMU's network stack time to initialize
-    if (virtio::net_device())
-    {
-        u64 start = timer::get_ticks();
-        while (timer::get_ticks() - start < 500)
-        {
-            net::network_poll();
-            asm volatile("wfi");
-        }
-    }
-
-    // Test ping (Phase 6)
-    if (virtio::net_device())
-    {
-        serial::puts("[kernel] Testing ping to gateway (10.0.2.2)...\n");
-        net::Ipv4Addr gateway = {{10, 0, 2, 2}};
-        i32 rtt = net::icmp::ping(gateway, 3000); // 3 second timeout
-        if (rtt >= 0)
-        {
-            serial::puts("[kernel] Ping successful! RTT: ");
-            serial::put_dec(rtt);
-            serial::puts(" ms\n");
-        }
-        else
-        {
-            serial::puts("[kernel] Ping failed (code ");
-            serial::put_dec(-rtt);
-            serial::puts(")\n");
-        }
-
-        // Test DNS resolution
-        serial::puts("[kernel] Testing DNS resolution (example.com)...\n");
-        net::Ipv4Addr resolved_ip;
-        if (net::dns::resolve("example.com", &resolved_ip, 5000))
-        {
-            serial::puts("[kernel] DNS resolved: ");
-            serial::put_dec(resolved_ip.bytes[0]);
-            serial::putc('.');
-            serial::put_dec(resolved_ip.bytes[1]);
-            serial::putc('.');
-            serial::put_dec(resolved_ip.bytes[2]);
-            serial::putc('.');
-            serial::put_dec(resolved_ip.bytes[3]);
-            serial::puts("\n");
-
-            // Test HTTP fetch
-            serial::puts("[kernel] Testing HTTP fetch...\n");
-            net::http::fetch("example.com", "/");
-        }
-        else
-        {
-            serial::puts("[kernel] DNS resolution failed\n");
-        }
-    }
+    init_network_subsystem();
 #else
     serial::puts("[kernel] Kernel networking disabled (VIPER_KERNEL_ENABLE_NET=0)\n");
 #endif

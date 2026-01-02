@@ -19,12 +19,12 @@ namespace input_protocol
 enum MsgType : uint32_t
 {
     // Requests from clients
-    INP_SUBSCRIBE = 1,       // Subscribe to input events
-    INP_UNSUBSCRIBE = 2,     // Unsubscribe from events
-    INP_GET_CHAR = 10,       // Get translated character (non-blocking)
-    INP_GET_EVENT = 11,      // Get raw input event (non-blocking)
-    INP_GET_MODIFIERS = 12,  // Query current modifier state
-    INP_HAS_INPUT = 13,      // Check if input is available
+    INP_SUBSCRIBE = 1,      // Subscribe to input events
+    INP_UNSUBSCRIBE = 2,    // Unsubscribe from events
+    INP_GET_CHAR = 10,      // Get translated character (non-blocking)
+    INP_GET_EVENT = 11,     // Get raw input event (non-blocking)
+    INP_GET_MODIFIERS = 12, // Query current modifier state
+    INP_HAS_INPUT = 13,     // Check if input is available
 
     // Async notifications (server -> client)
     INP_EVENT_NOTIFY = 0x80, // Async event notification
@@ -62,8 +62,8 @@ struct InputEvent
 {
     EventType type;
     uint8_t modifiers;
-    uint16_t code;  // Linux evdev keycode
-    int32_t value;  // 1=press, 0=release, or mouse delta
+    uint16_t code; // Linux evdev keycode
+    int32_t value; // 1=press, 0=release, or mouse delta
 };
 
 // Maximum message payload size
@@ -72,7 +72,7 @@ constexpr size_t MAX_PAYLOAD = 256;
 // Request: Subscribe to input events
 struct SubscribeRequest
 {
-    uint32_t type;       // INP_SUBSCRIBE
+    uint32_t type; // INP_SUBSCRIBE
     uint32_t request_id;
     uint32_t event_mask; // Which events to receive (bitmask of EventType)
 };
@@ -80,9 +80,9 @@ struct SubscribeRequest
 // Reply: Subscribe result
 struct SubscribeReply
 {
-    uint32_t type;       // INP_SUBSCRIBE_REPLY
+    uint32_t type; // INP_SUBSCRIBE_REPLY
     uint32_t request_id;
-    int32_t status;      // 0 = success, negative = error
+    int32_t status;         // 0 = success, negative = error
     uint32_t event_channel; // Channel handle for async events (if status == 0)
 };
 
@@ -96,9 +96,9 @@ struct GetCharRequest
 // Reply: Character result
 struct GetCharReply
 {
-    uint32_t type;       // INP_GET_CHAR_REPLY
+    uint32_t type; // INP_GET_CHAR_REPLY
     uint32_t request_id;
-    int32_t result;      // Character (0-255) or -1 if none available
+    int32_t result; // Character (0-255) or -1 if none available
 };
 
 // Request: Get raw input event
@@ -111,10 +111,10 @@ struct GetEventRequest
 // Reply: Event result
 struct GetEventReply
 {
-    uint32_t type;       // INP_GET_EVENT_REPLY
+    uint32_t type; // INP_GET_EVENT_REPLY
     uint32_t request_id;
-    int32_t status;      // 0 = event available, -1 = no event
-    InputEvent event;    // Valid if status == 0
+    int32_t status;   // 0 = event available, -1 = no event
+    InputEvent event; // Valid if status == 0
 };
 
 // Request: Get modifier state
@@ -127,9 +127,9 @@ struct GetModifiersRequest
 // Reply: Modifier state
 struct GetModifiersReply
 {
-    uint32_t type;       // INP_GET_MODIFIERS_REPLY
+    uint32_t type; // INP_GET_MODIFIERS_REPLY
     uint32_t request_id;
-    uint8_t modifiers;   // Current modifier bitmask
+    uint8_t modifiers; // Current modifier bitmask
     uint8_t _pad[3];
 };
 
@@ -143,10 +143,10 @@ struct HasInputRequest
 // Reply: Input availability
 struct HasInputReply
 {
-    uint32_t type;       // INP_HAS_INPUT_REPLY
+    uint32_t type; // INP_HAS_INPUT_REPLY
     uint32_t request_id;
-    int32_t has_char;    // 1 if character available, 0 if not
-    int32_t has_event;   // 1 if event available, 0 if not
+    int32_t has_char;  // 1 if character available, 0 if not
+    int32_t has_event; // 1 if event available, 0 if not
 };
 
 // Async notification: Input event

@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: kernel/syscall/dispatch.hpp
+// Purpose: Kernel syscall dispatcher interface.
+// Key invariants: x8 = syscall number; x0-x5 = args; x0 = return value.
+// Ownership/Lifetime: Stateless dispatcher; invoked from exception handler.
+// Links: kernel/syscall/dispatch.cpp
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "../arch/aarch64/exceptions.hpp"

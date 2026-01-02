@@ -33,7 +33,8 @@ extern "C" unsigned int __viper_netd_poll_handle()
 extern "C" int __viper_netd_socket_create(int domain, int type, int protocol, int *out_socket_id)
 {
     u32 id = 0;
-    i32 rc = g_netd_client.socket_create(static_cast<u16>(domain), static_cast<u16>(type), (u32)protocol, &id);
+    i32 rc = g_netd_client.socket_create(
+        static_cast<u16>(domain), static_cast<u16>(type), (u32)protocol, &id);
     if (rc != 0)
     {
         return rc;
@@ -45,7 +46,9 @@ extern "C" int __viper_netd_socket_create(int domain, int type, int protocol, in
     return 0;
 }
 
-extern "C" int __viper_netd_socket_connect(int socket_id, unsigned int ip_be, unsigned short port_be)
+extern "C" int __viper_netd_socket_connect(int socket_id,
+                                           unsigned int ip_be,
+                                           unsigned short port_be)
 {
     return g_netd_client.socket_connect(static_cast<u32>(socket_id), ip_be, port_be);
 }
@@ -60,7 +63,8 @@ extern "C" long __viper_netd_socket_send(int socket_id, const void *buf, unsigne
     {
         len = 0xFFFFFFFFul;
     }
-    return static_cast<long>(g_netd_client.socket_send(static_cast<u32>(socket_id), buf, static_cast<u32>(len)));
+    return static_cast<long>(
+        g_netd_client.socket_send(static_cast<u32>(socket_id), buf, static_cast<u32>(len)));
 }
 
 extern "C" long __viper_netd_socket_recv(int socket_id, void *buf, unsigned long len)
@@ -76,7 +80,8 @@ extern "C" long __viper_netd_socket_recv(int socket_id, void *buf, unsigned long
 
     // Non-blocking semantics: return immediately with available data or WOULD_BLOCK.
     // This allows callers to properly poll() for both network and console input.
-    return static_cast<long>(g_netd_client.socket_recv(static_cast<u32>(socket_id), buf, static_cast<u32>(len)));
+    return static_cast<long>(
+        g_netd_client.socket_recv(static_cast<u32>(socket_id), buf, static_cast<u32>(len)));
 }
 
 extern "C" int __viper_netd_socket_close(int socket_id)
@@ -84,7 +89,9 @@ extern "C" int __viper_netd_socket_close(int socket_id)
     return g_netd_client.socket_close(static_cast<u32>(socket_id));
 }
 
-extern "C" int __viper_netd_socket_status(int socket_id, unsigned int *out_flags, unsigned int *out_rx_available)
+extern "C" int __viper_netd_socket_status(int socket_id,
+                                          unsigned int *out_flags,
+                                          unsigned int *out_rx_available)
 {
     u32 flags = 0;
     u32 rx = 0;
@@ -118,4 +125,3 @@ extern "C" int __viper_netd_dns_resolve(const char *hostname, unsigned int *out_
     }
     return 0;
 }
-

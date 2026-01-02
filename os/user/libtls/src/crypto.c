@@ -164,8 +164,8 @@ void tls_sha256(const void *data, size_t len, uint8_t digest[32])
  * HMAC-SHA256
  *===========================================================================*/
 
-void tls_hmac_sha256(const uint8_t *key, size_t key_len, const void *data, size_t data_len,
-                     uint8_t mac[32])
+void tls_hmac_sha256(
+    const uint8_t *key, size_t key_len, const void *data, size_t data_len, uint8_t mac[32])
 {
     uint8_t k[64], ipad[64], opad[64];
 
@@ -202,8 +202,8 @@ void tls_hmac_sha256(const uint8_t *key, size_t key_len, const void *data, size_
  * HKDF-SHA256 (RFC 5869)
  *===========================================================================*/
 
-void tls_hkdf_extract(const uint8_t *salt, size_t salt_len, const uint8_t *ikm, size_t ikm_len,
-                      uint8_t prk[32])
+void tls_hkdf_extract(
+    const uint8_t *salt, size_t salt_len, const uint8_t *ikm, size_t ikm_len, uint8_t prk[32])
 {
     if (salt == NULL || salt_len == 0)
     {
@@ -216,8 +216,8 @@ void tls_hkdf_extract(const uint8_t *salt, size_t salt_len, const uint8_t *ikm, 
     }
 }
 
-void tls_hkdf_expand(const uint8_t prk[32], const uint8_t *info, size_t info_len, uint8_t *okm,
-                     size_t okm_len)
+void tls_hkdf_expand(
+    const uint8_t prk[32], const uint8_t *info, size_t info_len, uint8_t *okm, size_t okm_len)
 {
     uint8_t t[32] = {0};
     size_t t_len = 0;
@@ -264,8 +264,12 @@ void tls_hkdf_expand(const uint8_t prk[32], const uint8_t *info, size_t info_len
     }
 }
 
-void tls_hkdf_expand_label(const uint8_t secret[32], const char *label, const uint8_t *context,
-                           size_t context_len, uint8_t *out, size_t out_len)
+void tls_hkdf_expand_label(const uint8_t secret[32],
+                           const char *label,
+                           const uint8_t *context,
+                           size_t context_len,
+                           uint8_t *out,
+                           size_t out_len)
 {
     /* TLS 1.3 HkdfLabel structure */
     uint8_t hkdf_label[512];
@@ -351,7 +355,9 @@ static void chacha20_block(const uint32_t state[16], uint8_t out[64])
     }
 }
 
-static void chacha20_init(uint32_t state[16], const uint8_t key[32], const uint8_t nonce[12],
+static void chacha20_init(uint32_t state[16],
+                          const uint8_t key[32],
+                          const uint8_t nonce[12],
                           uint32_t counter)
 {
     /* "expand 32-byte k" */
@@ -378,8 +384,12 @@ static void chacha20_init(uint32_t state[16], const uint8_t key[32], const uint8
     }
 }
 
-void tls_chacha20_crypt(const uint8_t key[32], const uint8_t nonce[12], uint32_t counter,
-                        const uint8_t *in, uint8_t *out, size_t len)
+void tls_chacha20_crypt(const uint8_t key[32],
+                        const uint8_t nonce[12],
+                        uint32_t counter,
+                        const uint8_t *in,
+                        uint8_t *out,
+                        size_t len)
 {
     uint32_t state[16];
     uint8_t keystream[64];
@@ -435,14 +445,14 @@ static void poly1305_init(poly1305_ctx *ctx, const uint8_t key[32])
     ctx->h[0] = ctx->h[1] = ctx->h[2] = ctx->h[3] = ctx->h[4] = 0;
 
     /* pad (last 16 bytes) */
-    ctx->pad[0] =
-        (uint32_t)key[16] | ((uint32_t)key[17] << 8) | ((uint32_t)key[18] << 16) | ((uint32_t)key[19] << 24);
-    ctx->pad[1] =
-        (uint32_t)key[20] | ((uint32_t)key[21] << 8) | ((uint32_t)key[22] << 16) | ((uint32_t)key[23] << 24);
-    ctx->pad[2] =
-        (uint32_t)key[24] | ((uint32_t)key[25] << 8) | ((uint32_t)key[26] << 16) | ((uint32_t)key[27] << 24);
-    ctx->pad[3] =
-        (uint32_t)key[28] | ((uint32_t)key[29] << 8) | ((uint32_t)key[30] << 16) | ((uint32_t)key[31] << 24);
+    ctx->pad[0] = (uint32_t)key[16] | ((uint32_t)key[17] << 8) | ((uint32_t)key[18] << 16) |
+                  ((uint32_t)key[19] << 24);
+    ctx->pad[1] = (uint32_t)key[20] | ((uint32_t)key[21] << 8) | ((uint32_t)key[22] << 16) |
+                  ((uint32_t)key[23] << 24);
+    ctx->pad[2] = (uint32_t)key[24] | ((uint32_t)key[25] << 8) | ((uint32_t)key[26] << 16) |
+                  ((uint32_t)key[27] << 24);
+    ctx->pad[3] = (uint32_t)key[28] | ((uint32_t)key[29] << 8) | ((uint32_t)key[30] << 16) |
+                  ((uint32_t)key[31] << 24);
 
     ctx->buffer_len = 0;
 }
@@ -474,16 +484,16 @@ static void poly1305_blocks(poly1305_ctx *ctx, const uint8_t *data, size_t len, 
               hibit;
 
         /* h *= r */
-        uint64_t d0 = (uint64_t)h0 * r0 + (uint64_t)h1 * s4 + (uint64_t)h2 * s3 + (uint64_t)h3 * s2 +
-                      (uint64_t)h4 * s1;
-        uint64_t d1 = (uint64_t)h0 * r1 + (uint64_t)h1 * r0 + (uint64_t)h2 * s4 + (uint64_t)h3 * s3 +
-                      (uint64_t)h4 * s2;
-        uint64_t d2 = (uint64_t)h0 * r2 + (uint64_t)h1 * r1 + (uint64_t)h2 * r0 + (uint64_t)h3 * s4 +
-                      (uint64_t)h4 * s3;
-        uint64_t d3 = (uint64_t)h0 * r3 + (uint64_t)h1 * r2 + (uint64_t)h2 * r1 + (uint64_t)h3 * r0 +
-                      (uint64_t)h4 * s4;
-        uint64_t d4 = (uint64_t)h0 * r4 + (uint64_t)h1 * r3 + (uint64_t)h2 * r2 + (uint64_t)h3 * r1 +
-                      (uint64_t)h4 * r0;
+        uint64_t d0 = (uint64_t)h0 * r0 + (uint64_t)h1 * s4 + (uint64_t)h2 * s3 +
+                      (uint64_t)h3 * s2 + (uint64_t)h4 * s1;
+        uint64_t d1 = (uint64_t)h0 * r1 + (uint64_t)h1 * r0 + (uint64_t)h2 * s4 +
+                      (uint64_t)h3 * s3 + (uint64_t)h4 * s2;
+        uint64_t d2 = (uint64_t)h0 * r2 + (uint64_t)h1 * r1 + (uint64_t)h2 * r0 +
+                      (uint64_t)h3 * s4 + (uint64_t)h4 * s3;
+        uint64_t d3 = (uint64_t)h0 * r3 + (uint64_t)h1 * r2 + (uint64_t)h2 * r1 +
+                      (uint64_t)h3 * r0 + (uint64_t)h4 * s4;
+        uint64_t d4 = (uint64_t)h0 * r4 + (uint64_t)h1 * r3 + (uint64_t)h2 * r2 +
+                      (uint64_t)h3 * r1 + (uint64_t)h4 * r0;
 
         /* Carry */
         uint32_t c;
@@ -647,17 +657,25 @@ static void pad16(poly1305_ctx *ctx, size_t len)
         poly1305_update(ctx, zeros, pad);
 }
 
-size_t tls_chacha20_poly1305_encrypt(const uint8_t key[32], const uint8_t nonce[12],
-                                     const void *aad, size_t aad_len, const void *plaintext,
-                                     size_t plaintext_len, uint8_t *ciphertext)
+size_t tls_chacha20_poly1305_encrypt(const uint8_t key[32],
+                                     const uint8_t nonce[12],
+                                     const void *aad,
+                                     size_t aad_len,
+                                     const void *plaintext,
+                                     size_t plaintext_len,
+                                     uint8_t *ciphertext)
 {
     /* Generate Poly1305 key (block 0) */
     uint8_t poly_key[64];
-    tls_chacha20_crypt(key, nonce, 0, (const uint8_t *)"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"
-                                                       "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"
-                                                       "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"
-                                                       "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0",
-                       poly_key, 64);
+    tls_chacha20_crypt(key,
+                       nonce,
+                       0,
+                       (const uint8_t *)"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"
+                                        "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"
+                                        "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"
+                                        "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0",
+                       poly_key,
+                       64);
 
     /* Encrypt plaintext (starting at block 1) */
     tls_chacha20_crypt(key, nonce, 1, plaintext, ciphertext, plaintext_len);
@@ -689,8 +707,12 @@ size_t tls_chacha20_poly1305_encrypt(const uint8_t key[32], const uint8_t nonce[
     return plaintext_len + 16;
 }
 
-long tls_chacha20_poly1305_decrypt(const uint8_t key[32], const uint8_t nonce[12], const void *aad,
-                                   size_t aad_len, const void *ciphertext, size_t ciphertext_len,
+long tls_chacha20_poly1305_decrypt(const uint8_t key[32],
+                                   const uint8_t nonce[12],
+                                   const void *aad,
+                                   size_t aad_len,
+                                   const void *ciphertext,
+                                   size_t ciphertext_len,
                                    uint8_t *plaintext)
 {
     if (ciphertext_len < 16)
@@ -701,11 +723,15 @@ long tls_chacha20_poly1305_decrypt(const uint8_t key[32], const uint8_t nonce[12
 
     /* Generate Poly1305 key */
     uint8_t poly_key[64];
-    tls_chacha20_crypt(key, nonce, 0, (const uint8_t *)"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"
-                                                       "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"
-                                                       "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"
-                                                       "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0",
-                       poly_key, 64);
+    tls_chacha20_crypt(key,
+                       nonce,
+                       0,
+                       (const uint8_t *)"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"
+                                        "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"
+                                        "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"
+                                        "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0",
+                       poly_key,
+                       64);
 
     /* Verify tag */
     poly1305_ctx poly;

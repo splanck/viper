@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libtls/src/tls.c
+// Purpose: TLS 1.3 client implementation for ViperOS.
+// Key invariants: Uses ChaCha20-Poly1305 AEAD and X25519 key exchange.
+// Ownership/Lifetime: Library; per-connection state.
+// Links: user/libtls/include/tls.h
+//
+//===----------------------------------------------------------------------===//
+
 /**
  * @file tls.c
  * @brief TLS 1.3 client implementation for ViperOS.
@@ -117,19 +132,30 @@ struct tls_session
 
 /* External crypto functions */
 extern void tls_sha256(const void *data, size_t len, uint8_t digest[32]);
-extern void tls_hmac_sha256(const uint8_t *key, size_t key_len, const void *data, size_t data_len,
-                            uint8_t mac[32]);
-extern void tls_hkdf_extract(const uint8_t *salt, size_t salt_len, const uint8_t *ikm,
-                             size_t ikm_len, uint8_t prk[32]);
-extern void tls_hkdf_expand_label(const uint8_t secret[32], const char *label,
-                                  const uint8_t *context, size_t context_len, uint8_t *out,
+extern void tls_hmac_sha256(
+    const uint8_t *key, size_t key_len, const void *data, size_t data_len, uint8_t mac[32]);
+extern void tls_hkdf_extract(
+    const uint8_t *salt, size_t salt_len, const uint8_t *ikm, size_t ikm_len, uint8_t prk[32]);
+extern void tls_hkdf_expand_label(const uint8_t secret[32],
+                                  const char *label,
+                                  const uint8_t *context,
+                                  size_t context_len,
+                                  uint8_t *out,
                                   size_t out_len);
-extern size_t tls_chacha20_poly1305_encrypt(const uint8_t key[32], const uint8_t nonce[12],
-                                            const void *aad, size_t aad_len, const void *plaintext,
-                                            size_t plaintext_len, uint8_t *ciphertext);
-extern long tls_chacha20_poly1305_decrypt(const uint8_t key[32], const uint8_t nonce[12],
-                                          const void *aad, size_t aad_len, const void *ciphertext,
-                                          size_t ciphertext_len, uint8_t *plaintext);
+extern size_t tls_chacha20_poly1305_encrypt(const uint8_t key[32],
+                                            const uint8_t nonce[12],
+                                            const void *aad,
+                                            size_t aad_len,
+                                            const void *plaintext,
+                                            size_t plaintext_len,
+                                            uint8_t *ciphertext);
+extern long tls_chacha20_poly1305_decrypt(const uint8_t key[32],
+                                          const uint8_t nonce[12],
+                                          const void *aad,
+                                          size_t aad_len,
+                                          const void *ciphertext,
+                                          size_t ciphertext_len,
+                                          uint8_t *plaintext);
 extern void tls_x25519_keygen(uint8_t secret[32], uint8_t public_key[32]);
 extern void tls_x25519(const uint8_t secret[32], const uint8_t peer_public[32], uint8_t shared[32]);
 extern void tls_random_bytes(uint8_t *buf, size_t len);
@@ -192,24 +218,32 @@ static void derive_handshake_keys(tls_session_t *session, const uint8_t shared_s
     tls_hkdf_extract(derived, 32, shared_secret, 32, session->handshake_secret);
 
     /* client_handshake_traffic_secret */
-    tls_hkdf_expand_label(session->handshake_secret, "c hs traffic", session->transcript_hash, 32,
-                          session->client_handshake_traffic_secret, 32);
+    tls_hkdf_expand_label(session->handshake_secret,
+                          "c hs traffic",
+                          session->transcript_hash,
+                          32,
+                          session->client_handshake_traffic_secret,
+                          32);
 
     /* server_handshake_traffic_secret */
-    tls_hkdf_expand_label(session->handshake_secret, "s hs traffic", session->transcript_hash, 32,
-                          session->server_handshake_traffic_secret, 32);
+    tls_hkdf_expand_label(session->handshake_secret,
+                          "s hs traffic",
+                          session->transcript_hash,
+                          32,
+                          session->server_handshake_traffic_secret,
+                          32);
 
     /* Derive keys */
-    tls_hkdf_expand_label(session->server_handshake_traffic_secret, "key", NULL, 0,
-                          session->read_keys.key, 32);
-    tls_hkdf_expand_label(session->server_handshake_traffic_secret, "iv", NULL, 0,
-                          session->read_keys.iv, 12);
+    tls_hkdf_expand_label(
+        session->server_handshake_traffic_secret, "key", NULL, 0, session->read_keys.key, 32);
+    tls_hkdf_expand_label(
+        session->server_handshake_traffic_secret, "iv", NULL, 0, session->read_keys.iv, 12);
     session->read_keys.seq_num = 0;
 
-    tls_hkdf_expand_label(session->client_handshake_traffic_secret, "key", NULL, 0,
-                          session->write_keys.key, 32);
-    tls_hkdf_expand_label(session->client_handshake_traffic_secret, "iv", NULL, 0,
-                          session->write_keys.iv, 12);
+    tls_hkdf_expand_label(
+        session->client_handshake_traffic_secret, "key", NULL, 0, session->write_keys.key, 32);
+    tls_hkdf_expand_label(
+        session->client_handshake_traffic_secret, "iv", NULL, 0, session->write_keys.iv, 12);
     session->write_keys.seq_num = 0;
 
     session->keys_established = 1;
@@ -229,24 +263,32 @@ static void derive_application_keys(tls_session_t *session)
     tls_hkdf_extract(derived, 32, zero_key, 32, session->master_secret);
 
     /* client_application_traffic_secret */
-    tls_hkdf_expand_label(session->master_secret, "c ap traffic", session->transcript_hash, 32,
-                          session->client_application_traffic_secret, 32);
+    tls_hkdf_expand_label(session->master_secret,
+                          "c ap traffic",
+                          session->transcript_hash,
+                          32,
+                          session->client_application_traffic_secret,
+                          32);
 
     /* server_application_traffic_secret */
-    tls_hkdf_expand_label(session->master_secret, "s ap traffic", session->transcript_hash, 32,
-                          session->server_application_traffic_secret, 32);
+    tls_hkdf_expand_label(session->master_secret,
+                          "s ap traffic",
+                          session->transcript_hash,
+                          32,
+                          session->server_application_traffic_secret,
+                          32);
 
     /* Derive application keys */
-    tls_hkdf_expand_label(session->server_application_traffic_secret, "key", NULL, 0,
-                          session->read_keys.key, 32);
-    tls_hkdf_expand_label(session->server_application_traffic_secret, "iv", NULL, 0,
-                          session->read_keys.iv, 12);
+    tls_hkdf_expand_label(
+        session->server_application_traffic_secret, "key", NULL, 0, session->read_keys.key, 32);
+    tls_hkdf_expand_label(
+        session->server_application_traffic_secret, "iv", NULL, 0, session->read_keys.iv, 12);
     session->read_keys.seq_num = 0;
 
-    tls_hkdf_expand_label(session->client_application_traffic_secret, "key", NULL, 0,
-                          session->write_keys.key, 32);
-    tls_hkdf_expand_label(session->client_application_traffic_secret, "iv", NULL, 0,
-                          session->write_keys.iv, 12);
+    tls_hkdf_expand_label(
+        session->client_application_traffic_secret, "key", NULL, 0, session->write_keys.key, 32);
+    tls_hkdf_expand_label(
+        session->client_application_traffic_secret, "iv", NULL, 0, session->write_keys.iv, 12);
     session->write_keys.seq_num = 0;
 }
 
@@ -261,7 +303,9 @@ static void build_nonce(const uint8_t iv[12], uint64_t seq, uint8_t nonce[12])
 }
 
 /* Send TLS record */
-static int send_record(tls_session_t *session, uint8_t content_type, const uint8_t *data,
+static int send_record(tls_session_t *session,
+                       uint8_t content_type,
+                       const uint8_t *data,
                        size_t len)
 {
     uint8_t record[5 + TLS_MAX_CIPHERTEXT];
@@ -319,7 +363,9 @@ static int send_record(tls_session_t *session, uint8_t content_type, const uint8
 }
 
 /* Receive TLS record */
-static int recv_record(tls_session_t *session, uint8_t *content_type, uint8_t *data,
+static int recv_record(tls_session_t *session,
+                       uint8_t *content_type,
+                       uint8_t *data,
                        size_t *data_len)
 {
     /* Read header */
@@ -382,8 +428,8 @@ static int recv_record(tls_session_t *session, uint8_t *content_type, uint8_t *d
         uint8_t nonce[12];
         build_nonce(session->read_keys.iv, session->read_keys.seq_num, nonce);
 
-        long plaintext_len = tls_chacha20_poly1305_decrypt(session->read_keys.key, nonce, aad, 5,
-                                                           payload, length, data);
+        long plaintext_len = tls_chacha20_poly1305_decrypt(
+            session->read_keys.key, nonce, aad, 5, payload, length, data);
         if (plaintext_len < 0)
         {
             session->error = "decryption failed";
@@ -590,8 +636,8 @@ static int process_server_hello(tls_session_t *session, const uint8_t *data, siz
 static int send_finished(tls_session_t *session)
 {
     uint8_t finished_key[32];
-    tls_hkdf_expand_label(session->client_handshake_traffic_secret, "finished", NULL, 0,
-                          finished_key, 32);
+    tls_hkdf_expand_label(
+        session->client_handshake_traffic_secret, "finished", NULL, 0, finished_key, 32);
 
     uint8_t verify_data[32];
     tls_hmac_sha256(finished_key, 32, session->transcript_hash, 32, verify_data);
@@ -616,8 +662,8 @@ static int verify_finished(tls_session_t *session, const uint8_t *data, size_t l
     }
 
     uint8_t finished_key[32];
-    tls_hkdf_expand_label(session->server_handshake_traffic_secret, "finished", NULL, 0,
-                          finished_key, 32);
+    tls_hkdf_expand_label(
+        session->server_handshake_traffic_secret, "finished", NULL, 0, finished_key, 32);
 
     uint8_t expected[32];
     tls_hmac_sha256(finished_key, 32, session->transcript_hash, 32, expected);

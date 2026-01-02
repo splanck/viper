@@ -1,9 +1,36 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/math.c
+// Purpose: Mathematical functions for ViperOS libc.
+// Key invariants: IEEE 754 double precision; hardware FPU where available.
+// Ownership/Lifetime: Library; all functions are stateless and pure.
+// Links: user/libc/include/math.h
+//
+//===----------------------------------------------------------------------===//
+
 /**
  * @file math.c
- * @brief ViperOS libc math library implementation
+ * @brief Mathematical functions for ViperOS libc.
  *
- * Implements standard math functions for freestanding environment.
+ * @details
+ * This file implements standard C math library functions:
+ *
+ * - Basic operations: fabs, fmod, fmax, fmin, remainder
+ * - Rounding: ceil, floor, trunc, round, nearbyint, rint
+ * - Power functions: sqrt, cbrt, pow, hypot
+ * - Exponential/logarithmic: exp, log, log10, log2, exp2, expm1, log1p
+ * - Trigonometric: sin, cos, tan, asin, acos, atan, atan2
+ * - Hyperbolic: sinh, cosh, tanh, asinh, acosh, atanh
+ * - FP manipulation: frexp, ldexp, modf, scalbn, ilogb, copysign
+ * - Special functions: erf, erfc, tgamma, lgamma
+ *
  * Uses hardware FPU where available (Cortex-A72 has VFPv4).
+ * Some functions use __builtin intrinsics for optimal codegen.
  */
 
 #include "../include/math.h"

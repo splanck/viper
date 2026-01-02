@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: kernel/fs/viperfs/viperfs.hpp
+// Purpose: ViperFS filesystem driver interface.
+// Key invariants: Inodes ref-counted; blocks cached; spinlock protects metadata.
+// Ownership/Lifetime: Global singleton; mounted once at boot.
+// Links: kernel/fs/viperfs/viperfs.cpp, kernel/fs/viperfs/format.hpp
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "../../lib/spinlock.hpp"
@@ -551,5 +566,83 @@ ViperFS &viperfs();
  * @return `true` on success, otherwise `false`.
  */
 bool viperfs_init();
+
+/**
+ * @brief RAII guard for automatic inode release.
+ *
+ * @details
+ * Automatically calls viperfs().release_inode() on destruction, ensuring
+ * inodes are properly released even on early returns or exceptions.
+ *
+ * Usage:
+ * @code
+ * Inode *inode = viperfs().read_inode(ino);
+ * if (!inode) return -1;
+ * InodeGuard guard(inode);
+ * // ... use inode ...
+ * // inode automatically released when guard goes out of scope
+ * @endcode
+ */
+class InodeGuard
+{
+  public:
+    /**
+     * @brief Construct guard and take ownership of inode.
+     * @param inode The inode to guard (may be nullptr).
+     */
+    explicit InodeGuard(Inode *inode) : inode_(inode) {}
+
+    /**
+     * @brief Destruct guard and release inode.
+     */
+    ~InodeGuard()
+    {
+        if (inode_)
+        {
+            viperfs().release_inode(inode_);
+        }
+    }
+
+    // Non-copyable, non-movable
+    InodeGuard(const InodeGuard &) = delete;
+    InodeGuard &operator=(const InodeGuard &) = delete;
+
+    /**
+     * @brief Get the guarded inode.
+     * @return Pointer to the inode.
+     */
+    Inode *get() const { return inode_; }
+
+    /**
+     * @brief Check if a valid inode is held.
+     * @return true if inode is non-null.
+     */
+    operator bool() const { return inode_ != nullptr; }
+
+    /**
+     * @brief Access inode members via arrow operator.
+     * @return Pointer to the inode.
+     */
+    Inode *operator->() const { return inode_; }
+
+    /**
+     * @brief Release ownership of the inode without freeing.
+     *
+     * @details
+     * Returns the inode pointer and clears the guard, preventing automatic
+     * release. The caller takes responsibility for releasing the inode.
+     *
+     * @return The inode pointer (may be nullptr).
+     */
+    Inode *release()
+    {
+        Inode *tmp = inode_;
+        inode_ = nullptr;
+        return tmp;
+    }
+
+  private:
+    Inode *inode_;
+};
 
 } // namespace fs::viperfs

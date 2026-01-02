@@ -827,7 +827,9 @@ sftp_dir_t *sftp_opendir(sftp_session_t *sftp, const char *path)
  * @param offset Current offset in buffer (updated on success).
  * @return Parsed attributes or NULL on error.
  */
-static sftp_attributes_t *parse_dir_entry(const uint8_t *response, size_t response_len, size_t *offset)
+static sftp_attributes_t *parse_dir_entry(const uint8_t *response,
+                                          size_t response_len,
+                                          size_t *offset)
 {
     size_t pos = *offset;
 

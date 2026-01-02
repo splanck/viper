@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/servers/netd/main.cpp
+// Purpose: Network server (netd) main entry point.
+// Key invariants: Uses VirtIO-net; registered as "NETD:" service.
+// Ownership/Lifetime: Long-running service process.
+// Links: user/servers/netd/netstack.hpp, user/servers/netd/net_protocol.hpp
+//
+//===----------------------------------------------------------------------===//
+
 /**
  * @file main.cpp
  * @brief Network server (netd) main entry point.
@@ -447,9 +462,9 @@ static void handle_socket_status(const netproto::SocketStatusRequest *req, i32 r
 }
 
 static u32 handle_subscribe_events(const netproto::SubscribeEventsRequest *req,
-                                  i32 reply_channel,
-                                  const u32 *handles,
-                                  u32 handle_count)
+                                   i32 reply_channel,
+                                   const u32 *handles,
+                                   u32 handle_count)
 {
     netproto::SubscribeEventsReply reply = {};
     reply.type = netproto::NET_SUBSCRIBE_EVENTS_REPLY;
@@ -605,11 +620,8 @@ static void handle_stats(const netproto::StatsRequest *req, i32 reply_channel)
 /**
  * @brief Handle incoming request.
  */
-static u32 handle_request(const u8 *msg,
-                          usize len,
-                          i32 reply_channel,
-                          const u32 *handles,
-                          u32 handle_count)
+static u32 handle_request(
+    const u8 *msg, usize len, i32 reply_channel, const u32 *handles, u32 handle_count)
 {
     if (len < 4)
     {
@@ -783,11 +795,8 @@ static void server_loop()
         u32 extra_count = (handle_count >= 2) ? (handle_count - 1) : 0;
 
         // Handle the request
-        u32 keep_mask = handle_request(msg_buf,
-                                       static_cast<usize>(len),
-                                       reply_channel,
-                                       extra_handles,
-                                       extra_count);
+        u32 keep_mask = handle_request(
+            msg_buf, static_cast<usize>(len), reply_channel, extra_handles, extra_count);
 
         // Close the reply channel
         sys::channel_close(reply_channel);

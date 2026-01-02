@@ -1,3 +1,37 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/stat.c
+// Purpose: File status and mode functions for ViperOS libc.
+// Key invariants: Routes to fsd or kernel based on path; umask applied.
+// Ownership/Lifetime: Library; umask is process-global.
+// Links: user/libc/include/sys/stat.h, user/libc/include/fcntl.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file stat.c
+ * @brief File status and mode functions for ViperOS libc.
+ *
+ * @details
+ * This file implements POSIX file status and permission functions:
+ *
+ * - File info: stat, fstat, lstat
+ * - Permissions: chmod, fchmod, umask
+ * - Directory creation: mkdir
+ * - Special files: mkfifo, mknod
+ * - File opening: open, creat, openat
+ * - File control: fcntl
+ *
+ * File operations are routed through either the kernel VFS or the fsd
+ * (filesystem daemon) based on the path prefix. A process-global umask
+ * is applied to permission bits when creating files and directories.
+ */
+
 #include "../include/sys/stat.h"
 #include "../include/fcntl.h"
 

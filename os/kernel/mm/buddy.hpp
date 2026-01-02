@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: kernel/mm/buddy.hpp
+// Purpose: Buddy allocator for contiguous physical page runs.
+// Key invariants: Power-of-two blocks; buddies coalesce on free.
+// Ownership/Lifetime: Global singleton; initialized after PMM.
+// Links: kernel/mm/buddy.cpp
+//
+//===----------------------------------------------------------------------===//
+
 /**
  * @file buddy.hpp
  * @brief Buddy allocator for physical memory management.
@@ -14,6 +29,7 @@
  *
  * @see https://en.wikipedia.org/wiki/Buddy_memory_allocation
  */
+
 #pragma once
 
 #include "../include/types.hpp"

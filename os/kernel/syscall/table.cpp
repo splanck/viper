@@ -311,7 +311,8 @@ static SyscallResult sys_task_spawn(u64 a0, u64 a1, u64 a2, u64, u64, u64)
                         send_ep, cap::Kind::Channel, cap::CAP_WRITE | cap::CAP_TRANSFER);
                     if (bootstrap_send == cap::HANDLE_INVALID)
                     {
-                        // Roll back child insertion and delete endpoints (closes underlying channel).
+                        // Roll back child insertion and delete endpoints (closes underlying
+                        // channel).
                         result.viper->cap_table->remove(child_recv);
                         delete send_ep;
                         delete recv_ep;
@@ -399,7 +400,8 @@ static SyscallResult sys_task_spawn_shm(u64 a0, u64 a1, u64 a2, u64 a3, u64 a4, 
         return SyscallResult::err(error::VERR_NOT_FOUND);
     }
 
-    if (length == 0 || offset > shm->size() || offset + length > shm->size() || offset + length < offset)
+    if (length == 0 || offset > shm->size() || offset + length > shm->size() ||
+        offset + length < offset)
     {
         return SyscallResult::err(error::VERR_INVALID_ARG);
     }
@@ -407,8 +409,8 @@ static SyscallResult sys_task_spawn_shm(u64 a0, u64 a1, u64 a2, u64 a3, u64 a4, 
     const char *display_name = name ? name : "shm_spawn";
     const void *elf_data = pmm::phys_to_virt(shm->phys_addr() + offset);
 
-    loader::SpawnResult result =
-        loader::spawn_process_from_blob(elf_data, static_cast<usize>(length), display_name, parent_viper);
+    loader::SpawnResult result = loader::spawn_process_from_blob(
+        elf_data, static_cast<usize>(length), display_name, parent_viper);
     if (!result.success)
     {
         return SyscallResult::err(error::VERR_IO);
@@ -438,7 +440,8 @@ static SyscallResult sys_task_spawn_shm(u64 a0, u64 a1, u64 a2, u64 a3, u64 a4, 
                         send_ep, cap::Kind::Channel, cap::CAP_WRITE | cap::CAP_TRANSFER);
                     if (bootstrap_send == cap::HANDLE_INVALID)
                     {
-                        // Roll back child insertion and delete endpoints (closes underlying channel).
+                        // Roll back child insertion and delete endpoints (closes underlying
+                        // channel).
                         result.viper->cap_table->remove(child_recv);
                         delete send_ep;
                         delete recv_ep;
@@ -3608,7 +3611,10 @@ static bool track_shm_mapping(u32 viper_id, u64 virt_addr, u64 size, kobj::Share
     return false;
 }
 
-static bool untrack_shm_mapping(u32 viper_id, u64 virt_addr, u64 *out_size, kobj::SharedMemory **out_shm)
+static bool untrack_shm_mapping(u32 viper_id,
+                                u64 virt_addr,
+                                u64 *out_size,
+                                kobj::SharedMemory **out_shm)
 {
     init_shm_mappings();
     SpinlockGuard guard(shm_lock);

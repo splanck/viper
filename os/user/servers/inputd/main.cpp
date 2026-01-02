@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/servers/inputd/main.cpp
+// Purpose: Input server (inputd) main entry point.
+// Key invariants: Uses VirtIO-input; registered as "INPUTD:" service.
+// Ownership/Lifetime: Long-running service process.
+// Links: user/servers/inputd/input_protocol.hpp
+//
+//===----------------------------------------------------------------------===//
+
 /**
  * @file main.cpp
  * @brief Input server (inputd) main entry point.
@@ -20,7 +35,10 @@
 using namespace input_protocol;
 
 // Debug output helpers
-static void debug_print(const char *msg) { sys::print(msg); }
+static void debug_print(const char *msg)
+{
+    sys::print(msg);
+}
 
 static void debug_print_hex(uint64_t val)
 {
@@ -128,6 +146,7 @@ struct VirtqUsed
 {
     uint16_t flags;
     uint16_t idx;
+
     struct
     {
         uint32_t id;
@@ -294,7 +313,8 @@ static bool init_device()
     size_t avail_size = sizeof(VirtqAvail);
     size_t used_size = sizeof(VirtqUsed);
     size_t event_size = queue_size * sizeof(virtio_input::InputEvent);
-    size_t total_size = desc_size + avail_size + used_size + event_size + 4096; // Extra for alignment
+    size_t total_size =
+        desc_size + avail_size + used_size + event_size + 4096; // Extra for alignment
 
     device::DmaBuffer dma_buf;
     if (device::dma_alloc(total_size, &dma_buf) < 0)
@@ -355,7 +375,8 @@ static bool init_device()
     asm volatile("dsb sy" ::: "memory");
 
     // Driver OK
-    g_mmio[reg::STATUS / 4] = status::ACKNOWLEDGE | status::DRIVER | status::FEATURES_OK | status::DRIVER_OK;
+    g_mmio[reg::STATUS / 4] =
+        status::ACKNOWLEDGE | status::DRIVER | status::FEATURES_OK | status::DRIVER_OK;
     asm volatile("dsb sy" ::: "memory");
 
     debug_print("[inputd] VirtIO-input initialized, queue size ");
@@ -546,7 +567,8 @@ static void handle_request(int32_t client_channel, const uint8_t *data, size_t l
 
             if (g_char_head != g_char_tail)
             {
-                reply.result = static_cast<int32_t>(static_cast<uint8_t>(g_char_buffer[g_char_head]));
+                reply.result =
+                    static_cast<int32_t>(static_cast<uint8_t>(g_char_buffer[g_char_head]));
                 g_char_head = (g_char_head + 1) % CHAR_BUFFER_SIZE;
             }
             else
@@ -691,7 +713,8 @@ extern "C" void _start()
 
         // Check for client messages
         uint32_t handle_count = 4;
-        int64_t n = sys::channel_recv(g_service_channel, msg_buf, sizeof(msg_buf), handles, &handle_count);
+        int64_t n =
+            sys::channel_recv(g_service_channel, msg_buf, sizeof(msg_buf), handles, &handle_count);
 
         if (n > 0)
         {

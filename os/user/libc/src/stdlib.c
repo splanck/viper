@@ -1,3 +1,38 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/stdlib.c
+// Purpose: Standard C library general utilities for ViperOS.
+// Key invariants: Standard C semantics; syscall-based memory allocation.
+// Ownership/Lifetime: Library; allocations managed via sbrk heap.
+// Links: user/libc/include/stdlib.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file stdlib.c
+ * @brief Standard C library general utilities for ViperOS.
+ *
+ * @details
+ * This file implements the standard C library general utility functions:
+ *
+ * - Memory allocation: malloc, free, calloc, realloc
+ * - Program termination: exit, _Exit, abort, atexit
+ * - String conversion: atoi, atol, atoll, strtol, strtoul, strtod, strtof
+ * - Integer arithmetic: abs, labs, llabs, div, ldiv, lldiv
+ * - Searching/sorting: qsort, bsearch
+ * - Random numbers: rand, srand
+ * - Environment: getenv, setenv, unsetenv, putenv
+ * - Integer-to-string: itoa, ltoa, ultoa
+ *
+ * Memory allocation uses a simple linked-list free list with sbrk() for
+ * heap expansion. Blocks are 16-byte aligned for performance.
+ */
+
 #include "../include/stdlib.h"
 #include "../include/string.h"
 
@@ -9,6 +44,17 @@ extern long __syscall2(long num, long arg0, long arg1);
 #define SYS_TASK_EXIT 0x01
 #define SYS_SBRK 0x0A
 
+/**
+ * @brief Extend the program's data segment.
+ *
+ * @details
+ * Wrapper around the SYS_SBRK syscall. Increases (or decreases, if negative)
+ * the program break by the specified increment. The program break is the
+ * first address past the end of the uninitialized data segment (heap).
+ *
+ * @param increment Number of bytes to add to the data segment.
+ * @return Previous program break on success, (void*)-1 on failure.
+ */
 static void *sbrk(long increment)
 {
     long result = __syscall1(SYS_SBRK, increment);
@@ -19,16 +65,36 @@ static void *sbrk(long increment)
     return (void *)result;
 }
 
-/* Simple block header for malloc */
+/**
+ * @brief Block header for malloc free list.
+ *
+ * @details
+ * Each allocated block is preceded by this header. The header tracks
+ * the usable size (excluding header), a pointer to the next block in
+ * the free list, and whether this block is currently free.
+ */
 struct block_header
 {
-    size_t size;
-    struct block_header *next;
-    int free;
+    size_t size;                 /**< Usable size of this block (excluding header). */
+    struct block_header *next;   /**< Next block in the free list chain. */
+    int free;                    /**< Non-zero if block is free, 0 if allocated. */
 };
 
+/** @brief Head of the malloc free list. */
 static struct block_header *free_list = NULL;
 
+/**
+ * @brief Allocate memory from the heap.
+ *
+ * @details
+ * Allocates size bytes of uninitialized memory. The returned pointer is
+ * 16-byte aligned for performance on modern architectures. Memory is
+ * obtained from a free list of previously freed blocks or by extending
+ * the heap via sbrk().
+ *
+ * @param size Number of bytes to allocate.
+ * @return Pointer to allocated memory, or NULL if allocation fails.
+ */
 void *malloc(size_t size)
 {
     if (size == 0)
@@ -76,6 +142,16 @@ void *malloc(size_t size)
     return (void *)(block + 1);
 }
 
+/**
+ * @brief Free previously allocated memory.
+ *
+ * @details
+ * Marks the block containing ptr as free, making it available for future
+ * allocations. If ptr is NULL, no operation is performed. The memory is
+ * not returned to the OS but is added to the free list for reuse.
+ *
+ * @param ptr Pointer previously returned by malloc, calloc, or realloc.
+ */
 void free(void *ptr)
 {
     if (!ptr)
@@ -87,6 +163,17 @@ void free(void *ptr)
     /* TODO: coalesce adjacent free blocks */
 }
 
+/**
+ * @brief Allocate and zero-initialize an array.
+ *
+ * @details
+ * Allocates memory for an array of nmemb elements of size bytes each
+ * and initializes all bytes to zero. The total allocation is nmemb * size.
+ *
+ * @param nmemb Number of elements in the array.
+ * @param size Size of each element in bytes.
+ * @return Pointer to zero-initialized memory, or NULL on failure.
+ */
 void *calloc(size_t nmemb, size_t size)
 {
     size_t total = nmemb * size;
@@ -98,6 +185,22 @@ void *calloc(size_t nmemb, size_t size)
     return ptr;
 }
 
+/**
+ * @brief Reallocate memory block to new size.
+ *
+ * @details
+ * Changes the size of the memory block pointed to by ptr to size bytes.
+ * The contents are preserved up to the minimum of old and new sizes.
+ * If ptr is NULL, behaves like malloc(size). If size is 0 and ptr is
+ * not NULL, behaves like free(ptr) and returns NULL.
+ *
+ * If the block cannot be resized in place, a new block is allocated,
+ * contents are copied, and the old block is freed.
+ *
+ * @param ptr Pointer to memory block to resize (may be NULL).
+ * @param size New size in bytes.
+ * @return Pointer to resized block, or NULL on failure.
+ */
 void *realloc(void *ptr, size_t size)
 {
     if (!ptr)
@@ -128,6 +231,17 @@ void *realloc(void *ptr, size_t size)
 static void (*atexit_handlers[ATEXIT_MAX])(void);
 static int atexit_count = 0;
 
+/**
+ * @brief Register a function to be called at program exit.
+ *
+ * @details
+ * Registers function to be called when the program terminates normally
+ * via exit() or return from main(). Functions are called in reverse order
+ * of registration (LIFO). Up to ATEXIT_MAX handlers can be registered.
+ *
+ * @param function Function pointer to register.
+ * @return 0 on success, -1 if registration fails.
+ */
 int atexit(void (*function)(void))
 {
     if (atexit_count >= ATEXIT_MAX || !function)
@@ -137,6 +251,19 @@ int atexit(void (*function)(void))
     return 0;
 }
 
+/**
+ * @brief Terminate the program normally.
+ *
+ * @details
+ * Performs cleanup and terminates the program:
+ * 1. Calls atexit handlers in reverse order of registration.
+ * 2. Flushes all stdio buffers (when implemented).
+ * 3. Calls the SYS_TASK_EXIT syscall with the status code.
+ *
+ * This function does not return.
+ *
+ * @param status Exit status code (0 indicates success).
+ */
 void exit(int status)
 {
     /* Call atexit handlers in reverse order of registration */
@@ -155,6 +282,18 @@ void exit(int status)
         ; /* Should never reach here */
 }
 
+/**
+ * @brief Terminate the program immediately without cleanup.
+ *
+ * @details
+ * Terminates the program immediately without calling atexit handlers,
+ * flushing stdio buffers, or any other cleanup. This is the C99/C11
+ * version of immediate termination.
+ *
+ * This function does not return.
+ *
+ * @param status Exit status code.
+ */
 void _Exit(int status)
 {
     /* Exit immediately without cleanup */
@@ -163,6 +302,17 @@ void _Exit(int status)
         ;
 }
 
+/**
+ * @brief Terminate the program immediately (POSIX).
+ *
+ * @details
+ * POSIX version of immediate program termination. Identical to _Exit()
+ * in this implementation. Does not call atexit handlers or flush buffers.
+ *
+ * This function does not return.
+ *
+ * @param status Exit status code.
+ */
 void _exit(int status)
 {
     /* POSIX _exit - exit immediately without cleanup */
@@ -171,16 +321,47 @@ void _exit(int status)
         ;
 }
 
+/**
+ * @brief Abort program execution abnormally.
+ *
+ * @details
+ * Causes abnormal program termination. In a full implementation, this
+ * would raise SIGABRT. Here it exits with code 134 (128 + SIGABRT).
+ *
+ * This function does not return.
+ */
 void abort(void)
 {
     exit(134); /* SIGABRT-like exit code */
 }
 
+/**
+ * @brief Convert string to integer.
+ *
+ * @details
+ * Parses the initial portion of nptr as a decimal integer. Skips leading
+ * whitespace, handles optional sign, and converts digits until a non-digit
+ * is encountered.
+ *
+ * @param nptr String to convert.
+ * @return Converted integer value.
+ */
 int atoi(const char *nptr)
 {
     return (int)atol(nptr);
 }
 
+/**
+ * @brief Convert string to long integer.
+ *
+ * @details
+ * Parses the initial portion of nptr as a decimal long integer.
+ * Skips leading whitespace, handles optional sign, and converts
+ * digits until a non-digit is encountered.
+ *
+ * @param nptr String to convert.
+ * @return Converted long integer value.
+ */
 long atol(const char *nptr)
 {
     long result = 0;
@@ -208,6 +389,17 @@ long atol(const char *nptr)
     return neg ? -result : result;
 }
 
+/**
+ * @brief Convert string to long long integer.
+ *
+ * @details
+ * Parses the initial portion of nptr as a decimal long long integer.
+ * Skips leading whitespace, handles optional sign, and converts
+ * digits until a non-digit is encountered.
+ *
+ * @param nptr String to convert.
+ * @return Converted long long integer value.
+ */
 long long atoll(const char *nptr)
 {
     long long result = 0;
@@ -235,6 +427,18 @@ long long atoll(const char *nptr)
     return neg ? -result : result;
 }
 
+/**
+ * @brief Convert character to digit value in given base.
+ *
+ * @details
+ * Helper function for strtol/strtoul. Converts a character to its
+ * numeric value in the specified base. Handles digits 0-9 and
+ * letters a-z/A-Z for bases up to 36.
+ *
+ * @param c Character to convert.
+ * @param base Numeric base (2-36).
+ * @return Digit value if valid, -1 if character is not a valid digit.
+ */
 static int char_to_digit(char c, int base)
 {
     int val;
@@ -257,6 +461,24 @@ static int char_to_digit(char c, int base)
     return (val < base) ? val : -1;
 }
 
+/**
+ * @brief Convert string to long integer with base detection.
+ *
+ * @details
+ * Converts the initial portion of nptr to a long integer. Handles:
+ * - Leading whitespace (skipped)
+ * - Optional sign (+/-)
+ * - Base prefixes (0x/0X for hex, 0 for octal when base is 0)
+ * - Digits in the specified base (2-36)
+ *
+ * If endptr is not NULL, stores a pointer to the first unconverted
+ * character in *endptr.
+ *
+ * @param nptr String to convert.
+ * @param endptr If non-NULL, receives pointer to first unconverted char.
+ * @param base Numeric base (0 for auto-detect, or 2-36).
+ * @return Converted long integer value.
+ */
 long strtol(const char *nptr, char **endptr, int base)
 {
     const char *s = nptr;
@@ -320,6 +542,19 @@ long strtol(const char *nptr, char **endptr, int base)
     return neg ? -result : result;
 }
 
+/**
+ * @brief Convert string to unsigned long integer with base detection.
+ *
+ * @details
+ * Converts the initial portion of nptr to an unsigned long integer.
+ * Similar to strtol() but for unsigned values. Handles base prefixes
+ * and stores pointer to first unconverted character if endptr is provided.
+ *
+ * @param nptr String to convert.
+ * @param endptr If non-NULL, receives pointer to first unconverted char.
+ * @param base Numeric base (0 for auto-detect, or 2-36).
+ * @return Converted unsigned long integer value.
+ */
 unsigned long strtoul(const char *nptr, char **endptr, int base)
 {
     const char *s = nptr;
@@ -375,31 +610,83 @@ unsigned long strtoul(const char *nptr, char **endptr, int base)
     return result;
 }
 
+/**
+ * @brief Convert string to long long integer.
+ *
+ * @details
+ * Wrapper around strtol() that returns a long long. For this implementation,
+ * long and long long have the same size (64-bit).
+ *
+ * @param nptr String to convert.
+ * @param endptr If non-NULL, receives pointer to first unconverted char.
+ * @param base Numeric base (0 for auto-detect, or 2-36).
+ * @return Converted long long integer value.
+ */
 long long strtoll(const char *nptr, char **endptr, int base)
 {
     return (long long)strtol(nptr, endptr, base);
 }
 
+/**
+ * @brief Convert string to unsigned long long integer.
+ *
+ * @details
+ * Wrapper around strtoul() that returns an unsigned long long.
+ *
+ * @param nptr String to convert.
+ * @param endptr If non-NULL, receives pointer to first unconverted char.
+ * @param base Numeric base (0 for auto-detect, or 2-36).
+ * @return Converted unsigned long long integer value.
+ */
 unsigned long long strtoull(const char *nptr, char **endptr, int base)
 {
     return (unsigned long long)strtoul(nptr, endptr, base);
 }
 
+/**
+ * @brief Compute absolute value of integer.
+ *
+ * @param n Integer value.
+ * @return Absolute value of n.
+ */
 int abs(int n)
 {
     return (n < 0) ? -n : n;
 }
 
+/**
+ * @brief Compute absolute value of long integer.
+ *
+ * @param n Long integer value.
+ * @return Absolute value of n.
+ */
 long labs(long n)
 {
     return (n < 0) ? -n : n;
 }
 
+/**
+ * @brief Compute absolute value of long long integer.
+ *
+ * @param n Long long integer value.
+ * @return Absolute value of n.
+ */
 long long llabs(long long n)
 {
     return (n < 0) ? -n : n;
 }
 
+/**
+ * @brief Compute quotient and remainder of integer division.
+ *
+ * @details
+ * Computes both the quotient and remainder of numer/denom in a single
+ * operation, which may be more efficient than separate / and % operations.
+ *
+ * @param numer Numerator (dividend).
+ * @param denom Denominator (divisor).
+ * @return div_t structure containing quot (quotient) and rem (remainder).
+ */
 div_t div(int numer, int denom)
 {
     div_t result;
@@ -408,6 +695,13 @@ div_t div(int numer, int denom)
     return result;
 }
 
+/**
+ * @brief Compute quotient and remainder of long integer division.
+ *
+ * @param numer Numerator (dividend).
+ * @param denom Denominator (divisor).
+ * @return ldiv_t structure containing quot and rem.
+ */
 ldiv_t ldiv(long numer, long denom)
 {
     ldiv_t result;
@@ -416,6 +710,13 @@ ldiv_t ldiv(long numer, long denom)
     return result;
 }
 
+/**
+ * @brief Compute quotient and remainder of long long integer division.
+ *
+ * @param numer Numerator (dividend).
+ * @param denom Denominator (divisor).
+ * @return lldiv_t structure containing quot and rem.
+ */
 lldiv_t lldiv(long long numer, long long denom)
 {
     lldiv_t result;
@@ -424,7 +725,17 @@ lldiv_t lldiv(long long numer, long long denom)
     return result;
 }
 
-/* Simple swap helper for qsort */
+/**
+ * @brief Swap bytes between two memory locations.
+ *
+ * @details
+ * Helper function for qsort(). Exchanges size bytes between
+ * memory locations a and b.
+ *
+ * @param a First memory location.
+ * @param b Second memory location.
+ * @param size Number of bytes to swap.
+ */
 static void swap_bytes(void *a, void *b, size_t size)
 {
     unsigned char *pa = (unsigned char *)a;
@@ -437,6 +748,24 @@ static void swap_bytes(void *a, void *b, size_t size)
     }
 }
 
+/**
+ * @brief Sort an array using quicksort algorithm.
+ *
+ * @details
+ * Sorts nmemb elements of size bytes each, starting at base, using the
+ * comparison function compar. Currently implemented as insertion sort
+ * for simplicity (works well for small arrays).
+ *
+ * The comparison function should return:
+ * - Negative value if first argument is less than second
+ * - Zero if arguments are equal
+ * - Positive value if first argument is greater than second
+ *
+ * @param base Pointer to first element of array.
+ * @param nmemb Number of elements in the array.
+ * @param size Size of each element in bytes.
+ * @param compar Comparison function.
+ */
 void qsort(void *base, size_t nmemb, size_t size, int (*compar)(const void *, const void *))
 {
     /* Simple insertion sort for now - works well for small arrays */
@@ -453,6 +782,21 @@ void qsort(void *base, size_t nmemb, size_t size, int (*compar)(const void *, co
     }
 }
 
+/**
+ * @brief Binary search a sorted array.
+ *
+ * @details
+ * Searches a sorted array of nmemb elements for key using binary search.
+ * The array must be sorted in ascending order according to the comparison
+ * function. If found, returns a pointer to the matching element.
+ *
+ * @param key Pointer to the key to search for.
+ * @param base Pointer to first element of sorted array.
+ * @param nmemb Number of elements in the array.
+ * @param size Size of each element in bytes.
+ * @param compar Comparison function (same semantics as qsort).
+ * @return Pointer to matching element, or NULL if not found.
+ */
 void *bsearch(const void *key,
               const void *base,
               size_t nmemb,
@@ -487,12 +831,32 @@ void *bsearch(const void *key,
 /* Simple linear congruential generator for rand() */
 static unsigned int rand_seed = 1;
 
+/**
+ * @brief Generate pseudo-random integer.
+ *
+ * @details
+ * Returns a pseudo-random integer in the range 0 to RAND_MAX (32767).
+ * Uses a linear congruential generator algorithm. The sequence is
+ * deterministic based on the seed set by srand().
+ *
+ * @return Pseudo-random integer between 0 and RAND_MAX.
+ */
 int rand(void)
 {
     rand_seed = rand_seed * 1103515245 + 12345;
     return (int)((rand_seed / 65536) % 32768);
 }
 
+/**
+ * @brief Seed the pseudo-random number generator.
+ *
+ * @details
+ * Sets the seed for the sequence of pseudo-random numbers returned
+ * by rand(). Calling srand() with the same seed will produce the
+ * same sequence.
+ *
+ * @param seed Seed value for the random number generator.
+ */
 void srand(unsigned int seed)
 {
     rand_seed = seed;
@@ -542,6 +906,17 @@ static int env_find(const char *name)
     return -1;
 }
 
+/**
+ * @brief Get value of environment variable.
+ *
+ * @details
+ * Searches the environment list for a variable named name and returns
+ * a pointer to the value string. The returned pointer should not be
+ * modified by the caller.
+ *
+ * @param name Name of the environment variable.
+ * @return Pointer to value string, or NULL if not found.
+ */
 char *getenv(const char *name)
 {
     if (!name)
@@ -562,6 +937,19 @@ char *getenv(const char *name)
     return p;
 }
 
+/**
+ * @brief Set environment variable.
+ *
+ * @details
+ * Adds or modifies an environment variable. If the variable already
+ * exists and overwrite is non-zero, the value is replaced. If overwrite
+ * is zero and the variable exists, the call succeeds without modification.
+ *
+ * @param name Variable name (must not contain '=').
+ * @param value Value to set.
+ * @param overwrite If non-zero, replace existing value.
+ * @return 0 on success, -1 on failure.
+ */
 int setenv(const char *name, const char *value, int overwrite)
 {
     if (!name || !*name || strchr(name, '='))
@@ -600,6 +988,16 @@ int setenv(const char *name, const char *value, int overwrite)
     return 0;
 }
 
+/**
+ * @brief Remove environment variable.
+ *
+ * @details
+ * Removes the environment variable named name from the environment.
+ * If the variable doesn't exist, the function succeeds without error.
+ *
+ * @param name Variable name to remove (must not contain '=').
+ * @return 0 on success, -1 on failure.
+ */
 int unsetenv(const char *name)
 {
     if (!name || !*name || strchr(name, '='))
@@ -623,6 +1021,16 @@ int unsetenv(const char *name)
     return 0;
 }
 
+/**
+ * @brief Add or modify environment variable from string.
+ *
+ * @details
+ * Parses a "NAME=value" string and adds or modifies the corresponding
+ * environment variable. The string must contain an '=' character.
+ *
+ * @param string String in "NAME=value" format.
+ * @return 0 on success, -1 on failure.
+ */
 int putenv(char *string)
 {
     if (!string)
@@ -653,6 +1061,22 @@ static int is_space(char c)
     return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f';
 }
 
+/**
+ * @brief Convert string to double-precision floating-point.
+ *
+ * @details
+ * Converts the initial portion of nptr to a double value. Handles:
+ * - Leading whitespace (skipped)
+ * - Optional sign (+/-)
+ * - Integer part
+ * - Fractional part (after '.')
+ * - Exponent (e/E followed by optional sign and digits)
+ * - Special values: INF, INFINITY, NAN
+ *
+ * @param nptr String to convert.
+ * @param endptr If non-NULL, receives pointer to first unconverted char.
+ * @return Converted double value.
+ */
 double strtod(const char *nptr, char **endptr)
 {
     const char *s = nptr;
@@ -763,6 +1187,17 @@ double strtod(const char *nptr, char **endptr)
     return sign * result;
 }
 
+/**
+ * @brief Convert string to single-precision floating-point.
+ *
+ * @details
+ * Converts the initial portion of nptr to a float value.
+ * Implemented as a wrapper around strtod() with cast to float.
+ *
+ * @param nptr String to convert.
+ * @param endptr If non-NULL, receives pointer to first unconverted char.
+ * @return Converted float value.
+ */
 float strtof(const char *nptr, char **endptr)
 {
     return (float)strtod(nptr, endptr);
@@ -795,6 +1230,16 @@ long double strtold(const char *nptr, char **endptr)
     return u.ld;
 }
 
+/**
+ * @brief Convert string to double-precision floating-point.
+ *
+ * @details
+ * Simple wrapper around strtod() that ignores the end pointer.
+ * Equivalent to strtod(nptr, NULL).
+ *
+ * @param nptr String to convert.
+ * @return Converted double value.
+ */
 double atof(const char *nptr)
 {
     return strtod(nptr, (char **)0);
@@ -855,6 +1300,19 @@ static char *unsigned_to_str(unsigned long value, char *str, int base, int is_ne
     return str;
 }
 
+/**
+ * @brief Convert integer to string.
+ *
+ * @details
+ * Converts value to a string representation in the specified base
+ * and stores it in str. For base 10, negative values are prefixed
+ * with '-'. Bases 2-36 are supported.
+ *
+ * @param value Integer to convert.
+ * @param str Buffer to store result (must be large enough).
+ * @param base Numeric base (2-36).
+ * @return Pointer to str.
+ */
 char *itoa(int value, char *str, int base)
 {
     if (value < 0 && base == 10)
@@ -864,6 +1322,18 @@ char *itoa(int value, char *str, int base)
     return unsigned_to_str((unsigned long)(unsigned int)value, str, base, 0);
 }
 
+/**
+ * @brief Convert long integer to string.
+ *
+ * @details
+ * Converts value to a string representation in the specified base.
+ * Similar to itoa() but for long values.
+ *
+ * @param value Long integer to convert.
+ * @param str Buffer to store result.
+ * @param base Numeric base (2-36).
+ * @return Pointer to str.
+ */
 char *ltoa(long value, char *str, int base)
 {
     if (value < 0 && base == 10)
@@ -873,6 +1343,18 @@ char *ltoa(long value, char *str, int base)
     return unsigned_to_str((unsigned long)value, str, base, 0);
 }
 
+/**
+ * @brief Convert unsigned long integer to string.
+ *
+ * @details
+ * Converts value to a string representation in the specified base.
+ * Since value is unsigned, no sign prefix is ever added.
+ *
+ * @param value Unsigned long integer to convert.
+ * @param str Buffer to store result.
+ * @param base Numeric base (2-36).
+ * @return Pointer to str.
+ */
 char *ultoa(unsigned long value, char *str, int base)
 {
     return unsigned_to_str(value, str, base, 0);

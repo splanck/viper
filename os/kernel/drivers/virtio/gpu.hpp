@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: kernel/drivers/virtio/gpu.hpp
+// Purpose: Virtio GPU device driver (virtio-gpu).
+// Key invariants: Uses controlq for commands; 2D operations only.
+// Ownership/Lifetime: Singleton device; initialized once.
+// Links: kernel/drivers/virtio/gpu.cpp
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "virtio.hpp"

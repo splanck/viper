@@ -1,3 +1,26 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libnetclient/src/netclient.cpp
+// Purpose: Network client library for ViperOS user-space.
+// Key invariants: IPC-based communication with netd service.
+// Ownership/Lifetime: Library; manages connections to netd.
+// Links: user/libnetclient/include/netclient.hpp
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file netclient.cpp
+ * @brief Network client library for communicating with netd.
+ *
+ * Provides high-level socket-like APIs that communicate with the network
+ * daemon via IPC channels.
+ */
+
 #include "netclient.hpp"
 
 namespace netclient
@@ -529,4 +552,3 @@ i32 Client::dns_resolve(const char *hostname, u32 *out_ip_be)
 }
 
 } // namespace netclient
-

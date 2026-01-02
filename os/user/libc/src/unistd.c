@@ -1,3 +1,41 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/libc/src/unistd.c
+// Purpose: POSIX-like system calls and process control for ViperOS.
+// Key invariants: Syscall wrappers with fsd/netd routing for file descriptors.
+// Ownership/Lifetime: Library; wraps kernel syscalls.
+// Links: user/libc/include/unistd.h
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file unistd.c
+ * @brief POSIX-like system calls and process control for ViperOS libc.
+ *
+ * @details
+ * This file implements standard UNIX/POSIX system call wrappers:
+ *
+ * - File I/O: read, write, close, lseek, dup, dup2
+ * - File system: access, unlink, rmdir, rename, symlink, readlink
+ * - Process control: fork, execve, exit, getpid, getppid
+ * - Process groups: getpgrp, setpgid, setsid
+ * - User/group IDs: getuid, geteuid, getgid, getegid, setuid, setgid
+ * - Working directory: getcwd, chdir
+ * - Sleep/timing: sleep, usleep
+ * - System info: sysconf, isatty, gethostname, sethostname
+ *
+ * File descriptor operations are routed through the appropriate backend:
+ * - FDs 0-2 (stdin/stdout/stderr): Direct kernel syscalls with termios support
+ * - FD range 100-199: Routed to fsd (filesystem daemon)
+ * - FD range 200-299: Routed to netd (network daemon) via socket layer
+ * - Other FDs: Direct kernel syscalls
+ */
+
 #include "../include/unistd.h"
 #include "../include/termios.h"
 
@@ -44,6 +82,24 @@ extern int __viper_socket_dup2(int oldfd, int newfd);
 #define SYS_CHDIR 0x68
 #define SYS_GETCHAR 0xF1
 
+/**
+ * @brief Read data from a file descriptor.
+ *
+ * @details
+ * Reads up to count bytes from file descriptor fd into buffer buf.
+ * For stdin (fd 0), implements terminal line discipline with support
+ * for canonical mode (line editing) and raw mode (immediate return).
+ *
+ * The function routes reads through the appropriate backend:
+ * - stdin: Kernel syscall with termios processing
+ * - fsd FDs (100-199): Routed to filesystem daemon
+ * - Other FDs: Direct kernel syscall
+ *
+ * @param fd File descriptor to read from.
+ * @param buf Buffer to store read data.
+ * @param count Maximum number of bytes to read.
+ * @return Number of bytes read, 0 on EOF, or -1 on error.
+ */
 ssize_t read(int fd, void *buf, size_t count)
 {
     if (count == 0)
@@ -216,6 +272,18 @@ ssize_t read(int fd, void *buf, size_t count)
     return __syscall3(SYS_READ, fd, (long)buf, (long)count);
 }
 
+/**
+ * @brief Write data to a file descriptor.
+ *
+ * @details
+ * Writes up to count bytes from buffer buf to file descriptor fd.
+ * Routes writes through the appropriate backend based on FD type.
+ *
+ * @param fd File descriptor to write to.
+ * @param buf Buffer containing data to write.
+ * @param count Number of bytes to write.
+ * @return Number of bytes written, or -1 on error.
+ */
 ssize_t write(int fd, const void *buf, size_t count)
 {
     if (__viper_fsd_is_fd(fd))
@@ -225,6 +293,16 @@ ssize_t write(int fd, const void *buf, size_t count)
     return __syscall3(SYS_WRITE, fd, (long)buf, (long)count);
 }
 
+/**
+ * @brief Close a file descriptor.
+ *
+ * @details
+ * Closes the file descriptor fd, releasing any associated resources.
+ * Routes the close to the appropriate backend (fsd, socket, or kernel).
+ *
+ * @param fd File descriptor to close.
+ * @return 0 on success, -1 on error.
+ */
 int close(int fd)
 {
     if (__viper_fsd_is_fd(fd))
@@ -238,6 +316,21 @@ int close(int fd)
     return (int)__syscall1(SYS_CLOSE, fd);
 }
 
+/**
+ * @brief Reposition file offset.
+ *
+ * @details
+ * Repositions the file offset of the open file description associated
+ * with fd according to the directive whence:
+ * - SEEK_SET: offset from beginning of file
+ * - SEEK_CUR: offset from current position
+ * - SEEK_END: offset from end of file
+ *
+ * @param fd File descriptor.
+ * @param offset New offset (interpretation depends on whence).
+ * @param whence How to interpret offset (SEEK_SET, SEEK_CUR, SEEK_END).
+ * @return New file offset, or -1 on error.
+ */
 long lseek(int fd, long offset, int whence)
 {
     if (__viper_fsd_is_fd(fd))
@@ -247,6 +340,16 @@ long lseek(int fd, long offset, int whence)
     return __syscall3(SYS_LSEEK, fd, offset, whence);
 }
 
+/**
+ * @brief Duplicate a file descriptor.
+ *
+ * @details
+ * Creates a copy of oldfd using the lowest available file descriptor number.
+ * Both descriptors refer to the same open file description.
+ *
+ * @param oldfd File descriptor to duplicate.
+ * @return New file descriptor, or -1 on error.
+ */
 int dup(int oldfd)
 {
     if (__viper_fsd_is_fd(oldfd))
@@ -260,6 +363,18 @@ int dup(int oldfd)
     return (int)__syscall1(SYS_DUP, oldfd);
 }
 
+/**
+ * @brief Duplicate a file descriptor to a specific number.
+ *
+ * @details
+ * Creates a copy of oldfd using newfd as the new descriptor number.
+ * If newfd is already open, it is closed first. Both descriptors
+ * refer to the same open file description after the call.
+ *
+ * @param oldfd File descriptor to duplicate.
+ * @param newfd Desired new file descriptor number.
+ * @return newfd on success, or -1 on error.
+ */
 int dup2(int oldfd, int newfd)
 {
     if (__viper_fsd_is_fd(oldfd))
@@ -281,6 +396,16 @@ int dup2(int oldfd, int newfd)
     return (int)__syscall2(SYS_DUP2, oldfd, newfd);
 }
 
+/**
+ * @brief Change the program break (data segment size).
+ *
+ * @details
+ * Increases or decreases the program's data segment by increment bytes.
+ * Used internally by malloc() to obtain memory from the kernel.
+ *
+ * @param increment Number of bytes to add (or subtract if negative).
+ * @return Previous program break on success, (void*)-1 on failure.
+ */
 void *sbrk(long increment)
 {
     long result = __syscall1(SYS_SBRK, increment);
@@ -291,12 +416,32 @@ void *sbrk(long increment)
     return (void *)result;
 }
 
+/**
+ * @brief Suspend execution for seconds.
+ *
+ * @details
+ * Causes the calling process to sleep for the specified number of seconds.
+ * The actual sleep time may be shorter if a signal is delivered.
+ *
+ * @param seconds Number of seconds to sleep.
+ * @return 0 if sleep completed, or remaining seconds if interrupted.
+ */
 unsigned int sleep(unsigned int seconds)
 {
     __syscall1(SYS_SLEEP, seconds * 1000);
     return 0;
 }
 
+/**
+ * @brief Suspend execution for microseconds.
+ *
+ * @details
+ * Causes the calling process to sleep for the specified number of
+ * microseconds. The actual granularity is milliseconds (rounded up).
+ *
+ * @param usec Number of microseconds to sleep.
+ * @return 0 on success, -1 on error.
+ */
 int usleep(useconds_t usec)
 {
     /* Convert microseconds to milliseconds (rounded up) */
@@ -307,17 +452,46 @@ int usleep(useconds_t usec)
     return 0;
 }
 
+/**
+ * @brief Get process ID.
+ *
+ * @details
+ * Returns the process ID of the calling process. In ViperOS, this
+ * corresponds to the task ID.
+ *
+ * @return Process ID of the calling process.
+ */
 pid_t getpid(void)
 {
     return (pid_t)__syscall1(SYS_TASK_CURRENT, 0);
 }
 
+/**
+ * @brief Get parent process ID.
+ *
+ * @details
+ * Returns the process ID of the parent process. ViperOS doesn't
+ * currently track parent processes, so this always returns 1 (init).
+ *
+ * @return Parent process ID (always 1 in current implementation).
+ */
 pid_t getppid(void)
 {
     /* ViperOS doesn't track parent process yet, return 1 (init) */
     return 1;
 }
 
+/**
+ * @brief Get current working directory.
+ *
+ * @details
+ * Copies the absolute pathname of the current working directory to
+ * the buffer buf, which has size bytes available.
+ *
+ * @param buf Buffer to store the pathname.
+ * @param size Size of the buffer in bytes.
+ * @return buf on success, NULL on error.
+ */
 char *getcwd(char *buf, size_t size)
 {
     long result = __syscall2(SYS_GETCWD, (long)buf, (long)size);
@@ -328,17 +502,49 @@ char *getcwd(char *buf, size_t size)
     return buf;
 }
 
+/**
+ * @brief Change current working directory.
+ *
+ * @details
+ * Changes the current working directory to the specified path.
+ * The path can be absolute or relative to the current directory.
+ *
+ * @param path Path to the new working directory.
+ * @return 0 on success, -1 on error.
+ */
 int chdir(const char *path)
 {
     return (int)__syscall1(SYS_CHDIR, (long)path);
 }
 
+/**
+ * @brief Test if file descriptor refers to a terminal.
+ *
+ * @details
+ * Checks if the file descriptor refers to a terminal device.
+ * In ViperOS, stdin (0), stdout (1), and stderr (2) are terminals.
+ *
+ * @param fd File descriptor to test.
+ * @return 1 if terminal, 0 otherwise.
+ */
 int isatty(int fd)
 {
     /* stdin, stdout, stderr are terminals */
     return (fd >= 0 && fd <= 2) ? 1 : 0;
 }
 
+/**
+ * @brief Get system configuration values.
+ *
+ * @details
+ * Returns the value of a system configuration option.
+ * Supported options:
+ * - _SC_CLK_TCK: Clock ticks per second (1000)
+ * - _SC_PAGESIZE: System page size (4096)
+ *
+ * @param name Configuration option name.
+ * @return Configuration value, or -1 if unsupported.
+ */
 long sysconf(int name)
 {
     switch (name)

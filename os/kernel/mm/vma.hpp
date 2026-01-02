@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: kernel/mm/vma.hpp
+// Purpose: Virtual Memory Area (VMA) tracking for demand paging.
+// Key invariants: VMAs non-overlapping; sorted by start address.
+// Ownership/Lifetime: Per-address-space VmaList; freed on process exit.
+// Links: kernel/mm/vma.cpp, kernel/mm/fault.cpp
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "../include/types.hpp"

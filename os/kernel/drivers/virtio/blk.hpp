@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: kernel/drivers/virtio/blk.hpp
+// Purpose: Virtio block device driver (virtio-blk).
+// Key invariants: Requests use single virtqueue; blocking I/O with poll fallback.
+// Ownership/Lifetime: Singleton device; initialized once.
+// Links: kernel/drivers/virtio/blk.cpp
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "virtio.hpp"

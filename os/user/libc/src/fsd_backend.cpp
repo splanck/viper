@@ -351,7 +351,8 @@ extern "C" long __viper_fsd_lseek(int fd, long offset, int whence)
         return VERR_INVALID_HANDLE;
 
     i64 new_off = 0;
-    i64 rc = g_fsd_client.seek(obj->file_id, static_cast<i64>(offset), static_cast<i32>(whence), &new_off);
+    i64 rc = g_fsd_client.seek(
+        obj->file_id, static_cast<i64>(offset), static_cast<i32>(whence), &new_off);
     if (rc < 0)
         return static_cast<long>(rc);
     return static_cast<long>(new_off);
@@ -476,7 +477,8 @@ extern "C" int __viper_fsd_readdir(int fd, struct dirent *out_ent)
         return rc;
 
     out_ent->d_ino = static_cast<unsigned long>(ino);
-    out_ent->d_type = (type == fs::file_type::FILE || type == fs::file_type::DIR) ? type : DT_UNKNOWN;
+    out_ent->d_type =
+        (type == fs::file_type::FILE || type == fs::file_type::DIR) ? type : DT_UNKNOWN;
 
     usize n = bounded_strlen(name_buf, NAME_MAX);
     for (usize i = 0; i < n; i++)

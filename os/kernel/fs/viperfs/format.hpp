@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: kernel/fs/viperfs/format.hpp
+// Purpose: On-disk format definitions for the ViperFS filesystem.
+// Key invariants: Block size 4KB; inode size 256 bytes; structures packed.
+// Ownership/Lifetime: Header-only; defines on-disk ABI.
+// Links: kernel/fs/viperfs/viperfs.hpp
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "../../include/types.hpp"

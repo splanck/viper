@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: include/viperos/syscall_abi.hpp
+// Purpose: Shared syscall ABI contract for ViperOS (AArch64).
+// Key invariants: x8=syscall#, x0-x5=args, x0=error, x1-x3=results.
+// Ownership/Lifetime: Header-only; ABI documentation and types.
+// Links: kernel/syscall/dispatch.cpp
+//
+//===----------------------------------------------------------------------===//
+
 /**
  * @file syscall_abi.hpp
  * @brief Shared syscall ABI contract for ViperOS (AArch64).

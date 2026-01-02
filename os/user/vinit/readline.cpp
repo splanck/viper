@@ -121,10 +121,11 @@ static void replace_line(char *buf, usize *len, usize *pos, const char *newline)
 // Tab Completion
 // =============================================================================
 
-static const char *commands[] = {
-    "Assign", "Avail",  "Caps",     "chdir",  "Cls",  "Copy",    "cwd",    "Date",    "Delete",
-    "Dir",    "Echo",   "EndShell", "Fetch",  "Help", "History", "Info",   "List",    "MakeDir",
-    "Path",   "Rename", "Run",      "RunFSD", "Status", "Time", "Type",    "Uptime", "Version", "Why"};
+static const char *commands[] = {"Assign", "Avail",  "Caps",    "chdir",  "Cls",    "Copy",
+                                 "cwd",    "Date",   "Delete",  "Dir",    "Echo",   "EndShell",
+                                 "Fetch",  "Help",   "History", "Info",   "List",   "MakeDir",
+                                 "Path",   "Rename", "Run",     "RunFSD", "Status", "Time",
+                                 "Type",   "Uptime", "Version", "Why"};
 static const usize num_commands = sizeof(commands) / sizeof(commands[0]);
 
 static usize common_prefix(const char *a, const char *b)

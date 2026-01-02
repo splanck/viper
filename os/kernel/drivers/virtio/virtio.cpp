@@ -191,6 +191,31 @@ void Device::ack_interrupt(u32 bits)
     write32(reg::INTERRUPT_ACK, bits);
 }
 
+/** @copydoc virtio::Device::basic_init */
+bool Device::basic_init(u64 base_addr)
+{
+    // Step 1: Initialize and verify device
+    if (!init(base_addr))
+    {
+        return false;
+    }
+
+    // Step 2: Reset device to initial state
+    reset();
+
+    // Step 3: For legacy devices, set guest page size
+    if (is_legacy())
+    {
+        write32(reg::GUEST_PAGE_SIZE, 4096);
+    }
+
+    // Step 4: Acknowledge device and indicate driver
+    add_status(status::ACKNOWLEDGE);
+    add_status(status::DRIVER);
+
+    return true;
+}
+
 // Probe for virtio devices
 /** @copydoc virtio::init */
 void init()

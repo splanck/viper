@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: kernel/mm/slab.hpp
+// Purpose: Slab allocator for efficient fixed-size object allocation.
+// Key invariants: O(1) alloc/free; objects packed in 4KB slabs.
+// Ownership/Lifetime: Global caches; init after PMM.
+// Links: kernel/mm/slab.cpp
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "../include/types.hpp"

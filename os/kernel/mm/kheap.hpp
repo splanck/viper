@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: kernel/mm/kheap.hpp
+// Purpose: Kernel heap allocator with free list support.
+// Key invariants: All allocations 16-byte aligned; free list coalesced.
+// Ownership/Lifetime: Global singleton; provides new/delete operators.
+// Links: kernel/mm/kheap.cpp
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "../include/types.hpp"
