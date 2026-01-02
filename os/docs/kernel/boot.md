@@ -161,7 +161,7 @@ After the kernel has storage and a VFS, it can load a user program:
 - `mmu::init()` builds kernel page tables and enables the MMU (still largely identity mapped for the kernel region).
 - `viper::init()` initializes the process (“Viper”) subsystem, including ASID allocation and per-Viper capability
   tables.
-- `loader::load_elf_from_disk(viper, "/vinit.elf")` maps and copies PT_LOAD segments into the Viper’s address space.
+- `loader::load_elf_from_disk(viper, "/vinit.sys")` maps and copies PT_LOAD segments into the Viper's address space.
 - A user stack is mapped, and then either:
     - the kernel enters user mode directly (debug option), or
     - a user task is created and scheduled to enter user mode when first dispatched.

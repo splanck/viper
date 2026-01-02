@@ -239,13 +239,13 @@ The system is fully functional for QEMU bring-up with:
 
 ### Binary Sizes (Approximate)
 
-- kernel8.elf: ~800KB
-- vinit.elf: ~120KB
-- netd.elf: ~150KB
-- fsd.elf: ~120KB
-- blkd.elf: ~80KB
-- ssh.elf: ~170KB
-- sftp.elf: ~190KB
+- kernel.sys: ~800KB
+- vinit.sys: ~120KB
+- netd.sys: ~150KB
+- fsd.sys: ~120KB
+- blkd.sys: ~80KB
+- ssh.prg: ~170KB
+- sftp.prg: ~190KB
 
 ### Performance (QEMU, Single Core)
 

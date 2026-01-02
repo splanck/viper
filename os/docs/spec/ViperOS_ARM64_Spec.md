@@ -208,7 +208,7 @@ ESP (FAT32)
 │   └── BOOT/
 │       └── BOOTAA64.EFI     # vboot for AArch64
 └── viperos/
-    ├── kernel.elf           # Kernel image
+    ├── kernel.sys           # Kernel image
     ├── splash.raw           # Boot splash image (optional)
     └── initrd.tar           # Initial ramdisk
 ```
@@ -1310,7 +1310,7 @@ This section defines the exact files present on a freshly installed ViperOS syst
 ```
 SYS:                                    # Boot device (D0:\)
 │
-├── kernel.elf                          # Kernel binary (AArch64)
+├── kernel.sys                          # Kernel binary (AArch64)
 │
 ├── l\                                  # Handlers (reserved)
 │   └── (reserved for future)
@@ -2087,7 +2087,7 @@ jobs:
 ./scripts/run-qemu.sh --debug
 
 # In another terminal:
-aarch64-linux-gnu-gdb build/kernel/kernel.elf
+aarch64-linux-gnu-gdb build/kernel/kernel.sys
 (gdb) target remote :1234
 (gdb) break kernel_entry
 (gdb) continue

@@ -43,12 +43,12 @@ Display a brief directory listing.
 ```
 SYS:> Dir
   c/                 certs/             l/
-  s/                 t/                 vinit.elf
+  s/                 t/                 vinit.sys
 6 entries
 
 SYS:> Dir /c
-  hello.elf          fsinfo.elf         sysinfo.elf
-  netstat.elf        ping.elf           edit.elf
+  hello.prg          fsinfo.prg         sysinfo.prg
+  netstat.prg        ping.prg           edit.prg
 6 entries
 ```
 
@@ -70,7 +70,7 @@ Display a detailed directory listing with file information.
 SYS:> List
 Directory "/"
 
-vinit.elf                         rwed
+vinit.sys                         rwed
 c                                 <dir>    rwed
 certs                             <dir>    rwed
 l                                 <dir>    rwed
@@ -112,7 +112,7 @@ Copy a file to a new location.
 
 **Examples:**
 ```
-SYS:> Copy /c/hello.elf /t/hello_backup.elf
+SYS:> Copy /c/hello.prg /t/hello_backup.prg
 Copied 12345 bytes
 
 SYS:> Copy myfile.txt TO newfile.txt
@@ -274,7 +274,7 @@ Started process 2 (task 3)
 Hello from ViperOS!
 Process 2 exited with status 0
 
-SYS:> Run /c/ping.elf 10.0.2.2
+SYS:> Run /c/ping.prg 10.0.2.2
 Started process 3 (task 4)
 PING 10.0.2.2: ...
 Process 3 exited with status 0

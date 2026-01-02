@@ -31,7 +31,7 @@ Options:
 **Examples:**
 ```bash
 # Create 8MB image with vinit and certificates
-mkfs.viperfs disk.img 8 vinit.elf \
+mkfs.viperfs disk.img 8 vinit.sys \
     --mkdir SYS/certs \
     --add roots.der:SYS/certs/roots.der
 ```
@@ -247,7 +247,7 @@ fi
 
 # Create disk image
 "$TOOLS_DIR/mkfs.viperfs" "$BUILD_DIR/disk.img" 8 \
-    "$BUILD_DIR/vinit.elf" \
+    "$BUILD_DIR/vinit.sys" \
     --mkdir SYS \
     --mkdir SYS/certs \
     --add "$BUILD_DIR/roots.der:SYS/certs/roots.der"

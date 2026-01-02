@@ -9,7 +9,7 @@ MODE="${MODE:-serial}"
 DISK="${DISK:-$BUILD_DIR/disk.img}"
 
 # Find kernel
-KERNEL="$BUILD_DIR/kernel.elf"
+KERNEL="$BUILD_DIR/kernel.sys"
 if [[ ! -f "$KERNEL" ]]; then
     echo "Error: Kernel not found at $KERNEL"
     echo "Run 'cmake --build build' first"

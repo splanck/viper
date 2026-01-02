@@ -224,7 +224,7 @@ if [[ $MICROKERNEL_DEVICES -eq 1 ]]; then
 
     # Match the dev provisioning behavior in scripts/build_viper.sh: only add a
     # second NIC when the netd server is present.
-    if [[ -f "${build_dir}/netd.elf" ]]; then
+    if [[ -f "${build_dir}/netd.sys" ]]; then
         QEMU_OPTS+=(
             -netdev user,id=net1
             -device virtio-net-device,netdev=net1

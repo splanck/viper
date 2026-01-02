@@ -219,42 +219,4 @@ void put_hex(u32 n)
     print_str(p);
 }
 
-// =============================================================================
-// Memory Routines
-// =============================================================================
-
-extern "C" void *memcpy(void *dst, const void *src, usize n)
-{
-    char *d = static_cast<char *>(dst);
-    const char *s = static_cast<const char *>(src);
-    while (n--)
-        *d++ = *s++;
-    return dst;
-}
-
-extern "C" void *memmove(void *dst, const void *src, usize n)
-{
-    char *d = static_cast<char *>(dst);
-    const char *s = static_cast<const char *>(src);
-    if (d < s)
-    {
-        while (n--)
-            *d++ = *s++;
-    }
-    else if (d > s)
-    {
-        d += n;
-        s += n;
-        while (n--)
-            *--d = *--s;
-    }
-    return dst;
-}
-
-extern "C" void *memset(void *s, int c, usize n)
-{
-    unsigned char *p = static_cast<unsigned char *>(s);
-    while (n--)
-        *p++ = static_cast<unsigned char>(c);
-    return s;
-}
+// Memory routines (memcpy, memmove, memset) are provided by viperlibc

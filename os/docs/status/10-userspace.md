@@ -1934,11 +1934,11 @@ User and kernel share type definitions:
 
 ## Disk Image Layout
 
-`vinit.elf` is bundled into `disk.img` by `mkfs.viperfs`:
+`vinit.sys` is bundled into `disk.img` by `mkfs.viperfs`:
 
 ```
 disk.img (8MB ViperFS):
-  /vinit.elf        - User-space init process
+  /vinit.sys        - User-space init process
   /SYS/             - System directory
   /SYS/certs/       - Certificate storage
   /SYS/certs/roots.der - CA root certificates
@@ -2100,7 +2100,7 @@ User space is tested via:
 | `ssh_crypto.c` | ~1,500 | User-space crypto primitives |
 | `sftp.c` | ~800 | SFTP v3 protocol |
 
-**SSH Client** (`ssh.elf`):
+**SSH Client** (`ssh.prg`):
 ```
 Usage: ssh [-p port] [-i identity] [-l user] user@host [command]
 ```
@@ -2112,7 +2112,7 @@ Features:
 - Password authentication fallback
 - OpenSSH private key format support
 
-**SFTP Client** (`sftp.elf`):
+**SFTP Client** (`sftp.prg`):
 ```
 Usage: sftp [-p port] user@host
 ```

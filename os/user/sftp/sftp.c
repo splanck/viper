@@ -72,15 +72,22 @@ static void format_size(uint64_t size, char *buf, size_t len)
     }
     else if (size < 1024 * 1024)
     {
-        snprintf(buf, len, "%.1fK", size / 1024.0);
+        // Use integer arithmetic: size * 10 / 1024 gives one decimal place
+        uint64_t kb_x10 = (size * 10) / 1024;
+        snprintf(buf, len, "%llu.%lluK", (unsigned long long)(kb_x10 / 10),
+                 (unsigned long long)(kb_x10 % 10));
     }
-    else if (size < 1024 * 1024 * 1024)
+    else if (size < 1024ULL * 1024 * 1024)
     {
-        snprintf(buf, len, "%.1fM", size / (1024.0 * 1024));
+        uint64_t mb_x10 = (size * 10) / (1024 * 1024);
+        snprintf(buf, len, "%llu.%lluM", (unsigned long long)(mb_x10 / 10),
+                 (unsigned long long)(mb_x10 % 10));
     }
     else
     {
-        snprintf(buf, len, "%.1fG", size / (1024.0 * 1024 * 1024));
+        uint64_t gb_x10 = (size * 10) / (1024ULL * 1024 * 1024);
+        snprintf(buf, len, "%llu.%lluG", (unsigned long long)(gb_x10 / 10),
+                 (unsigned long long)(gb_x10 % 10));
     }
 }
 

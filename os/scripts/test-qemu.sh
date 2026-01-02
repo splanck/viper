@@ -178,25 +178,37 @@ build_viperos() {
             }
         fi
 
-        # Create disk image
-        # Create disk image with vinit.elf, user programs, and microkernel servers
-        local mkfs_args=("$BUILD_DIR/disk.img" 8 "$BUILD_DIR/vinit.elf")
-        if [[ -f "$BUILD_DIR/hello.elf" ]]; then
-            mkfs_args+=("$BUILD_DIR/hello.elf")
-        fi
-        # Add microkernel server ELFs
-        for server in blkd.elf netd.elf fsd.elf; do
-            if [[ -f "$BUILD_DIR/$server" ]]; then
-                mkfs_args+=("$BUILD_DIR/$server")
+        # Create disk image with proper directory structure
+        # Layout: vinit.sys at root, everything else in /c/
+        local mkfs_args=("$BUILD_DIR/disk.img" 8)
+        mkfs_args+=("--add" "$BUILD_DIR/vinit.sys:vinit.sys")
+        mkfs_args+=("--mkdir" "c")
+        mkfs_args+=("--mkdir" "t")
+        mkfs_args+=("--mkdir" "s")
+
+        # Add user programs to c/ directory
+        for prg in hello.prg fsd_smoke.prg netd_smoke.prg tls_smoke.prg edit.prg \
+                   sftp.prg ssh.prg ping.prg fsinfo.prg netstat.prg sysinfo.prg \
+                   devices.prg mathtest.prg faulttest_null.prg faulttest_illegal.prg; do
+            if [[ -f "$BUILD_DIR/$prg" ]]; then
+                mkfs_args+=("--add" "$BUILD_DIR/$prg:c/$prg")
             fi
         done
+
+        # Add microkernel server binaries to c/ directory
+        for server in blkd.sys netd.sys fsd.sys consoled.sys inputd.sys; do
+            if [[ -f "$BUILD_DIR/$server" ]]; then
+                mkfs_args+=("--add" "$BUILD_DIR/$server:c/$server")
+            fi
+        done
+
         "$PROJECT_DIR/tools/mkfs.viperfs" "${mkfs_args[@]}" >/dev/null 2>&1 || {
             echo -e "${RED}[ERROR]${NC} Failed to create disk image"
             return 1
         }
 
         # Create dedicated disk for user-space microkernel servers
-        if [[ -f "$BUILD_DIR/blkd.elf" || -f "$BUILD_DIR/fsd.elf" ]]; then
+        if [[ -f "$BUILD_DIR/blkd.sys" || -f "$BUILD_DIR/fsd.sys" ]]; then
             cp -f "$BUILD_DIR/disk.img" "$BUILD_DIR/microkernel.img"
         fi
     fi
@@ -215,8 +227,8 @@ start_qemu() {
     log "Using QEMU: $qemu"
 
     # Verify required files exist
-    if [[ ! -f "$BUILD_DIR/kernel.elf" ]]; then
-        echo -e "${RED}[ERROR]${NC} kernel.elf not found"
+    if [[ ! -f "$BUILD_DIR/kernel.sys" ]]; then
+        echo -e "${RED}[ERROR]${NC} kernel.sys not found"
         return 1
     fi
 
@@ -239,7 +251,7 @@ start_qemu() {
         -machine virt
         -cpu cortex-a72
         -m 128M
-        -kernel "$BUILD_DIR/kernel.elf"
+        -kernel "$BUILD_DIR/kernel.sys"
         -drive "file=$BUILD_DIR/disk.img,if=none,format=raw,id=disk0"
         -device virtio-blk-device,drive=disk0
         -device virtio-rng-device
@@ -256,7 +268,7 @@ start_qemu() {
             -device virtio-blk-device,drive=disk1
         )
     fi
-    if [[ -f "$BUILD_DIR/netd.elf" ]]; then
+    if [[ -f "$BUILD_DIR/netd.sys" ]]; then
         qemu_opts+=(
             -netdev user,id=net1
             -device virtio-net-device,netdev=net1
@@ -373,7 +385,7 @@ test_assign_command() {
 }
 
 test_dir_root() {
-    log_test "DIR / shows vinit.elf"
+    log_test "DIR / shows vinit.sys"
 
     send_command "Dir /"
     sleep 1
@@ -382,10 +394,10 @@ test_dir_root() {
     output=$(cat "$SERIAL_OUTPUT")
 
     if echo "$output" | grep -qi "vinit"; then
-        pass "DIR / shows vinit.elf"
+        pass "DIR / shows vinit.sys"
         return 0
     else
-        fail "DIR / missing vinit.elf" "vinit.elf in listing" "not found"
+        fail "DIR / missing vinit.sys" "vinit.sys in listing" "not found"
         return 1
     fi
 }
@@ -557,7 +569,7 @@ test_https_fetch() {
 test_path_command() {
     log_test "PATH command resolves assigns"
 
-    send_command "Path SYS:vinit.elf"
+    send_command "Path SYS:vinit.sys"
     sleep 1
 
     local output
@@ -573,9 +585,9 @@ test_path_command() {
 }
 
 test_run_command() {
-    log_test "RUN command spawns hello.elf (malloc test)"
+    log_test "RUN command spawns hello.prg (malloc test)"
 
-    send_command "Run /hello.elf"
+    send_command "Run /hello.prg"
     sleep 5  # Give time for malloc tests to complete
 
     local output
@@ -583,7 +595,7 @@ test_run_command() {
 
     # Check for malloc test output
     if echo "$output" | grep -q "All tests PASSED"; then
-        pass "RUN spawned hello.elf - malloc tests PASSED"
+        pass "RUN spawned hello.prg - malloc tests PASSED"
         return 0
     elif echo "$output" | grep -q "\[malloc_test\]"; then
         # Check if tests are running
@@ -595,7 +607,7 @@ test_run_command() {
             sleep 3
             output=$(cat "$SERIAL_OUTPUT")
             if echo "$output" | grep -q "All tests PASSED"; then
-                pass "RUN spawned hello.elf - malloc tests PASSED"
+                pass "RUN spawned hello.prg - malloc tests PASSED"
                 return 0
             else
                 fail "RUN: malloc test incomplete" "All tests PASSED" "tests running but not completed"
@@ -605,13 +617,13 @@ test_run_command() {
     elif echo "$output" | grep -q "Started process"; then
         # Legacy hello output or waiting for output
         if echo "$output" | grep -q "Hello from spawned process"; then
-            pass "RUN spawned hello.elf successfully (legacy output)"
+            pass "RUN spawned hello.prg successfully (legacy output)"
             return 0
         fi
         fail "RUN started process but output not found" "malloc test output" "process started but no test output"
         return 1
     elif echo "$output" | grep -qi "failed to spawn"; then
-        fail "RUN failed to spawn hello.elf" "successful spawn" "spawn failed"
+        fail "RUN failed to spawn hello.prg" "successful spawn" "spawn failed"
         return 1
     else
         fail "RUN command unexpected result" "malloc_test output" "$(echo "$output" | tail -10)"

@@ -112,7 +112,7 @@ function(add_qemu_test name)
     set(_cmd
         ${QEMU_TEST_RUNNER}
         --qemu ${QEMU_AARCH64}
-        --kernel ${CMAKE_BINARY_DIR}/kernel.elf
+        --kernel ${CMAKE_BINARY_DIR}/kernel.sys
         --name ${name}
         --log-dir ${TEST_LOG_DIR}
     )
@@ -161,19 +161,19 @@ endif()
 # Build Verification Tests
 # =============================================================================
 
-# Test that kernel.elf exists
+# Test that kernel.sys exists
 add_test(
-    NAME build_kernel_elf_valid
-    COMMAND test -f ${CMAKE_BINARY_DIR}/kernel.elf
+    NAME build_kernel_sys_valid
+    COMMAND test -f ${CMAKE_BINARY_DIR}/kernel.sys
 )
-set_tests_properties(build_kernel_elf_valid PROPERTIES LABELS "build")
+set_tests_properties(build_kernel_sys_valid PROPERTIES LABELS "build")
 
-# Test that vinit.elf exists
+# Test that vinit.sys exists
 add_test(
-    NAME build_vinit_elf_valid
-    COMMAND test -f ${CMAKE_BINARY_DIR}/vinit.elf
+    NAME build_vinit_sys_valid
+    COMMAND test -f ${CMAKE_BINARY_DIR}/vinit.sys
 )
-set_tests_properties(build_vinit_elf_valid PROPERTIES LABELS "build")
+set_tests_properties(build_vinit_sys_valid PROPERTIES LABELS "build")
 
 # Test that BOOTAA64.EFI exists
 add_test(
@@ -187,12 +187,12 @@ set_tests_properties(build_bootloader_valid PROPERTIES LABELS "build")
 # =============================================================================
 
 # Build the toolchain test (minimal freestanding C++ that runs in QEMU)
-add_executable(toolchain-test.elf
+add_executable(toolchain-test.prg
     boot/startup.S
     boot/toolchain-test.cpp
 )
 
-target_compile_options(toolchain-test.elf PRIVATE
+target_compile_options(toolchain-test.prg PRIVATE
     -ffreestanding
     -fno-stack-protector
     -fno-exceptions
@@ -203,7 +203,7 @@ target_compile_options(toolchain-test.elf PRIVATE
     -Wextra
 )
 
-target_link_options(toolchain-test.elf PRIVATE
+target_link_options(toolchain-test.prg PRIVATE
     -nostdlib
     -static
     -T ${CMAKE_CURRENT_SOURCE_DIR}/boot/toolchain-test.ld
@@ -225,7 +225,7 @@ if(VIPEROS_HAS_QEMU)
         NAME qemu_toolchain
         COMMAND ${QEMU_TEST_RUNNER}
             --qemu ${QEMU_AARCH64}
-            --kernel ${CMAKE_BINARY_DIR}/toolchain-test.elf
+            --kernel ${CMAKE_BINARY_DIR}/toolchain-test.prg
             --name toolchain
             --log-dir ${TEST_LOG_DIR}
             --timeout 10
@@ -301,7 +301,7 @@ if(VIPEROS_HAS_QEMU)
     # NOTE: Disabled for now - userfault tests don't run automatically at boot
     # to avoid page fault output during normal interactive use.
     # The fault handling code is still tested implicitly via the test programs
-    # on disk (faulttest_null.elf, faulttest_illegal.elf) which can be run manually.
+    # on disk (faulttest_null.prg, faulttest_illegal.prg) which can be run manually.
     # TODO: Add kernel command-line flag to enable test mode
     # add_qemu_test(userfault_tests
     #     --disk
@@ -334,7 +334,10 @@ if(VIPEROS_HAS_QEMU)
 	        --expect "\\[vinit\\] NETD: ready"
 	        --expect "\\[vinit\\] FSD: ready"
 	    )
-	    set_tests_properties(qemu_microkernel_servers_ready PROPERTIES LABELS "qemu;userspace;microkernel")
+	    set_tests_properties(qemu_microkernel_servers_ready PROPERTIES
+	        LABELS "qemu;userspace;microkernel"
+	        TIMEOUT 200
+	    )
 
 	    # --- libc→fsd forwarding smoke test ---
 	    # Runs a small user program after fsd is ready that creates a file via libc
@@ -345,7 +348,10 @@ if(VIPEROS_HAS_QEMU)
 	        --timeout 180
 	        --expect "\\[fsd_smoke\\] OK: libc routed to fsd"
 	    )
-	    set_tests_properties(qemu_libc_fsd_smoke PROPERTIES LABELS "qemu;userspace;microkernel;libc")
+	    set_tests_properties(qemu_libc_fsd_smoke PROPERTIES
+	        LABELS "qemu;userspace;microkernel;libc"
+	        TIMEOUT 200
+	    )
 
 	    # --- netd IPC smoke test ---
 	    # Runs a small user program after netd is ready that queries NETD for basic
@@ -356,7 +362,10 @@ if(VIPEROS_HAS_QEMU)
 	        --timeout 180
 	        --expect "\\[netd_smoke\\] OK: NETD ip="
 	    )
-	    set_tests_properties(qemu_netd_smoke PROPERTIES LABELS "qemu;userspace;microkernel;network")
+	    set_tests_properties(qemu_netd_smoke PROPERTIES
+	        LABELS "qemu;userspace;microkernel;network"
+	        TIMEOUT 200
+	    )
 
 	    # --- TLS library smoke test ---
 	    # Tests user-space TLS library API (config, session creation, info queries).
@@ -367,7 +376,10 @@ if(VIPEROS_HAS_QEMU)
 	        --timeout 180
 	        --expect "TLS smoke test PASSED"
 	    )
-	    set_tests_properties(qemu_tls_smoke PROPERTIES LABELS "qemu;userspace;tls")
+	    set_tests_properties(qemu_tls_smoke PROPERTIES
+	        LABELS "qemu;userspace;tls"
+	        TIMEOUT 200
+	    )
 
 	endif()
 

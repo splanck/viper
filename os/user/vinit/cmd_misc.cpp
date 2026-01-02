@@ -1,10 +1,26 @@
 /**
  * @file cmd_misc.cpp
  * @brief Miscellaneous shell commands for vinit (run, assign, path, fetch).
+ *
+ * Uses netclient for DNS and libc sockets for TCP (routes through netd).
+ * Uses libtls for HTTPS connections.
  */
 #include "vinit.hpp"
 
 #include "fsclient.hpp"
+#include "netclient.hpp"
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
+extern "C"
+{
+#include "libtls/include/tls.h"
+}
+
+// Global netclient instance for DNS resolution
+static netclient::Client g_netd;
 
 void cmd_run(const char *cmdline)
 {
@@ -52,7 +68,7 @@ void cmd_run(const char *cmdline)
     // If not found and not an absolute/relative path, try C: directory
     if (err < 0 && path[0] != '/' && !strstart(path, "./") && !strstart(path, "../"))
     {
-        // Build path: /c/<name> or /c/<name>.elf
+        // Build path: /c/<name> or /c/<name>.prg
         char search_path[256];
         usize i = 0;
 
@@ -71,18 +87,18 @@ void cmd_run(const char *cmdline)
         bootstrap_send = 0xFFFFFFFFu;
         err = sys::spawn(search_path, nullptr, &pid, &tid, args, &bootstrap_send);
 
-        // If still not found and doesn't end in .elf, try adding .elf
+        // If still not found and doesn't end in .prg, try adding .prg
         if (err < 0)
         {
             usize len = i;
-            if (len < 4 || !streq(search_path + len - 4, ".elf"))
+            if (len < 4 || !streq(search_path + len - 4, ".prg"))
             {
                 if (len + 4 < 255)
                 {
                     search_path[len++] = '.';
-                    search_path[len++] = 'e';
-                    search_path[len++] = 'l';
-                    search_path[len++] = 'f';
+                    search_path[len++] = 'p';
+                    search_path[len++] = 'r';
+                    search_path[len++] = 'g';
                     search_path[len] = '\0';
                     bootstrap_send = 0xFFFFFFFFu;
                     err = sys::spawn(search_path, nullptr, &pid, &tid, args, &bootstrap_send);
@@ -206,14 +222,14 @@ void cmd_run_fsd(const char *cmdline)
         if (ferr < 0)
         {
             usize len = i;
-            if (len < 4 || !streq(search_path + len - 4, ".elf"))
+            if (len < 4 || !streq(search_path + len - 4, ".prg"))
             {
                 if (len + 4 < 255)
                 {
                     search_path[len++] = '.';
-                    search_path[len++] = 'e';
-                    search_path[len++] = 'l';
-                    search_path[len++] = 'f';
+                    search_path[len++] = 'p';
+                    search_path[len++] = 'r';
+                    search_path[len++] = 'g';
                     search_path[len] = '\0';
                     ferr = fs.open(search_path, 0 /* O_RDONLY */, &file_id);
                 }
@@ -556,14 +572,24 @@ void cmd_fetch(const char *url)
     print_str(parsed.host);
     print_str("...\n");
 
-    u32 ip = 0;
-    if (sys::dns_resolve(parsed.host, &ip) != 0)
+    // Use netclient for DNS resolution (routes through netd)
+    if (g_netd.connect() != 0)
+    {
+        print_str("Fetch: network not available\n");
+        last_rc = RC_ERROR;
+        return;
+    }
+
+    u32 ip_be = 0;
+    if (g_netd.dns_resolve(parsed.host, &ip_be) != 0)
     {
         print_str("Fetch: DNS resolution failed\n");
         last_rc = RC_ERROR;
         return;
     }
 
+    // Convert from network byte order for display
+    u32 ip = ntohl(ip_be);
     print_str("Connecting to ");
     put_num((ip >> 24) & 0xFF);
     print_char('.');
@@ -578,7 +604,8 @@ void cmd_fetch(const char *url)
         print_str(" (HTTPS)");
     print_str("...\n");
 
-    i32 sock = sys::socket_create();
+    // Create socket via libc (routes through netd)
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0)
     {
         print_str("Fetch: failed to create socket\n");
@@ -586,34 +613,47 @@ void cmd_fetch(const char *url)
         return;
     }
 
-    if (sys::socket_connect(sock, ip, parsed.port) != 0)
+    struct sockaddr_in addr;
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(static_cast<uint16_t>(parsed.port));
+    addr.sin_addr.s_addr = ip_be;
+
+    if (connect(sock, reinterpret_cast<struct sockaddr *>(&addr), sizeof(addr)) != 0)
     {
         print_str("Fetch: connection failed\n");
-        sys::socket_close(sock);
+        close(sock);
         last_rc = RC_ERROR;
         return;
     }
 
     print_str("Connected!");
 
-    i32 tls_session = -1;
+    tls_session_t *tls = nullptr;
     if (parsed.is_https)
     {
         print_str(" Starting TLS handshake...\n");
-        tls_session = sys::tls_create(sock, parsed.host, false);
-        if (tls_session < 0)
+
+        tls_config_t config;
+        tls_config_init(&config);
+        config.hostname = parsed.host;
+        config.verify_cert = 1;
+
+        tls = tls_new(sock, &config);
+        if (!tls)
         {
             print_str("Fetch: TLS session creation failed\n");
-            sys::socket_close(sock);
+            close(sock);
             last_rc = RC_ERROR;
             return;
         }
 
-        if (sys::tls_handshake(tls_session) != 0)
+        if (tls_handshake(tls) != TLS_OK)
         {
-            print_str("Fetch: TLS handshake failed\n");
-            sys::tls_close(tls_session);
-            sys::socket_close(sock);
+            print_str("Fetch: TLS handshake failed: ");
+            print_str(tls_get_error(tls));
+            print_str("\n");
+            tls_close(tls);
+            close(sock);
             last_rc = RC_ERROR;
             return;
         }
@@ -643,18 +683,18 @@ void cmd_fetch(const char *url)
         request[pos++] = *tail++;
     request[pos] = '\0';
 
-    i64 sent;
+    long sent;
     if (parsed.is_https)
-        sent = sys::tls_send(tls_session, request, pos);
+        sent = tls_send(tls, request, pos);
     else
-        sent = sys::socket_send(sock, request, pos);
+        sent = send(sock, request, pos, 0);
 
     if (sent <= 0)
     {
         print_str("Fetch: send failed\n");
-        if (parsed.is_https)
-            sys::tls_close(tls_session);
-        sys::socket_close(sock);
+        if (tls)
+            tls_close(tls);
+        close(sock);
         last_rc = RC_ERROR;
         return;
     }
@@ -665,17 +705,17 @@ void cmd_fetch(const char *url)
     usize total = 0;
     for (int tries = 0; tries < 100; tries++)
     {
-        i64 n;
+        long n;
         if (parsed.is_https)
-            n = sys::tls_recv(tls_session, buf, sizeof(buf) - 1);
+            n = tls_recv(tls, buf, sizeof(buf) - 1);
         else
-            n = sys::socket_recv(sock, buf, sizeof(buf) - 1);
+            n = recv(sock, buf, sizeof(buf) - 1, 0);
 
         if (n > 0)
         {
             buf[n] = '\0';
             print_str(buf);
-            total += n;
+            total += static_cast<usize>(n);
         }
         else if (total > 0)
         {
@@ -692,8 +732,8 @@ void cmd_fetch(const char *url)
         print_str(", encrypted");
     print_str("]\n");
 
-    if (parsed.is_https)
-        sys::tls_close(tls_session);
-    sys::socket_close(sock);
+    if (tls)
+        tls_close(tls);
+    close(sock);
     last_rc = RC_OK;
 }

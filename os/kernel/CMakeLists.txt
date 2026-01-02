@@ -86,10 +86,10 @@ set(KERNEL_SOURCES
 )
 
 # Create kernel executable
-add_executable(kernel.elf ${KERNEL_SOURCES})
+add_executable(kernel.sys ${KERNEL_SOURCES})
 
 # Compile-time config macros (see kernel/include/config.hpp)
-target_compile_definitions(kernel.elf PRIVATE
+target_compile_definitions(kernel.sys PRIVATE
         VIPER_MICROKERNEL_MODE=$<BOOL:${VIPER_MICROKERNEL_MODE}>
         VIPER_KERNEL_ENABLE_FS=$<BOOL:${VIPER_KERNEL_ENABLE_FS}>
         VIPER_KERNEL_ENABLE_NET=$<BOOL:${VIPER_KERNEL_ENABLE_NET}>
@@ -100,13 +100,13 @@ target_compile_definitions(kernel.elf PRIVATE
 )
 
 # Include directories
-target_include_directories(kernel.elf PRIVATE
+target_include_directories(kernel.sys PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 # Kernel-specific compiler flags
-target_compile_options(kernel.elf PRIVATE
+target_compile_options(kernel.sys PRIVATE
         -ffreestanding
         -fno-stack-protector
         -fno-exceptions
@@ -121,7 +121,7 @@ target_compile_options(kernel.elf PRIVATE
 )
 
 # Kernel-specific linker flags
-target_link_options(kernel.elf PRIVATE
+target_link_options(kernel.sys PRIVATE
         -nostdlib
         -static
         -T ${CMAKE_CURRENT_SOURCE_DIR}/kernel.ld

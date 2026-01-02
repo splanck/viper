@@ -11,8 +11,8 @@ The loader API lives in `kernel/loader/loader.*`:
 - `loader::load_elf_from_blob(viper, data, size)`
 - `loader::load_elf_from_disk(viper, path)`
 
-The loader is used from `kernel/main.cpp` as part of the “bring up user space” demo path, typically loading
-`/vinit.elf`.
+The loader is used from `kernel/main.cpp` as part of the "bring up user space" demo path, typically loading
+`/vinit.sys`.
 
 Key files:
 

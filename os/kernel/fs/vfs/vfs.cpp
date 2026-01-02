@@ -214,8 +214,34 @@ i32 open(const char *path, u32 oflags)
     if (!fdt)
         return -1;
 
-    // Use resolve_path_cwd to support relative paths
-    u64 ino = resolve_path_cwd(path);
+    // Normalize path with CWD for relative paths
+    char abs_path[MAX_PATH];
+    if (path[0] == '/')
+    {
+        // Already absolute
+        usize len = lib::strlen(path);
+        if (len >= MAX_PATH)
+            return -1;
+        for (usize i = 0; i <= len; i++)
+            abs_path[i] = path[i];
+    }
+    else
+    {
+        // Relative path - build absolute using CWD
+        const char *cwd = "/";
+        task::Task *t = task::current();
+        if (t && t->cwd[0])
+        {
+            cwd = t->cwd;
+        }
+        if (!normalize_path(path, cwd, abs_path, sizeof(abs_path)))
+        {
+            return -1;
+        }
+    }
+
+    // Use the absolute path for resolution
+    u64 ino = resolve_path(abs_path);
 
     // Handle O_CREAT
     if (ino == 0 && (oflags & flags::O_CREAT))
@@ -224,7 +250,7 @@ i32 open(const char *path, u32 oflags)
         const char *name;
         usize name_len;
 
-        if (!resolve_parent(path, &parent_ino, &name, &name_len))
+        if (!resolve_parent(abs_path, &parent_ino, &name, &name_len))
         {
             return -1;
         }
@@ -558,6 +584,28 @@ i32 fstat(i32 fd, Stat *st)
 
     viperfs::viperfs().release_inode(inode);
     return 0;
+}
+
+/** @copydoc fs::vfs::fsync */
+i32 fsync(i32 fd)
+{
+    FDTable *fdt = current_fdt();
+    if (!fdt)
+        return -1;
+
+    FileDesc *desc = fdt->get(fd);
+    if (!desc)
+        return -1;
+
+    viperfs::Inode *inode = viperfs::viperfs().read_inode(desc->inode_num);
+    if (!inode)
+        return -1;
+
+    // Use ViperFS fsync to write inode and sync dirty blocks
+    bool ok = viperfs::viperfs().fsync(inode);
+    viperfs::viperfs().release_inode(inode);
+
+    return ok ? 0 : -1;
 }
 
 // Context for getdents callback

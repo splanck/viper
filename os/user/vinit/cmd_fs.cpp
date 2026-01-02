@@ -1,8 +1,21 @@
 /**
  * @file cmd_fs.cpp
  * @brief Filesystem shell commands for vinit.
+ *
+ * Uses fsclient to route all file operations through fsd (microkernel path).
  */
 #include "vinit.hpp"
+
+#include "fsclient.hpp"
+
+// Global fsclient instance for all filesystem operations
+static fsclient::Client g_fsd;
+
+// Check if fsd is available and connected
+static bool fsd_available()
+{
+    return g_fsd.connect() == 0;
+}
 
 void cmd_cd(const char *args)
 {
@@ -46,8 +59,17 @@ void cmd_dir(const char *path)
     if (!path || *path == '\0')
         path = current_dir;
 
-    i32 fd = sys::open(path, sys::O_RDONLY);
-    if (fd < 0)
+    if (!fsd_available())
+    {
+        print_str("Dir: filesystem not available\n");
+        last_rc = RC_ERROR;
+        last_error = "FSD not available";
+        return;
+    }
+
+    u32 dir_id = 0;
+    i32 err = g_fsd.open(path, 0, &dir_id); // O_RDONLY = 0
+    if (err != 0)
     {
         print_str("Dir: cannot open \"");
         print_str(path);
@@ -57,32 +79,24 @@ void cmd_dir(const char *path)
         return;
     }
 
-    u8 buf[32768]; // 32KB - holds ~120 directory entries
-    i64 bytes = sys::readdir(fd, buf, sizeof(buf));
-
-    if (bytes < 0)
-    {
-        print_str("Dir: not a directory\n");
-        sys::close(fd);
-        last_rc = RC_ERROR;
-        last_error = "Not a directory";
-        return;
-    }
-
-    usize offset = 0;
     usize count = 0;
     usize col = 0;
 
-    while (offset < static_cast<usize>(bytes))
+    while (true)
     {
-        sys::DirEnt *ent = reinterpret_cast<sys::DirEnt *>(buf + offset);
+        u64 ino = 0;
+        u8 type = 0;
+        char name[256];
+        i32 rc = g_fsd.readdir_one(dir_id, &ino, &type, name, sizeof(name));
+        if (rc <= 0)
+            break;
 
-        if (ent->type == 2)
+        if (type == 2) // Directory
         {
             print_str("  ");
-            print_str(ent->name);
+            print_str(name);
             print_str("/");
-            usize namelen = strlen(ent->name) + 1;
+            usize namelen = strlen(name) + 1;
             while (namelen < 18)
             {
                 print_char(' ');
@@ -92,8 +106,8 @@ void cmd_dir(const char *path)
         else
         {
             print_str("  ");
-            print_str(ent->name);
-            usize namelen = strlen(ent->name);
+            print_str(name);
+            usize namelen = strlen(name);
             while (namelen < 18)
             {
                 print_char(' ');
@@ -109,7 +123,6 @@ void cmd_dir(const char *path)
         }
 
         count++;
-        offset += ent->reclen;
     }
 
     if (col > 0)
@@ -117,7 +130,7 @@ void cmd_dir(const char *path)
     put_num(static_cast<i64>(count));
     print_str(" entries\n");
 
-    sys::close(fd);
+    g_fsd.close(dir_id);
     last_rc = RC_OK;
 }
 
@@ -126,8 +139,17 @@ void cmd_list(const char *path)
     if (!path || *path == '\0')
         path = current_dir;
 
-    i32 fd = sys::open(path, sys::O_RDONLY);
-    if (fd < 0)
+    if (!fsd_available())
+    {
+        print_str("List: filesystem not available\n");
+        last_rc = RC_ERROR;
+        last_error = "FSD not available";
+        return;
+    }
+
+    u32 dir_id = 0;
+    i32 err = g_fsd.open(path, 0, &dir_id); // O_RDONLY = 0
+    if (err != 0)
     {
         print_str("List: cannot open \"");
         print_str(path);
@@ -137,39 +159,31 @@ void cmd_list(const char *path)
         return;
     }
 
-    u8 buf[32768]; // 32KB - holds ~120 directory entries
-    i64 bytes = sys::readdir(fd, buf, sizeof(buf));
-
-    if (bytes < 0)
-    {
-        print_str("List: not a directory\n");
-        sys::close(fd);
-        last_rc = RC_ERROR;
-        last_error = "Not a directory";
-        return;
-    }
-
     print_str("Directory \"");
     print_str(path);
     print_str("\"\n\n");
 
-    usize offset = 0;
     usize file_count = 0;
     usize dir_count = 0;
 
-    while (offset < static_cast<usize>(bytes))
+    while (true)
     {
-        sys::DirEnt *ent = reinterpret_cast<sys::DirEnt *>(buf + offset);
+        u64 ino = 0;
+        u8 type = 0;
+        char name[256];
+        i32 rc = g_fsd.readdir_one(dir_id, &ino, &type, name, sizeof(name));
+        if (rc <= 0)
+            break;
 
-        print_str(ent->name);
-        usize namelen = strlen(ent->name);
+        print_str(name);
+        usize namelen = strlen(name);
         while (namelen < 32)
         {
             print_char(' ');
             namelen++;
         }
 
-        if (ent->type == 2)
+        if (type == 2) // Directory
         {
             print_str("  <dir>    rwed");
             dir_count++;
@@ -180,8 +194,6 @@ void cmd_list(const char *path)
             file_count++;
         }
         print_str("\n");
-
-        offset += ent->reclen;
     }
 
     print_str("\n");
@@ -198,7 +210,7 @@ void cmd_list(const char *path)
         print_str("y");
     print_str("\n");
 
-    sys::close(fd);
+    g_fsd.close(dir_id);
     last_rc = RC_OK;
 }
 
@@ -212,8 +224,17 @@ void cmd_type(const char *path)
         return;
     }
 
-    i32 fd = sys::open(path, sys::O_RDONLY);
-    if (fd < 0)
+    if (!fsd_available())
+    {
+        print_str("Type: filesystem not available\n");
+        last_rc = RC_ERROR;
+        last_error = "FSD not available";
+        return;
+    }
+
+    u32 file_id = 0;
+    i32 err = g_fsd.open(path, 0, &file_id); // O_RDONLY = 0
+    if (err != 0)
     {
         print_str("Type: cannot open \"");
         print_str(path);
@@ -226,7 +247,7 @@ void cmd_type(const char *path)
     char buf[512];
     while (true)
     {
-        i64 bytes = sys::read(fd, buf, sizeof(buf) - 1);
+        i64 bytes = g_fsd.read(file_id, buf, sizeof(buf) - 1);
         if (bytes <= 0)
             break;
         buf[bytes] = '\0';
@@ -234,7 +255,7 @@ void cmd_type(const char *path)
     }
 
     print_str("\n");
-    sys::close(fd);
+    g_fsd.close(file_id);
     last_rc = RC_OK;
 }
 
@@ -246,6 +267,14 @@ void cmd_copy(const char *args)
         print_str("Usage: Copy <source> <dest>\n");
         last_rc = RC_ERROR;
         last_error = "Missing arguments";
+        return;
+    }
+
+    if (!fsd_available())
+    {
+        print_str("Copy: filesystem not available\n");
+        last_rc = RC_ERROR;
+        last_error = "FSD not available";
         return;
     }
 
@@ -280,8 +309,10 @@ void cmd_copy(const char *args)
         return;
     }
 
-    i32 src_fd = sys::open(source, sys::O_RDONLY);
-    if (src_fd < 0)
+    // fsd open flags: O_RDONLY=0, O_WRONLY=1, O_CREAT=0x40, O_TRUNC=0x200
+    u32 src_id = 0;
+    i32 err = g_fsd.open(source, 0, &src_id); // O_RDONLY
+    if (err != 0)
     {
         print_str("Copy: cannot open \"");
         print_str(source);
@@ -290,13 +321,14 @@ void cmd_copy(const char *args)
         return;
     }
 
-    i32 dst_fd = sys::open(dest, sys::O_WRONLY | sys::O_CREAT | sys::O_TRUNC);
-    if (dst_fd < 0)
+    u32 dst_id = 0;
+    err = g_fsd.open(dest, 1 | 0x40 | 0x200, &dst_id); // O_WRONLY | O_CREAT | O_TRUNC
+    if (err != 0)
     {
         print_str("Copy: cannot create \"");
         print_str(dest);
         print_str("\"\n");
-        sys::close(src_fd);
+        g_fsd.close(src_id);
         last_rc = RC_ERROR;
         return;
     }
@@ -306,24 +338,26 @@ void cmd_copy(const char *args)
 
     while (true)
     {
-        i64 bytes = sys::read(src_fd, buf, sizeof(buf));
+        i64 bytes = g_fsd.read(src_id, buf, sizeof(buf));
         if (bytes <= 0)
             break;
 
-        i64 written = sys::write(dst_fd, buf, bytes);
+        i64 written = g_fsd.write(dst_id, buf, static_cast<u32>(bytes));
         if (written != bytes)
         {
             print_str("Copy: write error\n");
-            sys::close(src_fd);
-            sys::close(dst_fd);
+            g_fsd.close(src_id);
+            g_fsd.close(dst_id);
             last_rc = RC_ERROR;
             return;
         }
         total += bytes;
     }
 
-    sys::close(src_fd);
-    sys::close(dst_fd);
+    // Sync before closing to ensure data reaches disk
+    g_fsd.fsync(dst_id);
+    g_fsd.close(src_id);
+    g_fsd.close(dst_id);
 
     print_str("Copied ");
     put_num(total);
@@ -340,7 +374,15 @@ void cmd_delete(const char *args)
         return;
     }
 
-    if (sys::unlink(args) < 0)
+    if (!fsd_available())
+    {
+        print_str("Delete: filesystem not available\n");
+        last_rc = RC_ERROR;
+        last_error = "FSD not available";
+        return;
+    }
+
+    if (g_fsd.unlink(args) != 0)
     {
         print_str("Delete: cannot delete \"");
         print_str(args);
@@ -364,7 +406,15 @@ void cmd_makedir(const char *args)
         return;
     }
 
-    if (sys::mkdir(args) < 0)
+    if (!fsd_available())
+    {
+        print_str("MakeDir: filesystem not available\n");
+        last_rc = RC_ERROR;
+        last_error = "FSD not available";
+        return;
+    }
+
+    if (g_fsd.mkdir(args) != 0)
     {
         print_str("MakeDir: cannot create \"");
         print_str(args);
@@ -386,6 +436,14 @@ void cmd_rename(const char *args)
         print_str("Rename: missing arguments\n");
         print_str("Usage: Rename <old> <new>\n");
         last_rc = RC_ERROR;
+        return;
+    }
+
+    if (!fsd_available())
+    {
+        print_str("Rename: filesystem not available\n");
+        last_rc = RC_ERROR;
+        last_error = "FSD not available";
         return;
     }
 
@@ -416,7 +474,7 @@ void cmd_rename(const char *args)
         return;
     }
 
-    if (sys::rename(oldname, newname) < 0)
+    if (g_fsd.rename(oldname, newname) != 0)
     {
         print_str("Rename: failed\n");
         last_rc = RC_ERROR;

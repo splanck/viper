@@ -287,7 +287,7 @@ All output goes to the terminal. Exit with Ctrl+A, then X.
 QEMU waits for GDB connection:
 
 ```bash
-aarch64-elf-gdb build/kernel.elf -ex 'target remote :1234'
+aarch64-elf-gdb build/kernel.sys -ex 'target remote :1234'
 ```
 
 ---

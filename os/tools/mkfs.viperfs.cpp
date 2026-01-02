@@ -944,7 +944,7 @@ void print_usage(const char *prog)
     fprintf(stderr, "Examples:\n");
     fprintf(
         stderr, "  %s disk.img 8 --mkdir SYS/certs --add roots.der:SYS/certs/roots.der\n", prog);
-    fprintf(stderr, "  %s disk.img 8 vinit.elf --add app.elf:bin/app.elf\n", prog);
+    fprintf(stderr, "  %s disk.img 8 vinit.sys --add app.prg:c/app.prg\n", prog);
 }
 
 /**

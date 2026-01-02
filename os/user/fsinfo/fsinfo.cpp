@@ -6,16 +6,21 @@
  * This utility demonstrates the use of the libc filesystem functions
  * and provides information about files and directories.
  *
+ * Uses libc for file I/O to route through fsd (microkernel path).
+ *
  * Usage:
  *   fsinfo [path]   - Show information about a file or directory
  *   fsinfo          - Show information about the root directory
  */
 
 #include "../syscall.hpp"
+#include <dirent.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 // Format file size with appropriate units
@@ -54,23 +59,23 @@ static const char *file_type_str(u32 mode)
 // Print file information
 static int print_file_info(const char *path)
 {
-    sys::Stat st;
-    if (sys::stat(path, &st) < 0)
+    struct stat st;
+    if (stat(path, &st) < 0)
     {
         printf("fsinfo: cannot stat '%s': No such file or directory\n", path);
         return 1;
     }
 
     char size_str[32];
-    format_size(st.size, size_str, sizeof(size_str));
+    format_size(st.st_size, size_str, sizeof(size_str));
 
     printf("\nFile Information: %s\n", path);
     printf("=====================================\n");
-    printf("  Type:        %s\n", file_type_str(st.mode));
-    printf("  Inode:       %llu\n", (unsigned long long)st.ino);
-    printf("  Size:        %s (%llu bytes)\n", size_str, (unsigned long long)st.size);
-    printf("  Blocks:      %llu\n", (unsigned long long)st.blocks);
-    printf("  Mode:        0x%04x\n", st.mode);
+    printf("  Type:        %s\n", file_type_str(st.st_mode));
+    printf("  Inode:       %llu\n", (unsigned long long)st.st_ino);
+    printf("  Size:        %s (%llu bytes)\n", size_str, (unsigned long long)st.st_size);
+    printf("  Blocks:      %llu\n", (unsigned long long)st.st_blocks);
+    printf("  Mode:        0x%04x\n", st.st_mode);
 
     return 0;
 }
@@ -78,19 +83,24 @@ static int print_file_info(const char *path)
 // List directory contents with details
 static int list_directory(const char *path)
 {
-    i32 fd = sys::open(path, sys::O_RDONLY);
-    if (fd < 0)
+    // Check if it's a directory first
+    struct stat st;
+    if (stat(path, &st) < 0)
     {
-        printf("fsinfo: cannot open directory '%s'\n", path);
+        printf("fsinfo: cannot access '%s'\n", path);
         return 1;
     }
 
-    // Check if it's a directory
-    sys::Stat st;
-    if (sys::fstat(fd, &st) < 0 || !(st.mode & 0x4000))
+    if (!S_ISDIR(st.st_mode))
     {
-        sys::close(fd);
         printf("fsinfo: '%s' is not a directory\n", path);
+        return 1;
+    }
+
+    DIR *dir = opendir(path);
+    if (!dir)
+    {
+        printf("fsinfo: cannot open directory '%s'\n", path);
         return 1;
     }
 
@@ -99,61 +109,51 @@ static int list_directory(const char *path)
     printf("  %-20s  %10s  %s\n", "Name", "Size", "Type");
     printf("  %-20s  %10s  %s\n", "----", "----", "----");
 
-    u8 buf[1024];
     u64 total_size = 0;
     int file_count = 0;
     int dir_count = 0;
 
-    i64 bytes = sys::readdir(fd, buf, sizeof(buf));
-    while (bytes > 0)
+    struct dirent *ent;
+    while ((ent = readdir(dir)) != nullptr)
     {
-        u64 offset = 0;
-        while (offset < static_cast<u64>(bytes))
+        if (ent->d_ino != 0)
         {
-            sys::DirEnt *ent = reinterpret_cast<sys::DirEnt *>(buf + offset);
-            if (ent->ino != 0)
+            // Build full path for stat
+            char full_path[512];
+            if (strcmp(path, "/") == 0)
             {
-                // Build full path for stat
-                char full_path[512];
-                if (strcmp(path, "/") == 0)
+                snprintf(full_path, sizeof(full_path), "/%s", ent->d_name);
+            }
+            else
+            {
+                snprintf(full_path, sizeof(full_path), "%s/%s", path, ent->d_name);
+            }
+
+            struct stat entry_st;
+            char size_str[16] = "-";
+            const char *type_str = "?";
+
+            if (stat(full_path, &entry_st) == 0)
+            {
+                if (S_ISDIR(entry_st.st_mode))
                 {
-                    snprintf(full_path, sizeof(full_path), "/%s", ent->name);
+                    type_str = "<DIR>";
+                    dir_count++;
                 }
                 else
                 {
-                    snprintf(full_path, sizeof(full_path), "%s/%s", path, ent->name);
+                    format_size(entry_st.st_size, size_str, sizeof(size_str));
+                    total_size += entry_st.st_size;
+                    type_str = "FILE";
+                    file_count++;
                 }
-
-                sys::Stat entry_st;
-                char size_str[16] = "-";
-                const char *type_str = "?";
-
-                if (sys::stat(full_path, &entry_st) == 0)
-                {
-                    if (entry_st.mode & 0x4000)
-                    {
-                        type_str = "<DIR>";
-                        dir_count++;
-                    }
-                    else
-                    {
-                        format_size(entry_st.size, size_str, sizeof(size_str));
-                        total_size += entry_st.size;
-                        type_str = "FILE";
-                        file_count++;
-                    }
-                }
-
-                printf("  %-20s  %10s  %s\n", ent->name, size_str, type_str);
             }
-            offset += ent->reclen;
-        }
 
-        // Try to read more entries
-        bytes = sys::readdir(fd, buf, sizeof(buf));
+            printf("  %-20s  %10s  %s\n", ent->d_name, size_str, type_str);
+        }
     }
 
-    sys::close(fd);
+    closedir(dir);
 
     char total_str[32];
     format_size(total_size, total_str, sizeof(total_str));

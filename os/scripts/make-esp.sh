@@ -37,9 +37,9 @@ if [[ -f "$BUILD_DIR/BOOTAA64.EFI" ]]; then
     echo "  Copied BOOTAA64.EFI to EFI/BOOT/"
 fi
 
-if [[ -f "$BUILD_DIR/kernel.elf" ]]; then
-    mcopy -i "$ESP_IMG" "$BUILD_DIR/kernel.elf" ::viperos/
-    echo "  Copied kernel.elf to viperos/"
+if [[ -f "$BUILD_DIR/kernel.sys" ]]; then
+    mcopy -i "$ESP_IMG" "$BUILD_DIR/kernel.sys" ::viperos/
+    echo "  Copied kernel.sys to viperos/"
 fi
 
 echo "\\EFI\\BOOT\\BOOTAA64.EFI" > /tmp/startup.nsh

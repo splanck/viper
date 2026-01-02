@@ -310,6 +310,11 @@ static void handle_close(const fs::CloseRequest *req, i32 reply_channel)
     }
     else
     {
+        // Sync dirty blocks if file was opened for writing
+        if (file->flags & (fs::open_flags::O_WRONLY | fs::open_flags::O_RDWR))
+        {
+            g_viperfs.sync();
+        }
         free_file(static_cast<i32>(req->file_id));
         reply.status = 0;
     }
@@ -562,13 +567,22 @@ static void handle_fsync(const fs::FsyncRequest *req, i32 reply_channel)
     OpenFile *file = get_file(static_cast<i32>(req->file_id));
     if (!file)
     {
+        debug_print("[fsd] fsync: invalid file_id\n");
         reply.status = -1;
         sys::channel_send(reply_channel, &reply, sizeof(reply), nullptr, 0);
         return;
     }
 
+    debug_print("[fsd] fsync: syncing file_id=");
+    debug_print_dec(req->file_id);
+    debug_print(" inode=");
+    debug_print_dec(file->inode_num);
+    debug_print("\n");
+
     // Sync all dirty blocks to disk
     g_viperfs.sync();
+
+    debug_print("[fsd] fsync: sync complete\n");
     reply.status = 0;
     sys::channel_send(reply_channel, &reply, sizeof(reply), nullptr, 0);
 }

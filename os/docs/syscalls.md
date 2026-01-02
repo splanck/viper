@@ -153,7 +153,7 @@ Spawn a new user process from an ELF file.
 **Example:**
 ```cpp
 u64 pid, tid;
-i64 err = sys::spawn("/c/hello.elf", nullptr, &pid, &tid, "arg1 arg2");
+i64 err = sys::spawn("/c/hello.prg", nullptr, &pid, &tid, "arg1 arg2");
 ```
 
 ---

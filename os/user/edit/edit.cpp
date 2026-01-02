@@ -9,9 +9,14 @@
  * - Backspace/Delete for character deletion
  * - Ctrl+S to save, Ctrl+Q to quit
  * - Ctrl+G for help
+ *
+ * Uses libc for file I/O to route through fsd (microkernel path).
  */
 
 #include <syscall.hpp>
+
+#include <fcntl.h>
+#include <unistd.h>
 
 // Screen dimensions (TODO: query from terminal)
 constexpr int SCREEN_ROWS = 25;
@@ -405,7 +410,7 @@ static void set_message(const char *msg)
 
 static bool load_file(const char *path)
 {
-    i32 fd = sys::open(path, sys::O_RDONLY);
+    int fd = open(path, O_RDONLY);
     if (fd < 0)
     {
         // New file
@@ -422,7 +427,7 @@ static bool load_file(const char *path)
 
     while (true)
     {
-        i64 n = sys::read(fd, buf, sizeof(buf));
+        ssize_t n = read(fd, buf, sizeof(buf));
         if (n <= 0)
             break;
 
@@ -456,7 +461,7 @@ static bool load_file(const char *path)
         line_count++;
     }
 
-    sys::close(fd);
+    close(fd);
     strcpy(filename, path);
     modified = false;
 
@@ -489,7 +494,7 @@ static bool save_file()
         strcpy(filename, new_name);
     }
 
-    i32 fd = sys::open(filename, sys::O_WRONLY | sys::O_CREAT | sys::O_TRUNC);
+    int fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (fd < 0)
     {
         set_message("Error: Cannot open file for writing");
@@ -502,17 +507,19 @@ static bool save_file()
         int len = strlen(lines[i]);
         if (len > 0)
         {
-            sys::write(fd, lines[i], len);
+            write(fd, lines[i], len);
             total_bytes += len;
         }
         if (i < line_count - 1)
         {
-            sys::write(fd, "\n", 1);
+            write(fd, "\n", 1);
             total_bytes++;
         }
     }
 
-    sys::close(fd);
+    // Sync to ensure data reaches disk
+    fsync(fd);
+    close(fd);
     modified = false;
 
     char msg[64] = "Saved ";

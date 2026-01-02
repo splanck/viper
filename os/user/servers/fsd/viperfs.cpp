@@ -78,14 +78,36 @@ void BlockCache::mark_dirty(u64 block_num)
 
 void BlockCache::sync()
 {
+    u32 dirty_count = 0;
     for (usize i = 0; i < CACHE_SIZE; i++)
     {
         if (entries_[i].valid && entries_[i].dirty)
         {
+            dirty_count++;
             fs_->write_block(entries_[i].block_num, entries_[i].data);
             entries_[i].dirty = false;
         }
     }
+    sys::print("[fsd] BlockCache::sync() wrote ");
+    char buf[16];
+    int idx = 0;
+    if (dirty_count == 0) {
+        buf[idx++] = '0';
+    } else {
+        u32 n = dirty_count;
+        while (n > 0 && idx < 15) {
+            buf[idx++] = '0' + (n % 10);
+            n /= 10;
+        }
+        for (int j = 0; j < idx / 2; j++) {
+            char t = buf[j];
+            buf[j] = buf[idx - 1 - j];
+            buf[idx - 1 - j] = t;
+        }
+    }
+    buf[idx] = '\0';
+    sys::print(buf);
+    sys::print(" dirty blocks\n");
 }
 
 void BlockCache::invalidate(u64 block_num)
@@ -177,12 +199,39 @@ i32 ViperFS::write_block(u64 block_num, const void *buf)
 
 void ViperFS::sync()
 {
+    sys::print("[fsd] ViperFS::sync() writing superblock\n");
     // Write superblock
     write_block(0, &sb_);
+    sys::print("[fsd] ViperFS::sync() syncing cache\n");
     // Sync cache
     cache_.sync();
+    sys::print("[fsd] ViperFS::sync() flushing blkd\n");
     // Flush to disk
-    blk_->flush();
+    i32 flush_result = blk_->flush();
+    sys::print("[fsd] ViperFS::sync() flush returned ");
+    char buf[16];
+    if (flush_result < 0) {
+        sys::print("-");
+        flush_result = -flush_result;
+    }
+    int i = 0;
+    if (flush_result == 0) {
+        buf[i++] = '0';
+    } else {
+        while (flush_result > 0 && i < 15) {
+            buf[i++] = '0' + (flush_result % 10);
+            flush_result /= 10;
+        }
+        // reverse
+        for (int j = 0; j < i / 2; j++) {
+            char t = buf[j];
+            buf[j] = buf[i - 1 - j];
+            buf[i - 1 - j] = t;
+        }
+    }
+    buf[i] = '\0';
+    sys::print(buf);
+    sys::print("\n");
 }
 
 u64 ViperFS::inode_block(u64 ino)

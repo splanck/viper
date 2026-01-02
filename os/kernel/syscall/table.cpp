@@ -1040,6 +1040,24 @@ static SyscallResult sys_close(u64 a0, u64, u64, u64, u64, u64)
     return SyscallResult::ok();
 }
 
+static SyscallResult sys_fsync(u64 a0, u64, u64, u64, u64, u64)
+{
+    i32 fd = static_cast<i32>(a0);
+
+    // stdin/stdout/stderr don't need fsync
+    if (fd >= 0 && fd <= 2)
+    {
+        return SyscallResult::ok();
+    }
+
+    i32 result = fs::vfs::fsync(fd);
+    if (result < 0)
+    {
+        return SyscallResult::err(result);
+    }
+    return SyscallResult::ok();
+}
+
 static SyscallResult sys_read(u64 a0, u64 a1, u64 a2, u64, u64, u64)
 {
     i32 fd = static_cast<i32>(a0);
@@ -3952,6 +3970,7 @@ static const SyscallEntry syscall_table[] = {
     {SYS_FSTAT, sys_fstat, "fstat", 2},
     {SYS_DUP, sys_dup, "dup", 1},
     {SYS_DUP2, sys_dup2, "dup2", 2},
+    {SYS_FSYNC, sys_fsync, "fsync", 1},
 
     // Networking (0x50-0x5F)
     {SYS_SOCKET_CREATE, sys_socket_create, "socket_create", 0},

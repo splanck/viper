@@ -140,6 +140,8 @@
 #define SYS_DUP 0x47
 /** @brief Duplicate a file descriptor to a specific slot. */
 #define SYS_DUP2 0x48
+/** @brief Sync file data to storage. */
+#define SYS_FSYNC 0x49
 /** @} */
 
 /** @name Networking Syscalls (0x50 - 0x5F)

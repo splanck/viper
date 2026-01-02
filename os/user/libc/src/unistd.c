@@ -785,6 +785,8 @@ int ftruncate(int fd, long length)
 extern int __viper_fsd_is_fd(int fd);
 extern int __viper_fsd_fsync(int fd);
 
+#define SYS_FSYNC 0x49
+
 int fsync(int fd)
 {
     /* Route fsd-managed file descriptors through the fsd backend */
@@ -792,7 +794,12 @@ int fsync(int fd)
     {
         return __viper_fsd_fsync(fd);
     }
-    /* For kernel-managed FDs, pretend to succeed (no caching) */
+    /* For kernel-managed FDs, use the fsync syscall */
+    long ret = __syscall1(SYS_FSYNC, fd);
+    if (ret < 0)
+    {
+        return -1;
+    }
     return 0;
 }
 

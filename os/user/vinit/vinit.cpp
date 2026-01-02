@@ -42,9 +42,9 @@ struct ServerInfo
 };
 
 static ServerInfo g_servers[] = {
-    {"blkd", "/c/blkd.elf", "BLKD", 0, false},
-    {"netd", "/c/netd.elf", "NETD", 0, false},
-    {"fsd", "/c/fsd.elf", "FSD", 0, false},
+    {"blkd", "/c/blkd.sys", "BLKD", 0, false},
+    {"netd", "/c/netd.sys", "NETD", 0, false},
+    {"fsd", "/c/fsd.sys", "FSD", 0, false},
 };
 
 static constexpr usize SERVER_COUNT = sizeof(g_servers) / sizeof(g_servers[0]);
@@ -380,7 +380,7 @@ static void start_servers()
     if (g_servers[2].available) // fsd
     {
         sys::Stat st;
-        if (sys::stat("/c/fsd_smoke.elf", &st) == 0)
+        if (sys::stat("/c/fsd_smoke.prg", &st) == 0)
         {
             print_str("[vinit] Running fsd_smoke...\n");
 
@@ -388,7 +388,7 @@ static void start_servers()
             u64 tid = 0;
             u32 bootstrap_send = 0xFFFFFFFFu;
             i64 err =
-                sys::spawn("/c/fsd_smoke.elf", "fsd_smoke", &pid, &tid, nullptr, &bootstrap_send);
+                sys::spawn("/c/fsd_smoke.prg", "fsd_smoke", &pid, &tid, nullptr, &bootstrap_send);
 
             if (bootstrap_send != 0xFFFFFFFFu)
             {
@@ -417,7 +417,7 @@ static void start_servers()
     if (g_servers[1].available) // netd
     {
         sys::Stat st;
-        if (sys::stat("/c/netd_smoke.elf", &st) == 0)
+        if (sys::stat("/c/netd_smoke.prg", &st) == 0)
         {
             print_str("[vinit] Running netd_smoke...\n");
 
@@ -425,7 +425,7 @@ static void start_servers()
             u64 tid = 0;
             u32 bootstrap_send = 0xFFFFFFFFu;
             i64 err =
-                sys::spawn("/c/netd_smoke.elf", "netd_smoke", &pid, &tid, nullptr, &bootstrap_send);
+                sys::spawn("/c/netd_smoke.prg", "netd_smoke", &pid, &tid, nullptr, &bootstrap_send);
 
             if (bootstrap_send != 0xFFFFFFFFu)
             {
@@ -452,7 +452,7 @@ static void start_servers()
     // Run TLS smoke test if available (tests user-space TLS library API)
     {
         sys::Stat st;
-        if (sys::stat("/c/tls_smoke.elf", &st) == 0)
+        if (sys::stat("/c/tls_smoke.prg", &st) == 0)
         {
             print_str("[vinit] Running tls_smoke...\n");
 
@@ -460,7 +460,7 @@ static void start_servers()
             u64 tid = 0;
             u32 bootstrap_send = 0xFFFFFFFFu;
             i64 err =
-                sys::spawn("/c/tls_smoke.elf", "tls_smoke", &pid, &tid, nullptr, &bootstrap_send);
+                sys::spawn("/c/tls_smoke.prg", "tls_smoke", &pid, &tid, nullptr, &bootstrap_send);
 
             if (bootstrap_send != 0xFFFFFFFFu)
             {

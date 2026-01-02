@@ -802,9 +802,9 @@ extern "C" void kernel_main(void *boot_info_ptr)
                 serial::put_dec(d0_inode);
                 serial::puts(d0_inode != 0 ? " OK\n" : " FAIL\n");
 
-                // Test 3: Verify vinit.elf exists via VFS
-                i32 vinit_fd = fs::vfs::open("/vinit.elf", fs::vfs::flags::O_RDONLY);
-                serial::puts("  /vinit.elf -> ");
+                // Test 3: Verify vinit.sys exists via VFS
+                i32 vinit_fd = fs::vfs::open("/vinit.sys", fs::vfs::flags::O_RDONLY);
+                serial::puts("  /vinit.sys -> ");
                 if (vinit_fd >= 0)
                 {
                     serial::puts("fd ");
@@ -1080,7 +1080,7 @@ extern "C" void kernel_main(void *boot_info_ptr)
         // Load vinit from disk
         serial::puts("[kernel] Loading vinit from disk...\n");
 
-        loader::LoadResult load_result = loader::load_elf_from_disk(test_viper, "/vinit.elf");
+        loader::LoadResult load_result = loader::load_elf_from_disk(test_viper, "/vinit.sys");
         if (load_result.success)
         {
             serial::puts("[kernel] vinit loaded successfully\n");

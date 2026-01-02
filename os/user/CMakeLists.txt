@@ -44,21 +44,34 @@ add_subdirectory(libtls)
 # Build the HTTP client library
 add_subdirectory(libhttp)
 
-# Helper function to create user programs with libc
+# Helper function to create user programs with libc (.prg extension)
 function(add_user_program name)
-    add_executable(${name}.elf ${ARGN})
-    target_compile_options(${name}.elf PRIVATE ${USER_COMPILE_OPTIONS})
-    target_link_options(${name}.elf PRIVATE ${USER_LINK_OPTIONS})
-    target_include_directories(${name}.elf PRIVATE
+    add_executable(${name}.prg ${ARGN})
+    target_compile_options(${name}.prg PRIVATE ${USER_COMPILE_OPTIONS})
+    target_link_options(${name}.prg PRIVATE ${USER_LINK_OPTIONS})
+    target_include_directories(${name}.prg PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}
             ${CMAKE_CURRENT_SOURCE_DIR}/libc/include
             ${CMAKE_CURRENT_SOURCE_DIR}/libc/include/c++
     )
-    target_link_libraries(${name}.elf PRIVATE viperlibc)
+    target_link_libraries(${name}.prg PRIVATE viperlibc)
 endfunction()
 
-# vinit - init process (multi-file)
-add_user_program(vinit
+# Helper function to create system binaries (.sys extension)
+function(add_system_binary name)
+    add_executable(${name}.sys ${ARGN})
+    target_compile_options(${name}.sys PRIVATE ${USER_COMPILE_OPTIONS})
+    target_link_options(${name}.sys PRIVATE ${USER_LINK_OPTIONS})
+    target_include_directories(${name}.sys PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}
+            ${CMAKE_CURRENT_SOURCE_DIR}/libc/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/libc/include/c++
+    )
+    target_link_libraries(${name}.sys PRIVATE viperlibc)
+endfunction()
+
+# vinit - init process (multi-file) - system binary
+add_system_binary(vinit
         vinit/vinit.cpp
         vinit/io.cpp
         vinit/readline.cpp
@@ -67,7 +80,8 @@ add_user_program(vinit
         vinit/cmd_misc.cpp
         vinit/shell.cpp
 )
-target_link_libraries(vinit.elf PRIVATE viperfsclient)
+# Note: viperlibc must come last to resolve symbols from other libs (e.g., vipertls uses gethostbyname)
+target_link_libraries(vinit.sys PRIVATE viperfsclient vipernetclient vipertls viperlibc)
 
 # hello - simple test program for spawn testing
 add_user_program(hello hello/hello.cpp)
@@ -106,28 +120,28 @@ add_user_program(fsd_smoke fstest/fsd_smoke.c)
 add_user_program(netd_smoke fstest/netd_smoke.cpp)
 
 # tls_smoke - validates user-space TLS library
-add_executable(tls_smoke.elf fstest/tls_smoke.c)
-target_compile_options(tls_smoke.elf PRIVATE ${USER_COMPILE_OPTIONS})
-target_link_options(tls_smoke.elf PRIVATE ${USER_LINK_OPTIONS})
-target_include_directories(tls_smoke.elf PRIVATE
+add_executable(tls_smoke.prg fstest/tls_smoke.c)
+target_compile_options(tls_smoke.prg PRIVATE ${USER_COMPILE_OPTIONS})
+target_link_options(tls_smoke.prg PRIVATE ${USER_LINK_OPTIONS})
+target_include_directories(tls_smoke.prg PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/libc/include
         ${CMAKE_CURRENT_SOURCE_DIR}/libtls/include
 )
-target_link_libraries(tls_smoke.elf PRIVATE vipertls viperlibc)
+target_link_libraries(tls_smoke.prg PRIVATE vipertls viperlibc)
 
-# Helper function for SSH-enabled programs
+# Helper function for SSH-enabled programs (.prg extension)
 function(add_ssh_program name)
-    add_executable(${name}.elf ${ARGN})
-    target_compile_options(${name}.elf PRIVATE ${USER_COMPILE_OPTIONS})
-    target_link_options(${name}.elf PRIVATE ${USER_LINK_OPTIONS})
-    target_include_directories(${name}.elf PRIVATE
+    add_executable(${name}.prg ${ARGN})
+    target_compile_options(${name}.prg PRIVATE ${USER_COMPILE_OPTIONS})
+    target_link_options(${name}.prg PRIVATE ${USER_LINK_OPTIONS})
+    target_include_directories(${name}.prg PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}
             ${CMAKE_CURRENT_SOURCE_DIR}/libc/include
             ${CMAKE_CURRENT_SOURCE_DIR}/libc/include/c++
             ${CMAKE_CURRENT_SOURCE_DIR}/libssh/include
     )
-    target_link_libraries(${name}.elf PRIVATE viperssh viperlibc)
+    target_link_libraries(${name}.prg PRIVATE viperssh viperlibc)
 endfunction()
 
 # ssh - SSH client

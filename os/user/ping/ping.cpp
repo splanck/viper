@@ -4,7 +4,9 @@
  *
  * @details
  * This utility sends ICMP echo requests to test network connectivity.
- * It uses the SYS_PING syscall which performs the ICMP operation in the kernel.
+ * DNS resolution uses libc gethostbyname() which routes through netd.
+ * The SYS_PING syscall performs ICMP operations in the kernel (required
+ * for raw socket access).
  *
  * Usage:
  *   ping              - Prompts for IP address
@@ -12,6 +14,8 @@
  */
 
 #include "../syscall.hpp"
+#include <arpa/inet.h>
+#include <netdb.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -48,10 +52,18 @@ static bool parse_ip(const char *str, u32 *ip_out)
     return true;
 }
 
-// DNS resolve wrapper
+// DNS resolve wrapper - uses libc gethostbyname() which routes through netd
 static bool resolve_host(const char *hostname, u32 *ip_out)
 {
-    return sys::dns_resolve(hostname, ip_out) == 0;
+    struct hostent *he = gethostbyname(hostname);
+    if (!he || !he->h_addr_list[0])
+        return false;
+
+    // Convert from network byte order to host byte order for display
+    u32 ip_be;
+    memcpy(&ip_be, he->h_addr_list[0], sizeof(ip_be));
+    *ip_out = ntohl(ip_be);
+    return true;
 }
 
 // Ping syscall wrapper

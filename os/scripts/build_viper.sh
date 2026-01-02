@@ -165,18 +165,18 @@ cmake --build "$BUILD_DIR" --parallel
 print_success "Build complete"
 
 # Check for required files
-if [[ ! -f "$BUILD_DIR/kernel.elf" ]]; then
-    print_error "Kernel not found at $BUILD_DIR/kernel.elf"
+if [[ ! -f "$BUILD_DIR/kernel.sys" ]]; then
+    print_error "Kernel not found at $BUILD_DIR/kernel.sys"
     exit 1
 fi
 
-if [[ ! -f "$BUILD_DIR/vinit.elf" ]]; then
-    print_error "vinit not found at $BUILD_DIR/vinit.elf"
+if [[ ! -f "$BUILD_DIR/vinit.sys" ]]; then
+    print_error "vinit not found at $BUILD_DIR/vinit.sys"
     exit 1
 fi
 
-if [[ ! -f "$BUILD_DIR/hello.elf" ]]; then
-    print_warning "hello.elf not found at $BUILD_DIR/hello.elf (spawn test program)"
+if [[ ! -f "$BUILD_DIR/hello.prg" ]]; then
+    print_warning "hello.prg not found at $BUILD_DIR/hello.prg (spawn test program)"
 fi
 
 # Build tools if needed
@@ -203,10 +203,11 @@ fi
 # Create/update disk image with standard directory structure
 # Layout:
 #   / (root = SYS: = D0:)
-#   ├── vinit.elf           # Init process (loaded by kernel)
+#   ├── vinit.sys           # Init process (loaded by kernel)
 #   ├── c/                   # Commands directory (C:)
-#   │   ├── hello.elf
-#   │   ├── fsinfo.elf
+#   │   ├── hello.prg
+#   │   ├── fsinfo.prg
+#   │   ├── blkd.sys        # System servers
 #   │   └── ...
 #   ├── certs/               # Certificate store
 #   │   └── roots.der
@@ -217,74 +218,74 @@ print_step "Creating disk image..."
 if [[ -x "$TOOLS_DIR/mkfs.viperfs" ]]; then
     MKFS_ARGS=(
         "$BUILD_DIR/disk.img" 8
-        "$BUILD_DIR/vinit.elf"
+        "$BUILD_DIR/vinit.sys"
         --mkdir c
         --mkdir s
         --mkdir l
         --mkdir t
         --mkdir certs
     )
-    # Add command utilities to c/ directory (keep .elf extension)
-    if [[ -f "$BUILD_DIR/hello.elf" ]]; then
-        MKFS_ARGS+=(--add "$BUILD_DIR/hello.elf:c/hello.elf")
+    # Add command utilities to c/ directory (.prg extension for programs)
+    if [[ -f "$BUILD_DIR/hello.prg" ]]; then
+        MKFS_ARGS+=(--add "$BUILD_DIR/hello.prg:c/hello.prg")
     fi
-    if [[ -f "$BUILD_DIR/fsinfo.elf" ]]; then
-        MKFS_ARGS+=(--add "$BUILD_DIR/fsinfo.elf:c/fsinfo.elf")
+    if [[ -f "$BUILD_DIR/fsinfo.prg" ]]; then
+        MKFS_ARGS+=(--add "$BUILD_DIR/fsinfo.prg:c/fsinfo.prg")
     fi
-    if [[ -f "$BUILD_DIR/netstat.elf" ]]; then
-        MKFS_ARGS+=(--add "$BUILD_DIR/netstat.elf:c/netstat.elf")
+    if [[ -f "$BUILD_DIR/netstat.prg" ]]; then
+        MKFS_ARGS+=(--add "$BUILD_DIR/netstat.prg:c/netstat.prg")
     fi
-    if [[ -f "$BUILD_DIR/sysinfo.elf" ]]; then
-        MKFS_ARGS+=(--add "$BUILD_DIR/sysinfo.elf:c/sysinfo.elf")
+    if [[ -f "$BUILD_DIR/sysinfo.prg" ]]; then
+        MKFS_ARGS+=(--add "$BUILD_DIR/sysinfo.prg:c/sysinfo.prg")
     fi
-    if [[ -f "$BUILD_DIR/faulttest_null.elf" ]]; then
-        MKFS_ARGS+=(--add "$BUILD_DIR/faulttest_null.elf:c/faulttest_null.elf")
+    if [[ -f "$BUILD_DIR/faulttest_null.prg" ]]; then
+        MKFS_ARGS+=(--add "$BUILD_DIR/faulttest_null.prg:c/faulttest_null.prg")
     fi
-    if [[ -f "$BUILD_DIR/faulttest_illegal.elf" ]]; then
-        MKFS_ARGS+=(--add "$BUILD_DIR/faulttest_illegal.elf:c/faulttest_illegal.elf")
+    if [[ -f "$BUILD_DIR/faulttest_illegal.prg" ]]; then
+        MKFS_ARGS+=(--add "$BUILD_DIR/faulttest_illegal.prg:c/faulttest_illegal.prg")
     fi
-    if [[ -f "$BUILD_DIR/mathtest.elf" ]]; then
-        MKFS_ARGS+=(--add "$BUILD_DIR/mathtest.elf:c/mathtest.elf")
+    if [[ -f "$BUILD_DIR/mathtest.prg" ]]; then
+        MKFS_ARGS+=(--add "$BUILD_DIR/mathtest.prg:c/mathtest.prg")
     fi
-    if [[ -f "$BUILD_DIR/ping.elf" ]]; then
-        MKFS_ARGS+=(--add "$BUILD_DIR/ping.elf:c/ping.elf")
+    if [[ -f "$BUILD_DIR/ping.prg" ]]; then
+        MKFS_ARGS+=(--add "$BUILD_DIR/ping.prg:c/ping.prg")
     fi
-    if [[ -f "$BUILD_DIR/devices.elf" ]]; then
-        MKFS_ARGS+=(--add "$BUILD_DIR/devices.elf:c/devices.elf")
+    if [[ -f "$BUILD_DIR/devices.prg" ]]; then
+        MKFS_ARGS+=(--add "$BUILD_DIR/devices.prg:c/devices.prg")
     fi
-    if [[ -f "$BUILD_DIR/edit.elf" ]]; then
-        MKFS_ARGS+=(--add "$BUILD_DIR/edit.elf:c/edit.elf")
+    if [[ -f "$BUILD_DIR/edit.prg" ]]; then
+        MKFS_ARGS+=(--add "$BUILD_DIR/edit.prg:c/edit.prg")
     fi
-    if [[ -f "$BUILD_DIR/fsd_smoke.elf" ]]; then
-        MKFS_ARGS+=(--add "$BUILD_DIR/fsd_smoke.elf:c/fsd_smoke.elf")
+    if [[ -f "$BUILD_DIR/fsd_smoke.prg" ]]; then
+        MKFS_ARGS+=(--add "$BUILD_DIR/fsd_smoke.prg:c/fsd_smoke.prg")
     fi
-    if [[ -f "$BUILD_DIR/netd_smoke.elf" ]]; then
-        MKFS_ARGS+=(--add "$BUILD_DIR/netd_smoke.elf:c/netd_smoke.elf")
+    if [[ -f "$BUILD_DIR/netd_smoke.prg" ]]; then
+        MKFS_ARGS+=(--add "$BUILD_DIR/netd_smoke.prg:c/netd_smoke.prg")
     fi
-    if [[ -f "$BUILD_DIR/tls_smoke.elf" ]]; then
-        MKFS_ARGS+=(--add "$BUILD_DIR/tls_smoke.elf:c/tls_smoke.elf")
+    if [[ -f "$BUILD_DIR/tls_smoke.prg" ]]; then
+        MKFS_ARGS+=(--add "$BUILD_DIR/tls_smoke.prg:c/tls_smoke.prg")
     fi
-    if [[ -f "$BUILD_DIR/ssh.elf" ]]; then
-        MKFS_ARGS+=(--add "$BUILD_DIR/ssh.elf:c/ssh.elf")
+    if [[ -f "$BUILD_DIR/ssh.prg" ]]; then
+        MKFS_ARGS+=(--add "$BUILD_DIR/ssh.prg:c/ssh.prg")
     fi
-    if [[ -f "$BUILD_DIR/sftp.elf" ]]; then
-        MKFS_ARGS+=(--add "$BUILD_DIR/sftp.elf:c/sftp.elf")
+    if [[ -f "$BUILD_DIR/sftp.prg" ]]; then
+        MKFS_ARGS+=(--add "$BUILD_DIR/sftp.prg:c/sftp.prg")
     fi
-    # Add microkernel server ELFs to c/
-    if [[ -f "$BUILD_DIR/blkd.elf" ]]; then
-        MKFS_ARGS+=(--add "$BUILD_DIR/blkd.elf:c/blkd.elf")
+    # Add microkernel server binaries to c/ (.sys extension for system servers)
+    if [[ -f "$BUILD_DIR/blkd.sys" ]]; then
+        MKFS_ARGS+=(--add "$BUILD_DIR/blkd.sys:c/blkd.sys")
     fi
-    if [[ -f "$BUILD_DIR/netd.elf" ]]; then
-        MKFS_ARGS+=(--add "$BUILD_DIR/netd.elf:c/netd.elf")
+    if [[ -f "$BUILD_DIR/netd.sys" ]]; then
+        MKFS_ARGS+=(--add "$BUILD_DIR/netd.sys:c/netd.sys")
     fi
-    if [[ -f "$BUILD_DIR/fsd.elf" ]]; then
-        MKFS_ARGS+=(--add "$BUILD_DIR/fsd.elf:c/fsd.elf")
+    if [[ -f "$BUILD_DIR/fsd.sys" ]]; then
+        MKFS_ARGS+=(--add "$BUILD_DIR/fsd.sys:c/fsd.sys")
     fi
-    if [[ -f "$BUILD_DIR/inputd.elf" ]]; then
-        MKFS_ARGS+=(--add "$BUILD_DIR/inputd.elf:c/inputd.elf")
+    if [[ -f "$BUILD_DIR/inputd.sys" ]]; then
+        MKFS_ARGS+=(--add "$BUILD_DIR/inputd.sys:c/inputd.sys")
     fi
-    if [[ -f "$BUILD_DIR/consoled.elf" ]]; then
-        MKFS_ARGS+=(--add "$BUILD_DIR/consoled.elf:c/consoled.elf")
+    if [[ -f "$BUILD_DIR/consoled.sys" ]]; then
+        MKFS_ARGS+=(--add "$BUILD_DIR/consoled.sys:c/consoled.sys")
     fi
     # Add roots.der to certs directory
     if [[ -f "$BUILD_DIR/roots.der" ]]; then
@@ -295,7 +296,7 @@ if [[ -x "$TOOLS_DIR/mkfs.viperfs" ]]; then
 
     # Create a dedicated disk image for user-space microkernel servers (blkd/fsd)
     # so they don't contend with the kernel's virtio-blk device.
-    if [[ -f "$BUILD_DIR/blkd.elf" || -f "$BUILD_DIR/fsd.elf" ]]; then
+    if [[ -f "$BUILD_DIR/blkd.sys" || -f "$BUILD_DIR/fsd.sys" ]]; then
         cp -f "$BUILD_DIR/disk.img" "$BUILD_DIR/microkernel.img"
         print_success "Microkernel disk image created"
     fi
@@ -328,7 +329,7 @@ QEMU_OPTS=(
     -machine virt
     -cpu cortex-a72
     -m "$MEMORY"
-    -kernel "$BUILD_DIR/kernel.elf"
+    -kernel "$BUILD_DIR/kernel.sys"
 )
 
 # Disk options (use legacy virtio for compatibility)
@@ -362,7 +363,7 @@ if [[ "$NETWORK" == true ]]; then
     echo "  Network: virtio-net (10.0.2.15)"
 
     # Dedicated microkernel NIC (for user-space netd)
-    if [[ -f "$BUILD_DIR/netd.elf" ]]; then
+    if [[ -f "$BUILD_DIR/netd.sys" ]]; then
         QEMU_OPTS+=(
             -netdev user,id=net1
             -device virtio-net-device,netdev=net1
@@ -394,7 +395,7 @@ if [[ "$DEBUG" == true ]]; then
     QEMU_OPTS+=(-s -S)
     echo "  Debug: Waiting for GDB on localhost:1234"
     echo ""
-    echo "  Connect with: gdb-multiarch $BUILD_DIR/kernel.elf -ex 'target remote :1234'"
+    echo "  Connect with: gdb-multiarch $BUILD_DIR/kernel.sys -ex 'target remote :1234'"
 fi
 
 QEMU_OPTS+=(-no-reboot)

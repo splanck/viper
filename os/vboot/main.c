@@ -5,7 +5,7 @@
  * @details
  * This bootloader implements the complete UEFI boot sequence:
  * 1. Locate the ESP filesystem
- * 2. Load kernel.elf from the ESP
+ * 2. Load kernel.sys from the ESP
  * 3. Parse ELF headers and allocate pages for segments
  * 4. Gather UEFI memory map
  * 5. Locate GOP framebuffer
@@ -250,7 +250,7 @@ static void memcpy8(void *dst, const void *src, UINTN size)
  * @brief Open the EFI System Partition (ESP) volume root.
  *
  * @details
- * The bootloader needs a filesystem handle to load `kernel.elf`. In a full UEFI
+ * The bootloader needs a filesystem handle to load `kernel.sys`. In a full UEFI
  * implementation, the typical flow is:
  * - Obtain the Loaded Image Protocol for this image to get its `DeviceHandle`.
  * - Use that device handle to open the Simple File System Protocol.
@@ -314,7 +314,7 @@ static EFI_STATUS open_volume(EFI_FILE_PROTOCOL **root)
  *   and allocate exactly the required size (or reallocate while reading).
  *
  * @param root Root directory handle.
- * @param path UTF-16 path relative to the root (e.g., `L\"\\\\viperos\\\\kernel.elf\"`).
+ * @param path UTF-16 path relative to the root (e.g., `L\"\\\\viperos\\\\kernel.sys\"`).
  * @param buffer Output pointer receiving the allocated buffer on success.
  * @param size Output pointer receiving the number of bytes read.
  * @return `EFI_SUCCESS` on success, or an error `EFI_STATUS` on failure.
@@ -797,17 +797,17 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
     println(L"[*] Loading kernel...");
     void *kernel_data;
     UINTN kernel_size;
-    status = load_file(root, L"\\viperos\\kernel.elf", &kernel_data, &kernel_size);
+    status = load_file(root, L"\\viperos\\kernel.sys", &kernel_data, &kernel_size);
     if (EFI_ERROR(status))
     {
         // Try alternate paths
-        status = load_file(root, L"\\EFI\\BOOT\\kernel.elf", &kernel_data, &kernel_size);
+        status = load_file(root, L"\\EFI\\BOOT\\kernel.sys", &kernel_data, &kernel_size);
         if (EFI_ERROR(status))
         {
-            status = load_file(root, L"\\kernel.elf", &kernel_data, &kernel_size);
+            status = load_file(root, L"\\kernel.sys", &kernel_data, &kernel_size);
             if (EFI_ERROR(status))
             {
-                println(L"[!] Failed to load kernel.elf");
+                println(L"[!] Failed to load kernel.sys");
                 goto halt;
             }
         }

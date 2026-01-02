@@ -126,13 +126,13 @@ void run_userfault_tests()
     userfault_tests_failed = 0;
 
     // Test 1: Null pointer dereference
-    run_fault_test("/faulttest_null.elf", "null_deref");
+    run_fault_test("/faulttest_null.prg", "null_deref");
 
     // Verify kernel is still alive
     serial::puts("[userfault_test] Kernel still alive after null deref test\n");
 
     // Test 2: Illegal instruction
-    run_fault_test("/faulttest_illegal.elf", "illegal_insn");
+    run_fault_test("/faulttest_illegal.prg", "illegal_insn");
 
     // Verify kernel is still alive
     serial::puts("[userfault_test] Kernel still alive after illegal insn test\n");

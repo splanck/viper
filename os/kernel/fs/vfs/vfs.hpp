@@ -307,6 +307,20 @@ i32 stat(const char *path, Stat *st);
  * @return 0 on success, or -1 on error.
  */
 i32 fstat(i32 fd, Stat *st);
+
+/**
+ * @brief Sync file data and metadata to storage.
+ *
+ * @details
+ * Forces all dirty data and metadata associated with the file to be written
+ * to the underlying storage. This ensures file changes are persisted even
+ * if the system crashes.
+ *
+ * @param fd File descriptor index.
+ * @return 0 on success, or -1 on error.
+ */
+i32 fsync(i32 fd);
+
 /**
  * @brief Read directory entries into a caller buffer.
  *
