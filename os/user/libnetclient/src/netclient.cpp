@@ -503,6 +503,7 @@ i32 Client::dns_resolve(const char *hostname, u32 *out_ip_be)
     i32 reply_recv = static_cast<i32>(ch.val1);
 
     u32 send_handles[1] = {static_cast<u32>(reply_send)};
+
     i64 send_err = sys::channel_send(channel_, &req, sizeof(req), send_handles, 1);
     if (send_err != 0)
     {

@@ -8,23 +8,9 @@
   "configurePresets": [
     {
       "name": "default",
-      "displayName": "Default (Hybrid Mode)",
-      "description": "Standard build with all kernel services enabled",
+      "displayName": "Default (Microkernel Mode)",
+      "description": "Microkernel build - kernel net/tls disabled, user-space servers required",
       "binaryDir": "${sourceDir}/build",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release",
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
-        "VIPER_MICROKERNEL_MODE": "OFF",
-        "VIPER_KERNEL_ENABLE_FS": "ON",
-        "VIPER_KERNEL_ENABLE_NET": "ON",
-        "VIPER_KERNEL_ENABLE_TLS": "ON"
-      }
-    },
-    {
-      "name": "microkernel",
-      "displayName": "Microkernel Mode",
-      "description": "Microkernel build - kernel services disabled, user-space servers required",
-      "binaryDir": "${sourceDir}/build-microkernel",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
@@ -32,6 +18,20 @@
         "VIPER_KERNEL_ENABLE_FS": "ON",
         "VIPER_KERNEL_ENABLE_NET": "OFF",
         "VIPER_KERNEL_ENABLE_TLS": "OFF"
+      }
+    },
+    {
+      "name": "hybrid",
+      "displayName": "Hybrid Mode (Legacy)",
+      "description": "Hybrid build with all kernel services enabled for compatibility",
+      "binaryDir": "${sourceDir}/build-hybrid",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "VIPER_MICROKERNEL_MODE": "OFF",
+        "VIPER_KERNEL_ENABLE_FS": "ON",
+        "VIPER_KERNEL_ENABLE_NET": "ON",
+        "VIPER_KERNEL_ENABLE_TLS": "ON"
       }
     },
     {
@@ -57,8 +57,8 @@
       "configurePreset": "default"
     },
     {
-      "name": "microkernel",
-      "configurePreset": "microkernel"
+      "name": "hybrid",
+      "configurePreset": "hybrid"
     },
     {
       "name": "debug",
@@ -74,8 +74,8 @@
       }
     },
     {
-      "name": "microkernel",
-      "configurePreset": "microkernel",
+      "name": "hybrid",
+      "configurePreset": "hybrid",
       "output": {
         "outputOnFailure": true
       }

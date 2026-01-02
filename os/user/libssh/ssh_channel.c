@@ -264,6 +264,12 @@ static int ssh_channel_wait_open(ssh_channel_t *channel)
     while (channel->state == SSH_CHANSTATE_OPENING)
     {
         rc = ssh_packet_recv(session, &msg_type, payload, &payload_len);
+        if (rc == SSH_AGAIN)
+        {
+            extern long __syscall1(long, long);
+            __syscall1(0x31 /* SYS_YIELD */, 0);
+            continue;
+        }
         if (rc < 0)
             return rc;
 
@@ -360,6 +366,12 @@ static int ssh_channel_request(ssh_channel_t *channel,
         while (1)
         {
             rc = ssh_packet_recv(channel->session, &msg_type, response, &response_len);
+            if (rc == SSH_AGAIN)
+            {
+                extern long __syscall1(long, long);
+                __syscall1(0x31 /* SYS_YIELD */, 0);
+                continue;
+            }
             if (rc < 0)
                 return rc;
 
@@ -471,6 +483,12 @@ ssize_t ssh_channel_write(ssh_channel_t *channel, const void *data, size_t len)
             uint8_t msg_type;
 
             int rc = ssh_packet_recv(channel->session, &msg_type, payload, &payload_len);
+            if (rc == SSH_AGAIN)
+            {
+                extern long __syscall1(long, long);
+                __syscall1(0x31 /* SYS_YIELD */, 0);
+                continue;
+            }
             if (rc < 0)
                 return rc;
 
@@ -565,6 +583,8 @@ ssize_t ssh_channel_read(ssh_channel_t *channel, void *buffer, size_t len, int *
     uint8_t msg_type;
 
     int rc = ssh_packet_recv(channel->session, &msg_type, payload, &payload_len);
+    if (rc == SSH_AGAIN)
+        return SSH_AGAIN;  /* No data yet */
     if (rc < 0)
         return rc;
 
@@ -695,6 +715,8 @@ int ssh_channel_poll(ssh_channel_t *channel, int timeout_ms)
     uint8_t msg_type;
 
     rc = ssh_packet_recv(channel->session, &msg_type, payload, &payload_len);
+    if (rc == SSH_AGAIN)
+        return 0;  /* No data yet, try again later */
     if (rc < 0)
         return rc;
 

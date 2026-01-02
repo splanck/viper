@@ -4,7 +4,6 @@
 #include "../../include/config.hpp"
 #include "../../input/input.hpp"
 #include "../../ipc/poll.hpp"
-#include "../../net/network.hpp"
 #include "../../sched/scheduler.hpp"
 #include "gic.hpp"
 

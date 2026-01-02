@@ -131,7 +131,7 @@ inline u32 ntohl(u32 x)
     return htonl(x);
 }
 
-// Internet checksum
+// Internet checksum (RFC 1071)
 inline u16 checksum(const void *data, usize len)
 {
     const u16 *ptr = static_cast<const u16 *>(data);

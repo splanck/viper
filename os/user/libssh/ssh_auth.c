@@ -63,9 +63,19 @@ int ssh_auth_none(ssh_session_t *session)
     size_t response_len;
     uint8_t msg_type;
 
-    rc = ssh_packet_recv(session, &msg_type, response, &response_len);
-    if (rc < 0)
-        return rc;
+    while (1)
+    {
+        rc = ssh_packet_recv(session, &msg_type, response, &response_len);
+        if (rc == SSH_AGAIN)
+        {
+            extern long __syscall1(long, long);
+            __syscall1(0x31 /* SYS_YIELD */, 0);
+            continue;
+        }
+        if (rc < 0)
+            return rc;
+        break;
+    }
 
     if (msg_type == SSH_MSG_USERAUTH_SUCCESS)
     {
@@ -80,6 +90,12 @@ int ssh_auth_password(ssh_session_t *session, const char *password)
 {
     if (!session || !session->username || !password)
         return SSH_ERROR;
+
+    if (session->verbose >= 1)
+    {
+        printf("[ssh] Password auth: user='%s' pass_len=%zu\n",
+               session->username, strlen(password));
+    }
 
     uint8_t payload[1024];
     size_t pos = 0;
@@ -125,6 +141,13 @@ int ssh_auth_password(ssh_session_t *session, const char *password)
     while (1)
     {
         rc = ssh_packet_recv(session, &msg_type, response, &response_len);
+        if (rc == SSH_AGAIN)
+        {
+            /* No data yet, yield and retry */
+            extern long __syscall1(long, long);
+            __syscall1(0x31 /* SYS_YIELD */, 0);
+            continue;
+        }
         if (rc < 0)
             return rc;
 
@@ -136,6 +159,19 @@ int ssh_auth_password(ssh_session_t *session, const char *password)
 
         if (msg_type == SSH_MSG_USERAUTH_FAILURE)
         {
+            /* Parse failure message to show available methods */
+            if (response_len >= 4 && session->verbose >= 1)
+            {
+                uint32_t methods_len = ssh_buf_read_u32(response);
+                if (methods_len < response_len)
+                {
+                    char methods[256];
+                    size_t copy_len = methods_len < 255 ? methods_len : 255;
+                    memcpy(methods, response + 4, copy_len);
+                    methods[copy_len] = '\0';
+                    printf("[ssh] Server auth methods: %s\n", methods);
+                }
+            }
             return SSH_AUTH_DENIED;
         }
 
@@ -220,9 +256,19 @@ int ssh_auth_try_publickey(ssh_session_t *session, ssh_key_t *key)
     size_t response_len;
     uint8_t msg_type;
 
-    rc = ssh_packet_recv(session, &msg_type, response, &response_len);
-    if (rc < 0)
-        return rc;
+    while (1)
+    {
+        rc = ssh_packet_recv(session, &msg_type, response, &response_len);
+        if (rc == SSH_AGAIN)
+        {
+            extern long __syscall1(long, long);
+            __syscall1(0x31 /* SYS_YIELD */, 0);
+            continue;
+        }
+        if (rc < 0)
+            return rc;
+        break;
+    }
 
     if (msg_type == SSH_MSG_USERAUTH_PK_OK)
     {
@@ -371,6 +417,12 @@ int ssh_auth_publickey(ssh_session_t *session, ssh_key_t *key)
     while (1)
     {
         rc = ssh_packet_recv(session, &msg_type, response, &response_len);
+        if (rc == SSH_AGAIN)
+        {
+            extern long __syscall1(long, long);
+            __syscall1(0x31 /* SYS_YIELD */, 0);
+            continue;
+        }
         if (rc < 0)
             return rc;
 

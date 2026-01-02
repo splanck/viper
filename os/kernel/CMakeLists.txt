@@ -8,10 +8,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Build-time feature toggles (microkernel migration safety)
 # -----------------------------------------------------------------------------
 
-option(VIPER_MICROKERNEL_MODE "Identify build as microkernel mode (bring-up)" OFF)
+option(VIPER_MICROKERNEL_MODE "Identify build as microkernel mode" ON)
 option(VIPER_KERNEL_ENABLE_FS "Enable in-kernel filesystem (VFS + ViperFS)" ON)
-option(VIPER_KERNEL_ENABLE_NET "Enable in-kernel TCP/IP stack + socket/DNS syscalls" ON)
-option(VIPER_KERNEL_ENABLE_TLS "Enable kernel-managed TLS sessions (SYS_TLS_*)" ON)
+option(VIPER_KERNEL_ENABLE_NET "Enable in-kernel TCP/IP stack + socket/DNS syscalls" OFF)
+option(VIPER_KERNEL_ENABLE_TLS "Enable kernel-managed TLS sessions (SYS_TLS_*)" OFF)
 option(VIPER_KERNEL_DEBUG_NET_SYSCALL "Enable verbose socket/DNS syscall logging" OFF)
 option(VIPER_KERNEL_DEBUG_TCP "Enable verbose TCP stack logging" OFF)
 option(VIPER_KERNEL_DEBUG_VIRTIO_NET_IRQ "Enable verbose virtio-net IRQ logging" OFF)
@@ -69,21 +69,8 @@ set(KERNEL_SOURCES
         drivers/virtio/blk.cpp
         drivers/virtio/gpu.cpp
         drivers/virtio/input.cpp
-        drivers/virtio/net.cpp
         drivers/virtio/rng.cpp
         input/input.cpp
-        net/network.cpp
-        net/netif.cpp
-        net/eth/ethernet.cpp
-        net/eth/arp.cpp
-        net/ip/ipv4.cpp
-        net/ip/ipv6.cpp
-        net/ip/icmp.cpp
-        net/ip/icmpv6.cpp
-        net/ip/udp.cpp
-        net/ip/tcp.cpp
-        net/dns/dns.cpp
-        net/http/http.cpp
         fs/cache.cpp
         fs/viperfs/viperfs.cpp
         fs/viperfs/journal.cpp
@@ -96,25 +83,6 @@ set(KERNEL_SOURCES
         tests/viper_tests.cpp
         tests/syscall_tests.cpp
         tests/userfault_tests.cpp
-        # TLS/Crypto (v0.2.0)
-        net/tls/tls.cpp
-        net/tls/record.cpp
-        net/tls/asn1/asn1.cpp
-        net/tls/cert/ca_store.cpp
-        net/tls/cert/verify.cpp
-        net/tls/cert/x509.cpp
-        net/tls/crypto/aes_gcm.cpp
-        net/tls/crypto/chacha20.cpp
-        net/tls/crypto/hkdf.cpp
-        net/tls/crypto/random.cpp
-        net/tls/crypto/sha256.cpp
-        net/tls/crypto/sha384.cpp
-        net/tls/crypto/x25519.cpp
-        # SSH Crypto additions
-        net/tls/crypto/sha1.cpp
-        net/tls/crypto/aes_ctr.cpp
-        net/tls/crypto/ed25519.cpp
-        net/tls/crypto/rsa.cpp
 )
 
 # Create kernel executable

@@ -411,6 +411,7 @@ void NetworkStack::handle_tcp(const Ipv4Header *ip, const u8 *data, usize len)
     // Find existing connection
     TcpConnection *conn = find_tcp_conn(ip->src, src_port, dst_port);
 
+
     if (conn)
     {
         // Handle based on state
@@ -429,6 +430,12 @@ void NetworkStack::handle_tcp(const Ipv4Header *ip, const u8 *data, usize len)
                 break;
 
             case TcpState::ESTABLISHED:
+                // Always process ACK if present
+                if (flags & TCP_ACK)
+                {
+                    conn->snd_una = ack;
+                }
+
                 if (flags & TCP_FIN)
                 {
                     conn->rcv_nxt = seq + 1;
@@ -440,6 +447,7 @@ void NetworkStack::handle_tcp(const Ipv4Header *ip, const u8 *data, usize len)
                     // Receive data
                     if (seq == conn->rcv_nxt)
                     {
+                        // In-order data - buffer it
                         usize space =
                             TcpConnection::RX_BUF_SIZE -
                             ((conn->rx_tail - conn->rx_head + TcpConnection::RX_BUF_SIZE) %
@@ -453,12 +461,10 @@ void NetworkStack::handle_tcp(const Ipv4Header *ip, const u8 *data, usize len)
                             }
                             conn->rcv_nxt += static_cast<u32>(payload_len);
                         }
-                        send_tcp_segment(conn, TCP_ACK, nullptr, 0);
                     }
-                }
-                else if (flags & TCP_ACK)
-                {
-                    conn->snd_una = ack;
+                    // Always ACK data packets (even retransmissions)
+                    // so the sender knows what we've received
+                    send_tcp_segment(conn, TCP_ACK, nullptr, 0);
                 }
                 break;
 
@@ -553,13 +559,37 @@ bool NetworkStack::send_ip_packet(const Ipv4Addr &dst, u8 protocol, const void *
 
     if (dst_mac == MacAddr::zero())
     {
-        // Need ARP resolution
+        sys::print("[netd] ARP lookup failed, sending request\n");
+        // Need ARP resolution - send request and wait for reply
         arp_.send_request(next_hop);
-        // In a real implementation, would queue and retry
-        return false;
+
+        // Poll for ARP response (up to 50 iterations)
+        for (int i = 0; i < 50; i++)
+        {
+            poll();
+            dst_mac = arp_.lookup(next_hop);
+            if (dst_mac != MacAddr::zero())
+            {
+                sys::print("[netd] ARP resolved\n");
+                break;
+            }
+            sys::yield();
+        }
+
+        // If still no MAC, give up
+        if (dst_mac == MacAddr::zero())
+        {
+            sys::print("[netd] ARP failed after 50 polls\n");
+            return false;
+        }
     }
 
-    return send_frame(dst_mac, ETH_TYPE_IPV4, packet, sizeof(Ipv4Header) + len);
+    bool ok = send_frame(dst_mac, ETH_TYPE_IPV4, packet, sizeof(Ipv4Header) + len);
+    if (!ok)
+    {
+        sys::print("[netd] send_frame failed\n");
+    }
+    return ok;
 }
 
 bool NetworkStack::send_tcp_segment(TcpConnection *conn, u8 flags, const void *data, usize len)
@@ -689,6 +719,10 @@ i32 NetworkStack::socket_create(u16 type)
                 tcp_conns_[i].local_port = 0;
                 tcp_conns_[i].remote_ip = Ipv4Addr::zero();
                 tcp_conns_[i].remote_port = 0;
+                tcp_conns_[i].snd_una = 0;
+                tcp_conns_[i].snd_nxt = 0;
+                tcp_conns_[i].rcv_nxt = 0;
+                tcp_conns_[i].rcv_wnd = 8192;  // Advertised receive window
                 tcp_conns_[i].rx_head = 0;
                 tcp_conns_[i].rx_tail = 0;
                 tcp_conns_[i].tx_head = 0;
@@ -741,7 +775,7 @@ i32 NetworkStack::socket_connect(u32 sock_id, const Ipv4Addr &ip, u16 port)
 
     // Poll for SYN-ACK, retrying SYN if it wasn't sent (ARP resolution needed)
     int syn_retries = 0;
-    for (int i = 0; i < 200; i++)
+    for (int i = 0; i < 2000; i++)
     {
         poll();
         if (conn->state == TcpState::ESTABLISHED)
@@ -1118,10 +1152,41 @@ i32 NetworkStack::dns_resolve(const char *hostname, Ipv4Addr *out)
     dns_pending_ = true;
     dns_result_ = Ipv4Addr::zero();
 
-    send_udp_datagram(netif_.dns(), alloc_port(), 53, query, pos);
+    u16 src_port = alloc_port();
 
-    // Wait for response
-    for (int i = 0; i < 100; i++)
+    sys::print("[netd] DNS query to 10.0.2.3\n");
+
+    // Try to send the DNS query, retrying if ARP fails
+    bool sent = false;
+    for (int attempt = 0; attempt < 5 && !sent; attempt++)
+    {
+        sys::print("[netd] DNS send attempt\n");
+        sent = send_udp_datagram(netif_.dns(), src_port, 53, query, pos);
+        if (!sent)
+        {
+            sys::print("[netd] DNS send failed, polling ARP\n");
+            // ARP probably failed - poll and retry
+            for (int j = 0; j < 20; j++)
+            {
+                poll();
+                sys::yield();
+            }
+        }
+        else
+        {
+            sys::print("[netd] DNS packet sent OK\n");
+        }
+    }
+
+    if (!sent)
+    {
+        sys::print("[netd] DNS send failed after retries\n");
+        dns_pending_ = false;
+        return VERR_TIMEOUT;
+    }
+
+    // Wait for response (increased timeout - 5000 iterations)
+    for (int i = 0; i < 5000; i++)
     {
         poll();
         if (!dns_pending_)

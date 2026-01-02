@@ -316,15 +316,6 @@ if(VIPEROS_HAS_QEMU)
     # )
     # set_tests_properties(qemu_userfault_tests PROPERTIES LABELS "qemu;kernel;userfault")
 
-	    # --- Network initialization test ---
-	    add_qemu_test(network_init
-	        --disk
-	        --timeout 45
-	        --expect "Network stack initialized"
-	        --expect "virtio-net.*initialized"
-	    )
-	    set_tests_properties(qemu_network_init PROPERTIES LABELS "qemu;kernel;network")
-
 	    # --- User space test (vinit starts) ---
 	    add_qemu_test(userspace_init
 	        --disk
@@ -334,18 +325,7 @@ if(VIPEROS_HAS_QEMU)
 	    )
 	    set_tests_properties(qemu_userspace_init PROPERTIES LABELS "qemu;kernel;userspace")
 
-	    # --- Microkernel servers: fallback path (no dedicated devices) ---
-	    # When the server ELFs exist but no dedicated VirtIO devices are present,
-	    # vinit should attempt startup and then fall back to kernel services.
-	    add_qemu_test(microkernel_servers_fallback
-	        --disk
-	        --timeout 120
-	        --expect "\\[vinit\\] Starting microkernel servers"
-	        --expect "\\[vinit\\] Servers unavailable, using kernel services"
-	    )
-	    set_tests_properties(qemu_microkernel_servers_fallback PROPERTIES LABELS "qemu;userspace;microkernel")
-
-	    # --- Microkernel servers: positive bring-up path (dedicated devices) ---
+	    # --- Microkernel servers: bring-up path (dedicated devices required) ---
 	    add_qemu_test(microkernel_servers_ready
 	        --disk
 	        --microkernel-devices

@@ -309,6 +309,11 @@ int main(int argc, char *argv[])
         }
         printf("\n");
 
+        if (verbose)
+        {
+            printf("[ssh] Read password: len=%zu\n", strlen(password));
+        }
+
         rc = ssh_auth_password(session, password);
         if (rc == SSH_OK)
         {

@@ -516,6 +516,13 @@ int ssh_packet_wait(ssh_session_t *session,
     while (1)
     {
         rc = ssh_packet_recv(session, &msg_type, payload, payload_len);
+        if (rc == SSH_AGAIN)
+        {
+            /* No data yet, yield and retry */
+            extern long __syscall1(long, long);
+            __syscall1(0x31 /* SYS_YIELD */, 0);
+            continue;
+        }
         if (rc < 0)
             return rc;
 
@@ -571,6 +578,13 @@ static int ssh_version_exchange(ssh_session_t *session)
     {
         char c;
         rc = ssh_socket_recv(session, &c, 1);
+        if (rc == SSH_AGAIN)
+        {
+            /* No data yet, yield and retry */
+            extern long __syscall1(long, long);
+            __syscall1(0x31 /* SYS_YIELD */, 0);
+            continue;
+        }
         if (rc < 0)
             return rc;
 

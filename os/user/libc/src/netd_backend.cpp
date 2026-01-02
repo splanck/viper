@@ -1,25 +1,15 @@
 // libc ↔ netd bridge (Phase 5): route libc sockets/DNS to netd when present.
 
 #include "netclient.hpp"
+#include "syscall.hpp"
 
-namespace
-{
-
-static netclient::Client &netd()
-{
-    static netclient::Client client;
-    return client;
-}
-
-} // namespace
+// Global client instance - avoid static initialization issues
+static netclient::Client g_netd_client;
 
 extern "C" int __viper_netd_is_available()
 {
-    if (netd().connect() != 0)
-    {
-        return 0;
-    }
-    if (netd().ensure_events() != 0)
+    i32 rc = g_netd_client.connect();
+    if (rc != 0)
     {
         return 0;
     }
@@ -28,11 +18,11 @@ extern "C" int __viper_netd_is_available()
 
 extern "C" unsigned int __viper_netd_poll_handle()
 {
-    if (netd().ensure_events() != 0)
+    if (g_netd_client.ensure_events() != 0)
     {
         return 0xFFFFFFFFu;
     }
-    i32 ch = netd().event_channel_recv();
+    i32 ch = g_netd_client.event_channel_recv();
     if (ch < 0)
     {
         return 0xFFFFFFFFu;
@@ -43,7 +33,7 @@ extern "C" unsigned int __viper_netd_poll_handle()
 extern "C" int __viper_netd_socket_create(int domain, int type, int protocol, int *out_socket_id)
 {
     u32 id = 0;
-    i32 rc = netd().socket_create(static_cast<u16>(domain), static_cast<u16>(type), (u32)protocol, &id);
+    i32 rc = g_netd_client.socket_create(static_cast<u16>(domain), static_cast<u16>(type), (u32)protocol, &id);
     if (rc != 0)
     {
         return rc;
@@ -57,7 +47,7 @@ extern "C" int __viper_netd_socket_create(int domain, int type, int protocol, in
 
 extern "C" int __viper_netd_socket_connect(int socket_id, unsigned int ip_be, unsigned short port_be)
 {
-    return netd().socket_connect(static_cast<u32>(socket_id), ip_be, port_be);
+    return g_netd_client.socket_connect(static_cast<u32>(socket_id), ip_be, port_be);
 }
 
 extern "C" long __viper_netd_socket_send(int socket_id, const void *buf, unsigned long len)
@@ -70,7 +60,7 @@ extern "C" long __viper_netd_socket_send(int socket_id, const void *buf, unsigne
     {
         len = 0xFFFFFFFFul;
     }
-    return static_cast<long>(netd().socket_send(static_cast<u32>(socket_id), buf, static_cast<u32>(len)));
+    return static_cast<long>(g_netd_client.socket_send(static_cast<u32>(socket_id), buf, static_cast<u32>(len)));
 }
 
 extern "C" long __viper_netd_socket_recv(int socket_id, void *buf, unsigned long len)
@@ -86,19 +76,19 @@ extern "C" long __viper_netd_socket_recv(int socket_id, void *buf, unsigned long
 
     // Non-blocking semantics: return immediately with available data or WOULD_BLOCK.
     // This allows callers to properly poll() for both network and console input.
-    return static_cast<long>(netd().socket_recv(static_cast<u32>(socket_id), buf, static_cast<u32>(len)));
+    return static_cast<long>(g_netd_client.socket_recv(static_cast<u32>(socket_id), buf, static_cast<u32>(len)));
 }
 
 extern "C" int __viper_netd_socket_close(int socket_id)
 {
-    return netd().socket_close(static_cast<u32>(socket_id));
+    return g_netd_client.socket_close(static_cast<u32>(socket_id));
 }
 
 extern "C" int __viper_netd_socket_status(int socket_id, unsigned int *out_flags, unsigned int *out_rx_available)
 {
     u32 flags = 0;
     u32 rx = 0;
-    i32 rc = netd().socket_status(static_cast<u32>(socket_id), &flags, &rx);
+    i32 rc = g_netd_client.socket_status(static_cast<u32>(socket_id), &flags, &rx);
     if (rc != 0)
     {
         return rc;
@@ -117,7 +107,7 @@ extern "C" int __viper_netd_socket_status(int socket_id, unsigned int *out_flags
 extern "C" int __viper_netd_dns_resolve(const char *hostname, unsigned int *out_ip_be)
 {
     u32 ip = 0;
-    i32 rc = netd().dns_resolve(hostname, &ip);
+    i32 rc = g_netd_client.dns_resolve(hostname, &ip);
     if (rc != 0)
     {
         return rc;

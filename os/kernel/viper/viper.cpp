@@ -20,7 +20,6 @@
 #include "../fs/vfs/vfs.hpp"
 #include "../include/error.hpp"
 #include "../mm/pmm.hpp"
-#include "../net/ip/tcp.hpp"
 #include "../sched/scheduler.hpp"
 #include "../sched/task.hpp"
 #include "address_space.hpp"
@@ -308,10 +307,6 @@ void destroy(Viper *v)
     int idx = viper_index(v);
     if (idx >= 0)
     {
-        // Force-close any sockets owned by this process to avoid leaking global socket table
-        // entries.
-        net::tcp::close_all_owned(static_cast<u32>(v->id));
-
         // Close all open file descriptors
         fs::vfs::close_all_fds(&fd_tables[idx]);
         v->fd_table = nullptr;

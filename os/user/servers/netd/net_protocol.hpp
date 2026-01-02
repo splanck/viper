@@ -316,13 +316,15 @@ struct SocketStatusReply
 
 /**
  * @brief NET_DNS_RESOLVE request.
+ *
+ * Note: hostname limited to 244 chars to fit within 256-byte channel message limit.
  */
 struct DnsResolveRequest
 {
     u32 type;           ///< NET_DNS_RESOLVE
     u32 request_id;     ///< For matching replies
     u16 hostname_len;   ///< Length of hostname
-    char hostname[250]; ///< Hostname to resolve
+    char hostname[244]; ///< Hostname to resolve (max 243 chars + NUL)
 };
 
 /**

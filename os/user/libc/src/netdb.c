@@ -5,12 +5,6 @@
 #include "../include/stdlib.h"
 #include "../include/string.h"
 
-/* Syscall helpers */
-extern long __syscall2(long num, long arg0, long arg1);
-
-/* Syscall number for DNS resolve - must match kernel's syscall_nums.hpp */
-#define SYS_DNS_RESOLVE 0x55
-
 /* netd backend helpers (libc netd_backend.cpp) */
 extern int __viper_netd_is_available(void);
 extern int __viper_netd_dns_resolve(const char *hostname, unsigned int *out_ip_be);
@@ -77,28 +71,20 @@ struct hostent *gethostbyname(const char *name)
     }
 
     unsigned int ip = 0;
-    int resolved = 0;
 
-    /* Prefer netd DNS resolver when present, but fall back to kernel on failure. */
-    if (__viper_netd_is_available())
+    /* Use netd DNS resolver (microkernel mode) */
+    if (!__viper_netd_is_available())
     {
-        int rc = __viper_netd_dns_resolve(name, &ip);
-        if (rc == 0)
-        {
-            resolved = 1;
-        }
-        /* If netd DNS fails, fall through to kernel DNS. */
+        /* netd not running - DNS resolution unavailable */
+        h_errno = NO_RECOVERY;
+        return (void *)0;
     }
 
-    if (!resolved)
+    int rc = __viper_netd_dns_resolve(name, &ip);
+    if (rc != 0)
     {
-        /* Fallback to kernel DNS resolver */
-        long result = __syscall2(SYS_DNS_RESOLVE, (long)name, (long)&ip);
-        if (result < 0)
-        {
-            h_errno = HOST_NOT_FOUND;
-            return (void *)0;
-        }
+        h_errno = HOST_NOT_FOUND;
+        return (void *)0;
     }
 
     static_addr.s_addr = ip;

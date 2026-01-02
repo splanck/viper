@@ -498,6 +498,10 @@ static void handle_socket_close(const netproto::SocketCloseRequest *req, i32 rep
  */
 static void handle_dns_resolve(const netproto::DnsResolveRequest *req, i32 reply_channel)
 {
+    debug_print("[netd] DNS resolve: ");
+    debug_print(req->hostname);
+    debug_print("\n");
+
     netproto::DnsResolveReply reply;
     reply.type = netproto::NET_DNS_RESOLVE_REPLY;
     reply.request_id = req->request_id;
@@ -506,11 +510,17 @@ static void handle_dns_resolve(const netproto::DnsResolveRequest *req, i32 reply
     i32 result = g_stack.dns_resolve(req->hostname, &resolved);
     if (result < 0)
     {
+        debug_print("[netd] DNS failed: ");
+        debug_print_dec(static_cast<u64>(-result));
+        debug_print("\n");
         reply.status = result;
         reply.ip = 0;
     }
     else
     {
+        debug_print("[netd] DNS resolved: ");
+        debug_print_ip(resolved.to_u32());
+        debug_print("\n");
         reply.status = 0;
         reply.ip = netstack::htonl(resolved.to_u32());
     }

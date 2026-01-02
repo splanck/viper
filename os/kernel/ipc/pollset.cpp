@@ -5,8 +5,6 @@
 #include "../console/serial.hpp"
 #include "../input/input.hpp"
 #include "../lib/spinlock.hpp"
-#include "../net/ip/tcp.hpp"
-#include "../net/network.hpp"
 #include "../sched/scheduler.hpp"
 #include "../sched/task.hpp"
 #include "../viper/viper.hpp"
@@ -234,29 +232,10 @@ static poll::EventType check_readiness(u32 handle, poll::EventType mask)
         return triggered;
     }
 
-    // Check network receive readiness (special pseudo-handle)
+    // Network RX pseudo-handle removed - use netd user-space server instead
     if (handle == poll::HANDLE_NETWORK_RX)
     {
-        if (poll::has_event(mask, poll::EventType::NETWORK_RX))
-        {
-            // Drive the network stack so socket RX buffers are up to date.
-            net::network_poll();
-
-            // This pseudo-handle is scoped to the current Viper: report ready if any socket
-            // owned by this process has buffered RX data available.
-            u32 owner_id = 0;
-            if (viper::Viper *v = viper::current())
-            {
-                owner_id = v->id;
-            }
-            bool any_ready = net::tcp::any_socket_ready(owner_id);
-
-            if (any_ready)
-            {
-                triggered = triggered | poll::EventType::NETWORK_RX;
-            }
-        }
-        return triggered;
+        return triggered; // No kernel networking
     }
 
     // For channel events, look up handle in cap_table

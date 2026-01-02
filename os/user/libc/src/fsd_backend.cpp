@@ -30,11 +30,8 @@ struct FsdFdSlot
 static FsdObject g_objs[FSD_MAX_FDS];
 static FsdFdSlot g_fds[FSD_MAX_FDS];
 
-static fsclient::Client &fsd()
-{
-    static fsclient::Client client;
-    return client;
-}
+// Global client instance - avoid static initialization issues with __cxa_guard_acquire
+static fsclient::Client g_fsd_client;
 
 static bool is_prefix(const char *s, const char *prefix)
 {
@@ -189,7 +186,7 @@ static bool kernel_path_only(const char *path)
 
 extern "C" int __viper_fsd_is_available()
 {
-    return (fsd().connect() == 0) ? 1 : 0;
+    return (g_fsd_client.connect() == 0) ? 1 : 0;
 }
 
 extern "C" int __viper_fsd_is_fd(int fd)
@@ -276,14 +273,14 @@ extern "C" int __viper_fsd_open(const char *abs_path, int flags)
         return VERR_INVALID_ARG;
 
     u32 file_id = 0;
-    i32 err = fsd().open(abs_path, static_cast<u32>(flags), &file_id);
+    i32 err = g_fsd_client.open(abs_path, static_cast<u32>(flags), &file_id);
     if (err != 0)
         return err;
 
     i32 obj = alloc_obj(file_id);
     if (obj < 0)
     {
-        (void)fsd().close(file_id);
+        (void)g_fsd_client.close(file_id);
         return obj;
     }
 
@@ -291,7 +288,7 @@ extern "C" int __viper_fsd_open(const char *abs_path, int flags)
     if (fd < 0)
     {
         release_obj(obj);
-        (void)fsd().close(file_id);
+        (void)g_fsd_client.close(file_id);
         return fd;
     }
 
@@ -306,7 +303,7 @@ extern "C" ssize_t __viper_fsd_read(int fd, void *buf, size_t count)
 
     if (count > 0xFFFFFFFFul)
         return VERR_INVALID_ARG;
-    return static_cast<ssize_t>(fsd().read(obj->file_id, buf, static_cast<u32>(count)));
+    return static_cast<ssize_t>(g_fsd_client.read(obj->file_id, buf, static_cast<u32>(count)));
 }
 
 extern "C" ssize_t __viper_fsd_write(int fd, const void *buf, size_t count)
@@ -317,7 +314,7 @@ extern "C" ssize_t __viper_fsd_write(int fd, const void *buf, size_t count)
 
     if (count > 0xFFFFFFFFul)
         return VERR_INVALID_ARG;
-    return static_cast<ssize_t>(fsd().write(obj->file_id, buf, static_cast<u32>(count)));
+    return static_cast<ssize_t>(g_fsd_client.write(obj->file_id, buf, static_cast<u32>(count)));
 }
 
 extern "C" int __viper_fsd_close(int fd)
@@ -341,7 +338,7 @@ extern "C" int __viper_fsd_close(int fd)
     {
         u32 file_id = g_objs[obj].file_id;
         release_obj(obj);
-        return fsd().close(file_id);
+        return g_fsd_client.close(file_id);
     }
 
     return 0;
@@ -354,7 +351,7 @@ extern "C" long __viper_fsd_lseek(int fd, long offset, int whence)
         return VERR_INVALID_HANDLE;
 
     i64 new_off = 0;
-    i64 rc = fsd().seek(obj->file_id, static_cast<i64>(offset), static_cast<i32>(whence), &new_off);
+    i64 rc = g_fsd_client.seek(obj->file_id, static_cast<i64>(offset), static_cast<i32>(whence), &new_off);
     if (rc < 0)
         return static_cast<long>(rc);
     return static_cast<long>(new_off);
@@ -408,7 +405,7 @@ extern "C" int __viper_fsd_stat(const char *abs_path, struct stat *statbuf)
         return VERR_INVALID_ARG;
 
     sys::Stat st = {};
-    i32 err = fsd().stat(abs_path, &st);
+    i32 err = g_fsd_client.stat(abs_path, &st);
     if (err != 0)
         return err;
 
@@ -426,7 +423,7 @@ extern "C" int __viper_fsd_fstat(int fd, struct stat *statbuf)
         return VERR_INVALID_HANDLE;
 
     sys::Stat st = {};
-    i32 err = fsd().fstat(obj->file_id, &st);
+    i32 err = g_fsd_client.fstat(obj->file_id, &st);
     if (err != 0)
         return err;
 
@@ -438,28 +435,28 @@ extern "C" int __viper_fsd_mkdir(const char *abs_path)
 {
     if (!abs_path)
         return VERR_INVALID_ARG;
-    return fsd().mkdir(abs_path);
+    return g_fsd_client.mkdir(abs_path);
 }
 
 extern "C" int __viper_fsd_rmdir(const char *abs_path)
 {
     if (!abs_path)
         return VERR_INVALID_ARG;
-    return fsd().rmdir(abs_path);
+    return g_fsd_client.rmdir(abs_path);
 }
 
 extern "C" int __viper_fsd_unlink(const char *abs_path)
 {
     if (!abs_path)
         return VERR_INVALID_ARG;
-    return fsd().unlink(abs_path);
+    return g_fsd_client.unlink(abs_path);
 }
 
 extern "C" int __viper_fsd_rename(const char *abs_old, const char *abs_new)
 {
     if (!abs_old || !abs_new)
         return VERR_INVALID_ARG;
-    return fsd().rename(abs_old, abs_new);
+    return g_fsd_client.rename(abs_old, abs_new);
 }
 
 extern "C" int __viper_fsd_readdir(int fd, struct dirent *out_ent)
@@ -474,7 +471,7 @@ extern "C" int __viper_fsd_readdir(int fd, struct dirent *out_ent)
     u64 ino = 0;
     u8 type = 0;
     char name_buf[NAME_MAX + 1];
-    i32 rc = fsd().readdir_one(obj->file_id, &ino, &type, name_buf, sizeof(name_buf));
+    i32 rc = g_fsd_client.readdir_one(obj->file_id, &ino, &type, name_buf, sizeof(name_buf));
     if (rc <= 0)
         return rc;
 

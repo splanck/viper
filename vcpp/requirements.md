@@ -18,23 +18,90 @@ Viper project. It serves as the definitive specification for the Viper C++ syste
 8. [Platform and ABI Requirements](#8-platform-and-abi-requirements)
 9. [Freestanding Mode Requirements](#9-freestanding-mode-requirements)
 10. [Compilation Modes and Flags](#10-compilation-modes-and-flags)
+11. [Viper OS Kernel and Userland Requirements](#11-viper-os-kernel-and-userland-requirements)
 
 ---
 
 ## 1. Language Standard Requirements
 
-### Minimum Standards
+### Target Standards
 
-| Component | Minimum Standard | Notes |
-|-----------|------------------|-------|
-| C++ | **C++17** | Required for structured bindings, `std::optional`, `std::variant`, `std::string_view` |
-| C | **C11** | Required for `_Static_assert`, anonymous structs/unions, `_Alignas`/`_Alignof` |
+| Standard | Version | Rationale |
+|----------|---------|-----------|
+| C++ | **C++20** | Required for Viper OS kernel and userspace compilation |
+| C | **C17** | Required for libc, bootloader, and C source files |
 
-### Optional C++20 Features (Nice-to-Have)
+### Host and Target Platforms
 
-- `std::remove_cvref_t` (used in `function_ref.hpp`, can be emulated with C++17)
-- `[[likely]]` / `[[unlikely]]` attributes
-- Concepts (not currently used but may be adopted)
+| Platform Type | Supported | Notes |
+|---------------|-----------|-------|
+| **Host (where vcpp runs)** | macOS (ARM64, x86-64), Linux (x86-64, ARM64) | Development environments |
+| **Target (code vcpp generates)** | **AArch64 only** | Viper OS target |
+
+| Target Property | Value |
+|-----------------|-------|
+| Architecture | AArch64 (ARM64) |
+| CPU Baseline | Cortex-A72 |
+| Endianness | Little-endian |
+| Other target architectures | Not supported |
+
+### Component Standard Matrix
+
+| Component | Language | Standard | Exception Handling | RTTI |
+|-----------|----------|----------|-------------------|------|
+| Viper Compiler (vcpp) | C++ | C++20 | Enabled | Enabled |
+| Viper OS Kernel | C++ | C++20 | **Disabled** | **Disabled** |
+| Viper OS Userspace | C++ | C++20 | **Disabled** | **Disabled** |
+| Viper libc | C | C17 | N/A | N/A |
+| Viper Bootloader | C | C17 | N/A | N/A |
+
+### Exception Handling Policy
+
+- **Kernel/Userspace**: Compiled with `-fno-exceptions`. Code must not use `throw`, `try`, or `catch`.
+- **Compiler itself**: May use exceptions internally (compiles with host compiler).
+- **Required runtime support**: None for target. The compiler does not generate exception handling code when `-fno-exceptions` is specified.
+
+### C++20 Features Actually Used
+
+Based on analysis of Viper OS source code, the following C++20 features are used:
+- Designated initializers (C++20 for aggregates with bases)
+- `[[nodiscard]]`, `[[maybe_unused]]` attributes
+- Nested inline namespaces
+
+The following C++20 features are **not used** and have lower implementation priority:
+- Concepts and requires clauses
+- Coroutines
+- Modules
+- `consteval`, `constinit`
+- Three-way comparison (`<=>`)
+
+### Critical Extension Requirements
+
+These compiler extensions are **mandatory** for compiling Viper OS. Without them, the kernel and libc cannot be built.
+
+| Feature | Priority | Usage | Files |
+|---------|----------|-------|-------|
+| GCC-style inline assembly | **CRITICAL** | System calls, exception handling, atomics | `syscall.hpp`, `crt0.c`, `exceptions.cpp` |
+| Explicit register variables | **CRITICAL** | Syscall ABI (`register x0 asm("x0")`) | `syscall.hpp` |
+| `__attribute__((packed))` | **CRITICAL** | ViperFS structures, device drivers | `virtio.hpp`, `ext2.hpp` |
+| `__attribute__((aligned(N)))` | **CRITICAL** | Page tables, DMA buffers | `mmu.cpp`, `virtio.cpp` |
+| `__attribute__((section("...")))` | **CRITICAL** | Linker section placement | `crt0.c`, `kernel.ld` |
+| `__attribute__((noreturn))` | High | `panic()`, `_exit()` | `panic.cpp`, `exit.c` |
+| `__attribute__((used))` | High | Prevent dead code elimination | ISR handlers |
+| `__attribute__((naked))` | High | Exception vectors | `exceptions.S` |
+| `__builtin_offsetof(type, member)` | High | VirtIO drivers, struct introspection | `virtio.cpp` |
+
+**Implementation Note:** Inline assembly support is the critical path blocker. Neither chibicc nor cproc support inline assembly, making this a key differentiator for vcpp.
+
+### ABI Compatibility Requirements
+
+| Requirement | Specification | Notes |
+|-------------|---------------|-------|
+| Vtable layout | Itanium C++ ABI | For virtual function calls |
+| Name mangling | Itanium C++ ABI | For linking with libstdc++/libc++ |
+| Exception handling | Not applicable | Compiled with `-fno-exceptions` |
+| RTTI layout | Itanium C++ ABI | When RTTI enabled (userspace optional) |
+| Thread-local storage | AAPCS64 TLS ABI | `thread_local` variables in userspace |
 
 ---
 
@@ -346,15 +413,17 @@ Viper project. It serves as the definitive specification for the Viper C++ syste
 | `<inttypes.h>` | `PRId32`, `PRIu64`, `PRIx64`, `SCNd32`, etc. (format specifiers) |
 | `<float.h>` | `FLT_MIN`, `FLT_MAX`, `FLT_EPSILON`, `DBL_MIN`, `DBL_MAX`, `DBL_EPSILON`, etc. |
 
-### 5.3 POSIX Extensions (Required for Runtime)
+### 5.3 POSIX Extensions (Viper libc Implementation Targets)
 
-| Header | Required Functions |
-|--------|-------------------|
+**Note**: These are functions that the Viper libc implements. The compiler itself does not need to provide these—it only needs to correctly compile code that calls them.
+
+| Header | Functions Implemented by Viper libc |
+|--------|-------------------------------------|
 | `<unistd.h>` | `read`, `write`, `close`, `lseek`, `unlink`, `access`, `getcwd`, `chdir`, `sleep`, `usleep`, `sbrk` |
 | `<fcntl.h>` | `open`, `O_RDONLY`, `O_WRONLY`, `O_RDWR`, `O_CREAT`, `O_TRUNC`, `O_APPEND` |
 | `<sys/types.h>` | `off_t`, `ssize_t`, `mode_t`, `pid_t` |
 | `<sys/stat.h>` | `stat`, `fstat`, `mkdir`, `S_ISREG`, `S_ISDIR` |
-| `<pthread.h>` | `pthread_create`, `pthread_join`, `pthread_detach`, `pthread_self`, `pthread_equal`, `pthread_mutex_init/lock/unlock/destroy`, `pthread_cond_init/wait/timedwait/signal/broadcast/destroy` |
+| `<pthread.h>` | `pthread_create`, `pthread_join`, `pthread_detach`, `pthread_self`, `pthread_equal`, `pthread_mutex_*`, `pthread_cond_*` |
 | `<sched.h>` | `sched_yield` |
 
 ---
@@ -492,37 +561,61 @@ Memory order constants:
 
 ## 8. Platform and ABI Requirements
 
-### 8.1 Calling Conventions
+**Target Architecture: AArch64 Only**
 
-| Platform | Convention | Requirements |
-|----------|------------|--------------|
-| x86-64 Linux/macOS | System V AMD64 | 6 integer regs (RDI, RSI, RDX, RCX, R8, R9), 8 XMM regs for FP, 128-byte red zone |
-| x86-64 Windows | Microsoft x64 | 4 regs (RCX, RDX, R8, R9), shadow space, different struct passing |
-| ARM64 | AAPCS64 | 8 integer regs (X0-X7), 8 FP regs (V0-V7), no red zone |
+### 8.1 Calling Convention (AAPCS64)
 
-### 8.2 Data Type Requirements
+The compiler implements the ARM 64-bit Architecture Procedure Call Standard.
+
+| Category | Registers | Purpose |
+|----------|-----------|---------|
+| Arguments (integer) | X0-X7 | First 8 integer/pointer arguments |
+| Arguments (FP/SIMD) | V0-V7 | First 8 floating-point arguments |
+| Return (integer) | X0, X1 | Integer return values |
+| Return (FP/SIMD) | V0-V3 | Floating-point return values |
+| Callee-saved | X19-X28 | Must be preserved across calls |
+| Frame pointer | X29 | Frame pointer (optional) |
+| Link register | X30 | Return address |
+| Stack pointer | SP | 16-byte aligned |
+| Platform register | X18 | Reserved (do not use) |
+| Temporary | X9-X15 | Caller-saved scratch registers |
+| Intra-procedure | X16, X17 | Used by linker veneers |
+
+**Key AAPCS64 Rules:**
+- Stack must be 16-byte aligned at function calls
+- No red zone (unlike x86-64 SysV ABI)
+- Composite types ≤16 bytes passed in registers
+- Larger composites passed by reference
+
+### 8.2 Data Type Requirements (AArch64 LP64)
 
 | Type | Size | Alignment | Notes |
 |------|------|-----------|-------|
-| `char` | 1 byte | 1 byte | May be signed or unsigned |
-| `short` | 2 bytes | 2 bytes | |
-| `int` | 4 bytes | 4 bytes | |
-| `long` | 8 bytes (LP64) / 4 bytes (LLP64) | Same as size | Linux/macOS: 8, Windows: 4 |
-| `long long` | 8 bytes | 8 bytes | |
-| `float` | 4 bytes | 4 bytes | IEEE 754 single |
-| `double` | 8 bytes | 8 bytes | IEEE 754 double |
-| `long double` | 16 bytes (x86) / 8 bytes (ARM) | 16 bytes | Platform-dependent |
-| Pointers | 8 bytes | 8 bytes | 64-bit systems |
-| `size_t` | 8 bytes | 8 bytes | 64-bit systems |
+| `char` | 1 | 1 | Unsigned by default on AArch64 |
+| `signed char` | 1 | 1 | |
+| `short` | 2 | 2 | |
+| `int` | 4 | 4 | |
+| `long` | 8 | 8 | LP64 data model |
+| `long long` | 8 | 8 | |
+| `float` | 4 | 4 | IEEE 754 binary32 |
+| `double` | 8 | 8 | IEEE 754 binary64 |
+| `long double` | 16 | 16 | IEEE 754 binary128 (quad precision) |
+| `_Bool` / `bool` | 1 | 1 | |
+| Pointers | 8 | 8 | |
+| `size_t` | 8 | 8 | |
+| `ptrdiff_t` | 8 | 8 | |
+| `wchar_t` | 4 | 4 | Signed |
 
 ### 8.3 Object File Format
 
-| Platform | Format |
-|----------|--------|
-| Linux | ELF64 |
-| macOS | Mach-O 64-bit |
-| Windows | PE/COFF 64-bit |
-| Viper OS | ELF64 (custom) |
+| Target | Format |
+|--------|--------|
+| Viper OS | ELF64 (little-endian) |
+| Linux AArch64 | ELF64 (for cross-development) |
+
+### 8.4 Name Mangling
+
+The compiler uses the Itanium C++ ABI for name mangling (same as GCC and Clang on AArch64).
 
 ---
 
@@ -552,7 +645,7 @@ The freestanding environment must NOT require:
 | `<stdnoreturn.h>` | `noreturn` macro |
 | `<stdalign.h>` | Alignment macros |
 
-### 9.3 Compiler Flags for Freestanding
+### 9.3 Compiler Flags for Freestanding (AArch64)
 
 ```
 -ffreestanding
@@ -561,7 +654,8 @@ The freestanding environment must NOT require:
 -fno-unwind-tables
 -fno-asynchronous-unwind-tables
 -fno-stack-protector
--mno-red-zone (x86-64 kernel)
+-fno-threadsafe-statics
+-fno-use-cxa-atexit
 -nostdlib
 -nostdinc (when providing custom headers)
 ```
@@ -574,10 +668,10 @@ The freestanding environment must NOT require:
 
 ```bash
 # C++ Standard
--std=c++17
+-std=c++20
 
 # C Standard
--std=c11
+-std=c17
 
 # Warnings (recommended)
 -Wall
@@ -622,6 +716,538 @@ The compiler must support:
 - Custom sysroot specification
 - Cross-compilation
 - Multiple output formats (object, assembly, LLVM IR/BC)
+
+---
+
+## 11. Viper OS Kernel and Userland Requirements
+
+This section documents the specific compiler requirements for building the Viper OS kernel and userland components. The kernel is a freestanding AArch64 microkernel, and the userland includes a custom libc and C++ standard library implementation.
+
+### 11.1 OS Component Standards
+
+| Component | Language | Standard | Mode | Notes |
+|-----------|----------|----------|------|-------|
+| Kernel | C++ | **C++20** | Freestanding | No exceptions, no RTTI |
+| Bootloader (vboot) | C | **C17** | Freestanding | UEFI environment |
+| libc | C | **C17** | Freestanding | Custom POSIX-like implementation |
+| Userspace Programs | C++ | **C++20** | Hosted (custom libc++) | No exceptions, no RTTI |
+| Host Tools | C++ | **C++17** | Hosted | Uses system STL |
+
+### 11.2 Target Architecture
+
+| Property | Value |
+|----------|-------|
+| Architecture | AArch64 (ARM64) |
+| CPU Model | Cortex-A72 |
+| Endianness | Little-endian |
+| Pointer Size | 64-bit |
+| Alignment | Strict (`-mstrict-align`) |
+
+### 11.3 Kernel C++ Language Features
+
+The kernel uses modern C++ but in a constrained freestanding environment:
+
+#### 11.3.1 Core C++ Features Used
+
+| Feature | Status | Example Usage |
+|---------|--------|---------------|
+| `auto` type deduction | YES | Throughout kernel code |
+| `decltype` | YES | `using size_t = decltype(sizeof(0));` |
+| Lambda expressions | YES | Callbacks in GIC, scheduler |
+| `constexpr` functions | YES | Compile-time constants (150+ uses) |
+| Range-based for loops | NO | Not used in kernel |
+| Structured bindings | NO | Not used in kernel |
+| `if constexpr` | NO | Uses preprocessor `#if` instead |
+| Concepts/requires | NO | Not used |
+
+#### 11.3.2 Template Features Used
+
+| Feature | Example | Files |
+|---------|---------|-------|
+| Class templates | `template<typename T> class Result` | `lib/result.hpp` |
+| Function templates | `template<typename T> T* as()` | `kobj/object.hpp` |
+| Full specialization | `template<> class Result<void, E>` | `lib/result.hpp` |
+| Variadic templates | Parameter packs | `main.cpp` |
+| Non-type parameters | `template<size_t N>` | Various |
+
+#### 11.3.3 Class Features Used
+
+| Feature | Usage |
+|---------|-------|
+| Virtual functions | Extensive (30+ files) - Object hierarchy |
+| `override` keyword | All virtual overrides |
+| `final` keyword | Terminal classes |
+| `= default` | Destructors, constructors |
+| `= delete` | Prevent copy/move (e.g., `Spinlock`) |
+| In-class initializers | `bool is_ok_ = false;` |
+| Explicit constructors | `explicit operator bool()` |
+| Multiple inheritance | Limited use |
+
+#### 11.3.4 Memory Management
+
+| Feature | Implementation |
+|---------|---------------|
+| `operator new` | Custom in `mm/kheap.hpp` |
+| `operator new[]` | Custom in `mm/kheap.hpp` |
+| `operator delete` | Custom with `noexcept` |
+| Sized delete | `operator delete(void*, size_t)` |
+| Placement new | Not used |
+| `UniquePtr<T>` | Custom implementation in `mm/kheap.hpp` |
+| `make_unique<T>` | Custom helper function |
+
+#### 11.3.5 C++ Attributes Used
+
+| Attribute | Syntax | Usage |
+|-----------|--------|-------|
+| `[[nodiscard]]` | C++17 | `Result<T>` methods (5+ uses) |
+| `[[maybe_unused]]` | C++17 | Padding fields, debug helpers |
+| `[[noreturn]]` | C++11 | `exit()`, `enter_user_mode()`, `kernel_panic()` |
+
+#### 11.3.6 Other C++ Features
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Scoped enums (`enum class`) | YES | Extensively used (20+ files) |
+| Unions | YES | `Result<T>` value/error union |
+| `noexcept` specifier | YES | On `operator delete` |
+| `static_assert` | YES | Structure validation |
+| `mutable` members | YES | Cache/synchronization fields |
+| Operator overloading | YES | Rights bitwise operators |
+| `extern "C"` | YES | `kernel_main`, ABI compatibility |
+| Nested namespaces | YES | `mm::cow`, `virtio::input` |
+| Cast operators | YES | `static_cast`, `reinterpret_cast` |
+| `volatile` keyword | YES | Device registers, asm contexts |
+
+### 11.4 libc C Language Features
+
+#### 11.4.1 C99/C11/C17 Features Used
+
+| Feature | Example | Files |
+|---------|---------|-------|
+| Fixed-width integers | `int8_t` - `uint64_t` | All libc files |
+| `inline` functions | `static inline int fold_case()` | `fnmatch.c`, `fenv.c` |
+| `restrict` keyword | `const char *restrict nptr` | `inttypes.c` |
+| `_Static_assert` | Via macro fallback | `assert.h` |
+| Variadic macros | `#define LOG(...)` | `stdarg.h` |
+| Designated initializers | `.field = value` | Struct initialization |
+| Compound literals | `(struct type){values}` | Limited use |
+| `//` comments | Throughout | All files |
+| `long long` type | 64-bit integers | `inttypes.c` |
+
+#### 11.4.2 Type System
+
+| Category | Types Required |
+|----------|----------------|
+| Fixed-width | `int8_t`, `int16_t`, `int32_t`, `int64_t`, `uint*_t` variants |
+| Size types | `size_t`, `ssize_t`, `ptrdiff_t`, `intptr_t`, `uintptr_t` |
+| Max types | `intmax_t`, `uintmax_t` |
+| Fast types | `int_least8_t`, `int_fast8_t`, etc. |
+
+#### 11.4.3 Function Pointer Types
+
+The libc extensively uses function pointers for callbacks:
+
+```c
+// qsort/bsearch comparators
+int (*compar)(const void *, const void *)
+
+// Signal handlers
+void (*handler)(int)
+
+// Thread entry points
+void *(*start_routine)(void *)
+
+// File tree walk callbacks
+int (*fn)(const char *, const struct stat *, int)
+```
+
+### 11.5 Compiler Builtins Required
+
+#### 11.5.1 Core Builtins
+
+| Builtin | Purpose | Files Using |
+|---------|---------|-------------|
+| `__builtin_offsetof(type, member)` | Struct field offset | `drivers/virtio/blk.cpp` |
+| `__builtin_unreachable()` | Unreachable code marker | `syscall.hpp` |
+| `__builtin_va_list` | Variadic argument type | `stdarg.h` |
+| `__builtin_va_start(ap, last)` | Start variadic processing | `stdio.c` |
+| `__builtin_va_arg(ap, type)` | Get next argument | `stdio.c` |
+| `__builtin_va_end(ap)` | End variadic processing | `stdio.c` |
+| `__builtin_va_copy(dest, src)` | Copy va_list | `stdio.c` |
+
+#### 11.5.2 Builtins NOT Used (but recommended)
+
+The following builtins are NOT currently used but may be beneficial:
+
+| Builtin | Purpose |
+|---------|---------|
+| `__builtin_clz(x)` | Count leading zeros |
+| `__builtin_ctz(x)` | Count trailing zeros |
+| `__builtin_popcount(x)` | Population count |
+| `__builtin_bswap16/32/64(x)` | Byte swap |
+| `__builtin_expect(expr, val)` | Branch prediction |
+| `__builtin_prefetch(addr)` | Cache prefetch |
+
+### 11.6 GCC/Clang Attributes Required
+
+#### 11.6.1 Type/Struct Attributes
+
+| Attribute | Syntax | Purpose | Files |
+|-----------|--------|---------|-------|
+| `packed` | `__attribute__((packed))` | Remove struct padding | 56 instances (network headers, VirtIO) |
+| `aligned(N)` | `__attribute__((aligned(N)))` | Explicit alignment | 16 instances (N=4,8,4096) |
+
+#### 11.6.2 Variable Attributes
+
+| Attribute | Syntax | Purpose | Files |
+|-----------|--------|---------|-------|
+| `unused` | `__attribute__((unused))` | Suppress warnings | 4 instances |
+| `aligned(N)` | `__attribute__((aligned(N)))` | Buffer alignment | Network packet buffers |
+
+#### 11.6.3 Function Attributes
+
+| Attribute | Syntax | Purpose | Files |
+|-----------|--------|---------|-------|
+| `noreturn` | `__attribute__((noreturn))` | No-return function | `longjmp`, exit functions |
+
+#### 11.6.4 Combined Attributes
+
+```c
+// DMA access structure requires both
+__attribute__((packed, aligned(8)))
+```
+
+### 11.7 AArch64 Inline Assembly Requirements
+
+The kernel requires extensive inline assembly support for AArch64. The compiler must support GCC-style extended inline assembly.
+
+#### 11.7.1 Inline Assembly Syntax
+
+```c
+asm volatile("instruction"
+             : output_operands      // "=r"(var), "+r"(var)
+             : input_operands       // "r"(val), "i"(imm)
+             : clobber_list);       // "memory", "cc", register names
+```
+
+#### 11.7.2 Constraint Letters Required
+
+| Constraint | Meaning | Usage |
+|------------|---------|-------|
+| `r` | General purpose register | All register operands |
+| `=r` | Write-only output | Output variables |
+| `+r` | Read-write operand | Modified variables |
+| `=&r` | Early-clobber output | Must differ from inputs |
+| `i` | Immediate constant | Inline constants |
+| `memory` | Memory clobber | Barrier semantics |
+| `cc` | Condition codes clobber | Comparisons |
+
+#### 11.7.3 Register Modifiers
+
+| Modifier | Meaning | Example |
+|----------|---------|---------|
+| `%w0` | 32-bit (word) variant | `ldaxr %w0, [%1]` |
+| `%x0` | 64-bit (default) | `mrs %0, daif` |
+
+#### 11.7.4 Explicit Register Binding
+
+```c
+register u64 x0 asm("x0") = value;
+asm volatile("hvc #0" : "+r"(x0) : : "memory");
+```
+
+#### 11.7.5 System Register Instructions
+
+| Instruction | Purpose | Registers Used |
+|-------------|---------|----------------|
+| `mrs %0, reg` | Read system register | DAIF, MPIDR_EL1, SCTLR_EL1, TCR_EL1, TTBR0/1_EL1, ELR_EL1, SPSR_EL1, ESR_EL1, FAR_EL1, SP_EL0, CNTFRQ_EL0, CNTPCT_EL0, CNTP_CVAL_EL0, CNTP_CTL_EL0, FPCR, FPSR |
+| `msr reg, %0` | Write system register | Same as above |
+| `msr daifset, #N` | Set DAIF bits | Disable interrupts |
+| `msr daifclr, #N` | Clear DAIF bits | Enable interrupts |
+
+#### 11.7.6 Atomic Instructions (Load-Exclusive/Store-Exclusive)
+
+| Instruction | Purpose | Usage |
+|-------------|---------|-------|
+| `ldaxr %w0, [%1]` | Load-Acquire Exclusive (32-bit) | Spinlock ticket acquisition |
+| `ldar %w0, [%1]` | Load-Acquire (32-bit) | Read shared counters |
+| `stxr %w0, %w1, [%2]` | Store-Exclusive (status in %0) | Conditional store |
+| `stlr %w0, [%1]` | Store-Release (32-bit) | Release lock |
+
+**Spinlock Pattern:**
+```c
+asm volatile("1: ldaxr   %w0, [%3]       \n"
+             "   add     %w1, %w0, #1    \n"
+             "   stxr    %w2, %w1, [%3]  \n"
+             "   cbnz    %w2, 1b         \n"
+             : "=&r"(ticket), "=&r"(new_ticket), "=&r"(status)
+             : "r"(&next_ticket_)
+             : "memory");
+```
+
+#### 11.7.7 Memory Barrier Instructions
+
+| Instruction | Type | Purpose | Files |
+|-------------|------|---------|-------|
+| `dmb sy` | Data Memory Barrier | DMA synchronization | VirtIO drivers |
+| `dsb sy` | Data Synchronization Barrier | Cache/TLB operations | MMU, loader |
+| `isb` | Instruction Sync Barrier | Pipeline flush | After system register writes |
+
+#### 11.7.8 Cache and TLB Operations
+
+| Instruction | Purpose | Usage |
+|-------------|---------|-------|
+| `dc cvau, %0` | Data Cache Clean by VA | Before IC invalidate |
+| `ic ivau, %0` | Instruction Cache Invalidate by VA | After loading code |
+| `tlbi vmalle1is` | TLB Invalidate All (Inner Shareable) | MMU setup |
+| `tlbi aside1is, %0` | TLB Invalidate by ASID | Context switch |
+
+#### 11.7.9 Exception and Power Instructions
+
+| Instruction | Purpose | Usage |
+|-------------|---------|-------|
+| `svc #0` | Supervisor Call | Syscall invocation |
+| `hvc #0` | Hypervisor Call | PSCI calls |
+| `eret` | Exception Return | Return from handler |
+| `wfi` | Wait For Interrupt | Idle loop |
+| `yield` | Yield hint | Spinlock busy-wait |
+| `udf #0` | Undefined instruction | Fault testing |
+
+### 11.8 Assembly File Requirements
+
+The OS includes 7 assembly files (`.S`) requiring:
+
+#### 11.8.1 Section Directives
+
+| Directive | Purpose | Example |
+|-----------|---------|---------|
+| `.section .text.boot` | Boot code | `boot.S` |
+| `.section .text` | Executable code | All `.S` files |
+| `.section .bss` | Uninitialized data | Stack space |
+| `.section .rodata` | Read-only data | Constants |
+
+#### 11.8.2 Alignment Directives
+
+| Directive | Bytes | Purpose |
+|-----------|-------|---------|
+| `.align 11` | 2048 | VBAR_EL1 vector table |
+| `.align 7` | 128 | Vector entry spacing |
+| `.align 16` | 16 | Stack alignment |
+| `.align 4` | 4 | Instruction alignment |
+
+#### 11.8.3 Symbol Directives
+
+| Directive | Purpose |
+|-----------|---------|
+| `.global name` | Export symbol |
+| `.type name, @function` | Mark as function |
+| `.size name, . - name` | Record size |
+| `.equ NAME, value` | Define constant |
+
+#### 11.8.4 Key Assembly Constructs
+
+**Exception Vector Table Layout (2048 bytes, 16 entries × 128 bytes):**
+```
+VBAR_EL1 → 0x000: SP0 sync/IRQ/FIQ/SError (invalid)
+           0x200: SPx sync/IRQ/FIQ/SError (kernel mode)
+           0x400: EL0 sync/IRQ/FIQ/SError (user mode)
+           0x600: AArch32 (unsupported)
+```
+
+**ExceptionFrame Structure (288 bytes):**
+```
+[0-238]:   x0-x29 (30 registers × 8 bytes)
+[240-248]: x30 (LR), SP
+[256-264]: ELR_EL1, SPSR_EL1
+[272-280]: ESR_EL1, FAR_EL1
+```
+
+**TaskContext Structure (104 bytes):**
+```
+[0x00-0x50]: x19-x29 (callee-saved), x30 (LR)
+[0x60]:      SP (stack pointer)
+```
+
+### 11.9 Freestanding Mode Configuration
+
+#### 11.9.1 Kernel Compiler Flags
+
+```bash
+# Standard
+-std=c++20
+
+# Freestanding mode
+-ffreestanding
+-fno-exceptions
+-fno-rtti
+-fno-threadsafe-statics
+-fno-use-cxa-atexit
+-fno-stack-protector
+
+# AArch64-specific
+-mcpu=cortex-a72
+-mstrict-align
+-mgeneral-regs-only    # No FPU in kernel context
+
+# Linking
+-nostdlib
+-static
+```
+
+#### 11.9.2 Userspace Compiler Flags
+
+```bash
+# Standard
+-std=c++20
+
+# Freestanding with custom libc
+-ffreestanding
+-fno-exceptions
+-fno-rtti
+-fno-threadsafe-statics
+-fno-use-cxa-atexit
+-fno-stack-protector
+-fno-builtin
+
+# AArch64-specific
+-mcpu=cortex-a72
+-nostdinc
+-nostdlib
+
+# Linking
+-static
+```
+
+#### 11.9.3 Bootloader (UEFI) Flags
+
+```bash
+# Standard
+-std=c17
+
+# UEFI-specific
+-ffreestanding
+-fno-stack-protector
+-fno-stack-check
+-fshort-wchar          # 16-bit wchar_t for UEFI
+-fPIC                  # Position-independent code
+
+# Linking
+-nostdlib
+-Wl,--no-dynamic-linker
+-Wl,-pie
+```
+
+### 11.10 Custom Runtime Requirements
+
+#### 11.10.1 Kernel C Runtime (`crt.cpp`)
+
+The kernel provides freestanding implementations:
+
+| Function | Purpose |
+|----------|---------|
+| `memcpy()` | Memory copy |
+| `memset()` | Memory fill |
+| `memmove()` | Overlapping copy |
+
+#### 11.10.2 Required ABI Functions
+
+**C++ ABI Functions (Freestanding - No Exceptions):**
+
+| Function | Purpose | Required |
+|----------|---------|----------|
+| `__cxa_pure_virtual()` | Called when pure virtual function invoked | Yes |
+| `__cxa_deleted_virtual()` | Called when deleted virtual function invoked | Yes |
+| `__cxa_guard_acquire()` | Thread-safe static initialization (acquire) | No* |
+| `__cxa_guard_release()` | Thread-safe static initialization (release) | No* |
+| `__cxa_guard_abort()` | Thread-safe static initialization (abort) | No* |
+| `__cxa_atexit()` | Register destructor for static object | No* |
+
+*Not required when compiled with `-fno-threadsafe-statics` and `-fno-use-cxa-atexit`.
+
+**Exception Handling Functions (NOT required with `-fno-exceptions`):**
+
+| Function | Purpose | Required |
+|----------|---------|----------|
+| `__cxa_allocate_exception()` | Allocate exception object | No |
+| `__cxa_free_exception()` | Free exception object | No |
+| `__cxa_throw()` | Throw exception | No |
+| `__cxa_begin_catch()` | Begin catch block | No |
+| `__cxa_end_catch()` | End catch block | No |
+| `__cxa_rethrow()` | Rethrow current exception | No |
+| `__cxa_get_exception_ptr()` | Get exception pointer | No |
+| `_Unwind_*` | Stack unwinding functions | No |
+
+**Memory Operators:**
+
+| Function | Purpose |
+|----------|---------|
+| `operator new(size_t)` | Single object allocation |
+| `operator new[](size_t)` | Array allocation |
+| `operator delete(void*)` | Single object deallocation |
+| `operator delete[](void*)` | Array deallocation |
+| `operator delete(void*, size_t)` | Sized deallocation (C++14) |
+| `operator delete[](void*, size_t)` | Sized array deallocation (C++14) |
+
+#### 11.10.3 Userspace C++ Runtime (`new.cpp`)
+
+```cpp
+void* operator new(size_t size);
+void* operator new[](size_t size);
+void operator delete(void* ptr) noexcept;
+void operator delete[](void* ptr) noexcept;
+void* operator new(size_t, const std::nothrow_t&) noexcept;
+void operator delete(void*, size_t) noexcept;  // Sized delete
+```
+
+### 11.11 Cross-Compilation Toolchain
+
+#### 11.11.1 Required Tools
+
+| Tool | Purpose |
+|------|---------|
+| `clang` / `clang++` | Primary compiler (preferred) |
+| `aarch64-elf-gcc` / `aarch64-elf-g++` | Alternative compiler |
+| `aarch64-elf-ld` | GNU linker (required for both) |
+| `aarch64-elf-objcopy` | Object file manipulation |
+| `aarch64-elf-ar` | Archive creation |
+| `aarch64-elf-ranlib` | Archive indexing |
+
+#### 11.11.2 Clang Target Triple
+
+```
+--target=aarch64-none-elf
+```
+
+#### 11.11.3 Linker Scripts
+
+| Script | Purpose |
+|--------|---------|
+| `kernel/kernel.ld` | Kernel memory layout |
+| `user/user.ld` | Userspace program layout |
+| `vboot/vboot.ld` | UEFI bootloader layout |
+
+### 11.12 Custom C++ Standard Library
+
+The userspace includes a complete custom C++ standard library at `user/libc/include/c++/` with 68 headers providing:
+
+#### 11.12.1 Containers
+- `vector`, `string`, `array`, `deque`, `list`, `forward_list`
+- `map`, `set`, `unordered_map`, `unordered_set`
+- `queue`, `stack`, `bitset`, `span`
+
+#### 11.12.2 Utilities
+- `memory`, `functional`, `utility`, `iterator`
+- `tuple`, `pair`, `optional`, `variant`, `any`
+- `initializer_list`
+
+#### 11.12.3 Algorithms
+- `algorithm`, `numeric`
+
+#### 11.12.4 Type Support
+- `type_traits`, `limits`, `concepts`
+
+#### 11.12.5 Threading (stubs)
+- `thread`, `mutex`, `atomic`, `condition_variable`
 
 ---
 
@@ -716,5 +1342,6 @@ clang++ -std=c++17 -Wall -Wextra vcpp_test.cpp -o vcpp_test
 
 ---
 
-*Document Version: 1.0*
+*Document Version: 2.0*
+*Updated with Viper OS Kernel and Userland Requirements*
 *Generated for Viper Project System Compiler Specification*
