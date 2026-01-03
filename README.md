@@ -8,15 +8,16 @@
 
 ### [compiler/](compiler/) — Viper Compiler Toolchain
 
-An IL-first compiler toolchain and virtual machine for exploring intermediate language design, multi-frontend architectures, and interpreter implementation.
+A complete IL-first compiler toolchain (~272K SLOC) with multiple language frontends, a bytecode VM, native code generators, and an extensive runtime library.
 
 | Component | Description |
 |-----------|-------------|
 | **Frontends** | BASIC, Pascal, and ViperLang compilers |
-| **IL** | Strongly typed, SSA-inspired intermediate language |
-| **VM** | Bytecode interpreter with pluggable dispatch strategies |
-| **Backends** | Native code generators (AArch64, x86-64) |
-| **Runtime** | Portable C libraries for I/O, graphics, networking, threads |
+| **IL** | Strongly typed, SSA-inspired intermediate language with verifier |
+| **VM** | Bytecode interpreter with multiple dispatch strategies |
+| **Backends** | Native code generators (AArch64, x86-64) with register allocation |
+| **Runtime** | Portable C runtime (~34K SLOC) for I/O, collections, networking, threads |
+| **TUI** | Terminal UI framework for editor and debugger tooling |
 
 **Quickstart:**
 
@@ -32,16 +33,16 @@ See [compiler/README.md](compiler/README.md) for full documentation.
 
 ### [os/](os/) — ViperOS
 
-A capability-based microkernel operating system for AArch64 (ARM64), featuring modern OS concepts and retro-style design.
+An experimental capability-based microkernel operating system for AArch64 (ARM64), exploring OS design concepts.
 
 | Component | Description |
 |-----------|-------------|
 | **Architecture** | AArch64 microkernel with 4-level MMU, GICv2/v3, ARM timer |
 | **Memory** | Demand paging, copy-on-write, buddy allocator, slab allocator |
-| **Filesystem** | ViperFS with block/inode caches (user-space fsd server) |
-| **Networking** | TCP/IP stack with TLS 1.3, DNS, HTTP, SSH (user-space netd server) |
+| **Filesystem** | ViperFS journaling filesystem (user-space fsd server) |
+| **Networking** | User-space TCP/IP stack (netd server) |
 | **Shell** | Interactive shell with line editing |
-| **Security** | Capability-based access control with handle derivation |
+| **Security** | Capability-based access control |
 
 **Quickstart:**
 
@@ -76,7 +77,7 @@ viper/
 │   │   ├── ipc/           # IPC channels and poll
 │   │   ├── sched/         # Scheduler
 │   │   └── viper/         # Process model
-│   ├── user/              # User space (~60,000 SLOC)
+│   ├── user/              # User space
 │   │   ├── vinit/         # Shell
 │   │   ├── libc/          # C library
 │   │   ├── servers/       # Microkernel servers
@@ -120,10 +121,10 @@ brew install llvm qemu aarch64-elf-binutils cmake
 
 | Project | Status |
 |---------|--------|
-| **Compiler** | Early development. Core language features work. APIs unstable. |
-| **ViperOS** | Functional. Kernel complete, user space expanding. |
+| **Compiler** | Active development. Multi-frontend compilation, VM execution, and native codegen working. ~272K SLOC. |
+| **ViperOS** | Experimental. Boots on QEMU, basic kernel and user-space services. ~76K SLOC. |
 
-Both projects are suitable for experimentation and learning but are not production-ready.
+Both projects are for experimentation and learning, not production use.
 
 ---
 

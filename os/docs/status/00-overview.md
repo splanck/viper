@@ -467,14 +467,16 @@ os/
 
 ## Version History
 
-- **January 2026 (v0.3.1)**: UEFI boot and GUI expansion
+- **January 2026 (v0.3.1)**: UEFI boot, desktop shell, and GUI expansion
   - **VBoot bootloader**: Complete UEFI bootloader with GOP support
   - **Two-disk architecture**: Separate system and user disks
-  - **Display server (displayd)**: Window compositing and GUI
-  - **libgui**: GUI client library with drawing primitives
+  - **Display server (displayd)**: Window compositing, z-ordering, minimize/maximize
+  - **Desktop taskbar**: Window list, click to restore/focus windows
+  - **Per-surface event queues**: Keyboard, mouse, focus, close events
+  - **libgui**: GUI client library with drawing primitives and window list API
   - **SMP improvements**: Work stealing, CPU affinity, load balancing
-  - **New applications**: edit, hello_gui, devices, fsinfo
-  - **Graphics console**: ANSI escape codes, scrollback buffer, cursor blinking
+  - **New applications**: edit, hello_gui, taskbar, devices, fsinfo
+  - **Graphics console**: ANSI escapes, scrollback with Shift+Up/Down navigation, cursor blinking
 
 - **January 2026 (v0.3.0)**: Microkernel architecture
   - **Microkernel mode**: VIPER_MICROKERNEL_MODE=1 by default
