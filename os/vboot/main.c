@@ -271,21 +271,29 @@ static EFI_STATUS open_volume(EFI_FILE_PROTOCOL **root)
     EFI_LOADED_IMAGE_PROTOCOL *loaded_image;
     EFI_SIMPLE_FILE_SYSTEM_PROTOCOL *fs;
 
-    // Get loaded image protocol to find our device
-    status = gBS->LocateProtocol(&lip_guid, NULL, (void **)&loaded_image);
+    // Get loaded image protocol for OUR image handle (not just any instance!)
+    // BUG FIX: Was using LocateProtocol which returns any instance.
+    // We need HandleProtocol to get the specific instance for our image.
+    status = gBS->HandleProtocol(gImageHandle, &lip_guid, (void **)&loaded_image);
     if (EFI_ERROR(status))
     {
         println(L"[!] Failed to get Loaded Image Protocol");
+        print_status(status);
         return status;
     }
 
-    // Get file system protocol from our device
-    // We need to use HandleProtocol, not LocateProtocol
-    // Cast LocateProtocol to handle this - in real code use HandleProtocol
-    status = gBS->LocateProtocol(&sfsp_guid, NULL, (void **)&fs);
+    print(L"    Device handle: ");
+    print_hex((UINT64)loaded_image->DeviceHandle);
+    println(L"");
+
+    // Get file system protocol from our BOOT device (not just any filesystem!)
+    // BUG FIX: Was using LocateProtocol which might return wrong filesystem.
+    // We need the filesystem from the device we booted from.
+    status = gBS->HandleProtocol(loaded_image->DeviceHandle, &sfsp_guid, (void **)&fs);
     if (EFI_ERROR(status))
     {
-        println(L"[!] Failed to get Simple File System Protocol");
+        println(L"[!] Failed to get Simple File System Protocol from boot device");
+        print_status(status);
         return status;
     }
 
@@ -294,6 +302,7 @@ static EFI_STATUS open_volume(EFI_FILE_PROTOCOL **root)
     if (EFI_ERROR(status))
     {
         println(L"[!] Failed to open volume");
+        print_status(status);
         return status;
     }
 
@@ -404,7 +413,9 @@ static EFI_STATUS load_file(EFI_FILE_PROTOCOL *root, const CHAR16 *path, void **
  */
 static EFI_STATUS load_elf(void *elf_data,
                            UINTN elf_size __attribute__((unused)),
-                           UINT64 *entry_point)
+                           UINT64 *entry_point,
+                           UINT64 *kernel_base,
+                           UINT64 *kernel_end)
 {
     Elf64_Ehdr *ehdr = (Elf64_Ehdr *)elf_data;
 
@@ -430,6 +441,10 @@ static EFI_STATUS load_elf(void *elf_data,
     print_dec(ehdr->e_phnum);
     println(L"");
 
+    // Track kernel extent
+    UINT64 min_addr = ~0ULL;
+    UINT64 max_addr = 0;
+
     // Process program headers
     Elf64_Phdr *phdr = (Elf64_Phdr *)((UINT8 *)elf_data + ehdr->e_phoff);
 
@@ -442,6 +457,8 @@ static EFI_STATUS load_elf(void *elf_data,
         print_dec(i);
         print(L": vaddr=");
         print_hex(phdr[i].p_vaddr);
+        print(L" paddr=");
+        print_hex(phdr[i].p_paddr);
         print(L" filesz=");
         print_dec(phdr[i].p_filesz);
         print(L" memsz=");
@@ -459,17 +476,22 @@ static EFI_STATUS load_elf(void *elf_data,
         if (EFI_ERROR(status))
         {
             // Try allocating anywhere if specific address fails
-            print(L"    [!] AllocateAddress failed, trying any address: ");
+            print(L"    [!] AllocateAddress at ");
+            print_hex(phdr[i].p_paddr);
+            print(L" failed: ");
             print_status(status);
+            println(L"    [!] Kernel MUST be loaded at expected address for proper operation");
 
-            segment_addr = phdr[i].p_paddr;
+            // For now, try anyway at any address but warn
+            segment_addr = 0; // Let UEFI pick
             status = gBS->AllocatePages(AllocateAnyPages, EfiLoaderData, pages, &segment_addr);
 
             if (EFI_ERROR(status))
             {
-                println(L"    [!] Failed to allocate segment pages");
+                println(L"    [!] Failed to allocate segment pages at any address");
                 return status;
             }
+            println(L"    [!] WARNING: Kernel loaded at different address than expected!");
         }
 
         // Zero the memory first
@@ -484,9 +506,37 @@ static EFI_STATUS load_elf(void *elf_data,
         print(L"    Loaded at: ");
         print_hex(segment_addr);
         println(L"");
+
+        // Track kernel memory range
+        if (segment_addr < min_addr)
+            min_addr = segment_addr;
+        if (segment_addr + pages * 4096 > max_addr)
+            max_addr = segment_addr + pages * 4096;
     }
 
+    // BUG FIX: Clean data cache and invalidate instruction cache
+    // After writing code to memory, we must ensure the instruction cache
+    // sees the new data. AArch64 has separate I$ and D$ that aren't coherent.
+    println(L"[*] Flushing caches...");
+    __asm__ volatile(
+        "dsb sy\n"           // Data synchronization barrier - complete all memory ops
+        "ic ialluis\n"       // Invalidate all instruction caches to PoU Inner Shareable
+        "dsb sy\n"           // Ensure IC invalidation completes
+        "isb\n"              // Instruction synchronization barrier
+    );
+
     *entry_point = ehdr->e_entry;
+    *kernel_base = min_addr;
+    *kernel_end = max_addr;
+
+    print(L"[*] Kernel range: ");
+    print_hex(min_addr);
+    print(L" - ");
+    print_hex(max_addr);
+    print(L" (");
+    print_dec((max_addr - min_addr) / 1024);
+    println(L" KB)");
+
     return EFI_SUCCESS;
 }
 
@@ -820,7 +870,9 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
     println(L"");
     println(L"[*] Parsing ELF...");
     UINT64 kernel_entry;
-    status = load_elf(kernel_data, kernel_size, &kernel_entry);
+    UINT64 kernel_base;
+    UINT64 kernel_end;
+    status = load_elf(kernel_data, kernel_size, &kernel_entry, &kernel_base, &kernel_end);
     if (EFI_ERROR(status))
     {
         println(L"[!] Failed to load ELF");
@@ -830,10 +882,10 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
     // Free kernel file buffer (data is now copied to target addresses)
     gBS->FreePool(kernel_data);
 
-    // Record kernel info
-    boot_info.kernel_phys_base = 0x40000000; // Standard QEMU virt base
-    boot_info.kernel_virt_base = 0x40000000; // Identity mapped for now
-    boot_info.kernel_size = kernel_size;
+    // Record kernel info - use actual loaded addresses, not hardcoded
+    boot_info.kernel_phys_base = kernel_base;
+    boot_info.kernel_virt_base = kernel_base; // Identity mapped for now
+    boot_info.kernel_size = kernel_end - kernel_base;
 
     // Step 4: Get framebuffer
     println(L"");

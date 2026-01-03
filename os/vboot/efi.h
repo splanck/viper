@@ -298,6 +298,11 @@ typedef EFI_STATUS(EFIAPI *EFI_LOCATE_PROTOCOL)(EFI_GUID *Protocol,
 /** @brief Exit boot services and transition ownership of memory map to OS. */
 typedef EFI_STATUS(EFIAPI *EFI_EXIT_BOOT_SERVICES)(EFI_HANDLE ImageHandle, UINTN MapKey);
 
+/** @brief Retrieve a protocol interface from a handle. */
+typedef EFI_STATUS(EFIAPI *EFI_HANDLE_PROTOCOL)(EFI_HANDLE Handle,
+                                                 EFI_GUID *Protocol,
+                                                 VOID **Interface);
+
 /**
  * @brief UEFI Boot Services table (partial).
  *
@@ -333,7 +338,7 @@ typedef struct _EFI_BOOT_SERVICES
     void *InstallProtocolInterface;
     void *ReinstallProtocolInterface;
     void *UninstallProtocolInterface;
-    void *HandleProtocol;
+    EFI_HANDLE_PROTOCOL HandleProtocol;
     void *Reserved;
     void *RegisterProtocolNotify;
     void *LocateHandle;

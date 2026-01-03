@@ -1,0 +1,246 @@
+// menu.viper - Menu system for Ladders game
+// Handles title screen, pause menu, and game over screens
+module menu;
+
+import "./config";
+import "./colors";
+
+// Menu item entity
+entity MenuItem {
+    expose Integer x;
+    expose Integer y;
+    expose String label;
+    expose Integer selected;
+
+    expose func init(px: Integer, py: Integer, text: String) {
+        x = px;
+        y = py;
+        label = text;
+        selected = 0;
+    }
+
+    expose func draw(canvas: Viper.Graphics.Canvas) {
+        var textColor = colors.UI_TEXT_COLOR;
+        if selected == 1 {
+            textColor = colors.MENU_HIGHLIGHT_COLOR;
+            // Draw selection indicator
+            canvas.Text(x - 20, y, ">", colors.YELLOW);
+        }
+        canvas.Text(x, y, label, textColor);
+    }
+}
+
+// Draw title screen
+func drawTitleScreen(canvas: Viper.Graphics.Canvas, selectedItem: Integer, animFrame: Integer) {
+    // Background with gradient effect
+    var bgY = 0;
+    while bgY < config.SCREEN_HEIGHT {
+        var shade = 20 + bgY / 20;
+        if shade > 60 {
+            shade = 60;
+        }
+        canvas.Line(0, bgY, config.SCREEN_WIDTH, bgY, colors.rgb(shade / 3, shade / 3, shade));
+        bgY = bgY + 1;
+    }
+
+    // Title text with shadow
+    var titleX = config.SCREEN_WIDTH / 2 - 80;
+    var titleY = 80;
+
+    // Shadow
+    canvas.Text(titleX + 2, titleY + 2, "LADDERS", colors.DARK_GRAY);
+    // Main title
+    canvas.Text(titleX, titleY, "LADDERS", colors.GOLD);
+
+    // Subtitle
+    canvas.Text(config.SCREEN_WIDTH / 2 - 100, titleY + 40, "A Platform Climbing Adventure", colors.LIGHT_GRAY);
+
+    // Draw decorative ladders on sides
+    drawDecorativeLadder(canvas, 80, 150, 200);
+    drawDecorativeLadder(canvas, config.SCREEN_WIDTH - 92, 150, 200);
+
+    // Menu items
+    var menuY = 220;
+    var menuX = config.SCREEN_WIDTH / 2 - 50;
+
+    drawMenuItemText(canvas, menuX, menuY, "START GAME", selectedItem == 0);
+    drawMenuItemText(canvas, menuX, menuY + 40, "HIGH SCORES", selectedItem == 1);
+    drawMenuItemText(canvas, menuX, menuY + 80, "CONTROLS", selectedItem == 2);
+    drawMenuItemText(canvas, menuX, menuY + 120, "QUIT", selectedItem == 3);
+
+    // Animated player sprite at bottom
+    var playerX = 300 + (animFrame % 60);
+    var playerY = 420;
+    drawMiniPlayer(canvas, playerX, playerY, animFrame);
+
+    // Copyright text
+    canvas.Text(config.SCREEN_WIDTH / 2 - 80, config.SCREEN_HEIGHT - 30, "Viper Ladders Demo 2025", colors.DARK_GRAY);
+}
+
+// Draw a menu item with selection indicator
+func drawMenuItemText(canvas: Viper.Graphics.Canvas, x: Integer, y: Integer, text: String, selected: Integer) {
+    if selected == 1 {
+        // Draw selection box
+        canvas.Frame(x - 10, y - 5, 140, 25, colors.MENU_HIGHLIGHT_COLOR);
+        canvas.Text(x - 25, y, ">", colors.YELLOW);
+        canvas.Text(x, y, text, colors.WHITE);
+    } else {
+        canvas.Text(x, y, text, colors.LIGHT_GRAY);
+    }
+}
+
+// Draw a decorative ladder for the title screen
+func drawDecorativeLadder(canvas: Viper.Graphics.Canvas, x: Integer, y: Integer, h: Integer) {
+    var left = x;
+    var right = x + 12;
+    var bottom = y + h;
+
+    // Side rails
+    canvas.Line(left, y, left, bottom, colors.LADDER_COLOR);
+    canvas.Line(right, y, right, bottom, colors.LADDER_COLOR);
+
+    // Rungs
+    var rungY = y + 10;
+    while rungY < bottom {
+        canvas.Line(left + 1, rungY, right - 1, rungY, colors.LADDER_COLOR);
+        rungY = rungY + 15;
+    }
+}
+
+// Draw a mini animated player for decoration
+func drawMiniPlayer(canvas: Viper.Graphics.Canvas, x: Integer, y: Integer, frame: Integer) {
+    var bodyColor = colors.PLAYER_COLOR;
+
+    // Body
+    canvas.Box(x + 2, y + 4, 10, 10, bodyColor);
+    // Head
+    canvas.Disc(x + 7, y + 3, 3, bodyColor);
+
+    // Animated legs
+    var legOffset = (frame / 8) % 2;
+    if legOffset == 0 {
+        canvas.Line(x + 4, y + 14, x + 2, y + 18, colors.darken(bodyColor, 30));
+        canvas.Line(x + 10, y + 14, x + 12, y + 18, colors.darken(bodyColor, 30));
+    } else {
+        canvas.Line(x + 4, y + 14, x + 6, y + 18, colors.darken(bodyColor, 30));
+        canvas.Line(x + 10, y + 14, x + 8, y + 18, colors.darken(bodyColor, 30));
+    }
+}
+
+// Draw pause menu overlay
+func drawPauseMenu(canvas: Viper.Graphics.Canvas, selectedItem: Integer) {
+    // Semi-transparent overlay
+    var overlayColor = colors.rgba(0, 0, 0, 180);
+    canvas.Box(0, 0, config.SCREEN_WIDTH, config.SCREEN_HEIGHT, colors.DARK_GRAY);
+
+    // Pause box
+    var boxX = config.SCREEN_WIDTH / 2 - 100;
+    var boxY = config.SCREEN_HEIGHT / 2 - 80;
+    var boxW = 200;
+    var boxH = 160;
+
+    canvas.Box(boxX, boxY, boxW, boxH, colors.MENU_BG_COLOR);
+    canvas.Frame(boxX, boxY, boxW, boxH, colors.WHITE);
+
+    // Title
+    canvas.Text(boxX + 70, boxY + 20, "PAUSED", colors.YELLOW);
+
+    // Menu items
+    var menuX = boxX + 50;
+    var menuY = boxY + 60;
+
+    drawMenuItemText(canvas, menuX, menuY, "RESUME", selectedItem == 0);
+    drawMenuItemText(canvas, menuX, menuY + 35, "RESTART", selectedItem == 1);
+    drawMenuItemText(canvas, menuX, menuY + 70, "QUIT", selectedItem == 2);
+}
+
+// Draw game over screen
+func drawGameOver(canvas: Viper.Graphics.Canvas, score: Integer, highScore: Integer, levelReached: Integer, selectedItem: Integer) {
+    // Dark overlay
+    canvas.Box(0, 0, config.SCREEN_WIDTH, config.SCREEN_HEIGHT, colors.DARK_GRAY);
+
+    // Game over box
+    var boxX = config.SCREEN_WIDTH / 2 - 120;
+    var boxY = config.SCREEN_HEIGHT / 2 - 100;
+    var boxW = 240;
+    var boxH = 200;
+
+    canvas.Box(boxX, boxY, boxW, boxH, colors.MENU_BG_COLOR);
+    canvas.Frame(boxX, boxY, boxW, boxH, colors.RED);
+
+    // Title
+    canvas.Text(boxX + 70, boxY + 20, "GAME OVER", colors.RED);
+
+    // Stats
+    canvas.Text(boxX + 30, boxY + 60, "Score: " + Viper.Fmt.Int(score), colors.UI_SCORE_COLOR);
+    canvas.Text(boxX + 30, boxY + 80, "Level: " + Viper.Fmt.Int(levelReached), colors.UI_TEXT_COLOR);
+    canvas.Text(boxX + 30, boxY + 100, "High: " + Viper.Fmt.Int(highScore), colors.GOLD);
+
+    // Menu items
+    var menuX = boxX + 60;
+    var menuY = boxY + 140;
+
+    drawMenuItemText(canvas, menuX, menuY, "PLAY AGAIN", selectedItem == 0);
+    drawMenuItemText(canvas, menuX, menuY + 30, "MAIN MENU", selectedItem == 1);
+}
+
+// Draw level complete screen
+func drawLevelComplete(canvas: Viper.Graphics.Canvas, levelNum: Integer, levelScore: Integer, totalScore: Integer) {
+    // Success overlay
+    canvas.Box(0, 0, config.SCREEN_WIDTH, config.SCREEN_HEIGHT, colors.DARK_GREEN);
+
+    // Level complete box
+    var boxX = config.SCREEN_WIDTH / 2 - 120;
+    var boxY = config.SCREEN_HEIGHT / 2 - 80;
+    var boxW = 240;
+    var boxH = 160;
+
+    canvas.Box(boxX, boxY, boxW, boxH, colors.MENU_BG_COLOR);
+    canvas.Frame(boxX, boxY, boxW, boxH, colors.GREEN);
+
+    // Title
+    canvas.Text(boxX + 40, boxY + 20, "LEVEL " + Viper.Fmt.Int(levelNum) + " COMPLETE!", colors.GREEN);
+
+    // Stats
+    canvas.Text(boxX + 30, boxY + 60, "Level Score: " + Viper.Fmt.Int(levelScore), colors.UI_SCORE_COLOR);
+    canvas.Text(boxX + 30, boxY + 80, "Bonus: " + Viper.Fmt.Int(config.SCORE_PER_LEVEL), colors.GOLD);
+    canvas.Text(boxX + 30, boxY + 100, "Total: " + Viper.Fmt.Int(totalScore), colors.WHITE);
+
+    // Continue prompt
+    canvas.Text(boxX + 40, boxY + 130, "Press ENTER to continue", colors.LIGHT_GRAY);
+}
+
+// Draw controls help screen
+func drawControlsScreen(canvas: Viper.Graphics.Canvas) {
+    // Background
+    canvas.Box(0, 0, config.SCREEN_WIDTH, config.SCREEN_HEIGHT, colors.MENU_BG_COLOR);
+
+    // Title
+    canvas.Text(config.SCREEN_WIDTH / 2 - 50, 50, "CONTROLS", colors.GOLD);
+
+    var y = 120;
+    var leftCol = 180;
+    var rightCol = 350;
+
+    canvas.Text(leftCol, y, "LEFT/RIGHT", colors.WHITE);
+    canvas.Text(rightCol, y, "Move", colors.LIGHT_GRAY);
+
+    y = y + 40;
+    canvas.Text(leftCol, y, "UP", colors.WHITE);
+    canvas.Text(rightCol, y, "Climb up ladder", colors.LIGHT_GRAY);
+
+    y = y + 40;
+    canvas.Text(leftCol, y, "DOWN", colors.WHITE);
+    canvas.Text(rightCol, y, "Climb down ladder", colors.LIGHT_GRAY);
+
+    y = y + 40;
+    canvas.Text(leftCol, y, "P", colors.WHITE);
+    canvas.Text(rightCol, y, "Pause game", colors.LIGHT_GRAY);
+
+    y = y + 40;
+    canvas.Text(leftCol, y, "ESC", colors.WHITE);
+    canvas.Text(rightCol, y, "Quit to menu", colors.LIGHT_GRAY);
+
+    // Return prompt
+    canvas.Text(config.SCREEN_WIDTH / 2 - 100, config.SCREEN_HEIGHT - 60, "Press ENTER to return", colors.YELLOW);
+}

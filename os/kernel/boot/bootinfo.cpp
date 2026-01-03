@@ -256,24 +256,85 @@ u64 get_total_usable_memory()
 /** @copydoc boot::get_ram_region */
 bool get_ram_region(u64 &out_base, u64 &out_size)
 {
-    // Find the largest usable memory region
-    u64 largest_base = 0;
-    u64 largest_size = 0;
+    // For UEFI boot, memory is fragmented with gaps (UEFI reserved regions).
+    // We need to find the largest CONTIGUOUS block of usable memory that
+    // contains the kernel (at 0x40000000).
+    //
+    // Strategy: Find all contiguous usable regions and pick the one containing
+    // the kernel, or the largest one if kernel location unknown.
+
+    if (g_boot_info.memory_region_count == 0)
+    {
+        return false;
+    }
+
+    // Find contiguous block containing kernel (0x40000000) or first usable region
+    u64 kernel_addr = 0x40000000;
+    u64 block_start = 0;
+    u64 block_end = 0;
+    bool in_block = false;
 
     for (u32 i = 0; i < g_boot_info.memory_region_count; i++)
     {
         const auto &region = g_boot_info.memory_regions[i];
-        if (region.type == MemoryType::Usable && region.size > largest_size)
+        if (region.type != MemoryType::Usable)
         {
-            largest_base = region.base;
-            largest_size = region.size;
+            // Non-usable region breaks contiguity
+            if (in_block)
+            {
+                // Check if this block contains the kernel
+                if (kernel_addr >= block_start && kernel_addr < block_end)
+                {
+                    out_base = block_start;
+                    out_size = block_end - block_start;
+                    return true;
+                }
+            }
+            in_block = false;
+            continue;
+        }
+
+        u64 region_end = region.base + region.size;
+
+        if (!in_block)
+        {
+            // Start new block
+            block_start = region.base;
+            block_end = region_end;
+            in_block = true;
+        }
+        else if (region.base == block_end)
+        {
+            // Extend current block (regions are contiguous)
+            block_end = region_end;
+        }
+        else
+        {
+            // Gap detected - check if previous block contains kernel
+            if (kernel_addr >= block_start && kernel_addr < block_end)
+            {
+                out_base = block_start;
+                out_size = block_end - block_start;
+                return true;
+            }
+            // Start new block
+            block_start = region.base;
+            block_end = region_end;
         }
     }
 
-    if (largest_size > 0)
+    // Check final block
+    if (in_block)
     {
-        out_base = largest_base;
-        out_size = largest_size;
+        if (kernel_addr >= block_start && kernel_addr < block_end)
+        {
+            out_base = block_start;
+            out_size = block_end - block_start;
+            return true;
+        }
+        // If kernel not found in any block, return this block
+        out_base = block_start;
+        out_size = block_end - block_start;
         return true;
     }
 

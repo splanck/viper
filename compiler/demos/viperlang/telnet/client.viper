@@ -1,0 +1,147 @@
+// Telnet Client - A simple telnet client
+// Connects to a telnet server and provides interactive session
+module main;
+
+// ============================================================================
+// CONFIGURATION
+// ============================================================================
+
+final DEFAULT_HOST = "127.0.0.1";
+final DEFAULT_PORT = 2323;
+final MAX_BUFFER = 4096;
+final VERSION = "1.0.0";
+
+// ============================================================================
+// MAIN CLIENT (Functional API style)
+// ============================================================================
+
+func main() {
+    Viper.Terminal.Say("Viper Telnet Client v" + VERSION);
+    Viper.Terminal.Say("================================");
+    Viper.Terminal.Say("");
+
+    var host = DEFAULT_HOST;
+    var port = DEFAULT_PORT;
+
+    Viper.Terminal.Print("Connecting to ");
+    Viper.Terminal.Print(host);
+    Viper.Terminal.Print(":");
+    Viper.Terminal.PrintInt(port);
+    Viper.Terminal.Say("...");
+
+    // Connect to server
+    var connection = Viper.Network.Tcp.Connect(host, port);
+
+    if Viper.Network.Tcp.get_IsOpen(connection) == false {
+        Viper.Terminal.Say("Failed to connect.");
+        return;
+    }
+
+    Viper.Terminal.Say("Connected!");
+    Viper.Terminal.Say("");
+
+    // Give server time to send banner
+    Viper.Time.SleepMs(100);
+
+    // Read and display initial welcome message
+    var welcome = receiveResponse(connection);
+    Viper.Terminal.Print(welcome);
+
+    // Interactive loop
+    var connected = 1;
+    while connected == 1 {
+        // Check if connection is still open
+        if Viper.Network.Tcp.get_IsOpen(connection) == false {
+            Viper.Terminal.Say("");
+            Viper.Terminal.Say("Connection closed by server.");
+            connected = 0;
+            break;
+        }
+
+        // Read user input
+        var input = Viper.Terminal.ReadLine();
+
+        // Check for local exit command
+        if input == "quit" || input == "exit" {
+            sendCommand(connection, input);
+            Viper.Time.SleepMs(100);
+            var goodbye = readAvailable(connection);
+            Viper.Terminal.Print(goodbye);
+            connected = 0;
+            break;
+        }
+
+        // Send command to server
+        sendCommand(connection, input);
+
+        // Read and display response
+        var response = receiveResponse(connection);
+        Viper.Terminal.Print(response);
+    }
+
+    // Clean up
+    if Viper.Network.Tcp.get_IsOpen(connection) == true {
+        Viper.Network.Tcp.Close(connection);
+    }
+
+    Viper.Terminal.Say("");
+    Viper.Terminal.Say("Disconnected.");
+}
+
+// Send a command to the server
+func sendCommand(conn: Ptr, cmd: String) {
+    Viper.Network.Tcp.SendStr(conn, cmd + "\n");
+}
+
+// Receive response from server (read until prompt or timeout)
+func receiveResponse(conn: Ptr) -> String {
+    var response = "";
+    var reading = 1;
+
+    // Set a short timeout for reading
+    Viper.Network.Tcp.SetRecvTimeout(conn, 100);
+
+    while reading == 1 {
+        // Check if there's data available
+        var available = Viper.Network.Tcp.get_Available(conn);
+        if available > 0 {
+            var chunk = Viper.Network.Tcp.RecvStr(conn, MAX_BUFFER);
+            response = response + chunk;
+
+            // Check if we've received a prompt (ends with "$ ")
+            if Viper.String.EndsWith(response, "$ ") == true {
+                reading = 0;
+            }
+        } else {
+            // Small delay before checking again
+            Viper.Time.SleepMs(10);
+
+            // If we have some response and no more data, we're done
+            var respLen = Viper.String.Length(response);
+            available = Viper.Network.Tcp.get_Available(conn);
+            if respLen > 0 && available == 0 {
+                reading = 0;
+            }
+        }
+    }
+
+    // Reset timeout
+    Viper.Network.Tcp.SetRecvTimeout(conn, 0);
+
+    return response;
+}
+
+// Read all available data (non-blocking style)
+func readAvailable(conn: Ptr) -> String {
+    var result = "";
+    Viper.Network.Tcp.SetRecvTimeout(conn, 50);
+
+    var available = Viper.Network.Tcp.get_Available(conn);
+    while available > 0 {
+        var chunk = Viper.Network.Tcp.RecvStr(conn, 1024);
+        result = result + chunk;
+        available = Viper.Network.Tcp.get_Available(conn);
+    }
+
+    return result;
+}

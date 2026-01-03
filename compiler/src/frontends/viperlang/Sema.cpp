@@ -1157,12 +1157,33 @@ void Sema::initRuntimeFunctions()
     runtimeFunctions_["Viper.Network.Http.Post"] = types::string();
     runtimeFunctions_["Viper.Network.Http.GetBytes"] = types::ptr();
     runtimeFunctions_["Viper.Network.Http.PostBytes"] = types::ptr();
+    // TCP Client
     runtimeFunctions_["Viper.Network.Tcp.Connect"] = types::ptr();
-    runtimeFunctions_["Viper.Network.Tcp.Close"] = types::voidType();
+    runtimeFunctions_["Viper.Network.Tcp.ConnectFor"] = types::ptr();
+    runtimeFunctions_["Viper.Network.Tcp.get_Host"] = types::string();
+    runtimeFunctions_["Viper.Network.Tcp.get_Port"] = types::integer();
+    runtimeFunctions_["Viper.Network.Tcp.get_LocalPort"] = types::integer();
+    runtimeFunctions_["Viper.Network.Tcp.get_IsOpen"] = types::boolean();
+    runtimeFunctions_["Viper.Network.Tcp.get_Available"] = types::integer();
     runtimeFunctions_["Viper.Network.Tcp.Send"] = types::integer();
+    runtimeFunctions_["Viper.Network.Tcp.SendStr"] = types::integer();
+    runtimeFunctions_["Viper.Network.Tcp.SendAll"] = types::voidType();
     runtimeFunctions_["Viper.Network.Tcp.Recv"] = types::ptr();
-    runtimeFunctions_["Viper.Network.Tcp.Listen"] = types::ptr();
-    runtimeFunctions_["Viper.Network.Tcp.Accept"] = types::ptr();
+    runtimeFunctions_["Viper.Network.Tcp.RecvStr"] = types::string();
+    runtimeFunctions_["Viper.Network.Tcp.RecvExact"] = types::ptr();
+    runtimeFunctions_["Viper.Network.Tcp.RecvLine"] = types::string();
+    runtimeFunctions_["Viper.Network.Tcp.SetRecvTimeout"] = types::voidType();
+    runtimeFunctions_["Viper.Network.Tcp.SetSendTimeout"] = types::voidType();
+    runtimeFunctions_["Viper.Network.Tcp.Close"] = types::voidType();
+    // TCP Server
+    runtimeFunctions_["Viper.Network.TcpServer.Listen"] = types::ptr();
+    runtimeFunctions_["Viper.Network.TcpServer.ListenAt"] = types::ptr();
+    runtimeFunctions_["Viper.Network.TcpServer.get_Port"] = types::integer();
+    runtimeFunctions_["Viper.Network.TcpServer.get_Address"] = types::string();
+    runtimeFunctions_["Viper.Network.TcpServer.get_IsListening"] = types::boolean();
+    runtimeFunctions_["Viper.Network.TcpServer.Accept"] = types::ptr();
+    runtimeFunctions_["Viper.Network.TcpServer.AcceptFor"] = types::ptr();
+    runtimeFunctions_["Viper.Network.TcpServer.Close"] = types::voidType();
     runtimeFunctions_["Viper.Network.Udp.Open"] = types::ptr();
     runtimeFunctions_["Viper.Network.Udp.Close"] = types::voidType();
     runtimeFunctions_["Viper.Network.Udp.Send"] = types::integer();

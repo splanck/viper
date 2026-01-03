@@ -1,0 +1,287 @@
+// player.viper - Player entity for Ladders game
+// Handles player movement, climbing, and rendering
+module player;
+
+import "./config";
+import "./colors";
+
+// Player states
+final STATE_WALKING = 0;
+final STATE_CLIMBING = 1;
+final STATE_FALLING = 2;
+final STATE_DEAD = 3;
+
+// Player entity
+entity Player {
+    expose Integer x;           // Current x position
+    expose Integer y;           // Current y position
+    expose Integer width;       // Player width
+    expose Integer height;      // Player height
+    expose Integer state;       // Current state
+    expose Integer direction;   // Facing direction (DIR_LEFT or DIR_RIGHT)
+    expose Integer animFrame;   // Current animation frame
+    expose Integer animTimer;   // Animation timer
+    expose Integer onLadder;    // 1 if currently on a ladder
+    expose Integer falling;     // 1 if falling
+    expose Integer lives;       // Remaining lives
+    expose Integer invincible;  // Invincibility frames after respawn
+    expose Integer respawnX;    // Respawn position X
+    expose Integer respawnY;    // Respawn position Y
+
+    // Initialize player at spawn position
+    expose func init(spawnX: Integer, spawnY: Integer) {
+        x = spawnX;
+        y = spawnY;
+        width = config.PLAYER_WIDTH;
+        height = config.PLAYER_HEIGHT;
+        state = STATE_WALKING;
+        direction = config.DIR_RIGHT;
+        animFrame = 0;
+        animTimer = 0;
+        onLadder = 0;
+        falling = 0;
+        lives = config.INITIAL_LIVES;
+        invincible = 0;
+        respawnX = spawnX;
+        respawnY = spawnY;
+    }
+
+    // Set respawn position (called when reaching checkpoint or new level)
+    expose func setRespawn(rx: Integer, ry: Integer) {
+        respawnX = rx;
+        respawnY = ry;
+    }
+
+    // Move left
+    expose func moveLeft() {
+        if state == STATE_DEAD {
+            return;
+        }
+        if onLadder == 0 {
+            x = x - config.PLAYER_SPEED;
+            direction = config.DIR_LEFT;
+            updateAnimation();
+        }
+    }
+
+    // Move right
+    expose func moveRight() {
+        if state == STATE_DEAD {
+            return;
+        }
+        if onLadder == 0 {
+            x = x + config.PLAYER_SPEED;
+            direction = config.DIR_RIGHT;
+            updateAnimation();
+        }
+    }
+
+    // Climb up
+    expose func climbUp() {
+        if state == STATE_DEAD {
+            return;
+        }
+        if onLadder == 1 {
+            y = y - config.PLAYER_CLIMB_SPEED;
+            updateAnimation();
+        }
+    }
+
+    // Climb down
+    expose func climbDown() {
+        if state == STATE_DEAD {
+            return;
+        }
+        if onLadder == 1 {
+            y = y + config.PLAYER_CLIMB_SPEED;
+            updateAnimation();
+        }
+    }
+
+    // Start climbing (grab ladder)
+    expose func grabLadder(ladderCenterX: Integer) {
+        if state == STATE_DEAD {
+            return;
+        }
+        onLadder = 1;
+        state = STATE_CLIMBING;
+        // Center player on ladder
+        x = ladderCenterX - width / 2;
+    }
+
+    // Stop climbing (release ladder)
+    expose func releaseLadder() {
+        onLadder = 0;
+        state = STATE_WALKING;
+    }
+
+    // Set standing on platform
+    expose func landOnPlatform(platformY: Integer) {
+        y = platformY - height;
+        falling = 0;
+        if onLadder == 0 {
+            state = STATE_WALKING;
+        }
+    }
+
+    // Start falling
+    expose func startFalling() {
+        if onLadder == 0 and state != STATE_DEAD {
+            falling = 1;
+            state = STATE_FALLING;
+        }
+    }
+
+    // Apply gravity (call each frame when falling)
+    expose func applyGravity() {
+        if falling == 1 and state != STATE_DEAD {
+            y = y + 3;  // Gravity speed
+        }
+    }
+
+    // Update animation frame
+    expose func updateAnimation() {
+        animTimer = animTimer + 1;
+        if animTimer >= 8 {
+            animTimer = 0;
+            animFrame = animFrame + 1;
+            if animFrame >= 4 {
+                animFrame = 0;
+            }
+        }
+    }
+
+    // Called when player dies (hit by enemy)
+    expose func die() {
+        if invincible > 0 {
+            return;  // Can't die while invincible
+        }
+        state = STATE_DEAD;
+        lives = lives - 1;
+    }
+
+    // Respawn player after death
+    expose func respawn() {
+        x = respawnX;
+        y = respawnY;
+        state = STATE_WALKING;
+        onLadder = 0;
+        falling = 0;
+        invincible = 120;  // 2 seconds of invincibility
+    }
+
+    // Update invincibility timer
+    expose func updateInvincibility() {
+        if invincible > 0 {
+            invincible = invincible - 1;
+        }
+    }
+
+    // Check if player is alive
+    expose func isAlive() -> Integer {
+        if state != STATE_DEAD {
+            return 1;
+        }
+        return 0;
+    }
+
+    // Check collision with rectangle
+    expose func collidesWith(ox: Integer, oy: Integer, ow: Integer, oh: Integer) -> Integer {
+        // AABB collision
+        if x + width <= ox {
+            return 0;
+        }
+        if x >= ox + ow {
+            return 0;
+        }
+        if y + height <= oy {
+            return 0;
+        }
+        if y >= oy + oh {
+            return 0;
+        }
+        return 1;
+    }
+
+    // Get center X
+    expose func getCenterX() -> Integer {
+        return x + width / 2;
+    }
+
+    // Get center Y
+    expose func getCenterY() -> Integer {
+        return y + height / 2;
+    }
+
+    // Get bottom Y
+    expose func getBottom() -> Integer {
+        return y + height;
+    }
+
+    // Clamp position to screen bounds
+    expose func clampToScreen() {
+        if x < 0 {
+            x = 0;
+        }
+        if x > config.SCREEN_WIDTH - width {
+            x = config.SCREEN_WIDTH - width;
+        }
+    }
+
+    // Draw the player
+    expose func draw(canvas: Viper.Graphics.Canvas) {
+        // Don't draw if dead (could add death animation later)
+        if state == STATE_DEAD {
+            return;
+        }
+
+        // Blink during invincibility
+        if invincible > 0 {
+            if (invincible / 4) % 2 == 0 {
+                return;  // Skip drawing every other 4 frames
+            }
+        }
+
+        var drawColor = colors.PLAYER_COLOR;
+
+        // Draw body (simple rectangle for now)
+        canvas.Box(x + 2, y + 4, width - 4, height - 4, drawColor);
+
+        // Draw head
+        canvas.Disc(x + width / 2, y + 4, 4, drawColor);
+
+        // Draw legs based on animation frame and state
+        if onLadder == 1 {
+            // Climbing animation - alternate legs
+            if animFrame % 2 == 0 {
+                canvas.Line(x + 3, y + height - 4, x + 1, y + height, colors.darken(drawColor, 30));
+                canvas.Line(x + width - 3, y + height - 4, x + width - 1, y + height - 2, colors.darken(drawColor, 30));
+            } else {
+                canvas.Line(x + 3, y + height - 4, x + 1, y + height - 2, colors.darken(drawColor, 30));
+                canvas.Line(x + width - 3, y + height - 4, x + width - 1, y + height, colors.darken(drawColor, 30));
+            }
+        } else {
+            // Walking animation
+            if animFrame == 0 or animFrame == 2 {
+                // Standing
+                canvas.Line(x + 4, y + height - 3, x + 3, y + height, colors.darken(drawColor, 30));
+                canvas.Line(x + width - 4, y + height - 3, x + width - 3, y + height, colors.darken(drawColor, 30));
+            } else if animFrame == 1 {
+                // Left leg forward
+                canvas.Line(x + 4, y + height - 3, x + 1, y + height, colors.darken(drawColor, 30));
+                canvas.Line(x + width - 4, y + height - 3, x + width - 1, y + height - 2, colors.darken(drawColor, 30));
+            } else {
+                // Right leg forward
+                canvas.Line(x + 4, y + height - 3, x + 1, y + height - 2, colors.darken(drawColor, 30));
+                canvas.Line(x + width - 4, y + height - 3, x + width - 1, y + height, colors.darken(drawColor, 30));
+            }
+        }
+
+        // Draw direction indicator (facing direction)
+        if direction == config.DIR_RIGHT {
+            canvas.Plot(x + width - 3, y + 4, colors.WHITE);
+        } else {
+            canvas.Plot(x + 2, y + 4, colors.WHITE);
+        }
+    }
+}

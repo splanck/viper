@@ -138,7 +138,7 @@ void free_page_unlocked(u64 phys_addr)
 } // namespace
 
 /** @copydoc pmm::init */
-void init(u64 ram_start, u64 ram_size, u64 kernel_end)
+void init(u64 ram_start, u64 ram_size, u64 kernel_end, u64 fb_base, u64 fb_size_param)
 {
     serial::puts("[pmm] Initializing physical memory manager\n");
 
@@ -172,10 +172,18 @@ void init(u64 ram_start, u64 ram_size, u64 kernel_end)
     serial::put_hex(usable_start);
     serial::puts("\n");
 
-    // Also reserve space for framebuffer (from constants.hpp)
-    u64 fb_start = kc::mem::FB_BASE;
-    u64 fb_size = kc::mem::FB_SIZE;
+    // Framebuffer reservation - use passed parameters or defaults
+    u64 fb_start = (fb_base != 0) ? fb_base : kc::mem::FB_BASE;
+    u64 fb_size = (fb_size_param != 0) ? fb_size_param : kc::mem::FB_SIZE;
     u64 fb_end = fb_start + fb_size;
+
+    serial::puts("[pmm] Framebuffer reserved: ");
+    serial::put_hex(fb_start);
+    serial::puts(" - ");
+    serial::put_hex(fb_end);
+    serial::puts(" (");
+    serial::put_dec(fb_size / (1024 * 1024));
+    serial::puts(" MB)\n");
 
     // Try to initialize buddy allocator first
     // Note: buddy allocator handles its own locking

@@ -74,11 +74,16 @@ constexpr u64 page_align_down(u64 addr)
  * the kernel image so the PMM can avoid allocating pages that contain the
  * kernel itself or the PMM's own bookkeeping data.
  *
+ * The framebuffer region is reserved and split between the bitmap allocator
+ * (pre-framebuffer) and buddy allocator (post-framebuffer).
+ *
  * @param ram_start Physical address where RAM begins.
  * @param ram_size Total RAM size in bytes.
  * @param kernel_end Physical address immediately after the kernel image.
+ * @param fb_base Physical address of framebuffer (0 if none).
+ * @param fb_size Size of framebuffer in bytes (0 if none).
  */
-void init(u64 ram_start, u64 ram_size, u64 kernel_end);
+void init(u64 ram_start, u64 ram_size, u64 kernel_end, u64 fb_base, u64 fb_size);
 
 /**
  * @brief Allocate a single physical page.

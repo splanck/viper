@@ -149,8 +149,48 @@ void init_memory_subsystem()
 {
     serial::puts("\n[kernel] Initializing memory management...\n");
 
-    // Initialize physical memory manager with QEMU virt machine defaults
-    pmm::init(kc::mem::RAM_BASE, kc::mem::RAM_SIZE, reinterpret_cast<u64>(__kernel_end));
+    // Get RAM region from boot info (supports both UEFI and QEMU direct boot)
+    u64 ram_base = kc::mem::RAM_BASE;
+    u64 ram_size = kc::mem::RAM_SIZE;
+
+    if (boot::get_ram_region(ram_base, ram_size))
+    {
+        serial::puts("[kernel] Using boot info RAM region: ");
+        serial::put_hex(ram_base);
+        serial::puts(" - ");
+        serial::put_hex(ram_base + ram_size);
+        serial::puts(" (");
+        serial::put_dec(ram_size / (1024 * 1024));
+        serial::puts(" MB)\n");
+    }
+    else
+    {
+        serial::puts("[kernel] Using default RAM region (128 MB)\n");
+    }
+
+    // Get framebuffer location from boot info
+    u64 fb_base = 0;
+    u64 fb_size = 0;
+
+    if (boot::has_uefi_framebuffer())
+    {
+        const auto &fb = boot::get_framebuffer();
+        fb_base = fb.base;
+        // Calculate framebuffer size: pitch * height, rounded up to 8MB for safety
+        u64 fb_actual = static_cast<u64>(fb.pitch) * fb.height;
+        fb_size = (fb_actual + (8 * 1024 * 1024) - 1) & ~((8 * 1024 * 1024) - 1);
+        if (fb_size < 8 * 1024 * 1024)
+            fb_size = 8 * 1024 * 1024;
+
+        serial::puts("[kernel] UEFI framebuffer at ");
+        serial::put_hex(fb_base);
+        serial::puts(", reserving ");
+        serial::put_dec(fb_size / (1024 * 1024));
+        serial::puts(" MB\n");
+    }
+
+    // Initialize physical memory manager
+    pmm::init(ram_base, ram_size, reinterpret_cast<u64>(__kernel_end), fb_base, fb_size);
 
     // Initialize virtual memory manager
     vmm::init();

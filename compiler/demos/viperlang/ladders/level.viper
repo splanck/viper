@@ -1,0 +1,521 @@
+// level.viper - Level entity for Ladders game
+// Manages platforms, ladders, enemies, and collectibles for each level
+module level;
+
+import "./config";
+import "./colors";
+import "./platform";
+import "./ladder";
+import "./enemy";
+
+// Collectible entity - items player can collect for points
+entity Collectible {
+    expose Integer x;
+    expose Integer y;
+    expose Integer collected;
+    expose Integer animTimer;
+
+    expose func init(px: Integer, py: Integer) {
+        x = px;
+        y = py;
+        collected = 0;
+        animTimer = 0;
+    }
+
+    expose func update() {
+        animTimer = animTimer + 1;
+        if animTimer >= 60 {
+            animTimer = 0;
+        }
+    }
+
+    expose func draw(canvas: Viper.Graphics.Canvas) {
+        if collected == 1 {
+            return;
+        }
+        // Sparkle effect
+        var size = config.COLLECTIBLE_SIZE;
+        var offset = (animTimer / 10) % 3;
+        canvas.Disc(x + size / 2, y + size / 2 - offset, size / 2, colors.COLLECTIBLE_COLOR);
+        // Highlight
+        canvas.Plot(x + 3, y + 2, colors.WHITE);
+    }
+
+    expose func collidesWith(px: Integer, py: Integer, pw: Integer, ph: Integer) -> Integer {
+        if collected == 1 {
+            return 0;
+        }
+        var size = config.COLLECTIBLE_SIZE;
+        if px + pw <= x {
+            return 0;
+        }
+        if px >= x + size {
+            return 0;
+        }
+        if py + ph <= y {
+            return 0;
+        }
+        if py >= y + size {
+            return 0;
+        }
+        return 1;
+    }
+}
+
+// Level entity - contains all level data
+entity Level {
+    expose Integer levelNum;
+    expose Integer playerStartX;
+    expose Integer playerStartY;
+    expose Integer exitX;
+    expose Integer exitY;
+    expose Integer totalCollectibles;
+    expose Integer collectedCount;
+    expose List[platform.Platform] platforms;
+    expose List[ladder.Ladder] ladders;
+    expose List[enemy.Enemy] enemies;
+    expose List[Collectible] collectibles;
+
+    // Initialize an empty level
+    expose func init(num: Integer) {
+        levelNum = num;
+        playerStartX = 50;
+        playerStartY = 400;
+        exitX = 580;
+        exitY = 50;
+        totalCollectibles = 0;
+        collectedCount = 0;
+        platforms = [];
+        ladders = [];
+        enemies = [];
+        collectibles = [];
+    }
+
+    // Add a platform to the level
+    expose func addPlatform(x: Integer, y: Integer, w: Integer, h: Integer) {
+        var p = new platform.Platform();
+        p.init(x, y, w, h);
+        platforms.add(p);
+    }
+
+    // Add a ladder to the level
+    expose func addLadder(x: Integer, y: Integer, h: Integer) {
+        var l = new ladder.Ladder();
+        l.init(x, y, h);
+        ladders.add(l);
+    }
+
+    // Add an enemy to the level
+    expose func addEnemy(x: Integer, y: Integer, patrolLeft: Integer, patrolRight: Integer) {
+        var e = new enemy.Enemy();
+        e.init(x, y, patrolLeft, patrolRight);
+        enemies.add(e);
+    }
+
+    // Add a collectible to the level
+    expose func addCollectible(x: Integer, y: Integer) {
+        var c = new Collectible();
+        c.init(x, y);
+        collectibles.add(c);
+        totalCollectibles = totalCollectibles + 1;
+    }
+
+    // Set player start position
+    expose func setPlayerStart(x: Integer, y: Integer) {
+        playerStartX = x;
+        playerStartY = y;
+    }
+
+    // Set exit position
+    expose func setExit(x: Integer, y: Integer) {
+        exitX = x;
+        exitY = y;
+    }
+
+    // Check if player is standing on any platform
+    // Returns the platform Y position if standing, or -1 if not
+    expose func getStandingPlatformY(px: Integer, py: Integer, pw: Integer, ph: Integer) -> Integer {
+        var i = 0;
+        while i < platforms.count() {
+            var p = platforms.get(i);
+            if p.isOnTop(px, py, pw, ph) == 1 {
+                return p.y;
+            }
+            i = i + 1;
+        }
+        return -1;
+    }
+
+    // Check if player can grab a ladder at current position
+    // Returns ladder index if can grab, or -1 if not
+    expose func canGrabLadder(px: Integer, py: Integer, pw: Integer, ph: Integer) -> Integer {
+        var i = 0;
+        while i < ladders.count() {
+            var l = ladders.get(i);
+            if l.canGrab(px, py, pw, ph) == 1 {
+                return i;
+            }
+            i = i + 1;
+        }
+        return -1;
+    }
+
+    // Get ladder center X by index
+    expose func getLadderCenterX(index: Integer) -> Integer {
+        if index < 0 or index >= ladders.count() {
+            return 0;
+        }
+        var l = ladders.get(index);
+        return l.x;
+    }
+
+    // Check if at top of ladder
+    expose func isAtLadderTop(ladderIndex: Integer, py: Integer, ph: Integer) -> Integer {
+        if ladderIndex < 0 or ladderIndex >= ladders.count() {
+            return 0;
+        }
+        var l = ladders.get(ladderIndex);
+        return l.isAtTop(py, ph);
+    }
+
+    // Check if at bottom of ladder
+    expose func isAtLadderBottom(ladderIndex: Integer, py: Integer, ph: Integer) -> Integer {
+        if ladderIndex < 0 or ladderIndex >= ladders.count() {
+            return 0;
+        }
+        var l = ladders.get(ladderIndex);
+        return l.isAtBottom(py, ph);
+    }
+
+    // Get ladder Y position (top)
+    expose func getLadderY(index: Integer) -> Integer {
+        if index < 0 or index >= ladders.count() {
+            return 0;
+        }
+        var l = ladders.get(index);
+        return l.y;
+    }
+
+    // Get ladder bottom Y
+    expose func getLadderBottom(index: Integer) -> Integer {
+        if index < 0 or index >= ladders.count() {
+            return 0;
+        }
+        var l = ladders.get(index);
+        return l.getBottom();
+    }
+
+    // Update all enemies
+    expose func updateEnemies() {
+        var i = 0;
+        while i < enemies.count() {
+            var e = enemies.get(i);
+            e.updatePatrol();
+            i = i + 1;
+        }
+    }
+
+    // Update all collectibles
+    expose func updateCollectibles() {
+        var i = 0;
+        while i < collectibles.count() {
+            var c = collectibles.get(i);
+            c.update();
+            i = i + 1;
+        }
+    }
+
+    // Check player collision with enemies
+    // Returns 1 if collision, 0 otherwise
+    expose func checkEnemyCollision(px: Integer, py: Integer, pw: Integer, ph: Integer) -> Integer {
+        var i = 0;
+        while i < enemies.count() {
+            var e = enemies.get(i);
+            if e.collidesWith(px, py, pw, ph) == 1 {
+                return 1;
+            }
+            i = i + 1;
+        }
+        return 0;
+    }
+
+    // Check and collect collectibles at player position
+    // Returns score earned
+    expose func collectItems(px: Integer, py: Integer, pw: Integer, ph: Integer) -> Integer {
+        var score = 0;
+        var i = 0;
+        while i < collectibles.count() {
+            var c = collectibles.get(i);
+            if c.collected == 0 and c.collidesWith(px, py, pw, ph) == 1 {
+                c.collected = 1;
+                collectedCount = collectedCount + 1;
+                score = score + config.SCORE_PER_COLLECTIBLE;
+            }
+            i = i + 1;
+        }
+        return score;
+    }
+
+    // Check if player reached exit
+    expose func checkExit(px: Integer, py: Integer, pw: Integer, ph: Integer) -> Integer {
+        // Must have collected all items to exit
+        if collectedCount < totalCollectibles {
+            return 0;
+        }
+        // Check if player overlaps with exit
+        var exitSize = 20;
+        if px + pw <= exitX {
+            return 0;
+        }
+        if px >= exitX + exitSize {
+            return 0;
+        }
+        if py + ph <= exitY {
+            return 0;
+        }
+        if py >= exitY + exitSize {
+            return 0;
+        }
+        return 1;
+    }
+
+    // Draw all level elements
+    expose func draw(canvas: Viper.Graphics.Canvas) {
+        // Draw platforms
+        var i = 0;
+        while i < platforms.count() {
+            var p = platforms.get(i);
+            p.draw(canvas);
+            i = i + 1;
+        }
+
+        // Draw ladders
+        i = 0;
+        while i < ladders.count() {
+            var l = ladders.get(i);
+            l.draw(canvas);
+            i = i + 1;
+        }
+
+        // Draw collectibles
+        i = 0;
+        while i < collectibles.count() {
+            var c = collectibles.get(i);
+            c.draw(canvas);
+            i = i + 1;
+        }
+
+        // Draw exit (only visible when all collectibles collected)
+        if collectedCount >= totalCollectibles {
+            // Draw glowing exit door
+            canvas.Box(exitX, exitY, 20, 24, colors.GREEN);
+            canvas.Frame(exitX, exitY, 20, 24, colors.brighten(colors.GREEN, 50));
+            // Door handle
+            canvas.Disc(exitX + 15, exitY + 12, 2, colors.GOLD);
+        } else {
+            // Draw locked exit
+            canvas.Box(exitX, exitY, 20, 24, colors.DARK_GRAY);
+            canvas.Frame(exitX, exitY, 20, 24, colors.LIGHT_GRAY);
+        }
+
+        // Draw enemies
+        i = 0;
+        while i < enemies.count() {
+            var e = enemies.get(i);
+            e.draw(canvas);
+            i = i + 1;
+        }
+    }
+
+    // Get number of remaining collectibles
+    expose func getRemainingCollectibles() -> Integer {
+        return totalCollectibles - collectedCount;
+    }
+}
+
+// Level builder functions - create specific levels
+func buildLevel1(level: Level) {
+    level.init(1);
+
+    // Ground floor
+    level.addPlatform(0, 460, 640, 20);
+
+    // Second floor
+    level.addPlatform(0, 380, 200, 8);
+    level.addPlatform(280, 380, 360, 8);
+
+    // Third floor
+    level.addPlatform(80, 300, 200, 8);
+    level.addPlatform(360, 300, 200, 8);
+
+    // Fourth floor
+    level.addPlatform(0, 220, 180, 8);
+    level.addPlatform(260, 220, 380, 8);
+
+    // Top floor
+    level.addPlatform(100, 140, 440, 8);
+
+    // Ladders connecting floors
+    level.addLadder(180, 388, 72);   // Ground to 2nd (left)
+    level.addLadder(320, 388, 72);   // Ground to 2nd (right)
+    level.addLadder(250, 308, 72);   // 2nd to 3rd
+    level.addLadder(420, 308, 72);   // 2nd to 3rd (right)
+    level.addLadder(150, 228, 72);   // 3rd to 4th
+    level.addLadder(500, 228, 72);   // 3rd to 4th (right)
+    level.addLadder(300, 148, 72);   // 4th to top
+
+    // Player start (bottom left)
+    level.setPlayerStart(50, 444);
+
+    // Exit (top)
+    level.setExit(500, 116);
+
+    // Collectibles
+    level.addCollectible(100, 445);
+    level.addCollectible(400, 445);
+    level.addCollectible(140, 365);
+    level.addCollectible(450, 365);
+    level.addCollectible(300, 285);
+    level.addCollectible(100, 205);
+    level.addCollectible(550, 205);
+    level.addCollectible(250, 125);
+
+    // Enemies
+    level.addEnemy(400, 364, 280, 640);     // 2nd floor
+    level.addEnemy(120, 284, 80, 280);      // 3rd floor
+    level.addEnemy(300, 204, 260, 640);     // 4th floor
+}
+
+func buildLevel2(level: Level) {
+    level.init(2);
+
+    // More complex level with more platforms and enemies
+
+    // Ground
+    level.addPlatform(0, 460, 640, 20);
+
+    // Floating platforms (staggered)
+    level.addPlatform(50, 400, 100, 8);
+    level.addPlatform(200, 360, 100, 8);
+    level.addPlatform(350, 320, 100, 8);
+    level.addPlatform(500, 280, 100, 8);
+    level.addPlatform(350, 240, 100, 8);
+    level.addPlatform(200, 200, 100, 8);
+    level.addPlatform(50, 160, 100, 8);
+    level.addPlatform(200, 120, 100, 8);
+    level.addPlatform(350, 80, 200, 8);
+
+    // Ladders
+    level.addLadder(130, 408, 52);
+    level.addLadder(280, 368, 52);
+    level.addLadder(430, 328, 52);
+    level.addLadder(580, 288, 52);
+    level.addLadder(430, 248, 32);
+    level.addLadder(280, 208, 32);
+    level.addLadder(130, 168, 32);
+    level.addLadder(280, 128, 32);
+    level.addLadder(430, 88, 32);
+
+    level.setPlayerStart(60, 444);
+    level.setExit(500, 56);
+
+    // Collectibles scattered across platforms
+    level.addCollectible(80, 385);
+    level.addCollectible(230, 345);
+    level.addCollectible(380, 305);
+    level.addCollectible(530, 265);
+    level.addCollectible(380, 225);
+    level.addCollectible(230, 185);
+    level.addCollectible(80, 145);
+    level.addCollectible(230, 105);
+    level.addCollectible(400, 65);
+
+    // More enemies
+    level.addEnemy(60, 384, 50, 150);
+    level.addEnemy(360, 304, 350, 450);
+    level.addEnemy(510, 264, 500, 600);
+    level.addEnemy(210, 184, 200, 300);
+}
+
+func buildLevel3(level: Level) {
+    level.init(3);
+
+    // Challenging level with narrow platforms
+
+    // Ground
+    level.addPlatform(0, 460, 640, 20);
+
+    // Tower structure
+    level.addPlatform(270, 400, 100, 8);
+    level.addPlatform(270, 340, 100, 8);
+    level.addPlatform(270, 280, 100, 8);
+    level.addPlatform(270, 220, 100, 8);
+    level.addPlatform(270, 160, 100, 8);
+    level.addPlatform(270, 100, 100, 8);
+
+    // Side platforms
+    level.addPlatform(50, 380, 150, 8);
+    level.addPlatform(440, 380, 150, 8);
+    level.addPlatform(50, 300, 150, 8);
+    level.addPlatform(440, 300, 150, 8);
+    level.addPlatform(50, 220, 150, 8);
+    level.addPlatform(440, 220, 150, 8);
+    level.addPlatform(50, 140, 150, 8);
+    level.addPlatform(440, 140, 150, 8);
+
+    // Central ladders (tower)
+    level.addLadder(320, 408, 52);
+    level.addLadder(320, 348, 52);
+    level.addLadder(320, 288, 52);
+    level.addLadder(320, 228, 52);
+    level.addLadder(320, 168, 52);
+    level.addLadder(320, 108, 52);
+
+    // Side connections
+    level.addLadder(180, 388, 72);
+    level.addLadder(460, 388, 72);
+    level.addLadder(180, 308, 72);
+    level.addLadder(460, 308, 72);
+    level.addLadder(180, 228, 72);
+    level.addLadder(460, 228, 72);
+
+    level.setPlayerStart(50, 444);
+    level.setExit(300, 76);
+
+    // Collectibles
+    level.addCollectible(300, 385);
+    level.addCollectible(100, 365);
+    level.addCollectible(500, 365);
+    level.addCollectible(300, 265);
+    level.addCollectible(100, 285);
+    level.addCollectible(500, 285);
+    level.addCollectible(300, 205);
+    level.addCollectible(100, 205);
+    level.addCollectible(500, 205);
+    level.addCollectible(300, 145);
+
+    // Enemies
+    level.addEnemy(80, 364, 50, 200);
+    level.addEnemy(470, 364, 440, 590);
+    level.addEnemy(280, 324, 270, 370);
+    level.addEnemy(80, 284, 50, 200);
+    level.addEnemy(470, 284, 440, 590);
+    level.addEnemy(280, 204, 270, 370);
+}
+
+// Get a built level by number
+func getLevel(num: Integer) -> Level {
+    var level = new Level();
+    if num == 1 {
+        buildLevel1(level);
+    } else if num == 2 {
+        buildLevel2(level);
+    } else if num == 3 {
+        buildLevel3(level);
+    } else {
+        // Loop back to level 1 with harder enemies
+        buildLevel1(level);
+        level.levelNum = num;
+    }
+    return level;
+}

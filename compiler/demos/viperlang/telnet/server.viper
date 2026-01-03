@@ -1,0 +1,332 @@
+// Telnet Server - A simple telnet server with shell capabilities
+// Provides file system navigation and basic commands
+module main;
+
+// ============================================================================
+// CONFIGURATION
+// ============================================================================
+
+final DEFAULT_PORT = 2323;
+final MAX_BUFFER = 4096;
+final VERSION = "1.0.0";
+
+// ============================================================================
+// GLOBAL STATE FOR CURRENT SESSION
+// ============================================================================
+
+var currentDir: String;
+var username: String;
+
+func initSession() {
+    currentDir = Viper.IO.Dir.Current();
+    username = "guest";
+}
+
+// ============================================================================
+// COMMAND HANDLERS
+// ============================================================================
+
+// Execute a command and return the result
+func executeCommand(command: String) -> String {
+    var cmd = command;
+    var result = "";
+
+    // Empty command
+    if cmd == "" {
+        return result;
+    }
+
+    // Parse command and arguments
+    var parts = splitCommand(cmd);
+    if parts.count() == 0 {
+        return result;
+    }
+
+    String cmdName = parts.get(0);
+
+    // Handle commands using separate if statements to avoid else-if chain bug
+    if cmdName == "help" {
+        result = helpCommand();
+    }
+    if cmdName == "pwd" {
+        result = pwdCommand();
+    }
+    if cmdName == "cd" {
+        if parts.count() > 1 {
+            String arg = parts.get(1);
+            result = cdCommand(arg);
+        } else {
+            result = "Usage: cd <directory>\n";
+        }
+    }
+    if cmdName == "ls" {
+        if parts.count() > 1 {
+            String arg = parts.get(1);
+            result = lsCommand(arg);
+        } else {
+            result = lsCommand(currentDir);
+        }
+    }
+    if cmdName == "cat" {
+        if parts.count() > 1 {
+            String arg = parts.get(1);
+            result = catCommand(arg);
+        } else {
+            result = "Usage: cat <filename>\n";
+        }
+    }
+    if cmdName == "whoami" {
+        result = username + "\n";
+    }
+    if cmdName == "hostname" {
+        result = "viper-telnet-server\n";
+    }
+    if cmdName == "date" {
+        result = dateCommand();
+    }
+    if cmdName == "echo" {
+        result = echoCommand(cmd);
+    }
+    if cmdName == "exit" || cmdName == "quit" {
+        result = "EXIT";
+    }
+    if cmdName == "version" {
+        result = "Viper Telnet Server v" + VERSION + "\n";
+    }
+    if cmdName == "clear" {
+        // Send ANSI clear screen
+        result = "\x1B[2J\x1B[H";
+    }
+
+    // Unknown command
+    if result == "" {
+        result = "Unknown command: " + cmdName + "\nType 'help' for available commands.\n";
+    }
+
+    return result;
+}
+
+// Split command into parts (simple space-based split)
+func splitCommand(cmd: String) -> List[String] {
+    var result: List[String] = [];
+    var current = "";
+    var i = 0;
+    var len = Viper.String.Length(cmd);
+
+    while i < len {
+        var ch = Viper.String.Substring(cmd, i, 1);
+        if ch == " " {
+            if current != "" {
+                result.add(current);
+                current = "";
+            }
+        } else {
+            current = current + ch;
+        }
+        i = i + 1;
+    }
+
+    if current != "" {
+        result.add(current);
+    }
+
+    return result;
+}
+
+// Help command
+func helpCommand() -> String {
+    var msg = "Available commands:\n";
+    msg = msg + "  help     - Show this help message\n";
+    msg = msg + "  pwd      - Print working directory\n";
+    msg = msg + "  cd <dir> - Change directory\n";
+    msg = msg + "  ls [dir] - List directory contents\n";
+    msg = msg + "  cat <f>  - Display file contents\n";
+    msg = msg + "  whoami   - Show current user\n";
+    msg = msg + "  hostname - Show server hostname\n";
+    msg = msg + "  date     - Show current date/time\n";
+    msg = msg + "  echo <t> - Echo text back\n";
+    msg = msg + "  clear    - Clear screen\n";
+    msg = msg + "  version  - Show server version\n";
+    msg = msg + "  exit     - Disconnect from server\n";
+    return msg;
+}
+
+// PWD command
+func pwdCommand() -> String {
+    return currentDir + "\n";
+}
+
+// CD command
+func cdCommand(path: String) -> String {
+    var newPath = path;
+
+    // Handle relative paths
+    var pathLen = Viper.String.Length(path);
+    if pathLen > 0 {
+        var firstChar = Viper.String.Substring(path, 0, 1);
+        if firstChar != "/" {
+            newPath = Viper.IO.Path.Join(currentDir, path);
+        }
+    }
+
+    // Check if directory exists
+    if Viper.IO.Dir.Exists(newPath) == false {
+        return "cd: " + path + ": No such directory\n";
+    }
+
+    currentDir = newPath;
+    return "";
+}
+
+// LS command
+func lsCommand(path: String) -> String {
+    var targetPath = path;
+
+    // Handle relative paths
+    var pathLen = Viper.String.Length(path);
+    if pathLen > 0 {
+        var firstChar = Viper.String.Substring(path, 0, 1);
+        if firstChar != "/" {
+            targetPath = Viper.IO.Path.Join(currentDir, path);
+        }
+    }
+
+    if Viper.IO.Dir.Exists(targetPath) == false {
+        return "ls: " + path + ": No such directory\n";
+    }
+
+    // Simplified version - just show the path for now
+    return "Contents of: " + targetPath + "\n(directory listing not yet implemented)\n";
+}
+
+// CAT command
+func catCommand(filename: String) -> String {
+    var filepath = filename;
+
+    // Handle relative paths
+    var fnLen = Viper.String.Length(filename);
+    if fnLen > 0 {
+        var firstChar = Viper.String.Substring(filename, 0, 1);
+        if firstChar != "/" {
+            filepath = Viper.IO.Path.Join(currentDir, filename);
+        }
+    }
+
+    if Viper.IO.File.Exists(filepath) == false {
+        return "cat: " + filename + ": No such file\n";
+    }
+
+    var content = Viper.IO.File.ReadAllText(filepath);
+    return content + "\n";
+}
+
+// DATE command
+func dateCommand() -> String {
+    var now = Viper.DateTime.Now();
+    return Viper.Fmt.Int(now) + " (unix timestamp)\n";
+}
+
+// ECHO command
+func echoCommand(cmd: String) -> String {
+    // Remove "echo " prefix
+    var len = Viper.String.Length(cmd);
+    if len > 5 {
+        var sublen = len - 5;
+        return Viper.String.Substring(cmd, 5, sublen) + "\n";
+    }
+    return "\n";
+}
+
+// ============================================================================
+// CLIENT SESSION HANDLING (Functional API style)
+// ============================================================================
+
+func handleClient(client: Ptr) {
+    // Initialize session
+    initSession();
+
+    // Send welcome banner
+    Viper.Network.Tcp.SendStr(client, "\n");
+    Viper.Network.Tcp.SendStr(client, "=================================\n");
+    Viper.Network.Tcp.SendStr(client, "  Viper Telnet Server v" + VERSION + "\n");
+    Viper.Network.Tcp.SendStr(client, "=================================\n");
+    Viper.Network.Tcp.SendStr(client, "Type 'help' for available commands.\n");
+    Viper.Network.Tcp.SendStr(client, "\n");
+
+    // Send initial prompt
+    Viper.Network.Tcp.SendStr(client, currentDir + " $ ");
+
+    var connected = 1;
+
+    while connected == 1 {
+        // Check if connection is still open
+        if Viper.Network.Tcp.get_IsOpen(client) == false {
+            connected = 0;
+            break;
+        }
+
+        // Read a line from client
+        var line = Viper.Network.Tcp.RecvLine(client);
+
+        // Execute the command
+        var result = executeCommand(line);
+
+        if result == "EXIT" {
+            Viper.Network.Tcp.SendStr(client, "Goodbye!\n");
+            connected = 0;
+            break;
+        }
+
+        if result != "" {
+            Viper.Network.Tcp.SendStr(client, result);
+        }
+
+        // Send prompt
+        Viper.Network.Tcp.SendStr(client, currentDir + " $ ");
+    }
+
+    Viper.Network.Tcp.Close(client);
+}
+
+// ============================================================================
+// MAIN SERVER
+// ============================================================================
+
+func main() {
+    var port = DEFAULT_PORT;
+
+    Viper.Terminal.Print("Starting Viper Telnet Server on port ");
+    Viper.Terminal.PrintInt(port);
+    Viper.Terminal.Say("...");
+
+    // Create server
+    var server = Viper.Network.TcpServer.Listen(port);
+
+    Viper.Terminal.Say("Server listening. Waiting for connections...");
+    Viper.Terminal.Say("Press Ctrl+C to stop.");
+    Viper.Terminal.Say("");
+
+    // Accept connections in a loop
+    var running = 1;
+    while running == 1 {
+        Viper.Terminal.Say("Waiting for client...");
+
+        // Accept a client connection
+        var client = Viper.Network.TcpServer.Accept(server);
+
+        Viper.Terminal.Print("Client connected from ");
+        Viper.Terminal.Print(Viper.Network.Tcp.get_Host(client));
+        Viper.Terminal.Print(":");
+        Viper.Terminal.PrintInt(Viper.Network.Tcp.get_Port(client));
+        Viper.Terminal.Say("");
+
+        // Handle the client session
+        handleClient(client);
+
+        Viper.Terminal.Say("Client disconnected.");
+        Viper.Terminal.Say("");
+    }
+
+    Viper.Network.TcpServer.Close(server);
+    Viper.Terminal.Say("Server stopped.");
+}
