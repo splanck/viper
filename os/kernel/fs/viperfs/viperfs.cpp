@@ -980,6 +980,71 @@ u64 ViperFS::alloc_inode_unlocked()
     return 0;
 }
 
+/**
+ * @brief Free all data blocks belonging to an inode.
+ * @note Caller must hold fs_lock_.
+ */
+void ViperFS::free_inode_data_unlocked(u64 ino)
+{
+    if (!mounted_)
+        return;
+
+    u64 block_num = inode_block(ino);
+    u64 offset = inode_offset(ino);
+
+    CacheBlock *block = cache().get(block_num);
+    if (!block)
+        return;
+
+    Inode *inode = reinterpret_cast<Inode *>(block->data + offset);
+
+    // Free all data blocks
+    u64 num_blocks = (inode->size + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    for (u64 i = 0; i < num_blocks; i++)
+    {
+        u64 data_block = get_block_ptr(inode, i);
+        if (data_block != 0)
+        {
+            free_block_unlocked(data_block);
+            set_block_ptr(inode, i, 0);
+        }
+    }
+
+    // Free indirect block if present
+    if (inode->indirect != 0)
+    {
+        free_block_unlocked(inode->indirect);
+        inode->indirect = 0;
+    }
+
+    // Free double indirect blocks if present
+    if (inode->double_indirect != 0)
+    {
+        // Read first level indirect block
+        CacheBlock *di_block = cache().get(inode->double_indirect);
+        if (di_block)
+        {
+            u64 *l1_ptrs = reinterpret_cast<u64 *>(di_block->data);
+            constexpr u64 PTRS_PER_BLOCK = BLOCK_SIZE / sizeof(u64);
+            for (u64 i = 0; i < PTRS_PER_BLOCK; i++)
+            {
+                if (l1_ptrs[i] != 0)
+                {
+                    free_block_unlocked(l1_ptrs[i]);
+                }
+            }
+            cache().release(di_block);
+        }
+        free_block_unlocked(inode->double_indirect);
+        inode->double_indirect = 0;
+    }
+
+    inode->size = 0;
+    inode->blocks = 0;
+    block->dirty = true;
+    cache().release(block);
+}
+
 /** @copydoc fs::viperfs::ViperFS::free_inode_unlocked */
 void ViperFS::free_inode_unlocked(u64 ino)
 {
@@ -1634,6 +1699,7 @@ u64 ViperFS::create_symlink(
 
     if (written != static_cast<i64>(target_len))
     {
+        free_inode_data_unlocked(ino); // Free data blocks allocated by write_data
         free_inode_unlocked(ino);
         return 0;
     }
@@ -1641,6 +1707,7 @@ u64 ViperFS::create_symlink(
     // Add directory entry to parent
     if (!add_dir_entry(dir, ino, name, name_len, file_type::LINK))
     {
+        free_inode_data_unlocked(ino); // Free data blocks
         free_inode_unlocked(ino);
         return 0;
     }

@@ -46,6 +46,7 @@
 #include "../lib/spinlock.hpp"
 #include "../loader/loader.hpp"
 #include "../mm/pmm.hpp"
+#include "../mm/vma.hpp"
 #include "../sched/scheduler.hpp"
 #include "../sched/signal.hpp"
 #include "../sched/task.hpp"
@@ -153,6 +154,47 @@ static bool is_valid_user_address(u64 addr, usize size)
     return true;
 }
 
+/**
+ * @brief Check if an address range is covered by valid VMAs with required permissions.
+ * @param addr Start address
+ * @param size Size of range
+ * @param need_write true if write permission is required
+ * @return true if the range is valid
+ */
+static bool check_vma_range(u64 addr, usize size, bool need_write)
+{
+    viper::Viper *v = viper::current();
+    if (!v)
+    {
+        // No current process - allow for kernel context
+        return true;
+    }
+
+    // Check each page in the range is covered by a VMA with correct permissions
+    u64 end = addr + size;
+    u64 page_addr = addr & ~(pmm::PAGE_SIZE - 1);
+
+    while (page_addr < end)
+    {
+        mm::Vma *vma = v->vma_list.find(page_addr);
+        if (!vma)
+        {
+            return false; // Address not in any VMA
+        }
+
+        // Check write permission if required
+        if (need_write && !(vma->prot & mm::vma_prot::WRITE))
+        {
+            return false;
+        }
+
+        // Skip to next page (or end of this VMA, whichever is smaller)
+        page_addr += pmm::PAGE_SIZE;
+    }
+
+    return true;
+}
+
 bool validate_user_read(const void *ptr, usize size, bool null_ok)
 {
     if (!ptr)
@@ -166,7 +208,12 @@ bool validate_user_read(const void *ptr, usize size, bool null_ok)
         return false;
     }
 
-    // TODO: When user mode is implemented, also check memory is mapped
+    // Check address is in a valid VMA
+    if (!check_vma_range(addr, size, false))
+    {
+        return false;
+    }
+
     return true;
 }
 
@@ -183,7 +230,12 @@ bool validate_user_write(void *ptr, usize size, bool null_ok)
         return false;
     }
 
-    // TODO: When user mode is implemented, also check memory is mapped
+    // Check address is in a writable VMA
+    if (!check_vma_range(addr, size, true))
+    {
+        return false;
+    }
+
     return true;
 }
 

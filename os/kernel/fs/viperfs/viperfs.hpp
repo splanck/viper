@@ -504,6 +504,8 @@ class ViperFS
     u64 alloc_inode_unlocked();
     /** @brief Mark an inode free in the inode table (unlocked). */
     void free_inode_unlocked(u64 ino);
+    /** @brief Free all data blocks belonging to an inode (unlocked). */
+    void free_inode_data_unlocked(u64 ino);
 
     // Add directory entry
     /** @brief Add a directory entry to a directory inode. */

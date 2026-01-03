@@ -715,7 +715,11 @@ i64 do_sbrk(Viper *v, i64 increment)
             if (phys == 0)
             {
                 serial::puts("[viper] sbrk: out of physical memory\n");
-                // TODO: unmap pages we already mapped
+                // Unmap pages we already mapped (rollback)
+                for (u64 rollback = old_page; rollback < addr; rollback += pmm::PAGE_SIZE)
+                {
+                    as->unmap(rollback, pmm::PAGE_SIZE);
+                }
                 return error::VERR_OUT_OF_MEMORY;
             }
 
@@ -731,6 +735,11 @@ i64 do_sbrk(Viper *v, i64 increment)
             {
                 serial::puts("[viper] sbrk: failed to map page\n");
                 pmm::free_page(phys);
+                // Unmap pages we already mapped (rollback)
+                for (u64 rollback = old_page; rollback < addr; rollback += pmm::PAGE_SIZE)
+                {
+                    as->unmap(rollback, pmm::PAGE_SIZE);
+                }
                 return error::VERR_OUT_OF_MEMORY;
             }
         }
