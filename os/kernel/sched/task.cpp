@@ -3,11 +3,13 @@
 #include "../arch/aarch64/exceptions.hpp"
 #include "../console/serial.hpp"
 #include "../include/constants.hpp"
+#include "../ipc/poll.hpp"
 #include "../lib/str.hpp"
 #include "../mm/vmm.hpp"
 #include "../viper/address_space.hpp"
 #include "../viper/viper.hpp"
 #include "scheduler.hpp"
+#include "signal.hpp"
 #include "wait.hpp"
 
 // External function to enter user mode (from exceptions.S)
@@ -268,6 +270,10 @@ Task *create(const char *name, TaskEntry entry, void *arg, u32 flags)
     t->kernel_stack = allocate_kernel_stack();
     if (!t->kernel_stack)
     {
+        // Release the task slot we just allocated
+        t->state = TaskState::Invalid;
+        t->id = 0;
+        serial::puts("[task] ERROR: Failed to allocate kernel stack\n");
         return nullptr;
     }
     t->kernel_stack_top = t->kernel_stack + KERNEL_STACK_SIZE;
@@ -408,6 +414,10 @@ Task *create_user_task(const char *name, void *viper_ptr, u64 entry, u64 stack)
     t->kernel_stack = allocate_kernel_stack();
     if (!t->kernel_stack)
     {
+        // Release the task slot we just allocated
+        t->state = TaskState::Invalid;
+        t->id = 0;
+        serial::puts("[task] ERROR: Failed to allocate kernel stack for user task\n");
         return nullptr;
     }
     t->kernel_stack_top = t->kernel_stack + KERNEL_STACK_SIZE;
@@ -505,6 +515,9 @@ void exit(i32 code)
     serial::puts("' exiting with code ");
     serial::put_dec(code);
     serial::puts("\n");
+
+    // Clear any poll/timer waiters referencing this task to prevent use-after-free
+    poll::clear_task_waiters(t);
 
     // If this is a user task with an associated viper process, exit the process
     // This marks it as a zombie and wakes any waiting parent
@@ -887,8 +900,8 @@ i32 kill(u32 pid, i32 signal)
     // Handle signals
     switch (signal)
     {
-        case SIGKILL:
-        case SIGTERM:
+        case signal::sig::SIGKILL:
+        case signal::sig::SIGTERM:
         {
             serial::puts("[task] Killing task '");
             serial::puts(t->name);
@@ -911,21 +924,54 @@ i32 kill(u32 pid, i32 signal)
                 // exit() never returns
             }
 
-            // Otherwise, mark as exited
+            // Clear poll/timer waiters for this task to prevent use-after-free
+            poll::clear_task_waiters(t);
+
+            // If this is a user task with an associated viper process, mark it as zombie
+            if (t->viper)
+            {
+                ::viper::Viper *v = reinterpret_cast<::viper::Viper *>(t->viper);
+                v->exit_code = -signal;
+                v->state = ::viper::ViperState::Zombie;
+
+                // Reparent children to init (viper ID 1)
+                ::viper::Viper *init = ::viper::find(1);
+                ::viper::Viper *child = v->first_child;
+                while (child)
+                {
+                    ::viper::Viper *next = child->next_sibling;
+                    child->parent = init;
+                    if (init)
+                    {
+                        child->next_sibling = init->first_child;
+                        init->first_child = child;
+                    }
+                    child = next;
+                }
+                v->first_child = nullptr;
+
+                // Wake parent if waiting for children to exit
+                if (v->parent)
+                {
+                    sched::wait_wake_one(&v->parent->child_waiters);
+                }
+            }
+
+            // Mark task as exited
             t->exit_code = -signal;
             t->state = TaskState::Exited;
 
             return 0;
         }
 
-        case SIGSTOP:
-        case SIGCONT:
+        case signal::sig::SIGSTOP:
+        case signal::sig::SIGCONT:
             // Not implemented - return success
             return 0;
 
         default:
             // Unknown signal - treat as SIGTERM
-            return kill(pid, SIGTERM);
+            return kill(pid, signal::sig::SIGTERM);
     }
 }
 

@@ -77,8 +77,8 @@ bool Journal::write_header()
     JournalHeader *hdr = reinterpret_cast<JournalHeader *>(block->data);
     *hdr = header_;
     block->dirty = true;
+    cache().sync_block(block);  // Sync before release to avoid use-after-free
     cache().release(block);
-    cache().sync_block(block);
 
     return true;
 }
@@ -421,10 +421,27 @@ bool Journal::write_transaction(Transaction *txn, u64 *journal_pos)
 
     if (available < space_needed)
     {
-        // Journal is full - need to wrap or compact
-        // For now, reset the journal (simple approach)
+        // Journal is full - need to checkpoint and reclaim space
+        // Before resetting, ensure all cached data is written to main storage
+        // and that there are no uncommitted transactions.
+
+        if (header_.head != header_.tail)
+        {
+            // There are transactions in the journal - they need to be checkpointed.
+            // The transactions between head and tail have been committed to the journal
+            // but we need to ensure their destination blocks are synced to main storage.
+            serial::puts("[journal] Checkpointing ");
+            serial::put_dec(header_.tail - header_.head);
+            serial::puts(" journal blocks before reclaim\n");
+
+            // Sync all dirty blocks to ensure journaled data is in main storage
+            cache().sync();
+        }
+
+        // Now safe to reset the journal - all data has been checkpointed
         header_.head = 0;
         header_.tail = 0;
+        serial::puts("[journal] Journal space reclaimed\n");
     }
 
     *journal_pos = header_.tail;

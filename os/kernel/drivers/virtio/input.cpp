@@ -205,7 +205,7 @@ bool InputDevice::init(u64 base_addr)
 
     // Allocate physical memory for event buffers
     usize events_size = sizeof(InputEvent) * INPUT_EVENT_BUFFERS;
-    usize pages_needed = (events_size + 4095) / 4096;
+    usize pages_needed = (events_size + pmm::PAGE_SIZE - 1) / pmm::PAGE_SIZE;
     events_phys_ = pmm::alloc_pages(pages_needed);
     if (events_phys_ == 0)
     {
@@ -220,11 +220,12 @@ bool InputDevice::init(u64 base_addr)
         events_[i] = virt_events[i];
     }
 
+    // Set DRIVER_OK to indicate driver is ready
+    // NOTE: Must set DRIVER_OK before submitting buffers per VirtIO spec
+    add_status(status::DRIVER_OK);
+
     // Fill eventq with receive buffers
     refill_eventq();
-
-    // Set DRIVER_OK to indicate driver is ready
-    add_status(status::DRIVER_OK);
 
     serial::puts("[virtio-input] Final status=");
     serial::put_hex(get_status());

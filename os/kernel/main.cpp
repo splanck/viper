@@ -124,7 +124,7 @@ void print_boot_banner()
 {
     serial::puts("\n");
     serial::puts("=========================================\n");
-    serial::puts("  ViperOS v0.2.0 - AArch64\n");
+    serial::puts("  ViperOS v0.3.1 - AArch64\n");
     serial::puts("  Mode: ");
 #if VIPER_MICROKERNEL_MODE
     serial::puts("MICROKERNEL (bring-up)\n");

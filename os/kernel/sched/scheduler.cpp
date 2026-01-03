@@ -29,6 +29,11 @@
  * - The timer interrupt decrements the counter and `preempt()` triggers a
  *   reschedule when it reaches zero.
  * - Tasks are preempted only by higher-priority tasks or when their slice expires.
+ *
+ * Lock Ordering (to prevent deadlocks):
+ * - Always acquire sched_lock before per-CPU locks
+ * - Ordering: sched_lock -> per_cpu_sched[N].lock
+ * - Release in reverse order
  */
 namespace scheduler
 {
@@ -326,6 +331,7 @@ task::Task *steal_task(u32 current_cpu)
 
 /**
  * @brief Check if any tasks are ready on the current CPU.
+ * @note Caller must hold sched_lock. This function acquires per-CPU lock internally.
  */
 bool any_ready_percpu(u32 cpu_id)
 {
@@ -335,12 +341,21 @@ bool any_ready_percpu(u32 cpu_id)
     }
 
     PerCpuScheduler &sched = per_cpu_sched[cpu_id];
+
+    // Lock ordering: sched_lock (caller holds) -> per-CPU lock
+    sched.lock.acquire();
+    bool has_ready = false;
     for (u8 i = 0; i < task::NUM_PRIORITY_QUEUES; i++)
     {
         if (sched.queues[i].head)
-            return true;
+        {
+            has_ready = true;
+            break;
+        }
     }
-    return false;
+    sched.lock.release();
+
+    return has_ready;
 }
 
 } // namespace
@@ -643,9 +658,14 @@ void tick()
             {
                 // Check both per-CPU and global queues for higher priority tasks
                 task::Task *ready = nullptr;
+
+                // Check per-CPU queue - must acquire per-CPU lock
+                // Lock ordering: sched_lock (already held) -> per-CPU lock
                 if (per_cpu_sched[cpu_id].initialized)
                 {
+                    per_cpu_sched[cpu_id].lock.acquire();
                     ready = per_cpu_sched[cpu_id].queues[i].head;
+                    per_cpu_sched[cpu_id].lock.release();
                 }
                 if (!ready)
                 {

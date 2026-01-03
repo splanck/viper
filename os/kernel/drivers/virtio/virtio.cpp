@@ -1,6 +1,7 @@
 #include "virtio.hpp"
 #include "../../console/serial.hpp"
 #include "../../mm/pmm.hpp"
+#include "../../lib/spinlock.hpp"
 
 /**
  * @file virtio.cpp
@@ -20,6 +21,7 @@ namespace virtio
 // Device registry
 static DeviceInfo devices[MAX_DEVICES];
 static usize num_devices = 0;
+static Spinlock device_lock;
 
 /** @copydoc virtio::Device::init */
 bool Device::init(u64 base_addr)
@@ -289,6 +291,8 @@ void init()
 /** @copydoc virtio::find_device */
 u64 find_device(u32 type)
 {
+    SpinlockGuard guard(device_lock);
+
     for (usize i = 0; i < num_devices; i++)
     {
         if (devices[i].type == type && !devices[i].in_use)

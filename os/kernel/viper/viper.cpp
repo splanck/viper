@@ -786,10 +786,16 @@ i64 getpgid(u64 pid)
 /** @copydoc viper::setpgid */
 i64 setpgid(u64 pid, u64 pgid)
 {
+    Viper *caller = current();
+    if (!caller)
+    {
+        return error::VERR_PERMISSION;
+    }
+
     Viper *v;
     if (pid == 0)
     {
-        v = current();
+        v = caller;
     }
     else
     {
@@ -799,6 +805,12 @@ i64 setpgid(u64 pid, u64 pgid)
     if (!v)
     {
         return error::VERR_NOT_FOUND;
+    }
+
+    // Permission check: caller can only change pgid of self or child
+    if (v != caller && v->parent != caller)
+    {
+        return error::VERR_PERMISSION;
     }
 
     // Can't change process group of a session leader

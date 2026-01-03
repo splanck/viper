@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../include/types.hpp"
+#include "../lib/spinlock.hpp"
 #include "handle.hpp"
 #include "rights.hpp"
 
@@ -251,7 +252,8 @@ class Table
     Entry *entries_ = nullptr;
     usize capacity_ = 0;
     usize count_ = 0;
-    u32 free_head_ = 0; // Free list head (index)
+    u32 free_head_ = 0;  // Free list head (index)
+    mutable Spinlock lock_; // Protects all table operations
 };
 
 } // namespace cap

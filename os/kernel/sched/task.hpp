@@ -458,11 +458,8 @@ u32 reap_exited();
  */
 void destroy(Task *t);
 
-// Signal numbers (subset of POSIX signals)
-constexpr i32 SIGKILL = 9;  // Kill signal (cannot be caught)
-constexpr i32 SIGTERM = 15; // Termination signal
-constexpr i32 SIGSTOP = 19; // Stop process (cannot be caught)
-constexpr i32 SIGCONT = 18; // Continue if stopped
+// Signal numbers are defined in signal.hpp (namespace sig)
+// Use sig::SIGKILL, sig::SIGTERM, etc.
 
 /**
  * @brief Send a signal to a task.

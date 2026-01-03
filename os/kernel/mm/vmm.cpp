@@ -1,5 +1,6 @@
 #include "vmm.hpp"
 #include "../console/serial.hpp"
+#include "../lib/spinlock.hpp"
 #include "pmm.hpp"
 
 // Suppress warnings for address layout constants
@@ -28,6 +29,9 @@ namespace
 {
 // Page table root (TTBR0 for identity mapping)
 u64 *pgt_root = nullptr;
+
+// Lock for page table modifications (SMP safety)
+static Spinlock vmm_lock;
 
 // Number of entries per table (512 for 4KB pages)
 constexpr u64 ENTRIES_PER_TABLE = 512;
@@ -237,8 +241,8 @@ void init()
     serial::puts("[vmm] VMM initialized (identity mapping active)\n");
 }
 
-/** @copydoc vmm::map_page */
-bool map_page(u64 virt, u64 phys, u64 flags)
+// Internal unlocked version for use when lock is already held
+static bool map_page_unlocked(u64 virt, u64 phys, u64 flags)
 {
     if (!pgt_root)
     {
@@ -282,15 +286,32 @@ bool map_page(u64 virt, u64 phys, u64 flags)
     return true;
 }
 
+// Forward declaration for internal unlocked unmap (used by map_range rollback)
+static void unmap_page_unlocked(u64 virt);
+
+/** @copydoc vmm::map_page */
+bool map_page(u64 virt, u64 phys, u64 flags)
+{
+    SpinlockGuard guard(vmm_lock);
+    return map_page_unlocked(virt, phys, flags);
+}
+
 /** @copydoc vmm::map_range */
 bool map_range(u64 virt, u64 phys, u64 size, u64 flags)
 {
+    SpinlockGuard guard(vmm_lock);
+
     u64 pages = (size + pmm::PAGE_SIZE - 1) / pmm::PAGE_SIZE;
 
     for (u64 i = 0; i < pages; i++)
     {
-        if (!map_page(virt + i * pmm::PAGE_SIZE, phys + i * pmm::PAGE_SIZE, flags))
+        if (!map_page_unlocked(virt + i * pmm::PAGE_SIZE, phys + i * pmm::PAGE_SIZE, flags))
         {
+            // Rollback: unmap all pages we successfully mapped
+            for (u64 j = 0; j < i; j++)
+            {
+                unmap_page_unlocked(virt + j * pmm::PAGE_SIZE);
+            }
             return false;
         }
     }
@@ -301,6 +322,8 @@ bool map_range(u64 virt, u64 phys, u64 size, u64 flags)
 /** @copydoc vmm::map_block_2mb */
 bool map_block_2mb(u64 virt, u64 phys, u64 flags)
 {
+    SpinlockGuard guard(vmm_lock);
+
     if (!pgt_root)
     {
         serial::puts("[vmm] ERROR: VMM not initialized!\n");
@@ -360,6 +383,8 @@ bool map_block_2mb(u64 virt, u64 phys, u64 flags)
 /** @copydoc vmm::unmap_block_2mb */
 void unmap_block_2mb(u64 virt)
 {
+    SpinlockGuard guard(vmm_lock);
+
     // Alignment check
     if ((virt & (pte::BLOCK_2MB - 1)) != 0)
         return;
@@ -376,8 +401,8 @@ void unmap_block_2mb(u64 virt)
     invalidate_all();
 }
 
-/** @copydoc vmm::unmap_page */
-void unmap_page(u64 virt)
+// Internal unlocked unmap implementation
+static void unmap_page_unlocked(u64 virt)
 {
     // Walk page tables to L3
     u64 *l3 = walk_tables_readonly(virt, 3);
@@ -389,6 +414,13 @@ void unmap_page(u64 virt)
 
     // Invalidate TLB
     invalidate_page(virt);
+}
+
+/** @copydoc vmm::unmap_page */
+void unmap_page(u64 virt)
+{
+    SpinlockGuard guard(vmm_lock);
+    unmap_page_unlocked(virt);
 }
 
 /** @copydoc vmm::virt_to_phys */

@@ -255,8 +255,8 @@ bool expand_heap(u64 needed)
         // Register this as a new heap region
         if (!add_heap_region(new_pages, new_pages + expansion_size))
         {
-            // Failed to add region - free the pages
-            // Note: We don't have a pmm::free_pages yet, so just warn
+            // Failed to add region - free the allocated pages to prevent leak
+            pmm::free_pages(new_pages, pages_needed);
             serial::puts("[kheap] ERROR: Failed to track heap region\n");
             return false;
         }
@@ -482,8 +482,18 @@ void *krealloc(void *ptr, u64 new_size)
         return nullptr;
     }
 
-    BlockHeader *header = ptr_to_header(ptr);
-    u64 old_size = header->size() - HEADER_SIZE;
+    // Read old size under lock to prevent race with concurrent free
+    u64 old_size;
+    {
+        SpinlockGuard guard(heap_lock);
+        BlockHeader *header = ptr_to_header(ptr);
+        if (header->magic != BLOCK_MAGIC_ALLOC)
+        {
+            serial::puts("[kheap] ERROR: krealloc on invalid/freed block\n");
+            return nullptr;
+        }
+        old_size = header->size() - HEADER_SIZE;
+    }
 
     // If new size fits in current block, just return
     if (new_size <= old_size)
@@ -491,7 +501,7 @@ void *krealloc(void *ptr, u64 new_size)
         return ptr;
     }
 
-    // Allocate new block
+    // Allocate new block (kmalloc handles its own locking)
     void *new_ptr = kmalloc(new_size);
     if (new_ptr == nullptr)
     {
@@ -506,7 +516,7 @@ void *krealloc(void *ptr, u64 new_size)
         dst[i] = src[i];
     }
 
-    // Free old block
+    // Free old block (kfree handles its own locking)
     kfree(ptr);
 
     return new_ptr;

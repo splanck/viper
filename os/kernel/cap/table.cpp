@@ -69,6 +69,8 @@ void Table::destroy()
 /** @copydoc cap::Table::insert */
 Handle Table::insert(void *object, Kind kind, Rights rights)
 {
+    SpinlockGuard guard(lock_);
+
     if (free_head_ == 0xFFFFFFFF)
     {
         serial::puts("[cap] ERROR: Capability table full\n");
@@ -93,8 +95,8 @@ Handle Table::insert(void *object, Kind kind, Rights rights)
     return make_handle(index, e.generation);
 }
 
-/** @copydoc cap::Table::get */
-Entry *Table::get(Handle h)
+// Internal unlocked get - caller must hold lock_
+static Entry *get_unlocked(Entry *entries, usize capacity, Handle h)
 {
     if (h == HANDLE_INVALID)
         return nullptr;
@@ -102,10 +104,10 @@ Entry *Table::get(Handle h)
     u32 index = handle_index(h);
     u8 gen = handle_gen(h);
 
-    if (index >= capacity_)
+    if (index >= capacity)
         return nullptr;
 
-    Entry &e = entries_[index];
+    Entry &e = entries[index];
     if (e.kind == Kind::Invalid)
         return nullptr;
     if (e.generation != gen)
@@ -114,10 +116,18 @@ Entry *Table::get(Handle h)
     return &e;
 }
 
+/** @copydoc cap::Table::get */
+Entry *Table::get(Handle h)
+{
+    SpinlockGuard guard(lock_);
+    return get_unlocked(entries_, capacity_, h);
+}
+
 /** @copydoc cap::Table::get_checked */
 Entry *Table::get_checked(Handle h, Kind expected_kind)
 {
-    Entry *e = get(h);
+    SpinlockGuard guard(lock_);
+    Entry *e = get_unlocked(entries_, capacity_, h);
     if (!e)
         return nullptr;
     if (e->kind != expected_kind)
@@ -128,8 +138,11 @@ Entry *Table::get_checked(Handle h, Kind expected_kind)
 /** @copydoc cap::Table::get_with_rights */
 Entry *Table::get_with_rights(Handle h, Kind kind, Rights required)
 {
-    Entry *e = get_checked(h, kind);
+    SpinlockGuard guard(lock_);
+    Entry *e = get_unlocked(entries_, capacity_, h);
     if (!e)
+        return nullptr;
+    if (e->kind != kind)
         return nullptr;
     if (!has_rights(e->rights, required))
     {
@@ -141,6 +154,8 @@ Entry *Table::get_with_rights(Handle h, Kind kind, Rights required)
 /** @copydoc cap::Table::remove */
 void Table::remove(Handle h)
 {
+    SpinlockGuard guard(lock_);
+
     if (h == HANDLE_INVALID)
         return;
 
@@ -167,7 +182,9 @@ void Table::remove(Handle h)
 /** @copydoc cap::Table::derive */
 Handle Table::derive(Handle h, Rights new_rights)
 {
-    Entry *e = get(h);
+    SpinlockGuard guard(lock_);
+
+    Entry *e = get_unlocked(entries_, capacity_, h);
     if (!e)
     {
         return HANDLE_INVALID;
@@ -209,8 +226,8 @@ Handle Table::derive(Handle h, Rights new_rights)
     return make_handle(index, new_entry.generation);
 }
 
-/** @copydoc cap::Table::revoke */
-u32 Table::revoke(Handle h)
+// Internal recursive revoke helper - caller must hold lock_
+static u32 revoke_unlocked(Entry *entries, usize capacity, u32 &free_head, usize &count, Handle h)
 {
     if (h == HANDLE_INVALID)
         return 0;
@@ -218,10 +235,10 @@ u32 Table::revoke(Handle h)
     u32 index = handle_index(h);
     u8 gen = handle_gen(h);
 
-    if (index >= capacity_)
+    if (index >= capacity)
         return 0;
 
-    Entry &e = entries_[index];
+    Entry &e = entries[index];
     if (e.kind == Kind::Invalid)
         return 0;
     if (e.generation != gen)
@@ -229,14 +246,13 @@ u32 Table::revoke(Handle h)
 
     // Recursively revoke all children first
     u32 revoked = 0;
-    for (usize i = 0; i < capacity_; i++)
+    for (usize i = 0; i < capacity; i++)
     {
-        if (entries_[i].kind != Kind::Invalid && entries_[i].parent_index == index)
+        if (entries[i].kind != Kind::Invalid && entries[i].parent_index == index)
         {
             // This entry was derived from the handle we're revoking
-            // Recursively revoke it (this will revoke its children too)
-            Handle child_handle = make_handle(static_cast<u32>(i), entries_[i].generation);
-            revoked += revoke(child_handle);
+            Handle child_handle = make_handle(static_cast<u32>(i), entries[i].generation);
+            revoked += revoke_unlocked(entries, capacity, free_head, count, child_handle);
         }
     }
 
@@ -247,18 +263,27 @@ u32 Table::revoke(Handle h)
     e.parent_index = NO_PARENT;
 
     // Add to free list
-    e.object = reinterpret_cast<void *>(static_cast<uintptr>(free_head_));
-    free_head_ = index;
+    e.object = reinterpret_cast<void *>(static_cast<uintptr>(free_head));
+    free_head = index;
 
-    count_--;
+    count--;
     revoked++;
 
     return revoked;
 }
 
+/** @copydoc cap::Table::revoke */
+u32 Table::revoke(Handle h)
+{
+    SpinlockGuard guard(lock_);
+    return revoke_unlocked(entries_, capacity_, free_head_, count_, h);
+}
+
 /** @copydoc cap::Table::entry_at */
 Entry *Table::entry_at(usize index)
 {
+    SpinlockGuard guard(lock_);
+
     if (index >= capacity_)
         return nullptr;
     return &entries_[index];
@@ -267,6 +292,8 @@ Entry *Table::entry_at(usize index)
 /** @copydoc cap::Table::generation_at */
 u8 Table::generation_at(usize index) const
 {
+    SpinlockGuard guard(lock_);
+
     if (index >= capacity_)
         return 0;
     return entries_[index].generation;

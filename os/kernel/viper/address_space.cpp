@@ -245,9 +245,25 @@ void AddressSpace::destroy()
 
                                 if (l3_entry & pte::VALID)
                                 {
-                                    // Free the user data page
+                                    // Free the user data page, respecting COW reference counts
                                     u64 page_addr = l3_entry & pte::ADDR_MASK;
-                                    pmm::free_page(page_addr);
+                                    u16 refcount = mm::cow::cow_manager().get_ref(page_addr);
+                                    if (refcount > 1)
+                                    {
+                                        // Page is COW-shared with another process - just decrement
+                                        mm::cow::cow_manager().dec_ref(page_addr);
+                                    }
+                                    else if (refcount == 1)
+                                    {
+                                        // Last reference - decrement and free
+                                        mm::cow::cow_manager().dec_ref(page_addr);
+                                        pmm::free_page(page_addr);
+                                    }
+                                    else
+                                    {
+                                        // refcount == 0: page wasn't COW-tracked, just free it
+                                        pmm::free_page(page_addr);
+                                    }
                                 }
                             }
 

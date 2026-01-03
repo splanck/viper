@@ -499,10 +499,11 @@ i32 BlkDevice::flush()
         asm volatile("wfi" ::: "memory");
     }
 
-    // Fallback to polling
+    // Fallback to polling with timeout
     if (!got_completion)
     {
-        while (true)
+        constexpr u32 POLLING_TIMEOUT = 10000000; // ~10 million iterations
+        for (u32 poll_count = 0; poll_count < POLLING_TIMEOUT; poll_count++)
         {
             i32 completed = vq_.poll_used();
             if (completed == desc0)
@@ -511,6 +512,14 @@ i32 BlkDevice::flush()
                 break;
             }
             asm volatile("yield" ::: "memory");
+        }
+        if (!got_completion)
+        {
+            serial::puts("[virtio-blk] Flush timeout in polling fallback\n");
+            vq_.free_desc(desc0);
+            vq_.free_desc(desc1);
+            async.in_use = false;
+            return -1;
         }
     }
 

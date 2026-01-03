@@ -399,6 +399,32 @@ void unregister_wait()
     }
 }
 
+/** @copydoc poll::clear_task_waiters */
+void clear_task_waiters(task::Task *t)
+{
+    if (!t)
+        return;
+
+    // Clear all timer waiters for this task
+    for (u32 i = 0; i < MAX_TIMERS; i++)
+    {
+        if (timers[i].active && timers[i].waiter == t)
+        {
+            timers[i].waiter = nullptr;
+        }
+    }
+
+    // Clear all wait queue entries for this task
+    for (u32 i = 0; i < MAX_WAIT_ENTRIES; i++)
+    {
+        if (wait_queue[i].active && wait_queue[i].task == t)
+        {
+            wait_queue[i].active = false;
+            wait_queue[i].task = nullptr;
+        }
+    }
+}
+
 /** @copydoc poll::test_poll */
 void test_poll()
 {

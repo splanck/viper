@@ -18,6 +18,12 @@
 #include "../include/error.hpp"
 #include "../include/types.hpp"
 
+// Forward declaration
+namespace task
+{
+struct Task;
+}
+
 /**
  * @file poll.hpp
  * @brief Polling and timer primitives for cooperative task scheduling.
@@ -293,5 +299,16 @@ void notify_handle(u32 handle, EventType events);
  * Called when a task is done waiting (either due to event or timeout).
  */
 void unregister_wait();
+
+/**
+ * @brief Clear all wait entries and timers referencing a given task.
+ *
+ * @details
+ * Called during task cleanup (exit/kill) to prevent use-after-free
+ * when a timer fires for an exited task.
+ *
+ * @param t Task whose references should be cleared.
+ */
+void clear_task_waiters(task::Task *t);
 
 } // namespace poll

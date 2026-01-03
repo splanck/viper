@@ -106,4 +106,17 @@ u64 get_kernel_ttbr0();
  */
 u64 get_kernel_ttbr1();
 
+/**
+ * @brief Initialize MMU for secondary CPUs.
+ *
+ * @details
+ * Secondary CPUs woken via PSCI start with MMU disabled. This function
+ * programs MAIR_EL1, TCR_EL1, TTBR0_EL1, and TTBR1_EL1 using the same
+ * values established by the boot CPU, then enables the MMU.
+ *
+ * Must be called early in secondary CPU initialization, before accessing
+ * any kernel data structures that require virtual addressing.
+ */
+void init_secondary();
+
 } // namespace mmu

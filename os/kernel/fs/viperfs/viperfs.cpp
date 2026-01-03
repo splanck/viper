@@ -438,8 +438,8 @@ u64 ViperFS::alloc_zeroed_block_unlocked()
     CacheBlock *block = cache().get(block_num);
     if (!block)
     {
-        // Allocation succeeded but cache failed - should not normally happen
-        // but we can't easily free the block, so just return failure
+        // Allocation succeeded but cache failed - free the block to prevent leak
+        free_block_unlocked(block_num);
         return 0;
     }
 
@@ -636,8 +636,17 @@ void ViperFS::release_inode(Inode *inode)
 /** @copydoc fs::viperfs::ViperFS::read_indirect */
 u64 ViperFS::read_indirect(u64 block_num, u64 index)
 {
+    constexpr u64 PTRS_PER_BLOCK = BLOCK_SIZE / sizeof(u64);
+
     if (block_num == 0)
         return 0;
+
+    // Bounds check to prevent out-of-bounds read
+    if (index >= PTRS_PER_BLOCK)
+    {
+        serial::puts("[viperfs] ERROR: indirect block index out of bounds\n");
+        return 0;
+    }
 
     CacheBlock *block = cache().get(block_num);
     if (!block)
@@ -780,6 +789,14 @@ u64 ViperFS::lookup(Inode *dir, const char *name, usize name_len)
             if (entry->rec_len == 0)
                 break;
 
+            // Validate rec_len to prevent malformed directory entries
+            if (entry->rec_len < DIR_ENTRY_MIN_SIZE ||
+                pos + entry->rec_len > static_cast<usize>(r))
+            {
+                serial::puts("[viperfs] ERROR: Invalid rec_len in directory\n");
+                return 0;
+            }
+
             // Check if this entry matches
             if (entry->inode != 0 && entry->name_len == name_len)
             {
@@ -833,6 +850,14 @@ i32 ViperFS::readdir(Inode *dir, u64 offset, ReaddirCallback cb, void *ctx)
 
             if (entry->rec_len == 0)
                 break;
+
+            // Validate rec_len to prevent malformed directory entries
+            if (entry->rec_len < DIR_ENTRY_MIN_SIZE ||
+                pos + entry->rec_len > static_cast<usize>(r))
+            {
+                serial::puts("[viperfs] ERROR: Invalid rec_len in readdir\n");
+                return -1;
+            }
 
             if (entry->inode != 0)
             {
@@ -1018,8 +1043,17 @@ void ViperFS::sync()
 /** @copydoc fs::viperfs::ViperFS::write_indirect */
 bool ViperFS::write_indirect(u64 block_num, u64 index, u64 value)
 {
+    constexpr u64 PTRS_PER_BLOCK = BLOCK_SIZE / sizeof(u64);
+
     if (block_num == 0)
         return false;
+
+    // Bounds check to prevent out-of-bounds write
+    if (index >= PTRS_PER_BLOCK)
+    {
+        serial::puts("[viperfs] ERROR: indirect block write index out of bounds\n");
+        return false;
+    }
 
     CacheBlock *block = cache().get(block_num);
     if (!block)
@@ -1272,8 +1306,21 @@ bool ViperFS::add_dir_entry(Inode *dir, u64 ino, const char *name, usize name_le
             if (entry->rec_len == 0)
                 break;
 
+            // Validate rec_len to prevent malformed directory entries
+            if (entry->rec_len < DIR_ENTRY_MIN_SIZE ||
+                pos + entry->rec_len > static_cast<usize>(r))
+            {
+                serial::puts("[viperfs] ERROR: Invalid rec_len in add_dirent\n");
+                return false;
+            }
+
             // Calculate actual size of this entry
             u16 actual_size = dir_entry_size(entry->name_len);
+            if (entry->rec_len < actual_size)
+            {
+                serial::puts("[viperfs] ERROR: rec_len too small for entry\n");
+                return false;
+            }
             u16 remaining = entry->rec_len - actual_size;
 
             if (remaining >= needed_len)
@@ -1648,6 +1695,14 @@ bool ViperFS::remove_dir_entry(Inode *dir, const char *name, usize name_len, u64
             if (entry->rec_len == 0)
                 break;
 
+            // Validate rec_len to prevent malformed directory entries
+            if (entry->rec_len < DIR_ENTRY_MIN_SIZE ||
+                pos + entry->rec_len > static_cast<usize>(r))
+            {
+                serial::puts("[viperfs] ERROR: Invalid rec_len in unlink\n");
+                return false;
+            }
+
             // Check if this entry matches
             if (entry->inode != 0 && entry->name_len == name_len)
             {
@@ -2005,8 +2060,12 @@ bool ViperFS::rename(Inode *old_dir,
                 // Find .. entry (should be second entry)
                 usize pos = 0;
                 DirEntry *entry = reinterpret_cast<DirEntry *>(buf + pos);
-                pos += entry->rec_len; // Skip .
-                if (pos < BLOCK_SIZE)
+                // Validate rec_len before skipping
+                if (entry->rec_len >= DIR_ENTRY_MIN_SIZE && entry->rec_len < BLOCK_SIZE)
+                {
+                    pos += entry->rec_len; // Skip .
+                }
+                if (pos < BLOCK_SIZE && pos >= DIR_ENTRY_MIN_SIZE)
                 {
                     DirEntry *dotdot = reinterpret_cast<DirEntry *>(buf + pos);
                     if (dotdot->name_len == 2 && dotdot->name[0] == '.' && dotdot->name[1] == '.')

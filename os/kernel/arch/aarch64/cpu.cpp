@@ -10,7 +10,9 @@
  */
 #include "cpu.hpp"
 #include "../../console/serial.hpp"
+#include "exceptions.hpp"
 #include "gic.hpp"
+#include "mmu.hpp"
 #include "timer.hpp"
 
 // Suppress warnings for PSCI constants that document the full API
@@ -25,6 +27,11 @@ namespace
 
 /// Per-CPU data array (one per CPU)
 CpuData cpu_data[MAX_CPUS];
+
+/// GIC Distributor base address (QEMU virt machine)
+constexpr uintptr GICD_BASE = 0x08000000;
+/// GICD_SGIR offset for Software Generated Interrupts
+constexpr uintptr GICD_SGIR_OFFSET = 0xF00;
 
 /// Per-CPU kernel stacks (allocated statically)
 alignas(16) u8 cpu_stacks[MAX_CPUS][CPU_STACK_SIZE];
@@ -192,6 +199,26 @@ void boot_secondaries()
 
     u64 entry_point = reinterpret_cast<u64>(&secondary_entry);
 
+    // Ensure all per-CPU data and stack memory is visible to secondary CPUs
+    // by flushing caches before PSCI wakeup
+    for (u32 i = 1; i < MAX_CPUS; i++)
+    {
+        // Clean and invalidate cache lines for CPU stacks and data
+        u64 stack_addr = reinterpret_cast<u64>(&cpu_stacks[i][0]);
+        u64 data_addr = reinterpret_cast<u64>(&cpu_data[i]);
+
+        // Clean cache lines containing stack (start and end)
+        asm volatile("dc civac, %0" ::"r"(stack_addr));
+        asm volatile("dc civac, %0" ::"r"(stack_addr + CPU_STACK_SIZE - 64));
+
+        // Clean cache line containing CPU data
+        asm volatile("dc civac, %0" ::"r"(data_addr));
+    }
+
+    // Ensure cache operations complete before waking secondaries
+    asm volatile("dsb ish" ::: "memory");
+    asm volatile("isb" ::: "memory");
+
     // Try to boot CPUs 1, 2, 3
     for (u32 i = 1; i < MAX_CPUS; i++)
     {
@@ -233,6 +260,15 @@ void boot_secondaries()
 
 extern "C" void secondary_main(u32 cpu_id)
 {
+    // CRITICAL: Set up MMU and exception vectors FIRST
+    // Secondary CPUs wake from PSCI with MMU disabled and no exception vectors.
+    // We must configure these before any memory accesses that rely on virtual
+    // addressing or before enabling interrupts.
+    mmu::init_secondary();
+
+    // Install exception vectors (VBAR_EL1)
+    exceptions::init();
+
     // Set up this CPU's data
     if (cpu_id < MAX_CPUS)
     {
@@ -287,7 +323,7 @@ void send_ipi(u32 target_cpu, u32 ipi_type)
     // SGI (Software Generated Interrupt) via GIC
     // GICD_SGIR format: [25:24] target list filter, [23:16] CPU target list, [3:0] SGI ID
     // For target list filter = 0b00, we specify target CPU in bits 23:16
-    volatile u32 *gicd_sgir = reinterpret_cast<volatile u32 *>(0x08000000 + 0xF00);
+    volatile u32 *gicd_sgir = reinterpret_cast<volatile u32 *>(GICD_BASE + GICD_SGIR_OFFSET);
 
     u32 target_mask = 1 << target_cpu;
     u32 sgi_value = (target_mask << 16) | (ipi_type & 0xF);
@@ -298,7 +334,7 @@ void send_ipi(u32 target_cpu, u32 ipi_type)
 void broadcast_ipi(u32 ipi_type)
 {
     // Broadcast to all other CPUs (target list filter = 0b01)
-    volatile u32 *gicd_sgir = reinterpret_cast<volatile u32 *>(0x08000000 + 0xF00);
+    volatile u32 *gicd_sgir = reinterpret_cast<volatile u32 *>(GICD_BASE + GICD_SGIR_OFFSET);
 
     u32 sgi_value = (1 << 24) | (ipi_type & 0xF); // Filter = 0b01 = all except self
 

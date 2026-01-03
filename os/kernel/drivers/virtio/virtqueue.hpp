@@ -309,6 +309,10 @@ class Virtqueue
 
     // Length of last retrieved used element
     u32 last_used_len_{0};
+
+    // Legacy mode allocation size (pages) - only valid when legacy_ is true
+    // In legacy mode, desc_phys_/avail_phys_/used_phys_ all point into one allocation
+    usize legacy_alloc_pages_{0};
 };
 
 } // namespace virtio

@@ -17,6 +17,7 @@ namespace mm
 
 void VmaList::init()
 {
+    SpinlockGuard guard(lock_);
     for (usize i = 0; i < MAX_VMAS; i++)
     {
         used_[i] = false;
@@ -78,9 +79,10 @@ void VmaList::insert_sorted(Vma *vma)
     prev->next = vma;
 }
 
-Vma *VmaList::find(u64 addr)
+// Internal unlocked find for use when lock is already held
+static Vma *find_unlocked(Vma *head, u64 addr)
 {
-    Vma *vma = head_;
+    Vma *vma = head;
     while (vma)
     {
         if (vma->contains(addr))
@@ -97,27 +99,21 @@ Vma *VmaList::find(u64 addr)
     return nullptr;
 }
 
+Vma *VmaList::find(u64 addr)
+{
+    SpinlockGuard guard(lock_);
+    return find_unlocked(head_, addr);
+}
+
 const Vma *VmaList::find(u64 addr) const
 {
-    const Vma *vma = head_;
-    while (vma)
-    {
-        if (vma->contains(addr))
-        {
-            return vma;
-        }
-        if (vma->start > addr)
-        {
-            break;
-        }
-        vma = vma->next;
-    }
-    return nullptr;
+    SpinlockGuard guard(lock_);
+    return find_unlocked(head_, addr);
 }
 
 Vma *VmaList::add(u64 start, u64 end, u32 prot, VmaType type)
 {
-    // Validate alignment
+    // Validate alignment (no lock needed for validation)
     if ((start & 0xFFF) != 0 || (end & 0xFFF) != 0)
     {
         serial::puts("[vma] ERROR: Addresses must be page-aligned\n");
@@ -130,8 +126,10 @@ Vma *VmaList::add(u64 start, u64 end, u32 prot, VmaType type)
         return nullptr;
     }
 
+    SpinlockGuard guard(lock_);
+
     // Check for overlaps (simplified - just check if start is in an existing VMA)
-    if (find(start) != nullptr)
+    if (find_unlocked(head_, start) != nullptr)
     {
         serial::puts("[vma] ERROR: VMA overlaps existing region\n");
         return nullptr;
@@ -169,6 +167,8 @@ Vma *VmaList::add_file(u64 start, u64 end, u32 prot, u64 inode, u64 offset)
 
 bool VmaList::remove(Vma *target)
 {
+    SpinlockGuard guard(lock_);
+
     if (!head_ || !target)
     {
         return false;
@@ -199,6 +199,8 @@ bool VmaList::remove(Vma *target)
 
 void VmaList::remove_range(u64 start, u64 end)
 {
+    SpinlockGuard guard(lock_);
+
     Vma *vma = head_;
     Vma *prev = nullptr;
 
@@ -233,6 +235,8 @@ void VmaList::remove_range(u64 start, u64 end)
 
 void VmaList::clear()
 {
+    SpinlockGuard guard(lock_);
+
     head_ = nullptr;
     for (usize i = 0; i < MAX_VMAS; i++)
     {

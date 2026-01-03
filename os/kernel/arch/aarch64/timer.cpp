@@ -187,7 +187,7 @@ void check_oneshot_timers()
  */
 void timer_irq_handler(u32)
 {
-    ticks = ticks + 1;
+    __atomic_fetch_add(&ticks, 1, __ATOMIC_RELAXED);
 
     // Schedule next interrupt
     u64 current = read_cntpct();
@@ -284,6 +284,7 @@ void init()
 
     // Enable the timer (bit 0 = enable, bit 1 = mask output)
     write_cntp_ctl(1);
+    asm volatile("isb" ::: "memory"); // Ensure timer enable takes effect
 
     serial::puts("[timer] Timer started (1000 Hz, high-resolution enabled)\n");
 }
@@ -304,6 +305,7 @@ void init_secondary()
 
     // Enable the timer (bit 0 = enable, bit 1 = mask output)
     write_cntp_ctl(1);
+    asm volatile("isb" ::: "memory"); // Ensure timer enable takes effect
 }
 
 /** @copydoc timer::get_ticks */

@@ -62,6 +62,7 @@ The system is designed for QEMU's `virt` machine but is structured for future ha
 | [13-servers.md](13-servers.md) | Microkernel servers (netd, fsd, blkd, consoled, inputd, displayd) |
 | [14-summary.md](14-summary.md) | Implementation summary and development roadmap |
 | [15-boot.md](15-boot.md) | VBoot UEFI bootloader, two-disk architecture |
+| [16-gui.md](16-gui.md) | GUI subsystem (displayd, libgui, taskbar) |
 
 ---
 
@@ -251,10 +252,15 @@ This separation enables:
 
 ### GUI Subsystem
 - User-space display server (displayd)
-- Window compositing with decorations
+- Window compositing with decorations and z-ordering
+- Minimize/maximize/close button handling
 - libgui client API with drawing primitives
 - Shared memory pixel buffers (zero-copy)
+- Per-surface event queues
+- Desktop taskbar with window list
 - Mouse cursor rendering
+
+See [16-gui.md](16-gui.md) for complete GUI documentation.
 
 ---
 
@@ -274,6 +280,7 @@ This separation enables:
 | mathtest | Math library validation |
 | hello | Malloc/heap test program |
 | hello_gui | GUI demo with window creation |
+| taskbar | Desktop shell taskbar |
 
 ---
 
@@ -411,21 +418,22 @@ os/
 - Environment variables
 
 ### GUI
-- Mouse input event delivery to windows
-- Window move/resize via mouse
+- Window move/resize via mouse drag
+- Keyboard event delivery to windows
 - Alt+Tab window switching
-- Desktop launcher
+- Desktop background image
+- Application launcher menu
 
 ---
 
 ## Priority Recommendations: Next 5 Steps
 
-### 1. GUI Mouse Event Delivery
-**Impact:** Enables interactive GUI applications
-- Route mouse click/move events from inputd → displayd → window client
-- Implement hit testing for window focus (click-to-focus)
-- Add mouse button events (left/right/middle click)
-- Required for button clicks, drag operations, and desktop interaction
+### 1. GUI Window Drag and Resize
+**Impact:** Enables desktop-like window management
+- Track mouse down on title bar for window move
+- Detect mouse near window edges for resize
+- Update window position/size on mouse drag
+- Required for proper desktop interaction
 
 ### 2. exec() Family Implementation
 **Impact:** Enables proper shell command execution

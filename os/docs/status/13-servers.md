@@ -15,7 +15,7 @@ ViperOS follows a microkernel architecture where device drivers and system servi
 | **blkd** | BLKD: | ~700 | Block device access |
 | **consoled** | CONSOLED: | ~600 | Console output |
 | **inputd** | INPUTD: | ~1,000 | Keyboard/mouse input |
-| **displayd** | DISPLAY: | ~1,500 | Window management, GUI |
+| **displayd** | DISPLAY: | ~1,700 | Window management, GUI |
 
 ## Architecture
 
@@ -412,96 +412,31 @@ namespace input_protocol {
 ## Display Server (displayd)
 
 **Location:** `user/servers/displayd/`
-**Status:** Complete (framework functional, event delivery in progress)
+**Status:** Complete (desktop shell framework operational)
 **Registration:** `sys::assign_set("DISPLAY", channel_handle)`
 
-### Files
+See [16-gui.md](16-gui.md) for complete GUI documentation including:
+- displayd architecture and IPC protocol
+- libgui client library API
+- Taskbar desktop shell
+- Window management and compositing
+
+### Summary
 
 | File | Lines | Description |
 |------|-------|-------------|
-| `main.cpp` | ~900 | Server entry point, compositing loop |
-| `display_protocol.hpp` | ~200 | IPC message definitions |
+| `main.cpp` | ~1,460 | Server entry, compositing, event handling |
+| `display_protocol.hpp` | ~260 | IPC message definitions |
 
-### Features
+### Key Features
 
-- Framebuffer ownership via MAP_FRAMEBUFFER syscall
-- Window surface management (up to 32 concurrent surfaces)
-- Shared memory pixel buffers (zero-copy rendering)
-- Window decorations:
-  - 24px title bar
-  - 2px border
-  - Close button (16x16 pixels)
-  - Focused/unfocused color states
-- Cursor rendering:
-  - 16x16 arrow cursor bitmap
-  - Software cursor with background save/restore
-- Compositing:
-  - Desktop background color
-  - Back-to-front surface blitting
-  - Cursor drawn on top
-- Window title management (64 chars max)
-- Position and geometry tracking
-
-### IPC Protocol
-
-```cpp
-namespace display_proto {
-    enum MsgType : uint32_t {
-        DISPLAY_INFO = 1,           // Query display resolution
-        SURFACE_CREATE = 2,         // Create window surface
-        SURFACE_DESTROY = 3,        // Destroy surface
-        SURFACE_PRESENT = 4,        // Update display
-        SURFACE_SET_TITLE = 5,      // Set window title
-        SURFACE_SET_POSITION = 6,   // Move window
-        SURFACE_SET_VISIBLE = 7,    // Show/hide window
-        EVENT_SUBSCRIBE = 10,       // Subscribe to events
-        EVENT_UNSUBSCRIBE = 11,     // Unsubscribe
-        // Replies: 0x80 + request type
-    };
-
-    struct SurfaceCreateRequest {
-        uint32_t type;      // SURFACE_CREATE
-        uint32_t request_id;
-        uint32_t width;     // Pixels
-        uint32_t height;    // Pixels
-        char title[64];     // Window title
-    };
-
-    struct SurfaceCreateReply {
-        uint32_t type;       // SURFACE_CREATE_REPLY
-        uint32_t request_id;
-        int32_t status;      // 0 = success
-        uint32_t surface_id;
-        // handle[0] = shared memory for pixel buffer
-    };
-
-    struct SurfacePresentRequest {
-        uint32_t type;      // SURFACE_PRESENT
-        uint32_t request_id;
-        uint32_t surface_id;
-        uint32_t x, y, w, h; // Damage region (0,0,0,0 = full)
-    };
-}
-```
-
-### Event Types
-
-```cpp
-enum EventType : uint32_t {
-    GUI_EVENT_KEY = 1,     // Keyboard event
-    GUI_EVENT_MOUSE = 2,   // Mouse move/button
-    GUI_EVENT_FOCUS = 3,   // Window focus change
-    GUI_EVENT_RESIZE = 4,  // Window resized
-    GUI_EVENT_CLOSE = 5,   // Close button clicked
-};
-```
-
-### Current Limitations
-
-- Mouse events not yet delivered to windows
-- Window move/resize via mouse not implemented
-- No Alt+Tab window switching
-- No desktop launcher/shell
+- Up to 32 concurrent window surfaces
+- Per-surface event queues (32 events each)
+- Z-ordering for window stacking
+- Window decorations with minimize/maximize/close buttons
+- Shared memory pixel buffers (zero-copy)
+- Software mouse cursor
+- Desktop taskbar support via window list protocol
 
 ---
 
@@ -546,37 +481,16 @@ int fs_readdir_one(int dir_id, struct dirent *entry);
 **Location:** `user/libgui/`
 **Purpose:** Client library for displayd communication
 
-```cpp
-// Initialization
-int gui_init(void);
-int gui_get_display_info(uint32_t *width, uint32_t *height);
+See [16-gui.md](16-gui.md) for complete API documentation.
 
-// Window management
-gui_window_t *gui_create_window(const char *title, uint32_t w, uint32_t h);
-void gui_destroy_window(gui_window_t *win);
-void gui_set_title(gui_window_t *win, const char *title);
-
-// Pixel access
-uint32_t *gui_get_pixels(gui_window_t *win);  // Direct buffer access
-uint32_t gui_get_width(gui_window_t *win);
-uint32_t gui_get_height(gui_window_t *win);
-uint32_t gui_get_stride(gui_window_t *win);
-
-// Display update
-void gui_present(gui_window_t *win);                      // Full update
-void gui_present_region(gui_window_t *win, int x, int y, int w, int h);
-
-// Drawing helpers
-void gui_fill_rect(gui_window_t *win, int x, int y, int w, int h, uint32_t color);
-void gui_draw_rect(gui_window_t *win, int x, int y, int w, int h, uint32_t color);
-void gui_draw_text(gui_window_t *win, int x, int y, const char *text, uint32_t color);
-void gui_draw_hline(gui_window_t *win, int x, int y, int len, uint32_t color);
-void gui_draw_vline(gui_window_t *win, int x, int y, int len, uint32_t color);
-
-// Events (in progress)
-int gui_poll_event(gui_window_t *win, gui_event_t *event);  // Non-blocking
-int gui_wait_event(gui_window_t *win, gui_event_t *event);  // Blocking
-```
+Key functions:
+- `gui_init()` / `gui_shutdown()` - Initialization
+- `gui_create_window()` / `gui_create_window_ex()` - Window creation
+- `gui_get_pixels()` - Direct pixel buffer access
+- `gui_present()` - Display update
+- `gui_poll_event()` / `gui_wait_event()` - Event handling
+- `gui_list_windows()` / `gui_restore_window()` - Taskbar support
+- Drawing helpers: `gui_fill_rect()`, `gui_draw_text()`, etc.
 
 ---
 
@@ -688,19 +602,18 @@ Each operation requires:
 
 ## Priority Recommendations: Next 5 Steps
 
-### 1. displayd Mouse Event Delivery
-**Impact:** Interactive GUI applications
-- Route mouse events from inputd to displayd
-- Hit testing to determine target window
-- Send events to window's event channel
-- Enable button clicks, drag operations
-
-### 2. displayd Window Move/Resize
+### 1. displayd Window Move/Resize via Mouse
 **Impact:** Desktop-like window management
 - Title bar drag for window move
 - Edge/corner drag for resize
 - Minimum window size constraints
 - Live resize with damage tracking
+
+### 2. displayd Keyboard Event Delivery
+**Impact:** Interactive text input in GUI apps
+- Route key events from inputd to displayd
+- Forward to focused window's event queue
+- Enable text editors and terminals in GUI
 
 ### 3. fsd Per-Process FD Tables
 **Impact:** Correct multi-process file handling

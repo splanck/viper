@@ -105,6 +105,7 @@ bool Virtqueue::init(Device *dev, u32 queue_idx, u32 queue_size)
         constexpr usize VRING_ALIGN = 4096;
         usize total_size = vring_size(size_, VRING_ALIGN);
         usize total_pages = (total_size + pmm::PAGE_SIZE - 1) / pmm::PAGE_SIZE;
+        legacy_alloc_pages_ = total_pages;  // Track for destroy()
 
         desc_phys_ = pmm::alloc_pages(total_pages);
         if (!desc_phys_)
@@ -247,23 +248,39 @@ void Virtqueue::destroy()
     dev_->write32(reg::QUEUE_SEL, queue_idx_);
     dev_->write32(reg::QUEUE_READY, 0);
 
-    // Free memory
-    if (desc_phys_)
+    // Free memory - handle legacy vs modern mode differently
+    if (legacy_)
     {
-        usize desc_pages = (size_ * sizeof(VringDesc) + pmm::PAGE_SIZE - 1) / pmm::PAGE_SIZE;
-        pmm::free_pages(desc_phys_, desc_pages);
+        // Legacy mode: all three pointers are within a single contiguous allocation
+        // Only free desc_phys_ which is the base of the allocation
+        if (desc_phys_)
+        {
+            pmm::free_pages(desc_phys_, legacy_alloc_pages_);
+        }
     }
-    if (avail_phys_)
+    else
     {
-        usize avail_bytes = sizeof(VringAvail) + size_ * sizeof(u16) + sizeof(u16);
-        pmm::free_pages(avail_phys_, (avail_bytes + pmm::PAGE_SIZE - 1) / pmm::PAGE_SIZE);
-    }
-    if (used_phys_)
-    {
-        usize used_bytes = sizeof(VringUsed) + size_ * sizeof(VringUsedElem) + sizeof(u16);
-        pmm::free_pages(used_phys_, (used_bytes + pmm::PAGE_SIZE - 1) / pmm::PAGE_SIZE);
+        // Modern mode: separate allocations for each ring
+        if (desc_phys_)
+        {
+            usize desc_pages = (size_ * sizeof(VringDesc) + pmm::PAGE_SIZE - 1) / pmm::PAGE_SIZE;
+            pmm::free_pages(desc_phys_, desc_pages);
+        }
+        if (avail_phys_)
+        {
+            usize avail_bytes = sizeof(VringAvail) + size_ * sizeof(u16) + sizeof(u16);
+            pmm::free_pages(avail_phys_, (avail_bytes + pmm::PAGE_SIZE - 1) / pmm::PAGE_SIZE);
+        }
+        if (used_phys_)
+        {
+            usize used_bytes = sizeof(VringUsed) + size_ * sizeof(VringUsedElem) + sizeof(u16);
+            pmm::free_pages(used_phys_, (used_bytes + pmm::PAGE_SIZE - 1) / pmm::PAGE_SIZE);
+        }
     }
 
+    desc_phys_ = 0;
+    avail_phys_ = 0;
+    used_phys_ = 0;
     dev_ = nullptr;
 }
 

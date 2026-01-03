@@ -178,7 +178,7 @@ i32 send_signal(task::Task *t, i32 signum)
     // If there's a user handler (not SIG_DFL), set pending and wake if blocked
     if (handler > 1)
     {
-        t->signals.pending |= (1u << signum);
+        __atomic_fetch_or(&t->signals.pending, 1u << signum, __ATOMIC_SEQ_CST);
         // If task is blocked, wake it to deliver the signal
         if (t->state == task::TaskState::Blocked)
         {
@@ -312,8 +312,8 @@ void process_pending()
     if (signum == 0)
         return;
 
-    // Clear this signal from pending
-    t->signals.pending &= ~(1u << signum);
+    // Clear this signal from pending (atomic to prevent races)
+    __atomic_fetch_and(&t->signals.pending, ~(1u << signum), __ATOMIC_SEQ_CST);
 
     u64 handler = t->signals.handlers[signum];
 

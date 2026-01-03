@@ -16,6 +16,7 @@
 #pragma once
 
 #include "../include/types.hpp"
+#include "../lib/spinlock.hpp"
 
 namespace mm
 {
@@ -203,10 +204,11 @@ class VmaList
     void clear();
 
   private:
-    Vma pool_[MAX_VMAS];  // Static pool of VMA structures
-    bool used_[MAX_VMAS]; // Which pool entries are in use
-    Vma *head_{nullptr};  // Head of sorted linked list
-    usize count_{0};      // Number of active VMAs
+    Vma pool_[MAX_VMAS];      // Static pool of VMA structures
+    bool used_[MAX_VMAS];     // Which pool entries are in use
+    Vma *head_{nullptr};      // Head of sorted linked list
+    usize count_{0};          // Number of active VMAs
+    mutable Spinlock lock_;   // Protects all VmaList operations
 
     /**
      * @brief Allocate a VMA from the pool.

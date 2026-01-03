@@ -2093,9 +2093,19 @@ static SyscallResult sys_assign_list(u64 a0, u64 a1, u64, u64, u64, u64)
     viper::assign::AssignInfo *buf = reinterpret_cast<viper::assign::AssignInfo *>(a0);
     int max_count = static_cast<int>(a1);
 
-    if (max_count > 0 && !validate_user_write(buf, max_count * sizeof(viper::assign::AssignInfo)))
+    // Check for integer overflow in size calculation
+    usize byte_size;
+    if (max_count > 0)
     {
-        return SyscallResult::err(error::VERR_INVALID_ARG);
+        if (__builtin_mul_overflow(static_cast<usize>(max_count),
+                                   sizeof(viper::assign::AssignInfo), &byte_size))
+        {
+            return SyscallResult::err(error::VERR_INVALID_ARG);
+        }
+        if (!validate_user_write(buf, byte_size))
+        {
+            return SyscallResult::err(error::VERR_INVALID_ARG);
+        }
     }
 
     int count = viper::assign::list(buf, max_count);
@@ -2403,9 +2413,17 @@ static SyscallResult sys_device_list(u64 a0, u64 a1, u64, u64, u64, u64)
     DeviceInfo *devices = reinterpret_cast<DeviceInfo *>(a0);
     u32 max_count = static_cast<u32>(a1);
 
-    if (max_count > 0 && !validate_user_write(devices, max_count * sizeof(DeviceInfo)))
+    if (max_count > 0)
     {
-        return SyscallResult::err(error::VERR_INVALID_ARG);
+        usize byte_size;
+        if (__builtin_mul_overflow(static_cast<usize>(max_count), sizeof(DeviceInfo), &byte_size))
+        {
+            return SyscallResult::err(error::VERR_INVALID_ARG);
+        }
+        if (!validate_user_write(devices, byte_size))
+        {
+            return SyscallResult::err(error::VERR_INVALID_ARG);
+        }
     }
 
     // Device table - static list of known devices
@@ -2701,6 +2719,23 @@ static SyscallResult sys_kill(u64 a0, u64 a1, u64, u64, u64, u64)
     {
         return SyscallResult::err(error::VERR_NOT_FOUND);
     }
+
+    // Permission check: caller can only signal tasks in the same process
+    // (same viper), or kernel tasks can signal anyone
+    task::Task *caller = task::current();
+    if (caller && caller->viper)
+    {
+        // User task - must be same viper process or signaling self
+        if (target->viper != caller->viper && target->id != caller->id)
+        {
+            // Check if caller is parent (allowed to signal children)
+            if (target->parent_id != caller->id)
+            {
+                return SyscallResult::err(error::VERR_PERMISSION);
+            }
+        }
+    }
+    // Kernel tasks (no viper) can signal anyone
 
     // Send the signal
     i32 result = signal::send_signal(target, signum);
@@ -3538,9 +3573,17 @@ static SyscallResult sys_device_enum(u64 a0, u64 a1, u64, u64, u64, u64)
     DeviceEnumInfo *devices = reinterpret_cast<DeviceEnumInfo *>(a0);
     u32 max_count = static_cast<u32>(a1);
 
-    if (max_count > 0 && !validate_user_write(devices, max_count * sizeof(DeviceEnumInfo)))
+    if (max_count > 0)
     {
-        return SyscallResult::err(error::VERR_INVALID_ARG);
+        usize byte_size;
+        if (__builtin_mul_overflow(static_cast<usize>(max_count), sizeof(DeviceEnumInfo), &byte_size))
+        {
+            return SyscallResult::err(error::VERR_INVALID_ARG);
+        }
+        if (!validate_user_write(devices, byte_size))
+        {
+            return SyscallResult::err(error::VERR_INVALID_ARG);
+        }
     }
 
     // If devices is null, just return count
@@ -3966,6 +4009,32 @@ static SyscallResult sys_map_framebuffer(u64, u64, u64, u64, u64, u64)
     if (!v)
     {
         return SyscallResult::err(error::VERR_NOT_FOUND);
+    }
+
+    // Security check: only allow framebuffer mapping for privileged processes
+    // (first few system processes or those with device capabilities)
+    // PID 1-10 are typically kernel-spawned system servers
+    if (v->id > 10)
+    {
+        // For non-system processes, require a device capability
+        cap::Table *ct = v->cap_table;
+        bool has_device_cap = false;
+        if (ct)
+        {
+            for (usize i = 0; i < ct->capacity(); i++)
+            {
+                cap::Entry *e = ct->entry_at(i);
+                if (e && e->kind == cap::Kind::Device)
+                {
+                    has_device_cap = true;
+                    break;
+                }
+            }
+        }
+        if (!has_device_cap)
+        {
+            return SyscallResult::err(error::VERR_PERMISSION);
+        }
     }
 
     // Get framebuffer info

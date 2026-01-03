@@ -3,8 +3,12 @@
 **Date:** January 2026
 **Scope:** Full kernel source code review (`/os/kernel/`)
 **Version:** 0.3.1
+**Last Updated:** January 2026
+**Status:** 49 of 94 issues fixed
 
 This document catalogs issues found during a comprehensive kernel code review. Issues are categorized by severity and subsystem, with detailed work scope for each fix.
+
+**Legend:** ✅ = Fixed, ⏳ = In Progress, ❌ = Not Started
 
 ---
 
@@ -22,7 +26,7 @@ This document catalogs issues found during a comprehensive kernel code review. I
 
 Issues that can cause crashes, data corruption, or security vulnerabilities.
 
-### 1. Deadlock: Inconsistent Lock Ordering in Scheduler
+### ✅ 1. Deadlock: Inconsistent Lock Ordering in Scheduler
 
 **Location:** `kernel/sched/scheduler.cpp:461-469, 624-702`
 
@@ -49,7 +53,7 @@ Issues that can cause crashes, data corruption, or security vulnerabilities.
 
 ---
 
-### 2. Use-After-Release in Journal
+### ✅ 2. Use-After-Release in Journal
 
 **Location:** `kernel/fs/viperfs/journal.cpp:80-81`
 
@@ -89,7 +93,7 @@ cache().release(block);
 
 ---
 
-### 3. Journal Wraparound Discards Committed Transactions
+### ✅ 3. Journal Wraparound Discards Committed Transactions
 
 **Location:** `kernel/fs/viperfs/journal.cpp:420-428`
 
@@ -126,7 +130,7 @@ This discards committed-but-not-completed transactions, breaking crash recovery.
 
 ---
 
-### 4. Legacy VirtIO Vring Double-Free on Destroy
+### ✅ 4. Legacy VirtIO Vring Double-Free on Destroy
 
 **Location:** `kernel/drivers/virtio/virtqueue.cpp:240-268`
 
@@ -176,7 +180,7 @@ void Virtqueue::destroy() {
 
 ---
 
-### 5. Infinite Loop in VirtIO Block Flush
+### ✅ 5. Infinite Loop in VirtIO Block Flush
 
 **Location:** `kernel/drivers/virtio/blk.cpp:503-514`
 
@@ -224,7 +228,7 @@ bool VirtioBlk::flush() {
 
 ---
 
-### 6. Task Slot Leak on Stack Allocation Failure
+### ✅ 6. Task Slot Leak on Stack Allocation Failure
 
 **Location:** `kernel/sched/task.cpp:271, 411`
 
@@ -270,7 +274,7 @@ if (stack == 0) {
 
 ---
 
-### 7. Secondary CPUs Don't Configure Exception Vectors or MMU
+### ✅ 7. Secondary CPUs Don't Configure Exception Vectors or MMU
 
 **Location:** `kernel/arch/aarch64/cpu.cpp:234-280`
 
@@ -307,7 +311,7 @@ First exception on secondary CPU crashes or corrupts memory.
 
 ---
 
-### 8. COW Pages Not Properly Freed on Address Space Destroy
+### ✅ 8. COW Pages Not Properly Freed on Address Space Destroy
 
 **Location:** `kernel/viper/address_space.cpp:240-251`
 
@@ -361,81 +365,81 @@ Issues that cause incorrect behavior or have security implications.
 
 ### Memory Management
 
-| # | Issue | Location | Description | Work Scope | Complexity |
-|---|-------|----------|-------------|------------|------------|
-| 1 | Memory leak on heap expansion failure | `mm/kheap.cpp:256-262` | Pages allocated but not freed when `add_heap_region()` fails | Add cleanup: free allocated pages on region add failure | Low |
-| 2 | VMM `map_range()` no rollback | `mm/vmm.cpp:286-299` | Partial mapping remains on failure | Track mapped pages, unmap all on any failure | Medium |
-| 3 | No locking in VMM | `mm/vmm.cpp` | No synchronization for page table modifications | Add `vmm_lock` spinlock, protect all page table modifications | Medium |
-| 4 | No locking in VmaList | `mm/vma.cpp` | Concurrent add/remove/find causes corruption | Add per-VmaList spinlock, protect all operations | Medium |
-| 5 | `krealloc()` race condition | `mm/kheap.cpp:473-513` | Reads block header without heap lock | Move header read inside lock, or use atomic operations | Medium |
+| # | Issue | Location | Description | Work Scope | Status |
+|---|-------|----------|-------------|------------|--------|
+| 1 | ✅ Memory leak on heap expansion failure | `mm/kheap.cpp:256-262` | Pages allocated but not freed when `add_heap_region()` fails | Add cleanup: free allocated pages on region add failure | Fixed |
+| 2 | ✅ VMM `map_range()` no rollback | `mm/vmm.cpp:286-299` | Partial mapping remains on failure | Track mapped pages, unmap all on any failure | Fixed |
+| 3 | ✅ No locking in VMM | `mm/vmm.cpp` | No synchronization for page table modifications | Add `vmm_lock` spinlock, protect all page table modifications | Fixed |
+| 4 | ✅ No locking in VmaList | `mm/vma.cpp` | Concurrent add/remove/find causes corruption | Add per-VmaList spinlock, protect all operations | Fixed |
+| 5 | ✅ `krealloc()` race condition | `mm/kheap.cpp:473-513` | Reads block header without heap lock | Move header read inside lock, or use atomic operations | Fixed |
 
 ### Scheduler
 
-| # | Issue | Location | Description | Work Scope | Complexity |
-|---|-------|----------|-------------|------------|------------|
-| 1 | Per-CPU queue accessed without lock | `sched/scheduler.cpp:646-653` | `tick()` reads per-CPU queue head with only global lock | Acquire per-CPU lock before accessing per-CPU queue | Low |
-| 2 | Signal pending bitmap not atomic | `sched/signal.cpp:181` | `pending |= (1u << signum)` can lose signals | Use `__atomic_fetch_or` or protect with task lock | Low |
-| 3 | Task killed without cleanup | `sched/task.cpp:888-918` | Non-current task marked Exited without freeing resources | Call resource cleanup (stack, FPU state) before marking Exited | Medium |
-| 4 | Lock held too long | `sched/scheduler.cpp:469-594` | Critical section includes serial I/O | Move I/O outside lock, use deferred logging | Low |
+| # | Issue | Location | Description | Work Scope | Status |
+|---|-------|----------|-------------|------------|--------|
+| 1 | ✅ Per-CPU queue accessed without lock | `sched/scheduler.cpp:646-653` | `tick()` reads per-CPU queue head with only global lock | Acquire per-CPU lock before accessing per-CPU queue | Fixed |
+| 2 | ✅ Signal pending bitmap not atomic | `sched/signal.cpp:181` | `pending |= (1u << signum)` can lose signals | Use `__atomic_fetch_or` or protect with task lock | Fixed |
+| 3 | ✅ Task killed without cleanup | `sched/task.cpp:888-918` | Non-current task marked Exited without freeing resources | Call resource cleanup (stack, FPU state) before marking Exited | Fixed |
+| 4 | ✅ Lock held too long | `sched/scheduler.cpp:469-594` | Critical section includes serial I/O | Move I/O outside lock, use deferred logging | Fixed |
 | 5 | Signal handlers never invoked | `sched/signal.cpp:343-363` | User handlers ignored, default action applied | Implement signal trampoline: save context, set up user stack, jump to handler | High |
 
 ### IPC and Capabilities
 
-| # | Issue | Location | Description | Work Scope | Complexity |
-|---|-------|----------|-------------|------------|------------|
+| # | Issue | Location | Description | Work Scope | Status |
+|---|-------|----------|-------------|------------|--------|
 | 1 | TOCTOU in channel::get() | `ipc/channel.cpp:61-72` | Lock released before pointer used | Keep lock until operation complete, or use refcounting | Medium |
-| 2 | Capability table not thread-safe | `cap/table.cpp` | No internal locking, concurrent access corrupts | Add spinlock to Table class, protect all operations | Medium |
+| 2 | ✅ Capability table not thread-safe | `cap/table.cpp` | No internal locking, concurrent access corrupts | Add spinlock to Table class, protect all operations | Fixed |
 | 3 | Legacy channel ops bypass capability checks | `ipc/channel.cpp:412-423` | Anyone can send/recv by guessing channel ID | Remove legacy channel ID access, require capability handles | Medium |
-| 4 | Timer/poll waiter not cleared on task exit | `ipc/poll.cpp:204-231` | Use-after-free when timer fires | Clear all wait entries for exiting task in task cleanup | Medium |
+| 4 | ✅ Timer/poll waiter not cleared on task exit | `ipc/poll.cpp:204-231` | Use-after-free when timer fires | Clear all wait entries for exiting task in task cleanup | Fixed |
 | 5 | Handle leak in channel cleanup | `ipc/channel.cpp:472-505` | Transferred handles not released | Track and release handles on channel close | Medium |
 
 ### Syscalls
 
-| # | Issue | Location | Description | Work Scope | Complexity |
-|---|-------|----------|-------------|------------|------------|
+| # | Issue | Location | Description | Work Scope | Status |
+|---|-------|----------|-------------|------------|--------|
 | 1 | User pointer validation incomplete | `syscall/table.cpp:169-170` | Only checks address range, not page table mapping | Add `is_user_mapped()` check that walks page tables | Medium |
-| 2 | Integer overflow in size validation | `syscall/table.cpp:500+` | `count * sizeof()` can overflow | Use `__builtin_mul_overflow` or check before multiply | Low |
+| 2 | ✅ Integer overflow in size validation | `syscall/table.cpp:500+` | `count * sizeof()` can overflow | Use `__builtin_mul_overflow` or check before multiply | Fixed |
 | 3 | TOCTOU on user strings | `syscall/table.cpp:190-213` | String validated but read again later | Copy to kernel buffer once, use copy for all operations | Medium |
-| 4 | `sys_kill` no permission check | `syscall/table.cpp:2670-2713` | Can signal any task | Add check: same UID, or CAP_KILL capability | Low |
-| 5 | `sys_map_framebuffer` no capability check | `syscall/table.cpp:3962-4021` | Any process can map display | Require CAP_DEVICE_ACCESS or framebuffer capability | Low |
+| 4 | ✅ `sys_kill` no permission check | `syscall/table.cpp:2670-2713` | Can signal any task | Add check: same UID, or CAP_KILL capability | Fixed |
+| 5 | ✅ `sys_map_framebuffer` no capability check | `syscall/table.cpp:3962-4021` | Any process can map display | Require CAP_DEVICE_ACCESS or framebuffer capability | Fixed |
 
 ### VirtIO Drivers
 
-| # | Issue | Location | Description | Work Scope | Complexity |
-|---|-------|----------|-------------|------------|------------|
+| # | Issue | Location | Description | Work Scope | Status |
+|---|-------|----------|-------------|------------|--------|
 | 1 | GPU buffers never freed | `drivers/virtio/gpu.cpp:89-120` | No cleanup function exists | Implement `VirtioGpu::destroy()`, free all allocated buffers | Medium |
 | 2 | Interrupt handler race | `drivers/virtio/blk.cpp:226-231` | Only one completion tracked | Use completion queue or bitmap for multiple in-flight requests | High |
-| 3 | VirtIO buffers submitted before DRIVER_OK | `drivers/virtio/input.cpp:223-227` | Violates spec | Move buffer submission after DRIVER_OK status write | Low |
-| 4 | Global device table not atomic | `drivers/virtio/virtio.cpp:290-301` | `find_device()` has TOCTOU | Add spinlock protecting device table | Low |
+| 3 | ✅ VirtIO buffers submitted before DRIVER_OK | `drivers/virtio/input.cpp:223-227` | Violates spec | Move buffer submission after DRIVER_OK status write | Fixed |
+| 4 | ✅ Global device table not atomic | `drivers/virtio/virtio.cpp:290-301` | `find_device()` has TOCTOU | Add spinlock protecting device table | Fixed |
 
 ### Process/Viper
 
-| # | Issue | Location | Description | Work Scope | Complexity |
-|---|-------|----------|-------------|------------|------------|
+| # | Issue | Location | Description | Work Scope | Status |
+|---|-------|----------|-------------|------------|--------|
 | 1 | No locking in fork() | `viper/viper.cpp:588-658` | Parent PTEs modified without synchronization | Add address space lock, hold during COW setup | Medium |
 | 2 | Race between exit() and wait() | `viper/viper.cpp:472-558` | Child list modification not synchronized | Add viper_lock for child list modifications | Medium |
 | 3 | COW refcount not properly initialized | `viper/address_space.cpp:559-574` | Pages start at refcount 0 | Initialize refcount to 1 on first mapping, increment on COW share | Medium |
 | 4 | sbrk partial allocation leak | `viper/viper.cpp:710-736` | Failed allocation doesn't unmap | Track allocated pages, unmap all on failure | Medium |
-| 5 | setpgid allows cross-process modification | `viper/viper.cpp:786-826` | No permission check | Add check: target must be self, child, or same session | Low |
+| 5 | ✅ setpgid allows cross-process modification | `viper/viper.cpp:786-826` | No permission check | Add check: target must be self, child, or same session | Fixed |
 
 ### Filesystem
 
-| # | Issue | Location | Description | Work Scope | Complexity |
-|---|-------|----------|-------------|------------|------------|
-| 1 | Block leak in alloc_zeroed_block | `fs/viperfs/viperfs.cpp:431-455` | Block leaked on cache failure | Free allocated block if cache().get() fails | Low |
+| # | Issue | Location | Description | Work Scope | Status |
+|---|-------|----------|-------------|------------|--------|
+| 1 | ✅ Block leak in alloc_zeroed_block | `fs/viperfs/viperfs.cpp:431-455` | Block leaked on cache failure | Free allocated block if cache().get() fails | Fixed |
 | 2 | Symlink block leak on failure | `fs/viperfs/viperfs.cpp:1529-1605` | Data blocks not freed | Track allocated blocks, free all on symlink creation failure | Medium |
-| 3 | Missing rec_len validation | `fs/viperfs/viperfs.cpp:776-801` | Can cause infinite loop or overflow | Validate rec_len >= MIN_DIRENT_SIZE and <= remaining space | Low |
-| 4 | Indirect block no bounds check | `fs/viperfs/viperfs.cpp:637-651` | index >= 512 reads out of bounds | Add bounds check: index < (BLOCK_SIZE / sizeof(u64)) | Low |
+| 3 | ✅ Missing rec_len validation | `fs/viperfs/viperfs.cpp:776-801` | Can cause infinite loop or overflow | Validate rec_len >= MIN_DIRENT_SIZE and <= remaining space | Fixed |
+| 4 | ✅ Indirect block no bounds check | `fs/viperfs/viperfs.cpp:637-651` | index >= 512 reads out of bounds | Add bounds check: index < (BLOCK_SIZE / sizeof(u64)) | Fixed |
 | 5 | Inode modifications without lock | `fs/viperfs/viperfs.cpp:691+` | atime/mtime modified without fs_lock | Hold fs_lock or use per-inode lock for metadata updates | Medium |
 
 ### Architecture
 
-| # | Issue | Location | Description | Work Scope | Complexity |
-|---|-------|----------|-------------|------------|------------|
-| 1 | Non-atomic tick counter | `arch/aarch64/timer.cpp:190` | Shared variable corrupted on SMP | Use `__atomic_fetch_add` or per-CPU counters | Low |
+| # | Issue | Location | Description | Work Scope | Status |
+|---|-------|----------|-------------|------------|--------|
+| 1 | ✅ Non-atomic tick counter | `arch/aarch64/timer.cpp:190` | Shared variable corrupted on SMP | Use `__atomic_fetch_add` or per-CPU counters | Fixed |
 | 2 | EOI before handler for level-triggered | `arch/aarch64/gic.cpp:537-538` | Can cause interrupt storm | For level-triggered IRQs, EOI after handler (or document why before) | Medium |
-| 3 | Missing cache maintenance before secondary boot | `arch/aarch64/cpu.cpp:189-231` | Data not visible to secondary | Add `dc civac` / `dsb ish` before waking secondary | Medium |
-| 4 | GICv2 SGIR address hardcoded | `arch/aarch64/cpu.cpp:290` | Not using GICD_BASE constant | Replace magic address with `GICD_BASE + GICD_SGIR` | Low |
+| 3 | ✅ Missing cache maintenance before secondary boot | `arch/aarch64/cpu.cpp:189-231` | Data not visible to secondary | Add `dc civac` / `dsb ish` before waking secondary | Fixed |
+| 4 | ✅ GICv2 SGIR address hardcoded | `arch/aarch64/cpu.cpp:290` | Not using GICD_BASE constant | Replace magic address with `GICD_BASE + GICD_SGIR` | Fixed |
 
 ---
 
@@ -447,7 +451,7 @@ Issues that affect functionality or maintainability.
 
 | # | Issue | Location | Description | Work Scope | Complexity |
 |---|-------|----------|-------------|------------|------------|
-| 1 | Duplicate signal constants | `sched/task.hpp`, `sched/signal.hpp` | SIGKILL, etc defined twice | Move all signal constants to signal.hpp, remove from task.hpp | Low |
+| 1 | ✅ Duplicate signal constants | `sched/task.hpp`, `sched/signal.hpp` | SIGKILL, etc defined twice | Move all signal constants to signal.hpp, remove from task.hpp | Fixed |
 | 2 | Duplicate color constants | `console/gcon.hpp`, `include/constants.hpp` | VIPER_GREEN, etc | Keep in one location (constants.hpp), include where needed | Low |
 | 3 | Duplicate NO_PARENT constant | `cap/table.hpp`, `include/constants.hpp` | 0xFFFFFFFF | Keep in constants.hpp, include in table.hpp | Low |
 | 4 | Duplicate InodeGuard class | `fs/viperfs/viperfs.hpp`, `fs/viperfs/inode_guard.hpp` | ODR violation | Remove duplicate, keep one authoritative definition | Low |
@@ -455,17 +459,17 @@ Issues that affect functionality or maintainability.
 
 ### Version and Documentation Inconsistencies
 
-| # | Issue | Location | Description | Work Scope |
-|---|-------|----------|-------------|------------|
-| 1 | Version mismatch | `kernel/main.cpp:127` | Says "v0.2.0" but docs say "v0.3.1" | Update to "ViperOS v0.3.1" |
-| 2 | Outdated v0.2.0 references | `kernel/assign/*.cpp/hpp` | Multiple files reference old version | Search and update all version strings |
+| # | Issue | Location | Description | Status |
+|---|-------|----------|-------------|--------|
+| 1 | ✅ Version mismatch | `kernel/main.cpp:127` | Says "v0.2.0" but docs say "v0.3.1" | Fixed |
+| 2 | Outdated v0.2.0 references | `kernel/assign/*.cpp/hpp` | Multiple files reference old version | Pending |
 
 ### Hardcoded Values
 
 | # | Issue | Location | Description | Work Scope |
 |---|-------|----------|-------------|------------|
 | 1 | VirtIO MMIO scan addresses | `drivers/virtio/virtio.cpp:229` | Should use constants | Define VIRTIO_MMIO_BASE_* constants |
-| 2 | Page size magic numbers | `drivers/virtio/input.cpp:208` | Uses 4096 instead of PAGE_SIZE | Replace with pmm::PAGE_SIZE |
+| 2 | ✅ Page size magic numbers | `drivers/virtio/input.cpp:208` | Uses 4096 instead of PAGE_SIZE | Replace with pmm::PAGE_SIZE |
 | 3 | Timeout values | Multiple VirtIO files | Arbitrary numeric values | Define timeout constants (VIRTIO_TIMEOUT_MS) |
 | 4 | ISR bits | `drivers/virtio/blk.cpp:221-236` | Magic 0x1, 0x2 values | Define ISR_QUEUE_NOTIFY, ISR_CONFIG_CHANGE |
 
@@ -474,7 +478,7 @@ Issues that affect functionality or maintainability.
 | # | Issue | Location | Description | Work Scope |
 |---|-------|----------|-------------|------------|
 | 1 | Inconsistent dmb vs dsb usage | VirtIO drivers | Should use dsb for MMIO | Audit and fix: use `dsb st` before MMIO writes |
-| 2 | Missing barrier after timer enable | `arch/aarch64/timer.cpp:286` | No isb after enable | Add `isb` after `write_cntp_ctl(1)` |
+| 2 | ✅ Missing barrier after timer enable | `arch/aarch64/timer.cpp:286` | No isb after enable | Add `isb` after `write_cntp_ctl(1)` | Fixed |
 | 3 | Missing GIC configuration barriers | `arch/aarch64/gic.cpp:229-262` | No dsb after config | Add `dsb sy` after GIC register writes |
 
 ### Error Handling

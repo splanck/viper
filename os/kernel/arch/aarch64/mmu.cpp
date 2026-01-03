@@ -107,8 +107,11 @@ constexpr u64 PXN = 0ULL << 53;        // Privileged execute allowed
 
 static bool initialized = false;
 static bool ttbr1_enabled = false;
-static u64 kernel_ttbr0 = 0; // Root of kernel page tables (identity-mapped)
-static u64 kernel_ttbr1 = 0; // Root of kernel higher-half tables
+static u64 kernel_ttbr0 = 0;  // Root of kernel page tables (identity-mapped)
+static u64 kernel_ttbr1 = 0;  // Root of kernel higher-half tables
+static u64 kernel_mair = 0;   // MAIR_EL1 value for secondary CPUs
+static u64 kernel_tcr = 0;    // TCR_EL1 value for secondary CPUs
+static u64 kernel_sctlr = 0;  // SCTLR_EL1 value for secondary CPUs
 
 // Create kernel page tables with identity mapping
 // Maps 0x00000000-0x80000000 (first 2GB) using 1GB blocks
@@ -308,6 +311,7 @@ void init()
 
     // Configure MAIR_EL1 for memory attributes
     u64 mair_val = mair::ATTR0_DEVICE | mair::ATTR1_NORMAL | mair::ATTR2_NC;
+    kernel_mair = mair_val;  // Save for secondary CPUs
     asm volatile("msr mair_el1, %0" ::"r"(mair_val) : "memory");
 
     serial::puts("[mmu] MAIR_EL1 configured: ");
@@ -335,6 +339,7 @@ void init()
         serial::puts("[mmu] TTBR1 disabled in TCR\n");
     }
 
+    kernel_tcr = tcr_val;  // Save for secondary CPUs
     asm volatile("msr tcr_el1, %0" ::"r"(tcr_val) : "memory");
     asm volatile("isb");
 
@@ -377,6 +382,8 @@ void init()
 
     serial::puts("[mmu] Enabling MMU...\n");
 
+    kernel_sctlr = sctlr;  // Save for secondary CPUs
+
     // This is the critical moment - enable MMU with identity-mapped kernel
     asm volatile("msr sctlr_el1, %0  \n"
                  "isb                \n" ::"r"(sctlr)
@@ -410,6 +417,48 @@ bool is_user_space_enabled()
 bool is_ttbr1_enabled()
 {
     return ttbr1_enabled;
+}
+
+/** @copydoc mmu::init_secondary */
+void init_secondary()
+{
+    // Secondary CPUs wake from PSCI with MMU disabled. Apply the same
+    // configuration the boot CPU established during mmu::init().
+
+    if (!initialized)
+    {
+        // Boot CPU hasn't finished MMU init yet - this shouldn't happen
+        // but handle it gracefully by returning early
+        return;
+    }
+
+    // Program MAIR_EL1
+    asm volatile("msr mair_el1, %0" ::"r"(kernel_mair) : "memory");
+
+    // Program TCR_EL1
+    asm volatile("msr tcr_el1, %0" ::"r"(kernel_tcr) : "memory");
+    asm volatile("isb");
+
+    // Program TTBR0_EL1
+    asm volatile("msr ttbr0_el1, %0" ::"r"(kernel_ttbr0) : "memory");
+    asm volatile("isb");
+
+    // Program TTBR1_EL1 if available
+    if (kernel_ttbr1 != 0)
+    {
+        asm volatile("msr ttbr1_el1, %0" ::"r"(kernel_ttbr1) : "memory");
+        asm volatile("isb");
+    }
+
+    // Invalidate TLBs for this CPU
+    asm volatile("tlbi vmalle1");
+    asm volatile("dsb sy");
+    asm volatile("isb");
+
+    // Enable MMU with the same SCTLR configuration as boot CPU
+    asm volatile("msr sctlr_el1, %0  \n"
+                 "isb                \n" ::"r"(kernel_sctlr)
+                 : "memory");
 }
 
 } // namespace mmu
