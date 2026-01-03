@@ -1658,6 +1658,29 @@ LowerResult Lowerer::lowerField(FieldExpr *expr)
         }
     }
 
+    // Handle String.Length and String.length property (Bug #3 fix)
+    if (baseType->kind == TypeKindSem::String)
+    {
+        if (expr->field == "Length" || expr->field == "length")
+        {
+            // Synthesize a call to Viper.String.Length(str)
+            // Note: Using "Viper.String.Length" to match Sema.cpp registration
+            Value result = emitCallRet(Type(Type::Kind::I64), "Viper.String.Length", {base.value});
+            return {result, Type(Type::Kind::I64)};
+        }
+    }
+
+    // Handle List.count and List.size property
+    if (baseType->kind == TypeKindSem::List)
+    {
+        if (expr->field == "count" || expr->field == "size")
+        {
+            // Synthesize a call to Viper.Collections.List.get_Count(list)
+            Value result = emitCallRet(Type(Type::Kind::I64), kListCount, {base.value});
+            return {result, Type(Type::Kind::I64)};
+        }
+    }
+
     // Unknown field access
     return {Value::constInt(0), Type(Type::Kind::I64)};
 }

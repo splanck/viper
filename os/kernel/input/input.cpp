@@ -201,10 +201,16 @@ void poll()
                 switch (code)
                 {
                     case key::UP:
-                        push_escape_seq("\033[A");
+                        if (current_modifiers & modifier::SHIFT)
+                            push_escape_seq("\033[1;2A");  // Shift+Up for scroll
+                        else
+                            push_escape_seq("\033[A");
                         break;
                     case key::DOWN:
-                        push_escape_seq("\033[B");
+                        if (current_modifiers & modifier::SHIFT)
+                            push_escape_seq("\033[1;2B");  // Shift+Down for scroll
+                        else
+                            push_escape_seq("\033[B");
                         break;
                     case key::RIGHT:
                         push_escape_seq("\033[C");

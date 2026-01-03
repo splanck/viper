@@ -159,10 +159,39 @@ usize readline(char *buf, usize maxlen)
             char c2 = sys::getchar();
             if (c2 == '[')
             {
-                char c3 = sys::getchar();
+                // Parse CSI sequence: ESC [ [params] final_char
+                // xterm sends ESC[1;2A for Shift+Up, etc.
+                char seq[16];
+                int seq_len = 0;
+                char c3;
+
+                // Read until we get a letter (final character)
+                while (seq_len < 15)
+                {
+                    c3 = sys::getchar();
+                    if (c3 >= 'A' && c3 <= 'Z')
+                        break;  // Final character
+                    if (c3 >= 'a' && c3 <= 'z')
+                        break;  // Final character
+                    if (c3 == '~')
+                        break;  // Function key final
+                    seq[seq_len++] = c3;
+                }
+                seq[seq_len] = '\0';
+
+                // Check for Shift modifier (;2 before final char)
+                bool shift = (seq_len >= 2 && seq[seq_len-2] == ';' && seq[seq_len-1] == '2');
+
                 switch (c3)
                 {
-                    case 'A': // Up arrow
+                    case 'A': // Up arrow (or Shift+Up for scroll)
+                        if (shift)
+                        {
+                            // Shift+Up: pass through to console for scrolling
+                            // by echoing the sequence
+                            print_str("\033[1;2A");
+                            break;
+                        }
                         if (history_index > 0)
                         {
                             if (history_index == history_count && len > 0)
@@ -181,7 +210,13 @@ usize readline(char *buf, usize maxlen)
                             }
                         }
                         break;
-                    case 'B': // Down arrow
+                    case 'B': // Down arrow (or Shift+Down for scroll)
+                        if (shift)
+                        {
+                            // Shift+Down: pass through to console for scrolling
+                            print_str("\033[1;2B");
+                            break;
+                        }
                         if (history_index < history_count)
                         {
                             history_index++;

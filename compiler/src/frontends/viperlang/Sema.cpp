@@ -1031,12 +1031,13 @@ void Sema::initRuntimeFunctions()
     runtimeFunctions_["Viper.IO.Dir.Remove"] = types::voidType(); // VL-016: was Delete
     runtimeFunctions_["Viper.IO.Dir.RemoveAll"] = types::voidType();
     runtimeFunctions_["Viper.IO.Dir.Exists"] = types::boolean();
-    runtimeFunctions_["Viper.IO.Dir.List"] = types::ptr();
-    runtimeFunctions_["Viper.IO.Dir.ListSeq"] = types::ptr();
-    runtimeFunctions_["Viper.IO.Dir.Files"] = types::ptr();
-    runtimeFunctions_["Viper.IO.Dir.FilesSeq"] = types::ptr();
-    runtimeFunctions_["Viper.IO.Dir.Dirs"] = types::ptr();
-    runtimeFunctions_["Viper.IO.Dir.DirsSeq"] = types::ptr();
+    // Bug #7 fix: Use proper List[String] type instead of raw ptr
+    runtimeFunctions_["Viper.IO.Dir.List"] = types::list(types::string());
+    runtimeFunctions_["Viper.IO.Dir.ListSeq"] = types::list(types::string());
+    runtimeFunctions_["Viper.IO.Dir.Files"] = types::list(types::string());
+    runtimeFunctions_["Viper.IO.Dir.FilesSeq"] = types::list(types::string());
+    runtimeFunctions_["Viper.IO.Dir.Dirs"] = types::list(types::string());
+    runtimeFunctions_["Viper.IO.Dir.DirsSeq"] = types::list(types::string());
     runtimeFunctions_["Viper.IO.Dir.Current"] = types::string(); // VL-016: was GetCurrent
     runtimeFunctions_["Viper.IO.Dir.SetCurrent"] = types::voidType();
 

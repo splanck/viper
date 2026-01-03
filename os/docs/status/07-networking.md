@@ -443,17 +443,24 @@ netd tracks and reports:
 
 ---
 
+## Recent Improvements
+
+- **TCP Flow Control**: Proper window management for reliable data transfer
+- **TCP Congestion Control**: Basic congestion window management
+- **TCP Retransmission**: Timeout-based retransmission with exponential backoff
+- **Improved SSH/SFTP**: More stable connections with proper window handling
+
 ## Not Implemented
 
 ### High Priority
-- TCP window scaling (RFC 7323)
-- TCP congestion control (RFC 5681)
+- ~~TCP window scaling (RFC 7323)~~ ✓ Basic flow control implemented
+- ~~TCP congestion control (RFC 5681)~~ ✓ Basic implementation
 - TCP SACK (RFC 2018)
 - IP fragmentation/reassembly
 
 ### Medium Priority
 - IPv6
-- TCP retransmission with backoff
+- ~~TCP retransmission with backoff~~ ✓ Implemented
 - TCP TIME_WAIT with 2MSL
 - Keep-alive
 

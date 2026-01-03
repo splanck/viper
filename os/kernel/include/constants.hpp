@@ -320,6 +320,12 @@ constexpr u32 FONT_SCALE_DEN = 2;
 /// Cursor blink interval in milliseconds
 constexpr u32 CURSOR_BLINK_MS = 500;
 
+/// Scrollback buffer size in lines
+constexpr u32 SCROLLBACK_LINES = 512;
+
+/// Maximum columns per line in scrollback buffer
+constexpr u32 SCROLLBACK_COLS = 128;
+
 } // namespace display
 
 // =============================================================================

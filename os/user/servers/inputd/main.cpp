@@ -480,10 +480,16 @@ static void poll_device()
                     switch (code)
                     {
                         case input::key::UP:
-                            push_escape_seq("\033[A");
+                            if (g_modifiers & modifier::SHIFT)
+                                push_escape_seq("\033[1;2A");  // xterm Shift+Up
+                            else
+                                push_escape_seq("\033[A");
                             break;
                         case input::key::DOWN:
-                            push_escape_seq("\033[B");
+                            if (g_modifiers & modifier::SHIFT)
+                                push_escape_seq("\033[1;2B");  // xterm Shift+Down
+                            else
+                                push_escape_seq("\033[B");
                             break;
                         case input::key::RIGHT:
                             push_escape_seq("\033[C");

@@ -42,21 +42,20 @@ struct ServerInfo
 };
 
 // Two-disk architecture: servers are on system disk (/sys)
-// Essential servers (consoled, inputd) spawn first for shell I/O
+// Note: inputd removed - kernel handles keyboard input directly
 // Storage/network servers may fail if user disk is missing
 static ServerInfo g_servers[] = {
-    // Essential (indices 0-1): always spawn, required for shell I/O
+    // Essential: always spawn, required for shell I/O
     {"consoled", "/sys/consoled.sys", "CONSOLED", 0, false},
-    {"inputd", "/sys/inputd.sys", "INPUTD", 0, false},
-    // Storage/Network (indices 2-4): may fail if disk1 missing
+    // Storage/Network: may fail if disk1 missing
     {"blkd", "/sys/blkd.sys", "BLKD", 0, false},
     {"netd", "/sys/netd.sys", "NETD", 0, false},
     {"fsd", "/sys/fsd.sys", "FSD", 0, false},
 };
 
 static constexpr usize SERVER_COUNT = sizeof(g_servers) / sizeof(g_servers[0]);
-static constexpr usize BLKD_INDEX = 2;
-static constexpr usize FSD_INDEX = 4;
+static constexpr usize BLKD_INDEX = 1;
+static constexpr usize FSD_INDEX = 3;
 
 static u32 g_device_root = 0xFFFFFFFFu;
 static bool g_have_device_root = false;

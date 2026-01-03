@@ -62,13 +62,13 @@ The kernel console is always available, while the user-space servers provide IPC
 
 ### 2. Graphics Console (`gcon.cpp`, `gcon.hpp`)
 
-**Status:** Fully functional text mode console with decorative border
+**Status:** Fully functional text mode console with ANSI support
 
 **Implemented:**
 - Text rendering to framebuffer (via ramfb driver)
-- 8x16 base font with 1.5x scaling (12x24 effective)
-- 80x29 character grid at 1024x768 (with border)
-- **Decorative green border** (20px outer, 8px inner padding)
+- 8x16 base font with 5/4 scaling (10x20 effective)
+- Dynamic character grid based on resolution (e.g., 152x48 at 1600x1024)
+- **Decorative green border** (4px border + 4px padding = 8px total inset)
 - Foreground/background color control
 - Terminal control characters:
   - `\n` - Newline with scroll
@@ -79,41 +79,85 @@ The kernel console is always available, while the user-space servers provide IPC
 - Smooth scrolling (pixel copy, respects border region)
 - Cursor position tracking
 - Screen clear (preserves border)
+- **Blinking cursor** (500ms interval, XOR-based rendering)
+- **Scrollback buffer** (1000 lines × 200 columns circular buffer)
+- **ANSI escape sequence support** (see below)
+
+**ANSI Escape Sequences Supported:**
+
+| Sequence | Name | Description |
+|----------|------|-------------|
+| `ESC[H` | CUP | Move cursor to home (0,0) |
+| `ESC[n;mH` | CUP | Move cursor to row n, column m |
+| `ESC[nA` | CUU | Move cursor up n lines |
+| `ESC[nB` | CUD | Move cursor down n lines |
+| `ESC[nC` | CUF | Move cursor forward n columns |
+| `ESC[nD` | CUB | Move cursor back n columns |
+| `ESC[J` | ED | Erase display (0=to end, 1=to start, 2=all) |
+| `ESC[K` | EL | Erase line (0=to end, 1=to start, 2=all) |
+| `ESC[nm` | SGR | Set graphics rendition (colors) |
+| `ESC[?25h` | DECTCEM | Show cursor |
+| `ESC[?25l` | DECTCEM | Hide cursor |
+
+**SGR Color Codes:**
+
+| Range | Meaning |
+|-------|---------|
+| 30-37 | Standard foreground colors |
+| 40-47 | Standard background colors |
+| 90-97 | Bright foreground colors |
+| 100-107 | Bright background colors |
+| 0 | Reset to default colors |
 
 **API:**
 | Function | Description |
 |----------|-------------|
 | `init()` | Initialize graphics console |
 | `is_available()` | Check if framebuffer ready |
-| `putc(c)` | Write one character |
+| `putc(c)` | Write one character (ANSI-aware) |
 | `puts(s)` | Write string |
 | `clear()` | Clear screen |
 | `set_colors(fg, bg)` | Set text colors |
 | `get_cursor(&x, &y)` | Get cursor position |
 | `set_cursor(x, y)` | Set cursor position |
 | `get_size(&cols, &rows)` | Get console dimensions |
+| `show_cursor(bool)` | Show/hide cursor |
+| `scroll_up(lines)` | Scroll up n lines |
+| `scroll_down(lines)` | Scroll down n lines (scrollback) |
 
 **Default Colors (Viper Theme):**
 | Color | RGB | Usage |
 |-------|-----|-------|
-| VIPER_GREEN | 0x00AA00 | Default foreground |
-| VIPER_DARK_BROWN | 0x221100 | Default background |
+| VIPER_GREEN | 0x00AA44 | Default foreground |
+| VIPER_DARK_BROWN | 0x1A1208 | Default background |
 | VIPER_WHITE | 0xFFFFFF | Highlight text |
-| VIPER_RED | 0xFF0000 | Error text |
+| VIPER_YELLOW | 0xFFDD00 | Accents |
+| VIPER_RED | 0xCC3333 | Error text |
+
+**Scrollback Buffer:**
+```
+┌─────────────────────────────────────────┐
+│  Scrollback Buffer (1000 × 200)         │
+│  ┌─────────────────────────────────┐    │
+│  │  Line 0: [char, fg, bg] × 200   │    │
+│  │  Line 1: ...                    │    │
+│  │  ...                            │    │
+│  │  Line 999: ...                  │ ← wrap │
+│  └─────────────────────────────────┘    │
+│  write_index: current line              │
+│  view_offset: scroll position           │
+└─────────────────────────────────────────┘
+```
 
 **Not Implemented:**
-- Cursor blinking/rendering
 - Double-buffering
 - Hardware acceleration
 - Unicode/UTF-8 support
-- ANSI escape sequences
 - Multiple virtual consoles
 - Font selection/loading
 - Bold/italic text styles
 
 **Recommendations:**
-- Add visible cursor with blink
-- Implement ANSI escape codes for color/positioning
 - Add double-buffering for flicker-free updates
 - Consider hardware-accelerated scroll if available
 
@@ -121,24 +165,35 @@ The kernel console is always available, while the user-space servers provide IPC
 
 ### 3. Font (`font.cpp`, `font.hpp`)
 
-**Status:** Complete 8x16 bitmap font
+**Status:** Complete 8x16 bitmap font with scaling
 
 **Implemented:**
 - Full ASCII printable character set (32-126)
 - 8x16 pixel base glyphs
-- 1-bit-per-pixel bitmap format
-- Fractional scaling support (3/2 = 1.5x default)
-- Fallback glyph for unsupported characters
+- 1-bit-per-pixel bitmap format (MSB first)
+- Fractional scaling support (5/4 = 1.25x default)
+- Fallback glyph (`?`) for unsupported characters
 
 **Font Metrics:**
 | Parameter | Value |
 |-----------|-------|
 | BASE_WIDTH | 8 pixels |
 | BASE_HEIGHT | 16 pixels |
-| SCALE_NUM | 3 |
-| SCALE_DEN | 2 |
-| Effective WIDTH | 12 pixels |
-| Effective HEIGHT | 24 pixels |
+| SCALE_NUM | 5 |
+| SCALE_DEN | 4 |
+| Effective WIDTH | 10 pixels |
+| Effective HEIGHT | 20 pixels |
+
+**Font Data Format:**
+```cpp
+// Each glyph is 16 bytes (one per row)
+// Each byte represents 8 horizontal pixels, MSB=leftmost
+const uint8_t font_data[96][16] = {
+    { 0x00, 0x00, ... },  // Space (ASCII 32)
+    { 0x18, 0x18, ... },  // ! (ASCII 33)
+    // ...
+};
+```
 
 **Not Implemented:**
 - Multiple fonts
@@ -269,10 +324,18 @@ namespace colors {
 
 ---
 
+## Completed Improvements
+
+The following features have been implemented since initial documentation:
+
+- ANSI escape sequence support (cursor, colors, clearing)
+- Blinking cursor with show/hide control
+- Scrollback buffer (1000 lines)
+- Dynamic console sizing based on framebuffer resolution
+
 ## Priority Recommendations
 
-1. **Medium:** Add ANSI escape sequence support
-2. **Medium:** Implement visible cursor
-3. **Low:** Add interrupt-driven serial receive
-4. **Low:** Double-buffered graphics for smooth updates
-5. **Low:** Unicode support (at least Latin-1)
+1. **Medium:** Double-buffered graphics for smooth updates
+2. **Low:** Add interrupt-driven serial receive
+3. **Low:** Unicode support (at least Latin-1)
+4. **Low:** Multiple virtual consoles

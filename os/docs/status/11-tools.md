@@ -229,7 +229,16 @@ The GCC toolchain uses the aarch64-elf-gcc cross-compiler.
 
 ## Build Process
 
-These tools are built automatically by `build_viper.sh`:
+These tools are built automatically by `build_viperos.sh`:
+
+### UEFI Build Requirements
+
+For UEFI boot mode, additional tools are needed:
+- `sgdisk` - GPT partition management (from gdisk package)
+- `mtools` - FAT filesystem manipulation (mmd, mcopy)
+- `qemu-img` - Disk image creation
+
+The build script handles:
 
 ```bash
 # Compile mkfs.viperfs if needed

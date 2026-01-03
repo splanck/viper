@@ -181,4 +181,41 @@ bool is_cursor_visible();
  */
 void update_cursor_blink(u64 current_time_ms);
 
+/**
+ * @brief Scroll the view up by one line (shows older content).
+ *
+ * @details
+ * Moves the viewport up into the scrollback buffer, allowing the user
+ * to see previously displayed content. Returns true if scrolled, false
+ * if already at top of buffer.
+ *
+ * @return `true` if scrolled, `false` if at top of scrollback.
+ */
+bool scroll_up();
+
+/**
+ * @brief Scroll the view down by one line (shows newer content).
+ *
+ * @details
+ * Moves the viewport down toward the current output position.
+ * Returns true if scrolled, false if already at bottom (live view).
+ *
+ * @return `true` if scrolled, `false` if at bottom (live view).
+ */
+bool scroll_down();
+
+/**
+ * @brief Get the current scroll offset.
+ *
+ * @return Number of lines scrolled up from live view (0 = at bottom).
+ */
+u32 get_scroll_offset();
+
+/**
+ * @brief Check if currently scrolled back (not at live view).
+ *
+ * @return `true` if viewing scrollback, `false` if at live view.
+ */
+bool is_scrolled_back();
+
 } // namespace gcon

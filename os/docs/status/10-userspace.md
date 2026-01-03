@@ -11,7 +11,7 @@ User space consists of the `vinit` init process, user-space servers (netd, fsd, 
 In the microkernel architecture:
 - **vinit** spawns and manages the user-space servers
 - **libc** routes file operations to fsd, network operations to netd
-- **User-space libraries** (libtls, libhttp, libssh) build on libc sockets
+- **User-space libraries** (libtls, libhttp, libssh, libgui) build on libc and IPC
 - Applications use standard POSIX-like APIs
 
 The libc enables portable POSIX-like application development without external dependencies, routing to the appropriate user-space server via IPC.
@@ -2084,7 +2084,8 @@ User space is tested via:
 | `netstat/netstat.cpp` | ~150 | Network statistics utility |
 | `devices/devices.cpp` | ~180 | Hardware device listing |
 | `mathtest/mathtest.cpp` | ~250 | Math library tests |
-| `edit/edit.cpp` | ~500 | Nano-like text editor |
+| `edit/edit.cpp` | ~700 | Nano-like text editor |
+| `hello_gui/hello_gui.cpp` | ~150 | GUI demo with window creation |
 | `ssh/ssh.c` | ~400 | SSH-2 client |
 | `sftp/sftp.c` | ~800 | Interactive SFTP client |
 
@@ -2131,6 +2132,14 @@ Interactive commands:
 - `stat <path>` - Show file info
 
 ---
+
+## Recent Additions
+
+- **Text Editor (edit)**: Full-screen nano-like editor with syntax highlighting
+- **GUI Demo (hello_gui)**: Window creation demo using libgui and displayd
+- **Device Listing (devices)**: Hardware device enumeration utility
+- **Filesystem Info (fsinfo)**: Filesystem statistics and information
+- **Display Server (displayd)**: User-space window compositing server
 
 ## Not Implemented
 

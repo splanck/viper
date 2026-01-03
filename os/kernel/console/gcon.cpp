@@ -1,4 +1,5 @@
 #include "gcon.hpp"
+#include "../console/serial.hpp"
 #include "../drivers/ramfb.hpp"
 #include "../include/constants.hpp"
 #include "font.hpp"
@@ -52,6 +53,76 @@ bool cursor_blink_state = false;                               // Current blink 
 bool cursor_drawn = false;                                     // Whether cursor is currently drawn on screen
 u64 last_blink_time = 0;                                       // Last time cursor blink toggled
 constexpr u64 CURSOR_BLINK_MS = kc::display::CURSOR_BLINK_MS;  // Cursor blink interval
+
+// =============================================================================
+// Scrollback Buffer
+// =============================================================================
+
+/// A single character cell with colors
+struct Cell
+{
+    char ch;
+    u32 fg;
+    u32 bg;
+};
+
+/// Scrollback buffer constants
+constexpr u32 SCROLLBACK_LINES = kc::display::SCROLLBACK_LINES;
+constexpr u32 SCROLLBACK_COLS = kc::display::SCROLLBACK_COLS;
+
+/// Circular buffer of lines (each line is an array of cells)
+Cell scrollback[SCROLLBACK_LINES][SCROLLBACK_COLS];
+
+/// Current write position in circular buffer (next line to write)
+u32 buffer_head = 0;
+
+/// Total lines written to buffer (capped at SCROLLBACK_LINES)
+u32 buffer_count = 0;
+
+/// Current scroll offset (0 = live view, >0 = scrolled back N lines)
+u32 scroll_offset = 0;
+
+/// Initialize a buffer line to empty (spaces with current colors)
+void clear_buffer_line(u32 line_idx)
+{
+    for (u32 i = 0; i < SCROLLBACK_COLS; i++)
+    {
+        scrollback[line_idx][i].ch = ' ';
+        scrollback[line_idx][i].fg = default_fg;
+        scrollback[line_idx][i].bg = default_bg;
+    }
+}
+
+/// Store a character in the buffer at the current cursor position
+void buffer_put_char(char c, u32 col, u32 row)
+{
+    // Calculate which buffer line corresponds to this screen row
+    // We store the current visible screen content plus scrollback
+    // The "current" line is at (buffer_head - rows + row) mod SCROLLBACK_LINES
+    if (rows == 0 || col >= SCROLLBACK_COLS)
+        return;
+
+    u32 base = (buffer_head >= rows) ? (buffer_head - rows) : (SCROLLBACK_LINES + buffer_head - rows);
+    u32 line_idx = (base + row) % SCROLLBACK_LINES;
+
+    scrollback[line_idx][col].ch = c;
+    scrollback[line_idx][col].fg = fg_color;
+    scrollback[line_idx][col].bg = bg_color;
+}
+
+/// Advance buffer head when a new line is needed (scrolling or newline at bottom)
+void buffer_new_line()
+{
+    // Clear the new line
+    clear_buffer_line(buffer_head);
+
+    // Advance head
+    buffer_head = (buffer_head + 1) % SCROLLBACK_LINES;
+
+    // Track total lines
+    if (buffer_count < SCROLLBACK_LINES)
+        buffer_count++;
+}
 
 /**
  * @brief ANSI escape sequence parser states.
@@ -302,6 +373,9 @@ void scroll()
     // Hide cursor during scroll operation
     bool was_drawn = cursor_drawn;
     erase_cursor_if_drawn();
+
+    // Add new line to scrollback buffer
+    buffer_new_line();
 
     const auto &fb = ramfb::get_info();
     u32 *framebuffer = ramfb::get_framebuffer();
@@ -628,22 +702,38 @@ void handle_csi(char final)
             handle_sgr();
             break;
 
-        case 'A': // CUU - Cursor Up
+        case 'A': // CUU - Cursor Up (or Shift+Up = scroll if p2==2)
         {
-            u32 n = (p1 > 0) ? p1 : 1;
-            if (cursor_y >= n)
-                cursor_y -= n;
+            if (p2 == 2)
+            {
+                // xterm Shift+Up: scroll console up
+                scroll_up();
+            }
             else
-                cursor_y = 0;
+            {
+                u32 n = (p1 > 0) ? p1 : 1;
+                if (cursor_y >= n)
+                    cursor_y -= n;
+                else
+                    cursor_y = 0;
+            }
         }
         break;
 
-        case 'B': // CUD - Cursor Down
+        case 'B': // CUD - Cursor Down (or Shift+Down = scroll if p2==2)
         {
-            u32 n = (p1 > 0) ? p1 : 1;
-            cursor_y += n;
-            if (cursor_y >= rows)
-                cursor_y = rows - 1;
+            if (p2 == 2)
+            {
+                // xterm Shift+Down: scroll console down
+                scroll_down();
+            }
+            else
+            {
+                u32 n = (p1 > 0) ? p1 : 1;
+                cursor_y += n;
+                if (cursor_y >= rows)
+                    cursor_y = rows - 1;
+            }
         }
         break;
 
@@ -685,6 +775,22 @@ void handle_csi(char final)
                 cursor_blink_state = false;
             }
             break;
+
+        case '~': // Function key / special sequences
+        {
+            if (p1 == 23)
+            {
+                // CSI 23~ (Shift+Up): scroll console up (view older content)
+                scroll_up();
+            }
+            else if (p1 == 24)
+            {
+                // CSI 24~ (Shift+Down): scroll console down (view newer content)
+                scroll_down();
+            }
+            // Other sequences (PageUp=5, PageDown=6, etc) pass through
+        }
+        break;
 
         case 's': // SCP - Save Cursor Position (not implemented, ignore)
         case 'u': // RCP - Restore Cursor Position (not implemented, ignore)
@@ -790,6 +896,16 @@ bool init()
     cols = (fb.width - 2 * TEXT_INSET) / font::WIDTH;
     rows = (fb.height - 2 * TEXT_INSET) / font::HEIGHT;
 
+    serial::puts("[gcon] Font: ");
+    serial::put_dec(font::WIDTH);
+    serial::puts("x");
+    serial::put_dec(font::HEIGHT);
+    serial::puts(", console: ");
+    serial::put_dec(cols);
+    serial::puts("x");
+    serial::put_dec(rows);
+    serial::puts("\n");
+
     // Set default colors
     fg_color = colors::VIPER_GREEN;
     bg_color = colors::VIPER_DARK_BROWN;
@@ -805,6 +921,20 @@ bool init()
 
     // Reset ANSI parser
     ansi_reset();
+
+    // Initialize scrollback buffer
+    buffer_head = 0;
+    buffer_count = 0;
+    scroll_offset = 0;
+    for (u32 i = 0; i < SCROLLBACK_LINES; i++)
+    {
+        clear_buffer_line(i);
+    }
+    // Pre-fill buffer with enough empty lines for visible rows
+    for (u32 i = 0; i < rows && i < SCROLLBACK_LINES; i++)
+    {
+        buffer_new_line();
+    }
 
     initialized = true;
     return true;
@@ -828,6 +958,9 @@ void putc(char c)
         return; // Character was consumed by escape sequence
     }
 
+    // Auto-scroll to bottom when new output arrives
+    scroll_offset = 0;
+
     // Erase cursor before any operation that might affect its position
     erase_cursor_if_drawn();
 
@@ -843,6 +976,7 @@ void putc(char c)
             // Align to next 8-column boundary
             do
             {
+                buffer_put_char(' ', cursor_x, cursor_y);
                 draw_char(cursor_x, cursor_y, ' ');
                 advance_cursor();
             } while (cursor_x % 8 != 0 && cursor_x < cols);
@@ -861,6 +995,7 @@ void putc(char c)
         default:
             if (c >= 32 && c < 127)
             {
+                buffer_put_char(c, cursor_x, cursor_y);
                 draw_char(cursor_x, cursor_y, c);
                 advance_cursor();
             }
@@ -999,6 +1134,171 @@ void update_cursor_blink(u64 current_time_ms)
             draw_cursor_if_visible();
         }
     }
+}
+
+// =============================================================================
+// Scrollback Functions
+// =============================================================================
+
+namespace
+{
+
+/**
+ * @brief Draw a cell from the buffer at a screen position.
+ */
+void draw_cell(u32 cx, u32 cy, const Cell &cell)
+{
+    // Temporarily set colors from the cell
+    u32 saved_fg = fg_color;
+    u32 saved_bg = bg_color;
+    fg_color = cell.fg;
+    bg_color = cell.bg;
+
+    draw_char(cx, cy, cell.ch);
+
+    fg_color = saved_fg;
+    bg_color = saved_bg;
+}
+
+/**
+ * @brief Redraw the entire screen from the scrollback buffer.
+ *
+ * @param offset Number of lines scrolled back (0 = live view)
+ */
+void redraw_from_buffer(u32 offset)
+{
+    if (rows == 0)
+        return;
+
+    // Calculate which buffer line corresponds to screen row 0
+    // buffer_head points to the NEXT line to write (one past current bottom)
+    // So current bottom line is at (buffer_head - 1) mod SCROLLBACK_LINES
+    // And screen row (rows-1) shows that line when offset=0
+    // With offset, we go back further
+
+    for (u32 screen_row = 0; screen_row < rows; screen_row++)
+    {
+        // Which buffer line does this screen row show?
+        // At offset=0: screen_row 0 shows buffer_head - rows
+        //              screen_row (rows-1) shows buffer_head - 1
+        // At offset=N: shift everything back by N lines
+        u32 base = (buffer_head >= rows + offset)
+                       ? (buffer_head - rows - offset)
+                       : (SCROLLBACK_LINES + buffer_head - rows - offset);
+        u32 line_idx = (base + screen_row) % SCROLLBACK_LINES;
+
+        // Draw each cell in this line
+        for (u32 col = 0; col < cols && col < SCROLLBACK_COLS; col++)
+        {
+            draw_cell(col, screen_row, scrollback[line_idx][col]);
+        }
+    }
+}
+
+/**
+ * @brief Draw a minimal scroll indicator in the top-right corner.
+ *
+ * Shows something like "↑5" when scrolled back 5 lines.
+ */
+void draw_scroll_indicator(u32 offset)
+{
+    if (offset == 0 || cols < 6)
+        return;
+
+    // Format: "^NNN" where NNN is the offset (up to 3 digits)
+    char indicator[8];
+    u32 pos = 0;
+    indicator[pos++] = '^';
+
+    // Convert offset to digits
+    char digits[4];
+    u32 num_digits = 0;
+    u32 n = offset;
+    do
+    {
+        digits[num_digits++] = '0' + (n % 10);
+        n /= 10;
+    } while (n > 0 && num_digits < 3);
+
+    // Reverse digits into indicator
+    while (num_digits > 0)
+    {
+        indicator[pos++] = digits[--num_digits];
+    }
+    indicator[pos] = '\0';
+
+    // Draw at top-right corner with inverse colors
+    u32 start_col = cols - pos - 1;
+    u32 saved_fg = fg_color;
+    u32 saved_bg = bg_color;
+    fg_color = colors::VIPER_DARK_BROWN;
+    bg_color = colors::VIPER_GREEN;
+
+    for (u32 i = 0; i < pos; i++)
+    {
+        draw_char(start_col + i, 0, indicator[i]);
+    }
+
+    fg_color = saved_fg;
+    bg_color = saved_bg;
+}
+
+} // namespace
+
+/** @copydoc gcon::scroll_up */
+bool scroll_up()
+{
+    if (!initialized)
+        return false;
+
+    // Can't scroll beyond available history
+    u32 max_offset = (buffer_count > rows) ? (buffer_count - rows) : 0;
+    if (scroll_offset >= max_offset)
+        return false;
+
+    scroll_offset++;
+    erase_cursor_if_drawn();
+    redraw_from_buffer(scroll_offset);
+    draw_scroll_indicator(scroll_offset);
+    // Don't show cursor when scrolled back
+    return true;
+}
+
+/** @copydoc gcon::scroll_down */
+bool scroll_down()
+{
+    if (!initialized)
+        return false;
+
+    if (scroll_offset == 0)
+        return false;
+
+    scroll_offset--;
+    erase_cursor_if_drawn();
+    redraw_from_buffer(scroll_offset);
+
+    if (scroll_offset > 0)
+    {
+        draw_scroll_indicator(scroll_offset);
+    }
+    else
+    {
+        // Back at live view, show cursor
+        draw_cursor_if_visible();
+    }
+    return true;
+}
+
+/** @copydoc gcon::get_scroll_offset */
+u32 get_scroll_offset()
+{
+    return scroll_offset;
+}
+
+/** @copydoc gcon::is_scrolled_back */
+bool is_scrolled_back()
+{
+    return scroll_offset > 0;
 }
 
 } // namespace gcon

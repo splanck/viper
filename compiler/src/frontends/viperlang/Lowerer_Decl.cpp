@@ -247,7 +247,7 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
         lowerStmt(decl.body.get());
     }
 
-    // Add implicit return if needed
+    // Add implicit return if needed (Bug #5 fix: use correct default value for each type)
     if (!isTerminated())
     {
         if (ilReturnType.kind == Type::Kind::Void)
@@ -256,7 +256,32 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
         }
         else
         {
-            emitRet(Value::constInt(0));
+            // Emit correct default value based on return type
+            Value defaultValue;
+            switch (ilReturnType.kind)
+            {
+                case Type::Kind::I1:
+                    defaultValue = Value::constBool(false);
+                    break;
+                case Type::Kind::I64:
+                case Type::Kind::I16:
+                case Type::Kind::I32:
+                    defaultValue = Value::constInt(0);
+                    break;
+                case Type::Kind::F64:
+                    defaultValue = Value::constFloat(0.0);
+                    break;
+                case Type::Kind::Str:
+                    defaultValue = Value::constStr("");
+                    break;
+                case Type::Kind::Ptr:
+                    defaultValue = Value::null();
+                    break;
+                default:
+                    defaultValue = Value::constInt(0);
+                    break;
+            }
+            emitRet(defaultValue);
         }
     }
 
@@ -465,7 +490,7 @@ void Lowerer::lowerMethodDecl(MethodDecl &decl, const std::string &typeName, boo
         lowerStmt(decl.body.get());
     }
 
-    // Add implicit return if needed
+    // Add implicit return if needed (Bug #5 fix: use correct default value for each type)
     if (!isTerminated())
     {
         if (ilReturnType.kind == Type::Kind::Void)
@@ -474,7 +499,32 @@ void Lowerer::lowerMethodDecl(MethodDecl &decl, const std::string &typeName, boo
         }
         else
         {
-            emitRet(Value::constInt(0));
+            // Emit correct default value based on return type
+            Value defaultValue;
+            switch (ilReturnType.kind)
+            {
+                case Type::Kind::I1:
+                    defaultValue = Value::constBool(false);
+                    break;
+                case Type::Kind::I64:
+                case Type::Kind::I16:
+                case Type::Kind::I32:
+                    defaultValue = Value::constInt(0);
+                    break;
+                case Type::Kind::F64:
+                    defaultValue = Value::constFloat(0.0);
+                    break;
+                case Type::Kind::Str:
+                    defaultValue = Value::constStr("");
+                    break;
+                case Type::Kind::Ptr:
+                    defaultValue = Value::null();
+                    break;
+                default:
+                    defaultValue = Value::constInt(0);
+                    break;
+            }
+            emitRet(defaultValue);
         }
     }
 

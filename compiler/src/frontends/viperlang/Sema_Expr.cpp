@@ -693,6 +693,15 @@ TypeRef Sema::analyzeField(FieldExpr *expr)
         }
     }
 
+    // Handle built-in properties on strings (Bug #3 fix)
+    if (baseType && baseType->kind == TypeKindSem::String)
+    {
+        if (expr->field == "Length" || expr->field == "length")
+        {
+            return types::integer();
+        }
+    }
+
     return types::unknown();
 }
 

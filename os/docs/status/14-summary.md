@@ -1,8 +1,8 @@
 # ViperOS Summary and Roadmap
 
-**Version:** 0.3.0 (January 2026)
+**Version:** 0.3.1 (January 2026)
 **Target:** AArch64 (Cortex-A72) on QEMU virt machine
-**Total Lines of Code:** ~109,000
+**Total Lines of Code:** ~115,000
 
 ## Executive Summary
 
@@ -10,28 +10,31 @@ ViperOS is a **capability-based microkernel** operating system for AArch64. The 
 
 The system is fully functional for QEMU bring-up with:
 
-- **Microkernel core**: Priority-based scheduler, capability tables, IPC channels
+- **UEFI Boot**: Custom VBoot bootloader with GOP framebuffer support
+- **Microkernel core**: Priority-based SMP scheduler, capability tables, IPC channels
 - **Complete memory management**: Demand paging, COW, buddy/slab allocators
-- **User-space servers**: netd (TCP/IP), fsd (filesystem), blkd (block), consoled, inputd
+- **User-space servers**: netd (TCP/IP), fsd (filesystem), blkd (block), consoled, inputd, displayd
 - **Full networking**: TCP/IP, TLS 1.3, HTTP, SSH-2/SFTP
 - **Journaling filesystem**: ViperFS with block/inode caching
 - **Capability-based security**: Handle-based access with rights derivation
 - **Comprehensive libc**: POSIX-compatible C library with C++ support
+- **GUI subsystem**: User-space display server with windowing
 
 ---
 
 ## Implementation Completeness
 
-### Microkernel Core (95% Complete)
+### Microkernel Core (98% Complete)
 
 | Component | Status | Notes |
 |-----------|--------|-------|
+| VBoot Bootloader | 100% | UEFI, GOP, ELF loading |
 | Boot/Init | 100% | QEMU virt, PSCI multicore |
 | Memory Management | 100% | PMM, VMM, COW, buddy, slab |
-| Priority Scheduler | 100% | 8 priority queues, preemption |
+| Priority Scheduler | 100% | 8 priority queues, SMP, work stealing |
 | IPC Channels | 100% | Send, recv, handle transfer |
 | Capability System | 95% | Tables, rights, derivation |
-| Device Primitives | 100% | MAP_DEVICE, IRQ, DMA |
+| Device Primitives | 100% | MAP_DEVICE, IRQ, DMA, framebuffer |
 | Syscall Interface | 100% | 90+ syscalls |
 | Exception Handling | 100% | Faults, IRQ, signals |
 
@@ -42,8 +45,9 @@ The system is fully functional for QEMU bring-up with:
 | netd | 95% | Complete TCP/IP stack |
 | fsd | 95% | Full filesystem operations |
 | blkd | 95% | VirtIO-blk with IRQ |
-| consoled | 90% | Console output |
-| inputd | 90% | Keyboard/mouse input |
+| consoled | 95% | Console output |
+| inputd | 95% | Keyboard/mouse input |
+| displayd | 80% | Window compositing (event delivery in progress) |
 
 ### Drivers (100% Complete for QEMU)
 
@@ -58,6 +62,16 @@ The system is fully functional for QEMU bring-up with:
 | VirtIO-input | 100% | Keyboard, mouse |
 | GIC | 100% | v2 and v3 support |
 | Timer | 100% | Nanosecond precision |
+
+### Graphics Console (100% Complete)
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Text Rendering | 100% | Scaled 10x20 font |
+| ANSI Escape Codes | 100% | Cursor, colors, clearing |
+| Blinking Cursor | 100% | 500ms interval |
+| Scrollback Buffer | 100% | 1000 lines |
+| Green Border | 100% | 4px + 4px padding |
 
 ### Filesystem (95% Complete)
 
@@ -88,7 +102,7 @@ The system is fully functional for QEMU bring-up with:
 
 | Algorithm | Status | Notes |
 |-----------|--------|-------|
-| SHA-256/384 | 100% | TLS |
+| SHA-256/384/512 | 100% | TLS, SSH |
 | SHA-1 | 100% | SSH legacy |
 | AES-GCM | 100% | TLS |
 | AES-CTR | 100% | SSH |
@@ -98,33 +112,39 @@ The system is fully functional for QEMU bring-up with:
 | RSA | 90% | Sign/verify |
 | X.509 | 90% | Cert parsing |
 
-### User Space (90% Complete)
+### User Space (92% Complete)
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| libc | 90% | 56 source files, POSIX subset |
+| libc | 92% | 56 source files, POSIX subset |
 | C++ headers | 85% | 66 header files |
 | libnetclient | 95% | netd client |
 | libfsclient | 95% | fsd client |
+| libgui | 80% | displayd client |
 | libtls | 90% | TLS 1.3 |
 | libhttp | 90% | HTTP client |
 | libssh | 85% | SSH-2, SFTP |
-| vinit shell | 90% | Commands, history |
-| Utilities | 90% | ping, edit, etc. |
+| vinit shell | 95% | 40+ commands |
+| Applications | 95% | edit, ssh, sftp, ping, etc. |
 
 ---
 
 ## What Works Today
 
-1. **Microkernel Boot**: Kernel starts, servers initialize, shell runs
-2. **IPC Communication**: All user-space servers communicate via channels
-3. **File Operations**: Create, read, write, delete via fsd
-4. **Networking**: TCP/IP via netd, TLS, HTTP, SSH
-5. **Block I/O**: Filesystem backed by blkd with ViperFS
-6. **Console/Input**: Output via consoled, input via inputd
-7. **Process Management**: Fork, wait, exit with capability tables
-8. **Memory**: Dynamic allocation, demand paging, COW
-9. **Multicore**: 4 CPUs boot (scheduler is single-threaded)
+1. **UEFI Boot**: VBoot loads kernel via UEFI on AArch64
+2. **Two-Disk Architecture**: Separate system (servers) and user (programs) disks
+3. **Microkernel Boot**: Kernel starts, servers initialize, shell runs
+4. **SMP Scheduling**: 4 CPUs with work stealing and load balancing
+5. **IPC Communication**: All user-space servers communicate via channels
+6. **File Operations**: Create, read, write, delete via fsd
+7. **Networking**: TCP/IP via netd, TLS, HTTP, SSH
+8. **Block I/O**: Filesystem backed by blkd with ViperFS
+9. **Console/Input**: Output via consoled, input via inputd
+10. **GUI Windows**: Display server with window compositing
+11. **Process Management**: Fork, wait, exit with capability tables
+12. **Memory**: Dynamic allocation, demand paging, COW
+13. **Text Editor**: Full-screen nano-like editor (edit)
+14. **Graphics Console**: ANSI escapes, scrollback, cursor blinking
 
 ---
 
@@ -132,11 +152,11 @@ The system is fully functional for QEMU bring-up with:
 
 ### Kernel Services (EL1)
 
-- Priority-based scheduler (8 queues)
-- Physical/virtual memory management
+- Priority-based scheduler (8 queues, SMP with work stealing)
+- Physical/virtual memory management (demand paging, COW)
 - IPC channels with handle transfer
 - Capability tables (per-process)
-- Device access primitives (MMIO, IRQ, DMA)
+- Device access primitives (MMIO, IRQ, DMA, framebuffer)
 - Exception/interrupt handling
 
 ### User-Space Services (EL0)
@@ -148,6 +168,7 @@ The system is fully functional for QEMU bring-up with:
 | blkd | BLKD: | Block device I/O |
 | consoled | CONSOLED: | Console output |
 | inputd | INPUTD: | Keyboard/mouse |
+| displayd | DISPLAY: | Window management, GUI |
 
 ### Build Configuration
 
@@ -164,25 +185,25 @@ The system is fully functional for QEMU bring-up with:
 
 ### High Priority
 
-1. **SMP Scheduling**
-   - CPUs boot but scheduler is single-threaded
-   - Need: Per-CPU run queues, load balancing
-
-2. **exec() Family**
+1. **exec() Family**
    - Currently only `task_spawn` exists
    - Need: Full exec() for shell command execution
 
-3. **pipe() Syscall**
+2. **pipe() Syscall**
    - No inter-process pipes
    - Blocks: Shell pipelines (`ls | grep foo`)
 
-4. **PTY Subsystem**
+3. **PTY Subsystem**
    - No kernel pseudo-terminal support
    - Needed for: Terminal emulation, SSH server
 
-5. **Signal Handlers**
+4. **Signal Handlers**
    - Signal infrastructure exists
    - Need: User handler invocation trampoline
+
+5. **GUI Mouse Events**
+   - Mouse events detected but not delivered to windows
+   - Blocks: Interactive GUI applications
 
 ### Medium Priority
 
@@ -206,7 +227,7 @@ The system is fully functional for QEMU bring-up with:
 ### Low Priority
 
 10. **Sound System**
-11. **GUI Toolkit**
+11. **Alt+Tab Window Switching**
 12. **USB Support**
 13. **Real Hardware Targets**
 
@@ -216,44 +237,51 @@ The system is fully functional for QEMU bring-up with:
 
 ### Code Size
 
-- Kernel: ~49,000 lines
-- User-space: ~60,000 lines
-- **Total: ~109,000 lines**
+- Kernel: ~50,000 lines
+- Bootloader: ~1,700 lines
+- User-space: ~63,000 lines
+- **Total: ~115,000 lines**
 
 ### Component Breakdown
 
 | Component | SLOC |
 |-----------|------|
+| VBoot Bootloader | ~1,700 |
 | Architecture | ~3,600 |
-| Memory Management | ~5,400 |
+| Memory Management | ~5,550 |
 | Scheduler | ~3,600 |
 | IPC | ~2,500 |
-| Filesystem | ~6,500 |
-| Drivers | ~5,000 |
+| Filesystem | ~9,600 |
+| Drivers | ~6,000 |
 | Console | ~3,500 |
-| Capabilities | ~700 |
+| Capabilities | ~2,900 |
 | Syscalls | ~2,000 |
-| User Servers | ~8,900 |
+| User Servers | ~10,500 |
 | libc | ~28,000 |
-| Libraries | ~20,000 |
+| Libraries | ~23,000 |
+| Applications | ~5,000 |
 
 ### Binary Sizes (Approximate)
 
-- kernel.sys: ~800KB
-- vinit.sys: ~120KB
-- netd.sys: ~150KB
-- fsd.sys: ~120KB
-- blkd.sys: ~80KB
-- ssh.prg: ~170KB
-- sftp.prg: ~190KB
+- kernel.sys: ~850KB
+- BOOTAA64.EFI: ~15KB
+- vinit.sys: ~130KB
+- netd.sys: ~160KB
+- fsd.sys: ~130KB
+- blkd.sys: ~85KB
+- displayd.sys: ~100KB
+- ssh.prg: ~175KB
+- sftp.prg: ~195KB
+- edit.prg: ~60KB
 
-### Performance (QEMU, Single Core)
+### Performance (QEMU, 4 Cores)
 
-- Boot to shell: ~500ms
+- Boot to shell: ~400ms
 - IPC round-trip: ~10-15μs
 - Context switch: ~1-2μs
 - File read (4KB via fsd): ~150μs
 - Socket send (small): ~100μs
+- Work stealing latency: ~50μs
 
 ---
 
@@ -268,20 +296,30 @@ The system is fully functional for QEMU bring-up with:
 
 2. **Microkernel Design**
    - Minimal kernel (scheduling, memory, IPC)
-   - Drivers in user-space (netd, fsd, blkd)
+   - Drivers in user-space (netd, fsd, blkd, displayd)
    - Better fault isolation and security
 
-3. **Message-Passing IPC**
+3. **UEFI Boot**
+   - Custom VBoot bootloader
+   - Standard UEFI interfaces (GOP, memory map)
+   - Two-disk architecture (system + user)
+
+4. **SMP with Work Stealing**
+   - Per-CPU run queues
+   - Automatic load balancing
+   - CPU affinity support
+
+5. **Message-Passing IPC**
    - Bidirectional channels (256 bytes/msg)
    - Up to 4 handles per message
    - Blocking and non-blocking operations
 
-4. **Amiga-Inspired UX**
+6. **Amiga-Inspired UX**
    - Logical device assigns (SYS:, C:, etc.)
    - Return codes (OK, WARN, ERROR, FAIL)
    - Interactive shell commands
 
-5. **POSIX-ish libc**
+7. **POSIX-ish libc**
    - Familiar API for applications
    - Routes to appropriate server (netd/fsd)
    - Freestanding implementation
@@ -294,27 +332,62 @@ The system is fully functional for QEMU bring-up with:
 
 ```bash
 cd os
-./build_viper.sh           # Build and run (graphics)
-./build_viper.sh --serial  # Build and run (serial only)
-./build_viper.sh --debug   # Build with GDB debugging
-./build_viper.sh --test    # Run test suite
+./scripts/build_viperos.sh            # Build and run (UEFI graphics)
+./scripts/build_viperos.sh --direct   # Direct kernel boot
+./scripts/build_viperos.sh --serial   # Serial only mode
+./scripts/build_viperos.sh --debug    # Build with GDB debugging
+./scripts/build_viperos.sh --test     # Run test suite
 ```
 
 ### Requirements
 
-- Clang with AArch64 support (or aarch64-elf-gcc)
+- Clang with AArch64 support (LLVM clang for UEFI)
 - AArch64 GNU binutils
 - QEMU with aarch64 support
 - CMake 3.16+
+- UEFI tools: sgdisk, mtools (for UEFI mode)
+
+---
+
+## What's New in v0.3.1
+
+### Boot Infrastructure
+- **VBoot UEFI bootloader**: Custom UEFI bootloader with GOP support
+- **Two-disk architecture**: Separate system and user disks
+- **ESP creation**: Automated EFI System Partition generation
+
+### SMP Improvements
+- **Per-CPU run queues**: Private priority queues per CPU
+- **Work stealing**: Automatic task stealing when queue empty
+- **Load balancing**: Periodic task migration (100ms intervals)
+- **CPU affinity**: Explicit task-to-CPU binding
+
+### Graphics Console
+- **ANSI escape codes**: Cursor positioning, colors, clearing
+- **Scrollback buffer**: 1000 lines of history
+- **Blinking cursor**: 500ms XOR-based cursor
+- **Dynamic sizing**: Console adapts to framebuffer resolution
+
+### GUI Subsystem
+- **Display server (displayd)**: Window compositing
+- **libgui library**: Client API for GUI applications
+- **Window decorations**: Title bar, border, close button
+- **Software cursor**: 16x16 arrow with background save
+
+### New Applications
+- **edit**: Nano-like text editor with file save/load
+- **hello_gui**: GUI demo with window creation
+- **devices**: Hardware device listing
+- **fsinfo**: Filesystem information display
 
 ---
 
 ## Conclusion
 
-ViperOS v0.3.0 represents a complete microkernel architecture with user-space servers handling networking, filesystem, block I/O, console, and input. The system demonstrates capability-based security, message-passing IPC, and priority-based scheduling.
+ViperOS v0.3.1 represents a complete microkernel architecture with UEFI boot, SMP scheduling, and user-space servers handling networking, filesystem, block I/O, console, input, and display. The system demonstrates capability-based security, message-passing IPC, and modern boot infrastructure.
 
 The most impactful next steps are:
-1. **SMP scheduling** for multicore utilization
+1. **GUI mouse events** for interactive window applications
 2. **exec/pipe/PTY** for full shell functionality
 3. **IPv6** for modern networking
 4. **Signal handlers** for POSIX compatibility

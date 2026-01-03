@@ -23,9 +23,9 @@ constexpr u32 BASE_WIDTH = 8;
 constexpr u32 BASE_HEIGHT = 16;
 
 // Scale factor as fraction: SCALE_NUM / SCALE_DEN
-// 1/1 = 8x16, 3/2 = 12x24, 2/1 = 16x32
-constexpr u32 SCALE_NUM = 3;
-constexpr u32 SCALE_DEN = 2;
+// 1/1 = 8x16, 5/4 = 10x20, 3/2 = 12x24, 2/1 = 16x32
+constexpr u32 SCALE_NUM = 5;
+constexpr u32 SCALE_DEN = 4;
 
 // Effective font dimensions
 constexpr u32 WIDTH = (BASE_WIDTH * SCALE_NUM) / SCALE_DEN;

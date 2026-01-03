@@ -474,6 +474,19 @@ if [[ "$USE_UEFI" == true ]]; then
     # UEFI requires a proper GPT disk with an ESP (type EF00)
     ESP_IMG="$BUILD_DIR/esp.img"
 
+    # Check if ESP image is already up-to-date (skip slow recreation)
+    ESP_NEEDS_UPDATE=false
+    if [[ ! -f "$ESP_IMG" ]]; then
+        ESP_NEEDS_UPDATE=true
+    elif [[ "$BUILD_DIR/BOOTAA64.EFI" -nt "$ESP_IMG" ]]; then
+        ESP_NEEDS_UPDATE=true
+    elif [[ "$BUILD_DIR/kernel.sys" -nt "$ESP_IMG" ]]; then
+        ESP_NEEDS_UPDATE=true
+    fi
+
+    if [[ "$ESP_NEEDS_UPDATE" == false ]]; then
+        print_success "esp.img is up-to-date (skipping recreation)"
+    else
     # Create 40MB disk image (GPT needs ~34 sectors at start/end)
     dd if=/dev/zero of="$ESP_IMG" bs=1M count=40 status=none
 
@@ -500,8 +513,7 @@ if [[ "$USE_UEFI" == true ]]; then
     # Create a temporary partition image, format it, then copy back
     PART_SIZE=$((40*1024*1024 - PART_OFFSET - 17*512))  # Subtract GPT backup
     ESP_PART="$BUILD_DIR/esp_part.img"
-    dd if=/dev/zero of="$ESP_PART" bs=1 count=$PART_SIZE status=none 2>/dev/null || \
-    dd if=/dev/zero of="$ESP_PART" bs=512 count=$((PART_SIZE/512)) status=none
+    dd if=/dev/zero of="$ESP_PART" bs=1M count=39 status=none
 
     # Format the partition image as FAT32
     if command -v mkfs.vfat &> /dev/null; then
@@ -534,6 +546,7 @@ if [[ "$USE_UEFI" == true ]]; then
     echo "  Contents:"
     echo "    /EFI/BOOT/BOOTAA64.EFI (VBoot bootloader)"
     echo "    /viperos/kernel.sys (kernel)"
+    fi  # end ESP_NEEDS_UPDATE else
 fi
 
 # Run tests (after disk image is created so tests can use it)

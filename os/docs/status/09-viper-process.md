@@ -69,6 +69,7 @@ Each "Viper" is an in-kernel process representation that owns an address space, 
 | memory_limit | u64 | Resource limit |
 | vma_list | VmaList | VMA tracking for demand paging |
 | wait_queue | WaitQueue | For waitpid blocking |
+| cwd | char[256] | Current working directory |
 
 **API:**
 | Function | Description |
@@ -386,3 +387,5 @@ Handle-based file syscalls:
 - **Process groups/sessions**: Added pgid, sid, is_session_leader fields; syscalls getpid, getppid, getpgid, setpgid, getsid, setsid (0xA0-0xA5)
 - **Capability revocation propagation**: Entry now has parent_index field; revoke() recursively invalidates derived handles
 - **Fork syscall**: SYS_FORK (0x0B) creates child process with COW page sharing
+- **Current working directory**: Per-process CWD tracking for spawned processes and relative path support
+- **Relative path resolution**: Paths without assign prefix resolve relative to CWD

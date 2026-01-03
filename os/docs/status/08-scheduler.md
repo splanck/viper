@@ -1,6 +1,6 @@
 # Scheduler and Task Management
 
-**Status:** Complete priority-based preemptive scheduler with 8 priority queues
+**Status:** Complete priority-based preemptive scheduler with SMP support
 **Location:** `kernel/sched/`
 **SLOC:** ~3,600
 
@@ -397,18 +397,194 @@ void channel_send(Channel *ch, const void *data) {
 
 ---
 
-## Multicore Status
+## Multicore/SMP Support
 
-### Implemented
+### Architecture
 
-- Per-CPU stacks (4 CPUs, 16KB each)
-- PSCI CPU_ON for secondary boot
-- Per-CPU timer initialization
-- IPI support via GIC SGI
+The scheduler now includes full SMP support with per-CPU run queues and load balancing:
 
-### Pending
+```
+┌────────────────────────────────────────────────────────────────────┐
+│                     SMP Scheduler Architecture                       │
+│                                                                      │
+│  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐  │
+│  │      CPU 0       │  │      CPU 1       │  │      CPU 2/3     │  │
+│  │  ┌────────────┐  │  │  ┌────────────┐  │  │  ┌────────────┐  │  │
+│  │  │ Run Queues │  │  │  │ Run Queues │  │  │  │ Run Queues │  │  │
+│  │  │  [0-7]     │  │  │  │  [0-7]     │  │  │  │  [0-7]     │  │  │
+│  │  └────────────┘  │  │  └────────────┘  │  │  └────────────┘  │  │
+│  │       ↑          │  │       ↑          │  │       ↑          │  │
+│  │   ┌───┴───┐      │  │   ┌───┴───┐      │  │   ┌───┴───┐      │  │
+│  │   │ Work  │←─────┼──┼───│ Steal │──────┼──┼───│       │      │  │
+│  │   │ Steal │      │  │   │       │      │  │   │       │      │  │
+│  │   └───────┘      │  │   └───────┘      │  │   └───────┘      │  │
+│  └──────────────────┘  └──────────────────┘  └──────────────────┘  │
+│                              │                                      │
+│                    ┌─────────▼─────────┐                           │
+│                    │   Load Balancer   │                           │
+│                    │  (every 100 ticks)│                           │
+│                    └───────────────────┘                           │
+└────────────────────────────────────────────────────────────────────┘
+```
 
-- SMP scheduler integration
-- Load balancing
-- CPU affinity
-- Run queue migration
+### Per-CPU Scheduler State
+
+```cpp
+struct PerCpuScheduler {
+    PriorityQueue queues[8];  // Private run queues
+    Spinlock lock;            // Per-CPU lock (reduced contention)
+    u64 context_switches;     // Per-CPU statistics
+    u32 total_tasks;
+    u32 steals;              // Tasks stolen from other CPUs
+    u32 migrations;          // Tasks migrated away
+    bool initialized;
+};
+```
+
+### Work Stealing
+
+When a CPU's run queue is empty:
+
+1. Try each other CPU in sequence
+2. Use non-blocking lock acquisition (`try_acquire()`)
+3. Steal from **lowest priority queues** (4-7) first
+4. Steal **oldest task** (tail of queue) for cache locality
+5. Update statistics on both CPUs
+
+```cpp
+task::Task* steal_task() {
+    for (u32 cpu = 0; cpu < cpu::MAX_CPUS; cpu++) {
+        if (cpu == current_cpu()) continue;
+
+        auto& sched = per_cpu_schedulers[cpu];
+        if (!sched.lock.try_acquire()) continue;
+
+        // Steal from low priority queues first
+        for (int q = 7; q >= 4; q--) {
+            if (Task* t = sched.queues[q].steal_tail()) {
+                sched.migrations++;
+                current_sched().steals++;
+                sched.lock.release();
+                return t;
+            }
+        }
+        sched.lock.release();
+    }
+    return nullptr;
+}
+```
+
+### Load Balancing
+
+Periodic load balancing runs every 100 timer ticks (100ms at 1kHz):
+
+```cpp
+void balance_load() {
+    static u64 last_balance = 0;
+    if (timer_ticks - last_balance < 100) return;
+    last_balance = timer_ticks;
+
+    // Find most and least loaded CPUs
+    u32 max_load = 0, min_load = UINT32_MAX;
+    u32 max_cpu = 0, min_cpu = 0;
+
+    for (u32 cpu = 0; cpu < cpu::MAX_CPUS; cpu++) {
+        u32 load = per_cpu_schedulers[cpu].total_tasks;
+        if (load > max_load) { max_load = load; max_cpu = cpu; }
+        if (load < min_load) { min_load = load; min_cpu = cpu; }
+    }
+
+    // Migrate if imbalance > 2 tasks
+    if (max_load - min_load > 2) {
+        migrate_task(max_cpu, min_cpu);
+    }
+}
+```
+
+### CPU Affinity
+
+Tasks can be enqueued on specific CPUs:
+
+```cpp
+void enqueue_on_cpu(task::Task *t, u32 cpu_id) {
+    auto& sched = per_cpu_schedulers[cpu_id];
+    sched.lock.acquire();
+    u8 queue = t->priority / PRIORITIES_PER_QUEUE;
+    sched.queues[queue].push(t);
+    sched.total_tasks++;
+    sched.lock.release();
+
+    // Send IPI to wake target CPU if different
+    if (cpu_id != current_cpu()) {
+        cpu::send_ipi(cpu_id, cpu::IPI_RESCHEDULE);
+    }
+}
+```
+
+### Inter-Processor Interrupts (IPI)
+
+```cpp
+namespace cpu {
+    enum IpiType : u32 {
+        RESCHEDULE = 0,  // Trigger reschedule
+        STOP = 1,        // Stop CPU (panic/shutdown)
+        TLB_FLUSH = 2,   // Flush TLB
+    };
+
+    void send_ipi(u32 cpu_id, IpiType type);
+    void broadcast_ipi(IpiType type);
+}
+```
+
+### Secondary CPU Boot
+
+Uses PSCI (Power State Coordination Interface):
+
+```cpp
+void boot_secondaries() {
+    for (u32 cpu = 1; cpu < MAX_CPUS; cpu++) {
+        psci_cpu_on(cpu, secondary_entry_point);
+    }
+}
+
+void secondary_cpu_init(u32 cpu_id) {
+    gic::init_cpu();              // GIC interface
+    timer::init_cpu();            // Per-CPU timer
+    scheduler::init_cpu(cpu_id);  // Scheduler state
+
+    // Enter scheduling loop
+    scheduler::start();
+}
+```
+
+### SMP Statistics
+
+```cpp
+struct PerCpuStats {
+    u64 context_switches;  // Switches on this CPU
+    u32 queue_length;      // Current tasks
+    u32 steals;            // Tasks stolen from others
+    u32 migrations;        // Tasks taken by others
+};
+
+void get_percpu_stats(u32 cpu_id, PerCpuStats *stats);
+void dump_smp_stats();
+```
+
+### What's Working
+
+- Per-CPU run queues with private spinlocks
+- Work stealing when queue empty
+- Periodic load balancing (100ms intervals)
+- CPU affinity via `enqueue_on_cpu()`
+- IPI-based reschedule notifications
+- Secondary CPU boot via PSCI
+- Per-CPU timer interrupts
+- Per-CPU statistics tracking
+
+### Current Limitations
+
+- Tasks primarily run on CPU 0 by default
+- No NUMA awareness
+- No CPU hotplug support
+- Simple load balancing heuristic

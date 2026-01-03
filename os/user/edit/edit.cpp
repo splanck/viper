@@ -19,7 +19,8 @@
 #include <unistd.h>
 
 // Screen dimensions (TODO: query from terminal)
-constexpr int SCREEN_ROWS = 25;
+// Console is ~96x35 with 1024x768 framebuffer and 10x20 font
+constexpr int SCREEN_ROWS = 23;
 constexpr int SCREEN_COLS = 80;
 constexpr int TEXT_ROWS = SCREEN_ROWS - 2; // Leave room for status bars
 

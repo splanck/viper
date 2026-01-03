@@ -1,6 +1,6 @@
 # Architecture Subsystem (AArch64)
 
-**Status:** Complete for QEMU virt platform (microkernel)
+**Status:** Complete for QEMU virt platform (microkernel) with UEFI boot
 **Location:** `kernel/arch/aarch64/`
 **SLOC:** ~3,600
 
@@ -20,21 +20,24 @@ The architecture subsystem provides low-level AArch64 support for the ViperOS mi
 
 ### 1. Boot (`boot.S`)
 
-**Status:** Complete with multicore support
+**Status:** Complete with multicore support and dual boot modes
 
 **Implemented:**
 - Entry point `_start` for kernel boot
 - Stack setup (16KB kernel stack for boot CPU)
 - BSS section zeroing
 - Jump to `kernel_main` C++ entry point
-- EL1 execution assumed (QEMU `-kernel` mode)
+- **Dual Boot Modes:**
+  - UEFI boot via VBoot bootloader (receives `VBootInfo*` in x0)
+  - Direct QEMU `-kernel` mode (receives DTB pointer in x0)
 - **FPU/SIMD Access**: CPACR_EL1.FPEN enabled for EL1 and EL0
 - **Secondary CPU Entry**: `secondary_entry` for PSCI-booted CPUs
 - **Per-CPU Stacks**: 16KB stack per CPU (4 CPUs supported)
 - **Alignment Check Disabled**: Allows unaligned access for network structures
+- **Boot Parameter Detection**: Detects VBoot magic vs DTB pointer
 
 **Not Implemented:**
-- EL2/EL3 to EL1 transition (relies on QEMU or bootloader)
+- EL2/EL3 to EL1 transition (relies on QEMU or VBoot bootloader)
 
 ---
 

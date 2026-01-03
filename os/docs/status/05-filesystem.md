@@ -297,6 +297,11 @@ The libc file functions route to fsd:
 
 ---
 
+## Recent Additions
+
+- **fsync support**: `FS_FSYNC` message type for syncing file data to disk
+- **Close-on-sync**: fsd properly syncs dirty data when files are closed
+
 ## Not Implemented
 
 ### High Priority

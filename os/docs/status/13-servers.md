@@ -2,41 +2,42 @@
 
 **Status:** Complete implementation for user-space services
 **Location:** `user/servers/`
-**SLOC:** ~8,900
+**SLOC:** ~10,500
 
 ## Overview
 
-ViperOS follows a microkernel architecture where device drivers and system services run in user-space rather than in the kernel. This provides better fault isolation and security. Five user-space servers are implemented:
+ViperOS follows a microkernel architecture where device drivers and system services run in user-space rather than in the kernel. This provides better fault isolation and security. Six user-space servers are implemented:
 
 | Server | Assign | SLOC | Purpose |
 |--------|--------|------|---------|
-| **netd** | NETD: | ~1,500 | TCP/IP network stack |
-| **fsd** | FSD: | ~1,800 | Filesystem operations |
+| **netd** | NETD: | ~3,200 | TCP/IP network stack |
+| **fsd** | FSD: | ~3,100 | Filesystem operations |
 | **blkd** | BLKD: | ~700 | Block device access |
 | **consoled** | CONSOLED: | ~600 | Console output |
 | **inputd** | INPUTD: | ~1,000 | Keyboard/mouse input |
+| **displayd** | DISPLAY: | ~1,500 | Window management, GUI |
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                      User Applications                           │
-│   (vinit, ssh, sftp, utilities)                                  │
+│   (vinit, ssh, sftp, edit, hello_gui, utilities)                │
 └───────────────────────────┬─────────────────────────────────────┘
                             │ IPC (Channels)
-        ┌───────────────────┼───────────────────┐
-        ▼                   ▼                   ▼
-┌───────────────┐  ┌───────────────┐  ┌───────────────┐
-│     netd      │  │     fsd       │  │   consoled    │
-│  TCP/IP stack │  │  Filesystem   │  │  Console I/O  │
-│  NETD: assign │  │  FSD: assign  │  │ CONSOLED:     │
-└───────┬───────┘  └───────┬───────┘  └───────────────┘
-        │                  │
-        │          ┌───────┴───────┐
-        │          ▼               ▼
-        │  ┌───────────────┐  ┌───────────────┐
-        │  │     blkd      │  │    inputd     │
-        │  │  Block device │  │  Keyboard/    │
+        ┌───────────────────┼───────────────────┬─────────────────┐
+        ▼                   ▼                   ▼                 ▼
+┌───────────────┐  ┌───────────────┐  ┌───────────────┐  ┌───────────────┐
+│     netd      │  │     fsd       │  │   consoled    │  │   displayd    │
+│  TCP/IP stack │  │  Filesystem   │  │  Console I/O  │  │  Window/GUI   │
+│  NETD: assign │  │  FSD: assign  │  │ CONSOLED:     │  │  DISPLAY:     │
+└───────┬───────┘  └───────┬───────┘  └───────────────┘  └───────┬───────┘
+        │                  │                                     │
+        │          ┌───────┴───────┐                             │
+        │          ▼               ▼                             │
+        │  ┌───────────────┐  ┌───────────────┐                  │
+        │  │     blkd      │  │    inputd     │ ◄────────────────┘
+        │  │  Block device │  │  Keyboard/    │  (mouse events)
         │  │  BLKD: assign │  │  Mouse input  │
         │  └───────┬───────┘  └───────────────┘
         │          │
@@ -46,6 +47,7 @@ ViperOS follows a microkernel architecture where device drivers and system servi
 ┌─────────────────────────────────────────────────────────────────┐
 │                          Kernel                                  │
 │   MAP_DEVICE │ IRQ_REGISTER │ IRQ_WAIT │ DMA_ALLOC │ SHM_*      │
+│   MAP_FRAMEBUFFER │                                              │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -407,6 +409,102 @@ namespace input_protocol {
 
 ---
 
+## Display Server (displayd)
+
+**Location:** `user/servers/displayd/`
+**Status:** Complete (framework functional, event delivery in progress)
+**Registration:** `sys::assign_set("DISPLAY", channel_handle)`
+
+### Files
+
+| File | Lines | Description |
+|------|-------|-------------|
+| `main.cpp` | ~900 | Server entry point, compositing loop |
+| `display_protocol.hpp` | ~200 | IPC message definitions |
+
+### Features
+
+- Framebuffer ownership via MAP_FRAMEBUFFER syscall
+- Window surface management (up to 32 concurrent surfaces)
+- Shared memory pixel buffers (zero-copy rendering)
+- Window decorations:
+  - 24px title bar
+  - 2px border
+  - Close button (16x16 pixels)
+  - Focused/unfocused color states
+- Cursor rendering:
+  - 16x16 arrow cursor bitmap
+  - Software cursor with background save/restore
+- Compositing:
+  - Desktop background color
+  - Back-to-front surface blitting
+  - Cursor drawn on top
+- Window title management (64 chars max)
+- Position and geometry tracking
+
+### IPC Protocol
+
+```cpp
+namespace display_proto {
+    enum MsgType : uint32_t {
+        DISPLAY_INFO = 1,           // Query display resolution
+        SURFACE_CREATE = 2,         // Create window surface
+        SURFACE_DESTROY = 3,        // Destroy surface
+        SURFACE_PRESENT = 4,        // Update display
+        SURFACE_SET_TITLE = 5,      // Set window title
+        SURFACE_SET_POSITION = 6,   // Move window
+        SURFACE_SET_VISIBLE = 7,    // Show/hide window
+        EVENT_SUBSCRIBE = 10,       // Subscribe to events
+        EVENT_UNSUBSCRIBE = 11,     // Unsubscribe
+        // Replies: 0x80 + request type
+    };
+
+    struct SurfaceCreateRequest {
+        uint32_t type;      // SURFACE_CREATE
+        uint32_t request_id;
+        uint32_t width;     // Pixels
+        uint32_t height;    // Pixels
+        char title[64];     // Window title
+    };
+
+    struct SurfaceCreateReply {
+        uint32_t type;       // SURFACE_CREATE_REPLY
+        uint32_t request_id;
+        int32_t status;      // 0 = success
+        uint32_t surface_id;
+        // handle[0] = shared memory for pixel buffer
+    };
+
+    struct SurfacePresentRequest {
+        uint32_t type;      // SURFACE_PRESENT
+        uint32_t request_id;
+        uint32_t surface_id;
+        uint32_t x, y, w, h; // Damage region (0,0,0,0 = full)
+    };
+}
+```
+
+### Event Types
+
+```cpp
+enum EventType : uint32_t {
+    GUI_EVENT_KEY = 1,     // Keyboard event
+    GUI_EVENT_MOUSE = 2,   // Mouse move/button
+    GUI_EVENT_FOCUS = 3,   // Window focus change
+    GUI_EVENT_RESIZE = 4,  // Window resized
+    GUI_EVENT_CLOSE = 5,   // Close button clicked
+};
+```
+
+### Current Limitations
+
+- Mouse events not yet delivered to windows
+- Window move/resize via mouse not implemented
+- No Alt+Tab window switching
+- No desktop launcher/shell
+
+---
+
 ## Client Libraries
 
 ### libnetclient
@@ -441,6 +539,43 @@ int fs_stat(const char *path, struct stat *st);
 int fs_mkdir(const char *path);
 int fs_unlink(const char *path);
 int fs_readdir_one(int dir_id, struct dirent *entry);
+```
+
+### libgui
+
+**Location:** `user/libgui/`
+**Purpose:** Client library for displayd communication
+
+```cpp
+// Initialization
+int gui_init(void);
+int gui_get_display_info(uint32_t *width, uint32_t *height);
+
+// Window management
+gui_window_t *gui_create_window(const char *title, uint32_t w, uint32_t h);
+void gui_destroy_window(gui_window_t *win);
+void gui_set_title(gui_window_t *win, const char *title);
+
+// Pixel access
+uint32_t *gui_get_pixels(gui_window_t *win);  // Direct buffer access
+uint32_t gui_get_width(gui_window_t *win);
+uint32_t gui_get_height(gui_window_t *win);
+uint32_t gui_get_stride(gui_window_t *win);
+
+// Display update
+void gui_present(gui_window_t *win);                      // Full update
+void gui_present_region(gui_window_t *win, int x, int y, int w, int h);
+
+// Drawing helpers
+void gui_fill_rect(gui_window_t *win, int x, int y, int w, int h, uint32_t color);
+void gui_draw_rect(gui_window_t *win, int x, int y, int w, int h, uint32_t color);
+void gui_draw_text(gui_window_t *win, int x, int y, const char *text, uint32_t color);
+void gui_draw_hline(gui_window_t *win, int x, int y, int len, uint32_t color);
+void gui_draw_vline(gui_window_t *win, int x, int y, int len, uint32_t color);
+
+// Events (in progress)
+int gui_poll_event(gui_window_t *win, gui_event_t *event);  // Non-blocking
+int gui_wait_event(gui_window_t *win, gui_event_t *event);  // Blocking
 ```
 
 ---
