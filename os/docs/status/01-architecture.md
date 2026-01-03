@@ -423,8 +423,39 @@ Note: Syscall dispatch is in `kernel/syscall/table.cpp` (~4,000 lines).
 
 ---
 
-## Priority Recommendations
+## Priority Recommendations: Next 5 Steps
 
-1. **Medium:** Add TTBR1 support for kernel higher-half mapping
-2. **Medium:** Complete user-space signal handlers (sigaction trampoline)
-3. **Low:** Add debug exception support for debugger integration
+### 1. User-Space Signal Handler Trampoline
+**Impact:** POSIX-compatible signal handling
+- Implement sigaction() user context save/restore
+- Signal frame on user stack with return trampoline
+- Call user handler with proper signal info (siginfo_t)
+- Enable graceful SIGTERM, SIGINT, SIGSEGV handling
+
+### 2. TTBR1 Kernel Higher-Half Mapping
+**Impact:** Standard kernel memory model
+- Map kernel at 0xFFFF... in higher-half
+- Separate TTBR1 for kernel address space
+- Enables kernel ASLR in future
+- Better separation of kernel/user memory
+
+### 3. Debug Exception Support
+**Impact:** Enables GDB stub and breakpoints
+- Implement BRK instruction handling for software breakpoints
+- Hardware breakpoint registers (DBGBCR/DBGBVR)
+- Single-step via MDSCR_EL1.SS
+- Foundation for kernel debugger integration
+
+### 4. FPU Context Switch
+**Impact:** Proper floating-point support across tasks
+- Save/restore SIMD registers (V0-V31) on context switch
+- Lazy FPU save optimization (only save if used)
+- FPCR/FPSR status register preservation
+- Required for correct math in multi-tasking
+
+### 5. ACPI Table Parsing
+**Impact:** Hardware discovery on real systems
+- Parse RSDP, XSDT, MADT for CPU/interrupt info
+- ACPI from UEFI ConfigurationTable
+- Enables proper device enumeration
+- Foundation for power management (DSDT/SSDT)

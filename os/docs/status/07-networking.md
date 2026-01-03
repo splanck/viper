@@ -470,3 +470,42 @@ netd tracks and reports:
 - DHCP client
 - TLS 1.2 fallback
 - TLS session resumption
+
+---
+
+## Priority Recommendations: Next 5 Steps
+
+### 1. IPv6 Support
+**Impact:** Modern network compatibility
+- IPv6 header parsing and generation
+- ICMPv6 for neighbor discovery (NDP)
+- Stateless address autoconfiguration (SLAAC)
+- Dual-stack operation (IPv4 + IPv6)
+
+### 2. TCP SACK (Selective Acknowledgment)
+**Impact:** Better performance on lossy networks
+- RFC 2018 SACK option parsing
+- Selective retransmission of lost segments
+- Improved throughput on high-latency links
+- Required for modern TCP performance
+
+### 3. DHCP Client
+**Impact:** Automatic network configuration
+- DHCP discover/offer/request/ack
+- Obtain IP, gateway, DNS automatically
+- Lease renewal handling
+- Zero-config network setup
+
+### 4. TLS Session Resumption
+**Impact:** Faster subsequent HTTPS connections
+- Session ID caching for resumption
+- 0-RTT data with early data
+- Reduced handshake latency
+- Better user experience for web access
+
+### 5. SO_RCVBUF/SO_SNDBUF Socket Options
+**Impact:** Application-controlled buffer sizing
+- Per-socket buffer configuration
+- setsockopt()/getsockopt() support
+- Better memory utilization
+- Performance tuning for specific workloads

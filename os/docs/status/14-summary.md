@@ -386,10 +386,49 @@ cd os
 
 ViperOS v0.3.1 represents a complete microkernel architecture with UEFI boot, SMP scheduling, and user-space servers handling networking, filesystem, block I/O, console, input, and display. The system demonstrates capability-based security, message-passing IPC, and modern boot infrastructure.
 
-The most impactful next steps are:
-1. **GUI mouse events** for interactive window applications
-2. **exec/pipe/PTY** for full shell functionality
-3. **IPv6** for modern networking
-4. **Signal handlers** for POSIX compatibility
+---
+
+## Priority Recommendations: Next 5 Steps
+
+### 1. GUI Mouse Event Delivery
+**Impact:** Interactive graphical applications
+- Complete inputd → displayd → window event pipeline
+- Click-to-focus window activation
+- Enable buttons, menus, drag operations
+- Foundation for usable desktop environment
+
+### 2. exec() and pipe() Implementation
+**Impact:** Full Unix shell functionality
+- Process image replacement (exec family)
+- Inter-process pipes for command chaining
+- Shell pipeline support (`cmd1 | cmd2 | cmd3`)
+- Standard Unix development workflow
+
+### 3. PTY Subsystem
+**Impact:** Terminal emulation and remote access
+- Pseudo-terminal master/slave pairs
+- Required for SSH server implementation
+- GUI terminal emulator support
+- Job control with Ctrl+C, Ctrl+Z
+
+### 4. IPv6 Support
+**Impact:** Modern network compatibility
+- Dual-stack networking (IPv4 + IPv6)
+- NDP for neighbor discovery
+- SLAAC for address autoconfiguration
+- Required for IPv6-only networks
+
+### 5. Signal Handler Trampoline
+**Impact:** POSIX-compatible signal handling
+- User-space signal handler invocation
+- Proper context save/restore
+- Signal masking during handler
+- Graceful cleanup on SIGTERM/SIGINT
+
+---
+
+## Conclusion
+
+ViperOS v0.3.1 represents a complete microkernel architecture with UEFI boot, SMP scheduling, and user-space servers handling networking, filesystem, block I/O, console, input, and display. The system demonstrates capability-based security, message-passing IPC, and modern boot infrastructure.
 
 With these additions, ViperOS would be suitable for embedded systems, educational use, or specialized applications requiring strong isolation guarantees.

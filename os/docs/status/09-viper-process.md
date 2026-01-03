@@ -389,3 +389,42 @@ Handle-based file syscalls:
 - **Fork syscall**: SYS_FORK (0x0B) creates child process with COW page sharing
 - **Current working directory**: Per-process CWD tracking for spawned processes and relative path support
 - **Relative path resolution**: Paths without assign prefix resolve relative to CWD
+
+---
+
+## Priority Recommendations: Next 5 Steps
+
+### 1. exec() Family Implementation
+**Impact:** Standard process replacement
+- Replace current process image with new program
+- Keep PID, open FDs, current directory
+- Close FD_CLOEXEC descriptors
+- execve(), execvp(), execl() variants
+
+### 2. Environment Variables
+**Impact:** Standard Unix environment handling
+- Per-process environment array
+- getenv()/setenv()/unsetenv() support
+- Environment inheritance on fork()
+- PATH-based executable search in execvp()
+
+### 3. Resource Limits (setrlimit)
+**Impact:** Per-process resource control
+- Memory limit enforcement (RLIMIT_AS)
+- Open file limit (RLIMIT_NOFILE)
+- CPU time limit (RLIMIT_CPU)
+- Stack size limit (RLIMIT_STACK)
+
+### 4. Process Credentials (UID/GID)
+**Impact:** Foundation for permission system
+- Per-process uid, euid, gid, egid
+- getuid()/setuid() family of syscalls
+- Supplementary groups support
+- Required for permission enforcement
+
+### 5. Capability Bounding Set
+**Impact:** Privilege restriction for security
+- Maximum capabilities for process tree
+- Irrevocable capability restrictions
+- Used by setuid programs for privilege drop
+- Foundation for sandboxing

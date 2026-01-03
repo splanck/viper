@@ -24,15 +24,19 @@ Detailed documentation of the current implementation:
 | [Overview](status/00-overview.md) | Architecture diagram and statistics |
 | [Architecture](status/01-architecture.md) | AArch64 boot, MMU, GIC, timer |
 | [Memory Management](status/02-memory-management.md) | PMM, VMM, slab, buddy, COW |
-| [Console](status/03-console.md) | Serial and graphics console |
+| [Console](status/03-console.md) | Serial and graphics console, ANSI escapes |
 | [Drivers](status/04-drivers.md) | VirtIO and device drivers |
 | [Filesystem](status/05-filesystem.md) | VFS and ViperFS |
 | [IPC](status/06-ipc.md) | Channels and poll sets |
 | [Networking](status/07-networking.md) | TCP/IP, TLS, DNS, HTTP |
-| [Scheduler](status/08-scheduler.md) | Tasks and scheduling |
+| [Scheduler](status/08-scheduler.md) | SMP scheduler, work stealing |
 | [Process Model](status/09-viper-process.md) | Processes and capabilities |
 | [User Space](status/10-userspace.md) | libc and applications |
 | [Tools](status/11-tools.md) | Build tools |
+| [Cryptography](status/12-crypto.md) | SHA, AES, X25519, Ed25519 |
+| [Servers](status/13-servers.md) | Microkernel servers |
+| [Summary](status/14-summary.md) | Summary and roadmap |
+| [Boot](status/15-boot.md) | UEFI boot infrastructure |
 
 ---
 

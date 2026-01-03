@@ -539,11 +539,39 @@ sys::shm_close(client_shm);
 
 ---
 
-## Priority Recommendations
+## Priority Recommendations: Next 5 Steps
 
-1. **High:** Support multiple memory regions from device tree
-2. **Medium:** Implement mmap() for file-backed mappings
-3. **Medium:** Add page table garbage collection
-4. **Low:** Add memory pressure callbacks
-5. **Low:** Per-CPU heap caches for scalability
-6. **Low:** Large page support (2MB, 1GB)
+### 1. mmap() for File-Backed Mappings
+**Impact:** Standard POSIX memory-mapped I/O
+- Map file contents directly into virtual memory
+- VMA tracking with file inode and offset
+- Page fault handler reads from file on demand
+- Enables memory-mapped file I/O for databases and large files
+
+### 2. Multiple Memory Regions from Device Tree/UEFI
+**Impact:** Correct memory management on real hardware
+- Parse multiple USABLE_RAM regions from boot info
+- Non-contiguous memory support in PMM
+- Proper handling of holes in physical address space
+- Required for systems with memory above 4GB
+
+### 3. Page Table Garbage Collection
+**Impact:** Memory efficiency for long-running processes
+- Track empty intermediate page tables (L1/L2/L3)
+- Free unused tables when all entries unmapped
+- Reclaim memory from destroyed address spaces
+- Reduces memory fragmentation over time
+
+### 4. Large Page Support (2MB, 1GB)
+**Impact:** Performance improvement for large allocations
+- Block descriptor mapping at L1 (1GB) and L2 (2MB)
+- Reduced TLB pressure for large regions
+- Use for framebuffer, DMA buffers, kernel direct map
+- Significant performance gain for memory-intensive workloads
+
+### 5. Memory Pressure Notifications
+**Impact:** Graceful handling of low memory conditions
+- Callback system when free pages below threshold
+- Cache trimming (block cache, inode cache, slab)
+- OOM killer for memory exhaustion
+- Prevents system lockup under memory pressure

@@ -84,11 +84,12 @@ add_custom_command(
         --add ${CMAKE_BINARY_DIR}/faulttest_null.prg:c/faulttest_null.prg
         --add ${CMAKE_BINARY_DIR}/faulttest_illegal.prg:c/faulttest_illegal.prg
         --add ${CMAKE_BINARY_DIR}/hello_gui.prg:c/hello_gui.prg
+        --add ${CMAKE_BINARY_DIR}/taskbar.prg:c/taskbar.prg
     DEPENDS
         hello.prg fsd_smoke.prg netd_smoke.prg tls_smoke.prg edit.prg
         sftp.prg ssh.prg ping.prg fsinfo.prg netstat.prg sysinfo.prg
         devices.prg mathtest.prg faulttest_null.prg faulttest_illegal.prg
-        hello_gui.prg
+        hello_gui.prg taskbar.prg
     COMMENT "Creating user.img with user programs"
     VERBATIM
 )

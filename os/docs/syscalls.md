@@ -231,6 +231,36 @@ void* old_break = sys::sbrk(4096);  // Grow heap by 4KB
 
 ---
 
+### SYS_FORK (0x0B)
+
+Create a child process via copy-on-write fork.
+
+**Arguments:** None
+
+**Returns:**
+- In parent: x1 = child PID (u64)
+- In child: x1 = 0
+
+**Example:**
+```cpp
+i64 pid = sys::fork();
+if (pid == 0) {
+    // Child process
+    sys::print("I am the child\n");
+} else if (pid > 0) {
+    // Parent process
+    sys::print("Child PID: ");
+    // Wait for child...
+}
+```
+
+**Notes:**
+- Child inherits copy-on-write mappings of parent's address space
+- Child gets a new capability table (copy of parent's)
+- Child's PID and PPID differ from parent
+
+---
+
 ## Channel IPC (0x10-0x1F)
 
 ### SYS_CHANNEL_CREATE (0x10)

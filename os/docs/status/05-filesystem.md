@@ -320,3 +320,42 @@ The libc file functions route to fsd:
 - Async I/O
 - Background writeback thread
 - Multiple filesystems / mounting
+
+---
+
+## Priority Recommendations: Next 5 Steps
+
+### 1. Per-Process File Descriptor Tables
+**Impact:** Correct process isolation for file handles
+- Move FD table from global to per-Viper structure
+- Proper FD inheritance on fork()
+- FD close on exec()
+- Required for multi-process file safety
+
+### 2. Symlink Resolution in Path Traversal
+**Impact:** Complete symbolic link support
+- Follow symlinks during path lookup
+- Symlink loop detection (max 40 levels)
+- O_NOFOLLOW flag support
+- Enables flexible directory structures
+
+### 3. File Locking (flock/fcntl)
+**Impact:** Multi-process file coordination
+- Advisory whole-file locks (flock)
+- POSIX record locks (fcntl F_SETLK)
+- Lock inheritance across fork()
+- Required for databases and concurrent access
+
+### 4. Large File Support via Shared Memory
+**Impact:** Efficient I/O for files > 200 bytes
+- Automatic SHM allocation for large reads/writes
+- Zero-copy data path through shared buffers
+- Batch operations to reduce IPC overhead
+- Performance improvement for bulk I/O
+
+### 5. Background Writeback Thread
+**Impact:** Improved write performance
+- Dirty buffer tracking with age timestamps
+- Periodic flush of aged dirty blocks
+- Separate writeback from synchronous path
+- Better write latency for applications

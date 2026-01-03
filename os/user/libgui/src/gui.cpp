@@ -398,6 +398,152 @@ extern "C" const char *gui_get_title(gui_window_t *win)
     return win ? win->title : nullptr;
 }
 
+extern "C" gui_window_t *gui_create_window_ex(const char *title, uint32_t width, uint32_t height,
+                                               uint32_t flags)
+{
+    if (!g_initialized) return nullptr;
+
+    CreateSurfaceRequest req;
+    req.type = DISP_CREATE_SURFACE;
+    req.request_id = g_request_id++;
+    req.width = width;
+    req.height = height;
+    req.flags = flags;
+
+    // Copy title
+    size_t i = 0;
+    if (title)
+    {
+        while (i < 63 && title[i])
+        {
+            req.title[i] = title[i];
+            i++;
+        }
+    }
+    req.title[i] = '\0';
+
+    CreateSurfaceReply reply;
+    uint32_t handles[4];
+    uint32_t handle_count = 4;
+
+    if (!send_request_recv_reply(&req, sizeof(req), &reply, sizeof(reply), handles, &handle_count))
+    {
+        return nullptr;
+    }
+
+    if (reply.status != 0 || handle_count == 0)
+    {
+        return nullptr;
+    }
+
+    // Map shared memory
+    auto map_result = sys::shm_map(handles[0]);
+    if (map_result.error != 0)
+    {
+        sys::shm_close(handles[0]);
+        return nullptr;
+    }
+
+    // Allocate window structure
+    gui_window_t *win = new gui_window_t();
+    if (!win)
+    {
+        sys::shm_unmap(map_result.virt_addr);
+        sys::shm_close(handles[0]);
+        return nullptr;
+    }
+
+    win->surface_id = reply.surface_id;
+    win->width = width;
+    win->height = height;
+    win->stride = reply.stride;
+    win->shm_handle = handles[0];
+    win->pixels = reinterpret_cast<uint32_t *>(map_result.virt_addr);
+    win->event_channel = -1;
+
+    // Copy title
+    i = 0;
+    if (title)
+    {
+        while (i < 63 && title[i])
+        {
+            win->title[i] = title[i];
+            i++;
+        }
+    }
+    win->title[i] = '\0';
+
+    return win;
+}
+
+extern "C" int gui_list_windows(gui_window_list_t *list)
+{
+    if (!g_initialized || !list) return -1;
+
+    ListWindowsRequest req;
+    req.type = DISP_LIST_WINDOWS;
+    req.request_id = g_request_id++;
+
+    ListWindowsReply reply;
+    if (!send_request_recv_reply(&req, sizeof(req), &reply, sizeof(reply)))
+    {
+        return -1;
+    }
+
+    if (reply.status != 0)
+    {
+        return reply.status;
+    }
+
+    list->count = reply.window_count;
+    for (uint32_t i = 0; i < reply.window_count && i < 16; i++)
+    {
+        list->windows[i].surface_id = reply.windows[i].surface_id;
+        list->windows[i].minimized = reply.windows[i].minimized;
+        list->windows[i].maximized = reply.windows[i].maximized;
+        list->windows[i].focused = reply.windows[i].focused;
+        for (int j = 0; j < 64; j++)
+        {
+            list->windows[i].title[j] = reply.windows[i].title[j];
+        }
+    }
+
+    return 0;
+}
+
+extern "C" int gui_restore_window(uint32_t surface_id)
+{
+    if (!g_initialized) return -1;
+
+    RestoreWindowRequest req;
+    req.type = DISP_RESTORE_WINDOW;
+    req.request_id = g_request_id++;
+    req.surface_id = surface_id;
+
+    GenericReply reply;
+    if (!send_request_recv_reply(&req, sizeof(req), &reply, sizeof(reply)))
+    {
+        return -1;
+    }
+
+    return reply.status;
+}
+
+extern "C" void gui_set_position(gui_window_t *win, int32_t x, int32_t y)
+{
+    if (!win) return;
+
+    SetGeometryRequest req;
+    req.type = DISP_SET_GEOMETRY;
+    req.request_id = g_request_id++;
+    req.surface_id = win->surface_id;
+    req.x = x;
+    req.y = y;
+
+    GenericReply reply;
+    send_request_recv_reply(&req, sizeof(req), &reply, sizeof(reply));
+}
+
 // =============================================================================
 // Pixel Buffer Access
 // =============================================================================
@@ -456,18 +602,71 @@ extern "C" int gui_poll_event(gui_window_t *win, gui_event_t *event)
 {
     if (!win || !event) return -1;
 
-    // For now, events come from displayd's main channel
-    // TODO: Subscribe to event channel for proper event delivery
-    event->type = GUI_EVENT_NONE;
-    return -1;  // No event available
+    // Send poll event request to displayd
+    PollEventRequest req;
+    req.type = DISP_POLL_EVENT;
+    req.request_id = g_request_id++;
+    req.surface_id = win->surface_id;
+
+    PollEventReply reply;
+    if (!send_request_recv_reply(&req, sizeof(req), &reply, sizeof(reply)))
+    {
+        return -1;  // Communication error
+    }
+
+    if (reply.has_event == 0)
+    {
+        event->type = GUI_EVENT_NONE;
+        return -1;  // No event available
+    }
+
+    // Convert displayd event to libgui event
+    switch (reply.event_type)
+    {
+        case DISP_EVENT_MOUSE:
+            event->type = GUI_EVENT_MOUSE;
+            event->mouse.x = reply.mouse.x;
+            event->mouse.y = reply.mouse.y;
+            event->mouse.dx = reply.mouse.dx;
+            event->mouse.dy = reply.mouse.dy;
+            event->mouse.buttons = reply.mouse.buttons;
+            event->mouse.event_type = reply.mouse.event_type;
+            event->mouse.button = reply.mouse.button;
+            event->mouse._pad = 0;
+            break;
+
+        case DISP_EVENT_KEY:
+            event->type = GUI_EVENT_KEY;
+            event->key.keycode = reply.key.keycode;
+            event->key.modifiers = reply.key.modifiers;
+            event->key.pressed = reply.key.pressed;
+            break;
+
+        case DISP_EVENT_FOCUS:
+            event->type = GUI_EVENT_FOCUS;
+            event->focus.gained = reply.focus.gained;
+            event->focus._pad[0] = 0;
+            event->focus._pad[1] = 0;
+            event->focus._pad[2] = 0;
+            break;
+
+        case DISP_EVENT_CLOSE:
+            event->type = GUI_EVENT_CLOSE;
+            break;
+
+        default:
+            event->type = GUI_EVENT_NONE;
+            return -1;
+    }
+
+    return 0;  // Event available
 }
 
 extern "C" int gui_wait_event(gui_window_t *win, gui_event_t *event)
 {
     if (!win || !event) return -1;
 
-    // For now, just poll - no blocking event support yet
-    // TODO: Implement proper event subscription with displayd
+    // Poll with yield until an event arrives
     while (true)
     {
         if (gui_poll_event(win, event) == 0)

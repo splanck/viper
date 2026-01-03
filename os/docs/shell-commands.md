@@ -12,7 +12,7 @@ The ViperOS shell (vinit) provides a command-line interface with line editing, c
 | **Navigation** | `chdir`, `cwd`, `Path`, `Assign` |
 | **Programs** | `Run`, `RunFSD` |
 | **System** | `Version`, `Uptime`, `Avail`, `Status`, `Caps`, `Date`, `Time` |
-| **Network** | `Fetch` |
+| **Network** | `Fetch`, `ssh`, `sftp`, `ping` |
 | **Utility** | `Echo`, `Cls`, `History`, `Why`, `Help` |
 | **Session** | `EndShell` |
 
@@ -328,7 +328,7 @@ Display ViperOS version information.
 **Examples:**
 ```
 SYS:> Version
-ViperOS 0.2.0 (December 2025)
+ViperOS 0.3.1 (January 2026)
 Platform: AArch64
 ```
 
@@ -483,6 +483,78 @@ HTTP/1.0 200 OK
 
 [Received 1256 bytes, encrypted]
 ```
+
+---
+
+### ssh
+
+Connect to a remote server via SSH-2.
+
+**Syntax:** `ssh [-p port] [-l user] user@host [command]`
+
+**Examples:**
+```
+SYS:> ssh user@example.com
+Connecting to example.com:22...
+SSH handshake complete.
+user@example.com:~$
+
+SYS:> ssh -p 2222 user@host
+SYS:> ssh user@host "ls -la"
+```
+
+**Features:**
+- Ed25519 and RSA public key authentication
+- Password authentication fallback
+- Interactive shell mode with PTY
+- Remote command execution
+
+---
+
+### sftp
+
+Interactive SFTP file transfer client.
+
+**Syntax:** `sftp [-p port] user@host`
+
+**Examples:**
+```
+SYS:> sftp user@example.com
+Connected to example.com
+sftp> ls
+file1.txt  file2.txt  docs/
+sftp> get file1.txt
+Downloading file1.txt... 1024 bytes
+sftp> put local.txt
+Uploading local.txt... 512 bytes
+sftp> quit
+```
+
+**Commands:**
+- `ls [path]` - List directory
+- `cd <path>` - Change remote directory
+- `pwd` - Print remote directory
+- `get <remote> [local]` - Download file
+- `put <local> [remote]` - Upload file
+- `mkdir <path>` - Create directory
+- `rm <path>` - Remove file
+- `quit` - Exit SFTP
+
+---
+
+### ping
+
+Send ICMP echo requests to test network connectivity.
+
+**Syntax:** `ping <host>`
+
+**Examples:**
+```
+SYS:> ping 10.0.2.2
+PING 10.0.2.2: 64 bytes from 10.0.2.2: time=1.2 ms
+```
+
+---
 
 **Supported Protocols:**
 - `http://` - Plain HTTP (port 80)

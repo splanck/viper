@@ -333,9 +333,39 @@ The following features have been implemented since initial documentation:
 - Scrollback buffer (1000 lines)
 - Dynamic console sizing based on framebuffer resolution
 
-## Priority Recommendations
+## Priority Recommendations: Next 5 Steps
 
-1. **Medium:** Double-buffered graphics for smooth updates
-2. **Low:** Add interrupt-driven serial receive
-3. **Low:** Unicode support (at least Latin-1)
-4. **Low:** Multiple virtual consoles
+### 1. Double-Buffered Graphics Console
+**Impact:** Flicker-free console updates
+- Allocate back buffer in memory
+- Render all changes to back buffer
+- Swap buffers on vsync or frame complete
+- Eliminates visible tearing during scrolling
+
+### 2. UTF-8/Unicode Text Support
+**Impact:** International character display
+- Decode UTF-8 byte sequences in putc()
+- Extend font to cover Latin-1 (128-255)
+- Add common Unicode ranges (Latin Extended)
+- Required for proper internationalization
+
+### 3. Multiple Virtual Consoles (VTs)
+**Impact:** Multiple terminal sessions
+- Alt+F1/F2/F3 console switching
+- Separate scrollback buffer per console
+- Independent cursor position and colors
+- Background process output capture
+
+### 4. Interrupt-Driven Serial I/O
+**Impact:** Better serial responsiveness and efficiency
+- UART RX interrupt handler
+- Ring buffer for received characters
+- No polling overhead
+- Better performance for serial debugging
+
+### 5. Text Attributes (Bold, Underline)
+**Impact:** Richer terminal display
+- Parse SGR sequences for bold (1), underline (4)
+- Render bold as brighter color or wider stroke
+- Underline via extra scanline
+- Improves terminal application display

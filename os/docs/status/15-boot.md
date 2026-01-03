@@ -526,3 +526,42 @@ do {
 - ACPI table parsing
 - Multi-boot (kernel selection menu)
 - Network boot (PXE/HTTP)
+
+---
+
+## Priority Recommendations: Next 5 Steps
+
+### 1. ACPI Table Parsing
+**Impact:** Hardware discovery on real systems
+- Parse RSDP from UEFI ConfigurationTable
+- Extract CPU count from MADT
+- Interrupt routing from MADT/GTDT
+- Foundation for power management
+
+### 2. Secure Boot Support
+**Impact:** Boot chain integrity
+- Sign VBoot with Microsoft or custom key
+- Validate kernel signature before loading
+- Shim integration for distribution
+- Required for many real hardware deployments
+
+### 3. Boot Menu (Multi-Boot)
+**Impact:** Kernel version selection
+- Simple text-mode menu in VBoot
+- List available kernel versions
+- Timeout with default selection
+- Useful for development and recovery
+
+### 4. UEFI Runtime Services
+**Impact:** System integration features
+- Access UEFI variables (boot order, etc.)
+- Runtime memory mapping preservation
+- ResetSystem() for clean reboot
+- SetVirtualAddressMap() for kernel
+
+### 5. Network Boot (PXE/HTTP)
+**Impact:** Diskless deployment
+- UEFI PXE network driver discovery
+- HTTP boot using UEFI SimpleNetwork
+- TFTP fallback for legacy servers
+- Enables centralized OS deployment

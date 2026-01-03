@@ -395,3 +395,42 @@ When a channel operation would block:
 - Maximum 256 bytes per message
 - Maximum 4 handles per message
 - Fixed buffer sizes (no dynamic expansion)
+
+---
+
+## Priority Recommendations: Next 5 Steps
+
+### 1. Pipe Object Implementation
+**Impact:** Enables shell pipelines and stream-based IPC
+- Create pipe() syscall returning read/write FD pair
+- Integrate with FD table for read()/write() access
+- Blocking semantics with fixed buffer size
+- Foundation for `|` shell operator
+
+### 2. Channel Buffer Resizing
+**Impact:** Better performance for high-throughput scenarios
+- Dynamic buffer expansion based on demand
+- Shrink buffers when underutilized
+- Per-channel capacity configuration
+- Reduces message drops under load
+
+### 3. Priority Message Queues
+**Impact:** Quality of service for IPC messages
+- Priority field in message header
+- High-priority messages bypass queue
+- Useful for interrupt/signal notifications
+- Better real-time response guarantees
+
+### 4. Scatter-Gather Channel Operations
+**Impact:** Efficient multi-buffer message assembly
+- sendv()/recvv() with iovec arrays
+- Avoid buffer copies for fragmented data
+- Protocol headers + payload in single operation
+- Performance improvement for complex messages
+
+### 5. Channel Debugging and Tracing
+**Impact:** Easier IPC debugging
+- Optional message logging per channel
+- Statistics: message counts, sizes, latency
+- Deadlock detection (circular wait chains)
+- Foundation for system profiling tools

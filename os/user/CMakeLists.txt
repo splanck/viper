@@ -169,3 +169,6 @@ endfunction()
 
 # hello_gui - GUI test program
 add_gui_program(hello_gui hello_gui/hello_gui.c)
+
+# taskbar - Desktop shell taskbar
+add_gui_program(taskbar taskbar/taskbar.c)

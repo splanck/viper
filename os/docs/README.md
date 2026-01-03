@@ -50,15 +50,19 @@ Detailed documentation of the ViperOS implementation:
 | [00-overview.md](status/00-overview.md) | Executive summary, architecture diagram, statistics |
 | [01-architecture.md](status/01-architecture.md) | AArch64 boot, MMU, GIC, timer, exceptions |
 | [02-memory-management.md](status/02-memory-management.md) | PMM, VMM, slab, buddy, COW, VMA |
-| [03-console.md](status/03-console.md) | Serial UART, graphics console, fonts |
+| [03-console.md](status/03-console.md) | Serial UART, graphics console, ANSI escapes, fonts |
 | [04-drivers.md](status/04-drivers.md) | VirtIO (blk, net, gpu, rng, input), fw_cfg, ramfb |
 | [05-filesystem.md](status/05-filesystem.md) | VFS, ViperFS, block cache, inode cache, journal |
 | [06-ipc.md](status/06-ipc.md) | Channels, poll sets |
 | [07-networking.md](status/07-networking.md) | Ethernet, ARP, IPv4, TCP, UDP, DNS, TLS, HTTP |
-| [08-scheduler.md](status/08-scheduler.md) | Tasks, scheduler, context switch, wait queues |
+| [08-scheduler.md](status/08-scheduler.md) | SMP scheduler, work stealing, CPU affinity |
 | [09-viper-process.md](status/09-viper-process.md) | Process model, address spaces, capabilities |
 | [10-userspace.md](status/10-userspace.md) | vinit shell, syscall wrappers, libc, C++ runtime |
 | [11-tools.md](status/11-tools.md) | mkfs.viperfs, fsck.viperfs, gen_roots_der |
+| [12-crypto.md](status/12-crypto.md) | SHA, AES, ChaCha20, X25519, Ed25519, RSA |
+| [13-servers.md](status/13-servers.md) | Microkernel servers (netd, fsd, blkd, displayd) |
+| [14-summary.md](status/14-summary.md) | Summary and roadmap |
+| [15-boot.md](status/15-boot.md) | VBoot UEFI bootloader, two-disk architecture |
 
 ---
 
@@ -84,8 +88,8 @@ Detailed documentation of the ViperOS implementation:
 │  │  libc + C++ Runtime (55 C sources, 66 C++ headers)        │  │
 │  └───────────────────────────────────────────────────────────┘  │
 │  ┌───────────────────────────────────────────────────────────┐  │
-│  │  Microkernel Servers (bring-up)                            │  │
-│  │  blkd (VirtIO-blk), fsd (ViperFS), netd (VirtIO-net)       │  │
+│  │  Microkernel Servers                                        │  │
+│  │  blkd, fsd, netd, consoled, inputd, displayd               │  │
 │  └───────────────────────────────────────────────────────────┘  │
 └─────────────────────────────┬───────────────────────────────────┘
                               │ SVC #0 (Syscalls)
@@ -140,18 +144,21 @@ Detailed documentation of the ViperOS implementation:
 
 | Component | SLOC | Status |
 |-----------|------|--------|
-| Architecture (AArch64) | ~3,500 | Complete |
-| Memory Management | ~5,300 | Complete |
+| VBoot Bootloader | ~1,700 | Complete |
+| Architecture (AArch64) | ~3,600 | Complete |
+| Memory Management | ~5,550 | Complete |
 | Console | ~3,500 | Complete |
 | Drivers | ~6,000 | Complete |
-| Filesystem | ~6,400 | Complete |
+| Filesystem | ~9,600 | Complete |
 | IPC | ~2,500 | Complete |
-| Networking | ~14,600 | Complete |
-| Scheduler | ~2,900 | Complete |
+| Scheduler | ~3,600 | Complete |
 | Viper/Capabilities | ~2,900 | Complete |
-| User Space | ~28,300 | Complete |
+| User Servers | ~10,500 | Complete |
+| libc | ~28,000 | Complete |
+| Libraries | ~23,000 | Complete |
+| Applications | ~5,000 | Complete |
 | Tools | ~2,200 | Complete |
-| **Total** | **~93,000** | |
+| **Total** | **~115,000** | |
 
 ---
 

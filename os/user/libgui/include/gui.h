@@ -103,6 +103,38 @@ typedef struct
     uint32_t format;    ///< Pixel format (XRGB8888 = 0x34325258)
 } gui_display_info_t;
 
+/**
+ * @brief Window information for window list.
+ */
+typedef struct
+{
+    uint32_t surface_id;
+    uint8_t minimized;
+    uint8_t maximized;
+    uint8_t focused;
+    uint8_t _pad;
+    char title[64];
+} gui_window_info_t;
+
+/**
+ * @brief Window list structure.
+ */
+typedef struct
+{
+    uint32_t count;
+    gui_window_info_t windows[16];
+} gui_window_list_t;
+
+/**
+ * @brief Surface creation flags.
+ */
+typedef enum
+{
+    GUI_FLAG_NONE = 0,
+    GUI_FLAG_SYSTEM = 1,           ///< System surface (taskbar) - not in window list
+    GUI_FLAG_NO_DECORATIONS = 2,   ///< No title bar or borders
+} gui_surface_flags_t;
+
 // =============================================================================
 // Initialization
 // =============================================================================
@@ -139,6 +171,17 @@ int gui_get_display_info(gui_display_info_t *info);
 gui_window_t *gui_create_window(const char *title, uint32_t width, uint32_t height);
 
 /**
+ * @brief Create a new window with flags.
+ * @param title Window title (max 63 chars).
+ * @param width Window width in pixels.
+ * @param height Window height in pixels.
+ * @param flags Surface creation flags.
+ * @return Window handle on success, NULL on failure.
+ */
+gui_window_t *gui_create_window_ex(const char *title, uint32_t width, uint32_t height,
+                                    uint32_t flags);
+
+/**
  * @brief Destroy a window and release its resources.
  * @param win Window handle.
  */
@@ -157,6 +200,28 @@ void gui_set_title(gui_window_t *win, const char *title);
  * @return Pointer to title string.
  */
 const char *gui_get_title(gui_window_t *win);
+
+/**
+ * @brief Get list of all windows (for taskbar).
+ * @param list Output window list structure.
+ * @return 0 on success, negative error code on failure.
+ */
+int gui_list_windows(gui_window_list_t *list);
+
+/**
+ * @brief Restore and focus a window by surface ID.
+ * @param surface_id Surface ID from window list.
+ * @return 0 on success, negative error code on failure.
+ */
+int gui_restore_window(uint32_t surface_id);
+
+/**
+ * @brief Set window position.
+ * @param win Window handle.
+ * @param x X position.
+ * @param y Y position.
+ */
+void gui_set_position(gui_window_t *win, int32_t x, int32_t y);
 
 // =============================================================================
 // Pixel Buffer Access

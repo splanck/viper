@@ -52,12 +52,14 @@ Key files:
 
 ## Graphics console: `gcon`
 
-The graphics console lives in `kernel/console/gcon.*`. It is intentionally “small terminal, not a window system”:
+The graphics console lives in `kernel/console/gcon.*`. It is intentionally "small terminal, not a window system":
 
-- fixed-width font
-- cursor in character-cell coordinates
-- basic control characters (`\n`, `\r`, `\t`, backspace)
+- fixed-width font (8x16 base, scaled to 10x20)
+- cursor in character-cell coordinates with blinking support
+- control characters (`\n`, `\r`, `\t`, backspace)
+- ANSI escape sequence support (cursor, colors, clearing)
 - line wrapping and scrolling
+- scrollback buffer (1000 lines)
 
 ### Rendering model
 
@@ -112,9 +114,23 @@ Key files:
 - `kernel/input/*`
 - `kernel/drivers/virtio/input.*`
 
-## Current limitations and likely next steps
+## ANSI escape sequence support
 
-- The graphics console is a text renderer, not a terminal emulator (no ANSI, no cursor addressing beyond local state).
-- There’s no structured log levels or log sinks; output is “print strings” during bring-up.
-- Scrolling is pixel-copy based; future improvements could add a backing text buffer or partial redraw strategies.
+The graphics console now supports a subset of ANSI escape sequences:
+
+| Sequence | Description |
+|----------|-------------|
+| `ESC[H` / `ESC[n;mH` | Cursor position |
+| `ESC[nA/B/C/D` | Cursor movement |
+| `ESC[J` / `ESC[K` | Erase display/line |
+| `ESC[nm` | Set graphics rendition (colors) |
+| `ESC[?25h/l` | Show/hide cursor |
+
+Color codes 30-37, 40-47, 90-97, 100-107 are supported for foreground and background.
+
+## Current limitations
+
+- There's no structured log levels or log sinks; output is "print strings" during bring-up.
+- No double-buffering (updates are direct to framebuffer)
+- No Unicode support (ASCII 32-126 only)
 

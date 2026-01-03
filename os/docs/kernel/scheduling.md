@@ -102,17 +102,38 @@ Key files:
 
 ## SMP support
 
-The scheduler supports symmetric multiprocessing:
+The scheduler supports symmetric multiprocessing with work stealing:
 
-- **Per-CPU ready queues**: Each CPU maintains its own set of priority queues to reduce lock contention
+- **Per-CPU ready queues**: Each CPU maintains its own set of 8 priority queues to reduce lock contention
 - **Per-CPU current task**: `CpuData` structure holds the current task pointer for each CPU
-- **Load balancing**: Periodic work stealing moves tasks between CPUs when load is imbalanced
-- **CPU affinity**: Tasks can be pinned to specific CPUs
+- **Work stealing**: When a CPU's queues are empty, it steals tasks from other CPUs' queues
+- **Periodic load balancing**: Every 100ms, the timer interrupt triggers load balancing across CPUs
+- **CPU affinity**: Tasks can be pinned to specific CPUs via `enqueue_on_cpu()`
+- **IPIs**: Inter-Processor Interrupts for reschedule, stop, and TLB flush operations
+
+### Work Stealing Algorithm
+
+When `scheduler::dequeue()` finds all local queues empty:
+
+1. Iterate through other CPUs' scheduler states
+2. Find a victim CPU with tasks in its queues
+3. Steal one task from the victim's lowest-priority non-empty queue
+4. Return the stolen task for execution
+
+### Load Balancing
+
+Periodic load balancing runs every 100 ticks (~100ms):
+
+1. Calculate each CPU's task count
+2. Find overloaded and underloaded CPUs
+3. Migrate tasks from overloaded to underloaded CPUs
+4. Send IPI_RESCHEDULE to affected CPUs
 
 Key structures:
 
 - `kernel/arch/aarch64/cpu.hpp`: `CpuData` with per-CPU scheduler state
-- `scheduler::per_cpu_sched[]`: Per-CPU ready queues
+- `scheduler::PerCpuScheduler`: Per-CPU ready queues and run counts
+- `scheduler::steal_from()`: Work stealing implementation
 
 ## Blocking and wakeups
 
@@ -134,6 +155,6 @@ Key files:
 ## Current limitations
 
 - The kernel stack pool is a fixed region with no guard pages and limited reuse
-- Load balancing algorithm is simple (periodic, not work-stealing on idle)
 - No real-time scheduling class (soft priorities only)
+- Work stealing only takes one task at a time (could be more aggressive)
 

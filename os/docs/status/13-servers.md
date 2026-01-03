@@ -683,3 +683,42 @@ Each operation requires:
 | File stat | ~10μs | ~80μs |
 | Directory lookup | ~20μs | ~120μs |
 | Socket send (small) | ~30μs | ~100μs |
+
+---
+
+## Priority Recommendations: Next 5 Steps
+
+### 1. displayd Mouse Event Delivery
+**Impact:** Interactive GUI applications
+- Route mouse events from inputd to displayd
+- Hit testing to determine target window
+- Send events to window's event channel
+- Enable button clicks, drag operations
+
+### 2. displayd Window Move/Resize
+**Impact:** Desktop-like window management
+- Title bar drag for window move
+- Edge/corner drag for resize
+- Minimum window size constraints
+- Live resize with damage tracking
+
+### 3. fsd Per-Process FD Tables
+**Impact:** Correct multi-process file handling
+- Move FD tracking to per-client state
+- Proper FD inheritance on fork notification
+- FD cleanup on client disconnect
+- Required for fork/exec workflow
+
+### 4. netd Listen/Accept Improvements
+**Impact:** Server-side network applications
+- Multiple concurrent listening sockets
+- Accept queue depth configuration
+- Non-blocking accept with poll integration
+- Foundation for HTTP/SSH servers
+
+### 5. Server Health Monitoring
+**Impact:** System reliability
+- Heartbeat protocol between servers
+- Automatic server restart on crash
+- Dependency-aware startup ordering
+- vinit supervision of critical servers

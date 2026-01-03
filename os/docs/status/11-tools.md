@@ -276,9 +276,39 @@ fi
 
 ---
 
-## Priority Recommendations
+## Priority Recommendations: Next 5 Steps
 
-1. **Medium:** Add double indirect block support for larger files
-2. **Low:** Add image inspection/dump tool
-3. **Low:** Support multiple directories per directory inode
-4. **Low:** Add certificate bundle update script from Mozilla CA list
+### 1. Double/Triple Indirect Block Support
+**Impact:** Support for larger files
+- Implement double indirect block allocation in mkfs
+- Enable files larger than ~2MB
+- Match kernel ViperFS capabilities
+- Required for disk images and databases
+
+### 2. Filesystem Image Dump Tool
+**Impact:** Debugging and analysis
+- `dumpfs.viperfs` for inode/block inspection
+- Human-readable superblock/bitmap display
+- Directory tree visualization
+- Useful for debugging corruption
+
+### 3. Incremental Disk Update Tool
+**Impact:** Faster development iteration
+- Add/remove files without full rebuild
+- `viperfs-add`, `viperfs-rm` commands
+- Preserve existing content
+- Faster build times during development
+
+### 4. Mozilla CA Bundle Auto-Update
+**Impact:** Up-to-date TLS trust anchors
+- Script to download Mozilla certdata.txt
+- Parse and extract root CA certificates
+- Generate roots.der bundle automatically
+- Ensure TLS compatibility with current sites
+
+### 5. Bootable ISO Creation
+**Impact:** Standard distribution format
+- ISO 9660 filesystem generation
+- El Torito boot catalog for UEFI
+- Include ESP, system, and user images
+- Standard way to distribute ViperOS

@@ -588,3 +588,42 @@ void dump_smp_stats();
 - No NUMA awareness
 - No CPU hotplug support
 - Simple load balancing heuristic
+
+---
+
+## Priority Recommendations: Next 5 Steps
+
+### 1. CPU Affinity Syscalls (sched_setaffinity)
+**Impact:** User-space control over task placement
+- Bitmask-based CPU affinity per task
+- sched_setaffinity()/sched_getaffinity() syscalls
+- Honor affinity in scheduler and work stealing
+- Required for performance-critical applications
+
+### 2. Deadline Scheduler (SCHED_DEADLINE)
+**Impact:** Real-time scheduling for latency-sensitive tasks
+- EDF (Earliest Deadline First) scheduling
+- Bandwidth reservation (runtime/period/deadline)
+- Admission control for CPU capacity
+- Better real-time guarantees than SCHED_FIFO
+
+### 3. CFS-style Fair Scheduling
+**Impact:** Better fairness for interactive workloads
+- Virtual runtime tracking per task
+- Red-black tree for O(log n) scheduling
+- Nice value support (-20 to +19)
+- Better responsiveness under load
+
+### 4. CPU Idle States
+**Impact:** Power efficiency
+- WFI (Wait For Interrupt) when queue empty
+- Deeper sleep states via PSCI
+- Idle governor for state selection
+- Reduced power consumption
+
+### 5. Priority Inheritance for Mutexes
+**Impact:** Avoid priority inversion
+- Track mutex ownership in kernel
+- Boost holder priority when high-priority waiter
+- Restore original priority on release
+- Required for correct real-time behavior

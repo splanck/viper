@@ -587,14 +587,39 @@ The drivers subsystem is tested via:
 
 ---
 
-## Priority Recommendations
+## Priority Recommendations: Next 5 Steps
 
-1. ~~**High:** Add interrupt-driven I/O for virtio-blk~~ ✓ Implemented
-2. ~~**High:** Implement async I/O API for better throughput~~ ✓ Implemented
-3. ~~**Medium:** Add VirtIO-GPU for hardware-accelerated graphics~~ ✓ Implemented (2D)
-4. ~~**Medium:** Add checksum offload for virtio-net~~ ✓ Implemented
-5. **Medium:** Add VirtIO-GPU 3D support (virgl)
-6. **Low:** Implement VirtIO-console for console I/O
-7. **Low:** Add device tree parsing for dynamic configuration
-8. **Low:** Add GSO/TSO for virtio-net large packet handling
-9. **Low:** Add multiqueue support for SMP scalability
+### 1. VirtIO-GPU 3D Support (virgl)
+**Impact:** Hardware-accelerated 3D graphics
+- Virgl command submission via control virtqueue
+- OpenGL ES 2.0+ rendering commands
+- 3D resource management (textures, buffers)
+- Foundation for accelerated GUI compositing
+
+### 2. VirtIO-Net Multiqueue for SMP
+**Impact:** Network scalability on multi-core systems
+- Separate TX/RX queues per CPU core
+- Reduce cross-CPU lock contention
+- RSS-based receive queue steering
+- Linear network throughput scaling
+
+### 3. VirtIO-Net GSO/TSO Offload
+**Impact:** Improved network throughput for large transfers
+- TCP Segmentation Offload (TSO)
+- UDP Fragmentation Offload (UFO)
+- Larger effective MTU per operation
+- Reduced CPU overhead for bulk transfers
+
+### 4. VirtIO-Console Driver
+**Impact:** Alternative console path through VirtIO
+- Console virtqueue for input/output
+- Multiple console ports support
+- Direct VM console access without serial
+- Better integration with hypervisor consoles
+
+### 5. Device Tree Parsing
+**Impact:** Dynamic device discovery
+- Parse DTB for memory regions
+- Discover VirtIO devices from FDT
+- Interrupt routing from device tree
+- Foundation for real hardware support (non-QEMU)

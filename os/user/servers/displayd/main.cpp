@@ -66,6 +66,58 @@ static uint32_t g_fb_pitch = 0;
 // Surface management
 static constexpr uint32_t MAX_SURFACES = 32;
 
+// Event queue for each surface
+static constexpr size_t EVENT_QUEUE_SIZE = 32;
+
+struct QueuedEvent
+{
+    uint32_t event_type;  // DISP_EVENT_KEY, DISP_EVENT_MOUSE, etc.
+    union
+    {
+        KeyEvent key;
+        MouseEvent mouse;
+        FocusEvent focus;
+        CloseEvent close;
+    };
+};
+
+struct EventQueue
+{
+    QueuedEvent events[EVENT_QUEUE_SIZE];
+    size_t head;
+    size_t tail;
+
+    void init()
+    {
+        head = 0;
+        tail = 0;
+    }
+
+    bool empty() const
+    {
+        return head == tail;
+    }
+
+    bool push(const QueuedEvent &ev)
+    {
+        size_t next = (tail + 1) % EVENT_QUEUE_SIZE;
+        if (next == head)
+            return false; // Queue full
+        events[tail] = ev;
+        tail = next;
+        return true;
+    }
+
+    bool pop(QueuedEvent *ev)
+    {
+        if (head == tail)
+            return false; // Queue empty
+        *ev = events[head];
+        head = (head + 1) % EVENT_QUEUE_SIZE;
+        return true;
+    }
+};
+
 struct Surface
 {
     uint32_t id;
@@ -80,11 +132,32 @@ struct Surface
     uint32_t *pixels;
     char title[64];
     int32_t client_channel; // Channel for sending events
+    EventQueue event_queue;
+    uint32_t z_order;       // Higher = on top
+    uint32_t flags;         // SurfaceFlags
+
+    // Window state
+    bool minimized;
+    bool maximized;
+
+    // Saved state for restore from maximized
+    int32_t saved_x;
+    int32_t saved_y;
+    uint32_t saved_width;
+    uint32_t saved_height;
 };
 
 static Surface g_surfaces[MAX_SURFACES];
 static uint32_t g_next_surface_id = 1;
 static uint32_t g_focused_surface = 0;
+static uint32_t g_next_z_order = 1;
+
+// Bring a surface to the front (highest z-order)
+static void bring_to_front(Surface *surf)
+{
+    if (!surf) return;
+    surf->z_order = g_next_z_order++;
+}
 
 // Cursor state
 static int32_t g_cursor_x = 0;
@@ -392,10 +465,15 @@ static void draw_cursor()
     }
 }
 
+// Button colors
+static constexpr uint32_t COLOR_MIN_BTN = 0xFF4040C0;  // Blue for minimize
+static constexpr uint32_t COLOR_MAX_BTN = 0xFF40C040;  // Green for maximize
+
 // Window decoration drawing
 static void draw_window_decorations(Surface *surf)
 {
     if (!surf || !surf->in_use || !surf->visible) return;
+    if (surf->flags & SURFACE_FLAG_NO_DECORATIONS) return;
 
     int32_t win_x = surf->x - static_cast<int32_t>(BORDER_WIDTH);
     int32_t win_y = surf->y - static_cast<int32_t>(TITLE_BAR_HEIGHT + BORDER_WIDTH);
@@ -415,12 +493,33 @@ static void draw_window_decorations(Surface *surf)
     // Title text
     draw_text(win_x + BORDER_WIDTH + 8, win_y + BORDER_WIDTH + 8, surf->title, COLOR_WHITE);
 
-    // Close button
-    int32_t btn_x = win_x + static_cast<int32_t>(win_w) - BORDER_WIDTH - CLOSE_BUTTON_SIZE - 4;
     int32_t btn_y = win_y + BORDER_WIDTH + 4;
-    fill_rect(btn_x, btn_y, CLOSE_BUTTON_SIZE, CLOSE_BUTTON_SIZE, COLOR_CLOSE_BTN);
-    // Draw X
-    draw_char(btn_x + 4, btn_y + 4, 'X', COLOR_WHITE);
+    int32_t btn_spacing = CLOSE_BUTTON_SIZE + 4;
+
+    // Close button (rightmost)
+    int32_t close_x = win_x + static_cast<int32_t>(win_w) - BORDER_WIDTH - CLOSE_BUTTON_SIZE - 4;
+    fill_rect(close_x, btn_y, CLOSE_BUTTON_SIZE, CLOSE_BUTTON_SIZE, COLOR_CLOSE_BTN);
+    draw_char(close_x + 4, btn_y + 4, 'X', COLOR_WHITE);
+
+    // Maximize button (second from right)
+    int32_t max_x = close_x - btn_spacing;
+    fill_rect(max_x, btn_y, CLOSE_BUTTON_SIZE, CLOSE_BUTTON_SIZE, COLOR_MAX_BTN);
+    // Draw box symbol for maximize (or arrows if maximized)
+    if (surf->maximized)
+    {
+        // Draw restore symbol (two overlapping rectangles)
+        draw_char(max_x + 4, btn_y + 4, 'R', COLOR_WHITE);
+    }
+    else
+    {
+        // Draw maximize symbol (box outline)
+        draw_char(max_x + 4, btn_y + 4, 'M', COLOR_WHITE);
+    }
+
+    // Minimize button (third from right)
+    int32_t min_x = max_x - btn_spacing;
+    fill_rect(min_x, btn_y, CLOSE_BUTTON_SIZE, CLOSE_BUTTON_SIZE, COLOR_MIN_BTN);
+    draw_char(min_x + 4, btn_y + 4, '_', COLOR_WHITE);
 }
 
 // Composite all surfaces to framebuffer
@@ -429,11 +528,35 @@ static void composite()
     // Clear desktop
     fill_rect(0, 0, g_fb_width, g_fb_height, COLOR_DESKTOP);
 
-    // Draw surfaces (back to front - simple for now, no z-ordering)
+    // Build sorted list of visible surfaces by z-order (lowest first = drawn under)
+    Surface *sorted[MAX_SURFACES];
+    uint32_t count = 0;
+
     for (uint32_t i = 0; i < MAX_SURFACES; i++)
     {
         Surface *surf = &g_surfaces[i];
         if (!surf->in_use || !surf->visible || !surf->pixels) continue;
+        if (surf->minimized) continue;  // Don't draw minimized windows
+        sorted[count++] = surf;
+    }
+
+    // Simple insertion sort by z_order (small N, runs frequently)
+    for (uint32_t i = 1; i < count; i++)
+    {
+        Surface *key = sorted[i];
+        int32_t j = static_cast<int32_t>(i) - 1;
+        while (j >= 0 && sorted[j]->z_order > key->z_order)
+        {
+            sorted[j + 1] = sorted[j];
+            j--;
+        }
+        sorted[j + 1] = key;
+    }
+
+    // Draw surfaces back to front (lower z-order first)
+    for (uint32_t i = 0; i < count; i++)
+    {
+        Surface *surf = sorted[i];
 
         // Draw decorations first
         draw_window_decorations(surf);
@@ -460,14 +583,16 @@ static void composite()
     draw_cursor();
 }
 
-// Find surface at screen coordinates
+// Find surface at screen coordinates (checks top-most first by z-order)
 static Surface *find_surface_at(int32_t x, int32_t y)
 {
-    // Check in reverse order (top-most first)
-    for (int32_t i = MAX_SURFACES - 1; i >= 0; i--)
+    Surface *best = nullptr;
+    uint32_t best_z = 0;
+
+    for (uint32_t i = 0; i < MAX_SURFACES; i++)
     {
         Surface *surf = &g_surfaces[i];
-        if (!surf->in_use || !surf->visible) continue;
+        if (!surf->in_use || !surf->visible || surf->minimized) continue;
 
         // Check if in window bounds (including decorations)
         int32_t win_x = surf->x - static_cast<int32_t>(BORDER_WIDTH);
@@ -477,7 +602,25 @@ static Surface *find_surface_at(int32_t x, int32_t y)
 
         if (x >= win_x && x < win_x2 && y >= win_y && y < win_y2)
         {
-            return surf;
+            // Pick the one with highest z-order (top-most)
+            if (surf->z_order > best_z)
+            {
+                best = surf;
+                best_z = surf->z_order;
+            }
+        }
+    }
+    return best;
+}
+
+// Find surface by ID
+static Surface *find_surface_by_id(uint32_t id)
+{
+    for (uint32_t i = 0; i < MAX_SURFACES; i++)
+    {
+        if (g_surfaces[i].in_use && g_surfaces[i].id == id)
+        {
+            return &g_surfaces[i];
         }
     }
     return nullptr;
@@ -540,6 +683,25 @@ static void handle_create_surface(int32_t client_channel, const uint8_t *data, s
     surf->shm_handle = shm_result.handle;
     surf->pixels = reinterpret_cast<uint32_t *>(shm_result.virt_addr);
     surf->client_channel = client_channel;
+    surf->event_queue.init();
+    surf->z_order = g_next_z_order++; // New window gets highest z-order
+    surf->flags = req->flags;
+    surf->minimized = false;
+    surf->maximized = false;
+
+    debug_print("[displayd] Created surface id=");
+    debug_print_dec(surf->id);
+    debug_print(" flags=");
+    debug_print_dec(surf->flags);
+    debug_print(" at ");
+    debug_print_dec(surf->x);
+    debug_print(",");
+    debug_print_dec(surf->y);
+    debug_print("\n");
+    surf->saved_x = surf->x;
+    surf->saved_y = surf->y;
+    surf->saved_width = surf->width;
+    surf->saved_height = surf->height;
 
     // Copy title
     for (int i = 0; i < 63 && req->title[i]; i++)
@@ -658,6 +820,14 @@ static void handle_request(int32_t client_channel, const uint8_t *data, size_t l
             if (len < sizeof(SetGeometryRequest)) return;
             auto *req = reinterpret_cast<const SetGeometryRequest *>(data);
 
+            debug_print("[displayd] SET_GEOMETRY: surf=");
+            debug_print_dec(req->surface_id);
+            debug_print(" x=");
+            debug_print_dec(req->x);
+            debug_print(" y=");
+            debug_print_dec(req->y);
+            debug_print("\n");
+
             GenericReply reply;
             reply.type = DISP_GENERIC_REPLY;
             reply.request_id = req->request_id;
@@ -670,6 +840,7 @@ static void handle_request(int32_t client_channel, const uint8_t *data, size_t l
                     g_surfaces[i].x = req->x;
                     g_surfaces[i].y = req->y;
                     reply.status = 0;
+                    debug_print("[displayd] SET_GEOMETRY: updated surface\n");
                     break;
                 }
             }
@@ -704,6 +875,113 @@ static void handle_request(int32_t client_channel, const uint8_t *data, size_t l
             break;
         }
 
+        case DISP_POLL_EVENT:
+        {
+            if (len < sizeof(PollEventRequest)) return;
+            auto *req = reinterpret_cast<const PollEventRequest *>(data);
+
+            PollEventReply reply;
+            reply.type = DISP_POLL_EVENT_REPLY;
+            reply.request_id = req->request_id;
+            reply.has_event = 0;
+            reply.event_type = 0;
+
+            // Find the surface and check for events
+            Surface *surf = find_surface_by_id(req->surface_id);
+            if (surf)
+            {
+                QueuedEvent ev;
+                if (surf->event_queue.pop(&ev))
+                {
+                    reply.has_event = 1;
+                    reply.event_type = ev.event_type;
+
+                    // Copy event data based on type
+                    switch (ev.event_type)
+                    {
+                        case DISP_EVENT_KEY:
+                            reply.key = ev.key;
+                            break;
+                        case DISP_EVENT_MOUSE:
+                            reply.mouse = ev.mouse;
+                            break;
+                        case DISP_EVENT_FOCUS:
+                            reply.focus = ev.focus;
+                            break;
+                        case DISP_EVENT_CLOSE:
+                            reply.close = ev.close;
+                            break;
+                    }
+                }
+            }
+
+            sys::channel_send(client_channel, &reply, sizeof(reply), nullptr, 0);
+            break;
+        }
+
+        case DISP_LIST_WINDOWS:
+        {
+            if (len < sizeof(ListWindowsRequest)) return;
+            auto *req = reinterpret_cast<const ListWindowsRequest *>(data);
+
+            ListWindowsReply reply;
+            reply.type = DISP_LIST_WINDOWS_REPLY;
+            reply.request_id = req->request_id;
+            reply.status = 0;
+            reply.window_count = 0;
+
+            // Collect all non-system windows
+            for (uint32_t i = 0; i < MAX_SURFACES && reply.window_count < 16; i++)
+            {
+                Surface *surf = &g_surfaces[i];
+                if (!surf->in_use) continue;
+                if (surf->flags & SURFACE_FLAG_SYSTEM) continue;
+
+                WindowInfo &info = reply.windows[reply.window_count];
+                info.surface_id = surf->id;
+                info.flags = surf->flags;
+                info.minimized = surf->minimized ? 1 : 0;
+                info.maximized = surf->maximized ? 1 : 0;
+                info.focused = (g_focused_surface == surf->id) ? 1 : 0;
+
+                // Copy title
+                for (int j = 0; j < 63 && surf->title[j]; j++)
+                {
+                    info.title[j] = surf->title[j];
+                }
+                info.title[63] = '\0';
+
+                reply.window_count++;
+            }
+
+            sys::channel_send(client_channel, &reply, sizeof(reply), nullptr, 0);
+            break;
+        }
+
+        case DISP_RESTORE_WINDOW:
+        {
+            if (len < sizeof(RestoreWindowRequest)) return;
+            auto *req = reinterpret_cast<const RestoreWindowRequest *>(data);
+
+            GenericReply reply;
+            reply.type = DISP_GENERIC_REPLY;
+            reply.request_id = req->request_id;
+            reply.status = -1;
+
+            Surface *surf = find_surface_by_id(req->surface_id);
+            if (surf)
+            {
+                surf->minimized = false;
+                bring_to_front(surf);
+                g_focused_surface = surf->id;
+                composite();
+                reply.status = 0;
+            }
+
+            sys::channel_send(client_channel, &reply, sizeof(reply), nullptr, 0);
+            break;
+        }
+
         default:
             debug_print("[displayd] Unknown message type: ");
             debug_print_dec(msg_type);
@@ -712,83 +990,340 @@ static void handle_request(int32_t client_channel, const uint8_t *data, size_t l
     }
 }
 
-// Poll for mouse updates and handle dragging
+// Poll for mouse updates and handle dragging/resizing
 static uint32_t g_drag_surface_id = 0;
 static int32_t g_drag_offset_x = 0;
 static int32_t g_drag_offset_y = 0;
 static uint8_t g_last_buttons = 0;
+static int32_t g_last_mouse_x = 0;
+static int32_t g_last_mouse_y = 0;
+
+// Resize state
+static uint32_t g_resize_surface_id = 0;
+static uint8_t g_resize_edge = 0;  // Bitmask: 1=left, 2=right, 4=top, 8=bottom
+static int32_t g_resize_start_x = 0;
+static int32_t g_resize_start_y = 0;
+static int32_t g_resize_start_width = 0;
+static int32_t g_resize_start_height = 0;
+static int32_t g_resize_start_surf_x = 0;
+static int32_t g_resize_start_surf_y = 0;
+
+static constexpr int32_t RESIZE_BORDER = 6;  // Width of resize handle area
+static constexpr uint32_t MIN_WINDOW_WIDTH = 100;
+static constexpr uint32_t MIN_WINDOW_HEIGHT = 60;
+
+// Check if point is on a resize edge of a surface, return edge mask
+static uint8_t get_resize_edge(Surface *surf, int32_t x, int32_t y)
+{
+    if (!surf) return 0;
+    if (surf->maximized) return 0;  // Can't resize maximized windows
+
+    int32_t win_x1 = surf->x - static_cast<int32_t>(BORDER_WIDTH);
+    int32_t win_y1 = surf->y - static_cast<int32_t>(TITLE_BAR_HEIGHT + BORDER_WIDTH);
+    int32_t win_x2 = surf->x + static_cast<int32_t>(surf->width + BORDER_WIDTH);
+    int32_t win_y2 = surf->y + static_cast<int32_t>(surf->height + BORDER_WIDTH);
+
+    // Check if inside window at all
+    if (x < win_x1 || x >= win_x2 || y < win_y1 || y >= win_y2)
+        return 0;
+
+    // Check if in title bar (not resizable)
+    int32_t title_y2 = surf->y - static_cast<int32_t>(BORDER_WIDTH);
+    if (y >= win_y1 && y < title_y2)
+        return 0;
+
+    uint8_t edge = 0;
+
+    // Check edges (only if in border area)
+    if (x < win_x1 + RESIZE_BORDER) edge |= 1;  // Left
+    if (x >= win_x2 - RESIZE_BORDER) edge |= 2; // Right
+    if (y >= win_y2 - RESIZE_BORDER) edge |= 8; // Bottom
+
+    return edge;
+}
+
+// Queue a mouse event to a surface
+static void queue_mouse_event(Surface *surf, uint8_t event_type, int32_t local_x, int32_t local_y,
+                               int32_t dx, int32_t dy, uint8_t buttons, uint8_t button)
+{
+    QueuedEvent ev;
+    ev.event_type = DISP_EVENT_MOUSE;
+    ev.mouse.type = DISP_EVENT_MOUSE;
+    ev.mouse.surface_id = surf->id;
+    ev.mouse.x = local_x;
+    ev.mouse.y = local_y;
+    ev.mouse.dx = dx;
+    ev.mouse.dy = dy;
+    ev.mouse.buttons = buttons;
+    ev.mouse.event_type = event_type;
+    ev.mouse.button = button;
+    ev.mouse._pad = 0;
+    surf->event_queue.push(ev);
+}
+
+// Queue a focus event to a surface
+static void queue_focus_event(Surface *surf, bool gained)
+{
+    QueuedEvent ev;
+    ev.event_type = DISP_EVENT_FOCUS;
+    ev.focus.type = DISP_EVENT_FOCUS;
+    ev.focus.surface_id = surf->id;
+    ev.focus.gained = gained ? 1 : 0;
+    ev.focus._pad[0] = 0;
+    ev.focus._pad[1] = 0;
+    ev.focus._pad[2] = 0;
+    surf->event_queue.push(ev);
+}
+
+// Queue a close event to a surface
+static void queue_close_event(Surface *surf)
+{
+    QueuedEvent ev;
+    ev.event_type = DISP_EVENT_CLOSE;
+    ev.close.type = DISP_EVENT_CLOSE;
+    ev.close.surface_id = surf->id;
+    surf->event_queue.push(ev);
+}
+
+// Queue a resize event to a surface (just using mouse event for now)
+// Note: Full resize support needs shared memory reallocation which is complex
+// For now, we just allow visual resizing of the window frame
 
 static void poll_mouse()
 {
     sys::MouseState state;
     if (sys::get_mouse_state(&state) != 0) return;
 
+    bool cursor_moved = (state.x != g_last_mouse_x || state.y != g_last_mouse_y);
+
     // Update cursor position
-    if (state.dx != 0 || state.dy != 0)
+    if (cursor_moved)
     {
         restore_cursor_background();
         g_cursor_x = state.x;
         g_cursor_y = state.y;
 
-        // Handle dragging
-        if (g_drag_surface_id != 0)
+        // Handle resizing
+        if (g_resize_surface_id != 0)
         {
-            for (uint32_t i = 0; i < MAX_SURFACES; i++)
+            Surface *resize_surf = find_surface_by_id(g_resize_surface_id);
+            if (resize_surf)
             {
-                if (g_surfaces[i].in_use && g_surfaces[i].id == g_drag_surface_id)
+                int32_t dx = g_cursor_x - g_resize_start_x;
+                int32_t dy = g_cursor_y - g_resize_start_y;
+
+                // Calculate new size based on which edges are being dragged
+                int32_t new_width = g_resize_start_width;
+                int32_t new_height = g_resize_start_height;
+                int32_t new_x = g_resize_start_surf_x;
+                int32_t new_y = g_resize_start_surf_y;
+
+                if (g_resize_edge & 2) // Right
                 {
-                    g_surfaces[i].x = g_cursor_x - g_drag_offset_x;
-                    g_surfaces[i].y = g_cursor_y - g_drag_offset_y + static_cast<int32_t>(TITLE_BAR_HEIGHT);
-                    break;
+                    new_width = g_resize_start_width + dx;
                 }
+                if (g_resize_edge & 1) // Left
+                {
+                    new_width = g_resize_start_width - dx;
+                    new_x = g_resize_start_surf_x + dx;
+                }
+                if (g_resize_edge & 8) // Bottom
+                {
+                    new_height = g_resize_start_height + dy;
+                }
+
+                // Clamp to minimum size
+                if (new_width < static_cast<int32_t>(MIN_WINDOW_WIDTH))
+                {
+                    if (g_resize_edge & 1) // Left edge: adjust x
+                        new_x = g_resize_start_surf_x + g_resize_start_width - MIN_WINDOW_WIDTH;
+                    new_width = MIN_WINDOW_WIDTH;
+                }
+                if (new_height < static_cast<int32_t>(MIN_WINDOW_HEIGHT))
+                {
+                    new_height = MIN_WINDOW_HEIGHT;
+                }
+
+                // Note: Actual resize would require reallocating shared memory
+                // For now, just update the window frame dimensions for visual feedback
+                // The client won't see the actual content resize
+                resize_surf->x = new_x;
+                resize_surf->y = new_y;
+                // Don't update width/height without realloc - just visual resize of frame
+            }
+            composite();
+        }
+        // Handle dragging
+        else if (g_drag_surface_id != 0)
+        {
+            Surface *drag_surf = find_surface_by_id(g_drag_surface_id);
+            if (drag_surf)
+            {
+                drag_surf->x = g_cursor_x - g_drag_offset_x;
+                drag_surf->y = g_cursor_y - g_drag_offset_y + static_cast<int32_t>(TITLE_BAR_HEIGHT);
             }
             composite();
         }
         else
         {
+            // Queue mouse move event to focused surface if in client area
+            Surface *focused = find_surface_by_id(g_focused_surface);
+            if (focused)
+            {
+                int32_t local_x = g_cursor_x - focused->x;
+                int32_t local_y = g_cursor_y - focused->y;
+
+                // Only send move events within client area
+                if (local_x >= 0 && local_x < static_cast<int32_t>(focused->width) &&
+                    local_y >= 0 && local_y < static_cast<int32_t>(focused->height))
+                {
+                    int32_t dx = g_cursor_x - g_last_mouse_x;
+                    int32_t dy = g_cursor_y - g_last_mouse_y;
+                    queue_mouse_event(focused, 0, local_x, local_y, dx, dy, state.buttons, 0);
+                }
+            }
+
             save_cursor_background();
             draw_cursor();
         }
+
+        g_last_mouse_x = state.x;
+        g_last_mouse_y = state.y;
     }
 
     // Handle button changes
     if (state.buttons != g_last_buttons)
     {
-        bool left_pressed = (state.buttons & 0x01) && !(g_last_buttons & 0x01);
-        bool left_released = !(state.buttons & 0x01) && (g_last_buttons & 0x01);
+        uint8_t pressed = state.buttons & ~g_last_buttons;
+        uint8_t released = g_last_buttons & ~state.buttons;
 
-        if (left_pressed)
+        Surface *surf = find_surface_at(g_cursor_x, g_cursor_y);
+
+        if (pressed)
         {
-            Surface *surf = find_surface_at(g_cursor_x, g_cursor_y);
             if (surf)
             {
-                // Set focus
-                g_focused_surface = surf->id;
-
-                // Check if clicked on title bar (for dragging)
-                int32_t title_y1 = surf->y - static_cast<int32_t>(TITLE_BAR_HEIGHT + BORDER_WIDTH);
-                int32_t title_y2 = surf->y - static_cast<int32_t>(BORDER_WIDTH);
-
-                if (g_cursor_y >= title_y1 && g_cursor_y < title_y2)
+                // Handle focus change and bring to front
+                if (surf->id != g_focused_surface)
                 {
-                    // Check for close button
-                    int32_t win_x2 = surf->x + static_cast<int32_t>(surf->width + BORDER_WIDTH);
-                    int32_t btn_x = win_x2 - static_cast<int32_t>(CLOSE_BUTTON_SIZE + 4);
-
-                    if (g_cursor_x >= btn_x && g_cursor_x < btn_x + static_cast<int32_t>(CLOSE_BUTTON_SIZE))
+                    Surface *old_focused = find_surface_by_id(g_focused_surface);
+                    if (old_focused)
                     {
-                        // Close button clicked - send close event to client
-                        // For now, just destroy the surface
-                        sys::shm_close(surf->shm_handle);
-                        surf->in_use = false;
-                        surf->pixels = nullptr;
+                        queue_focus_event(old_focused, false);
+                    }
+                    g_focused_surface = surf->id;
+                    queue_focus_event(surf, true);
+                    bring_to_front(surf);
+                }
+
+                // Check for resize edges first
+                uint8_t edge = get_resize_edge(surf, g_cursor_x, g_cursor_y);
+                if (edge != 0)
+                {
+                    // Start resizing
+                    g_resize_surface_id = surf->id;
+                    g_resize_edge = edge;
+                    g_resize_start_x = g_cursor_x;
+                    g_resize_start_y = g_cursor_y;
+                    g_resize_start_width = static_cast<int32_t>(surf->width);
+                    g_resize_start_height = static_cast<int32_t>(surf->height);
+                    g_resize_start_surf_x = surf->x;
+                    g_resize_start_surf_y = surf->y;
+                }
+                // Check if clicked on title bar (for dragging/close)
+                else
+                {
+                    int32_t title_y1 = surf->y - static_cast<int32_t>(TITLE_BAR_HEIGHT + BORDER_WIDTH);
+                    int32_t title_y2 = surf->y - static_cast<int32_t>(BORDER_WIDTH);
+
+                    if (g_cursor_y >= title_y1 && g_cursor_y < title_y2)
+                    {
+                        // Check for window control buttons
+                        int32_t win_x2 = surf->x + static_cast<int32_t>(surf->width + BORDER_WIDTH);
+                        int32_t btn_spacing = static_cast<int32_t>(CLOSE_BUTTON_SIZE + 4);
+                        int32_t close_x = win_x2 - static_cast<int32_t>(CLOSE_BUTTON_SIZE + 4);
+                        int32_t max_x = close_x - btn_spacing;
+                        int32_t min_x = max_x - btn_spacing;
+                        int32_t btn_size = static_cast<int32_t>(CLOSE_BUTTON_SIZE);
+
+                        if (g_cursor_x >= close_x && g_cursor_x < close_x + btn_size)
+                        {
+                            // Close button clicked - queue close event
+                            queue_close_event(surf);
+                        }
+                        else if (g_cursor_x >= max_x && g_cursor_x < max_x + btn_size)
+                        {
+                            // Maximize button clicked - move to top-left corner
+                            // Note: True resize would require reallocating shared memory
+                            if (surf->maximized)
+                            {
+                                // Restore from maximized - move back to saved position
+                                surf->maximized = false;
+                                surf->x = surf->saved_x;
+                                surf->y = surf->saved_y;
+                            }
+                            else
+                            {
+                                // Maximize - move to top-left corner
+                                surf->saved_x = surf->x;
+                                surf->saved_y = surf->y;
+                                surf->maximized = true;
+                                // Position at top-left, accounting for decorations
+                                surf->x = static_cast<int32_t>(BORDER_WIDTH);
+                                surf->y = static_cast<int32_t>(TITLE_BAR_HEIGHT + BORDER_WIDTH);
+                            }
+                            composite();
+                        }
+                        else if (g_cursor_x >= min_x && g_cursor_x < min_x + btn_size)
+                        {
+                            // Minimize button clicked
+                            surf->minimized = true;
+                            // If this was focused, find next surface to focus
+                            if (g_focused_surface == surf->id)
+                            {
+                                g_focused_surface = 0;
+                                // Find highest z-order non-minimized surface
+                                uint32_t best_z = 0;
+                                for (uint32_t i = 0; i < MAX_SURFACES; i++)
+                                {
+                                    if (g_surfaces[i].in_use && !g_surfaces[i].minimized &&
+                                        g_surfaces[i].z_order > best_z)
+                                    {
+                                        best_z = g_surfaces[i].z_order;
+                                        g_focused_surface = g_surfaces[i].id;
+                                    }
+                                }
+                            }
+                            composite();
+                        }
+                        else
+                        {
+                            // Start dragging (but not if maximized)
+                            if (!surf->maximized)
+                            {
+                                g_drag_surface_id = surf->id;
+                                g_drag_offset_x = g_cursor_x - surf->x;
+                                g_drag_offset_y = g_cursor_y - surf->y + static_cast<int32_t>(TITLE_BAR_HEIGHT);
+                            }
+                        }
                     }
                     else
                     {
-                        // Start dragging
-                        g_drag_surface_id = surf->id;
-                        g_drag_offset_x = g_cursor_x - surf->x;
-                        g_drag_offset_y = g_cursor_y - surf->y + static_cast<int32_t>(TITLE_BAR_HEIGHT);
+                        // Clicked in client area - queue button down event
+                        int32_t local_x = g_cursor_x - surf->x;
+                        int32_t local_y = g_cursor_y - surf->y;
+
+                        if (local_x >= 0 && local_x < static_cast<int32_t>(surf->width) &&
+                            local_y >= 0 && local_y < static_cast<int32_t>(surf->height))
+                        {
+                            // Determine which button (0=left, 1=right, 2=middle)
+                            uint8_t button = 0;
+                            if (pressed & 0x01) button = 0;      // Left
+                            else if (pressed & 0x02) button = 1; // Right
+                            else if (pressed & 0x04) button = 2; // Middle
+
+                            queue_mouse_event(surf, 1, local_x, local_y, 0, 0, state.buttons, button);
+                        }
                     }
                 }
 
@@ -796,9 +1331,27 @@ static void poll_mouse()
             }
         }
 
-        if (left_released)
+        if (released)
         {
             g_drag_surface_id = 0;
+            g_resize_surface_id = 0;
+            g_resize_edge = 0;
+
+            // Queue button up event to focused surface
+            Surface *focused = find_surface_by_id(g_focused_surface);
+            if (focused)
+            {
+                int32_t local_x = g_cursor_x - focused->x;
+                int32_t local_y = g_cursor_y - focused->y;
+
+                // Determine which button was released
+                uint8_t button = 0;
+                if (released & 0x01) button = 0;      // Left
+                else if (released & 0x02) button = 1; // Right
+                else if (released & 0x04) button = 2; // Middle
+
+                queue_mouse_event(focused, 2, local_x, local_y, 0, 0, state.buttons, button);
+            }
         }
 
         g_last_buttons = state.buttons;
@@ -845,6 +1398,7 @@ extern "C" void _start()
     for (uint32_t i = 0; i < MAX_SURFACES; i++)
     {
         g_surfaces[i].in_use = false;
+        g_surfaces[i].event_queue.init();
     }
 
     // Initial composite (draw desktop)

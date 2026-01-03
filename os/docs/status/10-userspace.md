@@ -2156,11 +2156,39 @@ Interactive commands:
 
 ---
 
-## Priority Recommendations
+## Priority Recommendations: Next 5 Steps
 
-1. **High:** Add shell scripting support
-2. **High:** Implement pipes for command chaining
-3. **Medium:** Add more user-space applications
-4. **Medium:** Implement real multi-threading in kernel
-5. **Low:** Add job control (background processes)
-6. **Low:** Implement shared library support
+### 1. Shell Scripting Support
+**Impact:** Automation and batch processing
+- Script file detection (shebang parsing)
+- Variable expansion ($VAR, ${VAR})
+- Control flow (if/then/else, while, for)
+- Command substitution (`command` or $(command))
+
+### 2. Pipe Support for Command Chaining
+**Impact:** Enables powerful command composition
+- Kernel pipe implementation
+- Shell `|` operator parsing
+- Multiple pipes in single command line
+- Standard Unix workflow (`ls | grep | sort`)
+
+### 3. Job Control (Background Processes)
+**Impact:** Multi-tasking from shell
+- `&` operator for background execution
+- jobs/fg/bg shell builtins
+- SIGTSTP (Ctrl+Z), SIGCONT handling
+- Process group management for job control
+
+### 4. Shared Library Support
+**Impact:** Reduced memory and easier updates
+- ELF dynamic linking (DT_NEEDED)
+- PLT/GOT lazy binding
+- LD_LIBRARY_PATH search
+- Significant memory savings for libc
+
+### 5. POSIX Threads (pthreads)
+**Impact:** Multi-threaded applications
+- pthread_create()/pthread_join()
+- Mutexes, condition variables
+- Thread-local storage (TLS)
+- Required for modern application porting

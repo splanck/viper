@@ -27,11 +27,16 @@ enum MsgType : uint32_t
     DISP_SET_VISIBLE = 6,      // Show/hide surface
     DISP_SET_TITLE = 7,        // Set window title
     DISP_SUBSCRIBE_EVENTS = 10, // Get event channel
+    DISP_POLL_EVENT = 11,       // Poll for pending events
+    DISP_LIST_WINDOWS = 12,     // List all windows (for taskbar)
+    DISP_RESTORE_WINDOW = 13,   // Restore/focus a window
 
     // Replies
     DISP_INFO_REPLY = 0x81,
+    DISP_POLL_EVENT_REPLY = 0x84,
     DISP_CREATE_SURFACE_REPLY = 0x82,
     DISP_GENERIC_REPLY = 0x83,
+    DISP_LIST_WINDOWS_REPLY = 0x85,
 
     // Events (server -> client)
     DISP_EVENT_KEY = 0x90,
@@ -178,7 +183,77 @@ struct CloseEvent
     uint32_t surface_id;
 };
 
+// Request: Poll for events
+struct PollEventRequest
+{
+    uint32_t type; // DISP_POLL_EVENT
+    uint32_t request_id;
+    uint32_t surface_id;
+};
+
+// Reply: Poll event result
+struct PollEventReply
+{
+    uint32_t type; // DISP_POLL_EVENT_REPLY
+    uint32_t request_id;
+    int32_t has_event;    // 1 = event available, 0 = no event
+    // Event data (if has_event == 1)
+    uint32_t event_type;  // MsgType (DISP_EVENT_KEY, DISP_EVENT_MOUSE, etc.)
+    union
+    {
+        KeyEvent key;
+        MouseEvent mouse;
+        FocusEvent focus;
+        CloseEvent close;
+    };
+};
+
+// Surface flags for create
+enum SurfaceFlags : uint32_t
+{
+    SURFACE_FLAG_NONE = 0,
+    SURFACE_FLAG_SYSTEM = 1,     // System surface (taskbar, etc.) - not in window list
+    SURFACE_FLAG_NO_DECORATIONS = 2,  // No title bar or borders
+};
+
+// Window info for list response
+struct WindowInfo
+{
+    uint32_t surface_id;
+    uint32_t flags;       // SurfaceFlags
+    uint8_t minimized;
+    uint8_t maximized;
+    uint8_t focused;
+    uint8_t _pad;
+    char title[64];
+};
+
+// Request: List windows (for taskbar)
+struct ListWindowsRequest
+{
+    uint32_t type; // DISP_LIST_WINDOWS
+    uint32_t request_id;
+};
+
+// Reply: List windows
+struct ListWindowsReply
+{
+    uint32_t type; // DISP_LIST_WINDOWS_REPLY
+    uint32_t request_id;
+    int32_t status;
+    uint32_t window_count;
+    WindowInfo windows[16];  // Max 16 windows in response
+};
+
+// Request: Restore/focus a window
+struct RestoreWindowRequest
+{
+    uint32_t type; // DISP_RESTORE_WINDOW
+    uint32_t request_id;
+    uint32_t surface_id;
+};
+
 // Maximum message payload size
-constexpr size_t MAX_PAYLOAD = 256;
+constexpr size_t MAX_PAYLOAD = 512;
 
 } // namespace display_protocol

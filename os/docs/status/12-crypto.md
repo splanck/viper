@@ -350,22 +350,42 @@ The SSH library includes a simplified user-space crypto implementation:
 
 ---
 
-## Recommendations
+## Priority Recommendations: Next 5 Steps
 
-### High Priority
-1. **Memory zeroization**: Clear sensitive key material after use
-2. **Constant-time AES**: Use bitsliced implementation
-3. **TLS session resumption**: 0-RTT support
+### 1. Memory Zeroization
+**Impact:** Security-critical key material protection
+- Explicit memset_s() for key buffers after use
+- Compiler-resistant zeroization (no dead store elimination)
+- Session key cleanup on TLS/SSH close
+- Private key memory protection
 
-### Medium Priority
-1. **ECDSA support**: For certificates using secp256r1/secp384r1
-2. **TLS server mode**: For hosting HTTPS services
-3. **SSH agent protocol**: For key management
+### 2. ECDSA Support (secp256r1)
+**Impact:** Compatibility with most TLS certificates
+- Finite field arithmetic for P-256
+- ECDSA signature verification
+- Required for many commercial certificates
+- More common than Ed25519 in practice
 
-### Low Priority
-1. **Hardware acceleration**: Use NEON instructions for crypto
-2. **Post-quantum algorithms**: KYBER for key exchange
-3. **Certificate pinning**: For known hosts
+### 3. TLS Session Resumption
+**Impact:** Faster HTTPS connections
+- Session ticket storage
+- 0-RTT early data support (TLS 1.3)
+- Reduced handshake latency
+- Better user experience for web browsing
+
+### 4. NEON Hardware Acceleration
+**Impact:** Significant performance improvement
+- AES-NI equivalent via ARMv8 crypto extensions
+- SHA-256 acceleration via dedicated instructions
+- ChaCha20 vectorization with NEON
+- 3-10x speedup for crypto operations
+
+### 5. TLS Server Mode
+**Impact:** Enable HTTPS hosting
+- Server-side handshake state machine
+- Certificate chain sending
+- Private key signing for authentication
+- Required for web servers on ViperOS
 
 ---
 

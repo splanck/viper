@@ -51,6 +51,8 @@ static ServerInfo g_servers[] = {
     {"blkd", "/sys/blkd.sys", "BLKD", 0, false},
     {"netd", "/sys/netd.sys", "NETD", 0, false},
     {"fsd", "/sys/fsd.sys", "FSD", 0, false},
+    // Display server for GUI applications
+    {"displayd", "/sys/displayd.sys", "DISPLAY", 0, false},
 };
 
 static constexpr usize SERVER_COUNT = sizeof(g_servers) / sizeof(g_servers[0]);

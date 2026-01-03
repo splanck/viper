@@ -420,7 +420,7 @@ if [[ -x "$TOOLS_DIR/mkfs.viperfs" ]]; then
     # Add user programs to /c/
     for prg in hello fsd_smoke netd_smoke tls_smoke edit sftp ssh ping \
                fsinfo netstat sysinfo devices mathtest faulttest_null \
-               faulttest_illegal hello_gui; do
+               faulttest_illegal hello_gui taskbar; do
         [[ -f "$BUILD_DIR/${prg}.prg" ]] && USER_ARGS+=(--add "$BUILD_DIR/${prg}.prg:c/${prg}.prg")
     done
     # Add certificate bundle

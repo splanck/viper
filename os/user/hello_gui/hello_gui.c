@@ -122,55 +122,83 @@ int main(void)
 
     printf("Window displayed! Press Ctrl+C to exit.\n");
 
-    // Simple event loop - just keep the window alive
-    // Since we don't have proper event delivery yet, just yield
-    int counter = 0;
-    while (1)
+    // Event loop with event testing
+    int event_count = 0;
+    int running = 1;
+
+    printf("Entering event loop. Click in the window!\n");
+
+    while (running)
     {
-        // Update counter display
-        if (counter % 100 == 0)
+        // Poll for events
+        gui_event_t event;
+        if (gui_poll_event(win, &event) == 0)
         {
-            char buf[32];
-            int n = counter / 100;
+            event_count++;
 
-            // Clear counter area
-            gui_fill_rect(win, 100, 255, 200, 16, COLOR_BLUE);
+            // Clear event area and show event info
+            gui_fill_rect(win, 20, 220, 360, 60, COLOR_BLUE);
+            gui_draw_rect(win, 20, 220, 360, 60, COLOR_WHITE);
 
-            // Draw counter
-            if (n < 10)
+            char buf[64];
+
+            switch (event.type)
             {
-                buf[0] = '0' + n;
-                buf[1] = '\0';
-            }
-            else if (n < 100)
-            {
-                buf[0] = '0' + (n / 10);
-                buf[1] = '0' + (n % 10);
-                buf[2] = '\0';
-            }
-            else
-            {
-                buf[0] = '0' + (n / 100);
-                buf[1] = '0' + ((n / 10) % 10);
-                buf[2] = '0' + (n % 10);
-                buf[3] = '\0';
+                case GUI_EVENT_MOUSE:
+                    if (event.mouse.event_type == 0)
+                    {
+                        // Mouse move - show position
+                        snprintf(buf, sizeof(buf), "Mouse Move: %d, %d",
+                                 event.mouse.x, event.mouse.y);
+                    }
+                    else if (event.mouse.event_type == 1)
+                    {
+                        // Button down
+                        snprintf(buf, sizeof(buf), "Mouse Down: btn=%d at %d,%d",
+                                 event.mouse.button, event.mouse.x, event.mouse.y);
+                    }
+                    else if (event.mouse.event_type == 2)
+                    {
+                        // Button up
+                        snprintf(buf, sizeof(buf), "Mouse Up: btn=%d at %d,%d",
+                                 event.mouse.button, event.mouse.x, event.mouse.y);
+                    }
+                    gui_draw_text(win, 40, 235, buf, COLOR_WHITE);
+                    break;
+
+                case GUI_EVENT_FOCUS:
+                    snprintf(buf, sizeof(buf), "Focus: %s",
+                             event.focus.gained ? "gained" : "lost");
+                    gui_draw_text(win, 40, 235, buf, COLOR_YELLOW);
+                    break;
+
+                case GUI_EVENT_CLOSE:
+                    gui_draw_text(win, 40, 235, "Close requested!", COLOR_RED);
+                    gui_present(win);
+                    running = 0;
+                    break;
+
+                default:
+                    snprintf(buf, sizeof(buf), "Event type: %d", event.type);
+                    gui_draw_text(win, 40, 235, buf, COLOR_WHITE);
+                    break;
             }
 
-            gui_draw_text(win, 280, 255, "Count:", COLOR_WHITE);
-            gui_draw_text(win, 340, 255, buf, COLOR_YELLOW);
+            // Show event count
+            snprintf(buf, sizeof(buf), "Events: %d", event_count);
+            gui_draw_text(win, 40, 255, buf, COLOR_WHITE);
+
             gui_present(win);
         }
 
-        counter++;
-
         // Yield to other processes
-        // Using inline syscall since we're in user code
         __asm__ volatile("mov x8, #0x0E\n\t"  // SYS_YIELD
                          "svc #0"
                          ::: "x8");
     }
 
-    // Clean up (never reached)
+    // Clean up
+    printf("Cleaning up...\n");
     gui_destroy_window(win);
     gui_shutdown();
 

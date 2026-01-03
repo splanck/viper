@@ -418,6 +418,45 @@ os/
 
 ---
 
+## Priority Recommendations: Next 5 Steps
+
+### 1. GUI Mouse Event Delivery
+**Impact:** Enables interactive GUI applications
+- Route mouse click/move events from inputd → displayd → window client
+- Implement hit testing for window focus (click-to-focus)
+- Add mouse button events (left/right/middle click)
+- Required for button clicks, drag operations, and desktop interaction
+
+### 2. exec() Family Implementation
+**Impact:** Enables proper shell command execution
+- Replace current process image with new program (no new PID)
+- Required for shell `!` commands and proper process replacement
+- Implement execve(), execl(), execvp() variants
+- More Unix-like process model than current task_spawn
+
+### 3. pipe() Syscall and Shell Pipelines
+**Impact:** Enables command chaining (`ls | grep | sort`)
+- Kernel pipe object with read/write endpoints
+- FD-based pipe access for standard read()/write()
+- Shell integration for `|` operator
+- Enables powerful command composition
+
+### 4. PTY Subsystem (Pseudo-Terminals)
+**Impact:** Enables terminal emulation and SSH server
+- Kernel-side PTY master/slave pair
+- Required for GUI terminal emulator
+- Required for SSH server implementation
+- Enables job control (Ctrl+C, Ctrl+Z)
+
+### 5. Signal Handler User Trampoline
+**Impact:** POSIX-compatible signal handling
+- Complete sigaction() implementation
+- Save user context, invoke handler, restore context
+- Signal masking during handler execution
+- Enables graceful cleanup on SIGTERM/SIGINT
+
+---
+
 ## Version History
 
 - **January 2026 (v0.3.1)**: UEFI boot and GUI expansion
