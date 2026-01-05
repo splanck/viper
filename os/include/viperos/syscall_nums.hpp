@@ -386,4 +386,8 @@
 #define SYS_MAP_FRAMEBUFFER 0x111
 /** @brief Set mouse cursor bounds (width, height). */
 #define SYS_SET_MOUSE_BOUNDS 0x112
+/** @brief Check if input events are available (returns 1 if event available, 0 otherwise). */
+#define SYS_INPUT_HAS_EVENT 0x113
+/** @brief Get next input event from kernel queue (returns event type, code, value, modifiers). */
+#define SYS_INPUT_GET_EVENT 0x114
 /** @} */

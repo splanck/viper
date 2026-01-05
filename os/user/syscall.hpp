@@ -2097,4 +2097,50 @@ inline i32 set_mouse_bounds(u32 width, u32 height)
     return static_cast<i32>(r.error);
 }
 
+/**
+ * @brief Input event type.
+ */
+enum class InputEventType : u8
+{
+    None = 0,
+    KeyPress = 1,
+    KeyRelease = 2,
+    MouseMove = 3,
+    MouseButton = 4,
+};
+
+/**
+ * @brief Input event structure.
+ */
+struct InputEvent
+{
+    InputEventType type;
+    u8 modifiers;  ///< Current modifier state (Shift=1, Ctrl=2, Alt=4)
+    u16 code;      ///< Evdev key code or mouse button
+    i32 value;     ///< 1=press, 0=release, or mouse delta
+};
+
+/**
+ * @brief Check if input events are available.
+ *
+ * @return 1 if event available, 0 otherwise.
+ */
+inline i32 input_has_event()
+{
+    auto r = syscall0(SYS_INPUT_HAS_EVENT);
+    return static_cast<i32>(r.val0);
+}
+
+/**
+ * @brief Get next input event from kernel queue.
+ *
+ * @param event Output pointer for event data.
+ * @return 0 on success, VERR_WOULD_BLOCK if no event.
+ */
+inline i32 input_get_event(InputEvent *event)
+{
+    auto r = syscall1(SYS_INPUT_GET_EVENT, reinterpret_cast<u64>(event));
+    return static_cast<i32>(r.error);
+}
+
 } // namespace sys

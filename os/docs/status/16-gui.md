@@ -76,13 +76,14 @@ ViperOS provides a complete user-space GUI subsystem consisting of:
 
 #### Compositing
 - Back-to-front z-order sorting
-- Blue desktop background (#2D5A88)
-- Damage-based partial updates
+- Blue desktop background (#2D5A88) with green Viper border
+- Full-surface compositing on present
 - Software cursor with background save/restore
 
 #### Event System
 - Per-surface event queues (32 events each)
 - Event types: key, mouse, focus, close
+- Keyboard events routed from inputd to focused window
 - Non-blocking poll via DISP_POLL_EVENT
 - Click detection for decoration buttons
 
@@ -90,7 +91,12 @@ ViperOS provides a complete user-space GUI subsystem consisting of:
 - Visible/hidden
 - Minimized (excluded from compositing)
 - Maximized (moves to top-left corner)
-- Focused (receives keyboard input)
+- Focused (highlighted title bar)
+
+#### Window Interactions
+- Title bar drag to move windows
+- Resize handles on edges/corners (visual only - buffer not reallocated)
+- Click to focus and bring to front
 
 #### Surface Flags
 ```cpp
@@ -509,43 +515,36 @@ add_gui_program(taskbar taskbar/taskbar.c)
 ## Current Limitations
 
 ### Not Yet Implemented
-- Window move via title bar drag
-- Window resize via edge/corner drag
-- Keyboard focus routing to windows
+- True window resize (buffer reallocation on resize)
 - Alt+Tab window switching
 - Desktop icons
 - Right-click context menus
 - Clipboard support
 - Multiple monitors
+- Damage region tracking (partial compositing)
 
 ### Known Issues
-- Maximize only moves window (doesn't resize to fill screen)
-- No window minimum size constraints
-- Cursor flicker during fast movement
+- Maximize only moves window (doesn't resize buffer to fill screen)
+- Window resize is visual-only (frame moves but buffer stays same size)
+- No window minimum size constraints exposed to clients
+- Cursor flicker during fast movement (no double-buffering)
 
 ---
 
 ## Priority Recommendations: Next 5 Steps
 
-### 1. Title Bar Drag for Window Move
-**Impact:** Desktop-like window management
-- Track mouse down on title bar
-- Calculate offset from window origin
-- Update position on mouse move
-- Release on mouse up
-
-### 2. Keyboard Event Delivery
-**Impact:** Interactive text input
-- Route key events from inputd to displayd
-- Forward to focused window's event queue
-- Enable text editors and terminals in GUI
-
-### 3. Window Resize via Edges
+### 1. True Window Resize
 **Impact:** User-adjustable window sizes
-- Detect mouse near window edges
-- Change cursor to resize arrows
-- Handle resize drag gestures
+- Add DISP_RESIZE_SURFACE message type
 - Reallocate shared memory for new size
+- Send GUI_EVENT_RESIZE to client
+- Client remaps buffer and redraws
+
+### 3. Application Launcher
+**Impact:** Program launching from GUI
+- Add launcher button to taskbar
+- Show menu of available programs from filesystem
+- Spawn selected program via vinit
 
 ### 4. Desktop Background Image
 **Impact:** Visual polish
@@ -553,15 +552,23 @@ add_gui_program(taskbar taskbar/taskbar.c)
 - Scale/tile to screen size
 - Draw before windows in compositor
 
-### 5. Application Launcher
-**Impact:** Program launching from GUI
-- Add launcher button to taskbar
-- Show menu of available programs
-- Spawn selected program via vinit
+### 5. Cursor Type Changes
+**Impact:** Visual feedback for resize handles
+- Define resize cursor bitmaps (arrows)
+- Change cursor when over window edges
+- Indicate draggable regions to user
 
 ---
 
 ## Version History
+
+- **January 2026**: GUI improvements
+  - Implemented keyboard event routing (inputd → displayd → focused window)
+  - Implemented DISP_SET_TITLE handler (window title updates at runtime)
+  - Added event queue overflow detection
+  - Improved window cascade positioning (10 positions before repeating)
+  - Added green Viper border around desktop (matches console theme)
+  - Updated hello_gui to display key events
 
 - **January 2026**: Desktop shell framework
   - Taskbar with window list
@@ -570,6 +577,8 @@ add_gui_program(taskbar taskbar/taskbar.c)
   - Z-ordering for window stacking
   - Surface flags (SYSTEM, NO_DECORATIONS)
   - Window list protocol for taskbar
+  - Title bar drag for window moving
+  - Resize handles (visual only)
 
 - **January 2026**: Initial GUI implementation
   - displayd server with compositing

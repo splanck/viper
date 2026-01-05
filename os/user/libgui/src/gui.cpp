@@ -157,11 +157,11 @@ static bool send_request_recv_reply(const void *req, size_t req_len,
     auto ch_result = sys::channel_create();
     if (ch_result.error != 0) return false;
 
-    int32_t send_ch = static_cast<int32_t>(ch_result.val0);
-    int32_t recv_ch = static_cast<int32_t>(ch_result.val1);
+    int32_t send_ch = static_cast<int32_t>(ch_result.val0);  // CAP_WRITE - for sending
+    int32_t recv_ch = static_cast<int32_t>(ch_result.val1);  // CAP_READ - for receiving
 
-    // Send request with reply channel handle
-    uint32_t send_handles[1] = {static_cast<uint32_t>(recv_ch)};
+    // Send request with the SEND endpoint so displayd can write the reply back
+    uint32_t send_handles[1] = {static_cast<uint32_t>(send_ch)};
     int64_t err = sys::channel_send(g_display_channel, req, req_len, send_handles, 1);
     if (err != 0)
     {
@@ -170,17 +170,18 @@ static bool send_request_recv_reply(const void *req, size_t req_len,
         return false;
     }
 
-    // Wait for reply
+    // Wait for reply on the RECV endpoint (up to ~10 seconds worth of yields)
     uint32_t recv_handles[4];
     uint32_t recv_handle_count = 4;
 
-    for (uint32_t i = 0; i < 2000; i++)
+    // Note: send_ch was transferred to displayd, so we no longer own it
+    for (uint32_t i = 0; i < 100000; i++)
     {
         recv_handle_count = 4;
-        int64_t n = sys::channel_recv(send_ch, reply, reply_len, recv_handles, &recv_handle_count);
+        int64_t n = sys::channel_recv(recv_ch, reply, reply_len, recv_handles, &recv_handle_count);
         if (n > 0)
         {
-            sys::channel_close(send_ch);
+            sys::channel_close(recv_ch);
             if (out_handles && handle_count)
             {
                 for (uint32_t j = 0; j < recv_handle_count && j < *handle_count; j++)
@@ -199,7 +200,7 @@ static bool send_request_recv_reply(const void *req, size_t req_len,
         break;
     }
 
-    sys::channel_close(send_ch);
+    sys::channel_close(recv_ch);
     return false;
 }
 

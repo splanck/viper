@@ -212,7 +212,7 @@ int main(void)
 
         // Periodically refresh the window list
         update_counter++;
-        if (update_counter >= 50) {  // Every ~50 yields
+        if (update_counter >= 500) {  // Every ~500 yields (reduced frequency)
             redraw_taskbar();
             update_counter = 0;
         }

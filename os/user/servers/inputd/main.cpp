@@ -733,13 +733,13 @@ extern "C" void _start()
     g_service_channel = recv_ch;
 
     // Register with assign system
-    if (sys::assign_set("INPUTD:", send_ch) < 0)
+    if (sys::assign_set("INPUTD", send_ch) < 0)
     {
-        debug_print("[inputd] Failed to register INPUTD: assign\n");
+        debug_print("[inputd] Failed to register INPUTD assign\n");
         sys::exit(1);
     }
 
-    debug_print("[inputd] Service registered as INPUTD:\n");
+    debug_print("[inputd] Service registered as INPUTD\n");
     debug_print("[inputd] Ready.\n");
 
     // Main event loop

@@ -177,6 +177,10 @@ static constexpr uint32_t COLOR_TITLE_UNFOCUSED = 0xFF606060;
 static constexpr uint32_t COLOR_BORDER = 0xFF303030;
 static constexpr uint32_t COLOR_CLOSE_BTN = 0xFFCC4444;
 static constexpr uint32_t COLOR_WHITE = 0xFFFFFFFF;
+static constexpr uint32_t COLOR_VIPER_GREEN = 0xFF00AA44;  // Match kernel console border
+
+// Screen border (matches kernel console)
+static constexpr uint32_t SCREEN_BORDER_WIDTH = 20;
 
 // 16x16 arrow cursor (1 = white, 2 = black outline)
 static const uint8_t g_cursor_data[16 * 16] = {
@@ -525,8 +529,21 @@ static void draw_window_decorations(Surface *surf)
 // Composite all surfaces to framebuffer
 static void composite()
 {
-    // Clear desktop
-    fill_rect(0, 0, g_fb_width, g_fb_height, COLOR_DESKTOP);
+    // Draw green border around screen edges (matches kernel console theme)
+    // Top border
+    fill_rect(0, 0, g_fb_width, SCREEN_BORDER_WIDTH, COLOR_VIPER_GREEN);
+    // Bottom border
+    fill_rect(0, g_fb_height - SCREEN_BORDER_WIDTH, g_fb_width, SCREEN_BORDER_WIDTH, COLOR_VIPER_GREEN);
+    // Left border
+    fill_rect(0, 0, SCREEN_BORDER_WIDTH, g_fb_height, COLOR_VIPER_GREEN);
+    // Right border
+    fill_rect(g_fb_width - SCREEN_BORDER_WIDTH, 0, SCREEN_BORDER_WIDTH, g_fb_height, COLOR_VIPER_GREEN);
+
+    // Clear inner desktop area
+    fill_rect(SCREEN_BORDER_WIDTH, SCREEN_BORDER_WIDTH,
+              g_fb_width - 2 * SCREEN_BORDER_WIDTH,
+              g_fb_height - 2 * SCREEN_BORDER_WIDTH,
+              COLOR_DESKTOP);
 
     // Build sorted list of visible surfaces by z-order (lowest first = drawn under)
     Surface *sorted[MAX_SURFACES];
@@ -676,8 +693,10 @@ static void handle_create_surface(int32_t client_channel, const uint8_t *data, s
     surf->width = req->width;
     surf->height = req->height;
     surf->stride = stride;
-    surf->x = 100 + (surf->id % 5) * 50; // Cascade windows
-    surf->y = 100 + (surf->id % 5) * 30;
+    // Cascade windows with better spread (10 positions before repeating)
+    uint32_t cascade_idx = g_next_surface_id % 10;
+    surf->x = static_cast<int32_t>(SCREEN_BORDER_WIDTH + 40 + cascade_idx * 30);
+    surf->y = static_cast<int32_t>(SCREEN_BORDER_WIDTH + TITLE_BAR_HEIGHT + 40 + cascade_idx * 25);
     surf->visible = true;
     surf->in_use = true;
     surf->shm_handle = shm_result.handle;
@@ -820,14 +839,6 @@ static void handle_request(int32_t client_channel, const uint8_t *data, size_t l
             if (len < sizeof(SetGeometryRequest)) return;
             auto *req = reinterpret_cast<const SetGeometryRequest *>(data);
 
-            debug_print("[displayd] SET_GEOMETRY: surf=");
-            debug_print_dec(req->surface_id);
-            debug_print(" x=");
-            debug_print_dec(req->x);
-            debug_print(" y=");
-            debug_print_dec(req->y);
-            debug_print("\n");
-
             GenericReply reply;
             reply.type = DISP_GENERIC_REPLY;
             reply.request_id = req->request_id;
@@ -840,7 +851,6 @@ static void handle_request(int32_t client_channel, const uint8_t *data, size_t l
                     g_surfaces[i].x = req->x;
                     g_surfaces[i].y = req->y;
                     reply.status = 0;
-                    debug_print("[displayd] SET_GEOMETRY: updated surface\n");
                     break;
                 }
             }
@@ -872,6 +882,33 @@ static void handle_request(int32_t client_channel, const uint8_t *data, size_t l
 
             sys::channel_send(client_channel, &reply, sizeof(reply), nullptr, 0);
             composite();
+            break;
+        }
+
+        case DISP_SET_TITLE:
+        {
+            if (len < sizeof(SetTitleRequest)) return;
+            auto *req = reinterpret_cast<const SetTitleRequest *>(data);
+
+            GenericReply reply;
+            reply.type = DISP_GENERIC_REPLY;
+            reply.request_id = req->request_id;
+            reply.status = -1;
+
+            Surface *surf = find_surface_by_id(req->surface_id);
+            if (surf)
+            {
+                // Copy new title (safely)
+                for (int i = 0; i < 63 && req->title[i]; i++)
+                {
+                    surf->title[i] = req->title[i];
+                }
+                surf->title[63] = '\0';
+                reply.status = 0;
+            }
+
+            sys::channel_send(client_channel, &reply, sizeof(reply), nullptr, 0);
+            composite(); // Redraw to update title bar
             break;
         }
 
@@ -1058,7 +1095,10 @@ static void queue_mouse_event(Surface *surf, uint8_t event_type, int32_t local_x
     ev.mouse.event_type = event_type;
     ev.mouse.button = button;
     ev.mouse._pad = 0;
-    surf->event_queue.push(ev);
+    if (!surf->event_queue.push(ev))
+    {
+        // Overflow - event dropped (don't spam logs for mouse moves)
+    }
 }
 
 // Queue a focus event to a surface
@@ -1072,7 +1112,10 @@ static void queue_focus_event(Surface *surf, bool gained)
     ev.focus._pad[0] = 0;
     ev.focus._pad[1] = 0;
     ev.focus._pad[2] = 0;
-    surf->event_queue.push(ev);
+    if (!surf->event_queue.push(ev))
+    {
+        // Overflow - focus event dropped
+    }
 }
 
 // Queue a close event to a surface
@@ -1082,12 +1125,56 @@ static void queue_close_event(Surface *surf)
     ev.event_type = DISP_EVENT_CLOSE;
     ev.close.type = DISP_EVENT_CLOSE;
     ev.close.surface_id = surf->id;
-    surf->event_queue.push(ev);
+    if (!surf->event_queue.push(ev))
+    {
+        // Overflow - close event dropped
+    }
 }
 
-// Queue a resize event to a surface (just using mouse event for now)
-// Note: Full resize support needs shared memory reallocation which is complex
-// For now, we just allow visual resizing of the window frame
+// Queue a key event to a surface
+static void queue_key_event(Surface *surf, uint16_t keycode, uint8_t modifiers, bool pressed)
+{
+    QueuedEvent ev;
+    ev.event_type = DISP_EVENT_KEY;
+    ev.key.type = DISP_EVENT_KEY;
+    ev.key.surface_id = surf->id;
+    ev.key.keycode = keycode;
+    ev.key.modifiers = modifiers;
+    ev.key.pressed = pressed ? 1 : 0;
+    if (!surf->event_queue.push(ev))
+    {
+        // Overflow - key event dropped
+    }
+}
+
+// Poll kernel for keyboard events and route to focused window
+static void poll_keyboard()
+{
+    // Drain all pending events from the kernel queue (limit to 64 per call)
+    for (int i = 0; i < 64; i++)
+    {
+        // Check if input is available from kernel
+        if (sys::input_has_event() == 0) return;
+
+        // Get the event from kernel
+        sys::InputEvent ev;
+        if (sys::input_get_event(&ev) != 0) return;
+
+        // Route keyboard events to focused surface
+        if (ev.type == sys::InputEventType::KeyPress ||
+            ev.type == sys::InputEventType::KeyRelease)
+        {
+            Surface *focused = find_surface_by_id(g_focused_surface);
+            if (focused)
+            {
+                bool pressed = (ev.type == sys::InputEventType::KeyPress);
+                queue_key_event(focused, ev.code, ev.modifiers, pressed);
+            }
+        }
+        // Note: Mouse events from event_queue are discarded here since
+        // poll_mouse() uses get_mouse_state() directly for mouse position
+    }
+}
 
 static void poll_mouse()
 {
@@ -1431,10 +1518,7 @@ extern "C" void _start()
 
     while (true)
     {
-        // Poll mouse
-        poll_mouse();
-
-        // Check for client messages
+        // Check for client messages first (higher priority than input polling)
         uint32_t handle_count = 4;
         int64_t n = sys::channel_recv(g_service_channel, msg_buf, sizeof(msg_buf),
                                        handles, &handle_count);
@@ -1451,8 +1535,15 @@ extern "C" void _start()
                 // Close client reply channel after responding
                 sys::channel_close(client_ch);
             }
+            // Don't yield - check for more messages immediately
+            continue;
         }
-        else if (n == VERR_WOULD_BLOCK)
+
+        // No client messages pending - poll input devices
+        poll_mouse();
+        poll_keyboard();
+
+        if (n == VERR_WOULD_BLOCK)
         {
             sys::yield();
         }

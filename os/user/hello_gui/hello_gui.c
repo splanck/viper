@@ -166,6 +166,13 @@ int main(void)
                     gui_draw_text(win, 40, 235, buf, COLOR_WHITE);
                     break;
 
+                case GUI_EVENT_KEY:
+                    snprintf(buf, sizeof(buf), "Key %s: code=%d mod=0x%02x",
+                             event.key.pressed ? "Down" : "Up",
+                             event.key.keycode, event.key.modifiers);
+                    gui_draw_text(win, 40, 235, buf, COLOR_GREEN);
+                    break;
+
                 case GUI_EVENT_FOCUS:
                     snprintf(buf, sizeof(buf), "Focus: %s",
                              event.focus.gained ? "gained" : "lost");

@@ -4162,6 +4162,42 @@ static SyscallResult sys_set_mouse_bounds(u64 a0, u64 a1, u64, u64, u64, u64)
     return SyscallResult::ok();
 }
 
+/**
+ * @brief Check if input events are available.
+ *
+ * @return 1 if event available, 0 otherwise
+ */
+static SyscallResult sys_input_has_event(u64, u64, u64, u64, u64, u64)
+{
+    bool has = input::has_event();
+    return SyscallResult::ok(has ? 1ULL : 0ULL);
+}
+
+/**
+ * @brief Get next input event from kernel queue.
+ *
+ * @param a0 Pointer to Event structure to fill
+ * @return 0 on success with event, VERR_WOULD_BLOCK if no event
+ */
+static SyscallResult sys_input_get_event(u64 a0, u64, u64, u64, u64, u64)
+{
+    input::Event *out = reinterpret_cast<input::Event *>(a0);
+
+    if (!validate_user_write(out, sizeof(input::Event)))
+    {
+        return SyscallResult::err(error::VERR_INVALID_ARG);
+    }
+
+    input::Event ev;
+    if (input::get_event(&ev))
+    {
+        *out = ev;
+        return SyscallResult::ok();
+    }
+
+    return SyscallResult::err(error::VERR_WOULD_BLOCK);
+}
+
 // =============================================================================
 // Syscall Dispatch Table
 // =============================================================================
@@ -4315,6 +4351,8 @@ static const SyscallEntry syscall_table[] = {
     {SYS_GET_MOUSE_STATE, sys_get_mouse_state, "get_mouse_state", 1},
     {SYS_MAP_FRAMEBUFFER, sys_map_framebuffer, "map_framebuffer", 0},
     {SYS_SET_MOUSE_BOUNDS, sys_set_mouse_bounds, "set_mouse_bounds", 2},
+    {SYS_INPUT_HAS_EVENT, sys_input_has_event, "input_has_event", 0},
+    {SYS_INPUT_GET_EVENT, sys_input_get_event, "input_get_event", 1},
 };
 
 static constexpr usize SYSCALL_TABLE_SIZE = sizeof(syscall_table) / sizeof(syscall_table[0]);
