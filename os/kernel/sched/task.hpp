@@ -91,13 +91,17 @@ constexpr u8 PRIORITIES_PER_QUEUE = 32;
  */
 enum class SchedPolicy : u8
 {
-    SCHED_OTHER = 0, ///< Normal time-sharing (default)
-    SCHED_FIFO = 1,  ///< Real-time FIFO (run until yield/block)
-    SCHED_RR = 2     ///< Real-time round-robin (time sliced)
+    SCHED_OTHER = 0,    ///< Normal time-sharing (default)
+    SCHED_FIFO = 1,     ///< Real-time FIFO (run until yield/block)
+    SCHED_RR = 2,       ///< Real-time round-robin (time sliced)
+    SCHED_DEADLINE = 3  ///< Deadline scheduler (EDF)
 };
 
 /** @brief Default real-time time slice in ticks (100ms for SCHED_RR). */
 constexpr u32 RT_TIME_SLICE_DEFAULT = 100;
+
+/** @brief Default CPU affinity mask (all CPUs allowed). */
+constexpr u32 CPU_AFFINITY_ALL = 0xFFFFFFFF;
 
 } // namespace task
 
@@ -248,6 +252,17 @@ struct Task
     u32 time_slice;     // Remaining time slice ticks
     u8 priority;        // Priority (0=highest, 255=lowest, default 128)
     SchedPolicy policy; // Scheduling policy (SCHED_OTHER, SCHED_FIFO, SCHED_RR)
+    u32 cpu_affinity;   // CPU affinity mask (bit N = can run on CPU N)
+
+    // CFS (Completely Fair Scheduler) fields
+    u64 vruntime;  // Virtual runtime for CFS (nanoseconds, scaled by weight)
+    i8 nice;       // Nice value (-20 to +19, default 0)
+
+    // SCHED_DEADLINE fields (EDF - Earliest Deadline First)
+    u64 dl_runtime;   // Maximum runtime per period (nanoseconds)
+    u64 dl_deadline;  // Relative deadline (nanoseconds)
+    u64 dl_period;    // Period length (nanoseconds)
+    u64 dl_abs_deadline; // Absolute deadline (timer tick when deadline expires)
 
     Task *next; // Next task in queue (ready/wait queue)
     Task *prev; // Previous task in queue
@@ -391,6 +406,44 @@ i32 set_policy(Task *t, SchedPolicy policy);
  * @return Scheduling policy, or SCHED_OTHER if task is null.
  */
 SchedPolicy get_policy(Task *t);
+
+/**
+ * @brief Set the CPU affinity mask for a task.
+ *
+ * @param t Task to modify.
+ * @param mask Bitmask of allowed CPUs (bit N = CPU N allowed).
+ * @return 0 on success, -1 on error.
+ */
+i32 set_affinity(Task *t, u32 mask);
+
+/**
+ * @brief Get the CPU affinity mask for a task.
+ *
+ * @param t Task to query.
+ * @return CPU affinity mask, or CPU_AFFINITY_ALL if task is null.
+ */
+u32 get_affinity(Task *t);
+
+/**
+ * @brief Set the nice value for a task.
+ *
+ * @details
+ * Nice values range from -20 (highest priority) to +19 (lowest priority).
+ * Default is 0. Used by CFS for weight-based scheduling.
+ *
+ * @param t Task to modify.
+ * @param nice New nice value (-20 to +19).
+ * @return 0 on success, -1 on error.
+ */
+i32 set_nice(Task *t, i8 nice);
+
+/**
+ * @brief Get the nice value for a task.
+ *
+ * @param t Task to query.
+ * @return Nice value (-20 to +19), or 0 if task is null.
+ */
+i8 get_nice(Task *t);
 
 /**
  * @brief Look up a task by its numeric ID.

@@ -1,5 +1,6 @@
 #include "task.hpp"
 #include "../../include/viperos/task_info.hpp"
+#include "../arch/aarch64/cpu.hpp"
 #include "../arch/aarch64/exceptions.hpp"
 #include "../console/serial.hpp"
 #include "../include/constants.hpp"
@@ -8,6 +9,7 @@
 #include "../mm/vmm.hpp"
 #include "../viper/address_space.hpp"
 #include "../viper/viper.hpp"
+#include "idle.hpp"
 #include "scheduler.hpp"
 #include "signal.hpp"
 #include "wait.hpp"
@@ -184,7 +186,10 @@ void idle_task_fn(void *)
 {
     while (true)
     {
+        u32 cpu_id = cpu::current_id();
+        idle::enter(cpu_id);
         asm volatile("wfi");
+        idle::exit(cpu_id);
     }
 }
 } // namespace
@@ -209,6 +214,13 @@ void init()
     idle_task->flags = TASK_FLAG_KERNEL | TASK_FLAG_IDLE;
     idle_task->time_slice = TIME_SLICE_DEFAULT;
     idle_task->priority = PRIORITY_LOWEST; // Lowest priority
+    idle_task->cpu_affinity = CPU_AFFINITY_ALL;
+    idle_task->vruntime = 0;
+    idle_task->nice = 0;
+    idle_task->dl_runtime = 0;
+    idle_task->dl_deadline = 0;
+    idle_task->dl_period = 0;
+    idle_task->dl_abs_deadline = 0;
     idle_task->next = nullptr;
     idle_task->prev = nullptr;
     idle_task->kernel_stack = allocate_kernel_stack();
@@ -286,6 +298,13 @@ Task *create(const char *name, TaskEntry entry, void *arg, u32 flags)
     t->time_slice = TIME_SLICE_DEFAULT;
     t->priority = PRIORITY_DEFAULT;
     t->policy = SchedPolicy::SCHED_OTHER; // Default to normal scheduling
+    t->cpu_affinity = CPU_AFFINITY_ALL;   // Can run on any CPU
+    t->vruntime = 0;                      // Start with zero vruntime (CFS)
+    t->nice = 0;                          // Default nice value (CFS)
+    t->dl_runtime = 0;                    // SCHED_DEADLINE: no deadline by default
+    t->dl_deadline = 0;
+    t->dl_period = 0;
+    t->dl_abs_deadline = 0;
     t->next = nullptr;
     t->prev = nullptr;
     t->wait_channel = nullptr;
@@ -430,6 +449,13 @@ Task *create_user_task(const char *name, void *viper_ptr, u64 entry, u64 stack)
     t->time_slice = TIME_SLICE_DEFAULT;
     t->priority = PRIORITY_DEFAULT;
     t->policy = SchedPolicy::SCHED_OTHER; // Default to normal scheduling
+    t->cpu_affinity = CPU_AFFINITY_ALL;   // Can run on any CPU
+    t->vruntime = 0;                      // Start with zero vruntime (CFS)
+    t->nice = 0;                          // Default nice value (CFS)
+    t->dl_runtime = 0;                    // SCHED_DEADLINE: no deadline by default
+    t->dl_deadline = 0;
+    t->dl_period = 0;
+    t->dl_abs_deadline = 0;
     t->next = nullptr;
     t->prev = nullptr;
     t->wait_channel = nullptr;
@@ -609,6 +635,52 @@ SchedPolicy get_policy(Task *t)
     if (!t)
         return SchedPolicy::SCHED_OTHER;
     return t->policy;
+}
+
+/** @copydoc task::set_affinity */
+i32 set_affinity(Task *t, u32 mask)
+{
+    if (!t)
+        return -1;
+
+    // Must have at least one CPU allowed
+    if (mask == 0)
+        return -1;
+
+    t->cpu_affinity = mask;
+    return 0;
+}
+
+/** @copydoc task::get_affinity */
+u32 get_affinity(Task *t)
+{
+    if (!t)
+        return CPU_AFFINITY_ALL;
+    return t->cpu_affinity;
+}
+
+/** @copydoc task::set_nice */
+i32 set_nice(Task *t, i8 nice)
+{
+    if (!t)
+        return -1;
+
+    // Clamp to valid range (-20 to +19)
+    if (nice < -20)
+        nice = -20;
+    if (nice > 19)
+        nice = 19;
+
+    t->nice = nice;
+    return 0;
+}
+
+/** @copydoc task::get_nice */
+i8 get_nice(Task *t)
+{
+    if (!t)
+        return 0;
+    return t->nice;
 }
 
 /** @copydoc task::get_by_id */

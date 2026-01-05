@@ -4,7 +4,7 @@
 **Scope:** Full kernel source code review (`/os/kernel/`)
 **Version:** 0.3.1
 **Last Updated:** January 2026
-**Status:** 43 of 94 issues fixed
+**Status:** 49 of 94 issues fixed
 
 This document catalogs issues found during a comprehensive kernel code review. Issues are categorized by severity and subsystem, with detailed work scope for each fix.
 
@@ -397,7 +397,7 @@ Issues that cause incorrect behavior or have security implications.
 
 | # | Issue | Location | Description | Work Scope | Status |
 |---|-------|----------|-------------|------------|--------|
-| 1 | ✅ User pointer validation incomplete | `syscall/table.cpp:169-170` | Only checks address range, not page table mapping | Add `is_user_mapped()` check that walks page tables | Fixed |
+| 1 | User pointer validation incomplete | `syscall/table.cpp:169-170` | Only checks address range, not page table mapping | Add `is_user_mapped()` check that walks page tables | Medium |
 | 2 | ✅ Integer overflow in size validation | `syscall/table.cpp:500+` | `count * sizeof()` can overflow | Use `__builtin_mul_overflow` or check before multiply | Fixed |
 | 3 | TOCTOU on user strings | `syscall/table.cpp:190-213` | String validated but read again later | Copy to kernel buffer once, use copy for all operations | Medium |
 | 4 | ✅ `sys_kill` no permission check | `syscall/table.cpp:2670-2713` | Can signal any task | Add check: same UID, or CAP_KILL capability | Fixed |
@@ -419,7 +419,7 @@ Issues that cause incorrect behavior or have security implications.
 | 1 | No locking in fork() | `viper/viper.cpp:588-658` | Parent PTEs modified without synchronization | Add address space lock, hold during COW setup | Medium |
 | 2 | Race between exit() and wait() | `viper/viper.cpp:472-558` | Child list modification not synchronized | Add viper_lock for child list modifications | Medium |
 | 3 | COW refcount not properly initialized | `viper/address_space.cpp:559-574` | Pages start at refcount 0 | Initialize refcount to 1 on first mapping, increment on COW share | Medium |
-| 4 | ✅ sbrk partial allocation leak | `viper/viper.cpp:710-736` | Failed allocation doesn't unmap | Track allocated pages, unmap all on failure | Fixed |
+| 4 | sbrk partial allocation leak | `viper/viper.cpp:710-736` | Failed allocation doesn't unmap | Track allocated pages, unmap all on failure | Medium |
 | 5 | ✅ setpgid allows cross-process modification | `viper/viper.cpp:786-826` | No permission check | Add check: target must be self, child, or same session | Fixed |
 
 ### Filesystem
@@ -427,7 +427,7 @@ Issues that cause incorrect behavior or have security implications.
 | # | Issue | Location | Description | Work Scope | Status |
 |---|-------|----------|-------------|------------|--------|
 | 1 | ✅ Block leak in alloc_zeroed_block | `fs/viperfs/viperfs.cpp:431-455` | Block leaked on cache failure | Free allocated block if cache().get() fails | Fixed |
-| 2 | ✅ Symlink block leak on failure | `fs/viperfs/viperfs.cpp:1529-1605` | Data blocks not freed | Track allocated blocks, free all on symlink creation failure | Fixed |
+| 2 | Symlink block leak on failure | `fs/viperfs/viperfs.cpp:1529-1605` | Data blocks not freed | Track allocated blocks, free all on symlink creation failure | Medium |
 | 3 | ✅ Missing rec_len validation | `fs/viperfs/viperfs.cpp:776-801` | Can cause infinite loop or overflow | Validate rec_len >= MIN_DIRENT_SIZE and <= remaining space | Fixed |
 | 4 | ✅ Indirect block no bounds check | `fs/viperfs/viperfs.cpp:637-651` | index >= 512 reads out of bounds | Add bounds check: index < (BLOCK_SIZE / sizeof(u64)) | Fixed |
 | 5 | Inode modifications without lock | `fs/viperfs/viperfs.cpp:691+` | atime/mtime modified without fs_lock | Hold fs_lock or use per-inode lock for metadata updates | Medium |
@@ -499,12 +499,12 @@ Minor issues, optimizations, and cleanup.
 
 | # | Issue | Location | Description | Work Scope |
 |---|-------|----------|-------------|------------|
-| 1 | ✅ Unused trampoline_msg | `sched/context.S:111-112` | String defined but never used | Remove if truly unused |
+| 1 | Unused trampoline_msg | `sched/context.S:111-112` | String defined but never used | Remove if truly unused |
 | 2 | make_cow_readonly() never called | `viper/address_space.cpp:588-638` | Dead function | Remove or document future use |
 | 3 | mem_entries_ in GPU | `drivers/virtio/gpu.cpp:288-308` | Set but never used | Remove or implement usage |
 | 4 | events_[] array in input | `drivers/virtio/input.cpp:217-221` | Copied but never read | Remove or implement event processing |
-| 5 | ✅ pending_count_ unused | `drivers/virtio/input.hpp:246` | `[[maybe_unused]]` tag | Remove if not needed |
-| 6 | ✅ VA_BITS constant unused | `mm/vmm.cpp:36` | Declared, never used | Remove |
+| 5 | pending_count_ unused | `drivers/virtio/input.hpp:246` | `[[maybe_unused]]` tag | Remove if not needed |
+| 6 | VA_BITS constant unused | `mm/vmm.cpp:36` | Declared, never used | Remove |
 | 7 | args field in Viper | `viper/viper.hpp:82` | Never set or used | Remove or implement |
 
 ### Performance Optimizations
@@ -521,7 +521,7 @@ Minor issues, optimizations, and cleanup.
 
 | # | Issue | Location | Description | Work Scope |
 |---|-------|----------|-------------|------------|
-| 1 | ✅ Magic page mask 0xFFF | `mm/vma.cpp:121,258,272` | Should use PAGE_MASK constant | Replace with (PAGE_SIZE - 1) or PAGE_MASK |
+| 1 | Magic page mask 0xFFF | `mm/vma.cpp:121,258,272` | Should use PAGE_MASK constant | Replace with (PAGE_SIZE - 1) or PAGE_MASK |
 | 2 | Infinite loops without timeout | Multiple locations | Polling loops | Add reasonable timeouts to all polling |
 | 3 | `(void)` unused parameter casts | Multiple locations | Some with comments, some without | Standardize: use `[[maybe_unused]]` |
 

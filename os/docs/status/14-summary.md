@@ -47,7 +47,7 @@ The system is fully functional for QEMU bring-up with:
 | blkd | 95% | VirtIO-blk with IRQ |
 | consoled | 95% | Console output |
 | inputd | 95% | Keyboard/mouse input |
-| displayd | 90% | Desktop shell with taskbar, window management |
+| displayd | 80% | Window compositing (event delivery in progress) |
 
 ### Drivers (100% Complete for QEMU)
 
@@ -70,7 +70,7 @@ The system is fully functional for QEMU bring-up with:
 | Text Rendering | 100% | Scaled 10x20 font |
 | ANSI Escape Codes | 100% | Cursor, colors, clearing |
 | Blinking Cursor | 100% | 500ms interval |
-| Scrollback Buffer | 100% | 1000 lines, Shift+Up/Down navigation |
+| Scrollback Buffer | 100% | 1000 lines |
 | Green Border | 100% | 4px + 4px padding |
 
 ### Filesystem (95% Complete)
@@ -120,7 +120,7 @@ The system is fully functional for QEMU bring-up with:
 | C++ headers | 85% | 66 header files |
 | libnetclient | 95% | netd client |
 | libfsclient | 95% | fsd client |
-| libgui | 90% | displayd client, window list, drawing helpers |
+| libgui | 80% | displayd client |
 | libtls | 90% | TLS 1.3 |
 | libhttp | 90% | HTTP client |
 | libssh | 85% | SSH-2, SFTP |
@@ -201,9 +201,9 @@ The system is fully functional for QEMU bring-up with:
    - Signal infrastructure exists
    - Need: User handler invocation trampoline
 
-5. **GUI Window Drag/Resize**
-   - Mouse events delivered but window drag not implemented
-   - Blocks: Desktop-like window management
+5. **GUI Mouse Events**
+   - Mouse events detected but not delivered to windows
+   - Blocks: Interactive GUI applications
 
 ### Medium Priority
 
@@ -369,17 +369,14 @@ cd os
 - **Dynamic sizing**: Console adapts to framebuffer resolution
 
 ### GUI Subsystem
-- **Display server (displayd)**: Window compositing with z-ordering
+- **Display server (displayd)**: Window compositing
 - **libgui library**: Client API for GUI applications
-- **Window decorations**: Title bar, border, minimize/maximize/close buttons
-- **Desktop taskbar**: Window list, click to restore/focus
-- **Per-surface event queues**: Keyboard, mouse, focus, close events
+- **Window decorations**: Title bar, border, close button
 - **Software cursor**: 16x16 arrow with background save
 
 ### New Applications
 - **edit**: Nano-like text editor with file save/load
 - **hello_gui**: GUI demo with window creation
-- **taskbar**: Desktop shell taskbar
 - **devices**: Hardware device listing
 - **fsinfo**: Filesystem information display
 
@@ -393,11 +390,11 @@ ViperOS v0.3.1 represents a complete microkernel architecture with UEFI boot, SM
 
 ## Priority Recommendations: Next 5 Steps
 
-### 1. GUI Window Drag and Resize
-**Impact:** Desktop-like window management
-- Title bar drag for window movement
-- Edge/corner drag for resizing
-- Minimum window size constraints
+### 1. GUI Mouse Event Delivery
+**Impact:** Interactive graphical applications
+- Complete inputd → displayd → window event pipeline
+- Click-to-focus window activation
+- Enable buttons, menus, drag operations
 - Foundation for usable desktop environment
 
 ### 2. exec() and pipe() Implementation

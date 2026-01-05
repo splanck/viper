@@ -211,9 +211,9 @@ extern "C" int gui_init(void)
 {
     if (g_initialized) return 0;
 
-    // Connect to displayd via DISPLAY: assign
+    // Connect to displayd via DISPLAY assign
     uint32_t handle = 0xFFFFFFFFu;
-    if (sys::assign_get("DISPLAY:", &handle) != 0 || handle == 0xFFFFFFFFu)
+    if (sys::assign_get("DISPLAY", &handle) != 0 || handle == 0xFFFFFFFFu)
     {
         return -1;  // displayd not available
     }

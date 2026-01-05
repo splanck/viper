@@ -37,6 +37,7 @@ static Spinlock vmm_lock;
 constexpr u64 ENTRIES_PER_TABLE = 512;
 
 // Address bits per level
+constexpr u64 VA_BITS = 48;
 constexpr u64 PAGE_SHIFT = 12;
 
 // Extract table indices from virtual address

@@ -68,6 +68,10 @@
 #define SYS_FORK 0x0B
 /** @brief Spawn a new user process from a SharedMemory region containing an ELF image. */
 #define SYS_TASK_SPAWN_SHM 0x0C
+/** @brief Set CPU affinity mask for a task. */
+#define SYS_SCHED_SETAFFINITY 0x0D
+/** @brief Get CPU affinity mask for a task. */
+#define SYS_SCHED_GETAFFINITY 0x0E
 /** @} */
 
 /** @name Channel IPC Syscalls (0x10 - 0x1F)

@@ -125,14 +125,6 @@ The kernel console is always available, while the user-space servers provide IPC
 | `scroll_up(lines)` | Scroll up n lines |
 | `scroll_down(lines)` | Scroll down n lines (scrollback) |
 
-**Keyboard Navigation:**
-| Keys | Action |
-|------|--------|
-| Shift+Up | Scroll up 1 line in scrollback |
-| Shift+Down | Scroll down 1 line toward current |
-| Shift+PageUp | Scroll up 10 lines |
-| Shift+PageDown | Scroll down 10 lines |
-
 **Default Colors (Viper Theme):**
 | Color | RGB | Usage |
 |-------|-----|-------|
@@ -338,10 +330,8 @@ The following features have been implemented since initial documentation:
 
 - ANSI escape sequence support (cursor, colors, clearing)
 - Blinking cursor with show/hide control
-- Scrollback buffer (1000 lines × 200 columns circular buffer)
+- Scrollback buffer (1000 lines)
 - Dynamic console sizing based on framebuffer resolution
-- Keyboard scrollback navigation (Shift+Up/Down, Shift+PageUp/PageDown)
-- Decorative green border with 8px inset
 
 ## Priority Recommendations: Next 5 Steps
 

@@ -350,13 +350,13 @@ extern "C" void _start()
     g_service_channel = recv_ch;
 
     // Register with assign system
-    if (sys::assign_set("CONSOLED:", send_ch) < 0)
+    if (sys::assign_set("CONSOLED", send_ch) < 0)
     {
-        debug_print("[consoled] Failed to register CONSOLED: assign\n");
+        debug_print("[consoled] Failed to register CONSOLED assign\n");
         sys::exit(1);
     }
 
-    debug_print("[consoled] Service registered as CONSOLED:\n");
+    debug_print("[consoled] Service registered as CONSOLED\n");
     debug_print("[consoled] Ready.\n");
 
     // Main event loop

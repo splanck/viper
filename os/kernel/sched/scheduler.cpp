@@ -4,6 +4,9 @@
 #include "../lib/spinlock.hpp"
 #include "../viper/address_space.hpp"
 #include "../viper/viper.hpp"
+#include "cfs.hpp"
+#include "deadline.hpp"
+#include "idle.hpp"
 #include "task.hpp"
 
 /**
@@ -158,29 +161,114 @@ void enqueue_locked(task::Task *t)
  */
 task::Task *dequeue_locked()
 {
-    // Check queues from highest priority (0) to lowest (7)
+    u32 cpu_id = cpu::current_id();
+    u32 cpu_mask = (1u << cpu_id);
+
+    // First pass: find earliest deadline task (SCHED_DEADLINE has highest priority)
+    task::Task *dl_best = nullptr;
+    for (u8 i = 0; i < task::NUM_PRIORITY_QUEUES; i++)
+    {
+        task::Task *t = priority_queues[i].head;
+        while (t)
+        {
+            if ((t->cpu_affinity & cpu_mask) &&
+                t->policy == task::SchedPolicy::SCHED_DEADLINE)
+            {
+                if (!dl_best || deadline::earlier_deadline(t, dl_best))
+                {
+                    dl_best = t;
+                }
+            }
+            t = t->next;
+        }
+    }
+
+    // If we found a deadline task, return it
+    if (dl_best)
+    {
+        PriorityQueue &queue = priority_queues[priority_to_queue(dl_best->priority)];
+
+        if (dl_best->prev)
+            dl_best->prev->next = dl_best->next;
+        else
+            queue.head = dl_best->next;
+
+        if (dl_best->next)
+            dl_best->next->prev = dl_best->prev;
+        else
+            queue.tail = dl_best->prev;
+
+        dl_best->next = nullptr;
+        dl_best->prev = nullptr;
+        return dl_best;
+    }
+
+    // Check queues from highest priority (0) to lowest (7) for RT and SCHED_OTHER
     for (u8 i = 0; i < task::NUM_PRIORITY_QUEUES; i++)
     {
         PriorityQueue &queue = priority_queues[i];
+        if (!queue.head)
+            continue;
 
-        if (queue.head)
+        // For CFS: find the task with lowest vruntime that can run on this CPU
+        // RT tasks (SCHED_FIFO/RR) still use FIFO ordering
+        task::Task *best = nullptr;
+        task::Task *t = queue.head;
+
+        while (t)
         {
-            task::Task *t = queue.head;
-            queue.head = t->next;
-
-            if (queue.head)
+            // Check CPU affinity - can this task run on current CPU?
+            if (t->cpu_affinity & cpu_mask)
             {
-                queue.head->prev = nullptr;
+                // Skip deadline tasks (handled above)
+                if (t->policy == task::SchedPolicy::SCHED_DEADLINE)
+                {
+                    t = t->next;
+                    continue;
+                }
+
+                // RT tasks: take first one (FIFO within priority)
+                if (t->policy == task::SchedPolicy::SCHED_FIFO ||
+                    t->policy == task::SchedPolicy::SCHED_RR)
+                {
+                    best = t;
+                    break;
+                }
+
+                // SCHED_OTHER: select by lowest vruntime (CFS)
+                if (!best || t->vruntime < best->vruntime)
+                {
+                    best = t;
+                }
+            }
+            t = t->next;
+        }
+
+        if (best)
+        {
+            // Remove best from queue
+            if (best->prev)
+            {
+                best->prev->next = best->next;
             }
             else
             {
-                queue.tail = nullptr;
+                queue.head = best->next;
             }
 
-            t->next = nullptr;
-            t->prev = nullptr;
+            if (best->next)
+            {
+                best->next->prev = best->prev;
+            }
+            else
+            {
+                queue.tail = best->prev;
+            }
 
-            return t;
+            best->next = nullptr;
+            best->prev = nullptr;
+
+            return best;
         }
     }
 
@@ -240,31 +328,116 @@ task::Task *dequeue_percpu_locked(u32 cpu_id)
         return dequeue_locked(); // Fall back to global
     }
 
+    u32 cpu_mask = (1u << cpu_id);
     PerCpuScheduler &sched = per_cpu_sched[cpu_id];
 
+    // First pass: find earliest deadline task (SCHED_DEADLINE has highest priority)
+    task::Task *dl_best = nullptr;
+    for (u8 i = 0; i < task::NUM_PRIORITY_QUEUES; i++)
+    {
+        task::Task *t = sched.queues[i].head;
+        while (t)
+        {
+            if ((t->cpu_affinity & cpu_mask) &&
+                t->policy == task::SchedPolicy::SCHED_DEADLINE)
+            {
+                if (!dl_best || deadline::earlier_deadline(t, dl_best))
+                {
+                    dl_best = t;
+                }
+            }
+            t = t->next;
+        }
+    }
+
+    // If we found a deadline task, return it
+    if (dl_best)
+    {
+        PriorityQueue &queue = sched.queues[priority_to_queue(dl_best->priority)];
+
+        if (dl_best->prev)
+            dl_best->prev->next = dl_best->next;
+        else
+            queue.head = dl_best->next;
+
+        if (dl_best->next)
+            dl_best->next->prev = dl_best->prev;
+        else
+            queue.tail = dl_best->prev;
+
+        dl_best->next = nullptr;
+        dl_best->prev = nullptr;
+        sched.total_tasks--;
+        return dl_best;
+    }
+
+    // Check queues for RT and SCHED_OTHER tasks
     for (u8 i = 0; i < task::NUM_PRIORITY_QUEUES; i++)
     {
         PriorityQueue &queue = sched.queues[i];
+        if (!queue.head)
+            continue;
 
-        if (queue.head)
+        // For CFS: find the task with lowest vruntime that can run on this CPU
+        // RT tasks (SCHED_FIFO/RR) still use FIFO ordering
+        task::Task *best = nullptr;
+        task::Task *t = queue.head;
+
+        while (t)
         {
-            task::Task *t = queue.head;
-            queue.head = t->next;
-
-            if (queue.head)
+            // Check CPU affinity
+            if (t->cpu_affinity & cpu_mask)
             {
-                queue.head->prev = nullptr;
+                // Skip deadline tasks (handled above)
+                if (t->policy == task::SchedPolicy::SCHED_DEADLINE)
+                {
+                    t = t->next;
+                    continue;
+                }
+
+                // RT tasks: take first one (FIFO within priority)
+                if (t->policy == task::SchedPolicy::SCHED_FIFO ||
+                    t->policy == task::SchedPolicy::SCHED_RR)
+                {
+                    best = t;
+                    break;
+                }
+
+                // SCHED_OTHER: select by lowest vruntime (CFS)
+                if (!best || t->vruntime < best->vruntime)
+                {
+                    best = t;
+                }
+            }
+            t = t->next;
+        }
+
+        if (best)
+        {
+            // Remove best from queue
+            if (best->prev)
+            {
+                best->prev->next = best->next;
             }
             else
             {
-                queue.tail = nullptr;
+                queue.head = best->next;
             }
 
-            t->next = nullptr;
-            t->prev = nullptr;
+            if (best->next)
+            {
+                best->next->prev = best->prev;
+            }
+            else
+            {
+                queue.tail = best->prev;
+            }
+
+            best->next = nullptr;
+            best->prev = nullptr;
             sched.total_tasks--;
 
-            return t;
+            return best;
         }
     }
 
@@ -277,6 +450,8 @@ task::Task *dequeue_percpu_locked(u32 cpu_id)
  */
 task::Task *steal_task(u32 current_cpu)
 {
+    u32 cpu_mask = (1u << current_cpu);
+
     // Try each other CPU
     for (u32 i = 0; i < cpu::MAX_CPUS; i++)
     {
@@ -296,30 +471,44 @@ task::Task *steal_task(u32 current_cpu)
         for (i8 q = task::NUM_PRIORITY_QUEUES - 1; q >= 4; q--)
         {
             PriorityQueue &queue = victim.queues[q];
-            if (queue.tail && queue.tail != queue.head)
+
+            // Find a stealable task that can run on current CPU
+            task::Task *t = queue.tail;
+            while (t && t != queue.head)
             {
-                // Steal from tail (oldest task in queue)
-                task::Task *stolen = queue.tail;
-                queue.tail = stolen->prev;
-
-                if (queue.tail)
+                // Check CPU affinity before stealing
+                if (t->cpu_affinity & cpu_mask)
                 {
-                    queue.tail->next = nullptr;
+                    // Remove from queue
+                    if (t->prev)
+                    {
+                        t->prev->next = t->next;
+                    }
+                    else
+                    {
+                        queue.head = t->next;
+                    }
+
+                    if (t->next)
+                    {
+                        t->next->prev = t->prev;
+                    }
+                    else
+                    {
+                        queue.tail = t->prev;
+                    }
+
+                    t->next = nullptr;
+                    t->prev = nullptr;
+                    victim.total_tasks--;
+                    victim.migrations++;
+
+                    victim.lock.release();
+
+                    per_cpu_sched[current_cpu].steals++;
+                    return t;
                 }
-                else
-                {
-                    queue.head = nullptr;
-                }
-
-                stolen->next = nullptr;
-                stolen->prev = nullptr;
-                victim.total_tasks--;
-                victim.migrations++;
-
-                victim.lock.release();
-
-                per_cpu_sched[current_cpu].steals++;
-                return stolen;
+                t = t->prev;
             }
         }
 
@@ -392,6 +581,9 @@ void init()
 
     context_switch_count = 0;
     running = false;
+
+    // Initialize idle state tracking
+    idle::init();
 
     serial::puts("[sched] Priority scheduler initialized (8 queues, per-CPU support)\n");
 }
@@ -556,7 +748,14 @@ void schedule()
     next->state = task::TaskState::Running;
 
     // Set time slice based on scheduling policy
-    if (next->policy == task::SchedPolicy::SCHED_FIFO)
+    if (next->policy == task::SchedPolicy::SCHED_DEADLINE)
+    {
+        // SCHED_DEADLINE: Time slice from runtime budget (ns -> ticks, 1 tick = 1ms)
+        next->time_slice = static_cast<u32>(next->dl_runtime / 1000000);
+        if (next->time_slice == 0)
+            next->time_slice = 1; // Minimum 1 tick
+    }
+    else if (next->policy == task::SchedPolicy::SCHED_FIFO)
     {
         // SCHED_FIFO: Infinite time slice (run until yield/block)
         next->time_slice = 0xFFFFFFFF;
@@ -711,10 +910,15 @@ void tick()
                 }
                 else
                 {
-                    // SCHED_OTHER: Normal time-sharing
+                    // SCHED_OTHER: Normal time-sharing with CFS vruntime
                     if (current->time_slice > 0)
                     {
                         current->time_slice--;
+
+                        // Update vruntime: 1 tick = 1ms = 1,000,000ns
+                        // vruntime is scaled by weight (higher nice = faster vruntime growth)
+                        u64 delta_ns = 1000000; // 1ms per tick
+                        current->vruntime += cfs::calc_vruntime_delta(delta_ns, current->nice);
                     }
                 }
             }
@@ -788,7 +992,13 @@ void preempt()
     first->state = task::TaskState::Running;
 
     // Set time slice based on scheduling policy
-    if (first->policy == task::SchedPolicy::SCHED_FIFO)
+    if (first->policy == task::SchedPolicy::SCHED_DEADLINE)
+    {
+        first->time_slice = static_cast<u32>(first->dl_runtime / 1000000);
+        if (first->time_slice == 0)
+            first->time_slice = 1;
+    }
+    else if (first->policy == task::SchedPolicy::SCHED_FIFO)
     {
         first->time_slice = 0xFFFFFFFF;
     }

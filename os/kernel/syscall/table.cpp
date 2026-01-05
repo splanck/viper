@@ -46,7 +46,6 @@
 #include "../lib/spinlock.hpp"
 #include "../loader/loader.hpp"
 #include "../mm/pmm.hpp"
-#include "../mm/vma.hpp"
 #include "../sched/scheduler.hpp"
 #include "../sched/signal.hpp"
 #include "../sched/task.hpp"
@@ -154,47 +153,6 @@ static bool is_valid_user_address(u64 addr, usize size)
     return true;
 }
 
-/**
- * @brief Check if an address range is covered by valid VMAs with required permissions.
- * @param addr Start address
- * @param size Size of range
- * @param need_write true if write permission is required
- * @return true if the range is valid
- */
-static bool check_vma_range(u64 addr, usize size, bool need_write)
-{
-    viper::Viper *v = viper::current();
-    if (!v)
-    {
-        // No current process - allow for kernel context
-        return true;
-    }
-
-    // Check each page in the range is covered by a VMA with correct permissions
-    u64 end = addr + size;
-    u64 page_addr = addr & ~(pmm::PAGE_SIZE - 1);
-
-    while (page_addr < end)
-    {
-        mm::Vma *vma = v->vma_list.find(page_addr);
-        if (!vma)
-        {
-            return false; // Address not in any VMA
-        }
-
-        // Check write permission if required
-        if (need_write && !(vma->prot & mm::vma_prot::WRITE))
-        {
-            return false;
-        }
-
-        // Skip to next page (or end of this VMA, whichever is smaller)
-        page_addr += pmm::PAGE_SIZE;
-    }
-
-    return true;
-}
-
 bool validate_user_read(const void *ptr, usize size, bool null_ok)
 {
     if (!ptr)
@@ -208,12 +166,7 @@ bool validate_user_read(const void *ptr, usize size, bool null_ok)
         return false;
     }
 
-    // Check address is in a valid VMA
-    if (!check_vma_range(addr, size, false))
-    {
-        return false;
-    }
-
+    // TODO: When user mode is implemented, also check memory is mapped
     return true;
 }
 
@@ -230,12 +183,7 @@ bool validate_user_write(void *ptr, usize size, bool null_ok)
         return false;
     }
 
-    // Check address is in a writable VMA
-    if (!check_vma_range(addr, size, true))
-    {
-        return false;
-    }
-
+    // TODO: When user mode is implemented, also check memory is mapped
     return true;
 }
 
@@ -601,6 +549,58 @@ static SyscallResult sys_task_get_priority(u64 a0, u64, u64, u64, u64, u64)
     }
 
     return SyscallResult::ok(static_cast<u64>(task::get_priority(target)));
+}
+
+static SyscallResult sys_sched_setaffinity(u64 a0, u64 a1, u64, u64, u64, u64)
+{
+    u32 task_id = static_cast<u32>(a0);
+    u32 mask = static_cast<u32>(a1);
+
+    task::Task *cur = task::current();
+    if (!cur)
+    {
+        return SyscallResult::err(error::VERR_NOT_FOUND);
+    }
+
+    // Task ID 0 means current task
+    task::Task *target = (task_id == 0) ? cur : task::get_by_id(task_id);
+    if (!target)
+    {
+        return SyscallResult::err(error::VERR_NOT_FOUND);
+    }
+
+    // Only allow setting own affinity or children's affinity
+    if (target->id != cur->id && target->parent_id != cur->id)
+    {
+        return SyscallResult::err(error::VERR_PERMISSION);
+    }
+
+    i32 result = task::set_affinity(target, mask);
+    if (result < 0)
+    {
+        return SyscallResult::err(error::VERR_INVALID_ARG);
+    }
+    return SyscallResult::ok();
+}
+
+static SyscallResult sys_sched_getaffinity(u64 a0, u64, u64, u64, u64, u64)
+{
+    u32 task_id = static_cast<u32>(a0);
+
+    task::Task *cur = task::current();
+    if (!cur)
+    {
+        return SyscallResult::err(error::VERR_NOT_FOUND);
+    }
+
+    // Task ID 0 means current task
+    task::Task *target = (task_id == 0) ? cur : task::get_by_id(task_id);
+    if (!target)
+    {
+        return SyscallResult::err(error::VERR_NOT_FOUND);
+    }
+
+    return SyscallResult::ok(static_cast<u64>(task::get_affinity(target)));
 }
 
 static SyscallResult sys_wait(u64 a0, u64, u64, u64, u64, u64)
@@ -4187,6 +4187,8 @@ static const SyscallEntry syscall_table[] = {
     {SYS_SBRK, sys_sbrk, "sbrk", 1},
     {SYS_FORK, sys_fork, "fork", 0},
     {SYS_TASK_SPAWN_SHM, sys_task_spawn_shm, "task_spawn_shm", 5},
+    {SYS_SCHED_SETAFFINITY, sys_sched_setaffinity, "sched_setaffinity", 2},
+    {SYS_SCHED_GETAFFINITY, sys_sched_getaffinity, "sched_getaffinity", 1},
 
     // Channel IPC (0x10-0x1F)
     {SYS_CHANNEL_CREATE, sys_channel_create, "channel_create", 0},

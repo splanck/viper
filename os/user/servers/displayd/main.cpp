@@ -1415,14 +1415,14 @@ extern "C" void _start()
     int32_t recv_ch = static_cast<int32_t>(ch_result.val1);
     g_service_channel = recv_ch;
 
-    // Register as DISPLAY:
-    if (sys::assign_set("DISPLAY:", send_ch) < 0)
+    // Register as DISPLAY
+    if (sys::assign_set("DISPLAY", send_ch) < 0)
     {
-        debug_print("[displayd] Failed to register DISPLAY: assign\n");
+        debug_print("[displayd] Failed to register DISPLAY assign\n");
         sys::exit(1);
     }
 
-    debug_print("[displayd] Service registered as DISPLAY:\n");
+    debug_print("[displayd] Service registered as DISPLAY\n");
     debug_print("[displayd] Ready.\n");
 
     // Main event loop

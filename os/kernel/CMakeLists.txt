@@ -49,6 +49,9 @@ set(KERNEL_SOURCES
         sched/scheduler.cpp
         sched/wait.cpp
         sched/signal.cpp
+        sched/idle.cpp
+        sched/pi.cpp
+        sched/deadline.cpp
         syscall/dispatch.cpp
         syscall/table.cpp
         ipc/channel.cpp

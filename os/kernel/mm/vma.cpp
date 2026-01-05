@@ -114,8 +114,7 @@ const Vma *VmaList::find(u64 addr) const
 Vma *VmaList::add(u64 start, u64 end, u32 prot, VmaType type)
 {
     // Validate alignment (no lock needed for validation)
-    constexpr u64 PAGE_MASK = pmm::PAGE_SIZE - 1;
-    if ((start & PAGE_MASK) != 0 || (end & PAGE_MASK) != 0)
+    if ((start & 0xFFF) != 0 || (end & 0xFFF) != 0)
     {
         serial::puts("[vma] ERROR: Addresses must be page-aligned\n");
         return nullptr;
@@ -260,7 +259,7 @@ FaultResult handle_demand_fault(VmaList *vma_list,
     }
 
     // Page-align the fault address
-    u64 page_addr = pmm::page_align_down(fault_addr);
+    u64 page_addr = fault_addr & ~0xFFFULL;
 
     // Find the VMA containing this address
     Vma *vma = vma_list->find(fault_addr);

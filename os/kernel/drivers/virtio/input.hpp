@@ -243,6 +243,7 @@ class InputDevice : public Device
     // Event buffers
     InputEvent events_[INPUT_EVENT_BUFFERS];
     u64 events_phys_{0};
+    [[maybe_unused]] u32 pending_count_{0};
 
     // Device info
     char name_[128];
