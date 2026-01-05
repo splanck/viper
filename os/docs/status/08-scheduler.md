@@ -1,12 +1,21 @@
 # Scheduler and Task Management
 
-**Status:** Complete priority-based preemptive scheduler with SMP support
+**Status:** Complete priority-based preemptive scheduler with SMP support, CFS fair scheduling, deadline scheduling (EDF), and priority inheritance
 **Location:** `kernel/sched/`
-**SLOC:** ~3,600
+**SLOC:** ~4,500
 
 ## Overview
 
-The scheduler subsystem provides priority-based preemptive scheduling for both kernel and user-mode tasks. It implements 8 priority queues with FIFO ordering within each priority level, time-slice based preemption, and support for real-time scheduling policies.
+The scheduler subsystem provides priority-based preemptive scheduling for both kernel and user-mode tasks. It implements:
+
+- **8 priority queues** with configurable time slices per priority level
+- **CFS (Completely Fair Scheduler)** with vruntime tracking and nice values for SCHED_OTHER tasks
+- **Real-time scheduling** (SCHED_FIFO and SCHED_RR) with priority over normal tasks
+- **Deadline scheduling** (SCHED_DEADLINE) with EDF ordering and bandwidth reservation
+- **CPU affinity** for binding tasks to specific CPUs
+- **Priority inheritance** mutexes to prevent priority inversion
+- **SMP support** with per-CPU run queues, work stealing, and load balancing
+- **Idle state tracking** with WFI (Wait For Interrupt) power management
 
 ## Architecture
 
@@ -93,12 +102,19 @@ inline u32 time_slice_for_priority(u8 priority) {
 
 ## Scheduling Policies
 
-### SCHED_OTHER (Default)
+The scheduler supports four scheduling policies with the following priority hierarchy:
 
-- Normal time-sharing scheduling
-- Priority-based queue selection
-- Time-slice preemption
-- Round-robin within priority level
+```
+SCHED_DEADLINE > SCHED_FIFO/SCHED_RR > SCHED_OTHER
+```
+
+### SCHED_DEADLINE (Highest Priority)
+
+- **Earliest Deadline First (EDF)** ordering
+- Tasks with earliest absolute deadline run first
+- Bandwidth reservation (runtime/period/deadline parameters)
+- Admission control ensures CPU capacity isn't overcommitted
+- Time slice derived from runtime budget
 
 ### SCHED_FIFO (Real-time)
 
@@ -114,11 +130,20 @@ inline u32 time_slice_for_priority(u8 priority) {
 - Preempts SCHED_OTHER tasks
 - Round-robin at same priority
 
+### SCHED_OTHER (Default)
+
+- **CFS (Completely Fair Scheduler)** with vruntime
+- Tasks with lowest vruntime selected first
+- Nice values (-20 to +19) affect vruntime growth rate
+- Higher nice = faster vruntime growth = less CPU time
+- Priority-based queue selection for coarse-grained priority
+
 ```cpp
 enum class SchedPolicy : u8 {
-    SCHED_OTHER = 0, // Normal time-sharing
-    SCHED_FIFO = 1,  // Real-time FIFO
-    SCHED_RR = 2     // Real-time round-robin
+    SCHED_OTHER = 0,    // Normal time-sharing (CFS)
+    SCHED_FIFO = 1,     // Real-time FIFO
+    SCHED_RR = 2,       // Real-time round-robin
+    SCHED_DEADLINE = 3  // Deadline scheduling (EDF)
 };
 ```
 
@@ -156,13 +181,26 @@ struct Task {
     u32 time_slice;            // Remaining time slice
     char name[32];             // Human-readable name
 
+    // CPU affinity
+    u32 cpu_affinity;          // Bitmask of allowed CPUs (bit N = CPU N)
+
+    // CFS (Completely Fair Scheduler) fields
+    u64 vruntime;              // Virtual runtime (nanoseconds, scaled by weight)
+    i8 nice;                   // Nice value (-20 to +19, default 0)
+
+    // SCHED_DEADLINE fields (EDF)
+    u64 dl_runtime;            // Maximum runtime per period (nanoseconds)
+    u64 dl_deadline;           // Relative deadline (nanoseconds)
+    u64 dl_period;             // Period length (nanoseconds)
+    u64 dl_abs_deadline;       // Absolute deadline (current deadline tick)
+
     // CPU context
-    u64 sp;                    // Stack pointer
-    u64 pc;                    // Program counter
-    Context context;           // Saved registers
+    TaskContext context;       // Saved callee-saved registers
+    TrapFrame *trap_frame;     // For syscalls/interrupts
 
     // Memory
-    void *kernel_stack;        // 16KB kernel stack
+    u8 *kernel_stack;          // 16KB kernel stack
+    u8 *kernel_stack_top;      // Stack top (initial SP)
     viper::Viper *viper;       // Owning process
 
     // Statistics
@@ -173,6 +211,12 @@ struct Task {
     u32 parent_id;             // Parent task ID
     i32 exit_code;             // Exit status
 };
+```
+
+### CPU Affinity Constants
+
+```cpp
+constexpr u32 CPU_AFFINITY_ALL = 0xFFFFFFFF;  // Can run on any CPU
 ```
 
 ### Stack Configuration
@@ -343,6 +387,286 @@ void channel_send(Channel *ch, const void *data) {
 
 ---
 
+## CFS Fair Scheduling
+
+The CFS (Completely Fair Scheduler) implementation provides fair CPU time distribution for SCHED_OTHER tasks based on virtual runtime tracking.
+
+### Virtual Runtime (vruntime)
+
+Each task maintains a `vruntime` that tracks weighted CPU time:
+
+```cpp
+// Update vruntime on each tick (1ms)
+u64 delta_ns = 1000000;  // 1ms in nanoseconds
+current->vruntime += cfs::calc_vruntime_delta(delta_ns, current->nice);
+```
+
+Tasks with **lower vruntime** are selected first, ensuring fair CPU distribution.
+
+### Nice Values
+
+Nice values range from -20 (highest priority) to +19 (lowest priority):
+
+| Nice | Weight | Effect |
+|------|--------|--------|
+| -20 | 88761 | Runs ~15x more than nice 0 |
+| -10 | 9548 | Runs ~9x more than nice 0 |
+| 0 | 1024 | Default weight |
+| +10 | 110 | Runs ~9x less than nice 0 |
+| +19 | 15 | Runs ~68x less than nice 0 |
+
+### Weight Tables
+
+```cpp
+// Nice to weight mapping (partial)
+constexpr u32 NICE_TO_WEIGHT[40] = {
+    /* -20 */ 88761, 71755, 56483, 46273, 36291,
+    /* -15 */ 29154, 23254, 18705, 14949, 11916,
+    /* -10 */ 9548, 7620, 6100, 4904, 3906,
+    /*  -5 */ 3121, 2501, 1991, 1586, 1277,
+    /*   0 */ 1024, 820, 655, 526, 423,
+    /*   5 */ 335, 272, 215, 172, 137,
+    /*  10 */ 110, 87, 70, 56, 45,
+    /*  15 */ 36, 29, 23, 18, 15,
+};
+```
+
+### Task Selection
+
+```cpp
+// In dequeue: select SCHED_OTHER task with lowest vruntime
+task::Task *best = nullptr;
+for (task::Task *t = queue.head; t; t = t->next) {
+    if (t->policy == task::SchedPolicy::SCHED_OTHER) {
+        if (!best || t->vruntime < best->vruntime) {
+            best = t;
+        }
+    }
+}
+```
+
+---
+
+## Deadline Scheduling (SCHED_DEADLINE)
+
+SCHED_DEADLINE implements Earliest Deadline First (EDF) scheduling with bandwidth reservation.
+
+### Deadline Parameters
+
+```cpp
+struct DeadlineParams {
+    u64 runtime;   // Maximum runtime per period (nanoseconds)
+    u64 deadline;  // Relative deadline (nanoseconds)
+    u64 period;    // Period length (nanoseconds)
+};
+```
+
+**Constraints:** `runtime <= deadline <= period`
+
+### Bandwidth Reservation
+
+```cpp
+// Bandwidth = runtime / period (as fraction of CPU)
+constexpr u64 MAX_TOTAL_BANDWIDTH = 950;  // 95% max (reserve 5% for non-DL tasks)
+
+inline u64 calc_bandwidth(const DeadlineParams *params) {
+    return (params->runtime * 1000) / params->period;  // Parts per thousand
+}
+
+inline bool can_admit(u64 new_bandwidth) {
+    return (total_bandwidth + new_bandwidth) <= MAX_TOTAL_BANDWIDTH;
+}
+```
+
+### EDF Task Selection
+
+SCHED_DEADLINE tasks are selected **before** all other policies:
+
+```cpp
+// First pass: find deadline task with earliest absolute deadline
+task::Task *dl_best = nullptr;
+for (u8 i = 0; i < NUM_PRIORITY_QUEUES; i++) {
+    for (task::Task *t = queues[i].head; t; t = t->next) {
+        if (t->policy == task::SchedPolicy::SCHED_DEADLINE) {
+            if (!dl_best || t->dl_abs_deadline < dl_best->dl_abs_deadline) {
+                dl_best = t;
+            }
+        }
+    }
+}
+if (dl_best) return dl_best;  // Deadline tasks have highest priority
+```
+
+### API
+
+```cpp
+namespace deadline {
+    i32 set_deadline(task::Task *t, const DeadlineParams *params);
+    void clear_deadline(task::Task *t);
+    void replenish(task::Task *t, u64 current_time);
+    bool earlier_deadline(const task::Task *a, const task::Task *b);
+}
+```
+
+---
+
+## CPU Affinity
+
+Tasks can be restricted to run on specific CPUs using a bitmask.
+
+### Affinity Mask
+
+```cpp
+u32 cpu_affinity;  // Bit N set = task can run on CPU N
+constexpr u32 CPU_AFFINITY_ALL = 0xFFFFFFFF;  // Default: all CPUs
+```
+
+### Scheduler Integration
+
+The scheduler checks affinity when selecting tasks:
+
+```cpp
+u32 cpu_mask = (1u << cpu::current_id());
+
+// Only select tasks that can run on this CPU
+if (t->cpu_affinity & cpu_mask) {
+    // Task can run on current CPU
+}
+```
+
+Work stealing also respects affinity:
+
+```cpp
+// Only steal tasks that can run on the stealing CPU
+if (t->cpu_affinity & cpu_mask) {
+    // Safe to steal
+}
+```
+
+### API
+
+```cpp
+i32 task::set_affinity(Task *t, u32 mask);  // Returns 0 on success, -1 on error
+u32 task::get_affinity(Task *t);            // Returns mask (CPU_AFFINITY_ALL if null)
+```
+
+### Syscalls
+
+```cpp
+// SYS_SCHED_SETAFFINITY (0x0D)
+// a0 = task_id (0 = current), a1 = affinity mask
+// Returns 0 on success
+
+// SYS_SCHED_GETAFFINITY (0x0E)
+// a0 = task_id (0 = current)
+// Returns affinity mask
+```
+
+---
+
+## Priority Inheritance
+
+Priority inheritance (PI) mutexes prevent priority inversion by temporarily boosting the priority of a mutex holder when a higher-priority task is waiting.
+
+### PI Mutex Structure
+
+```cpp
+struct PiMutex {
+    Spinlock lock;              // Protects mutex state
+    task::Task *owner;          // Current owner (nullptr if unlocked)
+    u8 owner_original_priority; // Owner's priority before boost
+    u8 boosted_priority;        // Current boosted priority
+    bool initialized;
+};
+```
+
+### Priority Boosting
+
+When a high-priority task fails to acquire a mutex:
+
+```cpp
+void contend(PiMutex *m, task::Task *waiter) {
+    task::Task *owner = m->owner;
+    if (waiter->priority < owner->priority) {
+        // Boost owner to waiter's priority
+        owner->priority = waiter->priority;
+        m->boosted_priority = waiter->priority;
+    }
+}
+```
+
+### Priority Restoration
+
+When the mutex is released:
+
+```cpp
+void unlock(PiMutex *m) {
+    task::Task *cur = task::current();
+    if (cur->priority != m->owner_original_priority) {
+        cur->priority = m->owner_original_priority;  // Restore
+    }
+    m->owner = nullptr;
+}
+```
+
+### API
+
+```cpp
+namespace pi {
+    void init_mutex(PiMutex *m);
+    bool try_lock(PiMutex *m);
+    void contend(PiMutex *m, task::Task *waiter);  // Boost if needed
+    void unlock(PiMutex *m);
+    bool is_locked(PiMutex *m);
+    task::Task *get_owner(PiMutex *m);
+    void boost_priority(task::Task *t, u8 new_priority);
+    void restore_priority(task::Task *t);
+}
+```
+
+---
+
+## Idle State Management
+
+The idle subsystem tracks CPU idle states for power management.
+
+### Idle Statistics
+
+```cpp
+struct IdleStats {
+    u64 wfi_count;     // Number of WFI instructions executed
+    u64 wakeup_count;  // Number of wakeups from idle
+};
+```
+
+### Idle Task Integration
+
+The idle task calls tracking functions around WFI:
+
+```cpp
+void idle_task_fn(void *) {
+    while (true) {
+        u32 cpu_id = cpu::current_id();
+        idle::enter(cpu_id);   // Record entering idle
+        asm volatile("wfi");   // Wait For Interrupt
+        idle::exit(cpu_id);    // Record wakeup
+    }
+}
+```
+
+### API
+
+```cpp
+namespace idle {
+    void init();
+    void enter(u32 cpu_id);
+    void exit(u32 cpu_id);
+    void get_stats(u32 cpu_id, IdleStats *stats);
+}
+```
+
+---
+
 ## Syscalls
 
 | Syscall | Number | Description |
@@ -357,6 +681,8 @@ void channel_send(Channel *ch, const void *data) {
 | SYS_TASK_GET_PRIORITY | 0x07 | Get task priority |
 | SYS_WAIT | 0x08 | Wait for any child |
 | SYS_WAITPID | 0x09 | Wait for specific child |
+| SYS_SCHED_SETAFFINITY | 0x0D | Set CPU affinity mask |
+| SYS_SCHED_GETAFFINITY | 0x0E | Get CPU affinity mask |
 | SYS_SLEEP | 0x31 | Sleep for duration |
 
 ---
@@ -365,15 +691,22 @@ void channel_send(Channel *ch, const void *data) {
 
 | File | Lines | Description |
 |------|-------|-------------|
-| `task.hpp` | ~350 | Task structures and constants |
-| `task.cpp` | ~800 | Task management |
+| `task.hpp` | ~550 | Task structures, constants, affinity/nice APIs |
+| `task.cpp` | ~900 | Task management, affinity, nice value handling |
 | `scheduler.hpp` | ~200 | Scheduler interface |
-| `scheduler.cpp` | ~500 | Priority queue scheduling |
+| `scheduler.cpp` | ~1100 | Priority queues, CFS vruntime, EDF, affinity checks |
 | `context.S` | ~150 | Context switch assembly |
 | `wait.hpp` | ~100 | Wait queue interface |
 | `wait.cpp` | ~200 | Wait queue implementation |
 | `signal.hpp` | ~150 | Signal definitions |
 | `signal.cpp` | ~400 | Signal handling |
+| `cfs.hpp` | ~120 | CFS weight tables and vruntime calculation |
+| `deadline.hpp` | ~130 | Deadline parameters and EDF utilities |
+| `deadline.cpp` | ~90 | Deadline admission control and replenishment |
+| `pi.hpp` | ~110 | Priority inheritance mutex interface |
+| `pi.cpp` | ~170 | PI mutex implementation |
+| `idle.hpp` | ~60 | Idle state tracking interface |
+| `idle.cpp` | ~70 | Per-CPU idle statistics |
 
 ---
 
@@ -591,39 +924,45 @@ void dump_smp_stats();
 
 ---
 
-## Priority Recommendations: Next 5 Steps
+## Completed Advanced Features
 
-### 1. CPU Affinity Syscalls (sched_setaffinity)
-**Impact:** User-space control over task placement
-- Bitmask-based CPU affinity per task
-- sched_setaffinity()/sched_getaffinity() syscalls
-- Honor affinity in scheduler and work stealing
-- Required for performance-critical applications
+All five priority scheduler enhancements have been implemented and are fully operational:
 
-### 2. Deadline Scheduler (SCHED_DEADLINE)
-**Impact:** Real-time scheduling for latency-sensitive tasks
-- EDF (Earliest Deadline First) scheduling
-- Bandwidth reservation (runtime/period/deadline)
-- Admission control for CPU capacity
-- Better real-time guarantees than SCHED_FIFO
+### 1. CPU Affinity ✅
+**Status:** Complete
+- Bitmask-based CPU affinity per task (`cpu_affinity` field)
+- `SYS_SCHED_SETAFFINITY` (0x0D) / `SYS_SCHED_GETAFFINITY` (0x0E) syscalls
+- Scheduler respects affinity in both `dequeue_locked()` and `dequeue_percpu_locked()`
+- Work stealing only steals tasks compatible with stealing CPU's mask
+- **Files:** `task.hpp`, `task.cpp`, `scheduler.cpp`
 
-### 3. CFS-style Fair Scheduling
-**Impact:** Better fairness for interactive workloads
-- Virtual runtime tracking per task
-- Red-black tree for O(log n) scheduling
-- Nice value support (-20 to +19)
-- Better responsiveness under load
+### 2. Deadline Scheduler (SCHED_DEADLINE) ✅
+**Status:** Complete
+- EDF (Earliest Deadline First) scheduling via `dl_abs_deadline`
+- Bandwidth reservation parameters: `dl_runtime`, `dl_deadline`, `dl_period`
+- Admission control with 95% max bandwidth cap
+- SCHED_DEADLINE tasks preempt RT and SCHED_OTHER tasks
+- **Files:** `deadline.hpp`, `deadline.cpp`, `scheduler.cpp`
 
-### 4. CPU Idle States
-**Impact:** Power efficiency
-- WFI (Wait For Interrupt) when queue empty
-- Deeper sleep states via PSCI
-- Idle governor for state selection
-- Reduced power consumption
+### 3. CFS Fair Scheduling ✅
+**Status:** Complete
+- Virtual runtime tracking (`vruntime` field, nanoseconds)
+- Nice value support (-20 to +19) with weight tables
+- `tick()` updates vruntime using `cfs::calc_vruntime_delta()`
+- Dequeue selects lowest vruntime among SCHED_OTHER tasks
+- **Files:** `cfs.hpp`, `scheduler.cpp`
 
-### 5. Priority Inheritance for Mutexes
-**Impact:** Avoid priority inversion
-- Track mutex ownership in kernel
-- Boost holder priority when high-priority waiter
-- Restore original priority on release
-- Required for correct real-time behavior
+### 4. CPU Idle State Tracking ✅
+**Status:** Complete
+- WFI enter/exit tracking in idle task via `idle::enter()`/`idle::exit()`
+- Per-CPU idle statistics (WFI count, wakeup count)
+- Integrated with idle_task_fn in task.cpp
+- **Files:** `idle.hpp`, `idle.cpp`, `task.cpp`
+
+### 5. Priority Inheritance Mutexes ✅
+**Status:** Complete
+- `PiMutex` structure with owner tracking and priority storage
+- `pi::contend()` boosts owner when high-priority task waits
+- `pi::unlock()` restores original priority
+- Prevents priority inversion in critical sections
+- **Files:** `pi.hpp`, `pi.cpp`

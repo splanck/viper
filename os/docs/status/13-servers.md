@@ -13,9 +13,9 @@ ViperOS follows a microkernel architecture where device drivers and system servi
 | **netd** | NETD: | ~3,200 | TCP/IP network stack |
 | **fsd** | FSD: | ~3,100 | Filesystem operations |
 | **blkd** | BLKD: | ~700 | Block device access |
-| **consoled** | CONSOLED: | ~600 | Console output |
-| **inputd** | INPUTD: | ~1,000 | Keyboard/mouse input |
-| **displayd** | DISPLAY: | ~1,700 | Window management, GUI |
+| **consoled** | CONSOLED | ~600 | Console output |
+| **inputd** | INPUTD | ~1,000 | Keyboard/mouse input |
+| **displayd** | DISPLAY | ~1,700 | Window management, GUI |
 
 ## Architecture
 
@@ -296,7 +296,7 @@ namespace blk {
 
 **Location:** `user/servers/consoled/`
 **Status:** Complete
-**Registration:** `sys::assign_set("CONSOLED:", channel_handle)`
+**Registration:** `sys::assign_set("CONSOLED", channel_handle)`
 
 ### Files
 
@@ -352,7 +352,7 @@ namespace console_protocol {
 
 **Location:** `user/servers/inputd/`
 **Status:** Complete
-**Registration:** `sys::assign_set("INPUTD:", channel_handle)`
+**Registration:** `sys::assign_set("INPUTD", channel_handle)`
 
 ### Files
 

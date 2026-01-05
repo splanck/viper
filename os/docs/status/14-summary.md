@@ -31,7 +31,7 @@ The system is fully functional for QEMU bring-up with:
 | VBoot Bootloader | 100% | UEFI, GOP, ELF loading |
 | Boot/Init | 100% | QEMU virt, PSCI multicore |
 | Memory Management | 100% | PMM, VMM, COW, buddy, slab |
-| Priority Scheduler | 100% | 8 priority queues, SMP, work stealing |
+| Priority Scheduler | 100% | 8 priority queues, SMP, CFS, EDF, priority inheritance |
 | IPC Channels | 100% | Send, recv, handle transfer |
 | Capability System | 95% | Tables, rights, derivation |
 | Device Primitives | 100% | MAP_DEVICE, IRQ, DMA, framebuffer |
@@ -152,7 +152,7 @@ The system is fully functional for QEMU bring-up with:
 
 ### Kernel Services (EL1)
 
-- Priority-based scheduler (8 queues, SMP with work stealing)
+- Priority-based scheduler (8 queues, SMP, CFS, EDF, priority inheritance)
 - Physical/virtual memory management (demand paging, COW)
 - IPC channels with handle transfer
 - Capability tables (per-process)
@@ -166,9 +166,9 @@ The system is fully functional for QEMU bring-up with:
 | netd | NETD: | TCP/IP stack, sockets, DNS |
 | fsd | FSD: | Filesystem operations |
 | blkd | BLKD: | Block device I/O |
-| consoled | CONSOLED: | Console output |
-| inputd | INPUTD: | Keyboard/mouse |
-| displayd | DISPLAY: | Window management, GUI |
+| consoled | CONSOLED | Console output |
+| inputd | INPUTD | Keyboard/mouse |
+| displayd | DISPLAY | Window management, GUI |
 
 ### Build Configuration
 
@@ -249,7 +249,7 @@ The system is fully functional for QEMU bring-up with:
 | VBoot Bootloader | ~1,700 |
 | Architecture | ~3,600 |
 | Memory Management | ~5,550 |
-| Scheduler | ~3,600 |
+| Scheduler | ~4,500 |
 | IPC | ~2,500 |
 | Filesystem | ~9,600 |
 | Drivers | ~6,000 |
@@ -356,11 +356,15 @@ cd os
 - **Two-disk architecture**: Separate system and user disks
 - **ESP creation**: Automated EFI System Partition generation
 
-### SMP Improvements
+### SMP and Scheduler Improvements
 - **Per-CPU run queues**: Private priority queues per CPU
 - **Work stealing**: Automatic task stealing when queue empty
 - **Load balancing**: Periodic task migration (100ms intervals)
-- **CPU affinity**: Explicit task-to-CPU binding
+- **CPU affinity**: Explicit task-to-CPU binding (bitmask per task)
+- **CFS Fair Scheduling**: vruntime tracking with nice values (-20 to +19)
+- **SCHED_DEADLINE**: EDF ordering with bandwidth reservation (95% max)
+- **Priority Inheritance**: PI mutexes prevent priority inversion
+- **Idle State Tracking**: WFI enter/exit statistics per CPU
 
 ### Graphics Console
 - **ANSI escape codes**: Cursor positioning, colors, clearing

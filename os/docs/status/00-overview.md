@@ -34,7 +34,7 @@ The system is designed for QEMU's `virt` machine but is structured for future ha
 | Drivers (VirtIO/fw_cfg) | ~6,000 | Complete for QEMU (blk, net, gpu, rng, input) |
 | Filesystem (VFS/ViperFS) | ~9,600 | Complete (journal, inode cache, block cache) |
 | IPC (Channels/Poll) | ~2,500 | Complete |
-| Scheduler/Tasks | ~3,600 | Complete (8-level priority, SMP, work stealing) |
+| Scheduler/Tasks | ~4,500 | Complete (8-level priority, SMP, CFS, EDF, priority inheritance) |
 | Viper/Capabilities | ~2,900 | Complete (handle-based access, rights derivation) |
 | User-Space Servers | ~10,500 | Complete (netd, fsd, blkd, consoled, inputd, displayd) |
 | User Space (libc/C++/libs) | ~55,000 | Complete (libc, libhttp, libtls, libssh, libgui) |
@@ -54,7 +54,7 @@ The system is designed for QEMU's `virt` machine but is structured for future ha
 | [05-filesystem.md](05-filesystem.md) | VFS, ViperFS, block cache, inode cache, journal |
 | [06-ipc.md](06-ipc.md) | Channels, poll, poll sets, capability transfer |
 | [07-networking.md](07-networking.md) | User-space TCP/IP stack via netd server |
-| [08-scheduler.md](08-scheduler.md) | Priority-based scheduler, SMP, work stealing |
+| [08-scheduler.md](08-scheduler.md) | Priority-based scheduler, SMP, CFS, EDF, priority inheritance |
 | [09-viper-process.md](09-viper-process.md) | Viper processes, address spaces, VMA, capabilities |
 | [10-userspace.md](10-userspace.md) | vinit, libc, C++ runtime, applications, GUI |
 | [11-tools.md](11-tools.md) | mkfs.viperfs, fsck.viperfs, gen_roots_der |
@@ -199,9 +199,9 @@ This separation enables:
 | netd | NETD: | TCP/IP stack, DNS, socket API |
 | fsd | FSD: | Filesystem operations via blkd |
 | blkd | BLKD: | VirtIO-blk device access |
-| consoled | CONSOLED: | Console output |
-| inputd | INPUTD: | Keyboard/mouse input |
-| displayd | DISPLAY: | Window management, GUI compositing |
+| consoled | CONSOLED | Console output |
+| inputd | INPUTD | Keyboard/mouse input |
+| displayd | DISPLAY | Window management, GUI compositing |
 
 ---
 
@@ -224,9 +224,16 @@ This separation enables:
 ### SMP Support
 - Multi-core scheduling with per-CPU run queues
 - Work stealing for load balancing
-- CPU affinity support
+- CPU affinity support (bitmask per task)
 - IPI-based reschedule notifications
 - Per-CPU statistics tracking
+
+### Advanced Scheduling Features
+- **CFS (Completely Fair Scheduler)**: vruntime tracking with nice values (-20 to +19)
+- **SCHED_DEADLINE**: Earliest Deadline First (EDF) with bandwidth reservation
+- **SCHED_FIFO/RR**: Real-time scheduling policies
+- **Priority Inheritance**: PI mutexes prevent priority inversion
+- **Idle State Tracking**: WFI enter/exit statistics per CPU
 
 ### Message-Passing IPC
 - Bidirectional channels (up to 256 bytes/message)
