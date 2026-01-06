@@ -137,6 +137,43 @@ static usize common_prefix(const char *a, const char *b)
 }
 
 // =============================================================================
+// Input Abstraction
+// =============================================================================
+
+// Special key codes (negative values)
+static constexpr i32 KEY_UP_ARROW = -103;
+static constexpr i32 KEY_DOWN_ARROW = -108;
+static constexpr i32 KEY_LEFT_ARROW = -105;
+static constexpr i32 KEY_RIGHT_ARROW = -106;
+
+// Get a character from the appropriate input source
+// Returns positive for ASCII chars, negative for special keys
+static i32 get_input_char()
+{
+    if (is_console_ready())
+    {
+        return getchar_from_console();
+    }
+    else
+    {
+        return static_cast<i32>(static_cast<u8>(sys::getchar()));
+    }
+}
+
+// Try to get a character without blocking (for CRLF handling)
+static i32 try_get_input_char()
+{
+    if (is_console_ready())
+    {
+        return try_getchar_from_console();
+    }
+    else
+    {
+        return sys::try_getchar();
+    }
+}
+
+// =============================================================================
 // Readline
 // =============================================================================
 
@@ -151,10 +188,71 @@ usize readline(char *buf, usize maxlen)
 
     while (len < maxlen - 1)
     {
-        char c = sys::getchar();
+        i32 input = get_input_char();
 
-        // Handle escape sequences
-        if (c == '\033')
+        // Handle special keys from consoled (negative values)
+        if (input < 0)
+        {
+            switch (input)
+            {
+                case KEY_UP_ARROW:
+                    if (history_index > 0)
+                    {
+                        if (history_index == history_count && len > 0)
+                        {
+                            for (usize i = 0; i <= len; i++)
+                                saved_line[i] = buf[i];
+                        }
+                        history_index--;
+                        usize first =
+                            (history_count > HISTORY_SIZE) ? (history_count - HISTORY_SIZE) : 0;
+                        if (history_index >= first)
+                        {
+                            const char *hist = history_get(history_index);
+                            if (hist)
+                                replace_line(buf, &len, &pos, hist);
+                        }
+                    }
+                    continue;
+                case KEY_DOWN_ARROW:
+                    if (history_index < history_count)
+                    {
+                        history_index++;
+                        if (history_index == history_count)
+                        {
+                            replace_line(buf, &len, &pos, saved_line);
+                        }
+                        else
+                        {
+                            const char *hist = history_get(history_index);
+                            if (hist)
+                                replace_line(buf, &len, &pos, hist);
+                        }
+                    }
+                    continue;
+                case KEY_LEFT_ARROW:
+                    if (pos > 0)
+                    {
+                        cursor_left(1);
+                        pos--;
+                    }
+                    continue;
+                case KEY_RIGHT_ARROW:
+                    if (pos < len)
+                    {
+                        cursor_right(1);
+                        pos++;
+                    }
+                    continue;
+                default:
+                    continue;  // Unknown special key
+            }
+        }
+
+        char c = static_cast<char>(input);
+
+        // Handle escape sequences (only when using kernel console)
+        if (c == '\033' && !is_console_ready())
         {
             char c2 = sys::getchar();
             if (c2 == '[')
@@ -280,7 +378,7 @@ usize readline(char *buf, usize maxlen)
             // the next foreground program (e.g., password prompts).
             if (c == '\r')
             {
-                i32 next = sys::try_getchar();
+                i32 next = try_get_input_char();
                 if (next == '\n')
                 {
                     // consumed

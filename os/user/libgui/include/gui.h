@@ -340,6 +340,35 @@ void gui_draw_text(gui_window_t *win, uint32_t x, uint32_t y,
                    const char *text, uint32_t color);
 
 /**
+ * @brief Draw a single character with foreground and background colors.
+ * @param win Window handle.
+ * @param x X position.
+ * @param y Y position.
+ * @param c Character to draw.
+ * @param fg Foreground (text) color in XRGB8888 format.
+ * @param bg Background color in XRGB8888 format.
+ *
+ * Uses built-in 8x8 bitmap font. Draws an 8x8 pixel cell.
+ */
+void gui_draw_char(gui_window_t *win, uint32_t x, uint32_t y,
+                   char c, uint32_t fg, uint32_t bg);
+
+/**
+ * @brief Draw a scaled character from the built-in 8x8 font.
+ * @param win Window handle.
+ * @param x X position of top-left corner.
+ * @param y Y position of top-left corner.
+ * @param c ASCII character to draw.
+ * @param fg Foreground (text) color in XRGB8888 format.
+ * @param bg Background color in XRGB8888 format.
+ * @param scale Scale factor (1 = 8x8, 2 = 16x16, etc.)
+ *
+ * Uses built-in 8x8 bitmap font scaled by the given factor.
+ */
+void gui_draw_char_scaled(gui_window_t *win, uint32_t x, uint32_t y,
+                          char c, uint32_t fg, uint32_t bg, uint32_t scale);
+
+/**
  * @brief Draw a horizontal line.
  * @param win Window handle.
  * @param x1 Start X position.

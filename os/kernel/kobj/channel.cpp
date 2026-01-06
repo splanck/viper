@@ -25,10 +25,6 @@ Channel *Channel::create()
     // Legacy channel creation starts with both endpoints owned by the creator.
     Channel *ch = new Channel(static_cast<u32>(result), ENDPOINT_BOTH);
 
-    serial::puts("[kobj::channel] Created channel object for ID ");
-    serial::put_dec(ch->channel_id_);
-    serial::puts("\n");
-
     return ch;
 }
 
@@ -93,9 +89,6 @@ Channel::~Channel()
                 channel::close_endpoint(low_ch, false);
             }
         }
-        serial::puts("[kobj::channel] Closed channel endpoints for channel ");
-        serial::put_dec(channel_id_);
-        serial::puts("\n");
     }
 }
 

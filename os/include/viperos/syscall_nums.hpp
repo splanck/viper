@@ -390,4 +390,6 @@
 #define SYS_INPUT_HAS_EVENT 0x113
 /** @brief Get next input event from kernel queue (returns event type, code, value, modifiers). */
 #define SYS_INPUT_GET_EVENT 0x114
+/** @brief Enable/disable GUI mode (when enabled, gcon writes to serial only). */
+#define SYS_GCON_SET_GUI_MODE 0x115
 /** @} */

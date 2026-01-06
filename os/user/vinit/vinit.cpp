@@ -45,19 +45,20 @@ struct ServerInfo
 // Note: inputd removed - kernel handles keyboard input directly
 // Storage/network servers may fail if user disk is missing
 static ServerInfo g_servers[] = {
-    // Essential: always spawn, required for shell I/O
+    // Display server must start first - consoled depends on it for GUI
+    {"displayd", "/sys/displayd.sys", "DISPLAY", 0, false},
+    // Essential: always spawn, required for shell I/O (needs displayd)
     {"consoled", "/sys/consoled.sys", "CONSOLED", 0, false},
     // Storage/Network: may fail if disk1 missing
     {"blkd", "/sys/blkd.sys", "BLKD", 0, false},
     {"netd", "/sys/netd.sys", "NETD", 0, false},
     {"fsd", "/sys/fsd.sys", "FSD", 0, false},
-    // Display server for GUI applications
-    {"displayd", "/sys/displayd.sys", "DISPLAY", 0, false},
 };
 
 static constexpr usize SERVER_COUNT = sizeof(g_servers) / sizeof(g_servers[0]);
-static constexpr usize BLKD_INDEX = 1;
-static constexpr usize FSD_INDEX = 3;
+static constexpr usize CONSOLED_INDEX = 1;
+static constexpr usize BLKD_INDEX = 2;
+static constexpr usize FSD_INDEX = 4;
 
 static u32 g_device_root = 0xFFFFFFFFu;
 static bool g_have_device_root = false;
@@ -201,8 +202,8 @@ static bool wait_for_service(const char *name, u32 timeout_ms)
             return true;
         }
 
-        // Yield and wait a bit
-        sys::yield();
+        // Actually sleep for the interval
+        sys::sleep(interval);
         waited += interval;
     }
 
@@ -467,7 +468,9 @@ static void start_servers()
             continue;
         }
 
-        if (wait_for_service(srv.assign, 2000))
+        // consoled needs longer timeout - it waits for displayd + creates GUI window
+        u32 timeout = (i == CONSOLED_INDEX) ? 5000 : 2000;
+        if (wait_for_service(srv.assign, timeout))
         {
             print_str("[vinit] ");
             print_str(srv.assign);
@@ -594,6 +597,16 @@ extern "C" void _start()
 
     // Start microkernel servers (blkd, netd, fsd)
     start_servers();
+
+    // Connect to console server for GUI output
+    if (init_console())
+    {
+        print_str("[vinit] Connected to console server\n");
+    }
+    else
+    {
+        print_str("[vinit] Warning: could not connect to consoled\n");
+    }
 
     // Run the shell
     shell_loop();

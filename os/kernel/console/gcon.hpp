@@ -218,4 +218,23 @@ u32 get_scroll_offset();
  */
 bool is_scrolled_back();
 
+/**
+ * @brief Enable or disable GUI mode.
+ *
+ * @details
+ * When GUI mode is active, gcon stops writing to the framebuffer and only
+ * outputs to serial. This allows displayd to take over the display without
+ * the kernel console overwriting it.
+ *
+ * @param active `true` to enable GUI mode, `false` to disable.
+ */
+void set_gui_mode(bool active);
+
+/**
+ * @brief Check if GUI mode is active.
+ *
+ * @return `true` if GUI mode is active, `false` otherwise.
+ */
+bool is_gui_mode();
+
 } // namespace gcon

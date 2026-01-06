@@ -41,6 +41,7 @@ void shell_loop()
             print_str(current_dir);
         }
         print_str("> ");
+        flush_console();
 
         usize len = readline(line, sizeof(line));
         if (len == 0)

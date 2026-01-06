@@ -257,29 +257,39 @@ void cmd_pwd()
  */
 static void print_dir_entry(const char *name, bool is_dir, usize *col)
 {
-    if (is_dir)
+    // Build entry in a buffer to send as one message
+    char entry[32];
+    char *p = entry;
+
+    // Leading spaces
+    *p++ = ' ';
+    *p++ = ' ';
+
+    // Copy name
+    const char *n = name;
+    usize namelen = 0;
+    while (*n && namelen < 17)
     {
-        print_str("  ");
-        print_str(name);
-        print_str("/");
-        usize namelen = strlen(name) + 1;
-        while (namelen < 18)
-        {
-            print_char(' ');
-            namelen++;
-        }
+        *p++ = *n++;
+        namelen++;
     }
-    else
+
+    // Add "/" for directories
+    if (is_dir && namelen < 17)
     {
-        print_str("  ");
-        print_str(name);
-        usize namelen = strlen(name);
-        while (namelen < 18)
-        {
-            print_char(' ');
-            namelen++;
-        }
+        *p++ = '/';
+        namelen++;
     }
+
+    // Pad to 18 chars
+    while (namelen < 18)
+    {
+        *p++ = ' ';
+        namelen++;
+    }
+
+    *p = '\0';
+    print_str(entry);
 
     (*col)++;
     if (*col >= 3)
@@ -447,34 +457,47 @@ void cmd_dir(const char *path)
  */
 static void print_list_entry(const char *name, bool is_dir, bool readonly)
 {
-    print_str(name);
-    usize namelen = strlen(name);
-    while (namelen < 32)
-    {
-        print_char(' ');
-        namelen++;
-    }
+    // Build the entire line in a buffer to send as one message
+    char line[128];
+    char *p = line;
 
+    // Copy name
+    const char *n = name;
+    while (*n && (p - line) < 32)
+        *p++ = *n++;
+
+    // Pad to 32 chars
+    while ((p - line) < 32)
+        *p++ = ' ';
+
+    // Directory marker
     if (is_dir)
     {
-        print_str("  <dir>    ");
+        const char *dir_marker = "  <dir>    ";
+        while (*dir_marker)
+            *p++ = *dir_marker++;
     }
     else
     {
-        print_str("           ");
+        const char *spaces = "           ";
+        while (*spaces)
+            *p++ = *spaces++;
     }
 
-    // Permissions: r=read, w=write, e=execute, d=delete
-    // /sys files are read-only
+    // Permissions
     if (readonly)
     {
-        print_str("r--e");
+        *p++ = 'r'; *p++ = '-'; *p++ = '-'; *p++ = 'e';
     }
     else
     {
-        print_str("rwed");
+        *p++ = 'r'; *p++ = 'w'; *p++ = 'e'; *p++ = 'd';
     }
-    print_str("\n");
+
+    *p++ = '\n';
+    *p = '\0';
+
+    print_str(line);
 }
 
 /**

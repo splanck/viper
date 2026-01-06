@@ -31,6 +31,7 @@ namespace
 {
 // Console state
 bool initialized = false;
+bool gui_mode_active = false;  // When true, only output to serial (displayd owns framebuffer)
 u32 cursor_x = 0;
 u32 cursor_y = 0;
 u32 cols = 0;
@@ -952,6 +953,13 @@ void putc(char c)
     if (!initialized)
         return;
 
+    // When GUI mode is active, only output to serial (displayd owns the framebuffer)
+    if (gui_mode_active)
+    {
+        serial::putc(c);
+        return;
+    }
+
     // Process through ANSI state machine first
     if (ansi_process(c))
     {
@@ -1010,6 +1018,12 @@ void putc(char c)
 void puts(const char *s)
 {
     if (!initialized)
+        return;
+
+    // When GUI mode is active, serial output is already handled by callers
+    // (e.g., sys_debug_print calls serial::puts then gcon::puts).
+    // Skip to avoid double output.
+    if (gui_mode_active)
         return;
 
     while (*s)
@@ -1299,6 +1313,26 @@ u32 get_scroll_offset()
 bool is_scrolled_back()
 {
     return scroll_offset > 0;
+}
+
+/** @copydoc gcon::set_gui_mode */
+void set_gui_mode(bool active)
+{
+    gui_mode_active = active;
+    if (active)
+    {
+        serial::puts("[gcon] GUI mode enabled - framebuffer output disabled\n");
+    }
+    else
+    {
+        serial::puts("[gcon] GUI mode disabled - framebuffer output enabled\n");
+    }
+}
+
+/** @copydoc gcon::is_gui_mode */
+bool is_gui_mode()
+{
+    return gui_mode_active;
 }
 
 } // namespace gcon

@@ -30,6 +30,10 @@ constexpr uint32_t CON_SET_COLORS = 0x1005;  // Set foreground/background
 constexpr uint32_t CON_GET_SIZE = 0x1006;    // Get console dimensions
 constexpr uint32_t CON_SHOW_CURSOR = 0x1007; // Show text cursor
 constexpr uint32_t CON_HIDE_CURSOR = 0x1008; // Hide text cursor
+constexpr uint32_t CON_CONNECT = 0x1009;     // Client connects with input channel
+
+// Events (consoled -> client)
+constexpr uint32_t CON_INPUT = 0x3001;       // Keyboard input event
 
 // Reply types
 constexpr uint32_t CON_WRITE_REPLY = 0x2001;
@@ -40,6 +44,7 @@ constexpr uint32_t CON_SET_COLORS_REPLY = 0x2005;
 constexpr uint32_t CON_GET_SIZE_REPLY = 0x2006;
 constexpr uint32_t CON_SHOW_CURSOR_REPLY = 0x2007;
 constexpr uint32_t CON_HIDE_CURSOR_REPLY = 0x2008;
+constexpr uint32_t CON_CONNECT_REPLY = 0x2009;
 
 /**
  * @brief Write text request.
@@ -179,6 +184,42 @@ struct HideCursorReply
     uint32_t request_id;
     int32_t status; // 0 = success
     uint32_t reserved;
+};
+
+/**
+ * @brief Connect request - establishes bidirectional channel.
+ *
+ * Client sends this with a channel handle for receiving input events.
+ * The handle should be a send endpoint that consoled can use to send
+ * keyboard input back to the client.
+ */
+struct ConnectRequest
+{
+    uint32_t type; // CON_CONNECT
+    uint32_t request_id;
+    // handle[0] = send endpoint for input events (client keeps recv)
+};
+
+struct ConnectReply
+{
+    uint32_t type; // CON_CONNECT_REPLY
+    uint32_t request_id;
+    int32_t status; // 0 = success
+    uint32_t cols;  // Console columns
+    uint32_t rows;  // Console rows
+};
+
+/**
+ * @brief Input event - keyboard input from consoled to client.
+ */
+struct InputEvent
+{
+    uint32_t type;      // CON_INPUT
+    char ch;            // ASCII character (0 if special key)
+    uint8_t pressed;    // 1 = key down, 0 = key up
+    uint16_t keycode;   // Raw evdev keycode
+    uint8_t modifiers;  // Shift=1, Ctrl=2, Alt=4
+    uint8_t _pad[3];
 };
 
 } // namespace console_protocol

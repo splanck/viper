@@ -4198,6 +4198,18 @@ static SyscallResult sys_input_get_event(u64 a0, u64, u64, u64, u64, u64)
     return SyscallResult::err(error::VERR_WOULD_BLOCK);
 }
 
+/**
+ * @brief Set GUI mode for the graphics console.
+ *
+ * @param a0 1 to enable GUI mode (gcon writes to serial only), 0 to disable
+ * @return Always returns 0 (success)
+ */
+static SyscallResult sys_gcon_set_gui_mode(u64 a0, u64, u64, u64, u64, u64)
+{
+    gcon::set_gui_mode(a0 != 0);
+    return SyscallResult::ok();
+}
+
 // =============================================================================
 // Syscall Dispatch Table
 // =============================================================================
@@ -4353,6 +4365,7 @@ static const SyscallEntry syscall_table[] = {
     {SYS_SET_MOUSE_BOUNDS, sys_set_mouse_bounds, "set_mouse_bounds", 2},
     {SYS_INPUT_HAS_EVENT, sys_input_has_event, "input_has_event", 0},
     {SYS_INPUT_GET_EVENT, sys_input_get_event, "input_get_event", 1},
+    {SYS_GCON_SET_GUI_MODE, sys_gcon_set_gui_mode, "gcon_set_gui_mode", 1},
 };
 
 static constexpr usize SYSCALL_TABLE_SIZE = sizeof(syscall_table) / sizeof(syscall_table[0]);

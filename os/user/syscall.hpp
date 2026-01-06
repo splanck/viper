@@ -319,6 +319,20 @@ inline void yield()
 }
 
 /**
+ * @brief Sleep for a specified number of milliseconds.
+ *
+ * @details
+ * Puts the calling task to sleep for at least the specified duration.
+ * If ms is 0, this behaves like yield().
+ *
+ * @param ms Duration to sleep in milliseconds.
+ */
+inline void sleep(u64 ms)
+{
+    (void)syscall1(SYS_SLEEP, ms);
+}
+
+/**
  * @brief Terminate the calling task/process with an exit code.
  *
  * @details
@@ -712,11 +726,6 @@ inline i32 channel_close(i32 channel)
 /**
  * @brief Write a debug message to the kernel's debug output.
  *
- * @details
- * The kernel typically forwards debug output to serial and/or a graphical
- * console depending on configuration. This function expects `msg` to be a
- * valid NUL-terminated string in user address space.
- *
  * @param msg Pointer to a NUL-terminated message string.
  */
 inline void print(const char *msg)
@@ -803,10 +812,6 @@ inline char getchar()
 
 /**
  * @brief Write a single character to the console.
- *
- * @details
- * Sends the character to `SYS_PUTCHAR`. This is typically routed to serial and
- * any available console output devices.
  *
  * @param c Character to write.
  */
@@ -2141,6 +2146,21 @@ inline i32 input_get_event(InputEvent *event)
 {
     auto r = syscall1(SYS_INPUT_GET_EVENT, reinterpret_cast<u64>(event));
     return static_cast<i32>(r.error);
+}
+
+/**
+ * @brief Enable or disable GUI mode for the graphics console.
+ *
+ * @details
+ * When GUI mode is active, gcon stops writing to the framebuffer and only
+ * outputs to serial. This allows displayd to take over the display without
+ * the kernel console overwriting it.
+ *
+ * @param active true to enable GUI mode, false to disable.
+ */
+inline void gcon_set_gui_mode(bool active)
+{
+    syscall1(SYS_GCON_SET_GUI_MODE, active ? 1 : 0);
 }
 
 } // namespace sys

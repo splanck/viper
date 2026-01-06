@@ -20,8 +20,13 @@ bool strcasestart(const char *s, const char *prefix);
 // Console Output
 // =============================================================================
 
+/// Initialize connection to console server (consoled).
+/// Must be called after servers are started but before shell_loop().
+bool init_console();
+
 void print_str(const char *s);
 void print_char(char c);
+void flush_console();
 void put_num(i64 n);
 void put_hex(u32 n);
 
@@ -29,6 +34,11 @@ void put_hex(u32 n);
 void paging_enable();
 void paging_disable();
 bool page_wait();
+
+// Console input (from consoled)
+bool is_console_ready();
+i32 getchar_from_console();
+i32 try_getchar_from_console();
 
 // =============================================================================
 // Return Codes

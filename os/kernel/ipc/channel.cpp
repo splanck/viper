@@ -178,14 +178,6 @@ i64 create(ChannelPair *out_pair, u32 capacity)
     out_pair->send_handle = send_h;
     out_pair->recv_handle = recv_h;
 
-    serial::puts("[channel] Created channel ");
-    serial::put_dec(ch->id);
-    serial::puts(" (send=");
-    serial::put_hex(send_h);
-    serial::puts(", recv=");
-    serial::put_hex(recv_h);
-    serial::puts(")\n");
-
     return error::VOK;
 }
 
@@ -204,12 +196,6 @@ i64 create(u32 capacity)
     init_channel(ch, capacity);
     ch->send_refs = 1; // Legacy mode: both refs set
     ch->recv_refs = 1;
-
-    serial::puts("[channel] Created channel ");
-    serial::put_dec(ch->id);
-    serial::puts(" (legacy, capacity=");
-    serial::put_dec(ch->capacity);
-    serial::puts(")\n");
 
     return static_cast<i64>(ch->id);
 }
@@ -675,10 +661,6 @@ i64 close_endpoint(Channel *ch, bool is_send)
         // Clean up any pending messages with transferred handles
         cleanup_pending_handles(ch);
 
-        serial::puts("[channel] Destroyed channel ");
-        serial::put_dec(ch->id);
-        serial::puts("\n");
-
         ch->state = ChannelState::FREE;
         ch->id = 0;
     }
@@ -708,10 +690,6 @@ i64 close(u32 channel_id)
 
     ch->state = ChannelState::FREE;
     ch->id = 0;
-
-    serial::puts("[channel] Closed channel ");
-    serial::put_dec(channel_id);
-    serial::puts(" (legacy)\n");
 
     return error::VOK;
 }

@@ -84,6 +84,7 @@ extern int __viper_socket_dup2(int oldfd, int newfd);
 #define SYS_CHDIR 0x68
 #define SYS_GETCHAR 0xF1
 
+
 /**
  * @brief Read data from a file descriptor.
  *
