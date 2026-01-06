@@ -16,6 +16,7 @@
 #include <syscall.hpp>
 
 #include <fcntl.h>
+#include <termios.h>
 #include <unistd.h>
 
 // Screen dimensions (TODO: query from terminal)
@@ -132,12 +133,23 @@ static void itoa(int n, char *buf)
 
 static void term_write(const char *s)
 {
-    sys::print(s);
+    int len = 0;
+    while (s[len])
+        len++;
+    write(STDOUT_FILENO, s, len);
 }
 
 static void term_write_char(char c)
 {
-    sys::putchar(c);
+    write(STDOUT_FILENO, &c, 1);
+}
+
+static char term_getchar()
+{
+    // Use libc read() to route through consoled for GUI input
+    char c = 0;
+    read(STDIN_FILENO, &c, 1);
+    return c;
 }
 
 static void term_clear()
@@ -187,6 +199,29 @@ static void term_show_cursor()
     term_write("\033[?25h");
 }
 
+// Terminal mode state
+static struct termios orig_termios;
+static bool termios_saved = false;
+
+static void term_enable_raw_mode()
+{
+    if (tcgetattr(STDIN_FILENO, &orig_termios) == 0)
+    {
+        termios_saved = true;
+        struct termios raw = orig_termios;
+        cfmakeraw(&raw);
+        tcsetattr(STDIN_FILENO, TCSANOW, &raw);
+    }
+}
+
+static void term_restore_mode()
+{
+    if (termios_saved)
+    {
+        tcsetattr(STDIN_FILENO, TCSANOW, &orig_termios);
+    }
+}
+
 // =============================================================================
 // Prompt Input
 // =============================================================================
@@ -216,7 +251,7 @@ static bool prompt_string(const char *prompt, char *buf, int bufsize)
         term_write(buf);
 
         // Get key
-        char c = sys::getchar();
+        char c = term_getchar();
 
         if (c == 27) // Escape - cancel
         {
@@ -744,11 +779,11 @@ static void page_down()
 
 static void handle_escape_sequence()
 {
-    char c2 = sys::getchar();
+    char c2 = term_getchar();
     if (c2 != '[')
         return;
 
-    char c3 = sys::getchar();
+    char c3 = term_getchar();
     switch (c3)
     {
         case 'A':
@@ -770,15 +805,15 @@ static void handle_escape_sequence()
             move_end();
             break;
         case '3':           // Delete key
-            sys::getchar(); // consume '~'
+            term_getchar(); // consume '~'
             delete_char();
             break;
         case '5':           // Page Up
-            sys::getchar(); // consume '~'
+            term_getchar(); // consume '~'
             page_up();
             break;
         case '6':           // Page Down
-            sys::getchar(); // consume '~'
+            term_getchar(); // consume '~'
             page_down();
             break;
     }
@@ -786,7 +821,7 @@ static void handle_escape_sequence()
 
 static void process_key()
 {
-    char c = sys::getchar();
+    char c = term_getchar();
 
     if (c == '\033')
     {
@@ -851,6 +886,9 @@ static void process_key()
 
 extern "C" int main(int argc, char **argv)
 {
+    // Enable raw terminal mode for character-by-character input
+    term_enable_raw_mode();
+
     // Initialize empty buffer
     line_count = 1;
     lines[0][0] = '\0';
@@ -877,6 +915,7 @@ extern "C" int main(int argc, char **argv)
     }
 
     // Clean up
+    term_restore_mode();
     term_clear();
     term_home();
     term_write("Goodbye!\n");

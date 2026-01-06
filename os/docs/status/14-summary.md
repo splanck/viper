@@ -1,6 +1,6 @@
 # ViperOS Summary and Roadmap
 
-**Version:** 0.3.1 (January 2026)
+**Version:** 0.3.2 (January 2026)
 **Target:** AArch64 (Cortex-A72) on QEMU virt machine
 **Total Lines of Code:** ~115,000
 
@@ -45,9 +45,9 @@ The system is fully functional for QEMU bring-up with:
 | netd | 95% | Complete TCP/IP stack |
 | fsd | 95% | Full filesystem operations |
 | blkd | 95% | VirtIO-blk with IRQ |
-| consoled | 95% | Console output |
+| consoled | 95% | GUI terminal emulator, ANSI, keyboard forwarding |
 | inputd | 95% | Keyboard/mouse input |
-| displayd | 80% | Window compositing (event delivery in progress) |
+| displayd | 90% | Window compositing, event delivery |
 
 ### Drivers (100% Complete for QEMU)
 
@@ -120,7 +120,7 @@ The system is fully functional for QEMU bring-up with:
 | C++ headers | 85% | 66 header files |
 | libnetclient | 95% | netd client |
 | libfsclient | 95% | fsd client |
-| libgui | 80% | displayd client |
+| libgui | 90% | displayd client, font scaling |
 | libtls | 90% | TLS 1.3 |
 | libhttp | 90% | HTTP client |
 | libssh | 85% | SSH-2, SFTP |
@@ -139,8 +139,8 @@ The system is fully functional for QEMU bring-up with:
 6. **File Operations**: Create, read, write, delete via fsd
 7. **Networking**: TCP/IP via netd, TLS, HTTP, SSH
 8. **Block I/O**: Filesystem backed by blkd with ViperFS
-9. **Console/Input**: Output via consoled, input via inputd
-10. **GUI Windows**: Display server with window compositing
+9. **GUI Terminal**: consoled runs as a window with ANSI colors and keyboard forwarding
+10. **GUI Windows**: Display server with window compositing, mouse/keyboard events
 11. **Process Management**: Fork, wait, exit with capability tables
 12. **Memory**: Dynamic allocation, demand paging, COW
 13. **Text Editor**: Full-screen nano-like editor (edit)
@@ -166,7 +166,7 @@ The system is fully functional for QEMU bring-up with:
 | netd | NETD: | TCP/IP stack, sockets, DNS |
 | fsd | FSD: | Filesystem operations |
 | blkd | BLKD: | Block device I/O |
-| consoled | CONSOLED | Console output |
+| consoled | CONSOLED | GUI terminal emulator |
 | inputd | INPUTD | Keyboard/mouse |
 | displayd | DISPLAY | Window management, GUI |
 
@@ -195,15 +195,15 @@ The system is fully functional for QEMU bring-up with:
 
 3. **PTY Subsystem**
    - No kernel pseudo-terminal support
-   - Needed for: Terminal emulation, SSH server
+   - Needed for: SSH server
 
 4. **Signal Handlers**
    - Signal infrastructure exists
    - Need: User handler invocation trampoline
 
-5. **GUI Mouse Events**
-   - Mouse events detected but not delivered to windows
-   - Blocks: Interactive GUI applications
+5. **True Window Resize**
+   - Window resize currently visual-only
+   - Need: Pixel buffer reallocation on resize
 
 ### Medium Priority
 
@@ -349,6 +349,27 @@ cd os
 
 ---
 
+## What's New in v0.3.2
+
+### GUI Terminal Emulator (consoled)
+- **GUI Window**: consoled now runs as a window via libgui/displayd
+- **ANSI Escape Sequences**: Full CSI support (colors, cursor movement, erase)
+- **Bidirectional IPC**: Keyboard events forwarded from displayd to connected clients
+- **1.5x Font Scaling**: 12x12 pixel cells (half-unit scaling system)
+- **Per-Cell Attributes**: Bold, dim, italic, underline, blink, reverse, hidden, strikethrough
+
+### libgui Enhancements
+- **gui_draw_char()**: Character drawing with foreground and background colors
+- **gui_draw_char_scaled()**: Fractional font scaling (scale=3 for 1.5x, etc.)
+- **Built-in 8x8 Font**: Complete ASCII character set
+
+### Infrastructure Improvements
+- **Blocking IPC Send**: Console write retries until message delivered
+- **Message Draining**: consoled processes all pending messages before rendering
+- **Service Timing**: Fixed wait_for_service() to use actual sleep intervals
+
+---
+
 ## What's New in v0.3.1
 
 ### Boot Infrastructure
@@ -386,33 +407,26 @@ cd os
 
 ---
 
-## Conclusion
-
-ViperOS v0.3.1 represents a complete microkernel architecture with UEFI boot, SMP scheduling, and user-space servers handling networking, filesystem, block I/O, console, input, and display. The system demonstrates capability-based security, message-passing IPC, and modern boot infrastructure.
-
----
-
 ## Priority Recommendations: Next 5 Steps
 
-### 1. GUI Mouse Event Delivery
-**Impact:** Interactive graphical applications
-- Complete inputd → displayd → window event pipeline
-- Click-to-focus window activation
-- Enable buttons, menus, drag operations
-- Foundation for usable desktop environment
-
-### 2. exec() and pipe() Implementation
+### 1. exec() and pipe() Implementation
 **Impact:** Full Unix shell functionality
 - Process image replacement (exec family)
 - Inter-process pipes for command chaining
 - Shell pipeline support (`cmd1 | cmd2 | cmd3`)
 - Standard Unix development workflow
 
+### 2. True Window Resize
+**Impact:** User-adjustable window sizes
+- DISP_RESIZE_SURFACE message type
+- Reallocate shared memory for new size
+- GUI_EVENT_RESIZE to client
+- Client remaps buffer and redraws
+
 ### 3. PTY Subsystem
-**Impact:** Terminal emulation and remote access
+**Impact:** Remote access (SSH server)
 - Pseudo-terminal master/slave pairs
 - Required for SSH server implementation
-- GUI terminal emulator support
 - Job control with Ctrl+C, Ctrl+Z
 
 ### 4. IPv6 Support
@@ -433,6 +447,8 @@ ViperOS v0.3.1 represents a complete microkernel architecture with UEFI boot, SM
 
 ## Conclusion
 
-ViperOS v0.3.1 represents a complete microkernel architecture with UEFI boot, SMP scheduling, and user-space servers handling networking, filesystem, block I/O, console, input, and display. The system demonstrates capability-based security, message-passing IPC, and modern boot infrastructure.
+ViperOS v0.3.2 represents a complete microkernel architecture with UEFI boot, SMP scheduling, and user-space servers handling networking, filesystem, block I/O, GUI terminal, input, and display. The system demonstrates capability-based security, message-passing IPC, and modern boot infrastructure.
+
+The addition of the GUI terminal emulator (consoled with ANSI support and keyboard forwarding) enables the shell to run in a graphical window that coexists with other GUI applications, marking a significant step toward a full desktop environment.
 
 With these additions, ViperOS would be suitable for embedded systems, educational use, or specialized applications requiring strong isolation guarantees.

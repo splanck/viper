@@ -1,8 +1,8 @@
 # GUI Subsystem
 
 **Status:** Complete (desktop shell framework operational)
-**Location:** `user/servers/displayd/`, `user/libgui/`, `user/taskbar/`
-**SLOC:** ~2,500
+**Location:** `user/servers/displayd/`, `user/libgui/`, `user/taskbar/`, `user/servers/consoled/`
+**SLOC:** ~4,800
 
 ## Overview
 
@@ -11,7 +11,8 @@ ViperOS provides a complete user-space GUI subsystem consisting of:
 | Component | Location | SLOC | Purpose |
 |-----------|----------|------|---------|
 | **displayd** | `user/servers/displayd/` | ~1,500 | Display server and window compositor |
-| **libgui** | `user/libgui/` | ~600 | Client library for GUI applications |
+| **consoled** | `user/servers/consoled/` | ~1,600 | GUI terminal emulator |
+| **libgui** | `user/libgui/` | ~1,300 | Client library for GUI applications |
 | **taskbar** | `user/taskbar/` | ~230 | Desktop shell taskbar |
 | **hello_gui** | `user/hello_gui/` | ~100 | Demo GUI application |
 
@@ -20,14 +21,14 @@ ViperOS provides a complete user-space GUI subsystem consisting of:
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                     GUI Applications                             │
-│   hello_gui  │  taskbar  │  (future: terminal, file manager)   │
+│   hello_gui  │  taskbar  │  consoled (terminal emulator)        │
 └───────────────────────────┬─────────────────────────────────────┘
                             │ libgui API
                             ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                        libgui                                    │
 │   gui_create_window() │ gui_present() │ gui_poll_event()        │
-│   gui_fill_rect() │ gui_draw_text() │ gui_list_windows()       │
+│   gui_fill_rect() │ gui_draw_char_scaled() │ gui_list_windows() │
 └───────────────────────────┬─────────────────────────────────────┘
                             │ IPC (Channels) + Shared Memory
                             ▼
@@ -42,6 +43,10 @@ ViperOS provides a complete user-space GUI subsystem consisting of:
 │                    Kernel Framebuffer                            │
 │              ramfb / VirtIO-GPU (via QEMU)                      │
 └─────────────────────────────────────────────────────────────────┘
+
+consoled acts as both a GUI application (via libgui) and a server for
+console clients (vinit). It receives keyboard events from displayd and
+forwards them to connected clients via IPC.
 ```
 
 ---
@@ -220,8 +225,8 @@ static uint32_t g_next_z_order;
 
 | File | Lines | Description |
 |------|-------|-------------|
-| `include/gui.h` | ~370 | Public API declarations |
-| `src/gui.cpp` | ~400 | Implementation |
+| `include/gui.h` | ~400 | Public API declarations |
+| `src/gui.cpp` | ~940 | Implementation with built-in 8x8 font |
 
 ### Initialization
 
@@ -279,16 +284,48 @@ int gui_wait_event(gui_window_t *win, gui_event_t *event);  // Blocking
 ### Drawing Helpers
 
 ```c
+// Rectangles
 void gui_fill_rect(gui_window_t *win, uint32_t x, uint32_t y,
                    uint32_t w, uint32_t h, uint32_t color);
 void gui_draw_rect(gui_window_t *win, uint32_t x, uint32_t y,
                    uint32_t w, uint32_t h, uint32_t color);
-void gui_draw_text(gui_window_t *win, uint32_t x, uint32_t y,
-                   const char *text, uint32_t color);
+
+// Lines
 void gui_draw_hline(gui_window_t *win, uint32_t x1, uint32_t x2,
                     uint32_t y, uint32_t color);
 void gui_draw_vline(gui_window_t *win, uint32_t x, uint32_t y1,
                     uint32_t y2, uint32_t color);
+
+// Text (uses built-in 8x8 bitmap font)
+void gui_draw_text(gui_window_t *win, uint32_t x, uint32_t y,
+                   const char *text, uint32_t color);
+
+// Character drawing with foreground and background colors (8x8 cell)
+void gui_draw_char(gui_window_t *win, uint32_t x, uint32_t y,
+                   char c, uint32_t fg, uint32_t bg);
+
+// Scaled character drawing (supports fractional sizes)
+// scale is in half-units: 2=1x (8x8), 3=1.5x (12x12), 4=2x (16x16)
+void gui_draw_char_scaled(gui_window_t *win, uint32_t x, uint32_t y,
+                          char c, uint32_t fg, uint32_t bg, uint32_t scale);
+```
+
+The `gui_draw_char_scaled()` function uses a half-unit scaling system to support fractional font sizes:
+
+| Scale Value | Multiplier | Cell Size | Use Case |
+|-------------|------------|-----------|----------|
+| 2 | 1x | 8x8 | Small text, dense displays |
+| 3 | 1.5x | 12x12 | Console terminal (default) |
+| 4 | 2x | 16x16 | Large text, high-DPI |
+| 6 | 3x | 24x24 | Very large text |
+
+Scaling uses nearest-neighbor interpolation with source pixel lookup:
+```cpp
+uint32_t dest_size = 8 * scale / 2;  // Destination cell size
+for (uint32_t dy = 0; dy < dest_size; dy++) {
+    uint32_t src_row = dy * 2 / scale;  // Map dest row to source
+    // ...
+}
 ```
 
 ### Event Types
@@ -561,6 +598,14 @@ add_gui_program(taskbar taskbar/taskbar.c)
 ---
 
 ## Version History
+
+- **January 2026**: Consoled GUI terminal and font scaling
+  - Added `gui_draw_char()` for character drawing with fg/bg colors
+  - Added `gui_draw_char_scaled()` with half-unit fractional scaling (1.5x, 2x, etc.)
+  - Consoled now runs as a GUI window (via libgui/displayd)
+  - Consoled uses 1.5x font scaling (12x12 pixels) for better readability
+  - Full ANSI escape sequence support in consoled terminal
+  - Bidirectional IPC: consoled forwards keyboard events to connected clients
 
 - **January 2026**: GUI improvements
   - Implemented keyboard event routing (inputd → displayd → focused window)

@@ -360,13 +360,21 @@ i64 try_recv(
     u32 handles_received = 0;
     if (msg->handle_count > 0 && recv_ct)
     {
+        // Get receiver's bounding set to enforce capability limits
+        viper::Viper *recv_viper = viper::current();
+        u32 bounding_set = recv_viper ? recv_viper->cap_bounding_set : cap::CAP_ALL;
+
         for (u32 i = 0; i < msg->handle_count; i++)
         {
             TransferredHandle *th = &msg->handles[i];
 
-            // Insert into receiver's cap_table
-            cap::Handle new_h = recv_ct->insert(
-                th->object, static_cast<cap::Kind>(th->kind), static_cast<cap::Rights>(th->rights));
+            // Insert into receiver's cap_table with bounding set enforcement
+            // Rights not in the bounding set are silently dropped
+            cap::Handle new_h = recv_ct->insert_bounded(
+                th->object,
+                static_cast<cap::Kind>(th->kind),
+                static_cast<cap::Rights>(th->rights),
+                bounding_set);
 
             if (new_h != cap::HANDLE_INVALID)
             {

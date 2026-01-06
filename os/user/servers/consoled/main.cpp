@@ -155,10 +155,7 @@ static void draw_cursor()
 
 static void redraw_all()
 {
-    // Fill background
-    gui_fill_rect(g_window, 0, 0, g_window_width, g_window_height, g_bg_color);
-
-    // Draw all cells
+    // Draw all cells (each cell draws its own background - no full fill needed)
     for (uint32_t y = 0; y < g_rows; y++)
     {
         for (uint32_t x = 0; x < g_cols; x++)
@@ -213,6 +210,13 @@ static void scroll_up()
 
 // Flag to track if we need to present
 static bool g_needs_present = false;
+
+// Frame rate limiting - target ~60 FPS (16ms frame time)
+static constexpr uint64_t FRAME_INTERVAL_MS = 16;
+static uint64_t g_last_present_time = 0;
+
+// Message batching - process at most N messages before checking events
+static constexpr uint32_t MAX_MESSAGES_PER_BATCH = 32;
 
 static void newline()
 {
@@ -896,26 +900,34 @@ enum KeyCode : uint16_t
 
 static char keycode_to_ascii(uint16_t keycode, uint8_t modifiers)
 {
-    bool shift = (modifiers & 1) != 0;
+    bool shift = (modifiers & 0x01) != 0;
+    bool ctrl = (modifiers & 0x02) != 0;
 
     // Letters
     if (keycode >= KEY_Q && keycode <= KEY_P)
     {
         static const char row1[] = "qwertyuiop";
         char c = row1[keycode - KEY_Q];
-        return shift ? (c - 32) : c;
+        // Handle Ctrl+letter -> control character (Ctrl+A=1, Ctrl+Q=17, etc.)
+        if (ctrl)
+            return static_cast<char>((c - 'a') + 1);
+        return shift ? static_cast<char>(c - 32) : c;
     }
     if (keycode >= KEY_A && keycode <= KEY_L)
     {
         static const char row2[] = "asdfghjkl";
         char c = row2[keycode - KEY_A];
-        return shift ? (c - 32) : c;
+        if (ctrl)
+            return static_cast<char>((c - 'a') + 1);
+        return shift ? static_cast<char>(c - 32) : c;
     }
     if (keycode >= KEY_Z && keycode <= KEY_M)
     {
         static const char row3[] = "zxcvbnm";
         char c = row3[keycode - KEY_Z];
-        return shift ? (c - 32) : c;
+        if (ctrl)
+            return static_cast<char>((c - 'a') + 1);
+        return shift ? static_cast<char>(c - 32) : c;
     }
 
     // Numbers
@@ -1006,6 +1018,7 @@ static void handle_request(int32_t client_channel, const uint8_t *data, size_t l
                 text_len = req->length;
 
             write_text(text, text_len);
+            // g_needs_present is set by write_text() - main loop handles presentation
 
             // Only send reply if client provided a reply channel
             if (client_channel >= 0)
@@ -1180,7 +1193,42 @@ static void handle_request(int32_t client_channel, const uint8_t *data, size_t l
                 g_client_input_channel = static_cast<int32_t>(handles[1]);
                 // Mark as consumed so main loop doesn't close it
                 handles[1] = 0xFFFFFFFF;
-                debug_print("[consoled] Client connected with input channel\n");
+
+                // Drain any pending keyboard events to prevent old input
+                // from the previous client from being forwarded to the new client.
+                debug_print("[consoled] CON_CONNECT: draining events...\n");
+
+                // Sleep first to let any in-flight events arrive from displayd.
+                sys::sleep(100);  // 100ms for events to settle
+
+                // Drain all pending events
+                gui_event_t discard_event;
+                int total_drained = 0;
+                while (gui_poll_event(g_window, &discard_event) == 0)
+                {
+                    total_drained++;
+                    if (total_drained > 256)
+                        break;  // Safety limit
+                }
+
+                debug_print("[consoled] CON_CONNECT: drained ");
+                debug_print_dec(total_drained);
+                debug_print(" events (pass 1)\n");
+
+                // Sleep again and drain once more in case more arrived
+                sys::sleep(50);
+                int pass2_drained = 0;
+                while (gui_poll_event(g_window, &discard_event) == 0)
+                {
+                    pass2_drained++;
+                    total_drained++;
+                    if (total_drained > 512)
+                        break;
+                }
+
+                debug_print("[consoled] CON_CONNECT: drained ");
+                debug_print_dec(pass2_drained);
+                debug_print(" events (pass 2)\n");
             }
 
             ConnectReply reply;
@@ -1287,6 +1335,9 @@ extern "C" void _start()
     // TEMPORARILY DISABLED - vinit IPC path is disabled for debugging
     // sys::gcon_set_gui_mode(true);
 
+    // Fill entire window background once (including padding areas)
+    gui_fill_rect(g_window, 0, 0, g_window_width, g_window_height, g_bg_color);
+
     // Initial draw
     redraw_all();
     gui_present(g_window);
@@ -1317,21 +1368,29 @@ extern "C" void _start()
     uint32_t handles[4];
     gui_event_t event;
 
+    // Initialize presentation timing
+    g_last_present_time = sys::uptime();
+
     while (true)
     {
         bool did_work = false;
+        uint64_t now = sys::uptime();
 
-        // Drain ALL pending client messages first (before checking GUI events)
-        while (true)
+        // STEP 1: Process messages in LIMITED batches
+        // This ensures we check for GUI events even under heavy write load
+        uint32_t messages_processed = 0;
+
+        while (messages_processed < MAX_MESSAGES_PER_BATCH)
         {
             uint32_t handle_count = 4;
-            int64_t n =
-                sys::channel_recv(g_service_channel, msg_buf, sizeof(msg_buf), handles, &handle_count);
+            int64_t n = sys::channel_recv(g_service_channel, msg_buf, sizeof(msg_buf),
+                                          handles, &handle_count);
 
             if (n > 0)
             {
                 did_work = true;
-                // Got a message - process it
+                messages_processed++;
+
                 int32_t client_ch = (handle_count > 0) ? static_cast<int32_t>(handles[0]) : -1;
                 handle_request(client_ch, msg_buf, static_cast<size_t>(n), handles, handle_count);
 
@@ -1346,19 +1405,22 @@ extern "C" void _start()
             }
             else
             {
-                // No more messages
                 break;
             }
         }
 
-        // Present after draining all messages
-        if (g_needs_present)
+        // STEP 2: Present with frame rate limiting
+        now = sys::uptime();
+        uint64_t time_since_present = now - g_last_present_time;
+
+        if (g_needs_present && time_since_present >= FRAME_INTERVAL_MS)
         {
             gui_present(g_window);
             g_needs_present = false;
+            g_last_present_time = now;
         }
 
-        // Check for GUI events (keyboard input, etc.)
+        // STEP 3: Poll GUI events (keyboard) - MUST be reached regularly!
         while (gui_poll_event(g_window, &event) == 0)
         {
             did_work = true;
@@ -1377,15 +1439,44 @@ extern "C" void _start()
                     input_ev._pad[1] = 0;
                     input_ev._pad[2] = 0;
 
+                    // Debug: show forwarded key with modifiers
+                    debug_print("[consoled] FWD key: '");
+                    if (input_ev.ch >= 32 && input_ev.ch < 127)
+                    {
+                        char cbuf[2] = {input_ev.ch, 0};
+                        debug_print(cbuf);
+                    }
+                    else
+                    {
+                        debug_print("?");
+                    }
+                    debug_print("' keycode=");
+                    debug_print_dec(event.key.keycode);
+                    debug_print(" mods=");
+                    debug_print_dec(event.key.modifiers);
+                    debug_print("\n");
+
                     sys::channel_send(g_client_input_channel, &input_ev, sizeof(input_ev), nullptr, 0);
                 }
             }
         }
 
-        // Yield if we didn't do any work this iteration
+        // STEP 4: Sleep/yield if idle
         if (!did_work)
         {
-            sys::yield();
+            if (g_needs_present)
+            {
+                // Sleep until next frame time
+                uint64_t remaining = FRAME_INTERVAL_MS - time_since_present;
+                if (remaining > 0 && remaining <= FRAME_INTERVAL_MS)
+                {
+                    sys::sleep(remaining);
+                }
+            }
+            else
+            {
+                sys::yield();
+            }
         }
     }
 

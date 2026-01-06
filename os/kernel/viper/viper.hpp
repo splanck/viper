@@ -123,6 +123,11 @@ struct Viper
     // Resource limits
     u64 memory_used;  /**< Approximate memory usage accounting (bytes). */
     u64 memory_limit; /**< Configured memory limit for this process (bytes). */
+    u32 handle_limit; /**< Maximum number of capability handles. */
+    u32 task_limit;   /**< Maximum number of tasks/threads in this process. */
+
+    // Capability bounding set - limits what rights this process can ever acquire
+    u32 cap_bounding_set; /**< Bitmask of allowed capability rights. */
 
     // Global list linkage
     Viper *next_all; /**< Next Viper in the global doubly-linked list. */
@@ -160,10 +165,23 @@ constexpr u64 USER_STACK_SIZE = 1 * 1024 * 1024;         // 1MB default stack
 // Default limits
 /** @brief Default per-process memory limit used during bring-up. */
 constexpr u64 DEFAULT_MEMORY_LIMIT = 64 * 1024 * 1024; // 64MB
-/** @brief Default capability handle limit (not yet enforced everywhere). */
+/** @brief Default capability handle limit. */
 constexpr u32 DEFAULT_HANDLE_LIMIT = 1024;
+/** @brief Default task/thread limit per process. */
+constexpr u32 DEFAULT_TASK_LIMIT = 16;
 /** @brief Maximum number of concurrently allocated Viper processes. */
 constexpr u32 MAX_VIPERS = 64;
+
+/**
+ * @brief Resource limit identifiers for get_rlimit/set_rlimit.
+ */
+enum class ResourceLimit : u32
+{
+    Memory = 0,  /**< Memory usage in bytes. */
+    Handles = 1, /**< Maximum capability handles. */
+    Tasks = 2,   /**< Maximum tasks/threads. */
+    Count = 3,   /**< Number of resource limit types. */
+};
 
 // Viper management functions
 /**
@@ -382,5 +400,72 @@ i64 getsid(u64 pid);
  * @return New session ID on success, negative error on failure.
  */
 i64 setsid();
+
+/**
+ * @brief Get the capability bounding set for a process.
+ *
+ * @param v Process to query.
+ * @return Bounding set bitmask.
+ */
+u32 get_cap_bounding_set(Viper *v);
+
+/**
+ * @brief Drop rights from a process's capability bounding set.
+ *
+ * @details
+ * This is an irreversible operation. Once rights are dropped from the bounding
+ * set, the process can never acquire capabilities with those rights again, even
+ * if offered via IPC.
+ *
+ * @param v Process to modify.
+ * @param rights_to_drop Rights to remove from the bounding set.
+ * @return 0 on success.
+ */
+i64 drop_cap_bounding_set(Viper *v, u32 rights_to_drop);
+
+// Resource limit management
+
+/**
+ * @brief Get a resource limit for the current process.
+ *
+ * @param resource Which resource limit to query.
+ * @return Current limit value, or negative error code.
+ */
+i64 get_rlimit(ResourceLimit resource);
+
+/**
+ * @brief Set a resource limit for the current process.
+ *
+ * @details
+ * Limits can only be reduced, not increased (privilege dropping).
+ * Setting a limit lower than current usage is allowed but will prevent
+ * further resource acquisition.
+ *
+ * @param resource Which resource limit to modify.
+ * @param new_limit New limit value.
+ * @return 0 on success, negative error code on failure.
+ */
+i64 set_rlimit(ResourceLimit resource, u64 new_limit);
+
+/**
+ * @brief Get current resource usage for the current process.
+ *
+ * @param resource Which resource to query usage for.
+ * @return Current usage value, or negative error code.
+ */
+i64 get_rusage(ResourceLimit resource);
+
+/**
+ * @brief Check if a resource limit would be exceeded.
+ *
+ * @details
+ * Used internally before allocating resources.
+ *
+ * @param v Process to check.
+ * @param resource Which resource limit to check.
+ * @param amount Amount of resource to allocate.
+ * @return true if allocation would exceed limit, false otherwise.
+ */
+bool would_exceed_rlimit(Viper *v, ResourceLimit resource, u64 amount);
 
 } // namespace viper

@@ -13,7 +13,7 @@ ViperOS follows a microkernel architecture where device drivers and system servi
 | **netd** | NETD: | ~3,200 | TCP/IP network stack |
 | **fsd** | FSD: | ~3,100 | Filesystem operations |
 | **blkd** | BLKD: | ~700 | Block device access |
-| **consoled** | CONSOLED | ~600 | Console output |
+| **consoled** | CONSOLED | ~1,600 | GUI terminal emulator |
 | **inputd** | INPUTD | ~1,000 | Keyboard/mouse input |
 | **displayd** | DISPLAY | ~1,700 | Window management, GUI |
 
@@ -295,56 +295,164 @@ namespace blk {
 ## Console Server (consoled)
 
 **Location:** `user/servers/consoled/`
-**Status:** Complete
+**Status:** Complete - Full GUI terminal emulator
 **Registration:** `sys::assign_set("CONSOLED", channel_handle)`
 
 ### Files
 
 | File | Lines | Description |
 |------|-------|-------------|
-| `main.cpp` | ~397 | Server entry point |
-| `console_protocol.hpp` | ~184 | IPC message definitions |
+| `main.cpp` | ~1,394 | GUI terminal emulator with ANSI support |
+| `console_protocol.hpp` | ~225 | IPC message definitions |
+
+### Overview
+
+Consoled is a GUI-based terminal emulator that runs as a window within displayd. It provides:
+
+- A graphical window displaying text in a scrollable terminal
+- Bidirectional IPC with connected clients (output and keyboard input)
+- Full ANSI escape sequence processing for colors and cursor control
+- Keyboard input forwarding from displayd to connected clients
 
 ### Features
 
-- Text output to graphics console (ramfb)
-- Cursor position control
-- Color settings (foreground/background ARGB)
-- Screen clearing
-- Show/hide cursor
-- Console dimension query (80x25 default)
-- Tab stops (8-column boundaries)
-- Newline/carriage return/backspace handling
+**Terminal Emulation:**
+- 106x50 character grid (12x12 pixel cells at 1.5x font scaling)
+- Per-cell foreground and background colors with attributes (bold, dim, italic, underline, blink, reverse, hidden, strikethrough)
+- Block cursor with blinking animation (500ms interval)
+- ANSI escape sequence parsing (CSI sequences)
+
+**ANSI Escape Sequences Supported:**
+- `CSI n m` - SGR (Select Graphic Rendition): colors 0-7, bright 90-97/100-107, 256-color (38;5;n), 24-bit RGB (38;2;r;g;b)
+- `CSI n A/B/C/D` - Cursor movement (up/down/forward/back)
+- `CSI n;m H` or `CSI n;m f` - Cursor positioning
+- `CSI n J` - Erase display (0=below, 1=above, 2=all)
+- `CSI n K` - Erase line (0=right, 1=left, 2=all)
+- `CSI s/u` - Save/restore cursor position
+- `CSI ?25h/l` - Show/hide cursor
+
+**Display:**
+- Creates GUI window via libgui (DISPLAY service)
+- 1.5x scaled font (12x12 pixels, half-unit scaling: scale=3)
+- Window positioned at (20, 20) for visibility
+- Dirty cell tracking for efficient partial updates
+- Row-based damage coalescing
+
+**Bidirectional IPC:**
+- Clients connect via CON_CONNECT with a channel handle for receiving input
+- Text output via CON_WRITE with ANSI sequence processing
+- Keyboard input forwarded via CON_INPUT events
+- Console dimensions reported in CON_CONNECT_REPLY
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        consoled                              │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
+│  │ Cell Grid   │  │ ANSI Parser │  │ Keyboard Translator │  │
+│  │ 106x50      │  │ CSI/SGR     │  │ Keycode → ASCII     │  │
+│  └──────┬──────┘  └──────┬──────┘  └──────────┬──────────┘  │
+│         │                │                     │             │
+│         ▼                │                     │             │
+│  ┌─────────────────────────────────────────────┐            │
+│  │              Main Event Loop                 │            │
+│  │  1. Drain ALL client messages               │            │
+│  │  2. Present dirty cells to window           │            │
+│  │  3. Poll GUI events (keyboard)              │            │
+│  │  4. Forward keys to connected client        │            │
+│  └─────────────────────────────────────────────┘            │
+└─────────────────────────────────────────────────────────────┘
+         │ libgui                        ▲ IPC
+         ▼                               │
+    ┌─────────┐                    ┌──────────┐
+    │displayd │                    │  vinit   │
+    │(window) │                    │ (client) │
+    └─────────┘                    └──────────┘
+```
 
 ### IPC Protocol
 
 ```cpp
 namespace console_protocol {
-    // Message types
-    constexpr uint32_t CON_WRITE = 0x1001;
-    constexpr uint32_t CON_CLEAR = 0x1002;
-    constexpr uint32_t CON_SET_CURSOR = 0x1003;
-    constexpr uint32_t CON_GET_CURSOR = 0x1004;
-    constexpr uint32_t CON_SET_COLORS = 0x1005;
-    constexpr uint32_t CON_GET_SIZE = 0x1006;
-    constexpr uint32_t CON_SHOW_CURSOR = 0x1007;
-    constexpr uint32_t CON_HIDE_CURSOR = 0x1008;
+    // Request types
+    constexpr uint32_t CON_WRITE = 0x1001;       // Write text (with ANSI)
+    constexpr uint32_t CON_CLEAR = 0x1002;       // Clear screen
+    constexpr uint32_t CON_SET_CURSOR = 0x1003;  // Set cursor position
+    constexpr uint32_t CON_GET_CURSOR = 0x1004;  // Get cursor position
+    constexpr uint32_t CON_SET_COLORS = 0x1005;  // Set default colors
+    constexpr uint32_t CON_GET_SIZE = 0x1006;    // Get dimensions
+    constexpr uint32_t CON_SHOW_CURSOR = 0x1007; // Show cursor
+    constexpr uint32_t CON_HIDE_CURSOR = 0x1008; // Hide cursor
+    constexpr uint32_t CON_CONNECT = 0x1009;     // Connect with input channel
 
-    struct WriteRequest {
-        uint32_t type;   // CON_WRITE
+    // Events (consoled → client)
+    constexpr uint32_t CON_INPUT = 0x3001;       // Keyboard input event
+
+    // Reply types (0x2000 + request)
+    constexpr uint32_t CON_CONNECT_REPLY = 0x2009;
+
+    struct ConnectRequest {
+        uint32_t type;       // CON_CONNECT
         uint32_t request_id;
-        uint32_t length;
-        // Followed by text data
+        // handle[0] = reply channel (send endpoint)
+        // handle[1] = input channel (send endpoint for consoled to use)
     };
 
-    struct SetColorsRequest {
-        uint32_t type;       // CON_SET_COLORS
+    struct ConnectReply {
+        uint32_t type;       // CON_CONNECT_REPLY
         uint32_t request_id;
-        uint32_t foreground; // ARGB
-        uint32_t background; // ARGB
+        int32_t status;      // 0 = success
+        uint32_t cols;       // Console columns (106)
+        uint32_t rows;       // Console rows (50)
+    };
+
+    struct WriteRequest {
+        uint32_t type;       // CON_WRITE
+        uint32_t request_id;
+        uint32_t length;     // Text length
+        uint32_t reserved;
+        // Followed by text data (up to 4080 bytes)
+    };
+
+    struct InputEvent {
+        uint32_t type;       // CON_INPUT
+        char ch;             // ASCII character (0 for special keys)
+        uint8_t pressed;     // 1 = key down, 0 = key up
+        uint16_t keycode;    // Raw evdev keycode
+        uint8_t modifiers;   // Shift=1, Ctrl=2, Alt=4
+        uint8_t _pad[3];
     };
 }
 ```
+
+### Connection Flow
+
+1. Client creates a channel pair for receiving input events
+2. Client creates a channel pair for receiving the connect reply
+3. Client sends CON_CONNECT with both send endpoints as handles
+4. Consoled stores the input channel for keyboard forwarding
+5. Consoled sends CON_CONNECT_REPLY with console dimensions
+6. Client can now:
+   - Send CON_WRITE to output text
+   - Receive CON_INPUT events for keyboard input
+
+### Keycode Translation
+
+Consoled translates Linux evdev keycodes to ASCII characters:
+
+| Keycode Range | Description |
+|---------------|-------------|
+| 2-11 | Number keys (1-9, 0) |
+| 16-25 | QWERTYUIOP row |
+| 30-38 | ASDFGHJKL row |
+| 44-50 | ZXCVBNM row |
+| 28 | Enter (→ '\n') |
+| 14 | Backspace (→ '\b') |
+| 57 | Space |
+| 15 | Tab (→ '\t') |
+
+Shift modifier produces uppercase letters and symbols. Special keys (arrows, function keys) are passed as raw keycodes with `ch=0`.
 
 ---
 

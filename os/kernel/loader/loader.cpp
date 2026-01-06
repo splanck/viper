@@ -15,10 +15,13 @@
 
 #include "loader.hpp"
 #include "../arch/aarch64/mmu.hpp"
+#include "../cap/handle.hpp"
+#include "../cap/table.hpp"
 #include "../console/serial.hpp"
 #include "../fs/vfs/vfs.hpp"
 #include "../mm/kheap.hpp"
 #include "../mm/pmm.hpp"
+#include "../mm/vma.hpp"
 #include "../sched/scheduler.hpp"
 #include "../sched/task.hpp"
 #include "../viper/address_space.hpp"
@@ -438,6 +441,162 @@ SpawnResult spawn_process_from_blob(const void *elf_data,
     LoadResult load_result = load_elf(v, elf_data, elf_size);
 
     return complete_spawn(v, load_result, name);
+}
+
+/** @copydoc loader::replace_process */
+ReplaceResult replace_process(const char *path,
+                              const cap::Handle *preserve_handles,
+                              u32 preserve_count)
+{
+    ReplaceResult result = {false, 0};
+
+    if (!path)
+    {
+        serial::puts("[loader] replace_process: invalid path\n");
+        return result;
+    }
+
+    // Get current process
+    viper::Viper *v = viper::current();
+    if (!v)
+    {
+        serial::puts("[loader] replace_process: no current process\n");
+        return result;
+    }
+
+    serial::puts("[loader] Replacing process '");
+    serial::puts(v->name);
+    serial::puts("' with ");
+    serial::puts(path);
+    serial::puts("\n");
+
+    // Get address space
+    viper::AddressSpace *as = viper::get_address_space(v);
+    if (!as)
+    {
+        serial::puts("[loader] replace_process: no address space\n");
+        return result;
+    }
+
+    // Clear VMA list and unmap all user pages
+    // Walk through all VMAs and unmap them
+    mm::Vma *vma = v->vma_list.head();
+    while (vma)
+    {
+        mm::Vma *next = vma->next;
+        // Unmap the region
+        as->unmap(vma->start, vma->end - vma->start);
+        vma = next;
+    }
+
+    // Clear the VMA list
+    v->vma_list.clear();
+
+    // Handle capability preservation
+    cap::Table *ct = v->cap_table;
+    if (ct)
+    {
+        if (preserve_handles && preserve_count > 0)
+        {
+            // Build a set of handles to preserve
+            // Then remove all others
+            for (usize i = 0; i < ct->capacity(); i++)
+            {
+                cap::Entry *e = ct->entry_at(i);
+                if (e && e->kind != cap::Kind::Invalid)
+                {
+                    cap::Handle h = cap::make_handle(static_cast<u32>(i), e->generation);
+
+                    // Check if this handle should be preserved
+                    bool preserve = false;
+                    for (u32 j = 0; j < preserve_count; j++)
+                    {
+                        if (preserve_handles[j] == h)
+                        {
+                            preserve = true;
+                            break;
+                        }
+                    }
+
+                    if (!preserve)
+                    {
+                        ct->remove(h);
+                    }
+                }
+            }
+        }
+        else
+        {
+            // No preservation - remove all capabilities
+            for (usize i = 0; i < ct->capacity(); i++)
+            {
+                cap::Entry *e = ct->entry_at(i);
+                if (e && e->kind != cap::Kind::Invalid)
+                {
+                    cap::Handle h = cap::make_handle(static_cast<u32>(i), e->generation);
+                    ct->remove(h);
+                }
+            }
+        }
+    }
+
+    // Re-add heap and stack VMAs
+    v->vma_list.add(viper::layout::USER_HEAP_BASE,
+                    v->heap_max,
+                    mm::vma_prot::READ | mm::vma_prot::WRITE,
+                    mm::VmaType::ANONYMOUS);
+
+    u64 stack_bottom = viper::layout::USER_STACK_TOP - viper::layout::USER_STACK_SIZE;
+    v->vma_list.add(stack_bottom,
+                    viper::layout::USER_STACK_TOP,
+                    mm::vma_prot::READ | mm::vma_prot::WRITE,
+                    mm::VmaType::STACK);
+
+    // Load the new ELF
+    LoadResult load_result = load_elf_from_disk(v, path);
+    if (!load_result.success)
+    {
+        serial::puts("[loader] replace_process: ELF load failed\n");
+        return result;
+    }
+
+    // Set up new user stack
+    u64 stack_top = setup_user_stack(as);
+    if (stack_top == 0)
+    {
+        serial::puts("[loader] replace_process: stack setup failed\n");
+        return result;
+    }
+
+    // Reset heap tracking
+    v->heap_start = load_result.brk;
+    v->heap_break = load_result.brk;
+
+    // Update process name from path
+    const char *name_start = path;
+    for (const char *p = path; *p; p++)
+    {
+        if (*p == '/')
+        {
+            name_start = p + 1;
+        }
+    }
+    int i = 0;
+    while (name_start[i] && i < 31)
+    {
+        v->name[i] = name_start[i];
+        i++;
+    }
+    v->name[i] = '\0';
+
+    serial::puts("[loader] Process replaced: new entry=");
+    serial::put_hex(load_result.entry_point);
+    serial::puts("\n");
+
+    result.success = true;
+    result.entry_point = load_result.entry_point;
+
+    return result;
 }
 
 } // namespace loader

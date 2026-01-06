@@ -139,6 +139,22 @@ class Table
     Handle insert(void *object, Kind kind, Rights rights);
 
     /**
+     * @brief Allocate a new handle with bounding set enforcement.
+     *
+     * @details
+     * Same as insert(), but rights are first masked by the process's
+     * capability bounding set. Rights not in the bounding set are silently
+     * dropped.
+     *
+     * @param object Pointer to kernel object to reference.
+     * @param kind Kind tag for the object.
+     * @param rights Requested rights mask.
+     * @param bounding_set Process capability bounding set.
+     * @return New handle, or @ref HANDLE_INVALID if the table is full.
+     */
+    Handle insert_bounded(void *object, Kind kind, Rights rights, u32 bounding_set);
+
+    /**
      * @brief Look up a handle and validate its index/generation.
      *
      * @details

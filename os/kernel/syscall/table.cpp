@@ -492,6 +492,50 @@ static SyscallResult sys_task_spawn_shm(u64 a0, u64 a1, u64 a2, u64 a3, u64 a4, 
                              static_cast<u64>(bootstrap_send));
 }
 
+static SyscallResult sys_replace(u64 a0, u64 a1, u64 a2, u64, u64, u64)
+{
+    const char *path = reinterpret_cast<const char *>(a0);
+    const cap::Handle *preserve_handles = reinterpret_cast<const cap::Handle *>(a1);
+    u32 preserve_count = static_cast<u32>(a2);
+
+    // Validate path
+    if (validate_user_string(path, 256) < 0)
+    {
+        return SyscallResult::err(error::VERR_INVALID_ARG);
+    }
+
+    // Validate preserve_handles array if provided
+    if (preserve_handles && preserve_count > 0)
+    {
+        if (!validate_user_read(preserve_handles, preserve_count * sizeof(cap::Handle)))
+        {
+            return SyscallResult::err(error::VERR_INVALID_ARG);
+        }
+    }
+
+    // Call replace_process
+    loader::ReplaceResult result = loader::replace_process(path, preserve_handles, preserve_count);
+    if (!result.success)
+    {
+        return SyscallResult::err(error::VERR_IO);
+    }
+
+    // Update the calling task's entry point and stack
+    // The task will be reconfigured to start at the new entry point
+    task::Task *t = task::current();
+    if (t && t->trap_frame)
+    {
+        // Reset trap frame to new entry point
+        // The stack was already set up by replace_process
+        t->trap_frame->x[30] = result.entry_point; // LR = entry point
+        t->trap_frame->elr = result.entry_point;   // Return to new entry
+        t->trap_frame->sp = viper::layout::USER_STACK_TOP; // Reset stack
+    }
+
+    // Return success - the syscall return will jump to the new entry point
+    return SyscallResult::ok(result.entry_point);
+}
+
 static SyscallResult sys_task_list(u64 a0, u64 a1, u64, u64, u64, u64)
 {
     TaskInfo *buf = reinterpret_cast<TaskInfo *>(a0);
@@ -1822,6 +1866,77 @@ static SyscallResult sys_cap_list(u64 a0, u64 a1, u64, u64, u64, u64)
         }
     }
     return SyscallResult::ok(static_cast<u64>(count));
+}
+
+static SyscallResult sys_cap_get_bound(u64, u64, u64, u64, u64, u64)
+{
+    viper::Viper *v = viper::current();
+    if (!v)
+    {
+        return SyscallResult::err(error::VERR_NOT_FOUND);
+    }
+
+    u32 bounding_set = viper::get_cap_bounding_set(v);
+    return SyscallResult::ok(static_cast<u64>(bounding_set));
+}
+
+static SyscallResult sys_cap_drop_bound(u64 a0, u64, u64, u64, u64, u64)
+{
+    u32 rights_to_drop = static_cast<u32>(a0);
+
+    viper::Viper *v = viper::current();
+    if (!v)
+    {
+        return SyscallResult::err(error::VERR_NOT_FOUND);
+    }
+
+    i64 result = viper::drop_cap_bounding_set(v, rights_to_drop);
+    if (result < 0)
+    {
+        return SyscallResult::err(static_cast<i32>(result));
+    }
+
+    return SyscallResult::ok();
+}
+
+static SyscallResult sys_getrlimit(u64 a0, u64, u64, u64, u64, u64)
+{
+    viper::ResourceLimit resource = static_cast<viper::ResourceLimit>(a0);
+
+    i64 result = viper::get_rlimit(resource);
+    if (result < 0)
+    {
+        return SyscallResult::err(static_cast<i32>(result));
+    }
+
+    return SyscallResult::ok(static_cast<u64>(result));
+}
+
+static SyscallResult sys_setrlimit(u64 a0, u64 a1, u64, u64, u64, u64)
+{
+    viper::ResourceLimit resource = static_cast<viper::ResourceLimit>(a0);
+    u64 new_limit = a1;
+
+    i64 result = viper::set_rlimit(resource, new_limit);
+    if (result < 0)
+    {
+        return SyscallResult::err(static_cast<i32>(result));
+    }
+
+    return SyscallResult::ok();
+}
+
+static SyscallResult sys_getrusage(u64 a0, u64, u64, u64, u64, u64)
+{
+    viper::ResourceLimit resource = static_cast<viper::ResourceLimit>(a0);
+
+    i64 result = viper::get_rusage(resource);
+    if (result < 0)
+    {
+        return SyscallResult::err(static_cast<i32>(result));
+    }
+
+    return SyscallResult::ok(static_cast<u64>(result));
 }
 
 // --- Handle-based FS (0x80-0x8F) ---
@@ -4235,6 +4350,7 @@ static const SyscallEntry syscall_table[] = {
     {SYS_SBRK, sys_sbrk, "sbrk", 1},
     {SYS_FORK, sys_fork, "fork", 0},
     {SYS_TASK_SPAWN_SHM, sys_task_spawn_shm, "task_spawn_shm", 5},
+    {SYS_REPLACE, sys_replace, "replace", 3},
     {SYS_SCHED_SETAFFINITY, sys_sched_setaffinity, "sched_setaffinity", 2},
     {SYS_SCHED_GETAFFINITY, sys_sched_getaffinity, "sched_getaffinity", 1},
 
@@ -4290,6 +4406,11 @@ static const SyscallEntry syscall_table[] = {
     {SYS_CAP_REVOKE, sys_cap_revoke, "cap_revoke", 1},
     {SYS_CAP_QUERY, sys_cap_query, "cap_query", 2},
     {SYS_CAP_LIST, sys_cap_list, "cap_list", 2},
+    {SYS_CAP_GET_BOUND, sys_cap_get_bound, "cap_get_bound", 0},
+    {SYS_CAP_DROP_BOUND, sys_cap_drop_bound, "cap_drop_bound", 1},
+    {SYS_GETRLIMIT, sys_getrlimit, "getrlimit", 1},
+    {SYS_SETRLIMIT, sys_setrlimit, "setrlimit", 2},
+    {SYS_GETRUSAGE, sys_getrusage, "getrusage", 1},
 
     // Handle-based FS (0x80-0x8F)
     {SYS_FS_OPEN_ROOT, sys_fs_open_root, "fs_open_root", 0},

@@ -953,10 +953,10 @@ void putc(char c)
     if (!initialized)
         return;
 
-    // When GUI mode is active, only output to serial (displayd owns the framebuffer)
+    // When GUI mode is active, skip gcon output entirely (displayd owns the framebuffer).
+    // Serial output is handled by callers (sys_write, sys_debug_print).
     if (gui_mode_active)
     {
-        serial::putc(c);
         return;
     }
 

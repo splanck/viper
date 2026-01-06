@@ -68,6 +68,8 @@
 #define SYS_FORK 0x0B
 /** @brief Spawn a new user process from a SharedMemory region containing an ELF image. */
 #define SYS_TASK_SPAWN_SHM 0x0C
+/** @brief Replace current process image with a new executable (exec-like). */
+#define SYS_REPLACE 0x0F
 /** @brief Set CPU affinity mask for a task. */
 #define SYS_SCHED_SETAFFINITY 0x0D
 /** @brief Get CPU affinity mask for a task. */
@@ -207,6 +209,16 @@
 #define SYS_CAP_QUERY 0x72
 /** @brief Enumerate handles in the current process capability table. */
 #define SYS_CAP_LIST 0x73
+/** @brief Get the capability bounding set for the current process. */
+#define SYS_CAP_GET_BOUND 0x74
+/** @brief Drop rights from the capability bounding set (irreversible). */
+#define SYS_CAP_DROP_BOUND 0x75
+/** @brief Get a resource limit for the current process. */
+#define SYS_GETRLIMIT 0x76
+/** @brief Set a resource limit for the current process (can only reduce). */
+#define SYS_SETRLIMIT 0x77
+/** @brief Get current resource usage for the current process. */
+#define SYS_GETRUSAGE 0x78
 /** @} */
 
 /** @name Signal Syscalls (0x90 - 0x9F)

@@ -1558,6 +1558,110 @@ inline i32 cap_list(::CapListEntry *buffer, u32 max_count)
 }
 
 /**
+ * @brief Get the capability bounding set for the current process.
+ *
+ * @details
+ * The capability bounding set limits what capability rights the process can
+ * ever acquire, even via IPC. Rights not in the bounding set are silently
+ * dropped when capabilities are received.
+ *
+ * @return Bounding set bitmask on success, or 0 if no process context.
+ */
+inline u32 cap_get_bounding_set()
+{
+    auto r = syscall0(SYS_CAP_GET_BOUND);
+    return r.ok() ? static_cast<u32>(r.val0) : 0;
+}
+
+/**
+ * @brief Irrevocably drop rights from the capability bounding set.
+ *
+ * @details
+ * Once rights are dropped from the bounding set, they can never be regained,
+ * even if a parent process tries to delegate capabilities with those rights.
+ * This is a security hardening mechanism for sandboxed processes.
+ *
+ * @param rights_to_drop Bitmask of CAP_RIGHT_* values to remove.
+ * @return 0 on success, or negative error code on failure.
+ */
+inline i32 cap_drop_bounding_set(u32 rights_to_drop)
+{
+    auto r = syscall1(SYS_CAP_DROP_BOUND, static_cast<u64>(rights_to_drop));
+    return static_cast<i32>(r.error);
+}
+
+// Resource limit types (matches viper::ResourceLimit)
+constexpr u32 RLIMIT_MEMORY = 0;  /**< Memory usage in bytes. */
+constexpr u32 RLIMIT_HANDLES = 1; /**< Maximum capability handles. */
+constexpr u32 RLIMIT_TASKS = 2;   /**< Maximum tasks/threads. */
+
+/**
+ * @brief Get a resource limit for the current process.
+ *
+ * @param resource Which resource limit to query (RLIMIT_*).
+ * @return Limit value on success, or negative error code on failure.
+ */
+inline i64 getrlimit(u32 resource)
+{
+    auto r = syscall1(SYS_GETRLIMIT, static_cast<u64>(resource));
+    return r.ok() ? static_cast<i64>(r.val0) : static_cast<i64>(r.error);
+}
+
+/**
+ * @brief Set a resource limit for the current process.
+ *
+ * @details
+ * Limits can only be reduced, not increased (privilege dropping).
+ *
+ * @param resource Which resource limit to modify (RLIMIT_*).
+ * @param new_limit New limit value.
+ * @return 0 on success, or negative error code on failure.
+ */
+inline i32 setrlimit(u32 resource, u64 new_limit)
+{
+    auto r = syscall2(SYS_SETRLIMIT, static_cast<u64>(resource), new_limit);
+    return static_cast<i32>(r.error);
+}
+
+/**
+ * @brief Get current resource usage for the current process.
+ *
+ * @param resource Which resource to query usage for (RLIMIT_*).
+ * @return Current usage value on success, or negative error code on failure.
+ */
+inline i64 getrusage(u32 resource)
+{
+    auto r = syscall1(SYS_GETRUSAGE, static_cast<u64>(resource));
+    return r.ok() ? static_cast<i64>(r.val0) : static_cast<i64>(r.error);
+}
+
+/**
+ * @brief Replace current process image with a new executable.
+ *
+ * @details
+ * This is ViperOS's equivalent of exec(). It replaces the current process
+ * with a new executable, optionally preserving specified capability handles.
+ * The process ID and parent/child relationships are preserved.
+ *
+ * After a successful replace, this function does not return - execution
+ * continues at the new program's entry point.
+ *
+ * @param path Path to the new ELF executable.
+ * @param preserve_handles Array of capability handles to preserve (or nullptr).
+ * @param preserve_count Number of handles to preserve.
+ * @return This function does not return on success. On failure, returns negative error.
+ */
+inline i64 replace(const char *path, const u32 *preserve_handles = nullptr, u32 preserve_count = 0)
+{
+    auto r = syscall3(SYS_REPLACE,
+                      reinterpret_cast<u64>(path),
+                      reinterpret_cast<u64>(preserve_handles),
+                      static_cast<u64>(preserve_count));
+    // On success, this won't return. On failure, return the error.
+    return r.ok() ? 0 : static_cast<i64>(r.error);
+}
+
+/**
  * @brief Convert a capability kind value to a human-readable string.
  *
  * @details

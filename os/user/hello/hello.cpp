@@ -11,6 +11,7 @@
  */
 
 #include "../syscall.hpp"
+#include <unistd.h>
 
 // Simple sbrk wrapper for direct testing
 static void *test_sbrk(long increment)
@@ -91,13 +92,21 @@ static void test_free(void *ptr)
 }
 
 /**
+ * @brief Print a character to stdout.
+ */
+static void putc_out(char c)
+{
+    write(STDOUT_FILENO, &c, 1);
+}
+
+/**
  * @brief Print a string to the console.
  */
 static void puts(const char *s)
 {
     while (*s)
     {
-        sys::putchar(*s++);
+        putc_out(*s++);
     }
 }
 
@@ -108,14 +117,14 @@ static void put_num(i64 n)
 {
     if (n < 0)
     {
-        sys::putchar('-');
+        putc_out('-');
         n = -n;
     }
     if (n >= 10)
     {
         put_num(n / 10);
     }
-    sys::putchar('0' + (n % 10));
+    putc_out('0' + (n % 10));
 }
 
 /**
@@ -132,9 +141,9 @@ static void put_hex(u64 n)
         {
             started = true;
             if (digit < 10)
-                sys::putchar('0' + digit);
+                putc_out('0' + digit);
             else
-                sys::putchar('a' + digit - 10);
+                putc_out('a' + digit - 10);
         }
     }
 }

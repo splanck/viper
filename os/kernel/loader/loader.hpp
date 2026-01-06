@@ -148,4 +148,36 @@ SpawnResult spawn_process_from_blob(const void *elf_data,
                                     const char *name,
                                     viper::Viper *parent = nullptr);
 
+/**
+ * @brief Result of replacing a process image.
+ */
+struct ReplaceResult
+{
+    bool success;    /**< Whether replace completed successfully. */
+    u64 entry_point; /**< New entry point (for task reconfiguration). */
+};
+
+/**
+ * @brief Replace the current process image with a new executable.
+ *
+ * @details
+ * This is ViperOS's equivalent of exec(). It:
+ * 1. Resets the process's address space (unmaps all user pages)
+ * 2. Loads the new ELF binary
+ * 3. Clears the capability table except for preserved handles
+ * 4. Resets heap tracking
+ * 5. Preserves: PID, parent/child relationships, bounding set, resource limits
+ *
+ * After a successful replace, the calling task's context should be updated
+ * to start at the new entry point.
+ *
+ * @param path Filesystem path to the new ELF executable.
+ * @param preserve_handles Array of capability handles to preserve (or nullptr).
+ * @param preserve_count Number of handles to preserve.
+ * @return ReplaceResult with success status and new entry point.
+ */
+ReplaceResult replace_process(const char *path,
+                              const cap::Handle *preserve_handles,
+                              u32 preserve_count);
+
 } // namespace loader

@@ -63,6 +63,7 @@ set(LIBC_CXX_SOURCES
         src/new.cpp
         src/fsd_backend.cpp
         src/netd_backend.cpp
+        src/consoled_backend.cpp
 )
 
 # Create static library

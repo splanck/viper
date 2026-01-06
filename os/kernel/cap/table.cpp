@@ -95,6 +95,14 @@ Handle Table::insert(void *object, Kind kind, Rights rights)
     return make_handle(index, e.generation);
 }
 
+/** @copydoc cap::Table::insert_bounded */
+Handle Table::insert_bounded(void *object, Kind kind, Rights rights, u32 bounding_set)
+{
+    // Mask requested rights by the process's capability bounding set
+    Rights bounded_rights = static_cast<Rights>(static_cast<u32>(rights) & bounding_set);
+    return insert(object, kind, bounded_rights);
+}
+
 // Internal unlocked get - caller must hold lock_
 static Entry *get_unlocked(Entry *entries, usize capacity, Handle h)
 {

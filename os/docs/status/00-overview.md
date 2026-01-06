@@ -1,6 +1,6 @@
 # ViperOS Implementation Status
 
-**Version:** January 2026 (v0.3.1)
+**Version:** January 2026 (v0.3.2)
 **Target:** AArch64 (ARM64) on QEMU virt machine
 **Total SLOC:** ~115,000
 
@@ -89,7 +89,7 @@ The system is designed for QEMU's `virt` machine but is structured for future ha
 │  └───────────────┘ └───────────────┘ └───────────────┘         │
 │  ┌───────────────┐ ┌───────────────┐ ┌───────────────┐         │
 │  │   consoled    │ │    inputd     │ │   displayd    │         │
-│  │  Console I/O  │ │  Keyboard/    │ │ Display/GUI   │         │
+│  │ GUI Terminal  │ │  Keyboard/    │ │ Display/GUI   │         │
 │  │ via CONSOLED: │ │  Mouse input  │ │ via DISPLAY:  │         │
 │  └───────────────┘ └───────────────┘ └───────────────┘         │
 └─────────────────────────┬───────────────────────────────────────┘
@@ -199,7 +199,7 @@ This separation enables:
 | netd | NETD: | TCP/IP stack, DNS, socket API |
 | fsd | FSD: | Filesystem operations via blkd |
 | blkd | BLKD: | VirtIO-blk device access |
-| consoled | CONSOLED | Console output |
+| consoled | CONSOLED | GUI terminal emulator |
 | inputd | INPUTD | Keyboard/mouse input |
 | displayd | DISPLAY | Window management, GUI compositing |
 
@@ -261,11 +261,12 @@ This separation enables:
 - User-space display server (displayd)
 - Window compositing with decorations and z-ordering
 - Minimize/maximize/close button handling
-- libgui client API with drawing primitives
+- libgui client API with drawing primitives (including scaled fonts)
 - Shared memory pixel buffers (zero-copy)
 - Per-surface event queues
 - Desktop taskbar with window list
 - Mouse cursor rendering
+- **GUI terminal emulator (consoled)**: ANSI escape sequences, 1.5x font scaling, bidirectional IPC for keyboard forwarding
 
 See [16-gui.md](16-gui.md) for complete GUI documentation.
 
@@ -425,8 +426,8 @@ os/
 - Environment variables
 
 ### GUI
-- Window move/resize via mouse drag
-- Keyboard event delivery to windows
+- Window resize via mouse drag (move is implemented)
+- True window resize (reallocating pixel buffer)
 - Alt+Tab window switching
 - Desktop background image
 - Application launcher menu
@@ -473,6 +474,13 @@ os/
 ---
 
 ## Version History
+
+- **January 2026 (v0.3.2)**: GUI terminal emulator
+  - **consoled**: Now runs as a GUI window via libgui/displayd
+  - **ANSI escape sequences**: Full CSI support (colors, cursor, erase)
+  - **Bidirectional IPC**: Keyboard forwarding from consoled to shell
+  - **Font scaling**: Half-unit scaling system (1.5x = 12x12 pixel cells)
+  - **libgui**: Added gui_draw_char() and gui_draw_char_scaled()
 
 - **January 2026 (v0.3.1)**: UEFI boot and GUI expansion
   - **VBoot bootloader**: Complete UEFI bootloader with GOP support

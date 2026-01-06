@@ -75,6 +75,9 @@ void init()
         vipers[i].heap_max = layout::USER_HEAP_BASE + (64 * 1024 * 1024); // 64MB heap limit
         vipers[i].memory_used = 0;
         vipers[i].memory_limit = DEFAULT_MEMORY_LIMIT;
+        vipers[i].handle_limit = DEFAULT_HANDLE_LIMIT;
+        vipers[i].task_limit = DEFAULT_TASK_LIMIT;
+        vipers[i].cap_bounding_set = cap::CAP_ALL;
         vipers[i].next_all = nullptr;
         vipers[i].prev_all = nullptr;
     }
@@ -207,9 +210,22 @@ Viper *create(Viper *parent, const char *name)
                     mm::vma_prot::READ | mm::vma_prot::WRITE,
                     mm::VmaType::STACK);
 
-    // Initialize resource tracking
+    // Initialize resource tracking - inherit limits from parent or use defaults
     v->memory_used = 0;
-    v->memory_limit = DEFAULT_MEMORY_LIMIT;
+    if (parent)
+    {
+        v->memory_limit = parent->memory_limit;
+        v->handle_limit = parent->handle_limit;
+        v->task_limit = parent->task_limit;
+        v->cap_bounding_set = parent->cap_bounding_set;
+    }
+    else
+    {
+        v->memory_limit = DEFAULT_MEMORY_LIMIT;
+        v->handle_limit = DEFAULT_HANDLE_LIMIT;
+        v->task_limit = DEFAULT_TASK_LIMIT;
+        v->cap_bounding_set = cap::CAP_ALL;
+    }
 
     // No tasks yet
     v->task_list = nullptr;
@@ -650,6 +666,12 @@ Viper *fork()
     child->heap_break = parent->heap_break;
     child->heap_max = parent->heap_max;
 
+    // Copy capability bounding set and resource limits (already inherited via create(), but be explicit)
+    child->cap_bounding_set = parent->cap_bounding_set;
+    child->memory_limit = parent->memory_limit;
+    child->handle_limit = parent->handle_limit;
+    child->task_limit = parent->task_limit;
+
     serial::puts("[viper] Fork complete: child id=");
     serial::put_dec(child->id);
     serial::puts("\n");
@@ -879,6 +901,144 @@ i64 setsid()
     v->is_session_leader = true;
 
     return static_cast<i64>(v->sid);
+}
+
+/** @copydoc viper::get_cap_bounding_set */
+u32 get_cap_bounding_set(Viper *v)
+{
+    if (!v)
+    {
+        return 0;
+    }
+    return v->cap_bounding_set;
+}
+
+/** @copydoc viper::drop_cap_bounding_set */
+i64 drop_cap_bounding_set(Viper *v, u32 rights_to_drop)
+{
+    if (!v)
+    {
+        return error::VERR_INVALID_ARG;
+    }
+
+    // Dropping is irreversible - just clear the bits
+    v->cap_bounding_set &= ~rights_to_drop;
+
+    serial::puts("[viper] Dropped rights from bounding set: 0x");
+    serial::put_hex(rights_to_drop);
+    serial::puts(" -> new set: 0x");
+    serial::put_hex(v->cap_bounding_set);
+    serial::puts("\n");
+
+    return 0;
+}
+
+/** @copydoc viper::get_rlimit */
+i64 get_rlimit(ResourceLimit resource)
+{
+    Viper *v = current();
+    if (!v)
+    {
+        return error::VERR_NOT_FOUND;
+    }
+
+    switch (resource)
+    {
+        case ResourceLimit::Memory:
+            return static_cast<i64>(v->memory_limit);
+        case ResourceLimit::Handles:
+            return static_cast<i64>(v->handle_limit);
+        case ResourceLimit::Tasks:
+            return static_cast<i64>(v->task_limit);
+        default:
+            return error::VERR_INVALID_ARG;
+    }
+}
+
+/** @copydoc viper::set_rlimit */
+i64 set_rlimit(ResourceLimit resource, u64 new_limit)
+{
+    Viper *v = current();
+    if (!v)
+    {
+        return error::VERR_NOT_FOUND;
+    }
+
+    // Limits can only be reduced, not increased (privilege dropping)
+    switch (resource)
+    {
+        case ResourceLimit::Memory:
+            if (new_limit > v->memory_limit)
+            {
+                return error::VERR_PERMISSION;
+            }
+            v->memory_limit = new_limit;
+            break;
+        case ResourceLimit::Handles:
+            if (new_limit > v->handle_limit)
+            {
+                return error::VERR_PERMISSION;
+            }
+            v->handle_limit = static_cast<u32>(new_limit);
+            break;
+        case ResourceLimit::Tasks:
+            if (new_limit > v->task_limit)
+            {
+                return error::VERR_PERMISSION;
+            }
+            v->task_limit = static_cast<u32>(new_limit);
+            break;
+        default:
+            return error::VERR_INVALID_ARG;
+    }
+
+    return 0;
+}
+
+/** @copydoc viper::get_rusage */
+i64 get_rusage(ResourceLimit resource)
+{
+    Viper *v = current();
+    if (!v)
+    {
+        return error::VERR_NOT_FOUND;
+    }
+
+    switch (resource)
+    {
+        case ResourceLimit::Memory:
+            return static_cast<i64>(v->memory_used);
+        case ResourceLimit::Handles:
+            return v->cap_table ? static_cast<i64>(v->cap_table->count()) : 0;
+        case ResourceLimit::Tasks:
+            return static_cast<i64>(v->task_count);
+        default:
+            return error::VERR_INVALID_ARG;
+    }
+}
+
+/** @copydoc viper::would_exceed_rlimit */
+bool would_exceed_rlimit(Viper *v, ResourceLimit resource, u64 amount)
+{
+    if (!v)
+    {
+        return true;
+    }
+
+    switch (resource)
+    {
+        case ResourceLimit::Memory:
+            return (v->memory_used + amount) > v->memory_limit;
+        case ResourceLimit::Handles:
+            {
+                u64 current_handles = v->cap_table ? v->cap_table->count() : 0;
+                return (current_handles + amount) > v->handle_limit;
+            }
+        case ResourceLimit::Tasks:
+            return (v->task_count + amount) > v->task_limit;
+        default:
+            return true;
+    }
 }
 
 } // namespace viper

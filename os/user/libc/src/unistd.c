@@ -68,6 +68,13 @@ extern int __viper_socket_close(int fd);
 extern int __viper_socket_dup(int oldfd);
 extern int __viper_socket_dup2(int oldfd, int newfd);
 
+/* libc ↔ consoled bridge */
+extern int __viper_consoled_is_available(void);
+extern ssize_t __viper_consoled_write(const void *buf, size_t count);
+extern int __viper_consoled_input_available(void);
+extern int __viper_consoled_getchar(void);
+extern int __viper_consoled_trygetchar(void);
+
 /* Syscall numbers from viperos/syscall_nums.hpp */
 #define SYS_TASK_CURRENT 0x02
 #define SYS_SBRK 0x0A
@@ -103,6 +110,56 @@ extern int __viper_socket_dup2(int oldfd, int newfd);
  * @param count Maximum number of bytes to read.
  * @return Number of bytes read, 0 on EOF, or -1 on error.
  */
+/**
+ * @brief Read a single character from stdin (consoled or kernel).
+ * @return Character (0-255), or -1 on EOF/error.
+ *
+ * @details
+ * This function routes input through consoled when available.
+ * IMPORTANT: We prioritize consoled over kernel input to avoid reading
+ * stale characters from the kernel's shared console buffer. The kernel
+ * buffer receives keyboard events even when consoled is handling them,
+ * leading to duplicate/stale input if we fall back to kernel.
+ */
+static int stdin_getchar_blocking(void)
+{
+    /* Try consoled first - this also attempts connection if needed */
+    if (__viper_consoled_input_available())
+    {
+        return __viper_consoled_getchar();
+    }
+
+    /* Check if consoled output is available but input isn't ready yet.
+     * This means we're in GUI mode but CON_CONNECT hasn't completed.
+     * In this case, wait for consoled input rather than falling back
+     * to kernel (which has stale input from the GUI keyboard). */
+    if (__viper_consoled_is_available())
+    {
+        /* Wait for consoled input to become ready, retrying connection */
+        for (int i = 0; i < 100; i++)
+        {
+            /* Sleep briefly to let consoled process our CON_CONNECT */
+            long rc = __syscall1(SYS_SLEEP, 10); /* 10ms */
+            (void)rc;
+
+            /* Try again - this will retry CON_CONNECT if needed */
+            if (__viper_consoled_input_available())
+            {
+                return __viper_consoled_getchar();
+            }
+        }
+        /* Gave up waiting for consoled input - return error */
+        return -1;
+    }
+
+    /* No consoled available - fall back to kernel (serial/pre-GUI mode) */
+    unsigned char c = 0;
+    long n = __syscall3(SYS_READ, STDIN_FILENO, (long)&c, 1);
+    if (n <= 0)
+        return -1;
+    return (int)c;
+}
+
 ssize_t read(int fd, void *buf, size_t count)
 {
     if (count == 0)
@@ -118,6 +175,20 @@ ssize_t read(int fd, void *buf, size_t count)
         struct termios t;
         if (tcgetattr(STDIN_FILENO, &t) != 0)
         {
+            /* No termios - just read raw from consoled or kernel */
+            if (__viper_consoled_input_available())
+            {
+                unsigned char *out = (unsigned char *)buf;
+                size_t nread = 0;
+                while (nread < count)
+                {
+                    int c = __viper_consoled_getchar();
+                    if (c < 0)
+                        break;
+                    out[nread++] = (unsigned char)c;
+                }
+                return (ssize_t)nread;
+            }
             return __syscall3(SYS_READ, fd, (long)buf, (long)count);
         }
 
@@ -139,14 +210,14 @@ ssize_t read(int fd, void *buf, size_t count)
 
                 while (line_len < sizeof(line_buf) - 1)
                 {
-                    unsigned char c = 0;
-                    long n = __syscall3(SYS_READ, STDIN_FILENO, (long)&c, 1);
-                    if (n < 0)
-                        return n;
-                    if (n == 0)
+                    int ch = stdin_getchar_blocking();
+                    if (ch < 0)
                     {
-                        return 0;
+                        if (line_len == 0)
+                            return 0;
+                        break;
                     }
+                    unsigned char c = (unsigned char)ch;
 
                     if (map_crnl && c == '\r')
                         c = '\n';
@@ -231,12 +302,10 @@ ssize_t read(int fd, void *buf, size_t count)
             /* If VTIME is non-zero, block until at least 1 byte arrives (ignore timeout). */
             if (t.c_cc[VTIME] != 0 && nread < count)
             {
-                unsigned char c = 0;
-                long n = __syscall3(SYS_READ, STDIN_FILENO, (long)&c, 1);
-                if (n < 0)
-                    return n;
-                if (n == 0)
+                int ch = stdin_getchar_blocking();
+                if (ch < 0)
                     return 0;
+                unsigned char c = (unsigned char)ch;
                 if (map_crnl && c == '\r')
                     c = '\n';
                 out[nread++] = c;
@@ -246,17 +315,102 @@ ssize_t read(int fd, void *buf, size_t count)
                 }
             }
 
+            /* Try to get more chars non-blocking.
+             * IMPORTANT: Only fall back to kernel if consoled is NOT in use.
+             * If consoled is active, kernel's buffer has stale/duplicate input. */
             while (nread < count)
             {
-                long rc = __syscall0(SYS_GETCHAR);
-                if (rc < 0)
+                int ch;
+                if (__viper_consoled_input_available())
+                {
+                    ch = __viper_consoled_trygetchar();
+                }
+                else if (!__viper_consoled_is_available())
+                {
+                    /* No consoled at all - use kernel (serial/pre-GUI mode) */
+                    long rc = __syscall0(SYS_GETCHAR);
+                    ch = (rc >= 0) ? (int)rc : -1;
+                }
+                else
+                {
+                    /* Consoled is active but input not ready - don't use kernel */
+                    ch = -1;
+                }
+                if (ch < 0)
                     break;
 
-                unsigned char c = (unsigned char)rc;
+                unsigned char c = (unsigned char)ch;
                 if (map_crnl && c == '\r')
                     c = '\n';
                 out[nread++] = c;
 
+                if (do_echo)
+                {
+                    (void)__syscall3(SYS_WRITE, STDOUT_FILENO, (long)&c, 1);
+                }
+            }
+
+            return (ssize_t)nread;
+        }
+        else
+        {
+            /* Non-canonical mode with VMIN > 0: block until at least VMIN bytes.
+             * Route through consoled if available to avoid reading stale input
+             * from the kernel's shared console buffer. */
+            unsigned char vmin = t.c_cc[VMIN];
+            unsigned char *out = (unsigned char *)buf;
+            size_t nread = 0;
+
+            /* Block until we have at least VMIN bytes (or count, whichever is less) */
+            size_t min_read = (vmin < count) ? vmin : count;
+
+            while (nread < min_read)
+            {
+                int ch = stdin_getchar_blocking();
+                if (ch < 0)
+                {
+                    if (nread > 0)
+                        break;
+                    continue; /* Keep blocking for first char */
+                }
+                unsigned char c = (unsigned char)ch;
+                if (map_crnl && c == '\r')
+                    c = '\n';
+                out[nread++] = c;
+                if (do_echo)
+                {
+                    (void)__syscall3(SYS_WRITE, STDOUT_FILENO, (long)&c, 1);
+                }
+            }
+
+            /* Try to read more up to count (non-blocking).
+             * IMPORTANT: Only fall back to kernel if consoled is NOT in use.
+             * If consoled is active, kernel's buffer has stale/duplicate input. */
+            while (nread < count)
+            {
+                int ch;
+                if (__viper_consoled_input_available())
+                {
+                    ch = __viper_consoled_trygetchar();
+                }
+                else if (!__viper_consoled_is_available())
+                {
+                    /* No consoled at all - use kernel (serial/pre-GUI mode) */
+                    long rc = __syscall0(SYS_GETCHAR);
+                    ch = (rc >= 0) ? (int)rc : -1;
+                }
+                else
+                {
+                    /* Consoled is active but input not ready - don't use kernel */
+                    ch = -1;
+                }
+                if (ch < 0)
+                    break;
+
+                unsigned char c = (unsigned char)ch;
+                if (map_crnl && c == '\r')
+                    c = '\n';
+                out[nread++] = c;
                 if (do_echo)
                 {
                     (void)__syscall3(SYS_WRITE, STDOUT_FILENO, (long)&c, 1);
@@ -282,6 +436,9 @@ ssize_t read(int fd, void *buf, size_t count)
  * Writes up to count bytes from buffer buf to file descriptor fd.
  * Routes writes through the appropriate backend based on FD type.
  *
+ * For stdout (fd 1) and stderr (fd 2), also routes output to consoled
+ * if available, so programs display in the GUI console window.
+ *
  * @param fd File descriptor to write to.
  * @param buf Buffer containing data to write.
  * @param count Number of bytes to write.
@@ -293,6 +450,23 @@ ssize_t write(int fd, const void *buf, size_t count)
     {
         return __viper_fsd_write(fd, buf, count);
     }
+
+    /* For stdout/stderr, try to send to consoled for GUI display */
+    if (fd == STDOUT_FILENO || fd == STDERR_FILENO)
+    {
+        if (__viper_consoled_is_available())
+        {
+            /* Send to consoled (GUI console window) */
+            ssize_t result = __viper_consoled_write(buf, count);
+            if (result >= 0)
+            {
+                /* Also send to kernel for serial output (debugging) */
+                (void)__syscall3(SYS_WRITE, fd, (long)buf, (long)count);
+                return result;
+            }
+        }
+    }
+
     return __syscall3(SYS_WRITE, fd, (long)buf, (long)count);
 }
 
