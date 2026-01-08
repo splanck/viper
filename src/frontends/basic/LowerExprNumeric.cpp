@@ -391,8 +391,12 @@ Lowerer::RVal NumericExprLowering::lowerStringBinary(const BinaryExpr &expr,
             break;
     }
 
-    Value cmp = lowerer.emitCallRet(lowerer.ilBoolTy(), rtFunc, {lhs.value, rhs.value});
-    Value cmpLogical = lowerer.emitBasicLogicalI64(cmp);
+    // String comparison runtime functions return i64 (0 or 1)
+    IlType i64Ty(IlKind::I64);
+    Value cmp = lowerer.emitCallRet(i64Ty, rtFunc, {lhs.value, rhs.value});
+    // Convert to BASIC logical form: 0 stays 0, 1 becomes -1 (negate: 0-cmp)
+    Value zero = lowerer.emitConstI64(0);
+    Value cmpLogical = lowerer.emitISub(zero, cmp);
 
     if (needsNegation)
     {

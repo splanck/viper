@@ -179,6 +179,14 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
             auto base = lowerExpr(fieldExpr->base.get());
             TypeRef baseType = sema_.typeOf(fieldExpr->base.get());
 
+            // Unwrap Optional types for field assignment
+            // This handles variables assigned from optionals after null checks
+            // (e.g., `var row = maybeRow;` where maybeRow is Row?)
+            if (baseType && baseType->kind == TypeKindSem::Optional && baseType->innerType())
+            {
+                baseType = baseType->innerType();
+            }
+
             if (baseType)
             {
                 std::string typeName = baseType->name;
@@ -293,8 +301,10 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
         case BinaryOp::Eq:
             if (leftType && leftType->kind == TypeKindSem::String)
             {
-                Value result = emitCallRet(Type(Type::Kind::I1), kStringEquals, {left.value, right.value});
-                return {result, Type(Type::Kind::I1)};
+                // String equality: rt_str_eq returns i64 (0 or 1), convert to boolean
+                Value result = emitCallRet(Type(Type::Kind::I64), kStringEquals, {left.value, right.value});
+                Value boolResult = emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1), result, Value::constInt(0));
+                return {boolResult, Type(Type::Kind::I1)};
             }
             if (isFloat)
             {
@@ -313,9 +323,9 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
         case BinaryOp::Ne:
             if (leftType && leftType->kind == TypeKindSem::String)
             {
-                Value eqResult = emitCallRet(Type(Type::Kind::I1), kStringEquals, {left.value, right.value});
-                Value extResult = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), eqResult);
-                Value result = emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), extResult, Value::constInt(0));
+                // String inequality: rt_str_eq returns i64 (0 or 1), invert for !=
+                Value eqResult = emitCallRet(Type(Type::Kind::I64), kStringEquals, {left.value, right.value});
+                Value result = emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), eqResult, Value::constInt(0));
                 return {result, Type(Type::Kind::I1)};
             }
             if (isFloat)
@@ -333,21 +343,49 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
             break;
 
         case BinaryOp::Lt:
+            if (leftType && leftType->kind == TypeKindSem::String)
+            {
+                // Bug #003 fix: Use runtime string comparison for <
+                Value result = emitCallRet(Type(Type::Kind::I64), "rt_str_lt", {left.value, right.value});
+                Value boolResult = emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1), result, Value::constInt(0));
+                return {boolResult, Type(Type::Kind::I1)};
+            }
             op = isFloat ? Opcode::FCmpLT : Opcode::SCmpLT;
             resultType = Type(Type::Kind::I1);
             break;
 
         case BinaryOp::Le:
+            if (leftType && leftType->kind == TypeKindSem::String)
+            {
+                // Bug #003 fix: Use runtime string comparison for <=
+                Value result = emitCallRet(Type(Type::Kind::I64), "rt_str_le", {left.value, right.value});
+                Value boolResult = emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1), result, Value::constInt(0));
+                return {boolResult, Type(Type::Kind::I1)};
+            }
             op = isFloat ? Opcode::FCmpLE : Opcode::SCmpLE;
             resultType = Type(Type::Kind::I1);
             break;
 
         case BinaryOp::Gt:
+            if (leftType && leftType->kind == TypeKindSem::String)
+            {
+                // Bug #003 fix: Use runtime string comparison for >
+                Value result = emitCallRet(Type(Type::Kind::I64), "rt_str_gt", {left.value, right.value});
+                Value boolResult = emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1), result, Value::constInt(0));
+                return {boolResult, Type(Type::Kind::I1)};
+            }
             op = isFloat ? Opcode::FCmpGT : Opcode::SCmpGT;
             resultType = Type(Type::Kind::I1);
             break;
 
         case BinaryOp::Ge:
+            if (leftType && leftType->kind == TypeKindSem::String)
+            {
+                // Bug #003 fix: Use runtime string comparison for >=
+                Value result = emitCallRet(Type(Type::Kind::I64), "rt_str_ge", {left.value, right.value});
+                Value boolResult = emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1), result, Value::constInt(0));
+                return {boolResult, Type(Type::Kind::I1)};
+            }
             op = isFloat ? Opcode::FCmpGE : Opcode::SCmpGE;
             resultType = Type(Type::Kind::I1);
             break;

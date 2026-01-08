@@ -420,6 +420,14 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
         TypeRef baseType = sema_.typeOf(fieldExpr->base.get());
         if (baseType)
         {
+            // Unwrap Optional types for method resolution
+            // This handles the case where a variable was assigned from an optional
+            // after a null check (e.g., `var table = maybeTable;` after `if maybeTable == null { return; }`)
+            if (baseType->kind == TypeKindSem::Optional && baseType->innerType())
+            {
+                baseType = baseType->innerType();
+            }
+
             std::string typeName = baseType->name;
 
             // Check value type methods
@@ -509,6 +517,45 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                 {
                     Value result = emitCallRet(ilReturnType, funcName, args);
                     return {result, ilReturnType};
+                }
+            }
+
+            // Handle String method calls - Bug #018 fix
+            // String.length() should be treated as a property access, not a method call
+            if (baseType->kind == TypeKindSem::String)
+            {
+                if (equalsIgnoreCase(fieldExpr->field, "length"))
+                {
+                    auto baseResult = lowerExpr(fieldExpr->base.get());
+                    Value result =
+                        emitCallRet(Type(Type::Kind::I64), "Viper.String.Length", {baseResult.value});
+                    return {result, Type(Type::Kind::I64)};
+                }
+            }
+
+            // Handle Integer method calls - Bug #018 fix
+            // Integer.toString() should convert to string
+            if (baseType->kind == TypeKindSem::Integer)
+            {
+                if (equalsIgnoreCase(fieldExpr->field, "toString"))
+                {
+                    auto baseResult = lowerExpr(fieldExpr->base.get());
+                    Value result =
+                        emitCallRet(Type(Type::Kind::Str), kStringFromInt, {baseResult.value});
+                    return {result, Type(Type::Kind::Str)};
+                }
+            }
+
+            // Handle Number method calls - Bug #018 fix
+            // Number.toString() should convert to string
+            if (baseType->kind == TypeKindSem::Number)
+            {
+                if (equalsIgnoreCase(fieldExpr->field, "toString"))
+                {
+                    auto baseResult = lowerExpr(fieldExpr->base.get());
+                    Value result =
+                        emitCallRet(Type(Type::Kind::Str), kStringFromNum, {baseResult.value});
+                    return {result, Type(Type::Kind::Str)};
                 }
             }
 

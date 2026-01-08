@@ -1,0 +1,255 @@
+' SQLite Clone - Token Types
+' Viper Basic Implementation
+
+' Token type constants (enum simulation)
+CONST TK_EOF = 0
+CONST TK_ERROR = 1
+
+' Literals
+CONST TK_INTEGER = 10
+CONST TK_NUMBER = 11
+CONST TK_STRING = 12
+CONST TK_IDENTIFIER = 13
+
+' Keywords - DDL
+CONST TK_CREATE = 20
+CONST TK_TABLE = 21
+CONST TK_DROP = 22
+CONST TK_ALTER = 23
+CONST TK_INDEX = 24
+CONST TK_VIEW = 25
+CONST TK_TRIGGER = 26
+
+' Keywords - DML
+CONST TK_SELECT = 30
+CONST TK_INSERT = 31
+CONST TK_UPDATE = 32
+CONST TK_DELETE = 33
+CONST TK_INTO = 34
+CONST TK_FROM = 35
+CONST TK_WHERE = 36
+CONST TK_SET = 37
+CONST TK_VALUES = 38
+
+' Keywords - Clauses
+CONST TK_ORDER = 40
+CONST TK_BY = 41
+CONST TK_ASC = 42
+CONST TK_DESC = 43
+CONST TK_LIMIT = 44
+CONST TK_OFFSET = 45
+CONST TK_GROUP = 46
+CONST TK_HAVING = 47
+CONST TK_DISTINCT = 48
+
+' Keywords - Joins
+CONST TK_JOIN = 50
+CONST TK_INNER = 51
+CONST TK_LEFT = 52
+CONST TK_RIGHT = 53
+CONST TK_FULL = 54
+CONST TK_OUTER = 55
+CONST TK_CROSS = 56
+CONST TK_ON = 57
+
+' Keywords - Logical
+CONST TK_AND = 60
+CONST TK_OR = 61
+CONST TK_NOT = 62
+CONST TK_IN = 63
+CONST TK_IS = 64
+CONST TK_LIKE = 65
+CONST TK_BETWEEN = 66
+CONST TK_EXISTS = 67
+
+' Keywords - Values
+CONST TK_NULL = 70
+CONST TK_TRUE = 71
+CONST TK_FALSE = 72
+CONST TK_DEFAULT = 73
+
+' Keywords - Constraints
+CONST TK_PRIMARY = 80
+CONST TK_FOREIGN = 81
+CONST TK_KEY = 82
+CONST TK_REFERENCES = 83
+CONST TK_UNIQUE = 84
+CONST TK_CHECK = 85
+CONST TK_CONSTRAINT = 86
+CONST TK_AUTOINCREMENT = 87
+
+' Keywords - Types
+CONST TK_INT = 90
+CONST TK_INTEGER_TYPE = 91
+CONST TK_REAL = 92
+CONST TK_TEXT = 93
+CONST TK_BLOB = 94
+CONST TK_BOOLEAN = 95
+CONST TK_VARCHAR = 96
+
+' Keywords - Transactions
+CONST TK_BEGIN = 100
+CONST TK_COMMIT = 101
+CONST TK_ROLLBACK = 102
+CONST TK_TRANSACTION = 103
+CONST TK_SAVEPOINT = 104
+CONST TK_RELEASE = 105
+
+' Keywords - Other
+CONST TK_AS = 110
+CONST TK_CASE = 111
+CONST TK_WHEN = 112
+CONST TK_THEN = 113
+CONST TK_ELSE = 114
+CONST TK_END = 115
+CONST TK_UNION = 116
+CONST TK_ALL = 117
+CONST TK_CAST = 118
+
+' Keywords - Utility
+CONST TK_SHOW = 120
+CONST TK_DESCRIBE = 121
+CONST TK_EXPLAIN = 122
+CONST TK_VACUUM = 123
+CONST TK_SAVE = 124
+CONST TK_OPEN = 125
+CONST TK_EXPORT = 126
+CONST TK_IMPORT = 127
+CONST TK_HELP = 128
+CONST TK_TO = 129
+CONST TK_ADD = 130
+CONST TK_COLUMN = 131
+CONST TK_RENAME = 132
+CONST TK_IF = 133
+
+' Operators
+CONST TK_PLUS = 140
+CONST TK_MINUS = 141
+CONST TK_STAR = 142
+CONST TK_SLASH = 143
+CONST TK_PERCENT = 144
+CONST TK_EQ = 145
+CONST TK_NE = 146
+CONST TK_LT = 147
+CONST TK_LE = 148
+CONST TK_GT = 149
+CONST TK_GE = 150
+CONST TK_CONCAT = 151
+
+' Punctuation
+CONST TK_LPAREN = 160
+CONST TK_RPAREN = 161
+CONST TK_COMMA = 162
+CONST TK_SEMICOLON = 163
+CONST TK_DOT = 164
+
+' Token class - holds a single token
+CLASS Token
+    DIM kind AS INTEGER
+    DIM text AS STRING
+    DIM lineNum AS INTEGER
+    DIM colNum AS INTEGER
+
+    SUB NEW(k AS INTEGER, t AS STRING, ln AS INTEGER, col AS INTEGER)
+        LET ME.kind = k
+        LET ME.text = t
+        LET ME.lineNum = ln
+        LET ME.colNum = col
+    END SUB
+
+    FUNCTION IsKeyword() AS INTEGER
+        RETURN ME.kind >= 20 AND ME.kind < 140
+    END FUNCTION
+
+    FUNCTION IsOperator() AS INTEGER
+        RETURN ME.kind >= 140 AND ME.kind < 160
+    END FUNCTION
+
+    FUNCTION IsPunctuation() AS INTEGER
+        RETURN ME.kind >= 160
+    END FUNCTION
+
+    FUNCTION IsLiteral() AS INTEGER
+        RETURN ME.kind >= 10 AND ME.kind < 20
+    END FUNCTION
+
+    FUNCTION ToString() AS STRING
+        RETURN "Token(" + STR$(ME.kind) + ", '" + ME.text + "', " + STR$(ME.lineNum) + ":" + STR$(ME.colNum) + ")"
+    END FUNCTION
+END CLASS
+
+' Helper function to get token type name
+FUNCTION TokenTypeName$(kind AS INTEGER)
+    IF kind = TK_EOF THEN RETURN "EOF"
+    IF kind = TK_ERROR THEN RETURN "ERROR"
+    IF kind = TK_INTEGER THEN RETURN "INTEGER"
+    IF kind = TK_NUMBER THEN RETURN "NUMBER"
+    IF kind = TK_STRING THEN RETURN "STRING"
+    IF kind = TK_IDENTIFIER THEN RETURN "IDENTIFIER"
+    IF kind = TK_SELECT THEN RETURN "SELECT"
+    IF kind = TK_INSERT THEN RETURN "INSERT"
+    IF kind = TK_UPDATE THEN RETURN "UPDATE"
+    IF kind = TK_DELETE THEN RETURN "DELETE"
+    IF kind = TK_CREATE THEN RETURN "CREATE"
+    IF kind = TK_TABLE THEN RETURN "TABLE"
+    IF kind = TK_DROP THEN RETURN "DROP"
+    IF kind = TK_FROM THEN RETURN "FROM"
+    IF kind = TK_WHERE THEN RETURN "WHERE"
+    IF kind = TK_AND THEN RETURN "AND"
+    IF kind = TK_OR THEN RETURN "OR"
+    IF kind = TK_NOT THEN RETURN "NOT"
+    IF kind = TK_NULL THEN RETURN "NULL"
+    IF kind = TK_PLUS THEN RETURN "PLUS"
+    IF kind = TK_MINUS THEN RETURN "MINUS"
+    IF kind = TK_STAR THEN RETURN "STAR"
+    IF kind = TK_SLASH THEN RETURN "SLASH"
+    IF kind = TK_EQ THEN RETURN "EQ"
+    IF kind = TK_NE THEN RETURN "NE"
+    IF kind = TK_LT THEN RETURN "LT"
+    IF kind = TK_GT THEN RETURN "GT"
+    IF kind = TK_LE THEN RETURN "LE"
+    IF kind = TK_GE THEN RETURN "GE"
+    IF kind = TK_LPAREN THEN RETURN "LPAREN"
+    IF kind = TK_RPAREN THEN RETURN "RPAREN"
+    IF kind = TK_COMMA THEN RETURN "COMMA"
+    IF kind = TK_SEMICOLON THEN RETURN "SEMICOLON"
+    IF kind = TK_DOT THEN RETURN "DOT"
+    RETURN "UNKNOWN(" + STR$(kind) + ")"
+END FUNCTION
+
+' Test subroutine
+SUB TestTokens()
+    PRINT "=== Token Types Test ==="
+
+    DIM tok1 AS Token
+    LET tok1 = NEW Token(TK_SELECT, "SELECT", 1, 1)
+    PRINT "Token 1: "; tok1.ToString()
+    PRINT "  isKeyword: "; tok1.IsKeyword()
+
+    DIM tok2 AS Token
+    LET tok2 = NEW Token(TK_INTEGER, "42", 1, 8)
+    PRINT "Token 2: "; tok2.ToString()
+    PRINT "  isLiteral: "; tok2.IsLiteral()
+
+    DIM tok3 AS Token
+    LET tok3 = NEW Token(TK_PLUS, "+", 1, 11)
+    PRINT "Token 3: "; tok3.ToString()
+    PRINT "  isOperator: "; tok3.IsOperator()
+
+    DIM tok4 AS Token
+    LET tok4 = NEW Token(TK_LPAREN, "(", 1, 12)
+    PRINT "Token 4: "; tok4.ToString()
+    PRINT "  isPunctuation: "; tok4.IsPunctuation()
+
+    PRINT ""
+    PRINT "Token type names:"
+    PRINT "  TK_SELECT = "; TokenTypeName$(TK_SELECT)
+    PRINT "  TK_INTEGER = "; TokenTypeName$(TK_INTEGER)
+    PRINT "  TK_PLUS = "; TokenTypeName$(TK_PLUS)
+
+    PRINT ""
+    PRINT "=== Token Types Test PASSED ==="
+END SUB
+
+' Run test
+TestTokens()

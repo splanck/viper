@@ -109,8 +109,9 @@ void Lowerer::emitPatternTest(const MatchArm::Pattern &pattern,
             Value cond;
             if (scrutinee.type && scrutinee.type->kind == TypeKindSem::String)
             {
-                cond = emitCallRet(
-                    Type(Type::Kind::I1), kStringEquals, {scrutinee.value, litResult.value});
+                Value eqResult = emitCallRet(
+                    Type(Type::Kind::I64), kStringEquals, {scrutinee.value, litResult.value});
+                cond = emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1), eqResult, Value::constInt(0));
             }
             else if (scrutinee.type && scrutinee.type->kind == TypeKindSem::Number)
             {

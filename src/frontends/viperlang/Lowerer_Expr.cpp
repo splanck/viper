@@ -205,6 +205,14 @@ LowerResult Lowerer::lowerField(FieldExpr *expr)
         return {Value::constInt(0), Type(Type::Kind::I64)};
     }
 
+    // Unwrap Optional types for field access
+    // This handles variables assigned from optionals after null checks
+    // (e.g., `var col = maybeCol;` where maybeCol is Column?)
+    if (baseType->kind == TypeKindSem::Optional && baseType->innerType())
+    {
+        baseType = baseType->innerType();
+    }
+
     // Handle module-qualified identifier access (e.g., colors.BLACK)
     // The module is just a namespace - we load the symbol directly
     if (baseType->kind == TypeKindSem::Module)

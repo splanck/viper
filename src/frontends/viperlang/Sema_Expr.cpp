@@ -638,6 +638,13 @@ TypeRef Sema::analyzeField(FieldExpr *expr)
 {
     TypeRef baseType = analyzeExpr(expr->base.get());
 
+    // Unwrap Optional types for field/method access
+    // This handles variables assigned from optionals after null checks
+    if (baseType && baseType->kind == TypeKindSem::Optional && baseType->innerType())
+    {
+        baseType = baseType->innerType();
+    }
+
     // Handle module-qualified access (e.g., colors.initColors)
     if (baseType && baseType->kind == TypeKindSem::Module)
     {

@@ -218,19 +218,19 @@ void SelectCaseLowering::lowerStringArms(const SelectCaseStmt &stmt,
     auto &ctx = lowerer_.context();
     auto *func = ctx.function();
 
-    auto *defaultBlk =
-        blocks.elseIdx ? &func->blocks[*blocks.elseIdx] : &func->blocks[blocks.endIdx];
+    // BUG-017 fix: Use index instead of pointer to avoid invalidation
+    size_t defaultIdx = blocks.elseIdx ? *blocks.elseIdx : blocks.endIdx;
 
     std::vector<CasePlanEntry> plan;
     plan.reserve(model.stringLabels.size() + 1);
 
     for (const auto &label : model.stringLabels)
     {
-        auto *armBlk = &func->blocks[blocks.armIdx[label.armIndex]];
+        // BUG-017 fix: Store index instead of pointer to avoid invalidation
         CasePlanEntry entry{};
         entry.kind = CasePlanEntry::Kind::StringLabel;
         entry.armIndex = label.armIndex;
-        entry.target = armBlk;
+        entry.targetIdx = blocks.armIdx[label.armIndex];
         entry.loc = label.loc;
         entry.strLiteral = label.value;
         plan.push_back(entry);
@@ -238,15 +238,18 @@ void SelectCaseLowering::lowerStringArms(const SelectCaseStmt &stmt,
 
     CasePlanEntry defaultEntry{};
     defaultEntry.kind = CasePlanEntry::Kind::Default;
-    defaultEntry.target = defaultBlk;
+    defaultEntry.targetIdx = defaultIdx;
     defaultEntry.loc = stmt.range.end;
     plan.push_back(defaultEntry);
 
     if (plan.size() == 1)
     {
+        func = ctx.function();
         ctx.setCurrent(&func->blocks[blocks.currentIdx]);
         lowerer_.curLoc = stmt.loc;
         // Blocks that skip comparisons fall through directly to the default arm.
+        func = ctx.function();
+        auto *defaultBlk = &func->blocks[defaultIdx];
         lowerer_.emitBr(defaultBlk);
         ctx.setCurrent(defaultBlk);
         return;
@@ -257,7 +260,10 @@ void SelectCaseLowering::lowerStringArms(const SelectCaseStmt &stmt,
         assert(entry.kind == CasePlanEntry::Kind::StringLabel);
         std::string labelStr(entry.strLiteral);
         il::core::Value labelValue = lowerer_.emitConstStr(lowerer_.getStringLabel(labelStr));
-        return lowerer_.emitCallRet(lowerer_.ilBoolTy(), "rt_str_eq", {stringSelector, labelValue});
+        // rt_str_eq returns i64 (0 or 1), convert to boolean
+        il::core::Type i64Ty(il::core::Type::Kind::I64);
+        il::core::Value result = lowerer_.emitCallRet(i64Ty, "rt_str_eq", {stringSelector, labelValue});
+        return lowerer_.coerceToBool({result, i64Ty}, entry.loc).value;
     };
 
     emitCompareChain(blocks.currentIdx, plan, emitter);
@@ -290,10 +296,10 @@ void SelectCaseLowering::lowerNumericDispatch(const SelectCaseStmt &stmt,
 
     for (const auto &rel : model.numericRelations)
     {
-        auto *armBlk = &func->blocks[blocks.armIdx[rel.armIndex]];
+        // BUG-017 fix: Store index instead of pointer to avoid invalidation
         CasePlanEntry entry{};
         entry.armIndex = rel.armIndex;
-        entry.target = armBlk;
+        entry.targetIdx = blocks.armIdx[rel.armIndex];
         entry.loc = rel.loc;
         switch (rel.op)
         {
@@ -324,11 +330,11 @@ void SelectCaseLowering::lowerNumericDispatch(const SelectCaseStmt &stmt,
 
     for (const auto &range : model.numericRanges)
     {
-        auto *armBlk = &func->blocks[blocks.armIdx[range.armIndex]];
+        // BUG-017 fix: Store index instead of pointer to avoid invalidation
         CasePlanEntry entry{};
         entry.kind = CasePlanEntry::Kind::Range;
         entry.armIndex = range.armIndex;
-        entry.target = armBlk;
+        entry.targetIdx = blocks.armIdx[range.armIndex];
         entry.loc = range.loc;
         entry.valueRange.first = range.lo;
         entry.valueRange.second = range.hi;
@@ -341,15 +347,15 @@ void SelectCaseLowering::lowerNumericDispatch(const SelectCaseStmt &stmt,
     defaultEntry.kind = CasePlanEntry::Kind::Default;
     if (model.hasNumericRanges)
     {
-        defaultEntry.target = &func->blocks[blocks.switchIdx];
+        defaultEntry.targetIdx = blocks.switchIdx;
     }
     else if (hasComparisons)
     {
-        defaultEntry.target = nullptr;
+        defaultEntry.targetIdx = SIZE_MAX;  // Will be allocated later
     }
     else
     {
-        defaultEntry.target = &func->blocks[blocks.switchIdx];
+        defaultEntry.targetIdx = blocks.switchIdx;
     }
     defaultEntry.loc = stmt.loc;
     plan.push_back(defaultEntry);
@@ -444,20 +450,22 @@ size_t SelectCaseLowering::emitCompareChain(size_t startIdx,
 
     auto &defaultEntry = plan.back();
     assert(defaultEntry.kind == CasePlanEntry::Kind::Default);
-    auto *defaultBlk = defaultEntry.target;
 
-    if (!defaultBlk)
+    // BUG-017 fix: Use index instead of pointer to avoid invalidation
+    size_t defaultIdx = defaultEntry.targetIdx;
+    if (defaultIdx == SIZE_MAX)
     {
         std::string label = blockNamer
                                 ? blockNamer->generic(std::string(blockTagFor(defaultEntry)))
                                 : lowerer_.mangler.block(std::string(blockTagFor(defaultEntry)));
         lowerer_.builder->addBlock(*func, label);
         func = ctx.function();
-        size_t idx = func->blocks.size() - 1;
-        defaultBlk = &func->blocks[idx];
-        defaultEntry.target = defaultBlk;
+        defaultIdx = func->blocks.size() - 1;
+        defaultEntry.targetIdx = defaultIdx;
     }
 
+    func = ctx.function();
+    auto *defaultBlk = &func->blocks[defaultIdx];
     if (defaultBlk->label.empty())
         defaultBlk->label = lowerer_.nextFallbackBlockLabel();
 
@@ -465,36 +473,43 @@ size_t SelectCaseLowering::emitCompareChain(size_t startIdx,
     for (size_t i = 0; i + 1 < plan.size(); ++i)
     {
         auto &entry = plan[i];
-        func = ctx.function();
-        auto *checkBlk = &func->blocks[currentIdx];
 
         bool needIntermediate = plan[i + 1].kind != CasePlanEntry::Kind::Default;
-        il::core::BasicBlock *falseTarget = defaultBlk;
-        size_t nextIdx = static_cast<size_t>(defaultBlk - &func->blocks[0]);
+        size_t nextIdx = defaultIdx;
         if (needIntermediate)
         {
+            func = ctx.function();
             std::string label = blockNamer
                                     ? blockNamer->generic(std::string(blockTagFor(plan[i + 1])))
                                     : lowerer_.mangler.block(std::string(blockTagFor(plan[i + 1])));
             lowerer_.builder->addBlock(*func, label);
             func = ctx.function();
             nextIdx = func->blocks.size() - 1;
-            falseTarget = &func->blocks[nextIdx];
+            auto *falseTarget = &func->blocks[nextIdx];
             if (falseTarget->label.empty())
                 falseTarget->label = lowerer_.nextFallbackBlockLabel();
         }
 
+        // BUG-017 fix: Get checkBlk AFTER all addBlock calls to avoid pointer invalidation
+        func = ctx.function();
+        auto *checkBlk = &func->blocks[currentIdx];
         ctx.setCurrent(checkBlk);
         lowerer_.curLoc = entry.loc;
         il::core::Value cond = emitCond(entry);
-        auto *trueTarget = entry.target;
+
+        // BUG-017 fix: Refresh pointers from indices after each addBlock
+        func = ctx.function();
+        auto *trueTarget = &func->blocks[entry.targetIdx];
+        auto *falseTarget = &func->blocks[nextIdx];
+
         // Each comparison produces a terminating conditional branch; no fallthrough remains.
         lowerer_.emitCBr(cond, trueTarget, falseTarget);
         currentIdx = nextIdx;
     }
 
-    ctx.setCurrent(defaultBlk);
-    return static_cast<size_t>(defaultBlk - &func->blocks[0]);
+    func = ctx.function();
+    ctx.setCurrent(&func->blocks[defaultIdx]);
+    return defaultIdx;
 }
 
 /// @brief Compute a diagnostic label describing a case-plan entry.

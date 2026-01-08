@@ -944,7 +944,7 @@ RT_FUNC(UCase,          rt_ucase,            "Viper.String.ToUpper",     "str(st
 RT_FUNC(F64ToStr,              rt_f64_to_str,    "Viper.Strings.FromDouble",        "str(f64)")
 RT_FUNC(IntToStr,              rt_int_to_str,    "Viper.Strings.FromInt",           "str(i64)")
 RT_FUNC(SplitFields,           rt_split_fields,  "Viper.Strings.SplitFields",       "i64(str,ptr,i64)")
-RT_FUNC(StrEquals,             rt_str_eq,        "Viper.Strings.Equals",            "i1(str,str)")
+RT_FUNC(StrEquals,             rt_str_eq,        "Viper.Strings.Equals",            "i64(str,str)")
 RT_FUNC(StrFromDoublePrecise,  rt_str_d_alloc,   "Viper.Strings.FromDoublePrecise", "str(f64)")
 RT_FUNC(StrFromI16,            rt_str_i16_alloc, "Viper.Strings.FromI16",           "str(i16)")
 RT_FUNC(StrFromI32,            rt_str_i32_alloc, "Viper.Strings.FromI32",           "str(i32)")

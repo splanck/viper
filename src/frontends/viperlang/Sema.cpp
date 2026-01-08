@@ -293,6 +293,19 @@ TypeRef Sema::resolveNamedType(const std::string &name) const
     if (it != typeRegistry_.end())
         return it->second;
 
+    // Handle cross-module type references (e.g., "token.Token")
+    // The ImportResolver merges imported declarations, so we just need
+    // to strip the module prefix and look up the base type name.
+    auto dotPos = name.find('.');
+    if (dotPos != std::string::npos)
+    {
+        std::string typeName = name.substr(dotPos + 1);
+        // Look up the unqualified type name in the registry
+        it = typeRegistry_.find(typeName);
+        if (it != typeRegistry_.end())
+            return it->second;
+    }
+
     return nullptr;
 }
 

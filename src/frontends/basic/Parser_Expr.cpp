@@ -253,22 +253,17 @@ ExprPtr Parser::parseNumber()
 
 /// @brief Parse a string literal expression from the current token.
 /// @details Implements the BASIC production `string-literal := "..."` by consuming the current
-/// TokenKind::String token. Escape sequences such as `\n`, `\t`, `\"`, and `\\` are decoded here so
-/// downstream passes observe the literal characters. Malformed escape sequences produce a
-/// diagnostic when a @c DiagnosticEmitter is available.
+/// TokenKind::String token. In BASIC, backslash has no special meaning - strings are taken
+/// literally. Use CHR$(34) for embedded quotes or the "" (double quote) convention.
 /// @return Newly allocated string literal expression.
 ExprPtr Parser::parseString()
 {
     auto loc = peek().loc;
-    std::string decoded;
-    std::string err;
-    if (!il::io::decodeEscapedString(peek().lexeme, decoded, &err))
-    {
-        emitError("B0003", loc, err);
-        decoded = peek().lexeme;
-    }
+    // In BASIC, strings are taken literally - no escape sequence processing.
+    // This matches traditional BASIC behavior where backslash is just a regular character.
+    std::string value = std::string(peek().lexeme);
     consume();
-    return makeStrExpr(decoded, loc);
+    return makeStrExpr(value, loc);
 }
 
 /// @brief Parse a call to a BASIC builtin function.

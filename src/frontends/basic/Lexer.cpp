@@ -388,12 +388,8 @@ Token Lexer::lexString()
     while (!eof() && peek() != '"')
     {
         char c = get();
-        if (c == '\\' && !eof())
-        {
-            s.push_back(c);
-            s.push_back(get());
-            continue;
-        }
+        // In BASIC, backslash has no special meaning - it's just a regular character.
+        // Use CHR$(34) for embedded quotes, or "" (double quote) convention.
         s.push_back(c);
     }
     if (peek() == '"')

@@ -1,0 +1,251 @@
+// SQLite Clone - Token Types
+// ViperLang Implementation
+
+module token;
+
+// Token type constants (simulating enum)
+final TK_EOF = 0;
+final TK_ERROR = 1;
+
+// Literals
+final TK_INTEGER = 10;
+final TK_NUMBER = 11;
+final TK_STRING = 12;
+final TK_IDENTIFIER = 13;
+
+// Keywords - DDL
+final TK_CREATE = 20;
+final TK_TABLE = 21;
+final TK_DROP = 22;
+final TK_ALTER = 23;
+final TK_INDEX = 24;
+final TK_VIEW = 25;
+final TK_TRIGGER = 26;
+
+// Keywords - DML
+final TK_SELECT = 30;
+final TK_INSERT = 31;
+final TK_UPDATE = 32;
+final TK_DELETE = 33;
+final TK_INTO = 34;
+final TK_FROM = 35;
+final TK_WHERE = 36;
+final TK_SET = 37;
+final TK_VALUES = 38;
+
+// Keywords - Clauses
+final TK_ORDER = 40;
+final TK_BY = 41;
+final TK_ASC = 42;
+final TK_DESC = 43;
+final TK_LIMIT = 44;
+final TK_OFFSET = 45;
+final TK_GROUP = 46;
+final TK_HAVING = 47;
+final TK_DISTINCT = 48;
+
+// Keywords - Joins
+final TK_JOIN = 50;
+final TK_INNER = 51;
+final TK_LEFT = 52;
+final TK_RIGHT = 53;
+final TK_FULL = 54;
+final TK_OUTER = 55;
+final TK_CROSS = 56;
+final TK_ON = 57;
+
+// Keywords - Logical
+final TK_AND = 60;
+final TK_OR = 61;
+final TK_NOT = 62;
+final TK_IN = 63;
+final TK_IS = 64;
+final TK_LIKE = 65;
+final TK_BETWEEN = 66;
+final TK_EXISTS = 67;
+
+// Keywords - Values
+final TK_NULL = 70;
+final TK_TRUE = 71;
+final TK_FALSE = 72;
+final TK_DEFAULT = 73;
+
+// Keywords - Constraints
+final TK_PRIMARY = 80;
+final TK_FOREIGN = 81;
+final TK_KEY = 82;
+final TK_REFERENCES = 83;
+final TK_UNIQUE = 84;
+final TK_CHECK = 85;
+final TK_CONSTRAINT = 86;
+final TK_AUTOINCREMENT = 87;
+
+// Keywords - Types
+final TK_INT = 90;
+final TK_INTEGER_TYPE = 91;
+final TK_REAL = 92;
+final TK_TEXT = 93;
+final TK_BLOB = 94;
+final TK_BOOLEAN = 95;
+final TK_VARCHAR = 96;
+
+// Keywords - Transactions
+final TK_BEGIN = 100;
+final TK_COMMIT = 101;
+final TK_ROLLBACK = 102;
+final TK_TRANSACTION = 103;
+final TK_SAVEPOINT = 104;
+final TK_RELEASE = 105;
+
+// Keywords - Other
+final TK_AS = 110;
+final TK_CASE = 111;
+final TK_WHEN = 112;
+final TK_THEN = 113;
+final TK_ELSE = 114;
+final TK_END = 115;
+final TK_UNION = 116;
+final TK_ALL = 117;
+final TK_CAST = 118;
+
+// Keywords - Utility
+final TK_SHOW = 120;
+final TK_DESCRIBE = 121;
+final TK_EXPLAIN = 122;
+final TK_VACUUM = 123;
+final TK_SAVE = 124;
+final TK_OPEN = 125;
+final TK_EXPORT = 126;
+final TK_IMPORT = 127;
+final TK_HELP = 128;
+final TK_TO = 129;
+final TK_ADD = 130;
+final TK_COLUMN = 131;
+final TK_RENAME = 132;
+final TK_IF = 133;
+
+// Operators
+final TK_PLUS = 140;
+final TK_MINUS = 141;
+final TK_STAR = 142;
+final TK_SLASH = 143;
+final TK_PERCENT = 144;
+final TK_EQ = 145;
+final TK_NE = 146;
+final TK_LT = 147;
+final TK_LE = 148;
+final TK_GT = 149;
+final TK_GE = 150;
+final TK_CONCAT = 151;
+
+// Punctuation
+final TK_LPAREN = 160;
+final TK_RPAREN = 161;
+final TK_COMMA = 162;
+final TK_SEMICOLON = 163;
+final TK_DOT = 164;
+
+// Token entity - holds a single token
+entity Token {
+    expose Integer kind;
+    expose String text;
+    expose Integer line;
+    expose Integer column;
+
+    expose func init(k: Integer, t: String, ln: Integer, col: Integer) {
+        kind = k;
+        text = t;
+        line = ln;
+        column = col;
+    }
+
+    expose func isKeyword() -> Boolean {
+        return kind >= 20 && kind < 140;
+    }
+
+    expose func isOperator() -> Boolean {
+        return kind >= 140 && kind < 160;
+    }
+
+    expose func isPunctuation() -> Boolean {
+        return kind >= 160;
+    }
+
+    expose func isLiteral() -> Boolean {
+        return kind >= 10 && kind < 20;
+    }
+
+    expose func toString() -> String {
+        return "Token(" + Viper.Fmt.Int(kind) + ", '" + text + "', " +
+               Viper.Fmt.Int(line) + ":" + Viper.Fmt.Int(column) + ")";
+    }
+}
+
+// Helper function to get token type name
+func tokenTypeName(kind: Integer) -> String {
+    if (kind == TK_EOF) { return "EOF"; }
+    if (kind == TK_ERROR) { return "ERROR"; }
+    if (kind == TK_INTEGER) { return "INTEGER"; }
+    if (kind == TK_NUMBER) { return "NUMBER"; }
+    if (kind == TK_STRING) { return "STRING"; }
+    if (kind == TK_IDENTIFIER) { return "IDENTIFIER"; }
+    if (kind == TK_SELECT) { return "SELECT"; }
+    if (kind == TK_INSERT) { return "INSERT"; }
+    if (kind == TK_UPDATE) { return "UPDATE"; }
+    if (kind == TK_DELETE) { return "DELETE"; }
+    if (kind == TK_CREATE) { return "CREATE"; }
+    if (kind == TK_TABLE) { return "TABLE"; }
+    if (kind == TK_DROP) { return "DROP"; }
+    if (kind == TK_FROM) { return "FROM"; }
+    if (kind == TK_WHERE) { return "WHERE"; }
+    if (kind == TK_AND) { return "AND"; }
+    if (kind == TK_OR) { return "OR"; }
+    if (kind == TK_NOT) { return "NOT"; }
+    if (kind == TK_NULL) { return "NULL"; }
+    if (kind == TK_PLUS) { return "PLUS"; }
+    if (kind == TK_MINUS) { return "MINUS"; }
+    if (kind == TK_STAR) { return "STAR"; }
+    if (kind == TK_SLASH) { return "SLASH"; }
+    if (kind == TK_EQ) { return "EQ"; }
+    if (kind == TK_NE) { return "NE"; }
+    if (kind == TK_LT) { return "LT"; }
+    if (kind == TK_GT) { return "GT"; }
+    if (kind == TK_LE) { return "LE"; }
+    if (kind == TK_GE) { return "GE"; }
+    if (kind == TK_LPAREN) { return "LPAREN"; }
+    if (kind == TK_RPAREN) { return "RPAREN"; }
+    if (kind == TK_COMMA) { return "COMMA"; }
+    if (kind == TK_SEMICOLON) { return "SEMICOLON"; }
+    if (kind == TK_DOT) { return "DOT"; }
+    return "UNKNOWN(" + Viper.Fmt.Int(kind) + ")";
+}
+
+// Test function
+func testTokens() {
+    Viper.Terminal.Say("=== Token Types Test ===");
+
+    var tok1 = new Token(TK_SELECT, "SELECT", 1, 1);
+    Viper.Terminal.Say("Token 1: " + tok1.toString());
+    Viper.Terminal.Say("  isKeyword: " + Viper.Fmt.Bool(tok1.isKeyword()));
+
+    var tok2 = new Token(TK_INTEGER, "42", 1, 8);
+    Viper.Terminal.Say("Token 2: " + tok2.toString());
+    Viper.Terminal.Say("  isLiteral: " + Viper.Fmt.Bool(tok2.isLiteral()));
+
+    var tok3 = new Token(TK_PLUS, "+", 1, 11);
+    Viper.Terminal.Say("Token 3: " + tok3.toString());
+    Viper.Terminal.Say("  isOperator: " + Viper.Fmt.Bool(tok3.isOperator()));
+
+    var tok4 = new Token(TK_LPAREN, "(", 1, 12);
+    Viper.Terminal.Say("Token 4: " + tok4.toString());
+    Viper.Terminal.Say("  isPunctuation: " + Viper.Fmt.Bool(tok4.isPunctuation()));
+
+    Viper.Terminal.Say("");
+    Viper.Terminal.Say("Token type names:");
+    Viper.Terminal.Say("  TK_SELECT = " + tokenTypeName(TK_SELECT));
+    Viper.Terminal.Say("  TK_INTEGER = " + tokenTypeName(TK_INTEGER));
+    Viper.Terminal.Say("  TK_PLUS = " + tokenTypeName(TK_PLUS));
+
+    Viper.Terminal.Say("");
+    Viper.Terminal.Say("=== Token Types Test PASSED ===");
+}
