@@ -1213,6 +1213,32 @@ class Lowerer
     std::unordered_map<std::string, std::string, StringHash, std::equal_to<>> moduleObjectClass_;
     /// @brief BUG-OOP-011 fix: Set of module-level string array names.
     std::unordered_set<std::string, StringHash, std::equal_to<>> moduleStrArrayNames_;
+    /// @brief BUG-BAS-002 fix: Track current procedure parameter names.
+    /// @details Parameters should not be resolved via moduleObjectClass_ cache
+    ///          to prevent module-level object variables from polluting parameter types.
+    std::unordered_set<std::string, StringHash, std::equal_to<>> currentProcParamNames_;
+
+  public:
+    /// @brief Register a parameter name for the current procedure.
+    /// @details Called during parameter initialization to prevent module-level
+    ///          object variable lookups from overriding parameter types.
+    void registerProcParam(std::string_view name)
+    {
+        if (!name.empty())
+            currentProcParamNames_.emplace(name);
+    }
+
+    /// @brief Clear current procedure parameter tracking.
+    void clearProcParams()
+    {
+        currentProcParamNames_.clear();
+    }
+
+    /// @brief Check if a name is a parameter in the current procedure.
+    [[nodiscard]] bool isProcParam(std::string_view name) const
+    {
+        return currentProcParamNames_.find(name) != currentProcParamNames_.end();
+    }
 
   public:
     /// @brief Clear cached module-level object array and scalar object typing.

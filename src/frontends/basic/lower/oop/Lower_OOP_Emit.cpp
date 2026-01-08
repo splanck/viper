@@ -237,6 +237,16 @@ void Lowerer::emitFieldReleaseSequence(Value selfPtr, const ClassLayout &layout)
 void Lowerer::emitClassConstructor(const ClassDecl &klass, const ConstructorDecl &ctor)
 {
     resetLoweringState();
+    // BUG-BAS-002 fix: Register param names and types early so collectVars doesn't pollute them
+    // with module-level object types of the same name and so type inference uses correct types.
+    for (const auto &param : ctor.params)
+    {
+        registerProcParam(param.name);
+        if (!param.objectClass.empty())
+            setSymbolObjectType(param.name, qualify(param.objectClass));
+        else
+            setSymbolType(param.name, param.type);
+    }
     ClassContextGuard classGuard(*this, qualify(klass.name));
     FieldScopeGuard fieldScope(*this, klass.name);
     auto body = gatherBody(ctor.body);
@@ -388,6 +398,16 @@ void Lowerer::emitClassDestructor(const ClassDecl &klass, const DestructorDecl *
 void Lowerer::emitClassMethod(const ClassDecl &klass, const MethodDecl &method)
 {
     resetLoweringState();
+    // BUG-BAS-002 fix: Register param names and types early so collectVars doesn't pollute them
+    // with module-level object types of the same name and so type inference uses correct types.
+    for (const auto &param : method.params)
+    {
+        registerProcParam(param.name);
+        if (!param.objectClass.empty())
+            setSymbolObjectType(param.name, qualify(param.objectClass));
+        else
+            setSymbolType(param.name, param.type);
+    }
     ClassContextGuard classGuard(*this, qualify(klass.name));
     FieldScopeGuard fieldScope(*this, klass.name);
     auto body = gatherBody(method.body);
@@ -528,6 +548,16 @@ void Lowerer::emitClassMethodWithBody(const ClassDecl &klass,
                                       const std::vector<const Stmt *> &bodyStmts)
 {
     resetLoweringState();
+    // BUG-BAS-002 fix: Register param names and types early so collectVars doesn't pollute them
+    // with module-level object types of the same name and so type inference uses correct types.
+    for (const auto &param : method.params)
+    {
+        registerProcParam(param.name);
+        if (!param.objectClass.empty())
+            setSymbolObjectType(param.name, qualify(param.objectClass));
+        else
+            setSymbolType(param.name, param.type);
+    }
     ClassContextGuard classGuard(*this, qualify(klass.name));
     FieldScopeGuard fieldScope(*this, klass.name);
     collectVars(bodyStmts);

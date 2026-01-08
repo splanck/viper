@@ -306,21 +306,29 @@ Lowerer::SlotType Lowerer::getSlotType(std::string_view name) const
         return info;
     }
 
-    auto modObjIt = moduleObjectClass_.find(name);
-    if (modObjIt != moduleObjectClass_.end() && !modObjIt->second.empty() &&
-        !isGenericObject(modObjIt->second))
+    // BUG-BAS-002 fix: Skip module-level object cache for procedure parameters.
+    // Parameters should use their declared type, not be shadowed by module-level
+    // object variables with the same name.
+    if (!isProcParam(name))
     {
-        info.type = Type(Type::Kind::Ptr);
-        info.isArray = false;
-        info.isBoolean = false;
-        info.isObject = true;
-        info.objectClass = modObjIt->second;
-        return info;
+        auto modObjIt = moduleObjectClass_.find(name);
+        if (modObjIt != moduleObjectClass_.end() && !modObjIt->second.empty() &&
+            !isGenericObject(modObjIt->second))
+        {
+            info.type = Type(Type::Kind::Ptr);
+            info.isArray = false;
+            info.isBoolean = false;
+            info.isObject = true;
+            info.objectClass = modObjIt->second;
+            return info;
+        }
     }
 
     if (sym)
     {
-        if (sym->isObject)
+        // BUG-BAS-002 fix: Only treat as object if it has a valid object class.
+        // This prevents module-level object variables from polluting constructor parameters.
+        if (sym->isObject && !sym->objectClass.empty())
         {
             info.type = Type(Type::Kind::Ptr);
             info.isArray = false;
@@ -329,13 +337,16 @@ Lowerer::SlotType Lowerer::getSlotType(std::string_view name) const
             info.objectClass = sym->objectClass;
             return info;
         }
-        // Only override with sym->type when semantic analysis has no type. (BUG-019)
+        // Override with sym->type when:
+        // 1. Semantic analysis has no type (BUG-019), OR
+        // 2. This is a procedure parameter (BUG-BAS-002) - params use their declared type,
+        //    not module-level semantic analysis type
         bool hasSemaType = false;
         if (semanticAnalyzer_)
         {
             hasSemaType = semanticAnalyzer_->lookupVarType(std::string{name}).has_value();
         }
-        if (sym->hasType && !hasSemaType)
+        if (sym->hasType && (!hasSemaType || isProcParam(name)))
             astTy = sym->type;
         info.isArray = sym->isArray;
         if (sym->isBoolean && !info.isArray)
@@ -344,15 +355,6 @@ Lowerer::SlotType Lowerer::getSlotType(std::string_view name) const
             info.isBoolean = (astTy == AstType::Bool);
         else
             info.isBoolean = false;
-    }
-    else if (modObjIt != moduleObjectClass_.end())
-    {
-        info.type = Type(Type::Kind::Ptr);
-        info.isArray = false;
-        info.isBoolean = false;
-        info.isObject = true;
-        info.objectClass = modObjIt->second;
-        return info;
     }
     else
     {

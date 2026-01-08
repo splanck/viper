@@ -91,7 +91,8 @@ void ProcedureLowering::collectProcedureSignatures(const Program &prog)
         const std::string &key = hasQual ? qual : unqual;
         lowerer.procSignatures.emplace(key, std::move(sig));
         // Map canonical unqualified name to the resolved key used for emission
-        std::string canon = CanonicalizeIdent(unqual);
+        // BUG-BAS-001 fix: Strip type suffix before canonicalizing
+        std::string canon = CanonicalizeIdent(StripTypeSuffix(unqual));
         if (!canon.empty())
             lowerer.procNameAliases.emplace(canon, key);
     };
@@ -158,6 +159,27 @@ void ProcedureLowering::collectProcedureSignatures(const Program &prog)
 // Signature Lookup
 // =============================================================================
 
+/// @brief Canonicalize a qualified procedure name (handles dots and type suffixes).
+/// @details Strips trailing type suffix, splits by dots, canonicalizes each segment,
+///          and joins back together. This matches how CollectProcedures builds
+///          qualified names for namespace functions.
+/// @param name Raw procedure name like "MyModule.Helper$"
+/// @return Canonical qualified name like "mymodule.helper"
+static std::string CanonicalizeQualifiedName(std::string_view name)
+{
+    if (name.empty())
+        return std::string{};
+
+    // Strip trailing type suffix if present
+    char last = name.back();
+    if (last == '$' || last == '%' || last == '#' || last == '!' || last == '&')
+        name = name.substr(0, name.size() - 1);
+
+    // Split by dots and canonicalize each segment
+    std::vector<std::string> segments = SplitDots(name);
+    return CanonicalizeQualified(segments);
+}
+
 /// @brief Retrieve a cached procedure signature when available.
 /// @details Looks up metadata gathered during @ref collectProcedureSignatures so
 ///          later lowering stages can inspect parameter and return types without
@@ -176,7 +198,7 @@ const Lowerer::ProcedureSignature *Lowerer::findProcSignature(const std::string 
             if (it2 != procSignatures.end())
                 return &it2->second;
         }
-        // Try case-insensitive alias: canonicalize key
+        // Try case-insensitive alias: canonicalize key (simple identifiers)
         std::string canon = CanonicalizeIdent(name);
         if (!canon.empty())
         {
@@ -187,6 +209,14 @@ const Lowerer::ProcedureSignature *Lowerer::findProcSignature(const std::string 
                 if (it3 != procSignatures.end())
                     return &it3->second;
             }
+        }
+        // BUG-BAS-001 fix: Try canonicalizing as qualified name (handles dots and suffixes)
+        std::string qualCanon = CanonicalizeQualifiedName(name);
+        if (!qualCanon.empty())
+        {
+            auto it4 = procSignatures.find(qualCanon);
+            if (it4 != procSignatures.end())
+                return &it4->second;
         }
         return nullptr;
     }
@@ -203,6 +233,10 @@ std::string Lowerer::resolveCalleeName(const std::string &name) const
     auto it = procNameAliases.find(name);
     if (it != procNameAliases.end())
         return it->second;
+    // BUG-BAS-001 fix: Try canonicalizing as qualified name
+    std::string qualCanon = CanonicalizeQualifiedName(name);
+    if (!qualCanon.empty() && procSignatures.find(qualCanon) != procSignatures.end())
+        return qualCanon;
     return name;
 }
 

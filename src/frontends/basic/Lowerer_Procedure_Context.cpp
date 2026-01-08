@@ -105,6 +105,9 @@ void Lowerer::setSymbolType(std::string_view name, AstType type)
     info.type = type;
     info.hasType = true;
     info.isBoolean = !info.isArray && type == AstType::Bool;
+    // BUG-BAS-002 fix: Clear object flags when setting primitive type
+    info.isObject = false;
+    info.objectClass.clear();
 }
 
 /// @brief Record that a symbol denotes an object reference of a specific class.

@@ -41,6 +41,7 @@ void OopEmitHelper::emitParamInit(const Param &param,
                                   std::unordered_set<std::string> &paramNames)
 {
     paramNames.insert(param.name);
+    lowerer_.registerProcParam(param.name); // BUG-BAS-002 fix
     lowerer_.curLoc = param.loc;
 
     // Allocate slot: BOOLEAN uses 1 byte, everything else 8 bytes

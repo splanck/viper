@@ -242,6 +242,17 @@ Lowerer::ProcedureMetadata Lowerer::collectProcedureMetadata(const std::vector<P
                                                              const std::vector<StmtPtr> &body,
                                                              const ProcedureConfig &config)
 {
+    // BUG-BAS-002 fix: Register param names and types early so collectVars doesn't pollute them
+    // with module-level object types of the same name and so type inference uses correct types.
+    for (const auto &p : params)
+    {
+        registerProcParam(p.name);
+        if (!p.objectClass.empty())
+            setSymbolObjectType(p.name, qualify(p.objectClass));
+        else
+            setSymbolType(p.name, p.type);
+    }
+
     ProcedureMetadata metadata;
     metadata.paramCount = params.size();
     metadata.bodyStmts.reserve(body.size());
@@ -317,6 +328,9 @@ void Lowerer::materializeSingleParam(const Param &p, size_t index, size_t ilPara
 {
     ProcedureContext &ctx = context();
     Function *func = ctx.function();
+
+    // BUG-BAS-002 fix: Register parameter name to prevent module-level shadowing
+    registerProcParam(p.name);
 
     bool isBoolParam = !p.is_array && p.type == AstType::Bool;
     bool isObjectParam = !p.objectClass.empty();
@@ -463,6 +477,7 @@ void Lowerer::resetLoweringState()
     stmtVirtualLines_.clear();
     synthSeq_ = 0;
     clearDeferredTemps();
+    clearProcParams(); // BUG-BAS-002 fix
 }
 
 // =============================================================================

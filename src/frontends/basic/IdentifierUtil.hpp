@@ -176,4 +176,19 @@ inline std::vector<std::string> SplitDots(std::string_view dotted)
     return out;
 }
 
+/// @brief Strip BASIC type suffix from an identifier.
+/// @details Removes trailing %, &, !, #, or $ if present.
+///          These suffixes denote types in BASIC (Integer, Long, Single, Double, String).
+/// @param ident Input identifier with possible type suffix.
+/// @return Identifier without the type suffix.
+inline std::string StripTypeSuffix(std::string_view ident)
+{
+    if (ident.empty())
+        return std::string{};
+    char last = ident.back();
+    if (last == '$' || last == '%' || last == '#' || last == '!' || last == '&')
+        return std::string{ident.substr(0, ident.size() - 1)};
+    return std::string{ident};
+}
+
 } // namespace il::frontends::basic
