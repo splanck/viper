@@ -2,7 +2,7 @@
 
 **Viper** is an IL-first compiler toolchain and virtual machine for exploring intermediate language design, multi-frontend architectures, and interpreter implementation techniques.
 
-High-level frontends—like the included BASIC, Pascal, and ViperLang compilers—lower programs into a strongly typed, SSA-inspired intermediate language (**Viper IL**). The IL can be executed by the VM or compiled to native code.
+High-level frontends—like the included BASIC and ViperLang compilers—lower programs into a strongly typed, SSA-inspired intermediate language (**Viper IL**). The IL can be executed by the VM or compiled to native code.
 
 > **Status:** Early development. APIs, IL, and tooling change frequently. Not production-ready.
 
@@ -62,7 +62,7 @@ Viper is a compiler infrastructure with several components:
 | Component | Description |
 |-----------|-------------|
 | **IL** | Typed, SSA-based intermediate representation |
-| **Frontends** | Language compilers: BASIC, Pascal, and ViperLang |
+| **Frontends** | Language compilers: BASIC and ViperLang |
 | **VM** | Bytecode interpreter with pluggable dispatch strategies |
 | **Backends** | Native code generators (AArch64, x86-64) |
 | **Runtime** | Portable C libraries for core types, collections, I/O, text, math, graphics, input, networking, system, diagnostics, utilities, crypto, time, threading |
@@ -84,7 +84,6 @@ Viper is in **early development**. All components are functional but incomplete:
 | Component | Notes |
 |-----------|-------|
 | BASIC Frontend | Core language implemented; OOP features work but are evolving |
-| Pascal Frontend | Core language implemented; units, exceptions, native codegen |
 | ViperLang Frontend | Core language with entities, generics, imports; actively developed |
 | Viper IL | Stable core; instruction set still expanding |
 | Virtual Machine | Functional with multiple dispatch strategies |
@@ -114,15 +113,6 @@ Several demos showcase the platform's capabilities. See the **[demos/](demos/REA
 | `demos/basic/vtris` | Tetris clone with high scores |
 | `demos/basic/particles` | Graphics particle system using Canvas API |
 
-### Pascal Demos
-
-| Demo | Description |
-|------|-------------|
-| `demos/pascal/frogger` | Frogger port to Pascal |
-| `demos/pascal/centipede` | Centipede port to Pascal |
-| `demos/pascal/snake` | Classic snake game |
-| `demos/pascal/vtris` | Tetris port to Pascal |
-
 ### ViperLang Demos
 
 | Demo | Description |
@@ -136,9 +126,6 @@ Run demos:
 # BASIC
 ./build/src/tools/vbasic/vbasic demos/basic/frogger/frogger.bas
 
-# Pascal
-./build/src/tools/vpascal/vpascal demos/pascal/frogger/frogger.pas
-
 # ViperLang
 ./build/src/tools/viper/viper demos/viperlang/frogger.viper
 ```
@@ -150,7 +137,7 @@ Run demos:
 ```
 ┌─────────────────────────────────────────┐
 │           Source Language               │
-│      (BASIC, Pascal, ViperLang)         │
+│         (BASIC, ViperLang)              │
 └─────────────────┬───────────────────────┘
                   │
                   ▼
@@ -251,7 +238,6 @@ See the **[Runtime Library Reference](docs/viperlib/README.md)** for complete AP
 | Tool | Purpose |
 |------|---------|
 | `vbasic` | Run or compile BASIC programs |
-| `vpascal` | Run or compile Pascal programs |
 | `viper` | Run or compile ViperLang programs |
 | `ilrun` | Execute IL programs |
 | `il-verify` | Validate IL with detailed diagnostics |
@@ -263,15 +249,11 @@ See the **[Runtime Library Reference](docs/viperlib/README.md)** for complete AP
 # Run BASIC
 ./build/src/tools/vbasic/vbasic program.bas
 
-# Run Pascal
-./build/src/tools/vpascal/vpascal program.pas
-
 # Run ViperLang
 ./build/src/tools/viper/viper program.viper
 
 # Emit IL from any frontend
 ./build/src/tools/vbasic/vbasic program.bas --emit-il
-./build/src/tools/vpascal/vpascal program.pas --emit-il
 ./build/src/tools/viper/viper program.viper --emit-il
 
 # Run IL
@@ -288,10 +270,6 @@ See the **[Runtime Library Reference](docs/viperlib/README.md)** for complete AP
 ```bash
 # Compile BASIC to native executable (experimental)
 ./build/src/tools/ilc/ilc front basic -emit-il program.bas > program.il
-./build/src/tools/ilc/ilc codegen arm64 program.il -o program
-
-# Compile Pascal to native executable
-./build/src/tools/ilc/ilc front pascal -emit-il program.pas > program.il
 ./build/src/tools/ilc/ilc codegen arm64 program.il -o program
 
 # Compile ViperLang to native executable
@@ -363,8 +341,6 @@ Installs: `vbasic`, `vpascal`, `viper`, `ilrun`, `ilc`, `il-verify`, `il-dis`
 | [Getting Started](docs/getting-started.md) | Build and run your first program |
 | [BASIC Tutorial](docs/basic-language.md) | Learn Viper BASIC by example |
 | [BASIC Reference](docs/basic-reference.md) | Complete BASIC language specification |
-| [Pascal Tutorial](docs/pascal-language.md) | Learn Viper Pascal by example |
-| [Pascal Reference](docs/pascal-reference.md) | Complete Pascal language specification |
 | [ViperLang Getting Started](docs/viperlang-getting-started.md) | Learn ViperLang by example |
 | [ViperLang Reference](docs/viperlang-reference.md) | Complete ViperLang language specification |
 | [Runtime Library](docs/viperlib/README.md) | Viper.* classes, methods, and properties |

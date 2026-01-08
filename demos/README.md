@@ -1,6 +1,6 @@
 # Viper Demos
 
-Example programs demonstrating Viper BASIC, Viper Pascal, and ViperLang capabilities.
+Example programs demonstrating Viper BASIC and ViperLang capabilities.
 
 ## BASIC Demos
 
@@ -14,15 +14,6 @@ Example programs demonstrating Viper BASIC, Viper Pascal, and ViperLang capabili
 | [Particles](basic/particles/) | Graphics particle system | Canvas API, OOP, physics, color fading |
 | [vTris](basic/vtris/) | Tetris clone | Levels, high scores, colorful ANSI graphics |
 
-## Pascal Demos
-
-| Demo | Description | Features |
-|------|-------------|----------|
-| [Centipede](pascal/centipede/) | Centipede port to Pascal | ANSI graphics, arcade gameplay |
-| [Frogger](pascal/frogger/) | Frogger port to Pascal | Terminal graphics, classic gameplay |
-| [Snake](pascal/snake/) | Classic snake game | Array-based implementation |
-| [vTris](pascal/vtris/) | Tetris port to Pascal | Terminal graphics |
-
 ## ViperLang Demos
 
 | Demo | Description | Features |
@@ -35,11 +26,6 @@ Example programs demonstrating Viper BASIC, Viper Pascal, and ViperLang capabili
 ### BASIC (VM Mode)
 ```bash
 ./build/src/tools/vbasic/vbasic demos/basic/<demo>/<main>.bas
-```
-
-### Pascal (VM Mode)
-```bash
-./build/src/tools/vpascal/vpascal demos/pascal/<demo>/<main>.pas
 ```
 
 ### ViperLang (VM Mode)
@@ -73,6 +59,5 @@ clang++ /tmp/demo.o build/src/runtime/libviper_runtime.a -o /tmp/demo
 ## See Also
 
 - [BASIC Language Reference](../docs/basic-reference.md)
-- [Pascal Language Reference](../docs/pascal-reference.md)
 - [ViperLang Language Reference](../docs/viperlang-reference.md)
 - [Runtime Library](../docs/viperlib/README.md)

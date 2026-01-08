@@ -286,6 +286,9 @@ std::string ViperType::toString() const
 
         case TypeKindSem::TypeParam:
             return name;
+
+        case TypeKindSem::Module:
+            return name.empty() ? "Module" : name;
     }
 
     return "?";
@@ -561,6 +564,10 @@ il::core::Type::Kind toILType(const ViperType &type)
         // Never type doesn't produce values
         case TypeKindSem::Never:
             return il::core::Type::Kind::Void;
+
+        // Module types are not values
+        case TypeKindSem::Module:
+            return il::core::Type::Kind::Void;
     }
 
     return il::core::Type::Kind::Void;
@@ -618,6 +625,7 @@ size_t typeSize(const ViperType &type)
         case TypeKindSem::Never:
         case TypeKindSem::Any:
         case TypeKindSem::TypeParam:
+        case TypeKindSem::Module:
             return 0;
     }
     return 0;
@@ -651,6 +659,7 @@ size_t typeAlignment(const ViperType &type)
         case TypeKindSem::Never:
         case TypeKindSem::Any:
         case TypeKindSem::TypeParam:
+        case TypeKindSem::Module:
             return 1;
         case TypeKindSem::Value:
             return 8; // Default alignment
@@ -708,6 +717,8 @@ const char *kindToString(TypeKindSem kind)
             return "Any";
         case TypeKindSem::TypeParam:
             return "TypeParam";
+        case TypeKindSem::Module:
+            return "Module";
     }
     return "?";
 }

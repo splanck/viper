@@ -61,7 +61,6 @@ After building, confirm the primary tools work correctly:
 
 ```sh
 ./build/src/tools/vbasic/vbasic --help
-./build/src/tools/vpascal/vpascal --help
 ./build/src/tools/viper/viper --help
 ./build/src/tools/ilrun/ilrun --help
 ./build/src/tools/il-verify/il-verify --help
@@ -84,18 +83,6 @@ Each tool should display its help message without errors.
 ```
 Hello, World!
 Condition is true
-```
-
-### Pascal
-
-```sh
-./build/src/tools/vpascal/vpascal examples/pascal/hello.pas
-```
-
-**Expected output:**
-
-```
-Hello, World!
 ```
 
 ### ViperLang
@@ -132,9 +119,6 @@ You can inspect the generated IL or run IL programs directly:
 # Show generated IL from BASIC
 ./build/src/tools/vbasic/vbasic examples/basic/ex1_hello_cond.bas --emit-il
 
-# Show generated IL from Pascal
-./build/src/tools/vpascal/vpascal examples/pascal/hello.pas --emit-il
-
 # Show generated IL from ViperLang
 ./build/src/tools/viper/viper hello.viper --emit-il
 
@@ -145,7 +129,7 @@ You can inspect the generated IL or run IL programs directly:
 ./build/src/tools/ilrun/ilrun hello.il
 ```
 
-For more examples, see the **[BASIC Tutorial](basic-language.md)**, **[Pascal Tutorial](pascal-language.md)**,
+For more examples, see the **[BASIC Tutorial](basic-language.md)**,
 **[ViperLang Tutorial](viperlang-getting-started.md)**, and the `examples/` and `demos/` directories.
 
 ---
@@ -157,7 +141,6 @@ For more examples, see the **[BASIC Tutorial](basic-language.md)**, **[Pascal Tu
 | Tool        | Purpose                       | Example                  |
 |-------------|-------------------------------|--------------------------|
 | `vbasic`    | Run/compile BASIC programs    | `vbasic script.bas`      |
-| `vpascal`   | Run/compile Pascal programs   | `vpascal program.pas`    |
 | `viper`     | Run/compile ViperLang programs | `viper program.viper`   |
 | `ilrun`     | Execute IL programs           | `ilrun program.il`       |
 | `il-verify` | Verify IL correctness         | `il-verify program.il`   |
@@ -172,7 +155,7 @@ For more examples, see the **[BASIC Tutorial](basic-language.md)**, **[Pascal Tu
 | `basic-lex-dump` | Dump BASIC tokens           | `basic-lex-dump script.bas`       |
 
 > **Note:** The old `ilc` commands still work for backwards compatibility, but the new simplified tools (`vbasic`,
-`vpascal`, `ilrun`) are recommended for everyday use.
+`viper`, `ilrun`) are recommended for everyday use.
 
 ---
 
@@ -206,8 +189,6 @@ Viper guarantees consistent numeric behavior across all platforms and execution 
 
 - **[BASIC Tutorial](basic-language.md)** — Learn Viper BASIC by example
 - **[BASIC Reference](basic-reference.md)** — Complete BASIC language reference
-- **[Pascal Tutorial](pascal-language.md)** — Learn Viper Pascal by example
-- **[Pascal Reference](pascal-reference.md)** — Complete Pascal language reference
 - **[ViperLang Tutorial](viperlang-getting-started.md)** — Learn ViperLang by example
 - **[ViperLang Reference](viperlang-reference.md)** — Complete ViperLang language reference
 - **[IL Guide](il-guide.md)** — Comprehensive IL documentation

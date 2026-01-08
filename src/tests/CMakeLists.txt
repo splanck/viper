@@ -491,6 +491,7 @@ set_tests_properties(basic_repros
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         LABELS smoke)
 
+if (VIPER_ENABLE_PASCAL)
 # =============================================================================
 # Pascal Frontend Tests
 # =============================================================================
@@ -757,6 +758,8 @@ add_executable(test_pascal_semantic_inheritance ${CMAKE_CURRENT_SOURCE_DIR}/unit
 target_link_libraries(test_pascal_semantic_inheritance PRIVATE viper_testing fe_pascal)
 add_test(NAME test_pascal_semantic_inheritance COMMAND test_pascal_semantic_inheritance)
 set_tests_properties(test_pascal_semantic_inheritance PROPERTIES LABELS pascal)
+
+endif () # VIPER_ENABLE_PASCAL
 
 # =============================================================================
 # Test Labels Configuration

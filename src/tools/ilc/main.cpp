@@ -368,10 +368,12 @@ int main(int argc, char **argv)
     {
         return cmdFrontBasic(argc - 3, argv + 3);
     }
+#ifdef VIPER_ENABLE_PASCAL
     if (cmd == "front" && argc >= 3 && std::string(argv[2]) == "pascal")
     {
         return cmdFrontPascal(argc - 3, argv + 3);
     }
+#endif
     if (cmd == "front" && argc >= 3 && std::string(argv[2]) == "viperlang")
     {
         return cmdFrontViperlang(argc - 3, argv + 3);

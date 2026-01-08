@@ -307,32 +307,42 @@ add_library(ilc_cmd_arm64 STATIC
         tools/ilc/cmd_codegen_arm64.cpp)
 target_link_libraries(ilc_cmd_arm64 PRIVATE viper_common_opts viper_common il_tools_common il_codegen_aarch64 viper::il_full)
 
-add_executable(ilc
+# Build ilc sources list conditionally based on enabled frontends
+set(ILC_SOURCES
         tools/ilc/main.cpp
         tools/ilc/cmd_run_il.cpp
         tools/ilc/cmd_front_basic.cpp
-        tools/ilc/cmd_front_pascal.cpp
         tools/ilc/cmd_front_viperlang.cpp
         tools/ilc/cmd_il_opt.cpp
         tools/ilc/cmd_codegen_x64.cpp
         tools/ilc/cmd_bench.cpp
         tools/ilc/cli.cpp
         tools/ilc/break_spec.cpp)
-set_target_properties(ilc PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/ilc)
-target_link_libraries(ilc
-        PRIVATE
+
+set(ILC_LINK_LIBS
         viper_common_opts
         viper::il_full
         il_vm
         il_transform
         fe_basic
-        fe_pascal
         fe_viperlang
         il_api
         il_tools_common
         viper_codegen_x86_64
         il_codegen_aarch64
         ilc_cmd_arm64)
+
+if (VIPER_ENABLE_PASCAL)
+    list(APPEND ILC_SOURCES tools/ilc/cmd_front_pascal.cpp)
+    list(APPEND ILC_LINK_LIBS fe_pascal)
+endif ()
+
+add_executable(ilc ${ILC_SOURCES})
+set_target_properties(ilc PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/ilc)
+target_link_libraries(ilc PRIVATE ${ILC_LINK_LIBS})
+if (VIPER_ENABLE_PASCAL)
+    target_compile_definitions(ilc PRIVATE VIPER_ENABLE_PASCAL=1)
+endif ()
 get_target_property(ILC_LINK_LIBS ilc LINK_LIBRARIES)
 message(STATUS "ilc LINK_LIBRARIES: ${ILC_LINK_LIBS}")
 install(TARGETS ilc RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
@@ -355,23 +365,26 @@ target_link_libraries(vbasic
         il_tools_common)
 install(TARGETS vbasic RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
-add_executable(vpascal
-        tools/vpascal/main.cpp
-        tools/vpascal/usage.cpp
-        tools/vpascal/ilc_compat.cpp
-        tools/ilc/cmd_front_pascal.cpp
-        tools/ilc/cli.cpp)
-set_target_properties(vpascal PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/vpascal)
-target_link_libraries(vpascal
-        PRIVATE
-        viper_common_opts
-        viper::il_full
-        il_vm
-        il_transform
-        fe_pascal
-        il_api
-        il_tools_common)
-install(TARGETS vpascal RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+if (VIPER_ENABLE_PASCAL)
+    add_executable(vpascal
+            tools/vpascal/main.cpp
+            tools/vpascal/usage.cpp
+            tools/vpascal/ilc_compat.cpp
+            tools/ilc/cmd_front_pascal.cpp
+            tools/ilc/cli.cpp)
+    set_target_properties(vpascal PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/vpascal)
+    target_link_libraries(vpascal
+            PRIVATE
+            viper_common_opts
+            viper::il_full
+            il_vm
+            il_transform
+            fe_pascal
+            il_api
+            il_tools_common)
+    target_compile_definitions(vpascal PRIVATE VIPER_ENABLE_PASCAL=1)
+    install(TARGETS vpascal RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif ()
 
 add_executable(viper
         tools/viper/main.cpp
@@ -430,7 +443,9 @@ install(TARGETS il-dis RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 add_subdirectory(frontends/common)
 add_subdirectory(frontends/basic)
-add_subdirectory(frontends/pascal)
+if (VIPER_ENABLE_PASCAL)
+    add_subdirectory(frontends/pascal)
+endif ()
 add_subdirectory(frontends/viperlang)
 
 add_executable(basic-ast-dump
