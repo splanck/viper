@@ -334,6 +334,11 @@ class Parser
     /// - If/match expressions
     ExprPtr parsePrimary();
 
+    /// @brief Parse a match expression.
+    /// @param loc The source location of the match keyword.
+    /// @return The parsed match expression.
+    ExprPtr parseMatchExpression(SourceLoc loc);
+
     /// @brief Parse postfix operators (call, index, field access).
     /// @return The parsed expression with postfix operators applied.
     ///

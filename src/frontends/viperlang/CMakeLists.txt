@@ -8,6 +8,7 @@ set(VIPERLANG_SOURCES
         Parser_Decl.cpp
         Types.cpp
         Sema.cpp
+        Sema_Runtime.cpp
         Sema_Decl.cpp
         Sema_Stmt.cpp
         Sema_Expr.cpp
@@ -15,6 +16,12 @@ set(VIPERLANG_SOURCES
         Lowerer_Decl.cpp
         Lowerer_Stmt.cpp
         Lowerer_Expr.cpp
+        Lowerer_Expr_Literals.cpp
+        Lowerer_Expr_Binary.cpp
+        Lowerer_Expr_Call.cpp
+        Lowerer_Expr_Collections.cpp
+        Lowerer_Expr_Match.cpp
+        Lowerer_Dispatch.cpp
         Lowerer_Emit.cpp
         Compiler.cpp
 )

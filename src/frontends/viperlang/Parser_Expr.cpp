@@ -811,6 +811,90 @@ ExprPtr Parser::parsePostfix()
     return parsePostfixFrom(std::move(expr));
 }
 
+ExprPtr Parser::parseMatchExpression(SourceLoc loc)
+{
+    ExprPtr scrutinee;
+    if (match(TokenKind::LParen))
+    {
+        scrutinee = parseExpression();
+        if (!scrutinee)
+            return nullptr;
+        if (!expect(TokenKind::RParen, ")"))
+            return nullptr;
+    }
+    else
+    {
+        scrutinee = parseExpression();
+        if (!scrutinee)
+            return nullptr;
+    }
+
+    if (!expect(TokenKind::LBrace, "{"))
+        return nullptr;
+
+    // Parse match arms
+    std::vector<MatchArm> arms;
+    while (!check(TokenKind::RBrace) && !check(TokenKind::Eof))
+    {
+        MatchArm arm;
+
+        arm.pattern = parseMatchPattern();
+        if (match(TokenKind::KwIf))
+        {
+            arm.pattern.guard = parseExpression();
+            if (!arm.pattern.guard)
+                return nullptr;
+        }
+
+        // Expect =>
+        if (!expect(TokenKind::FatArrow, "=>"))
+            return nullptr;
+
+        // Parse arm body (expression or block expression)
+        if (check(TokenKind::LBrace))
+        {
+            Token lbraceTok = advance(); // consume '{'
+            SourceLoc blockLoc = lbraceTok.loc;
+            std::vector<StmtPtr> statements;
+
+            while (!check(TokenKind::RBrace) && !check(TokenKind::Eof))
+            {
+                StmtPtr stmt = parseStatement();
+                if (!stmt)
+                {
+                    resyncAfterError();
+                    continue;
+                }
+                statements.push_back(std::move(stmt));
+            }
+
+            if (!expect(TokenKind::RBrace, "}"))
+                return nullptr;
+
+            arm.body = std::make_unique<BlockExpr>(blockLoc, std::move(statements), nullptr);
+        }
+        else
+        {
+            arm.body = parseExpression();
+            if (!arm.body)
+                return nullptr;
+        }
+
+        arms.push_back(std::move(arm));
+
+        // Optional comma or closing brace
+        if (!check(TokenKind::RBrace))
+        {
+            match(TokenKind::Comma);
+        }
+    }
+
+    if (!expect(TokenKind::RBrace, "}"))
+        return nullptr;
+
+    return std::make_unique<MatchExpr>(loc, std::move(scrutinee), std::move(arms));
+}
+
 ExprPtr Parser::parsePrimary()
 {
     SourceLoc loc = peek().loc;
@@ -895,87 +979,7 @@ ExprPtr Parser::parsePrimary()
     if (check(TokenKind::KwMatch))
     {
         advance(); // consume 'match'
-
-        ExprPtr scrutinee;
-        if (match(TokenKind::LParen))
-        {
-            scrutinee = parseExpression();
-            if (!scrutinee)
-                return nullptr;
-            if (!expect(TokenKind::RParen, ")"))
-                return nullptr;
-        }
-        else
-        {
-            scrutinee = parseExpression();
-            if (!scrutinee)
-                return nullptr;
-        }
-
-        if (!expect(TokenKind::LBrace, "{"))
-            return nullptr;
-
-        // Parse match arms
-        std::vector<MatchArm> arms;
-        while (!check(TokenKind::RBrace) && !check(TokenKind::Eof))
-        {
-            MatchArm arm;
-
-            arm.pattern = parseMatchPattern();
-            if (match(TokenKind::KwIf))
-            {
-                arm.pattern.guard = parseExpression();
-                if (!arm.pattern.guard)
-                    return nullptr;
-            }
-
-            // Expect =>
-            if (!expect(TokenKind::FatArrow, "=>"))
-                return nullptr;
-
-            // Parse arm body (expression or block expression)
-            if (check(TokenKind::LBrace))
-            {
-                Token lbraceTok = advance(); // consume '{'
-                SourceLoc blockLoc = lbraceTok.loc;
-                std::vector<StmtPtr> statements;
-
-                while (!check(TokenKind::RBrace) && !check(TokenKind::Eof))
-                {
-                    StmtPtr stmt = parseStatement();
-                    if (!stmt)
-                    {
-                        resyncAfterError();
-                        continue;
-                    }
-                    statements.push_back(std::move(stmt));
-                }
-
-                if (!expect(TokenKind::RBrace, "}"))
-                    return nullptr;
-
-                arm.body = std::make_unique<BlockExpr>(blockLoc, std::move(statements), nullptr);
-            }
-            else
-            {
-                arm.body = parseExpression();
-                if (!arm.body)
-                    return nullptr;
-            }
-
-            arms.push_back(std::move(arm));
-
-            // Optional comma or closing brace
-            if (!check(TokenKind::RBrace))
-            {
-                match(TokenKind::Comma);
-            }
-        }
-
-        if (!expect(TokenKind::RBrace, "}"))
-            return nullptr;
-
-        return std::make_unique<MatchExpr>(loc, std::move(scrutinee), std::move(arms));
+        return parseMatchExpression(loc);
     }
 
     // Identifier (including contextual keywords like 'value' used as variable names)

@@ -175,18 +175,22 @@ void Sema::analyzeValueDecl(ValueDecl &decl)
     currentSelfType_ = nullptr;
 }
 
-void Sema::registerEntityMembers(EntityDecl &decl)
+template <typename T>
+void Sema::registerTypeMembers(T &decl, bool includeFields)
 {
-    // Register field types
-    for (auto &member : decl.members)
+    // Register field types (if applicable)
+    if (includeFields)
     {
-        if (member->kind == DeclKind::Field)
+        for (auto &member : decl.members)
         {
-            auto *field = static_cast<FieldDecl *>(member.get());
-            TypeRef fieldType = field->type ? resolveTypeNode(field->type.get()) : types::unknown();
-            std::string fieldKey = decl.name + "." + field->name;
-            fieldTypes_[fieldKey] = fieldType;
-            memberVisibility_[fieldKey] = field->visibility;
+            if (member->kind == DeclKind::Field)
+            {
+                auto *field = static_cast<FieldDecl *>(member.get());
+                TypeRef fieldType = field->type ? resolveTypeNode(field->type.get()) : types::unknown();
+                std::string fieldKey = decl.name + "." + field->name;
+                fieldTypes_[fieldKey] = fieldType;
+                memberVisibility_[fieldKey] = field->visibility;
+            }
         }
     }
 
@@ -212,65 +216,24 @@ void Sema::registerEntityMembers(EntityDecl &decl)
     }
 }
 
+// Explicit template instantiations
+template void Sema::registerTypeMembers<EntityDecl>(EntityDecl &, bool);
+template void Sema::registerTypeMembers<ValueDecl>(ValueDecl &, bool);
+template void Sema::registerTypeMembers<InterfaceDecl>(InterfaceDecl &, bool);
+
+void Sema::registerEntityMembers(EntityDecl &decl)
+{
+    registerTypeMembers(decl, true);
+}
+
 void Sema::registerValueMembers(ValueDecl &decl)
 {
-    // Register field types
-    for (auto &member : decl.members)
-    {
-        if (member->kind == DeclKind::Field)
-        {
-            auto *field = static_cast<FieldDecl *>(member.get());
-            TypeRef fieldType = field->type ? resolveTypeNode(field->type.get()) : types::unknown();
-            std::string fieldKey = decl.name + "." + field->name;
-            fieldTypes_[fieldKey] = fieldType;
-            memberVisibility_[fieldKey] = field->visibility;
-        }
-    }
-
-    // Register method types
-    for (auto &member : decl.members)
-    {
-        if (member->kind == DeclKind::Method)
-        {
-            auto *method = static_cast<MethodDecl *>(member.get());
-            TypeRef returnType =
-                method->returnType ? resolveTypeNode(method->returnType.get()) : types::voidType();
-            std::vector<TypeRef> paramTypes;
-            for (const auto &param : method->params)
-            {
-                TypeRef paramType =
-                    param.type ? resolveTypeNode(param.type.get()) : types::unknown();
-                paramTypes.push_back(paramType);
-            }
-            std::string methodKey = decl.name + "." + method->name;
-            methodTypes_[methodKey] = types::function(paramTypes, returnType);
-            memberVisibility_[methodKey] = method->visibility;
-        }
-    }
+    registerTypeMembers(decl, true);
 }
 
 void Sema::registerInterfaceMembers(InterfaceDecl &decl)
 {
-    // Register method types for interface
-    for (auto &member : decl.members)
-    {
-        if (member->kind == DeclKind::Method)
-        {
-            auto *method = static_cast<MethodDecl *>(member.get());
-            TypeRef returnType =
-                method->returnType ? resolveTypeNode(method->returnType.get()) : types::voidType();
-            std::vector<TypeRef> paramTypes;
-            for (const auto &param : method->params)
-            {
-                TypeRef paramType =
-                    param.type ? resolveTypeNode(param.type.get()) : types::unknown();
-                paramTypes.push_back(paramType);
-            }
-            std::string methodKey = decl.name + "." + method->name;
-            methodTypes_[methodKey] = types::function(paramTypes, returnType);
-            memberVisibility_[methodKey] = method->visibility;
-        }
-    }
+    registerTypeMembers(decl, false);
 }
 
 void Sema::analyzeEntityDecl(EntityDecl &decl)

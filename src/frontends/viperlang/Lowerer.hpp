@@ -104,6 +104,7 @@
 #include "il/core/Value.hpp"
 #include <map>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <unordered_map>
@@ -765,6 +766,20 @@ class Lowerer
     /// @return The result value.
     Value emitCallIndirectRet(Type retTy, Value funcPtr, const std::vector<Value> &args);
 
+    /// @brief Emit a function call with automatic void/return handling.
+    /// @param callee The function name.
+    /// @param args The argument values.
+    /// @param returnType The return type (handles void automatically).
+    /// @return LowerResult with return value (or dummy for void).
+    LowerResult emitCallWithReturn(const std::string &callee, const std::vector<Value> &args,
+                                   Type returnType);
+
+    /// @brief Convert a value to a string representation.
+    /// @param val The value to convert.
+    /// @param sourceType The semantic type of the value.
+    /// @return The string value (or original if already string).
+    Value emitToString(Value val, TypeRef sourceType);
+
     /// @brief Emit an unconditional branch.
     /// @param targetIdx The target block index.
     void emitBr(size_t targetIdx);
@@ -858,6 +873,40 @@ class Lowerer
                                          Value selfValue,
                                          CallExpr *expr);
 
+    /// @brief Lower a method call on a List collection.
+    /// @param baseValue The lowered list value.
+    /// @param baseType The semantic type of the list.
+    /// @param methodName The method name being called.
+    /// @param expr The call expression for arguments.
+    /// @return The call result, or nullopt if method not recognized.
+    std::optional<LowerResult> lowerListMethodCall(Value baseValue,
+                                                    TypeRef baseType,
+                                                    const std::string &methodName,
+                                                    CallExpr *expr);
+
+    /// @brief Lower a method call on a Map collection.
+    /// @param baseValue The lowered map value.
+    /// @param baseType The semantic type of the map.
+    /// @param methodName The method name being called.
+    /// @param expr The call expression for arguments.
+    /// @return The call result, or nullopt if method not recognized.
+    std::optional<LowerResult> lowerMapMethodCall(Value baseValue,
+                                                   TypeRef baseType,
+                                                   const std::string &methodName,
+                                                   CallExpr *expr);
+
+    /// @brief Lower a built-in function call (print, println, toString).
+    /// @param name The function name.
+    /// @param expr The call expression.
+    /// @return The call result, or nullopt if not a built-in.
+    std::optional<LowerResult> lowerBuiltinCall(const std::string &name, CallExpr *expr);
+
+    /// @brief Lower a value type construction call.
+    /// @param typeName The value type name.
+    /// @param expr The call expression with constructor arguments.
+    /// @return The constructed value, or nullopt if not a value type.
+    std::optional<LowerResult> lowerValueTypeConstruction(const std::string &typeName, CallExpr *expr);
+
     /// @}
     //=========================================================================
     /// @name Boxing/Unboxing Helpers
@@ -894,6 +943,19 @@ class Lowerer
     /// @param innerType The semantic inner type of the optional.
     /// @return The unwrapped value with its type.
     LowerResult emitOptionalUnwrap(Value val, TypeRef innerType);
+
+    /// @brief Wrap a value for optional field assignment if needed.
+    /// @param val The value to potentially wrap.
+    /// @param fieldType The field's semantic type (may or may not be optional).
+    /// @param valueType The type of the value being assigned.
+    /// @return The wrapped value if field is optional, otherwise the original value.
+    Value wrapValueForOptionalField(Value val, TypeRef fieldType, TypeRef valueType);
+
+    /// @brief Extend an operand value to i64 for integer comparison.
+    /// @param val The value to extend.
+    /// @param type The IL type of the value.
+    /// @return The extended i64 value suitable for ICmpEq/ICmpNe.
+    Value extendOperandForComparison(Value val, Type type);
 
     /// @}
     //=========================================================================

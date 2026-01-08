@@ -144,6 +144,38 @@ Lowerer::Value Lowerer::emitCallIndirectRet(Type retTy,
     return Value::temp(id);
 }
 
+LowerResult Lowerer::emitCallWithReturn(const std::string &callee,
+                                         const std::vector<Value> &args,
+                                         Type returnType)
+{
+    if (returnType.kind == Type::Kind::Void)
+    {
+        emitCall(callee, args);
+        return {Value::constInt(0), Type(Type::Kind::Void)};
+    }
+    return {emitCallRet(returnType, callee, args), returnType};
+}
+
+Lowerer::Value Lowerer::emitToString(Value val, TypeRef sourceType)
+{
+    if (!sourceType)
+        return val;
+
+    switch (sourceType->kind)
+    {
+        case TypeKindSem::String:
+            return val;
+        case TypeKindSem::Integer:
+            return emitCallRet(Type(Type::Kind::Str), kStringFromInt, {val});
+        case TypeKindSem::Number:
+            return emitCallRet(Type(Type::Kind::Str), kStringFromNum, {val});
+        case TypeKindSem::Boolean:
+            return emitCallRet(Type(Type::Kind::Str), kFmtBool, {val});
+        default:
+            return emitCallRet(Type(Type::Kind::Str), kObjectToString, {val});
+    }
+}
+
 void Lowerer::emitBr(size_t targetIdx)
 {
     // Use index-based access to avoid stale pointer after vector reallocation

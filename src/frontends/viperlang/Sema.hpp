@@ -370,17 +370,20 @@ class Sema
     /// @details Registers the type and analyzes all members.
     void analyzeValueDecl(ValueDecl &decl);
 
+    /// @brief Register type member signatures for cross-module resolution.
+    /// @tparam T Decl type (EntityDecl, ValueDecl, or InterfaceDecl)
+    /// @param decl The type declaration.
+    /// @param includeFields Whether to register field types (false for interfaces).
+    template <typename T>
+    void registerTypeMembers(T &decl, bool includeFields = true);
+
     /// @brief Register entity member signatures for cross-module resolution.
-    /// @param decl The entity declaration.
-    /// @details Registers field and method types before body analysis.
     void registerEntityMembers(EntityDecl &decl);
 
     /// @brief Register value type member signatures for cross-module resolution.
-    /// @param decl The value type declaration.
     void registerValueMembers(ValueDecl &decl);
 
     /// @brief Register interface member signatures for cross-module resolution.
-    /// @param decl The interface declaration.
     void registerInterfaceMembers(InterfaceDecl &decl);
 
     /// @brief Analyze an entity type declaration.
