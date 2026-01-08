@@ -1,0 +1,54 @@
+// Test: Collections
+// Tests: List, Map, Set (no native arrays in ViperLang)
+module Test;
+
+func main() {
+    Viper.Terminal.Say("=== Collections Test ===");
+
+    // List[Integer]
+    Viper.Terminal.Say("");
+    Viper.Terminal.Say("=== List ===");
+    var list = Viper.Collections.List.New();
+    Viper.Collections.List.Add(list, Viper.Box.I64(10));
+    Viper.Collections.List.Add(list, Viper.Box.I64(20));
+    Viper.Collections.List.Add(list, Viper.Box.I64(30));
+
+    Viper.Terminal.Print("List count: ");
+    Viper.Terminal.SayInt(Viper.Collections.List.get_Count(list));
+
+    Viper.Terminal.Say("List items:");
+    var i = 0;
+    while (i < Viper.Collections.List.get_Count(list)) {
+        var item = Viper.Collections.List.get_Item(list, i);
+        Viper.Terminal.Print("  [");
+        Viper.Terminal.Print(Viper.Fmt.Int(i));
+        Viper.Terminal.Print("] = ");
+        Viper.Terminal.SayInt(Viper.Box.ToI64(item));
+        i = i + 1;
+    }
+
+    // Map[String, String]
+    Viper.Terminal.Say("");
+    Viper.Terminal.Say("=== Map ===");
+    var map = Viper.Collections.Map.New();
+    Viper.Collections.Map.Set(map, Viper.Box.Str("name"), Viper.Box.Str("Alice"));
+    Viper.Collections.Map.Set(map, Viper.Box.Str("city"), Viper.Box.Str("Boston"));
+
+    Viper.Terminal.Print("Map has 'name': ");
+    Viper.Terminal.Say(Viper.Fmt.Bool(Viper.Collections.Map.Has(map, Viper.Box.Str("name"))));
+
+    var nameVal = Viper.Collections.Map.Get(map, Viper.Box.Str("name"));
+    Viper.Terminal.Say("Map get 'name': " + Viper.Box.ToStr(nameVal));
+
+    var cityVal = Viper.Collections.Map.Get(map, Viper.Box.Str("city"));
+    Viper.Terminal.Say("Map get 'city': " + Viper.Box.ToStr(cityVal));
+
+    // Note: ViperLang has no native arrays
+    // Arrays would need to be implemented via List or special syntax
+    Viper.Terminal.Say("");
+    Viper.Terminal.Say("=== Arrays ===");
+    Viper.Terminal.Say("ViperLang: No native arrays (use List instead)");
+    Viper.Terminal.Say("BASIC: Native fixed and dynamic arrays supported");
+
+    Viper.Terminal.Say("=== Collections test complete ===");
+}
