@@ -385,6 +385,15 @@ void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l)
             }
         }
     }
+
+    // BUG-020 fix: Store resolved extents in AST node so the lowerer can access them
+    // even after procedure scope cleanup erases ArrayMetadata from the semantic analyzer.
+    // Re-lookup in case the earlier lookup was skipped (multi-dimensional arrays).
+    auto metaIt = arrays_.find(a.name);
+    if (metaIt != arrays_.end() && !metaIt->second.extents.empty())
+    {
+        a.resolvedExtents = metaIt->second.extents;
+    }
 }
 
 void SemanticAnalyzer::analyzeMemberAssignment(MemberAccessExpr &m, const LetStmt &l)
@@ -564,6 +573,27 @@ void SemanticAnalyzer::analyzeDim(DimStmt &d)
                 }
                 extents.push_back(extent);
             }
+            // BUG-010 fix: Handle VarExpr that references a CONST.
+            // When DIM uses a CONST (e.g., DIM arr(MAX_ROWS, MAX_COLS)), look up the value.
+            else if (auto *varRef = as<const VarExpr>(*dimExpr))
+            {
+                auto constIt = constantValues_.find(varRef->name);
+                if (constIt != constantValues_.end())
+                {
+                    long long extent = constIt->second;
+                    if (extent < 0)
+                    {
+                        std::string msg = "array extent must be non-negative";
+                        de.emit(il::support::Severity::Error, "B2003", d.loc, 1, std::move(msg));
+                    }
+                    extents.push_back(extent);
+                }
+                else
+                {
+                    // Variable is not a known CONST - runtime-computed extent
+                    allConstant = false;
+                }
+            }
             else
             {
                 // Runtime-computed extent
@@ -646,6 +676,14 @@ void SemanticAnalyzer::analyzeDim(DimStmt &d)
             activeProcScope_->noteArrayMutation(d.name, previous);
         }
         arrays_[d.name] = metadata;
+
+        // BUG-010 fix: Store resolved extents in AST node so the lowerer can compute
+        // correct array size even when dimensions reference CONSTs (which would otherwise
+        // need runtime lookup after procedure scope cleanup erases semantic metadata).
+        if (!metadata.extents.empty())
+        {
+            d.resolvedExtents = metadata.extents;
+        }
 
         auto itType = varTypes_.find(d.name);
         if (activeProcScope_)
@@ -745,6 +783,20 @@ void SemanticAnalyzer::analyzeConst(ConstStmt &c)
 
     // Track this name as a constant
     constants_.insert(c.name);
+
+    // BUG-010 fix: Store the constant's integer value for use in array dimension expressions.
+    // When DIM uses a CONST name (e.g., DIM arr(MAX_ROWS)), we need to retrieve its value.
+    if (c.initializer)
+    {
+        if (auto *intLit = as<IntExpr>(*c.initializer))
+        {
+            constantValues_[c.name] = intLit->value;
+        }
+        else if (auto *floatLit = as<FloatExpr>(*c.initializer))
+        {
+            constantValues_[c.name] = static_cast<long long>(floatLit->value);
+        }
+    }
 
     // Also track it as a symbol
     auto insertResult = symbols_.insert(c.name);

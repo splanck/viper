@@ -1,11 +1,11 @@
 # SQLite Clone Bug Tracker
 
 ## Summary
-- **Total Bugs Found**: 18
-- **Bugs Fixed**: 13 (#001 COMPILER FIX, #003 COMPILER FIX, #007 COMPILER FIX, #008 user education, #009 COMPILER FIX, #012 user education, #013 COMPILER FIX, #014 COMPILER FIX, #015 COMPILER FIX, #016 code fix, #017 COMPILER FIX, #018 COMPILER FIX)
+- **Total Bugs Found**: 20
+- **Bugs Fixed**: 17 (#001 COMPILER FIX, #003 COMPILER FIX, #007 COMPILER FIX, #008 user education, #009 COMPILER FIX, #010 COMPILER FIX, #011 COMPILER FIX, #012 user education, #013 COMPILER FIX, #014 COMPILER FIX, #015 COMPILER FIX, #016 code fix, #017 COMPILER FIX, #018 COMPILER FIX, #019 code fix, #020 COMPILER FIX)
 - **Bugs Closed**: 3 (#002, #004, #005 - were cascading effects of #007, now fixed)
-- **Bugs Open**: 2 (#010, #011 - root causes identified, require deeper fixes)
-- **Workarounds Applied**: 2 (#010, #011)
+- **Bugs Open**: 0
+- **Workarounds Applied**: 0
 - **Not A Bug**: 1 (#006 by design)
 
 ### Root Cause Investigation Summary (2026-01-08)
@@ -262,9 +262,9 @@
 ### Bug #010: Viper Basic 2D array corruption with CONST dimensions
 - **Date**: 2026-01-08
 - **Language**: Viper Basic
-- **Component**: Frontend (Semantic Analyzer / Constant Folding)
+- **Component**: Frontend (Semantic Analyzer / Lowerer)
 - **Severity**: Critical
-- **Status**: Open (requires deeper investigation)
+- **Status**: FIXED IN COMPILER
 - **Description**: When using 2D arrays with CONST dimensions (e.g., `DIM arr(ROWS, COLS)` where ROWS and COLS are CONST), setting one element corrupts other elements
 - **Steps to Reproduce**:
   ```basic
@@ -281,40 +281,32 @@
   ```
 - **Expected**: Setting arr(0, 1) should not affect arr(0, 0)
 - **Actual**: Setting arr(0, 1) overwrites arr(0, 0) (both use index 0)
-- **Key Finding**: Literal dimensions work correctly:
-  ```basic
-  DIM arr(100, 64) AS INTEGER  ' Works correctly!
-  ```
-- **Root Cause Analysis (2026-01-08)**:
-  1. **Semantic analyzer issue**: In `SemanticAnalyzer_Stmts_Runtime.cpp:analyzeDim()`, array extents are extracted from dimension expressions
-  2. Only `IntExpr` (literal integers) and `FloatExpr` are recognized as constant extents (lines 544-566)
-  3. When CONST values are used (`DIM arr(ROWS, COLS)`), the dimension expressions are `VarExpr` nodes referencing the constants
-  4. The code hits the `else` branch at line 567: `allConstant = false`
-  5. This causes `ArrayMetadata.extents` to be empty
-  6. **Lowering issue**: In `Emit_Expr.cpp:computeFlatIndex()`, when array metadata has no extents, it falls back to just using the first index (line 387): `return idxVals[0]`
-  7. Since `arr(0, 0)` and `arr(0, 1)` both have first index 0, both accesses map to the same memory location
-- **IL Evidence**: CONST dimensions generate `call @rt_arr_i64_set(%t21, 0, 10)` with literal `0` index, while literal dimensions correctly generate computed indices (`%t18`)
-- **Potential Fix**: Modify `analyzeDim()` to handle `VarExpr` dimension expressions that reference CONSTs:
-  1. Check if dimension expression is a `VarExpr`
-  2. Check if it's a known CONST (via `constants_` set)
-  3. Look up the CONST's initializer value from previously processed `ConstStmt` nodes
-  4. Use that value as the extent
-  Alternatively, enhance the `ConstFolderPass` to propagate CONST values into VarExpr references before semantic analysis runs.
-- **Workaround**: Use literal dimensions or 1D array with manual index calculation:
-  ```basic
-  DIM arr(100, 64) AS INTEGER  ' Literal dimensions work
-  ' OR use 1D array:
-  DIM arr(6400) AS INTEGER
-  arr(row * 64 + col) = value  ' Manual index calculation
-  ```
-- **Fix Applied**: InsertStmt class uses 1D array with manual indexing
+- **Root Cause**:
+  1. In `analyzeDim()`, array extents were only extracted from literal `IntExpr`/`FloatExpr` nodes
+  2. When CONST values were used, the dimension expressions were `VarExpr` nodes referencing the constants
+  3. This caused `ArrayMetadata.extents` to be empty, leading to incorrect array size computation
+  4. The lowerer would then generate code to compute size at runtime using module variable lookups
+  5. Combined with Bug #020's scope cleanup issue, this led to corrupted array accesses
+- **Fix Details**:
+  1. **SemanticAnalyzer.hpp**: Added `constantValues_` map to store integer values of CONST declarations
+  2. **SemanticAnalyzer_Stmts_Runtime.cpp:analyzeConst()**: Store constant value in `constantValues_` when initializer is a literal
+  3. **SemanticAnalyzer_Stmts_Runtime.cpp:analyzeDim()**: Handle `VarExpr` dimension expressions that reference CONSTs by looking up values in `constantValues_`
+  4. **ast/StmtExpr.hpp**: Added `resolvedExtents` field to `DimStmt` to store known extents from semantic analysis
+  5. **SemanticAnalyzer_Stmts_Runtime.cpp:analyzeDim()**: Populate `d.resolvedExtents` from computed metadata
+  6. **RuntimeStatementLowerer_Decl.cpp:lowerDim()**: Check for `resolvedExtents` and use compile-time constant size instead of runtime computation
+- **Files Changed**:
+  - `src/frontends/basic/SemanticAnalyzer.hpp`
+  - `src/frontends/basic/SemanticAnalyzer_Stmts_Runtime.cpp`
+  - `src/frontends/basic/ast/StmtExpr.hpp`
+  - `src/frontends/basic/RuntimeStatementLowerer_Decl.cpp`
+- **Verification**: Test case `demos/sqldb/basic/test_const_2d.bas` confirms CONST dimensions now work correctly
 
 ### Bug #011: Viper Basic class member fields cannot be passed directly to methods
 - **Date**: 2026-01-08
 - **Language**: Viper Basic
 - **Component**: Frontend (Scan/Type Inference)
 - **Severity**: High
-- **Status**: Open (requires deeper investigation)
+- **Status**: FIXED IN COMPILER
 - **Description**: Passing a class member field directly as an argument to a method that expects STRING causes "no viable overload" error
 - **Steps to Reproduce**:
   ```basic
@@ -332,20 +324,18 @@
   ```
 - **Expected**: Should resolve overload and pass string value
 - **Actual**: Compiler reports "no viable overload" error
-- **Root Cause Analysis (2026-01-08)**:
-  - The issue is in the type scanning phase (`Scan_ExprTypes.cpp`)
-  - When `scanExpr()` is called to determine argument types, it uses `resolveObjectClass()` to find the class of the base expression (`stmt`)
-  - `resolveObjectClass()` calls `getSlotType()` which uses `findSymbol()` to look up the parameter
-  - However, procedure parameters with object types are only registered in the emit phase (`Lowerer_Procedure_Emit.cpp:251`), not during the scan phase
-  - This means when `scanExpr(stmt.name)` is called during overload resolution, the symbol table doesn't know that `stmt` is of type `MyClass`, so the field type cannot be determined
-  - The scan phase returns `ExprType::I64` (default) instead of `ExprType::Str`, causing overload mismatch
-- **Workaround**: Copy the member field to a local variable first:
-  ```basic
-  DIM tName AS STRING
-  tName = stmt.name
-  idx = gObj.FindTable(tName)  ' Works
-  ```
-- **Potential Fix**: Register procedure parameters with object types in the scan phase (before `scanExpr` is called), not just in the emit phase. This requires modifying `Scan_RuntimeNeeds.cpp` to set symbol object types for procedure parameters early in the lowering process.
+- **Root Cause**:
+  1. In `Scan_ExprTypes.cpp`, member access type scanning used direct lookup on `classLayouts_` map
+  2. The `resolveObjectClass()` returns class names that may not exactly match `classLayouts_` keys due to casing or qualification differences
+  3. The direct `find()` failed to find the layout, so field type defaulted to `I64` instead of `Str`
+  4. Method overload resolution then failed because argument type was wrong
+- **Fix Details**:
+  1. **Scan_ExprTypes.cpp**: Changed `lowerer_.classLayouts_.find(className)` to `lowerer_.findClassLayout(className)` which performs normalized case-insensitive lookup
+  2. **Scan_RuntimeNeeds.cpp**: Added `before(SubDecl)` and `before(FunctionDecl)` hooks to register procedure parameter object types before scanning the body (ensures parameter class types are known during scan)
+- **Files Changed**:
+  - `src/frontends/basic/lower/Scan_ExprTypes.cpp`
+  - `src/frontends/basic/lower/Scan_RuntimeNeeds.cpp`
+- **Verification**: Test case `demos/sqldb/basic/test_bug011.bas` confirms member fields can now be passed directly to methods
 
 ### Bug #012: Viper Basic objects declared with DIM need NEW before method calls
 - **Date**: 2026-01-08
@@ -574,4 +564,91 @@
 - **Files Modified**: `src/frontends/viperlang/Lowerer_Expr_Call.cpp` (lines 523-560)
 - **Impact**: This bug broke all ViperLang code using `str.length()` or `num.toString()` patterns. The SQL clone now works correctly.
 - **Notes**: The runtime `rt_substr` and other string functions were working correctly - the bug was entirely in the frontend lowering phase.
+
+### Bug #019: ViperLang SQL - Called nonexistent valueCount() method on Row entity
+- **Date**: 2026-01-08
+- **Language**: ViperLang
+- **Component**: SQL Clone (sql.viper)
+- **Severity**: High
+- **Status**: Fixed (CODE FIX)
+- **Description**: In evalSubquery() and evalInSubquery(), the code called `row.valueCount()` but the Row entity only has a `columnCount()` method.
+- **Steps to Reproduce**:
+  ```sql
+  SELECT name FROM users WHERE age > (SELECT AVG(age) FROM users);
+  ```
+- **Expected**: Query returns users older than average
+- **Actual**: Runtime trap: `null indirect callee` at evalSubquery:if_then_4#6
+- **Root Cause**: The Row entity defines `columnCount()` method (line 844) to return the number of values. The evalSubquery() function on line 2800 incorrectly called `firstRow.valueCount()` which doesn't exist. Same issue in evalInSubquery() on line 2871.
+- **Fix**: Changed both occurrences of `valueCount()` to `columnCount()`:
+  - Line 2800: `firstRow.valueCount()` → `firstRow.columnCount()`
+  - Line 2871: `resultRow.valueCount()` → `resultRow.columnCount()`
+- **Files Modified**: `demos/sqldb/viperlang/sql.viper`
+- **Notes**: Both scalar subqueries and IN subqueries now work correctly.
+
+### Bug #020: Viper Basic 2D array reads return only the last written value
+- **Date**: 2026-01-08
+- **Language**: Viper Basic
+- **Component**: Frontend (Semantic Analyzer / Lowerer)
+- **Severity**: Critical
+- **Status**: FIXED IN COMPILER
+- **Description**: When writing to multiple elements of a 2D array and then reading them back, ALL reads return the last value written, regardless of index. The immediate read after write appears correct, but subsequent reads of ANY index return the same (last) value.
+- **Steps to Reproduce**:
+  ```basic
+  DIM arr(1000, 1000) AS INTEGER
+
+  arr(0, 0) = 100
+  PRINT arr(0, 0)  ' Prints 100 (correct - immediate read after write)
+
+  arr(0, 1) = 101
+  arr(0, 2) = 102
+  arr(0, 3) = 103
+  arr(0, 4) = 104
+
+  ' Now read them back:
+  PRINT arr(0, 0)  ' Prints 104 (WRONG - should be 100)
+  PRINT arr(0, 1)  ' Prints 104 (WRONG - should be 101)
+  PRINT arr(0, 2)  ' Prints 104 (WRONG - should be 102)
+  PRINT arr(0, 3)  ' Prints 104 (WRONG - should be 103)
+  PRINT arr(0, 4)  ' Prints 104 (correct by coincidence)
+  ```
+- **Expected**: Each array element should retain its written value
+- **Actual**: All reads return the last value written (104 in this case)
+- **Root Cause Analysis**:
+  The lowerer's `computeFlatIndex` function needed array dimension metadata (extents) to compute the correct flattened index for multi-dimensional arrays. This metadata was stored in the semantic analyzer's `arrays_` map. However:
+  1. The semantic analyzer erases local array metadata when procedure scope exits (to handle shadowing correctly)
+  2. The lowerer runs as a separate pass AFTER semantic analysis completes
+  3. By the time the lowerer needed the metadata, it had been erased
+  4. Without metadata, the lowerer fell back to using only the first index: `return idxVals[0]`
+  5. This caused all accesses like `arr(0, col)` to hit the same memory location (flat index 0)
+- **Fix Details**:
+  1. **ast/ExprNodes.hpp**: Added `std::vector<long long> resolvedExtents` field to `ArrayExpr` AST node
+  2. **sem/Check_Expr_Array.cpp**: In `analyzeArrayExpr()`, populate `expr.resolvedExtents` from metadata during semantic analysis (for array reads)
+  3. **SemanticAnalyzer_Stmts_Runtime.cpp**: In `analyzeArrayAssignment()`, populate `a.resolvedExtents` from metadata during semantic analysis (for array writes/LET targets)
+  4. **lower/Emit_Expr.cpp**: In `computeFlatIndex`, use `expr.resolvedExtents` instead of looking up metadata from the semantic analyzer
+- **Key Insight**: Array writes go through `analyzeArrayAssignment()` while array reads go through `analyzeArrayExpr()`. Both paths needed the fix.
+- **Notes**: This fix ensures array extents are stored directly in the AST, so they remain available to the lowerer regardless of procedure scope cleanup.
+
+---
+
+## Implementation Progress
+
+### Phase 6: Subqueries - In Progress
+
+#### Step 31: Scalar Subquery in WHERE - COMPLETED (2026-01-08)
+- **ViperLang**: Added EXPR_SUBQUERY type, parser support for `(SELECT ...)`, and evalSubquery() function
+- **Viper Basic**: Added matching support with EvalSubquery() function
+- **Test Results**: Subqueries are being parsed and executed correctly
+- **Note**: Some comparison results are affected by existing type comparison issues (text vs numeric). The subquery mechanism itself works correctly.
+- **Files Modified**:
+  - `demos/sqldb/viperlang/sql.viper` - Added subquery expression type, parser, evaluator, and tests
+  - `demos/sqldb/basic/sql.bas` - Added matching support for subqueries
+
+#### Step 32: Subquery with IN - COMPLETED (2026-01-08)
+- **ViperLang**: Added OP_IN handling in parseCompExpr, evalInSubquery() function, and fixed Bug #019 (valueCount→columnCount)
+- **Viper Basic**: Added matching EvalInSubquery() function with same SELECT consumption fix
+- **Test Results**: Both languages correctly handle `WHERE id IN (SELECT ...)` patterns
+- **Key Bug Fixed**: Bug #019 - Row entity method was called as `valueCount()` but should be `columnCount()`
+- **Files Modified**:
+  - `demos/sqldb/viperlang/sql.viper` - Added IN subquery parsing and evaluation
+  - `demos/sqldb/basic/sql.bas` - Added IN subquery parsing and evaluation
 

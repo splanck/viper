@@ -359,7 +359,32 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
             }
             return sum;
         }
-        // Analyzer metadata for non-field arrays; convert bounds to lengths via +1
+        // BUG-020 fix: Use resolvedExtents from AST node instead of looking up metadata.
+        // The semantic analyzer stores extents in the ArrayExpr during analysis, ensuring
+        // they remain available even after procedure scope cleanup erases ArrayMetadata.
+        if (!expr.resolvedExtents.empty() && expr.resolvedExtents.size() == idxVals.size())
+        {
+            std::vector<long long> lengths(expr.resolvedExtents.size(), 0);
+            for (size_t i = 0; i < expr.resolvedExtents.size(); ++i)
+                lengths[i] = expr.resolvedExtents[i] + 1;
+            long long stride = 1;
+            for (size_t i = 1; i < lengths.size(); ++i)
+                stride *= lengths[i];
+            Value sum = emitBinary(
+                Opcode::IMulOvf, Type(Type::Kind::I64), idxVals[0], Value::constInt(stride));
+            for (size_t k = 1; k < idxVals.size(); ++k)
+            {
+                stride = 1;
+                for (size_t i = k + 1; i < lengths.size(); ++i)
+                    stride *= lengths[i];
+                Value term = emitBinary(
+                    Opcode::IMulOvf, Type(Type::Kind::I64), idxVals[k], Value::constInt(stride));
+                sum = emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), sum, term);
+            }
+            return sum;
+        }
+        // Fallback to semantic analyzer metadata lookup for backward compatibility
+        // (e.g., arrays not yet processed through full semantic analysis path)
         const SemanticAnalyzer *sema = semanticAnalyzer();
         const ArrayMetadata *metadata = sema ? sema->lookupArrayMetadata(expr.name) : nullptr;
         if (metadata && metadata->extents.size() == idxVals.size())

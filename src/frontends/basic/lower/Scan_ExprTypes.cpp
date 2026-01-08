@@ -307,10 +307,11 @@ class ExprTypeScanner final : public BasicAstWalker<ExprTypeScanner>
         {
             consumeExpr(*expr.base);
             std::string className = lowerer_.resolveObjectClass(*expr.base);
-            auto layoutIt = lowerer_.classLayouts_.find(className);
-            if (layoutIt != lowerer_.classLayouts_.end())
+            // BUG-011 fix: Use findClassLayout() instead of direct lookup to handle
+            // case-insensitive class names and qualified/unqualified name variants.
+            if (const auto *layout = lowerer_.findClassLayout(className))
             {
-                if (const auto *field = layoutIt->second.findField(expr.member))
+                if (const auto *field = layout->findField(expr.member))
                     result = exprTypeFromAstType(field->type);
             }
         }

@@ -1270,6 +1270,7 @@ CONST EXPR_BINARY = 3
 CONST EXPR_UNARY = 4
 CONST EXPR_FUNCTION = 5
 CONST EXPR_STAR = 6
+CONST EXPR_SUBQUERY = 7
 
 ' Binary operators
 CONST OP_ADD = 1
@@ -1317,6 +1318,9 @@ CLASS Expr
     PUBLIC args(MAX_ARGS) AS Expr
     PUBLIC argCount AS INTEGER
 
+    ' For EXPR_SUBQUERY
+    PUBLIC subquerySQL AS STRING
+
     PUBLIC SUB Init()
         kind = EXPR_LITERAL
         LET literalValue = NEW SqlValue()
@@ -1326,6 +1330,7 @@ CLASS Expr
         op = 0
         funcName = ""
         argCount = 0
+        subquerySQL = ""
     END SUB
 
     PUBLIC SUB InitLiteral(val AS SqlValue)
@@ -1362,6 +1367,11 @@ CLASS Expr
 
     PUBLIC SUB InitStar()
         kind = EXPR_STAR
+    END SUB
+
+    PUBLIC SUB InitSubquery(sql AS STRING)
+        kind = EXPR_SUBQUERY
+        subquerySQL = sql
     END SUB
 
     PUBLIC SUB AddArg(arg AS Expr)
@@ -1466,6 +1476,8 @@ CLASS Expr
             NEXT i
             result = result + ")"
             ToString$ = result
+        ELSEIF kind = EXPR_SUBQUERY THEN
+            ToString$ = "(" + subquerySQL + ")"
         ELSE
             ToString$ = "<?>"
         END IF
@@ -1588,6 +1600,14 @@ FUNCTION ExprFunc(name AS STRING) AS Expr
     e.Init()
     e.InitFunction(name)
     ExprFunc = e
+END FUNCTION
+
+FUNCTION ExprSubquery(sql AS STRING) AS Expr
+    DIM e AS Expr
+    LET e = NEW Expr()
+    e.Init()
+    e.InitSubquery(sql)
+    ExprSubquery = e
 END FUNCTION
 
 '=============================================================================
@@ -1906,6 +1926,56 @@ FUNCTION ParsePrimaryExpr() AS Expr
         EXIT FUNCTION
     END IF
 
+    ' Handle parenthesized expressions including subqueries
+    IF kind = TK_LPAREN THEN
+        DIM subquerySql AS STRING
+        DIM depth AS INTEGER
+        DIM innerExpr AS Expr
+
+        ParserAdvance()  ' Consume (
+
+        ' Check if this is a subquery: (SELECT ...)
+        IF gTok.kind = TK_SELECT THEN
+            ' Collect tokens to build subquery SQL
+            subquerySql = "SELECT"
+            ParserAdvance()
+            depth = 1  ' We're inside one level of parens
+
+            WHILE depth > 0 AND gParserHasError = 0
+                IF gTok.kind = TK_LPAREN THEN
+                    depth = depth + 1
+                    subquerySql = subquerySql + " ("
+                ELSEIF gTok.kind = TK_RPAREN THEN
+                    depth = depth - 1
+                    IF depth > 0 THEN
+                        subquerySql = subquerySql + ")"
+                    END IF
+                ELSEIF gTok.kind = TK_EOF THEN
+                    ParserSetError("Unexpected end of input in subquery")
+                    ParsePrimaryExpr = ExprNull()
+                    EXIT FUNCTION
+                ELSE
+                    ' Add token text with space
+                    subquerySql = subquerySql + " " + gTok.text
+                END IF
+                ParserAdvance()
+            WEND
+
+            ParsePrimaryExpr = ExprSubquery(subquerySql)
+            EXIT FUNCTION
+        END IF
+
+        ' Regular parenthesized expression - parse inner expression
+        LET innerExpr = ParseExpr()
+        IF gTok.kind = TK_RPAREN THEN
+            ParserAdvance()
+        ELSE
+            ParserSetError("Expected ) after parenthesized expression")
+        END IF
+        ParsePrimaryExpr = innerExpr
+        EXIT FUNCTION
+    END IF
+
     ParserSetError("Unexpected token in expression")
     ParsePrimaryExpr = ExprNull()
 END FUNCTION
@@ -2004,6 +2074,21 @@ FUNCTION ParseCompExpr() AS Expr
     IF kind = TK_GE THEN
         ParserAdvance()
         ParseCompExpr = ExprBinary(OP_GE, left, ParseAddExpr())
+        EXIT FUNCTION
+    END IF
+    ' Handle IN (subquery or value list)
+    IF kind = TK_IN THEN
+        DIM right AS Expr
+        ParserAdvance()
+        ' Expect ( after IN
+        IF gTok.kind <> TK_LPAREN THEN
+            ParserSetError("Expected '(' after IN")
+            ParseCompExpr = left
+            EXIT FUNCTION
+        END IF
+        ' The ParsePrimaryExpr will handle (SELECT ...) as a subquery
+        LET right = ParsePrimaryExpr()
+        ParseCompExpr = ExprBinary(OP_IN, left, right)
         EXIT FUNCTION
     END IF
     ParseCompExpr = left
@@ -2286,6 +2371,10 @@ CLASS SelectStmt
     PUBLIC joinTypes(20) AS INTEGER      ' 0=CROSS, 1=INNER, 2=LEFT, 3=RIGHT, 4=FULL
     PUBLIC joinConditions(20) AS Expr
     PUBLIC joinConditionCount AS INTEGER
+    ' Derived tables (subquery in FROM clause)
+    PUBLIC derivedTableSQL AS STRING
+    PUBLIC derivedTableAlias AS STRING
+    PUBLIC hasDerivedTable AS INTEGER
 
     PUBLIC SUB Init()
         selectAll = 0
@@ -2301,6 +2390,9 @@ CLASS SelectStmt
         hasHaving = 0
         tableCount = 0
         joinConditionCount = 0
+        derivedTableSQL = ""
+        derivedTableAlias = ""
+        hasDerivedTable = 0
     END SUB
 
     PUBLIC SUB AddColumn(col AS Expr)
@@ -2384,12 +2476,30 @@ FUNCTION ParseSelectStmt() AS SelectStmt
         ParserAdvance()
     ELSE
         ' Parse column list
+        DIM maybeColAlias AS STRING
+        DIM upperColAlias AS STRING
         WHILE gParserHasError = 0
             LET col = ParseExpr()
             IF gParserHasError <> 0 THEN
                 ParseSelectStmt = stmt
                 EXIT FUNCTION
             END IF
+
+            ' Handle column alias: expr AS alias or expr alias
+            IF gTok.kind = TK_AS THEN
+                ParserAdvance()
+                IF gTok.kind = TK_IDENTIFIER THEN
+                    ' Skip the alias (we don't store it for now)
+                    ParserAdvance()
+                END IF
+            ELSEIF gTok.kind = TK_IDENTIFIER THEN
+                maybeColAlias = gTok.text
+                upperColAlias = UCASE$(maybeColAlias)
+                IF upperColAlias <> "FROM" AND upperColAlias <> "WHERE" AND upperColAlias <> "GROUP" AND upperColAlias <> "ORDER" AND upperColAlias <> "LIMIT" AND upperColAlias <> "HAVING" THEN
+                    ParserAdvance()  ' Skip the alias
+                END IF
+            END IF
+
             stmt.AddColumn(col)
 
             IF gTok.kind = TK_COMMA THEN
@@ -2406,46 +2516,100 @@ FUNCTION ParseSelectStmt() AS SelectStmt
         EXIT FUNCTION
     END IF
 
-    ' Get first table name
-    IF gTok.kind <> TK_IDENTIFIER THEN
-        ParserSetError("Expected table name")
-        ParseSelectStmt = stmt
-        EXIT FUNCTION
-    END IF
-    DIM firstTableName AS STRING
-    DIM firstTableAlias AS STRING
-    firstTableName = gTok.text
-    firstTableAlias = ""
-    stmt.tableName = firstTableName  ' Keep for backward compatibility
-    ParserAdvance()
-
-    ' Optional table alias (AS alias or just alias)
-    IF gTok.kind = TK_AS THEN
+    ' Check for derived table (subquery in FROM): FROM (SELECT ...)
+    IF gTok.kind = TK_LPAREN THEN
         ParserAdvance()
-        IF gTok.kind = TK_IDENTIFIER THEN
-            firstTableAlias = gTok.text
-            stmt.tableAlias = firstTableAlias
-            ParserAdvance()
+        IF gTok.kind = TK_SELECT THEN
+            ' This is a derived table - capture the full subquery
+            DIM parenDepth AS INTEGER
+            DIM subquerySQL AS STRING
+            parenDepth = 1
+            subquerySQL = "SELECT"
+            ParserAdvance()  ' Move past SELECT
+
+            ' Collect tokens until we close the parenthesis
+            WHILE parenDepth > 0 AND gParserHasError = 0 AND gTok.kind <> TK_EOF
+                IF gTok.kind = TK_LPAREN THEN
+                    parenDepth = parenDepth + 1
+                    subquerySQL = subquerySQL + " ("
+                ELSEIF gTok.kind = TK_RPAREN THEN
+                    parenDepth = parenDepth - 1
+                    IF parenDepth > 0 THEN
+                        subquerySQL = subquerySQL + " )"
+                    END IF
+                ELSE
+                    subquerySQL = subquerySQL + " " + gTok.text
+                END IF
+                ParserAdvance()
+            WEND
+
+            stmt.hasDerivedTable = -1
+            stmt.derivedTableSQL = subquerySQL
+            stmt.tableName = "__derived__"
+
+            ' Expect alias after derived table (required in SQL)
+            IF gTok.kind = TK_AS THEN
+                ParserAdvance()
+            END IF
+            IF gTok.kind = TK_IDENTIFIER THEN
+                stmt.derivedTableAlias = gTok.text
+                stmt.tableAlias = gTok.text
+                ParserAdvance()
+            ELSE
+                ParserSetError("Derived table requires an alias")
+                ParseSelectStmt = stmt
+                EXIT FUNCTION
+            END IF
+
+            stmt.AddTable("__derived__", stmt.derivedTableAlias)
+            ' Skip regular table parsing since we have a derived table
         ELSE
-            ParserSetError("Expected alias name after AS")
+            ParserSetError("Expected SELECT in derived table")
             ParseSelectStmt = stmt
             EXIT FUNCTION
         END IF
-    ELSEIF gTok.kind = TK_IDENTIFIER THEN
-        ' Check it's not a keyword that could follow FROM table
-        DIM aliasText AS STRING
-        DIM upperAlias AS STRING
-        aliasText = gTok.text
-        upperAlias = UCASE$(aliasText)
-        IF upperAlias <> "WHERE" AND upperAlias <> "GROUP" AND upperAlias <> "ORDER" AND upperAlias <> "LIMIT" AND upperAlias <> "HAVING" AND upperAlias <> "JOIN" AND upperAlias <> "INNER" AND upperAlias <> "LEFT" AND upperAlias <> "RIGHT" AND upperAlias <> "FULL" AND upperAlias <> "CROSS" THEN
-            firstTableAlias = aliasText
-            stmt.tableAlias = firstTableAlias
-            ParserAdvance()
+    ELSE
+        ' Get first table name (regular table, not derived)
+        IF gTok.kind <> TK_IDENTIFIER THEN
+            ParserSetError("Expected table name")
+            ParseSelectStmt = stmt
+            EXIT FUNCTION
         END IF
-    END IF
+        DIM firstTableName AS STRING
+        DIM firstTableAlias AS STRING
+        firstTableName = gTok.text
+        firstTableAlias = ""
+        stmt.tableName = firstTableName  ' Keep for backward compatibility
+        ParserAdvance()
 
-    ' Add first table to lists
-    stmt.AddTable(firstTableName, firstTableAlias)
+        ' Optional table alias (AS alias or just alias)
+        IF gTok.kind = TK_AS THEN
+            ParserAdvance()
+            IF gTok.kind = TK_IDENTIFIER THEN
+                firstTableAlias = gTok.text
+                stmt.tableAlias = firstTableAlias
+                ParserAdvance()
+            ELSE
+                ParserSetError("Expected alias name after AS")
+                ParseSelectStmt = stmt
+                EXIT FUNCTION
+            END IF
+        ELSEIF gTok.kind = TK_IDENTIFIER THEN
+            ' Check it's not a keyword that could follow FROM table
+            DIM aliasText AS STRING
+            DIM upperAlias AS STRING
+            aliasText = gTok.text
+            upperAlias = UCASE$(aliasText)
+            IF upperAlias <> "WHERE" AND upperAlias <> "GROUP" AND upperAlias <> "ORDER" AND upperAlias <> "LIMIT" AND upperAlias <> "HAVING" AND upperAlias <> "JOIN" AND upperAlias <> "INNER" AND upperAlias <> "LEFT" AND upperAlias <> "RIGHT" AND upperAlias <> "FULL" AND upperAlias <> "CROSS" THEN
+                firstTableAlias = aliasText
+                stmt.tableAlias = firstTableAlias
+                ParserAdvance()
+            END IF
+        END IF
+
+        ' Add first table to lists
+        stmt.AddTable(firstTableName, firstTableAlias)
+    END IF
 
     ' Parse additional tables (comma-separated for CROSS JOIN)
     DIM extraTableName AS STRING
@@ -2946,6 +3110,13 @@ END CLASS
 DIM gDatabase AS SqlDatabase
 DIM gDbInitialized AS INTEGER
 
+' Outer context for correlated subqueries
+DIM gOuterRow AS SqlRow
+DIM gOuterTable AS SqlTable
+DIM gHasOuterContext AS INTEGER
+DIM gOuterTableAlias AS STRING
+DIM gCurrentTableAlias AS STRING
+
 SUB InitDatabase()
     IF gDbInitialized = 0 THEN
         LET gDatabase = NEW SqlDatabase()
@@ -3077,16 +3248,48 @@ FUNCTION ExecuteInsert(stmt AS InsertStmt) AS QueryResult
     ExecuteInsert = result
 END FUNCTION
 
-' Evaluate column reference
+' Evaluate column reference (supports correlated subqueries via outer context)
 FUNCTION EvalExprColumn(expr AS Expr, row AS SqlRow, tbl AS SqlTable) AS SqlValue
     DIM result AS SqlValue
     DIM colIdx AS INTEGER
     DIM cName AS STRING
+    DIM tName AS STRING
+    DIM outerColIdx AS INTEGER
 
     ' Workaround: Copy class member to local var
     cName = expr.columnName
+    tName = expr.tableName
+
+    ' Check if there's a table qualifier that specifically references outer table alias
+    IF tName <> "" AND gOuterTableAlias <> "" THEN
+        IF tName = gOuterTableAlias THEN
+            ' This column specifically references the outer table
+            IF gHasOuterContext <> 0 THEN
+                outerColIdx = gOuterTable.FindColumnIndex(cName)
+                IF outerColIdx >= 0 THEN
+                    EvalExprColumn = gOuterRow.GetValue(outerColIdx)
+                    EXIT FUNCTION
+                END IF
+            END IF
+            LET result = NEW SqlValue()
+            result.InitNull()
+            EvalExprColumn = result
+            EXIT FUNCTION
+        END IF
+    END IF
+
+    ' Try to find column in current table
     colIdx = tbl.FindColumnIndex(cName)
     IF colIdx < 0 THEN
+        ' Column not found in current table - check outer context (correlated subquery)
+        ' Only do this for unqualified columns (no table alias specified)
+        IF tName = "" AND gHasOuterContext <> 0 THEN
+            outerColIdx = gOuterTable.FindColumnIndex(cName)
+            IF outerColIdx >= 0 THEN
+                EvalExprColumn = gOuterRow.GetValue(outerColIdx)
+                EXIT FUNCTION
+            END IF
+        END IF
         LET result = NEW SqlValue()
         result.InitNull()
         EvalExprColumn = result
@@ -3095,7 +3298,358 @@ FUNCTION EvalExprColumn(expr AS Expr, row AS SqlRow, tbl AS SqlTable) AS SqlValu
     EvalExprColumn = row.GetValue(colIdx)
 END FUNCTION
 
+' Execute a derived table subquery (FROM subquery)
+FUNCTION ExecuteDerivedTable(sql AS STRING) AS QueryResult
+    DIM result AS QueryResult
+    DIM savedSource AS STRING
+    DIM savedPos AS INTEGER
+    DIM savedLine AS INTEGER
+    DIM savedCol AS INTEGER
+    DIM savedLen AS INTEGER
+    DIM savedTok AS Token
+    DIM savedHasError AS INTEGER
+    DIM savedError AS STRING
+    DIM stmt AS SelectStmt
+
+    ' Save lexer and parser state
+    savedSource = gLexSource
+    savedPos = gLexPos
+    savedLine = gLexLine
+    savedCol = gLexCol
+    savedLen = gLexLen
+    LET savedTok = gTok
+    savedHasError = gParserHasError
+    savedError = gParserError
+
+    ' Parse and execute the subquery
+    ParserInit(sql)
+    ' ParseSelectStmt expects SELECT to already be consumed, so consume it
+    IF gTok.kind = TK_SELECT THEN
+        ParserAdvance()
+    END IF
+    LET stmt = ParseSelectStmt()
+
+    LET result = NEW QueryResult()
+    result.Init()
+
+    IF gParserHasError <> 0 THEN
+        result.success = 0
+        result.message = "Parse error in derived table: " + gParserError
+        ' Restore lexer and parser state
+        gLexSource = savedSource
+        gLexPos = savedPos
+        gLexLine = savedLine
+        gLexCol = savedCol
+        gLexLen = savedLen
+        LET gTok = savedTok
+        gParserHasError = savedHasError
+        gParserError = savedError
+        ExecuteDerivedTable = result
+        EXIT FUNCTION
+    END IF
+
+    LET result = ExecuteSelect(stmt)
+
+    ' Restore lexer and parser state
+    gLexSource = savedSource
+    gLexPos = savedPos
+    gLexLine = savedLine
+    gLexCol = savedCol
+    gLexLen = savedLen
+    LET gTok = savedTok
+    gParserHasError = savedHasError
+    gParserError = savedError
+
+    ExecuteDerivedTable = result
+END FUNCTION
+
+' Evaluate a scalar subquery - parses and executes, returns first value
+FUNCTION EvalSubquery(sql AS STRING) AS SqlValue
+    DIM result AS SqlValue
+    DIM savedSource AS STRING
+    DIM savedPos AS INTEGER
+    DIM savedLine AS INTEGER
+    DIM savedCol AS INTEGER
+    DIM savedLen AS INTEGER
+    DIM savedTok AS Token
+    DIM savedHasError AS INTEGER
+    DIM savedError AS STRING
+    DIM stmt AS SelectStmt
+    DIM queryResult AS QueryResult
+    DIM firstRow AS SqlRow
+
+    ' Save lexer and parser state
+    savedSource = gLexSource
+    savedPos = gLexPos
+    savedLine = gLexLine
+    savedCol = gLexCol
+    savedLen = gLexLen
+    LET savedTok = gTok
+    savedHasError = gParserHasError
+    savedError = gParserError
+
+    ' Parse and execute the subquery
+    ParserInit(sql)
+    ' ParseSelectStmt expects SELECT to already be consumed, so consume it
+    IF gTok.kind = TK_SELECT THEN
+        ParserAdvance()
+    END IF
+    LET stmt = ParseSelectStmt()
+
+    IF gParserHasError <> 0 THEN
+        ' Restore lexer and parser state
+        gLexSource = savedSource
+        gLexPos = savedPos
+        gLexLine = savedLine
+        gLexCol = savedCol
+        gLexLen = savedLen
+        LET gTok = savedTok
+        gParserHasError = savedHasError
+        gParserError = savedError
+        LET result = NEW SqlValue()
+        result.InitNull()
+        EvalSubquery = result
+        EXIT FUNCTION
+    END IF
+
+    LET queryResult = ExecuteSelect(stmt)
+
+    ' Restore lexer and parser state
+    gLexSource = savedSource
+    gLexPos = savedPos
+    gLexLine = savedLine
+    gLexCol = savedCol
+    gLexLen = savedLen
+    LET gTok = savedTok
+    gParserHasError = savedHasError
+    gParserError = savedError
+
+    ' Extract scalar value: first row, first column
+    IF queryResult.rowCount > 0 THEN
+        LET firstRow = queryResult.rows(0)
+        IF firstRow.columnCount > 0 THEN
+            EvalSubquery = firstRow.GetValue(0)
+            EXIT FUNCTION
+        END IF
+    END IF
+
+    LET result = NEW SqlValue()
+    result.InitNull()
+    EvalSubquery = result
+END FUNCTION
+
+' Evaluate a correlated subquery - sets up outer context before executing
+FUNCTION EvalSubqueryCorrelated(sql AS STRING, currentRow AS SqlRow, currentTable AS SqlTable) AS SqlValue
+    DIM result AS SqlValue
+    DIM savedSource AS STRING
+    DIM savedPos AS INTEGER
+    DIM savedLine AS INTEGER
+    DIM savedCol AS INTEGER
+    DIM savedLen AS INTEGER
+    DIM savedTok AS Token
+    DIM savedHasError AS INTEGER
+    DIM savedError AS STRING
+    DIM stmt AS SelectStmt
+    DIM queryResult AS QueryResult
+    DIM firstRow AS SqlRow
+    DIM savedOuterRow AS SqlRow
+    DIM savedOuterTable AS SqlTable
+    DIM savedHasOuter AS INTEGER
+    DIM savedOuterAlias AS STRING
+
+    ' Save lexer and parser state
+    savedSource = gLexSource
+    savedPos = gLexPos
+    savedLine = gLexLine
+    savedCol = gLexCol
+    savedLen = gLexLen
+    LET savedTok = gTok
+    savedHasError = gParserHasError
+    savedError = gParserError
+
+    ' Save and set outer context for correlated subqueries
+    LET savedOuterRow = gOuterRow
+    LET savedOuterTable = gOuterTable
+    savedHasOuter = gHasOuterContext
+    savedOuterAlias = gOuterTableAlias
+    LET gOuterRow = currentRow
+    LET gOuterTable = currentTable
+    gHasOuterContext = -1
+    gOuterTableAlias = gCurrentTableAlias
+
+    ' Parse and execute the subquery
+    ParserInit(sql)
+    ' ParseSelectStmt expects SELECT to already be consumed, so consume it
+    IF gTok.kind = TK_SELECT THEN
+        ParserAdvance()
+    END IF
+    LET stmt = ParseSelectStmt()
+
+    IF gParserHasError <> 0 THEN
+        ' Restore states
+        gLexSource = savedSource
+        gLexPos = savedPos
+        gLexLine = savedLine
+        gLexCol = savedCol
+        gLexLen = savedLen
+        LET gTok = savedTok
+        gParserHasError = savedHasError
+        gParserError = savedError
+        LET gOuterRow = savedOuterRow
+        LET gOuterTable = savedOuterTable
+        gHasOuterContext = savedHasOuter
+        gOuterTableAlias = savedOuterAlias
+        LET result = NEW SqlValue()
+        result.InitNull()
+        EvalSubqueryCorrelated = result
+        EXIT FUNCTION
+    END IF
+
+    LET queryResult = ExecuteSelect(stmt)
+
+    ' Restore lexer and parser state
+    gLexSource = savedSource
+    gLexPos = savedPos
+    gLexLine = savedLine
+    gLexCol = savedCol
+    gLexLen = savedLen
+    LET gTok = savedTok
+    gParserHasError = savedHasError
+    gParserError = savedError
+
+    ' Restore outer context
+    LET gOuterRow = savedOuterRow
+    LET gOuterTable = savedOuterTable
+    gHasOuterContext = savedHasOuter
+    gOuterTableAlias = savedOuterAlias
+
+    ' Extract scalar value: first row, first column
+    IF queryResult.rowCount > 0 THEN
+        LET firstRow = queryResult.rows(0)
+        IF firstRow.columnCount > 0 THEN
+            EvalSubqueryCorrelated = firstRow.GetValue(0)
+            EXIT FUNCTION
+        END IF
+    END IF
+
+    LET result = NEW SqlValue()
+    result.InitNull()
+    EvalSubqueryCorrelated = result
+END FUNCTION
+
 ' Evaluate binary comparison for WHERE clauses
+' Evaluate IN subquery - checks if left value is in subquery results (supports correlated)
+FUNCTION EvalInSubquery(leftExpr AS Expr, rightExpr AS Expr, row AS SqlRow, tbl AS SqlTable) AS INTEGER
+    DIM leftVal AS SqlValue
+    DIM savedSource AS STRING
+    DIM savedPos AS INTEGER
+    DIM savedLine AS INTEGER
+    DIM savedCol AS INTEGER
+    DIM savedLen AS INTEGER
+    DIM savedTok AS Token
+    DIM savedHasError AS INTEGER
+    DIM savedError AS STRING
+    DIM stmt AS SelectStmt
+    DIM queryResult AS QueryResult
+    DIM resultRow AS SqlRow
+    DIM resultVal AS SqlValue
+    DIM r AS INTEGER
+    DIM savedOuterRow AS SqlRow
+    DIM savedOuterTable AS SqlTable
+    DIM savedHasOuter AS INTEGER
+    DIM savedOuterAlias AS STRING
+
+    EvalInSubquery = 0
+
+    ' Get the left value to search for
+    IF leftExpr.kind = EXPR_COLUMN THEN
+        LET leftVal = EvalExprColumn(leftExpr, row, tbl)
+    ELSEIF leftExpr.kind = EXPR_LITERAL THEN
+        LET leftVal = EvalExprLiteral(leftExpr)
+    ELSE
+        EXIT FUNCTION
+    END IF
+
+    ' Right side must be a subquery
+    IF rightExpr.kind <> EXPR_SUBQUERY THEN
+        EXIT FUNCTION
+    END IF
+
+    ' Save lexer and parser state
+    savedSource = gLexSource
+    savedPos = gLexPos
+    savedLine = gLexLine
+    savedCol = gLexCol
+    savedLen = gLexLen
+    LET savedTok = gTok
+    savedHasError = gParserHasError
+    savedError = gParserError
+
+    ' Save and set outer context for correlated subqueries
+    LET savedOuterRow = gOuterRow
+    LET savedOuterTable = gOuterTable
+    savedHasOuter = gHasOuterContext
+    savedOuterAlias = gOuterTableAlias
+    LET gOuterRow = row
+    LET gOuterTable = tbl
+    gHasOuterContext = -1
+    gOuterTableAlias = gCurrentTableAlias
+
+    ' Parse and execute the subquery
+    ParserInit(rightExpr.subquerySQL)
+    ' ParseSelectStmt expects SELECT to already be consumed, so consume it
+    IF gTok.kind = TK_SELECT THEN
+        ParserAdvance()
+    END IF
+    LET stmt = ParseSelectStmt()
+
+    IF gParserHasError <> 0 THEN
+        gLexSource = savedSource
+        gLexPos = savedPos
+        gLexLine = savedLine
+        gLexCol = savedCol
+        gLexLen = savedLen
+        LET gTok = savedTok
+        gParserHasError = savedHasError
+        gParserError = savedError
+        LET gOuterRow = savedOuterRow
+        LET gOuterTable = savedOuterTable
+        gHasOuterContext = savedHasOuter
+        gOuterTableAlias = savedOuterAlias
+        EXIT FUNCTION
+    END IF
+
+    LET queryResult = ExecuteSelect(stmt)
+
+    ' Restore lexer and parser state
+    gLexSource = savedSource
+    gLexPos = savedPos
+    gLexLine = savedLine
+    gLexCol = savedCol
+    gLexLen = savedLen
+    LET gTok = savedTok
+    gParserHasError = savedHasError
+    gParserError = savedError
+
+    ' Restore outer context
+    LET gOuterRow = savedOuterRow
+    LET gOuterTable = savedOuterTable
+    gHasOuterContext = savedHasOuter
+    gOuterTableAlias = savedOuterAlias
+
+    ' Check if leftVal exists in any row of the result (first column)
+    FOR r = 0 TO queryResult.rowCount - 1
+        LET resultRow = queryResult.rows(r)
+        IF resultRow.columnCount > 0 THEN
+            LET resultVal = resultRow.GetValue(0)
+            IF leftVal.Compare(resultVal) = 0 THEN
+                EvalInSubquery = -1
+                EXIT FUNCTION
+            END IF
+        END IF
+    NEXT r
+END FUNCTION
+
 FUNCTION EvalBinaryExpr(expr AS Expr, row AS SqlRow, tbl AS SqlTable) AS INTEGER
     DIM leftExpr AS Expr
     DIM rightExpr AS Expr
@@ -3108,11 +3662,19 @@ FUNCTION EvalBinaryExpr(expr AS Expr, row AS SqlRow, tbl AS SqlTable) AS INTEGER
     LET leftExpr = expr.GetLeft()
     LET rightExpr = expr.GetRight()
 
+    ' OP_IN special handling - right side is subquery
+    IF expr.op = OP_IN THEN
+        EvalBinaryExpr = EvalInSubquery(leftExpr, rightExpr, row, tbl)
+        EXIT FUNCTION
+    END IF
+
     ' Get left value
     IF leftExpr.kind = EXPR_COLUMN THEN
         LET leftVal = EvalExprColumn(leftExpr, row, tbl)
     ELSEIF leftExpr.kind = EXPR_LITERAL THEN
         LET leftVal = EvalExprLiteral(leftExpr)
+    ELSEIF leftExpr.kind = EXPR_SUBQUERY THEN
+        LET leftVal = EvalSubqueryCorrelated(leftExpr.subquerySQL, row, tbl)
     END IF
 
     ' Get right value
@@ -3120,6 +3682,8 @@ FUNCTION EvalBinaryExpr(expr AS Expr, row AS SqlRow, tbl AS SqlTable) AS INTEGER
         LET rightVal = EvalExprColumn(rightExpr, row, tbl)
     ELSEIF rightExpr.kind = EXPR_LITERAL THEN
         LET rightVal = EvalExprLiteral(rightExpr)
+    ELSEIF rightExpr.kind = EXPR_SUBQUERY THEN
+        LET rightVal = EvalSubqueryCorrelated(rightExpr.subquerySQL, row, tbl)
     END IF
 
     cmp = leftVal.Compare(rightVal)
@@ -3309,11 +3873,13 @@ FUNCTION EvalAggregate(expr AS Expr, matchingRows() AS INTEGER, matchCount AS IN
 
     ' AVG(column)
     IF funcName = "AVG" OR funcName = "avg" THEN
+        PRINT "[DEBUG AVG] matchCount="; matchCount
         sumInt = 0
         count = 0
         FOR i = 0 TO matchCount - 1
             rowIdx = matchingRows(i)
             LET row = tbl.rows(rowIdx)
+            PRINT "[DEBUG AVG] i="; i; " rowIdx="; rowIdx
             IF hasArg <> 0 THEN
                 LET argExpr = expr.args(0)
                 IF argExpr.kind = EXPR_COLUMN THEN
@@ -4002,6 +4568,23 @@ FUNCTION ExecuteSelect(stmt AS SelectStmt) AS QueryResult
     result.Init()
     InitDatabase()
 
+    ' Check for derived table (subquery in FROM)
+    IF stmt.hasDerivedTable <> 0 THEN
+        ' Execute the subquery and return its result
+        DIM derivedResult AS QueryResult
+        LET derivedResult = ExecuteDerivedTable(stmt.derivedTableSQL)
+        IF derivedResult.success = 0 THEN
+            result.success = 0
+            result.message = "Derived table error: " + derivedResult.message
+            ExecuteSelect = result
+            EXIT FUNCTION
+        END IF
+        ' For derived tables with SELECT *, just return the subquery result
+        derivedResult.message = "Selected " + STR$(derivedResult.rowCount) + " row(s)"
+        ExecuteSelect = derivedResult
+        EXIT FUNCTION
+    END IF
+
     ' Workaround: Copy class member to local var
     tName = stmt.tableName
 
@@ -4015,6 +4598,11 @@ FUNCTION ExecuteSelect(stmt AS SelectStmt) AS QueryResult
     END IF
 
     LET tbl = gDatabase.tables(tableIdx)
+
+    ' Set current table alias for correlated subquery resolution
+    DIM savedAlias AS STRING
+    savedAlias = gCurrentTableAlias
+    gCurrentTableAlias = stmt.tableAlias
 
     ' Build column names
     IF stmt.selectAll <> 0 THEN
@@ -4063,6 +4651,7 @@ FUNCTION ExecuteSelect(stmt AS SelectStmt) AS QueryResult
 
             IF includeRow <> 0 THEN
                 matchingRows(matchCount) = r
+                PRINT "[DEBUG POP] matchCount="; matchCount; " r="; r; " matchingRows("; matchCount; ")="; matchingRows(matchCount)
                 matchCount = matchCount + 1
             END IF
         END IF
@@ -4075,7 +4664,8 @@ FUNCTION ExecuteSelect(stmt AS SelectStmt) AS QueryResult
         DIM aggVal AS SqlValue
         DIM groupKeys(1000) AS STRING
         DIM groupRowCounts(1000) AS INTEGER
-        DIM groupRows(1000, 1000) AS INTEGER  ' groupRows(groupIdx, rowIdxInGroup) = actualRowIdx
+        ' WORKAROUND: Use 1D array to avoid 2D array bug in Viper Basic
+        DIM groupRowsFlat(100000) AS INTEGER  ' Simulates groupRows(groupIdx, rowIdx) as groupRowsFlat(groupIdx * 1000 + rowIdx)
         DIM groupCount AS INTEGER
         DIM g AS INTEGER
         DIM gi AS INTEGER
@@ -4136,10 +4726,19 @@ FUNCTION ExecuteSelect(stmt AS SelectStmt) AS QueryResult
             groupCount = 1
             groupKeys(0) = "ALL"
             groupRowCounts(0) = matchCount
+            PRINT "[DEBUG COPY] matchCount="; matchCount
             FOR i = 0 TO matchCount - 1
+                PRINT "[DEBUG COPY] before: i="; i; " matchingRows(i)="; matchingRows(i)
                 groupRows(0, i) = matchingRows(i)
+                PRINT "[DEBUG COPY] after: groupRows(0,"; i; ")="; groupRows(0, i)
             NEXT i
         END IF
+
+        ' Debug: check groupRows values before processing
+        PRINT "[DEBUG PRE] Checking groupRows before process loop:"
+        FOR gi = 0 TO 4
+            PRINT "[DEBUG PRE] groupRows(0,"; gi; ")="; groupRows(0, gi)
+        NEXT gi
 
         ' Process each group
         FOR g = 0 TO groupCount - 1
@@ -4148,8 +4747,10 @@ FUNCTION ExecuteSelect(stmt AS SelectStmt) AS QueryResult
 
             ' Build array of rows for this group
             grc = groupRowCounts(g)
+            PRINT "[DEBUG GRP] grc="; grc
             FOR gi = 0 TO grc - 1
                 groupRowArray(gi) = groupRows(g, gi)
+                PRINT "[DEBUG GRP] gi="; gi; " groupRowArray(gi)="; groupRowArray(gi)
             NEXT gi
 
             FOR c = 0 TO stmt.columnCount - 1
@@ -4188,6 +4789,7 @@ FUNCTION ExecuteSelect(stmt AS SelectStmt) AS QueryResult
             END IF
         NEXT g
 
+        gCurrentTableAlias = savedAlias
         ExecuteSelect = result
         EXIT FUNCTION
     END IF
@@ -4294,6 +4896,7 @@ FUNCTION ExecuteSelect(stmt AS SelectStmt) AS QueryResult
         END IF
     NEXT ri
 
+    gCurrentTableAlias = savedAlias
     ExecuteSelect = result
 END FUNCTION
 
@@ -5115,6 +5718,199 @@ SUB TestExecutor()
     ' Test FULL OUTER JOIN - returns all from both tables
     PRINT "--- FULL OUTER JOIN ---"
     sql = "SELECT u.name, o.product FROM users u FULL OUTER JOIN orders o ON u.id = o.user_id;"
+    PRINT "SQL: "; sql
+    LET result = ExecuteSql(sql)
+    IF result.success <> 0 THEN
+        PRINT "Rows returned: "; result.rowCount
+        FOR r = 0 TO result.rowCount - 1
+            LET row = result.rows(r)
+            PRINT "  Row "; r; ": "; row.ToString$()
+        NEXT r
+    ELSE
+        PRINT "ERROR: "; result.message
+    END IF
+    PRINT ""
+
+    ' Phase 6: Subqueries
+    PRINT "--- Subquery Tests ---"
+
+    ' Test scalar subquery in WHERE: find users older than average
+    PRINT "--- Scalar subquery (AVG) ---"
+    sql = "SELECT name, age FROM users WHERE age > (SELECT AVG(age) FROM users);"
+    PRINT "SQL: "; sql
+    LET result = ExecuteSql(sql)
+    IF result.success <> 0 THEN
+        PRINT "Rows returned: "; result.rowCount
+        FOR r = 0 TO result.rowCount - 1
+            LET row = result.rows(r)
+            PRINT "  Row "; r; ": "; row.ToString$()
+        NEXT r
+    ELSE
+        PRINT "ERROR: "; result.message
+    END IF
+    PRINT ""
+
+    ' Test scalar subquery getting max value
+    PRINT "--- Scalar subquery (MAX) ---"
+    sql = "SELECT name FROM users WHERE age = (SELECT MAX(age) FROM users);"
+    PRINT "SQL: "; sql
+    LET result = ExecuteSql(sql)
+    IF result.success <> 0 THEN
+        PRINT "Rows returned: "; result.rowCount
+        FOR r = 0 TO result.rowCount - 1
+            LET row = result.rows(r)
+            PRINT "  Row "; r; ": "; row.ToString$()
+        NEXT r
+    ELSE
+        PRINT "ERROR: "; result.message
+    END IF
+    PRINT ""
+
+    ' Test scalar subquery getting count
+    PRINT "--- Scalar subquery (COUNT) ---"
+    sql = "SELECT * FROM users WHERE id > (SELECT COUNT(*) FROM orders);"
+    PRINT "SQL: "; sql
+    LET result = ExecuteSql(sql)
+    IF result.success <> 0 THEN
+        PRINT "Rows returned: "; result.rowCount
+        FOR r = 0 TO result.rowCount - 1
+            LET row = result.rows(r)
+            PRINT "  Row "; r; ": "; row.ToString$()
+        NEXT r
+    ELSE
+        PRINT "ERROR: "; result.message
+    END IF
+    PRINT ""
+
+    ' Test IN subquery: users who have placed orders
+    PRINT "--- IN subquery (users with orders) ---"
+    sql = "SELECT name FROM users WHERE id IN (SELECT user_id FROM orders);"
+    PRINT "SQL: "; sql
+    LET result = ExecuteSql(sql)
+    IF result.success <> 0 THEN
+        PRINT "Rows returned: "; result.rowCount
+        FOR r = 0 TO result.rowCount - 1
+            LET row = result.rows(r)
+            PRINT "  Row "; r; ": "; row.ToString$()
+        NEXT r
+    ELSE
+        PRINT "ERROR: "; result.message
+    END IF
+    PRINT ""
+
+    ' Test IN subquery with WHERE clause
+    PRINT "--- IN subquery (filtered) ---"
+    sql = "SELECT name FROM users WHERE id IN (SELECT user_id FROM orders WHERE user_id > 2);"
+    PRINT "SQL: "; sql
+    LET result = ExecuteSql(sql)
+    IF result.success <> 0 THEN
+        PRINT "Rows returned: "; result.rowCount
+        FOR r = 0 TO result.rowCount - 1
+            LET row = result.rows(r)
+            PRINT "  Row "; r; ": "; row.ToString$()
+        NEXT r
+    ELSE
+        PRINT "ERROR: "; result.message
+    END IF
+    PRINT ""
+
+    PRINT ""
+    PRINT "--- Derived Table Tests ---"
+
+    ' Test derived table (subquery in FROM)
+    PRINT "--- Derived table (SELECT *) ---"
+    sql = "SELECT * FROM (SELECT name, age FROM users WHERE age > 25) AS older_users;"
+    PRINT "SQL: "; sql
+    LET result = ExecuteSql(sql)
+    IF result.success <> 0 THEN
+        PRINT "Rows returned: "; result.rowCount
+        FOR r = 0 TO result.rowCount - 1
+            LET row = result.rows(r)
+            PRINT "  Row "; r; ": "; row.ToString$()
+        NEXT r
+    ELSE
+        PRINT "ERROR: "; result.message
+    END IF
+    PRINT ""
+
+    ' Test derived table with aggregation
+    PRINT "--- Derived table (COUNT) ---"
+    sql = "SELECT * FROM (SELECT COUNT(*) AS cnt FROM users) AS user_count;"
+    PRINT "SQL: "; sql
+    LET result = ExecuteSql(sql)
+    IF result.success <> 0 THEN
+        PRINT "Rows returned: "; result.rowCount
+        FOR r = 0 TO result.rowCount - 1
+            LET row = result.rows(r)
+            PRINT "  Row "; r; ": "; row.ToString$()
+        NEXT r
+    ELSE
+        PRINT "ERROR: "; result.message
+    END IF
+    PRINT ""
+
+    PRINT "--- Correlated Subquery Tests ---"
+
+    ' Create employees table for correlated subquery tests
+    sql = "CREATE TABLE employees (id INTEGER, name TEXT, department TEXT, salary INTEGER);"
+    PRINT "SQL: "; sql
+    LET result = ExecuteSql(sql)
+    PRINT "Result: "; result.message
+
+    ' Insert test data
+    sql = "INSERT INTO employees VALUES (1, 'Alice', 'Engineering', 80000);"
+    LET result = ExecuteSql(sql)
+    sql = "INSERT INTO employees VALUES (2, 'Bob', 'Engineering', 75000);"
+    LET result = ExecuteSql(sql)
+    sql = "INSERT INTO employees VALUES (3, 'Charlie', 'Sales', 60000);"
+    LET result = ExecuteSql(sql)
+    sql = "INSERT INTO employees VALUES (4, 'Diana', 'Sales', 65000);"
+    LET result = ExecuteSql(sql)
+    sql = "INSERT INTO employees VALUES (5, 'Eve', 'Engineering', 90000);"
+    LET result = ExecuteSql(sql)
+    PRINT "Inserted 5 employees"
+
+    ' Correlated subquery: Find employees earning more than avg salary in their department
+    PRINT "--- Correlated subquery (salary > dept avg) ---"
+
+    ' First, let's test a simple non-correlated AVG to verify it works
+    PRINT "-- Testing non-correlated AVG on employees --"
+
+    ' First verify the table has all rows
+    sql = "SELECT * FROM employees;"
+    LET result = ExecuteSql(sql)
+    PRINT "All employees count: "; result.rowCount
+
+    sql = "SELECT AVG(salary) FROM employees;"
+    LET result = ExecuteSql(sql)
+    IF result.success <> 0 THEN
+        PRINT "Overall AVG salary rows: "; result.rowCount
+        IF result.rowCount > 0 THEN
+            LET row = result.rows(0)
+            PRINT "  Overall AVG: "; row.ToString$()
+        END IF
+    ELSE
+        PRINT "ERROR: "; result.message
+    END IF
+    PRINT ""
+
+    sql = "SELECT name, department, salary FROM employees e WHERE salary > (SELECT AVG(salary) FROM employees WHERE department = e.department);"
+    PRINT "SQL: "; sql
+    LET result = ExecuteSql(sql)
+    IF result.success <> 0 THEN
+        PRINT "Rows returned: "; result.rowCount
+        FOR r = 0 TO result.rowCount - 1
+            LET row = result.rows(r)
+            PRINT "  Row "; r; ": "; row.ToString$()
+        NEXT r
+    ELSE
+        PRINT "ERROR: "; result.message
+    END IF
+    PRINT ""
+
+    ' Correlated subquery: Find employees where their salary equals max in their dept
+    PRINT "--- Correlated subquery (salary = dept max) ---"
+    sql = "SELECT name, department, salary FROM employees e WHERE salary = (SELECT MAX(salary) FROM employees WHERE department = e.department);"
     PRINT "SQL: "; sql
     LET result = ExecuteSql(sql)
     IF result.success <> 0 THEN

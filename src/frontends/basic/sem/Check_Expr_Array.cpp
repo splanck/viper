@@ -222,6 +222,14 @@ SemanticAnalyzer::Type analyzeArrayExpr(SemanticAnalyzer &analyzer, ArrayExpr &e
         }
     }
 
+    // BUG-020 fix: Store resolved extents in AST node so the lowerer can access them
+    // even after procedure scope cleanup erases ArrayMetadata from the semantic analyzer.
+    const auto *metaForLowerer = context.arrayMetadata(expr.name);
+    if (metaForLowerer && !metaForLowerer->extents.empty())
+    {
+        expr.resolvedExtents = metaForLowerer->extents;
+    }
+
     // Return element type based on array type
     if (varTy && *varTy == Type::ArrayString)
         return Type::String;

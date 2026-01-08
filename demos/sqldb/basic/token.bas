@@ -1,11 +1,12 @@
-' SQLite Clone - Token Types
-' Viper Basic Implementation
+' token.bas - SQL Token Types and Constants
+' Part of SQLite Clone - Viper Basic Implementation
 
-' Token type constants (enum simulation)
+'=============================================================================
+' TOKEN CONSTANTS
+'=============================================================================
+
 CONST TK_EOF = 0
 CONST TK_ERROR = 1
-
-' Literals
 CONST TK_INTEGER = 10
 CONST TK_NUMBER = 11
 CONST TK_STRING = 12
@@ -17,8 +18,6 @@ CONST TK_TABLE = 21
 CONST TK_DROP = 22
 CONST TK_ALTER = 23
 CONST TK_INDEX = 24
-CONST TK_VIEW = 25
-CONST TK_TRIGGER = 26
 
 ' Keywords - DML
 CONST TK_SELECT = 30
@@ -74,8 +73,6 @@ CONST TK_FOREIGN = 81
 CONST TK_KEY = 82
 CONST TK_REFERENCES = 83
 CONST TK_UNIQUE = 84
-CONST TK_CHECK = 85
-CONST TK_CONSTRAINT = 86
 CONST TK_AUTOINCREMENT = 87
 
 ' Keywords - Types
@@ -83,17 +80,12 @@ CONST TK_INT = 90
 CONST TK_INTEGER_TYPE = 91
 CONST TK_REAL = 92
 CONST TK_TEXT = 93
-CONST TK_BLOB = 94
-CONST TK_BOOLEAN = 95
-CONST TK_VARCHAR = 96
 
 ' Keywords - Transactions
 CONST TK_BEGIN = 100
 CONST TK_COMMIT = 101
 CONST TK_ROLLBACK = 102
 CONST TK_TRANSACTION = 103
-CONST TK_SAVEPOINT = 104
-CONST TK_RELEASE = 105
 
 ' Keywords - Other
 CONST TK_AS = 110
@@ -106,21 +98,15 @@ CONST TK_UNION = 116
 CONST TK_ALL = 117
 CONST TK_CAST = 118
 
-' Keywords - Utility
-CONST TK_SHOW = 120
-CONST TK_DESCRIBE = 121
-CONST TK_EXPLAIN = 122
-CONST TK_VACUUM = 123
-CONST TK_SAVE = 124
-CONST TK_OPEN = 125
-CONST TK_EXPORT = 126
+' Additional keywords
+CONST TK_BLOB = 120
+CONST TK_VARCHAR = 121
+CONST TK_CHAR = 122
+CONST TK_BOOLEAN = 123
+CONST TK_DATE = 124
+CONST TK_DATETIME = 125
+CONST TK_TIME = 126
 CONST TK_IMPORT = 127
-CONST TK_HELP = 128
-CONST TK_TO = 129
-CONST TK_ADD = 130
-CONST TK_COLUMN = 131
-CONST TK_RENAME = 132
-CONST TK_IF = 133
 
 ' Operators
 CONST TK_PLUS = 140
@@ -143,113 +129,225 @@ CONST TK_COMMA = 162
 CONST TK_SEMICOLON = 163
 CONST TK_DOT = 164
 
-' Token class - holds a single token
+'=============================================================================
+' TOKEN CLASS - Simple data holder
+'=============================================================================
+
 CLASS Token
-    DIM kind AS INTEGER
-    DIM text AS STRING
-    DIM lineNum AS INTEGER
-    DIM colNum AS INTEGER
+    PUBLIC kind AS INTEGER
+    PUBLIC text AS STRING
+    PUBLIC lineNum AS INTEGER
+    PUBLIC colNum AS INTEGER
 
-    SUB NEW(k AS INTEGER, t AS STRING, ln AS INTEGER, col AS INTEGER)
-        LET ME.kind = k
-        LET ME.text = t
-        LET ME.lineNum = ln
-        LET ME.colNum = col
+    PUBLIC SUB Init(k AS INTEGER, t AS STRING, ln AS INTEGER, col AS INTEGER)
+        kind = k
+        text = t
+        lineNum = ln
+        colNum = col
     END SUB
-
-    FUNCTION IsKeyword() AS INTEGER
-        RETURN ME.kind >= 20 AND ME.kind < 140
-    END FUNCTION
-
-    FUNCTION IsOperator() AS INTEGER
-        RETURN ME.kind >= 140 AND ME.kind < 160
-    END FUNCTION
-
-    FUNCTION IsPunctuation() AS INTEGER
-        RETURN ME.kind >= 160
-    END FUNCTION
-
-    FUNCTION IsLiteral() AS INTEGER
-        RETURN ME.kind >= 10 AND ME.kind < 20
-    END FUNCTION
-
-    FUNCTION ToString() AS STRING
-        RETURN "Token(" + STR$(ME.kind) + ", '" + ME.text + "', " + STR$(ME.lineNum) + ":" + STR$(ME.colNum) + ")"
-    END FUNCTION
 END CLASS
 
-' Helper function to get token type name
+'=============================================================================
+' TOKEN HELPER FUNCTIONS
+'=============================================================================
+
 FUNCTION TokenTypeName$(kind AS INTEGER)
-    IF kind = TK_EOF THEN RETURN "EOF"
-    IF kind = TK_ERROR THEN RETURN "ERROR"
-    IF kind = TK_INTEGER THEN RETURN "INTEGER"
-    IF kind = TK_NUMBER THEN RETURN "NUMBER"
-    IF kind = TK_STRING THEN RETURN "STRING"
-    IF kind = TK_IDENTIFIER THEN RETURN "IDENTIFIER"
-    IF kind = TK_SELECT THEN RETURN "SELECT"
-    IF kind = TK_INSERT THEN RETURN "INSERT"
-    IF kind = TK_UPDATE THEN RETURN "UPDATE"
-    IF kind = TK_DELETE THEN RETURN "DELETE"
-    IF kind = TK_CREATE THEN RETURN "CREATE"
-    IF kind = TK_TABLE THEN RETURN "TABLE"
-    IF kind = TK_DROP THEN RETURN "DROP"
-    IF kind = TK_FROM THEN RETURN "FROM"
-    IF kind = TK_WHERE THEN RETURN "WHERE"
-    IF kind = TK_AND THEN RETURN "AND"
-    IF kind = TK_OR THEN RETURN "OR"
-    IF kind = TK_NOT THEN RETURN "NOT"
-    IF kind = TK_NULL THEN RETURN "NULL"
-    IF kind = TK_PLUS THEN RETURN "PLUS"
-    IF kind = TK_MINUS THEN RETURN "MINUS"
-    IF kind = TK_STAR THEN RETURN "STAR"
-    IF kind = TK_SLASH THEN RETURN "SLASH"
-    IF kind = TK_EQ THEN RETURN "EQ"
-    IF kind = TK_NE THEN RETURN "NE"
-    IF kind = TK_LT THEN RETURN "LT"
-    IF kind = TK_GT THEN RETURN "GT"
-    IF kind = TK_LE THEN RETURN "LE"
-    IF kind = TK_GE THEN RETURN "GE"
-    IF kind = TK_LPAREN THEN RETURN "LPAREN"
-    IF kind = TK_RPAREN THEN RETURN "RPAREN"
-    IF kind = TK_COMMA THEN RETURN "COMMA"
-    IF kind = TK_SEMICOLON THEN RETURN "SEMICOLON"
-    IF kind = TK_DOT THEN RETURN "DOT"
-    RETURN "UNKNOWN(" + STR$(kind) + ")"
+    IF kind = TK_EOF THEN
+        TokenTypeName$ = "EOF"
+    ELSEIF kind = TK_ERROR THEN
+        TokenTypeName$ = "ERROR"
+    ELSEIF kind = TK_INTEGER THEN
+        TokenTypeName$ = "INTEGER"
+    ELSEIF kind = TK_NUMBER THEN
+        TokenTypeName$ = "NUMBER"
+    ELSEIF kind = TK_STRING THEN
+        TokenTypeName$ = "STRING"
+    ELSEIF kind = TK_IDENTIFIER THEN
+        TokenTypeName$ = "IDENTIFIER"
+    ELSEIF kind = TK_SELECT THEN
+        TokenTypeName$ = "SELECT"
+    ELSEIF kind = TK_FROM THEN
+        TokenTypeName$ = "FROM"
+    ELSEIF kind = TK_WHERE THEN
+        TokenTypeName$ = "WHERE"
+    ELSEIF kind = TK_INSERT THEN
+        TokenTypeName$ = "INSERT"
+    ELSEIF kind = TK_INTO THEN
+        TokenTypeName$ = "INTO"
+    ELSEIF kind = TK_VALUES THEN
+        TokenTypeName$ = "VALUES"
+    ELSEIF kind = TK_CREATE THEN
+        TokenTypeName$ = "CREATE"
+    ELSEIF kind = TK_TABLE THEN
+        TokenTypeName$ = "TABLE"
+    ELSEIF kind = TK_STAR THEN
+        TokenTypeName$ = "STAR"
+    ELSEIF kind = TK_COMMA THEN
+        TokenTypeName$ = "COMMA"
+    ELSEIF kind = TK_LPAREN THEN
+        TokenTypeName$ = "LPAREN"
+    ELSEIF kind = TK_RPAREN THEN
+        TokenTypeName$ = "RPAREN"
+    ELSEIF kind = TK_SEMICOLON THEN
+        TokenTypeName$ = "SEMICOLON"
+    ELSEIF kind = TK_GT THEN
+        TokenTypeName$ = "GT"
+    ELSE
+        TokenTypeName$ = "TOKEN_" + STR$(kind)
+    END IF
 END FUNCTION
 
-' Test subroutine
-SUB TestTokens()
-    PRINT "=== Token Types Test ==="
+FUNCTION LookupKeyword(word AS STRING) AS INTEGER
+    DIM upper AS STRING
+    upper = UCASE$(word)
 
-    DIM tok1 AS Token
-    LET tok1 = NEW Token(TK_SELECT, "SELECT", 1, 1)
-    PRINT "Token 1: "; tok1.ToString()
-    PRINT "  isKeyword: "; tok1.IsKeyword()
-
-    DIM tok2 AS Token
-    LET tok2 = NEW Token(TK_INTEGER, "42", 1, 8)
-    PRINT "Token 2: "; tok2.ToString()
-    PRINT "  isLiteral: "; tok2.IsLiteral()
-
-    DIM tok3 AS Token
-    LET tok3 = NEW Token(TK_PLUS, "+", 1, 11)
-    PRINT "Token 3: "; tok3.ToString()
-    PRINT "  isOperator: "; tok3.IsOperator()
-
-    DIM tok4 AS Token
-    LET tok4 = NEW Token(TK_LPAREN, "(", 1, 12)
-    PRINT "Token 4: "; tok4.ToString()
-    PRINT "  isPunctuation: "; tok4.IsPunctuation()
-
-    PRINT ""
-    PRINT "Token type names:"
-    PRINT "  TK_SELECT = "; TokenTypeName$(TK_SELECT)
-    PRINT "  TK_INTEGER = "; TokenTypeName$(TK_INTEGER)
-    PRINT "  TK_PLUS = "; TokenTypeName$(TK_PLUS)
-
-    PRINT ""
-    PRINT "=== Token Types Test PASSED ==="
-END SUB
-
-' Run test
-TestTokens()
+    IF upper = "SELECT" THEN
+        LookupKeyword = TK_SELECT
+    ELSEIF upper = "FROM" THEN
+        LookupKeyword = TK_FROM
+    ELSEIF upper = "WHERE" THEN
+        LookupKeyword = TK_WHERE
+    ELSEIF upper = "INSERT" THEN
+        LookupKeyword = TK_INSERT
+    ELSEIF upper = "INTO" THEN
+        LookupKeyword = TK_INTO
+    ELSEIF upper = "VALUES" THEN
+        LookupKeyword = TK_VALUES
+    ELSEIF upper = "UPDATE" THEN
+        LookupKeyword = TK_UPDATE
+    ELSEIF upper = "DELETE" THEN
+        LookupKeyword = TK_DELETE
+    ELSEIF upper = "SET" THEN
+        LookupKeyword = TK_SET
+    ELSEIF upper = "CREATE" THEN
+        LookupKeyword = TK_CREATE
+    ELSEIF upper = "TABLE" THEN
+        LookupKeyword = TK_TABLE
+    ELSEIF upper = "DROP" THEN
+        LookupKeyword = TK_DROP
+    ELSEIF upper = "ALTER" THEN
+        LookupKeyword = TK_ALTER
+    ELSEIF upper = "INDEX" THEN
+        LookupKeyword = TK_INDEX
+    ELSEIF upper = "AND" THEN
+        LookupKeyword = TK_AND
+    ELSEIF upper = "OR" THEN
+        LookupKeyword = TK_OR
+    ELSEIF upper = "NOT" THEN
+        LookupKeyword = TK_NOT
+    ELSEIF upper = "NULL" THEN
+        LookupKeyword = TK_NULL
+    ELSEIF upper = "TRUE" THEN
+        LookupKeyword = TK_TRUE
+    ELSEIF upper = "FALSE" THEN
+        LookupKeyword = TK_FALSE
+    ELSEIF upper = "PRIMARY" THEN
+        LookupKeyword = TK_PRIMARY
+    ELSEIF upper = "FOREIGN" THEN
+        LookupKeyword = TK_FOREIGN
+    ELSEIF upper = "KEY" THEN
+        LookupKeyword = TK_KEY
+    ELSEIF upper = "REFERENCES" THEN
+        LookupKeyword = TK_REFERENCES
+    ELSEIF upper = "UNIQUE" THEN
+        LookupKeyword = TK_UNIQUE
+    ELSEIF upper = "DEFAULT" THEN
+        LookupKeyword = TK_DEFAULT
+    ELSEIF upper = "AUTOINCREMENT" THEN
+        LookupKeyword = TK_AUTOINCREMENT
+    ELSEIF upper = "INT" THEN
+        LookupKeyword = TK_INT
+    ELSEIF upper = "INTEGER" THEN
+        LookupKeyword = TK_INTEGER_TYPE
+    ELSEIF upper = "REAL" THEN
+        LookupKeyword = TK_REAL
+    ELSEIF upper = "TEXT" THEN
+        LookupKeyword = TK_TEXT
+    ELSEIF upper = "BLOB" THEN
+        LookupKeyword = TK_BLOB
+    ELSEIF upper = "VARCHAR" THEN
+        LookupKeyword = TK_VARCHAR
+    ELSEIF upper = "CHAR" THEN
+        LookupKeyword = TK_CHAR
+    ELSEIF upper = "BOOLEAN" THEN
+        LookupKeyword = TK_BOOLEAN
+    ELSEIF upper = "DATE" THEN
+        LookupKeyword = TK_DATE
+    ELSEIF upper = "DATETIME" THEN
+        LookupKeyword = TK_DATETIME
+    ELSEIF upper = "TIME" THEN
+        LookupKeyword = TK_TIME
+    ELSEIF upper = "ORDER" THEN
+        LookupKeyword = TK_ORDER
+    ELSEIF upper = "BY" THEN
+        LookupKeyword = TK_BY
+    ELSEIF upper = "ASC" THEN
+        LookupKeyword = TK_ASC
+    ELSEIF upper = "DESC" THEN
+        LookupKeyword = TK_DESC
+    ELSEIF upper = "LIMIT" THEN
+        LookupKeyword = TK_LIMIT
+    ELSEIF upper = "OFFSET" THEN
+        LookupKeyword = TK_OFFSET
+    ELSEIF upper = "GROUP" THEN
+        LookupKeyword = TK_GROUP
+    ELSEIF upper = "HAVING" THEN
+        LookupKeyword = TK_HAVING
+    ELSEIF upper = "DISTINCT" THEN
+        LookupKeyword = TK_DISTINCT
+    ELSEIF upper = "JOIN" THEN
+        LookupKeyword = TK_JOIN
+    ELSEIF upper = "INNER" THEN
+        LookupKeyword = TK_INNER
+    ELSEIF upper = "LEFT" THEN
+        LookupKeyword = TK_LEFT
+    ELSEIF upper = "RIGHT" THEN
+        LookupKeyword = TK_RIGHT
+    ELSEIF upper = "FULL" THEN
+        LookupKeyword = TK_FULL
+    ELSEIF upper = "OUTER" THEN
+        LookupKeyword = TK_OUTER
+    ELSEIF upper = "CROSS" THEN
+        LookupKeyword = TK_CROSS
+    ELSEIF upper = "ON" THEN
+        LookupKeyword = TK_ON
+    ELSEIF upper = "IN" THEN
+        LookupKeyword = TK_IN
+    ELSEIF upper = "IS" THEN
+        LookupKeyword = TK_IS
+    ELSEIF upper = "LIKE" THEN
+        LookupKeyword = TK_LIKE
+    ELSEIF upper = "BETWEEN" THEN
+        LookupKeyword = TK_BETWEEN
+    ELSEIF upper = "EXISTS" THEN
+        LookupKeyword = TK_EXISTS
+    ELSEIF upper = "BEGIN" THEN
+        LookupKeyword = TK_BEGIN
+    ELSEIF upper = "COMMIT" THEN
+        LookupKeyword = TK_COMMIT
+    ELSEIF upper = "ROLLBACK" THEN
+        LookupKeyword = TK_ROLLBACK
+    ELSEIF upper = "TRANSACTION" THEN
+        LookupKeyword = TK_TRANSACTION
+    ELSEIF upper = "AS" THEN
+        LookupKeyword = TK_AS
+    ELSEIF upper = "CASE" THEN
+        LookupKeyword = TK_CASE
+    ELSEIF upper = "WHEN" THEN
+        LookupKeyword = TK_WHEN
+    ELSEIF upper = "THEN" THEN
+        LookupKeyword = TK_THEN
+    ELSEIF upper = "ELSE" THEN
+        LookupKeyword = TK_ELSE
+    ELSEIF upper = "END" THEN
+        LookupKeyword = TK_END
+    ELSEIF upper = "UNION" THEN
+        LookupKeyword = TK_UNION
+    ELSEIF upper = "ALL" THEN
+        LookupKeyword = TK_ALL
+    ELSEIF upper = "CAST" THEN
+        LookupKeyword = TK_CAST
+    ELSE
+        LookupKeyword = TK_IDENTIFIER
+    END IF
+END FUNCTION

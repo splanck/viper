@@ -186,10 +186,23 @@ void RuntimeStatementLowerer::lowerDim(const DimStmt &stmt)
     }
     assert(!dimExprs.empty() && "DIM array must have at least one dimension");
 
-    // For single-dimensional arrays, use the dimension directly
+    // BUG-010 fix: If resolved extents are available from semantic analysis, use them
+    // to compute array size as a compile-time constant. This handles CONST dimensions
+    // correctly without needing runtime module variable lookups.
     Value length;
-    if (dimExprs.size() == 1)
+    if (!stmt.resolvedExtents.empty() && stmt.resolvedExtents.size() == dimExprs.size())
     {
+        // Compute total size from resolved extents (add 1 to each for 0-based indexing)
+        long long totalSize = 1;
+        for (long long extent : stmt.resolvedExtents)
+        {
+            totalSize *= (extent + 1);
+        }
+        length = lowerer_.emitConstI64(totalSize);
+    }
+    else if (dimExprs.size() == 1)
+    {
+        // For single-dimensional arrays, use the dimension directly
         Lowerer::RVal bound = lowerer_.lowerExpr(**dimExprs[0]);
         bound = lowerer_.ensureI64(std::move(bound), stmt.loc);
         length = emitArrayLengthCheck(bound.value, stmt.loc, "dim_len");

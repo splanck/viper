@@ -22,6 +22,7 @@
 #include "frontends/basic/SemanticAnalyzer.hpp"
 #include "frontends/basic/TypeRules.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
+#include "frontends/basic/ast/DeclNodes.hpp"
 #include "frontends/basic/ast/StmtNodes.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 #include <array>
@@ -574,6 +575,44 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
     void before(const LineInputChStmt &)
     {
         lowerer_.requireLineInputChErr();
+    }
+
+    /// @brief BUG-011 fix: Register SUB parameter object types before scanning body.
+    /// @details Procedure parameters with object types (e.g., `p AS MyClass`) must
+    ///          be registered in the symbol table before the body is scanned so that
+    ///          member access expressions like `p.field` can resolve the class type.
+    void before(const SubDecl &decl)
+    {
+        for (const auto &p : decl.params)
+        {
+            if (!p.objectClass.empty())
+            {
+                lowerer_.setSymbolObjectType(p.name,
+                                             lowerer_.resolveQualifiedClassCasing(p.objectClass));
+            }
+            else
+            {
+                lowerer_.setSymbolType(p.name, p.type);
+            }
+        }
+    }
+
+    /// @brief BUG-011 fix: Register FUNCTION parameter object types before scanning body.
+    /// @details Same as SubDecl - ensures parameter class types are known during scan.
+    void before(const FunctionDecl &decl)
+    {
+        for (const auto &p : decl.params)
+        {
+            if (!p.objectClass.empty())
+            {
+                lowerer_.setSymbolObjectType(p.name,
+                                             lowerer_.resolveQualifiedClassCasing(p.objectClass));
+            }
+            else
+            {
+                lowerer_.setSymbolType(p.name, p.type);
+            }
+        }
     }
 
   private:

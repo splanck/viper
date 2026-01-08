@@ -219,6 +219,12 @@ struct ArrayExpr : Expr
     /// For single-dimensional arrays, this contains one element (backward compatible).
     std::vector<ExprPtr> indices;
 
+    /// Resolved array extents from semantic analysis (BUG-020 fix).
+    /// @details Stored during semantic analysis so the lowerer can compute correct
+    ///          flattened indices for multi-dimensional arrays even after procedure
+    ///          scope cleanup erases the temporary ArrayMetadata entries.
+    std::vector<long long> resolvedExtents;
+
     void accept(ExprVisitor &visitor) const override;
     void accept(MutExprVisitor &visitor) override;
 };

@@ -1055,6 +1055,7 @@ Integer EXPR_BINARY = 3;       // Binary operation (+, -, *, /, =, <, >, etc.)
 Integer EXPR_UNARY = 4;        // Unary operation (-, NOT)
 Integer EXPR_FUNCTION = 5;     // Function call (COUNT, SUM, etc.)
 Integer EXPR_STAR = 6;         // SELECT * wildcard
+Integer EXPR_SUBQUERY = 7;     // Scalar subquery (SELECT ...)
 
 // Binary operator constants
 Integer OP_ADD = 1;
@@ -1097,6 +1098,9 @@ entity Expr {
     expose String funcName;
     expose List[Expr] args;  // Also used for binary/unary children
 
+    // For EXPR_SUBQUERY (stores SQL to re-parse - avoids circular dependency)
+    expose String subquerySQL;
+
     expose func init() {
         kind = 1;  // EXPR_LITERAL
         literalValue = new SqlValue();
@@ -1106,6 +1110,7 @@ entity Expr {
         op = 0;
         funcName = "";
         args = [];
+        subquerySQL = "";
     }
 
     expose func initLiteral(val: SqlValue) {
@@ -1142,6 +1147,11 @@ entity Expr {
 
     expose func initStar() {
         kind = 6;  // EXPR_STAR
+    }
+
+    expose func initSubquery(sql: String) {
+        kind = 7;  // EXPR_SUBQUERY
+        subquerySQL = sql;
     }
 
     expose func isLiteral() -> Boolean {
@@ -1210,6 +1220,9 @@ entity Expr {
                 i = i + 1;
             }
             return result + ")";
+        }
+        if kind == 7 {  // EXPR_SUBQUERY
+            return "(" + subquerySQL + ")";
         }
         return "?";
     }
@@ -1297,6 +1310,13 @@ func exprFunction(name: String) -> Expr {
     var e = new Expr();
     e.init();
     e.initFunction(name);
+    return e;
+}
+
+func exprSubquery(sql: String) -> Expr {
+    var e = new Expr();
+    e.init();
+    e.initSubquery(sql);
     return e;
 }
 
@@ -1568,8 +1588,48 @@ func parsePrimaryExpr() -> Expr {
         return exprStar();
     }
 
-    // Parenthesized expressions not supported (would need forward declarations)
-    // In practice, VALUES clause expressions are simple literals
+    // Handle parenthesized expressions including subqueries
+    if kind == 160 {  // TK_LPAREN
+        parserAdvance();  // Consume (
+
+        // Check if this is a subquery: (SELECT ...)
+        if parserToken.kind == 30 {  // TK_SELECT
+            // Collect tokens to build subquery SQL
+            var subquerySql = "SELECT";
+            parserAdvance();
+            var depth = 1;  // We're inside one level of parens
+
+            while depth > 0 && !parserHasError {
+                if parserToken.kind == 160 {  // TK_LPAREN
+                    depth = depth + 1;
+                    subquerySql = subquerySql + " (";
+                } else if parserToken.kind == 161 {  // TK_RPAREN
+                    depth = depth - 1;
+                    if depth > 0 {
+                        subquerySql = subquerySql + ")";
+                    }
+                } else if parserToken.kind == 0 {  // TK_EOF
+                    parserSetError("Unexpected end of input in subquery");
+                    return exprNull();
+                } else {
+                    // Add token text with space
+                    subquerySql = subquerySql + " " + parserToken.text;
+                }
+                parserAdvance();
+            }
+
+            return exprSubquery(subquerySql);
+        }
+
+        // Regular parenthesized expression - parse inner expression
+        var inner = parseExpr();
+        if parserToken.kind == 161 {  // TK_RPAREN
+            parserAdvance();
+        } else {
+            parserSetError("Expected ) after parenthesized expression");
+        }
+        return inner;
+    }
 
     parserSetError("Unexpected token in expression");
     return exprNull();
@@ -1649,6 +1709,18 @@ func parseCompExpr() -> Expr {
     if kind == 150 {  // TK_GE (>=)
         parserAdvance();
         return exprBinary(15, left, parseAddExpr());  // OP_GE
+    }
+    // Handle IN (subquery or value list)
+    if kind == 63 {  // TK_IN
+        parserAdvance();
+        // Expect ( after IN
+        if parserToken.kind != 160 {  // TK_LPAREN
+            parserSetError("Expected '(' after IN");
+            return left;
+        }
+        // The parsePrimaryExpr will handle (SELECT ...) as a subquery
+        var right = parsePrimaryExpr();
+        return exprBinary(23, left, right);  // OP_IN
     }
     return left;
 }
@@ -1895,6 +1967,10 @@ entity SelectStmt {
     expose Integer offsetValue;     // OFFSET value (0 = no offset)
     expose List[Expr] groupByExprs; // GROUP BY expressions
     expose Expr? havingClause;      // HAVING clause (optional)
+    // Derived tables (subqueries in FROM clause)
+    expose String derivedTableSQL;   // SQL for the derived table
+    expose String derivedTableAlias; // Alias for the derived table
+    expose Boolean hasDerivedTable;  // True if FROM clause contains a subquery
 
     expose func init() {
         columns = [];
@@ -1913,6 +1989,9 @@ entity SelectStmt {
         offsetValue = 0;
         groupByExprs = [];
         havingClause = null;
+        derivedTableSQL = "";
+        derivedTableAlias = "";
+        hasDerivedTable = false;
     }
 
     expose func addTable(name: String, alias: String) {
@@ -1975,6 +2054,23 @@ func parseSelectStmt() -> SelectStmt {
             if parserHasError {
                 return stmt;
             }
+
+            // Handle column alias: expr AS alias or expr alias
+            if parserToken.kind == 110 {  // TK_AS
+                parserAdvance();
+                if parserToken.kind == 13 {  // TK_IDENTIFIER
+                    // Store alias in the expression (we'll ignore it for now since
+                    // the column name is already in the expression)
+                    parserAdvance();
+                }
+            } else if parserToken.kind == 13 {  // TK_IDENTIFIER - implicit alias
+                var maybeAlias = parserToken.text;
+                var upperAlias = Viper.String.ToUpper(maybeAlias);
+                if upperAlias != "FROM" && upperAlias != "WHERE" && upperAlias != "GROUP" && upperAlias != "ORDER" && upperAlias != "LIMIT" && upperAlias != "HAVING" {
+                    parserAdvance();  // Skip the alias
+                }
+            }
+
             stmt.addColumn(col);
 
             if parserToken.kind == 162 {  // TK_COMMA
@@ -1990,40 +2086,90 @@ func parseSelectStmt() -> SelectStmt {
         return stmt;
     }
 
-    // Parse first table name
-    if parserToken.kind != 13 {  // TK_IDENTIFIER
-        parserSetError("Expected table name");
-        return stmt;
-    }
-    var firstTableName = parserToken.text;
-    var firstTableAlias = "";
-    stmt.tableName = firstTableName;  // Keep for backward compatibility
-    parserAdvance();
-
-    // Optional table alias (AS alias or just alias)
-    if parserToken.kind == 110 {  // TK_AS
+    // Check for derived table (subquery in FROM): FROM (SELECT ...)
+    if parserToken.kind == 160 {  // TK_LPAREN
+        // Could be a derived table - peek ahead for SELECT
         parserAdvance();
-        if parserToken.kind == 13 {  // TK_IDENTIFIER
-            firstTableAlias = parserToken.text;
-            stmt.tableAlias = firstTableAlias;
-            parserAdvance();
+        if parserToken.kind == 30 {  // TK_SELECT
+            // This is a derived table - capture the full subquery
+            var parenDepth = 1;
+            var subquerySQL = "SELECT";
+            parserAdvance();  // Move past SELECT
+
+            // Collect tokens until we close the parenthesis
+            while parenDepth > 0 && !parserHasError && parserToken.kind != 0 {
+                if parserToken.kind == 160 {  // TK_LPAREN
+                    parenDepth = parenDepth + 1;
+                    subquerySQL = subquerySQL + " (";
+                } else if parserToken.kind == 161 {  // TK_RPAREN
+                    parenDepth = parenDepth - 1;
+                    if parenDepth > 0 {
+                        subquerySQL = subquerySQL + " )";
+                    }
+                } else {
+                    subquerySQL = subquerySQL + " " + parserToken.text;
+                }
+                parserAdvance();
+            }
+
+            stmt.hasDerivedTable = true;
+            stmt.derivedTableSQL = subquerySQL;
+            stmt.tableName = "__derived__";  // Marker for derived table
+
+            // Expect alias after derived table (required in SQL)
+            if parserToken.kind == 110 {  // TK_AS
+                parserAdvance();
+            }
+            if parserToken.kind == 13 {  // TK_IDENTIFIER
+                stmt.derivedTableAlias = parserToken.text;
+                stmt.tableAlias = parserToken.text;
+                parserAdvance();
+            } else {
+                parserSetError("Derived table requires an alias");
+                return stmt;
+            }
+
+            stmt.addTable("__derived__", stmt.derivedTableAlias);
         } else {
-            parserSetError("Expected alias name after AS");
+            parserSetError("Expected SELECT in derived table");
             return stmt;
         }
-    } else if parserToken.kind == 13 {  // TK_IDENTIFIER (alias without AS)
-        // Check it's not a keyword that could follow FROM table
-        var aliasText = parserToken.text;
-        var upperAlias = Viper.String.ToUpper(aliasText);
-        if upperAlias != "WHERE" && upperAlias != "GROUP" && upperAlias != "ORDER" && upperAlias != "LIMIT" && upperAlias != "HAVING" && upperAlias != "JOIN" && upperAlias != "INNER" && upperAlias != "LEFT" && upperAlias != "RIGHT" && upperAlias != "FULL" && upperAlias != "CROSS" {
-            firstTableAlias = aliasText;
-            stmt.tableAlias = firstTableAlias;
-            parserAdvance();
+    } else {
+        // Parse regular table name
+        if parserToken.kind != 13 {  // TK_IDENTIFIER
+            parserSetError("Expected table name");
+            return stmt;
         }
-    }
+        var firstTableName = parserToken.text;
+        var firstTableAlias = "";
+        stmt.tableName = firstTableName;  // Keep for backward compatibility
+        parserAdvance();
 
-    // Add first table to lists
-    stmt.addTable(firstTableName, firstTableAlias);
+        // Optional table alias (AS alias or just alias)
+        if parserToken.kind == 110 {  // TK_AS
+            parserAdvance();
+            if parserToken.kind == 13 {  // TK_IDENTIFIER
+                firstTableAlias = parserToken.text;
+                stmt.tableAlias = firstTableAlias;
+                parserAdvance();
+            } else {
+                parserSetError("Expected alias name after AS");
+                return stmt;
+            }
+        } else if parserToken.kind == 13 {  // TK_IDENTIFIER (alias without AS)
+            // Check it's not a keyword that could follow FROM table
+            var aliasText = parserToken.text;
+            var upperAlias = Viper.String.ToUpper(aliasText);
+            if upperAlias != "WHERE" && upperAlias != "GROUP" && upperAlias != "ORDER" && upperAlias != "LIMIT" && upperAlias != "HAVING" && upperAlias != "JOIN" && upperAlias != "INNER" && upperAlias != "LEFT" && upperAlias != "RIGHT" && upperAlias != "FULL" && upperAlias != "CROSS" {
+                firstTableAlias = aliasText;
+                stmt.tableAlias = firstTableAlias;
+                parserAdvance();
+            }
+        }
+
+        // Add first table to lists
+        stmt.addTable(firstTableName, firstTableAlias);
+    }
 
     // Parse additional tables (comma-separated for CROSS JOIN)
     while parserToken.kind == 162 {  // TK_COMMA
@@ -2593,6 +2739,14 @@ entity QueryResult {
 Database currentDb;
 Boolean dbInitialized = false;
 
+// Outer context for correlated subqueries
+Row? outerRow = null;
+Table? outerTable = null;
+String outerTableAlias = "";  // Alias of outer table (e.g., "e" in "FROM employees e")
+
+// Current table alias for tracking during WHERE evaluation
+String currentTableAlias = "";
+
 func getDatabase() -> Database {
     if dbInitialized == true {
         Viper.Terminal.Say("[DEBUG] getDatabase: dbInitialized is TRUE");
@@ -2668,8 +2822,31 @@ func evalExprLiteral(expr: Expr) -> SqlValue {
 }
 
 func evalExprColumn(expr: Expr, row: Row, table: Table) -> SqlValue {
+    // Check if there's a table qualifier that specifically references outer table alias
+    if expr.tableName != "" && outerTableAlias != "" {
+        if expr.tableName == outerTableAlias {
+            // This column specifically references the outer table
+            if outerTable != null && outerRow != null {
+                var outerColIdx = outerTable.findColumnIndex(expr.columnName);
+                if outerColIdx >= 0 {
+                    return outerRow.getValue(outerColIdx);
+                }
+            }
+            return sqlNull();
+        }
+    }
+
+    // Try to find column in current table
     var colIdx = table.findColumnIndex(expr.columnName);
     if colIdx < 0 {
+        // Column not found in current table - check outer context (correlated subquery)
+        // Only do this for unqualified columns (no table alias specified)
+        if expr.tableName == "" && outerTable != null && outerRow != null {
+            var outerColIdx = outerTable.findColumnIndex(expr.columnName);
+            if outerColIdx >= 0 {
+                return outerRow.getValue(outerColIdx);
+            }
+        }
         return sqlNull();
     }
     return row.getValue(colIdx);
@@ -2683,13 +2860,198 @@ func evalExpr(expr: Expr, row: Row, table: Table) -> SqlValue {
     if expr.kind == 2 {  // EXPR_COLUMN
         return evalExprColumn(expr, row, table);
     }
+    if expr.kind == 7 {  // EXPR_SUBQUERY
+        return evalSubqueryCorrelated(expr.subquerySQL, row, table);
+    }
     return sqlNull();
+}
+
+// Evaluate a scalar subquery - parses and executes, returns first value (non-correlated)
+func evalSubquery(sql: String) -> SqlValue {
+    // Save parser state (simple approach - reinitialize)
+    var savedLexer = parserLexer;
+    var savedToken = parserToken;
+    var savedHasError = parserHasError;
+    var savedError = parserError;
+
+    // Parse and execute the subquery
+    parserInit(sql);
+    // parseSelectStmt expects SELECT to already be consumed, so consume it
+    if parserToken.kind == 30 {  // TK_SELECT
+        parserAdvance();
+    }
+    var stmt = parseSelectStmt();
+
+    if parserHasError {
+        // Restore parser state
+        parserLexer = savedLexer;
+        parserToken = savedToken;
+        parserHasError = savedHasError;
+        parserError = savedError;
+        return sqlNull();
+    }
+
+    var result = executeSelect(stmt);
+
+    // Restore parser state
+    parserLexer = savedLexer;
+    parserToken = savedToken;
+    parserHasError = savedHasError;
+    parserError = savedError;
+
+    // Extract scalar value: first row, first column
+    if result.rowCount() > 0 {
+        var firstRow = result.getRow(0);
+        if firstRow.columnCount() > 0 {
+            return firstRow.getValue(0);
+        }
+    }
+    return sqlNull();
+}
+
+// Evaluate a correlated subquery - sets up outer context before executing
+func evalSubqueryCorrelated(sql: String, currentRow: Row, currentTable: Table) -> SqlValue {
+    // Save parser state
+    var savedLexer = parserLexer;
+    var savedToken = parserToken;
+    var savedHasError = parserHasError;
+    var savedError = parserError;
+
+    // Save and set outer context for correlated subqueries
+    var savedOuterRow = outerRow;
+    var savedOuterTable = outerTable;
+    var savedOuterAlias = outerTableAlias;
+    outerRow = currentRow;
+    outerTable = currentTable;
+    outerTableAlias = currentTableAlias;  // Set from current context
+
+    // Parse and execute the subquery
+    parserInit(sql);
+    // parseSelectStmt expects SELECT to already be consumed, so consume it
+    if parserToken.kind == 30 {  // TK_SELECT
+        parserAdvance();
+    }
+    var stmt = parseSelectStmt();
+
+    if parserHasError {
+        // Restore states
+        parserLexer = savedLexer;
+        parserToken = savedToken;
+        parserHasError = savedHasError;
+        parserError = savedError;
+        outerRow = savedOuterRow;
+        outerTable = savedOuterTable;
+        outerTableAlias = savedOuterAlias;
+        return sqlNull();
+    }
+
+    var result = executeSelect(stmt);
+
+    // Restore parser state
+    parserLexer = savedLexer;
+    parserToken = savedToken;
+    parserHasError = savedHasError;
+    parserError = savedError;
+
+    // Restore outer context
+    outerRow = savedOuterRow;
+    outerTable = savedOuterTable;
+    outerTableAlias = savedOuterAlias;
+
+    // Extract scalar value: first row, first column
+    if result.rowCount() > 0 {
+        var firstRow = result.getRow(0);
+        if firstRow.columnCount() > 0 {
+            return firstRow.getValue(0);
+        }
+    }
+    return sqlNull();
+}
+
+// Evaluate IN subquery - checks if left value is in subquery results (supports correlated subqueries)
+func evalInSubquery(leftExpr: Expr, rightExpr: Expr, row: Row, table: Table) -> Integer {
+    // Right side must be a subquery
+    if rightExpr.kind != 7 {  // EXPR_SUBQUERY
+        return 0;
+    }
+
+    var sql = rightExpr.subquerySQL;
+
+    // Get the left value to search for
+    var leftVal = evalExpr(leftExpr, row, table);
+
+    // Save parser state
+    var savedLexer = parserLexer;
+    var savedToken = parserToken;
+    var savedHasError = parserHasError;
+    var savedError = parserError;
+
+    // Save and set outer context for correlated subqueries
+    var savedOuterRow = outerRow;
+    var savedOuterTable = outerTable;
+    var savedOuterAlias = outerTableAlias;
+    outerRow = row;
+    outerTable = table;
+    outerTableAlias = currentTableAlias;
+
+    // Parse and execute the subquery
+    parserInit(sql);
+    // parseSelectStmt expects SELECT to already be consumed, so consume it
+    if parserToken.kind == 30 {  // TK_SELECT
+        parserAdvance();
+    }
+    var stmt = parseSelectStmt();
+
+    if parserHasError {
+        parserLexer = savedLexer;
+        parserToken = savedToken;
+        parserHasError = savedHasError;
+        parserError = savedError;
+        outerRow = savedOuterRow;
+        outerTable = savedOuterTable;
+        outerTableAlias = savedOuterAlias;
+        return 0;
+    }
+
+    var result = executeSelect(stmt);
+
+    // Restore parser state
+    parserLexer = savedLexer;
+    parserToken = savedToken;
+    parserHasError = savedHasError;
+    parserError = savedError;
+
+    // Restore outer context
+    outerRow = savedOuterRow;
+    outerTable = savedOuterTable;
+    outerTableAlias = savedOuterAlias;
+
+    // Check if leftVal exists in any row of the result (first column)
+    var r = 0;
+    while r < result.rowCount() {
+        var resultRow = result.getRow(r);
+        if resultRow.columnCount() > 0 {
+            var resultVal = resultRow.getValue(0);
+            if leftVal.compare(resultVal) == 0 {
+                return 1;  // Found a match
+            }
+        }
+        r = r + 1;
+    }
+
+    return 0;  // No match found
 }
 
 // Evaluate binary expression for WHERE clauses
 func evalBinaryExpr(expr: Expr, row: Row, table: Table) -> Integer {
     var left = expr.getLeft();
     var right = expr.getRight();
+
+    // OP_IN = 23 (special handling - right side is subquery)
+    if expr.op == 23 {
+        return evalInSubquery(left, right, row, table);
+    }
+
     var leftVal = evalExpr(left, row, table);
     var rightVal = evalExpr(right, row, table);
     var cmp = leftVal.compare(rightVal);
@@ -3502,6 +3864,80 @@ func executeCrossJoin(stmt: SelectStmt) -> QueryResult {
     return result;
 }
 
+// Execute a derived table subquery (FROM subquery)
+func executeDerivedTable(sql: String) -> QueryResult {
+    // Save parser state
+    var savedLexer = parserLexer;
+    var savedToken = parserToken;
+    var savedHasError = parserHasError;
+    var savedError = parserError;
+
+    // Parse and execute the subquery
+    parserInit(sql);
+    // parseSelectStmt expects SELECT to already be consumed, so consume it
+    if parserToken.kind == 30 {  // TK_SELECT
+        parserAdvance();
+    }
+    var stmt = parseSelectStmt();
+
+    var result = new QueryResult();
+    result.init();
+
+    if parserHasError {
+        result.setError("Parse error in derived table: " + parserError);
+        // Restore parser state
+        parserLexer = savedLexer;
+        parserToken = savedToken;
+        parserHasError = savedHasError;
+        parserError = savedError;
+        return result;
+    }
+
+    result = executeSelect(stmt);
+
+    // Restore parser state
+    parserLexer = savedLexer;
+    parserToken = savedToken;
+    parserHasError = savedHasError;
+    parserError = savedError;
+
+    return result;
+}
+
+// Convert a QueryResult to a Table for use as a derived table
+func queryResultToTable(qr: QueryResult, tableName: String) -> Table {
+    var table = new Table();
+    table.initWithName(tableName);
+
+    // Add columns based on result column names
+    var c = 0;
+    while c < qr.columnNames.count() {
+        var col = new Column();
+        col.init();
+        col.name = qr.columnNames.get(c);
+        col.typeCode = 3;  // SQL_TEXT - generic type for derived columns
+        table.addColumn(col);
+        c = c + 1;
+    }
+
+    // Add rows
+    var r = 0;
+    while r < qr.rowCount() {
+        var qrRow = qr.getRow(r);
+        var newRow = new Row();
+        newRow.init();
+        var v = 0;
+        while v < qrRow.columnCount() {
+            newRow.addValue(qrRow.getValue(v));
+            v = v + 1;
+        }
+        table.addRow(newRow);
+        r = r + 1;
+    }
+
+    return table;
+}
+
 // Execute SELECT
 func executeSelect(stmt: SelectStmt) -> QueryResult {
     // Check for multi-table (CROSS JOIN) query
@@ -3514,14 +3950,31 @@ func executeSelect(stmt: SelectStmt) -> QueryResult {
 
     var db = getDatabase();
 
-    // Find table
+    // Check for derived table (subquery in FROM)
+    if stmt.hasDerivedTable == true {
+        // Execute the subquery first
+        var derivedResult = executeDerivedTable(stmt.derivedTableSQL);
+        if derivedResult.hasError == true {
+            result.setError("Derived table error: " + derivedResult.message);
+            return result;
+        }
+        // For derived tables with SELECT *, just return the subquery result
+        // More complex queries (with WHERE, ORDER BY, etc.) would need additional work
+        derivedResult.message = "Selected " + Viper.Fmt.Int(derivedResult.rowCount()) + " row(s)";
+        return derivedResult;
+    }
+
+    // Find table normally
     var maybeTable = db.findTable(stmt.tableName);
     if maybeTable == null {
         result.setError("Table '" + stmt.tableName + "' does not exist");
         return result;
     }
-
     var table = maybeTable;
+
+    // Set current table alias for correlated subquery resolution
+    var savedAlias = currentTableAlias;
+    currentTableAlias = stmt.tableAlias;
 
     // Check if this is an aggregate query
     var isAggregateQuery = hasAggregates(stmt);
@@ -3694,6 +4147,7 @@ func executeSelect(stmt: SelectStmt) -> QueryResult {
         }
 
         result.message = "Selected " + Viper.Fmt.Int(result.rowCount()) + " row(s)";
+        currentTableAlias = savedAlias;  // Restore alias
         return result;
     }
 
@@ -3727,6 +4181,7 @@ func executeSelect(stmt: SelectStmt) -> QueryResult {
 
         result.addRow(resultRow);
         result.message = "Selected 1 row(s)";
+        currentTableAlias = savedAlias;  // Restore alias
         return result;
     }
 
@@ -3857,6 +4312,7 @@ func executeSelect(stmt: SelectStmt) -> QueryResult {
     }
 
     result.message = "Selected " + Viper.Fmt.Int(result.rowCount()) + " row(s)";
+    currentTableAlias = savedAlias;  // Restore alias
     return result;
 }
 
@@ -4501,6 +4957,101 @@ func testExecutor() {
     var r43 = executeSql(sql43);
     Viper.Terminal.Say("Result: " + r43.message);
     Viper.Terminal.Say(r43.toString());
+
+    // Phase 6: Subqueries
+    Viper.Terminal.Say("");
+    Viper.Terminal.Say("--- Subquery Tests ---");
+
+    // Test scalar subquery in WHERE: find users older than average
+    var sql44 = "SELECT name, age FROM users WHERE age > (SELECT AVG(age) FROM users);";
+    Viper.Terminal.Say("SQL: " + sql44);
+    var r44 = executeSql(sql44);
+    Viper.Terminal.Say("Result: " + r44.message);
+    Viper.Terminal.Say(r44.toString());
+
+    // Test scalar subquery getting max value
+    var sql45 = "SELECT name FROM users WHERE age = (SELECT MAX(age) FROM users);";
+    Viper.Terminal.Say("SQL: " + sql45);
+    var r45 = executeSql(sql45);
+    Viper.Terminal.Say("Result: " + r45.message);
+    Viper.Terminal.Say(r45.toString());
+
+    // Test scalar subquery getting count
+    var sql46 = "SELECT * FROM users WHERE id > (SELECT COUNT(*) FROM orders);";
+    Viper.Terminal.Say("SQL: " + sql46);
+    var r46 = executeSql(sql46);
+    Viper.Terminal.Say("Result: " + r46.message);
+    Viper.Terminal.Say(r46.toString());
+
+    // Test IN subquery: users who have placed orders
+    var sql47 = "SELECT name FROM users WHERE id IN (SELECT user_id FROM orders);";
+    Viper.Terminal.Say("SQL: " + sql47);
+    var r47 = executeSql(sql47);
+    Viper.Terminal.Say("Result: " + r47.message);
+    Viper.Terminal.Say(r47.toString());
+
+    // Test IN subquery: users who have NOT placed orders (using NOT IN pattern)
+    var sql48 = "SELECT name FROM users WHERE id IN (SELECT user_id FROM orders WHERE user_id > 2);";
+    Viper.Terminal.Say("SQL: " + sql48);
+    var r48 = executeSql(sql48);
+    Viper.Terminal.Say("Result: " + r48.message);
+    Viper.Terminal.Say(r48.toString());
+
+    Viper.Terminal.Say("");
+    Viper.Terminal.Say("--- Derived Table Tests ---");
+
+    // Test derived table (subquery in FROM)
+    var sql49 = "SELECT * FROM (SELECT name, age FROM users WHERE age > 25) AS older_users;";
+    Viper.Terminal.Say("SQL: " + sql49);
+    var r49 = executeSql(sql49);
+    Viper.Terminal.Say("Result: " + r49.message);
+    Viper.Terminal.Say(r49.toString());
+
+    // Test derived table with aggregation
+    var sql50 = "SELECT * FROM (SELECT COUNT(*) AS cnt FROM users) AS user_count;";
+    Viper.Terminal.Say("SQL: " + sql50);
+    var r50 = executeSql(sql50);
+    Viper.Terminal.Say("Result: " + r50.message);
+    Viper.Terminal.Say(r50.toString());
+
+    Viper.Terminal.Say("--- Correlated Subquery Tests ---");
+
+    // Test correlated subquery - find users older than average age of users with same city
+    // First, let's add city column to users and insert data with cities
+    var sql51 = "CREATE TABLE employees (id INTEGER, name TEXT, department TEXT, salary INTEGER);";
+    Viper.Terminal.Say("SQL: " + sql51);
+    var r51 = executeSql(sql51);
+    Viper.Terminal.Say("Result: " + r51.message);
+
+    var sql52 = "INSERT INTO employees VALUES (1, 'Alice', 'Engineering', 80000);";
+    executeSql(sql52);
+    var sql53 = "INSERT INTO employees VALUES (2, 'Bob', 'Engineering', 75000);";
+    executeSql(sql53);
+    var sql54 = "INSERT INTO employees VALUES (3, 'Charlie', 'Sales', 60000);";
+    executeSql(sql54);
+    var sql55 = "INSERT INTO employees VALUES (4, 'Diana', 'Sales', 65000);";
+    executeSql(sql55);
+    var sql56 = "INSERT INTO employees VALUES (5, 'Eve', 'Engineering', 90000);";
+    executeSql(sql56);
+    Viper.Terminal.Say("Inserted 5 employees");
+
+    // Correlated subquery: Find employees earning more than avg salary in their department
+    var sql57 = "SELECT name, department, salary FROM employees e WHERE salary > (SELECT AVG(salary) FROM employees WHERE department = e.department);";
+    Viper.Terminal.Say("SQL: " + sql57);
+    var r57 = executeSql(sql57);
+    Viper.Terminal.Say("Result: " + r57.message);
+    Viper.Terminal.Say(r57.toString());
+    // Expected: Alice (80K > Engineering avg 81.6K? No), Eve (90K > 81.6K? Yes), Diana (65K > Sales avg 62.5K? Yes)
+    // Actually Engineering avg = (80+75+90)/3 = 81.66, Sales avg = (60+65)/2 = 62.5
+    // So Eve (90 > 81.66) and Diana (65 > 62.5) should be returned
+
+    // Simpler correlated subquery test: find employees where their salary equals max in their dept
+    var sql58 = "SELECT name, department, salary FROM employees e WHERE salary = (SELECT MAX(salary) FROM employees WHERE department = e.department);";
+    Viper.Terminal.Say("SQL: " + sql58);
+    var r58 = executeSql(sql58);
+    Viper.Terminal.Say("Result: " + r58.message);
+    Viper.Terminal.Say(r58.toString());
+    // Expected: Eve (max in Engineering), Diana (max in Sales)
 
     Viper.Terminal.Say("=== Executor Test PASSED ===");
 }

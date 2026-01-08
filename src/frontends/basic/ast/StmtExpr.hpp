@@ -280,6 +280,14 @@ struct DimStmt : Stmt
 
     /// True when DIM declares an array; false for scalar declarations.
     bool isArray{true};
+
+    /// Resolved array extents from semantic analysis (BUG-010 fix).
+    /// @details Stored during semantic analysis so the lowerer can compute correct
+    ///          array allocation size even when dimension expressions reference CONSTs
+    ///          that would otherwise need runtime lookup. Empty if dimensions are
+    ///          not all compile-time constants.
+    mutable std::vector<long long> resolvedExtents;
+
     void accept(StmtVisitor &visitor) const override;
     void accept(MutStmtVisitor &visitor) override;
 };
