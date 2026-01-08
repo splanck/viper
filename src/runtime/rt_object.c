@@ -135,6 +135,21 @@ void *rt_obj_new_i64(int64_t class_id, int64_t byte_size)
     return payload;
 }
 
+/// @brief Get the class ID of an object.
+///
+/// Retrieves the runtime class identifier that was set during object creation.
+/// Used for virtual dispatch and runtime type identification (RTTI).
+///
+/// @param p Object payload pointer (may be NULL).
+/// @return The class ID, or 0 if p is NULL or not a valid object.
+int64_t rt_obj_class_id(void *p)
+{
+    if (!p)
+        return 0;
+    rt_heap_hdr_t *hdr = rt_heap_hdr(p);
+    return hdr ? hdr->class_id : 0;
+}
+
 /// @brief Set a custom finalizer for an object.
 ///
 /// Registers a callback function to be invoked when the object's reference

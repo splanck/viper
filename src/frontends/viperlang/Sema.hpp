@@ -612,6 +612,10 @@ class Sema
     /// @return The type of the element at the given index.
     TypeRef analyzeTupleIndex(TupleIndexExpr *expr);
 
+    /// @brief Analyze a block expression (statements followed by optional value).
+    /// @return The type of the block's value expression, or Void if none.
+    TypeRef analyzeBlockExpr(BlockExpr *expr);
+
     /// @}
     //=========================================================================
     /// @name Type Resolution

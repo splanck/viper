@@ -253,6 +253,20 @@ struct EntityTypeInfo
     /// @brief Fast lookup: method name -> method declaration.
     std::unordered_map<std::string, MethodDecl *> methodMap;
 
+    /// @brief vtable method entries in vtable order (includes inherited methods).
+    /// @details Each entry is the fully qualified method name (e.g., "Dog.speak").
+    std::vector<std::string> vtable;
+
+    /// @brief vtable slot lookup: method name -> vtable index.
+    std::unordered_map<std::string, size_t> vtableIndex;
+
+    /// @brief Name of the global vtable symbol.
+    std::string vtableName;
+
+    /// @brief Set of interfaces this entity implements.
+    /// @details Used for interface method dispatch.
+    std::set<std::string> implementedInterfaces;
+
     /// @brief Find a field by name.
     /// @param n The field name.
     /// @return Pointer to FieldLayout, or nullptr if not found.
@@ -269,6 +283,15 @@ struct EntityTypeInfo
     {
         auto it = methodMap.find(n);
         return it != methodMap.end() ? it->second : nullptr;
+    }
+
+    /// @brief Find vtable index for a method.
+    /// @param n The method name.
+    /// @return vtable index, or SIZE_MAX if not found.
+    size_t findVtableSlot(const std::string &n) const
+    {
+        auto it = vtableIndex.find(n);
+        return it != vtableIndex.end() ? it->second : SIZE_MAX;
     }
 };
 
@@ -506,6 +529,10 @@ class Lowerer
     /// @brief Lower an entity type declaration.
     /// @param decl The entity type declaration.
     void lowerEntityDecl(EntityDecl &decl);
+
+    /// @brief Emit vtable global for an entity type.
+    /// @param info The entity type info with vtable entries.
+    void emitVtable(const EntityTypeInfo &info);
 
     /// @brief Lower an interface declaration.
     /// @param decl The interface declaration.
@@ -804,6 +831,32 @@ class Lowerer
                                 const std::string &typeName,
                                 Value selfValue,
                                 CallExpr *expr);
+
+    /// @brief Lower a virtual method call using vtable dispatch.
+    /// @param entityInfo The entity type info with vtable.
+    /// @param methodName The method name.
+    /// @param vtableSlot The vtable slot index.
+    /// @param selfValue The receiver value (self).
+    /// @param expr The call expression for arguments.
+    /// @return The call result.
+    LowerResult lowerVirtualMethodCall(const EntityTypeInfo &entityInfo,
+                                       const std::string &methodName,
+                                       size_t vtableSlot,
+                                       Value selfValue,
+                                       CallExpr *expr);
+
+    /// @brief Lower an interface method call using class_id-based dispatch.
+    /// @param ifaceInfo The interface type info.
+    /// @param methodName The method name.
+    /// @param method The method declaration from the interface.
+    /// @param selfValue The receiver value (self).
+    /// @param expr The call expression for arguments.
+    /// @return The call result.
+    LowerResult lowerInterfaceMethodCall(const InterfaceTypeInfo &ifaceInfo,
+                                         const std::string &methodName,
+                                         MethodDecl *method,
+                                         Value selfValue,
+                                         CallExpr *expr);
 
     /// @}
     //=========================================================================

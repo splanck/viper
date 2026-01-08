@@ -684,11 +684,13 @@ LowerResult Lowerer::lowerNew(NewExpr *expr)
 ---
 
 ### BUG-VL-009: Generics not implemented
+- **Status**: 🟡 DEFERRED
 - **Test**: `tests/comparison/viper/10_oop_generics.viper`
 - **Code**: `entity Box[T] { expose T value; }`
 - **Expected**: Generic type parameter T should be recognized
 - **Actual**: `error[V3000]: Unknown type: T` for all uses of type parameter
 - **Severity**: High - generics completely non-functional
+- **Note**: Implementing generics requires significant architectural changes including TypeParam type kind, scope-based type parameter registration, instantiation tracking, type substitution, and monomorphization. This is a major feature that should be planned separately.
 
 #### Root Cause Analysis
 
@@ -776,120 +778,163 @@ TypeRef types::typeParam(const std::string &name)
 ---
 
 ### BUG-VL-010: Interface method calls return wrong type
-- **Test**: `/tmp/test_iface_poly.viper`
+- **Status**: ✅ FIXED
+- **Test**: `/tmp/test_interface_call.viper`
 - **Code**: `var shape: IShape = c; shape.getName();`
 - **Expected**: Method call through interface should return correct type
 - **Actual**: `error: store void: instruction type must be non-void` (generates broken IL)
 - **Note**: Assignment to interface variable works, calling methods doesn't
 - **Severity**: High - interface polymorphism broken
+- **Fix**: Implemented class_id-based interface dispatch. Changes:
+  1. Added `implementedInterfaces` field to `EntityTypeInfo` to track which interfaces each entity implements
+  2. Added `lowerInterfaceMethodCall()` function that uses class_id-based dispatch (similar to virtual method dispatch)
+  3. Added interface handling check in `lowerCall` for `TypeKindSem::Interface`
+  4. Populated `implementedInterfaces` during entity lowering from `decl.interfaces`
 
 #### Root Cause Analysis
 
-**Lowerer Doesn't Handle Interface Type Method Calls**
-
-The `lowerCall` function in `Lowerer_Expr.cpp` handles method calls for value types, entity types, and collection types, but has **no handling for interface types**.
-
-**The Call Dispatch Logic (Lowerer_Expr.cpp:888-912):**
-```cpp
-TypeRef baseType = sema_.typeOf(fieldExpr->base.get());
-if (baseType)
-{
-    std::string typeName = baseType->name;
-
-    // Check value type methods
-    auto it = valueTypes_.find(typeName);
-    if (it != valueTypes_.end()) { /* ... */ }
-
-    // Check entity type methods
-    auto entityIt = entityTypes_.find(typeName);
-    if (entityIt != entityTypes_.end()) { /* ... */ }
-
-    // Handle module-qualified calls
-    if (baseType->kind == TypeKindSem::Module) { /* ... */ }
-
-    // Check for List/Set/Map methods
-    if (baseType->kind == TypeKindSem::List) { /* ... */ }
-    // ...
-
-    // MISSING: No handling for TypeKindSem::Interface!
-}
-```
-
-When `shape.getName()` is called where `shape: IShape`:
+The `lowerCall` function had no handling for method calls on interface-typed variables. When `shape.getName()` was called where `shape: IShape`:
 1. `baseType->kind == TypeKindSem::Interface`
 2. `typeName = "IShape"` (not in `entityTypes_` or `valueTypes_`)
-3. Falls through all checks
-4. Eventually generates broken IL: `call.indirect 0` with no target
+3. Fell through all checks
+4. Eventually generated broken IL
 
-**The Generated IL:**
-```il
-%t7 = load ptr, %t6
-call.indirect 0               ; Wrong! No vtable lookup, no method target
-%t8 = alloca 8
-store void, %t8, 0            ; Error: can't store void!
-```
+**Solution: Class-ID Based Interface Dispatch**
 
-**What's Needed (Virtual Dispatch):**
-1. Load the vtable pointer from the object (usually at offset 0)
-2. Find the method's slot index in the interface vtable
-3. Load the method pointer from the vtable
-4. Call through the method pointer with the object as first argument
+Similar to virtual dispatch for entities, interface method calls now use runtime class_id to dispatch:
+1. Look up interface in `interfaceTypes_` to get method info
+2. Call `rt_obj_class_id(self)` to get runtime class ID
+3. Find all entities that implement this interface
+4. Generate conditional dispatch chain based on class_id
 
-#### Fix Suggestion
+#### Files Modified
+- `src/frontends/viperlang/Lowerer_Expr.cpp` - Added `lowerInterfaceMethodCall()`, added interface check in `lowerCall`
+- `src/frontends/viperlang/Lowerer_Decl.cpp` - Store `implementedInterfaces` during entity lowering
+- `src/frontends/viperlang/Lowerer.hpp` - Added `implementedInterfaces` field to `EntityTypeInfo`, added `lowerInterfaceMethodCall` declaration
 
-Add interface method dispatch handling in `lowerCall`:
+---
 
-```cpp
-// After entity type check
-if (baseType->kind == TypeKindSem::Interface)
-{
-    auto ifaceIt = interfaceTypes_.find(typeName);
-    if (ifaceIt != interfaceTypes_.end())
-    {
-        // Find the method index in the interface
-        size_t methodIdx = 0;
-        TypeRef methodType = nullptr;
-        for (const auto &m : ifaceIt->second.methods)
-        {
-            if (m.name == fieldExpr->field)
-            {
-                methodType = m.type;
-                break;
-            }
-            methodIdx++;
-        }
+### BUG-VL-011: No virtual method dispatch for inherited methods
+- **Status**: ✅ FIXED
+- **Test**: `tests/comparison/viper/08_oop_inheritance.viper`
+- **Code**:
+  ```viper
+  var animal: Animal = dog;  // dog is a Dog instance
+  animal.speak();            // Should call Dog.speak(), actually calls Animal.speak()
+  ```
+- **Expected**: `animal.speak()` should call `Dog.speak()` returning "Woof!" (virtual dispatch)
+- **Actual**: Calls `Animal.speak()` returning "..." (static dispatch based on declared type)
+- **Severity**: High - polymorphism is incomplete without virtual dispatch
+- **Fix**: Implemented class_id-based virtual dispatch. Changes:
+  1. Added `rt_obj_class_id()` runtime function to get class ID from object header
+  2. Added `lowerVirtualMethodCall()` function in `Lowerer_Expr.cpp` that:
+     - Calls `rt_obj_class_id(self)` to get runtime class ID
+     - Builds dispatch table of all classes implementing the method
+     - Generates conditional branch chain to call appropriate method based on class_id
+  3. Added vtable tracking in `EntityTypeInfo` (vtable slots, vtableIndex map)
+  4. Modified entity method call handling to use virtual dispatch when method is in vtable
+  5. Fixed `findMethod` to search up inheritance chain for inherited methods
 
-        auto baseResult = lowerExpr(fieldExpr->base.get());
+#### Root Cause Analysis
 
-        // Load vtable pointer from object (offset 0)
-        Value vtablePtr = emitLoad(emitGEP(baseResult.value, 0), Type::Ptr);
+The lowerer resolved method calls based on the **declared type** of the variable, not the **runtime type** of the object. When `animal.speak()` was called:
 
-        // Load method pointer from vtable
-        Value methodPtr = emitLoad(
-            emitGEP(vtablePtr, methodIdx * 8), Type::Ptr);
+1. `animal` has declared type `Animal`
+2. Lowerer looked up `Animal.speak` and emitted a direct call
+3. The actual object's type (`Dog`) was ignored
 
-        // Build args: [self, ...args]
-        std::vector<Value> args = {baseResult.value};
-        for (auto &arg : expr->args)
-        {
-            auto r = lowerExpr(arg.value.get());
-            args.push_back(r.value);
-        }
+**Solution: Class-ID Based Dispatch**
 
-        // Emit indirect call
-        Type retType = mapType(methodType->returnType());
-        Value result = emitIndirectCall(methodPtr, retType, args);
-        return {result, retType};
-    }
-}
-```
+Instead of vtable pointer lookup (which requires runtime pointers to function addresses), we use the class_id stored in the object header to dispatch:
 
-**Note**: This also requires implementing vtable generation for entities that implement interfaces, which is a larger architectural change.
+1. Call `rt_obj_class_id(self)` to get runtime class ID
+2. Build a dispatch table of all known implementations: `[(classId1, "Type1.method"), (classId2, "Type2.method"), ...]`
+3. Generate conditional chain: `if (classId == 1) call Type1.method; else if (classId == 3) call Type3.method; else call default`
+
+#### Files Modified
+- `src/frontends/viperlang/Lowerer_Expr.cpp` - Added `lowerVirtualMethodCall()`, modified call handling
+- `src/frontends/viperlang/Lowerer_Decl.cpp` - Added vtable building in `lowerEntityDecl`
+- `src/frontends/viperlang/Lowerer.hpp` - Added vtable fields to `EntityTypeInfo`
+- `src/frontends/viperlang/RuntimeNames.hpp` - Added `kRtObjClassId` constant
+- `src/il/runtime/RuntimeSignatures.cpp` - Registered `rt_obj_class_id` descriptor
+- `src/il/runtime/signatures/Signatures_Arrays.cpp` - Registered `rt_obj_class_id` signature
+
+---
+
+### BUG-VL-012: Match statement causes runtime trap
+- **Status**: ✅ FIXED
+- **Test**: `/tmp/test_match2.viper`
+- **Code**:
+  ```viper
+  var x = 2;
+  match (x) {
+      1 => { Viper.Terminal.Say("one"); }
+      2 => { Viper.Terminal.Say("two"); }
+      _ => { Viper.Terminal.Say("other"); }
+  }
+  ```
+- **Expected**: Should print "two"
+- **Actual**: `Trap @main:match_arm_1_3#1: InvalidOperation (code=0): null indirect callee`
+- **Severity**: High - match statement is unusable
+- **Fix**: Added `analyzeBlockExpr()` function in `Sema_Expr.cpp` to properly analyze BlockExpr nodes. The `analyzeExpr()` switch statement was missing a case for `ExprKind::Block`, causing BlockExpr contents (like match arm bodies) to not be semantically analyzed. This meant CallExpr nodes inside BlockExpr were never registered in `runtimeCallees_`, causing `lowerCall` to fall through to indirect call handling with a null function pointer.
+
+#### Root Cause Analysis
+
+The match statement parses successfully but semantic analysis was not properly analyzing BlockExpr bodies. In `Sema_Expr.cpp:analyzeExpr()`, the switch statement had no case for `ExprKind::Block`, so it fell through to `default:` returning `types::unknown()` without analyzing the block's statements.
+
+When match arm bodies like `{ Viper.Terminal.Say("one"); }` were parsed as BlockExpr containing ExprStmt with CallExpr, the CallExpr was never analyzed. This meant:
+1. `runtimeCallees_[expr]` was never populated for the call
+2. During lowering, `sema_.runtimeCallee(expr)` returned empty string
+3. `lowerCall` fell through to indirect call handling with `funcPtr = 0`
+4. Generated IL: `call.indirect 0, %t5` - calling null pointer
 
 #### Files Involved
-- `src/frontends/viperlang/Lowerer_Expr.cpp` (lines 888-1200) - `lowerCall` missing interface dispatch
-- `src/frontends/viperlang/Lowerer_Decl.cpp` (lines 390-410) - `lowerInterfaceDecl` stores interface info but no vtable gen
-- `src/frontends/viperlang/Lowerer.hpp` - `InterfaceTypeInfo` exists but not used for dispatch
+- `src/frontends/viperlang/Sema_Expr.cpp` - Added `case ExprKind::Block:` and `analyzeBlockExpr()` function
+- `src/frontends/viperlang/Sema.hpp` - Added `analyzeBlockExpr()` declaration
+
+---
+
+### BUG-VL-013: No native array support
+- **Status**: 🟡 BY DESIGN
+- **Category**: Missing Feature
+- **Description**: ViperLang has no native fixed-size arrays like BASIC's `DIM arr(10)`
+- **BASIC equivalent**: `DIM arr(10)`, `DIM arr(10, 10)` for 2D, `LBOUND()`, `UBOUND()`
+- **ViperLang workaround**: Use `List[T]` instead
+- **Severity**: Medium - different design philosophy
+- **Notes**: ViperLang uses dynamic collections (List, Map, Set) instead of fixed arrays. This is a design choice, not a bug. Consider adding array syntax as sugar over List if needed.
+
+---
+
+### BUG-VL-014: No try/catch error handling
+- **Status**: 🟡 BY DESIGN
+- **Category**: Missing Feature
+- **Description**: ViperLang has no exception-based error handling
+- **BASIC equivalent**: `TRY...CATCH...FINALLY...END TRY`, `ON ERROR GOTO`, `RESUME NEXT`
+- **ViperLang workaround**: Use `guard` statements and optional types (`T?`, `??`)
+- **Severity**: Medium - different design philosophy
+- **Notes**: ViperLang uses a functional approach to error handling with optionals and guard statements. Consider adding Result[T, E] type for explicit error handling.
+
+---
+
+### BUG-VL-015: No ByRef parameters
+- **Status**: 🟡 BY DESIGN
+- **Category**: Missing Feature
+- **Description**: ViperLang cannot pass parameters by reference
+- **BASIC equivalent**: `SUB Increment(BYREF x AS INTEGER)`
+- **ViperLang workaround**: Return modified values, use entity fields
+- **Severity**: Low - can work around with return values
+- **Notes**: All ViperLang parameters are passed by value. For mutable state, use entity fields or return new values.
+
+---
+
+### BUG-VL-016: No STATIC variables
+- **Status**: 🟡 BY DESIGN
+- **Category**: Missing Feature
+- **Description**: ViperLang has no static local variables that persist across function calls
+- **BASIC equivalent**: `STATIC counter AS INTEGER`
+- **ViperLang workaround**: Use entity fields or module-level variables
+- **Severity**: Low - can work around with entity fields
+- **Notes**: Static variables can be simulated using entity fields that persist across method calls.
 
 ---
 

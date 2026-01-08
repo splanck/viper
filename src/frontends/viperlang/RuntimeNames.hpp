@@ -566,6 +566,13 @@ inline constexpr const char *kThreadSleep = "Viper.Thread.Sleep";
 /// @note This is an internal runtime function, not part of the Viper.* namespace.
 inline constexpr const char *kRtAlloc = "rt_alloc";
 
+/// @brief Get the class ID from a runtime object's header.
+/// @details Signature: rt_obj_class_id(ptr) -> i64
+/// Returns the class identifier stored in the object header, used for
+/// runtime type identification and virtual dispatch.
+/// @note This is an internal runtime function, not part of the Viper.* namespace.
+inline constexpr const char *kRtObjClassId = "rt_obj_class_id";
+
 /// @}
 
 //=============================================================================
@@ -592,9 +599,20 @@ inline constexpr size_t kMaxImportedFiles = 100;
 
 /// @brief Object header size for entity types in bytes.
 /// @details All entity instances begin with an 8-byte header containing
-/// the vtable pointer (or class ID for runtime type identification).
+/// runtime info (refcount, type tag, etc.).
 /// Field offsets in EntityTypeInfo are calculated starting after this header.
 inline constexpr size_t kObjectHeaderSize = 8;
+
+/// @brief Offset of the vtable pointer within entity objects.
+/// @details The vtable pointer is stored immediately after the runtime header.
+/// All entity field offsets start after the vtable pointer.
+inline constexpr size_t kVtablePtrOffset = 8;
+
+/// @brief Size of the vtable pointer in bytes.
+inline constexpr size_t kVtablePtrSize = 8;
+
+/// @brief Offset where entity fields begin (after header and vtable ptr).
+inline constexpr size_t kEntityFieldsOffset = kObjectHeaderSize + kVtablePtrSize;
 
 /// @}
 

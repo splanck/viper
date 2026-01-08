@@ -902,16 +902,29 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
 
             // Check entity type methods (O(1) lookup)
             // BUG-VL-006 fix: Also check parent entities for inherited methods
+            // BUG-VL-011 fix: Use virtual dispatch for methods in vtable
             auto entityIt = entityTypes_.find(typeName);
             if (entityIt != entityTypes_.end())
             {
-                if (auto *method = entityIt->second.findMethod(fieldExpr->field))
+                const EntityTypeInfo &entityInfo = entityIt->second;
+
+                // Check if method has a vtable slot (virtual dispatch needed)
+                size_t vtableSlot = entityInfo.findVtableSlot(fieldExpr->field);
+                if (vtableSlot != SIZE_MAX)
+                {
+                    // Virtual dispatch: load method pointer from vtable
+                    auto baseResult = lowerExpr(fieldExpr->base.get());
+                    return lowerVirtualMethodCall(
+                        entityInfo, fieldExpr->field, vtableSlot, baseResult.value, expr);
+                }
+
+                if (auto *method = entityInfo.findMethod(fieldExpr->field))
                 {
                     auto baseResult = lowerExpr(fieldExpr->base.get());
                     return lowerMethodCall(method, typeName, baseResult.value, expr);
                 }
                 // Check parent entity for inherited methods
-                std::string parentName = entityIt->second.baseClass;
+                std::string parentName = entityInfo.baseClass;
                 while (!parentName.empty())
                 {
                     auto parentIt = entityTypes_.find(parentName);
@@ -923,6 +936,25 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                         return lowerMethodCall(method, parentName, baseResult.value, expr);
                     }
                     parentName = parentIt->second.baseClass;
+                }
+            }
+
+            // BUG-VL-010 fix: Handle interface method calls
+            // When calling a method through an interface type variable, we need to
+            // dispatch to the actual implementing entity's method at runtime
+            if (baseType->kind == TypeKindSem::Interface)
+            {
+                auto ifaceIt = interfaceTypes_.find(typeName);
+                if (ifaceIt != interfaceTypes_.end())
+                {
+                    auto methodIt = ifaceIt->second.methodMap.find(fieldExpr->field);
+                    if (methodIt != ifaceIt->second.methodMap.end())
+                    {
+                        auto baseResult = lowerExpr(fieldExpr->base.get());
+                        return lowerInterfaceMethodCall(
+                            ifaceIt->second, fieldExpr->field, methodIt->second, baseResult.value,
+                            expr);
+                    }
                 }
             }
 
@@ -2671,6 +2703,335 @@ LowerResult Lowerer::lowerMethodCall(MethodDecl *method,
     else
     {
         Value result = emitCallRet(ilReturnType, methodName, args);
+        return {result, ilReturnType};
+    }
+}
+
+LowerResult Lowerer::lowerVirtualMethodCall(const EntityTypeInfo &entityInfo,
+                                             const std::string &methodName,
+                                             size_t /*vtableSlot*/,
+                                             Value selfValue,
+                                             CallExpr *expr)
+{
+    // BUG-VL-011 fix: Virtual dispatch via class_id-based dispatch
+    // 1. Call rt_obj_class_id(self) to get runtime class ID
+    // 2. Generate conditional dispatch based on class_id
+    // 3. Call the appropriate method implementation
+
+    // Get return type from the method - search up inheritance chain if needed
+    MethodDecl *method = entityInfo.findMethod(methodName);
+    if (!method)
+    {
+        // Search up inheritance chain for inherited method
+        std::string parentName = entityInfo.baseClass;
+        while (!parentName.empty() && !method)
+        {
+            auto parentIt = entityTypes_.find(parentName);
+            if (parentIt == entityTypes_.end())
+                break;
+            method = parentIt->second.findMethod(methodName);
+            parentName = parentIt->second.baseClass;
+        }
+    }
+    TypeRef returnType = types::voidType();
+    if (method && method->returnType)
+    {
+        returnType = sema_.resolveType(method->returnType.get());
+    }
+    Type ilReturnType = mapType(returnType);
+
+    // Build argument list: self + call args
+    std::vector<Value> args;
+    args.reserve(expr->args.size() + 1);
+    args.push_back(selfValue);
+
+    for (auto &arg : expr->args)
+    {
+        auto result = lowerExpr(arg.value.get());
+        args.push_back(result.value);
+    }
+
+    // Get the class_id at runtime
+    Value classIdVal = emitCallRet(Type(Type::Kind::I64), "rt_obj_class_id", {selfValue});
+
+    // Build dispatch table: collect all classes that could provide this method
+    // Start with the declared type and find all derived types
+    std::vector<std::pair<int, std::string>> dispatchTable; // (classId, qualifiedMethodName)
+
+    // Helper to add a class and its method implementation to dispatch table
+    auto addToDispatch = [&](const std::string &typeName, const EntityTypeInfo &info) {
+        // Check vtable for the actual method implementation for this class
+        auto vtIt = info.vtableIndex.find(methodName);
+        if (vtIt != info.vtableIndex.end())
+        {
+            // Get the method implementation name from vtable
+            dispatchTable.emplace_back(info.classId, info.vtable[vtIt->second]);
+        }
+    };
+
+    // Add the base type and all derived types
+    addToDispatch(entityInfo.name, entityInfo);
+
+    // Find all types that extend this type (directly or indirectly)
+    for (const auto &[name, info] : entityTypes_)
+    {
+        if (name != entityInfo.name)
+        {
+            // Check if this type inherits from entityInfo (directly or indirectly)
+            std::string parentName = info.baseClass;
+            while (!parentName.empty())
+            {
+                if (parentName == entityInfo.name)
+                {
+                    addToDispatch(name, info);
+                    break;
+                }
+                auto parentIt = entityTypes_.find(parentName);
+                if (parentIt == entityTypes_.end())
+                    break;
+                parentName = parentIt->second.baseClass;
+            }
+        }
+    }
+
+    // Generate dispatch: if/else chain based on class_id
+    // For simplicity, use a linear chain of conditionals
+
+    if (dispatchTable.size() <= 1)
+    {
+        // Only one implementation - use direct call
+        std::string targetMethod =
+            dispatchTable.empty() ? entityInfo.name + "." + methodName : dispatchTable[0].second;
+
+        if (ilReturnType.kind == Type::Kind::Void)
+        {
+            emitCall(targetMethod, args);
+            return {Value::constInt(0), Type(Type::Kind::Void)};
+        }
+        else
+        {
+            Value result = emitCallRet(ilReturnType, targetMethod, args);
+            return {result, ilReturnType};
+        }
+    }
+
+    // Multiple implementations - generate dispatch switch
+    size_t endBlock = createBlock("vdispatch_end");
+    Value resultSlot;
+    if (ilReturnType.kind != Type::Kind::Void)
+    {
+        // Allocate slot for result
+        unsigned allocaId = nextTempId();
+        il::core::Instr allocaInstr;
+        allocaInstr.result = allocaId;
+        allocaInstr.op = il::core::Opcode::Alloca;
+        allocaInstr.type = Type(Type::Kind::Ptr);
+        allocaInstr.operands = {Value::constInt(8)};
+        blockMgr_.currentBlock()->instructions.push_back(allocaInstr);
+        resultSlot = Value::temp(allocaId);
+    }
+
+    for (size_t i = 0; i < dispatchTable.size(); ++i)
+    {
+        const auto &[classId, targetMethod] = dispatchTable[i];
+        bool isLast = (i == dispatchTable.size() - 1);
+
+        if (isLast)
+        {
+            // Last case - no condition needed (default)
+            if (ilReturnType.kind == Type::Kind::Void)
+            {
+                emitCall(targetMethod, args);
+            }
+            else
+            {
+                Value result = emitCallRet(ilReturnType, targetMethod, args);
+                emitStore(resultSlot, result, ilReturnType);
+            }
+            emitBr(endBlock);
+        }
+        else
+        {
+            // Generate: if (classId == targetClassId) { call targetMethod }
+            size_t nextCheck = createBlock("vdispatch_check_" + std::to_string(i + 1));
+            size_t callBlock = createBlock("vdispatch_call_" + std::to_string(i));
+
+            Value cmp = emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), classIdVal,
+                                    Value::constInt(static_cast<int64_t>(classId)));
+            emitCBr(cmp, callBlock, nextCheck);
+
+            setBlock(callBlock);
+            if (ilReturnType.kind == Type::Kind::Void)
+            {
+                emitCall(targetMethod, args);
+            }
+            else
+            {
+                Value result = emitCallRet(ilReturnType, targetMethod, args);
+                emitStore(resultSlot, result, ilReturnType);
+            }
+            emitBr(endBlock);
+
+            setBlock(nextCheck);
+        }
+    }
+
+    setBlock(endBlock);
+
+    if (ilReturnType.kind == Type::Kind::Void)
+    {
+        return {Value::constInt(0), Type(Type::Kind::Void)};
+    }
+    else
+    {
+        Value result = emitLoad(resultSlot, ilReturnType);
+        return {result, ilReturnType};
+    }
+}
+
+LowerResult Lowerer::lowerInterfaceMethodCall(const InterfaceTypeInfo &ifaceInfo,
+                                               const std::string &methodName,
+                                               MethodDecl *method,
+                                               Value selfValue,
+                                               CallExpr *expr)
+{
+    // BUG-VL-010 fix: Interface method dispatch via class_id
+    // Similar to virtual dispatch, but we find all entities implementing the interface
+
+    // Get return type from the interface method declaration
+    TypeRef returnType = types::voidType();
+    if (method && method->returnType)
+    {
+        returnType = sema_.resolveType(method->returnType.get());
+    }
+    Type ilReturnType = mapType(returnType);
+
+    // Build argument list: self + call args
+    std::vector<Value> args;
+    args.reserve(expr->args.size() + 1);
+    args.push_back(selfValue);
+
+    for (auto &arg : expr->args)
+    {
+        auto result = lowerExpr(arg.value.get());
+        args.push_back(result.value);
+    }
+
+    // Get the class_id at runtime
+    Value classIdVal = emitCallRet(Type(Type::Kind::I64), "rt_obj_class_id", {selfValue});
+
+    // Build dispatch table: collect all entities that implement this interface
+    std::vector<std::pair<int, std::string>> dispatchTable; // (classId, qualifiedMethodName)
+
+    for (const auto &[entityName, entityInfo] : entityTypes_)
+    {
+        // Check if this entity implements the interface
+        if (entityInfo.implementedInterfaces.count(ifaceInfo.name))
+        {
+            // Find the method implementation in this entity
+            auto methodIt = entityInfo.vtableIndex.find(methodName);
+            if (methodIt != entityInfo.vtableIndex.end())
+            {
+                dispatchTable.emplace_back(entityInfo.classId, entityInfo.vtable[methodIt->second]);
+            }
+        }
+    }
+
+    // Generate dispatch
+    if (dispatchTable.empty())
+    {
+        // No implementors found - emit runtime error (should not happen in well-formed code)
+        // Just return default value, semantic analysis should catch this earlier
+        return {Value::constInt(0), ilReturnType};
+    }
+
+    if (dispatchTable.size() == 1)
+    {
+        // Only one implementation - use direct call
+        std::string targetMethod = dispatchTable[0].second;
+
+        if (ilReturnType.kind == Type::Kind::Void)
+        {
+            emitCall(targetMethod, args);
+            return {Value::constInt(0), Type(Type::Kind::Void)};
+        }
+        else
+        {
+            Value result = emitCallRet(ilReturnType, targetMethod, args);
+            return {result, ilReturnType};
+        }
+    }
+
+    // Multiple implementations - generate dispatch switch
+    size_t endBlock = createBlock("iface_dispatch_end");
+    Value resultSlot;
+    if (ilReturnType.kind != Type::Kind::Void)
+    {
+        // Allocate slot for result
+        unsigned allocaId = nextTempId();
+        il::core::Instr allocaInstr;
+        allocaInstr.result = allocaId;
+        allocaInstr.op = il::core::Opcode::Alloca;
+        allocaInstr.type = Type(Type::Kind::Ptr);
+        allocaInstr.operands = {Value::constInt(8)};
+        blockMgr_.currentBlock()->instructions.push_back(allocaInstr);
+        resultSlot = Value::temp(allocaId);
+    }
+
+    for (size_t i = 0; i < dispatchTable.size(); ++i)
+    {
+        const auto &[classId, targetMethod] = dispatchTable[i];
+        bool isLast = (i == dispatchTable.size() - 1);
+
+        if (isLast)
+        {
+            // Last case - no condition needed (default)
+            if (ilReturnType.kind == Type::Kind::Void)
+            {
+                emitCall(targetMethod, args);
+            }
+            else
+            {
+                Value result = emitCallRet(ilReturnType, targetMethod, args);
+                emitStore(resultSlot, result, ilReturnType);
+            }
+            emitBr(endBlock);
+        }
+        else
+        {
+            // Generate: if (classId == targetClassId) { call targetMethod }
+            size_t nextCheck = createBlock("iface_dispatch_check_" + std::to_string(i + 1));
+            size_t callBlock = createBlock("iface_dispatch_call_" + std::to_string(i));
+
+            Value cmp = emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), classIdVal,
+                                    Value::constInt(static_cast<int64_t>(classId)));
+            emitCBr(cmp, callBlock, nextCheck);
+
+            setBlock(callBlock);
+            if (ilReturnType.kind == Type::Kind::Void)
+            {
+                emitCall(targetMethod, args);
+            }
+            else
+            {
+                Value result = emitCallRet(ilReturnType, targetMethod, args);
+                emitStore(resultSlot, result, ilReturnType);
+            }
+            emitBr(endBlock);
+
+            setBlock(nextCheck);
+        }
+    }
+
+    setBlock(endBlock);
+
+    if (ilReturnType.kind == Type::Kind::Void)
+    {
+        return {Value::constInt(0), Type(Type::Kind::Void)};
+    }
+    else
+    {
+        Value result = emitLoad(resultSlot, ilReturnType);
         return {result, ilReturnType};
     }
 }

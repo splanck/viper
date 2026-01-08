@@ -42,12 +42,11 @@ func main() {
     Viper.Terminal.Say("");
     Viper.Terminal.Say("String function: " + greet("World"));
 
-    // Lambda expressions - basic test
+    // Lambda expressions
     Viper.Terminal.Say("");
     Viper.Terminal.Say("=== Lambda Test ===");
-    // Note: Higher-order functions with lambdas cause runtime errors
-    // var double = (x: Integer) => x * 2;
-    Viper.Terminal.Say("Lambdas: SKIPPED (runtime error with function types)");
+    var addLambda = (a: Integer, b: Integer) => a + b;
+    Viper.Terminal.Say("Lambda add(3,5) = " + Viper.Fmt.Int(addLambda(3, 5)));
 
     Viper.Terminal.Say("=== Functions test complete ===");
 }

@@ -1,10 +1,10 @@
 // Test: OOP - Inheritance
-// Tests: extends (LIMITATIONS FOUND: inherited fields not accessible, polymorphism not working)
+// Tests: extends, override, polymorphism
 module Test;
 
 // Base entity
 entity Animal {
-    expose String name;
+    hide String name;
 
     expose func init(n: String) {
         name = n;
@@ -19,13 +19,12 @@ entity Animal {
     }
 }
 
-// Derived entity - LIMITATION: Cannot access inherited 'name' field
+// Derived entity with additional field
 entity Dog extends Animal {
-    expose String breed;
-    expose String dogName;  // Workaround: duplicate field
+    hide String breed;
 
     expose func init(n: String, b: String) {
-        dogName = n;  // Can't use: name = n
+        name = n;   // Access inherited field
         breed = b;
     }
 
@@ -33,29 +32,19 @@ entity Dog extends Animal {
         return breed;
     }
 
-    expose func getDogName() -> String {
-        return dogName;
-    }
-
-    // Methods override implicitly (override keyword causes parse error)
-    expose func speak() -> String {
+    // Override parent method
+    override expose func speak() -> String {
         return "Woof!";
     }
 }
 
 // Another derived entity
 entity Cat extends Animal {
-    expose String catName;  // Workaround: duplicate field
-
     expose func init(n: String) {
-        catName = n;  // Can't use: name = n
+        name = n;   // Access inherited field
     }
 
-    expose func getCatName() -> String {
-        return catName;
-    }
-
-    expose func speak() -> String {
+    override expose func speak() -> String {
         return "Meow!";
     }
 }
@@ -67,22 +56,22 @@ func main() {
     Viper.Terminal.Say("");
     Viper.Terminal.Say("--- Basic Inheritance ---");
     var dog = new Dog("Buddy", "Golden Retriever");
-    Viper.Terminal.Say("Dog name: " + dog.getDogName());
+    Viper.Terminal.Say("Dog name: " + dog.getName());
     Viper.Terminal.Say("Dog breed: " + dog.getBreed());
     Viper.Terminal.Say("Dog speaks: " + dog.speak());
 
     Viper.Terminal.Say("");
     var cat = new Cat("Whiskers");
-    Viper.Terminal.Say("Cat name: " + cat.getCatName());
+    Viper.Terminal.Say("Cat name: " + cat.getName());
     Viper.Terminal.Say("Cat speaks: " + cat.speak());
 
-    // LIMITATION: Polymorphism not working
-    // var animal: Animal = dog;  // Type mismatch error
-    // animal = cat;               // Type mismatch error
+    // Test polymorphism - assign derived type to base type variable
     Viper.Terminal.Say("");
     Viper.Terminal.Say("--- Polymorphism ---");
-    Viper.Terminal.Say("LIMITATION: Cannot assign Dog/Cat to Animal variable");
-    Viper.Terminal.Say("LIMITATION: Inherited fields not accessible in child");
+    var animal: Animal = dog;
+    Viper.Terminal.Say("As Animal (dog): " + animal.speak());
+    animal = cat;
+    Viper.Terminal.Say("As Animal (cat): " + animal.speak());
 
     Viper.Terminal.Say("");
     Viper.Terminal.Say("=== OOP Inheritance test complete ===");

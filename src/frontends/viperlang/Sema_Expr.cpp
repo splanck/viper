@@ -109,6 +109,9 @@ TypeRef Sema::analyzeExpr(Expr *expr)
         case ExprKind::TupleIndex:
             result = analyzeTupleIndex(static_cast<TupleIndexExpr *>(expr));
             break;
+        case ExprKind::Block:
+            result = analyzeBlockExpr(static_cast<BlockExpr *>(expr));
+            break;
         default:
             result = types::unknown();
             break;
@@ -1223,6 +1226,27 @@ TypeRef Sema::analyzeTupleIndex(TupleIndexExpr *expr)
     }
 
     return tupleType->tupleElementType(expr->index);
+}
+
+TypeRef Sema::analyzeBlockExpr(BlockExpr *expr)
+{
+    pushScope();
+
+    // Analyze each statement in the block
+    for (auto &stmt : expr->statements)
+    {
+        analyzeStmt(stmt.get());
+    }
+
+    // Analyze the final value expression if present
+    TypeRef resultType = types::unit();
+    if (expr->value)
+    {
+        resultType = analyzeExpr(expr->value.get());
+    }
+
+    popScope();
+    return resultType;
 }
 
 

@@ -339,14 +339,22 @@ void Lowerer::lowerValueDecl(ValueDecl &decl)
 
 void Lowerer::lowerEntityDecl(EntityDecl &decl)
 {
-    // Compute field layout (entity fields start after object header)
+    // Compute field layout (entity fields start after object header + vtable ptr)
     EntityTypeInfo info;
     info.name = decl.name;
     info.baseClass = decl.baseClass; // Store parent class for super calls
-    info.totalSize = kObjectHeaderSize;
+    info.totalSize = kEntityFieldsOffset; // Space for header + vtable ptr
     info.classId = nextClassId_++;
+    info.vtableName = "__vtable_" + decl.name;
+
+    // BUG-VL-010 fix: Store implemented interfaces for interface method dispatch
+    for (const auto &iface : decl.interfaces)
+    {
+        info.implementedInterfaces.insert(iface);
+    }
 
     // BUG-VL-006 fix: Copy inherited fields from parent entity
+    // BUG-VL-011 fix: Also copy vtable from parent and override methods
     if (!decl.baseClass.empty())
     {
         auto parentIt = entityTypes_.find(decl.baseClass);
@@ -361,6 +369,10 @@ void Lowerer::lowerEntityDecl(EntityDecl &decl)
             }
             // Start child fields after parent's fields
             info.totalSize = parent.totalSize;
+
+            // Inherit parent's vtable
+            info.vtable = parent.vtable;
+            info.vtableIndex = parent.vtableIndex;
         }
     }
 
@@ -391,18 +403,47 @@ void Lowerer::lowerEntityDecl(EntityDecl &decl)
             auto *method = static_cast<MethodDecl *>(member.get());
             info.methodMap[method->name] = method;
             info.methods.push_back(method);
+
+            // Build vtable: check if method overrides parent or add new slot
+            std::string methodQualName = decl.name + "." + method->name;
+            auto vtableIt = info.vtableIndex.find(method->name);
+            if (vtableIt != info.vtableIndex.end())
+            {
+                // Override parent method - update vtable entry
+                info.vtable[vtableIt->second] = methodQualName;
+            }
+            else
+            {
+                // New method - add to vtable
+                info.vtableIndex[method->name] = info.vtable.size();
+                info.vtable.push_back(methodQualName);
+            }
         }
     }
 
     // Store the entity type info and get reference for method lowering
     entityTypes_[decl.name] = std::move(info);
-    const EntityTypeInfo &storedInfo = entityTypes_[decl.name];
+    EntityTypeInfo &storedInfo = entityTypes_[decl.name];
 
-    // Lower all methods
+    // Lower all methods first (so they are defined before vtable references them)
     for (auto *method : storedInfo.methods)
     {
         lowerMethodDecl(*method, decl.name, true);
     }
+
+    // Emit vtable global (array of function pointers)
+    if (!storedInfo.vtable.empty())
+    {
+        emitVtable(storedInfo);
+    }
+}
+
+void Lowerer::emitVtable(const EntityTypeInfo & /*info*/)
+{
+    // BUG-VL-011: Virtual dispatch is now handled via class_id-based dispatch
+    // instead of vtable pointers. The vtable info is used at compile time
+    // to generate dispatch code, not runtime vtable lookup.
+    // This function is kept as a placeholder for future vtable-based dispatch.
 }
 
 void Lowerer::lowerInterfaceDecl(InterfaceDecl &decl)

@@ -34,15 +34,12 @@ func main() {
     Viper.Terminal.Say("  !true: " + Viper.Fmt.Bool(!true));
     Viper.Terminal.Say("  !false: " + Viper.Fmt.Bool(!false));
 
-    // Bitwise operators - TESTING IF SUPPORTED
+    // Bitwise operators
     Viper.Terminal.Say("");
-    Viper.Terminal.Say("Bitwise: (may not be supported)");
-    // These cause parse errors - bitwise operators not implemented
-    // Viper.Terminal.Say("  5 & 3 = " + Viper.Fmt.Int(5 & 3));
-    // Viper.Terminal.Say("  5 | 3 = " + Viper.Fmt.Int(5 | 3));
-    // Viper.Terminal.Say("  5 ^ 3 = " + Viper.Fmt.Int(5 ^ 3));
-    // Viper.Terminal.Say("  ~5 = " + Viper.Fmt.Int(~5));
-    Viper.Terminal.Say("  SKIPPED - bitwise operators not supported");
+    Viper.Terminal.Say("Bitwise:");
+    Viper.Terminal.Say("  12 & 10 = " + Viper.Fmt.Int(12 & 10));
+    Viper.Terminal.Say("  12 | 10 = " + Viper.Fmt.Int(12 | 10));
+    Viper.Terminal.Say("  12 ^ 10 = " + Viper.Fmt.Int(12 ^ 10));
 
     // String concatenation
     var s1 = "Hello";

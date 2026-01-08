@@ -51,6 +51,11 @@ extern "C"
     /// @return Pointer to the allocated object or NULL on allocation failure.
     void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 
+    /// @brief Get the class ID of a runtime-managed object.
+    /// @param p Pointer to a runtime-managed object (may be NULL).
+    /// @return The class ID, or 0 if p is NULL or not a valid object.
+    int64_t rt_obj_class_id(void *p);
+
     /// @brief Increment the reference count for a runtime-managed object if the pointer is
     /// non-null.
     /// @param p Pointer to a runtime-managed object; NULL pointers are ignored.

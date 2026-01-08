@@ -1,243 +1,349 @@
 # BASIC vs ViperLang Feature Comparison
 
-## Executive Summary
+A comprehensive comparison of Viper BASIC and ViperLang language capabilities based on systematic testing.
 
-| Category | BASIC | ViperLang | Winner |
-|----------|-------|-----------|--------|
-| Primitives | ✅ 5/5 | ⚠️ 4/5 | BASIC |
-| Variables | ✅ 3/3 | ✅ 2/2 | BASIC (has STATIC) |
-| Operators | ✅ Full | ⚠️ Partial | BASIC |
-| Control Flow | ✅ Full | ✅ Mostly | BASIC (has DO..LOOP) |
-| Functions | ✅ Full | ⚠️ Partial | BASIC (VL lambdas broken) |
-| Collections | ✅ Arrays | ✅ List | Tie |
-| OOP Classes | ✅ Full | ✅ Works | Tie |
-| OOP Inheritance | ✅ Works | ❌ Broken | BASIC |
-| OOP Interfaces | ⚠️ Bug | ⚠️ Bug | Tie (both buggy) |
-| OOP Generics | N/A | ❌ Broken | N/A |
-| Error Handling | ✅ TRY/CATCH | ⚠️ guard only | BASIC |
-| I/O | ✅ Works | ✅ Works | Tie |
-| String Functions | ✅ Full | ✅ Full | Tie |
-| Math Functions | ✅ Full | ✅ Full | Tie |
-| Modules | ⚠️ Bug | ✅ Works | ViperLang |
+## Summary
 
-**Overall: BASIC is more complete and stable. ViperLang has critical OOP bugs.**
-
-Legend: ✅ Works | ⚠️ Partial/Bugs | ❌ Missing/Broken
-
----
-
-## Detailed Test Results
-
-### 1. Primitives (01_primitives)
-| Feature | BASIC | ViperLang |
-|---------|-------|-----------|
-| Integer | ✅ `DIM x AS INTEGER` | ✅ `var x: Integer = 42` |
-| Float | ✅ `DIM x AS DOUBLE` | ✅ `var x: Number = 3.14` |
-| String | ✅ `DIM x AS STRING` | ✅ `var x: String = "hi"` |
-| Boolean | ✅ `TRUE/FALSE` | ✅ `true/false` |
-| Byte | N/A | ❌ **BUG-VL-001** - can't assign integer literal |
-
-### 2. Variables (02_variables)
-| Feature | BASIC | ViperLang |
-|---------|-------|-----------|
-| Mutable | ✅ `DIM x` | ✅ `var x = ...` |
-| Constants | ✅ `CONST X = 10` | ✅ `final x = ...` |
-| Static | ✅ `STATIC x` | ❌ Not supported |
-| Type inference | ✅ Suffix-based | ✅ Full inference |
-
-### 3. Operators (03_operators)
-| Feature | BASIC | ViperLang |
-|---------|-------|-----------|
-| Arithmetic | ✅ `+ - * / MOD` | ✅ `+ - * / %` |
-| Power | ✅ `^` | ❌ `**` not working |
-| Comparison | ✅ `= <> < > <= >=` | ✅ `== != < > <= >=` |
-| Logical | ✅ `AND OR NOT` | ✅ `&& \|\| !` |
-| Bitwise | ✅ Context-based | ❌ **BUG-VL-002** - not parsed |
-| String concat | ✅ `+` or `;` | ✅ `+` |
-
-### 4. Control Flow (04_control_flow)
-| Feature | BASIC | ViperLang |
-|---------|-------|-----------|
-| If/Else | ✅ `IF...THEN...ELSE...END IF` | ✅ `if (cond) {...}` |
-| Select/Match | ✅ `SELECT CASE` | ✅ `match value {...}` |
-| While | ✅ `WHILE...WEND` | ✅ `while (cond) {...}` |
-| Do Loop | ✅ `DO...LOOP WHILE/UNTIL` | ❌ Not supported |
-| For | ✅ `FOR...TO...NEXT` | ✅ `for (;;) {...}` |
-| For-each | ✅ `FOR EACH...IN` | ✅ `for (x in coll)` |
-| Break | ✅ `EXIT FOR/DO` | ✅ `break` |
-| Continue | ❌ Not supported | ✅ `continue` |
-| Guard | ❌ Not supported | ✅ `guard (cond) else {...}` |
-
-**Note**: ViperLang has **BUG-VL-003** - string concat with `Viper.Fmt.Int()` in loops crashes
-
-### 5. Functions (05_functions)
-| Feature | BASIC | ViperLang |
-|---------|-------|-----------|
-| Functions | ✅ `FUNCTION...END FUNCTION` | ✅ `func name() -> Type` |
-| Procedures | ✅ `SUB...END SUB` | ✅ `func name()` |
-| Return | ✅ `name = value` or `RETURN` | ✅ `return value` |
-| Parameters | ✅ ByVal/ByRef | ✅ By value |
-| Default params | ❌ Not supported | ✅ Supported |
-| Named args | ❌ Not supported | ✅ `func(x: 1)` |
-| Lambdas | ❌ Not supported | ❌ **BUG-VL-004** - runtime errors |
-
-### 6. Collections (06_collections)
-| Feature | BASIC | ViperLang |
-|---------|-------|-----------|
-| Fixed arrays | ✅ `DIM arr(10)` | ❌ N/A |
-| Multi-dim | ✅ `DIM arr(10, 10)` | ❌ N/A |
-| Dynamic arrays | ✅ `REDIM` | ❌ N/A |
-| Lists | ✅ `Viper.Collections.List` | ✅ `List[T]` |
-| Iteration | ✅ `FOR EACH` | ✅ `for (x in list)` |
-
-### 7. OOP - Classes/Entities (07_oop_classes)
-| Feature | BASIC | ViperLang |
-|---------|-------|-----------|
-| Definition | ✅ `CLASS...END CLASS` | ✅ `entity name {...}` |
-| Constructor | ✅ `PUBLIC SUB NEW()` | ✅ `expose func init()` |
-| Destructor | ✅ `PUBLIC SUB DESTROY()` | ❌ N/A (GC) |
-| Fields | ✅ `PUBLIC/PRIVATE field AS Type` | ✅ `expose/hide Type field;` |
-| Methods | ✅ `PUBLIC/PRIVATE FUNCTION` | ✅ `expose/hide func` |
-| Self reference | ✅ `ME` | ✅ implicit |
-| Object creation | ✅ `NEW ClassName()` | ✅ `new Entity()` |
-
-### 8. OOP - Inheritance (08_oop_inheritance)
-| Feature | BASIC | ViperLang |
-|---------|-------|-----------|
-| Syntax | ✅ `CLASS Child : Parent` | ⚠️ `entity Child extends Parent` |
-| Inherited fields | ✅ Works | ❌ **BUG-VL-006** - not accessible |
-| Method override | ✅ `OVERRIDE FUNCTION` | ⚠️ Implicit only (**BUG-VL-005**) |
-| Polymorphism | ✅ Works | ❌ **BUG-VL-007** - type mismatch |
-| Field ordering | ✅ Works | ❌ **BUG-VL-008** - values swapped |
-
-### 9. OOP - Interfaces (09_oop_interfaces)
-| Feature | BASIC | ViperLang |
-|---------|-------|-----------|
-| Definition | ✅ `INTERFACE...END INTERFACE` | ✅ `interface name {...}` |
-| Implementation | ⚠️ `CLASS C IMPLEMENTS I` | ✅ `entity E implements I` |
-| Constructor with params | ❌ **BUG-BAS-002** | ✅ Works |
-| Interface variable | ✅ Works | ✅ Assignment works |
-| Interface method call | ✅ Works | ❌ **BUG-VL-010** - wrong return type |
-
-### 10. OOP - Generics (10_oop_generics)
-| Feature | BASIC | ViperLang |
-|---------|-------|-----------|
-| Generic entities | N/A | ❌ **BUG-VL-009** - not implemented |
-| Generic functions | N/A | ❌ **BUG-VL-009** - not implemented |
-| Type parameters | N/A | ❌ "Unknown type: T" |
-
-### 11. Error Handling (11_error_handling)
-| Feature | BASIC | ViperLang |
-|---------|-------|-----------|
-| TRY/CATCH | ✅ `TRY...CATCH...FINALLY` | ❌ Not supported |
-| ON ERROR | ✅ `ON ERROR GOTO` | ❌ Not supported |
-| Guard | ❌ Not supported | ✅ `guard (cond) else {...}` |
-| Optional types | ❌ Not supported | ⚠️ Not tested |
-
-### 12. I/O Console (12_io_console)
-| Feature | BASIC | ViperLang |
-|---------|-------|-----------|
-| Print line | ✅ `PRINT` | ✅ `Viper.Terminal.Say()` |
-| Print inline | ✅ `PRINT ...;` | ✅ `Viper.Terminal.Print()` |
-| Numbers | ✅ Direct | ✅ `SayInt()`, `SayNum()` |
-| Formatting | ✅ `STR$()` | ✅ `Viper.Fmt.*` |
-
-### 13. String Functions (13_string_functions)
-| Feature | BASIC | ViperLang |
-|---------|-------|-----------|
-| Length | ✅ `LEN()` | ✅ `Viper.String.Length()` |
-| Substring | ✅ `MID$()` | ✅ `Viper.String.Substring()` |
-| Left/Right | ✅ `LEFT$()`, `RIGHT$()` | ✅ Available |
-| Case | ✅ `UCASE$()`, `LCASE$()` | ✅ `ToUpper()`, `ToLower()` |
-| Trim | ✅ `TRIM$()`, `LTRIM$()`, `RTRIM$()` | ✅ `Trim()` |
-| Find | ✅ `INSTR()` | ✅ `IndexOf()` |
-| Char/Asc | ✅ `CHR$()`, `ASC()` | ✅ `Chr()`, `Asc()` |
-
-### 14. Math Functions (14_math_functions)
-| Feature | BASIC | ViperLang |
-|---------|-------|-----------|
-| Abs | ✅ `ABS()` | ✅ `Viper.Math.Abs()` |
-| Sqrt | ✅ `SQR()` | ✅ `Viper.Math.Sqrt()` |
-| Power | ✅ `^` operator | ✅ `Viper.Math.Pow()` |
-| Trig | ✅ `SIN()`, `COS()`, `TAN()` | ✅ `Sin()`, `Cos()`, `Tan()` |
-| Floor/Ceil | ✅ `INT()`, `FIX()` | ✅ `Floor()`, `Ceil()` |
-| Min/Max | ❌ Not built-in | ✅ `Min()`, `Max()` |
-| Sign | ✅ `SGN()` | ⚠️ Not tested |
-| Log/Exp | ✅ `LOG()`, `EXP()` | ⚠️ Not tested |
-
-### 15. Modules & Namespaces (15_modules)
-| Feature | BASIC | ViperLang |
-|---------|-------|-----------|
-| Declaration | ✅ `NAMESPACE...END NAMESPACE` | ✅ `module name;` |
-| Function calls | ❌ **BUG-BAS-001** - unknown callee | ✅ Works |
-| Runtime modules | N/A | ✅ `Viper.*` modules |
+| Category | BASIC | ViperLang | Notes |
+|----------|-------|-----------|-------|
+| Primitives | ✅ Full | ✅ Full | VL has hex/binary literals, BASIC has type suffixes |
+| Variables | ✅ Full | ✅ Full | BASIC has STATIC, VL has type inference |
+| Operators | ✅ Full | ✅ Full | VL has null coalescing (??) |
+| Control Flow | ✅ Full | ⚠️ Partial | VL match statement broken (BUG-VL-012) |
+| Functions | ✅ Full | ✅ Full | VL has lambdas, BASIC has BYREF |
+| Arrays | ✅ Full | ❌ None | VL uses List instead |
+| Collections | ⚠️ Via runtime | ✅ Built-in | VL has List, Map, Set built-in |
+| OOP Classes | ✅ Full | ✅ Full | Both work well |
+| Inheritance | ✅ Full | ⚠️ Partial | VL lacks virtual dispatch (BUG-VL-011) |
+| Interfaces | ✅ Full | ⚠️ Partial | VL interface method calls broken (BUG-VL-010) |
+| Generics | ❌ None | ❌ Broken | VL has syntax but not implemented (BUG-VL-009) |
+| Error Handling | ✅ Full | ⚠️ Partial | BASIC has TRY/CATCH, VL has guard/optionals |
+| I/O | ✅ Full | ✅ Full | Both work well |
+| String Functions | ✅ Full | ✅ Full | Both have full set |
+| Math Functions | ✅ Full | ✅ Full | Both have full set |
+| Modules | ✅ Full | ✅ Full | Both work well |
 
 ---
 
-## Critical ViperLang Gaps
+## Detailed Comparison
 
-### Must Fix (Blocking OOP)
-1. **BUG-VL-006**: Inherited fields not accessible in child entities
-2. **BUG-VL-007**: Polymorphism broken - can't assign child to parent type
-3. **BUG-VL-009**: Generics completely non-functional
-4. **BUG-VL-010**: Interface method calls return wrong type
+### 1. Primitive Types & Literals
 
-### Should Fix (Functional Issues)
-5. **BUG-VL-002**: Bitwise operators not parsed (&, |, ^, ~)
-6. **BUG-VL-004**: Lambdas cause runtime errors
-7. **BUG-VL-003**: String concat in loops crashes (exit 134)
-8. **BUG-VL-008**: Entity field ordering bug - values swapped
-9. **BUG-VL-001**: Byte type won't accept integer literals
+| Feature | BASIC | ViperLang |
+|---------|-------|-----------|
+| Integer | `DIM x AS INTEGER` / `x%` | `var x: Integer` |
+| Long | `DIM x AS LONG` / `x&` | (use Integer - 64-bit) |
+| Float (single) | `DIM x AS SINGLE` / `x!` | `var x: Number` |
+| Float (double) | `DIM x AS DOUBLE` / `x#` | `var x: Number` |
+| String | `DIM x AS STRING` / `x$` | `var x: String` |
+| Boolean | `DIM x AS BOOLEAN` | `var x: Boolean` |
+| Byte | ❌ | `var x: Byte` ✅ (fixed) |
+| Hex literals | ❌ | `0xFF` ✅ |
+| Binary literals | ❌ | `0b1010` ✅ |
+| Type suffixes | `%`, `#`, `$`, `!`, `&` ✅ | ❌ |
+| Type inference | ❌ | `var x = 42` ✅ |
+
+**Test Results:** Both pass all primitive tests.
+
+---
+
+### 2. Variables & Constants
+
+| Feature | BASIC | ViperLang |
+|---------|-------|-----------|
+| Mutable variable | `DIM x AS ...` | `var x = ...` |
+| Constant | `CONST PI = 3.14` | `final pi = 3.14` |
+| Static variable | `STATIC x` ✅ | ❌ (use entity fields) |
+| Multiple declaration | `DIM a, b, c AS INTEGER` | `var a = 1; var b = 2;` |
+| Reassignment | `x = newValue` | `x = newValue` |
+
+**Test Results:** Both pass. BASIC has STATIC variables, ViperLang doesn't.
+
+---
+
+### 3. Operators
+
+| Feature | BASIC | ViperLang |
+|---------|-------|-----------|
+| Arithmetic | `+ - * / \ MOD ^` | `+ - * / %` |
+| Integer division | `\` ✅ | ❌ (/ for integers) |
+| Power/Exponent | `^` ✅ | `Viper.Math.Pow()` |
+| Comparison | `= <> < > <= >=` | `== != < > <= >=` |
+| Logical | `AND OR NOT` | `&& \|\| !` |
+| Bitwise AND | ❌ | `&` ✅ (fixed) |
+| Bitwise OR | ❌ | `\|` ✅ (fixed) |
+| Bitwise XOR | ❌ | `^` ✅ (fixed) |
+| String concat | `+` | `+` |
+| Null coalescing | ❌ | `??` ✅ |
+| Optional chain | ❌ | `?.` ✅ |
+
+**Test Results:** Both pass. ViperLang bitwise operators now work.
+
+---
+
+### 4. Control Flow
+
+| Feature | BASIC | ViperLang |
+|---------|-------|-----------|
+| If/Then/Else | `IF...THEN...ELSE...END IF` ✅ | `if (...) {...} else {...}` ✅ |
+| ElseIf | `ELSEIF` ✅ | `else if` ✅ |
+| Select Case | `SELECT CASE...END SELECT` ✅ | `match` ❌ (BUG-VL-012) |
+| For loop | `FOR...TO...STEP...NEXT` ✅ | `for (;;) {...}` ✅ |
+| For-Each | `FOR EACH...IN...NEXT` ✅ | `for (x in list) {...}` ✅ |
+| While | `WHILE...WEND` ✅ | `while (...) {...}` ✅ |
+| Do While | `DO WHILE...LOOP` ✅ | ❌ (use while) |
+| Do Until | `DO UNTIL...LOOP` ✅ | ❌ |
+| Do...Loop While | `DO...LOOP WHILE` ✅ | ❌ |
+| Exit/Break | `EXIT FOR`, `EXIT DO` ✅ | `break` ✅ |
+| Continue | ❌ | `continue` ✅ |
+| Guard | ❌ | `guard (...) else {...}` ✅ |
+
+**Test Results:** BASIC has more loop variants. ViperLang match statement is broken.
+
+---
+
+### 5. Functions
+
+| Feature | BASIC | ViperLang |
+|---------|-------|-----------|
+| Function (returns value) | `FUNCTION...END FUNCTION` ✅ | `func name() -> Type` ✅ |
+| Procedure (no return) | `SUB...END SUB` ✅ | `func name()` ✅ |
+| Parameters | `(x AS INTEGER)` | `(x: Integer)` |
+| ByVal (default) | `BYVAL x` ✅ | (default) |
+| ByRef | `BYREF x` ✅ | ❌ |
+| Return statement | `RETURN value` or `name = value` | `return value` |
+| Recursion | ✅ | ✅ |
+| Lambdas | ❌ | `(x) => x + 1` ✅ (fixed) |
+| Closures | ❌ | ✅ |
+
+**Test Results:** Both pass. BASIC has BYREF, ViperLang has lambdas.
+
+---
+
+### 6. Arrays & Collections
+
+| Feature | BASIC | ViperLang |
+|---------|-------|-----------|
+| Fixed array | `DIM arr(10)` ✅ | ❌ |
+| 2D array | `DIM arr(10, 10)` ✅ | ❌ |
+| Dynamic array | `REDIM` ✅ | ❌ |
+| Array bounds | `LBOUND()`, `UBOUND()` ✅ | ❌ |
+| List | Via `Viper.Collections` | `List[T]` ✅ built-in |
+| Map | Via `Viper.Collections` | `Map[K,V]` ✅ built-in |
+| Set | Via `Viper.Collections` | `Set[T]` ✅ built-in |
+
+**Test Results:** BASIC has native arrays. ViperLang uses List/Map/Set instead.
+
+---
+
+### 7. OOP - Classes/Entities
+
+| Feature | BASIC | ViperLang |
+|---------|-------|-----------|
+| Class definition | `CLASS...END CLASS` ✅ | `entity Name {...}` ✅ |
+| Value type | `TYPE...END TYPE` ✅ | `value Name {...}` ✅ |
+| Fields | `PUBLIC/PRIVATE field AS Type` | `expose/hide field: Type` |
+| Methods | `PUBLIC/PRIVATE SUB/FUNCTION` | `expose/hide func` |
+| Constructor | `PUBLIC SUB NEW()` ✅ | `expose func init()` ✅ |
+| Destructor | `PUBLIC SUB DESTROY()` ✅ | ❌ (GC) |
+| Self reference | `ME` | `self` |
+| Object creation | `NEW ClassName()` | `new Entity()` |
+| Object deletion | `DELETE obj` ✅ | ❌ (automatic GC) |
+
+**Test Results:** Both pass basic OOP tests.
+
+---
+
+### 8. OOP - Inheritance
+
+| Feature | BASIC | ViperLang |
+|---------|-------|-----------|
+| Single inheritance | `CLASS Child : Parent` ✅ | `entity Child extends Parent` ✅ |
+| Access parent fields | ✅ | ✅ (fixed - BUG-VL-006) |
+| Override methods | `OVERRIDE` ✅ | `override` ✅ (fixed - BUG-VL-005) |
+| Polymorphic assignment | `DIM a AS Animal: SET a = dog` ✅ | `var a: Animal = dog` ✅ (fixed - BUG-VL-007) |
+| Virtual dispatch | ✅ | ❌ (BUG-VL-011) |
+| Super call | Implicit | `super(...)` |
+
+**Test Results:** BASIC has full virtual dispatch. ViperLang polymorphic assignment works but virtual dispatch doesn't.
+
+---
+
+### 9. OOP - Interfaces
+
+| Feature | BASIC | ViperLang |
+|---------|-------|-----------|
+| Interface definition | `INTERFACE...END INTERFACE` ✅ | `interface Name {...}` ✅ |
+| Implementation | `IMPLEMENTS IName` ✅ | `implements IName` ✅ |
+| Multiple interfaces | ✅ | ✅ |
+| Interface variable | `DIM s AS IShape` ✅ | `var s: IShape` ✅ |
+| Call via interface | ✅ | ❌ (BUG-VL-010) |
+
+**Test Results:** BASIC interfaces work fully. ViperLang interface method calls broken.
+
+---
+
+### 10. Generics
+
+| Feature | BASIC | ViperLang |
+|---------|-------|-----------|
+| Generic entity | ❌ | `entity Box[T]` ❌ (BUG-VL-009) |
+| Generic function | ❌ | `func foo[T]()` ❌ |
+| Type constraints | ❌ | ❌ |
+
+**Test Results:** Neither has working generics. ViperLang has syntax but it's not implemented.
+
+---
+
+### 11. Error Handling
+
+| Feature | BASIC | ViperLang |
+|---------|-------|-----------|
+| Try/Catch | `TRY...CATCH...END TRY` ✅ | ❌ |
+| Finally | `FINALLY` ✅ | ❌ |
+| On Error | `ON ERROR GOTO` ✅ | ❌ |
+| Resume | `RESUME NEXT` ✅ | ❌ |
+| Optional types | ❌ | `T?` ✅ |
+| Null check | ❌ | `value ?? default` ✅ |
+| Guard statement | ❌ | `guard (cond) else {...}` ✅ |
+
+**Test Results:** Different approaches - BASIC uses exceptions, ViperLang uses optionals/guard.
+
+---
+
+### 12. I/O
+
+| Feature | BASIC | ViperLang |
+|---------|-------|-----------|
+| Print with newline | `PRINT` ✅ | `Viper.Terminal.Say()` ✅ |
+| Print without newline | `PRINT x;` ✅ | `Viper.Terminal.Print()` ✅ |
+| Read line | `INPUT` ✅ | `Viper.Terminal.ReadLine()` ✅ |
+| Read key | `INKEY$` ✅ | `Viper.Terminal.ReadKey()` ✅ |
+
+**Test Results:** Both pass I/O tests.
+
+---
+
+### 13. String Functions
+
+| Feature | BASIC | ViperLang |
+|---------|-------|-----------|
+| Length | `LEN()` | `Viper.String.Length()` |
+| Substring | `MID$()` | `Viper.String.Substring()` |
+| Left/Right | `LEFT$()`, `RIGHT$()` | `Viper.String.Left/Right()` |
+| Find | `INSTR()` | `Viper.String.IndexOf()` |
+| Upper/Lower | `UCASE$()`, `LCASE$()` | `Viper.String.ToUpper/Lower()` |
+| Trim | `TRIM$()`, `LTRIM$()`, `RTRIM$()` | `Viper.String.Trim()` |
+| Char/Code | `CHR$()`, `ASC()` | `Viper.String.Chr/Asc()` |
+| Convert | `VAL()`, `STR$()` | `Viper.Fmt.Int()` etc. |
+
+**Test Results:** Both pass string function tests.
+
+---
+
+### 14. Math Functions
+
+| Feature | BASIC | ViperLang |
+|---------|-------|-----------|
+| Absolute | `ABS()` | `Viper.Math.Abs()` |
+| Square root | `SQR()` | `Viper.Math.Sqrt()` |
+| Power | `POW()` / `^` | `Viper.Math.Pow()` |
+| Trig | `SIN()`, `COS()`, `TAN()` | `Viper.Math.Sin/Cos/Tan()` |
+| Floor/Ceiling | `INT()`, `FIX()` | `Viper.Math.Floor/Ceil()` |
+| Sign | `SGN()` ✅ | ❌ |
+| Log/Exp | `LOG()`, `EXP()` ✅ | ❌ |
+| Min/Max | ❌ | `Viper.Math.Min/Max()` ✅ |
+| Random | `RND()`, `RANDOMIZE` | `Viper.Math.Random()` |
+
+**Test Results:** Both pass math tests. Some functions differ.
+
+---
+
+### 15. Modules/Namespaces
+
+| Feature | BASIC | ViperLang |
+|---------|-------|-----------|
+| Namespace | `NAMESPACE...END NAMESPACE` ✅ | `module Name;` ✅ |
+| Qualified access | `Namespace.Function()` ✅ | `Module.Function()` ✅ |
+| Import | `USING namespace` ✅ | `import path` ✅ |
+
+**Test Results:** Both pass module tests.
+
+---
+
+## ViperLang Gaps (Features BASIC Has That ViperLang Lacks)
+
+### Critical (Blocking real-world use)
+1. **Virtual method dispatch** (BUG-VL-011) - Polymorphism incomplete
+2. **Interface method calls** (BUG-VL-010) - Interface polymorphism broken
+3. **Match statement** (BUG-VL-012) - Pattern matching unusable
+4. **Generics** (BUG-VL-009) - No generic programming
+
+### Important
+5. **Native arrays** - Must use List instead of fixed arrays
+6. **Try/Catch error handling** - Only guard/optionals available
+7. **ByRef parameters** - Cannot pass by reference
+8. **Static variables** - Must use entity fields
 
 ### Nice to Have
-10. **BUG-VL-005**: Add `override` keyword support
-11. Add STATIC variable support
-12. Add DO..LOOP construct
-13. Add proper error handling (try/catch or Result types)
+9. **DO WHILE/UNTIL loops** - Use while instead
+10. **Destructor support** - GC handles cleanup
+11. **Integer division operator** - Use regular division
+12. **Power operator** - Use Viper.Math.Pow()
+13. **SGN, LOG, EXP functions** - Could add to Viper.Math
 
 ---
 
-## Critical BASIC Bugs
+## Open Bugs Summary
 
-1. **BUG-BAS-001**: Namespace function calls fail at codegen
-2. **BUG-BAS-002**: Interface with constructor parameters causes codegen error
+| Bug | Description | Severity |
+|-----|-------------|----------|
+| BUG-VL-009 | Generics not implemented | High |
+| BUG-VL-010 | Interface method calls broken | High |
+| BUG-VL-011 | No virtual method dispatch | High |
+| BUG-VL-012 | Match statement runtime trap | High |
+
+## Fixed Bugs (This Session)
+
+| Bug | Description | Status |
+|-----|-------------|--------|
+| BUG-VL-001 | Byte literals | ✅ Fixed |
+| BUG-VL-002 | Bitwise operators | ✅ Fixed |
+| BUG-VL-003 | String concat crash | ✅ Fixed |
+| BUG-VL-004 | Lambda allocation | ✅ Fixed |
+| BUG-VL-005 | Override keyword | ✅ Fixed |
+| BUG-VL-006 | Inherited fields | ✅ Fixed |
+| BUG-VL-007 | Polymorphic assignment | ✅ Fixed |
+| BUG-VL-008 | Entity field ordering | ✅ Fixed |
 
 ---
 
-## Recommendations for ViperLang
+## Recommendations
 
-### Priority 1: Fix OOP Foundation
-- Fix inheritance field visibility (semantic analysis)
-- Fix polymorphism type checking (allow child→parent assignment)
-- Fix entity field ordering
+### Priority 1: Complete OOP (Required for production use)
+1. Implement vtables for virtual method dispatch
+2. Fix interface method calls with vtable lookup
+3. Consider using same vtable mechanism for both
 
-### Priority 2: Complete Generics
-- Implement generic type parameter resolution
-- Enable generic entity instantiation
-- Enable generic function calls
+### Priority 2: Control Flow
+1. Fix match statement codegen
+2. Consider adding DO WHILE/UNTIL as sugar
 
-### Priority 3: Fix Interface Polymorphism
-- Fix method return type handling through interface variables
+### Priority 3: Generics
+1. Register type parameters in scope
+2. Implement type substitution during instantiation
+3. Generate monomorphized code
 
-### Priority 4: Operators & Types
-- Add bitwise operator parsing
-- Fix Byte type integer literal assignment
-- Fix power operator
-
-### Priority 5: Higher-Order Functions
-- Fix lambda invocation
-- Test closures
+### Priority 4: Error Handling
+1. Consider adding try/catch syntax
+2. Or enhance Result type pattern
 
 ---
 
 ## Test Files
 
-All test files are located at:
-- `tests/comparison/basic/*.bas` (15 tests)
-- `tests/comparison/viper/*.viper` (15 tests)
+All test programs are located in:
+- `/tests/comparison/basic/` - BASIC test programs
+- `/tests/comparison/viper/` - ViperLang test programs
 
-Run with:
-```bash
-./build/src/tools/ilc/ilc front basic -run tests/comparison/basic/XX_name.bas
-./build/src/tools/ilc/ilc front viperlang -run tests/comparison/viper/XX_name.viper
-```
+Each test file covers one category (01_primitives, 02_variables, etc.)

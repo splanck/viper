@@ -45,10 +45,9 @@ func main() {
     var bin = 0b1010;
     Viper.Terminal.Say("Binary 0b1010: " + Viper.Fmt.Int(bin));
 
-    // Byte type - NOTE: requires cast from Integer
-    // var bt: Byte = 255;  // ERROR: Type mismatch
-    // Viper.Terminal.Say("Byte: " + Viper.Fmt.Int(bt));
-    Viper.Terminal.Say("Byte: (skipped - requires explicit cast)");
+    // Byte type
+    var bt: Byte = 255;
+    Viper.Terminal.Say("Byte: " + Viper.Fmt.Int(bt));
 
     Viper.Terminal.Say("=== Primitives test complete ===");
 }
