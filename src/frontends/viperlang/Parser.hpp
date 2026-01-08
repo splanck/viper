@@ -389,6 +389,18 @@ class Parser
     /// @return The parsed expression.
     ExprPtr parseEquality();
 
+    /// @brief Parse bitwise AND expressions (&).
+    /// @return The parsed expression.
+    ExprPtr parseBitwiseAnd();
+
+    /// @brief Parse bitwise XOR expressions (^).
+    /// @return The parsed expression.
+    ExprPtr parseBitwiseXor();
+
+    /// @brief Parse bitwise OR expressions (|).
+    /// @return The parsed expression.
+    ExprPtr parseBitwiseOr();
+
     /// @brief Parse logical AND expressions (&&).
     /// @return The parsed expression.
     ExprPtr parseLogicalAnd();

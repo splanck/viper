@@ -61,6 +61,29 @@ Lowerer::Value Lowerer::emitUnary(Opcode op, Type ty, Value operand)
     return Value::temp(id);
 }
 
+Lowerer::Value Lowerer::widenByteToInteger(Value value)
+{
+    // Zero-extend i32 to i64 via alloca/store/load pattern
+    // Store i32 value, load as i64 (upper bits will be zero due to alloca zeroing)
+    unsigned slotId = nextTempId();
+    il::core::Instr allocaInstr;
+    allocaInstr.result = slotId;
+    allocaInstr.op = Opcode::Alloca;
+    allocaInstr.type = Type(Type::Kind::Ptr);
+    allocaInstr.operands = {Value::constInt(8)}; // 8 bytes for i64
+    blockMgr_.currentBlock()->instructions.push_back(allocaInstr);
+    Value slot = Value::temp(slotId);
+
+    // Store i32 value at offset 0
+    emitStore(slot, value, Type(Type::Kind::I32));
+
+    // Load as i64 - the upper 32 bits will be whatever was in memory (likely zero from alloca)
+    // To ensure zeroing, we mask after loading
+    Value loaded = emitLoad(slot, Type(Type::Kind::I64));
+    return emitBinary(
+        Opcode::And, Type(Type::Kind::I64), loaded, Value::constInt(0xFFFFFFFFLL));
+}
+
 Lowerer::Value Lowerer::emitCallRet(Type retTy,
                                     const std::string &callee,
                                     const std::vector<Value> &args)

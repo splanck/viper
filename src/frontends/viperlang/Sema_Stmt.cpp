@@ -86,6 +86,19 @@ void Sema::analyzeVarStmt(VarStmt *stmt)
     TypeRef varType;
     if (declaredType && initType)
     {
+        // BUG-VL-001: Allow integer literals in Byte range (0-255) to be assigned to Byte
+        if (declaredType->kind == TypeKindSem::Byte && initType->kind == TypeKindSem::Integer)
+        {
+            if (stmt->initializer->kind == ExprKind::IntLiteral)
+            {
+                auto *lit = static_cast<IntLiteralExpr *>(stmt->initializer.get());
+                if (lit->value >= 0 && lit->value <= 255)
+                {
+                    initType = types::byte(); // Treat as Byte literal
+                }
+            }
+        }
+
         // Both declared and inferred - check compatibility
         if (!declaredType->isAssignableFrom(*initType))
         {

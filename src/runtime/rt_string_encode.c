@@ -109,6 +109,8 @@ rt_string rt_const_cstr(const char *c)
     s->data = (char *)c;
     s->heap = NULL;
     s->literal_len = strlen(c);
-    s->literal_refs = 1;
+    // BUG-VL-003 fix: Make literal strings immortal so they're never freed
+    // This prevents use-after-free when string literals are used in loops
+    s->literal_refs = SIZE_MAX;
     return s;
 }

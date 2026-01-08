@@ -708,6 +708,12 @@ class Lowerer
     /// @return The result value.
     Value emitUnary(Opcode op, Type ty, Value operand);
 
+    /// @brief Widen a Byte (i32) value to Integer (i64).
+    /// @details Uses bitwise AND to zero-extend the value.
+    /// @param value The i32 value to widen.
+    /// @return The widened i64 value.
+    Value widenByteToInteger(Value value);
+
     /// @brief Emit a function call with return value.
     /// @param retTy The expected return type.
     /// @param callee The function name.

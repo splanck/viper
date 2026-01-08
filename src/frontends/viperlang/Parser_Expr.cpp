@@ -295,7 +295,7 @@ ExprPtr Parser::parseLogicalOr()
 
 ExprPtr Parser::parseLogicalAnd()
 {
-    ExprPtr expr = parseEquality();
+    ExprPtr expr = parseBitwiseOr();
     if (!expr)
         return nullptr;
 
@@ -303,11 +303,71 @@ ExprPtr Parser::parseLogicalAnd()
     while (match(TokenKind::AmpAmp, &opTok) || match(TokenKind::KwAnd, &opTok))
     {
         SourceLoc loc = opTok.loc;
-        ExprPtr right = parseEquality();
+        ExprPtr right = parseBitwiseOr();
         if (!right)
             return nullptr;
 
         expr = std::make_unique<BinaryExpr>(loc, BinaryOp::And, std::move(expr), std::move(right));
+    }
+
+    return expr;
+}
+
+ExprPtr Parser::parseBitwiseOr()
+{
+    ExprPtr expr = parseBitwiseXor();
+    if (!expr)
+        return nullptr;
+
+    Token opTok;
+    while (match(TokenKind::Pipe, &opTok))
+    {
+        SourceLoc loc = opTok.loc;
+        ExprPtr right = parseBitwiseXor();
+        if (!right)
+            return nullptr;
+
+        expr = std::make_unique<BinaryExpr>(loc, BinaryOp::BitOr, std::move(expr), std::move(right));
+    }
+
+    return expr;
+}
+
+ExprPtr Parser::parseBitwiseXor()
+{
+    ExprPtr expr = parseBitwiseAnd();
+    if (!expr)
+        return nullptr;
+
+    Token opTok;
+    while (match(TokenKind::Caret, &opTok))
+    {
+        SourceLoc loc = opTok.loc;
+        ExprPtr right = parseBitwiseAnd();
+        if (!right)
+            return nullptr;
+
+        expr = std::make_unique<BinaryExpr>(loc, BinaryOp::BitXor, std::move(expr), std::move(right));
+    }
+
+    return expr;
+}
+
+ExprPtr Parser::parseBitwiseAnd()
+{
+    ExprPtr expr = parseEquality();
+    if (!expr)
+        return nullptr;
+
+    Token opTok;
+    while (match(TokenKind::Ampersand, &opTok))
+    {
+        SourceLoc loc = opTok.loc;
+        ExprPtr right = parseEquality();
+        if (!right)
+            return nullptr;
+
+        expr = std::make_unique<BinaryExpr>(loc, BinaryOp::BitAnd, std::move(expr), std::move(right));
     }
 
     return expr;

@@ -461,17 +461,19 @@ DeclPtr Parser::parseEntityDecl()
     // Parse members (fields and methods)
     while (!check(TokenKind::RBrace) && !check(TokenKind::Eof))
     {
-        // Check for visibility modifier
+        // Check for modifiers (can appear in any order)
         Visibility visibility = Visibility::Private; // Default for entity types
-        if (check(TokenKind::KwExpose))
+        bool isOverride = false;
+
+        while (check(TokenKind::KwExpose) || check(TokenKind::KwHide) ||
+               check(TokenKind::KwOverride))
         {
-            visibility = Visibility::Public;
-            advance();
-        }
-        else if (check(TokenKind::KwHide))
-        {
-            visibility = Visibility::Private;
-            advance();
+            if (match(TokenKind::KwExpose))
+                visibility = Visibility::Public;
+            else if (match(TokenKind::KwHide))
+                visibility = Visibility::Private;
+            else if (match(TokenKind::KwOverride))
+                isOverride = true;
         }
 
         if (check(TokenKind::KwFunc))
@@ -480,7 +482,9 @@ DeclPtr Parser::parseEntityDecl()
             auto method = parseMethodDecl();
             if (method)
             {
-                static_cast<MethodDecl *>(method.get())->visibility = visibility;
+                auto *m = static_cast<MethodDecl *>(method.get());
+                m->visibility = visibility;
+                m->isOverride = isOverride;
                 entity->members.push_back(std::move(method));
             }
         }

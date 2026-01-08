@@ -346,6 +346,24 @@ void Lowerer::lowerEntityDecl(EntityDecl &decl)
     info.totalSize = kObjectHeaderSize;
     info.classId = nextClassId_++;
 
+    // BUG-VL-006 fix: Copy inherited fields from parent entity
+    if (!decl.baseClass.empty())
+    {
+        auto parentIt = entityTypes_.find(decl.baseClass);
+        if (parentIt != entityTypes_.end())
+        {
+            const EntityTypeInfo &parent = parentIt->second;
+            // Copy all parent fields to this entity (they keep the same offsets)
+            for (const auto &parentField : parent.fields)
+            {
+                info.fieldIndex[parentField.name] = info.fields.size();
+                info.fields.push_back(parentField);
+            }
+            // Start child fields after parent's fields
+            info.totalSize = parent.totalSize;
+        }
+    }
+
     for (auto &member : decl.members)
     {
         if (member->kind == DeclKind::Field)

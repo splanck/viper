@@ -47,6 +47,8 @@ namespace
 {
 using InterfaceSet = std::unordered_set<std::string>;
 std::unordered_map<std::string, InterfaceSet> g_interface_impls;
+// BUG-VL-007 fix: Track entity inheritance (child -> parent)
+std::unordered_map<std::string, std::string> g_entity_parents;
 } // namespace
 
 //=============================================================================
@@ -117,6 +119,10 @@ bool ViperType::isAssignableFrom(const ViperType &source) const
     if (kind == TypeKindSem::Interface &&
         (source.kind == TypeKindSem::Entity || source.kind == TypeKindSem::Value))
         return types::implementsInterface(source.name, name);
+
+    // BUG-VL-007 fix: Entity inheritance (Animal from Dog where Dog extends Animal)
+    if (kind == TypeKindSem::Entity && source.kind == TypeKindSem::Entity)
+        return types::isSubclassOf(source.name, name);
 
     // Generic container assignment: List[Unknown] -> List[T], etc.
     // This handles empty literal inference ([] can be assigned to List[Integer])
@@ -317,6 +323,33 @@ bool implementsInterface(const std::string &typeName, const std::string &interfa
     if (it == g_interface_impls.end())
         return false;
     return it->second.find(interfaceName) != it->second.end();
+}
+
+// BUG-VL-007 fix: Entity inheritance tracking
+void clearEntityInheritance()
+{
+    g_entity_parents.clear();
+}
+
+void registerEntityInheritance(const std::string &childName, const std::string &parentName)
+{
+    g_entity_parents[childName] = parentName;
+}
+
+bool isSubclassOf(const std::string &childName, const std::string &parentName)
+{
+    // Walk up the inheritance chain
+    std::string current = childName;
+    while (!current.empty())
+    {
+        auto it = g_entity_parents.find(current);
+        if (it == g_entity_parents.end())
+            return false; // No parent, not a subclass
+        if (it->second == parentName)
+            return true; // Found the parent
+        current = it->second; // Check grandparent
+    }
+    return false;
 }
 
 namespace

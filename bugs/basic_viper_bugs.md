@@ -3,11 +3,13 @@
 ## ViperLang Bugs
 
 ### BUG-VL-001: Byte type doesn't accept integer literals
+- **Status**: ✅ FIXED
 - **Test**: `tests/comparison/viper/01_primitives.viper`
 - **Code**: `var b: Byte = 255;`
 - **Expected**: Should accept integer literal for Byte type
 - **Actual**: `Type mismatch: expected Byte, got Integer`
 - **Severity**: Medium
+- **Fix**: Two-part fix: (1) Added compile-time check in `Sema_Stmt.cpp:analyzeVarStmt` to treat integer literals in range 0-255 as Byte type when assigning to a Byte variable. (2) Added `widenByteToInteger()` helper in `Lowerer_Emit.cpp` to zero-extend i32 to i64 when passing Byte arguments to runtime functions expecting Integer.
 
 #### Root Cause Analysis
 
@@ -56,11 +58,13 @@ if (declaredType->kind == TypeKindSem::Byte && initType->kind == TypeKindSem::In
 ---
 
 ### BUG-VL-002: Bitwise operators not supported
+- **Status**: ✅ FIXED
 - **Test**: `tests/comparison/viper/03_operators.viper`
 - **Code**: `var and = a & b;`
 - **Expected**: Bitwise AND/OR/XOR/NOT should work
 - **Actual**: Parse error - operators not recognized
 - **Severity**: Medium
+- **Fix**: Added `parseBitwiseOr()`, `parseBitwiseXor()`, `parseBitwiseAnd()` functions to `Parser_Expr.cpp` and updated `parseLogicalAnd()` to call `parseBitwiseOr()` instead of `parseEquality()`. Verified: `12 & 10 = 8`, `12 | 10 = 14`, `12 ^ 10 = 6`.
 
 #### Root Cause Analysis
 
@@ -137,12 +141,14 @@ And update `parseLogicalAnd()` to call `parseBitwiseOr()` instead of `parseEqual
 ---
 
 ### BUG-VL-003: String concatenation with Viper.Fmt.Int() in loops causes crash
+- **Status**: ✅ FIXED
 - **Test**: `tests/comparison/viper/04_control_flow.viper`
 - **Code**: `Viper.Terminal.Say("i = " + Viper.Fmt.Int(i));` inside for loop
 - **Expected**: Should print formatted string
 - **Actual**: Exit code 134 (SIGABRT), corrupted output
 - **Workaround**: Use `Viper.Terminal.SayInt()` instead
 - **Severity**: High
+- **Fix**: Made literal strings immortal by setting `literal_refs = SIZE_MAX` in `rt_const_cstr()` (`rt_string_encode.c:114`). This prevents the use-after-free when `rt_concat` unrefs the cached literal string.
 
 #### Root Cause Analysis
 
@@ -245,11 +251,13 @@ if (a && a->heap != NULL)  // Only unref heap-backed strings
 ---
 
 ### BUG-VL-004: Lambda/higher-order functions cause runtime errors
+- **Status**: ✅ FIXED
 - **Test**: `tests/comparison/viper/05_functions.viper`
 - **Code**: `var add = (a: Integer, b: Integer) => a + b;`
 - **Expected**: Lambda should be callable
 - **Actual**: `call arg count mismatch: @rt_alloc expects 1 argument but got 2`
 - **Severity**: High
+- **Fix**: Two changes in `Lowerer_Expr.cpp`: (1) Removed extra `classId` argument from `rt_alloc` calls (lines 2578, 2593). (2) Changed `Value::constInt(0)` to `Value::null()` for null environment pointer to fix pointer type mismatch. Verified: `3 + 5 = 8` output works.
 
 #### Root Cause Analysis
 
@@ -316,12 +324,14 @@ Value closurePtr =
 ---
 
 ### BUG-VL-005: `override` keyword causes parse error
+- **Status**: ✅ FIXED
 - **Test**: `tests/comparison/viper/08_oop_inheritance.viper`
 - **Code**: `override expose func speak() -> String`
 - **Expected**: Should allow explicit override declaration
 - **Actual**: `error[V2000]: expected field or method declaration`
 - **Workaround**: Omit override keyword (methods override implicitly)
 - **Severity**: Low
+- **Fix**: Modified entity member parsing in `Parser_Decl.cpp` (lines 464-477) to handle `KwOverride` token alongside `KwExpose`/`KwHide`. Modifiers can now appear in any order. The `isOverride` flag is properly set on `MethodDecl`.
 
 #### Root Cause Analysis
 
@@ -403,11 +413,13 @@ if (check(TokenKind::KwFunc)) {
 ---
 
 ### BUG-VL-006: Inherited fields not accessible in child entities
+- **Status**: ✅ FIXED
 - **Test**: `tests/comparison/viper/08_oop_inheritance.viper`
 - **Code**: Child entity trying to access parent's `name` field
 - **Expected**: `name = n;` should work in child's init
 - **Actual**: `error[V3000]: Undefined identifier: name`
 - **Severity**: Critical - inheritance is broken
+- **Fix**: Two-part fix: (1) Added inheritance handling in `Sema_Decl.cpp:analyzeEntityDecl` to add parent's fields and methods to child entity's scope. (2) Added inherited field copying in `Lowerer_Decl.cpp:lowerEntityDecl` to copy parent's fields (with correct offsets) to child entity's field list. (3) Added parent method lookup in `Lowerer_Expr.cpp:lowerCall` to walk inheritance chain when resolving method calls.
 
 #### Root Cause Analysis
 
@@ -504,11 +516,14 @@ void Sema::analyzeEntityDecl(EntityDecl &decl)
 ---
 
 ### BUG-VL-007: Polymorphism not working (child to parent assignment)
+- **Status**: ✅ FIXED
 - **Test**: `tests/comparison/viper/08_oop_inheritance.viper`
 - **Code**: `var animal: Animal = dog;`
 - **Expected**: Should allow assigning Dog to Animal variable
 - **Actual**: `error[V3000]: Type mismatch: expected Animal, got Dog`
 - **Severity**: Critical - polymorphism is broken
+- **Fix**: Two-part fix: (1) Added entity inheritance tracking in `Types.cpp` with `g_entity_parents` map and helper functions `registerEntityInheritance()`, `isSubclassOf()`, `clearEntityInheritance()`. (2) Added entity inheritance check in `ViperType::isAssignableFrom()` to allow derived entities to be assigned to base type variables. Registration happens in `Sema_Decl.cpp:analyzeEntityDecl`.
+- **Note**: Virtual dispatch (calling overridden methods based on runtime type) is not yet implemented - methods are resolved based on declared type. This would require vtable generation.
 
 #### Root Cause Analysis
 
@@ -584,10 +599,12 @@ if (kind == TypeKindSem::Entity && source.kind == TypeKindSem::Entity)
 ---
 
 ### BUG-VL-008: Entity field ordering bug
+- **Status**: ✅ FIXED
 - **Test**: `tests/comparison/viper/08_oop_inheritance.viper`
 - **Observed**: When entity has multiple fields, values appear swapped
 - **Output**: `Dog name: Golden Retriever` and `Dog breed: Buddy` (swapped)
 - **Severity**: High
+- **Fix**: Modified `lowerNew` in `Lowerer_Expr.cpp` to call the entity's `init` method instead of doing inline field initialization. This ensures fields are assigned in the order specified by `init()`, not field declaration order.
 
 #### Root Cause Analysis
 
@@ -879,11 +896,13 @@ if (baseType->kind == TypeKindSem::Interface)
 ## BASIC Bugs
 
 ### BUG-BAS-001: Namespace function calls fail at codegen
+- **Status**: ✅ FIXED
 - **Test**: `tests/comparison/basic/15_modules.bas`
 - **Code**: `PRINT MyModule.Helper$()`
 - **Expected**: Should call function in namespace
 - **Actual**: `error: main:entry: call: unknown callee @MYMODULE.HELPER$`
 - **Severity**: High - namespace functions not callable
+- **Fix**: Added `CanonicalizeQualifiedName()` function in `Lowerer_Procedure_Signatures.cpp` and `StripTypeSuffix()` in `IdentifierUtil.hpp` to properly handle BASIC type suffixes (`$`, `%`, `#`, `!`, `&`) during qualified name canonicalization.
 
 #### Root Cause Analysis
 
@@ -923,11 +942,13 @@ Option B: In `CanonicalizeIdent`, handle BASIC type suffixes (`$`, `%`, `#`, `!`
 ---
 
 ### BUG-BAS-002: Interface with constructor parameters causes codegen error
+- **Status**: ✅ FIXED
 - **Test**: `tests/comparison/basic/09_oop_interfaces.bas`
 - **Code**: `CLASS Circle IMPLEMENTS IShape` with `PUBLIC SUB NEW(r AS DOUBLE)`
 - **Expected**: Constructor with parameters should work
 - **Actual**: `error: CIRCLE.__ctor: store %t9 %t7: operand type mismatch: operand 1 must be f64`
 - **Severity**: High - prevents using interfaces with parameterized constructors
+- **Fix**: Multi-part fix: (1) Added `currentProcParamNames_` tracking in `Lowerer.hpp`. (2) Register parameters with types BEFORE `collectVars` in `Lower_OOP_Emit.cpp` and `Lowerer_Procedure_Emit.cpp`. (3) Skip `moduleObjectClass_` cache for procedure parameters in `getSlotType()`. (4) Use `sym->type` for parameters when `isProcParam(name)` is true.
 
 #### Root Cause Analysis
 

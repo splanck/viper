@@ -798,6 +798,15 @@ void registerInterfaceImplementation(const std::string &typeName, const std::str
 /// @brief Check whether @p typeName implements @p interfaceName.
 bool implementsInterface(const std::string &typeName, const std::string &interfaceName);
 
+/// @brief Clear all entity inheritance registrations.
+void clearEntityInheritance();
+
+/// @brief Register that @p childName extends @p parentName.
+void registerEntityInheritance(const std::string &childName, const std::string &parentName);
+
+/// @brief Check whether @p childName is a subclass of @p parentName.
+bool isSubclassOf(const std::string &childName, const std::string &parentName);
+
 /// @brief Create a type parameter placeholder.
 /// @param name The type parameter name (e.g., "T", "U").
 /// @return A new TypeParam type.

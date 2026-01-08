@@ -901,6 +901,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
             }
 
             // Check entity type methods (O(1) lookup)
+            // BUG-VL-006 fix: Also check parent entities for inherited methods
             auto entityIt = entityTypes_.find(typeName);
             if (entityIt != entityTypes_.end())
             {
@@ -908,6 +909,20 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                 {
                     auto baseResult = lowerExpr(fieldExpr->base.get());
                     return lowerMethodCall(method, typeName, baseResult.value, expr);
+                }
+                // Check parent entity for inherited methods
+                std::string parentName = entityIt->second.baseClass;
+                while (!parentName.empty())
+                {
+                    auto parentIt = entityTypes_.find(parentName);
+                    if (parentIt == entityTypes_.end())
+                        break;
+                    if (auto *method = parentIt->second.findMethod(fieldExpr->field))
+                    {
+                        auto baseResult = lowerExpr(fieldExpr->base.get());
+                        return lowerMethodCall(method, parentName, baseResult.value, expr);
+                    }
+                    parentName = parentIt->second.baseClass;
                 }
             }
 
@@ -1205,7 +1220,16 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
         for (auto &arg : expr->args)
         {
             auto result = lowerExpr(arg.value.get());
-            args.push_back(result.value);
+            Value argValue = result.value;
+
+            // Widen Byte (i32) to Integer (i64) for runtime calls
+            // Runtime functions expect i64 for integer arguments
+            if (result.type.kind == Type::Kind::I32)
+            {
+                argValue = widenByteToInteger(argValue);
+            }
+
+            args.push_back(argValue);
         }
 
         // Get return type from runtime function registry
@@ -1757,28 +1781,16 @@ LowerResult Lowerer::lowerNew(NewExpr *expr)
                             {Value::constInt(static_cast<int64_t>(info.classId)),
                              Value::constInt(static_cast<int64_t>(info.totalSize))});
 
-    // Store each argument into the corresponding field
-    for (size_t i = 0; i < argValues.size() && i < info.fields.size(); ++i)
+    // BUG-VL-008 fix: Call the init method instead of doing inline field initialization
+    // This ensures fields are assigned in the order specified by init(), not field declaration order
+    std::string initName = typeName + ".init";
+    std::vector<Value> initArgs;
+    initArgs.push_back(ptr); // self is first argument
+    for (const auto &argVal : argValues)
     {
-        const FieldLayout &field = info.fields[i];
-
-        // GEP to get field address
-        unsigned gepId = nextTempId();
-        il::core::Instr gepInstr;
-        gepInstr.result = gepId;
-        gepInstr.op = Opcode::GEP;
-        gepInstr.type = Type(Type::Kind::Ptr);
-        gepInstr.operands = {ptr, Value::constInt(static_cast<int64_t>(field.offset))};
-        blockMgr_.currentBlock()->instructions.push_back(gepInstr);
-        Value fieldAddr = Value::temp(gepId);
-
-        // Store the value
-        il::core::Instr storeInstr;
-        storeInstr.op = Opcode::Store;
-        storeInstr.type = mapType(field.type);
-        storeInstr.operands = {fieldAddr, argValues[i]};
-        blockMgr_.currentBlock()->instructions.push_back(storeInstr);
+        initArgs.push_back(argVal);
     }
+    emitCall(initName, initArgs);
 
     // Return pointer to the allocated entity
     return {ptr, Type(Type::Kind::Ptr)};
@@ -2564,7 +2576,7 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr)
     // For no-capture lambdas, envPtr is null
 
     // Allocate environment if we have captures
-    Value envPtr = Value::constInt(0); // null for no captures
+    Value envPtr = Value::null(); // null for no captures
     if (hasCaptures)
     {
         size_t envSize = 0;
@@ -2573,10 +2585,9 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr)
             envSize += getILTypeSize(info.type);
         }
 
-        // Allocate environment struct using rt_alloc (classId=0 for closures)
-        Value classIdVal = Value::constInt(0);
+        // Allocate environment struct using rt_alloc
         Value envSizeVal = Value::constInt(static_cast<int64_t>(envSize));
-        envPtr = emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {classIdVal, envSizeVal});
+        envPtr = emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {envSizeVal});
 
         // Store captured values into the environment
         size_t offset = 0;
@@ -2589,10 +2600,9 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr)
     }
 
     // Allocate closure struct: { ptr funcPtr, ptr envPtr } = 16 bytes
-    Value closureClassId = Value::constInt(0);
     Value closureSizeVal = Value::constInt(16);
     Value closurePtr =
-        emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {closureClassId, closureSizeVal});
+        emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {closureSizeVal});
 
     // Store function pointer at offset 0
     emitStore(closurePtr, funcPtr, Type(Type::Kind::Ptr));
