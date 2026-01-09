@@ -252,7 +252,8 @@ void rt_string_unref(rt_string s)
     rt_heap_hdr_t *hdr = rt_string_header(s);
     if (!hdr)
     {
-        if (s->literal_refs > 0 && --s->literal_refs == 0)
+        // Skip decrement for immortal literals (literal_refs == SIZE_MAX)
+        if (s->literal_refs > 0 && s->literal_refs < SIZE_MAX && --s->literal_refs == 0)
             free(s);
         return;
     }

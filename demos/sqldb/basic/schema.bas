@@ -147,6 +147,27 @@ CLASS SqlRow
         Clone = newRow
     END FUNCTION
 
+    PUBLIC SUB CopyFrom(srcRow AS SqlRow)
+        DIM i AS INTEGER
+        DIM cloned AS SqlValue
+        ' Initialize to source row's column count
+        columnCount = srcRow.columnCount
+        deleted = srcRow.deleted
+        FOR i = 0 TO srcRow.columnCount - 1
+            LET cloned = NEW SqlValue()
+            cloned.kind = srcRow.values(i).kind
+            cloned.intValue = srcRow.values(i).intValue
+            cloned.realValue = srcRow.values(i).realValue
+            cloned.textValue = srcRow.values(i).textValue
+            LET values(i) = cloned
+        NEXT i
+    END SUB
+
+    PUBLIC SUB InitEmpty()
+        columnCount = 0
+        deleted = 0
+    END SUB
+
     PUBLIC FUNCTION ToString$()
         DIM result AS STRING
         DIM i AS INTEGER

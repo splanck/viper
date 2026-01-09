@@ -1066,6 +1066,19 @@ SUB TestExecutor()
     LET result = ExecuteSql(sql)
     PRINT result.message
 
+    ' Test index-based lookup (Step 42)
+    PRINT ""
+    PRINT "--- Testing Index-Based Lookup ---"
+    sql = "SELECT * FROM indextest WHERE name = 'Bob';"
+    PRINT "SQL: "; sql
+    LET result = ExecuteSql(sql)
+    IF result.success <> 0 THEN
+        PRINT "Query using index returned "; result.rowCount; " row(s)"
+        PRINT result.ToString()
+    ELSE
+        PRINT "ERROR: "; result.message
+    END IF
+
     ' Try to create duplicate index (should fail)
     sql = "CREATE INDEX idx_name ON indextest (name);"
     PRINT "SQL: "; sql
@@ -1111,6 +1124,136 @@ SUB TestExecutor()
     ELSE
         PRINT "FAILED: Drop of nonexistent index was allowed!"
     END IF
+    PRINT ""
+
+    '=========================================================================
+    ' TRANSACTION TESTS
+    '=========================================================================
+    PRINT "=== Transaction Tests ==="
+    PRINT ""
+
+    ' Create a test table for transactions
+    sql = "CREATE TABLE txtest (id INTEGER, value TEXT);"
+    PRINT "SQL: "; sql
+    LET result = ExecuteSql(sql)
+    PRINT result.message
+    PRINT ""
+
+    ' Insert initial data
+    sql = "INSERT INTO txtest (id, value) VALUES (1, 'original');"
+    LET result = ExecuteSql(sql)
+    PRINT "Initial insert: "; result.message
+
+    ' Test 1: Basic ROLLBACK
+    PRINT ""
+    PRINT "--- Test 1: Basic ROLLBACK ---"
+    sql = "BEGIN TRANSACTION;"
+    PRINT "SQL: "; sql
+    LET result = ExecuteSql(sql)
+    PRINT "BEGIN: "; result.message
+
+    sql = "INSERT INTO txtest (id, value) VALUES (2, 'in_transaction');"
+    LET result = ExecuteSql(sql)
+    PRINT "INSERT during transaction: "; result.message
+
+    sql = "SELECT * FROM txtest;"
+    LET result = ExecuteSql(sql)
+    PRINT "Before ROLLBACK: "; result.rowCount; " rows"
+
+    sql = "ROLLBACK;"
+    PRINT "SQL: "; sql
+    LET result = ExecuteSql(sql)
+    PRINT "ROLLBACK: "; result.message
+
+    sql = "SELECT * FROM txtest;"
+    LET result = ExecuteSql(sql)
+    PRINT "After ROLLBACK: "; result.rowCount; " rows (should be 1)"
+    IF result.rowCount = 1 THEN
+        PRINT "ROLLBACK TEST PASSED"
+    ELSE
+        PRINT "ROLLBACK TEST FAILED"
+    END IF
+    PRINT ""
+
+    ' Test 2: Basic COMMIT
+    PRINT "--- Test 2: Basic COMMIT ---"
+    sql = "BEGIN;"
+    PRINT "SQL: "; sql
+    LET result = ExecuteSql(sql)
+    PRINT "BEGIN: "; result.message
+
+    sql = "INSERT INTO txtest (id, value) VALUES (3, 'committed');"
+    LET result = ExecuteSql(sql)
+    PRINT "INSERT: "; result.message
+
+    sql = "COMMIT;"
+    PRINT "SQL: "; sql
+    LET result = ExecuteSql(sql)
+    PRINT "COMMIT: "; result.message
+
+    sql = "SELECT * FROM txtest;"
+    LET result = ExecuteSql(sql)
+    PRINT "After COMMIT: "; result.rowCount; " rows (should be 2)"
+    IF result.rowCount = 2 THEN
+        PRINT "COMMIT TEST PASSED"
+    ELSE
+        PRINT "COMMIT TEST FAILED"
+    END IF
+    PRINT ""
+
+    ' Test 3: SAVEPOINT
+    PRINT "--- Test 3: SAVEPOINT ---"
+    sql = "BEGIN;"
+    LET result = ExecuteSql(sql)
+    PRINT "BEGIN: "; result.message
+
+    sql = "INSERT INTO txtest (id, value) VALUES (4, 'before_savepoint');"
+    LET result = ExecuteSql(sql)
+    PRINT "INSERT: "; result.message
+
+    sql = "SAVEPOINT sp1;"
+    PRINT "SQL: "; sql
+    LET result = ExecuteSql(sql)
+    PRINT "SAVEPOINT sp1: "; result.message
+
+    sql = "INSERT INTO txtest (id, value) VALUES (5, 'after_savepoint');"
+    LET result = ExecuteSql(sql)
+    PRINT "INSERT after savepoint: "; result.message
+
+    sql = "SELECT * FROM txtest;"
+    LET result = ExecuteSql(sql)
+    PRINT "Before ROLLBACK TO: "; result.rowCount; " rows (should be 4)"
+
+    sql = "ROLLBACK TO SAVEPOINT sp1;"
+    PRINT "SQL: "; sql
+    LET result = ExecuteSql(sql)
+    PRINT "ROLLBACK TO sp1: "; result.message
+
+    sql = "SELECT * FROM txtest;"
+    LET result = ExecuteSql(sql)
+    PRINT "After ROLLBACK TO sp1: "; result.rowCount; " rows (should be 3)"
+    IF result.rowCount = 3 THEN
+        PRINT "SAVEPOINT ROLLBACK TEST PASSED"
+    ELSE
+        PRINT "SAVEPOINT ROLLBACK TEST FAILED"
+    END IF
+
+    sql = "COMMIT;"
+    LET result = ExecuteSql(sql)
+    PRINT "COMMIT: "; result.message
+    PRINT ""
+
+    ' Final check
+    sql = "SELECT * FROM txtest;"
+    LET result = ExecuteSql(sql)
+    PRINT "Final row count: "; result.rowCount; " (should be 3)"
+    FOR r = 0 TO result.rowCount - 1
+        LET row = result.rows(r)
+        PRINT "  Row "; r; ": "; row.ToString$()
+    NEXT r
+    PRINT ""
+
+    PRINT "=== Transaction Tests Complete ==="
     PRINT ""
 
     PRINT "=== Executor Test PASSED ==="

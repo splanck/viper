@@ -101,4 +101,14 @@ function(viper_add_viperlang_tests)
     viper_add_test(test_viperlang_namespaces ${_VIPER_VIPERLANG_DIR}/test_viperlang_namespaces.cpp)
     target_link_libraries(test_viperlang_namespaces PRIVATE ${VIPER_VIPERLANG_LIBS})
     viper_add_ctest(test_viperlang_namespaces test_viperlang_namespaces)
+
+    # Bug #022 fix: List methods (remove, insert, find)
+    viper_add_test(test_viperlang_list_methods ${_VIPER_VIPERLANG_DIR}/test_viperlang_list_methods.cpp)
+    target_link_libraries(test_viperlang_list_methods PRIVATE ${VIPER_VIPERLANG_LIBS})
+    viper_add_ctest(test_viperlang_list_methods test_viperlang_list_methods)
+
+    # Bug #023 fix: Optional field access in helper functions
+    viper_add_test(test_viperlang_optional_field ${_VIPER_VIPERLANG_DIR}/test_viperlang_optional_field.cpp)
+    target_link_libraries(test_viperlang_optional_field PRIVATE ${VIPER_VIPERLANG_LIBS})
+    viper_add_ctest(test_viperlang_optional_field test_viperlang_optional_field)
 endfunction()

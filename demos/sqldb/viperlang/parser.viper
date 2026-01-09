@@ -1,0 +1,949 @@
+// parser.viper - SQL Parser with proper OOP design
+// Part of SQLite Clone - ViperLang Implementation
+
+module parser;
+
+import "./token";
+import "./lexer";
+import "./types";
+import "./schema";
+import "./expr";
+import "./stmt";
+
+//=============================================================================
+// PARSER ENTITY
+//=============================================================================
+
+entity Parser {
+    hide Lexer lexer;
+    hide Token currentToken;
+    expose String error;
+    expose Boolean hasError;
+
+    expose func init(sql: String) {
+        lexer = new Lexer(sql);
+        currentToken = lexer.nextToken();
+        error = "";
+        hasError = false;
+    }
+
+    expose func advance() {
+        currentToken = lexer.nextToken();
+    }
+
+    expose func matchToken(kind: Integer) -> Boolean {
+        if currentToken.kind == kind {
+            advance();
+            return true;
+        }
+        return false;
+    }
+
+    expose func expect(kind: Integer) -> Boolean {
+        if currentToken.kind == kind {
+            advance();
+            return true;
+        }
+        hasError = true;
+        error = "Expected token " + Viper.Fmt.Int(kind) + ", got " + Viper.Fmt.Int(currentToken.kind);
+        return false;
+    }
+
+    expose func setError(msg: String) {
+        hasError = true;
+        error = msg;
+    }
+
+    expose func currentKind() -> Integer {
+        return currentToken.kind;
+    }
+
+    expose func currentText() -> String {
+        return currentToken.text;
+    }
+
+    //=========================================================================
+    // EXPRESSION PARSING
+    //=========================================================================
+
+    expose func parsePrimaryExpr() -> Expr {
+        var kind = currentToken.kind;
+
+        // Integer literal
+        if kind == TK_INTEGER {
+            var text = currentToken.text;
+            advance();
+            var intVal = stringToInt(text);
+            return exprInt(intVal);
+        }
+
+        // Real/float literal
+        if kind == TK_NUMBER {
+            var text = currentToken.text;
+            advance();
+            return exprReal(0.0, text);
+        }
+
+        // String literal
+        if kind == TK_STRING {
+            var text = currentToken.text;
+            advance();
+            return exprText(text);
+        }
+
+        // NULL
+        if kind == TK_NULL {
+            advance();
+            return exprNull();
+        }
+
+        // Identifier (column ref or function call)
+        if kind == TK_IDENTIFIER {
+            var name = currentToken.text;
+            advance();
+
+            // Check for function call
+            if currentToken.kind == TK_LPAREN {
+                advance();
+                var funcExpr = exprFunction(name);
+
+                // Parse arguments - handle full expressions
+                while currentToken.kind != TK_RPAREN && hasError == false {
+                    if currentToken.kind == TK_STAR {
+                        funcExpr.args.add(exprStar());
+                        advance();
+                    } else {
+                        // Parse full expression as argument
+                        var argExpr = parseExpr();
+                        funcExpr.args.add(argExpr);
+                    }
+
+                    if currentToken.kind == TK_COMMA {
+                        advance();
+                    }
+                }
+
+                if currentToken.kind == TK_RPAREN {
+                    advance();
+                }
+                return funcExpr;
+            }
+
+            // Check for table.column
+            if currentToken.kind == TK_DOT {
+                advance();
+                if currentToken.kind != TK_IDENTIFIER {
+                    setError("Expected column name after dot");
+                    return exprNull();
+                }
+                var colName = currentToken.text;
+                advance();
+                return exprTableColumn(name, colName);
+            }
+
+            return exprColumn(name);
+        }
+
+        // Star (*)
+        if kind == TK_STAR {
+            advance();
+            return exprStar();
+        }
+
+        // Parenthesized expression or subquery
+        if kind == TK_LPAREN {
+            advance();
+
+            // Check for subquery
+            if currentToken.kind == TK_SELECT {
+                var subquerySql = "SELECT";
+                advance();
+                var depth = 1;
+
+                while depth > 0 && hasError == false {
+                    if currentToken.kind == TK_LPAREN {
+                        depth = depth + 1;
+                        subquerySql = subquerySql + " (";
+                    } else if currentToken.kind == TK_RPAREN {
+                        depth = depth - 1;
+                        if depth > 0 {
+                            subquerySql = subquerySql + ")";
+                        }
+                    } else if currentToken.kind == TK_EOF {
+                        setError("Unexpected end of input in subquery");
+                        return exprNull();
+                    } else if currentToken.kind == TK_STRING {
+                        // Re-add quotes around string literals
+                        subquerySql = subquerySql + " '" + currentToken.text + "'";
+                    } else {
+                        subquerySql = subquerySql + " " + currentToken.text;
+                    }
+                    advance();
+                }
+
+                return exprSubquery(subquerySql);
+            }
+
+            // Regular parenthesized expression
+            var inner = parseExpr();
+            if currentToken.kind == TK_RPAREN {
+                advance();
+            } else {
+                setError("Expected ) after parenthesized expression");
+            }
+            return inner;
+        }
+
+        setError("Unexpected token in expression");
+        return exprNull();
+    }
+
+    expose func parseUnaryExpr() -> Expr {
+        if currentToken.kind == TK_MINUS {
+            advance();
+            var operand = parseUnaryExpr();
+            return exprUnary(OP_NEG, operand);
+        }
+        if currentToken.kind == TK_NOT {
+            advance();
+            var operand = parseUnaryExpr();
+            return exprUnary(OP_NOT, operand);
+        }
+        return parsePrimaryExpr();
+    }
+
+    expose func parseMulExpr() -> Expr {
+        var left = parseUnaryExpr();
+        while currentToken.kind == TK_STAR || currentToken.kind == TK_SLASH {
+            var op = currentToken.kind;
+            advance();
+            var right = parseUnaryExpr();
+            if op == TK_STAR {
+                left = exprBinary(OP_MUL, left, right);
+            } else {
+                left = exprBinary(OP_DIV, left, right);
+            }
+        }
+        return left;
+    }
+
+    expose func parseAddExpr() -> Expr {
+        var left = parseMulExpr();
+        while currentToken.kind == TK_PLUS || currentToken.kind == TK_MINUS {
+            var op = currentToken.kind;
+            advance();
+            var right = parseMulExpr();
+            if op == TK_PLUS {
+                left = exprBinary(OP_ADD, left, right);
+            } else {
+                left = exprBinary(OP_SUB, left, right);
+            }
+        }
+        return left;
+    }
+
+    expose func parseCompExpr() -> Expr {
+        var left = parseAddExpr();
+        var kind = currentToken.kind;
+
+        if kind == TK_EQ {
+            advance();
+            return exprBinary(OP_EQ, left, parseAddExpr());
+        }
+        if kind == TK_NE {
+            advance();
+            return exprBinary(OP_NE, left, parseAddExpr());
+        }
+        if kind == TK_LT {
+            advance();
+            return exprBinary(OP_LT, left, parseAddExpr());
+        }
+        if kind == TK_LE {
+            advance();
+            return exprBinary(OP_LE, left, parseAddExpr());
+        }
+        if kind == TK_GT {
+            advance();
+            return exprBinary(OP_GT, left, parseAddExpr());
+        }
+        if kind == TK_GE {
+            advance();
+            return exprBinary(OP_GE, left, parseAddExpr());
+        }
+        if kind == TK_IN {
+            advance();
+            if currentToken.kind != TK_LPAREN {
+                setError("Expected '(' after IN");
+                return left;
+            }
+            var right = parsePrimaryExpr();
+            return exprBinary(OP_IN, left, right);
+        }
+        return left;
+    }
+
+    expose func parseAndExpr() -> Expr {
+        var left = parseCompExpr();
+        while currentToken.kind == TK_AND {
+            advance();
+            var right = parseCompExpr();
+            left = exprBinary(OP_AND, left, right);
+        }
+        return left;
+    }
+
+    expose func parseOrExpr() -> Expr {
+        var left = parseAndExpr();
+        while currentToken.kind == TK_OR {
+            advance();
+            var right = parseAndExpr();
+            left = exprBinary(OP_OR, left, right);
+        }
+        return left;
+    }
+
+    expose func parseExpr() -> Expr {
+        return parseOrExpr();
+    }
+
+    //=========================================================================
+    // COLUMN DEFINITION PARSING
+    //=========================================================================
+
+    expose func parseColumnDef() -> Column {
+        var col = new Column();
+        col.init();
+
+        if currentToken.kind != TK_IDENTIFIER {
+            setError("Expected column name");
+            return col;
+        }
+        col.name = currentToken.text;
+        advance();
+
+        // Data type
+        if currentToken.kind == TK_INTEGER_TYPE {
+            col.typeCode = SQL_INTEGER;
+            advance();
+        } else if currentToken.kind == TK_TEXT {
+            col.typeCode = SQL_TEXT;
+            advance();
+        } else if currentToken.kind == TK_REAL {
+            col.typeCode = SQL_REAL;
+            advance();
+        } else {
+            setError("Expected data type");
+            return col;
+        }
+
+        // Optional constraints
+        while hasError == false {
+            if currentToken.kind == TK_PRIMARY {
+                advance();
+                if expect(TK_KEY) == false {
+                    return col;
+                }
+                col.primaryKey = true;
+            } else if currentToken.kind == TK_AUTOINCREMENT {
+                advance();
+                col.autoIncrement = true;
+            } else if currentToken.kind == TK_NOT {
+                advance();
+                if expect(TK_NULL) == false {
+                    return col;
+                }
+                col.notNull = true;
+            } else if currentToken.kind == TK_UNIQUE {
+                advance();
+                col.unique = true;
+            } else if currentToken.kind == TK_DEFAULT {
+                advance();
+                if currentToken.kind == TK_NUMBER {
+                    var defVal = new SqlValue();
+                    var numText = currentToken.text;
+                    defVal.initReal(0.0, numText);
+                    col.setDefault(defVal);
+                    advance();
+                } else if currentToken.kind == TK_INTEGER {
+                    var defVal = new SqlValue();
+                    var numText = currentToken.text;
+                    var intVal = stringToInt(numText);
+                    defVal.initInteger(intVal);
+                    col.setDefault(defVal);
+                    advance();
+                } else if currentToken.kind == TK_STRING {
+                    var defVal = new SqlValue();
+                    defVal.initText(currentToken.text);
+                    col.setDefault(defVal);
+                    advance();
+                } else if currentToken.kind == TK_NULL {
+                    var defVal = new SqlValue();
+                    defVal.initNull();
+                    col.setDefault(defVal);
+                    advance();
+                } else {
+                    setError("Expected default value");
+                    return col;
+                }
+            } else if currentToken.kind == TK_REFERENCES {
+                advance();
+                if currentToken.kind != TK_IDENTIFIER {
+                    setError("Expected referenced table name");
+                    return col;
+                }
+                col.refTableName = currentToken.text;
+                col.isForeignKey = true;
+                advance();
+                if currentToken.kind != TK_LPAREN {
+                    setError("Expected ( after table name");
+                    return col;
+                }
+                advance();
+                if currentToken.kind != TK_IDENTIFIER {
+                    setError("Expected referenced column name");
+                    return col;
+                }
+                col.refColumnName = currentToken.text;
+                advance();
+                if currentToken.kind != TK_RPAREN {
+                    setError("Expected ) after column name");
+                    return col;
+                }
+                advance();
+            } else {
+                break;
+            }
+        }
+
+        return col;
+    }
+
+    //=========================================================================
+    // STATEMENT PARSING
+    //=========================================================================
+
+    expose func parseCreateTableStmt() -> CreateTableStmt {
+        var stmt = new CreateTableStmt();
+        stmt.init();
+
+        if expect(TK_TABLE) == false {
+            return stmt;
+        }
+
+        if currentToken.kind != TK_IDENTIFIER {
+            setError("Expected table name");
+            return stmt;
+        }
+        stmt.tableName = currentToken.text;
+        advance();
+
+        if expect(TK_LPAREN) == false {
+            return stmt;
+        }
+
+        while hasError == false {
+            var col = parseColumnDef();
+            if hasError {
+                return stmt;
+            }
+            stmt.addColumn(col);
+
+            if currentToken.kind == TK_COMMA {
+                advance();
+            } else {
+                break;
+            }
+        }
+
+        if expect(TK_RPAREN) == false {
+            return stmt;
+        }
+
+        matchToken(TK_SEMICOLON);
+        return stmt;
+    }
+
+    expose func parseInsertStmt() -> InsertStmt {
+        var stmt = new InsertStmt();
+        stmt.init();
+
+        if expect(TK_INTO) == false {
+            return stmt;
+        }
+
+        if currentToken.kind != TK_IDENTIFIER {
+            setError("Expected table name");
+            return stmt;
+        }
+        stmt.tableName = currentToken.text;
+        advance();
+
+        // Optional column list
+        if currentToken.kind == TK_LPAREN {
+            advance();
+            while hasError == false {
+                if currentToken.kind != TK_IDENTIFIER {
+                    setError("Expected column name");
+                    return stmt;
+                }
+                stmt.addColumnName(currentToken.text);
+                advance();
+
+                if currentToken.kind == TK_COMMA {
+                    advance();
+                } else {
+                    break;
+                }
+            }
+            if expect(TK_RPAREN) == false {
+                return stmt;
+            }
+        }
+
+        if expect(TK_VALUES) == false {
+            return stmt;
+        }
+
+        // Value rows
+        while hasError == false {
+            if expect(TK_LPAREN) == false {
+                return stmt;
+            }
+
+            stmt.addValueRow();
+            var rowIdx = stmt.rowCount() - 1;
+
+            while hasError == false {
+                var val = parseExpr();
+                if hasError {
+                    return stmt;
+                }
+                stmt.addValue(rowIdx, val);
+
+                if currentToken.kind == TK_COMMA {
+                    advance();
+                } else {
+                    break;
+                }
+            }
+
+            if expect(TK_RPAREN) == false {
+                return stmt;
+            }
+
+            if currentToken.kind == TK_COMMA {
+                advance();
+            } else {
+                break;
+            }
+        }
+
+        matchToken(TK_SEMICOLON);
+        return stmt;
+    }
+
+    expose func parseSelectStmt() -> SelectStmt {
+        var stmt = new SelectStmt();
+        stmt.init();
+
+        // Check for DISTINCT
+        if currentToken.kind == TK_DISTINCT {
+            stmt.isDistinct = true;
+            advance();
+        }
+
+        // Check for * or column list
+        if currentToken.kind == TK_STAR {
+            stmt.selectAll = true;
+            advance();
+        } else {
+            // Parse column list
+            while hasError == false {
+                var col = parseExpr();
+                if hasError {
+                    return stmt;
+                }
+
+                // Handle column alias
+                if currentToken.kind == TK_AS {
+                    advance();
+                    if currentToken.kind == TK_IDENTIFIER {
+                        advance();
+                    }
+                } else if currentToken.kind == TK_IDENTIFIER {
+                    var maybeAlias = currentToken.text;
+                    var upperAlias = Viper.String.ToUpper(maybeAlias);
+                    if upperAlias != "FROM" && upperAlias != "WHERE" && upperAlias != "GROUP" && upperAlias != "ORDER" && upperAlias != "LIMIT" && upperAlias != "HAVING" {
+                        advance();
+                    }
+                }
+
+                stmt.addColumn(col);
+
+                if currentToken.kind == TK_COMMA {
+                    advance();
+                } else {
+                    break;
+                }
+            }
+        }
+
+        // Expect FROM
+        if expect(TK_FROM) == false {
+            return stmt;
+        }
+
+        // Parse table name
+        if currentToken.kind != TK_IDENTIFIER {
+            setError("Expected table name");
+            return stmt;
+        }
+        var firstTableName = currentToken.text;
+        var firstTableAlias = "";
+        stmt.tableName = firstTableName;
+        advance();
+
+        // Optional table alias
+        if currentToken.kind == TK_AS {
+            advance();
+            if currentToken.kind == TK_IDENTIFIER {
+                firstTableAlias = currentToken.text;
+                stmt.tableAlias = firstTableAlias;
+                advance();
+            }
+        } else if currentToken.kind == TK_IDENTIFIER {
+            var aliasText = currentToken.text;
+            var upperAlias = Viper.String.ToUpper(aliasText);
+            if upperAlias != "WHERE" && upperAlias != "GROUP" && upperAlias != "ORDER" && upperAlias != "LIMIT" && upperAlias != "HAVING" && upperAlias != "JOIN" && upperAlias != "INNER" && upperAlias != "LEFT" && upperAlias != "RIGHT" && upperAlias != "FULL" && upperAlias != "CROSS" {
+                firstTableAlias = aliasText;
+                stmt.tableAlias = firstTableAlias;
+                advance();
+            }
+        }
+
+        stmt.addTable(firstTableName, firstTableAlias);
+
+        // Parse JOINs
+        while currentToken.kind == TK_JOIN || currentToken.kind == TK_INNER || currentToken.kind == TK_LEFT || currentToken.kind == TK_RIGHT || currentToken.kind == TK_FULL || currentToken.kind == TK_CROSS {
+            var joinType = 1;  // Default INNER
+
+            if currentToken.kind == TK_INNER {
+                joinType = 1;
+                advance();
+                if currentToken.kind != TK_JOIN {
+                    setError("Expected JOIN after INNER");
+                    return stmt;
+                }
+                advance();
+            } else if currentToken.kind == TK_LEFT {
+                joinType = 2;
+                advance();
+                if currentToken.kind == TK_OUTER { advance(); }
+                if currentToken.kind != TK_JOIN {
+                    setError("Expected JOIN after LEFT");
+                    return stmt;
+                }
+                advance();
+            } else if currentToken.kind == TK_RIGHT {
+                joinType = 3;
+                advance();
+                if currentToken.kind == TK_OUTER { advance(); }
+                if currentToken.kind != TK_JOIN {
+                    setError("Expected JOIN after RIGHT");
+                    return stmt;
+                }
+                advance();
+            } else if currentToken.kind == TK_FULL {
+                joinType = 4;
+                advance();
+                if currentToken.kind == TK_OUTER { advance(); }
+                if currentToken.kind != TK_JOIN {
+                    setError("Expected JOIN after FULL");
+                    return stmt;
+                }
+                advance();
+            } else if currentToken.kind == TK_CROSS {
+                joinType = 0;
+                advance();
+                if currentToken.kind != TK_JOIN {
+                    setError("Expected JOIN after CROSS");
+                    return stmt;
+                }
+                advance();
+            } else if currentToken.kind == TK_JOIN {
+                joinType = 1;
+                advance();
+            }
+
+            if currentToken.kind != TK_IDENTIFIER {
+                setError("Expected table name after JOIN");
+                return stmt;
+            }
+            var joinTableName = currentToken.text;
+            var joinTableAlias = "";
+            advance();
+
+            // Optional alias
+            if currentToken.kind == TK_AS {
+                advance();
+                if currentToken.kind == TK_IDENTIFIER {
+                    joinTableAlias = currentToken.text;
+                    advance();
+                }
+            } else if currentToken.kind == TK_IDENTIFIER {
+                var maybeAlias = currentToken.text;
+                var upperAlias = Viper.String.ToUpper(maybeAlias);
+                if upperAlias != "ON" && upperAlias != "WHERE" && upperAlias != "GROUP" && upperAlias != "ORDER" && upperAlias != "LIMIT" && upperAlias != "JOIN" {
+                    joinTableAlias = maybeAlias;
+                    advance();
+                }
+            }
+
+            // ON clause
+            var joinCondition: Expr? = null;
+            if currentToken.kind == TK_ON {
+                advance();
+                joinCondition = parseExpr();
+            } else if joinType != 0 {
+                setError("Expected ON clause for JOIN");
+                return stmt;
+            }
+
+            stmt.addJoin(joinTableName, joinTableAlias, joinType, joinCondition);
+        }
+
+        // Optional WHERE
+        if currentToken.kind == TK_WHERE {
+            advance();
+            stmt.whereClause = parseExpr();
+        }
+
+        // Optional GROUP BY
+        if currentToken.kind == TK_GROUP {
+            advance();
+            if expect(TK_BY) == false {
+                return stmt;
+            }
+            while hasError == false {
+                var groupExpr = parseExpr();
+                if hasError { return stmt; }
+                stmt.addGroupBy(groupExpr);
+                if currentToken.kind == TK_COMMA {
+                    advance();
+                } else {
+                    break;
+                }
+            }
+        }
+
+        // Optional HAVING
+        if currentToken.kind == TK_HAVING {
+            advance();
+            stmt.havingClause = parseExpr();
+        }
+
+        // Optional ORDER BY
+        if currentToken.kind == TK_ORDER {
+            advance();
+            if expect(TK_BY) == false {
+                return stmt;
+            }
+            while hasError == false {
+                var orderExpr = parseExpr();
+                if hasError { return stmt; }
+                var isDesc = 0;
+                if currentToken.kind == TK_DESC {
+                    isDesc = 1;
+                    advance();
+                } else if currentToken.kind == TK_ASC {
+                    advance();
+                }
+                stmt.addOrderBy(orderExpr, isDesc);
+                if currentToken.kind == TK_COMMA {
+                    advance();
+                } else {
+                    break;
+                }
+            }
+        }
+
+        // Optional LIMIT
+        if currentToken.kind == TK_LIMIT {
+            advance();
+            if currentToken.kind == TK_INTEGER {
+                stmt.limitValue = stringToInt(currentToken.text);
+                advance();
+            } else {
+                setError("Expected integer after LIMIT");
+                return stmt;
+            }
+            // Optional OFFSET
+            if currentToken.kind == TK_OFFSET {
+                advance();
+                if currentToken.kind == TK_INTEGER {
+                    stmt.offsetValue = stringToInt(currentToken.text);
+                    advance();
+                } else {
+                    setError("Expected integer after OFFSET");
+                    return stmt;
+                }
+            }
+        }
+
+        matchToken(TK_SEMICOLON);
+        return stmt;
+    }
+
+    expose func parseUpdateStmt() -> UpdateStmt {
+        var stmt = new UpdateStmt();
+        stmt.init();
+
+        if currentToken.kind != TK_IDENTIFIER {
+            setError("Expected table name");
+            return stmt;
+        }
+        stmt.tableName = currentToken.text;
+        advance();
+
+        if expect(TK_SET) == false {
+            return stmt;
+        }
+
+        while hasError == false {
+            if currentToken.kind != TK_IDENTIFIER {
+                setError("Expected column name");
+                return stmt;
+            }
+            var colName = currentToken.text;
+            advance();
+
+            if expect(TK_EQ) == false {
+                return stmt;
+            }
+
+            var val = parseExpr();
+            if hasError { return stmt; }
+
+            stmt.addSet(colName, val);
+
+            if currentToken.kind == TK_COMMA {
+                advance();
+            } else {
+                break;
+            }
+        }
+
+        if currentToken.kind == TK_WHERE {
+            advance();
+            stmt.whereClause = parseExpr();
+        }
+
+        matchToken(TK_SEMICOLON);
+        return stmt;
+    }
+
+    expose func parseDeleteStmt() -> DeleteStmt {
+        var stmt = new DeleteStmt();
+        stmt.init();
+
+        if expect(TK_FROM) == false {
+            return stmt;
+        }
+
+        if currentToken.kind != TK_IDENTIFIER {
+            setError("Expected table name");
+            return stmt;
+        }
+        stmt.tableName = currentToken.text;
+        advance();
+
+        if currentToken.kind == TK_WHERE {
+            advance();
+            stmt.whereClause = parseExpr();
+        }
+
+        matchToken(TK_SEMICOLON);
+        return stmt;
+    }
+
+    expose func parseCreateIndexStmt() -> CreateIndexStmt {
+        var stmt = new CreateIndexStmt();
+        stmt.init();
+
+        if currentToken.kind == TK_UNIQUE {
+            stmt.isUnique = true;
+            advance();
+        }
+
+        if expect(TK_INDEX) == false {
+            return stmt;
+        }
+
+        if currentToken.kind != TK_IDENTIFIER {
+            setError("Expected index name");
+            return stmt;
+        }
+        stmt.indexName = currentToken.text;
+        advance();
+
+        if expect(TK_ON) == false {
+            return stmt;
+        }
+
+        if currentToken.kind != TK_IDENTIFIER {
+            setError("Expected table name");
+            return stmt;
+        }
+        stmt.tableName = currentToken.text;
+        advance();
+
+        if expect(TK_LPAREN) == false {
+            return stmt;
+        }
+
+        while currentToken.kind != TK_RPAREN && hasError == false {
+            if currentToken.kind != TK_IDENTIFIER {
+                setError("Expected column name in index");
+                return stmt;
+            }
+            stmt.addColumn(currentToken.text);
+            advance();
+
+            if currentToken.kind == TK_ASC || currentToken.kind == TK_DESC {
+                advance();
+            }
+
+            if currentToken.kind == TK_COMMA {
+                advance();
+            } else {
+                break;
+            }
+        }
+
+        if expect(TK_RPAREN) == false {
+            return stmt;
+        }
+
+        matchToken(TK_SEMICOLON);
+        return stmt;
+    }
+
+    expose func parseDropIndexStmt() -> DropIndexStmt {
+        var stmt = new DropIndexStmt();
+        stmt.init();
+
+        if expect(TK_INDEX) == false {
+            return stmt;
+        }
+
+        if currentToken.kind != TK_IDENTIFIER {
+            setError("Expected index name");
+            return stmt;
+        }
+        stmt.indexName = currentToken.text;
+        advance();
+
+        matchToken(TK_SEMICOLON);
+        return stmt;
+    }
+}

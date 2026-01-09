@@ -4,7 +4,7 @@ extern @Viper.Console.PrintI64(i64) -> void
 extern @Viper.Strings.Len(str) -> i64
 extern @Viper.Strings.Concat(str, str) -> str
 extern @Viper.Strings.Mid(str, i64, i64) -> str
-extern @Viper.Strings.Equals(str, str) -> i1
+extern @Viper.Strings.Equals(str, str) -> i64
 
 global const str @.L0 = "JOHN"
 global const str @.L1 = "DOE"
@@ -52,7 +52,8 @@ entry:
   call @Viper.Console.PrintStr(%nl2)
 
   %target = const_str @.L3
-  %eq = call @Viper.Strings.Equals(%c3, %target)
+  %eq64 = call @Viper.Strings.Equals(%c3, %target)
+  %eq = trunc1 %eq64
   cbr %eq, label then1, label else0
 
 then1:

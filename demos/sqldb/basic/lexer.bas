@@ -236,6 +236,12 @@ FUNCTION LookupKeyword(word AS STRING) AS INTEGER
         LookupKeyword = TK_COMMIT
     ELSEIF word = "ROLLBACK" THEN
         LookupKeyword = TK_ROLLBACK
+    ELSEIF word = "SAVEPOINT" THEN
+        LookupKeyword = TK_SAVEPOINT
+    ELSEIF word = "TO" THEN
+        LookupKeyword = TK_TO
+    ELSEIF word = "RELEASE" THEN
+        LookupKeyword = TK_RELEASE
     ELSEIF word = "TRANSACTION" THEN
         LookupKeyword = TK_TRANSACTION
     ELSEIF word = "AS" THEN

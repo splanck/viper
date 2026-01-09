@@ -53,67 +53,57 @@ entry:
   br L10
 L10:
   .loc 1 1 4
-  %t2 = iadd.ovf 2, 1
+  %t2 = call @rt_arr_i64_new(3)
   .loc 1 1 4
-  %t4 = scmp_lt %t2, 0
+  call @rt_arr_i64_retain(%t2)
   .loc 1 1 4
-  cbr %t4, dim_len_fail, dim_len_cont(%t2)
-L20:
-  .loc 1 2 10
-  %t7 = load ptr, %t0
-  .loc 1 2 10
-  %t8 = call @rt_arr_i64_len(%t7)
-  .loc 1 2 10
-  %t9 = scmp_lt 1, 0
-  .loc 1 2 10
-  %t10 = scmp_ge 1, %t8
-  .loc 1 2 10
-  %t11 = zext1 %t9
-  .loc 1 2 10
-  %t12 = zext1 %t10
-  .loc 1 2 10
-  %t13 = or %t11, %t12
-  .loc 1 2 10
-  %t14 = icmp_ne %t13, 0
-  .loc 1 2 10
-  cbr %t14, bc_oob0, bc_ok0
-exit:
-  %t17 = load ptr, %t0
-  call @rt_arr_i64_release(%t17)
-  store ptr, %t0, null
-  ret 0
-dim_len_fail:
+  %t3 = load ptr, %t0
   .loc 1 1 4
-  trap
-dim_len_cont(%len:i64):
-  .loc 1 1 10
-  %t5 = call @rt_arr_i64_new(%len)
-  .loc 1 1 10
-  call @rt_arr_i64_retain(%t5)
-  .loc 1 1 10
-  %t6 = load ptr, %t0
-  .loc 1 1 10
-  call @rt_arr_i64_release(%t6)
-  .loc 1 1 10
-  store ptr, %t0, %t5
-  .loc 1 1 10
-  store i64, %t1, %len
+  call @rt_arr_i64_release(%t3)
+  .loc 1 1 4
+  store ptr, %t0, %t2
+  .loc 1 1 4
+  store i64, %t1, 3
   .loc 1 1 4
   br L20
+L20:
+  .loc 1 2 10
+  %t4 = load ptr, %t0
+  .loc 1 2 10
+  %t5 = call @rt_arr_i64_len(%t4)
+  .loc 1 2 10
+  %t6 = scmp_lt 1, 0
+  .loc 1 2 10
+  %t7 = scmp_ge 1, %t5
+  .loc 1 2 10
+  %t8 = zext1 %t6
+  .loc 1 2 10
+  %t9 = zext1 %t7
+  .loc 1 2 10
+  %t10 = or %t8, %t9
+  .loc 1 2 10
+  %t11 = icmp_ne %t10, 0
+  .loc 1 2 10
+  cbr %t11, bc_oob0, bc_ok0
+exit:
+  %t14 = load ptr, %t0
+  call @rt_arr_i64_release(%t14)
+  store ptr, %t0, null
+  ret 0
 bc_ok0:
   .loc 1 2 10
-  %t15 = call @rt_arr_i64_get(%t7, 1)
+  %t12 = call @rt_arr_i64_get(%t4, 1)
   .loc 1 2 10
-  call @Viper.Terminal.PrintI64(%t15)
+  call @Viper.Terminal.PrintI64(%t12)
   .loc 1 2 10
-  %t16 = const_str @.L0
+  %t13 = const_str @.L0
   .loc 1 2 10
-  call @Viper.Terminal.PrintStr(%t16)
+  call @Viper.Terminal.PrintStr(%t13)
   .loc 1 2 4
   br exit
 bc_oob0:
   .loc 1 2 10
-  call @rt_arr_oob_panic(1, %t8)
+  call @rt_arr_oob_panic(1, %t5)
   .loc 1 2 10
   trap
 }

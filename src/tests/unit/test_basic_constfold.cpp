@@ -217,8 +217,9 @@ int main()
         assert(ie && ie->value == 3);
     }
 
-    // LEN handles escape sequences decoded to literal characters
+    // LEN handles backslash as literal character (standard BASIC - no escapes)
     {
+        // In BASIC, "\n" is literally backslash followed by n = 2 characters
         std::string src = "10 PRINT LEN(\"\\n\")\n20 END\n";
         SourceManager sm;
         uint32_t fid = sm.addFile("len_escape.bas");
@@ -227,7 +228,7 @@ int main()
         foldConstants(*prog);
         auto *pr = dynamic_cast<PrintStmt *>(prog->main[0].get());
         auto *ie = dynamic_cast<IntExpr *>(pr->items[0].expr.get());
-        assert(ie && ie->value == 1);
+        assert(ie && ie->value == 2);  // backslash + n = 2 chars
     }
 
     // MID$ clamps indices and handles unicode source

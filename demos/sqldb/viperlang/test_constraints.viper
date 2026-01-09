@@ -1,0 +1,108 @@
+// test_constraints.viper - Test constraint enforcement
+module test_constraints;
+
+import "./executor";
+
+Integer passed = 0;
+Integer failed = 0;
+
+func assert(condition: Boolean, msg: String) {
+    if condition {
+        passed = passed + 1;
+        Viper.Terminal.Say("  PASS: " + msg);
+    } else {
+        failed = failed + 1;
+        Viper.Terminal.Say("  FAIL: " + msg);
+    }
+}
+
+func main() {
+    var exec = new Executor();
+    exec.init();
+
+    Viper.Terminal.Say("=== Constraint Enforcement Tests ===");
+    Viper.Terminal.Say("");
+
+    // Test NOT NULL constraint
+    Viper.Terminal.Say("Testing NOT NULL...");
+    exec.executeSql("CREATE TABLE notnull_test (id INTEGER, name TEXT NOT NULL)");
+    var r1 = exec.executeSql("INSERT INTO notnull_test VALUES (1, 'Alice')");
+    assert(r1.success, "INSERT with value should succeed");
+
+    var r2 = exec.executeSql("INSERT INTO notnull_test VALUES (2, NULL)");
+    assert(r2.success == false, "INSERT with NULL into NOT NULL should fail");
+    Viper.Terminal.Say("    Error: " + r2.message);
+
+    // Test PRIMARY KEY constraint
+    Viper.Terminal.Say("");
+    Viper.Terminal.Say("Testing PRIMARY KEY...");
+    exec.executeSql("CREATE TABLE pk_test (id INTEGER PRIMARY KEY, name TEXT)");
+    var r3 = exec.executeSql("INSERT INTO pk_test VALUES (1, 'Alice')");
+    assert(r3.success, "INSERT with PK should succeed");
+
+    var r4 = exec.executeSql("INSERT INTO pk_test VALUES (1, 'Bob')");
+    assert(r4.success == false, "INSERT with duplicate PK should fail");
+    Viper.Terminal.Say("    Error: " + r4.message);
+
+    var r5 = exec.executeSql("INSERT INTO pk_test VALUES (NULL, 'Charlie')");
+    assert(r5.success == false, "INSERT with NULL PK should fail");
+
+    // Test UNIQUE constraint
+    Viper.Terminal.Say("");
+    Viper.Terminal.Say("Testing UNIQUE...");
+    exec.executeSql("CREATE TABLE unique_test (id INTEGER, email TEXT UNIQUE)");
+    var r6 = exec.executeSql("INSERT INTO unique_test VALUES (1, 'alice@example.com')");
+    assert(r6.success, "INSERT with unique value should succeed");
+
+    var r7 = exec.executeSql("INSERT INTO unique_test VALUES (2, 'alice@example.com')");
+    assert(r7.success == false, "INSERT with duplicate unique value should fail");
+    Viper.Terminal.Say("    Error: " + r7.message);
+
+    // UNIQUE allows multiple NULLs
+    var r8 = exec.executeSql("INSERT INTO unique_test VALUES (3, NULL)");
+    assert(r8.success, "INSERT with NULL into UNIQUE should succeed");
+    var r9 = exec.executeSql("INSERT INTO unique_test VALUES (4, NULL)");
+    assert(r9.success, "INSERT with another NULL into UNIQUE should succeed");
+
+    // Test FOREIGN KEY constraint
+    Viper.Terminal.Say("");
+    Viper.Terminal.Say("Testing FOREIGN KEY...");
+    exec.executeSql("CREATE TABLE departments (id INTEGER PRIMARY KEY, name TEXT)");
+    exec.executeSql("INSERT INTO departments VALUES (1, 'Engineering')");
+    exec.executeSql("INSERT INTO departments VALUES (2, 'Marketing')");
+
+    exec.executeSql("CREATE TABLE employees (id INTEGER PRIMARY KEY, name TEXT, dept_id INTEGER REFERENCES departments(id))");
+    var r10 = exec.executeSql("INSERT INTO employees VALUES (1, 'Alice', 1)");
+    assert(r10.success, "INSERT with valid FK should succeed");
+
+    var r11 = exec.executeSql("INSERT INTO employees VALUES (2, 'Bob', 99)");
+    assert(r11.success == false, "INSERT with invalid FK should fail");
+    Viper.Terminal.Say("    Error: " + r11.message);
+
+    // NULL in FK is allowed
+    var r12 = exec.executeSql("INSERT INTO employees VALUES (3, 'Charlie', NULL)");
+    assert(r12.success, "INSERT with NULL FK should succeed");
+
+    // Test UPDATE constraint enforcement
+    Viper.Terminal.Say("");
+    Viper.Terminal.Say("Testing UPDATE constraints...");
+    var r13 = exec.executeSql("UPDATE employees SET dept_id = 99 WHERE id = 1");
+    assert(r13.success == false, "UPDATE with invalid FK should fail");
+
+    var r14 = exec.executeSql("UPDATE employees SET dept_id = 2 WHERE id = 1");
+    assert(r14.success, "UPDATE with valid FK should succeed");
+
+    var r15 = exec.executeSql("UPDATE pk_test SET id = 1 WHERE name = 'Alice'");
+    // This should succeed since we're updating the same row
+    var r16 = exec.executeSql("INSERT INTO pk_test VALUES (2, 'Diana')");
+    assert(r16.success, "Can insert another row after update");
+
+    var r17 = exec.executeSql("UPDATE pk_test SET id = 1 WHERE name = 'Diana'");
+    assert(r17.success == false, "UPDATE to duplicate PK should fail");
+
+    // Print results
+    Viper.Terminal.Say("");
+    Viper.Terminal.Say("=== Results ===");
+    Viper.Terminal.Say("Passed: " + Viper.Fmt.Int(passed));
+    Viper.Terminal.Say("Failed: " + Viper.Fmt.Int(failed));
+}

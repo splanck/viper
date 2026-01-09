@@ -6,8 +6,9 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_basic_lowerer_string_escapes.cpp
-// Purpose: Ensure BASIC lowering decodes escapes before emitting string globals.
-// Key invariants: Lowered globals store literal characters rather than escape sequences.
+// Purpose: Ensure BASIC lowering treats backslash as a regular character
+//          (standard BASIC behavior - no escape sequence processing).
+// Key invariants: Lowered globals store literal characters including backslash.
 // Ownership/Lifetime: Test owns parser, program, and module instances.
 // Links: docs/codemap.md
 //
@@ -26,10 +27,11 @@ using namespace il::support;
 
 int main()
 {
-    const std::string src = "10 PRINT \"LINE\\n\"\n"
-                            "20 PRINT \"quote:\\\"\"\n"
-                            "30 PRINT \"tab:\\t\"\n"
-                            "40 END\n";
+    // In standard BASIC, backslash is a regular character, not an escape.
+    // So "HELLO\nWORLD" should be 12 characters: H E L L O \ n W O R L D
+    const std::string src = "10 PRINT \"PATH\\TO\\FILE\"\n"
+                             "20 PRINT \"BACKSLASH:\\\\\"\n"
+                             "30 END\n";
 
     SourceManager sm;
     uint32_t fid = sm.addFile("string_escapes.bas");
@@ -46,22 +48,21 @@ int main()
         values[global.name] = global.init;
     }
 
-    bool foundLineBreak = false;
-    bool foundQuote = false;
-    bool foundTab = false;
+    // Verify backslash is treated as literal character
+    bool foundPath = false;
+    bool foundBackslash = false;
     for (const auto &entry : values)
     {
-        if (entry.second == "LINE\n")
-            foundLineBreak = true;
-        if (entry.second == "quote:\"")
-            foundQuote = true;
-        if (entry.second == "tab:\t")
-            foundTab = true;
+        // "PATH\\TO\\FILE" in C++ is "PATH\TO\FILE" as literal string
+        if (entry.second == "PATH\\TO\\FILE")
+            foundPath = true;
+        // "BACKSLASH:\\\\" in C++ is "BACKSLASH:\\" (two backslashes in output)
+        if (entry.second == "BACKSLASH:\\\\")
+            foundBackslash = true;
     }
 
-    assert(foundLineBreak);
-    assert(foundQuote);
-    assert(foundTab);
+    assert(foundPath && "Expected PATH\\TO\\FILE with literal backslashes");
+    assert(foundBackslash && "Expected BACKSLASH:\\\\ with literal backslashes");
 
     return 0;
 }

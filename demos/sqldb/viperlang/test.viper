@@ -1,0 +1,152 @@
+// test.viper - SQL Tests
+// Part of SQLite Clone - ViperLang Implementation
+
+module test;
+
+import "./executor";
+
+//=============================================================================
+// TEST HARNESS
+//=============================================================================
+
+Integer testsPassed = 0;
+Integer testsFailed = 0;
+
+func assert(condition: Boolean, message: String) {
+    if condition {
+        testsPassed = testsPassed + 1;
+        Viper.Terminal.Say("  PASS: " + message);
+    } else {
+        testsFailed = testsFailed + 1;
+        Viper.Terminal.Say("  FAIL: " + message);
+    }
+}
+
+func runTests() {
+    Viper.Terminal.Say("=== ViperSQL Test Suite ===");
+    Viper.Terminal.Say("");
+
+    testCreateTable();
+    testInsert();
+    testSelect();
+    testUpdate();
+    testDelete();
+
+    Viper.Terminal.Say("");
+    Viper.Terminal.Say("=== Results ===");
+    Viper.Terminal.Say("Passed: " + Viper.Fmt.Int(testsPassed));
+    Viper.Terminal.Say("Failed: " + Viper.Fmt.Int(testsFailed));
+}
+
+//=============================================================================
+// INDIVIDUAL TESTS
+//=============================================================================
+
+func testCreateTable() {
+    Viper.Terminal.Say("Testing CREATE TABLE...");
+
+    var exec = new Executor();
+    exec.init();
+
+    var result = exec.executeSql("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, age INTEGER)");
+    assert(result.success, "CREATE TABLE should succeed");
+
+    result = exec.executeSql("CREATE TABLE users (id INTEGER)");
+    assert(result.success == false, "Duplicate table should fail");
+
+    result = exec.executeSql("SHOW TABLES");
+    assert(result.success, "SHOW TABLES should succeed");
+    assert(result.rowCount() == 1, "Should have 1 table");
+}
+
+func testInsert() {
+    Viper.Terminal.Say("Testing INSERT...");
+
+    var exec = new Executor();
+    exec.init();
+
+    exec.executeSql("CREATE TABLE products (id INTEGER, name TEXT, price INTEGER)");
+
+    var result = exec.executeSql("INSERT INTO products VALUES (1, 'Apple', 100)");
+    assert(result.success, "INSERT should succeed");
+    assert(result.rowsAffected == 1, "Should insert 1 row");
+
+    result = exec.executeSql("INSERT INTO products VALUES (2, 'Banana', 50), (3, 'Cherry', 75)");
+    assert(result.success, "Multi-row INSERT should succeed");
+    assert(result.rowsAffected == 2, "Should insert 2 rows");
+
+    result = exec.executeSql("INSERT INTO nonexistent VALUES (1, 2, 3)");
+    assert(result.success == false, "INSERT into nonexistent table should fail");
+}
+
+func testSelect() {
+    Viper.Terminal.Say("Testing SELECT...");
+
+    var exec = new Executor();
+    exec.init();
+
+    exec.executeSql("CREATE TABLE employees (id INTEGER, name TEXT, salary INTEGER)");
+    exec.executeSql("INSERT INTO employees VALUES (1, 'Alice', 50000)");
+    exec.executeSql("INSERT INTO employees VALUES (2, 'Bob', 60000)");
+    exec.executeSql("INSERT INTO employees VALUES (3, 'Charlie', 55000)");
+
+    var result = exec.executeSql("SELECT * FROM employees");
+    assert(result.success, "SELECT * should succeed");
+    assert(result.rowCount() == 3, "Should return 3 rows");
+
+    result = exec.executeSql("SELECT name, salary FROM employees WHERE salary > 52000");
+    assert(result.success, "SELECT with WHERE should succeed");
+    assert(result.rowCount() == 2, "Should return 2 rows (Bob and Charlie)");
+
+    result = exec.executeSql("SELECT * FROM employees ORDER BY salary DESC");
+    assert(result.success, "SELECT with ORDER BY should succeed");
+
+    result = exec.executeSql("SELECT * FROM employees LIMIT 2");
+    assert(result.success, "SELECT with LIMIT should succeed");
+    assert(result.rowCount() == 2, "Should return 2 rows");
+}
+
+func testUpdate() {
+    Viper.Terminal.Say("Testing UPDATE...");
+
+    var exec = new Executor();
+    exec.init();
+
+    exec.executeSql("CREATE TABLE inventory (item TEXT, quantity INTEGER)");
+    exec.executeSql("INSERT INTO inventory VALUES ('Widget', 10)");
+    exec.executeSql("INSERT INTO inventory VALUES ('Gadget', 5)");
+
+    var result = exec.executeSql("UPDATE inventory SET quantity = 20 WHERE item = 'Widget'");
+    assert(result.success, "UPDATE should succeed");
+    assert(result.rowsAffected == 1, "Should update 1 row");
+
+    result = exec.executeSql("SELECT quantity FROM inventory WHERE item = 'Widget'");
+    assert(result.success, "SELECT after UPDATE should succeed");
+}
+
+func testDelete() {
+    Viper.Terminal.Say("Testing DELETE...");
+
+    var exec = new Executor();
+    exec.init();
+
+    exec.executeSql("CREATE TABLE tasks (id INTEGER, description TEXT)");
+    exec.executeSql("INSERT INTO tasks VALUES (1, 'Task A')");
+    exec.executeSql("INSERT INTO tasks VALUES (2, 'Task B')");
+    exec.executeSql("INSERT INTO tasks VALUES (3, 'Task C')");
+
+    var result = exec.executeSql("DELETE FROM tasks WHERE id = 2");
+    assert(result.success, "DELETE should succeed");
+    assert(result.rowsAffected == 1, "Should delete 1 row");
+
+    result = exec.executeSql("SELECT * FROM tasks");
+    assert(result.rowCount() == 2, "Should have 2 rows remaining");
+}
+
+//=============================================================================
+// ENTRY POINT FOR TESTS
+//=============================================================================
+
+func main() {
+    runTests();
+}

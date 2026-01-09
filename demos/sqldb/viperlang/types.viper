@@ -1,0 +1,300 @@
+// types.viper - SQL Value Types
+// Part of SQLite Clone - ViperLang Implementation
+
+module types;
+
+//=============================================================================
+// SQL TYPE CONSTANTS
+//=============================================================================
+
+final SQL_NULL = 0;
+final SQL_INTEGER = 1;
+final SQL_REAL = 2;
+final SQL_TEXT = 3;
+final SQL_BLOB = 4;
+
+//=============================================================================
+// HELPER FUNCTIONS
+//=============================================================================
+
+// Helper function to convert string to integer
+func stringToInt(text: String) -> Integer {
+    var result = 0;
+    var i = 0;
+    var len = Viper.String.Length(text);
+    var negative = false;
+
+    if len > 0 {
+        if Viper.String.Substring(text, 0, 1) == "-" {
+            negative = true;
+            i = 1;
+        }
+    }
+
+    while i < len {
+        var ch = Viper.String.Substring(text, i, 1);
+        var code = Viper.String.Asc(ch);
+        if code >= 48 {
+            if code <= 57 {
+                result = result * 10 + (code - 48);
+            }
+        }
+        i = i + 1;
+    }
+
+    if negative == true {
+        return -result;
+    }
+    return result;
+}
+
+// Helper function to convert string to number
+func stringToNumber(text: String) -> Float {
+    var result = 0.0;
+    var i = 0;
+    var len = Viper.String.Length(text);
+    var negative = false;
+    var foundDecimal = false;
+    var decimalPlace = 0.1;
+
+    if len > 0 {
+        if Viper.String.Substring(text, 0, 1) == "-" {
+            negative = true;
+            i = 1;
+        }
+    }
+
+    while i < len {
+        var ch = Viper.String.Substring(text, i, 1);
+        if ch == "." {
+            foundDecimal = true;
+            i = i + 1;
+            continue;
+        }
+        var code = Viper.String.Asc(ch);
+        if code >= 48 && code <= 57 {
+            var digit = code - 48;
+            if foundDecimal {
+                result = result + digit * decimalPlace;
+                decimalPlace = decimalPlace * 0.1;
+            } else {
+                result = result * 10.0 + digit;
+            }
+        }
+        i = i + 1;
+    }
+
+    if negative {
+        return -result;
+    }
+    return result;
+}
+
+//=============================================================================
+// SQL VALUE ENTITY
+//=============================================================================
+
+entity SqlValue {
+    expose Integer kind;       // SQL_NULL, SQL_INTEGER, SQL_REAL, SQL_TEXT, SQL_BLOB
+    expose Integer intValue;   // Used when kind == SQL_INTEGER
+    expose Float realValue;    // Used when kind == SQL_REAL
+    expose String textValue;   // Used when kind == SQL_TEXT or SQL_BLOB
+
+    expose func init() {
+        kind = SQL_NULL;
+        intValue = 0;
+        realValue = 0.0;
+        textValue = "";
+    }
+
+    expose func initNull() {
+        kind = SQL_NULL;
+        intValue = 0;
+        realValue = 0.0;
+        textValue = "";
+    }
+
+    expose func initInteger(val: Integer) {
+        kind = SQL_INTEGER;
+        intValue = val;
+        realValue = 0.0;
+        textValue = "";
+    }
+
+    expose func initReal(val: Float, text: String) {
+        kind = SQL_REAL;
+        intValue = 0;
+        realValue = val;
+        textValue = text;
+    }
+
+    expose func initText(val: String) {
+        kind = SQL_TEXT;
+        intValue = 0;
+        realValue = 0.0;
+        textValue = val;
+    }
+
+    expose func initBlob(val: String) {
+        kind = SQL_BLOB;
+        intValue = 0;
+        realValue = 0.0;
+        textValue = val;
+    }
+
+    expose func isNull() -> Boolean { return kind == SQL_NULL; }
+    expose func isInteger() -> Boolean { return kind == SQL_INTEGER; }
+    expose func isReal() -> Boolean { return kind == SQL_REAL; }
+    expose func isText() -> Boolean { return kind == SQL_TEXT; }
+    expose func isBlob() -> Boolean { return kind == SQL_BLOB; }
+
+    expose func typeName() -> String {
+        if (kind == SQL_NULL) { return "NULL"; }
+        if (kind == SQL_INTEGER) { return "INTEGER"; }
+        if (kind == SQL_REAL) { return "REAL"; }
+        if (kind == SQL_TEXT) { return "TEXT"; }
+        if (kind == SQL_BLOB) { return "BLOB"; }
+        return "UNKNOWN";
+    }
+
+    expose func toString() -> String {
+        if (kind == SQL_NULL) { return "NULL"; }
+        if (kind == SQL_INTEGER) { return Viper.Fmt.Int(intValue); }
+        if (kind == SQL_REAL) { return textValue; }
+        if (kind == SQL_TEXT) { return textValue; }
+        if (kind == SQL_BLOB) { return textValue; }
+        return "?";
+    }
+
+    // Format for SQL output (with quotes)
+    expose func toSqlString() -> String {
+        if (kind == SQL_NULL) { return "NULL"; }
+        if (kind == SQL_INTEGER) { return Viper.Fmt.Int(intValue); }
+        if (kind == SQL_REAL) { return textValue; }
+        if (kind == SQL_TEXT) { return "'" + textValue + "'"; }
+        if (kind == SQL_BLOB) { return "X'" + textValue + "'"; }
+        return "?";
+    }
+
+    expose func compare(other: SqlValue) -> Integer {
+        var result = 0;
+
+        if kind == SQL_NULL && other.kind == SQL_NULL {
+            result = 0;
+        } else if kind == SQL_NULL {
+            result = -1;
+        } else if other.kind == SQL_NULL {
+            result = 1;
+        } else if kind == SQL_INTEGER && other.kind == SQL_INTEGER {
+            if intValue < other.intValue {
+                result = -1;
+            } else if intValue > other.intValue {
+                result = 1;
+            } else {
+                result = 0;
+            }
+        } else if kind == SQL_REAL && other.kind == SQL_REAL {
+            if realValue < other.realValue {
+                result = -1;
+            } else if realValue > other.realValue {
+                result = 1;
+            } else {
+                result = 0;
+            }
+        } else if kind == SQL_TEXT && other.kind == SQL_TEXT {
+            if textValue == other.textValue {
+                result = 0;
+            } else {
+                var myLen = Viper.String.Length(textValue);
+                var otherLen = Viper.String.Length(other.textValue);
+                var minLen = myLen;
+                if otherLen < minLen { minLen = otherLen; }
+                var i = 0;
+                var found = false;
+                while i < minLen && found == false {
+                    var myChar = Viper.String.Asc(Viper.String.Substring(textValue, i, 1));
+                    var otherChar = Viper.String.Asc(Viper.String.Substring(other.textValue, i, 1));
+                    if myChar < otherChar {
+                        result = -1;
+                        found = true;
+                    } else if myChar > otherChar {
+                        result = 1;
+                        found = true;
+                    }
+                    i = i + 1;
+                }
+                if found == false {
+                    if myLen < otherLen {
+                        result = -1;
+                    } else if myLen > otherLen {
+                        result = 1;
+                    } else {
+                        result = 0;
+                    }
+                }
+            }
+        } else if kind == SQL_TEXT && other.kind == SQL_INTEGER {
+            var myInt = stringToInt(textValue);
+            if myInt < other.intValue {
+                result = -1;
+            } else if myInt > other.intValue {
+                result = 1;
+            } else {
+                result = 0;
+            }
+        } else if kind == SQL_INTEGER && other.kind == SQL_TEXT {
+            var otherInt = stringToInt(other.textValue);
+            if intValue < otherInt {
+                result = -1;
+            } else if intValue > otherInt {
+                result = 1;
+            } else {
+                result = 0;
+            }
+        } else if kind < other.kind {
+            result = -1;
+        } else if kind > other.kind {
+            result = 1;
+        }
+
+        return result;
+    }
+
+    expose func equals(other: SqlValue) -> Boolean {
+        return compare(other) == 0;
+    }
+}
+
+//=============================================================================
+// FACTORY FUNCTIONS
+//=============================================================================
+
+func sqlNull() -> SqlValue {
+    var v = new SqlValue();
+    v.initNull();
+    return v;
+}
+
+func sqlInteger(val: Integer) -> SqlValue {
+    var v = new SqlValue();
+    v.initInteger(val);
+    return v;
+}
+
+func sqlReal(val: Float, text: String) -> SqlValue {
+    var v = new SqlValue();
+    v.initReal(val, text);
+    return v;
+}
+
+func sqlText(val: String) -> SqlValue {
+    var v = new SqlValue();
+    v.initText(val);
+    return v;
+}
+
+func sqlBlob(val: String) -> SqlValue {
+    var v = new SqlValue();
+    v.initBlob(val);
+    return v;
+}

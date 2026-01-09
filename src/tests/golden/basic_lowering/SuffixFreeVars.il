@@ -64,22 +64,28 @@ UL999999999:
   br UL999999998
 UL999999998:
   .loc 1 3 1
-  %t4 = iadd.ovf 2, 1
+  %t4 = call @rt_arr_i64_new(3)
   .loc 1 3 1
-  %t6 = scmp_lt %t4, 0
+  call @rt_arr_i64_retain(%t4)
   .loc 1 3 1
-  cbr %t6, dim_len_fail, dim_len_cont(%t4)
+  %t5 = load ptr, %t0
+  .loc 1 3 1
+  call @rt_arr_i64_release(%t5)
+  .loc 1 3 1
+  store ptr, %t0, %t4
+  .loc 1 3 1
+  br UL999999997
 UL999999997:
   .loc 1 4 15
-  %t9 = const_str @.L0
+  %t6 = const_str @.L0
   .loc 1 4 1
-  %t10 = load str, %t2
+  %t7 = load str, %t2
   .loc 1 4 1
-  call @rt_str_release_maybe(%t10)
+  call @rt_str_release_maybe(%t7)
   .loc 1 4 1
-  call @rt_str_retain_maybe(%t9)
+  call @rt_str_retain_maybe(%t6)
   .loc 1 4 1
-  store str, %t2, %t9
+  store str, %t2, %t6
   .loc 1 4 1
   br UL999999996
 UL999999996:
@@ -89,115 +95,99 @@ UL999999996:
   br UL999999995
 UL999999995:
   .loc 1 6 17
-  %t11 = load i64, %t1
+  %t8 = load i64, %t1
   .loc 1 6 1
-  %t12 = load ptr, %t0
+  %t9 = load ptr, %t0
   .loc 1 6 5
-  %t13 = call @rt_arr_i64_len(%t12)
+  %t10 = call @rt_arr_i64_len(%t9)
   .loc 1 6 5
-  %t14 = scmp_lt 0, 0
+  %t11 = scmp_lt 0, 0
   .loc 1 6 5
-  %t15 = scmp_ge 0, %t13
+  %t12 = scmp_ge 0, %t10
   .loc 1 6 5
-  %t16 = zext1 %t14
+  %t13 = zext1 %t11
   .loc 1 6 5
-  %t17 = zext1 %t15
+  %t14 = zext1 %t12
   .loc 1 6 5
-  %t18 = or %t16, %t17
+  %t15 = or %t13, %t14
   .loc 1 6 5
-  %t19 = icmp_ne %t18, 0
+  %t16 = icmp_ne %t15, 0
   .loc 1 6 5
-  cbr %t19, bc_oob0, bc_ok0
+  cbr %t16, bc_oob0, bc_ok0
 UL999999994:
   .loc 1 7 7
-  %t20 = load str, %t2
+  %t17 = load str, %t2
   .loc 1 7 7
-  call @rt_str_retain_maybe(%t20)
+  call @rt_str_retain_maybe(%t17)
   .loc 1 7 7
-  call @Viper.Terminal.PrintStr(%t20)
+  call @Viper.Terminal.PrintStr(%t17)
   .loc 1 7 7
-  call @rt_str_release_maybe(%t20)
+  call @rt_str_release_maybe(%t17)
   .loc 1 7 7
-  %t21 = const_str @.L1
+  %t18 = const_str @.L1
   .loc 1 7 7
-  call @Viper.Terminal.PrintStr(%t21)
+  call @Viper.Terminal.PrintStr(%t18)
   .loc 1 7 1
   br UL999999993
 UL999999993:
   .loc 1 8 7
-  %t22 = load i64, %t1
+  %t19 = load i64, %t1
   .loc 1 8 7
-  call @Viper.Terminal.PrintI64(%t22)
+  call @Viper.Terminal.PrintI64(%t19)
   .loc 1 8 7
-  %t23 = const_str @.L1
+  %t20 = const_str @.L1
   .loc 1 8 7
-  call @Viper.Terminal.PrintStr(%t23)
+  call @Viper.Terminal.PrintStr(%t20)
   .loc 1 8 1
   br UL999999992
 UL999999992:
   .loc 1 9 7
-  %t24 = load ptr, %t0
+  %t21 = load ptr, %t0
   .loc 1 9 7
-  %t25 = call @rt_arr_i64_len(%t24)
+  %t22 = call @rt_arr_i64_len(%t21)
   .loc 1 9 7
-  %t26 = scmp_lt 0, 0
+  %t23 = scmp_lt 0, 0
   .loc 1 9 7
-  %t27 = scmp_ge 0, %t25
+  %t24 = scmp_ge 0, %t22
   .loc 1 9 7
-  %t28 = zext1 %t26
+  %t25 = zext1 %t23
   .loc 1 9 7
-  %t29 = zext1 %t27
+  %t26 = zext1 %t24
   .loc 1 9 7
-  %t30 = or %t28, %t29
+  %t27 = or %t25, %t26
   .loc 1 9 7
-  %t31 = icmp_ne %t30, 0
+  %t28 = icmp_ne %t27, 0
   .loc 1 9 7
-  cbr %t31, bc_oob1, bc_ok1
+  cbr %t28, bc_oob1, bc_ok1
 exit:
-  %t34 = load ptr, %t0
-  call @rt_arr_i64_release(%t34)
+  %t31 = load ptr, %t0
+  call @rt_arr_i64_release(%t31)
   store ptr, %t0, null
   ret 0
-dim_len_fail:
-  .loc 1 3 1
-  trap
-dim_len_cont(%len:i64):
-  .loc 1 3 12
-  %t7 = call @rt_arr_i64_new(%len)
-  .loc 1 3 12
-  call @rt_arr_i64_retain(%t7)
-  .loc 1 3 12
-  %t8 = load ptr, %t0
-  .loc 1 3 12
-  call @rt_arr_i64_release(%t8)
-  .loc 1 3 12
-  store ptr, %t0, %t7
-  .loc 1 3 1
-  br UL999999997
 bc_ok0:
   .loc 1 6 5
-  call @rt_arr_i64_set(%t12, 0, %t11)
+  call @rt_arr_i64_set(%t9, 0, %t8)
   .loc 1 6 1
   br UL999999994
 bc_oob0:
   .loc 1 6 5
-  call @rt_arr_oob_panic(0, %t13)
+  call @rt_arr_oob_panic(0, %t10)
   .loc 1 6 5
   trap
 bc_ok1:
   .loc 1 9 7
-  %t32 = call @rt_arr_i64_get(%t24, 0)
+  %t29 = call @rt_arr_i64_get(%t21, 0)
   .loc 1 9 7
-  call @Viper.Terminal.PrintI64(%t32)
+  call @Viper.Terminal.PrintI64(%t29)
   .loc 1 9 7
-  %t33 = const_str @.L1
+  %t30 = const_str @.L1
   .loc 1 9 7
-  call @Viper.Terminal.PrintStr(%t33)
+  call @Viper.Terminal.PrintStr(%t30)
   .loc 1 9 1
   br exit
 bc_oob1:
   .loc 1 9 7
-  call @rt_arr_oob_panic(0, %t25)
+  call @rt_arr_oob_panic(0, %t22)
   .loc 1 9 7
   trap
 }

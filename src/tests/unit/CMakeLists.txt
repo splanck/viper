@@ -169,6 +169,13 @@ if (NOT TARGET test_ident_util)
     viper_add_ctest(test_ident_util test_ident_util)
 endif ()
 
+# Bug #021 fix: Method call arguments evaluated only once
+if (NOT TARGET test_basic_method_call_arg_single_eval)
+    viper_add_test(test_basic_method_call_arg_single_eval ${VIPER_TESTS_DIR}/unit/test_basic_method_call_arg_single_eval.cpp)
+    target_link_libraries(test_basic_method_call_arg_single_eval PRIVATE fe_basic)
+    viper_add_ctest(test_basic_method_call_arg_single_eval test_basic_method_call_arg_single_eval)
+endif ()
+
 # Tail-call tests (enable TCO for these targets)
 if (NOT TARGET test_vm_tailcall)
     viper_add_test(test_vm_tailcall ${VIPER_TESTS_DIR}/unit/VM_TailCallTests.cpp)

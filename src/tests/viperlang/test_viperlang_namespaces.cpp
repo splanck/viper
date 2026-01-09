@@ -321,6 +321,100 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
+/// @brief Test calling a function from a namespace.
+TEST(ViperLangNamespaces, CallNamespacedFunction)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+namespace Math {
+    func add(a: Integer, b: Integer) -> Integer {
+        return a + b;
+    }
+
+    func multiply(a: Integer, b: Integer) -> Integer {
+        return a * b;
+    }
+}
+
+func start() {
+    var sum = Math.add(3, 4);
+    var product = Math.multiply(5, 6);
+}
+)";
+    CompilerInput input{.source = source, .path = "test.viper"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    if (!result.succeeded())
+    {
+        std::cerr << "Diagnostics for CallNamespacedFunction:\n";
+        for (const auto &d : result.diagnostics.diagnostics())
+        {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+
+    EXPECT_TRUE(result.succeeded());
+
+    // Verify both namespaced functions exist
+    bool hasAdd = false;
+    bool hasMultiply = false;
+    for (const auto &fn : result.module.functions)
+    {
+        if (fn.name.find("Math") != std::string::npos && fn.name.find("add") != std::string::npos)
+        {
+            hasAdd = true;
+        }
+        if (fn.name.find("Math") != std::string::npos && fn.name.find("multiply") != std::string::npos)
+        {
+            hasMultiply = true;
+        }
+    }
+    EXPECT_TRUE(hasAdd);
+    EXPECT_TRUE(hasMultiply);
+}
+
+/// @brief Test calling a nested namespaced function.
+TEST(ViperLangNamespaces, CallNestedNamespacedFunction)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+namespace Outer {
+    namespace Inner {
+        func getValue() -> Integer {
+            return 42;
+        }
+    }
+}
+
+func start() {
+    var x = Outer.Inner.getValue();
+}
+)";
+    CompilerInput input{.source = source, .path = "test.viper"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    if (!result.succeeded())
+    {
+        std::cerr << "Diagnostics for CallNestedNamespacedFunction:\n";
+        for (const auto &d : result.diagnostics.diagnostics())
+        {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+
+    EXPECT_TRUE(result.succeeded());
+}
+
 } // namespace
 
 int main()

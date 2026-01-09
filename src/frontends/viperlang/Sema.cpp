@@ -30,11 +30,13 @@
 /// Expression types are computed bottom-up and cached in exprTypes_ map.
 /// Each analyzeXxx method returns the inferred type and stores it.
 ///
-/// ## Runtime Function Resolution
+/// ## Function Resolution
 ///
-/// Calls to runtime functions (Viper.Terminal.Say, etc.) are detected by
-/// extracting dotted names from field access chains and looking them up
-/// in runtimeFunctions_. Resolved calls are stored in runtimeCallees_.
+/// Calls to functions with dotted names (Viper.Terminal.Say, MyLib.helper, etc.)
+/// are detected by extracting the qualified name from field access chains and
+/// looking them up in the symbol table. Both runtime (extern) functions and
+/// user-defined namespaced functions use the same unified lookup mechanism.
+/// Resolved extern calls are stored in runtimeCallees_ for the lowerer.
 ///
 /// @see Sema.hpp for the class interface
 ///
@@ -445,6 +447,17 @@ void Sema::popScope()
 void Sema::defineSymbol(const std::string &name, Symbol symbol)
 {
     currentScope_->define(name, std::move(symbol));
+}
+
+void Sema::defineExternFunction(const std::string &name, TypeRef returnType)
+{
+    Symbol sym;
+    sym.kind = Symbol::Kind::Function;
+    sym.name = name;
+    sym.type = returnType; // For extern functions, we store just the return type
+    sym.isExtern = true;
+    sym.decl = nullptr; // No AST declaration for extern functions
+    defineSymbol(name, std::move(sym));
 }
 
 Symbol *Sema::lookupSymbol(const std::string &name)

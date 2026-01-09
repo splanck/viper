@@ -1,0 +1,120 @@
+// result.viper - Query Result
+// Part of SQLite Clone - ViperLang Implementation
+
+module result;
+
+import "./schema";
+
+//=============================================================================
+// QUERY RESULT ENTITY
+//=============================================================================
+
+entity QueryResult {
+    expose Boolean success;
+    expose String message;
+    expose List[String] columnNames;
+    expose List[Row] rows;
+    expose Integer rowsAffected;
+
+    expose func init() {
+        success = true;
+        message = "";
+        columnNames = [];
+        rows = [];
+        rowsAffected = 0;
+    }
+
+    expose func setError(msg: String) {
+        success = false;
+        message = msg;
+    }
+
+    expose func addColumnName(name: String) {
+        columnNames.add(name);
+    }
+
+    expose func addRow(row: Row) {
+        rows.add(row);
+    }
+
+    expose func getRow(idx: Integer) -> Row? {
+        if idx >= 0 && idx < rows.count() {
+            return rows.get(idx);
+        }
+        return null;
+    }
+
+    expose func setRow(idx: Integer, row: Row) {
+        if idx >= 0 && idx < rows.count() {
+            rows.set(idx, row);
+        }
+    }
+
+    expose func swapRows(i: Integer, j: Integer) {
+        if i >= 0 && i < rows.count() && j >= 0 && j < rows.count() {
+            var temp = rows.get(i);
+            rows.set(i, rows.get(j));
+            rows.set(j, temp);
+        }
+    }
+
+    expose func rowCount() -> Integer {
+        return rows.count();
+    }
+
+    expose func toString() -> String {
+        if success == false {
+            return "ERROR: " + message;
+        }
+
+        var result = "";
+
+        // Print column headers
+        var i = 0;
+        while i < columnNames.count() {
+            if i > 0 {
+                result = result + " | ";
+            }
+            result = result + columnNames.get(i);
+            i = i + 1;
+        }
+
+        if columnNames.count() > 0 {
+            result = result + "\n";
+            // Print separator
+            i = 0;
+            while i < columnNames.count() {
+                if i > 0 {
+                    result = result + "-+-";
+                }
+                result = result + "--------";
+                i = i + 1;
+            }
+            result = result + "\n";
+        }
+
+        // Print rows
+        var r = 0;
+        while r < rows.count() {
+            var row = rows.get(r);
+            var c = 0;
+            while c < row.columnCount() {
+                if c > 0 {
+                    result = result + " | ";
+                }
+                result = result + row.getValue(c).toString();
+                c = c + 1;
+            }
+            result = result + "\n";
+            r = r + 1;
+        }
+
+        if rows.count() == 0 && columnNames.count() == 0 {
+            result = message;
+        } else {
+            result = result + "(" + Viper.Fmt.Int(rows.count()) + " rows)";
+        }
+
+        return result;
+    }
+}

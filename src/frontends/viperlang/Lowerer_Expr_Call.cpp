@@ -54,6 +54,43 @@ std::optional<LowerResult> Lowerer::lowerListMethodCall(Value baseValue,
         }
     }
 
+    // Bug #022 fix: Add remove (by value) method handling
+    if (equalsIgnoreCase(methodName, "remove"))
+    {
+        if (expr->args.size() >= 1)
+        {
+            auto valueResult = lowerExpr(expr->args[0].value.get());
+            Value boxedValue = emitBox(valueResult.value, valueResult.type);
+            Value result = emitCallRet(
+                Type(Type::Kind::I1), kListRemove, {baseValue, boxedValue});
+            return LowerResult{result, Type(Type::Kind::I1)};
+        }
+    }
+
+    if (equalsIgnoreCase(methodName, "insert"))
+    {
+        if (expr->args.size() >= 2)
+        {
+            auto indexResult = lowerExpr(expr->args[0].value.get());
+            auto valueResult = lowerExpr(expr->args[1].value.get());
+            Value boxedValue = emitBox(valueResult.value, valueResult.type);
+            emitCall(kListInsert, {baseValue, indexResult.value, boxedValue});
+            return LowerResult{Value::constInt(0), Type(Type::Kind::Void)};
+        }
+    }
+
+    if (equalsIgnoreCase(methodName, "find") || equalsIgnoreCase(methodName, "indexOf"))
+    {
+        if (expr->args.size() >= 1)
+        {
+            auto valueResult = lowerExpr(expr->args[0].value.get());
+            Value boxedValue = emitBox(valueResult.value, valueResult.type);
+            Value result = emitCallRet(
+                Type(Type::Kind::I64), kListFind, {baseValue, boxedValue});
+            return LowerResult{result, Type(Type::Kind::I64)};
+        }
+    }
+
     if (equalsIgnoreCase(methodName, "has") || equalsIgnoreCase(methodName, "contains"))
     {
         if (expr->args.size() >= 1)
@@ -607,7 +644,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
             args.push_back(argValue);
         }
 
-        TypeRef exprType = sema_.runtimeReturnType(runtimeCallee);
+        TypeRef exprType = sema_.functionReturnType(runtimeCallee);
         Type ilReturnType = exprType ? mapType(exprType) : Type(Type::Kind::Void);
         return emitCallWithReturn(runtimeCallee, args, ilReturnType);
     }

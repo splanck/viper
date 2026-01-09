@@ -148,8 +148,13 @@ struct Symbol
     /// @details Only meaningful for Variable and Field kinds.
     bool isFinal{false};
 
+    /// @brief True if this is an external/runtime function.
+    /// @details For functions in the Viper.* namespace, this is true.
+    /// The lowerer uses this to emit extern calls instead of direct calls.
+    bool isExtern{false};
+
     /// @brief Pointer to the AST declaration node.
-    /// @details May be nullptr for built-in symbols.
+    /// @details May be nullptr for built-in symbols or extern functions.
     Decl *decl{nullptr};
 };
 
@@ -329,13 +334,15 @@ class Sema
         return it != runtimeCallees_.end() ? it->second : "";
     }
 
-    /// @brief Look up the return type of a runtime function by name.
-    /// @param name The runtime function name (e.g., "Viper.Random.NextInt").
+    /// @brief Look up the return type of a function by name.
+    /// @param name The function name (e.g., "Viper.Random.NextInt" or "MyLib.helper").
     /// @return The return type, or nullptr if not found.
-    TypeRef runtimeReturnType(const std::string &name) const
+    ///
+    /// @details Works for both runtime (extern) functions and user-defined functions.
+    TypeRef functionReturnType(const std::string &name)
     {
-        auto it = runtimeFunctions_.find(name);
-        return it != runtimeFunctions_.end() ? it->second : nullptr;
+        Symbol *sym = lookupSymbol(name);
+        return sym && sym->kind == Symbol::Kind::Function ? sym->type : nullptr;
     }
 
     /// @brief Look up the type of a variable by name.
@@ -430,9 +437,17 @@ class Sema
     void analyzeMethodDecl(MethodDecl &decl, TypeRef ownerType);
 
     /// @brief Initialize all runtime function type mappings.
-    /// @details Populates runtimeFunctions_ with all Viper.* namespace functions
-    /// and their return types. Called once during Sema construction.
+    /// @details Registers all Viper.* namespace functions as extern symbols
+    /// in the global scope. Called once during Sema construction.
     void initRuntimeFunctions();
+
+    /// @brief Register an external (runtime) function.
+    /// @param name The fully qualified function name (e.g., "Viper.Terminal.Say").
+    /// @param returnType The function's return type.
+    ///
+    /// @details Creates a Symbol with isExtern=true and registers it in scope.
+    /// Used for runtime library functions that have no AST declaration.
+    void defineExternFunction(const std::string &name, TypeRef returnType);
 
     /// @}
     //=========================================================================
@@ -797,14 +812,9 @@ class Sema
     /// @details Key format: "TypeName.memberName"
     std::unordered_map<std::string, Visibility> memberVisibility_;
 
-    /// @brief Map from runtime function names to return types.
-    /// @details Key format: "Viper.Module.FunctionName"
-    /// Populated based on imports.
-    std::unordered_map<std::string, TypeRef> runtimeFunctions_;
-
-    /// @brief Map from call expressions to their resolved runtime function names.
-    /// @details Populated for calls to runtime library functions.
-    /// Used during lowering to emit correct runtime calls.
+    /// @brief Map from call expressions to their resolved extern function names.
+    /// @details Populated for calls to extern functions (runtime library).
+    /// Used during lowering to emit extern calls instead of direct calls.
     std::unordered_map<const CallExpr *, std::string> runtimeCallees_;
 
     /// @brief Set of import paths seen in the current module.

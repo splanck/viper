@@ -1,0 +1,184 @@
+// schema.viper - Column and Row entities
+// Part of SQLite Clone - ViperLang Implementation
+
+module schema;
+
+import "./types";
+
+//=============================================================================
+// COLUMN ENTITY
+//=============================================================================
+
+entity Column {
+    expose String name;
+    expose Integer typeCode;
+    expose Boolean notNull;
+    expose Boolean primaryKey;
+    expose Boolean autoIncrement;
+    expose Boolean unique;
+    expose Boolean hasDefault;
+    expose SqlValue defaultValue;
+    expose Boolean isForeignKey;
+    expose String refTableName;
+    expose String refColumnName;
+
+    expose func init() {
+        name = "";
+        typeCode = SQL_TEXT;
+        notNull = false;
+        primaryKey = false;
+        autoIncrement = false;
+        unique = false;
+        hasDefault = false;
+        defaultValue = new SqlValue();
+        defaultValue.initNull();
+        isForeignKey = false;
+        refTableName = "";
+        refColumnName = "";
+    }
+
+    expose func initWithName(n: String, t: Integer) {
+        name = n;
+        typeCode = t;
+        notNull = false;
+        primaryKey = false;
+        autoIncrement = false;
+        unique = false;
+        hasDefault = false;
+        defaultValue = new SqlValue();
+        defaultValue.initNull();
+        isForeignKey = false;
+        refTableName = "";
+        refColumnName = "";
+    }
+
+    expose func typeName() -> String {
+        if typeCode == SQL_NULL { return "NULL"; }
+        if typeCode == SQL_INTEGER { return "INTEGER"; }
+        if typeCode == SQL_REAL { return "REAL"; }
+        if typeCode == SQL_TEXT { return "TEXT"; }
+        if typeCode == SQL_BLOB { return "BLOB"; }
+        return "UNKNOWN";
+    }
+
+    expose func setDefault(val: SqlValue) {
+        hasDefault = true;
+        defaultValue = val;
+    }
+
+    expose func toString() -> String {
+        var result = name + " " + typeName();
+        if primaryKey {
+            result = result + " PRIMARY KEY";
+        }
+        if autoIncrement {
+            result = result + " AUTOINCREMENT";
+        }
+        if notNull {
+            result = result + " NOT NULL";
+        }
+        if unique {
+            result = result + " UNIQUE";
+        }
+        if hasDefault {
+            result = result + " DEFAULT " + defaultValue.toString();
+        }
+        if isForeignKey {
+            result = result + " REFERENCES " + refTableName + "(" + refColumnName + ")";
+        }
+        return result;
+    }
+}
+
+func makeColumn(name: String, typeCode: Integer) -> Column {
+    var col = new Column();
+    col.initWithName(name, typeCode);
+    return col;
+}
+
+//=============================================================================
+// ROW ENTITY
+//=============================================================================
+
+entity Row {
+    expose List[SqlValue] values;
+    expose Boolean deleted;
+
+    expose func init() {
+        values = [];
+        deleted = false;
+    }
+
+    expose func initWithCount(count: Integer) {
+        values = [];
+        deleted = false;
+        var i = 0;
+        while i < count {
+            var v = new SqlValue();
+            v.initNull();
+            values.add(v);
+            i = i + 1;
+        }
+    }
+
+    expose func columnCount() -> Integer {
+        return values.count();
+    }
+
+    expose func getValue(index: Integer) -> SqlValue {
+        if index < 0 || index >= values.count() {
+            var nullVal = new SqlValue();
+            nullVal.initNull();
+            return nullVal;
+        }
+        return values.get(index);
+    }
+
+    expose func setValue(index: Integer, val: SqlValue) {
+        if index >= 0 && index < values.count() {
+            values.set(index, val);
+        }
+    }
+
+    expose func addValue(val: SqlValue) {
+        values.add(val);
+    }
+
+    expose func clone() -> Row {
+        var newRow = new Row();
+        newRow.init();
+        var i = 0;
+        while i < values.count() {
+            var v = values.get(i);
+            var cloned = new SqlValue();
+            cloned.kind = v.kind;
+            cloned.intValue = v.intValue;
+            cloned.realValue = v.realValue;
+            cloned.textValue = v.textValue;
+            newRow.addValue(cloned);
+            i = i + 1;
+        }
+        newRow.deleted = deleted;
+        return newRow;
+    }
+
+    expose func toString() -> String {
+        var result = "(";
+        var i = 0;
+        while i < values.count() {
+            if i > 0 {
+                result = result + ", ";
+            }
+            result = result + values.get(i).toString();
+            i = i + 1;
+        }
+        result = result + ")";
+        return result;
+    }
+}
+
+func makeRow(columnCount: Integer) -> Row {
+    var row = new Row();
+    row.initWithCount(columnCount);
+    return row;
+}

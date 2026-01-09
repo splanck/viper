@@ -359,22 +359,37 @@ static bool extractDottedName(Expr *expr, std::string &out)
 
 TypeRef Sema::analyzeCall(CallExpr *expr)
 {
-    // First, try to resolve dotted runtime function names like Viper.Terminal.Say
+    // First, try to resolve dotted function names like Viper.Terminal.Say or MyLib.helper
+    // This unified lookup works for both runtime functions and user-defined namespaced functions
     std::string dottedName;
     if (extractDottedName(expr->callee.get(), dottedName))
     {
-        // Check if it's a known runtime function
-        auto it = runtimeFunctions_.find(dottedName);
-        if (it != runtimeFunctions_.end())
+        // Check if it's a known function (runtime or user-defined with qualified name)
+        Symbol *sym = lookupSymbol(dottedName);
+        if (sym && sym->kind == Symbol::Kind::Function)
         {
+            // Bug #024 fix: Store the callee's type so the lowerer can access it
+            // The lowerer uses sema_.typeOf(expr->callee.get()) to determine return type
+            TypeRef funcType = sym->type;
+            exprTypes_[expr->callee.get()] = funcType;
+
             // Analyze arguments
             for (auto &arg : expr->args)
             {
                 analyzeExpr(arg.value.get());
             }
-            // Store the resolved runtime call info
-            runtimeCallees_[expr] = dottedName;
-            return it->second;
+            // For extern functions (runtime library), store the resolved call info
+            // so the lowerer knows to emit an extern call
+            if (sym->isExtern)
+            {
+                runtimeCallees_[expr] = dottedName;
+            }
+            // Bug #023 fix: Return the function's return type, not the function type itself
+            if (funcType && funcType->kind == TypeKindSem::Function)
+            {
+                return funcType->returnType();
+            }
+            return funcType;
         }
     }
 
@@ -558,19 +573,21 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
             // Construct full method name: ClassName.MethodName
             std::string fullMethodName = baseType->name + "." + fieldExpr->field;
 
-            // Check if it's a known runtime function
-            auto it = runtimeFunctions_.find(fullMethodName);
-            if (it != runtimeFunctions_.end())
+            // Check if it's a known function (runtime method)
+            Symbol *sym = lookupSymbol(fullMethodName);
+            if (sym && sym->kind == Symbol::Kind::Function)
             {
                 // Analyze arguments
                 for (auto &arg : expr->args)
                 {
                     analyzeExpr(arg.value.get());
                 }
-                // Store the resolved runtime call info
-                // Mark this as a method call by prefixing with the base expression
-                runtimeCallees_[expr] = fullMethodName;
-                return it->second;
+                // Store the resolved runtime call info for the lowerer
+                if (sym->isExtern)
+                {
+                    runtimeCallees_[expr] = fullMethodName;
+                }
+                return sym->type;
             }
         }
     }
@@ -1097,7 +1114,8 @@ TypeRef Sema::analyzeNew(NewExpr *expr)
     if (!allowed && type->kind == TypeKindSem::Ptr && !type->name.empty())
     {
         std::string ctorName = type->name + ".New";
-        if (runtimeFunctions_.find(ctorName) != runtimeFunctions_.end())
+        Symbol *sym = lookupSymbol(ctorName);
+        if (sym && sym->kind == Symbol::Kind::Function)
         {
             allowed = true;
         }

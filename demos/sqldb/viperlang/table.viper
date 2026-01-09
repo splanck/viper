@@ -1,0 +1,147 @@
+// table.viper - Table Entity
+// Part of SQLite Clone - ViperLang Implementation
+
+module table;
+
+import "./types";
+import "./schema";
+
+//=============================================================================
+// TABLE ENTITY
+//=============================================================================
+
+entity Table {
+    expose String name;
+    expose List[Column] columns;
+    expose List[Row] rows;
+    expose Integer autoIncrementValue;
+
+    expose func init() {
+        name = "";
+        columns = [];
+        rows = [];
+        autoIncrementValue = 1;
+    }
+
+    expose func initWithName(tableName: String) {
+        name = tableName;
+        columns = [];
+        rows = [];
+        autoIncrementValue = 1;
+    }
+
+    expose func columnCount() -> Integer {
+        return columns.count();
+    }
+
+    expose func rowCount() -> Integer {
+        return rows.count();
+    }
+
+    expose func addColumn(col: Column) {
+        columns.add(col);
+    }
+
+    expose func getColumn(index: Integer) -> Column? {
+        if index < 0 || index >= columns.count() {
+            return null;
+        }
+        return columns.get(index);
+    }
+
+    expose func findColumnIndex(colName: String) -> Integer {
+        var i = 0;
+        while i < columns.count() {
+            if columns.get(i).name == colName {
+                return i;
+            }
+            i = i + 1;
+        }
+        return -1;
+    }
+
+    expose func getColumnByName(colName: String) -> Column? {
+        var idx = findColumnIndex(colName);
+        if idx < 0 {
+            return null;
+        }
+        return columns.get(idx);
+    }
+
+    expose func addRow(row: Row) {
+        rows.add(row);
+    }
+
+    expose func getRow(index: Integer) -> Row? {
+        if index < 0 || index >= rows.count() {
+            return null;
+        }
+        return rows.get(index);
+    }
+
+    expose func deleteRow(index: Integer) -> Boolean {
+        if index < 0 || index >= rows.count() {
+            return false;
+        }
+        var row = rows.get(index);
+        row.deleted = true;
+        return true;
+    }
+
+    expose func nextAutoIncrement() -> Integer {
+        var val = autoIncrementValue;
+        autoIncrementValue = autoIncrementValue + 1;
+        return val;
+    }
+
+    expose func createRow() -> Row {
+        var row = new Row();
+        row.initWithCount(columns.count());
+        return row;
+    }
+
+    expose func insertRow(values: List[SqlValue]) -> Boolean {
+        if values.count() != columns.count() {
+            return false;
+        }
+        var row = new Row();
+        row.init();
+        var i = 0;
+        while i < values.count() {
+            row.addValue(values.get(i));
+            i = i + 1;
+        }
+        rows.add(row);
+        return true;
+    }
+
+    expose func schemaString() -> String {
+        var result = "CREATE TABLE " + name + " (\n";
+        var i = 0;
+        while i < columns.count() {
+            if i > 0 {
+                result = result + ",\n";
+            }
+            result = result + "  " + columns.get(i).toString();
+            i = i + 1;
+        }
+        result = result + "\n);";
+        return result;
+    }
+
+    expose func toString() -> String {
+        var numCols = columns.count();
+        var numRows = rows.count();
+        var colStr = Viper.Fmt.Int(numCols);
+        var rowStr = Viper.Fmt.Int(numRows);
+        var result = "Table: " + name + " (" + colStr + " cols, " + rowStr + " rows)";
+        return result;
+    }
+}
+
+// Factory function for creating tables
+func makeTable(name: String) -> Table {
+    var table = new Table();
+    table.initWithName(name);
+    return table;
+}

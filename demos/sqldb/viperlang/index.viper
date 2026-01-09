@@ -1,0 +1,273 @@
+// index.viper - Index Entities
+// Part of SQLite Clone - ViperLang Implementation
+
+module index;
+
+import "./types";
+import "./schema";
+import "./table";
+
+//=============================================================================
+// INDEX ENTRY
+//=============================================================================
+
+// Index entry - maps a key value to a row index
+entity IndexEntry {
+    expose Integer keyHash;      // Hash of the key value(s)
+    expose String keyString;     // String representation of key for comparison
+    expose Integer rowIndex;     // Index into table rows
+
+    expose func init() {
+        keyHash = 0;
+        keyString = "";
+        rowIndex = 0;
+    }
+
+    expose func initWith(hash: Integer, keyStr: String, rowIdx: Integer) {
+        keyHash = hash;
+        keyString = keyStr;
+        rowIndex = rowIdx;
+    }
+}
+
+//=============================================================================
+// SQL INDEX
+//=============================================================================
+
+// SqlIndex - Hash-based index on one or more columns
+entity SqlIndex {
+    expose String name;
+    expose String tableName;
+    expose List[String] columnNames;
+    expose Boolean isUnique;
+    expose List[IndexEntry] entries;
+
+    expose func init() {
+        name = "";
+        tableName = "";
+        columnNames = [];
+        isUnique = false;
+        entries = [];
+    }
+
+    expose func initWithNames(idxName: String, tblName: String) {
+        name = idxName;
+        tableName = tblName;
+        columnNames = [];
+        isUnique = false;
+        entries = [];
+    }
+
+    expose func addColumn(colName: String) {
+        columnNames.add(colName);
+    }
+
+    expose func columnCount() -> Integer {
+        return columnNames.count();
+    }
+
+    // Compute a simple hash for a string
+    expose func hashString(s: String) -> Integer {
+        var hash = 0;
+        var i = 0;
+        var len = Viper.String.Length(s);
+        while i < len {
+            var ch = Viper.String.Substring(s, i, 1);
+            var c = Viper.String.Asc(ch);
+            hash = (hash * 31 + c) % 32767;
+            i = i + 1;
+        }
+        return hash;
+    }
+
+    // Build key string from row values for indexed columns
+    expose func buildKeyString(row: Row, tbl: Table) -> String {
+        var result = "";
+        var i = 0;
+        while i < columnNames.count() {
+            var colName = columnNames.get(i);
+            var colIdx = tbl.findColumnIndex(colName);
+            if colIdx >= 0 {
+                var val = row.getValue(colIdx);
+                if i > 0 {
+                    result = result + "|";
+                }
+                result = result + val.toString();
+            }
+            i = i + 1;
+        }
+        return result;
+    }
+
+    // Add an entry to the index
+    expose func addEntry(row: Row, rowIdx: Integer, tbl: Table) -> Boolean {
+        var keyStr = buildKeyString(row, tbl);
+        var hash = hashString(keyStr);
+
+        // Check for unique constraint violation
+        if isUnique {
+            var i = 0;
+            while i < entries.count() {
+                if entries.get(i).keyString == keyStr {
+                    return false;  // Duplicate found
+                }
+                i = i + 1;
+            }
+        }
+
+        // Add new entry
+        var entry = new IndexEntry();
+        entry.init();
+        entry.initWith(hash, keyStr, rowIdx);
+        entries.add(entry);
+        return true;
+    }
+
+    // Remove an entry from the index (for DELETE operations)
+    expose func removeEntry(rowIdx: Integer) {
+        var i = 0;
+        while i < entries.count() {
+            if entries.get(i).rowIndex == rowIdx {
+                entries.remove(i);
+                return;
+            }
+            i = i + 1;
+        }
+    }
+
+    // Lookup entries matching a single key value
+    expose func lookupSingle(keyVal: SqlValue, tbl: Table) -> List[Integer] {
+        var results: List[Integer] = [];
+        var keyStr = keyVal.toString();
+        var hash = hashString(keyStr);
+
+        // Linear search through entries with matching hash
+        var i = 0;
+        while i < entries.count() {
+            var entry = entries.get(i);
+            if entry.keyHash == hash {
+                // Verify key matches (hash collision check)
+                if entry.keyString == keyStr {
+                    results.add(entry.rowIndex);
+                }
+            }
+            i = i + 1;
+        }
+
+        return results;
+    }
+
+    // Rebuild the entire index from table data
+    expose func rebuild(tbl: Table) {
+        entries = [];
+        var i = 0;
+        while i < tbl.rowCount() {
+            var row = tbl.getRow(i);
+            if row != null {
+                // Workaround: copy to local var for deleted check
+                var r = row;
+                if r.deleted == false {
+                    addEntry(r, i, tbl);
+                }
+            }
+            i = i + 1;
+        }
+    }
+
+    expose func entryCount() -> Integer {
+        return entries.count();
+    }
+
+    expose func toString() -> String {
+        var result = "";
+        if isUnique {
+            result = "UNIQUE ";
+        }
+        result = result + "INDEX " + name + " ON " + tableName + " (";
+        var i = 0;
+        while i < columnNames.count() {
+            if i > 0 {
+                result = result + ", ";
+            }
+            result = result + columnNames.get(i);
+            i = i + 1;
+        }
+        result = result + ") [" + Viper.Fmt.Int(entries.count()) + " entries]";
+        return result;
+    }
+}
+
+// Factory function for creating indexes
+func makeIndex(idxName: String, tblName: String) -> SqlIndex {
+    var idx = new SqlIndex();
+    idx.initWithNames(idxName, tblName);
+    return idx;
+}
+
+//=============================================================================
+// INDEX MANAGER
+//=============================================================================
+
+// Index Manager - Stores all indexes for the database
+entity IndexManager {
+    expose List[SqlIndex] indexes;
+    expose List[String] indexNames;  // Parallel list of index names
+
+    expose func init() {
+        indexes = [];
+        indexNames = [];
+    }
+
+    // Find an index by name
+    expose func findIndex(idxName: String) -> SqlIndex? {
+        var i = 0;
+        while i < indexNames.count() {
+            if indexNames.get(i) == idxName {
+                return indexes.get(i);
+            }
+            i = i + 1;
+        }
+        return null;
+    }
+
+    // Find an index for a specific table and column combination
+    expose func findIndexForColumn(tblName: String, colName: String) -> SqlIndex? {
+        var i = 0;
+        while i < indexes.count() {
+            var idx = indexes.get(i);
+            if idx.tableName == tblName && idx.columnCount() == 1 {
+                if idx.columnNames.get(0) == colName {
+                    return idx;
+                }
+            }
+            i = i + 1;
+        }
+        return null;
+    }
+
+    // Add an index
+    expose func addIndex(idx: SqlIndex) {
+        indexes.add(idx);
+        indexNames.add(idx.name);
+    }
+
+    // Drop an index by name
+    expose func dropIndex(idxName: String) -> Boolean {
+        var i = 0;
+        var count = indexNames.count();
+        while i < count {
+            var currentName = indexNames.get(i);
+            if currentName == idxName {
+                indexes.remove(i);
+                indexNames.remove(i);
+                return true;
+            }
+            i = i + 1;
+        }
+        return false;
+    }
+
+    expose func indexCount() -> Integer {
+        return indexes.count();
+    }
+}

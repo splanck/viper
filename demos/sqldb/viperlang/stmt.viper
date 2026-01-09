@@ -1,0 +1,337 @@
+// stmt.viper - Statement Types
+// Part of SQLite Clone - ViperLang Implementation
+
+module stmt;
+
+import "./types";
+import "./schema";
+import "./expr";
+
+//=============================================================================
+// STATEMENT KIND CONSTANTS
+//=============================================================================
+
+final STMT_CREATE_TABLE = 1;
+final STMT_INSERT = 2;
+final STMT_SELECT = 3;
+final STMT_UPDATE = 4;
+final STMT_DELETE = 5;
+final STMT_DROP_TABLE = 6;
+
+//=============================================================================
+// CREATE TABLE STATEMENT
+//=============================================================================
+
+entity CreateTableStmt {
+    expose String tableName;
+    expose List[Column] columns;
+
+    expose func init() {
+        tableName = "";
+        columns = [];
+    }
+
+    expose func addColumn(col: Column) {
+        columns.add(col);
+    }
+
+    expose func getColumn(index: Integer) -> Column {
+        return columns.get(index);
+    }
+
+    expose func columnCount() -> Integer {
+        return columns.count();
+    }
+
+    expose func toString() -> String {
+        var result = "CREATE TABLE " + tableName + " (\n";
+        var i = 0;
+        while i < columns.count() {
+            if i > 0 {
+                result = result + ",\n";
+            }
+            result = result + "  " + columns.get(i).toString();
+            i = i + 1;
+        }
+        result = result + "\n);";
+        return result;
+    }
+}
+
+//=============================================================================
+// INSERT STATEMENT
+//=============================================================================
+
+entity InsertStmt {
+    expose String tableName;
+    expose List[String] columnNames;  // Optional column list
+    expose List[List[Expr]] valueRows;  // VALUES (...), (...)
+
+    expose func init() {
+        tableName = "";
+        columnNames = [];
+        valueRows = [];
+    }
+
+    expose func addColumnName(name: String) {
+        columnNames.add(name);
+    }
+
+    expose func addValueRow() {
+        var row: List[Expr] = [];
+        valueRows.add(row);
+    }
+
+    expose func addValue(rowIndex: Integer, val: Expr) {
+        valueRows.get(rowIndex).add(val);
+    }
+
+    expose func rowCount() -> Integer {
+        return valueRows.count();
+    }
+
+    expose func toString() -> String {
+        var result = "INSERT INTO " + tableName;
+        if columnNames.count() > 0 {
+            result = result + " (";
+            var i = 0;
+            while i < columnNames.count() {
+                if i > 0 {
+                    result = result + ", ";
+                }
+                result = result + columnNames.get(i);
+                i = i + 1;
+            }
+            result = result + ")";
+        }
+        result = result + " VALUES ";
+        var r = 0;
+        while r < valueRows.count() {
+            if r > 0 {
+                result = result + ", ";
+            }
+            result = result + "(";
+            var row = valueRows.get(r);
+            var v = 0;
+            while v < row.count() {
+                if v > 0 {
+                    result = result + ", ";
+                }
+                result = result + row.get(v).toString();
+                v = v + 1;
+            }
+            result = result + ")";
+            r = r + 1;
+        }
+        result = result + ";";
+        return result;
+    }
+}
+
+//=============================================================================
+// SELECT STATEMENT
+//=============================================================================
+
+entity SelectStmt {
+    expose List[Expr] columns;      // SELECT columns (or * for all)
+    expose String tableName;        // FROM table (for backwards compat)
+    expose String tableAlias;       // Table alias (e.g., FROM users u)
+    expose List[String] tableNames;    // Multiple tables for JOINs
+    expose List[String] tableAliases;  // Aliases for each table
+    expose List[Integer] joinTypes;    // 0=CROSS, 1=INNER, 2=LEFT, 3=RIGHT, 4=FULL
+    expose List[Expr] joinConditions;  // ON conditions for each join (null for CROSS)
+    expose Expr? whereClause;       // WHERE condition (optional)
+    expose Boolean selectAll;       // True if SELECT *
+    expose Boolean isDistinct;      // True if SELECT DISTINCT
+    expose List[Expr] orderByExprs; // ORDER BY expressions
+    expose List[Integer] orderByDir; // 0 = ASC, 1 = DESC for each ORDER BY
+    expose Integer limitValue;      // LIMIT value (-1 = no limit)
+    expose Integer offsetValue;     // OFFSET value (0 = no offset)
+    expose List[Expr] groupByExprs; // GROUP BY expressions
+    expose Expr? havingClause;      // HAVING clause (optional)
+    // Derived tables (subqueries in FROM clause)
+    expose String derivedTableSQL;   // SQL for the derived table
+    expose String derivedTableAlias; // Alias for the derived table
+    expose Boolean hasDerivedTable;  // True if FROM clause contains a subquery
+
+    expose func init() {
+        columns = [];
+        tableName = "";
+        tableAlias = "";
+        tableNames = [];
+        tableAliases = [];
+        joinTypes = [];
+        joinConditions = [];
+        whereClause = null;
+        selectAll = false;
+        isDistinct = false;
+        orderByExprs = [];
+        orderByDir = [];
+        limitValue = -1;
+        offsetValue = 0;
+        groupByExprs = [];
+        havingClause = null;
+        derivedTableSQL = "";
+        derivedTableAlias = "";
+        hasDerivedTable = false;
+    }
+
+    expose func addTable(name: String, alias: String) {
+        tableNames.add(name);
+        tableAliases.add(alias);
+    }
+
+    expose func addJoin(name: String, alias: String, joinType: Integer, condition: Expr?) {
+        tableNames.add(name);
+        tableAliases.add(alias);
+        joinTypes.add(joinType);
+        if condition != null {
+            joinConditions.add(condition);
+        }
+    }
+
+    expose func addGroupBy(expr: Expr) {
+        groupByExprs.add(expr);
+    }
+
+    expose func addColumn(col: Expr) {
+        columns.add(col);
+    }
+
+    expose func addOrderBy(expr: Expr, isDesc: Integer) {
+        orderByExprs.add(expr);
+        orderByDir.add(isDesc);
+    }
+
+    expose func toString() -> String {
+        var result = "SELECT ";
+        if selectAll == true {
+            result = result + "* FROM " + tableName;
+        } else {
+            result = result + "... FROM " + tableName;
+        }
+        return result + ";";
+    }
+}
+
+//=============================================================================
+// UPDATE STATEMENT
+//=============================================================================
+
+entity UpdateStmt {
+    expose String tableName;
+    expose List[String] setColumns;     // Columns to update
+    expose List[Expr] setValues;        // Values to set
+    expose Expr? whereClause;           // WHERE condition (optional)
+
+    expose func init() {
+        tableName = "";
+        setColumns = [];
+        setValues = [];
+        whereClause = null;
+    }
+
+    expose func addSet(colName: String, val: Expr) {
+        setColumns.add(colName);
+        setValues.add(val);
+    }
+
+    expose func toString() -> String {
+        var result = "UPDATE " + tableName + " SET ";
+        var i = 0;
+        while i < setColumns.count() {
+            if i > 0 {
+                result = result + ", ";
+            }
+            result = result + setColumns.get(i) + " = ";
+            result = result + setValues.get(i).toString();
+            i = i + 1;
+        }
+        if whereClause != null {
+            result = result + " WHERE ...";
+        }
+        return result + ";";
+    }
+}
+
+//=============================================================================
+// DELETE STATEMENT
+//=============================================================================
+
+entity DeleteStmt {
+    expose String tableName;
+    expose Expr? whereClause;           // WHERE condition (optional)
+
+    expose func init() {
+        tableName = "";
+        whereClause = null;
+    }
+
+    expose func toString() -> String {
+        var result = "DELETE FROM " + tableName;
+        if whereClause != null {
+            result = result + " WHERE ...";
+        }
+        return result + ";";
+    }
+}
+
+//=============================================================================
+// CREATE INDEX STATEMENT
+//=============================================================================
+
+entity CreateIndexStmt {
+    expose String indexName;
+    expose String tableName;
+    expose List[String] columnNames;
+    expose Boolean isUnique;
+
+    expose func init() {
+        indexName = "";
+        tableName = "";
+        columnNames = [];
+        isUnique = false;
+    }
+
+    expose func addColumn(colName: String) {
+        columnNames.add(colName);
+    }
+
+    expose func columnCount() -> Integer {
+        return columnNames.count();
+    }
+
+    expose func toString() -> String {
+        var result = "";
+        if isUnique {
+            result = "UNIQUE ";
+        }
+        result = result + "CREATE INDEX " + indexName + " ON " + tableName + " (";
+        var i = 0;
+        while i < columnNames.count() {
+            if i > 0 {
+                result = result + ", ";
+            }
+            result = result + columnNames.get(i);
+            i = i + 1;
+        }
+        result = result + ");";
+        return result;
+    }
+}
+
+//=============================================================================
+// DROP INDEX STATEMENT
+//=============================================================================
+
+entity DropIndexStmt {
+    expose String indexName;
+
+    expose func init() {
+        indexName = "";
+    }
+
+    expose func toString() -> String {
+        return "DROP INDEX " + indexName + ";";
+    }
+}

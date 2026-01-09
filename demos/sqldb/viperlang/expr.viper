@@ -1,0 +1,298 @@
+// expr.viper - Expression Types
+// Part of SQLite Clone - ViperLang Implementation
+
+module expr;
+
+import "./types";
+
+//=============================================================================
+// EXPRESSION KIND CONSTANTS
+//=============================================================================
+
+final EXPR_LITERAL = 1;      // Literal value (NULL, int, real, text)
+final EXPR_COLUMN = 2;       // Column reference
+final EXPR_BINARY = 3;       // Binary operation (+, -, *, /, =, <, >, etc.)
+final EXPR_UNARY = 4;        // Unary operation (-, NOT)
+final EXPR_FUNCTION = 5;     // Function call (COUNT, SUM, etc.)
+final EXPR_STAR = 6;         // SELECT * wildcard
+final EXPR_SUBQUERY = 7;     // Scalar subquery (SELECT ...)
+
+//=============================================================================
+// BINARY OPERATOR CONSTANTS
+//=============================================================================
+
+final OP_ADD = 1;
+final OP_SUB = 2;
+final OP_MUL = 3;
+final OP_DIV = 4;
+final OP_MOD = 5;
+final OP_EQ = 10;
+final OP_NE = 11;
+final OP_LT = 12;
+final OP_LE = 13;
+final OP_GT = 14;
+final OP_GE = 15;
+final OP_AND = 20;
+final OP_OR = 21;
+final OP_LIKE = 22;
+final OP_IN = 23;
+final OP_IS = 24;
+final OP_CONCAT = 25;  // ||
+
+//=============================================================================
+// UNARY OPERATOR CONSTANTS
+//=============================================================================
+
+final OP_NEG = 1;
+final OP_NOT = 2;
+
+//=============================================================================
+// EXPR ENTITY
+//=============================================================================
+
+entity Expr {
+    expose Integer kind;
+
+    // For EXPR_LITERAL
+    expose SqlValue literalValue;
+
+    // For EXPR_COLUMN
+    expose String tableName;   // Optional table alias
+    expose String columnName;
+
+    // For EXPR_BINARY and EXPR_UNARY
+    expose Integer op;
+    // Children stored in args: binary uses args[0]=left, args[1]=right; unary uses args[0]=operand
+
+    // For EXPR_FUNCTION and children
+    expose String funcName;
+    expose List[Expr] args;  // Also used for binary/unary children
+
+    // For EXPR_SUBQUERY (stores SQL to re-parse - avoids circular dependency)
+    expose String subquerySQL;
+
+    expose func init() {
+        kind = EXPR_LITERAL;
+        literalValue = new SqlValue();
+        literalValue.initNull();
+        tableName = "";
+        columnName = "";
+        op = 0;
+        funcName = "";
+        args = [];
+        subquerySQL = "";
+    }
+
+    expose func initLiteral(val: SqlValue) {
+        kind = EXPR_LITERAL;
+        literalValue = val;
+    }
+
+    expose func initColumn(tbl: String, col: String) {
+        kind = EXPR_COLUMN;
+        tableName = tbl;
+        columnName = col;
+    }
+
+    expose func initBinary(operator: Integer, l: Expr, r: Expr) {
+        kind = EXPR_BINARY;
+        op = operator;
+        args = [];
+        args.add(l);
+        args.add(r);
+    }
+
+    expose func initUnary(operator: Integer, expr: Expr) {
+        kind = EXPR_UNARY;
+        op = operator;
+        args = [];
+        args.add(expr);
+    }
+
+    expose func initFunction(name: String) {
+        kind = EXPR_FUNCTION;
+        funcName = name;
+        args = [];
+    }
+
+    expose func initStar() {
+        kind = EXPR_STAR;
+    }
+
+    expose func initSubquery(sql: String) {
+        kind = EXPR_SUBQUERY;
+        subquerySQL = sql;
+    }
+
+    expose func isLiteral() -> Boolean {
+        return kind == EXPR_LITERAL;
+    }
+
+    expose func isColumn() -> Boolean {
+        return kind == EXPR_COLUMN;
+    }
+
+    expose func isBinary() -> Boolean {
+        return kind == EXPR_BINARY;
+    }
+
+    expose func getLeft() -> Expr {
+        return args.get(0);
+    }
+
+    expose func getRight() -> Expr {
+        return args.get(1);
+    }
+
+    expose func getOperand() -> Expr {
+        return args.get(0);
+    }
+
+    expose func toString() -> String {
+        if kind == EXPR_LITERAL {
+            return literalValue.toString();
+        }
+        if kind == EXPR_COLUMN {
+            if tableName != "" {
+                return tableName + "." + columnName;
+            }
+            return columnName;
+        }
+        if kind == EXPR_STAR {
+            return "*";
+        }
+        if kind == EXPR_BINARY {
+            var opStr = opToString(op);
+            var leftExpr = args.get(0);
+            var rightExpr = args.get(1);
+            return "(" + leftExpr.toString() + " " + opStr + " " + rightExpr.toString() + ")";
+        }
+        if kind == EXPR_UNARY {
+            var opStr = "";
+            if op == OP_NEG {
+                opStr = "-";
+            }
+            if op == OP_NOT {
+                opStr = "NOT ";
+            }
+            var operandExpr = args.get(0);
+            return opStr + operandExpr.toString();
+        }
+        if kind == EXPR_FUNCTION {
+            var result = funcName + "(";
+            var i = 0;
+            while i < args.count() {
+                if i > 0 {
+                    result = result + ", ";
+                }
+                var arg = args.get(i);
+                result = result + arg.toString();
+                i = i + 1;
+            }
+            return result + ")";
+        }
+        if kind == EXPR_SUBQUERY {
+            return "(" + subquerySQL + ")";
+        }
+        return "?";
+    }
+}
+
+//=============================================================================
+// HELPER FUNCTIONS
+//=============================================================================
+
+func opToString(op: Integer) -> String {
+    if op == OP_ADD { return "+"; }
+    if op == OP_SUB { return "-"; }
+    if op == OP_MUL { return "*"; }
+    if op == OP_DIV { return "/"; }
+    if op == OP_MOD { return "%"; }
+    if op == OP_EQ { return "="; }
+    if op == OP_NE { return "<>"; }
+    if op == OP_LT { return "<"; }
+    if op == OP_LE { return "<="; }
+    if op == OP_GT { return ">"; }
+    if op == OP_GE { return ">="; }
+    if op == OP_AND { return "AND"; }
+    if op == OP_OR { return "OR"; }
+    if op == OP_LIKE { return "LIKE"; }
+    if op == OP_CONCAT { return "||"; }
+    return "??";
+}
+
+//=============================================================================
+// FACTORY FUNCTIONS
+//=============================================================================
+
+func exprLiteral(val: SqlValue) -> Expr {
+    var e = new Expr();
+    e.init();
+    e.initLiteral(val);
+    return e;
+}
+
+func exprNull() -> Expr {
+    return exprLiteral(sqlNull());
+}
+
+func exprInt(val: Integer) -> Expr {
+    return exprLiteral(sqlInteger(val));
+}
+
+func exprReal(val: Float, text: String) -> Expr {
+    return exprLiteral(sqlReal(val, text));
+}
+
+func exprText(val: String) -> Expr {
+    return exprLiteral(sqlText(val));
+}
+
+func exprColumn(name: String) -> Expr {
+    var e = new Expr();
+    e.init();
+    e.initColumn("", name);
+    return e;
+}
+
+func exprTableColumn(table: String, column: String) -> Expr {
+    var e = new Expr();
+    e.init();
+    e.initColumn(table, column);
+    return e;
+}
+
+func exprBinary(op: Integer, left: Expr, right: Expr) -> Expr {
+    var e = new Expr();
+    e.init();
+    e.initBinary(op, left, right);
+    return e;
+}
+
+func exprUnary(op: Integer, operand: Expr) -> Expr {
+    var e = new Expr();
+    e.init();
+    e.initUnary(op, operand);
+    return e;
+}
+
+func exprStar() -> Expr {
+    var e = new Expr();
+    e.init();
+    e.initStar();
+    return e;
+}
+
+func exprFunction(name: String) -> Expr {
+    var e = new Expr();
+    e.init();
+    e.initFunction(name);
+    return e;
+}
+
+func exprSubquery(sql: String) -> Expr {
+    var e = new Expr();
+    e.init();
+    e.initSubquery(sql);
+    return e;
+}

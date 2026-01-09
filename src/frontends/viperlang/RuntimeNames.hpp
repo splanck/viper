@@ -365,6 +365,21 @@ inline constexpr const char *kListRemoveAt = "Viper.Collections.List.RemoveAt";
 /// Returns true if the element is found (using equality comparison).
 inline constexpr const char *kListContains = "Viper.Collections.List.Has";
 
+/// @brief Remove an element from a List by value.
+/// @details Signature: Remove(ptr list, ptr element) -> i1
+/// Returns true if the element was found and removed, false otherwise.
+inline constexpr const char *kListRemove = "Viper.Collections.List.Remove";
+
+/// @brief Insert an element at a specific index in a List.
+/// @details Signature: Insert(ptr list, i64 index, ptr element) -> void
+/// Shifts elements after the index to the right.
+inline constexpr const char *kListInsert = "Viper.Collections.List.Insert";
+
+/// @brief Find the first index of an element in a List.
+/// @details Signature: Find(ptr list, ptr element) -> i64
+/// Returns the index if found, -1 otherwise.
+inline constexpr const char *kListFind = "Viper.Collections.List.Find";
+
 /// @brief Create a new empty Set.
 /// @details Signature: New() -> ptr
 /// Returns a pointer to a newly allocated Set object.

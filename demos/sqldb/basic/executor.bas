@@ -1761,26 +1761,51 @@ FUNCTION ExecuteSelect(stmt AS SelectStmt) AS QueryResult
         NEXT c
     END IF
 
-    ' Collect matching row indices
+    ' Collect matching row indices - try index lookup first, fallback to table scan
     matchCount = 0
-    FOR r = 0 TO tbl.rowCount - 1
-        LET tableRow = tbl.rows(r)
-        IF tableRow.deleted = 0 THEN
-            ' Check WHERE
-            includeRow = -1
-            IF stmt.hasWhere <> 0 THEN
-                whereResult = EvalBinaryExpr(stmt.whereClause, tableRow, tbl)
-                IF whereResult = 0 THEN
-                    includeRow = 0
+    DIM usedIndex AS INTEGER
+    DIM indexRowCount AS INTEGER
+    DIM indexRows(1000) AS INTEGER
+    usedIndex = 0
+
+    ' Try to use an index for simple equality WHERE clauses
+    IF stmt.hasWhere <> 0 THEN
+        indexRowCount = TryIndexLookup(stmt.whereClause, tName, indexRows, 1000)
+        IF indexRowCount >= 0 THEN
+            ' Index was used - copy results, but still verify rows are not deleted
+            FOR i = 0 TO indexRowCount - 1
+                rowIdx = indexRows(i)
+                LET tableRow = tbl.rows(rowIdx)
+                IF tableRow.deleted = 0 THEN
+                    matchingRows(matchCount) = rowIdx
+                    matchCount = matchCount + 1
+                END IF
+            NEXT i
+            usedIndex = -1
+        END IF
+    END IF
+
+    ' Fall back to table scan if no index was used
+    IF usedIndex = 0 THEN
+        FOR r = 0 TO tbl.rowCount - 1
+            LET tableRow = tbl.rows(r)
+            IF tableRow.deleted = 0 THEN
+                ' Check WHERE
+                includeRow = -1
+                IF stmt.hasWhere <> 0 THEN
+                    whereResult = EvalBinaryExpr(stmt.whereClause, tableRow, tbl)
+                    IF whereResult = 0 THEN
+                        includeRow = 0
+                    END IF
+                END IF
+
+                IF includeRow <> 0 THEN
+                    matchingRows(matchCount) = r
+                    matchCount = matchCount + 1
                 END IF
             END IF
-
-            IF includeRow <> 0 THEN
-                matchingRows(matchCount) = r
-                matchCount = matchCount + 1
-            END IF
-        END IF
-    NEXT r
+        NEXT r
+    END IF
 
     ' Handle GROUP BY and aggregate queries
     DIM isAggQuery AS INTEGER
@@ -2155,24 +2180,31 @@ FUNCTION ExecuteCreateIndex(stmt AS CreateIndexStmt) AS QueryResult
     DIM success AS INTEGER
     DIM colName AS STRING
 
+    DIM idxName AS STRING
+    DIM tblName AS STRING
+
     LET result = NEW QueryResult()
     result.Init()
     InitDatabase()
 
+    ' Workaround: Copy class member to local var (Viper Basic bug #011)
+    idxName = stmt.indexName
+    tblName = stmt.tableName
+
     ' Check if index already exists
-    existingIdx = gIndexManager.FindIndex(stmt.indexName)
+    existingIdx = gIndexManager.FindIndex(idxName)
     IF existingIdx >= 0 THEN
         result.success = 0
-        result.message = "Index '" + stmt.indexName + "' already exists"
+        result.message = "Index '" + idxName + "' already exists"
         ExecuteCreateIndex = result
         EXIT FUNCTION
     END IF
 
     ' Check if table exists
-    tableIdx = gDatabase.FindTable(stmt.tableName)
+    tableIdx = gDatabase.FindTable(tblName)
     IF tableIdx < 0 THEN
         result.success = 0
-        result.message = "Table '" + stmt.tableName + "' does not exist"
+        result.message = "Table '" + tblName + "' does not exist"
         ExecuteCreateIndex = result
         EXIT FUNCTION
     END IF
@@ -2185,14 +2217,14 @@ FUNCTION ExecuteCreateIndex(stmt AS CreateIndexStmt) AS QueryResult
         colIdx = tbl.FindColumnIndex(colName)
         IF colIdx < 0 THEN
             result.success = 0
-            result.message = "Column '" + colName + "' does not exist in table '" + stmt.tableName + "'"
+            result.message = "Column '" + colName + "' does not exist in table '" + tblName + "'"
             ExecuteCreateIndex = result
             EXIT FUNCTION
         END IF
     NEXT i
 
     ' Create the index
-    LET idx = MakeIndex(stmt.indexName, stmt.tableName)
+    LET idx = MakeIndex(idxName, tblName)
     idx.isUnique = stmt.isUnique
     FOR i = 0 TO stmt.columnCount - 1
         colName = stmt.columnNames(i)
@@ -2205,32 +2237,166 @@ FUNCTION ExecuteCreateIndex(stmt AS CreateIndexStmt) AS QueryResult
     ' Add to index manager
     gIndexManager.AddIndex(idx)
 
-    result.message = "Index '" + stmt.indexName + "' created with " + STR$(idx.entryCount) + " entries"
+    result.message = "Index '" + idxName + "' created with " + STR$(idx.entryCount) + " entries"
     ExecuteCreateIndex = result
 END FUNCTION
 
 FUNCTION ExecuteDropIndex(stmt AS DropIndexStmt) AS QueryResult
     DIM result AS QueryResult
     DIM existingIdx AS INTEGER
+    DIM idxName AS STRING
 
     LET result = NEW QueryResult()
     result.Init()
     InitDatabase()
 
+    ' Workaround: Copy class member to local var (Viper Basic bug #011)
+    idxName = stmt.indexName
+
     ' Check if index exists
-    existingIdx = gIndexManager.FindIndex(stmt.indexName)
+    existingIdx = gIndexManager.FindIndex(idxName)
     IF existingIdx < 0 THEN
         result.success = 0
-        result.message = "Index '" + stmt.indexName + "' does not exist"
+        result.message = "Index '" + idxName + "' does not exist"
         ExecuteDropIndex = result
         EXIT FUNCTION
     END IF
 
     ' Drop the index
-    gIndexManager.DropIndex(stmt.indexName)
+    gIndexManager.DropIndex(idxName)
 
-    result.message = "Index '" + stmt.indexName + "' dropped"
+    result.message = "Index '" + idxName + "' dropped"
     ExecuteDropIndex = result
+END FUNCTION
+
+'=============================================================================
+' TRANSACTION EXECUTION FUNCTIONS
+'=============================================================================
+
+FUNCTION ExecuteBeginTransaction() AS QueryResult
+    DIM result AS QueryResult
+    LET result = NEW QueryResult()
+    result.Init()
+    InitDatabase()
+
+    IF gTransactionMgr.inTransaction <> 0 THEN
+        result.SetError("Already in a transaction")
+        ExecuteBeginTransaction = result
+        EXIT FUNCTION
+    END IF
+
+    IF gTransactionMgr.BeginTransaction(gDatabase) <> 0 THEN
+        result.message = "Transaction started"
+    ELSE
+        result.SetError("Failed to start transaction")
+    END IF
+
+    ExecuteBeginTransaction = result
+END FUNCTION
+
+FUNCTION ExecuteCommit() AS QueryResult
+    DIM result AS QueryResult
+    LET result = NEW QueryResult()
+    result.Init()
+    InitDatabase()
+
+    IF gTransactionMgr.inTransaction = 0 THEN
+        result.SetError("No transaction in progress")
+        ExecuteCommit = result
+        EXIT FUNCTION
+    END IF
+
+    IF gTransactionMgr.Commit() <> 0 THEN
+        result.message = "Transaction committed"
+    ELSE
+        result.SetError("Failed to commit transaction")
+    END IF
+
+    ExecuteCommit = result
+END FUNCTION
+
+FUNCTION ExecuteRollback() AS QueryResult
+    DIM result AS QueryResult
+    LET result = NEW QueryResult()
+    result.Init()
+    InitDatabase()
+
+    IF gTransactionMgr.inTransaction = 0 THEN
+        result.SetError("No transaction in progress")
+        ExecuteRollback = result
+        EXIT FUNCTION
+    END IF
+
+    IF gTransactionMgr.Rollback(gDatabase) <> 0 THEN
+        result.message = "Transaction rolled back"
+    ELSE
+        result.SetError("Failed to rollback transaction")
+    END IF
+
+    ExecuteRollback = result
+END FUNCTION
+
+FUNCTION ExecuteSavepoint(spName AS STRING) AS QueryResult
+    DIM result AS QueryResult
+    LET result = NEW QueryResult()
+    result.Init()
+    InitDatabase()
+
+    IF gTransactionMgr.inTransaction = 0 THEN
+        result.SetError("No transaction in progress")
+        ExecuteSavepoint = result
+        EXIT FUNCTION
+    END IF
+
+    IF gTransactionMgr.CreateSavepoint(spName, gDatabase) <> 0 THEN
+        result.message = "Savepoint '" + spName + "' created"
+    ELSE
+        result.SetError("Failed to create savepoint")
+    END IF
+
+    ExecuteSavepoint = result
+END FUNCTION
+
+FUNCTION ExecuteRollbackToSavepoint(spName AS STRING) AS QueryResult
+    DIM result AS QueryResult
+    LET result = NEW QueryResult()
+    result.Init()
+    InitDatabase()
+
+    IF gTransactionMgr.inTransaction = 0 THEN
+        result.SetError("No transaction in progress")
+        ExecuteRollbackToSavepoint = result
+        EXIT FUNCTION
+    END IF
+
+    IF gTransactionMgr.RollbackToSavepoint(spName, gDatabase) <> 0 THEN
+        result.message = "Rolled back to savepoint '" + spName + "'"
+    ELSE
+        result.SetError("Savepoint '" + spName + "' not found")
+    END IF
+
+    ExecuteRollbackToSavepoint = result
+END FUNCTION
+
+FUNCTION ExecuteReleaseSavepoint(spName AS STRING) AS QueryResult
+    DIM result AS QueryResult
+    LET result = NEW QueryResult()
+    result.Init()
+    InitDatabase()
+
+    IF gTransactionMgr.inTransaction = 0 THEN
+        result.SetError("No transaction in progress")
+        ExecuteReleaseSavepoint = result
+        EXIT FUNCTION
+    END IF
+
+    IF gTransactionMgr.ReleaseSavepoint(spName) <> 0 THEN
+        result.message = "Savepoint '" + spName + "' released"
+    ELSE
+        result.SetError("Savepoint '" + spName + "' not found")
+    END IF
+
+    ExecuteReleaseSavepoint = result
 END FUNCTION
 
 FUNCTION ExecuteSql(sql AS STRING) AS QueryResult
@@ -2333,6 +2499,80 @@ FUNCTION ExecuteSql(sql AS STRING) AS QueryResult
         END IF
         ExecuteSql = ExecuteDelete(deleteStmt)
         EXIT FUNCTION
+    END IF
+
+    ' Transaction statements
+    IF gTok.kind = TK_BEGIN THEN
+        ParserAdvance()
+        ' Optional TRANSACTION keyword
+        IF gTok.kind = TK_TRANSACTION THEN
+            ParserAdvance()
+        END IF
+        ExecuteSql = ExecuteBeginTransaction()
+        EXIT FUNCTION
+    END IF
+
+    IF gTok.kind = TK_COMMIT THEN
+        ParserAdvance()
+        ExecuteSql = ExecuteCommit()
+        EXIT FUNCTION
+    END IF
+
+    IF gTok.kind = TK_ROLLBACK THEN
+        ParserAdvance()
+        ' Check for ROLLBACK TO SAVEPOINT
+        IF gTok.kind = TK_TO THEN
+            ParserAdvance()
+            IF gTok.kind = TK_SAVEPOINT THEN
+                ParserAdvance()
+            END IF
+            IF gTok.kind = TK_IDENTIFIER THEN
+                DIM spName AS STRING
+                spName = gTok.text
+                ParserAdvance()
+                ExecuteSql = ExecuteRollbackToSavepoint(spName)
+                EXIT FUNCTION
+            ELSE
+                result.SetError("Expected savepoint name after ROLLBACK TO")
+                ExecuteSql = result
+                EXIT FUNCTION
+            END IF
+        END IF
+        ExecuteSql = ExecuteRollback()
+        EXIT FUNCTION
+    END IF
+
+    IF gTok.kind = TK_SAVEPOINT THEN
+        ParserAdvance()
+        IF gTok.kind = TK_IDENTIFIER THEN
+            DIM savepointName AS STRING
+            savepointName = gTok.text
+            ParserAdvance()
+            ExecuteSql = ExecuteSavepoint(savepointName)
+            EXIT FUNCTION
+        ELSE
+            result.SetError("Expected savepoint name after SAVEPOINT")
+            ExecuteSql = result
+            EXIT FUNCTION
+        END IF
+    END IF
+
+    IF gTok.kind = TK_RELEASE THEN
+        ParserAdvance()
+        IF gTok.kind = TK_SAVEPOINT THEN
+            ParserAdvance()
+        END IF
+        IF gTok.kind = TK_IDENTIFIER THEN
+            DIM releaseName AS STRING
+            releaseName = gTok.text
+            ParserAdvance()
+            ExecuteSql = ExecuteReleaseSavepoint(releaseName)
+            EXIT FUNCTION
+        ELSE
+            result.SetError("Expected savepoint name after RELEASE")
+            ExecuteSql = result
+            EXIT FUNCTION
+        END IF
     END IF
 
     result.SetError("Unknown statement type")
