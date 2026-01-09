@@ -36,12 +36,17 @@ struct PeepholeStats
     int identityFMovesRemoved{0};   ///< Number of `fmov d, d` instructions removed.
     int consecutiveMovsFolded{0};   ///< Number of consecutive moves folded.
     int deadInstructionsRemoved{0}; ///< Number of dead instructions removed.
+    int cmpZeroToTst{0};            ///< Number of `cmp r, #0` → `tst r, r` transforms.
+    int arithmeticIdentities{0};    ///< Number of identity arithmetic ops removed.
+    int strengthReductions{0};      ///< Number of mul→shift strength reductions.
+    int branchesToNextRemoved{0};   ///< Number of branches to next block removed.
 
     /// @brief Total number of optimizations applied.
     [[nodiscard]] int total() const noexcept
     {
         return identityMovesRemoved + identityFMovesRemoved + consecutiveMovsFolded +
-               deadInstructionsRemoved;
+               deadInstructionsRemoved + cmpZeroToTst + arithmeticIdentities +
+               strengthReductions + branchesToNextRemoved;
     }
 };
 

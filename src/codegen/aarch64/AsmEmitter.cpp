@@ -379,6 +379,11 @@ void AsmEmitter::emitCmpRI(std::ostream &os, PhysReg lhs, long long imm) const
     os << "  cmp " << rn(lhs) << ", #" << imm << "\n";
 }
 
+void AsmEmitter::emitTstRR(std::ostream &os, PhysReg lhs, PhysReg rhs) const
+{
+    os << "  tst " << rn(lhs) << ", " << rn(rhs) << "\n";
+}
+
 void AsmEmitter::emitCset(std::ostream &os, PhysReg dst, const char *cond) const
 {
     os << "  cset " << rn(dst) << ", " << cond << "\n";

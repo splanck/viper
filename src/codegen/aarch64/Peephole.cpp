@@ -141,6 +141,7 @@ namespace
         // Instructions that don't define registers
         case MOpcode::CmpRR:
         case MOpcode::CmpRI:
+        case MOpcode::TstRR:
         case MOpcode::FCmpRR:
         case MOpcode::Br:
         case MOpcode::BCond:
@@ -210,6 +211,7 @@ namespace
             break;
 
         case MOpcode::CmpRR:
+        case MOpcode::TstRR:
         case MOpcode::FCmpRR:
             // lhs, rhs - check both
             if (instr.ops.size() >= 1 && samePhysReg(instr.ops[0], reg))
@@ -293,6 +295,141 @@ namespace
         return false;
     const auto pr = static_cast<PhysReg>(reg.reg.idOrPhys);
     return pr >= PhysReg::X0 && pr <= PhysReg::X7;
+}
+
+/// @brief Check if an operand is an immediate with a given value.
+[[nodiscard]] bool isImmValue(const MOperand &op, long long value) noexcept
+{
+    return op.kind == MOperand::Kind::Imm && op.imm == value;
+}
+
+/// @brief Rewrite cmp reg, #0 to tst reg, reg (same flags, smaller encoding).
+///
+/// @param instr Instruction to check and potentially rewrite.
+/// @param stats Statistics to update.
+/// @return true if the instruction was rewritten.
+[[nodiscard]] bool tryCmpZeroToTst(MInstr &instr, PeepholeStats &stats)
+{
+    if (instr.opc != MOpcode::CmpRI)
+        return false;
+    if (instr.ops.size() != 2)
+        return false;
+    if (!isPhysReg(instr.ops[0]) || !isImmValue(instr.ops[1], 0))
+        return false;
+
+    // Rewrite: cmp xN, #0 -> tst xN, xN
+    instr.opc = MOpcode::TstRR;
+    instr.ops[1] = instr.ops[0]; // second operand = same register
+    ++stats.cmpZeroToTst;
+    return true;
+}
+
+/// @brief Check if a power of 2 and return the log2, or -1 if not.
+[[nodiscard]] int log2IfPowerOf2(long long value) noexcept
+{
+    if (value <= 0)
+        return -1;
+    if ((value & (value - 1)) != 0)
+        return -1; // not a power of 2
+    int log = 0;
+    while ((1LL << log) < value)
+        ++log;
+    return log;
+}
+
+/// @brief Rewrite arithmetic identity operations and apply strength reduction.
+///
+/// Patterns:
+/// - add xN, xM, #0 -> mov xN, xM (or remove if xN == xM)
+/// - sub xN, xM, #0 -> mov xN, xM
+/// - lsl/lsr/asr xN, xM, #0 -> mov xN, xM
+///
+/// @param instr Instruction to check and potentially rewrite.
+/// @param stats Statistics to update.
+/// @return true if the instruction was rewritten.
+[[nodiscard]] bool tryArithmeticIdentity(MInstr &instr, PeepholeStats &stats)
+{
+    switch (instr.opc)
+    {
+        case MOpcode::AddRI:
+        case MOpcode::SubRI:
+            // add/sub xN, xM, #0 -> mov xN, xM
+            if (instr.ops.size() == 3 && isImmValue(instr.ops[2], 0))
+            {
+                instr.opc = MOpcode::MovRR;
+                instr.ops.pop_back(); // remove immediate
+                ++stats.arithmeticIdentities;
+                return true;
+            }
+            break;
+
+        case MOpcode::LslRI:
+        case MOpcode::LsrRI:
+        case MOpcode::AsrRI:
+            // shift by 0 -> mov
+            if (instr.ops.size() == 3 && isImmValue(instr.ops[2], 0))
+            {
+                instr.opc = MOpcode::MovRR;
+                instr.ops.pop_back();
+                ++stats.arithmeticIdentities;
+                return true;
+            }
+            break;
+
+        default:
+            break;
+    }
+    return false;
+}
+
+/// @brief Apply strength reduction: mul by power of 2 -> shift left.
+///
+/// Note: This only works for MulRRR where one operand is a constant loaded
+/// into a register. For now, we skip this since we don't have MulRI opcode.
+/// Future: could track mov rN, #const patterns.
+///
+/// @param instr Instruction to check.
+/// @param stats Statistics to update.
+/// @return true if reduction was applied.
+[[nodiscard]] bool tryStrengthReduction([[maybe_unused]] MInstr &instr,
+                                        [[maybe_unused]] PeepholeStats &stats)
+{
+    // Currently MulRRR doesn't have an immediate form, so we can't easily
+    // detect multiply by constant without tracking prior mov instructions.
+    // This would require a more sophisticated analysis.
+    return false;
+}
+
+/// @brief Check if an instruction is an unconditional branch to a specific label.
+[[nodiscard]] bool isBranchTo(const MInstr &instr, const std::string &label) noexcept
+{
+    if (instr.opc != MOpcode::Br)
+        return false;
+    if (instr.ops.empty() || instr.ops[0].kind != MOperand::Kind::Label)
+        return false;
+    return instr.ops[0].label == label;
+}
+
+/// @brief Rewrite FP arithmetic identity operations.
+///
+/// Patterns:
+/// - fadd dN, dM, #0.0 -> fmov dN, dM (if we had FAddRI)
+/// - fsub dN, dM, #0.0 -> fmov dN, dM (if we had FSubRI)
+/// - fmul dN, dM, #1.0 -> fmov dN, dM (if we had FMulRI)
+///
+/// Note: Currently the ARM64 backend doesn't have FP immediate forms for
+/// arithmetic ops, so this is a placeholder for future enhancement.
+///
+/// @param instr Instruction to check.
+/// @param stats Statistics to update.
+/// @return true if the instruction was rewritten.
+[[nodiscard]] bool tryFPArithmeticIdentity([[maybe_unused]] MInstr &instr,
+                                           [[maybe_unused]] PeepholeStats &stats)
+{
+    // Currently no FP arithmetic with immediate forms in the MIR.
+    // FAddRRR, FSubRRR, FMulRRR all take register operands.
+    // Would need to track fmov dN, #const patterns for this optimization.
+    return false;
 }
 
 /// @brief Try to fold consecutive moves: mov r1, r2; mov r3, r1 -> mov r3, r2
@@ -391,13 +528,28 @@ PeepholeStats runPeephole(MFunction &fn)
         if (instrs.empty())
             continue;
 
-        // Pass 1: Try to fold consecutive moves
+        // Pass 1: Apply instruction rewrites (cmp #0 -> tst, arithmetic identities)
+        for (auto &instr : instrs)
+        {
+            // Try cmp reg, #0 -> tst reg, reg
+            if (tryCmpZeroToTst(instr, stats))
+                continue;
+
+            // Try arithmetic identity elimination (add #0, sub #0, shift #0)
+            if (tryArithmeticIdentity(instr, stats))
+                continue;
+
+            // Try strength reduction (mul power-of-2 -> shift)
+            (void)tryStrengthReduction(instr, stats);
+        }
+
+        // Pass 2: Try to fold consecutive moves
         for (std::size_t i = 0; i + 1 < instrs.size(); ++i)
         {
             (void)tryFoldConsecutiveMoves(instrs, i, stats);
         }
 
-        // Pass 2: Mark identity moves for removal
+        // Pass 3: Mark identity moves for removal
         std::vector<bool> toRemove(instrs.size(), false);
 
         for (std::size_t i = 0; i < instrs.size(); ++i)
@@ -414,10 +566,29 @@ PeepholeStats runPeephole(MFunction &fn)
             }
         }
 
-        // Pass 3: Remove marked instructions
+        // Pass 4: Remove marked instructions
         if (std::any_of(toRemove.begin(), toRemove.end(), [](bool v) { return v; }))
         {
             removeMarkedInstructions(instrs, toRemove);
+        }
+    }
+
+    // Pass 5: Remove branches to the immediately following block
+    // This must be done after per-block passes since it looks at adjacent blocks.
+    for (std::size_t bi = 0; bi + 1 < fn.blocks.size(); ++bi)
+    {
+        auto &block = fn.blocks[bi];
+        const auto &nextBlock = fn.blocks[bi + 1];
+
+        if (block.instrs.empty())
+            continue;
+
+        // Check if the last instruction is an unconditional branch to the next block
+        auto &lastInstr = block.instrs.back();
+        if (isBranchTo(lastInstr, nextBlock.name))
+        {
+            block.instrs.pop_back();
+            ++stats.branchesToNextRemoved;
         }
     }
 

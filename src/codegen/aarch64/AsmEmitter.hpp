@@ -99,6 +99,7 @@ class AsmEmitter
     // Compare and set
     void emitCmpRR(std::ostream &os, PhysReg lhs, PhysReg rhs) const;
     void emitCmpRI(std::ostream &os, PhysReg lhs, long long imm) const;
+    void emitTstRR(std::ostream &os, PhysReg lhs, PhysReg rhs) const;
     void emitCset(std::ostream &os, PhysReg dst, const char *cond) const;
 
     // Wide immediate materialization (movz/movk sequence)

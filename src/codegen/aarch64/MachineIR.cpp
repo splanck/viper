@@ -199,6 +199,8 @@ namespace viper::codegen::aarch64
             return "CmpRR";
         case MOpcode::CmpRI:
             return "CmpRI";
+        case MOpcode::TstRR:
+            return "TstRR";
         case MOpcode::Cset:
             return "Cset";
         case MOpcode::Br:

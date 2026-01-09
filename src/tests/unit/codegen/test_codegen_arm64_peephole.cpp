@@ -272,6 +272,226 @@ TEST(AArch64Peephole, StatsAccuracy)
     EXPECT_EQ(bb.instrs.size(), 1U);
 }
 
+/// @brief Test that cmp reg, #0 is converted to tst reg, reg.
+TEST(AArch64Peephole, CmpZeroToTst)
+{
+    MFunction fn{};
+    fn.name = "test_cmp_zero";
+    fn.blocks.push_back(MBasicBlock{"entry", {}});
+    auto &bb = fn.blocks.back();
+
+    // cmp x0, #0 (should become tst x0, x0)
+    bb.instrs.push_back(
+        MInstr{MOpcode::CmpRI, {MOperand::regOp(PhysReg::X0), MOperand::immOp(0)}});
+    // cmp x1, #5 (should NOT be changed - not zero)
+    bb.instrs.push_back(
+        MInstr{MOpcode::CmpRI, {MOperand::regOp(PhysReg::X1), MOperand::immOp(5)}});
+    // cmp x2, #0 (should become tst x2, x2)
+    bb.instrs.push_back(
+        MInstr{MOpcode::CmpRI, {MOperand::regOp(PhysReg::X2), MOperand::immOp(0)}});
+    // ret
+    bb.instrs.push_back(MInstr{MOpcode::Ret, {}});
+
+    EXPECT_EQ(bb.instrs.size(), 4U);
+
+    auto stats = runPeephole(fn);
+
+    // Should have converted 2 cmp #0 to tst
+    EXPECT_EQ(stats.cmpZeroToTst, 2);
+    EXPECT_EQ(bb.instrs.size(), 4U);
+
+    // First instruction should now be TstRR
+    EXPECT_EQ(bb.instrs[0].opc, MOpcode::TstRR);
+    EXPECT_EQ(static_cast<PhysReg>(bb.instrs[0].ops[0].reg.idOrPhys), PhysReg::X0);
+    EXPECT_EQ(static_cast<PhysReg>(bb.instrs[0].ops[1].reg.idOrPhys), PhysReg::X0);
+
+    // Second instruction should still be CmpRI (not zero)
+    EXPECT_EQ(bb.instrs[1].opc, MOpcode::CmpRI);
+
+    // Third instruction should now be TstRR
+    EXPECT_EQ(bb.instrs[2].opc, MOpcode::TstRR);
+    EXPECT_EQ(static_cast<PhysReg>(bb.instrs[2].ops[0].reg.idOrPhys), PhysReg::X2);
+    EXPECT_EQ(static_cast<PhysReg>(bb.instrs[2].ops[1].reg.idOrPhys), PhysReg::X2);
+}
+
+/// @brief Test that add/sub with #0 are converted to mov.
+TEST(AArch64Peephole, ArithmeticIdentityAddSub)
+{
+    MFunction fn{};
+    fn.name = "test_arith_identity";
+    fn.blocks.push_back(MBasicBlock{"entry", {}});
+    auto &bb = fn.blocks.back();
+
+    // add x0, x1, #0 (should become mov x0, x1)
+    bb.instrs.push_back(MInstr{MOpcode::AddRI,
+                               {MOperand::regOp(PhysReg::X0),
+                                MOperand::regOp(PhysReg::X1),
+                                MOperand::immOp(0)}});
+    // sub x2, x3, #0 (should become mov x2, x3)
+    bb.instrs.push_back(MInstr{MOpcode::SubRI,
+                               {MOperand::regOp(PhysReg::X2),
+                                MOperand::regOp(PhysReg::X3),
+                                MOperand::immOp(0)}});
+    // add x4, x5, #10 (should NOT be changed - not zero)
+    bb.instrs.push_back(MInstr{MOpcode::AddRI,
+                               {MOperand::regOp(PhysReg::X4),
+                                MOperand::regOp(PhysReg::X5),
+                                MOperand::immOp(10)}});
+    // ret
+    bb.instrs.push_back(MInstr{MOpcode::Ret, {}});
+
+    EXPECT_EQ(bb.instrs.size(), 4U);
+
+    auto stats = runPeephole(fn);
+
+    // Should have converted 2 arithmetic identities
+    EXPECT_EQ(stats.arithmeticIdentities, 2);
+    EXPECT_EQ(bb.instrs.size(), 4U);
+
+    // First instruction should now be MovRR
+    EXPECT_EQ(bb.instrs[0].opc, MOpcode::MovRR);
+    EXPECT_EQ(bb.instrs[0].ops.size(), 2U);
+    EXPECT_EQ(static_cast<PhysReg>(bb.instrs[0].ops[0].reg.idOrPhys), PhysReg::X0);
+    EXPECT_EQ(static_cast<PhysReg>(bb.instrs[0].ops[1].reg.idOrPhys), PhysReg::X1);
+
+    // Second instruction should now be MovRR
+    EXPECT_EQ(bb.instrs[1].opc, MOpcode::MovRR);
+
+    // Third instruction should still be AddRI (not zero)
+    EXPECT_EQ(bb.instrs[2].opc, MOpcode::AddRI);
+}
+
+/// @brief Test that shift by #0 is converted to mov.
+TEST(AArch64Peephole, ArithmeticIdentityShift)
+{
+    MFunction fn{};
+    fn.name = "test_shift_identity";
+    fn.blocks.push_back(MBasicBlock{"entry", {}});
+    auto &bb = fn.blocks.back();
+
+    // lsl x0, x1, #0 (should become mov x0, x1)
+    bb.instrs.push_back(MInstr{MOpcode::LslRI,
+                               {MOperand::regOp(PhysReg::X0),
+                                MOperand::regOp(PhysReg::X1),
+                                MOperand::immOp(0)}});
+    // lsr x2, x3, #0 (should become mov x2, x3)
+    bb.instrs.push_back(MInstr{MOpcode::LsrRI,
+                               {MOperand::regOp(PhysReg::X2),
+                                MOperand::regOp(PhysReg::X3),
+                                MOperand::immOp(0)}});
+    // asr x4, x5, #0 (should become mov x4, x5)
+    bb.instrs.push_back(MInstr{MOpcode::AsrRI,
+                               {MOperand::regOp(PhysReg::X4),
+                                MOperand::regOp(PhysReg::X5),
+                                MOperand::immOp(0)}});
+    // lsl x6, x7, #2 (should NOT be changed - not zero)
+    bb.instrs.push_back(MInstr{MOpcode::LslRI,
+                               {MOperand::regOp(PhysReg::X6),
+                                MOperand::regOp(PhysReg::X7),
+                                MOperand::immOp(2)}});
+    // ret
+    bb.instrs.push_back(MInstr{MOpcode::Ret, {}});
+
+    EXPECT_EQ(bb.instrs.size(), 5U);
+
+    auto stats = runPeephole(fn);
+
+    // Should have converted 3 shift identities
+    EXPECT_EQ(stats.arithmeticIdentities, 3);
+    EXPECT_EQ(bb.instrs.size(), 5U);
+
+    // First three instructions should now be MovRR
+    EXPECT_EQ(bb.instrs[0].opc, MOpcode::MovRR);
+    EXPECT_EQ(bb.instrs[1].opc, MOpcode::MovRR);
+    EXPECT_EQ(bb.instrs[2].opc, MOpcode::MovRR);
+
+    // Fourth instruction should still be LslRI (not zero)
+    EXPECT_EQ(bb.instrs[3].opc, MOpcode::LslRI);
+}
+
+/// @brief Test that tst instruction emits correct assembly.
+TEST(AArch64Peephole, TstEmitsCorrectly)
+{
+    auto &ti = darwinTarget();
+    AsmEmitter emit{ti};
+
+    MFunction fn{};
+    fn.name = "test_tst_emit";
+    fn.blocks.push_back(MBasicBlock{"entry", {}});
+    auto &bb = fn.blocks.back();
+
+    // cmp x0, #0 (will become tst x0, x0)
+    bb.instrs.push_back(
+        MInstr{MOpcode::CmpRI, {MOperand::regOp(PhysReg::X0), MOperand::immOp(0)}});
+    // cset x1, eq
+    bb.instrs.push_back(
+        MInstr{MOpcode::Cset, {MOperand::regOp(PhysReg::X1), MOperand::condOp("eq")}});
+    // ret
+    bb.instrs.push_back(MInstr{MOpcode::Ret, {}});
+
+    // Run peephole
+    auto stats = runPeephole(fn);
+    EXPECT_EQ(stats.cmpZeroToTst, 1);
+
+    // Emit assembly
+    std::ostringstream os;
+    emit.emitFunction(os, fn);
+    const std::string asmText = os.str();
+
+    // Should have "tst x0, x0" instead of "cmp x0, #0"
+    EXPECT_NE(asmText.find("tst x0, x0"), std::string::npos);
+    EXPECT_EQ(asmText.find("cmp x0, #0"), std::string::npos);
+}
+
+/// @brief Test that branches to the next block are removed.
+TEST(AArch64Peephole, RemoveBranchToNextBlock)
+{
+    MFunction fn{};
+    fn.name = "test_br_next";
+
+    // Block 1: entry -> branches to block2 (should be removed)
+    fn.blocks.push_back(MBasicBlock{"entry", {}});
+    fn.blocks[0].instrs.push_back(
+        MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X0), MOperand::immOp(42)}});
+    fn.blocks[0].instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("block2")}});
+
+    // Block 2: block2 -> branches to block3 (should be removed)
+    fn.blocks.push_back(MBasicBlock{"block2", {}});
+    fn.blocks[1].instrs.push_back(
+        MInstr{MOpcode::AddRI,
+               {MOperand::regOp(PhysReg::X1), MOperand::regOp(PhysReg::X0), MOperand::immOp(1)}});
+    fn.blocks[1].instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("block3")}});
+
+    // Block 3: block3 -> branches to exit (NOT next, should NOT be removed)
+    fn.blocks.push_back(MBasicBlock{"block3", {}});
+    fn.blocks[2].instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("exit")}});
+
+    // Block 4: different_block
+    fn.blocks.push_back(MBasicBlock{"different_block", {}});
+    fn.blocks[3].instrs.push_back(MInstr{MOpcode::Ret, {}});
+
+    // Block 5: exit
+    fn.blocks.push_back(MBasicBlock{"exit", {}});
+    fn.blocks[4].instrs.push_back(MInstr{MOpcode::Ret, {}});
+
+    auto stats = runPeephole(fn);
+
+    // Should have removed 2 branches (entry->block2, block2->block3)
+    EXPECT_EQ(stats.branchesToNextRemoved, 2);
+
+    // entry should now have just MovRI (branch removed)
+    EXPECT_EQ(fn.blocks[0].instrs.size(), 1U);
+    EXPECT_EQ(fn.blocks[0].instrs[0].opc, MOpcode::MovRI);
+
+    // block2 should now have just AddRI (branch removed)
+    EXPECT_EQ(fn.blocks[1].instrs.size(), 1U);
+    EXPECT_EQ(fn.blocks[1].instrs[0].opc, MOpcode::AddRI);
+
+    // block3 should still have the branch (not to next block)
+    EXPECT_EQ(fn.blocks[2].instrs.size(), 1U);
+    EXPECT_EQ(fn.blocks[2].instrs[0].opc, MOpcode::Br);
+}
+
 int main(int argc, char **argv)
 {
     viper_test::init(&argc, argv);

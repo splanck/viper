@@ -97,6 +97,7 @@ enum class MOpcode
     AsrRI,
     CmpRR,
     CmpRI,
+    TstRR, // tst lhs, rhs (bitwise AND, set flags, discard result)
     Cset,  // dst, cond(code)
     Br,    // b label
     BCond, // b.<cond> label
