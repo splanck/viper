@@ -343,10 +343,10 @@ LowerResult Lowerer::lowerField(FieldExpr *expr)
         }
     }
 
-    // Handle List.count and List.size property
+    // Handle List.count, List.size, and List.length property
     if (baseType->kind == TypeKindSem::List)
     {
-        if (expr->field == "count" || expr->field == "size")
+        if (expr->field == "count" || expr->field == "size" || expr->field == "length")
         {
             // Synthesize a call to Viper.Collections.List.get_Count(list)
             Value result = emitCallRet(Type(Type::Kind::I64), kListCount, {base.value});

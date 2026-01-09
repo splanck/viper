@@ -714,7 +714,7 @@ TypeRef Sema::analyzeField(FieldExpr *expr)
     // Handle built-in properties like .count on lists
     if (baseType && baseType->kind == TypeKindSem::List)
     {
-        if (expr->field == "count" || expr->field == "size")
+        if (expr->field == "count" || expr->field == "size" || expr->field == "length")
         {
             return types::integer();
         }

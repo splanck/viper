@@ -1,258 +1,917 @@
 # Chapter 6: Collections
 
-You're building a student grade tracker. You need to store grades for 30 students. With what we know, you'd create 30 variables: `grade1`, `grade2`, `grade3`, ... all the way to `grade30`. Then to find the average, you'd add them all up manually.
+You're building a student grade tracker. You need to store grades for 30 students. With what we know so far, you'd create 30 variables:
+
+```rust
+var grade1 = 85;
+var grade2 = 92;
+var grade3 = 78;
+// ... 27 more variables ...
+var grade30 = 91;
+```
+
+Then to find the average, you'd add them all up manually:
+
+```rust
+var sum = grade1 + grade2 + grade3 + /* ... */ grade30;
+var average = sum / 30;
+```
+
+What if you have 100 students? 1000? What if you don't know how many students until the program runs?
 
 There must be a better way.
 
-There is. *Collections* let you store multiple values under a single name. The most fundamental collection is the *array*.
+There is. *Collections* let you store multiple values under a single name. The most fundamental collection is the *array* — and understanding arrays is one of the most important steps in learning to program.
+
+---
+
+## Why Do We Need Collections?
+
+Think about the data you encounter in everyday life. It's rarely a single, isolated value. It's usually a *list* of things:
+
+**A shopping list:**
+- Milk
+- Bread
+- Eggs
+- Butter
+- Apples
+
+**High scores in a game:**
+1. 15,000 points
+2. 12,500 points
+3. 11,200 points
+4. 10,800 points
+5. 9,500 points
+
+**Your contacts:**
+- Mom: 555-1234
+- Dad: 555-5678
+- Best Friend: 555-9999
+- Doctor: 555-4321
+
+**Temperatures for the week:**
+- Monday: 72F
+- Tuesday: 68F
+- Wednesday: 75F
+- Thursday: 71F
+- Friday: 69F
+- Saturday: 73F
+- Sunday: 70F
+
+**Inventory in a game:**
+- Sword
+- Shield
+- Health Potion
+- Health Potion
+- Gold Key
+
+In every case, you have *multiple related values* that belong together. You could create separate variables for each:
+
+```rust
+var item1 = "Sword";
+var item2 = "Shield";
+var item3 = "Health Potion";
+var item4 = "Health Potion";
+var item5 = "Gold Key";
+```
+
+But this approach has serious problems:
+
+1. **It's tedious.** Imagine typing out 100 variable names.
+
+2. **You can't easily process all values.** Want to print every item? You need to write a print statement for each one.
+
+3. **You can't add items dynamically.** What happens when the player picks up a sixth item? You'd need to create `item6`, but that name doesn't even exist in your code.
+
+4. **You can't loop through them.** There's no way to say "do this for every item" because `item1`, `item2`, etc. are completely separate variables with no connection.
+
+5. **The number is fixed.** You have to decide how many variables to create when you write the code, not when the program runs.
+
+Collections solve all of these problems. An array lets you store any number of values under a single name, access them by position, and process them all with a simple loop.
 
 ---
 
 ## What Is an Array?
 
-An array is a numbered list of values. Think of it as a row of mailboxes — each box has a number (its *index*), and each box can hold one value.
+An array is a numbered list of values stored under a single name. Instead of having separate boxes labeled `score1`, `score2`, `score3`, you have one big row of boxes labeled `scores`, and each box has a number.
 
 ```rust
 var scores = [85, 92, 78, 95, 88];
 ```
 
-This creates an array named `scores` containing five numbers. The brackets `[ ]` define the array, and the values are separated by commas.
+This single line creates an array named `scores` containing five numbers. The square brackets `[ ]` define the array, and the values are separated by commas.
 
-To access individual elements, use their index:
+### Mental Model: The Mailbox Metaphor
+
+Imagine an apartment building with a row of mailboxes in the lobby. Each mailbox is identical in size and shape, but each has a different number. The mailboxes are numbered 0, 1, 2, 3, 4 (we'll explain why they start at 0 shortly).
+
+```
+   scores
+   +-----+-----+-----+-----+-----+
+   |  85 |  92 |  78 |  95 |  88 |
+   +-----+-----+-----+-----+-----+
+     [0]   [1]   [2]   [3]   [4]
+```
+
+The array name `scores` refers to the entire row. The number in brackets (the *index*) tells you which specific box to look in. If you want the value in box 2, you say `scores[2]` and get 78.
+
+### Mental Model: Train Cars
+
+Think of an array as a train. The entire train has one name (like "Express 42"), but each car has a number. Car 0 is at the front, then car 1, car 2, and so on. Each car holds one piece of cargo (one value).
+
+```
+    Engine -> [Car 0] -> [Car 1] -> [Car 2] -> [Car 3] -> [Car 4]
+               (85)       (92)       (78)       (95)       (88)
+```
+
+To access cargo, you specify which car: "Get me the cargo from car 2 of the Express 42 train."
+
+### Mental Model: School Lockers
+
+Picture a hallway of lockers in a school. The lockers are all in a row, numbered 0, 1, 2, 3, and so on. Each locker can hold whatever the student puts in it. When you want to find something, you go to a specific locker number.
+
+```
+   +--------+--------+--------+--------+--------+
+   |   85   |   92   |   78   |   95   |   88   |
+   | Locker | Locker | Locker | Locker | Locker |
+   |   #0   |   #1   |   #2   |   #3   |   #4   |
+   +--------+--------+--------+--------+--------+
+```
+
+### Mental Model: Spreadsheet Row
+
+If you've used a spreadsheet like Excel or Google Sheets, think of an array as a single row. Each cell in the row is identified by its column number (starting from 0).
+
+```
+     A     B     C     D     E
+   +-----+-----+-----+-----+-----+
+1  |  85 |  92 |  78 |  95 |  88 |
+   +-----+-----+-----+-----+-----+
+```
+
+Column A is index 0, column B is index 1, and so on. The array is the row; the index is the column number.
+
+---
+
+## Accessing Array Elements
+
+To access an individual element, use the array name followed by the index in square brackets:
 
 ```rust
+var scores = [85, 92, 78, 95, 88];
+
 Viper.Terminal.Say(scores[0]);  // 85 (first element)
 Viper.Terminal.Say(scores[1]);  // 92 (second element)
+Viper.Terminal.Say(scores[2]);  // 78 (third element)
+Viper.Terminal.Say(scores[3]);  // 95 (fourth element)
 Viper.Terminal.Say(scores[4]);  // 88 (fifth element)
 ```
 
-**Important:** Indices start at 0, not 1. This surprises beginners, but it's nearly universal in programming. The first element is at index 0, the second at index 1, and so on.
-
-For an array of 5 elements, valid indices are 0, 1, 2, 3, and 4. Trying to access index 5 is an error — there's no sixth element.
+Notice something important: **indices start at 0, not 1.** The first element is at index 0, the second at index 1, and so on. For an array of 5 elements, valid indices are 0, 1, 2, 3, and 4. There is no index 5 — that would be asking for a sixth element that doesn't exist.
 
 ---
 
 ## Why Zero-Based Indexing?
 
-This convention comes from how computers think about memory. An index is really an *offset* — how far from the start to look. The first element is zero steps from the start, the second is one step, and so on.
+This is one of the most confusing aspects of programming for beginners. Why not just start at 1 like we count in everyday life?
 
-You'll get used to it. Just remember: for an array of N elements, valid indices go from 0 to N-1.
+The answer lies in how computers actually work with memory. When you create an array, the computer sets aside a contiguous block of memory — a sequence of adjacent storage locations. Each element takes up some amount of space (say, 8 bytes for an integer).
+
+To find where an element is stored, the computer needs to calculate:
+
+```
+element address = starting address + (index x element size)
+```
+
+If the array starts at memory address 1000, and each element is 8 bytes:
+- Element 0 is at address 1000 + (0 x 8) = 1000
+- Element 1 is at address 1000 + (1 x 8) = 1008
+- Element 2 is at address 1000 + (2 x 8) = 1016
+
+The index is an *offset* — how far to jump from the start. The first element is zero steps away from the start, so its index is 0. The second element is one step away, so its index is 1.
+
+Think of it this way: if you're standing at the start of a row of lockers and someone says "go forward 0 steps," you're already at the first locker. "Go forward 1 step" puts you at the second locker. The number tells you how many positions to move, not which position you end up at.
+
+### The Fence Post Analogy
+
+Imagine a fence with posts and the spaces between them:
+
+```
+   |   |   |   |   |   |
+   0   1   2   3   4   5   <- post numbers
+     0   1   2   3   4     <- space numbers
+```
+
+If you number the posts starting at 0, then the space between post N and post N+1 is space N. The numbers align perfectly. If you started numbering posts at 1, things get complicated.
+
+In programming, we often need to count both items and the gaps between them, or convert between positions and offsets. Starting at 0 makes these calculations clean and consistent.
+
+### Just Memorize It
+
+Honestly, the historical and mathematical reasons matter less than the practical reality: **nearly every programming language uses zero-based indexing.** C, C++, Java, JavaScript, Python, Rust, Go, Swift — they all start at 0.
+
+The sooner you internalize this, the easier programming becomes. Here's the key formula:
+
+> For an array of N elements, valid indices go from 0 to N-1.
+
+An array of 5 elements has indices 0, 1, 2, 3, 4.
+An array of 100 elements has indices 0, 1, 2, ..., 98, 99.
+An array of 1 element has only index 0.
+
+### Practice Makes Perfect
+
+The zero-based indexing confusion fades with practice. After you've written a few programs with arrays, you'll start thinking in zero-based terms naturally. Until then, just pause and think:
+
+- **First** element = index 0
+- **Second** element = index 1
+- **Third** element = index 2
+- **Nth** element = index N-1
+- **Last** element = index (length - 1)
+
+---
+
+## When to Use Arrays vs. Individual Variables
+
+Now you might wonder: when should I use an array versus individual variables?
+
+**Use individual variables when:**
+
+1. **You have a fixed, small number of distinct things.** A game character might have `health`, `mana`, and `stamina` — three different attributes that serve different purposes. Using an array `[100, 50, 75]` would be confusing because you'd have to remember that index 0 is health, index 1 is mana, and so on.
+
+2. **The values represent different concepts.** A `width` and a `height` are both numbers, but they mean different things. Separate variables make the code clearer:
+   ```rust
+   var width = 800;
+   var height = 600;
+   // Much clearer than dimensions[0] and dimensions[1]
+   ```
+
+3. **You need different types.** A person might have a `name` (string), `age` (number), and `isStudent` (boolean). Arrays typically hold items of the same type.
+
+**Use arrays when:**
+
+1. **You have multiple values of the same kind.** Test scores, prices, names, coordinates — whenever you have a list of similar items.
+
+2. **The number of values might change.** Users might add or remove items. An inventory might grow as players collect items.
+
+3. **You want to process all values the same way.** If you need to find the total, average, maximum, or print every value, arrays let you do that with a loop.
+
+4. **You don't know how many values until runtime.** The user might enter 5 numbers or 500. An array can grow as needed.
+
+5. **Position matters but names don't.** The 5th score in a list doesn't need its own name — its position identifies it.
+
+Here's a good rule of thumb: if you find yourself creating `thing1`, `thing2`, `thing3`, stop and use an array instead.
 
 ---
 
 ## Creating Arrays
 
-**With values:**
+There are several ways to create arrays, depending on what you need.
+
+### With Initial Values
+
+The most common way is to list the values inside square brackets:
+
 ```rust
 var names = ["Alice", "Bob", "Carol"];
 var primes = [2, 3, 5, 7, 11, 13];
 var flags = [true, false, true];
+var temperatures = [72.5, 68.3, 75.1, 71.8];
 ```
 
-**Empty array (to fill later):**
+The array's type is inferred from the values. An array of strings, an array of integers, an array of booleans, an array of floats.
+
+### Empty Array
+
+Sometimes you want to start with nothing and add items later:
+
 ```rust
 var numbers: [i64] = [];  // Empty array of integers
+var words: [String] = []; // Empty array of strings
 ```
 
-**Array of a specific size:**
+When creating an empty array, you must specify the type because Viper can't infer it from non-existent values. The `: [i64]` part says "this will hold 64-bit integers."
+
+### Repeating a Value
+
+If you need many copies of the same value:
+
 ```rust
-var zeros = [0; 10];  // Ten zeros: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+var zeros = [0; 10];      // Ten zeros: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+var dashes = ["-"; 50];   // Fifty dashes
+var defaults = [false; 100]; // 100 false values
 ```
 
-The `[value; count]` syntax creates an array with `count` copies of `value`.
+The syntax `[value; count]` creates an array with `count` copies of `value`. This is especially useful for initializing game boards, buffers, or any structure where you need a known size filled with default values.
 
 ---
 
 ## Array Length
 
-Every array knows its length — how many elements it contains:
+Every array knows how many elements it contains. Access this with the `.length` property:
 
 ```rust
 var names = ["Alice", "Bob", "Carol"];
 Viper.Terminal.Say(names.length);  // 3
+
+var primes = [2, 3, 5, 7, 11, 13, 17, 19];
+Viper.Terminal.Say(primes.length);  // 8
+
+var empty: [i64] = [];
+Viper.Terminal.Say(empty.length);   // 0
 ```
 
-This is crucial for loops:
+The length is crucial for working with arrays safely. The valid indices always go from 0 to `length - 1`. Trying to access any index outside this range is an error.
 
 ```rust
 var scores = [85, 92, 78, 95, 88];
-
-for i in 0..scores.length {
-    Viper.Terminal.Say("Score " + i + ": " + scores[i]);
-}
+// Valid indices: 0, 1, 2, 3, 4
+// scores.length is 5
+// Last valid index is scores.length - 1 = 4
 ```
-
-Output:
-```
-Score 0: 85
-Score 1: 92
-Score 2: 78
-Score 3: 95
-Score 4: 88
-```
-
-The range `0..scores.length` generates indices 0, 1, 2, 3, 4 — exactly what we need.
 
 ---
 
-## Modifying Arrays
+## Modifying Array Elements
 
-You can change individual elements:
+Arrays are mutable — you can change individual elements after creation:
 
 ```rust
 var scores = [85, 92, 78, 95, 88];
-scores[2] = 82;  // Change 78 to 82
+
+// Change the third element (index 2) from 78 to 82
+scores[2] = 82;
+
 Viper.Terminal.Say(scores[2]);  // 82
+
+// Change multiple elements
+scores[0] = 90;
+scores[4] = 91;
 ```
 
-You can add elements to the end:
+You can also use an element's current value in the calculation:
+
+```rust
+var counts = [10, 20, 30];
+
+// Add 5 to the second element
+counts[1] = counts[1] + 5;
+
+Viper.Terminal.Say(counts[1]);  // 25
+```
+
+---
+
+## Adding and Removing Elements
+
+Unlike the fixed arrays in some languages, Viper arrays can grow and shrink dynamically.
+
+### Adding Elements with push()
+
+The `push` operation adds an element to the end of an array:
 
 ```rust
 var names = ["Alice", "Bob"];
+Viper.Terminal.Say(names.length);  // 2
+
 names.push("Carol");
 Viper.Terminal.Say(names.length);  // 3
 Viper.Terminal.Say(names[2]);      // Carol
+
+names.push("Dave");
+names.push("Eve");
+Viper.Terminal.Say(names.length);  // 5
 ```
 
-You can remove the last element:
+Think of `push` like adding a new car to the end of a train — the train gets longer, and the new car has the next number in sequence.
+
+### Removing Elements with pop()
+
+The `pop` operation removes the last element and returns it:
 
 ```rust
 var numbers = [1, 2, 3, 4, 5];
+Viper.Terminal.Say(numbers.length);  // 5
+
 var last = numbers.pop();  // Removes and returns 5
-Viper.Terminal.Say(last);           // 5
-Viper.Terminal.Say(numbers.length); // 4
+Viper.Terminal.Say(last);            // 5
+Viper.Terminal.Say(numbers.length);  // 4
+
+var another = numbers.pop();  // Removes and returns 4
+Viper.Terminal.Say(another);         // 4
+Viper.Terminal.Say(numbers.length);  // 3
+// numbers is now [1, 2, 3]
 ```
 
----
+Pop is like detaching the last car from a train — the train gets shorter, and you get to keep whatever was in that car.
 
-## Iterating Over Arrays
-
-The most common thing to do with an array is process every element. We saw the index-based approach:
+**Warning:** Calling `pop` on an empty array is an error — there's nothing to remove!
 
 ```rust
-for i in 0..scores.length {
-    Viper.Terminal.Say(scores[i]);
+var empty: [i64] = [];
+var x = empty.pop();  // Error! Can't pop from empty array
+```
+
+Always check that the array has elements before popping:
+
+```rust
+if numbers.length > 0 {
+    var last = numbers.pop();
+    // Safe to use last
 }
 ```
 
-But if you don't need the index, there's a cleaner way:
+### Building Arrays Dynamically
+
+These operations let you build arrays piece by piece:
 
 ```rust
-for score in scores {
-    Viper.Terminal.Say(score);
-}
-```
+var userInputs: [i64] = [];
 
-This *foreach* style reads as "for each score in scores, do this." The variable `score` takes on each value in turn: 85, then 92, then 78, and so on.
+Viper.Terminal.Say("Enter numbers (0 to stop):");
 
-**When to use which:**
-- Use `for item in array` when you just need the values
-- Use `for i in 0..array.length` when you need the indices (for position, or to modify elements)
-
----
-
-## Common Array Operations
-
-### Finding the sum
-```rust
-var numbers = [10, 20, 30, 40, 50];
-var total = 0;
-
-for n in numbers {
-    total = total + n;
-}
-
-Viper.Terminal.Say("Sum: " + total);  // Sum: 150
-```
-
-### Finding the average
-```rust
-var scores = [85, 92, 78, 95, 88];
-var sum = 0;
-
-for score in scores {
-    sum = sum + score;
-}
-
-var average = sum / scores.length;
-Viper.Terminal.Say("Average: " + average);  // Average: 87
-```
-
-### Finding the maximum
-```rust
-var values = [23, 7, 42, 15, 8, 31];
-var max = values[0];  // Start with the first
-
-for v in values {
-    if v > max {
-        max = v;
+while true {
+    var num = Viper.Parse.Int(Viper.Terminal.ReadLine());
+    if num == 0 {
+        break;
     }
+    userInputs.push(num);
 }
 
-Viper.Terminal.Say("Maximum: " + max);  // Maximum: 42
+Viper.Terminal.Say("You entered " + userInputs.length + " numbers.");
 ```
 
-### Searching
+You start with an empty array and grow it as the user provides input. You couldn't do this with fixed variables like `num1`, `num2`, etc.
+
+---
+
+## Finding Elements
+
+A common task is searching for a value in an array.
+
+### Linear Search
+
+The simplest approach is to check each element one by one:
+
 ```rust
-var names = ["Alice", "Bob", "Carol", "Dave"];
+var names = ["Alice", "Bob", "Carol", "Dave", "Eve"];
 var target = "Carol";
-var found = false;
+var foundIndex = -1;  // -1 means "not found"
 
 for i in 0..names.length {
     if names[i] == target {
-        Viper.Terminal.Say("Found at index " + i);
+        foundIndex = i;
+        break;  // Found it, no need to keep looking
+    }
+}
+
+if foundIndex >= 0 {
+    Viper.Terminal.Say("Found '" + target + "' at index " + foundIndex);
+} else {
+    Viper.Terminal.Say("'" + target + "' not found");
+}
+```
+
+Output: `Found 'Carol' at index 2`
+
+This is called *linear search* because you go through the array in a line, one element at a time. It's simple and works for any array, but for very large arrays (millions of elements), it can be slow.
+
+### Checking If an Element Exists
+
+Sometimes you just need to know yes or no, not where:
+
+```rust
+var numbers = [10, 25, 30, 45, 50];
+var lookingFor = 30;
+var found = false;
+
+for n in numbers {
+    if n == lookingFor {
         found = true;
         break;
     }
 }
 
-if !found {
-    Viper.Terminal.Say("Not found");
+if found {
+    Viper.Terminal.Say("Found it!");
+} else {
+    Viper.Terminal.Say("Not in the list.");
 }
 ```
 
-### Counting matches
-```rust
-var numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-var evenCount = 0;
+### Counting Occurrences
 
-for n in numbers {
-    if n % 2 == 0 {
-        evenCount = evenCount + 1;
+How many times does a value appear?
+
+```rust
+var grades = ["A", "B", "A", "C", "A", "B", "A", "D"];
+var countA = 0;
+
+for grade in grades {
+    if grade == "A" {
+        countA = countA + 1;
     }
 }
 
-Viper.Terminal.Say("Even numbers: " + evenCount);  // Even numbers: 5
+Viper.Terminal.Say("Number of A grades: " + countA);  // 4
+```
+
+---
+
+## Sorting Arrays
+
+Sorting puts array elements in order — smallest to largest (ascending) or largest to smallest (descending).
+
+### Using Built-in Sort
+
+Viper provides a built-in sort method:
+
+```rust
+var numbers = [64, 34, 25, 12, 22, 11, 90];
+numbers.sort();
+
+for n in numbers {
+    Viper.Terminal.Print(n + " ");
+}
+// Output: 11 12 22 25 34 64 90
+```
+
+For strings, sort orders alphabetically:
+
+```rust
+var names = ["Charlie", "Alice", "Bob", "Diana"];
+names.sort();
+
+for name in names {
+    Viper.Terminal.Say(name);
+}
+// Alice, Bob, Charlie, Diana
+```
+
+### Understanding How Sorting Works (Conceptually)
+
+While you can just use `sort()`, understanding the concept helps you appreciate what's happening.
+
+Imagine you have a hand of playing cards and want to sort them. One approach:
+
+1. Find the smallest card, put it first.
+2. Find the smallest of what's left, put it second.
+3. Repeat until done.
+
+This is called *selection sort*. Here's what it looks like:
+
+```rust
+// Selection sort (for understanding — use built-in sort in practice)
+var arr = [64, 34, 25, 12, 22];
+
+for i in 0..arr.length {
+    // Find minimum in unsorted portion
+    var minIndex = i;
+    for j in (i + 1)..arr.length {
+        if arr[j] < arr[minIndex] {
+            minIndex = j;
+        }
+    }
+    // Swap it with position i
+    var temp = arr[i];
+    arr[i] = arr[minIndex];
+    arr[minIndex] = temp;
+}
+```
+
+This is educational but inefficient for large arrays. Always use the built-in `sort()` in real code — it uses much faster algorithms.
+
+---
+
+## Iterating Over Arrays
+
+Processing every element in an array is so common that there are several patterns for it.
+
+### Pattern 1: For-Each Loop (When You Only Need Values)
+
+The cleanest way when you just need each value:
+
+```rust
+var fruits = ["apple", "banana", "cherry", "date"];
+
+for fruit in fruits {
+    Viper.Terminal.Say("I enjoy eating " + fruit);
+}
+```
+
+The variable `fruit` takes on each value in sequence: first "apple", then "banana", then "cherry", then "date".
+
+**Use this when:** You only need to read the values, not modify them or know their positions.
+
+### Pattern 2: Index Loop (When You Need Position)
+
+When you need to know *where* each element is:
+
+```rust
+var scores = [85, 92, 78, 95, 88];
+
+for i in 0..scores.length {
+    Viper.Terminal.Say("Student " + (i + 1) + " scored " + scores[i]);
+}
+```
+
+Output:
+```
+Student 1 scored 85
+Student 2 scored 92
+Student 3 scored 78
+Student 4 scored 95
+Student 5 scored 88
+```
+
+Notice `i + 1` to display human-friendly numbering (1, 2, 3) while using programmer indexing (0, 1, 2) internally.
+
+**Use this when:**
+- You need to display or use the position
+- You need to modify elements: `arr[i] = newValue`
+- You need to compare adjacent elements: `arr[i]` vs `arr[i+1]`
+- You need to access elements from multiple arrays at the same position
+
+### Pattern 3: While Loop with Index
+
+Sometimes you need more control than a for loop provides:
+
+```rust
+var numbers = [10, 20, 30, 40, 50];
+var i = 0;
+
+while i < numbers.length {
+    Viper.Terminal.Say("Index " + i + ": " + numbers[i]);
+    i = i + 1;
+}
+```
+
+**Use this when:** You need to skip elements, process in unusual order, or have complex stopping conditions.
+
+### Pattern 4: Reverse Iteration
+
+To process elements from last to first:
+
+```rust
+var countdown = [5, 4, 3, 2, 1];
+
+// Using while loop for reverse
+var i = countdown.length - 1;
+while i >= 0 {
+    Viper.Terminal.Say(countdown[i]);
+    i = i - 1;
+}
+// Prints: 1, 2, 3, 4, 5 (but we access 5 first, then 4...)
+// Wait, that prints the values which happen to be a countdown.
+// Let me show a clearer example:
+
+var letters = ["a", "b", "c", "d", "e"];
+var j = letters.length - 1;
+while j >= 0 {
+    Viper.Terminal.Say(letters[j]);
+    j = j - 1;
+}
+// Prints: e, d, c, b, a
+```
+
+### Pattern 5: Processing Every Other Element
+
+Skip elements as needed:
+
+```rust
+var numbers = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+
+// Even indices only (0, 2, 4, 6, 8)
+var i = 0;
+while i < numbers.length {
+    Viper.Terminal.Print(numbers[i] + " ");
+    i = i + 2;
+}
+// Output: 0 2 4 6 8
+
+Viper.Terminal.Say("");
+
+// Odd indices only (1, 3, 5, 7, 9)
+i = 1;
+while i < numbers.length {
+    Viper.Terminal.Print(numbers[i] + " ");
+    i = i + 2;
+}
+// Output: 1 3 5 7 9
+```
+
+### Pattern 6: Process Until Condition
+
+Stop early when you find what you need:
+
+```rust
+var values = [10, 20, -5, 30, 40];
+
+for v in values {
+    if v < 0 {
+        Viper.Terminal.Say("Found negative number, stopping.");
+        break;
+    }
+    Viper.Terminal.Say("Processing: " + v);
+}
+// Processes 10, 20, then stops at -5
+```
+
+Or skip certain elements:
+
+```rust
+var numbers = [1, -2, 3, -4, 5, -6];
+
+for n in numbers {
+    if n < 0 {
+        continue;  // Skip negative numbers
+    }
+    Viper.Terminal.Say("Positive: " + n);
+}
+// Prints: 1, 3, 5
+```
+
+---
+
+## Bounds Checking: What Happens With Invalid Indices?
+
+What happens if you try to access an index that doesn't exist?
+
+```rust
+var arr = [10, 20, 30, 40, 50];  // Valid indices: 0-4
+
+// These are all errors:
+var x = arr[5];    // Error: index 5 doesn't exist
+var y = arr[100];  // Error: way out of bounds
+var z = arr[-1];   // Error: negative indices don't exist
+```
+
+Viper performs *bounds checking* — it verifies that every array access is within valid range. If you try to read or write an invalid index, the program stops with a clear error message:
+
+```
+Runtime Error: Array index out of bounds
+  Index: 5
+  Valid range: 0 to 4
+  at line 3 in main.viper
+```
+
+This is a safety feature. Without bounds checking, accessing invalid indices would read or write random memory locations, causing mysterious bugs, crashes, or security vulnerabilities.
+
+### Why This Matters
+
+In languages without bounds checking (like C), accessing `arr[100]` when the array has only 5 elements doesn't give an error — it just accesses whatever happens to be in that memory location. This leads to:
+
+1. **Undefined behavior:** The program might work, crash, or produce wrong results randomly.
+2. **Security exploits:** Attackers can use out-of-bounds access to hack programs.
+3. **Incredibly hard-to-find bugs:** The symptom might appear far from the cause.
+
+Viper's bounds checking catches these mistakes immediately, making bugs much easier to find and fix.
+
+### Common Causes of Index Errors
+
+**Off-by-one with length:**
+```rust
+var arr = [1, 2, 3, 4, 5];
+var last = arr[arr.length];  // Error! length is 5, but valid indices are 0-4
+var last = arr[arr.length - 1];  // Correct: gets arr[4] = 5
+```
+
+**Empty array access:**
+```rust
+var empty: [i64] = [];
+var x = empty[0];  // Error! Array is empty, no index 0
+```
+
+**Loop going too far:**
+```rust
+var arr = [1, 2, 3];
+for i in 0..=arr.length {  // Wrong! 0..= includes the endpoint
+    Viper.Terminal.Say(arr[i]);  // Crashes when i=3
+}
+for i in 0..arr.length {   // Correct! 0.. excludes the endpoint
+    Viper.Terminal.Say(arr[i]);  // Works: i goes 0, 1, 2
+}
+```
+
+**Calculated index going wrong:**
+```rust
+var arr = [10, 20, 30];
+var userInput = Viper.Parse.Int(Viper.Terminal.ReadLine());
+var value = arr[userInput];  // Dangerous! User might enter 999
+```
+
+To prevent this, validate indices before using them:
+
+```rust
+if userInput >= 0 && userInput < arr.length {
+    var value = arr[userInput];
+    // Safe to use value
+} else {
+    Viper.Terminal.Say("Invalid selection");
+}
 ```
 
 ---
 
 ## Arrays of Strings
 
-Arrays can hold any type, including strings:
+Arrays can hold any type. Strings are especially common:
 
 ```rust
-var fruits = ["apple", "banana", "cherry"];
+var fruits = ["apple", "banana", "cherry", "date", "elderberry"];
 
-for fruit in fruits {
-    Viper.Terminal.Say("I like " + fruit);
+Viper.Terminal.Say("Menu:");
+for i in 0..fruits.length {
+    Viper.Terminal.Say((i + 1) + ". " + fruits[i]);
 }
 ```
 
 Output:
 ```
-I like apple
-I like banana
-I like cherry
+Menu:
+1. apple
+2. banana
+3. cherry
+4. date
+5. elderberry
 ```
 
-This is how you'd store a list of names, a menu of options, lines of a file, and countless other real-world data.
+String arrays are how you'd store:
+- Menu options
+- Lines of a file
+- Names in a contact list
+- Words in a sentence
+- Commands in a history
+
+### Working with String Arrays
+
+```rust
+var words = ["The", "quick", "brown", "fox"];
+
+// Join into a sentence
+var sentence = "";
+for word in words {
+    sentence = sentence + word + " ";
+}
+Viper.Terminal.Say(sentence);  // "The quick brown fox "
+
+// Find longest word
+var longest = words[0];
+for word in words {
+    if word.length > longest.length {
+        longest = word;
+    }
+}
+Viper.Terminal.Say("Longest word: " + longest);  // "quick" or "brown" (both length 5)
+```
 
 ---
 
 ## Multidimensional Arrays
 
-Sometimes you need a grid — rows and columns. You can make an array of arrays:
+Sometimes you need more than a simple list. You need a *grid* — rows and columns. Think of:
+
+- A chessboard (8 rows x 8 columns)
+- A spreadsheet (many rows x many columns)
+- Pixels in an image (height x width)
+- A tic-tac-toe board (3 x 3)
+- A seating chart (rows of seats)
+
+You can create these using *arrays of arrays* — an array where each element is itself an array.
+
+### Creating a 2D Array
+
+```rust
+var grid = [
+    [1, 2, 3],
+    [4, 5, 6],
+    [7, 8, 9]
+];
+```
+
+Visualize it as a grid:
+
+```
+         Column 0  Column 1  Column 2
+        +--------+--------+--------+
+Row 0   |   1    |   2    |   3    |
+        +--------+--------+--------+
+Row 1   |   4    |   5    |   6    |
+        +--------+--------+--------+
+Row 2   |   7    |   8    |   9    |
+        +--------+--------+--------+
+```
+
+### Accessing Elements
+
+Use two indices: the first selects the row (which inner array), the second selects the column (which element within that row):
+
+```rust
+var value = grid[1][2];  // Row 1, Column 2 = 6
+```
+
+Let's break down `grid[1][2]`:
+1. `grid[1]` gets the second row: `[4, 5, 6]`
+2. `[2]` gets the third element of that row: `6`
 
 ```rust
 var grid = [
@@ -261,20 +920,43 @@ var grid = [
     [7, 8, 9]
 ];
 
-// Access element at row 1, column 2
-Viper.Terminal.Say(grid[1][2]);  // 6
+Viper.Terminal.Say(grid[0][0]);  // 1 (top-left)
+Viper.Terminal.Say(grid[0][2]);  // 3 (top-right)
+Viper.Terminal.Say(grid[2][0]);  // 7 (bottom-left)
+Viper.Terminal.Say(grid[2][2]);  // 9 (bottom-right)
+Viper.Terminal.Say(grid[1][1]);  // 5 (center)
 ```
 
-The first index selects the row (inner array), the second selects the column (element within that row).
-
-To iterate over all elements:
+### Modifying Elements
 
 ```rust
+var grid = [
+    [1, 2, 3],
+    [4, 5, 6],
+    [7, 8, 9]
+];
+
+grid[1][1] = 50;  // Change center from 5 to 50
+
+Viper.Terminal.Say(grid[1][1]);  // 50
+```
+
+### Iterating Over a 2D Array
+
+To visit every element, you need nested loops — one for rows, one for columns:
+
+```rust
+var grid = [
+    [1, 2, 3],
+    [4, 5, 6],
+    [7, 8, 9]
+];
+
 for row in 0..grid.length {
     for col in 0..grid[row].length {
         Viper.Terminal.Print(grid[row][col] + " ");
     }
-    Viper.Terminal.Say("");
+    Viper.Terminal.Say("");  // New line after each row
 }
 ```
 
@@ -285,11 +967,458 @@ Output:
 7 8 9
 ```
 
-Multidimensional arrays are perfect for game boards, images (pixels), spreadsheet data, and more.
+### Example: Tic-Tac-Toe Board
+
+```rust
+var board = [
+    ["X", "O", "X"],
+    [" ", "X", "O"],
+    ["O", " ", "X"]
+];
+
+// Print the board nicely
+func printBoard(board: [[String]]) {
+    for row in 0..board.length {
+        Viper.Terminal.Print(" ");
+        for col in 0..board[row].length {
+            Viper.Terminal.Print(board[row][col]);
+            if col < board[row].length - 1 {
+                Viper.Terminal.Print(" | ");
+            }
+        }
+        Viper.Terminal.Say("");
+        if row < board.length - 1 {
+            Viper.Terminal.Say("-----------");
+        }
+    }
+}
+
+printBoard(board);
+```
+
+Output:
+```
+ X | O | X
+-----------
+   | X | O
+-----------
+ O |   | X
+```
+
+### Example: Multiplication Table
+
+```rust
+// Create a 10x10 multiplication table
+var table: [[i64]] = [];
+
+for i in 1..11 {
+    var row: [i64] = [];
+    for j in 1..11 {
+        row.push(i * j);
+    }
+    table.push(row);
+}
+
+// Print header
+Viper.Terminal.Print("    ");
+for i in 1..11 {
+    Viper.Terminal.Print(i + "\t");
+}
+Viper.Terminal.Say("");
+Viper.Terminal.Say("--------------------------------------------");
+
+// Print table
+for i in 0..table.length {
+    Viper.Terminal.Print((i + 1) + " | ");
+    for j in 0..table[i].length {
+        Viper.Terminal.Print(table[i][j] + "\t");
+    }
+    Viper.Terminal.Say("");
+}
+```
+
+### Example: Image as Pixels
+
+A grayscale image is just a 2D array of brightness values (0 = black, 255 = white):
+
+```rust
+// A tiny 5x5 "image" of a plus sign
+var image = [
+    [0, 0, 255, 0, 0],
+    [0, 0, 255, 0, 0],
+    [255, 255, 255, 255, 255],
+    [0, 0, 255, 0, 0],
+    [0, 0, 255, 0, 0]
+];
+
+// Display as ASCII art
+for row in 0..image.length {
+    for col in 0..image[row].length {
+        if image[row][col] > 128 {
+            Viper.Terminal.Print("#");  // Bright
+        } else {
+            Viper.Terminal.Print(".");  // Dark
+        }
+    }
+    Viper.Terminal.Say("");
+}
+```
+
+Output:
+```
+..#..
+..#..
+#####
+..#..
+..#..
+```
+
+---
+
+## Practical Example: Todo List
+
+Let's build a functional todo list manager:
+
+```rust
+module TodoList;
+
+func start() {
+    var tasks: [String] = [];
+    var completed: [bool] = [];  // Parallel array tracking completion
+
+    Viper.Terminal.Say("=== Todo List Manager ===");
+    Viper.Terminal.Say("Commands: add, done, list, remove, quit");
+    Viper.Terminal.Say("");
+
+    while true {
+        Viper.Terminal.Print("> ");
+        var input = Viper.Terminal.ReadLine();
+
+        if input == "quit" {
+            Viper.Terminal.Say("Goodbye!");
+            break;
+        } else if input == "add" {
+            Viper.Terminal.Print("Task: ");
+            var task = Viper.Terminal.ReadLine();
+            tasks.push(task);
+            completed.push(false);
+            Viper.Terminal.Say("Added: " + task);
+        } else if input == "list" {
+            if tasks.length == 0 {
+                Viper.Terminal.Say("No tasks yet!");
+            } else {
+                Viper.Terminal.Say("Your tasks:");
+                for i in 0..tasks.length {
+                    var status = "[ ]";
+                    if completed[i] {
+                        status = "[X]";
+                    }
+                    Viper.Terminal.Say((i + 1) + ". " + status + " " + tasks[i]);
+                }
+            }
+        } else if input == "done" {
+            Viper.Terminal.Print("Task number to mark done: ");
+            var num = Viper.Parse.Int(Viper.Terminal.ReadLine());
+            if num >= 1 && num <= tasks.length {
+                completed[num - 1] = true;  // Convert to zero-based index
+                Viper.Terminal.Say("Marked done: " + tasks[num - 1]);
+            } else {
+                Viper.Terminal.Say("Invalid task number.");
+            }
+        } else if input == "remove" {
+            Viper.Terminal.Print("Task number to remove: ");
+            var num = Viper.Parse.Int(Viper.Terminal.ReadLine());
+            if num >= 1 && num <= tasks.length {
+                // Rebuild arrays without this task
+                var newTasks: [String] = [];
+                var newCompleted: [bool] = [];
+                for i in 0..tasks.length {
+                    if i != num - 1 {
+                        newTasks.push(tasks[i]);
+                        newCompleted.push(completed[i]);
+                    }
+                }
+                Viper.Terminal.Say("Removed: " + tasks[num - 1]);
+                tasks = newTasks;
+                completed = newCompleted;
+            } else {
+                Viper.Terminal.Say("Invalid task number.");
+            }
+        } else {
+            Viper.Terminal.Say("Unknown command. Try: add, done, list, remove, quit");
+        }
+
+        Viper.Terminal.Say("");
+    }
+}
+```
+
+Sample session:
+```
+=== Todo List Manager ===
+Commands: add, done, list, remove, quit
+
+> add
+Task: Buy groceries
+Added: Buy groceries
+
+> add
+Task: Finish homework
+Added: Finish homework
+
+> add
+Task: Call mom
+Added: Call mom
+
+> list
+Your tasks:
+1. [ ] Buy groceries
+2. [ ] Finish homework
+3. [ ] Call mom
+
+> done
+Task number to mark done: 2
+Marked done: Finish homework
+
+> list
+Your tasks:
+1. [ ] Buy groceries
+2. [X] Finish homework
+3. [ ] Call mom
+
+> quit
+Goodbye!
+```
+
+---
+
+## Practical Example: Inventory System
+
+A simple game inventory:
+
+```rust
+module Inventory;
+
+func start() {
+    var items: [String] = [];
+    var quantities: [i64] = [];
+    var maxSlots = 10;
+
+    Viper.Terminal.Say("=== Inventory System ===");
+    Viper.Terminal.Say("Commands: pickup, drop, use, show, quit");
+    Viper.Terminal.Say("Max slots: " + maxSlots);
+    Viper.Terminal.Say("");
+
+    while true {
+        Viper.Terminal.Print("Command> ");
+        var cmd = Viper.Terminal.ReadLine();
+
+        if cmd == "quit" {
+            break;
+        } else if cmd == "show" {
+            showInventory(items, quantities);
+        } else if cmd == "pickup" {
+            Viper.Terminal.Print("Item name: ");
+            var item = Viper.Terminal.ReadLine();
+            Viper.Terminal.Print("Quantity: ");
+            var qty = Viper.Parse.Int(Viper.Terminal.ReadLine());
+
+            pickupItem(items, quantities, item, qty, maxSlots);
+        } else if cmd == "drop" {
+            Viper.Terminal.Print("Item name: ");
+            var item = Viper.Terminal.ReadLine();
+            Viper.Terminal.Print("Quantity: ");
+            var qty = Viper.Parse.Int(Viper.Terminal.ReadLine());
+
+            dropItem(items, quantities, item, qty);
+        } else if cmd == "use" {
+            Viper.Terminal.Print("Item name: ");
+            var item = Viper.Terminal.ReadLine();
+
+            useItem(items, quantities, item);
+        } else {
+            Viper.Terminal.Say("Unknown command.");
+        }
+
+        Viper.Terminal.Say("");
+    }
+}
+
+func findItem(items: [String], name: String): i64 {
+    for i in 0..items.length {
+        if items[i] == name {
+            return i;
+        }
+    }
+    return -1;  // Not found
+}
+
+func showInventory(items: [String], quantities: [i64]) {
+    if items.length == 0 {
+        Viper.Terminal.Say("Inventory is empty.");
+        return;
+    }
+
+    Viper.Terminal.Say("=== Inventory ===");
+    for i in 0..items.length {
+        Viper.Terminal.Say("- " + items[i] + " x" + quantities[i]);
+    }
+    Viper.Terminal.Say("Slots used: " + items.length);
+}
+
+func pickupItem(items: [String], quantities: [i64], name: String, qty: i64, maxSlots: i64) {
+    var existing = findItem(items, name);
+
+    if existing >= 0 {
+        // Already have this item, add to quantity
+        quantities[existing] = quantities[existing] + qty;
+        Viper.Terminal.Say("Added " + qty + " " + name + " (now have " + quantities[existing] + ")");
+    } else {
+        // New item
+        if items.length >= maxSlots {
+            Viper.Terminal.Say("Inventory full! Drop something first.");
+            return;
+        }
+        items.push(name);
+        quantities.push(qty);
+        Viper.Terminal.Say("Picked up " + qty + " " + name);
+    }
+}
+
+func dropItem(items: [String], quantities: [i64], name: String, qty: i64) {
+    var idx = findItem(items, name);
+
+    if idx < 0 {
+        Viper.Terminal.Say("You don't have any " + name);
+        return;
+    }
+
+    if qty >= quantities[idx] {
+        // Drop all - remove from inventory
+        Viper.Terminal.Say("Dropped all " + name);
+        // Remove by shifting elements (simplified)
+        var newItems: [String] = [];
+        var newQty: [i64] = [];
+        for i in 0..items.length {
+            if i != idx {
+                newItems.push(items[i]);
+                newQty.push(quantities[i]);
+            }
+        }
+        // Note: In real code, you'd modify the original arrays
+    } else {
+        quantities[idx] = quantities[idx] - qty;
+        Viper.Terminal.Say("Dropped " + qty + " " + name + " (have " + quantities[idx] + " left)");
+    }
+}
+
+func useItem(items: [String], quantities: [i64], name: String) {
+    var idx = findItem(items, name);
+
+    if idx < 0 {
+        Viper.Terminal.Say("You don't have any " + name);
+        return;
+    }
+
+    Viper.Terminal.Say("Used " + name + "!");
+    quantities[idx] = quantities[idx] - 1;
+
+    if quantities[idx] <= 0 {
+        Viper.Terminal.Say("No more " + name + " left.");
+        // Would remove from inventory here
+    }
+}
+```
+
+---
+
+## Practical Example: High Score Table
+
+```rust
+module HighScores;
+
+func start() {
+    // Start with some default scores
+    var names = ["Alice", "Bob", "Carol", "Dave", "Eve"];
+    var scores = [15000, 12500, 11200, 10800, 9500];
+    var maxScores = 5;
+
+    Viper.Terminal.Say("=== High Score Table ===");
+    Viper.Terminal.Say("");
+
+    displayScores(names, scores);
+
+    // Add a new score
+    Viper.Terminal.Say("");
+    Viper.Terminal.Print("Enter your name: ");
+    var playerName = Viper.Terminal.ReadLine();
+    Viper.Terminal.Print("Enter your score: ");
+    var playerScore = Viper.Parse.Int(Viper.Terminal.ReadLine());
+
+    // Find where to insert
+    var insertPos = -1;
+    for i in 0..scores.length {
+        if playerScore > scores[i] {
+            insertPos = i;
+            break;
+        }
+    }
+
+    if insertPos >= 0 {
+        // Insert new score
+        var newNames: [String] = [];
+        var newScores: [i64] = [];
+
+        for i in 0..insertPos {
+            newNames.push(names[i]);
+            newScores.push(scores[i]);
+        }
+
+        newNames.push(playerName);
+        newScores.push(playerScore);
+
+        for i in insertPos..(scores.length - 1) {  // One less since we're adding one
+            newNames.push(names[i]);
+            newScores.push(scores[i]);
+        }
+
+        names = newNames;
+        scores = newScores;
+
+        Viper.Terminal.Say("");
+        Viper.Terminal.Say("Congratulations! You made the high score list!");
+        Viper.Terminal.Say("");
+    } else if scores.length < maxScores {
+        // Append to end
+        names.push(playerName);
+        scores.push(playerScore);
+        Viper.Terminal.Say("");
+        Viper.Terminal.Say("You made the list!");
+        Viper.Terminal.Say("");
+    } else {
+        Viper.Terminal.Say("");
+        Viper.Terminal.Say("Score not high enough for the leaderboard.");
+        Viper.Terminal.Say("");
+    }
+
+    displayScores(names, scores);
+}
+
+func displayScores(names: [String], scores: [i64]) {
+    Viper.Terminal.Say("  RANK  NAME          SCORE");
+    Viper.Terminal.Say("  ----  ----          -----");
+
+    for i in 0..names.length {
+        Viper.Terminal.Say("  " + (i + 1) + ".    " + names[i] + "         " + scores[i]);
+    }
+}
+```
 
 ---
 
 ## The Three Languages
+
+Different languages handle arrays with different syntax, but the concepts are identical.
 
 **ViperLang**
 ```rust
@@ -305,6 +1434,9 @@ numbers[1] = 25;
 for n in numbers {
     Viper.Terminal.Say(n);
 }
+
+// Add
+numbers.push(40);
 
 // Length
 Viper.Terminal.Say(numbers.length);
@@ -333,7 +1465,7 @@ NEXT i
 PRINT UBOUND(numbers) + 1
 ```
 
-BASIC uses parentheses for array access and requires declaring the size upfront.
+BASIC uses parentheses `()` instead of brackets `[]` for array access. Arrays must be declared with a fixed size using `DIM`.
 
 **Pascal**
 ```pascal
@@ -360,31 +1492,108 @@ begin
 end.
 ```
 
-Pascal declares array bounds explicitly in the type.
+Pascal declares array bounds explicitly in the type (`array[0..2] of Integer`). The bounds can start at any number, not just 0, which was one of its original design features.
 
 ---
 
-## Bounds Checking
+## Common Mistakes (Expanded)
 
-What happens if you try to access an invalid index?
+### Off-by-One with Length
+
+This is the most common array bug:
 
 ```rust
-var arr = [1, 2, 3];
-var x = arr[10];  // Error! Index out of bounds
+var arr = [1, 2, 3, 4, 5];  // Length is 5
+
+// WRONG: arr[5] doesn't exist
+var last = arr[arr.length];  // Error!
+
+// CORRECT: Last element is at length - 1
+var last = arr[arr.length - 1];  // Gets arr[4] = 5
 ```
 
-Viper checks array bounds and gives you an error message rather than crashing mysteriously or returning garbage data. This is a safety feature.
+Remember: Length tells you *how many* elements. The highest index is always one less.
 
-Always be careful with indices:
-- Valid indices go from 0 to length - 1
-- If `length` is 0 (empty array), there are no valid indices
-- Variables used as indices must not go out of range
+### Forgetting Zero-Based Indexing
+
+```rust
+var scores = [85, 92, 78];
+
+// "I want the second score"
+Viper.Terminal.Say(scores[2]);  // WRONG: This is the THIRD element (78)
+Viper.Terminal.Say(scores[1]);  // CORRECT: This is the SECOND element (92)
+```
+
+When counting elements, humans say "first, second, third..."
+When using indices, programmers say "0, 1, 2..."
+
+### Empty Array Access
+
+```rust
+var arr: [i64] = [];
+var x = arr[0];  // Error! No elements exist
+
+// Always check first
+if arr.length > 0 {
+    var x = arr[0];  // Safe
+}
+```
+
+### Using Wrong Loop Range
+
+```rust
+var arr = [1, 2, 3, 4, 5];
+
+// WRONG: 0..=length includes length itself
+for i in 0..=arr.length {
+    Viper.Terminal.Say(arr[i]);  // Crashes on last iteration (i=5)
+}
+
+// CORRECT: 0..length excludes the endpoint
+for i in 0..arr.length {
+    Viper.Terminal.Say(arr[i]);  // Works perfectly (i goes 0,1,2,3,4)
+}
+```
+
+### Modifying Array While Iterating
+
+```rust
+var nums = [1, 2, 3, 4, 5];
+
+// Dangerous: adding while iterating can cause infinite loops
+for n in nums {
+    if n < 3 {
+        nums.push(n + 10);  // Don't do this!
+    }
+}
+
+// Safer: iterate over a copy or use indices carefully
+```
+
+### Index From User Input Without Validation
+
+```rust
+var items = ["Sword", "Shield", "Potion"];
+Viper.Terminal.Print("Choose item (1-3): ");
+var choice = Viper.Parse.Int(Viper.Terminal.ReadLine());
+
+// WRONG: User might enter 0, 99, or -5
+var item = items[choice - 1];
+
+// CORRECT: Validate first
+if choice >= 1 && choice <= items.length {
+    var item = items[choice - 1];
+    Viper.Terminal.Say("You selected: " + item);
+} else {
+    Viper.Terminal.Say("Invalid choice.");
+}
+```
 
 ---
 
-## A Complete Example: Student Grades
+## A Complete Example: Student Grade Tracker
 
-Let's build a proper grade tracker:
+Let's build a comprehensive grade tracker that brings everything together:
 
 ```rust
 module GradeTracker;
@@ -392,9 +1601,11 @@ module GradeTracker;
 func start() {
     var grades: [i64] = [];
 
+    Viper.Terminal.Say("=== Student Grade Tracker ===");
     Viper.Terminal.Say("Enter grades (enter -1 to finish):");
+    Viper.Terminal.Say("");
 
-    // Collect grades
+    // Collect grades with validation
     while true {
         Viper.Terminal.Print("Grade: ");
         var input = Viper.Parse.Int(Viper.Terminal.ReadLine());
@@ -405,130 +1616,217 @@ func start() {
 
         if input >= 0 && input <= 100 {
             grades.push(input);
+            Viper.Terminal.Say("  Added. Total grades: " + grades.length);
         } else {
-            Viper.Terminal.Say("Please enter 0-100, or -1 to finish.");
+            Viper.Terminal.Say("  Please enter 0-100, or -1 to finish.");
         }
     }
 
-    // Calculate statistics
+    // Handle empty input
     if grades.length == 0 {
+        Viper.Terminal.Say("");
         Viper.Terminal.Say("No grades entered.");
         return;
     }
 
+    // Calculate statistics
     var sum = 0;
     var min = grades[0];
     var max = grades[0];
+    var countA = 0;
+    var countB = 0;
+    var countC = 0;
+    var countD = 0;
+    var countF = 0;
 
     for grade in grades {
         sum = sum + grade;
+
         if grade < min {
             min = grade;
         }
         if grade > max {
             max = grade;
         }
+
+        // Count letter grades
+        if grade >= 90 {
+            countA = countA + 1;
+        } else if grade >= 80 {
+            countB = countB + 1;
+        } else if grade >= 70 {
+            countC = countC + 1;
+        } else if grade >= 60 {
+            countD = countD + 1;
+        } else {
+            countF = countF + 1;
+        }
     }
 
     var average = sum / grades.length;
 
-    // Report
+    // Generate report
     Viper.Terminal.Say("");
-    Viper.Terminal.Say("=== Grade Report ===");
-    Viper.Terminal.Say("Number of grades: " + grades.length);
-    Viper.Terminal.Say("Lowest grade: " + min);
-    Viper.Terminal.Say("Highest grade: " + max);
-    Viper.Terminal.Say("Average: " + average);
+    Viper.Terminal.Say("========== GRADE REPORT ==========");
+    Viper.Terminal.Say("");
+    Viper.Terminal.Say("All grades entered:");
+
+    for i in 0..grades.length {
+        var letterGrade = "F";
+        if grades[i] >= 90 {
+            letterGrade = "A";
+        } else if grades[i] >= 80 {
+            letterGrade = "B";
+        } else if grades[i] >= 70 {
+            letterGrade = "C";
+        } else if grades[i] >= 60 {
+            letterGrade = "D";
+        }
+        Viper.Terminal.Say("  Student " + (i + 1) + ": " + grades[i] + " (" + letterGrade + ")");
+    }
+
+    Viper.Terminal.Say("");
+    Viper.Terminal.Say("Statistics:");
+    Viper.Terminal.Say("  Number of students: " + grades.length);
+    Viper.Terminal.Say("  Lowest grade:       " + min);
+    Viper.Terminal.Say("  Highest grade:      " + max);
+    Viper.Terminal.Say("  Average:            " + average);
+    Viper.Terminal.Say("");
+    Viper.Terminal.Say("Grade Distribution:");
+    Viper.Terminal.Say("  A (90-100): " + countA + " students");
+    Viper.Terminal.Say("  B (80-89):  " + countB + " students");
+    Viper.Terminal.Say("  C (70-79):  " + countC + " students");
+    Viper.Terminal.Say("  D (60-69):  " + countD + " students");
+    Viper.Terminal.Say("  F (0-59):   " + countF + " students");
+    Viper.Terminal.Say("");
+    Viper.Terminal.Say("===================================");
 }
 ```
 
 Sample run:
 ```
+=== Student Grade Tracker ===
 Enter grades (enter -1 to finish):
+
 Grade: 85
+  Added. Total grades: 1
 Grade: 92
+  Added. Total grades: 2
 Grade: 78
+  Added. Total grades: 3
 Grade: 95
+  Added. Total grades: 4
+Grade: 67
+  Added. Total grades: 5
+Grade: 88
+  Added. Total grades: 6
+Grade: 73
+  Added. Total grades: 7
 Grade: -1
 
-=== Grade Report ===
-Number of grades: 4
-Lowest grade: 78
-Highest grade: 95
-Average: 87
+========== GRADE REPORT ==========
+
+All grades entered:
+  Student 1: 85 (B)
+  Student 2: 92 (A)
+  Student 3: 78 (C)
+  Student 4: 95 (A)
+  Student 5: 67 (D)
+  Student 6: 88 (B)
+  Student 7: 73 (C)
+
+Statistics:
+  Number of students: 7
+  Lowest grade:       67
+  Highest grade:      95
+  Average:            82
+
+Grade Distribution:
+  A (90-100): 2 students
+  B (80-89):  2 students
+  C (70-79):  2 students
+  D (60-69):  1 students
+  F (0-59):   0 students
+
+===================================
 ```
 
-This demonstrates:
-- Dynamic array (adding elements with `push`)
-- Input validation loop
-- Processing all elements to find min, max, sum
-- Computing derived values (average)
-
----
-
-## Common Mistakes
-
-**Off-by-one with length:**
-```rust
-var arr = [1, 2, 3];
-var last = arr[arr.length];  // Error! Should be arr.length - 1
-var last = arr[arr.length - 1];  // Correct: index 2
-```
-
-**Forgetting arrays are zero-indexed:**
-```rust
-var scores = [85, 92, 78];
-Viper.Terminal.Say(scores[1]);  // Prints 92, not 85!
-Viper.Terminal.Say(scores[0]);  // Prints 85 (the first element)
-```
-
-**Empty array access:**
-```rust
-var arr: [i64] = [];
-var x = arr[0];  // Error! No elements to access
-```
-
-**Using the wrong loop range:**
-```rust
-var arr = [1, 2, 3, 4, 5];
-
-// Wrong: includes index 5, which doesn't exist
-for i in 0..=arr.length {
-    Viper.Terminal.Say(arr[i]);
-}
-
-// Correct: 0 to length-1
-for i in 0..arr.length {
-    Viper.Terminal.Say(arr[i]);
-}
-```
+This example demonstrates:
+- Dynamic array building with `push`
+- Input validation
+- Finding minimum and maximum values
+- Calculating sum and average
+- Counting items by category
+- Iterating with both for-each and index-based loops
+- Converting between user-friendly numbers (1, 2, 3) and zero-based indices
 
 ---
 
 ## Summary
 
-- Arrays store multiple values under one name
-- Access elements with `array[index]`
-- Indices start at 0 and go to length - 1
-- `array.length` gives the number of elements
-- Use `push` to add, `pop` to remove from the end
-- Iterate with `for item in array` or `for i in 0..array.length`
-- Multidimensional arrays use `array[row][col]`
-- Viper checks bounds and reports errors on invalid access
+Arrays are one of the most fundamental and widely-used concepts in programming. Here's what you've learned:
+
+**Core Concepts:**
+- Arrays store multiple values under a single name
+- Each element has an index (position number)
+- Indices start at 0, not 1
+- For N elements, valid indices are 0 to N-1
+
+**Creating Arrays:**
+- With values: `[1, 2, 3]`
+- Empty: `var arr: [Type] = []`
+- Repeated value: `[0; 10]` (ten zeros)
+
+**Accessing and Modifying:**
+- Read: `array[index]`
+- Write: `array[index] = value`
+- Length: `array.length`
+
+**Growing and Shrinking:**
+- Add to end: `array.push(value)`
+- Remove from end: `array.pop()`
+
+**Iteration Patterns:**
+- For-each: `for item in array` (when you need values)
+- Index-based: `for i in 0..array.length` (when you need positions)
+
+**Multidimensional Arrays:**
+- Create: `[[1,2,3], [4,5,6], [7,8,9]]`
+- Access: `grid[row][col]`
+- Use nested loops to iterate
+
+**Safety:**
+- Viper checks bounds and prevents invalid access
+- Always validate user input before using as an index
+- Check `array.length > 0` before accessing elements
+
+**When to Use Arrays:**
+- Multiple values of the same kind
+- Unknown or variable number of items
+- Need to process all values uniformly
+- Position matters but individual names don't
 
 ---
 
 ## Exercises
 
-**Exercise 6.1**: Create an array of your five favorite foods and print them all.
+**Exercise 6.1**: Create an array of your five favorite foods and print them all using a for-each loop. Then print them with numbers (1, 2, 3, 4, 5) using an index-based loop.
 
-**Exercise 6.2**: Write a program that creates an array of 10 numbers (you choose the values), then prints them in reverse order.
+**Exercise 6.2**: Write a program that creates an array of 10 numbers (you choose), then prints them in reverse order without creating a new array.
 
-**Exercise 6.3**: Write a program that asks the user to enter 5 numbers, stores them in an array, then prints the smallest and largest.
+**Exercise 6.3**: Write a program that asks the user to enter 5 numbers, stores them in an array, then prints the smallest, largest, and average.
 
-**Exercise 6.4**: Write a program that asks for numbers until -1 is entered, then prints how many numbers were entered and how many were positive.
+**Exercise 6.4**: Write a program that asks for numbers until -1 is entered, then prints:
+- How many numbers were entered
+- How many were positive
+- How many were negative
+- How many were even
+- How many were odd
 
-**Exercise 6.5**: Create a 3×3 tic-tac-toe board (use strings like "X", "O", and " " for empty). Write code to print the board in a nice format:
+**Exercise 6.5**: Create a 3x3 tic-tac-toe board using a 2D array of strings ("X", "O", and " " for empty). Write code to:
+- Print the board in a nice format
+- Check if there's a winner (three in a row horizontally, vertically, or diagonally)
+
 ```
  X | O | X
 -----------
@@ -537,10 +1835,24 @@ for i in 0..arr.length {
  O |   | X
 ```
 
-**Exercise 6.6** (Challenge): Write a program that checks if an array is *sorted* (each element is >= the one before it). Test it with `[1, 2, 3, 4, 5]` (sorted) and `[1, 3, 2, 4, 5]` (not sorted).
+**Exercise 6.6**: Write a program that checks if an array is *sorted* (each element >= the one before it). Test it with:
+- `[1, 2, 3, 4, 5]` (sorted)
+- `[1, 3, 2, 4, 5]` (not sorted)
+- `[5, 4, 3, 2, 1]` (not sorted - this is reverse sorted)
+- `[1, 1, 2, 2, 3]` (sorted - equal adjacent values are allowed)
+
+**Exercise 6.7** (Challenge): Write a simple quiz program. Store questions in one array and answers in another. Ask each question, check the user's answer, and report the final score.
+
+**Exercise 6.8** (Challenge): Implement a simple shopping cart:
+- Store item names and prices in parallel arrays
+- Allow adding items
+- Allow removing items by name
+- Display the cart with a total price
 
 ---
 
-*We can now work with groups of data. But our code is getting longer and more complex. How do we organize it? How do we avoid repeating ourselves? Next, we learn about functions — reusable blocks of code.*
+*We can now work with groups of data efficiently. But our programs are getting longer and more complex. We're starting to repeat ourselves — the same code appearing in multiple places. How do we organize our code better? How do we avoid repetition? How do we break complex problems into manageable pieces?*
 
-*[Continue to Chapter 7: Breaking It Down →](07-functions.md)*
+*Next, we learn about **functions** — reusable blocks of code that you can call by name. Functions are how programmers tame complexity.*
+
+*[Continue to Chapter 7: Breaking It Down ->](07-functions.md)*

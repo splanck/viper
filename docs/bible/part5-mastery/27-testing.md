@@ -1,28 +1,273 @@
 # Chapter 27: Testing
 
-You write code. It works — or does it? You run it a few times, try some inputs, looks good. Ship it.
+You finish writing a feature. It compiles. You run it once with some typical input, and it works. You run it again with slightly different input, and that works too. Confidence builds. You ship it.
 
-Then users find bugs. Edge cases you never considered. Inputs you never tried. Combinations that break everything.
+Three weeks later, a user reports a crash. A particular combination of inputs you never considered causes the program to fail spectacularly. You spend four hours debugging, finally find the issue, fix it, and ship again. Two days later, another user finds a different edge case. More debugging, more fixing.
 
-Testing prevents this. This chapter teaches you to test your code systematically.
+Now imagine a different scenario. You write the same feature, but this time you also write tests --- small programs that automatically verify your code works correctly. You test typical cases, boundary conditions, error situations. When you finish, you have a suite of tests that run in seconds and check dozens of scenarios. If future changes break anything, you'll know immediately.
+
+This second approach takes more time upfront, but it saves far more time in the long run. Testing isn't just about finding bugs --- it's about building confidence, enabling safe changes, and documenting how code should behave. This chapter teaches you to test systematically, transforming testing from an afterthought into a fundamental part of how you write software.
 
 ---
 
-## Why Test?
+## Why Testing Saves Time
 
-**Confidence**: Know your code works, not hope it works.
+This seems paradoxical: spending time writing tests saves time. But consider what happens without tests:
 
-**Safety**: Change code without fear of breaking things.
+**The debugging tax**: Every bug found in production costs far more than one found during development. You must understand the user's report, reproduce the issue, find the cause, fix it, verify the fix, and deploy. This easily consumes hours for bugs that a test would have caught in seconds.
 
-**Documentation**: Tests show how code should be used.
+**The fear of change**: Without tests, changing code is terrifying. Will your improvement break something? Will your refactoring introduce subtle bugs? Developers become paralyzed, afraid to improve code because they can't verify it still works. Technical debt accumulates.
 
-**Design**: Testable code is usually better designed.
+**The repetition cost**: Manual testing is tedious and error-prone. Testing the same feature for the hundredth time, humans get sloppy. Computers don't. A test suite runs the same checks with the same thoroughness every single time.
 
-A program without tests is a program with hidden bugs waiting to surprise you.
+**The regression nightmare**: Software that worked last month doesn't work today. Something changed, somewhere, and broke it. Without tests, finding what broke is archaeology. With tests, you see exactly which test started failing and when.
+
+**The documentation gap**: Code without tests is mysterious. How is this function supposed to be used? What inputs does it expect? What does it return? Tests answer these questions through working examples.
+
+Let's do some rough math. Say you write a medium-sized feature in 10 hours. Without tests, you might spend:
+
+- 10 hours writing code
+- 2 hours manually testing during development
+- 4 hours debugging issues found after release
+- 3 hours fixing regressions over the next year
+- 2 hours explaining the code to colleagues who don't understand it
+
+Total: 21 hours
+
+With tests:
+
+- 10 hours writing code
+- 4 hours writing tests
+- 1 hour fixing issues caught by tests
+- 0.5 hours fixing regressions (tests catch them immediately)
+- 0.5 hours explaining code (tests serve as documentation)
+
+Total: 16 hours
+
+And this understates the difference. The tested code is more maintainable, gives you confidence to make improvements, and provides permanent documentation. The untested code becomes a liability that costs more with each passing month.
+
+---
+
+## Mental Models for Testing
+
+To understand testing deeply, it helps to have mental models --- ways of thinking about what tests do and why they matter.
+
+### The Safety Net
+
+Imagine a trapeze artist performing without a net. Every move is terrifying because any mistake means catastrophe. With a net below, the artist can attempt more daring maneuvers, knowing that failure won't be fatal.
+
+Tests are your safety net. When you refactor code, the tests catch you if you fall. When you add features, the tests verify you haven't broken existing functionality. You can be bold because you have protection.
+
+Without tests, every code change is a high-wire act. With tests, you can experiment, improve, and refactor with confidence.
+
+### The Quality Assurance Inspector
+
+Picture a factory assembly line with an inspector who checks each product before it ships. The inspector follows a checklist: Does this work? Does that connect properly? Is this within tolerance?
+
+Tests are your automated inspectors. They check your code against specifications continuously. Unlike human inspectors who get tired and make mistakes, tests apply the same rigorous standards every time, instantly, for free.
+
+### Insurance Against Disaster
+
+You buy insurance not because you expect disaster, but because disasters happen unexpectedly. The cost of insurance is far less than the cost of an uninsured catastrophe.
+
+Tests are insurance for your code. You write them not because you expect bugs, but because bugs happen. The cost of writing tests is far less than the cost of shipping broken software.
+
+### The Living Specification
+
+Documentation gets out of date. Comments lie. But tests that pass are truthful by definition --- they demonstrate what the code actually does, not what someone thought it would do months ago.
+
+Tests are executable specifications. They define correct behavior in a way that can be verified automatically. When requirements change, you update the tests, and they become the new source of truth.
+
+### The Debugging Microscope
+
+When something goes wrong, tests help you isolate the problem. Like a scientist using controls in an experiment, tests let you vary one thing while holding others constant. If a focused test fails, you know exactly where the bug lives.
+
+---
+
+## Types of Tests
+
+Not all tests are the same. Different tests verify different aspects of your software, and each type has its place.
+
+### Unit Tests
+
+Unit tests verify that individual pieces of code work correctly in isolation. A "unit" is typically a single function, method, or small entity --- the smallest testable piece of behavior.
+
+```rust
+// The function we want to test
+func isPrime(n: i64) -> bool {
+    if n < 2 { return false; }
+    if n == 2 { return true; }
+    if n % 2 == 0 { return false; }
+
+    var i = 3;
+    while i * i <= n {
+        if n % i == 0 {
+            return false;
+        }
+        i += 2;
+    }
+    return true;
+}
+
+// Unit tests for isPrime
+test "isPrime returns false for numbers less than 2" {
+    assert !isPrime(0);
+    assert !isPrime(1);
+    assert !isPrime(-5);
+}
+
+test "isPrime returns true for 2" {
+    assert isPrime(2);
+}
+
+test "isPrime returns true for prime numbers" {
+    assert isPrime(3);
+    assert isPrime(5);
+    assert isPrime(7);
+    assert isPrime(11);
+    assert isPrime(13);
+    assert isPrime(97);
+}
+
+test "isPrime returns false for composite numbers" {
+    assert !isPrime(4);
+    assert !isPrime(6);
+    assert !isPrime(9);
+    assert !isPrime(15);
+    assert !isPrime(100);
+}
+```
+
+Unit tests are:
+- **Fast**: They test small pieces, so they run in milliseconds
+- **Focused**: When they fail, you know exactly what's broken
+- **Independent**: Each test runs on its own, without depending on others
+- **Numerous**: A typical project has hundreds or thousands of unit tests
+
+Think of unit tests as verifying that each brick is solid before you build the wall.
+
+### Integration Tests
+
+Integration tests verify that multiple pieces work together correctly. While unit tests check individual functions, integration tests check that those functions collaborate properly.
+
+```rust
+// Unit test: Just the validator
+test "email validator rejects invalid format" {
+    var validator = EmailValidator();
+    assert !validator.isValid("notanemail");
+    assert !validator.isValid("missing@domain");
+    assert !validator.isValid("@nodomain.com");
+}
+
+// Integration test: Validator + User + Database working together
+test "registration flow rejects invalid email" {
+    var db = TestDatabase.create();
+    var validator = EmailValidator();
+    var userService = UserService(db, validator);
+
+    var result = userService.register("notanemail", "password123");
+
+    assert result.success == false;
+    assert result.error == "Invalid email format";
+    assert db.userCount() == 0;  // No user was created
+}
+
+test "registration flow creates user with valid email" {
+    var db = TestDatabase.create();
+    var validator = EmailValidator();
+    var userService = UserService(db, validator);
+
+    var result = userService.register("alice@example.com", "password123");
+
+    assert result.success == true;
+    assert db.userCount() == 1;
+    assert db.findByEmail("alice@example.com") != null;
+}
+```
+
+Integration tests are:
+- **Broader**: They test multiple components working together
+- **Slower**: More setup, more code executing, more to check
+- **Realistic**: They catch problems that only appear when components interact
+- **Fewer**: You have more unit tests than integration tests
+
+Think of integration tests as verifying that the bricks fit together properly to form a sturdy wall.
+
+### End-to-End Tests
+
+End-to-end (E2E) tests verify complete workflows from the user's perspective. They simulate real user actions and check that the entire system behaves correctly.
+
+```rust
+test "complete user journey: registration to purchase" {
+    var app = Application.startForTesting();
+    var browser = TestBrowser.create();
+
+    // User visits homepage
+    browser.navigate(app.url);
+    assert browser.currentPage().contains("Welcome");
+
+    // User registers
+    browser.click("Register");
+    browser.fill("email", "alice@example.com");
+    browser.fill("password", "securepassword123");
+    browser.click("Submit");
+    assert browser.currentPage().contains("Registration successful");
+
+    // User browses products
+    browser.click("Products");
+    assert browser.currentPage().contains("Widget");
+
+    // User adds item to cart
+    browser.click("Add to Cart");
+    assert browser.currentPage().contains("Cart (1)");
+
+    // User completes purchase
+    browser.click("Checkout");
+    browser.fill("cardNumber", "4111111111111111");
+    browser.click("Complete Purchase");
+    assert browser.currentPage().contains("Thank you for your order");
+
+    app.shutdown();
+}
+```
+
+End-to-end tests are:
+- **Comprehensive**: They test entire user workflows
+- **Slowest**: They run the whole application, often with real browsers
+- **Brittle**: Changes to UI can break them even if functionality is correct
+- **Fewest**: You have few E2E tests compared to unit and integration tests
+
+Think of end-to-end tests as verifying that the completed building is habitable --- that someone can walk in the front door and live there.
+
+### The Testing Pyramid
+
+A well-tested application has many more unit tests than integration tests, and many more integration tests than end-to-end tests. This is often visualized as a pyramid:
+
+```
+        /\
+       /  \        End-to-End Tests (few, slow, comprehensive)
+      /----\
+     /      \      Integration Tests (some, moderate speed)
+    /--------\
+   /          \    Unit Tests (many, fast, focused)
+  /------------\
+```
+
+Why this shape?
+
+**Unit tests** are fast and cheap to write, so you can have many. They give you quick feedback during development.
+
+**Integration tests** take longer but catch problems unit tests miss. You need enough to verify components work together.
+
+**End-to-end tests** are slowest and most expensive but verify the user experience. You need them, but not too many.
+
+An inverted pyramid (many E2E tests, few unit tests) leads to slow test suites, fragile tests, and difficulty debugging failures.
 
 ---
 
 ## Your First Test
+
+Let's start with the basics. Here's a simple function and a test for it:
 
 ```rust
 import Viper.Test;
@@ -38,23 +283,36 @@ test "add returns sum of two numbers" {
 }
 ```
 
-Run tests:
+Run tests with:
+
 ```bash
 viper test myprogram.viper
 ```
 
 Output:
+
 ```
 Running tests...
-✓ add returns sum of two numbers
+Pass: add returns sum of two numbers
 1 test passed, 0 failed
 ```
 
+Let's break down what's happening:
+
+- `test "description" { ... }` defines a test with a descriptive name
+- Inside the test, `assert` checks that a condition is true
+- If all assertions pass, the test passes
+- If any assertion fails, the test fails and reports which assertion failed
+
+The test name is important --- it should describe what you're testing, not how. "add returns sum of two numbers" tells you exactly what behavior is being verified.
+
 ---
 
-## Assertions
+## Assertions: The Language of Tests
 
-Assertions are statements that must be true:
+Assertions are statements that must be true for a test to pass. They're how you express expectations about your code.
+
+### Basic Assertions
 
 ```rust
 test "basic assertions" {
@@ -68,6 +326,7 @@ test "basic assertions" {
     // Comparisons
     assert 10 > 5;
     assert 3 <= 3;
+    assert 7 >= 7;
 
     // Boolean
     assert true;
@@ -76,21 +335,28 @@ test "basic assertions" {
     // Null checks
     var x: string? = "hello";
     assert x != null;
+
+    var y: string? = null;
+    assert y == null;
 }
 ```
 
 ### Assertions with Messages
 
-When assertions fail, messages help:
+When assertions fail, messages help you understand what went wrong:
 
 ```rust
 test "with messages" {
     var result = calculateTax(100);
-    assert result == 10, "Expected tax of 10%, got " + result;
+    assert result == 10, "Expected 10% tax on 100, got " + result;
 }
 ```
 
+Without a message, a failing assertion just tells you the condition was false. With a message, you see exactly what was expected and what happened.
+
 ### Common Assert Functions
+
+The `Viper.Test` module provides specialized assertion functions with better error messages:
 
 ```rust
 import Viper.Test;
@@ -98,14 +364,14 @@ import Viper.Test;
 test "assert variants" {
     // Basic
     assert condition;
-    assert condition, "message";
+    assert condition, "custom message";
 
-    // Equality (better error messages)
+    // Equality (shows expected vs actual on failure)
     assertEqual(actual, expected);
     assertNotEqual(a, b);
 
-    // Floating point (with tolerance)
-    assertClose(3.14159, 3.14, 0.01);
+    // Floating point (handles precision issues)
+    assertClose(3.14159, 3.14, 0.01);  // Within tolerance
 
     // Null
     assertNull(value);
@@ -123,59 +389,148 @@ test "assert variants" {
 }
 ```
 
+Why use `assertEqual(actual, expected)` instead of `assert actual == expected`? Consider a failing test:
+
+```rust
+// With basic assert:
+assert result == 42;
+// Failure: assertion failed
+
+// With assertEqual:
+assertEqual(result, 42);
+// Failure: expected 42, got 37
+```
+
+The specialized assertion tells you what went wrong, not just that something went wrong.
+
 ---
 
-## Test Structure: Arrange-Act-Assert
+## Test Structure: Arrange, Act, Assert
 
-Good tests follow a pattern:
+Good tests follow a consistent pattern called "Arrange-Act-Assert" (or "Given-When-Then"):
 
 ```rust
 test "user can update email" {
-    // Arrange: Set up test data
+    // Arrange: Set up the test conditions
     var user = User("alice", "alice@old.com");
 
-    // Act: Perform the action
+    // Act: Perform the action being tested
     user.updateEmail("alice@new.com");
 
-    // Assert: Check the result
+    // Assert: Verify the expected outcome
     assert user.email == "alice@new.com";
 }
 ```
 
-Also called "Given-When-Then":
-- **Given** a user with an old email
-- **When** they update their email
-- **Then** the email should change
+This three-part structure makes tests clear and consistent:
+
+**Arrange** (Given): Create the objects, set up the initial state, prepare everything needed for the test. This is the "preconditions."
+
+**Act** (When): Perform the single action being tested. This should usually be one line --- one function call, one method invocation, one operation.
+
+**Assert** (Then): Verify that the action produced the expected results. Check return values, state changes, side effects.
+
+### Why This Structure Matters
+
+Consider a test without clear structure:
+
+```rust
+test "confusing test" {
+    var cart = ShoppingCart();
+    cart.add(Item("Book", 15.00));
+    assert cart.itemCount() == 1;
+    cart.add(Item("Pen", 2.00));
+    assert cart.itemCount() == 2;
+    assert cart.total() == 17.00;
+    cart.remove("Book");
+    assert cart.itemCount() == 1;
+    assert cart.total() == 2.00;
+}
+```
+
+What is this testing? Adding? Removing? Totals? It's hard to tell because multiple actions and assertions are mixed together.
+
+Compare with structured tests:
+
+```rust
+test "adding item increases count" {
+    // Arrange
+    var cart = ShoppingCart();
+    cart.add(Item("Book", 15.00));
+
+    // Act
+    cart.add(Item("Pen", 2.00));
+
+    // Assert
+    assertEqual(cart.itemCount(), 2);
+}
+
+test "total reflects all item prices" {
+    // Arrange
+    var cart = ShoppingCart();
+    cart.add(Item("Book", 15.00));
+    cart.add(Item("Pen", 2.00));
+
+    // Act
+    var total = cart.total();
+
+    // Assert
+    assertClose(total, 17.00, 0.01);
+}
+
+test "removing item decreases count and total" {
+    // Arrange
+    var cart = ShoppingCart();
+    cart.add(Item("Book", 15.00));
+    cart.add(Item("Pen", 2.00));
+
+    // Act
+    cart.remove("Book");
+
+    // Assert
+    assertEqual(cart.itemCount(), 1);
+    assertClose(cart.total(), 2.00, 0.01);
+}
+```
+
+Each test now verifies one specific behavior. When a test fails, you know exactly what's broken.
 
 ---
 
-## Testing Different Cases
+## What to Test: Choosing Your Cases
 
-### Normal Cases
+Writing tests is not about covering every possible input (there are infinitely many). It's about strategically choosing inputs that reveal bugs.
 
-Test typical usage:
+### Normal Cases (Happy Path)
+
+Test typical usage --- the cases that should work:
 
 ```rust
 test "divide normal cases" {
-    assert divide(10, 2) == 5;
-    assert divide(9, 3) == 3;
-    assert divide(7, 2) == 3;  // Integer division
+    assertEqual(divide(10, 2), 5);
+    assertEqual(divide(9, 3), 3);
+    assertEqual(divide(100, 10), 10);
 }
 ```
 
-### Edge Cases
+These verify the basic functionality works as expected.
 
-Test boundaries and unusual inputs:
+### Edge Cases (Boundaries)
+
+Test the boundaries and limits where bugs often hide:
 
 ```rust
 test "divide edge cases" {
-    assert divide(0, 5) == 0;      // Zero numerator
-    assert divide(5, 1) == 5;      // Divide by one
-    assert divide(-10, 2) == -5;   // Negative numbers
-    assert divide(10, -2) == -5;
-    assert divide(-10, -2) == 5;   // Both negative
+    assertEqual(divide(0, 5), 0);       // Zero numerator
+    assertEqual(divide(5, 1), 5);       // Divide by one
+    assertEqual(divide(1, 1), 1);       // Same values
+    assertEqual(divide(-10, 2), -5);    // Negative numerator
+    assertEqual(divide(10, -2), -5);    // Negative divisor
+    assertEqual(divide(-10, -2), 5);    // Both negative
 }
 ```
+
+Edge cases live at the boundaries: zero, one, negative numbers, maximum values, empty strings, empty collections. Bugs love these places.
 
 ### Error Cases
 
@@ -187,11 +542,31 @@ test "divide by zero throws" {
         divide(5, 0);
     });
 }
+
+test "withdraw fails with insufficient funds" {
+    var account = BankAccount(100);
+    var result = account.withdraw(150);
+
+    assert result == false;
+    assertEqual(account.balance, 100);  // Balance unchanged
+}
 ```
 
----
+Error handling is as important as the happy path. Tests should verify that errors are detected and handled gracefully.
 
-## Testing Classes
+### The ZOMBIES Mnemonic
+
+A helpful mnemonic for remembering what to test:
+
+- **Z**ero: What happens with zero, empty, null, or none?
+- **O**ne: What happens with exactly one item?
+- **M**any: What happens with many items?
+- **B**oundary: What happens at limits and edges?
+- **I**nterface: What happens with different input combinations?
+- **E**xception: What happens when things go wrong?
+- **S**imple: Start with the simplest case that could work
+
+Let's apply ZOMBIES to testing a stack:
 
 ```rust
 entity Stack<T> {
@@ -212,61 +587,135 @@ entity Stack<T> {
         return self.items.pop();
     }
 
-    func peek() -> T? {
-        if self.items.length == 0 {
-            return null;
-        }
-        return self.items[self.items.length - 1];
-    }
-
     func isEmpty() -> bool {
         return self.items.length == 0;
     }
+
+    func size() -> i64 {
+        return self.items.length;
+    }
 }
 
-test "stack is empty when created" {
+// Zero: Empty stack behavior
+test "new stack is empty" {
     var stack = Stack<i64>();
+    assert stack.isEmpty();
+    assertEqual(stack.size(), 0);
+}
+
+test "pop on empty stack returns null" {
+    var stack = Stack<i64>();
+    assert stack.pop() == null;
+}
+
+// One: Single element behavior
+test "stack with one element is not empty" {
+    var stack = Stack<i64>();
+    stack.push(42);
+    assert !stack.isEmpty();
+    assertEqual(stack.size(), 1);
+}
+
+test "pop returns the single element" {
+    var stack = Stack<i64>();
+    stack.push(42);
+    assertEqual(stack.pop(), 42);
     assert stack.isEmpty();
 }
 
-test "stack push adds items" {
-    var stack = Stack<i64>();
-    stack.push(1);
-    assert !stack.isEmpty();
-    assert stack.peek() == 1;
-}
-
-test "stack pop removes items in LIFO order" {
+// Many: Multiple elements behavior
+test "stack maintains LIFO order" {
     var stack = Stack<i64>();
     stack.push(1);
     stack.push(2);
     stack.push(3);
 
-    assert stack.pop() == 3;
-    assert stack.pop() == 2;
-    assert stack.pop() == 1;
+    assertEqual(stack.pop(), 3);
+    assertEqual(stack.pop(), 2);
+    assertEqual(stack.pop(), 1);
+}
+
+// Boundary: Edge behavior
+test "push then pop returns to empty" {
+    var stack = Stack<i64>();
+    stack.push(1);
+    stack.pop();
     assert stack.isEmpty();
 }
 
-test "stack pop returns null when empty" {
+// Exception/Error: Error behavior
+test "multiple pops on empty stack all return null" {
     var stack = Stack<i64>();
+    assert stack.pop() == null;
     assert stack.pop() == null;
 }
 ```
 
 ---
 
+## Writing Good Test Names
+
+Test names are documentation. They should describe what behavior is being tested in a way that's clear to someone who hasn't seen the code.
+
+### Bad Test Names
+
+```rust
+test "test1" { ... }
+test "user test" { ... }
+test "it works" { ... }
+test "bug fix" { ... }
+```
+
+These tell you nothing. When they fail, you have to read the test code to understand what broke.
+
+### Good Test Names
+
+```rust
+test "new user starts with zero balance" { ... }
+test "deposit increases balance by deposit amount" { ... }
+test "withdraw fails when amount exceeds balance" { ... }
+test "transfer moves money from source to destination" { ... }
+```
+
+Good test names:
+- Describe the scenario or behavior being tested
+- Are specific enough to understand without reading the code
+- Often follow a pattern: "entity/function does something when condition"
+
+### Test Names as Documentation
+
+Imagine all your tests listed together:
+
+```
+Pass: new user starts with zero balance
+Pass: deposit increases balance by deposit amount
+Pass: deposit with negative amount fails
+Pass: withdraw reduces balance by withdrawal amount
+Pass: withdraw fails when amount exceeds balance
+Pass: transfer moves money from source to destination
+Pass: transfer fails when source has insufficient funds
+```
+
+This list becomes living documentation of how your system behaves. Anyone can read it and understand the rules.
+
+---
+
 ## Test Setup and Teardown
 
-When tests need common setup:
+Many tests need common setup --- creating test data, initializing objects, connecting to test databases. Rather than repeating this in every test, you can use setup and teardown blocks.
 
 ```rust
 import Viper.Test;
 
+var testDatabase: Database;
+var testUser: User;
+
 // Setup runs before each test
 setup {
     testDatabase = Database.createTemporary();
-    testDatabase.seed(testData);
+    testDatabase.migrate();
+    testUser = User("testuser", "test@example.com");
+    testDatabase.insert(testUser);
 }
 
 // Teardown runs after each test
@@ -274,26 +723,52 @@ teardown {
     testDatabase.destroy();
 }
 
-test "can insert user" {
-    var user = User("alice");
-    testDatabase.insert(user);
-    assert testDatabase.findUser("alice") != null;
+test "can find user by email" {
+    var found = testDatabase.findUserByEmail("test@example.com");
+    assertNotNull(found);
+    assertEqual(found.name, "testuser");
 }
 
 test "can delete user" {
-    var user = testDatabase.findUser("testuser");
-    testDatabase.delete(user);
-    assert testDatabase.findUser("testuser") == null;
+    testDatabase.deleteUser(testUser);
+    var found = testDatabase.findUserByEmail("test@example.com");
+    assertNull(found);
+}
+
+test "deleting user doesn't affect other users" {
+    var other = User("other", "other@example.com");
+    testDatabase.insert(other);
+
+    testDatabase.deleteUser(testUser);
+
+    var found = testDatabase.findUserByEmail("other@example.com");
+    assertNotNull(found);
 }
 ```
 
+Each test starts with a fresh database containing the test user. After each test, the database is destroyed, ensuring no test affects any other test.
+
+### Why Teardown Matters
+
+Without proper teardown, tests can interfere with each other:
+
+- Files created by one test affect the next test
+- Database records accumulate across tests
+- Global state changes persist
+
+This causes tests that pass alone but fail together, or tests that mysteriously fail on certain days but not others. Always clean up after yourself.
+
 ---
 
-## Test Doubles: Mocks and Stubs
+## Test Doubles: Mocks, Stubs, and Fakes
 
-When testing code that depends on external systems:
+Real systems depend on external resources: databases, network services, the file system, the current time. Testing against real dependencies is slow, unreliable, and can have side effects (you don't want tests that send real emails!).
+
+Test doubles are objects that stand in for real dependencies during testing. There are several types.
 
 ### Stubs: Provide Canned Responses
+
+A stub returns predetermined values, ignoring its inputs:
 
 ```rust
 // Real implementation
@@ -313,25 +788,41 @@ entity StubWeatherService implements IWeatherService {
     }
 
     func getTemperature(city: string) -> f64 {
-        return self.temperature;  // Always returns same value
+        return self.temperature;  // Always returns the configured value
     }
 }
 
 test "thermostat turns on heat when cold" {
-    var weather = StubWeatherService(30.0);  // Stub says 30°F
+    // Arrange: Create a stub that always reports 30 degrees
+    var weather = StubWeatherService(30.0);
+    var thermostat = Thermostat(weather);
+
+    // Act
+    thermostat.check();
+
+    // Assert
+    assert thermostat.heatingOn == true;
+}
+
+test "thermostat turns on AC when hot" {
+    var weather = StubWeatherService(95.0);
     var thermostat = Thermostat(weather);
 
     thermostat.check();
 
-    assert thermostat.heatingOn == true;
+    assert thermostat.coolingOn == true;
 }
 ```
 
+The stub lets us test the thermostat's logic without depending on real weather data. We can simulate any temperature we want.
+
 ### Mocks: Verify Interactions
+
+A mock records how it was called, letting you verify interactions:
 
 ```rust
 entity MockEmailService implements IEmailService {
-    sentEmails: [Email];
+    hide sentEmails: [Email];
 
     expose func init() {
         self.sentEmails = [];
@@ -341,7 +832,7 @@ entity MockEmailService implements IEmailService {
         self.sentEmails.push(email);
     }
 
-    func verifySent(to: string, subject: string) -> bool {
+    func wasSent(to: string, subject: string) -> bool {
         for email in self.sentEmails {
             if email.to == to && email.subject == subject {
                 return true;
@@ -349,98 +840,203 @@ entity MockEmailService implements IEmailService {
         }
         return false;
     }
+
+    func sendCount() -> i64 {
+        return self.sentEmails.length;
+    }
 }
 
 test "registration sends welcome email" {
+    // Arrange
     var emailService = MockEmailService();
     var registration = RegistrationService(emailService);
 
+    // Act
     registration.register("alice@example.com", "password");
 
-    assert emailService.verifySent("alice@example.com", "Welcome!");
+    // Assert
+    assert emailService.wasSent("alice@example.com", "Welcome!");
+}
+
+test "failed registration sends no email" {
+    var emailService = MockEmailService();
+    var registration = RegistrationService(emailService);
+
+    registration.register("invalid-email", "password");  // Should fail
+
+    assertEqual(emailService.sendCount(), 0);
 }
 ```
 
----
+Mocks verify not just what your code returns, but how it interacts with its dependencies.
 
-## Testing Patterns
+### Fakes: Simplified Implementations
 
-### One Assert Per Test (Usually)
+A fake is a simplified but functional implementation:
 
 ```rust
-// Okay: Related assertions
-test "user creation" {
-    var user = User("alice", "alice@example.com");
-    assert user.name == "alice";
-    assert user.email == "alice@example.com";
+// Real database: connects to PostgreSQL, handles transactions, etc.
+entity ProductionDatabase implements IDatabase {
+    // ... complex implementation
 }
 
-// Better: Separate tests for clarity
-test "user has name" {
-    var user = User("alice", "alice@example.com");
-    assert user.name == "alice";
+// Fake database: uses in-memory storage
+entity FakeDatabase implements IDatabase {
+    hide data: Map<string, User>;
+
+    expose func init() {
+        self.data = Map();
+    }
+
+    func save(user: User) {
+        self.data.set(user.id, user);
+    }
+
+    func findById(id: string) -> User? {
+        return self.data.get(id);
+    }
+
+    func delete(id: string) {
+        self.data.remove(id);
+    }
 }
 
-test "user has email" {
-    var user = User("alice", "alice@example.com");
-    assert user.email == "alice@example.com";
-}
-```
+test "user repository can save and retrieve users" {
+    var db = FakeDatabase();
+    var repo = UserRepository(db);
 
-### Test Names Describe Behavior
+    var user = User("1", "Alice");
+    repo.save(user);
 
-```rust
-// Bad: Vague
-test "test1" { ... }
-test "user test" { ... }
-
-// Good: Descriptive
-test "new user has zero balance" { ... }
-test "deposit increases balance" { ... }
-test "withdraw fails when insufficient funds" { ... }
-```
-
-### Keep Tests Independent
-
-```rust
-// Bad: Tests depend on each other
-test "create user" {
-    globalUser = User("alice");
-}
-test "use user" {
-    // Fails if previous test didn't run!
-    assert globalUser.name == "alice";
-}
-
-// Good: Each test is self-contained
-test "create user" {
-    var user = User("alice");
-    assert user.name == "alice";
+    var retrieved = repo.findById("1");
+    assertEqual(retrieved.name, "Alice");
 }
 ```
+
+Fakes behave like the real thing but are simpler and faster. An in-memory database is much faster than a real database and doesn't require setup.
+
+### When to Use Each Type
+
+**Stubs** when you need to control what a dependency returns. "When the weather API says 30 degrees, the thermostat should..."
+
+**Mocks** when you need to verify that your code interacts with a dependency correctly. "Registration should send exactly one welcome email."
+
+**Fakes** when you need realistic behavior without the cost of the real implementation. "Test against an in-memory database instead of PostgreSQL."
 
 ---
 
 ## Test-Driven Development (TDD)
 
-Write tests before code:
+Test-Driven Development is a discipline where you write tests *before* writing the code they test. It sounds backwards, but it's a powerful technique for producing well-designed, well-tested code.
 
-1. **Red**: Write a failing test
-2. **Green**: Write minimum code to pass
-3. **Refactor**: Improve code while tests pass
+### The TDD Cycle: Red-Green-Refactor
+
+1. **Red**: Write a failing test for the next piece of functionality
+2. **Green**: Write the minimum code needed to make the test pass
+3. **Refactor**: Improve the code while keeping tests passing
+
+Then repeat.
+
+### TDD Example: Building isPrime
+
+Let's build an `isPrime` function using TDD.
+
+**Step 1: Red --- Write a failing test**
 
 ```rust
-// Step 1: Write failing test
-test "isPrime returns true for prime numbers" {
+test "2 is prime" {
     assert isPrime(2);
-    assert isPrime(3);
-    assert isPrime(5);
-    assert isPrime(7);
+}
+```
+
+This fails because `isPrime` doesn't exist yet.
+
+**Step 2: Green --- Make it pass with minimum code**
+
+```rust
+func isPrime(n: i64) -> bool {
+    return true;  // Minimum code to pass!
+}
+```
+
+The test passes. Yes, this implementation is wrong, but it passes the test we have.
+
+**Step 3: Red --- Write another failing test**
+
+```rust
+test "4 is not prime" {
+    assert !isPrime(4);
+}
+```
+
+This fails because our function always returns true.
+
+**Step 4: Green --- Make it pass**
+
+```rust
+func isPrime(n: i64) -> bool {
+    if n == 4 {
+        return false;
+    }
+    return true;
+}
+```
+
+Both tests pass. Still a silly implementation, but we're being disciplined.
+
+**Step 5: Red --- More tests to drive the design**
+
+```rust
+test "1 is not prime" {
+    assert !isPrime(1);
 }
 
-// Step 2: Make it pass (simple implementation)
+test "0 is not prime" {
+    assert !isPrime(0);
+}
+
+test "negative numbers are not prime" {
+    assert !isPrime(-5);
+}
+```
+
+These fail because we haven't handled these cases.
+
+**Step 6: Green --- Handle small numbers**
+
+```rust
 func isPrime(n: i64) -> bool {
-    if n < 2 { return false; }
+    if n < 2 {
+        return false;
+    }
+    if n == 4 {
+        return false;
+    }
+    return true;
+}
+```
+
+**Step 7: Red --- Test more composites**
+
+```rust
+test "6 is not prime" {
+    assert !isPrime(6);
+}
+
+test "9 is not prime" {
+    assert !isPrime(9);
+}
+```
+
+**Step 8: Green --- Generalize**
+
+Time to write a real algorithm:
+
+```rust
+func isPrime(n: i64) -> bool {
+    if n < 2 {
+        return false;
+    }
     for i in 2..n {
         if n % i == 0 {
             return false;
@@ -448,8 +1044,15 @@ func isPrime(n: i64) -> bool {
     }
     return true;
 }
+```
 
-// Step 3: Refactor (optimize)
+All tests pass.
+
+**Step 9: Refactor --- Improve without breaking tests**
+
+The algorithm works but is slow. Let's optimize:
+
+```rust
 func isPrime(n: i64) -> bool {
     if n < 2 { return false; }
     if n == 2 { return true; }
@@ -465,38 +1068,342 @@ func isPrime(n: i64) -> bool {
 }
 ```
 
+Run the tests --- they still pass. The refactoring didn't break anything.
+
+### Why TDD Works
+
+**Forces you to think about design**: You have to know what you're building before you build it. Writing the test first clarifies requirements.
+
+**Guarantees test coverage**: Every piece of code was written to make a test pass, so everything is tested.
+
+**Produces testable code**: Code that's hard to test becomes obvious when you try to write the test first. This pressure leads to better designs.
+
+**Provides instant feedback**: Small cycles mean you know immediately if something breaks.
+
+**Documents intent**: The tests you write show what you intended the code to do, not just what it happens to do.
+
+### TDD Is Not Always Appropriate
+
+TDD works best when:
+- Requirements are clear
+- You're building well-understood functionality
+- The code is logic-heavy (algorithms, business rules)
+
+TDD is less helpful when:
+- You're exploring or prototyping
+- Requirements are fuzzy
+- The code is mostly integration/wiring
+
+Use TDD as a tool, not a religion. Apply it where it helps.
+
 ---
 
-## Integration Tests
+## Common Testing Mistakes
 
-Unit tests test pieces in isolation. Integration tests test pieces together:
+Learning to test well means learning what not to do. Here are common mistakes and how to avoid them.
+
+### Testing Implementation, Not Behavior
 
 ```rust
-// Unit test: Just the validator
-test "email validator rejects invalid format" {
-    assert !EmailValidator.isValid("notanemail");
+// Bad: Tests internal details
+entity Cache {
+    hide storage: Map<string, string>;
+    // ...
 }
 
-// Integration test: Full registration flow
-test "registration rejects invalid email" {
-    var db = TestDatabase.create();
-    var emailService = TestEmailService.create();
-    var registration = RegistrationService(db, emailService);
+test "cache uses hashmap internally" {
+    var cache = Cache();
+    // Trying to verify internal structure - fragile!
+}
 
-    var result = registration.register("notanemail", "password123");
-
-    assert result.success == false;
-    assert result.error == "Invalid email format";
-    assert db.userCount() == 0;
-    assert emailService.emailsSent() == 0;
+// Good: Tests observable behavior
+test "cache returns stored value" {
+    var cache = Cache();
+    cache.set("key", "value");
+    assertEqual(cache.get("key"), "value");
 }
 ```
+
+Test what the code *does*, not *how* it does it. Internal implementation should be free to change without breaking tests.
+
+### Flaky Tests
+
+Flaky tests pass sometimes and fail sometimes:
+
+```rust
+// Bad: Depends on timing
+test "async operation completes" {
+    startAsyncOperation();
+    Time.sleep(100);  // Hope 100ms is enough...
+    assert isComplete();  // Sometimes passes, sometimes fails!
+}
+
+// Good: Wait properly for completion
+test "async operation completes" {
+    var future = startAsyncOperation();
+    var result = future.await(timeout: 5000);
+    assert result.success;
+}
+```
+
+Other sources of flakiness:
+- Depending on test execution order
+- Using real current time instead of fake time
+- Race conditions in concurrent code
+- Depending on external services
+
+Flaky tests erode trust in your test suite. When tests sometimes fail for no reason, people start ignoring failures. Fix flaky tests immediately.
+
+### Tests That Don't Test Anything
+
+```rust
+// Bad: Doesn't actually verify anything useful
+test "create user" {
+    var user = User("alice");
+    assert user != null;  // This will basically always pass
+}
+
+// Good: Verifies meaningful behavior
+test "user starts with correct name" {
+    var user = User("alice");
+    assertEqual(user.name, "alice");
+}
+```
+
+Every test should verify something that could plausibly fail. If a test can't fail, it's not testing anything.
+
+### Too Many Assertions
+
+```rust
+// Bad: What exactly failed?
+test "everything about user" {
+    var user = createUser("alice", 30, "alice@example.com");
+    assertEqual(user.name, "alice");
+    assertEqual(user.age, 30);
+    assertEqual(user.email, "alice@example.com");
+    assert user.isActive;
+    assert user.createdAt != null;
+    assertEqual(user.role, "member");
+    assert user.permissions.length > 0;
+    // 15 more assertions...
+}
+
+// Good: Focused tests
+test "new user has provided name" {
+    var user = createUser("alice", 30, "alice@example.com");
+    assertEqual(user.name, "alice");
+}
+
+test "new user has member role by default" {
+    var user = createUser("alice", 30, "alice@example.com");
+    assertEqual(user.role, "member");
+}
+```
+
+When a test with many assertions fails, you only learn one thing failed --- you still have to figure out which one and why. Focused tests give focused feedback.
+
+### Tests That Depend on Each Other
+
+```rust
+// Bad: Tests depend on shared state
+var globalUser: User?;
+
+test "create user" {
+    globalUser = User("alice");
+}
+
+test "user has name" {
+    // Fails if previous test didn't run!
+    assertEqual(globalUser.name, "alice");
+}
+
+// Good: Each test is independent
+test "create user" {
+    var user = User("alice");
+    assertNotNull(user);
+}
+
+test "user has name" {
+    var user = User("alice");
+    assertEqual(user.name, "alice");
+}
+```
+
+Tests should be independent --- each should work regardless of what other tests run or in what order. Shared state between tests causes mysterious failures.
+
+### Testing Only the Happy Path
+
+```rust
+// Incomplete: Only tests success cases
+test "withdraw works" {
+    var account = BankAccount(100);
+    account.withdraw(50);
+    assertEqual(account.balance, 50);
+}
+
+// Complete: Tests success AND failure cases
+test "withdraw reduces balance" {
+    var account = BankAccount(100);
+    account.withdraw(50);
+    assertEqual(account.balance, 50);
+}
+
+test "withdraw fails with insufficient funds" {
+    var account = BankAccount(100);
+    var result = account.withdraw(150);
+    assert !result.success;
+    assertEqual(account.balance, 100);  // Balance unchanged
+}
+
+test "withdraw fails with negative amount" {
+    var account = BankAccount(100);
+    var result = account.withdraw(-50);
+    assert !result.success;
+}
+```
+
+Error paths are just as important as success paths. Maybe more --- bugs in error handling cause data corruption and security issues.
+
+---
+
+## Code Coverage
+
+Code coverage measures how much of your code is executed by your tests.
+
+```bash
+viper test --coverage myprogram.viper
+```
+
+Output:
+
+```
+File                  Statements    Branches    Coverage
+--------------------------------------------------------------
+math.viper            45/50         12/15       87%
+user.viper            30/32         8/10        91%
+utils.viper           20/40         5/12        52%
+--------------------------------------------------------------
+Total                 95/122        25/37       78%
+```
+
+### What Coverage Tells You
+
+**Statements covered**: How many lines of code were executed during tests.
+
+**Branches covered**: How many decision paths (if/else, match cases) were taken.
+
+### What Coverage Doesn't Tell You
+
+High coverage doesn't mean good tests. Consider:
+
+```rust
+func divide(a: i64, b: i64) -> i64 {
+    return a / b;
+}
+
+test "divide executes" {
+    divide(10, 2);  // 100% coverage!
+}
+```
+
+This test has 100% coverage but doesn't verify the result is correct. It doesn't test division by zero. Coverage measures what code ran, not whether the tests are meaningful.
+
+### Healthy Coverage Targets
+
+- **80-90%** is a reasonable target for most projects
+- **100%** is often impractical and not worth the cost
+- Below **60%** suggests significant untested code
+
+More important than a specific number:
+- Critical paths should be thoroughly tested
+- Error handling should be tested
+- Edge cases should be tested
+
+Coverage is a tool for finding untested code, not a goal in itself.
+
+### Using Coverage to Find Gaps
+
+Low coverage in a file suggests tests are missing. Look at the uncovered lines:
+
+```
+utils.viper: 52% coverage
+
+Uncovered lines:
+  45-52: Error handling for file not found
+  67-71: Edge case for empty input
+  89-95: Cleanup code in finally block
+```
+
+This tells you exactly what to test next.
+
+---
+
+## Debugging with Tests
+
+Tests are powerful debugging tools. When you find a bug, write a test that reproduces it before fixing it.
+
+### The Bug-First Testing Workflow
+
+1. **Receive bug report**: "Dividing 7 by 3 returns 3 instead of 2.33"
+
+2. **Write a test that fails**:
+```rust
+test "divide returns correct result for 7/3" {
+    assertClose(divide(7, 3), 2.33, 0.01);
+}
+```
+
+3. **Run the test to confirm it fails**: This proves you've reproduced the bug.
+
+4. **Fix the bug**: Make the code changes.
+
+5. **Run the test to confirm it passes**: This proves the bug is fixed.
+
+6. **Run all tests**: This proves you didn't break anything else.
+
+### Why Write the Test First?
+
+- **Proves you understand the bug**: If you can't write a failing test, do you really understand the problem?
+- **Prevents regressions**: The test stays in your suite forever, preventing this bug from returning.
+- **Documents the fix**: The test explains what went wrong and what the correct behavior is.
+
+### Using Tests to Isolate Bugs
+
+When you have a complex bug, write increasingly focused tests to narrow down the problem:
+
+```rust
+// Start broad: Does the full workflow fail?
+test "user registration fails" {
+    var result = registerUser("alice@example.com", "password");
+    assert result.success;  // FAILS
+}
+
+// Narrow down: Is it the email validation?
+test "email validation accepts valid email" {
+    assert isValidEmail("alice@example.com");  // PASSES
+}
+
+// Narrow down: Is it the password hashing?
+test "password hashing works" {
+    var hash = hashPassword("password");
+    assert verifyPassword("password", hash);  // PASSES
+}
+
+// Narrow down: Is it the database insert?
+test "database insert works" {
+    var db = TestDatabase.create();
+    var user = User("alice@example.com");
+    db.insert(user);  // FAILS - Found it!
+}
+```
+
+Each test eliminates possibilities until you find the culprit.
 
 ---
 
 ## Property-Based Testing
 
-Instead of specific examples, test properties that should always hold:
+Instead of testing specific examples, property-based testing checks that properties hold for many randomly generated inputs.
 
 ```rust
 import Viper.Test;
@@ -504,23 +1411,23 @@ import Viper.Test;
 test "reversing twice returns original" {
     for i in 0..100 {
         var original = generateRandomString();
-        var reversed = original.reverse().reverse();
-        assert original == reversed;
+        var result = original.reverse().reverse();
+        assertEqual(result, original);
     }
 }
 
 test "sorting is idempotent" {
     for i in 0..100 {
-        var list = generateRandomList();
+        var list = generateRandomIntList();
         var sortedOnce = sort(list);
         var sortedTwice = sort(sortedOnce);
         assertEqual(sortedOnce, sortedTwice);
     }
 }
 
-test "sorted list is in order" {
+test "sorted list is ordered" {
     for i in 0..100 {
-        var list = generateRandomList();
+        var list = generateRandomIntList();
         var sorted = sort(list);
 
         for j in 0..(sorted.length - 1) {
@@ -528,146 +1435,357 @@ test "sorted list is in order" {
         }
     }
 }
+
+test "sorted list has same elements" {
+    for i in 0..100 {
+        var list = generateRandomIntList();
+        var sorted = sort(list);
+
+        assertEqual(sorted.length, list.length);
+        for item in list {
+            assertContains(sorted, item);
+        }
+    }
+}
 ```
+
+Property-based testing often finds edge cases you wouldn't think to test manually.
 
 ---
 
-## Code Coverage
+## Step-by-Step Example: Building with Tests
 
-Measure how much code your tests exercise:
+Let's build a `StringCalculator` entity using tests to guide our development.
 
-```bash
-viper test --coverage myprogram.viper
-```
+### Requirements
 
-Output:
-```
-File                  Statements    Branches    Coverage
-─────────────────────────────────────────────────────────
-math.viper            45/50         12/15       87%
-user.viper            30/32         8/10        91%
-utils.viper           20/40         5/12        52%
-─────────────────────────────────────────────────────────
-Total                 95/122        25/37       78%
-```
+Create a calculator that:
+1. Takes a string of comma-separated numbers
+2. Returns their sum
+3. Handles empty strings (returns 0)
+4. Handles newlines as separators too
+5. Throws an error for negative numbers
 
-Aim for high coverage, but 100% isn't always necessary or sufficient. Some code is hard to test; some bugs exist in tested code.
-
----
-
-## A Complete Example: Testing a Calculator
+### Step 1: Empty String Returns Zero
 
 ```rust
-module Calculator;
+test "empty string returns 0" {
+    var calc = StringCalculator();
+    assertEqual(calc.add(""), 0);
+}
+```
 
-import Viper.Test;
+Implementation:
 
-entity Calculator {
-    hide history: [string];
+```rust
+entity StringCalculator {
+    expose func init() {}
 
-    expose func init() {
-        self.history = [];
-    }
-
-    func add(a: f64, b: f64) -> f64 {
-        var result = a + b;
-        self.history.push(a + " + " + b + " = " + result);
-        return result;
-    }
-
-    func subtract(a: f64, b: f64) -> f64 {
-        var result = a - b;
-        self.history.push(a + " - " + b + " = " + result);
-        return result;
-    }
-
-    func multiply(a: f64, b: f64) -> f64 {
-        var result = a * b;
-        self.history.push(a + " * " + b + " = " + result);
-        return result;
-    }
-
-    func divide(a: f64, b: f64) -> f64 {
-        if b == 0 {
-            throw DivisionByZeroError();
+    func add(numbers: string) -> i64 {
+        if numbers == "" {
+            return 0;
         }
-        var result = a / b;
-        self.history.push(a + " / " + b + " = " + result);
-        return result;
-    }
-
-    func getHistory() -> [string] {
-        return self.history.clone();
-    }
-
-    func clearHistory() {
-        self.history = [];
+        return 0;  // Placeholder
     }
 }
+```
 
-// Tests
+### Step 2: Single Number Returns That Number
 
-test "add returns sum" {
-    var calc = Calculator();
-    assertClose(calc.add(2, 3), 5.0, 0.001);
+```rust
+test "single number returns that number" {
+    var calc = StringCalculator();
+    assertEqual(calc.add("5"), 5);
+    assertEqual(calc.add("42"), 42);
 }
+```
 
-test "add handles negatives" {
-    var calc = Calculator();
-    assertClose(calc.add(-2, 3), 1.0, 0.001);
-    assertClose(calc.add(2, -3), -1.0, 0.001);
-    assertClose(calc.add(-2, -3), -5.0, 0.001);
+Implementation:
+
+```rust
+func add(numbers: string) -> i64 {
+    if numbers == "" {
+        return 0;
+    }
+    return Viper.Parse.Int(numbers);
 }
+```
 
-test "add handles decimals" {
-    var calc = Calculator();
-    assertClose(calc.add(0.1, 0.2), 0.3, 0.001);
+### Step 3: Two Numbers Returns Sum
+
+```rust
+test "two numbers returns sum" {
+    var calc = StringCalculator();
+    assertEqual(calc.add("1,2"), 3);
+    assertEqual(calc.add("10,20"), 30);
 }
+```
 
-test "subtract returns difference" {
-    var calc = Calculator();
-    assertClose(calc.subtract(5, 3), 2.0, 0.001);
+Implementation:
+
+```rust
+func add(numbers: string) -> i64 {
+    if numbers == "" {
+        return 0;
+    }
+
+    var parts = numbers.split(",");
+    var sum = 0;
+    for part in parts {
+        sum += Viper.Parse.Int(part);
+    }
+    return sum;
 }
+```
 
-test "multiply returns product" {
-    var calc = Calculator();
-    assertClose(calc.multiply(4, 3), 12.0, 0.001);
+### Step 4: Multiple Numbers
+
+```rust
+test "multiple numbers returns sum" {
+    var calc = StringCalculator();
+    assertEqual(calc.add("1,2,3"), 6);
+    assertEqual(calc.add("1,2,3,4,5"), 15);
 }
+```
 
-test "multiply by zero returns zero" {
-    var calc = Calculator();
-    assertClose(calc.multiply(5, 0), 0.0, 0.001);
+The implementation already handles this! The test passes.
+
+### Step 5: Newlines as Separators
+
+```rust
+test "newlines work as separators" {
+    var calc = StringCalculator();
+    assertEqual(calc.add("1\n2,3"), 6);
+    assertEqual(calc.add("1\n2\n3"), 6);
 }
+```
 
-test "divide returns quotient" {
-    var calc = Calculator();
-    assertClose(calc.divide(10, 2), 5.0, 0.001);
+Implementation:
+
+```rust
+func add(numbers: string) -> i64 {
+    if numbers == "" {
+        return 0;
+    }
+
+    // Replace newlines with commas
+    var normalized = numbers.replace("\n", ",");
+    var parts = normalized.split(",");
+    var sum = 0;
+    for part in parts {
+        sum += Viper.Parse.Int(part);
+    }
+    return sum;
 }
+```
 
-test "divide by zero throws" {
-    var calc = Calculator();
+### Step 6: Negative Numbers Throw
+
+```rust
+test "negative numbers throw exception" {
+    var calc = StringCalculator();
+
     assertThrows(func() {
-        calc.divide(5, 0);
+        calc.add("-1,2");
     });
 }
 
-test "history records operations" {
-    var calc = Calculator();
-    calc.add(2, 3);
-    calc.multiply(4, 5);
+test "exception message includes negative number" {
+    var calc = StringCalculator();
 
-    var history = calc.getHistory();
-    assertLength(history, 2);
-    assertContains(history[0], "+");
-    assertContains(history[1], "*");
+    var caught = false;
+    try {
+        calc.add("-1,2,-3");
+    } catch e {
+        caught = true;
+        assertContains(e.message, "-1");
+        assertContains(e.message, "-3");
+    }
+    assert caught;
+}
+```
+
+Implementation:
+
+```rust
+func add(numbers: string) -> i64 {
+    if numbers == "" {
+        return 0;
+    }
+
+    var normalized = numbers.replace("\n", ",");
+    var parts = normalized.split(",");
+    var negatives: [i64] = [];
+    var sum = 0;
+
+    for part in parts {
+        var n = Viper.Parse.Int(part);
+        if n < 0 {
+            negatives.push(n);
+        }
+        sum += n;
+    }
+
+    if negatives.length > 0 {
+        var message = "Negatives not allowed: ";
+        for i, neg in negatives {
+            if i > 0 { message += ", "; }
+            message += neg.toString();
+        }
+        throw Error(message);
+    }
+
+    return sum;
+}
+```
+
+### The Complete Solution
+
+```rust
+entity StringCalculator {
+    expose func init() {}
+
+    func add(numbers: string) -> i64 {
+        if numbers == "" {
+            return 0;
+        }
+
+        var normalized = numbers.replace("\n", ",");
+        var parts = normalized.split(",");
+        var negatives: [i64] = [];
+        var sum = 0;
+
+        for part in parts {
+            var n = Viper.Parse.Int(part.trim());
+            if n < 0 {
+                negatives.push(n);
+            }
+            sum += n;
+        }
+
+        if negatives.length > 0 {
+            var message = "Negatives not allowed: ";
+            for i, neg in negatives {
+                if i > 0 { message += ", "; }
+                message += neg.toString();
+            }
+            throw Error(message);
+        }
+
+        return sum;
+    }
+}
+```
+
+Notice how the tests guided us to a clean, well-designed implementation. Each test added a specific requirement, and we implemented just enough to satisfy it.
+
+---
+
+## Testing Patterns and Best Practices
+
+### One Concept Per Test
+
+Each test should verify one behavior:
+
+```rust
+// Bad: Testing multiple concepts
+test "user operations" {
+    var user = User("alice");
+    assertEqual(user.name, "alice");
+
+    user.setEmail("alice@example.com");
+    assertEqual(user.email, "alice@example.com");
+
+    user.deactivate();
+    assert !user.isActive;
 }
 
-test "clear history removes entries" {
-    var calc = Calculator();
-    calc.add(1, 1);
-    calc.clearHistory();
+// Good: Separate tests for separate concepts
+test "user has provided name" {
+    var user = User("alice");
+    assertEqual(user.name, "alice");
+}
 
-    assertEmpty(calc.getHistory());
+test "setEmail updates email" {
+    var user = User("alice");
+    user.setEmail("alice@example.com");
+    assertEqual(user.email, "alice@example.com");
+}
+
+test "deactivate makes user inactive" {
+    var user = User("alice");
+    user.deactivate();
+    assert !user.isActive;
+}
+```
+
+### Keep Tests Independent
+
+Tests should not share state or depend on execution order:
+
+```rust
+// Bad: Tests share state
+var sharedList: [i64] = [];
+
+test "add to list" {
+    sharedList.push(1);
+    assertEqual(sharedList.length, 1);
+}
+
+test "list has item" {
+    // Depends on previous test!
+    assertEqual(sharedList[0], 1);
+}
+
+// Good: Each test creates its own state
+test "add to list" {
+    var list: [i64] = [];
+    list.push(1);
+    assertEqual(list.length, 1);
+}
+
+test "list contains added item" {
+    var list: [i64] = [];
+    list.push(1);
+    assertEqual(list[0], 1);
+}
+```
+
+### Test Behavior, Not Implementation
+
+```rust
+// Bad: Tests how sorting works internally
+test "sort uses quicksort" {
+    // Trying to verify algorithm choice - fragile!
+}
+
+// Good: Tests that sorting produces correct result
+test "sort puts elements in ascending order" {
+    var list = [3, 1, 4, 1, 5, 9, 2, 6];
+    var sorted = sort(list);
+
+    for i in 0..(sorted.length - 1) {
+        assert sorted[i] <= sorted[i + 1];
+    }
+}
+```
+
+### Make Tests Readable
+
+Tests are documentation. Make them clear:
+
+```rust
+// Hard to understand
+test "test1" {
+    var x = f(1, 2, 3);
+    assert x == 6;
+}
+
+// Clear and readable
+test "sumOfList returns total of all elements" {
+    var numbers = [1, 2, 3];
+    var total = sumOfList(numbers);
+    assertEqual(total, 6);
 }
 ```
 
@@ -676,17 +1794,21 @@ test "clear history removes entries" {
 ## The Three Languages
 
 **ViperLang**
+
 ```rust
 import Viper.Test;
 
 test "example test" {
     assert 1 + 1 == 2;
     assertEqual(actual, expected);
-    assertThrows(func() { riskyCode(); });
+    assertThrows(func() {
+        riskyCode();
+    });
 }
 ```
 
 **BASIC**
+
 ```basic
 TEST "example test"
     ASSERT 1 + 1 = 2
@@ -696,6 +1818,7 @@ END TEST
 ```
 
 **Pascal**
+
 ```pascal
 uses ViperTest;
 
@@ -709,94 +1832,96 @@ end;
 
 ---
 
-## Common Mistakes
-
-**Testing implementation, not behavior**
-```rust
-// Bad: Tests internal details
-test "uses hashmap internally" {
-    var cache = Cache();
-    // Checking internal data structure — fragile!
-}
-
-// Good: Tests behavior
-test "cache returns stored value" {
-    var cache = Cache();
-    cache.set("key", "value");
-    assert cache.get("key") == "value";
-}
-```
-
-**Flaky tests**
-```rust
-// Bad: Depends on timing
-test "async operation completes" {
-    startAsyncOperation();
-    Time.sleep(100);  // Might not be enough!
-    assert isComplete();
-}
-
-// Good: Wait properly
-test "async operation completes" {
-    var future = startAsyncOperation();
-    var result = future.get(timeout: 5000);
-    assert result.success;
-}
-```
-
-**Too many assertions**
-```rust
-// Bad: What exactly failed?
-test "everything about user" {
-    var user = createUser();
-    assert user.name == "alice";
-    assert user.email != null;
-    assert user.age > 0;
-    assert user.createdAt != null;
-    assert user.role == "member";
-    // 20 more assertions...
-}
-
-// Good: Focused tests
-test "new user has member role" {
-    var user = createUser();
-    assert user.role == "member";
-}
-```
-
----
-
 ## Summary
 
-- **Tests verify behavior**: Catch bugs before users do
-- **Arrange-Act-Assert**: Structure for clear tests
-- **Test edge cases**: Boundaries, errors, unusual inputs
-- **Use test doubles**: Stubs and mocks for dependencies
-- **Keep tests independent**: No shared state between tests
-- **TDD**: Write tests first for better design
-- **Integration tests**: Test components together
-- **Coverage**: Measure what's tested, aim high
+Testing is an investment that pays dividends throughout your project's life:
 
-Testing is an investment. The time you spend writing tests saves debugging time later.
+- **Tests verify behavior**: Catch bugs before users do, automatically, every time
+- **Tests enable change**: Refactor and improve code with confidence
+- **Tests document intent**: Show how code should be used through working examples
+- **Arrange-Act-Assert**: Structure tests clearly and consistently
+- **Test the right things**: Normal cases, edge cases, error cases
+- **Test doubles**: Stubs, mocks, and fakes isolate code from dependencies
+- **TDD**: Writing tests first leads to better design and guaranteed coverage
+- **Code coverage**: A tool for finding gaps, not a goal in itself
+- **Property-based testing**: Check that properties hold across many inputs
+- **Debug with tests**: Reproduce bugs as tests before fixing them
+
+The time you spend writing tests saves far more time in debugging, maintenance, and confident development. Testing transforms programming from a scary exercise in hoping things work into an engineering discipline where you *know* things work.
 
 ---
 
 ## Exercises
 
-**Exercise 27.1**: Write tests for a `StringUtils` class with `reverse`, `capitalize`, and `isPalindrome` methods.
+**Exercise 27.1 (Mimic)**: Write tests for a `StringUtils` entity with these methods:
+- `reverse(s: string) -> string`: Returns the string reversed
+- `capitalize(s: string) -> string`: Capitalizes the first letter
+- `isPalindrome(s: string) -> bool`: Returns true if the string reads the same forwards and backwards
 
-**Exercise 27.2**: Create a `BankAccount` class with `deposit`, `withdraw`, and `transfer` methods. Write comprehensive tests including edge cases.
+Test normal cases, edge cases (empty string, single character), and various inputs.
 
-**Exercise 27.3**: Write tests for a sorting function. Use property-based testing to verify it always produces sorted output.
+**Exercise 27.2 (Extend)**: Create a `BankAccount` entity with `deposit`, `withdraw`, and `transfer` methods. Write comprehensive tests including:
+- Normal deposits and withdrawals
+- Edge cases (zero amounts, exact balance withdrawals)
+- Error cases (negative amounts, overdrafts)
+- Transfer between accounts (including insufficient funds)
 
-**Exercise 27.4**: Create a mock for a file system and use it to test a log rotation function without creating real files.
+**Exercise 27.3 (Create)**: Write tests for a sorting function using property-based testing. Your tests should verify:
+- The result is sorted (each element <= the next)
+- The result has the same length as the input
+- The result contains exactly the same elements as the input
+- Sorting twice gives the same result as sorting once
 
-**Exercise 27.5**: Practice TDD: Write tests first for a `ShoppingCart` class, then implement the class.
+**Exercise 27.4 (Create)**: Create a mock for a file system and use it to test a `LogRotator` entity. The LogRotator should:
+- Check if a log file exceeds a size limit
+- Rename the old file with a timestamp
+- Create a new empty log file
 
-**Exercise 27.6** (Challenge): Build a simple test framework that can run tests, report results, and measure coverage.
+Your mock file system should track which operations were called without actually creating files.
+
+**Exercise 27.5 (TDD)**: Practice TDD by building a `ShoppingCart` entity. Write tests first, then implement:
+1. Cart starts empty
+2. Adding an item increases the count
+3. Removing an item decreases the count
+4. Total price reflects all items
+5. Cannot add negative quantities
+6. Removing non-existent item does nothing
+7. Clearing empties the cart
+
+**Exercise 27.6 (Integration)**: Write integration tests for a simple user authentication system. Create:
+- `UserRepository`: Stores users (use a fake in-memory database)
+- `PasswordHasher`: Hashes and verifies passwords
+- `AuthService`: Handles login/logout
+
+Test that these components work together correctly for login success, login failure, and logout scenarios.
+
+**Exercise 27.7 (Debug)**: Here's a buggy function. Write tests that expose the bugs, then fix them:
+
+```rust
+func calculateGrade(score: i64) -> string {
+    if score >= 90 { return "A"; }
+    if score >= 80 { return "B"; }
+    if score >= 70 { return "C"; }
+    if score >= 60 { return "D"; }
+    return "F";
+}
+```
+
+Hint: What happens with scores above 100? Below 0? Exactly on boundaries?
+
+**Exercise 27.8 (Coverage)**: Take a project you've built in earlier chapters and add tests until you achieve 80% code coverage. Use coverage reports to identify untested code paths.
+
+**Exercise 27.9 (Challenge)**: Build a simple test framework. It should:
+- Allow defining tests with names
+- Run all tests and collect results
+- Report which tests passed and failed
+- Show failure messages
+- Support setup and teardown
+
+**Exercise 27.10 (Challenge)**: Create a `MockClock` that you can control in tests. Use it to test a `SessionManager` that expires sessions after 30 minutes. You should be able to "advance time" in your tests without actually waiting.
 
 ---
 
-*Your code works and is tested. Now let's think bigger — how do you organize a large system? Next chapter: Architecture.*
+*Your code works and is tested. You have confidence it's correct and will stay correct. Now let's think bigger --- how do you organize a large system into maintainable pieces? Next chapter: Architecture.*
 
-*[Continue to Chapter 28: Architecture →](28-architecture.md)*
+*[Continue to Chapter 28: Architecture](28-architecture.md)*

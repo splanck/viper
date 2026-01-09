@@ -1,8 +1,77 @@
 # Chapter 12: Modules
 
-Your programs are growing. The game demo in Chapter 11 was already getting long. Real programs are thousands of files with millions of lines. How do developers manage that?
+Your programs are growing. The game demo in Chapter 11 was already getting long. If you continued adding features, the file would become a sprawling mess of hundreds of functions, dozens of structures, and tangled logic that no one could understand.
+
+This isn't a hypothetical problem. Real programs are massive. A web browser has millions of lines of code. A video game might have ten million. An operating system can exceed a hundred million. How do teams of developers manage these vast codebases without going insane?
 
 The answer is *modules* — self-contained units of code that can be developed, tested, and understood independently. Modules let you split a large program into manageable pieces, share code between projects, and hide internal details behind clean interfaces.
+
+But modules aren't just about managing size. They're about managing complexity. They're about creating boundaries that let you think about one thing at a time. They're about building software that you (and others) can understand, modify, and trust.
+
+Code organization is one of those skills that separates beginners from intermediate programmers. Anyone can write a hundred lines of code. Writing a thousand lines that stay maintainable requires discipline. This chapter teaches that discipline.
+
+---
+
+## The Problem: Code Chaos
+
+Let's start with why this matters. Imagine you're building a simple game with a player, enemies, and items. Without any organization, you might write everything in one file:
+
+```rust
+// game.viper — 500 lines and growing...
+
+// Player stuff
+var playerX = 0.0;
+var playerY = 0.0;
+var playerHealth = 100;
+var playerSpeed = 5.0;
+
+func movePlayer(dx: f64, dy: f64) { ... }
+func damagePlayer(amount: i64) { ... }
+func healPlayer(amount: i64) { ... }
+func renderPlayer() { ... }
+
+// Enemy stuff
+var enemies: [Enemy] = [];
+
+func spawnEnemy(x: f64, y: f64) { ... }
+func updateEnemies() { ... }
+func renderEnemies() { ... }
+
+// Item stuff
+var items: [Item] = [];
+
+func spawnItem(x: f64, y: f64, type: string) { ... }
+func checkItemPickup() { ... }
+func renderItems() { ... }
+
+// Physics stuff
+func checkCollision(a: Rect, b: Rect) -> bool { ... }
+func applyGravity(entity: Entity) { ... }
+
+// Rendering stuff
+func clearScreen() { ... }
+func drawSprite(x: f64, y: f64, sprite: Sprite) { ... }
+
+// Audio stuff
+func playSound(name: string) { ... }
+func playMusic(name: string) { ... }
+
+// ... hundreds more lines
+```
+
+This file has several problems:
+
+**It's hard to navigate.** Where's the function that handles enemy AI? Somewhere in there. You scroll, you search, you get lost. In a file with 50 functions, finding the one you need becomes a treasure hunt.
+
+**It's hard to understand.** When everything is in one place, relationships are unclear. Does `damagePlayer` call `playSound`? Does `updateEnemies` use physics functions? You can't tell without reading every line.
+
+**It's hard to change.** Touch one thing and you might break something else. Rename a variable and who knows what depends on it? Fear of breaking things makes developers reluctant to improve code.
+
+**It's hard to reuse.** The physics code might be useful in another project. But it's tangled up with player code and rendering code. You can't extract it cleanly.
+
+**It's hard to collaborate.** Two people can't work on the same file without conflicts. If Alice is adding player abilities while Bob is improving enemy AI, they'll step on each other's changes constantly.
+
+Modules solve all these problems.
 
 ---
 
@@ -29,11 +98,49 @@ final PI = 3.14159265358979;
 
 This module provides math utilities. Other code can *import* this module to use its functions and constants.
 
+The `module MathUtils;` declaration at the top gives this module a name. This name becomes important when other files want to use this code.
+
+Think of modules like chapters in a book. Each chapter covers one topic. You can read a chapter without reading the whole book. You can reference a specific chapter. And if you're working with others, different people can write different chapters.
+
+---
+
+## The Namespace Problem
+
+Before we go further, let's understand a fundamental problem that modules solve: name collisions.
+
+Suppose you have a function called `add`. Simple, right? But what does `add` do? It might add numbers. It might add an item to a list. It might add a user to a database. Different parts of your program might all want a function called `add`, but each wants it to do something different.
+
+Without modules, you're forced into awkward solutions:
+
+```rust
+// Without modules: ugly prefixed names
+func mathAdd(a: i64, b: i64) -> i64 { ... }
+func listAdd(list: [i64], item: i64) { ... }
+func databaseAddUser(user: User) { ... }
+```
+
+This works, but it's tedious. Every function name becomes a small essay. And it doesn't actually prevent collisions — what if two libraries both define `mathAdd`?
+
+Modules provide *namespaces*. A namespace is like a last name for your functions. Just as there can be many people named "Alice" but only one "Alice Smith" and one "Alice Jones," there can be many `add` functions as long as they're in different modules:
+
+```rust
+// With modules: clean, qualified names
+import Math;
+import List;
+import Database;
+
+Math.add(5, 3);           // Adds numbers
+List.add(myList, 10);     // Adds to list
+Database.addUser(alice);  // Adds to database
+```
+
+Each module creates its own namespace. Functions inside `Math` don't conflict with functions inside `List`. This simple idea — that names are scoped to modules — prevents countless headaches.
+
 ---
 
 ## Importing Modules
 
-To use code from another module:
+To use code from another module, you import it:
 
 ```rust
 // file: main.viper
@@ -51,9 +158,28 @@ func start() {
 
 The `import MathUtils` statement makes that module's contents available. You access them with the module name prefix: `MathUtils.square`.
 
+This prefix might seem annoying at first, but it's actually helpful. When you read `MathUtils.square(x)`, you know exactly where that function comes from. You don't have to wonder "which `square` function is this?" The module name tells you.
+
 ---
 
-## Importing Specific Items
+## Different Ways to Import
+
+ViperLang provides several import styles for different situations.
+
+### Import the Module
+
+The basic import brings in the whole module:
+
+```rust
+import MathUtils;
+
+// Use with prefix
+var area = MathUtils.PI * MathUtils.square(radius);
+```
+
+This is the safest approach. Names are always fully qualified, so there's no confusion.
+
+### Import Specific Items
 
 If you only need certain items, import them directly:
 
@@ -66,23 +192,77 @@ func start() {
 }
 ```
 
-This imports only `square` and `PI`, and you can use them without the module prefix.
+This imports only `square` and `PI`, and you can use them without the module prefix. It's convenient when you use certain functions frequently, but be careful — if another module has a `square` function, you'll get a conflict.
 
-You can even rename imports:
+### Import with Aliases
+
+Sometimes you want to rename an import. Maybe the name is too long, or maybe it conflicts with something else:
 
 ```rust
-import MathUtils { square as sq };
+import MathUtils { square as sq, PI as pi };
 
 func start() {
     Viper.Terminal.Say(sq(5.0));
+    Viper.Terminal.Say(pi);
 }
+```
+
+You can also alias the entire module:
+
+```rust
+import MathUtils as M;
+
+func start() {
+    Viper.Terminal.Say(M.square(5.0));
+    Viper.Terminal.Say(M.PI);
+}
+```
+
+This is useful when module names are long or when two modules have the same name from different packages.
+
+### Choosing the Right Style
+
+Here's a practical guide:
+
+**Use full module imports** when:
+- You use many items from the module
+- Clarity is more important than brevity
+- The module name provides useful context
+
+**Use specific imports** when:
+- You use only one or two items
+- You use them very frequently
+- The item names are clear without context
+
+**Use aliases** when:
+- Names are too long
+- You need to resolve conflicts
+- You want shorter code in a specific area
+
+Real-world example:
+
+```rust
+// Good: Full import when using many functions
+import Viper.Math;
+var x = Viper.Math.sqrt(a) + Viper.Math.sin(b) + Viper.Math.cos(c);
+
+// Good: Specific import for frequently used items
+import Viper.Terminal { Say, ReadLine };
+Say("Enter name: ");
+var name = ReadLine();
+
+// Good: Alias for clarity
+import Physics.Collision as Collision;
+import UI.Collision as UICollision;  // Different collision system
 ```
 
 ---
 
-## Public and Private
+## Public and Private: Controlling Visibility
 
-Not everything in a module should be visible to outsiders. Use `export` to mark what's public:
+Not everything in a module should be visible to outsiders. Some functions are internal helpers. Some variables are implementation details. Exposing them would let other code depend on things you might want to change.
+
+Use `export` to mark what's public:
 
 ```rust
 // file: counter.viper
@@ -107,7 +287,7 @@ func reset() {  // Private: internal use only
 }
 ```
 
-The `count` variable and `reset` function are internal implementation details. Other modules can only use the public functions.
+The `count` variable and `reset` function are internal implementation details. Other modules can only use the exported functions.
 
 ```rust
 // file: main.viper
@@ -123,7 +303,66 @@ func start() {
 }
 ```
 
-This is called *encapsulation*: hiding internal details and exposing only what's needed. It lets you change the internals without breaking code that uses your module.
+### Why Hide Things?
+
+This might seem restrictive. Why not let people access everything? There are several good reasons:
+
+**Freedom to change.** If `count` is private, you can change how the counter works internally without breaking anyone's code. Maybe you want to change it to use a database instead of a variable. Maybe you want to add logging. If `count` was public, changing it would break every program that uses it.
+
+**Preventing misuse.** The counter maintains a rule: the count should never go negative. If people could access `count` directly, they could set it to -100, violating that rule. By exposing only `increment`, `decrement`, and `get`, you guarantee the invariant holds.
+
+**Simplifying understanding.** A module with 100 functions but only 5 exported is much easier to learn than one with 100 exported. Users only need to understand the public interface. They can ignore the 95 internal helpers.
+
+**Documenting intent.** Public functions are promises: "This exists, it works, you can rely on it." Private functions are implementation: "This might change, don't depend on it." The visibility itself communicates intent.
+
+This principle is called *encapsulation*: hiding internal details and exposing only what's needed. It's one of the most important ideas in software engineering.
+
+### What Should Be Public?
+
+Here's a guideline: **export the minimum necessary for your module to be useful.**
+
+Ask yourself: "If I were using this module, what would I need?" Usually, that's:
+- Functions that perform the module's core purpose
+- Types that users need to interact with
+- Constants that have meaning outside the module
+
+Things that should usually be private:
+- Helper functions used only internally
+- Internal state variables
+- Implementation details that might change
+
+```rust
+module EmailValidator;
+
+// Public: This is what the module is for
+export func isValid(email: string) -> bool {
+    if email.length == 0 {
+        return false;
+    }
+    if !containsAt(email) {
+        return false;
+    }
+    if !hasValidDomain(email) {
+        return false;
+    }
+    return true;
+}
+
+// Private helpers: Users don't need these
+func containsAt(email: string) -> bool {
+    return email.contains("@");
+}
+
+func hasValidDomain(email: string) -> bool {
+    var parts = email.split("@");
+    if parts.length != 2 {
+        return false;
+    }
+    return parts[1].contains(".");
+}
+```
+
+Users of `EmailValidator` only need `isValid`. The helper functions are implementation details that could change without affecting anyone.
 
 ---
 
@@ -142,7 +381,7 @@ my_project/
     └── random.viper # Random utilities
 ```
 
-Modules in subdirectories:
+Modules in subdirectories use dot notation:
 
 ```rust
 import utils.math;     // Import utils/math.viper
@@ -150,8 +389,67 @@ import utils.random;   // Import utils/random.viper
 
 func start() {
     var x = utils.math.square(5.0);
+    var r = utils.random.range(1, 10);
 }
 ```
+
+The file system structure mirrors the module hierarchy. This makes it easy to find where code lives: if you're looking for `utils.math.square`, you know to look in `utils/math.viper`.
+
+### Project Structure Patterns
+
+There are several common ways to organize a project:
+
+**By feature** (recommended for most projects):
+```
+my_game/
+├── main.viper
+├── player/
+│   ├── player.viper
+│   ├── inventory.viper
+│   └── abilities.viper
+├── enemy/
+│   ├── enemy.viper
+│   ├── ai.viper
+│   └── spawner.viper
+├── world/
+│   ├── map.viper
+│   └── tiles.viper
+└── shared/
+    ├── physics.viper
+    └── math.viper
+```
+
+Each feature gets its own directory. Related code lives together.
+
+**By layer** (common in business applications):
+```
+my_app/
+├── main.viper
+├── ui/
+│   ├── forms.viper
+│   └── views.viper
+├── logic/
+│   ├── validation.viper
+│   └── processing.viper
+└── data/
+    ├── database.viper
+    └── models.viper
+```
+
+Code is organized by its role in the system.
+
+**Flat** (fine for small projects):
+```
+my_tool/
+├── main.viper
+├── parser.viper
+├── formatter.viper
+└── utils.viper
+```
+
+When you have fewer than ten files, directories might be overkill.
+
+Choose the structure that makes sense for your project. The goal is that anyone (including future you) can find code quickly.
 
 ---
 
@@ -171,7 +469,7 @@ import Viper.Random;     // Random numbers
 
 You've been using `Viper.Terminal.Say()` all along — that's accessing the `Say` function from the `Viper.Terminal` module.
 
-The standard library is pre-imported, so you don't need explicit import statements for common modules. But understanding that they're modules helps you know where to look for functionality.
+The standard library is pre-imported for convenience, so you don't need explicit import statements for common modules. But understanding that they're modules helps you know where to look for functionality. Need to work with time? Check `Viper.Time`. Need to format numbers? Check `Viper.Fmt`.
 
 ---
 
@@ -188,15 +486,209 @@ main.viper
             └── imports physics.viper
 ```
 
-Both `player` and `enemy` import `physics`. That's fine — each gets access to the same physics code. The physics module is only loaded once.
+Both `player` and `enemy` import `physics`. That's fine — each gets access to the same physics code. The physics module is only loaded once; both modules share it.
 
-**Avoid circular dependencies:** If A imports B and B imports A, you have a problem. Restructure your code so dependencies flow in one direction.
+This is normal and expected. When multiple modules need the same functionality, they should import the same shared module rather than duplicating code.
+
+### Understanding Dependencies
+
+Dependencies flow in one direction. In the graph above:
+- `main` depends on `game`
+- `game` depends on `player` and `enemy`
+- `player` and `enemy` depend on `physics`
+
+This means:
+- You can understand `physics` without knowing about `player` or `enemy`
+- You can understand `player` knowing only about `physics`, not about `enemy`
+- To understand `game`, you need to know about `player`, `enemy`, and `physics`
+- To understand `main`, you need to know about everything
+
+This is called a *dependency hierarchy*, and it's what makes large programs manageable. You can work on `physics` in isolation. You can test `player` with just `physics`. The boundaries let you focus.
+
+---
+
+## Circular Dependencies: The Tangled Web
+
+There's one pattern you must avoid: circular dependencies. This happens when A imports B and B imports A.
+
+```rust
+// player.viper
+module Player;
+import Enemy;  // Player needs to know about enemies
+
+export func attackNearestEnemy() {
+    var nearest = Enemy.findNearest(position);
+    // ...
+}
+
+// enemy.viper
+module Enemy;
+import Player;  // Enemy needs to know about player
+
+export func chasePlayer() {
+    var target = Player.getPosition();  // Needs player position
+    // ...
+}
+```
+
+This looks reasonable. Players need to know about enemies to attack them. Enemies need to know about the player to chase them. But it creates a circle: Player imports Enemy, Enemy imports Player.
+
+### Why Circular Dependencies Are Bad
+
+**Compilation problems.** The compiler needs to know about `Enemy` before it can compile `Player`, but it needs to know about `Player` before it can compile `Enemy`. Which comes first? Some languages refuse to compile circular dependencies at all.
+
+**Reasoning problems.** If A depends on B and B depends on A, you can't understand either in isolation. To understand `Player`, you need to understand `Enemy`. To understand `Enemy`, you need to understand `Player`. There's no starting point.
+
+**Change problems.** Any change to `Player` might affect `Enemy`, and any change to `Enemy` might affect `Player`. The modules are entangled; they can't evolve independently.
+
+### Breaking Circular Dependencies
+
+There are several strategies:
+
+**Extract shared code into a third module:**
+
+```rust
+// position.viper — Shared types
+module Position;
+
+export value Vec2 {
+    x: f64;
+    y: f64;
+}
+
+// player.viper
+module Player;
+import Position;
+
+var position: Position.Vec2;
+
+export func getPosition() -> Position.Vec2 {
+    return position;
+}
+
+// enemy.viper
+module Enemy;
+import Position;
+import Player;  // Now only enemy imports player, not vice versa
+
+export func chasePlayer() {
+    var target = Player.getPosition();
+    // ...
+}
+```
+
+By extracting `Vec2` into its own module, we removed one direction of the dependency.
+
+**Use interfaces (covered in Part III):**
+
+```rust
+// target.viper
+module Target;
+
+export interface ITarget {
+    func getPosition() -> Vec2;
+}
+
+// enemy.viper
+module Enemy;
+import Target;
+
+export func chase(target: Target.ITarget) {
+    var pos = target.getPosition();
+    // ...
+}
+```
+
+The enemy doesn't need to know about players specifically — it only needs something it can chase.
+
+**Rethink the design:**
+
+Sometimes circular dependencies reveal a design problem. Maybe `Player` and `Enemy` shouldn't be separate modules. Maybe they should both extend a common `Entity` module. Step back and ask: "What's the best way to organize this?"
+
+---
+
+## Module Design Principles
+
+Good module design follows several principles:
+
+### One Concept Per Module
+
+A module should do one thing well. A `Player` module handles player logic. An `Enemy` module handles enemies. A `Physics` module handles physics.
+
+Don't create a module called `Utilities` that contains everything from string manipulation to file handling to math. That's not a module — that's a junk drawer.
+
+How do you know if a module is doing too much? If you can't describe what it does in one sentence, it's probably doing too much. "This module handles player movement, inventory, abilities, and saving" describes four modules masquerading as one.
+
+### Minimize Dependencies
+
+Every import creates a coupling. The more modules you import, the more you depend on, and the harder changes become.
+
+Ask yourself: "Does this module really need that import?" Sometimes you import a module for one function that you could easily write yourself. Sometimes you import a module for a type that could be passed in instead.
+
+```rust
+// High dependency: imports many modules
+module Report;
+import Database;
+import Formatter;
+import Email;
+import Logger;
+import Config;
+
+// Lower dependency: receives what it needs
+module Report;
+
+export func generate(data: [Record], format: Formatter) -> string {
+    // No database import — data is passed in
+    // No email import — report is returned, caller sends it
+    // ...
+}
+```
+
+The second version is more flexible. It can be used with any data source, any formatter, by anyone who wants to send reports anywhere.
+
+### Clear Interfaces
+
+Your public functions are your module's contract with the world. Make them clear:
+
+**Good names.** A function called `process` tells you nothing. `validateEmail`, `calculateTax`, `renderSprite` — these names explain themselves.
+
+**Clear parameters.** `doThing(a, b, c, d, e)` is mysterious. `createUser(name, email, password)` is obvious.
+
+**Documented behavior.** What does the function do? What does it return? What errors might it throw? Comments on public functions are valuable.
+
+**Stable over time.** Once you export something, people depend on it. Don't change public interfaces casually. If you need to change them, provide a migration path.
+
+### Hide What Can Change
+
+Export only what you're confident about. Everything else should be private.
+
+Think of your module as having two parts:
+- The **interface**: What you promise to provide, which should be stable
+- The **implementation**: How you provide it, which should be flexible
+
+```rust
+module Cache;
+
+// Interface (stable promise)
+export func get(key: string) -> string?;
+export func set(key: string, value: string);
+export func clear();
+
+// Implementation (hidden, can change)
+var data: Map<string, CacheEntry>;  // Could change to use Redis
+var maxSize = 1000;                 // Could become configurable
+
+func evictOldest() { ... }          // Internal helper
+func shouldEvict() -> bool { ... }  // Internal helper
+```
+
+Users see only `get`, `set`, and `clear`. You're free to completely rewrite the implementation — use a different data structure, add expiration, move to a database — without breaking anyone's code.
 
 ---
 
 ## A Complete Example: Modular Game
 
-Let's refactor our game demo into modules:
+Let's refactor our game demo into proper modules:
 
 **vec2.viper** — Vector math
 ```rust
@@ -215,6 +707,14 @@ export func add(a: Vec2, b: Vec2) -> Vec2 {
     return Vec2 { x: a.x + b.x, y: a.y + b.y };
 }
 
+export func subtract(a: Vec2, b: Vec2) -> Vec2 {
+    return Vec2 { x: a.x - b.x, y: a.y - b.y };
+}
+
+export func scale(v: Vec2, factor: f64) -> Vec2 {
+    return Vec2 { x: v.x * factor, y: v.y * factor };
+}
+
 export func distance(a: Vec2, b: Vec2) -> f64 {
     var dx = b.x - a.x;
     var dy = b.y - a.y;
@@ -223,6 +723,18 @@ export func distance(a: Vec2, b: Vec2) -> f64 {
 
 export func zero() -> Vec2 {
     return Vec2 { x: 0.0, y: 0.0 };
+}
+
+export func magnitude(v: Vec2) -> f64 {
+    return Viper.Math.sqrt(v.x * v.x + v.y * v.y);
+}
+
+export func normalize(v: Vec2) -> Vec2 {
+    var mag = magnitude(v);
+    if mag == 0.0 {
+        return zero();
+    }
+    return Vec2 { x: v.x / mag, y: v.y / mag };
 }
 ```
 
@@ -236,6 +748,7 @@ export value Player {
     name: string;
     position: Vec2.Vec2;
     health: i64;
+    maxHealth: i64;
     score: i64;
 }
 
@@ -244,6 +757,7 @@ export func create(name: string) -> Player {
         name: name,
         position: Vec2.zero(),
         health: 100,
+        maxHealth: 100,
         score: 0
     };
 }
@@ -257,6 +771,7 @@ export func move(player: Player, direction: Vec2.Vec2) -> Player {
         name: player.name,
         position: Vec2.add(player.position, direction),
         health: player.health,
+        maxHealth: player.maxHealth,
         score: player.score
     };
 }
@@ -270,7 +785,32 @@ export func takeDamage(player: Player, amount: i64) -> Player {
         name: player.name,
         position: player.position,
         health: newHealth,
+        maxHealth: player.maxHealth,
         score: player.score
+    };
+}
+
+export func heal(player: Player, amount: i64) -> Player {
+    var newHealth = player.health + amount;
+    if newHealth > player.maxHealth {
+        newHealth = player.maxHealth;
+    }
+    return Player {
+        name: player.name,
+        position: player.position,
+        health: newHealth,
+        maxHealth: player.maxHealth,
+        score: player.score
+    };
+}
+
+export func addScore(player: Player, points: i64) -> Player {
+    return Player {
+        name: player.name,
+        position: player.position,
+        health: player.health,
+        maxHealth: player.maxHealth,
+        score: player.score + points
     };
 }
 ```
@@ -284,12 +824,26 @@ import Vec2;
 export value Enemy {
     position: Vec2.Vec2;
     damage: i64;
+    speed: f64;
 }
 
 export func create(x: f64, y: f64, damage: i64) -> Enemy {
     return Enemy {
         position: Vec2.create(x, y),
-        damage: damage
+        damage: damage,
+        speed: 1.0
+    };
+}
+
+export func moveToward(enemy: Enemy, target: Vec2.Vec2) -> Enemy {
+    var direction = Vec2.subtract(target, enemy.position);
+    var normalized = Vec2.normalize(direction);
+    var movement = Vec2.scale(normalized, enemy.speed);
+
+    return Enemy {
+        position: Vec2.add(enemy.position, movement),
+        damage: enemy.damage,
+        speed: enemy.speed
     };
 }
 ```
@@ -304,17 +858,24 @@ import Enemy;
 
 func start() {
     Viper.Terminal.Say("=== Modular Game Demo ===");
+    Viper.Terminal.Say("");
 
     var player = Player.create("Hero");
     var enemy = Enemy.create(5.0, 3.0, 10);
 
     Viper.Terminal.Say("Player: " + player.name);
-    Viper.Terminal.Say("Health: " + player.health);
+    Viper.Terminal.Say("Health: " + player.health + "/" + player.maxHealth);
+    Viper.Terminal.Say("Position: (" + player.position.x + ", " + player.position.y + ")");
+    Viper.Terminal.Say("");
 
     // Move player
     var direction = Vec2.create(1.0, 0.5);
     player = Player.move(player, direction);
-    Viper.Terminal.Say("Position: (" + player.position.x + ", " + player.position.y + ")");
+    Viper.Terminal.Say("Player moved to: (" + player.position.x + ", " + player.position.y + ")");
+
+    // Enemy chases player
+    enemy = Enemy.moveToward(enemy, player.position);
+    Viper.Terminal.Say("Enemy moved to: (" + enemy.position.x + ", " + enemy.position.y + ")");
 
     // Check combat
     var dist = Vec2.distance(player.position, enemy.position);
@@ -326,14 +887,208 @@ func start() {
     }
 
     if Player.isAlive(player) {
-        Viper.Terminal.Say("Player survives!");
+        player = Player.addScore(player, 100);
+        Viper.Terminal.Say("Player survives! Score: " + player.score);
     } else {
         Viper.Terminal.Say("Game Over!");
     }
 }
 ```
 
-Now each concept lives in its own file. You can work on player logic without touching enemy code. You can test Vec2 in isolation. The main file is short and focused on game flow.
+Now each concept lives in its own file. The dependency graph is clean:
+
+```
+main.viper
+├── imports Vec2
+├── imports Player
+│   └── imports Vec2
+└── imports Enemy
+    └── imports Vec2
+```
+
+You can work on player logic without touching enemy code. You can test `Vec2` in isolation. The main file is short and focused on game flow. If you want to add items, you create a new `item.viper` module — no existing code needs to change.
+
+---
+
+## Practical Organization Examples
+
+Let's look at how modules would organize different kinds of projects:
+
+### A Utility Library
+
+```
+string_utils/
+├── string_utils.viper      # Main module, re-exports everything
+├── manipulation.viper      # Transformations: reverse, capitalize, etc.
+├── validation.viper        # Checking: isEmail, isNumeric, etc.
+├── parsing.viper           # Extraction: extractNumbers, splitWords, etc.
+└── formatting.viper        # Output: padLeft, truncate, etc.
+```
+
+Users import `string_utils` and get a clean, organized API:
+
+```rust
+import string_utils;
+
+var email = "test@example.com";
+if string_utils.validation.isEmail(email) {
+    var domain = string_utils.parsing.extractDomain(email);
+    Viper.Terminal.Say("Domain: " + domain);
+}
+```
+
+### A Web Application
+
+```
+web_app/
+├── main.viper
+├── routes/
+│   ├── home.viper
+│   ├── users.viper
+│   └── products.viper
+├── services/
+│   ├── auth.viper
+│   ├── email.viper
+│   └── payment.viper
+├── models/
+│   ├── user.viper
+│   ├── product.viper
+│   └── order.viper
+├── database/
+│   ├── connection.viper
+│   └── queries.viper
+└── utils/
+    ├── validation.viper
+    └── formatting.viper
+```
+
+Routes handle HTTP requests. Services contain business logic. Models define data structures. Database handles persistence. Utils provide common helpers.
+
+This separation means:
+- A designer working on routes doesn't need to understand the database
+- A database change doesn't require touching route code
+- Services can be tested without an HTTP server
+- Models can be reused in different contexts
+
+### A Game
+
+```
+platformer/
+├── main.viper
+├── core/
+│   ├── game.viper          # Main game loop
+│   ├── input.viper         # Input handling
+│   └── time.viper          # Delta time, timers
+├── entities/
+│   ├── player.viper
+│   ├── enemy.viper
+│   ├── item.viper
+│   └── projectile.viper
+├── systems/
+│   ├── physics.viper       # Movement, collision
+│   ├── combat.viper        # Damage, health
+│   └── scoring.viper       # Points, achievements
+├── rendering/
+│   ├── sprites.viper
+│   ├── camera.viper
+│   └── effects.viper
+├── levels/
+│   ├── loader.viper
+│   ├── level1.viper
+│   └── level2.viper
+└── shared/
+    ├── vec2.viper
+    └── rect.viper
+```
+
+This structure lets the team work in parallel:
+- One person improves physics
+- Another adds new enemies
+- A third designs levels
+- All without conflicts
+
+---
+
+## Testing and Modules
+
+One of the biggest benefits of good module design is testability. When code is properly modularized, it's much easier to test.
+
+### Why Modular Code Is Easier to Test
+
+**Isolation.** You can test a module without loading the entire application. Testing `Vec2` doesn't require creating a player or starting a game loop.
+
+```rust
+// vec2_test.viper
+import Vec2;
+import Viper.Test;
+
+test "add combines vectors" {
+    var a = Vec2.create(1.0, 2.0);
+    var b = Vec2.create(3.0, 4.0);
+    var result = Vec2.add(a, b);
+
+    assert result.x == 4.0;
+    assert result.y == 6.0;
+}
+
+test "distance calculates correctly" {
+    var a = Vec2.create(0.0, 0.0);
+    var b = Vec2.create(3.0, 4.0);
+
+    assert Vec2.distance(a, b) == 5.0;  // 3-4-5 triangle
+}
+```
+
+**Substitution.** You can replace modules with test versions. Instead of testing with a real database, use a fake one.
+
+```rust
+// In tests: use a mock
+var mockDatabase = MockDatabase.create();
+var userService = UserService.create(mockDatabase);
+
+// The UserService doesn't know (or care) that it's using a mock
+userService.createUser("alice");
+assert mockDatabase.contains("alice");
+```
+
+**Focused tests.** Each module has a clear responsibility, so tests are focused. `Player` tests check player behavior. `Enemy` tests check enemy behavior. You know where to look for tests and what they cover.
+
+**Fast tests.** Testing a small module is fast. Testing a monolithic application is slow. Fast tests get run more often, catching bugs earlier.
+
+### Testing Private Helpers
+
+Sometimes you want to test internal functions that aren't exported. There are several approaches:
+
+**Option 1: Don't test them directly.** Test them through the public interface. If `validateEmail` calls `containsAt` internally, testing `validateEmail` tests `containsAt` indirectly.
+
+**Option 2: Export with a "testing" convention.** Some teams export testing helpers with a prefix:
+
+```rust
+// Exported for testing, not for normal use
+export func test_containsAt(email: string) -> bool {
+    return containsAt(email);
+}
+```
+
+**Option 3: Create a test module.** Put tests in the same file as the code they test. Tests can access private functions because they're in the same module:
+
+```rust
+module EmailValidator;
+
+func containsAt(email: string) -> bool {
+    return email.contains("@");
+}
+
+export func isValid(email: string) -> bool {
+    // Uses containsAt internally
+}
+
+// Tests in the same module can access private functions
+test "containsAt detects @" {
+    assert containsAt("test@example.com");
+    assert !containsAt("invalid");
+}
+```
 
 ---
 
@@ -388,21 +1143,125 @@ begin
 end.
 ```
 
-Pascal separates `interface` (what's visible) from `implementation` (the code).
+Pascal explicitly separates `interface` (what's visible to other units) from `implementation` (the actual code). This makes the public/private distinction very clear.
 
 ---
 
-## Module Design Guidelines
+## Common Mistakes
 
-**One concept per module.** A `Player` module for player logic, an `Enemy` module for enemies. Don't cram unrelated things together.
+### Exposing Too Much
 
-**Minimize the public interface.** Expose only what others need. More private details mean more freedom to change internals later.
+```rust
+// Bad: Everything is public
+module User;
 
-**Avoid circular dependencies.** If two modules depend on each other, factor out the shared parts into a third module.
+export var users: [User] = [];  // Internal data exposed
+export var nextId: i64 = 1;     // Implementation detail exposed
 
-**Name modules clearly.** `math_utils` not `mu`. `player` not `p1`.
+export func createUser(name: string) -> User { ... }
+export func validateName(name: string) -> bool { ... }  // Internal helper exposed
+export func generateId() -> i64 { ... }  // Internal helper exposed
+```
 
-**Keep modules focused.** If a module is getting too large, split it.
+```rust
+// Good: Minimal public interface
+module User;
+
+var users: [User] = [];  // Private
+var nextId: i64 = 1;     // Private
+
+export func createUser(name: string) -> User { ... }
+export func findUser(id: i64) -> User? { ... }
+export func deleteUser(id: i64) -> bool { ... }
+```
+
+### God Modules
+
+```rust
+// Bad: One module that does everything
+module App;
+
+export func handleLogin() { ... }
+export func handleLogout() { ... }
+export func renderDashboard() { ... }
+export func sendEmail() { ... }
+export func processPayment() { ... }
+export func generateReport() { ... }
+// ... 200 more functions
+```
+
+Split it up! Authentication, UI, email, payments, and reporting are different concepts.
+
+### Circular Dependencies
+
+```rust
+// Bad: A imports B, B imports A
+// order.viper
+import Customer;  // Order needs Customer
+// customer.viper
+import Order;     // Customer needs Order
+```
+
+```rust
+// Good: Extract shared concept
+// types.viper
+export value OrderSummary { ... }
+export value CustomerInfo { ... }
+
+// order.viper
+import types;
+// Uses CustomerInfo, doesn't need full Customer module
+
+// customer.viper
+import types;
+// Uses OrderSummary, doesn't need full Order module
+```
+
+### Import Pollution
+
+```rust
+// Bad: Importing everything unqualified
+import MathUtils { * };  // Brings ALL names into scope
+import StringUtils { * };
+import FileUtils { * };
+
+// Now you have hundreds of unqualified names
+// Which module does "format" come from? Who knows!
+```
+
+```rust
+// Good: Import modules, use qualified names
+import MathUtils;
+import StringUtils;
+import FileUtils;
+
+var x = MathUtils.sqrt(2);
+var s = StringUtils.format("{}", x);
+FileUtils.write("out.txt", s);
+```
+
+### Wrong Abstraction Level
+
+```rust
+// Bad: Module is too granular
+// add.viper
+module Add;
+export func add(a: i64, b: i64) -> i64 { return a + b; }
+
+// subtract.viper
+module Subtract;
+export func subtract(a: i64, b: i64) -> i64 { return a - b; }
+```
+
+```rust
+// Good: Module has coherent purpose
+// math.viper
+module Math;
+export func add(a: i64, b: i64) -> i64 { return a + b; }
+export func subtract(a: i64, b: i64) -> i64 { return a - b; }
+export func multiply(a: i64, b: i64) -> i64 { return a * b; }
+export func divide(a: i64, b: i64) -> i64 { return a / b; }
+```
 
 ---
 
@@ -412,29 +1271,43 @@ Pascal separates `interface` (what's visible) from `implementation` (the code).
 - `module Name;` declares a module
 - `import ModuleName;` brings in another module
 - `import ModuleName { item };` imports specific items
+- `import ModuleName { item as alias };` imports with renaming
 - `export` marks functions and value types as public
 - Items without `export` are private (internal only)
+- Modules create namespaces, preventing name collisions
 - The standard library is organized into modules
-- Good module design means one concept per module, minimal public interfaces, and no circular dependencies
+- Dependencies flow one direction — avoid circular imports
+- Good module design means:
+  - One concept per module
+  - Minimal public interfaces
+  - Clear, stable contracts
+  - No circular dependencies
+- Modular code is easier to understand, change, test, and reuse
 
 ---
 
 ## Exercises
 
-**Exercise 12.1**: Create a `StringUtils` module with functions `repeat(s, n)` (repeat string n times) and `reverse(s)` (reverse a string). Use it from another file.
+**Exercise 12.1**: Create a `StringUtils` module with functions `repeat(s, n)` (repeat string n times) and `reverse(s)` (reverse a string). Export only these functions, keeping any helpers private. Use it from another file.
 
-**Exercise 12.2**: Split the calculator from Chapter 10 into modules: one for parsing input, one for calculations, one for display.
+**Exercise 12.2**: Split the calculator from Chapter 10 into modules: one for parsing input, one for calculations, one for display. Make sure the dependencies flow in one direction (display imports calculations, calculations imports parsing, but not the reverse).
 
-**Exercise 12.3**: Create a `Constants` module with mathematical and physical constants (PI, E, SPEED_OF_LIGHT, etc.). Mark them all public.
+**Exercise 12.3**: Create a `Constants` module with mathematical and physical constants (PI, E, SPEED_OF_LIGHT, GRAVITY, etc.). Mark them all as `final` and export them.
 
-**Exercise 12.4**: Create a `Stack` module that provides a stack data structure with `push`, `pop`, `peek`, and `isEmpty` functions. Keep the internal array private.
+**Exercise 12.4**: Create a `Stack` module that provides a stack data structure with `push`, `pop`, `peek`, and `isEmpty` functions. Keep the internal array private. Users should only interact through the exported functions.
 
-**Exercise 12.5**: Create a simple logging module with functions `info(msg)`, `warn(msg)`, `error(msg)` that format messages differently.
+**Exercise 12.5**: Create a simple logging module with functions `info(msg)`, `warn(msg)`, `error(msg)` that format messages differently. Include a private helper function for timestamp generation. Add a private variable for log level that can be changed via an exported `setLevel` function.
 
-**Exercise 12.6** (Challenge): Create a multi-module address book with separate modules for Contact, Storage (file I/O), and UI (terminal interaction).
+**Exercise 12.6** (Challenge): Create a multi-module address book with separate modules for:
+- `Contact` (contact data structure and operations)
+- `Storage` (file I/O for saving/loading contacts)
+- `UI` (terminal interaction for adding, viewing, searching contacts)
+- `Validation` (checking email formats, phone numbers)
+
+Draw the dependency graph. Make sure there are no circular dependencies. Think carefully about what each module exports.
 
 ---
 
-*We can now organize large programs. Next, we survey the entire standard library — what Viper gives you for free.*
+*We can now organize large programs into manageable pieces. Our code is cleaner, our dependencies are clear, and our modules can be understood, tested, and reused independently. Next, we survey the entire standard library — what Viper gives you for free.*
 
-*[Continue to Chapter 13: The Standard Library →](13-stdlib.md)*
+*[Continue to Chapter 13: The Standard Library ->](13-stdlib.md)*

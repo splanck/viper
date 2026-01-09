@@ -6,11 +6,77 @@ This chapter teaches your programs to think: to examine conditions and choose wh
 
 ---
 
+## Why Programs Need to Make Decisions
+
+Think about how many decisions happen in a single minute of using your phone:
+
+When you unlock your phone, it checks: Is the fingerprint correct? If yes, show the home screen. If no, ask for a PIN.
+
+When you open a messaging app, it decides: Are there new messages? If yes, show a notification badge. How many unread? Display that number.
+
+When you try to send a photo, it asks: Is the file too large? Is there an internet connection? Does the recipient exist?
+
+Every single interaction involves dozens of invisible decisions. Programs aren't just calculators that crunch numbers — they're decision-makers that respond intelligently to ever-changing situations.
+
+Let's look at some real-world examples to understand why decisions are so fundamental to programming.
+
+### Video Games Are Decision Machines
+
+Consider a simple platformer game. Every single frame (60 times per second!), the game asks:
+
+- Is the player pressing the jump button?
+- Is the player standing on solid ground? (You can't jump in mid-air!)
+- Is the player touching an enemy?
+- Does the player have any lives left?
+- Has the player reached the goal?
+
+Each of these questions has a yes/no answer, and the game does different things based on those answers. If the player is pressing jump AND standing on ground, make the character jump. If the player touches an enemy AND has no invincibility power-up, lose a life.
+
+Without decisions, you couldn't have a game at all. The character would just stand there, unable to respond to anything.
+
+### ATMs and Security
+
+Think about withdrawing money from an ATM:
+
+1. First, it asks: Is this card valid? If not, reject it immediately.
+2. Then: Is the PIN correct? The ATM gives you three tries.
+3. Next: How much do you want? Is that amount available in your account?
+4. Also: Does the machine have enough cash to dispense?
+5. Finally: Should we print a receipt?
+
+Each step depends on the answer to the previous questions. If your PIN is wrong, you never get to the withdrawal screen. The ATM makes decisions on your behalf to keep your money safe.
+
+### Smart Home Devices
+
+A smart thermostat constantly makes decisions:
+
+- Is anyone home? If not, save energy.
+- What's the current temperature? What's the target?
+- Is it heating season or cooling season?
+- Is electricity cheaper right now? Maybe pre-cool the house during off-peak hours.
+
+These decisions happen automatically, every few minutes, all day long.
+
+### Apps You Use Daily
+
+- **Email filters**: Is this message from my boss? Then mark it important. Does it contain "unsubscribe"? Probably promotional.
+- **Autocorrect**: Did the user type "teh"? They probably meant "the."
+- **Maps**: Is there traffic on the usual route? Suggest an alternative.
+- **Music apps**: Has the user skipped this song three times? Stop recommending it.
+
+Programming is, in many ways, the art of making decisions. Now let's learn how to write programs that can think.
+
+---
+
 ## The Fork in the Road
 
 Imagine giving someone directions: "Go straight until the fountain. If the gate is open, go through it; otherwise, take the path around."
 
 That's exactly what conditional statements do in programming. They check a condition (is the gate open?) and do different things based on the answer.
+
+Here's the mental picture you should hold in your mind: You're walking down a path, and suddenly it splits in two. One path goes left, one goes right. There's a signpost with a question on it. Based on your answer to that question, you'll take one path or the other.
+
+You can't take both paths. You can't take neither. You must choose one.
 
 ```rust
 var gateOpen = true;
@@ -24,11 +90,13 @@ if gateOpen {
 
 The `if` keyword introduces a condition. If it's true, the code inside the first `{ }` block runs. If it's false, the code inside the `else` block runs.
 
-This is the fundamental pattern of decision-making in programs.
+This is the fundamental pattern of decision-making in programs. Master this, and you understand something that appears in every programming language ever created.
 
 ---
 
-## The if Statement
+## The if Statement: Your First Decision
+
+### The Simplest Form
 
 The simplest form has no `else`:
 
@@ -42,16 +110,52 @@ if temperature > 30 {
 Viper.Terminal.Say("Have a nice day.");
 ```
 
-If temperature is greater than 30, we print the "hot" message. Either way, we print "Have a nice day." — that line is outside the `if`, so it always runs.
+Let's trace through this program step by step, exactly as the computer does:
 
-**The structure:**
+1. **Line 1**: Create a variable called `temperature` and store the number `35` in it.
+2. **Line 3**: The `if` statement. The computer evaluates the expression `temperature > 30`. This means: "Is 35 greater than 30?" Yes, it is. The answer is `true`.
+3. **Because the condition is true**: The computer enters the `{ }` block and executes line 4.
+4. **Line 4**: Print "It's hot today!" to the screen.
+5. **Line 5**: The closing brace `}` ends the if-block.
+6. **Line 7**: This line is outside the `if` statement. It runs no matter what. Print "Have a nice day."
+
+Output:
+```
+It's hot today!
+Have a nice day.
+```
+
+Now, what if we change the temperature to 25?
+
+1. **Line 1**: Store `25` in `temperature`.
+2. **Line 3**: Evaluate `temperature > 30`. Is 25 greater than 30? No. The answer is `false`.
+3. **Because the condition is false**: Skip everything inside the `{ }` block. Jump directly to after the closing brace.
+4. **Line 7**: Print "Have a nice day."
+
+Output:
+```
+Have a nice day.
+```
+
+See the difference? The "hot today" message only appears when the condition is true.
+
+### The Structure Explained
+
 ```
 if condition {
     // code that runs when condition is true
 }
 ```
 
-The condition must be something that evaluates to `true` or `false` — a boolean expression. Usually this involves comparisons:
+Let's break down each part:
+
+- **`if`**: This keyword tells the computer "I'm about to ask you a yes/no question."
+- **`condition`**: The question itself. Must evaluate to either `true` or `false`.
+- **`{`**: "If the answer is yes, start doing the following..."
+- **code inside**: The instructions to follow when the condition is true.
+- **`}`**: "...and stop here."
+
+The condition must be something that evaluates to `true` or `false` — what programmers call a boolean expression. Usually this involves comparisons:
 
 ```rust
 if age >= 18 { ... }           // is age at least 18?
@@ -60,11 +164,47 @@ if score != 0 { ... }          // is score something other than 0?
 if password == secret { ... }  // do passwords match?
 ```
 
+### Thinking Like the Computer
+
+Here's a crucial skill for programmers: you need to be able to "run" code in your head, step by step, just like a computer would. Let's practice with another example:
+
+```rust
+var balance = 50;
+var price = 75;
+
+if balance >= price {
+    Viper.Terminal.Say("Purchase complete!");
+    balance = balance - price;
+}
+
+Viper.Terminal.Say("Your balance is: " + balance);
+```
+
+Walk through it:
+
+1. `balance` is set to `50`.
+2. `price` is set to `75`.
+3. Check: Is `balance >= price`? Is 50 >= 75? No. This is `false`.
+4. Skip the entire block inside the braces.
+5. Print "Your balance is: 50".
+
+The purchase doesn't happen because you don't have enough money. The program protects you from overdrawing your account!
+
+Now imagine `balance` was `100`:
+
+1. `balance` is set to `100`.
+2. `price` is set to `75`.
+3. Check: Is `balance >= price`? Is 100 >= 75? Yes! This is `true`.
+4. Enter the block. Print "Purchase complete!"
+5. Update balance: `100 - 75 = 25`. Now `balance` is `25`.
+6. Exit the block.
+7. Print "Your balance is: 25".
+
 ---
 
-## if-else: Two Paths
+## if-else: Two Paths, Always One Choice
 
-When you need to do one thing or another (but not both), use `else`:
+When you need to do one thing OR another (but never both, and never neither), use `else`:
 
 ```rust
 var hour = 14;
@@ -76,9 +216,44 @@ if hour < 12 {
 }
 ```
 
-Exactly one of these messages will print. If `hour < 12` is true, we say "Good morning!" and skip the `else` block. If it's false, we skip the `if` block and run the `else`.
+### The Two-Path Guarantee
 
-Think of it as a fork: you must take one path or the other, never both, never neither.
+With `if-else`, exactly one of these blocks will run. Always. No exceptions.
+
+- If `hour < 12` is true, print "Good morning!" and skip the else.
+- If `hour < 12` is false, skip the if and print "Good afternoon!"
+
+Think of it as a fork in the road where you MUST take one path. You can't stand still, and you can't take both paths. The condition determines which way you go.
+
+### Another Mental Model: The Light Switch
+
+Think of a light switch. It's either ON or OFF. Never both, never neither.
+
+```rust
+if switchIsOn {
+    // The light is on - room is bright
+} else {
+    // The light is off - room is dark
+}
+```
+
+The room is always in exactly one of these states.
+
+### The Bouncer Analogy
+
+Imagine a bouncer at a club checking IDs:
+
+```rust
+var age = 17;
+
+if age >= 21 {
+    Viper.Terminal.Say("Welcome! Enjoy your evening.");
+} else {
+    Viper.Terminal.Say("Sorry, you must be 21 or older.");
+}
+```
+
+The bouncer doesn't have three or four responses. It's binary: you're either old enough or you're not. Every single person gets exactly one of these two responses.
 
 ---
 
@@ -100,84 +275,447 @@ if hour < 12 {
 }
 ```
 
-The computer checks each condition in order:
-1. Is hour < 12? No (it's 20), move on.
-2. Is hour < 17? No, move on.
-3. Is hour < 21? Yes! Print "Good evening!" and stop checking.
+### How the Computer Processes This
 
-The final `else` catches anything that didn't match earlier conditions. It's optional — you can have a chain of `if-else if` without a final `else`.
+The computer checks each condition in order, like going down a checklist:
 
-**Important:** Once a condition matches, the rest are skipped. In the example above, `20 < 21` is true, so we never even check if we need the final "Good night!" message.
+1. Is `hour < 12`? Is 20 < 12? **No.** Move to the next condition.
+2. Is `hour < 17`? Is 20 < 17? **No.** Move to the next condition.
+3. Is `hour < 21`? Is 20 < 21? **Yes!** Run this block: print "Good evening!"
+4. **Stop immediately.** Don't check any more conditions.
 
----
+The final `else` catches anything that didn't match earlier conditions. It's the "everything else" case. It's optional — you can have a chain of `if-else if` without a final `else`.
 
-## Conditions and Comparisons
+### Critical Concept: Order Matters
 
-A condition is any expression that produces a boolean (`true` or `false`). The comparison operators from Chapter 3 are your main tools:
+**Once a condition matches, the rest are skipped.** This is crucial to understand.
+
+Consider this buggy code:
 
 ```rust
-x == y    // equal
-x != y    // not equal
-x < y     // less than
-x > y     // greater than
-x <= y    // less than or equal
-x >= y    // greater than or equal
-```
+var score = 95;
 
-You can compare numbers:
-```rust
-if score >= 100 {
-    Viper.Terminal.Say("High score!");
+if score >= 60 {
+    Viper.Terminal.Say("You passed!");
+} else if score >= 90 {
+    Viper.Terminal.Say("Excellent work!");
 }
 ```
 
-You can compare strings:
+What happens? Score is 95. Is `95 >= 60`? Yes! Print "You passed!" and stop.
+
+Wait — 95 is also >= 90. Shouldn't it print "Excellent work!"? Nope. We already found a matching condition and stopped looking.
+
+The fix: Put more specific conditions first.
+
 ```rust
-if answer == "yes" {
-    Viper.Terminal.Say("Great!");
+var score = 95;
+
+if score >= 90 {
+    Viper.Terminal.Say("Excellent work!");
+} else if score >= 60 {
+    Viper.Terminal.Say("You passed!");
 }
 ```
 
-String comparisons are case-sensitive: `"Yes"` is not equal to `"yes"`.
+Now 95 >= 90 matches first, and we get "Excellent work!"
+
+### The Restaurant Menu Analogy
+
+Think of `if-else if-else` like a waiter taking your order:
+
+```rust
+if wantsAppetizer {
+    // Bring appetizer
+} else if wantsMainCourse {
+    // Bring main course
+} else if wantsDessert {
+    // Bring dessert
+} else {
+    // Bring the check, they're done
+}
+```
+
+But wait — at a real restaurant, you might want appetizer AND main course AND dessert! This analogy shows why multiple separate `if` statements differ from an `if-else if` chain:
+
+```rust
+// Multiple separate ifs - customer can order multiple things
+if wantsAppetizer {
+    // Bring appetizer
+}
+if wantsMainCourse {
+    // Bring main course
+}
+if wantsDessert {
+    // Bring dessert
+}
+```
+
+With separate `if` statements, each condition is checked independently. You could get all three, or any combination.
 
 ---
 
-## Combining Conditions
+## Understanding Boolean Expressions
 
-Sometimes you need to check multiple things. The logical operators combine booleans:
+Many beginners struggle with boolean expressions, so let's dig deep here. A boolean expression is any expression that produces the value `true` or `false`. That's it — just two possible values.
 
-**AND (`&&`)**: Both must be true
+### The Comparison Operators
+
+These operators compare two values and return a boolean:
+
+```rust
+x == y    // Equal: Is x the same as y?
+x != y    // Not equal: Is x different from y?
+x < y     // Less than: Is x smaller than y?
+x > y     // Greater than: Is x larger than y?
+x <= y    // Less than or equal: Is x smaller than or the same as y?
+x >= y    // Greater than or equal: Is x larger than or the same as y?
+```
+
+### Examples with Numbers
+
+Let's evaluate some boolean expressions. I'll show you the expression, then work through it:
+
+```rust
+var a = 5;
+var b = 10;
+var c = 5;
+
+a == b    // Is 5 equal to 10? No. Result: false
+a == c    // Is 5 equal to 5? Yes. Result: true
+a != b    // Is 5 not equal to 10? Yes, they're different. Result: true
+a != c    // Is 5 not equal to 5? No, they're the same. Result: false
+
+a < b     // Is 5 less than 10? Yes. Result: true
+a > b     // Is 5 greater than 10? No. Result: false
+a <= c    // Is 5 less than or equal to 5? Yes (they're equal). Result: true
+a >= c    // Is 5 greater than or equal to 5? Yes (they're equal). Result: true
+
+b > a     // Is 10 greater than 5? Yes. Result: true
+b <= a    // Is 10 less than or equal to 5? No. Result: false
+```
+
+### Examples with Strings
+
+String comparisons work too:
+
+```rust
+var name = "Alice";
+
+name == "Alice"    // true - exact match
+name == "alice"    // false - case matters!
+name == "ALICE"    // false - case matters!
+name != "Bob"      // true - they're different
+
+name == "Alice "   // false - trailing space makes it different!
+```
+
+**Critical warning**: String comparisons are case-sensitive and whitespace-sensitive. `"Yes"` is not equal to `"yes"`. `"Hello"` is not equal to `"Hello "` (with a space at the end).
+
+### The Two-Equals Trap
+
+This is the most common beginner mistake:
+
+```rust
+// WRONG - This is assignment, not comparison!
+if score = 100 {
+    ...
+}
+
+// RIGHT - Double equals for comparison
+if score == 100 {
+    ...
+}
+```
+
+Remember:
+- `=` means "put this value into that variable" (assignment)
+- `==` means "are these two values the same?" (comparison)
+
+In English, we use "equals" for both, which causes confusion. In code, they're completely different operations.
+
+### Boolean Variables
+
+You can store boolean values in variables:
+
+```rust
+var isRaining = true;
+var hasUmbrella = false;
+
+if isRaining {
+    Viper.Terminal.Say("It's raining!");
+}
+
+if hasUmbrella {
+    Viper.Terminal.Say("Good thing you have an umbrella!");
+}
+```
+
+Notice that when a variable IS a boolean, you don't need a comparison:
+
+```rust
+// Both of these work the same:
+if isRaining == true { ... }
+if isRaining { ... }           // This is cleaner
+
+// For checking false:
+if isRaining == false { ... }
+if !isRaining { ... }          // This is cleaner (we'll learn ! soon)
+```
+
+### Storing Comparison Results
+
+You can store the result of a comparison:
+
+```rust
+var age = 25;
+var canVote = age >= 18;    // canVote is now true
+
+Viper.Terminal.Say("Can vote: " + canVote);  // Prints "Can vote: true"
+
+if canVote {
+    Viper.Terminal.Say("Remember to register!");
+}
+```
+
+This is useful when you'll use the same condition multiple times, or when the condition is complex and giving it a name makes the code clearer.
+
+---
+
+## Combining Conditions: AND, OR, NOT
+
+Often you need to check multiple things at once. The logical operators let you combine boolean expressions.
+
+### AND: Both Must Be True (`&&`)
+
+The AND operator (`&&`) returns `true` only when BOTH sides are true.
+
 ```rust
 if age >= 18 && hasTicket {
     Viper.Terminal.Say("Welcome to the show!");
 }
 ```
-You can enter only if you're at least 18 AND have a ticket.
 
-**OR (`||`)**: At least one must be true
+To enter, you need BOTH conditions: be 18 or older AND have a ticket. If you're 18 but have no ticket: denied. If you have a ticket but you're 16: denied. You need both.
+
+Think of it like a security checkpoint with two guards. Both guards must let you through.
+
+#### The AND Truth Table (In Plain English)
+
+Let me show you every possible combination:
+
+| Left side | Right side | Result |
+|-----------|------------|--------|
+| true      | true       | **true** |
+| true      | false      | false |
+| false     | true       | false |
+| false     | false      | false |
+
+In plain language: AND is only true when EVERYTHING is true. One false makes the whole thing false.
+
+Some real examples:
+
+```rust
+var age = 25;
+var hasLicense = true;
+var hasCar = false;
+
+age >= 18 && hasLicense          // true && true = true
+age >= 18 && hasCar              // true && false = false
+age < 18 && hasLicense           // false && true = false
+age < 18 && hasCar               // false && false = false
+```
+
+#### Multiple ANDs
+
+You can chain multiple conditions:
+
+```rust
+if hasTicket && age >= 18 && !isBanned {
+    Viper.Terminal.Say("You may enter");
+}
+```
+
+ALL three conditions must be true. Think of it as: "Do you have a ticket? Are you 18+? Are you not banned?" All three must be yes.
+
+### OR: At Least One Must Be True (`||`)
+
+The OR operator (`||`) returns `true` when AT LEAST ONE side is true.
+
 ```rust
 if day == "Saturday" || day == "Sunday" {
     Viper.Terminal.Say("It's the weekend!");
 }
 ```
-It's the weekend if it's Saturday OR Sunday (or both, but that's impossible with days).
 
-**NOT (`!`)**: Reverses the boolean
+It's the weekend if it's Saturday OR if it's Sunday. Either one works.
+
+#### The OR Truth Table (In Plain English)
+
+| Left side | Right side | Result |
+|-----------|------------|--------|
+| true      | true       | **true** |
+| true      | false      | **true** |
+| false     | true       | **true** |
+| false     | false      | false |
+
+In plain language: OR is true when ANYTHING is true. Both must be false for OR to be false.
+
+Think of OR as being generous or permissive. "Do you have ANY valid credential?"
+
 ```rust
+var hasCash = false;
+var hasCard = true;
+var hasCoupon = false;
+
+hasCash || hasCard              // false || true = true (card works!)
+hasCash || hasCoupon            // false || false = false (nothing works)
+hasCard || hasCoupon            // true || false = true (card works!)
+hasCash || hasCard || hasCoupon // false || true || false = true
+```
+
+#### Real Example: Multiple Payment Methods
+
+```rust
+if hasCash || hasCard || hasDigitalWallet {
+    Viper.Terminal.Say("Payment accepted!");
+} else {
+    Viper.Terminal.Say("Sorry, no valid payment method.");
+}
+```
+
+The customer can pay as long as they have at least one valid method.
+
+### NOT: Flip the Boolean (`!`)
+
+The NOT operator (`!`) reverses a boolean. True becomes false, false becomes true.
+
+```rust
+var gameOver = false;
+
 if !gameOver {
     Viper.Terminal.Say("Keep playing!");
 }
 ```
-If `gameOver` is `false`, then `!gameOver` is `true`.
+
+If `gameOver` is `false`, then `!gameOver` is `true`, so we enter the block.
+
+#### The NOT Truth Table
+
+| Original | After `!` |
+|----------|-----------|
+| true     | false |
+| false    | true |
+
+Simple as that. NOT just flips the value.
+
+#### Common Uses of NOT
+
+```rust
+// Check if something is NOT the case
+if !isLoggedIn {
+    Viper.Terminal.Say("Please log in first");
+}
+
+// Check if a list is NOT empty
+if !isEmpty {
+    Viper.Terminal.Say("Processing items...");
+}
+
+// Check if user did NOT agree
+if !agreedToTerms {
+    Viper.Terminal.Say("You must agree to continue");
+}
+```
+
+### Combining AND, OR, and NOT
 
 You can build complex conditions:
+
 ```rust
 if (age >= 18 && age <= 65) || hasSpecialPass {
     Viper.Terminal.Say("You qualify for the program.");
 }
 ```
 
-Use parentheses to make your intentions clear. Even when not strictly necessary, they help humans read the code.
+Let's break this down:
+- `(age >= 18 && age <= 65)`: Age between 18 and 65 (inclusive)
+- `|| hasSpecialPass`: OR has a special pass
+
+So: You qualify if you're in the age range, OR if you have a special pass (regardless of age).
+
+#### Parentheses Are Your Friend
+
+Use parentheses to make your intentions clear:
+
+```rust
+// What does this mean?
+if a || b && c { ... }
+
+// Is it (a || b) && c?
+// Or is it a || (b && c)?
+```
+
+In most languages, `&&` has higher precedence than `||`, so `a || b && c` means `a || (b && c)`. But don't make readers think about precedence rules — just use parentheses:
+
+```rust
+if a || (b && c) { ... }    // Clear: a, OR both b and c
+if (a || b) && c { ... }    // Clear: either a or b, AND c
+```
+
+#### Complex Example: Movie Theater
+
+```rust
+var age = 15;
+var hasParent = true;
+var movieRating = "R";
+
+// Can watch if: movie is G or PG, OR you're 17+, OR you're 13+ with a parent
+var canWatch = (movieRating == "G" || movieRating == "PG") ||
+               age >= 17 ||
+               (age >= 13 && hasParent);
+
+if canWatch {
+    Viper.Terminal.Say("Enjoy the movie!");
+} else {
+    Viper.Terminal.Say("Sorry, you cannot watch this movie.");
+}
+```
+
+### Short-Circuit Evaluation
+
+Here's something important: AND and OR are "short-circuit" operators. This means they stop evaluating as soon as they know the result.
+
+For AND (`&&`):
+- If the left side is `false`, the whole thing must be `false`.
+- So the right side is never even checked!
+
+```rust
+if false && someExpensiveFunction() {
+    // someExpensiveFunction() never runs!
+}
+```
+
+For OR (`||`):
+- If the left side is `true`, the whole thing must be `true`.
+- So the right side is never even checked!
+
+```rust
+if true || someExpensiveFunction() {
+    // someExpensiveFunction() never runs!
+}
+```
+
+This is useful for safety checks:
+
+```rust
+// Safe: if name is null, we never try to check its length
+if name != null && name.length > 0 {
+    Viper.Terminal.Say("Hello, " + name);
+}
+```
+
+If `name` is null, the left side is false, so we never try to access `name.length` (which would crash).
 
 ---
 
@@ -201,27 +739,105 @@ if hasAccount {
 }
 ```
 
-This checks: Do you have an account? If yes, is the password correct? Each decision leads to more specific outcomes.
+This creates a tree of decisions:
+1. Do you have an account?
+   - No: "Please create an account first."
+   - Yes: Is the password correct?
+     - No: "Wrong password."
+     - Yes: "Login successful!"
 
-Nesting works, but deep nesting gets hard to read. Often you can flatten it:
+### The Tree Mental Model
+
+Think of nested conditions as a decision tree:
+
+```
+                    hasAccount?
+                    /         \
+                  No           Yes
+                  |             |
+        "Create account"   password correct?
+                              /        \
+                            No          Yes
+                            |            |
+                   "Wrong password"  "Login successful!"
+```
+
+Each decision branches into more decisions. The program follows one path through the tree based on the conditions.
+
+### When Nesting Gets Out of Hand
+
+Nesting works, but deep nesting gets hard to read:
 
 ```rust
-if !hasAccount {
-    Viper.Terminal.Say("Please create an account first.");
-} else if password != inputPassword {
-    Viper.Terminal.Say("Wrong password.");
+if hasAccount {
+    if isVerified {
+        if !isBanned {
+            if password == inputPassword {
+                if !sessionExpired {
+                    Viper.Terminal.Say("Login successful!");
+                } else {
+                    Viper.Terminal.Say("Session expired.");
+                }
+            } else {
+                Viper.Terminal.Say("Wrong password.");
+            }
+        } else {
+            Viper.Terminal.Say("Account banned.");
+        }
+    } else {
+        Viper.Terminal.Say("Please verify your email.");
+    }
 } else {
-    Viper.Terminal.Say("Login successful!");
+    Viper.Terminal.Say("Please create an account.");
 }
 ```
 
-This handles the same logic but reads more linearly. It's called "guard clauses" — checking for problems first and handling the happy path at the end.
+This is sometimes called "pyramid of doom" or "arrow code" (because the indentation forms an arrow pointing right).
+
+### The Guard Clause Pattern
+
+Often you can flatten nested code using "guard clauses" — checking for problems first and handling the happy path at the end:
+
+```rust
+if !hasAccount {
+    Viper.Terminal.Say("Please create an account.");
+    return;
+}
+
+if !isVerified {
+    Viper.Terminal.Say("Please verify your email.");
+    return;
+}
+
+if isBanned {
+    Viper.Terminal.Say("Account banned.");
+    return;
+}
+
+if password != inputPassword {
+    Viper.Terminal.Say("Wrong password.");
+    return;
+}
+
+if sessionExpired {
+    Viper.Terminal.Say("Session expired.");
+    return;
+}
+
+Viper.Terminal.Say("Login successful!");
+```
+
+This reads like a checklist: "First, check if no account — if so, stop. Then check if not verified — if so, stop. Then..."
+
+The happy path (successful login) is at the end, after all the checks have passed.
 
 ---
 
-## A Practical Example
+## Practical Examples
 
-Let's build a simple grading program:
+Let's build some real programs that use decisions.
+
+### Example 1: Grade Calculator
 
 ```rust
 module Grader;
@@ -230,43 +846,259 @@ func start() {
     Viper.Terminal.Print("Enter the score (0-100): ");
     var score = Viper.Parse.Int(Viper.Terminal.ReadLine());
 
+    // First, validate the input
+    if score < 0 || score > 100 {
+        Viper.Terminal.Say("Invalid score! Please enter a number between 0 and 100.");
+        return;
+    }
+
+    // Determine the letter grade
     var grade = "";
+    var message = "";
 
     if score >= 90 {
         grade = "A";
+        message = "Excellent work! You've mastered this material.";
     } else if score >= 80 {
         grade = "B";
+        message = "Good job! You have a solid understanding.";
     } else if score >= 70 {
         grade = "C";
+        message = "You passed. Consider reviewing the material.";
     } else if score >= 60 {
         grade = "D";
+        message = "You barely passed. Please seek extra help.";
     } else {
         grade = "F";
+        message = "You did not pass. Please see the teacher.";
     }
 
-    Viper.Terminal.Say("Your grade is: " + grade);
+    Viper.Terminal.Say("Score: " + score);
+    Viper.Terminal.Say("Grade: " + grade);
+    Viper.Terminal.Say(message);
 
-    if grade == "A" {
-        Viper.Terminal.Say("Excellent work!");
-    } else if grade == "F" {
-        Viper.Terminal.Say("Please see the teacher for help.");
+    // Add plus/minus for more precision
+    var lastDigit = score % 10;
+    if grade != "F" && grade != "A" {
+        if lastDigit >= 7 {
+            Viper.Terminal.Say("(High " + grade + ", close to " + grade + "+)");
+        } else if lastDigit <= 2 {
+            Viper.Terminal.Say("(Low " + grade + ", close to " + grade + "-)");
+        }
     }
 }
 ```
 
-Sample run:
-```
-Enter the score (0-100): 85
-Your grade is: B
+Notice how the conditions are ordered from highest to lowest. A score of 85 isn't >= 90, but it is >= 80, so we get "B" and stop checking.
+
+### Example 2: Age-Based Access Control
+
+```rust
+module AgeChecker;
+
+func start() {
+    Viper.Terminal.Print("Enter your age: ");
+    var age = Viper.Parse.Int(Viper.Terminal.ReadLine());
+
+    Viper.Terminal.Say("");  // Blank line for readability
+
+    // Check various age-gated activities
+    Viper.Terminal.Say("Based on your age (" + age + "), here's what you can do:");
+    Viper.Terminal.Say("");
+
+    // Voting
+    if age >= 18 {
+        Viper.Terminal.Say("[X] Vote in elections");
+    } else {
+        var yearsUntilVoting = 18 - age;
+        Viper.Terminal.Say("[ ] Vote in elections (in " + yearsUntilVoting + " years)");
+    }
+
+    // Driving (varies by location, using 16 as example)
+    if age >= 16 {
+        Viper.Terminal.Say("[X] Drive a car");
+    } else if age >= 15 {
+        Viper.Terminal.Say("[ ] Drive a car (eligible for learner's permit)");
+    } else {
+        Viper.Terminal.Say("[ ] Drive a car (not yet eligible)");
+    }
+
+    // Rent a car (usually 25)
+    if age >= 25 {
+        Viper.Terminal.Say("[X] Rent a car (no young driver fee)");
+    } else if age >= 21 {
+        Viper.Terminal.Say("[X] Rent a car (young driver fee applies)");
+    } else {
+        Viper.Terminal.Say("[ ] Rent a car (must be 21+)");
+    }
+
+    // Senior discount
+    if age >= 65 {
+        Viper.Terminal.Say("[X] Senior citizen discount eligible");
+    }
+}
 ```
 
-Notice how the conditions are ordered from highest to lowest. A score of 85 isn't >= 90, but it is >= 80, so we get "B" and stop checking.
+### Example 3: Simple Game Logic
+
+```rust
+module BattleGame;
+
+func start() {
+    // Player stats
+    var playerHealth = 100;
+    var playerMana = 50;
+    var hasShield = true;
+    var hasSword = true;
+
+    // Enemy stats
+    var enemyHealth = 80;
+    var enemyAttack = 25;
+
+    Viper.Terminal.Say("=== BATTLE BEGINS ===");
+    Viper.Terminal.Say("Your health: " + playerHealth);
+    Viper.Terminal.Say("Enemy health: " + enemyHealth);
+    Viper.Terminal.Say("");
+
+    // Player's turn - choose action
+    Viper.Terminal.Say("Choose your action:");
+    if hasSword {
+        Viper.Terminal.Say("1. Sword Attack (30 damage)");
+    }
+    if playerMana >= 20 {
+        Viper.Terminal.Say("2. Magic Blast (40 damage, costs 20 mana)");
+    }
+    Viper.Terminal.Say("3. Defend (reduce incoming damage by half)");
+
+    Viper.Terminal.Print("Your choice: ");
+    var choice = Viper.Parse.Int(Viper.Terminal.ReadLine());
+
+    var damage = 0;
+    var defended = false;
+
+    if choice == 1 && hasSword {
+        damage = 30;
+        Viper.Terminal.Say("You swing your sword!");
+    } else if choice == 2 && playerMana >= 20 {
+        damage = 40;
+        playerMana = playerMana - 20;
+        Viper.Terminal.Say("You cast a magic blast!");
+    } else if choice == 3 {
+        defended = true;
+        Viper.Terminal.Say("You raise your shield and brace for impact!");
+    } else {
+        Viper.Terminal.Say("Invalid choice! You hesitate and lose your turn.");
+    }
+
+    // Apply damage to enemy
+    enemyHealth = enemyHealth - damage;
+    if damage > 0 {
+        Viper.Terminal.Say("Enemy takes " + damage + " damage!");
+    }
+
+    // Check if enemy defeated
+    if enemyHealth <= 0 {
+        Viper.Terminal.Say("*** VICTORY! The enemy is defeated! ***");
+        return;
+    }
+
+    // Enemy's turn
+    Viper.Terminal.Say("");
+    Viper.Terminal.Say("Enemy attacks!");
+
+    var incomingDamage = enemyAttack;
+    if defended && hasShield {
+        incomingDamage = incomingDamage / 2;
+        Viper.Terminal.Say("Your shield blocks half the damage!");
+    }
+
+    playerHealth = playerHealth - incomingDamage;
+    Viper.Terminal.Say("You take " + incomingDamage + " damage!");
+
+    // Check if player defeated
+    if playerHealth <= 0 {
+        Viper.Terminal.Say("*** DEFEAT! You have fallen... ***");
+    } else {
+        Viper.Terminal.Say("");
+        Viper.Terminal.Say("Your health: " + playerHealth);
+        Viper.Terminal.Say("Enemy health: " + enemyHealth);
+        Viper.Terminal.Say("The battle continues...");
+    }
+}
+```
+
+### Example 4: Input Validation
+
+```rust
+module FormValidator;
+
+func start() {
+    Viper.Terminal.Say("=== Account Registration ===");
+    Viper.Terminal.Say("");
+
+    // Get username
+    Viper.Terminal.Print("Username (4-20 characters): ");
+    var username = Viper.Terminal.ReadLine();
+
+    // Get email
+    Viper.Terminal.Print("Email address: ");
+    var email = Viper.Terminal.ReadLine();
+
+    // Get age
+    Viper.Terminal.Print("Age: ");
+    var age = Viper.Parse.Int(Viper.Terminal.ReadLine());
+
+    // Validation
+    var isValid = true;
+    Viper.Terminal.Say("");
+    Viper.Terminal.Say("Validation results:");
+
+    // Check username length
+    var usernameLength = Viper.String.Length(username);
+    if usernameLength < 4 {
+        Viper.Terminal.Say("[FAIL] Username too short (minimum 4 characters)");
+        isValid = false;
+    } else if usernameLength > 20 {
+        Viper.Terminal.Say("[FAIL] Username too long (maximum 20 characters)");
+        isValid = false;
+    } else {
+        Viper.Terminal.Say("[ OK ] Username length is valid");
+    }
+
+    // Check email contains @
+    if Viper.String.Contains(email, "@") && Viper.String.Contains(email, ".") {
+        Viper.Terminal.Say("[ OK ] Email format appears valid");
+    } else {
+        Viper.Terminal.Say("[FAIL] Email must contain @ and .");
+        isValid = false;
+    }
+
+    // Check age
+    if age < 13 {
+        Viper.Terminal.Say("[FAIL] Must be at least 13 years old");
+        isValid = false;
+    } else if age > 120 {
+        Viper.Terminal.Say("[FAIL] Please enter a realistic age");
+        isValid = false;
+    } else {
+        Viper.Terminal.Say("[ OK ] Age is valid");
+    }
+
+    // Final result
+    Viper.Terminal.Say("");
+    if isValid {
+        Viper.Terminal.Say("Registration successful! Welcome, " + username + "!");
+    } else {
+        Viper.Terminal.Say("Registration failed. Please fix the errors above.");
+    }
+}
+```
 
 ---
 
 ## The match Statement
 
-When you're comparing one value against many possibilities, `match` can be cleaner than many `if-else if` chains:
+When you're comparing one value against many specific possibilities, `match` can be cleaner than a long `if-else if` chain:
 
 ```rust
 var day = 3;
@@ -285,7 +1117,135 @@ match day {
 
 The `_` is a wildcard that matches anything not already matched. It's like the `else` in an `if` chain.
 
-Match is especially useful when you have many specific values to check. We'll see more powerful uses of `match` later in the book.
+### How match Works
+
+The `match` statement takes a value and compares it against each pattern in order:
+
+1. Does `day` equal `1`? No. Move on.
+2. Does `day` equal `2`? No. Move on.
+3. Does `day` equal `3`? Yes! Run the code after `=>`.
+4. Stop. Don't check any more patterns.
+
+### When to Use match vs if-else if
+
+Use `match` when:
+- You're comparing ONE value against MANY specific values
+- You're checking for exact equality
+- You have 3+ cases to handle
+
+Use `if-else if` when:
+- You need range comparisons (`< > <= >=`)
+- You're checking multiple different variables
+- Your conditions involve complex boolean expressions
+
+```rust
+// GOOD use of match: checking one value against specific options
+match menuChoice {
+    1 => startGame(),
+    2 => showOptions(),
+    3 => viewHighScores(),
+    4 => exitGame(),
+    _ => Viper.Terminal.Say("Invalid choice")
+}
+
+// BAD use of match: ranges don't work this way
+// match score {
+//     >= 90 => ...  // This won't work!
+// }
+
+// Use if-else if for ranges
+if score >= 90 {
+    grade = "A";
+} else if score >= 80 {
+    grade = "B";
+} // etc.
+```
+
+### Match with Multiple Values
+
+You can match multiple values with `|`:
+
+```rust
+match day {
+    1 | 2 | 3 | 4 | 5 => Viper.Terminal.Say("Weekday"),
+    6 | 7 => Viper.Terminal.Say("Weekend"),
+    _ => Viper.Terminal.Say("Invalid day")
+}
+```
+
+This says: "If day is 1 OR 2 OR 3 OR 4 OR 5, it's a weekday."
+
+### Match for Menu Systems
+
+Match shines in menu-driven programs:
+
+```rust
+module MenuDemo;
+
+func start() {
+    Viper.Terminal.Say("=== MAIN MENU ===");
+    Viper.Terminal.Say("1. New Game");
+    Viper.Terminal.Say("2. Load Game");
+    Viper.Terminal.Say("3. Options");
+    Viper.Terminal.Say("4. Credits");
+    Viper.Terminal.Say("5. Quit");
+    Viper.Terminal.Print("Choose an option: ");
+
+    var choice = Viper.Parse.Int(Viper.Terminal.ReadLine());
+
+    match choice {
+        1 => {
+            Viper.Terminal.Say("Starting new game...");
+            Viper.Terminal.Say("Welcome, hero!");
+        },
+        2 => {
+            Viper.Terminal.Say("Loading saved games...");
+            Viper.Terminal.Say("No saved games found.");
+        },
+        3 => {
+            Viper.Terminal.Say("=== OPTIONS ===");
+            Viper.Terminal.Say("Sound: ON");
+            Viper.Terminal.Say("Difficulty: NORMAL");
+        },
+        4 => {
+            Viper.Terminal.Say("=== CREDITS ===");
+            Viper.Terminal.Say("Created with ViperLang");
+            Viper.Terminal.Say("Thanks for playing!");
+        },
+        5 => {
+            Viper.Terminal.Say("Goodbye!");
+        },
+        _ => {
+            Viper.Terminal.Say("Invalid option. Please enter 1-5.");
+        }
+    }
+}
+```
+
+Notice that when you need multiple statements for a case, you use `{ }` braces.
+
+### Match Returning Values
+
+Match can be used as an expression that returns a value:
+
+```rust
+var day = 3;
+
+var dayName = match day {
+    1 => "Monday",
+    2 => "Tuesday",
+    3 => "Wednesday",
+    4 => "Thursday",
+    5 => "Friday",
+    6 => "Saturday",
+    7 => "Sunday",
+    _ => "Unknown"
+};
+
+Viper.Terminal.Say("Today is " + dayName);
+```
+
+This is more concise than setting a variable in each branch.
 
 ---
 
@@ -386,6 +1346,190 @@ if count > 0 {       // Also correct: check if count is positive
 
 This strictness helps prevent bugs. It forces you to be explicit about what you mean.
 
+Consider this ambiguity in languages with truthiness:
+
+```rust
+var name = "";        // Empty string
+
+if name { ... }       // Does this run? Is "" truthy or falsy?
+```
+
+Different languages disagree on whether empty strings are truthy or falsy. ViperLang avoids this confusion by requiring:
+
+```rust
+if name != "" { ... }       // Explicit: "if name is not empty"
+if Viper.String.Length(name) > 0 { ... }  // Also explicit
+```
+
+---
+
+## Debugging Conditions: When Things Go Wrong
+
+Conditions are a common source of bugs. Here's how to debug them.
+
+### Symptom: Code Never Runs
+
+Your code inside an `if` block never executes, even when you think it should.
+
+**Diagnosis steps:**
+
+1. **Print the actual values** before the condition:
+```rust
+Viper.Terminal.Say("DEBUG: score = " + score);
+Viper.Terminal.Say("DEBUG: score >= 90 is " + (score >= 90));
+
+if score >= 90 {
+    Viper.Terminal.Say("A grade!");
+}
+```
+
+2. **Check for typos** in variable names. Did you accidentally check a different variable?
+
+3. **Check your comparison operator**. Did you use `>` when you meant `>=`?
+
+4. **Check for type mismatches**. Are you comparing a string to a number?
+```rust
+var input = "42";    // This is a STRING
+if input == 42 {     // Comparing string to number - might not work as expected
+    ...
+}
+```
+
+### Symptom: Wrong Branch Executes
+
+The code takes the `else` path when it should take the `if` path (or vice versa).
+
+**Diagnosis steps:**
+
+1. **Print the condition result**:
+```rust
+var result = age >= 18;
+Viper.Terminal.Say("DEBUG: age >= 18 evaluates to: " + result);
+```
+
+2. **Simplify complex conditions**. Break them into parts:
+```rust
+// Instead of:
+if age >= 18 && hasID && !isBanned { ... }
+
+// Debug with:
+var ageOK = age >= 18;
+var hasIDOK = hasID;
+var notBanned = !isBanned;
+Viper.Terminal.Say("age >= 18: " + ageOK);
+Viper.Terminal.Say("hasID: " + hasIDOK);
+Viper.Terminal.Say("!isBanned: " + notBanned);
+Viper.Terminal.Say("all together: " + (ageOK && hasIDOK && notBanned));
+```
+
+3. **Check operator precedence**. Use parentheses to be explicit:
+```rust
+// What does this mean?
+if a || b && c
+
+// Be explicit:
+if a || (b && c)    // OR
+if (a || b) && c    // Different meaning!
+```
+
+### Symptom: Multiple Branches Run (When They Shouldn't)
+
+You expected only one action, but multiple things happened.
+
+**Diagnosis:** You probably used multiple `if` statements instead of `if-else if`:
+
+```rust
+// BUG: Both messages might print!
+if score >= 60 {
+    Viper.Terminal.Say("You passed!");
+}
+if score >= 90 {
+    Viper.Terminal.Say("Excellent!");
+}
+
+// FIX: Use else if if only one should print
+if score >= 90 {
+    Viper.Terminal.Say("Excellent!");
+} else if score >= 60 {
+    Viper.Terminal.Say("You passed!");
+}
+```
+
+### Symptom: Condition Order Problems
+
+Your conditions are in the wrong order, and an earlier condition catches cases meant for later ones.
+
+```rust
+// BUG: score = 95 prints "You passed" instead of "Excellent"
+if score >= 60 {
+    Viper.Terminal.Say("You passed!");
+} else if score >= 90 {
+    Viper.Terminal.Say("Excellent!");    // Never reached for 95!
+}
+
+// FIX: Check more specific conditions first
+if score >= 90 {
+    Viper.Terminal.Say("Excellent!");
+} else if score >= 60 {
+    Viper.Terminal.Say("You passed!");
+}
+```
+
+**Rule of thumb:** In `if-else if` chains with ranges, go from most specific to least specific, or from highest to lowest (or lowest to highest, but be consistent).
+
+### The Print Debugging Technique
+
+When in doubt, print everything:
+
+```rust
+Viper.Terminal.Say("=== DEBUG START ===");
+Viper.Terminal.Say("age = " + age);
+Viper.Terminal.Say("hasAccount = " + hasAccount);
+Viper.Terminal.Say("password = " + password);
+Viper.Terminal.Say("inputPassword = " + inputPassword);
+Viper.Terminal.Say("password == inputPassword: " + (password == inputPassword));
+Viper.Terminal.Say("=== DEBUG END ===");
+
+if hasAccount && password == inputPassword {
+    Viper.Terminal.Say("Login successful!");
+} else {
+    Viper.Terminal.Say("Login failed.");
+}
+```
+
+This reveals exactly what values you're working with and how the condition evaluates.
+
+### Common Logic Errors
+
+**Off-by-one errors:**
+```rust
+// User enters 18, expecting to pass, but fails
+if age > 18 {    // Should be >= 18
+    Viper.Terminal.Say("You can vote!");
+}
+```
+
+**Inverted logic:**
+```rust
+// Meant to check if NOT empty, but checked if empty
+if name == "" {
+    processName(name);  // Bug! Processing an empty name
+}
+```
+
+**Wrong boolean operator:**
+```rust
+// Used OR when AND was needed
+if username == "admin" || password == "secret" {
+    // Bug! Someone can log in with just the right username
+}
+
+// Should be:
+if username == "admin" && password == "secret" {
+    // Correct: need both
+}
+```
+
 ---
 
 ## Common Mistakes
@@ -418,7 +1562,7 @@ if score >= 90 {
 }
 ```
 
-**Overlapping conditions:**
+**Overlapping conditions with separate ifs:**
 ```rust
 // Both could be true for score = 85
 if score >= 80 {
@@ -438,6 +1582,19 @@ if score >= 80 {
 }
 ```
 
+**Confusing && and ||:**
+```rust
+// Wrong: This is never true (nothing is both < 0 AND > 100)
+if score < 0 && score > 100 {
+    Viper.Terminal.Say("Invalid");
+}
+
+// Right: Invalid if EITHER condition is true
+if score < 0 || score > 100 {
+    Viper.Terminal.Say("Invalid");
+}
+```
+
 ---
 
 ## Putting It Together
@@ -449,23 +1606,55 @@ module GuessGame;
 
 func start() {
     final SECRET = 7;
+    final MAX_GUESSES = 3;
+    var guessesRemaining = MAX_GUESSES;
 
     Viper.Terminal.Say("I'm thinking of a number between 1 and 10.");
+    Viper.Terminal.Say("You have " + MAX_GUESSES + " guesses.");
+    Viper.Terminal.Say("");
+
     Viper.Terminal.Print("Your guess: ");
-
     var guess = Viper.Parse.Int(Viper.Terminal.ReadLine());
+    guessesRemaining = guessesRemaining - 1;
 
-    if guess == SECRET {
+    // Validate input
+    if guess < 1 || guess > 10 {
+        Viper.Terminal.Say("That's not between 1 and 10! You wasted a guess.");
+    } else if guess == SECRET {
         Viper.Terminal.Say("Correct! You win!");
-    } else if guess < SECRET {
-        Viper.Terminal.Say("Too low! The answer was " + SECRET);
+        Viper.Terminal.Say("You guessed it in " + (MAX_GUESSES - guessesRemaining) + " tries!");
     } else {
-        Viper.Terminal.Say("Too high! The answer was " + SECRET);
+        // Give a hint
+        if guess < SECRET {
+            Viper.Terminal.Say("Too low!");
+        } else {
+            Viper.Terminal.Say("Too high!");
+        }
+
+        // Show remaining guesses
+        if guessesRemaining > 0 {
+            Viper.Terminal.Say("You have " + guessesRemaining + " guesses left.");
+
+            // Extra hint if this was close
+            var difference = guess - SECRET;
+            if difference < 0 {
+                difference = -difference;  // Make positive
+            }
+
+            if difference == 1 {
+                Viper.Terminal.Say("Hint: You were VERY close!");
+            } else if difference <= 3 {
+                Viper.Terminal.Say("Hint: You were somewhat close.");
+            }
+        } else {
+            Viper.Terminal.Say("No guesses remaining. The answer was " + SECRET + ".");
+            Viper.Terminal.Say("Better luck next time!");
+        }
     }
 }
 ```
 
-This isn't a great game yet — the number is always 7! In Chapter 5, we'll add loops so the player can guess multiple times. In Chapter 13, we'll learn to generate random numbers for real games.
+This isn't a great game yet — the number is always 7, and you only get one guess per run! In Chapter 5, we'll add loops so the player can guess multiple times. In Chapter 13, we'll learn to generate random numbers for real games.
 
 ---
 
@@ -475,10 +1664,14 @@ This isn't a great game yet — the number is always 7! In Chapter 5, we'll add 
 - `else` provides an alternative when the condition is false
 - `else if` chains let you check multiple conditions
 - Comparison operators (`==`, `!=`, `<`, `>`, `<=`, `>=`) produce booleans
-- Logical operators (`&&`, `||`, `!`) combine booleans
-- `match` compares one value against many possibilities
+- Logical operators combine booleans:
+  - `&&` (AND): Both must be true
+  - `||` (OR): At least one must be true
+  - `!` (NOT): Flips true to false and vice versa
+- `match` compares one value against many specific possibilities
 - Conditions are checked in order; once one matches, the rest are skipped
 - Use clear, explicit conditions — don't rely on implicit conversions
+- Debug by printing values and breaking complex conditions into parts
 
 ---
 
@@ -496,8 +1689,14 @@ This isn't a great game yet — the number is always 7! In Chapter 5, we'll add 
 
 **Exercise 4.5** (Challenge): Write a simple calculator that asks for two numbers and an operation (+, -, *, /) and prints the result. Handle division by zero with an error message.
 
+**Exercise 4.6**: Write a program that asks for three numbers and prints them in order from smallest to largest. (Hint: You'll need nested conditions to handle all possible orderings.)
+
+**Exercise 4.7**: Write a rock-paper-scissors game. Ask the user for their choice (1=rock, 2=paper, 3=scissors), set the computer's choice to a fixed value, and determine the winner.
+
+**Exercise 4.8** (Challenge): Build a simple text adventure with at least 3 decision points. For example: "You enter a dark cave. Do you (1) light a torch, (2) proceed carefully, or (3) go back?" Each choice leads to different outcomes.
+
 ---
 
 *We can now make decisions. But what if we need to do something many times — print 100 lines, check every character in a name, run a game loop 60 times per second? Next, we learn about repetition.*
 
-*[Continue to Chapter 5: Repetition →](05-repetition.md)*
+*[Continue to Chapter 5: Repetition ->](05-repetition.md)*

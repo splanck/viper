@@ -1,23 +1,147 @@
 # Chapter 11: Structures
 
-So far, we've used simple types: numbers, strings, booleans. We've grouped them in arrays. But what if you need to represent something more complex — a person with a name and age, a point with x and y coordinates, a product with name, price, and quantity?
+You're building a game. Your player has a name, a health value, an x position, a y position, and a score. So you create five variables:
 
-You could use separate variables:
 ```rust
-var personName = "Alice";
-var personAge = 30;
-var personEmail = "alice@example.com";
+var playerName = "Hero";
+var playerHealth = 100;
+var playerX = 50.0;
+var playerY = 30.0;
+var playerScore = 0;
 ```
 
-But this falls apart fast. What if you have 100 people? You can't make 300 variables. And passing a person to a function means passing three separate arguments.
+Now you need an enemy. Five more variables:
 
-*Structures* solve this. They let you create your own types that group related data together.
+```rust
+var enemyName = "Goblin";
+var enemyHealth = 30;
+var enemyX = 100.0;
+var enemyY = 45.0;
+var enemyScore = 0;  // Wait, enemies don't have scores...
+```
+
+You add a second enemy. Five more. A third enemy. Five more. Then you realize: you need to pass all this information to a function that handles combat. Your function signature becomes a nightmare:
+
+```rust
+func attack(attackerName: string, attackerHealth: i64, attackerX: f64, attackerY: f64,
+            defenderName: string, defenderHealth: i64, defenderX: f64, defenderY: f64,
+            ...) {
+    // This is getting out of hand
+}
+```
+
+And when you call it:
+
+```rust
+attack(playerName, playerHealth, playerX, playerY, enemyName, enemyHealth, enemyX, enemyY, ...);
+```
+
+Did you pass the arguments in the right order? Is `playerY` really the fourth argument, or was it the third? If you swap `attackerX` and `attackerY`, the compiler won't catch it — they're both `f64`. Your bug silently corrupts your game.
+
+Then you need to return the updated health values. But functions can only return one thing. So you resort to ugly workarounds, or you give up and use global variables, and your code becomes a tangled mess.
+
+There must be a better way.
+
+There is. *Structures* let you create your own types that bundle related data together. Instead of five scattered variables describing a player, you have one cohesive `Player`. Instead of passing eight separate values to a function, you pass two: an attacker and a defender. Instead of hoping you got the order right, the compiler checks that you're passing a `Player` where a `Player` is expected.
+
+This chapter introduces structures — one of the most important concepts in programming. Structures are the foundation of organizing data, and they set the stage for object-oriented programming in Part III.
 
 ---
 
-## Defining a Structure
+## The Problem: Related Data Falls Apart
 
-A structure is a template for grouping values:
+Let's look more closely at what goes wrong when we use separate variables for related data.
+
+### Problem 1: No Connection Between Variables
+
+Consider tracking a point in 2D space:
+
+```rust
+var pointX = 10.5;
+var pointY = 20.3;
+```
+
+These two variables are intimately related — they describe the same point. But the language doesn't know that. To you, `pointX` and `pointY` form a conceptual unit. To the compiler, they're just two independent floating-point numbers that happen to have similar names.
+
+This disconnect causes problems. What if you accidentally write:
+
+```rust
+var pointX = 10.5;
+var pointY = 20.3;
+var pointZ = 15.0;  // Wait, is this 3D now? Or is this a different point?
+```
+
+Nothing enforces that points have exactly two coordinates, or that `pointX` and `pointY` belong together while `pointZ` is something else.
+
+### Problem 2: Functions Become Unwieldy
+
+Every function that works with a point needs two parameters:
+
+```rust
+func distance(x1: f64, y1: f64, x2: f64, y2: f64) -> f64 {
+    var dx = x2 - x1;
+    var dy = y2 - y1;
+    return Viper.Math.sqrt(dx * dx + dy * dy);
+}
+```
+
+That's four parameters for two points. What about three points?
+
+```rust
+func triangleArea(x1: f64, y1: f64, x2: f64, y2: f64, x3: f64, y3: f64) -> f64 {
+    // Six parameters!
+    ...
+}
+```
+
+This quickly becomes unmanageable. And it's easy to make mistakes:
+
+```rust
+// Did I mean distance from A to B, or B to A?
+// Are these in the right order?
+var d = distance(ax, ay, bx, by);
+var d = distance(ax, bx, ay, by);  // Oops! Compiler doesn't catch this.
+```
+
+### Problem 3: Collections Become Impossible
+
+How do you create an array of points with separate variables?
+
+```rust
+// Array of x coordinates
+var xs = [10.5, 20.0, 35.5, 40.0];
+
+// Array of y coordinates
+var ys = [20.3, 15.0, 25.5, 30.0];
+```
+
+Now you have two parallel arrays that must stay synchronized. If you sort one, you must sort the other in exactly the same way. If you add to one, you must add to the other. If you remove from one... you see the pattern. This is fragile and error-prone.
+
+What you really want is an array of points — where each point is a single, indivisible unit.
+
+### Problem 4: It Doesn't Scale
+
+Imagine a contact list application. Each contact has:
+- First name
+- Last name
+- Email
+- Phone number
+- Street address
+- City
+- State
+- Zip code
+- Birthday
+- Notes
+
+That's ten pieces of information per contact. With 100 contacts, you'd need 1,000 variables or 10 parallel arrays. Adding a new field like "company name" means updating everything.
+
+This approach simply doesn't work for real programs.
+
+---
+
+## The Solution: Grouping Data with Structures
+
+A *structure* (sometimes called a *struct*, *record*, or *value type*) lets you create a new type that bundles multiple pieces of data together. Here's our point:
 
 ```rust
 value Point {
@@ -26,131 +150,303 @@ value Point {
 }
 ```
 
-This defines a new type called `Point` with two *fields*: `x` and `y`, both floating-point numbers.
+This defines a new type called `Point`. It has two *fields*: `x` and `y`, both 64-bit floating-point numbers. The `value` keyword tells Viper we're defining a structure.
 
-Now you can create instances of this structure:
+Now we can create points:
 
 ```rust
 var origin = Point { x: 0.0, y: 0.0 };
 var position = Point { x: 10.5, y: 20.3 };
 ```
 
-Each `Point` bundles two values together. You access fields with dot notation:
+Each variable holds a complete point — both coordinates bundled together. You access individual fields with dot notation:
 
 ```rust
 Viper.Terminal.Say(position.x);  // 10.5
 Viper.Terminal.Say(position.y);  // 20.3
-
-position.x = 15.0;  // Modify the x field
 ```
+
+And you can modify fields:
+
+```rust
+position.x = 15.0;
+position.y = 25.0;
+```
+
+### Mental Model: A Box with Labeled Compartments
+
+Think of a structure as a box with multiple compartments, each labeled with a name. A `Point` box has two compartments: one labeled "x" and one labeled "y". When you create a `Point`, you're filling in the compartments with values.
+
+```
+    +------ Point -------+
+    |  x:    |  y:       |
+    |  10.5  |  20.3     |
+    +--------+-----------+
+```
+
+The box travels as a unit. When you pass a `Point` to a function, you're passing the entire box, not separate compartments.
+
+### Mental Model: A Form with Fields
+
+Another way to think about it: a structure is like a paper form. A "Person" form has blanks for name, age, and email. When you fill out the form, all the information stays together on the same piece of paper. You file the form, hand it to someone, or put it in a stack — always as one complete document.
+
+```
+    +------------------------+
+    |   PERSON FORM          |
+    |                        |
+    |   Name:  _Alice_____   |
+    |   Age:   _30________   |
+    |   Email: _alice@..._   |
+    |                        |
+    +------------------------+
+```
+
+### Mental Model: A Row in a Database
+
+If you've seen a database or spreadsheet, think of a structure as defining what columns exist, and an instance (a specific structure value) as one row of data:
+
+```
+Table: Points
++--------+--------+
+|   x    |   y    |
++--------+--------+
+|  0.0   |  0.0   |  <- origin
+|  10.5  |  20.3  |  <- position
+|  -5.0  |  12.0  |  <- another point
++--------+--------+
+```
+
+The structure definition (`value Point { x: f64; y: f64; }`) defines the columns. Each actual `Point` value is one row.
 
 ---
 
-## Why Structures Matter
+## Real-World Examples: Why Grouping Matters
 
-Structures change how you think about data. Instead of managing separate pieces, you work with coherent wholes:
+Before we dive into syntax details, let's see why structures match how we think about the world.
+
+### A Person Has Multiple Attributes
+
+In real life, you don't think of a person as "a name floating in space, plus an age floating somewhere else, plus an email living in another dimension." A person is a unified whole with various attributes. Alice is not three separate things — she's one person who has a name (Alice), an age (30), and an email (alice@example.com).
 
 ```rust
-// Without structures: scattered data
-var name1 = "Alice";
-var age1 = 30;
-var name2 = "Bob";
-var age2 = 25;
-
-// With structures: unified data
 value Person {
     name: string;
     age: i64;
+    email: string;
 }
 
-var alice = Person { name: "Alice", age: 30 };
-var bob = Person { name: "Bob", age: 25 };
+var alice = Person { name: "Alice", age: 30, email: "alice@example.com" };
 ```
 
-You can make arrays of structures:
+Now `alice` is one thing — a person — that you can store, pass around, and work with as a unit.
+
+### A Rectangle Is Defined by Its Dimensions
+
+A rectangle isn't "a width" and "a height." It's a shape that has both properties:
 
 ```rust
-var people: [Person] = [
-    Person { name: "Alice", age: 30 },
-    Person { name: "Bob", age: 25 },
-    Person { name: "Carol", age: 35 }
-];
-
-for person in people {
-    Viper.Terminal.Say(person.name + " is " + person.age);
+value Rectangle {
+    width: f64;
+    height: f64;
 }
+
+var screen = Rectangle { width: 1920.0, height: 1080.0 };
 ```
 
-You can pass structures to functions:
+### A Date Combines Year, Month, and Day
+
+January 15, 2024 isn't three separate numbers. It's a date — one conceptual unit:
 
 ```rust
-func greet(person: Person) {
-    Viper.Terminal.Say("Hello, " + person.name + "!");
+value Date {
+    year: i64;
+    month: i64;
+    day: i64;
 }
 
-greet(alice);
-greet(bob);
+var birthday = Date { year: 1990, month: 7, day: 4 };
 ```
 
-And return them from functions:
+### A Color Mixes Red, Green, and Blue
+
+A color like "coral" isn't separate red, green, and blue values. It's one color composed of those components:
 
 ```rust
-func createPerson(name: string, age: i64) -> Person {
-    return Person { name: name, age: age };
+value Color {
+    red: i64;
+    green: i64;
+    blue: i64;
 }
 
-var dave = createPerson("Dave", 40);
+var coral = Color { red: 255, green: 127, blue: 80 };
 ```
+
+The pattern is universal: whenever multiple pieces of data describe a single concept, they belong in a structure.
 
 ---
 
-## Designing Good Structures
+## Creating and Using Structures
 
-**Group what belongs together.** A `Person` has name, age, email. A `Rectangle` has width and height. A `Song` has title, artist, duration.
+### Defining a Structure
 
-**Keep it focused.** If a structure has too many fields, maybe it should be split. A `Person` probably shouldn't contain `homeAddress`, `workAddress`, `bankAccount`, `medicalHistory` — those are separate concepts.
-
-**Name fields clearly.** Use `firstName` not `fn`, `birthYear` not `by`.
-
----
-
-## Nested Structures
-
-Structures can contain other structures:
+Use the `value` keyword to define a new structure type:
 
 ```rust
-value Address {
-    street: string;
-    city: string;
-    zipCode: string;
+value TypeName {
+    field1: Type1;
+    field2: Type2;
+    // ... more fields
 }
+```
 
-value Person {
-    name: string;
-    age: i64;
-    address: Address;
+Each field has a name and a type. Fields are separated by semicolons.
+
+```rust
+value Book {
+    title: string;
+    author: string;
+    pageCount: i64;
+    price: f64;
 }
+```
 
-var alice = Person {
-    name: "Alice",
-    age: 30,
-    address: Address {
-        street: "123 Main St",
-        city: "Springfield",
-        zipCode: "12345"
-    }
+### Creating Instances
+
+To create a value of your structure type, use the type name followed by field values in braces:
+
+```rust
+var myBook = Book {
+    title: "The Viper Programming Guide",
+    author: "Jane Developer",
+    pageCount: 450,
+    price: 29.99
 };
-
-Viper.Terminal.Say(alice.address.city);  // Springfield
 ```
 
-This lets you model complex, hierarchical data cleanly.
+You must provide values for all fields. The order doesn't matter, but every field must be set:
+
+```rust
+// These are equivalent:
+var book1 = Book { title: "A", author: "B", pageCount: 100, price: 9.99 };
+var book2 = Book { author: "B", price: 9.99, title: "A", pageCount: 100 };
+```
+
+### Accessing Fields
+
+Use dot notation to read field values:
+
+```rust
+Viper.Terminal.Say(myBook.title);      // "The Viper Programming Guide"
+Viper.Terminal.Say(myBook.author);     // "Jane Developer"
+Viper.Terminal.Say(myBook.pageCount);  // 450
+Viper.Terminal.Say(myBook.price);      // 29.99
+```
+
+### Modifying Fields
+
+Use dot notation to change field values:
+
+```rust
+myBook.price = 24.99;  // Sale price!
+myBook.pageCount = 475;  // Added an appendix
+```
 
 ---
 
-## Structures with Methods
+## Value Semantics: What Happens When You Copy?
 
-Structures can have functions attached to them:
+One of the most important concepts to understand about structures is *value semantics*. When you assign one structure variable to another, or pass a structure to a function, you create a *copy* of the entire structure. Changes to the copy don't affect the original.
+
+### Assignment Creates a Copy
+
+```rust
+value Point {
+    x: f64;
+    y: f64;
+}
+
+var p1 = Point { x: 10.0, y: 20.0 };
+var p2 = p1;  // p2 is a COPY of p1
+
+p2.x = 99.0;  // Modify p2
+
+Viper.Terminal.Say(p1.x);  // 10.0 - p1 is unchanged!
+Viper.Terminal.Say(p2.x);  // 99.0 - only p2 changed
+```
+
+This is different from how some languages handle objects, where assignment creates a reference (an alias) to the same underlying data. With value semantics, each variable has its own independent copy.
+
+### Mental Model: Photocopying a Document
+
+Think of structure assignment like photocopying a document. If you have a form filled out with information and you photocopy it, you now have two independent pieces of paper. Writing on the photocopy doesn't change the original. They started with the same information but are now completely separate.
+
+```
+Original p1:          After p2 = p1:           After p2.x = 99:
++-----------+         +-----------+            +-----------+
+| x: 10.0   |         | x: 10.0   | p1         | x: 10.0   | p1
+| y: 20.0   |         | y: 20.0   |            | y: 20.0   |
++-----------+         +-----------+            +-----------+
+                      +-----------+            +-----------+
+                      | x: 10.0   | p2 (copy)  | x: 99.0   | p2
+                      | y: 20.0   |            | y: 20.0   |
+                      +-----------+            +-----------+
+```
+
+### Function Parameters Are Copies
+
+When you pass a structure to a function, the function receives a copy:
+
+```rust
+func tryToModify(point: Point) {
+    point.x = 999.0;  // Modifies the local copy
+    Viper.Terminal.Say("Inside function: " + point.x);  // 999.0
+}
+
+var original = Point { x: 10.0, y: 20.0 };
+tryToModify(original);
+Viper.Terminal.Say("After function: " + original.x);  // 10.0 - unchanged!
+```
+
+The function can modify its copy all it wants, but the original in the calling code is unaffected. This is often what you want — it prevents functions from accidentally corrupting your data.
+
+### Returning Modified Structures
+
+If a function needs to modify a structure and have the caller see the changes, return the modified version:
+
+```rust
+func moveRight(point: Point, amount: f64) -> Point {
+    point.x = point.x + amount;
+    return point;
+}
+
+var p = Point { x: 10.0, y: 20.0 };
+p = moveRight(p, 5.0);  // Replace p with the returned copy
+Viper.Terminal.Say(p.x);  // 15.0
+```
+
+This pattern is explicit: "give me a modified copy" rather than "secretly change my data."
+
+### Why Value Semantics?
+
+Value semantics have important benefits:
+
+1. **Predictability.** You always know that your data won't change unless you explicitly change it or reassign it.
+
+2. **Safety.** Functions can't corrupt your data by accident. If you pass a structure to a function, you know it can't mess with your copy.
+
+3. **Simplicity.** You don't need to think about "is this a reference or a value?" — structures are always values.
+
+4. **Concurrency.** When each copy is independent, you don't have to worry about two parts of your program fighting over the same data.
+
+The tradeoff is that copying takes time and memory, especially for large structures. For most programs, this is negligible. When it matters, there are techniques to handle it (references, covered later).
+
+---
+
+## Methods: Functions That Belong to Values
+
+So far, we've defined structures with data. But behavior is just as important. A `Rectangle` should know how to calculate its own area. A `Point` should know how to compute the distance to another point.
+
+You can define *methods* inside a structure — functions that operate on that structure's data:
 
 ```rust
 value Rectangle {
@@ -164,34 +460,223 @@ value Rectangle {
     func perimeter() -> f64 {
         return 2 * (self.width + self.height);
     }
+}
+```
 
-    func scale(factor: f64) {
-        self.width *= factor;
-        self.height *= factor;
+Now you can call these methods on any `Rectangle`:
+
+```rust
+var rect = Rectangle { width: 10.0, height: 5.0 };
+Viper.Terminal.Say(rect.area());       // 50.0
+Viper.Terminal.Say(rect.perimeter());  // 30.0
+```
+
+### The `self` Keyword
+
+Inside a method, `self` refers to the specific instance the method was called on. When you write `rect.area()`, inside the `area` method, `self` is `rect`. So `self.width` is `rect.width` (10.0) and `self.height` is `rect.height` (5.0).
+
+```rust
+var small = Rectangle { width: 3.0, height: 2.0 };
+var large = Rectangle { width: 100.0, height: 50.0 };
+
+small.area();  // Inside: self is small, returns 6.0
+large.area();  // Inside: self is large, returns 5000.0
+```
+
+### Methods Keep Code Organized
+
+Without methods, you'd write standalone functions:
+
+```rust
+func rectangleArea(rect: Rectangle) -> f64 {
+    return rect.width * rect.height;
+}
+
+var area = rectangleArea(rect);
+```
+
+With methods:
+
+```rust
+var area = rect.area();
+```
+
+Methods have advantages:
+
+1. **Discoverability.** When you type `rect.`, your editor can show you all available methods. With standalone functions, you have to remember function names.
+
+2. **Organization.** Methods live with the data they operate on. The `area` method is inside `Rectangle`, where it belongs.
+
+3. **Natural syntax.** `rect.area()` reads like "rectangle's area" — subject, then verb. It's how we talk about things.
+
+4. **Encapsulation.** Methods have direct access to fields via `self`, so they can work with the data intimately.
+
+### Methods Can Take Parameters
+
+Methods can have parameters in addition to the implicit `self`:
+
+```rust
+value Point {
+    x: f64;
+    y: f64;
+
+    func distance(other: Point) -> f64 {
+        var dx = other.x - self.x;
+        var dy = other.y - self.y;
+        return Viper.Math.sqrt(dx * dx + dy * dy);
+    }
+
+    func midpoint(other: Point) -> Point {
+        return Point {
+            x: (self.x + other.x) / 2,
+            y: (self.y + other.y) / 2
+        };
     }
 }
 
-var rect = Rectangle { width: 10.0, height: 5.0 };
-Viper.Terminal.Say(rect.area());       // 50
-Viper.Terminal.Say(rect.perimeter());  // 30
+var a = Point { x: 0.0, y: 0.0 };
+var b = Point { x: 3.0, y: 4.0 };
 
-rect.scale(2.0);
-Viper.Terminal.Say(rect.area());       // 200
+Viper.Terminal.Say(a.distance(b));  // 5.0 (3-4-5 right triangle)
+
+var mid = a.midpoint(b);
+Viper.Terminal.Say(mid.x);  // 1.5
+Viper.Terminal.Say(mid.y);  // 2.0
 ```
 
-Inside a method, `self` refers to the current instance. `self.width` is this rectangle's width.
+### Methods Can Modify `self`
 
-Methods bundle behavior with data. Instead of `calculateArea(rect)`, you write `rect.area()`. This keeps related code together.
+Methods can change the structure's fields:
+
+```rust
+value Counter {
+    count: i64;
+
+    func increment() {
+        self.count = self.count + 1;
+    }
+
+    func reset() {
+        self.count = 0;
+    }
+
+    func add(amount: i64) {
+        self.count = self.count + amount;
+    }
+}
+
+var c = Counter { count: 0 };
+c.increment();
+c.increment();
+c.increment();
+Viper.Terminal.Say(c.count);  // 3
+
+c.add(10);
+Viper.Terminal.Say(c.count);  // 13
+
+c.reset();
+Viper.Terminal.Say(c.count);  // 0
+```
+
+### Methods Can Return New Instances
+
+A common pattern is methods that return a new structure rather than modifying the original:
+
+```rust
+value Point {
+    x: f64;
+    y: f64;
+
+    func add(other: Point) -> Point {
+        return Point {
+            x: self.x + other.x,
+            y: self.y + other.y
+        };
+    }
+
+    func scale(factor: f64) -> Point {
+        return Point {
+            x: self.x * factor,
+            y: self.y * factor
+        };
+    }
+}
+
+var p = Point { x: 2.0, y: 3.0 };
+var v = Point { x: 1.0, y: 1.0 };
+
+var moved = p.add(v);  // New point at (3.0, 4.0)
+var bigger = p.scale(2.0);  // New point at (4.0, 6.0)
+
+// Original p is unchanged!
+Viper.Terminal.Say(p.x);  // 2.0
+```
+
+This style keeps the original value intact, which can prevent bugs and make code easier to reason about.
 
 ---
 
-## A Complete Example: Game Entities
+## Nested Structures: Values Containing Values
 
-Let's model a simple game with structures:
+Structures can contain other structures. This lets you build complex data models from simpler pieces.
+
+### Building Hierarchies
+
+Consider modeling an address:
 
 ```rust
-module GameDemo;
+value Address {
+    street: string;
+    city: string;
+    state: string;
+    zipCode: string;
+}
+```
 
+Now a `Person` can include an `Address`:
+
+```rust
+value Person {
+    name: string;
+    age: i64;
+    home: Address;
+}
+
+var alice = Person {
+    name: "Alice",
+    age: 30,
+    home: Address {
+        street: "123 Main St",
+        city: "Springfield",
+        state: "IL",
+        zipCode: "62701"
+    }
+};
+```
+
+Access nested fields with chained dots:
+
+```rust
+Viper.Terminal.Say(alice.name);           // "Alice"
+Viper.Terminal.Say(alice.home.city);      // "Springfield"
+Viper.Terminal.Say(alice.home.zipCode);   // "62701"
+```
+
+### Why Nest?
+
+Nesting provides several benefits:
+
+1. **Reusability.** The `Address` type can be used for home address, work address, billing address, shipping address — anywhere you need an address.
+
+2. **Organization.** Instead of `Person` having seven fields (name, age, street, city, state, zipCode, country), it has three meaningful groups: name, age, and address.
+
+3. **Clarity.** `person.home.city` is clearer than `personHomeCity` or trying to remember which of several city fields is which.
+
+### A Game Example
+
+Let's model a game with nested structures:
+
+```rust
 value Vec2 {
     x: f64;
     y: f64;
@@ -207,14 +692,41 @@ value Vec2 {
     }
 }
 
+value Health {
+    current: i64;
+    maximum: i64;
+
+    func percentage() -> f64 {
+        return (self.current * 100) / self.maximum;
+    }
+
+    func isDead() -> bool {
+        return self.current <= 0;
+    }
+
+    func heal(amount: i64) {
+        self.current = self.current + amount;
+        if self.current > self.maximum {
+            self.current = self.maximum;
+        }
+    }
+
+    func damage(amount: i64) {
+        self.current = self.current - amount;
+        if self.current < 0 {
+            self.current = 0;
+        }
+    }
+}
+
 value Player {
     name: string;
     position: Vec2;
-    health: i64;
+    health: Health;
     score: i64;
 
     func isAlive() -> bool {
-        return self.health > 0;
+        return !self.health.isDead();
     }
 
     func move(direction: Vec2) {
@@ -222,62 +734,746 @@ value Player {
     }
 
     func takeDamage(amount: i64) {
-        self.health -= amount;
-        if self.health < 0 {
-            self.health = 0;
+        self.health.damage(amount);
+        if self.health.isDead() {
+            Viper.Terminal.Say(self.name + " has been defeated!");
         }
-    }
-}
-
-value Enemy {
-    position: Vec2;
-    damage: i64;
-
-    func distanceToPlayer(player: Player) -> f64 {
-        return self.position.distance(player.position);
-    }
-}
-
-func start() {
-    var player = Player {
-        name: "Hero",
-        position: Vec2 { x: 0.0, y: 0.0 },
-        health: 100,
-        score: 0
-    };
-
-    var enemy = Enemy {
-        position: Vec2 { x: 5.0, y: 3.0 },
-        damage: 10
-    };
-
-    Viper.Terminal.Say("Game Start!");
-    Viper.Terminal.Say("Player: " + player.name);
-    Viper.Terminal.Say("Health: " + player.health);
-
-    // Simulate movement
-    player.move(Vec2 { x: 1.0, y: 0.5 });
-    Viper.Terminal.Say("Moved to: (" + player.position.x + ", " + player.position.y + ")");
-
-    // Check distance to enemy
-    var dist = enemy.distanceToPlayer(player);
-    Viper.Terminal.Say("Distance to enemy: " + dist);
-
-    // Take damage
-    if dist < 3.0 {
-        player.takeDamage(enemy.damage);
-        Viper.Terminal.Say("Hit! Health: " + player.health);
-    }
-
-    if player.isAlive() {
-        Viper.Terminal.Say("Player survives!");
-    } else {
-        Viper.Terminal.Say("Game Over!");
     }
 }
 ```
 
-This shows how structures model game concepts naturally. Each entity has its data and behaviors bundled together.
+Now creating a player is clean and structured:
+
+```rust
+var hero = Player {
+    name: "Hero",
+    position: Vec2 { x: 0.0, y: 0.0 },
+    health: Health { current: 100, maximum: 100 },
+    score: 0
+};
+
+// Use nested methods
+hero.move(Vec2 { x: 5.0, y: 3.0 });
+hero.takeDamage(25);
+Viper.Terminal.Say(hero.health.percentage());  // 75.0
+```
+
+### Modifying Nested Fields
+
+You can modify nested fields directly:
+
+```rust
+alice.home.city = "Chicago";
+alice.home.zipCode = "60601";
+
+hero.position.x = 100.0;
+hero.health.current = 50;
+```
+
+---
+
+## Default Values and Initialization
+
+When creating structures, you must provide values for all fields. But sometimes you want sensible defaults.
+
+### Factory Functions
+
+Create a function that returns a structure with default values:
+
+```rust
+value Config {
+    volume: i64;
+    difficulty: string;
+    fullscreen: bool;
+    musicEnabled: bool;
+}
+
+func defaultConfig() -> Config {
+    return Config {
+        volume: 50,
+        difficulty: "normal",
+        fullscreen: false,
+        musicEnabled: true
+    };
+}
+
+// Use the defaults
+var settings = defaultConfig();
+
+// Or customize after
+var mySettings = defaultConfig();
+mySettings.difficulty = "hard";
+mySettings.fullscreen = true;
+```
+
+### Multiple Factory Functions
+
+You can have different functions for different scenarios:
+
+```rust
+value Rectangle {
+    width: f64;
+    height: f64;
+}
+
+func square(size: f64) -> Rectangle {
+    return Rectangle { width: size, height: size };
+}
+
+func goldenRectangle(width: f64) -> Rectangle {
+    return Rectangle { width: width, height: width / 1.618 };
+}
+
+func screen(resolution: string) -> Rectangle {
+    if resolution == "720p" {
+        return Rectangle { width: 1280.0, height: 720.0 };
+    } else if resolution == "1080p" {
+        return Rectangle { width: 1920.0, height: 1080.0 };
+    } else if resolution == "4K" {
+        return Rectangle { width: 3840.0, height: 2160.0 };
+    }
+    return Rectangle { width: 800.0, height: 600.0 };
+}
+
+var s = square(100.0);
+var g = goldenRectangle(500.0);
+var display = screen("1080p");
+```
+
+### Initializer Methods
+
+Some structures benefit from having an `init` method pattern:
+
+```rust
+value Circle {
+    centerX: f64;
+    centerY: f64;
+    radius: f64;
+}
+
+func createCircle(x: f64, y: f64, r: f64) -> Circle {
+    return Circle { centerX: x, centerY: y, radius: r };
+}
+
+func circleAtOrigin(radius: f64) -> Circle {
+    return Circle { centerX: 0.0, centerY: 0.0, radius: radius };
+}
+
+func unitCircle() -> Circle {
+    return Circle { centerX: 0.0, centerY: 0.0, radius: 1.0 };
+}
+```
+
+---
+
+## Design Principles: Making Good Structures
+
+### What Should Be a Structure?
+
+**Group data that belongs together.** If values are always used together, they belong in a structure. A point always has x and y together. A person always has name and age together (in your program's context).
+
+**Model real concepts.** Structures should represent things you can name: a Point, a Person, a Rectangle, a Date, a Color, a Transaction. If you can't name it clearly, maybe it shouldn't be a structure.
+
+**Avoid grouping unrelated data.** Don't create a structure just because you have several variables. A `Config` that holds volume, player name, high score, and current level is probably mixing unrelated concerns.
+
+### How Many Fields?
+
+**Small is usually better.** Most well-designed structures have 2-6 fields. If you have 15 fields, consider whether some should be grouped into nested structures.
+
+Too many fields:
+```rust
+// This is unwieldy
+value Person {
+    firstName: string;
+    lastName: string;
+    birthYear: i64;
+    birthMonth: i64;
+    birthDay: i64;
+    streetAddress: string;
+    city: string;
+    state: string;
+    zipCode: string;
+    country: string;
+    phoneCountryCode: string;
+    phoneAreaCode: string;
+    phoneNumber: string;
+    // ... and so on
+}
+```
+
+Better with nesting:
+```rust
+value Date {
+    year: i64;
+    month: i64;
+    day: i64;
+}
+
+value Address {
+    street: string;
+    city: string;
+    state: string;
+    zipCode: string;
+    country: string;
+}
+
+value Phone {
+    countryCode: string;
+    areaCode: string;
+    number: string;
+}
+
+value Person {
+    firstName: string;
+    lastName: string;
+    birthday: Date;
+    address: Address;
+    phone: Phone;
+}
+```
+
+### Name Fields Clearly
+
+**Be descriptive.** Use `firstName`, not `fn`. Use `birthYear`, not `by`. Use `screenWidth`, not `sw`.
+
+**Be consistent.** If you use `width` and `height` in one structure, don't use `w` and `h` in another.
+
+**Avoid abbreviations** unless they're universally understood (`x`, `y` for coordinates are fine).
+
+### Structure vs. Separate Variables
+
+When should you use a structure versus keeping variables separate?
+
+**Use a structure when:**
+- The data represents a single concept
+- The data is always passed together
+- The data would be stored together in a database row
+- You'll have multiple instances (multiple people, multiple rectangles)
+- You want methods that operate on the data
+
+**Use separate variables when:**
+- The data represents different concepts (program name, version number, author — related to your app but not to each other)
+- The values are rarely used together
+- You'll only ever have one instance
+- The scope is very local (temporary loop variables)
+
+---
+
+## Practical Examples
+
+Let's see structures in action with several complete examples.
+
+### Example: Playing Cards
+
+```rust
+value Card {
+    suit: string;    // "Hearts", "Diamonds", "Clubs", "Spades"
+    rank: string;    // "2"-"10", "J", "Q", "K", "A"
+
+    func display() -> string {
+        return self.rank + " of " + self.suit;
+    }
+
+    func value() -> i64 {
+        if self.rank == "A" {
+            return 11;
+        } else if self.rank == "K" || self.rank == "Q" || self.rank == "J" {
+            return 10;
+        } else {
+            return Viper.Parse.Int(self.rank);
+        }
+    }
+}
+
+func createDeck() -> [Card] {
+    var deck: [Card] = [];
+    var suits = ["Hearts", "Diamonds", "Clubs", "Spades"];
+    var ranks = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"];
+
+    for suit in suits {
+        for rank in ranks {
+            deck.push(Card { suit: suit, rank: rank });
+        }
+    }
+
+    return deck;
+}
+
+func start() {
+    var deck = createDeck();
+    Viper.Terminal.Say("Deck has " + deck.length + " cards");  // 52
+
+    // Show some cards
+    Viper.Terminal.Say(deck[0].display());   // "2 of Hearts"
+    Viper.Terminal.Say(deck[51].display());  // "A of Spades"
+}
+```
+
+### Example: 2D Geometry
+
+```rust
+value Point {
+    x: f64;
+    y: f64;
+
+    func toString() -> string {
+        return "(" + self.x + ", " + self.y + ")";
+    }
+
+    func distance(other: Point) -> f64 {
+        var dx = other.x - self.x;
+        var dy = other.y - self.y;
+        return Viper.Math.sqrt(dx * dx + dy * dy);
+    }
+
+    func midpoint(other: Point) -> Point {
+        return Point {
+            x: (self.x + other.x) / 2,
+            y: (self.y + other.y) / 2
+        };
+    }
+}
+
+value Rectangle {
+    topLeft: Point;
+    width: f64;
+    height: f64;
+
+    func area() -> f64 {
+        return self.width * self.height;
+    }
+
+    func perimeter() -> f64 {
+        return 2 * (self.width + self.height);
+    }
+
+    func center() -> Point {
+        return Point {
+            x: self.topLeft.x + self.width / 2,
+            y: self.topLeft.y + self.height / 2
+        };
+    }
+
+    func bottomRight() -> Point {
+        return Point {
+            x: self.topLeft.x + self.width,
+            y: self.topLeft.y + self.height
+        };
+    }
+
+    func contains(point: Point) -> bool {
+        return point.x >= self.topLeft.x &&
+               point.x <= self.topLeft.x + self.width &&
+               point.y >= self.topLeft.y &&
+               point.y <= self.topLeft.y + self.height;
+    }
+}
+
+func start() {
+    var rect = Rectangle {
+        topLeft: Point { x: 10.0, y: 20.0 },
+        width: 100.0,
+        height: 50.0
+    };
+
+    Viper.Terminal.Say("Area: " + rect.area());         // 5000.0
+    Viper.Terminal.Say("Center: " + rect.center().toString());  // (60.0, 45.0)
+
+    var testPoint = Point { x: 50.0, y: 40.0 };
+    if rect.contains(testPoint) {
+        Viper.Terminal.Say("Point is inside rectangle");
+    }
+}
+```
+
+### Example: Student Grades
+
+```rust
+value Student {
+    name: string;
+    grades: [i64];
+
+    func average() -> f64 {
+        if self.grades.length == 0 {
+            return 0.0;
+        }
+        var sum = 0;
+        for grade in self.grades {
+            sum = sum + grade;
+        }
+        return sum / self.grades.length;
+    }
+
+    func highest() -> i64 {
+        if self.grades.length == 0 {
+            return 0;
+        }
+        var max = self.grades[0];
+        for grade in self.grades {
+            if grade > max {
+                max = grade;
+            }
+        }
+        return max;
+    }
+
+    func lowest() -> i64 {
+        if self.grades.length == 0 {
+            return 0;
+        }
+        var min = self.grades[0];
+        for grade in self.grades {
+            if grade < min {
+                min = grade;
+            }
+        }
+        return min;
+    }
+
+    func letterGrade() -> string {
+        var avg = self.average();
+        if avg >= 90 {
+            return "A";
+        } else if avg >= 80 {
+            return "B";
+        } else if avg >= 70 {
+            return "C";
+        } else if avg >= 60 {
+            return "D";
+        }
+        return "F";
+    }
+
+    func addGrade(grade: i64) {
+        self.grades.push(grade);
+    }
+
+    func report() {
+        Viper.Terminal.Say("Student: " + self.name);
+        Viper.Terminal.Say("  Grades: " + self.grades.length);
+        Viper.Terminal.Say("  Average: " + self.average());
+        Viper.Terminal.Say("  Highest: " + self.highest());
+        Viper.Terminal.Say("  Lowest: " + self.lowest());
+        Viper.Terminal.Say("  Letter: " + self.letterGrade());
+    }
+}
+
+func start() {
+    var alice = Student { name: "Alice", grades: [92, 88, 95, 87, 91] };
+    var bob = Student { name: "Bob", grades: [78, 82, 75, 80, 79] };
+
+    alice.report();
+    Viper.Terminal.Say("");
+    bob.report();
+
+    // Add a new grade
+    bob.addGrade(90);
+    Viper.Terminal.Say("");
+    Viper.Terminal.Say("After Bob's new test:");
+    bob.report();
+}
+```
+
+### Example: Simple Inventory System
+
+```rust
+value Item {
+    name: string;
+    weight: f64;
+    value: i64;
+
+    func toString() -> string {
+        return self.name + " (weight: " + self.weight + ", value: " + self.value + ")";
+    }
+}
+
+value Inventory {
+    items: [Item];
+    maxWeight: f64;
+
+    func currentWeight() -> f64 {
+        var total = 0.0;
+        for item in self.items {
+            total = total + item.weight;
+        }
+        return total;
+    }
+
+    func totalValue() -> i64 {
+        var total = 0;
+        for item in self.items {
+            total = total + item.value;
+        }
+        return total;
+    }
+
+    func canAdd(item: Item) -> bool {
+        return self.currentWeight() + item.weight <= self.maxWeight;
+    }
+
+    func add(item: Item) -> bool {
+        if self.canAdd(item) {
+            self.items.push(item);
+            return true;
+        }
+        return false;
+    }
+
+    func display() {
+        Viper.Terminal.Say("=== Inventory ===");
+        if self.items.length == 0 {
+            Viper.Terminal.Say("  (empty)");
+        } else {
+            for item in self.items {
+                Viper.Terminal.Say("  - " + item.toString());
+            }
+        }
+        Viper.Terminal.Say("Weight: " + self.currentWeight() + " / " + self.maxWeight);
+        Viper.Terminal.Say("Value: " + self.totalValue());
+    }
+}
+
+func start() {
+    var backpack = Inventory {
+        items: [],
+        maxWeight: 50.0
+    };
+
+    var sword = Item { name: "Iron Sword", weight: 10.0, value: 100 };
+    var shield = Item { name: "Wooden Shield", weight: 8.0, value: 50 };
+    var potion = Item { name: "Health Potion", weight: 0.5, value: 25 };
+    var armor = Item { name: "Heavy Armor", weight: 40.0, value: 500 };
+
+    backpack.add(sword);
+    backpack.add(shield);
+    backpack.add(potion);
+    backpack.add(potion);
+    backpack.add(potion);
+
+    backpack.display();
+
+    Viper.Terminal.Say("");
+    if backpack.add(armor) {
+        Viper.Terminal.Say("Added armor!");
+    } else {
+        Viper.Terminal.Say("Can't add armor - too heavy!");
+    }
+}
+```
+
+---
+
+## A Complete Example: Game Entities
+
+Let's put everything together in a more complex game example:
+
+```rust
+module GameDemo;
+
+value Vec2 {
+    x: f64;
+    y: f64;
+
+    func add(other: Vec2) -> Vec2 {
+        return Vec2 { x: self.x + other.x, y: self.y + other.y };
+    }
+
+    func subtract(other: Vec2) -> Vec2 {
+        return Vec2 { x: self.x - other.x, y: self.y - other.y };
+    }
+
+    func scale(factor: f64) -> Vec2 {
+        return Vec2 { x: self.x * factor, y: self.y * factor };
+    }
+
+    func length() -> f64 {
+        return Viper.Math.sqrt(self.x * self.x + self.y * self.y);
+    }
+
+    func distance(other: Vec2) -> f64 {
+        return self.subtract(other).length();
+    }
+
+    func toString() -> string {
+        return "(" + self.x + ", " + self.y + ")";
+    }
+}
+
+value Stats {
+    health: i64;
+    maxHealth: i64;
+    attack: i64;
+    defense: i64;
+
+    func healthPercent() -> i64 {
+        return (self.health * 100) / self.maxHealth;
+    }
+
+    func isAlive() -> bool {
+        return self.health > 0;
+    }
+
+    func takeDamage(amount: i64) -> i64 {
+        var actualDamage = amount - self.defense;
+        if actualDamage < 1 {
+            actualDamage = 1;  // Minimum 1 damage
+        }
+        self.health = self.health - actualDamage;
+        if self.health < 0 {
+            self.health = 0;
+        }
+        return actualDamage;
+    }
+
+    func heal(amount: i64) {
+        self.health = self.health + amount;
+        if self.health > self.maxHealth {
+            self.health = self.maxHealth;
+        }
+    }
+}
+
+value Player {
+    name: string;
+    position: Vec2;
+    stats: Stats;
+    score: i64;
+    level: i64;
+
+    func move(direction: Vec2) {
+        self.position = self.position.add(direction);
+    }
+
+    func attack(target: Enemy) -> i64 {
+        var damage = target.stats.takeDamage(self.stats.attack);
+        if !target.stats.isAlive() {
+            self.score = self.score + target.pointValue;
+            Viper.Terminal.Say(self.name + " defeated " + target.name + "!");
+            Viper.Terminal.Say("  +" + target.pointValue + " points");
+        }
+        return damage;
+    }
+
+    func statusReport() {
+        Viper.Terminal.Say("=== " + self.name + " ===");
+        Viper.Terminal.Say("  Level: " + self.level);
+        Viper.Terminal.Say("  Position: " + self.position.toString());
+        Viper.Terminal.Say("  Health: " + self.stats.health + "/" + self.stats.maxHealth);
+        Viper.Terminal.Say("  Attack: " + self.stats.attack);
+        Viper.Terminal.Say("  Defense: " + self.stats.defense);
+        Viper.Terminal.Say("  Score: " + self.score);
+    }
+}
+
+value Enemy {
+    name: string;
+    position: Vec2;
+    stats: Stats;
+    pointValue: i64;
+
+    func distanceTo(player: Player) -> f64 {
+        return self.position.distance(player.position);
+    }
+
+    func canAttack(player: Player) -> bool {
+        return self.distanceTo(player) < 2.0;
+    }
+
+    func attack(player: Player) -> i64 {
+        return player.stats.takeDamage(self.stats.attack);
+    }
+}
+
+func createPlayer(name: string) -> Player {
+    return Player {
+        name: name,
+        position: Vec2 { x: 0.0, y: 0.0 },
+        stats: Stats {
+            health: 100,
+            maxHealth: 100,
+            attack: 15,
+            defense: 5
+        },
+        score: 0,
+        level: 1
+    };
+}
+
+func createGoblin(x: f64, y: f64) -> Enemy {
+    return Enemy {
+        name: "Goblin",
+        position: Vec2 { x: x, y: y },
+        stats: Stats {
+            health: 30,
+            maxHealth: 30,
+            attack: 8,
+            defense: 2
+        },
+        pointValue: 10
+    };
+}
+
+func createOrc(x: f64, y: f64) -> Enemy {
+    return Enemy {
+        name: "Orc",
+        position: Vec2 { x: x, y: y },
+        stats: Stats {
+            health: 50,
+            maxHealth: 50,
+            attack: 12,
+            defense: 5
+        },
+        pointValue: 25
+    };
+}
+
+func start() {
+    Viper.Terminal.Say("=== Adventure Game Demo ===");
+    Viper.Terminal.Say("");
+
+    var hero = createPlayer("Hero");
+    var goblin = createGoblin(3.0, 0.0);
+    var orc = createOrc(5.0, 2.0);
+
+    hero.statusReport();
+
+    Viper.Terminal.Say("");
+    Viper.Terminal.Say("A goblin appears!");
+
+    // Move toward goblin
+    hero.move(Vec2 { x: 2.0, y: 0.0 });
+    Viper.Terminal.Say("Hero moves to " + hero.position.toString());
+    Viper.Terminal.Say("Distance to goblin: " + goblin.distanceTo(hero));
+
+    // Combat
+    Viper.Terminal.Say("");
+    Viper.Terminal.Say("Combat begins!");
+
+    while hero.stats.isAlive() && goblin.stats.isAlive() {
+        // Hero attacks
+        var damage = hero.attack(goblin);
+        Viper.Terminal.Say("Hero deals " + damage + " damage to Goblin");
+
+        if goblin.stats.isAlive() {
+            // Goblin attacks back
+            damage = goblin.attack(hero);
+            Viper.Terminal.Say("Goblin deals " + damage + " damage to Hero");
+        }
+
+        Viper.Terminal.Say("  Hero HP: " + hero.stats.health + " | Goblin HP: " + goblin.stats.health);
+    }
+
+    Viper.Terminal.Say("");
+    hero.statusReport();
+}
+```
+
+This example demonstrates:
+- Nested structures (`Player` contains `Vec2` and `Stats`)
+- Methods that operate on the data they contain
+- Factory functions for creating instances with sensible defaults
+- Structures interacting with each other
+- Clear separation of concerns (position logic in `Vec2`, health logic in `Stats`)
 
 ---
 
@@ -336,29 +1532,42 @@ Pascal uses `record` for structures. Methods require using objects (covered in P
 
 ---
 
-## Structures vs. Classes
+## Structures vs. Classes (Preview)
 
-Structures are great for simple data containers. But they have limitations:
-- No inheritance (can't create specialized versions)
-- No polymorphism (can't treat different types uniformly)
-- Methods are simple (no virtual dispatch)
+Structures with value semantics are great for simple data containers. But they have limitations:
 
-For more complex needs, we use *classes*, which we'll cover in Part III. For now, structures handle most cases.
+- **No inheritance.** You can't create a `ColoredPoint` that's a special kind of `Point`.
+- **No polymorphism.** You can't write code that works with "any shape" and pass rectangles, circles, and triangles.
+- **Methods are simple.** There's no way to override a method in a "child" type.
+- **Copying can be expensive.** For large structures passed frequently, making copies has a cost.
+
+For more complex needs, we use *entities* (similar to classes in other languages), which we'll cover in Part III. Entities have reference semantics (assigning creates an alias, not a copy), support inheritance and polymorphism, and offer more flexibility.
+
+For now, structures handle most cases beautifully. They're simpler, safer, and sufficient for organizing data in the majority of programs. When you truly need the power of entities, you'll know — and we'll be ready to teach you.
 
 ---
 
 ## Common Patterns
 
-### Factory function
+### Factory Functions
+
+Create instances with validated or computed values:
+
 ```rust
 func createPoint(x: f64, y: f64) -> Point {
     return Point { x: x, y: y };
 }
 
-var p = createPoint(3.0, 4.0);
+func pointFromAngle(angle: f64, distance: f64) -> Point {
+    return Point {
+        x: distance * Viper.Math.cos(angle),
+        y: distance * Viper.Math.sin(angle)
+    };
+}
 ```
 
-### Default values
+### Default Configurations
+
 ```rust
 value Config {
     volume: i64;
@@ -368,42 +1577,105 @@ value Config {
 func defaultConfig() -> Config {
     return Config { volume: 50, difficulty: "normal" };
 }
+
+func hardConfig() -> Config {
+    return Config { volume: 70, difficulty: "hard" };
+}
 ```
 
-### Updating fields
+### Builder Pattern
+
+For structures with many optional fields, build them step by step:
+
 ```rust
-var person = Person { name: "Alice", age: 30 };
-person.age = 31;  // Happy birthday!
+value Character {
+    name: string;
+    health: i64;
+    attack: i64;
+    defense: i64;
+    speed: i64;
+}
+
+func baseCharacter(name: string) -> Character {
+    return Character {
+        name: name,
+        health: 100,
+        attack: 10,
+        defense: 10,
+        speed: 10
+    };
+}
+
+// Then customize:
+var warrior = baseCharacter("Warrior");
+warrior.health = 150;
+warrior.attack = 20;
+warrior.defense = 15;
+warrior.speed = 5;
+
+var rogue = baseCharacter("Rogue");
+rogue.health = 80;
+rogue.attack = 25;
+rogue.defense = 5;
+rogue.speed = 20;
 ```
 
-### Comparing structures
+### Comparing Structures
+
 ```rust
 func pointsEqual(a: Point, b: Point) -> bool {
     return a.x == b.x && a.y == b.y;
 }
+
+func pointsNearlyEqual(a: Point, b: Point, tolerance: f64) -> bool {
+    return a.distance(b) < tolerance;
+}
+```
+
+### Converting to String
+
+```rust
+value Person {
+    name: string;
+    age: i64;
+
+    func toString() -> string {
+        return self.name + " (age " + self.age + ")";
+    }
+}
+
+var p = Person { name: "Alice", age: 30 };
+Viper.Terminal.Say(p.toString());  // "Alice (age 30)"
 ```
 
 ---
 
 ## Common Mistakes
 
-**Forgetting to initialize all fields:**
+### Forgetting to Initialize All Fields
+
 ```rust
 var p = Point { x: 5.0 };  // Error: y is not initialized
 var p = Point { x: 5.0, y: 0.0 };  // Correct
 ```
 
-**Confusing the type and an instance:**
+Every field must have a value. If you want "optional" fields, use default values in factory functions.
+
+### Confusing the Type and an Instance
+
 ```rust
 Point.x = 5.0;  // Wrong: Point is the type, not an instance
 var p = Point { x: 5.0, y: 3.0 };  // Create an instance
 p.x = 5.0;  // Now you can access fields
 ```
 
-**Copying when you want to modify:**
+`Point` is a blueprint. `p` is an actual point made from that blueprint.
+
+### Expecting Changes to Persist Through Functions
+
 ```rust
 func birthday(person: Person) {
-    person.age += 1;  // Modifies a copy, not the original!
+    person.age = person.age + 1;  // Modifies a copy!
 }
 
 var alice = Person { name: "Alice", age: 30 };
@@ -411,39 +1683,121 @@ birthday(alice);
 Viper.Terminal.Say(alice.age);  // Still 30!
 ```
 
-When structures are passed to functions, they may be copied. To modify the original, return the modified version or use references (covered later).
+Remember value semantics: the function gets a copy. To actually update:
+
+```rust
+func birthday(person: Person) -> Person {
+    person.age = person.age + 1;
+    return person;
+}
+
+var alice = Person { name: "Alice", age: 30 };
+alice = birthday(alice);  // Assign the returned copy back
+Viper.Terminal.Say(alice.age);  // 31
+```
+
+### Misspelling Field Names
+
+```rust
+var p = Point { x: 5.0, Y: 3.0 };  // Error: 'Y' is not a field (it's 'y')
+```
+
+Field names are case-sensitive. The compiler will catch this.
+
+### Modifying Through the Wrong Variable
+
+```rust
+var p1 = Point { x: 10.0, y: 20.0 };
+var p2 = p1;  // Copy
+p2.x = 99.0;
+// Don't expect p1 to change!
+```
+
+After copying, `p1` and `p2` are completely independent.
 
 ---
 
 ## Summary
 
-- Structures group related data under one name
-- Define with `value Name { fields... }`
+Structures are fundamental to organizing data in programs. Here's what you've learned:
+
+**Core Concepts:**
+- Structures bundle related data under a single name
+- Define with `value TypeName { fields... }`
 - Create instances with `TypeName { field: value, ... }`
 - Access fields with `instance.field`
-- Methods are functions defined inside structures, using `self`
-- Structures can be nested inside other structures
-- Use structures to model entities in your programs
-- Keep structures focused on one concept
+
+**Value Semantics:**
+- Assignment creates a copy
+- Function parameters are copies
+- Changes to copies don't affect originals
+- Return modified copies to share changes
+
+**Methods:**
+- Functions defined inside structures
+- Use `self` to access the current instance
+- Can read fields, modify fields, take parameters, return values
+- Keep behavior with the data it operates on
+
+**Nested Structures:**
+- Structures can contain other structures
+- Build complex data models from simple pieces
+- Access nested fields with chained dots
+
+**Design Principles:**
+- Group data that belongs together
+- Model real concepts
+- Keep structures focused (2-6 fields typical)
+- Name fields clearly
+- Use factory functions for default values
+
+**When to Use Structures:**
+- Multiple pieces of data describe one concept
+- Data is always used together
+- You'll have multiple instances
+- You want methods on the data
 
 ---
 
 ## Exercises
 
-**Exercise 11.1**: Create a `Book` structure with title, author, and pageCount. Create an array of 3 books and print them.
+**Exercise 11.1**: Create a `Book` structure with title, author, and pageCount. Create an array of 3 books and print information about each one.
 
-**Exercise 11.2**: Create a `Circle` structure with radius. Add methods for `area()` and `circumference()`.
+**Exercise 11.2**: Create a `Circle` structure with radius. Add methods for `area()`, `circumference()`, and `diameter()`. Create several circles and test the methods.
 
-**Exercise 11.3**: Create a `Student` structure with name and an array of test scores. Add a method `average()` that returns the average score.
+**Exercise 11.3**: Create a `Student` structure with name and an array of test scores. Add methods `average()`, `highest()`, `lowest()`, and `letterGrade()`.
 
-**Exercise 11.4**: Create `Date` structure with year, month, day. Add a method `isLeapYear()` that returns true if the year is a leap year.
+**Exercise 11.4**: Create a `Date` structure with year, month, day. Add methods:
+- `isLeapYear()` - returns true if the year is a leap year
+- `daysInMonth()` - returns the number of days in the month
+- `toString()` - returns something like "March 15, 2024"
 
-**Exercise 11.5**: Create a `BankAccount` structure with ownerName and balance. Add methods `deposit(amount)` and `withdraw(amount)`. Prevent withdrawing more than the balance.
+**Exercise 11.5**: Create a `BankAccount` structure with ownerName and balance. Add methods:
+- `deposit(amount)` - adds to balance (if amount > 0)
+- `withdraw(amount)` - subtracts from balance (if sufficient funds)
+- `transfer(other, amount)` - moves money to another account
+- `statement()` - prints account information
 
-**Exercise 11.6** (Challenge): Create a mini contact book using structures. Store contacts with name, phone, and email. Support adding, listing, and searching contacts.
+**Exercise 11.6**: Create nested structures for an address book:
+- `Address` with street, city, state, zipCode
+- `Contact` with name, phone, email, and address
+- Methods to display contact information nicely
+
+**Exercise 11.7** (Challenge): Create a simple card game:
+- `Card` structure with suit and rank
+- `Hand` structure with an array of cards
+- Methods to add cards, remove cards, calculate total value
+- A function that creates and shuffles a deck
+
+**Exercise 11.8** (Challenge): Create a mini contact manager:
+- Store contacts with name, phone, and email
+- Support adding contacts
+- Support listing all contacts
+- Support searching by name
+- Support updating a contact's information
 
 ---
 
-*We've created our own data types. But our programs are still in single files. Next, we learn to organize code across multiple files using modules.*
+*We've learned to create our own data types — a major milestone in programming. But our programs still live in single files, and we're limited to what we write ourselves. Next, we learn to organize code across multiple files and use code written by others through modules.*
 
-*[Continue to Chapter 12: Modules →](12-modules.md)*
+*[Continue to Chapter 12: Modules ->](12-modules.md)*
