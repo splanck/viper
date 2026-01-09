@@ -854,6 +854,9 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const
         case MOpcode::StrFprBaseImm:
             emitStrFprToBase(os, getReg(mi.ops[0]), getReg(mi.ops[1]), getImm(mi.ops[2]));
             return;
+        case MOpcode::TstRR:
+            emitTstRR(os, getReg(mi.ops[0]), getReg(mi.ops[1]));
+            return;
         default:
             break;
     }

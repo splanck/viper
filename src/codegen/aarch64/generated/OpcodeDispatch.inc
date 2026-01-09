@@ -122,9 +122,6 @@ switch (mi.opc)
     case K::CmpRI:
         emitCmpRI(os, reg(mi.ops[0]), imm(mi.ops[1]));
         break;
-    case K::TstRR:
-        emitTstRR(os, reg(mi.ops[0]), reg(mi.ops[1]));
-        break;
     case K::Cset:
         emitCset(os, reg(mi.ops[0]), mi.ops[1].cond);
         break;

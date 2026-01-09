@@ -432,6 +432,64 @@ void VM::refreshDebugFlags()
     varWatchActive_ = debug.hasVarWatches();
 }
 
+//===----------------------------------------------------------------------===//
+// Buffer Pool Management
+//===----------------------------------------------------------------------===//
+
+std::vector<uint8_t> VM::acquireStackBuffer(size_t size)
+{
+    if (!stackBufferPool_.empty())
+    {
+        auto buf = std::move(stackBufferPool_.back());
+        stackBufferPool_.pop_back();
+        buf.resize(size);
+        return buf;
+    }
+    return std::vector<uint8_t>(size);
+}
+
+void VM::releaseStackBuffer(std::vector<uint8_t> &&buf)
+{
+    if (stackBufferPool_.size() < kStackBufferPoolSize)
+    {
+        // Clear but keep capacity for reuse
+        buf.clear();
+        stackBufferPool_.push_back(std::move(buf));
+    }
+    // Otherwise let buffer be deallocated
+}
+
+std::vector<Slot> VM::acquireRegFile(size_t size)
+{
+    if (!regFilePool_.empty())
+    {
+        auto regs = std::move(regFilePool_.back());
+        regFilePool_.pop_back();
+        regs.resize(size);
+        return regs;
+    }
+    return std::vector<Slot>(size);
+}
+
+void VM::releaseRegFile(std::vector<Slot> &&regs)
+{
+    if (regFilePool_.size() < kRegisterFilePoolSize)
+    {
+        regs.clear();
+        regFilePool_.push_back(std::move(regs));
+    }
+}
+
+void VM::releaseFrameBuffers(Frame &fr)
+{
+    releaseStackBuffer(std::move(fr.stack));
+    releaseRegFile(std::move(fr.regs));
+}
+
+//===----------------------------------------------------------------------===//
+// Frame Setup
+//===----------------------------------------------------------------------===//
+
 /// @brief Initialise a fresh frame for executing @p fn.
 ///
 /// Prepares the block lookup map, seeds parameter slots, verifies the argument
@@ -465,10 +523,10 @@ Frame VM::setupFrame(const Function &fn,
     // Use shared helper to compute/cache register file size
     const size_t maxSsaId = detail::VMAccess::computeMaxSsaId(*this, fn);
 
-    // Pre-size register vector to maximum SSA ID + 1 (IDs are 0-based)
-    // This eliminates incremental vector growth in storeResult hot path
+    // Acquire register file from pool or allocate new.
+    // Pool reuse avoids repeated allocations for recursive/repeated calls.
     const size_t regCount = maxSsaId + 1;
-    fr.regs.resize(regCount);
+    fr.regs = acquireRegFile(regCount);
 
     if (isVmDebugLoggingEnabled())
     {
@@ -480,10 +538,9 @@ Frame VM::setupFrame(const Function &fn,
         std::fflush(stderr);
     }
     fr.params.assign(fr.regs.size(), std::nullopt);
-    // Initialize operand stack to the configured size. The vector is sized once
-    // here and should not be resized during execution to avoid invalidating
-    // pointers returned by prior alloca operations.
-    fr.stack.resize(stackBytes_);
+    // Acquire stack buffer from pool or allocate new.
+    // Pool reuse avoids repeated 64KB allocations.
+    fr.stack = acquireStackBuffer(stackBytes_);
     fr.sp = 0;
     fr.ehStack.clear();
     fr.activeError = {};

@@ -39,23 +39,24 @@
 static const size_t kImmortalRefcnt = SIZE_MAX - 1;
 
 /// @brief Retrieve the heap header associated with a runtime string.
-/// @details Returns `NULL` for literal strings that are not backed by the shared
-///          heap and asserts that heap-backed strings carry the expected kind.
-///          Callers use this to peek at reference counts or capacities without
-///          duplicating validation logic.
+/// @details Returns `NULL` for literal strings and embedded (SSO) strings that
+///          are not backed by the shared heap. Asserts that heap-backed strings
+///          carry the expected kind. Callers use this to peek at reference counts
+///          or capacities without duplicating validation logic.
 /// @param s Runtime string handle.
-/// @return Heap header describing the allocation, or `NULL` for literals.
+/// @return Heap header describing the allocation, or `NULL` for literals/embedded.
 static rt_heap_hdr_t *rt_string_header(rt_string s)
 {
-    if (!s || !s->heap)
+    if (!s || !s->heap || s->heap == RT_SSO_SENTINEL)
         return NULL;
     assert(s->heap->kind == RT_HEAP_STRING);
     return s->heap;
 }
 
 /// @brief Report the byte length of a runtime string payload.
-/// @details Handles both literal strings (which store the length inline) and
-///          heap-backed strings (which derive the length from the heap header).
+/// @details Handles literal strings, embedded (SSO) strings, and heap-backed
+///          strings. Literal and embedded strings store the length in literal_len,
+///          while heap-backed strings derive the length from the heap header.
 ///          Null handles yield zero, allowing callers to treat them as empty.
 /// @param s Runtime string handle.
 /// @return Number of bytes in the string, excluding the terminator.
@@ -63,7 +64,9 @@ static size_t rt_string_len_bytes(rt_string s)
 {
     if (!s)
         return 0;
-    if (!s->heap)
+    // Literal strings (heap == NULL) and embedded strings (heap == RT_SSO_SENTINEL)
+    // both store length in literal_len
+    if (!s->heap || s->heap == RT_SSO_SENTINEL)
         return s->literal_len;
     (void)rt_string_header(s);
     return rt_heap_len(s->data);
@@ -79,6 +82,67 @@ static int rt_string_is_immortal_hdr(const rt_heap_hdr_t *hdr)
     if (!hdr)
         return 0;
     return __atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED) >= kImmortalRefcnt;
+}
+
+/// @brief Check if a string uses embedded (SSO) storage.
+/// @param s Runtime string handle.
+/// @return Non-zero if string uses embedded storage.
+static int rt_string_is_embedded(rt_string s)
+{
+    return s && s->heap == RT_SSO_SENTINEL;
+}
+
+/// @brief Check if a string can be extended in-place for concatenation.
+/// @details Returns non-zero if:
+///          - String is heap-backed (not literal or SSO)
+///          - Reference count is exactly 1 (sole owner)
+///          - String is not immortal
+///          - Capacity is sufficient for the required length
+/// @param s Runtime string handle.
+/// @param required_len Total length required (including null terminator capacity).
+/// @return Non-zero if in-place append is possible.
+static int rt_string_can_append_inplace(rt_string s, size_t required_len)
+{
+    rt_heap_hdr_t *hdr = rt_string_header(s);
+    if (!hdr)
+        return 0; // Not heap-backed
+    if (rt_string_is_immortal_hdr(hdr))
+        return 0; // Immortal strings cannot be modified
+    size_t refcnt = __atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED);
+    if (refcnt != 1)
+        return 0; // Not sole owner
+    // Capacity stores the total allocation size (includes space for null)
+    if (hdr->cap < required_len)
+        return 0; // Not enough capacity
+    return 1;
+}
+
+/// @brief Allocate a runtime string with embedded data storage.
+/// @details For small strings, this allocates the handle and string data in a
+///          single allocation, with the data following immediately after the
+///          rt_string_impl struct. This eliminates one heap allocation compared
+///          to the traditional two-allocation approach.
+/// @param len Number of bytes in the string (must be <= RT_SSO_MAX_LEN).
+/// @return Newly allocated embedded string, or NULL on failure.
+static rt_string rt_string_alloc_embedded(size_t len)
+{
+    assert(len <= RT_SSO_MAX_LEN);
+    // Allocate struct + string data + null terminator in one block
+    size_t total = sizeof(struct rt_string_impl) + len + 1;
+    rt_string s = (rt_string)rt_alloc((int64_t)total);
+    if (!s)
+    {
+        rt_trap("rt_string_alloc_embedded: alloc");
+        return NULL;
+    }
+    s->magic = RT_STRING_MAGIC;
+    // Data is embedded immediately after the struct
+    s->data = (char *)(s + 1);
+    s->heap = RT_SSO_SENTINEL;
+    s->literal_len = len;
+    s->literal_refs = 1; // Reference count for embedded strings
+    s->data[len] = '\0';
+    return s;
 }
 
 /// @brief Wrap a raw heap payload in a runtime string handle.
@@ -109,9 +173,11 @@ static rt_string rt_string_wrap(char *payload)
 }
 
 /// @brief Allocate a mutable runtime string with the requested length/capacity.
-/// @details Uses the shared heap allocator, ensures the capacity accounts for a
-///          trailing null terminator, and traps on overflow or allocation
-///          failure.  The payload is zero-terminated before being wrapped.
+/// @details Uses embedded allocation for small strings (len <= RT_SSO_MAX_LEN),
+///          otherwise uses the shared heap allocator. Ensures the capacity
+///          accounts for a trailing null terminator, and traps on overflow or
+///          allocation failure. The payload is zero-terminated before being
+///          wrapped.
 /// @param len Number of bytes initially considered part of the string.
 /// @param cap Requested capacity (bytes) excluding the implicit terminator.
 /// @return Newly allocated runtime string handle, or `NULL` on failure.
@@ -121,6 +187,11 @@ static rt_string rt_string_alloc(size_t len, size_t cap)
     {
         rt_trap("rt_string_alloc: length overflow");
         return NULL;
+    }
+    // Use embedded allocation for small strings
+    if (len <= RT_SSO_MAX_LEN && cap <= RT_SSO_MAX_LEN + 1)
+    {
+        return rt_string_alloc_embedded(len);
     }
     size_t required = len + 1;
     if (cap < required)
@@ -218,9 +289,9 @@ int rt_string_is_handle(void *p)
 }
 
 /// @brief Increment the ownership count for a runtime string handle.
-/// @details Literal strings track a small reference counter inside the handle
-///          while heap-backed strings delegate to @ref rt_heap_retain.  Immortal
-///          strings skip reference updates entirely.
+/// @details Literal and embedded (SSO) strings track a reference counter inside
+///          the handle (literal_refs), while heap-backed strings delegate to
+///          @ref rt_heap_retain. Immortal strings skip reference updates entirely.
 /// @param s Runtime string handle.
 /// @return The same handle for chaining.
 rt_string rt_string_ref(rt_string s)
@@ -241,9 +312,10 @@ rt_string rt_string_ref(rt_string s)
 }
 
 /// @brief Release a reference to a runtime string handle.
-/// @details Mirrors @ref rt_string_ref by decrementing literal reference counts
-///          or calling @ref rt_heap_release for heap-backed strings.  When the
-///          final reference disappears the wrapper structure is freed.
+/// @details Mirrors @ref rt_string_ref by decrementing literal/embedded reference
+///          counts or calling @ref rt_heap_release for heap-backed strings. When
+///          the final reference disappears the wrapper structure is freed. For
+///          embedded (SSO) strings, this frees the combined handle+data allocation.
 /// @param s Runtime string handle to release.
 void rt_string_unref(rt_string s)
 {
@@ -327,9 +399,15 @@ rt_string rt_from_str(rt_string s)
 /// @details Computes the combined length, allocates a new string, copies the
 ///          payloads, and releases the input handles when non-null.  Traps on
 ///          length overflow to maintain deterministic runtime behaviour.
+///
+///          Optimization: When the left operand is uniquely owned (refcount == 1),
+///          heap-backed, and has sufficient capacity, the concatenation is performed
+///          in-place by appending to the existing buffer. This avoids allocation
+///          in common patterns like repeated string concatenation in loops.
+///
 /// @param a First operand; released after concatenation when non-null.
 /// @param b Second operand; released after concatenation when non-null.
-/// @return Newly allocated string containing `a + b`.
+/// @return Newly allocated string containing `a + b`, or `a` reused in-place.
 rt_string rt_concat(rt_string a, rt_string b)
 {
     size_t len_a = rt_string_len_bytes(a);
@@ -344,6 +422,22 @@ rt_string rt_concat(rt_string a, rt_string b)
     {
         rt_trap("rt_concat: length overflow");
         return NULL;
+    }
+
+    // Optimization: append in-place when `a` is uniquely owned with enough capacity
+    if (rt_string_can_append_inplace(a, total + 1))
+    {
+        // Append `b` directly into `a`'s buffer
+        if (b && b->data && len_b > 0)
+            memcpy(a->data + len_a, b->data, len_b);
+        a->data[total] = '\0';
+        // Update the length in the heap header
+        rt_heap_set_len(a->data, total);
+        // Release `b` (consumed by concat)
+        if (b)
+            rt_string_unref(b);
+        // Return `a` reused (not released, ownership transferred)
+        return a;
     }
 
     rt_string out = rt_string_alloc(total, total + 1);

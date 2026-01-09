@@ -106,7 +106,8 @@ int main()
         callBridge("rt_int_to_str", {numberArg}, Type::Kind::Str, {Type::Kind::I64});
     assert(strNumberResult.str != nullptr);
     rt_string numberStr = strNumberResult.str;
-    std::string numberText(numberStr->data, rt_heap_len(numberStr->data));
+    // Use rt_len API which handles both SSO and heap-backed strings
+    std::string numberText(rt_string_cstr(numberStr), static_cast<size_t>(rt_len(numberStr)));
     assert(numberText == "12345");
     rt_string_unref(numberStr);
 
@@ -385,13 +386,20 @@ int main()
         il::vm::detail::control::handleCall(vm, frame, mutateCall, blocks, bbCtx, ipCtx);
 
         assert(frame.regs[0].str != nullptr);
-        const size_t mutatedLen = rt_heap_len(frame.regs[0].str->data);
-        std::string_view mutatedView(frame.regs[0].str->data, mutatedLen);
+        // Use rt_len API which handles both SSO and heap-backed strings
+        const int64_t mutatedLen = rt_len(frame.regs[0].str);
+        std::string_view mutatedView(rt_string_cstr(frame.regs[0].str),
+                                     static_cast<size_t>(mutatedLen));
         assert(mutatedView == kMutatedText);
 
-        rt_heap_hdr_t *hdr = rt_heap_hdr(frame.regs[0].str->data);
-        assert(hdr != nullptr);
-        assert(hdr->refcnt == 1);
+        // Check refcount appropriately for SSO vs heap strings
+        auto *impl = reinterpret_cast<rt_string_impl *>(frame.regs[0].str);
+        size_t refcnt = 0;
+        if (impl->heap && impl->heap != RT_SSO_SENTINEL)
+            refcnt = impl->heap->refcnt;
+        else
+            refcnt = impl->literal_refs;
+        assert(refcnt == 1);
 
         rt_str_release_maybe(frame.regs[0].str);
         frame.regs[0].str = nullptr;

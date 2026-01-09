@@ -48,11 +48,14 @@ int main()
 
     il::vm::VM vm(module);
 
-    rt_string incoming = rt_string_from_bytes("temp", 4);
+    // Use a string longer than RT_SSO_MAX_LEN (32) to ensure heap allocation
+    static const char *long_str =
+        "this_is_a_temp_string_for_testing_heap_refcount_behavior";
+    rt_string incoming = rt_string_from_bytes(long_str, 57);
     if (!incoming)
         return 1;
     auto *impl = reinterpret_cast<rt_string_impl *>(incoming);
-    if (!impl || !impl->heap)
+    if (!impl || !impl->heap || impl->heap == RT_SSO_SENTINEL)
         return 1;
     rt_heap_hdr_t *header = impl->heap;
     const size_t initialRef = header->refcnt;

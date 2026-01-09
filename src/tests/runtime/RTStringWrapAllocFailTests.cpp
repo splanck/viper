@@ -50,7 +50,10 @@ int main()
     g_fail_next_alloc = true;
     rt_set_alloc_hook(fail_rt_alloc_once);
 
-    rt_string result = rt_string_from_bytes("x", 1);
+    // Use a string longer than RT_SSO_MAX_LEN (32) to test heap allocation path
+    static const char *long_str =
+        "this_is_a_very_long_string_that_exceeds_the_sso_limit";
+    rt_string result = rt_string_from_bytes(long_str, 53);
     assert(result == NULL);
     assert(g_trap_count == 1);
     assert(g_last_trap == "rt_string_wrap: alloc");

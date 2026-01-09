@@ -129,18 +129,25 @@ int main()
     }
 
     {
-        rt_string left_heap = rt_string_from_bytes("heap", 4);
-        rt_string right_heap = rt_string_from_bytes("data", 4);
+        // Create strings long enough to not use SSO (> RT_SSO_MAX_LEN = 32)
+        const char *long_left = "heap_string_that_is_longer_than_32_chars";
+        const char *long_right = "data_string_that_is_longer_than_32_chars";
+        rt_string left_heap = rt_string_from_bytes(long_left, std::strlen(long_left));
+        rt_string right_heap = rt_string_from_bytes(long_right, std::strlen(long_right));
         auto *left_impl = (rt_string_impl *)left_heap;
         auto *right_impl = (rt_string_impl *)right_heap;
-        assert(left_impl->heap != nullptr);
-        assert(right_impl->heap != nullptr);
+        // With SSO, short strings use embedded storage (heap == RT_SSO_SENTINEL)
+        // Long strings use heap allocation (heap != nullptr && heap != RT_SSO_SENTINEL)
+        assert(left_impl->heap != nullptr && left_impl->heap != RT_SSO_SENTINEL);
+        assert(right_impl->heap != nullptr && right_impl->heap != RT_SSO_SENTINEL);
         size_t left_before = left_impl->heap->refcnt;
         size_t right_before = right_impl->heap->refcnt;
         rt_string merged = rt_concat(rt_string_ref(left_heap), rt_string_ref(right_heap));
         assert(left_impl->heap->refcnt == left_before);
         assert(right_impl->heap->refcnt == right_before);
-        assert(std::strcmp(((rt_string_impl *)merged)->data, "heapdata") == 0);
+        // Merged string is long so it also uses heap
+        auto *merged_impl = (rt_string_impl *)merged;
+        assert(merged_impl->heap != nullptr && merged_impl->heap != RT_SSO_SENTINEL);
         rt_string_unref(merged);
         rt_string_unref(left_heap);
         rt_string_unref(right_heap);

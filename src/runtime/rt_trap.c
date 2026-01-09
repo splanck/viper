@@ -54,7 +54,9 @@ void rt_diag_assert(int8_t condition, rt_string message)
     const char *msg = "Assertion failed";
     if (message && message->data)
     {
-        size_t len = message->heap ? rt_heap_len(message->data) : message->literal_len;
+        size_t len = (message->heap && message->heap != RT_SSO_SENTINEL)
+                         ? rt_heap_len(message->data)
+                         : message->literal_len;
         if (len > 0)
             msg = rt_string_cstr(message);
     }
@@ -67,7 +69,9 @@ static const char *get_message(rt_string message, const char *fallback)
 {
     if (message && message->data)
     {
-        size_t len = message->heap ? rt_heap_len(message->data) : message->literal_len;
+        size_t len = (message->heap && message->heap != RT_SSO_SENTINEL)
+                         ? rt_heap_len(message->data)
+                         : message->literal_len;
         if (len > 0)
             return rt_string_cstr(message);
     }

@@ -643,7 +643,12 @@ Slot VM::execFunction(const Function &fn, const std::vector<Slot> &args)
     // Use the shared ExecStackGuard from VM.hpp (pre-allocated stack avoids heap allocs)
     ExecStackGuard guardStack(*this, st);
 
-    return runFunctionLoop(st);
+    Slot result = runFunctionLoop(st);
+
+    // Return frame buffers to pool for reuse by subsequent calls
+    releaseFrameBuffers(st.fr);
+
+    return result;
 }
 
 /// @brief Return the number of instructions executed by the VM instance.

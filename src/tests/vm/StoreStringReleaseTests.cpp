@@ -31,6 +31,18 @@ constexpr il::support::SourceLoc kLoc(unsigned line)
 {
     return {1, static_cast<uint32_t>(line), 0};
 }
+
+// Helper to get refcount from either heap or SSO string
+size_t get_string_refcount(rt_string s)
+{
+    auto *impl = reinterpret_cast<rt_string_impl *>(s);
+    if (!impl)
+        return 0;
+    if (impl->heap && impl->heap != RT_SSO_SENTINEL)
+        return impl->heap->refcnt;
+    // SSO or literal string - use literal_refs
+    return impl->literal_refs;
+}
 } // namespace
 
 int main()
@@ -126,12 +138,7 @@ int main()
     if (!first)
         return 1;
 
-    auto *firstImpl = reinterpret_cast<rt_string_impl *>(first);
-    if (!firstImpl || !firstImpl->heap)
-        return 1;
-
-    rt_heap_hdr_t *firstHdr = firstImpl->heap;
-    const size_t initialRef = firstHdr->refcnt;
+    const size_t initialRef = get_string_refcount(first);
     rt_str_retain_maybe(first);
 
     if (stepExpectIp(4))
@@ -140,7 +147,7 @@ int main()
     if (stepExpectIp(5))
         return 1; // store second string
 
-    if (firstHdr->refcnt != initialRef)
+    if (get_string_refcount(first) != initialRef)
         return 1;
 
     rt_str_release_maybe(first);
@@ -158,23 +165,16 @@ int main()
     if (!literalHandle)
         return 1;
 
-    auto *literalImpl = reinterpret_cast<rt_string_impl *>(literalHandle);
-    if (!literalImpl)
-        return 1;
-
-    rt_heap_hdr_t *literalHdr = literalImpl->heap;
-    const size_t initialLiteralRefs = literalHdr ? literalHdr->refcnt : literalImpl->literal_refs;
+    const size_t initialLiteralRefs = get_string_refcount(literalHandle);
 
     if (stepExpectIp(9))
         return 1; // call rt_left without capturing result
 
     literalHandle = state.fr.regs[literalId].str;
-    literalImpl = reinterpret_cast<rt_string_impl *>(literalHandle);
-    if (!literalImpl)
+    if (!literalHandle)
         return 1;
 
-    literalHdr = literalImpl->heap;
-    const size_t postCallRefs = literalHdr ? literalHdr->refcnt : literalImpl->literal_refs;
+    const size_t postCallRefs = get_string_refcount(literalHandle);
     if (postCallRefs != initialLiteralRefs)
         return 1;
 

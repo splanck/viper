@@ -750,6 +750,15 @@ class VM
     ///          every time a frame is prepared for the same function.
     std::unordered_map<const il::core::Function *, size_t> regCountCache_;
 
+    /// @brief Pool of reusable stack buffers for Frame::stack.
+    /// @details Avoids repeated 64KB allocations for recursive/repeated calls.
+    ///          Buffers are acquired in setupFrame and released in execFunction.
+    std::vector<std::vector<uint8_t>> stackBufferPool_;
+
+    /// @brief Pool of reusable register file vectors for Frame::regs.
+    /// @details Avoids allocation churn for functions with similar SSA counts.
+    std::vector<std::vector<Slot>> regFilePool_;
+
     /// @brief Cached pointer to the opcode handler table for quick access.
     const OpcodeHandlerTable *handlerTable_ = nullptr;
 
@@ -811,6 +820,32 @@ class VM
     /// @param fr Frame whose registers receive parameter values.
     /// @param bb Basic block whose parameters are being populated.
     void transferBlockParams(Frame &fr, const il::core::BasicBlock &bb);
+
+    //===------------------------------------------------------------------===//
+    // Buffer Pool Management
+    //===------------------------------------------------------------------===//
+
+    /// @brief Acquire a stack buffer from pool or allocate new.
+    /// @param size Required buffer size in bytes.
+    /// @return Vector with at least @p size bytes capacity.
+    std::vector<uint8_t> acquireStackBuffer(size_t size);
+
+    /// @brief Return a stack buffer to the pool for reuse.
+    /// @param buf Buffer to return; moved into pool if under limit.
+    void releaseStackBuffer(std::vector<uint8_t> &&buf);
+
+    /// @brief Acquire a register file from pool or allocate new.
+    /// @param size Required register count.
+    /// @return Vector with at least @p size slots.
+    std::vector<Slot> acquireRegFile(size_t size);
+
+    /// @brief Return a register file to the pool for reuse.
+    /// @param regs Register file to return; moved into pool if under limit.
+    void releaseRegFile(std::vector<Slot> &&regs);
+
+    /// @brief Release all pooled buffers from a completed frame.
+    /// @param fr Frame whose buffers should be returned to pools.
+    void releaseFrameBuffers(Frame &fr);
 
     /// @brief Execute instruction @p in updating control flow state.
     // executeOpcode, setCurrentContext, and clearCurrentContext moved to public section

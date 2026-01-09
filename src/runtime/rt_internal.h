@@ -76,3 +76,16 @@ struct rt_string_impl
 };
 
 #define RT_STRING_MAGIC 0x5354524D41474943ULL /* "STRMAGIC" */
+
+/// @brief Maximum string length for embedded (SSO) allocation.
+/// @details Strings up to this length are allocated with their data embedded
+///          immediately after the rt_string_impl struct, eliminating one heap
+///          allocation. The value 32 is chosen to balance allocation savings
+///          against memory overhead for the combined allocation.
+#define RT_SSO_MAX_LEN 32
+
+/// @brief Sentinel value for heap pointer indicating embedded string data.
+/// @details When heap equals this value, the string data is embedded directly
+///          after the rt_string_impl struct in the same allocation. The data
+///          pointer points to this embedded storage.
+#define RT_SSO_SENTINEL ((rt_heap_hdr_t *)(uintptr_t)0xDEADBEEFCAFEBABEULL)

@@ -31,6 +31,24 @@ constexpr il::support::SourceLoc kLoc(unsigned line)
 {
     return {1, static_cast<uint32_t>(line), 0};
 }
+
+// Helper to get refcount from either heap or SSO string
+size_t get_string_refcount(rt_string s)
+{
+    auto *impl = reinterpret_cast<rt_string_impl *>(s);
+    if (!impl)
+        return 0;
+    if (impl->heap && impl->heap != RT_SSO_SENTINEL)
+        return impl->heap->refcnt;
+    // SSO or literal string - use literal_refs
+    return impl->literal_refs;
+}
+
+bool is_heap_backed(rt_string s)
+{
+    auto *impl = reinterpret_cast<rt_string_impl *>(s);
+    return impl && impl->heap && impl->heap != RT_SSO_SENTINEL;
+}
 } // namespace
 
 int main()
@@ -78,11 +96,7 @@ int main()
     rt_string produced = state.fr.regs[strId].str;
     if (!produced)
         return 1;
-    auto *impl = reinterpret_cast<rt_string_impl *>(produced);
-    if (!impl || !impl->heap)
-        return 1;
-    rt_heap_hdr_t *header = impl->heap;
-    const size_t refAfterCall = header->refcnt;
+    const size_t refAfterCall = get_string_refcount(produced);
 
     if (il::vm::VMTestHook::step(vm, state))
         return 1;
@@ -96,7 +110,7 @@ int main()
     if (pendingOpt->str != produced)
         return 1;
 
-    if (header->refcnt != refAfterCall + 1)
+    if (get_string_refcount(produced) != refAfterCall + 1)
         return 1;
 
     while (true)
@@ -110,7 +124,7 @@ int main()
         }
     }
 
-    if (header->refcnt != refAfterCall)
+    if (get_string_refcount(produced) != refAfterCall)
         return 1;
 
     return 0;

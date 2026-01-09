@@ -123,7 +123,8 @@ static inline size_t rt_string_safe_len(rt_string s)
 {
     if (!s || !s->data)
         return 0;
-    return s->heap ? rt_heap_len(s->data) : s->literal_len;
+    return (s->heap && s->heap != RT_SSO_SENTINEL) ? rt_heap_len(s->data)
+                                                   : s->literal_len;
 }
 
 /// @brief Get the data pointer of a runtime string safely (null-safe).

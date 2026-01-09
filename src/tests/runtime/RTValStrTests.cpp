@@ -23,7 +23,8 @@ namespace
 {
 std::string toStd(rt_string s)
 {
-    return std::string(s->data, rt_heap_len(s->data));
+    // Use the public API which handles both SSO and heap-backed strings
+    return std::string(rt_string_cstr(s), (size_t)rt_len(s));
 }
 } // namespace
 

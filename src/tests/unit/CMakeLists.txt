@@ -213,6 +213,13 @@ if (NOT TARGET test_vm_opcode_counts)
     viper_add_ctest(test_vm_opcode_counts test_vm_opcode_counts)
 endif ()
 
+# Opcode profiling test
+if (NOT TARGET test_vm_opcode_profiling)
+    viper_add_test(test_vm_opcode_profiling ${VIPER_TESTS_DIR}/unit/test_vm_opcode_profiling.cpp)
+    target_link_libraries(test_vm_opcode_profiling PRIVATE viper_il_full il_vm il_api)
+    viper_add_ctest(test_vm_opcode_profiling test_vm_opcode_profiling)
+endif ()
+
 # Runtime class catalog seeding test
 if (NOT TARGET test_runtime_class_seeding)
     viper_add_test(test_runtime_class_seeding ${VIPER_TESTS_DIR}/unit/test_runtime_class_seeding.cpp)
@@ -385,6 +392,10 @@ function(viper_add_runtime_tests)
     viper_add_test(test_rt_string ${VIPER_TESTS_DIR}/unit/test_rt_string.cpp)
     target_link_libraries(test_rt_string PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_string test_rt_string)
+
+    viper_add_test(test_rt_string_sso ${VIPER_TESTS_DIR}/unit/test_rt_string_sso.cpp)
+    target_link_libraries(test_rt_string_sso PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_string_sso test_rt_string_sso)
 
     viper_add_test(test_rt_string_invalid ${VIPER_TESTS_DIR}/unit/test_rt_string_invalid.cpp)
     target_link_libraries(test_rt_string_invalid PRIVATE ${VIPER_RUNTIME_TEST_LIBS})

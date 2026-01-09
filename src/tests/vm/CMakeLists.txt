@@ -289,6 +289,11 @@ function(viper_add_vm_unit_tests)
     target_link_libraries(test_vm_many_temps PRIVATE ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
     viper_add_ctest(test_vm_many_temps test_vm_many_temps)
 
+    # VM buffer pooling test (exercises frame/register reuse in recursive calls)
+    viper_add_test(test_vm_buffer_pooling ${VIPER_TESTS_DIR}/unit/test_vm_buffer_pooling.cpp)
+    target_link_libraries(test_vm_buffer_pooling PRIVATE ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+    viper_add_ctest(test_vm_buffer_pooling test_vm_buffer_pooling)
+
     viper_add_test(test_vm_shift_mask ${VIPER_TESTS_DIR}/unit/test_vm_shift_mask.cpp)
     target_link_libraries(test_vm_shift_mask PRIVATE ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
     viper_add_ctest(test_vm_shift_mask test_vm_shift_mask)

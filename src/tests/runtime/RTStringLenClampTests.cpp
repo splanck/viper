@@ -24,8 +24,16 @@
 
 int main(void)
 {
-    rt_string fabricated = rt_string_from_bytes("clamp", 5);
+    // Use a string longer than RT_SSO_MAX_LEN (32) to ensure heap allocation
+    static const char *long_str =
+        "this_string_is_long_enough_to_bypass_small_string_optimization_and_use_heap";
+    const size_t long_len = 76;
+
+    rt_string fabricated = rt_string_from_bytes(long_str, long_len);
     assert(fabricated);
+
+    // Verify string is heap-backed (not SSO)
+    assert(fabricated->heap != NULL && fabricated->heap != RT_SSO_SENTINEL);
 
     rt_heap_hdr_t *hdr = rt_heap_hdr(fabricated->data);
     assert(hdr);
@@ -35,9 +43,9 @@ int main(void)
     int64_t reported = rt_len(fabricated);
     assert(reported == INT64_MAX);
 #else
-    hdr->len = 5;
+    hdr->len = long_len;
     int64_t reported = rt_len(fabricated);
-    assert(reported == 5);
+    assert(reported == (int64_t)long_len);
 #endif
 
     rt_string_unref(fabricated);

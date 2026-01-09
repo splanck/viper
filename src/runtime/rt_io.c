@@ -115,7 +115,8 @@ static inline size_t rt_string_safe_len(rt_string s)
 {
     if (!s || !s->data)
         return 0;
-    return s->heap ? rt_heap_len(s->data) : s->literal_len;
+    return (s->heap && s->heap != RT_SSO_SENTINEL) ? rt_heap_len(s->data)
+                                                   : s->literal_len;
 }
 
 /// @brief Handle string builder errors with consistent trap messages.
@@ -305,7 +306,7 @@ int64_t rt_split_fields(rt_string line, rt_string *out_fields, int64_t max_field
     if (line && line->data)
     {
         data = line->data;
-        if (line->heap)
+        if (line->heap && line->heap != RT_SSO_SENTINEL)
             len = rt_heap_len(line->data);
         else
             len = line->literal_len;

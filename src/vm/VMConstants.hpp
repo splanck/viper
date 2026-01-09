@@ -62,4 +62,15 @@ constexpr size_t kMinFunctionSizeForSwitchCache = 5;
 ///          this capacity eliminates heap allocation in common cases.
 constexpr size_t kExecStackInitialCapacity = 64;
 
+/// @brief Maximum pooled stack buffers per VM.
+/// @details Pooling stack buffers avoids repeated 64KB allocations during
+///          recursive or repeated function calls. 8 buffers covers typical
+///          recursive depth while limiting memory overhead to 512KB.
+constexpr size_t kStackBufferPoolSize = 8;
+
+/// @brief Maximum pooled register files per VM.
+/// @details Register files vary in size but pooling avoids allocation churn
+///          for functions with similar SSA counts. Keeps up to 16 buffers.
+constexpr size_t kRegisterFilePoolSize = 16;
+
 } // namespace il::vm

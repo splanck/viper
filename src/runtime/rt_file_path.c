@@ -174,7 +174,7 @@ size_t rt_file_string_view(const ViperString *s, const uint8_t **data_out)
         return 0;
     if (data_out)
         *data_out = (const uint8_t *)s->data;
-    if (s->heap)
+    if (s->heap && s->heap != RT_SSO_SENTINEL)
         return rt_heap_len(s->data);
     return s->literal_len;
 }
