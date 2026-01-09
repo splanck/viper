@@ -1,8 +1,8 @@
 # SQLite Clone Implementation Progress
 
 ## Current Status
-- **Phase**: 5 - Joins
-- **Step**: 30 of 68
+- **Phase**: 6 - Subqueries
+- **Step**: 34 of 68
 - **Status**: COMPLETE (Both Languages)
 
 ### Resolved Issues:
@@ -174,11 +174,11 @@ All parser components (expressions, CREATE TABLE, INSERT) implemented and tested
 - [x] Step 29: LEFT JOIN (Both languages)
 - [x] Step 30: RIGHT JOIN / FULL JOIN (Both languages)
 
-### Phase 6: Subqueries (Steps 31-34)
-- [ ] Step 31: Subquery in WHERE (scalar)
-- [ ] Step 32: Subquery with IN
-- [ ] Step 33: Subquery in FROM
-- [ ] Step 34: Correlated subqueries
+### Phase 6: Subqueries (Steps 31-34) - COMPLETE
+- [x] Step 31: Subquery in WHERE (scalar)
+- [x] Step 32: Subquery with IN
+- [x] Step 33: Subquery in FROM
+- [x] Step 34: Correlated subqueries
 
 ### Phase 7: Constraints & Integrity (Steps 35-40)
 - [ ] Step 35: PRIMARY KEY constraint

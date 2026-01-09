@@ -1,11 +1,8 @@
-' SQLite Clone - Main Entry Point
-' Viper Basic Implementation
+' main.bas - Entry Point
+' Part of SQLite Clone - Viper Basic Implementation
 
-AddFile "lexer.bas"
+AddFile "test.bas"
 
-PRINT "SQLite Clone - Viper Basic Edition"
-PRINT "==================================="
-PRINT ""
+' Run tests
+TestExecutor()
 
-' Run lexer tests (token tests are run via lexer.bas include)
-TestLexer()

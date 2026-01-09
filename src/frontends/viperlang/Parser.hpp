@@ -586,6 +586,20 @@ class Parser
     /// @return The parsed InterfaceDecl.
     DeclPtr parseInterfaceDecl();
 
+    /// @brief Parse a namespace declaration: namespace Name { declarations }
+    /// @return The parsed NamespaceDecl.
+    ///
+    /// @details Namespaces group declarations under a qualified name.
+    /// The namespace name can be dotted (e.g., `MyLib.Internal`).
+    /// Example:
+    /// ```
+    /// namespace MyLib {
+    ///     entity Parser { ... }
+    ///     func parse() { ... }
+    /// }
+    /// ```
+    DeclPtr parseNamespaceDecl();
+
     /// @brief Parse a global variable declaration: var x = 1; (legacy)
     /// @return The parsed GlobalVarDecl.
     /// @deprecated Use parseJavaStyleGlobalVarDecl() for new code.

@@ -69,6 +69,10 @@ enum class DeclKind
     /// @brief Global variable declaration: module-level variable.
     /// @see GlobalVarDecl
     GlobalVar,
+
+    /// @brief Namespace declaration: groups declarations under a qualified name.
+    /// @see NamespaceDecl
+    Namespace,
 };
 
 /// @brief Member visibility level.
@@ -407,6 +411,46 @@ struct ImportDecl : Decl
     /// @param l Source location.
     /// @param p The module path.
     ImportDecl(SourceLoc l, std::string p) : Decl(DeclKind::Import, l), path(std::move(p)) {}
+};
+
+/// @brief Namespace declaration: groups declarations under a qualified name.
+/// @details Namespaces provide hierarchical organization and prevent name collisions.
+/// Declarations inside a namespace are accessed via qualified names (e.g., `MyLib.Foo`).
+/// Namespaces can be nested and can span multiple files via imports.
+///
+/// The built-in `Viper.*` namespaces (Viper.Terminal, Viper.Math, etc.) use the
+/// same mechanism as user-defined namespaces - there is no special casing.
+///
+/// ## Example
+/// ```
+/// namespace MyLib {
+///     entity Parser { ... }
+///     func parse(s: String) -> Result { ... }
+/// }
+///
+/// // Nested namespaces
+/// namespace MyLib.Internal {
+///     func helper() { ... }
+/// }
+/// ```
+///
+/// ## Access
+/// ```
+/// var p = new MyLib.Parser();
+/// var r = MyLib.parse("input");
+/// ```
+struct NamespaceDecl : Decl
+{
+    /// @brief Namespace name (can be dotted, e.g., "MyLib.Internal").
+    std::string name;
+
+    /// @brief Declarations within this namespace.
+    std::vector<DeclPtr> declarations;
+
+    /// @brief Construct a namespace declaration.
+    /// @param l Source location.
+    /// @param n Namespace name.
+    NamespaceDecl(SourceLoc l, std::string n) : Decl(DeclKind::Namespace, l), name(std::move(n)) {}
 };
 
 /// @brief Module declaration: the top-level compilation unit.

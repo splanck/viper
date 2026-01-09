@@ -398,6 +398,21 @@ class Sema
     /// @details Registers the interface type and its method signatures.
     void analyzeInterfaceDecl(InterfaceDecl &decl);
 
+    /// @brief Analyze a namespace declaration.
+    /// @param decl The namespace declaration.
+    ///
+    /// @details Processes all declarations within the namespace, prefixing
+    /// their names with the namespace path. Supports nested namespaces.
+    void analyzeNamespaceDecl(NamespaceDecl &decl);
+
+    /// @brief Compute the qualified name for a declaration.
+    /// @param name The unqualified name.
+    /// @return The fully qualified name including namespace prefix.
+    ///
+    /// @details If currently inside a namespace, prepends the namespace path.
+    /// Example: inside "MyLib", name "Parser" becomes "MyLib.Parser".
+    std::string qualifyName(const std::string &name) const;
+
     /// @brief Analyze a function declaration.
     /// @param decl The function declaration.
     ///
@@ -740,6 +755,11 @@ class Sema
 
     /// @brief Current loop nesting depth for break/continue validation.
     int loopDepth_{0};
+
+    /// @brief Current namespace prefix for qualified names.
+    /// @details When inside a namespace block, this contains the namespace path.
+    /// Empty when at module level. Example: "MyLib.Internal"
+    std::string namespacePrefix_;
 
     /// @brief Owned lexical scope stack (scopes_[0] is global).
     std::vector<std::unique_ptr<Scope>> scopes_;

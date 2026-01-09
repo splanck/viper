@@ -96,4 +96,9 @@ function(viper_add_viperlang_tests)
     viper_add_test(test_viperlang_value_types ${_VIPER_VIPERLANG_DIR}/test_viperlang_value_types.cpp)
     target_link_libraries(test_viperlang_value_types PRIVATE ${VIPER_VIPERLANG_LIBS})
     viper_add_ctest(test_viperlang_value_types test_viperlang_value_types)
+
+    # Namespace tests
+    viper_add_test(test_viperlang_namespaces ${_VIPER_VIPERLANG_DIR}/test_viperlang_namespaces.cpp)
+    target_link_libraries(test_viperlang_namespaces PRIVATE ${VIPER_VIPERLANG_LIBS})
+    viper_add_ctest(test_viperlang_namespaces test_viperlang_namespaces)
 endfunction()

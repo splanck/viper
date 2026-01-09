@@ -128,6 +128,10 @@ DeclPtr Parser::parseDeclaration()
     {
         return parseInterfaceDecl();
     }
+    if (check(TokenKind::KwNamespace))
+    {
+        return parseNamespaceDecl();
+    }
     // Module-level variable declarations (global variables)
     if (check(TokenKind::KwVar) || check(TokenKind::KwFinal))
     {
@@ -557,6 +561,58 @@ DeclPtr Parser::parseInterfaceDecl()
         return nullptr;
 
     return iface;
+}
+
+DeclPtr Parser::parseNamespaceDecl()
+{
+    Token nsTok = advance(); // consume 'namespace'
+    SourceLoc loc = nsTok.loc;
+
+    // Parse namespace name (can be dotted like MyLib.Internal)
+    if (!check(TokenKind::Identifier))
+    {
+        error("expected namespace name");
+        return nullptr;
+    }
+
+    std::string name = advance().text;
+
+    // Allow dotted names: namespace Foo.Bar.Baz { }
+    while (check(TokenKind::Dot))
+    {
+        advance(); // consume '.'
+        if (!check(TokenKind::Identifier))
+        {
+            error("expected identifier after '.' in namespace name");
+            return nullptr;
+        }
+        name += ".";
+        name += advance().text;
+    }
+
+    if (!expect(TokenKind::LBrace, "{"))
+        return nullptr;
+
+    auto ns = std::make_unique<NamespaceDecl>(loc, name);
+
+    // Parse declarations inside the namespace
+    while (!check(TokenKind::RBrace) && !check(TokenKind::Eof))
+    {
+        if (DeclPtr decl = parseDeclaration())
+        {
+            ns->declarations.push_back(std::move(decl));
+        }
+        else
+        {
+            // Skip to recover
+            advance();
+        }
+    }
+
+    if (!expect(TokenKind::RBrace, "}"))
+        return nullptr;
+
+    return ns;
 }
 
 DeclPtr Parser::parseGlobalVarDecl()

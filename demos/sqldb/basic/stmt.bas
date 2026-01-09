@@ -1,20 +1,17 @@
-' stmt.bas - SQL Statement Classes
+' stmt.bas - Statement Types
 ' Part of SQLite Clone - Viper Basic Implementation
-' Requires: expr.bas (AddFile before this)
+
+AddFile "expr.bas"
 
 '=============================================================================
-' STATEMENT CONSTANTS
+' STATEMENT TYPES
 '=============================================================================
 
 CONST MAX_STMT_COLUMNS = 64
 CONST MAX_STMT_VALUES = 64
 CONST MAX_VALUE_ROWS = 100
-CONST VALUES_ARRAY_SIZE = 6400  ' MAX_VALUE_ROWS * MAX_STMT_VALUES
 
-'=============================================================================
-' CREATE TABLE STATEMENT
-'=============================================================================
-
+' CreateTableStmt - holds parsed CREATE TABLE statement
 CLASS CreateTableStmt
     PUBLIC tableName AS STRING
     PUBLIC columns(MAX_STMT_COLUMNS) AS SqlColumn
@@ -51,15 +48,15 @@ CLASS CreateTableStmt
     END FUNCTION
 END CLASS
 
-'=============================================================================
-' INSERT STATEMENT
-'=============================================================================
+' InsertStmt - holds parsed INSERT statement
+' Note: Using 1D array with manual indexing due to Viper Basic bug #010 (2D array corruption)
+CONST VALUES_ARRAY_SIZE = 6400  ' MAX_VALUE_ROWS * MAX_STMT_VALUES
 
 CLASS InsertStmt
     PUBLIC tableName AS STRING
     PUBLIC columnNames(MAX_STMT_COLUMNS) AS STRING
     PUBLIC columnCount AS INTEGER
-    PUBLIC valueRows(VALUES_ARRAY_SIZE) AS Expr   ' Flattened 2D array (Bug #020 workaround)
+    PUBLIC valueRows(VALUES_ARRAY_SIZE) AS Expr   ' Flattened 2D array
     PUBLIC rowValueCounts(MAX_VALUE_ROWS) AS INTEGER
     PUBLIC rowCount AS INTEGER
 
@@ -141,164 +138,105 @@ CLASS InsertStmt
 END CLASS
 
 '=============================================================================
-' SELECT STATEMENT
+' CREATE INDEX STATEMENT
 '=============================================================================
 
-CLASS SelectStmt
-    PUBLIC selectAll AS INTEGER
+CLASS CreateIndexStmt
+    PUBLIC indexName AS STRING
     PUBLIC tableName AS STRING
-    PUBLIC tableAlias AS STRING
-    PUBLIC columns(100) AS Expr
+    PUBLIC columnNames(MAX_INDEX_COLUMNS) AS STRING
     PUBLIC columnCount AS INTEGER
-    PUBLIC whereClause AS Expr
-    PUBLIC hasWhere AS INTEGER
-    PUBLIC orderByExprs(20) AS Expr
-    PUBLIC orderByDir(20) AS INTEGER  ' 0 = ASC, 1 = DESC
-    PUBLIC orderByCount AS INTEGER
-    PUBLIC limitValue AS INTEGER
-    PUBLIC offsetValue AS INTEGER
-    PUBLIC isDistinct AS INTEGER
-    PUBLIC groupByExprs(20) AS Expr
-    PUBLIC groupByCount AS INTEGER
-    PUBLIC havingClause AS Expr
-    PUBLIC hasHaving AS INTEGER
-    PUBLIC tableNames(20) AS STRING
-    PUBLIC tableAliases(20) AS STRING
-    PUBLIC tableCount AS INTEGER
-    PUBLIC joinTypes(20) AS INTEGER
-    PUBLIC joinConditions(20) AS Expr
-    PUBLIC joinConditionCount AS INTEGER
-    PUBLIC derivedTableSQL AS STRING
-    PUBLIC derivedTableAlias AS STRING
-    PUBLIC hasDerivedTable AS INTEGER
+    PUBLIC isUnique AS INTEGER
 
     PUBLIC SUB Init()
-        selectAll = 0
+        indexName = ""
         tableName = ""
-        tableAlias = ""
         columnCount = 0
-        hasWhere = 0
-        orderByCount = 0
-        limitValue = -1
-        offsetValue = 0
-        isDistinct = 0
-        groupByCount = 0
-        hasHaving = 0
-        tableCount = 0
-        joinConditionCount = 0
-        derivedTableSQL = ""
-        derivedTableAlias = ""
-        hasDerivedTable = 0
+        isUnique = 0
     END SUB
 
-    PUBLIC SUB AddColumn(col AS Expr)
-        IF columnCount < 100 THEN
-            LET columns(columnCount) = col
+    PUBLIC SUB AddColumn(colName AS STRING)
+        IF columnCount < MAX_INDEX_COLUMNS THEN
+            columnNames(columnCount) = colName
             columnCount = columnCount + 1
         END IF
     END SUB
 
-    PUBLIC SUB SetWhere(expr AS Expr)
-        LET whereClause = expr
-        hasWhere = -1
-    END SUB
-
-    PUBLIC SUB AddOrderBy(expr AS Expr, isDesc AS INTEGER)
-        IF orderByCount < 20 THEN
-            LET orderByExprs(orderByCount) = expr
-            orderByDir(orderByCount) = isDesc
-            orderByCount = orderByCount + 1
-        END IF
-    END SUB
-
-    PUBLIC SUB AddGroupBy(expr AS Expr)
-        IF groupByCount < 20 THEN
-            LET groupByExprs(groupByCount) = expr
-            groupByCount = groupByCount + 1
-        END IF
-    END SUB
-
-    PUBLIC SUB AddTable(tName AS STRING, tAlias AS STRING)
-        IF tableCount < 20 THEN
-            tableNames(tableCount) = tName
-            tableAliases(tableCount) = tAlias
-            tableCount = tableCount + 1
-        END IF
-    END SUB
-
-    PUBLIC SUB AddJoin(tName AS STRING, tAlias AS STRING, jType AS INTEGER, jCondition AS Expr, hasCondition AS INTEGER)
-        IF tableCount < 20 THEN
-            tableNames(tableCount) = tName
-            tableAliases(tableCount) = tAlias
-            joinTypes(tableCount) = jType
-            tableCount = tableCount + 1
-            IF hasCondition <> 0 THEN
-                LET joinConditions(joinConditionCount) = jCondition
-                joinConditionCount = joinConditionCount + 1
-            END IF
-        END IF
-    END SUB
-
-    PUBLIC FUNCTION ToString$() AS STRING
+    PUBLIC FUNCTION ToString$()
         DIM result AS STRING
-        result = "SELECT "
-        IF selectAll <> 0 THEN
-            result = result + "* FROM " + tableName
-        ELSE
-            result = result + "... FROM " + tableName
+        DIM i AS INTEGER
+        result = ""
+        IF isUnique <> 0 THEN
+            result = "UNIQUE "
         END IF
-        ToString$ = result + ";"
+        result = result + "CREATE INDEX " + indexName + " ON " + tableName + " ("
+        FOR i = 0 TO columnCount - 1
+            IF i > 0 THEN
+                result = result + ", "
+            END IF
+            result = result + columnNames(i)
+        NEXT i
+        result = result + ");"
+        ToString$ = result
     END FUNCTION
 END CLASS
 
 '=============================================================================
-' UPDATE STATEMENT
+' DROP INDEX STATEMENT
 '=============================================================================
 
-CLASS UpdateStmt
-    PUBLIC tableName AS STRING
-    PUBLIC setColumns(50) AS STRING
-    PUBLIC setValues(50) AS Expr
-    PUBLIC setCount AS INTEGER
-    PUBLIC whereClause AS Expr
-    PUBLIC hasWhere AS INTEGER
+CLASS DropIndexStmt
+    PUBLIC indexName AS STRING
 
     PUBLIC SUB Init()
-        tableName = ""
-        setCount = 0
-        hasWhere = 0
+        indexName = ""
     END SUB
 
-    PUBLIC SUB AddSet(colName AS STRING, val AS Expr)
-        IF setCount < 50 THEN
-            setColumns(setCount) = colName
-            LET setValues(setCount) = val
-            setCount = setCount + 1
-        END IF
-    END SUB
-
-    PUBLIC SUB SetWhere(expr AS Expr)
-        LET whereClause = expr
-        hasWhere = -1
-    END SUB
+    PUBLIC FUNCTION ToString$()
+        ToString$ = "DROP INDEX " + indexName + ";"
+    END FUNCTION
 END CLASS
 
 '=============================================================================
-' DELETE STATEMENT
+' PARSER STATE (Global)
 '=============================================================================
 
-CLASS DeleteStmt
-    PUBLIC tableName AS STRING
-    PUBLIC whereClause AS Expr
-    PUBLIC hasWhere AS INTEGER
+DIM gParserError AS STRING
+DIM gParserHasError AS INTEGER
 
-    PUBLIC SUB Init()
-        tableName = ""
-        hasWhere = 0
-    END SUB
+SUB ParserInit(sql AS STRING)
+    LexerInit(sql)
+    LexerNextToken()
+    gParserError = ""
+    gParserHasError = 0
+END SUB
 
-    PUBLIC SUB SetWhere(expr AS Expr)
-        LET whereClause = expr
-        hasWhere = -1
-    END SUB
-END CLASS
+SUB ParserAdvance()
+    LexerNextToken()
+END SUB
+
+FUNCTION ParserMatch(kind AS INTEGER) AS INTEGER
+    IF gTok.kind = kind THEN
+        ParserAdvance()
+        ParserMatch = -1
+    ELSE
+        ParserMatch = 0
+    END IF
+END FUNCTION
+
+FUNCTION ParserExpect(kind AS INTEGER) AS INTEGER
+    IF gTok.kind = kind THEN
+        ParserAdvance()
+        ParserExpect = -1
+    ELSE
+        gParserHasError = -1
+        gParserError = "Expected token " + STR$(kind) + ", got " + STR$(gTok.kind)
+        ParserExpect = 0
+    END IF
+END FUNCTION
+
+SUB ParserSetError(msg AS STRING)
+    gParserHasError = -1
+    gParserError = msg
+END SUB
+

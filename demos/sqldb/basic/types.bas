@@ -1,27 +1,27 @@
 ' types.bas - SQL Value Types
 ' Part of SQLite Clone - Viper Basic Implementation
-' No dependencies
+
+AddFile "lexer.bas"
 
 '=============================================================================
-' SQL VALUE TYPE CONSTANTS
+' SQL VALUE TYPES
 '=============================================================================
 
+' SqlType constants
 CONST SQL_NULL = 0
 CONST SQL_INTEGER = 1
 CONST SQL_REAL = 2
 CONST SQL_TEXT = 3
 CONST SQL_BLOB = 4
 
-'=============================================================================
-' SQLVALUE CLASS - Tagged union for SQL values
-'=============================================================================
-
+' SqlValue - Tagged union for SQL values
 CLASS SqlValue
     PUBLIC kind AS INTEGER       ' SQL_NULL, SQL_INTEGER, SQL_REAL, SQL_TEXT, SQL_BLOB
     PUBLIC intValue AS INTEGER   ' Used when kind = SQL_INTEGER
-    PUBLIC realValue AS SINGLE   ' Used when kind = SQL_REAL
+    PUBLIC realValue AS SINGLE   ' Used when kind = SQL_REAL (SINGLE = float)
     PUBLIC textValue AS STRING   ' Used when kind = SQL_TEXT or SQL_BLOB
 
+    ' Default constructor - creates NULL value
     PUBLIC SUB Init()
         kind = SQL_NULL
         intValue = 0
@@ -29,6 +29,7 @@ CLASS SqlValue
         textValue = ""
     END SUB
 
+    ' Create a NULL value
     PUBLIC SUB InitNull()
         kind = SQL_NULL
         intValue = 0
@@ -36,6 +37,7 @@ CLASS SqlValue
         textValue = ""
     END SUB
 
+    ' Create an INTEGER value
     PUBLIC SUB InitInteger(val AS INTEGER)
         kind = SQL_INTEGER
         intValue = val
@@ -43,6 +45,7 @@ CLASS SqlValue
         textValue = ""
     END SUB
 
+    ' Create a REAL value (text stores string representation for display)
     PUBLIC SUB InitReal(val AS SINGLE, txt AS STRING)
         kind = SQL_REAL
         intValue = 0
@@ -50,6 +53,7 @@ CLASS SqlValue
         textValue = txt
     END SUB
 
+    ' Create a TEXT value
     PUBLIC SUB InitText(val AS STRING)
         kind = SQL_TEXT
         intValue = 0
@@ -57,6 +61,7 @@ CLASS SqlValue
         textValue = val
     END SUB
 
+    ' Create a BLOB value (stored as string for simplicity)
     PUBLIC SUB InitBlob(val AS STRING)
         kind = SQL_BLOB
         intValue = 0
@@ -64,6 +69,7 @@ CLASS SqlValue
         textValue = val
     END SUB
 
+    ' Check type
     PUBLIC FUNCTION IsNull() AS INTEGER
         IF kind = SQL_NULL THEN
             IsNull = -1
@@ -104,6 +110,7 @@ CLASS SqlValue
         END IF
     END FUNCTION
 
+    ' Get type name
     PUBLIC FUNCTION TypeName$()
         TypeName$ = "UNKNOWN"
         SELECT CASE kind
@@ -115,6 +122,7 @@ CLASS SqlValue
         END SELECT
     END FUNCTION
 
+    ' Convert to string representation
     PUBLIC FUNCTION ToString$()
         ToString$ = "?"
         SELECT CASE kind
@@ -126,6 +134,7 @@ CLASS SqlValue
         END SELECT
     END FUNCTION
 
+    ' Compare values (returns -1, 0, or 1)
     PUBLIC FUNCTION Compare(other AS SqlValue) AS INTEGER
         ' NULL handling
         IF kind = SQL_NULL AND other.kind = SQL_NULL THEN
@@ -168,6 +177,8 @@ CLASS SqlValue
             IF textValue = other.textValue THEN
                 Compare = 0
             ELSE
+                ' Check if both strings look like numbers before trying numeric comparison
+                ' A numeric string starts with digit, minus, or period
                 DIM myFirst AS STRING
                 DIM otherFirst AS STRING
                 DIM myIsNum AS INTEGER
@@ -184,6 +195,7 @@ CLASS SqlValue
                     IF otherFirst >= "0" AND otherFirst <= "9" THEN otherIsNum = -1
                     IF otherFirst = "-" THEN otherIsNum = -1
                 END IF
+                ' Only try numeric comparison if both look like numbers
                 IF myIsNum <> 0 AND otherIsNum <> 0 THEN
                     DIM myNum AS INTEGER
                     DIM otherNum AS INTEGER
@@ -197,6 +209,7 @@ CLASS SqlValue
                         Compare = 0
                     END IF
                 ELSE
+                    ' Lexicographic comparison for non-numeric strings
                     IF textValue < other.textValue THEN
                         Compare = -1
                     ELSE
@@ -209,6 +222,7 @@ CLASS SqlValue
 
         ' Cross-type comparison: TEXT vs INTEGER
         IF kind = SQL_TEXT AND other.kind = SQL_INTEGER THEN
+            ' Check if text looks like a number first
             DIM txtFirst AS STRING
             DIM txtIsNum AS INTEGER
             txtIsNum = 0
@@ -228,12 +242,14 @@ CLASS SqlValue
                     Compare = 0
                 END IF
             ELSE
+                ' Non-numeric text: TEXT > INTEGER by type order
                 Compare = 1
             END IF
             EXIT FUNCTION
         END IF
 
         IF kind = SQL_INTEGER AND other.kind = SQL_TEXT THEN
+            ' Check if other text looks like a number first
             DIM otxtFirst AS STRING
             DIM otxtIsNum AS INTEGER
             otxtIsNum = 0
@@ -253,6 +269,7 @@ CLASS SqlValue
                     Compare = 0
                 END IF
             ELSE
+                ' INTEGER < non-numeric TEXT by type order
                 Compare = -1
             END IF
             EXIT FUNCTION
@@ -268,6 +285,7 @@ CLASS SqlValue
         END IF
     END FUNCTION
 
+    ' Check equality
     PUBLIC FUNCTION Equals(other AS SqlValue) AS INTEGER
         IF Compare(other) = 0 THEN
             Equals = -1
@@ -277,10 +295,7 @@ CLASS SqlValue
     END FUNCTION
 END CLASS
 
-'=============================================================================
-' FACTORY FUNCTIONS
-'=============================================================================
-
+' Factory functions for creating SqlValue instances
 FUNCTION SqlNull() AS SqlValue
     DIM v AS SqlValue
     LET v = NEW SqlValue()
@@ -315,3 +330,4 @@ FUNCTION SqlBlob(val AS STRING) AS SqlValue
     v.InitBlob(val)
     SqlBlob = v
 END FUNCTION
+

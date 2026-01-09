@@ -427,6 +427,11 @@ class Lowerer
     /// @brief Loop context stack for break/continue.
     ::il::frontends::common::LoopContextStack loopStack_;
 
+    /// @brief Current namespace prefix for qualified names.
+    /// @details When inside a namespace block, this contains the namespace path.
+    /// Empty when at module level. Example: "MyLib.Internal"
+    std::string namespacePrefix_;
+
     /// @brief Local variable bindings: name -> SSA value.
     std::map<std::string, Value> locals_;
 
@@ -538,6 +543,17 @@ class Lowerer
     /// @brief Lower an interface declaration.
     /// @param decl The interface declaration.
     void lowerInterfaceDecl(InterfaceDecl &decl);
+
+    /// @brief Lower a namespace declaration.
+    /// @param decl The namespace declaration.
+    /// @details Processes all declarations within the namespace, using
+    /// qualified names for code generation.
+    void lowerNamespaceDecl(NamespaceDecl &decl);
+
+    /// @brief Compute qualified name for code generation.
+    /// @param name The unqualified name.
+    /// @return The fully qualified name including namespace prefix.
+    std::string qualifyName(const std::string &name) const;
 
     /// @brief Lower a global variable declaration.
     /// @param decl The global variable declaration.

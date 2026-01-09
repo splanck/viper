@@ -1,9 +1,10 @@
 ' lexer.bas - SQL Lexer
 ' Part of SQLite Clone - Viper Basic Implementation
-' Requires: token.bas (AddFile before this)
+
+AddFile "token.bas"
 
 '=============================================================================
-' LEXER STATE - Global variables
+' LEXER STATE - Global variables (simpler than class methods)
 '=============================================================================
 
 DIM gLexSource AS STRING
@@ -11,13 +12,6 @@ DIM gLexPos AS INTEGER
 DIM gLexLine AS INTEGER
 DIM gLexCol AS INTEGER
 DIM gLexLen AS INTEGER
-
-' Global token for returning results
-DIM gTok AS Token
-
-'=============================================================================
-' LEXER INITIALIZATION AND NAVIGATION
-'=============================================================================
 
 SUB LexerInit(src AS STRING)
     LET gLexSource = src
@@ -123,8 +117,199 @@ FUNCTION IsAlphaNumCh(ch AS STRING) AS INTEGER
 END FUNCTION
 
 '=============================================================================
-' TOKEN CREATION
+' KEYWORD LOOKUP
 '=============================================================================
+
+' Bug workaround: SELECT CASE with many string cases has codegen bug
+' Using IF-ELSEIF chains instead
+FUNCTION LookupKeyword(word AS STRING) AS INTEGER
+    LookupKeyword = TK_IDENTIFIER
+    IF word = "CREATE" THEN
+        LookupKeyword = TK_CREATE
+    ELSEIF word = "TABLE" THEN
+        LookupKeyword = TK_TABLE
+    ELSEIF word = "DROP" THEN
+        LookupKeyword = TK_DROP
+    ELSEIF word = "ALTER" THEN
+        LookupKeyword = TK_ALTER
+    ELSEIF word = "INDEX" THEN
+        LookupKeyword = TK_INDEX
+    ELSEIF word = "SELECT" THEN
+        LookupKeyword = TK_SELECT
+    ELSEIF word = "INSERT" THEN
+        LookupKeyword = TK_INSERT
+    ELSEIF word = "UPDATE" THEN
+        LookupKeyword = TK_UPDATE
+    ELSEIF word = "DELETE" THEN
+        LookupKeyword = TK_DELETE
+    ELSEIF word = "INTO" THEN
+        LookupKeyword = TK_INTO
+    ELSEIF word = "FROM" THEN
+        LookupKeyword = TK_FROM
+    ELSEIF word = "WHERE" THEN
+        LookupKeyword = TK_WHERE
+    ELSEIF word = "SET" THEN
+        LookupKeyword = TK_SET
+    ELSEIF word = "VALUES" THEN
+        LookupKeyword = TK_VALUES
+    ELSEIF word = "ORDER" THEN
+        LookupKeyword = TK_ORDER
+    ELSEIF word = "BY" THEN
+        LookupKeyword = TK_BY
+    ELSEIF word = "ASC" THEN
+        LookupKeyword = TK_ASC
+    ELSEIF word = "DESC" THEN
+        LookupKeyword = TK_DESC
+    ELSEIF word = "LIMIT" THEN
+        LookupKeyword = TK_LIMIT
+    ELSEIF word = "OFFSET" THEN
+        LookupKeyword = TK_OFFSET
+    ELSEIF word = "GROUP" THEN
+        LookupKeyword = TK_GROUP
+    ELSEIF word = "HAVING" THEN
+        LookupKeyword = TK_HAVING
+    ELSEIF word = "DISTINCT" THEN
+        LookupKeyword = TK_DISTINCT
+    ELSEIF word = "JOIN" THEN
+        LookupKeyword = TK_JOIN
+    ELSEIF word = "INNER" THEN
+        LookupKeyword = TK_INNER
+    ELSEIF word = "LEFT" THEN
+        LookupKeyword = TK_LEFT
+    ELSEIF word = "RIGHT" THEN
+        LookupKeyword = TK_RIGHT
+    ELSEIF word = "FULL" THEN
+        LookupKeyword = TK_FULL
+    ELSEIF word = "OUTER" THEN
+        LookupKeyword = TK_OUTER
+    ELSEIF word = "CROSS" THEN
+        LookupKeyword = TK_CROSS
+    ELSEIF word = "ON" THEN
+        LookupKeyword = TK_ON
+    ELSEIF word = "AND" THEN
+        LookupKeyword = TK_AND
+    ELSEIF word = "OR" THEN
+        LookupKeyword = TK_OR
+    ELSEIF word = "NOT" THEN
+        LookupKeyword = TK_NOT
+    ELSEIF word = "IN" THEN
+        LookupKeyword = TK_IN
+    ELSEIF word = "IS" THEN
+        LookupKeyword = TK_IS
+    ELSEIF word = "LIKE" THEN
+        LookupKeyword = TK_LIKE
+    ELSEIF word = "BETWEEN" THEN
+        LookupKeyword = TK_BETWEEN
+    ELSEIF word = "EXISTS" THEN
+        LookupKeyword = TK_EXISTS
+    ELSEIF word = "NULL" THEN
+        LookupKeyword = TK_NULL
+    ELSEIF word = "TRUE" THEN
+        LookupKeyword = TK_TRUE
+    ELSEIF word = "FALSE" THEN
+        LookupKeyword = TK_FALSE
+    ELSEIF word = "DEFAULT" THEN
+        LookupKeyword = TK_DEFAULT
+    ELSEIF word = "PRIMARY" THEN
+        LookupKeyword = TK_PRIMARY
+    ELSEIF word = "FOREIGN" THEN
+        LookupKeyword = TK_FOREIGN
+    ELSEIF word = "KEY" THEN
+        LookupKeyword = TK_KEY
+    ELSEIF word = "REFERENCES" THEN
+        LookupKeyword = TK_REFERENCES
+    ELSEIF word = "UNIQUE" THEN
+        LookupKeyword = TK_UNIQUE
+    ELSEIF word = "AUTOINCREMENT" THEN
+        LookupKeyword = TK_AUTOINCREMENT
+    ELSEIF word = "INT" THEN
+        LookupKeyword = TK_INT
+    ELSEIF word = "INTEGER" THEN
+        LookupKeyword = TK_INTEGER_TYPE
+    ELSEIF word = "REAL" THEN
+        LookupKeyword = TK_REAL
+    ELSEIF word = "TEXT" THEN
+        LookupKeyword = TK_TEXT
+    ELSEIF word = "BEGIN" THEN
+        LookupKeyword = TK_BEGIN
+    ELSEIF word = "COMMIT" THEN
+        LookupKeyword = TK_COMMIT
+    ELSEIF word = "ROLLBACK" THEN
+        LookupKeyword = TK_ROLLBACK
+    ELSEIF word = "TRANSACTION" THEN
+        LookupKeyword = TK_TRANSACTION
+    ELSEIF word = "AS" THEN
+        LookupKeyword = TK_AS
+    ELSEIF word = "CASE" THEN
+        LookupKeyword = TK_CASE
+    ELSEIF word = "WHEN" THEN
+        LookupKeyword = TK_WHEN
+    ELSEIF word = "THEN" THEN
+        LookupKeyword = TK_THEN
+    ELSEIF word = "ELSE" THEN
+        LookupKeyword = TK_ELSE
+    ELSEIF word = "END" THEN
+        LookupKeyword = TK_END
+    ELSEIF word = "UNION" THEN
+        LookupKeyword = TK_UNION
+    ELSEIF word = "ALL" THEN
+        LookupKeyword = TK_ALL
+    ELSEIF word = "CAST" THEN
+        LookupKeyword = TK_CAST
+    END IF
+END FUNCTION
+
+' Fixed: Bug #008 - Use SELECT CASE instead of single-line IF with EXIT FUNCTION
+' Fixed: Bug #009 - CASE ELSE return value not working, must set default before SELECT
+FUNCTION TokenTypeName$(kind AS INTEGER)
+    TokenTypeName$ = "UNKNOWN"
+    SELECT CASE kind
+        CASE TK_EOF: TokenTypeName$ = "EOF"
+        CASE TK_ERROR: TokenTypeName$ = "ERROR"
+        CASE TK_INTEGER: TokenTypeName$ = "INTEGER"
+        CASE TK_NUMBER: TokenTypeName$ = "NUMBER"
+        CASE TK_STRING: TokenTypeName$ = "STRING"
+        CASE TK_IDENTIFIER: TokenTypeName$ = "IDENTIFIER"
+        CASE TK_SELECT: TokenTypeName$ = "SELECT"
+        CASE TK_INSERT: TokenTypeName$ = "INSERT"
+        CASE TK_UPDATE: TokenTypeName$ = "UPDATE"
+        CASE TK_DELETE: TokenTypeName$ = "DELETE"
+        CASE TK_CREATE: TokenTypeName$ = "CREATE"
+        CASE TK_TABLE: TokenTypeName$ = "TABLE"
+        CASE TK_DROP: TokenTypeName$ = "DROP"
+        CASE TK_FROM: TokenTypeName$ = "FROM"
+        CASE TK_WHERE: TokenTypeName$ = "WHERE"
+        CASE TK_INTO: TokenTypeName$ = "INTO"
+        CASE TK_VALUES: TokenTypeName$ = "VALUES"
+        CASE TK_AND: TokenTypeName$ = "AND"
+        CASE TK_OR: TokenTypeName$ = "OR"
+        CASE TK_NOT: TokenTypeName$ = "NOT"
+        CASE TK_NULL: TokenTypeName$ = "NULL"
+        CASE TK_PLUS: TokenTypeName$ = "PLUS"
+        CASE TK_MINUS: TokenTypeName$ = "MINUS"
+        CASE TK_STAR: TokenTypeName$ = "STAR"
+        CASE TK_SLASH: TokenTypeName$ = "SLASH"
+        CASE TK_EQ: TokenTypeName$ = "EQ"
+        CASE TK_NE: TokenTypeName$ = "NE"
+        CASE TK_LT: TokenTypeName$ = "LT"
+        CASE TK_GT: TokenTypeName$ = "GT"
+        CASE TK_LE: TokenTypeName$ = "LE"
+        CASE TK_GE: TokenTypeName$ = "GE"
+        CASE TK_LPAREN: TokenTypeName$ = "LPAREN"
+        CASE TK_RPAREN: TokenTypeName$ = "RPAREN"
+        CASE TK_COMMA: TokenTypeName$ = "COMMA"
+        CASE TK_SEMICOLON: TokenTypeName$ = "SEMICOLON"
+        CASE TK_DOT: TokenTypeName$ = "DOT"
+        CASE ELSE
+    END SELECT
+END FUNCTION
+
+'=============================================================================
+' LEXER FUNCTIONS - Token reading
+'=============================================================================
+
+' Global token for returning results
+DIM gTok AS Token
 
 SUB LexerMakeToken(k AS INTEGER, t AS STRING, ln AS INTEGER, col AS INTEGER)
     LET gTok = NEW Token()
@@ -212,10 +397,6 @@ SUB LexerReadIdentifier()
 
     LexerMakeToken(kind, text, startLine, startCol)
 END SUB
-
-'=============================================================================
-' MAIN LEXER FUNCTION
-'=============================================================================
 
 SUB LexerNextToken()
     DIM startLine AS INTEGER
@@ -337,3 +518,4 @@ SUB LexerNextToken()
 
     LexerMakeToken(TK_ERROR, ch, startLine, startCol)
 END SUB
+

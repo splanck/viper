@@ -197,8 +197,23 @@ bool Sema::analyze(ModuleDecl &module)
                 defineSymbol(gvar->name, sym);
                 break;
             }
+            case DeclKind::Namespace:
+            {
+                // Namespaces are processed in a separate pass to handle their
+                // nested declarations properly
+                break;
+            }
             default:
                 break;
+        }
+    }
+
+    // Process namespace declarations (they handle their own multi-pass analysis)
+    for (auto &decl : module.declarations)
+    {
+        if (decl->kind == DeclKind::Namespace)
+        {
+            analyzeNamespaceDecl(*static_cast<NamespaceDecl *>(decl.get()));
         }
     }
 
@@ -650,6 +665,185 @@ void Sema::registerBuiltins()
     // Register all Viper.* runtime functions from runtime.def
     // Generated from src/il/runtime/runtime.def (1002 functions)
     initRuntimeFunctions();
+}
+
+//===----------------------------------------------------------------------===//
+// Namespace Support
+//===----------------------------------------------------------------------===//
+
+std::string Sema::qualifyName(const std::string &name) const
+{
+    if (namespacePrefix_.empty())
+        return name;
+    return namespacePrefix_ + "." + name;
+}
+
+void Sema::analyzeNamespaceDecl(NamespaceDecl &decl)
+{
+    // Save current namespace prefix
+    std::string savedPrefix = namespacePrefix_;
+
+    // Compute new prefix: append this namespace's name
+    if (namespacePrefix_.empty())
+        namespacePrefix_ = decl.name;
+    else
+        namespacePrefix_ = namespacePrefix_ + "." + decl.name;
+
+    // Process declarations inside this namespace
+    // First pass: register declarations
+    for (auto &innerDecl : decl.declarations)
+    {
+        switch (innerDecl->kind)
+        {
+            case DeclKind::Function:
+            {
+                auto *func = static_cast<FunctionDecl *>(innerDecl.get());
+                std::string qualifiedName = qualifyName(func->name);
+
+                TypeRef returnType =
+                    func->returnType ? resolveTypeNode(func->returnType.get()) : types::voidType();
+
+                std::vector<TypeRef> paramTypes;
+                for (const auto &param : func->params)
+                {
+                    paramTypes.push_back(param.type ? resolveTypeNode(param.type.get())
+                                                    : types::unknown());
+                }
+                auto funcType = types::function(paramTypes, returnType);
+
+                Symbol sym;
+                sym.kind = Symbol::Kind::Function;
+                sym.name = qualifiedName;
+                sym.type = funcType;
+                sym.decl = func;
+                defineSymbol(qualifiedName, sym);
+                break;
+            }
+            case DeclKind::Value:
+            {
+                auto *value = static_cast<ValueDecl *>(innerDecl.get());
+                std::string qualifiedName = qualifyName(value->name);
+                valueDecls_[qualifiedName] = value;
+                auto valueType = types::value(qualifiedName);
+                typeRegistry_[qualifiedName] = valueType;
+
+                Symbol sym;
+                sym.kind = Symbol::Kind::Type;
+                sym.name = qualifiedName;
+                sym.type = valueType;
+                sym.decl = value;
+                defineSymbol(qualifiedName, sym);
+                break;
+            }
+            case DeclKind::Entity:
+            {
+                auto *entity = static_cast<EntityDecl *>(innerDecl.get());
+                std::string qualifiedName = qualifyName(entity->name);
+                entityDecls_[qualifiedName] = entity;
+                auto entityType = types::entity(qualifiedName);
+                typeRegistry_[qualifiedName] = entityType;
+
+                Symbol sym;
+                sym.kind = Symbol::Kind::Type;
+                sym.name = qualifiedName;
+                sym.type = entityType;
+                sym.decl = entity;
+                defineSymbol(qualifiedName, sym);
+                break;
+            }
+            case DeclKind::Interface:
+            {
+                auto *iface = static_cast<InterfaceDecl *>(innerDecl.get());
+                std::string qualifiedName = qualifyName(iface->name);
+                interfaceDecls_[qualifiedName] = iface;
+                auto ifaceType = types::interface(qualifiedName);
+                typeRegistry_[qualifiedName] = ifaceType;
+
+                Symbol sym;
+                sym.kind = Symbol::Kind::Type;
+                sym.name = qualifiedName;
+                sym.type = ifaceType;
+                sym.decl = iface;
+                defineSymbol(qualifiedName, sym);
+                break;
+            }
+            case DeclKind::GlobalVar:
+            {
+                auto *gvar = static_cast<GlobalVarDecl *>(innerDecl.get());
+                std::string qualifiedName = qualifyName(gvar->name);
+
+                TypeRef varType;
+                if (gvar->type)
+                    varType = resolveTypeNode(gvar->type.get());
+                else
+                    varType = types::unknown();
+
+                Symbol sym;
+                sym.kind = Symbol::Kind::Variable;
+                sym.name = qualifiedName;
+                sym.type = varType;
+                sym.isFinal = gvar->isFinal;
+                sym.decl = gvar;
+                defineSymbol(qualifiedName, sym);
+                break;
+            }
+            case DeclKind::Namespace:
+            {
+                // Nested namespace - recursively process
+                analyzeNamespaceDecl(*static_cast<NamespaceDecl *>(innerDecl.get()));
+                break;
+            }
+            default:
+                break;
+        }
+    }
+
+    // Second pass: register members for types
+    for (auto &innerDecl : decl.declarations)
+    {
+        switch (innerDecl->kind)
+        {
+            case DeclKind::Value:
+                registerValueMembers(*static_cast<ValueDecl *>(innerDecl.get()));
+                break;
+            case DeclKind::Entity:
+                registerEntityMembers(*static_cast<EntityDecl *>(innerDecl.get()));
+                break;
+            case DeclKind::Interface:
+                registerInterfaceMembers(*static_cast<InterfaceDecl *>(innerDecl.get()));
+                break;
+            default:
+                break;
+        }
+    }
+
+    // Third pass: analyze bodies
+    for (auto &innerDecl : decl.declarations)
+    {
+        switch (innerDecl->kind)
+        {
+            case DeclKind::Function:
+                analyzeFunctionDecl(*static_cast<FunctionDecl *>(innerDecl.get()));
+                break;
+            case DeclKind::Value:
+                analyzeValueDecl(*static_cast<ValueDecl *>(innerDecl.get()));
+                break;
+            case DeclKind::Entity:
+                analyzeEntityDecl(*static_cast<EntityDecl *>(innerDecl.get()));
+                break;
+            case DeclKind::Interface:
+                analyzeInterfaceDecl(*static_cast<InterfaceDecl *>(innerDecl.get()));
+                break;
+            case DeclKind::GlobalVar:
+                analyzeGlobalVarDecl(*static_cast<GlobalVarDecl *>(innerDecl.get()));
+                break;
+            default:
+                break;
+        }
+    }
+
+    // Restore previous namespace prefix
+    namespacePrefix_ = savedPrefix;
 }
 
 // initRuntimeFunctions() implementation moved to Sema_Runtime.cpp

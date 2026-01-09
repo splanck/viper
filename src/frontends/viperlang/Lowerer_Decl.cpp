@@ -44,9 +44,40 @@ void Lowerer::lowerDecl(Decl *decl)
         case DeclKind::GlobalVar:
             lowerGlobalVarDecl(*static_cast<GlobalVarDecl *>(decl));
             break;
+        case DeclKind::Namespace:
+            lowerNamespaceDecl(*static_cast<NamespaceDecl *>(decl));
+            break;
         default:
             break;
     }
+}
+
+std::string Lowerer::qualifyName(const std::string &name) const
+{
+    if (namespacePrefix_.empty())
+        return name;
+    return namespacePrefix_ + "." + name;
+}
+
+void Lowerer::lowerNamespaceDecl(NamespaceDecl &decl)
+{
+    // Save current namespace prefix
+    std::string savedPrefix = namespacePrefix_;
+
+    // Compute new prefix
+    if (namespacePrefix_.empty())
+        namespacePrefix_ = decl.name;
+    else
+        namespacePrefix_ = namespacePrefix_ + "." + decl.name;
+
+    // Lower all declarations inside the namespace
+    for (auto &innerDecl : decl.declarations)
+    {
+        lowerDecl(innerDecl.get());
+    }
+
+    // Restore previous prefix
+    namespacePrefix_ = savedPrefix;
 }
 
 std::string Lowerer::getModvarAddrHelper(Type::Kind kind)
@@ -82,6 +113,9 @@ Lowerer::Value Lowerer::getGlobalVarAddr(const std::string &name, TypeRef type)
 
 void Lowerer::lowerGlobalVarDecl(GlobalVarDecl &decl)
 {
+    // Use qualified name for globals inside namespaces
+    std::string qualifiedName = qualifyName(decl.name);
+
     // Resolve the type
     TypeRef type = decl.type ? sema_.resolveType(decl.type.get()) : nullptr;
     if (!type && decl.initializer)
@@ -99,26 +133,26 @@ void Lowerer::lowerGlobalVarDecl(GlobalVarDecl &decl)
         // Handle integer literals
         if (auto *intLit = dynamic_cast<IntLiteralExpr *>(init))
         {
-            globalConstants_[decl.name] = Value::constInt(intLit->value);
+            globalConstants_[qualifiedName] = Value::constInt(intLit->value);
             inlinedAsConstant = true;
         }
         // Handle number (float) literals
         else if (auto *numLit = dynamic_cast<NumberLiteralExpr *>(init))
         {
-            globalConstants_[decl.name] = Value::constFloat(numLit->value);
+            globalConstants_[qualifiedName] = Value::constFloat(numLit->value);
             inlinedAsConstant = true;
         }
         // Handle boolean literals
         else if (auto *boolLit = dynamic_cast<BoolLiteralExpr *>(init))
         {
-            globalConstants_[decl.name] = Value::constBool(boolLit->value);
+            globalConstants_[qualifiedName] = Value::constBool(boolLit->value);
             inlinedAsConstant = true;
         }
         // Handle string literals
         else if (auto *strLit = dynamic_cast<StringLiteralExpr *>(init))
         {
             std::string label = stringTable_.intern(strLit->value);
-            globalConstants_[decl.name] = Value::constStr(label);
+            globalConstants_[qualifiedName] = Value::constStr(label);
             inlinedAsConstant = true;
         }
 
@@ -131,7 +165,7 @@ void Lowerer::lowerGlobalVarDecl(GlobalVarDecl &decl)
     // For mutable variables, register for runtime storage
     if (!decl.isFinal && type)
     {
-        globalVariables_[decl.name] = type;
+        globalVariables_[qualifiedName] = type;
 
         // Store literal initializer values for module init
         if (decl.initializer)
@@ -141,23 +175,23 @@ void Lowerer::lowerGlobalVarDecl(GlobalVarDecl &decl)
             // Handle integer literals
             if (auto *intLit = dynamic_cast<IntLiteralExpr *>(init))
             {
-                globalInitializers_[decl.name] = Value::constInt(intLit->value);
+                globalInitializers_[qualifiedName] = Value::constInt(intLit->value);
             }
             // Handle number (float) literals
             else if (auto *numLit = dynamic_cast<NumberLiteralExpr *>(init))
             {
-                globalInitializers_[decl.name] = Value::constFloat(numLit->value);
+                globalInitializers_[qualifiedName] = Value::constFloat(numLit->value);
             }
             // Handle boolean literals
             else if (auto *boolLit = dynamic_cast<BoolLiteralExpr *>(init))
             {
-                globalInitializers_[decl.name] = Value::constBool(boolLit->value);
+                globalInitializers_[qualifiedName] = Value::constBool(boolLit->value);
             }
             // Handle string literals
             else if (auto *strLit = dynamic_cast<StringLiteralExpr *>(init))
             {
                 std::string label = stringTable_.intern(strLit->value);
-                globalInitializers_[decl.name] = Value::constStr(label);
+                globalInitializers_[qualifiedName] = Value::constStr(label);
             }
         }
     }
@@ -179,8 +213,9 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
         params.push_back({param.name, mapType(paramType)});
     }
 
-    // Mangle function name
-    std::string mangledName = mangleFunctionName(decl.name);
+    // Use qualified name for functions inside namespaces
+    std::string qualifiedName = qualifyName(decl.name);
+    std::string mangledName = mangleFunctionName(qualifiedName);
 
     // Track this function as defined in this module
     definedFunctions_.insert(mangledName);
@@ -291,9 +326,12 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
 
 void Lowerer::lowerValueDecl(ValueDecl &decl)
 {
+    // Use qualified name for value types inside namespaces
+    std::string qualifiedName = qualifyName(decl.name);
+
     // Compute field layout
     ValueTypeInfo info;
-    info.name = decl.name;
+    info.name = qualifiedName;
     info.totalSize = 0;
 
     for (auto &member : decl.members)
@@ -327,25 +365,28 @@ void Lowerer::lowerValueDecl(ValueDecl &decl)
     }
 
     // Store the value type info and get reference for method lowering
-    valueTypes_[decl.name] = std::move(info);
-    const ValueTypeInfo &storedInfo = valueTypes_[decl.name];
+    valueTypes_[qualifiedName] = std::move(info);
+    const ValueTypeInfo &storedInfo = valueTypes_[qualifiedName];
 
-    // Lower all methods
+    // Lower all methods using qualified type name
     for (auto *method : storedInfo.methods)
     {
-        lowerMethodDecl(*method, decl.name, false);
+        lowerMethodDecl(*method, qualifiedName, false);
     }
 }
 
 void Lowerer::lowerEntityDecl(EntityDecl &decl)
 {
     // Compute field layout (entity fields start after object header + vtable ptr)
+    // Use qualified name for entities inside namespaces
+    std::string qualifiedName = qualifyName(decl.name);
+
     EntityTypeInfo info;
-    info.name = decl.name;
-    info.baseClass = decl.baseClass; // Store parent class for super calls
+    info.name = qualifiedName;
+    info.baseClass = decl.baseClass; // Store parent class for super calls (may need qualifying)
     info.totalSize = kEntityFieldsOffset; // Space for header + vtable ptr
     info.classId = nextClassId_++;
-    info.vtableName = "__vtable_" + decl.name;
+    info.vtableName = "__vtable_" + qualifiedName;
 
     // BUG-VL-010 fix: Store implemented interfaces for interface method dispatch
     for (const auto &iface : decl.interfaces)
@@ -405,7 +446,7 @@ void Lowerer::lowerEntityDecl(EntityDecl &decl)
             info.methods.push_back(method);
 
             // Build vtable: check if method overrides parent or add new slot
-            std::string methodQualName = decl.name + "." + method->name;
+            std::string methodQualName = qualifiedName + "." + method->name;
             auto vtableIt = info.vtableIndex.find(method->name);
             if (vtableIt != info.vtableIndex.end())
             {
@@ -422,13 +463,13 @@ void Lowerer::lowerEntityDecl(EntityDecl &decl)
     }
 
     // Store the entity type info and get reference for method lowering
-    entityTypes_[decl.name] = std::move(info);
-    EntityTypeInfo &storedInfo = entityTypes_[decl.name];
+    entityTypes_[qualifiedName] = std::move(info);
+    EntityTypeInfo &storedInfo = entityTypes_[qualifiedName];
 
     // Lower all methods first (so they are defined before vtable references them)
     for (auto *method : storedInfo.methods)
     {
-        lowerMethodDecl(*method, decl.name, true);
+        lowerMethodDecl(*method, qualifiedName, true);
     }
 
     // Emit vtable global (array of function pointers)
@@ -448,9 +489,12 @@ void Lowerer::emitVtable(const EntityTypeInfo & /*info*/)
 
 void Lowerer::lowerInterfaceDecl(InterfaceDecl &decl)
 {
+    // Use qualified name for interfaces inside namespaces
+    std::string qualifiedName = qualifyName(decl.name);
+
     // Store interface information for vtable dispatch
     InterfaceTypeInfo info;
-    info.name = decl.name;
+    info.name = qualifiedName;
 
     for (auto &member : decl.members)
     {
@@ -462,7 +506,7 @@ void Lowerer::lowerInterfaceDecl(InterfaceDecl &decl)
         }
     }
 
-    interfaceTypes_[decl.name] = std::move(info);
+    interfaceTypes_[qualifiedName] = std::move(info);
 
     // Note: Interface methods are not lowered directly since they're abstract.
     // The implementing entity's methods are called at runtime.

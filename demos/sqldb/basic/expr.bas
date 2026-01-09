@@ -1,11 +1,13 @@
-' expr.bas - SQL Expression Class
+' expr.bas - Expression Types
 ' Part of SQLite Clone - Viper Basic Implementation
-' Requires: types.bas (AddFile before this)
+
+AddFile "schema.bas"
 
 '=============================================================================
-' EXPRESSION KIND CONSTANTS
+' EXPRESSION TYPES
 '=============================================================================
 
+' Expression kind constants
 CONST EXPR_LITERAL = 1
 CONST EXPR_COLUMN = 2
 CONST EXPR_BINARY = 3
@@ -13,10 +15,6 @@ CONST EXPR_UNARY = 4
 CONST EXPR_FUNCTION = 5
 CONST EXPR_STAR = 6
 CONST EXPR_SUBQUERY = 7
-
-'=============================================================================
-' OPERATOR CONSTANTS
-'=============================================================================
 
 ' Binary operators
 CONST OP_ADD = 1
@@ -44,19 +42,27 @@ CONST UOP_NOT = 2
 ' Maximum args for function calls
 CONST MAX_ARGS = 16
 
-'=============================================================================
-' EXPR CLASS
-'=============================================================================
-
 CLASS Expr
     PUBLIC kind AS INTEGER         ' EXPR_LITERAL, EXPR_COLUMN, etc.
+
+    ' For EXPR_LITERAL
     PUBLIC literalValue AS SqlValue
+
+    ' For EXPR_COLUMN
     PUBLIC tableName AS STRING     ' Optional table alias
     PUBLIC columnName AS STRING
+
+    ' For EXPR_BINARY and EXPR_UNARY
     PUBLIC op AS INTEGER           ' Operator constant
+
+    ' For EXPR_FUNCTION
     PUBLIC funcName AS STRING
+
+    ' Children (binary: left=args(0), right=args(1); unary: operand=args(0); func: arguments)
     PUBLIC args(MAX_ARGS) AS Expr
     PUBLIC argCount AS INTEGER
+
+    ' For EXPR_SUBQUERY
     PUBLIC subquerySQL AS STRING
 
     PUBLIC SUB Init()
@@ -222,10 +228,7 @@ CLASS Expr
     END FUNCTION
 END CLASS
 
-'=============================================================================
-' HELPER FUNCTIONS
-'=============================================================================
-
+' Helper function to convert operator to string
 FUNCTION OpToString$(op AS INTEGER)
     IF op = OP_ADD THEN
         OpToString$ = "+"
@@ -262,10 +265,7 @@ FUNCTION OpToString$(op AS INTEGER)
     END IF
 END FUNCTION
 
-'=============================================================================
-' FACTORY FUNCTIONS
-'=============================================================================
-
+' Factory functions for creating expressions
 FUNCTION ExprNull() AS Expr
     DIM e AS Expr
     LET e = NEW Expr()
@@ -353,3 +353,4 @@ FUNCTION ExprSubquery(sql AS STRING) AS Expr
     e.InitSubquery(sql)
     ExprSubquery = e
 END FUNCTION
+

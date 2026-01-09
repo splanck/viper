@@ -1,6 +1,8 @@
-' database.bas - SQL Database and Result Classes
+' database.bas - Database and QueryResult Classes
 ' Part of SQLite Clone - Viper Basic Implementation
-' Requires: table.bas (AddFile before this)
+
+AddFile "index.bas"
+AddFile "parser.bas"
 
 '=============================================================================
 ' DATABASE CLASS
@@ -83,11 +85,12 @@ CLASS QueryResult
 END CLASS
 
 '=============================================================================
-' GLOBAL DATABASE INSTANCE
+' EXECUTOR - Global Database
 '=============================================================================
 
 DIM gDatabase AS SqlDatabase
 DIM gDbInitialized AS INTEGER
+DIM gIndexManager AS SqlIndexManager
 
 ' Outer context for correlated subqueries
 DIM gOuterRow AS SqlRow
@@ -100,6 +103,8 @@ SUB InitDatabase()
     IF gDbInitialized = 0 THEN
         LET gDatabase = NEW SqlDatabase()
         gDatabase.Init()
+        LET gIndexManager = NEW SqlIndexManager()
+        gIndexManager.Init()
         gDbInitialized = -1
     END IF
 END SUB

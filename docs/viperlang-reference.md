@@ -34,6 +34,7 @@ Complete language reference for ViperLang. This document describes **syntax**, *
 - [Value Types](#value-types)
 - [Interfaces](#interfaces)
 - [Modules and Imports](#modules-and-imports)
+- [Namespaces](#namespaces)
 - [Runtime Library Access](#runtime-library-access)
 - [Operator Precedence](#operator-precedence)
 - [Reserved Words](#reserved-words)
@@ -698,6 +699,103 @@ The compiler detects circular imports and reports an error. Maximum import depth
 
 ---
 
+## Namespaces
+
+Namespaces organize declarations under qualified names to prevent name collisions and provide logical grouping.
+
+### Basic Namespace
+
+```viper
+namespace MyLib {
+    func helper() -> Integer {
+        return 42;
+    }
+
+    entity Parser {
+        Integer value;
+
+        func parse(input: String) -> Boolean {
+            return true;
+        }
+    }
+}
+```
+
+Access namespaced members using dot notation:
+
+```viper
+var result = MyLib.helper();
+var p = new MyLib.Parser();
+```
+
+### Dotted Namespace Names
+
+Namespaces can use dotted names for nested organization:
+
+```viper
+namespace MyLib.Internal {
+    func secret() -> String {
+        return "hidden";
+    }
+}
+
+// Access:
+var s = MyLib.Internal.secret();
+```
+
+### Nested Namespaces
+
+Namespaces can be nested within other namespaces:
+
+```viper
+namespace Outer {
+    namespace Inner {
+        func nested() -> Integer {
+            return 100;
+        }
+    }
+}
+
+// Access:
+var n = Outer.Inner.nested();
+```
+
+### What Can Be in a Namespace
+
+Namespaces can contain:
+- Functions
+- Entity types
+- Value types
+- Interfaces
+- Global variables (final or var)
+- Other namespaces
+
+```viper
+namespace Config {
+    final VERSION = 42;
+    var debug = false;
+
+    value Point {
+        Integer x;
+        Integer y;
+    }
+
+    interface Configurable {
+        func configure();
+    }
+
+    entity Settings {
+        String name;
+    }
+}
+```
+
+### Built-in Namespaces
+
+The `Viper.*` namespaces (Viper.Terminal, Viper.Math, etc.) use the same namespace mechanism as user-defined namespaces.
+
+---
+
 ## Runtime Library Access
 
 ViperLang programs have access to the full Viper Runtime through the `Viper.*` namespace.
@@ -806,9 +904,10 @@ and         as          break       continue    else
 entity      expose      extends     false       final
 for         func        guard       hide        if
 implements  import      in          interface   is
-match       module      new         null        or
-override    return      self        super       true
-value       var         while
+let         match       module      namespace   new
+not         null        or          override    return
+self        super       true        value       var
+weak        while
 ```
 
 ### Type Names
@@ -832,12 +931,14 @@ import      ::= "import" STRING ";"
 ### Declarations
 
 ```
-decl        ::= entityDecl | valueDecl | interfaceDecl | funcDecl | varDecl
+decl        ::= entityDecl | valueDecl | interfaceDecl | funcDecl | varDecl | namespaceDecl
 entityDecl  ::= "entity" IDENT ["extends" IDENT] ["implements" identList] "{" member* "}"
 valueDecl   ::= "value" IDENT ["implements" identList] "{" member* "}"
 interfaceDecl ::= "interface" IDENT "{" methodSig* "}"
 funcDecl    ::= "func" IDENT "(" params ")" ["->" type] block
 varDecl     ::= ("var" | "final") IDENT [":" type] ["=" expr] ";"
+namespaceDecl ::= "namespace" qualifiedName "{" decl* "}"
+qualifiedName ::= IDENT ("." IDENT)*
 ```
 
 ### Statements

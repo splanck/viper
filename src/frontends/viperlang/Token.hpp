@@ -223,6 +223,12 @@ enum class TokenKind
     /// Syntax: `module MyApp;`
     KwModule,
 
+    /// @brief Namespace block keyword.
+    /// @details Groups declarations under a namespace for qualified access.
+    /// Syntax: `namespace MyLib { entity Foo { ... } }`
+    /// Access via: `MyLib.Foo`
+    KwNamespace,
+
     /// @brief Import statement keyword.
     /// @details Imports symbols from another module.
     /// Syntax: `import Viper.IO.File;`

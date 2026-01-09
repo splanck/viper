@@ -1,11 +1,13 @@
 # SQLite Clone Bug Tracker
 
 ## Summary
-- **Total Bugs Found**: 20
-- **Bugs Fixed**: 17 (#001 COMPILER FIX, #003 COMPILER FIX, #007 COMPILER FIX, #008 user education, #009 COMPILER FIX, #010 COMPILER FIX, #011 COMPILER FIX, #012 user education, #013 COMPILER FIX, #014 COMPILER FIX, #015 COMPILER FIX, #016 code fix, #017 COMPILER FIX, #018 COMPILER FIX, #019 code fix, #020 COMPILER FIX)
+- **Total Bugs Found**: 22
+- **Bugs Fixed**: 17 (#001 COMPILER FIX, #003 COMPILER FIX, #007 COMPILER FIX, #009 COMPILER FIX, #010 COMPILER FIX, #011 COMPILER FIX, #013 COMPILER FIX, #014 COMPILER FIX, #015 COMPILER FIX, #016 code fix, #017 COMPILER FIX, #018 COMPILER FIX, #019 code fix, #020 COMPILER FIX)
 - **Bugs Closed**: 3 (#002, #004, #005 - were cascading effects of #007, now fixed)
-- **Bugs Open**: 0
-- **Workarounds Applied**: 0
+- **Bugs Open**: 2
+  - #021 (Viper Basic double function evaluation - workaround applied)
+  - #022 (ViperLang List.get().property trap - workaround applied)
+- **User Education**: 2 (#008 BASIC semantics, #012 object initialization)
 - **Not A Bug**: 1 (#006 by design)
 
 ### Root Cause Investigation Summary (2026-01-08)
@@ -627,6 +629,103 @@
   4. **lower/Emit_Expr.cpp**: In `computeFlatIndex`, use `expr.resolvedExtents` instead of looking up metadata from the semantic analyzer
 - **Key Insight**: Array writes go through `analyzeArrayAssignment()` while array reads go through `analyzeArrayExpr()`. Both paths needed the fix.
 - **Notes**: This fix ensures array extents are stored directly in the AST, so they remain available to the lowerer regardless of procedure scope cleanup.
+
+### Bug #021: Viper Basic function call as argument is evaluated twice
+- **Date**: 2026-01-08
+- **Language**: Viper Basic
+- **Component**: Runtime/Codegen
+- **Severity**: High
+- **Status**: WORKAROUND APPLIED
+- **Description**: When a class method function is called and its result is passed directly to another method (e.g., `autoVal.InitInteger(tbl.NextAutoIncrement())`), the inner function is called TWICE instead of once.
+- **Steps to Reproduce**:
+  ```basic
+  CLASS Counter
+      PUBLIC value AS INTEGER
+      PUBLIC SUB Init()
+          value = 1
+      END SUB
+      PUBLIC FUNCTION Next() AS INTEGER
+          PRINT "Next called, returning "; value
+          Next = value
+          value = value + 1
+      END FUNCTION
+  END CLASS
+
+  DIM c AS Counter
+  LET c = NEW Counter()
+  c.Init()
+
+  DIM x AS INTEGER
+  x = c.Next()  ' Prints "Next called, returning 1" TWICE, x = 2 (not 1)
+  ```
+- **Expected**: `c.Next()` should be called once, returning 1
+- **Actual**: `c.Next()` is called twice, function returns second value (2)
+- **Workaround**: Store the function result in a variable first:
+  ```basic
+  DIM autoIntVal AS INTEGER
+  autoIntVal = tbl.NextAutoIncrement()  ' Called once
+  autoVal.InitInteger(autoIntVal)        ' Uses stored value
+  ```
+- **Impact on SQLite Clone**: AUTOINCREMENT values were being doubled (2, 4, 6 instead of 1, 2, 3)
+- **Notes**: This is a compiler/runtime bug requiring a compiler fix. Workaround applied in SQL implementation.
+
+### Bug #022: ViperLang List[Entity].get().property causes "null indirect callee" trap
+- **Date**: 2026-01-08
+- **Language**: ViperLang
+- **Component**: Runtime
+- **Severity**: Medium
+- **Status**: WORKAROUND APPLIED
+- **Description**: When accessing a property of an entity retrieved from a List via `.get()`, certain patterns cause a runtime trap: "InvalidOperation (code=0): null indirect callee"
+- **Steps to Reproduce**:
+  ```viper
+  entity SqlIndex {
+      expose String name;
+      // ...
+  }
+
+  entity IndexManager {
+      expose List[SqlIndex] indexes;
+
+      expose func dropIndex(idxName: String) -> Boolean {
+          var i = 0;
+          while i < indexes.count() {
+              if indexes.get(i).name == idxName {  // TRAP occurs here
+                  indexes.remove(i);
+                  return true;
+              }
+              i = i + 1;
+          }
+          return false;
+      }
+  }
+  ```
+- **Expected**: Should compare entity's name property with string parameter
+- **Actual**: Runtime trap "null indirect callee" at the property access
+- **Workaround**: Use a parallel List[String] to store names separately:
+  ```viper
+  expose List[String] indexNames;
+
+  expose func addIndex(idx: SqlIndex) {
+      indexes.add(idx);
+      indexNames.add(idx.name);  // Store name separately
+  }
+
+  expose func dropIndex(idxName: String) -> Boolean {
+      var i = 0;
+      while i < indexNames.count() {
+          var currentName = indexNames.get(i);
+          if currentName == idxName {  // Compare strings directly
+              indexes.remove(i);
+              indexNames.remove(i);
+              return true;
+          }
+          i = i + 1;
+      }
+      return false;
+  }
+  ```
+- **Impact on SQLite Clone**: DROP INDEX in ViperLang crashes. CREATE INDEX works. Workaround applied but DROP INDEX test still fails due to remaining issues.
+- **Notes**: This appears to be a runtime issue with how entity method dispatch works after List.get(). The same pattern works in the Database entity for dropTable.
 
 ---
 

@@ -88,6 +88,8 @@ const char *tokenKindToString(TokenKind kind)
             return "weak";
         case TokenKind::KwModule:
             return "module";
+        case TokenKind::KwNamespace:
+            return "namespace";
         case TokenKind::KwImport:
             return "import";
         case TokenKind::KwFunc:
@@ -242,8 +244,8 @@ struct KeywordEntry
     TokenKind kind;
 };
 
-// Sorted for binary search (36 keywords)
-constexpr std::array<KeywordEntry, 36> kKeywordTable = {{
+// Sorted for binary search (37 keywords)
+constexpr std::array<KeywordEntry, 37> kKeywordTable = {{
     {"and", TokenKind::KwAnd},
     {"as", TokenKind::KwAs},
     {"break", TokenKind::KwBreak},
@@ -267,6 +269,7 @@ constexpr std::array<KeywordEntry, 36> kKeywordTable = {{
     {"let", TokenKind::KwLet},
     {"match", TokenKind::KwMatch},
     {"module", TokenKind::KwModule},
+    {"namespace", TokenKind::KwNamespace},
     {"new", TokenKind::KwNew},
     {"not", TokenKind::KwNot},
     {"null", TokenKind::KwNull},
