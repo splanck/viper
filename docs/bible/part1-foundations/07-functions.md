@@ -121,7 +121,7 @@ func add(a: i64, b: i64) -> i64 {
 }
 
 func start() {
-    let sum = add(3, 4);
+    var sum = add(3, 4);
     Viper.Terminal.Say(sum);  // 7
 }
 ```
@@ -135,7 +135,7 @@ You can use returned values directly:
 ```viper
 Viper.Terminal.Say(add(10, 20));           // 30
 Viper.Terminal.Say(add(add(1, 2), 3));     // 6 (1+2=3, 3+3=6)
-let result = add(5, 5) * 2;                // 20
+var result = add(5, 5) * 2;                // 20
 ```
 
 ---
@@ -169,12 +169,12 @@ Variables created inside a function are *local* — they exist only within that 
 
 ```viper
 func calculateArea(width: i64, height: i64) -> i64 {
-    let area = width * height;  // Local variable
+    var area = width * height;  // Local variable
     return area;
 }
 
 func start() {
-    let result = calculateArea(5, 3);
+    var result = calculateArea(5, 3);
     Viper.Terminal.Say(result);  // 15
     // Viper.Terminal.Say(area);  // Error! 'area' doesn't exist here
 }
@@ -195,13 +195,13 @@ module GradeTracker;
 
 // Read grades from user, return array
 func readGrades() -> [i64] {
-    let grades: [i64] = [];
+    var grades: [i64] = [];
 
     Viper.Terminal.Say("Enter grades (enter -1 to finish):");
 
     while true {
         Viper.Terminal.Print("Grade: ");
-        let input = Viper.Parse.Int(Viper.Terminal.ReadLine());
+        var input = Viper.Parse.Int(Viper.Terminal.ReadLine());
 
         if input == -1 {
             break;
@@ -219,7 +219,7 @@ func readGrades() -> [i64] {
 
 // Calculate sum of grades
 func sum(grades: [i64]) -> i64 {
-    let total = 0;
+    var total = 0;
     for grade in grades {
         total = total + grade;
     }
@@ -228,7 +228,7 @@ func sum(grades: [i64]) -> i64 {
 
 // Find minimum grade
 func min(grades: [i64]) -> i64 {
-    let minimum = grades[0];
+    var minimum = grades[0];
     for grade in grades {
         if grade < minimum {
             minimum = grade;
@@ -239,7 +239,7 @@ func min(grades: [i64]) -> i64 {
 
 // Find maximum grade
 func max(grades: [i64]) -> i64 {
-    let maximum = grades[0];
+    var maximum = grades[0];
     for grade in grades {
         if grade > maximum {
             maximum = grade;
@@ -259,7 +259,7 @@ func printReport(grades: [i64]) {
 }
 
 func start() {
-    let grades = readGrades();
+    var grades = readGrades();
 
     if grades.length == 0 {
         Viper.Terminal.Say("No grades entered.");
@@ -305,7 +305,7 @@ func greet(name: string) {
 }
 
 func start() {
-    let sum = add(3, 4);
+    var sum = add(3, 4);
     greet("Alice");
 }
 ```
@@ -411,7 +411,7 @@ Recursion is elegant but can be inefficient. The naive Fibonacci above recalcula
 **Forgetting to return:**
 ```viper
 func add(a: i64, b: i64) -> i64 {
-    let sum = a + b;
+    var sum = a + b;
     // Oops! Forgot 'return sum'
 }
 ```
@@ -434,7 +434,7 @@ func forever(n: i64) -> i64 {
 **Trying to use local variables outside their function:**
 ```viper
 func compute() {
-    let result = 42;
+    var result = 42;
 }
 
 func start() {

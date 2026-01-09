@@ -12,7 +12,7 @@ Everything starts with a canvas — a rectangular area where you can draw:
 import Viper.Graphics;
 
 func start() {
-    let canvas = Canvas(800, 600);  // 800 pixels wide, 600 tall
+    var canvas = Canvas(800, 600);  // 800 pixels wide, 600 tall
     canvas.setTitle("My First Window");
 
     // Draw something
@@ -56,13 +56,13 @@ A point at (100, 50) is 100 pixels from the left edge and 50 pixels from the top
 Colors are specified using RGB (red, green, blue) values from 0 to 255:
 
 ```viper
-let red = Color(255, 0, 0);
-let green = Color(0, 255, 0);
-let blue = Color(0, 0, 255);
-let white = Color(255, 255, 255);
-let black = Color(0, 0, 0);
-let purple = Color(128, 0, 255);
-let gray = Color(128, 128, 128);
+var red = Color(255, 0, 0);
+var green = Color(0, 255, 0);
+var blue = Color(0, 0, 255);
+var white = Color(255, 255, 255);
+var black = Color(0, 0, 0);
+var purple = Color(128, 0, 255);
+var gray = Color(128, 128, 128);
 ```
 
 Common colors are predefined:
@@ -116,7 +116,7 @@ canvas.setPixel(x, y);
 
 ### Polygons
 ```viper
-let points = [(100, 100), (150, 50), (200, 100)];  // Triangle
+var points = [(100, 100), (150, 50), (200, 100)];  // Triangle
 canvas.fillPolygon(points);
 canvas.drawPolygon(points);
 ```
@@ -147,7 +147,7 @@ module DrawingDemo;
 import Viper.Graphics;
 
 func start() {
-    let canvas = Canvas(640, 480);
+    var canvas = Canvas(640, 480);
     canvas.setTitle("Drawing Demo");
 
     // Background
@@ -168,7 +168,7 @@ func start() {
 
     // Roof
     canvas.setColor(Color(128, 0, 0));  // Dark red
-    let roofPoints = [(180, 250), (300, 150), (420, 250)];
+    var roofPoints = [(180, 250), (300, 150), (420, 250)];
     canvas.fillPolygon(roofPoints);
 
     // Door
@@ -218,14 +218,14 @@ module BouncingBall;
 import Viper.Graphics;
 
 func start() {
-    let canvas = Canvas(800, 600);
+    var canvas = Canvas(800, 600);
     canvas.setTitle("Bouncing Ball");
 
-    let x = 400.0;
-    let y = 300.0;
-    let dx = 5.0;
-    let dy = 3.0;
-    let radius = 20.0;
+    var x = 400.0;
+    var y = 300.0;
+    var dx = 5.0;
+    var dy = 3.0;
+    var radius = 20.0;
 
     while canvas.isOpen() {
         // Clear screen
@@ -264,11 +264,11 @@ The ball bounces around the screen, reversing direction when it hits walls.
 Games should run at a consistent speed regardless of computer speed. Use *delta time*:
 
 ```viper
-let lastTime = Viper.Time.millis();
+var lastTime = Viper.Time.millis();
 
 while canvas.isOpen() {
-    let now = Viper.Time.millis();
-    let dt = (now - lastTime) / 1000.0;  // Seconds since last frame
+    var now = Viper.Time.millis();
+    var dt = (now - lastTime) / 1000.0;  // Seconds since last frame
     lastTime = now;
 
     // Update using dt
@@ -288,8 +288,8 @@ With delta time, `speed` is in "units per second" rather than "units per frame."
 Games often use pre-drawn images (sprites):
 
 ```viper
-let playerSprite = Image.load("player.png");
-let enemySprite = Image.load("enemy.png");
+var playerSprite = Image.load("player.png");
+var enemySprite = Image.load("enemy.png");
 
 // In render loop:
 canvas.drawImage(playerSprite, playerX, playerY);
@@ -310,7 +310,7 @@ canvas.drawImageFlipped(sprite, x, y, flipX, flipY);
 To avoid flickering, draw to a back buffer and flip:
 
 ```viper
-let canvas = Canvas(800, 600, { doubleBuffered: true });
+var canvas = Canvas(800, 600, { doubleBuffered: true });
 
 while running {
     canvas.clear();       // Clear back buffer
@@ -332,17 +332,17 @@ module GameFramework;
 
 import Viper.Graphics;
 
-struct Vec2 {
+value Vec2 {
     x: f64;
     y: f64;
 }
 
-class GameObject {
+entity GameObject {
     position: Vec2;
     size: Vec2;
     color: Color;
 
-    constructor(x: f64, y: f64, w: f64, h: f64, color: Color) {
+    expose func init(x: f64, y: f64, w: f64, h: f64, color: Color) {
         self.position = Vec2 { x: x, y: y };
         self.size = Vec2 { x: w, y: h };
         self.color = color;
@@ -366,13 +366,13 @@ class GameObject {
     }
 }
 
-class Game {
+entity Game {
     canvas: Canvas;
     objects: [GameObject];
     running: bool;
     lastTime: i64;
 
-    constructor(width: i64, height: i64, title: string) {
+    expose func init(width: i64, height: i64, title: string) {
         self.canvas = Canvas(width, height);
         self.canvas.setTitle(title);
         self.objects = [];
@@ -386,8 +386,8 @@ class Game {
 
     func run() {
         while self.running && self.canvas.isOpen() {
-            let now = Viper.Time.millis();
-            let dt = (now - self.lastTime) / 1000.0;
+            var now = Viper.Time.millis();
+            var dt = (now - self.lastTime) / 1000.0;
             self.lastTime = now;
 
             self.handleInput();
@@ -422,7 +422,7 @@ class Game {
 
 // Usage example
 func start() {
-    let game = Game(800, 600, "My Game");
+    var game = Game(800, 600, "My Game");
 
     game.add(GameObject(100, 100, 50, 50, Color.RED));
     game.add(GameObject(300, 200, 30, 30, Color.BLUE));
@@ -441,7 +441,7 @@ This provides a foundation to build upon.
 ```viper
 import Viper.Graphics;
 
-let canvas = Canvas(800, 600);
+var canvas = Canvas(800, 600);
 canvas.setColor(Color.RED);
 canvas.fillRect(100, 100, 200, 150);
 canvas.show();

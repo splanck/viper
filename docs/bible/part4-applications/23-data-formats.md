@@ -9,7 +9,7 @@ Programs need to exchange data — with files, networks, databases, other progra
 Imagine you want to save a player's game state:
 
 ```viper
-struct Player {
+value Player {
     name: string;
     level: i64;
     health: f64;
@@ -17,7 +17,7 @@ struct Player {
     position: Position;
 }
 
-struct Position {
+value Position {
     x: f64;
     y: f64;
 }
@@ -60,12 +60,12 @@ JSON supports:
 import Viper.JSON;
 
 func start() {
-    let jsonText = '{"name": "Alice", "score": 100}';
+    var jsonText = '{"name": "Alice", "score": 100}';
 
-    let data = JSON.parse(jsonText);
+    var data = JSON.parse(jsonText);
 
-    let name = data["name"].asString();
-    let score = data["score"].asInt();
+    var name = data["name"].asString();
+    var score = data["score"].asInt();
 
     Viper.Terminal.Say("Player: " + name + ", Score: " + score);
 }
@@ -77,22 +77,22 @@ func start() {
 import Viper.JSON;
 
 func start() {
-    let player = JSON.object();
+    var player = JSON.object();
     player.set("name", "Hero");
     player.set("level", 5);
     player.set("health", 87.5);
 
-    let inventory = JSON.array();
+    var inventory = JSON.array();
     inventory.add("sword");
     inventory.add("shield");
     player.set("inventory", inventory);
 
-    let position = JSON.object();
+    var position = JSON.object();
     position.set("x", 100.0);
     position.set("y", 200.0);
     player.set("position", position);
 
-    let jsonText = player.toString();
+    var jsonText = player.toString();
     Viper.Terminal.Say(jsonText);
 }
 ```
@@ -105,7 +105,7 @@ Output:
 ### Pretty Printing
 
 ```viper
-let jsonText = player.toPrettyString();
+var jsonText = player.toPrettyString();
 ```
 
 Output:
@@ -130,7 +130,7 @@ Output:
 For cleaner code, add serialization methods to your classes:
 
 ```viper
-class Player {
+entity Player {
     name: string;
     level: i64;
     health: f64;
@@ -139,18 +139,18 @@ class Player {
     y: f64;
 
     func toJSON() -> JSONValue {
-        let obj = JSON.object();
+        var obj = JSON.object();
         obj.set("name", self.name);
         obj.set("level", self.level);
         obj.set("health", self.health);
 
-        let inv = JSON.array();
+        var inv = JSON.array();
         for item in self.inventory {
             inv.add(item);
         }
         obj.set("inventory", inv);
 
-        let pos = JSON.object();
+        var pos = JSON.object();
         pos.set("x", self.x);
         pos.set("y", self.y);
         obj.set("position", pos);
@@ -159,7 +159,7 @@ class Player {
     }
 
     static func fromJSON(data: JSONValue) -> Player {
-        let player = Player();
+        var player = Player();
         player.name = data["name"].asString();
         player.level = data["level"].asInt();
         player.health = data["health"].asFloat();
@@ -178,13 +178,13 @@ class Player {
 
 // Usage
 func saveGame(player: Player, filename: string) {
-    let json = player.toJSON().toPrettyString();
+    var json = player.toJSON().toPrettyString();
     Viper.File.writeText(filename, json);
 }
 
 func loadGame(filename: string) -> Player {
-    let json = Viper.File.readText(filename);
-    let data = JSON.parse(json);
+    var json = Viper.File.readText(filename);
+    var data = JSON.parse(json);
     return Player.fromJSON(data);
 }
 ```
@@ -223,13 +223,13 @@ XML uses:
 import Viper.XML;
 
 func start() {
-    let xmlText = "<player><name>Alice</name><score>100</score></player>";
+    var xmlText = "<player><name>Alice</name><score>100</score></player>";
 
-    let doc = XML.parse(xmlText);
-    let root = doc.root();  // <player>
+    var doc = XML.parse(xmlText);
+    var root = doc.root();  // <player>
 
-    let name = root.child("name").text();
-    let score = root.child("score").text().toInt();
+    var name = root.child("name").text();
+    var score = root.child("score").text().toInt();
 
     Viper.Terminal.Say("Player: " + name + ", Score: " + score);
 }
@@ -241,19 +241,19 @@ func start() {
 import Viper.XML;
 
 func start() {
-    let doc = XML.document();
-    let player = doc.createElement("player");
+    var doc = XML.document();
+    var player = doc.createElement("player");
     doc.setRoot(player);
 
-    let name = doc.createElement("name");
+    var name = doc.createElement("name");
     name.setText("Hero");
     player.appendChild(name);
 
-    let level = doc.createElement("level");
+    var level = doc.createElement("level");
     level.setText("5");
     player.appendChild(level);
 
-    let position = doc.createElement("position");
+    var position = doc.createElement("position");
     position.setAttribute("x", "100.0");
     position.setAttribute("y", "200.0");
     player.appendChild(position);
@@ -265,24 +265,24 @@ func start() {
 ### Navigating XML
 
 ```viper
-let doc = XML.parse(xmlText);
-let root = doc.root();
+var doc = XML.parse(xmlText);
+var root = doc.root();
 
 // Get child by name
-let name = root.child("name");
+var name = root.child("name");
 
 // Get all children with a name
-let items = root.child("inventory").children("item");
+var items = root.child("inventory").children("item");
 for item in items {
     Viper.Terminal.Say(item.text());
 }
 
 // Get attribute
-let x = root.child("position").attribute("x");
+var x = root.child("position").attribute("x");
 
 // XPath queries (powerful!)
-let allItems = doc.xpath("//item");
-let firstItem = doc.xpath("//inventory/item[1]");
+var allItems = doc.xpath("//item");
+var firstItem = doc.xpath("//inventory/item[1]");
 ```
 
 ---
@@ -304,12 +304,12 @@ Warrior,7,120.0,80.0,220.0
 import Viper.CSV;
 
 func start() {
-    let csv = CSV.load("players.csv");
+    var csv = CSV.load("players.csv");
 
     for row in csv.rows() {
-        let name = row["name"];
-        let level = row["level"].toInt();
-        let health = row["health"].toFloat();
+        var name = row["name"];
+        var level = row["level"].toInt();
+        var health = row["health"].toFloat();
 
         Viper.Terminal.Say(name + " (Level " + level + ")");
     }
@@ -322,7 +322,7 @@ func start() {
 import Viper.CSV;
 
 func start() {
-    let csv = CSV.create(["name", "level", "health", "x", "y"]);
+    var csv = CSV.create(["name", "level", "health", "x", "y"]);
 
     csv.addRow(["Hero", "5", "87.5", "100.0", "200.0"]);
     csv.addRow(["Wizard", "3", "65.0", "150.0", "180.0"]);
@@ -341,7 +341,7 @@ csv.addRow(["John Doe", "5", "87.5"]);       // name,level,health
 csv.addRow(["Doe, John", "5", "87.5"]);      // "Doe, John",5,87.5
 
 // The CSV library handles this automatically
-let row = csv.createRow();
+var row = csv.createRow();
 row.set("name", "Doe, John");  // Will be properly quoted
 row.set("bio", "Line 1\nLine 2");  // Newlines handled
 ```
@@ -373,13 +373,13 @@ music=true
 import Viper.INI;
 
 func start() {
-    let config = INI.load("settings.ini");
+    var config = INI.load("settings.ini");
 
-    let name = config.get("player", "name");
-    let level = config.getInt("player", "level");
+    var name = config.get("player", "name");
+    var level = config.getInt("player", "level");
 
-    let width = config.getInt("graphics", "width");
-    let fullscreen = config.getBool("graphics", "fullscreen");
+    var width = config.getInt("graphics", "width");
+    var fullscreen = config.getBool("graphics", "fullscreen");
 
     Viper.Terminal.Say("Player: " + name);
     Viper.Terminal.Say("Resolution: " + width + "x" + config.getInt("graphics", "height"));
@@ -392,7 +392,7 @@ func start() {
 import Viper.INI;
 
 func start() {
-    let config = INI.create();
+    var config = INI.create();
 
     config.set("player", "name", "Hero");
     config.set("player", "level", "5");
@@ -416,7 +416,7 @@ Text formats are human-readable but large and slow. Binary formats are compact a
 ```viper
 import Viper.IO;
 
-struct GameSave {
+value GameSave {
     version: i32;
     playerName: string;
     level: i32;
@@ -428,7 +428,7 @@ struct GameSave {
 }
 
 func saveBinary(save: GameSave, filename: string) {
-    let writer = BinaryWriter.create(filename);
+    var writer = BinaryWriter.create(filename);
 
     writer.writeInt32(save.version);
     writer.writeString(save.playerName);
@@ -446,9 +446,9 @@ func saveBinary(save: GameSave, filename: string) {
 }
 
 func loadBinary(filename: string) -> GameSave {
-    let reader = BinaryReader.open(filename);
+    var reader = BinaryReader.open(filename);
 
-    let save = GameSave();
+    var save = GameSave();
     save.version = reader.readInt32();
     save.playerName = reader.readString();
     save.level = reader.readInt32();
@@ -456,7 +456,7 @@ func loadBinary(filename: string) -> GameSave {
     save.x = reader.readFloat32();
     save.y = reader.readFloat32();
 
-    let count = reader.readInt32();
+    var count = reader.readInt32();
     save.inventory = [];
     for i in 0..count {
         save.inventory.push(reader.readString());
@@ -477,11 +477,11 @@ When designing binary formats:
 4. **Document byte order** — little-endian or big-endian
 
 ```viper
-const MAGIC = 0x56495052;  // "VIPR" in hex
-const VERSION = 1;
+final MAGIC = 0x56495052;  // "VIPR" in hex
+final VERSION = 1;
 
 func saveWithHeader(data: GameSave, filename: string) {
-    let writer = BinaryWriter.create(filename);
+    var writer = BinaryWriter.create(filename);
 
     // Header
     writer.writeUInt32(MAGIC);
@@ -495,16 +495,16 @@ func saveWithHeader(data: GameSave, filename: string) {
 }
 
 func loadWithHeader(filename: string) -> GameSave? {
-    let reader = BinaryReader.open(filename);
+    var reader = BinaryReader.open(filename);
 
     // Verify header
-    let magic = reader.readUInt32();
+    var magic = reader.readUInt32();
     if magic != MAGIC {
         Viper.Terminal.Say("Invalid file format");
         return null;
     }
 
-    let version = reader.readUInt32();
+    var version = reader.readUInt32();
     if version > VERSION {
         Viper.Terminal.Say("File is from a newer version");
         return null;
@@ -543,17 +543,17 @@ module ConfigSystem;
 import Viper.JSON;
 import Viper.File;
 
-class Config {
-    private data: JSONValue;
-    private filename: string;
-    private dirty: bool;
+entity Config {
+    hide data: JSONValue;
+    hide filename: string;
+    hide dirty: bool;
 
-    constructor(filename: string) {
+    expose func init(filename: string) {
         self.filename = filename;
         self.dirty = false;
 
         if File.exists(filename) {
-            let text = File.readText(filename);
+            var text = File.readText(filename);
             self.data = JSON.parse(text);
         } else {
             self.data = JSON.object();
@@ -561,8 +561,8 @@ class Config {
     }
 
     func get(key: string) -> JSONValue? {
-        let parts = key.split(".");
-        let current = self.data;
+        var parts = key.split(".");
+        var current = self.data;
 
         for part in parts {
             if current.has(part) {
@@ -576,7 +576,7 @@ class Config {
     }
 
     func getString(key: string, defaultValue: string) -> string {
-        let value = self.get(key);
+        var value = self.get(key);
         if value == null {
             return defaultValue;
         }
@@ -584,7 +584,7 @@ class Config {
     }
 
     func getInt(key: string, defaultValue: i64) -> i64 {
-        let value = self.get(key);
+        var value = self.get(key);
         if value == null {
             return defaultValue;
         }
@@ -592,7 +592,7 @@ class Config {
     }
 
     func getFloat(key: string, defaultValue: f64) -> f64 {
-        let value = self.get(key);
+        var value = self.get(key);
         if value == null {
             return defaultValue;
         }
@@ -600,7 +600,7 @@ class Config {
     }
 
     func getBool(key: string, defaultValue: bool) -> bool {
-        let value = self.get(key);
+        var value = self.get(key);
         if value == null {
             return defaultValue;
         }
@@ -608,12 +608,12 @@ class Config {
     }
 
     func set(key: string, value: JSONValue) {
-        let parts = key.split(".");
-        let current = self.data;
+        var parts = key.split(".");
+        var current = self.data;
 
         // Navigate to parent, creating objects as needed
         for i in 0..(parts.length - 1) {
-            let part = parts[i];
+            var part = parts[i];
             if !current.has(part) {
                 current.set(part, JSON.object());
             }
@@ -639,7 +639,7 @@ class Config {
 
     func save() {
         if self.dirty {
-            let text = self.data.toPrettyString();
+            var text = self.data.toPrettyString();
             File.writeText(self.filename, text);
             self.dirty = false;
         }
@@ -648,12 +648,12 @@ class Config {
 
 // Usage
 func start() {
-    let config = Config("game_settings.json");
+    var config = Config("game_settings.json");
 
     // Read with defaults
-    let volume = config.getFloat("audio.volume", 0.8);
-    let fullscreen = config.getBool("graphics.fullscreen", false);
-    let playerName = config.getString("player.name", "Player");
+    var volume = config.getFloat("audio.volume", 0.8);
+    var fullscreen = config.getBool("graphics.fullscreen", false);
+    var playerName = config.getString("player.name", "Player");
 
     Viper.Terminal.Say("Volume: " + volume);
     Viper.Terminal.Say("Fullscreen: " + fullscreen);
@@ -676,12 +676,12 @@ func start() {
 ```viper
 import Viper.JSON;
 
-let data = JSON.parse('{"name": "test"}');
-let name = data["name"].asString();
+var data = JSON.parse('{"name": "test"}');
+var name = data["name"].asString();
 
-let obj = JSON.object();
+var obj = JSON.object();
 obj.set("value", 42);
-let json = obj.toString();
+var json = obj.toString();
 ```
 
 **BASIC**
@@ -721,33 +721,33 @@ end.
 **Not validating input**
 ```viper
 // Bad: Assumes structure exists
-let name = data["player"]["name"].asString();  // Crash if missing!
+var name = data["player"]["name"].asString();  // Crash if missing!
 
 // Good: Check before accessing
 if data.has("player") && data["player"].has("name") {
-    let name = data["player"]["name"].asString();
+    var name = data["player"]["name"].asString();
 }
 
 // Or use defaults
-let name = data.getPath("player.name", "Unknown");
+var name = data.getPath("player.name", "Unknown");
 ```
 
 **Forgetting encoding**
 ```viper
 // Bad: Assumes UTF-8
-let text = File.readBytes(filename).toString();
+var text = File.readBytes(filename).toString();
 
 // Good: Specify encoding
-let text = File.readText(filename, Encoding.UTF8);
+var text = File.readText(filename, Encoding.UTF8);
 ```
 
 **Hardcoding format versions**
 ```viper
 // Bad: No version handling
-let data = loadBinary(file);
+var data = loadBinary(file);
 
 // Good: Version-aware loading
-let version = reader.readInt32();
+var version = reader.readInt32();
 if version == 1 {
     return loadV1(reader);
 } else if version == 2 {

@@ -25,7 +25,7 @@ Files let you:
 The simplest way to read a file is to load it all at once:
 
 ```viper
-let content = Viper.File.readText("message.txt");
+var content = Viper.File.readText("message.txt");
 Viper.Terminal.Say(content);
 ```
 
@@ -40,7 +40,7 @@ If the file doesn't exist, you'll get an error. We'll learn to handle that in Ch
 To save text to a file:
 
 ```viper
-let content = "Hello, File!\nThis is line two.";
+var content = "Hello, File!\nThis is line two.";
 Viper.File.writeText("output.txt", content);
 Viper.Terminal.Say("File written!");
 ```
@@ -69,7 +69,7 @@ Before reading, you might want to check:
 
 ```viper
 if Viper.File.exists("config.txt") {
-    let config = Viper.File.readText("config.txt");
+    var config = Viper.File.readText("config.txt");
     Viper.Terminal.Say("Loaded config");
 } else {
     Viper.Terminal.Say("No config file found, using defaults");
@@ -83,7 +83,7 @@ if Viper.File.exists("config.txt") {
 For larger files, reading everything at once might use too much memory. Reading line by line is more efficient:
 
 ```viper
-let lines = Viper.File.readLines("data.txt");
+var lines = Viper.File.readLines("data.txt");
 
 for line in lines {
     Viper.Terminal.Say("Line: " + line);
@@ -95,10 +95,10 @@ for line in lines {
 You can also process lines one at a time (more memory-efficient for huge files):
 
 ```viper
-let reader = Viper.File.openRead("huge.txt");
+var reader = Viper.File.openRead("huge.txt");
 
 while reader.hasMore() {
-    let line = reader.readLine();
+    var line = reader.readLine();
     // Process line...
 }
 
@@ -144,7 +144,7 @@ if Viper.Dir.exists("saves") {
 Viper.Dir.create("output");
 
 // List files in a directory
-let files = Viper.Dir.listFiles("data");
+var files = Viper.Dir.listFiles("data");
 for file in files {
     Viper.Terminal.Say(file);
 }
@@ -157,7 +157,7 @@ for file in files {
 The `Viper.Path` module helps work with file paths:
 
 ```viper
-let path = "/home/alice/documents/report.txt";
+var path = "/home/alice/documents/report.txt";
 
 Viper.Path.fileName(path);     // "report.txt"
 Viper.Path.extension(path);    // ".txt"
@@ -176,7 +176,7 @@ Let's build a simple notes application:
 ```viper
 module NoteKeeper;
 
-const NOTES_FILE = "notes.txt";
+final NOTES_FILE = "notes.txt";
 
 func loadNotes() -> [string] {
     if !Viper.File.exists(NOTES_FILE) {
@@ -186,7 +186,7 @@ func loadNotes() -> [string] {
 }
 
 func saveNotes(notes: [string]) {
-    let content = notes.join("\n");
+    var content = notes.join("\n");
     Viper.File.writeText(NOTES_FILE, content);
 }
 
@@ -203,7 +203,7 @@ func displayNotes(notes: [string]) {
 }
 
 func start() {
-    let notes = loadNotes();
+    var notes = loadNotes();
 
     Viper.Terminal.Say("Note Keeper");
     Viper.Terminal.Say("Commands: add, list, delete, quit");
@@ -211,7 +211,7 @@ func start() {
 
     while true {
         Viper.Terminal.Print("> ");
-        let command = Viper.Terminal.ReadLine().trim().lower();
+        var command = Viper.Terminal.ReadLine().trim().lower();
 
         if command == "quit" {
             Viper.Terminal.Say("Goodbye!");
@@ -220,14 +220,14 @@ func start() {
             displayNotes(notes);
         } else if command == "add" {
             Viper.Terminal.Print("Enter note: ");
-            let note = Viper.Terminal.ReadLine();
+            var note = Viper.Terminal.ReadLine();
             notes.push(note);
             saveNotes(notes);
             Viper.Terminal.Say("Note added!");
         } else if command == "delete" {
             displayNotes(notes);
             Viper.Terminal.Print("Delete which number? ");
-            let num = Viper.Parse.Int(Viper.Terminal.ReadLine());
+            var num = Viper.Parse.Int(Viper.Terminal.ReadLine());
             if num >= 1 && num <= notes.length {
                 notes.removeAt(num - 1);
                 saveNotes(notes);
@@ -255,11 +255,11 @@ Text files are human-readable. Binary files store raw data — more compact, but
 
 ```viper
 // Write binary data
-let data: [byte] = [72, 101, 108, 108, 111];  // ASCII for "Hello"
+var data: [byte] = [72, 101, 108, 108, 111];  // ASCII for "Hello";
 Viper.File.writeBytes("data.bin", data);
 
 // Read binary data
-let bytes = Viper.File.readBytes("data.bin");
+var bytes = Viper.File.readBytes("data.bin");
 for b in bytes {
     Viper.Terminal.Say(b);
 }
@@ -285,20 +285,20 @@ func loadConfig() -> string {
 ### Log file
 ```viper
 func log(message: string) {
-    let timestamp = Viper.Time.now().toString();
-    let entry = "[" + timestamp + "] " + message + "\n";
+    var timestamp = Viper.Time.now().toString();
+    var entry = "[" + timestamp + "] " + message + "\n";
     Viper.File.appendText("app.log", entry);
 }
 ```
 
 ### Processing a data file
 ```viper
-let lines = Viper.File.readLines("scores.csv");
-let total = 0;
+var lines = Viper.File.readLines("scores.csv");
+var total = 0;
 
 for line in lines {
-    let parts = line.split(",");
-    let score = Viper.Parse.Int(parts[1]);
+    var parts = line.split(",");
+    var score = Viper.Parse.Int(parts[1]);
     total += score;
 }
 
@@ -312,7 +312,7 @@ Viper.Terminal.Say("Total: " + total);
 **ViperLang**
 ```viper
 // Read
-let content = Viper.File.readText("file.txt");
+var content = Viper.File.readText("file.txt");
 
 // Write
 Viper.File.writeText("file.txt", "Hello!");
@@ -380,11 +380,11 @@ Pascal uses file variables and procedures like AssignFile, Reset, Rewrite, Appen
 **Forgetting the file might not exist:**
 ```viper
 // Crashes if file doesn't exist
-let content = Viper.File.readText("maybe.txt");
+var content = Viper.File.readText("maybe.txt");
 
 // Better: check first
 if Viper.File.exists("maybe.txt") {
-    let content = Viper.File.readText("maybe.txt");
+    var content = Viper.File.readText("maybe.txt");
 }
 ```
 
@@ -400,19 +400,19 @@ Viper.File.appendText("log.txt", "Entry 2\n");  // Correct
 **Hardcoding paths:**
 ```viper
 // Bad: only works on your machine
-let file = "C:\\Users\\Alice\\Documents\\data.txt";
+var file = "C:\\Users\\Alice\\Documents\\data.txt";
 
 // Better: use relative paths
-let file = "data/scores.txt";
+var file = "data/scores.txt";
 
 // Or build paths dynamically
-let home = Viper.Environment.homeDir();
-let file = Viper.Path.join(home, "Documents", "data.txt");
+var home = Viper.Environment.homeDir();
+var file = Viper.Path.join(home, "Documents", "data.txt");
 ```
 
 **Not closing files:**
 ```viper
-let reader = Viper.File.openRead("file.txt");
+var reader = Viper.File.openRead("file.txt");
 // ... use reader ...
 // Forgot reader.close()!  File stays locked
 ```

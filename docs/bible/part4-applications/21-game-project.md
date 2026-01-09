@@ -51,33 +51,33 @@ First, define constants:
 module Config;
 
 // Screen dimensions
-pub const SCREEN_WIDTH = 800;
-pub const SCREEN_HEIGHT = 600;
+pub final SCREEN_WIDTH = 800;
+pub final SCREEN_HEIGHT = 600;
 
 // Grid layout
-pub const TILE_SIZE = 40;
-pub const GRID_WIDTH = 20;   // 800 / 40
-pub const GRID_HEIGHT = 15;  // 600 / 40
+pub final TILE_SIZE = 40;
+pub final GRID_WIDTH = 20;   // 800 / 40
+pub final GRID_HEIGHT = 15;  // 600 / 40
 
 // Game zones
-pub const HOME_ROW = 0;
-pub const RIVER_START = 1;
-pub const RIVER_END = 6;
-pub const SAFE_ZONE = 7;
-pub const ROAD_START = 8;
-pub const ROAD_END = 13;
-pub const START_ROW = 14;
+pub final HOME_ROW = 0;
+pub final RIVER_START = 1;
+pub final RIVER_END = 6;
+pub final SAFE_ZONE = 7;
+pub final ROAD_START = 8;
+pub final ROAD_END = 13;
+pub final START_ROW = 14;
 
 // Timing
-pub const FROG_MOVE_COOLDOWN = 0.15;
+pub final FROG_MOVE_COOLDOWN = 0.15;
 
 // Scoring
-pub const SCORE_PER_STEP = 10;
-pub const SCORE_PER_HOME = 200;
-pub const SCORE_PER_LEVEL = 1000;
+pub final SCORE_PER_STEP = 10;
+pub final SCORE_PER_HOME = 200;
+pub final SCORE_PER_LEVEL = 1000;
 
 // Lives
-pub const STARTING_LIVES = 3;
+pub final STARTING_LIVES = 3;
 ```
 
 ---
@@ -90,7 +90,7 @@ module Frog;
 
 import Config;
 
-pub struct Frog {
+expose value Frog {
     x: f64;
     y: f64;
     gridX: i64;
@@ -117,7 +117,7 @@ pub func spawn() -> Frog {
 }
 
 pub func update(frog: Frog, dt: f64) -> Frog {
-    let f = frog;
+    var f = frog;
 
     // Reduce cooldown
     if f.moveCooldown > 0 {
@@ -142,10 +142,10 @@ pub func canMove(frog: Frog) -> bool {
 }
 
 pub func move(frog: Frog, dx: i64, dy: i64) -> Frog {
-    let f = frog;
+    var f = frog;
 
-    let newX = f.gridX + dx;
-    let newY = f.gridY + dy;
+    var newX = f.gridX + dx;
+    var newY = f.gridY + dy;
 
     // Bounds checking
     if newX < 0 || newX >= Config.GRID_WIDTH {
@@ -166,7 +166,7 @@ pub func move(frog: Frog, dx: i64, dy: i64) -> Frog {
 }
 
 pub func die(frog: Frog) -> Frog {
-    let f = frog;
+    var f = frog;
     f.alive = false;
     return f;
 }
@@ -182,7 +182,7 @@ module Vehicle;
 
 import Config;
 
-pub struct Vehicle {
+expose value Vehicle {
     x: f64;
     y: f64;
     width: f64;
@@ -191,7 +191,7 @@ pub struct Vehicle {
 }
 
 pub func create(y: i64, speed: f64, width: f64, color: Color) -> Vehicle {
-    let startX = 0.0;
+    var startX = 0.0;
     if speed < 0 {
         startX = Config.SCREEN_WIDTH;
     }
@@ -206,7 +206,7 @@ pub func create(y: i64, speed: f64, width: f64, color: Color) -> Vehicle {
 }
 
 pub func update(vehicle: Vehicle, dt: f64) -> Vehicle {
-    let v = vehicle;
+    var v = vehicle;
     v.x += v.speed * dt;
 
     // Wrap around
@@ -220,7 +220,7 @@ pub func update(vehicle: Vehicle, dt: f64) -> Vehicle {
     return v;
 }
 
-pub func getBounds(v: Vehicle) -> Rect {
+pub func getBounds(vehicle: Vehicle) -> Rect {
     return Rect {
         x: v.x,
         y: v.y,
@@ -230,7 +230,7 @@ pub func getBounds(v: Vehicle) -> Rect {
 }
 
 pub func hitsPoint(v: Vehicle, px: f64, py: f64) -> bool {
-    let bounds = getBounds(v);
+    var bounds = getBounds(v);
     return px >= bounds.x && px < bounds.x + bounds.width &&
            py >= bounds.y && py < bounds.y + bounds.height;
 }
@@ -246,7 +246,7 @@ module Platform;
 
 import Config;
 
-pub struct Platform {
+expose value Platform {
     x: f64;
     y: f64;
     width: f64;
@@ -255,7 +255,7 @@ pub struct Platform {
 }
 
 pub func create(y: i64, speed: f64, width: f64, color: Color) -> Platform {
-    let startX = 0.0;
+    var startX = 0.0;
     if speed < 0 {
         startX = Config.SCREEN_WIDTH;
     }
@@ -270,7 +270,7 @@ pub func create(y: i64, speed: f64, width: f64, color: Color) -> Platform {
 }
 
 pub func update(platform: Platform, dt: f64) -> Platform {
-    let p = platform;
+    var p = platform;
     p.x += p.speed * dt;
 
     // Wrap around
@@ -303,7 +303,7 @@ import Frog;
 import Vehicle;
 import Platform;
 
-pub struct GameState {
+expose value GameState {
     frog: Frog.Frog;
     vehicles: [Vehicle.Vehicle];
     platforms: [Platform.Platform];
@@ -316,7 +316,7 @@ pub struct GameState {
 }
 
 pub func create() -> GameState {
-    let state = GameState {
+    var state = GameState {
         frog: Frog.create(),
         vehicles: [],
         platforms: [],
@@ -332,8 +332,8 @@ pub func create() -> GameState {
 }
 
 func setupLevel(state: GameState) -> GameState {
-    let s = state;
-    let speedMod = 1.0 + (s.level - 1) * 0.2;
+    var s = state;
+    var speedMod = 1.0 + (s.level - 1) * 0.2;
 
     // Clear and create vehicles
     s.vehicles = [];
@@ -393,7 +393,7 @@ func setupLevel(state: GameState) -> GameState {
 }
 
 pub func update(state: GameState, dt: f64) -> GameState {
-    let s = state;
+    var s = state;
 
     if s.gameOver {
         return s;
@@ -429,7 +429,7 @@ pub func update(state: GameState, dt: f64) -> GameState {
     }
 
     // Check level complete
-    let allHome = true;
+    var allHome = true;
     for occupied in s.homesOccupied {
         if !occupied {
             allHome = false;
@@ -449,10 +449,10 @@ pub func update(state: GameState, dt: f64) -> GameState {
 }
 
 func checkCollisions(state: GameState) -> GameState {
-    let s = state;
-    let frogX = s.frog.x;
-    let frogY = s.frog.y;
-    let gridY = s.frog.gridY;
+    var s = state;
+    var frogX = s.frog.x;
+    var frogY = s.frog.y;
+    var gridY = s.frog.gridY;
 
     // On the road?
     if gridY >= Config.ROAD_START && gridY <= Config.ROAD_END {
@@ -466,7 +466,7 @@ func checkCollisions(state: GameState) -> GameState {
 
     // On the river?
     if gridY >= Config.RIVER_START && gridY <= Config.RIVER_END {
-        let onPlatform = false;
+        var onPlatform = false;
         for platform in s.platforms {
             if Platform.containsPoint(platform, frogX, frogY) {
                 s.frog.ridingPlatform = platform;
@@ -484,11 +484,11 @@ func checkCollisions(state: GameState) -> GameState {
 }
 
 func checkHome(state: GameState) -> GameState {
-    let s = state;
+    var s = state;
 
     if s.frog.gridY == Config.HOME_ROW {
         // Which home slot?
-        let homeIndex = getHomeIndex(s.frog.gridX);
+        var homeIndex = getHomeIndex(s.frog.gridX);
 
         if homeIndex >= 0 && homeIndex < 5 {
             if !s.homesOccupied[homeIndex] {
@@ -510,7 +510,7 @@ func checkHome(state: GameState) -> GameState {
 
 func getHomeIndex(gridX: i64) -> i64 {
     // 5 home slots spread across the top
-    let positions = [2, 6, 10, 14, 18];
+    var positions = [2, 6, 10, 14, 18];
     for i in 0..5 {
         if gridX == positions[i] || gridX == positions[i] + 1 {
             return i;
@@ -520,10 +520,10 @@ func getHomeIndex(gridX: i64) -> i64 {
 }
 
 pub func moveFrog(state: GameState, dx: i64, dy: i64) -> GameState {
-    let s = state;
+    var s = state;
 
     if Frog.canMove(s.frog) {
-        let oldY = s.frog.gridY;
+        var oldY = s.frog.gridY;
         s.frog = Frog.move(s.frog, dx, dy);
 
         // Score for moving forward
@@ -604,7 +604,7 @@ func drawBackground(canvas: Canvas) {
     // Draw lane lines
     canvas.setColor(Color.YELLOW);
     for row in Config.ROAD_START..Config.ROAD_END {
-        let y = row * Config.TILE_SIZE + Config.TILE_SIZE / 2;
+        var y = row * Config.TILE_SIZE + Config.TILE_SIZE / 2;
         for x in 0..(Config.SCREEN_WIDTH / 50) {
             canvas.fillRect(x * 50, y - 2, 30, 4);
         }
@@ -617,10 +617,10 @@ func drawBackground(canvas: Canvas) {
 }
 
 func drawHomes(canvas: Canvas, occupied: [bool]) {
-    let positions = [2, 6, 10, 14, 18];
+    var positions = [2, 6, 10, 14, 18];
 
     for i in 0..5 {
-        let x = positions[i] * Config.TILE_SIZE;
+        var x = positions[i] * Config.TILE_SIZE;
 
         if occupied[i] {
             canvas.setColor(Color(0, 255, 0));
@@ -667,15 +667,15 @@ import Viper.Graphics;
 import Viper.Input;
 
 func start() {
-    let canvas = Canvas(Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT);
+    var canvas = Canvas(Config.SCREEN_WIDTH, Config.SCREEN_HEIGHT);
     canvas.setTitle("Frogger");
 
-    let state = Game.create();
-    let lastTime = Viper.Time.millis();
+    var state = Game.create();
+    var lastTime = Viper.Time.millis();
 
     while canvas.isOpen() {
-        let now = Viper.Time.millis();
-        let dt = (now - lastTime) / 1000.0;
+        var now = Viper.Time.millis();
+        var dt = (now - lastTime) / 1000.0;
         lastTime = now;
 
         // Input

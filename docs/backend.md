@@ -1,7 +1,7 @@
 ---
 status: active
 audience: developers
-last-updated: 2025-12-26
+last-updated: 2026-01-09
 ---
 
 # Viper Backend — Native Code Generation
@@ -500,27 +500,40 @@ class LinearScanAllocator {
 5. **Insert spill code** (loads/stores)
 6. **Resolve parallel copies** by coalescing or emitting moves
 
+**Performance optimizations:**
+
+- **Active sets** use `std::unordered_set<uint16_t>` for O(1) insert/remove operations
+- **Caller-saved register lookup** uses precomputed `std::bitset<32>` for O(1) membership checks
+- **Deterministic allocation** via sorted free-register pools
+
 ### Register Classes
 
 Two independent register classes:
 
 ```cpp
 enum class RegClass {
-    GPR,  // General-purpose: RAX, RBX, RCX, RDX, RSI, RDI, R8-R15
+    GPR,  // General-purpose: RAX, RBX, RCX, RDX, RSI, RDI, R8-R15, RBP, RSP
     XMM   // Floating-point: XMM0-XMM15
 };
 ```
 
-**Allocatable registers:**
+**SysV AMD64 ABI (Linux/macOS):**
 
-- **GPR**: `RAX`, `RCX`, `RDX`, `RSI`, `RDI`, `R8`-`R11` (10 registers)
-- **XMM**: `XMM0`-`XMM7` (8 registers)
+- **Caller-saved GPR**: `RAX`, `RDI`, `RSI`, `RDX`, `RCX`, `R8`-`R11` (9 registers)
+- **Callee-saved GPR**: `RBX`, `R12`-`R15`, `RBP` (6 registers, allocated with save/restore)
+- **Caller-saved XMM**: `XMM0`-`XMM15` (16 registers)
+- **Callee-saved XMM**: none
+
+**Windows x64 ABI:**
+
+- **Caller-saved GPR**: `RAX`, `RCX`, `RDX`, `R8`-`R11` (7 registers)
+- **Callee-saved GPR**: `RBX`, `RBP`, `RDI`, `RSI`, `R12`-`R15` (8 registers)
+- **Caller-saved XMM**: `XMM0`-`XMM5` (6 registers)
+- **Callee-saved XMM**: `XMM6`-`XMM15` (10 registers)
 
 **Reserved registers:**
 
-- `RSP`: Stack pointer
-- `RBP`: Frame pointer
-- `RBX`, `R12`-`R15`: Callee-saved (allocated but require save/restore)
+- `RSP`: Stack pointer (never allocated)
 
 ### Live Interval Analysis
 
@@ -910,16 +923,24 @@ x86-64 backend but is tailored for the ARM instruction set and AAPCS64 calling c
 
 ```
 src/codegen/aarch64/
-├── AsmEmitter.hpp/cpp      # ARM assembly emission
-├── FrameBuilder.hpp/cpp    # Stack frame construction
-├── FramePlan.hpp           # Frame layout planning
-├── LowerILToMIR.hpp/cpp    # IL → MIR lowering
-├── MachineIR.hpp/cpp       # Machine IR structures
-├── OpcodeMappings.hpp      # IL opcode to MIR mapping
-├── RegAllocLinear.hpp/cpp  # Linear scan allocator
-├── RodataPool.hpp/cpp      # Read-only data management
-├── TargetAArch64.hpp/cpp   # Target description
-└── generated/              # Generated dispatch tables
+├── AsmEmitter.hpp/cpp         # ARM assembly emission
+├── FastPaths.hpp/cpp          # Fast-path instruction selection
+├── FrameBuilder.hpp/cpp       # Stack frame construction
+├── FramePlan.hpp              # Frame layout planning
+├── InstrLowering.hpp/cpp      # Individual instruction lowering
+├── LivenessAnalysis.hpp/cpp   # Live variable analysis
+├── LowerILToMIR.hpp/cpp       # IL → MIR lowering driver
+├── LoweringContext.hpp        # Context for lowering pass
+├── MachineIR.hpp/cpp          # Machine IR structures
+├── OpcodeDispatch.hpp/cpp     # Opcode-specific dispatch
+├── OpcodeMappings.hpp         # IL opcode to MIR mapping tables
+├── Peephole.hpp/cpp           # Peephole optimizations
+├── RegAllocLinear.hpp/cpp     # Linear scan allocator
+├── RodataPool.hpp/cpp         # Read-only data management
+├── TargetAArch64.hpp/cpp      # Target description
+├── TerminatorLowering.hpp/cpp # Branch/call/ret lowering
+├── fastpaths/                 # Fast-path implementations
+└── generated/                 # Generated dispatch tables
 ```
 
 ### Usage
@@ -946,7 +967,9 @@ ilc codegen arm64 program.il -run-native
 src/codegen/
 ├── common/                        # Shared utilities
 │   ├── ArgNormalize.hpp           # Argument normalization
-│   └── LabelUtil.hpp              # Label generation helpers
+│   ├── LabelUtil.hpp              # Label generation helpers
+│   ├── MachineIRBuilder.hpp       # MIR instruction builder
+│   └── MachineIRFormat.hpp        # MIR formatting utilities
 │
 ├── aarch64/                       # ARM64 backend (see above)
 │

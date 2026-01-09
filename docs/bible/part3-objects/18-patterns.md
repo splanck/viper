@@ -29,10 +29,10 @@ A word of caution: don't force patterns where they don't fit. Use them when they
 Sometimes you need exactly one instance of something — a configuration manager, a game engine, a logging service.
 
 ```viper
-class GameEngine {
-    private static instance: GameEngine? = null;
+entity GameEngine {
+    hide static instance: GameEngine? = null;
 
-    private constructor() {
+    hide func init() {
         // Private: can't create from outside
     }
 
@@ -49,15 +49,15 @@ class GameEngine {
 }
 
 // Usage
-let engine = GameEngine.getInstance();
+var engine = GameEngine.getInstance();
 engine.run();
 
 // Later, same instance
-let sameEngine = GameEngine.getInstance();
+var sameEngine = GameEngine.getInstance();
 // engine and sameEngine are the same object
 ```
 
-The private constructor prevents creating instances directly. `getInstance()` returns the single instance, creating it if needed.
+The hidden initializer prevents creating instances directly. `getInstance()` returns the single instance, creating it if needed.
 
 **Use when**: You need exactly one instance globally accessible.
 
@@ -67,7 +67,7 @@ The private constructor prevents creating instances directly. `getInstance()` re
 
 ## Factory: Creating Objects
 
-When object creation is complex or you want to hide which concrete class gets created:
+When object creation is complex or you want to hide which concrete entity gets created:
 
 ```viper
 interface Enemy {
@@ -75,22 +75,22 @@ interface Enemy {
     func getHealth() -> i64;
 }
 
-class Goblin implements Enemy {
+entity Goblin implements Enemy {
     func attack() { Viper.Terminal.Say("Goblin scratches!"); }
     func getHealth() -> i64 { return 30; }
 }
 
-class Orc implements Enemy {
+entity Orc implements Enemy {
     func attack() { Viper.Terminal.Say("Orc smashes!"); }
     func getHealth() -> i64 { return 50; }
 }
 
-class Dragon implements Enemy {
+entity Dragon implements Enemy {
     func attack() { Viper.Terminal.Say("Dragon breathes fire!"); }
     func getHealth() -> i64 { return 200; }
 }
 
-class EnemyFactory {
+entity EnemyFactory {
     static func create(type: string) -> Enemy {
         if type == "goblin" {
             return Goblin();
@@ -115,8 +115,8 @@ class EnemyFactory {
 }
 
 // Usage
-let enemy = EnemyFactory.create("orc");
-let randomEnemy = EnemyFactory.createRandom(5);
+var enemy = EnemyFactory.create("orc");
+var randomEnemy = EnemyFactory.createRandom(5);
 ```
 
 The caller doesn't need to know about Goblin, Orc, Dragon. Just ask the factory.
@@ -134,10 +134,10 @@ interface Observer {
     func onUpdate(event: string);
 }
 
-class Subject {
-    private observers: [Observer];
+entity Subject {
+    hide observers: [Observer];
 
-    constructor() {
+    expose func init() {
         self.observers = [];
     }
 
@@ -157,13 +157,13 @@ class Subject {
 }
 
 // Concrete observers
-class Logger implements Observer {
+entity Logger implements Observer {
     func onUpdate(event: string) {
         Viper.Terminal.Say("[LOG] " + event);
     }
 }
 
-class SoundPlayer implements Observer {
+entity SoundPlayer implements Observer {
     func onUpdate(event: string) {
         if event == "player_died" {
             Viper.Terminal.Say("Playing death sound");
@@ -171,7 +171,7 @@ class SoundPlayer implements Observer {
     }
 }
 
-class AchievementTracker implements Observer {
+entity AchievementTracker implements Observer {
     func onUpdate(event: string) {
         if event == "enemy_killed" {
             Viper.Terminal.Say("Checking achievements...");
@@ -180,7 +180,7 @@ class AchievementTracker implements Observer {
 }
 
 // Usage
-let gameEvents = Subject();
+var gameEvents = Subject();
 gameEvents.subscribe(Logger());
 gameEvents.subscribe(SoundPlayer());
 gameEvents.subscribe(AchievementTracker());
@@ -197,38 +197,38 @@ The subject doesn't know what the observers do. Observers don't know about each 
 
 ## Strategy: Swappable Algorithms
 
-When you want to vary behavior independently from the class that uses it:
+When you want to vary behavior independently from the entity that uses it:
 
 ```viper
 interface MovementStrategy {
     func move(entity: Entity);
 }
 
-class WalkStrategy implements MovementStrategy {
+entity WalkStrategy implements MovementStrategy {
     func move(entity: Entity) {
         entity.x += 1;
     }
 }
 
-class RunStrategy implements MovementStrategy {
+entity RunStrategy implements MovementStrategy {
     func move(entity: Entity) {
         entity.x += 3;
     }
 }
 
-class FlyStrategy implements MovementStrategy {
+entity FlyStrategy implements MovementStrategy {
     func move(entity: Entity) {
         entity.y -= 1;  // Upward
         entity.x += 2;
     }
 }
 
-class Entity {
+entity Entity {
     x: f64;
     y: f64;
-    private movementStrategy: MovementStrategy;
+    hide movementStrategy: MovementStrategy;
 
-    constructor(strategy: MovementStrategy) {
+    expose func init(strategy: MovementStrategy) {
         self.movementStrategy = strategy;
     }
 
@@ -242,7 +242,7 @@ class Entity {
 }
 
 // Usage
-let player = Entity(WalkStrategy());
+var player = Entity(WalkStrategy());
 player.move();  // Walks
 
 player.setMovement(RunStrategy());
@@ -268,12 +268,12 @@ interface Command {
     func undo();
 }
 
-class AddTextCommand implements Command {
-    private editor: TextEditor;
-    private text: string;
-    private position: i64;
+entity AddTextCommand implements Command {
+    hide editor: TextEditor;
+    hide text: string;
+    hide position: i64;
 
-    constructor(editor: TextEditor, position: i64, text: string) {
+    expose func init(editor: TextEditor, position: i64, text: string) {
         self.editor = editor;
         self.position = position;
         self.text = text;
@@ -288,10 +288,10 @@ class AddTextCommand implements Command {
     }
 }
 
-class CommandHistory {
-    private commands: [Command];
+entity CommandHistory {
+    hide commands: [Command];
 
-    constructor() {
+    expose func init() {
         self.commands = [];
     }
 
@@ -302,15 +302,15 @@ class CommandHistory {
 
     func undo() {
         if self.commands.length > 0 {
-            let last = self.commands.pop();
+            var last = self.commands.pop();
             last.undo();
         }
     }
 }
 
 // Usage
-let history = CommandHistory();
-let editor = TextEditor();
+var history = CommandHistory();
+var editor = TextEditor();
 
 history.execute(AddTextCommand(editor, 0, "Hello "));
 history.execute(AddTextCommand(editor, 6, "World"));
@@ -339,7 +339,7 @@ interface PlayerState {
     func update(player: Player);
 }
 
-class IdleState implements PlayerState {
+entity IdleState implements PlayerState {
     func handleInput(player: Player, input: string) {
         if input == "move" {
             player.setState(WalkingState());
@@ -353,7 +353,7 @@ class IdleState implements PlayerState {
     }
 }
 
-class WalkingState implements PlayerState {
+entity WalkingState implements PlayerState {
     func handleInput(player: Player, input: string) {
         if input == "stop" {
             player.setState(IdleState());
@@ -367,8 +367,8 @@ class WalkingState implements PlayerState {
     }
 }
 
-class JumpingState implements PlayerState {
-    private jumpTime: f64;
+entity JumpingState implements PlayerState {
+    hide jumpTime: f64;
 
     func handleInput(player: Player, input: string) {
         // Can't change state while jumping
@@ -383,12 +383,12 @@ class JumpingState implements PlayerState {
     }
 }
 
-class Player {
+entity Player {
     x: f64;
     y: f64;
-    private state: PlayerState;
+    hide state: PlayerState;
 
-    constructor() {
+    expose func init() {
         self.state = IdleState();
     }
 
@@ -414,7 +414,7 @@ The player behaves differently based on state, without tangled if-else chains.
 
 ## Decorator: Adding Behavior
 
-When you want to add features to objects without modifying their classes:
+When you want to add features to objects without modifying their entities:
 
 ```viper
 interface Coffee {
@@ -422,15 +422,15 @@ interface Coffee {
     func description() -> string;
 }
 
-class SimpleCoffee implements Coffee {
+entity SimpleCoffee implements Coffee {
     func cost() -> f64 { return 2.0; }
     func description() -> string { return "Coffee"; }
 }
 
-class MilkDecorator implements Coffee {
-    private coffee: Coffee;
+entity MilkDecorator implements Coffee {
+    hide coffee: Coffee;
 
-    constructor(coffee: Coffee) {
+    expose func init(coffee: Coffee) {
         self.coffee = coffee;
     }
 
@@ -443,10 +443,10 @@ class MilkDecorator implements Coffee {
     }
 }
 
-class SugarDecorator implements Coffee {
-    private coffee: Coffee;
+entity SugarDecorator implements Coffee {
+    hide coffee: Coffee;
 
-    constructor(coffee: Coffee) {
+    expose func init(coffee: Coffee) {
         self.coffee = coffee;
     }
 
@@ -460,7 +460,7 @@ class SugarDecorator implements Coffee {
 }
 
 // Usage
-let order: Coffee = SimpleCoffee();
+var order: Coffee = SimpleCoffee();
 order = MilkDecorator(order);
 order = SugarDecorator(order);
 order = SugarDecorator(order);  // Extra sugar
@@ -471,7 +471,7 @@ Viper.Terminal.Say(order.cost());         // 2.9
 
 Stack decorators to combine features.
 
-**Use when**: You want flexible combinations of features without subclass explosion.
+**Use when**: You want flexible combinations of features without subentity explosion.
 
 ---
 
@@ -521,7 +521,7 @@ Learn to recognize when patterns apply, but don't force them. A simple solution 
 
 ---
 
-*We've completed Part III! You now understand object-oriented programming: classes, inheritance, interfaces, polymorphism, and common design patterns.*
+*We've completed Part III! You now understand object-oriented programming: entities, inheritance, interfaces, polymorphism, and common design patterns.*
 
 *Part IV puts everything together to build real applications: graphics, games, networking, and more.*
 

@@ -89,13 +89,13 @@ Brief recap of key points. Link forward to the next chapter.
 
 ### Example: Good
 
-> Variables are names for values. When you write `let age = 25`, you're telling Viper: "Remember the number 25, and when I say `age`, I mean that number."
+> Variables are names for values. When you write `var age = 25`, you're telling Viper: "Remember the number 25, and when I say `age`, I mean that number."
 >
 > Why bother with names? Because programs work with lots of values, and you need a way to refer to them. It's like giving someone your phone number — the digits don't change, but having a name ("Mom's cell") makes them easier to use.
 
 ### Example: Bad
 
-> Variables store values in memory locations. Use `let` for variable declarations. Variables have types inferred by the compiler.
+> Variables store values in memory locations. Use `var` for variable declarations. Variables have types inferred by the compiler.
 
 ---
 
@@ -142,7 +142,7 @@ For important examples, explain each line:
 
 ```markdown
 ```viper
-let count = 0;        // Create a variable named 'count', starting at 0
+var count = 0;        // Create a variable named 'count', starting at 0
 while count < 5 {     // Keep going as long as count is less than 5
     Say(count);       // Print the current value
     count = count + 1; // Add 1 to count

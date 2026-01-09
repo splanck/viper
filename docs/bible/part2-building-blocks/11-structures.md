@@ -4,9 +4,9 @@ So far, we've used simple types: numbers, strings, booleans. We've grouped them 
 
 You could use separate variables:
 ```viper
-let personName = "Alice";
-let personAge = 30;
-let personEmail = "alice@example.com";
+var personName = "Alice";
+var personAge = 30;
+var personEmail = "alice@example.com";
 ```
 
 But this falls apart fast. What if you have 100 people? You can't make 300 variables. And passing a person to a function means passing three separate arguments.
@@ -20,7 +20,7 @@ But this falls apart fast. What if you have 100 people? You can't make 300 varia
 A structure is a template for grouping values:
 
 ```viper
-struct Point {
+value Point {
     x: f64;
     y: f64;
 }
@@ -31,8 +31,8 @@ This defines a new type called `Point` with two *fields*: `x` and `y`, both floa
 Now you can create instances of this structure:
 
 ```viper
-let origin = Point { x: 0.0, y: 0.0 };
-let position = Point { x: 10.5, y: 20.3 };
+var origin = Point { x: 0.0, y: 0.0 };
+var position = Point { x: 10.5, y: 20.3 };
 ```
 
 Each `Point` bundles two values together. You access fields with dot notation:
@@ -52,25 +52,25 @@ Structures change how you think about data. Instead of managing separate pieces,
 
 ```viper
 // Without structures: scattered data
-let name1 = "Alice";
-let age1 = 30;
-let name2 = "Bob";
-let age2 = 25;
+var name1 = "Alice";
+var age1 = 30;
+var name2 = "Bob";
+var age2 = 25;
 
 // With structures: unified data
-struct Person {
+value Person {
     name: string;
     age: i64;
 }
 
-let alice = Person { name: "Alice", age: 30 };
-let bob = Person { name: "Bob", age: 25 };
+var alice = Person { name: "Alice", age: 30 };
+var bob = Person { name: "Bob", age: 25 };
 ```
 
 You can make arrays of structures:
 
 ```viper
-let people: [Person] = [
+var people: [Person] = [
     Person { name: "Alice", age: 30 },
     Person { name: "Bob", age: 25 },
     Person { name: "Carol", age: 35 }
@@ -99,7 +99,7 @@ func createPerson(name: string, age: i64) -> Person {
     return Person { name: name, age: age };
 }
 
-let dave = createPerson("Dave", 40);
+var dave = createPerson("Dave", 40);
 ```
 
 ---
@@ -119,19 +119,19 @@ let dave = createPerson("Dave", 40);
 Structures can contain other structures:
 
 ```viper
-struct Address {
+value Address {
     street: string;
     city: string;
     zipCode: string;
 }
 
-struct Person {
+value Person {
     name: string;
     age: i64;
     address: Address;
 }
 
-let alice = Person {
+var alice = Person {
     name: "Alice",
     age: 30,
     address: Address {
@@ -153,7 +153,7 @@ This lets you model complex, hierarchical data cleanly.
 Structures can have functions attached to them:
 
 ```viper
-struct Rectangle {
+value Rectangle {
     width: f64;
     height: f64;
 
@@ -171,7 +171,7 @@ struct Rectangle {
     }
 }
 
-let rect = Rectangle { width: 10.0, height: 5.0 };
+var rect = Rectangle { width: 10.0, height: 5.0 };
 Viper.Terminal.Say(rect.area());       // 50
 Viper.Terminal.Say(rect.perimeter());  // 30
 
@@ -192,7 +192,7 @@ Let's model a simple game with structures:
 ```viper
 module GameDemo;
 
-struct Vec2 {
+value Vec2 {
     x: f64;
     y: f64;
 
@@ -201,13 +201,13 @@ struct Vec2 {
     }
 
     func distance(other: Vec2) -> f64 {
-        let dx = other.x - self.x;
-        let dy = other.y - self.y;
+        var dx = other.x - self.x;
+        var dy = other.y - self.y;
         return Viper.Math.sqrt(dx * dx + dy * dy);
     }
 }
 
-struct Player {
+value Player {
     name: string;
     position: Vec2;
     health: i64;
@@ -229,7 +229,7 @@ struct Player {
     }
 }
 
-struct Enemy {
+value Enemy {
     position: Vec2;
     damage: i64;
 
@@ -239,14 +239,14 @@ struct Enemy {
 }
 
 func start() {
-    let player = Player {
+    var player = Player {
         name: "Hero",
         position: Vec2 { x: 0.0, y: 0.0 },
         health: 100,
         score: 0
     };
 
-    let enemy = Enemy {
+    var enemy = Enemy {
         position: Vec2 { x: 5.0, y: 3.0 },
         damage: 10
     };
@@ -260,7 +260,7 @@ func start() {
     Viper.Terminal.Say("Moved to: (" + player.position.x + ", " + player.position.y + ")");
 
     // Check distance to enemy
-    let dist = enemy.distanceToPlayer(player);
+    var dist = enemy.distanceToPlayer(player);
     Viper.Terminal.Say("Distance to enemy: " + dist);
 
     // Take damage
@@ -285,18 +285,18 @@ This shows how structures model game concepts naturally. Each entity has its dat
 
 **ViperLang**
 ```viper
-struct Point {
+value Point {
     x: f64;
     y: f64;
 
     func distance(other: Point) -> f64 {
-        let dx = other.x - self.x;
-        let dy = other.y - self.y;
+        var dx = other.x - self.x;
+        var dy = other.y - self.y;
         return Viper.Math.sqrt(dx * dx + dy * dy);
     }
 }
 
-let p = Point { x: 3.0, y: 4.0 };
+var p = Point { x: 3.0, y: 4.0 };
 Viper.Terminal.Say(p.x);
 ```
 
@@ -355,12 +355,12 @@ func createPoint(x: f64, y: f64) -> Point {
     return Point { x: x, y: y };
 }
 
-let p = createPoint(3.0, 4.0);
+var p = createPoint(3.0, 4.0);
 ```
 
 ### Default values
 ```viper
-struct Config {
+value Config {
     volume: i64;
     difficulty: string;
 }
@@ -372,7 +372,7 @@ func defaultConfig() -> Config {
 
 ### Updating fields
 ```viper
-let person = Person { name: "Alice", age: 30 };
+var person = Person { name: "Alice", age: 30 };
 person.age = 31;  // Happy birthday!
 ```
 
@@ -389,14 +389,14 @@ func pointsEqual(a: Point, b: Point) -> bool {
 
 **Forgetting to initialize all fields:**
 ```viper
-let p = Point { x: 5.0 };  // Error: y is not initialized
-let p = Point { x: 5.0, y: 0.0 };  // Correct
+var p = Point { x: 5.0 };  // Error: y is not initialized
+var p = Point { x: 5.0, y: 0.0 };  // Correct
 ```
 
 **Confusing the type and an instance:**
 ```viper
 Point.x = 5.0;  // Wrong: Point is the type, not an instance
-let p = Point { x: 5.0, y: 3.0 };  // Create an instance
+var p = Point { x: 5.0, y: 3.0 };  // Create an instance
 p.x = 5.0;  // Now you can access fields
 ```
 
@@ -406,7 +406,7 @@ func birthday(person: Person) {
     person.age += 1;  // Modifies a copy, not the original!
 }
 
-let alice = Person { name: "Alice", age: 30 };
+var alice = Person { name: "Alice", age: 30 };
 birthday(alice);
 Viper.Terminal.Say(alice.age);  // Still 30!
 ```
@@ -418,7 +418,7 @@ When structures are passed to functions, they may be copied. To modify the origi
 ## Summary
 
 - Structures group related data under one name
-- Define with `struct Name { fields... }`
+- Define with `value Name { fields... }`
 - Create instances with `TypeName { field: value, ... }`
 - Access fields with `instance.field`
 - Methods are functions defined inside structures, using `self`

@@ -39,8 +39,8 @@ You've used this throughout the book:
 ```viper
 Viper.Terminal.Say("Hello!");              // Print with newline
 Viper.Terminal.Print("No newline");        // Print without newline
-let input = Viper.Terminal.ReadLine();     // Read a line
-let char = Viper.Terminal.ReadKey();       // Read single keypress
+var input = Viper.Terminal.ReadLine();     // Read a line
+var char = Viper.Terminal.ReadKey();       // Read single keypress
 ```
 
 Terminal control:
@@ -107,7 +107,7 @@ Viper.Random.seed(12345);      // Same seed = same sequence
 
 Example — dice roll:
 ```viper
-let die = Viper.Random.int(1, 6);
+var die = Viper.Random.int(1, 6);
 Viper.Terminal.Say("You rolled: " + die);
 ```
 
@@ -117,7 +117,7 @@ Viper.Terminal.Say("You rolled: " + die);
 
 Current time:
 ```viper
-let now = Viper.Time.now();
+var now = Viper.Time.now();
 Viper.Terminal.Say(now.year);
 Viper.Terminal.Say(now.month);
 Viper.Terminal.Say(now.day);
@@ -128,15 +128,15 @@ Viper.Terminal.Say(now.second);
 
 Formatting:
 ```viper
-let formatted = now.format("YYYY-MM-DD HH:mm:ss");
+var formatted = now.format("YYYY-MM-DD HH:mm:ss");
 // "2024-03-15 14:30:00"
 ```
 
 Timing:
 ```viper
-let start = Viper.Time.millis();
+var start = Viper.Time.millis();
 // ... do something ...
-let elapsed = Viper.Time.millis() - start;
+var elapsed = Viper.Time.millis() - start;
 Viper.Terminal.Say("Took " + elapsed + " ms");
 ```
 
@@ -151,7 +151,7 @@ Viper.Time.sleep(1000);  // Pause for 1000 milliseconds (1 second)
 
 Command-line arguments:
 ```viper
-let args = Viper.Environment.args();
+var args = Viper.Environment.args();
 for arg in args {
     Viper.Terminal.Say("Arg: " + arg);
 }
@@ -159,8 +159,8 @@ for arg in args {
 
 Environment variables:
 ```viper
-let home = Viper.Environment.get("HOME");
-let path = Viper.Environment.get("PATH");
+var home = Viper.Environment.get("HOME");
+var path = Viper.Environment.get("PATH");
 
 if Viper.Environment.has("DEBUG") {
     // Debug mode enabled
@@ -180,10 +180,10 @@ Viper.Environment.currentDir();   // Current working directory
 
 Create formatted strings:
 ```viper
-let msg = Viper.Fmt.format("Hello, {}!", "World");
+var msg = Viper.Fmt.format("Hello, {}!", "World");
 // "Hello, World!"
 
-let info = Viper.Fmt.format("{} is {} years old", "Alice", 30);
+var info = Viper.Fmt.format("{} is {} years old", "Alice", 30);
 // "Alice is 30 years old"
 ```
 
@@ -223,7 +223,7 @@ Beyond basic arrays, the collections module provides:
 
 **List** — dynamic array:
 ```viper
-let list = Viper.Collections.List.new();
+var list = Viper.Collections.List.new();
 list.add("one");
 list.add("two");
 Viper.Terminal.Say(list.get(0));     // "one"
@@ -233,7 +233,7 @@ list.remove(0);
 
 **Map** — key-value pairs:
 ```viper
-let map = Viper.Collections.Map.new();
+var map = Viper.Collections.Map.new();
 map.set("name", "Alice");
 map.set("age", "30");
 Viper.Terminal.Say(map.get("name")); // "Alice"
@@ -249,7 +249,7 @@ for key in map.keys() {
 
 **Set** — unique values:
 ```viper
-let set = Viper.Collections.Set.new();
+var set = Viper.Collections.Set.new();
 set.add("apple");
 set.add("banana");
 set.add("apple");  // Ignored, already exists
@@ -268,7 +268,7 @@ Viper.Parse.Bool("true");       // true
 
 // With error handling
 try {
-    let num = Viper.Parse.Int("not a number");
+    var num = Viper.Parse.Int("not a number");
 } catch e {
     Viper.Terminal.Say("Parse failed");
 }
@@ -303,19 +303,19 @@ Viper.Path.extension("/path/to/file.txt");
 
 Hashing:
 ```viper
-let hash = Viper.Crypto.md5("hello");
-let sha = Viper.Crypto.sha256("hello");
+var hash = Viper.Crypto.md5("hello");
+var sha = Viper.Crypto.sha256("hello");
 ```
 
 Encoding:
 ```viper
-let encoded = Viper.Crypto.base64Encode("hello");
-let decoded = Viper.Crypto.base64Decode(encoded);
+var encoded = Viper.Crypto.base64Encode("hello");
+var decoded = Viper.Crypto.base64Decode(encoded);
 ```
 
 GUIDs:
 ```viper
-let id = Viper.Crypto.guid();  // Unique identifier
+var id = Viper.Crypto.guid();  // Unique identifier
 ```
 
 ---
@@ -329,27 +329,27 @@ module StdlibDemo;
 
 func start() {
     // Environment
-    let args = Viper.Environment.args();
+    var args = Viper.Environment.args();
     Viper.Terminal.Say("Running on: " + Viper.Environment.os());
 
     // Random
-    let lucky = Viper.Random.int(1, 100);
+    var lucky = Viper.Random.int(1, 100);
     Viper.Terminal.Say("Lucky number: " + lucky);
 
     // Math
-    let angle = Viper.Math.PI / 4.0;
+    var angle = Viper.Math.PI / 4.0;
     Viper.Terminal.Say("sin(45°) = " + Viper.Math.sin(angle));
 
     // Time
-    let now = Viper.Time.now();
+    var now = Viper.Time.now();
     Viper.Terminal.Say("Current time: " + now.format("HH:mm:ss"));
 
     // Formatting
-    let price = 19.99;
+    var price = 19.99;
     Viper.Terminal.Say(Viper.Fmt.format("Price: ${:.2}", price));
 
     // Collections
-    let scores = Viper.Collections.Map.new();
+    var scores = Viper.Collections.Map.new();
     scores.set("Alice", "95");
     scores.set("Bob", "87");
 
@@ -359,12 +359,12 @@ func start() {
     }
 
     // Text utilities
-    let msg = "  hello world  ";
+    var msg = "  hello world  ";
     Viper.Terminal.Say("[" + msg.trim() + "]");
     Viper.Terminal.Say("Reversed: " + Viper.Text.reverse("viper"));
 
     // Crypto
-    let hash = Viper.Crypto.sha256("password123");
+    var hash = Viper.Crypto.sha256("password123");
     Viper.Terminal.Say("Hash: " + hash.substring(0, 16) + "...");
 }
 ```

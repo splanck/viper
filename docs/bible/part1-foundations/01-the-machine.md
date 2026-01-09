@@ -69,7 +69,7 @@ A programming language is a way to write instructions that humans can read and w
 Here's the same thing in ViperLang:
 
 ```viper
-let x = 0;
+var x = 0;
 ```
 
 This means "create a variable named x and give it the value 0." The compiler turns this into those numbers the processor needs.
@@ -90,7 +90,7 @@ Here's "create a variable x with value 0" in all three:
 
 **ViperLang**
 ```viper
-let x = 0;
+var x = 0;
 ```
 
 **BASIC**

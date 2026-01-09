@@ -74,7 +74,7 @@ test "basic assertions" {
     assert !false;
 
     // Null checks
-    let x: string? = "hello";
+    var x: string? = "hello";
     assert x != null;
 }
 ```
@@ -85,7 +85,7 @@ When assertions fail, messages help:
 
 ```viper
 test "with messages" {
-    let result = calculateTax(100);
+    var result = calculateTax(100);
     assert result == 10, "Expected tax of 10%, got " + result;
 }
 ```
@@ -132,7 +132,7 @@ Good tests follow a pattern:
 ```viper
 test "user can update email" {
     // Arrange: Set up test data
-    let user = User("alice", "alice@old.com");
+    var user = User("alice", "alice@old.com");
 
     // Act: Perform the action
     user.updateEmail("alice@new.com");
@@ -194,10 +194,10 @@ test "divide by zero throws" {
 ## Testing Classes
 
 ```viper
-class Stack<T> {
-    private items: [T];
+entity Stack<T> {
+    hide items: [T];
 
-    constructor() {
+    expose func init() {
         self.items = [];
     }
 
@@ -225,19 +225,19 @@ class Stack<T> {
 }
 
 test "stack is empty when created" {
-    let stack = Stack<i64>();
+    var stack = Stack<i64>();
     assert stack.isEmpty();
 }
 
 test "stack push adds items" {
-    let stack = Stack<i64>();
+    var stack = Stack<i64>();
     stack.push(1);
     assert !stack.isEmpty();
     assert stack.peek() == 1;
 }
 
 test "stack pop removes items in LIFO order" {
-    let stack = Stack<i64>();
+    var stack = Stack<i64>();
     stack.push(1);
     stack.push(2);
     stack.push(3);
@@ -249,7 +249,7 @@ test "stack pop removes items in LIFO order" {
 }
 
 test "stack pop returns null when empty" {
-    let stack = Stack<i64>();
+    var stack = Stack<i64>();
     assert stack.pop() == null;
 }
 ```
@@ -275,13 +275,13 @@ teardown {
 }
 
 test "can insert user" {
-    let user = User("alice");
+    var user = User("alice");
     testDatabase.insert(user);
     assert testDatabase.findUser("alice") != null;
 }
 
 test "can delete user" {
-    let user = testDatabase.findUser("testuser");
+    var user = testDatabase.findUser("testuser");
     testDatabase.delete(user);
     assert testDatabase.findUser("testuser") == null;
 }
@@ -297,18 +297,18 @@ When testing code that depends on external systems:
 
 ```viper
 // Real implementation
-class WeatherService {
+entity WeatherService {
     func getTemperature(city: string) -> f64 {
-        let response = Http.get("https://api.weather.com/" + city);
+        var response = Http.get("https://api.weather.com/" + city);
         return parseTemperature(response);
     }
 }
 
 // Stub for testing
-class StubWeatherService implements IWeatherService {
-    private temperature: f64;
+entity StubWeatherService implements IWeatherService {
+    hide temperature: f64;
 
-    constructor(temp: f64) {
+    expose func init(temp: f64) {
         self.temperature = temp;
     }
 
@@ -318,8 +318,8 @@ class StubWeatherService implements IWeatherService {
 }
 
 test "thermostat turns on heat when cold" {
-    let weather = StubWeatherService(30.0);  // Stub says 30°F
-    let thermostat = Thermostat(weather);
+    var weather = StubWeatherService(30.0);  // Stub says 30°F
+    var thermostat = Thermostat(weather);
 
     thermostat.check();
 
@@ -330,10 +330,10 @@ test "thermostat turns on heat when cold" {
 ### Mocks: Verify Interactions
 
 ```viper
-class MockEmailService implements IEmailService {
+entity MockEmailService implements IEmailService {
     sentEmails: [Email];
 
-    constructor() {
+    expose func init() {
         self.sentEmails = [];
     }
 
@@ -352,8 +352,8 @@ class MockEmailService implements IEmailService {
 }
 
 test "registration sends welcome email" {
-    let emailService = MockEmailService();
-    let registration = RegistrationService(emailService);
+    var emailService = MockEmailService();
+    var registration = RegistrationService(emailService);
 
     registration.register("alice@example.com", "password");
 
@@ -370,19 +370,19 @@ test "registration sends welcome email" {
 ```viper
 // Okay: Related assertions
 test "user creation" {
-    let user = User("alice", "alice@example.com");
+    var user = User("alice", "alice@example.com");
     assert user.name == "alice";
     assert user.email == "alice@example.com";
 }
 
 // Better: Separate tests for clarity
 test "user has name" {
-    let user = User("alice", "alice@example.com");
+    var user = User("alice", "alice@example.com");
     assert user.name == "alice";
 }
 
 test "user has email" {
-    let user = User("alice", "alice@example.com");
+    var user = User("alice", "alice@example.com");
     assert user.email == "alice@example.com";
 }
 ```
@@ -414,7 +414,7 @@ test "use user" {
 
 // Good: Each test is self-contained
 test "create user" {
-    let user = User("alice");
+    var user = User("alice");
     assert user.name == "alice";
 }
 ```
@@ -455,7 +455,7 @@ func isPrime(n: i64) -> bool {
     if n == 2 { return true; }
     if n % 2 == 0 { return false; }
 
-    let limit = Viper.Math.sqrt(n).toInt() + 1;
+    var limit = Viper.Math.sqrt(n).toInt() + 1;
     for i in 3..limit step 2 {
         if n % i == 0 {
             return false;
@@ -479,11 +479,11 @@ test "email validator rejects invalid format" {
 
 // Integration test: Full registration flow
 test "registration rejects invalid email" {
-    let db = TestDatabase.create();
-    let emailService = TestEmailService.create();
-    let registration = RegistrationService(db, emailService);
+    var db = TestDatabase.create();
+    var emailService = TestEmailService.create();
+    var registration = RegistrationService(db, emailService);
 
-    let result = registration.register("notanemail", "password123");
+    var result = registration.register("notanemail", "password123");
 
     assert result.success == false;
     assert result.error == "Invalid email format";
@@ -503,25 +503,25 @@ import Viper.Test;
 
 test "reversing twice returns original" {
     for i in 0..100 {
-        let original = generateRandomString();
-        let reversed = original.reverse().reverse();
+        var original = generateRandomString();
+        var reversed = original.reverse().reverse();
         assert original == reversed;
     }
 }
 
 test "sorting is idempotent" {
     for i in 0..100 {
-        let list = generateRandomList();
-        let sortedOnce = sort(list);
-        let sortedTwice = sort(sortedOnce);
+        var list = generateRandomList();
+        var sortedOnce = sort(list);
+        var sortedTwice = sort(sortedOnce);
         assertEqual(sortedOnce, sortedTwice);
     }
 }
 
 test "sorted list is in order" {
     for i in 0..100 {
-        let list = generateRandomList();
-        let sorted = sort(list);
+        var list = generateRandomList();
+        var sorted = sort(list);
 
         for j in 0..(sorted.length - 1) {
             assert sorted[j] <= sorted[j + 1];
@@ -562,27 +562,27 @@ module Calculator;
 
 import Viper.Test;
 
-class Calculator {
-    private history: [string];
+entity Calculator {
+    hide history: [string];
 
-    constructor() {
+    expose func init() {
         self.history = [];
     }
 
     func add(a: f64, b: f64) -> f64 {
-        let result = a + b;
+        var result = a + b;
         self.history.push(a + " + " + b + " = " + result);
         return result;
     }
 
     func subtract(a: f64, b: f64) -> f64 {
-        let result = a - b;
+        var result = a - b;
         self.history.push(a + " - " + b + " = " + result);
         return result;
     }
 
     func multiply(a: f64, b: f64) -> f64 {
-        let result = a * b;
+        var result = a * b;
         self.history.push(a + " * " + b + " = " + result);
         return result;
     }
@@ -591,7 +591,7 @@ class Calculator {
         if b == 0 {
             throw DivisionByZeroError();
         }
-        let result = a / b;
+        var result = a / b;
         self.history.push(a + " / " + b + " = " + result);
         return result;
     }
@@ -608,62 +608,62 @@ class Calculator {
 // Tests
 
 test "add returns sum" {
-    let calc = Calculator();
+    var calc = Calculator();
     assertClose(calc.add(2, 3), 5.0, 0.001);
 }
 
 test "add handles negatives" {
-    let calc = Calculator();
+    var calc = Calculator();
     assertClose(calc.add(-2, 3), 1.0, 0.001);
     assertClose(calc.add(2, -3), -1.0, 0.001);
     assertClose(calc.add(-2, -3), -5.0, 0.001);
 }
 
 test "add handles decimals" {
-    let calc = Calculator();
+    var calc = Calculator();
     assertClose(calc.add(0.1, 0.2), 0.3, 0.001);
 }
 
 test "subtract returns difference" {
-    let calc = Calculator();
+    var calc = Calculator();
     assertClose(calc.subtract(5, 3), 2.0, 0.001);
 }
 
 test "multiply returns product" {
-    let calc = Calculator();
+    var calc = Calculator();
     assertClose(calc.multiply(4, 3), 12.0, 0.001);
 }
 
 test "multiply by zero returns zero" {
-    let calc = Calculator();
+    var calc = Calculator();
     assertClose(calc.multiply(5, 0), 0.0, 0.001);
 }
 
 test "divide returns quotient" {
-    let calc = Calculator();
+    var calc = Calculator();
     assertClose(calc.divide(10, 2), 5.0, 0.001);
 }
 
 test "divide by zero throws" {
-    let calc = Calculator();
+    var calc = Calculator();
     assertThrows(func() {
         calc.divide(5, 0);
     });
 }
 
 test "history records operations" {
-    let calc = Calculator();
+    var calc = Calculator();
     calc.add(2, 3);
     calc.multiply(4, 5);
 
-    let history = calc.getHistory();
+    var history = calc.getHistory();
     assertLength(history, 2);
     assertContains(history[0], "+");
     assertContains(history[1], "*");
 }
 
 test "clear history removes entries" {
-    let calc = Calculator();
+    var calc = Calculator();
     calc.add(1, 1);
     calc.clearHistory();
 
@@ -715,13 +715,13 @@ end;
 ```viper
 // Bad: Tests internal details
 test "uses hashmap internally" {
-    let cache = Cache();
+    var cache = Cache();
     // Checking internal data structure — fragile!
 }
 
 // Good: Tests behavior
 test "cache returns stored value" {
-    let cache = Cache();
+    var cache = Cache();
     cache.set("key", "value");
     assert cache.get("key") == "value";
 }
@@ -738,8 +738,8 @@ test "async operation completes" {
 
 // Good: Wait properly
 test "async operation completes" {
-    let future = startAsyncOperation();
-    let result = future.get(timeout: 5000);
+    var future = startAsyncOperation();
+    var result = future.get(timeout: 5000);
     assert result.success;
 }
 ```
@@ -748,7 +748,7 @@ test "async operation completes" {
 ```viper
 // Bad: What exactly failed?
 test "everything about user" {
-    let user = createUser();
+    var user = createUser();
     assert user.name == "alice";
     assert user.email != null;
     assert user.age > 0;
@@ -759,7 +759,7 @@ test "everything about user" {
 
 // Good: Focused tests
 test "new user has member role" {
-    let user = createUser();
+    var user = createUser();
     assert user.role == "member";
 }
 ```

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2025-11-13
+last-verified: 2026-01-09
 ---
 
 # Viper IL — Complete Guide
@@ -10,7 +10,7 @@ Comprehensive guide to Viper's Intermediate Language (IL), covering everything f
 document consolidates the quickstart, normative reference, BASIC lowering rules, optimization passes, and worked
 examples for IL v0.1.
 
-> **Note:** IL v0.1.2 features are documented where they differ from v0.1.
+> **Note:** This guide documents IL v0.2.0. See the version header in your IL files for compatibility.
 
 ---
 
@@ -366,15 +366,15 @@ Happy hacking!
 
 ### Normative scope
 
-The archived IL v0.1.2 specification established the design principles still in force today: IL acts as the "thin waist"
+The current IL v0.2.0 specification builds on the design principles established in earlier versions: IL acts as the "thin waist"
 between front ends and execution engines, enforces explicit control flow with one terminator per block, and keeps the
 type system intentionally small (`i1`, `i64`, `f64`, `ptr`, `str`, `void`). The material below supersedes earlier
-drafts (including v0.1.1) while remaining source-compatible with modules written for those versions. Numeric promotion
+drafts (including v0.1.x) while remaining source-compatible with modules written for those versions. Numeric promotion
 semantics are specified in [devdocs/specs/numerics.md](devdocs/specs/numerics.md) and the unified trap/handler model is
 defined in [devdocs/specs/errors.md](devdocs/specs/errors.md); both documents are normative for all front ends and the
 VM.
 
-### IL Reference (v0.1.2)
+### IL Reference (v0.2.0)
 
 > Start here: [IL Quickstart](#quickstart) for a hands-on introduction.
 
@@ -811,7 +811,7 @@ Strings are reference-counted by the runtime implementation. See [src/runtime/](
 
 #### Memory Model
 
-IL v0.1.2 is single-threaded. Pointers are plain addresses with no aliasing rules beyond the type requirements of `load`
+IL is single-threaded by default. Pointers are plain addresses with no aliasing rules beyond the type requirements of `load`
 and `store`. Memory obtained through `alloca` or the runtime follows the alignment rules above, and invalid accesses (
 null or misaligned) trap deterministically.
 
@@ -913,7 +913,7 @@ Native back ends target the System V x86-64 ABI:
 
 #### Versioning & Conformance
 
-Modules must begin with `il 0.1.2`. A conforming implementation accepts this grammar, obeys the semantics above, and
+Modules must begin with a version header (e.g., `il 0.2`). A conforming implementation accepts this grammar, obeys the semantics above, and
 traps on the conditions listed for each instruction. Implementations are validated against the sample suite
 under [examples/il](../examples/il/).
 

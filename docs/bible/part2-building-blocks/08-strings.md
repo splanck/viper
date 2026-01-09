@@ -18,7 +18,7 @@ String:    H   e   l   l   o
 You can access individual characters:
 
 ```viper
-let word = "Hello";
+var word = "Hello";
 Viper.Terminal.Say(word[0]);  // H
 Viper.Terminal.Say(word[4]);  // o
 Viper.Terminal.Say(word.length);  // 5
@@ -41,7 +41,7 @@ Viper.Terminal.Say("Hi there!".length); // 9 (space counts)
 This is essential for loops:
 
 ```viper
-let text = "Viper";
+var text = "Viper";
 for i in 0..text.length {
     Viper.Terminal.Say("Character " + i + ": " + text[i]);
 }
@@ -63,16 +63,16 @@ Character 4: r
 The `+` operator joins strings together:
 
 ```viper
-let first = "Hello";
-let second = "World";
-let greeting = first + ", " + second + "!";
+var first = "Hello";
+var second = "World";
+var greeting = first + ", " + second + "!";
 Viper.Terminal.Say(greeting);  // Hello, World!
 ```
 
 When you "add" a string and a number, the number is converted to a string:
 
 ```viper
-let score = 42;
+var score = 42;
 Viper.Terminal.Say("Your score: " + score);  // Your score: 42
 ```
 
@@ -85,9 +85,9 @@ For building strings piece by piece, concatenation works but can be slow for man
 Often you need just part of a string. The `substring` method extracts a portion:
 
 ```viper
-let text = "Hello, World!";
-let hello = text.substring(0, 5);    // "Hello" (from 0, length 5)
-let world = text.substring(7, 5);    // "World" (from 7, length 5)
+var text = "Hello, World!";
+var hello = text.substring(0, 5);    // "Hello" (from 0, length 5)
+var world = text.substring(7, 5);    // "World" (from 7, length 5)
 ```
 
 The first argument is the starting position, the second is how many characters to take.
@@ -95,16 +95,16 @@ The first argument is the starting position, the second is how many characters t
 Convenient shortcuts:
 
 ```viper
-let text = "Hello, World!";
+var text = "Hello, World!";
 
 // First N characters
-let first3 = text.left(3);   // "Hel"
+var first3 = text.left(3);   // "Hel"
 
 // Last N characters
-let last3 = text.right(3);   // "ld!"
+var last3 = text.right(3);   // "ld!"
 
 // Skip first N characters
-let rest = text.skip(7);     // "World!"
+var rest = text.skip(7);     // "World!"
 ```
 
 ---
@@ -114,9 +114,9 @@ let rest = text.skip(7);     // "World!"
 To find where something appears in a string:
 
 ```viper
-let text = "Hello, World!";
-let pos = text.indexOf("World");  // 7
-let notFound = text.indexOf("xyz");  // -1 (not found)
+var text = "Hello, World!";
+var pos = text.indexOf("World");  // 7
+var notFound = text.indexOf("xyz");  // -1 (not found)
 ```
 
 `indexOf` returns the position of the first occurrence, or -1 if not found.
@@ -124,7 +124,7 @@ let notFound = text.indexOf("xyz");  // -1 (not found)
 To check if a string contains something:
 
 ```viper
-let text = "The quick brown fox";
+var text = "The quick brown fox";
 
 if text.contains("quick") {
     Viper.Terminal.Say("Found it!");
@@ -134,7 +134,7 @@ if text.contains("quick") {
 To check how a string starts or ends:
 
 ```viper
-let filename = "report.pdf";
+var filename = "report.pdf";
 
 if filename.endsWith(".pdf") {
     Viper.Terminal.Say("It's a PDF file");
@@ -152,7 +152,7 @@ if filename.startsWith("report") {
 Strings can be converted to all uppercase or all lowercase:
 
 ```viper
-let text = "Hello, World!";
+var text = "Hello, World!";
 Viper.Terminal.Say(text.upper());  // HELLO, WORLD!
 Viper.Terminal.Say(text.lower());  // hello, world!
 ```
@@ -160,7 +160,7 @@ Viper.Terminal.Say(text.lower());  // hello, world!
 This is useful for case-insensitive comparisons:
 
 ```viper
-let input = "YES";
+var input = "YES";
 
 if input.lower() == "yes" {
     Viper.Terminal.Say("User said yes!");
@@ -176,14 +176,14 @@ Without `.lower()`, "YES", "Yes", "yes", and "yEs" would all be different. Conve
 User input often has extra spaces. The `trim` method removes whitespace from both ends:
 
 ```viper
-let input = "   hello   ";
+var input = "   hello   ";
 Viper.Terminal.Say("[" + input.trim() + "]");  // [hello]
 ```
 
 Variations:
 
 ```viper
-let text = "   hello   ";
+var text = "   hello   ";
 text.trimStart();  // "hello   " (left only)
 text.trimEnd();    // "   hello" (right only)
 text.trim();       // "hello" (both sides)
@@ -196,16 +196,16 @@ text.trim();       // "hello" (both sides)
 To replace occurrences of one string with another:
 
 ```viper
-let text = "Hello, World!";
-let result = text.replace("World", "Viper");
+var text = "Hello, World!";
+var result = text.replace("World", "Viper");
 Viper.Terminal.Say(result);  // Hello, Viper!
 ```
 
 By default, this replaces all occurrences:
 
 ```viper
-let text = "one fish, two fish, red fish, blue fish";
-let result = text.replace("fish", "bird");
+var text = "one fish, two fish, red fish, blue fish";
+var result = text.replace("fish", "bird");
 // "one bird, two bird, red bird, blue bird"
 ```
 
@@ -216,8 +216,8 @@ let result = text.replace("fish", "bird");
 To break a string into an array of pieces:
 
 ```viper
-let csv = "apple,banana,cherry";
-let fruits = csv.split(",");
+var csv = "apple,banana,cherry";
+var fruits = csv.split(",");
 
 for fruit in fruits {
     Viper.Terminal.Say(fruit);
@@ -234,8 +234,8 @@ cherry
 Split by any string:
 
 ```viper
-let text = "one::two::three";
-let parts = text.split("::");  // ["one", "two", "three"]
+var text = "one::two::three";
+var parts = text.split("::");  // ["one", "two", "three"]
 ```
 
 This is how you parse data: split by the delimiter, then work with the pieces.
@@ -247,15 +247,15 @@ This is how you parse data: split by the delimiter, then work with the pieces.
 The reverse of splitting — joining an array into a single string:
 
 ```viper
-let words = ["Hello", "World"];
-let sentence = words.join(" ");
+var words = ["Hello", "World"];
+var sentence = words.join(" ");
 Viper.Terminal.Say(sentence);  // Hello World
 ```
 
 The argument is what to put between elements:
 
 ```viper
-let numbers = ["1", "2", "3"];
+var numbers = ["1", "2", "3"];
 Viper.Terminal.Say(numbers.join(", "));  // 1, 2, 3
 Viper.Terminal.Say(numbers.join("-"));   // 1-2-3
 Viper.Terminal.Say(numbers.join(""));    // 123
@@ -269,21 +269,21 @@ We've used these before, but they deserve a proper introduction:
 
 **String to number:**
 ```viper
-let text = "42";
-let num = Viper.Parse.Int(text);     // 42 (integer)
-let pi = Viper.Parse.Float("3.14");  // 3.14 (float)
+var text = "42";
+var num = Viper.Parse.Int(text);     // 42 (integer)
+var pi = Viper.Parse.Float("3.14");  // 3.14 (float)
 ```
 
 **Number to string:**
 ```viper
-let num = 42;
-let text = num.toString();  // "42"
+var num = 42;
+var text = num.toString();  // "42"
 ```
 
 Conversion happens automatically in concatenation:
 
 ```viper
-let result = "Answer: " + 42;  // "Answer: 42"
+var result = "Answer: " + 42;  // "Answer: 42"
 ```
 
 But be careful — `"5" + 3` is `"53"`, not `8`. If you want arithmetic, convert to numbers first.
@@ -295,8 +295,8 @@ But be careful — `"5" + 3` is `"53"`, not `8`. If you want arithmetic, convert
 Every character has a numeric code. The common encoding is ASCII/UTF-8, where 'A' is 65, 'a' is 97, '0' is 48, and so on.
 
 ```viper
-let code = 'A'.code();        // 65
-let char = Char.fromCode(65); // 'A'
+var code = 'A'.code();        // 65
+var char = Char.fromCode(65); // 'A'
 ```
 
 This lets you do character arithmetic:
@@ -323,9 +323,9 @@ func toUpper(c: char) -> char {
 For complex output, string formatting is cleaner than concatenation:
 
 ```viper
-let name = "Alice";
-let score = 95;
-let message = Viper.Fmt.format("Player {} scored {} points!", name, score);
+var name = "Alice";
+var score = 95;
+var message = Viper.Fmt.format("Player {} scored {} points!", name, score);
 // "Player Alice scored 95 points!"
 ```
 
@@ -334,7 +334,7 @@ The `{}` placeholders are replaced by the arguments in order.
 You can also control formatting:
 
 ```viper
-let pi = 3.14159265;
+var pi = 3.14159265;
 Viper.Terminal.Say(Viper.Fmt.format("Pi is approximately {:.2}", pi));
 // "Pi is approximately 3.14"
 ```
@@ -351,8 +351,8 @@ Let's build a program that analyzes text:
 module WordCounter;
 
 func countWords(text: string) -> i64 {
-    let words = text.split(" ");
-    let count = 0;
+    var words = text.split(" ");
+    var count = 0;
 
     for word in words {
         if word.trim().length > 0 {
@@ -364,8 +364,8 @@ func countWords(text: string) -> i64 {
 }
 
 func countVowels(text: string) -> i64 {
-    let vowels = "aeiouAEIOU";
-    let count = 0;
+    var vowels = "aeiouAEIOU";
+    var count = 0;
 
     for i in 0..text.length {
         if vowels.contains(text[i].toString()) {
@@ -378,7 +378,7 @@ func countVowels(text: string) -> i64 {
 
 func start() {
     Viper.Terminal.Say("Enter some text:");
-    let text = Viper.Terminal.ReadLine();
+    var text = Viper.Terminal.ReadLine();
 
     Viper.Terminal.Say("");
     Viper.Terminal.Say("=== Analysis ===");
@@ -412,27 +412,27 @@ Lowercase: hello world from viper
 
 **ViperLang**
 ```viper
-let text = "Hello, World!";
+var text = "Hello, World!";
 
 // Length
 Viper.Terminal.Say(text.length);
 
 // Substring
-let sub = text.substring(0, 5);
+var sub = text.substring(0, 5);
 
 // Search
-let pos = text.indexOf("World");
+var pos = text.indexOf("World");
 
 // Replace
-let new = text.replace("World", "Viper");
+var new = text.replace("World", "Viper");
 
 // Split and join
-let parts = text.split(", ");
-let joined = parts.join(" - ");
+var parts = text.split(", ");
+var joined = parts.join(" - ");
 
 // Case
-let upper = text.upper();
-let lower = text.lower();
+var upper = text.upper();
+var lower = text.lower();
 ```
 
 **BASIC**
@@ -494,23 +494,23 @@ Pascal is also 1-indexed and uses `Copy`, `Pos`, and similar functions.
 
 **Off-by-one with indexing:**
 ```viper
-let text = "Hello";
-let last = text[text.length];      // Error! Index 5 doesn't exist
-let last = text[text.length - 1];  // Correct: index 4 is 'o'
+var text = "Hello";
+var last = text[text.length];      // Error! Index 5 doesn't exist
+var last = text[text.length - 1];  // Correct: index 4 is 'o'
 ```
 
 **Forgetting strings are immutable:**
 ```viper
-let text = "Hello";
+var text = "Hello";
 text[0] = 'J';  // Error in many languages!
-let text = "J" + text.substring(1);  // Create a new string instead
+var text = "J" + text.substring(1);  // Create a new string instead
 ```
 
 Many languages (including ViperLang) don't let you modify characters in place. You create new strings instead.
 
 **Comparing strings with wrong case:**
 ```viper
-let input = "YES";
+var input = "YES";
 if input == "yes" {  // False! Case differs
     ...
 }
@@ -521,8 +521,8 @@ if input.lower() == "yes" {  // Convert first
 
 **Empty string vs. null:**
 ```viper
-let empty = "";          // A string with zero characters
-let text = "Hello";
+var empty = "";          // A string with zero characters
+var text = "Hello";
 
 if text.length == 0 {    // Check if empty
     ...

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: developers
-last-updated: 2025-12-09
+last-updated: 2026-01-09
 ---
 
 # Viper VM — Architecture & Implementation Guide
@@ -107,23 +107,43 @@ The main interpreter class that orchestrates execution:
 ```cpp
 class VM {
     // Module and configuration
-    const il::core::Module& mod;        // IL module (non-owning)
-    TraceSink tracer;                   // Trace output
-    DebugCtrl debug;                    // Breakpoint controller
-    DispatchDriver* dispatchDriver;     // Pluggable dispatch
+    const il::core::Module& mod;                    // IL module (non-owning)
+    std::shared_ptr<ProgramState> programState_;    // Shared globals/context
+    TraceSink tracer;                               // Trace output
+    DebugCtrl debug;                                // Breakpoint controller
+    std::unique_ptr<DispatchDriver> dispatchDriver; // Pluggable dispatch
+    DispatchKind dispatchKind;                      // Active strategy type
 
     // Execution state
     uint64_t instrCount;                // Executed instructions
     uint64_t maxSteps;                  // Step limit (0 = unlimited)
+    std::size_t stackBytes_;            // Per-frame stack size (default 64KB)
+    std::vector<ExecState*> execStack;  // Active execution stack for unwinding
 
-    // Caching and lookup
-    std::unordered_map<std::string, const Function*> fnMap;
-    std::unordered_map<std::string, rt_string> strMap;
-    std::unordered_map<std::string, rt_string> inlineLiteralCache;
+    // Caching and lookup (string_view keys for zero-copy)
+    FnMap fnMap;                                    // Function lookup table
+    StrMap inlineLiteralCache;                      // String literal handles (RAII)
+    std::unordered_map<const BasicBlock*, const Function*> blockToFunction;
+    std::unordered_map<const Function*, size_t> regCountCache_;
+
+    // Buffer pools for allocation reuse
+    std::vector<std::vector<uint8_t>> stackBufferPool_;
+    std::vector<std::vector<Slot>> regFilePool_;
 
     // Exception handling
-    TrapState lastTrap;
-    TrapToken trapToken;
+    TrapContext currentContext;         // Active instruction context
+    TrapState lastTrap;                 // Last trap for diagnostics
+    TrapToken trapToken;                // Error payload for trap.err
+
+    // Polling and profiling
+    uint32_t pollEveryN_;               // Host callback frequency
+    std::function<bool(VM&)> pollCallback_;
+#if VIPER_VM_OPCOUNTS
+    std::array<uint64_t, kNumOpcodes> opCounts_;  // Per-opcode counters
+#endif
+
+    // Per-VM extern registry (optional)
+    ExternRegistry* externRegistry_;    // Custom function resolution
 };
 ```
 
@@ -132,8 +152,10 @@ class VM {
 - Module initialization and function lookup
 - Dispatch strategy selection and lifecycle
 - String literal caching and lifetime management
+- Buffer pooling for recursive call efficiency
 - Trap context tracking and formatting
 - Debug breakpoint coordination
+- Host polling for embedded applications
 
 ### 2. Frame (`src/vm/VM.hpp`)
 
@@ -141,15 +163,26 @@ Represents a single function activation record:
 
 ```cpp
 struct Frame {
-    const Function* func;                          // Active function
-    std::vector<Slot> regs;                       // SSA register file
-    // Operand stack (alloca). Default capacity is 64KB (kDefaultStackSize).
-    std::vector<uint8_t> stack;
-    size_t sp;                                    // Stack pointer
-    std::vector<std::optional<Slot>> params;      // Pending block parameters
-    std::vector<HandlerRecord> ehStack;           // Exception handlers
-    VmError activeError;                          // Current error payload
-    ResumeState resumeState;                      // Resumption metadata
+    // Nested types for exception handling
+    struct HandlerRecord {
+        const BasicBlock* handler;  // Handler block
+        size_t ipSnapshot;          // IP to restore
+    };
+    struct ResumeState {
+        const BasicBlock* block;    // Faulting block
+        size_t faultIp, nextIp;     // Instruction pointers
+        bool valid;
+    };
+
+    const Function* func;                          // Active function (non-owning)
+    std::vector<Slot> regs;                        // SSA register file
+    static constexpr size_t kDefaultStackSize = 65536;  // 64KB
+    std::vector<uint8_t> stack;                    // Operand stack (alloca)
+    size_t sp = 0;                                 // Stack pointer in bytes
+    std::vector<std::optional<Slot>> params;       // Pending block parameters
+    std::vector<HandlerRecord> ehStack;            // Exception handlers
+    VmError activeError{};                         // Current error payload
+    ResumeState resumeState{};                     // Resumption metadata
 };
 ```
 
@@ -487,9 +520,9 @@ size_t sp = 0;  // Stack pointer in bytes
 
 **Limits:**
 
-- Fixed 1KB size per frame
+- Default 64KB size per frame (`Frame::kDefaultStackSize`)
 - Overflow causes trap
-- Suitable for small temporaries (strings, small arrays)
+- Suitable for temporaries, strings, and moderate-sized arrays (e.g., 80×25 screen buffers)
 
 ### String Handles
 
@@ -526,16 +559,8 @@ enum class TrapKind {
 
 ### Exception Handler Stack
 
-Each frame maintains an exception handler stack:
-
-```cpp
-struct HandlerRecord {
-    const BasicBlock* handler;  // Handler block
-    size_t ipSnapshot;          // IP to restore
-};
-
-std::vector<HandlerRecord> ehStack;
-```
+Each frame maintains an exception handler stack (`Frame::ehStack`) using the `HandlerRecord` type
+defined in Frame (see [Key Components](#key-components)).
 
 **IL instructions:**
 
@@ -716,12 +741,13 @@ src/vm/
 ├── VMContext.hpp/cpp           # Execution context helpers
 ├── VMConfig.hpp                # Build configuration
 ├── VMConstants.hpp             # VM constants
-├── Runner.cpp                  # Public API facade
 ├── VMInit.cpp                  # VM initialization
+├── Runner.cpp                  # Public API facade
 │
 ├── OpHandlers.hpp/cpp          # Handler aggregation and table generation
 ├── OpHandlerUtils.hpp/cpp      # Handler utility functions
 ├── OpHandlerAccess.hpp         # Handler access utilities
+├── OpcodeHandlerHelpers.hpp    # Common handler helper functions
 ├── OpHandlers_Control.hpp      # Control flow handlers
 ├── OpHandlers_Int.hpp          # Integer arithmetic handlers
 ├── OpHandlers_Float.hpp        # Float arithmetic handlers
@@ -729,29 +755,39 @@ src/vm/
 ├── IntOpSupport.hpp            # Integer operation support
 │
 ├── DispatchStrategy.hpp/cpp    # Pluggable dispatch strategies
+├── DispatchMacros.hpp          # Dispatch loop macros and hooks
 │
 ├── ops/
 │   ├── Op_CallRet.cpp          # Call/return implementation
 │   ├── Op_BranchSwitch.cpp     # Branch/switch implementation
 │   ├── Op_TrapEh.cpp           # Trap/exception handling
-│   ├── common/                 # Shared helpers
+│   ├── common/Branching.*      # Branch target resolution helpers
 │   ├── schema/                 # Opcode schema definitions
-│   └── generated/              # Generated dispatch tables
+│   └── generated/              # Generated dispatch tables and handlers
+│       ├── HandlerTable.hpp    # Static handler function table
+│       ├── InlineHandlers*.inc # Inline handler implementations
+│       ├── SwitchDispatch*.inc # Switch dispatch implementations
+│       └── Threaded*.inc       # Threaded dispatch labels/cases
 │
 ├── RuntimeBridge.hpp/cpp       # Runtime integration
 ├── Marshal.hpp/cpp             # Value marshalling
 │
 ├── Trap.hpp/cpp                # Trap definitions and formatting
+├── TrapInvariants.hpp          # Trap assertion helpers
+├── DiagFormat.hpp/cpp          # Diagnostic message formatting
 ├── err_bridge.hpp/cpp          # Error bridge helpers
 │
 ├── control_flow.hpp/cpp        # Control flow utilities
 ├── tco.hpp/cpp                 # Tail-call optimization
+├── ViperStringHandle.hpp       # RAII string handle wrapper
 │
 ├── int_ops_arith.cpp           # Integer arithmetic implementations
 ├── int_ops_cmp.cpp             # Integer comparison implementations
 ├── int_ops_convert.cpp         # Integer conversion implementations
 ├── fp_ops.cpp                  # Floating-point implementations
 ├── mem_ops.cpp                 # Memory operation implementations
+│
+├── ThreadsRuntime.cpp          # Viper.Threads runtime support
 │
 └── debug/                      # Debug and tracing subsystem
     └── *.cpp                   # Debug controller, trace, scripting
@@ -903,6 +939,24 @@ struct SwitchCache {
 ```
 
 Amortizes switch table construction across iterations.
+
+### Frame Buffer Pooling
+
+The VM maintains pools for frequently allocated frame resources:
+
+**Stack Buffer Pool:**
+- Reuses operand stack buffers across function calls
+- Pre-sized to `Frame::kDefaultStackSize` (64KB)
+- Eliminates allocation overhead for recursive functions
+
+**Register File Pool:**
+- Reuses SSA register file vectors
+- Sized by `clear()` and `resize()` rather than reallocation
+- Reduces heap churn during deep call stacks
+
+**Benefit:** Recursive functions like factorial(n) allocate only once per unique call depth,
+then reuse pooled buffers for subsequent calls. This significantly reduces GC pressure and
+improves cache locality.
 
 ### Host Polling
 

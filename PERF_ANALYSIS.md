@@ -1,6 +1,7 @@
 # Performance Analysis Report: Viper Compiler Toolchain
 
 **Date:** 2026-01-09
+**Last Updated:** 2026-01-09
 **Scope:** Full codebase (~409K LOC)
 **Focus:** Performance anti-patterns, O(n²) algorithms, inefficient data structures
 
@@ -10,11 +11,15 @@
 
 Analysis of the Viper compiler toolchain identified several performance improvement opportunities. The codebase is generally well-engineered with thoughtful optimizations already in place (computed goto dispatch, pre-reserved vectors, cached flags). However, some hot paths contain suboptimal patterns.
 
+**Status:** 6 of 8 issues have been resolved (see individual issue status below).
+
 ---
 
 ## Critical Issues
 
-### 1. SCCP - O(n²) Use Replacement
+### 1. SCCP - O(n²) Use Replacement ✅ FIXED
+
+**Status:** RESOLVED - The SCCP solver now uses the `uses_` map for O(1) replacement lookups.
 
 **Location:** `src/il/transform/SCCP.cpp:1329-1344`
 
@@ -50,7 +55,9 @@ void replaceAllUses(unsigned id, const Value &replacement)
 
 ---
 
-### 2. Liveness Analysis - Inefficient Bitsets
+### 2. Liveness Analysis - Inefficient Bitsets ✅ FIXED
+
+**Status:** RESOLVED - Liveness analysis now uses `uint64_t` chunk-based bitsets with SIMD-friendly merge operations.
 
 **Location:** `src/il/transform/analysis/Liveness.cpp:260`
 
@@ -77,7 +84,9 @@ public:
 
 ---
 
-### 3. Register Allocator - Linear Scans in Active Sets
+### 3. Register Allocator - Linear Scans in Active Sets ✅ FIXED
+
+**Status:** RESOLVED - Active sets now use `std::unordered_set<uint16_t>` for O(1) insert/erase operations.
 
 **Location:** `src/codegen/x86_64/ra/Allocator.cpp:177-194`
 
@@ -106,7 +115,9 @@ void addActive(RegClass cls, uint16_t id) {
 
 ## Medium Priority Issues
 
-### 4. Verifier - Triple Traversal
+### 4. Verifier - Triple Traversal ✅ FIXED
+
+**Status:** RESOLVED - The verifier now collects EhPush targets and label references during the `verifyBlock()` pass, then validates afterward in two O(n) passes over the collected items.
 
 **Location:** `src/il/verify/FunctionVerifier.cpp:213-244`
 
@@ -119,7 +130,9 @@ Three separate passes over all blocks:
 
 ---
 
-### 5. Caller-Saved Register Check
+### 5. Caller-Saved Register Check ✅ FIXED
+
+**Status:** RESOLVED - The allocator now uses `std::bitset<32>` members (`callerSavedGPRBits_`, `callerSavedXMMBits_`) initialized at construction for O(1) caller-saved register lookup.
 
 **Location:** `src/codegen/x86_64/ra/Allocator.cpp:366-370`
 
@@ -133,7 +146,9 @@ auto isCallerSaved = [this](PhysReg reg, RegClass cls) {
 
 ---
 
-### 6. AArch64 Opcode Mapping Lookups
+### 6. AArch64 Opcode Mapping Lookups ✅ FIXED
+
+**Status:** RESOLVED - `lookupBinaryOp()` and `lookupCondition()` now use switch statements for O(1) opcode dispatch instead of linear table scans.
 
 **Location:** `src/codegen/aarch64/OpcodeMappings.hpp:88-103`
 
@@ -185,23 +200,25 @@ if (it != map.end())
 
 ## Recommendations Summary
 
-| Issue | Location | Priority | Complexity |
-|-------|----------|----------|------------|
-| SCCP use replacement | SCCP.cpp:1329 | HIGH | LOW |
-| vector<bool> bitsets | Liveness.cpp | HIGH | MEDIUM |
-| RA active set scans | Allocator.cpp:177 | MEDIUM | LOW |
-| Verifier triple pass | FunctionVerifier.cpp | MEDIUM | MEDIUM |
-| Caller-saved lookup | Allocator.cpp:366 | MEDIUM | LOW |
-| Opcode mapping lookup | OpcodeMappings.hpp | LOW | LOW |
-| Error path strings | VM.cpp:336 | LOW | LOW |
-| Map double-lookups | Various | LOW | LOW |
+| Issue | Location | Priority | Complexity | Status |
+|-------|----------|----------|------------|--------|
+| SCCP use replacement | SCCP.cpp:1329 | HIGH | LOW | ✅ FIXED |
+| vector<bool> bitsets | Liveness.cpp | HIGH | MEDIUM | ✅ FIXED |
+| RA active set scans | Allocator.cpp:177 | MEDIUM | LOW | ✅ FIXED |
+| Verifier triple pass | FunctionVerifier.cpp | MEDIUM | MEDIUM | ✅ FIXED |
+| Caller-saved lookup | Allocator.cpp:366 | MEDIUM | LOW | ✅ FIXED |
+| Opcode mapping lookup | OpcodeMappings.hpp | LOW | LOW | ✅ FIXED |
+| Error path strings | VM.cpp:336 | LOW | LOW | Open |
+| Map double-lookups | Various | LOW | LOW | Open |
 
 ---
 
 ## Next Steps
 
-1. Address HIGH priority issues first (SCCP, Liveness)
-2. Benchmark before/after with representative programs
-3. Consider profiling with `perf` or Instruments on real workloads
-4. Monitor regression in future changes
+1. ~~Address HIGH priority issues first (SCCP, Liveness)~~ ✅ Done
+2. ~~Address MEDIUM priority issues (RA, Verifier, Caller-saved, AArch64)~~ ✅ Done
+3. Benchmark before/after with representative programs
+4. Consider profiling with `perf` or Instruments on real workloads
+5. Monitor regression in future changes
+6. Address remaining LOW priority issues (error path strings, map double-lookups) as time permits
 

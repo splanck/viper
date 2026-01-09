@@ -61,12 +61,12 @@ Error: Type mismatch: expected 'i64', got 'string' at line 7
 **Fix**: Convert the value or fix the expression.
 ```viper
 // Wrong
-let x: i64 = "hello";
+var x: i64 = "hello";
 
 // Right
-let x: i64 = 42;
+var x: i64 = 42;
 // or
-let x: string = "hello";
+var x: string = "hello";
 ```
 
 **"Cannot assign to immutable variable"**
@@ -77,7 +77,7 @@ Error: Cannot assign to immutable variable 'x' at line 12
 **Fix**: Use `var` if the variable needs to change.
 ```viper
 // Wrong
-let x = 5;
+var x = 5;
 x = 10;  // Error
 
 // Right
@@ -93,10 +93,10 @@ Error: Cannot apply '+' to 'string' and 'i64' at line 8
 **Fix**: Convert one operand to match the other.
 ```viper
 // Wrong
-let result = "Value: " + 42;
+var result = "Value: " + 42;
 
 // Right
-let result = "Value: " + 42.toString();
+var result = "Value: " + 42.toString();
 ```
 
 ---
@@ -114,7 +114,7 @@ Error: Undefined variable 'count' at line 15
 Viper.Terminal.Say(count);  // count not defined
 
 // Right
-let count = 0;
+var count = 0;
 Viper.Terminal.Say(count);
 ```
 
@@ -168,13 +168,13 @@ Error: Function 'getValue' must return a value at line 25
 ```viper
 // Wrong
 func getValue() -> i64 {
-    let x = 42;
+    var x = 42;
     // No return!
 }
 
 // Right
 func getValue() -> i64 {
-    let x = 42;
+    var x = 42;
     return x;
 }
 ```
@@ -225,11 +225,11 @@ Error: Null pointer exception at line 15
 **Fix**: Check for null before accessing.
 ```viper
 // Wrong
-let user = findUser(id);
+var user = findUser(id);
 Viper.Terminal.Say(user.name);  // user might be null!
 
 // Right
-let user = findUser(id);
+var user = findUser(id);
 if user != null {
     Viper.Terminal.Say(user.name);
 }
@@ -245,12 +245,12 @@ Error: Array index 10 out of bounds for length 5 at line 20
 **Fix**: Check array length before accessing.
 ```viper
 // Wrong
-let items = [1, 2, 3, 4, 5];
-let x = items[10];  // Only 0-4 valid!
+var items = [1, 2, 3, 4, 5];
+var x = items[10];  // Only 0-4 valid!
 
 // Right
 if index < items.length {
-    let x = items[index];
+    var x = items[index];
 }
 ```
 
@@ -264,11 +264,11 @@ Error: Division by zero at line 12
 **Fix**: Check the divisor before dividing.
 ```viper
 // Wrong
-let result = a / b;  // b might be 0!
+var result = a / b;  // b might be 0!
 
 // Right
 if b != 0 {
-    let result = a / b;
+    var result = a / b;
 } else {
     // Handle the error
 }
@@ -291,12 +291,12 @@ Error: Cannot cast 'Dog' to 'Cat' at line 30
 **Fix**: Check the actual type before casting.
 ```viper
 // Wrong
-let animal: Animal = Dog();
-let cat = animal as Cat;  // Error!
+var animal: Animal = Dog();
+var cat = animal as Cat;  // Error!
 
 // Right
 if animal is Cat {
-    let cat = animal as Cat;
+    var cat = animal as Cat;
 }
 ```
 
@@ -312,7 +312,7 @@ Error: File not found: 'data.txt' at line 5
 **Fix**: Check if file exists or handle the error.
 ```viper
 if Viper.File.exists("data.txt") {
-    let content = Viper.File.readText("data.txt");
+    var content = Viper.File.readText("data.txt");
 }
 ```
 

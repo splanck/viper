@@ -28,8 +28,10 @@ implementation guides.
 
 ### Viper Pascal
 
-- **[Pascal Tutorial](pascal-language.md)** — Learn Viper Pascal with hands-on examples
-- **[Pascal Reference](pascal-reference.md)** — Complete language specification
+> Note: Pascal documentation is in development. See [experimental/](experimental/) for work-in-progress docs.
+
+- **[Pascal Tutorial](experimental/pascal-language.md)** — Learn Viper Pascal with hands-on examples
+- **[Pascal Reference](experimental/pascal-reference.md)** — Complete language specification (WIP)
 
 ### Intermediate Language (IL)
 

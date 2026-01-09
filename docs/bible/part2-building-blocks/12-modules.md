@@ -24,7 +24,7 @@ func cube(x: f64) -> f64 {
     return x * x * x;
 }
 
-const PI = 3.14159265358979;
+final PI = 3.14159265358979;
 ```
 
 This module provides math utilities. Other code can *import* this module to use its functions and constants.
@@ -42,7 +42,7 @@ module Main;
 import MathUtils;
 
 func start() {
-    let x = 5.0;
+    var x = 5.0;
     Viper.Terminal.Say("Square: " + MathUtils.square(x));
     Viper.Terminal.Say("Cube: " + MathUtils.cube(x));
     Viper.Terminal.Say("Pi: " + MathUtils.PI);
@@ -82,23 +82,23 @@ func start() {
 
 ## Public and Private
 
-Not everything in a module should be visible to outsiders. Use `pub` to mark what's public:
+Not everything in a module should be visible to outsiders. Use `export` to mark what's public:
 
 ```viper
 // file: counter.viper
 module Counter;
 
-let count = 0;  // Private: only this module can see it
+var count = 0;  // Private: only this module can see it
 
-pub func increment() {
+export func increment() {
     count += 1;
 }
 
-pub func decrement() {
+export func decrement() {
     count -= 1;
 }
 
-pub func get() -> i64 {
+export func get() -> i64 {
     return count;
 }
 
@@ -149,7 +149,7 @@ import utils.math;     // Import utils/math.viper
 import utils.random;   // Import utils/random.viper
 
 func start() {
-    let x = utils.math.square(5.0);
+    var x = utils.math.square(5.0);
 }
 ```
 
@@ -202,26 +202,26 @@ Let's refactor our game demo into modules:
 ```viper
 module Vec2;
 
-pub struct Vec2 {
+export value Vec2 {
     x: f64;
     y: f64;
 }
 
-pub func create(x: f64, y: f64) -> Vec2 {
+export func create(x: f64, y: f64) -> Vec2 {
     return Vec2 { x: x, y: y };
 }
 
-pub func add(a: Vec2, b: Vec2) -> Vec2 {
+export func add(a: Vec2, b: Vec2) -> Vec2 {
     return Vec2 { x: a.x + b.x, y: a.y + b.y };
 }
 
-pub func distance(a: Vec2, b: Vec2) -> f64 {
-    let dx = b.x - a.x;
-    let dy = b.y - a.y;
+export func distance(a: Vec2, b: Vec2) -> f64 {
+    var dx = b.x - a.x;
+    var dy = b.y - a.y;
     return Viper.Math.sqrt(dx * dx + dy * dy);
 }
 
-pub func zero() -> Vec2 {
+export func zero() -> Vec2 {
     return Vec2 { x: 0.0, y: 0.0 };
 }
 ```
@@ -232,14 +232,14 @@ module Player;
 
 import Vec2;
 
-pub struct Player {
+export value Player {
     name: string;
     position: Vec2.Vec2;
     health: i64;
     score: i64;
 }
 
-pub func create(name: string) -> Player {
+export func create(name: string) -> Player {
     return Player {
         name: name,
         position: Vec2.zero(),
@@ -248,11 +248,11 @@ pub func create(name: string) -> Player {
     };
 }
 
-pub func isAlive(player: Player) -> bool {
+export func isAlive(player: Player) -> bool {
     return player.health > 0;
 }
 
-pub func move(player: Player, direction: Vec2.Vec2) -> Player {
+export func move(player: Player, direction: Vec2.Vec2) -> Player {
     return Player {
         name: player.name,
         position: Vec2.add(player.position, direction),
@@ -261,8 +261,8 @@ pub func move(player: Player, direction: Vec2.Vec2) -> Player {
     };
 }
 
-pub func takeDamage(player: Player, amount: i64) -> Player {
-    let newHealth = player.health - amount;
+export func takeDamage(player: Player, amount: i64) -> Player {
+    var newHealth = player.health - amount;
     if newHealth < 0 {
         newHealth = 0;
     }
@@ -281,12 +281,12 @@ module Enemy;
 
 import Vec2;
 
-pub struct Enemy {
+export value Enemy {
     position: Vec2.Vec2;
     damage: i64;
 }
 
-pub func create(x: f64, y: f64, damage: i64) -> Enemy {
+export func create(x: f64, y: f64, damage: i64) -> Enemy {
     return Enemy {
         position: Vec2.create(x, y),
         damage: damage
@@ -305,19 +305,19 @@ import Enemy;
 func start() {
     Viper.Terminal.Say("=== Modular Game Demo ===");
 
-    let player = Player.create("Hero");
-    let enemy = Enemy.create(5.0, 3.0, 10);
+    var player = Player.create("Hero");
+    var enemy = Enemy.create(5.0, 3.0, 10);
 
     Viper.Terminal.Say("Player: " + player.name);
     Viper.Terminal.Say("Health: " + player.health);
 
     // Move player
-    let direction = Vec2.create(1.0, 0.5);
+    var direction = Vec2.create(1.0, 0.5);
     player = Player.move(player, direction);
     Viper.Terminal.Say("Position: (" + player.position.x + ", " + player.position.y + ")");
 
     // Check combat
-    let dist = Vec2.distance(player.position, enemy.position);
+    var dist = Vec2.distance(player.position, enemy.position);
     Viper.Terminal.Say("Distance to enemy: " + dist);
 
     if dist < 5.0 {
@@ -343,7 +343,7 @@ Now each concept lives in its own file. You can work on player logic without tou
 ```viper
 // Defining
 module MyModule;
-pub func hello() { ... }
+export func hello() { ... }
 
 // Importing
 import MyModule;
@@ -412,8 +412,8 @@ Pascal separates `interface` (what's visible) from `implementation` (the code).
 - `module Name;` declares a module
 - `import ModuleName;` brings in another module
 - `import ModuleName { item };` imports specific items
-- `pub` marks functions and structures as public
-- Items without `pub` are private (internal only)
+- `export` marks functions and value types as public
+- Items without `export` are private (internal only)
 - The standard library is organized into modules
 - Good module design means one concept per module, minimal public interfaces, and no circular dependencies
 

@@ -30,7 +30,7 @@ import Viper.Network;
 
 func start() {
     // Fetch a web page
-    let response = Http.get("https://api.example.com/data");
+    var response = Http.get("https://api.example.com/data");
 
     if response.ok {
         Viper.Terminal.Say("Got response:");
@@ -47,22 +47,22 @@ Different methods for different purposes:
 
 ```viper
 // GET - retrieve data
-let users = Http.get("https://api.example.com/users");
+var users = Http.get("https://api.example.com/users");
 
 // POST - send data
-let newUser = Http.post("https://api.example.com/users", {
+var newUser = Http.post("https://api.example.com/users", {
     body: '{"name": "Alice", "email": "alice@example.com"}',
     headers: { "Content-Type": "application/json" }
 });
 
 // PUT - update data
-let updated = Http.put("https://api.example.com/users/123", {
+var updated = Http.put("https://api.example.com/users/123", {
     body: '{"name": "Alice Smith"}',
     headers: { "Content-Type": "application/json" }
 });
 
 // DELETE - remove data
-let deleted = Http.delete("https://api.example.com/users/123");
+var deleted = Http.delete("https://api.example.com/users/123");
 ```
 
 ### Working with JSON APIs
@@ -74,14 +74,14 @@ import Viper.Network;
 import Viper.JSON;
 
 func fetchWeather(city: string) -> Weather? {
-    let url = "https://api.weather.example.com/current?city=" + city;
-    let response = Http.get(url);
+    var url = "https://api.weather.example.com/current?city=" + city;
+    var response = Http.get(url);
 
     if !response.ok {
         return null;
     }
 
-    let data = JSON.parse(response.body);
+    var data = JSON.parse(response.body);
 
     return Weather {
         temperature: data["temp"].asFloat(),
@@ -90,14 +90,14 @@ func fetchWeather(city: string) -> Weather? {
     };
 }
 
-struct Weather {
+value Weather {
     temperature: f64;
     conditions: string;
     humidity: f64;
 }
 
 func start() {
-    let weather = fetchWeather("Seattle");
+    var weather = fetchWeather("Seattle");
     if weather != null {
         Viper.Terminal.Say("Temperature: " + weather.temperature + "°F");
         Viper.Terminal.Say("Conditions: " + weather.conditions);
@@ -120,7 +120,7 @@ import Viper.Network;
 
 func start() {
     // Connect to a server
-    let socket = TcpSocket.connect("example.com", 80);
+    var socket = TcpSocket.connect("example.com", 80);
 
     if socket == null {
         Viper.Terminal.Say("Connection failed");
@@ -131,7 +131,7 @@ func start() {
     socket.write("GET / HTTP/1.1\r\nHost: example.com\r\n\r\n");
 
     // Receive response
-    let response = socket.readAll();
+    var response = socket.readAll();
     Viper.Terminal.Say(response);
 
     // Clean up
@@ -148,16 +148,16 @@ import Viper.Network;
 
 func start() {
     // Listen for connections on port 8080
-    let server = TcpServer.listen(8080);
+    var server = TcpServer.listen(8080);
     Viper.Terminal.Say("Server listening on port 8080");
 
     while true {
         // Wait for a client
-        let client = server.accept();
+        var client = server.accept();
         Viper.Terminal.Say("Client connected from " + client.remoteAddress());
 
         // Read their message
-        let message = client.readLine();
+        var message = client.readLine();
         Viper.Terminal.Say("Received: " + message);
 
         // Send a response
@@ -183,12 +183,12 @@ module ChatServer;
 import Viper.Network;
 import Viper.Collections;
 
-class ChatServer {
-    private server: TcpServer;
-    private clients: [TcpSocket];
-    private running: bool;
+entity ChatServer {
+    hide server: TcpServer;
+    hide clients: [TcpSocket];
+    hide running: bool;
 
-    constructor(port: i64) {
+    expose func init(port: i64) {
         self.server = TcpServer.listen(port);
         self.clients = [];
         self.running = true;
@@ -198,7 +198,7 @@ class ChatServer {
     func run() {
         while self.running {
             // Check for new connections (non-blocking)
-            let newClient = self.server.acceptNonBlocking();
+            var newClient = self.server.acceptNonBlocking();
             if newClient != null {
                 self.clients.push(newClient);
                 self.broadcast("*** A new user has joined ***");
@@ -206,12 +206,12 @@ class ChatServer {
             }
 
             // Check each client for messages
-            let i = 0;
+            var i = 0;
             while i < self.clients.length {
-                let client = self.clients[i];
+                var client = self.clients[i];
 
                 if client.hasData() {
-                    let message = client.readLine();
+                    var message = client.readLine();
 
                     if message == null || message == "/quit" {
                         // Client disconnected
@@ -247,7 +247,7 @@ class ChatServer {
 }
 
 func start() {
-    let server = ChatServer(9000);
+    var server = ChatServer(9000);
     server.run();
 }
 ```
@@ -260,12 +260,12 @@ module ChatClient;
 import Viper.Network;
 import Viper.Threading;
 
-class ChatClient {
-    private socket: TcpSocket;
-    private username: string;
-    private running: bool;
+entity ChatClient {
+    hide socket: TcpSocket;
+    hide username: string;
+    hide running: bool;
 
-    constructor(host: string, port: i64, username: string) {
+    expose func init(host: string, port: i64, username: string) {
         self.socket = TcpSocket.connect(host, port);
         self.username = username;
         self.running = true;
@@ -280,11 +280,11 @@ class ChatClient {
 
     func run() {
         // Start a thread to receive messages
-        let receiver = Thread.spawn(self.receiveLoop);
+        var receiver = Thread.spawn(self.receiveLoop);
 
         // Main thread handles sending
         while self.running {
-            let input = Viper.Terminal.Ask("");
+            var input = Viper.Terminal.Ask("");
 
             if input == "/quit" {
                 self.running = false;
@@ -302,7 +302,7 @@ class ChatClient {
     func receiveLoop() {
         while self.running {
             if self.socket.hasData() {
-                let message = self.socket.readLine();
+                var message = self.socket.readLine();
                 if message != null {
                     Viper.Terminal.Say(message);
                 }
@@ -313,8 +313,8 @@ class ChatClient {
 }
 
 func start() {
-    let username = Viper.Terminal.Ask("Enter your username: ");
-    let client = ChatClient("localhost", 9000, username);
+    var username = Viper.Terminal.Ask("Enter your username: ");
+    var client = ChatClient("localhost", 9000, username);
     client.run();
 }
 ```
@@ -330,17 +330,17 @@ import Viper.Network;
 
 // UDP sender
 func sendUdp() {
-    let socket = UdpSocket.create();
+    var socket = UdpSocket.create();
     socket.send("Hello!", "192.168.1.100", 5000);
     socket.close();
 }
 
 // UDP receiver
 func receiveUdp() {
-    let socket = UdpSocket.bind(5000);
+    var socket = UdpSocket.bind(5000);
 
     while true {
-        let packet = socket.receive();
+        var packet = socket.receive();
         Viper.Terminal.Say("From " + packet.address + ": " + packet.data);
     }
 }
@@ -351,7 +351,7 @@ func receiveUdp() {
 For multiplayer games, UDP is often preferred:
 
 ```viper
-struct PlayerState {
+value PlayerState {
     id: i64;
     x: f64;
     y: f64;
@@ -359,12 +359,12 @@ struct PlayerState {
     health: i64;
 }
 
-class GameNetwork {
-    private socket: UdpSocket;
-    private serverAddress: string;
-    private serverPort: i64;
+entity GameNetwork {
+    hide socket: UdpSocket;
+    hide serverAddress: string;
+    hide serverPort: i64;
 
-    constructor(serverAddress: string, serverPort: i64) {
+    expose func init(serverAddress: string, serverPort: i64) {
         self.socket = UdpSocket.create();
         self.serverAddress = serverAddress;
         self.serverPort = serverPort;
@@ -372,16 +372,16 @@ class GameNetwork {
 
     func sendState(state: PlayerState) {
         // Pack state into bytes
-        let data = packPlayerState(state);
+        var data = packPlayerState(state);
         self.socket.send(data, self.serverAddress, self.serverPort);
     }
 
     func receiveStates() -> [PlayerState] {
-        let states: [PlayerState] = [];
+        var states: [PlayerState] = [];
 
         while self.socket.hasData() {
-            let packet = self.socket.receive();
-            let state = unpackPlayerState(packet.data);
+            var packet = self.socket.receive();
+            var state = unpackPlayerState(packet.data);
             states.push(state);
         }
 
@@ -396,7 +396,7 @@ func packPlayerState(state: PlayerState) -> string {
 }
 
 func unpackPlayerState(data: string) -> PlayerState {
-    let parts = data.split(",");
+    var parts = data.split(",");
     return PlayerState {
         id: parts[0].toInt(),
         x: parts[1].toFloat(),
@@ -416,8 +416,8 @@ WebSockets provide full-duplex communication over HTTP, perfect for real-time we
 ```viper
 import Viper.Network;
 
-class WebSocketClient {
-    private ws: WebSocket;
+entity WebSocketClient {
+    hide ws: WebSocket;
 
     func connect(url: string) {
         self.ws = WebSocket.connect(url);
@@ -460,11 +460,11 @@ Networks are unreliable. Connections drop, servers go down, packets get lost. Al
 import Viper.Network;
 
 func robustFetch(url: string, maxRetries: i64) -> string? {
-    let retries = 0;
+    var retries = 0;
 
     while retries < maxRetries {
         try {
-            let response = Http.get(url, { timeout: 5000 });
+            var response = Http.get(url, { timeout: 5000 });
 
             if response.ok {
                 return response.body;
@@ -500,10 +500,10 @@ Always set timeouts to prevent hanging:
 
 ```viper
 // With timeout
-let response = Http.get(url, { timeout: 5000 });  // 5 second timeout
+var response = Http.get(url, { timeout: 5000 });  // 5 second timeout
 
 // For sockets
-let socket = TcpSocket.connect(host, port, { timeout: 3000 });
+var socket = TcpSocket.connect(host, port, { timeout: 3000 });
 socket.setReadTimeout(10000);  // 10 second read timeout
 ```
 
@@ -518,7 +518,7 @@ import Viper.Network;
 import Viper.JSON;
 import Viper.Time;
 
-struct CityWeather {
+value CityWeather {
     city: string;
     temperature: f64;
     conditions: string;
@@ -527,13 +527,13 @@ struct CityWeather {
     lastUpdated: i64;
 }
 
-class WeatherService {
-    private apiKey: string;
-    private baseUrl: string;
-    private cache: Map<string, CityWeather>;
-    private cacheTimeout: i64;
+entity WeatherService {
+    hide apiKey: string;
+    hide baseUrl: string;
+    hide cache: Map<string, CityWeather>;
+    hide cacheTimeout: i64;
 
-    constructor(apiKey: string) {
+    expose func init(apiKey: string) {
         self.apiKey = apiKey;
         self.baseUrl = "https://api.weather.example.com/v1";
         self.cache = Map.new();
@@ -543,28 +543,28 @@ class WeatherService {
     func getWeather(city: string) -> CityWeather? {
         // Check cache first
         if self.cache.has(city) {
-            let cached = self.cache.get(city);
-            let age = Time.millis() - cached.lastUpdated;
+            var cached = self.cache.get(city);
+            var age = Time.millis() - cached.lastUpdated;
             if age < self.cacheTimeout {
                 return cached;
             }
         }
 
         // Fetch from API
-        let url = self.baseUrl + "/current?city=" +
+        var url = self.baseUrl + "/current?city=" +
                   Network.urlEncode(city) + "&key=" + self.apiKey;
 
         try {
-            let response = Http.get(url, { timeout: 10000 });
+            var response = Http.get(url, { timeout: 10000 });
 
             if !response.ok {
                 Viper.Terminal.Say("API error: " + response.statusCode);
                 return null;
             }
 
-            let data = JSON.parse(response.body);
+            var data = JSON.parse(response.body);
 
-            let weather = CityWeather {
+            var weather = CityWeather {
                 city: city,
                 temperature: data["main"]["temp"].asFloat(),
                 conditions: data["weather"][0]["description"].asString(),
@@ -598,15 +598,15 @@ func displayWeather(weather: CityWeather) {
 }
 
 func start() {
-    let service = WeatherService("your-api-key-here");
+    var service = WeatherService("your-api-key-here");
 
-    let cities = ["Seattle", "New York", "London", "Tokyo", "Sydney"];
+    var cities = ["Seattle", "New York", "London", "Tokyo", "Sydney"];
 
     Viper.Terminal.Say("Weather Dashboard");
     Viper.Terminal.Say("=================");
 
     for city in cities {
-        let weather = service.getWeather(city);
+        var weather = service.getWeather(city);
         if weather != null {
             displayWeather(weather);
         } else {
@@ -624,14 +624,14 @@ func start() {
 ```viper
 import Viper.Network;
 
-let response = Http.get("https://api.example.com/data");
+var response = Http.get("https://api.example.com/data");
 if response.ok {
     Viper.Terminal.Say(response.body);
 }
 
-let socket = TcpSocket.connect("example.com", 80);
+var socket = TcpSocket.connect("example.com", 80);
 socket.write("Hello\n");
-let reply = socket.readLine();
+var reply = socket.readLine();
 socket.close();
 ```
 
@@ -678,15 +678,15 @@ end.
 ```viper
 // Bad: Connection leak!
 func fetchData(url: string) -> string {
-    let socket = TcpSocket.connect(host, port);
-    let data = socket.readAll();
+    var socket = TcpSocket.connect(host, port);
+    var data = socket.readAll();
     return data;  // Socket never closed!
 }
 
 // Good: Always close
 func fetchData(url: string) -> string {
-    let socket = TcpSocket.connect(host, port);
-    let data = socket.readAll();
+    var socket = TcpSocket.connect(host, port);
+    var data = socket.readAll();
     socket.close();
     return data;
 }
@@ -695,24 +695,24 @@ func fetchData(url: string) -> string {
 **Not handling timeouts**
 ```viper
 // Bad: Could hang forever
-let response = Http.get(slowServer);
+var response = Http.get(slowServer);
 
 // Good: Set reasonable timeout
-let response = Http.get(slowServer, { timeout: 10000 });
+var response = Http.get(slowServer, { timeout: 10000 });
 ```
 
 **Blocking the main thread**
 ```viper
 // Bad: Freezes UI during network call
 func onClick() {
-    let data = Http.get(url);  // Blocks!
+    var data = Http.get(url);  // Blocks!
     updateUI(data);
 }
 
 // Good: Use async/threading
 func onClick() {
     Thread.spawn(func() {
-        let data = Http.get(url);
+        var data = Http.get(url);
         runOnMainThread(func() {
             updateUI(data);
         });

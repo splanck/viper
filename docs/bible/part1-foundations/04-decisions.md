@@ -13,7 +13,7 @@ Imagine giving someone directions: "Go straight until the fountain. If the gate 
 That's exactly what conditional statements do in programming. They check a condition (is the gate open?) and do different things based on the answer.
 
 ```viper
-let gateOpen = true;
+var gateOpen = true;
 
 if gateOpen {
     Viper.Terminal.Say("Going through the gate");
@@ -33,7 +33,7 @@ This is the fundamental pattern of decision-making in programs.
 The simplest form has no `else`:
 
 ```viper
-let temperature = 35;
+var temperature = 35;
 
 if temperature > 30 {
     Viper.Terminal.Say("It's hot today!");
@@ -67,7 +67,7 @@ if password == secret { ... }  // do passwords match?
 When you need to do one thing or another (but not both), use `else`:
 
 ```viper
-let hour = 14;
+var hour = 14;
 
 if hour < 12 {
     Viper.Terminal.Say("Good morning!");
@@ -87,7 +87,7 @@ Think of it as a fork: you must take one path or the other, never both, never ne
 Sometimes there are more than two possibilities:
 
 ```viper
-let hour = 20;
+var hour = 20;
 
 if hour < 12 {
     Viper.Terminal.Say("Good morning!");
@@ -186,9 +186,9 @@ Use parentheses to make your intentions clear. Even when not strictly necessary,
 You can put `if` statements inside other `if` statements:
 
 ```viper
-let hasAccount = true;
-let password = "secret123";
-let inputPassword = "secret123";
+var hasAccount = true;
+var password = "secret123";
+var inputPassword = "secret123";
 
 if hasAccount {
     if password == inputPassword {
@@ -228,9 +228,9 @@ module Grader;
 
 func start() {
     Viper.Terminal.Print("Enter the score (0-100): ");
-    let score = Viper.Parse.Int(Viper.Terminal.ReadLine());
+    var score = Viper.Parse.Int(Viper.Terminal.ReadLine());
 
-    let grade = "";
+    var grade = "";
 
     if score >= 90 {
         grade = "A";
@@ -269,7 +269,7 @@ Notice how the conditions are ordered from highest to lowest. A score of 85 isn'
 When you're comparing one value against many possibilities, `match` can be cleaner than many `if-else if` chains:
 
 ```viper
-let day = 3;
+var day = 3;
 
 match day {
     1 => Viper.Terminal.Say("Monday"),
@@ -293,7 +293,7 @@ Match is especially useful when you have many specific values to check. We'll se
 
 **ViperLang**
 ```viper
-let score = 85;
+var score = 85;
 
 if score >= 60 {
     Viper.Terminal.Say("You passed!");
@@ -369,7 +369,7 @@ All three express the same logic. The keywords differ, but the structure — con
 In ViperLang, conditions must be actual booleans. This is different from some languages where `0` counts as false and other numbers count as true.
 
 ```viper
-let count = 5;
+var count = 5;
 
 if count {           // Error in ViperLang: count is a number, not a boolean
     ...
@@ -448,12 +448,12 @@ Here's a number guessing game that uses everything we've learned:
 module GuessGame;
 
 func start() {
-    const SECRET = 7;
+    final SECRET = 7;
 
     Viper.Terminal.Say("I'm thinking of a number between 1 and 10.");
     Viper.Terminal.Print("Your guess: ");
 
-    let guess = Viper.Parse.Int(Viper.Terminal.ReadLine());
+    var guess = Viper.Parse.Int(Viper.Terminal.ReadLine());
 
     if guess == SECRET {
         Viper.Terminal.Say("Correct! You win!");

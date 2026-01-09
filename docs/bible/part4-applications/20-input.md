@@ -81,8 +81,8 @@ Key.SHIFT, Key.CTRL, Key.ALT
 ### Position
 
 ```viper
-let mouseX = Input.mouseX();
-let mouseY = Input.mouseY();
+var mouseX = Input.mouseX();
+var mouseY = Input.mouseY();
 ```
 
 This gives you the mouse position in canvas coordinates.
@@ -113,7 +113,7 @@ MouseButton.MIDDLE
 ### Mouse Wheel
 
 ```viper
-let scroll = Input.mouseScroll();  // Positive = up, negative = down
+var scroll = Input.mouseScroll();  // Positive = up, negative = down
 if scroll != 0 {
     zoomLevel += scroll * 0.1;
 }
@@ -128,7 +128,7 @@ import Viper.Graphics;
 import Viper.Input;
 
 func start() {
-    let canvas = Canvas(800, 600);
+    var canvas = Canvas(800, 600);
     canvas.setTitle("Draw with Mouse");
 
     canvas.setColor(Color.WHITE);
@@ -136,8 +136,8 @@ func start() {
 
     while canvas.isOpen() {
         if Input.isMouseDown(MouseButton.LEFT) {
-            let x = Input.mouseX();
-            let y = Input.mouseY();
+            var x = Input.mouseX();
+            var y = Input.mouseY();
             canvas.setColor(Color.BLACK);
             canvas.fillCircle(x, y, 5);
         }
@@ -158,8 +158,8 @@ Many games support controllers (gamepads):
 
 ```viper
 if Input.isControllerConnected(0) {  // First controller
-    let leftX = Input.controllerAxis(0, Axis.LEFT_X);
-    let leftY = Input.controllerAxis(0, Axis.LEFT_Y);
+    var leftX = Input.controllerAxis(0, Axis.LEFT_X);
+    var leftY = Input.controllerAxis(0, Axis.LEFT_Y);
 
     // Axis values are -1.0 to 1.0
     player.x += leftX * speed * dt;
@@ -196,7 +196,7 @@ Axis.RIGHT_TRIGGER          // Right trigger (0 to 1)
 Games often abstract input so the same action can come from different sources:
 
 ```viper
-class InputManager {
+entity InputManager {
     func getMoveX() -> f64 {
         // Keyboard
         if Input.isKeyDown(Key.LEFT) {
@@ -208,7 +208,7 @@ class InputManager {
 
         // Controller
         if Input.isControllerConnected(0) {
-            let axis = Input.controllerAxis(0, Axis.LEFT_X);
+            var axis = Input.controllerAxis(0, Axis.LEFT_X);
             if Viper.Math.abs(axis) > 0.2 {  // Dead zone
                 return axis;
             }
@@ -242,7 +242,7 @@ func applyDeadZone(value: f64, threshold: f64) -> f64 {
     return value;
 }
 
-let moveX = applyDeadZone(Input.controllerAxis(0, Axis.LEFT_X), 0.15);
+var moveX = applyDeadZone(Input.controllerAxis(0, Axis.LEFT_X), 0.15);
 ```
 
 ### Key Mapping
@@ -250,10 +250,10 @@ let moveX = applyDeadZone(Input.controllerAxis(0, Axis.LEFT_X), 0.15);
 Let players customize controls:
 
 ```viper
-class KeyMap {
-    private bindings: Map<string, i64>;
+entity KeyMap {
+    hide bindings: Map<string, i64>;
 
-    constructor() {
+    expose func init() {
         // Default bindings
         self.bindings = Map.new();
         self.bindings.set("jump", Key.SPACE);
@@ -263,7 +263,7 @@ class KeyMap {
     }
 
     func isActionDown(action: string) -> bool {
-        let key = self.bindings.get(action);
+        var key = self.bindings.get(action);
         return Input.isKeyDown(key);
     }
 
@@ -278,9 +278,9 @@ class KeyMap {
 Some games accept inputs slightly before they're valid (e.g., pressing jump just before landing):
 
 ```viper
-class InputBuffer {
-    private jumpBufferTime: f64;
-    private jumpBufferDuration: f64 = 0.1;
+entity InputBuffer {
+    hide jumpBufferTime: f64;
+    hide jumpBufferDuration: f64 = 0.1;
 
     func update(dt: f64) {
         if self.jumpBufferTime > 0 {
@@ -312,7 +312,7 @@ module CharacterDemo;
 import Viper.Graphics;
 import Viper.Input;
 
-struct Player {
+value Player {
     x: f64;
     y: f64;
     vx: f64;
@@ -320,16 +320,16 @@ struct Player {
     onGround: bool;
 }
 
-const GRAVITY = 800.0;
-const JUMP_SPEED = -400.0;
-const MOVE_SPEED = 200.0;
-const GROUND_Y = 500.0;
+final GRAVITY = 800.0;
+final JUMP_SPEED = -400.0;
+final MOVE_SPEED = 200.0;
+final GROUND_Y = 500.0;
 
 func start() {
-    let canvas = Canvas(800, 600);
+    var canvas = Canvas(800, 600);
     canvas.setTitle("Character Control");
 
-    let player = Player {
+    var player = Player {
         x: 400.0,
         y: GROUND_Y,
         vx: 0.0,
@@ -337,11 +337,11 @@ func start() {
         onGround: true
     };
 
-    let lastTime = Viper.Time.millis();
+    var lastTime = Viper.Time.millis();
 
     while canvas.isOpen() {
-        let now = Viper.Time.millis();
-        let dt = (now - lastTime) / 1000.0;
+        var now = Viper.Time.millis();
+        var dt = (now - lastTime) / 1000.0;
         lastTime = now;
 
         // Input
@@ -409,8 +409,8 @@ if Input.isKeyDown(Key.SPACE) {
     player.jump();
 }
 
-let mx = Input.mouseX();
-let my = Input.mouseY();
+var mx = Input.mouseX();
+var my = Input.mouseY();
 ```
 
 **BASIC**

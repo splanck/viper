@@ -20,10 +20,10 @@ interface Drawable {
 
 This says: "Anything that is Drawable must have a `draw()` method." It doesn't say *how* to draw — that's up to each class.
 
-Classes *implement* interfaces:
+Entities *implement* interfaces:
 
 ```viper
-class Circle implements Drawable {
+entity Circle implements Drawable {
     radius: f64;
 
     func draw() {
@@ -31,7 +31,7 @@ class Circle implements Drawable {
     }
 }
 
-class Rectangle implements Drawable {
+entity Rectangle implements Drawable {
     width: f64;
     height: f64;
 
@@ -41,7 +41,7 @@ class Rectangle implements Drawable {
 }
 ```
 
-Both classes are Drawable. They each provide their own implementation of `draw()`.
+Both entities are Drawable. They each provide their own implementation of `draw()`.
 
 ---
 
@@ -56,10 +56,10 @@ func renderScene(items: [Drawable]) {
     }
 }
 
-let circle = Circle { radius: 5.0 };
-let rect = Rectangle { width: 10.0, height: 3.0 };
+var circle = Circle { radius: 5.0 };
+var rect = Rectangle { width: 10.0, height: 3.0 };
 
-let scene: [Drawable] = [circle, rect];
+var scene: [Drawable] = [circle, rect];
 renderScene(scene);
 // Drawing a circle with radius 5
 // Drawing a rectangle 10x3
@@ -73,26 +73,26 @@ The `renderScene` function doesn't know or care about the specific types. It jus
 
 **Inheritance**: "is-a" relationship, shares implementation
 ```viper
-class Dog extends Animal { ... }
+entity Dog extends Animal { ... }
 // A dog IS an animal, inherits animal's code
 ```
 
 **Interface**: "can-do" relationship, shares behavior contract
 ```viper
-class Dog implements Drawable { ... }
+entity Dog implements Drawable { ... }
 // A dog CAN BE drawn, must implement draw()
 ```
 
 Key differences:
-- A class can extend only one class
-- A class can implement many interfaces
+- An entity can extend only one entity
+- An entity can implement many interfaces
 - Inheritance gives you code; interfaces give you contracts
 
 ---
 
 ## Multiple Interfaces
 
-A class can implement several interfaces:
+An entity can implement several interfaces:
 
 ```viper
 interface Drawable {
@@ -107,7 +107,7 @@ interface Clickable {
     func onClick();
 }
 
-class Button implements Drawable, Movable, Clickable {
+entity Button implements Drawable, Movable, Clickable {
     x: f64;
     y: f64;
     label: string;
@@ -134,7 +134,7 @@ func drawAll(items: [Drawable]) { ... }
 func moveAll(items: [Movable]) { ... }
 func handleClick(item: Clickable) { ... }
 
-let btn = Button { x: 0.0, y: 0.0, label: "OK" };
+var btn = Button { x: 0.0, y: 0.0, label: "OK" };
 drawAll([btn]);
 handleClick(btn);
 ```
@@ -146,7 +146,7 @@ handleClick(btn);
 You can combine inheritance and interfaces:
 
 ```viper
-class Enemy {
+entity Enemy {
     health: i64;
 
     func takeDamage(amount: i64) {
@@ -162,7 +162,7 @@ interface Attackable {
     func attack() -> i64;
 }
 
-class Goblin extends Enemy implements Drawable, Attackable {
+entity Goblin extends Enemy implements Drawable, Attackable {
     func draw() {
         Viper.Terminal.Say("Drawing a goblin");
     }
@@ -233,7 +233,7 @@ interface Plugin {
 }
 
 // Some plugins
-class UppercasePlugin implements Plugin {
+entity UppercasePlugin implements Plugin {
     func getName() -> string {
         return "Uppercase";
     }
@@ -243,7 +243,7 @@ class UppercasePlugin implements Plugin {
     }
 }
 
-class ReversePlugin implements Plugin {
+entity ReversePlugin implements Plugin {
     func getName() -> string {
         return "Reverse";
     }
@@ -253,10 +253,10 @@ class ReversePlugin implements Plugin {
     }
 }
 
-class RepeatPlugin implements Plugin {
+entity RepeatPlugin implements Plugin {
     times: i64;
 
-    constructor(times: i64) {
+    expose func init(times: i64) {
         self.times = times;
     }
 
@@ -270,10 +270,10 @@ class RepeatPlugin implements Plugin {
 }
 
 // Plugin manager doesn't need to know about specific plugins
-class PluginManager {
+entity PluginManager {
     plugins: [Plugin];
 
-    constructor() {
+    expose func init() {
         self.plugins = [];
     }
 
@@ -283,7 +283,7 @@ class PluginManager {
     }
 
     func process(input: string) -> string {
-        let result = input;
+        var result = input;
         for plugin in self.plugins {
             result = plugin.execute(result);
         }
@@ -299,7 +299,7 @@ class PluginManager {
 }
 
 func start() {
-    let manager = PluginManager();
+    var manager = PluginManager();
 
     // Register some plugins
     manager.register(UppercasePlugin());
@@ -309,8 +309,8 @@ func start() {
     manager.listPlugins();
 
     // Process text through all plugins
-    let input = "hello";
-    let output = manager.process(input);
+    var input = "hello";
+    var output = manager.process(input);
 
     Viper.Terminal.Say("Input: " + input);
     Viper.Terminal.Say("Output: " + output);
@@ -330,7 +330,7 @@ interface Printable {
     func print();
 }
 
-class Document implements Printable {
+entity Document implements Printable {
     func print() {
         Viper.Terminal.Say("Printing document");
     }
@@ -379,17 +379,17 @@ interface SortStrategy {
     func sort(items: [i64]) -> [i64];
 }
 
-class QuickSort implements SortStrategy {
+entity QuickSort implements SortStrategy {
     func sort(items: [i64]) -> [i64] { ... }
 }
 
-class MergeSort implements SortStrategy {
+entity MergeSort implements SortStrategy {
     func sort(items: [i64]) -> [i64] { ... }
 }
 
 // Use any sorting strategy
 func processData(data: [i64], strategy: SortStrategy) {
-    let sorted = strategy.sort(data);
+    var sorted = strategy.sort(data);
     ...
 }
 ```
@@ -400,7 +400,7 @@ interface Observer {
     func onEvent(event: string);
 }
 
-class Subject {
+entity Subject {
     observers: [Observer];
 
     func subscribe(obs: Observer) {
@@ -426,7 +426,7 @@ class Subject {
 - You need multiple inheritance of behavior
 
 **Use inheritance when:**
-- Classes share actual implementation code
+- Entities share actual implementation code
 - There's a clear "is-a" relationship
 - You want to reuse parent code
 
@@ -437,9 +437,9 @@ Often you'll use both together: inheritance for shared code, interfaces for shar
 ## Summary
 
 - *Interfaces* define method contracts without implementation
-- Classes *implement* interfaces by providing the methods
-- A class can implement multiple interfaces
-- Interfaces enable polymorphism — treating different classes uniformly
+- Entities *implement* interfaces by providing the methods
+- An entity can implement multiple interfaces
+- Interfaces enable polymorphism — treating different entities uniformly
 - Use small, focused interfaces
 - Interfaces are great for plugin systems and loose coupling
 - Combine with inheritance as needed

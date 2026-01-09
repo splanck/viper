@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2025-11-25
+last-verified: 2026-01-09
 ---
 
 # Viper Architecture Overview

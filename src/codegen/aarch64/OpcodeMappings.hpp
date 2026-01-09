@@ -82,37 +82,117 @@ constexpr CompareMapping kCompareOps[] = {
     {il::core::Opcode::UCmpGE, "hs"},
 };
 
-// Helper to lookup binary operation mapping
+// Helper to lookup binary operation mapping using switch for O(1) lookup.
+// Uses static storage to return pointers to mapping structs.
 inline const BinaryOpMapping *lookupBinaryOp(il::core::Opcode op)
 {
-    for (const auto &mapping : kBinaryIntOps)
+    using Opc = il::core::Opcode;
+    switch (op)
     {
-        if (mapping.ilOp == op)
+        // Integer operations
+        case Opc::Add:
+        case Opc::IAddOvf:
         {
-            return &mapping;
+            static constexpr BinaryOpMapping m{Opc::Add, MOpcode::AddRRR, true, MOpcode::AddRI};
+            return &m;
         }
-    }
-    for (const auto &mapping : kBinaryFpOps)
-    {
-        if (mapping.ilOp == op)
+        case Opc::Sub:
+        case Opc::ISubOvf:
         {
-            return &mapping;
+            static constexpr BinaryOpMapping m{Opc::Sub, MOpcode::SubRRR, true, MOpcode::SubRI};
+            return &m;
         }
+        case Opc::Mul:
+        case Opc::IMulOvf:
+        {
+            static constexpr BinaryOpMapping m{Opc::Mul, MOpcode::MulRRR, false, MOpcode::MulRRR};
+            return &m;
+        }
+        case Opc::And:
+        {
+            static constexpr BinaryOpMapping m{Opc::And, MOpcode::AndRRR, false, MOpcode::AndRRR};
+            return &m;
+        }
+        case Opc::Or:
+        {
+            static constexpr BinaryOpMapping m{Opc::Or, MOpcode::OrrRRR, false, MOpcode::OrrRRR};
+            return &m;
+        }
+        case Opc::Xor:
+        {
+            static constexpr BinaryOpMapping m{Opc::Xor, MOpcode::EorRRR, false, MOpcode::EorRRR};
+            return &m;
+        }
+        case Opc::Shl:
+        {
+            static constexpr BinaryOpMapping m{Opc::Shl, MOpcode::LslRI, true, MOpcode::LslRI};
+            return &m;
+        }
+        case Opc::LShr:
+        {
+            static constexpr BinaryOpMapping m{Opc::LShr, MOpcode::LsrRI, true, MOpcode::LsrRI};
+            return &m;
+        }
+        case Opc::AShr:
+        {
+            static constexpr BinaryOpMapping m{Opc::AShr, MOpcode::AsrRI, true, MOpcode::AsrRI};
+            return &m;
+        }
+        // Floating-point operations
+        case Opc::FAdd:
+        {
+            static constexpr BinaryOpMapping m{Opc::FAdd, MOpcode::FAddRRR, false, MOpcode::FAddRRR};
+            return &m;
+        }
+        case Opc::FSub:
+        {
+            static constexpr BinaryOpMapping m{Opc::FSub, MOpcode::FSubRRR, false, MOpcode::FSubRRR};
+            return &m;
+        }
+        case Opc::FMul:
+        {
+            static constexpr BinaryOpMapping m{Opc::FMul, MOpcode::FMulRRR, false, MOpcode::FMulRRR};
+            return &m;
+        }
+        case Opc::FDiv:
+        {
+            static constexpr BinaryOpMapping m{Opc::FDiv, MOpcode::FDivRRR, false, MOpcode::FDivRRR};
+            return &m;
+        }
+        default:
+            return nullptr;
     }
-    return nullptr;
 }
 
-// Helper to lookup comparison condition
+// Helper to lookup comparison condition using switch for O(1) lookup.
 inline const char *lookupCondition(il::core::Opcode op)
 {
-    for (const auto &mapping : kCompareOps)
+    using Opc = il::core::Opcode;
+    switch (op)
     {
-        if (mapping.ilOp == op)
-        {
-            return mapping.condition;
-        }
+        case Opc::ICmpEq:
+            return "eq";
+        case Opc::ICmpNe:
+            return "ne";
+        case Opc::SCmpLT:
+            return "lt";
+        case Opc::SCmpLE:
+            return "le";
+        case Opc::SCmpGT:
+            return "gt";
+        case Opc::SCmpGE:
+            return "ge";
+        case Opc::UCmpLT:
+            return "lo";
+        case Opc::UCmpLE:
+            return "ls";
+        case Opc::UCmpGT:
+            return "hi";
+        case Opc::UCmpGE:
+            return "hs";
+        default:
+            return nullptr;
     }
-    return nullptr;
 }
 
 // Check if opcode is a comparison

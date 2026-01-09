@@ -11,7 +11,7 @@ Computers excel at repetition. They can do the same thing millions of times with
 The simplest loop repeats as long as a condition is true:
 
 ```viper
-let count = 1;
+var count = 1;
 
 while count <= 5 {
     Viper.Terminal.Say(count);
@@ -51,7 +51,7 @@ while condition {
 The condition is checked *before* each iteration. If it's false from the start, the body never runs at all:
 
 ```viper
-let x = 10;
+var x = 10;
 while x < 5 {
     Viper.Terminal.Say("This never prints");
 }
@@ -74,7 +74,7 @@ This runs forever — an *infinite loop*. Sometimes that's intentional (game loo
 The classic mistake is forgetting to update the variable you're checking:
 
 ```viper
-let count = 1;
+var count = 1;
 while count <= 5 {
     Viper.Terminal.Say(count);
     // Oops! Forgot to increment count
@@ -162,7 +162,7 @@ for i in 1..=10 {
 }
 
 // while: we don't know how many tries
-let password = "";
+var password = "";
 while password != "secret" {
     Viper.Terminal.Print("Password: ");
     password = Viper.Terminal.ReadLine();
@@ -203,9 +203,9 @@ When `break` runs, the loop immediately exits. Execution continues after the loo
 This is useful for searching:
 
 ```viper
-let numbers = [4, 8, 15, 16, 23, 42];
-let target = 16;
-let found = false;
+var numbers = [4, 8, 15, 16, 23, 42];
+var target = 16;
+var found = false;
 
 for i in 0..numbers.length {
     if numbers[i] == target {
@@ -286,7 +286,7 @@ The outer loop runs 3 times (once per row). Each time, the inner loop runs 4 tim
 ```viper
 for row in 1..=5 {
     for col in 1..=5 {
-        let product = row * col;
+        var product = row * col;
         Viper.Terminal.Print(product + "\t");  // \t is a tab
     }
     Viper.Terminal.Say("");
@@ -310,7 +310,7 @@ With nested loops, the total iterations multiply. A 100×100 grid means 10,000 i
 
 ### Counting
 ```viper
-let count = 0;
+var count = 0;
 for i in 1..=100 {
     if someCondition(i) {
         count = count + 1;
@@ -321,7 +321,7 @@ Viper.Terminal.Say("Found " + count + " matches");
 
 ### Summing
 ```viper
-let total = 0;
+var total = 0;
 for i in 1..=100 {
     total = total + i;
 }
@@ -330,8 +330,8 @@ Viper.Terminal.Say("Sum is " + total);  // 5050
 
 ### Finding maximum
 ```viper
-let values = [23, 7, 42, 15, 8];
-let max = values[0];
+var values = [23, 7, 42, 15, 8];
+var max = values[0];
 
 for i in 1..values.length {
     if values[i] > max {
@@ -343,7 +343,7 @@ Viper.Terminal.Say("Maximum is " + max);  // 42
 
 ### Building strings
 ```viper
-let result = "";
+var result = "";
 for i in 1..=5 {
     result = result + i + " ";
 }
@@ -352,8 +352,8 @@ Viper.Terminal.Say(result);  // "1 2 3 4 5 "
 
 ### Validating input
 ```viper
-let valid = false;
-let age = 0;
+var valid = false;
+var age = 0;
 
 while !valid {
     Viper.Terminal.Print("Enter your age (0-120): ");
@@ -374,7 +374,7 @@ while !valid {
 **ViperLang**
 ```viper
 // while loop
-let i = 0;
+var i = 0;
 while i < 5 {
     Viper.Terminal.Say(i);
     i += 1;
@@ -443,10 +443,10 @@ Let's improve our guessing game from Chapter 4 with loops:
 module GuessGame;
 
 func start() {
-    const SECRET = 7;
-    const MAX_TRIES = 3;
-    let tries = 0;
-    let won = false;
+    final SECRET = 7;
+    final MAX_TRIES = 3;
+    var tries = 0;
+    var won = false;
 
     Viper.Terminal.Say("I'm thinking of a number between 1 and 10.");
     Viper.Terminal.Say("You have " + MAX_TRIES + " tries.");
@@ -455,7 +455,7 @@ func start() {
     while tries < MAX_TRIES && !won {
         tries = tries + 1;
         Viper.Terminal.Print("Guess #" + tries + ": ");
-        let guess = Viper.Parse.Int(Viper.Terminal.ReadLine());
+        var guess = Viper.Parse.Int(Viper.Terminal.ReadLine());
 
         if guess == SECRET {
             Viper.Terminal.Say("Correct! You win!");
@@ -517,7 +517,7 @@ for i in 1..10 {
 **Infinite loops:**
 ```viper
 // Missing increment
-let i = 0;
+var i = 0;
 while i < 10 {
     Viper.Terminal.Say(i);
     // Forgot: i = i + 1

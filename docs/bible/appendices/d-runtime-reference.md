@@ -15,9 +15,9 @@ Viper.Terminal.Write("message");            // Print without newline
 Viper.Terminal.SayError("error");           // Print to stderr
 
 // Input
-let name = Viper.Terminal.Ask("Prompt: ");  // Read line
-let char = Viper.Terminal.GetChar();        // Read single character
-let key = Viper.Terminal.GetKey();          // Read key (with arrows, etc.)
+var name = Viper.Terminal.Ask("Prompt: ");  // Read line
+var char = Viper.Terminal.GetChar();        // Read single character
+var key = Viper.Terminal.GetKey();          // Read key (with arrows, etc.)
 
 // Formatting
 Viper.Terminal.Clear();                     // Clear screen
@@ -36,9 +36,9 @@ File system operations.
 
 ```viper
 // Reading
-let text = Viper.File.readText("file.txt");
-let bytes = Viper.File.readBytes("file.bin");
-let lines = Viper.File.readLines("file.txt");
+var text = Viper.File.readText("file.txt");
+var bytes = Viper.File.readBytes("file.bin");
+var lines = Viper.File.readLines("file.txt");
 
 // Writing
 Viper.File.writeText("file.txt", "content");
@@ -142,7 +142,7 @@ Viper.Time.now()                            // -> DateTime
 Viper.Time.sleep(milliseconds)              // Pause execution
 
 // DateTime operations
-let dt = DateTime.now();
+var dt = DateTime.now();
 dt.year                                     // -> i64
 dt.month                                    // -> i64 (1-12)
 dt.day                                      // -> i64 (1-31)
@@ -169,9 +169,9 @@ Collection types beyond basic arrays.
 
 ### Map
 ```viper
-let map = Map<string, i64>.new();
+var map = Map<string, i64>.new();
 map.set("key", 42);
-let value = map.get("key");                 // -> i64?
+var value = map.get("key");                 // -> i64?
 map.has("key")                              // -> bool
 map.delete("key");
 map.clear();
@@ -186,7 +186,7 @@ for key, value in map {
 
 ### Set
 ```viper
-let set = Set<string>.new();
+var set = Set<string>.new();
 set.add("item");
 set.contains("item")                        // -> bool
 set.remove("item");
@@ -204,29 +204,29 @@ for item in set {
 
 ### Queue
 ```viper
-let queue = Queue<string>.new();
+var queue = Queue<string>.new();
 queue.enqueue("item");
-let item = queue.dequeue();                 // -> string?
-let front = queue.peek();                   // -> string?
+var item = queue.dequeue();                 // -> string?
+var front = queue.peek();                   // -> string?
 queue.isEmpty()                             // -> bool
 queue.size                                  // -> i64
 ```
 
 ### Stack
 ```viper
-let stack = Stack<string>.new();
+var stack = Stack<string>.new();
 stack.push("item");
-let item = stack.pop();                     // -> string?
-let top = stack.peek();                     // -> string?
+var item = stack.pop();                     // -> string?
+var top = stack.peek();                     // -> string?
 stack.isEmpty()                             // -> bool
 stack.size                                  // -> i64
 ```
 
 ### PriorityQueue
 ```viper
-let pq = PriorityQueue<Task>.new(compareFn);
+var pq = PriorityQueue<Task>.new(compareFn);
 pq.enqueue(task);
-let highest = pq.dequeue();                 // -> Task?
+var highest = pq.dequeue();                 // -> Task?
 ```
 
 ---
@@ -238,10 +238,10 @@ Networking operations.
 ### HTTP
 ```viper
 // Simple requests
-let response = Http.get(url);
-let response = Http.post(url, { body: data, headers: {} });
-let response = Http.put(url, { body: data });
-let response = Http.delete(url);
+var response = Http.get(url);
+var response = Http.post(url, { body: data, headers: {} });
+var response = Http.put(url, { body: data });
+var response = Http.delete(url);
 
 // Response object
 response.ok                                 // -> bool
@@ -253,15 +253,15 @@ response.headers                            // -> Map<string, string>
 ### TCP
 ```viper
 // Client
-let socket = TcpSocket.connect(host, port);
+var socket = TcpSocket.connect(host, port);
 socket.write(data);
-let response = socket.read(bufferSize);
-let line = socket.readLine();
+var response = socket.read(bufferSize);
+var line = socket.readLine();
 socket.close();
 
 // Server
-let server = TcpServer.listen(port);
-let client = server.accept();               // Blocks until connection
+var server = TcpServer.listen(port);
+var client = server.accept();               // Blocks until connection
 client.write("Hello");
 client.close();
 server.close();
@@ -269,9 +269,9 @@ server.close();
 
 ### UDP
 ```viper
-let socket = UdpSocket.create();
+var socket = UdpSocket.create();
 socket.send(data, address, port);
-let packet = socket.receive();              // -> { data, address, port }
+var packet = socket.receive();              // -> { data, address, port }
 socket.close();
 ```
 
@@ -283,22 +283,22 @@ JSON parsing and generation.
 
 ```viper
 // Parsing
-let data = JSON.parse(jsonString);
-let value = data["key"].asString();
-let num = data["count"].asInt();
-let arr = data["items"].asArray();
+var data = JSON.parse(jsonString);
+var value = data["key"].asString();
+var num = data["count"].asInt();
+var arr = data["items"].asArray();
 
 // Creating
-let obj = JSON.object();
+var obj = JSON.object();
 obj.set("name", "Alice");
 obj.set("age", 30);
 
-let arr = JSON.array();
+var arr = JSON.array();
 arr.add("item1");
 arr.add("item2");
 
-let json = obj.toString();                  // Compact
-let json = obj.toPrettyString();            // Formatted
+var json = obj.toString();                  // Compact
+var json = obj.toPrettyString();            // Formatted
 ```
 
 ---
@@ -309,14 +309,14 @@ Concurrency primitives.
 
 ```viper
 // Threads
-let thread = Thread.spawn(func() {
+var thread = Thread.spawn(func() {
     // work
 });
 thread.join();                              // Wait for completion
-let result = thread.result();               // Get return value
+var result = thread.result();               // Get return value
 
 // Mutex
-let mutex = Mutex.create();
+var mutex = Mutex.create();
 mutex.lock();
 // critical section
 mutex.unlock();
@@ -326,25 +326,25 @@ mutex.synchronized(func() {
 });
 
 // Atomics
-let counter = Atomic<i64>.create(0);
+var counter = Atomic<i64>.create(0);
 counter.increment();
 counter.decrement();
 counter.add(5);
-let value = counter.get();
+var value = counter.get();
 counter.set(100);
 counter.compareAndSwap(old, new);
 
 // Channels
-let channel = Channel<string>.create();
+var channel = Channel<string>.create();
 channel.send("message");
-let msg = channel.receive();                // Blocks
+var msg = channel.receive();                // Blocks
 channel.close();
 
 // Thread pool
-let pool = ThreadPool.create(numWorkers);
+var pool = ThreadPool.create(numWorkers);
 pool.submit(func() { /* work */ });
-let future = pool.submitWithResult(func() -> T { /* work */ });
-let result = future.get();                  // Blocks until ready
+var future = pool.submitWithResult(func() -> T { /* work */ });
+var result = future.get();                  // Blocks until ready
 pool.waitAll();
 pool.shutdown();
 ```
@@ -357,7 +357,7 @@ Graphics and game development.
 
 ```viper
 // Canvas
-let canvas = Canvas(width, height);
+var canvas = Canvas(width, height);
 canvas.setTitle("Window Title");
 canvas.isOpen()                             // -> bool
 canvas.show();                              // Display buffer
@@ -384,7 +384,7 @@ canvas.setFont(name, size);
 canvas.drawText(x, y, text);
 
 // Images
-let image = Image.load("sprite.png");
+var image = Image.load("sprite.png");
 canvas.drawImage(image, x, y);
 canvas.drawImageScaled(image, x, y, width, height);
 ```
@@ -471,7 +471,7 @@ Viper.Environment.exit(code);               // Exit program
 Regular expressions.
 
 ```viper
-let regex = Regex.compile("\\d+");
+var regex = Regex.compile("\\d+");
 
 regex.matches("abc123def")                  // -> bool
 regex.find("abc123def")                     // -> Match?
@@ -495,22 +495,22 @@ Running external processes.
 
 ```viper
 // Simple execution
-let result = Process.run("ls", ["-la"]);
+var result = Process.run("ls", ["-la"]);
 result.exitCode                             // -> i64
 result.stdout                               // -> string
 result.stderr                               // -> string
 
 // With options
-let result = Process.run("cmd", args, {
+var result = Process.run("cmd", args, {
     cwd: "/path",
     env: { "VAR": "value" },
     timeout: 5000
 });
 
 // Background process
-let process = Process.spawn("server", []);
+var process = Process.spawn("server", []);
 process.write("input");
-let output = process.read();
+var output = process.read();
 process.kill();
 process.wait();
 ```

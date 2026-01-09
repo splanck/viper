@@ -31,7 +31,7 @@ func add(a: i64, b: i64) -> i64 {
 }
 
 func start() {
-    let result = add(3, 4);
+    var result = add(3, 4);
     Viper.Terminal.Say(result);
 }
 ```
@@ -58,8 +58,8 @@ i64    → TOKEN_TYPE("i64")
 This is like breaking a sentence into words. The lexer also catches simple errors:
 
 ```viper
-let x = 3.14.15;  // Error: invalid number literal
-let @invalid = 5;  // Error: unexpected character '@'
+var x = 3.14.15;  // Error: invalid number literal
+var@invalid = 5;  // Error: unexpected character '@'
 ```
 
 ---
@@ -87,7 +87,7 @@ The tree represents the structure of your program. Parsing catches syntax errors
 
 ```viper
 func broken( {  // Error: expected parameter or ')'
-let x = ;        // Error: expected expression after '='
+var x = ;        // Error: expected expression after '='
 ```
 
 ---
@@ -98,22 +98,22 @@ The *semantic analyzer* checks that your program makes sense:
 
 **Type checking:**
 ```viper
-let x: i64 = "hello";  // Error: cannot assign string to i64
-let y = add("a", "b"); // Error: expected i64, got string
+var x: i64 = "hello";  // Error: cannot assign string to i64
+var y = add("a", "b"); // Error: expected i64, got string
 ```
 
 **Scope checking:**
 ```viper
 func test() {
     Viper.Terminal.Say(x);  // Error: 'x' not defined
-    let x = 5;
+    var x = 5;
 }
 ```
 
 **Return checking:**
 ```viper
 func getValue() -> i64 {
-    let x = 5;
+    var x = 5;
     // Error: function must return a value
 }
 ```
@@ -250,7 +250,7 @@ All three generate the same IL:
 Viper's IL uses a *stack-based* model. Operations push and pop values:
 
 ```viper
-let result = (3 + 4) * 2;
+var result = (3 + 4) * 2;
 ```
 
 Becomes:
@@ -277,13 +277,13 @@ Viper manages memory automatically using *garbage collection*:
 
 ```viper
 func makeList() -> [i64] {
-    let list = [1, 2, 3];  // Memory allocated
+    var list = [1, 2, 3];  // Memory allocated
     return list;
 }
 
 func start() {
-    let a = makeList();    // list is reachable through 'a'
-    let b = makeList();    // another list allocated
+    var a = makeList();    // list is reachable through 'a'
+    var b = makeList();    // another list allocated
 
     a = null;              // first list no longer reachable
     // Garbage collector will reclaim first list's memory
@@ -338,15 +338,15 @@ The runtime bridges IL code and the operating system.
 
 **Value types** are stored directly:
 ```viper
-let x: i64 = 42;      // 42 is stored in x
-let y = x;            // y gets a copy of 42
+var x: i64 = 42;      // 42 is stored in x
+var y = x;            // y gets a copy of 42
 x = 100;              // y is still 42
 ```
 
 **Reference types** store a pointer:
 ```viper
-let a = [1, 2, 3];    // array is on heap, a holds reference
-let b = a;            // b points to same array
+var a = [1, 2, 3];    // array is on heap, a holds reference
+var b = a;            // b points to same array
 a[0] = 999;           // b[0] is also 999!
 ```
 
@@ -355,16 +355,16 @@ a[0] = 999;           // b[0] is also 999!
 Viper infers types when obvious:
 
 ```viper
-let x = 42;           // x is i64
-let y = 3.14;         // y is f64
-let z = "hello";      // z is string
-let list = [1, 2, 3]; // list is [i64]
+var x = 42;           // x is i64
+var y = 3.14;         // y is f64
+var z = "hello";      // z is string
+var list = [1, 2, 3]; // list is [i64]
 ```
 
 But you can be explicit:
 ```viper
-let x: i64 = 42;
-let y: f64 = 3.14;
+var x: i64 = 42;
+var y: f64 = 3.14;
 ```
 
 ---

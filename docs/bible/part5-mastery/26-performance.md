@@ -14,11 +14,11 @@ Don't guess where time goes. Measure.
 import Viper.Time;
 
 func start() {
-    let startTime = Time.millis();
+    var startTime = Time.millis();
 
     doExpensiveWork();
 
-    let endTime = Time.millis();
+    var endTime = Time.millis();
     Viper.Terminal.Say("Took " + (endTime - startTime) + " ms");
 }
 ```
@@ -91,7 +91,7 @@ func hasDuplicates(items: [i64]) -> bool {
 **O(n) approach — fast:**
 ```viper
 func hasDuplicates(items: [i64]) -> bool {
-    let seen = Set<i64>.create();
+    var seen = Set<i64>.create();
     for item in items {
         if seen.contains(item) {
             return true;
@@ -114,14 +114,14 @@ The O(n) version is ~500,000x faster for large inputs!
 **Slow:**
 ```viper
 for i in 0..1000000 {
-    let config = loadConfig();  // Loading 1 million times!
+    var config = loadConfig();  // Loading 1 million times!
     process(data[i], config);
 }
 ```
 
 **Fast:**
 ```viper
-let config = loadConfig();  // Load once
+var config = loadConfig();  // Load once
 for i in 0..1000000 {
     process(data[i], config);
 }
@@ -132,7 +132,7 @@ for i in 0..1000000 {
 **Looking up by key?**
 ```viper
 // Slow: O(n) search
-let users: [User] = [];
+var users: [User] = [];
 func findUser(id: i64) -> User? {
     for user in users {
         if user.id == id {
@@ -143,7 +143,7 @@ func findUser(id: i64) -> User? {
 }
 
 // Fast: O(1) lookup
-let users: Map<i64, User> = Map.new();
+var users: Map<i64, User> = Map.new();
 func findUser(id: i64) -> User? {
     return users.get(id);
 }
@@ -152,13 +152,13 @@ func findUser(id: i64) -> User? {
 **Checking membership?**
 ```viper
 // Slow: O(n)
-let seen: [string] = [];
+var seen: [string] = [];
 if !contains(seen, item) {
     seen.push(item);
 }
 
 // Fast: O(1)
-let seen: Set<string> = Set.new();
+var seen: Set<string> = Set.new();
 if !seen.contains(item) {
     seen.add(item);
 }
@@ -168,7 +168,7 @@ if !seen.contains(item) {
 
 **Slow:**
 ```viper
-let result = "";
+var result = "";
 for i in 0..10000 {
     result += "item " + i + "\n";  // Creates new string each time!
 }
@@ -176,22 +176,22 @@ for i in 0..10000 {
 
 **Fast:**
 ```viper
-let builder = StringBuilder.create();
+var builder = StringBuilder.create();
 for i in 0..10000 {
     builder.append("item ");
     builder.append(i);
     builder.append("\n");
 }
-let result = builder.toString();
+var result = builder.toString();
 ```
 
 ### Cache Expensive Results
 
 ```viper
-class FibonacciCalculator {
-    private cache: Map<i64, i64>;
+entity FibonacciCalculator {
+    hide cache: Map<i64, i64>;
 
-    constructor() {
+    expose func init() {
         self.cache = Map.new();
     }
 
@@ -200,7 +200,7 @@ class FibonacciCalculator {
             return self.cache.get(n);
         }
 
-        let result: i64;
+        var result: i64;
         if n <= 1 {
             result = n;
         } else {
@@ -228,7 +228,7 @@ Each allocation has overhead. Reuse objects when possible:
 ```viper
 func processFrames() {
     while running {
-        let buffer = [i64](1000);  // New allocation every frame!
+        var buffer = [i64](1000);  // New allocation every frame!
         fillBuffer(buffer);
         process(buffer);
     }
@@ -238,7 +238,7 @@ func processFrames() {
 **Fast:**
 ```viper
 func processFrames() {
-    let buffer = [i64](1000);  // Allocate once
+    var buffer = [i64](1000);  // Allocate once
     while running {
         clearBuffer(buffer);
         fillBuffer(buffer);
@@ -252,7 +252,7 @@ func processFrames() {
 ```viper
 // Slow: copying large array
 func processData(data: [i64]) -> [i64] {
-    let result = data.clone();  // Full copy!
+    var result = data.clone();  // Full copy!
     for i in 0..result.length {
         result[i] *= 2;
     }
@@ -274,12 +274,12 @@ Objects that live too long or too short cause problems:
 ```viper
 // Bad: Short-lived objects trigger many GCs
 for i in 0..1000000 {
-    let temp = createComplexObject();  // Created and discarded
+    var temp = createComplexObject();  // Created and discarded
     useOnce(temp);
 }
 
 // Better: Reuse when possible
-let temp = createComplexObject();
+var temp = createComplexObject();
 for i in 0..1000000 {
     resetObject(temp);
     useOnce(temp);
@@ -296,18 +296,18 @@ I/O (files, network) is often the bottleneck.
 
 **Slow:**
 ```viper
-let file = File.open("data.txt", "r");
+var file = File.open("data.txt", "r");
 while !file.eof() {
-    let char = file.readChar();  // System call per character!
+    var char = file.readChar();  // System call per character!
     process(char);
 }
 ```
 
 **Fast:**
 ```viper
-let file = BufferedReader(File.open("data.txt", "r"));
+var file = BufferedReader(File.open("data.txt", "r"));
 while !file.eof() {
-    let line = file.readLine();  // Reads chunks internally
+    var line = file.readLine();  // Reads chunks internally
     process(line);
 }
 ```
@@ -332,19 +332,19 @@ Don't wait for I/O — do other work:
 
 ```viper
 // Slow: Sequential
-let data1 = Http.get(url1);
-let data2 = Http.get(url2);
-let data3 = Http.get(url3);
+var data1 = Http.get(url1);
+var data2 = Http.get(url2);
+var data3 = Http.get(url3);
 
 // Fast: Parallel
-let tasks = [
+var tasks = [
     Thread.spawn(func() { return Http.get(url1); }),
     Thread.spawn(func() { return Http.get(url2); }),
     Thread.spawn(func() { return Http.get(url3); })
 ];
-let data1 = tasks[0].result();
-let data2 = tasks[1].result();
-let data3 = tasks[2].result();
+var data1 = tasks[0].result();
+var data2 = tasks[1].result();
+var data3 = tasks[2].result();
 ```
 
 ---
@@ -379,20 +379,20 @@ func benchmark(name: string, iterations: i64, work: func()) {
     }
 
     // Measure
-    let start = Time.nanos();
+    var start = Time.nanos();
     for i in 0..iterations {
         work();
     }
-    let end = Time.nanos();
+    var end = Time.nanos();
 
-    let totalMs = (end - start) / 1_000_000.0;
-    let perIter = totalMs / iterations;
+    var totalMs = (end - start) / 1_000_000.0;
+    var perIter = totalMs / iterations;
 
     Viper.Terminal.Say(name + ": " + perIter + " ms/iter (" + iterations + " iterations)");
 }
 
 func start() {
-    let data = generateTestData(10000);
+    var data = generateTestData(10000);
 
     benchmark("Approach A", 1000, func() {
         approachA(data);
@@ -409,7 +409,7 @@ func start() {
 1. **Warm up**: Run a few iterations first to let JIT/caches stabilize
 2. **Multiple runs**: Run multiple iterations to average out noise
 3. **Realistic data**: Use data that matches real usage
-4. **Isolate variables**: Change one thing at a time
+4. **Isolate var iables**: Change one thing at a time
 
 ---
 
@@ -418,14 +418,14 @@ func start() {
 **Version 1: Naive**
 ```viper
 func countWords(text: string) -> Map<string, i64> {
-    let counts: Map<string, i64> = Map.new();
+    var counts: Map<string, i64> = Map.new();
 
     // Split by spaces (creates many strings)
-    let words = text.split(" ");
+    var words = text.split(" ");
 
     for word in words {
         // Normalize (creates more strings)
-        let normalized = word.toLowerCase().trim();
+        var normalized = word.toLowerCase().trim();
 
         if counts.has(normalized) {
             counts.set(normalized, counts.get(normalized) + 1);
@@ -441,10 +441,10 @@ func countWords(text: string) -> Map<string, i64> {
 **Version 2: Optimized**
 ```viper
 func countWords(text: string) -> Map<string, i64> {
-    let counts: Map<string, i64> = Map.new();
-    let builder = StringBuilder.create();
+    var counts: Map<string, i64> = Map.new();
+    var builder = StringBuilder.create();
 
-    let i = 0;
+    var i = 0;
     while i < text.length {
         // Skip whitespace
         while i < text.length && isWhitespace(text[i]) {
@@ -459,7 +459,7 @@ func countWords(text: string) -> Map<string, i64> {
         }
 
         if builder.length > 0 {
-            let word = builder.toString();
+            var word = builder.toString();
             counts.set(word, counts.getOrDefault(word, 0) + 1);
         }
     }
@@ -492,9 +492,9 @@ The optimized version:
 ```viper
 import Viper.Time;
 
-let start = Time.millis();
+var start = Time.millis();
 doWork();
-let elapsed = Time.millis() - start;
+var elapsed = Time.millis() - start;
 ```
 
 **BASIC**
@@ -538,10 +538,10 @@ Focus on what the profiler tells you.
 **Micro-optimizing at the expense of readability**
 ```viper
 // Unreadable "optimized" code
-let x = ((n >> 1) & 1) ^ (n & 1);
+var x = ((n >> 1) & 1) ^ (n & 1);
 
 // Clear code (compiler optimizes it anyway)
-let x = if n % 2 == 0 { 0 } else { 1 };
+var x = if n % 2 == 0 { 0 } else { 1 };
 ```
 Compilers are smart. Write clear code first.
 

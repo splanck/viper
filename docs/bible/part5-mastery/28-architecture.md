@@ -34,7 +34,7 @@ Each piece does one thing:
 
 ```viper
 // Bad: Everything mixed together
-class UserManager {
+entity UserManager {
     func registerUser(email: string, password: string) {
         // Validate email format
         if !email.contains("@") {
@@ -43,14 +43,14 @@ class UserManager {
         }
 
         // Hash password
-        let hash = sha256(password);
+        var hash = sha256(password);
 
         // Save to database
-        let db = Database.connect("localhost:5432");
+        var db = Database.connect("localhost:5432");
         db.query("INSERT INTO users...");
 
         // Send welcome email
-        let smtp = SMTP.connect("mail.server.com");
+        var smtp = SMTP.connect("mail.server.com");
         smtp.send(email, "Welcome!", "...");
 
         // Update UI
@@ -62,36 +62,36 @@ class UserManager {
 
 ```viper
 // Good: Separate concerns
-class UserValidator {
+entity UserValidator {
     func validateEmail(email: string) -> bool { ... }
     func validatePassword(password: string) -> bool { ... }
 }
 
-class PasswordHasher {
+entity PasswordHasher {
     func hash(password: string) -> string { ... }
 }
 
-class UserRepository {
+entity UserRepository {
     func save(user: User) { ... }
 }
 
-class EmailService {
+entity EmailService {
     func sendWelcome(email: string) { ... }
 }
 
-class UserController {
-    private validator: UserValidator;
-    private hasher: PasswordHasher;
-    private repository: UserRepository;
-    private email: EmailService;
+entity UserController {
+    hide validator: UserValidator;
+    hide hasher: PasswordHasher;
+    hide repository: UserRepository;
+    hide email: EmailService;
 
     func registerUser(email: string, password: string) -> Result {
         if !self.validator.validateEmail(email) {
             return Result.error("Invalid email");
         }
 
-        let hash = self.hasher.hash(password);
-        let user = User(email, hash);
+        var hash = self.hasher.hash(password);
+        var user = User(email, hash);
 
         self.repository.save(user);
         self.email.sendWelcome(email);
@@ -109,10 +109,10 @@ Depend on abstractions, not concrete implementations:
 
 ```viper
 // Bad: Hard dependency
-class OrderProcessor {
-    private database: MySQLDatabase;  // Tied to MySQL!
+entity OrderProcessor {
+    hide database: MySQLDatabase;  // Tied to MySQL!
 
-    constructor() {
+    expose func init() {
         self.database = MySQLDatabase.connect(...);
     }
 }
@@ -123,18 +123,18 @@ interface IDatabase {
     func find(id: string) -> any?;
 }
 
-class OrderProcessor {
-    private database: IDatabase;
+entity OrderProcessor {
+    hide database: IDatabase;
 
-    constructor(database: IDatabase) {  // Injected
+    expose func init(database: IDatabase) {  // Injected
         self.database = database;
     }
 }
 
 // Now you can use any database:
-let processor1 = OrderProcessor(MySQLDatabase(...));
-let processor2 = OrderProcessor(PostgresDatabase(...));
-let processor3 = OrderProcessor(MockDatabase());  // For tests!
+var processor1 = OrderProcessor(MySQLDatabase(...));
+var processor2 = OrderProcessor(PostgresDatabase(...));
+var processor3 = OrderProcessor(MockDatabase());  // For tests!
 ```
 
 ### Single Responsibility
@@ -143,7 +143,7 @@ Each module/class/function should have one reason to change:
 
 ```viper
 // Bad: Multiple responsibilities
-class Report {
+entity Report {
     func calculate() { ... }
     func format() -> string { ... }
     func print() { ... }
@@ -152,15 +152,15 @@ class Report {
 }
 
 // Good: One responsibility each
-class ReportCalculator {
+entity ReportCalculator {
     func calculate(data: Data) -> Report { ... }
 }
 
-class ReportFormatter {
+entity ReportFormatter {
     func format(report: Report) -> string { ... }
 }
 
-class ReportPrinter {
+entity ReportPrinter {
     func print(formatted: string) { ... }
 }
 ```
@@ -237,7 +237,7 @@ Break large systems into modules:
 // auth/authentication.viper
 module Auth;
 
-export class Authenticator { ... }
+export entity Authenticator { ... }
 export func hashPassword(pw: string) -> string { ... }
 
 // Private to this module
@@ -250,8 +250,8 @@ module Orders;
 
 import Auth;  // Use the auth module
 
-export class OrderService {
-    private auth: Auth.Authenticator;
+export entity OrderService {
+    hide auth: Auth.Authenticator;
 
     func placeOrder(userId: string, items: [Item]) {
         if !self.auth.isAuthenticated(userId) {
@@ -293,8 +293,8 @@ Classic pattern for user interfaces:
 
 ```viper
 // Model
-class TodoList {
-    private items: [TodoItem];
+entity TodoList {
+    hide items: [TodoItem];
 
     func addItem(text: string) { ... }
     func removeItem(id: i64) { ... }
@@ -302,8 +302,8 @@ class TodoList {
 }
 
 // View
-class TodoView {
-    private list: HTMLElement;
+entity TodoView {
+    hide list: HTMLElement;
 
     func render(items: [TodoItem]) {
         self.list.clear();
@@ -317,11 +317,11 @@ class TodoView {
 }
 
 // Controller
-class TodoController {
-    private model: TodoList;
-    private view: TodoView;
+entity TodoController {
+    hide model: TodoList;
+    hide view: TodoView;
 
-    constructor(model: TodoList, view: TodoView) {
+    expose func init(model: TodoList, view: TodoView) {
         self.model = model;
         self.view = view;
 
@@ -361,11 +361,11 @@ interface IUserRepository {
 }
 
 // Implementation for database
-class DatabaseUserRepository implements IUserRepository {
-    private db: Database;
+entity DatabaseUserRepository implements IUserRepository {
+    hide db: Database;
 
     func findById(id: string) -> User? {
-        let row = self.db.query("SELECT * FROM users WHERE id = ?", [id]);
+        var row = self.db.query("SELECT * FROM users WHERE id = ?", [id]);
         return row ? User.fromRow(row) : null;
     }
 
@@ -373,8 +373,8 @@ class DatabaseUserRepository implements IUserRepository {
 }
 
 // Implementation for testing
-class InMemoryUserRepository implements IUserRepository {
-    private users: Map<string, User>;
+entity InMemoryUserRepository implements IUserRepository {
+    hide users: Map<string, User>;
 
     func findById(id: string) -> User? {
         return self.users.get(id);
@@ -389,32 +389,32 @@ class InMemoryUserRepository implements IUserRepository {
 Encapsulate business logic:
 
 ```viper
-class OrderService {
-    private orderRepo: IOrderRepository;
-    private productRepo: IProductRepository;
-    private paymentGateway: IPaymentGateway;
-    private emailService: IEmailService;
+entity OrderService {
+    hide orderRepo: IOrderRepository;
+    hide productRepo: IProductRepository;
+    hide paymentGateway: IPaymentGateway;
+    hide emailService: IEmailService;
 
     func placeOrder(userId: string, items: [CartItem]) -> Order {
         // Validate stock
         for item in items {
-            let product = self.productRepo.findById(item.productId);
+            var product = self.productRepo.findById(item.productId);
             if product.stock < item.quantity {
                 throw InsufficientStockError(product.name);
             }
         }
 
         // Calculate total
-        let total = self.calculateTotal(items);
+        var total = self.calculateTotal(items);
 
         // Process payment
-        let payment = self.paymentGateway.charge(userId, total);
+        var payment = self.paymentGateway.charge(userId, total);
         if !payment.success {
             throw PaymentFailedError(payment.error);
         }
 
         // Create order
-        let order = Order(userId, items, total, payment.id);
+        var order = Order(userId, items, total, payment.id);
         self.orderRepo.save(order);
 
         // Update stock
@@ -435,8 +435,8 @@ class OrderService {
 Decouple components with events:
 
 ```viper
-class EventBus {
-    private listeners: Map<string, [func(Event)]>;
+entity EventBus {
+    hide listeners: Map<string, [func(Event)]>;
 
     func subscribe(eventType: string, handler: func(Event)) {
         if !self.listeners.has(eventType) {
@@ -446,7 +446,7 @@ class EventBus {
     }
 
     func publish(event: Event) {
-        let handlers = self.listeners.get(event.type);
+        var handlers = self.listeners.get(event.type);
         if handlers != null {
             for handler in handlers {
                 handler(event);
@@ -456,7 +456,7 @@ class EventBus {
 }
 
 // Usage
-let bus = EventBus();
+var bus = EventBus();
 
 // Components subscribe to events they care about
 bus.subscribe("order_placed", func(e: Event) {
@@ -472,7 +472,7 @@ bus.subscribe("order_placed", func(e: Event) {
 });
 
 // Order service just publishes the event
-class OrderService {
+entity OrderService {
     func placeOrder(order: Order) {
         // ... create order ...
         bus.publish(Event("order_placed", order));
@@ -490,22 +490,22 @@ Pass dependencies in rather than creating them:
 
 ```viper
 // Bad: Creates own dependencies
-class UserService {
-    private db: Database;
-    private emailer: EmailService;
+entity UserService {
+    hide db: Database;
+    hide emailer: EmailService;
 
-    constructor() {
+    expose func init() {
         self.db = MySQLDatabase("localhost:3306");  // Hard-coded!
         self.emailer = SMTPEmailService("mail.com");  // Hard-coded!
     }
 }
 
 // Good: Dependencies injected
-class UserService {
-    private db: IDatabase;
-    private emailer: IEmailService;
+entity UserService {
+    hide db: IDatabase;
+    hide emailer: IEmailService;
 
-    constructor(db: IDatabase, emailer: IEmailService) {
+    expose func init(db: IDatabase, emailer: IEmailService) {
         self.db = db;
         self.emailer = emailer;
     }
@@ -513,9 +513,9 @@ class UserService {
 
 // Composition root wires everything together
 func main() {
-    let db = MySQLDatabase(Config.dbUrl);
-    let emailer = SMTPEmailService(Config.smtpUrl);
-    let userService = UserService(db, emailer);
+    var db = MySQLDatabase(Config.dbUrl);
+    var emailer = SMTPEmailService(Config.smtpUrl);
+    var userService = UserService(db, emailer);
     // ...
 }
 ```
@@ -537,7 +537,7 @@ module Config;
 
 import Viper.Environment;
 
-export struct AppConfig {
+export value AppConfig {
     databaseUrl: string;
     redisUrl: string;
     smtpHost: string;
@@ -558,8 +558,8 @@ export func load() -> AppConfig {
 
 Usage:
 ```viper
-let config = Config.load();
-let db = Database.connect(config.databaseUrl);
+var config = Config.load();
+var db = Database.connect(config.databaseUrl);
 ```
 
 ---
@@ -570,37 +570,37 @@ Consistent error handling across the system:
 
 ```viper
 // Define application errors
-class AppError extends Error {
+entity AppError extends Error {
     code: string;
     httpStatus: i64;
 
-    constructor(message: string, code: string, httpStatus: i64) {
+    expose func init(message: string, code: string, httpStatus: i64) {
         super(message);
         self.code = code;
         self.httpStatus = httpStatus;
     }
 }
 
-class NotFoundError extends AppError {
-    constructor(resource: string, id: string) {
+entity NotFoundError extends AppError {
+    expose func init(resource: string, id: string) {
         super(resource + " not found: " + id, "NOT_FOUND", 404);
     }
 }
 
-class ValidationError extends AppError {
-    constructor(message: string) {
+entity ValidationError extends AppError {
+    expose func init(message: string) {
         super(message, "VALIDATION_ERROR", 400);
     }
 }
 
-class UnauthorizedError extends AppError {
-    constructor() {
+entity UnauthorizedError extends AppError {
+    expose func init() {
         super("Authentication required", "UNAUTHORIZED", 401);
     }
 }
 
 // Central error handler
-class ErrorHandler {
+entity ErrorHandler {
     func handle(error: Error) -> Response {
         if error is AppError {
             return Response(error.httpStatus, {
@@ -682,7 +682,7 @@ export enum TaskStatus {
     COMPLETED
 }
 
-export class Task {
+export entity Task {
     id: string;
     title: string;
     description: string;
@@ -692,7 +692,7 @@ export class Task {
     createdAt: DateTime;
     completedAt: DateTime?;
 
-    constructor(title: string, description: string, projectId: string) {
+    expose func init(title: string, description: string, projectId: string) {
         self.id = UUID.generate();
         self.title = title;
         self.description = description;
@@ -731,18 +731,18 @@ import Domain.Entities.Task;
 import Domain.Repositories.ITaskRepository;
 import Domain.Repositories.IProjectRepository;
 
-export class CreateTaskUseCase {
-    private taskRepo: ITaskRepository;
-    private projectRepo: IProjectRepository;
+export entity CreateTaskUseCase {
+    hide taskRepo: ITaskRepository;
+    hide projectRepo: IProjectRepository;
 
-    constructor(taskRepo: ITaskRepository, projectRepo: IProjectRepository) {
+    expose func init(taskRepo: ITaskRepository, projectRepo: IProjectRepository) {
         self.taskRepo = taskRepo;
         self.projectRepo = projectRepo;
     }
 
     func execute(request: CreateTaskRequest) -> Task {
         // Validate project exists
-        let project = self.projectRepo.findById(request.projectId);
+        var project = self.projectRepo.findById(request.projectId);
         if project == null {
             throw NotFoundError("Project", request.projectId);
         }
@@ -753,14 +753,14 @@ export class CreateTaskUseCase {
         }
 
         // Create and save task
-        let task = Task(request.title, request.description, request.projectId);
+        var task = Task(request.title, request.description, request.projectId);
         self.taskRepo.save(task);
 
         return task;
     }
 }
 
-export struct CreateTaskRequest {
+export value CreateTaskRequest {
     title: string;
     description: string;
     projectId: string;
@@ -774,19 +774,19 @@ module Presentation.Api;
 import Application.CreateTaskUseCase;
 import Application.ListTasksUseCase;
 
-export class TaskController {
-    private createTask: CreateTaskUseCase;
-    private listTasks: ListTasksUseCase;
+export entity TaskController {
+    hide createTask: CreateTaskUseCase;
+    hide listTasks: ListTasksUseCase;
 
-    constructor(createTask: CreateTaskUseCase, listTasks: ListTasksUseCase) {
+    expose func init(createTask: CreateTaskUseCase, listTasks: ListTasksUseCase) {
         self.createTask = createTask;
         self.listTasks = listTasks;
     }
 
     func handleCreate(request: HttpRequest) -> HttpResponse {
         try {
-            let body = request.json();
-            let task = self.createTask.execute(CreateTaskRequest {
+            var body = request.json();
+            var task = self.createTask.execute(CreateTaskRequest {
                 title: body["title"],
                 description: body["description"],
                 projectId: body["projectId"]
@@ -802,8 +802,8 @@ export class TaskController {
     }
 
     func handleList(request: HttpRequest) -> HttpResponse {
-        let projectId = request.query.get("projectId");
-        let tasks = self.listTasks.execute(projectId);
+        var projectId = request.query.get("projectId");
+        var tasks = self.listTasks.execute(projectId);
         return HttpResponse.ok(tasks.map(t => t.toJSON()));
     }
 }

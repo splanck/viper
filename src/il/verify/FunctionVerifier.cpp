@@ -210,37 +210,52 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
     for (const auto &param : fn.params)
         temps[param.id] = param.type;
 
-    for (const auto &bb : fn.blocks)
-        if (auto result = verifyBlock(fn, bb, blockMap, temps, sink); !result)
-            return result;
+    // Collect EhPush targets and label references during single pass over blocks.
+    // This avoids two additional O(blocks × instructions) traversals.
+    struct EhPushCheck
+    {
+        const BasicBlock *bb;
+        const Instr *instr;
+        std::string target;
+    };
+    std::vector<EhPushCheck> ehPushChecks;
+    std::vector<std::string> labelRefs;
 
     for (const auto &bb : fn.blocks)
     {
+        if (auto result = verifyBlock(fn, bb, blockMap, temps, sink); !result)
+            return result;
+
+        // Collect EhPush targets and all label references in single pass
         for (const auto &instr : bb.instructions)
         {
-            if (instr.op != Opcode::EhPush)
-                continue;
-            if (instr.labels.empty())
-                continue;
-            const std::string &target = instr.labels.front();
-            if (handlerInfo_.find(target) == handlerInfo_.end())
-            {
-                std::ostringstream message;
-                message << "eh.push target ^" << target << " must name a handler block";
-                return Expected<void>{
-                    /// @brief Handles error condition.
-                    makeError(instr.loc, formatInstrDiag(fn, bb, instr, message.str()))};
-            }
+            if (instr.op == Opcode::EhPush && !instr.labels.empty())
+                ehPushChecks.push_back({&bb, &instr, instr.labels.front()});
+
+            for (const auto &label : instr.labels)
+                labelRefs.push_back(label);
         }
     }
 
-    for (const auto &bb : fn.blocks)
-        for (const auto &instr : bb.instructions)
-            for (const auto &label : instr.labels)
-                if (!labels.contains(label))
-                    return Expected<void>{
-                        /// @brief Handles error condition.
-                        makeError({}, formatFunctionDiag(fn, "unknown label " + label))};
+    // Validate EhPush targets exist in handlerInfo_ (populated during verifyBlock)
+    for (const auto &check : ehPushChecks)
+    {
+        if (handlerInfo_.find(check.target) == handlerInfo_.end())
+        {
+            std::ostringstream message;
+            message << "eh.push target ^" << check.target << " must name a handler block";
+            return Expected<void>{
+                makeError(check.instr->loc, formatInstrDiag(fn, *check.bb, *check.instr, message.str()))};
+        }
+    }
+
+    // Validate all label references exist
+    for (const auto &label : labelRefs)
+    {
+        if (!labels.contains(label))
+            return Expected<void>{
+                makeError({}, formatFunctionDiag(fn, "unknown label " + label))};
+    }
 
     return {};
 }

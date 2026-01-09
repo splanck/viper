@@ -13,7 +13,7 @@ This chapter teaches you to expect, catch, and recover from errors.
 An error (or *exception*) is something unexpected that disrupts normal flow. When code encounters a situation it can't handle, it *throws* an exception. If nothing catches that exception, the program crashes.
 
 ```viper
-let x = 10 / 0;  // Error: division by zero
+var x = 10 / 0;  // Error: division by zero
 ```
 
 This throws an exception because division by zero is mathematically undefined. Without error handling, your program stops here with an error message.
@@ -26,7 +26,7 @@ To handle errors, wrap risky code in a `try` block:
 
 ```viper
 try {
-    let x = 10 / 0;
+    var x = 10 / 0;
     Viper.Terminal.Say("This won't print");
 } catch e {
     Viper.Terminal.Say("Error: " + e.message);
@@ -53,28 +53,28 @@ Many things can throw exceptions:
 
 **Division by zero:**
 ```viper
-let result = 10 / 0;
+var result = 10 / 0;
 ```
 
 **Array out of bounds:**
 ```viper
-let arr = [1, 2, 3];
-let x = arr[10];  // No index 10
+var arr = [1, 2, 3];
+var x = arr[10];  // No index 10
 ```
 
 **Invalid conversion:**
 ```viper
-let num = Viper.Parse.Int("hello");  // Not a number
+var num = Viper.Parse.Int("hello");  // Not a number
 ```
 
 **File not found:**
 ```viper
-let content = Viper.File.readText("nonexistent.txt");
+var content = Viper.File.readText("nonexistent.txt");
 ```
 
 **Null reference:**
 ```viper
-let obj = null;
+var obj = null;
 obj.doSomething();  // Can't call methods on null
 ```
 
@@ -86,7 +86,7 @@ The caught exception provides useful information:
 
 ```viper
 try {
-    let arr = [1, 2, 3];
+    var arr = [1, 2, 3];
     Viper.Terminal.Say(arr[100]);
 } catch e {
     Viper.Terminal.Say("Error type: " + e.type);
@@ -110,8 +110,8 @@ You can handle different error types differently:
 
 ```viper
 try {
-    let content = Viper.File.readText(filename);
-    let value = Viper.Parse.Int(content);
+    var content = Viper.File.readText(filename);
+    var value = Viper.Parse.Int(content);
 } catch e: FileNotFound {
     Viper.Terminal.Say("File doesn't exist: " + filename);
 } catch e: ParseError {
@@ -130,11 +130,11 @@ Catch blocks are checked in order. The first matching type wins. A catch without
 Sometimes you need to clean up regardless of whether an error occurred:
 
 ```viper
-let file = Viper.File.openRead("data.txt");
+var file = Viper.File.openRead("data.txt");
 
 try {
     // Use the file...
-    let data = file.readAll();
+    var data = file.readAll();
     processData(data);
 } catch e {
     Viper.Terminal.Say("Error processing file: " + e.message);
@@ -166,7 +166,7 @@ func divide(a: i64, b: i64) -> i64 {
 
 func start() {
     try {
-        let result = divide(10, 0);
+        var result = divide(10, 0);
     } catch e {
         Viper.Terminal.Say("Caught: " + e.message);
     }
@@ -192,7 +192,7 @@ Exceptions are *not* for normal control flow:
 ```viper
 // Bad: using exceptions for normal logic
 try {
-    let value = getItem(index);
+    var value = getItem(index);
 } catch e: NotFound {
     value = defaultValue;
 }
@@ -217,7 +217,7 @@ The best error handling is preventing errors in the first place:
 ```viper
 func processAge(ageStr: string) {
     // Validate before using
-    let age = Viper.Parse.Int(ageStr);
+    var age = Viper.Parse.Int(ageStr);
     if age < 0 || age > 150 {
         throw Error("Age must be between 0 and 150");
     }
@@ -229,7 +229,7 @@ func processAge(ageStr: string) {
 **Check before accessing:**
 ```viper
 if index >= 0 && index < arr.length {
-    let value = arr[index];
+    var value = arr[index];
 }
 ```
 
@@ -263,7 +263,7 @@ module SafeCalculator;
 func getNumber(prompt: string) -> f64 {
     while true {
         Viper.Terminal.Print(prompt);
-        let input = Viper.Terminal.ReadLine().trim();
+        var input = Viper.Terminal.ReadLine().trim();
 
         try {
             return Viper.Parse.Float(input);
@@ -295,19 +295,19 @@ func start() {
     Viper.Terminal.Say("===============");
 
     while true {
-        let a = getNumber("First number (or 'q' to quit): ");
+        var a = getNumber("First number (or 'q' to quit): ");
 
         Viper.Terminal.Print("Operator (+, -, *, /): ");
-        let op = Viper.Terminal.ReadLine().trim();
+        var op = Viper.Terminal.ReadLine().trim();
 
         if op == "q" {
             break;
         }
 
-        let b = getNumber("Second number: ");
+        var b = getNumber("Second number: ");
 
         try {
-            let result = calculate(a, op, b);
+            var result = calculate(a, op, b);
             Viper.Terminal.Say("Result: " + result);
         } catch e {
             Viper.Terminal.Say("Error: " + e.message);

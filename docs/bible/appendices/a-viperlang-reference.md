@@ -23,13 +23,13 @@ func documented() { ... }
 ## Variables
 
 ```viper
-let x = 42;           // Immutable (recommended)
-var y = 42;           // Mutable
+var x = 42;           // Mutable variable
+final y = 42;         // Immutable variable (recommended)
 
-let a: i64 = 42;      // Explicit type
-let b = 3.14;         // Type inferred (f64)
+var a: i64 = 42;      // Explicit type annotation
+var b = 3.14;         // Type inferred (f64)
 
-const PI = 3.14159;   // Compile-time constant
+final PI = 3.14159;   // Immutable constant
 ```
 
 ---
@@ -111,7 +111,7 @@ if condition {
 }
 
 // Expression form
-let x = if a > b { a } else { b };
+var x = if a > b { a } else { b };
 ```
 
 ### While
@@ -209,7 +209,7 @@ createUser(name: "Alice", age: 30, admin: false);
 ### Variadic Functions
 ```viper
 func sum(numbers: ...i64) -> i64 {
-    let total = 0;
+    var total = 0;
     for n in numbers {
         total += n;
     }
@@ -221,15 +221,15 @@ sum(1, 2, 3, 4, 5);  // 15
 
 ### Lambda/Closures
 ```viper
-let add = func(a: i64, b: i64) -> i64 { return a + b; };
-let square = func(x: i64) -> i64 = x * x;
+var add = func(a: i64, b: i64) -> i64 { return a + b; };
+var square = func(x: i64) -> i64 = x * x;
 
 // Short form
-let double = (x) => x * 2;
+var double = (x) => x * 2;
 
 // Capturing variables
-let multiplier = 3;
-let triple = (x) => x * multiplier;
+var multiplier = 3;
+var triple = (x) => x * multiplier;
 ```
 
 ---
@@ -238,12 +238,12 @@ let triple = (x) => x * multiplier;
 
 ### Arrays
 ```viper
-let numbers = [1, 2, 3, 4, 5];
-let first = numbers[0];
+var numbers = [1, 2, 3, 4, 5];
+var first = numbers[0];
 numbers[0] = 10;
 
-let empty: [i64] = [];
-let sized = [i64](100);  // Array of 100 zeros
+var empty: [i64] = [];
+var sized = [i64](100);  // Array of 100 zeros
 
 // Methods
 numbers.length
@@ -258,12 +258,12 @@ numbers.sort()
 
 ### Maps
 ```viper
-let ages = Map<string, i64>.new();
+var ages = Map<string, i64>.new();
 ages.set("Alice", 30);
 ages.set("Bob", 25);
 
-let age = ages.get("Alice");  // 30
-let exists = ages.has("Charlie");  // false
+var age = ages.get("Alice");  // 30
+var exists = ages.has("Charlie");  // false
 
 ages.delete("Bob");
 
@@ -274,16 +274,16 @@ for key, value in ages {
 
 ### Sets
 ```viper
-let seen = Set<string>.new();
+var seen = Set<string>.new();
 seen.add("apple");
 seen.add("banana");
 
-let exists = seen.contains("apple");  // true
+var exists = seen.contains("apple");  // true
 seen.remove("apple");
 
-let other = Set.from(["banana", "cherry"]);
-let union = seen.union(other);
-let intersection = seen.intersection(other);
+var other = Set.from(["banana", "cherry"]);
+var union = seen.union(other);
+var intersection = seen.intersection(other);
 ```
 
 ---
@@ -291,7 +291,7 @@ let intersection = seen.intersection(other);
 ## Strings
 
 ```viper
-let s = "Hello, World!";
+var s = "Hello, World!";
 
 // Properties
 s.length
@@ -309,11 +309,11 @@ s.substring(0, 5)
 s.charAt(0)
 
 // String interpolation
-let name = "Alice";
-let greeting = "Hello, ${name}!";
+var name = "Alice";
+var greeting = "Hello, ${name}!";
 
 // Multi-line strings
-let text = """
+var text = """
     This is a
     multi-line string.
     """;
@@ -321,28 +321,28 @@ let text = """
 
 ---
 
-## Structs
+## Values
 
 ```viper
-struct Point {
+value Point {
     x: f64;
     y: f64;
 }
 
 // Create instance
-let p = Point { x: 10.0, y: 20.0 };
+var p = Point { x: 10.0, y: 20.0 };
 
 // Access fields
-let x = p.x;
+var x = p.x;
 
 // Methods
-struct Point {
+value Point {
     x: f64;
     y: f64;
 
     func distance(other: Point) -> f64 {
-        let dx = self.x - other.x;
-        let dy = self.y - other.y;
+        var dx = self.x - other.x;
+        var dy = self.y - other.y;
         return Viper.Math.sqrt(dx*dx + dy*dy);
     }
 
@@ -354,17 +354,17 @@ struct Point {
 
 ---
 
-## Classes
+## Entities
 
 ```viper
-class Counter {
-    private count: i64;
+entity Counter {
+    hide count: i64;
 
-    constructor() {
+    expose func init() {
         self.count = 0;
     }
 
-    constructor(initial: i64) {
+    expose func init(initial: i64) {
         self.count = initial;
     }
 
@@ -377,15 +377,15 @@ class Counter {
     }
 }
 
-let counter = Counter();
+var counter = Counter();
 counter.increment();
 ```
 
 ### Visibility
 ```viper
-public    // Accessible everywhere
-private   // Only within class
-protected // Within class and subclasses
+expose    // Accessible everywhere
+hide      // Only within entity
+protected // Within entity and subclasses
 internal  // Within module
 ```
 
@@ -394,10 +394,10 @@ internal  // Within module
 ## Inheritance
 
 ```viper
-class Animal {
+entity Animal {
     protected name: string;
 
-    constructor(name: string) {
+    expose func init(name: string) {
         self.name = name;
     }
 
@@ -406,8 +406,8 @@ class Animal {
     }
 }
 
-class Dog extends Animal {
-    constructor(name: string) {
+entity Dog extends Animal {
+    expose func init(name: string) {
         super(name);
     }
 
@@ -427,7 +427,7 @@ interface Drawable {
     func getBounds() -> Rect;
 }
 
-class Circle implements Drawable {
+entity Circle implements Drawable {
     func draw() {
         // ...
     }
@@ -438,7 +438,7 @@ class Circle implements Drawable {
 }
 
 // Multiple interfaces
-class Button implements Drawable, Clickable {
+entity Button implements Drawable, Clickable {
     // ...
 }
 ```
@@ -454,7 +454,7 @@ enum Color {
     BLUE
 }
 
-let c = Color.RED;
+var c = Color.RED;
 
 // With values
 enum HttpStatus {
@@ -469,7 +469,7 @@ enum Result<T, E> {
     Err(E)
 }
 
-let result: Result<i64, string> = Result.Ok(42);
+var result: Result<i64, string> = Result.Ok(42);
 ```
 
 ---
@@ -482,11 +482,11 @@ func identity<T>(value: T) -> T {
     return value;
 }
 
-// Generic class
-class Box<T> {
-    private value: T;
+// Generic entity
+entity Box<T> {
+    hide value: T;
 
-    constructor(value: T) {
+    expose func init(value: T) {
         self.value = value;
     }
 
@@ -516,7 +516,7 @@ func divide(a: f64, b: f64) -> f64 {
 
 // Try/catch
 try {
-    let result = divide(10, 0);
+    var result = divide(10, 0);
 } catch DivisionByZeroError {
     Viper.Terminal.Say("Cannot divide by zero");
 } catch Error as e {
@@ -526,10 +526,10 @@ try {
 }
 
 // Optional chaining
-let value = obj?.property?.method();
+var value = obj?.property?.method();
 
 // Null coalescing
-let name = user.name ?? "Unknown";
+var name = user.name ?? "Unknown";
 ```
 
 ---
@@ -543,11 +543,11 @@ module MyModule;
 export func publicFunction() { ... }
 func privateFunction() { ... }
 
-export class PublicClass { ... }
+export entity PublicEntity { ... }
 
 // Import
 import MyModule;
-import MyModule.PublicClass;
+import MyModule.PublicEntity;
 import MyModule as M;
 
 // Use
@@ -560,8 +560,8 @@ M.publicFunction();
 ## Nullable Types
 
 ```viper
-let x: i64? = null;         // Nullable integer
-let y: i64? = 42;           // Has value
+var x: i64? = null;         // Nullable integer
+var y: i64? = 42;           // Has value
 
 // Check for null
 if x != null {
@@ -569,10 +569,10 @@ if x != null {
 }
 
 // Null coalescing
-let value = x ?? 0;  // Use 0 if null
+var value = x ?? 0;  // Use 0 if null
 
 // Optional chaining
-let length = name?.length;  // null if name is null
+var length = name?.length;  // null if name is null
 ```
 
 ---
@@ -629,18 +629,17 @@ teardown {
 ## Keywords
 
 ```
-and         as          async       await       break
-case        catch       class       const       constructor
-continue    default     do          else        enum
-export      extends     false       finally     for
-func        if          implements  import      in
-interface   is          let         match       module
-new         not         null        or          override
-private     protected   public      return      self
-static      step        struct      super       test
-throw       true        try         type        var
-while       yield
+and         as          break       continue    else
+entity      expose      extends     false       final
+for         func        guard       hide        if
+implements  import      in          interface   is
+let         match       module      namespace   new
+not         null        or          override    return
+self        super       true        value       var
+weak        while
 ```
+
+Note: `let` is used for pattern binding in match expressions, not for general variable declarations. Use `var` for mutable variables and `final` for immutable variables.
 
 ---
 

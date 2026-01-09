@@ -86,6 +86,13 @@ LinearScanAllocator::LinearScanAllocator(MFunction &func,
     : func_(func), target_(target), intervals_(intervals)
 {
     buildPools();
+
+    // Precompute caller-saved register bitsets for O(1) lookup during CALL handling.
+    // This avoids O(n) linear search through vectors on every call instruction.
+    for (PhysReg reg : target_.callerSavedGPR)
+        callerSavedGPRBits_.set(static_cast<std::size_t>(reg));
+    for (PhysReg reg : target_.callerSavedXMM)
+        callerSavedXMMBits_.set(static_cast<std::size_t>(reg));
 }
 
 /// @brief Execute the allocation pipeline over the entire function.
@@ -140,7 +147,7 @@ std::vector<PhysReg> &LinearScanAllocator::poolFor(RegClass cls)
 /// @brief Access the active list for a given register class.
 /// @param cls Register class to query.
 /// @return Mutable list of virtual registers currently holding physical regs.
-std::vector<uint16_t> &LinearScanAllocator::activeFor(RegClass cls)
+std::unordered_set<uint16_t> &LinearScanAllocator::activeFor(RegClass cls)
 {
     return cls == RegClass::GPR ? activeGPR_ : activeXMM_;
 }
@@ -170,28 +177,24 @@ VirtualAllocation &LinearScanAllocator::stateFor(RegClass cls, uint16_t id)
 
 /// @brief Record that a virtual register currently owns a physical register.
 /// @details Active sets ensure the allocator can pick eviction victims and
-///          release registers at block boundaries.  Duplicates are suppressed to
-///          keep the list stable across multiple uses within a block.
+///          release registers at block boundaries. Uses unordered_set for O(1)
+///          insert instead of O(n) linear search.
 /// @param cls Register class of the active value.
 /// @param id Virtual register identifier.
 void LinearScanAllocator::addActive(RegClass cls, uint16_t id)
 {
-    auto &active = activeFor(cls);
-    if (std::find(active.begin(), active.end(), id) == active.end())
-    {
-        active.push_back(id);
-    }
+    activeFor(cls).insert(id);
 }
 
 /// @brief Remove a virtual register from the active set.
 /// @details Called when a value goes dead or is explicitly spilled so future
-///          spill victims do not consider the register.
+///          spill victims do not consider the register. Uses unordered_set for
+///          O(1) erase instead of O(n) remove-erase idiom.
 /// @param cls Register class of the active value.
 /// @param id Virtual register identifier to remove.
 void LinearScanAllocator::removeActive(RegClass cls, uint16_t id)
 {
-    auto &active = activeFor(cls);
-    active.erase(std::remove(active.begin(), active.end(), id), active.end());
+    activeFor(cls).erase(id);
 }
 
 /// @brief Lease a physical register from the free pool.
@@ -239,8 +242,10 @@ void LinearScanAllocator::spillOne(RegClass cls, std::vector<MInstr> &prefix)
     {
         return;
     }
-    const uint16_t victimId = active.front();
-    active.erase(active.begin());
+    // Use begin() iterator since unordered_set doesn't have front()
+    auto victimIt = active.begin();
+    const uint16_t victimId = *victimIt;
+    active.erase(victimIt);
     auto it = states_.find(victimId);
     if (it == states_.end())
     {
@@ -363,11 +368,11 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
         // Spill them BEFORE the call and mark for reload on next use
         if (instr.opcode == MOpcode::CALL)
         {
+            // Use precomputed bitsets for O(1) caller-saved lookup instead of O(n) linear search
             auto isCallerSaved = [this](PhysReg reg, RegClass cls)
             {
-                const auto &regs =
-                    cls == RegClass::GPR ? target_.callerSavedGPR : target_.callerSavedXMM;
-                return std::find(regs.begin(), regs.end(), reg) != regs.end();
+                const auto &bits = cls == RegClass::GPR ? callerSavedGPRBits_ : callerSavedXMMBits_;
+                return bits.test(static_cast<std::size_t>(reg));
             };
 
             // Collect vregs to spill (can't modify active list while iterating)

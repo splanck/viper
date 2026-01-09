@@ -15,25 +15,25 @@ interface Updatable {
     func update(deltaTime: f64);
 }
 
-class Player implements Updatable {
+entity Player implements Updatable {
     func update(deltaTime: f64) {
         // Move based on input
     }
 }
 
-class Enemy implements Updatable {
+entity Enemy implements Updatable {
     func update(deltaTime: f64) {
         // Chase the player
     }
 }
 
-class Particle implements Updatable {
+entity Particle implements Updatable {
     func update(deltaTime: f64) {
         // Fade and move
     }
 }
 
-class Bullet implements Updatable {
+entity Bullet implements Updatable {
     func update(deltaTime: f64) {
         // Fly forward
     }
@@ -43,10 +43,10 @@ class Bullet implements Updatable {
 Now the game loop:
 
 ```viper
-let entities: [Updatable] = [player, enemy1, enemy2, particle1, bullet1, ...];
+var entities: [Updatable] = [player, enemy1, enemy2, particle1, bullet1, ...];
 
 while running {
-    let dt = getDeltaTime();
+    var dt = getDeltaTime();
     for entity in entities {
         entity.update(dt);
     }
@@ -64,17 +64,17 @@ One loop handles players, enemies, particles, bullets — anything Updatable. Ad
 Use a base class or interface to treat different types uniformly:
 
 ```viper
-class Animal {
+entity Animal {
     func speak() { ... }
 }
 
-class Dog extends Animal {
+entity Dog extends Animal {
     func speak() {
         Viper.Terminal.Say("Woof!");
     }
 }
 
-class Cat extends Animal {
+entity Cat extends Animal {
     func speak() {
         Viper.Terminal.Say("Meow!");
     }
@@ -92,7 +92,7 @@ func makeAllSpeak(animals: [Animal]) {
 Same method name, different parameters:
 
 ```viper
-class Printer {
+entity Printer {
     func print(text: string) {
         Viper.Terminal.Say(text);
     }
@@ -108,7 +108,7 @@ class Printer {
     }
 }
 
-let p = Printer();
+var p = Printer();
 p.print("hello");        // Calls first version
 p.print(42);             // Calls second version
 p.print(["a", "b"]);     // Calls third version
@@ -123,13 +123,13 @@ The compiler chooses the right method based on argument types.
 When you override a method, the correct version is called based on the actual object type at runtime:
 
 ```viper
-class Shape {
+entity Shape {
     func area() -> f64 {
         return 0.0;
     }
 }
 
-class Circle extends Shape {
+entity Circle extends Shape {
     radius: f64;
 
     func area() -> f64 {
@@ -137,7 +137,7 @@ class Circle extends Shape {
     }
 }
 
-let shape: Shape = Circle { radius: 5.0 };
+var shape: Shape = Circle { radius: 5.0 };
 Viper.Terminal.Say(shape.area());  // 78.54... (Circle's version)
 ```
 
@@ -154,7 +154,7 @@ interface Drawable {
     func draw();
 }
 
-let scene: [Drawable] = [
+var scene: [Drawable] = [
     Player(),
     Enemy(),
     Tree(),
@@ -175,9 +175,9 @@ interface Enemy {
     func attack();
 }
 
-class Goblin implements Enemy { ... }
-class Orc implements Enemy { ... }
-class Dragon implements Enemy { ... }
+entity Goblin implements Enemy { ... }
+entity Orc implements Enemy { ... }
+entity Dragon implements Enemy { ... }
 
 func createEnemy(level: i64) -> Enemy {
     if level < 5 {
@@ -190,7 +190,7 @@ func createEnemy(level: i64) -> Enemy {
 }
 
 // Caller doesn't know the specific type
-let enemy = createEnemy(7);
+var enemy = createEnemy(7);
 enemy.attack();
 ```
 
@@ -201,13 +201,13 @@ interface Callback {
     func onComplete(result: string);
 }
 
-class Logger implements Callback {
+entity Logger implements Callback {
     func onComplete(result: string) {
         Viper.File.appendText("log.txt", result + "\n");
     }
 }
 
-class Display implements Callback {
+entity Display implements Callback {
     func onComplete(result: string) {
         Viper.Terminal.Say("Result: " + result);
     }
@@ -233,20 +233,20 @@ interface Drawable {
     func getBounds() -> Rect;
 }
 
-struct Rect {
+value Rect {
     x: f64;
     y: f64;
     width: f64;
     height: f64;
 }
 
-class Circle implements Drawable {
+entity Circle implements Drawable {
     x: f64;
     y: f64;
     radius: f64;
     color: string;
 
-    constructor(x: f64, y: f64, radius: f64, color: string) {
+    expose func init(x: f64, y: f64, radius: f64, color: string) {
         self.x = x;
         self.y = y;
         self.radius = radius;
@@ -268,14 +268,14 @@ class Circle implements Drawable {
     }
 }
 
-class Rectangle implements Drawable {
+entity Rectangle implements Drawable {
     x: f64;
     y: f64;
     width: f64;
     height: f64;
     color: string;
 
-    constructor(x: f64, y: f64, w: f64, h: f64, color: string) {
+    expose func init(x: f64, y: f64, w: f64, h: f64, color: string) {
         self.x = x;
         self.y = y;
         self.width = w;
@@ -293,12 +293,12 @@ class Rectangle implements Drawable {
     }
 }
 
-class Text implements Drawable {
+entity Text implements Drawable {
     x: f64;
     y: f64;
     content: string;
 
-    constructor(x: f64, y: f64, content: string) {
+    expose func init(x: f64, y: f64, content: string) {
         self.x = x;
         self.y = y;
         self.content = content;
@@ -310,16 +310,16 @@ class Text implements Drawable {
     }
 
     func getBounds() -> Rect {
-        let width = self.content.length * 8.0;  // Approximate
+        var width = self.content.length * 8.0;  // Approximate
         return Rect { x: self.x, y: self.y, width: width, height: 16.0 };
     }
 }
 
 // Group of drawables
-class Group implements Drawable {
+entity Group implements Drawable {
     children: [Drawable];
 
-    constructor() {
+    expose func init() {
         self.children = [];
     }
 
@@ -339,14 +339,14 @@ class Group implements Drawable {
             return Rect { x: 0.0, y: 0.0, width: 0.0, height: 0.0 };
         }
 
-        let first = self.children[0].getBounds();
-        let minX = first.x;
-        let minY = first.y;
-        let maxX = first.x + first.width;
-        let maxY = first.y + first.height;
+        var first = self.children[0].getBounds();
+        var minX = first.x;
+        var minY = first.y;
+        var maxX = first.x + first.width;
+        var maxY = first.y + first.height;
 
         for i in 1..self.children.length {
-            let b = self.children[i].getBounds();
+            var b = self.children[i].getBounds();
             if b.x < minX { minX = b.x; }
             if b.y < minY { minY = b.y; }
             if b.x + b.width > maxX { maxX = b.x + b.width; }
@@ -359,14 +359,14 @@ class Group implements Drawable {
 
 func start() {
     // Create a scene
-    let scene = Group();
+    var scene = Group();
 
     scene.add(Rectangle(10.0, 10.0, 100.0, 50.0, "blue"));
     scene.add(Circle(80.0, 35.0, 20.0, "red"));
     scene.add(Text(120.0, 30.0, "Hello!"));
 
     // Create a nested group
-    let icons = Group();
+    var icons = Group();
     icons.add(Circle(200.0, 100.0, 10.0, "green"));
     icons.add(Circle(220.0, 100.0, 10.0, "yellow"));
     scene.add(icons);
@@ -376,7 +376,7 @@ func start() {
     scene.draw();
 
     // Get total bounds
-    let bounds = scene.getBounds();
+    var bounds = scene.getBounds();
     Viper.Terminal.Say("");
     Viper.Terminal.Say("Scene bounds: " + bounds.width + "x" + bounds.height);
 }
@@ -394,11 +394,11 @@ interface Animal {
     func speak();
 }
 
-class Dog implements Animal {
+entity Dog implements Animal {
     func speak() { ... }
 }
 
-let animals: [Animal] = [Dog(), Cat()];
+var animals: [Animal] = [Dog(), Cat()];
 for a in animals {
     a.speak();
 }

@@ -11,13 +11,13 @@ A dog is an animal. A savings account is a bank account. A button is a UI elemen
 Imagine building a game with different enemies:
 
 ```viper
-class Goblin {
+entity Goblin {
     x: f64;
     y: f64;
     health: i64;
     name: string;
 
-    constructor(x: f64, y: f64) {
+    expose func init(x: f64, y: f64) {
         self.x = x;
         self.y = y;
         self.health = 30;
@@ -34,13 +34,13 @@ class Goblin {
     }
 }
 
-class Orc {
+entity Orc {
     x: f64;
     y: f64;
     health: i64;
     name: string;
 
-    constructor(x: f64, y: f64) {
+    expose func init(x: f64, y: f64) {
         self.x = x;
         self.y = y;
         self.health = 50;
@@ -58,22 +58,22 @@ class Orc {
 }
 ```
 
-These classes are almost identical! The same fields, the same `move` method. Only the initial values and attack power differ. This duplication is wasteful and error-prone.
+These entities are almost identical! The same fields, the same `move` method. Only the initial values and attack power differ. This duplication is wasteful and error-prone.
 
 ---
 
 ## Inheritance to the Rescue
 
-With inheritance, we extract the common parts into a base class:
+With inheritance, we extract the common parts into a base entity:
 
 ```viper
-class Enemy {
+entity Enemy {
     x: f64;
     y: f64;
     health: i64;
     name: string;
 
-    constructor(x: f64, y: f64, health: i64, name: string) {
+    expose func init(x: f64, y: f64, health: i64, name: string) {
         self.x = x;
         self.y = y;
         self.health = health;
@@ -90,8 +90,8 @@ class Enemy {
     }
 }
 
-class Goblin extends Enemy {
-    constructor(x: f64, y: f64) {
+entity Goblin extends Enemy {
+    expose func init(x: f64, y: f64) {
         super(x, y, 30, "Goblin");
     }
 
@@ -100,8 +100,8 @@ class Goblin extends Enemy {
     }
 }
 
-class Orc extends Enemy {
-    constructor(x: f64, y: f64) {
+entity Orc extends Enemy {
+    expose func init(x: f64, y: f64) {
         super(x, y, 50, "Orc");
     }
 
@@ -117,18 +117,18 @@ Now `Goblin` and `Orc` *extend* `Enemy`. They inherit all of `Enemy`'s fields an
 
 ## Key Concepts
 
-**Base class (parent, superclass):** The class being inherited from (`Enemy`).
+**Base entity (parent, superclass):** The entity being inherited from (`Enemy`).
 
-**Derived class (child, subclass):** The class that inherits (`Goblin`, `Orc`).
+**Derived entity (child, subclass):** The entity that inherits (`Goblin`, `Orc`).
 
 **extends:** The keyword that creates inheritance.
 
-**super:** Calls the parent class's constructor or methods.
+**super:** Calls the parent entity's initializer or methods.
 
 ```viper
-class Goblin extends Enemy {
-    constructor(x: f64, y: f64) {
-        super(x, y, 30, "Goblin");  // Call Enemy's constructor
+entity Goblin extends Enemy {
+    expose func init(x: f64, y: f64) {
+        super(x, y, 30, "Goblin");  // Call Enemy's initializer
     }
 }
 ```
@@ -137,12 +137,12 @@ class Goblin extends Enemy {
 
 ## What Gets Inherited
 
-A derived class automatically has:
-- All fields from the base class
-- All methods from the base class
+A derived entity automatically has:
+- All fields from the base entity
+- All methods from the base entity
 
 ```viper
-let goblin = Goblin(10.0, 20.0);
+var goblin = Goblin(10.0, 20.0);
 goblin.move(5.0, 0.0);           // Inherited from Enemy
 Viper.Terminal.Say(goblin.x);     // 15.0 (inherited field)
 Viper.Terminal.Say(goblin.name);  // "Goblin"
@@ -155,16 +155,16 @@ The goblin can `move` even though Goblin doesn't define a `move` method — it i
 
 ## Overriding Methods
 
-When a derived class defines a method that exists in the base class, it *overrides* that method:
+When a derived entity defines a method that exists in the base entity, it *overrides* that method:
 
 ```viper
-class Enemy {
+entity Enemy {
     func attack() -> i64 {
         return 1;  // Base implementation
     }
 }
 
-class Orc extends Enemy {
+entity Orc extends Enemy {
     func attack() -> i64 {
         return 10;  // Override: orcs hit harder
     }
@@ -180,20 +180,20 @@ When you call `attack()` on an Orc, you get the Orc's version (10), not the Enem
 Sometimes you want to extend, not replace, the parent's behavior:
 
 ```viper
-class Enemy {
+entity Enemy {
     func describe() {
         Viper.Terminal.Say("An enemy at (" + self.x + ", " + self.y + ")");
     }
 }
 
-class Orc extends Enemy {
+entity Orc extends Enemy {
     func describe() {
         super.describe();  // Call parent's describe first
         Viper.Terminal.Say("It's a fearsome orc!");
     }
 }
 
-let orc = Orc(5.0, 3.0);
+var orc = Orc(5.0, 3.0);
 orc.describe();
 // An enemy at (5, 3)
 // It's a fearsome orc!
@@ -208,7 +208,7 @@ orc.describe();
 Inheritance can go multiple levels:
 
 ```viper
-class Animal {
+entity Animal {
     name: string;
 
     func speak() {
@@ -216,14 +216,14 @@ class Animal {
     }
 }
 
-class Mammal extends Animal {
+entity Mammal extends Animal {
     func giveBirth() {
         Viper.Terminal.Say(self.name + " gives birth to live young");
     }
 }
 
-class Dog extends Mammal {
-    constructor(name: string) {
+entity Dog extends Mammal {
+    expose func init(name: string) {
         self.name = name;
     }
 
@@ -251,11 +251,11 @@ The classic inheritance example — geometric shapes:
 ```viper
 module Shapes;
 
-class Shape {
+entity Shape {
     x: f64;
     y: f64;
 
-    constructor(x: f64, y: f64) {
+    expose func init(x: f64, y: f64) {
         self.x = x;
         self.y = y;
     }
@@ -274,11 +274,11 @@ class Shape {
     }
 }
 
-class Rectangle extends Shape {
+entity Rectangle extends Shape {
     width: f64;
     height: f64;
 
-    constructor(x: f64, y: f64, width: f64, height: f64) {
+    expose func init(x: f64, y: f64, width: f64, height: f64) {
         super(x, y);
         self.width = width;
         self.height = height;
@@ -295,10 +295,10 @@ class Rectangle extends Shape {
     }
 }
 
-class Circle extends Shape {
+entity Circle extends Shape {
     radius: f64;
 
-    constructor(x: f64, y: f64, radius: f64) {
+    expose func init(x: f64, y: f64, radius: f64) {
         super(x, y);
         self.radius = radius;
     }
@@ -315,8 +315,8 @@ class Circle extends Shape {
 }
 
 func start() {
-    let rect = Rectangle(0.0, 0.0, 10.0, 5.0);
-    let circle = Circle(20.0, 20.0, 7.0);
+    var rect = Rectangle(0.0, 0.0, 10.0, 5.0);
+    var circle = Circle(20.0, 20.0, 7.0);
 
     rect.describe();
     // Shape at (0, 0)
@@ -344,11 +344,11 @@ Both Rectangle and Circle share `move` (inherited unchanged), but have their own
 
 **ViperLang**
 ```viper
-class Animal {
+entity Animal {
     func speak() { ... }
 }
 
-class Dog extends Animal {
+entity Dog extends Animal {
     func speak() {
         Viper.Terminal.Say("Woof!");
     }
@@ -409,10 +409,10 @@ Pascal requires `virtual` on the base method and `override` on derived methods.
 
 ```viper
 // Wrong: Car is not a type of Engine
-class Car extends Engine { ... }
+entity Car extends Engine { ... }
 
 // Right: Car contains an Engine
-class Car {
+entity Car {
     engine: Engine;
 }
 ```
@@ -433,18 +433,18 @@ Animal
 
 Prefer shallow hierarchies. If you're more than 3 levels deep, reconsider your design.
 
-**Tight coupling:** Derived classes depend on base class internals. Changing the base can break derived classes.
+**Tight coupling:** Derived entities depend on base entity internals. Changing the base can break derived entities.
 
-**Inflexibility:** You can only inherit from one class. If you need behavior from multiple sources, you'll want interfaces (next chapter).
+**Inflexibility:** You can only inherit from one entity. If you need behavior from multiple sources, you'll want interfaces (next chapter).
 
 ---
 
 ## Summary
 
-- *Inheritance* lets classes extend other classes
-- Use `extends` to create a derived class
-- Derived classes inherit fields and methods
-- `super` calls the parent's constructor or methods
+- *Inheritance* lets entities extend other entities
+- Use `extends` to create a derived entity
+- Derived entities inherit fields and methods
+- `super` calls the parent's initializer or methods
 - Override methods to provide specialized behavior
 - Use inheritance for "is-a" relationships
 - Prefer shallow hierarchies

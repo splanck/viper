@@ -1,7 +1,7 @@
 ---
 status: active
 audience: developers
-last-verified: 2025-12-26
+last-verified: 2026-01-09
 ---
 
 # C++ Project Overview
@@ -74,7 +74,7 @@ Public headers are under `include/viper/...`:
 
 ## Notes
 
-- IL version: see `src/buildmeta/IL_VERSION` (current: 0.1.3)
+- IL version: see `src/buildmeta/IL_VERSION` (current: 0.2.0)
 - Keep layering strict: frontends do not depend on VM/codegen; VM does not include codegen; codegen depends only on IL
   core/verify/support
 - See also: `/devdocs/architecture.md` for a deeper architectural discussion

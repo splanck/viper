@@ -25,7 +25,9 @@
 #include "LiveIntervals.hpp"
 #include "Spiller.hpp"
 
+#include <bitset>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace viper::codegen::x64::ra
@@ -83,10 +85,19 @@ class LinearScanAllocator
     std::unordered_map<uint16_t, VirtualAllocation> states_{};
     std::vector<PhysReg> freeGPR_{};
     std::vector<PhysReg> freeXMM_{};
-    std::vector<uint16_t> activeGPR_{};
-    std::vector<uint16_t> activeXMM_{};
+    /// @brief Active virtual registers in GPR class. Uses unordered_set for O(1) insert/erase.
+    std::unordered_set<uint16_t> activeGPR_{};
+    /// @brief Active virtual registers in XMM class. Uses unordered_set for O(1) insert/erase.
+    std::unordered_set<uint16_t> activeXMM_{};
     std::size_t currentInstrIdx_{0};         ///< Current instruction index for liveness checks.
     std::vector<PhysReg> reservedForCall_{}; ///< Arg registers reserved during call setup.
+
+    /// @brief Precomputed bitset of caller-saved GPR registers for O(1) lookup.
+    /// @details Indexed by static_cast<int>(PhysReg). Avoids linear search in CALL handling.
+    std::bitset<32> callerSavedGPRBits_{};
+
+    /// @brief Precomputed bitset of caller-saved XMM registers for O(1) lookup.
+    std::bitset<32> callerSavedXMMBits_{};
 
     /// @brief Populate the free-register pools from the target description.
     /// @details Queries the @ref TargetInfo to enumerate allocatable registers for each class
@@ -98,10 +109,10 @@ class LinearScanAllocator
     ///          and pop physical registers while allocating or releasing values.
     [[nodiscard]] std::vector<PhysReg> &poolFor(RegClass cls);
 
-    /// @brief Retrieve the currently active interval list for a register class.
-    /// @details Provides access to the vector that tracks active virtual register identifiers so
+    /// @brief Retrieve the currently active interval set for a register class.
+    /// @details Provides access to the set that tracks active virtual register identifiers so
     ///          expiration checks can scan the appropriate list.
-    [[nodiscard]] std::vector<uint16_t> &activeFor(RegClass cls);
+    [[nodiscard]] std::unordered_set<uint16_t> &activeFor(RegClass cls);
 
     /// @brief Lookup or initialise allocation state for a virtual register.
     /// @details Fetches the @ref VirtualAllocation record keyed by @p id, initialising defaults

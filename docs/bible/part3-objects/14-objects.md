@@ -1,30 +1,30 @@
-# Chapter 14: Objects and Classes
+# Chapter 14: Objects and Entities
 
 In Chapter 11, we learned about structures — grouping data together. But structures have limitations. What if you want to create specialized versions? What if you want different types to share common behavior? What if you want to hide implementation details behind a stable interface?
 
 *Object-oriented programming* (OOP) answers these questions. It's a way of thinking about programs as collections of interacting *objects* — entities that combine data and behavior, that can be created from templates, and that can relate to each other in flexible ways.
 
-This chapter introduces the fundamentals: classes and objects.
+This chapter introduces the fundamentals: entities and objects.
 
 ---
 
-## From Structures to Classes
+## From Values to Entities
 
-A structure groups data:
+A value groups data:
 ```viper
-struct Rectangle {
+value Rectangle {
     width: f64;
     height: f64;
 }
 ```
 
-A *class* groups data *and* behavior, with more power:
+An *entity* groups data *and* behavior, with more power:
 ```viper
-class Rectangle {
+entity Rectangle {
     width: f64;
     height: f64;
 
-    constructor(width: f64, height: f64) {
+    expose func init(width: f64, height: f64) {
         self.width = width;
         self.height = height;
     }
@@ -40,19 +40,19 @@ class Rectangle {
 ```
 
 The differences:
-- `class` instead of `struct`
-- A *constructor* that creates new instances
+- `entity` instead of `value`
+- An *initializer* that creates new instances
 - Methods that operate on the object
 
 ---
 
 ## Creating Objects
 
-A class is a template. An *object* (or *instance*) is a specific thing created from that template:
+An entity is a template. An *object* (or *instance*) is a specific thing created from that template:
 
 ```viper
-let rect1 = Rectangle(10.0, 5.0);
-let rect2 = Rectangle(3.0, 4.0);
+var rect1 = Rectangle(10.0, 5.0);
+var rect2 = Rectangle(3.0, 4.0);
 
 Viper.Terminal.Say(rect1.area());  // 50
 Viper.Terminal.Say(rect2.area());  // 12
@@ -62,33 +62,33 @@ Each rectangle is a separate object with its own data. Calling `area()` on `rect
 
 ---
 
-## The Constructor
+## The Initializer
 
-The constructor is a special method that runs when you create a new object:
+The initializer is a special method that runs when you create a new object:
 
 ```viper
-class Person {
+entity Person {
     name: string;
     age: i64;
 
-    constructor(name: string, age: i64) {
+    expose func init(name: string, age: i64) {
         self.name = name;
         self.age = age;
     }
 
-    constructor(name: string) {
+    expose func init(name: string) {
         self.name = name;
         self.age = 0;  // Default age
     }
 }
 
-let alice = Person("Alice", 30);
-let baby = Person("Baby");
+var alice = Person("Alice", 30);
+var baby = Person("Baby");
 ```
 
-You can have multiple constructors with different parameters. This is called *overloading*.
+You can have multiple initializers with different parameters. This is called *overloading*.
 
-Constructors initialize the object. Use them to set required fields and perform any setup.
+Initializers initialize the object. Use them to set required fields and perform any setup.
 
 ---
 
@@ -97,10 +97,10 @@ Constructors initialize the object. Use them to set required fields and perform 
 Inside a method, `self` refers to the object the method was called on:
 
 ```viper
-class Counter {
+entity Counter {
     count: i64;
 
-    constructor() {
+    expose func init() {
         self.count = 0;
     }
 
@@ -113,7 +113,7 @@ class Counter {
     }
 }
 
-let counter = Counter();
+var counter = Counter();
 counter.increment();
 counter.increment();
 Viper.Terminal.Say(counter.getCount());  // 2
@@ -123,16 +123,16 @@ When you call `counter.increment()`, inside that method `self` is `counter`. Whe
 
 ---
 
-## Encapsulation: Public and Private
+## Encapsulation: Expose and Hide
 
-Not all parts of a class should be accessible from outside. Use `private` to hide internal details:
+Not all parts of an entity should be accessible from outside. Use `hide` to hide internal details:
 
 ```viper
-class BankAccount {
-    private balance: f64;
+entity BankAccount {
+    hide balance: f64;
     ownerName: string;
 
-    constructor(owner: string, initialDeposit: f64) {
+    expose func init(owner: string, initialDeposit: f64) {
         self.ownerName = owner;
         self.balance = initialDeposit;
     }
@@ -157,14 +157,14 @@ class BankAccount {
 }
 ```
 
-The `balance` field is private — outside code can't access it directly:
+The `balance` field is hidden — outside code can't access it directly:
 
 ```viper
-let account = BankAccount("Alice", 100.0);
+var account = BankAccount("Alice", 100.0);
 account.deposit(50.0);
 Viper.Terminal.Say(account.getBalance());  // 150
 
-// account.balance = 1000000;  // Error: balance is private
+// account.balance = 1000000;  // Error: balance is hidden
 ```
 
 This protects the account's integrity. You can't set an arbitrary balance — you must go through `deposit` and `withdraw`, which enforce the rules.
@@ -173,13 +173,13 @@ This protects the account's integrity. You can't set an arbitrary balance — yo
 
 ## Methods: Behavior
 
-Methods define what objects can do. They're functions that belong to a class:
+Methods define what objects can do. They're functions that belong to an entity:
 
 ```viper
-class Circle {
+entity Circle {
     radius: f64;
 
-    constructor(radius: f64) {
+    expose func init(radius: f64) {
         self.radius = radius;
     }
 
@@ -212,16 +212,16 @@ Methods can:
 
 ## A Complete Example: Todo List
 
-Let's build a todo list with classes:
+Let's build a todo list with entities:
 
 ```viper
 module TodoApp;
 
-class TodoItem {
-    private text: string;
-    private done: bool;
+entity TodoItem {
+    hide text: string;
+    hide done: bool;
 
-    constructor(text: string) {
+    expose func init(text: string) {
         self.text = text;
         self.done = false;
     }
@@ -243,7 +243,7 @@ class TodoItem {
     }
 
     func toString() -> string {
-        let status = "";
+        var status = "";
         if self.done {
             status = "[X]";
         } else {
@@ -253,11 +253,11 @@ class TodoItem {
     }
 }
 
-class TodoList {
-    private items: [TodoItem];
-    private name: string;
+entity TodoList {
+    hide items: [TodoItem];
+    hide name: string;
 
-    constructor(name: string) {
+    expose func init(name: string) {
         self.name = name;
         self.items = [];
     }
@@ -291,7 +291,7 @@ class TodoList {
     }
 
     func countRemaining() -> i64 {
-        let count = 0;
+        var count = 0;
         for item in self.items {
             if !item.isDone() {
                 count += 1;
@@ -302,7 +302,7 @@ class TodoList {
 }
 
 func start() {
-    let todos = TodoList("My Tasks");
+    var todos = TodoList("My Tasks");
 
     todos.add("Learn ViperLang");
     todos.add("Build a project");
@@ -329,8 +329,8 @@ func start() {
 Notice how:
 - `TodoItem` manages individual tasks
 - `TodoList` manages the collection
-- Each class handles its own responsibilities
-- Private fields protect internal state
+- Each entity handles its own responsibilities
+- Hidden fields protect internal state
 - Methods provide controlled access
 
 ---
@@ -339,10 +339,10 @@ Notice how:
 
 **ViperLang**
 ```viper
-class Dog {
+entity Dog {
     name: string;
 
-    constructor(name: string) {
+    expose func init(name: string) {
         self.name = name;
     }
 
@@ -351,7 +351,7 @@ class Dog {
     }
 }
 
-let dog = Dog("Rex");
+var dog = Dog("Rex");
 dog.bark();
 ```
 
@@ -403,13 +403,13 @@ end.
 
 ---
 
-## Class Design Guidelines
+## Entity Design Guidelines
 
-**Model real concepts.** A `Dog` class, a `BankAccount` class, a `Player` class — things you can point to and describe.
+**Model real concepts.** A `Dog` entity, a `BankAccount` entity, a `Player` entity — things you can point to and describe.
 
-**Keep classes focused.** A class should have one primary responsibility. If a class is doing too many things, split it.
+**Keep entities focused.** An entity should have one primary responsibility. If an entity is doing too many things, split it.
 
-**Hide internals.** Make fields private by default. Expose only what others need. This lets you change implementation without breaking code that uses the class.
+**Hide internals.** Make fields hidden by default. Expose only what others need. This lets you change implementation without breaking code that uses the entity.
 
 **Name methods as verbs.** `deposit`, `withdraw`, `bark`, `display` — methods do things.
 
@@ -421,7 +421,7 @@ end.
 
 **Forgetting self:**
 ```viper
-class Counter {
+entity Counter {
     count: i64;
 
     func increment() {
@@ -430,20 +430,20 @@ class Counter {
 }
 ```
 
-**Public fields that should be private:**
+**Exposed fields that should be hidden:**
 ```viper
-class BankAccount {
+entity BankAccount {
     balance: f64;  // Bad: anyone can modify directly
 }
 
-let account = BankAccount();
+var account = BankAccount();
 account.balance = -1000;  // Oops, negative balance!
 ```
 
-**Monster classes:**
+**Monster entities:**
 ```viper
-// Don't do this — one class doing everything
-class Game {
+// Don't do this — one entity doing everything
+entity Game {
     player: ...;
     enemies: ...;
     graphics: ...;
@@ -453,24 +453,24 @@ class Game {
     // 50 methods for all these different things
 }
 
-// Better: separate classes for each concern
-class Player { ... }
-class EnemyManager { ... }
-class Renderer { ... }
-class SoundSystem { ... }
+// Better: separate entities for each concern
+entity Player { ... }
+entity EnemyManager { ... }
+entity Renderer { ... }
+entity SoundSystem { ... }
 ```
 
 ---
 
 ## Summary
 
-- A *class* is a template that defines data (fields) and behavior (methods)
-- An *object* (instance) is created from a class
-- *Constructors* initialize new objects
+- An *entity* is a template that defines data (fields) and behavior (methods)
+- An *object* (instance) is created from an entity
+- *Initializers* (`expose func init`) initialize new objects
 - `self` refers to the current object inside methods
-- *Private* fields/methods hide internal details
+- *Hidden* fields/methods hide internal details
 - *Encapsulation* protects object state from invalid modifications
-- Good class design: one responsibility, hidden internals, clear interface
+- Good entity design: one responsibility, hidden internals, clear interface
 
 ---
 
