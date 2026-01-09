@@ -1326,20 +1326,24 @@ class SCCPSolver
         }
     }
 
+    /// @brief Replace all uses of a value with a constant using the pre-built use map.
+    /// @details Uses the `uses_` map built during initialization for O(uses) replacement
+    ///          instead of O(blocks × instructions) full traversal.
     void replaceAllUses(unsigned id, const Value &replacement)
     {
-        for (auto &block : function_.blocks)
+        auto usesIt = uses_.find(id);
+        if (usesIt == uses_.end())
+            return;
+
+        for (Instr *instr : usesIt->second)
         {
-            for (auto &instr : block.instructions)
-            {
-                for (auto &operand : instr.operands)
-                    if (operand.kind == Value::Kind::Temp && operand.id == id)
-                        operand = replacement;
-                for (auto &args : instr.brArgs)
-                    for (auto &arg : args)
-                        if (arg.kind == Value::Kind::Temp && arg.id == id)
-                            arg = replacement;
-            }
+            for (auto &operand : instr->operands)
+                if (operand.kind == Value::Kind::Temp && operand.id == id)
+                    operand = replacement;
+            for (auto &args : instr->brArgs)
+                for (auto &arg : args)
+                    if (arg.kind == Value::Kind::Temp && arg.id == id)
+                        arg = replacement;
         }
     }
 

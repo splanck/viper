@@ -24,6 +24,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cstdint>
 #include <unordered_map>
 #include <utility>
 
@@ -122,16 +123,118 @@ std::size_t LivenessInfo::valueCount() const
 
 namespace
 {
-struct BlockInfo
+
+//===----------------------------------------------------------------------===//
+// ChunkedBitset - SIMD-friendly bitset using uint64_t chunks
+//===----------------------------------------------------------------------===//
+
+/// @brief Fast bitset using 64-bit chunks for efficient bulk operations.
+/// @details Uses uint64_t words instead of std::vector<bool> to enable
+///          SIMD-friendly OR operations and better cache behavior during
+///          the iterative liveness fixed-point computation.
+class ChunkedBitset
 {
-    /// @brief Prepare per-block definition/use bitsets sized to @p valueCount.
-    explicit BlockInfo(std::size_t valueCount = 0)
-        : defs(valueCount, false), uses(valueCount, false)
+  public:
+    static constexpr std::size_t kBitsPerChunk = 64;
+
+    ChunkedBitset() = default;
+
+    explicit ChunkedBitset(std::size_t bitCount)
+        : bitCount_(bitCount), chunks_((bitCount + kBitsPerChunk - 1) / kBitsPerChunk, 0)
     {
     }
 
-    std::vector<bool> defs;
-    std::vector<bool> uses;
+    /// @brief Set a bit at the given index.
+    void set(std::size_t idx)
+    {
+        if (idx >= bitCount_)
+            return;
+        chunks_[idx / kBitsPerChunk] |= (uint64_t{1} << (idx % kBitsPerChunk));
+    }
+
+    /// @brief Test if a bit is set.
+    bool test(std::size_t idx) const
+    {
+        if (idx >= bitCount_)
+            return false;
+        return (chunks_[idx / kBitsPerChunk] & (uint64_t{1} << (idx % kBitsPerChunk))) != 0;
+    }
+
+    /// @brief Clear all bits.
+    void clear()
+    {
+        std::fill(chunks_.begin(), chunks_.end(), 0);
+    }
+
+    /// @brief Merge (OR) another bitset into this one.
+    /// @details Uses word-level OR for SIMD-friendly bulk operation.
+    void merge(const ChunkedBitset &other)
+    {
+        assert(chunks_.size() == other.chunks_.size());
+        for (std::size_t i = 0; i < chunks_.size(); ++i)
+            chunks_[i] |= other.chunks_[i];
+    }
+
+    /// @brief Copy assignment from another bitset.
+    void copyFrom(const ChunkedBitset &other)
+    {
+        assert(chunks_.size() == other.chunks_.size());
+        chunks_ = other.chunks_;
+    }
+
+    /// @brief Check equality with another bitset.
+    bool operator==(const ChunkedBitset &other) const
+    {
+        return chunks_ == other.chunks_;
+    }
+
+    bool operator!=(const ChunkedBitset &other) const
+    {
+        return !(*this == other);
+    }
+
+    /// @brief Compute liveIn = uses | (liveOut & ~defs) efficiently.
+    /// @details Performs the data-flow transfer function in a single pass
+    ///          over the chunks, avoiding multiple iterations.
+    void computeLiveIn(const ChunkedBitset &uses, const ChunkedBitset &defs,
+                       const ChunkedBitset &liveOut)
+    {
+        assert(chunks_.size() == uses.chunks_.size());
+        assert(chunks_.size() == defs.chunks_.size());
+        assert(chunks_.size() == liveOut.chunks_.size());
+        for (std::size_t i = 0; i < chunks_.size(); ++i)
+            chunks_[i] = uses.chunks_[i] | (liveOut.chunks_[i] & ~defs.chunks_[i]);
+    }
+
+    /// @brief Convert to std::vector<bool> for API compatibility.
+    std::vector<bool> toVectorBool() const
+    {
+        std::vector<bool> result(bitCount_, false);
+        for (std::size_t i = 0; i < bitCount_; ++i)
+        {
+            if (test(i))
+                result[i] = true;
+        }
+        return result;
+    }
+
+    std::size_t bitCount() const
+    {
+        return bitCount_;
+    }
+
+  private:
+    std::size_t bitCount_{0};
+    std::vector<uint64_t> chunks_;
+};
+
+struct BlockInfo
+{
+    /// @brief Prepare per-block definition/use bitsets sized to @p valueCount.
+    explicit BlockInfo(std::size_t valueCount = 0) : defs(valueCount), uses(valueCount) {}
+
+    ChunkedBitset defs;
+    ChunkedBitset uses;
 };
 
 /// @brief Determine how many dense SSA identifiers the function may reference.
@@ -185,25 +288,6 @@ std::size_t determineValueCapacity(const core::Function &fn)
     return capacity;
 }
 
-/// @brief Mark a bit corresponding to @p id when it falls inside the bitset.
-inline void setBit(std::vector<bool> &bits, unsigned id)
-{
-    assert(id < bits.size());
-    if (id < bits.size())
-        bits[id] = true;
-}
-
-/// @brief Merge set bits from @p src into @p dst.
-inline void mergeBits(std::vector<bool> &dst, const std::vector<bool> &src)
-{
-    assert(dst.size() == src.size());
-    for (std::size_t idx = 0; idx < dst.size(); ++idx)
-    {
-        if (src[idx])
-            dst[idx] = true;
-    }
-}
-
 } // namespace
 
 /// @brief Build a lightweight CFG summary for the function.
@@ -246,29 +330,37 @@ CFGInfo buildCFG(core::Module &module, core::Function &fn)
 /// @param fn Function being analysed.
 /// @param cfg Precomputed CFG summary for @p fn.
 /// @return Populated liveness information including live-in/live-out bitsets.
+///
+/// @details Uses ChunkedBitset internally for efficient fixed-point iteration.
+///          The bitsets use uint64_t chunks enabling SIMD-friendly merge operations
+///          and better cache behavior compared to std::vector<bool>. Results are
+///          converted to std::vector<bool> at the end for API compatibility.
 LivenessInfo computeLiveness(core::Module &module, core::Function &fn, const CFGInfo &cfg)
 {
     static_cast<void>(module);
     const std::size_t valueCount = determineValueCapacity(fn);
 
-    LivenessInfo info;
-    info.valueCount_ = valueCount;
-    info.blocks_.reserve(fn.blocks.size());
-    info.liveInBits_.assign(fn.blocks.size(), std::vector<bool>(valueCount, false));
-    info.liveOutBits_.assign(fn.blocks.size(), std::vector<bool>(valueCount, false));
+    // Use ChunkedBitset for efficient fixed-point computation
+    std::vector<ChunkedBitset> liveInChunks(fn.blocks.size(), ChunkedBitset(valueCount));
+    std::vector<ChunkedBitset> liveOutChunks(fn.blocks.size(), ChunkedBitset(valueCount));
+
+    // Build block index and compute per-block def/use sets
+    std::unordered_map<const core::BasicBlock *, std::size_t> blockIndex;
+    std::vector<const core::BasicBlock *> blocks;
+    blocks.reserve(fn.blocks.size());
 
     std::vector<BlockInfo> blockInfo(fn.blocks.size(), BlockInfo(valueCount));
 
     for (std::size_t idx = 0; idx < fn.blocks.size(); ++idx)
     {
         auto &block = fn.blocks[idx];
-        info.blocks_.push_back(&block);
-        info.blockIndex_[&block] = idx;
+        blocks.push_back(&block);
+        blockIndex[&block] = idx;
 
-        BlockInfo state(valueCount);
+        BlockInfo &state = blockInfo[idx];
 
         for (const auto &param : block.params)
-            setBit(state.defs, param.id);
+            state.defs.set(param.id);
 
         for (const auto &instr : block.instructions)
         {
@@ -279,8 +371,8 @@ LivenessInfo computeLiveness(core::Module &module, core::Function &fn, const CFG
                 const unsigned id = operand.id;
                 if (id >= valueCount)
                     continue;
-                if (!state.defs[id])
-                    state.uses[id] = true;
+                if (!state.defs.test(id))
+                    state.uses.set(id);
             }
             for (const auto &argList : instr.brArgs)
             {
@@ -291,19 +383,18 @@ LivenessInfo computeLiveness(core::Module &module, core::Function &fn, const CFG
                     const unsigned id = arg.id;
                     if (id >= valueCount)
                         continue;
-                    if (!state.defs[id])
-                        state.uses[id] = true;
+                    if (!state.defs.test(id))
+                        state.uses.set(id);
                 }
             }
             if (instr.result)
-                setBit(state.defs, *instr.result);
+                state.defs.set(*instr.result);
         }
-
-        blockInfo[idx] = std::move(state);
     }
 
-    std::vector<bool> scratchOut(valueCount, false);
-    std::vector<bool> scratchIn(valueCount, false);
+    // Fixed-point iteration using ChunkedBitset for efficient operations
+    ChunkedBitset scratchOut(valueCount);
+    ChunkedBitset scratchIn(valueCount);
 
     bool changed = true;
     while (changed)
@@ -311,41 +402,50 @@ LivenessInfo computeLiveness(core::Module &module, core::Function &fn, const CFG
         changed = false;
         for (std::size_t reverseIdx = fn.blocks.size(); reverseIdx-- > 0;)
         {
-            const BasicBlock *block = info.blocks_[reverseIdx];
+            const BasicBlock *block = blocks[reverseIdx];
             BlockInfo &state = blockInfo[reverseIdx];
 
-            auto &liveOut = info.liveOutBits_[reverseIdx];
-            std::fill(scratchOut.begin(), scratchOut.end(), false);
+            // Compute liveOut = union of liveIn of all successors
+            scratchOut.clear();
             auto succIt = cfg.successors.find(block);
             if (succIt != cfg.successors.end())
             {
                 for (const BasicBlock *succ : succIt->second)
                 {
-                    auto succIdxIt = info.blockIndex_.find(succ);
-                    if (succIdxIt == info.blockIndex_.end())
+                    auto succIdxIt = blockIndex.find(succ);
+                    if (succIdxIt == blockIndex.end())
                         continue;
-                    mergeBits(scratchOut, info.liveInBits_[succIdxIt->second]);
+                    scratchOut.merge(liveInChunks[succIdxIt->second]);
                 }
             }
-            if (scratchOut != liveOut)
+            if (scratchOut != liveOutChunks[reverseIdx])
             {
-                liveOut = scratchOut;
+                liveOutChunks[reverseIdx].copyFrom(scratchOut);
                 changed = true;
             }
 
-            scratchIn = state.uses;
-            for (std::size_t idx = 0; idx < valueCount; ++idx)
+            // Compute liveIn = uses | (liveOut & ~defs) using optimized method
+            scratchIn.computeLiveIn(state.uses, state.defs, liveOutChunks[reverseIdx]);
+            if (scratchIn != liveInChunks[reverseIdx])
             {
-                if (liveOut[idx] && !state.defs[idx])
-                    scratchIn[idx] = true;
-            }
-            auto &liveIn = info.liveInBits_[reverseIdx];
-            if (scratchIn != liveIn)
-            {
-                liveIn = scratchIn;
+                liveInChunks[reverseIdx].copyFrom(scratchIn);
                 changed = true;
             }
         }
+    }
+
+    // Convert to std::vector<bool> for API compatibility
+    LivenessInfo info;
+    info.valueCount_ = valueCount;
+    info.blocks_ = std::move(blocks);
+    info.blockIndex_ = std::move(blockIndex);
+    info.liveInBits_.reserve(fn.blocks.size());
+    info.liveOutBits_.reserve(fn.blocks.size());
+
+    for (std::size_t idx = 0; idx < fn.blocks.size(); ++idx)
+    {
+        info.liveInBits_.push_back(liveInChunks[idx].toVectorBool());
+        info.liveOutBits_.push_back(liveOutChunks[idx].toVectorBool());
     }
 
     return info;
