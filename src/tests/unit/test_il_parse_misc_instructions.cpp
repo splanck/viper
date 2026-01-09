@@ -25,7 +25,7 @@
 
 int main()
 {
-    const char *src = R"(il 0.1.2
+    const char *src = R"(il 0.2.0
 extern @foo(i64) -> i64
 global const str @g = "hi"
 func @main(%flag:i1) -> void {

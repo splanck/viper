@@ -1,4 +1,4 @@
-il 0.1.3
+il 0.2.0
 func @cast_checks(%si:i64, %ui:i64, %fp:f64) -> void {
 entry(%si:i64, %ui:i64, %fp:f64):
   %t0 = cast.fp_to_si.rte.chk %fp

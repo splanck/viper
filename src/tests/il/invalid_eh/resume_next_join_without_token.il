@@ -1,4 +1,4 @@
-il 0.1.3
+il 0.2.0
 
 func @resume_next_join_without_token(i1 %flag, Error %err, ResumeTok %tok) -> void {
 entry:

@@ -26,7 +26,7 @@ using namespace il::core;
 int main()
 {
     // Textual IL with a zero-arg callee and an indirect call.
-    const char *text = R"(il 0.1.2
+    const char *text = R"(il 0.2.0
 func @callee() -> i64 {
 entry:
   ret 7

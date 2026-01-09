@@ -22,7 +22,7 @@ int main()
 {
     const char *src = R"(// header line 1
 // header line 2
-il 0.1.2
+il 0.2.0
 func @main() -> i64 {
 entry:
   ret 0

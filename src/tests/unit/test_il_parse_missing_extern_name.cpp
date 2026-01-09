@@ -23,7 +23,7 @@
 
 int main()
 {
-    const std::string source = R"(il 0.1.2
+    const std::string source = R"(il 0.2.0
 extern @(i32) -> void
 func @main() -> i64 {
 entry:

@@ -1,4 +1,4 @@
-il 0.1.3
+il 0.2.0
 
 extern @Viper.Environment.EndProgram(i64) -> void
 

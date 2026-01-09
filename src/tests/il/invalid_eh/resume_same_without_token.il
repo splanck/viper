@@ -1,4 +1,4 @@
-il 0.1.3
+il 0.2.0
 
 func @resume_same_without_token(Error %err, ResumeTok %tok) -> void {
 entry:

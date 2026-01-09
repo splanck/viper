@@ -22,7 +22,7 @@
 
 int main()
 {
-    static constexpr const char *kSource = R"(il 0.1.2
+    static constexpr const char *kSource = R"(il 0.2.0
 func @caller() -> void {
 entry:
   call @callee()

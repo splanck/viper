@@ -72,7 +72,7 @@ int main()
     {
         std::ofstream out(ilPath);
         assert(out.good());
-        out << "il 0.1.2\n";
+        out << "il 0.2.0\n";
         out << "func @main() -> i64 {\n";
         out << "entry:\n";
         out << "  .loc 1 7 1\n";
@@ -94,7 +94,7 @@ int main()
     {
         std::ofstream out(ilPath);
         assert(out.good());
-        out << "il 0.1.2\n";
+        out << "il 0.2.0\n";
         out << "func @main() -> i64 {\n";
         out << "entry:\n";
         out << "  .loc 1 " << hugeLine << " 1\n";

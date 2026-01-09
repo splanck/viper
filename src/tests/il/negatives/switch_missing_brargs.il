@@ -1,4 +1,4 @@
-il 0.1.3
+il 0.2.0
 
 func @switch_missing_brargs(%sel:i32, %x:i32) -> void {
 entry(%sel:i32, %x:i32):

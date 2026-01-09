@@ -182,7 +182,7 @@ ObjectOnlyResult runObjectOnlyCompileTest()
     const std::filesystem::path ilPath = tempDir.path() / "module.il";
     const std::filesystem::path objPath = tempDir.path() / "module.o";
 
-    const std::string ilSource = R"(il 0.1.2
+    const std::string ilSource = R"(il 0.2.0
 func @helper() -> i64 {
 entry:
   ret 0x2A

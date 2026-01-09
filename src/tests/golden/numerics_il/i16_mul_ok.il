@@ -1,4 +1,4 @@
-il 0.1.3
+il 0.2.0
 extern @rt_print_i64(i64) -> void
 extern @rt_print_str(str) -> void
 extern @rt_chr(i64) -> str

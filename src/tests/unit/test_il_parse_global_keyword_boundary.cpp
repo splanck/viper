@@ -22,7 +22,7 @@
 
 int main()
 {
-    constexpr const char *kProgram = R"(il 0.1.2
+    constexpr const char *kProgram = R"(il 0.2.0
 global str @greeting = "hello"
 func @main() -> void {
 global_loop:

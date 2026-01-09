@@ -21,7 +21,7 @@
 
 int main()
 {
-    const char *src = R"(il 0.1.2
+    const char *src = R"(il 0.2.0
 global @g = "lit"
 )";
     std::istringstream in(src);

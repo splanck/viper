@@ -24,7 +24,7 @@ namespace
 
 void expectMalformedHeader(const std::string &header)
 {
-    std::string src = "il 0.1.2\n" + header + "\n)";
+    std::string src = "il 0.2.0\n" + header + "\n)";
     std::istringstream in(src);
     il::core::Module m;
     std::ostringstream diag;
