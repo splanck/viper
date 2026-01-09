@@ -28,7 +28,7 @@ using namespace il;
 
 namespace
 {
-const char *kProgram = R"(il 0.1.2
+const char *kProgram = R"(il 0.2.0
 
 func @complex(%flag:i1) -> i64 {
 entry(%flag:i1):

@@ -20,7 +20,7 @@
 
 int main()
 {
-    const char *src = R"(il 0.1.2
+    const char *src = R"(il 0.2.0
 # hash comment before function
    # hash comment with leading spaces
 // slash comment before function

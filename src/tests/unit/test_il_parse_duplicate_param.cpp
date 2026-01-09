@@ -22,7 +22,7 @@
 
 int main()
 {
-    static constexpr const char *kSource = R"(il 0.1.2
+    static constexpr const char *kSource = R"(il 0.2.0
 func @dup(i32 %x, i32 %x) -> void {
 entry:
   ret

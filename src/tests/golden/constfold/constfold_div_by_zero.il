@@ -1,4 +1,4 @@
-il 0.1.3
+il 0.2.0
 func @main() -> i64 {
 entry:
   %t0 = sdiv.chk0 1, 0

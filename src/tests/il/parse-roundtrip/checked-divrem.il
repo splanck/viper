@@ -1,4 +1,4 @@
-il 0.1.3
+il 0.2.0
 func @checked_divrem(%a:i64, %b:i64) -> i64 {
 entry(%a:i64, %b:i64):
   %t0 = sdiv.chk0 %a, %b

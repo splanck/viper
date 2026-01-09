@@ -293,7 +293,7 @@ struct NativeRunResult
 
     TempDirGuard guard(tempDir);
 
-    constexpr std::string_view kDivTrapProgram = R"(il 0.1.2
+    constexpr std::string_view kDivTrapProgram = R"(il 0.2.0
 
 func @main() -> i64 {
 entry:

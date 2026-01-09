@@ -21,7 +21,7 @@
 
 int main()
 {
-    const char *src = R"(il 0.1.2
+    const char *src = R"(il 0.2.0
 func @main() -> i64 {
 entry:
   %0 iadd.ovf 1, 2

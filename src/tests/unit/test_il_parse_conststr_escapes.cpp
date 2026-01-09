@@ -26,7 +26,7 @@
 
 int main()
 {
-    const char *source = R"(il 0.1.2
+    const char *source = R"(il 0.2.0
 func @main() -> void {
 entry:
   %s0 = const_str "line\n_tab\t_quote:\"_hex:\x21"

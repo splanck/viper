@@ -36,7 +36,7 @@ struct CliScenario
 };
 
 const std::array<CliScenario, 2> kScenarios = {{{"BranchPrint",
-                                                 {R"(il 0.1.2
+                                                 {R"(il 0.2.0
 extern @rt_print_i64(i64) -> void
 extern @rt_print_f64(f64) -> void
 
@@ -61,7 +61,7 @@ exit:
                                                   {}},
                                                  {false, std::nullopt}},
                                                 {"BranchPrintSpecialChar",
-                                                 {R"(il 0.1.2
+                                                 {R"(il 0.2.0
 extern @rt_print_i64(i64) -> void
 extern @rt_print_f64(f64) -> void
 

@@ -1,4 +1,4 @@
-il 0.1.3
+il 0.2.0
 extern @rt_abs_f64(f64) -> f64
 extern @rt_abs_i64(i64) -> i64
 extern @rt_ceil(f64) -> f64

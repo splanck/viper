@@ -26,7 +26,7 @@
 
 int main()
 {
-    const char *source = R"(il 0.1.2
+    const char *source = R"(il 0.2.0
 
 extern @callee$helper(ptr) -> void
 

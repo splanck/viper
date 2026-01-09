@@ -1,4 +1,4 @@
-il 0.1.3
+il 0.2.0
 
 func @unbalanced_push_pop() -> void {
 entry:

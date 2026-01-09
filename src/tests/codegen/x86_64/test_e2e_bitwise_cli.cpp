@@ -36,7 +36,7 @@ struct CliScenario
 };
 
 const std::array<CliScenario, 1> kScenarios = {{{"Bitwise",
-                                                 {R"(il 0.1.2
+                                                 {R"(il 0.2.0
 func @main() -> i64 {
 entry:
   %a = iconst.i64 0xFF00FF00

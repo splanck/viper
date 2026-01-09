@@ -36,7 +36,7 @@ struct CliScenario
 };
 
 const std::array<CliScenario, 1> kScenarios = {{{"FDiv",
-                                                 {R"(il 0.1.2
+                                                 {R"(il 0.2.0
 extern @rt_print_f64(f64) -> void
 func @main() -> i64 {
 entry:

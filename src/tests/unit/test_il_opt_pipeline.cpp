@@ -61,7 +61,7 @@ int main()
     TempFile input{".il"};
     {
         std::ofstream ofs(input.path);
-        ofs << "il 0.1.2\n";
+        ofs << "il 0.2.0\n";
         ofs << "func @main() -> i64 {\n";
         ofs << "entry:\n";
         ofs << "  %ptr = alloca 8\n";

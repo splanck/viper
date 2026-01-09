@@ -1,4 +1,4 @@
-il 0.1.3
+il 0.2.0
 extern @rt_arr_i32_len(ptr) -> i64
 extern @rt_arr_i32_release(ptr) -> void
 
