@@ -12,7 +12,7 @@ Imagine giving someone directions: "Go straight until the fountain. If the gate 
 
 That's exactly what conditional statements do in programming. They check a condition (is the gate open?) and do different things based on the answer.
 
-```viper
+```rust
 var gateOpen = true;
 
 if gateOpen {
@@ -32,7 +32,7 @@ This is the fundamental pattern of decision-making in programs.
 
 The simplest form has no `else`:
 
-```viper
+```rust
 var temperature = 35;
 
 if temperature > 30 {
@@ -53,7 +53,7 @@ if condition {
 
 The condition must be something that evaluates to `true` or `false` — a boolean expression. Usually this involves comparisons:
 
-```viper
+```rust
 if age >= 18 { ... }           // is age at least 18?
 if name == "Alice" { ... }     // is name exactly "Alice"?
 if score != 0 { ... }          // is score something other than 0?
@@ -66,7 +66,7 @@ if password == secret { ... }  // do passwords match?
 
 When you need to do one thing or another (but not both), use `else`:
 
-```viper
+```rust
 var hour = 14;
 
 if hour < 12 {
@@ -86,7 +86,7 @@ Think of it as a fork: you must take one path or the other, never both, never ne
 
 Sometimes there are more than two possibilities:
 
-```viper
+```rust
 var hour = 20;
 
 if hour < 12 {
@@ -115,7 +115,7 @@ The final `else` catches anything that didn't match earlier conditions. It's opt
 
 A condition is any expression that produces a boolean (`true` or `false`). The comparison operators from Chapter 3 are your main tools:
 
-```viper
+```rust
 x == y    // equal
 x != y    // not equal
 x < y     // less than
@@ -125,14 +125,14 @@ x >= y    // greater than or equal
 ```
 
 You can compare numbers:
-```viper
+```rust
 if score >= 100 {
     Viper.Terminal.Say("High score!");
 }
 ```
 
 You can compare strings:
-```viper
+```rust
 if answer == "yes" {
     Viper.Terminal.Say("Great!");
 }
@@ -147,7 +147,7 @@ String comparisons are case-sensitive: `"Yes"` is not equal to `"yes"`.
 Sometimes you need to check multiple things. The logical operators combine booleans:
 
 **AND (`&&`)**: Both must be true
-```viper
+```rust
 if age >= 18 && hasTicket {
     Viper.Terminal.Say("Welcome to the show!");
 }
@@ -155,7 +155,7 @@ if age >= 18 && hasTicket {
 You can enter only if you're at least 18 AND have a ticket.
 
 **OR (`||`)**: At least one must be true
-```viper
+```rust
 if day == "Saturday" || day == "Sunday" {
     Viper.Terminal.Say("It's the weekend!");
 }
@@ -163,7 +163,7 @@ if day == "Saturday" || day == "Sunday" {
 It's the weekend if it's Saturday OR Sunday (or both, but that's impossible with days).
 
 **NOT (`!`)**: Reverses the boolean
-```viper
+```rust
 if !gameOver {
     Viper.Terminal.Say("Keep playing!");
 }
@@ -171,7 +171,7 @@ if !gameOver {
 If `gameOver` is `false`, then `!gameOver` is `true`.
 
 You can build complex conditions:
-```viper
+```rust
 if (age >= 18 && age <= 65) || hasSpecialPass {
     Viper.Terminal.Say("You qualify for the program.");
 }
@@ -185,7 +185,7 @@ Use parentheses to make your intentions clear. Even when not strictly necessary,
 
 You can put `if` statements inside other `if` statements:
 
-```viper
+```rust
 var hasAccount = true;
 var password = "secret123";
 var inputPassword = "secret123";
@@ -205,7 +205,7 @@ This checks: Do you have an account? If yes, is the password correct? Each decis
 
 Nesting works, but deep nesting gets hard to read. Often you can flatten it:
 
-```viper
+```rust
 if !hasAccount {
     Viper.Terminal.Say("Please create an account first.");
 } else if password != inputPassword {
@@ -223,7 +223,7 @@ This handles the same logic but reads more linearly. It's called "guard clauses"
 
 Let's build a simple grading program:
 
-```viper
+```rust
 module Grader;
 
 func start() {
@@ -268,7 +268,7 @@ Notice how the conditions are ordered from highest to lowest. A score of 85 isn'
 
 When you're comparing one value against many possibilities, `match` can be cleaner than many `if-else if` chains:
 
-```viper
+```rust
 var day = 3;
 
 match day {
@@ -292,7 +292,7 @@ Match is especially useful when you have many specific values to check. We'll se
 ## The Three Languages
 
 **ViperLang**
-```viper
+```rust
 var score = 85;
 
 if score >= 60 {
@@ -368,7 +368,7 @@ All three express the same logic. The keywords differ, but the structure — con
 
 In ViperLang, conditions must be actual booleans. This is different from some languages where `0` counts as false and other numbers count as true.
 
-```viper
+```rust
 var count = 5;
 
 if count {           // Error in ViperLang: count is a number, not a boolean
@@ -391,14 +391,14 @@ This strictness helps prevent bugs. It forces you to be explicit about what you 
 ## Common Mistakes
 
 **Forgetting braces:**
-```viper
+```rust
 if score > 100
     Viper.Terminal.Say("High score!");  // Error: missing braces
 ```
 ViperLang requires `{ }` around conditional blocks.
 
 **Using = instead of ==:**
-```viper
+```rust
 if score = 100 {   // Wrong: this assigns 100 to score
     ...
 }
@@ -408,7 +408,7 @@ if score == 100 {  // Right: this compares score to 100
 ```
 
 **Checking impossible conditions:**
-```viper
+```rust
 if score >= 90 {
     grade = "A";
 } else if score >= 80 {
@@ -419,7 +419,7 @@ if score >= 90 {
 ```
 
 **Overlapping conditions:**
-```viper
+```rust
 // Both could be true for score = 85
 if score >= 80 {
     Viper.Terminal.Say("B or better");
@@ -430,7 +430,7 @@ if score >= 70 {
 ```
 
 If you want only one to run, use `else if`:
-```viper
+```rust
 if score >= 80 {
     Viper.Terminal.Say("B or better");
 } else if score >= 70 {
@@ -444,7 +444,7 @@ if score >= 80 {
 
 Here's a number guessing game that uses everything we've learned:
 
-```viper
+```rust
 module GuessGame;
 
 func start() {

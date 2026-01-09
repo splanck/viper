@@ -8,7 +8,7 @@ Every programming book starts with "Hello, World." It's tradition, dating back t
 
 Create a new file called `hello.viper` and type this:
 
-```viper
+```rust
 module Hello;
 
 func start() {
@@ -120,7 +120,7 @@ These are the concepts. The syntax is just how each language spells them.
 
 Change the text to something else:
 
-```viper
+```rust
 Viper.Terminal.Say("I wrote this!");
 ```
 
@@ -128,7 +128,7 @@ Run it again. See your new message appear.
 
 Now try displaying two messages:
 
-```viper
+```rust
 module Hello;
 
 func start() {
@@ -141,7 +141,7 @@ Each `Say` displays one line. The program runs them in order, top to bottom.
 
 What if you want multiple things on the same line? Use `Print` instead of `Say`:
 
-```viper
+```rust
 module Hello;
 
 func start() {
@@ -164,7 +164,7 @@ One Two Three
 
 Let's break our program deliberately. Type this:
 
-```viper
+```rust
 module Hello;
 
 func start() {
@@ -191,7 +191,7 @@ This is your first error message. Get used to them — they're your friends. The
 
 Let's try another mistake:
 
-```viper
+```rust
 module Hello;
 
 func start() {

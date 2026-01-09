@@ -25,7 +25,7 @@ Programs can do all of this too. That's networking.
 
 The simplest networking is fetching web pages and APIs:
 
-```viper
+```rust
 import Viper.Network;
 
 func start() {
@@ -45,7 +45,7 @@ func start() {
 
 Different methods for different purposes:
 
-```viper
+```rust
 // GET - retrieve data
 var users = Http.get("https://api.example.com/users");
 
@@ -69,7 +69,7 @@ var deleted = Http.delete("https://api.example.com/users/123");
 
 Most modern APIs return JSON:
 
-```viper
+```rust
 import Viper.Network;
 import Viper.JSON;
 
@@ -115,7 +115,7 @@ HTTP is built on TCP (Transmission Control Protocol). TCP provides reliable, ord
 
 Connecting to a server:
 
-```viper
+```rust
 import Viper.Network;
 
 func start() {
@@ -143,7 +143,7 @@ func start() {
 
 Accepting connections:
 
-```viper
+```rust
 import Viper.Network;
 
 func start() {
@@ -177,7 +177,7 @@ Let's build something real: a simple chat system.
 
 ### Chat Server
 
-```viper
+```rust
 module ChatServer;
 
 import Viper.Network;
@@ -254,7 +254,7 @@ func start() {
 
 ### Chat Client
 
-```viper
+```rust
 module ChatClient;
 
 import Viper.Network;
@@ -325,7 +325,7 @@ func start() {
 
 UDP (User Datagram Protocol) is faster than TCP but doesn't guarantee delivery. Good for games, video streaming, and real-time data where speed matters more than reliability.
 
-```viper
+```rust
 import Viper.Network;
 
 // UDP sender
@@ -350,7 +350,7 @@ func receiveUdp() {
 
 For multiplayer games, UDP is often preferred:
 
-```viper
+```rust
 value PlayerState {
     id: i64;
     x: f64;
@@ -413,7 +413,7 @@ func unpackPlayerState(data: string) -> PlayerState {
 
 WebSockets provide full-duplex communication over HTTP, perfect for real-time web applications:
 
-```viper
+```rust
 import Viper.Network;
 
 entity WebSocketClient {
@@ -456,7 +456,7 @@ entity WebSocketClient {
 
 Networks are unreliable. Connections drop, servers go down, packets get lost. Always handle errors:
 
-```viper
+```rust
 import Viper.Network;
 
 func robustFetch(url: string, maxRetries: i64) -> string? {
@@ -498,7 +498,7 @@ func robustFetch(url: string, maxRetries: i64) -> string? {
 
 Always set timeouts to prevent hanging:
 
-```viper
+```rust
 // With timeout
 var response = Http.get(url, { timeout: 5000 });  // 5 second timeout
 
@@ -511,7 +511,7 @@ socket.setReadTimeout(10000);  // 10 second read timeout
 
 ## A Complete Example: Weather Dashboard
 
-```viper
+```rust
 module WeatherDashboard;
 
 import Viper.Network;
@@ -621,7 +621,7 @@ func start() {
 ## The Three Languages
 
 **ViperLang**
-```viper
+```rust
 import Viper.Network;
 
 var response = Http.get("https://api.example.com/data");
@@ -675,7 +675,7 @@ end.
 ## Common Mistakes
 
 **Forgetting to close connections**
-```viper
+```rust
 // Bad: Connection leak!
 func fetchData(url: string) -> string {
     var socket = TcpSocket.connect(host, port);
@@ -693,7 +693,7 @@ func fetchData(url: string) -> string {
 ```
 
 **Not handling timeouts**
-```viper
+```rust
 // Bad: Could hang forever
 var response = Http.get(slowServer);
 
@@ -702,7 +702,7 @@ var response = Http.get(slowServer, { timeout: 10000 });
 ```
 
 **Blocking the main thread**
-```viper
+```rust
 // Bad: Freezes UI during network call
 func onClick() {
     var data = Http.get(url);  // Blocks!

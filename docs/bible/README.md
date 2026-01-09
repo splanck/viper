@@ -95,7 +95,7 @@ The Viper Bible is organized as a journey, not a dictionary. Each chapter builds
 Viper supports three languages that all compile to the same underlying system. This book emphasizes ViperLang but shows all three:
 
 **ViperLang** — Modern, clean, C-like syntax. Our recommended choice for new projects.
-```viper
+```rust
 func greet(name: string) {
     Viper.Terminal.Say("Hello, " + name + "!");
 }

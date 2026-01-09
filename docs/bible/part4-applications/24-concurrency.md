@@ -10,7 +10,7 @@ This chapter teaches you to write programs that do many things at once.
 
 Consider a program that downloads 100 images:
 
-```viper
+```rust
 // Sequential: ~100 seconds (1 second per image)
 for url in imageUrls {
     var image = Http.get(url);
@@ -22,7 +22,7 @@ Most of that time is waiting for network responses. Your CPU sits idle.
 
 Now imagine downloading them in parallel:
 
-```viper
+```rust
 // Parallel: ~1-2 seconds (all at once)
 var tasks = [];
 for url in imageUrls {
@@ -43,7 +43,7 @@ Same work, 50-100x faster. That's the power of concurrency.
 
 A *thread* is an independent sequence of execution. Your program starts with one thread. You can create more:
 
-```viper
+```rust
 import Viper.Threading;
 
 func start() {
@@ -85,7 +85,7 @@ The order varies — that's the nature of parallel execution.
 
 ### Thread with Return Value
 
-```viper
+```rust
 var thread = Thread.spawn(func() -> i64 {
     var sum = 0;
     for i in 0..1000000 {
@@ -102,7 +102,7 @@ Viper.Terminal.Say("Sum: " + result);
 
 ### Multiple Threads
 
-```viper
+```rust
 func processChunk(data: [i64], start: i64, end: i64) -> i64 {
     var sum = 0;
     for i in start..end {
@@ -140,7 +140,7 @@ func parallelSum(data: [i64]) -> i64 {
 
 When threads share data, problems arise:
 
-```viper
+```rust
 // DANGEROUS: Race condition!
 var counter = 0;
 
@@ -183,7 +183,7 @@ We lost an increment! This is a *race condition*.
 
 A *mutex* (mutual exclusion) ensures only one thread accesses shared data at a time:
 
-```viper
+```rust
 import Viper.Threading;
 
 var counter = 0;
@@ -215,7 +215,7 @@ Viper.Terminal.Say("Counter: " + counter);  // Always 200000
 
 A cleaner way to use locks:
 
-```viper
+```rust
 var mutex = Mutex.create();
 
 // Automatically unlocks when block exits
@@ -228,7 +228,7 @@ mutex.synchronized(func() {
 
 Viper provides thread-safe versions of common structures:
 
-```viper
+```rust
 import Viper.Threading;
 
 var safeList = ConcurrentList<string>.create();
@@ -249,7 +249,7 @@ Thread.spawn(func() {
 
 For simple operations, atomics are faster than mutexes:
 
-```viper
+```rust
 import Viper.Threading;
 
 var counter = Atomic<i64>.create(0);
@@ -284,7 +284,7 @@ Atomic operations available:
 
 Instead of sharing memory, share by communicating:
 
-```viper
+```rust
 import Viper.Threading;
 
 func start() {
@@ -317,7 +317,7 @@ func start() {
 
 ### Buffered Channels
 
-```viper
+```rust
 // Unbuffered: send blocks until receive
 var channel = Channel<i64>.create();
 
@@ -327,7 +327,7 @@ var buffered = Channel<i64>.create(10);
 
 ### Select: Multiple Channels
 
-```viper
+```rust
 var chan1 = Channel<string>.create();
 var chan2 = Channel<string>.create();
 
@@ -342,7 +342,7 @@ Viper.Terminal.Say("Got from channel " + result.index + ": " + result.value);
 
 Creating threads has overhead. For many small tasks, use a pool:
 
-```viper
+```rust
 import Viper.Threading;
 
 func start() {
@@ -367,7 +367,7 @@ func start() {
 
 Get results from pool tasks:
 
-```viper
+```rust
 var pool = ThreadPool.create(4);
 
 var futures: [Future<i64>] = [];
@@ -391,7 +391,7 @@ for future in futures {
 
 For I/O-bound tasks, async/await is often cleaner:
 
-```viper
+```rust
 import Viper.Async;
 
 async func fetchData(url: string) -> string {
@@ -431,7 +431,7 @@ func start() {
 
 A *deadlock* occurs when threads wait for each other forever:
 
-```viper
+```rust
 // DEADLOCK EXAMPLE - DON'T DO THIS
 var mutex1 = Mutex.create();
 var mutex2 = Mutex.create();
@@ -460,7 +460,7 @@ T1 has mutex1, wants mutex2. T2 has mutex2, wants mutex1. Neither can proceed.
 3. **Single lock**: Use one lock for related resources
 4. **Avoid nesting**: Minimize holding multiple locks
 
-```viper
+```rust
 // Lock ordering: always lock in alphabetical order by name
 func transferMoney(from: Account, to: Account, amount: f64) {
     var first = if from.id < to.id { from } else { to };
@@ -481,7 +481,7 @@ func transferMoney(from: Account, to: Account, amount: f64) {
 
 ## A Complete Example: Parallel Image Processor
 
-```viper
+```rust
 module ImageProcessor;
 
 import Viper.Threading;
@@ -602,7 +602,7 @@ func start() {
 ## The Three Languages
 
 **ViperLang**
-```viper
+```rust
 import Viper.Threading;
 
 var thread = Thread.spawn(func() {
@@ -661,7 +661,7 @@ end.
 ## Common Mistakes
 
 **Forgetting to join threads**
-```viper
+```rust
 // Bad: Program might exit before thread finishes
 Thread.spawn(func() {
     doImportantWork();
@@ -676,7 +676,7 @@ t.join();
 ```
 
 **Sharing mutable data without locks**
-```viper
+```rust
 // Bad: Race condition
 var data = [];
 Thread.spawn(func() { data.push("A"); });
@@ -689,7 +689,7 @@ Thread.spawn(func() { data.add("B"); });
 ```
 
 **Holding locks too long**
-```viper
+```rust
 // Bad: Holds lock during slow I/O
 mutex.lock();
 var data = Http.get(slowUrl);  // Blocks other threads!

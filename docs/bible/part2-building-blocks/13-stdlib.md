@@ -36,7 +36,7 @@ Let's explore the most important ones.
 
 You've used this throughout the book:
 
-```viper
+```rust
 Viper.Terminal.Say("Hello!");              // Print with newline
 Viper.Terminal.Print("No newline");        // Print without newline
 var input = Viper.Terminal.ReadLine();     // Read a line
@@ -44,7 +44,7 @@ var char = Viper.Terminal.ReadKey();       // Read single keypress
 ```
 
 Terminal control:
-```viper
+```rust
 Viper.Terminal.Clear();                    // Clear screen
 Viper.Terminal.SetCursor(10, 5);           // Move cursor to column 10, row 5
 Viper.Terminal.SetColor("red", "black");   // Red text, black background
@@ -61,7 +61,7 @@ These are essential for interactive console applications and games.
 
 Standard mathematical functions:
 
-```viper
+```rust
 Viper.Math.abs(-5);         // 5 (absolute value)
 Viper.Math.min(3, 7);       // 3
 Viper.Math.max(3, 7);       // 7
@@ -83,7 +83,7 @@ Viper.Math.atan2(y, x);     // Angle from coordinates
 ```
 
 Constants:
-```viper
+```rust
 Viper.Math.PI;              // 3.14159...
 Viper.Math.E;               // 2.71828...
 ```
@@ -92,7 +92,7 @@ Viper.Math.E;               // 2.71828...
 
 ## Viper.Random — Randomness
 
-```viper
+```rust
 Viper.Random.int(1, 100);      // Random integer 1-100 (inclusive)
 Viper.Random.float();          // Random float 0.0-1.0
 Viper.Random.bool();           // Random true or false
@@ -101,12 +101,12 @@ Viper.Random.shuffle(array);   // Shuffle array in place
 ```
 
 Seeding for reproducibility:
-```viper
+```rust
 Viper.Random.seed(12345);      // Same seed = same sequence
 ```
 
 Example — dice roll:
-```viper
+```rust
 var die = Viper.Random.int(1, 6);
 Viper.Terminal.Say("You rolled: " + die);
 ```
@@ -116,7 +116,7 @@ Viper.Terminal.Say("You rolled: " + die);
 ## Viper.Time — Date and Time
 
 Current time:
-```viper
+```rust
 var now = Viper.Time.now();
 Viper.Terminal.Say(now.year);
 Viper.Terminal.Say(now.month);
@@ -127,13 +127,13 @@ Viper.Terminal.Say(now.second);
 ```
 
 Formatting:
-```viper
+```rust
 var formatted = now.format("YYYY-MM-DD HH:mm:ss");
 // "2024-03-15 14:30:00"
 ```
 
 Timing:
-```viper
+```rust
 var start = Viper.Time.millis();
 // ... do something ...
 var elapsed = Viper.Time.millis() - start;
@@ -141,7 +141,7 @@ Viper.Terminal.Say("Took " + elapsed + " ms");
 ```
 
 Delays:
-```viper
+```rust
 Viper.Time.sleep(1000);  // Pause for 1000 milliseconds (1 second)
 ```
 
@@ -150,7 +150,7 @@ Viper.Time.sleep(1000);  // Pause for 1000 milliseconds (1 second)
 ## Viper.Environment — System Info
 
 Command-line arguments:
-```viper
+```rust
 var args = Viper.Environment.args();
 for arg in args {
     Viper.Terminal.Say("Arg: " + arg);
@@ -158,7 +158,7 @@ for arg in args {
 ```
 
 Environment variables:
-```viper
+```rust
 var home = Viper.Environment.get("HOME");
 var path = Viper.Environment.get("PATH");
 
@@ -168,7 +168,7 @@ if Viper.Environment.has("DEBUG") {
 ```
 
 System info:
-```viper
+```rust
 Viper.Environment.os();           // "windows", "macos", "linux"
 Viper.Environment.homeDir();      // User's home directory
 Viper.Environment.currentDir();   // Current working directory
@@ -179,7 +179,7 @@ Viper.Environment.currentDir();   // Current working directory
 ## Viper.Fmt — Formatting
 
 Create formatted strings:
-```viper
+```rust
 var msg = Viper.Fmt.format("Hello, {}!", "World");
 // "Hello, World!"
 
@@ -188,7 +188,7 @@ var info = Viper.Fmt.format("{} is {} years old", "Alice", 30);
 ```
 
 Number formatting:
-```viper
+```rust
 Viper.Fmt.format("{:.2}", 3.14159);   // "3.14" (2 decimal places)
 Viper.Fmt.format("{:05}", 42);        // "00042" (pad to 5 digits)
 Viper.Fmt.format("{:>10}", "hi");     // "        hi" (right-align)
@@ -201,7 +201,7 @@ Viper.Fmt.format("{:<10}", "hi");     // "hi        " (left-align)
 
 Beyond basic string methods, advanced text operations:
 
-```viper
+```rust
 Viper.Text.padLeft("42", 5, '0');    // "00042"
 Viper.Text.padRight("hi", 5, ' ');   // "hi   "
 Viper.Text.repeat("ab", 3);          // "ababab"
@@ -222,7 +222,7 @@ Viper.Text.words("hello world");     // ["hello", "world"]
 Beyond basic arrays, the collections module provides:
 
 **List** — dynamic array:
-```viper
+```rust
 var list = Viper.Collections.List.new();
 list.add("one");
 list.add("two");
@@ -232,7 +232,7 @@ list.remove(0);
 ```
 
 **Map** — key-value pairs:
-```viper
+```rust
 var map = Viper.Collections.Map.new();
 map.set("name", "Alice");
 map.set("age", "30");
@@ -248,7 +248,7 @@ for key in map.keys() {
 ```
 
 **Set** — unique values:
-```viper
+```rust
 var set = Viper.Collections.Set.new();
 set.add("apple");
 set.add("banana");
@@ -261,7 +261,7 @@ Viper.Terminal.Say(set.size());  // 2
 ## Viper.Parse — Parsing
 
 Convert strings to values:
-```viper
+```rust
 Viper.Parse.Int("42");          // 42
 Viper.Parse.Float("3.14");      // 3.14
 Viper.Parse.Bool("true");       // true
@@ -280,7 +280,7 @@ try {
 
 We covered these in Chapter 9:
 
-```viper
+```rust
 // File operations
 Viper.File.readText("file.txt");
 Viper.File.writeText("file.txt", content);
@@ -302,19 +302,19 @@ Viper.Path.extension("/path/to/file.txt");
 ## Viper.Crypto — Cryptography
 
 Hashing:
-```viper
+```rust
 var hash = Viper.Crypto.md5("hello");
 var sha = Viper.Crypto.sha256("hello");
 ```
 
 Encoding:
-```viper
+```rust
 var encoded = Viper.Crypto.base64Encode("hello");
 var decoded = Viper.Crypto.base64Decode(encoded);
 ```
 
 GUIDs:
-```viper
+```rust
 var id = Viper.Crypto.guid();  // Unique identifier
 ```
 
@@ -324,7 +324,7 @@ var id = Viper.Crypto.guid();  // Unique identifier
 
 Here's a program that uses multiple standard library modules:
 
-```viper
+```rust
 module StdlibDemo;
 
 func start() {

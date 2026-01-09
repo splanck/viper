@@ -46,7 +46,7 @@ Let's build it step by step.
 
 First, define constants:
 
-```viper
+```rust
 // config.viper
 module Config;
 
@@ -84,7 +84,7 @@ pub final STARTING_LIVES = 3;
 
 ## Step 2: The Frog (Player)
 
-```viper
+```rust
 // frog.viper
 module Frog;
 
@@ -176,7 +176,7 @@ pub func die(frog: Frog) -> Frog {
 
 ## Step 3: Vehicles (Road Hazards)
 
-```viper
+```rust
 // vehicle.viper
 module Vehicle;
 
@@ -240,7 +240,7 @@ pub func hitsPoint(v: Vehicle, px: f64, py: f64) -> bool {
 
 ## Step 4: Platforms (River Objects)
 
-```viper
+```rust
 // platform.viper
 module Platform;
 
@@ -294,7 +294,7 @@ pub func containsPoint(p: Platform, px: f64, py: f64) -> bool {
 
 ## Step 5: Game State
 
-```viper
+```rust
 // game.viper
 module Game;
 
@@ -540,7 +540,7 @@ pub func moveFrog(state: GameState, dx: i64, dy: i64) -> GameState {
 
 ## Step 6: Rendering
 
-```viper
+```rust
 // renderer.viper
 module Renderer;
 
@@ -656,7 +656,7 @@ func drawUI(canvas: Canvas, state: Game.GameState) {
 
 ## Step 7: Main Game Loop
 
-```viper
+```rust
 // main.viper
 module Main;
 

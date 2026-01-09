@@ -12,7 +12,7 @@ A module is a file containing related code: functions, structures, constants. Ev
 
 Here's a simple module:
 
-```viper
+```rust
 // file: math_utils.viper
 module MathUtils;
 
@@ -35,7 +35,7 @@ This module provides math utilities. Other code can *import* this module to use 
 
 To use code from another module:
 
-```viper
+```rust
 // file: main.viper
 module Main;
 
@@ -57,7 +57,7 @@ The `import MathUtils` statement makes that module's contents available. You acc
 
 If you only need certain items, import them directly:
 
-```viper
+```rust
 import MathUtils { square, PI };
 
 func start() {
@@ -70,7 +70,7 @@ This imports only `square` and `PI`, and you can use them without the module pre
 
 You can even rename imports:
 
-```viper
+```rust
 import MathUtils { square as sq };
 
 func start() {
@@ -84,7 +84,7 @@ func start() {
 
 Not everything in a module should be visible to outsiders. Use `export` to mark what's public:
 
-```viper
+```rust
 // file: counter.viper
 module Counter;
 
@@ -109,7 +109,7 @@ func reset() {  // Private: internal use only
 
 The `count` variable and `reset` function are internal implementation details. Other modules can only use the public functions.
 
-```viper
+```rust
 // file: main.viper
 import Counter;
 
@@ -144,7 +144,7 @@ my_project/
 
 Modules in subdirectories:
 
-```viper
+```rust
 import utils.math;     // Import utils/math.viper
 import utils.random;   // Import utils/random.viper
 
@@ -159,7 +159,7 @@ func start() {
 
 Viper comes with a rich standard library organized into modules:
 
-```viper
+```rust
 import Viper.Terminal;   // Terminal I/O
 import Viper.File;       // File operations
 import Viper.Math;       // Mathematical functions
@@ -199,7 +199,7 @@ Both `player` and `enemy` import `physics`. That's fine — each gets access to 
 Let's refactor our game demo into modules:
 
 **vec2.viper** — Vector math
-```viper
+```rust
 module Vec2;
 
 export value Vec2 {
@@ -227,7 +227,7 @@ export func zero() -> Vec2 {
 ```
 
 **player.viper** — Player entity
-```viper
+```rust
 module Player;
 
 import Vec2;
@@ -276,7 +276,7 @@ export func takeDamage(player: Player, amount: i64) -> Player {
 ```
 
 **enemy.viper** — Enemy entity
-```viper
+```rust
 module Enemy;
 
 import Vec2;
@@ -295,7 +295,7 @@ export func create(x: f64, y: f64, damage: i64) -> Enemy {
 ```
 
 **main.viper** — Game entry point
-```viper
+```rust
 module Main;
 
 import Vec2;
@@ -340,7 +340,7 @@ Now each concept lives in its own file. You can work on player logic without tou
 ## The Three Languages
 
 **ViperLang**
-```viper
+```rust
 // Defining
 module MyModule;
 export func hello() { ... }

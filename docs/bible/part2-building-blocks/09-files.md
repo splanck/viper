@@ -24,7 +24,7 @@ Files let you:
 
 The simplest way to read a file is to load it all at once:
 
-```viper
+```rust
 var content = Viper.File.readText("message.txt");
 Viper.Terminal.Say(content);
 ```
@@ -39,7 +39,7 @@ If the file doesn't exist, you'll get an error. We'll learn to handle that in Ch
 
 To save text to a file:
 
-```viper
+```rust
 var content = "Hello, File!\nThis is line two.";
 Viper.File.writeText("output.txt", content);
 Viper.Terminal.Say("File written!");
@@ -55,7 +55,7 @@ The `\n` creates line breaks. Without them, everything would be on one line.
 
 Sometimes you want to add to a file without erasing what's already there:
 
-```viper
+```rust
 Viper.File.appendText("log.txt", "Event occurred at 10:00\n");
 ```
 
@@ -67,7 +67,7 @@ Each call adds to the end of the file. This is perfect for logs.
 
 Before reading, you might want to check:
 
-```viper
+```rust
 if Viper.File.exists("config.txt") {
     var config = Viper.File.readText("config.txt");
     Viper.Terminal.Say("Loaded config");
@@ -82,7 +82,7 @@ if Viper.File.exists("config.txt") {
 
 For larger files, reading everything at once might use too much memory. Reading line by line is more efficient:
 
-```viper
+```rust
 var lines = Viper.File.readLines("data.txt");
 
 for line in lines {
@@ -94,7 +94,7 @@ for line in lines {
 
 You can also process lines one at a time (more memory-efficient for huge files):
 
-```viper
+```rust
 var reader = Viper.File.openRead("huge.txt");
 
 while reader.hasMore() {
@@ -114,14 +114,14 @@ Always close files when done. This frees up system resources.
 Paths describe where files live. They can be:
 
 **Relative** — relative to the current directory:
-```viper
+```rust
 "data.txt"           // In current directory
 "data/scores.txt"    // In 'data' subdirectory
 "../config.txt"      // In parent directory
 ```
 
 **Absolute** — full path from the root:
-```viper
+```rust
 "/home/alice/documents/report.txt"  // Linux/Mac
 "C:\\Users\\Alice\\Documents\\report.txt"  // Windows
 ```
@@ -134,7 +134,7 @@ Use forward slashes even on Windows — Viper handles the conversion.
 
 Files are organized in directories (folders). You can work with them too:
 
-```viper
+```rust
 // Check if directory exists
 if Viper.Dir.exists("saves") {
     ...
@@ -156,7 +156,7 @@ for file in files {
 
 The `Viper.Path` module helps work with file paths:
 
-```viper
+```rust
 var path = "/home/alice/documents/report.txt";
 
 Viper.Path.fileName(path);     // "report.txt"
@@ -173,7 +173,7 @@ This is better than string manipulation — it handles different operating syste
 
 Let's build a simple notes application:
 
-```viper
+```rust
 module NoteKeeper;
 
 final NOTES_FILE = "notes.txt";
@@ -253,7 +253,7 @@ This program:
 
 Text files are human-readable. Binary files store raw data — more compact, but not readable by humans.
 
-```viper
+```rust
 // Write binary data
 var data: [byte] = [72, 101, 108, 108, 111];  // ASCII for "Hello";
 Viper.File.writeBytes("data.bin", data);
@@ -272,7 +272,7 @@ Binary files are used for images, audio, compiled programs, and efficient data s
 ## Common File Patterns
 
 ### Configuration file
-```viper
+```rust
 func loadConfig() -> string {
     if Viper.File.exists("config.ini") {
         return Viper.File.readText("config.ini");
@@ -283,7 +283,7 @@ func loadConfig() -> string {
 ```
 
 ### Log file
-```viper
+```rust
 func log(message: string) {
     var timestamp = Viper.Time.now().toString();
     var entry = "[" + timestamp + "] " + message + "\n";
@@ -292,7 +292,7 @@ func log(message: string) {
 ```
 
 ### Processing a data file
-```viper
+```rust
 var lines = Viper.File.readLines("scores.csv");
 var total = 0;
 
@@ -310,7 +310,7 @@ Viper.Terminal.Say("Total: " + total);
 ## The Three Languages
 
 **ViperLang**
-```viper
+```rust
 // Read
 var content = Viper.File.readText("file.txt");
 
@@ -378,7 +378,7 @@ Pascal uses file variables and procedures like AssignFile, Reset, Rewrite, Appen
 ## Common Mistakes
 
 **Forgetting the file might not exist:**
-```viper
+```rust
 // Crashes if file doesn't exist
 var content = Viper.File.readText("maybe.txt");
 
@@ -389,7 +389,7 @@ if Viper.File.exists("maybe.txt") {
 ```
 
 **Overwriting when you meant to append:**
-```viper
+```rust
 Viper.File.writeText("log.txt", "Entry 1\n");
 Viper.File.writeText("log.txt", "Entry 2\n");  // Oops! Entry 1 is gone
 
@@ -398,7 +398,7 @@ Viper.File.appendText("log.txt", "Entry 2\n");  // Correct
 ```
 
 **Hardcoding paths:**
-```viper
+```rust
 // Bad: only works on your machine
 var file = "C:\\Users\\Alice\\Documents\\data.txt";
 
@@ -411,7 +411,7 @@ var file = Viper.Path.join(home, "Documents", "data.txt");
 ```
 
 **Not closing files:**
-```viper
+```rust
 var reader = Viper.File.openRead("file.txt");
 // ... use reader ...
 // Forgot reader.close()!  File stays locked

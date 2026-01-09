@@ -14,7 +14,7 @@ Error: Unexpected token 'else' at line 5
 ```
 **Cause**: Missing or misplaced syntax element.
 **Fix**: Check for missing braces, parentheses, or semicolons before the error location.
-```viper
+```rust
 // Wrong
 if x > 0
     doSomething()
@@ -59,7 +59,7 @@ Error: Type mismatch: expected 'i64', got 'string' at line 7
 ```
 **Cause**: Using a value of the wrong type.
 **Fix**: Convert the value or fix the expression.
-```viper
+```rust
 // Wrong
 var x: i64 = "hello";
 
@@ -75,7 +75,7 @@ Error: Cannot assign to immutable variable 'x' at line 12
 ```
 **Cause**: Trying to modify a `let` variable.
 **Fix**: Use `var` if the variable needs to change.
-```viper
+```rust
 // Wrong
 var x = 5;
 x = 10;  // Error
@@ -91,7 +91,7 @@ Error: Cannot apply '+' to 'string' and 'i64' at line 8
 ```
 **Cause**: Operator doesn't support these types.
 **Fix**: Convert one operand to match the other.
-```viper
+```rust
 // Wrong
 var result = "Value: " + 42;
 
@@ -109,7 +109,7 @@ Error: Undefined variable 'count' at line 15
 ```
 **Cause**: Using a variable that hasn't been declared.
 **Fix**: Declare the variable or check spelling.
-```viper
+```rust
 // Wrong
 Viper.Terminal.Say(count);  // count not defined
 
@@ -149,7 +149,7 @@ Error: Function 'add' expects 2 arguments, got 3 at line 10
 ```
 **Cause**: Calling a function with incorrect argument count.
 **Fix**: Match the function signature.
-```viper
+```rust
 func add(a: i64, b: i64) -> i64 { ... }
 
 // Wrong
@@ -165,7 +165,7 @@ Error: Function 'getValue' must return a value at line 25
 ```
 **Cause**: Function declares a return type but doesn't return.
 **Fix**: Add a return statement.
-```viper
+```rust
 // Wrong
 func getValue() -> i64 {
     var x = 42;
@@ -223,7 +223,7 @@ Error: Null pointer exception at line 15
 ```
 **Cause**: Calling a method or accessing a field on null.
 **Fix**: Check for null before accessing.
-```viper
+```rust
 // Wrong
 var user = findUser(id);
 Viper.Terminal.Say(user.name);  // user might be null!
@@ -243,7 +243,7 @@ Error: Array index 10 out of bounds for length 5 at line 20
 ```
 **Cause**: Accessing an array element that doesn't exist.
 **Fix**: Check array length before accessing.
-```viper
+```rust
 // Wrong
 var items = [1, 2, 3, 4, 5];
 var x = items[10];  // Only 0-4 valid!
@@ -262,7 +262,7 @@ Error: Division by zero at line 12
 ```
 **Cause**: Dividing by zero.
 **Fix**: Check the divisor before dividing.
-```viper
+```rust
 // Wrong
 var result = a / b;  // b might be 0!
 
@@ -289,7 +289,7 @@ Error: Cannot cast 'Dog' to 'Cat' at line 30
 ```
 **Cause**: Invalid type cast.
 **Fix**: Check the actual type before casting.
-```viper
+```rust
 // Wrong
 var animal: Animal = Dog();
 var cat = animal as Cat;  // Error!
@@ -310,7 +310,7 @@ Error: File not found: 'data.txt' at line 5
 ```
 **Cause**: Trying to read a file that doesn't exist.
 **Fix**: Check if file exists or handle the error.
-```viper
+```rust
 if Viper.File.exists("data.txt") {
     var content = Viper.File.readText("data.txt");
 }
@@ -372,7 +372,7 @@ Error: Stack overflow at line 100
 ```
 **Cause**: Too much recursion or very deep call stack.
 **Fix**: Convert recursion to iteration or increase stack size.
-```viper
+```rust
 // Wrong: infinite recursion
 func bad() {
     bad();  // Never ends!

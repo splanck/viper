@@ -68,7 +68,7 @@ A programming language is a way to write instructions that humans can read and w
 
 Here's the same thing in ViperLang:
 
-```viper
+```rust
 var x = 0;
 ```
 
@@ -89,7 +89,7 @@ Some people find one style more natural than another. Some languages are better 
 Here's "create a variable x with value 0" in all three:
 
 **ViperLang**
-```viper
+```rust
 var x = 0;
 ```
 

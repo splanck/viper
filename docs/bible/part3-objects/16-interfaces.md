@@ -12,7 +12,7 @@ A dog can be drawn on screen. So can a spaceship. So can a health bar. They're c
 
 An interface declares methods without implementing them:
 
-```viper
+```rust
 interface Drawable {
     func draw();
 }
@@ -22,7 +22,7 @@ This says: "Anything that is Drawable must have a `draw()` method." It doesn't s
 
 Entities *implement* interfaces:
 
-```viper
+```rust
 entity Circle implements Drawable {
     radius: f64;
 
@@ -49,7 +49,7 @@ Both entities are Drawable. They each provide their own implementation of `draw(
 
 The power comes from treating different classes uniformly:
 
-```viper
+```rust
 func renderScene(items: [Drawable]) {
     for item in items {
         item.draw();
@@ -72,13 +72,13 @@ The `renderScene` function doesn't know or care about the specific types. It jus
 ## Interface vs. Inheritance
 
 **Inheritance**: "is-a" relationship, shares implementation
-```viper
+```rust
 entity Dog extends Animal { ... }
 // A dog IS an animal, inherits animal's code
 ```
 
 **Interface**: "can-do" relationship, shares behavior contract
-```viper
+```rust
 entity Dog implements Drawable { ... }
 // A dog CAN BE drawn, must implement draw()
 ```
@@ -94,7 +94,7 @@ Key differences:
 
 An entity can implement several interfaces:
 
-```viper
+```rust
 interface Drawable {
     func draw();
 }
@@ -129,7 +129,7 @@ entity Button implements Drawable, Movable, Clickable {
 
 The Button is Drawable AND Movable AND Clickable. It can be used anywhere any of those interfaces is expected:
 
-```viper
+```rust
 func drawAll(items: [Drawable]) { ... }
 func moveAll(items: [Movable]) { ... }
 func handleClick(item: Clickable) { ... }
@@ -145,7 +145,7 @@ handleClick(btn);
 
 You can combine inheritance and interfaces:
 
-```viper
+```rust
 entity Enemy {
     health: i64;
 
@@ -181,7 +181,7 @@ The Goblin is an Enemy (inheritance) and is also Drawable and Attackable (interf
 
 Prefer small, focused interfaces over large ones:
 
-```viper
+```rust
 // Bad: one big interface
 interface GameEntity {
     func draw();
@@ -223,7 +223,7 @@ With small interfaces:
 
 Interfaces are perfect for plugin systems where you don't know what implementations will exist:
 
-```viper
+```rust
 module PluginSystem;
 
 // Interface that all plugins must implement
@@ -325,7 +325,7 @@ The PluginManager works with any Plugin without knowing the specific types. You 
 ## The Three Languages
 
 **ViperLang**
-```viper
+```rust
 interface Printable {
     func print();
 }
@@ -374,7 +374,7 @@ Pascal prefixes interfaces with `I` by convention.
 ## Common Patterns
 
 ### Strategy pattern
-```viper
+```rust
 interface SortStrategy {
     func sort(items: [i64]) -> [i64];
 }
@@ -395,7 +395,7 @@ func processData(data: [i64], strategy: SortStrategy) {
 ```
 
 ### Observer pattern
-```viper
+```rust
 interface Observer {
     func onEvent(event: string);
 }

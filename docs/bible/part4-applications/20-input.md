@@ -16,7 +16,7 @@ There are two ways to think about keyboard input:
 
 ### Checking Key State
 
-```viper
+```rust
 import Viper.Input;
 
 while gameRunning {
@@ -41,7 +41,7 @@ This checks every frame whether each key is currently pressed.
 
 For one-time actions, check if a key was just pressed this frame:
 
-```viper
+```rust
 if Input.wasKeyPressed(Key.SPACE) {
     player.jump();
 }
@@ -55,7 +55,7 @@ if Input.wasKeyPressed(Key.ESCAPE) {
 
 ### Common Key Codes
 
-```viper
+```rust
 // Arrow keys
 Key.LEFT, Key.RIGHT, Key.UP, Key.DOWN
 
@@ -80,7 +80,7 @@ Key.SHIFT, Key.CTRL, Key.ALT
 
 ### Position
 
-```viper
+```rust
 var mouseX = Input.mouseX();
 var mouseY = Input.mouseY();
 ```
@@ -89,7 +89,7 @@ This gives you the mouse position in canvas coordinates.
 
 ### Buttons
 
-```viper
+```rust
 if Input.isMouseDown(MouseButton.LEFT) {
     // Left button is held
 }
@@ -104,7 +104,7 @@ if Input.wasMouseReleased(MouseButton.RIGHT) {
 ```
 
 Mouse buttons:
-```viper
+```rust
 MouseButton.LEFT
 MouseButton.RIGHT
 MouseButton.MIDDLE
@@ -112,7 +112,7 @@ MouseButton.MIDDLE
 
 ### Mouse Wheel
 
-```viper
+```rust
 var scroll = Input.mouseScroll();  // Positive = up, negative = down
 if scroll != 0 {
     zoomLevel += scroll * 0.1;
@@ -121,7 +121,7 @@ if scroll != 0 {
 
 ### Example: Drawing with Mouse
 
-```viper
+```rust
 module MouseDraw;
 
 import Viper.Graphics;
@@ -156,7 +156,7 @@ Hold the left mouse button and drag to draw!
 
 Many games support controllers (gamepads):
 
-```viper
+```rust
 if Input.isControllerConnected(0) {  // First controller
     var leftX = Input.controllerAxis(0, Axis.LEFT_X);
     var leftY = Input.controllerAxis(0, Axis.LEFT_Y);
@@ -173,7 +173,7 @@ if Input.isControllerConnected(0) {  // First controller
 
 ### Controller Buttons
 
-```viper
+```rust
 ControllerButton.A, .B, .X, .Y
 ControllerButton.LEFT_BUMPER, .RIGHT_BUMPER
 ControllerButton.START, .SELECT
@@ -182,7 +182,7 @@ ControllerButton.DPAD_UP, .DPAD_DOWN, .DPAD_LEFT, .DPAD_RIGHT
 
 ### Controller Axes
 
-```viper
+```rust
 Axis.LEFT_X, Axis.LEFT_Y    // Left stick
 Axis.RIGHT_X, Axis.RIGHT_Y  // Right stick
 Axis.LEFT_TRIGGER           // Left trigger (0 to 1)
@@ -195,7 +195,7 @@ Axis.RIGHT_TRIGGER          // Right trigger (0 to 1)
 
 Games often abstract input so the same action can come from different sources:
 
-```viper
+```rust
 entity InputManager {
     func getMoveX() -> f64 {
         // Keyboard
@@ -234,7 +234,7 @@ Now the game code uses `input.getMoveX()` instead of checking specific keys.
 
 Controller sticks rarely rest at exactly (0, 0). Use a dead zone:
 
-```viper
+```rust
 func applyDeadZone(value: f64, threshold: f64) -> f64 {
     if Viper.Math.abs(value) < threshold {
         return 0.0;
@@ -249,7 +249,7 @@ var moveX = applyDeadZone(Input.controllerAxis(0, Axis.LEFT_X), 0.15);
 
 Let players customize controls:
 
-```viper
+```rust
 entity KeyMap {
     hide bindings: Map<string, i64>;
 
@@ -277,7 +277,7 @@ entity KeyMap {
 
 Some games accept inputs slightly before they're valid (e.g., pressing jump just before landing):
 
-```viper
+```rust
 entity InputBuffer {
     hide jumpBufferTime: f64;
     hide jumpBufferDuration: f64 = 0.1;
@@ -306,7 +306,7 @@ entity InputBuffer {
 
 ## A Complete Example: Controllable Character
 
-```viper
+```rust
 module CharacterDemo;
 
 import Viper.Graphics;
@@ -402,7 +402,7 @@ func start() {
 ## The Three Languages
 
 **ViperLang**
-```viper
+```rust
 import Viper.Input;
 
 if Input.isKeyDown(Key.SPACE) {

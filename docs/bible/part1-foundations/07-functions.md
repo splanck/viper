@@ -26,7 +26,7 @@ A function is a named, reusable block of code. You define it once, then *call* i
 
 Here's a simple function:
 
-```viper
+```rust
 func greet() {
     Viper.Terminal.Say("Hello!");
     Viper.Terminal.Say("Welcome to the program.");
@@ -37,7 +37,7 @@ This defines a function named `greet` that, when called, prints two lines.
 
 To use it:
 
-```viper
+```rust
 module Greeting;
 
 func greet() {
@@ -67,7 +67,7 @@ The function runs twice because we called it twice. The code inside the function
 
 A function that always does the exact same thing is limited. Usually, we want to customize behavior:
 
-```viper
+```rust
 func greet(name: string) {
     Viper.Terminal.Say("Hello, " + name + "!");
 }
@@ -90,7 +90,7 @@ The `name: string` in parentheses is a *parameter*. It's like a variable that ge
 
 You can have multiple parameters:
 
-```viper
+```rust
 func introduce(name: string, age: i64) {
     Viper.Terminal.Say(name + " is " + age + " years old.");
 }
@@ -115,7 +115,7 @@ Parameters are separated by commas. Each has a name and a type.
 
 Some functions compute a value. They *return* it to the caller:
 
-```viper
+```rust
 func add(a: i64, b: i64) -> i64 {
     return a + b;
 }
@@ -132,7 +132,7 @@ Think of it like a recipe: ingredients go in (parameters), a dish comes out (ret
 
 You can use returned values directly:
 
-```viper
+```rust
 Viper.Terminal.Say(add(10, 20));           // 30
 Viper.Terminal.Say(add(add(1, 2), 3));     // 6 (1+2=3, 3+3=6)
 var result = add(5, 5) * 2;                // 20
@@ -144,7 +144,7 @@ var result = add(5, 5) * 2;                // 20
 
 Some functions do things without computing a result — like printing, saving files, or modifying state. These don't specify a return type:
 
-```viper
+```rust
 func sayGoodbye() {
     Viper.Terminal.Say("Goodbye!");
 }
@@ -152,7 +152,7 @@ func sayGoodbye() {
 
 You can use `return` without a value to exit early:
 
-```viper
+```rust
 func maybeGreet(shouldGreet: bool) {
     if !shouldGreet {
         return;  // Exit immediately
@@ -167,7 +167,7 @@ func maybeGreet(shouldGreet: bool) {
 
 Variables created inside a function are *local* — they exist only within that function:
 
-```viper
+```rust
 func calculateArea(width: i64, height: i64) -> i64 {
     var area = width * height;  // Local variable
     return area;
@@ -190,7 +190,7 @@ Each function call gets its own set of local variables. Two simultaneous calls t
 
 Let's reorganize our grade tracker using functions:
 
-```viper
+```rust
 module GradeTracker;
 
 // Read grades from user, return array
@@ -295,7 +295,7 @@ This is easier to understand, test, and modify. Want to change how grades are re
 ## The Three Languages
 
 **ViperLang**
-```viper
+```rust
 func add(a: i64, b: i64) -> i64 {
     return a + b;
 }
@@ -356,7 +356,7 @@ A function can call itself. This is called *recursion*, and it's a powerful tech
 
 The classic example is factorial. 5! = 5 × 4 × 3 × 2 × 1. Notice that 5! = 5 × 4!, and 4! = 4 × 3!, and so on. The factorial of N is N times the factorial of N-1.
 
-```viper
+```rust
 func factorial(n: i64) -> i64 {
     if n <= 1 {
         return 1;  // Base case: 0! = 1! = 1
@@ -385,7 +385,7 @@ Without a base case, you get infinite recursion — the function calls itself fo
 
 Another example — Fibonacci:
 
-```viper
+```rust
 func fib(n: i64) -> i64 {
     if n <= 1 {
         return n;
@@ -409,7 +409,7 @@ Recursion is elegant but can be inefficient. The naive Fibonacci above recalcula
 ## Common Mistakes
 
 **Forgetting to return:**
-```viper
+```rust
 func add(a: i64, b: i64) -> i64 {
     var sum = a + b;
     // Oops! Forgot 'return sum'
@@ -417,7 +417,7 @@ func add(a: i64, b: i64) -> i64 {
 ```
 
 **Wrong parameter order:**
-```viper
+```rust
 func greet(name: string, age: i64) { ... }
 
 greet(25, "Alice");  // Error! Arguments are swapped
@@ -425,14 +425,14 @@ greet("Alice", 25);  // Correct
 ```
 
 **Infinite recursion:**
-```viper
+```rust
 func forever(n: i64) -> i64 {
     return forever(n);  // Never stops!
 }
 ```
 
 **Trying to use local variables outside their function:**
-```viper
+```rust
 func compute() {
     var result = 42;
 }

@@ -8,7 +8,7 @@ Programs need to exchange data — with files, networks, databases, other progra
 
 Imagine you want to save a player's game state:
 
-```viper
+```rust
 value Player {
     name: string;
     level: i64;
@@ -56,7 +56,7 @@ JSON supports:
 
 ### Parsing JSON
 
-```viper
+```rust
 import Viper.JSON;
 
 func start() {
@@ -73,7 +73,7 @@ func start() {
 
 ### Creating JSON
 
-```viper
+```rust
 import Viper.JSON;
 
 func start() {
@@ -104,7 +104,7 @@ Output:
 
 ### Pretty Printing
 
-```viper
+```rust
 var jsonText = player.toPrettyString();
 ```
 
@@ -129,7 +129,7 @@ Output:
 
 For cleaner code, add serialization methods to your classes:
 
-```viper
+```rust
 entity Player {
     name: string;
     level: i64;
@@ -219,7 +219,7 @@ XML uses:
 
 ### Parsing XML
 
-```viper
+```rust
 import Viper.XML;
 
 func start() {
@@ -237,7 +237,7 @@ func start() {
 
 ### Creating XML
 
-```viper
+```rust
 import Viper.XML;
 
 func start() {
@@ -264,7 +264,7 @@ func start() {
 
 ### Navigating XML
 
-```viper
+```rust
 var doc = XML.parse(xmlText);
 var root = doc.root();
 
@@ -300,7 +300,7 @@ Warrior,7,120.0,80.0,220.0
 
 ### Reading CSV
 
-```viper
+```rust
 import Viper.CSV;
 
 func start() {
@@ -318,7 +318,7 @@ func start() {
 
 ### Writing CSV
 
-```viper
+```rust
 import Viper.CSV;
 
 func start() {
@@ -335,7 +335,7 @@ func start() {
 
 CSV has quirks: commas in values, quotes, newlines:
 
-```viper
+```rust
 // Values with commas need quoting
 csv.addRow(["John Doe", "5", "87.5"]);       // name,level,health
 csv.addRow(["Doe, John", "5", "87.5"]);      // "Doe, John",5,87.5
@@ -369,7 +369,7 @@ music=true
 
 ### Reading INI
 
-```viper
+```rust
 import Viper.INI;
 
 func start() {
@@ -388,7 +388,7 @@ func start() {
 
 ### Writing INI
 
-```viper
+```rust
 import Viper.INI;
 
 func start() {
@@ -413,7 +413,7 @@ Text formats are human-readable but large and slow. Binary formats are compact a
 
 ### Writing Binary Data
 
-```viper
+```rust
 import Viper.IO;
 
 value GameSave {
@@ -476,7 +476,7 @@ When designing binary formats:
 3. **Use fixed sizes where possible** — makes parsing predictable
 4. **Document byte order** — little-endian or big-endian
 
-```viper
+```rust
 final MAGIC = 0x56495052;  // "VIPR" in hex
 final VERSION = 1;
 
@@ -537,7 +537,7 @@ func loadWithHeader(filename: string) -> GameSave? {
 
 ## A Complete Example: Config System
 
-```viper
+```rust
 module ConfigSystem;
 
 import Viper.JSON;
@@ -673,7 +673,7 @@ func start() {
 ## The Three Languages
 
 **ViperLang**
-```viper
+```rust
 import Viper.JSON;
 
 var data = JSON.parse('{"name": "test"}');
@@ -719,7 +719,7 @@ end.
 ## Common Mistakes
 
 **Not validating input**
-```viper
+```rust
 // Bad: Assumes structure exists
 var name = data["player"]["name"].asString();  // Crash if missing!
 
@@ -733,7 +733,7 @@ var name = data.getPath("player.name", "Unknown");
 ```
 
 **Forgetting encoding**
-```viper
+```rust
 // Bad: Assumes UTF-8
 var text = File.readBytes(filename).toString();
 
@@ -742,7 +742,7 @@ var text = File.readText(filename, Encoding.UTF8);
 ```
 
 **Hardcoding format versions**
-```viper
+```rust
 // Bad: No version handling
 var data = loadBinary(file);
 

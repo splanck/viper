@@ -8,7 +8,7 @@ Text is powerful, but sometimes you need pictures. Games, visualizations, user i
 
 Everything starts with a canvas — a rectangular area where you can draw:
 
-```viper
+```rust
 import Viper.Graphics;
 
 func start() {
@@ -55,7 +55,7 @@ A point at (100, 50) is 100 pixels from the left edge and 50 pixels from the top
 
 Colors are specified using RGB (red, green, blue) values from 0 to 255:
 
-```viper
+```rust
 var red = Color(255, 0, 0);
 var green = Color(0, 255, 0);
 var blue = Color(0, 0, 255);
@@ -67,7 +67,7 @@ var gray = Color(128, 128, 128);
 
 Common colors are predefined:
 
-```viper
+```rust
 Color.RED
 Color.GREEN
 Color.BLUE
@@ -83,7 +83,7 @@ Color.MAGENTA
 ## Drawing Shapes
 
 ### Rectangles
-```viper
+```rust
 // Filled rectangle
 canvas.setColor(Color.BLUE);
 canvas.fillRect(x, y, width, height);
@@ -93,7 +93,7 @@ canvas.drawRect(x, y, width, height);
 ```
 
 ### Circles and Ellipses
-```viper
+```rust
 // Filled circle
 canvas.fillCircle(centerX, centerY, radius);
 
@@ -105,17 +105,17 @@ canvas.fillEllipse(x, y, width, height);
 ```
 
 ### Lines
-```viper
+```rust
 canvas.drawLine(x1, y1, x2, y2);
 ```
 
 ### Points
-```viper
+```rust
 canvas.setPixel(x, y);
 ```
 
 ### Polygons
-```viper
+```rust
 var points = [(100, 100), (150, 50), (200, 100)];  // Triangle
 canvas.fillPolygon(points);
 canvas.drawPolygon(points);
@@ -127,7 +127,7 @@ canvas.drawPolygon(points);
 
 Drawing text on the canvas:
 
-```viper
+```rust
 canvas.setColor(Color.BLACK);
 canvas.setFont("Arial", 24);
 canvas.drawText(100, 100, "Hello, Graphics!");
@@ -141,7 +141,7 @@ The coordinates specify where the text starts (left edge, baseline).
 
 Let's put these together:
 
-```viper
+```rust
 module DrawingDemo;
 
 import Viper.Graphics;
@@ -201,7 +201,7 @@ func start() {
 
 Static pictures are nice, but games need animation. The key is the *game loop*:
 
-```viper
+```rust
 while running {
     handleInput();   // Read keyboard/mouse
     updateState();   // Move things, check collisions
@@ -212,7 +212,7 @@ while running {
 
 Here's a simple animation:
 
-```viper
+```rust
 module BouncingBall;
 
 import Viper.Graphics;
@@ -263,7 +263,7 @@ The ball bounces around the screen, reversing direction when it hits walls.
 
 Games should run at a consistent speed regardless of computer speed. Use *delta time*:
 
-```viper
+```rust
 var lastTime = Viper.Time.millis();
 
 while canvas.isOpen() {
@@ -287,7 +287,7 @@ With delta time, `speed` is in "units per second" rather than "units per frame."
 
 Games often use pre-drawn images (sprites):
 
-```viper
+```rust
 var playerSprite = Image.load("player.png");
 var enemySprite = Image.load("enemy.png");
 
@@ -298,7 +298,7 @@ canvas.drawImage(enemySprite, enemyX, enemyY);
 
 You can scale and flip images:
 
-```viper
+```rust
 canvas.drawImageScaled(sprite, x, y, width, height);
 canvas.drawImageFlipped(sprite, x, y, flipX, flipY);
 ```
@@ -309,7 +309,7 @@ canvas.drawImageFlipped(sprite, x, y, flipX, flipY);
 
 To avoid flickering, draw to a back buffer and flip:
 
-```viper
+```rust
 var canvas = Canvas(800, 600, { doubleBuffered: true });
 
 while running {
@@ -327,7 +327,7 @@ Most canvas implementations handle this automatically.
 
 Here's a framework you can use for games:
 
-```viper
+```rust
 module GameFramework;
 
 import Viper.Graphics;
@@ -438,7 +438,7 @@ This provides a foundation to build upon.
 ## The Three Languages
 
 **ViperLang**
-```viper
+```rust
 import Viper.Graphics;
 
 var canvas = Canvas(800, 600);

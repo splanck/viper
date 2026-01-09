@@ -11,7 +11,7 @@ This chapter introduces the fundamentals: entities and objects.
 ## From Values to Entities
 
 A value groups data:
-```viper
+```rust
 value Rectangle {
     width: f64;
     height: f64;
@@ -19,7 +19,7 @@ value Rectangle {
 ```
 
 An *entity* groups data *and* behavior, with more power:
-```viper
+```rust
 entity Rectangle {
     width: f64;
     height: f64;
@@ -50,7 +50,7 @@ The differences:
 
 An entity is a template. An *object* (or *instance*) is a specific thing created from that template:
 
-```viper
+```rust
 var rect1 = Rectangle(10.0, 5.0);
 var rect2 = Rectangle(3.0, 4.0);
 
@@ -66,7 +66,7 @@ Each rectangle is a separate object with its own data. Calling `area()` on `rect
 
 The initializer is a special method that runs when you create a new object:
 
-```viper
+```rust
 entity Person {
     name: string;
     age: i64;
@@ -96,7 +96,7 @@ Initializers initialize the object. Use them to set required fields and perform 
 
 Inside a method, `self` refers to the object the method was called on:
 
-```viper
+```rust
 entity Counter {
     count: i64;
 
@@ -127,7 +127,7 @@ When you call `counter.increment()`, inside that method `self` is `counter`. Whe
 
 Not all parts of an entity should be accessible from outside. Use `hide` to hide internal details:
 
-```viper
+```rust
 entity BankAccount {
     hide balance: f64;
     ownerName: string;
@@ -159,7 +159,7 @@ entity BankAccount {
 
 The `balance` field is hidden — outside code can't access it directly:
 
-```viper
+```rust
 var account = BankAccount("Alice", 100.0);
 account.deposit(50.0);
 Viper.Terminal.Say(account.getBalance());  // 150
@@ -175,7 +175,7 @@ This protects the account's integrity. You can't set an arbitrary balance — yo
 
 Methods define what objects can do. They're functions that belong to an entity:
 
-```viper
+```rust
 entity Circle {
     radius: f64;
 
@@ -214,7 +214,7 @@ Methods can:
 
 Let's build a todo list with entities:
 
-```viper
+```rust
 module TodoApp;
 
 entity TodoItem {
@@ -338,7 +338,7 @@ Notice how:
 ## The Three Languages
 
 **ViperLang**
-```viper
+```rust
 entity Dog {
     name: string;
 
@@ -420,7 +420,7 @@ end.
 ## Common Mistakes
 
 **Forgetting self:**
-```viper
+```rust
 entity Counter {
     count: i64;
 
@@ -431,7 +431,7 @@ entity Counter {
 ```
 
 **Exposed fields that should be hidden:**
-```viper
+```rust
 entity BankAccount {
     balance: f64;  // Bad: anyone can modify directly
 }
@@ -441,7 +441,7 @@ account.balance = -1000;  // Oops, negative balance!
 ```
 
 **Monster entities:**
-```viper
+```rust
 // Don't do this — one entity doing everything
 entity Game {
     player: ...;

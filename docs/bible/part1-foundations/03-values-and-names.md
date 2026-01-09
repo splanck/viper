@@ -28,7 +28,7 @@ Here's a problem: you want to ask the user for their name, then greet them. You 
 
 This is what *variables* are for. A variable is a name attached to a value. You can think of it as a labeled box: the label is the name, the contents are the value.
 
-```viper
+```rust
 var age = 25;
 ```
 
@@ -36,7 +36,7 @@ This creates a variable named `age` and puts the value `25` inside it. Now whene
 
 Let's see it in action:
 
-```viper
+```rust
 module Variables;
 
 func start() {
@@ -64,7 +64,7 @@ Notice the `+` between `"Name: "` and `name`. When you use `+` with strings, it 
 
 You can name variables almost anything, but good names make code readable:
 
-```viper
+```rust
 // Hard to understand
 var x = 100;
 var y = 5;
@@ -99,7 +99,7 @@ Viper has two kinds of numbers:
 
 **Floating-point numbers** (or "floats") have decimal points: `3.14`, `0.5`, `-273.15`. Use these for measurements, calculations, anything that might be fractional.
 
-```viper
+```rust
 var count = 10;        // integer
 var price = 19.99;     // float
 var temperature = -5;  // integer (negative)
@@ -108,7 +108,7 @@ var ratio = 0.75;      // float
 
 You can do math with numbers:
 
-```viper
+```rust
 var a = 10;
 var b = 3;
 
@@ -123,7 +123,7 @@ The `%` operator gives the remainder after division. `10 % 3` is `1` because 10 
 
 **Watch out for integer division:** When you divide two integers, you get an integer result. `10 / 3` is `3`, not `3.333...`. If you need the fractional part, use floats:
 
-```viper
+```rust
 var result = 10.0 / 3.0;  // 3.333...
 ```
 
@@ -133,7 +133,7 @@ var result = 10.0 / 3.0;  // 3.333...
 
 Strings are text enclosed in double quotes:
 
-```viper
+```rust
 var greeting = "Hello, World!";
 var empty = "";                    // empty string (no characters)
 var sentence = "She said \"Hi\"";  // use \" for quotes inside strings
@@ -145,7 +145,7 @@ The backslash (`\`) is an *escape character*. It gives special meaning to the ne
 - `\n` — a newline (start a new line)
 - `\t` — a tab
 
-```viper
+```rust
 Viper.Terminal.Say("Line one\nLine two");
 ```
 
@@ -157,7 +157,7 @@ Line two
 
 You can join strings with `+`:
 
-```viper
+```rust
 var first = "Hello";
 var second = "World";
 var message = first + ", " + second + "!";  // "Hello, World!"
@@ -171,14 +171,14 @@ Strings have a length — the number of characters they contain. We'll learn how
 
 Boolean values represent truth. There are exactly two: `true` and `false`.
 
-```viper
+```rust
 var isGameOver = false;
 var hasPermission = true;
 ```
 
 Booleans are the result of *comparisons*:
 
-```viper
+```rust
 var age = 25;
 var isAdult = age >= 18;  // true, because 25 >= 18
 ```
@@ -204,7 +204,7 @@ You can combine booleans with *logical operators*:
 | `\|\|` | or (either true) | `true \|\| false` | `true` |
 | `!` | not (opposite) | `!true` | `false` |
 
-```viper
+```rust
 var age = 25;
 var hasTicket = true;
 
@@ -219,7 +219,7 @@ We'll use booleans extensively in the next chapter when we learn about making de
 
 Variables can change. That's why they're called "variables" — they vary.
 
-```viper
+```rust
 var score = 0;
 Viper.Terminal.Say(score);  // 0
 
@@ -236,7 +236,7 @@ The line `score = score + 5` might look strange. Read it as: "take the current v
 
 This pattern is so common that there's a shortcut:
 
-```viper
+```rust
 score += 5;   // same as: score = score + 5
 score -= 3;   // same as: score = score - 3
 score *= 2;   // same as: score = score * 2
@@ -249,7 +249,7 @@ score /= 4;   // same as: score = score / 4
 
 Sometimes you have a value that should never change — like pi, or the number of days in a week. Use `final` instead of `var`:
 
-```viper
+```rust
 final PI = 3.14159;
 final DAYS_IN_WEEK = 7;
 ```
@@ -264,7 +264,7 @@ By convention, constants are named in `UPPER_CASE` to distinguish them from muta
 
 So far, our variables have been set by us in the code. But programs are more interesting when users can provide input.
 
-```viper
+```rust
 module Greeting;
 
 func start() {
@@ -285,7 +285,7 @@ Hello, Alice!
 
 What if you want a number? The user types text, so you need to convert it:
 
-```viper
+```rust
 module Age;
 
 func start() {
@@ -307,7 +307,7 @@ func start() {
 Let's see variables in all three Viper languages:
 
 **ViperLang**
-```viper
+```rust
 var name = "Alice";
 var age = 30;
 final PI = 3.14159;
@@ -363,32 +363,32 @@ The syntax differs, but the ideas are identical.
 ## Common Mistakes
 
 **Forgetting to initialize:**
-```viper
+```rust
 var count;          // Error: what value?
 var count = 0;      // Good: starts at 0
 ```
 
 **Using a variable before creating it:**
-```viper
+```rust
 Viper.Terminal.Say(score);  // Error: what's score?
 var score = 100;
 ```
 
 **Confusing = and ==:**
-```viper
+```rust
 if (x = 5)   // Wrong: this assigns 5 to x
 if (x == 5)  // Right: this checks if x equals 5
 ```
 
 **Trying to do math with strings:**
-```viper
+```rust
 var result = "5" + 3;  // Might not do what you expect
 ```
 
 When you add a string and a number, Viper converts the number to a string and concatenates. `"5" + 3` becomes `"53"`, not `8`. If you want math, make sure both values are numbers.
 
 **Integer division surprise:**
-```viper
+```rust
 var half = 1 / 2;      // Result is 0, not 0.5!
 var halfF = 1.0 / 2.0; // Result is 0.5
 ```
@@ -399,7 +399,7 @@ var halfF = 1.0 / 2.0; // Result is 0.5
 
 Here's a small program that uses everything we've learned:
 
-```viper
+```rust
 module Calculator;
 
 func start() {

@@ -10,7 +10,7 @@ This chapter teaches you to measure, understand, and improve performance.
 
 Don't guess where time goes. Measure.
 
-```viper
+```rust
 import Viper.Time;
 
 func start() {
@@ -74,7 +74,7 @@ Describes how work grows with input size:
 ### Example: Finding Duplicates
 
 **O(n²) approach — slow:**
-```viper
+```rust
 func hasDuplicates(items: [i64]) -> bool {
     for i in 0..items.length {
         for j in (i+1)..items.length {
@@ -89,7 +89,7 @@ func hasDuplicates(items: [i64]) -> bool {
 ```
 
 **O(n) approach — fast:**
-```viper
+```rust
 func hasDuplicates(items: [i64]) -> bool {
     var seen = Set<i64>.create();
     for item in items {
@@ -112,7 +112,7 @@ The O(n) version is ~500,000x faster for large inputs!
 ### Avoid Work in Loops
 
 **Slow:**
-```viper
+```rust
 for i in 0..1000000 {
     var config = loadConfig();  // Loading 1 million times!
     process(data[i], config);
@@ -120,7 +120,7 @@ for i in 0..1000000 {
 ```
 
 **Fast:**
-```viper
+```rust
 var config = loadConfig();  // Load once
 for i in 0..1000000 {
     process(data[i], config);
@@ -130,7 +130,7 @@ for i in 0..1000000 {
 ### Use the Right Data Structure
 
 **Looking up by key?**
-```viper
+```rust
 // Slow: O(n) search
 var users: [User] = [];
 func findUser(id: i64) -> User? {
@@ -150,7 +150,7 @@ func findUser(id: i64) -> User? {
 ```
 
 **Checking membership?**
-```viper
+```rust
 // Slow: O(n)
 var seen: [string] = [];
 if !contains(seen, item) {
@@ -167,7 +167,7 @@ if !seen.contains(item) {
 ### Avoid String Concatenation in Loops
 
 **Slow:**
-```viper
+```rust
 var result = "";
 for i in 0..10000 {
     result += "item " + i + "\n";  // Creates new string each time!
@@ -175,7 +175,7 @@ for i in 0..10000 {
 ```
 
 **Fast:**
-```viper
+```rust
 var builder = StringBuilder.create();
 for i in 0..10000 {
     builder.append("item ");
@@ -187,7 +187,7 @@ var result = builder.toString();
 
 ### Cache Expensive Results
 
-```viper
+```rust
 entity FibonacciCalculator {
     hide cache: Map<i64, i64>;
 
@@ -225,7 +225,7 @@ entity FibonacciCalculator {
 Each allocation has overhead. Reuse objects when possible:
 
 **Slow:**
-```viper
+```rust
 func processFrames() {
     while running {
         var buffer = [i64](1000);  // New allocation every frame!
@@ -236,7 +236,7 @@ func processFrames() {
 ```
 
 **Fast:**
-```viper
+```rust
 func processFrames() {
     var buffer = [i64](1000);  // Allocate once
     while running {
@@ -249,7 +249,7 @@ func processFrames() {
 
 ### Avoid Unnecessary Copies
 
-```viper
+```rust
 // Slow: copying large array
 func processData(data: [i64]) -> [i64] {
     var result = data.clone();  // Full copy!
@@ -271,7 +271,7 @@ func processData(data: [i64]) {
 
 Objects that live too long or too short cause problems:
 
-```viper
+```rust
 // Bad: Short-lived objects trigger many GCs
 for i in 0..1000000 {
     var temp = createComplexObject();  // Created and discarded
@@ -295,7 +295,7 @@ I/O (files, network) is often the bottleneck.
 ### Buffer I/O
 
 **Slow:**
-```viper
+```rust
 var file = File.open("data.txt", "r");
 while !file.eof() {
     var char = file.readChar();  // System call per character!
@@ -304,7 +304,7 @@ while !file.eof() {
 ```
 
 **Fast:**
-```viper
+```rust
 var file = BufferedReader(File.open("data.txt", "r"));
 while !file.eof() {
     var line = file.readLine();  // Reads chunks internally
@@ -315,14 +315,14 @@ while !file.eof() {
 ### Batch Operations
 
 **Slow:**
-```viper
+```rust
 for item in items {
     database.insert(item);  // 1000 round-trips
 }
 ```
 
 **Fast:**
-```viper
+```rust
 database.insertBatch(items);  // 1 round-trip
 ```
 
@@ -330,7 +330,7 @@ database.insertBatch(items);  // 1 round-trip
 
 Don't wait for I/O — do other work:
 
-```viper
+```rust
 // Slow: Sequential
 var data1 = Http.get(url1);
 var data2 = Http.get(url2);
@@ -369,7 +369,7 @@ Native code runs 5-50x faster for computation-heavy tasks.
 
 Compare different approaches systematically:
 
-```viper
+```rust
 import Viper.Time;
 
 func benchmark(name: string, iterations: i64, work: func()) {
@@ -416,7 +416,7 @@ func start() {
 ## A Complete Example: Optimizing Word Count
 
 **Version 1: Naive**
-```viper
+```rust
 func countWords(text: string) -> Map<string, i64> {
     var counts: Map<string, i64> = Map.new();
 
@@ -439,7 +439,7 @@ func countWords(text: string) -> Map<string, i64> {
 ```
 
 **Version 2: Optimized**
-```viper
+```rust
 func countWords(text: string) -> Map<string, i64> {
     var counts: Map<string, i64> = Map.new();
     var builder = StringBuilder.create();
@@ -489,7 +489,7 @@ The optimized version:
 ## The Three Languages
 
 **ViperLang**
-```viper
+```rust
 import Viper.Time;
 
 var start = Time.millis();
@@ -522,21 +522,21 @@ end.
 ## Common Mistakes
 
 **Premature optimization**
-```viper
+```rust
 // Don't do this until you've measured!
 // Complex "optimized" code that's actually slower
 ```
 Always measure first. Often the "obvious" optimization doesn't help.
 
 **Optimizing the wrong thing**
-```viper
+```rust
 // Profile says loadConfig takes 90% of time
 // But you optimize processData instead
 ```
 Focus on what the profiler tells you.
 
 **Micro-optimizing at the expense of readability**
-```viper
+```rust
 // Unreadable "optimized" code
 var x = ((n >> 1) & 1) ^ (n & 1);
 

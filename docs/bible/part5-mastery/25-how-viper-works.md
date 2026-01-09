@@ -25,7 +25,7 @@ Let's follow a simple program through this journey.
 
 You write:
 
-```viper
+```rust
 func add(a: i64, b: i64) -> i64 {
     return a + b;
 }
@@ -57,7 +57,7 @@ i64    → TOKEN_TYPE("i64")
 
 This is like breaking a sentence into words. The lexer also catches simple errors:
 
-```viper
+```rust
 var x = 3.14.15;  // Error: invalid number literal
 var@invalid = 5;  // Error: unexpected character '@'
 ```
@@ -85,7 +85,7 @@ FunctionDecl
 
 The tree represents the structure of your program. Parsing catches syntax errors:
 
-```viper
+```rust
 func broken( {  // Error: expected parameter or ')'
 var x = ;        // Error: expected expression after '='
 ```
@@ -97,13 +97,13 @@ var x = ;        // Error: expected expression after '='
 The *semantic analyzer* checks that your program makes sense:
 
 **Type checking:**
-```viper
+```rust
 var x: i64 = "hello";  // Error: cannot assign string to i64
 var y = add("a", "b"); // Error: expected i64, got string
 ```
 
 **Scope checking:**
-```viper
+```rust
 func test() {
     Viper.Terminal.Say(x);  // Error: 'x' not defined
     var x = 5;
@@ -111,7 +111,7 @@ func test() {
 ```
 
 **Return checking:**
-```viper
+```rust
 func getValue() -> i64 {
     var x = 5;
     // Error: function must return a value
@@ -206,7 +206,7 @@ Native code runs directly on the CPU — no interpreter overhead.
 
 Modern syntax, designed for Viper:
 
-```viper
+```rust
 func square(x: i64) -> i64 {
     return x * x;
 }
@@ -249,7 +249,7 @@ All three generate the same IL:
 
 Viper's IL uses a *stack-based* model. Operations push and pop values:
 
-```viper
+```rust
 var result = (3 + 4) * 2;
 ```
 
@@ -275,7 +275,7 @@ Advantages:
 
 Viper manages memory automatically using *garbage collection*:
 
-```viper
+```rust
 func makeList() -> [i64] {
     var list = [1, 2, 3];  // Memory allocated
     return list;
@@ -337,14 +337,14 @@ The runtime bridges IL code and the operating system.
 ### Value Types vs Reference Types
 
 **Value types** are stored directly:
-```viper
+```rust
 var x: i64 = 42;      // 42 is stored in x
 var y = x;            // y gets a copy of 42
 x = 100;              // y is still 42
 ```
 
 **Reference types** store a pointer:
-```viper
+```rust
 var a = [1, 2, 3];    // array is on heap, a holds reference
 var b = a;            // b points to same array
 a[0] = 999;           // b[0] is also 999!
@@ -354,7 +354,7 @@ a[0] = 999;           // b[0] is also 999!
 
 Viper infers types when obvious:
 
-```viper
+```rust
 var x = 42;           // x is i64
 var y = 3.14;         // y is f64
 var z = "hello";      // z is string
@@ -362,7 +362,7 @@ var list = [1, 2, 3]; // list is [i64]
 ```
 
 But you can be explicit:
-```viper
+```rust
 var x: i64 = 42;
 var y: f64 = 3.14;
 ```

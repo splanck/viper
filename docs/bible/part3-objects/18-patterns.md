@@ -28,7 +28,7 @@ A word of caution: don't force patterns where they don't fit. Use them when they
 
 Sometimes you need exactly one instance of something — a configuration manager, a game engine, a logging service.
 
-```viper
+```rust
 entity GameEngine {
     hide static instance: GameEngine? = null;
 
@@ -69,7 +69,7 @@ The hidden initializer prevents creating instances directly. `getInstance()` ret
 
 When object creation is complex or you want to hide which concrete entity gets created:
 
-```viper
+```rust
 interface Enemy {
     func attack();
     func getHealth() -> i64;
@@ -129,7 +129,7 @@ The caller doesn't need to know about Goblin, Orc, Dragon. Just ask the factory.
 
 When multiple objects need to react when something changes:
 
-```viper
+```rust
 interface Observer {
     func onUpdate(event: string);
 }
@@ -199,7 +199,7 @@ The subject doesn't know what the observers do. Observers don't know about each 
 
 When you want to vary behavior independently from the entity that uses it:
 
-```viper
+```rust
 interface MovementStrategy {
     func move(entity: Entity);
 }
@@ -262,7 +262,7 @@ Change behavior at runtime by swapping strategies.
 
 When you want to treat actions as objects — for undo, redo, queuing, logging:
 
-```viper
+```rust
 interface Command {
     func execute();
     func undo();
@@ -333,7 +333,7 @@ Each action becomes an object that can be stored, reversed, or replayed.
 
 When an object's behavior changes based on its internal state:
 
-```viper
+```rust
 interface PlayerState {
     func handleInput(player: Player, input: string);
     func update(player: Player);
@@ -416,7 +416,7 @@ The player behaves differently based on state, without tangled if-else chains.
 
 When you want to add features to objects without modifying their entities:
 
-```viper
+```rust
 interface Coffee {
     func cost() -> f64;
     func description() -> string;

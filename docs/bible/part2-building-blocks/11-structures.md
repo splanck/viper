@@ -3,7 +3,7 @@
 So far, we've used simple types: numbers, strings, booleans. We've grouped them in arrays. But what if you need to represent something more complex — a person with a name and age, a point with x and y coordinates, a product with name, price, and quantity?
 
 You could use separate variables:
-```viper
+```rust
 var personName = "Alice";
 var personAge = 30;
 var personEmail = "alice@example.com";
@@ -19,7 +19,7 @@ But this falls apart fast. What if you have 100 people? You can't make 300 varia
 
 A structure is a template for grouping values:
 
-```viper
+```rust
 value Point {
     x: f64;
     y: f64;
@@ -30,14 +30,14 @@ This defines a new type called `Point` with two *fields*: `x` and `y`, both floa
 
 Now you can create instances of this structure:
 
-```viper
+```rust
 var origin = Point { x: 0.0, y: 0.0 };
 var position = Point { x: 10.5, y: 20.3 };
 ```
 
 Each `Point` bundles two values together. You access fields with dot notation:
 
-```viper
+```rust
 Viper.Terminal.Say(position.x);  // 10.5
 Viper.Terminal.Say(position.y);  // 20.3
 
@@ -50,7 +50,7 @@ position.x = 15.0;  // Modify the x field
 
 Structures change how you think about data. Instead of managing separate pieces, you work with coherent wholes:
 
-```viper
+```rust
 // Without structures: scattered data
 var name1 = "Alice";
 var age1 = 30;
@@ -69,7 +69,7 @@ var bob = Person { name: "Bob", age: 25 };
 
 You can make arrays of structures:
 
-```viper
+```rust
 var people: [Person] = [
     Person { name: "Alice", age: 30 },
     Person { name: "Bob", age: 25 },
@@ -83,7 +83,7 @@ for person in people {
 
 You can pass structures to functions:
 
-```viper
+```rust
 func greet(person: Person) {
     Viper.Terminal.Say("Hello, " + person.name + "!");
 }
@@ -94,7 +94,7 @@ greet(bob);
 
 And return them from functions:
 
-```viper
+```rust
 func createPerson(name: string, age: i64) -> Person {
     return Person { name: name, age: age };
 }
@@ -118,7 +118,7 @@ var dave = createPerson("Dave", 40);
 
 Structures can contain other structures:
 
-```viper
+```rust
 value Address {
     street: string;
     city: string;
@@ -152,7 +152,7 @@ This lets you model complex, hierarchical data cleanly.
 
 Structures can have functions attached to them:
 
-```viper
+```rust
 value Rectangle {
     width: f64;
     height: f64;
@@ -189,7 +189,7 @@ Methods bundle behavior with data. Instead of `calculateArea(rect)`, you write `
 
 Let's model a simple game with structures:
 
-```viper
+```rust
 module GameDemo;
 
 value Vec2 {
@@ -284,7 +284,7 @@ This shows how structures model game concepts naturally. Each entity has its dat
 ## The Three Languages
 
 **ViperLang**
-```viper
+```rust
 value Point {
     x: f64;
     y: f64;
@@ -350,7 +350,7 @@ For more complex needs, we use *classes*, which we'll cover in Part III. For now
 ## Common Patterns
 
 ### Factory function
-```viper
+```rust
 func createPoint(x: f64, y: f64) -> Point {
     return Point { x: x, y: y };
 }
@@ -359,7 +359,7 @@ var p = createPoint(3.0, 4.0);
 ```
 
 ### Default values
-```viper
+```rust
 value Config {
     volume: i64;
     difficulty: string;
@@ -371,13 +371,13 @@ func defaultConfig() -> Config {
 ```
 
 ### Updating fields
-```viper
+```rust
 var person = Person { name: "Alice", age: 30 };
 person.age = 31;  // Happy birthday!
 ```
 
 ### Comparing structures
-```viper
+```rust
 func pointsEqual(a: Point, b: Point) -> bool {
     return a.x == b.x && a.y == b.y;
 }
@@ -388,20 +388,20 @@ func pointsEqual(a: Point, b: Point) -> bool {
 ## Common Mistakes
 
 **Forgetting to initialize all fields:**
-```viper
+```rust
 var p = Point { x: 5.0 };  // Error: y is not initialized
 var p = Point { x: 5.0, y: 0.0 };  // Correct
 ```
 
 **Confusing the type and an instance:**
-```viper
+```rust
 Point.x = 5.0;  // Wrong: Point is the type, not an instance
 var p = Point { x: 5.0, y: 3.0 };  // Create an instance
 p.x = 5.0;  // Now you can access fields
 ```
 
 **Copying when you want to modify:**
-```viper
+```rust
 func birthday(person: Person) {
     person.age += 1;  // Modifies a copy, not the original!
 }

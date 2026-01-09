@@ -10,7 +10,7 @@ You've seen pieces of this already: calling `draw()` on different shapes, proces
 
 Consider a game loop that updates everything:
 
-```viper
+```rust
 interface Updatable {
     func update(deltaTime: f64);
 }
@@ -42,7 +42,7 @@ entity Bullet implements Updatable {
 
 Now the game loop:
 
-```viper
+```rust
 var entities: [Updatable] = [player, enemy1, enemy2, particle1, bullet1, ...];
 
 while running {
@@ -63,7 +63,7 @@ One loop handles players, enemies, particles, bullets — anything Updatable. Ad
 
 Use a base class or interface to treat different types uniformly:
 
-```viper
+```rust
 entity Animal {
     func speak() { ... }
 }
@@ -91,7 +91,7 @@ func makeAllSpeak(animals: [Animal]) {
 
 Same method name, different parameters:
 
-```viper
+```rust
 entity Printer {
     func print(text: string) {
         Viper.Terminal.Say(text);
@@ -122,7 +122,7 @@ The compiler chooses the right method based on argument types.
 
 When you override a method, the correct version is called based on the actual object type at runtime:
 
-```viper
+```rust
 entity Shape {
     func area() -> f64 {
         return 0.0;
@@ -149,7 +149,7 @@ Even though the variable type is `Shape`, the object is a `Circle`, so `Circle.a
 
 ### Collections of mixed types
 
-```viper
+```rust
 interface Drawable {
     func draw();
 }
@@ -170,7 +170,7 @@ for item in scene {
 
 ### Factory patterns
 
-```viper
+```rust
 interface Enemy {
     func attack();
 }
@@ -196,7 +196,7 @@ enemy.attack();
 
 ### Callback systems
 
-```viper
+```rust
 interface Callback {
     func onComplete(result: string);
 }
@@ -225,7 +225,7 @@ func doAsyncWork(callback: Callback) {
 
 Let's build a complete rendering system using polymorphism:
 
-```viper
+```rust
 module DrawingSystem;
 
 interface Drawable {
@@ -389,7 +389,7 @@ Notice that `Group` is itself `Drawable`, so groups can contain groups. This is 
 ## The Three Languages
 
 **ViperLang**
-```viper
+```rust
 interface Animal {
     func speak();
 }

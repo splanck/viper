@@ -32,7 +32,7 @@ Architecture is the structure of your system — how pieces fit together.
 
 Each piece does one thing:
 
-```viper
+```rust
 // Bad: Everything mixed together
 entity UserManager {
     func registerUser(email: string, password: string) {
@@ -60,7 +60,7 @@ entity UserManager {
 }
 ```
 
-```viper
+```rust
 // Good: Separate concerns
 entity UserValidator {
     func validateEmail(email: string) -> bool { ... }
@@ -107,7 +107,7 @@ Each class has one responsibility. Easy to test, easy to change.
 
 Depend on abstractions, not concrete implementations:
 
-```viper
+```rust
 // Bad: Hard dependency
 entity OrderProcessor {
     hide database: MySQLDatabase;  // Tied to MySQL!
@@ -141,7 +141,7 @@ var processor3 = OrderProcessor(MockDatabase());  // For tests!
 
 Each module/class/function should have one reason to change:
 
-```viper
+```rust
 // Bad: Multiple responsibilities
 entity Report {
     func calculate() { ... }
@@ -233,7 +233,7 @@ project/
 
 Break large systems into modules:
 
-```viper
+```rust
 // auth/authentication.viper
 module Auth;
 
@@ -244,7 +244,7 @@ export func hashPassword(pw: string) -> string { ... }
 func internalHelper() { ... }
 ```
 
-```viper
+```rust
 // orders/order_service.viper
 module Orders;
 
@@ -291,7 +291,7 @@ Classic pattern for user interfaces:
        └──────────┘
 ```
 
-```viper
+```rust
 // Model
 entity TodoList {
     hide items: [TodoItem];
@@ -351,7 +351,7 @@ entity TodoController {
 
 Abstract data access:
 
-```viper
+```rust
 interface IUserRepository {
     func findById(id: string) -> User?;
     func findByEmail(email: string) -> User?;
@@ -388,7 +388,7 @@ entity InMemoryUserRepository implements IUserRepository {
 
 Encapsulate business logic:
 
-```viper
+```rust
 entity OrderService {
     hide orderRepo: IOrderRepository;
     hide productRepo: IProductRepository;
@@ -434,7 +434,7 @@ entity OrderService {
 
 Decouple components with events:
 
-```viper
+```rust
 entity EventBus {
     hide listeners: Map<string, [func(Event)]>;
 
@@ -488,7 +488,7 @@ Components don't know about each other — loose coupling!
 
 Pass dependencies in rather than creating them:
 
-```viper
+```rust
 // Bad: Creates own dependencies
 entity UserService {
     hide db: Database;
@@ -531,7 +531,7 @@ Benefits:
 
 Keep configuration separate from code:
 
-```viper
+```rust
 // config.viper
 module Config;
 
@@ -557,7 +557,7 @@ export func load() -> AppConfig {
 ```
 
 Usage:
-```viper
+```rust
 var config = Config.load();
 var db = Database.connect(config.databaseUrl);
 ```
@@ -568,7 +568,7 @@ var db = Database.connect(config.databaseUrl);
 
 Consistent error handling across the system:
 
-```viper
+```rust
 // Define application errors
 entity AppError extends Error {
     code: string;
@@ -673,7 +673,7 @@ task-manager/
 ### Sample Files
 
 **domain/entities/Task.viper:**
-```viper
+```rust
 module Domain.Entities;
 
 export enum TaskStatus {
@@ -724,7 +724,7 @@ export entity Task {
 ```
 
 **application/CreateTaskUseCase.viper:**
-```viper
+```rust
 module Application;
 
 import Domain.Entities.Task;
@@ -768,7 +768,7 @@ export value CreateTaskRequest {
 ```
 
 **presentation/api/TaskController.viper:**
-```viper
+```rust
 module Presentation.Api;
 
 import Application.CreateTaskUseCase;

@@ -12,7 +12,7 @@ This chapter teaches you to expect, catch, and recover from errors.
 
 An error (or *exception*) is something unexpected that disrupts normal flow. When code encounters a situation it can't handle, it *throws* an exception. If nothing catches that exception, the program crashes.
 
-```viper
+```rust
 var x = 10 / 0;  // Error: division by zero
 ```
 
@@ -24,7 +24,7 @@ This throws an exception because division by zero is mathematically undefined. W
 
 To handle errors, wrap risky code in a `try` block:
 
-```viper
+```rust
 try {
     var x = 10 / 0;
     Viper.Terminal.Say("This won't print");
@@ -52,28 +52,28 @@ Without the try-catch, the program would crash at the division. With it, we hand
 Many things can throw exceptions:
 
 **Division by zero:**
-```viper
+```rust
 var result = 10 / 0;
 ```
 
 **Array out of bounds:**
-```viper
+```rust
 var arr = [1, 2, 3];
 var x = arr[10];  // No index 10
 ```
 
 **Invalid conversion:**
-```viper
+```rust
 var num = Viper.Parse.Int("hello");  // Not a number
 ```
 
 **File not found:**
-```viper
+```rust
 var content = Viper.File.readText("nonexistent.txt");
 ```
 
 **Null reference:**
-```viper
+```rust
 var obj = null;
 obj.doSomething();  // Can't call methods on null
 ```
@@ -84,7 +84,7 @@ obj.doSomething();  // Can't call methods on null
 
 The caught exception provides useful information:
 
-```viper
+```rust
 try {
     var arr = [1, 2, 3];
     Viper.Terminal.Say(arr[100]);
@@ -108,7 +108,7 @@ The `type` tells you what kind of error occurred. The `message` gives details. U
 
 You can handle different error types differently:
 
-```viper
+```rust
 try {
     var content = Viper.File.readText(filename);
     var value = Viper.Parse.Int(content);
@@ -129,7 +129,7 @@ Catch blocks are checked in order. The first matching type wins. A catch without
 
 Sometimes you need to clean up regardless of whether an error occurred:
 
-```viper
+```rust
 var file = Viper.File.openRead("data.txt");
 
 try {
@@ -156,7 +156,7 @@ Use finally to release resources: close files, disconnect from databases, unlock
 
 You can throw exceptions from your own code:
 
-```viper
+```rust
 func divide(a: i64, b: i64) -> i64 {
     if b == 0 {
         throw Error("Cannot divide by zero");
@@ -189,7 +189,7 @@ Exceptions are for *exceptional* situations — things that shouldn't happen in 
 - Internal logic error (bug)
 
 Exceptions are *not* for normal control flow:
-```viper
+```rust
 // Bad: using exceptions for normal logic
 try {
     var value = getItem(index);
@@ -214,7 +214,7 @@ If something is expected to happen frequently, use conditions, not exceptions.
 The best error handling is preventing errors in the first place:
 
 **Validate input early:**
-```viper
+```rust
 func processAge(ageStr: string) {
     // Validate before using
     var age = Viper.Parse.Int(ageStr);
@@ -227,14 +227,14 @@ func processAge(ageStr: string) {
 ```
 
 **Check before accessing:**
-```viper
+```rust
 if index >= 0 && index < arr.length {
     var value = arr[index];
 }
 ```
 
 **Use default values:**
-```viper
+```rust
 func getConfig(key: string, default: string) -> string {
     if config.hasKey(key) {
         return config[key];
@@ -244,7 +244,7 @@ func getConfig(key: string, default: string) -> string {
 ```
 
 **Fail fast with clear messages:**
-```viper
+```rust
 if filename.length == 0 {
     throw Error("Filename cannot be empty");
 }
@@ -257,7 +257,7 @@ if filename.length == 0 {
 
 Let's build a calculator that handles errors gracefully:
 
-```viper
+```rust
 module SafeCalculator;
 
 func getNumber(prompt: string) -> f64 {
@@ -331,7 +331,7 @@ This calculator:
 ## The Three Languages
 
 **ViperLang**
-```viper
+```rust
 try {
     riskyOperation();
 } catch e: FileNotFound {
@@ -391,7 +391,7 @@ Pascal uses `try`/`except` (not catch) and `raise` (not throw).
 ## Common Mistakes
 
 **Empty catch blocks:**
-```viper
+```rust
 try {
     riskyOperation();
 } catch e {
@@ -407,7 +407,7 @@ try {
 ```
 
 **Catching too broadly:**
-```viper
+```rust
 try {
     complexOperation();  // Many things could go wrong
 } catch e {
@@ -424,7 +424,7 @@ try {
 ```
 
 **Using exceptions for control flow:**
-```viper
+```rust
 // Bad
 func findItem(items: [string], target: string) -> i64 {
     for i in 0..items.length {

@@ -10,7 +10,7 @@ Computers excel at repetition. They can do the same thing millions of times with
 
 The simplest loop repeats as long as a condition is true:
 
-```viper
+```rust
 var count = 1;
 
 while count <= 5 {
@@ -50,7 +50,7 @@ while condition {
 
 The condition is checked *before* each iteration. If it's false from the start, the body never runs at all:
 
-```viper
+```rust
 var x = 10;
 while x < 5 {
     Viper.Terminal.Say("This never prints");
@@ -63,7 +63,7 @@ while x < 5 {
 
 What if the condition never becomes false?
 
-```viper
+```rust
 while true {
     Viper.Terminal.Say("Forever!");
 }
@@ -73,7 +73,7 @@ This runs forever — an *infinite loop*. Sometimes that's intentional (game loo
 
 The classic mistake is forgetting to update the variable you're checking:
 
-```viper
+```rust
 var count = 1;
 while count <= 5 {
     Viper.Terminal.Say(count);
@@ -90,7 +90,7 @@ If your program seems frozen, an infinite loop is often the culprit. Press Ctrl+
 
 When you know how many times to repeat, `for` is cleaner than `while`:
 
-```viper
+```rust
 for i in 1..6 {
     Viper.Terminal.Say(i);
 }
@@ -109,7 +109,7 @@ The `1..6` is a *range* — it includes 1 up to but not including 6. (This might
 
 If you want to include the end value, use `..=`:
 
-```viper
+```rust
 for i in 1..=5 {
     Viper.Terminal.Say(i);
 }
@@ -127,7 +127,7 @@ for variable in range {
 The variable (`i` in the examples) is automatically created, updated, and scoped to the loop. You don't need `let` or manual incrementing.
 
 **Counting down:**
-```viper
+```rust
 for i in (10..0).rev() {
     Viper.Terminal.Say(i);
 }
@@ -135,7 +135,7 @@ Viper.Terminal.Say("Liftoff!");
 ```
 
 **Stepping by 2s:**
-```viper
+```rust
 for i in (0..10).step(2) {
     Viper.Terminal.Say(i);  // 0, 2, 4, 6, 8
 }
@@ -155,7 +155,7 @@ Use `while` when you don't know how many iterations you'll need:
 - "Read lines until end of file"
 - "Run until the game ends"
 
-```viper
+```rust
 // for: we know it's 10 iterations
 for i in 1..=10 {
     Viper.Terminal.Say("Iteration " + i);
@@ -176,7 +176,7 @@ Viper.Terminal.Say("Access granted!");
 
 Sometimes you want to stop a loop before its condition becomes false. The `break` statement does this:
 
-```viper
+```rust
 for i in 1..100 {
     if i * i > 50 {
         Viper.Terminal.Say("Stopping at " + i);
@@ -202,7 +202,7 @@ When `break` runs, the loop immediately exits. Execution continues after the loo
 
 This is useful for searching:
 
-```viper
+```rust
 var numbers = [4, 8, 15, 16, 23, 42];
 var target = 16;
 var found = false;
@@ -226,7 +226,7 @@ if !found {
 
 The `continue` statement skips the rest of the current iteration and moves to the next:
 
-```viper
+```rust
 for i in 1..=10 {
     if i % 2 == 0 {
         continue;  // Skip even numbers
@@ -248,7 +248,7 @@ When `i` is even, `continue` jumps back to the `for` line, increments `i`, and s
 
 This is useful for filtering:
 
-```viper
+```rust
 // Print only positive numbers
 for i in -5..6 {
     if i <= 0 {
@@ -264,7 +264,7 @@ for i in -5..6 {
 
 Loops can contain other loops. This is common for working with grids, tables, and combinations:
 
-```viper
+```rust
 for row in 1..=3 {
     for col in 1..=4 {
         Viper.Terminal.Print("*");
@@ -283,7 +283,7 @@ Output:
 The outer loop runs 3 times (once per row). Each time, the inner loop runs 4 times (printing 4 stars). That's 12 stars total, arranged in a 3×4 grid.
 
 **Multiplication table:**
-```viper
+```rust
 for row in 1..=5 {
     for col in 1..=5 {
         var product = row * col;
@@ -309,7 +309,7 @@ With nested loops, the total iterations multiply. A 100×100 grid means 10,000 i
 ## Common Loop Patterns
 
 ### Counting
-```viper
+```rust
 var count = 0;
 for i in 1..=100 {
     if someCondition(i) {
@@ -320,7 +320,7 @@ Viper.Terminal.Say("Found " + count + " matches");
 ```
 
 ### Summing
-```viper
+```rust
 var total = 0;
 for i in 1..=100 {
     total = total + i;
@@ -329,7 +329,7 @@ Viper.Terminal.Say("Sum is " + total);  // 5050
 ```
 
 ### Finding maximum
-```viper
+```rust
 var values = [23, 7, 42, 15, 8];
 var max = values[0];
 
@@ -342,7 +342,7 @@ Viper.Terminal.Say("Maximum is " + max);  // 42
 ```
 
 ### Building strings
-```viper
+```rust
 var result = "";
 for i in 1..=5 {
     result = result + i + " ";
@@ -351,7 +351,7 @@ Viper.Terminal.Say(result);  // "1 2 3 4 5 "
 ```
 
 ### Validating input
-```viper
+```rust
 var valid = false;
 var age = 0;
 
@@ -372,7 +372,7 @@ while !valid {
 ## The Three Languages
 
 **ViperLang**
-```viper
+```rust
 // while loop
 var i = 0;
 while i < 5 {
@@ -439,7 +439,7 @@ Pascal uses `do` and `begin`/`end` for blocks. `downto` counts backward.
 
 Let's improve our guessing game from Chapter 4 with loops:
 
-```viper
+```rust
 module GuessGame;
 
 func start() {
@@ -493,7 +493,7 @@ The loop continues while we have tries left AND haven't won. Either running out 
 ## Common Mistakes
 
 **Off-by-one errors:**
-```viper
+```rust
 // Intended to print 1-10, but prints 1-9
 for i in 1..10 {
     Viper.Terminal.Say(i);
@@ -506,7 +506,7 @@ for i in 1..=10 {
 ```
 
 **Modifying loop variable:**
-```viper
+```rust
 // Don't do this — confusing behavior
 for i in 1..10 {
     Viper.Terminal.Say(i);
@@ -515,7 +515,7 @@ for i in 1..10 {
 ```
 
 **Infinite loops:**
-```viper
+```rust
 // Missing increment
 var i = 0;
 while i < 10 {
@@ -525,7 +525,7 @@ while i < 10 {
 ```
 
 **Wrong condition direction:**
-```viper
+```rust
 // Never runs: 10 is not less than 1
 for i in 10..1 {
     Viper.Terminal.Say(i);

@@ -6,7 +6,7 @@ A quick reference for ViperLang syntax and features.
 
 ## Comments
 
-```viper
+```rust
 // Single-line comment
 
 /*
@@ -22,7 +22,7 @@ func documented() { ... }
 
 ## Variables
 
-```viper
+```rust
 var x = 42;           // Mutable variable
 final y = 42;         // Immutable variable (recommended)
 
@@ -50,7 +50,7 @@ final PI = 3.14159;   // Immutable constant
 ## Operators
 
 ### Arithmetic
-```viper
+```rust
 a + b    // Addition
 a - b    // Subtraction
 a * b    // Multiplication
@@ -60,7 +60,7 @@ a % b    // Modulo (remainder)
 ```
 
 ### Comparison
-```viper
+```rust
 a == b   // Equal
 a != b   // Not equal
 a < b    // Less than
@@ -70,14 +70,14 @@ a >= b   // Greater than or equal
 ```
 
 ### Logical
-```viper
+```rust
 a && b   // And
 a || b   // Or
 !a       // Not
 ```
 
 ### Bitwise
-```viper
+```rust
 a & b    // Bitwise and
 a | b    // Bitwise or
 a ^ b    // Bitwise xor
@@ -87,7 +87,7 @@ a >> n   // Right shift
 ```
 
 ### Assignment
-```viper
+```rust
 x = 5;     // Assign
 x += 5;    // Add and assign
 x -= 5;    // Subtract and assign
@@ -101,7 +101,7 @@ x %= 5;    // Modulo and assign
 ## Control Flow
 
 ### If/Else
-```viper
+```rust
 if condition {
     // ...
 } else if other {
@@ -115,7 +115,7 @@ var x = if a > b { a } else { b };
 ```
 
 ### While
-```viper
+```rust
 while condition {
     // ...
 }
@@ -127,7 +127,7 @@ while true {
 ```
 
 ### For
-```viper
+```rust
 // Range (exclusive end)
 for i in 0..10 {
     // i = 0, 1, 2, ... 9
@@ -155,7 +155,7 @@ for i, item in items.enumerate() {
 ```
 
 ### Match
-```viper
+```rust
 match value {
     1 => handleOne(),
     2 | 3 => handleTwoOrThree(),
@@ -175,7 +175,7 @@ match result {
 ## Functions
 
 ### Basic
-```viper
+```rust
 func add(a: i64, b: i64) -> i64 {
     return a + b;
 }
@@ -190,7 +190,7 @@ func greet(name: string) {
 ```
 
 ### Default Parameters
-```viper
+```rust
 func greet(name: string, greeting: string = "Hello") {
     Viper.Terminal.Say(greeting + ", " + name);
 }
@@ -200,14 +200,14 @@ greet("Bob", "Hi");          // "Hi, Bob"
 ```
 
 ### Named Parameters
-```viper
+```rust
 func createUser(name: string, age: i64, admin: bool) { ... }
 
 createUser(name: "Alice", age: 30, admin: false);
 ```
 
 ### Variadic Functions
-```viper
+```rust
 func sum(numbers: ...i64) -> i64 {
     var total = 0;
     for n in numbers {
@@ -220,7 +220,7 @@ sum(1, 2, 3, 4, 5);  // 15
 ```
 
 ### Lambda/Closures
-```viper
+```rust
 var add = func(a: i64, b: i64) -> i64 { return a + b; };
 var square = func(x: i64) -> i64 = x * x;
 
@@ -237,7 +237,7 @@ var triple = (x) => x * multiplier;
 ## Collections
 
 ### Arrays
-```viper
+```rust
 var numbers = [1, 2, 3, 4, 5];
 var first = numbers[0];
 numbers[0] = 10;
@@ -257,7 +257,7 @@ numbers.sort()
 ```
 
 ### Maps
-```viper
+```rust
 var ages = Map<string, i64>.new();
 ages.set("Alice", 30);
 ages.set("Bob", 25);
@@ -273,7 +273,7 @@ for key, value in ages {
 ```
 
 ### Sets
-```viper
+```rust
 var seen = Set<string>.new();
 seen.add("apple");
 seen.add("banana");
@@ -290,7 +290,7 @@ var intersection = seen.intersection(other);
 
 ## Strings
 
-```viper
+```rust
 var s = "Hello, World!";
 
 // Properties
@@ -323,7 +323,7 @@ var text = """
 
 ## Values
 
-```viper
+```rust
 value Point {
     x: f64;
     y: f64;
@@ -356,7 +356,7 @@ value Point {
 
 ## Entities
 
-```viper
+```rust
 entity Counter {
     hide count: i64;
 
@@ -382,7 +382,7 @@ counter.increment();
 ```
 
 ### Visibility
-```viper
+```rust
 expose    // Accessible everywhere
 hide      // Only within entity
 protected // Within entity and subclasses
@@ -393,7 +393,7 @@ internal  // Within module
 
 ## Inheritance
 
-```viper
+```rust
 entity Animal {
     protected name: string;
 
@@ -421,7 +421,7 @@ entity Dog extends Animal {
 
 ## Interfaces
 
-```viper
+```rust
 interface Drawable {
     func draw();
     func getBounds() -> Rect;
@@ -447,7 +447,7 @@ entity Button implements Drawable, Clickable {
 
 ## Enums
 
-```viper
+```rust
 enum Color {
     RED,
     GREEN,
@@ -476,7 +476,7 @@ var result: Result<i64, string> = Result.Ok(42);
 
 ## Generics
 
-```viper
+```rust
 // Generic function
 func identity<T>(value: T) -> T {
     return value;
@@ -505,7 +505,7 @@ func compare<T: Comparable>(a: T, b: T) -> i64 {
 
 ## Error Handling
 
-```viper
+```rust
 // Throwing functions
 func divide(a: f64, b: f64) -> f64 {
     if b == 0 {
@@ -536,7 +536,7 @@ var name = user.name ?? "Unknown";
 
 ## Modules
 
-```viper
+```rust
 // Define module
 module MyModule;
 
@@ -559,7 +559,7 @@ M.publicFunction();
 
 ## Nullable Types
 
-```viper
+```rust
 var x: i64? = null;         // Nullable integer
 var y: i64? = 42;           // Has value
 
@@ -579,7 +579,7 @@ var length = name?.length;  // null if name is null
 
 ## Type Aliases
 
-```viper
+```rust
 type UserId = string;
 type Callback = func(i64) -> bool;
 type StringList = [string];
@@ -589,7 +589,7 @@ type StringList = [string];
 
 ## Attributes
 
-```viper
+```rust
 @deprecated("Use newFunction instead")
 func oldFunction() { ... }
 
@@ -606,7 +606,7 @@ func testSomething() {
 
 ## Testing
 
-```viper
+```rust
 import Viper.Test;
 
 test "description" {

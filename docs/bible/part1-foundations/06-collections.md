@@ -12,7 +12,7 @@ There is. *Collections* let you store multiple values under a single name. The m
 
 An array is a numbered list of values. Think of it as a row of mailboxes — each box has a number (its *index*), and each box can hold one value.
 
-```viper
+```rust
 var scores = [85, 92, 78, 95, 88];
 ```
 
@@ -20,7 +20,7 @@ This creates an array named `scores` containing five numbers. The brackets `[ ]`
 
 To access individual elements, use their index:
 
-```viper
+```rust
 Viper.Terminal.Say(scores[0]);  // 85 (first element)
 Viper.Terminal.Say(scores[1]);  // 92 (second element)
 Viper.Terminal.Say(scores[4]);  // 88 (fifth element)
@@ -43,19 +43,19 @@ You'll get used to it. Just remember: for an array of N elements, valid indices 
 ## Creating Arrays
 
 **With values:**
-```viper
+```rust
 var names = ["Alice", "Bob", "Carol"];
 var primes = [2, 3, 5, 7, 11, 13];
 var flags = [true, false, true];
 ```
 
 **Empty array (to fill later):**
-```viper
+```rust
 var numbers: [i64] = [];  // Empty array of integers
 ```
 
 **Array of a specific size:**
-```viper
+```rust
 var zeros = [0; 10];  // Ten zeros: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 ```
 
@@ -67,14 +67,14 @@ The `[value; count]` syntax creates an array with `count` copies of `value`.
 
 Every array knows its length — how many elements it contains:
 
-```viper
+```rust
 var names = ["Alice", "Bob", "Carol"];
 Viper.Terminal.Say(names.length);  // 3
 ```
 
 This is crucial for loops:
 
-```viper
+```rust
 var scores = [85, 92, 78, 95, 88];
 
 for i in 0..scores.length {
@@ -99,7 +99,7 @@ The range `0..scores.length` generates indices 0, 1, 2, 3, 4 — exactly what we
 
 You can change individual elements:
 
-```viper
+```rust
 var scores = [85, 92, 78, 95, 88];
 scores[2] = 82;  // Change 78 to 82
 Viper.Terminal.Say(scores[2]);  // 82
@@ -107,7 +107,7 @@ Viper.Terminal.Say(scores[2]);  // 82
 
 You can add elements to the end:
 
-```viper
+```rust
 var names = ["Alice", "Bob"];
 names.push("Carol");
 Viper.Terminal.Say(names.length);  // 3
@@ -116,7 +116,7 @@ Viper.Terminal.Say(names[2]);      // Carol
 
 You can remove the last element:
 
-```viper
+```rust
 var numbers = [1, 2, 3, 4, 5];
 var last = numbers.pop();  // Removes and returns 5
 Viper.Terminal.Say(last);           // 5
@@ -129,7 +129,7 @@ Viper.Terminal.Say(numbers.length); // 4
 
 The most common thing to do with an array is process every element. We saw the index-based approach:
 
-```viper
+```rust
 for i in 0..scores.length {
     Viper.Terminal.Say(scores[i]);
 }
@@ -137,7 +137,7 @@ for i in 0..scores.length {
 
 But if you don't need the index, there's a cleaner way:
 
-```viper
+```rust
 for score in scores {
     Viper.Terminal.Say(score);
 }
@@ -154,7 +154,7 @@ This *foreach* style reads as "for each score in scores, do this." The variable 
 ## Common Array Operations
 
 ### Finding the sum
-```viper
+```rust
 var numbers = [10, 20, 30, 40, 50];
 var total = 0;
 
@@ -166,7 +166,7 @@ Viper.Terminal.Say("Sum: " + total);  // Sum: 150
 ```
 
 ### Finding the average
-```viper
+```rust
 var scores = [85, 92, 78, 95, 88];
 var sum = 0;
 
@@ -179,7 +179,7 @@ Viper.Terminal.Say("Average: " + average);  // Average: 87
 ```
 
 ### Finding the maximum
-```viper
+```rust
 var values = [23, 7, 42, 15, 8, 31];
 var max = values[0];  // Start with the first
 
@@ -193,7 +193,7 @@ Viper.Terminal.Say("Maximum: " + max);  // Maximum: 42
 ```
 
 ### Searching
-```viper
+```rust
 var names = ["Alice", "Bob", "Carol", "Dave"];
 var target = "Carol";
 var found = false;
@@ -212,7 +212,7 @@ if !found {
 ```
 
 ### Counting matches
-```viper
+```rust
 var numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 var evenCount = 0;
 
@@ -231,7 +231,7 @@ Viper.Terminal.Say("Even numbers: " + evenCount);  // Even numbers: 5
 
 Arrays can hold any type, including strings:
 
-```viper
+```rust
 var fruits = ["apple", "banana", "cherry"];
 
 for fruit in fruits {
@@ -254,7 +254,7 @@ This is how you'd store a list of names, a menu of options, lines of a file, and
 
 Sometimes you need a grid — rows and columns. You can make an array of arrays:
 
-```viper
+```rust
 var grid = [
     [1, 2, 3],
     [4, 5, 6],
@@ -269,7 +269,7 @@ The first index selects the row (inner array), the second selects the column (el
 
 To iterate over all elements:
 
-```viper
+```rust
 for row in 0..grid.length {
     for col in 0..grid[row].length {
         Viper.Terminal.Print(grid[row][col] + " ");
@@ -292,7 +292,7 @@ Multidimensional arrays are perfect for game boards, images (pixels), spreadshee
 ## The Three Languages
 
 **ViperLang**
-```viper
+```rust
 var numbers = [10, 20, 30];
 
 // Access
@@ -368,7 +368,7 @@ Pascal declares array bounds explicitly in the type.
 
 What happens if you try to access an invalid index?
 
-```viper
+```rust
 var arr = [1, 2, 3];
 var x = arr[10];  // Error! Index out of bounds
 ```
@@ -386,7 +386,7 @@ Always be careful with indices:
 
 Let's build a proper grade tracker:
 
-```viper
+```rust
 module GradeTracker;
 
 func start() {
@@ -469,27 +469,27 @@ This demonstrates:
 ## Common Mistakes
 
 **Off-by-one with length:**
-```viper
+```rust
 var arr = [1, 2, 3];
 var last = arr[arr.length];  // Error! Should be arr.length - 1
 var last = arr[arr.length - 1];  // Correct: index 2
 ```
 
 **Forgetting arrays are zero-indexed:**
-```viper
+```rust
 var scores = [85, 92, 78];
 Viper.Terminal.Say(scores[1]);  // Prints 92, not 85!
 Viper.Terminal.Say(scores[0]);  // Prints 85 (the first element)
 ```
 
 **Empty array access:**
-```viper
+```rust
 var arr: [i64] = [];
 var x = arr[0];  // Error! No elements to access
 ```
 
 **Using the wrong loop range:**
-```viper
+```rust
 var arr = [1, 2, 3, 4, 5];
 
 // Wrong: includes index 5, which doesn't exist

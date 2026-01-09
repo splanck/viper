@@ -106,7 +106,7 @@ Brief recap of key points. Link forward to the next chapter.
 Always show complete, runnable programs when possible. Use syntax highlighting with the language name:
 
 ~~~markdown
-```viper
+```rust
 module Hello;
 
 func start() {
@@ -121,7 +121,7 @@ When showing the same concept in all three languages, use this structure:
 
 ```markdown
 **ViperLang**
-```viper
+```rust
 // ViperLang code here
 ```
 
@@ -141,7 +141,7 @@ When showing the same concept in all three languages, use this structure:
 For important examples, explain each line:
 
 ```markdown
-```viper
+```rust
 var count = 0;        // Create a variable named 'count', starting at 0
 while count < 5 {     // Keep going as long as count is less than 5
     Say(count);       // Print the current value

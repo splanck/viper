@@ -8,7 +8,7 @@ A quick reference for Viper's runtime library modules.
 
 Console input/output operations.
 
-```viper
+```rust
 // Output
 Viper.Terminal.Say("message");              // Print with newline
 Viper.Terminal.Write("message");            // Print without newline
@@ -34,7 +34,7 @@ Viper.Terminal.ShowCursor();
 
 File system operations.
 
-```viper
+```rust
 // Reading
 var text = Viper.File.readText("file.txt");
 var bytes = Viper.File.readBytes("file.bin");
@@ -74,7 +74,7 @@ Viper.File.absolutePath("relative")         // -> "/absolute/path"
 
 Mathematical functions and constants.
 
-```viper
+```rust
 // Constants
 Viper.Math.PI                               // 3.14159265358979...
 Viper.Math.E                                // 2.71828182845904...
@@ -132,7 +132,7 @@ Viper.Math.randomSeed(seed)                 // Set seed
 
 Time and date operations.
 
-```viper
+```rust
 // Current time
 Viper.Time.millis()                         // Milliseconds since epoch
 Viper.Time.nanos()                          // Nanoseconds since epoch
@@ -168,7 +168,7 @@ dt.diffDays(other)                          // -> f64
 Collection types beyond basic arrays.
 
 ### Map
-```viper
+```rust
 var map = Map<string, i64>.new();
 map.set("key", 42);
 var value = map.get("key");                 // -> i64?
@@ -185,7 +185,7 @@ for key, value in map {
 ```
 
 ### Set
-```viper
+```rust
 var set = Set<string>.new();
 set.add("item");
 set.contains("item")                        // -> bool
@@ -203,7 +203,7 @@ for item in set {
 ```
 
 ### Queue
-```viper
+```rust
 var queue = Queue<string>.new();
 queue.enqueue("item");
 var item = queue.dequeue();                 // -> string?
@@ -213,7 +213,7 @@ queue.size                                  // -> i64
 ```
 
 ### Stack
-```viper
+```rust
 var stack = Stack<string>.new();
 stack.push("item");
 var item = stack.pop();                     // -> string?
@@ -223,7 +223,7 @@ stack.size                                  // -> i64
 ```
 
 ### PriorityQueue
-```viper
+```rust
 var pq = PriorityQueue<Task>.new(compareFn);
 pq.enqueue(task);
 var highest = pq.dequeue();                 // -> Task?
@@ -236,7 +236,7 @@ var highest = pq.dequeue();                 // -> Task?
 Networking operations.
 
 ### HTTP
-```viper
+```rust
 // Simple requests
 var response = Http.get(url);
 var response = Http.post(url, { body: data, headers: {} });
@@ -251,7 +251,7 @@ response.headers                            // -> Map<string, string>
 ```
 
 ### TCP
-```viper
+```rust
 // Client
 var socket = TcpSocket.connect(host, port);
 socket.write(data);
@@ -268,7 +268,7 @@ server.close();
 ```
 
 ### UDP
-```viper
+```rust
 var socket = UdpSocket.create();
 socket.send(data, address, port);
 var packet = socket.receive();              // -> { data, address, port }
@@ -281,7 +281,7 @@ socket.close();
 
 JSON parsing and generation.
 
-```viper
+```rust
 // Parsing
 var data = JSON.parse(jsonString);
 var value = data["key"].asString();
@@ -307,7 +307,7 @@ var json = obj.toPrettyString();            // Formatted
 
 Concurrency primitives.
 
-```viper
+```rust
 // Threads
 var thread = Thread.spawn(func() {
     // work
@@ -355,7 +355,7 @@ pool.shutdown();
 
 Graphics and game development.
 
-```viper
+```rust
 // Canvas
 var canvas = Canvas(width, height);
 canvas.setTitle("Window Title");
@@ -395,7 +395,7 @@ canvas.drawImageScaled(image, x, y, width, height);
 
 Input handling for games and interactive applications.
 
-```viper
+```rust
 // Keyboard
 Input.isKeyDown(Key.SPACE)                  // Currently held
 Input.wasKeyPressed(Key.SPACE)              // Just pressed this frame
@@ -420,7 +420,7 @@ Input.isControllerButtonDown(index, ControllerButton.A)
 
 Cryptographic functions.
 
-```viper
+```rust
 // Hashing
 Viper.Crypto.md5(data)                      // -> string (hex)
 Viper.Crypto.sha1(data)                     // -> string (hex)
@@ -444,7 +444,7 @@ Viper.Crypto.hexDecode(hex)                 // -> [u8]
 
 Environment and system information.
 
-```viper
+```rust
 // Environment variables
 Viper.Environment.get("PATH")               // -> string?
 Viper.Environment.get("VAR", "default")     // With default
@@ -470,7 +470,7 @@ Viper.Environment.exit(code);               // Exit program
 
 Regular expressions.
 
-```viper
+```rust
 var regex = Regex.compile("\\d+");
 
 regex.matches("abc123def")                  // -> bool
@@ -493,7 +493,7 @@ match.groups                                // Capture groups
 
 Running external processes.
 
-```viper
+```rust
 // Simple execution
 var result = Process.run("ls", ["-la"]);
 result.exitCode                             // -> i64
@@ -521,7 +521,7 @@ process.wait();
 
 Testing utilities.
 
-```viper
+```rust
 // Assertions
 assert condition;
 assert condition, "message";

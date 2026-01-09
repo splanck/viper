@@ -24,7 +24,7 @@ A program without tests is a program with hidden bugs waiting to surprise you.
 
 ## Your First Test
 
-```viper
+```rust
 import Viper.Test;
 
 func add(a: i64, b: i64) -> i64 {
@@ -56,7 +56,7 @@ Running tests...
 
 Assertions are statements that must be true:
 
-```viper
+```rust
 test "basic assertions" {
     // Equality
     assert 1 + 1 == 2;
@@ -83,7 +83,7 @@ test "basic assertions" {
 
 When assertions fail, messages help:
 
-```viper
+```rust
 test "with messages" {
     var result = calculateTax(100);
     assert result == 10, "Expected tax of 10%, got " + result;
@@ -92,7 +92,7 @@ test "with messages" {
 
 ### Common Assert Functions
 
-```viper
+```rust
 import Viper.Test;
 
 test "assert variants" {
@@ -129,7 +129,7 @@ test "assert variants" {
 
 Good tests follow a pattern:
 
-```viper
+```rust
 test "user can update email" {
     // Arrange: Set up test data
     var user = User("alice", "alice@old.com");
@@ -155,7 +155,7 @@ Also called "Given-When-Then":
 
 Test typical usage:
 
-```viper
+```rust
 test "divide normal cases" {
     assert divide(10, 2) == 5;
     assert divide(9, 3) == 3;
@@ -167,7 +167,7 @@ test "divide normal cases" {
 
 Test boundaries and unusual inputs:
 
-```viper
+```rust
 test "divide edge cases" {
     assert divide(0, 5) == 0;      // Zero numerator
     assert divide(5, 1) == 5;      // Divide by one
@@ -181,7 +181,7 @@ test "divide edge cases" {
 
 Test that errors are handled correctly:
 
-```viper
+```rust
 test "divide by zero throws" {
     assertThrows(func() {
         divide(5, 0);
@@ -193,7 +193,7 @@ test "divide by zero throws" {
 
 ## Testing Classes
 
-```viper
+```rust
 entity Stack<T> {
     hide items: [T];
 
@@ -260,7 +260,7 @@ test "stack pop returns null when empty" {
 
 When tests need common setup:
 
-```viper
+```rust
 import Viper.Test;
 
 // Setup runs before each test
@@ -295,7 +295,7 @@ When testing code that depends on external systems:
 
 ### Stubs: Provide Canned Responses
 
-```viper
+```rust
 // Real implementation
 entity WeatherService {
     func getTemperature(city: string) -> f64 {
@@ -329,7 +329,7 @@ test "thermostat turns on heat when cold" {
 
 ### Mocks: Verify Interactions
 
-```viper
+```rust
 entity MockEmailService implements IEmailService {
     sentEmails: [Email];
 
@@ -367,7 +367,7 @@ test "registration sends welcome email" {
 
 ### One Assert Per Test (Usually)
 
-```viper
+```rust
 // Okay: Related assertions
 test "user creation" {
     var user = User("alice", "alice@example.com");
@@ -389,7 +389,7 @@ test "user has email" {
 
 ### Test Names Describe Behavior
 
-```viper
+```rust
 // Bad: Vague
 test "test1" { ... }
 test "user test" { ... }
@@ -402,7 +402,7 @@ test "withdraw fails when insufficient funds" { ... }
 
 ### Keep Tests Independent
 
-```viper
+```rust
 // Bad: Tests depend on each other
 test "create user" {
     globalUser = User("alice");
@@ -429,7 +429,7 @@ Write tests before code:
 2. **Green**: Write minimum code to pass
 3. **Refactor**: Improve code while tests pass
 
-```viper
+```rust
 // Step 1: Write failing test
 test "isPrime returns true for prime numbers" {
     assert isPrime(2);
@@ -471,7 +471,7 @@ func isPrime(n: i64) -> bool {
 
 Unit tests test pieces in isolation. Integration tests test pieces together:
 
-```viper
+```rust
 // Unit test: Just the validator
 test "email validator rejects invalid format" {
     assert !EmailValidator.isValid("notanemail");
@@ -498,7 +498,7 @@ test "registration rejects invalid email" {
 
 Instead of specific examples, test properties that should always hold:
 
-```viper
+```rust
 import Viper.Test;
 
 test "reversing twice returns original" {
@@ -557,7 +557,7 @@ Aim for high coverage, but 100% isn't always necessary or sufficient. Some code 
 
 ## A Complete Example: Testing a Calculator
 
-```viper
+```rust
 module Calculator;
 
 import Viper.Test;
@@ -676,7 +676,7 @@ test "clear history removes entries" {
 ## The Three Languages
 
 **ViperLang**
-```viper
+```rust
 import Viper.Test;
 
 test "example test" {
@@ -712,7 +712,7 @@ end;
 ## Common Mistakes
 
 **Testing implementation, not behavior**
-```viper
+```rust
 // Bad: Tests internal details
 test "uses hashmap internally" {
     var cache = Cache();
@@ -728,7 +728,7 @@ test "cache returns stored value" {
 ```
 
 **Flaky tests**
-```viper
+```rust
 // Bad: Depends on timing
 test "async operation completes" {
     startAsyncOperation();
@@ -745,7 +745,7 @@ test "async operation completes" {
 ```
 
 **Too many assertions**
-```viper
+```rust
 // Bad: What exactly failed?
 test "everything about user" {
     var user = createUser();

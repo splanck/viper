@@ -10,7 +10,7 @@ A dog is an animal. A savings account is a bank account. A button is a UI elemen
 
 Imagine building a game with different enemies:
 
-```viper
+```rust
 entity Goblin {
     x: f64;
     y: f64;
@@ -66,7 +66,7 @@ These entities are almost identical! The same fields, the same `move` method. On
 
 With inheritance, we extract the common parts into a base entity:
 
-```viper
+```rust
 entity Enemy {
     x: f64;
     y: f64;
@@ -125,7 +125,7 @@ Now `Goblin` and `Orc` *extend* `Enemy`. They inherit all of `Enemy`'s fields an
 
 **super:** Calls the parent entity's initializer or methods.
 
-```viper
+```rust
 entity Goblin extends Enemy {
     expose func init(x: f64, y: f64) {
         super(x, y, 30, "Goblin");  // Call Enemy's initializer
@@ -141,7 +141,7 @@ A derived entity automatically has:
 - All fields from the base entity
 - All methods from the base entity
 
-```viper
+```rust
 var goblin = Goblin(10.0, 20.0);
 goblin.move(5.0, 0.0);           // Inherited from Enemy
 Viper.Terminal.Say(goblin.x);     // 15.0 (inherited field)
@@ -157,7 +157,7 @@ The goblin can `move` even though Goblin doesn't define a `move` method — it i
 
 When a derived entity defines a method that exists in the base entity, it *overrides* that method:
 
-```viper
+```rust
 entity Enemy {
     func attack() -> i64 {
         return 1;  // Base implementation
@@ -179,7 +179,7 @@ When you call `attack()` on an Orc, you get the Orc's version (10), not the Enem
 
 Sometimes you want to extend, not replace, the parent's behavior:
 
-```viper
+```rust
 entity Enemy {
     func describe() {
         Viper.Terminal.Say("An enemy at (" + self.x + ", " + self.y + ")");
@@ -207,7 +207,7 @@ orc.describe();
 
 Inheritance can go multiple levels:
 
-```viper
+```rust
 entity Animal {
     name: string;
 
@@ -248,7 +248,7 @@ A `Dog` is a `Mammal`, which is an `Animal`. Dogs inherit from both and can:
 
 The classic inheritance example — geometric shapes:
 
-```viper
+```rust
 module Shapes;
 
 entity Shape {
@@ -343,7 +343,7 @@ Both Rectangle and Circle share `move` (inherited unchanged), but have their own
 ## The Three Languages
 
 **ViperLang**
-```viper
+```rust
 entity Animal {
     func speak() { ... }
 }
@@ -407,7 +407,7 @@ Pascal requires `virtual` on the base method and `override` on derived methods.
 - A Car has an Engine ✗ (use composition instead)
 - A Person has an Address ✗
 
-```viper
+```rust
 // Wrong: Car is not a type of Engine
 entity Car extends Engine { ... }
 

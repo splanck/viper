@@ -76,7 +76,7 @@ Let's create a tiny program to make sure everything works together.
 2. Create a new file
 3. Type this exactly:
 
-```viper
+```rust
 module Hello;
 
 func start() {
