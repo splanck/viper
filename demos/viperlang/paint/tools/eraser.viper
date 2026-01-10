@@ -6,10 +6,6 @@ import "../canvas";
 import "../colors";
 import "../brush";
 
-// Brush shape constants (must match brush.viper)
-final SHAPE_ROUND = 0;
-final SHAPE_SQUARE = 1;
-
 // EraserTool - erases to background color with variable size
 entity EraserTool {
     hide Integer drawing;       // 1 if currently drawing
@@ -69,7 +65,7 @@ entity EraserTool {
             var dx = 0 - half;
             while dx <= half {
                 var inBrush = 0;
-                if shape == SHAPE_SQUARE {
+                if shape == brush.SHAPE_SQUARE {
                     inBrush = 1;
                 } else {
                     if dx * dx + dy * dy <= half * half {

@@ -646,7 +646,18 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
 
         TypeRef exprType = sema_.functionReturnType(runtimeCallee);
         Type ilReturnType = exprType ? mapType(exprType) : Type(Type::Kind::Void);
-        return emitCallWithReturn(runtimeCallee, args, ilReturnType);
+
+        // Handle void return types correctly - don't try to store void results
+        if (ilReturnType.kind == Type::Kind::Void)
+        {
+            emitCall(runtimeCallee, args);
+            return {Value::constInt(0), Type(Type::Kind::Void)};
+        }
+        else
+        {
+            Value result = emitCallRet(ilReturnType, runtimeCallee, args);
+            return {result, ilReturnType};
+        }
     }
 
     // Check for built-in functions and value type construction
@@ -873,7 +884,18 @@ LowerResult Lowerer::lowerMethodCall(MethodDecl *method,
     Type ilReturnType = mapType(returnType);
 
     std::string methodName = typeName + "." + method->name;
-    return emitCallWithReturn(methodName, args, ilReturnType);
+
+    // Handle void return types correctly - don't try to store void results
+    if (ilReturnType.kind == Type::Kind::Void)
+    {
+        emitCall(methodName, args);
+        return {Value::constInt(0), Type(Type::Kind::Void)};
+    }
+    else
+    {
+        Value result = emitCallRet(ilReturnType, methodName, args);
+        return {result, ilReturnType};
+    }
 }
 
 } // namespace il::frontends::viperlang

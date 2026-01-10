@@ -86,7 +86,17 @@ LowerResult Lowerer::lowerVirtualMethodCall(const EntityTypeInfo &entityInfo,
         std::string target = dispatchTable.empty()
             ? entityInfo.name + "." + methodName
             : dispatchTable[0].second;
-        return emitCallWithReturn(target, args, ilReturnType);
+        // Handle void return types correctly
+        if (ilReturnType.kind == Type::Kind::Void)
+        {
+            emitCall(target, args);
+            return {Value::constInt(0), Type(Type::Kind::Void)};
+        }
+        else
+        {
+            Value result = emitCallRet(ilReturnType, target, args);
+            return {result, ilReturnType};
+        }
     }
 
     // Multiple implementations - dispatch switch
@@ -181,7 +191,17 @@ LowerResult Lowerer::lowerInterfaceMethodCall(const InterfaceTypeInfo &ifaceInfo
     // Single implementation - direct call
     if (dispatchTable.size() == 1)
     {
-        return emitCallWithReturn(dispatchTable[0].second, args, ilReturnType);
+        // Handle void return types correctly
+        if (ilReturnType.kind == Type::Kind::Void)
+        {
+            emitCall(dispatchTable[0].second, args);
+            return {Value::constInt(0), Type(Type::Kind::Void)};
+        }
+        else
+        {
+            Value result = emitCallRet(ilReturnType, dispatchTable[0].second, args);
+            return {result, ilReturnType};
+        }
     }
 
     // Multiple implementations - dispatch switch

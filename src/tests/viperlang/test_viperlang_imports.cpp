@@ -229,8 +229,7 @@ import "./outer";
 
 func start() {
     Outer o = new Outer();
-    o.inner = new Inner();
-    o.inner.init(42);
+    o.inner = new Inner(42);
     Integer result = o.test();
     Viper.Terminal.SayInt(result);
 }

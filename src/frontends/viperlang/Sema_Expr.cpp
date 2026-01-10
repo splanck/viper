@@ -1168,6 +1168,26 @@ TypeRef Sema::analyzeNew(NewExpr *expr)
         analyzeExpr(arg.value.get());
     }
 
+    // For entity types, validate that arguments match init method
+    if (type->kind == TypeKindSem::Entity)
+    {
+        std::string initMethodKey = type->name + ".init";
+        auto methodIt = methodTypes_.find(initMethodKey);
+        if (methodIt != methodTypes_.end() && methodIt->second)
+        {
+            // methodTypes_ stores just the declared params (self is added at codegen, not stored here)
+            auto params = methodIt->second->paramTypes();
+            size_t expectedArgs = params.size();
+            size_t providedArgs = expr->args.size();
+            if (providedArgs != expectedArgs)
+            {
+                error(expr->loc, "Entity '" + type->name + "' init() expects " +
+                                     std::to_string(expectedArgs) + " argument(s) but got " +
+                                     std::to_string(providedArgs));
+            }
+        }
+    }
+
     return type;
 }
 

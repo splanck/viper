@@ -8,7 +8,7 @@ entity DrawingCanvas {
     expose Integer width;           // Canvas width in pixels
     expose Integer height;          // Canvas height in pixels
     expose Integer backgroundColor; // Background color (for clear/eraser)
-    hide Ptr pixels;  // Pixel buffer (Viper.Graphics.Pixels)
+    hide Viper.Graphics.Pixels pixels;  // Pixel buffer
 
     // Default constructor (required for new Entity() pattern)
     expose func init() {
@@ -38,7 +38,7 @@ entity DrawingCanvas {
         while py < height {
             var px = 0;
             while px < width {
-                Viper.Graphics.Pixels.Set(pixels,px, py, backgroundColor);
+                pixels.Set(px, py, backgroundColor);
                 px = px + 1;
             }
             py = py + 1;
@@ -48,7 +48,7 @@ entity DrawingCanvas {
     // Get pixel color at position
     expose func getPixel(x: Integer, y: Integer) -> Integer {
         if x >= 0 and x < width and y >= 0 and y < height {
-            return Viper.Graphics.Pixels.Get(pixels,x, y);
+            return pixels.Get(x, y);
         }
         return 0;
     }
@@ -56,7 +56,7 @@ entity DrawingCanvas {
     // Set pixel color at position
     expose func setPixel(x: Integer, y: Integer, color: Integer) {
         if x >= 0 and x < width and y >= 0 and y < height {
-            Viper.Graphics.Pixels.Set(pixels,x, y, color);
+            pixels.Set(x, y, color);
         }
     }
 
@@ -64,11 +64,11 @@ entity DrawingCanvas {
     expose func setPixelBlend(x: Integer, y: Integer, color: Integer, opacity: Integer) {
         if x >= 0 and x < width and y >= 0 and y < height {
             if opacity >= 100 {
-                Viper.Graphics.Pixels.Set(pixels,x, y, color);
+                pixels.Set(x, y, color);
             } else if opacity > 0 {
-                var existing = Viper.Graphics.Pixels.Get(pixels,x, y);
+                var existing = pixels.Get(x, y);
                 var blended = blendColorsForOpacity(existing, color, opacity);
-                Viper.Graphics.Pixels.Set(pixels,x, y, blended);
+                pixels.Set(x, y, blended);
             }
         }
     }
@@ -284,13 +284,13 @@ entity DrawingCanvas {
     }
 
     // Get the raw pixels object for blitting
-    expose func getPixels() -> Ptr {
+    expose func getPixels() -> Viper.Graphics.Pixels {
         return pixels;
     }
 
     // Save to BMP file
     expose func saveBmp(filename: String) -> Integer {
-        return Viper.Graphics.Pixels.SaveBmp(pixels,filename);
+        return pixels.SaveBmp(filename);
     }
 
     // Load from BMP file

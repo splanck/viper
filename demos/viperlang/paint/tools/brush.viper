@@ -6,10 +6,6 @@ import "../canvas";
 import "../colors";
 import "../brush";
 
-// Brush shape constants (must match brush.viper)
-final SHAPE_ROUND = 0;
-final SHAPE_SQUARE = 1;
-
 // BrushTool - draws with variable size and opacity
 entity BrushTool {
     hide Integer drawing;       // 1 if currently drawing
@@ -72,7 +68,7 @@ entity BrushTool {
             var dx = 0 - half;
             while dx <= half {
                 var inBrush = 0;
-                if shape == SHAPE_SQUARE {
+                if shape == brush.SHAPE_SQUARE {
                     inBrush = 1;
                 } else {
                     // Round brush

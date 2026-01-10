@@ -480,7 +480,7 @@ void Sema::initRuntimeFunctions()
     // =========================================================================
     // GRAPHICS
     // =========================================================================
-    defineExternFunction("Viper.Graphics.Camera.New", types::ptr());
+    defineExternFunction("Viper.Graphics.Camera.New", types::runtimeClass("Viper.Graphics.Camera"));
     defineExternFunction("Viper.Graphics.Camera.get_X", types::integer());
     defineExternFunction("Viper.Graphics.Camera.set_X", types::voidType());
     defineExternFunction("Viper.Graphics.Camera.get_Y", types::integer());
@@ -507,7 +507,7 @@ void Sema::initRuntimeFunctions()
     defineExternFunction("Viper.Graphics.Canvas.get_Height", types::integer());
     defineExternFunction("Viper.Graphics.Canvas.KeyHeld", types::integer());
     defineExternFunction("Viper.Graphics.Canvas.Line", types::voidType());
-    defineExternFunction("Viper.Graphics.Canvas.New", types::ptr());
+    defineExternFunction("Viper.Graphics.Canvas.New", types::runtimeClass("Viper.Graphics.Canvas"));
     defineExternFunction("Viper.Graphics.Canvas.Plot", types::voidType());
     defineExternFunction("Viper.Graphics.Canvas.Poll", types::integer());
     defineExternFunction("Viper.Graphics.Canvas.Ring", types::voidType());
@@ -559,31 +559,31 @@ void Sema::initRuntimeFunctions()
     defineExternFunction("Viper.Graphics.Color.Brighten", types::integer());
     defineExternFunction("Viper.Graphics.Color.Darken", types::integer());
     defineExternFunction("Viper.Graphics.Pixels.Clear", types::voidType());
-    defineExternFunction("Viper.Graphics.Pixels.Clone", types::ptr());
+    defineExternFunction("Viper.Graphics.Pixels.Clone", types::runtimeClass("Viper.Graphics.Pixels"));
     defineExternFunction("Viper.Graphics.Pixels.Copy", types::voidType());
     defineExternFunction("Viper.Graphics.Pixels.Fill", types::voidType());
-    defineExternFunction("Viper.Graphics.Pixels.FromBytes", types::ptr());
+    defineExternFunction("Viper.Graphics.Pixels.FromBytes", types::runtimeClass("Viper.Graphics.Pixels"));
     defineExternFunction("Viper.Graphics.Pixels.Get", types::integer());
     defineExternFunction("Viper.Graphics.Pixels.get_Height", types::integer());
-    defineExternFunction("Viper.Graphics.Pixels.New", types::ptr());
+    defineExternFunction("Viper.Graphics.Pixels.New", types::runtimeClass("Viper.Graphics.Pixels"));
     defineExternFunction("Viper.Graphics.Pixels.Set", types::voidType());
     defineExternFunction("Viper.Graphics.Pixels.ToBytes", types::ptr());
     defineExternFunction("Viper.Graphics.Pixels.get_Width", types::integer());
-    defineExternFunction("Viper.Graphics.Pixels.LoadBmp", types::ptr());
+    defineExternFunction("Viper.Graphics.Pixels.LoadBmp", types::runtimeClass("Viper.Graphics.Pixels"));
     defineExternFunction("Viper.Graphics.Pixels.SaveBmp", types::integer());
-    defineExternFunction("Viper.Graphics.Pixels.FlipH", types::ptr());
-    defineExternFunction("Viper.Graphics.Pixels.FlipV", types::ptr());
-    defineExternFunction("Viper.Graphics.Pixels.RotateCW", types::ptr());
-    defineExternFunction("Viper.Graphics.Pixels.RotateCCW", types::ptr());
-    defineExternFunction("Viper.Graphics.Pixels.Rotate180", types::ptr());
-    defineExternFunction("Viper.Graphics.Pixels.Scale", types::ptr());
-    defineExternFunction("Viper.Graphics.Pixels.Invert", types::ptr());
-    defineExternFunction("Viper.Graphics.Pixels.Grayscale", types::ptr());
-    defineExternFunction("Viper.Graphics.Pixels.Tint", types::ptr());
-    defineExternFunction("Viper.Graphics.Pixels.Blur", types::ptr());
-    defineExternFunction("Viper.Graphics.Pixels.Resize", types::ptr());
-    defineExternFunction("Viper.Graphics.Sprite.New", types::ptr());
-    defineExternFunction("Viper.Graphics.Sprite.FromFile", types::ptr());
+    defineExternFunction("Viper.Graphics.Pixels.FlipH", types::runtimeClass("Viper.Graphics.Pixels"));
+    defineExternFunction("Viper.Graphics.Pixels.FlipV", types::runtimeClass("Viper.Graphics.Pixels"));
+    defineExternFunction("Viper.Graphics.Pixels.RotateCW", types::runtimeClass("Viper.Graphics.Pixels"));
+    defineExternFunction("Viper.Graphics.Pixels.RotateCCW", types::runtimeClass("Viper.Graphics.Pixels"));
+    defineExternFunction("Viper.Graphics.Pixels.Rotate180", types::runtimeClass("Viper.Graphics.Pixels"));
+    defineExternFunction("Viper.Graphics.Pixels.Scale", types::runtimeClass("Viper.Graphics.Pixels"));
+    defineExternFunction("Viper.Graphics.Pixels.Invert", types::runtimeClass("Viper.Graphics.Pixels"));
+    defineExternFunction("Viper.Graphics.Pixels.Grayscale", types::runtimeClass("Viper.Graphics.Pixels"));
+    defineExternFunction("Viper.Graphics.Pixels.Tint", types::runtimeClass("Viper.Graphics.Pixels"));
+    defineExternFunction("Viper.Graphics.Pixels.Blur", types::runtimeClass("Viper.Graphics.Pixels"));
+    defineExternFunction("Viper.Graphics.Pixels.Resize", types::runtimeClass("Viper.Graphics.Pixels"));
+    defineExternFunction("Viper.Graphics.Sprite.New", types::runtimeClass("Viper.Graphics.Sprite"));
+    defineExternFunction("Viper.Graphics.Sprite.FromFile", types::runtimeClass("Viper.Graphics.Sprite"));
     defineExternFunction("Viper.Graphics.Sprite.get_X", types::integer());
     defineExternFunction("Viper.Graphics.Sprite.set_X", types::voidType());
     defineExternFunction("Viper.Graphics.Sprite.get_Y", types::integer());
@@ -609,7 +609,7 @@ void Sema::initRuntimeFunctions()
     defineExternFunction("Viper.Graphics.Sprite.Overlaps", types::integer());
     defineExternFunction("Viper.Graphics.Sprite.Contains", types::integer());
     defineExternFunction("Viper.Graphics.Sprite.Move", types::voidType());
-    defineExternFunction("Viper.Graphics.Tilemap.New", types::ptr());
+    defineExternFunction("Viper.Graphics.Tilemap.New", types::runtimeClass("Viper.Graphics.Tilemap"));
     defineExternFunction("Viper.Graphics.Tilemap.get_Width", types::integer());
     defineExternFunction("Viper.Graphics.Tilemap.get_Height", types::integer());
     defineExternFunction("Viper.Graphics.Tilemap.get_TileWidth", types::integer());
