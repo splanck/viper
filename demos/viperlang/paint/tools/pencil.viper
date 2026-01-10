@@ -1,0 +1,56 @@
+// pencil.viper - Pencil tool for Viper Paint
+module pencil;
+
+import "../config";
+import "../canvas";
+import "../colors";
+
+// PencilTool - draws single pixel lines
+entity PencilTool {
+    hide Integer drawing;       // 1 if currently drawing
+    hide Integer lastX;         // Last mouse X
+    hide Integer lastY;         // Last mouse Y
+
+    expose func init() {
+        drawing = 0;
+        lastX = 0;
+        lastY = 0;
+    }
+
+    expose func getName() -> String {
+        return "Pencil";
+    }
+
+    expose func getIcon() -> String {
+        return "P";
+    }
+
+    expose func getShortcut() -> Integer {
+        return config.KEY_P;
+    }
+
+    expose func onMouseDown(x: Integer, y: Integer, canvas: DrawingCanvas, colors: ColorManager) {
+        drawing = 1;
+        lastX = x;
+        lastY = y;
+        // Draw single point
+        canvas.setPixel(x, y, colors.foreground);
+    }
+
+    expose func onMouseMove(x: Integer, y: Integer, canvas: DrawingCanvas, colors: ColorManager) {
+        if drawing == 1 {
+            // Draw line from last to current
+            canvas.drawLine(lastX, lastY, x, y, colors.foreground);
+            lastX = x;
+            lastY = y;
+        }
+    }
+
+    expose func onMouseUp(x: Integer, y: Integer, canvas: DrawingCanvas, colors: ColorManager) {
+        drawing = 0;
+    }
+
+    expose func isDrawing() -> Integer {
+        return drawing;
+    }
+}

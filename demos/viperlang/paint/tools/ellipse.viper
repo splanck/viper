@@ -1,0 +1,124 @@
+// ellipse.viper - Ellipse tool for Viper Paint
+module ellipse;
+
+import "../config";
+import "../canvas";
+import "../colors";
+
+// EllipseTool - draws ellipses/circles (filled or outline)
+entity EllipseTool {
+    hide Integer drawing;       // 1 if currently drawing
+    expose Integer startX;      // Start corner X (bounding box)
+    expose Integer startY;      // Start corner Y
+    expose Integer endX;        // End corner X
+    expose Integer endY;        // End corner Y
+    expose Integer filled;      // 1 = filled, 0 = outline
+
+    expose func init() {
+        drawing = 0;
+        startX = 0;
+        startY = 0;
+        endX = 0;
+        endY = 0;
+        filled = 1;  // Default to filled
+    }
+
+    expose func getName() -> String {
+        return "Ellipse";
+    }
+
+    expose func getIcon() -> String {
+        return "O";
+    }
+
+    expose func getShortcut() -> Integer {
+        return config.KEY_O;
+    }
+
+    expose func toggleFilled() {
+        if filled == 1 {
+            filled = 0;
+        } else {
+            filled = 1;
+        }
+    }
+
+    expose func onMouseDown(x: Integer, y: Integer, canvas: DrawingCanvas, colors: ColorManager) {
+        drawing = 1;
+        startX = x;
+        startY = y;
+        endX = x;
+        endY = y;
+    }
+
+    expose func onMouseMove(x: Integer, y: Integer, canvas: DrawingCanvas, colors: ColorManager) {
+        if drawing == 1 {
+            endX = x;
+            endY = y;
+        }
+    }
+
+    expose func onMouseUp(x: Integer, y: Integer, canvas: DrawingCanvas, colors: ColorManager) {
+        if drawing == 1 {
+            // Calculate normalized bounding box
+            var x1 = startX;
+            var y1 = startY;
+            var x2 = x;
+            var y2 = y;
+            if x2 < x1 {
+                var tmp = x1;
+                x1 = x2;
+                x2 = tmp;
+            }
+            if y2 < y1 {
+                var tmp = y1;
+                y1 = y2;
+                y2 = tmp;
+            }
+
+            // Calculate center and radii
+            var rx = (x2 - x1) / 2;
+            var ry = (y2 - y1) / 2;
+            var cx = x1 + rx;
+            var cy = y1 + ry;
+
+            if rx > 0 and ry > 0 {
+                if filled == 1 {
+                    canvas.drawEllipseFill(cx, cy, rx, ry, colors.foreground);
+                } else {
+                    canvas.drawEllipse(cx, cy, rx, ry, colors.foreground);
+                }
+            }
+            drawing = 0;
+        }
+    }
+
+    expose func isDrawing() -> Integer {
+        return drawing;
+    }
+
+    // Draw preview on screen canvas
+    expose func drawPreview(gfx: Viper.Graphics.Canvas, offsetX: Integer, offsetY: Integer, color: Integer) {
+        if drawing == 1 {
+            var x1 = startX;
+            var y1 = startY;
+            var x2 = endX;
+            var y2 = endY;
+            if x2 < x1 {
+                var tmp = x1;
+                x1 = x2;
+                x2 = tmp;
+            }
+            if y2 < y1 {
+                var tmp = y1;
+                y1 = y2;
+                y2 = tmp;
+            }
+
+            // Draw bounding box as preview
+            var w = x2 - x1 + 1;
+            var h = y2 - y1 + 1;
+            gfx.Frame(offsetX + x1, offsetY + y1, w, h, color);
+        }
+    }
+}

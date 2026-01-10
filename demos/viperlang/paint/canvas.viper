@@ -1,0 +1,323 @@
+// canvas.viper - Drawing canvas for Viper Paint
+module canvas;
+
+import "./config";
+
+// DrawingCanvas entity - manages the pixel buffer for drawing
+entity DrawingCanvas {
+    expose Integer width;           // Canvas width in pixels
+    expose Integer height;          // Canvas height in pixels
+    expose Integer backgroundColor; // Background color (for clear/eraser)
+    hide Ptr pixels;  // Pixel buffer (Viper.Graphics.Pixels)
+
+    // Default constructor (required for new Entity() pattern)
+    expose func init() {
+        width = 0;
+        height = 0;
+        backgroundColor = config.COLOR_WHITE;
+    }
+
+    // Initialize canvas with given dimensions
+    expose func initWithSize(w: Integer, h: Integer) {
+        width = w;
+        height = h;
+        backgroundColor = config.COLOR_WHITE;
+        pixels = Viper.Graphics.Pixels.New(w, h);
+        clear();
+    }
+
+    // Initialize with default dimensions
+    expose func initDefault() {
+        initWithSize(config.DEFAULT_CANVAS_WIDTH, config.DEFAULT_CANVAS_HEIGHT);
+    }
+
+    // Clear canvas to background color
+    expose func clear() {
+        // Fill by setting each pixel
+        var py = 0;
+        while py < height {
+            var px = 0;
+            while px < width {
+                Viper.Graphics.Pixels.Set(pixels,px, py, backgroundColor);
+                px = px + 1;
+            }
+            py = py + 1;
+        }
+    }
+
+    // Get pixel color at position
+    expose func getPixel(x: Integer, y: Integer) -> Integer {
+        if x >= 0 and x < width and y >= 0 and y < height {
+            return Viper.Graphics.Pixels.Get(pixels,x, y);
+        }
+        return 0;
+    }
+
+    // Set pixel color at position
+    expose func setPixel(x: Integer, y: Integer, color: Integer) {
+        if x >= 0 and x < width and y >= 0 and y < height {
+            Viper.Graphics.Pixels.Set(pixels,x, y, color);
+        }
+    }
+
+    // Set pixel with opacity blending
+    expose func setPixelBlend(x: Integer, y: Integer, color: Integer, opacity: Integer) {
+        if x >= 0 and x < width and y >= 0 and y < height {
+            if opacity >= 100 {
+                Viper.Graphics.Pixels.Set(pixels,x, y, color);
+            } else if opacity > 0 {
+                var existing = Viper.Graphics.Pixels.Get(pixels,x, y);
+                var blended = blendColorsForOpacity(existing, color, opacity);
+                Viper.Graphics.Pixels.Set(pixels,x, y, blended);
+            }
+        }
+    }
+
+    // Draw a line using Bresenham's algorithm
+    expose func drawLine(x1: Integer, y1: Integer, x2: Integer, y2: Integer, color: Integer) {
+        var dx = x2 - x1;
+        var dy = y2 - y1;
+        if dx < 0 { dx = 0 - dx; }
+        if dy < 0 { dy = 0 - dy; }
+
+        var sx = 1;
+        var sy = 1;
+        if x1 > x2 { sx = 0 - 1; }
+        if y1 > y2 { sy = 0 - 1; }
+
+        var err = dx - dy;
+        var x = x1;
+        var y = y1;
+
+        while 1 == 1 {
+            setPixel(x, y, color);
+            if x == x2 and y == y2 {
+                return;
+            }
+            var e2 = err * 2;
+            if e2 > 0 - dy {
+                err = err - dy;
+                x = x + sx;
+            }
+            if e2 < dx {
+                err = err + dx;
+                y = y + sy;
+            }
+        }
+    }
+
+    // Draw rectangle (filled)
+    expose func drawRectFill(x: Integer, y: Integer, w: Integer, h: Integer, color: Integer) {
+        var py = y;
+        while py < y + h {
+            var px = x;
+            while px < x + w {
+                setPixel(px, py, color);
+                px = px + 1;
+            }
+            py = py + 1;
+        }
+    }
+
+    // Draw rectangle (outline)
+    expose func drawRect(x: Integer, y: Integer, w: Integer, h: Integer, color: Integer) {
+        // Top and bottom
+        var px = x;
+        while px < x + w {
+            setPixel(px, y, color);
+            setPixel(px, y + h - 1, color);
+            px = px + 1;
+        }
+        // Left and right
+        var py = y;
+        while py < y + h {
+            setPixel(x, py, color);
+            setPixel(x + w - 1, py, color);
+            py = py + 1;
+        }
+    }
+
+    // Draw circle (filled) using midpoint algorithm
+    expose func drawDiscFill(cx: Integer, cy: Integer, radius: Integer, color: Integer) {
+        var y = 0 - radius;
+        while y <= radius {
+            var x = 0 - radius;
+            while x <= radius {
+                if x * x + y * y <= radius * radius {
+                    setPixel(cx + x, cy + y, color);
+                }
+                x = x + 1;
+            }
+            y = y + 1;
+        }
+    }
+
+    // Draw circle (outline)
+    expose func drawCircle(cx: Integer, cy: Integer, radius: Integer, color: Integer) {
+        var x = radius;
+        var y = 0;
+        var err = 0;
+
+        while x >= y {
+            setPixel(cx + x, cy + y, color);
+            setPixel(cx + y, cy + x, color);
+            setPixel(cx - y, cy + x, color);
+            setPixel(cx - x, cy + y, color);
+            setPixel(cx - x, cy - y, color);
+            setPixel(cx - y, cy - x, color);
+            setPixel(cx + y, cy - x, color);
+            setPixel(cx + x, cy - y, color);
+
+            y = y + 1;
+            if err <= 0 {
+                err = err + 2 * y + 1;
+            }
+            if err > 0 {
+                x = x - 1;
+                err = err - 2 * x + 1;
+            }
+        }
+    }
+
+    // Draw ellipse (filled)
+    expose func drawEllipseFill(cx: Integer, cy: Integer, rx: Integer, ry: Integer, color: Integer) {
+        var y = 0 - ry;
+        while y <= ry {
+            var x = 0 - rx;
+            while x <= rx {
+                // Check if point is inside ellipse: (x/rx)^2 + (y/ry)^2 <= 1
+                // Rearranged to avoid division: x^2 * ry^2 + y^2 * rx^2 <= rx^2 * ry^2
+                var check = x * x * ry * ry + y * y * rx * rx;
+                var limit = rx * rx * ry * ry;
+                if check <= limit {
+                    setPixel(cx + x, cy + y, color);
+                }
+                x = x + 1;
+            }
+            y = y + 1;
+        }
+    }
+
+    // Draw ellipse (outline)
+    expose func drawEllipse(cx: Integer, cy: Integer, rx: Integer, ry: Integer, color: Integer) {
+        // Midpoint ellipse algorithm
+        var x = 0;
+        var y = ry;
+        var rx2 = rx * rx;
+        var ry2 = ry * ry;
+        var tworx2 = 2 * rx2;
+        var twory2 = 2 * ry2;
+        var px = 0;
+        var py = tworx2 * y;
+
+        // Region 1
+        var p = ry2 - rx2 * ry + rx2 / 4;
+        while px < py {
+            setPixel(cx + x, cy + y, color);
+            setPixel(cx - x, cy + y, color);
+            setPixel(cx + x, cy - y, color);
+            setPixel(cx - x, cy - y, color);
+            x = x + 1;
+            px = px + twory2;
+            if p < 0 {
+                p = p + ry2 + px;
+            } else {
+                y = y - 1;
+                py = py - tworx2;
+                p = p + ry2 + px - py;
+            }
+        }
+
+        // Region 2
+        p = ry2 * (x * 2 + 1) * (x * 2 + 1) / 4 + rx2 * (y - 1) * (y - 1) - rx2 * ry2;
+        while y >= 0 {
+            setPixel(cx + x, cy + y, color);
+            setPixel(cx - x, cy + y, color);
+            setPixel(cx + x, cy - y, color);
+            setPixel(cx - x, cy - y, color);
+            y = y - 1;
+            py = py - tworx2;
+            if p > 0 {
+                p = p + rx2 - py;
+            } else {
+                x = x + 1;
+                px = px + twory2;
+                p = p + rx2 - py + px;
+            }
+        }
+    }
+
+    // Flood fill using scanline algorithm (iterative)
+    expose func floodFill(startX: Integer, startY: Integer, newColor: Integer) {
+        if startX < 0 or startX >= width or startY < 0 or startY >= height {
+            return;
+        }
+
+        var targetColor = getPixel(startX, startY);
+        if targetColor == newColor {
+            return;
+        }
+
+        // Simple recursive fill (limited depth)
+        floodFillHelper(startX, startY, targetColor, newColor, 0);
+    }
+
+    // Flood fill helper with depth limit
+    hide func floodFillHelper(x: Integer, y: Integer, targetColor: Integer, newColor: Integer, depth: Integer) {
+        if depth > 10000 {
+            return;
+        }
+        if x < 0 or x >= width or y < 0 or y >= height {
+            return;
+        }
+        if getPixel(x, y) != targetColor {
+            return;
+        }
+
+        setPixel(x, y, newColor);
+
+        // Fill in four directions
+        floodFillHelper(x + 1, y, targetColor, newColor, depth + 1);
+        floodFillHelper(x - 1, y, targetColor, newColor, depth + 1);
+        floodFillHelper(x, y + 1, targetColor, newColor, depth + 1);
+        floodFillHelper(x, y - 1, targetColor, newColor, depth + 1);
+    }
+
+    // Get the raw pixels object for blitting
+    expose func getPixels() -> Ptr {
+        return pixels;
+    }
+
+    // Save to BMP file
+    expose func saveBmp(filename: String) -> Integer {
+        return Viper.Graphics.Pixels.SaveBmp(pixels,filename);
+    }
+
+    // Load from BMP file
+    expose func loadBmp(filename: String) -> Integer {
+        var loaded = Viper.Graphics.Pixels.LoadBmp(filename);
+        if loaded != null {
+            pixels = loaded;
+            // Note: Width/height should match original canvas
+            return 1;
+        }
+        return 0;
+    }
+}
+
+// Helper: Blend two colors (t = 0 to 100)
+func blendColorsForOpacity(c1: Integer, c2: Integer, t: Integer) -> Integer {
+    var r1 = (c1 / 65536) % 256;
+    var g1 = (c1 / 256) % 256;
+    var b1 = c1 % 256;
+
+    var r2 = (c2 / 65536) % 256;
+    var g2 = (c2 / 256) % 256;
+    var b2 = c2 % 256;
+
+    var r = r1 + (r2 - r1) * t / 100;
+    var g = g1 + (g2 - g1) * t / 100;
+    var b = b1 + (b2 - b1) * t / 100;
+
+    return 0xFF000000 + r * 65536 + g * 256 + b;
+}

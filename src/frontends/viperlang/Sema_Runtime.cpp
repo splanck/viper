@@ -35,10 +35,18 @@ void Sema::initRuntimeFunctions()
     typeRegistry_["Viper.Graphics.Canvas"] = types::runtimeClass("Viper.Graphics.Canvas");
     typeRegistry_["Viper.Graphics.Color"] = types::runtimeClass("Viper.Graphics.Color");
     typeRegistry_["Viper.Graphics.Pixels"] = types::runtimeClass("Viper.Graphics.Pixels");
+    typeRegistry_["Viper.Graphics.Camera"] = types::runtimeClass("Viper.Graphics.Camera");
+    typeRegistry_["Viper.Graphics.Sprite"] = types::runtimeClass("Viper.Graphics.Sprite");
+    typeRegistry_["Viper.Graphics.Tilemap"] = types::runtimeClass("Viper.Graphics.Tilemap");
     typeRegistry_["Viper.Sound.Audio"] = types::runtimeClass("Viper.Sound.Audio");
     typeRegistry_["Viper.Sound.Sound"] = types::runtimeClass("Viper.Sound.Sound");
     typeRegistry_["Viper.Sound.Voice"] = types::runtimeClass("Viper.Sound.Voice");
     typeRegistry_["Viper.Sound.Music"] = types::runtimeClass("Viper.Sound.Music");
+    typeRegistry_["Viper.Network.HttpReq"] = types::runtimeClass("Viper.Network.HttpReq");
+    typeRegistry_["Viper.Network.HttpRes"] = types::runtimeClass("Viper.Network.HttpRes");
+    typeRegistry_["Viper.Network.Url"] = types::runtimeClass("Viper.Network.Url");
+    typeRegistry_["Viper.Text.Pattern"] = types::runtimeClass("Viper.Text.Pattern");
+    typeRegistry_["Viper.Text.Template"] = types::runtimeClass("Viper.Text.Template");
 
     // GUI classes
     typeRegistry_["Viper.GUI.App"] = types::runtimeClass("Viper.GUI.App");
@@ -64,6 +72,8 @@ void Sema::initRuntimeFunctions()
     typeRegistry_["Viper.GUI.Image"] = types::runtimeClass("Viper.GUI.Image");
     typeRegistry_["Viper.GUI.VBox"] = types::runtimeClass("Viper.GUI.VBox");
     typeRegistry_["Viper.GUI.HBox"] = types::runtimeClass("Viper.GUI.HBox");
+    typeRegistry_["Viper.GUI.Container"] = types::runtimeClass("Viper.GUI.Container");
+
 
     // =========================================================================
     // BITS
@@ -90,22 +100,33 @@ void Sema::initRuntimeFunctions()
     // =========================================================================
     // BOX
     // =========================================================================
-    defineExternFunction("Viper.Box.I64", types::ptr());
+    defineExternFunction("Viper.Box.EqF64", types::integer());
+    defineExternFunction("Viper.Box.EqI64", types::integer());
+    defineExternFunction("Viper.Box.EqStr", types::integer());
     defineExternFunction("Viper.Box.F64", types::ptr());
     defineExternFunction("Viper.Box.I1", types::ptr());
+    defineExternFunction("Viper.Box.I64", types::ptr());
     defineExternFunction("Viper.Box.Str", types::ptr());
-    defineExternFunction("Viper.Box.ToI64", types::integer());
     defineExternFunction("Viper.Box.ToF64", types::number());
     defineExternFunction("Viper.Box.ToI1", types::integer());
+    defineExternFunction("Viper.Box.ToI64", types::integer());
     defineExternFunction("Viper.Box.ToStr", types::string());
     defineExternFunction("Viper.Box.Type", types::integer());
-    defineExternFunction("Viper.Box.EqI64", types::integer());
-    defineExternFunction("Viper.Box.EqF64", types::integer());
-    defineExternFunction("Viper.Box.EqStr", types::integer());
 
     // =========================================================================
-    // COLLECTIONS - BYTES
+    // COLLECTIONS
     // =========================================================================
+    defineExternFunction("Viper.Collections.Bag.Clear", types::voidType());
+    defineExternFunction("Viper.Collections.Bag.Common", types::ptr());
+    defineExternFunction("Viper.Collections.Bag.Diff", types::ptr());
+    defineExternFunction("Viper.Collections.Bag.Drop", types::boolean());
+    defineExternFunction("Viper.Collections.Bag.Has", types::boolean());
+    defineExternFunction("Viper.Collections.Bag.get_IsEmpty", types::boolean());
+    defineExternFunction("Viper.Collections.Bag.Items", types::ptr());
+    defineExternFunction("Viper.Collections.Bag.get_Len", types::integer());
+    defineExternFunction("Viper.Collections.Bag.Merge", types::ptr());
+    defineExternFunction("Viper.Collections.Bag.New", types::ptr());
+    defineExternFunction("Viper.Collections.Bag.Put", types::boolean());
     defineExternFunction("Viper.Collections.Bytes.Clone", types::ptr());
     defineExternFunction("Viper.Collections.Bytes.Copy", types::voidType());
     defineExternFunction("Viper.Collections.Bytes.Fill", types::voidType());
@@ -121,25 +142,18 @@ void Sema::initRuntimeFunctions()
     defineExternFunction("Viper.Collections.Bytes.ToBase64", types::string());
     defineExternFunction("Viper.Collections.Bytes.ToHex", types::string());
     defineExternFunction("Viper.Collections.Bytes.ToStr", types::string());
-
-    // =========================================================================
-    // COLLECTIONS - BAG
-    // =========================================================================
-    defineExternFunction("Viper.Collections.Bag.Clear", types::voidType());
-    defineExternFunction("Viper.Collections.Bag.Common", types::ptr());
-    defineExternFunction("Viper.Collections.Bag.Diff", types::ptr());
-    defineExternFunction("Viper.Collections.Bag.Drop", types::boolean());
-    defineExternFunction("Viper.Collections.Bag.Has", types::boolean());
-    defineExternFunction("Viper.Collections.Bag.get_IsEmpty", types::boolean());
-    defineExternFunction("Viper.Collections.Bag.Items", types::ptr());
-    defineExternFunction("Viper.Collections.Bag.get_Len", types::integer());
-    defineExternFunction("Viper.Collections.Bag.Merge", types::ptr());
-    defineExternFunction("Viper.Collections.Bag.New", types::ptr());
-    defineExternFunction("Viper.Collections.Bag.Put", types::boolean());
-
-    // =========================================================================
-    // COLLECTIONS - LIST
-    // =========================================================================
+    defineExternFunction("Viper.Collections.Heap.Clear", types::voidType());
+    defineExternFunction("Viper.Collections.Heap.get_IsEmpty", types::boolean());
+    defineExternFunction("Viper.Collections.Heap.get_IsMax", types::boolean());
+    defineExternFunction("Viper.Collections.Heap.get_Len", types::integer());
+    defineExternFunction("Viper.Collections.Heap.New", types::ptr());
+    defineExternFunction("Viper.Collections.Heap.NewMax", types::ptr());
+    defineExternFunction("Viper.Collections.Heap.Peek", types::ptr());
+    defineExternFunction("Viper.Collections.Heap.Pop", types::ptr());
+    defineExternFunction("Viper.Collections.Heap.Push", types::voidType());
+    defineExternFunction("Viper.Collections.Heap.ToSeq", types::ptr());
+    defineExternFunction("Viper.Collections.Heap.TryPeek", types::ptr());
+    defineExternFunction("Viper.Collections.Heap.TryPop", types::ptr());
     defineExternFunction("Viper.Collections.List.Add", types::voidType());
     defineExternFunction("Viper.Collections.List.Clear", types::voidType());
     defineExternFunction("Viper.Collections.List.Find", types::integer());
@@ -151,10 +165,6 @@ void Sema::initRuntimeFunctions()
     defineExternFunction("Viper.Collections.List.Remove", types::boolean());
     defineExternFunction("Viper.Collections.List.RemoveAt", types::voidType());
     defineExternFunction("Viper.Collections.List.set_Item", types::voidType());
-
-    // =========================================================================
-    // COLLECTIONS - MAP
-    // =========================================================================
     defineExternFunction("Viper.Collections.Map.Clear", types::voidType());
     defineExternFunction("Viper.Collections.Map.Get", types::ptr());
     defineExternFunction("Viper.Collections.Map.GetOr", types::ptr());
@@ -167,10 +177,6 @@ void Sema::initRuntimeFunctions()
     defineExternFunction("Viper.Collections.Map.Set", types::voidType());
     defineExternFunction("Viper.Collections.Map.SetIfMissing", types::boolean());
     defineExternFunction("Viper.Collections.Map.Values", types::ptr());
-
-    // =========================================================================
-    // COLLECTIONS - QUEUE, STACK, HEAP, SEQ, RING, TREEMAP
-    // =========================================================================
     defineExternFunction("Viper.Collections.Queue.Add", types::voidType());
     defineExternFunction("Viper.Collections.Queue.Clear", types::voidType());
     defineExternFunction("Viper.Collections.Queue.get_IsEmpty", types::boolean());
@@ -178,16 +184,38 @@ void Sema::initRuntimeFunctions()
     defineExternFunction("Viper.Collections.Queue.New", types::ptr());
     defineExternFunction("Viper.Collections.Queue.Peek", types::ptr());
     defineExternFunction("Viper.Collections.Queue.Take", types::ptr());
-    defineExternFunction("Viper.Collections.Heap.Clear", types::voidType());
-    defineExternFunction("Viper.Collections.Heap.get_IsEmpty", types::boolean());
-    defineExternFunction("Viper.Collections.Heap.get_IsMax", types::boolean());
-    defineExternFunction("Viper.Collections.Heap.get_Len", types::integer());
-    defineExternFunction("Viper.Collections.Heap.New", types::ptr());
-    defineExternFunction("Viper.Collections.Heap.NewMax", types::ptr());
-    defineExternFunction("Viper.Collections.Heap.Peek", types::ptr());
-    defineExternFunction("Viper.Collections.Heap.Pop", types::ptr());
-    defineExternFunction("Viper.Collections.Heap.Push", types::voidType());
-    defineExternFunction("Viper.Collections.Heap.ToSeq", types::ptr());
+    defineExternFunction("Viper.Collections.Ring.get_Cap", types::integer());
+    defineExternFunction("Viper.Collections.Ring.Clear", types::voidType());
+    defineExternFunction("Viper.Collections.Ring.Get", types::ptr());
+    defineExternFunction("Viper.Collections.Ring.get_IsEmpty", types::boolean());
+    defineExternFunction("Viper.Collections.Ring.get_IsFull", types::boolean());
+    defineExternFunction("Viper.Collections.Ring.get_Len", types::integer());
+    defineExternFunction("Viper.Collections.Ring.New", types::ptr());
+    defineExternFunction("Viper.Collections.Ring.Peek", types::ptr());
+    defineExternFunction("Viper.Collections.Ring.Pop", types::ptr());
+    defineExternFunction("Viper.Collections.Ring.Push", types::voidType());
+    defineExternFunction("Viper.Collections.Seq.Clear", types::voidType());
+    defineExternFunction("Viper.Collections.Seq.Clone", types::ptr());
+    defineExternFunction("Viper.Collections.Seq.get_Cap", types::integer());
+    defineExternFunction("Viper.Collections.Seq.Find", types::integer());
+    defineExternFunction("Viper.Collections.Seq.First", types::ptr());
+    defineExternFunction("Viper.Collections.Seq.Get", types::ptr());
+    defineExternFunction("Viper.Collections.Seq.Has", types::boolean());
+    defineExternFunction("Viper.Collections.Seq.Insert", types::voidType());
+    defineExternFunction("Viper.Collections.Seq.get_IsEmpty", types::boolean());
+    defineExternFunction("Viper.Collections.Seq.Last", types::ptr());
+    defineExternFunction("Viper.Collections.Seq.get_Len", types::integer());
+    defineExternFunction("Viper.Collections.Seq.New", types::ptr());
+    defineExternFunction("Viper.Collections.Seq.Peek", types::ptr());
+    defineExternFunction("Viper.Collections.Seq.Pop", types::ptr());
+    defineExternFunction("Viper.Collections.Seq.Push", types::voidType());
+    defineExternFunction("Viper.Collections.Seq.PushAll", types::voidType());
+    defineExternFunction("Viper.Collections.Seq.Remove", types::ptr());
+    defineExternFunction("Viper.Collections.Seq.Reverse", types::voidType());
+    defineExternFunction("Viper.Collections.Seq.Set", types::voidType());
+    defineExternFunction("Viper.Collections.Seq.Shuffle", types::voidType());
+    defineExternFunction("Viper.Collections.Seq.Slice", types::ptr());
+    defineExternFunction("Viper.Collections.Seq.WithCapacity", types::ptr());
     defineExternFunction("Viper.Collections.Stack.Clear", types::voidType());
     defineExternFunction("Viper.Collections.Stack.get_IsEmpty", types::boolean());
     defineExternFunction("Viper.Collections.Stack.get_Len", types::integer());
@@ -195,331 +223,769 @@ void Sema::initRuntimeFunctions()
     defineExternFunction("Viper.Collections.Stack.Peek", types::ptr());
     defineExternFunction("Viper.Collections.Stack.Pop", types::ptr());
     defineExternFunction("Viper.Collections.Stack.Push", types::voidType());
-    defineExternFunction("Viper.Collections.Seq.Push", types::voidType()); // VL-012: was Add
-    defineExternFunction("Viper.Collections.Seq.Clear", types::voidType());
-    defineExternFunction("Viper.Collections.Seq.Get", types::ptr());
-    defineExternFunction("Viper.Collections.Seq.get_Len", types::integer());
-    defineExternFunction("Viper.Collections.Seq.New", types::ptr());
-    defineExternFunction("Viper.Collections.Seq.Pop", types::ptr());
-    defineExternFunction("Viper.Collections.Seq.Set", types::voidType());
-    defineExternFunction("Viper.Collections.Ring.Clear", types::voidType());
-    defineExternFunction("Viper.Collections.Ring.Get", types::ptr());
-    defineExternFunction("Viper.Collections.Ring.get_Len", types::integer());
-    defineExternFunction("Viper.Collections.Ring.New", types::ptr());
-    defineExternFunction("Viper.Collections.Ring.Pop", types::ptr());
-    defineExternFunction("Viper.Collections.Ring.Push", types::voidType());
-    defineExternFunction("Viper.Collections.TreeMap.Clear", types::voidType());
+    defineExternFunction("Viper.Collections.TreeMap.New", types::ptr());
+    defineExternFunction("Viper.Collections.TreeMap.get_Len", types::integer());
+    defineExternFunction("Viper.Collections.TreeMap.get_IsEmpty", types::boolean());
+    defineExternFunction("Viper.Collections.TreeMap.Set", types::voidType());
     defineExternFunction("Viper.Collections.TreeMap.Get", types::ptr());
     defineExternFunction("Viper.Collections.TreeMap.Has", types::boolean());
+    defineExternFunction("Viper.Collections.TreeMap.Drop", types::boolean());
+    defineExternFunction("Viper.Collections.TreeMap.Clear", types::voidType());
     defineExternFunction("Viper.Collections.TreeMap.Keys", types::ptr());
-    defineExternFunction("Viper.Collections.TreeMap.get_Len", types::integer());
-    defineExternFunction("Viper.Collections.TreeMap.New", types::ptr());
-    defineExternFunction("Viper.Collections.TreeMap.Drop", types::boolean()); // VL-013: was Remove
-    defineExternFunction("Viper.Collections.TreeMap.Set", types::voidType());
+    defineExternFunction("Viper.Collections.TreeMap.Values", types::ptr());
+    defineExternFunction("Viper.Collections.TreeMap.First", types::string());
+    defineExternFunction("Viper.Collections.TreeMap.Last", types::string());
+    defineExternFunction("Viper.Collections.TreeMap.Floor", types::string());
+    defineExternFunction("Viper.Collections.TreeMap.Ceil", types::string());
 
     // =========================================================================
-    // CRYPTO - HASH, RAND, KEYDERIVE
+    // CONVERT
+    // =========================================================================
+    defineExternFunction("Viper.Convert.IntToStr", types::string());
+    defineExternFunction("Viper.Convert.NumToInt", types::integer());
+    defineExternFunction("Viper.Convert.NumToStr", types::string());
+    defineExternFunction("Viper.Convert.ToDouble", types::number());
+    defineExternFunction("Viper.Convert.ToInt", types::integer());
+    defineExternFunction("Viper.Convert.ToInt64", types::integer());
+    defineExternFunction("Viper.Convert.ToString_Double", types::string());
+    defineExternFunction("Viper.Convert.ToString_Int", types::string());
+
+    // =========================================================================
+    // CRYPTO
     // =========================================================================
     defineExternFunction("Viper.Crypto.Hash.CRC32", types::integer());
+    defineExternFunction("Viper.Crypto.Hash.CRC32Bytes", types::integer());
     defineExternFunction("Viper.Crypto.Hash.MD5", types::string());
+    defineExternFunction("Viper.Crypto.Hash.MD5Bytes", types::string());
     defineExternFunction("Viper.Crypto.Hash.SHA1", types::string());
+    defineExternFunction("Viper.Crypto.Hash.SHA1Bytes", types::string());
     defineExternFunction("Viper.Crypto.Hash.SHA256", types::string());
-    defineExternFunction("Viper.Crypto.Hash.SHA384", types::string());
-    defineExternFunction("Viper.Crypto.Hash.SHA512", types::string());
+    defineExternFunction("Viper.Crypto.Hash.SHA256Bytes", types::string());
     defineExternFunction("Viper.Crypto.Hash.HmacMD5", types::string());
+    defineExternFunction("Viper.Crypto.Hash.HmacMD5Bytes", types::string());
     defineExternFunction("Viper.Crypto.Hash.HmacSHA1", types::string());
+    defineExternFunction("Viper.Crypto.Hash.HmacSHA1Bytes", types::string());
     defineExternFunction("Viper.Crypto.Hash.HmacSHA256", types::string());
+    defineExternFunction("Viper.Crypto.Hash.HmacSHA256Bytes", types::string());
+    defineExternFunction("Viper.Crypto.KeyDerive.Pbkdf2SHA256", types::ptr());
+    defineExternFunction("Viper.Crypto.KeyDerive.Pbkdf2SHA256Str", types::string());
     defineExternFunction("Viper.Crypto.Rand.Bytes", types::ptr());
     defineExternFunction("Viper.Crypto.Rand.Int", types::integer());
-    defineExternFunction("Viper.Crypto.KeyDerive.Pbkdf2SHA256", types::ptr());
 
     // =========================================================================
     // DATETIME
     // =========================================================================
-    defineExternFunction("Viper.DateTime.Now", types::integer());
-    defineExternFunction("Viper.DateTime.UtcNow", types::integer());
+    defineExternFunction("Viper.DateTime.AddDays", types::integer());
+    defineExternFunction("Viper.DateTime.AddSeconds", types::integer());
     defineExternFunction("Viper.DateTime.Create", types::integer());
-    defineExternFunction("Viper.DateTime.Format", types::string());
-    defineExternFunction("Viper.DateTime.Parse", types::integer());
-    defineExternFunction("Viper.DateTime.Year", types::integer());
-    defineExternFunction("Viper.DateTime.Month", types::integer());
     defineExternFunction("Viper.DateTime.Day", types::integer());
+    defineExternFunction("Viper.DateTime.DayOfWeek", types::integer());
+    defineExternFunction("Viper.DateTime.Diff", types::integer());
+    defineExternFunction("Viper.DateTime.Format", types::string());
     defineExternFunction("Viper.DateTime.Hour", types::integer());
     defineExternFunction("Viper.DateTime.Minute", types::integer());
+    defineExternFunction("Viper.DateTime.Month", types::integer());
+    defineExternFunction("Viper.DateTime.Now", types::integer());
+    defineExternFunction("Viper.DateTime.NowMs", types::integer());
     defineExternFunction("Viper.DateTime.Second", types::integer());
-    defineExternFunction("Viper.DateTime.DayOfWeek", types::integer());
-    defineExternFunction("Viper.DateTime.DayOfYear", types::integer());
-    defineExternFunction("Viper.DateTime.AddDays", types::integer());
-    defineExternFunction("Viper.DateTime.AddHours", types::integer());
-    defineExternFunction("Viper.DateTime.AddMinutes", types::integer());
-    defineExternFunction("Viper.DateTime.AddSeconds", types::integer());
-    defineExternFunction("Viper.DateTime.ToUnix", types::integer());
-    defineExternFunction("Viper.DateTime.FromUnix", types::integer());
+    defineExternFunction("Viper.DateTime.ToISO", types::string());
+    defineExternFunction("Viper.DateTime.Year", types::integer());
 
     // =========================================================================
     // DIAGNOSTICS
     // =========================================================================
     defineExternFunction("Viper.Diagnostics.Assert", types::voidType());
     defineExternFunction("Viper.Diagnostics.AssertEq", types::voidType());
-    defineExternFunction("Viper.Diagnostics.AssertNe", types::voidType());
-    defineExternFunction("Viper.Diagnostics.AssertTrue", types::voidType());
-    defineExternFunction("Viper.Diagnostics.AssertFalse", types::voidType());
-    defineExternFunction("Viper.Diagnostics.Trap", types::voidType());
-    defineExternFunction("Viper.Diagnostics.Stopwatch.Start", types::ptr());
-    defineExternFunction("Viper.Diagnostics.Stopwatch.Elapsed", types::integer());
-    defineExternFunction("Viper.Diagnostics.Stopwatch.ElapsedMs", types::integer());
+    defineExternFunction("Viper.Diagnostics.AssertEqNum", types::voidType());
+    defineExternFunction("Viper.Diagnostics.AssertEqStr", types::voidType());
+    defineExternFunction("Viper.Diagnostics.AssertFail", types::voidType());
+    defineExternFunction("Viper.Diagnostics.AssertGt", types::voidType());
+    defineExternFunction("Viper.Diagnostics.AssertGte", types::voidType());
+    defineExternFunction("Viper.Diagnostics.AssertLt", types::voidType());
+    defineExternFunction("Viper.Diagnostics.AssertLte", types::voidType());
+    defineExternFunction("Viper.Diagnostics.AssertNeq", types::voidType());
+    defineExternFunction("Viper.Diagnostics.AssertNotNull", types::voidType());
+    defineExternFunction("Viper.Diagnostics.AssertNull", types::voidType());
+    defineExternFunction("Viper.Diagnostics.Stopwatch.get_ElapsedMs", types::integer());
+    defineExternFunction("Viper.Diagnostics.Stopwatch.get_ElapsedNs", types::integer());
+    defineExternFunction("Viper.Diagnostics.Stopwatch.get_ElapsedUs", types::integer());
+    defineExternFunction("Viper.Diagnostics.Stopwatch.get_IsRunning", types::boolean());
+    defineExternFunction("Viper.Diagnostics.Stopwatch.New", types::ptr());
     defineExternFunction("Viper.Diagnostics.Stopwatch.Reset", types::voidType());
+    defineExternFunction("Viper.Diagnostics.Stopwatch.Restart", types::voidType());
+    defineExternFunction("Viper.Diagnostics.Stopwatch.Start", types::voidType());
+    defineExternFunction("Viper.Diagnostics.Stopwatch.StartNew", types::ptr());
+    defineExternFunction("Viper.Diagnostics.Stopwatch.Stop", types::voidType());
+    defineExternFunction("Viper.Diagnostics.Trap", types::voidType());
 
     // =========================================================================
     // ENVIRONMENT
     // =========================================================================
+    defineExternFunction("Viper.Environment.EndProgram", types::voidType());
     defineExternFunction("Viper.Environment.GetArgument", types::string());
     defineExternFunction("Viper.Environment.GetArgumentCount", types::integer());
     defineExternFunction("Viper.Environment.GetCommandLine", types::string());
-    defineExternFunction("Viper.Environment.GetVar", types::string());
-    defineExternFunction("Viper.Environment.SetVar", types::voidType());
-    defineExternFunction("Viper.Environment.HasVar", types::boolean());
+    defineExternFunction("Viper.Environment.GetVariable", types::string());
+    defineExternFunction("Viper.Environment.HasVariable", types::boolean());
+    defineExternFunction("Viper.Environment.IsNative", types::boolean());
+    defineExternFunction("Viper.Environment.SetVariable", types::voidType());
 
     // =========================================================================
     // EXEC
     // =========================================================================
-    defineExternFunction("Viper.Exec.Run", types::integer());
     defineExternFunction("Viper.Exec.Capture", types::string());
+    defineExternFunction("Viper.Exec.CaptureArgs", types::string());
+    defineExternFunction("Viper.Exec.Run", types::integer());
+    defineExternFunction("Viper.Exec.RunArgs", types::integer());
     defineExternFunction("Viper.Exec.Shell", types::integer());
+    defineExternFunction("Viper.Exec.ShellCapture", types::string());
 
     // =========================================================================
-    // FMT (FORMATTING)
+    // FMT
     // =========================================================================
-    defineExternFunction("Viper.Fmt.Str", types::string());
-    defineExternFunction("Viper.Fmt.Int", types::string());
-    defineExternFunction("Viper.Fmt.Num", types::string());
-    defineExternFunction("Viper.Fmt.Bool", types::string());
-    defineExternFunction("Viper.Fmt.Pad", types::string());
-    defineExternFunction("Viper.Fmt.PadLeft", types::string());
-    defineExternFunction("Viper.Fmt.PadRight", types::string());
-    defineExternFunction("Viper.Fmt.Hex", types::string());
-    defineExternFunction("Viper.Fmt.Oct", types::string());
     defineExternFunction("Viper.Fmt.Bin", types::string());
+    defineExternFunction("Viper.Fmt.Bool", types::string());
+    defineExternFunction("Viper.Fmt.BoolYN", types::string());
+    defineExternFunction("Viper.Fmt.Hex", types::string());
+    defineExternFunction("Viper.Fmt.HexPad", types::string());
+    defineExternFunction("Viper.Fmt.Int", types::string());
+    defineExternFunction("Viper.Fmt.IntPad", types::string());
+    defineExternFunction("Viper.Fmt.IntRadix", types::string());
+    defineExternFunction("Viper.Fmt.Num", types::string());
+    defineExternFunction("Viper.Fmt.NumFixed", types::string());
+    defineExternFunction("Viper.Fmt.NumPct", types::string());
+    defineExternFunction("Viper.Fmt.NumSci", types::string());
+    defineExternFunction("Viper.Fmt.Oct", types::string());
     defineExternFunction("Viper.Fmt.Size", types::string());
 
     // =========================================================================
-    // GRAPHICS - CANVAS
+    // GUI
     // =========================================================================
-    defineExternFunction("Viper.Graphics.Canvas.New", types::runtimeClass("Viper.Graphics.Canvas"));
-    defineExternFunction("Viper.Graphics.Canvas.Clear", types::voidType());
-    defineExternFunction("Viper.Graphics.Canvas.Plot", types::voidType());
-    defineExternFunction("Viper.Graphics.Canvas.Line", types::voidType());
+    defineExternFunction("Viper.GUI.App.New", types::runtimeClass("Viper.GUI.App"));
+    defineExternFunction("Viper.GUI.App.Destroy", types::voidType());
+    defineExternFunction("Viper.GUI.App.get_ShouldClose", types::integer());
+    defineExternFunction("Viper.GUI.App.Poll", types::voidType());
+    defineExternFunction("Viper.GUI.App.Render", types::voidType());
+    defineExternFunction("Viper.GUI.App.get_Root", types::runtimeClass("Viper.GUI.Widget"));
+    defineExternFunction("Viper.GUI.App.SetFont", types::voidType());
+    defineExternFunction("Viper.GUI.Button.New", types::runtimeClass("Viper.GUI.Button"));
+    defineExternFunction("Viper.GUI.Button.SetText", types::voidType());
+    defineExternFunction("Viper.GUI.Button.SetFont", types::voidType());
+    defineExternFunction("Viper.GUI.Button.SetStyle", types::voidType());
+    defineExternFunction("Viper.GUI.Button.WasClicked", types::integer());
+    defineExternFunction("Viper.GUI.Checkbox.New", types::runtimeClass("Viper.GUI.Checkbox"));
+    defineExternFunction("Viper.GUI.Checkbox.SetChecked", types::voidType());
+    defineExternFunction("Viper.GUI.Checkbox.IsChecked", types::integer());
+    defineExternFunction("Viper.GUI.Checkbox.SetText", types::voidType());
+    defineExternFunction("Viper.GUI.CodeEditor.New", types::runtimeClass("Viper.GUI.CodeEditor"));
+    defineExternFunction("Viper.GUI.CodeEditor.SetText", types::voidType());
+    defineExternFunction("Viper.GUI.CodeEditor.get_Text", types::string());
+    defineExternFunction("Viper.GUI.CodeEditor.SetCursor", types::voidType());
+    defineExternFunction("Viper.GUI.CodeEditor.ScrollToLine", types::voidType());
+    defineExternFunction("Viper.GUI.CodeEditor.get_LineCount", types::integer());
+    defineExternFunction("Viper.GUI.CodeEditor.IsModified", types::integer());
+    defineExternFunction("Viper.GUI.CodeEditor.ClearModified", types::voidType());
+    defineExternFunction("Viper.GUI.CodeEditor.SetFont", types::voidType());
+    defineExternFunction("Viper.GUI.Container.SetSpacing", types::voidType());
+    defineExternFunction("Viper.GUI.Container.SetPadding", types::voidType());
+    defineExternFunction("Viper.GUI.Dropdown.New", types::runtimeClass("Viper.GUI.Dropdown"));
+    defineExternFunction("Viper.GUI.Dropdown.AddItem", types::integer());
+    defineExternFunction("Viper.GUI.Dropdown.RemoveItem", types::voidType());
+    defineExternFunction("Viper.GUI.Dropdown.Clear", types::voidType());
+    defineExternFunction("Viper.GUI.Dropdown.SetSelected", types::voidType());
+    defineExternFunction("Viper.GUI.Dropdown.get_Selected", types::integer());
+    defineExternFunction("Viper.GUI.Dropdown.get_SelectedText", types::string());
+    defineExternFunction("Viper.GUI.Dropdown.SetPlaceholder", types::voidType());
+    defineExternFunction("Viper.GUI.Font.Load", types::runtimeClass("Viper.GUI.Font"));
+    defineExternFunction("Viper.GUI.Font.Destroy", types::voidType());
+    defineExternFunction("Viper.GUI.HBox.New", types::runtimeClass("Viper.GUI.HBox"));
+    defineExternFunction("Viper.GUI.HBox.SetSpacing", types::voidType());
+    defineExternFunction("Viper.GUI.HBox.SetPadding", types::voidType());
+    defineExternFunction("Viper.GUI.Image.New", types::runtimeClass("Viper.GUI.Image"));
+    defineExternFunction("Viper.GUI.Image.SetPixels", types::voidType());
+    defineExternFunction("Viper.GUI.Image.Clear", types::voidType());
+    defineExternFunction("Viper.GUI.Image.SetScaleMode", types::voidType());
+    defineExternFunction("Viper.GUI.Image.SetOpacity", types::voidType());
+    defineExternFunction("Viper.GUI.Label.New", types::runtimeClass("Viper.GUI.Label"));
+    defineExternFunction("Viper.GUI.Label.SetText", types::voidType());
+    defineExternFunction("Viper.GUI.Label.SetFont", types::voidType());
+    defineExternFunction("Viper.GUI.Label.SetColor", types::voidType());
+    defineExternFunction("Viper.GUI.ListBox.New", types::runtimeClass("Viper.GUI.ListBox"));
+    defineExternFunction("Viper.GUI.ListBox.AddItem", types::ptr());
+    defineExternFunction("Viper.GUI.ListBox.RemoveItem", types::voidType());
+    defineExternFunction("Viper.GUI.ListBox.Clear", types::voidType());
+    defineExternFunction("Viper.GUI.ListBox.Select", types::voidType());
+    defineExternFunction("Viper.GUI.ListBox.get_Selected", types::ptr());
+    defineExternFunction("Viper.GUI.ProgressBar.New", types::runtimeClass("Viper.GUI.ProgressBar"));
+    defineExternFunction("Viper.GUI.ProgressBar.SetValue", types::voidType());
+    defineExternFunction("Viper.GUI.ProgressBar.get_Value", types::number());
+    defineExternFunction("Viper.GUI.RadioButton.New", types::runtimeClass("Viper.GUI.RadioButton"));
+    defineExternFunction("Viper.GUI.RadioButton.IsSelected", types::integer());
+    defineExternFunction("Viper.GUI.RadioButton.SetSelected", types::voidType());
+    defineExternFunction("Viper.GUI.RadioGroup.New", types::runtimeClass("Viper.GUI.RadioGroup"));
+    defineExternFunction("Viper.GUI.RadioGroup.Destroy", types::voidType());
+    defineExternFunction("Viper.GUI.ScrollView.New", types::runtimeClass("Viper.GUI.ScrollView"));
+    defineExternFunction("Viper.GUI.ScrollView.SetScroll", types::voidType());
+    defineExternFunction("Viper.GUI.ScrollView.SetContentSize", types::voidType());
+    defineExternFunction("Viper.GUI.Slider.New", types::runtimeClass("Viper.GUI.Slider"));
+    defineExternFunction("Viper.GUI.Slider.SetValue", types::voidType());
+    defineExternFunction("Viper.GUI.Slider.get_Value", types::number());
+    defineExternFunction("Viper.GUI.Slider.SetRange", types::voidType());
+    defineExternFunction("Viper.GUI.Slider.SetStep", types::voidType());
+    defineExternFunction("Viper.GUI.Spinner.New", types::runtimeClass("Viper.GUI.Spinner"));
+    defineExternFunction("Viper.GUI.Spinner.SetValue", types::voidType());
+    defineExternFunction("Viper.GUI.Spinner.get_Value", types::number());
+    defineExternFunction("Viper.GUI.Spinner.SetRange", types::voidType());
+    defineExternFunction("Viper.GUI.Spinner.SetStep", types::voidType());
+    defineExternFunction("Viper.GUI.Spinner.SetDecimals", types::voidType());
+    defineExternFunction("Viper.GUI.SplitPane.New", types::runtimeClass("Viper.GUI.SplitPane"));
+    defineExternFunction("Viper.GUI.SplitPane.SetPosition", types::voidType());
+    defineExternFunction("Viper.GUI.SplitPane.get_First", types::ptr());
+    defineExternFunction("Viper.GUI.SplitPane.get_Second", types::ptr());
+    defineExternFunction("Viper.GUI.Tab.SetTitle", types::voidType());
+    defineExternFunction("Viper.GUI.Tab.SetModified", types::voidType());
+    defineExternFunction("Viper.GUI.TabBar.New", types::runtimeClass("Viper.GUI.TabBar"));
+    defineExternFunction("Viper.GUI.TabBar.AddTab", types::ptr());
+    defineExternFunction("Viper.GUI.TabBar.RemoveTab", types::voidType());
+    defineExternFunction("Viper.GUI.TabBar.SetActive", types::voidType());
+    defineExternFunction("Viper.GUI.TextInput.New", types::runtimeClass("Viper.GUI.TextInput"));
+    defineExternFunction("Viper.GUI.TextInput.SetText", types::voidType());
+    defineExternFunction("Viper.GUI.TextInput.get_Text", types::string());
+    defineExternFunction("Viper.GUI.TextInput.SetPlaceholder", types::voidType());
+    defineExternFunction("Viper.GUI.TextInput.SetFont", types::voidType());
+    defineExternFunction("Viper.GUI.Theme.SetDark", types::voidType());
+    defineExternFunction("Viper.GUI.Theme.SetLight", types::voidType());
+    defineExternFunction("Viper.GUI.TreeView.New", types::runtimeClass("Viper.GUI.TreeView"));
+    defineExternFunction("Viper.GUI.TreeView.AddNode", types::ptr());
+    defineExternFunction("Viper.GUI.TreeView.RemoveNode", types::voidType());
+    defineExternFunction("Viper.GUI.TreeView.Clear", types::voidType());
+    defineExternFunction("Viper.GUI.TreeView.Expand", types::voidType());
+    defineExternFunction("Viper.GUI.TreeView.Collapse", types::voidType());
+    defineExternFunction("Viper.GUI.TreeView.Select", types::voidType());
+    defineExternFunction("Viper.GUI.TreeView.SetFont", types::voidType());
+    defineExternFunction("Viper.GUI.VBox.New", types::runtimeClass("Viper.GUI.VBox"));
+    defineExternFunction("Viper.GUI.VBox.SetSpacing", types::voidType());
+    defineExternFunction("Viper.GUI.VBox.SetPadding", types::voidType());
+    defineExternFunction("Viper.GUI.Widget.Destroy", types::voidType());
+    defineExternFunction("Viper.GUI.Widget.SetVisible", types::voidType());
+    defineExternFunction("Viper.GUI.Widget.SetEnabled", types::voidType());
+    defineExternFunction("Viper.GUI.Widget.SetSize", types::voidType());
+    defineExternFunction("Viper.GUI.Widget.AddChild", types::voidType());
+    defineExternFunction("Viper.GUI.Widget.IsHovered", types::integer());
+    defineExternFunction("Viper.GUI.Widget.IsPressed", types::integer());
+    defineExternFunction("Viper.GUI.Widget.IsFocused", types::integer());
+    defineExternFunction("Viper.GUI.Widget.WasClicked", types::integer());
+    defineExternFunction("Viper.GUI.Widget.SetPosition", types::voidType());
+
+    // =========================================================================
+    // GRAPHICS
+    // =========================================================================
+    defineExternFunction("Viper.Graphics.Camera.New", types::ptr());
+    defineExternFunction("Viper.Graphics.Camera.get_X", types::integer());
+    defineExternFunction("Viper.Graphics.Camera.set_X", types::voidType());
+    defineExternFunction("Viper.Graphics.Camera.get_Y", types::integer());
+    defineExternFunction("Viper.Graphics.Camera.set_Y", types::voidType());
+    defineExternFunction("Viper.Graphics.Camera.get_Zoom", types::integer());
+    defineExternFunction("Viper.Graphics.Camera.set_Zoom", types::voidType());
+    defineExternFunction("Viper.Graphics.Camera.get_Rotation", types::integer());
+    defineExternFunction("Viper.Graphics.Camera.set_Rotation", types::voidType());
+    defineExternFunction("Viper.Graphics.Camera.get_Width", types::integer());
+    defineExternFunction("Viper.Graphics.Camera.get_Height", types::integer());
+    defineExternFunction("Viper.Graphics.Camera.Follow", types::voidType());
+    defineExternFunction("Viper.Graphics.Camera.ToScreenX", types::integer());
+    defineExternFunction("Viper.Graphics.Camera.ToScreenY", types::integer());
+    defineExternFunction("Viper.Graphics.Camera.ToWorldX", types::integer());
+    defineExternFunction("Viper.Graphics.Camera.ToWorldY", types::integer());
+    defineExternFunction("Viper.Graphics.Camera.Move", types::voidType());
+    defineExternFunction("Viper.Graphics.Camera.SetBounds", types::voidType());
+    defineExternFunction("Viper.Graphics.Camera.ClearBounds", types::voidType());
     defineExternFunction("Viper.Graphics.Canvas.Box", types::voidType());
-    defineExternFunction("Viper.Graphics.Canvas.Frame", types::voidType());
+    defineExternFunction("Viper.Graphics.Canvas.Clear", types::voidType());
     defineExternFunction("Viper.Graphics.Canvas.Disc", types::voidType());
+    defineExternFunction("Viper.Graphics.Canvas.Flip", types::voidType());
+    defineExternFunction("Viper.Graphics.Canvas.Frame", types::voidType());
+    defineExternFunction("Viper.Graphics.Canvas.get_Height", types::integer());
+    defineExternFunction("Viper.Graphics.Canvas.KeyHeld", types::integer());
+    defineExternFunction("Viper.Graphics.Canvas.Line", types::voidType());
+    defineExternFunction("Viper.Graphics.Canvas.New", types::ptr());
+    defineExternFunction("Viper.Graphics.Canvas.Plot", types::voidType());
+    defineExternFunction("Viper.Graphics.Canvas.Poll", types::integer());
     defineExternFunction("Viper.Graphics.Canvas.Ring", types::voidType());
+    defineExternFunction("Viper.Graphics.Canvas.get_ShouldClose", types::integer());
+    defineExternFunction("Viper.Graphics.Canvas.get_Width", types::integer());
     defineExternFunction("Viper.Graphics.Canvas.Text", types::voidType());
     defineExternFunction("Viper.Graphics.Canvas.TextBg", types::voidType());
-    defineExternFunction("Viper.Graphics.Canvas.Poll", types::integer());
-    defineExternFunction("Viper.Graphics.Canvas.Flip", types::voidType());
-    defineExternFunction("Viper.Graphics.Canvas.KeyHeld", types::integer());
-    defineExternFunction("Viper.Graphics.Canvas.GetPixel", types::integer());
-    defineExternFunction("Viper.Graphics.Canvas.get_Width", types::integer());
-    defineExternFunction("Viper.Graphics.Canvas.get_Height", types::integer());
-    defineExternFunction("Viper.Graphics.Canvas.get_ShouldClose", types::integer());
-    defineExternFunction("Viper.Graphics.Canvas.ThickLine", types::voidType());
-    defineExternFunction("Viper.Graphics.Canvas.RoundBox", types::voidType());
-    defineExternFunction("Viper.Graphics.Canvas.RoundFrame", types::voidType());
+    defineExternFunction("Viper.Graphics.Canvas.TextWidth", types::integer());
+    defineExternFunction("Viper.Graphics.Canvas.TextHeight", types::integer());
     defineExternFunction("Viper.Graphics.Canvas.Blit", types::voidType());
     defineExternFunction("Viper.Graphics.Canvas.BlitRegion", types::voidType());
     defineExternFunction("Viper.Graphics.Canvas.BlitAlpha", types::voidType());
+    defineExternFunction("Viper.Graphics.Canvas.ThickLine", types::voidType());
+    defineExternFunction("Viper.Graphics.Canvas.RoundBox", types::voidType());
+    defineExternFunction("Viper.Graphics.Canvas.RoundFrame", types::voidType());
+    defineExternFunction("Viper.Graphics.Canvas.FloodFill", types::voidType());
     defineExternFunction("Viper.Graphics.Canvas.Triangle", types::voidType());
     defineExternFunction("Viper.Graphics.Canvas.TriangleFrame", types::voidType());
     defineExternFunction("Viper.Graphics.Canvas.Ellipse", types::voidType());
     defineExternFunction("Viper.Graphics.Canvas.EllipseFrame", types::voidType());
-    defineExternFunction("Viper.Graphics.Canvas.FloodFill", types::voidType());
+    defineExternFunction("Viper.Graphics.Canvas.Arc", types::voidType());
+    defineExternFunction("Viper.Graphics.Canvas.ArcFrame", types::voidType());
+    defineExternFunction("Viper.Graphics.Canvas.Bezier", types::voidType());
+    defineExternFunction("Viper.Graphics.Canvas.Polyline", types::voidType());
+    defineExternFunction("Viper.Graphics.Canvas.Polygon", types::voidType());
+    defineExternFunction("Viper.Graphics.Canvas.PolygonFrame", types::voidType());
+    defineExternFunction("Viper.Graphics.Canvas.GetPixel", types::integer());
+    defineExternFunction("Viper.Graphics.Canvas.CopyRect", types::ptr());
     defineExternFunction("Viper.Graphics.Canvas.SaveBmp", types::integer());
+    defineExternFunction("Viper.Graphics.Canvas.SetClipRect", types::voidType());
+    defineExternFunction("Viper.Graphics.Canvas.ClearClipRect", types::voidType());
+    defineExternFunction("Viper.Graphics.Canvas.SetTitle", types::voidType());
+    defineExternFunction("Viper.Graphics.Canvas.Screenshot", types::ptr());
+    defineExternFunction("Viper.Graphics.Canvas.Fullscreen", types::voidType());
+    defineExternFunction("Viper.Graphics.Canvas.Windowed", types::voidType());
+    defineExternFunction("Viper.Graphics.Canvas.GradientH", types::voidType());
+    defineExternFunction("Viper.Graphics.Canvas.GradientV", types::voidType());
     defineExternFunction("Viper.Graphics.Color.RGB", types::integer());
     defineExternFunction("Viper.Graphics.Color.RGBA", types::integer());
-    defineExternFunction("Viper.Graphics.Color.Red", types::integer());
-    defineExternFunction("Viper.Graphics.Color.Green", types::integer());
-    defineExternFunction("Viper.Graphics.Color.Blue", types::integer());
-    defineExternFunction("Viper.Graphics.Color.Alpha", types::integer());
-    defineExternFunction("Viper.Graphics.Color.Blend", types::integer());
-    defineExternFunction("Viper.Graphics.Pixels.New", types::runtimeClass("Viper.Graphics.Pixels"));
-    defineExternFunction("Viper.Graphics.Pixels.LoadBmp",
-        types::runtimeClass("Viper.Graphics.Pixels"));
-    defineExternFunction("Viper.Graphics.Pixels.Get", types::integer());
-    defineExternFunction("Viper.Graphics.Pixels.Set", types::voidType());
-    defineExternFunction("Viper.Graphics.Pixels.get_Width", types::integer());
-    defineExternFunction("Viper.Graphics.Pixels.get_Height", types::integer());
+    defineExternFunction("Viper.Graphics.Color.FromHSL", types::integer());
+    defineExternFunction("Viper.Graphics.Color.GetH", types::integer());
+    defineExternFunction("Viper.Graphics.Color.GetS", types::integer());
+    defineExternFunction("Viper.Graphics.Color.GetL", types::integer());
+    defineExternFunction("Viper.Graphics.Color.Lerp", types::integer());
+    defineExternFunction("Viper.Graphics.Color.GetR", types::integer());
+    defineExternFunction("Viper.Graphics.Color.GetG", types::integer());
+    defineExternFunction("Viper.Graphics.Color.GetB", types::integer());
+    defineExternFunction("Viper.Graphics.Color.GetA", types::integer());
+    defineExternFunction("Viper.Graphics.Color.Brighten", types::integer());
+    defineExternFunction("Viper.Graphics.Color.Darken", types::integer());
     defineExternFunction("Viper.Graphics.Pixels.Clear", types::voidType());
-    defineExternFunction("Viper.Graphics.Pixels.Clone", types::runtimeClass("Viper.Graphics.Pixels"));
+    defineExternFunction("Viper.Graphics.Pixels.Clone", types::ptr());
     defineExternFunction("Viper.Graphics.Pixels.Copy", types::voidType());
     defineExternFunction("Viper.Graphics.Pixels.Fill", types::voidType());
+    defineExternFunction("Viper.Graphics.Pixels.FromBytes", types::ptr());
+    defineExternFunction("Viper.Graphics.Pixels.Get", types::integer());
+    defineExternFunction("Viper.Graphics.Pixels.get_Height", types::integer());
+    defineExternFunction("Viper.Graphics.Pixels.New", types::ptr());
+    defineExternFunction("Viper.Graphics.Pixels.Set", types::voidType());
     defineExternFunction("Viper.Graphics.Pixels.ToBytes", types::ptr());
+    defineExternFunction("Viper.Graphics.Pixels.get_Width", types::integer());
+    defineExternFunction("Viper.Graphics.Pixels.LoadBmp", types::ptr());
     defineExternFunction("Viper.Graphics.Pixels.SaveBmp", types::integer());
-    defineExternFunction("Viper.Graphics.Pixels.FlipH", types::runtimeClass("Viper.Graphics.Pixels"));
-    defineExternFunction("Viper.Graphics.Pixels.FlipV", types::runtimeClass("Viper.Graphics.Pixels"));
-    defineExternFunction("Viper.Graphics.Pixels.Scale", types::runtimeClass("Viper.Graphics.Pixels"));
+    defineExternFunction("Viper.Graphics.Pixels.FlipH", types::ptr());
+    defineExternFunction("Viper.Graphics.Pixels.FlipV", types::ptr());
+    defineExternFunction("Viper.Graphics.Pixels.RotateCW", types::ptr());
+    defineExternFunction("Viper.Graphics.Pixels.RotateCCW", types::ptr());
+    defineExternFunction("Viper.Graphics.Pixels.Rotate180", types::ptr());
+    defineExternFunction("Viper.Graphics.Pixels.Scale", types::ptr());
+    defineExternFunction("Viper.Graphics.Pixels.Invert", types::ptr());
+    defineExternFunction("Viper.Graphics.Pixels.Grayscale", types::ptr());
+    defineExternFunction("Viper.Graphics.Pixels.Tint", types::ptr());
+    defineExternFunction("Viper.Graphics.Pixels.Blur", types::ptr());
+    defineExternFunction("Viper.Graphics.Pixels.Resize", types::ptr());
+    defineExternFunction("Viper.Graphics.Sprite.New", types::ptr());
+    defineExternFunction("Viper.Graphics.Sprite.FromFile", types::ptr());
+    defineExternFunction("Viper.Graphics.Sprite.get_X", types::integer());
+    defineExternFunction("Viper.Graphics.Sprite.set_X", types::voidType());
+    defineExternFunction("Viper.Graphics.Sprite.get_Y", types::integer());
+    defineExternFunction("Viper.Graphics.Sprite.set_Y", types::voidType());
+    defineExternFunction("Viper.Graphics.Sprite.get_Width", types::integer());
+    defineExternFunction("Viper.Graphics.Sprite.get_Height", types::integer());
+    defineExternFunction("Viper.Graphics.Sprite.get_ScaleX", types::integer());
+    defineExternFunction("Viper.Graphics.Sprite.set_ScaleX", types::voidType());
+    defineExternFunction("Viper.Graphics.Sprite.get_ScaleY", types::integer());
+    defineExternFunction("Viper.Graphics.Sprite.set_ScaleY", types::voidType());
+    defineExternFunction("Viper.Graphics.Sprite.get_Rotation", types::integer());
+    defineExternFunction("Viper.Graphics.Sprite.set_Rotation", types::voidType());
+    defineExternFunction("Viper.Graphics.Sprite.get_Visible", types::integer());
+    defineExternFunction("Viper.Graphics.Sprite.set_Visible", types::voidType());
+    defineExternFunction("Viper.Graphics.Sprite.get_Frame", types::integer());
+    defineExternFunction("Viper.Graphics.Sprite.set_Frame", types::voidType());
+    defineExternFunction("Viper.Graphics.Sprite.get_FrameCount", types::integer());
+    defineExternFunction("Viper.Graphics.Sprite.Draw", types::voidType());
+    defineExternFunction("Viper.Graphics.Sprite.SetOrigin", types::voidType());
+    defineExternFunction("Viper.Graphics.Sprite.AddFrame", types::voidType());
+    defineExternFunction("Viper.Graphics.Sprite.SetFrameDelay", types::voidType());
+    defineExternFunction("Viper.Graphics.Sprite.Update", types::voidType());
+    defineExternFunction("Viper.Graphics.Sprite.Overlaps", types::integer());
+    defineExternFunction("Viper.Graphics.Sprite.Contains", types::integer());
+    defineExternFunction("Viper.Graphics.Sprite.Move", types::voidType());
+    defineExternFunction("Viper.Graphics.Tilemap.New", types::ptr());
+    defineExternFunction("Viper.Graphics.Tilemap.get_Width", types::integer());
+    defineExternFunction("Viper.Graphics.Tilemap.get_Height", types::integer());
+    defineExternFunction("Viper.Graphics.Tilemap.get_TileWidth", types::integer());
+    defineExternFunction("Viper.Graphics.Tilemap.get_TileHeight", types::integer());
+    defineExternFunction("Viper.Graphics.Tilemap.SetTileset", types::voidType());
+    defineExternFunction("Viper.Graphics.Tilemap.get_TileCount", types::integer());
+    defineExternFunction("Viper.Graphics.Tilemap.SetTile", types::voidType());
+    defineExternFunction("Viper.Graphics.Tilemap.GetTile", types::integer());
+    defineExternFunction("Viper.Graphics.Tilemap.Fill", types::voidType());
+    defineExternFunction("Viper.Graphics.Tilemap.Clear", types::voidType());
+    defineExternFunction("Viper.Graphics.Tilemap.FillRect", types::voidType());
+    defineExternFunction("Viper.Graphics.Tilemap.Draw", types::voidType());
+    defineExternFunction("Viper.Graphics.Tilemap.DrawRegion", types::voidType());
+    defineExternFunction("Viper.Graphics.Tilemap.ToTileX", types::integer());
+    defineExternFunction("Viper.Graphics.Tilemap.ToTileY", types::integer());
+    defineExternFunction("Viper.Graphics.Tilemap.ToPixelX", types::integer());
+    defineExternFunction("Viper.Graphics.Tilemap.ToPixelY", types::integer());
 
     // =========================================================================
-    // SOUND - AUDIO SYSTEM
+    // IO
     // =========================================================================
-    defineExternFunction("Viper.Sound.Audio.Init", types::integer());
-    defineExternFunction("Viper.Sound.Audio.Shutdown", types::voidType());
-    defineExternFunction("Viper.Sound.Audio.SetMasterVolume", types::voidType());
-    defineExternFunction("Viper.Sound.Audio.GetMasterVolume", types::integer());
-    defineExternFunction("Viper.Sound.Audio.PauseAll", types::voidType());
-    defineExternFunction("Viper.Sound.Audio.ResumeAll", types::voidType());
-    defineExternFunction("Viper.Sound.Audio.StopAllSounds", types::voidType());
-
-    // =========================================================================
-    // SOUND - SOUND EFFECTS
-    // =========================================================================
-    defineExternFunction("Viper.Sound.Sound.Load", types::runtimeClass("Viper.Sound.Sound"));
-    defineExternFunction("Viper.Sound.Sound.Free", types::voidType());
-    defineExternFunction("Viper.Sound.Sound.Play", types::integer());
-    defineExternFunction("Viper.Sound.Sound.PlayEx", types::integer());
-    defineExternFunction("Viper.Sound.Sound.PlayLoop", types::integer());
-
-    // =========================================================================
-    // SOUND - VOICE CONTROL
-    // =========================================================================
-    defineExternFunction("Viper.Sound.Voice.Stop", types::voidType());
-    defineExternFunction("Viper.Sound.Voice.SetVolume", types::voidType());
-    defineExternFunction("Viper.Sound.Voice.SetPan", types::voidType());
-    defineExternFunction("Viper.Sound.Voice.IsPlaying", types::integer());
-
-    // =========================================================================
-    // SOUND - MUSIC STREAMING
-    // =========================================================================
-    defineExternFunction("Viper.Sound.Music.Load", types::runtimeClass("Viper.Sound.Music"));
-    defineExternFunction("Viper.Sound.Music.Free", types::voidType());
-    defineExternFunction("Viper.Sound.Music.Play", types::voidType());
-    defineExternFunction("Viper.Sound.Music.Stop", types::voidType());
-    defineExternFunction("Viper.Sound.Music.Pause", types::voidType());
-    defineExternFunction("Viper.Sound.Music.Resume", types::voidType());
-    defineExternFunction("Viper.Sound.Music.SetVolume", types::voidType());
-    defineExternFunction("Viper.Sound.Music.get_Volume", types::integer());
-    defineExternFunction("Viper.Sound.Music.IsPlaying", types::integer());
-    defineExternFunction("Viper.Sound.Music.Seek", types::voidType());
-    defineExternFunction("Viper.Sound.Music.get_Position", types::integer());
-    defineExternFunction("Viper.Sound.Music.get_Duration", types::integer());
+    defineExternFunction("Viper.IO.Archive.Open", types::ptr());
+    defineExternFunction("Viper.IO.Archive.Create", types::ptr());
+    defineExternFunction("Viper.IO.Archive.FromBytes", types::ptr());
+    defineExternFunction("Viper.IO.Archive.get_Path", types::string());
+    defineExternFunction("Viper.IO.Archive.get_Count", types::integer());
+    defineExternFunction("Viper.IO.Archive.get_Names", types::ptr());
+    defineExternFunction("Viper.IO.Archive.Has", types::boolean());
+    defineExternFunction("Viper.IO.Archive.Read", types::ptr());
+    defineExternFunction("Viper.IO.Archive.ReadStr", types::string());
+    defineExternFunction("Viper.IO.Archive.Extract", types::voidType());
+    defineExternFunction("Viper.IO.Archive.ExtractAll", types::voidType());
+    defineExternFunction("Viper.IO.Archive.Info", types::ptr());
+    defineExternFunction("Viper.IO.Archive.Add", types::voidType());
+    defineExternFunction("Viper.IO.Archive.AddStr", types::voidType());
+    defineExternFunction("Viper.IO.Archive.AddFile", types::voidType());
+    defineExternFunction("Viper.IO.Archive.AddDir", types::voidType());
+    defineExternFunction("Viper.IO.Archive.Finish", types::voidType());
+    defineExternFunction("Viper.IO.Archive.IsZip", types::boolean());
+    defineExternFunction("Viper.IO.Archive.IsZipBytes", types::boolean());
+    defineExternFunction("Viper.IO.BinFile.Close", types::voidType());
+    defineExternFunction("Viper.IO.BinFile.get_Eof", types::boolean());
+    defineExternFunction("Viper.IO.BinFile.Flush", types::voidType());
+    defineExternFunction("Viper.IO.BinFile.Open", types::ptr());
+    defineExternFunction("Viper.IO.BinFile.get_Pos", types::integer());
+    defineExternFunction("Viper.IO.BinFile.Read", types::integer());
+    defineExternFunction("Viper.IO.BinFile.ReadByte", types::integer());
+    defineExternFunction("Viper.IO.BinFile.Seek", types::integer());
+    defineExternFunction("Viper.IO.BinFile.get_Size", types::integer());
+    defineExternFunction("Viper.IO.BinFile.Write", types::voidType());
+    defineExternFunction("Viper.IO.BinFile.WriteByte", types::voidType());
+    defineExternFunction("Viper.IO.Compress.Deflate", types::ptr());
+    defineExternFunction("Viper.IO.Compress.DeflateLvl", types::ptr());
+    defineExternFunction("Viper.IO.Compress.Inflate", types::ptr());
+    defineExternFunction("Viper.IO.Compress.Gzip", types::ptr());
+    defineExternFunction("Viper.IO.Compress.GzipLvl", types::ptr());
+    defineExternFunction("Viper.IO.Compress.Gunzip", types::ptr());
+    defineExternFunction("Viper.IO.Compress.DeflateStr", types::ptr());
+    defineExternFunction("Viper.IO.Compress.InflateStr", types::string());
+    defineExternFunction("Viper.IO.Compress.GzipStr", types::ptr());
+    defineExternFunction("Viper.IO.Compress.GunzipStr", types::string());
+    defineExternFunction("Viper.IO.Dir.Current", types::string());
+    defineExternFunction("Viper.IO.Dir.Dirs", types::ptr());
+    defineExternFunction("Viper.IO.Dir.DirsSeq", types::ptr());
+    defineExternFunction("Viper.IO.Dir.Exists", types::boolean());
+    defineExternFunction("Viper.IO.Dir.Entries", types::ptr());
+    defineExternFunction("Viper.IO.Dir.Files", types::ptr());
+    defineExternFunction("Viper.IO.Dir.FilesSeq", types::ptr());
+    defineExternFunction("Viper.IO.Dir.List", types::ptr());
+    defineExternFunction("Viper.IO.Dir.ListSeq", types::ptr());
+    defineExternFunction("Viper.IO.Dir.Make", types::voidType());
+    defineExternFunction("Viper.IO.Dir.MakeAll", types::voidType());
+    defineExternFunction("Viper.IO.Dir.Move", types::voidType());
+    defineExternFunction("Viper.IO.Dir.Remove", types::voidType());
+    defineExternFunction("Viper.IO.Dir.RemoveAll", types::voidType());
+    defineExternFunction("Viper.IO.Dir.SetCurrent", types::voidType());
+    defineExternFunction("Viper.IO.File.Append", types::voidType());
+    defineExternFunction("Viper.IO.File.AppendLine", types::voidType());
+    defineExternFunction("Viper.IO.File.Copy", types::voidType());
+    defineExternFunction("Viper.IO.File.Delete", types::voidType());
+    defineExternFunction("Viper.IO.File.Exists", types::boolean());
+    defineExternFunction("Viper.IO.File.Modified", types::integer());
+    defineExternFunction("Viper.IO.File.Move", types::voidType());
+    defineExternFunction("Viper.IO.File.ReadAllBytes", types::ptr());
+    defineExternFunction("Viper.IO.File.ReadAllLines", types::ptr());
+    defineExternFunction("Viper.IO.File.ReadAllText", types::string());
+    defineExternFunction("Viper.IO.File.ReadBytes", types::ptr());
+    defineExternFunction("Viper.IO.File.ReadLines", types::ptr());
+    defineExternFunction("Viper.IO.File.Size", types::integer());
+    defineExternFunction("Viper.IO.File.Touch", types::voidType());
+    defineExternFunction("Viper.IO.File.WriteAllBytes", types::voidType());
+    defineExternFunction("Viper.IO.File.WriteAllText", types::voidType());
+    defineExternFunction("Viper.IO.File.WriteBytes", types::voidType());
+    defineExternFunction("Viper.IO.File.WriteLines", types::voidType());
+    defineExternFunction("Viper.IO.LineReader.Close", types::voidType());
+    defineExternFunction("Viper.IO.LineReader.get_Eof", types::boolean());
+    defineExternFunction("Viper.IO.LineReader.Open", types::ptr());
+    defineExternFunction("Viper.IO.LineReader.PeekChar", types::integer());
+    defineExternFunction("Viper.IO.LineReader.Read", types::string());
+    defineExternFunction("Viper.IO.LineReader.ReadAll", types::string());
+    defineExternFunction("Viper.IO.LineReader.ReadChar", types::integer());
+    defineExternFunction("Viper.IO.LineWriter.Append", types::ptr());
+    defineExternFunction("Viper.IO.LineWriter.Close", types::voidType());
+    defineExternFunction("Viper.IO.LineWriter.Flush", types::voidType());
+    defineExternFunction("Viper.IO.LineWriter.get_NewLine", types::string());
+    defineExternFunction("Viper.IO.LineWriter.Open", types::ptr());
+    defineExternFunction("Viper.IO.LineWriter.set_NewLine", types::voidType());
+    defineExternFunction("Viper.IO.LineWriter.Write", types::voidType());
+    defineExternFunction("Viper.IO.LineWriter.WriteChar", types::voidType());
+    defineExternFunction("Viper.IO.LineWriter.WriteLn", types::voidType());
+    defineExternFunction("Viper.IO.MemStream.New", types::ptr());
+    defineExternFunction("Viper.IO.MemStream.NewCapacity", types::ptr());
+    defineExternFunction("Viper.IO.MemStream.FromBytes", types::ptr());
+    defineExternFunction("Viper.IO.MemStream.get_Pos", types::integer());
+    defineExternFunction("Viper.IO.MemStream.set_Pos", types::voidType());
+    defineExternFunction("Viper.IO.MemStream.get_Len", types::integer());
+    defineExternFunction("Viper.IO.MemStream.get_Capacity", types::integer());
+    defineExternFunction("Viper.IO.MemStream.ReadI8", types::integer());
+    defineExternFunction("Viper.IO.MemStream.WriteI8", types::voidType());
+    defineExternFunction("Viper.IO.MemStream.ReadU8", types::integer());
+    defineExternFunction("Viper.IO.MemStream.WriteU8", types::voidType());
+    defineExternFunction("Viper.IO.MemStream.ReadI16", types::integer());
+    defineExternFunction("Viper.IO.MemStream.WriteI16", types::voidType());
+    defineExternFunction("Viper.IO.MemStream.ReadU16", types::integer());
+    defineExternFunction("Viper.IO.MemStream.WriteU16", types::voidType());
+    defineExternFunction("Viper.IO.MemStream.ReadI32", types::integer());
+    defineExternFunction("Viper.IO.MemStream.WriteI32", types::voidType());
+    defineExternFunction("Viper.IO.MemStream.ReadU32", types::integer());
+    defineExternFunction("Viper.IO.MemStream.WriteU32", types::voidType());
+    defineExternFunction("Viper.IO.MemStream.ReadI64", types::integer());
+    defineExternFunction("Viper.IO.MemStream.WriteI64", types::voidType());
+    defineExternFunction("Viper.IO.MemStream.ReadF32", types::number());
+    defineExternFunction("Viper.IO.MemStream.WriteF32", types::voidType());
+    defineExternFunction("Viper.IO.MemStream.ReadF64", types::number());
+    defineExternFunction("Viper.IO.MemStream.WriteF64", types::voidType());
+    defineExternFunction("Viper.IO.MemStream.ReadBytes", types::ptr());
+    defineExternFunction("Viper.IO.MemStream.WriteBytes", types::voidType());
+    defineExternFunction("Viper.IO.MemStream.ReadStr", types::string());
+    defineExternFunction("Viper.IO.MemStream.WriteStr", types::voidType());
+    defineExternFunction("Viper.IO.MemStream.ToBytes", types::ptr());
+    defineExternFunction("Viper.IO.MemStream.Clear", types::voidType());
+    defineExternFunction("Viper.IO.MemStream.Seek", types::voidType());
+    defineExternFunction("Viper.IO.MemStream.Skip", types::voidType());
+    defineExternFunction("Viper.IO.Path.Abs", types::string());
+    defineExternFunction("Viper.IO.Path.Dir", types::string());
+    defineExternFunction("Viper.IO.Path.Ext", types::string());
+    defineExternFunction("Viper.IO.Path.IsAbs", types::boolean());
+    defineExternFunction("Viper.IO.Path.Join", types::string());
+    defineExternFunction("Viper.IO.Path.Name", types::string());
+    defineExternFunction("Viper.IO.Path.Norm", types::string());
+    defineExternFunction("Viper.IO.Path.Sep", types::string());
+    defineExternFunction("Viper.IO.Path.Stem", types::string());
+    defineExternFunction("Viper.IO.Path.WithExt", types::string());
+    defineExternFunction("Viper.IO.Watcher.new", types::ptr());
+    defineExternFunction("Viper.IO.Watcher.get_Path", types::string());
+    defineExternFunction("Viper.IO.Watcher.get_IsWatching", types::boolean());
+    defineExternFunction("Viper.IO.Watcher.Start", types::voidType());
+    defineExternFunction("Viper.IO.Watcher.Stop", types::voidType());
+    defineExternFunction("Viper.IO.Watcher.Poll", types::integer());
+    defineExternFunction("Viper.IO.Watcher.PollFor", types::integer());
+    defineExternFunction("Viper.IO.Watcher.EventPath", types::string());
+    defineExternFunction("Viper.IO.Watcher.EventType", types::integer());
+    defineExternFunction("Viper.IO.Watcher.get_EVENT_NONE", types::integer());
+    defineExternFunction("Viper.IO.Watcher.get_EVENT_CREATED", types::integer());
+    defineExternFunction("Viper.IO.Watcher.get_EVENT_MODIFIED", types::integer());
+    defineExternFunction("Viper.IO.Watcher.get_EVENT_DELETED", types::integer());
+    defineExternFunction("Viper.IO.Watcher.get_EVENT_RENAMED", types::integer());
 
     // =========================================================================
     // INPUT
     // =========================================================================
     defineExternFunction("Viper.Input.Keyboard.IsDown", types::boolean());
+    defineExternFunction("Viper.Input.Keyboard.IsUp", types::boolean());
+    defineExternFunction("Viper.Input.Keyboard.AnyDown", types::boolean());
+    defineExternFunction("Viper.Input.Keyboard.GetDown", types::integer());
     defineExternFunction("Viper.Input.Keyboard.WasPressed", types::boolean());
-    defineExternFunction("Viper.Input.Mouse.GetX", types::integer());
-    defineExternFunction("Viper.Input.Mouse.GetY", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.WasReleased", types::boolean());
+    defineExternFunction("Viper.Input.Keyboard.GetPressed", types::ptr());
+    defineExternFunction("Viper.Input.Keyboard.GetReleased", types::ptr());
+    defineExternFunction("Viper.Input.Keyboard.GetText", types::string());
+    defineExternFunction("Viper.Input.Keyboard.EnableTextInput", types::voidType());
+    defineExternFunction("Viper.Input.Keyboard.DisableTextInput", types::voidType());
+    defineExternFunction("Viper.Input.Keyboard.Shift", types::boolean());
+    defineExternFunction("Viper.Input.Keyboard.Ctrl", types::boolean());
+    defineExternFunction("Viper.Input.Keyboard.Alt", types::boolean());
+    defineExternFunction("Viper.Input.Keyboard.CapsLock", types::boolean());
+    defineExternFunction("Viper.Input.Keyboard.KeyName", types::string());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_UNKNOWN", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_A", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_B", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_C", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_D", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_E", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_F", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_G", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_H", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_I", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_J", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_K", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_L", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_M", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_N", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_O", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_P", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_Q", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_R", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_S", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_T", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_U", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_V", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_W", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_X", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_Y", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_Z", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_0", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_1", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_2", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_3", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_4", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_5", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_6", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_7", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_8", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_9", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_UP", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_DOWN", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_LEFT", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_RIGHT", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_HOME", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_END", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_INSERT", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_DELETE", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_BACKSPACE", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_TAB", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_ENTER", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_SPACE", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_ESCAPE", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_SHIFT", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_CTRL", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_ALT", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_LSHIFT", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_RSHIFT", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_LCTRL", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_RCTRL", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_LALT", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_RALT", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_MINUS", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_EQUALS", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_LBRACKET", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_RBRACKET", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_BACKSLASH", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_SEMICOLON", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_QUOTE", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_GRAVE", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_COMMA", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_PERIOD", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_SLASH", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_F1", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_F2", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_F3", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_F4", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_F5", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_F6", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_F7", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_F8", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_F9", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_F10", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_F11", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_F12", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_PAGEUP", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_PAGEDOWN", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_NUM0", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_NUM1", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_NUM2", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_NUM3", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_NUM4", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_NUM5", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_NUM6", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_NUM7", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_NUM8", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_NUM9", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_NUMADD", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_NUMSUB", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_NUMMUL", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_NUMDIV", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_NUMENTER", types::integer());
+    defineExternFunction("Viper.Input.Keyboard.get_KEY_NUMDOT", types::integer());
+    defineExternFunction("Viper.Input.Mouse.X", types::integer());
+    defineExternFunction("Viper.Input.Mouse.Y", types::integer());
+    defineExternFunction("Viper.Input.Mouse.DeltaX", types::integer());
+    defineExternFunction("Viper.Input.Mouse.DeltaY", types::integer());
     defineExternFunction("Viper.Input.Mouse.IsDown", types::boolean());
+    defineExternFunction("Viper.Input.Mouse.IsUp", types::boolean());
+    defineExternFunction("Viper.Input.Mouse.Left", types::boolean());
+    defineExternFunction("Viper.Input.Mouse.Right", types::boolean());
+    defineExternFunction("Viper.Input.Mouse.Middle", types::boolean());
+    defineExternFunction("Viper.Input.Mouse.WasPressed", types::boolean());
+    defineExternFunction("Viper.Input.Mouse.WasReleased", types::boolean());
+    defineExternFunction("Viper.Input.Mouse.WasClicked", types::boolean());
+    defineExternFunction("Viper.Input.Mouse.WasDoubleClicked", types::boolean());
+    defineExternFunction("Viper.Input.Mouse.WheelX", types::integer());
+    defineExternFunction("Viper.Input.Mouse.WheelY", types::integer());
+    defineExternFunction("Viper.Input.Mouse.Show", types::voidType());
+    defineExternFunction("Viper.Input.Mouse.Hide", types::voidType());
+    defineExternFunction("Viper.Input.Mouse.IsHidden", types::boolean());
+    defineExternFunction("Viper.Input.Mouse.Capture", types::voidType());
+    defineExternFunction("Viper.Input.Mouse.Release", types::voidType());
+    defineExternFunction("Viper.Input.Mouse.IsCaptured", types::boolean());
+    defineExternFunction("Viper.Input.Mouse.SetPos", types::voidType());
+    defineExternFunction("Viper.Input.Mouse.get_BUTTON_LEFT", types::integer());
+    defineExternFunction("Viper.Input.Mouse.get_BUTTON_RIGHT", types::integer());
+    defineExternFunction("Viper.Input.Mouse.get_BUTTON_MIDDLE", types::integer());
+    defineExternFunction("Viper.Input.Mouse.get_BUTTON_X1", types::integer());
+    defineExternFunction("Viper.Input.Mouse.get_BUTTON_X2", types::integer());
+    defineExternFunction("Viper.Input.Pad.Count", types::integer());
     defineExternFunction("Viper.Input.Pad.IsConnected", types::boolean());
-    defineExternFunction("Viper.Input.Pad.GetAxis", types::number());
+    defineExternFunction("Viper.Input.Pad.Name", types::string());
     defineExternFunction("Viper.Input.Pad.IsDown", types::boolean());
-
-    // =========================================================================
-    // IO - FILE (VL-017 fixes: align names and return types with runtime)
-    // =========================================================================
-    defineExternFunction("Viper.IO.File.Exists", types::boolean());
-    defineExternFunction("Viper.IO.File.Size", types::integer());
-    defineExternFunction("Viper.IO.File.Delete", types::voidType()); // VL-017: was boolean
-    defineExternFunction("Viper.IO.File.Copy", types::voidType());   // VL-017: was boolean
-    defineExternFunction("Viper.IO.File.Move", types::voidType());   // VL-017: was boolean
-    defineExternFunction("Viper.IO.File.ReadAllText", types::string());
-    defineExternFunction("Viper.IO.File.WriteAllText", types::voidType());
-    defineExternFunction("Viper.IO.File.ReadAllBytes", types::ptr());
-    defineExternFunction("Viper.IO.File.WriteAllBytes", types::voidType());
-    defineExternFunction("Viper.IO.File.Append", types::voidType());  // VL-017: was AppendText
-    defineExternFunction("Viper.IO.File.Modified", types::integer()); // VL-017: was GetModTime
-    defineExternFunction("Viper.IO.File.Touch", types::voidType());
-
-    // =========================================================================
-    // IO - DIR (VL-016 fixes: align names with runtime)
-    // =========================================================================
-    defineExternFunction("Viper.IO.Dir.Make", types::voidType()); // VL-016: was Create
-    defineExternFunction("Viper.IO.Dir.MakeAll", types::voidType());
-    defineExternFunction("Viper.IO.Dir.Remove", types::voidType()); // VL-016: was Delete
-    defineExternFunction("Viper.IO.Dir.RemoveAll", types::voidType());
-    defineExternFunction("Viper.IO.Dir.Exists", types::boolean());
-    // Bug #7 fix: Use proper List[String] type instead of raw ptr
-    defineExternFunction("Viper.IO.Dir.List", types::list(types::string()));
-    defineExternFunction("Viper.IO.Dir.ListSeq", types::list(types::string()));
-    defineExternFunction("Viper.IO.Dir.Files", types::list(types::string()));
-    defineExternFunction("Viper.IO.Dir.FilesSeq", types::list(types::string()));
-    defineExternFunction("Viper.IO.Dir.Dirs", types::list(types::string()));
-    defineExternFunction("Viper.IO.Dir.DirsSeq", types::list(types::string()));
-    defineExternFunction("Viper.IO.Dir.Current", types::string()); // VL-016: was GetCurrent
-    defineExternFunction("Viper.IO.Dir.SetCurrent", types::voidType());
-
-    // =========================================================================
-    // IO - PATH (VL-014, VL-015 fixes: align names with runtime)
-    // =========================================================================
-    defineExternFunction("Viper.IO.Path.Join", types::string());
-    defineExternFunction("Viper.IO.Path.Dir", types::string());  // VL-014: was GetDir
-    defineExternFunction("Viper.IO.Path.Name", types::string()); // VL-014: was GetName
-    defineExternFunction("Viper.IO.Path.Ext", types::string());  // VL-014: was GetExt
-    defineExternFunction("Viper.IO.Path.Stem", types::string()); // VL-014: was GetBase
-    defineExternFunction("Viper.IO.Path.Norm", types::string()); // VL-014: was Normalize
-    defineExternFunction("Viper.IO.Path.Abs", types::string());  // VL-014: was Absolute
-    defineExternFunction("Viper.IO.Path.IsAbs", types::boolean());
-    defineExternFunction("Viper.IO.Path.Sep", types::string());
-    defineExternFunction("Viper.IO.Path.WithExt", types::string());
-
-    // =========================================================================
-    // IO - BINFILE, LINEREADER, LINEWRITER
-    // =========================================================================
-    defineExternFunction("Viper.IO.BinFile.Open", types::ptr());
-    defineExternFunction("Viper.IO.BinFile.Close", types::voidType());
-    defineExternFunction("Viper.IO.BinFile.Read", types::ptr());
-    defineExternFunction("Viper.IO.BinFile.Write", types::integer());
-    defineExternFunction("Viper.IO.BinFile.Seek", types::integer());
-    defineExternFunction("Viper.IO.BinFile.Tell", types::integer());
-    defineExternFunction("Viper.IO.BinFile.Eof", types::boolean());
-    defineExternFunction("Viper.IO.LineReader.Open", types::ptr());
-    defineExternFunction("Viper.IO.LineReader.ReadLine", types::string());
-    defineExternFunction("Viper.IO.LineReader.Close", types::voidType());
-    defineExternFunction("Viper.IO.LineReader.Eof", types::boolean());
-    defineExternFunction("Viper.IO.LineWriter.Open", types::ptr());
-    defineExternFunction("Viper.IO.LineWriter.WriteLine", types::voidType());
-    defineExternFunction("Viper.IO.LineWriter.Close", types::voidType());
-
-    // =========================================================================
-    // IO - COMPRESS, ARCHIVE, MEMSTREAM, WATCHER
-    // =========================================================================
-    defineExternFunction("Viper.IO.Compress.Deflate", types::ptr());
-    defineExternFunction("Viper.IO.Compress.Inflate", types::ptr());
-    defineExternFunction("Viper.IO.Compress.GzipCompress", types::ptr());
-    defineExternFunction("Viper.IO.Compress.GzipDecompress", types::ptr());
-    defineExternFunction("Viper.IO.Archive.New", types::ptr());
-    defineExternFunction("Viper.IO.Archive.Open", types::ptr());
-    defineExternFunction("Viper.IO.Archive.AddFile", types::voidType());
-    defineExternFunction("Viper.IO.Archive.AddBytes", types::voidType());
-    defineExternFunction("Viper.IO.Archive.ExtractAll", types::voidType());
-    defineExternFunction("Viper.IO.Archive.List", types::ptr());
-    defineExternFunction("Viper.IO.Archive.Close", types::voidType());
-    defineExternFunction("Viper.IO.MemStream.New", types::ptr());
-    defineExternFunction("Viper.IO.MemStream.Read", types::ptr());
-    defineExternFunction("Viper.IO.MemStream.Write", types::integer());
-    defineExternFunction("Viper.IO.MemStream.Seek", types::integer());
-    defineExternFunction("Viper.IO.MemStream.ToBytes", types::ptr());
-    defineExternFunction("Viper.IO.Watcher.New", types::ptr());
-    defineExternFunction("Viper.IO.Watcher.Next", types::ptr());
-    defineExternFunction("Viper.IO.Watcher.Close", types::voidType());
+    defineExternFunction("Viper.Input.Pad.IsUp", types::boolean());
+    defineExternFunction("Viper.Input.Pad.WasPressed", types::boolean());
+    defineExternFunction("Viper.Input.Pad.WasReleased", types::boolean());
+    defineExternFunction("Viper.Input.Pad.LeftX", types::number());
+    defineExternFunction("Viper.Input.Pad.LeftY", types::number());
+    defineExternFunction("Viper.Input.Pad.RightX", types::number());
+    defineExternFunction("Viper.Input.Pad.RightY", types::number());
+    defineExternFunction("Viper.Input.Pad.LeftTrigger", types::number());
+    defineExternFunction("Viper.Input.Pad.RightTrigger", types::number());
+    defineExternFunction("Viper.Input.Pad.SetDeadzone", types::voidType());
+    defineExternFunction("Viper.Input.Pad.GetDeadzone", types::number());
+    defineExternFunction("Viper.Input.Pad.Vibrate", types::voidType());
+    defineExternFunction("Viper.Input.Pad.StopVibration", types::voidType());
+    defineExternFunction("Viper.Input.Pad.get_PAD_A", types::integer());
+    defineExternFunction("Viper.Input.Pad.get_PAD_B", types::integer());
+    defineExternFunction("Viper.Input.Pad.get_PAD_X", types::integer());
+    defineExternFunction("Viper.Input.Pad.get_PAD_Y", types::integer());
+    defineExternFunction("Viper.Input.Pad.get_PAD_LB", types::integer());
+    defineExternFunction("Viper.Input.Pad.get_PAD_RB", types::integer());
+    defineExternFunction("Viper.Input.Pad.get_PAD_BACK", types::integer());
+    defineExternFunction("Viper.Input.Pad.get_PAD_START", types::integer());
+    defineExternFunction("Viper.Input.Pad.get_PAD_LSTICK", types::integer());
+    defineExternFunction("Viper.Input.Pad.get_PAD_RSTICK", types::integer());
+    defineExternFunction("Viper.Input.Pad.get_PAD_UP", types::integer());
+    defineExternFunction("Viper.Input.Pad.get_PAD_DOWN", types::integer());
+    defineExternFunction("Viper.Input.Pad.get_PAD_LEFT", types::integer());
+    defineExternFunction("Viper.Input.Pad.get_PAD_RIGHT", types::integer());
+    defineExternFunction("Viper.Input.Pad.get_PAD_GUIDE", types::integer());
 
     // =========================================================================
     // LOG
     // =========================================================================
+    defineExternFunction("Viper.Log.Debug", types::voidType());
+    defineExternFunction("Viper.Log.Enabled", types::boolean());
+    defineExternFunction("Viper.Log.Error", types::voidType());
     defineExternFunction("Viper.Log.Info", types::voidType());
     defineExternFunction("Viper.Log.Warn", types::voidType());
-    defineExternFunction("Viper.Log.Error", types::voidType());
-    defineExternFunction("Viper.Log.Debug", types::voidType());
+    defineExternFunction("Viper.Log.get_DEBUG", types::integer());
+    defineExternFunction("Viper.Log.get_ERROR", types::integer());
+    defineExternFunction("Viper.Log.get_INFO", types::integer());
+    defineExternFunction("Viper.Log.get_Level", types::integer());
+    defineExternFunction("Viper.Log.get_OFF", types::integer());
+    defineExternFunction("Viper.Log.get_WARN", types::integer());
+    defineExternFunction("Viper.Log.set_Level", types::voidType());
 
     // =========================================================================
     // MACHINE
     // =========================================================================
-    defineExternFunction("Viper.Machine.GetOS", types::string());
-    defineExternFunction("Viper.Machine.GetArch", types::string());
-    defineExternFunction("Viper.Machine.GetCPUCount", types::integer());
-    defineExternFunction("Viper.Machine.GetMemory", types::integer());
-    defineExternFunction("Viper.Machine.GetHostname", types::string());
-    defineExternFunction("Viper.Machine.GetUsername", types::string());
+    defineExternFunction("Viper.Machine.get_Cores", types::integer());
+    defineExternFunction("Viper.Machine.get_Endian", types::string());
+    defineExternFunction("Viper.Machine.get_Home", types::string());
+    defineExternFunction("Viper.Machine.get_Host", types::string());
+    defineExternFunction("Viper.Machine.get_MemFree", types::integer());
+    defineExternFunction("Viper.Machine.get_MemTotal", types::integer());
+    defineExternFunction("Viper.Machine.get_OS", types::string());
+    defineExternFunction("Viper.Machine.get_OSVer", types::string());
+    defineExternFunction("Viper.Machine.get_Temp", types::string());
+    defineExternFunction("Viper.Machine.get_User", types::string());
 
     // =========================================================================
     // MATH
@@ -531,41 +997,72 @@ void Sema::initRuntimeFunctions()
     defineExternFunction("Viper.Math.Atan", types::number());
     defineExternFunction("Viper.Math.Atan2", types::number());
     defineExternFunction("Viper.Math.Ceil", types::number());
+    defineExternFunction("Viper.Math.Clamp", types::number());
+    defineExternFunction("Viper.Math.ClampInt", types::integer());
     defineExternFunction("Viper.Math.Cos", types::number());
     defineExternFunction("Viper.Math.Cosh", types::number());
+    defineExternFunction("Viper.Math.Deg", types::number());
     defineExternFunction("Viper.Math.Exp", types::number());
+    defineExternFunction("Viper.Math.FMod", types::number());
     defineExternFunction("Viper.Math.Floor", types::number());
+    defineExternFunction("Viper.Math.Hypot", types::number());
+    defineExternFunction("Viper.Math.Lerp", types::number());
     defineExternFunction("Viper.Math.Log", types::number());
     defineExternFunction("Viper.Math.Log10", types::number());
+    defineExternFunction("Viper.Math.Log2", types::number());
     defineExternFunction("Viper.Math.Max", types::number());
     defineExternFunction("Viper.Math.MaxInt", types::integer());
     defineExternFunction("Viper.Math.Min", types::number());
     defineExternFunction("Viper.Math.MinInt", types::integer());
     defineExternFunction("Viper.Math.Pow", types::number());
-    defineExternFunction("Viper.Math.Randomize", types::voidType());
-    defineExternFunction("Viper.Math.Rnd", types::number());
+    defineExternFunction("Viper.Math.Rad", types::number());
     defineExternFunction("Viper.Math.Round", types::number());
-    defineExternFunction("Viper.Math.Sign", types::integer());
+    defineExternFunction("Viper.Math.Sgn", types::number());
+    defineExternFunction("Viper.Math.SgnInt", types::integer());
     defineExternFunction("Viper.Math.Sin", types::number());
     defineExternFunction("Viper.Math.Sinh", types::number());
     defineExternFunction("Viper.Math.Sqrt", types::number());
     defineExternFunction("Viper.Math.Tan", types::number());
     defineExternFunction("Viper.Math.Tanh", types::number());
     defineExternFunction("Viper.Math.Trunc", types::number());
-    defineExternFunction("Viper.Math.Clamp", types::number());
-    defineExternFunction("Viper.Math.ClampInt", types::integer());
-    defineExternFunction("Viper.Math.Lerp", types::number());
+    defineExternFunction("Viper.Math.Wrap", types::number());
+    defineExternFunction("Viper.Math.WrapInt", types::integer());
+    defineExternFunction("Viper.Math.get_E", types::number());
+    defineExternFunction("Viper.Math.get_Pi", types::number());
+    defineExternFunction("Viper.Math.get_Tau", types::number());
 
     // =========================================================================
     // NETWORK
     // =========================================================================
-    defineExternFunction("Viper.Network.Dns.Lookup", types::string());
-    defineExternFunction("Viper.Network.Dns.ReverseLookup", types::string());
+    defineExternFunction("Viper.Network.Dns.Resolve", types::string());
+    defineExternFunction("Viper.Network.Dns.ResolveAll", types::ptr());
+    defineExternFunction("Viper.Network.Dns.Resolve4", types::string());
+    defineExternFunction("Viper.Network.Dns.Resolve6", types::string());
+    defineExternFunction("Viper.Network.Dns.Reverse", types::string());
+    defineExternFunction("Viper.Network.Dns.IsIP", types::boolean());
+    defineExternFunction("Viper.Network.Dns.IsIPv4", types::boolean());
+    defineExternFunction("Viper.Network.Dns.IsIPv6", types::boolean());
+    defineExternFunction("Viper.Network.Dns.LocalHost", types::string());
+    defineExternFunction("Viper.Network.Dns.LocalAddrs", types::ptr());
     defineExternFunction("Viper.Network.Http.Get", types::string());
-    defineExternFunction("Viper.Network.Http.Post", types::string());
     defineExternFunction("Viper.Network.Http.GetBytes", types::ptr());
+    defineExternFunction("Viper.Network.Http.Post", types::string());
     defineExternFunction("Viper.Network.Http.PostBytes", types::ptr());
-    // TCP Client
+    defineExternFunction("Viper.Network.Http.Download", types::boolean());
+    defineExternFunction("Viper.Network.Http.Head", types::ptr());
+    defineExternFunction("Viper.Network.HttpReq.New", types::ptr());
+    defineExternFunction("Viper.Network.HttpReq.SetHeader", types::ptr());
+    defineExternFunction("Viper.Network.HttpReq.SetBody", types::ptr());
+    defineExternFunction("Viper.Network.HttpReq.SetBodyStr", types::ptr());
+    defineExternFunction("Viper.Network.HttpReq.SetTimeout", types::ptr());
+    defineExternFunction("Viper.Network.HttpReq.Send", types::ptr());
+    defineExternFunction("Viper.Network.HttpRes.get_Status", types::integer());
+    defineExternFunction("Viper.Network.HttpRes.get_StatusText", types::string());
+    defineExternFunction("Viper.Network.HttpRes.get_Headers", types::ptr());
+    defineExternFunction("Viper.Network.HttpRes.Body", types::ptr());
+    defineExternFunction("Viper.Network.HttpRes.BodyStr", types::string());
+    defineExternFunction("Viper.Network.HttpRes.Header", types::string());
+    defineExternFunction("Viper.Network.HttpRes.IsOk", types::boolean());
     defineExternFunction("Viper.Network.Tcp.Connect", types::ptr());
     defineExternFunction("Viper.Network.Tcp.ConnectFor", types::ptr());
     defineExternFunction("Viper.Network.Tcp.get_Host", types::string());
@@ -583,7 +1080,6 @@ void Sema::initRuntimeFunctions()
     defineExternFunction("Viper.Network.Tcp.SetRecvTimeout", types::voidType());
     defineExternFunction("Viper.Network.Tcp.SetSendTimeout", types::voidType());
     defineExternFunction("Viper.Network.Tcp.Close", types::voidType());
-    // TCP Server
     defineExternFunction("Viper.Network.TcpServer.Listen", types::ptr());
     defineExternFunction("Viper.Network.TcpServer.ListenAt", types::ptr());
     defineExternFunction("Viper.Network.TcpServer.get_Port", types::integer());
@@ -592,20 +1088,78 @@ void Sema::initRuntimeFunctions()
     defineExternFunction("Viper.Network.TcpServer.Accept", types::ptr());
     defineExternFunction("Viper.Network.TcpServer.AcceptFor", types::ptr());
     defineExternFunction("Viper.Network.TcpServer.Close", types::voidType());
-    defineExternFunction("Viper.Network.Udp.Open", types::ptr());
-    defineExternFunction("Viper.Network.Udp.Close", types::voidType());
-    defineExternFunction("Viper.Network.Udp.Send", types::integer());
+    defineExternFunction("Viper.Network.Udp.New", types::ptr());
+    defineExternFunction("Viper.Network.Udp.Bind", types::ptr());
+    defineExternFunction("Viper.Network.Udp.BindAt", types::ptr());
+    defineExternFunction("Viper.Network.Udp.get_Port", types::integer());
+    defineExternFunction("Viper.Network.Udp.get_Address", types::string());
+    defineExternFunction("Viper.Network.Udp.get_IsBound", types::boolean());
+    defineExternFunction("Viper.Network.Udp.SendTo", types::integer());
+    defineExternFunction("Viper.Network.Udp.SendToStr", types::integer());
     defineExternFunction("Viper.Network.Udp.Recv", types::ptr());
+    defineExternFunction("Viper.Network.Udp.RecvFrom", types::ptr());
+    defineExternFunction("Viper.Network.Udp.RecvFor", types::ptr());
+    defineExternFunction("Viper.Network.Udp.SenderHost", types::string());
+    defineExternFunction("Viper.Network.Udp.SenderPort", types::integer());
+    defineExternFunction("Viper.Network.Udp.SetBroadcast", types::voidType());
+    defineExternFunction("Viper.Network.Udp.JoinGroup", types::voidType());
+    defineExternFunction("Viper.Network.Udp.LeaveGroup", types::voidType());
+    defineExternFunction("Viper.Network.Udp.SetRecvTimeout", types::voidType());
+    defineExternFunction("Viper.Network.Udp.Close", types::voidType());
+    defineExternFunction("Viper.Network.Url.Parse", types::ptr());
+    defineExternFunction("Viper.Network.Url.New", types::ptr());
+    defineExternFunction("Viper.Network.Url.get_Scheme", types::string());
+    defineExternFunction("Viper.Network.Url.set_Scheme", types::voidType());
+    defineExternFunction("Viper.Network.Url.get_Host", types::string());
+    defineExternFunction("Viper.Network.Url.set_Host", types::voidType());
+    defineExternFunction("Viper.Network.Url.get_Port", types::integer());
+    defineExternFunction("Viper.Network.Url.set_Port", types::voidType());
+    defineExternFunction("Viper.Network.Url.get_Path", types::string());
+    defineExternFunction("Viper.Network.Url.set_Path", types::voidType());
+    defineExternFunction("Viper.Network.Url.get_Query", types::string());
+    defineExternFunction("Viper.Network.Url.set_Query", types::voidType());
+    defineExternFunction("Viper.Network.Url.get_Fragment", types::string());
+    defineExternFunction("Viper.Network.Url.set_Fragment", types::voidType());
+    defineExternFunction("Viper.Network.Url.get_User", types::string());
+    defineExternFunction("Viper.Network.Url.set_User", types::voidType());
+    defineExternFunction("Viper.Network.Url.get_Pass", types::string());
+    defineExternFunction("Viper.Network.Url.set_Pass", types::voidType());
+    defineExternFunction("Viper.Network.Url.get_Authority", types::string());
+    defineExternFunction("Viper.Network.Url.get_HostPort", types::string());
+    defineExternFunction("Viper.Network.Url.get_Full", types::string());
+    defineExternFunction("Viper.Network.Url.SetQueryParam", types::ptr());
+    defineExternFunction("Viper.Network.Url.GetQueryParam", types::string());
+    defineExternFunction("Viper.Network.Url.HasQueryParam", types::boolean());
+    defineExternFunction("Viper.Network.Url.DelQueryParam", types::ptr());
+    defineExternFunction("Viper.Network.Url.QueryMap", types::ptr());
+    defineExternFunction("Viper.Network.Url.Resolve", types::ptr());
+    defineExternFunction("Viper.Network.Url.Clone", types::ptr());
     defineExternFunction("Viper.Network.Url.Encode", types::string());
     defineExternFunction("Viper.Network.Url.Decode", types::string());
-    defineExternFunction("Viper.Network.Url.Parse", types::ptr());
+    defineExternFunction("Viper.Network.Url.EncodeQuery", types::string());
+    defineExternFunction("Viper.Network.Url.DecodeQuery", types::ptr());
+    defineExternFunction("Viper.Network.Url.IsValid", types::boolean());
+
+    // =========================================================================
+    // OBJECT
+    // =========================================================================
+    defineExternFunction("Viper.Object.Equals", types::boolean());
+    defineExternFunction("Viper.Object.GetHashCode", types::integer());
+    defineExternFunction("Viper.Object.ReferenceEquals", types::boolean());
+    defineExternFunction("Viper.Object.ToString", types::string());
 
     // =========================================================================
     // PARSE
     // =========================================================================
-    defineExternFunction("Viper.Parse.Int", types::integer());
-    defineExternFunction("Viper.Parse.Num", types::number());
-    defineExternFunction("Viper.Parse.Bool", types::boolean());
+    defineExternFunction("Viper.Parse.BoolOr", types::boolean());
+    defineExternFunction("Viper.Parse.Double", types::integer());
+    defineExternFunction("Viper.Parse.Int64", types::integer());
+    defineExternFunction("Viper.Parse.IntOr", types::integer());
+    defineExternFunction("Viper.Parse.IntRadix", types::integer());
+    defineExternFunction("Viper.Parse.IsInt", types::boolean());
+    defineExternFunction("Viper.Parse.IsNum", types::boolean());
+    defineExternFunction("Viper.Parse.NumOr", types::number());
+    defineExternFunction("Viper.Parse.TryBool", types::boolean());
     defineExternFunction("Viper.Parse.TryInt", types::boolean());
     defineExternFunction("Viper.Parse.TryNum", types::boolean());
 
@@ -615,265 +1169,282 @@ void Sema::initRuntimeFunctions()
     defineExternFunction("Viper.Random.Next", types::number());
     defineExternFunction("Viper.Random.NextInt", types::integer());
     defineExternFunction("Viper.Random.Seed", types::voidType());
-    defineExternFunction("Viper.Random.Range", types::integer());
-    defineExternFunction("Viper.Random.RangeF", types::number());
-    defineExternFunction("Viper.Random.Bool", types::boolean());
-    defineExternFunction("Viper.Random.Choice", types::ptr());
-    defineExternFunction("Viper.Random.Shuffle", types::voidType());
+
+    // =========================================================================
+    // SOUND
+    // =========================================================================
+    defineExternFunction("Viper.Sound.Audio.Init", types::integer());
+    defineExternFunction("Viper.Sound.Audio.Shutdown", types::voidType());
+    defineExternFunction("Viper.Sound.Audio.SetMasterVolume", types::voidType());
+    defineExternFunction("Viper.Sound.Audio.GetMasterVolume", types::integer());
+    defineExternFunction("Viper.Sound.Audio.PauseAll", types::voidType());
+    defineExternFunction("Viper.Sound.Audio.ResumeAll", types::voidType());
+    defineExternFunction("Viper.Sound.Audio.StopAllSounds", types::voidType());
+    defineExternFunction("Viper.Sound.Music.Load", types::ptr());
+    defineExternFunction("Viper.Sound.Music.Free", types::voidType());
+    defineExternFunction("Viper.Sound.Music.Play", types::voidType());
+    defineExternFunction("Viper.Sound.Music.Stop", types::voidType());
+    defineExternFunction("Viper.Sound.Music.Pause", types::voidType());
+    defineExternFunction("Viper.Sound.Music.Resume", types::voidType());
+    defineExternFunction("Viper.Sound.Music.SetVolume", types::voidType());
+    defineExternFunction("Viper.Sound.Music.get_Volume", types::integer());
+    defineExternFunction("Viper.Sound.Music.IsPlaying", types::integer());
+    defineExternFunction("Viper.Sound.Music.Seek", types::voidType());
+    defineExternFunction("Viper.Sound.Music.get_Position", types::integer());
+    defineExternFunction("Viper.Sound.Music.get_Duration", types::integer());
+    defineExternFunction("Viper.Sound.Sound.Load", types::ptr());
+    defineExternFunction("Viper.Sound.Sound.Free", types::voidType());
+    defineExternFunction("Viper.Sound.Sound.Play", types::integer());
+    defineExternFunction("Viper.Sound.Sound.PlayEx", types::integer());
+    defineExternFunction("Viper.Sound.Sound.PlayLoop", types::integer());
+    defineExternFunction("Viper.Sound.Voice.Stop", types::voidType());
+    defineExternFunction("Viper.Sound.Voice.SetVolume", types::voidType());
+    defineExternFunction("Viper.Sound.Voice.SetPan", types::voidType());
+    defineExternFunction("Viper.Sound.Voice.IsPlaying", types::integer());
 
     // =========================================================================
     // STRING
     // =========================================================================
+    defineExternFunction("Viper.String.Asc", types::integer());
+    defineExternFunction("Viper.String.Chr", types::string());
+    defineExternFunction("Viper.String.Cmp", types::integer());
+    defineExternFunction("Viper.String.CmpNoCase", types::integer());
     defineExternFunction("Viper.String.Concat", types::string());
-    defineExternFunction("Viper.String.Length", types::integer());
-    defineExternFunction("Viper.String.Substring", types::string());
-    defineExternFunction("Viper.String.Left", types::string());
-    defineExternFunction("Viper.String.Right", types::string());
-    defineExternFunction("Viper.String.Mid", types::string());
+    defineExternFunction("Viper.String.Count", types::integer());
+    defineExternFunction("Viper.String.EndsWith", types::boolean());
+    defineExternFunction("Viper.String.Flip", types::string());
+    defineExternFunction("Viper.String.Has", types::boolean());
     defineExternFunction("Viper.String.IndexOf", types::integer());
     defineExternFunction("Viper.String.IndexOfFrom", types::integer());
-    defineExternFunction("Viper.String.Has", types::boolean()); // VL-002: was Contains
-    defineExternFunction("Viper.String.StartsWith", types::boolean());
-    defineExternFunction("Viper.String.EndsWith", types::boolean());
-    defineExternFunction("Viper.String.ToUpper", types::string());
-    defineExternFunction("Viper.String.ToLower", types::string());
-    defineExternFunction("Viper.String.Trim", types::string());
-    defineExternFunction("Viper.String.TrimStart", types::string()); // VL-003: was TrimLeft
-    defineExternFunction("Viper.String.TrimEnd", types::string());   // VL-003: was TrimRight
-    defineExternFunction("Viper.String.Replace", types::string());
-    defineExternFunction("Viper.String.Split", types::ptr());
+    defineExternFunction("Viper.String.Left", types::string());
+    defineExternFunction("Viper.String.Mid", types::string());
+    defineExternFunction("Viper.String.MidLen", types::string());
+    defineExternFunction("Viper.String.PadLeft", types::string());
+    defineExternFunction("Viper.String.PadRight", types::string());
     defineExternFunction("Viper.String.Repeat", types::string());
-    defineExternFunction("Viper.String.Flip", types::string()); // VL-005: was Reverse
-    defineExternFunction("Viper.String.Chr", types::string());
-    defineExternFunction("Viper.String.Asc", types::integer());
-    defineExternFunction("Viper.String.get_IsEmpty", types::boolean()); // VL-011: was IsEmpty
-    defineExternFunction("Viper.String.Cmp", types::integer());         // VL-007: was Compare
-    defineExternFunction("Viper.Strings.Join", types::string()); // VL-010: was Viper.String.Join
-    defineExternFunction("Viper.Strings.Equals", types::boolean());
-    defineExternFunction("Viper.Strings.Compare", types::integer());
+    defineExternFunction("Viper.String.Replace", types::string());
+    defineExternFunction("Viper.String.Right", types::string());
+    defineExternFunction("Viper.String.Split", types::ptr());
+    defineExternFunction("Viper.String.StartsWith", types::boolean());
+    defineExternFunction("Viper.String.Substring", types::string());
+    defineExternFunction("Viper.String.ToLower", types::string());
+    defineExternFunction("Viper.String.ToUpper", types::string());
+    defineExternFunction("Viper.String.Trim", types::string());
+    defineExternFunction("Viper.String.TrimEnd", types::string());
+    defineExternFunction("Viper.String.TrimStart", types::string());
+    defineExternFunction("Viper.String.get_IsEmpty", types::boolean());
+    defineExternFunction("Viper.String.get_Length", types::integer());
+
+    // =========================================================================
+    // STRINGS
+    // =========================================================================
+    defineExternFunction("Viper.Strings.Equals", types::integer());
+    defineExternFunction("Viper.Strings.FromDouble", types::string());
+    defineExternFunction("Viper.Strings.FromDoublePrecise", types::string());
+    defineExternFunction("Viper.Strings.FromI16", types::string());
+    defineExternFunction("Viper.Strings.FromI32", types::string());
+    defineExternFunction("Viper.Strings.FromInt", types::string());
+    defineExternFunction("Viper.Strings.FromSingle", types::string());
+    defineExternFunction("Viper.Strings.FromStr", types::string());
+    defineExternFunction("Viper.Strings.Join", types::string());
+    defineExternFunction("Viper.Strings.SplitFields", types::integer());
 
     // =========================================================================
     // TERMINAL
     // =========================================================================
-    defineExternFunction("Viper.Terminal.Say", types::voidType());
-    defineExternFunction("Viper.Terminal.SayInt", types::voidType());
-    defineExternFunction("Viper.Terminal.SayNum", types::voidType());
-    defineExternFunction("Viper.Terminal.SayBool", types::voidType());
+    defineExternFunction("Viper.Terminal.Ask", types::string());
+    defineExternFunction("Viper.Terminal.BeginBatch", types::voidType());
+    defineExternFunction("Viper.Terminal.Bell", types::voidType());
+    defineExternFunction("Viper.Terminal.Clear", types::voidType());
+    defineExternFunction("Viper.Terminal.EndBatch", types::voidType());
+    defineExternFunction("Viper.Terminal.Flush", types::voidType());
+    defineExternFunction("Viper.Terminal.GetKey", types::string());
+    defineExternFunction("Viper.Terminal.GetKeyTimeout", types::string());
+    defineExternFunction("Viper.Terminal.InKey", types::string());
     defineExternFunction("Viper.Terminal.Print", types::voidType());
+    defineExternFunction("Viper.Terminal.PrintF64", types::voidType());
+    defineExternFunction("Viper.Terminal.PrintI64", types::voidType());
     defineExternFunction("Viper.Terminal.PrintInt", types::voidType());
     defineExternFunction("Viper.Terminal.PrintNum", types::voidType());
+    defineExternFunction("Viper.Terminal.PrintStr", types::voidType());
     defineExternFunction("Viper.Terminal.ReadLine", types::string());
-    defineExternFunction("Viper.Terminal.GetKey", types::string());
-    defineExternFunction("Viper.Terminal.InKey", types::string());
-    defineExternFunction("Viper.Terminal.GetKeyTimeout", types::string());
-    defineExternFunction("Viper.Terminal.Clear", types::voidType());
-    defineExternFunction("Viper.Terminal.Bell", types::voidType());
-    defineExternFunction("Viper.Terminal.Flush", types::voidType());
-    defineExternFunction("Viper.Terminal.SetColor", types::voidType());
-    defineExternFunction("Viper.Terminal.SetPosition", types::voidType());
-    defineExternFunction("Viper.Terminal.SetCursorVisible", types::voidType());
+    defineExternFunction("Viper.Terminal.Say", types::voidType());
+    defineExternFunction("Viper.Terminal.SayBool", types::voidType());
+    defineExternFunction("Viper.Terminal.SayInt", types::voidType());
+    defineExternFunction("Viper.Terminal.SayNum", types::voidType());
     defineExternFunction("Viper.Terminal.SetAltScreen", types::voidType());
-    defineExternFunction("Viper.Terminal.BeginBatch", types::voidType());
-    defineExternFunction("Viper.Terminal.EndBatch", types::voidType());
-    defineExternFunction("Viper.Terminal.GetWidth", types::integer());
-    defineExternFunction("Viper.Terminal.GetHeight", types::integer());
+    defineExternFunction("Viper.Terminal.SetColor", types::voidType());
+    defineExternFunction("Viper.Terminal.SetCursorVisible", types::voidType());
+    defineExternFunction("Viper.Terminal.SetPosition", types::voidType());
 
     // =========================================================================
-    // TEXT - CODEC, CSV, GUID, STRINGBUILDER, TEMPLATE, PATTERN
+    // TEXT
     // =========================================================================
-    defineExternFunction("Viper.Text.Codec.EncodeBase64", types::string());
-    defineExternFunction("Viper.Text.Codec.DecodeBase64", types::ptr());
-    defineExternFunction("Viper.Text.Codec.EncodeHex", types::string());
-    defineExternFunction("Viper.Text.Codec.DecodeHex", types::ptr());
-    defineExternFunction("Viper.Text.Codec.EncodeUrl", types::string());
-    defineExternFunction("Viper.Text.Codec.DecodeUrl", types::string());
+    defineExternFunction("Viper.Text.Codec.Base64Dec", types::string());
+    defineExternFunction("Viper.Text.Codec.Base64Enc", types::string());
+    defineExternFunction("Viper.Text.Codec.HexDec", types::string());
+    defineExternFunction("Viper.Text.Codec.HexEnc", types::string());
+    defineExternFunction("Viper.Text.Codec.UrlDecode", types::string());
+    defineExternFunction("Viper.Text.Codec.UrlEncode", types::string());
+    defineExternFunction("Viper.Text.Csv.ParseLine", types::ptr());
+    defineExternFunction("Viper.Text.Csv.ParseLineWith", types::ptr());
     defineExternFunction("Viper.Text.Csv.Parse", types::ptr());
-    defineExternFunction("Viper.Text.Csv.ParseFile", types::ptr());
-    defineExternFunction("Viper.Text.Csv.Write", types::string());
+    defineExternFunction("Viper.Text.Csv.ParseWith", types::ptr());
+    defineExternFunction("Viper.Text.Csv.FormatLine", types::string());
+    defineExternFunction("Viper.Text.Csv.FormatLineWith", types::string());
+    defineExternFunction("Viper.Text.Csv.Format", types::string());
+    defineExternFunction("Viper.Text.Csv.FormatWith", types::string());
+    defineExternFunction("Viper.Text.Guid.get_Empty", types::string());
+    defineExternFunction("Viper.Text.Guid.FromBytes", types::string());
+    defineExternFunction("Viper.Text.Guid.IsValid", types::boolean());
     defineExternFunction("Viper.Text.Guid.New", types::string());
-    defineExternFunction("Viper.Text.Guid.Parse", types::string());
-    defineExternFunction("Viper.Text.StringBuilder.New", types::ptr());
-    defineExternFunction("Viper.Text.StringBuilder.Append", types::voidType());
-    defineExternFunction("Viper.Text.StringBuilder.AppendLine", types::voidType());
-    defineExternFunction("Viper.Text.StringBuilder.ToString", types::string());
-    defineExternFunction("Viper.Text.StringBuilder.Clear", types::voidType());
-    defineExternFunction("Viper.Text.StringBuilder.get_Length", types::integer());
-    defineExternFunction("Viper.Text.Template.New", types::ptr());
-    defineExternFunction("Viper.Text.Template.Set", types::voidType());
-    defineExternFunction("Viper.Text.Template.Render", types::string());
-    defineExternFunction("Viper.Text.Pattern.New", types::ptr());
-    defineExternFunction("Viper.Text.Pattern.Match", types::boolean());
+    defineExternFunction("Viper.Text.Guid.ToBytes", types::ptr());
+    defineExternFunction("Viper.Text.Pattern.IsMatch", types::boolean());
+    defineExternFunction("Viper.Text.Pattern.Find", types::string());
+    defineExternFunction("Viper.Text.Pattern.FindFrom", types::string());
+    defineExternFunction("Viper.Text.Pattern.FindPos", types::integer());
     defineExternFunction("Viper.Text.Pattern.FindAll", types::ptr());
     defineExternFunction("Viper.Text.Pattern.Replace", types::string());
+    defineExternFunction("Viper.Text.Pattern.ReplaceFirst", types::string());
+    defineExternFunction("Viper.Text.Pattern.Split", types::ptr());
+    defineExternFunction("Viper.Text.Pattern.Escape", types::string());
+    defineExternFunction("Viper.Text.StringBuilder.Append", types::ptr());
+    defineExternFunction("Viper.Text.StringBuilder.AppendLine", types::ptr());
+    defineExternFunction("Viper.Text.StringBuilder.Clear", types::voidType());
+    defineExternFunction("Viper.Text.StringBuilder.get_Capacity", types::integer());
+    defineExternFunction("Viper.Text.StringBuilder.get_Length", types::integer());
+    defineExternFunction("Viper.Text.StringBuilder.New", types::ptr());
+    defineExternFunction("Viper.Text.StringBuilder.ToString", types::string());
+    defineExternFunction("Viper.Text.Template.Render", types::string());
+    defineExternFunction("Viper.Text.Template.RenderSeq", types::string());
+    defineExternFunction("Viper.Text.Template.RenderWith", types::string());
+    defineExternFunction("Viper.Text.Template.Has", types::boolean());
+    defineExternFunction("Viper.Text.Template.Keys", types::ptr());
+    defineExternFunction("Viper.Text.Template.Escape", types::string());
 
     // =========================================================================
     // THREADS
     // =========================================================================
-    defineExternFunction("Viper.Threads.Thread.New", types::ptr());
-    defineExternFunction("Viper.Threads.Thread.Start", types::voidType());
-    defineExternFunction("Viper.Threads.Thread.Join", types::voidType());
-    defineExternFunction("Viper.Threads.Thread.IsAlive", types::boolean());
-    defineExternFunction("Viper.Threads.Thread.Sleep", types::voidType());
-    defineExternFunction("Viper.Threads.Thread.Yield", types::voidType());
-    defineExternFunction("Viper.Threads.Thread.GetId", types::integer());
     defineExternFunction("Viper.Threads.Barrier.New", types::ptr());
-    defineExternFunction("Viper.Threads.Barrier.Wait", types::voidType());
+    defineExternFunction("Viper.Threads.Barrier.Arrive", types::integer());
+    defineExternFunction("Viper.Threads.Barrier.Reset", types::voidType());
+    defineExternFunction("Viper.Threads.Barrier.get_Parties", types::integer());
+    defineExternFunction("Viper.Threads.Barrier.get_Waiting", types::integer());
     defineExternFunction("Viper.Threads.Gate.New", types::ptr());
-    defineExternFunction("Viper.Threads.Gate.Open", types::voidType());
-    defineExternFunction("Viper.Threads.Gate.Close", types::voidType());
-    defineExternFunction("Viper.Threads.Gate.Wait", types::voidType());
-    defineExternFunction("Viper.Threads.Monitor.New", types::ptr());
+    defineExternFunction("Viper.Threads.Gate.Enter", types::voidType());
+    defineExternFunction("Viper.Threads.Gate.TryEnter", types::boolean());
+    defineExternFunction("Viper.Threads.Gate.TryEnterFor", types::boolean());
+    defineExternFunction("Viper.Threads.Gate.Leave", types::voidType());
+    defineExternFunction("Viper.Threads.Gate.LeaveMany", types::voidType());
+    defineExternFunction("Viper.Threads.Gate.get_Permits", types::integer());
     defineExternFunction("Viper.Threads.Monitor.Enter", types::voidType());
+    defineExternFunction("Viper.Threads.Monitor.TryEnter", types::boolean());
+    defineExternFunction("Viper.Threads.Monitor.TryEnterFor", types::boolean());
     defineExternFunction("Viper.Threads.Monitor.Exit", types::voidType());
     defineExternFunction("Viper.Threads.Monitor.Wait", types::voidType());
-    defineExternFunction("Viper.Threads.Monitor.Notify", types::voidType());
-    defineExternFunction("Viper.Threads.Monitor.NotifyAll", types::voidType());
-    defineExternFunction("Viper.Threads.Semaphore.New", types::ptr());
-    defineExternFunction("Viper.Threads.Semaphore.Wait", types::voidType());
-    defineExternFunction("Viper.Threads.Semaphore.Signal", types::voidType());
+    defineExternFunction("Viper.Threads.Monitor.WaitFor", types::boolean());
+    defineExternFunction("Viper.Threads.Monitor.Pause", types::voidType());
+    defineExternFunction("Viper.Threads.Monitor.PauseAll", types::voidType());
+    defineExternFunction("Viper.Threads.RwLock.New", types::ptr());
+    defineExternFunction("Viper.Threads.RwLock.ReadEnter", types::voidType());
+    defineExternFunction("Viper.Threads.RwLock.ReadExit", types::voidType());
+    defineExternFunction("Viper.Threads.RwLock.WriteEnter", types::voidType());
+    defineExternFunction("Viper.Threads.RwLock.WriteExit", types::voidType());
+    defineExternFunction("Viper.Threads.RwLock.TryReadEnter", types::boolean());
+    defineExternFunction("Viper.Threads.RwLock.TryWriteEnter", types::boolean());
+    defineExternFunction("Viper.Threads.RwLock.get_Readers", types::integer());
+    defineExternFunction("Viper.Threads.RwLock.get_IsWriteLocked", types::boolean());
+    defineExternFunction("Viper.Threads.SafeI64.New", types::ptr());
+    defineExternFunction("Viper.Threads.SafeI64.Get", types::integer());
+    defineExternFunction("Viper.Threads.SafeI64.Set", types::voidType());
+    defineExternFunction("Viper.Threads.SafeI64.Add", types::integer());
+    defineExternFunction("Viper.Threads.SafeI64.CompareExchange", types::integer());
+    defineExternFunction("Viper.Threads.Thread.Start", types::ptr());
+    defineExternFunction("Viper.Threads.Thread.Join", types::voidType());
+    defineExternFunction("Viper.Threads.Thread.TryJoin", types::boolean());
+    defineExternFunction("Viper.Threads.Thread.JoinFor", types::boolean());
+    defineExternFunction("Viper.Threads.Thread.get_Id", types::integer());
+    defineExternFunction("Viper.Threads.Thread.get_IsAlive", types::boolean());
+    defineExternFunction("Viper.Threads.Thread.Sleep", types::voidType());
+    defineExternFunction("Viper.Threads.Thread.Yield", types::voidType());
 
     // =========================================================================
     // TIME
     // =========================================================================
-    defineExternFunction("Viper.Time.Clock.Now", types::integer());
-    defineExternFunction("Viper.Time.Clock.Millis", types::integer());
-    defineExternFunction("Viper.Time.Clock.Micros", types::integer());
     defineExternFunction("Viper.Time.Clock.Sleep", types::voidType());
-    defineExternFunction("Viper.Time.SleepMs", types::voidType());
-    defineExternFunction("Viper.Countdown.New", types::ptr());
-    defineExternFunction("Viper.Countdown.Tick", types::integer());
-    defineExternFunction("Viper.Countdown.Reset", types::voidType());
-    defineExternFunction("Viper.Countdown.Expired", types::boolean());
+    defineExternFunction("Viper.Time.Clock.Ticks", types::integer());
+    defineExternFunction("Viper.Time.Clock.TicksUs", types::integer());
+    defineExternFunction("Viper.Time.Countdown.New", types::ptr());
+    defineExternFunction("Viper.Time.Countdown.Start", types::voidType());
+    defineExternFunction("Viper.Time.Countdown.Stop", types::voidType());
+    defineExternFunction("Viper.Time.Countdown.Reset", types::voidType());
+    defineExternFunction("Viper.Time.Countdown.get_Elapsed", types::integer());
+    defineExternFunction("Viper.Time.Countdown.get_Remaining", types::integer());
+    defineExternFunction("Viper.Time.Countdown.get_Expired", types::boolean());
+    defineExternFunction("Viper.Time.Countdown.get_Interval", types::integer());
+    defineExternFunction("Viper.Time.Countdown.set_Interval", types::voidType());
+    defineExternFunction("Viper.Time.Countdown.get_IsRunning", types::boolean());
+    defineExternFunction("Viper.Time.Countdown.Wait", types::voidType());
 
     // =========================================================================
-    // VEC2, VEC3 (2D/3D VECTORS)
+    // VEC2
     // =========================================================================
-    defineExternFunction("Viper.Vec2.New", types::ptr());
     defineExternFunction("Viper.Vec2.Add", types::ptr());
-    defineExternFunction("Viper.Vec2.Sub", types::ptr());
-    defineExternFunction("Viper.Vec2.Mul", types::ptr());
+    defineExternFunction("Viper.Vec2.Angle", types::number());
+    defineExternFunction("Viper.Vec2.Cross", types::number());
+    defineExternFunction("Viper.Vec2.Dist", types::number());
     defineExternFunction("Viper.Vec2.Div", types::ptr());
     defineExternFunction("Viper.Vec2.Dot", types::number());
-    defineExternFunction("Viper.Vec2.Length", types::number());
-    defineExternFunction("Viper.Vec2.Normalize", types::ptr());
-    defineExternFunction("Viper.Vec2.Distance", types::number());
+    defineExternFunction("Viper.Vec2.Len", types::number());
+    defineExternFunction("Viper.Vec2.LenSq", types::number());
     defineExternFunction("Viper.Vec2.Lerp", types::ptr());
-    defineExternFunction("Viper.Vec3.New", types::ptr());
+    defineExternFunction("Viper.Vec2.Mul", types::ptr());
+    defineExternFunction("Viper.Vec2.Neg", types::ptr());
+    defineExternFunction("Viper.Vec2.New", types::ptr());
+    defineExternFunction("Viper.Vec2.Norm", types::ptr());
+    defineExternFunction("Viper.Vec2.One", types::ptr());
+    defineExternFunction("Viper.Vec2.Rotate", types::ptr());
+    defineExternFunction("Viper.Vec2.Sub", types::ptr());
+    defineExternFunction("Viper.Vec2.Zero", types::ptr());
+    defineExternFunction("Viper.Vec2.get_X", types::number());
+    defineExternFunction("Viper.Vec2.get_Y", types::number());
+
+    // =========================================================================
+    // VEC3
+    // =========================================================================
     defineExternFunction("Viper.Vec3.Add", types::ptr());
-    defineExternFunction("Viper.Vec3.Sub", types::ptr());
-    defineExternFunction("Viper.Vec3.Mul", types::ptr());
+    defineExternFunction("Viper.Vec3.Cross", types::ptr());
+    defineExternFunction("Viper.Vec3.Dist", types::number());
     defineExternFunction("Viper.Vec3.Div", types::ptr());
     defineExternFunction("Viper.Vec3.Dot", types::number());
-    defineExternFunction("Viper.Vec3.Cross", types::ptr());
-    defineExternFunction("Viper.Vec3.Length", types::number());
-    defineExternFunction("Viper.Vec3.Normalize", types::ptr());
-    defineExternFunction("Viper.Vec3.Distance", types::number());
+    defineExternFunction("Viper.Vec3.Len", types::number());
+    defineExternFunction("Viper.Vec3.LenSq", types::number());
     defineExternFunction("Viper.Vec3.Lerp", types::ptr());
+    defineExternFunction("Viper.Vec3.Mul", types::ptr());
+    defineExternFunction("Viper.Vec3.Neg", types::ptr());
+    defineExternFunction("Viper.Vec3.New", types::ptr());
+    defineExternFunction("Viper.Vec3.Norm", types::ptr());
+    defineExternFunction("Viper.Vec3.One", types::ptr());
+    defineExternFunction("Viper.Vec3.Sub", types::ptr());
+    defineExternFunction("Viper.Vec3.Zero", types::ptr());
+    defineExternFunction("Viper.Vec3.get_X", types::number());
+    defineExternFunction("Viper.Vec3.get_Y", types::number());
+    defineExternFunction("Viper.Vec3.get_Z", types::number());
 
     // =========================================================================
-    // CONVERT
+    // ALIASES (from RT_ALIAS entries in runtime.def)
     // =========================================================================
-    defineExternFunction("Viper.Convert.IntToStr", types::string());
-    defineExternFunction("Viper.Convert.NumToStr", types::string());
-    defineExternFunction("Viper.Convert.BoolToStr", types::string());
-    defineExternFunction("Viper.Convert.StrToInt", types::integer());
-    defineExternFunction("Viper.Convert.StrToNum", types::number());
-    defineExternFunction("Viper.Convert.StrToBool", types::boolean());
-    defineExternFunction("Viper.Convert.NumToInt", types::integer());
-
-    // =========================================================================
-    // GUI - APP
-    // =========================================================================
-    defineExternFunction("Viper.GUI.App.New", types::runtimeClass("Viper.GUI.App"));
-    defineExternFunction("Viper.GUI.App.Destroy", types::voidType());
-    defineExternFunction("Viper.GUI.App.get_ShouldClose", types::integer());
-    defineExternFunction("Viper.GUI.App.Poll", types::voidType());
-    defineExternFunction("Viper.GUI.App.Render", types::voidType());
-    defineExternFunction("Viper.GUI.App.get_Root", types::runtimeClass("Viper.GUI.Widget"));
-    defineExternFunction("Viper.GUI.App.SetFont", types::voidType());
-
-    // =========================================================================
-    // GUI - FONT
-    // =========================================================================
-    defineExternFunction("Viper.GUI.Font.Load", types::runtimeClass("Viper.GUI.Font"));
-    defineExternFunction("Viper.GUI.Font.Destroy", types::voidType());
-
-    // =========================================================================
-    // GUI - WIDGET (base class for all widgets)
-    // =========================================================================
-    defineExternFunction("Viper.GUI.Widget.Destroy", types::voidType());
-    defineExternFunction("Viper.GUI.Widget.SetVisible", types::voidType());
-    defineExternFunction("Viper.GUI.Widget.SetEnabled", types::voidType());
-    defineExternFunction("Viper.GUI.Widget.SetSize", types::voidType());
-    defineExternFunction("Viper.GUI.Widget.AddChild", types::voidType());
-    defineExternFunction("Viper.GUI.Widget.IsHovered", types::integer());
-    defineExternFunction("Viper.GUI.Widget.IsPressed", types::integer());
-    defineExternFunction("Viper.GUI.Widget.IsFocused", types::integer());
-    defineExternFunction("Viper.GUI.Widget.WasClicked", types::integer());
-    defineExternFunction("Viper.GUI.Widget.SetPosition", types::voidType());
-
-    // =========================================================================
-    // GUI - LABEL
-    // =========================================================================
-    defineExternFunction("Viper.GUI.Label.New", types::runtimeClass("Viper.GUI.Label"));
-    defineExternFunction("Viper.GUI.Label.SetText", types::voidType());
-    defineExternFunction("Viper.GUI.Label.SetFont", types::voidType());
-    defineExternFunction("Viper.GUI.Label.SetColor", types::voidType());
-
-    // =========================================================================
-    // GUI - BUTTON
-    // =========================================================================
-    defineExternFunction("Viper.GUI.Button.New", types::runtimeClass("Viper.GUI.Button"));
-    defineExternFunction("Viper.GUI.Button.SetText", types::voidType());
-    defineExternFunction("Viper.GUI.Button.SetFont", types::voidType());
-    defineExternFunction("Viper.GUI.Button.SetStyle", types::voidType());
-    defineExternFunction("Viper.GUI.Button.WasClicked", types::integer());
-
-    // =========================================================================
-    // GUI - TEXTINPUT
-    // =========================================================================
-    defineExternFunction("Viper.GUI.TextInput.New", types::runtimeClass("Viper.GUI.TextInput"));
-    defineExternFunction("Viper.GUI.TextInput.SetText", types::voidType());
-    defineExternFunction("Viper.GUI.TextInput.get_Text", types::string());
-    defineExternFunction("Viper.GUI.TextInput.SetPlaceholder", types::voidType());
-    defineExternFunction("Viper.GUI.TextInput.SetFont", types::voidType());
-    defineExternFunction("Viper.GUI.TextInput.SetMaxLength", types::voidType());
-
-    // =========================================================================
-    // GUI - CHECKBOX
-    // =========================================================================
-    defineExternFunction("Viper.GUI.Checkbox.New", types::runtimeClass("Viper.GUI.Checkbox"));
-    defineExternFunction("Viper.GUI.Checkbox.IsChecked", types::integer());
-    defineExternFunction("Viper.GUI.Checkbox.SetChecked", types::voidType());
-
-    // =========================================================================
-    // GUI - CODEEDITOR
-    // =========================================================================
-    defineExternFunction("Viper.GUI.CodeEditor.New", types::runtimeClass("Viper.GUI.CodeEditor"));
-    defineExternFunction("Viper.GUI.CodeEditor.SetText", types::voidType());
-    defineExternFunction("Viper.GUI.CodeEditor.get_Text", types::string());
-    defineExternFunction("Viper.GUI.CodeEditor.SetFont", types::voidType());
-    defineExternFunction("Viper.GUI.CodeEditor.get_LineCount", types::integer());
-    defineExternFunction("Viper.GUI.CodeEditor.get_CursorLine", types::integer());
-    defineExternFunction("Viper.GUI.CodeEditor.get_CursorColumn", types::integer());
-    defineExternFunction("Viper.GUI.CodeEditor.IsModified", types::integer());
-    defineExternFunction("Viper.GUI.CodeEditor.ClearModified", types::voidType());
-
-    // =========================================================================
-    // GUI - THEME
-    // =========================================================================
-    defineExternFunction("Viper.GUI.Theme.SetDark", types::voidType());
-    defineExternFunction("Viper.GUI.Theme.SetLight", types::voidType());
-
-    // =========================================================================
-    // GUI - VBOX / HBOX
-    // =========================================================================
-    defineExternFunction("Viper.GUI.VBox.New", types::runtimeClass("Viper.GUI.VBox"));
-    defineExternFunction("Viper.GUI.VBox.SetSpacing", types::voidType());
-    defineExternFunction("Viper.GUI.VBox.SetPadding", types::voidType());
-    defineExternFunction("Viper.GUI.HBox.New", types::runtimeClass("Viper.GUI.HBox"));
-    defineExternFunction("Viper.GUI.HBox.SetSpacing", types::voidType());
-    defineExternFunction("Viper.GUI.HBox.SetPadding", types::voidType());
+    defineExternFunction("Viper.Strings.Len", types::integer());
+    defineExternFunction("Viper.Strings.Concat", types::string());
+    defineExternFunction("Viper.Strings.Mid", types::string());
+    defineExternFunction("Viper.String.Length", types::integer());
+    defineExternFunction("Viper.String.ConcatSelf", types::string());
+    defineExternFunction("Viper.Console.PrintStr", types::voidType());
+    defineExternFunction("Viper.Console.PrintI64", types::voidType());
+    defineExternFunction("Viper.Console.PrintF64", types::voidType());
+    defineExternFunction("Viper.Console.ReadLine", types::string());
+    defineExternFunction("Viper.Time.SleepMs", types::voidType());
+    defineExternFunction("Viper.Time.GetTickCount", types::integer());
 }
 
 } // namespace il::frontends::viperlang

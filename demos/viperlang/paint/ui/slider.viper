@@ -1,0 +1,165 @@
+// slider.viper - Slider UI control for Viper Paint
+module slider;
+
+import "../config";
+
+// Slider entity - horizontal slider for numeric values
+entity Slider {
+    expose Integer x;           // X position
+    expose Integer y;           // Y position
+    expose Integer width;       // Slider width
+    expose Integer height;      // Slider height (track + thumb)
+    expose Integer minVal;      // Minimum value
+    expose Integer maxVal;      // Maximum value
+    expose Integer value;       // Current value
+    expose String label;        // Label text
+    expose Integer enabled;
+    expose Integer visible;
+
+    hide Integer dragging;      // 1 if currently dragging
+    hide Integer thumbWidth;    // Width of the thumb
+
+    // Default constructor
+    expose func init() {
+        x = 0;
+        y = 0;
+        width = 0;
+        height = 0;
+        label = "";
+        minVal = 0;
+        maxVal = 100;
+        value = 0;
+        enabled = 1;
+        visible = 1;
+        dragging = 0;
+        thumbWidth = 12;
+    }
+
+    expose func setup(sx: Integer, sy: Integer, sw: Integer, sh: Integer, lbl: String, minV: Integer, maxV: Integer, val: Integer) {
+        x = sx;
+        y = sy;
+        width = sw;
+        height = sh;
+        label = lbl;
+        minVal = minV;
+        maxVal = maxV;
+        value = val;
+        enabled = 1;
+        visible = 1;
+        dragging = 0;
+        thumbWidth = 12;
+    }
+
+    // Get thumb X position based on value
+    hide func getThumbX() -> Integer {
+        var range = maxVal - minVal;
+        if range <= 0 {
+            return x;
+        }
+        var trackWidth = width - thumbWidth;
+        var pos = (value - minVal) * trackWidth / range;
+        return x + pos;
+    }
+
+    // Check if point is inside slider track
+    expose func containsPoint(px: Integer, py: Integer) -> Integer {
+        if visible == 0 {
+            return 0;
+        }
+        if px >= x and px < x + width and py >= y and py < y + height {
+            return 1;
+        }
+        return 0;
+    }
+
+    // Handle mouse input, returns 1 if value changed
+    expose func handleMouse(mx: Integer, my: Integer, mouseDown: Integer) -> Integer {
+        if visible == 0 or enabled == 0 {
+            dragging = 0;
+            return 0;
+        }
+
+        var inside = containsPoint(mx, my);
+        var oldValue = value;
+
+        if mouseDown == 1 {
+            if inside == 1 or dragging == 1 {
+                dragging = 1;
+                // Calculate new value based on mouse X
+                var trackWidth = width - thumbWidth;
+                var relX = mx - x - thumbWidth / 2;
+                if relX < 0 {
+                    relX = 0;
+                }
+                if relX > trackWidth {
+                    relX = trackWidth;
+                }
+                var range = maxVal - minVal;
+                value = minVal + relX * range / trackWidth;
+                if value < minVal {
+                    value = minVal;
+                }
+                if value > maxVal {
+                    value = maxVal;
+                }
+            }
+        } else {
+            dragging = 0;
+        }
+
+        if value != oldValue {
+            return 1;
+        }
+        return 0;
+    }
+
+    // Set value with clamping
+    expose func setValue(newVal: Integer) {
+        if newVal < minVal {
+            value = minVal;
+        } else if newVal > maxVal {
+            value = maxVal;
+        } else {
+            value = newVal;
+        }
+    }
+
+    // Draw the slider
+    expose func draw(gfx: Viper.Graphics.Canvas) {
+        if visible == 0 {
+            return;
+        }
+
+        var trackHeight = 6;
+        var trackY = y + (height - trackHeight) / 2;
+
+        // Draw track background
+        var trackColor = config.UI_BG_DARK;
+        gfx.Box( x, trackY, width, trackHeight, trackColor);
+        gfx.Frame( x, trackY, width, trackHeight, config.UI_BORDER);
+
+        // Draw filled portion
+        var thumbX = getThumbX();
+        var filledWidth = thumbX - x + thumbWidth / 2;
+        if filledWidth > 0 {
+            gfx.Box( x + 1, trackY + 1, filledWidth, trackHeight - 2, config.UI_BG_BUTTON_ACTIVE);
+        }
+
+        // Draw thumb
+        var thumbColor = config.UI_BG_BUTTON;
+        if dragging == 1 {
+            thumbColor = config.UI_BG_BUTTON_ACTIVE;
+        }
+        gfx.Box( thumbX, y, thumbWidth, height, thumbColor);
+        gfx.Frame( thumbX, y, thumbWidth, height, config.UI_BORDER);
+
+        // Draw label and value
+        var textY = y - 12;
+        gfx.Text( x, textY, label, config.UI_TEXT_DIM);
+
+        // Draw value at right side
+        var valStr = Viper.Convert.IntToStr(value);
+        var valX = x + width - 24;
+        gfx.Text( valX, textY, valStr, config.UI_TEXT);
+    }
+}

@@ -1,0 +1,24 @@
+module test_simple;
+
+import "./config";
+
+// Test if module-level functions can access config
+func testModuleLevel() {
+    var x = config.WINDOW_WIDTH;
+}
+
+// Test if entity methods can access config
+entity TestEntity {
+    expose Integer width;
+
+    expose func init() {
+        width = config.WINDOW_WIDTH;
+    }
+}
+
+func main() {
+    testModuleLevel();
+
+    var entity = new TestEntity();
+    entity.init();
+}

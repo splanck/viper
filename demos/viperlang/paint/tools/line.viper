@@ -1,0 +1,71 @@
+// line.viper - Line tool for Viper Paint
+module line;
+
+import "../config";
+import "../canvas";
+import "../colors";
+
+// LineTool - draws straight lines from start to end
+entity LineTool {
+    hide Integer drawing;       // 1 if currently drawing
+    expose Integer startX;      // Start X (expose for preview)
+    expose Integer startY;      // Start Y
+    expose Integer endX;        // End X (current mouse)
+    expose Integer endY;        // End Y
+
+    expose func init() {
+        drawing = 0;
+        startX = 0;
+        startY = 0;
+        endX = 0;
+        endY = 0;
+    }
+
+    expose func getName() -> String {
+        return "Line";
+    }
+
+    expose func getIcon() -> String {
+        return "L";
+    }
+
+    expose func getShortcut() -> Integer {
+        return config.KEY_L;
+    }
+
+    expose func onMouseDown(x: Integer, y: Integer, canvas: DrawingCanvas, colors: ColorManager) {
+        drawing = 1;
+        startX = x;
+        startY = y;
+        endX = x;
+        endY = y;
+    }
+
+    expose func onMouseMove(x: Integer, y: Integer, canvas: DrawingCanvas, colors: ColorManager) {
+        if drawing == 1 {
+            endX = x;
+            endY = y;
+        }
+    }
+
+    expose func onMouseUp(x: Integer, y: Integer, canvas: DrawingCanvas, colors: ColorManager) {
+        if drawing == 1 {
+            // Draw the final line on the canvas
+            canvas.drawLine(startX, startY, x, y, colors.foreground);
+            drawing = 0;
+        }
+    }
+
+    expose func isDrawing() -> Integer {
+        return drawing;
+    }
+
+    // Draw preview on screen canvas (not the drawing canvas)
+    expose func drawPreview(gfx: Viper.Graphics.Canvas, offsetX: Integer, offsetY: Integer, color: Integer) {
+        if drawing == 1 {
+            // Draw preview line on the graphics canvas
+            gfx.Line(offsetX + startX, offsetY + startY,
+                offsetX + endX, offsetY + endY, color);
+        }
+    }
+}
