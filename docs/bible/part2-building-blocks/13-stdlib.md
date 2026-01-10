@@ -54,6 +54,8 @@ Viper's standard library is organized into modules under the `Viper` namespace. 
 | `Viper.Network` | TCP/UDP networking | Web clients, servers |
 | `Viper.Threads` | Concurrency | Parallel processing |
 | `Viper.Crypto` | Hashing and encoding | Security, verification |
+| `Viper.Graphics` | Low-level drawing | Games, visualizations |
+| `Viper.GUI` | Widget-based UI | Desktop applications |
 
 Let's explore each one in depth.
 

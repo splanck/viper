@@ -74,6 +74,7 @@
 #include "rt_format.h"
 #include "rt_fp.h"
 #include "rt_graphics.h"
+#include "rt_gui.h"
 #include "rt_guid.h"
 #include "rt_hash.h"
 #include "rt_heap.h"

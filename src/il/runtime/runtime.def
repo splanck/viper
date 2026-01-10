@@ -591,6 +591,222 @@ RT_FUNC(CameraSetBounds,    rt_camera_set_bounds,    "Viper.Graphics.Camera.SetB
 RT_FUNC(CameraClearBounds,  rt_camera_clear_bounds,  "Viper.Graphics.Camera.ClearBounds",   "void(obj)")
 
 //=============================================================================
+// GUI - APPLICATION
+//=============================================================================
+
+RT_FUNC(GuiAppNew,         rt_gui_app_new,          "Viper.GUI.App.New",            "obj(str,i64,i64)")
+RT_FUNC(GuiAppDestroy,     rt_gui_app_destroy,      "Viper.GUI.App.Destroy",        "void(obj)")
+RT_FUNC(GuiAppShouldClose, rt_gui_app_should_close, "Viper.GUI.App.get_ShouldClose","i64(obj)")
+RT_FUNC(GuiAppPoll,        rt_gui_app_poll,         "Viper.GUI.App.Poll",           "void(obj)")
+RT_FUNC(GuiAppRender,      rt_gui_app_render,       "Viper.GUI.App.Render",         "void(obj)")
+RT_FUNC(GuiAppGetRoot,     rt_gui_app_get_root,     "Viper.GUI.App.get_Root",       "obj(obj)")
+RT_FUNC(GuiAppSetFont,     rt_gui_app_set_font,     "Viper.GUI.App.SetFont",        "void(obj,obj,f64)")
+
+//=============================================================================
+// GUI - FONT
+//=============================================================================
+
+RT_FUNC(GuiFontLoad,    rt_font_load,    "Viper.GUI.Font.Load",    "obj(str)")
+RT_FUNC(GuiFontDestroy, rt_font_destroy, "Viper.GUI.Font.Destroy", "void(obj)")
+
+//=============================================================================
+// GUI - WIDGET BASE
+//=============================================================================
+
+RT_FUNC(GuiWidgetDestroy,     rt_widget_destroy,      "Viper.GUI.Widget.Destroy",     "void(obj)")
+RT_FUNC(GuiWidgetSetVisible,  rt_widget_set_visible,  "Viper.GUI.Widget.SetVisible",  "void(obj,i64)")
+RT_FUNC(GuiWidgetSetEnabled,  rt_widget_set_enabled,  "Viper.GUI.Widget.SetEnabled",  "void(obj,i64)")
+RT_FUNC(GuiWidgetSetSize,     rt_widget_set_size,     "Viper.GUI.Widget.SetSize",     "void(obj,i64,i64)")
+RT_FUNC(GuiWidgetAddChild,    rt_widget_add_child,    "Viper.GUI.Widget.AddChild",    "void(obj,obj)")
+RT_FUNC(GuiWidgetIsHovered,   rt_widget_is_hovered,   "Viper.GUI.Widget.IsHovered",   "i64(obj)")
+RT_FUNC(GuiWidgetIsPressed,   rt_widget_is_pressed,   "Viper.GUI.Widget.IsPressed",   "i64(obj)")
+RT_FUNC(GuiWidgetIsFocused,   rt_widget_is_focused,   "Viper.GUI.Widget.IsFocused",   "i64(obj)")
+RT_FUNC(GuiWidgetWasClicked,  rt_widget_was_clicked,  "Viper.GUI.Widget.WasClicked",  "i64(obj)")
+RT_FUNC(GuiWidgetSetPosition, rt_widget_set_position, "Viper.GUI.Widget.SetPosition", "void(obj,i64,i64)")
+
+//=============================================================================
+// GUI - LABEL
+//=============================================================================
+
+RT_FUNC(GuiLabelNew,      rt_label_new,       "Viper.GUI.Label.New",      "obj(obj,str)")
+RT_FUNC(GuiLabelSetText,  rt_label_set_text,  "Viper.GUI.Label.SetText",  "void(obj,str)")
+RT_FUNC(GuiLabelSetFont,  rt_label_set_font,  "Viper.GUI.Label.SetFont",  "void(obj,obj,f64)")
+RT_FUNC(GuiLabelSetColor, rt_label_set_color, "Viper.GUI.Label.SetColor", "void(obj,i64)")
+
+//=============================================================================
+// GUI - BUTTON
+//=============================================================================
+
+RT_FUNC(GuiButtonNew,      rt_button_new,       "Viper.GUI.Button.New",      "obj(obj,str)")
+RT_FUNC(GuiButtonSetText,  rt_button_set_text,  "Viper.GUI.Button.SetText",  "void(obj,str)")
+RT_FUNC(GuiButtonSetFont,  rt_button_set_font,  "Viper.GUI.Button.SetFont",  "void(obj,obj,f64)")
+RT_FUNC(GuiButtonSetStyle, rt_button_set_style, "Viper.GUI.Button.SetStyle", "void(obj,i64)")
+
+//=============================================================================
+// GUI - TEXTINPUT
+//=============================================================================
+
+RT_FUNC(GuiTextInputNew,            rt_textinput_new,             "Viper.GUI.TextInput.New",            "obj(obj)")
+RT_FUNC(GuiTextInputSetText,        rt_textinput_set_text,        "Viper.GUI.TextInput.SetText",        "void(obj,str)")
+RT_FUNC(GuiTextInputGetText,        rt_textinput_get_text,        "Viper.GUI.TextInput.get_Text",       "str(obj)")
+RT_FUNC(GuiTextInputSetPlaceholder, rt_textinput_set_placeholder, "Viper.GUI.TextInput.SetPlaceholder", "void(obj,str)")
+RT_FUNC(GuiTextInputSetFont,        rt_textinput_set_font,        "Viper.GUI.TextInput.SetFont",        "void(obj,obj,f64)")
+
+//=============================================================================
+// GUI - CHECKBOX
+//=============================================================================
+
+RT_FUNC(GuiCheckboxNew,        rt_checkbox_new,         "Viper.GUI.Checkbox.New",        "obj(obj,str)")
+RT_FUNC(GuiCheckboxSetChecked, rt_checkbox_set_checked, "Viper.GUI.Checkbox.SetChecked", "void(obj,i64)")
+RT_FUNC(GuiCheckboxIsChecked,  rt_checkbox_is_checked,  "Viper.GUI.Checkbox.IsChecked",  "i64(obj)")
+RT_FUNC(GuiCheckboxSetText,    rt_checkbox_set_text,    "Viper.GUI.Checkbox.SetText",    "void(obj,str)")
+
+//=============================================================================
+// GUI - SCROLLVIEW
+//=============================================================================
+
+RT_FUNC(GuiScrollViewNew,            rt_scrollview_new,              "Viper.GUI.ScrollView.New",            "obj(obj)")
+RT_FUNC(GuiScrollViewSetScroll,      rt_scrollview_set_scroll,       "Viper.GUI.ScrollView.SetScroll",      "void(obj,f64,f64)")
+RT_FUNC(GuiScrollViewSetContentSize, rt_scrollview_set_content_size, "Viper.GUI.ScrollView.SetContentSize", "void(obj,f64,f64)")
+
+//=============================================================================
+// GUI - TREEVIEW
+//=============================================================================
+
+RT_FUNC(GuiTreeViewNew,        rt_treeview_new,         "Viper.GUI.TreeView.New",        "obj(obj)")
+RT_FUNC(GuiTreeViewAddNode,    rt_treeview_add_node,    "Viper.GUI.TreeView.AddNode",    "obj(obj,obj,str)")
+RT_FUNC(GuiTreeViewRemoveNode, rt_treeview_remove_node, "Viper.GUI.TreeView.RemoveNode", "void(obj,obj)")
+RT_FUNC(GuiTreeViewClear,      rt_treeview_clear,       "Viper.GUI.TreeView.Clear",      "void(obj)")
+RT_FUNC(GuiTreeViewExpand,     rt_treeview_expand,      "Viper.GUI.TreeView.Expand",     "void(obj,obj)")
+RT_FUNC(GuiTreeViewCollapse,   rt_treeview_collapse,    "Viper.GUI.TreeView.Collapse",   "void(obj,obj)")
+RT_FUNC(GuiTreeViewSelect,     rt_treeview_select,      "Viper.GUI.TreeView.Select",     "void(obj,obj)")
+RT_FUNC(GuiTreeViewSetFont,    rt_treeview_set_font,    "Viper.GUI.TreeView.SetFont",    "void(obj,obj,f64)")
+
+//=============================================================================
+// GUI - TABBAR
+//=============================================================================
+
+RT_FUNC(GuiTabBarNew,       rt_tabbar_new,        "Viper.GUI.TabBar.New",       "obj(obj)")
+RT_FUNC(GuiTabBarAddTab,    rt_tabbar_add_tab,    "Viper.GUI.TabBar.AddTab",    "obj(obj,str,i64)")
+RT_FUNC(GuiTabBarRemoveTab, rt_tabbar_remove_tab, "Viper.GUI.TabBar.RemoveTab", "void(obj,obj)")
+RT_FUNC(GuiTabBarSetActive, rt_tabbar_set_active, "Viper.GUI.TabBar.SetActive", "void(obj,obj)")
+
+RT_FUNC(GuiTabSetTitle,    rt_tab_set_title,    "Viper.GUI.Tab.SetTitle",    "void(obj,str)")
+RT_FUNC(GuiTabSetModified, rt_tab_set_modified, "Viper.GUI.Tab.SetModified", "void(obj,i64)")
+
+//=============================================================================
+// GUI - SPLITPANE
+//=============================================================================
+
+RT_FUNC(GuiSplitPaneNew,         rt_splitpane_new,          "Viper.GUI.SplitPane.New",         "obj(obj,i64)")
+RT_FUNC(GuiSplitPaneSetPosition, rt_splitpane_set_position, "Viper.GUI.SplitPane.SetPosition", "void(obj,f64)")
+RT_FUNC(GuiSplitPaneGetFirst,    rt_splitpane_get_first,    "Viper.GUI.SplitPane.get_First",   "obj(obj)")
+RT_FUNC(GuiSplitPaneGetSecond,   rt_splitpane_get_second,   "Viper.GUI.SplitPane.get_Second",  "obj(obj)")
+
+//=============================================================================
+// GUI - CODEEDITOR
+//=============================================================================
+
+RT_FUNC(GuiCodeEditorNew,           rt_codeeditor_new,            "Viper.GUI.CodeEditor.New",           "obj(obj)")
+RT_FUNC(GuiCodeEditorSetText,       rt_codeeditor_set_text,       "Viper.GUI.CodeEditor.SetText",       "void(obj,str)")
+RT_FUNC(GuiCodeEditorGetText,       rt_codeeditor_get_text,       "Viper.GUI.CodeEditor.get_Text",      "str(obj)")
+RT_FUNC(GuiCodeEditorSetCursor,     rt_codeeditor_set_cursor,     "Viper.GUI.CodeEditor.SetCursor",     "void(obj,i64,i64)")
+RT_FUNC(GuiCodeEditorScrollToLine,  rt_codeeditor_scroll_to_line, "Viper.GUI.CodeEditor.ScrollToLine",  "void(obj,i64)")
+RT_FUNC(GuiCodeEditorGetLineCount,  rt_codeeditor_get_line_count, "Viper.GUI.CodeEditor.get_LineCount", "i64(obj)")
+RT_FUNC(GuiCodeEditorIsModified,    rt_codeeditor_is_modified,    "Viper.GUI.CodeEditor.IsModified",    "i64(obj)")
+RT_FUNC(GuiCodeEditorClearModified, rt_codeeditor_clear_modified, "Viper.GUI.CodeEditor.ClearModified", "void(obj)")
+RT_FUNC(GuiCodeEditorSetFont,       rt_codeeditor_set_font,       "Viper.GUI.CodeEditor.SetFont",       "void(obj,obj,f64)")
+
+//=============================================================================
+// GUI - DROPDOWN
+//=============================================================================
+
+RT_FUNC(GuiDropdownNew,             rt_dropdown_new,              "Viper.GUI.Dropdown.New",             "obj(obj)")
+RT_FUNC(GuiDropdownAddItem,         rt_dropdown_add_item,         "Viper.GUI.Dropdown.AddItem",         "i64(obj,str)")
+RT_FUNC(GuiDropdownRemoveItem,      rt_dropdown_remove_item,      "Viper.GUI.Dropdown.RemoveItem",      "void(obj,i64)")
+RT_FUNC(GuiDropdownClear,           rt_dropdown_clear,            "Viper.GUI.Dropdown.Clear",           "void(obj)")
+RT_FUNC(GuiDropdownSetSelected,     rt_dropdown_set_selected,     "Viper.GUI.Dropdown.SetSelected",     "void(obj,i64)")
+RT_FUNC(GuiDropdownGetSelected,     rt_dropdown_get_selected,     "Viper.GUI.Dropdown.get_Selected",    "i64(obj)")
+RT_FUNC(GuiDropdownGetSelectedText, rt_dropdown_get_selected_text,"Viper.GUI.Dropdown.get_SelectedText","str(obj)")
+RT_FUNC(GuiDropdownSetPlaceholder,  rt_dropdown_set_placeholder,  "Viper.GUI.Dropdown.SetPlaceholder",  "void(obj,str)")
+
+//=============================================================================
+// GUI - SLIDER
+//=============================================================================
+
+RT_FUNC(GuiSliderNew,      rt_slider_new,       "Viper.GUI.Slider.New",       "obj(obj,i64)")
+RT_FUNC(GuiSliderSetValue, rt_slider_set_value, "Viper.GUI.Slider.SetValue",  "void(obj,f64)")
+RT_FUNC(GuiSliderGetValue, rt_slider_get_value, "Viper.GUI.Slider.get_Value", "f64(obj)")
+RT_FUNC(GuiSliderSetRange, rt_slider_set_range, "Viper.GUI.Slider.SetRange",  "void(obj,f64,f64)")
+RT_FUNC(GuiSliderSetStep,  rt_slider_set_step,  "Viper.GUI.Slider.SetStep",   "void(obj,f64)")
+
+//=============================================================================
+// GUI - PROGRESSBAR
+//=============================================================================
+
+RT_FUNC(GuiProgressBarNew,      rt_progressbar_new,       "Viper.GUI.ProgressBar.New",       "obj(obj)")
+RT_FUNC(GuiProgressBarSetValue, rt_progressbar_set_value, "Viper.GUI.ProgressBar.SetValue",  "void(obj,f64)")
+RT_FUNC(GuiProgressBarGetValue, rt_progressbar_get_value, "Viper.GUI.ProgressBar.get_Value", "f64(obj)")
+
+//=============================================================================
+// GUI - LISTBOX
+//=============================================================================
+
+RT_FUNC(GuiListBoxNew,         rt_listbox_new,          "Viper.GUI.ListBox.New",          "obj(obj)")
+RT_FUNC(GuiListBoxAddItem,     rt_listbox_add_item,     "Viper.GUI.ListBox.AddItem",      "obj(obj,str)")
+RT_FUNC(GuiListBoxRemoveItem,  rt_listbox_remove_item,  "Viper.GUI.ListBox.RemoveItem",   "void(obj,obj)")
+RT_FUNC(GuiListBoxClear,       rt_listbox_clear,        "Viper.GUI.ListBox.Clear",        "void(obj)")
+RT_FUNC(GuiListBoxSelect,      rt_listbox_select,       "Viper.GUI.ListBox.Select",       "void(obj,obj)")
+RT_FUNC(GuiListBoxGetSelected, rt_listbox_get_selected, "Viper.GUI.ListBox.get_Selected", "obj(obj)")
+
+//=============================================================================
+// GUI - RADIOGROUP / RADIOBUTTON
+//=============================================================================
+
+RT_FUNC(GuiRadioGroupNew,         rt_radiogroup_new,         "Viper.GUI.RadioGroup.New",         "obj()")
+RT_FUNC(GuiRadioGroupDestroy,     rt_radiogroup_destroy,     "Viper.GUI.RadioGroup.Destroy",     "void(obj)")
+RT_FUNC(GuiRadioButtonNew,        rt_radiobutton_new,        "Viper.GUI.RadioButton.New",        "obj(obj,str,obj)")
+RT_FUNC(GuiRadioButtonIsSelected, rt_radiobutton_is_selected,"Viper.GUI.RadioButton.IsSelected", "i64(obj)")
+RT_FUNC(GuiRadioButtonSetSelected,rt_radiobutton_set_selected,"Viper.GUI.RadioButton.SetSelected","void(obj,i64)")
+
+//=============================================================================
+// GUI - SPINNER
+//=============================================================================
+
+RT_FUNC(GuiSpinnerNew,         rt_spinner_new,          "Viper.GUI.Spinner.New",         "obj(obj)")
+RT_FUNC(GuiSpinnerSetValue,    rt_spinner_set_value,    "Viper.GUI.Spinner.SetValue",    "void(obj,f64)")
+RT_FUNC(GuiSpinnerGetValue,    rt_spinner_get_value,    "Viper.GUI.Spinner.get_Value",   "f64(obj)")
+RT_FUNC(GuiSpinnerSetRange,    rt_spinner_set_range,    "Viper.GUI.Spinner.SetRange",    "void(obj,f64,f64)")
+RT_FUNC(GuiSpinnerSetStep,     rt_spinner_set_step,     "Viper.GUI.Spinner.SetStep",     "void(obj,f64)")
+RT_FUNC(GuiSpinnerSetDecimals, rt_spinner_set_decimals, "Viper.GUI.Spinner.SetDecimals", "void(obj,i64)")
+
+//=============================================================================
+// GUI - IMAGE
+//=============================================================================
+
+RT_FUNC(GuiImageNew,          rt_image_new,            "Viper.GUI.Image.New",          "obj(obj)")
+RT_FUNC(GuiImageSetPixels,    rt_image_set_pixels,     "Viper.GUI.Image.SetPixels",    "void(obj,obj,i64,i64)")
+RT_FUNC(GuiImageClear,        rt_image_clear,          "Viper.GUI.Image.Clear",        "void(obj)")
+RT_FUNC(GuiImageSetScaleMode, rt_image_set_scale_mode, "Viper.GUI.Image.SetScaleMode", "void(obj,i64)")
+RT_FUNC(GuiImageSetOpacity,   rt_image_set_opacity,    "Viper.GUI.Image.SetOpacity",   "void(obj,f64)")
+
+//=============================================================================
+// GUI - THEME
+//=============================================================================
+
+RT_FUNC(GuiThemeSetDark,  rt_theme_set_dark,  "Viper.GUI.Theme.SetDark",  "void()")
+RT_FUNC(GuiThemeSetLight, rt_theme_set_light, "Viper.GUI.Theme.SetLight", "void()")
+
+//=============================================================================
+// GUI - LAYOUT
+//=============================================================================
+
+RT_FUNC(GuiVBoxNew,           rt_vbox_new,             "Viper.GUI.VBox.New",           "obj()")
+RT_FUNC(GuiHBoxNew,           rt_hbox_new,             "Viper.GUI.HBox.New",           "obj()")
+RT_FUNC(GuiContainerSetSpacing, rt_container_set_spacing, "Viper.GUI.Container.SetSpacing", "void(obj,f64)")
+RT_FUNC(GuiContainerSetPadding, rt_container_set_padding, "Viper.GUI.Container.SetPadding", "void(obj,f64)")
+
+//=============================================================================
 // SOUND - AUDIO SYSTEM
 //=============================================================================
 
@@ -1969,6 +2185,268 @@ RT_CLASS_BEGIN("Viper.Graphics.Camera", Camera, "obj", CameraNew)
     RT_METHOD("Move", "void(i64,i64)", CameraMove)
     RT_METHOD("SetBounds", "void(i64,i64,i64,i64)", CameraSetBounds)
     RT_METHOD("ClearBounds", "void()", CameraClearBounds)
+RT_CLASS_END()
+
+//=============================================================================
+// GUI WIDGET CLASSES
+//=============================================================================
+
+// Viper.GUI.App - application framework
+RT_CLASS_BEGIN("Viper.GUI.App", GuiApp, "obj", GuiAppNew)
+    RT_PROP("ShouldClose", "i64", GuiAppShouldClose, none)
+    RT_PROP("Root", "obj", GuiAppGetRoot, none)
+    RT_METHOD("Poll", "void()", GuiAppPoll)
+    RT_METHOD("Render", "void()", GuiAppRender)
+    RT_METHOD("SetFont", "void(obj,f64)", GuiAppSetFont)
+    RT_METHOD("Destroy", "void()", GuiAppDestroy)
+RT_CLASS_END()
+
+// Viper.GUI.Font - font loading
+RT_CLASS_BEGIN("Viper.GUI.Font", GuiFont, "obj", GuiFontLoad)
+    RT_METHOD("Destroy", "void()", GuiFontDestroy)
+RT_CLASS_END()
+
+// Viper.GUI.Widget - base widget class
+RT_CLASS_BEGIN("Viper.GUI.Widget", GuiWidget, "obj", none)
+    RT_METHOD("Destroy", "void()", GuiWidgetDestroy)
+    RT_METHOD("SetVisible", "void(i64)", GuiWidgetSetVisible)
+    RT_METHOD("SetEnabled", "void(i64)", GuiWidgetSetEnabled)
+    RT_METHOD("SetSize", "void(i64,i64)", GuiWidgetSetSize)
+    RT_METHOD("SetPosition", "void(i64,i64)", GuiWidgetSetPosition)
+    RT_METHOD("AddChild", "void(obj)", GuiWidgetAddChild)
+    RT_METHOD("IsHovered", "i64()", GuiWidgetIsHovered)
+    RT_METHOD("IsPressed", "i64()", GuiWidgetIsPressed)
+    RT_METHOD("IsFocused", "i64()", GuiWidgetIsFocused)
+    RT_METHOD("WasClicked", "i64()", GuiWidgetWasClicked)
+RT_CLASS_END()
+
+// Viper.GUI.Label - text label widget
+RT_CLASS_BEGIN("Viper.GUI.Label", GuiLabel, "obj", GuiLabelNew)
+    RT_METHOD("SetText", "void(str)", GuiLabelSetText)
+    RT_METHOD("SetFont", "void(obj,f64)", GuiLabelSetFont)
+    RT_METHOD("SetColor", "void(i64)", GuiLabelSetColor)
+    RT_METHOD("Destroy", "void()", GuiWidgetDestroy)
+    RT_METHOD("SetVisible", "void(i64)", GuiWidgetSetVisible)
+    RT_METHOD("SetEnabled", "void(i64)", GuiWidgetSetEnabled)
+    RT_METHOD("SetSize", "void(i64,i64)", GuiWidgetSetSize)
+    RT_METHOD("SetPosition", "void(i64,i64)", GuiWidgetSetPosition)
+    RT_METHOD("WasClicked", "i64()", GuiWidgetWasClicked)
+RT_CLASS_END()
+
+// Viper.GUI.Button - clickable button widget
+RT_CLASS_BEGIN("Viper.GUI.Button", GuiButton, "obj", GuiButtonNew)
+    RT_METHOD("SetText", "void(str)", GuiButtonSetText)
+    RT_METHOD("SetFont", "void(obj,f64)", GuiButtonSetFont)
+    RT_METHOD("SetStyle", "void(i64)", GuiButtonSetStyle)
+    RT_METHOD("Destroy", "void()", GuiWidgetDestroy)
+    RT_METHOD("SetVisible", "void(i64)", GuiWidgetSetVisible)
+    RT_METHOD("SetEnabled", "void(i64)", GuiWidgetSetEnabled)
+    RT_METHOD("SetSize", "void(i64,i64)", GuiWidgetSetSize)
+    RT_METHOD("SetPosition", "void(i64,i64)", GuiWidgetSetPosition)
+    RT_METHOD("WasClicked", "i64()", GuiWidgetWasClicked)
+    RT_METHOD("IsHovered", "i64()", GuiWidgetIsHovered)
+    RT_METHOD("IsPressed", "i64()", GuiWidgetIsPressed)
+RT_CLASS_END()
+
+// Viper.GUI.TextInput - text input field widget
+RT_CLASS_BEGIN("Viper.GUI.TextInput", GuiTextInput, "obj", GuiTextInputNew)
+    RT_PROP("Text", "str", GuiTextInputGetText, none)
+    RT_METHOD("SetText", "void(str)", GuiTextInputSetText)
+    RT_METHOD("SetPlaceholder", "void(str)", GuiTextInputSetPlaceholder)
+    RT_METHOD("SetFont", "void(obj,f64)", GuiTextInputSetFont)
+    RT_METHOD("Destroy", "void()", GuiWidgetDestroy)
+    RT_METHOD("SetVisible", "void(i64)", GuiWidgetSetVisible)
+    RT_METHOD("SetEnabled", "void(i64)", GuiWidgetSetEnabled)
+    RT_METHOD("SetSize", "void(i64,i64)", GuiWidgetSetSize)
+    RT_METHOD("SetPosition", "void(i64,i64)", GuiWidgetSetPosition)
+    RT_METHOD("IsFocused", "i64()", GuiWidgetIsFocused)
+RT_CLASS_END()
+
+// Viper.GUI.Checkbox - checkbox widget
+RT_CLASS_BEGIN("Viper.GUI.Checkbox", GuiCheckbox, "obj", GuiCheckboxNew)
+    RT_METHOD("SetChecked", "void(i64)", GuiCheckboxSetChecked)
+    RT_METHOD("IsChecked", "i64()", GuiCheckboxIsChecked)
+    RT_METHOD("SetText", "void(str)", GuiCheckboxSetText)
+    RT_METHOD("Destroy", "void()", GuiWidgetDestroy)
+    RT_METHOD("SetVisible", "void(i64)", GuiWidgetSetVisible)
+    RT_METHOD("SetEnabled", "void(i64)", GuiWidgetSetEnabled)
+    RT_METHOD("SetSize", "void(i64,i64)", GuiWidgetSetSize)
+    RT_METHOD("SetPosition", "void(i64,i64)", GuiWidgetSetPosition)
+    RT_METHOD("WasClicked", "i64()", GuiWidgetWasClicked)
+RT_CLASS_END()
+
+// Viper.GUI.ScrollView - scrollable container widget
+RT_CLASS_BEGIN("Viper.GUI.ScrollView", GuiScrollView, "obj", GuiScrollViewNew)
+    RT_METHOD("SetScroll", "void(f64,f64)", GuiScrollViewSetScroll)
+    RT_METHOD("SetContentSize", "void(f64,f64)", GuiScrollViewSetContentSize)
+    RT_METHOD("Destroy", "void()", GuiWidgetDestroy)
+    RT_METHOD("SetVisible", "void(i64)", GuiWidgetSetVisible)
+    RT_METHOD("SetSize", "void(i64,i64)", GuiWidgetSetSize)
+    RT_METHOD("AddChild", "void(obj)", GuiWidgetAddChild)
+RT_CLASS_END()
+
+// Viper.GUI.TreeView - tree view widget
+RT_CLASS_BEGIN("Viper.GUI.TreeView", GuiTreeView, "obj", GuiTreeViewNew)
+    RT_METHOD("AddNode", "obj(obj,str)", GuiTreeViewAddNode)
+    RT_METHOD("RemoveNode", "void(obj)", GuiTreeViewRemoveNode)
+    RT_METHOD("Clear", "void()", GuiTreeViewClear)
+    RT_METHOD("Expand", "void(obj)", GuiTreeViewExpand)
+    RT_METHOD("Collapse", "void(obj)", GuiTreeViewCollapse)
+    RT_METHOD("Select", "void(obj)", GuiTreeViewSelect)
+    RT_METHOD("SetFont", "void(obj,f64)", GuiTreeViewSetFont)
+    RT_METHOD("Destroy", "void()", GuiWidgetDestroy)
+    RT_METHOD("SetVisible", "void(i64)", GuiWidgetSetVisible)
+    RT_METHOD("SetSize", "void(i64,i64)", GuiWidgetSetSize)
+RT_CLASS_END()
+
+// Viper.GUI.TabBar - tab bar widget
+RT_CLASS_BEGIN("Viper.GUI.TabBar", GuiTabBar, "obj", GuiTabBarNew)
+    RT_METHOD("AddTab", "obj(str,i64)", GuiTabBarAddTab)
+    RT_METHOD("RemoveTab", "void(obj)", GuiTabBarRemoveTab)
+    RT_METHOD("SetActive", "void(obj)", GuiTabBarSetActive)
+    RT_METHOD("Destroy", "void()", GuiWidgetDestroy)
+    RT_METHOD("SetVisible", "void(i64)", GuiWidgetSetVisible)
+    RT_METHOD("SetSize", "void(i64,i64)", GuiWidgetSetSize)
+RT_CLASS_END()
+
+// Viper.GUI.Tab - tab item
+RT_CLASS_BEGIN("Viper.GUI.Tab", GuiTab, "obj", none)
+    RT_METHOD("SetTitle", "void(str)", GuiTabSetTitle)
+    RT_METHOD("SetModified", "void(i64)", GuiTabSetModified)
+RT_CLASS_END()
+
+// Viper.GUI.SplitPane - split pane container
+RT_CLASS_BEGIN("Viper.GUI.SplitPane", GuiSplitPane, "obj", GuiSplitPaneNew)
+    RT_PROP("First", "obj", GuiSplitPaneGetFirst, none)
+    RT_PROP("Second", "obj", GuiSplitPaneGetSecond, none)
+    RT_METHOD("SetPosition", "void(f64)", GuiSplitPaneSetPosition)
+    RT_METHOD("Destroy", "void()", GuiWidgetDestroy)
+    RT_METHOD("SetVisible", "void(i64)", GuiWidgetSetVisible)
+    RT_METHOD("SetSize", "void(i64,i64)", GuiWidgetSetSize)
+RT_CLASS_END()
+
+// Viper.GUI.CodeEditor - code editor widget
+RT_CLASS_BEGIN("Viper.GUI.CodeEditor", GuiCodeEditor, "obj", GuiCodeEditorNew)
+    RT_PROP("Text", "str", GuiCodeEditorGetText, none)
+    RT_PROP("LineCount", "i64", GuiCodeEditorGetLineCount, none)
+    RT_METHOD("SetText", "void(str)", GuiCodeEditorSetText)
+    RT_METHOD("SetCursor", "void(i64,i64)", GuiCodeEditorSetCursor)
+    RT_METHOD("ScrollToLine", "void(i64)", GuiCodeEditorScrollToLine)
+    RT_METHOD("IsModified", "i64()", GuiCodeEditorIsModified)
+    RT_METHOD("ClearModified", "void()", GuiCodeEditorClearModified)
+    RT_METHOD("SetFont", "void(obj,f64)", GuiCodeEditorSetFont)
+    RT_METHOD("Destroy", "void()", GuiWidgetDestroy)
+    RT_METHOD("SetVisible", "void(i64)", GuiWidgetSetVisible)
+    RT_METHOD("SetSize", "void(i64,i64)", GuiWidgetSetSize)
+RT_CLASS_END()
+
+// Viper.GUI.Dropdown - dropdown select widget
+RT_CLASS_BEGIN("Viper.GUI.Dropdown", GuiDropdown, "obj", GuiDropdownNew)
+    RT_PROP("Selected", "i64", GuiDropdownGetSelected, none)
+    RT_PROP("SelectedText", "str", GuiDropdownGetSelectedText, none)
+    RT_METHOD("AddItem", "i64(str)", GuiDropdownAddItem)
+    RT_METHOD("RemoveItem", "void(i64)", GuiDropdownRemoveItem)
+    RT_METHOD("Clear", "void()", GuiDropdownClear)
+    RT_METHOD("SetSelected", "void(i64)", GuiDropdownSetSelected)
+    RT_METHOD("SetPlaceholder", "void(str)", GuiDropdownSetPlaceholder)
+    RT_METHOD("Destroy", "void()", GuiWidgetDestroy)
+    RT_METHOD("SetVisible", "void(i64)", GuiWidgetSetVisible)
+    RT_METHOD("SetSize", "void(i64,i64)", GuiWidgetSetSize)
+RT_CLASS_END()
+
+// Viper.GUI.Slider - slider widget
+RT_CLASS_BEGIN("Viper.GUI.Slider", GuiSlider, "obj", GuiSliderNew)
+    RT_PROP("Value", "f64", GuiSliderGetValue, none)
+    RT_METHOD("SetValue", "void(f64)", GuiSliderSetValue)
+    RT_METHOD("SetRange", "void(f64,f64)", GuiSliderSetRange)
+    RT_METHOD("SetStep", "void(f64)", GuiSliderSetStep)
+    RT_METHOD("Destroy", "void()", GuiWidgetDestroy)
+    RT_METHOD("SetVisible", "void(i64)", GuiWidgetSetVisible)
+    RT_METHOD("SetSize", "void(i64,i64)", GuiWidgetSetSize)
+RT_CLASS_END()
+
+// Viper.GUI.ProgressBar - progress bar widget
+RT_CLASS_BEGIN("Viper.GUI.ProgressBar", GuiProgressBar, "obj", GuiProgressBarNew)
+    RT_PROP("Value", "f64", GuiProgressBarGetValue, none)
+    RT_METHOD("SetValue", "void(f64)", GuiProgressBarSetValue)
+    RT_METHOD("Destroy", "void()", GuiWidgetDestroy)
+    RT_METHOD("SetVisible", "void(i64)", GuiWidgetSetVisible)
+    RT_METHOD("SetSize", "void(i64,i64)", GuiWidgetSetSize)
+RT_CLASS_END()
+
+// Viper.GUI.ListBox - list box widget
+RT_CLASS_BEGIN("Viper.GUI.ListBox", GuiListBox, "obj", GuiListBoxNew)
+    RT_PROP("Selected", "obj", GuiListBoxGetSelected, none)
+    RT_METHOD("AddItem", "obj(str)", GuiListBoxAddItem)
+    RT_METHOD("RemoveItem", "void(obj)", GuiListBoxRemoveItem)
+    RT_METHOD("Clear", "void()", GuiListBoxClear)
+    RT_METHOD("Select", "void(obj)", GuiListBoxSelect)
+    RT_METHOD("Destroy", "void()", GuiWidgetDestroy)
+    RT_METHOD("SetVisible", "void(i64)", GuiWidgetSetVisible)
+    RT_METHOD("SetSize", "void(i64,i64)", GuiWidgetSetSize)
+RT_CLASS_END()
+
+// Viper.GUI.RadioGroup - radio button group
+RT_CLASS_BEGIN("Viper.GUI.RadioGroup", GuiRadioGroup, "obj", GuiRadioGroupNew)
+    RT_METHOD("Destroy", "void()", GuiRadioGroupDestroy)
+RT_CLASS_END()
+
+// Viper.GUI.RadioButton - radio button widget
+RT_CLASS_BEGIN("Viper.GUI.RadioButton", GuiRadioButton, "obj", GuiRadioButtonNew)
+    RT_METHOD("IsSelected", "i64()", GuiRadioButtonIsSelected)
+    RT_METHOD("SetSelected", "void(i64)", GuiRadioButtonSetSelected)
+    RT_METHOD("Destroy", "void()", GuiWidgetDestroy)
+    RT_METHOD("SetVisible", "void(i64)", GuiWidgetSetVisible)
+    RT_METHOD("SetSize", "void(i64,i64)", GuiWidgetSetSize)
+RT_CLASS_END()
+
+// Viper.GUI.Spinner - numeric spinner widget
+RT_CLASS_BEGIN("Viper.GUI.Spinner", GuiSpinner, "obj", GuiSpinnerNew)
+    RT_PROP("Value", "f64", GuiSpinnerGetValue, none)
+    RT_METHOD("SetValue", "void(f64)", GuiSpinnerSetValue)
+    RT_METHOD("SetRange", "void(f64,f64)", GuiSpinnerSetRange)
+    RT_METHOD("SetStep", "void(f64)", GuiSpinnerSetStep)
+    RT_METHOD("SetDecimals", "void(i64)", GuiSpinnerSetDecimals)
+    RT_METHOD("Destroy", "void()", GuiWidgetDestroy)
+    RT_METHOD("SetVisible", "void(i64)", GuiWidgetSetVisible)
+    RT_METHOD("SetSize", "void(i64,i64)", GuiWidgetSetSize)
+RT_CLASS_END()
+
+// Viper.GUI.Image - image display widget
+RT_CLASS_BEGIN("Viper.GUI.Image", GuiImage, "obj", GuiImageNew)
+    RT_METHOD("SetPixels", "void(obj,i64,i64)", GuiImageSetPixels)
+    RT_METHOD("Clear", "void()", GuiImageClear)
+    RT_METHOD("SetScaleMode", "void(i64)", GuiImageSetScaleMode)
+    RT_METHOD("SetOpacity", "void(f64)", GuiImageSetOpacity)
+    RT_METHOD("Destroy", "void()", GuiWidgetDestroy)
+    RT_METHOD("SetVisible", "void(i64)", GuiWidgetSetVisible)
+    RT_METHOD("SetSize", "void(i64,i64)", GuiWidgetSetSize)
+RT_CLASS_END()
+
+// Viper.GUI.Theme - theme control (static class)
+RT_CLASS_BEGIN("Viper.GUI.Theme", GuiTheme, "obj", none)
+    RT_METHOD("SetDark", "void()", GuiThemeSetDark)
+    RT_METHOD("SetLight", "void()", GuiThemeSetLight)
+RT_CLASS_END()
+
+// Viper.GUI.VBox - vertical layout container
+RT_CLASS_BEGIN("Viper.GUI.VBox", GuiVBox, "obj", GuiVBoxNew)
+    RT_METHOD("SetSpacing", "void(f64)", GuiContainerSetSpacing)
+    RT_METHOD("SetPadding", "void(f64)", GuiContainerSetPadding)
+    RT_METHOD("Destroy", "void()", GuiWidgetDestroy)
+    RT_METHOD("SetVisible", "void(i64)", GuiWidgetSetVisible)
+    RT_METHOD("SetSize", "void(i64,i64)", GuiWidgetSetSize)
+    RT_METHOD("AddChild", "void(obj)", GuiWidgetAddChild)
+RT_CLASS_END()
+
+// Viper.GUI.HBox - horizontal layout container
+RT_CLASS_BEGIN("Viper.GUI.HBox", GuiHBox, "obj", GuiHBoxNew)
+    RT_METHOD("SetSpacing", "void(f64)", GuiContainerSetSpacing)
+    RT_METHOD("SetPadding", "void(f64)", GuiContainerSetPadding)
+    RT_METHOD("Destroy", "void()", GuiWidgetDestroy)
+    RT_METHOD("SetVisible", "void(i64)", GuiWidgetSetVisible)
+    RT_METHOD("SetSize", "void(i64,i64)", GuiWidgetSetSize)
+    RT_METHOD("AddChild", "void(obj)", GuiWidgetAddChild)
 RT_CLASS_END()
 
 // Viper.Sound.Audio - audio system control (static class)

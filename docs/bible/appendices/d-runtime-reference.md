@@ -17,6 +17,7 @@ This reference documents the Viper Runtime Library, the standard modules availab
 - [Viper.JSON](#viperjson) - JSON parsing/generation
 - [Viper.Threading](#viperthreading) - Concurrency primitives
 - [Viper.Graphics](#vipergraphics) - Drawing and windows
+- [Viper.GUI](#vipergui) - Widget-based user interfaces
 - [Viper.Input](#viperinput) - Keyboard, mouse, gamepad
 - [Viper.Crypto](#vipercrypto) - Hashing and encoding
 - [Viper.Environment](#viperenvironment) - System information
@@ -2436,6 +2437,520 @@ canvas.drawImage(playerSprite, playerX, playerY);
 
 // Draw scaled
 canvas.drawImageScaled(playerSprite, 100, 100, 64, 64);
+```
+
+---
+
+## Viper.GUI
+
+Widget-based user interface library for building desktop applications with buttons, text inputs, checkboxes, and other standard UI components.
+
+> **See also:** [Chapter 19: Graphics and Games](../part4-applications/19-graphics.md) for low-level graphics.
+
+---
+
+### App
+
+The GUI application framework that manages a window, widget tree, and event loop.
+
+```rust
+var app = new App(title: string, width: i64, height: i64) -> App
+
+app.ShouldClose -> bool         // Read-only: true when window should close
+app.Root -> Widget              // Read-only: root container for adding widgets
+app.Poll() -> void              // Process events and update widget states
+app.Render() -> void            // Clear, draw all widgets, flip buffer
+app.SetFont(font: Font, size: f64) -> void  // Set default font
+app.Destroy() -> void           // Clean up resources
+```
+
+**Example:**
+```rust
+import Viper.GUI.*
+
+var app = new App("My Application", 800, 600)
+Theme.SetDark()
+
+var button = new Button(app.Root, "Click Me")
+
+while !app.ShouldClose {
+    app.Poll()
+    if button.WasClicked() {
+        // Handle click
+    }
+    app.Render()
+}
+
+app.Destroy()
+```
+
+---
+
+### Font
+
+Font loading for text rendering in widgets.
+
+```rust
+var font = Font.Load(path: string) -> Font
+
+font.Destroy() -> void
+```
+
+**Example:**
+```rust
+var font = Font.Load("assets/arial.ttf")
+app.SetFont(font, 14.0)
+```
+
+---
+
+### Widget (Base Class)
+
+Common functionality for all widgets.
+
+```rust
+widget.Destroy() -> void
+widget.SetVisible(visible: bool) -> void
+widget.SetEnabled(enabled: bool) -> void
+widget.SetSize(width: i64, height: i64) -> void
+widget.SetPosition(x: i64, y: i64) -> void
+widget.AddChild(child: Widget) -> void
+
+// State queries (polling-based events)
+widget.IsHovered() -> bool
+widget.IsPressed() -> bool
+widget.IsFocused() -> bool
+widget.WasClicked() -> bool    // True if clicked this frame
+```
+
+---
+
+### Label
+
+Text display widget.
+
+```rust
+var label = new Label(parent: Widget, text: string) -> Label
+
+label.SetText(text: string) -> void
+label.SetFont(font: Font, size: f64) -> void
+label.SetColor(color: i64) -> void  // ARGB format: 0xAARRGGBB
+```
+
+**Example:**
+```rust
+var label = new Label(app.Root, "Hello, World!")
+label.SetColor(0xFFFFFFFF)  // White text
+```
+
+---
+
+### Button
+
+Clickable button widget.
+
+```rust
+var button = new Button(parent: Widget, text: string) -> Button
+
+button.SetText(text: string) -> void
+button.SetFont(font: Font, size: f64) -> void
+button.SetStyle(style: i64) -> void  // 0=default, 1=primary, 2=secondary, 3=danger, 4=text
+button.WasClicked() -> bool
+button.IsHovered() -> bool
+button.IsPressed() -> bool
+```
+
+**Example:**
+```rust
+var btn = new Button(app.Root, "Submit")
+btn.SetSize(120, 32)
+btn.SetStyle(1)  // Primary style
+
+if btn.WasClicked() {
+    // Handle submission
+}
+```
+
+---
+
+### TextInput
+
+Single-line text input field.
+
+```rust
+var input = new TextInput(parent: Widget) -> TextInput
+
+input.Text -> string              // Read-only: current text content
+input.SetText(text: string) -> void
+input.SetPlaceholder(text: string) -> void
+input.SetFont(font: Font, size: f64) -> void
+input.IsFocused() -> bool
+```
+
+**Example:**
+```rust
+var nameInput = new TextInput(app.Root)
+nameInput.SetPlaceholder("Enter your name...")
+nameInput.SetSize(200, 28)
+
+// Later, read the value
+var name = nameInput.Text
+```
+
+---
+
+### Checkbox
+
+Toggleable checkbox with label.
+
+```rust
+var checkbox = new Checkbox(parent: Widget, text: string) -> Checkbox
+
+checkbox.SetChecked(checked: bool) -> void
+checkbox.IsChecked() -> bool
+checkbox.SetText(text: string) -> void
+```
+
+**Example:**
+```rust
+var rememberMe = new Checkbox(app.Root, "Remember me")
+
+if rememberMe.IsChecked() {
+    // Save login
+}
+```
+
+---
+
+### Dropdown
+
+Dropdown selection widget.
+
+```rust
+var dropdown = new Dropdown(parent: Widget) -> Dropdown
+
+dropdown.Selected -> i64          // Read-only: selected index (-1 if none)
+dropdown.SelectedText -> string   // Read-only: selected item text
+dropdown.AddItem(text: string) -> i64  // Returns index
+dropdown.RemoveItem(index: i64) -> void
+dropdown.Clear() -> void
+dropdown.SetSelected(index: i64) -> void
+dropdown.SetPlaceholder(text: string) -> void
+```
+
+**Example:**
+```rust
+var colorPicker = new Dropdown(app.Root)
+colorPicker.SetPlaceholder("Select a color...")
+colorPicker.AddItem("Red")
+colorPicker.AddItem("Green")
+colorPicker.AddItem("Blue")
+
+var selected = colorPicker.SelectedText  // "Red", "Green", "Blue", or ""
+```
+
+---
+
+### Slider
+
+Horizontal or vertical slider for numeric values.
+
+```rust
+var slider = new Slider(parent: Widget, horizontal: bool) -> Slider
+
+slider.Value -> f64               // Read-only: current value
+slider.SetValue(value: f64) -> void
+slider.SetRange(min: f64, max: f64) -> void
+slider.SetStep(step: f64) -> void  // 0 for continuous
+```
+
+**Example:**
+```rust
+var volume = new Slider(app.Root, true)  // Horizontal
+volume.SetRange(0.0, 100.0)
+volume.SetValue(50.0)
+volume.SetSize(200, 24)
+
+var currentVolume = volume.Value
+```
+
+---
+
+### ProgressBar
+
+Progress indicator widget.
+
+```rust
+var progress = new ProgressBar(parent: Widget) -> ProgressBar
+
+progress.Value -> f64             // Read-only: current value (0.0 to 1.0)
+progress.SetValue(value: f64) -> void
+```
+
+**Example:**
+```rust
+var loadingBar = new ProgressBar(app.Root)
+loadingBar.SetSize(300, 20)
+loadingBar.SetValue(0.75)  // 75% complete
+```
+
+---
+
+### ListBox
+
+Scrollable list of selectable items.
+
+```rust
+var list = new ListBox(parent: Widget) -> ListBox
+
+list.Selected -> object           // Read-only: selected item handle
+list.AddItem(text: string) -> object  // Returns item handle
+list.RemoveItem(item: object) -> void
+list.Clear() -> void
+list.Select(item: object) -> void
+```
+
+**Example:**
+```rust
+var fileList = new ListBox(app.Root)
+fileList.SetSize(200, 300)
+
+var item1 = fileList.AddItem("document.txt")
+var item2 = fileList.AddItem("image.png")
+var item3 = fileList.AddItem("data.json")
+
+fileList.Select(item1)
+```
+
+---
+
+### RadioGroup / RadioButton
+
+Mutually exclusive selection buttons.
+
+```rust
+var group = new RadioGroup() -> RadioGroup
+var radio = new RadioButton(parent: Widget, text: string, group: RadioGroup) -> RadioButton
+
+radio.IsSelected() -> bool
+radio.SetSelected(selected: bool) -> void
+group.Destroy() -> void
+```
+
+**Example:**
+```rust
+var sizeGroup = new RadioGroup()
+var small = new RadioButton(app.Root, "Small", sizeGroup)
+var medium = new RadioButton(app.Root, "Medium", sizeGroup)
+var large = new RadioButton(app.Root, "Large", sizeGroup)
+
+medium.SetSelected(true)  // Default selection
+
+if large.IsSelected() {
+    // Large size chosen
+}
+```
+
+---
+
+### Spinner
+
+Numeric input with increment/decrement buttons.
+
+```rust
+var spinner = new Spinner(parent: Widget) -> Spinner
+
+spinner.Value -> f64              // Read-only: current value
+spinner.SetValue(value: f64) -> void
+spinner.SetRange(min: f64, max: f64) -> void
+spinner.SetStep(step: f64) -> void
+spinner.SetDecimals(decimals: i64) -> void
+```
+
+**Example:**
+```rust
+var quantity = new Spinner(app.Root)
+quantity.SetRange(1.0, 100.0)
+quantity.SetStep(1.0)
+quantity.SetDecimals(0)
+quantity.SetValue(1.0)
+```
+
+---
+
+### Image
+
+Image display widget.
+
+```rust
+var image = new Image(parent: Widget) -> Image
+
+image.SetPixels(pixels: Pixels, width: i64, height: i64) -> void
+image.Clear() -> void
+image.SetScaleMode(mode: i64) -> void  // 0=none, 1=fit, 2=fill, 3=stretch
+image.SetOpacity(opacity: f64) -> void  // 0.0 to 1.0
+```
+
+---
+
+### Layout Containers
+
+Containers for organizing widgets.
+
+```rust
+// Vertical layout (top to bottom)
+var vbox = new VBox() -> VBox
+vbox.SetSpacing(spacing: f64) -> void
+vbox.SetPadding(padding: f64) -> void
+vbox.AddChild(widget: Widget) -> void
+
+// Horizontal layout (left to right)
+var hbox = new HBox() -> HBox
+hbox.SetSpacing(spacing: f64) -> void
+hbox.SetPadding(padding: f64) -> void
+hbox.AddChild(widget: Widget) -> void
+```
+
+**Example:**
+```rust
+var form = new VBox()
+form.SetSpacing(8.0)
+form.SetPadding(16.0)
+app.Root.AddChild(form)
+
+var nameLabel = new Label(form, "Name:")
+var nameInput = new TextInput(form)
+var submitBtn = new Button(form, "Submit")
+```
+
+---
+
+### ScrollView
+
+Scrollable container for large content.
+
+```rust
+var scroll = new ScrollView(parent: Widget) -> ScrollView
+
+scroll.SetScroll(x: f64, y: f64) -> void
+scroll.SetContentSize(width: f64, height: f64) -> void
+scroll.AddChild(widget: Widget) -> void
+```
+
+---
+
+### SplitPane
+
+Resizable split container.
+
+```rust
+var split = new SplitPane(parent: Widget, horizontal: bool) -> SplitPane
+
+split.First -> Widget             // Read-only: first pane
+split.Second -> Widget            // Read-only: second pane
+split.SetPosition(position: f64) -> void  // 0.0 to 1.0
+```
+
+**Example:**
+```rust
+var split = new SplitPane(app.Root, true)  // Horizontal split
+split.SetPosition(0.3)  // 30% / 70% split
+
+var sidebar = new VBox()
+split.First.AddChild(sidebar)
+
+var content = new VBox()
+split.Second.AddChild(content)
+```
+
+---
+
+### TreeView
+
+Hierarchical tree display.
+
+```rust
+var tree = new TreeView(parent: Widget) -> TreeView
+
+tree.AddNode(parent: object, text: string) -> object  // parent=null for root
+tree.RemoveNode(node: object) -> void
+tree.Clear() -> void
+tree.Expand(node: object) -> void
+tree.Collapse(node: object) -> void
+tree.Select(node: object) -> void
+tree.SetFont(font: Font, size: f64) -> void
+```
+
+**Example:**
+```rust
+var tree = new TreeView(app.Root)
+var root = tree.AddNode(null, "Project")
+var src = tree.AddNode(root, "src")
+tree.AddNode(src, "main.viper")
+tree.AddNode(src, "utils.viper")
+var docs = tree.AddNode(root, "docs")
+tree.AddNode(docs, "README.md")
+
+tree.Expand(root)
+```
+
+---
+
+### TabBar
+
+Tabbed interface container.
+
+```rust
+var tabs = new TabBar(parent: Widget) -> TabBar
+
+tabs.AddTab(title: string, closable: bool) -> Tab
+tabs.RemoveTab(tab: Tab) -> void
+tabs.SetActive(tab: Tab) -> void
+```
+
+```rust
+// Tab object
+tab.SetTitle(title: string) -> void
+tab.SetModified(modified: bool) -> void  // Shows indicator
+```
+
+---
+
+### CodeEditor
+
+Multi-line code editor with syntax highlighting support.
+
+```rust
+var editor = new CodeEditor(parent: Widget) -> CodeEditor
+
+editor.Text -> string             // Read-only: current content
+editor.LineCount -> i64           // Read-only: number of lines
+editor.SetText(text: string) -> void
+editor.SetCursor(line: i64, col: i64) -> void
+editor.ScrollToLine(line: i64) -> void
+editor.IsModified() -> bool
+editor.ClearModified() -> void
+editor.SetFont(font: Font, size: f64) -> void
+```
+
+---
+
+### Theme
+
+Global theme control.
+
+```rust
+Theme.SetDark() -> void   // Dark theme (light text on dark background)
+Theme.SetLight() -> void  // Light theme (dark text on light background)
+```
+
+**Example:**
+```rust
+// Set theme before creating widgets
+Theme.SetDark()
+
+var app = new App("Dark Mode App", 800, 600)
+// All widgets will use dark theme colors
 ```
 
 ---

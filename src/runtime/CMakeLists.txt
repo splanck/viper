@@ -97,6 +97,7 @@ set(RT_EXEC_SOURCES
 set(RT_GRAPHICS_SOURCES
         rt_font.c
         rt_graphics.c
+        rt_gui.c
         rt_input.c
         rt_input_pad.c
         rt_vec2.c
@@ -156,6 +157,7 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_ns_bridge.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_font.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_graphics.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_gui.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_input.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_datetime.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_map.h
@@ -317,9 +319,15 @@ if (VIPER_ENABLE_GRAPHICS AND TARGET vipergfx)
     target_compile_definitions(viper_rt_graphics_obj PRIVATE VIPER_ENABLE_GRAPHICS)
     target_include_directories(viper_rt_graphics_obj PRIVATE
             ${PROJECT_SOURCE_DIR}/src/lib/graphics/include
+            ${PROJECT_SOURCE_DIR}/src/lib/gui/include
     )
     target_link_libraries(viper_rt_graphics PUBLIC vipergfx)
     target_link_libraries(viper_runtime PUBLIC vipergfx)
+    # Link GUI library if available
+    if (TARGET vipergui)
+        target_link_libraries(viper_rt_graphics PRIVATE vipergui)
+        target_link_libraries(viper_runtime PRIVATE vipergui)
+    endif ()
 else ()
     message(STATUS "viper_runtime: Graphics support disabled (vipergfx not available)")
 endif ()

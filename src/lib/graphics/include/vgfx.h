@@ -200,8 +200,21 @@ extern "C"
         VGFX_KEY_LEFT = 258,
         VGFX_KEY_RIGHT = 259,
         VGFX_KEY_UP = 260,
-        VGFX_KEY_DOWN = 261
+        VGFX_KEY_DOWN = 261,
+        VGFX_KEY_BACKSPACE = 262,
+        VGFX_KEY_DELETE = 263,
+        VGFX_KEY_TAB = 264,
+        VGFX_KEY_HOME = 265,
+        VGFX_KEY_END = 266
     } vgfx_key_t;
+
+    /// @brief Keyboard modifier flags
+    typedef enum {
+        VGFX_MOD_SHIFT = 1 << 0,
+        VGFX_MOD_CTRL  = 1 << 1,
+        VGFX_MOD_ALT   = 1 << 2,
+        VGFX_MOD_CMD   = 1 << 3   // macOS Command key
+    } vgfx_mod_t;
 
     /// @brief Mouse button identifiers.
     /// @details Standard three-button mouse mapping.  Additional buttons may be

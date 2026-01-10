@@ -134,6 +134,19 @@ graphics, input, networking, system, diagnostics, crypto, time, and threading su
 | `rt_pixels.c/h`   | Pixel buffer operations              |
 | `rt_font.c/h`     | Font loading and text rendering      |
 
+## GUI
+
+| File          | Purpose                                      |
+|---------------|----------------------------------------------|
+| `rt_gui.c/h`  | Widget-based UI bindings (Viper.GUI.*)       |
+
+Exposes the ViperGUI widget library (`src/lib/gui/`) to Viper programs. Includes:
+- **App**: Application framework wrapping Canvas
+- **Widgets**: Label, Button, TextInput, Checkbox, Dropdown, Slider, ProgressBar, ListBox, RadioButton, Spinner, Image
+- **Containers**: VBox, HBox, ScrollView, SplitPane
+- **Advanced**: TreeView, TabBar, CodeEditor
+- **Theme**: Dark/light theme support
+
 ## Input
 
 | File              | Purpose                              |

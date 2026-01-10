@@ -351,6 +351,13 @@ endif()
 add_subdirectory(src/lib/graphics)
 viper_assert_no_directory_link_libraries("src/lib/graphics" "src/lib/graphics")
 
+# ---- ViperGUI library ----
+# (Must be added after graphics since it depends on vipergfx)
+if(TARGET vipergfx)
+  add_subdirectory(src/lib/gui)
+  viper_assert_no_directory_link_libraries("src/lib/gui" "src/lib/gui")
+endif()
+
 # ---- ViperAUD library ----
 # (Must be added before runtime so rt_audio can link to it)
 add_subdirectory(src/lib/audio)
@@ -480,6 +487,7 @@ set(VIPER_PUBLIC_LIB_TARGETS
   fe_basic
   il_api
   vipergfx
+  vipergui
 )
 
 # Add viperaud to export set if it was built (platform-dependent)

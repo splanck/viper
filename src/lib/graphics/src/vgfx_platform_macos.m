@@ -125,6 +125,16 @@ static vgfx_key_t translate_keycode(unsigned short keycode, NSString *chars)
             return VGFX_KEY_ENTER; /* Enter key (numpad) */
         case 0x35:
             return VGFX_KEY_ESCAPE; /* Escape key */
+        case 0x33:
+            return VGFX_KEY_BACKSPACE; /* Backspace (delete backward) */
+        case 0x75:
+            return VGFX_KEY_DELETE; /* Forward delete */
+        case 0x30:
+            return VGFX_KEY_TAB; /* Tab key */
+        case 0x73:
+            return VGFX_KEY_HOME; /* Home key */
+        case 0x77:
+            return VGFX_KEY_END; /* End key */
         case 0x7B:
             return VGFX_KEY_LEFT; /* Left arrow */
         case 0x7C:
@@ -232,17 +242,30 @@ static vgfx_key_t translate_keycode(unsigned short keycode, NSString *chars)
     /* Get the view's Core Graphics context */
     CGContextRef context = [[NSGraphicsContext currentContext] CGContext];
 
-    /* Flip coordinate system: Cocoa has origin at bottom-left, we want top-left */
-    CGContextSaveGState(context);
-    CGContextTranslateCTM(context, 0, _vgfxWindow->height); /* Move origin to top-left */
-    CGContextScaleCTM(context, 1.0, -1.0);                  /* Flip Y axis */
+    /* Use view bounds for the destination rect - may differ from framebuffer on Retina */
+    CGFloat view_height = self.bounds.size.height;
+    CGFloat view_width = self.bounds.size.width;
 
-    /* Draw the image to the context */
-    CGRect rect = CGRectMake(0, 0, _vgfxWindow->width, _vgfxWindow->height);
+    /* Debug: log dimension mismatch once */
+    static int debug_logged = 0;
+    if (!debug_logged && (view_width != _vgfxWindow->width || view_height != _vgfxWindow->height)) {
+        NSLog(@"vgfx: View bounds (%.0f x %.0f) differ from framebuffer (%d x %d)",
+              view_width, view_height, _vgfxWindow->width, _vgfxWindow->height);
+        debug_logged = 1;
+    }
+
+    /*
+     * Note: We deliberately DON'T flip the coordinate system here.
+     * CGImage has origin at top-left (row 0 at top), and Cocoa's default
+     * coordinate system has origin at bottom-left. When we draw without
+     * flipping, CGContextDrawImage will flip the image for us (image appears
+     * "upside down" from its data perspective, but correct visually).
+     *
+     * This is because CGContextDrawImage interprets the image with its
+     * origin at the rect's origin, and the image fills the rect upward from there.
+     */
+    CGRect rect = CGRectMake(0, 0, view_width, view_height);
     CGContextDrawImage(context, rect, image);
-
-    /* Restore original coordinate system */
-    CGContextRestoreGState(context);
 
     /* Cleanup (release Core Graphics objects) */
     CGImageRelease(image);
