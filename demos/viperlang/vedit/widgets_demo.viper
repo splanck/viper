@@ -1,0 +1,218 @@
+module widgets_demo;
+
+// ============================================================================
+// WIDGETS DEMO - Showcase of Viper.GUI Widgets
+// ============================================================================
+// Demonstrates all major widget types in a single application.
+// ============================================================================
+
+func main() {
+    // Create application
+    var app = Viper.GUI.App.New("Widget Showcase", 800, 600);
+    Viper.GUI.Theme.SetDark();
+
+    var root = app.Root;
+
+    // Main layout - horizontal split
+    var mainLayout = Viper.GUI.HBox.New();
+    mainLayout.SetSpacing(16.0);
+    mainLayout.SetPadding(16.0);
+    root.AddChild(mainLayout);
+
+    // ========================================================================
+    // Left Panel - Form Widgets
+    // ========================================================================
+    var leftPanel = Viper.GUI.VBox.New();
+    leftPanel.SetSpacing(12.0);
+    leftPanel.SetSize(350, 560);
+    mainLayout.AddChild(leftPanel);
+
+    // Section: Text Inputs
+    var inputTitle = Viper.GUI.Label.New(leftPanel, "Text Inputs");
+    inputTitle.SetColor(0xFF4CAF50);
+
+    var nameLabel = Viper.GUI.Label.New(leftPanel, "Name:");
+    nameLabel.SetColor(0xFFCCCCCC);
+
+    var nameInput = Viper.GUI.TextInput.New(leftPanel);
+    nameInput.SetPlaceholder("Enter your name...");
+    nameInput.SetSize(320, 28);
+
+    var emailLabel = Viper.GUI.Label.New(leftPanel, "Email:");
+    emailLabel.SetColor(0xFFCCCCCC);
+
+    var emailInput = Viper.GUI.TextInput.New(leftPanel);
+    emailInput.SetPlaceholder("user@example.com");
+    emailInput.SetSize(320, 28);
+
+    // Section: Dropdown
+    var dropTitle = Viper.GUI.Label.New(leftPanel, "Dropdown:");
+    dropTitle.SetColor(0xFFCCCCCC);
+
+    var dropdown = Viper.GUI.Dropdown.New(leftPanel);
+    dropdown.SetPlaceholder("Select a language...");
+    dropdown.SetSize(320, 28);
+    dropdown.AddItem("Viper");
+    dropdown.AddItem("Python");
+    dropdown.AddItem("Rust");
+    dropdown.AddItem("JavaScript");
+    dropdown.AddItem("Go");
+
+    // Section: Checkboxes
+    var checkTitle = Viper.GUI.Label.New(leftPanel, "Options:");
+    checkTitle.SetColor(0xFFCCCCCC);
+
+    var check1 = Viper.GUI.Checkbox.New(leftPanel, "Enable dark mode");
+    check1.SetChecked(true);
+
+    var check2 = Viper.GUI.Checkbox.New(leftPanel, "Show line numbers");
+    check2.SetChecked(true);
+
+    var check3 = Viper.GUI.Checkbox.New(leftPanel, "Auto-save");
+
+    // Section: Radio Buttons
+    var radioTitle = Viper.GUI.Label.New(leftPanel, "Theme:");
+    radioTitle.SetColor(0xFFCCCCCC);
+
+    var themeGroup = Viper.GUI.RadioGroup.New();
+    var radioLight = Viper.GUI.RadioButton.New(leftPanel, "Light", themeGroup);
+    var radioDark = Viper.GUI.RadioButton.New(leftPanel, "Dark", themeGroup);
+    var radioSystem = Viper.GUI.RadioButton.New(leftPanel, "System", themeGroup);
+    radioDark.SetSelected(true);
+
+    // Section: Slider
+    var sliderTitle = Viper.GUI.Label.New(leftPanel, "Font Size:");
+    sliderTitle.SetColor(0xFFCCCCCC);
+
+    var fontSlider = Viper.GUI.Slider.New(leftPanel, true);
+    fontSlider.SetRange(8.0, 32.0);
+    fontSlider.SetValue(14.0);
+    fontSlider.SetStep(1.0);
+    fontSlider.SetSize(320, 24);
+
+    var sliderValue = Viper.GUI.Label.New(leftPanel, "14 pt");
+    sliderValue.SetColor(0xFF888888);
+
+    // ========================================================================
+    // Right Panel - List and Progress
+    // ========================================================================
+    var rightPanel = Viper.GUI.VBox.New();
+    rightPanel.SetSpacing(12.0);
+    rightPanel.SetSize(380, 560);
+    mainLayout.AddChild(rightPanel);
+
+    // Section: List Box
+    var listTitle = Viper.GUI.Label.New(rightPanel, "Recent Files:");
+    listTitle.SetColor(0xFF4CAF50);
+
+    var listBox = Viper.GUI.ListBox.New(rightPanel);
+    listBox.SetSize(360, 200);
+    listBox.AddItem("main.viper");
+    listBox.AddItem("utils.viper");
+    listBox.AddItem("config.json");
+    listBox.AddItem("README.md");
+    listBox.AddItem("package.json");
+
+    // Section: Progress Bar
+    var progressTitle = Viper.GUI.Label.New(rightPanel, "Loading Progress:");
+    progressTitle.SetColor(0xFFCCCCCC);
+
+    var progressBar = Viper.GUI.ProgressBar.New(rightPanel);
+    progressBar.SetSize(360, 20);
+    progressBar.SetValue(0.0);
+
+    // Section: Spinner
+    var spinnerTitle = Viper.GUI.Label.New(rightPanel, "Quantity:");
+    spinnerTitle.SetColor(0xFFCCCCCC);
+
+    var spinner = Viper.GUI.Spinner.New(rightPanel);
+    spinner.SetRange(1.0, 100.0);
+    spinner.SetStep(1.0);
+    spinner.SetDecimals(0);
+    spinner.SetValue(1.0);
+    spinner.SetSize(120, 28);
+
+    // Buttons
+    var buttonRow = Viper.GUI.HBox.New();
+    buttonRow.SetSpacing(8.0);
+    rightPanel.AddChild(buttonRow);
+
+    var submitBtn = Viper.GUI.Button.New(buttonRow, "Submit");
+    submitBtn.SetSize(100, 36);
+    submitBtn.SetStyle(1);  // Primary
+
+    var cancelBtn = Viper.GUI.Button.New(buttonRow, "Cancel");
+    cancelBtn.SetSize(100, 36);
+    cancelBtn.SetStyle(0);  // Default
+
+    var dangerBtn = Viper.GUI.Button.New(buttonRow, "Delete");
+    dangerBtn.SetSize(100, 36);
+    dangerBtn.SetStyle(3);  // Danger
+
+    // Status
+    var status = Viper.GUI.Label.New(rightPanel, "Ready");
+    status.SetColor(0xFF888888);
+
+    // Animation state
+    var progress = 0.0;
+    var progressDir = 1;
+
+    // ========================================================================
+    // Main Event Loop
+    // ========================================================================
+    while app.ShouldClose == false {
+        app.Poll();
+
+        // Update slider label
+        var fontSize = fontSlider.Value;
+        var fontSizeStr = Viper.Convert.NumToStr(fontSize);
+        sliderValue.SetText(fontSizeStr + " pt");
+
+        // Update progress bar animation
+        progress = progress + 0.005 * progressDir;
+        if progress >= 1.0 {
+            progress = 1.0;
+            progressDir = -1;
+        } else if progress <= 0.0 {
+            progress = 0.0;
+            progressDir = 1;
+        }
+        progressBar.SetValue(progress);
+
+        // Handle submit button
+        if submitBtn.WasClicked() != 0 {
+            var name = nameInput.Text;
+            var email = emailInput.Text;
+            var lang = dropdown.SelectedText;
+
+            if name == "" {
+                status.SetText("Please enter your name");
+                status.SetColor(0xFFFF5555);
+            } else {
+                status.SetText("Submitted: " + name);
+                status.SetColor(0xFF55FF55);
+            }
+        }
+
+        // Handle cancel button
+        if cancelBtn.WasClicked() != 0 {
+            nameInput.SetText("");
+            emailInput.SetText("");
+            dropdown.SetSelected(-1);
+            status.SetText("Form cleared");
+            status.SetColor(0xFF888888);
+        }
+
+        // Handle delete button
+        if dangerBtn.WasClicked() != 0 {
+            status.SetText("Delete clicked!");
+            status.SetColor(0xFFFF5555);
+        }
+
+        app.Render();
+    }
+
+    // Cleanup
+    themeGroup.Destroy();
+    app.Destroy();
+}

@@ -191,6 +191,18 @@ static vgfx_key_t translate_keycode(unsigned short keycode, NSString *chars)
     return YES;
 }
 
+/// @brief Accept mouse clicks even when the window is not focused.
+/// @details Without this, the first click on an unfocused window only gives
+///          focus without generating a mouse event.
+///
+/// @param event The mouse-down event (unused)
+/// @return YES (always accept first mouse click)
+- (BOOL)acceptsFirstMouse:(NSEvent *)event
+{
+    (void)event;
+    return YES;
+}
+
 /// @brief Render the framebuffer to the view.
 /// @details Called by Cocoa when the view needs to be redrawn (triggered by
 ///          setNeedsDisplay:YES in vgfx_platform_present).  Creates a CGImage

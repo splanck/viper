@@ -19,10 +19,12 @@
 #include "../lib/gui/include/vg_ide_widgets.h"
 #include "../lib/gui/include/vg_theme.h"
 #include "../lib/gui/include/vg_layout.h"
+#include "../lib/gui/include/vg_event.h"
 #include "../lib/graphics/include/vgfx.h"
 
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 //=============================================================================
 // Helper Functions
@@ -79,6 +81,9 @@ void* rt_gui_app_new(rt_string title, int64_t width, int64_t height) {
     app->root = vg_widget_create(VG_WIDGET_CONTAINER);
     if (app->root) {
         vg_widget_set_fixed_size(app->root, (float)width, (float)height);
+        // Also set actual size (set_fixed_size only sets constraints)
+        app->root->width = (float)width;
+        app->root->height = (float)height;
     }
 
     // Set dark theme by default
@@ -106,8 +111,9 @@ int64_t rt_gui_app_should_close(void* app_ptr) {
     return app->should_close;
 }
 
-// Forward declaration for widget rendering
+// Forward declarations
 static void render_widget_tree(vgfx_window_t window, vg_widget_t* widget, vg_font_t* font, float font_size);
+void rt_gui_set_last_clicked(void* widget);
 
 void rt_gui_app_poll(void* app_ptr) {
     if (!app_ptr) return;
@@ -116,6 +122,7 @@ void rt_gui_app_poll(void* app_ptr) {
 
     // Clear last clicked
     app->last_clicked = NULL;
+    rt_gui_set_last_clicked(NULL);
 
     // Get mouse position
     vgfx_mouse_pos(app->window, &app->mouse_x, &app->mouse_y);
@@ -125,26 +132,211 @@ void rt_gui_app_poll(void* app_ptr) {
     while (vgfx_poll_event(app->window, &event)) {
         if (event.type == VGFX_EVENT_CLOSE) {
             app->should_close = 1;
+            continue;
         }
-        else if (event.type == VGFX_EVENT_MOUSE_MOVE) {
-            app->mouse_x = event.data.mouse_move.x;
-            app->mouse_y = event.data.mouse_move.y;
-        }
-        else if (event.type == VGFX_EVENT_MOUSE_UP) {
-            // Find widget under mouse and mark as clicked
-            if (app->root) {
+
+        // Convert platform event to GUI event and dispatch to widget tree
+        if (app->root) {
+            vg_event_t gui_event = vg_event_from_platform(&event);
+
+            // Track mouse position from events
+            if (event.type == VGFX_EVENT_MOUSE_MOVE) {
+                app->mouse_x = event.data.mouse_move.x;
+                app->mouse_y = event.data.mouse_move.y;
+            }
+
+            // Track clicked widget for Button.WasClicked()
+            if (event.type == VGFX_EVENT_MOUSE_UP) {
                 vg_widget_t* hit = vg_widget_hit_test(app->root, (float)app->mouse_x, (float)app->mouse_y);
                 if (hit) {
                     app->last_clicked = hit;
+                    // Also set global for rt_widget_was_clicked
+                    rt_gui_set_last_clicked(hit);
+                }
+            }
+
+            // Dispatch all events to widget tree (handles focus, keyboard, etc.)
+            vg_event_dispatch(app->root, &gui_event);
+
+            // Synthesize KEY_CHAR event from KEY_DOWN for printable characters
+            // (vgfx doesn't have character input events, only key events)
+            if (event.type == VGFX_EVENT_KEY_DOWN && !event.data.key.is_repeat) {
+                int key = event.data.key.key;
+                uint32_t codepoint = 0;
+
+                // Check if it's a printable ASCII character
+                if (key >= ' ' && key <= '~') {
+                    // Letters are uppercase by default, convert to lowercase
+                    if (key >= 'A' && key <= 'Z') {
+                        codepoint = key + ('a' - 'A');  // Convert to lowercase
+                    } else {
+                        codepoint = key;
+                    }
+                }
+
+                if (codepoint != 0) {
+                    vg_event_t char_event = vg_event_key(VG_EVENT_KEY_CHAR,
+                                                         (vg_key_t)key, codepoint, 0);
+                    vg_event_dispatch(app->root, &char_event);
                 }
             }
         }
     }
+}
 
-    // Update widget hover states
-    if (app->root) {
-        // Clear all hover states first, then set the hovered one
-        // (simplified - full implementation would traverse tree)
+// Get spacing for a container (VBox/HBox store layout data in user_data)
+static float get_container_spacing(vg_widget_t* widget) {
+    if (widget->user_data) {
+        // VBox and HBox store vg_vbox_layout_t or vg_hbox_layout_t
+        vg_vbox_layout_t* layout = (vg_vbox_layout_t*)widget->user_data;
+        return layout->spacing;
+    }
+    return 8.0f; // Default spacing
+}
+
+// Get default height for widget based on type
+static float get_widget_default_height(vg_widget_t* widget, float font_size) {
+    if (widget->height > 0) return widget->height;
+
+    switch (widget->type) {
+        case VG_WIDGET_LABEL:
+            return font_size + 4;
+        case VG_WIDGET_BUTTON:
+            return 32;
+        case VG_WIDGET_TEXTINPUT:
+            return 28;
+        case VG_WIDGET_CHECKBOX:
+            return 20;
+        case VG_WIDGET_CODEEDITOR:
+            return 200;
+        case VG_WIDGET_CONTAINER: {
+            // Calculate height from children
+            float max_height = 0;
+            float total_height = 0;
+            float spacing = 8.0f;
+            int child_count = 0;
+            vg_widget_t* child = widget->first_child;
+            while (child) {
+                float ch = child->height > 0 ? child->height : 32; // estimate
+                if (ch > max_height) max_height = ch;
+                total_height += ch;
+                child_count++;
+                child = child->next_sibling;
+            }
+            // For HBox (buttons), use max height; for VBox use total
+            // Heuristic: if all children are buttons, it's HBox
+            int button_count = 0;
+            child = widget->first_child;
+            while (child) {
+                if (child->type == VG_WIDGET_BUTTON) button_count++;
+                child = child->next_sibling;
+            }
+            if (child_count > 0 && button_count == child_count) {
+                return max_height + 16; // HBox: max child height + padding
+            }
+            return total_height + spacing * (child_count > 0 ? child_count - 1 : 0) + 16;
+        }
+        default:
+            return 24;
+    }
+}
+
+// Check if widget is HBox by comparing vtable (HBox has hbox_arrange)
+static bool is_hbox_container(vg_widget_t* widget) {
+    if (!widget || !widget->vtable || widget->type != VG_WIDGET_CONTAINER) return false;
+    // HBox vtable has arrange function at a different address than VBox
+    // We can check by looking at the user_data - HBox uses vg_hbox_layout_t
+    // For simplicity, check if arrange function name contains "hbox" behavior
+    // Actually, the simplest way is to store a flag or check the vtable pointer
+    // For now, we'll use a heuristic: if spacing > 0 and widget has children that
+    // are buttons, treat as HBox. Better solution would be to tag the widget type.
+
+    // Check if this container's children are mostly buttons (heuristic for button bar)
+    int button_count = 0;
+    int child_count = 0;
+    vg_widget_t* child = widget->first_child;
+    while (child) {
+        child_count++;
+        if (child->type == VG_WIDGET_BUTTON) button_count++;
+        child = child->next_sibling;
+    }
+    return (child_count > 0 && button_count == child_count);
+}
+
+// Recursively perform layout on widget tree
+static void layout_widget_tree(vg_widget_t* widget, float rel_x, float rel_y, float parent_width, float font_size) {
+    if (!widget) return;
+
+    // Set position (relative to parent)
+    widget->x = rel_x;
+    widget->y = rel_y;
+
+    // Set default height if not specified
+    if (widget->height <= 0) {
+        widget->height = get_widget_default_height(widget, font_size);
+    }
+
+    // Calculate child positions (relative to this widget, starting at padding offset)
+    float spacing = get_container_spacing(widget);
+    float padding = 8.0f;
+    float child_rel_x = padding;
+    float child_rel_y = padding;
+
+    // Available width for children (parent width minus padding on both sides)
+    float available_width = (widget->width > 0 ? widget->width : parent_width) - padding * 2;
+
+    // Determine if this is horizontal or vertical layout
+    bool horizontal = is_hbox_container(widget);
+
+    vg_widget_t* child = widget->first_child;
+    while (child) {
+        // Set default height for child before layout
+        if (child->height <= 0) {
+            child->height = get_widget_default_height(child, font_size);
+        }
+        // Set default width based on layout type
+        if (child->width <= 0) {
+            if (child->type == VG_WIDGET_BUTTON) {
+                child->width = 80;  // Buttons have fixed width
+            } else if (!horizontal) {
+                // In vertical layout, children fill the width
+                child->width = available_width;
+            } else {
+                // In horizontal layout, use a default
+                child->width = 100;
+            }
+        }
+
+        layout_widget_tree(child, child_rel_x, child_rel_y, available_width, font_size);
+
+        // Advance position based on layout direction
+        if (widget->type == VG_WIDGET_CONTAINER) {
+            if (horizontal) {
+                child_rel_x += child->width + spacing;
+            } else {
+                child_rel_y += child->height + spacing;
+            }
+        }
+
+        child = child->next_sibling;
+    }
+
+    // Update container height to fit all children (for VBox/HBox)
+    if (widget->type == VG_WIDGET_CONTAINER && widget->first_child) {
+        bool horizontal = is_hbox_container(widget);
+        if (horizontal) {
+            // For HBox, height is the max child height + padding
+            float max_height = 0;
+            for (child = widget->first_child; child; child = child->next_sibling) {
+                if (child->height > max_height) max_height = child->height;
+            }
+            float needed_height = max_height + padding * 2;
+            if (needed_height > widget->height) widget->height = needed_height;
+        } else {
+            // For VBox, height is the sum of all children + spacing + padding
+            float needed_height = child_rel_y + padding;  // child_rel_y already includes all children
+            if (needed_height > widget->height) widget->height = needed_height;
+        }
     }
 }
 
@@ -152,6 +344,32 @@ void rt_gui_app_render(void* app_ptr) {
     if (!app_ptr) return;
     rt_gui_app_t* app = (rt_gui_app_t*)app_ptr;
     if (!app->window) return;
+
+    // Try to load a default font if none is set
+    if (!app->default_font) {
+        // Try common system font paths
+        const char* font_paths[] = {
+            "/System/Library/Fonts/Menlo.ttc",
+            "/System/Library/Fonts/SFNSMono.ttf",
+            "/System/Library/Fonts/Monaco.dfont",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+            "/usr/share/fonts/TTF/DejaVuSansMono.ttf",
+            NULL
+        };
+        for (int i = 0; font_paths[i]; i++) {
+            app->default_font = vg_font_load_file(font_paths[i]);
+            if (app->default_font) {
+                app->default_font_size = 14.0f;
+                break;
+            }
+        }
+    }
+
+    // Perform layout
+    float font_size = app->default_font_size > 0 ? app->default_font_size : 14.0f;
+    if (app->root) {
+        layout_widget_tree(app->root, 0, 0, app->root->width, font_size);
+    }
 
     // Clear with theme background
     vg_theme_t* theme = vg_theme_get_current();
@@ -183,42 +401,142 @@ void rt_gui_app_set_font(void* app_ptr, void* font, double size) {
 static void render_widget_tree(vgfx_window_t window, vg_widget_t* widget, vg_font_t* font, float font_size) {
     if (!widget || !widget->visible) return;
 
-    float x = widget->x;
-    float y = widget->y;
-    float w = widget->width;
-    float h = widget->height;
+    // Get screen coordinates (converts relative positions to absolute)
+    float x, y, w, h;
+    vg_widget_get_screen_bounds(widget, &x, &y, &w, &h);
 
     vg_theme_t* theme = vg_theme_get_current();
     if (!theme) return;
 
+    // Use default font size if not specified
+    if (font_size <= 0) font_size = 14.0f;
+
     // Render based on widget type
     switch (widget->type) {
+        case VG_WIDGET_CONTAINER:
+            // Containers are transparent by default, just render children
+            break;
+
         case VG_WIDGET_LABEL: {
             vg_label_t* label = (vg_label_t*)widget;
-            if (label->font && label->text) {
-                vg_font_draw_text(window, label->font, label->font_size,
-                    x, y + label->font_size, label->text, label->text_color);
-            } else if (font && label->text) {
-                vg_font_draw_text(window, font, font_size,
-                    x, y + font_size, label->text, label->text_color);
+            if (label->text) {
+                vg_font_t* use_font = label->font ? label->font : font;
+                float use_size = label->font ? label->font_size : font_size;
+                if (use_font) {
+                    vg_font_draw_text(window, use_font, use_size,
+                        x, y + use_size, label->text, label->text_color);
+                }
+                // No fallback without font - text won't render
             }
             break;
         }
+
         case VG_WIDGET_BUTTON: {
             vg_button_t* btn = (vg_button_t*)widget;
             uint32_t bg = theme->colors.bg_primary;
             if (widget->state & VG_STATE_HOVERED) bg = theme->colors.bg_tertiary;
             if (widget->state & VG_STATE_PRESSED) bg = theme->colors.accent_primary;
             vgfx_rect(window, (int)x, (int)y, (int)w, (int)h, bg);
-            if (btn->font && btn->text) {
-                float tw = strlen(btn->text) * btn->font_size * 0.6f;
-                float tx = x + (w - tw) / 2;
-                float ty = y + (h + btn->font_size) / 2 - 2;
-                vg_font_draw_text(window, btn->font, btn->font_size, tx, ty, btn->text, theme->colors.fg_primary);
+            if (btn->text) {
+                vg_font_t* use_font = btn->font ? btn->font : font;
+                float use_size = btn->font ? btn->font_size : font_size;
+                if (use_font) {
+                    float tw = strlen(btn->text) * use_size * 0.6f;
+                    float tx = x + (w - tw) / 2;
+                    float ty = y + (h + use_size) / 2 - 2;
+                    vg_font_draw_text(window, use_font, use_size, tx, ty, btn->text, theme->colors.fg_primary);
+                }
+                // No fallback without font
             }
             break;
         }
+
+        case VG_WIDGET_TEXTINPUT: {
+            vg_textinput_t* input = (vg_textinput_t*)widget;
+            uint32_t border_color = theme->colors.fg_tertiary;
+            // Draw background
+            vgfx_rect(window, (int)x, (int)y, (int)w, (int)h, theme->colors.bg_primary);
+            // Draw border
+            vgfx_rect(window, (int)x, (int)y, (int)w, 1, border_color);
+            vgfx_rect(window, (int)x, (int)(y+h-1), (int)w, 1, border_color);
+            vgfx_rect(window, (int)x, (int)y, 1, (int)h, border_color);
+            vgfx_rect(window, (int)(x+w-1), (int)y, 1, (int)h, border_color);
+            // Draw text or placeholder
+            const char* display_text = (input->text && input->text[0]) ? input->text : input->placeholder;
+            uint32_t text_color = (input->text && input->text[0]) ? theme->colors.fg_primary : theme->colors.fg_secondary;
+            if (display_text && font) {
+                vg_font_draw_text(window, font, font_size, x + 4, y + font_size + 2, display_text, text_color);
+            }
+            break;
+        }
+
+        case VG_WIDGET_CODEEDITOR: {
+            vg_codeeditor_t* editor = (vg_codeeditor_t*)widget;
+            uint32_t border_color = theme->colors.fg_tertiary;
+            // Draw background
+            vgfx_rect(window, (int)x, (int)y, (int)w, (int)h, theme->colors.bg_primary);
+            // Draw border
+            vgfx_rect(window, (int)x, (int)y, (int)w, 1, border_color);
+            vgfx_rect(window, (int)x, (int)(y+h-1), (int)w, 1, border_color);
+            vgfx_rect(window, (int)x, (int)y, 1, (int)h, border_color);
+            vgfx_rect(window, (int)(x+w-1), (int)y, 1, (int)h, border_color);
+            // Draw text content (simplified - just first few lines)
+            float line_height = font_size + 4;
+            float char_width = font_size * 0.6f;  // Approximate monospace char width
+            const char* text_content = vg_codeeditor_get_text(editor);
+            if (text_content && font) {
+                float ty = y + 4;
+                const char* line_start = text_content;
+                int max_lines = (int)((h - 8) / line_height);
+                for (int i = 0; i < max_lines && *line_start; i++) {
+                    const char* line_end = strchr(line_start, '\n');
+                    int len = line_end ? (int)(line_end - line_start) : (int)strlen(line_start);
+                    char line_buf[256];
+                    if (len > 255) len = 255;
+                    memcpy(line_buf, line_start, len);
+                    line_buf[len] = '\0';
+                    vg_font_draw_text(window, font, font_size, x + 4, ty + font_size, line_buf, theme->colors.fg_primary);
+                    ty += line_height;
+                    if (!line_end) break;
+                    line_start = line_end + 1;
+                }
+            }
+            // Draw cursor if focused
+            if (widget->state & VG_STATE_FOCUSED) {
+                float cursor_x = x + 4 + editor->cursor_col * char_width;
+                float cursor_y = y + 4 + editor->cursor_line * line_height;
+                // Draw cursor line
+                vgfx_rect(window, (int)cursor_x, (int)cursor_y, 2, (int)font_size + 2, theme->colors.fg_primary);
+            }
+            break;
+        }
+
+        case VG_WIDGET_CHECKBOX: {
+            vg_checkbox_t* cb = (vg_checkbox_t*)widget;
+            uint32_t border_color = theme->colors.fg_tertiary;
+            // Draw checkbox box
+            int box_size = 16;
+            vgfx_rect(window, (int)x, (int)y, box_size, box_size, theme->colors.bg_primary);
+            vgfx_rect(window, (int)x, (int)y, box_size, 1, border_color);
+            vgfx_rect(window, (int)x, (int)(y+box_size-1), box_size, 1, border_color);
+            vgfx_rect(window, (int)x, (int)y, 1, box_size, border_color);
+            vgfx_rect(window, (int)(x+box_size-1), (int)y, 1, box_size, border_color);
+            if (cb->checked) {
+                // Draw checkmark (simplified as filled inner rect)
+                vgfx_rect(window, (int)(x+3), (int)(y+3), box_size-6, box_size-6, theme->colors.accent_primary);
+            }
+            // Draw label
+            if (cb->text && font) {
+                vg_font_draw_text(window, font, font_size, x + box_size + 6, y + font_size, cb->text, theme->colors.fg_primary);
+            }
+            break;
+        }
+
         default:
+            // For unhandled widgets, just draw a placeholder rect if they have size
+            if (w > 0 && h > 0) {
+                vgfx_rect(window, (int)x, (int)y, (int)w, (int)h, theme->colors.bg_tertiary);
+            }
             break;
     }
 

@@ -1,0 +1,84 @@
+module simple_editor;
+
+// ============================================================================
+// SIMPLE EDITOR - Minimal Text Editor Example
+// ============================================================================
+// A minimal example showing basic Viper.GUI usage.
+// ============================================================================
+
+func main() {
+    // Create the application window
+    var app = Viper.GUI.App.New("Simple Editor", 640, 480);
+
+    // Use dark theme
+    Viper.GUI.Theme.SetDark();
+
+    // Get the root container
+    var root = app.Root;
+
+    // Create a vertical layout
+    var layout = Viper.GUI.VBox.New();
+    layout.SetSpacing(8.0);
+    layout.SetPadding(8.0);
+    root.AddChild(layout);
+
+    // Add a title label
+    var title = Viper.GUI.Label.New(layout, "Simple Text Editor");
+    title.SetColor(0xFFFFFFFF);
+
+    // Add a text input for the filename
+    var filenameLabel = Viper.GUI.Label.New(layout, "Filename:");
+    filenameLabel.SetColor(0xFFAAAAAA);
+
+    var filename = Viper.GUI.TextInput.New(layout);
+    filename.SetPlaceholder("Enter filename...");
+    filename.SetSize(300, 28);
+
+    // Add the code editor
+    var editor = Viper.GUI.CodeEditor.New(layout);
+    editor.SetSize(620, 350);
+    editor.SetText("// Type your code here\n\nfunc hello() {\n    Viper.Terminal.Say(\"Hello!\");\n}\n");
+
+    // Add a button bar
+    var buttons = Viper.GUI.HBox.New();
+    buttons.SetSpacing(8.0);
+    layout.AddChild(buttons);
+
+    var clearBtn = Viper.GUI.Button.New(buttons, "Clear");
+    clearBtn.SetSize(80, 32);
+
+    var saveBtn = Viper.GUI.Button.New(buttons, "Save");
+    saveBtn.SetSize(80, 32);
+    saveBtn.SetStyle(1);  // Primary
+
+    // Status label
+    var status = Viper.GUI.Label.New(layout, "Ready");
+    status.SetColor(0xFF888888);
+
+    // Main loop
+    while app.ShouldClose == false {
+        app.Poll();
+
+        // Handle clear button
+        if clearBtn.WasClicked() != 0 {
+            editor.SetText("");
+            status.SetText("Editor cleared");
+        }
+
+        // Handle save button
+        if saveBtn.WasClicked() != 0 {
+            status.SetText("Saved!");
+            editor.ClearModified();
+        }
+
+        // Update status with line count
+        if editor.IsModified() != 0 {
+            var lineStr = Viper.Convert.IntToStr(editor.LineCount);
+            status.SetText("Modified - " + lineStr + " lines");
+        }
+
+        app.Render();
+    }
+
+    app.Destroy();
+}

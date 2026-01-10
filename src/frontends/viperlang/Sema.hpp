@@ -345,6 +345,17 @@ class Sema
         return sym && sym->kind == Symbol::Kind::Function ? sym->type : nullptr;
     }
 
+    /// @brief Find an extern (runtime) function by name.
+    /// @param name The function name (e.g., "Viper.GUI.App.get_ShouldClose").
+    /// @return The symbol if found and is extern, nullptr otherwise.
+    ///
+    /// @details Used by the lowerer to resolve runtime property getters.
+    Symbol *findExternFunction(const std::string &name)
+    {
+        Symbol *sym = lookupSymbol(name);
+        return (sym && sym->isExtern) ? sym : nullptr;
+    }
+
     /// @brief Look up the type of a variable by name.
     /// @param name The variable name.
     /// @return The variable's type, or nullptr if not found.

@@ -3,6 +3,7 @@
 #include "../../include/vg_event.h"
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 //=============================================================================
 // Global State

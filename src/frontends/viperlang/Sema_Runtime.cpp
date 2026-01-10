@@ -40,6 +40,31 @@ void Sema::initRuntimeFunctions()
     typeRegistry_["Viper.Sound.Voice"] = types::runtimeClass("Viper.Sound.Voice");
     typeRegistry_["Viper.Sound.Music"] = types::runtimeClass("Viper.Sound.Music");
 
+    // GUI classes
+    typeRegistry_["Viper.GUI.App"] = types::runtimeClass("Viper.GUI.App");
+    typeRegistry_["Viper.GUI.Font"] = types::runtimeClass("Viper.GUI.Font");
+    typeRegistry_["Viper.GUI.Widget"] = types::runtimeClass("Viper.GUI.Widget");
+    typeRegistry_["Viper.GUI.Label"] = types::runtimeClass("Viper.GUI.Label");
+    typeRegistry_["Viper.GUI.Button"] = types::runtimeClass("Viper.GUI.Button");
+    typeRegistry_["Viper.GUI.TextInput"] = types::runtimeClass("Viper.GUI.TextInput");
+    typeRegistry_["Viper.GUI.Checkbox"] = types::runtimeClass("Viper.GUI.Checkbox");
+    typeRegistry_["Viper.GUI.ScrollView"] = types::runtimeClass("Viper.GUI.ScrollView");
+    typeRegistry_["Viper.GUI.TreeView"] = types::runtimeClass("Viper.GUI.TreeView");
+    typeRegistry_["Viper.GUI.TabBar"] = types::runtimeClass("Viper.GUI.TabBar");
+    typeRegistry_["Viper.GUI.Tab"] = types::runtimeClass("Viper.GUI.Tab");
+    typeRegistry_["Viper.GUI.SplitPane"] = types::runtimeClass("Viper.GUI.SplitPane");
+    typeRegistry_["Viper.GUI.CodeEditor"] = types::runtimeClass("Viper.GUI.CodeEditor");
+    typeRegistry_["Viper.GUI.Dropdown"] = types::runtimeClass("Viper.GUI.Dropdown");
+    typeRegistry_["Viper.GUI.Slider"] = types::runtimeClass("Viper.GUI.Slider");
+    typeRegistry_["Viper.GUI.ProgressBar"] = types::runtimeClass("Viper.GUI.ProgressBar");
+    typeRegistry_["Viper.GUI.ListBox"] = types::runtimeClass("Viper.GUI.ListBox");
+    typeRegistry_["Viper.GUI.RadioGroup"] = types::runtimeClass("Viper.GUI.RadioGroup");
+    typeRegistry_["Viper.GUI.RadioButton"] = types::runtimeClass("Viper.GUI.RadioButton");
+    typeRegistry_["Viper.GUI.Spinner"] = types::runtimeClass("Viper.GUI.Spinner");
+    typeRegistry_["Viper.GUI.Image"] = types::runtimeClass("Viper.GUI.Image");
+    typeRegistry_["Viper.GUI.VBox"] = types::runtimeClass("Viper.GUI.VBox");
+    typeRegistry_["Viper.GUI.HBox"] = types::runtimeClass("Viper.GUI.HBox");
+
     // =========================================================================
     // BITS
     // =========================================================================
@@ -755,6 +780,100 @@ void Sema::initRuntimeFunctions()
     defineExternFunction("Viper.Convert.StrToNum", types::number());
     defineExternFunction("Viper.Convert.StrToBool", types::boolean());
     defineExternFunction("Viper.Convert.NumToInt", types::integer());
+
+    // =========================================================================
+    // GUI - APP
+    // =========================================================================
+    defineExternFunction("Viper.GUI.App.New", types::runtimeClass("Viper.GUI.App"));
+    defineExternFunction("Viper.GUI.App.Destroy", types::voidType());
+    defineExternFunction("Viper.GUI.App.get_ShouldClose", types::integer());
+    defineExternFunction("Viper.GUI.App.Poll", types::voidType());
+    defineExternFunction("Viper.GUI.App.Render", types::voidType());
+    defineExternFunction("Viper.GUI.App.get_Root", types::runtimeClass("Viper.GUI.Widget"));
+    defineExternFunction("Viper.GUI.App.SetFont", types::voidType());
+
+    // =========================================================================
+    // GUI - FONT
+    // =========================================================================
+    defineExternFunction("Viper.GUI.Font.Load", types::runtimeClass("Viper.GUI.Font"));
+    defineExternFunction("Viper.GUI.Font.Destroy", types::voidType());
+
+    // =========================================================================
+    // GUI - WIDGET (base class for all widgets)
+    // =========================================================================
+    defineExternFunction("Viper.GUI.Widget.Destroy", types::voidType());
+    defineExternFunction("Viper.GUI.Widget.SetVisible", types::voidType());
+    defineExternFunction("Viper.GUI.Widget.SetEnabled", types::voidType());
+    defineExternFunction("Viper.GUI.Widget.SetSize", types::voidType());
+    defineExternFunction("Viper.GUI.Widget.AddChild", types::voidType());
+    defineExternFunction("Viper.GUI.Widget.IsHovered", types::integer());
+    defineExternFunction("Viper.GUI.Widget.IsPressed", types::integer());
+    defineExternFunction("Viper.GUI.Widget.IsFocused", types::integer());
+    defineExternFunction("Viper.GUI.Widget.WasClicked", types::integer());
+    defineExternFunction("Viper.GUI.Widget.SetPosition", types::voidType());
+
+    // =========================================================================
+    // GUI - LABEL
+    // =========================================================================
+    defineExternFunction("Viper.GUI.Label.New", types::runtimeClass("Viper.GUI.Label"));
+    defineExternFunction("Viper.GUI.Label.SetText", types::voidType());
+    defineExternFunction("Viper.GUI.Label.SetFont", types::voidType());
+    defineExternFunction("Viper.GUI.Label.SetColor", types::voidType());
+
+    // =========================================================================
+    // GUI - BUTTON
+    // =========================================================================
+    defineExternFunction("Viper.GUI.Button.New", types::runtimeClass("Viper.GUI.Button"));
+    defineExternFunction("Viper.GUI.Button.SetText", types::voidType());
+    defineExternFunction("Viper.GUI.Button.SetFont", types::voidType());
+    defineExternFunction("Viper.GUI.Button.SetStyle", types::voidType());
+    defineExternFunction("Viper.GUI.Button.WasClicked", types::integer());
+
+    // =========================================================================
+    // GUI - TEXTINPUT
+    // =========================================================================
+    defineExternFunction("Viper.GUI.TextInput.New", types::runtimeClass("Viper.GUI.TextInput"));
+    defineExternFunction("Viper.GUI.TextInput.SetText", types::voidType());
+    defineExternFunction("Viper.GUI.TextInput.get_Text", types::string());
+    defineExternFunction("Viper.GUI.TextInput.SetPlaceholder", types::voidType());
+    defineExternFunction("Viper.GUI.TextInput.SetFont", types::voidType());
+    defineExternFunction("Viper.GUI.TextInput.SetMaxLength", types::voidType());
+
+    // =========================================================================
+    // GUI - CHECKBOX
+    // =========================================================================
+    defineExternFunction("Viper.GUI.Checkbox.New", types::runtimeClass("Viper.GUI.Checkbox"));
+    defineExternFunction("Viper.GUI.Checkbox.IsChecked", types::integer());
+    defineExternFunction("Viper.GUI.Checkbox.SetChecked", types::voidType());
+
+    // =========================================================================
+    // GUI - CODEEDITOR
+    // =========================================================================
+    defineExternFunction("Viper.GUI.CodeEditor.New", types::runtimeClass("Viper.GUI.CodeEditor"));
+    defineExternFunction("Viper.GUI.CodeEditor.SetText", types::voidType());
+    defineExternFunction("Viper.GUI.CodeEditor.get_Text", types::string());
+    defineExternFunction("Viper.GUI.CodeEditor.SetFont", types::voidType());
+    defineExternFunction("Viper.GUI.CodeEditor.get_LineCount", types::integer());
+    defineExternFunction("Viper.GUI.CodeEditor.get_CursorLine", types::integer());
+    defineExternFunction("Viper.GUI.CodeEditor.get_CursorColumn", types::integer());
+    defineExternFunction("Viper.GUI.CodeEditor.IsModified", types::integer());
+    defineExternFunction("Viper.GUI.CodeEditor.ClearModified", types::voidType());
+
+    // =========================================================================
+    // GUI - THEME
+    // =========================================================================
+    defineExternFunction("Viper.GUI.Theme.SetDark", types::voidType());
+    defineExternFunction("Viper.GUI.Theme.SetLight", types::voidType());
+
+    // =========================================================================
+    // GUI - VBOX / HBOX
+    // =========================================================================
+    defineExternFunction("Viper.GUI.VBox.New", types::runtimeClass("Viper.GUI.VBox"));
+    defineExternFunction("Viper.GUI.VBox.SetSpacing", types::voidType());
+    defineExternFunction("Viper.GUI.VBox.SetPadding", types::voidType());
+    defineExternFunction("Viper.GUI.HBox.New", types::runtimeClass("Viper.GUI.HBox"));
+    defineExternFunction("Viper.GUI.HBox.SetSpacing", types::voidType());
+    defineExternFunction("Viper.GUI.HBox.SetPadding", types::voidType());
 }
 
 } // namespace il::frontends::viperlang

@@ -575,6 +575,20 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
 
             // Check if it's a known function (runtime method)
             Symbol *sym = lookupSymbol(fullMethodName);
+
+            // If not found and this is a GUI widget class, try falling back to Widget base class
+            // This handles inherited methods like SetSize, AddChild, SetVisible, etc.
+            if (!sym && baseType->name.find("Viper.GUI.") == 0 &&
+                baseType->name != "Viper.GUI.Widget")
+            {
+                std::string widgetMethodName = "Viper.GUI.Widget." + fieldExpr->field;
+                sym = lookupSymbol(widgetMethodName);
+                if (sym && sym->kind == Symbol::Kind::Function)
+                {
+                    fullMethodName = widgetMethodName;
+                }
+            }
+
             if (sym && sym->kind == Symbol::Kind::Function)
             {
                 // Analyze arguments
@@ -726,6 +740,28 @@ TypeRef Sema::analyzeField(FieldExpr *expr)
         if (expr->field == "Length" || expr->field == "length")
         {
             return types::integer();
+        }
+    }
+
+    // Handle runtime class property access (e.g., app.Root, editor.LineCount)
+    // Runtime classes are Ptr types with a name like "Viper.GUI.App"
+    if (baseType && baseType->kind == TypeKindSem::Ptr && !baseType->name.empty() &&
+        baseType->name.find("Viper.") == 0)
+    {
+        // Construct getter function name: {ClassName}.get_{PropertyName}
+        std::string getterName = baseType->name + ".get_" + expr->field;
+
+        // Look up the getter function
+        Symbol *sym = lookupSymbol(getterName);
+        if (sym && sym->kind == Symbol::Kind::Function)
+        {
+            // Return the function's return type (the property type)
+            TypeRef funcType = sym->type;
+            if (funcType && funcType->kind == TypeKindSem::Function)
+            {
+                return funcType->returnType();
+            }
+            return funcType;
         }
     }
 

@@ -354,6 +354,26 @@ LowerResult Lowerer::lowerField(FieldExpr *expr)
         }
     }
 
+    // Handle runtime class property access (e.g., app.ShouldClose, editor.LineCount)
+    // Runtime classes are Ptr types with a non-empty name like "Viper.GUI.App"
+    if (baseType->kind == TypeKindSem::Ptr && !baseType->name.empty())
+    {
+        // Construct getter function name: {ClassName}.get_{PropertyName}
+        std::string getterName = baseType->name + ".get_" + expr->field;
+
+        // Look up the getter function
+        Symbol *getterSym = sema_.findExternFunction(getterName);
+        if (getterSym && getterSym->type)
+        {
+            // Determine the return type
+            Type retType = mapType(getterSym->type);
+
+            // Emit call to the getter function
+            Value result = emitCallRet(retType, getterName, {base.value});
+            return {result, retType};
+        }
+    }
+
     // Unknown field access
     return {Value::constInt(0), Type(Type::Kind::I64)};
 }

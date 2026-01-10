@@ -43,6 +43,32 @@ vg_event_t vg_event_key(vg_event_type_t type, vg_key_t key,
 // Platform Event Translation
 //=============================================================================
 
+// Translate vgfx key codes to vg key codes (they use different numbering for special keys)
+static vg_key_t translate_vgfx_key(int vgfx_key) {
+    // Printable ASCII keys are the same
+    if (vgfx_key >= ' ' && vgfx_key <= '~') {
+        return (vg_key_t)vgfx_key;
+    }
+
+    // Special keys need translation (vgfx codes -> vg codes)
+    // VGFX: ESCAPE=256, ENTER=257, LEFT=258, RIGHT=259, UP=260, DOWN=261, BACKSPACE=262, DELETE=263, TAB=264, HOME=265, END=266
+    // VG:   ESCAPE=256, ENTER=257, TAB=258, BACKSPACE=259, DELETE=261, RIGHT=262, LEFT=263, DOWN=264, UP=265, HOME=268, END=269
+    switch (vgfx_key) {
+        case 256: return VG_KEY_ESCAPE;     // VGFX_KEY_ESCAPE
+        case 257: return VG_KEY_ENTER;      // VGFX_KEY_ENTER
+        case 258: return VG_KEY_LEFT;       // VGFX_KEY_LEFT
+        case 259: return VG_KEY_RIGHT;      // VGFX_KEY_RIGHT
+        case 260: return VG_KEY_UP;         // VGFX_KEY_UP
+        case 261: return VG_KEY_DOWN;       // VGFX_KEY_DOWN
+        case 262: return VG_KEY_BACKSPACE;  // VGFX_KEY_BACKSPACE
+        case 263: return VG_KEY_DELETE;     // VGFX_KEY_DELETE
+        case 264: return VG_KEY_TAB;        // VGFX_KEY_TAB
+        case 265: return VG_KEY_HOME;       // VGFX_KEY_HOME
+        case 266: return VG_KEY_END;        // VGFX_KEY_END
+        default:  return (vg_key_t)vgfx_key;
+    }
+}
+
 vg_event_t vg_event_from_platform(void* platform_event) {
     vg_event_t event;
     memset(&event, 0, sizeof(event));
@@ -54,13 +80,13 @@ vg_event_t vg_event_from_platform(void* platform_event) {
     switch (pe->type) {
         case VGFX_EVENT_KEY_DOWN:
             event.type = VG_EVENT_KEY_DOWN;
-            event.key.key = (vg_key_t)pe->data.key.key;
+            event.key.key = translate_vgfx_key(pe->data.key.key);
             event.key.repeat = pe->data.key.is_repeat != 0;
             break;
 
         case VGFX_EVENT_KEY_UP:
             event.type = VG_EVENT_KEY_UP;
-            event.key.key = (vg_key_t)pe->data.key.key;
+            event.key.key = translate_vgfx_key(pe->data.key.key);
             break;
 
         case VGFX_EVENT_MOUSE_MOVE:
@@ -172,6 +198,10 @@ bool vg_event_send(vg_widget_t* widget, vg_event_t* event) {
     } else if (event->type == VG_EVENT_MOUSE_DOWN) {
         widget->state |= VG_STATE_PRESSED;
         widget->needs_paint = true;
+        // Set focus on click if widget can accept focus
+        if (widget->vtable && widget->vtable->can_focus && widget->vtable->can_focus(widget)) {
+            vg_widget_set_focus(widget);
+        }
     } else if (event->type == VG_EVENT_MOUSE_UP) {
         bool was_pressed = (widget->state & VG_STATE_PRESSED) != 0;
         widget->state &= ~VG_STATE_PRESSED;

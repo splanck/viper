@@ -637,10 +637,11 @@ RT_FUNC(GuiLabelSetColor, rt_label_set_color, "Viper.GUI.Label.SetColor", "void(
 // GUI - BUTTON
 //=============================================================================
 
-RT_FUNC(GuiButtonNew,      rt_button_new,       "Viper.GUI.Button.New",      "obj(obj,str)")
-RT_FUNC(GuiButtonSetText,  rt_button_set_text,  "Viper.GUI.Button.SetText",  "void(obj,str)")
-RT_FUNC(GuiButtonSetFont,  rt_button_set_font,  "Viper.GUI.Button.SetFont",  "void(obj,obj,f64)")
-RT_FUNC(GuiButtonSetStyle, rt_button_set_style, "Viper.GUI.Button.SetStyle", "void(obj,i64)")
+RT_FUNC(GuiButtonNew,        rt_button_new,         "Viper.GUI.Button.New",        "obj(obj,str)")
+RT_FUNC(GuiButtonSetText,    rt_button_set_text,    "Viper.GUI.Button.SetText",    "void(obj,str)")
+RT_FUNC(GuiButtonSetFont,    rt_button_set_font,    "Viper.GUI.Button.SetFont",    "void(obj,obj,f64)")
+RT_FUNC(GuiButtonSetStyle,   rt_button_set_style,   "Viper.GUI.Button.SetStyle",   "void(obj,i64)")
+RT_FUNC(GuiButtonWasClicked, rt_widget_was_clicked, "Viper.GUI.Button.WasClicked", "i64(obj)")
 
 //=============================================================================
 // GUI - TEXTINPUT
@@ -802,7 +803,11 @@ RT_FUNC(GuiThemeSetLight, rt_theme_set_light, "Viper.GUI.Theme.SetLight", "void(
 //=============================================================================
 
 RT_FUNC(GuiVBoxNew,           rt_vbox_new,             "Viper.GUI.VBox.New",           "obj()")
+RT_FUNC(GuiVBoxSetSpacing,    rt_container_set_spacing,"Viper.GUI.VBox.SetSpacing",    "void(obj,f64)")
+RT_FUNC(GuiVBoxSetPadding,    rt_container_set_padding,"Viper.GUI.VBox.SetPadding",    "void(obj,f64)")
 RT_FUNC(GuiHBoxNew,           rt_hbox_new,             "Viper.GUI.HBox.New",           "obj()")
+RT_FUNC(GuiHBoxSetSpacing,    rt_container_set_spacing,"Viper.GUI.HBox.SetSpacing",    "void(obj,f64)")
+RT_FUNC(GuiHBoxSetPadding,    rt_container_set_padding,"Viper.GUI.HBox.SetPadding",    "void(obj,f64)")
 RT_FUNC(GuiContainerSetSpacing, rt_container_set_spacing, "Viper.GUI.Container.SetSpacing", "void(obj,f64)")
 RT_FUNC(GuiContainerSetPadding, rt_container_set_padding, "Viper.GUI.Container.SetPadding", "void(obj,f64)")
 
