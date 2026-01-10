@@ -81,7 +81,6 @@ static int outline_to_polygon(float* points_x, float* points_y, uint8_t* flags,
                               float scale, float offset_x, float offset_y,
                               raster_point_t* out, int max_points) {
     int count = 0;
-    int point_idx = 0;
 
     for (int c = 0; c < num_contours; c++) {
         int contour_end = contour_ends[c];
@@ -89,12 +88,8 @@ static int outline_to_polygon(float* points_x, float* points_y, uint8_t* flags,
         int contour_len = contour_end - contour_start + 1;
 
         if (contour_len < 2) {
-            point_idx = contour_end + 1;
             continue;
         }
-
-        // Mark contour start position for closing
-        int contour_out_start = count;
 
         // Process points in contour
         for (int i = 0; i < contour_len; i++) {
@@ -144,9 +139,6 @@ static int outline_to_polygon(float* points_x, float* points_y, uint8_t* flags,
                                           CURVE_TOLERANCE, out, max_points, count);
             } else if (!on0 && !on1) {
                 // Both off-curve - implicit on-curve at midpoint
-                float mid_x = (x0 + x1) * 0.5f;
-                float mid_y = (y0 + y1) * 0.5f;
-
                 // The midpoint becomes our "on-curve" start
                 // and x1,y1 is the control for next segment
                 // This case is handled by the previous iteration
@@ -155,8 +147,6 @@ static int outline_to_polygon(float* points_x, float* points_y, uint8_t* flags,
                 // This is handled by previous point's curve
             }
         }
-
-        point_idx = contour_end + 1;
     }
 
     return count;

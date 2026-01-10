@@ -8,8 +8,8 @@ if (CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     project(ViperGFX VERSION 1.0.0 LANGUAGES C)
     set(VGFX_STANDALONE TRUE)
 
-    # C99 standard (Viper sets this globally)
-    set(CMAKE_C_STANDARD 99)
+    # C11 standard (Viper sets this globally)
+    set(CMAKE_C_STANDARD 11)
     set(CMAKE_C_STANDARD_REQUIRED ON)
     set(CMAKE_C_EXTENSIONS OFF)
 

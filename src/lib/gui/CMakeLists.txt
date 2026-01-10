@@ -69,9 +69,9 @@ if(UNIX AND NOT APPLE)
     target_link_libraries(vipergui PRIVATE m)
 endif()
 
-# C99 standard
+# C11 standard
 set_target_properties(vipergui PROPERTIES
-    C_STANDARD 99
+    C_STANDARD 11
     C_STANDARD_REQUIRED ON
 )
 

@@ -117,8 +117,7 @@ static bool ttf_parse_cmap_format4(vg_font_t* font, const uint8_t* subtable) {
         p += 2;
     }
 
-    // ID range offsets (and store pointer for glyph ID array calculation)
-    const uint8_t* range_offset_start = p;
+    // ID range offsets
     for (int i = 0; i < seg_count; i++) {
         font->cmap4_id_range_offsets[i] = ttf_read_u16(p);
         p += 2;
@@ -178,7 +177,6 @@ bool ttf_parse_cmap(vg_font_t* font, const uint8_t* data, uint32_t len) {
     for (int i = 0; i < num_tables; i++) {
         const uint8_t* record = data + 4 + i * 8;
         uint16_t platform_id = ttf_read_u16(record);
-        uint16_t encoding_id = ttf_read_u16(record + 2);
         uint32_t offset = ttf_read_u32(record + 4);
 
         if (offset >= len) continue;
@@ -218,7 +216,6 @@ bool ttf_parse_cmap(vg_font_t* font, const uint8_t* data, uint32_t len) {
 bool ttf_parse_kern(vg_font_t* font, const uint8_t* data, uint32_t len) {
     if (len < 4) return false;
 
-    uint16_t version = ttf_read_u16(data);
     uint16_t num_tables = ttf_read_u16(data + 2);
 
     const uint8_t* p = data + 4;
@@ -226,7 +223,6 @@ bool ttf_parse_kern(vg_font_t* font, const uint8_t* data, uint32_t len) {
     for (int t = 0; t < num_tables; t++) {
         if (p + 6 > data + len) break;
 
-        uint16_t subtable_version = ttf_read_u16(p);
         uint16_t subtable_length = ttf_read_u16(p + 2);
         uint16_t coverage = ttf_read_u16(p + 4);
 
@@ -265,7 +261,6 @@ bool ttf_parse_kern(vg_font_t* font, const uint8_t* data, uint32_t len) {
 bool ttf_parse_name(vg_font_t* font, const uint8_t* data, uint32_t len) {
     if (len < 6) return false;
 
-    uint16_t format = ttf_read_u16(data);
     uint16_t count = ttf_read_u16(data + 2);
     uint16_t string_offset = ttf_read_u16(data + 4);
 
@@ -277,7 +272,6 @@ bool ttf_parse_name(vg_font_t* font, const uint8_t* data, uint32_t len) {
 
         uint16_t platform_id = ttf_read_u16(record);
         uint16_t encoding_id = ttf_read_u16(record + 2);
-        uint16_t language_id = ttf_read_u16(record + 4);
         uint16_t name_id = ttf_read_u16(record + 6);
         uint16_t length = ttf_read_u16(record + 8);
         uint16_t offset = ttf_read_u16(record + 10);

@@ -69,7 +69,7 @@ option(VIPER_VM_TAILCALL "Enable tailcall" ON)
 option(VIPER_VM_OPCOUNTS "Enable op counters" ON)
 option(VIPER_ENABLE_PASCAL "Build Pascal frontend (experimental)" OFF)
 
-set(CMAKE_C_STANDARD 99)
+set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 set(CMAKE_CXX_STANDARD 20)

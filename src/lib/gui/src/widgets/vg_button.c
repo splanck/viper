@@ -134,7 +134,6 @@ static void button_paint(vg_widget_t* widget, void* canvas) {
     // Determine colors based on state
     uint32_t bg_color = button->bg_color;
     uint32_t fg_color = button->fg_color;
-    uint32_t border_color = button->border_color;
 
     if (widget->state & VG_STATE_DISABLED) {
         bg_color = theme->colors.bg_disabled;
@@ -144,10 +143,6 @@ static void button_paint(vg_widget_t* widget, void* canvas) {
         fg_color = 0xFFFFFFFF;  // White text on active
     } else if (widget->state & VG_STATE_HOVERED) {
         bg_color = theme->colors.bg_hover;
-    }
-
-    if (widget->state & VG_STATE_FOCUSED) {
-        border_color = theme->colors.border_focus;
     }
 
     // Draw background

@@ -44,7 +44,7 @@ Run a BASIC program:
 Run a ViperLang program:
 
 ```bash
-./build/src/tools/viper/viper demos/viperlang/frogger.viper
+./build/src/tools/viper/viper demos/viperlang/frogger/main.viper
 ```
 
 Run an IL program directly:
@@ -65,7 +65,7 @@ Viper is a compiler infrastructure with several components:
 | **Frontends** | Language compilers: BASIC and ViperLang |
 | **VM** | Bytecode interpreter with pluggable dispatch strategies |
 | **Backends** | Native code generators (AArch64, x86-64) |
-| **Runtime** | Portable C libraries for core types, collections, I/O, text, math, graphics, input, networking, system, diagnostics, utilities, crypto, time, threading |
+| **Runtime** | Portable C libraries for core types, collections, I/O, text, math, graphics, audio, GUI, input, networking, system, diagnostics, utilities, crypto, time, threading |
 | **Tools** | Compiler drivers, verifier, disassembler |
 
 ### Why Viper?
@@ -89,7 +89,7 @@ Viper is in **early development**. All components are functional but incomplete:
 | Virtual Machine | Functional with multiple dispatch strategies |
 | AArch64 Backend | Validated on Apple Silicon; actively developed |
 | x86-64 Backend | Validated on Windows; System V and Windows x64 ABI support |
-| Runtime Libraries | Expanding: core types, collections, I/O, text, math, graphics, input, networking, system, diagnostics, utilities, crypto, time, threads |
+| Runtime Libraries | Comprehensive: core types, collections, I/O, text, math, graphics, audio, GUI, input, networking, system, diagnostics, utilities, crypto, time, threads |
 | IL Optimizer | Basic passes implemented; more planned |
 | Debugger/IDE | Early work; not yet usable |
 
@@ -118,7 +118,13 @@ Several demos showcase the platform's capabilities. See the **[demos/](demos/REA
 | Demo | Description |
 |------|-------------|
 | `demos/viperlang/frogger` | Frogger with entity types and generics |
-| `demos/viperlang/entities` | Entity system demonstration |
+| `demos/viperlang/centipede` | Centipede arcade game clone |
+| `demos/viperlang/ladders` | Donkey Kong-style platformer |
+| `demos/viperlang/paint` | Full-featured paint application |
+| `demos/viperlang/vedit` | Text editor with syntax highlighting |
+| `demos/viperlang/graphics_show` | Graphics API showcase |
+| `demos/viperlang/sql` | SQL query demonstration |
+| `demos/viperlang/telnet` | Telnet client |
 
 Run demos:
 
@@ -127,7 +133,7 @@ Run demos:
 ./build/src/tools/vbasic/vbasic demos/basic/frogger/frogger.bas
 
 # ViperLang
-./build/src/tools/viper/viper demos/viperlang/frogger.viper
+./build/src/tools/viper/viper demos/viperlang/frogger/main.viper
 ```
 
 ---
@@ -162,8 +168,8 @@ Run demos:
                   ▼
 ┌─────────────────────────────────────────┐
 │           Viper Runtime                 │
-│ (Collections, I/O, Text, Math, Graphics │
-│   Input, Network, Threads, System)      │
+│ (Collections, I/O, Text, Math, Graphics,│
+│  Audio, GUI, Input, Network, Threads)   │
 └─────────────────────────────────────────┘
 ```
 
@@ -186,7 +192,7 @@ Frontends lower to a typed IL that is compact, explicit, and inspectable.
 **Viper IL Output:**
 
 ```il
-il 0.1
+il 0.2
 extern @Viper.Console.PrintStr(str) -> void
 extern @Viper.Console.PrintI64(i64) -> void
 global const str @.NL = "\n"
@@ -216,11 +222,13 @@ All frontends share the **Viper Runtime**, providing a growing set of modules:
 | **Core** | `Box`, `Object`, `String` | Base types and string operations |
 | **Crypto** | `Hash`, `KeyDerive`, `Rand` | CRC32, MD5, SHA1, SHA256, PBKDF2, secure RNG |
 | **Diagnostics** | `Assert`, `Trap` | Debugging and assertions |
-| **Graphics** | `Canvas`, `Color`, `Pixels` | 2D graphics with shapes, curves, text, image transforms, screenshots |
+| **Graphics** | `Camera`, `Canvas`, `Color`, `Pixels`, `Sprite`, `Tilemap` | 2D graphics, sprites, tilemaps, cameras |
+| **GUI** | `App`, `Button`, `Checkbox`, `Label`, `Slider`, `TextInput`, etc. | Cross-platform GUI widgets and layouts |
 | **I/O** | `Archive`, `BinFile`, `Compress`, `Dir`, `File`, `LineReader`, `LineWriter`, `MemStream`, `Path`, `Watcher` | File system access and streaming |
 | **Input** | `Keyboard`, `Mouse`, `Pad` | Input devices for games and interactive apps |
 | **Math** | `Bits`, `Math`, `Random`, `Vec2`, `Vec3` | Mathematical functions and vectors |
 | **Network** | `Dns`, `Http`, `HttpReq`, `HttpRes`, `Tcp`, `TcpServer`, `Udp`, `Url` | Networking and sockets |
+| **Sound** | `Audio`, `Music`, `Sound`, `Voice` | Audio playback and sound effects |
 | **System** | `Environment`, `Exec`, `Machine`, `Terminal` | System interaction and console I/O |
 | **Text** | `Codec`, `Csv`, `Guid`, `Pattern`, `StringBuilder`, `Template` | String building and text encoding |
 | **Threads** | `Barrier`, `Gate`, `Monitor`, `RwLock`, `SafeI64`, `Thread` | Concurrent programming primitives |

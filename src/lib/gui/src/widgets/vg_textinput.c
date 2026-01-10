@@ -179,20 +179,13 @@ static void textinput_paint(vg_widget_t* widget, void* canvas) {
     vg_theme_t* theme = vg_theme_get_current();
 
     // Determine colors based on state
-    uint32_t bg_color = input->bg_color;
-    uint32_t border_color = input->border_color;
     uint32_t text_color = input->text_color;
 
     if (widget->state & VG_STATE_DISABLED) {
-        bg_color = theme->colors.bg_disabled;
         text_color = theme->colors.fg_disabled;
     }
-    if (widget->state & VG_STATE_FOCUSED) {
-        border_color = theme->colors.border_focus;
-    }
 
-    // Background and border would be drawn here
-    // TODO: Use vgfx primitives
+    // TODO: Draw background and border using vgfx primitives
 
     // Calculate text area
     float padding = theme->input.padding_h;
