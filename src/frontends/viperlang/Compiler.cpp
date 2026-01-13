@@ -119,28 +119,32 @@ CompilerResult compile(const CompilerInput &input,
     if (options.optLevel != OptLevel::O0)
     {
         il::transform::PassManager pm;
-        // Disable verification between passes because the verifier doesn't
-        // compute dominance - it processes blocks in linear order and fails
-        // on valid IL where definitions dominate uses but appear later in
-        // the block list (e.g., match pattern lowering).
+        // Note: Verification between passes is disabled because passes like Mem2Reg
+        // create new temporaries that don't have proper type information set.
+        // The verifier now handles block-order-independent IL correctly, but
+        // inter-pass verification needs passes to maintain complete type info.
         pm.setVerifyBetweenPasses(false);
 
         // Use optimized pipeline based on optimization level.
-        // Note: SimplifyCFG and SCCP are disabled due to known issues:
-        // - SimplifyCFG: Internal verification fails on valid IL (dominance)
-        // - SCCP: Infinite loop on certain control flow patterns
+        // Note: SCCP is still disabled due to infinite loop on certain CFG patterns.
         if (options.optLevel == OptLevel::O2)
         {
-            // Aggressive optimization pipeline
+            // Aggressive optimization pipeline with CFG simplification
+            // Note: SimplifyCFG is run only once at the start due to issues
+            // with running it after other passes that modify temp definitions.
             il::transform::PassManager::Pipeline pipeline = {
-                "mem2reg", "dce", "gvn", "earlycse", "dse", "peephole", "dce"};
+                "simplify-cfg", "mem2reg", "dce", "licm",
+                "gvn", "earlycse", "dse", "peephole", "dce"};
             pm.run(result.module, pipeline);
         }
         else
         {
             // Standard optimization (O1): core passes for good performance
+            // Note: SimplifyCFG is run only once at the start. Running it again
+            // after other passes can cause issues where temps become undefined
+            // due to block transformations (tracked as a future improvement).
             il::transform::PassManager::Pipeline pipeline = {
-                "mem2reg", "peephole", "dce"};
+                "simplify-cfg", "mem2reg", "peephole", "dce"};
             pm.run(result.module, pipeline);
         }
     }

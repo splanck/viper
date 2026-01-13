@@ -121,11 +121,13 @@ class FunctionVerifier
 
   private:
     il::support::Expected<void> verifyFunction(const il::core::Function &fn, DiagSink &sink);
-    il::support::Expected<void> verifyBlock(const il::core::Function &fn,
-                                            const il::core::BasicBlock &bb,
-                                            const BlockMap &blockMap,
-                                            std::unordered_map<unsigned, il::core::Type> &temps,
-                                            DiagSink &sink);
+    il::support::Expected<void> verifyBlock(
+        const il::core::Function &fn,
+        const il::core::BasicBlock &bb,
+        const BlockMap &blockMap,
+        std::unordered_map<unsigned, il::core::Type> &temps,
+        const std::unordered_map<unsigned, const il::core::BasicBlock *> &definingBlock,
+        DiagSink &sink);
     il::support::Expected<void> verifyInstruction(const il::core::Function &fn,
                                                   const il::core::BasicBlock &bb,
                                                   const il::core::Instr &instr,

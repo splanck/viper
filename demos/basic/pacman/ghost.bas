@@ -323,7 +323,7 @@ Class Ghost
             ch = "M"  ' Scared ghost
         ElseIf mode = MODE_EATEN Then
             drawColor = COLOR_EATEN
-            ch = "\""  ' Eyes only
+            ch = Chr$(34)  ' Eyes only (double quote character)
         Else
             drawColor = color
             ch = "M"  ' Normal ghost

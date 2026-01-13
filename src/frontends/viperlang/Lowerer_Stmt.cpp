@@ -547,12 +547,14 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt)
         emitCBr(cond, bodyIdx, endIdx);
 
         setBlock(bodyIdx);
-        Value keyVal = emitCallRet(keyIlType, kSeqGet, {keysSeq, idxVal});
-        storeToSlot(stmt->variable, keyVal, keyIlType);
+        // kSeqGet returns a boxed value (Ptr), so we need to unbox it
+        Value boxedKey = emitCallRet(Type(Type::Kind::Ptr), kSeqGet, {keysSeq, idxVal});
+        auto keyVal = emitUnbox(boxedKey, keyIlType);
+        storeToSlot(stmt->variable, keyVal.value, keyIlType);
 
         if (stmt->isTuple)
         {
-            Value boxed = emitCallRet(Type(Type::Kind::Ptr), kMapGet, {mapValue.value, keyVal});
+            Value boxed = emitCallRet(Type(Type::Kind::Ptr), kMapGet, {mapValue.value, keyVal.value});
             auto unboxed = emitUnbox(boxed, valueIlType);
             storeToSlot(stmt->secondVariable, unboxed.value, valueIlType);
         }

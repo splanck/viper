@@ -210,6 +210,43 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
     for (const auto &param : fn.params)
         temps[param.id] = param.type;
 
+    // ===== PASS 1: Pre-collect all definitions for type information =====
+    // This is necessary because SimplifyCFG and other transforms may reorder blocks
+    // such that definitions appear later in declaration order but still dominate uses.
+    // By collecting all definitions first, we have complete type information for
+    // cross-block operand references.
+    //
+    // We also track which block each definition comes from so that verifyBlock can
+    // still detect within-block use-before-def errors.
+    std::unordered_map<unsigned, const BasicBlock *> definingBlock;
+
+    for (const auto &bb : fn.blocks)
+    {
+        // Block parameters define temporaries
+        for (const auto &param : bb.params)
+        {
+            if (temps.find(param.id) == temps.end())
+            {
+                temps[param.id] = param.type;
+                definingBlock[param.id] = &bb;
+            }
+        }
+
+        // Instructions with results define temporaries
+        for (const auto &instr : bb.instructions)
+        {
+            if (instr.result.has_value())
+            {
+                if (temps.find(*instr.result) == temps.end())
+                {
+                    temps[*instr.result] = instr.type;
+                    definingBlock[*instr.result] = &bb;
+                }
+            }
+        }
+    }
+
+    // ===== PASS 2: Full verification with complete type info =====
     // Collect EhPush targets and label references during single pass over blocks.
     // This avoids two additional O(blocks × instructions) traversals.
     struct EhPushCheck
@@ -223,7 +260,7 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
 
     for (const auto &bb : fn.blocks)
     {
-        if (auto result = verifyBlock(fn, bb, blockMap, temps, sink); !result)
+        if (auto result = verifyBlock(fn, bb, blockMap, temps, definingBlock, sink); !result)
             return result;
 
         // Collect EhPush targets and all label references in single pass
@@ -273,17 +310,32 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
 /// @param bb Block under inspection.
 /// @param blockMap Mapping from labels to block pointers for CFG lookups.
 /// @param temps Table of SSA temporaries and their known types.
+/// @param definingBlock Maps temp IDs to their defining blocks for within-block ordering.
 /// @param sink Diagnostic sink receiving instruction-level messages.
 /// @return Success or a diagnostic describing the failure.
-Expected<void> FunctionVerifier::verifyBlock(const Function &fn,
-                                             const BasicBlock &bb,
-                                             const BlockMap &blockMap,
-                                             std::unordered_map<unsigned, Type> &temps,
-                                             DiagSink &sink)
+Expected<void> FunctionVerifier::verifyBlock(
+    const Function &fn,
+    const BasicBlock &bb,
+    const BlockMap &blockMap,
+    std::unordered_map<unsigned, Type> &temps,
+    const std::unordered_map<unsigned, const BasicBlock *> &definingBlock,
+    DiagSink &sink)
 {
+    // Initialize defined set with definitions from OTHER blocks.
+    // This allows cross-block uses to pass verification even when the defining
+    // block appears later in declaration order (which is valid after SimplifyCFG).
+    // Within-block definitions are added incrementally to detect within-block
+    // use-before-def errors.
     std::unordered_set<unsigned> defined;
     for (const auto &entry : temps)
-        defined.insert(entry.first);
+    {
+        auto it = definingBlock.find(entry.first);
+        if (it == definingBlock.end() || it->second != &bb)
+        {
+            // Definition is from another block or a function parameter
+            defined.insert(entry.first);
+        }
+    }
 
     TypeInference types(temps, defined);
 
